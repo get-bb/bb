@@ -7,7 +7,7 @@ import { Command } from "commander";
 import { jsonValueSchema, type Host, type JsonValue } from "@bb/domain";
 import { action, CliExitError } from "../action.js";
 import { createCliBbSdk } from "../client.js";
-import { renderBorderlessTable } from "../table.js";
+import { columnWidths, printBorderlessTable } from "../table.js";
 import { outputJson } from "./helpers.js";
 import { confirmDestructiveAction } from "./helpers.js";
 
@@ -360,10 +360,10 @@ export function registerMachineCommands(
     .action(
       action(async (target: string, opts: MachineListCommandOptions) => {
         const sdk = createCliBbSdk(getUrl());
-        const hostId = resolveMachineId(
-          await sdk.hosts.list({ includeCreating: true }),
+        const hostId = await resolveMachineHostId({
+          serverUrl: getUrl(),
           target,
-        );
+        });
         const host = await sdk.hosts.get({ hostId });
         if (outputJson(opts, host)) return;
         console.log(JSON.stringify(host, null, 2));
@@ -394,10 +394,10 @@ export function registerMachineCommands(
           opts: MachineListCommandOptions,
         ) => {
           const sdk = createCliBbSdk(getUrl());
-          const hostId = resolveMachineId(
-            await sdk.hosts.list({ includeCreating: true }),
+          const hostId = await resolveMachineHostId({
+            serverUrl: getUrl(),
             target,
-          );
+          });
           const host = await sdk.hosts.update({ hostId, name });
           if (outputJson(opts, host)) return;
           console.log(`Machine ${host.id} renamed to ${host.name}`);
@@ -413,8 +413,10 @@ export function registerMachineCommands(
     .action(
       action(async (target: string, opts: MachineMutationCommandOptions) => {
         const sdk = createCliBbSdk(getUrl());
-        const hosts = await sdk.hosts.list({ includeCreating: true });
-        const hostId = resolveMachineId(hosts, target);
+        const hostId = await resolveMachineHostId({
+          serverUrl: getUrl(),
+          target,
+        });
         if (
           !opts.yes &&
           !(await confirmDestructiveAction(`Remove machine ${hostId}?`))
@@ -433,10 +435,10 @@ export function registerMachineCommands(
     .action(
       action(async (target: string, opts: MachineListCommandOptions) => {
         const sdk = createCliBbSdk(getUrl());
-        const hostId = resolveMachineId(
-          await sdk.hosts.list({ includeCreating: true }),
+        const hostId = await resolveMachineHostId({
+          serverUrl: getUrl(),
           target,
-        );
+        });
         const result = await sdk.hosts.retryUpdate({ hostId });
         if (outputJson(opts, result)) return;
         console.log(`Machine ${hostId} update retry requested`);
@@ -450,10 +452,10 @@ export function registerMachineCommands(
     .action(
       action(async (target: string, opts: MachineListCommandOptions) => {
         const sdk = createCliBbSdk(getUrl());
-        const hostId = resolveMachineId(
-          await sdk.hosts.list({ includeCreating: true }),
+        const hostId = await resolveMachineHostId({
+          serverUrl: getUrl(),
           target,
-        );
+        });
         const requested = await sdk.hosts.experimental_suspend({ hostId });
         const result = await waitForMachineLifecycle({
           host: requested,
@@ -472,10 +474,10 @@ export function registerMachineCommands(
     .action(
       action(async (target: string, opts: MachineListCommandOptions) => {
         const sdk = createCliBbSdk(getUrl());
-        const hostId = resolveMachineId(
-          await sdk.hosts.list({ includeCreating: true }),
+        const hostId = await resolveMachineHostId({
+          serverUrl: getUrl(),
           target,
-        );
+        });
         const requested = await sdk.hosts.experimental_resume({ hostId });
         const result = await waitForMachineLifecycle({
           host: requested,
@@ -494,10 +496,10 @@ export function registerMachineCommands(
     .action(
       action(async (target: string, opts: MachineListCommandOptions) => {
         const sdk = createCliBbSdk(getUrl());
-        const hostId = resolveMachineId(
-          await sdk.hosts.list({ includeCreating: true }),
+        const hostId = await resolveMachineHostId({
+          serverUrl: getUrl(),
           target,
-        );
+        });
         const result = await sdk.hosts.experimental_retryCleanup({ hostId });
         if (outputJson(opts, result)) return;
         console.log(`Machine ${hostId} cleanup retried`);
@@ -514,10 +516,10 @@ export function registerMachineCommands(
     .action(
       action(async (target: string, opts: MachineListCommandOptions) => {
         const sdk = createCliBbSdk(getUrl());
-        const hostId = resolveMachineId(
-          await sdk.hosts.list({ includeCreating: true }),
+        const hostId = await resolveMachineHostId({
+          serverUrl: getUrl(),
           target,
-        );
+        });
         const result = await sdk.hosts.providerCliStatus({ hostId });
         if (outputJson(opts, result)) return;
         console.log(JSON.stringify(result, null, 2));
@@ -539,10 +541,10 @@ export function registerMachineCommands(
             throw new Error("--action must be install or update.");
           }
           const sdk = createCliBbSdk(getUrl());
-          const hostId = resolveMachineId(
-            await sdk.hosts.list({ includeCreating: true }),
+          const hostId = await resolveMachineHostId({
+            serverUrl: getUrl(),
             target,
-          );
+          });
           const events = await sdk.hosts.installProviderCli({
             hostId,
             provider: parseProviderCliKey(provider),
@@ -565,24 +567,12 @@ function printMachineTable(hosts: Host[]): void {
     host.machineProviderId ?? "user-enrolled",
     formatMachineLastSeen(host.lastSeenAt, now),
   ]);
-  const widths = [
-    Math.max(4, ...rows.map((row) => row[0].length)),
-    Math.max(2, ...rows.map((row) => row[1].length)),
-    Math.max(4, ...rows.map((row) => row[2].length)),
-    Math.max(6, ...rows.map((row) => row[3].length)),
-    Math.max(8, ...rows.map((row) => row[4].length)),
-    Math.max(9, ...rows.map((row) => row[5].length)),
-  ];
-  console.log("");
-  console.log(
-    renderBorderlessTable(
-      {
-        head: ["Name", "ID", "Type", "Status", "Provider", "Last seen"],
-        colWidths: widths,
-        trimTrailingWhitespace: true,
-      },
-      rows,
-    ),
+  printBorderlessTable(
+    {
+      head: ["Name", "ID", "Type", "Status", "Provider", "Last seen"],
+      colWidths: columnWidths(rows, [4, 2, 4, 6, 8, 9]),
+      trimTrailingWhitespace: true,
+    },
+    rows,
   );
-  console.log("");
 }

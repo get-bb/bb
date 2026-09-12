@@ -4,6 +4,7 @@ import { atomWithStorage } from "jotai/utils";
 import { atomFamily } from "jotai-family";
 import { z } from "zod";
 import { createLocalStorageSyncStorage } from "@/lib/browser-storage";
+import { hasThreadId } from "@/lib/thread-id";
 
 const THREAD_RECENT_ITEMS_STORAGE_PREFIX = "bb.thread.recentItems";
 const THREAD_RECENT_ITEMS_STORAGE_VERSION = 1;
@@ -101,10 +102,6 @@ const threadRecentItemsAtomFamily = atomFamily((threadId: string) =>
     { getOnInit: true },
   ),
 );
-
-function hasThreadId(threadId: string | null | undefined): threadId is string {
-  return threadId !== null && threadId !== undefined && threadId.length > 0;
-}
 
 function getThreadRecentItemsAtom(threadId: string | null | undefined) {
   return hasThreadId(threadId)

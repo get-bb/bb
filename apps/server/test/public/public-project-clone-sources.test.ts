@@ -1,4 +1,4 @@
-import { updateMachineEnvironment } from "../../src/services/machines/environment-settings.js";
+import { replaceMachineEnvironment } from "../../src/services/machines/environment-settings.js";
 import * as gitCredentials from "../../src/services/machines/git-credentials.js";
 import { updateHost } from "@bb/db";
 import { countProjectSources, getProject, setExperiments } from "@bb/db";
@@ -64,16 +64,11 @@ describe("project clone sources", () => {
         const { project } = seedProjectWithSource(harness.deps, {
           hostId: first.host.id,
         });
-        await updateMachineEnvironment(
-          harness.db,
-          harness.config.dataDir,
-          "CUSTOM_SETUP",
-          {
-            name: "CUSTOM_SETUP",
-            value: "setup-value",
-            note: null,
-          },
-        );
+        await replaceMachineEnvironment(harness.db, harness.config.dataDir, {
+          variables: [
+            { name: "CUSTOM_SETUP", value: "setup-value", note: null },
+          ],
+        });
         const response = harness.app.fetch(
           cloneSourceRequest({
             projectId: project.id,

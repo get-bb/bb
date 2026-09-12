@@ -1,5 +1,5 @@
 import { MachineLifecycleNoticeContent } from "@/components/machines/MachineLifecycleNotice";
-import { useMemo, useState, type ComponentProps, type ReactNode } from "react";
+import { useMemo, useState, type ComponentProps } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import type { Host, PermissionMode } from "@bb/domain";
 import type { SystemMachineProvider } from "@bb/server-contract";
@@ -23,6 +23,7 @@ import { MachineLabel } from "@/components/machines/MachineLabel";
 import { PageShell } from "@/components/ui/page-shell.js";
 import {
   SettingsBadge,
+  SettingsDetailRow,
   SettingsRow,
   SettingsRowList,
   SettingsSection,
@@ -155,22 +156,6 @@ function PermissionLimitCards({
         })}
       </SettingsRowList>
     </div>
-  );
-}
-
-interface DetailRowProps {
-  label: string;
-  children: ReactNode;
-}
-
-function DetailRow({ label, children }: DetailRowProps) {
-  return (
-    <SettingsRow className="flex-col items-stretch gap-1.5 sm:flex-row sm:items-center sm:gap-3">
-      <span className="shrink-0 text-foreground">{label}</span>
-      <div className="flex min-w-0 flex-wrap items-center justify-start gap-2 text-left text-subtle-foreground sm:ml-auto sm:justify-end sm:text-right">
-        {children}
-      </div>
-    </SettingsRow>
   );
 }
 
@@ -419,7 +404,7 @@ export function MachineSettingsView() {
 
         <SettingsSection title="Provider CLIs">
           <SettingsRowList>
-            <DetailRow label="Installed">
+            <SettingsDetailRow label="Installed">
               {host.status !== "connected" ? (
                 <span>Unavailable while offline</span>
               ) : machine?.statusPending ? (
@@ -478,13 +463,13 @@ export function MachineSettingsView() {
                   ) : null}
                 </>
               )}
-            </DetailRow>
+            </SettingsDetailRow>
           </SettingsRowList>
         </SettingsSection>
 
         <SettingsSection title="Machine information">
           <SettingsRowList>
-            <DetailRow label="Projects">
+            <SettingsDetailRow label="Projects">
               {projects.length === 0 ? (
                 <span>None</span>
               ) : (
@@ -502,8 +487,8 @@ export function MachineSettingsView() {
                   ))}
                 </span>
               )}
-            </DetailRow>
-            <DetailRow label="Updates">
+            </SettingsDetailRow>
+            <SettingsDetailRow label="Updates">
               <span>{updateStatus ?? "Up to date"}</span>
               {hostCanRetryUpdate(host) ? (
                 <Button
@@ -525,7 +510,7 @@ export function MachineSettingsView() {
                   {retryHostUpdate.isPending ? "Retrying…" : "Retry update"}
                 </Button>
               ) : null}
-            </DetailRow>
+            </SettingsDetailRow>
           </SettingsRowList>
         </SettingsSection>
 

@@ -18,7 +18,6 @@ import {
   isToolsRoutePath,
   LEGACY_AUTOMATION_DETAIL_ROUTE_PATH,
   LEGACY_AUTOMATIONS_ROUTE_PATH,
-  LEGACY_SKILLS_ROUTE_PATH,
   resolveRouteHref,
 } from "./route-paths";
 
@@ -165,7 +164,6 @@ describe("route path helpers", () => {
   });
 
   it("preserves the Skills alias and legacy Automations paths", () => {
-    expect(LEGACY_SKILLS_ROUTE_PATH).toBe("/skills");
     expect(LEGACY_AUTOMATIONS_ROUTE_PATH).toBe("/automations");
     expect(LEGACY_AUTOMATION_DETAIL_ROUTE_PATH).toBe(
       "/automations/:projectId/:automationId",

@@ -4,14 +4,10 @@ import { resetLocalState, resetOnLaunch } from "./e2e";
 
 export interface AppBootState {
   ready: boolean;
-  error: string | null;
 }
 
 export function useAppBoot(): AppBootState {
-  const [state, setState] = useState<AppBootState>({
-    ready: false,
-    error: null,
-  });
+  const [state, setState] = useState<AppBootState>({ ready: false });
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -19,15 +15,10 @@ export function useAppBoot(): AppBootState {
       if (resetOnLaunch) await resetLocalState();
     })()
       .then(() => {
-        if (!cancelled) setState({ ready: true, error: null });
+        if (!cancelled) setState({ ready: true });
       })
-      .catch((error: unknown) => {
-        if (!cancelled) {
-          setState({
-            ready: true,
-            error: error instanceof Error ? error.message : String(error),
-          });
-        }
+      .catch(() => {
+        if (!cancelled) setState({ ready: true });
       });
     return () => {
       cancelled = true;

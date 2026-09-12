@@ -19,6 +19,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
+import { waitForProcessExit } from "@bb/config/child-process-exit";
 import { resolvePortFromEnv } from "@bb/config/runtime";
 import {
   assertBbAppArtifacts,
@@ -41,7 +42,6 @@ import {
   superviseFullStackProcesses,
   terminateManagedFullStackProcesses,
   waitForHostDaemonStatus,
-  waitForProcessExit,
 } from "../src/launcher.js";
 import type {
   BbAppStartContext,
@@ -806,7 +806,11 @@ describe("bb-app launcher", () => {
     expect(runtime.serverEnv.BB_THREAD_STORAGE).toBeUndefined();
     expect(runtime.serverEnv.BB_PROJECT_ID).toBe("proj_parent");
 
-    const daemonEnv = createDaemonEnv(runtime.context, runtime.env);
+    const daemonEnv = createDaemonEnv({
+      context: runtime.context,
+      env: runtime.env,
+      serverUrl: runtime.context.serverUrl,
+    });
     expect(daemonEnv.BB_ENVIRONMENT_ID).toBeUndefined();
     expect(daemonEnv.BB_THREAD_ID).toBeUndefined();
     expect(daemonEnv.BB_THREAD_STORAGE).toBeUndefined();

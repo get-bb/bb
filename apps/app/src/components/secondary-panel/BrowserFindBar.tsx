@@ -26,11 +26,19 @@ interface BrowserFindBarProps {
   shortcut: AppShortcutPresentation | null;
 }
 
-interface FindBarButtonProps {
-  icon: "ChevronUp" | "ChevronDown" | "X";
+interface BrowserChromeIconButtonProps {
+  icon:
+    | "ChevronLeft"
+    | "ChevronRight"
+    | "ChevronUp"
+    | "ChevronDown"
+    | "RotateCcw"
+    | "X"
+    | "ExternalLink";
   label: string;
   disabled?: boolean;
   onClick: () => void;
+  shortcut?: AppShortcutPresentation | null;
 }
 
 function formatBrowserFindMatches(
@@ -42,13 +50,21 @@ function formatBrowserFindMatches(
   return `${matches.activeMatchOrdinal}/${matches.matches}`;
 }
 
-function FindBarButton({ icon, label, disabled, onClick }: FindBarButtonProps) {
+export function BrowserChromeIconButton({
+  icon,
+  label,
+  disabled,
+  onClick,
+  shortcut,
+}: BrowserChromeIconButtonProps) {
+  const accessibleLabel = shortcut ? `${label} (${shortcut.label})` : label;
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
-      aria-label={label}
+      aria-label={accessibleLabel}
+      aria-keyshortcuts={shortcut?.ariaKeyshortcuts}
       className={cn(
         "flex shrink-0 items-center justify-center transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40",
         COARSE_POINTER_HEADER_ICON_BUTTON_CLASS,
@@ -138,19 +154,23 @@ export function BrowserFindBar({
           </span>
         ) : null}
       </div>
-      <FindBarButton
+      <BrowserChromeIconButton
         icon="ChevronUp"
         label="Previous match"
         disabled={!hasMatches}
         onClick={onFindPrevious}
       />
-      <FindBarButton
+      <BrowserChromeIconButton
         icon="ChevronDown"
         label="Next match"
         disabled={!hasMatches}
         onClick={onFindNext}
       />
-      <FindBarButton icon="X" label="Close find bar" onClick={onClose} />
+      <BrowserChromeIconButton
+        icon="X"
+        label="Close find bar"
+        onClick={onClose}
+      />
     </div>
   );
 }

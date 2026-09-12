@@ -5,7 +5,7 @@ import { DEFAULTS } from "./defaults.js";
 import { defineEnvVar, type EnvVarParseArgs } from "./env.js";
 import {
   APP_SURFACE_ENV_NAME,
-  DEFAULT_APP_SURFACE,
+  APP_SURFACE_WEB,
   formatAppSurfaceValues,
   parseAppSurface,
   type AppSurface,
@@ -18,6 +18,7 @@ import {
 import { validateLogLevel } from "./log-level.js";
 import { validateOptionalUrl, validateRequiredUrl } from "./public-url.js";
 import { BB_LOOPBACK_HOST, parsePortValue } from "./runtime.js";
+import { toOptionalString } from "./strings.js";
 
 export type ServerBindHost = "127.0.0.1" | "0.0.0.0";
 
@@ -65,8 +66,7 @@ function parseOptionalPortEnvValue(args: EnvVarParseArgs): number | undefined {
 function parseOptionalTrimmedStringEnvValue(
   args: EnvVarParseArgs,
 ): string | undefined {
-  const trimmedValue = args.value.trim();
-  return trimmedValue.length === 0 ? undefined : trimmedValue;
+  return toOptionalString(args.value);
 }
 
 function parseStringEnvValue(args: EnvVarParseArgs): string {
@@ -323,12 +323,6 @@ export const BB_CONNECT_MACHINE_CREDENTIAL_ENV = defineEnvVar<
   parse: parseOptionalTrimmedStringEnvValue,
 });
 
-export const BB_CONNECT_MACHINE_ID_ENV = defineEnvVar<string>({
-  description: "Cloud machine identifier paired with the bb connect credential",
-  name: "BB_CONNECT_MACHINE_ID",
-  parse: parseNonEmptyStringEnvValue,
-});
-
 export const BB_HOST_ENROLL_KEY_ENV = defineEnvVar<string | undefined>({
   description:
     "One-time enrollment token used to bootstrap a host daemon with the bb server",
@@ -358,7 +352,7 @@ export const BB_HOST_NAME_ENV = defineEnvVar<string | undefined>({
 });
 
 export const DEFAULT_BB_APP_VERSION = DEFAULTS.appVersion;
-export const DEFAULT_BB_APP_SURFACE = DEFAULT_APP_SURFACE;
+export const DEFAULT_BB_APP_SURFACE = APP_SURFACE_WEB;
 export const DEFAULT_BB_APP_URL = "";
 export const DEFAULT_BB_SERVER_BIND_HOST: ServerBindHost = BB_LOOPBACK_HOST;
 export const DEFAULT_BB_EXTERNAL_URL = "";

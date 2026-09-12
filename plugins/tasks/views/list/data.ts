@@ -6,6 +6,7 @@ import type {
   TaskStatus,
   TaskThread,
 } from "../../shared/contract.js";
+import { isActiveThread } from "../detail/meta.js";
 
 interface ListTaskFilters {
   statuses: readonly TaskStatus[];
@@ -70,11 +71,7 @@ export function useTaskListMeta(tasks: readonly Task[] | undefined) {
         taskIds.map(async (taskId) => {
           const threads = await rpc.call("listTaskThreads", { taskId });
           const meta: TaskRowMeta = {
-            activeThreads: threads.taskThreads.filter(
-              (thread) =>
-                thread.liveStatus === "starting" ||
-                thread.liveStatus === "working",
-            ),
+            activeThreads: threads.taskThreads.filter(isActiveThread),
           };
           return [taskId, meta] as const;
         }),

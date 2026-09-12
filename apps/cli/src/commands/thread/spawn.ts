@@ -21,6 +21,7 @@ import {
   resolveMachineTargetOption,
 } from "../machine.js";
 import {
+  collectOption,
   outputJson,
   parseReasoningLevel,
   prependErrorContext,
@@ -28,7 +29,6 @@ import {
 import {
   parsePermissionMode,
   buildPromptInputs,
-  collectOption,
   PERMISSION_MODE_HELP,
   PLAN_HELP,
   parseServiceTier,
@@ -178,26 +178,16 @@ export function buildSpawnEnvironment(args: {
   };
 }
 
-function parseEnvironmentInputs(
+function parseJsonFlag(
   flagValue: string | undefined,
+  flagName: "--environment-inputs" | "--machine-inputs",
 ): JsonValue | null {
   if (flagValue === undefined) return null;
   let parsed: unknown;
   try {
     parsed = JSON.parse(flagValue);
   } catch {
-    throw new Error("--environment-inputs must be valid JSON.");
-  }
-  return jsonValueSchema.parse(parsed);
-}
-
-function parseMachineInputs(flagValue: string | undefined): JsonValue | null {
-  if (flagValue === undefined) return null;
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(flagValue);
-  } catch {
-    throw new Error("--machine-inputs must be valid JSON.");
+    throw new Error(`${flagName} must be valid JSON.`);
   }
   return jsonValueSchema.parse(parsed);
 }
@@ -237,7 +227,7 @@ async function buildProviderSpawnEnvironment(args: {
       `Unknown environment provider '${requested}'.${available ? ` Available: ${available}.` : ""}`,
     );
   }
-  let inputs = parseEnvironmentInputs(args.environmentInputs);
+  let inputs = parseJsonFlag(args.environmentInputs, "--environment-inputs");
   if (match.inputs !== null && inputs === null) {
     if (match.acceptsEmptyInputs) {
       inputs = {};
@@ -441,7 +431,10 @@ export function registerSpawnCommand(
             `Unknown machine provider '${opts.newMachine.trim()}'.`,
           );
         }
-        let machineInputs = parseMachineInputs(opts.machineInputs);
+        let machineInputs = parseJsonFlag(
+          opts.machineInputs,
+          "--machine-inputs",
+        );
         if (
           machineProvider &&
           machineProvider.inputs !== null &&

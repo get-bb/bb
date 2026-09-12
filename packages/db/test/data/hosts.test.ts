@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { noopNotifier } from "../../src/notifier.js";
 import {
-  deleteHost,
   getHost,
   getNonDestroyedHost,
   listHosts,
@@ -248,25 +247,5 @@ describe("hosts", () => {
     });
 
     expect(notifyHost).not.toHaveBeenCalled();
-  });
-
-  it("deletes an existing host row", () => {
-    const { db } = setup();
-    const notifyHost = vi.fn();
-    const notifier = {
-      notifyEnvironment() {},
-      notifyHost,
-      notifyProject() {},
-      notifySystem() {},
-      notifyThread() {},
-    };
-    const host = upsertHost(db, notifier, {
-      name: "Transient Host",
-    });
-    notifyHost.mockClear();
-
-    expect(deleteHost(db, notifier, host.id)).toBe(true);
-    expect(getHost(db, host.id)).toBeNull();
-    expect(notifyHost).toHaveBeenCalledWith(host.id, ["host-disconnected"]);
   });
 });

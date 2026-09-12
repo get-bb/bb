@@ -11,12 +11,9 @@ import type {
   HostDaemonConnectTunnelIdentity,
   HostDaemonContributedEnvEntry,
 } from "@bb/host-daemon-contract";
-import {
-  pluginUpdateCheckEntrySchema,
-  type InstalledPlugin,
-  type PluginApplyUpdateResult,
-  type PluginRuntimeStatus,
-  type PluginSourceDetail,
+import type {
+  PluginApplyUpdateResult,
+  PluginRuntimeStatus,
 } from "@bb/server-contract";
 import type { ServerLogger } from "../../types.js";
 import type { TelemetryService } from "../system/telemetry.js";
@@ -31,15 +28,8 @@ import type {
 import type { HostSharedPortCoordinator } from "../../ws/host-shared-ports.js";
 import type { ProviderRegistryService } from "../providers/provider-registry.js";
 import type { PluginHostArtifactRegistry } from "./plugin-host-artifact-registry.js";
-export type {
-  PluginHandlerStats,
-  PluginRuntimeStatus,
-  PluginUpdateCheckEntry,
-} from "@bb/server-contract";
 
 type PluginServiceState = "running" | "backoff" | "stopped";
-
-export type PluginListEntry = InstalledPlugin;
 
 export interface ServiceRuntime {
   record: PluginBackgroundServiceRecord;
@@ -95,8 +85,6 @@ export interface PluginServiceDeps {
    * drove this signal itself and no app had registered a listener.
    */
   requestQueueDrain?: () => void;
-  /** Per-handler hook decision box; tests shrink it to exercise the timeout path. */
-  pluginHookTimeoutMs?: number;
   /** Thread DTO assembly for lifecycle events + plugin-signal broadcast +
    * the `plugins-changed` system broadcast on lifecycle completion. */
   hub: Pick<
@@ -248,9 +236,6 @@ export type PluginWireLookup<T> =
     }
   | { outcome: "not-found" }
   | { outcome: "found"; value: T };
-
-export { pluginUpdateCheckEntrySchema };
-export type PluginSourceView = PluginSourceDetail;
 
 export type PluginApplyUpdateOutcome =
   | { ok: true; result: PluginApplyUpdateResult }

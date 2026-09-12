@@ -1,6 +1,7 @@
 import type { Editor } from "@tiptap/core";
 import type { EditorState, Transaction } from "@tiptap/pm/state";
 import { TextSelection } from "@tiptap/pm/state";
+import { dispatchPromptEditorTransaction } from "./prompt-editor-transaction";
 
 export function createExitHeadingTransaction(
   state: EditorState,
@@ -24,8 +25,8 @@ export function createExitHeadingTransaction(
 }
 
 export function exitHeading(editor: Editor): boolean {
-  const transaction = createExitHeadingTransaction(editor.state);
-  if (transaction === null) return false;
-  editor.view.dispatch(transaction);
-  return true;
+  return dispatchPromptEditorTransaction(
+    editor,
+    createExitHeadingTransaction(editor.state),
+  );
 }

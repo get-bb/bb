@@ -7,7 +7,6 @@ import { ThreadTableOfContents } from "@/components/thread/toc/ThreadTableOfCont
 
 interface ThreadTimelinePaneProps extends ThreadTimelineSurfaceProps {
   canSpawnChild: boolean;
-  contextBoundarySeq: number | null;
   footer: ReactNode;
   hasOlderTimelineRows: boolean;
   isLoadingOlderTimelineRows: boolean;

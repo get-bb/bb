@@ -155,11 +155,8 @@ import {
 } from "./sidebarDropPreviewPlacement";
 import { useRenderedSectionThreadDnd } from "./useRenderedSectionThreadDnd";
 import { useChronologicalSectionThreadDnd } from "./SectionThreadDndContext";
-export { shouldSuppressPinnedThreadDropPreview } from "./useRenderedSectionThreadDnd";
 import {
-  getBuiltInSidebarSectionNode,
   renderBuiltInSidebarSection,
-  type BuiltInSidebarSectionNodes,
   type BuiltInSidebarSectionOptions,
   type BuiltInSidebarSectionOptionsById,
 } from "./BuiltInSidebarSection";
@@ -241,7 +238,7 @@ interface ChronologicalBuiltInSidebarSections {
 }
 
 interface ChronologicalSectionThreadSectionsProps extends SectionThreadTreeProps {
-  builtInSections?: ChronologicalBuiltInSidebarSections;
+  builtInSections: ChronologicalBuiltInSidebarSections;
   topLevelSectionOrder: readonly SidebarSectionId[];
   onTopLevelSectionOrderChange: (order: SidebarSectionId[]) => void;
   pinnedReorderPending: boolean;
@@ -251,13 +248,6 @@ interface ChronologicalSectionThreadSectionsProps extends SectionThreadTreeProps
     request: NeighborReorderRequest,
     callbacks: { onSettled: () => void },
   ) => void;
-  renderPinnedSection?: (
-    consumeClickSuppression?: ConsumeDragClickSuppression,
-  ) => ReactNode;
-  renderThreadsSection?: (
-    content: ReactNode,
-    consumeClickSuppression?: ConsumeDragClickSuppression,
-  ) => ReactNode;
 }
 
 type ProjectThreadTreeVariant = "project" | "section";
@@ -465,11 +455,7 @@ function getProjectThreadTreeEmptyStateIcon(
 function getProjectThreadTreeEmptyStateClassName(
   variant: ProjectThreadTreeVariant,
 ): string {
-  return cn(
-    "py-0.5",
-    variant === "section" ? "px-2" : "pl-8 pr-2",
-    "group-data-[collapsible=icon]:hidden",
-  );
+  return cn("py-0.5", variant === "section" ? "px-2" : "pl-8 pr-2");
 }
 
 function getProjectThreadTreeEmptyStateMessageClassName(): string {
@@ -603,7 +589,7 @@ function ProjectThreadTreeGroup({
     <div
       data-sidebar-sticky-section={variant === "section" ? "" : undefined}
       className={cn(
-        "relative space-y-0.5 group-data-[collapsible=icon]:hidden",
+        "relative space-y-0.5",
         getProjectThreadTreeGroupLineClassName(variant),
       )}
       onClickCapture={onClickCapture}
@@ -1725,7 +1711,7 @@ export const ThreadTreeNodeRow = memo(function ThreadTreeNodeRow({
 
 function ThreadTreeLoadingSkeleton() {
   return (
-    <div className="group-data-[collapsible=icon]:hidden">
+    <div>
       <SidebarMenuSkeleton />
     </div>
   );
@@ -2086,8 +2072,6 @@ export const ChronologicalSectionThreadSections = memo(
     pinnedRootNodes = EMPTY_PINNED_ROOT_NODES,
     pinnedThreads,
     onReorderPinnedThread,
-    renderPinnedSection,
-    renderThreadsSection,
   }: ChronologicalSectionThreadSectionsProps) {
     const threads =
       threadListState.status === "ready"
@@ -2235,46 +2219,31 @@ export const ChronologicalSectionThreadSections = memo(
       ]),
     );
     const consumeClickSuppression = renderedSectionDnd?.consumeClickSuppression;
-    const configuredBuiltInSections:
-      | BuiltInSidebarSectionOptionsById
-      | undefined = builtInSections
-      ? {
-          pinned: {
-            ...builtInSections.pinned,
-            isDropTargetActive:
-              renderedSectionDnd?.dragOverParentKey ===
-              PINNED_THREAD_PARENT_KEY,
-          },
-          threads: {
-            ...builtInSections.threads,
-            activity: getCollapsedChildActivity(looseThreads, draftThreadIds),
-            collapsedThreads: looseThreads,
-            content: threadsContent,
-          },
-        }
-      : undefined;
-    const legacyBuiltInSectionNodes: BuiltInSidebarSectionNodes = {
-      pinned: renderPinnedSection?.(consumeClickSuppression),
-      threads: renderThreadsSection?.(threadsContent, consumeClickSuppression),
+    const configuredBuiltInSections: BuiltInSidebarSectionOptionsById = {
+      pinned: {
+        ...builtInSections.pinned,
+        isDropTargetActive:
+          renderedSectionDnd?.dragOverParentKey === PINNED_THREAD_PARENT_KEY,
+      },
+      threads: {
+        ...builtInSections.threads,
+        activity: getCollapsedChildActivity(looseThreads, draftThreadIds),
+        collapsedThreads: looseThreads,
+        content: threadsContent,
+      },
     };
     const orderedSections = (
       <SidebarSectionOrderList order={topLevelSectionOrder}>
         {(sectionId) => {
-          const builtInSection =
-            builtInSections && configuredBuiltInSections
-              ? renderBuiltInSidebarSection({
-                  sectionId,
-                  sections: configuredBuiltInSections,
-                  disabled: topLevelSectionOrder.length < 2,
-                  collapsedSectionIds: builtInSections.collapsedSectionIds,
-                  onToggleCollapsed: builtInSections.onToggleCollapsed,
-                  consumeClickSuppression,
-                  showPinnedSection: topLevelSectionOrder.includes("pinned"),
-                })
-              : getBuiltInSidebarSectionNode(
-                  sectionId,
-                  legacyBuiltInSectionNodes,
-                );
+          const builtInSection = renderBuiltInSidebarSection({
+            sectionId,
+            sections: configuredBuiltInSections,
+            disabled: topLevelSectionOrder.length < 2,
+            collapsedSectionIds: builtInSections.collapsedSectionIds,
+            onToggleCollapsed: builtInSections.onToggleCollapsed,
+            consumeClickSuppression,
+            showPinnedSection: topLevelSectionOrder.includes("pinned"),
+          });
           if (builtInSection !== undefined) {
             return <div key={sectionId}>{builtInSection}</div>;
           }

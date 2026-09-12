@@ -17,9 +17,6 @@ import {
 } from "../retained-event-output.js";
 import { events, retainedEventOutputs } from "../schema.js";
 
-export { RETAINED_EVENT_OUTPUT_TARGETS };
-export type { RetainedEventOutputTarget };
-
 const COMPLETED_EVENT_OUTPUT_TRUNCATION_MARKER =
   "\n\n[... output truncated by retention policy; showing beginning and end ...]\n\n";
 const RETAINED_EVENT_OUTPUT_LOOKUP_BATCH_SIZE = 100;

@@ -422,7 +422,6 @@ describe("mobile sidebar shelf stacking", () => {
 
     expect(panel.className).toContain("z-0");
     expect(panel.className).toContain("data-[side=left]:border-r");
-    expect(panel.className).toContain("data-[side=right]:border-l");
     expect(inset.className).toContain("max-md:z-30");
     expect(inset.className).toContain("motion-reduce:transition-none!");
     expect(inset.dataset.sidebarShelf).toBe("closed");

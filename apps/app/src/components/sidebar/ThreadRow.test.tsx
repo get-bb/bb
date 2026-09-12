@@ -480,9 +480,6 @@ describe("ThreadRow", () => {
     expect(Array.from(runningIcon.classList)).toContain(
       "motion-safe:[animation-duration:1.5s]",
     );
-    expect(Array.from(runningIcon.classList)).not.toContain(
-      "animate-shine-icon-status",
-    );
     expect(Array.from(runningIcon.parentElement?.classList ?? [])).toContain(
       "text-success",
     );

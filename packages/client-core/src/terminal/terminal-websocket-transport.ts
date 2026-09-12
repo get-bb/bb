@@ -86,8 +86,6 @@ export class TerminalWebSocketTransport {
   private reconnectAttempt = 0;
   private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
   private socket: TerminalBrowserSocket | null = null;
-  private started = false;
-  private suspended = false;
   private terminalEnded = false;
 
   constructor(private readonly options: TerminalWebSocketTransportOptions) {
@@ -110,43 +108,7 @@ export class TerminalWebSocketTransport {
     if (this.disposed || this.socket !== null) {
       return;
     }
-    this.started = true;
-    if (this.suspended) {
-      return;
-    }
     this.connect("connecting");
-  }
-
-  suspend(): void {
-    if (this.disposed || this.suspended) {
-      return;
-    }
-    this.suspended = true;
-    this.clearReconnectTimeout();
-    this.clearDrainTimeout();
-    this.stopHeartbeat();
-    const socket = this.socket;
-    this.socket = null;
-    if (socket !== null) {
-      socket.onclose = null;
-      socket.onerror = null;
-      socket.onmessage = null;
-      socket.onopen = null;
-      socket.close(1000, "suspended");
-    }
-    this.options.onConnectionState?.("closed");
-  }
-
-  resume(): void {
-    if (this.disposed || !this.suspended) {
-      return;
-    }
-    this.suspended = false;
-    if (!this.started || this.terminalEnded || this.socket !== null) {
-      return;
-    }
-    this.reconnectAttempt = 0;
-    this.connect("reconnecting");
   }
 
   dispose(): void {
@@ -211,7 +173,7 @@ export class TerminalWebSocketTransport {
   }
 
   private connect(state: "connecting" | "reconnecting"): void {
-    if (this.disposed || this.suspended || this.terminalEnded) {
+    if (this.disposed || this.terminalEnded) {
       return;
     }
     this.options.onConnectionState?.(state);
@@ -323,7 +285,6 @@ export class TerminalWebSocketTransport {
   private scheduleReconnect(): void {
     if (
       this.disposed ||
-      this.suspended ||
       this.terminalEnded ||
       this.reconnectTimeout !== null ||
       !this.options.shouldReconnect()

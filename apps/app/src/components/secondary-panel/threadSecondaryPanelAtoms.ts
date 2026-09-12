@@ -1,7 +1,11 @@
 import { atom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import { atomFamily } from "jotai-family";
-import { createLocalStorageSyncStorage } from "@/lib/browser-storage";
+import {
+  booleanLocalStorage,
+  createLocalStorageSyncStorage,
+} from "@/lib/browser-storage";
+import { hasThreadId } from "@/lib/thread-id";
 
 export const threadSecondaryPanelResizingAtom = atom(false);
 
@@ -29,22 +33,6 @@ export const secondaryPanelWidthPercentAtom = atomWithStorage<number>(
   { getOnInit: true },
 );
 
-const threadSecondaryPanelBooleanStorage =
-  createLocalStorageSyncStorage<boolean>({
-    parse: (storedValue, initialValue) => {
-      if (storedValue === "true") return true;
-      if (storedValue === "false") return false;
-      return initialValue;
-    },
-    serialize: (value) => String(value),
-  });
-
-function hasThreadId(
-  threadId: ThreadSecondaryPanelThreadId,
-): threadId is ResolvedThreadSecondaryPanelThreadId {
-  return threadId !== null && threadId !== undefined && threadId.length > 0;
-}
-
 const THREAD_CONVERSATION_COLLAPSED_STORAGE_PREFIX =
   "bb.thread.conversation.collapsed";
 
@@ -53,7 +41,7 @@ const threadConversationCollapsedAtomFamily = atomFamily(
     atomWithStorage<boolean>(
       `${THREAD_CONVERSATION_COLLAPSED_STORAGE_PREFIX}-${encodeURIComponent(threadId)}`,
       false,
-      threadSecondaryPanelBooleanStorage,
+      booleanLocalStorage,
       { getOnInit: true },
     ),
 );

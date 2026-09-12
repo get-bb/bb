@@ -6,7 +6,6 @@ import {
   FONT_WEIGHT_VALUES,
   type FontWeightName,
   resolveFont,
-  resolveItalicFont,
 } from "./fonts";
 
 const WEIGHTS: readonly FontWeightName[] = [
@@ -129,23 +128,6 @@ describe("resolveFont", () => {
   it("prefers the heaviest weight when a merged class string carries several", () => {
     expect(resolveFont({ className: "font-medium font-bold" }).fontWeight).toBe(
       "700",
-    );
-  });
-});
-
-describe("resolveItalicFont", () => {
-  it("keeps the sans family and exact weight and adds fontStyle italic", () => {
-    for (const weight of WEIGHTS) {
-      const font = resolveItalicFont(weight);
-      expect(font.fontFamily).toBe(FONT_FAMILIES.sans[weight]);
-      expect(font.fontStyle).toBe("italic");
-      expect(font.fontWeight).toBe(resolveFont({ weight }).fontWeight);
-    }
-  });
-
-  it("never switches to the mono family", () => {
-    expect(resolveItalicFont("semibold").fontFamily).not.toBe(
-      FONT_FAMILIES.mono.semibold,
     );
   });
 });

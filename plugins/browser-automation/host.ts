@@ -231,10 +231,6 @@ export function createHostEntry(
           session.lastUsed = Date.now();
         }
       },
-      async stop({ sessionId }) {
-        await close(sessionId);
-        return null;
-      },
       async close({ sessionId }) {
         await close(sessionId);
         return null;

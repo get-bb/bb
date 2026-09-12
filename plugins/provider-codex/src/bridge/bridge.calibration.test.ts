@@ -1,7 +1,6 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { PromptInput, ThreadEvent } from "@bb/domain";
 import {
@@ -24,6 +23,10 @@ import type {
 import type { ServerNotification as CodexEvent } from "../generated/codex-app-server/schema/ServerNotification.js";
 import type { Turn } from "../generated/codex-app-server/schema/v2/Turn.js";
 import { handleLine } from "./bridge.js";
+import {
+  FULL_ACCESS_SESSION_OPTIONS,
+  stubFakeCodexAppServer,
+} from "./fake-codex-app-server-harness.js";
 
 const THREAD_ID = "thr_codex_calibration_1";
 const SCRIPT_THREAD_ID = "codex-script-thread";
@@ -35,10 +38,6 @@ const ARCHIVED_PROVIDER_THREAD_ID = "archived-calibration-1";
 const ARCHIVED_ERROR_TEXT = `session ${ARCHIVED_PROVIDER_THREAD_ID} is archived; unarchive it and retry`;
 const RUNTIME_UNARCHIVE_RETRY_PATTERN =
   /\b(?:session|thread)\s+\S+\s+is archived\b/i;
-
-const fakeAppServerPath = fileURLToPath(
-  new URL("./fake-codex-app-server.mjs", import.meta.url),
-);
 
 interface ScriptedNotification {
   kind?: "notify";
@@ -273,13 +272,6 @@ const SCRIPT: (ScriptedNotification | ScriptedRequest)[][] = [
   ],
 ];
 
-const CANONICAL_OPTIONS = {
-  permissionMode: "full",
-  permissionScope: "full",
-  approvalReviewer: null,
-  permissionEscalation: null,
-} as const;
-
 function promptInput(text: string): PromptInput[] {
   return [{ type: "text", text, mentions: [] }];
 }
@@ -350,7 +342,7 @@ async function replayCanonical(workspaceDir: string): Promise<ReplayResult> {
       threadId: THREAD_ID,
       cwd: workspaceDir,
       instructionMode: "append",
-      options: { ...CANONICAL_OPTIONS },
+      options: { ...FULL_ACCESS_SESSION_OPTIONS },
     });
     await settle(1);
 
@@ -359,7 +351,7 @@ async function replayCanonical(workspaceDir: string): Promise<ReplayResult> {
       providerThreadId: THREAD_ID,
       input: promptInput("check the tree"),
       clientRequestId: FIRST_REQUEST_ID,
-      options: { ...CANONICAL_OPTIONS },
+      options: { ...FULL_ACCESS_SESSION_OPTIONS },
     });
     await settle(2);
 
@@ -377,7 +369,7 @@ async function replayCanonical(workspaceDir: string): Promise<ReplayResult> {
       expectedTurnId,
       input: promptInput("also check git log"),
       clientRequestId: STEER_REQUEST_ID,
-      options: { ...CANONICAL_OPTIONS },
+      options: { ...FULL_ACCESS_SESSION_OPTIONS },
     });
     await settle(3);
 
@@ -386,7 +378,7 @@ async function replayCanonical(workspaceDir: string): Promise<ReplayResult> {
       providerThreadId: THREAD_ID,
       input: promptInput("now summarize"),
       clientRequestId: SECOND_REQUEST_ID,
-      options: { ...CANONICAL_OPTIONS },
+      options: { ...FULL_ACCESS_SESSION_OPTIONS },
     });
     await settle(4);
 
@@ -442,11 +434,7 @@ beforeEach(() => {
   workspaceDir = mkdtempSync(join(tmpdir(), "bb-codex-calibration-ws-"));
   const scriptPath = join(workspaceDir, "calibration-script.json");
   writeFileSync(scriptPath, JSON.stringify({ turns: SCRIPT }), "utf8");
-  vi.stubEnv("BB_CODEX_BRIDGE_APP_SERVER_COMMAND", process.execPath);
-  vi.stubEnv(
-    "BB_CODEX_BRIDGE_APP_SERVER_ARGS",
-    JSON.stringify([fakeAppServerPath, scriptPath]),
-  );
+  stubFakeCodexAppServer(scriptPath);
 });
 
 afterEach(() => {
@@ -510,7 +498,7 @@ it("surfaces an archived-session resume rejection verbatim", async () => {
       providerThreadId: ARCHIVED_PROVIDER_THREAD_ID,
       cwd: workspaceDir,
       instructionMode: "append",
-      options: { ...CANONICAL_OPTIONS },
+      options: { ...FULL_ACCESS_SESSION_OPTIONS },
     });
     const response = await bridge.waitForResponse(1);
 

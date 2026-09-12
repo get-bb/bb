@@ -14,6 +14,7 @@ import {
 } from "@bb/db";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createPluginCatalogService } from "../../../src/services/plugin-catalog/plugin-catalog-service.js";
+import { refreshCuratedMarketplace } from "../../helpers/plugin-catalog.js";
 import type { MarketplaceFetch } from "../../../src/services/plugin-catalog/marketplace-http.js";
 import type { PluginService } from "../../../src/services/plugins/plugin-service.js";
 
@@ -380,7 +381,7 @@ describe("third-party marketplaces", () => {
         ]),
       }),
     });
-    await catalog.refresh(1_000);
+    await refreshCuratedMarketplace(catalog, 1_000);
     await catalog.addMarketplace(ACME_URL);
 
     await expect(catalog.install({ entryId: "notes" })).rejects.toThrow(
@@ -452,7 +453,7 @@ describe("third-party marketplaces", () => {
         ]),
       }),
     });
-    await catalog.refresh(1_000);
+    await refreshCuratedMarketplace(catalog, 1_000);
     await catalog.addMarketplace(ACME_URL);
 
     await expect(
@@ -583,7 +584,7 @@ describe("third-party marketplaces", () => {
         },
       ),
     });
-    await catalog.refresh(1_000);
+    await refreshCuratedMarketplace(catalog, 1_000);
     await catalog.addMarketplace(ACME_URL);
 
     const official = getPluginMarketplaceIcon(
@@ -627,7 +628,7 @@ describe("third-party marketplaces", () => {
         return new Response("not found", { status: 404 });
       },
     });
-    await catalog.refresh(1_000);
+    await refreshCuratedMarketplace(catalog, 1_000);
     await catalog.addMarketplace(ACME_URL);
     acmeFails = true;
 
@@ -674,7 +675,7 @@ describe("third-party marketplaces", () => {
         ]),
       }),
     });
-    await catalog.refresh(1_000);
+    await refreshCuratedMarketplace(catalog, 1_000);
     await catalog.addMarketplace(ACME_URL);
 
     const results = await catalog.search("");
@@ -846,7 +847,7 @@ describe("third-party marketplaces", () => {
           ]),
         }),
       });
-      await catalog.refresh(1_000);
+      await refreshCuratedMarketplace(catalog, 1_000);
 
       const plan = await catalog.installPlan({ entryId: "official-notes" });
       expect(plan).toMatchObject({

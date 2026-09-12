@@ -51,6 +51,7 @@ import {
   formatScheduleStatusLabel,
   getOneShotLifecycle,
   oneShotLifecycleAllowsToggle,
+  PERSONAL_PROJECT_ID,
 } from "./lib/format-schedule";
 import { AutomationMetadataItem } from "./metadata";
 
@@ -79,8 +80,6 @@ interface AutomationDetailViewProps {
   onOpenThread: (threadId: string) => void;
   footer?: ReactNode;
 }
-
-const PERSONAL_PROJECT_ID = "proj_personal";
 
 function providerModelValue(
   execution: Extract<AutomationExecution, { mode: "agent" }>,
@@ -285,8 +284,9 @@ function AutomationEnvironmentVariables({
   );
 }
 
-function automationEnvironmentLabel(execution: AutomationExecution): string {
-  if (execution.mode !== "agent") return "Host";
+function automationEnvironmentLabel(
+  execution: Extract<AutomationExecution, { mode: "agent" }>,
+): string {
   const environment = execution.environment;
   if (environment.type === "reuse") return "Reuse environment";
   if (environment.type === "project-default") return "Project default";
@@ -387,30 +387,6 @@ const AUTOMATION_RUN_STATUS_VISUALS: Record<
     className: "text-success",
   },
 };
-
-export function AutomationRunStatusIndicator({
-  status,
-  showLabel = false,
-}: {
-  status: AutomationRunStatus;
-  showLabel?: boolean;
-}) {
-  const visual = AUTOMATION_RUN_STATUS_VISUALS[status];
-  return (
-    <span
-      role="img"
-      aria-label={visual.label}
-      className="inline-flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground"
-    >
-      <Icon
-        name={visual.icon}
-        className={cn("size-4", visual.className)}
-        aria-hidden
-      />
-      {showLabel ? <span>{visual.label}</span> : null}
-    </span>
-  );
-}
 
 export function RunRow({
   run,
@@ -570,7 +546,6 @@ export function AgentAutomationDefinition({
               <Icon name="Folder" className="size-3.5 shrink-0" aria-hidden />
             }
             className="shrink-0"
-            muted
           />
         ) : null}
         <OptionDisplay
@@ -582,7 +557,6 @@ export function AgentAutomationDefinition({
           }
           compactValue={automationEnvironmentCompactLabel(execution)}
           leading={<AutomationEnvironmentIcon execution={execution} />}
-          muted
         />
       </div>
       {editing ? (

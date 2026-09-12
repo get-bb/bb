@@ -7,7 +7,7 @@ import {
   pruneThreadEventHistory,
   pruneThreadEventHistoryBestEffort,
 } from "../../src/services/system/event-pruning.js";
-import { buildThreadTimeline } from "../../src/services/threads/timeline.js";
+import { buildThreadTimelineWithProfile } from "../../src/services/threads/timeline.js";
 import {
   createTestDaemonEventEnvelope,
   internalAuthHeaders,
@@ -249,7 +249,7 @@ describe("thread event pruning", () => {
         mode: "idle",
         threadId: thread.id,
       });
-      const timeline = buildThreadTimeline(harness.db, thread, {
+      const timeline = buildThreadTimelineWithProfile(harness.db, thread, {
         eventBudget: 1_000_000,
         includeDiagnosticOperations: true,
         maxInlineOutputChars: null,
@@ -258,7 +258,7 @@ describe("thread event pruning", () => {
           kind: "latest",
           segmentLimit: Number.MAX_SAFE_INTEGER,
         },
-      });
+      }).response;
 
       expect(result.removedAgePrunableEvents).toBe(4);
       expect(

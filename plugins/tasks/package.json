@@ -80,7 +80,6 @@
     "@tiptap/pm": "^2.27.2",
     "@tiptap/starter-kit": "^2.27.2",
     "@tiptap/suggestion": "^2.27.2",
-    "cmdk": "^1.1.1",
     "tiptap-markdown": "^0.8.10",
     "vaul": "^1.1.2",
     "zod": "^4.3.6"

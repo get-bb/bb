@@ -18,14 +18,12 @@ export function ResourceSidebar({
   isResizing,
   mobileHosted,
   onResizeMouseDown,
-  showTopReserve,
 }: {
   workspace: ToolsSectionId;
   appRoutePath: string;
   isResizing: boolean;
   mobileHosted?: boolean;
   onResizeMouseDown: (event: ReactMouseEvent<HTMLDivElement>) => void;
-  showTopReserve: boolean;
 }) {
   const location = useLocation();
   const activePage = resolveToolsActivePage(location.pathname, location.search);
@@ -38,7 +36,6 @@ export function ResourceSidebar({
       isResizing={isResizing}
       mobileHosted={mobileHosted}
       onResizeMouseDown={onResizeMouseDown}
-      showTopReserve={showTopReserve}
       testIdPrefix={workspace}
     >
       <SectionSidebarLabel>

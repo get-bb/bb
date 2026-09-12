@@ -178,8 +178,6 @@ const WORKSPACE_CHROME_HEIGHT = 56;
 const WORKSPACE_ROW_HEIGHT = 40;
 const TYPEAHEAD_MENU_GAP = 8;
 const SURFACE_DRAG_THRESHOLD = 72;
-const QUEUED_MESSAGE_ACTION_TAKEOVER_CLASS =
-  PROMPT_STACK_ROW_ACTION_TAKEOVER_CLASS;
 type QueueSurfaceMode = "collapsed" | "drawer" | "workspace";
 
 function getDrawerHeight({
@@ -843,7 +841,6 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
             aria-hidden="true"
           />
         </Button>
-        {}
         <div
           className={cn(
             "min-w-0 flex-1 py-1",
@@ -932,7 +929,7 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
                 ref={actionsRef}
                 data-queued-message-actions=""
                 className={cn(
-                  QUEUED_MESSAGE_ACTION_TAKEOVER_CLASS,
+                  PROMPT_STACK_ROW_ACTION_TAKEOVER_CLASS,
                   "pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 items-center gap-0.5 rounded-md opacity-0 transition-opacity duration-[120ms] ease-out md:flex",
                   mobileActionsExpanded
                     ? "flex max-md:pointer-events-auto max-md:opacity-100"
@@ -1020,7 +1017,7 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
               size="icon"
               variant="ghost"
               className={cn(
-                QUEUED_MESSAGE_ACTION_TAKEOVER_CLASS,
+                PROMPT_STACK_ROW_ACTION_TAKEOVER_CLASS,
                 "pointer-events-none absolute right-2.5 top-1/2 shrink-0 -translate-y-1/2 text-muted-foreground opacity-0 transition-opacity duration-[120ms] ease-out md:hidden",
                 "group-hover/dispatch-row:pointer-events-auto group-hover/dispatch-row:opacity-100",
                 "group-focus-within/dispatch-row:pointer-events-auto group-focus-within/dispatch-row:opacity-100",
@@ -1111,6 +1108,32 @@ function SortableGroupBoundaryHandle({ disabled }: { disabled: boolean }) {
 
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(maximum, Math.max(minimum, value));
+}
+
+function findInlineEditorNeighborhood(list: HTMLUListElement): {
+  editorElement: HTMLElement;
+  firstElement: HTMLElement;
+  lastElement: HTMLElement;
+} | null {
+  const editorElement = list.querySelector<HTMLElement>(
+    "[data-queued-message-inline-editor]",
+  );
+  if (!editorElement) return null;
+
+  const items = Array.from(list.children);
+  const editorIndex = items.indexOf(editorElement);
+  const previousRow = items
+    .slice(0, editorIndex)
+    .reverse()
+    .find((item) => item.hasAttribute("data-queued-message-row"));
+  const followingRow = items
+    .slice(editorIndex + 1)
+    .find((item) => item.hasAttribute("data-queued-message-row"));
+  return {
+    editorElement,
+    firstElement: (previousRow ?? editorElement) as HTMLElement,
+    lastElement: (followingRow ?? editorElement) as HTMLElement,
+  };
 }
 
 function QueuedMessageInlineEditorSlot({
@@ -1260,22 +1283,10 @@ export function QueuedMessagesList({
   const scrollInlineEditorNeighborhoodIntoView = useCallback(() => {
     const list = listRef.current;
     const scroll = scrollRef.current;
-    const editorElement = list?.querySelector<HTMLElement>(
-      "[data-queued-message-inline-editor]",
-    );
-    if (!list || !scroll || !editorElement) return;
+    const neighborhood = list ? findInlineEditorNeighborhood(list) : null;
+    if (!scroll || !neighborhood) return;
 
-    const items = Array.from(list.children);
-    const editorIndex = items.indexOf(editorElement);
-    const previousRow = items
-      .slice(0, editorIndex)
-      .reverse()
-      .find((item) => item.hasAttribute("data-queued-message-row"));
-    const followingRow = items
-      .slice(editorIndex + 1)
-      .find((item) => item.hasAttribute("data-queued-message-row"));
-    const firstElement = (previousRow ?? editorElement) as HTMLElement;
-    const lastElement = (followingRow ?? editorElement) as HTMLElement;
+    const { editorElement, firstElement, lastElement } = neighborhood;
     const viewportRect = scroll.getBoundingClientRect();
     const firstRect = firstElement.getBoundingClientRect();
     const lastRect = lastElement.getBoundingClientRect();
@@ -1329,24 +1340,12 @@ export function QueuedMessagesList({
 
     const list = listRef.current;
     const scroll = scrollRef.current;
-    const editorElement = list?.querySelector<HTMLElement>(
-      "[data-queued-message-inline-editor]",
-    );
-    if (!list || !scroll || !editorElement) {
+    const neighborhood = list ? findInlineEditorNeighborhood(list) : null;
+    if (!scroll || !neighborhood) {
       setInlineEditorDesiredHeight(null);
       return;
     }
-    const items = Array.from(list.children);
-    const editorIndex = items.indexOf(editorElement);
-    const previousRow = items
-      .slice(0, editorIndex)
-      .reverse()
-      .find((item) => item.hasAttribute("data-queued-message-row"));
-    const followingRow = items
-      .slice(editorIndex + 1)
-      .find((item) => item.hasAttribute("data-queued-message-row"));
-    const firstElement = (previousRow ?? editorElement) as HTMLElement;
-    const lastElement = (followingRow ?? editorElement) as HTMLElement;
+    const { firstElement, lastElement } = neighborhood;
     const surfaceRect = surface.getBoundingClientRect();
     const scrollRect = scroll.getBoundingClientRect();
     const contentHeight =
@@ -1445,22 +1444,15 @@ export function QueuedMessagesList({
   );
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
-      if (!event.over || event.active.id === event.over.id) {
-        return;
-      }
-      const activeId = String(event.active.id);
-      const overId = String(event.over.id);
-      const oldIndex = combinedIds.indexOf(activeId);
-      const newIndex = combinedIds.indexOf(overId);
-      if (oldIndex === -1 || newIndex === -1) {
+      if (!event.over) {
         return;
       }
 
       const dragResult = resolveQueuedMessageDrag({
-        activeId,
+        activeId: String(event.active.id),
         combinedIds,
         orderedMessages,
-        overId,
+        overId: String(event.over.id),
       });
       if (!dragResult) return;
 

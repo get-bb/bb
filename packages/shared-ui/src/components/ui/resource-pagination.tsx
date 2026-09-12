@@ -1,14 +1,6 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "./button";
 import { Icon } from "./icon";
-import { cn } from "../../lib/utils";
 
 export const RESOURCE_LIST_PAGE_SIZE = 10;
 export const RESOURCE_GRID_PAGE_SIZE = 12;
@@ -262,12 +254,10 @@ export function ResourceInfiniteScrollSentinel({
   hasMore,
   loading = false,
   onLoadMore,
-  className,
 }: {
   hasMore: boolean;
   loading?: boolean;
   onLoadMore: () => void;
-  className?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const onLoadMoreRef = useRef(onLoadMore);
@@ -306,7 +296,7 @@ export function ResourceInfiniteScrollSentinel({
     <div
       ref={ref}
       data-resource-infinite-sentinel
-      className={cn("flex items-center justify-center py-3", className)}
+      className="flex items-center justify-center py-3"
     >
       {loading ? (
         <span
@@ -342,8 +332,6 @@ export function ResourcePagination({
   visibleCount,
   onPageChange,
   scrollTargetId,
-  summary,
-  ariaLabel = "Results pagination",
 }: {
   page: number;
   pageSize: number;
@@ -351,8 +339,6 @@ export function ResourcePagination({
   visibleCount: number;
   onPageChange: (page: number) => void;
   scrollTargetId?: string;
-  summary?: ReactNode;
-  ariaLabel?: string;
 }) {
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
   if (total <= pageSize) return null;
@@ -367,11 +353,11 @@ export function ResourcePagination({
 
   return (
     <nav
-      aria-label={ariaLabel}
+      aria-label="Results pagination"
       className="flex flex-wrap items-center justify-between gap-2 px-1"
     >
       <span className="text-xs text-subtle-foreground">
-        {summary ?? `${firstItem}–${lastItem} of ${total}`}
+        {`${firstItem}–${lastItem} of ${total}`}
       </span>
       <div className="flex items-center gap-1">
         <Button

@@ -21,11 +21,11 @@ import {
   getHost,
   getNonDestroyedHostByLaunchKey,
   getPreparingEnvironment,
-  getDefaultProjectSource,
   getThread,
   getThreadStartupContext,
   listEnvironments,
   listEvents,
+  listProjectSourcesByProjectIds,
   setProjectGitRemoteUrlIfMissing,
   updateHost,
 } from "@bb/db";
@@ -53,6 +53,7 @@ import {
 } from "../../src/services/plugins/plugin-environment-provider-registry.js";
 import { setPluginMachineProviderBridge } from "../../src/services/plugins/plugin-machine-provider-registry.js";
 import {
+  invokePluginInline,
   setPluginHookProvider,
   type PluginHookRegistration,
 } from "../../src/services/plugins/plugin-hook-registry.js";
@@ -147,16 +148,7 @@ function installTargets(
     listEnvironmentProviders: () => records,
     getEnvironmentProvider: (id) =>
       records.find((record) => record.provider.id === id),
-    invokeProvider: async (_pluginId, _label, run) => {
-      try {
-        return { ok: true, value: await run() };
-      } catch (error) {
-        return {
-          ok: false,
-          error: error instanceof Error ? error.message : String(error),
-        };
-      }
-    },
+    invokeProvider: (_pluginId, _label, run) => invokePluginInline(run),
     decisionTimeoutMs: 10_000,
   });
 }
@@ -601,7 +593,10 @@ function createTargetThread(
   },
 ) {
   const model = "model" in args ? args.model : "requested-model";
-  const source = getDefaultProjectSource(harness.db, args.projectId);
+  const source =
+    listProjectSourcesByProjectIds(harness.db, [args.projectId]).find(
+      (projectSource) => projectSource.isDefault,
+    ) ?? null;
   const sourceHostId = source?.type === "local_path" ? source.hostId : null;
   const hostId = args.hostId ?? sourceHostId ?? "host-1";
   return createThreadFromRequest(harness.deps, {

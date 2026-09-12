@@ -6,12 +6,9 @@ import type {
   PluginMachineProviderBridge,
   PluginMachineProviderRecord,
 } from "../plugins/plugin-machine-provider-registry.js";
+import { invokePluginInline } from "../plugins/plugin-hook-registry.js";
 
 const MANUAL_PROVIDER_OWNER = "core";
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
 
 export function createManualMachineProviderRecord(
   enrollments: MachineEnrollments,
@@ -85,11 +82,7 @@ export function withManualMachineProvider(
     async invokeProvider(pluginId, label, run) {
       if (pluginId !== MANUAL_PROVIDER_OWNER)
         return bridge.invokeProvider(pluginId, label, run);
-      try {
-        return { ok: true, value: await run() };
-      } catch (error) {
-        return { ok: false, error: errorMessage(error) };
-      }
+      return invokePluginInline(run);
     },
   };
 }

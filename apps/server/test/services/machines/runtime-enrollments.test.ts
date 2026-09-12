@@ -172,7 +172,6 @@ describe("production machine enrollment wiring", () => {
           await h.deps.machineAuth.enrollHost({
             hostId: enrollment.hostId,
             token: input.credential,
-            allowPublicEnrollment: true,
           }),
         ).not.toBeNull();
         h.hub.registerDaemon("runtime-session", enrollment.hostId, {

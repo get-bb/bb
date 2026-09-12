@@ -7,6 +7,7 @@ import type { PromptTextMention } from "@bb/domain";
 import { PromptMentionPill } from "@/components/thread/timeline/ConversationMessageMentions.js";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import type { TimelineTitleLinkResolver } from "@/components/thread/timeline/TimelineTitleView.js";
+import { replaceTextMatches } from "./markdown-text-matches.js";
 
 const SENTINEL_OPEN = String.fromCharCode(0xe000);
 const SENTINEL_CLOSE = String.fromCharCode(0xe001);
@@ -72,32 +73,10 @@ function promptMentionNode(index: number): Text {
 }
 
 function splitTextNodeOnMentions(node: Text): PhrasingContent[] {
-  const { value } = node;
-  PROMPT_MENTION_PATTERN.lastIndex = 0;
-  const replacements: PhrasingContent[] = [];
-  let cursor = 0;
-  let match: RegExpExecArray | null;
-  while ((match = PROMPT_MENTION_PATTERN.exec(value)) !== null) {
+  return replaceTextMatches(node, PROMPT_MENTION_PATTERN, (match) => {
     const index = match[1] === undefined ? Number.NaN : Number(match[1]);
-    if (!Number.isInteger(index)) {
-      continue;
-    }
-    if (match.index > cursor) {
-      replacements.push({
-        type: "text",
-        value: value.slice(cursor, match.index),
-      });
-    }
-    replacements.push(promptMentionNode(index));
-    cursor = match.index + match[0].length;
-  }
-  if (replacements.length === 0) {
-    return [node];
-  }
-  if (cursor < value.length) {
-    replacements.push({ type: "text", value: value.slice(cursor) });
-  }
-  return replacements;
+    return Number.isInteger(index) ? promptMentionNode(index) : null;
+  });
 }
 
 export function remarkPromptMentions() {

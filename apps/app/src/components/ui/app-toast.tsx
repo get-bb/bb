@@ -56,12 +56,6 @@ interface AppToastContentProps {
   tone: AppToastTone;
 }
 
-interface AppToastDescriptionProps {
-  description: ReactNode;
-  notificationId: string | null;
-  onShowMore: () => void;
-}
-
 interface AppToastOverflowTextProps {
   className?: string;
   content: ReactNode;
@@ -191,21 +185,6 @@ function AppToastOverflowText({
   );
 }
 
-export function AppToastDescription({
-  description,
-  notificationId,
-  onShowMore,
-}: AppToastDescriptionProps) {
-  return (
-    <AppToastOverflowText
-      content={description}
-      notificationId={notificationId}
-      onShowMore={onShowMore}
-      testId="app-toast-description"
-    />
-  );
-}
-
 export function AppToastContent({
   action,
   cancel,
@@ -257,10 +236,11 @@ export function AppToastContent({
           {description || hasActions ? (
             <div className="mt-0.5 flex min-w-0 flex-col items-start gap-2 text-xs leading-5 text-muted-foreground">
               {description ? (
-                <AppToastDescription
-                  description={description}
+                <AppToastOverflowText
+                  content={description}
                   notificationId={notificationId}
                   onShowMore={showNotification}
+                  testId="app-toast-description"
                 />
               ) : null}
               {hasActions ? (

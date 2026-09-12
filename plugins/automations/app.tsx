@@ -25,6 +25,7 @@ import {
   CREATE_AUTOMATION_PROMPT,
   type AutomationCollectionMode,
 } from "./overview-view";
+import { PERSONAL_PROJECT_ID } from "./lib/format-schedule";
 import { Button } from "@bb/shared-ui/button";
 import { DelayedLoading } from "@bb/shared-ui/delayed-loading";
 import {
@@ -39,7 +40,6 @@ import { ResourceListState } from "@bb/shared-ui/resource-list";
 import { cn } from "@bb/shared-ui/lib/utils";
 
 const PANEL_PATH = "automations";
-const PERSONAL_PROJECT_ID = "proj_personal";
 type OverviewEntry = AutomationsOverviewResponse["automations"][number];
 
 function errorText(error: unknown): string {
@@ -166,7 +166,6 @@ function useOverview(): {
 function useAutomation(route: DetailRoute): {
   automation: AutomationReadResult | null;
   error: string | null;
-  missing: boolean;
   refetch: () => void;
 } {
   const rpc = useRpc<typeof automationRpcContract>();
@@ -174,32 +173,26 @@ function useAutomation(route: DetailRoute): {
   const [state, setState] = useState<{
     automation: AutomationReadResult | null;
     error: string | null;
-    missing: boolean;
-  }>({ automation: null, error: null, missing: false });
+  }>({ automation: null, error: null });
   const requestRef = useRef(0);
 
   const refetch = useCallback(() => {
     const requestId = ++requestRef.current;
-    setState((current) => ({ ...current, error: null, missing: false }));
+    setState((current) => ({ ...current, error: null }));
     rpc.call("automations_get", { projectId, automationId }).then(
       (result) => {
         if (requestRef.current !== requestId) return;
-        const automation = result as AutomationReadResult | null;
-        setState({
-          automation: automation ?? null,
-          error: null,
-          missing: automation === null,
-        });
+        setState({ automation: result, error: null });
       },
       (error: unknown) => {
         if (requestRef.current !== requestId) return;
-        setState({ automation: null, error: errorText(error), missing: false });
+        setState({ automation: null, error: errorText(error) });
       },
     );
   }, [rpc, projectId, automationId]);
 
   useEffect(() => {
-    setState({ automation: null, error: null, missing: false });
+    setState({ automation: null, error: null });
     refetch();
     return () => {
       requestRef.current += 1;
@@ -447,7 +440,7 @@ function DetailView({
   onBack: () => void;
 }) {
   const navigate = useBbNavigate();
-  const { automation, error, missing, refetch } = useAutomation(route);
+  const { automation, error, refetch } = useAutomation(route);
   const [editingRequested, setEditingRequested] = useState(initialEditing);
   const overviewState = useOverview();
   const runsState = useRuns(route);
@@ -536,15 +529,11 @@ function DetailView({
       .finally(() => setDeleting(false));
   }, [mutations, route, onBack]);
 
-  if (error !== null || missing) {
+  if (error !== null) {
     return (
       <ResourceListState
         state="error"
-        message={
-          missing
-            ? "Automation not found."
-            : `Couldn't load automation: ${error}`
-        }
+        message={`Couldn't load automation: ${error}`}
         layout="detail"
         onRetry={refetch}
       />

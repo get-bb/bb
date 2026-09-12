@@ -307,7 +307,7 @@ describe("SdkSession", () => {
     const session = new SdkSession(
       {
         ...defaultOptions,
-        permissionMode: "dontAsk",
+        permissionMode: "acceptEdits",
         disallowedTools: ["WebFetch"],
       },
       onMessage,
@@ -319,7 +319,7 @@ describe("SdkSession", () => {
     expect(queryMock).toHaveBeenCalledWith(
       expect.objectContaining({
         options: expect.objectContaining({
-          permissionMode: "dontAsk",
+          permissionMode: "acceptEdits",
           disallowedTools: ["WebFetch"],
         }),
       }),

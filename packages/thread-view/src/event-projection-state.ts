@@ -13,12 +13,12 @@ import {
   finalizeOperationMessage,
   interruptOperationMessage,
 } from "./parse-operation-message.js";
+import { flushActiveToolCell } from "./tool-activity-cells.js";
 import {
-  flushActiveToolCell,
+  createToolActivityState,
   flushPendingToolActivityOutput,
   interruptPendingToolActivity,
 } from "./tool-activity-projection.js";
-import { createToolActivityState } from "./tool-activity-projection.js";
 import {
   createOperationProjectionState,
   flushPendingFileEditOutput,

@@ -23,7 +23,7 @@ import {
 } from "../internal/environment-changes.js";
 import { requestQueuedMessageDispatch } from "../services/threads/queued-message-dispatch.js";
 import { runEventLoopWorkSync } from "../services/system/event-loop-work.js";
-import { decodeSocketPayload } from "./decode-payload.js";
+import { parseSocketMessage } from "./decode-payload.js";
 import type { PluginService } from "../services/plugins/plugin-service.js";
 
 interface DaemonSocket {
@@ -106,22 +106,17 @@ export function onDaemonSocketMessage(
   args: DaemonSocketMessageArgs,
   plugins?: Pick<PluginService, "handleHostSignal" | "handleHostWorkerExit">,
 ): void {
-  let decoded: unknown;
-  try {
-    decoded = JSON.parse(decodeSocketPayload(args.raw));
-  } catch {
-    args.socket.close(1008, "invalid-message");
-    return;
-  }
-
-  const result = hostDaemonDaemonWsMessageSchema.safeParse(decoded);
-  if (!result.success) {
-    args.socket.close(1008, "invalid-message");
+  const message = parseSocketMessage(
+    args.socket,
+    args.raw,
+    hostDaemonDaemonWsMessageSchema,
+  );
+  if (message === null) {
     return;
   }
 
   try {
-    runEventLoopWorkSync(`ws:daemon ${result.data.type}`, () => {
+    runEventLoopWorkSync(`ws:daemon ${message.type}`, () => {
       const session = requireAuthorizedOpenSession(deps.db, {
         hostId: args.hostId,
         sessionId: args.sessionId,
@@ -134,33 +129,33 @@ export function onDaemonSocketMessage(
           session.leaseExpiresAt + 1,
         ),
       );
-      if (result.data.type === "environment-change") {
+      if (message.type === "environment-change") {
         notifyDaemonEnvironmentChange(deps, {
           hostId: args.hostId,
-          environmentId: result.data.environmentId,
-          change: result.data.change,
+          environmentId: message.environmentId,
+          change: message.change,
         });
         return;
       }
-      if (result.data.type === "environment-metadata-change") {
+      if (message.type === "environment-metadata-change") {
         recordDaemonEnvironmentMetadataChange(deps, {
           hostId: args.hostId,
-          environmentId: result.data.environmentId,
-          workspace: result.data.workspace,
+          environmentId: message.environmentId,
+          workspace: message.workspace,
         });
         return;
       }
-      if (result.data.type === "host-rpc.response") {
+      if (message.type === "host-rpc.response") {
         const disposition = deps.hub.recordHostOnlineRpcResponse({
-          message: result.data,
+          message,
           sessionId: args.sessionId,
         });
         if (!disposition.handled && disposition.reason === "session_mismatch") {
           deps.logger.warn(
             {
-              commandType: result.data.commandType,
+              commandType: message.commandType,
               expectedSessionId: disposition.expectedSessionId,
-              requestId: result.data.requestId,
+              requestId: message.requestId,
               sessionId: args.sessionId,
             },
             "Ignoring host RPC response from mismatched daemon session",
@@ -168,8 +163,8 @@ export function onDaemonSocketMessage(
         } else if (!disposition.handled) {
           deps.logger.debug(
             {
-              commandType: result.data.commandType,
-              requestId: result.data.requestId,
+              commandType: message.commandType,
+              requestId: message.requestId,
               sessionId: args.sessionId,
             },
             "Ignoring stale host RPC response",
@@ -177,22 +172,19 @@ export function onDaemonSocketMessage(
         }
         return;
       }
-      if (result.data.type === "connect-tunnel.identity") {
-        deps.sharedPorts.recordTunnelIdentity(
-          args.hostId,
-          result.data.identity,
-        );
+      if (message.type === "connect-tunnel.identity") {
+        deps.sharedPorts.recordTunnelIdentity(args.hostId, message.identity);
         return;
       }
-      if (result.data.type === "desktop-browser.changed") {
+      if (message.type === "desktop-browser.changed") {
         const scope = {
           hostId: args.hostId,
-          instanceId: result.data.instanceId,
-          generation: result.data.generation,
-          threadId: result.data.threadId,
+          instanceId: message.instanceId,
+          generation: message.generation,
+          threadId: message.threadId,
         };
         try {
-          syncDesktopBrowserTabs(deps, scope, result.data.tabs);
+          syncDesktopBrowserTabs(deps, scope, message.tabs);
         } catch (error) {
           deps.logger.warn(
             {
@@ -205,38 +197,38 @@ export function onDaemonSocketMessage(
         }
         return;
       }
-      if (result.data.type === "plugin-host.worker-exited") {
+      if (message.type === "plugin-host.worker-exited") {
         plugins?.handleHostWorkerExit({
           authenticatedHostId: args.hostId,
-          pluginId: result.data.pluginId,
-          generation: result.data.generation,
+          pluginId: message.pluginId,
+          generation: message.generation,
         });
         return;
       }
-      if (result.data.type === "environment.hook.progress") {
-        reportEnvironmentHookProgress(deps, args.hostId, result.data);
+      if (message.type === "environment.hook.progress") {
+        reportEnvironmentHookProgress(deps, args.hostId, message);
         return;
       }
-      if (result.data.type === "plugin-host.signal") {
+      if (message.type === "plugin-host.signal") {
         plugins?.handleHostSignal({
           authenticatedHostId: args.hostId,
-          pluginId: result.data.pluginId,
-          generation: result.data.generation,
-          signal: result.data.signal,
-          payload: result.data.payload,
+          pluginId: message.pluginId,
+          generation: message.generation,
+          signal: message.signal,
+          payload: message.payload,
         });
         return;
       }
-      if (result.data.type === "heartbeat") {
+      if (message.type === "heartbeat") {
         args.socket.send(JSON.stringify({ type: "heartbeat-ack" }));
         return;
       }
-      if (result.data.type === "machine.shutdown-ack") {
+      if (message.type === "machine.shutdown-ack") {
         return;
       }
       deps.terminalSessions.handleDaemonTerminalMessage({
         hostId: args.hostId,
-        message: result.data,
+        message,
         sessionId: args.sessionId,
       });
     });
@@ -269,7 +261,7 @@ export function onDaemonSocketMessage(
     deps.logger.warn(
       {
         sessionId: args.sessionId,
-        messageType: result.data.type,
+        messageType: message.type,
         ...runtimeErrorLogFields(deps.config, error),
       },
       "Daemon message rejected, closing socket",

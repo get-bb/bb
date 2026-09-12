@@ -14,6 +14,7 @@ import {
 import path from "node:path";
 import { z } from "zod";
 import { dockerfileSchema, type ImageDefinition } from "./image-definition.js";
+import { errorMessage } from "./error-message.js";
 import {
   modalLaunchOptionsSchema,
   type ModalLaunchOptionsStore,
@@ -316,7 +317,7 @@ export function registerRpcAndCli(
       } catch (error) {
         return {
           exitCode: 1,
-          stderr: error instanceof Error ? error.message : String(error),
+          stderr: errorMessage(error),
         };
       }
     },

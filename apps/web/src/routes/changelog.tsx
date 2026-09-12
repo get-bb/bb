@@ -1,24 +1,25 @@
 import { Loading03Icon, Mail01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Fragment, useEffect } from "react";
+import { Fragment } from "react";
 import type { ReactNode } from "react";
 
 import changelogMd from "../../../../CHANGELOG.md?raw";
 import { RELEASE_META } from "../../../../changelog-metadata";
-import { initAnalytics } from "../landing/analytics";
-import type { Release, ReleaseBlock } from "../landing/changelog";
-import { parseChangelog } from "../landing/changelog";
+import { useInitAnalytics } from "../landing/analytics";
+import {
+  parseChangelog,
+  type ChangelogBlock,
+  type ChangelogEntry,
+} from "../../../../changelog-parser";
 import { ChangelogInline } from "../landing/changelog-inline";
 import {
-  EmailSignup,
   focusSubscribeEmail,
   SUBSCRIBE_EMAIL_ID,
+  SubscribeSection,
 } from "../landing/cta";
+import { pageMeta, siteHeadLinks } from "../landing/page-head";
 import { SiteFooter, SiteNav } from "../landing/site-chrome";
-import { unfurlMeta } from "../landing/site";
-import interWoff2 from "@fontsource-variable/inter/files/inter-latin-wght-normal.woff2?url";
-import landingCss from "../landing/landing.css?url";
 import changelogCss from "../landing/changelog.css?url";
 
 const PAGE_TITLE = "Changelog — bb";
@@ -27,30 +28,14 @@ const PAGE_DESCRIPTION =
 
 export const Route = createFileRoute("/changelog")({
   head: () => ({
-    meta: [
-      { title: PAGE_TITLE },
-      { name: "description", content: PAGE_DESCRIPTION },
-      ...unfurlMeta(PAGE_TITLE, PAGE_DESCRIPTION, "/changelog"),
-    ],
-    links: [
-      {
-        rel: "preload",
-        href: interWoff2,
-        as: "font",
-        type: "font/woff2",
-        crossOrigin: "anonymous",
-      },
-      { rel: "stylesheet", href: landingCss },
-      { rel: "stylesheet", href: changelogCss },
-    ],
+    meta: pageMeta(PAGE_TITLE, PAGE_DESCRIPTION, "/changelog"),
+    links: siteHeadLinks(changelogCss),
   }),
   component: ChangelogRoute,
 });
 
 function ChangelogRoute() {
-  useEffect(() => {
-    initAnalytics();
-  }, []);
+  useInitAnalytics();
   return <ChangelogPage />;
 }
 
@@ -114,7 +99,7 @@ const RELEASE_MEDIA: Record<string, ReactNode> = {
   "0.0.30": <ByMachineSidebar />,
 };
 
-function Blocks({ blocks }: { blocks: ReleaseBlock[] }) {
+function Blocks({ blocks }: { blocks: ChangelogBlock[] }) {
   return (
     <>
       {blocks.map((block, index) =>
@@ -136,7 +121,7 @@ function Blocks({ blocks }: { blocks: ReleaseBlock[] }) {
   );
 }
 
-function ReleaseEntry({ release }: { release: Release }) {
+function ReleaseEntry({ release }: { release: ChangelogEntry }) {
   const meta = RELEASE_META[release.version];
   const anchor = anchorId(release.version);
   return (
@@ -195,11 +180,10 @@ function ChangelogPage() {
         <ReleaseEntry key={release.version} release={release} />
       ))}
 
-      <section className="subscribe" id="subscribe">
-        <h2 className="subscribe-title">Stay in the loop.</h2>
-        <p>Get release notes in your inbox. No spam.</p>
-        <EmailSignup placement="footer" />
-      </section>
+      <SubscribeSection
+        id="subscribe"
+        blurb="Get release notes in your inbox. No spam."
+      />
 
       <SiteFooter />
     </div>

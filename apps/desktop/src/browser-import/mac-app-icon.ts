@@ -1,7 +1,8 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { isRegularFile } from "./sources.js";
 
 export type CommandRunner = (
   file: string,
@@ -36,14 +37,6 @@ export function iconFileFromInfoPlist(json: string): string | undefined {
     return trimmed.endsWith(".icns") ? trimmed : `${trimmed}.icns`;
   }
   return undefined;
-}
-
-async function isRegularFile(path: string): Promise<boolean> {
-  try {
-    return (await stat(path)).isFile();
-  } catch {
-    return false;
-  }
 }
 
 export async function readMacAppIcon(

@@ -98,16 +98,6 @@ export type QueuedMessageWaitingOn = z.infer<
   typeof queuedMessageWaitingOnSchema
 >;
 
-export type QueuedMessagePluginWaitingOn = Extract<
-  QueuedMessageWaitingOn,
-  { kind: "plugin" }
->;
-
-export type QueuedMessageHostOfflineWaitingOn = Extract<
-  QueuedMessageWaitingOn,
-  { kind: "host-offline" }
->;
-
 /**
  * Why the last dispatch attempt on a queued row failed outright, as opposed to
  * queueing again.
@@ -191,11 +181,6 @@ export const queuedMessagePayloadSchema = z.discriminatedUnion("kind", [
   }),
 ]);
 export type QueuedMessagePayload = z.infer<typeof queuedMessagePayloadSchema>;
-
-export type QueuedMessageRetryPayload = Extract<
-  QueuedMessagePayload,
-  { kind: "retry" }
->;
 
 /**
  * Core's own taxonomy for a queued row that is a SYSTEM notice rather than

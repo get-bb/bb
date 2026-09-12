@@ -10,7 +10,6 @@ import {
 import { Link, useNavigate } from "react-router-dom";
 import type { ExperimentalSidebarFooterCommandKind } from "@get-bb/plugin-sdk/internal/plugin-app-collector";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { COARSE_POINTER_CHILD_ICON_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { Icon } from "@bb/shared-ui/icon";
 import { SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar.js";
 import { PluginIcon, pluginIconName } from "@/components/plugin/PluginIcon";
@@ -43,11 +42,7 @@ import {
   type FooterItem,
   type BuiltinFooterId,
 } from "@/components/sidebar/sidebarFooterPreferences";
-
-const SIDEBAR_FOOTER_ACTION_CLASS = cn(
-  COARSE_POINTER_CHILD_ICON_BUTTON_CLASS,
-  "text-muted-foreground hover:text-sidebar-foreground [&>svg]:opacity-80",
-);
+import { SIDEBAR_FOOTER_ACTION_CLASS } from "@/components/sidebar/sidebarRowClasses";
 
 function footerItemKey(item: PluginSidebarFooterItemSlot): string {
   return `${item.pluginId}/${item.id}/${item.generation}`;
@@ -167,7 +162,7 @@ export function PluginSidebarFooterDisclosure({
       id={footerDisclosureId(item)}
       aria-label={item.label}
       data-testid={`plugin-sidebar-footer-disclosure-${item.pluginId}-${item.id}`}
-      className="overflow-hidden rounded-lg border border-sidebar-border bg-sidebar-accent/50 transition-[height] duration-200 ease-out motion-reduce:transition-none group-data-[collapsible=icon]:hidden"
+      className="overflow-hidden rounded-lg border border-sidebar-border bg-sidebar-accent/50 transition-[height] duration-200 ease-out motion-reduce:transition-none"
       style={{ height: contentHeight ?? undefined }}
     >
       <div ref={contentRef} className="max-h-80 overflow-auto">

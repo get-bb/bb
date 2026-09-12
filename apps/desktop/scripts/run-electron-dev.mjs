@@ -1,5 +1,4 @@
 import { spawn } from "node:child_process";
-import { once } from "node:events";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,6 +6,7 @@ import {
   resolveCurrentDevInstanceConfig,
   toDevProcessEnv,
 } from "@bb/config/runtime";
+import { forwardSignalsAndMirrorExit } from "./child-process-helpers.mjs";
 
 const require = createRequire(import.meta.url);
 const electronBinary = require("electron");
@@ -94,16 +94,4 @@ const child = spawn(
   },
 );
 
-process.once("SIGINT", () => {
-  child.kill("SIGINT");
-});
-process.once("SIGTERM", () => {
-  child.kill("SIGTERM");
-});
-
-const [code, signal] = await once(child, "exit");
-if (typeof code === "number") {
-  process.exitCode = code;
-} else {
-  process.exitCode = signal === null ? 1 : 128;
-}
+await forwardSignalsAndMirrorExit(child);

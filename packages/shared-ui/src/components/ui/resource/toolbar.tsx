@@ -26,7 +26,6 @@ export function ResourceToolbar({
   searchLabel,
   onSearchChange,
   controls,
-  controlsClassName,
   action,
 }: {
   searchValue: string;
@@ -34,7 +33,6 @@ export function ResourceToolbar({
   searchLabel?: string;
   onSearchChange: (value: string) => void;
   controls?: ReactNode;
-  controlsClassName?: string;
   action?: ReactNode;
 }) {
   return (
@@ -54,14 +52,7 @@ export function ResourceToolbar({
         />
       </div>
       {controls ? (
-        <div
-          className={cn(
-            "flex shrink-0 items-center gap-1.5",
-            controlsClassName,
-          )}
-        >
-          {controls}
-        </div>
+        <div className="flex shrink-0 items-center gap-1.5">{controls}</div>
       ) : null}
       {action ? (
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
@@ -165,56 +156,6 @@ function ResourceMenuTrigger({
   );
 }
 
-export function ResourceOptionMenu({
-  label,
-  icon,
-  value,
-  options,
-  onChange,
-}: {
-  label: string;
-  icon: IconName;
-  value: string;
-  options: readonly ResourceOption[];
-  onChange: (value: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  return (
-    <DropdownMenu onOpenChange={setOpen}>
-      <ResourceMenuTrigger label={label} icon={icon} open={open} />
-      <DropdownMenuContent align="end" mobileTitle={label} className="min-w-40">
-        <DropdownMenuLabel className="text-xs font-normal text-subtle-foreground">
-          {label}
-        </DropdownMenuLabel>
-        {options.map((option) => {
-          const selected = option.id === value;
-          return (
-            <DropdownMenuItem
-              key={option.id}
-              disabled={option.disabled}
-              onSelect={(event) => {
-                if (selected || option.disabled) {
-                  event.preventDefault();
-                  return;
-                }
-                onChange(option.id);
-              }}
-              className="flex items-center justify-between gap-3"
-            >
-              <ResourceOptionContent option={option} />
-              <Icon
-                name="Check"
-                aria-hidden
-                className={cn("size-4", selected ? "opacity-100" : "opacity-0")}
-              />
-            </DropdownMenuItem>
-          );
-        })}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
 function nextSelectedValues(
   option: ResourceOption,
   checked: boolean,
@@ -236,9 +177,6 @@ export function ResourceMultiSelectMenu({
   selectedValues,
   options,
   onChange,
-  selectedLabel,
-  selectedTooltip,
-  emptySelectionLabel = "All",
   compact = false,
 }: {
   label: string;
@@ -246,9 +184,6 @@ export function ResourceMultiSelectMenu({
   selectedValues: readonly string[];
   options: readonly ResourceOption[];
   onChange: (values: string[]) => void;
-  selectedLabel?: (options: readonly ResourceOption[]) => string;
-  selectedTooltip?: (options: readonly ResourceOption[]) => ReactNode;
-  emptySelectionLabel?: string;
   compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
@@ -256,16 +191,12 @@ export function ResourceMultiSelectMenu({
   const activeOptions = options.filter((option) => selected.has(option.id));
   const activeSelectedCount = activeOptions.length;
   const selectionSummary =
-    activeSelectedCount === 0
-      ? emptySelectionLabel
-      : (selectedLabel?.(activeOptions) ?? `${activeSelectedCount} selected`);
+    activeSelectedCount === 0 ? "All" : `${activeSelectedCount} selected`;
   const triggerLabel =
     activeSelectedCount === 0
       ? label
-      : (selectedLabel?.(activeOptions) ??
-        `${label}: ${activeSelectedCount} selected`);
-  const triggerTooltip =
-    selectedTooltip?.(activeOptions) ?? `${label}: ${selectionSummary}`;
+      : `${label}: ${activeSelectedCount} selected`;
+  const triggerTooltip = `${label}: ${selectionSummary}`;
 
   function updateValue(option: ResourceOption, checked: boolean) {
     const next = nextSelectedValues(option, checked, selectedValues);
@@ -321,13 +252,9 @@ export interface ResourceFilterGroup {
 }
 
 export function ResourceFilterMenu({
-  label = "Filters",
-  icon = "SlidersHorizontal",
   groups,
   compact = false,
 }: {
-  label?: string;
-  icon?: IconName;
   groups: readonly ResourceFilterGroup[];
   compact?: boolean;
 }) {
@@ -349,21 +276,21 @@ export function ResourceFilterMenu({
     );
   const hasActiveFilter = activeSummaries.length > 0;
   const triggerLabel = hasActiveFilter
-    ? `${label}: ${activeSummaries.join("; ")}`
-    : label;
+    ? `Filters: ${activeSummaries.join("; ")}`
+    : "Filters";
 
   return (
     <DropdownMenu onOpenChange={setOpen}>
       <ResourceMenuTrigger
         label={triggerLabel}
-        icon={icon}
+        icon="SlidersHorizontal"
         active={hasActiveFilter}
         open={open}
-        tooltip={hasActiveFilter ? activeSummaries.join("; ") : `${label}: All`}
+        tooltip={hasActiveFilter ? activeSummaries.join("; ") : "Filters: All"}
       />
       <DropdownMenuContent
         align="end"
-        mobileTitle={label}
+        mobileTitle="Filters"
         className={cn(compact ? "w-max max-w-64 md:p-0.5" : "min-w-44")}
       >
         {renderedGroups.map(({ group, selected }, groupIndex) => (
@@ -519,31 +446,6 @@ export function ResourceSortMenu({
   );
 }
 
-export function ResourceToolbarAction({
-  label,
-  icon = "Plus",
-  disabled = false,
-  onClick,
-}: {
-  label: string;
-  icon?: IconName;
-  disabled?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <Button
-      type="button"
-      size="sm"
-      className="shrink-0"
-      disabled={disabled}
-      onClick={onClick}
-    >
-      <Icon name={icon} className="size-4" aria-hidden />
-      {label}
-    </Button>
-  );
-}
-
 export interface ResourceCreateTemplate {
   label: string;
   description: string;
@@ -565,20 +467,18 @@ export interface ResourceCreateTemplateGroup {
 export function ResourceCreateButton({
   label,
   templates,
-  templateMenuLabel = "Examples",
   templateGroups,
   menuActions = [],
   onCreate,
 }: {
   label: string;
   templates: readonly ResourceCreateTemplate[];
-  templateMenuLabel?: string;
   templateGroups?: readonly ResourceCreateTemplateGroup[];
   menuActions?: readonly ResourceCreateMenuAction[];
   onCreate: (prompt?: string) => void;
 }) {
   const groups: readonly ResourceCreateTemplateGroup[] = templateGroups ?? [
-    { label: templateMenuLabel, templates },
+    { label: "Examples", templates },
   ];
   return (
     <div className="flex shrink-0 items-stretch">
@@ -605,7 +505,7 @@ export function ResourceCreateButton({
         <DropdownMenuContent
           align="end"
           className="min-w-40 w-max"
-          mobileTitle={templateMenuLabel}
+          mobileTitle="Examples"
         >
           {menuActions.map((action) => (
             <DropdownMenuItem key={action.label} onSelect={action.onSelect}>

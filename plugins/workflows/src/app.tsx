@@ -444,10 +444,7 @@ function useVisibleActivePolling(
   }, [enabled, refresh]);
 }
 
-function useActiveWorkflowRuns(threadId: string): {
-  state: ActiveRunsLoadState;
-  setRuns: (update: (runs: WorkflowRunView[]) => WorkflowRunView[]) => void;
-} {
+function useActiveWorkflowRuns(threadId: string): ActiveRunsLoadState {
   const rpc = useRpc<typeof workflowUiRpcContract>();
   const [state, setState] = useState<ActiveRunsLoadState>({
     status: "loading",
@@ -483,18 +480,7 @@ function useActiveWorkflowRuns(threadId: string): {
     (state.status === "ready" && state.runs.some(isRunActive));
   useVisibleActivePolling(refresh, shouldPoll);
 
-  const setRuns = useCallback(
-    (update: (runs: WorkflowRunView[]) => WorkflowRunView[]) => {
-      setState((current) =>
-        current.status === "ready"
-          ? { status: "ready", runs: update(current.runs) }
-          : current,
-      );
-    },
-    [],
-  );
-
-  return { state, setRuns };
+  return state;
 }
 
 export function EmptyOrError({ children }: { children: ReactNode }) {
@@ -653,7 +639,7 @@ function WorkflowComposerCard({ run }: { run: WorkflowRunView }) {
 }
 
 function WorkflowStatusBannerLoaded({ threadId }: { threadId: string }) {
-  const { state } = useActiveWorkflowRuns(threadId);
+  const state = useActiveWorkflowRuns(threadId);
 
   if (state.status !== "ready" || state.runs.length === 0) return null;
 

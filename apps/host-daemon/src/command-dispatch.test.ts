@@ -138,9 +138,7 @@ function createWorkspace(workspacePath = WORKSPACE_PATH): HostWorkspace {
     diffPatch: unexpectedWorkspaceCall,
     getPullRequest: unexpectedWorkspaceCall,
     runPullRequestAction: unexpectedWorkspaceCall,
-    listFiles: unexpectedWorkspaceCall,
     commit: unexpectedWorkspaceCall,
-    reset: unexpectedWorkspaceCall,
   };
 }
 

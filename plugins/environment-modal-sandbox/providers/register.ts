@@ -1,10 +1,7 @@
-import type { BbPluginApi } from "@get-bb/plugin-sdk";
+import type { BbPluginApi, MachineBootstrapRequest } from "@get-bb/plugin-sdk";
 import type { PluginMachineProviderResource } from "@get-bb/plugin-sdk/machine-provider";
+import { errorMessage } from "../error-message.js";
 import type { SandboxBackend } from "./sandbox-backend.js";
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
 
 export function registerSandboxBackend<
   Inputs,
@@ -18,6 +15,17 @@ export function registerSandboxBackend<
   },
 ): void {
   const definition = backend.definition;
+
+  async function bootstrap(
+    request: MachineBootstrapRequest,
+  ): Promise<{ hostId: string }> {
+    const connectStartedAt = options.now();
+    const result = await bb.experimental_machines.bootstrap(request);
+    request.report.log(
+      `${definition.runtimeName} daemon connected in ${options.now() - connectStartedAt} ms\n`,
+    );
+    return result;
+  }
 
   bb.experimental_environments.register({
     id: definition.id,
@@ -48,16 +56,12 @@ export function registerSandboxBackend<
           inputs: backend.parseInputs(context.inputs),
         });
         context.signal.throwIfAborted();
-        const connectStartedAt = options.now();
-        const { hostId } = await bb.experimental_machines.bootstrap({
+        const { hostId } = await bootstrap({
           key: context.key,
           executor: created.executor,
           report: context.report,
           signal: context.signal,
         });
-        context.report.log(
-          `${definition.runtimeName} daemon connected in ${options.now() - connectStartedAt} ms\n`,
-        );
         context.signal.throwIfAborted();
         await options.onConnected(hostId);
         return {
@@ -92,16 +96,12 @@ export function registerSandboxBackend<
         ...context,
         resource: backend.parseResource(context.resource),
       });
-      const connectStartedAt = options.now();
-      await bb.experimental_machines.bootstrap({
+      await bootstrap({
         key: backend.allocationKey(resumed.resource),
         executor: resumed.executor,
         report: context.report,
         signal: context.signal,
       });
-      context.report.log(
-        `${definition.runtimeName} daemon connected in ${options.now() - connectStartedAt} ms\n`,
-      );
       await options.onConnected(context.hostId);
       return { resource: resumed.resource };
     },

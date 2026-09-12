@@ -33,7 +33,6 @@ interface ProjectActionsMenuBaseProps {
 
 interface ProjectActionsMenuProps extends ProjectActionsMenuBaseProps {
   triggerClassName?: string;
-  onOpenChange?: (open: boolean) => void;
 }
 
 interface ProjectActionsContextMenuProps extends ProjectActionsMenuBaseProps {
@@ -112,10 +111,9 @@ export function ProjectActionsMenuItems({
 export function ProjectActionsMenu({
   project,
   triggerClassName,
-  onOpenChange,
 }: ProjectActionsMenuProps) {
   return (
-    <DropdownMenu onOpenChange={onOpenChange}>
+    <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
           type="button"

@@ -110,25 +110,29 @@ import {
   type DesktopBrowserWindowCreator,
   type DesktopWindowFactory,
 } from "./desktop-window-factory.js";
-import { shouldUseLinuxFramelessWindow } from "./desktop-window-frame.js";
-import { shouldUseLinuxTransparentWindow } from "./desktop-window-transparency.js";
+import {
+  hasLinuxWindowArgument,
+  LINUX_FRAMELESS_WINDOW_ARGUMENT,
+  LINUX_TRANSPARENT_WINDOW_ARGUMENT,
+} from "./desktop-linux-window-options.js";
 import {
   createDesktopAboutDialogOptions,
   createDesktopAboutPanelOptions,
   type DesktopAboutFacts,
 } from "./desktop-about-panel.js";
 import { registerDesktopContextMenu } from "./desktop-context-menu.js";
-import { resolveBbDesktopPlatform } from "./desktop-platform.js";
 import {
-  createDesktopUpdateService,
+  getDesktopVersion,
+  resolveBbDesktopPlatform,
+} from "./desktop-platform.js";
+import { createDesktopUpdateService } from "./desktop-update-check.js";
+import {
   createDesktopUpdateFeedUrl,
-  type DesktopUpdateService,
-} from "./desktop-update-check.js";
-import {
   DESKTOP_RELEASE_CHANNEL,
   DESKTOP_RELEASE_INFO,
   resolveDesktopUpdateSupport,
 } from "./desktop-update-provider.js";
+import type { DesktopUpdateService } from "./desktop-update-scheduler.js";
 import {
   createDesktopAutoUpdateService,
   createElectronAutoUpdaterAdapter,
@@ -244,18 +248,10 @@ interface StartOwnedRuntimeArgs {
   userDataPath: string;
 }
 
-interface AppendLogViewerLinesArgs {
-  lines: LogViewerLine[];
-}
-
 interface SendLogViewerSnapshotArgs {
   browserWindow: BrowserWindow;
   lines: LogViewerLine[];
   logDir: string;
-}
-
-interface HandleCopyLogsArgs {
-  request: LogViewerCopyRequest;
 }
 
 interface LoadLogViewerWindowArgs {
@@ -296,12 +292,7 @@ interface ResolveDesktopUpdateFeedUrlArgs {
   platform: BbDesktopInfo["platform"];
 }
 
-interface FetchSystemConfigArgs {
-  fetchImpl: typeof fetch;
-  serverUrl: string;
-}
-
-interface RefreshSystemConfigArgs {
+interface SystemConfigRequestArgs {
   fetchImpl: typeof fetch;
   serverUrl: string;
 }
@@ -328,7 +319,6 @@ let desktopUpdateService: DesktopUpdateService | null = null;
 let desktopAutoUpdateService: DesktopAutoUpdateService | null = null;
 let currentRuntime: DesktopRuntime | null = null;
 let currentWindowUrl: string | null = null;
-let logViewerIpcHandlersInstalled = false;
 let logViewerLineBuffer: LogLineBuffer | null = null;
 let logViewerPreloadPath: string | null = null;
 let logViewerTailer: LogTailer | null = null;
@@ -409,13 +399,6 @@ function resolveDesktopUpdateFeedUrl(
     return createDesktopUpdateFeedUrl(args.platform);
   }
   return rawFeedUrl;
-}
-
-function getDesktopVersion(version: string | undefined): string {
-  if (version === undefined || version.length === 0) {
-    throw new Error("Desktop version must be injected at build time");
-  }
-  return version;
 }
 
 function readDesktopAboutFacts(applicationName: string): DesktopAboutFacts {
@@ -549,19 +532,17 @@ function sendDesktopWindowStateChanged(
   );
 }
 
-function createDesktopLogger(): DesktopAutoUpdateLogger {
-  return {
-    error(message) {
-      process.stderr.write(`${message}\n`);
-    },
-    info(message) {
-      process.stderr.write(`${message}\n`);
-    },
-    warn(message) {
-      process.stderr.write(`${message}\n`);
-    },
-  };
-}
+const desktopLogger: DesktopAutoUpdateLogger = {
+  error(message) {
+    process.stderr.write(`${message}\n`);
+  },
+  info(message) {
+    process.stderr.write(`${message}\n`);
+  },
+  warn(message) {
+    process.stderr.write(`${message}\n`);
+  },
+};
 
 function resolveDataDirFromEnv(args: ResolveDataDirFromEnvArgs): string {
   const rawDataDir = args.env.BB_DATA_DIR?.trim();
@@ -724,7 +705,7 @@ function buildMenuServerItems(connectServers: ConnectServerRef[]): Array<{
   return items;
 }
 
-function installCurrentApplicationMenu(): void {
+function refreshApplicationMenu(): void {
   const connectServers = listMenuConnectServers();
   installApplicationMenu({
     accelerators: currentApplicationMenuAccelerators,
@@ -827,10 +808,6 @@ function installCurrentApplicationMenu(): void {
   });
 }
 
-function refreshApplicationMenu(): void {
-  installCurrentApplicationMenu();
-}
-
 function setCurrentRuntime(runtime: DesktopRuntime | null): void {
   currentRuntime = runtime;
   if (runtime === null) {
@@ -845,8 +822,8 @@ function setCurrentRuntime(runtime: DesktopRuntime | null): void {
   sendDesktopInfoChanged();
 }
 
-function formatApiUrl(args: FetchSystemConfigArgs): string {
-  const url = new URL(args.serverUrl);
+function formatApiUrl(serverUrl: string): string {
+  const url = new URL(serverUrl);
   url.pathname = "/api/v1/system/config";
   url.search = "";
   url.hash = "";
@@ -862,8 +839,8 @@ function formatRealtimeUrl(serverUrl: string): string {
   return url.toString();
 }
 
-async function fetchSystemConfig(args: FetchSystemConfigArgs) {
-  const response = await args.fetchImpl(formatApiUrl(args));
+async function fetchSystemConfig(args: SystemConfigRequestArgs) {
+  const response = await args.fetchImpl(formatApiUrl(args.serverUrl));
   if (!response.ok) {
     throw new Error(
       `System config request failed with HTTP ${response.status}`,
@@ -952,15 +929,12 @@ function createSystemConfigSync(serverUrl: string): SystemConfigSync {
 }
 
 async function refreshSystemConfig(
-  args: RefreshSystemConfigArgs,
+  args: SystemConfigRequestArgs,
 ): Promise<void> {
   const token = systemConfigRefreshToken + 1;
   systemConfigRefreshToken = token;
   try {
-    const config = await fetchSystemConfig({
-      fetchImpl: args.fetchImpl,
-      serverUrl: args.serverUrl,
-    });
+    const config = await fetchSystemConfig(args);
     if (token !== systemConfigRefreshToken) {
       return;
     }
@@ -1093,7 +1067,7 @@ async function authenticateConnectTarget(
       return cachedResult;
     }
     if (cachedResult.code === "unauthorized") {
-      createDesktopLogger().info(
+      desktopLogger.info(
         "[desktop] bb Connect refused the cached machine credential — dropping it",
       );
       await clearCachedConnectCredential();
@@ -1153,23 +1127,22 @@ function ensureDesktopMachineEnrolled(): void {
     return;
   }
   if (!cache.canPersist()) {
-    createDesktopLogger().info(
+    desktopLogger.info(
       "[desktop] no OS keychain available — keeping the local bb server for bb Connect sessions",
     );
     return;
   }
-  const logger = createDesktopLogger();
   enrollingDesktopMachine = (async () => {
     const result = await enrollDesktopMachine({ localServerUrl });
     if (!result.ok) {
-      logger.info(
+      desktopLogger.info(
         `[desktop] could not enroll this app with bb Connect (${result.code}): ${result.detail}`,
       );
       return;
     }
     cachedConnectCredential = result.credential;
     await cache.write(result.credential);
-    logger.info("[desktop] enrolled this app as a bb Connect machine");
+    desktopLogger.info("[desktop] enrolled this app as a bb Connect machine");
   })().finally(() => {
     enrollingDesktopMachine = null;
   });
@@ -1241,7 +1214,7 @@ async function applyServerTarget(): Promise<void> {
       return;
     }
     if (!result.ok) {
-      createDesktopLogger().warn(
+      desktopLogger.warn(
         `[desktop] Connect authentication failed (${result.code}): ${result.detail}`,
       );
       await loadStartupError({
@@ -1284,7 +1257,7 @@ async function loadRemoteServerTarget(
     loadStartupError,
     loadUrl: loadWindowUrl,
     logWarning: (message) => {
-      createDesktopLogger().warn(message);
+      desktopLogger.warn(message);
     },
     serverUrl,
   });
@@ -1358,14 +1331,6 @@ function sendLogViewerSnapshot(args: SendLogViewerSnapshotArgs): void {
   });
 }
 
-function appendLogViewerLines(args: AppendLogViewerLinesArgs): void {
-  if (args.lines.length === 0) {
-    return;
-  }
-
-  logViewerLineBuffer?.append(args.lines);
-}
-
 function closeServerDaemonLogsWindow(): void {
   logViewerTailer?.stop();
   logViewerTailer = null;
@@ -1377,11 +1342,6 @@ function closeServerDaemonLogsWindow(): void {
   if (browserWindow !== null && !browserWindow.isDestroyed()) {
     browserWindow.close();
   }
-}
-
-function handleCopyLogs(args: HandleCopyLogsArgs): void {
-  const request = logViewerCopyRequestSchema.parse(args.request);
-  clipboard.writeText(request.text);
 }
 
 async function handleOpenLogsFolder(): Promise<LogViewerOpenLogsFolderResult> {
@@ -1400,14 +1360,10 @@ async function handleOpenLogsFolder(): Promise<LogViewerOpenLogsFolderResult> {
 }
 
 function installLogViewerIpcHandlers(): void {
-  if (logViewerIpcHandlersInstalled) {
-    return;
-  }
-  logViewerIpcHandlersInstalled = true;
   ipcMain.handle(
     LOG_VIEWER_COPY_CHANNEL,
     (_event, request: LogViewerCopyRequest) => {
-      handleCopyLogs({ request });
+      clipboard.writeText(logViewerCopyRequestSchema.parse(request).text);
     },
   );
   ipcMain.handle(LOG_VIEWER_OPEN_LOGS_FOLDER_CHANNEL, () =>
@@ -1436,7 +1392,7 @@ async function loadLogViewerWindow(
   const tailer = createLogTailer({
     logDir: args.logDir,
     onLines(lines) {
-      appendLogViewerLines({ lines });
+      logViewerLineBuffer?.append(lines);
     },
   });
   const lineBuffer = createLogLineBuffer({
@@ -1645,7 +1601,7 @@ function registerDesktopUpdateIpc(): void {
       process.platform === "linux" &&
       (appImagePath.length === 0 || !canReplaceAppImage(appImagePath))
     ) {
-      createDesktopLogger().error(
+      desktopLogger.error(
         `Desktop update install skipped: ${appImagePath || "this build"} cannot be replaced in place. The runtime stays up; download the new AppImage instead.`,
       );
       return;
@@ -2020,7 +1976,7 @@ async function runDesktopApp(): Promise<void> {
   ensurePackagedUserShellPath({
     env: process.env,
     isPackaged: app.isPackaged,
-    logger: createDesktopLogger(),
+    logger: desktopLogger,
     platform: process.platform,
   });
 
@@ -2165,7 +2121,6 @@ async function runDesktopApp(): Promise<void> {
     userDataPath,
   });
   cachedConnectCredential = await connectCredentialCache.read();
-  const logger = createDesktopLogger();
   connectServerSync = createConnectServerSync({
     getCredential: () => cachedConnectCredential,
     getLocalServerUrl: () => currentRuntime?.serverUrl ?? null,
@@ -2193,7 +2148,7 @@ async function runDesktopApp(): Promise<void> {
       refreshApplicationMenu();
     },
     log: (message) => {
-      logger.info(`[desktop] ${message}`);
+      desktopLogger.info(`[desktop] ${message}`);
     },
   });
   connectServerSync.start();
@@ -2208,7 +2163,7 @@ async function runDesktopApp(): Promise<void> {
         : { detail: `${result.code}: ${result.detail}`, ok: false };
     },
     log: (message) => {
-      logger.warn(`[desktop] ${message}`);
+      desktopLogger.warn(`[desktop] ${message}`);
     },
   });
 
@@ -2224,7 +2179,7 @@ async function runDesktopApp(): Promise<void> {
       desktopUpdateSupport.versionCheck &&
       (app.isPackaged || process.env.BB_DESKTOP_VERSION_CHECK === "1"),
     feedUrl: desktopUpdateFeedUrl,
-    logger: createDesktopLogger(),
+    logger: desktopLogger,
     platform: desktopPlatform,
   });
   desktopAutoUpdateService = createDesktopAutoUpdateService({
@@ -2237,7 +2192,7 @@ async function runDesktopApp(): Promise<void> {
       }),
     forceDevUpdateConfig:
       !app.isPackaged && process.env.BB_DESKTOP_AUTO_UPDATE === "1",
-    logger: createDesktopLogger(),
+    logger: desktopLogger,
     platform: desktopPlatform,
     updater: createElectronAutoUpdaterAdapter(autoUpdater),
   });
@@ -2283,7 +2238,7 @@ async function runDesktopApp(): Promise<void> {
     context: { platform: process.platform, home: homedir() },
     resolveIcon: (appPath) => readMacAppIcon(appPath),
     log(message, details) {
-      createDesktopLogger().info(
+      desktopLogger.info(
         `[desktop] ${message}${details ? ` ${JSON.stringify(details)}` : ""}`,
       );
     },
@@ -2380,7 +2335,7 @@ async function runDesktopApp(): Promise<void> {
   if (desktopUpdateSupport.autoUpdate) {
     desktopAutoUpdateService.start();
   } else {
-    logger.info(
+    desktopLogger.info(
       "Desktop auto-install is disabled: only the Linux AppImage build can replace itself. Version checks still report new releases.",
     );
   }
@@ -2400,12 +2355,14 @@ async function runDesktopApp(): Promise<void> {
     },
     displayWorkAreas: null,
     icon: nativeImage.createFromPath(iconPath),
-    isLinuxTransparent: shouldUseLinuxTransparentWindow({
+    isLinuxTransparent: hasLinuxWindowArgument({
+      argument: LINUX_TRANSPARENT_WINDOW_ARGUMENT,
       argv: process.argv,
       platform: process.platform,
     }),
     isMac: process.platform === "darwin",
-    isLinuxFrameless: shouldUseLinuxFramelessWindow({
+    isLinuxFrameless: hasLinuxWindowArgument({
+      argument: LINUX_FRAMELESS_WINDOW_ARGUMENT,
       argv: process.argv,
       platform: process.platform,
     }),

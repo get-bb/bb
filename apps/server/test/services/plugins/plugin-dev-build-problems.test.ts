@@ -27,8 +27,6 @@ async function createRuntime() {
       dataDir: await mkdtemp(join(tmpdir(), "bb-dev-build-problems-")),
       appVersion: "0.9.0",
     },
-    nextCronRunAt: () => Number.MAX_SAFE_INTEGER,
-    settledWithin: async () => true,
   });
 }
 

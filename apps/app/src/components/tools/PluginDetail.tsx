@@ -30,8 +30,8 @@ import {
 import {
   CatalogEntryIconChip,
   formatAbsoluteDate,
-  formatPluginInstallCount,
   PluginLogo,
+  pluginInstallCountPresentation,
 } from "@/components/plugin/management/plugin-ui";
 import {
   PluginMarketplaceCategoryPill,
@@ -128,13 +128,7 @@ export function CatalogPluginDetail({
   catalogEntries: readonly PluginCatalogSearchEntry[];
   onOpenPlugin: (pluginId: string) => void;
 }) {
-  const count =
-    entry.installs === null
-      ? undefined
-      : {
-          display: formatPluginInstallCount(entry.installs),
-          accessibleLabel: `${entry.installs.toLocaleString()} ${entry.installs === 1 ? "install" : "installs"}`,
-        };
+  const count = pluginInstallCountPresentation(entry.installs);
   return (
     <ResourceDetailPage
       maxWidthClassName="max-w-5xl"
@@ -389,7 +383,6 @@ export function PluginDetail({
             className="scroll-mt-4"
             label="Configuration"
           >
-            {}
             <p className="max-w-none text-sm leading-relaxed text-muted-foreground">
               This plugin is configured from{" "}
               <Link
@@ -437,7 +430,6 @@ export function PluginDetail({
           </PluginDetailTable>
         </ResourceDetailReleaseSection>
         <PluginIncludes plugin={plugin} />
-        {}
         {plugin.services.length > 0 ? (
           <ResourceActivitySection label="Background services">
             <PluginServices plugin={plugin} />

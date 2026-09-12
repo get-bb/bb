@@ -5,7 +5,8 @@ import {
   makeThreadResponse,
 } from "@get-bb/plugin-sdk/testing";
 import { describe, expect, it, vi } from "vitest";
-import { buildAttachmentUrl, registerAttachments } from "../attachments";
+import { registerAttachments } from "../attachments";
+import { attachmentDownloadUrl } from "../shared/attachments";
 import { tasksRpcContract } from "../shared/contract";
 import { createComment, createStore, registerTasksApi } from ".";
 
@@ -33,7 +34,7 @@ describe("Tasks RPC domain API", () => {
       attachmentId: string;
     };
     store.tasks.updateTask(task.id, {
-      description: `![diagram](${buildAttachmentUrl(attachmentId)})`,
+      description: `![diagram](${attachmentDownloadUrl(attachmentId)})`,
     });
     const signalsBeforeConflict = harness.realtimeSignals.length;
 
@@ -140,7 +141,7 @@ describe("Tasks RPC domain API", () => {
     ]);
     expect(harness.realtimeSignals.at(-1)).toEqual({
       channel: "comments:changed",
-      payload: { taskId: task.id, notifiedCount: 1 },
+      payload: { taskId: task.id },
     });
     await harness.dispose();
   });
@@ -577,11 +578,11 @@ describe("Tasks RPC domain API", () => {
     expect(harness.realtimeSignals.slice(-2)).toEqual([
       {
         channel: "comments:changed",
-        payload: { taskId: task.id, notifiedCount: 0 },
+        payload: { taskId: task.id },
       },
       {
         channel: "comments:changed",
-        payload: { taskId: task.id, notifiedCount: 0 },
+        payload: { taskId: task.id },
       },
     ]);
     await harness.dispose();

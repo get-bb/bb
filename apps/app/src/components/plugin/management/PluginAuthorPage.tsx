@@ -4,8 +4,6 @@ import { Icon } from "@bb/shared-ui/icon";
 import {
   ResourceCollectionViewport,
   ResourceListState,
-  ResourceSortMenu,
-  ResourceToolbar,
 } from "@bb/shared-ui/resource-list";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { TOOLS_PAGE_BAND_CLASSES } from "@/components/tools/tools-navigation";
@@ -22,10 +20,9 @@ import {
 } from "./BrowsePluginsTab";
 import { PluginAuthorAvatar } from "./PluginAuthorAvatar";
 import {
-  PluginBrowseCategoryFilter,
+  PluginBrowseToolbar,
   pluginBrowseSort,
   pluginBrowseSortDirection,
-  pluginBrowseSortOptions,
 } from "./PluginBrowseControls";
 import {
   pluginCategoryFilterId,
@@ -35,10 +32,7 @@ import {
   entriesByMarketplaceAuthor,
   pluginAuthorGithub,
 } from "./plugin-marketplace-author";
-
-function authorUrlLabel(url: string): string {
-  return url.replace(/^https?:\/\//u, "").replace(/\/+$/u, "");
-}
+import { formatUrlLabel } from "./plugin-ui";
 
 function authorForEntries(
   entries: readonly PluginCatalogSearchEntry[],
@@ -177,7 +171,7 @@ export function PluginAuthorPage({
                     rel="noreferrer"
                     className="inline-flex items-center gap-1 rounded-sm text-xs text-subtle-foreground underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                   >
-                    {authorUrlLabel(author.url)}
+                    {formatUrlLabel(author.url)}
                     <Icon name="ExternalLink" className="size-3" aria-hidden />
                     <span className="sr-only">Opens in a new tab</span>
                   </a>
@@ -199,61 +193,15 @@ export function PluginAuthorPage({
           <ResourceListState state="empty" message="Author not found." />
         ) : (
           <section className="space-y-6">
-            <div className="mx-auto w-full max-w-3xl">
-              <ResourceToolbar
-                searchValue={query}
-                searchPlaceholder="Search plugins"
-                onSearchChange={(value) =>
-                  changeSearchParams((next) => {
-                    if (value === "") next.delete("query");
-                    else next.set("query", value);
-                  })
-                }
-                controls={
-                  <>
-                    <PluginBrowseCategoryFilter
-                      selectionMode="multiple"
-                      value={selectedCategories}
-                      options={categoryOptions}
-                      onChange={(values) =>
-                        changeSearchParams((next) => {
-                          next.delete("category");
-                          for (const value of values) {
-                            next.append("category", value);
-                          }
-                        })
-                      }
-                    />
-                    <ResourceSortMenu
-                      value={sort}
-                      direction={sortDirection}
-                      compact
-                      placeholderLabel="Featured"
-                      options={pluginBrowseSortOptions(installsKnown)}
-                      onChange={(value) =>
-                        changeSearchParams((next) => {
-                          if (value === sort) {
-                            next.set(
-                              "direction",
-                              sortDirection === "asc" ? "desc" : "asc",
-                            );
-                          } else {
-                            next.set("sort", value);
-                            next.set("direction", "desc");
-                          }
-                        })
-                      }
-                      onClear={() =>
-                        changeSearchParams((next) => {
-                          next.delete("sort");
-                          next.delete("direction");
-                        })
-                      }
-                    />
-                  </>
-                }
-              />
-            </div>
+            <PluginBrowseToolbar
+              query={query}
+              selectedCategories={selectedCategories}
+              categoryOptions={categoryOptions}
+              sort={sort}
+              sortDirection={sortDirection}
+              installsKnown={installsKnown}
+              changeSearchParams={changeSearchParams}
+            />
             {catalogQuery.isError || searchQuery.isError ? (
               <p className="text-xs text-warning-text" role="status">
                 The latest search failed. The page shows saved catalog results.
@@ -269,7 +217,6 @@ export function PluginAuthorPage({
             ) : (
               <PluginCatalogGrid
                 entries={visibleEntries}
-                showCategory
                 onInstall={onInstall}
                 onOpenPlugin={onOpenPlugin}
               />

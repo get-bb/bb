@@ -4,20 +4,15 @@ import type {
   UpdateDownloadedEvent,
   UpdateInfo,
 } from "electron-updater";
-import type {
-  BbDesktopInfo,
-  BbDesktopInfoChangeHandler,
-  BbDesktopInfoUnsubscribe,
-} from "@bb/desktop-contract";
-import {
-  DESKTOP_UPDATE_ACTIVE_MIN_INTERVAL_MS,
-  DESKTOP_UPDATE_CHECK_INTERVAL_MS,
-  type DesktopUpdateService,
-} from "./desktop-update-check.js";
+import type { BbDesktopInfo } from "@bb/desktop-contract";
 import {
   DESKTOP_AUTO_UPDATE_FEED_CONFIG,
   type DesktopAutoUpdateFeedConfig,
 } from "./desktop-update-provider.js";
+import {
+  createDesktopUpdateScheduler,
+  type DesktopUpdateService,
+} from "./desktop-update-scheduler.js";
 
 export interface DesktopAutoUpdateLogger {
   error(message: string): void;
@@ -59,7 +54,7 @@ interface CreateDesktopAutoUpdateServiceArgs {
   currentVersion: string;
   enabled: boolean;
   forceDevUpdateConfig: boolean;
-  logger?: DesktopAutoUpdateLogger;
+  logger: DesktopAutoUpdateLogger;
   now?: () => number;
   platform: BbDesktopInfo["platform"];
   updater: DesktopAutoUpdaterAdapter;
@@ -85,8 +80,6 @@ interface ApplyUpdateNotAvailableArgs {
   version: string;
 }
 
-type DesktopUpdateIntervalHandle = ReturnType<typeof setInterval>;
-
 export interface DesktopAutoUpdateService extends DesktopUpdateService {
   installUpdate(): void;
 }
@@ -111,36 +104,6 @@ function formatErrorMessage(error: unknown): string {
   return error instanceof Error
     ? (error.stack ?? error.message)
     : String(error);
-}
-
-function createDefaultLogger(): DesktopAutoUpdateLogger {
-  return {
-    error(message) {
-      console.error(message);
-    },
-    info(message) {
-      console.info(message);
-    },
-    warn(message) {
-      console.warn(message);
-    },
-  };
-}
-
-function areDesktopInfoValuesEqual(
-  left: BbDesktopInfo,
-  right: BbDesktopInfo,
-): boolean {
-  return (
-    left.lastCheckedAt === right.lastCheckedAt &&
-    left.downloadState === right.downloadState &&
-    left.latestVersion === right.latestVersion &&
-    left.pendingVersion === right.pendingVersion &&
-    left.platform === right.platform &&
-    left.updateAvailable === right.updateAvailable &&
-    left.updateDownloaded === right.updateDownloaded &&
-    left.version === right.version
-  );
 }
 
 function formatCheckedAt(now: () => number): string {
@@ -201,43 +164,32 @@ export function createElectronAutoUpdaterAdapter(
 export function createDesktopAutoUpdateService(
   args: CreateDesktopAutoUpdateServiceArgs,
 ): DesktopAutoUpdateService {
-  const logger = args.logger ?? createDefaultLogger();
   const now = args.now ?? (() => Date.now());
-
-  let currentInfo = createBaseInfo(args.currentVersion, args.platform);
-  let inflight: Promise<BbDesktopInfo> | null = null;
-  let intervalHandle: DesktopUpdateIntervalHandle | null = null;
-  let lastAttemptedAt: number | null = null;
   let downloadInFlight: Promise<Array<string>> | null = null;
-  const listeners = new Set<BbDesktopInfoChangeHandler>();
+  const scheduler = createDesktopUpdateScheduler({
+    enabled: args.enabled,
+    initialInfo: createBaseInfo(args.currentVersion, args.platform),
+    now,
+    runCheck,
+    shouldSkipCheck,
+  });
 
-  function updateInfo(nextInfo: BbDesktopInfo): void {
-    if (areDesktopInfoValuesEqual(currentInfo, nextInfo)) {
-      return;
-    }
-    currentInfo = nextInfo;
-    for (const listener of listeners) {
-      listener(currentInfo);
-    }
+  function shouldSkipCheck(): boolean {
+    return scheduler.getInfo().updateDownloaded;
   }
 
-  function applyUpdateAvailable(
-    applyArgs: ApplyUpdateAvailableArgs,
-  ): BbDesktopInfo {
-    updateInfo({
-      ...currentInfo,
+  function applyUpdateAvailable(applyArgs: ApplyUpdateAvailableArgs): void {
+    scheduler.updateInfo({
+      ...scheduler.getInfo(),
       lastCheckedAt: applyArgs.checkedAt,
       latestVersion: applyArgs.version,
       updateAvailable: true,
     });
-    return currentInfo;
   }
 
-  function applyUpdateDownloaded(
-    applyArgs: ApplyUpdateDownloadedArgs,
-  ): BbDesktopInfo {
-    updateInfo({
-      ...currentInfo,
+  function applyUpdateDownloaded(applyArgs: ApplyUpdateDownloadedArgs): void {
+    scheduler.updateInfo({
+      ...scheduler.getInfo(),
       downloadState: "downloaded",
       lastCheckedAt: applyArgs.checkedAt,
       latestVersion: applyArgs.version,
@@ -245,14 +197,13 @@ export function createDesktopAutoUpdateService(
       updateAvailable: true,
       updateDownloaded: true,
     });
-    return currentInfo;
   }
 
   function applyUpdateNotAvailable(
     applyArgs: ApplyUpdateNotAvailableArgs,
-  ): BbDesktopInfo {
-    updateInfo({
-      ...currentInfo,
+  ): void {
+    scheduler.updateInfo({
+      ...scheduler.getInfo(),
       downloadState: "idle",
       lastCheckedAt: applyArgs.checkedAt,
       latestVersion: applyArgs.version,
@@ -260,25 +211,24 @@ export function createDesktopAutoUpdateService(
       updateAvailable: false,
       updateDownloaded: false,
     });
-    return currentInfo;
   }
 
   function startDownload(): void {
     if (downloadInFlight !== null) {
       return;
     }
-    updateInfo({
-      ...currentInfo,
+    scheduler.updateInfo({
+      ...scheduler.getInfo(),
       downloadState: "downloading",
     });
     try {
       downloadInFlight = args.updater.downloadUpdate();
     } catch (error: unknown) {
-      updateInfo({
-        ...currentInfo,
+      scheduler.updateInfo({
+        ...scheduler.getInfo(),
         downloadState: "failed",
       });
-      logger.error(
+      args.logger.error(
         `Desktop auto-update download failed; preserving current update state: ${formatErrorMessage(
           error,
         )}`,
@@ -287,11 +237,11 @@ export function createDesktopAutoUpdateService(
     }
     void downloadInFlight
       .catch((error: unknown) => {
-        updateInfo({
-          ...currentInfo,
+        scheduler.updateInfo({
+          ...scheduler.getInfo(),
           downloadState: "failed",
         });
-        logger.error(
+        args.logger.error(
           `Desktop auto-update download failed; preserving current update state: ${formatErrorMessage(
             error,
           )}`,
@@ -302,70 +252,47 @@ export function createDesktopAutoUpdateService(
       });
   }
 
-  async function checkForUpdates(): Promise<BbDesktopInfo> {
-    if (!args.enabled) {
-      return currentInfo;
-    }
-    if (currentInfo.updateDownloaded) {
-      return currentInfo;
-    }
-    if (inflight !== null) {
-      return inflight;
+  async function runCheck(checkedAt: string): Promise<void> {
+    let result: UpdateCheckResult | null;
+    try {
+      result = await args.updater.checkForUpdates();
+    } catch (error: unknown) {
+      args.logger.error(
+        `Desktop auto-update check failed; update installation remains disabled until a later check succeeds: ${formatErrorMessage(
+          error,
+        )}`,
+      );
+      scheduler.updateInfo({
+        ...scheduler.getInfo(),
+        lastCheckedAt: checkedAt,
+      });
+      return;
     }
 
-    const requestPromise = (async () => {
-      lastAttemptedAt = now();
-      const checkedAt = new Date(lastAttemptedAt).toISOString();
-
-      let result: UpdateCheckResult | null;
-      try {
-        result = await args.updater.checkForUpdates();
-      } catch (error: unknown) {
-        logger.error(
-          `Desktop auto-update check failed; update installation remains disabled until a later check succeeds: ${formatErrorMessage(
-            error,
-          )}`,
-        );
-        updateInfo({
-          ...currentInfo,
-          lastCheckedAt: checkedAt,
-        });
-        return currentInfo;
-      }
-
-      if (result === null) {
-        return currentInfo;
-      }
-      if (result.isUpdateAvailable) {
-        return applyUpdateAvailable({
-          checkedAt,
-          version: result.updateInfo.version,
-        });
-      }
-      return applyUpdateNotAvailable({
+    if (result === null) {
+      return;
+    }
+    if (result.isUpdateAvailable) {
+      applyUpdateAvailable({
         checkedAt,
         version: result.updateInfo.version,
       });
-    })();
-
-    inflight = requestPromise;
-    try {
-      return await requestPromise;
-    } finally {
-      if (inflight === requestPromise) {
-        inflight = null;
-      }
+      return;
     }
+    applyUpdateNotAvailable({
+      checkedAt,
+      version: result.updateInfo.version,
+    });
   }
 
   if (args.enabled) {
-    args.updater.setLogger(logger);
+    args.updater.setLogger(args.logger);
     args.updater.setFeedURL(DESKTOP_AUTO_UPDATE_FEED_CONFIG);
     args.updater.setAutoDownload(false);
     args.updater.setAutoInstallOnAppQuit(true);
     args.updater.setForceDevUpdateConfig(args.forceDevUpdateConfig);
     args.updater.onUpdateAvailable((info) => {
-      logger.info(
+      args.logger.info(
         `Desktop auto-update available: ${info.version}; downloading in background.`,
       );
       applyUpdateAvailable({
@@ -375,7 +302,7 @@ export function createDesktopAutoUpdateService(
       startDownload();
     });
     args.updater.onUpdateDownloaded((event) => {
-      logger.info(
+      args.logger.info(
         `Desktop auto-update downloaded: ${event.version}; it will install on restart or quit.`,
       );
       applyUpdateDownloaded({
@@ -384,7 +311,7 @@ export function createDesktopAutoUpdateService(
       });
     });
     args.updater.onUpdateNotAvailable((info) => {
-      logger.info(`Desktop auto-update not available: ${info.version}.`);
+      args.logger.info(`Desktop auto-update not available: ${info.version}.`);
       applyUpdateNotAvailable({
         checkedAt: formatCheckedAt(now),
         version: info.version,
@@ -392,14 +319,14 @@ export function createDesktopAutoUpdateService(
     });
     args.updater.onError((errorArgs) => {
       const suffix = errorArgs.message === null ? "" : ` ${errorArgs.message}`;
-      logger.error(
+      args.logger.error(
         `Desktop auto-update error; preserving current update state.${suffix} ${formatErrorMessage(
           errorArgs.error,
         )}`,
       );
-      if (currentInfo.downloadState === "downloading") {
-        updateInfo({
-          ...currentInfo,
+      if (scheduler.getInfo().downloadState === "downloading") {
+        scheduler.updateInfo({
+          ...scheduler.getInfo(),
           downloadState: "failed",
         });
       }
@@ -407,53 +334,15 @@ export function createDesktopAutoUpdateService(
   }
 
   return {
-    async checkAfterActive(): Promise<BbDesktopInfo | null> {
-      if (!args.enabled) {
-        return null;
-      }
-      const currentTime = now();
-      if (
-        lastAttemptedAt !== null &&
-        currentTime - lastAttemptedAt < DESKTOP_UPDATE_ACTIVE_MIN_INTERVAL_MS
-      ) {
-        return currentInfo;
-      }
-      return checkForUpdates();
-    },
-    checkForUpdates,
-    getInfo(): BbDesktopInfo {
-      return currentInfo;
-    },
+    ...scheduler,
     installUpdate(): void {
-      if (!currentInfo.updateDownloaded) {
-        logger.warn(
+      if (!scheduler.getInfo().updateDownloaded) {
+        args.logger.warn(
           "Desktop auto-update install requested before an update was downloaded; ignoring.",
         );
         return;
       }
       args.updater.quitAndInstall();
-    },
-    start(): void {
-      if (!args.enabled || intervalHandle !== null) {
-        return;
-      }
-      void checkForUpdates();
-      intervalHandle = setInterval(() => {
-        void checkForUpdates();
-      }, DESKTOP_UPDATE_CHECK_INTERVAL_MS);
-    },
-    stop(): void {
-      if (intervalHandle === null) {
-        return;
-      }
-      clearInterval(intervalHandle);
-      intervalHandle = null;
-    },
-    subscribe(listener: BbDesktopInfoChangeHandler): BbDesktopInfoUnsubscribe {
-      listeners.add(listener);
-      return () => {
-        listeners.delete(listener);
-      };
     },
   };
 }

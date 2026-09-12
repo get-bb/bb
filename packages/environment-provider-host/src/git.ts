@@ -366,25 +366,14 @@ export async function readDefaultBranch(
   options: GitTimeoutOptions = {},
 ): Promise<string | undefined> {
   await ensureGitRepo(cwd, options);
-
-  const originHead = await runGit(
-    ["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"],
-    { cwd, ...options, allowFailure: true },
+  const originHeadBranch = await readOriginHeadBranchName(cwd, options);
+  if (originHeadBranch !== undefined) {
+    return originHeadBranch;
+  }
+  return resolvePreferredLocalDefaultBranch(
+    await readLocalBranches(cwd, options),
+    undefined,
   );
-  const remoteHead = trimOutput(originHead.stdout);
-  if (remoteHead.startsWith("refs/remotes/origin/")) {
-    return remoteHead.replace("refs/remotes/origin/", "");
-  }
-
-  const localBranches = await readLocalBranches(cwd, options);
-  if (localBranches.includes("main")) {
-    return "main";
-  }
-  if (localBranches.includes("master")) {
-    return "master";
-  }
-
-  return localBranches[0];
 }
 
 export async function hasRef(

@@ -1,20 +1,17 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join, resolve } from "node:path";
 import { createConnection, migrate } from "@bb/db";
 import {
-  resolveCurrentDevInstanceConfig,
   resolveDataDirDatabasePath,
   resolveProdDataDir,
 } from "@bb/config/runtime";
 import { HOST_ID_FILE_NAME } from "@bb/host-daemon-contract";
+import { resolveDevDataDir } from "../lib/dev-restart-utils.js";
+import { runMainIfEntrypoint } from "../lib/script-entry.js";
 import { seedPerfFixture } from "../lib/seed-perf-fixture.js";
 import { bold, cyan, dim, green, log, endStep } from "../lib/script-helpers.js";
-
-const commandDir = dirname(fileURLToPath(import.meta.url));
-const repoRoot = resolve(commandDir, "..", "..", "..", "..");
 
 interface SeedCommandArgs {
   dataDir: string | null;
@@ -112,7 +109,7 @@ function resolveTargetDataDir(args: SeedCommandArgs): string {
   if (args.dataDir !== null) {
     return args.dataDir;
   }
-  return resolveCurrentDevInstanceConfig(repoRoot).dataDir;
+  return resolveDevDataDir();
 }
 
 function readSeedHostId(dataDir: string): string {
@@ -202,14 +199,4 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
   }
 }
 
-if (
-  process.argv[1] != null &&
-  resolve(process.argv[1]) === fileURLToPath(import.meta.url)
-) {
-  void main().catch((error) => {
-    const message =
-      error instanceof Error ? (error.stack ?? error.message) : String(error);
-    process.stderr.write(`${message}\n`);
-    process.exitCode = 1;
-  });
-}
+runMainIfEntrypoint(import.meta.url, main);

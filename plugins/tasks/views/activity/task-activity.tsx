@@ -22,21 +22,22 @@ import {
   useTasksQuery,
   useTasksRpc,
 } from "../../shell/data.js";
-import {
-  attachmentDownloadUrl,
-  Lightbox,
-  uploadAttachment,
-} from "../detail/attachments.js";
+import { Lightbox } from "../detail/attachments.js";
 import {
   AttachmentChip,
+  settleStagedUploads,
   stageFiles,
+  uploadStagedAttachments,
+  useStagedAttachmentRetry,
   type StagedAttachment,
 } from "../../components/staged-attachments.js";
+import { attachmentDownloadUrl } from "../../shared/attachments.js";
 import type {
   Attachment,
   Comment,
   DisplayComment,
 } from "../../shared/contract.js";
+import { errorMessage } from "../../shared/errors.js";
 import {
   formatFileSize,
   formatRelativeTime,
@@ -152,7 +153,6 @@ function ImageAttachmentFigure({
           className="h-24 w-auto min-w-15 max-w-full cursor-zoom-in rounded-md border border-border bg-muted object-cover hover:border-input @2xl:h-32 @2xl:min-w-20"
         />
       </button>
-      {}
       <figcaption
         title={attachment.fileName}
         className="mt-0.5 w-0 min-w-full truncate px-1 text-center text-2xs text-muted-foreground"
@@ -302,32 +302,9 @@ export function CommentComposer({ taskId, notificationTarget }: ComposerProps) {
   const removeFile = (id: number) =>
     setPendingFiles((files) => files.filter((entry) => entry.id !== id));
 
-  const retryingRef = useRef(new Set<number>());
-  const retryUpload = async (entry: StagedAttachment) => {
-    if (entry.owner === undefined || retryingRef.current.has(entry.id)) return;
-    retryingRef.current.add(entry.id);
-    setPendingFiles((files) =>
-      files.map((candidate) =>
-        candidate.id === entry.id ? { ...candidate, busy: true } : candidate,
-      ),
-    );
-    try {
-      await uploadAttachment(entry.file, entry.owner);
-      removeFile(entry.id);
-      setError(null);
-    } catch (cause) {
-      const message = cause instanceof Error ? cause.message : String(cause);
-      setPendingFiles((files) =>
-        files.map((candidate) =>
-          candidate.id === entry.id
-            ? { ...candidate, busy: false, error: message }
-            : candidate,
-        ),
-      );
-    } finally {
-      retryingRef.current.delete(entry.id);
-    }
-  };
+  const retryUpload = useStagedAttachmentRetry(setPendingFiles, () =>
+    setError(null),
+  );
 
   const send = async () => {
     if (!canSend || sendingRef.current) return;
@@ -345,35 +322,17 @@ export function CommentComposer({ taskId, notificationTarget }: ComposerProps) {
         })
       ).comment;
       setBody("");
-      const failed: StagedAttachment[] = [];
-      for (const entry of staged) {
-        try {
-          await uploadAttachment(entry.file, { commentId: comment.id });
-        } catch (cause) {
-          failed.push({
-            ...entry,
-            status: "failed",
-            owner: { commentId: comment.id },
-            error: cause instanceof Error ? cause.message : String(cause),
-          });
-        }
-      }
-      setPendingFiles((files) =>
-        files.flatMap((entry) => {
-          const failure = failed.find((candidate) => candidate.id === entry.id);
-          if (failure) return [failure];
-          return staged.some((candidate) => candidate.id === entry.id)
-            ? []
-            : [entry];
-        }),
-      );
+      const failed = await uploadStagedAttachments(staged, {
+        commentId: comment.id,
+      });
+      setPendingFiles((files) => settleStagedUploads(files, staged, failed));
       if (failed.length > 0) {
         setError(
           `The comment posted, but ${failed.length} attachment${failed.length > 1 ? "s" : ""} failed to upload — retry below.`,
         );
       }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
+      setError(errorMessage(cause));
     } finally {
       sendingRef.current = false;
       setSending(false);
@@ -507,7 +466,6 @@ export function AgentNotificationControl({
 
 interface TaskActivityProps {
   taskId: string;
-  taskKey: string;
 }
 
 export function TaskActivity({ taskId }: TaskActivityProps) {

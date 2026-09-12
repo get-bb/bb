@@ -3,19 +3,10 @@ import { escapeHtmlText } from "@bb/domain";
 
 export const STARTUP_RETRY_CHANNEL = "bb-desktop:retry-startup";
 
-export type LocalViewModel =
-  | InfoViewModel
-  | LoadingViewModel
-  | StartupErrorViewModel;
+export type LocalViewModel = LoadingViewModel | StartupErrorViewModel;
 
 interface LoadingViewModel {
   kind: "loading";
-  message: string;
-  title: string;
-}
-
-interface InfoViewModel {
-  kind: "info";
   message: string;
   title: string;
 }
@@ -46,15 +37,6 @@ function renderLoadingView(viewModel: LoadingViewModel): string {
   `;
 }
 
-function renderInfoView(viewModel: InfoViewModel): string {
-  return `
-    <main class="shell">
-      <h1>${escapeHtmlText(viewModel.title)}</h1>
-      <p>${escapeHtmlText(viewModel.message)}</p>
-    </main>
-  `;
-}
-
 function renderErrorView(viewModel: StartupErrorViewModel): string {
   const logText = formatPlainLogText(viewModel.logText);
   const logs =
@@ -73,14 +55,10 @@ function renderErrorView(viewModel: StartupErrorViewModel): string {
 }
 
 function renderLocalView(viewModel: LocalViewModel): string {
-  let body: string;
-  if (viewModel.kind === "loading") {
-    body = renderLoadingView(viewModel);
-  } else if (viewModel.kind === "info") {
-    body = renderInfoView(viewModel);
-  } else {
-    body = renderErrorView(viewModel);
-  }
+  const body =
+    viewModel.kind === "loading"
+      ? renderLoadingView(viewModel)
+      : renderErrorView(viewModel);
   return `<!doctype html>
 <html>
 <head>

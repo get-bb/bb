@@ -129,7 +129,6 @@ export async function startHostDaemon(
       component: "host-daemon",
       base: { serverUrl },
       dataDir,
-      transportMode: "worker",
     });
     lockDiagnosticsLogger = logger;
     if (options.serverHeaders !== undefined) {

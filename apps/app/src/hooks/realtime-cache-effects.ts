@@ -410,10 +410,13 @@ export function createRealtimeCacheEffects({
     maxWaitMs: ENVIRONMENT_INVALIDATION_MAX_WAIT_MS,
   });
 
-  const applyHostChanges = (changeKinds: Iterable<HostChangeKind>): void => {
+  const applyHostChanges = (
+    hostId: string | undefined,
+    changeKinds: Iterable<HostChangeKind>,
+  ): void => {
     for (const changeKind of changeKinds) {
       executeRealtimeDirtyHandlers({
-        context: { queryClient },
+        context: { hostId, queryClient },
         handlers: REALTIME_HOST_CHANGE_REGISTRY[changeKind].dirty,
       });
     }
@@ -454,7 +457,7 @@ export function createRealtimeCacheEffects({
           Array.from(changeKinds),
         );
       }
-      applyHostChanges(hostKinds);
+      applyHostChanges(undefined, hostKinds);
       for (const [projectId, changeKinds] of projectKindsById) {
         applyProjectChanges(projectId, changeKinds);
       }
@@ -535,7 +538,7 @@ export function createRealtimeCacheEffects({
             addAll(deferredNonThreadChanges.hostKinds, message.changes);
             break;
           }
-          applyHostChanges(message.changes);
+          applyHostChanges(message.id, message.changes);
           break;
         case "project":
           if (!documentVisible) {

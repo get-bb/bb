@@ -80,6 +80,7 @@ vi.mock("@/hooks/queries/system-queries", () => ({
 }));
 
 vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
+  DEFAULT_COMPOSER_SCOPE: { kind: "new-thread", projectId: null },
   PromptBoxInternal: ({
     footerStart,
     compact,

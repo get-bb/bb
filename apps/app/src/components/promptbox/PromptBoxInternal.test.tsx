@@ -69,7 +69,10 @@ import {
   type PromptVoiceConfig,
   type TypeaheadConfig,
 } from "./PromptBoxInternal";
-import { promptMentionClipboardContent } from "./mentions/prompt-mention-clipboard";
+import {
+  promptMentionClipboardDataAttributes,
+  serializedTextForPromptMentionResource,
+} from "./mentions/prompt-mention-clipboard";
 import { orderPromptMentionSuggestions } from "@/hooks/promptMentionCandidates";
 import type {
   PromptMentionSuggestion,
@@ -3929,16 +3932,24 @@ describe("PromptBoxInternal prompt actions", () => {
   it("keeps multiple pasted plugin references as distinct pills", async () => {
     const { changes, promptBoxRef } = renderPromptBox("");
     const reference = (id: string, label: string) => {
-      const pill = promptMentionClipboardContent({
-        kind: "plugin",
+      const resource = {
+        kind: "plugin" as const,
         pluginId: "plugin-api-docs",
         icon: null,
         itemId: `surface:${id}`,
         label,
-      });
+      };
+      const serializedText = serializedTextForPromptMentionResource(resource);
+      const pill = document.createElement("span");
+      for (const [name, value] of Object.entries(
+        promptMentionClipboardDataAttributes({ resource, serializedText }),
+      )) {
+        pill.setAttribute(name, value);
+      }
+      pill.textContent = serializedText;
       return {
-        text: `Build a plugin capability like ${pill.text.trimEnd()} using bb's Plugin Guide. `,
-        html: `Build a plugin capability like ${pill.html.trimEnd()} using bb's Plugin Guide. `,
+        text: `Build a plugin capability like ${serializedText} using bb's Plugin Guide. `,
+        html: `Build a plugin capability like ${pill.outerHTML} using bb's Plugin Guide. `,
       };
     };
 

@@ -95,7 +95,6 @@ function renderUnderThreadA(ui: React.ReactElement) {
   return render(
     <Wrapper>
       <MemoryRouter>
-        {}
         <ThreadProviderContext.Provider
           value={{ providerId: "agent-a", pluginId: "plugin-a" }}
         >

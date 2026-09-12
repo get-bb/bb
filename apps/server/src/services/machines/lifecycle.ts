@@ -214,7 +214,7 @@ export async function maintainMachine(
             ? "active"
             : originalPhase;
     updateHost(deps.db, deps.hub, hostId, {
-      ...(phase === undefined ? {} : { phase }),
+      phase,
       statusMessage: cancelled ? null : `Machine suspension failed: ${message}`,
       suspendRetryAt: cancelled ? null : Date.now() + RETRY_MS,
     });

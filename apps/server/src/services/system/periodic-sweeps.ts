@@ -91,8 +91,6 @@ interface PeriodicSweepJobState {
 }
 
 type PeriodicSweepJobList = readonly PeriodicSweepJob[];
-let lastDatabaseMaintenanceCheckAt = 0;
-let databaseMaintenanceRunning = false;
 const periodicSweepJobStates = new Map<string, PeriodicSweepJobState>();
 
 function getPeriodicSweepJobState(
@@ -159,21 +157,7 @@ export async function runPeriodicSweepJobs(
 
 export function runDatabaseMaintenanceSweep(
   deps: DatabaseMaintenanceSweepDeps,
-  now: number,
 ): void {
-  if (databaseMaintenanceRunning) {
-    return;
-  }
-
-  if (
-    now - lastDatabaseMaintenanceCheckAt <
-    DATABASE_MAINTENANCE_CHECK_INTERVAL_MS
-  ) {
-    return;
-  }
-
-  lastDatabaseMaintenanceCheckAt = now;
-
   const deferredLegacyTables = listDeferredLegacyTables(deps.db);
   if (deferredLegacyTables.length > 0) {
     const activity = getDatabaseMaintenanceActivity(deps.db);
@@ -185,7 +169,6 @@ export function runDatabaseMaintenanceSweep(
       return;
     }
 
-    databaseMaintenanceRunning = true;
     try {
       const result = dropDeferredLegacyTables(deps.db);
       deps.logger.info(
@@ -197,8 +180,6 @@ export function runDatabaseMaintenanceSweep(
         { err: error },
         "Deferred legacy database table cleanup failed",
       );
-    } finally {
-      databaseMaintenanceRunning = false;
     }
     return;
   }
@@ -219,7 +200,6 @@ export function runDatabaseMaintenanceSweep(
       );
       return;
     }
-    databaseMaintenanceRunning = true;
     try {
       const result = runIncrementalVacuum(deps.db, {
         maxPages: DATABASE_INCREMENTAL_VACUUM_MAX_PAGES,
@@ -227,8 +207,6 @@ export function runDatabaseMaintenanceSweep(
       deps.logger.info({ result }, "Incremental database vacuum completed");
     } catch (error) {
       deps.logger.warn({ err: error }, "Incremental database vacuum failed");
-    } finally {
-      databaseMaintenanceRunning = false;
     }
     return;
   }
@@ -257,14 +235,11 @@ export function runDatabaseMaintenanceSweep(
     return;
   }
 
-  databaseMaintenanceRunning = true;
   try {
     const result = compactDatabase(deps.db);
     deps.logger.info({ result }, "Database compaction completed");
   } catch (error) {
     deps.logger.warn({ err: error }, "Database compaction failed");
-  } finally {
-    databaseMaintenanceRunning = false;
   }
 }
 

@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it, vi } from "vitest";
 import { NotificationHub } from "../../ws/hub.js";
-import { updateMachineEnvironment } from "../machines/environment-settings.js";
+import { replaceMachineEnvironment } from "../machines/environment-settings.js";
 import { HostEnvironmentSync } from "./host-environment-sync.js";
 
 it("synchronizes configured variables on connection, changes and reconnect while excluding the local host", async () => {
@@ -30,10 +30,8 @@ it("synchronizes configured variables on connection, changes and reconnect while
       updateHost(db, noopNotifier, id, { machineProviderId: "manual" });
     }
     await writeFile(join(dataDir, "host-id"), "local");
-    await updateMachineEnvironment(db, dataDir, "MACHINE_VALUE", {
-      name: "MACHINE_VALUE",
-      value: "first",
-      note: null,
+    await replaceMachineEnvironment(db, dataDir, {
+      variables: [{ name: "MACHINE_VALUE", value: "first", note: null }],
     });
     const sync = new HostEnvironmentSync({
       db,
@@ -61,17 +59,15 @@ it("synchronizes configured variables on connection, changes and reconnect while
         ],
       },
     });
-    await updateMachineEnvironment(db, dataDir, "MACHINE_VALUE", {
-      name: "MACHINE_VALUE",
-      value: "second",
-      note: null,
+    await replaceMachineEnvironment(db, dataDir, {
+      variables: [{ name: "MACHINE_VALUE", value: "second", note: null }],
     });
     hub.notifySystem(["config-changed"]);
     await vi.waitFor(() => expect(sent).toHaveLength(2));
     expect(JSON.parse(sent[1]!)).toMatchObject({
       environment: { entries: [expect.objectContaining({ value: "second" })] },
     });
-    await updateMachineEnvironment(db, dataDir, "MACHINE_VALUE", null);
+    await replaceMachineEnvironment(db, dataDir, { variables: [] });
     hub.notifySystem(["config-changed"]);
     await vi.waitFor(() => expect(sent).toHaveLength(3));
     expect(JSON.parse(sent[2]!)).toMatchObject({

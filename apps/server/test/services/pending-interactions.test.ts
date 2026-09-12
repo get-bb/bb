@@ -3,10 +3,12 @@ import { eq } from "drizzle-orm";
 import { describe, expect, it, vi } from "vitest";
 import {
   events as eventTable,
+  listPendingInteractionsByThread,
   pendingInteractions as pendingInteractionTable,
 } from "@bb/db";
 import type { PendingInteractionCreate } from "@bb/domain";
 import { handleHostSessionOpened } from "../../src/internal/session-owner-side-effects.js";
+import { toPendingInteraction } from "../../src/services/interactions/pending-interaction-serialization.js";
 import { PendingInteractionLifecycle } from "../../src/services/interactions/pending-interactions.js";
 import type { AppDeps } from "../../src/types.js";
 import {
@@ -106,7 +108,9 @@ describe("pending interaction lifecycle", () => {
         harness.deps.pendingInteractions.listPendingThreadInteractions(
           thread.id,
         );
-        harness.deps.pendingInteractions.listThreadInteractions(thread.id);
+        listPendingInteractionsByThread(harness.db, {
+          threadId: thread.id,
+        }).map(toPendingInteraction);
         expect(emit).toHaveBeenCalledTimes(1);
         controller.abort();
         await expect(pending).resolves.toMatchObject({ outcome: "cancelled" });
@@ -223,7 +227,9 @@ describe("pending interaction lifecycle", () => {
         ),
       ).toEqual([]);
       expect(
-        harness.deps.pendingInteractions.listThreadInteractions(thread.id),
+        listPendingInteractionsByThread(harness.db, {
+          threadId: thread.id,
+        }).map(toPendingInteraction),
       ).toMatchObject([{ status: "interrupted" }]);
     });
   });
@@ -301,10 +307,15 @@ describe("pending interaction lifecycle", () => {
         { hasPendingInteraction: true, projectId: project.id },
       );
 
-      harness.deps.pendingInteractions.completeResolvingInteraction({
-        interactionId: created.interaction.id,
-        resolution: createAllowOnceResolution(),
-      });
+      harness.db.transaction((tx) =>
+        harness.deps.pendingInteractions.completeResolvingInteractionInTransaction(
+          { db: tx, hub: harness.deps.hub },
+          {
+            interactionId: created.interaction.id,
+            resolution: createAllowOnceResolution(),
+          },
+        ),
+      );
 
       expect(notifyThread).toHaveBeenCalledWith(
         thread.id,
@@ -398,8 +409,13 @@ describe("pending interaction lifecycle", () => {
           `Expected interaction registration to succeed: ${valid.reason}`,
         );
       }
+      harness.db
+        .update(pendingInteractionTable)
+        .set({ status: "resolving", resolvedAt: null })
+        .where(eq(pendingInteractionTable.id, corrupt.interaction.id))
+        .run();
 
-      expect(lifecycle.listThreadInteractions(thread.id)).toEqual([
+      expect(lifecycle.listPendingThreadInteractions(thread.id)).toEqual([
         valid.interaction,
       ]);
       expect(logger.warn).toHaveBeenCalledWith(
@@ -470,11 +486,15 @@ describe("pending interaction lifecycle", () => {
         status: "resolving",
       });
 
-      const completed =
-        harness.deps.pendingInteractions.completeResolvingInteraction({
-          interactionId: created.interaction.id,
-          resolution: answerResolution,
-        });
+      const completed = harness.db.transaction((tx) =>
+        harness.deps.pendingInteractions.completeResolvingInteractionInTransaction(
+          { db: tx, hub: harness.deps.hub },
+          {
+            interactionId: created.interaction.id,
+            resolution: answerResolution,
+          },
+        ),
+      );
 
       expect(completed).toMatchObject({
         id: created.interaction.id,
@@ -520,11 +540,15 @@ describe("pending interaction lifecycle", () => {
         );
       }
 
-      const interrupted =
-        harness.deps.pendingInteractions.interruptPendingInteraction({
-          interactionId: created.interaction.id,
-          reason: "Provider exited",
-        });
+      const interrupted = harness.db.transaction((tx) =>
+        harness.deps.pendingInteractions.interruptPendingInteractionInTransaction(
+          { db: tx, hub: harness.deps.hub },
+          {
+            interactionId: created.interaction.id,
+            reason: "Provider exited",
+          },
+        ),
+      );
 
       expect(interrupted).toMatchObject({
         id: created.interaction.id,
@@ -589,10 +613,15 @@ describe("pending interaction lifecycle", () => {
         interactionId: created.interaction.id,
         resolution: createAllowOnceResolution(),
       });
-      harness.deps.pendingInteractions.completeResolvingInteraction({
-        interactionId: created.interaction.id,
-        resolution: createAllowOnceResolution(),
-      });
+      harness.db.transaction((tx) =>
+        harness.deps.pendingInteractions.completeResolvingInteractionInTransaction(
+          { db: tx, hub: harness.deps.hub },
+          {
+            interactionId: created.interaction.id,
+            resolution: createAllowOnceResolution(),
+          },
+        ),
+      );
 
       expect(
         registerPendingInteraction(
@@ -923,17 +952,21 @@ describe("pending interaction lifecycle", () => {
         resolution: JSON.stringify(firstResolution.resolution),
       });
 
-      const completed =
-        harness.deps.pendingInteractions.completeResolvingInteraction({
-          interactionId: created.interaction.id,
-          resolution: createAllowOnceResolution({
-            network: null,
-            fileSystem: {
-              read: ["/tmp/project/a", "/tmp/project/b"],
-              write: ["/tmp/project/c", "/tmp/project/d"],
-            },
-          }),
-        });
+      const completed = harness.db.transaction((tx) =>
+        harness.deps.pendingInteractions.completeResolvingInteractionInTransaction(
+          { db: tx, hub: harness.deps.hub },
+          {
+            interactionId: created.interaction.id,
+            resolution: createAllowOnceResolution({
+              network: null,
+              fileSystem: {
+                read: ["/tmp/project/a", "/tmp/project/b"],
+                write: ["/tmp/project/c", "/tmp/project/d"],
+              },
+            }),
+          },
+        ),
+      );
       expect(completed?.status).toBe("resolved");
       const resolvedRow = harness.db
         .select()
@@ -1188,10 +1221,15 @@ describe("pending interaction lifecycle", () => {
         interactionId: grant.interaction.id,
         resolution,
       });
-      harness.deps.pendingInteractions.completeResolvingInteraction({
-        interactionId: grant.interaction.id,
-        resolution,
-      });
+      harness.db.transaction((tx) =>
+        harness.deps.pendingInteractions.completeResolvingInteractionInTransaction(
+          { db: tx, hub: harness.deps.hub },
+          {
+            interactionId: grant.interaction.id,
+            resolution,
+          },
+        ),
+      );
 
       expect(lifecycleEvents()).toEqual([
         {
@@ -1352,10 +1390,15 @@ describe("pending interaction lifecycle", () => {
       });
       expect(writes().slice(2)).toEqual([lifecycle]);
 
-      harness.deps.pendingInteractions.completeResolvingInteraction({
-        interactionId: created.interaction.id,
-        resolution,
-      });
+      harness.db.transaction((tx) =>
+        harness.deps.pendingInteractions.completeResolvingInteractionInTransaction(
+          { db: tx, hub: harness.deps.hub },
+          {
+            interactionId: created.interaction.id,
+            resolution,
+          },
+        ),
+      );
       expect(writes().slice(3)).toEqual([lifecycle, item("item/completed")]);
     });
   });
@@ -1464,14 +1507,18 @@ describe("pending interaction lifecycle", () => {
         status: "resolving",
         resolution: answer,
       });
-      const completed =
-        harness.deps.pendingInteractions.completeResolvingInteraction({
-          interactionId: created.interaction.id,
-          resolution: {
-            kind: "request_answer",
-            value: { TOKEN: "sentinel-x" },
+      const completed = harness.db.transaction((tx) =>
+        harness.deps.pendingInteractions.completeResolvingInteractionInTransaction(
+          { db: tx, hub: harness.deps.hub },
+          {
+            interactionId: created.interaction.id,
+            resolution: {
+              kind: "request_answer",
+              value: { TOKEN: "sentinel-x" },
+            },
           },
-        });
+        ),
+      );
       expect(completed).toMatchObject({
         status: "resolved",
         resolution: answer,
@@ -1945,10 +1992,15 @@ describe("pending interaction lifecycle", () => {
         );
       }
 
-      harness.deps.pendingInteractions.interruptPendingInteraction({
-        interactionId: created.interaction.id,
-        reason: "Provider exited",
-      });
+      harness.db.transaction((tx) =>
+        harness.deps.pendingInteractions.interruptPendingInteractionInTransaction(
+          { db: tx, hub: harness.deps.hub },
+          {
+            interactionId: created.interaction.id,
+            reason: "Provider exited",
+          },
+        ),
+      );
 
       expect(() =>
         harness.deps.pendingInteractions.resolvePendingInteraction({

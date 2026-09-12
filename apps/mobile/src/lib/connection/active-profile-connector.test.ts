@@ -68,8 +68,8 @@ interface SetupOptions {
 
 function setup(options: SetupOptions = {}) {
   const sockets = createFakeSocketFactory();
-  const socketFactory: RealtimeSocketFactory = (url, socketOptions) => {
-    const socket = sockets(url, socketOptions);
+  const socketFactory: RealtimeSocketFactory = (url) => {
+    const socket = sockets(url);
     options.onSocket?.(sockets.latest());
     return socket;
   };
@@ -157,7 +157,7 @@ describe("createActiveProfileConnector", () => {
     connector.activate(direct);
     expect(sockets.sockets).toHaveLength(1);
     const snap = connector.getSnapshot();
-    expect(snap?.client).toBe(registry.peekClient(direct.id));
+    expect(snap?.client).toBe(registry.getClientForProfile(direct));
     expect(snap?.session).toEqual({ status: "idle" });
 
     connector.activate({ ...direct, label: "Renamed" });
@@ -313,8 +313,8 @@ describe("createActiveProfileConnector", () => {
         headers: { "content-type": "text/html" },
       }),
     );
-    const client = registry.peekClient(connect.id);
-    await expect(client?.sdk.system.config()).rejects.toMatchObject({
+    const client = registry.getClientForProfile(connect);
+    await expect(client.sdk.system.config()).rejects.toMatchObject({
       status: 401,
     });
     await settle();
@@ -354,8 +354,7 @@ describe("createActiveProfileConnector", () => {
     );
     connector.activate(connect);
     await flush();
-    const client = registry.peekClient(connect.id);
-    if (!client) throw new Error("client missing");
+    const client = registry.getClientForProfile(connect);
 
     fetchResponses.push(
       new Response("<html>sign in</html>", {
@@ -396,8 +395,7 @@ describe("createActiveProfileConnector", () => {
     fetchSession.mockResolvedValueOnce(sessionCookie("s1"));
     connector.activate(connect);
     await flush();
-    const client = registry.peekClient(connect.id);
-    if (!client) throw new Error("client missing");
+    const client = registry.getClientForProfile(connect);
     expect(fetchSession).toHaveBeenCalledTimes(1);
 
     fetchResponses.push(
@@ -454,8 +452,7 @@ describe("createActiveProfileConnector", () => {
         }),
     );
     connector.activate(connect);
-    const client = registry.peekClient(connect.id);
-    if (!client) throw new Error("client missing");
+    const client = registry.getClientForProfile(connect);
     const observer = new QueryObserver(client.queryClient, {
       queryKey: ["system-config"],
       queryFn: () => client.sdk.system.config(),
@@ -492,8 +489,7 @@ describe("createActiveProfileConnector", () => {
     fetchSession.mockResolvedValue(sessionCookie("s"));
     connector.activate(connect);
     await flush();
-    const client = registry.peekClient(connect.id);
-    if (!client) throw new Error("client missing");
+    const client = registry.getClientForProfile(connect);
     expect(fetchSession).toHaveBeenCalledTimes(1);
 
     for (let i = 0; i < AUTH_FAILURE_MAX_REMINTS + 2; i += 1) {

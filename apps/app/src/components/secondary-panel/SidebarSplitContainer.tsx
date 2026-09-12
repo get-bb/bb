@@ -22,7 +22,10 @@ import {
   type SplitSide,
 } from "@/lib/split-layout";
 import { dimInactiveSplitsAtom } from "@/lib/split-layout/atoms";
-import { createSplitResizeSnapSession } from "@/lib/split-resize-snap";
+import {
+  createSplitResizeFlexPair,
+  createSplitResizeSnapSession,
+} from "@/lib/split-resize-snap";
 import { IframeDragGuardOverlay } from "@/lib/iframe-drag-guard";
 import { MACOS_APP_REGION_NO_DRAG_CLASS } from "@/lib/bb-desktop";
 import { withLocalStorage } from "@/lib/browser-storage";
@@ -85,6 +88,13 @@ export interface SidebarSplitPaneRenderArgs {
   onToggleMaximize: () => void;
   paneId: string;
   showOuterControls: boolean;
+}
+
+function canMoveSidebarActiveTab(
+  group: SidebarTabGroup,
+  paneCount: number,
+): boolean {
+  return group.tabIds.length > 1 ? paneCount < MAX_PANES : paneCount > 1;
 }
 
 interface SidebarSplitContainerProps {
@@ -480,9 +490,7 @@ export function SidebarSplitContainer({
   const firstPane = listPanes(state.layout.root)[0];
   const moveActiveTabHandler = (paneId: string) => {
     const group = getSidebarGroupForPane(state, paneId);
-    const canMove =
-      group !== null &&
-      (group.tabIds.length > 1 ? paneCount < MAX_PANES : paneCount > 1);
+    const canMove = group !== null && canMoveSidebarActiveTab(group, paneCount);
     return canMove
       ? (side: SplitSide) => moveActiveTabToSide(paneId, side)
       : undefined;
@@ -657,10 +665,10 @@ function SidebarSplitLeaf(props: SidebarSplitLeafProps) {
   const isFocused = pane.paneId === props.focusedPaneId;
   const isMaximized = pane.paneId === props.maximizedPaneId;
   const isHiddenByMaximize = props.maximizedPaneId !== null && !isMaximized;
-  const canMoveActiveTabToSide =
-    group.tabIds.length > 1
-      ? countPanes(props.state.layout.root) < MAX_PANES
-      : countPanes(props.state.layout.root) > 1;
+  const canMoveActiveTabToSide = canMoveSidebarActiveTab(
+    group,
+    countPanes(props.state.layout.root),
+  );
   const showOuterControls =
     isMaximized ||
     (props.maximizedPaneId === null && props.isTopRow && props.isRightEdge);
@@ -788,7 +796,7 @@ function SidebarSplitDivider({
       const pointerDownPosition = horizontal ? event.clientX : event.clientY;
       const span = end - start;
       if (span <= 0) return;
-      const pair = createSidebarSplitResizePair(previous, next);
+      const pair = createSplitResizeFlexPair(previous, next);
       hitTarget.setPointerCapture(pointerId);
       divider.dataset.dragging = "true";
       const snapSession = createSplitResizeSnapSession(
@@ -810,8 +818,7 @@ function SidebarSplitDivider({
           start,
         });
         pendingFraction = fraction;
-        pair.previous.style.flex = `${pair.total * fraction} 1 0px`;
-        pair.next.style.flex = `${pair.total * (1 - fraction)} 1 0px`;
+        pair.apply(fraction);
         onPreviewResize(fraction);
       };
       const move = (moveEvent: PointerEvent) => {
@@ -838,8 +845,7 @@ function SidebarSplitDivider({
           onResize(pendingFraction);
           return;
         }
-        pair.previous.style.flex = pair.previousFlex;
-        pair.next.style.flex = pair.nextFlex;
+        pair.restore();
       };
       const onUp = (upEvent: PointerEvent) => {
         if (upEvent.pointerId !== pointerId) return;
@@ -909,36 +915,6 @@ function SidebarSplitDivider({
       />
     </div>
   );
-}
-
-interface SidebarSplitResizePair {
-  next: HTMLElement;
-  nextFlex: string;
-  previous: HTMLElement;
-  previousFlex: string;
-  total: number;
-}
-
-function createSidebarSplitResizePair(
-  previous: HTMLElement,
-  next: HTMLElement,
-): SidebarSplitResizePair {
-  const previousGrow = Number.parseFloat(
-    window.getComputedStyle(previous).flexGrow,
-  );
-  const nextGrow = Number.parseFloat(window.getComputedStyle(next).flexGrow);
-  return {
-    next,
-    nextFlex: next.style.flex,
-    previous,
-    previousFlex: previous.style.flex,
-    total:
-      Number.isFinite(previousGrow) &&
-      Number.isFinite(nextGrow) &&
-      previousGrow + nextGrow > 0
-        ? previousGrow + nextGrow
-        : 1,
-  };
 }
 
 function nextSidebarSplitGroupId(state: SidebarSplitState): string {

@@ -330,6 +330,35 @@ function clientUserMessageIdSuffix(messageIndex: number): string | undefined {
   return messageIndex > 0 ? String(messageIndex) : undefined;
 }
 
+function buildClientUserMessagesForInputGroups({
+  acceptedClientRequest,
+  decoded,
+  meta,
+  requestStatus,
+}: {
+  acceptedClientRequest: AcceptedClientRequest | undefined;
+  decoded: ClientTurnRequestedEvent;
+  meta: EventMeta;
+  requestStatus: EventProjectionTurnRequest["status"];
+}): EventProjectionUserMessage[] {
+  const groups = decoded.inputGroups ?? [decoded.input];
+  const messages: EventProjectionUserMessage[] = [];
+  for (const input of groups) {
+    if (!parsePromptInput(input)) continue;
+    messages.push(
+      buildClientUserMessage({
+        acceptedClientRequest,
+        decoded,
+        idSuffix: clientUserMessageIdSuffix(messages.length),
+        input,
+        meta,
+        requestStatus,
+      }),
+    );
+  }
+  return messages;
+}
+
 export function parseUsersFromClientRequest(
   args: ParseUserFromClientRequestArgs,
 ): EventProjectionUserMessage[] {
@@ -349,24 +378,12 @@ export function parseUsersFromClientRequest(
     return [];
   }
 
-  const groups = decoded.inputGroups ?? [decoded.input];
-  const messages: EventProjectionUserMessage[] = [];
-  for (const input of groups) {
-    const parsedInput = parsePromptInput(input);
-    if (!parsedInput) continue;
-    const visibleMessageIndex = messages.length;
-    messages.push(
-      buildClientUserMessage({
-        acceptedClientRequest,
-        decoded,
-        idSuffix: clientUserMessageIdSuffix(visibleMessageIndex),
-        input,
-        meta,
-        requestStatus: acceptedClientRequest ? "accepted" : "pending",
-      }),
-    );
-  }
-  return messages;
+  return buildClientUserMessagesForInputGroups({
+    acceptedClientRequest,
+    decoded,
+    meta,
+    requestStatus: acceptedClientRequest ? "accepted" : "pending",
+  });
 }
 
 export function parsePendingSteersFromClientRequest(
@@ -383,22 +400,12 @@ export function parsePendingSteersFromClientRequest(
     return [];
   }
 
-  const groups = decoded.inputGroups ?? [decoded.input];
-  const messages: EventProjectionUserMessage[] = [];
-  for (const input of groups) {
-    if (!parsePromptInput(input)) continue;
-    const visibleMessageIndex = messages.length;
-    messages.push(
-      buildClientUserMessage({
-        decoded,
-        idSuffix: clientUserMessageIdSuffix(visibleMessageIndex),
-        input,
-        meta,
-        requestStatus: "pending",
-      }),
-    );
-  }
-  return messages;
+  return buildClientUserMessagesForInputGroups({
+    acceptedClientRequest: undefined,
+    decoded,
+    meta,
+    requestStatus: "pending",
+  });
 }
 
 export function parseAcceptedSteersFromClientRequest(
@@ -420,23 +427,12 @@ export function parseAcceptedSteersFromClientRequest(
     return [];
   }
 
-  const groups = decoded.inputGroups ?? [decoded.input];
-  const messages: EventProjectionUserMessage[] = [];
-  for (const input of groups) {
-    if (!parsePromptInput(input)) continue;
-    const visibleMessageIndex = messages.length;
-    messages.push(
-      buildClientUserMessage({
-        acceptedClientRequest,
-        decoded,
-        idSuffix: clientUserMessageIdSuffix(visibleMessageIndex),
-        input,
-        meta,
-        requestStatus: "accepted",
-      }),
-    );
-  }
-  return messages;
+  return buildClientUserMessagesForInputGroups({
+    acceptedClientRequest,
+    decoded,
+    meta,
+    requestStatus: "accepted",
+  });
 }
 
 export function parseRejectedUsersFromClientRequest(
@@ -450,22 +446,12 @@ export function parseRejectedUsersFromClientRequest(
     return [];
   }
 
-  const groups = decoded.inputGroups ?? [decoded.input];
-  const messages: EventProjectionUserMessage[] = [];
-  for (const input of groups) {
-    if (!parsePromptInput(input)) continue;
-    const visibleMessageIndex = messages.length;
-    messages.push(
-      buildClientUserMessage({
-        decoded,
-        idSuffix: clientUserMessageIdSuffix(visibleMessageIndex),
-        input,
-        meta,
-        requestStatus: "rejected",
-      }),
-    );
-  }
-  return messages;
+  return buildClientUserMessagesForInputGroups({
+    acceptedClientRequest: undefined,
+    decoded,
+    meta,
+    requestStatus: "rejected",
+  });
 }
 
 export function parseProviderUserMessage(

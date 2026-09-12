@@ -109,6 +109,16 @@ interface ArchiveThreadAndChildrenTransactionArgs {
   threadId: string;
 }
 
+interface ArchiveEnvironmentThreadsTransactionArgs {
+  environmentId: string;
+  queryClient: QueryClient;
+}
+
+interface ArchiveMatchingThreadsTransactionArgs {
+  matchesThread: (thread: ThreadListEntry) => boolean;
+  queryClient: QueryClient;
+}
+
 interface RollbackArchiveThreadsTransactionArgs {
   queryClient: QueryClient;
   transaction: ArchiveThreadsTransaction | undefined;
@@ -597,15 +607,12 @@ export function beginUnarchiveThreadTransaction({
   });
 }
 
-export async function beginArchiveThreadAndChildrenTransaction({
+async function beginArchiveMatchingThreadsTransaction({
+  matchesThread,
   queryClient,
-  threadId,
-}: ArchiveThreadAndChildrenTransactionArgs): Promise<ArchiveThreadsTransaction> {
-  await queryClient.cancelQueries({ queryKey: threadsQueryKey() });
-  await queryClient.cancelQueries({ queryKey: sidebarNavigationQueryKey() });
+}: ArchiveMatchingThreadsTransactionArgs): Promise<ArchiveThreadsTransaction> {
   const archivedThreadIds = getCachedLiveThreadIdsMatching({
-    matchesThread: (thread) =>
-      thread.id === threadId || thread.parentThreadId === threadId,
+    matchesThread,
     queryClient,
   });
   await Promise.all(
@@ -629,8 +636,7 @@ export async function beginArchiveThreadAndChildrenTransaction({
     threadIds: archivedThreadIds,
   });
   removeLiveThreadsFromCachedLists({
-    matchesThread: (thread) =>
-      thread.id === threadId || thread.parentThreadId === threadId,
+    matchesThread,
     queryClient,
   });
 
@@ -640,6 +646,30 @@ export async function beginArchiveThreadAndChildrenTransaction({
     previousThreadLists,
     previousThreads,
   };
+}
+
+export async function beginArchiveThreadAndChildrenTransaction({
+  queryClient,
+  threadId,
+}: ArchiveThreadAndChildrenTransactionArgs): Promise<ArchiveThreadsTransaction> {
+  await queryClient.cancelQueries({ queryKey: threadsQueryKey() });
+  await queryClient.cancelQueries({ queryKey: sidebarNavigationQueryKey() });
+  return beginArchiveMatchingThreadsTransaction({
+    matchesThread: (thread) =>
+      thread.id === threadId || thread.parentThreadId === threadId,
+    queryClient,
+  });
+}
+
+export async function beginArchiveEnvironmentThreadsTransaction({
+  environmentId,
+  queryClient,
+}: ArchiveEnvironmentThreadsTransactionArgs): Promise<ArchiveThreadsTransaction> {
+  await queryClient.cancelQueries({ queryKey: threadsQueryKey() });
+  return beginArchiveMatchingThreadsTransaction({
+    matchesThread: (thread) => thread.environmentId === environmentId,
+    queryClient,
+  });
 }
 
 export function rollbackArchiveThreadsTransaction({

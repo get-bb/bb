@@ -25,10 +25,11 @@ import {
   type CommandDispatchOptions,
 } from "./command-dispatch.js";
 import { isExpectedOnlineRpcFailureError } from "./command-dispatch-support.js";
-import { roundDurationMs } from "./event-loop-stall-monitor.js";
+import { roundDurationMs } from "@bb/process-utils";
 import type { HostDaemonLogger } from "./logger.js";
 import { RuntimeManager } from "./runtime-manager.js";
 import type { PluginHostManager } from "./plugin-host-manager.js";
+import { runInSerialLane } from "./serial-lane.js";
 
 type CommandRouterLogger = Pick<HostDaemonLogger, "debug" | "warn">;
 
@@ -43,12 +44,6 @@ interface ReadWriteLaneArgs<T> {
   key: string;
   lanes: Map<string, ReadWriteLaneState>;
   mode: EnvironmentLaneMode;
-  work: () => Promise<T>;
-}
-
-interface SerialLaneArgs<T> {
-  key: string;
-  lanes: Map<string, Promise<void>>;
   work: () => Promise<T>;
 }
 
@@ -69,7 +64,6 @@ export interface CommandRouterOptions {
   fetchSkillTree?: CommandDispatchOptions["fetchSkillTree"];
   fetchPluginHostArtifact?: CommandDispatchOptions["fetchPluginHostArtifact"];
   runtimeManager: RuntimeManager;
-  terminalManager?: CommandDispatchOptions["terminalManager"];
   eventSink: CommandDispatchOptions["eventSink"];
   listModels: CommandDispatchOptions["listModels"];
   providerHealth: CommandDispatchOptions["providerHealth"];
@@ -244,12 +238,7 @@ export class CommandRouter {
     const threadWork =
       threadLaneKey === null
         ? work
-        : () =>
-            this.runInSerialLane({
-              key: threadLaneKey,
-              lanes: this.threadLaneTails,
-              work,
-            });
+        : () => runInSerialLane(this.threadLaneTails, threadLaneKey, work);
     if (!environmentLaneMode) {
       return threadWork();
     }
@@ -270,11 +259,7 @@ export class CommandRouter {
     if (command.type !== "thread.start" && command.type !== "turn.submit") {
       return work();
     }
-    return this.runInSerialLane({
-      key: command.threadId,
-      lanes: this.threadTurnLaneTails,
-      work,
-    });
+    return runInSerialLane(this.threadTurnLaneTails, command.threadId, work);
   }
 
   private createDispatchOptions(): CommandDispatchOptions {
@@ -283,7 +268,6 @@ export class CommandRouter {
       fetchSkillTree: this.options.fetchSkillTree,
       fetchPluginHostArtifact: this.options.fetchPluginHostArtifact,
       runtimeManager: this.options.runtimeManager,
-      terminalManager: this.options.terminalManager,
       desktopBrowserBroker: this.options.desktopBrowserBroker,
       dataDir: this.options.dataDir,
       eventSink: this.options.eventSink,
@@ -372,26 +356,6 @@ export class CommandRouter {
         this.threadUnarchiveBarriers.delete(threadId);
       }
     });
-  }
-
-  private runInSerialLane<T>({
-    key,
-    lanes,
-    work,
-  }: SerialLaneArgs<T>): Promise<T> {
-    const previousTail = lanes.get(key) ?? Promise.resolve();
-    const next = previousTail.catch(() => undefined).then(work);
-    const done = next.then(
-      () => undefined,
-      () => undefined,
-    );
-    lanes.set(key, done);
-    void done.then(() => {
-      if (lanes.get(key) === done) {
-        lanes.delete(key);
-      }
-    });
-    return next;
   }
 
   private runInReadWriteLane<T>({

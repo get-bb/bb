@@ -9,6 +9,7 @@ import { resolveMachineId, selectMachines } from "./machine.js";
 import type { ContextSnapshot } from "../context-env.js";
 import { renderBorderlessTable } from "../table.js";
 import {
+  collectOption,
   confirmDestructiveAction,
   outputJson,
   type JsonOutputOptions,
@@ -46,10 +47,6 @@ function projectId(
 
 function environmentId(options: SkillWorkspaceOptions): string | null {
   return options.environment ?? null;
-}
-
-function collectMachineTarget(value: string, previous: string[]): string[] {
-  return [...previous, value];
 }
 
 function parseNonnegativeInteger(value: string | undefined, fallback: number) {
@@ -403,7 +400,7 @@ export function registerSkillCommands(
     .option(
       "--machine <id-or-name>",
       "Machine to report on (repeatable, defaults to every persistent machine)",
-      collectMachineTarget,
+      collectOption,
       [],
     )
     .option("--json", "Print machine-readable JSON output")
@@ -443,7 +440,7 @@ export function registerSkillCommands(
     .option(
       "--machine <id-or-name>",
       "Machine to install onto (repeatable, defaults to every connected persistent machine)",
-      collectMachineTarget,
+      collectOption,
       [],
     )
     .option("--json", "Print machine-readable JSON output")

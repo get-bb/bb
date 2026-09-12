@@ -10,12 +10,7 @@ type WorkflowRunStatus =
   | "succeeded"
   | "failed"
   | "cancelled";
-type WorkflowCallStatus =
-  | "queued"
-  | "running"
-  | "succeeded"
-  | "failed"
-  | "cancelled";
+type WorkflowCallStatus = WorkflowRunStatus;
 
 export interface WorkflowRunRow {
   id: string;

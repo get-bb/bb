@@ -30,6 +30,7 @@ import {
   FILE_LIST_EXCLUDE_NAMES_MAX,
   FILE_LIST_LIMIT_MAX,
   FILE_LIST_QUERY_MAX_LENGTH,
+  flattenPromptInputGroups,
 } from "@bb/domain";
 import { z } from "zod";
 import {
@@ -250,16 +251,6 @@ type HostDaemonPromptInput = z.infer<typeof promptInputSchema>;
 interface GroupedPromptInputCommand {
   input: HostDaemonPromptInput[];
   inputGroups?: HostDaemonPromptInput[][];
-}
-
-function flattenPromptInputGroups(
-  inputGroups: readonly HostDaemonPromptInput[][],
-): HostDaemonPromptInput[] {
-  return inputGroups.flatMap((inputGroup, index) =>
-    index === 0
-      ? inputGroup
-      : [{ type: "text" as const, text: "\n\n", mentions: [] }, ...inputGroup],
-  );
 }
 
 function refineGroupedInputMatchesFlatInput(

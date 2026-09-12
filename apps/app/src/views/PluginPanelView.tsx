@@ -1,4 +1,3 @@
-import { useParams } from "react-router-dom";
 import { PageShell } from "@/components/ui/page-shell.js";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
@@ -6,20 +5,16 @@ import { usePluginFrontendsSettled } from "@/lib/plugin-frontend-boot-state";
 import { usePluginSlots } from "@/lib/plugin-slots";
 
 interface PluginPanelViewProps {
-  pluginId?: string;
-  panelPath?: string;
-  subPath?: string;
+  pluginId: string;
+  panelPath: string;
+  subPath: string;
 }
 
-export function PluginPanelView(props: PluginPanelViewProps = {}) {
-  const params = useParams<{
-    pluginId: string;
-    panelPath: string;
-    "*": string;
-  }>();
-  const pluginId = props.pluginId ?? params.pluginId;
-  const panelPath = props.panelPath ?? params.panelPath;
-  const subPath = props.subPath ?? params["*"] ?? "";
+export function PluginPanelView({
+  pluginId,
+  panelPath,
+  subPath,
+}: PluginPanelViewProps) {
   const { navPanels } = usePluginSlots();
   const pluginsSettled = usePluginFrontendsSettled();
   const panel =

@@ -7,10 +7,11 @@ import { authApiKeys, authUsers, type DbConnection } from "@bb/db";
 import { readOrCreateSecretFile } from "@bb/secret-storage";
 import { z } from "zod";
 import type { ServerLogger } from "../types.js";
+import { runSerialized } from "./lib/async-deduper.js";
 
 const AUTH_SECRET_FILE_NAME = "auth-secret";
-const DAEMON_ENROLL_CONFIG_ID = "daemon-enroll";
-const DAEMON_HOST_CONFIG_ID = "daemon-host";
+export const DAEMON_ENROLL_CONFIG_ID = "daemon-enroll";
+export const DAEMON_HOST_CONFIG_ID = "daemon-host";
 const ENROLL_KEY_TTL_SECONDS = 60 * 15;
 const MACHINE_AUTH_SYSTEM_USER_ID = "bb-machine-auth-system-user";
 const MACHINE_AUTH_SYSTEM_USER_EMAIL = "machine-auth@bb.internal";
@@ -68,7 +69,6 @@ interface IssueHostEnrollKeyResult {
 }
 
 export interface EnrollHostArgs {
-  allowPublicEnrollment: boolean;
   hostId: string;
   token: string;
 }
@@ -169,19 +169,6 @@ export async function createMachineAuthService(
 
   let readyPromise: Promise<void> | null = null;
   const hostOperations = new Map<string, Promise<unknown>>();
-  async function forHost<T>(
-    hostId: string,
-    operation: () => Promise<T>,
-  ): Promise<T> {
-    const previous = hostOperations.get(hostId) ?? Promise.resolve();
-    const current = previous.catch(() => {}).then(operation);
-    hostOperations.set(hostId, current);
-    try {
-      return await current;
-    } finally {
-      if (hostOperations.get(hostId) === current) hostOperations.delete(hostId);
-    }
-  }
 
   async function ensureSystemUser(): Promise<void> {
     const now = new Date();
@@ -262,8 +249,10 @@ export async function createMachineAuthService(
     };
   }
 
-  async function disableActiveEnrollKeysForHost(
-    metadata: MachineCredentialMetadata,
+  async function disableActiveKeysForHost(
+    configId: string,
+    hostId: string,
+    preserveKeyId?: string,
   ): Promise<void> {
     await ensureReady();
     await args.db
@@ -274,51 +263,12 @@ export async function createMachineAuthService(
       })
       .where(
         and(
-          eq(authApiKeys.configId, DAEMON_ENROLL_CONFIG_ID),
+          eq(authApiKeys.configId, configId),
           eq(authApiKeys.enabled, true),
-          sql`json_extract(${authApiKeys.metadata}, '$.hostId') = ${metadata.hostId}`,
-        ),
-      )
-      .run();
-  }
-
-  async function disableOtherActiveDaemonHostKeysForHost(
-    metadata: MachineCredentialMetadata,
-    preserveKeyId: string,
-  ): Promise<void> {
-    await ensureReady();
-    await args.db
-      .update(authApiKeys)
-      .set({
-        enabled: false,
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(authApiKeys.configId, DAEMON_HOST_CONFIG_ID),
-          eq(authApiKeys.enabled, true),
-          ne(authApiKeys.id, preserveKeyId),
-          sql`json_extract(${authApiKeys.metadata}, '$.hostId') = ${metadata.hostId}`,
-        ),
-      )
-      .run();
-  }
-
-  async function disableActiveDaemonHostKeysForHost(
-    metadata: MachineCredentialMetadata,
-  ): Promise<void> {
-    await ensureReady();
-    await args.db
-      .update(authApiKeys)
-      .set({
-        enabled: false,
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(authApiKeys.configId, DAEMON_HOST_CONFIG_ID),
-          eq(authApiKeys.enabled, true),
-          sql`json_extract(${authApiKeys.metadata}, '$.hostId') = ${metadata.hostId}`,
+          preserveKeyId === undefined
+            ? undefined
+            : ne(authApiKeys.id, preserveKeyId),
+          sql`json_extract(${authApiKeys.metadata}, '$.hostId') = ${hostId}`,
         ),
       )
       .run();
@@ -346,11 +296,10 @@ export async function createMachineAuthService(
       await ensureReady();
     },
     async enrollHost({
-      allowPublicEnrollment,
       hostId,
       token,
     }: EnrollHostArgs): Promise<EnrollHostResult | null> {
-      return forHost(hostId, async () => {
+      return runSerialized(hostOperations, hostId, async () => {
         const verified = await verifyKey({
           configId: DAEMON_ENROLL_CONFIG_ID,
           token,
@@ -361,20 +310,15 @@ export async function createMachineAuthService(
         if (verified.metadata.hostId !== hostId) {
           return null;
         }
-        if (
-          verified.metadata.enrollSource === "public-multi-machine" &&
-          !allowPublicEnrollment
-        ) {
-          return null;
-        }
 
         const hostMetadata: MachineCredentialMetadata = {
           hostId: verified.metadata.hostId,
         };
 
         const hostKey = await createDaemonHostKey(hostMetadata);
-        await disableOtherActiveDaemonHostKeysForHost(
-          hostMetadata,
+        await disableActiveKeysForHost(
+          DAEMON_HOST_CONFIG_ID,
+          hostMetadata.hostId,
           hostKey.keyId,
         );
         return {
@@ -393,13 +337,13 @@ export async function createMachineAuthService(
       enrollSource,
       hostId,
     }: IssueHostEnrollKeyArgs): Promise<IssueHostEnrollKeyResult> {
-      return forHost(hostId, async () => {
+      return runSerialized(hostOperations, hostId, async () => {
         await ensureReady();
         const metadata = {
           enrollSource,
           hostId,
         };
-        await disableActiveEnrollKeysForHost(metadata);
+        await disableActiveKeysForHost(DAEMON_ENROLL_CONFIG_ID, hostId);
 
         const created = await auth.api.createApiKey({
           body: {
@@ -427,14 +371,15 @@ export async function createMachineAuthService(
     async revokeHostEnrollKeys({
       hostId,
     }: RevokeHostAuthKeysArgs): Promise<void> {
-      await forHost(hostId, () => disableActiveEnrollKeysForHost({ hostId }));
+      await runSerialized(hostOperations, hostId, () =>
+        disableActiveKeysForHost(DAEMON_ENROLL_CONFIG_ID, hostId),
+      );
     },
     async revokeHostAuthKeys({
       hostId,
     }: RevokeHostAuthKeysArgs): Promise<void> {
-      const metadata = { hostId };
-      await disableActiveEnrollKeysForHost(metadata);
-      await disableActiveDaemonHostKeysForHost(metadata);
+      await disableActiveKeysForHost(DAEMON_ENROLL_CONFIG_ID, hostId);
+      await disableActiveKeysForHost(DAEMON_HOST_CONFIG_ID, hostId);
     },
     async verifyDaemonHostKey(
       token: string,

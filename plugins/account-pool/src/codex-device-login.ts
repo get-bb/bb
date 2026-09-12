@@ -1,13 +1,15 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { CODEX_AUTH_BASE_URL, CODEX_OAUTH_CLIENT_ID } from "./codex-adapter.js";
-import { codexAccessTokenExpiresAt } from "./credentials.js";
+import {
+  CHATGPT_AUTH_CLAIM,
+  CHATGPT_PROFILE_CLAIM,
+  codexAccessTokenExpiresAt,
+} from "./credentials.js";
 import type { AccountSummary } from "./contracts.js";
 
 const LOGIN_SESSION_TTL_MS = 10 * 60 * 1_000;
 const DEVICE_CALLBACK_PATH = "/deviceauth/callback";
-const CHATGPT_AUTH_CLAIM = "https://api.openai.com/auth";
-const CHATGPT_PROFILE_CLAIM = "https://api.openai.com/profile";
 
 const intervalSchema = z.union([
   z.number().int().positive(),

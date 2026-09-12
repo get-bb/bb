@@ -76,6 +76,7 @@ import type { MessageProseSelection } from "./SelectableMessageProse.js";
 import { TimelineReasoningDetail } from "./TimelineReasoningDetail.js";
 import { ExpandableTimelineRow } from "./ExpandableTimelineRow.js";
 import {
+  TimelineLeadingIcon,
   TimelineStaticRowHeader,
   type TimelineRowHorizontalPadding,
 } from "./TimelineRowHeader.js";
@@ -90,7 +91,6 @@ import { Button } from "@bb/shared-ui/button";
 import { AutoHeightContainer } from "../../ui/height-transition.js";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { presentationTintStyle } from "./presentation-display.js";
-import { PluginCompactIconMask } from "../../plugin/PluginIcon.js";
 import { usePluginIconUrl } from "@/lib/plugin-logos";
 import {
   PluginTimelineRendererBody,
@@ -253,12 +253,6 @@ interface TimelineExpandableRowViewProps {
   row: Exclude<ThreadTimelineViewRow, { kind: "conversation" }>;
 }
 
-interface TimelineStaticRowProps {
-  children: ReactNode;
-  className?: string;
-  horizontalPadding?: TimelineRowHorizontalPadding;
-}
-
 interface TimelineExpandableBodyProps {
   activeLatestBundleId: string | null;
   compactActivityIntents: boolean;
@@ -271,8 +265,6 @@ interface TurnRowBodyProps {
   row: TimelineViewTurnRow;
   showAssistantMessageActions: boolean;
 }
-
-type LazyTurnRowBodyProps = TurnRowBodyProps;
 
 interface TimelineSystemDetailBlockProps {
   detail: string;
@@ -307,19 +299,6 @@ interface TimelineRowTitleRenderStateArgs extends ActiveSummaryTreatmentArgs {
 interface TimelineRowTitleRenderStateCache {
   key: string;
   state: TimelineRowTitleRenderState;
-}
-
-interface BuildTurnSummaryDetailsIdentityArgs {
-  rowSourceSeqEnd: TimelineViewTurnRow["sourceSeqEnd"];
-  rowSourceSeqStart: TimelineViewTurnRow["sourceSeqStart"];
-  rowThreadId: TimelineViewTurnRow["threadId"];
-  rowTurnId: TimelineViewTurnRow["turnId"];
-  threadId: string | undefined;
-}
-
-interface TimelineRowsOwnerKeyArgs {
-  threadId: string | undefined;
-  timelineRows: readonly TimelineRow[];
 }
 
 type TimelineConversationViewRow = Extract<
@@ -558,29 +537,6 @@ function useTimelineSearchExpansionRowIds(
   }, [inheritedRowIds, location.state, rows, threadId]);
 }
 
-function buildTurnSummaryDetailsIdentity({
-  rowSourceSeqEnd,
-  rowSourceSeqStart,
-  rowThreadId,
-  rowTurnId,
-  threadId,
-}: BuildTurnSummaryDetailsIdentityArgs): ThreadTimelineTurnSummaryDetailsQueryIdentity {
-  return {
-    sourceSeqEnd: rowSourceSeqEnd,
-    sourceSeqStart: rowSourceSeqStart,
-    threadId: threadId ?? rowThreadId,
-    turnId: rowTurnId,
-  };
-}
-
-function timelineRowsOwnerKey({
-  threadId,
-  timelineRows,
-}: TimelineRowsOwnerKeyArgs): string {
-  const ownerThreadId = threadId ?? timelineRows[0]?.threadId ?? "";
-  return ownerThreadId;
-}
-
 function timelineHeightSnapRevision(rows: readonly TimelineRow[]): string {
   const firstRowId = rows[0]?.id;
 
@@ -656,21 +612,6 @@ function timelineRowHorizontalPadding(
     case "bundle":
       return "flush";
   }
-}
-
-function TimelineStaticRow({
-  children,
-  className,
-  horizontalPadding = "default",
-}: TimelineStaticRowProps) {
-  return (
-    <TimelineStaticRowHeader
-      horizontalPadding={horizontalPadding}
-      className={className}
-    >
-      {children}
-    </TimelineStaticRowHeader>
-  );
 }
 
 function timelineRowsListGapClassName(
@@ -799,9 +740,11 @@ function buildRowPluginMessageActions(args: {
   slots: readonly PluginMessageActionSlot[];
   timelineThreadId: string | undefined;
   message: ThreadChatMessageReference;
+  selectedText?: string;
   openThreadPanel: ThreadTimelineOpenPluginPanelHandler | undefined;
 }): readonly ThreadTimelinePluginMessageAction[] | undefined {
-  const { slots, timelineThreadId, message, openThreadPanel } = args;
+  const { slots, timelineThreadId, message, selectedText, openThreadPanel } =
+    args;
   if (timelineThreadId === undefined || slots.length === 0) {
     return undefined;
   }
@@ -815,6 +758,7 @@ function buildRowPluginMessageActions(args: {
         slot,
         threadId: timelineThreadId,
         message,
+        selectedText,
         openThreadPanel,
       }),
   }));
@@ -1321,24 +1265,17 @@ function LazyTurnRowBody({
   compactActivityIntents,
   row,
   showAssistantMessageActions,
-}: LazyTurnRowBodyProps) {
+}: TurnRowBodyProps) {
   const { getViewRows, threadId } = useTimelineRendererStaticContext();
-  const {
-    sourceSeqEnd: rowSourceSeqEnd,
-    sourceSeqStart: rowSourceSeqStart,
-    threadId: rowThreadId,
-    turnId: rowTurnId,
-  } = row;
+  const { sourceSeqEnd, sourceSeqStart, threadId: rowThreadId, turnId } = row;
   const identity = useMemo<ThreadTimelineTurnSummaryDetailsQueryIdentity>(
-    () =>
-      buildTurnSummaryDetailsIdentity({
-        rowSourceSeqEnd,
-        rowSourceSeqStart,
-        rowThreadId,
-        rowTurnId,
-        threadId,
-      }),
-    [rowSourceSeqEnd, rowSourceSeqStart, rowThreadId, rowTurnId, threadId],
+    () => ({
+      sourceSeqEnd,
+      sourceSeqStart,
+      threadId: threadId ?? rowThreadId,
+      turnId,
+    }),
+    [sourceSeqEnd, sourceSeqStart, rowThreadId, turnId, threadId],
   );
   const {
     data: detail,
@@ -1393,10 +1330,7 @@ export function pastRowDimClassName({
   row,
   scopeActive,
 }: ActiveSummaryTreatmentArgs): string | undefined {
-  if (
-    row.kind === "bundle-summary" &&
-    isActiveLatestBundleSummary({ activeLatestBundleId, row, scopeActive })
-  ) {
+  if (isActiveLatestBundleSummary({ activeLatestBundleId, row, scopeActive })) {
     return undefined;
   }
   switch (row.kind) {
@@ -1416,8 +1350,6 @@ export function pastRowDimClassName({
     case "step-summary":
       return row.status === "completed" ? PAST_ROW_DIM_CLASS_NAME : undefined;
     case "conversation":
-      return undefined;
-    default:
       return undefined;
   }
 }
@@ -1526,7 +1458,7 @@ function TimelineRowView({
     return (
       <>
         {titleState.titles.map((entry) => (
-          <TimelineStaticRow
+          <TimelineStaticRowHeader
             key={entry.id}
             horizontalPadding={horizontalPadding}
             className={pastRowDimClassName({
@@ -1547,7 +1479,7 @@ function TimelineRowView({
                 resolveSegmentLinkHref={resolveSegmentLinkHref}
               />
             </span>
-          </TimelineStaticRow>
+          </TimelineStaticRowHeader>
         ))}
       </>
     );
@@ -1557,7 +1489,7 @@ function TimelineRowView({
     const staticLeadingIcon = leadingIconForRow(row);
     const staticLeadingIconStyle = leadingIconStyleForRow(row);
     return (
-      <TimelineStaticRow
+      <TimelineStaticRowHeader
         horizontalPadding={horizontalPadding}
         className={pastRowDimClassName({
           activeLatestBundleId,
@@ -1566,27 +1498,18 @@ function TimelineRowView({
         })}
       >
         <span className="inline-flex min-w-0 max-w-full items-center gap-1.5">
-          {staticLeadingIconUrl !== undefined ? (
-            <PluginCompactIconMask
-              url={staticLeadingIconUrl}
-              className="size-3.5 text-muted-foreground"
-              style={staticLeadingIconStyle}
-            />
-          ) : staticLeadingIcon ? (
-            <Icon
-              name={staticLeadingIcon}
-              className="size-3.5 shrink-0 text-muted-foreground"
-              style={staticLeadingIconStyle}
-              aria-hidden
-            />
-          ) : null}
+          <TimelineLeadingIcon
+            icon={staticLeadingIcon}
+            iconUrl={staticLeadingIconUrl}
+            style={staticLeadingIconStyle}
+          />
           <TimelineTitleView
             title={titleState.title}
             onTitleAction={onTitleAction}
             resolveSegmentLinkHref={resolveSegmentLinkHref}
           />
         </span>
-      </TimelineStaticRow>
+      </TimelineStaticRowHeader>
     );
   }
 
@@ -1990,10 +1913,7 @@ function TimelineRowsList({
 }
 
 function ThreadTimelineRowsComponent(props: ThreadTimelineRowsProps) {
-  const ownerKey = timelineRowsOwnerKey({
-    threadId: props.threadId,
-    timelineRows: props.timelineRows,
-  });
+  const ownerKey = props.threadId ?? props.timelineRows[0]?.threadId ?? "";
   return (
     <TimelineImageGallery key={ownerKey}>
       <ThreadTimelineRowsForTimelineView {...props} />
@@ -2136,27 +2056,18 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
   const selectionPluginActions = useMemo<
     readonly ThreadTimelinePluginMessageAction[]
   >(() => {
-    if (
-      activeSelection === null ||
-      timelineThreadId === undefined ||
-      messageActionSlots.length === 0
-    ) {
+    if (activeSelection === null) {
       return [];
     }
-    return messageActionSlots.map((slot) => ({
-      key: `${slot.pluginId}/${slot.id}/${slot.generation}`,
-      pluginId: slot.pluginId,
-      icon: slot.icon ?? null,
-      label: slot.title,
-      onSelect: () =>
-        runPluginMessageAction({
-          slot,
-          threadId: timelineThreadId,
-          message: activeSelection.message,
-          selectedText: activeSelection.selection.text,
-          openThreadPanel: onOpenPluginPanel,
-        }),
-    }));
+    return (
+      buildRowPluginMessageActions({
+        slots: messageActionSlots,
+        timelineThreadId,
+        message: activeSelection.message,
+        selectedText: activeSelection.selection.text,
+        openThreadPanel: onOpenPluginPanel,
+      }) ?? []
+    );
   }, [
     activeSelection,
     messageActionSlots,

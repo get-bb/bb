@@ -1,4 +1,5 @@
 import {
+  formatToolCallCommand,
   isBackgroundAgentTaskType,
   isBackgroundCommandTaskType,
   isSettledWorkflowAgentState,
@@ -35,7 +36,6 @@ import {
   durationToCompactString,
   formatDiffStatsText,
 } from "./format-helpers.js";
-import { formatToolCallCommand } from "./tool-call-parsing.js";
 import {
   formatTimelineActivityIntentDetailParts,
   getTimelineActivityIntentDetailDedupeKey,

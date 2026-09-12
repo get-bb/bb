@@ -7,8 +7,6 @@ import {
   INFO_PANEL_WIDTH,
   layoutBandForWidth,
   SIDEBAR_WIDTH,
-  SURFACE_RAIL_WIDTH,
-  surfaceRailWidth,
   THREAD_COMFORTABLE_WIDTH,
   THREAD_MIN_WIDTH,
 } from "./responsive-layout";
@@ -20,12 +18,6 @@ describe("Theme Preview responsive layout", () => {
     expect(layoutBandForWidth(600)).toBe("narrow");
     expect(layoutBandForWidth(1199)).toBe("narrow");
     expect(layoutBandForWidth(1200)).toBe("desktop");
-  });
-
-  it("keeps the narrow rail wide enough for compact interaction specimens", () => {
-    expect(surfaceRailWidth(600)).toBe(SURFACE_RAIL_WIDTH);
-    expect(surfaceRailWidth(768)).toBe(SURFACE_RAIL_WIDTH);
-    expect(surfaceRailWidth(1199)).toBe(SURFACE_RAIL_WIDTH);
   });
 
   it("tightens only the outer content inset near the mobile boundary", () => {

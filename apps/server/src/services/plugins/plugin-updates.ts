@@ -36,12 +36,14 @@ import {
   type createManagedPluginArtifacts,
 } from "./managed-plugin-artifacts.js";
 import { MARKETPLACE_FETCH_TIMEOUT_MS } from "../plugin-catalog/marketplace-http.js";
-import { pluginUpdateCheckEntrySchema } from "./plugin-service-internal.js";
+import {
+  pluginUpdateCheckEntrySchema,
+  type PluginSourceDetail,
+  type PluginUpdateCheckEntry,
+} from "@bb/server-contract";
 import type {
   PluginApplyUpdateOutcome,
   PluginServiceDeps,
-  PluginSourceView,
-  PluginUpdateCheckEntry,
 } from "./plugin-service-internal.js";
 
 const PLUGIN_UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1_000;
@@ -65,7 +67,7 @@ export interface PluginUpdates {
   startPeriodicUpdateChecks(): void;
   stopPeriodicUpdateChecks(): Promise<void>;
   listUpdateResults(): PluginUpdateCheckEntry[];
-  getSource(id: string): Promise<PluginSourceView | undefined>;
+  getSource(id: string): Promise<PluginSourceDetail | undefined>;
   applyUpdate(id: string): Promise<PluginApplyUpdateOutcome>;
 }
 
@@ -328,9 +330,7 @@ export function createPluginUpdates(
       url: intent.url,
       intent: intent.selector,
       currentCommit: args.row.gitResolvedCommit,
-      ...(intent.selector.kind === "range"
-        ? { probeCandidate: probeGitCandidate }
-        : {}),
+      probeCandidate: probeGitCandidate,
     });
     if (remote.outcome !== "update-available") return remote;
     if (intent.selector.kind === "range") return remote;

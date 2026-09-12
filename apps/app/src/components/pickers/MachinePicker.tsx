@@ -32,8 +32,19 @@ import {
   OPTION_TRIGGER_CONTENT_CLASS_NAME,
 } from "@bb/shared-ui/option-display";
 
-const MACHINE_BADGE_CLASS_NAME =
+export const MACHINE_BADGE_CLASS_NAME =
   "shrink-0 rounded-sm border border-border bg-muted/40 px-1.5 py-0.5 text-2xs leading-none text-subtle-foreground";
+
+export function orderLocalHostFirst(
+  hosts: readonly Host[],
+  localDaemonHostId: string | null,
+): Host[] {
+  return [...hosts].sort(
+    (left, right) =>
+      Number(left.id !== localDaemonHostId) -
+      Number(right.id !== localDaemonHostId),
+  );
+}
 
 interface MachinePickerUIProps {
   hosts: readonly Host[];
@@ -68,12 +79,7 @@ export function MachinePickerUI({
     [availableHosts, primaryHostId, selectedHostId],
   );
   const orderedHosts = useMemo(
-    () =>
-      [...availableHosts].sort(
-        (left, right) =>
-          Number(left.id !== localDaemonHostId) -
-          Number(right.id !== localDaemonHostId),
-      ),
+    () => orderLocalHostFirst(availableHosts, localDaemonHostId),
     [availableHosts, localDaemonHostId],
   );
   const now = Date.now();

@@ -36,11 +36,11 @@ import {
   sidebarCollapsedThreadSectionsAtom,
   type SidebarSectionId,
 } from "./sidebarCollapsedAtoms";
+import { useSidebarReorderDnd } from "./useSidebarReorderDnd";
 import {
-  sidebarReorderCollisionDetection,
-  useSidebarReorderDnd,
-  type SidebarReorderDndContextProps,
-} from "./useSidebarReorderDnd";
+  reorderCollisionDetection,
+  type ReorderDndContextProps,
+} from "@/components/ui/useReorderDnd";
 import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
 import { useNeighborReorderSortable } from "./useNeighborReorderSortable";
 import {
@@ -70,7 +70,7 @@ export interface SectionThreadReorderTarget {
 export interface SectionThreadDndState {
   activeThread: ThreadListEntry | null;
   consumeClickSuppression: ConsumeDragClickSuppression;
-  dndContextProps: SidebarReorderDndContextProps;
+  dndContextProps: ReorderDndContextProps;
   itemIdsByParentKey: ReadonlyMap<string, readonly string[]>;
   onClickCapture: MouseEventHandler<HTMLElement>;
   dragOverParentKey: string | null;
@@ -801,7 +801,7 @@ export function useSectionThreadDnd({
         typeof args.active.id === "string" &&
         topLevelSectionIds.has(args.active.id)
       ) {
-        return sidebarReorderCollisionDetection({
+        return reorderCollisionDetection({
           ...args,
           droppableContainers: args.droppableContainers.filter(({ id }) =>
             typeof id === "string" ? topLevelSectionIds.has(id) : false,
@@ -810,7 +810,7 @@ export function useSectionThreadDnd({
       }
       pinnedInsertRef.current = null;
       const collisions = resolveThreadRowNestCollisions({
-        collisions: sidebarReorderCollisionDetection(args),
+        collisions: reorderCollisionDetection(args),
         droppableRects: args.droppableRects,
         pointerCoordinates: args.pointerCoordinates,
         getBandFraction: getNestBandFraction,

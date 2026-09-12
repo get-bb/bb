@@ -59,8 +59,13 @@ function renderAssistantMessage(text: string, streaming: boolean) {
 
 function documents(container: HTMLElement): string[] {
   return Array.from(
-    container.querySelectorAll<HTMLElement>("[data-markdown-document]"),
-  ).map((node) => node.textContent ?? "");
+    container.querySelectorAll<HTMLElement>("[data-markdown-preview]"),
+    (preview) =>
+      Array.from(
+        preview.querySelectorAll<HTMLElement>("[data-markdown-document]"),
+        (node) => node.textContent ?? "",
+      ).join(""),
+  );
 }
 
 beforeEach(() => {
@@ -98,7 +103,17 @@ describe("ConversationMessageContent streaming split", () => {
 
     markdownRenders.length = 0;
     update("Settled **source.\n\nSecond paragraph.\n\n`live code grows", true);
-    expect(markdownRenders).toEqual(["Second paragraph.\n\n`live code grows`"]);
+    expect(markdownRenders).toEqual([
+      "Second paragraph.\n\n",
+      "`live code grows`",
+    ]);
+
+    markdownRenders.length = 0;
+    update(
+      "Settled **source.\n\nSecond paragraph.\n\n`live code grows more",
+      true,
+    );
+    expect(markdownRenders).toEqual(["`live code grows more`"]);
   });
 
   it("repairs unfinished formatting after ordinary double-colon text", () => {
@@ -156,7 +171,11 @@ describe("ConversationMessageContent streaming split", () => {
 
     markdownRenders.length = 0;
     update("Para one.\n\nPara two.\n\nPara three.", true);
-    expect(markdownRenders).toEqual(["Para two.\n\nPara three."]);
+    expect(markdownRenders).toEqual(["Para two.\n\n", "Para three."]);
+
+    markdownRenders.length = 0;
+    update("Para one.\n\nPara two.\n\nPara three!", true);
+    expect(markdownRenders).toEqual(["Para three!"]);
 
     markdownRenders.length = 0;
     update("Para one.\n\nPara two.\n\nPara three.\n\nPara four", true);
@@ -164,15 +183,18 @@ describe("ConversationMessageContent streaming split", () => {
       "Para one.\n\nPara two.\n\n",
       "Para three.\n\nPara four",
     ]);
+    expect(markdownRenders).toEqual([
+      "Para two.\n\n",
+      "Para three.\n\n",
+      "Para four",
+    ]);
 
     markdownRenders.length = 0;
     update("Para one.\n\nPara two.\n\nPara three.\n\nPara four.", false);
     expect(documents(view.container)).toEqual([
       "Para one.\n\nPara two.\n\nPara three.\n\nPara four.",
     ]);
-    expect(markdownRenders).toEqual([
-      "Para one.\n\nPara two.\n\nPara three.\n\nPara four.",
-    ]);
+    expect(markdownRenders).toEqual(["Para three.\n\n", "Para four."]);
   });
 
   it.each([

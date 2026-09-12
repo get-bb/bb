@@ -6,9 +6,10 @@ import {
   type AcpMaintenanceDialect,
 } from "./bridge/provider-maintenance.js";
 import { delegationPresentation } from "./presentation.js";
-import type {
-  AcpClassifiedToolCall,
-  AcpCommandResult,
+import {
+  commandRawOutputSchema,
+  type AcpClassifiedToolCall,
+  type AcpCommandResult,
 } from "./tool-classification.js";
 import {
   acpToolKindSchema,
@@ -202,34 +203,25 @@ const ompBashRawInputSchema = z
   })
   .passthrough();
 
-const ompBashRawOutputSchema = z
-  .object({
-    content: z.array(
-      z
-        .object({
-          type: z.literal("text"),
-          text: z.string(),
-        })
-        .passthrough(),
-    ),
-    details: z
+const ompBashRawOutputSchema = commandRawOutputSchema.extend({
+  content: z.array(
+    z
       .object({
-        exitCode: z.number().int().optional(),
-        wallTimeMs: z.number().nonnegative().optional(),
-        timedOut: z.boolean().optional(),
-        signal: z.unknown().optional(),
-        async: z.unknown().optional(),
+        type: z.literal("text"),
+        text: z.string(),
       })
       .passthrough(),
-    exitCode: z.number().int().nullable().optional(),
-    exit_code: z.number().int().nullable().optional(),
-    stdout: z.string().optional(),
-    stderr: z.string().optional(),
-    output_for_prompt: z.string().optional(),
-    signal: z.string().nullable().optional(),
-    timed_out: z.boolean().optional(),
-  })
-  .passthrough();
+  ),
+  details: z
+    .object({
+      exitCode: z.number().int().optional(),
+      wallTimeMs: z.number().nonnegative().optional(),
+      timedOut: z.boolean().optional(),
+      signal: z.unknown().optional(),
+      async: z.unknown().optional(),
+    })
+    .passthrough(),
+});
 
 function stripOmpTrailingNotice(text: string, notice: string): string {
   const suffix = `\n\n${notice}`;
