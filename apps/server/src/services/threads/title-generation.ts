@@ -49,7 +49,19 @@ interface RawGeneratedThreadMetadata {
 function cleanPromptText(input: PromptInput[]): string {
   return input
     .filter((part) => part.type === "text")
-    .map((part) => part.text.trim())
+    .map((part) => {
+      let text = part.text;
+      for (const mention of [...part.mentions].sort(
+        (left, right) => right.start - left.start,
+      )) {
+        if (mention.resource.kind !== "thread") continue;
+        text =
+          text.slice(0, mention.start) +
+          mention.resource.label +
+          text.slice(mention.end);
+      }
+      return text.trim();
+    })
     .join(" ")
     .replace(/\s+/gu, " ")
     .trim();
