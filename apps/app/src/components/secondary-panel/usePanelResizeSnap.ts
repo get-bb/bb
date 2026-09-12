@@ -128,10 +128,16 @@ export function usePanelResizeSnap({
         previous.style.flex = `${pairTotal * fraction} 1 0px`;
         next.style.flex = `${pairTotal * (1 - fraction)} 1 0px`;
       };
+      const leave = (leaveEvent: PointerEvent) => {
+        if (leaveEvent.pointerId === pointerId) {
+          leaveEvent.stopPropagation();
+        }
+      };
       const complete = (commit: boolean) => {
         if (finished) return;
         finished = true;
         ownerWindow.removeEventListener("pointermove", move, true);
+        ownerWindow.removeEventListener("pointerleave", leave, true);
         ownerWindow.removeEventListener("pointerup", finishForPointer, true);
         ownerWindow.removeEventListener(
           "pointercancel",
@@ -179,6 +185,7 @@ export function usePanelResizeSnap({
 
       activeDragRef.current = { cancel: cancelDrag, finish: commitDrag };
       ownerWindow.addEventListener("pointermove", move, true);
+      ownerWindow.addEventListener("pointerleave", leave, true);
       ownerWindow.addEventListener("pointerup", finishForPointer, true);
       ownerWindow.addEventListener("pointercancel", finishForPointer, true);
       ownerWindow.addEventListener("mouseup", finishOnMouseUp, true);
