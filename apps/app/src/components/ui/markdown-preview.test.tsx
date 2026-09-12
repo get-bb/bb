@@ -8,7 +8,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { MarkdownPreview } from "./markdown-preview";
 import {
   MarkdownLocalFileContextMenuContext,
@@ -432,6 +432,36 @@ describe("MarkdownPreview", () => {
     expect(link.getAttribute("href")).toBe(
       `${window.location.protocol}//${window.location.hostname}:5173/demo`,
     );
+  });
+
+  it("scrolls footnote links within the preview instead of opening a new window", () => {
+    const scrollIntoView = vi.fn();
+    const originalScrollIntoView = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = scrollIntoView;
+    onTestFinished(() => {
+      Element.prototype.scrollIntoView = originalScrollIntoView;
+    });
+    const onOpenLink = vi.fn(() => true);
+    const content =
+      "Enrollment fell.[^ode]\n\n[^ode]: Oregon Department of Education.";
+
+    render(<MarkdownPreview content={content} linkRouting={{ onOpenLink }} />);
+    const { container: otherPreview } = render(
+      <MarkdownPreview content={content} />,
+    );
+
+    const [reference] = screen.getAllByRole("link", { name: "1" });
+    if (reference === undefined) throw new Error("missing footnote reference");
+    expect(reference.getAttribute("target")).toBeNull();
+
+    const notPrevented = fireEvent.click(reference);
+
+    expect(notPrevented).toBe(false);
+    expect(onOpenLink).not.toHaveBeenCalled();
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    const scrolledTo = scrollIntoView.mock.contexts[0] as Element;
+    expect(scrolledTo.id).toBe("user-content-fn-ode");
+    expect(otherPreview.contains(scrolledTo)).toBe(false);
   });
 
   it("renders inline LaTeX math with KaTeX", async () => {
