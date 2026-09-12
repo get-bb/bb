@@ -19,9 +19,18 @@ function rect(left: number, width: number): DOMRect {
   };
 }
 
-function SnapHarness({ onResize }: { onResize: (fraction: number) => void }) {
+function SnapHarness({
+  onResize,
+  minFraction = 0,
+  maxFraction = 1,
+}: {
+  onResize: (fraction: number) => void;
+  minFraction?: number;
+  maxFraction?: number;
+}) {
   const { onPointerDownCapture } = usePanelResizeSnap({
     axis: "x",
+    ...{ minFraction, maxFraction },
     onResize,
     target: { boundaryIndex: 1, childCount: 2 },
   });
@@ -45,6 +54,53 @@ function SnapHarness({ onResize }: { onResize: (fraction: number) => void }) {
 afterEach(() => cleanup());
 
 describe("usePanelResizeSnap", () => {
+  it.each([
+    { initialPercent: 30, pointer: 100, returnPointer: 420, returnedPercent: 40 },
+    { initialPercent: 76, pointer: 900, returnPointer: 628, returnedPercent: 66 },
+  ])("stops at $initialPercent% while dragging and follows the pointer back", ({
+    initialPercent,
+    pointer,
+    returnPointer,
+    returnedPercent,
+  }) => {
+    const onResize = vi.fn();
+    render(
+      <SnapHarness onResize={onResize} minFraction={0.3} maxFraction={0.76} />,
+    );
+    const previous = screen.getByTestId("previous");
+    const divider = screen.getByTestId("divider");
+    const next = screen.getByTestId("next");
+    const start = 100 + initialPercent * 8;
+    screen.getByTestId("grid").getBoundingClientRect = () => rect(100, 800);
+    previous.getBoundingClientRect = () => rect(100, start - 100);
+    divider.getBoundingClientRect = () => rect(start, 1);
+    next.getBoundingClientRect = () => rect(start + 1, 899 - start);
+    previous.style.flex = `${initialPercent} 1 0px`;
+    next.style.flex = `${100 - initialPercent} 1 0px`;
+
+    fireEvent.pointerDown(divider, { clientX: start, pointerId: 48 });
+    fireEvent.pointerMove(document.body, {
+      buttons: 1,
+      clientX: pointer,
+      pointerId: 48,
+    });
+
+    expect(previous.style.flexGrow).toBe(`${initialPercent}`);
+    expect(next.style.flexGrow).toBe(`${100 - initialPercent}`);
+    expect(onResize).not.toHaveBeenCalled();
+
+    fireEvent.pointerMove(document.body, {
+      buttons: 1,
+      clientX: returnPointer,
+      pointerId: 48,
+    });
+    expect(Number(previous.style.flexGrow)).toBeCloseTo(returnedPercent);
+    expect(Number(next.style.flexGrow)).toBeCloseTo(100 - returnedPercent);
+
+    fireEvent.pointerUp(window, { clientX: returnPointer, pointerId: 48 });
+    expect(onResize).toHaveBeenCalledExactlyOnceWith(returnedPercent / 100);
+  });
+
   it("keeps transitions disabled until React commits the released size", () => {
     const committedDurations: string[] = [];
     function CommitHarness() {
