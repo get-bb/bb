@@ -613,6 +613,168 @@ describe("PluginDetail official catalog lifecycle", () => {
 });
 
 describe("BB Official plugin detail routing", () => {
+  it("uses the installed catalog identity when plugin ids collide", async () => {
+    const firstCatalogEntry = {
+      ...GITHUB_CATALOG_ENTRY,
+      marketplace: "bb-community",
+      marketplaceDisplayName: "BB Community",
+      publisherKey: "bb-community:example",
+      publisherLabel: "BB Community",
+      description: "Description from the first catalog.",
+      repositoryUrl: "https://github.com/example/first-catalog-plugin",
+      author: {
+        name: "First publisher",
+        github: "first-publisher",
+        url: "https://github.com/first-publisher",
+      },
+    };
+    const installedCatalogEntry = {
+      ...GITHUB_CATALOG_ENTRY,
+      marketplace: "partner-catalog",
+      marketplaceDisplayName: "Partner Catalog",
+      publisherKey: "partner-catalog:example",
+      publisherLabel: "Partner Catalog",
+      description: "Description from the installed catalog.",
+      repositoryUrl: "https://github.com/example/installed-catalog-plugin",
+      author: {
+        name: "Installed publisher",
+        github: "installed-publisher",
+        url: "https://github.com/installed-publisher",
+      },
+      installed: true,
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url === "/api/v1/plugins") {
+          return new Response(
+            JSON.stringify({
+              enabled: true,
+              plugins: [
+                {
+                  ...GITHUB_PLUGIN,
+                  catalogMarketplaceName: "partner-catalog",
+                  publisherLabel: "Partner Catalog",
+                  iconUrl: null,
+                  screenshots: [],
+                  collections: [],
+                  providerIds: [],
+                  icons: {},
+                  updateState: {},
+                },
+              ],
+            }),
+            { headers: { "content-type": "application/json" } },
+          );
+        }
+        if (url.startsWith("/api/v1/plugin-catalog/search")) {
+          return new Response(
+            JSON.stringify({
+              results: [firstCatalogEntry, installedCatalogEntry],
+              collections: [],
+            }),
+            { headers: { "content-type": "application/json" } },
+          );
+        }
+        return new Response(JSON.stringify({ error: "not found" }), {
+          status: 404,
+          headers: { "content-type": "application/json" },
+        });
+      }),
+    );
+
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter initialEntries={["/extensions/plugins/github"]}>
+        <Routes>
+          <Route path="/extensions/plugins/*" element={<RoutedToolsView />} />
+        </Routes>
+      </MemoryRouter>,
+      { wrapper: QueryClientWrapper },
+    );
+
+    await waitFor(() => {
+      expect(
+        document.querySelector("[data-plugin-summary]")?.textContent,
+      ).toBe("Description from the installed catalog.");
+    });
+  });
+
+  it("uses installed metadata when its catalog entry is unavailable", async () => {
+    const unrelatedCatalogEntry = {
+      ...GITHUB_CATALOG_ENTRY,
+      marketplace: "bb-community",
+      marketplaceDisplayName: "BB Community",
+      publisherKey: "bb-community:example",
+      publisherLabel: "BB Community",
+      description: "Description from an unrelated catalog entry.",
+      repositoryUrl: "https://github.com/example/unrelated-catalog-plugin",
+      author: {
+        name: "Unrelated publisher",
+        github: "unrelated-publisher",
+        url: "https://github.com/unrelated-publisher",
+      },
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url === "/api/v1/plugins") {
+          return new Response(
+            JSON.stringify({
+              enabled: true,
+              plugins: [
+                {
+                  ...GITHUB_PLUGIN,
+                  description: "Description from installed metadata.",
+                  catalogMarketplaceName: "partner-catalog",
+                  publisherLabel: "Partner Catalog",
+                  iconUrl: null,
+                  screenshots: [],
+                  collections: [],
+                  providerIds: [],
+                  icons: {},
+                  updateState: {},
+                },
+              ],
+            }),
+            { headers: { "content-type": "application/json" } },
+          );
+        }
+        if (url.startsWith("/api/v1/plugin-catalog/search")) {
+          return new Response(
+            JSON.stringify({
+              results: [unrelatedCatalogEntry],
+              collections: [],
+            }),
+            { headers: { "content-type": "application/json" } },
+          );
+        }
+        return new Response(JSON.stringify({ error: "not found" }), {
+          status: 404,
+          headers: { "content-type": "application/json" },
+        });
+      }),
+    );
+
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter initialEntries={["/extensions/plugins/github"]}>
+        <Routes>
+          <Route path="/extensions/plugins/*" element={<RoutedToolsView />} />
+        </Routes>
+      </MemoryRouter>,
+      { wrapper: QueryClientWrapper },
+    );
+
+    await waitFor(() => {
+      expect(
+        document.querySelector("[data-plugin-summary]")?.textContent,
+      ).toBe("Description from installed metadata.");
+    });
+  });
+
   it("resolves an uninstalled catalog plugin and opens its install confirmation", async () => {
     vi.stubGlobal(
       "fetch",
@@ -788,6 +950,7 @@ describe("BB Official plugin detail routing", () => {
               plugins: [
                 {
                   ...GITHUB_PLUGIN,
+                  catalogMarketplaceName: "bb-official",
                   iconUrl: null,
                   screenshots: [],
                   collections: [],
