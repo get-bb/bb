@@ -47,6 +47,28 @@ describe("downloadFileForOpenRequest", () => {
     click.mockRestore();
   });
 
+  it("explains why an explicit host target falls back to preview", () => {
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    expect(
+      downloadFileForOpenRequest({
+        projectHostId: null,
+        projectId: null,
+        request: {
+          kind: "host-file-preview",
+          hostId: "host_other",
+          tab: { lineRange: null, path: "/tmp/report.pdf" },
+        },
+        resolvedEnvironmentId: "env_1",
+        threadId: "thr_1",
+      }),
+    ).toBe(false);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(toastMocks.error).toHaveBeenCalledWith("Download unavailable", {
+      description: "This file location does not support downloads.",
+    });
+  });
+
   it("refuses an unresolved workspace target instead of using the primary source", () => {
     expect(
       downloadFileForOpenRequest({
