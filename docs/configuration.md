@@ -1336,6 +1336,11 @@ the environment they started with: open a new terminal after a change. Agent
 turns receive refreshed values on their next turn and after resume. Codex rebuilds
 its loaded session from the existing conversation when the environment changes.
 
+Plugin host calls start immediately using the current environment while any calls
+are active in that plugin worker. Changed or removed machine variables take
+effect on the next call after all active calls finish. Continuous overlapping
+calls can keep the previous values until the worker becomes idle.
+
 Ordinary setup variable delivery requires host-daemon protocol 205. Older
 daemons must update before the server accepts their session.
 

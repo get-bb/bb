@@ -274,6 +274,11 @@ apply to the next turn, setup operation, or newly opened BB terminal; existing
 terminals retain their launch environment. Runtime output is forwarded as-is,
 so commands and providers can print contributed values.
 
+Plugin host calls start immediately using the current environment while any calls
+are active in that plugin worker. Changed or removed machine variables take
+effect on the next call after all active calls finish. Continuous overlapping
+calls can keep the previous values until the worker becomes idle.
+
 The server's gh login provides GitHub credentials, a Git environment-only HTTPS
 helper and SSH rewrites, and commit identity. The built-in row reports logged in,
 not logged in, or overridden. No credentials are installed in images or global

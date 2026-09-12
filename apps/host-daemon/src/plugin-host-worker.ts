@@ -7,27 +7,7 @@ function createOperationEnvironmentScope(target: NodeJS.ProcessEnv) {
   let active = 0;
   let current: Record<string, string> = {};
   let previous: NodeJS.ProcessEnv = {};
-  let waiters: Array<() => void> = [];
-  return async (
-    env: Record<string, string>,
-    signal: AbortSignal,
-  ): Promise<() => void> => {
-    signal.throwIfAborted();
-    const same = () =>
-      Object.keys(current).length === Object.keys(env).length &&
-      Object.entries(env).every(([key, value]) => current[key] === value);
-    while (active > 0 && !same()) {
-      await new Promise<void>((resolve) => {
-        const resume = () => {
-          signal.removeEventListener("abort", resume);
-          waiters = waiters.filter((waiter) => waiter !== resume);
-          resolve();
-        };
-        waiters.push(resume);
-        signal.addEventListener("abort", resume, { once: true });
-      });
-      signal.throwIfAborted();
-    }
+  return (env: Record<string, string>): (() => void) => {
     if (active === 0) {
       current = env;
       previous = {};
@@ -46,9 +26,6 @@ function createOperationEnvironmentScope(target: NodeJS.ProcessEnv) {
       }
       current = {};
       previous = {};
-      const ready = waiters;
-      waiters = [];
-      for (const resolve of ready) resolve();
     };
   };
 }
@@ -552,10 +529,7 @@ async function handleCall(
   let contextOpen = true;
   let releaseEnvironment: (() => void) | undefined;
   try {
-    releaseEnvironment = await acquireEnvironment(
-      message.envVars,
-      controller.signal,
-    );
+    releaseEnvironment = acquireEnvironment(message.envVars);
     controller.signal.throwIfAborted();
     const input = await validate(method.input, message.input);
     const result = await handler(input, {

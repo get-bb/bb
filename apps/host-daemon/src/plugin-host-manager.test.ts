@@ -200,7 +200,7 @@ describe("PluginHostManager", () => {
     expect(fetchArtifact).toHaveBeenCalledOnce();
   });
 
-  it("scopes setup env, waits for rotation, and returns worker output as-is", async () => {
+  it("scopes setup env, rotates while idle, and returns worker output as-is", async () => {
     const manager = await createManager({
       shellEnv: () => ({ npm_config_user_agent: "test" }),
     });
@@ -218,22 +218,22 @@ describe("PluginHostManager", () => {
         source: { core: "machine-git" as const },
       },
     ];
-    const [first, rotated] = await Promise.all([
-      manager.call(
+    const [first, rotated] = [
+      await manager.call(
         callCommand({
           method: "environment",
           input: { delay: 100 },
           contributedEnv: contribution("first"),
         }),
       ),
-      manager.call(
+      await manager.call(
         callCommand({
           method: "environment",
           input: {},
           contributedEnv: contribution("rotated"),
         }),
       ),
-    ]);
+    ];
     expect(first.output).toEqual({
       before: "first",
       after: "first",
@@ -250,7 +250,7 @@ describe("PluginHostManager", () => {
     ).toEqual({ before: null, after: null, token: null });
   });
 
-  describe("environment wait cancellation", () => {
+  describe("environment reuse across active calls", () => {
     async function fixture() {
       const onSignal = vi.fn();
       const onWorkerExit = vi.fn();
@@ -326,8 +326,7 @@ describe("PluginHostManager", () => {
             timeoutMs: mode === "deadline" ? 200 : b.timeoutMs,
           })
           .catch((error: unknown) => error);
-        if (mode === "same-value") await waitForStart("b");
-        else await new Promise((resolve) => setTimeout(resolve, 100));
+        await waitForStart("b");
         if (mode !== "deadline") {
           expect(cancel("b")).toEqual({ cancelled: true });
           cancel("b");
@@ -344,8 +343,7 @@ describe("PluginHostManager", () => {
             value: { output: { before: "first", after: "first" } },
           },
         ]);
-        if (mode !== "same-value")
-          expect(onSignal).not.toHaveBeenCalledWith(started("b"));
+        expect(onSignal).toHaveBeenCalledWith(started("b"));
         expect(
           (await manager.call(command("c", "third"))).output,
         ).toMatchObject({ before: "third", after: "third" });
@@ -363,66 +361,40 @@ describe("PluginHostManager", () => {
       },
     );
 
-    it("settles a cancelled waiter before release and lets other waiters rotate", async () => {
-      const { manager, command, cancel, waitForStart, onWorkerExit } =
-        await fixture();
+    it("keeps the first values until every overlapping call finishes", async () => {
+      const { manager, command, cancel, waitForStart } = await fixture();
       const a = manager
         .call(command("a", "first", 10_000))
         .catch((error: unknown) => error);
       await waitForStart("a");
       const b = manager
-        .call(command("b", "second"))
+        .call(command("b", "second", 10_000))
         .catch((error: unknown) => error);
-      const c = manager
-        .call(command("c", "third"))
-        .catch((error: unknown) => error);
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await waitForStart("b");
+      cancel("a");
+      await expect(a).resolves.toMatchObject({ name: "AbortError" });
+      await expect(manager.call(command("c", "third"))).resolves.toMatchObject({
+        output: { before: "first", after: "first" },
+      });
       cancel("b");
       await expect(b).resolves.toMatchObject({ name: "AbortError" });
-      expect(cancel("a")).toEqual({ cancelled: true });
-      await expect(a).resolves.toMatchObject({ name: "AbortError" });
-      await expect(c).resolves.toMatchObject({
-        output: { before: "third", after: "third" },
-      });
-      expect(onWorkerExit).not.toHaveBeenCalled();
+      await expect(manager.call(command("d", "fourth"))).resolves.toMatchObject(
+        {
+          output: { before: "fourth", after: "fourth" },
+        },
+      );
     });
 
-    it.each(["cancel-first", "release-first"])(
-      "handles %s with queued calls",
-      async (order) => {
-        const { manager, command, cancel, waitForStart, onWorkerExit } =
-          await fixture();
-        const a = manager
-          .call(command("a", "first", 10_000))
-          .catch((error: unknown) => error);
-        await waitForStart("a");
-        const b = manager
-          .call(command("b", "second", 10_000))
-          .catch((error: unknown) => error);
-        await new Promise((resolve) => setTimeout(resolve, 100));
-        for (const id of order === "cancel-first" ? ["b", "a"] : ["a", "b"])
-          cancel(id);
-        await expect(a).resolves.toMatchObject({ name: "AbortError" });
-        await expect(b).resolves.toMatchObject({ name: "AbortError" });
-        await expect(
-          manager.call(command("c", "third")),
-        ).resolves.toMatchObject({
-          output: { before: "third", after: "third" },
-        });
-        expect(onWorkerExit).not.toHaveBeenCalled();
-      },
-    );
-
-    it("disposes with queued calls and starts a fresh generation", async () => {
+    it("disposes with overlapping calls and starts a fresh generation", async () => {
       const { manager, command, waitForStart } = await fixture();
       const a = manager
         .call(command("a", "first", 10_000))
         .catch((error: unknown) => error);
       await waitForStart("a");
       const b = manager
-        .call(command("b", "second"))
+        .call(command("b", "second", 10_000))
         .catch((error: unknown) => error);
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await waitForStart("b");
       await manager.dispose({
         type: "plugin.host.dispose",
         pluginId: "fixture",

@@ -136,3 +136,8 @@ agent-provider entries override host values. Reopen existing terminals after a
 change. The server gh login provides GitHub Git/gh authentication and commit
 identity by default; a user GH_TOKEN replaces it. See Settings → Machines →
 Machine environment, and `bb machine env list` for builtInGit readiness.
+
+Plugin host calls start immediately using the current environment while any calls
+are active in that plugin worker. Changed or removed machine variables take
+effect on the next call after all active calls finish. Continuous overlapping
+calls can keep the previous values until the worker becomes idle.
