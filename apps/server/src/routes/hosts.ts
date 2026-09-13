@@ -1,3 +1,8 @@
+import {
+  executionIntegrationSettings,
+  setExecutionIntegration,
+  resolveExecutionProvider,
+} from "../services/hosts/execution-integration.js";
 import { serverAccess } from "../services/machines/server-access.js";
 import { getNonDestroyedHost, updateHost } from "@bb/db";
 import {
@@ -110,6 +115,20 @@ export function registerHostRoutes(
       new ApiError(400, "invalid_request", message),
   });
   const routes = publicApiRoutes.hosts;
+
+  get(routes.executionIntegration, async (context) =>
+    context.json(executionIntegrationSettings(deps, context.req.param("id"))),
+  );
+  patch(routes.updateExecutionIntegration, async (context, payload) => {
+    assertHostManagementAllowed(context);
+    return context.json(
+      setExecutionIntegration(
+        deps,
+        context.req.param("id"),
+        payload.integrationId,
+      ),
+    );
+  });
 
   post(routes.create, async (context, payload) => {
     assertHostManagementAllowed(context);
@@ -346,7 +365,11 @@ export function registerHostRoutes(
     const hostId = context.req.param("id");
     assertUsableHostId(deps, { hostId });
     await deps.providerRegistry.whenProviderRegistered(payload.provider);
-    const registration = deps.providerRegistry.get(payload.provider);
+    const registration = resolveExecutionProvider(
+      deps,
+      payload.provider,
+      hostId,
+    );
     if (registration === null || !registration.info.maintenance.installation) {
       throw new ApiError(
         404,
@@ -357,6 +380,7 @@ export function registerHostRoutes(
     const bridgeLaunch = resolveBridgeLaunchForProviderId(
       deps,
       payload.provider,
+      hostId,
     );
     if (bridgeLaunch === null) {
       throw new ApiError(

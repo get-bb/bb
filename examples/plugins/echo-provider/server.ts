@@ -1,4 +1,7 @@
-import type { BbPluginApi } from "@get-bb/plugin-sdk";
+import type {
+  BbPluginApi,
+  PluginProviderDeclaration,
+} from "@get-bb/plugin-sdk";
 import {
   ECHO_GREETING_ENV,
   ECHO_MODEL,
@@ -29,7 +32,7 @@ export default function plugin(bb: BbPluginApi) {
     execute: ({ text }) => `stamped: ${text}`,
   });
 
-  bb.providers.register({
+  const declaration: PluginProviderDeclaration = {
     id: ECHO_PROVIDER_ID,
     displayName: "Echo",
     icon: "Zap",
@@ -74,5 +77,15 @@ export default function plugin(bb: BbPluginApi) {
       };
     },
     extensionKinds: echoExtensionKinds,
+  };
+  bb.providers.register(declaration);
+  bb.providers.experimental_registerExecutionIntegration({
+    id: "echo-execution",
+    displayName: "Echo execution",
+    providers: ["codex", "pi"].map((id) => ({
+      ...declaration,
+      id,
+      displayName: id === "codex" ? "Codex" : "Pi",
+    })),
   });
 }

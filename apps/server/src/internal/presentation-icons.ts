@@ -1,3 +1,4 @@
+import { resolveSessionExecutionProvider } from "../services/hosts/execution-integration.js";
 import { getThread } from "@bb/db";
 import type { ThreadEvent, ThreadEventWithItem } from "@bb/domain";
 import { isThreadEventWithItem, parseNamespacedGlyph } from "@bb/domain";
@@ -58,7 +59,9 @@ function presentationIconProblem(
     return null;
   }
   const registration =
-    providerId === null ? null : deps.providerRegistry.get(providerId);
+    providerId === null
+      ? null
+      : resolveSessionExecutionProvider(deps, site.event.threadId, providerId);
   if (registration === null) {
     return `presentation.icon "${site.glyph}" names a plugin icon, but the thread's provider has no live registration to check it against`;
   }

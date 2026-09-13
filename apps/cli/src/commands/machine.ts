@@ -202,6 +202,44 @@ export function registerMachineCommands(
   registerMachineEnvironmentCommands(machine, getUrl);
 
   machine
+    .command("execution <id-or-name> [integration]")
+    .description(
+      "Inspect or set the required execution integration (use bb for ordinary execution)",
+    )
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(
+        async (
+          target: string,
+          integration: string | undefined,
+          opts: MachineListCommandOptions,
+        ) => {
+          const sdk = createCliBbSdk(getUrl());
+          const hostId = await resolveMachineHostId({
+            serverUrl: getUrl(),
+            target,
+          });
+          const settings =
+            integration === undefined
+              ? await sdk.hosts.experimental_getExecutionIntegration({ hostId })
+              : await sdk.hosts.experimental_setExecutionIntegration({
+                  hostId,
+                  integrationId: integration === "bb" ? null : integration,
+                });
+          if (outputJson(opts, settings)) return;
+          console.log(
+            `Run agents through: ${settings.required === null ? "BB" : `${settings.required.displayName} (${settings.required.id})${settings.required.available ? "" : " — unavailable"}`}`,
+          );
+          if (integration === undefined)
+            for (const entry of settings.integrations)
+              console.log(
+                `${entry.id}: ${entry.displayName} (${entry.providerIds.join(", ")})${entry.available ? "" : " — unavailable"}`,
+              );
+        },
+      ),
+    );
+
+  machine
     .command("enroll")
     .description("Enroll this machine using a private bootstrap bundle")
     .option("--bootstrap-file <path>", "Read the bootstrap bundle from a file")

@@ -273,6 +273,8 @@ type ExpectedFilesKey =
 type ExpectedGuideKey = "render";
 
 type ExpectedHostsKey =
+  | "experimental_getExecutionIntegration"
+  | "experimental_setExecutionIntegration"
   | "cloneDefaultPath"
   | "experimental_create"
   | "experimental_getEnrollmentCommand"

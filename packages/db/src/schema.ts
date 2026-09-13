@@ -96,6 +96,9 @@ export const hosts = sqliteTable(
     type: text("type").$type<"persistent" | "ephemeral">().notNull(),
     connectMachineId: text("connect_machine_id"),
     machineProviderId: text("machine_provider_id"),
+    executionIntegration: text("execution_integration", {
+      mode: "json",
+    }).$type<{ id: string; pluginId: string; displayName: string }>(),
     launchKey: text("launch_key"),
     inputs: text("machine_inputs", { mode: "json" }).$type<JsonValue>(),
     attempt: integer("machine_attempt").notNull().default(0),
@@ -1078,6 +1081,15 @@ export const terminalSessions = sqliteTable(
     index("terminal_sessions_daemon_session_idx").on(table.daemonSessionId),
   ],
 );
+
+export const threadExecutionOwners = sqliteTable("thread_execution_owners", {
+  threadId: text("thread_id")
+    .primaryKey()
+    .references(() => threads.id, { onDelete: "cascade" }),
+  hostId: text("host_id").notNull(),
+  integrationId: text("integration_id"),
+  pluginId: text("plugin_id").notNull(),
+});
 
 export const pendingInteractions = sqliteTable(
   "pending_interactions",

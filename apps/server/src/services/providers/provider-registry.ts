@@ -57,6 +57,11 @@ export interface ProviderRegistration {
 const PROVIDER_INSTALLED_CACHE_TTL_MS = 5 * 60_000;
 
 export interface ProviderRegistryService {
+  listExecutionIntegrations(): ExecutionIntegrationRegistration[];
+  getExecutionIntegration(id: string): ExecutionIntegrationRegistration | null;
+  registerExecutionIntegration(
+    registration: ExecutionIntegrationRegistration,
+  ): { dispose(): void };
   list(): ProviderRegistration[];
   getUserDefaultProviderId(): string | null;
   get(providerId: string): ProviderRegistration | null;
@@ -89,6 +94,14 @@ export interface ProviderRegistryService {
   markRegistrationsSettled(): void;
 }
 
+export interface ExecutionIntegrationRegistration {
+  hostIds?: readonly string[];
+  id: string;
+  displayName: string;
+  pluginId: string;
+  providers: readonly ProviderRegistration[];
+}
+
 const REGISTRATIONS_SETTLED_TIMEOUT_MS = 30_000;
 
 interface ProviderRegistryDeps {
@@ -103,6 +116,10 @@ export function createProviderRegistryService(
   deps: ProviderRegistryDeps = {},
 ): ProviderRegistryService {
   const pluginRegistrations = new Map<string, ProviderRegistration>();
+  const executionIntegrations = new Map<
+    string,
+    ExecutionIntegrationRegistration
+  >();
   const registrationRanks = new Map<
     ProviderRegistration,
     { installRank: ProviderInstallRank | null; sequence: number }
@@ -218,6 +235,30 @@ export function createProviderRegistryService(
 
     get(providerId) {
       return getRegistration(providerId);
+    },
+
+    listExecutionIntegrations() {
+      return [...executionIntegrations.values()];
+    },
+    getExecutionIntegration(id) {
+      return executionIntegrations.get(id) ?? null;
+    },
+    registerExecutionIntegration(registration) {
+      if (executionIntegrations.has(registration.id)) {
+        throw new Error(
+          `Execution integration "${registration.id}" is already registered`,
+        );
+      }
+      executionIntegrations.set(registration.id, registration);
+      registrationRevision += 1;
+      return {
+        dispose() {
+          if (executionIntegrations.get(registration.id) === registration) {
+            executionIntegrations.delete(registration.id);
+            registrationRevision += 1;
+          }
+        },
+      };
     },
 
     getRegistrationRevision() {

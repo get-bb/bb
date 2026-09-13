@@ -1,3 +1,4 @@
+import { MachineExecutionIntegrationSettings } from "@/components/settings/MachineExecutionIntegrationSettings";
 import { MachineLifecycleNoticeContent } from "@/components/machines/MachineLifecycleNotice";
 import { useMemo, useState, type ComponentProps } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -378,6 +379,8 @@ export function MachineSettingsView() {
             setRenameOpen(true);
           }}
         />
+
+        <MachineExecutionIntegrationSettings hostId={host.id} />
 
         <SettingsSection
           title="Permission limit"

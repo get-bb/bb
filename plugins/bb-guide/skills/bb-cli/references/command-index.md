@@ -71,6 +71,7 @@ This index lists every command path that the core CLI registers. Read the task-s
 - `bb machine`
 - `bb machine providers`
 - `bb machine enroll`
+- `bb machine execution`
 - `bb machine env`
 - `bb machine env list`
 - `bb machine env set`
@@ -299,3 +300,8 @@ Machine environment: `bb machine env list`, `bb machine env set NAME`
 (value from stdin), and `bb machine env unset NAME`; all accept `--json`.
 
 Standalone `bb machine create` machines remain until explicitly removed.
+
+`bb machine execution MACHINE [INTEGRATION] [--json]` reads or sets the required
+agent execution integration. Use `bb` for ordinary execution. Inspection lists
+integration IDs and supported harnesses. Missing integrations block execution;
+changing the binding does not transfer existing sessions to another backend.

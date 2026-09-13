@@ -98,6 +98,7 @@ const EXPECTED_BACKEND_ROOT_TYPE_EXPORTS = [
   "PluginProviderCapabilities",
   "PluginProviderComposerAction",
   "PluginProviderDeclaration",
+  "ExperimentalPluginExecutionIntegrationDeclaration",
   "ExperimentalPluginProviderEnvContext",
   "ExperimentalPluginProviderEnvEntry",
   "ExperimentalPluginProviderEnvHealth",

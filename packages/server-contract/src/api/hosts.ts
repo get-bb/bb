@@ -130,3 +130,32 @@ export const hostListQuerySchema = z.object({
   includeCreating: z.enum(["true", "false"]).optional(),
 });
 export type HostListQuery = z.input<typeof hostListQuerySchema>;
+
+export const updateHostExecutionIntegrationRequestSchema = z
+  .object({ integrationId: z.string().min(1).nullable() })
+  .strict();
+export type UpdateHostExecutionIntegrationRequest = z.infer<
+  typeof updateHostExecutionIntegrationRequestSchema
+>;
+export const hostExecutionIntegrationSettingsSchema = z.object({
+  required: z
+    .object({
+      id: z.string(),
+      pluginId: z.string(),
+      displayName: z.string(),
+      available: z.boolean(),
+    })
+    .nullable(),
+  integrations: z.array(
+    z.object({
+      id: z.string(),
+      pluginId: z.string(),
+      displayName: z.string(),
+      available: z.boolean(),
+      providerIds: z.array(z.string()),
+    }),
+  ),
+});
+export type HostExecutionIntegrationSettings = z.infer<
+  typeof hostExecutionIntegrationSettingsSchema
+>;

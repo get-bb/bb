@@ -158,6 +158,7 @@ export type HostDaemonInjectedSkillSource = z.infer<
 
 const hostDaemonBridgeLaunchSchema = z
   .object({
+    executionIntegrationId: z.string().min(1).optional(),
     pluginId: z.string().min(1),
     source: z
       .object({

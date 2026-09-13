@@ -1,3 +1,4 @@
+import { executionProviderRegistry } from "../hosts/execution-integration.js";
 import { getProjectExecutionDefaults, getThread } from "@bb/db";
 import type {
   CallerExecutionInputSource,
@@ -71,6 +72,13 @@ export function resolveExistingThreadPermissionMode(
   if (!thread) {
     throw new ApiError(404, "thread_not_found", "Thread not found");
   }
+  deps = {
+    ...deps,
+    providerRegistry: executionProviderRegistry(
+      deps,
+      resolveEnvironmentHostId(deps, thread.environmentId),
+    ),
+  };
   const projectDefaults = getProjectExecutionDefaults(deps.db, {
     projectId: thread.projectId,
   });
@@ -260,6 +268,13 @@ export async function resolveExistingThreadExecutionPlan(
   if (!thread) {
     throw new ApiError(404, "thread_not_found", "Thread not found");
   }
+  deps = {
+    ...deps,
+    providerRegistry: executionProviderRegistry(
+      deps,
+      resolveEnvironmentHostId(deps, thread.environmentId),
+    ),
+  };
   const rawProjectExecution =
     args.projectDefaults === undefined
       ? getProjectExecutionDefaults(deps.db, {

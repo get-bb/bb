@@ -1,3 +1,4 @@
+import { resolveSessionExecutionProvider } from "../../services/hosts/execution-integration.js";
 import { refreshProviderRetirement } from "../../services/environments/environment-engine.js";
 import {
   deleteQueuedThreadMessage,
@@ -122,7 +123,10 @@ async function compactThreadContext(
   thread: Thread,
 ): Promise<void> {
   ensureThreadIsWritable(thread);
-  if (!deps.providerRegistry.supportsManualCompaction(thread.providerId)) {
+  if (
+    !resolveSessionExecutionProvider(deps, thread.id, thread.providerId)
+      ?.serverCapabilities.supportsManualCompaction
+  ) {
     throw new ApiError(
       409,
       "invalid_request",

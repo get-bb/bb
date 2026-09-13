@@ -1,3 +1,5 @@
+import { assertSessionExecutionOwner } from "../hosts/execution-integration.js";
+import { requireBridgeLaunchForProviderId } from "../system/provider-bridge-launch.js";
 import { requestQueuedMachineReadiness } from "./queued-message-dispatch.js";
 import {
   cancelPreparingMachinePause,
@@ -6,6 +8,7 @@ import {
 import {
   deleteClaimedQueuedThreadMessageBatchInTransaction,
   getEnvironment,
+  getHost,
   getThread,
   isThreadQueueAutoSendPaused,
   listRunningThreads,
@@ -382,6 +385,19 @@ async function runDispatchAttempt(
 
   const { environment: dispatchEnvironment, host: dispatchHost } =
     dispatchEnvironmentAndHost(deps, thread.environmentId);
+  const executionHostId =
+    dispatchHost?.id ?? intendedThreadHostId(deps, thread.id);
+  if (executionHostId !== null) {
+    assertSessionExecutionOwner(deps, executionHostId, thread.id);
+    if (getHost(deps.db, executionHostId)?.executionIntegration != null) {
+      requireBridgeLaunchForProviderId(
+        deps,
+        thread.providerId,
+        executionHostId,
+      );
+    }
+  }
+
   if (
     dispatchHost !== null &&
     isMachineWaitingForExecution(deps, dispatchHost.id)

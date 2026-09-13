@@ -2907,7 +2907,6 @@ returns a credential only while that host is creating.
 Before stabilizing, verify creation cancellation through host removal,
 same-host restoration, serialized removal, plugin callers and UI/CLI parity.
 
-
 ## `app.experimental_icons.register` and `experimental_Icon`
 
 Plugins register inline React artwork during app setup with `{ name, component }`.
@@ -2944,7 +2943,6 @@ plugin app icons use this registration API. The manifest API is unchanged,
 and individual plugins can still declare their own branding SVG assets using
 the existing manifest fields.
 
-
 ## `experimental_ProviderIcon`
 
 Shared frontend renderer for agent, machine, and environment provider artwork,
@@ -2972,3 +2970,26 @@ same-id isolation and legacy override fallback,
 asset-vs-glyph precedence, cross-plugin overrides, reload/error/recursion behavior,
 accessibility and theme rendering on desktop and mobile. Keep metadata fetching
 and plugin branding separate from provider artwork resolution.
+
+## Required machine execution integrations
+
+`bb.providers.experimental_registerExecutionIntegration({ id, displayName,
+providers })` registers one bridge with explicit provider declarations for the
+harnesses it supports. These declarations own capabilities and model catalogs
+on bound machines without replacing ordinary provider registrations.
+`bb.sdk.hosts.experimental_getExecutionIntegration` reads the durable binding
+and compatible registrations. `experimental_setExecutionIntegration` selects an
+integration or clears the binding with `integrationId: null`. Machine-gated
+credentials cannot change it.
+
+The server checks the resolved host at the final agent RPC boundary and records
+session ownership. Missing registrations, conflicting owners and unsupported
+harnesses fail without native fallback. Bridge requests carry an optional
+`executionIntegration: { id, providerId }`; the model stays in `options.model`.
+Optional `hostIds` restricts compatible machines; omission allows all machines.
+Client release is not an instruction to stop an external service's execution.
+
+Before stabilizing, audit concurrent setting changes, session ownership across
+plugin replacement and handoff, daemon reconnects, capability/model discovery,
+and setup clients' authorization. Confirm that one binding per machine remains
+sufficient without adding per-thread routing rules.

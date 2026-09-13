@@ -143,7 +143,8 @@ describe("ProjectlessMachineSlot", () => {
     const chip = screen.getByRole("button", { name: "Machine" });
     expect(chip.querySelector('[data-icon="Cloud"]')).not.toBeNull();
     expect(chip.querySelector('[data-icon="Laptop"]')).toBeNull();
-    expect(chip.textContent).toContain(modalHost.name);
+    expect(chip.textContent).toBe("Cloud");
+    expect(chip.getAttribute("aria-description")).toBe(modalHost.name);
     expect(chip.textContent).not.toContain("Modal Sandbox");
   });
 
@@ -156,9 +157,14 @@ describe("ProjectlessMachineSlot", () => {
       />,
     );
 
+    expect(screen.getByRole("button", { name: "Machine" }).textContent).toBe(
+      "Cloud",
+    );
     expect(
-      screen.getByRole("button", { name: "Machine" }).textContent,
-    ).toContain("Mac Studio");
+      screen
+        .getByRole("button", { name: "Machine" })
+        .getAttribute("aria-description"),
+    ).toBe("Mac Studio");
   });
 
   it("routes a machine pick through the selected provider", () => {
@@ -173,7 +179,8 @@ describe("ProjectlessMachineSlot", () => {
     );
 
     const trigger = screen.getByRole("button", { name: "Machine" });
-    expect(trigger.textContent).toContain("Mac Studio");
+    expect(trigger.textContent).toBe("Cloud");
+    expect(trigger.getAttribute("aria-description")).toBe("Mac Studio");
     fireEvent.pointerDown(trigger, { button: 0 });
     fireEvent.click(screen.getByRole("menuitem", { name: /Local host/u }));
 
@@ -375,7 +382,8 @@ describe("EnvironmentSlot", () => {
     expect(screen.queryByRole("button", { name: "Machine" })).toBeNull();
     const triggers = screen.getAllByRole("button", { name: "Environment" });
     expect(triggers).toHaveLength(2);
-    expect(triggers[0]?.textContent).toContain("Reuse");
+    expect(triggers[0]?.textContent).toContain("Local");
+    expect(triggers[0]?.getAttribute("aria-description")).toContain("Reuse");
     expect(triggers[1]?.textContent).toContain("Scratch space");
   });
 

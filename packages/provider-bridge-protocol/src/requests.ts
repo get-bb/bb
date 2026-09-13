@@ -28,7 +28,18 @@ export const BRIDGE_REQUEST_METHODS = {
   skillsConfigure: "skills/configure",
 } as const;
 
+export const executionIntegrationContextSchema = z
+  .object({
+    id: z.string().min(1),
+    providerId: z.string().min(1),
+  })
+  .strict();
+export type ExecutionIntegrationContext = z.infer<
+  typeof executionIntegrationContextSchema
+>;
+
 const sessionConstructionFields = {
+  executionIntegration: executionIntegrationContextSchema.optional(),
   threadId: z.string().min(1),
   cwd: z.string().min(1),
   options: bridgeExecutionOptionsSchema,
@@ -38,7 +49,10 @@ const sessionConstructionFields = {
 };
 
 export const modelListParamsSchema = z
-  .object({ cwd: z.string().min(1).optional() })
+  .object({
+    cwd: z.string().min(1).optional(),
+    executionIntegration: executionIntegrationContextSchema.optional(),
+  })
   .passthrough();
 
 export const threadStartParamsSchema = z
@@ -93,6 +107,7 @@ export const threadNameSetParamsSchema = z
   .passthrough();
 
 const turnInputFields = {
+  executionIntegration: executionIntegrationContextSchema.optional(),
   threadId: z.string().min(1),
   providerThreadId: z.string().min(1),
   input: z.array(promptInputSchema),

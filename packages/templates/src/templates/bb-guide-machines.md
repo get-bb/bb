@@ -316,3 +316,20 @@ Progress and failures appear in the thread's provisioning details. If cloning
 fails, the machine remains available for retry or explicit removal.
 `--new-machine <id>` requires an explicit `--environment-provider <id>`; machine
 providers do not implicitly choose an environment.
+
+
+Required agent execution
+
+Settings → Machines → select a machine → Run agents through chooses its required
+execution integration. BB is the default. Harness/model and workspace choices
+stay separate. The new-thread location control says Local or Cloud; open it to
+choose an exact machine and checkout/worktree.
+
+  bb machine execution <id-or-name> [--json]
+  bb machine execution <id-or-name> <integration-id> [--json]
+  bb machine execution <id-or-name> bb [--json]
+
+Inspection lists registered integrations and supported harness IDs. Missing or
+disabled integrations remain selected and block agent execution. Existing
+sessions keep their execution owner: restore the old setting or start a new
+thread if the binding changes. Terminal and file operations are unaffected.

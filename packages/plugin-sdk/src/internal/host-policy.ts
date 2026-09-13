@@ -3581,3 +3581,44 @@ export function normalizeRpcJsonResult(
 
   return visit(value, "$result");
 }
+
+export interface NormalizedExecutionIntegrationDeclaration {
+  hostIds?: readonly string[];
+  id: string;
+  displayName: string;
+  providers: readonly NormalizedPluginProviderDeclaration[];
+}
+
+export function validateExecutionIntegrationDeclaration(
+  declaration: import("../backend-contract.js").ExperimentalPluginExecutionIntegrationDeclaration,
+): NormalizedExecutionIntegrationDeclaration {
+  const identity = z
+    .object({
+      hostIds: z.array(z.string().min(1)).min(1).max(256).optional(),
+      id: z.string().regex(/^[a-z0-9][a-z0-9-]{1,63}$/),
+      displayName: z.string().trim().min(1).max(80),
+      providers: z
+        .array(
+          z.custom<
+            import("../backend-contract.js").PluginProviderDeclaration
+          >(),
+        )
+        .min(1)
+        .max(64),
+    })
+    .strict()
+    .parse(declaration);
+  if (identity.id === "bb")
+    throw new Error(
+      "Execution integration id bb is reserved for ordinary execution",
+    );
+  const providers = identity.providers.map(validatePluginProviderDeclaration);
+  if (
+    new Set(providers.map((provider) => provider.id)).size !== providers.length
+  ) {
+    throw new Error(
+      "An execution integration must declare each provider only once",
+    );
+  }
+  return { ...identity, providers };
+}

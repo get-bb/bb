@@ -1,4 +1,7 @@
-import { defineWorkspaceTestConfig } from "../../vitest.shared.js";
+import {
+  defineWorkspaceTestConfig,
+  sharedWorkerProjects,
+} from "../../vitest.shared.js";
 
 const parsedTimeoutScale = Number(process.env.BB_TEST_TIMEOUT_SCALE ?? 1);
 const timeoutScale =
@@ -18,6 +21,11 @@ export default defineWorkspaceTestConfig({
     silent: "passed-only",
     testTimeout: Math.ceil(60_000 * timeoutScale),
     projects: [
+      ...sharedWorkerProjects({
+        pkgDir: __dirname,
+        name: "@bb/integration-tests:execution",
+        include: ["fake/execution/machine-execution-integration.test.ts"],
+      }),
       {
         extends: true,
         test: {
@@ -26,6 +34,7 @@ export default defineWorkspaceTestConfig({
           isolate: false,
           globalSetup: ["./global-setup.ts"],
           include: ["fake/**/*.test.ts"],
+          exclude: ["fake/execution/machine-execution-integration.test.ts"],
         },
       },
       {

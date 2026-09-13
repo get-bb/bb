@@ -1539,6 +1539,38 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
             ].output.parse(await call("ai.voice.transcribe", input, options)),
         });
       },
+      isExecutionIntegrationIdTaken: (id) => {
+        const existing = deps.providerRegistry?.getExecutionIntegration(id);
+        return existing != null && existing.pluginId !== row.id;
+      },
+      registerExecutionIntegration: (declaration) => {
+        if (!deps.providerRegistry)
+          throw new Error("Provider registry is unavailable");
+        return deps.providerRegistry.registerExecutionIntegration({
+          ...(declaration.hostIds === undefined
+            ? {}
+            : { hostIds: declaration.hostIds }),
+          id: declaration.id,
+          displayName: declaration.displayName,
+          pluginId: row.id,
+          providers: declaration.providers.map((provider) => ({
+            ...buildPluginProviderRegistration({
+              available: true,
+              pluginId: row.id,
+              declaration: provider,
+              iconHash: null,
+              readSettings: () =>
+                readPluginSettingsValuesSync({
+                  db: deps.db,
+                  pluginId: row.id,
+                  descriptors: settingsDescriptorsRef.current,
+                }),
+            }),
+            pluginId: row.id,
+            iconNames: new Set(manifest.branding.icons.keys()),
+          })),
+        });
+      },
       registerProvider: (declaration) => {
         return registerPluginProvider({
           available: true,

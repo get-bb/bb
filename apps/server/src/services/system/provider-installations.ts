@@ -91,7 +91,11 @@ export async function getProviderInstallations(
       );
     },
     prepare: (provider) => {
-      const bridgeLaunch = resolveBridgeLaunchForProviderId(deps, provider.id);
+      const bridgeLaunch = resolveBridgeLaunchForProviderId(
+        deps,
+        provider.id,
+        args.hostId,
+      );
       if (bridgeLaunch === null) {
         deps.logger.warn(
           {

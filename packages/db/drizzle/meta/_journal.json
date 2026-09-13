@@ -841,6 +841,13 @@
       "when": 1789226927698,
       "tag": "0119_provider_model_catalogs",
       "breakpoints": true
+    },
+    {
+      "idx": 120,
+      "version": "6",
+      "when": 1789310017911,
+      "tag": "0120_powerful_cassandra_nova",
+      "breakpoints": true
     }
   ]
 }

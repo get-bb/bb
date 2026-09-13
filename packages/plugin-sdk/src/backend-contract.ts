@@ -1579,6 +1579,16 @@ export interface PluginAgents {
  */
 export interface PluginProviders {
   /**
+   * Register a required machine execution integration. Provider declarations
+   * describe the harnesses this bridge accepts, with its own capabilities and
+   * model catalogs. They do not replace ordinary provider registrations.
+   * The selected provider id and model reach this plugin's bridge unchanged.
+   * Disabling the plugin never clears a machine's required binding.
+   */
+  experimental_registerExecutionIntegration(
+    declaration: ExperimentalPluginExecutionIntegrationDeclaration,
+  ): { dispose(): void };
+  /**
    * Register an agent provider this plugin contributes (see
    * docs/api_to_audit.md before relying on it). The declaration is validated
    * at call time; the provider joins the server's provider registry when the
@@ -1611,6 +1621,13 @@ export interface PluginProviders {
       | null
       | Promise<ExperimentalPluginProviderEnvHealth | null>,
   ): void;
+}
+
+export interface ExperimentalPluginExecutionIntegrationDeclaration {
+  hostIds?: readonly string[];
+  id: string;
+  displayName: string;
+  providers: readonly PluginProviderDeclaration[];
 }
 
 export interface ExperimentalPluginProviderEnvContext {

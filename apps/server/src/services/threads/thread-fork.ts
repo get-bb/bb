@@ -1,3 +1,4 @@
+import { resolveSessionExecutionProvider } from "../hosts/execution-integration.js";
 import { getEnvironment, getThread } from "@bb/db";
 import type { EnvironmentRow } from "@bb/db";
 import type { PromptInput, Thread } from "@bb/domain";
@@ -29,10 +30,15 @@ function requireForkSourceThread(
 }
 
 function requireForkCapableProvider(
-  deps: Pick<ThreadForkDeps, "providerRegistry">,
+  deps: Pick<ThreadForkDeps, "db" | "providerRegistry">,
   sourceThread: Thread,
 ): void {
-  if (!deps.providerRegistry.supportsFork(sourceThread.providerId)) {
+  const capability = resolveSessionExecutionProvider(
+    deps,
+    sourceThread.id,
+    sourceThread.providerId,
+  )?.serverCapabilities.fork;
+  if (capability === undefined || capability === "none") {
     throw new ApiError(
       400,
       "invalid_request",

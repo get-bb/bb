@@ -1,3 +1,7 @@
+import {
+  executionProviderRegistry,
+  resolveExecutionProvider,
+} from "../hosts/execution-integration.js";
 import { assertEnvironmentPathAvailable } from "../environments/path-admission.js";
 import {
   deleteThread,
@@ -686,6 +690,11 @@ export async function createThreadFromRequest(
             request.environment.machine.hostId,
           )
         : undefined;
+  resolveExecutionProvider(deps, request.providerId, childHostId ?? undefined);
+  deps = {
+    ...deps,
+    providerRegistry: executionProviderRegistry(deps, childHostId),
+  };
   const resolvedExecutionDefaults = await resolveCatalogExecutionDefaults(
     deps,
     {

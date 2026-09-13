@@ -1,13 +1,16 @@
+import { getHost } from "@bb/db";
+import { resolveExecutionProvider } from "../hosts/execution-integration.js";
 import { type HostDaemonBridgeLaunch } from "@bb/host-daemon-contract";
 import { ApiError } from "../../errors.js";
 import type { ProviderRegistration } from "../providers/provider-registry.js";
 import type { AppDeps } from "../../types.js";
 
 export function resolveBridgeLaunchForProviderId(
-  deps: Pick<AppDeps, "providerRegistry" | "pluginHostArtifacts">,
+  deps: Pick<AppDeps, "db" | "providerRegistry" | "pluginHostArtifacts">,
   providerId: string,
+  hostId?: string,
 ): HostDaemonBridgeLaunch | null {
-  const registration = deps.providerRegistry.get(providerId);
+  const registration = resolveExecutionProvider(deps, providerId, hostId);
   if (registration === null) {
     return null;
   }
@@ -23,8 +26,15 @@ export function resolveBridgeLaunchForProviderId(
     permissionModes,
   } = registration.info.capabilities;
   const fork = registration.serverCapabilities.fork;
+  const integrationId =
+    hostId === undefined
+      ? null
+      : (getHost(deps.db, hostId)?.executionIntegration?.id ?? null);
   return {
     pluginId,
+    ...(integrationId === null
+      ? {}
+      : { executionIntegrationId: integrationId }),
     source,
     providerOptions: { ...registration.bridgeOptions },
     envPassthrough: [...registration.envPassthrough],
@@ -40,11 +50,27 @@ export function resolveBridgeLaunchForProviderId(
 }
 
 export function requireBridgeLaunchForProviderId(
-  deps: Pick<AppDeps, "providerRegistry" | "pluginHostArtifacts">,
+  deps: Pick<AppDeps, "db" | "providerRegistry" | "pluginHostArtifacts">,
   providerId: string,
+  hostId?: string,
 ): HostDaemonBridgeLaunch {
-  const bridgeLaunch = resolveBridgeLaunchForProviderId(deps, providerId);
+  const bridgeLaunch = resolveBridgeLaunchForProviderId(
+    deps,
+    providerId,
+    hostId,
+  );
   if (bridgeLaunch === null) {
+    const binding =
+      hostId === undefined
+        ? null
+        : getHost(deps.db, hostId)?.executionIntegration;
+    if (binding != null) {
+      throw new ApiError(
+        409,
+        "execution_integration_unavailable",
+        `Required execution integration "${binding.displayName}" (${binding.id}) has no available bridge`,
+      );
+    }
     throw new ApiError(
       409,
       "provider_bridge_unavailable",

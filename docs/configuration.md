@@ -1423,3 +1423,13 @@ invalid, or corrupt entries are rebuilt; development and compiler diagnostic
 modes bypass the cache. The cache has no user configuration and can be removed
 while no builds are running. See [build performance](build-performance.md) for
 its identity, portability, and verification contract.
+
+## Machine execution integration
+
+Settings → Machines → select a machine → **Run agents through** defaults to BB.
+`bb machine execution MACHINE [INTEGRATION] [--json]` reads or sets the same
+binding; use `bb` to clear it. A required integration owns agent execution for
+that machine independently of harness, model, repository and workspace choices.
+Missing integrations stay selected and block execution. Existing sessions keep
+their original owner; restore that binding or create a new thread after a change.
+The policy does not restrict terminal or file operations.

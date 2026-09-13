@@ -71,6 +71,7 @@ export async function installTestBuiltinPlugin(
 
 export type TestAppHarnessConfigOverrides = Partial<ServerRuntimeConfig> & {
   appVersionService?: AppVersionService;
+  databasePath?: string;
   terminalCloseTimeoutMs?: number;
   nativeRootsClock?: () => number;
   seedFirstPartyProviders?: boolean;
@@ -131,13 +132,14 @@ export async function createTestAppHarness(
 ): Promise<TestAppHarness> {
   const {
     appVersionService,
+    databasePath,
     terminalCloseTimeoutMs,
     nativeRootsClock,
     seedFirstPartyProviders = true,
     ...configOverrides
   } = overrides;
   const dataDir = await mkdtemp(join(tmpdir(), "bb-server-test-"));
-  const db = createTestDb();
+  const db = databasePath === undefined ? createTestDb() : initDb(databasePath);
   const hub = new NotificationHubImpl();
   const watchInterests = new WatchInterestCoordinator({ db, hub });
   const sharedPorts = new HostSharedPortCoordinator({ db, hub });

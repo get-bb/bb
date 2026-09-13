@@ -1,3 +1,4 @@
+import { getHost } from "@bb/db";
 import type {
   SystemProviderState,
   SystemProviderStatesResponse,
@@ -50,7 +51,11 @@ async function getProviderState(
       "This provider does not report readiness.",
     );
   }
-  const bridgeLaunch = resolveBridgeLaunchForProviderId(deps, args.provider.id);
+  const bridgeLaunch = resolveBridgeLaunchForProviderId(
+    deps,
+    args.provider.id,
+    args.hostId,
+  );
   if (bridgeLaunch === null) {
     return unknownProviderState(
       args.provider,
@@ -83,6 +88,8 @@ async function getProviderState(
     if (health.status !== "unauthenticated" && health.status !== "expired") {
       return health;
     }
+    if (getHost(deps.db, args.hostId)?.executionIntegration != null)
+      return health;
     const contributed = await resolvePluginProviderEnvHealth({
       providerId: args.provider.id,
       hostId: args.hostId,

@@ -1,4 +1,8 @@
 import {
+  validateExecutionIntegrationDeclaration,
+  type NormalizedExecutionIntegrationDeclaration,
+} from "../internal/host-policy.js";
+import {
   environmentCompositionSchema,
   validateServerAccessProviderDeclaration,
   type NormalizedPluginEnvironmentComposition,
@@ -296,6 +300,10 @@ export interface FakePluginRegistrations {
   /** Live provider registrations from `bb.providers.register`
    * (normalized declarations, registration order; dispose removes). */
   providerRegistrations: NormalizedPluginProviderDeclaration[];
+  executionIntegrationRegistrations: ReadonlyMap<
+    string,
+    NormalizedExecutionIntegrationDeclaration
+  >;
   providerEnvResolvers: ReadonlyMap<
     string,
     (
@@ -1347,7 +1355,28 @@ function createFakePluginHostInternal(
     },
   };
 
+  const executionIntegrations = new Map<
+    string,
+    NormalizedExecutionIntegrationDeclaration
+  >();
   const providers: PluginProviders = {
+    experimental_registerExecutionIntegration(declaration) {
+      assertLive();
+      const normalized = validateExecutionIntegrationDeclaration(declaration);
+      if (options.experimental_hostEntry === false)
+        throw new Error(providerWithoutBridgeMessage(normalized.id));
+      if (executionIntegrations.has(normalized.id))
+        throw new Error(
+          `Execution integration "${normalized.id}" is already registered`,
+        );
+      executionIntegrations.set(normalized.id, normalized);
+      const dispose = () => {
+        if (executionIntegrations.get(normalized.id) === normalized)
+          executionIntegrations.delete(normalized.id);
+      };
+      disposeHooks.push(dispose);
+      return { dispose };
+    },
     register(declaration) {
       return registerProviderDeclaration(declaration);
     },
@@ -1622,6 +1651,9 @@ function createFakePluginHostInternal(
       },
       mentionProviders,
       providerRegistrations,
+      get executionIntegrationRegistrations() {
+        return new Map(executionIntegrations);
+      },
       providerEnvResolvers,
       providerEnvHealthResolvers,
       aiServiceRegistrations,

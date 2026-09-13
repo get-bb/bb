@@ -503,6 +503,8 @@ export function ProjectlessMachineSlot({
   }
   return (
     <MachinePickerUI
+      modal={false}
+      showLocation
       hosts={availableHosts}
       localDaemonHostId={machines.localDaemonHostId}
       primaryHostId={machines.primaryHostId}

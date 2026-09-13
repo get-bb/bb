@@ -228,6 +228,14 @@ export function EnvironmentPickerUI({
         : undefined,
     [providers, parsed],
   );
+  const selectedHostId = selectedProviderHostId ?? availableHost?.id ?? null;
+  const locationLabel =
+    !selectedProvider?.machineProviderId &&
+    selectedHostId !== null &&
+    (selectedHostId === availableMachines?.localDaemonHostId ||
+      (!hasMultipleMachines && isLocal))
+      ? "Local"
+      : "Cloud";
   const hostlessProviders = providers.filter(
     (provider) =>
       provider.machineProviderId &&
@@ -290,6 +298,7 @@ export function EnvironmentPickerUI({
           variant="ghost"
           size="sm"
           aria-label="Environment"
+          aria-description={`${locationLabel} · ${selectedMachineName ?? availableHost?.name ?? "No machine"} · ${hostUnavailableReason ?? selectedProvider?.displayName ?? selected.modeLabel}`}
           aria-busy={isLoading}
           disabled={disabled}
           data-promptbox-shrinkable-control=""
@@ -329,14 +338,14 @@ export function EnvironmentPickerUI({
             ) : (
               <>
                 <span className="min-w-0 truncate" data-promptbox-full-label="">
-                  {selected.modeLabel}
+                  {locationLabel}
                 </span>
                 <span
                   className="min-w-0 truncate"
                   data-promptbox-compact-label=""
                   data-promptbox-hide-tiny=""
                 >
-                  {selected.compactModeLabel}
+                  {locationLabel}
                 </span>
               </>
             )}
@@ -586,7 +595,10 @@ function MachineSection({
       <DropdownMenuLabel className="min-w-0 text-muted-foreground">
         <span className="flex items-center gap-1.5">
           <MachineStatusDot connected={connected} />
-          <span className="min-w-0 truncate">{host.name}</span>
+          <span>{isThisMachine ? "Local" : "Cloud"} </span>
+          <span className="min-w-0 truncate" title={host.id}>
+            {host.name}
+          </span>
           {isThisMachine ? (
             <span className={MACHINE_BADGE_CLASS_NAME}>this machine</span>
           ) : null}

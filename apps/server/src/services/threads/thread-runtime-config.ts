@@ -1,3 +1,4 @@
+import { executionProviderRegistry } from "../hosts/execution-integration.js";
 import {
   resolveHostEnvironment,
   mergeHostAndProviderEnvironment,
@@ -120,6 +121,10 @@ export async function resolveThreadRuntimeCommandConfig(
   deps: LoggedWorkSessionDeps,
   args: ResolveThreadRuntimeCommandConfigArgs,
 ): Promise<ResolvedThreadRuntimeCommandConfig> {
+  deps = {
+    ...deps,
+    providerRegistry: executionProviderRegistry(deps, args.environment.hostId),
+  };
   const workspacePath = requireWorkspacePath(args.environment);
   const project = getProject(deps.db, args.thread.projectId);
   if (!project) {

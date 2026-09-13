@@ -1,3 +1,4 @@
+import type { HostExecutionIntegrationSettings } from "@bb/server-contract";
 import { hostProviderCliInstallEventSchema } from "@bb/server-contract";
 import type { Host } from "@bb/domain";
 import type {
@@ -98,6 +99,13 @@ export type HostUpdateResult = Host;
 export type MachineProviderListResult = SystemMachineProvider[];
 
 export interface HostsArea {
+  experimental_getExecutionIntegration(
+    args: HostGetArgs,
+  ): Promise<HostExecutionIntegrationSettings>;
+  experimental_setExecutionIntegration(args: {
+    hostId: string;
+    integrationId: string | null;
+  }): Promise<HostExecutionIntegrationSettings>;
   experimental_create(args: MachineCreateArgs): Promise<Host>;
   experimental_getEnrollmentCommand(
     args: HostGetArgs,
@@ -129,6 +137,22 @@ export interface HostsArea {
 export function createHostsArea(args: CreateSdkAreaArgs): HostsArea {
   const { transport } = args;
   return {
+    async experimental_getExecutionIntegration(input) {
+      return transport.readJson(
+        transport.api.v1.hosts[":id"]["execution-integration"].$get(
+          { param: { id: input.hostId } },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+    },
+    async experimental_setExecutionIntegration(input) {
+      return transport.readJson(
+        transport.api.v1.hosts[":id"]["execution-integration"].$patch({
+          param: { id: input.hostId },
+          json: { integrationId: input.integrationId },
+        }),
+      );
+    },
     async experimental_create(input) {
       let host = await transport.readJson(
         transport.api.v1.hosts.$post(

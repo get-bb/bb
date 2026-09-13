@@ -30,7 +30,11 @@ export async function getProviderUsageLimits(
     providers,
     async (provider): Promise<[string, ProviderUsage] | null> => {
       if (!provider.maintenance.usage) return null;
-      const bridgeLaunch = resolveBridgeLaunchForProviderId(deps, provider.id);
+      const bridgeLaunch = resolveBridgeLaunchForProviderId(
+        deps,
+        provider.id,
+        hostId,
+      );
       if (bridgeLaunch === null) return null;
       try {
         const result = await callHostRetryableOnlineRpc(deps, {

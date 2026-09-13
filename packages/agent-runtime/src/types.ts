@@ -94,6 +94,7 @@ export interface AgentRuntimeProviderRecoveryHint {
 }
 
 export interface AgentRuntimeBridgeLaunch {
+  executionIntegrationId?: string;
   pluginId: string;
   dataDir: string;
   source: { kind: "artifact"; digest: string; artifactPath: string };

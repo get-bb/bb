@@ -90,6 +90,7 @@ export {
   threadDeltaSchema,
   initializeParamsSchema,
   modelListParamsSchema,
+  executionIntegrationContextSchema,
   providerHealthResultSchema,
   providerHealthSchema,
   providerInstallationActionKindSchema,
@@ -408,3 +409,5 @@ export {
   type ContextCategory,
   type ContextEntry,
 } from "@bb/domain";
+
+export type { ExecutionIntegrationContext } from "@bb/provider-bridge-protocol";

@@ -143,6 +143,7 @@ function catalogFingerprint(
       JSON.stringify([
         providerId,
         bridgeLaunch.pluginId,
+        bridgeLaunch.executionIntegrationId ?? null,
         bridgeLaunch.source,
         bridgeLaunch.providerOptions,
         bridgeLaunch.envPassthrough,
@@ -488,6 +489,7 @@ export function createProviderModelCatalogStore(options: {
       const bridgeLaunch = requireBridgeLaunchForProviderId(
         deps,
         args.provider.id,
+        args.hostId,
       );
       const fingerprint = catalogFingerprint(args.provider.id, bridgeLaunch);
       const entry = loadEntry(deps, {
@@ -523,6 +525,7 @@ export function createProviderModelCatalogStore(options: {
       const bridgeLaunch = resolveBridgeLaunchForProviderId(
         deps,
         args.provider.id,
+        args.hostId,
       );
       if (bridgeLaunch === null) {
         return;

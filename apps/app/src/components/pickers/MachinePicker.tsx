@@ -47,6 +47,7 @@ export function orderLocalHostFirst(
 }
 
 interface MachinePickerUIProps {
+  showLocation?: boolean;
   hosts: readonly Host[];
   localDaemonHostId: string | null;
   primaryHostId: string | null;
@@ -60,6 +61,7 @@ interface MachinePickerUIProps {
 }
 
 export function MachinePickerUI({
+  showLocation = false,
   hosts,
   localDaemonHostId,
   primaryHostId,
@@ -92,6 +94,7 @@ export function MachinePickerUI({
           variant="ghost"
           size="sm"
           aria-label="Machine"
+          aria-description={showLocation ? selectedHost?.name : undefined}
           disabled={disabled}
           data-promptbox-shrinkable-control=""
           className={cn(
@@ -106,6 +109,18 @@ export function MachinePickerUI({
           <span className={OPTION_TRIGGER_CONTENT_CLASS_NAME}>
             {selectedHost == null ? (
               <span className="min-w-0 truncate">Machine</span>
+            ) : showLocation ? (
+              <>
+                <Icon
+                  name={
+                    selectedHost.id === localDaemonHostId ? "Laptop" : "Cloud"
+                  }
+                  className={COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS}
+                />
+                <span>
+                  {selectedHost.id === localDaemonHostId ? "Local" : "Cloud"}
+                </span>
+              </>
             ) : (
               <MachineLabel
                 host={selectedHost}
@@ -138,6 +153,12 @@ export function MachinePickerUI({
           return (
             <DropdownMenuItem
               key={host.id}
+              aria-label={
+                showLocation
+                  ? `${host.id === localDaemonHostId ? "Local" : "Cloud"} ${host.name}`
+                  : undefined
+              }
+              aria-description={showLocation ? host.id : undefined}
               disabled={!connected}
               onSelect={() => {
                 if (!connected) return;
@@ -150,6 +171,11 @@ export function MachinePickerUI({
             >
               <span className="flex min-w-0 flex-1 items-center gap-1.5">
                 <MachineStatusDot connected={connected} />
+                {showLocation ? (
+                  <span>
+                    {host.id === localDaemonHostId ? "Local" : "Cloud"}{" "}
+                  </span>
+                ) : null}
                 <MachineLabel
                   host={host}
                   machineProvider={findMachineProvider(host, machineProviders)}

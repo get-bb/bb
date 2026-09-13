@@ -84,6 +84,7 @@ export interface RunningTestServer {
   hub: NotificationHub;
   machineAuth: Awaited<ReturnType<typeof createMachineAuthService>>;
   providerRegistry: ProviderRegistryService;
+  pluginService: ReturnType<typeof createApp>["pluginService"];
 }
 
 export interface IntegrationHarness {
@@ -321,6 +322,7 @@ async function startIntegrationServer(
     hub,
     machineAuth,
     providerRegistry,
+    pluginService,
     async close(): Promise<void> {
       await new Promise<void>((resolve, reject) => {
         server.close((error) => {

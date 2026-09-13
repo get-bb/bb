@@ -1,3 +1,4 @@
+import { resolveSessionExecutionProvider } from "../services/hosts/execution-integration.js";
 import { getThread } from "@bb/db";
 import type { ExtensionKind, JsonValue, ThreadEvent } from "@bb/domain";
 import { parseExtensionKind } from "@bb/domain";
@@ -109,7 +110,9 @@ function extensionOwnershipProblem(
 ): string | null {
   const { pluginId } = parseExtensionKind(site.kind);
   const registration =
-    providerId === null ? null : deps.providerRegistry.get(providerId);
+    providerId === null
+      ? null
+      : resolveSessionExecutionProvider(deps, site.threadId, providerId);
   if (registration === null) {
     const provider =
       providerId === null
@@ -132,7 +135,12 @@ async function validateSite(
   if (ownership !== null) {
     return { ok: false, reason: ownership };
   }
-  const declared = deps.providerRegistry.getExtensionKindSchemas(site.kind);
+  const name = parseExtensionKind(site.kind).name;
+  const declared =
+    providerId === null
+      ? null
+      : (resolveSessionExecutionProvider(deps, site.threadId, providerId)
+          ?.extensionKinds[name] ?? null);
   const schema = declared?.[site.surface];
   if (schema === undefined) {
     const { pluginId, name } = parseExtensionKind(site.kind);

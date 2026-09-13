@@ -688,6 +688,12 @@ function terminalDataBase64(byteLength: number): string {
 }
 
 const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
+  "hostDaemonCommandSchema.bridgeLaunch.executionIntegrationId":
+    "Absent for ordinary execution; required machine integrations carry their durable owner id.",
+  "hostDaemonCommandSchema.resumeContext.bridgeLaunch.executionIntegrationId":
+    "Native session resumes omit integration ownership; integrated resumes preserve the selected owner.",
+  "hostDaemonOnlineRpcCommandSchema.bridgeLaunch.executionIntegrationId":
+    "Ordinary provider maintenance omits it; integration discovery carries the same execution owner as agent launches.",
   "hostDaemonCommandSchema.targetPath":
     "project.clone omits targetPath when the daemon should derive its default checkout location for the project.",
   "hostDaemonOnlineRpcCommandSchema.expectedSha256":
@@ -1003,7 +1009,7 @@ const CONTRIBUTED_ENV = [
 
 describe("host-daemon command schemas", () => {
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(207);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(208);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 

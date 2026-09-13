@@ -325,3 +325,30 @@ worker, because it is one artifact.
 Trust model: installation trust, exactly like every other plugin surface. A
 bridge runs only for an installed, enabled plugin, and only on hosts whose
 server instructs it.
+
+### Required machine execution
+
+Use `bb.providers.experimental_registerExecutionIntegration({ id, displayName,
+providers })` to register the same `bb.host` bridge as a machine execution
+integration. `providers` contains ordinary `PluginProviderDeclaration` shapes
+for the harness IDs this bridge supports. These are scoped to the integration;
+they do not replace provider picker registrations globally. Optional `hostIds`
+limits the integration to compatible machines; omit it to support all. Declare the
+integration's actual capabilities, fallback models and model catalog scope.
+
+Configure it from a handler or setup service with
+`bb.sdk.hosts.experimental_setExecutionIntegration({ hostId, integrationId })`.
+Read the binding and registrations with `experimental_getExecutionIntegration`.
+Only an authenticated operator or trusted plugin can change it; machine-gated
+credentials cannot. `integrationId: null` selects ordinary execution.
+
+Session, turn and model-discovery requests receive
+`executionIntegration: { id, providerId }` on this path; the user's model remains `options.model`. Model discovery uses the same
+bridge and ownership. Missing plugins and errors never enable native fallback.
+Bindings persist through disable and removal. Existing sessions retain their
+owner and cannot resume through a conflicting machine binding. Implement
+`thread/stop` with `intent: "release"` as a client detach: an external service
+may keep running and recording after the bridge process exits.
+
+The Echo provider example demonstrates registration. The scripted integration
+fixture verifies the server, daemon and bridge through the public contract.

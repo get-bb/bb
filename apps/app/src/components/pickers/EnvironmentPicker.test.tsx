@@ -959,19 +959,27 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
     expect(placeholder.getAttribute("aria-disabled")).toBe("true");
   });
 
-  it("names the primary machine in the trigger label when multiple machines exist", () => {
+  it("shows Local and retains the exact primary machine in the accessible description", () => {
     renderMachineMenu();
 
-    expect(screen.getByText("MacBook Pro · Project checkout")).toBeTruthy();
+    expect(
+      screen
+        .getByRole("button", { name: "Environment" })
+        .getAttribute("aria-description"),
+    ).toBe("Local · MacBook Pro · Project checkout");
     expect(
       document.querySelector("[data-promptbox-compact-label]")?.textContent,
-    ).toBe("Project checkout");
+    ).toBe("Local");
   });
 
-  it("names another selected machine in the trigger label", () => {
+  it("shows Cloud and retains the selected machine in the accessible description", () => {
     renderMachineMenu({ selectedProviderHostId: studio.id });
 
-    expect(screen.getByText("Mac Studio · Project checkout")).toBeTruthy();
+    expect(
+      screen
+        .getByRole("button", { name: "Environment" })
+        .getAttribute("aria-description"),
+    ).toContain("Cloud · Mac Studio");
   });
 
   it("lists every eligible provider row under each machine", () => {
@@ -1038,7 +1046,11 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
       />,
     );
 
-    expect(screen.getByText("Mac Studio · New branch workspace")).toBeTruthy();
+    expect(
+      screen
+        .getByRole("button", { name: "Environment" })
+        .getAttribute("aria-description"),
+    ).toContain("Mac Studio · New branch workspace");
   });
 
   it("reports an offline machine ahead of the provider it was selected on", () => {
@@ -1061,8 +1073,14 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
       />,
     );
 
-    expect(screen.getByText("Mac Studio · Host is offline")).toBeTruthy();
-    expect(screen.getByText("Offline")).toBeTruthy();
+    expect(
+      screen
+        .getByRole("button", { name: "Environment" })
+        .getAttribute("aria-description"),
+    ).toContain("Mac Studio · Host is offline");
+    expect(
+      document.querySelector("[data-promptbox-compact-label]")?.textContent,
+    ).toBe("Cloud");
     expect(screen.queryByText(/New branch workspace/u)).toBeNull();
   });
 

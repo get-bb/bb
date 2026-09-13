@@ -32,6 +32,7 @@ afterEach(() => {
 });
 
 function renderMachineMenu(overrides?: {
+  showLocation?: boolean;
   hosts?: readonly Host[];
   selectedHostId?: string | null;
   onChange?: (hostId: string) => void;
@@ -39,6 +40,7 @@ function renderMachineMenu(overrides?: {
 }) {
   render(
     <MachinePickerUI
+      showLocation={overrides?.showLocation}
       hosts={overrides?.hosts ?? [thisMachine, studio, devVm]}
       localDaemonHostId={thisMachine.id}
       primaryHostId={thisMachine.id}
@@ -133,3 +135,23 @@ describe("MachinePickerUI", () => {
     expect(screen.queryByText("Modal Sandbox")).toBeNull();
   });
 });
+
+it.each([
+  [thisMachine, "Local"],
+  [studio, "Cloud"],
+] as const)(
+  "keeps exact selection while showing the location",
+  (host, label) => {
+    const onChange = vi.fn();
+    renderMachineMenu({
+      showLocation: true,
+      selectedHostId: host.id,
+      onChange,
+    });
+    const trigger = screen.getByRole("button", { name: "Machine" });
+    expect(trigger.textContent).toBe(label);
+    expect(trigger.getAttribute("aria-description")).toBe(host.name);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Cloud Mac Studio" }));
+    expect(onChange).toHaveBeenCalledWith(studio.id);
+  },
+);

@@ -560,6 +560,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "dispatch-hook",
           "environment-providers",
           "machine-providers",
+          "execution-integrations",
           "server-access",
           "host-workers",
         ],
@@ -859,6 +860,30 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginMachineProviderRemoveResult",
         ],
         firstParty: ["Modal sandbox"],
+        experimental: true,
+      },
+      {
+        id: "execution-integrations",
+        title: "Machine execution integrations",
+        tagline: "Choose who runs agents once per machine",
+        summary:
+          "Require a plugin bridge independently of the selected harness and model. With this, a plugin can:",
+        bullets: [
+          "Register supported harnesses with the integration's own provider capabilities and model catalogs",
+          "Configure a machine through the authenticated host SDK, Settings > Machines > Run agents through, or bb machine execution",
+          "Receive executionIntegration.id and executionIntegration.providerId on bridge requests while options.model preserves the selected model",
+          "Keep a missing binding visibly unavailable; starts, continuations, forks and reconnects never fall back to ordinary execution",
+          "Keep session ownership explicit across setting changes; a conflicting session requires its previous machine setting or a new thread",
+          "Detach clients on release without stopping external execution or recording",
+        ],
+        apiSymbols: [
+          "PluginProviders.experimental_registerExecutionIntegration",
+          "ExperimentalPluginExecutionIntegrationDeclaration",
+          "HostsArea.experimental_getExecutionIntegration",
+          "HostsArea.experimental_setExecutionIntegration",
+          "ExecutionIntegrationContext",
+          "executionIntegrationContextSchema",
+        ],
         experimental: true,
       },
       {

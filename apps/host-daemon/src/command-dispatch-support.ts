@@ -167,6 +167,9 @@ export async function resolveRuntimeBridgeLaunch(
     logger: options.logger,
   });
   return {
+    ...(bridgeLaunch.executionIntegrationId === undefined
+      ? {}
+      : { executionIntegrationId: bridgeLaunch.executionIntegrationId }),
     pluginId: bridgeLaunch.pluginId,
     dataDir,
     source: {

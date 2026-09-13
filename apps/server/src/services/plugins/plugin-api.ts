@@ -1,4 +1,8 @@
 import {
+  validateExecutionIntegrationDeclaration,
+  type NormalizedExecutionIntegrationDeclaration,
+} from "@get-bb/plugin-sdk/internal/host-policy";
+import {
   environmentCompositionSchema,
   validateServerAccessProviderDeclaration,
   type NormalizedPluginEnvironmentComposition,
@@ -500,6 +504,10 @@ export function createPluginApi(options: {
     signal?: AbortSignal;
     timeoutMs?: number;
   }) => Promise<unknown>;
+  registerExecutionIntegration?: (
+    declaration: NormalizedExecutionIntegrationDeclaration,
+  ) => { dispose(): void };
+  isExecutionIntegrationIdTaken?: (id: string) => boolean;
   registerProvider: (declaration: NormalizedPluginProviderDeclaration) => {
     dispose(): void;
   };
@@ -845,6 +853,21 @@ export function createPluginApi(options: {
     isActivated: () => activated,
     disposeHooks,
   });
+  const executionIntegrationRegistrations = createStagedRegistrations({
+    validate: validateExecutionIntegrationDeclaration,
+    bind: assertProviderRegistrable,
+    isTaken: options.isExecutionIntegrationIdTaken ?? (() => false),
+    registerLive: (declaration) => {
+      if (!options.registerExecutionIntegration)
+        throw new Error("Execution integrations are unavailable");
+      return options.registerExecutionIntegration(declaration);
+    },
+    alreadyRegisteredMessage: (id) =>
+      `Execution integration "${id}" is already registered`,
+    assertLive,
+    isActivated: () => activated,
+    disposeHooks,
+  });
   const providerEnvResolvers = new Map<string, PluginProviderEnvResolver>();
   const providerEnvHealthResolvers = new Map<
     string,
@@ -1115,6 +1138,8 @@ export function createPluginApi(options: {
 
   const providers: PluginProviders = {
     register: providerRegistrations.register,
+    experimental_registerExecutionIntegration:
+      executionIntegrationRegistrations.register,
     experimental_contributeEnv(providerId, resolve) {
       assertLive();
       validateProviderEnvContribution(
@@ -1351,6 +1376,7 @@ export function createPluginApi(options: {
         [...pendingSharedPorts].map(([hostId, ports]) => ({ hostId, ports })),
       );
       providerRegistrations.flush();
+      executionIntegrationRegistrations.flush();
       aiServiceRegistrations.flush();
       activated = true;
       const cliWarning = cliRecord.registration

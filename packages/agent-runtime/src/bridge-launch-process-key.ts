@@ -41,13 +41,16 @@ function fingerprintStableJson(value: unknown): string {
 
 type BridgeLaunchProcessKeyInput = Pick<
   AgentRuntimeBridgeLaunch,
-  "capabilities" | "providerOptions"
+  "capabilities" | "providerOptions" | "executionIntegrationId"
 > & { source: Pick<AgentRuntimeBridgeLaunch["source"], "digest"> };
 
 export function bridgeLaunchProcessKey(
   bridgeLaunch: BridgeLaunchProcessKeyInput,
 ): string {
   return `${bridgeLaunch.source.digest.slice(0, 16)}.${fingerprintStableJson({
+    ...(bridgeLaunch.executionIntegrationId === undefined
+      ? {}
+      : { executionIntegrationId: bridgeLaunch.executionIntegrationId }),
     capabilities: bridgeLaunch.capabilities,
     providerOptions: bridgeLaunch.providerOptions,
   })}`;

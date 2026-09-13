@@ -1,3 +1,8 @@
+import {
+  executionProviderRegistry,
+  assertSessionExecutionOwner,
+  resolveSessionExecutionProvider,
+} from "../hosts/execution-integration.js";
 import { environments, events, threads } from "@bb/db";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import {
@@ -152,10 +157,15 @@ interface DispatchArchivedThreadProviderArchiveCommandArgs {
 }
 
 function providerSupportsThreadRename(
-  registry: ProviderRegistryService,
+  deps: Pick<AppDeps, "db" | "providerRegistry">,
   providerId: string,
+  threadId: string,
 ): boolean {
-  const registration = registry.get(providerId);
+  const registration = resolveSessionExecutionProvider(
+    deps,
+    threadId,
+    providerId,
+  );
   if (!registration) {
     return true;
   }
@@ -163,10 +173,15 @@ function providerSupportsThreadRename(
 }
 
 function providerSupportsThreadArchiveForwarding(
-  registry: ProviderRegistryService,
+  deps: Pick<AppDeps, "db" | "providerRegistry">,
   providerId: string,
+  threadId: string,
 ): boolean {
-  const registration = registry.get(providerId);
+  const registration = resolveSessionExecutionProvider(
+    deps,
+    threadId,
+    providerId,
+  );
   if (!registration) {
     return false;
   }
@@ -190,17 +205,21 @@ function resolvePromptMode(
 function toRuntimeExecutionOptions(
   args: RuntimeExecutionOptionsArgs,
 ): RuntimeThreadExecutionOptions {
-  const permissionMode = clampPermissionModeToHost(args.deps, {
+  const deps = {
+    ...args.deps,
+    providerRegistry: executionProviderRegistry(args.deps, args.hostId),
+  };
+  const permissionMode = clampPermissionModeToHost(deps, {
     hostId: args.hostId,
     permissionMode: args.execution.permissionMode,
     providerId: args.providerId,
   });
-  const promptMode = resolvePromptMode(args.deps.providerRegistry, {
+  const promptMode = resolvePromptMode(deps.providerRegistry, {
     input: args.input,
     providerId: args.providerId,
   });
   const providerOptions =
-    args.deps.providerRegistry.get(args.providerId)?.deriveProviderOptions({
+    deps.providerRegistry.get(args.providerId)?.deriveProviderOptions({
       threadId: args.threadId,
       projectId: args.projectId,
       model: args.execution.model,
@@ -263,12 +282,17 @@ export async function buildThreadStartCommand(
   args: ThreadStartCommandArgs,
 ): Promise<Extract<HostDaemonCommand, { type: "thread.start" }>> {
   await deps.providerRegistry.whenRegistrationsSettled();
+  assertSessionExecutionOwner(deps, args.environment.hostId, args.thread.id);
   const runtimeContext = await resolveThreadRuntimeCommandConfig(deps, {
     thread: args.thread,
     environment: args.environment,
     model: args.execution.model,
   });
-  const bridgeLaunch = requireBridgeLaunchForProviderId(deps, args.providerId);
+  const bridgeLaunch = requireBridgeLaunchForProviderId(
+    deps,
+    args.providerId,
+    args.environment.hostId,
+  );
   return {
     type: "thread.start",
     environmentId: args.environment.id,
@@ -307,6 +331,7 @@ function buildPreparedTurnSubmitCommandPayload(
   const bridgeLaunch = requireBridgeLaunchForProviderId(
     args.deps,
     args.runtimeContext.providerId,
+    args.hostId,
   );
   return {
     type: "turn.submit",
@@ -355,6 +380,7 @@ export async function prepareTurnSubmitCommandPayload(
   args: PrepareTurnSubmitCommandPayloadArgs,
 ): Promise<PreparedTurnSubmitCommandPayload> {
   await deps.providerRegistry.whenRegistrationsSettled();
+  assertSessionExecutionOwner(deps, args.environment.hostId, args.thread.id);
   const providerThreadId = requireProviderThreadId(
     args.providerThreadId ?? getLastProviderThreadId(deps, args.thread.id),
     args.thread.id,
@@ -438,7 +464,7 @@ export function dispatchThreadRenameCommand(
   deps: CommandResultSideEffectsDeps,
   args: DispatchThreadRenameCommandArgs,
 ): void {
-  if (!providerSupportsThreadRename(deps.providerRegistry, args.providerId)) {
+  if (!providerSupportsThreadRename(deps, args.providerId, args.threadId)) {
     return;
   }
 
@@ -491,10 +517,7 @@ export function dispatchArchivedThreadProviderArchiveCommand(
   }
 
   if (
-    !providerSupportsThreadArchiveForwarding(
-      deps.providerRegistry,
-      thread.providerId,
-    )
+    !providerSupportsThreadArchiveForwarding(deps, thread.providerId, thread.id)
   ) {
     return false;
   }
@@ -516,6 +539,7 @@ export function dispatchArchivedThreadProviderArchiveCommand(
   const bridgeLaunch = resolveBridgeLaunchForProviderId(
     deps,
     thread.providerId,
+    environment.hostId,
   );
   if (bridgeLaunch === null) {
     return false;
@@ -549,8 +573,9 @@ export function dispatchThreadUnarchiveCommand(
 ): boolean {
   if (
     !providerSupportsThreadArchiveForwarding(
-      deps.providerRegistry,
+      deps,
       args.thread.providerId,
+      args.thread.id,
     )
   ) {
     return false;
@@ -562,6 +587,7 @@ export function dispatchThreadUnarchiveCommand(
   const bridgeLaunch = resolveBridgeLaunchForProviderId(
     deps,
     args.thread.providerId,
+    args.environment.hostId,
   );
   if (bridgeLaunch === null) {
     return false;

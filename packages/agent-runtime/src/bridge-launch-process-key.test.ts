@@ -23,6 +23,18 @@ describe("bridgeLaunchProcessKey", () => {
     envPassthrough: [],
   };
 
+  it("keeps different execution integrations out of the same bridge process", () => {
+    expect(
+      new Set(
+        [
+          base,
+          { ...base, executionIntegrationId: "one" },
+          { ...base, executionIntegrationId: "two" },
+        ].map(bridgeLaunchProcessKey),
+      ),
+    ).toHaveLength(3);
+  });
+
   it("changes with provider-owned statics and ignores object key order", () => {
     expect(bridgeLaunchProcessKey(base)).toBe(
       bridgeLaunchProcessKey({

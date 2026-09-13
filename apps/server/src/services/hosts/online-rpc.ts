@@ -1,3 +1,4 @@
+import { assertExecutionIntegrationCommand } from "./execution-integration.js";
 import { isHostCleanupAllowed } from "./cleanup-context.js";
 import { assertMachineLifecycleAdmission } from "../machines/lifecycle.js";
 import { getHost, getThread } from "@bb/db";
@@ -271,9 +272,10 @@ export function isHostUnavailableApiError(error: unknown): boolean {
 }
 
 function requestHostOnlineRpcResponse(
-  deps: Pick<WorkSessionDeps, "hub">,
+  deps: WorkSessionDeps,
   args: CallHostOnlineRpcArgs<HostDaemonRpcCommand>,
 ): Promise<HostDaemonOnlineRpcResponseMessage> {
+  assertExecutionIntegrationCommand(deps, args.hostId, args.command);
   return deps.hub.requestHostOnlineRpc({
     hostId: args.hostId,
     message: {

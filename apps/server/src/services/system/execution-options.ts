@@ -1,3 +1,5 @@
+import { resolvePrimaryHostId } from "../hosts/primary-host.js";
+import { executionProviderRegistry } from "../hosts/execution-integration.js";
 import type {
   SystemExecutionOptionsModelLoadErrorCode,
   SystemExecutionOptionsModelLoadError,
@@ -161,6 +163,7 @@ async function listInstalledPluginProviderInfos(
       const bridgeLaunch = resolveBridgeLaunchForProviderId(
         deps,
         registration.info.id,
+        hostId,
       );
       if (bridgeLaunch === null) return null;
       const cacheKey: ProviderHealthCacheKey = {
@@ -219,6 +222,7 @@ export async function listSystemProviderInfosForHost(
   hostId: string,
   capability?: ProviderCapabilityFilter,
 ): Promise<ProviderInfo[]> {
+  deps = { ...deps, providerRegistry: executionProviderRegistry(deps, hostId) };
   const configured = listConfiguredSystemProviderInfos(deps, capability);
   const installed = await listInstalledPluginProviderInfos(
     deps,
@@ -235,12 +239,28 @@ export async function listSystemProviderInfosForHost(
     .map((registration) => registration.info);
 }
 
+function providerRegistryForQuery(
+  deps: LoggedWorkSessionDeps,
+  query: Pick<SystemProvidersQuery, "hostId" | "environmentId">,
+): ProviderRegistryService {
+  const hostId =
+    query.environmentId === undefined
+      ? (query.hostId ?? resolvePrimaryHostId(deps))
+      : requireEnvironment(deps.db, query.environmentId).hostId;
+  return executionProviderRegistry(deps, hostId);
+}
+
 function resolveSystemProviderInfosPlan(
   deps: LoggedWorkSessionDeps,
   query: ListSystemProviderInfosRequest = {},
 ): ResolveSystemProviderInfosPlanResult {
+  deps = { ...deps, providerRegistry: providerRegistryForQuery(deps, query) };
   try {
     const hostId = resolveSystemLookupHostId(deps, query);
+    deps = {
+      ...deps,
+      providerRegistry: executionProviderRegistry(deps, hostId),
+    };
     requireConnectedHostSession(deps, hostId);
     return {
       hostId,
@@ -283,6 +303,10 @@ export async function resolveSystemProviderModels(
   deps: LoggedWorkSessionDeps,
   args: ResolveSystemProviderModelsArgs,
 ): Promise<ModelListResult> {
+  deps = {
+    ...deps,
+    providerRegistry: executionProviderRegistry(deps, args.hostId),
+  };
   await deps.providerRegistry.whenProviderRegistered(args.providerId);
   const provider = includeRequestedRegisteredProvider(
     deps,
@@ -426,6 +450,7 @@ async function resolveExecutionOptions(
       : (requireEnvironment(deps.db, query.environmentId).path ?? undefined);
   const { hostId, hostLookupError, providersPromise } =
     resolveSystemProviderInfosPlan(deps, query);
+  deps = { ...deps, providerRegistry: executionProviderRegistry(deps, hostId) };
   const configuredRequestedProvider = query.providerId
     ? includeRequestedRegisteredProvider(
         deps,

@@ -1,3 +1,8 @@
+import {
+  updateHostExecutionIntegrationRequestSchema,
+  type UpdateHostExecutionIntegrationRequest,
+  type HostExecutionIntegrationSettings,
+} from "./api/hosts.js";
 import { type MachineEnvironmentList } from "./api/machine-environment.js";
 import {
   machineEnvironmentReplaceSchema,
@@ -754,6 +759,20 @@ export const publicApiRoutes = {
   },
 
   hosts: {
+    executionIntegration: defineRoute({
+      path: "/hosts/:id/execution-integration",
+      method: "get",
+      request: noRequest<PathId>(),
+      response: jsonResponse<HostExecutionIntegrationSettings>(),
+    }),
+    updateExecutionIntegration: defineRoute({
+      path: "/hosts/:id/execution-integration",
+      method: "patch",
+      request: jsonRequest<PathId, UpdateHostExecutionIntegrationRequest>(
+        updateHostExecutionIntegrationRequestSchema,
+      ),
+      response: jsonResponse<HostExecutionIntegrationSettings>(),
+    }),
     create: defineRoute({
       path: "/hosts",
       method: "post",

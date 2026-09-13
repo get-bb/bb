@@ -25,7 +25,7 @@ export function createProviderForId(
   adapterOptions: CreateBridgeAdapterOptions,
 ): BridgeProtocolAdapter {
   const { bridgeLaunch } = adapterOptions;
-  return createBridgeProtocolAdapter({
+  const adapter = createBridgeProtocolAdapter({
     id: providerId,
     capabilities: {
       ...bridgeLaunch.capabilities,
@@ -50,6 +50,20 @@ export function createProviderForId(
     },
     ...buildPluginStaticProviderOptions(adapterOptions),
   });
+  if (bridgeLaunch.executionIntegrationId === undefined) return adapter;
+  const executionIntegration = {
+    id: bridgeLaunch.executionIntegrationId,
+    providerId,
+  };
+  return {
+    ...adapter,
+    buildCommandPlan(command) {
+      const plan = adapter.buildCommandPlan(command);
+      return plan.kind === "request"
+        ? { ...plan, params: { ...plan.params, executionIntegration } }
+        : plan;
+    },
+  };
 }
 
 function pickDeclaredEnv(

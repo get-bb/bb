@@ -18,6 +18,7 @@ import type {
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { sdk } from "@/lib/sdk";
+import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { makeSystemConfig } from "@/test/fixtures/system-config";
 import { makeProviderInfo } from "@bb/test-helpers/domain-fixtures";
@@ -29,6 +30,10 @@ vi.mock("@/lib/sdk", () => ({
       delete: vi.fn(),
       list: vi.fn(),
       experimental_listProviders: vi.fn(),
+      experimental_getExecutionIntegration: vi
+        .fn()
+        .mockResolvedValue({ required: null, integrations: [] }),
+      experimental_setExecutionIntegration: vi.fn(),
       providerCliStatus: vi.fn(),
       experimental_resume: vi.fn(),
       experimental_retryCleanup: vi.fn(),
@@ -111,14 +116,18 @@ function providerCliStatusResponse(): ProviderCliStatusResponse {
   };
 }
 
-function renderView() {
+function renderView(compact = false) {
   const { wrapper } = createQueryClientTestHarness();
   return render(
     <MemoryRouter initialEntries={[`/settings/machines/${HOST_ID}`]}>
       <Routes>
         <Route
           path="/settings/machines/:hostId"
-          element={<MachineSettingsView />}
+          element={
+            <CompactViewportOverrideProvider isCompactViewport={compact}>
+              <MachineSettingsView />
+            </CompactViewportOverrideProvider>
+          }
         />
       </Routes>
     </MemoryRouter>,
@@ -149,6 +158,11 @@ function stubSupportingFetches(): void {
 }
 
 beforeEach(() => {
+  vi.mocked(sdk.hosts.experimental_getExecutionIntegration).mockResolvedValue({
+    required: null,
+    integrations: [],
+  });
+  vi.mocked(sdk.hosts.experimental_setExecutionIntegration).mockReset();
   hostDaemon.localDaemonHostId = null;
   hostDaemon.platform = null;
 });
@@ -437,3 +451,88 @@ describe("MachineSettingsView", () => {
     ).toBeDefined();
   });
 });
+
+it("keeps a missing execution integration selected instead of showing BB", async () => {
+  vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
+  vi.mocked(sdk.hosts.list).mockResolvedValue([host()]);
+  vi.mocked(sdk.hosts.experimental_getExecutionIntegration).mockResolvedValue({
+    required: {
+      id: "external",
+      pluginId: "external-plugin",
+      displayName: "External execution",
+      available: false,
+    },
+    integrations: [],
+  });
+  stubSupportingFetches();
+  renderView();
+  expect(
+    (await screen.findByRole("button", { name: "Run agents through" }))
+      .textContent,
+  ).toContain("External execution (unavailable)");
+  expect(screen.getByRole("status").textContent).toContain(
+    "Enable the required integration",
+  );
+  expect(sdk.hosts.experimental_setExecutionIntegration).not.toHaveBeenCalled();
+});
+
+it.each([false, true])(
+  "changes execution through the host SDK without hiding the page (compact=%s)",
+  async (compact) => {
+    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
+    vi.mocked(sdk.hosts.list).mockResolvedValue([host()]);
+    const integration = {
+      id: "external",
+      pluginId: "external-plugin",
+      displayName: "External execution",
+      available: true,
+      providerIds: ["codex"],
+    };
+    vi.mocked(sdk.hosts.experimental_getExecutionIntegration).mockResolvedValue(
+      {
+        required: null,
+        integrations: [integration],
+      },
+    );
+    vi.mocked(
+      sdk.hosts.experimental_setExecutionIntegration,
+    ).mockImplementation(async () => {
+      const settings = { required: integration, integrations: [integration] };
+      vi.mocked(
+        sdk.hosts.experimental_getExecutionIntegration,
+      ).mockResolvedValue(settings);
+      return settings;
+    });
+    stubSupportingFetches();
+    renderView(compact);
+    const trigger = await screen.findByRole("button", {
+      name: "Run agents through",
+    });
+    if (compact) fireEvent.click(trigger);
+    else
+      fireEvent.pointerDown(trigger, {
+        button: 0,
+        pointerType: "mouse",
+        ctrlKey: false,
+      });
+    const option = await screen.findByRole("menuitemradio", {
+      name: "External execution",
+    });
+    expect(
+      screen
+        .getByRole("heading", { name: "Agent execution" })
+        .closest('[aria-hidden="true"], [inert]'),
+    ).toBeNull();
+    fireEvent.click(option);
+    await waitFor(() =>
+      expect(
+        sdk.hosts.experimental_setExecutionIntegration,
+      ).toHaveBeenCalledWith({ hostId: HOST_ID, integrationId: "external" }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Run agents through" }).textContent,
+      ).toContain("External execution"),
+    );
+  },
+);
