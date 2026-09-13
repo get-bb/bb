@@ -468,6 +468,10 @@
     padding: 0;
   }
 
+  [data-follow-up-composer] [data-promptbox-submit-label] {
+    display: none;
+  }
+
   [data-follow-up-composer] [data-follow-up-composer-footer] {
     min-height: 0;
     max-height: 0;

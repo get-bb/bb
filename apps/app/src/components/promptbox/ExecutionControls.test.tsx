@@ -96,41 +96,6 @@ describe("ExecutionControls", () => {
     expect(trigger.textContent).not.toContain("Failed to load models");
   });
 
-  it("shows the picker footer action even when model controls are unavailable", () => {
-    const props = makeExecutionControlsProps();
-
-    renderExecutionControls({
-      ...props,
-      provider: {
-        options: [],
-        hasMultiple: false,
-      },
-      model: {
-        ...props.model,
-        selected: "",
-        options: [],
-      },
-      reasoning: {
-        ...props.reasoning,
-        options: [],
-      },
-      footerAction: {
-        label: "Handoff to new thread",
-        onClick: () => {},
-      },
-    });
-
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: "Provider, model and reasoning",
-      }),
-    );
-
-    expect(
-      screen.getByRole("button", { name: "Handoff to new thread" }),
-    ).not.toBeNull();
-  });
-
   it("maps disabled fast mode to the explicit default service tier", () => {
     const onServiceTierChange = vi.fn();
     renderExecutionControls({

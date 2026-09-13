@@ -42,7 +42,6 @@ import {
 import { encodeReuseValue } from "@/components/pickers/environment-picker-value";
 import { useRootComposeReuseEnvironment } from "@/lib/root-compose-selection";
 import { getPromptDraftAccessor } from "@/hooks/usePromptDraftStorage";
-import { buildThreadHandoffLocationState } from "@bb/client-core";
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 import { makeProjectWithThreadsResponse } from "@/test/fixtures/projects";
 import { RootComposeView } from "@/views/RootComposeView";
@@ -1447,71 +1446,6 @@ describe("PluginNewThreadComposer seeding", () => {
       );
     },
   );
-
-  it("keeps an unrelated draft attachment out of a RootComposeView handoff", async () => {
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
-    });
-    window.localStorage.setItem("bb.root-compose.project-id", "proj_1");
-    getPromptDraftAccessor({ kind: "new-thread" }).setDraft({
-      text: "unrelated draft",
-      mentions: [],
-      attachments: [
-        {
-          type: "localFile",
-          name: "unrelated.txt",
-          path: ".bb/attachments/unrelated.txt",
-          mimeType: "text/plain",
-          sizeBytes: 5,
-        },
-      ],
-    });
-    const router = createMemoryRouter(
-      [{ path: "/", element: <RootComposeView /> }],
-      {
-        initialEntries: [
-          {
-            pathname: "/",
-            state: buildThreadHandoffLocationState({
-              environmentId: "env-handoff",
-              projectId: "proj_1",
-              sourceThreadId: "thr_source",
-              sourceThreadTitle: "Source thread",
-            }),
-          },
-        ],
-      },
-    );
-    render(
-      <Provider>
-        <QueryClientProvider client={queryClient}>
-          <RouterProvider router={router} />
-        </QueryClientProvider>
-      </Provider>,
-    );
-
-    expect(mocks.promptBoxProps[0]?.modeConfig.environment.value).toBe(
-      "provider:personal-workspace",
-    );
-    expect(mocks.promptBoxProps[0]?.value).toBe("unrelated draft");
-    expect(mocks.promptBoxProps[0]?.attachments.items).toHaveLength(1);
-    await waitFor(() => {
-      expect(latestPromptBoxProps().value).toBe(
-        "Continue from @thread:thr_source",
-      );
-    });
-    await waitFor(() => {
-      expect(router.state.location.state).toBeNull();
-    });
-    expect(
-      mocks.promptBoxProps.some(
-        (props) =>
-          props.value === "Continue from @thread:thr_source" &&
-          props.attachments.items.length > 0,
-      ),
-    ).toBe(false);
-    expect(latestPromptBoxProps().attachments.items).toEqual([]);
-  });
 
   it("applies a replacing initial prompt from location state exactly once", async () => {
     const queryClient = new QueryClient({

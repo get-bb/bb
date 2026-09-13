@@ -12,6 +12,7 @@ interface UseComposerTypeaheadArgs {
   projectId: string;
   mentionsProjectId?: string;
   providerId: string;
+  commandScope?: "new-thread" | "thread";
   environmentId: string | null;
   currentThreadId: string;
   selectedProviderComposerActions:
@@ -29,6 +30,7 @@ export function useComposerTypeahead({
   projectId,
   mentionsProjectId,
   providerId,
+  commandScope = "thread",
   environmentId,
   currentThreadId,
   selectedProviderComposerActions,
@@ -55,7 +57,7 @@ export function useComposerTypeahead({
   const commandSuggestions = useCommandSuggestions({
     projectId,
     providerId,
-    commandScope: "thread",
+    commandScope,
     skillsTrigger: providerPromptActions.skillsTrigger,
     promptActions,
     environmentId,
