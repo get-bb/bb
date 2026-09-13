@@ -164,6 +164,7 @@ Read the installed declarations for exact current signatures.
 - `PluginKvStorage`
 - `PluginLogger`
 - `PluginMentionItem`
+- `ExperimentalPluginMentionImage`
 - `PluginMentionProviderRegistration`
 - `PluginMentionSearchContext`
 - `PluginMentionTrigger`

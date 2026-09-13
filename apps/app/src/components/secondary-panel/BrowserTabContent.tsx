@@ -7,6 +7,7 @@ import {
   useState,
   type FormEvent,
   type RefObject,
+  type ReactNode,
 } from "react";
 import type {
   BbDesktopBrowserApi,
@@ -54,6 +55,7 @@ import {
 } from "@/components/commands/AppCommandProvider";
 import type { AppShortcutPresentation } from "@/lib/app-keybindings";
 import { isLocalOnlyUrl } from "@/lib/loopback-hostname";
+import { PluginBrowserToolbarActions } from "@/components/plugin/PluginBrowserToolbarActions";
 
 interface BrowserTabContentProps {
   tabId: string;
@@ -91,6 +93,7 @@ interface BrowserChromeProps {
   onOpenExternal: () => void;
   locationShortcut: AppShortcutPresentation | null;
   reloadShortcut: AppShortcutPresentation | null;
+  pluginActions: ReactNode;
 }
 
 interface BrowserViewBoundsFromElementArgs {
@@ -189,6 +192,7 @@ function BrowserChrome({
   onOpenExternal,
   locationShortcut,
   reloadShortcut,
+  pluginActions,
 }: BrowserChromeProps) {
   const isLoading = state?.isLoading ?? false;
   const security = getBrowserUrlSecurity(currentUrl);
@@ -282,6 +286,7 @@ function BrowserChrome({
             />
           </div>
         </form>
+        {pluginActions}
         <BrowserChromeIconButton
           icon="ExternalLink"
           label="Open in external browser"
@@ -872,6 +877,14 @@ export function BrowserTabContent({
         onOpenExternal={handleOpenExternal}
         locationShortcut={locationShortcut}
         reloadShortcut={reloadShortcut}
+        pluginActions={
+          <PluginBrowserToolbarActions
+            threadId={threadId}
+            tabId={tabId}
+            url={currentUrl}
+            isCompactViewport={isPointerCoarse}
+          />
+        }
       />
       {control !== null ? (
         <div

@@ -152,6 +152,22 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         experimental: true,
       },
       {
+        id: "browser-toolbar",
+        title: "Browser toolbar controls",
+        summary:
+          "Adds a plugin control to the toolbar of each open Browser tab. With this, a plugin can:",
+        bullets: [
+          "Act on the Browser tab currently in front of the user",
+          "Receive the owning thread id, tab id, and current URL",
+          "Render beside the Browser address bar and native controls",
+        ],
+        apiSymbols: [
+          "ExperimentalPluginBrowserToolbarActionRegistration",
+          "ExperimentalPluginBrowserToolbarActionProps",
+        ],
+        experimental: true,
+      },
+      {
         id: "timeline-renderers",
         title: "Timeline entry content",
         summary:

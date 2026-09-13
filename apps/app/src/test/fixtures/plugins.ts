@@ -34,6 +34,7 @@ export function makePluginRegistrationSet(
     experimentalSidebarNavigations: [],
     threadLists: [],
     threadHeaderActions: [],
+    browserToolbarActions: [],
     fileOpeners: [],
     sourceCodeRenderers: [],
     diffRenderers: [],

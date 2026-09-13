@@ -195,7 +195,14 @@ export interface PluginMentionSearchGroup {
 }
 
 export type PluginMentionResolveResult =
-  | { ok: true; context: string }
+  | {
+      ok: true;
+      context: string;
+      images: Array<
+        | { type: "image"; url: string; context?: string }
+        | { type: "localImage"; path: string; context?: string }
+      >;
+    }
   | { ok: false; error: string };
 
 export interface PluginThreadEventEmitter {

@@ -28,6 +28,7 @@ import type {
   ExperimentalSidebarNavigationRegistration,
   PluginSourceCodeRendererRegistration,
   PluginThreadHeaderActionRegistration,
+  ExperimentalPluginBrowserToolbarActionRegistration,
   PluginThreadListRegistration,
   PluginThreadPanelActionRegistration,
   PluginTimelineRendererRegistration,
@@ -348,6 +349,7 @@ export interface CollectedPluginAppRegistrations {
   experimentalSidebarNavigations: ExperimentalSidebarNavigationRegistration[];
   threadLists: PluginThreadListRegistration[];
   threadHeaderActions: PluginThreadHeaderActionRegistration[];
+  browserToolbarActions: ExperimentalPluginBrowserToolbarActionRegistration[];
   fileOpeners: PluginFileOpenerRegistration[];
   sourceCodeRenderers: PluginSourceCodeRendererRegistration[];
   diffRenderers: PluginDiffRendererRegistration[];
@@ -472,6 +474,7 @@ export function collectPluginAppRegistrations(
     experimentalSidebarNavigations: [],
     threadLists: [],
     threadHeaderActions: [],
+    browserToolbarActions: [],
     fileOpeners: [],
     sourceCodeRenderers: [],
     diffRenderers: [],
@@ -499,6 +502,7 @@ export function collectPluginAppRegistrations(
     sidebarNavigation: new Set<string>(),
     threadList: new Set<string>(),
     threadHeaderAction: new Set<string>(),
+    browserToolbarAction: new Set<string>(),
     fileOpener: new Set<string>(),
     sourceCodeRenderer: new Set<string>(),
     diffRenderer: new Set<string>(),
@@ -755,6 +759,16 @@ export function collectPluginAppRegistrations(
         const id = requireSlotId(kind, registration?.id);
         requireUniqueId(kind, seenIds.threadHeaderAction, id);
         collected.threadHeaderActions.push({
+          id,
+          title: requireNonEmptyString(kind, "title", registration.title),
+          component: requireComponent(kind, registration.component),
+        });
+      },
+      experimental_browserToolbarAction(registration) {
+        const kind = "slots.experimental_browserToolbarAction";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.browserToolbarAction, id);
+        collected.browserToolbarActions.push({
           id,
           title: requireNonEmptyString(kind, "title", registration.title),
           component: requireComponent(kind, registration.component),

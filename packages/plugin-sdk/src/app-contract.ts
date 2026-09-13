@@ -232,6 +232,17 @@ export interface PluginThreadHeaderActionProps {
   isCompactViewport: boolean;
 }
 
+export interface ExperimentalPluginBrowserToolbarActionProps {
+  /** Thread that owns the Browser tab. */
+  threadId: string;
+  /** Browser tab currently rendering the action. */
+  tabId: string;
+  /** Current top-level URL shown in the address bar. */
+  url: string;
+  /** True when the Browser chrome needs compact controls. */
+  isCompactViewport: boolean;
+}
+
 /**
  * Where a file being opened by a `fileOpener` lives. `path` semantics follow
  * the source: workspace paths are relative to the environment's worktree,
@@ -1050,6 +1061,15 @@ export interface PluginThreadHeaderActionRegistration {
   component: ComponentType<PluginThreadHeaderActionProps>;
 }
 
+export interface ExperimentalPluginBrowserToolbarActionRegistration {
+  /** Unique within the plugin; letters, digits, `-`, `_`. */
+  id: string;
+  /** Accessible name for the host-wrapped control group. */
+  title: string;
+  /** Component rendered beside the Browser address bar. */
+  component: ComponentType<ExperimentalPluginBrowserToolbarActionProps>;
+}
+
 /** One pane's place in the split layout, as fractions of the split area. */
 export interface PluginSidebarSplitPane {
   paneId: string;
@@ -1566,6 +1586,10 @@ export interface PluginAppSlots {
    */
   experimental_threadHeaderAction(
     registration: PluginThreadHeaderActionRegistration,
+  ): void;
+  /** Render a component beside each Browser tab's address bar. */
+  experimental_browserToolbarAction(
+    registration: ExperimentalPluginBrowserToolbarActionRegistration,
   ): void;
   fileOpener(registration: PluginFileOpenerRegistration): void;
   /**

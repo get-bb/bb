@@ -83,6 +83,7 @@ import type {
   PluginKvStorage,
   PluginLogger,
   PluginMentionItem,
+  PluginMentionProviderRegistration,
   PluginMentionSearchContext,
   PluginMentionTrigger,
   PluginAiServiceDeclaration,
@@ -239,9 +240,7 @@ export interface FakeMentionProviderRecord {
   search: (
     ctx: PluginMentionSearchContext,
   ) => PluginMentionItem[] | Promise<PluginMentionItem[]>;
-  resolve: (
-    itemId: string,
-  ) => { context: string } | Promise<{ context: string }>;
+  resolve: PluginMentionProviderRegistration["resolve"];
 }
 
 export interface FakeRealtimeSignal {

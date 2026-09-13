@@ -1662,6 +1662,11 @@ export interface PluginMentionItem {
   icon?: string;
 }
 
+/** Agent-only image context resolved with a plugin mention. */
+export type ExperimentalPluginMentionImage =
+  | { type: "image"; url: string; context?: string }
+  | { type: "localImage"; path: string; context?: string };
+
 export interface PluginMentionProviderRegistration {
   /** Unique within this plugin: [a-zA-Z0-9_-]+ (no ":" — the host composes
    * wire item ids as "<providerId>:<itemId>"). */
@@ -1688,7 +1693,15 @@ export interface PluginMentionProviderRegistration {
    * message as an agent-visible (user-hidden) prompt input. Throwing blocks
    * the send with a visible error.
    */
-  resolve(itemId: string): { context: string } | Promise<{ context: string }>;
+  resolve(itemId: string):
+    | {
+        context: string;
+        experimental_images?: readonly ExperimentalPluginMentionImage[];
+      }
+    | Promise<{
+        context: string;
+        experimental_images?: readonly ExperimentalPluginMentionImage[];
+      }>;
 }
 
 export interface PluginUi {

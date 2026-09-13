@@ -2236,16 +2236,62 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             mentionResolveTimeoutMs,
             `timed out after ${mentionResolveTimeoutMs}ms`,
           );
-          const context = (result as { context?: unknown } | null)?.context;
+          const record = result as {
+            context?: unknown;
+            experimental_images?: unknown;
+          } | null;
+          const context = record?.context;
           if (typeof context !== "string" || context.trim().length === 0) {
             throw new Error(
               `mention provider "${providerId}" resolve() must return { context: string }`,
             );
           }
-          return context;
+          const rawImages = record?.experimental_images ?? [];
+          if (!Array.isArray(rawImages) || rawImages.length > 50) {
+            throw new Error(
+              `mention provider "${providerId}" resolve() experimental_images must be an array with at most 50 items`,
+            );
+          }
+          const images = rawImages.map((image, index) => {
+            if (typeof image !== "object" || image === null) {
+              throw new Error(
+                `mention provider "${providerId}" resolve() experimental_images[${index}] must be an object`,
+              );
+            }
+            const candidate = image as Record<string, unknown>;
+            const type = candidate.type;
+            const key = type === "image" ? "url" : "path";
+            if (
+              (type !== "image" && type !== "localImage") ||
+              typeof candidate[key] !== "string" ||
+              candidate[key].trim().length === 0 ||
+              (candidate.context !== undefined &&
+                typeof candidate.context !== "string")
+            ) {
+              throw new Error(
+                `mention provider "${providerId}" resolve() experimental_images[${index}] is invalid`,
+              );
+            }
+            return type === "image"
+              ? {
+                  type: "image" as const,
+                  url: candidate.url as string,
+                  ...(candidate.context === undefined
+                    ? {}
+                    : { context: candidate.context as string }),
+                }
+              : {
+                  type: "localImage" as const,
+                  path: candidate.path as string,
+                  ...(candidate.context === undefined
+                    ? {}
+                    : { context: candidate.context as string }),
+                };
+          });
+          return { context, images };
         },
       );
-      if (outcome.ok) return { ok: true, context: outcome.value };
+      if (outcome.ok) return { ok: true, ...outcome.value };
       return { ok: false, error: outcome.error };
     },
 

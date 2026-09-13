@@ -163,6 +163,27 @@ A common pairing with a replaced sidebar: hide child threads from the list and
 surface them here instead, filtering `experimental_useSidebarThreads()` by
 `parentThreadId === threadId`.
 
+### A control in the Browser toolbar
+
+`app.slots.experimental_browserToolbarAction` renders a component beside the
+address bar of every built-in Browser tab. The component receives the owning
+`threadId`, current `tabId`, top-level `url`, and `isCompactViewport` state.
+Use these host-provided values to scope actions to the visible tab; do not infer
+the active Browser from global state.
+
+```tsx
+app.slots.experimental_browserToolbarAction({
+  id: "annotate",
+  title: "Annotate page",
+  component: ({ threadId, tabId, url, isCompactViewport }) => { ... },
+});
+```
+
+Render a compact toolbar control and move larger UI into a host-owned panel or
+portalled popover. `title` names the host wrapper; icon-only controls still need
+their own accessible name. A component instance belongs to one Browser tab and
+must release tab-scoped resources when it unmounts.
+
 ### Replacing the sidebar navigation
 
 `app.slots.experimental_sidebarNavigation` replaces the navigation controls

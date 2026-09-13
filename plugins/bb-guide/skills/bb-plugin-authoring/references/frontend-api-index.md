@@ -80,6 +80,7 @@ Read the installed SDK declarations for the exact current signatures.
 - `ExperimentalSidebarNavigationProps`
 - `PluginThreadListProps`
 - `PluginThreadHeaderActionProps`
+- `ExperimentalPluginBrowserToolbarActionProps`
 - `PluginFileOpenerSource`
 - `PluginFileOpenerProps`
 - `CodeOverflowMode`
@@ -131,6 +132,7 @@ Read the installed SDK declarations for the exact current signatures.
 - `PluginCodeThemeState`
 - `PluginSidebarThreadActions`
 - `PluginThreadHeaderActionRegistration`
+- `ExperimentalPluginBrowserToolbarActionRegistration`
 - `PluginSidebarSplitPane`
 - `PluginSidebarThreadSplit`
 - `PluginThreadListRegistration`

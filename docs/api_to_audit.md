@@ -2562,6 +2562,30 @@ deliberately: it mounts once, and a crash there should disable it everywhere.
 Confirm that split before stabilizing, and decide whether other multi-mount
 slots need the same treatment.
 
+## `app.slots.experimental_browserToolbarAction` (`@get-bb/plugin-sdk/app`)
+
+**What it does.** Renders a plugin component beside the address bar in each
+open Browser tab. The component receives the owning `threadId`, active `tabId`,
+current `url`, and compact-viewport hint. Each tab mount has its own crash
+boundary.
+
+**Audit before stabilizing.** Confirm the toolbar can hold multiple plugin
+controls without crowding the address field, whether ordering needs a user
+preference, and whether plugins need browser instance or environment identity
+instead of resolving it server-side from the thread and tab ids.
+
+## `PluginMentionProviderRegistration.resolve().experimental_images` (`@get-bb/plugin-sdk`)
+
+**What it does.** Lets a mention provider resolve a picked composer mention to
+agent-only image inputs alongside its agent-only text context. Each image may
+include a short agent-only text input immediately before it. The host validates
+the same image paths and URLs used by ordinary prompt inputs before dispatch.
+
+**Audit before stabilizing.** Confirm images are the only binary input mention
+providers need, the 50-image boundary is appropriate, and local image access
+should remain governed by the thread dispatch validator rather than an earlier
+plugin-specific check.
+
 ## `useComposer().experimental_submit` (`@get-bb/plugin-sdk/app`)
 
 **What it does.** Runs the composer's own submit pipeline with the draft that
@@ -2940,7 +2964,6 @@ returns a credential only while that host is creating.
 Before stabilizing, verify creation cancellation through host removal,
 same-host restoration, serialized removal, plugin callers and UI/CLI parity.
 
-
 ## `app.experimental_icons.register` and `experimental_Icon`
 
 Plugins register inline React artwork during app setup with `{ name, component }`.
@@ -2976,7 +2999,6 @@ components. The existing built-in icon list and artwork remain fixed; new
 plugin app icons use this registration API. The manifest API is unchanged,
 and individual plugins can still declare their own branding SVG assets using
 the existing manifest fields.
-
 
 ## `experimental_ProviderIcon`
 

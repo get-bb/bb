@@ -34,6 +34,7 @@ import {
   type ExperimentalSidebarNavigationProps,
   type PluginSourceCodeRendererProps,
   type PluginThreadHeaderActionProps,
+  type ExperimentalPluginBrowserToolbarActionProps,
   type PluginThreadListProps,
   type PluginSidebarFooterActionRegistration,
   type PluginThreadEventPayloads,
@@ -264,6 +265,7 @@ type SlotPropsByName = {
   experimental_sidebarNavigation: ExperimentalSidebarNavigationProps;
   experimental_threadList: PluginThreadListProps;
   experimental_threadHeaderAction: PluginThreadHeaderActionProps;
+  experimental_browserToolbarAction: ExperimentalPluginBrowserToolbarActionProps;
   fileOpener: PluginFileOpenerProps;
   experimental_sourceCodeRenderer: PluginSourceCodeRendererProps;
   experimental_diffRenderer: PluginDiffRendererProps;
@@ -356,6 +358,12 @@ const FRONTEND_SLOT_PROP_FIELDS = {
   experimental_threadHeaderAction: [
     "threadId",
     "projectId",
+    "isCompactViewport",
+  ],
+  experimental_browserToolbarAction: [
+    "threadId",
+    "tabId",
+    "url",
     "isCompactViewport",
   ],
   fileOpener: [
