@@ -19,6 +19,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@bb/shared-ui/popover";
 import {
   COARSE_POINTER_COMPACT_ICON_SIZE_CLASS,
   COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
+  COARSE_POINTER_DOT_SIZE_CLASS,
   COARSE_POINTER_ICON_SIZE_CLASS,
 } from "@bb/shared-ui/coarse-pointer-sizing";
 import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
@@ -41,7 +42,7 @@ import { selectHosts } from "@/hooks/queries/host-queries";
 import { providerInputsControlRequired } from "./environment-provider-inputs";
 import { MACHINE_BADGE_CLASS_NAME, orderLocalHostFirst } from "./MachinePicker";
 import { PickerLoadingRows } from "./PickerLoadingRows";
-import { MachineLabel } from "@/components/machines/MachineLabel";
+import { MachineIcon } from "@/components/machines/MachineLabel";
 import { searchMachineHosts } from "./machine-picker-search";
 import { useResetPickerScroll } from "./useResetPickerScroll";
 
@@ -52,6 +53,8 @@ interface SelectedEnvironment {
 }
 
 const MACHINE_CONTEXTUAL_MENU_MIN_OPTIONS = 3;
+const MACHINE_TARGET_CONTENT_CLASS_NAME =
+  "grid min-w-0 flex-1 grid-cols-[0.375rem_0.875rem_minmax(0,1fr)] gap-x-2 max-md:pointer-coarse:grid-cols-[0.5rem_1.25rem_minmax(0,1fr)]";
 
 export interface EnvironmentPickerMachines {
   hosts: readonly Host[];
@@ -856,18 +859,27 @@ function MachineChoiceItem({
       aria-current={active ? "true" : undefined}
       onSelect={onSelect}
       className={cn(
-        "flex items-center gap-2 py-[0.3125rem] text-xs max-md:py-2",
+        "flex items-center gap-3 py-[0.3125rem] text-xs max-md:py-2",
         LIST_HOVER_TRANSITION,
         active && "font-medium text-foreground",
       )}
     >
-      <MachineStatusDot connected={host.status === "connected"} />
-      <MachineLabel
-        host={host}
-        className="flex-1"
-        iconClassName="size-3"
-        nameClassName="text-xs"
-      />
+      <span
+        data-machine-target-content=""
+        className={cn(MACHINE_TARGET_CONTENT_CLASS_NAME, "items-center")}
+      >
+        <MachineStatusDot
+          connected={host.status === "connected"}
+          className={COARSE_POINTER_DOT_SIZE_CLASS}
+        />
+        <span
+          data-machine-target-icon=""
+          className={COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS}
+        >
+          <MachineIcon host={host} className="!size-full" />
+        </span>
+        <span className="min-w-0 truncate text-xs">{host.name}</span>
+      </span>
       {isThisMachine ? (
         <span className={MACHINE_BADGE_CLASS_NAME}>this machine</span>
       ) : null}
@@ -1017,6 +1029,30 @@ function EnvironmentMenuItem({
   disabled,
   alignIconWithMachine = false,
 }: EnvironmentMenuItemProps) {
+  const menuIcon =
+    provider === undefined ? (
+      <Icon
+        name={icon}
+        className={cn(
+          !alignIconWithMachine &&
+            "mt-px text-muted-foreground max-md:pointer-coarse:mt-0",
+          alignIconWithMachine
+            ? "!size-full"
+            : COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
+        )}
+      />
+    ) : (
+      <EnvironmentProviderIcon
+        provider={provider}
+        className={cn(
+          !alignIconWithMachine &&
+            "mt-px text-muted-foreground max-md:pointer-coarse:mt-0",
+          alignIconWithMachine
+            ? "!size-full !min-h-0 !min-w-0"
+            : COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
+        )}
+      />
+    );
   return (
     <CommandItem
       value={value}
@@ -1032,31 +1068,34 @@ function EnvironmentMenuItem({
         LIST_HOVER_TRANSITION,
       )}
     >
-      <span className="flex min-w-0 flex-1 items-start gap-2">
+      <span
+        data-machine-target-content={alignIconWithMachine ? "" : undefined}
+        className={cn(
+          alignIconWithMachine
+            ? MACHINE_TARGET_CONTENT_CLASS_NAME
+            : "flex min-w-0 flex-1 gap-2",
+          "items-start",
+        )}
+      >
         {alignIconWithMachine ? (
           <span
             aria-hidden
             data-machine-status-spacer=""
-            className="size-1.5 shrink-0"
+            className={COARSE_POINTER_DOT_SIZE_CLASS}
           />
         ) : null}
-        {provider === undefined ? (
-          <Icon
-            name={icon}
+        {alignIconWithMachine ? (
+          <span
+            data-machine-target-icon=""
             className={cn(
-              "mt-px max-md:pointer-coarse:mt-0",
-              "text-muted-foreground",
+              "mt-px text-muted-foreground max-md:pointer-coarse:mt-0",
               COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
             )}
-          />
+          >
+            {menuIcon}
+          </span>
         ) : (
-          <EnvironmentProviderIcon
-            provider={provider}
-            className={cn(
-              "mt-px max-md:pointer-coarse:mt-0 text-muted-foreground",
-              COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
-            )}
-          />
+          menuIcon
         )}
         <span className="flex min-w-0 flex-col">
           <span className="whitespace-normal break-words text-xs">{label}</span>

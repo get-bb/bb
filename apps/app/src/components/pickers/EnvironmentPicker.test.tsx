@@ -781,9 +781,40 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
     });
 
     const modalTarget = screen.getByRole("option", { name: /Modal Sandbox/u });
-    expect(
-      modalTarget.querySelector("[data-machine-status-spacer]"),
-    ).not.toBeNull();
+    const machineTarget = screen.getByRole("option", { name: "MacBook Pro" });
+    const machineContent = machineTarget.querySelector(
+      "[data-machine-target-content]",
+    );
+    const modalContent = modalTarget.querySelector(
+      "[data-machine-target-content]",
+    );
+    expect(machineContent).not.toBeNull();
+    expect(modalContent).not.toBeNull();
+    for (const content of [machineContent, modalContent]) {
+      expect(content?.classList).toContain(
+        "grid-cols-[0.375rem_0.875rem_minmax(0,1fr)]",
+      );
+      expect(content?.classList).toContain(
+        "max-md:pointer-coarse:grid-cols-[0.5rem_1.25rem_minmax(0,1fr)]",
+      );
+      expect(content?.children[0]?.classList).toContain("size-1.5");
+      expect(content?.children[0]?.classList).toContain(
+        "max-md:pointer-coarse:size-2",
+      );
+      expect(content?.children[1]?.classList).toContain("size-3.5");
+      expect(content?.children[1]?.classList).toContain(
+        "max-md:pointer-coarse:size-5",
+      );
+      expect(
+        content?.children[1]?.getAttribute("data-machine-target-icon"),
+      ).toBe("");
+      expect(content?.children[1]?.firstElementChild?.classList).toContain(
+        "!size-full",
+      );
+    }
+    expect(modalTarget.querySelector("[data-machine-status-spacer]")).toBe(
+      modalContent?.children[0],
+    );
     expect(modalTarget.getAttribute("aria-current")).toBe("true");
     expect(
       modalTarget.querySelector('[data-icon="Check"]')?.classList,
