@@ -30,9 +30,10 @@ export function MachineExecutionIntegrationSettings({
     queryFn: ({ signal }) =>
       sdk.hosts.experimental_getExecutionIntegration({ hostId, signal }),
   });
+  const { refetch } = query;
   useEffect(() => {
-    void query.refetch();
-  }, [config.dataUpdatedAt, query.refetch]);
+    void refetch();
+  }, [config.dataUpdatedAt, refetch]);
   const mutation = useMutation({
     mutationFn: (integrationId: string | null) =>
       sdk.hosts.experimental_setExecutionIntegration({ hostId, integrationId }),

@@ -415,3 +415,8 @@ Context breakdowns are optional snapshots on `contextWindow` deltas:
 - `AcpToolCallUpdateEvent`
 - `AcpToolIdentity`
 - `AcpToolKind`
+
+## Machine execution context
+
+- `ExecutionIntegrationContext`
+- `executionIntegrationContextSchema`

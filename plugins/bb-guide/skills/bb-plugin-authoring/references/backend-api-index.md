@@ -181,6 +181,7 @@ Read the installed declarations for exact current signatures.
 - `PluginProviderCapabilities`
 - `PluginProviderComposerAction`
 - `PluginProviderDeclaration`
+- `ExperimentalPluginExecutionIntegrationDeclaration`
 - `ExperimentalPluginProviderEnvContext`
 - `ExperimentalPluginProviderEnvEntry`
 - `ExperimentalPluginProviderEnvHealthContext`
