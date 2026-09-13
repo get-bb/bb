@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { realpathSync } from "node:fs";
-import { resolve } from "node:path";
+import { extname, resolve } from "node:path";
 
 export const BB_CLI_REEXEC_ENV = "BB_CLI_REEXEC";
 
@@ -58,16 +58,23 @@ export function maybeReexecViaBbCli(
     return;
   }
 
-  const result = spawnSync(target, argv, {
-    env: childEnv,
-    stdio: "inherit",
-  });
+  const nodeEntry =
+    process.platform === "win32" &&
+    ["", ".js", ".mjs", ".cjs"].includes(extname(target).toLowerCase());
+  const result = spawnSync(
+    nodeEntry ? process.execPath : target,
+    nodeEntry ? [target, ...argv] : argv,
+    {
+      env: childEnv,
+      stdio: "inherit",
+      windowsHide: true,
+    },
+  );
   if (result.error) {
     process.stderr.write(
       `bb: failed to re-exec BB_CLI=${target}: ${result.error.message}\n`,
     );
-    process.exitCode = 1;
-    return;
+    process.exit(1);
   }
   process.exit(result.status === null ? 1 : result.status);
 }

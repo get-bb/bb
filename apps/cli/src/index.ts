@@ -42,7 +42,7 @@ function createCommandGroupDeps(
 async function tryPluginCommandProxy(
   candidate: string,
   getUrl: () => string,
-): Promise<void> {
+): Promise<boolean> {
   const proxy = await import("./plugin-cli-proxy.js");
   const result = await proxy.fetchPluginCliContributions(getUrl());
   if (result.outcome === "unreachable") {
@@ -54,9 +54,10 @@ async function tryPluginCommandProxy(
         result.attempts,
       ),
     );
-    process.exit(1);
+    process.exitCode = 1;
+    return true;
   }
-  if (result.outcome === "invalid") return;
+  if (result.outcome === "invalid") return false;
   const match = proxy.findPluginCliCommand(result.contributions, candidate);
   if (match === undefined) {
     const disabled = await proxy.findDisabledPluginForCommand(
@@ -68,9 +69,10 @@ async function tryPluginCommandProxy(
         `bb ${candidate} is provided by the "${disabled.id}" plugin, which is disabled — ` +
           `run \`bb plugin enable ${disabled.id}\` or enable it in Plugins.`,
       );
-      process.exit(1);
+      process.exitCode = 1;
+      return true;
     }
-    return;
+    return false;
   }
   const argv = process.argv.slice(3);
   const command = match.commands.find((entry) => entry.name === argv[0]);
@@ -79,9 +81,14 @@ async function tryPluginCommandProxy(
     argv.slice(1).some((arg) => arg === "--help" || arg === "-h")
   ) {
     console.log(command.usage);
-    process.exit(0);
+    return true;
   }
-  process.exit(await proxy.runPluginCliCommand(getUrl(), match.pluginId, argv));
+  process.exitCode = await proxy.runPluginCliCommand(
+    getUrl(),
+    match.pluginId,
+    argv,
+  );
+  return true;
 }
 
 async function main(): Promise<void> {
@@ -124,12 +131,17 @@ Quick start:
 
   const candidate = pluginProxyCandidate(firstArg, KNOWN_COMMAND_NAMES);
   if (candidate !== null) {
-    await tryPluginCommandProxy(candidate, deps.getUrl);
+    if (await tryPluginCommandProxy(candidate, deps.getUrl)) return;
   }
   await program.parseAsync(process.argv);
 }
 
-main().catch((err) => {
-  console.error(err.message);
-  process.exit(1);
+main().catch(async (err: unknown) => {
+  const { CliExitError } = await import("./action.js");
+  if (err instanceof CliExitError) {
+    process.exitCode = err.exitCode;
+    return;
+  }
+  console.error(err instanceof Error ? err.message : String(err));
+  process.exitCode = 1;
 });

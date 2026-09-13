@@ -36,6 +36,7 @@ import {
   createPluginDevLoop,
   PLUGIN_TOOLCHAIN_PINS,
   resolvePluginBuildToolchain,
+  resolvePluginNpmCli,
   type PluginBuildToolchain,
 } from "@bb/plugin-build";
 import { runPluginCliCommand } from "../plugin-cli-proxy.js";
@@ -341,9 +342,15 @@ async function probeSdkVersionPublished(): Promise<
   const { promisify } = await import("node:util");
   try {
     const { stdout } = await promisify(execFile)(
-      "npm",
-      ["view", `@get-bb/plugin-sdk@${PLUGIN_SDK_VERSION}`, "version", "--json"],
-      { timeout: 5_000, killSignal: "SIGKILL" },
+      process.platform === "win32" ? process.execPath : "npm",
+      [
+        ...(process.platform === "win32" ? [resolvePluginNpmCli()] : []),
+        "view",
+        `@get-bb/plugin-sdk@${PLUGIN_SDK_VERSION}`,
+        "version",
+        "--json",
+      ],
+      { timeout: 5_000, killSignal: "SIGKILL", windowsHide: true },
     );
     return stdout.trim().length === 0 ? "missing" : "published";
   } catch (error) {
@@ -386,9 +393,15 @@ async function installScaffoldDependencies(
   const { promisify } = await import("node:util");
   try {
     await promisify(execFile)(
-      "npm",
-      ["install", "--include=dev", "--no-fund", "--no-audit"],
-      { cwd: targetDir },
+      process.platform === "win32" ? process.execPath : "npm",
+      [
+        ...(process.platform === "win32" ? [resolvePluginNpmCli()] : []),
+        "install",
+        "--include=dev",
+        "--no-fund",
+        "--no-audit",
+      ],
+      { cwd: targetDir, windowsHide: true },
     );
   } catch (cause) {
     console.warn(

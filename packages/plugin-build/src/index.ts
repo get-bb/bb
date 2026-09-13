@@ -14,6 +14,7 @@ export {
   resolvePluginBuildToolchain,
   type PluginBuildToolchain,
 } from "./toolchain.js";
+export { resolvePluginNpmCli } from "./npm-cli.js";
 export {
   assertValidPluginCompactIconSvg,
   assertValidPluginIconSvg,

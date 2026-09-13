@@ -26,11 +26,10 @@ export function action<TArgs extends CommandActionArgs>(
       }
       if (err instanceof CliExitError) {
         console.error(`Error: ${err.message}`);
-        process.exit(err.exitCode);
-        return;
+        throw err;
       }
       console.error(`Error: ${getErrorMessage(err)}`);
-      process.exit(1);
+      throw new CliExitError(getErrorMessage(err), 1);
     }
   };
 }

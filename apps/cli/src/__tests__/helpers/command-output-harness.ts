@@ -15,7 +15,7 @@ vi.mock("../../client.js", async () => {
   const { cliFetch } =
     await vi.importActual<typeof import("../../client.js")>("../../client.js");
   const { createBbSdk } =
-    await vi.importActual<typeof import("@bb/sdk/core")>("@bb/sdk/core");
+    await vi.importActual<typeof import("@bb/sdk")>("@bb/sdk");
   const { createHttpTransport } =
     await vi.importActual<typeof import("@bb/sdk/node")>("@bb/sdk/node");
   const toResponse = (resolved: MockTransportResolved): Response =>
@@ -158,7 +158,15 @@ export async function runCommand(
 ): Promise<void> {
   const program = new Command();
   register(program);
-  await program.parseAsync(["node", "bb", ...args]);
+  try {
+    await program.parseAsync(["node", "bb", ...args]);
+  } catch (error) {
+    const { CliExitError } = await import("../../action.js");
+    if (error instanceof CliExitError) {
+      throw new Error(`process.exit:${error.exitCode}: ${error.message}`);
+    }
+    throw error;
+  }
 }
 
 export async function getHelpOutput(

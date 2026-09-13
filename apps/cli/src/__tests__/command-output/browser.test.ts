@@ -47,7 +47,9 @@ describe("browser credential output", () => {
         (program) => registerBrowserCommands(program, () => "http://server"),
       );
       expect(JSON.parse(await readFile(output, "utf8"))).toEqual(connection);
-      expect((await stat(output)).mode & 0o777).toBe(0o600);
+      if (process.platform !== "win32") {
+        expect((await stat(output)).mode & 0o777).toBe(0o600);
+      }
       expect(
         JSON.stringify(collectLogPayloads(vi.mocked(console.log))),
       ).not.toContain("private-token");

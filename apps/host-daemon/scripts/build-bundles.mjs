@@ -88,6 +88,10 @@ async function main() {
   const outputTitleCommandPath = resolve(packageRoot, "dist", "title");
   await copyFile(titleCommandPath, outputTitleCommandPath);
   await chmod(outputTitleCommandPath, 0o755);
+  await copyFile(
+    resolve(workspaceRoot, "apps", "cli", "bin", "bb.cmd"),
+    resolve(packageRoot, "dist", "bb.cmd"),
+  );
 }
 
 void main().catch((error) => {

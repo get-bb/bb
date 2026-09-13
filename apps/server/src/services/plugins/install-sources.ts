@@ -13,8 +13,9 @@ import {
   rm,
   stat,
 } from "node:fs/promises";
-import { dirname, join, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import semver from "semver";
+import { resolvePluginNpmCli } from "@bb/plugin-build";
 import {
   omitNpmScriptPolicyEnv,
   spawnPortableOutputProcess,
@@ -177,10 +178,19 @@ function parseGitSource(spec: string): ParsedPluginSource {
     url = urlish;
     host = parsed.host;
     repoPath = parsed.pathname.replace(/^\/+|\/+$/g, "").replace(/\.git$/, "");
-  } else if (urlish.startsWith("/")) {
+  } else if (isAbsolute(urlish)) {
     url = urlish;
     host = "local";
-    repoPath = urlish.replace(/^\/+/, "").replace(/\.git$/, "");
+    const normalizedLocalPath = urlish
+      .replaceAll("\\", "/")
+      .replace(/^\/+/, "")
+      .replace(/\.git$/, "");
+    repoPath =
+      process.platform === "win32"
+        ? createHash("sha256")
+            .update(normalizedLocalPath.toLowerCase())
+            .digest("hex")
+        : normalizedLocalPath;
   } else if (/^[a-z0-9]/i.test(urlish)) {
     url = `https://${urlish}`;
     const parsed = new URL(url);
@@ -301,6 +311,10 @@ export function npmInstallPrefix(
   version: string,
 ): string {
   return join(dataDir, "plugins", "npm", ...`${name}@${version}`.split("/"));
+}
+
+export function npmPackageRoot(prefix: string, packageName: string): string {
+  return join(prefix, "node_modules", ...packageName.split("/"));
 }
 
 function resolveInside(
@@ -583,9 +597,10 @@ export async function runInstallCommand(
   },
 ): Promise<string> {
   const timeoutMs = 5 * 60_000;
+  const npmCliPath = command === "npm" ? resolvePluginNpmCli() : null;
   const child = spawnPortableOutputProcess({
-    command,
-    args,
+    command: npmCliPath === null ? command : process.execPath,
+    args: npmCliPath === null ? args : [npmCliPath, ...args],
     env: omitNpmScriptPolicyEnv(process.env),
   });
   let stderr = "";

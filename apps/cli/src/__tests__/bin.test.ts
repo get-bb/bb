@@ -22,7 +22,7 @@ function shellQuote(value: string): string {
   return `'${value.replace(/'/gu, "'\\''")}'`;
 }
 
-describe("bb bin wrapper", () => {
+describe.skipIf(process.platform === "win32")("POSIX bb bin wrapper", () => {
   let tempRoot: string;
 
   beforeEach(async () => {

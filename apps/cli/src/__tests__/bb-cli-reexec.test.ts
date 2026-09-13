@@ -1,4 +1,5 @@
 import { realpathSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -88,4 +89,35 @@ describe("maybeReexecViaBbCli", () => {
     });
     expect(reexec).not.toHaveBeenCalled();
   });
+
+  it.skipIf(process.platform !== "win32")(
+    "executes extensionless Node CLIs on Windows without falling through",
+    async () => {
+      const target = join(tempRoot, "bb");
+      const runner = join(tempRoot, "runner.mjs");
+      await writeFile(
+        target,
+        "console.log(JSON.stringify(process.argv.slice(2))); process.exitCode = 7;",
+      );
+      await writeFile(
+        runner,
+        `import { maybeReexecViaBbCli } from ${JSON.stringify(new URL("../bb-cli-reexec.ts", import.meta.url).href)}; maybeReexecViaBbCli(); console.log("WRONG_FALLTHROUGH");`,
+      );
+      const result = spawnSync(
+        process.execPath,
+        ["--import", "tsx", runner, "argument with spaces"],
+        {
+          env: { ...process.env, BB_CLI: target, BB_CLI_REEXEC: "" },
+          encoding: "utf8",
+          windowsHide: true,
+          timeout: 15_000,
+        },
+      );
+      expect(result.error).toBeUndefined();
+      expect(result.status, result.stderr).toBe(7);
+      expect(JSON.parse(result.stdout.trim())).toEqual([
+        "argument with spaces",
+      ]);
+    },
+  );
 });

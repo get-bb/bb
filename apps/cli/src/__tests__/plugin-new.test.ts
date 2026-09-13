@@ -10,6 +10,7 @@ import {
   resolveNewPluginTarget,
 } from "../commands/plugin.js";
 import { installFakeNpm } from "./helpers/fake-npm.js";
+import * as pluginBuild from "@bb/plugin-build";
 
 describe("resolveNewPluginTarget", () => {
   it.each([
@@ -195,8 +196,13 @@ describe.sequential("bb plugin new dependency install", () => {
     expect(warnings).not.toContain("progress line");
   });
 
-  it("falls back to the manual step when npm is not on PATH", async () => {
+  it("falls back to the manual step when the selected npm is unavailable", async () => {
     vi.stubEnv("PATH", join(workDir, "empty-bin"));
+    if (process.platform === "win32") {
+      vi.mocked(pluginBuild.resolvePluginNpmCli).mockReturnValue(
+        join(workDir, "missing-npm.cjs"),
+      );
+    }
 
     await runPluginNew(["no-npm"]);
 
