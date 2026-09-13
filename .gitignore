@@ -91,3 +91,6 @@ provider-recordings/raw/
 **/provider-corpus/**
 !apps/server/test/provider-corpus/**
 !scripts/provider-corpus/**
+.kilo/start-bb.out.log
+/.runtime/
+/windows-*.log

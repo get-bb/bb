@@ -326,33 +326,70 @@ function isNonEmptyString(value: string | undefined): value is string {
   return value !== undefined && value.length > 0;
 }
 
-function findExecutableOnPath(command: string): string | null {
-  const pathEntries = (process.env.PATH ?? "")
-    .split(path.delimiter)
-    .filter((entry) => entry.length > 0);
-  const extensions = (process.env.PATHEXT ?? ".EXE;.CMD;.BAT").split(";");
-  for (const directory of pathEntries) {
-    for (const extension of ["", ...extensions]) {
-      const candidate = path.join(directory, `${command}${extension}`);
-      if (existsSync(candidate)) {
-        return candidate;
-      }
+const WINDOWS_SHELL_NAMES = ["pwsh.exe", "powershell.exe"] as const;
+
+async function firstExecutableOnPath(
+  shellName: (typeof WINDOWS_SHELL_NAMES)[number],
+  pathDirectories: readonly string[],
+): Promise<string | null> {
+  for (const directory of pathDirectories) {
+    const candidate = path.join(directory, shellName);
+    if (await pathIsExecutable(candidate)) {
+      return candidate;
     }
   }
   return null;
 }
 
-function resolveWindowsTerminalShell(): string {
-  const configuredShell = process.env.SHELL?.trim();
-  if (configuredShell && configuredShell.length > 0) {
-    return configuredShell;
+export async function resolveWindowsTerminalShell(): Promise<string> {
+  const pathValue = process.env.PATH ?? process.env.Path ?? "";
+  const pathDirectories = pathValue
+    .split(";")
+    .map((entry) => entry.trim())
+    .filter(isNonEmptyString);
+
+  const pwshOnPath = await firstExecutableOnPath("pwsh.exe", pathDirectories);
+  if (pwshOnPath !== null) {
+    return pwshOnPath;
   }
-  const powershell =
-    findExecutableOnPath("pwsh") ?? findExecutableOnPath("powershell.exe");
-  if (powershell !== null) {
-    return powershell;
+
+  const programFiles = process.env.ProgramFiles ?? "C:\\Program Files";
+  const localAppData = process.env.LOCALAPPDATA;
+  const pwshFallbacks = [
+    path.join(programFiles, "PowerShell", "7", "pwsh.exe"),
+    ...(localAppData === undefined
+      ? []
+      : [path.join(localAppData, "Microsoft", "WindowsApps", "pwsh.exe")]),
+  ];
+  for (const candidate of pwshFallbacks) {
+    if (await pathIsExecutable(candidate)) {
+      return candidate;
+    }
   }
-  return process.env.ComSpec?.trim() || "cmd.exe";
+
+  const powershellOnPath = await firstExecutableOnPath(
+    "powershell.exe",
+    pathDirectories,
+  );
+  if (powershellOnPath !== null) {
+    return powershellOnPath;
+  }
+
+  const systemRoot = process.env.SystemRoot ?? "C:\\Windows";
+  const windowsPowerShell = path.join(
+    systemRoot,
+    "System32",
+    "WindowsPowerShell",
+    "v1.0",
+    "powershell.exe",
+  );
+  if (await pathIsExecutable(windowsPowerShell)) {
+    return windowsPowerShell;
+  }
+
+  throw new Error(
+    "No PowerShell was found on this machine. Install PowerShell 7 (pwsh) or use the built-in Windows PowerShell.",
+  );
 }
 
 async function resolveDefaultTerminalShell(): Promise<string> {
@@ -401,32 +438,27 @@ function terminalTitleFromCommand(command: string): string {
   return `${normalized.slice(0, 77)}...`;
 }
 
+type TerminalShellFamily = "posix" | "powershell";
+
+export function terminalShellFamily(shell: string): TerminalShellFamily {
+  const name = shell.split(/[\\/]/).at(-1)?.toLowerCase() ?? "";
+  return name === "pwsh.exe" || name === "powershell.exe" || name === "pwsh"
+    ? "powershell"
+    : "posix";
+}
+
 function terminalSpawnArgsForStart(
   message: TerminalOpenMessage,
   shell: string,
 ): string[] {
+  const family = terminalShellFamily(shell);
   switch (message.start.mode) {
     case "shell":
-      return [];
-    case "command": {
-      const shellName = path.basename(shell).toLowerCase();
-      if (
-        shellName === "cmd" ||
-        shellName === "cmd.exe" ||
-        shellName === "comspec"
-      ) {
-        return ["/d", "/s", "/c", message.start.command];
-      }
-      if (
-        shellName === "pwsh" ||
-        shellName === "pwsh.exe" ||
-        shellName === "powershell" ||
-        shellName === "powershell.exe"
-      ) {
-        return ["-NoLogo", "-NoProfile", "-Command", message.start.command];
-      }
-      return ["-lc", message.start.command];
-    }
+      return family === "powershell" ? ["-NoLogo"] : [];
+    case "command":
+      return family === "powershell"
+        ? ["-NoLogo", "-Command", message.start.command]
+        : ["-lc", message.start.command];
   }
 }
 

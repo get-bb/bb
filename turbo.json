@@ -1,6 +1,16 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "tasks": {
+    "//#test:windows:lifecycle": {
+      "cache": false,
+      "dependsOn": [
+        "//#ensure-native-modules",
+        "@bb/server#build",
+        "@bb/host-daemon#build",
+        "@bb/app#build"
+      ],
+      "outputs": []
+    },
     "@bb/desktop#smoke:browser-broker": {
       "cache": false,
       "dependsOn": [

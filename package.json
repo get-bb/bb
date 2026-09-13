@@ -41,6 +41,7 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "test:integration": "turbo run test:integration",
+    "test:windows:lifecycle": "pwsh -NoProfile -File scripts/windows/smoke-lifecycle.ps1",
     "qa:standalone:start": "node tests/qa/scripts/run-root-command.mjs standalone:start",
     "qa:standalone:stop": "node tests/qa/scripts/run-root-command.mjs standalone:stop",
     "qa:standalone:cleanup": "node tests/qa/scripts/run-root-command.mjs standalone:cleanup",

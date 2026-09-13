@@ -311,7 +311,12 @@ async function walkSkillTree(args: WalkSkillTreeArgs): Promise<void> {
     const bytes = await fs.readFile(sourcePath);
     args.state.files.push({
       bytes,
-      mode: entryStat.mode & 0o777,
+      mode:
+        process.platform === "win32"
+          ? entryStat.mode & 0o222
+            ? 0o644
+            : 0o444
+          : entryStat.mode & 0o777,
       relativePath,
     });
     args.state.totalBytes += entryStat.size;

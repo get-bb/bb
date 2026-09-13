@@ -275,6 +275,7 @@ export async function runGit(
       maxBuffer: options.maxBufferBytes ?? DEFAULT_BUFFER_BYTES,
       signal: options.signal,
       timeout: options.timeoutMs,
+      windowsHide: true,
     });
     return {
       stdout: result.stdout,
@@ -1418,6 +1419,7 @@ export async function readGitBlob(
         shellPath: options.shellPath,
       }),
       maxBuffer: maxBytes,
+      windowsHide: true,
     });
     const contents = Buffer.from(result.stdout);
     return { contents, sizeBytes: size };

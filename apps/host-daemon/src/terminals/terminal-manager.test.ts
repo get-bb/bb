@@ -9,12 +9,13 @@ import {
   makeWorkspaceMergeBase,
   makeWorkspaceStatus,
 } from "@bb/test-helpers";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { HostDaemonLogger } from "../logger.js";
 import { RuntimeManager } from "../runtime-manager.js";
 import {
   ensureNodePtySpawnHelpersExecutableInPackage,
   resolveNodePtySpawnHelperPaths,
+  resolveWindowsTerminalShell,
   TerminalManager,
   type ResolveTerminalShell,
   type SpawnTerminalPtyArgs,
@@ -386,6 +387,126 @@ async function openTerminal(
   }
   return spawned.pty;
 }
+
+describe("resolveWindowsTerminalShell", () => {
+  const savedEnv: Record<string, string | undefined> = {};
+
+  beforeEach(() => {
+    for (const key of [
+      "PATH",
+      "Path",
+      "ProgramFiles",
+      "SystemRoot",
+      "LOCALAPPDATA",
+    ]) {
+      savedEnv[key] = process.env[key];
+    }
+  });
+
+  afterEach(() => {
+    for (const [key, value] of Object.entries(savedEnv)) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+  });
+
+  async function makeShellDir(
+    prefix: string,
+    fileName: string,
+  ): Promise<string> {
+    const directory = await makeTempDir(prefix);
+    const shellPath = path.join(directory, fileName);
+    await fs.writeFile(shellPath, "");
+    await fs.chmod(shellPath, 0o755);
+    return directory;
+  }
+
+  it("prefers pwsh.exe over powershell.exe regardless of PATH order", async () => {
+    const powershellDir = await makeShellDir(
+      "bb-terminal-resolver-ps-",
+      "powershell.exe",
+    );
+    const pwshDir = await makeShellDir(
+      "bb-terminal-resolver-pwsh-",
+      "pwsh.exe",
+    );
+    process.env.PATH = [powershellDir, pwshDir].join(";");
+    process.env.ProgramFiles = await makeTempDir("bb-terminal-resolver-pf-");
+    process.env.SystemRoot = await makeTempDir("bb-terminal-resolver-sr-");
+    process.env.LOCALAPPDATA = await makeTempDir("bb-terminal-resolver-la-");
+
+    await expect(resolveWindowsTerminalShell()).resolves.toBe(
+      path.join(pwshDir, "pwsh.exe"),
+    );
+
+    process.env.PATH = [pwshDir, powershellDir].join(";");
+    await expect(resolveWindowsTerminalShell()).resolves.toBe(
+      path.join(pwshDir, "pwsh.exe"),
+    );
+  });
+
+  it("prefers a standard-location pwsh over a PATH powershell", async () => {
+    const powershellDir = await makeShellDir(
+      "bb-terminal-resolver-ps2-",
+      "powershell.exe",
+    );
+    const programFiles = await makeTempDir("bb-terminal-resolver-pf3-");
+    const pwshDir = path.join(programFiles, "PowerShell", "7");
+    await fs.mkdir(pwshDir, { recursive: true });
+    const pwshPath = path.join(pwshDir, "pwsh.exe");
+    await fs.writeFile(pwshPath, "");
+    await fs.chmod(pwshPath, 0o755);
+
+    process.env.PATH = powershellDir;
+    process.env.ProgramFiles = programFiles;
+    process.env.SystemRoot = await makeTempDir("bb-terminal-resolver-sr3-");
+    process.env.LOCALAPPDATA = await makeTempDir("bb-terminal-resolver-la3-");
+
+    await expect(resolveWindowsTerminalShell()).resolves.toBe(pwshPath);
+  });
+
+  it("falls back to Windows PowerShell under SystemRoot when PATH has neither shell", async () => {
+    const emptyPath = await makeTempDir("bb-terminal-resolver-empty-");
+    const systemRoot = await makeTempDir("bb-terminal-resolver-root-");
+    const windowsPowerShellDir = path.join(
+      systemRoot,
+      "System32",
+      "WindowsPowerShell",
+      "v1.0",
+    );
+    await fs.mkdir(windowsPowerShellDir, { recursive: true });
+    const powershellPath = path.join(windowsPowerShellDir, "powershell.exe");
+    await fs.writeFile(powershellPath, "");
+    await fs.chmod(powershellPath, 0o755);
+
+    process.env.PATH = emptyPath;
+    process.env.ProgramFiles = await makeTempDir("bb-terminal-resolver-pf2-");
+    process.env.SystemRoot = systemRoot;
+    process.env.LOCALAPPDATA = await makeTempDir("bb-terminal-resolver-la2-");
+
+    await expect(resolveWindowsTerminalShell()).resolves.toBe(powershellPath);
+  });
+
+  it("fails with one clear message when neither PowerShell exists", async () => {
+    const emptyPath = await makeTempDir("bb-terminal-resolver-none-path-");
+    const emptyRoot = await makeTempDir("bb-terminal-resolver-none-root-");
+    process.env.PATH = emptyPath;
+    process.env.ProgramFiles = await makeTempDir(
+      "bb-terminal-resolver-none-pf-",
+    );
+    process.env.SystemRoot = emptyRoot;
+    process.env.LOCALAPPDATA = await makeTempDir(
+      "bb-terminal-resolver-none-la-",
+    );
+
+    await expect(resolveWindowsTerminalShell()).rejects.toThrow(
+      "No PowerShell was found on this machine. Install PowerShell 7 (pwsh) or use the built-in Windows PowerShell.",
+    );
+  });
+});
 
 describe("TerminalManager", () => {
   afterEach(async () => {
@@ -966,8 +1087,10 @@ describe("TerminalManager", () => {
 
     const buildHelperMode = (await fs.stat(buildHelperPath)).mode;
     const prebuildHelperMode = (await fs.stat(prebuildHelperPath)).mode;
-    expect(buildHelperMode & 0o111).not.toBe(0);
-    expect(prebuildHelperMode & 0o111).not.toBe(0);
+    if (process.platform !== "win32") {
+      expect(buildHelperMode & 0o111).not.toBe(0);
+      expect(prebuildHelperMode & 0o111).not.toBe(0);
+    }
     expect(logger.warn).not.toHaveBeenCalled();
   });
 
@@ -1001,7 +1124,9 @@ describe("TerminalManager", () => {
     });
 
     const prebuildHelperMode = (await fs.stat(prebuildHelperPath)).mode;
-    expect(prebuildHelperMode & 0o111).not.toBe(0);
+    if (process.platform !== "win32") {
+      expect(prebuildHelperMode & 0o111).not.toBe(0);
+    }
     expect(logger.warn).not.toHaveBeenCalled();
   });
 
@@ -1398,10 +1523,11 @@ describe("TerminalManager", () => {
     ]);
   });
 
-  it("spawns PowerShell command mode with Windows command args", async () => {
+  it("spawns a PowerShell shell on Windows with -NoLogo and reports it opened", async () => {
     const harness = createHarnessWithShell({
-      resolveShell: async () => "powershell.exe",
+      resolveShell: async () => "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
     });
+    const workspacePath = await makeTempDir("bb-terminal-manager-win-");
 
     await harness.manager.handleMessage({
       type: "terminal.open",
@@ -1412,29 +1538,38 @@ describe("TerminalManager", () => {
         kind: "workspace",
         environmentId: "env-1",
         workspaceContext: {
-          workspacePath: "/tmp/terminal-workspace",
+          workspacePath,
           workspaceProvisionType: "unmanaged",
         },
       },
       cols: 100,
       rows: 30,
-      start: { mode: "command", command: "Write-Output hello" },
+      start: DEFAULT_TERMINAL_START,
     });
 
     expect(harness.adapter.spawned).toHaveLength(1);
-    expect(harness.adapter.spawned[0]?.args).toMatchObject({
-      file: "powershell.exe",
-      args: ["-NoLogo", "-NoProfile", "-Command", "Write-Output hello"],
-    });
-    expect(harness.messages.some((message) => message.type === "terminal.error")).toBe(
-      false,
+    const spawn = harness.adapter.spawned[0]!;
+    expect(spawn.args.file).toBe("C:\\Program Files\\PowerShell\\7\\pwsh.exe");
+    expect(spawn.args.args).toEqual(["-NoLogo"]);
+    expect(spawn.args.cols).toBe(100);
+    expect(spawn.args.rows).toBe(30);
+    expect(spawn.args.env.BB_TERMINAL_SESSION_ID).toBe("term-1");
+    const opened = harness.messages.find(
+      (message) => message.type === "terminal.opened",
     );
+    expect(opened).toMatchObject({
+      type: "terminal.opened",
+      requestId: "open-1",
+      terminalId: "term-1",
+    });
   });
 
-  it("spawns cmd.exe command mode with Windows command args", async () => {
+  it("runs Windows command starts with -NoLogo -Command through the selected shell", async () => {
     const harness = createHarnessWithShell({
-      resolveShell: async () => "C:\\Windows\\System32\\cmd.exe",
+      resolveShell: async () =>
+        "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
     });
+    const workspacePath = await makeTempDir("bb-terminal-manager-win-cmd-");
 
     await harness.manager.handleMessage({
       type: "terminal.open",
@@ -1445,19 +1580,105 @@ describe("TerminalManager", () => {
         kind: "workspace",
         environmentId: "env-1",
         workspaceContext: {
-          workspacePath: "/tmp/terminal-workspace",
+          workspacePath,
           workspaceProvisionType: "unmanaged",
         },
       },
       cols: 100,
       rows: 30,
-      start: { mode: "command", command: "echo hello" },
+      start: { mode: "command", command: "Write-Output done" },
     });
 
-    expect(harness.adapter.spawned[0]?.args).toMatchObject({
-      file: "C:\\Windows\\System32\\cmd.exe",
-      args: ["/d", "/s", "/c", "echo hello"],
+    const spawn = harness.adapter.spawned[0]!;
+    expect(spawn.args.args).toEqual([
+      "-NoLogo",
+      "-Command",
+      "Write-Output done",
+    ]);
+  });
+
+  it("keeps POSIX shell starts bare and command starts on -lc", async () => {
+    for (const [shell, shellArgs, commandArgs] of [
+      ["/bin/zsh", [], ["-lc", "echo hi"]] as const,
+      [
+        "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
+        ["-NoLogo"],
+        ["-NoLogo", "-Command", "echo hi"],
+      ] as const,
+    ]) {
+      for (const [start, expectedArgs] of [
+        [DEFAULT_TERMINAL_START, shellArgs],
+        [{ mode: "command", command: "echo hi" }, commandArgs],
+      ] as const) {
+        const harness = createHarnessWithShell({
+          resolveShell: async () => shell,
+        });
+        const workspacePath = await makeTempDir("bb-terminal-manager-args-");
+
+        await harness.manager.handleMessage({
+          type: "terminal.open",
+          requestId: "open-1",
+          terminalId: "term-1",
+          threadId: "thr-1",
+          target: {
+            kind: "workspace",
+            environmentId: "env-1",
+            workspaceContext: {
+              workspacePath,
+              workspaceProvisionType: "unmanaged",
+            },
+          },
+          cols: 80,
+          rows: 24,
+          start,
+        });
+
+        expect(harness.adapter.spawned[0]?.args.args).toEqual([
+          ...expectedArgs,
+        ]);
+      }
+    }
+  });
+
+  it("reports a clear error when no PowerShell can be resolved", async () => {
+    const harness = createHarnessWithShell({
+      resolveShell: async () => {
+        throw new Error(
+          "No PowerShell was found on this machine. Install PowerShell 7 (pwsh) or use the built-in Windows PowerShell.",
+        );
+      },
     });
+    const workspacePath = await makeTempDir("bb-terminal-manager-noshell-");
+
+    await harness.manager.handleMessage({
+      type: "terminal.open",
+      requestId: "open-1",
+      terminalId: "term-1",
+      threadId: "thr-1",
+      target: {
+        kind: "workspace",
+        environmentId: "env-1",
+        workspaceContext: {
+          workspacePath,
+          workspaceProvisionType: "unmanaged",
+        },
+      },
+      cols: 100,
+      rows: 30,
+      start: DEFAULT_TERMINAL_START,
+    });
+
+    expect(harness.adapter.spawned).toHaveLength(0);
+    expect(harness.messages).toEqual([
+      {
+        type: "terminal.error",
+        requestId: "open-1",
+        terminalId: "term-1",
+        code: "terminal_open_failed",
+        message:
+          "No PowerShell was found on this machine. Install PowerShell 7 (pwsh) or use the built-in Windows PowerShell.",
+      },
+    ]);
   });
 
   it("runs commands in one persistent shell from the workspace cwd", async () => {
