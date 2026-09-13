@@ -270,6 +270,7 @@ function CollapsibleMessageText({
       ) : null}
       <div
         ref={bodyRef}
+        data-image-gallery-clipped={!isExpanded ? "" : undefined}
         className={cn(
           "break-words",
           !isExpanded && "max-h-[15lh] overflow-hidden",
@@ -588,6 +589,7 @@ function AssistantConversationMessage({
           <MarkdownPreview
             className={STREAMING_TAIL_MARKDOWN_CLASS_NAME}
             content={liveMarkdown}
+            sourcePrefix={streamingSplit.settled}
             incrementalBlocks
             linkRouting={linkRouting}
             messageDirectives={messageDirectives}

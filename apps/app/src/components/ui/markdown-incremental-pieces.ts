@@ -86,6 +86,7 @@ interface ParseMarkdownPieceArgs {
   indexBase: number;
   offsets: ReadonlyMap<string, number>;
   source: string;
+  sourceOffset: number;
 }
 
 const MARKDOWN_BLANK_LINE_PATTERN = /^[ \t]*$/u;
@@ -346,6 +347,7 @@ function parseMarkdownPiece({
   indexBase,
   offsets,
   source,
+  sourceOffset,
 }: ParseMarkdownPieceArgs): MarkdownPieceEntry {
   const summaryTarget: MarkdownPieceSummaryTarget = {
     source,
@@ -367,6 +369,16 @@ function parseMarkdownPiece({
       },
     ]);
   }
+  remarkPlugins.push(() => (tree: Root) => {
+    visit(tree, "image", (node) => {
+      if (node.position?.start.offset === undefined) return;
+      node.data ??= {};
+      node.data.hProperties = {
+        ...node.data.hProperties,
+        "data-markdown-image-offset": sourceOffset + node.position.start.offset,
+      };
+    });
+  });
   const element = ReactMarkdown({
     children: source,
     components: config.components,
@@ -450,6 +462,7 @@ function resolveIncrementalMarkdownPieceEntries(
             indexBase: mountCount,
             offsets,
             source: body.slice(start, end),
+            sourceOffset: start,
           });
     let merges = 0;
     while (
@@ -465,6 +478,7 @@ function resolveIncrementalMarkdownPieceEntries(
         indexBase: mountCount,
         offsets,
         source: body.slice(start, end),
+        sourceOffset: start,
       });
     }
     if (entry.summary.hasGlobalConstructs) {
@@ -571,6 +585,7 @@ export function resolveMarkdownPieces(
       indexBase: 0,
       offsets: EMPTY_MARKDOWN_TAG_COUNTS,
       source: body,
+      sourceOffset: 0,
     });
     entries = [entry];
     cache.latchedWholeDocumentPrefix = keepsLatchedPrefix

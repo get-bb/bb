@@ -1,11 +1,16 @@
-import { useEffect, type CSSProperties } from "react";
-import { Button } from "@bb/shared-ui/button";
 import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogTitle,
-} from "@bb/shared-ui/dialog";
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  type CSSProperties,
+} from "react";
+import { createPortal } from "react-dom";
+import { Button } from "@bb/shared-ui/button";
+import { usePersistentOverlayFocus } from "@bb/shared-ui/responsive-overlay";
+import { usePortalScopeProps } from "@bb/shared-ui/lib/portal-scope";
+import { useBrowserDimmingOverlay } from "@/hooks/useBrowserDimmingModal";
 import { Icon } from "@bb/shared-ui/icon";
 
 type ImageLightboxKeyAction = "close" | "next" | "previous";
@@ -37,6 +42,9 @@ interface WrappedImageIndexInput {
 
 interface ImageLightboxProps {
   hasMultipleImages?: boolean;
+  previousDisabled?: boolean;
+  nextDisabled?: boolean;
+  navigationStatus?: string;
   imageAlt: string;
   imageSrc: string | null;
   isOpen?: boolean;
@@ -94,6 +102,9 @@ export function getWrappedImageIndex({
 
 export function ImageLightbox({
   hasMultipleImages = false,
+  previousDisabled = false,
+  nextDisabled = false,
+  navigationStatus,
   imageAlt,
   imageSrc,
   isOpen,
@@ -103,8 +114,23 @@ export function ImageLightbox({
   title,
 }: ImageLightboxProps) {
   const isVisible = isOpen ?? imageSrc !== null;
+  const panelRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef(onClose);
+  useLayoutEffect(() => {
+    closeRef.current = onClose;
+  }, [onClose]);
+  const requestClose = useCallback(() => closeRef.current(), []);
+  const titleId = useId();
+  const scopeProps = usePortalScopeProps();
+  useBrowserDimmingOverlay(isVisible);
+  usePersistentOverlayFocus({
+    open: isVisible,
+    panelRef,
+    requestClose,
+  });
   const hasNavigation =
     hasMultipleImages && onPrevious !== undefined && onNext !== undefined;
+
   useEffect(() => {
     if (!isVisible) {
       return;
@@ -125,14 +151,14 @@ export function ImageLightbox({
           onClose();
           return;
         case "previous":
-          if (!onPrevious) {
+          if (!onPrevious || previousDisabled) {
             return;
           }
           event.preventDefault();
           onPrevious();
           return;
         case "next":
-          if (!onNext) {
+          if (!onNext || nextDisabled) {
             return;
           }
           event.preventDefault();
@@ -143,104 +169,98 @@ export function ImageLightbox({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [hasNavigation, isVisible, onClose, onNext, onPrevious]);
+  }, [hasNavigation, isVisible, onClose, onNext, onPrevious, nextDisabled, previousDisabled]);
 
   if (!isVisible) {
     return null;
   }
 
-  return (
-    <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent
-        aria-describedby={undefined}
-        hideCloseButton
-        className="left-0 top-0 flex h-[calc(92svh-var(--bb-drawer-keyboard-inset,0px)-2.125rem)] max-h-none w-full max-w-none translate-x-0 translate-y-0 flex-col items-center gap-3 overflow-hidden border-0 bg-transparent p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-none duration-0 data-[state=closed]:animate-none data-[state=open]:animate-none sm:h-full sm:rounded-none sm:p-6 sm:pb-[max(1.5rem,env(safe-area-inset-bottom))]"
-        onClick={(event) => {
-          if (event.target === event.currentTarget) {
-            onClose();
-          }
-        }}
-      >
-        <DialogTitle className="sr-only">{title}</DialogTitle>
+  return createPortal(
+    <div
+      ref={panelRef}
+      {...scopeProps}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={titleId}
+      tabIndex={-1}
+      className="fixed inset-0 z-50 flex h-dvh w-full cursor-zoom-out items-center justify-center bg-black/70 p-4 outline-none animate-in fade-in-0 duration-150 motion-reduce:animate-none"
+      onClick={(event) => {
+        if (
+          event.target === event.currentTarget ||
+          event.target instanceof HTMLImageElement
+        ) {
+          onClose();
+        }
+      }}
+    >
+      <h2 id={titleId} className="sr-only">
+        {title}
+      </h2>
+      {imageSrc ? (
+        <img
+          src={imageSrc}
+          alt={imageAlt}
+          style={IMAGE_TRANSPARENCY_CHECKER_STYLE}
+          className="max-h-[82dvh] max-w-full object-contain"
+        />
+      ) : (
         <div
-          className="relative flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden"
-          onClick={(event) => {
-            if (event.target === event.currentTarget) {
-              onClose();
-            }
-          }}
+          role="status"
+          aria-label="Loading image"
+          className="flex size-32 flex-col items-center justify-center gap-2 rounded-xl bg-black/35 text-sm text-white/60 sm:size-48"
         >
-          {imageSrc ? (
-            <div
-              className="absolute inset-0 flex items-center justify-center"
-              onClick={(event) => {
-                if (event.target === event.currentTarget) {
-                  onClose();
-                }
-              }}
-            >
-              <img
-                src={imageSrc}
-                alt={imageAlt}
-                style={IMAGE_TRANSPARENCY_CHECKER_STYLE}
-                className="max-h-full max-w-[90vw] rounded object-contain"
-              />
-            </div>
-          ) : (
-            <div
-              role="status"
-              aria-label="Loading image"
-              className="flex size-32 flex-col items-center justify-center gap-2 rounded-xl bg-black/35 text-sm text-white/60 sm:size-48"
-            >
-              <Icon name="Loading" className="size-5 animate-spin" />
-              <span>Loading image…</span>
-            </div>
-          )}
+          <Icon name="Loading" className="size-5 animate-spin" />
+          <span>Loading image…</span>
         </div>
+      )}
 
-        {hasNavigation ? (
-          <div className="shrink-0 rounded-full bg-black/55 px-3 py-1.5 text-xs text-white/80 shadow-sm backdrop-blur-sm pointer-coarse:hidden">
-            ← → to navigate
-          </div>
-        ) : null}
-
-        {hasNavigation ? (
-          <>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="pointer-coarse:hidden absolute left-2 top-1/2 size-9 -translate-y-1/2 rounded-full bg-black/45 text-white hover:bg-black/60 hover:text-white"
-              onClick={onPrevious}
-              aria-label="Previous image"
-            >
-              <Icon name="ChevronLeft" className="size-5" />
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="pointer-coarse:hidden absolute right-2 top-1/2 size-9 -translate-y-1/2 rounded-full bg-black/45 text-white hover:bg-black/60 hover:text-white"
-              onClick={onNext}
-              aria-label="Next image"
-            >
-              <Icon name="ChevronRight" className="size-5" />
-            </Button>
-          </>
-        ) : null}
-
-        <DialogClose asChild>
+      {hasNavigation ? (
+        <>
           <Button
             type="button"
             variant="ghost"
             size="icon"
-            className="absolute right-2 top-2 size-9 rounded-full bg-black/45 text-white hover:bg-black/60 hover:text-white"
-            aria-label="Close image preview"
+            className="absolute left-[max(0.5rem,env(safe-area-inset-left))] top-1/2 size-11 -translate-y-1/2 rounded-full bg-black/45 text-white hover:bg-black/60 hover:text-white disabled:pointer-events-auto"
+            onClick={onPrevious}
+            disabled={previousDisabled}
+            aria-label="Previous image"
           >
-            <Icon name="X" className="size-5" />
+            <Icon name="ChevronLeft" className="size-5" />
           </Button>
-        </DialogClose>
-      </DialogContent>
-    </Dialog>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="absolute right-[max(0.5rem,env(safe-area-inset-right))] top-1/2 size-11 -translate-y-1/2 rounded-full bg-black/45 text-white hover:bg-black/60 hover:text-white disabled:pointer-events-auto"
+            onClick={onNext}
+            disabled={nextDisabled}
+            aria-label="Next image"
+          >
+            <Icon name="ChevronRight" className="size-5" />
+          </Button>
+        </>
+      ) : null}
+
+      {navigationStatus ? (
+        <p
+          role="status"
+          className="absolute bottom-[max(1rem,env(safe-area-inset-bottom))] max-w-full px-4 text-center text-sm text-white"
+        >
+          {navigationStatus}
+        </p>
+      ) : null}
+
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="absolute right-[max(0.5rem,env(safe-area-inset-right))] top-[max(0.5rem,env(safe-area-inset-top))] size-11 rounded-full bg-black/45 text-white hover:bg-black/60 hover:text-white"
+        onClick={onClose}
+        aria-label="Close image preview"
+      >
+        <Icon name="X" className="size-5" />
+      </Button>
+    </div>,
+    document.body,
   );
 }

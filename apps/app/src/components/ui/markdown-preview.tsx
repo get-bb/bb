@@ -38,6 +38,7 @@ import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import { ImageLightbox, getWrappedImageIndex } from "./image-lightbox.js";
+import { InlineImageGalleryContext } from "./inline-image-gallery-context.js";
 import { normalizeMathFences } from "./markdown-math-fences.js";
 import {
   markdownMayContainMath,
@@ -119,6 +120,7 @@ interface MarkdownPreviewProps {
   allowHtml?: boolean;
   className?: string;
   content: string;
+  sourcePrefix?: string;
   imagePolicy?: MarkdownImagePolicy;
   incrementalBlocks?: boolean;
   linkRouting?: MarkdownLinkRouting;
@@ -148,6 +150,7 @@ interface IsMarkdownAppRouteHrefArgs {
 
 interface BuildMarkdownComponentsArgs {
   imagePolicy: MarkdownImagePolicy;
+  imageSourceOffset: number;
   linkRouting?: MarkdownLinkRouting;
   preferredTheme: Theme;
   rewriteLocalhostLinks: boolean;
@@ -177,6 +180,7 @@ interface ResolvedMarkdownLocalFileTarget {
 
 interface MarkdownImageRendererArgs {
   alt: ComponentPropsWithoutRef<"img">["alt"];
+  sourceOffset: number | undefined;
   imageAttributes: MarkdownImageRenderAttributes;
   setExpandedImage: ExpandedMarkdownImageSetter;
   src: ComponentPropsWithoutRef<"img">["src"];
@@ -258,7 +262,9 @@ interface MarkdownCodeRendererProps extends MarkdownCodeProps {
 }
 type MarkdownHeadingProps = ComponentPropsWithoutRef<"h1"> & ExtraProps;
 type MarkdownHrProps = ComponentPropsWithoutRef<"hr"> & ExtraProps;
-type MarkdownImageProps = ComponentPropsWithoutRef<"img"> & ExtraProps;
+type MarkdownImageProps = ComponentPropsWithoutRef<"img"> & ExtraProps & {
+  "data-markdown-image-offset"?: number;
+};
 type MarkdownImageRenderAttributes = Omit<
   MarkdownImageProps,
   "alt" | "children" | "className" | "node" | "src"
@@ -433,6 +439,7 @@ const areMarkdownPreviewPropsEqual: MarkdownPreviewPropsEqual = (
   (previous.allowHtml ?? false) === (next.allowHtml ?? false) &&
   previous.className === next.className &&
   previous.content === next.content &&
+  (previous.sourcePrefix ?? "") === (next.sourcePrefix ?? "") &&
   (previous.imagePolicy ?? "render") === (next.imagePolicy ?? "render") &&
   (previous.incrementalBlocks ?? false) === (next.incrementalBlocks ?? false) &&
   previous.urlTransform === next.urlTransform &&
@@ -927,12 +934,14 @@ function MarkdownTableCell({ children }: MarkdownTableCellProps) {
   return <td className="border border-border px-2 py-1">{children}</td>;
 }
 
-function renderMarkdownImage({
+function MarkdownRenderedImage({
   alt,
+  sourceOffset,
   imageAttributes,
   setExpandedImage,
   src,
 }: MarkdownImageRendererArgs) {
+  const openGallery = useContext(InlineImageGalleryContext);
   const imageUrl = typeof src === "string" ? src : "";
   if (!imageUrl) return null;
   return (
@@ -942,7 +951,13 @@ function renderMarkdownImage({
       alt={typeof alt === "string" ? alt : "Image"}
       className="my-2 max-h-[max(384px,50vh)] max-w-full cursor-zoom-in object-contain"
       loading="lazy"
+      data-markdown-image=""
+      data-markdown-image-offset={sourceOffset}
       onClick={(event) => {
+        if (openGallery) {
+          openGallery(event.currentTarget);
+          return;
+        }
         const markdownElement = event.currentTarget.closest(
           "[data-markdown-preview]",
         );
@@ -992,6 +1007,7 @@ const EMPTY_THREAD_IDS: readonly string[] = [];
 
 function buildMarkdownComponents({
   imagePolicy,
+  imageSourceOffset,
   linkRouting,
   preferredTheme,
   rewriteLocalhostLinks,
@@ -1223,7 +1239,8 @@ function buildMarkdownComponents({
     src,
     alt,
     className: _className,
-    node: _node,
+    node,
+    "data-markdown-image-offset": pieceOffset,
     ...imageAttributes
   }: MarkdownImageProps) {
     if (imagePolicy === "alt-text") {
@@ -1233,12 +1250,20 @@ function buildMarkdownComponents({
         </span>
       );
     }
-    return renderMarkdownImage({
-      alt,
-      imageAttributes,
-      setExpandedImage,
-      src,
-    });
+    const sourceOffset = pieceOffset ?? node?.position?.start.offset;
+    return (
+      <MarkdownRenderedImage
+        alt={alt}
+        sourceOffset={
+          sourceOffset === undefined
+            ? undefined
+            : imageSourceOffset + sourceOffset
+        }
+        imageAttributes={imageAttributes}
+        setExpandedImage={setExpandedImage}
+        src={src}
+      />
+    );
   }
 
   function MarkdownSource({
@@ -1576,6 +1601,7 @@ function MarkdownPreviewComponent({
   allowHtml = false,
   className,
   content,
+  sourcePrefix = "",
   imagePolicy = "render",
   incrementalBlocks = false,
   linkRouting,
@@ -1595,6 +1621,12 @@ function MarkdownPreviewComponent({
   const localImageRouting = linkRouting?.localImage;
   const normalizeLocalFileLinks =
     localFileRouting !== undefined || localImageRouting !== undefined;
+  const imageSourceOffset = useMemo(() => {
+    const prefix = normalizeLocalFileLinks
+      ? normalizeLocalFileMarkdownLinks(sourcePrefix)
+      : sourcePrefix;
+    return normalizeMathFences(splitMarkdownFrontmatter(prefix).body).length;
+  }, [sourcePrefix, normalizeLocalFileLinks]);
   const promptMentionSubstitution = useMemo(
     () =>
       promptMentions
@@ -1652,6 +1684,7 @@ function MarkdownPreviewComponent({
     () =>
       buildMarkdownComponents({
         imagePolicy,
+        imageSourceOffset,
         linkRouting,
         preferredTheme,
         rewriteLocalhostLinks,
@@ -1663,6 +1696,7 @@ function MarkdownPreviewComponent({
     [
       linkRouting,
       imagePolicy,
+      imageSourceOffset,
       preferredTheme,
       rewriteLocalhostLinks,
       threadMentions,

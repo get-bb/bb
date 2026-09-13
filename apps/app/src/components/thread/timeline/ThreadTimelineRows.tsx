@@ -12,6 +12,7 @@ import {
 import type { CSSProperties, ReactNode } from "react";
 import { useComposedRefs } from "@radix-ui/react-compose-refs";
 import { useLocation } from "react-router-dom";
+import { TimelineImageGallery } from "./TimelineImageGallery";
 import type {
   PromptInput,
   ThreadOriginKind,
@@ -1913,7 +1914,11 @@ function TimelineRowsList({
 
 function ThreadTimelineRowsComponent(props: ThreadTimelineRowsProps) {
   const ownerKey = props.threadId ?? props.timelineRows[0]?.threadId ?? "";
-  return <ThreadTimelineRowsForTimelineView key={ownerKey} {...props} />;
+  return (
+    <TimelineImageGallery key={ownerKey}>
+      <ThreadTimelineRowsForTimelineView {...props} />
+    </TimelineImageGallery>
+  );
 }
 
 function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
