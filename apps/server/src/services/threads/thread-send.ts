@@ -23,6 +23,7 @@ import type {
   LoggedPendingInteractionWorkSessionDeps,
 } from "../../types.js";
 import { ApiError } from "../../errors.js";
+import { requireCurrentRetry } from "./turn-failed.js";
 import {
   addRequestIdToTurnSubmitCommandPayload,
   buildExecutionOptions,
@@ -509,6 +510,7 @@ async function sendThreadMessageWithoutContextClear(
   const beforeAppendInTransaction: SendThreadMessageTransactionPreflight = ({
     tx,
   }) => {
+    if (args.retryOf) requireCurrentRetry(tx, thread.id, args.retryOf);
     args.beforeAppendInTransaction?.({ tx });
     if (deferredFirstTurnContext) {
       requireDeferredFirstTurnContextCurrent(tx, {

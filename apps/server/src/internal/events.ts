@@ -602,6 +602,7 @@ function hasThreadStopBeforeTurnStarted(
         and(
           eq(storedEvents.threadId, args.threadId),
           eq(storedEvents.type, "system/thread/interrupted"),
+          sql`json_extract(${storedEvents.data}, '$.reason') IS NOT 'host-daemon-restarted'`,
           gt(storedEvents.sequence, lowerSequence),
           lt(storedEvents.sequence, turnStarted.sequence),
         ),
