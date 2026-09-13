@@ -28,6 +28,12 @@ afterAll(async () => {
 
 async function bundleHostWatcherLikeTheDaemon(): Promise<string> {
   await build({
+    banner: {
+      js: [
+        'import { createRequire as __createRequire } from "node:module";',
+        "const require = __createRequire(import.meta.url);",
+      ].join("\n"),
+    },
     bundle: true,
     conditions: ["source"],
     entryPoints: [hostWatcherEntry],

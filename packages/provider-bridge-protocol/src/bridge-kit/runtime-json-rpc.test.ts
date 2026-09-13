@@ -7,13 +7,11 @@ import {
   JsonRpcResponseError,
   type PendingJsonRpcRequest,
   parseJsonRpcLine,
-  ProviderRequestDecodeError,
   ProviderResponseEncodeError,
   sendJsonRpc,
   sendJsonRpcError,
   sendJsonRpcRequest,
   sendJsonRpcResult,
-  sendProviderRequestDecodeErrorIfKnown,
   sendProviderResponseEncodeErrorIfKnown,
   settleJsonRpcResponse,
   toJsonRpcMessage,
@@ -305,7 +303,7 @@ describe("runtime JSON-RPC transport", () => {
 
   it("encodes protocol errors and only handles known boundary errors", async () => {
     const child = spawnEchoChild();
-    const linesPromise = readChildStdoutLines(child, 3);
+    const linesPromise = readChildStdoutLines(child, 2);
     try {
       sendJsonRpcError({
         child,
@@ -314,13 +312,6 @@ describe("runtime JSON-RPC transport", () => {
         message: "explicit failure",
       });
       expect(
-        sendProviderRequestDecodeErrorIfKnown({
-          child,
-          id: 2,
-          error: new ProviderRequestDecodeError("bad request"),
-        }),
-      ).toBe(true);
-      expect(
         sendProviderResponseEncodeErrorIfKnown({
           child,
           id: 3,
@@ -328,7 +319,7 @@ describe("runtime JSON-RPC transport", () => {
         }),
       ).toBe(true);
       expect(
-        sendProviderRequestDecodeErrorIfKnown({
+        sendProviderResponseEncodeErrorIfKnown({
           child,
           id: 4,
           error: new Error("unrelated"),
@@ -341,11 +332,6 @@ describe("runtime JSON-RPC transport", () => {
           jsonrpc: "2.0",
           id: 1,
           error: { code: -32001, message: "explicit failure" },
-        },
-        {
-          jsonrpc: "2.0",
-          id: 2,
-          error: { code: -32602, message: "bad request" },
         },
         {
           jsonrpc: "2.0",

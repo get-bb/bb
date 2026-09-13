@@ -5,7 +5,6 @@ import {
   getPersonalProject,
   getProjectExecutionDefaults,
   getPublicProjectByLocalPathSource,
-  createProjectSource,
   deleteProjectSource,
   getProjectSourceByHost,
   getProjectSourceForProject,
@@ -18,7 +17,6 @@ import {
   updateProject,
   updateProjectSource,
   setProjectGitRemoteUrlIfMissing,
-  isSqliteUniqueConstraintOnColumns,
   type ReorderProjectResult,
 } from "@bb/db";
 import {
@@ -50,7 +48,11 @@ import {
 import { PROMPT_HISTORY_ENTRY_LIMIT } from "@bb/domain";
 import { toThreadListEntryResponses } from "../services/threads/thread-runtime-display.js";
 import { callHostRetryableOnlineRpc } from "../services/hosts/online-rpc.js";
-import { runLiveHostCommand } from "../services/hosts/live-command.js";
+import {
+  cloneProjectSourceOnHost,
+  registerProjectSourceOnHost,
+  projectSourceHostConflict,
+} from "../services/projects/project-source-setup.js";
 import {
   deleteProjectSkill,
   listProjectSkillFiles,
@@ -99,7 +101,6 @@ import {
 } from "../services/projects/project-workspace.js";
 
 type ProjectResponseProjectFields = Omit<ProjectResponse, "sources">;
-const PROJECT_CLONE_TIMEOUT_MS = 20 * 60 * 1000;
 const ATTACHMENT_CONTENT_CACHE_CONTROL = "private, immutable, max-age=31536000";
 
 function toProjectResponseProjectFields(
@@ -297,19 +298,6 @@ function requireProjectSource(
   return source;
 }
 
-interface ResolvedProjectSource {
-  path: string;
-  gitRemoteUrl: string | null;
-}
-
-function projectSourceHostConflict(): ApiError {
-  return new ApiError(
-    409,
-    "project_source_host_conflict",
-    "Project already has a source on this host",
-  );
-}
-
 async function inspectProjectGitRemoteBestEffort(
   deps: AppDeps,
   args: { hostId: string; path: string },
@@ -390,7 +378,11 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
   });
 
   get(routes.get, (context) =>
-    context.json(buildProjectResponses(deps, context.req.param("id"))[0]),
+    context.json(
+      buildProjectResponsesFromRows(deps, [
+        requirePublicProject(deps.db, context.req.param("id")),
+      ])[0],
+    ),
   );
 
   get(routes.defaultExecutionOptions, (context) => {
@@ -471,63 +463,26 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     if (getProjectSourceByHost(deps.db, projectId, payload.hostId)) {
       throw projectSourceHostConflict();
     }
-    let resolved: ResolvedProjectSource;
-    if (payload.type === "clone") {
-      const remoteUrl = payload.remoteUrl ?? project.gitRemoteUrl;
-      if (!remoteUrl) {
-        throw new ApiError(
-          400,
-          "missing_git_remote",
-          "A remoteUrl is required because this project has no git remote anchor",
-        );
-      }
-      resolved = await runLiveHostCommand(deps, {
-        hostId: payload.hostId,
-        timeoutMs: PROJECT_CLONE_TIMEOUT_MS,
-        command: {
-          type: "project.clone",
-          remoteUrl,
-          projectSlug: project.name,
-          ...(payload.targetPath !== undefined
-            ? { targetPath: payload.targetPath }
-            : {}),
-        },
-      });
-    } else {
-      resolved = {
-        path: payload.path,
-        gitRemoteUrl: await inspectProjectGitRemoteBestEffort(deps, payload),
-      };
-    }
-    let source;
-    try {
-      source = createProjectSource(deps.db, deps.hub, {
-        projectId,
-        type: "local_path",
-        hostId: payload.hostId,
-        path: resolved.path,
-      });
-    } catch (error) {
-      if (
-        error instanceof Error &&
-        isSqliteUniqueConstraintOnColumns(error, {
-          columnNames: ["project_id", "host_id"],
-          indexName: "project_sources_project_host_idx",
-          tableName: "project_sources",
-        })
-      ) {
-        throw projectSourceHostConflict();
-      }
-      throw error;
-    }
-    if (resolved.gitRemoteUrl !== null) {
-      setProjectGitRemoteUrlIfMissing(
-        deps.db,
-        deps.hub,
-        projectId,
-        resolved.gitRemoteUrl,
-      );
-    }
+    const source =
+      payload.type === "clone"
+        ? await cloneProjectSourceOnHost(deps, {
+            projectId,
+            projectName: project.name,
+            hostId: payload.hostId,
+            remoteUrl: payload.remoteUrl ?? project.gitRemoteUrl,
+            ...(payload.targetPath !== undefined
+              ? { targetPath: payload.targetPath }
+              : {}),
+          })
+        : registerProjectSourceOnHost(deps, {
+            projectId,
+            hostId: payload.hostId,
+            path: payload.path,
+            gitRemoteUrl: await inspectProjectGitRemoteBestEffort(
+              deps,
+              payload,
+            ),
+          });
     return context.json(source, 201);
   });
 
@@ -608,16 +563,14 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
 
   get(routes.files, async (context, query) => {
     const projectId = context.req.param("id");
-    requirePublicStandardProject(deps.db, projectId);
+    requirePublicProject(deps.db, projectId);
 
     const limit = parseFileListLimit(query.limit);
 
     const target = resolveProjectWorkspaceTarget(deps, {
       projectId,
-      ...(query.environmentId !== undefined
-        ? { environmentId: query.environmentId }
-        : {}),
-      ...(query.hostId !== undefined ? { hostId: query.hostId } : {}),
+      environmentId: query.environmentId,
+      hostId: query.hostId,
     });
     const result = await callHostRetryableOnlineRpc(deps, {
       hostId: target.hostId,
@@ -637,13 +590,11 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
 
   get(routes.fileContent, async (context, query) => {
     const projectId = context.req.param("id");
-    requirePublicStandardProject(deps.db, projectId);
+    requirePublicProject(deps.db, projectId);
     const target = resolveProjectWorkspaceTarget(deps, {
       projectId,
-      ...(query.environmentId !== undefined
-        ? { environmentId: query.environmentId }
-        : {}),
-      ...(query.hostId !== undefined ? { hostId: query.hostId } : {}),
+      environmentId: query.environmentId,
+      hostId: query.hostId,
     });
     const filePath = parseSafeRelativeRoutePath(query.path);
 
@@ -665,16 +616,14 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
 
   get(routes.paths, async (context, query) => {
     const projectId = context.req.param("id");
-    requirePublicStandardProject(deps.db, projectId);
+    requirePublicProject(deps.db, projectId);
 
     const limit = parseFileListLimit(query.limit);
 
     const target = resolveProjectWorkspaceTarget(deps, {
       projectId,
-      ...(query.environmentId !== undefined
-        ? { environmentId: query.environmentId }
-        : {}),
-      ...(query.hostId !== undefined ? { hostId: query.hostId } : {}),
+      environmentId: query.environmentId,
+      hostId: query.hostId,
     });
     const inclusion = parsePathKindInclusion({
       includeFiles: query.includeFiles,
@@ -709,10 +658,8 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
 
     const workspace = resolveProjectCommandWorkspace(deps, {
       projectId,
-      ...(query.environmentId !== undefined
-        ? { environmentId: query.environmentId }
-        : {}),
-      ...(query.hostId !== undefined ? { hostId: query.hostId } : {}),
+      environmentId: query.environmentId,
+      hostId: query.hostId,
     });
     const listProviderCommands = async () => {
       if (!providerHasNativeRootSurface(registration)) {
@@ -753,30 +700,31 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     );
   });
 
-  get(routes.skills, async (context, query) => {
-    const projectId = context.req.param("id");
+  const requireProjectSkillWorkspace = (
+    projectId: string,
+    environmentId: string | null,
+  ) => {
     requirePublicProject(deps.db, projectId);
-
-    const workspace = resolveProjectCommandWorkspace(deps, {
+    return resolveProjectCommandWorkspace(deps, {
       projectId,
-      ...(query.environmentId !== null
-        ? { environmentId: query.environmentId }
-        : {}),
+      environmentId: environmentId ?? undefined,
     });
+  };
+
+  get(routes.skills, async (context, query) => {
+    const workspace = requireProjectSkillWorkspace(
+      context.req.param("id"),
+      query.environmentId,
+    );
     const skills = await listProjectSkills(deps, { workspace });
     return context.json({ skills });
   });
 
   del(routes.deleteSkill, async (context, payload) => {
-    const projectId = context.req.param("id");
-    requirePublicProject(deps.db, projectId);
-
-    const workspace = resolveProjectCommandWorkspace(deps, {
-      projectId,
-      ...(payload.environmentId !== null
-        ? { environmentId: payload.environmentId }
-        : {}),
-    });
+    const workspace = requireProjectSkillWorkspace(
+      context.req.param("id"),
+      payload.environmentId,
+    );
     const deletedPath = await deleteProjectSkill(deps, {
       skillId: payload.skillId,
       workspace,
@@ -785,15 +733,10 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
   });
 
   get(routes.skillContent, async (context, query) => {
-    const projectId = context.req.param("id");
-    requirePublicProject(deps.db, projectId);
-
-    const workspace = resolveProjectCommandWorkspace(deps, {
-      projectId,
-      ...(query.environmentId !== null
-        ? { environmentId: query.environmentId }
-        : {}),
-    });
+    const workspace = requireProjectSkillWorkspace(
+      context.req.param("id"),
+      query.environmentId,
+    );
     const content = await readProjectSkill(deps, {
       skillId: query.skillId,
       path: query.path,
@@ -803,15 +746,10 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
   });
 
   get(routes.skillFiles, async (context, query) => {
-    const projectId = context.req.param("id");
-    requirePublicProject(deps.db, projectId);
-
-    const workspace = resolveProjectCommandWorkspace(deps, {
-      projectId,
-      ...(query.environmentId !== null
-        ? { environmentId: query.environmentId }
-        : {}),
-    });
+    const workspace = requireProjectSkillWorkspace(
+      context.req.param("id"),
+      query.environmentId,
+    );
     return context.json(
       await listProjectSkillFiles(deps, {
         skillId: query.skillId,
@@ -821,15 +759,10 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
   });
 
   patch(routes.updateSkill, async (context, payload) => {
-    const projectId = context.req.param("id");
-    requirePublicProject(deps.db, projectId);
-
-    const workspace = resolveProjectCommandWorkspace(deps, {
-      projectId,
-      ...(payload.environmentId !== null
-        ? { environmentId: payload.environmentId }
-        : {}),
-    });
+    const workspace = requireProjectSkillWorkspace(
+      context.req.param("id"),
+      payload.environmentId,
+    );
     const result = await writeProjectSkill(deps, {
       skillId: payload.skillId,
       content: payload.content,
@@ -931,16 +864,15 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     );
   });
 
-  post(routes.copyAttachments, async (context) => {
+  post(routes.copyAttachments, async (context, payload) => {
     const targetProjectId = context.req.param("id");
     requirePublicProject(deps.db, targetProjectId);
-    const request = await context.req.json();
-    requirePublicProject(deps.db, request.sourceProjectId);
+    requirePublicProject(deps.db, payload.sourceProjectId);
     await copyProjectAttachments(
       deps.config.dataDir,
-      request.sourceProjectId,
+      payload.sourceProjectId,
       targetProjectId,
-      request.paths,
+      payload.paths,
     );
     return context.json({ ok: true as const });
   });

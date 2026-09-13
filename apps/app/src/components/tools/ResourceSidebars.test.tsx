@@ -22,7 +22,6 @@ function renderSidebarAt(
           appRoutePath={appRoutePath}
           isResizing={false}
           onResizeMouseDown={() => {}}
-          showTopReserve={false}
         />
       </SidebarProvider>
     </MemoryRouter>,

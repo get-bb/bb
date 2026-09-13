@@ -11,12 +11,14 @@ import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 import { EnvironmentProviderIcon } from "./EnvironmentProviderIcon";
 
 const provider: SystemEnvironmentProvider = {
+  machineProviderId: null,
   id: "git-worktree",
   pluginId: "environment-git-worktree",
   acceptsEmptyInputs: true,
   machineAvailability: {},
   availability: null,
   displayName: "Worktree",
+  description: "Prepare a workspace for this thread.",
   icon: "Folder",
   logoUrl: "/api/v1/system/providers/environment%3Aworktree/logo?h=hash",
   requires: {
@@ -45,6 +47,7 @@ it("renders an environment logo and reacts to React icon registration and remova
       ...makePluginRegistrationSet(),
       providerIcons: [
         {
+          providerKind: "environment",
           providerId: "git-worktree",
           icon: () => <svg data-test-environment-icon="" />,
         },

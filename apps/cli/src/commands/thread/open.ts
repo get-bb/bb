@@ -11,7 +11,11 @@ import {
   resolveContextThreadId,
   resolveExplicitIdFlag,
 } from "../../context-env.js";
-import { outputJson, printContextLabel, type ResolvedId } from "../helpers.js";
+import {
+  outputJson,
+  printThreadContextLabel,
+  type ResolvedId,
+} from "../helpers.js";
 
 interface ThreadOpenCommandOptions {
   line?: string;
@@ -99,7 +103,7 @@ export function registerOpenCommand(
             return;
           }
 
-          printContextLabel(target.resolved, "Thread", "BB_THREAD_ID", opts);
+          printThreadContextLabel(target.resolved);
           console.log(`Thread: ${target.threadId}`);
           console.log(`Split: ${split}`);
           if (file !== null) {

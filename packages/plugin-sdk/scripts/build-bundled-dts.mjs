@@ -24,17 +24,14 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { availableParallelism } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  Worker,
-  isMainThread,
-  parentPort,
-  workerData,
-} from "node:worker_threads";
 import { rollup } from "rollup";
 import { dts } from "rollup-plugin-dts";
+import {
+  declarationId,
+  sharedDeclarationEmit,
+} from "./shared-declaration-emit.mjs";
 
 import { normalizeBundledDts } from "./normalize-bundled-dts.mjs";
 
@@ -54,51 +51,15 @@ const STUBBED_MODULES = new Map([
   ],
 ]);
 const outDir = path.join(pkgRoot, "bundled-types");
-const outputs = {
-  "bb-plugin-sdk.d.ts": path.join(pkgRoot, "src/index.ts"),
-  "bb-plugin-sdk-app.d.ts": path.join(pkgRoot, "src/app.ts"),
-  "bb-plugin-sdk-provider-bridge.d.ts": path.join(
-    pkgRoot,
-    "src/provider-bridge.ts",
-  ),
-  "bb-plugin-sdk-ai-services.d.ts": path.join(pkgRoot, "src/ai-services.ts"),
-  "bb-plugin-sdk-provider-bridge-testing.d.ts": path.join(
-    pkgRoot,
-    "src/provider-bridge-testing.ts",
-  ),
-  "bb-plugin-sdk-provider-bridge-acp.d.ts": path.join(
-    pkgRoot,
-    "src/provider-bridge-acp.ts",
-  ),
-  "bb-plugin-sdk-host.d.ts": path.join(pkgRoot, "src/host.ts"),
-  "bb-plugin-sdk-environment-provider.d.ts": path.join(
-    pkgRoot,
-    "src/environment-provider.ts",
-  ),
-  "bb-plugin-sdk-internal-composer-customization-validation.d.ts": path.join(
-    pkgRoot,
-    "src/internal/composer-customization-validation.ts",
-  ),
-  "bb-plugin-sdk-internal-composer-view.d.ts": path.join(
-    pkgRoot,
-    "src/internal/composer-view.ts",
-  ),
-  "bb-plugin-sdk-internal-file-navigation-validation.d.ts": path.join(
-    pkgRoot,
-    "src/internal/file-navigation-validation.ts",
-  ),
-  "bb-plugin-sdk-internal-host-policy.d.ts": path.join(
-    pkgRoot,
-    "src/internal/host-policy.ts",
-  ),
-  "bb-plugin-sdk-internal-plugin-app-collector.d.ts": path.join(
-    pkgRoot,
-    "src/internal/plugin-app-collector.ts",
-  ),
-  "bb-plugin-sdk-testing.d.ts": path.join(pkgRoot, "src/testing/index.ts"),
-  "bb-plugin-sdk-testing-app.d.ts": path.join(pkgRoot, "src/testing/app.tsx"),
-  "bb-plugin-sdk-testing-host.d.ts": path.join(pkgRoot, "src/testing/host.ts"),
-};
+const { exports: packageExports } = JSON.parse(
+  readFileSync(path.join(pkgRoot, "package.json"), "utf8"),
+);
+const outputs = Object.fromEntries(
+  Object.values(packageExports).map((entry) => [
+    path.basename(entry.types),
+    path.join(pkgRoot, entry.source),
+  ]),
+);
 
 // Real npm packages the bundle imports from — kept external so they resolve
 // from the scaffold's devDependencies rather than being inlined.
@@ -149,11 +110,17 @@ const inlineWorkspace = {
   },
 };
 
+const emitDeclarations = sharedDeclarationEmit(
+  Object.values(outputs),
+  pkgsDir,
+  inlineWorkspace.resolveId,
+);
+
 async function bundle(input) {
   const build = await rollup({
-    input,
+    input: declarationId(input),
     external: EXTERNAL,
-    plugins: [inlineWorkspace, dts({ respectExternal: false })],
+    plugins: [emitDeclarations, dts({ respectExternal: false })],
     onwarn(warning) {
       // Circular type references are fine in .d.ts output; surface everything
       // else so a genuinely broken bundle is visible.
@@ -161,9 +128,12 @@ async function bundle(input) {
       console.warn(`[build-bundled-dts] ${warning.code}: ${warning.message}`);
     },
   });
-  const { output } = await build.generate({ format: "es" });
-  await build.close();
-  return output[0].code;
+  try {
+    const { output } = await build.generate({ format: "es" });
+    return output[0].code;
+  } finally {
+    await build.close();
+  }
 }
 
 const HEADER = [
@@ -181,49 +151,11 @@ function generateBundle(entry) {
   );
 }
 
-// Each bundle builds its own TypeScript program, which is CPU-bound and
-// single-threaded inside rollup-plugin-dts; the six large entries take 2–7s
-// apiece. They are independent, so this file re-runs itself as a worker per
-// entry, as many at a time as there are cores, and the serial ~27s becomes
-// roughly the longest single bundle.
-if (!isMainThread) {
-  parentPort.postMessage(await generateBundle(workerData.entry));
-} else {
-  await main();
+const generated = {};
+for (const [name, entry] of Object.entries(outputs)) {
+  generated[name] = await generateBundle(entry);
 }
-
-async function main() {
-  const generated = {};
-  const queue = Object.entries(outputs);
-  const workers = Math.min(queue.length, availableParallelism());
-  await Promise.all(
-    Array.from({ length: workers }, async () => {
-      for (let next = queue.shift(); next; next = queue.shift()) {
-        const [fileName, entry] = next;
-        generated[fileName] = await generateInWorker(entry);
-      }
-    }),
-  );
-  // Keep the declared order so a diff of the outputs stays readable.
-  writeOutputs(
-    Object.fromEntries(
-      Object.keys(outputs).map((fileName) => [fileName, generated[fileName]]),
-    ),
-  );
-}
-
-function generateInWorker(entry) {
-  return new Promise((resolve, reject) => {
-    const worker = new Worker(new URL(import.meta.url), {
-      workerData: { entry },
-    });
-    worker.once("message", resolve);
-    worker.once("error", reject);
-    worker.once("exit", (code) => {
-      if (code !== 0) reject(new Error(`bundle worker exited with ${code}`));
-    });
-  });
-}
+writeOutputs(generated);
 
 function writeOutputs(generated) {
   mkdirSync(outDir, { recursive: true });

@@ -87,20 +87,9 @@ export const claudeTurnStartParamsSchema = z.object({
   claudeCodePermissionMode: z.literal("plan").optional(),
 });
 
-export const claudeTurnSteerParamsSchema = z.object({
-  threadId: z.string(),
-  providerThreadId: z.string().nullable(),
-  expectedTurnId: z.string(),
-  input: z.array(z.unknown()),
-  model: z.string().optional(),
-  reasoningLevel: reasoningLevelSchema.optional(),
-  workflowsEnabled: z.boolean().optional(),
-  chromeEnabled: z.boolean().optional(),
-  memoryEnabled: z.boolean().optional(),
-  providerSubagentsEnabled: z.boolean().optional(),
-  permissionEscalation: bridgePermissionEscalationSchema,
-  claudeCodePermissionMode: z.literal("plan").optional(),
-});
+export const claudeTurnSteerParamsSchema = claudeTurnStartParamsSchema
+  .omit({ config: true })
+  .extend({ expectedTurnId: z.string() });
 
 const claudeCodeCommandSchema = z.discriminatedUnion("method", [
   z.object({

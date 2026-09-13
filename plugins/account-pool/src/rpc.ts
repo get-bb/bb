@@ -1,4 +1,4 @@
-import { defineRpcContract } from "@get-bb/plugin-sdk";
+import { defineRpcContract, type PluginRpcHandlers } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import {
   accountAddInputSchema,
@@ -10,7 +10,6 @@ import {
   accountSchema,
   accountSummarySchema,
   bypassInputSchema,
-  bypassResultSchema,
   codexLoginCancelSchema,
   codexLoginPollInputSchema,
   codexLoginPollSchema,
@@ -109,7 +108,7 @@ export const accountPoolRpcContract = defineRpcContract({
   },
   "bypass.set": {
     input: bypassInputSchema,
-    output: bypassResultSchema,
+    output: bypassInputSchema,
   },
 });
 
@@ -118,70 +117,46 @@ export function createRpcHandlers(
   login: ClaudeOAuthLogin,
   codexLogin: CodexDeviceLogin,
   config: AccountPoolConfigController,
-) {
+): PluginRpcHandlers<typeof accountPoolRpcContract> {
   return {
-    "account.add": (input: Parameters<PoolOperations["add"]>[0]) =>
-      operations.add(input),
+    "account.add": (input) => operations.add(input),
     "account.list": () => operations.list(),
-    "account.remove": async ({ id }: { id: string }) => ({
+    "account.remove": async ({ id }) => ({
       removed: await operations.remove(id),
     }),
-    "account.enable": async ({ id }: { id: string }) => ({
+    "account.enable": async ({ id }) => ({
       account: await operations.enable(id),
     }),
-    "account.disable": async ({ id }: { id: string }) => ({
+    "account.disable": async ({ id }) => ({
       account: await operations.disable(id),
     }),
-    "account.setPriority": async ({
-      accountId,
-      priority,
-    }: {
-      accountId: string;
-      priority: number;
-    }) => ({
+    "account.setPriority": async ({ accountId, priority }) => ({
       account: await operations.setPriority(accountId, priority),
     }),
-    "account.refreshUsage": async ({ accountId }: { accountId: string }) => ({
+    "account.refreshUsage": async ({ accountId }) => ({
       account: await operations.refreshUsage(accountId),
     }),
-    "account.reorder": async ({
-      provider,
-      accountIds,
-    }: z.infer<typeof accountReorderInputSchema>) => {
+    "account.reorder": async ({ provider, accountIds }) => {
       await operations.reorder(provider, accountIds);
       return null;
     },
-    "routing.set": async ({
-      provider,
-      enabled,
-    }: {
-      provider: "claude" | "codex";
-      enabled: boolean;
-    }) => {
+    "routing.set": async ({ provider, enabled }) => {
       await operations.setRouting(provider, enabled);
       return { provider, enabled };
     },
     "config.get": () => config.get(),
-    "config.set": (input: Parameters<AccountPoolConfigController["set"]>[0]) =>
-      config.set(input),
+    "config.set": (input) => config.set(input),
     "login.start": () => login.start(),
-    "login.complete": (input: { sessionId: string; pasted: string }) =>
-      login.complete(input),
+    "login.complete": (input) => login.complete(input),
     "codexLogin.start": () => codexLogin.start(),
-    "codexLogin.poll": (input: { sessionId: string }) => codexLogin.poll(input),
-    "codexLogin.cancel": (input: { sessionId: string }) => ({
+    "codexLogin.poll": (input) => codexLogin.poll(input),
+    "codexLogin.cancel": (input) => ({
       cancelled: codexLogin.cancel(input),
     }),
     "status.get": () => operations.status(),
     "status.routedThreads": () => operations.routedThreadsWithoutLocalLogin(),
-    "token.rotate": ({ machine }: { machine: string }) =>
-      operations.rotateToken(machine),
-    "bypass.set": ({
-      threadId,
-      bypassed,
-    }: {
-      threadId: string;
-      bypassed: boolean;
-    }) => operations.setBypass(threadId, bypassed),
+    "token.rotate": ({ machine }) => operations.rotateToken(machine),
+    "bypass.set": ({ threadId, bypassed }) =>
+      operations.setBypass(threadId, bypassed),
   };
 }

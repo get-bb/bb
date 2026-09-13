@@ -8,19 +8,10 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import {
   PI_EXTENSION_UI_RENDERER_ID,
   piExtensionUiPayloadDataSchema,
-  type PiExtensionUiMethod,
+  type PiExtensionUiPayloadData,
 } from "./src/extension-ui-contract.js";
 
-interface ParsedRequest {
-  requestId: string;
-  method: PiExtensionUiMethod;
-  options?: string[];
-  message?: string;
-  placeholder?: string;
-  prefill?: string;
-}
-
-function parseRequest(payload: unknown): ParsedRequest | null {
+function parseRequest(payload: unknown): PiExtensionUiPayloadData | null {
   if (typeof payload !== "object" || payload === null) return null;
   const direct = piExtensionUiPayloadDataSchema.safeParse(payload);
   if (direct.success) return direct.data;

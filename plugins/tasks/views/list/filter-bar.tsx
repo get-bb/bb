@@ -27,6 +27,15 @@ function toggled<T>(values: readonly T[], value: T, checked: boolean): T[] {
   return values.filter((existing) => existing !== value);
 }
 
+function chipTriggerClass(active: boolean): string {
+  return cn(
+    "flex h-6 shrink-0 items-center gap-1.5 rounded-md border px-2.5 text-xs max-md:pointer-coarse:h-8",
+    active
+      ? "border-border bg-secondary text-foreground"
+      : "border-dashed border-border text-muted-foreground hover:border-input hover:text-foreground",
+  );
+}
+
 function FilterChip({
   icon,
   label,
@@ -42,15 +51,7 @@ function FilterChip({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          className={cn(
-            "flex h-6 shrink-0 items-center gap-1.5 rounded-md border px-2.5 text-xs max-md:pointer-coarse:h-8",
-            active
-              ? "border-border bg-secondary text-foreground"
-              : "border-dashed border-border text-muted-foreground hover:border-input hover:text-foreground",
-          )}
-        >
+        <button type="button" className={chipTriggerClass(active)}>
           <Icon name={icon} className="size-3" />
           {label}
           {active ? (
@@ -78,15 +79,7 @@ function SortChip({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          className={cn(
-            "flex h-6 shrink-0 items-center gap-1.5 rounded-md border px-2.5 text-xs max-md:pointer-coarse:h-8",
-            active
-              ? "border-border bg-secondary text-foreground"
-              : "border-dashed border-border text-muted-foreground hover:border-input hover:text-foreground",
-          )}
-        >
+        <button type="button" className={chipTriggerClass(active)}>
           <Icon name="Sort" className="size-3" />
           Sort
           {active ? (
@@ -94,7 +87,6 @@ function SortChip({
           ) : null}
         </button>
       </DropdownMenuTrigger>
-      {}
       <DropdownMenuContent
         align="end"
         className="min-w-44"
@@ -288,7 +280,6 @@ export function ListFilterBar({
           </button>
         ) : null}
       </div>
-      {}
       <SortChip sort={sort} onChange={onSortChange} />
       <span className="shrink-0 whitespace-nowrap text-xs tabular-nums text-subtle-foreground">
         {taskCount === undefined

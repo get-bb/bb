@@ -14,20 +14,7 @@ export interface RealtimeSocketErrorEvent {
 
 export const SOCKET_OPEN = 1;
 
-export interface RealtimeSocketOptions {
-  headers: Record<string, string>;
-}
-
-export type RealtimeSocketFactory = (
-  url: string,
-  options: RealtimeSocketOptions,
-) => RealtimeSocketLike;
-
-type WebSocketWithOptionsConstructor = new (
-  url: string,
-  protocols?: string | string[] | null,
-  options?: { headers?: Record<string, string> },
-) => WebSocket;
+export type RealtimeSocketFactory = (url: string) => RealtimeSocketLike;
 
 function socketErrorMessage(event: unknown): string | null {
   if (typeof event !== "object" || event === null) return null;
@@ -35,16 +22,8 @@ function socketErrorMessage(event: unknown): string | null {
   return typeof message === "string" && message.length > 0 ? message : null;
 }
 
-export const defaultRealtimeSocketFactory: RealtimeSocketFactory = (
-  url,
-  options,
-) => {
-  const hasHeaders = Object.keys(options.headers).length > 0;
-  const socket = hasHeaders
-    ? new (WebSocket as unknown as WebSocketWithOptionsConstructor)(url, null, {
-        headers: options.headers,
-      })
-    : new WebSocket(url);
+export const defaultRealtimeSocketFactory: RealtimeSocketFactory = (url) => {
+  const socket = new WebSocket(url);
   const adapter: RealtimeSocketLike = {
     onclose: null,
     onerror: null,

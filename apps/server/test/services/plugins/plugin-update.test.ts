@@ -111,6 +111,151 @@ describe("plugin update scheduling", () => {
       emptyDb.$client.close();
     }
   });
+
+  it("sweeps on start when a plugin was never checked, then waits out the interval across restarts", async () => {
+    const HOUR = 60 * 60 * 1_000;
+    const schedulingDb = createConnection(":memory:");
+    migrate(schedulingDb);
+    const schedulingWorkDir = await mkdtemp(
+      join(tmpdir(), "bb-plugin-update-scheduling-"),
+    );
+    let clock = Date.now();
+    let service: PluginService | undefined;
+    let scheduled: Array<{
+      delayMs: number;
+      onElapsed: () => Promise<void>;
+    }> = [];
+    let firstFetch = true;
+    let resolveFirstFetch!: (response: Response) => void;
+    const deferredFetch = new Promise<Response>((resolve) => {
+      resolveFirstFetch = resolve;
+    });
+    const packumentResponse = () =>
+      new Response(
+        JSON.stringify({
+          versions: {
+            "1.0.0": {
+              version: "1.0.0",
+              dist: { integrity: "sha512-current" },
+            },
+            "1.1.0": {
+              version: "1.1.0",
+              dist: { integrity: "sha512-next" },
+            },
+          },
+          "dist-tags": { latest: "1.1.0" },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    vi.stubGlobal("fetch", () => {
+      if (!firstFetch) return Promise.resolve(packumentResponse());
+      firstFetch = false;
+      return deferredFetch;
+    });
+
+    const upsertNpmRow = (id: string) => {
+      const packageName = `bb-plugin-${id}`;
+      upsertInstalledPlugin(schedulingDb, {
+        id,
+        source: `npm:${packageName}`,
+        provenance: { kind: "direct" },
+        sourceIntent: {
+          kind: "npm",
+          packageName,
+          registry: "https://updates.test",
+          requestedSpec: "",
+          specKind: "default",
+        },
+        exactResolution: {
+          kind: "npm",
+          version: "1.0.0",
+          integrity: "sha512-current",
+        },
+        updateState: {
+          lastCheckAt: null,
+          availableCompatibleVersion: null,
+          newestIncompatibleVersion: null,
+          statusDetail: null,
+        },
+        activeArtifactId: null,
+        rootDir: join(schedulingWorkDir, id),
+        version: "1.0.0",
+        enabled: false,
+      });
+    };
+    const restartWithScheduler = async () => {
+      await service?.stop();
+      scheduled = [];
+      service = createPluginService({
+        aiServices: createAiServiceRegistry(),
+        telemetry: createNoopTelemetryService(),
+        db: schedulingDb,
+        hub: {
+          getDaemonSessionIdForHost: () => null,
+          notifyPluginSignal: () => 0,
+          notifySystem: () => {},
+        },
+        logger,
+        dataDir: join(schedulingWorkDir, "data"),
+        appVersion: "1.0.0",
+        bundledPlugins: [],
+        stabilizationWindowMs: 0,
+        now: () => clock,
+        scheduleUpdateCheck: (delayMs, onElapsed) => {
+          const entry = { delayMs, onElapsed };
+          scheduled.push(entry);
+          return () => {
+            const index = scheduled.indexOf(entry);
+            if (index !== -1) scheduled.splice(index, 1);
+          };
+        },
+      });
+      await service.start();
+    };
+
+    try {
+      upsertNpmRow("scheduled");
+      await restartWithScheduler();
+      service?.startPeriodicUpdateChecks();
+      expect(scheduled.map((entry) => entry.delayMs)).toEqual([0]);
+      const initial = scheduled.shift();
+      if (initial === undefined)
+        throw new Error("missing initial update check");
+      const sweep = initial.onElapsed();
+      expect(getInstalledPlugin(schedulingDb, "scheduled")).toMatchObject({
+        lastUpdateCheckAt: null,
+        availableCompatibleVersion: null,
+      });
+      resolveFirstFetch(packumentResponse());
+      expect(sweep).toBeInstanceOf(Promise);
+      await sweep;
+      expect(getInstalledPlugin(schedulingDb, "scheduled")).toMatchObject({
+        lastUpdateCheckAt: clock,
+        availableCompatibleVersion: "1.1.0",
+      });
+      expect(scheduled.map((entry) => entry.delayMs)).toEqual([6 * HOUR]);
+      await service?.stopPeriodicUpdateChecks();
+      expect(scheduled).toHaveLength(0);
+
+      clock += 2 * HOUR;
+      await restartWithScheduler();
+      service?.startPeriodicUpdateChecks();
+      expect(scheduled.map((entry) => entry.delayMs)).toEqual([4 * HOUR]);
+      await service?.stopPeriodicUpdateChecks();
+
+      upsertNpmRow("never-checked");
+      await service?.checkForUpdates("scheduled");
+      service?.startPeriodicUpdateChecks();
+      expect(scheduled.map((entry) => entry.delayMs)).toEqual([0]);
+      await service?.stopPeriodicUpdateChecks();
+    } finally {
+      await service?.stopPeriodicUpdateChecks();
+      await service?.stop();
+      schedulingDb.$client.close();
+      vi.unstubAllGlobals();
+      await rm(schedulingWorkDir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("plugin update service and routes", () => {
@@ -772,70 +917,6 @@ describe("plugin update service and routes", () => {
       enabled: false,
     });
   }
-
-  async function restartWithScheduler(clock: () => number) {
-    const scheduled: Array<{ delayMs: number; onElapsed: () => void }> = [];
-    await service.stop();
-    service = createPluginService({
-      aiServices: createAiServiceRegistry(),
-      telemetry: createNoopTelemetryService(),
-      db,
-      hub: {
-        getDaemonSessionIdForHost: () => null,
-        notifyPluginSignal: () => 0,
-        notifySystem: () => {},
-      },
-      logger,
-      dataDir: join(workDir, "data"),
-      appVersion: "1.0.0",
-      stabilizationWindowMs: 0,
-      now: clock,
-      scheduleUpdateCheck: (delayMs, onElapsed) => {
-        const entry = { delayMs, onElapsed };
-        scheduled.push(entry);
-        return () => {
-          const index = scheduled.indexOf(entry);
-          if (index !== -1) scheduled.splice(index, 1);
-        };
-      },
-    });
-    await service.start();
-    return scheduled;
-  }
-
-  it("sweeps on start when a plugin was never checked, then waits out the interval across restarts", async () => {
-    const HOUR = 60 * 60 * 1_000;
-    let clock = Date.now();
-    let scheduled = await restartWithScheduler(() => clock);
-    const nextCommit = await commitPlugin(repo, "1.1.0");
-
-    service.startPeriodicUpdateChecks();
-    expect(scheduled.map((entry) => entry.delayMs)).toEqual([0]);
-    scheduled.shift()?.onElapsed();
-    await vi.waitFor(() =>
-      expect(getInstalledPlugin(db, "updater")).toMatchObject({
-        lastUpdateCheckAt: clock,
-        availableCompatibleVersion: nextCommit,
-      }),
-    );
-    await vi.waitFor(() =>
-      expect(scheduled.map((entry) => entry.delayMs)).toEqual([6 * HOUR]),
-    );
-    await service.stopPeriodicUpdateChecks();
-    expect(scheduled).toHaveLength(0);
-
-    clock += 2 * HOUR;
-    scheduled = await restartWithScheduler(() => clock);
-    service.startPeriodicUpdateChecks();
-    expect(scheduled.map((entry) => entry.delayMs)).toEqual([4 * HOUR]);
-    await service.stopPeriodicUpdateChecks();
-
-    upsertNpmRow("never-checked", "https://never-checked.test");
-    await service.checkForUpdates("updater");
-    service.startPeriodicUpdateChecks();
-    expect(scheduled.map((entry) => entry.delayMs)).toEqual([0]);
-    await service.stopPeriodicUpdateChecks();
-  }, 60_000);
 
   it("shares one in-flight full sweep between concurrent callers", async () => {
     const first = service.checkForUpdates();

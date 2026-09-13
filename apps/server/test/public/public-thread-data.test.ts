@@ -4,10 +4,12 @@ import {
   createQueuedThreadMessageId,
   createThreadSection,
   deleteQueuedThreadMessage,
-  deleteHost,
   environments,
   events,
+  getEnvironment,
+  getPreparingEnvironment,
   getQueuedThreadMessage,
+  hosts,
   insertEvents,
   listQueuedThreadMessages,
   getThread,
@@ -40,7 +42,6 @@ import { renderTemplate } from "@bb/templates";
 import { z } from "zod";
 import { describe, expect, it, vi } from "vitest";
 import type { TelemetryService } from "../../src/services/system/telemetry.js";
-import { readThreadProvisioningStage } from "../../src/services/threads/thread-provisioning-context.js";
 import {
   reportNextEnvironmentAttachSuccess,
   reportQueuedCommandError,
@@ -411,7 +412,7 @@ describe("public thread data routes", () => {
         environmentId: environment.id,
         projectId: project.id,
       });
-      deleteHost(harness.deps.db, harness.deps.hub, host.id);
+      harness.deps.db.delete(hosts).where(eq(hosts.id, host.id)).run();
 
       const noEnvironmentResponse = await harness.app.request(
         `/api/v1/threads/${threadWithoutEnvironment.id}?include=environment,host`,
@@ -3697,11 +3698,16 @@ describe("public thread data routes", () => {
         sessionId: session.id,
         handle: (request): HostRpcHandlerResult => {
           if (request.command.type === "environment.attach") {
+            const currentThread = getThread(harness.db, thread.id);
             stateAtProvisionStart = {
-              activeContextStage: readThreadProvisioningStage(
-                harness.db,
-                thread.id,
-              ),
+              activeContextStage:
+                currentThread?.status !== "starting"
+                  ? "inactive"
+                  : (getPreparingEnvironment(harness.db, thread.id)?.status ??
+                    (currentThread.environmentId === null
+                      ? null
+                      : (getEnvironment(harness.db, currentThread.environmentId)
+                          ?.status ?? null))),
               queuedMessageExists:
                 getQueuedThreadMessage(harness.db, queuedMessage.id) !== null,
               requestEventCount: harness.db

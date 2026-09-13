@@ -5,10 +5,8 @@ import { projectSources } from "../../src/schema.js";
 import {
   countProjectSources,
   createProjectSource,
-  getDefaultProjectSource,
   getProjectSourceForProject,
   getProjectSourceByHost,
-  listProjectSources,
   listProjectSourcesByProjectIds,
   updateProjectSource,
   deleteProjectSource,
@@ -21,7 +19,6 @@ function setup() {
   const db = createMigratedConnection();
   const host = upsertHost(db, noopNotifier, {
     name: "test-host",
-    type: "persistent",
   });
   const { project } = createProject(db, noopNotifier, {
     name: "test-project",
@@ -35,7 +32,6 @@ describe("project-sources", () => {
     const { db, project } = setup();
     const newHost = upsertHost(db, noopNotifier, {
       name: "source-test-host",
-      type: "persistent",
     });
     const source = createProjectSource(db, noopNotifier, {
       projectId: project.id,
@@ -57,11 +53,9 @@ describe("project-sources", () => {
     const { db, project } = setup();
     const host2 = upsertHost(db, noopNotifier, {
       name: "test-host-2",
-      type: "persistent",
     });
     const host3 = upsertHost(db, noopNotifier, {
       name: "test-host-3",
-      type: "persistent",
     });
     createProjectSource(db, noopNotifier, {
       projectId: project.id,
@@ -76,7 +70,7 @@ describe("project-sources", () => {
       path: "/tmp/code2",
     });
 
-    const sources = listProjectSources(db, project.id);
+    const sources = listProjectSourcesByProjectIds(db, [project.id]);
     expect(sources).toHaveLength(3);
   });
 
@@ -84,11 +78,9 @@ describe("project-sources", () => {
     const { db, host, project } = setup();
     const host2 = upsertHost(db, noopNotifier, {
       name: "project-host-2",
-      type: "persistent",
     });
     const host3 = upsertHost(db, noopNotifier, {
       name: "project-host-3",
-      type: "persistent",
     });
     const { project: otherProject } = createProject(db, noopNotifier, {
       name: "other-project",
@@ -121,9 +113,10 @@ describe("project-sources", () => {
     const { db, project } = setup();
     const secondaryHost = upsertHost(db, noopNotifier, {
       name: "secondary-host",
-      type: "persistent",
     });
-    const initialDefault = getDefaultProjectSource(db, project.id);
+    const initialDefault = listProjectSourcesByProjectIds(db, [
+      project.id,
+    ]).find((source) => source.isDefault);
     const source = createProjectSource(db, noopNotifier, {
       projectId: project.id,
       type: "local_path",
@@ -135,16 +128,17 @@ describe("project-sources", () => {
       type: "local_path",
       path: "/tmp/secondary",
     });
-    expect(getDefaultProjectSource(db, project.id)?.id).toBe(
-      initialDefault!.id,
-    );
+    expect(
+      listProjectSourcesByProjectIds(db, [project.id]).find(
+        (source) => source.isDefault,
+      )?.id,
+    ).toBe(initialDefault!.id);
   });
 
   it("returns the source for a specific host", () => {
     const { db, project } = setup();
     const secondaryHost = upsertHost(db, noopNotifier, {
       name: "test-host-2",
-      type: "persistent",
     });
     const secondarySource = createProjectSource(db, noopNotifier, {
       projectId: project.id,
@@ -162,7 +156,6 @@ describe("project-sources", () => {
     const { db, project } = setup();
     const missingHost = upsertHost(db, noopNotifier, {
       name: "missing-host",
-      type: "persistent",
     });
 
     expect(getProjectSourceByHost(db, project.id, missingHost.id)).toBeNull();
@@ -172,7 +165,6 @@ describe("project-sources", () => {
     const { db, project } = setup();
     const secondaryHost = upsertHost(db, noopNotifier, {
       name: "source-id-host",
-      type: "persistent",
     });
     const source = createProjectSource(db, noopNotifier, {
       projectId: project.id,
@@ -207,14 +199,13 @@ describe("project-sources", () => {
         path: "/tmp/duplicate",
       }),
     ).toThrow();
-    expect(listProjectSources(db, project.id)).toHaveLength(1);
+    expect(listProjectSourcesByProjectIds(db, [project.id])).toHaveLength(1);
   });
 
   it("enforces one default source per project at the database boundary", () => {
     const { db, project } = setup();
     const conflictHost = upsertHost(db, noopNotifier, {
       name: "default-conflict-host",
-      type: "persistent",
     });
     const now = Date.now();
 
@@ -234,14 +225,17 @@ describe("project-sources", () => {
         .run(),
     ).toThrow();
 
-    expect(getDefaultProjectSource(db, project.id)?.id).toBeTruthy();
+    expect(
+      listProjectSourcesByProjectIds(db, [project.id]).find(
+        (source) => source.isDefault,
+      )?.id,
+    ).toBeTruthy();
   });
 
   it("updates a project source", () => {
     const { db, project } = setup();
     const updateHost = upsertHost(db, noopNotifier, {
       name: "update-test-host",
-      type: "persistent",
     });
     const source = createProjectSource(db, noopNotifier, {
       projectId: project.id,
@@ -265,7 +259,6 @@ describe("project-sources", () => {
     const { db, project } = setup();
     const deleteHost = upsertHost(db, noopNotifier, {
       name: "delete-test-host",
-      type: "persistent",
     });
     const source = createProjectSource(db, noopNotifier, {
       projectId: project.id,
@@ -275,7 +268,7 @@ describe("project-sources", () => {
     });
 
     expect(deleteProjectSource(db, noopNotifier, source.id)).toBe(true);
-    expect(listProjectSources(db, project.id)).toHaveLength(1);
+    expect(listProjectSourcesByProjectIds(db, [project.id])).toHaveLength(1);
     expect(deleteProjectSource(db, noopNotifier, source.id)).toBe(false);
   });
 
@@ -283,7 +276,6 @@ describe("project-sources", () => {
     const { db, project } = setup();
     const host2 = upsertHost(db, noopNotifier, {
       name: "test-host-2",
-      type: "persistent",
     });
     const second = createProjectSource(db, noopNotifier, {
       projectId: project.id,
@@ -292,8 +284,14 @@ describe("project-sources", () => {
       path: "/tmp/code-2",
     });
 
-    const initialDefault = getDefaultProjectSource(db, project.id)!;
+    const initialDefault = listProjectSourcesByProjectIds(db, [
+      project.id,
+    ]).find((source) => source.isDefault)!;
     expect(deleteProjectSource(db, noopNotifier, initialDefault.id)).toBe(true);
-    expect(getDefaultProjectSource(db, project.id)?.id).toBe(second.id);
+    expect(
+      listProjectSourcesByProjectIds(db, [project.id]).find(
+        (source) => source.isDefault,
+      )?.id,
+    ).toBe(second.id);
   });
 });

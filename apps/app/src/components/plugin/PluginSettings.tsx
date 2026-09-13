@@ -1,3 +1,4 @@
+import { useSetPluginEnabled } from "@/components/plugin/useSetPluginEnabled";
 import { useEffect, useId, useState, type FocusEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { appToast } from "@/components/ui/app-toast.js";
@@ -22,14 +23,13 @@ import {
   ResourceDetailOverviewSection,
   ResourceDetailPanel,
   ResourceDetailStack,
-} from "@bb/shared-ui/resource-detail";
+} from "@bb/shared-ui/resource-list";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
 import {
   applyPluginSettingsView,
   invalidatePluginList,
 } from "@/hooks/cache-owners/plugin-cache-owner";
 import {
-  setPluginEnabled,
   updatePluginSettings,
   usePluginList,
   usePluginSettingsView,
@@ -39,11 +39,12 @@ import {
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
-
-const DROPDOWN_TRIGGER_CLASS =
-  "h-7 w-full justify-between border-border/60 bg-card px-2 text-xs sm:w-44";
-const DROPDOWN_CONTENT_CLASS =
-  "min-w-[var(--radix-dropdown-menu-trigger-width)]";
+import { PluginMachineServerAccessNotice } from "@/components/machines/MachineServerAccessNotice";
+import { invalidateMachineProviders } from "@/hooks/cache-owners/system-cache-effects";
+import {
+  SETTINGS_DROPDOWN_CONTENT_CLASS,
+  SETTINGS_DROPDOWN_TRIGGER_CLASS,
+} from "@/components/settings/settings-dropdown";
 
 const MULTILINE_MIN_ROWS = 6;
 const MULTILINE_MAX_ROWS = 24;
@@ -86,7 +87,7 @@ function SettingOptionPicker({
         <Button
           variant="outline"
           size="sm"
-          className={DROPDOWN_TRIGGER_CLASS}
+          className={SETTINGS_DROPDOWN_TRIGGER_CLASS}
           aria-label={ariaLabel}
           aria-describedby={ariaDescribedBy}
           aria-invalid={ariaInvalid}
@@ -95,7 +96,10 @@ function SettingOptionPicker({
           <Icon name="ChevronDown" className="size-3.5 text-muted-foreground" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className={DROPDOWN_CONTENT_CLASS}>
+      <DropdownMenuContent
+        align="end"
+        className={SETTINGS_DROPDOWN_CONTENT_CLASS}
+      >
         {options.map((option) => (
           <DropdownMenuItem
             key={option.value}
@@ -330,6 +334,7 @@ function AutosavingPluginSetting({
     },
     onSuccess: (view) => {
       applyPluginSettingsView({ queryClient, pluginId, view });
+      void invalidateMachineProviders({ queryClient });
     },
   });
 
@@ -539,10 +544,10 @@ export function PluginSettingsPage({ pluginId }: { pluginId: string }) {
 function PluginSettingsContent({ plugin }: { plugin: PluginListItem }) {
   const queryClient = useQueryClient();
   const { settingsSections } = usePluginSlots();
+  const setEnabled = useSetPluginEnabled();
   const toggle = useMutation({
     meta: { showErrorToast: false },
-    mutationFn: (enabled: boolean) =>
-      setPluginEnabled(fetch, plugin.id, enabled),
+    mutationFn: (enabled: boolean) => setEnabled(plugin.id, enabled),
     onError: (error, enabled) => {
       appToast.error(
         `${enabled ? "Enabling" : "Disabling"} ${plugin.id} failed`,
@@ -551,7 +556,10 @@ function PluginSettingsContent({ plugin }: { plugin: PluginListItem }) {
         },
       );
     },
-    onSettled: () => invalidatePluginList({ queryClient }),
+    onSettled: async () => {
+      await invalidatePluginList({ queryClient });
+      await invalidateMachineProviders({ queryClient });
+    },
   });
   const enabled = toggle.isPending ? toggle.variables : plugin.enabled;
   const hasAvailableSettings =
@@ -587,6 +595,9 @@ function PluginSettingsContent({ plugin }: { plugin: PluginListItem }) {
         />
       </header>
       <ResourceDetailStack className="mt-6">
+        {enabled && plugin.enabled ? (
+          <PluginMachineServerAccessNotice pluginId={plugin.id} />
+        ) : null}
         {enabled && plugin.enabled && hasAvailableSettings ? (
           <ResourceDetailConfigurationSection label="Configuration">
             <PluginSettingsDetail plugin={plugin} />

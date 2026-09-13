@@ -89,14 +89,11 @@ A single runtime can manage multiple threads across multiple providers simultane
 ## Running Tests
 
 ```bash
-# Unit tests (no credentials needed, uses fake provider process)
-pnpm --filter @bb/agent-runtime test:unit
+# Unit tests (no credentials needed, uses fake provider process; excludes integration suites)
+pnpm --filter @bb/agent-runtime test
 
 # Integration tests (requires real provider credentials)
 pnpm --filter @bb/agent-runtime test:integration
-
-# All tests
-pnpm --filter @bb/agent-runtime test
 ```
 
 ### Integration test requirements

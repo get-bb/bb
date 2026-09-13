@@ -12,16 +12,12 @@ export interface SwitchProps extends Omit<
 > {
   checked: boolean;
   onCheckedChange?: (checked: boolean) => void;
-  size?: "default" | "sm";
-  className?: string;
 }
 
 export function Switch({
   checked,
   onCheckedChange,
-  size = "default",
   disabled,
-  className,
   ...props
 }: SwitchProps) {
   const { tokens, palette } = useTheme();
@@ -39,10 +35,6 @@ export function Switch({
       onValueChange={onCheckedChange}
       disabled={disabled}
       {...colors}
-      className={className}
-      style={
-        !IS_IOS && size === "sm" ? { transform: [{ scale: 0.8 }] } : undefined
-      }
       {...props}
     />
   );

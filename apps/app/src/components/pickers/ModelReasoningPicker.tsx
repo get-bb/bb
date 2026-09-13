@@ -6,7 +6,6 @@ import {
   useRef,
   useState,
   type KeyboardEventHandler,
-  type PointerEventHandler,
   type ReactNode,
 } from "react";
 import type {
@@ -14,6 +13,7 @@ import type {
   SystemProvidersQuery,
 } from "@bb/server-contract";
 import type { ReasoningLevel } from "@bb/domain";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   stripModelBrandPrefix,
   type ProviderPickerOption,
@@ -44,7 +44,10 @@ import {
   useMenuItemHover,
 } from "@bb/shared-ui/menu-item-hover";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { useSystemExecutionOptions } from "@/hooks/queries/system-queries";
+import {
+  prefetchSystemExecutionOptions,
+  useSystemExecutionOptions,
+} from "@/hooks/queries/system-queries";
 import { resolveModelCatalogSelection } from "@/hooks/thread-creation-options/model-catalog-selection";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import {
@@ -54,6 +57,7 @@ import {
   OPTION_TRIGGER_CONTENT_CLASS_NAME,
 } from "@bb/shared-ui/option-display";
 import { type PickerOption } from "./OptionPicker";
+import { PickerLoadingRows } from "./PickerLoadingRows";
 import type { ModelPickerOption } from "./model-picker-option";
 import { searchPickerOptions } from "./picker-search";
 import { useResetPickerScroll } from "./useResetPickerScroll";
@@ -187,7 +191,6 @@ interface ModelReasoningPickerProps {
   className?: string;
   fastModeLabel?: string;
   muted?: boolean;
-  defaultOpen?: boolean;
   modal?: boolean;
   align?: "start" | "center" | "end";
   disabled?: boolean;
@@ -229,14 +232,13 @@ export function ModelReasoningPicker({
   className,
   fastModeLabel,
   muted,
-  defaultOpen = false,
   modal = true,
   align = "start",
   disabled,
   footerAction,
 }: ModelReasoningPickerProps) {
   const isCompactViewport = useIsCompactViewport();
-  const [open, setOpen] = useState(defaultOpen);
+  const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const registeredToggleShortcut = useAppCommandShortcut("modelPicker.toggle");
   const toggleShortcut = commandShortcutsEnabled
@@ -286,6 +288,32 @@ export function ModelReasoningPicker({
     hasMultipleProviders &&
     onSelectedProviderChange !== undefined &&
     providerOptions.length > 1;
+  const queryClient = useQueryClient();
+  const prefetchRoutingEnvironmentId = providerRouting?.environmentId;
+  const prefetchRoutingHostId = providerRouting?.hostId;
+  const siblingIdsKey = providerOptions
+    .map((option) => option.value)
+    .filter((id) => id !== selectedProviderId)
+    .join("\0");
+  useEffect(() => {
+    if (!open || !canSwitchProviders || siblingIdsKey.length === 0) {
+      return;
+    }
+    prefetchSystemExecutionOptions(queryClient, {
+      routing: {
+        environmentId: prefetchRoutingEnvironmentId,
+        hostId: prefetchRoutingHostId,
+      },
+      providerIds: siblingIdsKey.split("\0"),
+    });
+  }, [
+    canSwitchProviders,
+    open,
+    prefetchRoutingEnvironmentId,
+    prefetchRoutingHostId,
+    queryClient,
+    siblingIdsKey,
+  ]);
   const hasAlternateSelectionPath =
     modelOptions.length > 0 ||
     (selectedModelLoadErrorMatches && canSwitchProviders);
@@ -328,19 +356,14 @@ export function ModelReasoningPicker({
     ...providerRouting,
     providerId: isPreviewing ? previewProviderId : undefined,
   });
-  const previewSelectionBlocked =
-    requireVerifiedProviderPreview &&
-    isPreviewing &&
-    (previewQuery.data === undefined ||
-      previewQuery.isPlaceholderData ||
-      previewQuery.isError ||
-      previewQuery.data.modelLoadError !== null);
   const previewCatalogIsVerified =
     isPreviewing &&
     previewQuery.data !== undefined &&
     !previewQuery.isPlaceholderData &&
     !previewQuery.isError &&
     previewQuery.data.modelLoadError === null;
+  const previewSelectionBlocked =
+    requireVerifiedProviderPreview && isPreviewing && !previewCatalogIsVerified;
 
   const previewProvider = useMemo(
     () =>
@@ -438,9 +461,7 @@ export function ModelReasoningPicker({
   const isShowingModelError =
     !activeModelIsLoading && !hasActiveModelOptions && activeModelLoadFailed;
   const showProviderTabs =
-    hasMultipleProviders &&
-    onSelectedProviderChange !== undefined &&
-    providerOptions.length > 1 &&
+    canSwitchProviders &&
     (!isShowingModelError || activeModelErrorIsProviderSpecific);
 
   const activeBrandPrefix = activeProvider?.brandPrefix;
@@ -993,7 +1014,10 @@ export function ModelReasoningPicker({
                 <MenuSectionLabel>Model</MenuSectionLabel>
               )}
               {activeModelIsLoading ? (
-                <ModelPickerLoadingRows />
+                <PickerLoadingRows
+                  label="Loading models"
+                  rowDataAttribute="data-model-loading-row"
+                />
               ) : hasActiveModelOptions ? (
                 <>
                   {navRows.map((row, index) => {
@@ -1185,52 +1209,18 @@ function MenuSectionLabel({
   );
 }
 
-const MODEL_LOADING_ROW_WIDTHS = ["w-20", "w-28", "w-24", "w-32"] as const;
-
-function ModelPickerLoadingRows() {
-  const isCompactViewport = useIsCompactViewport();
-
-  return (
-    <div role="status" aria-label="Loading models" className="pb-1">
-      <span className="sr-only">Loading models</span>
-      {MODEL_LOADING_ROW_WIDTHS.map((widthClassName) => (
-        <div
-          key={widthClassName}
-          data-model-loading-row=""
-          aria-hidden
-          className={cn(
-            "flex items-center rounded-sm px-2",
-            isCompactViewport ? "py-2" : "py-[0.3125rem]",
-          )}
-        >
-          <Skeleton
-            className={cn("h-3 max-w-[75%] rounded-sm", widthClassName)}
-          />
-        </div>
-      ))}
-    </div>
-  );
-}
-
 function MoreModelsToggleRow({
   expanded,
   onToggle,
   isActive,
   id,
-  onPointerEnter: callerPointerEnter,
-  onKeyDown: callerKeyDown,
 }: {
   expanded: boolean;
   onToggle: () => void;
   isActive?: boolean;
   id?: string;
-  onPointerEnter?: PointerEventHandler<HTMLButtonElement>;
-  onKeyDown?: KeyboardEventHandler<HTMLButtonElement>;
 }) {
-  const { hoverProps } = useMenuItemHover({
-    onPointerEnter: callerPointerEnter,
-    onKeyDown: callerKeyDown,
-  });
+  const { hoverProps } = useMenuItemHover();
   const isCompactViewport = useIsCompactViewport();
   return (
     <button
@@ -1385,8 +1375,6 @@ function MenuRowButton({
   isActive,
   id,
   role,
-  onPointerEnter: callerPointerEnter,
-  onKeyDown: callerKeyDown,
 }: {
   label: string;
   qualifier?: string;
@@ -1396,13 +1384,8 @@ function MenuRowButton({
   isActive?: boolean;
   id?: string;
   role?: React.AriaRole;
-  onPointerEnter?: PointerEventHandler<HTMLButtonElement>;
-  onKeyDown?: KeyboardEventHandler<HTMLButtonElement>;
 }) {
-  const { hoverProps } = useMenuItemHover({
-    onPointerEnter: callerPointerEnter,
-    onKeyDown: callerKeyDown,
-  });
+  const { hoverProps } = useMenuItemHover();
   const isCompactViewport = useIsCompactViewport();
   const { base, tag } = splitModelLabelTag(label);
   return (

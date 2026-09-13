@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  contextSnapshotSchema,
   BRANCH_LIST_QUERY_MAX_LENGTH,
   changedMessageLenientSchema,
   changedMessageSchema,
@@ -7,11 +8,9 @@ import {
   gitBranchSelectionSchema,
   jsonValueSchema,
 } from "@bb/domain";
-import type { GitBranchName } from "@bb/domain";
 
 export {
   BRANCH_LIST_LIMIT_MAX,
-  BRANCH_LIST_QUERY_MAX_LENGTH,
   FILE_LIST_LIMIT_MAX,
   FILE_LIST_QUERY_MAX_LENGTH,
 } from "@bb/domain";
@@ -31,6 +30,7 @@ export function isCommaSeparatedIncludeQueryValue(
 }
 
 export const threadContextWindowUsageSchema = z.object({
+  snapshot: contextSnapshotSchema.optional(),
   usedTokens: z.number(),
   modelContextWindow: z.number(),
   estimated: z.boolean(),
@@ -39,8 +39,12 @@ export type ThreadContextWindowUsage = z.infer<
   typeof threadContextWindowUsageSchema
 >;
 
+export const threadContextResponseSchema = z.object({
+  usage: threadContextWindowUsageSchema.nullable(),
+});
+export type ThreadContextResponse = z.infer<typeof threadContextResponseSchema>;
+
 export { gitBranchNameSchema };
-export type { GitBranchName };
 
 export const unmanagedBranchSpecSchema = z.discriminatedUnion("kind", [
   z
@@ -111,7 +115,16 @@ export const projectDefaultEnvironmentSchema = z.object({
 export const providerEnvironmentSchema = z.object({
   type: z.literal("provider"),
   environmentProviderId: z.string().min(1),
-  machine: z.object({ type: z.literal("existing"), hostId: z.string().min(1) }),
+  machine: z
+    .discriminatedUnion("type", [
+      z.object({ type: z.literal("existing"), hostId: z.string().min(1) }),
+      z.object({
+        type: z.literal("new"),
+        machineProviderId: z.string().min(1),
+        inputs: jsonValueSchema.nullable().default(null),
+      }),
+    ])
+    .optional(),
   inputs: jsonValueSchema.nullable().default(null),
 });
 export type ProviderEnvironmentArgs = z.infer<typeof providerEnvironmentSchema>;
@@ -128,9 +141,6 @@ export const providerReadyEnvironmentSchema = z.discriminatedUnion("type", [
     ownsPath: z.boolean().default(true),
   }),
 ]);
-export type ProviderReadyEnvironmentArgs = z.infer<
-  typeof providerReadyEnvironmentSchema
->;
 export type ProviderReadyEnvironmentInput = z.input<
   typeof providerReadyEnvironmentSchema
 >;

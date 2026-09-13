@@ -16,7 +16,7 @@ import type {
   ThreadOpenSignal,
   ThreadPaneActionSignal,
 } from "@bb/server-contract";
-import { buildDevWebSocketUrl } from "./dev-websocket-url";
+import { buildBrowserWebSocketUrl } from "./dev-websocket-url";
 import {
   isDocumentVisible,
   subscribeToDocumentVisibility,
@@ -95,9 +95,7 @@ export class WebSocketManager {
   connect(): void {
     if (this.socket) return;
 
-    const url =
-      buildDevWebSocketUrl({ path: "/ws" }) ??
-      `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/ws`;
+    const url = buildBrowserWebSocketUrl("/ws");
 
     const socket = new ReconnectingWebSocket(url, undefined, {
       minReconnectionDelay: 1000,

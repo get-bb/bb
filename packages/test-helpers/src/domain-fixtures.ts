@@ -64,8 +64,16 @@ export function makeHost(overrides: Partial<Host> = {}): Host {
   return {
     id: "host_test",
     name: "Test host",
-    status: "connected",
     type: "persistent",
+    status: "connected",
+    machineProviderId: null,
+    lifecycle: {
+      phase: "active",
+      suspendedAt: null,
+      message: null,
+      pendingLog: "",
+      teardown: null,
+    },
     lastSeenAt: null,
     maxPermissionMode: "full",
     lastRejectedProtocolVersion: null,

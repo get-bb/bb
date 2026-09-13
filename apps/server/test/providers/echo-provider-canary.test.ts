@@ -20,8 +20,10 @@ import {
 } from "@bb/domain";
 import { groupHostDaemonEvents } from "@bb/host-daemon-contract";
 import { resolveBuiltinPluginRootPath } from "../../src/services/plugins/builtin-registry.js";
-import { buildThreadStartCommand } from "../../src/services/threads/thread-commands.js";
-import { resolveExecutionOptions } from "../../src/services/threads/thread-runtime-config.js";
+import {
+  buildExecutionOptions,
+  buildThreadStartCommand,
+} from "../../src/services/threads/thread-commands.js";
 import { internalAuthHeaders } from "../helpers/commands.js";
 import { textInput } from "../helpers/prompt-input.js";
 import {
@@ -218,10 +220,11 @@ describe("echo-provider canary: plugin install → server command → runtime �
       providerId: PROVIDER_ID,
       status: "active",
     });
-    const execution = await resolveExecutionOptions(harness.deps, {
-      threadId: thread.id,
-      requestedExecution: { model: "echo-1", source: "client/turn/requested" },
-    });
+    const execution = await buildExecutionOptions(
+      harness.deps,
+      { model: "echo-1" },
+      { threadId: thread.id },
+    );
     const command = await buildThreadStartCommand(harness.deps, {
       environment,
       execution,
@@ -582,10 +585,11 @@ describe("echo-provider canary: plugin install → server command → runtime �
       providerId: PROVIDER_ID,
       status: "active",
     });
-    const execution = await resolveExecutionOptions(harness.deps, {
-      threadId: thread.id,
-      requestedExecution: { model: "echo-1", source: "client/turn/requested" },
-    });
+    const execution = await buildExecutionOptions(
+      harness.deps,
+      { model: "echo-1" },
+      { threadId: thread.id },
+    );
     const command = await buildThreadStartCommand(harness.deps, {
       environment,
       execution,

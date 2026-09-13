@@ -30,7 +30,7 @@ import {
 } from "@/lib/fixed-panel-tabs-state";
 import {
   getFileNameFromPath,
-  resolveRightPanelFileVisual,
+  resolveRightPanelFileIconName,
 } from "./rightPanelFileVisuals";
 import {
   resolveTerminalHost,
@@ -543,10 +543,7 @@ function NewTabPanelStory({
         <Icon name="Terminal" className="size-3.5" aria-hidden />
       ) : (
         <Icon
-          name={
-            resolveRightPanelFileVisual({ path: outcome.selection.path })
-              .iconName
-          }
+          name={resolveRightPanelFileIconName(outcome.selection.path)}
           className="size-3.5"
           aria-hidden
         />

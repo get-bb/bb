@@ -1,12 +1,10 @@
 import { useEffect, useState } from "react";
+import { attachmentDownloadUrl } from "../../shared/attachments.js";
 import type { Attachment } from "../../shared/contract.js";
+import { errorMessage } from "../../shared/errors.js";
 import { formatFileSize } from "../activity/time.js";
 import { ConfirmDialog } from "../../components/confirm-dialog.js";
 import { Icon } from "@bb/shared-ui/icon";
-
-export function attachmentDownloadUrl(attachmentId: string): string {
-  return `/api/v1/plugins/tasks/http/attachments/download?attachmentId=${encodeURIComponent(attachmentId)}`;
-}
 
 let tokenPromise: Promise<string> | null = null;
 
@@ -130,13 +128,12 @@ export function AttachmentsGrid({
   onError,
 }: {
   attachments: Attachment[];
-  onRemove?: (attachment: Attachment) => Promise<void>;
-  onError?: (message: string) => void;
+  onRemove: (attachment: Attachment) => Promise<void>;
+  onError: (message: string) => void;
 }) {
   const [lightbox, setLightbox] = useState<Attachment | null>(null);
   const [confirm, setConfirm] = useState<Attachment | null>(null);
   const [pending, setPending] = useState<ReadonlySet<string>>(new Set());
-  const removable = onRemove !== undefined;
 
   const requestRemove = (attachment: Attachment) => setConfirm(attachment);
 
@@ -145,9 +142,9 @@ export function AttachmentsGrid({
     setLightbox((current) => (current?.id === attachment.id ? null : current));
     setPending((current) => new Set(current).add(attachment.id));
     try {
-      await onRemove?.(attachment);
+      await onRemove(attachment);
     } catch (error) {
-      onError?.(error instanceof Error ? error.message : String(error));
+      onError(errorMessage(error));
     } finally {
       setPending((current) => {
         const next = new Set(current);
@@ -163,7 +160,6 @@ export function AttachmentsGrid({
   const images = attachments.filter((attachment) => attachment.isImage);
 
   const removeButton = (attachment: Attachment, variant: "image" | "file") => {
-    if (!removable) return null;
     const busy = pending.has(attachment.id);
     const base =
       variant === "image"

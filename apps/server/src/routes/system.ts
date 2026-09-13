@@ -1,4 +1,10 @@
 import {
+  machineEnvironmentView,
+  replaceMachineEnvironment,
+} from "../services/machines/environment-settings.js";
+import { getGateAuthKind } from "../request-context.js";
+import { serverAccessStatus } from "../services/machines/server-access.js";
+import {
   getAppSettings,
   getAppKeybindingOverrides,
   getExperiments,
@@ -24,13 +30,23 @@ import {
   publicApiRoutes,
   typedRoutes,
   type PublicApiSchema,
+  type SystemEnvironmentProvider,
 } from "@bb/server-contract";
 import type { Hono } from "hono";
-import { pluginImageResponse } from "./plugin-image-response.js";
+import {
+  hashedAssetCacheControl,
+  pluginImageResponse,
+} from "./plugin-image-response.js";
+import { effectivePort } from "../browser-request-guard.js";
 import {
   getEnvironmentProvider,
+  listEnvironmentCompositions,
   listEnvironmentProviders,
 } from "../services/plugins/plugin-environment-provider-registry.js";
+import {
+  getMachineProvider,
+  listMachineProviders,
+} from "../services/plugins/plugin-machine-provider-registry.js";
 import type { ServerAppDeps, ServerRuntimeConfig } from "../types.js";
 import type { PluginService } from "../services/plugins/plugin-service.js";
 import { ApiError } from "../errors.js";
@@ -63,6 +79,7 @@ import {
   environmentProviderAcceptsEmptyInputs,
 } from "../services/environments/provider-availability.js";
 import { environmentProviderMachineAvailability } from "../services/environments/provider-machine-availability.js";
+import { machineProviderAcceptsEmptyInputs } from "../services/machines/provider-availability.js";
 import { requirePublicProject } from "../services/lib/entity-lookup.js";
 
 const LEADING_ENVIRONMENT_PROVIDER_IDS: readonly string[] = [
@@ -79,11 +96,12 @@ function firstForwardedValue(value: string | undefined): string | undefined {
   return value?.split(",", 1)[0]?.trim() || undefined;
 }
 
-function effectivePort(url: URL): number | null {
-  if (url.port.length > 0) return Number(url.port);
-  if (url.protocol === "http:") return 80;
-  if (url.protocol === "https:") return 443;
-  return null;
+function providerLogoUrl(
+  kind: "environment" | "machine",
+  id: string,
+  hash: string,
+): string {
+  return `/api/v1/system/providers/${encodeURIComponent(`${kind}:${id}`)}/logo?h=${hash}`;
 }
 
 function resolveSystemServerUrl(
@@ -171,6 +189,7 @@ export function registerSystemRoutes(
     ];
     return {
       generalSettings: compatibleGeneralSettings(),
+      serverAccess: await serverAccessStatus(deps),
       keybindings: applyAppKeybindingOverrides(
         DEFAULT_APP_KEYBINDINGS,
         keybindingOverrides,
@@ -221,6 +240,23 @@ export function registerSystemRoutes(
       showUnhandledProviderEvents: settings.showDiagnosticEvents,
     };
   }
+  get(routes.machineEnvironment, async (context) =>
+    context.json(await machineEnvironmentView(deps.db, deps.config.dataDir)),
+  );
+  put(routes.replaceMachineEnvironment, async (context, payload) => {
+    if (getGateAuthKind(context) === "machine")
+      throw new ApiError(
+        403,
+        "forbidden",
+        "Machine credentials cannot change global environment settings",
+      );
+    await replaceMachineEnvironment(deps.db, deps.config.dataDir, payload);
+    deps.lifecycleDedupers.providerModelCatalogs.markAllStale();
+    deps.hub.notifySystem(["config-changed"]);
+    return context.json(
+      await machineEnvironmentView(deps.db, deps.config.dataDir),
+    );
+  });
 
   put(routes.generalSettings, (context, payload) => {
     const { showUnhandledProviderEvents, ...settings } = payload;
@@ -362,7 +398,7 @@ export function registerSystemRoutes(
                 ) || left.provider.id.localeCompare(right.provider.id)
               );
             })
-            .map(async (record) => {
+            .map(async (record): Promise<SystemEnvironmentProvider | null> => {
               if (
                 query.projectId !== undefined &&
                 !environmentProviderMatchesContext(deps, record, {
@@ -384,13 +420,19 @@ export function registerSystemRoutes(
                         : { hostId: query.hostId }),
                     });
               return {
+                machineProviderId: null,
                 id: record.provider.id,
                 displayName: record.provider.displayName,
+                description: record.provider.description,
                 icon: record.provider.icon,
                 logoUrl:
                   record.icon === undefined
                     ? null
-                    : `/api/v1/system/providers/${encodeURIComponent(`environment:${record.provider.id}`)}/logo?h=${record.icon.hash}`,
+                    : providerLogoUrl(
+                        "environment",
+                        record.provider.id,
+                        record.icon.hash,
+                      ),
                 pluginId: record.pluginId,
                 requires: record.provider.requires,
                 inputs: record.provider.inputsJsonSchema,
@@ -404,7 +446,93 @@ export function registerSystemRoutes(
               };
             }),
         )
-      ).filter((provider) => provider !== null),
+      )
+        .filter((provider) => provider !== null)
+        .concat(
+          query.hostId !== undefined
+            ? []
+            : (
+                await Promise.all(
+                  listEnvironmentCompositions().map(
+                    async ({ pluginId, composition, icon }) => {
+                      const record = getEnvironmentProvider(
+                        composition.environmentProviderId,
+                      );
+                      const machine = getMachineProvider(
+                        composition.machineProviderId,
+                      );
+                      if (!record || !machine) return null;
+                      if (
+                        project !== null &&
+                        (record.provider.requires.projectCheckout ||
+                          record.provider.requires.gitRemote) &&
+                        project.gitRemoteUrl === null
+                      )
+                        return null;
+                      if (
+                        project !== null &&
+                        record.provider.requires.projectless !==
+                          (project.id === PERSONAL_PROJECT_ID)
+                      )
+                        return null;
+                      return {
+                        id: composition.id,
+                        displayName: composition.displayName,
+                        description: composition.description,
+                        icon: composition.icon ?? "FolderUnknown",
+                        logoUrl:
+                          icon === undefined
+                            ? null
+                            : providerLogoUrl(
+                                "environment",
+                                composition.id,
+                                icon.hash,
+                              ),
+                        pluginId,
+                        machineProviderId: composition.machineProviderId,
+                        environmentProviderId:
+                          composition.environmentProviderId,
+                        requires: record.provider.requires,
+                        inputs: record.provider.inputsJsonSchema,
+                        acceptsEmptyInputs:
+                          await environmentProviderAcceptsEmptyInputs(record),
+                        machineInputs: machine.provider.inputsJsonSchema,
+                        machineAcceptsEmptyInputs:
+                          await machineProviderAcceptsEmptyInputs(machine),
+                        machineProviderPluginId: machine.pluginId,
+                        availability: null,
+                        machineAvailability: {},
+                      };
+                    },
+                  ),
+                )
+              ).filter((provider) => provider !== null),
+        ),
+    });
+  });
+
+  get(routes.machineProviders, async (context) => {
+    return context.json({
+      providers: await Promise.all(
+        listMachineProviders().map(async (record) => ({
+          id: record.provider.id,
+          displayName: record.provider.displayName,
+          description: record.provider.description,
+          icon: record.provider.icon,
+          logoUrl:
+            record.icon === undefined
+              ? null
+              : providerLogoUrl(
+                  "machine",
+                  record.provider.id,
+                  record.icon.hash,
+                ),
+          pluginId: record.pluginId,
+          inputs: record.provider.inputsJsonSchema,
+          acceptsEmptyInputs: await machineProviderAcceptsEmptyInputs(record),
+          supportsSuspend: record.provider.suspend !== null,
+        })),
+      ),
     });
   });
 
@@ -415,15 +543,19 @@ export function registerSystemRoutes(
   get(routes.providerLogo, async (context) => {
     const providerId = context.req.param("id");
     const registration = providerId.startsWith("environment:")
-      ? getEnvironmentProvider(providerId.slice("environment:".length))
-      : deps.providerRegistry.get(providerId);
+      ? (getEnvironmentProvider(providerId.slice("environment:".length)) ??
+        listEnvironmentCompositions().find(
+          (record) =>
+            record.composition.id === providerId.slice("environment:".length),
+        ))
+      : providerId.startsWith("machine:")
+        ? getMachineProvider(providerId.slice("machine:".length))
+        : deps.providerRegistry.get(providerId);
     if (registration?.icon !== undefined) {
       return pluginImageResponse(
         context,
         registration.icon,
-        context.req.query("h") === registration.icon.hash
-          ? "public, max-age=31536000, immutable"
-          : "no-store",
+        hashedAssetCacheControl(context.req.query("h"), registration.icon.hash),
       );
     }
     throw new ApiError(

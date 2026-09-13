@@ -1,8 +1,5 @@
 import { fileURLToPath } from "node:url";
 
-export const FIXTURE_FIDELITY_LEVELS = ["none", "anchor", "state", "flow"];
-export const FIXTURE_RESPONSIVE_STRATEGIES = ["scale-together", "reflow"];
-
 const REQUIRED_STATES = {
   none: [],
   anchor: ["anchor"],

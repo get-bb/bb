@@ -157,7 +157,7 @@ describe("live thread start handoff", () => {
       });
       try {
         const response = await harness.app.request(
-          `/api/v1/threads/${fixture.thread.id}/archive`,
+          `/api/v1/threads/${fixture.thread.id}/archive-all`,
           { method: "POST" },
         );
 
@@ -384,7 +384,7 @@ describe("live thread start handoff", () => {
       });
 
       const response = await harness.app.request(
-        `/api/v1/threads/${fixture.thread.id}/archive`,
+        `/api/v1/threads/${fixture.thread.id}/archive-all`,
         { method: "POST" },
       );
       expect(response.status).toBe(200);

@@ -3,40 +3,19 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { HostDaemonOnlineRpcResult } from "@bb/host-daemon-contract";
+import { isPathWithinDirectory } from "@bb/process-utils";
 import { CommandDispatchError } from "../command-dispatch-support.js";
 import type { CommandOf } from "../command-dispatch-support.js";
 import { isFsErrorWithCode } from "../fs-errors.js";
 import { sha256Hex } from "../sha256-hex.js";
 import {
   createMissingTargetError,
-  isPathWithinRoot,
   NON_IMAGE_FILE_SIZE_LIMIT_BYTES,
 } from "./file-read.js";
 import { resolveNonSymlinkDirectoryPath } from "./root-path.js";
+import { runInSerialLane } from "../serial-lane.js";
 
 const guardedWriteTails = new Map<string, Promise<void>>();
-
-async function serializeGuardedWrite<T>(
-  writePath: string,
-  operation: () => Promise<T>,
-): Promise<T> {
-  const previous = guardedWriteTails.get(writePath) ?? Promise.resolve();
-  let release: () => void = () => undefined;
-  const gate = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  const tail = previous.then(() => gate);
-  guardedWriteTails.set(writePath, tail);
-  await previous;
-  try {
-    return await operation();
-  } finally {
-    release();
-    if (guardedWriteTails.get(writePath) === tail) {
-      guardedWriteTails.delete(writePath);
-    }
-  }
-}
 
 interface ResolvedWriteTarget {
   writePath: string;
@@ -100,7 +79,7 @@ export async function writeHostFile(
   const target = await resolveWriteTarget(resolvedPath, command.path);
 
   const write = () => writeResolvedHostFile(command, contents, target);
-  return serializeGuardedWrite(target.writePath, write);
+  return runInSerialLane(guardedWriteTails, target.writePath, write);
 }
 
 async function writeResolvedHostFile(
@@ -121,7 +100,7 @@ async function writeResolvedHostFile(
       }
       throw error;
     }
-    if (!isPathWithinRoot(target.writePath, realRootPath)) {
+    if (!isPathWithinDirectory(realRootPath, target.writePath)) {
       throw new CommandDispatchError(
         "invalid_path",
         `Path "${command.path}" escapes write root`,

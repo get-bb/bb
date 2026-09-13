@@ -31,14 +31,14 @@ export function resolveRootComposeThreadEnvironment(
       (args.providerHostId === undefined || args.providerHostId === null
         ? null
         : { type: "existing" as const, hostId: args.providerHostId });
-    if (machine === null) return null;
+    if (machine === null && !provider.machineProviderId) return null;
     const inputs =
       provider.inputs === null ? null : (args.providerInputs ?? null);
     if (provider.inputs !== null && inputs === null) return null;
     return {
       type: "provider",
       environmentProviderId: provider.id,
-      machine,
+      ...(machine === null ? {} : { machine }),
       inputs,
     };
   }

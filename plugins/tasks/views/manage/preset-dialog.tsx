@@ -5,10 +5,8 @@ import {
   type ExperimentalProviderModelPickerValue,
 } from "@get-bb/plugin-sdk/app";
 import type { Preset, PresetPermissionMode } from "../../shared/contract.js";
-import {
-  PRESET_ENVIRONMENT_KINDS,
-  PRESET_PERMISSION_MODES,
-} from "../../shared/contract.js";
+import { PRESET_ENVIRONMENT_KINDS } from "../../shared/contract.js";
+import { errorMessage } from "../../shared/errors.js";
 import type { TasksRpc } from "../../shell/data.js";
 import { useTasksQuery } from "../../shell/data.js";
 import {
@@ -31,12 +29,10 @@ import { Input } from "@bb/shared-ui/input";
 import { Textarea } from "@bb/shared-ui/textarea";
 import { Field } from "./shared.js";
 
-export const PERMISSION_MODES = PRESET_PERMISSION_MODES;
 type ReasoningLevel = ExperimentalProviderModelPickerValue["reasoningLevel"];
-export type PermissionMode = PresetPermissionMode;
 type EnvironmentKind = (typeof PRESET_ENVIRONMENT_KINDS)[number];
 
-export const PERMISSION_LABELS: Record<PermissionMode, string> = {
+export const PERMISSION_LABELS: Record<PresetPermissionMode, string> = {
   "accept-edits": "Accept Edits",
   auto: "Approve for me",
   full: "Full Access",
@@ -68,17 +64,13 @@ export function describePresetEnvironment(
 
 const DEFAULT_MACHINE_VALUE = "__default-machine__";
 
-export function describeError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 export interface PresetDraft {
   name: string;
   providerId: string;
   modelId: string;
   reasoningLevel: ReasoningLevel;
   serviceTier: ExperimentalProviderModelPickerValue["serviceTier"];
-  permissionMode: PermissionMode;
+  permissionMode: PresetPermissionMode;
   environmentKind: EnvironmentKind;
   baseBranch: string;
   machineId: string;
@@ -99,16 +91,13 @@ const EMPTY_PRESET_DRAFT: PresetDraft = {
 };
 
 function presetDraft(preset: Preset): PresetDraft {
-  const permission = PERMISSION_MODES.find(
-    (mode) => mode === preset.permissionMode,
-  );
   return {
     name: preset.name,
     providerId: preset.providerId,
     modelId: preset.modelId,
     reasoningLevel: preset.reasoningLevel,
     serviceTier: preset.serviceTier ?? undefined,
-    permissionMode: permission ?? "full",
+    permissionMode: preset.permissionMode,
     environmentKind: preset.environmentKind,
     baseBranch: preset.baseBranch ?? "",
     machineId: preset.machineId ?? "",
@@ -305,7 +294,6 @@ export function PresetDialog({
                         {machine.name}
                       </SelectItem>
                     ))}
-                    {}
                     {draft.machineId !== "" &&
                     !(machines ?? []).some(
                       (machine) => machine.id === draft.machineId,
@@ -346,7 +334,7 @@ export function PresetDialog({
               onSave(draft)
                 .then(() => onOpenChange(false))
                 .catch((saveError: unknown) =>
-                  setError(describeError(saveError)),
+                  setError(errorMessage(saveError)),
                 )
                 .finally(() => setSubmitting(false));
             }}

@@ -106,31 +106,38 @@ function MonacoFileOpener({
     setSaveStateValue(next);
   }, []);
 
-  const save = useCallback(async () => {
-    const editor = editorRef.current;
-    if (!editor) return;
-    if (saveStateRef.current.kind === "saving") return;
-    setSaveState({ kind: "saving" });
-    try {
-      const result = await rpc.call("write", {
-        path: activePath,
-        source,
-        content: editor.getValue(),
-        expectedSha256: sha256Ref.current,
-      });
-      if (result.outcome === "conflict") {
-        setSaveState({ kind: "conflict" });
-        return;
+  const writeEditorContent = useCallback(
+    async (expectedSha256: string | null) => {
+      const editor = editorRef.current;
+      if (!editor) return;
+      setSaveState({ kind: "saving" });
+      try {
+        const result = await rpc.call("write", {
+          path: activePath,
+          source,
+          content: editor.getValue(),
+          expectedSha256,
+        });
+        if (result.outcome === "conflict") {
+          setSaveState({ kind: "conflict" });
+          return;
+        }
+        sha256Ref.current = result.sha256;
+        setSaveState({ kind: "clean" });
+      } catch (error) {
+        setSaveState({
+          kind: "error",
+          message: error instanceof Error ? error.message : "Save failed",
+        });
       }
-      sha256Ref.current = result.sha256;
-      setSaveState({ kind: "clean" });
-    } catch (error) {
-      setSaveState({
-        kind: "error",
-        message: error instanceof Error ? error.message : "Save failed",
-      });
-    }
-  }, [activePath, rpc, setSaveState, source]);
+    },
+    [activePath, rpc, setSaveState, source],
+  );
+
+  const save = useCallback(async () => {
+    if (saveStateRef.current.kind === "saving") return;
+    await writeEditorContent(sha256Ref.current);
+  }, [writeEditorContent]);
 
   const saveRef = useRef(save);
   saveRef.current = save;
@@ -212,29 +219,8 @@ function MonacoFileOpener({
 
   const overwrite = useCallback(async () => {
     sha256Ref.current = null;
-    const editor = editorRef.current;
-    if (!editor) return;
-    setSaveState({ kind: "saving" });
-    try {
-      const result = await rpc.call("write", {
-        path: activePath,
-        source,
-        content: editor.getValue(),
-        expectedSha256: null,
-      });
-      if (result.outcome === "conflict") {
-        setSaveState({ kind: "conflict" });
-        return;
-      }
-      sha256Ref.current = result.sha256;
-      setSaveState({ kind: "clean" });
-    } catch (error) {
-      setSaveState({
-        kind: "error",
-        message: error instanceof Error ? error.message : "Save failed",
-      });
-    }
-  }, [activePath, rpc, setSaveState, source]);
+    await writeEditorContent(null);
+  }, [writeEditorContent]);
 
   useEffect(() => {
     let disposed = false;

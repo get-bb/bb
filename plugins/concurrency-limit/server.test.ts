@@ -107,17 +107,20 @@ async function setup(options: SetupOptions = {}) {
 }
 
 function hostChanges(): {
-  emitHostConnected(hostId: string): void;
+  emitHostChanges(
+    hostId: string,
+    changes: Parameters<HostChangedSubscription["callback"]>[0]["changes"],
+  ): void;
   subscribe: BbPluginApi["sdk"]["subscribe"];
 } {
   let callback: HostChangedSubscription["callback"] | null = null;
   return {
-    emitHostConnected(hostId) {
+    emitHostChanges(hostId, changes) {
       callback?.({
         type: "changed",
         entity: "host",
         id: hostId,
-        changes: ["host-connected"],
+        changes,
       });
     },
     subscribe(subscription) {
@@ -264,10 +267,38 @@ describe("configuration", () => {
     expect(harness.experimental_hostRpcCalls).toHaveLength(0);
 
     status = "connected";
-    changes.emitHostConnected("host-a");
+    changes.emitHostChanges("host-a", ["host-connected"]);
     await vi.waitFor(() => {
       expect(harness.experimental_hostRpcCalls).toHaveLength(1);
     });
+
+    service.controller.abort();
+    await service.done;
+  });
+
+  it("ignores host messages that only report a provider model catalog change", async () => {
+    const changes = hostChanges();
+    const { harness } = await setup({
+      hosts: [hostRecord("host-a")],
+      subscribe: changes.subscribe,
+    });
+    const service = harness.behavior.runService("capacity-detector");
+    await vi.waitFor(() => {
+      expect(harness.experimental_hostRpcCalls).toHaveLength(1);
+      expect(harness.realtimeSignals).toHaveLength(1);
+    });
+    const hostListCalls = harness.inspection.sdk.callsTo("hosts.list").length;
+
+    changes.emitHostChanges("host-a", ["provider-model-catalog-changed"]);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(harness.realtimeSignals).toHaveLength(1);
+    expect(harness.experimental_hostRpcCalls).toHaveLength(1);
+    expect(harness.inspection.sdk.callsTo("hosts.list")).toHaveLength(
+      hostListCalls,
+    );
+
+    changes.emitHostChanges("host-a", ["host-disconnected"]);
+    expect(harness.realtimeSignals).toHaveLength(2);
 
     service.controller.abort();
     await service.done;

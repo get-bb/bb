@@ -23,6 +23,7 @@ const outputPath = path.join(
   "generated",
   "templates.generated.ts",
 );
+const TEMPLATE_KINDS = new Set(["instruction", "prompt", "system-message"]);
 
 function asNonEmptyString(value) {
   if (typeof value !== "string") return undefined;
@@ -139,15 +140,13 @@ for (const fileName of fileNames) {
   const variablesParsed = parseVariables(parsed.data.variables);
   const body = parsed.content.trim();
 
+  if (!TEMPLATE_KINDS.has(kind)) {
+    validationErrors.push(`Template "${id}": unknown kind "${kind}"`);
+  }
+
   definitions.push({
     id,
     body,
-    fileName,
-    kind,
-    title: asNonEmptyString(parsed.data.title),
-    summary: asNonEmptyString(parsed.data.summary),
-    intent: asNonEmptyString(parsed.data.intent),
-    editingNotes: asNonEmptyString(parsed.data.editingNotes),
     variables: asStringRecord(parsed.data.variables),
   });
 

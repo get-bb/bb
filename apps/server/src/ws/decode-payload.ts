@@ -1,4 +1,6 @@
-export function decodeSocketPayload(raw: unknown): string {
+import type { z } from "zod";
+
+function decodeSocketPayload(raw: unknown): string {
   if (typeof raw === "string") {
     return raw;
   }
@@ -11,4 +13,25 @@ export function decodeSocketPayload(raw: unknown): string {
     );
   }
   return String(raw);
+}
+
+export function parseSocketMessage<T>(
+  socket: { close(code?: number, reason?: string): void },
+  raw: unknown,
+  schema: z.ZodType<T>,
+): T | null {
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(decodeSocketPayload(raw));
+  } catch {
+    socket.close(1008, "invalid-message");
+    return null;
+  }
+
+  const result = schema.safeParse(decoded);
+  if (!result.success) {
+    socket.close(1008, "invalid-message");
+    return null;
+  }
+  return result.data;
 }

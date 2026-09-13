@@ -7,13 +7,13 @@ import { findLocalPathProjectSourceForHost } from "@bb/domain";
 import { pluginIconName } from "@/components/plugin/PluginIcon";
 import { Button } from "@bb/shared-ui/button";
 import { Skeleton } from "@bb/shared-ui/skeleton";
-import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
 import {
@@ -38,8 +38,10 @@ import {
   encodeProviderValue,
   parseEnvironmentValue,
 } from "./environment-picker-value";
-import { selectPersistentHosts } from "@/hooks/queries/host-queries";
+import { selectHosts } from "@/hooks/queries/host-queries";
 import { providerInputsControlRequired } from "./environment-provider-inputs";
+import { MACHINE_BADGE_CLASS_NAME, orderLocalHostFirst } from "./MachinePicker";
+import { PickerLoadingRows } from "./PickerLoadingRows";
 
 interface SelectedEnvironment {
   modeLabel: string;
@@ -152,7 +154,6 @@ function mergeHostProviders(
     return hostProvider === undefined ? [] : [hostProvider];
   });
 }
-
 export function EnvironmentPickerUI({
   value,
   sources,
@@ -165,7 +166,7 @@ export function EnvironmentPickerUI({
   open,
   onOpenChange,
   defaultOpen,
-  modal,
+  modal = false,
   machines,
   onRequestMachineSetup,
   providers = [],
@@ -179,21 +180,27 @@ export function EnvironmentPickerUI({
     () =>
       machines === null || machines === undefined
         ? null
-        : { ...machines, hosts: selectPersistentHosts(machines.hosts) },
+        : {
+            ...machines,
+            hosts: selectHosts(machines.hosts, "persistent"),
+          },
     [machines],
   );
-  const hostId = host?.id ?? null;
+  const availableHost = host?.type === "ephemeral" ? null : host;
+  const hostId = availableHost?.id ?? null;
   const hasMultipleMachines = (availableMachines?.hosts.length ?? 0) > 1;
   const environmentProviders = useMemo(
     () =>
       providers.filter(
-        (provider) => provider.requires.projectless === projectless,
+        (provider) =>
+          !provider.machineProviderId &&
+          provider.requires.projectless === projectless,
       ),
     [projectless, providers],
   );
   const isMachineMenu = hasMultipleMachines;
-  const hostConnected = host?.status === "connected";
-  const hostUnavailableReason = !host
+  const hostConnected = availableHost?.status === "connected";
+  const hostUnavailableReason = !availableHost
     ? "No host connected"
     : !hostConnected
       ? "Host is offline"
@@ -215,15 +222,24 @@ export function EnvironmentPickerUI({
   const selectedProvider = useMemo(
     () =>
       parsed?.type === "provider"
-        ? environmentProviders.find(
+        ? providers.find(
             (provider) => provider.id === parsed.environmentProviderId,
           )
         : undefined,
-    [environmentProviders, parsed],
+    [providers, parsed],
+  );
+  const hostlessProviders = providers.filter(
+    (provider) =>
+      provider.machineProviderId &&
+      provider.requires.projectless === projectless,
   );
   const selected = useMemo((): SelectedEnvironment => {
-    if (selectedProvider !== undefined && hostUnavailableReason === null) {
-      const showsHost = selectedMachineName !== null;
+    if (
+      selectedProvider !== undefined &&
+      (selectedProvider.machineProviderId || hostUnavailableReason === null)
+    ) {
+      const showsHost =
+        !selectedProvider.machineProviderId && selectedMachineName !== null;
       return {
         modeLabel: showsHost
           ? `${selectedMachineName} · ${selectedProvider.displayName}`
@@ -237,7 +253,7 @@ export function EnvironmentPickerUI({
         modeLabel: selectedMachineName
           ? `${selectedMachineName} · ${hostUnavailableReason}`
           : hostUnavailableReason,
-        compactModeLabel: host ? "Offline" : "No host",
+        compactModeLabel: availableHost ? "Offline" : "No host",
         icon: "AlertTriangle" as const,
       };
     }
@@ -256,7 +272,7 @@ export function EnvironmentPickerUI({
   }, [
     parsed,
     hostUnavailableReason,
-    host,
+    availableHost,
     selectedMachineName,
     selectedProvider,
   ]);
@@ -346,14 +362,17 @@ export function EnvironmentPickerUI({
         mobileTitle="Environment"
       >
         {isLoading ? (
-          <EnvironmentPickerLoadingRows />
+          <PickerLoadingRows
+            label="Loading environments"
+            rowDataAttribute="data-environment-loading-row"
+          />
         ) : isMachineMenu && availableMachines ? (
           <MachineGroupedEnvironmentOptions
             machines={availableMachines}
             sources={sources}
             value={value}
             onRequestMachineSetup={onRequestMachineSetup}
-            machineProviders={environmentProviders}
+            environmentProviders={environmentProviders}
             providersByHostId={providersByHostId}
             selectedProviderHostId={selectedProviderHostId}
             inputsControlProviderIds={inputsControlProviderIds}
@@ -362,10 +381,10 @@ export function EnvironmentPickerUI({
         ) : (
           <EnvironmentOptionsSection
             hostId={hostId}
-            hostName={isLocal ? null : (host?.name ?? null)}
+            hostName={isLocal ? null : (availableHost?.name ?? null)}
             hostUnavailableReason={hostUnavailableReason}
             value={value}
-            machineProviders={scopedProviders(
+            environmentProviders={scopedProviders(
               environmentProviders,
               providersByHostId,
               hostId,
@@ -376,40 +395,34 @@ export function EnvironmentPickerUI({
             onSelectProvider={onSelectProvider}
           />
         )}
+        {!isLoading &&
+        onSelectProvider &&
+        hostlessProviders.length > 0 &&
+        environmentProviders.length > 0 ? (
+          <DropdownMenuSeparator />
+        ) : null}
+        {!isLoading && onSelectProvider
+          ? hostlessProviders.map((provider) => (
+              <EnvironmentMenuItem
+                key={provider.id}
+                label={provider.displayName}
+                description={providerDescription(
+                  provider,
+                  inputsControlProviderIds,
+                )}
+                icon={pluginIconName(provider.icon)}
+                provider={provider}
+                selected={providerValueSelected(value, provider)}
+                disabled={
+                  providerDisabledReason(provider, inputsControlProviderIds) !==
+                  null
+                }
+                onSelect={() => onSelectProvider(provider, null)}
+              />
+            ))
+          : null}
       </DropdownMenuContent>
     </DropdownMenu>
-  );
-}
-
-const ENVIRONMENT_LOADING_ROW_WIDTHS = [
-  "w-20",
-  "w-28",
-  "w-24",
-  "w-32",
-] as const;
-
-function EnvironmentPickerLoadingRows() {
-  const isCompactViewport = useIsCompactViewport();
-
-  return (
-    <div role="status" aria-label="Loading environments" className="pb-1">
-      <span className="sr-only">Loading environments</span>
-      {ENVIRONMENT_LOADING_ROW_WIDTHS.map((widthClassName) => (
-        <div
-          key={widthClassName}
-          data-environment-loading-row=""
-          aria-hidden
-          className={cn(
-            "flex items-center rounded-sm px-2",
-            isCompactViewport ? "py-2" : "py-[0.3125rem]",
-          )}
-        >
-          <Skeleton
-            className={cn("h-3 max-w-[75%] rounded-sm", widthClassName)}
-          />
-        </div>
-      ))}
-    </div>
   );
 }
 
@@ -418,7 +431,7 @@ interface EnvironmentOptionsSectionProps {
   hostName: string | null;
   hostUnavailableReason: string | null;
   value: string;
-  machineProviders: readonly SystemEnvironmentProvider[];
+  environmentProviders: readonly SystemEnvironmentProvider[];
   selectedProviderHostId: string | null;
   inputsControlProviderIds: ReadonlySet<string>;
   onSelectProvider:
@@ -431,7 +444,7 @@ function EnvironmentOptionsSection({
   hostName,
   hostUnavailableReason,
   value,
-  machineProviders,
+  environmentProviders,
   selectedProviderHostId,
   inputsControlProviderIds,
   onSelectProvider,
@@ -451,7 +464,7 @@ function EnvironmentOptionsSection({
           {hostUnavailableReason}
         </DropdownMenuItem>
       ) : onSelectProvider !== undefined && hostId !== null ? (
-        machineProviders.map((provider) => {
+        environmentProviders.map((provider) => {
           const disabledReason = providerDisabledReason(
             provider,
             inputsControlProviderIds,
@@ -480,16 +493,13 @@ function EnvironmentOptionsSection({
   );
 }
 
-const MACHINE_BADGE_CLASS_NAME =
-  "shrink-0 rounded-sm border border-border bg-muted/40 px-1.5 py-0.5 text-2xs leading-none text-subtle-foreground";
-
 interface MachineGroupedEnvironmentOptionsProps {
   machines: EnvironmentPickerMachines;
   sources: readonly ProjectSource[];
   value: string;
   onRequestMachineSetup: ((host: Host) => void) | undefined;
-  machineProviders: readonly SystemEnvironmentProvider[];
-  providersByHostId: EnvironmentPickerUIProps["providersByHostId"];
+  environmentProviders: readonly SystemEnvironmentProvider[];
+  providersByHostId?: EnvironmentPickerUIProps["providersByHostId"];
   selectedProviderHostId: string | null;
   inputsControlProviderIds: ReadonlySet<string>;
   onSelectProvider:
@@ -502,17 +512,16 @@ function MachineGroupedEnvironmentOptions({
   sources,
   value,
   onRequestMachineSetup,
-  machineProviders,
+  environmentProviders,
   providersByHostId,
   selectedProviderHostId,
   inputsControlProviderIds,
   onSelectProvider,
 }: MachineGroupedEnvironmentOptionsProps) {
   const now = Date.now();
-  const orderedHosts = [...machines.hosts].sort(
-    (left, right) =>
-      Number(left.id !== machines.localDaemonHostId) -
-      Number(right.id !== machines.localDaemonHostId),
+  const orderedHosts = orderLocalHostFirst(
+    machines.hosts,
+    machines.localDaemonHostId,
   );
   return (
     <>
@@ -527,8 +536,8 @@ function MachineGroupedEnvironmentOptions({
           now={now}
           value={value}
           onRequestMachineSetup={onRequestMachineSetup}
-          machineProviders={scopedProviders(
-            machineProviders,
+          environmentProviders={scopedProviders(
+            environmentProviders,
             providersByHostId,
             machineHost.id,
             { value, selectedProviderHostId },
@@ -549,7 +558,7 @@ interface MachineSectionProps {
   now: number;
   value: string;
   onRequestMachineSetup: ((host: Host) => void) | undefined;
-  machineProviders: readonly SystemEnvironmentProvider[];
+  environmentProviders: readonly SystemEnvironmentProvider[];
   selectedProviderHostId: string | null;
   inputsControlProviderIds: ReadonlySet<string>;
   onSelectProvider:
@@ -564,13 +573,14 @@ function MachineSection({
   now,
   value,
   onRequestMachineSetup,
-  machineProviders,
+  environmentProviders,
   selectedProviderHostId,
   inputsControlProviderIds,
   onSelectProvider,
 }: MachineSectionProps) {
   const connected = host.status === "connected";
-  const hostProviders = machineProviders;
+  const hostProviders = environmentProviders;
+  const selectable = connected && host.lifecycle.phase === "active";
   return (
     <DropdownMenuGroup>
       <DropdownMenuLabel className="min-w-0 text-muted-foreground">
@@ -613,7 +623,7 @@ function MachineSection({
                   providerValueSelected(value, provider) &&
                   selectedProviderHostId === host.id
                 }
-                disabled={!connected || disabledReason !== null}
+                disabled={!selectable || disabledReason !== null}
                 onSelect={() => onSelectProvider(provider, host.id)}
               />
             );

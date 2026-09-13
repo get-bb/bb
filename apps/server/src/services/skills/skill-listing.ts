@@ -14,7 +14,7 @@ import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import { ApiError } from "../../errors.js";
 import type { AppDeps } from "../../types.js";
 import {
-  callHostOnlineRpc,
+  callHostOnlineRpcForWork,
   callHostRetryableOnlineRpc,
 } from "../hosts/online-rpc.js";
 import type { ProjectCommandWorkspace as CommandWorkspace } from "../projects/project-workspace.js";
@@ -161,26 +161,23 @@ function listServerOwnedSkills(deps: AppDeps): SkillSummary[] {
     logger: deps.logger,
     skillTreeRegistry: deps.skillTreeRegistry,
   })
-    .map(({ provenance, runtimeSource }): SkillSummary | null => {
+    .map(({ runtimeSource }): SkillSummary | null => {
       if (runtimeSource.kind !== "tree") return null;
-      const builtin = provenance.kind === "builtin";
       const rootPath = path.join(
-        builtin
-          ? deps.config.builtinSkillsRootPath
-          : resolveDataDirSkillsRootPath(deps.config.dataDir),
+        resolveDataDirSkillsRootPath(deps.config.dataDir),
         runtimeSource.name,
       );
       const logicalPath = `${runtimeSource.name}/${runtimeSource.entryPath}`;
       return {
-        id: skillId(builtin ? "bb-builtin" : "bb-data-dir", logicalPath),
+        id: skillId("bb-data-dir", logicalPath),
         name: runtimeSource.name,
         description: runtimeSource.description,
         provider: null,
-        scope: builtin ? "bb-builtin" : "bb-user",
+        scope: "bb-user",
         pluginId: null,
         filePath: path.join(rootPath, runtimeSource.entryPath),
-        manageable: !builtin,
-        registrySkillId: builtin ? null : readRegistrySkillProvenance(rootPath),
+        manageable: true,
+        registrySkillId: readRegistrySkillProvenance(rootPath),
       };
     })
     .filter((skill): skill is SkillSummary => skill !== null)
@@ -514,7 +511,7 @@ export async function writeProjectSkill(
     return { filePath: skillFilePath, revision };
   }
   if (editableScope.data !== "bb-user" && editableScope.data !== "bb-project") {
-    const result = await callHostOnlineRpc(deps, {
+    const result = await callHostOnlineRpcForWork(deps, {
       hostId: args.workspace.hostId,
       timeoutMs: COMMAND_TIMEOUT_MS,
       command: {
@@ -532,7 +529,7 @@ export async function writeProjectSkill(
     }
     return { filePath: skill.filePath, revision: result.sha256 };
   }
-  const result = await callHostOnlineRpc(deps, {
+  const result = await callHostOnlineRpcForWork(deps, {
     hostId: args.workspace.hostId,
     timeoutMs: COMMAND_TIMEOUT_MS,
     command: {
@@ -608,7 +605,7 @@ export async function deleteProjectSkill(
     daemonName = hostPathBasename(skillDirPath);
     rootPath = hostPathDirname(skillDirPath);
   }
-  const result = await callHostOnlineRpc(deps, {
+  const result = await callHostOnlineRpcForWork(deps, {
     hostId: args.workspace.hostId,
     timeoutMs: COMMAND_TIMEOUT_MS,
     command: {

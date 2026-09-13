@@ -13,11 +13,8 @@ import { ProjectActionsProvider } from "@/components/project/ProjectActionsProvi
 import { ThreadActionsProvider } from "@/components/thread/ThreadActionsProvider";
 import { SidebarMenu, SidebarMenuItem } from "@/components/ui/sidebar.js";
 import { ProjectListShell } from "./ProjectList";
-import {
-  ProjectListProjects,
-  type ProjectListRowModel,
-} from "./ProjectListProjects";
-import type { ProjectThreadListState } from "./ProjectRow";
+import type { ProjectListRowModel } from "./ProjectListProjects";
+import { ProjectRow, type ProjectThreadListState } from "./ProjectRow";
 import { compareStandardThreads } from "@bb/client-core";
 import { ThreadRow, type ThreadRowOptions } from "./ThreadRow";
 
@@ -239,19 +236,26 @@ function ProjectListStage({
   return (
     <SidebarFrame>
       <ProjectListShell>
-        <ProjectListProjects
-          status="ready"
-          rows={rowModels}
-          progressiveDisclosureEnabled
-          collapsedProjectIds={collapsedProjectIds}
-          collapsedThreadIds={collapsedThreadIds}
-          collapsedEnvironmentIds={collapsedEnvironmentIds}
-          compareThreads={compareStandardThreads}
-          onCreateProjectThread={noop}
-          onToggleProjectCollapsed={onToggleProjectCollapsed}
-          onToggleThreadCollapsed={onToggleThreadCollapsed}
-          onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
-        />
+        <SidebarMenu className="gap-1">
+          {rowModels.map((row) => (
+            <ProjectRow
+              key={row.project.id}
+              project={row.project}
+              threadListState={row.threadListState}
+              progressiveDisclosureEnabled
+              isActive={row.isActive}
+              isLocalPathInvalid={row.isLocalPathInvalid}
+              isCollapsed={collapsedProjectIds.has(row.project.id)}
+              collapsedThreadIds={collapsedThreadIds}
+              collapsedEnvironmentIds={collapsedEnvironmentIds}
+              compareThreads={compareStandardThreads}
+              onCreateProjectThread={noop}
+              onToggleProjectCollapsed={onToggleProjectCollapsed}
+              onToggleThreadCollapsed={onToggleThreadCollapsed}
+              onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
+            />
+          ))}
+        </SidebarMenu>
       </ProjectListShell>
     </SidebarFrame>
   );

@@ -6,7 +6,7 @@ import {
   generatedSkillsRootPath,
   pluginCommandsSkillDir,
 } from "../../../src/services/plugins/plugin-commands-skill.js";
-import { resolveInjectedSkillSources } from "../../../src/services/skills/injected-skills.js";
+import { resolveSkillCatalogEntries } from "../../../src/services/skills/injected-skills.js";
 import {
   createTestAppHarness,
   testLogger,
@@ -353,14 +353,13 @@ describe("plugin CLI commands (bb.cli.register + endpoints + skill + logs)", () 
     expect(content).toContain("## bb acme — Acme tools");
     expect(content).toContain("bb acme issues [--json]");
 
-    const sources = resolveInjectedSkillSources(testLogger, {
+    const sources = resolveSkillCatalogEntries(testLogger, {
       additionalSkillsRootPaths: [
         generatedSkillsRootPath(harness.config.dataDir),
       ],
-      builtinSkillsRootPath: join(harness.config.dataDir, "builtin-skills"),
       dataDir: harness.config.dataDir,
       skillTreeRegistry: harness.deps.skillTreeRegistry,
-    });
+    }).map((entry) => entry.runtimeSource);
     const skill = sources.find((source) => source.name === "plugin-commands");
     expect(skill?.sourceType).toBe("data-dir");
     expect(skill).toMatchObject({ kind: "tree", entryPath: "SKILL.md" });

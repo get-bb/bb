@@ -1,3 +1,4 @@
+import type { Host } from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import type { EnvironmentDisplayInfo } from "@bb/core-ui";
 import type { SystemEnvironmentProvider } from "@bb/server-contract";
@@ -11,14 +12,20 @@ import {
 
 describe("shouldShowEnvironmentHostIdentity", () => {
   it("keeps the machine identity for a projectless thread with one machine", () => {
-    expect(shouldShowEnvironmentHostIdentity(false, true)).toBe(true);
-    expect(shouldShowEnvironmentHostIdentity(false, false)).toBe(false);
+    expect(shouldShowEnvironmentHostIdentity(false, true, "persistent")).toBe(
+      true,
+    );
+    expect(shouldShowEnvironmentHostIdentity(false, false, "persistent")).toBe(
+      false,
+    );
   });
 });
 
 const worktreeProvider: SystemEnvironmentProvider = {
+  machineProviderId: null,
   id: "git-worktree",
   displayName: "Worktree",
+  description: "Prepare a workspace for this thread.",
   icon: "FolderGit",
   logoUrl: null,
   pluginId: "environment-git-worktree",
@@ -35,8 +42,10 @@ const worktreeProvider: SystemEnvironmentProvider = {
 };
 
 const personalProvider: SystemEnvironmentProvider = {
+  machineProviderId: null,
   id: "personal-workspace",
   displayName: "Personal workspace",
+  description: "Prepare a workspace for this thread.",
   icon: "Folder",
   logoUrl: null,
   pluginId: "environment-personal-workspace",
@@ -53,8 +62,10 @@ const personalProvider: SystemEnvironmentProvider = {
 };
 
 const machineContainerProvider: SystemEnvironmentProvider = {
+  machineProviderId: null,
   id: "container",
   displayName: "Container",
+  description: "Prepare a workspace for this thread.",
   icon: "Box",
   logoUrl: null,
   pluginId: "containers",
@@ -108,6 +119,7 @@ interface SummaryDisplayOverrides {
   environmentName?: string | null;
   hasMultipleMachines?: boolean;
   hostName?: string | null;
+  hostType?: Host["type"] | null;
   isProjectless?: boolean;
 }
 
@@ -117,6 +129,7 @@ function getSummaryDisplay({
   environmentName = null,
   hasMultipleMachines = false,
   hostName = "Michael-M4",
+  hostType = "persistent",
   isProjectless = false,
 }: SummaryDisplayOverrides = {}) {
   return getEnvironmentWorkspaceSummaryDisplay({
@@ -125,6 +138,7 @@ function getSummaryDisplay({
     environmentName,
     hasMultipleMachines,
     hostName,
+    hostType,
     isProjectless,
   });
 }
@@ -162,13 +176,13 @@ describe("getEnvironmentDisplayIconName", () => {
     );
   });
 
-  it("falls back to the plugin placeholder icon for an unknown icon name", () => {
+  it("preserves a custom icon reference for the reactive renderer", () => {
     expect(
       getEnvironmentDisplayIconName({
         status: "loaded",
-        provider: { ...worktreeProvider, icon: "NotAnIconName" },
+        provider: { ...worktreeProvider, icon: "acme/workspace" },
       }),
-    ).toBe("Zap");
+    ).toBe("acme/workspace");
   });
 
   it("has no icon for a row with no provider or while the list loads", () => {
@@ -178,6 +192,24 @@ describe("getEnvironmentDisplayIconName", () => {
 });
 
 describe("getEnvironmentWorkspaceSummaryDisplay", () => {
+  it("retains the current sandbox identity when persistent machine choices are singular", () => {
+    expect(shouldShowEnvironmentHostIdentity(false, false, "ephemeral")).toBe(
+      true,
+    );
+    expect(
+      getSummaryDisplay({
+        providerLookup: worktreeProviderLookup,
+        hostName: "Modal sandbox",
+        hostType: "ephemeral",
+        hasMultipleMachines: false,
+      }),
+    ).toMatchObject({
+      label: "Modal sandbox",
+      compactLabel: "Modal sandbox",
+      icon: "FolderGit",
+    });
+  });
+
   it("keeps provisioning ahead of the provider icon and label", () => {
     expect(
       getSummaryDisplay({

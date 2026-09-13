@@ -32,66 +32,60 @@ export function DownloadLink({
   );
 }
 
-export function GitHubLink({
+function TrackedExternalLink({
+  href,
+  event,
   placement,
   className,
   children,
   "aria-label": ariaLabel,
-}: CtaLinkProps & { "aria-label"?: string }) {
+}: CtaLinkProps & {
+  href: string;
+  event:
+    | "landing_github_clicked"
+    | "landing_discord_clicked"
+    | "landing_x_clicked";
+  "aria-label"?: string;
+}) {
   return (
     <a
       className={className}
       aria-label={ariaLabel}
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      onClick={() =>
+        trackLandingEvent({ name: event, properties: { placement } })
+      }
+    >
+      {children}
+    </a>
+  );
+}
+
+export function GitHubLink(props: CtaLinkProps & { "aria-label"?: string }) {
+  return (
+    <TrackedExternalLink
+      {...props}
       href={GITHUB_URL}
-      target="_blank"
-      rel="noreferrer"
-      onClick={() =>
-        trackLandingEvent({
-          name: "landing_github_clicked",
-          properties: { placement },
-        })
-      }
-    >
-      {children}
-    </a>
+      event="landing_github_clicked"
+    />
   );
 }
 
-export function DiscordLink({ placement, className, children }: CtaLinkProps) {
+export function DiscordLink(props: CtaLinkProps) {
   return (
-    <a
-      className={className}
+    <TrackedExternalLink
+      {...props}
       href={DISCORD_URL}
-      target="_blank"
-      rel="noreferrer"
-      onClick={() =>
-        trackLandingEvent({
-          name: "landing_discord_clicked",
-          properties: { placement },
-        })
-      }
-    >
-      {children}
-    </a>
+      event="landing_discord_clicked"
+    />
   );
 }
 
-export function XLink({ placement, className, children }: CtaLinkProps) {
+export function XLink(props: CtaLinkProps) {
   return (
-    <a
-      className={className}
-      href={X_URL}
-      target="_blank"
-      rel="noreferrer"
-      onClick={() =>
-        trackLandingEvent({
-          name: "landing_x_clicked",
-          properties: { placement },
-        })
-      }
-    >
-      {children}
-    </a>
+    <TrackedExternalLink {...props} href={X_URL} event="landing_x_clicked" />
   );
 }
 
@@ -193,5 +187,23 @@ export function EmailSignup({ placement }: { placement: CtaPlacement }) {
         </span>
       ) : null}
     </form>
+  );
+}
+
+export function SubscribeSection({
+  blurb,
+  id,
+  reveal,
+}: {
+  blurb: ReactNode;
+  id?: string;
+  reveal?: boolean;
+}) {
+  return (
+    <section className="subscribe" id={id} data-reveal={reveal || undefined}>
+      <h2 className="subscribe-title">Stay in the loop.</h2>
+      <p>{blurb}</p>
+      <EmailSignup placement="footer" />
+    </section>
   );
 }

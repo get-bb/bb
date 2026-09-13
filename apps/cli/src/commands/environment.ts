@@ -14,11 +14,7 @@ import {
 import { action } from "../action.js";
 import { createCliBbSdk } from "../client.js";
 import { resolveMachineHostId, resolveMachineTargetOption } from "./machine.js";
-import {
-  outputJson,
-  prependErrorContext,
-  printEnvironmentGitOperationResult,
-} from "./helpers.js";
+import { collectOption, outputJson, prependErrorContext } from "./helpers.js";
 
 interface EnvironmentCommitCommandOptions {
   json?: boolean;
@@ -214,21 +210,6 @@ function buildEnvironmentDiffFileArgs(
       }
       return { ...common, target: "uncommitted" };
     case "branch_committed":
-      if (!opts.mergeBaseRef) {
-        throw new Error(
-          `--merge-base-ref is required when --target ${opts.target} is used.`,
-        );
-      }
-      if (opts.sha !== undefined) {
-        throw new Error(
-          `--target ${opts.target} cannot be combined with --sha.`,
-        );
-      }
-      return {
-        ...common,
-        target: opts.target,
-        mergeBaseRef: opts.mergeBaseRef,
-      };
     case "all":
       if (!opts.mergeBaseRef) {
         throw new Error(
@@ -242,7 +223,7 @@ function buildEnvironmentDiffFileArgs(
       }
       return {
         ...common,
-        target: "all",
+        target: opts.target,
         mergeBaseRef: opts.mergeBaseRef,
       };
     case "commit":
@@ -260,6 +241,16 @@ function buildEnvironmentDiffFileArgs(
         "--target must be uncommitted, branch_committed, all, or commit.",
       );
   }
+}
+
+function addDiffTargetOptions(command: Command): Command {
+  return command
+    .requiredOption(
+      "--target <target>",
+      "Diff target: uncommitted, branch_committed, all, or commit",
+    )
+    .option("--merge-base-branch <branch>", "Branch-based target base")
+    .option("--sha <sha>", "Commit target SHA");
 }
 
 function buildEnvironmentDiffPatchArgs(
@@ -294,10 +285,6 @@ function buildEnvironmentDiffPatchArgs(
         target: { type: "commit", sha: diffArgs.sha },
       };
   }
-}
-
-function collectPath(value: string, previous: string[]): string[] {
-  return [...previous, value];
 }
 
 function buildEnvironmentUpdateArgs({
@@ -619,15 +606,11 @@ export function registerEnvironmentCommands(
       }),
     );
 
-  environment
-    .command("diff <id>")
-    .description("Show an environment's git diff")
-    .requiredOption(
-      "--target <target>",
-      "Diff target: uncommitted, branch_committed, all, or commit",
-    )
-    .option("--merge-base-branch <branch>", "Branch-based target base")
-    .option("--sha <sha>", "Commit target SHA")
+  addDiffTargetOptions(
+    environment
+      .command("diff <id>")
+      .description("Show an environment's git diff"),
+  )
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (id: string, opts: EnvironmentDiffCommandOptions) => {
@@ -656,15 +639,11 @@ export function registerEnvironmentCommands(
       }),
     );
 
-  environment
-    .command("diff-files <id>")
-    .description("List changed files in an environment")
-    .requiredOption(
-      "--target <target>",
-      "Diff target: uncommitted, branch_committed, all, or commit",
-    )
-    .option("--merge-base-branch <branch>", "Branch-based target base")
-    .option("--sha <sha>", "Commit target SHA")
+  addDiffTargetOptions(
+    environment
+      .command("diff-files <id>")
+      .description("List changed files in an environment"),
+  )
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (id: string, opts: EnvironmentDiffCommandOptions) => {
@@ -737,7 +716,12 @@ export function registerEnvironmentCommands(
       "--target <target>",
       "Diff target: uncommitted, branch_committed, all, or commit",
     )
-    .option("--path <path>", "Changed file path (repeatable)", collectPath, [])
+    .option(
+      "--path <path>",
+      "Changed file path (repeatable)",
+      collectOption,
+      [],
+    )
     .option("--merge-base-branch <branch>", "Branch-based target base")
     .option("--sha <sha>", "Commit target SHA")
     .option("--json", "Print machine-readable JSON output")
@@ -842,7 +826,7 @@ export function registerEnvironmentCommands(
           );
         }
         if (outputJson(opts, result)) return;
-        printEnvironmentGitOperationResult(result);
+        console.log(`${result.message} [committed]`);
       }),
     );
 

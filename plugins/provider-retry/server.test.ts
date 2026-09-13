@@ -19,7 +19,6 @@ type QueueEntry = ReturnType<typeof makeQueueEntry>;
 
 const NOW_MS = Date.parse("2026-08-05T12:00:00.000Z");
 const RESET_AT_MS = NOW_MS + 5 * 60 * 60 * 1_000;
-const HOST_ID = "host-one";
 const THREAD_ID = "thread-limited";
 const REQUEST_ID = "creq_aaaaaaaaaa";
 const PLUGIN_ID = "provider-retry";

@@ -60,7 +60,7 @@ describe("describeQueuedMessageWait", () => {
 
   it("names the absent machine a host-offline row is waiting on", () => {
     expect(describeWait({ kind: "host-offline", hostName: "M4" })).toBe(
-      "Waiting for M4 to reconnect",
+      "Waiting for M4 to be ready",
     );
   });
 

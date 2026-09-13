@@ -66,42 +66,25 @@ import type {
   PoolStatus,
 } from "./src/contracts.js";
 import type { accountPoolRpcContract } from "./src/rpc.js";
-import { statusSchema } from "./src/contracts.js";
+import type { OAuthLoginStart } from "./src/oauth-login.js";
+import type { CodexDeviceLoginStart } from "./src/codex-device-login.js";
+import {
+  DEFAULT_ACCOUNT_POOL_CONFIG,
+  modelFamilySchema,
+  statusSchema,
+} from "./src/contracts.js";
 import { blockingResetAt } from "./src/quota.js";
 import {
   ACCOUNT_POOL_ACCOUNTS_CHANGED,
   ACCOUNT_POOL_CONFIG_CHANGED,
 } from "./src/realtime.js";
 
-interface LoginStep {
-  sessionId: string;
-  authorizeUrl: string;
-}
-interface CodexLoginStep {
-  sessionId: string;
-  verificationUri: string;
-  userCode: string;
-  expiresAt: number;
-  intervalMs: number;
-}
 type DialogState =
   | { kind: "account" | "priority" | "remove"; accountId: string }
   | { kind: "claude-login" | "codex-login" | "api-key" }
   | null;
 
 type ConfigField = keyof AccountPoolConfig;
-
-interface ConfigDrafts {
-  anthropicUpstreamBaseUrl: string;
-  codexUpstreamBaseUrl: string;
-  switchThreshold: string;
-}
-
-interface ConfigErrors {
-  anthropicUpstreamBaseUrl: string | null;
-  codexUpstreamBaseUrl: string | null;
-  switchThreshold: string | null;
-}
 
 const PROVIDERS: Array<{
   id: PoolProvider;
@@ -127,13 +110,6 @@ const FAMILY_LABELS: Record<ModelFamily, string> = {
   haiku: "Haiku 7 day",
   other: "Other 7 day",
 };
-const MODEL_FAMILIES: ModelFamily[] = [
-  "fable",
-  "sonnet",
-  "opus",
-  "haiku",
-  "other",
-];
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -150,7 +126,7 @@ function httpUrlError(value: string): string | null {
   }
 }
 
-function configDrafts(config: AccountPoolConfig): ConfigDrafts {
+function configDrafts(config: AccountPoolConfig): Record<ConfigField, string> {
   return {
     anthropicUpstreamBaseUrl: config.anthropicUpstreamBaseUrl,
     codexUpstreamBaseUrl: config.codexUpstreamBaseUrl,
@@ -243,6 +219,11 @@ function tier(account: AccountSummary): string {
     account.subscriptionType ??
     (account.kind === "api-key" ? "API key" : "OAuth")
   );
+}
+function secondaryEmail(account: AccountSummary): string | null {
+  return account.email === null || account.email === account.label
+    ? null
+    : account.email;
 }
 function SettingsBadge({ children }: { children: ReactNode }) {
   return (
@@ -387,6 +368,7 @@ function AccountRow({
 }) {
   const status = statusPresentation(account, threshold);
   const slots = quotaSlots(account);
+  const email = secondaryEmail(account);
   const {
     attributes,
     isDragging,
@@ -435,6 +417,11 @@ function AccountRow({
               <span className="truncate text-sm font-medium text-foreground">
                 {account.label}
               </span>
+              {email === null ? null : (
+                <span className="min-w-0 truncate text-xs text-subtle-foreground/75">
+                  {email}
+                </span>
+              )}
               <SettingsBadge>{tier(account)}</SettingsBadge>
             </div>
             <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-subtle-foreground/75">
@@ -836,12 +823,14 @@ function AccountPoolSettings() {
   const [status, setStatus] = useState<PoolStatus | null>(readCachedStatus);
   const [statusIsCached, setStatusIsCached] = useState(status !== null);
   const [config, setConfig] = useState<AccountPoolConfig | null>(null);
-  const [drafts, setDrafts] = useState<ConfigDrafts>({
+  const [drafts, setDrafts] = useState<Record<ConfigField, string>>({
     anthropicUpstreamBaseUrl: "",
     codexUpstreamBaseUrl: "",
     switchThreshold: "",
   });
-  const [configErrors, setConfigErrors] = useState<ConfigErrors>({
+  const [configErrors, setConfigErrors] = useState<
+    Record<ConfigField, string | null>
+  >({
     anthropicUpstreamBaseUrl: null,
     codexUpstreamBaseUrl: null,
     switchThreshold: null,
@@ -859,15 +848,18 @@ function AccountPoolSettings() {
       coordinateGetter: sortableKeyboardCoordinates,
     }),
   );
-  const [loginStep, setLoginStep] = useState<LoginStep | null>(null);
-  const [codexStep, setCodexStep] = useState<CodexLoginStep | null>(null);
+  const [loginStep, setLoginStep] = useState<OAuthLoginStart | null>(null);
+  const [codexStep, setCodexStep] = useState<CodexDeviceLoginStart | null>(
+    null,
+  );
   const [loginDone, setLoginDone] = useState<string | null>(null);
   const [pastedCode, setPastedCode] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [priority, setPriority] = useState("100");
   const [countdown, setCountdown] = useState(0);
   const mounted = useRef(true);
-  const threshold = config?.switchThreshold ?? 0.98;
+  const threshold =
+    config?.switchThreshold ?? DEFAULT_ACCOUNT_POOL_CONFIG.switchThreshold;
   const applyConfig = useCallback((next: AccountPoolConfig) => {
     setConfig(next);
     setDrafts(configDrafts(next));
@@ -1498,8 +1490,7 @@ function AccountPoolSettings() {
                 setLoginStep(null);
               })
             }
-            addAnother={() => void startClaude()}
-            retry={() => void startClaude()}
+            restart={() => void startClaude()}
           />
         ) : null}
         {dialog?.kind === "codex-login" ? (
@@ -1516,8 +1507,7 @@ function AccountPoolSettings() {
             openUrl={navigate.openUrl}
             setPastedCode={() => {}}
             complete={() => {}}
-            addAnother={() => void startCodex()}
-            retry={() => void startCodex()}
+            restart={() => void startCodex()}
           />
         ) : null}
       </Dialog>
@@ -1617,7 +1607,7 @@ function AccountDialog({
               )}
               threshold={threshold}
             />
-            {MODEL_FAMILIES.flatMap((family) =>
+            {modelFamilySchema.options.flatMap((family) =>
               account.familyWeekly[family] === null
                 ? []
                 : [
@@ -1633,6 +1623,12 @@ function AccountDialog({
         )}
       </div>
       <dl className="grid grid-cols-[7rem_1fr] gap-x-3 gap-y-2 border-t border-border pt-4 text-sm">
+        {account.email === null ? null : (
+          <>
+            <dt className="text-muted-foreground">Email</dt>
+            <dd className="break-all">{account.email}</dd>
+          </>
+        )}
         <dt className="text-muted-foreground">Kind</dt>
         <dd>
           {account.kind === "oauth"
@@ -1675,12 +1671,11 @@ function LoginDialog({
   openUrl,
   setPastedCode,
   complete,
-  addAnother,
-  retry,
+  restart,
 }: {
   provider: PoolProvider;
-  loginStep: LoginStep | null;
-  codexStep: CodexLoginStep | null;
+  loginStep: OAuthLoginStart | null;
+  codexStep: CodexDeviceLoginStart | null;
   loginDone: string | null;
   pending: boolean;
   pastedCode: string;
@@ -1690,8 +1685,7 @@ function LoginDialog({
   openUrl: (url: string) => boolean;
   setPastedCode: (value: string) => void;
   complete: () => void;
-  addAnother: () => void;
-  retry: () => void;
+  restart: () => void;
 }) {
   const name = provider === "claude" ? "Claude" : "Codex";
   const url =
@@ -1706,7 +1700,7 @@ function LoginDialog({
         loginDone !== null ? (
           <>
             <span className="flex-1" />
-            <Button variant="outline" onClick={addAnother}>
+            <Button variant="outline" onClick={restart}>
               Add another
             </Button>
             <Button onClick={close}>Done</Button>
@@ -1739,7 +1733,7 @@ function LoginDialog({
         provider === "codex" && error !== null ? (
           <div className="space-y-3">
             <p className="text-sm text-destructive-text">{error}</p>
-            <Button variant="outline" onClick={retry}>
+            <Button variant="outline" onClick={restart}>
               Try again
             </Button>
           </div>

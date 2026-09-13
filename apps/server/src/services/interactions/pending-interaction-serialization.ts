@@ -35,28 +35,11 @@ function parseStoredPendingInteractionJson(
 export function toPendingInteraction(
   row: PendingInteractionRow,
 ): PendingInteraction {
-  let payload: unknown;
-  try {
-    payload = parseStoredPendingInteractionJson(row, "payload");
-  } catch (error) {
-    if (error instanceof PendingInteractionSerializationError) {
-      throw error;
-    }
-    throw new PendingInteractionSerializationError(row.id, "payload");
-  }
-
-  let resolution: unknown;
-  try {
-    resolution =
-      row.resolution === null
-        ? null
-        : parseStoredPendingInteractionJson(row, "resolution");
-  } catch (error) {
-    if (error instanceof PendingInteractionSerializationError) {
-      throw error;
-    }
-    throw new PendingInteractionSerializationError(row.id, "resolution");
-  }
+  const payload = parseStoredPendingInteractionJson(row, "payload");
+  const resolution =
+    row.resolution === null
+      ? null
+      : parseStoredPendingInteractionJson(row, "resolution");
 
   try {
     return pendingInteractionSchema.parse({

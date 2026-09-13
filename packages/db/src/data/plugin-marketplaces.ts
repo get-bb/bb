@@ -21,20 +21,10 @@ export interface PluginMarketplaceRow {
   updatedAt: number;
 }
 
-export interface UpsertPluginMarketplaceInput {
-  name: string;
-  sourceKind: PluginMarketplaceSourceKind;
-  manifestUrl: string;
-  sourceGitRef: string | null;
-  sourceGitCommit: string | null;
-  manifestJson: string;
-  statsJson: string | null;
-  etag: string | null;
-  lastModified: string | null;
-  lastSuccessfulRefreshAt: number | null;
-  lastAttemptedRefreshAt: number | null;
-  lastError: string | null;
-}
+export type UpsertPluginMarketplaceInput = Omit<
+  PluginMarketplaceRow,
+  "createdAt" | "updatedAt"
+>;
 
 export interface PluginMarketplaceIconRow {
   marketplaceName: string;

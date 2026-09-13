@@ -138,9 +138,7 @@ function createWorkspace(workspacePath = WORKSPACE_PATH): HostWorkspace {
     diffPatch: unexpectedWorkspaceCall,
     getPullRequest: unexpectedWorkspaceCall,
     runPullRequestAction: unexpectedWorkspaceCall,
-    listFiles: unexpectedWorkspaceCall,
     commit: unexpectedWorkspaceCall,
-    reset: unexpectedWorkspaceCall,
   };
 }
 
@@ -823,7 +821,8 @@ describe("dispatchCommand", () => {
       .mockReturnValueOnce(newRuntime);
     const manager = new RuntimeManager({
       createRuntime: createRuntimeSpy,
-      provisionWorkspace: async (args) => createWorkspace(args.path),
+      provisionWorkspace: async (args) =>
+        createWorkspace(args.path),
     });
     await manager.ensureEnvironment({
       environmentId: "env-old",
@@ -1148,7 +1147,8 @@ describe("dispatchCommand", () => {
       .mockReturnValueOnce(newRuntime);
     const manager = new RuntimeManager({
       createRuntime: createRuntimeSpy,
-      provisionWorkspace: async (args) => createWorkspace(args.path),
+      provisionWorkspace: async (args) =>
+        createWorkspace(args.path),
     });
     await manager.ensureEnvironment({
       environmentId: "env-old",
@@ -1198,7 +1198,8 @@ describe("dispatchCommand", () => {
       .mockReturnValueOnce(newRuntime);
     const manager = new RuntimeManager({
       createRuntime: createRuntimeSpy,
-      provisionWorkspace: async (args) => createWorkspace(args.path),
+      provisionWorkspace: async (args) =>
+        createWorkspace(args.path),
     });
     await manager.ensureEnvironment({
       environmentId: "env-old",

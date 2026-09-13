@@ -183,12 +183,10 @@ function createFakeWorkspace(path: string, isGitRepo = true) {
     diffPatch: vi.fn(async () => []),
     getPullRequest: vi.fn(async () => ({ outcome: "none" as const })),
     runPullRequestAction: vi.fn(async () => undefined),
-    listFiles: vi.fn(async () => []),
     commit: vi.fn(async (..._args: CommitArgs) => ({
       commitSha: "commit-1",
       commitSubject: "commit",
     })),
-    reset: vi.fn(async () => undefined),
     setLocalStateFingerprint(value: GetLocalStateFingerprintResult) {
       localStateFingerprint = value;
     },
@@ -1499,35 +1497,12 @@ describe("RuntimeManager", () => {
     });
     runtimes[1]?.setActiveTurn("thr-active", "turn-active");
 
-    await expect(manager.evictIdleEnvironments()).resolves.toEqual([
-      "env-idle",
-    ]);
+    await manager.replaceBaseShellEnv({ CHANGED: "1" });
 
     expect(manager.get("env-idle")).toBeUndefined();
     expect(manager.get("env-active")).toBeDefined();
     expect(runtimes[0]?.shutdown).toHaveBeenCalledTimes(1);
     expect(runtimes[1]?.shutdown).not.toHaveBeenCalled();
-  });
-
-  it("skips idle eviction while environment creation is still pending", async () => {
-    const deferredWorkspace = createDeferredPromise<HostWorkspace>();
-    const manager = new RuntimeManager({
-      provisionWorkspace: vi.fn(async () => deferredWorkspace.promise),
-      createRuntime: vi.fn(() => createFakeRuntime()),
-    });
-
-    const pendingEnvironment = manager.ensureEnvironment({
-      environmentId: "env-pending",
-      workspacePath: "/tmp/env-pending",
-    });
-
-    await expect(manager.evictIdleEnvironments()).resolves.toEqual([]);
-
-    deferredWorkspace.resolve(createFakeWorkspace("/tmp/env-pending"));
-    await expect(pendingEnvironment).resolves.toMatchObject({
-      environmentId: "env-pending",
-    });
-    expect(manager.get("env-pending")).toBeDefined();
   });
 
   it("forgets a retired environment", async () => {

@@ -1,25 +1,18 @@
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import {
-  useDeferredValue,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type RefObject,
-} from "react";
+  BRANCH_PICKER_CONTENT_CLASS_NAME,
+  BranchPickerRow,
+  BranchPickerSearch,
+  BranchPickerSectionHeader,
+} from "@bb/shared-ui/branch-picker-primitives";
 import { Button } from "@bb/shared-ui/button";
-import { Icon, type IconName } from "@bb/shared-ui/icon";
+import { Icon } from "@bb/shared-ui/icon";
 import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
-import {
-  MENU_ITEM_LAST_HOVERED_CLASS,
-  MenuHoverProvider,
-  useMenuItemHover,
-} from "@bb/shared-ui/menu-item-hover";
+import { MenuHoverProvider } from "@bb/shared-ui/menu-item-hover";
 import {
   COARSE_POINTER_COMPACT_ICON_SIZE_CLASS,
   COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
-  COARSE_POINTER_ICON_SIZE_SHRINK_CLASS,
 } from "@bb/shared-ui/coarse-pointer-sizing";
-import { Input } from "@bb/shared-ui/input";
 import { blurActiveKeyboardInputWithin } from "@bb/shared-ui/overlay-trigger";
 import { Popover, PopoverContent, PopoverTrigger } from "@bb/shared-ui/popover";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
@@ -87,14 +80,6 @@ export function getMergeBaseBranchCandidateGroups({
 
 const EMPTY_BRANCH_OPTIONS: readonly string[] = [];
 const BRANCH_LABEL_PREFIXES = ["Branch from:"] as const;
-const BRANCH_PICKER_ROW_CLASS_NAME =
-  "flex w-full min-w-0 items-center gap-2 rounded-sm px-2 py-[0.3125rem] text-left text-xs outline-none hover:bg-state-hover hover:text-foreground focus-visible:bg-state-hover focus-visible:text-foreground";
-const BRANCH_PICKER_HEADER_BASE_CLASS_NAME =
-  "text-xs font-medium text-muted-foreground";
-const BRANCH_PICKER_HEADER_STICKY_CLASS_NAME =
-  "sticky top-0 z-20 -mx-1 bg-background px-3";
-const BRANCH_PICKER_CONTENT_CLASS_NAME =
-  "flex w-full min-w-0 flex-col overflow-hidden p-0 md:w-max md:max-w-[min(18rem,calc(100vw-2rem))] md:max-h-[calc(100vh-6rem)]";
 const BRANCH_SEARCH_DEBOUNCE_MS = 120;
 
 interface BranchPlainLabelParts {
@@ -118,10 +103,6 @@ interface BranchPickerTextProps {
   wrap?: boolean;
 }
 
-interface BranchPickerSectionHeaderProps {
-  label: string;
-}
-
 interface BranchPickerMenuCopy {
   title: string | null;
   optionsSectionLabel: string | null;
@@ -136,28 +117,6 @@ const BASE_BRANCH_MENU_COPY: BranchPickerMenuCopy = {
   title: "Branch from:",
   optionsSectionLabel: null,
 };
-
-interface BranchPickerRowButtonProps {
-  icon: IconName;
-  label: string;
-  title?: string;
-  selected: boolean;
-  onSelect: () => void;
-}
-
-interface BranchPickerSearchProps {
-  inputRef: RefObject<HTMLInputElement | null>;
-  query: string;
-  enterSelection: string | undefined;
-  onEnterSelection: (branch: string) => void;
-  onQueryChange: (query: string) => void;
-}
-
-interface BranchPickerBranchOptionsProps {
-  options: readonly string[];
-  selectedValue: string | null;
-  onSelect: (branch: string) => void;
-}
 
 interface OrderBranchPickerOptionsArgs {
   options: readonly string[];
@@ -225,121 +184,6 @@ function BranchPickerText({
         {parts.value}
       </span>
     </span>
-  );
-}
-
-function BranchPickerSectionHeader({ label }: BranchPickerSectionHeaderProps) {
-  return (
-    <div
-      className={cn(
-        BRANCH_PICKER_HEADER_BASE_CLASS_NAME,
-        BRANCH_PICKER_HEADER_STICKY_CLASS_NAME,
-        "flex h-7 items-center",
-      )}
-    >
-      {label}
-    </div>
-  );
-}
-
-function BranchPickerRowButton({
-  icon,
-  label,
-  title,
-  selected,
-  onSelect,
-}: BranchPickerRowButtonProps) {
-  const { hoverProps } = useMenuItemHover();
-  return (
-    <button
-      type="button"
-      className={cn(
-        BRANCH_PICKER_ROW_CLASS_NAME,
-        LIST_HOVER_TRANSITION,
-        MENU_ITEM_LAST_HOVERED_CLASS,
-      )}
-      title={title ?? label}
-      onClick={onSelect}
-      {...hoverProps}
-    >
-      <Icon
-        name={icon}
-        className={cn(
-          "text-muted-foreground",
-          COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
-        )}
-      />
-      <BranchPickerText label={label} className="flex-1" wrap />
-      <Icon
-        name="Check"
-        className={
-          selected
-            ? cn("opacity-100", COARSE_POINTER_ICON_SIZE_SHRINK_CLASS)
-            : cn("opacity-0", COARSE_POINTER_ICON_SIZE_SHRINK_CLASS)
-        }
-      />
-    </button>
-  );
-}
-
-function BranchPickerSearch({
-  inputRef,
-  query,
-  enterSelection,
-  onEnterSelection,
-  onQueryChange,
-}: BranchPickerSearchProps) {
-  return (
-    <div className="shrink-0 border-b border-border p-1.5">
-      <div className="relative">
-        <Icon
-          name="Search"
-          className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
-        />
-        <Input
-          ref={inputRef}
-          value={query}
-          onChange={(event) => onQueryChange(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key !== "Enter") {
-              return;
-            }
-
-            event.preventDefault();
-            event.stopPropagation();
-
-            if (!enterSelection) {
-              return;
-            }
-
-            onEnterSelection(enterSelection);
-          }}
-          placeholder="Search branches"
-          className="h-8 border-0 bg-transparent pl-8 pr-2 text-xs shadow-none focus-visible:ring-0"
-        />
-      </div>
-    </div>
-  );
-}
-
-function BranchPickerBranchOptions({
-  options,
-  selectedValue,
-  onSelect,
-}: BranchPickerBranchOptionsProps) {
-  return (
-    <>
-      {options.map((branch) => (
-        <BranchPickerRowButton
-          key={branch}
-          icon="GitMerge"
-          label={branch}
-          title={branch}
-          selected={branch === selectedValue}
-          onSelect={() => onSelect(branch)}
-        />
-      ))}
-    </>
   );
 }
 
@@ -609,11 +453,17 @@ export function BranchPicker({
             {menuCopy.optionsSectionLabel ? (
               <BranchPickerSectionHeader label={menuCopy.optionsSectionLabel} />
             ) : null}
-            <BranchPickerBranchOptions
-              options={filteredBranchOptions}
-              selectedValue={value}
-              onSelect={selectBranchAndClose}
-            />
+            {filteredBranchOptions.map((branch) => (
+              <BranchPickerRow
+                key={branch}
+                icon="GitMerge"
+                selected={branch === value}
+                title={branch}
+                onSelect={() => selectBranchAndClose(branch)}
+              >
+                <BranchPickerText label={branch} className="flex-1" wrap />
+              </BranchPickerRow>
+            ))}
             {filteredBranchOptions.length === 0 ? (
               <p className="px-2 py-3 text-center text-xs text-muted-foreground">
                 {loading ? "Loading branches..." : "No branches found."}

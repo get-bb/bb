@@ -2,9 +2,7 @@ import type { IconName } from "@bb/shared-ui/icon";
 import type { ShowcaseArchetype } from "@/components/showcase-hero/showcase-archetype";
 import { CREATE_PLUGIN_PROMPT } from "@bb/client-core";
 
-type BrowseArchetype = ShowcaseArchetype;
-
-const ARCHETYPE_SOURCE: readonly Omit<BrowseArchetype, "id">[] = [
+const ARCHETYPE_SOURCE: readonly Omit<ShowcaseArchetype, "id">[] = [
   {
     noun: "a kanban board",
     title: "Kanban board",
@@ -67,14 +65,14 @@ const ARCHETYPE_SOURCE: readonly Omit<BrowseArchetype, "id">[] = [
   },
 ];
 
-export const BROWSE_ARCHETYPES: readonly BrowseArchetype[] =
+export const BROWSE_ARCHETYPES: readonly ShowcaseArchetype[] =
   ARCHETYPE_SOURCE.map((archetype) => ({
     ...archetype,
     id: archetype.title.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
   }));
 
-export function archetypePrompt(archetype: BrowseArchetype): string {
-  return `${CREATE_PLUGIN_PROMPT}${archetype.brief}.`;
+export function briefPrompt({ brief }: { brief: string }): string {
+  return `${CREATE_PLUGIN_PROMPT}${brief}.`;
 }
 
 interface UtilityExample {
@@ -127,10 +125,6 @@ export const UTILITY_EXAMPLES: readonly UtilityExample[] = [
     brief: "connects Linear issues to the prompt box as searchable @-mentions",
   },
 ];
-
-export function utilityPrompt(example: UtilityExample): string {
-  return `${CREATE_PLUGIN_PROMPT}${example.brief}.`;
-}
 
 const COMPOSER_REQUEST_NONCE_KEY = "__bbBrowseComposerRequestNonce";
 export function nextComposerRequestNonce(): number {

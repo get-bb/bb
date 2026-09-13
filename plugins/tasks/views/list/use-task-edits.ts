@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Task } from "../../shared/contract.js";
+import { errorMessage } from "../../shared/errors.js";
 import { useTasksRpc } from "../../shell/data.js";
 import {
   beginEdit,
@@ -50,9 +51,7 @@ export function useListTaskEdits(
         },
         (error: unknown) => {
           setEntries((prev) => settleFailure(prev, task.id, patch, gen));
-          onErrorRef.current(
-            error instanceof Error ? error.message : String(error),
-          );
+          onErrorRef.current(errorMessage(error));
         },
       );
     },

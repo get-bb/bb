@@ -1,3 +1,4 @@
+import { contextSnapshotSchema } from "./context-snapshot.js";
 import { z } from "zod";
 import {
   systemErrorEventDataSchema,
@@ -274,9 +275,6 @@ export const threadEventImageGenerationItemSchema = z.object({
   ...itemPresentationField,
   parentToolCallId: z.string().optional(),
 });
-export type ThreadEventImageGenerationItem = z.infer<
-  typeof threadEventImageGenerationItemSchema
->;
 
 const threadEventUserContentSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("text"), text: z.string() }),
@@ -300,6 +298,7 @@ export type ThreadEventTokenUsageBreakdown = z.infer<
 >;
 
 const threadEventContextWindowUsageSchema = z.object({
+  snapshot: contextSnapshotSchema.optional(),
   usedTokens: z.number().nullable(),
   modelContextWindow: z.number().nullable(),
   estimated: z.boolean(),
@@ -462,38 +461,15 @@ export const threadEventItemSchema = z.discriminatedUnion("type", [
 export type ThreadEventItem = z.infer<typeof threadEventItemSchema>;
 export type ThreadEventItemType = ThreadEventItem["type"];
 
-export const CORE_ITEM_KINDS = [
-  "userMessage",
-  "agentMessage",
-  "commandExecution",
-  "fileChange",
-  "fileRead",
-  "search",
-  "webSearch",
-  "webFetch",
-  "imageView",
-  "imageGeneration",
-  "toolCall",
-  "reasoning",
-  "plan",
-  "planSteps",
-  "contextCompaction",
-  "backgroundTask",
-  "delegation",
-] as const satisfies readonly Exclude<ThreadEventItemType, "extension">[];
-export type CoreItemKind = (typeof CORE_ITEM_KINDS)[number];
-
-type CoreItemKindsAreExhaustive =
-  Exclude<ThreadEventItemType, "extension"> extends CoreItemKind
-    ? CoreItemKind extends Exclude<ThreadEventItemType, "extension">
-      ? true
-      : never
-    : never;
-const coreItemKindsAreExhaustive: CoreItemKindsAreExhaustive = true;
-void coreItemKindsAreExhaustive;
-
-export function isCoreItemKind(value: string): value is CoreItemKind {
-  return (CORE_ITEM_KINDS as readonly string[]).includes(value);
+function itemTextDeltaEventSchema<TType extends string>(type: TType) {
+  return z.object({
+    type: z.literal(type),
+    threadId: z.string(),
+    providerThreadId: z.string(),
+    itemId: z.string(),
+    delta: z.string(),
+    parentToolCallId: z.string().optional(),
+  });
 }
 
 const unscopedProviderEventSchema = z.discriminatedUnion("type", [
@@ -572,14 +548,7 @@ const unscopedProviderEventSchema = z.discriminatedUnion("type", [
     providerThreadId: z.string(),
     item: threadEventItemSchema,
   }),
-  z.object({
-    type: z.literal("item/agentMessage/delta"),
-    threadId: z.string(),
-    providerThreadId: z.string(),
-    itemId: z.string(),
-    delta: z.string(),
-    parentToolCallId: z.string().optional(),
-  }),
+  itemTextDeltaEventSchema("item/agentMessage/delta"),
   z.object({
     type: z.literal("item/commandExecution/outputDelta"),
     threadId: z.string(),
@@ -589,38 +558,10 @@ const unscopedProviderEventSchema = z.discriminatedUnion("type", [
     reset: z.boolean().optional(),
     parentToolCallId: z.string().optional(),
   }),
-  z.object({
-    type: z.literal("item/fileChange/outputDelta"),
-    threadId: z.string(),
-    providerThreadId: z.string(),
-    itemId: z.string(),
-    delta: z.string(),
-    parentToolCallId: z.string().optional(),
-  }),
-  z.object({
-    type: z.literal("item/reasoning/summaryTextDelta"),
-    threadId: z.string(),
-    providerThreadId: z.string(),
-    itemId: z.string(),
-    delta: z.string(),
-    parentToolCallId: z.string().optional(),
-  }),
-  z.object({
-    type: z.literal("item/reasoning/textDelta"),
-    threadId: z.string(),
-    providerThreadId: z.string(),
-    itemId: z.string(),
-    delta: z.string(),
-    parentToolCallId: z.string().optional(),
-  }),
-  z.object({
-    type: z.literal("item/plan/delta"),
-    threadId: z.string(),
-    providerThreadId: z.string(),
-    itemId: z.string(),
-    delta: z.string(),
-    parentToolCallId: z.string().optional(),
-  }),
+  itemTextDeltaEventSchema("item/fileChange/outputDelta"),
+  itemTextDeltaEventSchema("item/reasoning/summaryTextDelta"),
+  itemTextDeltaEventSchema("item/reasoning/textDelta"),
+  itemTextDeltaEventSchema("item/plan/delta"),
   z.object({
     type: z.literal("item/mcpToolCall/progress"),
     threadId: z.string(),
@@ -705,6 +646,9 @@ const unscopedProviderEventSchema = z.discriminatedUnion("type", [
           source: z.union([
             z.literal("shell"),
             z.object({ plugin: z.string() }).strict(),
+            z
+              .object({ core: z.enum(["machine-git", "machine-environment"]) })
+              .strict(),
           ]),
           value: z.union([
             z.string(),

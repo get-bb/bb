@@ -28,7 +28,6 @@ function renderSidebar(activePluginId: string | null = null) {
             sections: SETTINGS_NAV_SECTIONS,
           }}
           onResizeMouseDown={() => {}}
-          showTopReserve={false}
         />
       </SidebarProvider>
     </MemoryRouter>,

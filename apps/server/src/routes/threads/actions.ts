@@ -64,11 +64,7 @@ import {
   toThreadListEntryResponses,
   toThreadResponseFromThread,
 } from "../../services/threads/thread-runtime-display.js";
-import {
-  archiveThreadAndChildren,
-  archiveThreadAndHiddenSourceForks,
-  resolveArchiveThreadEnvironment,
-} from "../../services/threads/thread-archive.js";
+import { archiveThreadAndChildren } from "../../services/threads/thread-archive.js";
 import {
   requireThreadCommandEnvironment,
   requireThreadHostCommandEnvironment,
@@ -535,25 +531,6 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
       }),
     );
     return context.json(buildActivePinnedThreadRootListResponse(deps));
-  });
-
-  post(routes.archive, async (context) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
-    if (thread.archivedAt !== null) {
-      deps.terminalSessions.closeArchivedThreadTerminals({
-        threadId: thread.id,
-      });
-      return context.json({ ok: true });
-    }
-    const environment = resolveArchiveThreadEnvironment(deps, { thread });
-    const archiveResult = archiveThreadAndHiddenSourceForks(deps, {
-      environment,
-      thread,
-    });
-    if (!archiveResult) {
-      throw new ApiError(404, "thread_not_found", "Thread not found");
-    }
-    return context.json({ ok: true });
   });
 
   post(routes.archiveAll, (context) => {

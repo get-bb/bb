@@ -7,12 +7,12 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { bumpVersion } from "../../../scripts/bump-version.mjs";
+import { createRenameFailingFileSystem } from "./atomic-write-helpers.mjs";
 import {
   deriveNightlyVersion,
   prepareNightlyVersion,
@@ -136,31 +136,18 @@ describe("bump-version", () => {
       repoRoot,
       "apps/desktop/package.json",
     );
-    let renameCalls = 0;
+    const { fileSystem, getRenameCalls } = createRenameFailingFileSystem(2);
 
     await expect(
       bumpVersion({
         args: ["0.0.7"],
-        fileSystem: {
-          readFile,
-          rename: async (from, to) => {
-            renameCalls += 1;
-
-            if (renameCalls === 2) {
-              throw new Error("simulated rename failure");
-            }
-
-            await rename(from, to);
-          },
-          unlink,
-          writeFile,
-        },
+        fileSystem,
         log: () => {},
         repoRoot,
       }),
     ).rejects.toThrow("simulated rename failure");
 
-    expect(renameCalls).toBe(2);
+    expect(getRenameCalls()).toBe(2);
     expect(readPackageContent(repoRoot, "packages/bb-app/package.json")).toBe(
       originalBbAppContent,
     );

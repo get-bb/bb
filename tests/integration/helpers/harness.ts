@@ -15,7 +15,6 @@ import {
   type HostDaemon,
   type HostDaemonApp,
 } from "@bb/host-daemon/test";
-import { createHostDaemonClient } from "@bb/host-daemon-contract";
 import { initDb } from "../../../apps/server/src/db.js";
 import { createLifecycleDedupers } from "../../../apps/server/src/lifecycle-dedupers.js";
 import { createApp } from "../../../apps/server/src/server.js";
@@ -51,6 +50,7 @@ import { NotificationHub } from "../../../apps/server/src/ws/hub.js";
 import { WatchInterestCoordinator } from "../../../apps/server/src/ws/watch-interests.js";
 import { WorkspaceReadCaches } from "../../../apps/server/src/services/environments/workspace-read-cache.js";
 import { createPublicApiClient } from "@bb/server-contract";
+import { resolveProjectEnvCandidates } from "@bb/test-helpers";
 import { waitForHostConnected } from "./assertions.js";
 import { createIntegrationFetch } from "./fetch.js";
 import { isNodeError, removePathWithRetry } from "./remove-path.js";
@@ -67,7 +67,6 @@ const TEST_SERVER_HOST = "127.0.0.1";
 let loadedProjectEnvPath: string | null | undefined;
 
 type PublicApiClient = ReturnType<typeof createPublicApiClient>;
-type InternalHostDaemonClient = ReturnType<typeof createHostDaemonClient>;
 
 const testLogger: ServerLogger = {
   debug(): void {},
@@ -91,20 +90,16 @@ export interface IntegrationHarness {
   api: PublicApiClient;
   cleanup(): Promise<void>;
   crashDaemon(): Promise<void>;
-  daemon: HostDaemon;
   daemonApp: HostDaemonApp;
-  daemonDataDir: string;
   db: DbConnection;
   hostId: string;
   hub: NotificationHub;
-  internal: InternalHostDaemonClient;
   repoDir: string;
   restartDaemon(reason?: string): Promise<void>;
   server: RunningTestServer;
   serverUrl: string;
   shutdownDaemon(reason?: string): Promise<void>;
   startDaemon(): Promise<void>;
-  threadStorageRootPath: string;
 }
 
 export const PROJECT_CHECKOUT_BUILTIN_PLUGIN = "environment-project-checkout";
@@ -125,7 +120,6 @@ interface HarnessDaemonResources {
   daemon: HostDaemon;
   daemonApp: HostDaemonApp;
   hostId: string;
-  hostKey: string;
   releaseLock: () => Promise<void>;
 }
 
@@ -149,41 +143,12 @@ function isRetryableSessionOpenFailure(error: unknown): boolean {
   );
 }
 
-async function resolveProjectEnvCandidates(): Promise<string[]> {
-  const candidates = new Set<string>([path.join(repoRoot, ".env")]);
-  const gitMetadataPath = path.join(repoRoot, ".git");
-
-  try {
-    const gitMetadata = await fs.stat(gitMetadataPath);
-    if (!gitMetadata.isFile()) {
-      return [...candidates];
-    }
-
-    const gitdirPointer = await fs.readFile(gitMetadataPath, "utf8");
-    const match = /^gitdir:\s*(.+)\s*$/m.exec(gitdirPointer);
-    if (!match?.[1]) {
-      return [...candidates];
-    }
-
-    const worktreeGitDir = path.resolve(repoRoot, match[1]);
-    const commonGitDir = path.dirname(path.dirname(worktreeGitDir));
-    candidates.add(path.join(path.dirname(commonGitDir), ".env"));
-  } catch (error) {
-    if (isNodeError(error) && error.code === "ENOENT") {
-      return [...candidates];
-    }
-    throw error;
-  }
-
-  return [...candidates];
-}
-
 export async function loadProjectEnvFile(): Promise<string | null> {
   if (loadedProjectEnvPath !== undefined) {
     return loadedProjectEnvPath;
   }
 
-  for (const candidate of await resolveProjectEnvCandidates()) {
+  for (const candidate of await resolveProjectEnvCandidates(repoRoot)) {
     try {
       await fs.access(candidate);
       process.loadEnvFile(candidate);
@@ -373,8 +338,6 @@ async function startIntegrationServer(
 async function startHarnessDaemon(
   dataDir: string,
   server: RunningTestServer,
-  threadStorageRootPath: string,
-  options: CreateHarnessOptions,
 ): Promise<HarnessDaemonResources> {
   const releaseLock = await acquireDaemonLock(dataDir);
 
@@ -382,7 +345,6 @@ async function startHarnessDaemon(
     const identity = await loadHostIdentity({ dataDir });
     const hostKey = await server.machineAuth.issueDaemonHostKey({
       hostId: identity.hostId,
-      hostType: "persistent",
     });
     await persistHostId({ dataDir, hostId: identity.hostId });
     const daemonApp = await createHostDaemonApp({
@@ -390,7 +352,6 @@ async function startHarnessDaemon(
       hostKey,
       hostId: identity.hostId,
       hostName: identity.hostName,
-      hostType: "persistent",
       instanceId: randomUUID(),
       localApiConfig: null,
       logger: testLogger,
@@ -421,7 +382,6 @@ async function startHarnessDaemon(
       daemon: daemonApp.daemon,
       daemonApp,
       hostId: identity.hostId,
-      hostKey,
       releaseLock,
     };
   } catch (error) {
@@ -464,12 +424,7 @@ export async function createIntegrationHarness(
       return;
     }
 
-    daemonResources = await startHarnessDaemon(
-      daemonDataDir,
-      server,
-      threadStorageRootPath,
-      options,
-    );
+    daemonResources = await startHarnessDaemon(daemonDataDir, server);
     if (daemonResources.hostId !== harness.hostId) {
       const mismatchedResources = daemonResources;
       daemonResources = null;
@@ -480,13 +435,8 @@ export async function createIntegrationHarness(
         `Restarted daemon host ID ${mismatchedResources.hostId} did not match existing harness host ID ${harness.hostId}`,
       );
     }
-    harness.daemon = daemonResources.daemon;
     harness.daemonApp = daemonResources.daemonApp;
     harness.hostId = daemonResources.hostId;
-    harness.internal = createHostDaemonClient(
-      server.baseUrl,
-      daemonResources.hostKey,
-    );
     await waitForHostConnected(harness.api);
   }
 
@@ -539,32 +489,23 @@ export async function createIntegrationHarness(
     const api = createPublicApiClient(server.baseUrl, {
       fetch: createIntegrationFetch(),
     });
-    daemonResources = await startHarnessDaemon(
-      daemonDataDir,
-      server,
-      threadStorageRootPath,
-      options,
-    );
+    daemonResources = await startHarnessDaemon(daemonDataDir, server);
     await waitForHostConnected(api);
 
     harness = {
       api,
       cleanup,
       crashDaemon,
-      daemon: daemonResources.daemon,
       daemonApp: daemonResources.daemonApp,
-      daemonDataDir,
       db: server.db,
       hostId: daemonResources.hostId,
       hub: server.hub,
-      internal: createHostDaemonClient(server.baseUrl, daemonResources.hostKey),
       repoDir,
       restartDaemon,
       server,
       serverUrl: server.baseUrl,
       shutdownDaemon,
       startDaemon,
-      threadStorageRootPath,
     };
 
     return harness;

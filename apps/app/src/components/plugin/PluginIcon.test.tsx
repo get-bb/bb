@@ -112,7 +112,7 @@ it("resolves every named branding.icon the shipped plugins declare", async () =>
   const { readdir, readFile } = await import("node:fs/promises");
   const { dirname, join, resolve } = await import("node:path");
   const { fileURLToPath } = await import("node:url");
-  const { pluginIconName } = await import("./PluginIcon");
+  const { isBuiltinIconName } = await import("@bb/shared-ui/icon");
 
   const pluginsDir = resolve(
     dirname(fileURLToPath(import.meta.url)),
@@ -131,7 +131,7 @@ it("resolves every named branding.icon the shipped plugins declare", async () =>
   }
 
   expect(declared.length).toBeGreaterThan(0);
-  expect(declared.filter(([, icon]) => pluginIconName(icon) !== icon)).toEqual(
+  expect(declared.filter(([, icon]) => !isBuiltinIconName(icon))).toEqual(
     [],
   );
 });

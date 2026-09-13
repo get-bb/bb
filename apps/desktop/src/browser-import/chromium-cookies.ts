@@ -198,15 +198,7 @@ export async function readChromiumCookies(
   source: ChromiumCookieSource,
   run: SecretCommandRunner = runSecretCommand,
 ): Promise<CookieReadResult> {
-  const keys = await resolveChromiumKeys(
-    {
-      platform: source.platform,
-      keychainService: source.keychainService,
-      keychainAccount: source.keychainAccount,
-      linuxSecretApplication: source.linuxSecretApplication,
-    },
-    run,
-  );
+  const keys = await resolveChromiumKeys(source, run);
   try {
     return await withCookieDatabaseSnapshot(
       source.cookieDatabasePath,

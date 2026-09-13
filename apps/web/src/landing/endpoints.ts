@@ -81,9 +81,6 @@ export async function handleSubscribe(
   request: Request,
   env: MarketingEnv,
 ): Promise<Response> {
-  if (request.method !== "POST") {
-    return jsonResponse({ error: "Method not allowed." }, 405);
-  }
   if (!env.RESEND_API_KEY || !env.RESEND_AUDIENCE_ID) {
     return jsonResponse({ error: "Email signup is not configured." }, 503);
   }
@@ -307,46 +304,21 @@ type AddUtmPropertiesArgs = {
 };
 
 function addUtmProperties(args: AddUtmPropertiesArgs): void {
-  const source = getTrackingParam({
-    name: "utm_source",
-    referrerSearchParams: args.referrerSearchParams,
-    requestSearchParams: args.requestSearchParams,
-  });
-  const medium = getTrackingParam({
-    name: "utm_medium",
-    referrerSearchParams: args.referrerSearchParams,
-    requestSearchParams: args.requestSearchParams,
-  });
-  const campaign = getTrackingParam({
-    name: "utm_campaign",
-    referrerSearchParams: args.referrerSearchParams,
-    requestSearchParams: args.requestSearchParams,
-  });
-  const term = getTrackingParam({
-    name: "utm_term",
-    referrerSearchParams: args.referrerSearchParams,
-    requestSearchParams: args.requestSearchParams,
-  });
-  const content = getTrackingParam({
-    name: "utm_content",
-    referrerSearchParams: args.referrerSearchParams,
-    requestSearchParams: args.requestSearchParams,
-  });
-
-  if (source) {
-    args.properties.utm_source = source;
-  }
-  if (medium) {
-    args.properties.utm_medium = medium;
-  }
-  if (campaign) {
-    args.properties.utm_campaign = campaign;
-  }
-  if (term) {
-    args.properties.utm_term = term;
-  }
-  if (content) {
-    args.properties.utm_content = content;
+  for (const name of [
+    "utm_source",
+    "utm_medium",
+    "utm_campaign",
+    "utm_term",
+    "utm_content",
+  ] as const) {
+    const value = getTrackingParam({
+      name,
+      referrerSearchParams: args.referrerSearchParams,
+      requestSearchParams: args.requestSearchParams,
+    });
+    if (value) {
+      args.properties[name] = value;
+    }
   }
 }
 

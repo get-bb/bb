@@ -411,6 +411,9 @@ describe("AddPluginDialog", () => {
     await vi.waitFor(() => {
       expect(errorToast).toHaveBeenCalledTimes(1);
     });
+    expect(screen.getByRole("alert").textContent).toBe(
+      "requires bb >= 0.15 — you have 0.14.1",
+    );
     expect(errorToast.mock.calls[0]?.[0]).toBe("Plugin installation failed");
     render(
       <MemoryRouter>{errorToast.mock.calls[0]?.[1]?.description}</MemoryRouter>,

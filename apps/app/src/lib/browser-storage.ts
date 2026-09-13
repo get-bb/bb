@@ -103,6 +103,15 @@ export const rawStringLocalStorage = createLocalStorageSyncStorage<string>({
   serialize: (value) => value,
 });
 
+export const booleanLocalStorage = createLocalStorageSyncStorage<boolean>({
+  parse: (storedValue, initialValue) => {
+    if (storedValue === "true") return true;
+    if (storedValue === "false") return false;
+    return initialValue;
+  },
+  serialize: (value) => String(value),
+});
+
 export function createJsonLocalStorage<T>(
   isValue?: StoredValueGuard<T>,
 ): SyncStorage<T> {

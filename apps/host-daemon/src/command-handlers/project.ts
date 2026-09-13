@@ -71,8 +71,10 @@ export async function cloneProject(args: {
   dataDir: string;
   projectSlug: string;
   remoteUrl: string;
+  env?: NodeJS.ProcessEnv;
   targetPath?: string;
   shellPath?: string;
+  onProgress?: (line: string) => void;
 }): Promise<{ path: string; gitRemoteUrl: string | null }> {
   const targetPath = path.resolve(
     args.targetPath ??
@@ -80,17 +82,36 @@ export async function cloneProject(args: {
   );
   await requireEmptyOrMissingTarget(targetPath);
   await fs.mkdir(path.dirname(targetPath), { recursive: true });
+  let pendingProgress = "";
+  const onStderr =
+    args.onProgress === undefined
+      ? undefined
+      : (chunk: string): void => {
+          pendingProgress += chunk;
+          for (;;) {
+            const match = /\r\n|\r|\n/u.exec(pendingProgress);
+            if (match === null) return;
+            args.onProgress?.(pendingProgress.slice(0, match.index));
+            pendingProgress = pendingProgress.slice(
+              match.index + match[0].length,
+            );
+          }
+        };
   try {
-    await runGit(["clone", args.remoteUrl, targetPath], {
+    await runGit(["clone", "--progress", args.remoteUrl, targetPath], {
       cwd: path.dirname(targetPath),
+      env: args.env,
       ...(args.shellPath !== undefined ? { shellPath: args.shellPath } : {}),
       timeoutMs: PROJECT_CLONE_TIMEOUT_MS,
+      ...(onStderr === undefined ? {} : { onStderr }),
     });
   } catch (error) {
     if (error instanceof WorkspaceError) {
       throw new ExpectedCommandDispatchError(error.code, error.message);
     }
-    throw error;
+    throw new Error(error instanceof Error ? error.message : String(error));
+  } finally {
+    if (pendingProgress.length > 0) args.onProgress?.(pendingProgress);
   }
   return inspectProjectPath(
     targetPath,

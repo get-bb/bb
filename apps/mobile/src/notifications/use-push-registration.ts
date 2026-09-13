@@ -8,14 +8,13 @@ import {
 } from "@/data/notifications";
 import { getPushNotificationsModule } from "./expo-push-module";
 import { getPushRegistrationController } from "./push-controller";
-import { getPushStore } from "./push-storage";
+import { usePushStoreSnapshot } from "./use-push-store";
 
 export interface PushRegistration {
   available: boolean;
   enabled: boolean;
   permission: PushPermissionState | null;
   syncing: boolean;
-  lastOutcome: PushSyncOutcome | null;
   statusText: string;
   setEnabled(enabled: boolean): Promise<PushSyncOutcome>;
 }
@@ -31,14 +30,9 @@ export function usePushRegistration(profile: {
   serverUrl: string;
   mode: "direct" | "connect";
 }): PushRegistration {
-  const store = getPushStore();
   const controller = getPushRegistrationController();
   const notifications = getPushNotificationsModule();
-  const storeSnapshot = useSyncExternalStore(
-    store.subscribe,
-    store.getSnapshot,
-    store.getSnapshot,
-  );
+  const storeSnapshot = usePushStoreSnapshot();
   const controllerSnapshot = useSyncExternalStore(
     controller.subscribe,
     controller.getSnapshot,
@@ -61,7 +55,6 @@ export function usePushRegistration(profile: {
     enabled,
     permission: state.permission,
     syncing: state.syncing,
-    lastOutcome: state.lastOutcome,
     statusText: describePushStatus({
       profile,
       projectId: notifications.projectId,

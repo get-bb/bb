@@ -78,6 +78,7 @@ export function buildEnvironmentProvisionCommand(
 ): EnvironmentProvisionCommand {
   return {
     type: "environment.attach" as const,
+    contributedEnv: [],
     environmentId: args.environmentId,
     initiator: args.initiator,
     path: args.path,
@@ -109,6 +110,7 @@ export function createThreadRecord(
       sourceThreadId: args.request.sourceThreadId ?? null,
       originKind: args.request.originKind,
       originPluginId: args.request.originPluginId ?? null,
+      pluginMetadata: args.request.pluginMetadata,
       visibility: args.request.visibility,
       // Every thread starts `pending`, with no exception to parameterise.
       // Creation is unhooked and provisions nothing; admission happens at the

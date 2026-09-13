@@ -4,6 +4,7 @@ import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@bb/shared-ui/popover";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { ResourceSortMenu, ResourceToolbar } from "@bb/shared-ui/resource-list";
 import { useScrollOverflowState } from "@/components/thread/timeline/useScrollOverflowState";
 import type {
   PluginBrowseSort,
@@ -52,17 +53,80 @@ export interface PluginBrowseCategoryOption {
   count: number;
 }
 
-type PluginBrowseCategoryFilterSelection =
-  | {
-      selectionMode: "single";
-      value: string | null;
-      onChange: (value: string | null) => void;
-    }
-  | {
-      selectionMode: "multiple";
-      value: readonly string[];
-      onChange: (value: string[]) => void;
-    };
+export function PluginBrowseToolbar({
+  query,
+  selectedCategories,
+  categoryOptions,
+  sort,
+  sortDirection,
+  installsKnown,
+  changeSearchParams,
+}: {
+  query: string;
+  selectedCategories: readonly string[];
+  categoryOptions: readonly PluginBrowseCategoryOption[];
+  sort: PluginBrowseSort | null;
+  sortDirection: PluginBrowseSortDirection;
+  installsKnown: boolean;
+  changeSearchParams: (change: (next: URLSearchParams) => void) => void;
+}) {
+  return (
+    <div className="mx-auto w-full max-w-3xl">
+      <ResourceToolbar
+        searchValue={query}
+        searchPlaceholder="Search plugins"
+        onSearchChange={(value) =>
+          changeSearchParams((next) => {
+            if (value === "") next.delete("query");
+            else next.set("query", value);
+          })
+        }
+        controls={
+          <>
+            <PluginBrowseCategoryFilter
+              value={selectedCategories}
+              options={categoryOptions}
+              onChange={(values) =>
+                changeSearchParams((next) => {
+                  next.delete("category");
+                  for (const value of values) {
+                    next.append("category", value);
+                  }
+                })
+              }
+            />
+            <ResourceSortMenu
+              value={sort}
+              direction={sortDirection}
+              compact
+              placeholderLabel="Featured"
+              options={pluginBrowseSortOptions(installsKnown)}
+              onChange={(value) =>
+                changeSearchParams((next) => {
+                  if (value === sort) {
+                    next.set(
+                      "direction",
+                      sortDirection === "asc" ? "desc" : "asc",
+                    );
+                  } else {
+                    next.set("sort", value);
+                    next.set("direction", "desc");
+                  }
+                })
+              }
+              onClear={() =>
+                changeSearchParams((next) => {
+                  next.delete("sort");
+                  next.delete("direction");
+                })
+              }
+            />
+          </>
+        }
+      />
+    </div>
+  );
+}
 
 const ENGAGED_CONTROL_CLASS =
   "bg-state-active text-foreground hover:bg-state-active";
@@ -87,12 +151,15 @@ function CategoryOptionCheckbox({ enabled }: { enabled: boolean }) {
   );
 }
 
-export function PluginBrowseCategoryFilter(
-  props: {
-    options: readonly PluginBrowseCategoryOption[];
-  } & PluginBrowseCategoryFilterSelection,
-) {
-  const { options } = props;
+export function PluginBrowseCategoryFilter({
+  options,
+  value,
+  onChange,
+}: {
+  options: readonly PluginBrowseCategoryOption[];
+  value: readonly string[];
+  onChange: (value: string[]) => void;
+}) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [showKeyboardFocus, setShowKeyboardFocus] = useState(false);
@@ -100,15 +167,9 @@ export function PluginBrowseCategoryFilter(
   const listboxId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   const keyboardFocusRef = useRef(false);
-  const selectedValues =
-    props.selectionMode === "multiple"
-      ? props.value
-      : props.value === null
-        ? []
-        : [props.value];
-  const selected = new Set(selectedValues);
-  const selectedOptions = selectedValues.flatMap((value) => {
-    const option = options.find((candidate) => candidate.id === value);
+  const selected = new Set(value);
+  const selectedOptions = value.flatMap((selectedId) => {
+    const option = options.find((candidate) => candidate.id === selectedId);
     return option === undefined ? [] : [option];
   });
   const selectionLabel =
@@ -176,30 +237,15 @@ export function PluginBrowseCategoryFilter(
     }, SCROLLBAR_IDLE_DELAY_MS);
   };
 
-  const closeAfterSelection = () => {
-    setOpen(false);
-    setSearch("");
-  };
-
   const clearSelection = () => {
-    if (props.selectionMode === "multiple") {
-      props.onChange([]);
-      return;
-    }
-    props.onChange(null);
-    closeAfterSelection();
+    onChange([]);
   };
 
   const toggle = (optionId: string) => {
-    if (props.selectionMode === "multiple") {
-      const next = new Set(props.value);
-      if (next.has(optionId)) next.delete(optionId);
-      else next.add(optionId);
-      props.onChange([...next]);
-      return;
-    }
-    props.onChange(optionId === props.value ? null : optionId);
-    closeAfterSelection();
+    const next = new Set(value);
+    if (next.has(optionId)) next.delete(optionId);
+    else next.add(optionId);
+    onChange([...next]);
   };
 
   return (
@@ -216,7 +262,7 @@ export function PluginBrowseCategoryFilter(
           variant="outline"
           className={cn(
             "h-8 max-w-52 gap-2 px-2.5 text-xs font-normal",
-            (open || selectedValues.length > 0) && ENGAGED_CONTROL_CLASS,
+            (open || value.length > 0) && ENGAGED_CONTROL_CLASS,
           )}
           aria-label={`Filter plugins by category: ${accessibleSelectionLabel}`}
           aria-expanded={open}
@@ -297,9 +343,7 @@ export function PluginBrowseCategoryFilter(
             data-scrollbar-scrolling={scrollbarScrolling ? "true" : undefined}
             role="listbox"
             aria-label="Plugin categories"
-            aria-multiselectable={
-              props.selectionMode === "multiple" ? true : undefined
-            }
+            aria-multiselectable={true}
             className="transient-scrollbar max-h-64 overflow-y-auto"
             onScroll={revealScrollbarWhileScrolling}
           >
@@ -354,7 +398,7 @@ export function PluginBrowseCategoryFilter(
             />
           ) : null}
         </div>
-        {selectedValues.length > 0 ? (
+        {value.length > 0 ? (
           <div className="mt-0.5 border-t border-border-seam pt-0.5">
             <button
               type="button"

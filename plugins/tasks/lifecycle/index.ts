@@ -2,6 +2,7 @@ import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { publishCommentsChanged, type TasksApiStore } from "../api";
 import type { TaskThread, TaskThreadLiveStatus } from "../db";
 import { createSystemComment, publishThreadsChanged } from "../delegate";
+import { errorMessage } from "../shared/errors";
 
 const TERMINAL_LIVE_STATUSES = new Set<TaskThreadLiveStatus>(["completed"]);
 export const THREAD_STATUS_RECONCILE_INTERVAL_MS = 5 * 60_000;
@@ -107,9 +108,9 @@ async function reconcileTrackedThread(
       return;
     }
     bb.log.warn(
-      `Could not reconcile task thread ${trackedThread.threadId}: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
+      `Could not reconcile task thread ${trackedThread.threadId}: ${errorMessage(
+        error,
+      )}`,
     );
   }
 }

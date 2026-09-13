@@ -214,7 +214,7 @@ export function cookieDatabaseCandidatePaths(
   ];
 }
 
-async function isRegularFile(path: string): Promise<boolean> {
+export async function isRegularFile(path: string): Promise<boolean> {
   try {
     return (await stat(path)).isFile();
   } catch {
@@ -433,9 +433,9 @@ async function listSourceProfilesInDirectory(
   if (definition.engine === "firefox") {
     const ini = await readTextFile(join(root, "profiles.ini"));
     const declared = ini === undefined ? [] : parseFirefoxProfiles(ini, root);
+    const scoped = { ...definition, userDataDirectory: () => root };
     const withDatabase: DesktopBrowserImportSourceProfile[] = [];
     for (const profile of declared) {
-      const scoped = { ...definition, userDataDirectory: () => root };
       const database = await resolveCookieDatabase(
         scoped,
         context,
@@ -444,12 +444,7 @@ async function listSourceProfilesInDirectory(
       if (database !== undefined) withDatabase.push(profile);
     }
     if (withDatabase.length > 0)
-      return withCookieCounts(
-        { ...definition, userDataDirectory: () => root },
-        context,
-        withDatabase,
-      );
-    const scoped = { ...definition, userDataDirectory: () => root };
+      return withCookieCounts(scoped, context, withDatabase);
     const fallbackDirectory =
       context.platform === "linux" ? root : join(root, "Profiles");
     return withCookieCounts(

@@ -24,7 +24,6 @@ import type {
   PullRequestActionOptions,
 } from "@bb/host-workspace";
 import { RuntimeManager } from "../../src/runtime-manager.js";
-import { listWorkspacePaths } from "../../src/command-handlers/file-list.js";
 import { noopEventSink } from "../../src/command-dispatch-support.js";
 import type { CommandDispatchOptions } from "../../src/command-dispatch-support.js";
 import type { FetchProjectAttachment } from "../../src/project-attachments.js";
@@ -121,7 +120,6 @@ interface FakeRuntimeState {
   startedBridgeLaunch: AgentRuntimeBridgeLaunch | undefined;
   startedEnvironmentId: string | undefined;
   startedInput: PromptInput[] | undefined;
-  startedInputGroups: PromptInput[][] | undefined;
   startedInstructions: string | undefined;
   startedThreadId: string | undefined;
   steeredClientRequestId: ClientTurnRequestId | undefined;
@@ -239,18 +237,6 @@ export function createFakeWorkspace(pathname: string) {
       state.lastPullRequestAction = action;
       state.pullRequestActionShellPath = options?.shellPath;
     },
-    async listFiles() {
-      return (
-        await listWorkspacePaths({
-          root: pathname,
-          includeHidden: false,
-          respectGitIgnore: false,
-          includeFiles: true,
-          includeDirectories: false,
-          excludeNames: [],
-        })
-      ).map((entry) => entry.path);
-    },
     async commit(options: { message: string; noVerify: boolean }) {
       state.lastCommitMessage = options.message;
       return {
@@ -258,7 +244,6 @@ export function createFakeWorkspace(pathname: string) {
         commitSubject: options.message,
       };
     },
-    async reset() {},
   };
 
   return { workspace, state };
@@ -284,7 +269,6 @@ export function createFakeRuntime() {
     startedBridgeLaunch: undefined,
     startedEnvironmentId: undefined,
     startedInput: undefined,
-    startedInputGroups: undefined,
     startedInstructions: undefined,
     startedThreadId: undefined,
     steeredClientRequestId: undefined,
@@ -330,7 +314,6 @@ export function createFakeRuntime() {
       state.startedThreadId = args.threadId;
       state.startedDynamicTools = args.dynamicTools;
       state.startedInput = args.input;
-      state.startedInputGroups = args.inputGroups;
       state.startedInstructions = args.instructions;
       providerSessionsByThreadId.set(args.threadId, {
         providerId: args.providerId,

@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   orderCommandSuggestions,
-  type ComposerCommandSuggestion,
+  type ProviderCommandSuggestion,
 } from "@bb/client-core";
 
 function skill(
   name: string,
   description: string | null = null,
-): ComposerCommandSuggestion {
+): ProviderCommandSuggestion {
   return {
     kind: "command",
     name,
@@ -18,7 +18,7 @@ function skill(
   };
 }
 
-function userCommand(name: string): ComposerCommandSuggestion {
+function userCommand(name: string): ProviderCommandSuggestion {
   return {
     kind: "command",
     name,
@@ -29,7 +29,7 @@ function userCommand(name: string): ComposerCommandSuggestion {
   };
 }
 
-function projectCommand(name: string): ComposerCommandSuggestion {
+function projectCommand(name: string): ProviderCommandSuggestion {
   return {
     kind: "command",
     name,
@@ -41,7 +41,7 @@ function projectCommand(name: string): ComposerCommandSuggestion {
 }
 
 function orderedNames(
-  suggestions: readonly ComposerCommandSuggestion[],
+  suggestions: readonly ProviderCommandSuggestion[],
   query: string,
 ): string[] {
   return orderCommandSuggestions(suggestions, query).map(

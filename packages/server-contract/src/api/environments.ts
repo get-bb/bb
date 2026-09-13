@@ -3,7 +3,7 @@ import {
   environmentStatusSchema,
   FILE_LIST_QUERY_MAX_LENGTH,
   gitBranchNameSchema,
-  gitBranchRefClassificationSchema,
+  gitBranchOptionsSchema,
   threadGitDiffResponseSchema,
   threadPullRequestSchema,
   workspaceDiffTargetSchema,
@@ -60,13 +60,7 @@ export type EnvironmentDiffBranchesQuery = z.infer<
   typeof environmentDiffBranchesQuerySchema
 >;
 
-export const environmentDiffBranchesResponseSchema = z.object({
-  branches: z.array(z.string()),
-  branchesTruncated: z.boolean(),
-  remoteBranches: z.array(z.string()),
-  remoteBranchesTruncated: z.boolean(),
-  selectedBranch: gitBranchRefClassificationSchema.nullable(),
-});
+export const environmentDiffBranchesResponseSchema = gitBranchOptionsSchema;
 export type EnvironmentDiffBranchesResponse = z.infer<
   typeof environmentDiffBranchesResponseSchema
 >;
@@ -246,9 +240,6 @@ export const environmentActionFailureDetailsSchema = z.object({
   kind: z.literal("workspace_unavailable"),
   failure: workspaceResolutionFailureSchema,
 });
-export type EnvironmentActionFailureDetails = z.infer<
-  typeof environmentActionFailureDetailsSchema
->;
 
 export const environmentActionApiErrorSchema = apiErrorSchema.extend({
   details: environmentActionFailureDetailsSchema.optional(),

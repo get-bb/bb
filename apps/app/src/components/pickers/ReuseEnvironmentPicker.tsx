@@ -74,7 +74,6 @@ interface ReuseEnvironmentPickerProps {
   onChange: (environmentId: string) => void;
   muted?: boolean;
   disabled?: boolean;
-  defaultOpen?: boolean;
   modal?: boolean;
 }
 
@@ -84,7 +83,6 @@ export function ReuseEnvironmentPicker({
   onChange,
   muted,
   disabled = false,
-  defaultOpen,
   modal,
 }: ReuseEnvironmentPickerProps) {
   const { providers } = useSystemEnvironmentProviders();
@@ -97,7 +95,7 @@ export function ReuseEnvironmentPicker({
       ? { label: "Pick an environment", icon: REUSE_ENVIRONMENT_ICON_NAME }
       : reuseThreadOptionDisplay(activeOption, providers);
   return (
-    <DropdownMenu defaultOpen={defaultOpen} modal={modal}>
+    <DropdownMenu modal={modal}>
       <DropdownMenuTrigger asChild disabled={disabled}>
         <Button
           type="button"

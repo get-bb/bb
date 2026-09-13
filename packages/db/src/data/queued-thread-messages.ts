@@ -1906,6 +1906,8 @@ export function listThreadIdsWithHostOfflineQueueWaits(
     .where(
       and(
         eq(environments.hostId, hostId),
+        isNull(threads.archivedAt),
+        isNull(threads.deletedAt),
         sql`json_extract(${queuedThreadMessages.waitingOn}, '$.kind') = 'host-offline'`,
         automaticallyDrainableQueuedThreadMessage(),
       ),

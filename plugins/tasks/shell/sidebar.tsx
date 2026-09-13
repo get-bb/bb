@@ -25,7 +25,7 @@ import { cn } from "@bb/shared-ui/lib/utils";
 
 interface SidebarRowProps {
   active?: boolean;
-  onClick?: () => void;
+  onClick: () => void;
   children: ReactNode;
   title?: string;
 }
@@ -38,11 +38,11 @@ function SidebarRow({ active, onClick, children, title }: SidebarRowProps) {
       title={title}
       className={cn(
         "flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring max-md:pointer-coarse:h-9",
-        onClick ? "cursor-pointer" : "cursor-default",
+        "cursor-pointer",
         active
           ? "bg-sidebar-accent font-medium text-foreground"
           : "text-muted-foreground",
-        onClick && !active && "hover:bg-state-hover hover:text-foreground",
+        !active && "hover:bg-state-hover hover:text-foreground",
       )}
     >
       {children}
@@ -236,7 +236,6 @@ export function TasksSidebar({
                 onClick={() => openProject(project.id)}
               />
             ))}
-            {}
             {!indent
               ? children.map((child) => renderFolder(child, true))
               : null}
@@ -289,7 +288,6 @@ export function TasksSidebar({
               </>
             ) : null}
             {rootFolders.map((folder) => renderFolder(folder, false))}
-            {}
             {(projects ?? []).length > 0 ? (
               <div className="mt-1.5">
                 <SidebarRow onClick={onNewProject} title="New project">

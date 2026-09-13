@@ -33,6 +33,7 @@ describe("environment attach recovery", () => {
     const provision = dispatchCommand(
       {
         type: "environment.attach",
+        contributedEnv: [],
         environmentId: "env-setup-cancel",
         initiator: null,
         path,
@@ -69,6 +70,7 @@ describe("environment attach recovery", () => {
     const options = harness.dispatchOptions({ dataDir: path });
     const command = {
       type: "environment.attach" as const,
+      contributedEnv: [],
       environmentId: "env-setup-coalesce",
       initiator: null,
       path,
@@ -97,6 +99,7 @@ describe("environment attach recovery", () => {
     const options = harness.dispatchOptions({ dataDir: path });
     const command = {
       type: "environment.attach" as const,
+      contributedEnv: [],
       environmentId: "env-setup-retry",
       initiator: null,
       path,

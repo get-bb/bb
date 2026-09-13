@@ -108,7 +108,6 @@ export function SidebarNavigationRegion(props: BuiltInSidebarNavigationProps) {
               ariaKeyShortcuts: threadSearchShortcut.ariaKeyshortcuts,
             }
           : null,
-        showResourceWorkspaces: props.toolsRoutePath !== undefined,
         splitPropsFor,
       }),
     [
@@ -116,7 +115,6 @@ export function SidebarNavigationRegion(props: BuiltInSidebarNavigationProps) {
       navPanels,
       newThreadShortcut,
       props.onNewChat,
-      props.toolsRoutePath,
       splitPropsFor,
       threadSearchShortcut,
     ],
@@ -189,7 +187,6 @@ export function SidebarNavigationRegion(props: BuiltInSidebarNavigationProps) {
             current.commandRunner.dispatch("thread.search", null);
           },
           openResourceWorkspace: (itemId) => {
-            if (current.props.toolsRoutePath === undefined) return;
             const routePath = getResourceNavigationItemRoutePath(itemId);
             if (routePath === null) return;
             current.props.onNavigate?.();

@@ -7,14 +7,10 @@ import {
   isUserQuestionPendingInteractionPayload,
 } from "@bb/domain";
 import { assertNever } from "./assert-never.js";
-import { summarizePendingInteractionRequestedPermissions } from "./pending-interaction-formatting.js";
 import { describePendingInteractionToolUse } from "./pending-interaction-tool-use.js";
-
-type PendingInteractionPresentationSurface = "app" | "cli";
 
 interface FormatPendingInteractionSummaryArgs {
   interaction: PendingInteraction;
-  surface: PendingInteractionPresentationSurface;
 }
 
 interface FormatPendingInteractionUserQuestionOptionLabelArgs {
@@ -34,7 +30,7 @@ export function formatPendingInteractionUserQuestionOptionLabel({
 export function formatPendingInteractionSummary(
   args: FormatPendingInteractionSummaryArgs,
 ): string {
-  const { interaction, surface } = args;
+  const { interaction } = args;
 
   if (isUserQuestionPendingInteractionPayload(interaction.payload)) {
     return interaction.payload.questions[0]?.prompt ?? "User answer requested";
@@ -64,17 +60,6 @@ export function formatPendingInteractionSummary(
       break;
     default:
       return assertNever(interaction.payload.subject);
-  }
-
-  if (surface === "app") {
-    const requestedPermissionSummary =
-      summarizePendingInteractionRequestedPermissions(
-        interaction.payload.subject.permissions,
-      );
-    if (requestedPermissionSummary.length > 0) {
-      return requestedPermissionSummary.join(" . ");
-    }
-    return "Review requested permissions";
   }
 
   return interaction.payload.subject.toolName ?? "Permission request";

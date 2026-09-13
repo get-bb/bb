@@ -1024,6 +1024,12 @@ export const codexHandledEventSchema = z.discriminatedUnion("method", [
   ),
   createCodexEventSchema("deprecationNotice", codexWarningParamsSchema),
   createCodexEventSchema("configWarning", codexWarningParamsSchema),
+  createCodexEventSchema(
+    "warning",
+    z
+      .object({ threadId: z.string().nullable(), message: z.string() })
+      .passthrough(),
+  ),
 ]);
 export type CodexHandledEvent = z.infer<typeof codexHandledEventSchema>;
 type HandledCodexMethod = CodexHandledEvent["method"];

@@ -1,4 +1,4 @@
-import { withEnvironmentPathAdmission } from "../environments/path-admission.js";
+import { assertEnvironmentPathAvailable } from "../environments/path-admission.js";
 import { z } from "zod";
 import {
   createEnvironment,
@@ -280,15 +280,11 @@ export async function handleUpdateEnvironmentDirectoryToolCall(
   }
 
   try {
-    await withEnvironmentPathAdmission(
-      deps,
-      {
-        hostId: args.currentEnvironment.hostId,
-        path: normalizedPath,
-        threadId: args.thread.id,
-      },
-      () => {},
-    );
+    assertEnvironmentPathAvailable(deps, {
+      hostId: args.currentEnvironment.hostId,
+      path: normalizedPath,
+      threadId: args.thread.id,
+    });
   } catch (error) {
     return toolCallFailure(
       error instanceof Error ? error.message : String(error),
@@ -347,18 +343,17 @@ export async function handleUpdateEnvironmentDirectoryToolCall(
 
   let attachResult: AttachEnvironmentResult;
   try {
-    attachResult = await withEnvironmentPathAdmission(
-      deps,
-      { ...targetEnvironment, threadId: args.thread.id },
-      () =>
-        attachReadyEnvironment(deps, {
-          currentEnvironment: args.currentEnvironment,
-          createdEnvironment,
-          targetEnvironment,
-          thread: args.thread,
-          turnId: args.turnId,
-        }),
-    );
+    assertEnvironmentPathAvailable(deps, {
+      ...targetEnvironment,
+      threadId: args.thread.id,
+    });
+    attachResult = attachReadyEnvironment(deps, {
+      currentEnvironment: args.currentEnvironment,
+      createdEnvironment,
+      targetEnvironment,
+      thread: args.thread,
+      turnId: args.turnId,
+    });
   } catch (error) {
     return toolCallFailure(
       error instanceof Error ? error.message : String(error),

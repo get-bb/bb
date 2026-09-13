@@ -10,8 +10,8 @@ function provider(
     id,
     displayName,
     logoUrl: null,
-    iconGlyph: null,
-    iconTint: null,
+    icon: null,
+    strings: { iconTint: null },
     signInHint: "Sign in.",
     expiredHint: "Sign in again.",
     usage: {

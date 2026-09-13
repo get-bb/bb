@@ -5,14 +5,8 @@ import type {
 } from "@get-bb/plugin-sdk";
 import {
   getThreadListIndicatorLabel,
-  hasActiveBackgroundAgentActivity,
-  hasActiveBackgroundCommandActivity,
-  hasActiveGoalActivity,
-  hasActivePlanModeActivity,
-  hasActiveWorkflowActivity,
-  isRuntimeBusyThread,
-  isUnreadDoneThread,
   resolveThreadListIndicator,
+  threadListIndicatorStateForThread,
 } from "@bb/client-core";
 import { isThreadRead } from "@bb/client-core";
 
@@ -20,21 +14,9 @@ export function toPluginSidebarThread(
   entry: ThreadListEntry,
   hostNamesById: ReadonlyMap<string, string> = new Map(),
 ): PluginSidebarThread {
-  const isUnreadDone = isUnreadDoneThread(entry);
-  const hasUnreadError = isUnreadDone && entry.status === "error";
-  const resolvedIndicator = resolveThreadListIndicator({
-    hasPendingInteraction: entry.hasPendingInteraction,
-    hasUnsubmittedDraft: false,
-    hasUnreadError,
-    hasUnreadSuccess: isUnreadDone && !hasUnreadError,
-    isBackgroundAgentActive: hasActiveBackgroundAgentActivity(entry),
-    isBackgroundCommandActive: hasActiveBackgroundCommandActivity(entry),
-    isGoalActive: hasActiveGoalActivity(entry),
-    queuedWork: entry.queuedWork,
-    isPlanModeActive: hasActivePlanModeActivity(entry),
-    isRuntimeActive: isRuntimeBusyThread(entry),
-    isWorkflowActive: hasActiveWorkflowActivity(entry),
-  });
+  const resolvedIndicator = resolveThreadListIndicator(
+    threadListIndicatorStateForThread(entry, false),
+  );
   const indicator: PluginSidebarThreadIndicator =
     resolvedIndicator === "queued-waiting" ||
     resolvedIndicator === "queued-failed"

@@ -64,7 +64,7 @@ describe("profile store", () => {
     const state = await reloaded.load();
     expect(state.profiles).toEqual([a, b]);
     expect(state.activeProfileId).toBe(b.id);
-    expect(reloaded.getActiveProfile()).toEqual(b);
+    expect(reloaded.getSnapshot().activeProfileId).toBe(b.id);
   });
 
   it("removeProfile deletes the key, heals the active id, and notifies listeners", async () => {
@@ -118,9 +118,9 @@ describe("profile store", () => {
     const b = await store.addProfile(connect);
     await expect(store.setActiveProfile("ghost")).rejects.toThrow(/Unknown/);
     await store.setActiveProfile(b.id);
-    expect(store.getActiveProfile()?.id).toBe(b.id);
+    expect(store.getSnapshot().activeProfileId).toBe(b.id);
     await store.setActiveProfile(null);
-    expect(store.getActiveProfile()).toBeNull();
+    expect(store.getSnapshot().activeProfileId).toBeNull();
     expect(JSON.parse(storage.entries.get(PROFILE_INDEX_STORAGE_KEY)!)).toEqual(
       {
         ids: [a.id, b.id],

@@ -107,7 +107,7 @@ try {
     (await c.run("await browser.listPages()", 10_000, args.signal)).exitCode,
     0,
   );
-  await c.stop();
+  await c.close();
   await assert.rejects(c.run("1", 1000, args.signal));
   const profile = join(root, "handed-off-profile");
   const attachedBrowser = supervise(
@@ -147,7 +147,7 @@ try {
     ).exitCode,
     0,
   );
-  await attached.stop();
+  await attached.close();
   assert.equal(attachedBrowser.alive(), true);
   const reattached = await createRuntime({ ...args, connectionUrl });
   sessions.push(reattached);
@@ -166,8 +166,8 @@ try {
         "cancellation isolation",
         "infinite-loop timeout",
         "reopen after timeout",
-        "stop rejects further work",
-        "attachment stop preserves browser and page state",
+        "close rejects further work",
+        "attachment close preserves browser and page state",
       ],
     }),
   );

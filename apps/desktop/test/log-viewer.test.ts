@@ -70,7 +70,6 @@ function isProcessRunning(pid: number): boolean {
 
 function createTestLogLine(args: CreateTestLogLineArgs): LogViewerLine {
   return {
-    source: "server",
     text: `line-${args.index}`,
   };
 }

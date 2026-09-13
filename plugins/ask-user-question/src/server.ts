@@ -18,7 +18,6 @@ import {
 } from "./translate.js";
 
 export const TOOL_NAME = "AskUserQuestion";
-export const RENDERER_ID = ASK_USER_QUESTION_RENDERER_ID;
 
 function errorResult(message: string): PluginAgentToolResult {
   return { content: [{ type: "text", text: message }], isError: true };
@@ -53,7 +52,7 @@ export default function plugin(bb: BbPluginApi) {
         result = await bb.ui.requestInput(
           {
             threadId: ctx.threadId,
-            rendererId: RENDERER_ID,
+            rendererId: ASK_USER_QUESTION_RENDERER_ID,
             title: buildInteractionTitle(payload),
             payload,
           },

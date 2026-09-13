@@ -9,11 +9,11 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { TimelineWindowedItems } from "./TimelineWindowedItems.js";
 import {
-  TimelineWindowedItems,
+  TimelineWindowedItemsLoader,
   type TimelineWindowedItemRenderState,
-} from "./TimelineWindowedItems.js";
-import { TimelineWindowedItemsLoader } from "./TimelineWindowedItemsLoader.js";
+} from "./TimelineWindowedItemsLoader.js";
 
 const ITEM_KEYS = Array.from({ length: 100 }, (_, index) => `row-${index}`);
 

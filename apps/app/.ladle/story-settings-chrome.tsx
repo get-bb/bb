@@ -75,7 +75,6 @@ export function SettingsStoryChrome({
           sections: SETTINGS_NAV_SECTIONS,
         }}
         onResizeMouseDown={() => {}}
-        showTopReserve
         testIdPrefix="settings-story"
       />
       <SidebarInset>

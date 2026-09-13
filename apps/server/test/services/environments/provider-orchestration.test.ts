@@ -2,6 +2,7 @@ import { appendThreadProvisioningEvent } from "../../../src/services/threads/thr
 import { requestThreadStopForCurrentState } from "../../../src/services/threads/thread-lifecycle.js";
 import { prepareProviderEnvironment } from "../../../src/services/threads/thread-environment-placement.js";
 import { withEnvironmentCleanupSlot } from "../../../src/services/environments/cleanup-concurrency.js";
+import { reportEnvironmentHookProgress } from "../../../src/services/environments/environment-hooks.js";
 import { registerTestHostRpcCapture } from "../../helpers/commands.js";
 import { recordProvisionedEnvironmentWorkspace } from "@bb/db/internal-environment-lifecycle";
 import { createThreadFromRequest } from "../../../src/services/threads/thread-create.js";
@@ -87,6 +88,8 @@ function setup(
     provider: validatePluginEnvironmentProviderDeclaration({
       id: "test-provider",
       displayName: "Test",
+      description: "Prepare a workspace for this thread.",
+      icon: "Folder",
       create: async () => ({
         status: "created",
         path: `/tmp/${thread.id}`,
@@ -412,6 +415,23 @@ describe("core environment orchestration", () => {
       expect(fixture.row().claimPath).toBeNull();
     }));
 
+  it("finalizes a workspace path already claimed by the same launch", async () =>
+    withTestHarness(async (harness) => {
+      const fixture = setup(harness, {
+        create: async (context) => {
+          expect(await context.experimental_claimPath("/tmp/project")).toBe(
+            true,
+          );
+          context.report.log("Checkout prepared");
+          return { status: "created", path: "/tmp/project", ownsPath: false };
+        },
+      });
+      fixture.ask();
+      await fixture.settled();
+      expect(fixture.row().path).toBe("/tmp/project");
+      expect(["provisioning", "ready"]).toContain(fixture.row().status);
+    }));
+
   it.each([true, false])(
     "runs teardown only for ownsPath=%s, in provider order",
     async (ownsPath) =>
@@ -477,6 +497,60 @@ describe("core environment orchestration", () => {
         expect.objectContaining({ error: "teardown unavailable" }),
         "Environment teardown hook failed; continuing removal",
       );
+    }));
+
+  it("forwards teardown hook output only from the hook host while the hook runs", async () =>
+    withTestHarness(async (harness) => {
+      const fixture = setup(harness, { policy: { retireGraceMs: 0 } });
+      const teardownOperationIds: string[] = [];
+      registerTestHostRpcCapture(harness.deps, {
+        hostId: fixture.host.id,
+        sessionId: fixture.session.id,
+        onEnvironmentHook: async (command) => {
+          if (command.kind !== "teardown") return;
+          teardownOperationIds.push(command.operationId);
+          reportEnvironmentHookProgress(harness.deps, "host_foreign", {
+            type: "environment.hook.progress",
+            operationId: command.operationId,
+            entry: { type: "output", text: "foreign output", status: null },
+          });
+          reportEnvironmentHookProgress(harness.deps, fixture.host.id, {
+            type: "environment.hook.progress",
+            operationId: command.operationId,
+            entry: {
+              type: "step",
+              text: "Running teardown",
+              status: "started",
+            },
+          });
+          reportEnvironmentHookProgress(harness.deps, fixture.host.id, {
+            type: "environment.hook.progress",
+            operationId: command.operationId,
+            entry: { type: "output", text: "hook output", status: null },
+          });
+        },
+      });
+      const warn = vi.fn();
+      harness.deps.logger = { ...harness.deps.logger, warn };
+      fixture.ask();
+      await fixture.settled();
+      const environmentId = fixture.attach();
+      await sweepProviderEnvironment(harness.deps, environmentId);
+      expect(teardownOperationIds).toHaveLength(1);
+      for (const operationId of teardownOperationIds) {
+        reportEnvironmentHookProgress(harness.deps, fixture.host.id, {
+          type: "environment.hook.progress",
+          operationId,
+          entry: { type: "output", text: "late output", status: null },
+        });
+      }
+      expect(
+        warn.mock.calls.filter(
+          ([, message]) => message === "Environment teardown hook",
+        ),
+      ).toEqual([
+        [{ environmentId, text: "hook output\n" }, "Environment teardown hook"],
+      ]);
     }));
 
   it.each(["new reuse", "reuse", "directory", "restored dispatch"])(
@@ -749,7 +823,10 @@ describe("core environment orchestration", () => {
       expect(
         await provider.validate({
           ...fixture.context,
-          projectCheckout: { path: "/tmp/project" },
+          projectCheckout: {
+            experimental_ownsPath: false,
+            path: "/tmp/project",
+          },
           inputs: { branch: { kind: "existing", name: "release" } },
         }),
       ).toEqual({
@@ -820,7 +897,7 @@ describe("core environment orchestration", () => {
       });
       const context = {
         ...fixture.context,
-        projectCheckout: { path: "/tmp/project" },
+        projectCheckout: { experimental_ownsPath: false, path: "/tmp/project" },
         inputs: { branch: { kind: "existing", name: "release" } },
       };
       try {

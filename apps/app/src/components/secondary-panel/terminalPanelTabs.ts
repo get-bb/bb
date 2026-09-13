@@ -6,6 +6,7 @@ import {
   type FixedPanelTab,
   type SecondaryFileFixedPanelTab,
   type SecondaryFixedPanelTab,
+  type TerminalFixedPanelTab,
 } from "@/lib/fixed-panel-tabs-state";
 import { shouldShowRetainedTerminalSession } from "@/lib/terminal-session-visibility";
 
@@ -24,6 +25,12 @@ interface SyncTerminalTabsInFixedPanelStateArgs {
 interface GetRetainedTerminalTabIdArgs {
   activeTab: SecondaryFixedPanelTab | null;
   isPanelOpen: boolean;
+}
+
+interface SyncTerminalTabsWithSessionsArgs<T extends SecondaryFixedPanelTab> {
+  retainedTerminalId: string | null;
+  tabs: readonly T[];
+  terminalSessions: readonly TerminalSession[];
 }
 
 interface PruneTerminalTabsForSessionsArgs {
@@ -93,30 +100,33 @@ export function pruneTerminalTabsInFixedPanelState({
   return next;
 }
 
-export function buildTerminalSyncedSecondaryFileTabs({
-  orderedTabs,
+function syncTerminalTabsWithSessions<T extends SecondaryFixedPanelTab>({
   retainedTerminalId,
+  tabs,
   terminalSessions,
-}: BuildTerminalSyncedSecondaryFileTabsArgs): readonly SecondaryFileFixedPanelTab[] {
+}: SyncTerminalTabsWithSessionsArgs<T>): {
+  tabs: Array<T | TerminalFixedPanelTab>;
+  changed: boolean;
+} {
   const terminalSessionIds = getTerminalSessionTabIds({
     retainedTerminalId,
     terminalSessions,
   });
   const seenTerminalIds = new Set<string>();
-  const syncedTabs: SecondaryFileFixedPanelTab[] = [];
+  const syncedTabs: Array<T | TerminalFixedPanelTab> = [];
+  let changed = false;
 
-  for (const tab of orderedTabs) {
-    if (tab.kind !== "terminal") {
-      syncedTabs.push(tab);
-      continue;
+  for (const tab of tabs) {
+    if (tab.kind === "terminal") {
+      if (
+        !terminalSessionIds.has(tab.terminalId) ||
+        seenTerminalIds.has(tab.terminalId)
+      ) {
+        changed = true;
+        continue;
+      }
+      seenTerminalIds.add(tab.terminalId);
     }
-    if (
-      !terminalSessionIds.has(tab.terminalId) ||
-      seenTerminalIds.has(tab.terminalId)
-    ) {
-      continue;
-    }
-    seenTerminalIds.add(tab.terminalId);
     syncedTabs.push(tab);
   }
 
@@ -129,9 +139,22 @@ export function buildTerminalSyncedSecondaryFileTabs({
     }
     seenTerminalIds.add(session.id);
     syncedTabs.push(createTerminalFixedPanelTab({ terminalId: session.id }));
+    changed = true;
   }
 
-  return syncedTabs;
+  return { tabs: syncedTabs, changed };
+}
+
+export function buildTerminalSyncedSecondaryFileTabs({
+  orderedTabs,
+  retainedTerminalId,
+  terminalSessions,
+}: BuildTerminalSyncedSecondaryFileTabsArgs): readonly SecondaryFileFixedPanelTab[] {
+  return syncTerminalTabsWithSessions({
+    retainedTerminalId,
+    tabs: orderedTabs,
+    terminalSessions,
+  }).tabs;
 }
 
 export function syncTerminalTabsInFixedPanelState({
@@ -144,50 +167,19 @@ export function syncTerminalTabsInFixedPanelState({
     retainedTerminalId,
     terminalSessions,
   });
-  const terminalSessionIds = getTerminalSessionTabIds({
+  const { tabs, changed } = syncTerminalTabsWithSessions({
     retainedTerminalId,
+    tabs: state.secondary.tabs,
     terminalSessions,
   });
-  const seenTerminalIds = new Set<string>();
-  const tabs: SecondaryFixedPanelTab[] = [];
-  let changed = false;
-
-  for (const tab of state.secondary.tabs) {
-    if (tab.kind === "terminal") {
-      if (
-        !terminalSessionIds.has(tab.terminalId) ||
-        seenTerminalIds.has(tab.terminalId)
-      ) {
-        changed = true;
-        continue;
-      }
-      seenTerminalIds.add(tab.terminalId);
-    }
-    tabs.push(tab);
-  }
-
-  for (const session of terminalSessions) {
-    if (!shouldShowRetainedTerminalSession({ retainedTerminalId, session })) {
-      continue;
-    }
-    if (seenTerminalIds.has(session.id)) {
-      continue;
-    }
-    seenTerminalIds.add(session.id);
-    tabs.push(createTerminalFixedPanelTab({ terminalId: session.id }));
-    changed = true;
-  }
 
   const activeTabId =
     state.secondary.activeTabId !== null &&
     tabs.some((tab) => tab.id === state.secondary.activeTabId)
       ? state.secondary.activeTabId
       : null;
-  if (activeTabId !== state.secondary.activeTabId) {
-    changed = true;
-  }
 
-  if (!changed) {
+  if (!changed && activeTabId === state.secondary.activeTabId) {
     return state;
   }
 

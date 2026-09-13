@@ -14,7 +14,7 @@ import {
 import { ApiError } from "../../errors.js";
 import type { LoggedWorkSessionDeps } from "../../types.js";
 import type { ProviderRegistryService } from "../providers/provider-registry.js";
-import { resolveSystemExecutionOptions } from "../system/execution-options.js";
+import { resolveSystemExecutionOptionsForValidation } from "../system/execution-options.js";
 import { getLastExecutionOptions } from "./thread-events.js";
 import { getSupportedReasoningLevelsForProvider } from "./thread-reasoning-policy.js";
 
@@ -118,7 +118,11 @@ export async function applyThreadExecutionOverride(
 ): Promise<void> {
   const { thread, patch } = args;
 
-  const models = await loadThreadProviderModels(deps, thread);
+  const models = await loadThreadProviderModels(
+    deps,
+    thread,
+    typeof patch.model === "string" ? patch.model : null,
+  );
   const existing = getThreadExecutionOverride(deps.db, thread.id) ?? {
     modelOverride: null,
     reasoningLevelOverride: null,
@@ -172,13 +176,18 @@ export async function recoverThreadModelOverride(
 async function loadThreadProviderModels(
   deps: LoggedWorkSessionDeps,
   thread: Thread,
+  requiredModel: string | null,
 ): Promise<readonly AvailableModel[]> {
-  const result = await resolveSystemExecutionOptions(deps, {
-    providerId: thread.providerId,
-    ...(thread.environmentId !== null
-      ? { environmentId: thread.environmentId }
-      : {}),
-  });
+  const result = await resolveSystemExecutionOptionsForValidation(
+    deps,
+    {
+      providerId: thread.providerId,
+      ...(thread.environmentId !== null
+        ? { environmentId: thread.environmentId }
+        : {}),
+    },
+    requiredModel,
+  );
   if (result.modelLoadError !== null) {
     throw new ApiError(
       503,

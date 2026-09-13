@@ -17,7 +17,11 @@ import {
 } from "@bb/shared-ui/resource-list";
 import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
 import { PluginOverviewMarkdown } from "@/components/plugin/management/PluginOverviewMarkdown";
-import { CatalogEntryIconChip, PluginCategoryLabel } from "./plugin-ui";
+import {
+  CatalogEntryIconChip,
+  formatUrlLabel,
+  PluginCategoryLabel,
+} from "./plugin-ui";
 import { PluginAuthorAvatar } from "./PluginAuthorAvatar";
 import { PluginAuthorLink } from "./PluginAuthorLink";
 import {
@@ -25,10 +29,6 @@ import {
   pluginAuthorGithub,
   pluginMarketplaceAuthorKey,
 } from "./plugin-marketplace-author";
-
-function repositoryLinkLabel(url: string): string {
-  return url.replace(/^https?:\/\//u, "").replace(/\/+$/u, "");
-}
 
 export function PluginMarketplaceHeaderMetadata({
   entry,
@@ -123,9 +123,7 @@ function PluginMarketplaceSource({
         rel="noreferrer"
         className="inline-flex max-w-full items-center gap-1.5 rounded-sm text-sm text-muted-foreground underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
       >
-        <span className="truncate">
-          {repositoryLinkLabel(entry.repositoryUrl)}
-        </span>
+        <span className="truncate">{formatUrlLabel(entry.repositoryUrl)}</span>
         <Icon name="ExternalLink" className="size-3.5 shrink-0" aria-hidden />
         <span className="sr-only">Opens in a new tab</span>
       </a>

@@ -14,7 +14,7 @@ import {
 } from "@bb/server-contract";
 import { action, CliExitError } from "../action.js";
 import { createCliBbSdk } from "../client.js";
-import { renderBorderlessTable } from "../table.js";
+import { columnWidths, printBorderlessTable } from "../table.js";
 import { outputJson } from "./helpers.js";
 import { resolveMachineHostId, resolveMachineTargetOption } from "./machine.js";
 
@@ -513,20 +513,13 @@ function printTerminalTable(sessions: TerminalSession[]): void {
     session.status,
     `${session.cols}x${session.rows}`,
   ]);
-  const colWidths = [12, 24, 14, 10].map((minWidth, index) =>
-    Math.max(minWidth, ...rows.map((row) => row[index].length)),
+  printBorderlessTable(
+    {
+      head: ["ID", "Title", "Status", "Size"],
+      colWidths: columnWidths(rows, [12, 24, 14, 10]),
+    },
+    rows,
   );
-  console.log("");
-  console.log(
-    renderBorderlessTable(
-      {
-        head: ["ID", "Title", "Status", "Size"],
-        colWidths,
-      },
-      rows,
-    ),
-  );
-  console.log("");
 }
 
 function writeOutputChunks(

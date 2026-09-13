@@ -1,10 +1,11 @@
+import { z } from "zod";
 import { delimiter } from "node:path";
-import { defaultFeatureFlags, hostTypeSchema, type HostType } from "@bb/domain";
+import { defaultFeatureFlags } from "@bb/domain";
 import { DEFAULTS } from "./defaults.js";
 import { defineEnvVar, type EnvVarParseArgs } from "./env.js";
 import {
   APP_SURFACE_ENV_NAME,
-  DEFAULT_APP_SURFACE,
+  APP_SURFACE_WEB,
   formatAppSurfaceValues,
   parseAppSurface,
   type AppSurface,
@@ -17,6 +18,7 @@ import {
 import { validateLogLevel } from "./log-level.js";
 import { validateOptionalUrl, validateRequiredUrl } from "./public-url.js";
 import { BB_LOOPBACK_HOST, parsePortValue } from "./runtime.js";
+import { toOptionalString } from "./strings.js";
 
 export type ServerBindHost = "127.0.0.1" | "0.0.0.0";
 
@@ -64,8 +66,7 @@ function parseOptionalPortEnvValue(args: EnvVarParseArgs): number | undefined {
 function parseOptionalTrimmedStringEnvValue(
   args: EnvVarParseArgs,
 ): string | undefined {
-  const trimmedValue = args.value.trim();
-  return trimmedValue.length === 0 ? undefined : trimmedValue;
+  return toOptionalString(args.value);
 }
 
 function parseStringEnvValue(args: EnvVarParseArgs): string {
@@ -137,20 +138,6 @@ function parseInferenceFallbackModelValue(args: EnvVarParseArgs): string {
 
 function parseTranscriptionModelValue(args: EnvVarParseArgs): string {
   return validateTranscriptionModel(args.value);
-}
-
-function parseHostTypeValue(args: EnvVarParseArgs): HostType | undefined {
-  const trimmedValue = args.value.trim();
-  if (trimmedValue.length === 0) {
-    return undefined;
-  }
-
-  const parsedHostType = hostTypeSchema.safeParse(trimmedValue);
-  if (!parsedHostType.success) {
-    throw new Error(`Invalid ${args.name} "${trimmedValue}"`);
-  }
-
-  return parsedHostType.data;
 }
 
 export const BB_LOG_LEVEL_ENV = defineEnvVar<string>({
@@ -313,6 +300,20 @@ export const BB_BRIDGE_DIR_ENV = defineEnvVar<string | undefined>({
   parse: parseOptionalTrimmedStringEnvValue,
 });
 
+export const BB_SERVER_HEADERS_ENV = defineEnvVar<Record<string, string>>({
+  description: "Private JSON headers attached to machine server requests",
+  name: "BB_SERVER_HEADERS",
+  parse: ({ value }) => {
+    try {
+      return z.record(z.string(), z.string()).parse(JSON.parse(value));
+    } catch {
+      throw new Error(
+        "BB_SERVER_HEADERS must be a JSON object with string values",
+      );
+    }
+  },
+});
+
 export const BB_CONNECT_MACHINE_CREDENTIAL_ENV = defineEnvVar<
   string | undefined
 >({
@@ -320,12 +321,6 @@ export const BB_CONNECT_MACHINE_CREDENTIAL_ENV = defineEnvVar<
     "Daemon-managed bb connect credential for traversing the public machine gate",
   name: "BB_CONNECT_MACHINE_CREDENTIAL",
   parse: parseOptionalTrimmedStringEnvValue,
-});
-
-export const BB_CONNECT_MACHINE_ID_ENV = defineEnvVar<string>({
-  description: "Cloud machine identifier paired with the bb connect credential",
-  name: "BB_CONNECT_MACHINE_ID",
-  parse: parseNonEmptyStringEnvValue,
 });
 
 export const BB_HOST_ENROLL_KEY_ENV = defineEnvVar<string | undefined>({
@@ -356,14 +351,8 @@ export const BB_HOST_NAME_ENV = defineEnvVar<string | undefined>({
   parse: parseOptionalTrimmedStringEnvValue,
 });
 
-export const BB_HOST_TYPE_ENV = defineEnvVar<HostType | undefined>({
-  description: "Host type override for daemon bootstrap",
-  name: "BB_HOST_TYPE",
-  parse: parseHostTypeValue,
-});
-
 export const DEFAULT_BB_APP_VERSION = DEFAULTS.appVersion;
-export const DEFAULT_BB_APP_SURFACE = DEFAULT_APP_SURFACE;
+export const DEFAULT_BB_APP_SURFACE = APP_SURFACE_WEB;
 export const DEFAULT_BB_APP_URL = "";
 export const DEFAULT_BB_SERVER_BIND_HOST: ServerBindHost = BB_LOOPBACK_HOST;
 export const DEFAULT_BB_EXTERNAL_URL = "";

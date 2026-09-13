@@ -12,7 +12,7 @@ import {
 import type { ThreadCountResult } from "@bb/sdk";
 import { action } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
-import { renderBorderlessTable } from "../../table.js";
+import { columnWidths, printBorderlessTable } from "../../table.js";
 import { joinValues, outputJson } from "../helpers.js";
 
 interface ThreadCountCommandOptions {
@@ -100,20 +100,13 @@ function printGroupTable(
   );
   const rows = groups.map((group) => [group.key ?? "-", String(group.count)]);
   const head = [GROUP_COLUMN_HEADS[groupBy], "Count"];
-  const table = renderBorderlessTable(
+  printBorderlessTable(
     {
       head,
-      colWidths: [
-        columnWidth(rows, 0, head[0].length),
-        columnWidth(rows, 1, head[1].length),
-      ],
+      colWidths: columnWidths(rows, [head[0].length, head[1].length]),
     },
     rows,
   );
-
-  console.log("");
-  console.log(table);
-  console.log("");
   console.log(`Total: ${result.total}`);
 }
 
@@ -123,14 +116,6 @@ function compareGroupKeys(left: string | null, right: string | null): number {
   if (left === null) return 1;
   if (right === null) return -1;
   return left.localeCompare(right);
-}
-
-function columnWidth(
-  rows: string[][],
-  index: number,
-  headWidth: number,
-): number {
-  return Math.max(headWidth, ...rows.map((row) => row[index].length));
 }
 
 function parseStatus(value: string): ThreadStatus {

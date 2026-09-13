@@ -219,7 +219,6 @@ export function PluginPanelRightPanelHost({
   subPath,
   flushPageInsets = false,
   paneId,
-  pluginDetailTabsEnabled = false,
 }: {
   children: ReactNode;
   panelPath: string;
@@ -227,7 +226,6 @@ export function PluginPanelRightPanelHost({
   subPath: string;
   flushPageInsets?: boolean;
   paneId?: string;
-  pluginDetailTabsEnabled?: boolean;
 }) {
   const { navPanels } = usePluginSlots();
   const panel =
@@ -280,7 +278,7 @@ export function PluginPanelRightPanelHost({
   const activePluginCatalogQuery = usePluginCatalogSearch(
     activePluginDetailId ?? "",
     {
-      enabled: pluginDetailTabsEnabled && activePluginDetailId !== null,
+      enabled: activePluginDetailId !== null,
     },
   );
   useEffect(() => {
@@ -427,7 +425,6 @@ export function PluginPanelRightPanelHost({
   }, []);
   const openPluginDetail = useCallback(
     (nextPluginId: string) => {
-      if (!pluginDetailTabsEnabled) return false;
       setOpenedPluginIds((current) =>
         current.includes(nextPluginId) ? current : [...current, nextPluginId],
       );
@@ -436,7 +433,7 @@ export function PluginPanelRightPanelHost({
       revealPanel();
       return true;
     },
-    [pluginDetailTabsEnabled, revealPanel],
+    [revealPanel],
   );
   const targetStore = useStore();
   const fixedTabOwnerId = getPluginFixedTabOwnerId(
@@ -1223,15 +1220,11 @@ export function PluginPanelRightPanelHost({
       openInAppBrowser={isDesktopBrowserAvailable() ? openBrowser : null}
     >
       <AppNavigationHostProvider capabilities={navigationCapabilities}>
-        {pluginDetailTabsEnabled ? (
-          <PluginDetailRouteNavigationProvider
-            onOpenPluginDetail={openPluginDetail}
-          >
-            {routedPage}
-          </PluginDetailRouteNavigationProvider>
-        ) : (
-          routedPage
-        )}
+        <PluginDetailRouteNavigationProvider
+          onOpenPluginDetail={openPluginDetail}
+        >
+          {routedPage}
+        </PluginDetailRouteNavigationProvider>
       </AppNavigationHostProvider>
     </UrlOpenRoutingProvider>
   );

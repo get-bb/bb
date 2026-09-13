@@ -33,7 +33,6 @@ interface GitDiffCardProps {
   isCollapsed?: boolean;
   onToggleCollapsed?: () => void;
   stickyHeader?: boolean;
-  isRendering?: boolean;
   cardClassName?: string;
   showStuckHeaderEdge?: boolean;
   onRequestFileContents?: RequestDiffFileContents;
@@ -62,7 +61,6 @@ export const GitDiffCard = memo(function GitDiffCard({
   isCollapsed,
   onToggleCollapsed,
   stickyHeader = false,
-  isRendering = false,
   cardClassName,
   showStuckHeaderEdge = true,
   onRequestFileContents,
@@ -75,7 +73,6 @@ export const GitDiffCard = memo(function GitDiffCard({
   const bodyState = useGitDiffCardBody({
     fileDiff,
     changeKind: headerModel.changeKind,
-    isRendering,
     onRequestFileContents,
     patchText,
   });

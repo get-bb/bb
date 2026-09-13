@@ -62,12 +62,12 @@ export interface ProviderRegistryService {
   get(providerId: string): ProviderRegistration | null;
   getRegistrationRevision(): number;
   lookupInstalled(key: ProviderHealthCacheKey): Promise<boolean> | undefined;
-  rememberInstalled(
+  rememberInstalled(key: ProviderHealthCacheKey, value: Promise<boolean>): void;
+  revalidateInstalled(
     key: ProviderHealthCacheKey,
-    value: Promise<boolean>,
-  ): void;
+    probe: () => Promise<boolean>,
+  ): Promise<void>;
   forgetInstalledKey(key: ProviderHealthCacheKey): void;
-  forgetInstalledProvider(providerId: string): void;
   forgetAllInstalled(): void;
   getServerCapabilities(providerId: string): ProviderServerCapabilities | null;
   getSupportedPermissionModes(
@@ -117,6 +117,7 @@ export function createProviderRegistryService(
         registrationRevision: number;
         expiresAt: number;
         value: Promise<boolean>;
+        revalidating: boolean;
       }
     >
   >();
@@ -189,7 +190,7 @@ export function createProviderRegistryService(
     clearTimeout(timer);
   }
 
-  return {
+  const service: ProviderRegistryService = {
     list() {
       const entries = [...pluginRegistrations.values()].sort(
         compareInstallRank,
@@ -224,19 +225,7 @@ export function createProviderRegistryService(
     },
 
     lookupInstalled(key) {
-      const hostEntries = installedByHostId.get(key.hostId);
-      if (hostEntries === undefined) return undefined;
-      const entry = hostEntries.get(key.providerId);
-      if (entry === undefined) return undefined;
-      if (
-        entry.registrationRevision !== registrationRevision ||
-        entry.expiresAt <= Date.now()
-      ) {
-        hostEntries.delete(key.providerId);
-        if (hostEntries.size === 0) installedByHostId.delete(key.hostId);
-        return undefined;
-      }
-      return entry.value;
+      return installedByHostId.get(key.hostId)?.get(key.providerId)?.value;
     },
 
     rememberInstalled(key, value) {
@@ -249,7 +238,35 @@ export function createProviderRegistryService(
         registrationRevision,
         expiresAt: Date.now() + PROVIDER_INSTALLED_CACHE_TTL_MS,
         value,
+        revalidating: false,
       });
+    },
+
+    revalidateInstalled(key, probe) {
+      const entry = installedByHostId.get(key.hostId)?.get(key.providerId);
+      if (
+        entry === undefined ||
+        entry.revalidating ||
+        (entry.registrationRevision === registrationRevision &&
+          entry.expiresAt > Date.now())
+      ) {
+        return Promise.resolve();
+      }
+      entry.revalidating = true;
+      const isCurrent = () =>
+        installedByHostId.get(key.hostId)?.get(key.providerId) === entry;
+      return probe().then(
+        (installed) => {
+          if (isCurrent()) {
+            service.rememberInstalled(key, Promise.resolve(installed));
+          }
+        },
+        () => {
+          if (isCurrent()) {
+            service.forgetInstalledKey(key);
+          }
+        },
+      );
     },
 
     forgetInstalledKey(key) {
@@ -259,55 +276,38 @@ export function createProviderRegistryService(
       if (hostEntries.size === 0) installedByHostId.delete(key.hostId);
     },
 
-    forgetInstalledProvider(providerId) {
-      for (const [hostId, hostEntries] of installedByHostId) {
-        hostEntries.delete(providerId);
-        if (hostEntries.size === 0) installedByHostId.delete(hostId);
-      }
-    },
-
     forgetAllInstalled() {
       installedByHostId.clear();
     },
 
     getServerCapabilities(providerId) {
-      const registration = getRegistration(providerId);
-      if (registration) {
-        return registration.serverCapabilities;
-      }
-      return null;
+      return getRegistration(providerId)?.serverCapabilities ?? null;
     },
 
     getSupportedPermissionModes(providerId) {
-      const registration = getRegistration(providerId);
-      if (registration) {
-        return registration.info.capabilities.permissionModes;
-      }
-      return null;
+      return (
+        getRegistration(providerId)?.info.capabilities.permissionModes ?? null
+      );
     },
 
     supportsFork(providerId) {
-      const registration = getRegistration(providerId);
-      if (registration) {
-        return registration.info.capabilities.supportsFork;
-      }
-      return false;
+      return (
+        getRegistration(providerId)?.info.capabilities.supportsFork ?? false
+      );
     },
 
     supportsSessionRewind(providerId) {
-      const registration = getRegistration(providerId);
-      if (registration) {
-        return registration.info.capabilities.supportsSessionRewind;
-      }
-      return false;
+      return (
+        getRegistration(providerId)?.info.capabilities.supportsSessionRewind ??
+        false
+      );
     },
 
     supportsManualCompaction(providerId) {
-      const registration = getRegistration(providerId);
-      if (registration) {
-        return registration.serverCapabilities.supportsManualCompaction;
-      }
-      return false;
+      return (
+        getRegistration(providerId)?.serverCapabilities
+          .supportsManualCompaction ?? false
+      );
     },
 
     getExtensionKindSchemas(kind) {
@@ -353,21 +353,20 @@ export function createProviderRegistryService(
       if (pluginRegistrations.has(providerId) || settle === null) {
         return;
       }
-      const key = providerId;
       let release!: () => void;
       const registered = new Promise<void>((resolve) => {
         release = resolve;
       });
-      const waiters = providerRegistrationWaiters.get(key) ?? new Set();
+      const waiters = providerRegistrationWaiters.get(providerId) ?? new Set();
       waiters.add(release);
-      providerRegistrationWaiters.set(key, waiters);
+      providerRegistrationWaiters.set(providerId, waiters);
       try {
         await waitUntilSettledOrTimeout(registered);
       } finally {
-        const currentWaiters = providerRegistrationWaiters.get(key);
+        const currentWaiters = providerRegistrationWaiters.get(providerId);
         currentWaiters?.delete(release);
         if (currentWaiters?.size === 0) {
-          providerRegistrationWaiters.delete(key);
+          providerRegistrationWaiters.delete(providerId);
         }
       }
     },
@@ -382,4 +381,5 @@ export function createProviderRegistryService(
       releaseAllProviderRegistrationWaiters();
     },
   };
+  return service;
 }

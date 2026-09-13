@@ -1,6 +1,6 @@
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
-import { PromptStackCard } from "@/components/promptbox/banner/PromptStackCard";
+import { ProviderRequirementBanner } from "./ProviderRequirementBanner";
 
 interface ProviderCliVersionBannerProps {
   displayName: string;
@@ -36,30 +36,16 @@ export function ProviderCliVersionBanner({
   onUpdate,
 }: ProviderCliVersionBannerProps) {
   return (
-    <PromptStackCard
-      ariaLabel={`${displayName} update required`}
-      className="overflow-hidden border-attention/50 bg-surface-attention shadow-sm"
-    >
-      <div
-        role="alert"
-        className="flex min-h-14 max-w-full items-center gap-3 px-3 py-2.5"
-      >
-        <span
-          className="flex size-8 shrink-0 items-center justify-center rounded-full bg-attention/15 text-warning-text ring-1 ring-attention/25"
-          aria-hidden
-        >
-          <Icon name="AlertTriangle" className="size-4" />
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-foreground">
-            {displayName} update required
-          </p>
-          <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
-            Update {displayName} before starting a thread.{" "}
-            {versionRequirementCopy(currentVersion, minimumSupportedVersion)}
-          </p>
-        </div>
-        {canUpdate ? (
+    <ProviderRequirementBanner
+      title={`${displayName} update required`}
+      description={
+        <>
+          Update {displayName} before starting a thread.{" "}
+          {versionRequirementCopy(currentVersion, minimumSupportedVersion)}
+        </>
+      }
+      action={
+        canUpdate ? (
           <Button
             type="button"
             size="sm"
@@ -76,8 +62,8 @@ export function ProviderCliVersionBanner({
               `Update ${displayName}`
             )}
           </Button>
-        ) : null}
-      </div>
-    </PromptStackCard>
+        ) : null
+      }
+    />
   );
 }

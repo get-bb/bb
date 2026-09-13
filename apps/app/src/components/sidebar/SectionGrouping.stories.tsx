@@ -154,8 +154,12 @@ export function ChronologicalSections() {
             pinnedReorderPending={false}
             pinnedThreads={[]}
             onReorderPinnedThread={noop}
-            renderPinnedSection={() => null}
-            renderThreadsSection={(content) => content}
+            builtInSections={{
+              collapsedSectionIds: new Set(),
+              onToggleCollapsed: noop,
+              pinned: { label: "Pinned", content: null },
+              threads: { label: "Threads" },
+            }}
           />
         </SidebarStage>
       </StoryRow>

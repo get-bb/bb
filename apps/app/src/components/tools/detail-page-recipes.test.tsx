@@ -15,6 +15,7 @@ import type { SkillSummary } from "@bb/server-contract";
 import type {
   AgentExecutionUpdate,
   AutomationResponse,
+  AutomationRunResponse,
 } from "bb-plugin-automations/rpc-types";
 import type {
   ExperimentalPermissionModePickerProps,
@@ -22,11 +23,13 @@ import type {
 } from "@get-bb/plugin-sdk/app";
 import {
   AutomationDetailView as AutomationDetailViewBase,
-  AutomationRunStatusIndicator,
+  AgentAutomationDefinition,
 } from "bb-plugin-automations/detail-view";
 
 vi.mock("@get-bb/plugin-sdk/app", async (importOriginal) => ({
   ...(await importOriginal()),
+  experimental_ProviderIcon: (await import("@/components/plugin/ProviderIcon"))
+    .ProviderIcon,
   experimental_ProviderModelPicker: ({
     value,
     onChange,
@@ -804,6 +807,49 @@ function AutomationDetailView({
 }
 
 describe("Automation detail recipe", () => {
+  it("uses the host environment provider renderer and responds to icon overrides", () => {
+    const { container } = render(
+      <AgentAutomationDefinition
+        execution={{
+          mode: "agent",
+          prompt: "Check",
+          providerId: "codex",
+          model: "test",
+          reasoningLevel: "medium",
+          permissionMode: "auto",
+          environment: { type: "host", workspace: { type: "personal" } },
+        }}
+        editing={false}
+        personalProject
+        projectContextLabel="Personal"
+        pending={false}
+        onCancel={() => {}}
+        onUpdate={async () => {}}
+      />,
+    );
+    const footer = container.querySelector("[data-automation-prompt-footer]")!;
+    expect(footer.querySelector('[data-icon="Folder"]')).not.toBeNull();
+    act(() =>
+      setPluginSlotRegistrations(
+        "test-environment-icons",
+        makePluginRegistrationSet({
+          providerIcons: [
+            {
+              providerKind: "environment",
+              providerId: "personal-workspace",
+              icon: () => <svg data-test-environment-mark="" />,
+            },
+          ],
+        }),
+      ),
+    );
+    expect(footer.querySelector("[data-test-environment-mark]")).not.toBeNull();
+    expect(footer.querySelector('[data-icon="Folder"]')).toBeNull();
+    act(() => resetPluginSlotStoreForTest());
+    expect(footer.querySelector("[data-test-environment-mark]")).toBeNull();
+    expect(footer.querySelector('[data-icon="Folder"]')).not.toBeNull();
+  });
+
   it("keeps Definition ahead of Runs, including with no runs yet", async () => {
     const updateAgent = vi.fn(async (_update: AgentExecutionUpdate) => {});
     function Harness() {
@@ -811,7 +857,7 @@ describe("Automation detail recipe", () => {
       return (
         <AutomationDetailView
           automation={AUTOMATION}
-          projectLabel="Local"
+          projectLabel="Personal"
           runsState={{
             runs: [],
             nextCursor: null,
@@ -846,7 +892,7 @@ describe("Automation detail recipe", () => {
     expect(recipe.map(([kind]) => kind)).toEqual(["definition", "activity"]);
     expect(recipe.at(-1)?.[1]).toBe("Runs");
     const projectMetadataIcon = screen.getByRole("img", {
-      name: "Local project",
+      name: "Project: Personal",
     });
     const scheduleMetadataIcon = screen.getByRole("img", {
       name: "Schedule",
@@ -858,7 +904,7 @@ describe("Automation detail recipe", () => {
     expect(scheduleMetadataIcon.tabIndex).toBe(0);
     expect(nextRunMetadataIcon.tabIndex).toBe(0);
     expect(
-      projectMetadataIcon.querySelector('[data-icon="Laptop"]'),
+      projectMetadataIcon.querySelector('[data-icon="Folder"]'),
     ).toBeTruthy();
     expect(
       scheduleMetadataIcon.querySelector('[data-icon="DateTime"]'),
@@ -921,7 +967,10 @@ describe("Automation detail recipe", () => {
     const promptFooter = container.querySelector(
       '[data-automation-prompt-footer=""]',
     ) as HTMLElement;
-    expect(promptFooter.textContent).toContain("Local");
+    expect(promptFooter.textContent).toContain("Personal workspace");
+    expect(
+      promptFooter.querySelector('[title="Environment: Personal workspace"]'),
+    ).not.toBeNull();
     expect(promptFooter.textContent).toContain("Approve for me");
     expect(
       promptFooter.querySelectorAll('[data-option-display=""]'),
@@ -1139,7 +1188,7 @@ describe("Automation detail recipe", () => {
               },
             },
           }}
-          projectLabel="Local"
+          projectLabel="Personal"
           runsState={{
             runs: [],
             nextCursor: null,
@@ -1206,7 +1255,7 @@ describe("Automation detail recipe", () => {
       <MemoryRouter>
         <AutomationDetailView
           automation={AUTOMATION}
-          projectLabel="Local"
+          projectLabel="Personal"
           runsState={{
             runs: [],
             nextCursor: null,
@@ -1239,7 +1288,7 @@ describe("Automation detail recipe", () => {
       <MemoryRouter>
         <AutomationDetailView
           automation={AUTOMATION}
-          projectLabel="Local"
+          projectLabel="Personal"
           runsState={{
             runs: [],
             nextCursor: null,
@@ -1268,39 +1317,59 @@ describe("Automation detail recipe", () => {
   });
 
   it.each([
-    ["failed", "CircleX", "text-destructive"],
-    ["succeeded", "CircleCheck", "text-success"],
-    ["running", "Loading", "text-muted-foreground"],
-    ["skipped", "ArrowTurnForward", "text-subtle-foreground"],
+    ["failed", "Failed", "CircleX", "text-destructive"],
+    ["succeeded", "Succeeded", "CircleCheck", "text-success"],
+    ["running", "Running", "Loading", "text-muted-foreground"],
+    ["skipped", "Skipped", "ArrowTurnForward", "text-subtle-foreground"],
   ] as const)(
-    "keeps the %s run label neutral and semantic color on its icon",
-    (status, iconName, iconClass) => {
-      const { container } = render(
-        <AutomationRunStatusIndicator status={status} showLabel />,
+    "renders a %s run row with its semantic status glyph",
+    (status, label, iconName, iconClass) => {
+      const startedAt = 1_750_000_000_000;
+      const run: AutomationRunResponse = {
+        id: `run_${status}`,
+        automationId: AUTOMATION.id,
+        runMode: "agent",
+        threadId: null,
+        status,
+        trigger: "schedule",
+        skipReason: null,
+        error: null,
+        output: null,
+        exitCode: null,
+        scheduledFor: startedAt,
+        startedAt,
+        finishedAt: status === "running" ? null : startedAt + 42_000,
+      };
+      render(
+        <MemoryRouter>
+          <AutomationDetailView
+            automation={AUTOMATION}
+            projectLabel="Local"
+            runsState={{
+              runs: [run],
+              nextCursor: null,
+              loading: false,
+              loadingMore: false,
+              error: null,
+              loadMore: () => {},
+              retry: () => {},
+            }}
+            actionPending={false}
+            onToggle={() => {}}
+            onEdit={() => {}}
+            onRunNow={() => {}}
+            onDelete={() => {}}
+            onOpenThread={() => {}}
+          />
+        </MemoryRouter>,
       );
 
-      const indicator = screen.getByRole("img", {
-        name: status[0]!.toUpperCase() + status.slice(1),
-      });
-      expect(indicator.className).toContain("text-muted-foreground");
-      expect(indicator.className).not.toContain("text-destructive");
-      expect(indicator.className).not.toContain("text-success");
+      const indicator = screen.getByRole("img", { name: label });
       expect(
-        container
+        indicator
           .querySelector(`[data-icon="${iconName}"]`)
           ?.getAttribute("class"),
       ).toContain(iconClass);
     },
   );
-
-  it("renders a subdued glyph for skipped runs", () => {
-    const { container } = render(
-      <AutomationRunStatusIndicator status="skipped" />,
-    );
-
-    expect(screen.getByRole("img", { name: "Skipped" })).toBeTruthy();
-    const icon = container.querySelector('[data-icon="ArrowTurnForward"]');
-    expect(icon).not.toBeNull();
-    expect(icon?.getAttribute("class")).toContain("text-subtle-foreground");
-  });
 });

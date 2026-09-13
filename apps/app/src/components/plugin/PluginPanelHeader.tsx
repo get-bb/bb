@@ -70,7 +70,6 @@ export function PluginPanelHeaderActions({
           pluginId={panel.pluginId}
         >
           <PluginContext.Provider value={panel.pluginId}>
-            {}
             <div
               data-bb-plugin-root=""
               data-bb-plugin={panel.pluginId}

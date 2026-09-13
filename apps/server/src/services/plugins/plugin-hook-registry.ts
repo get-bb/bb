@@ -1,4 +1,5 @@
 import type { PluginHookHandler, PluginHookName } from "@get-bb/plugin-sdk";
+import { errorMessage } from "../lib/error-log-fields.js";
 
 /** One plugin's handler for one hook. */
 export interface PluginHookRegistration<K extends PluginHookName> {
@@ -10,6 +11,38 @@ export interface PluginHookRegistration<K extends PluginHookName> {
 export type PluginHookInvocation<T> =
   | { ok: true; value: T }
   | { ok: false; error: string };
+
+export async function invokePluginInline<T>(
+  run: () => Promise<T>,
+): Promise<PluginHookInvocation<T>> {
+  try {
+    return { ok: true, value: await run() };
+  } catch (error) {
+    return { ok: false, error: errorMessage(error) };
+  }
+}
+
+export const DEFAULT_PLUGIN_HOOK_TIMEOUT_MS = 10_000;
+
+export async function invokeBridgedProvider<T>(
+  bridge:
+    | {
+        invokeProvider<U>(
+          pluginId: string,
+          label: string,
+          run: () => Promise<U>,
+        ): Promise<PluginHookInvocation<U>>;
+      }
+    | undefined,
+  pluginId: string,
+  label: string,
+  run: () => Promise<T>,
+): Promise<PluginHookInvocation<T>> {
+  if (bridge === undefined) {
+    return { ok: false, error: "plugin runtime is not available" };
+  }
+  return bridge.invokeProvider(pluginId, label, run);
+}
 
 /**
  * Everything the hook runner needs from the plugin service. It is an

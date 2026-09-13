@@ -14,8 +14,8 @@ export type PluginEnvironmentProviderInputsSchema =
 type Fact<R, K extends PropertyKey, T> =
   R extends Record<K, true> ? T : T | null;
 type Checkout<R> = R extends { projectCheckout: true } | { gitCheckout: true }
-  ? { path: string }
-  : { path: string } | null;
+  ? { path: string; experimental_ownsPath: boolean }
+  : { path: string; experimental_ownsPath: boolean } | null;
 type InputsValue<S> = S extends StandardSchemaV1
   ? StandardSchemaV1InferOutput<S>
   : null;
@@ -111,8 +111,10 @@ export interface PluginEnvironmentProviderDefinition<
 > {
   id: string;
   displayName: string;
+  /** Short explanation shown in environment choices. */
+  description: string;
   /** Host glyph, plugin-relative icon path, or this plugin’s declared namespaced icon. */
-  icon?: string;
+  icon: string;
   requires?: R;
   inputs?: S;
   policy?: Partial<PluginEnvironmentProviderPolicy>;

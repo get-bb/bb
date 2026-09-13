@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  calculateUnexpectedRestartDelay,
   runDevSupervisorWithRuntime,
   type DevSupervisorChildProcess,
   type DevSupervisorChildSpawnRequest,
@@ -340,23 +339,6 @@ class FakeDevSupervisorRuntime implements DevSupervisorRuntime {
 }
 
 describe("runDevSupervisor", () => {
-  it("calculates capped exponential restart delays", () => {
-    const baseArgs = {
-      initialDelayMs: 1_000,
-      maxDelayMs: 10_000,
-    };
-
-    expect(calculateUnexpectedRestartDelay({ ...baseArgs, attempt: 1 })).toBe(
-      1_000,
-    );
-    expect(calculateUnexpectedRestartDelay({ ...baseArgs, attempt: 2 })).toBe(
-      2_000,
-    );
-    expect(calculateUnexpectedRestartDelay({ ...baseArgs, attempt: 5 })).toBe(
-      10_000,
-    );
-  });
-
   it("keeps running and respawns after an unexpected child exit", async () => {
     const runtime = new FakeDevSupervisorRuntime([
       createUnexpectedExitPlan(0),

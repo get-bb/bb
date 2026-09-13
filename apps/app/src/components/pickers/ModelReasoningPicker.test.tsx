@@ -15,6 +15,7 @@ import type {
 } from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { systemExecutionOptionsQueryKey } from "@/hooks/queries/query-keys";
+import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import {
@@ -665,6 +666,47 @@ describe("ModelReasoningPicker", () => {
     expect(onSelectedProviderChange).toHaveBeenCalledTimes(1);
     expect(onModelChange).toHaveBeenCalledWith("claude-opus-4-7");
   });
+
+  it.each([
+    {
+      label: "fetches every sibling",
+      locked: false,
+      expected: ["cursor", "pi"],
+    },
+    { label: "fetches nothing", locked: true, expected: [] },
+  ])(
+    "$label on the routed host when opened with switching locked: $locked",
+    async ({ locked, expected }) => {
+      vi.mocked(sdk.system.executionOptions).mockImplementation(
+        () => new Promise<SystemExecutionOptionsResponse>(() => undefined),
+      );
+      renderPicker({
+        ...(locked ? { onSelectedProviderChange: null } : {}),
+        providerRouting: { hostId: "h1" },
+        pickerProviderOptions: [
+          { value: "codex", label: "Codex" },
+          { value: "cursor", label: "Cursor" },
+          { value: "pi", label: "Pi" },
+        ],
+      });
+      expect(sdk.system.executionOptions).not.toHaveBeenCalled();
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "Provider, model and reasoning" }),
+      );
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      });
+
+      expect(screen.getByRole("dialog")).not.toBeNull();
+      expect(
+        vi
+          .mocked(sdk.system.executionOptions)
+          .mock.calls.map(([args]) => `${args?.hostId}/${args?.providerId}`)
+          .sort(),
+      ).toEqual(expected.map((providerId) => `h1/${providerId}`));
+    },
+  );
 
   it("loads provider models on the compose-selected host", async () => {
     renderPicker({ providerRouting: { hostId: "host-remote" } });

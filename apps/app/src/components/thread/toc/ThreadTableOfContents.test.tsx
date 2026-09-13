@@ -15,8 +15,10 @@ import type {
   ThreadConversationOutlineItem,
   ThreadConversationOutlineResponse,
   SidebarBootstrapResponse,
+  TimelineConversationRow,
   TimelineRow,
 } from "@bb/server-contract";
+import { commandRow } from "@/test/fixtures/thread-timeline-rows";
 
 vi.mock("@/components/ui/bottom-anchored-scroll-body.js", () => ({
   useBottomAnchoredScroll: vi.fn(),
@@ -70,7 +72,7 @@ class ResizeObserverMock implements ResizeObserver {
   disconnect: ResizeObserver["disconnect"] = vi.fn();
 }
 
-function userConversationRow(index = 1): TimelineRow {
+function userConversationRow(index = 1): TimelineConversationRow {
   return {
     id: `row_user_${index}`,
     threadId: "thr_toc_test",
@@ -1059,5 +1061,169 @@ describe("ThreadTableOfContents", () => {
       0,
     );
     expect(rowMeasurementCount).toBeLessThanOrEqual(16);
+  });
+});
+
+function withCountedTextReads(
+  row: TimelineConversationRow,
+  onRead: () => void,
+): TimelineConversationRow {
+  const { text } = row;
+  const counted = { ...row };
+  Object.defineProperty(counted, "text", {
+    enumerable: true,
+    get: () => {
+      onRead();
+      return text;
+    },
+  });
+  return counted;
+}
+
+function placeRowElements(
+  positions: ReadonlyMap<string, { bottom: number; top: number }>,
+): void {
+  for (const [id, position] of positions) {
+    const element =
+      scrollElement.querySelector<HTMLElement>(
+        `[data-timeline-row-id="${id}"]`,
+      ) ?? scrollElement.appendChild(timelineRowElement(id));
+    element.getBoundingClientRect = () => rect(position);
+  }
+}
+
+function activeRailTickIndexes(): number[] {
+  return Array.from(
+    document.querySelectorAll<HTMLElement>(
+      "[data-thread-toc] [aria-hidden] > span",
+    ),
+  ).flatMap((tick, index) => (tick.classList.contains("w-5") ? [index] : []));
+}
+
+describe("ThreadTableOfContents timeline item cache", () => {
+  it("normalizes a message label again only when its row object changes", () => {
+    let textReads = 0;
+    const countRead = () => {
+      textReads += 1;
+    };
+    const conversationRows = [1, 2, 3].map((index) =>
+      withCountedTextReads(userConversationRow(index), countRead),
+    );
+    const view = render(<TocHost timelineRows={conversationRows} />);
+    const readsAfterMount = textReads;
+
+    expect(readsAfterMount).toBe(3);
+
+    view.rerender(
+      <TocHost
+        timelineRows={[
+          ...conversationRows,
+          commandRow({
+            command: "pnpm test",
+            seq: 4,
+            threadId: "thr_toc_test",
+          }),
+        ]}
+      />,
+    );
+
+    expect(textReads).toBe(readsAfterMount);
+
+    const streamedRow = withCountedTextReads(
+      {
+        ...userConversationRow(2),
+        sourceSeqEnd: 3,
+        text: "Loaded   after\n client-side navigation, then more",
+      },
+      countRead,
+    );
+    const attachmentOnlyRow = withCountedTextReads(
+      {
+        ...userConversationRow(3),
+        attachments: {
+          imageUrls: [],
+          localFilePaths: [],
+          localFiles: 0,
+          localImagePaths: ["/tmp/screenshot.png"],
+          localImages: 1,
+          webImages: 0,
+        },
+        sourceSeqEnd: 4,
+        text: " \n ",
+      },
+      countRead,
+    );
+    view.rerender(
+      <TocHost
+        timelineRows={[conversationRows[0]!, streamedRow, attachmentOnlyRow]}
+      />,
+    );
+    openTocPanel();
+
+    expect(textReads).toBe(readsAfterMount + 2);
+    expect(
+      screen.getByText("Loaded after client-side navigation, then more", {
+        normalizer: (text) => text,
+      }),
+    ).not.toBeNull();
+    expect(screen.getByText("Image attachment")).not.toBeNull();
+  });
+
+  it("re-measures the active item 120 ms after an update that only changes work rows", () => {
+    vi.useFakeTimers();
+    scrollElement = createScrollElement({
+      clientHeight: 100,
+      rows: [
+        { id: "row_user_1", top: -200, bottom: -180 },
+        { id: "row_user_2", top: 80, bottom: 120 },
+        { id: "row_user_3", top: 300, bottom: 320 },
+      ],
+      scrollHeight: 1_000,
+      scrollTop: 400,
+    });
+    const rows = [1, 2, 3].map((index) => userConversationRow(index));
+    const workRow = commandRow({
+      command: "pnpm test",
+      output: "running",
+      seq: 2,
+      status: "pending",
+      threadId: "thr_toc_test",
+    });
+    const view = render(
+      <TocHost timelineRows={[rows[0]!, workRow, rows[1]!, rows[2]!]} />,
+    );
+    act(() => {
+      vi.runOnlyPendingTimers();
+    });
+
+    expect(activeRailTickIndexes()).toEqual([1]);
+
+    placeRowElements(
+      new Map([
+        ["row_user_2", { top: 130, bottom: 170 }],
+        ["row_user_3", { top: 350, bottom: 370 }],
+      ]),
+    );
+    view.rerender(
+      <TocHost
+        timelineRows={[
+          rows[0]!,
+          { ...workRow, output: "running\nmore output" },
+          rows[1]!,
+          rows[2]!,
+        ]}
+      />,
+    );
+    act(() => {
+      vi.advanceTimersByTime(119);
+    });
+
+    expect(activeRailTickIndexes()).toEqual([1]);
+
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+
+    expect(activeRailTickIndexes()).toEqual([]);
   });
 });

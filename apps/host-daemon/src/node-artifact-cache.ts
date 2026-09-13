@@ -5,7 +5,6 @@ import {
   readdir,
   rename,
   rm,
-  stat,
   utimes,
   writeFile,
 } from "node:fs/promises";
@@ -21,10 +20,6 @@ type FetchNodeArtifact = (args: {
   byteLength: number;
 }) => Promise<Uint8Array>;
 
-type NodeArtifactPruneStrategy =
-  | { kind: "keep-only-current" }
-  | { kind: "keep-recently-used"; maxAgeMs: number };
-
 interface EnsureCachedNodeArtifactArgs {
   cacheDir: string;
   digest: string;
@@ -32,7 +27,6 @@ interface EnsureCachedNodeArtifactArgs {
   fileName: string;
   legacyFileNames?: readonly string[];
   fetchArtifact: FetchNodeArtifact;
-  prune: NodeArtifactPruneStrategy;
   logger: Pick<HostDaemonLogger, "debug" | "warn">;
 }
 
@@ -219,24 +213,14 @@ async function pruneStaleDigests(
     );
     return;
   }
-  const candidates = entries.filter(
-    (entry) =>
-      entry.isDirectory() &&
-      entry.name !== args.digest &&
-      DIGEST_PATTERN.test(entry.name),
-  );
-  const stale: string[] = [];
-  for (const entry of candidates) {
-    const directory = join(args.cacheDir, entry.name);
-    if (args.prune.kind === "keep-only-current") {
-      stale.push(directory);
-      continue;
-    }
-    const stats = await stat(directory).catch(() => null);
-    if (stats !== null && Date.now() - stats.mtimeMs > args.prune.maxAgeMs) {
-      stale.push(directory);
-    }
-  }
+  const stale = entries
+    .filter(
+      (entry) =>
+        entry.isDirectory() &&
+        entry.name !== args.digest &&
+        DIGEST_PATTERN.test(entry.name),
+    )
+    .map((entry) => join(args.cacheDir, entry.name));
   const results = await Promise.allSettled(
     stale.map((directory) => rm(directory, { recursive: true, force: true })),
   );

@@ -8,6 +8,7 @@ import { ConversationTimeline } from "@/components/ui/conversation.js";
 import { HeightTransition } from "@/components/ui/height-transition.js";
 import { PageShell } from "@/components/ui/page-shell.js";
 import { StoryCard, StoryRow } from "../../../../.ladle/story-card";
+import { explorationRow, type ExplorationStep } from "./streaming-story-rows";
 
 export default {
   title: "thread/timeline/Streaming",
@@ -405,14 +406,6 @@ function AssistantContentStreaming({
   );
 }
 
-interface ExplorationStep {
-  callId: string;
-  intent:
-    | { type: "read"; path: string }
-    | { type: "search"; query: string; path: string }
-    | { type: "list_files"; path: string };
-}
-
 const BUNDLE_LEAD_IN_STEPS: readonly ConversationStep[] = [
   {
     role: "user",
@@ -576,43 +569,6 @@ const BUNDLE_EXPLORATION_STEPS: readonly ExplorationStep[] = [
   },
 ];
 
-function bundleExplorationRow(step: ExplorationStep, seq: number): TimelineRow {
-  const base = {
-    id: `streaming-rows-bundle:${step.callId}`,
-    threadId: THREAD_ID,
-    turnId: "streaming-rows-bundle-turn",
-    sourceSeqStart: seq,
-    sourceSeqEnd: seq,
-    startedAt: seq,
-    createdAt: seq,
-    kind: "work" as const,
-    status: "completed" as const,
-    callId: step.callId,
-    cmd: null,
-    completedAt: seq,
-  };
-  switch (step.intent.type) {
-    case "read":
-      return { ...base, workKind: "file-read", path: step.intent.path };
-    case "search":
-      return {
-        ...base,
-        workKind: "search",
-        mode: "content",
-        query: step.intent.query,
-        path: step.intent.path,
-      };
-    case "list_files":
-      return {
-        ...base,
-        workKind: "search",
-        mode: "list",
-        query: "",
-        path: step.intent.path,
-      };
-  }
-}
-
 function BundleChildrenArriving({
   restartKey,
   isPaused,
@@ -629,7 +585,11 @@ function BundleChildrenArriving({
   );
   const bundleRows = BUNDLE_EXPLORATION_STEPS.slice(0, step).map(
     (stepData, index) =>
-      bundleExplorationRow(stepData, BUNDLE_LEAD_IN_ROWS.length + index + 1),
+      explorationRow(stepData, BUNDLE_LEAD_IN_ROWS.length + index + 1, {
+        idPrefix: "streaming-rows-bundle",
+        threadId: THREAD_ID,
+        turnId: "streaming-rows-bundle-turn",
+      }),
   );
   const rows = [...BUNDLE_LEAD_IN_ROWS, ...bundleRows];
   const isStreaming = step < BUNDLE_EXPLORATION_STEPS.length;

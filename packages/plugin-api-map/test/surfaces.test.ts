@@ -26,11 +26,6 @@ function surfaceIds(groupId: string): string[] {
 }
 
 describe("product-map surfaces", () => {
-  it("describes environment selections using only existing enrolled machines", () => {
-    const surface = JSON.stringify(SURFACES_BY_ID.get("environment-providers"));
-    expect(surface).toContain("existing enrolled machine");
-    expect(surface).not.toContain("newly provider-created machine");
-  });
   it("keeps app-window annotations in column-major visual reading order", () => {
     const ordered = [
       "sidebar-navigation",
@@ -206,6 +201,31 @@ describe("surface card copy", () => {
     const eventCopy = SURFACES_BY_ID.get("thread-events")?.bullets.join(" ");
     expect(eventCopy).toContain("unarchived");
     expect(eventCopy).toContain("cancelled before dispatch");
+  });
+
+  it("maps bootstrap and checkpointed allocation to the machine surface", () => {
+    const machines = SURFACES_BY_ID.get("machine-providers");
+    expect(machines?.apiSymbols).toEqual(
+      expect.arrayContaining([
+        "MachineExecutorRequest",
+        "MachineExecutor",
+        "MachineBootstrapRequest",
+        "MachineBootstrapApi",
+        "PluginMachineProviderCreateContext",
+        "PluginMachineProviderLifecycleContext",
+        "PluginMachineProviderResource",
+        "PluginMachineProviderInputsProps",
+        "PluginMachineProviderInputsChange",
+        "PluginMachineProviderInputsRegistration",
+      ]),
+    );
+    expect(SURFACES_BY_ID.get("server-access")?.apiSymbols).toEqual(
+      expect.arrayContaining([
+        "PluginServerAccess",
+        "ServerAccessProviderDeclaration",
+        "ServerAccessGrant",
+      ]),
+    );
   });
 
   it("follows the lead-then-bullets template", () => {

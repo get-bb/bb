@@ -1,9 +1,13 @@
 import { useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
-import { shellReportPath, shellReportReady, useNativeShell } from ".";
+import {
+  getNativeShell,
+  shellReportPath,
+  shellReportReady,
+} from "./native-shell";
 
 export function NativeShellReporter() {
-  const shell = useNativeShell();
+  const shell = getNativeShell();
   const location = useLocation();
   const path = `${location.pathname}${location.search}`;
   const hasReportedReady = useRef(false);

@@ -1,11 +1,13 @@
 import type { ProviderHealth } from "@bb/host-daemon-contract";
-import { describe, expect, it } from "vitest";
+import { updateHost } from "@bb/db";
+import { describe, expect, it, vi } from "vitest";
 import { getProviderStates } from "../../src/services/system/provider-states.js";
 import { setPluginAgentContributions } from "../../src/services/plugins/plugin-agent-contributions.js";
 import { registerHostRpcResponder } from "../helpers/host-rpc.js";
 import { minimalProviderRegistration } from "../helpers/provider-registry.js";
 import {
   seedEnvironment,
+  seedHost,
   seedHostSession,
   seedProjectWithSource,
 } from "../helpers/seed.js";
@@ -43,6 +45,39 @@ function healthForInstalledOnlyProvider(
 }
 
 describe("getProviderStates", () => {
+  it("reports paused readiness without probing a suspended host", async () => {
+    await withTestHarness(async (harness) => {
+      const host = seedHost(harness.deps, {
+        id: "host-provider-states-suspended",
+      });
+      updateHost(harness.db, harness.hub, host.id, {
+        phase: "suspended",
+        suspendedAt: 123,
+      });
+      const request = vi.spyOn(harness.hub, "requestHostOnlineRpc");
+
+      const result = await getProviderStates(harness.deps, {
+        hostId: host.id,
+      });
+
+      expect(result.providers.map((provider) => provider.providerId)).toEqual([
+        "codex",
+        "claude-code",
+        "pi",
+        "acp-cursor",
+      ]);
+      expect(result.providers).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            status: "unknown",
+            statusMessage: "Machine is paused.",
+          }),
+        ]),
+      );
+      expect(request).not.toHaveBeenCalled();
+    });
+  });
+
   it("reports an unauthenticated provider as ready when contributed env supplies credentials", async () => {
     await withTestHarness(async (harness) => {
       setPluginAgentContributions({
@@ -100,8 +135,7 @@ describe("getProviderStates", () => {
           ),
         ).toMatchObject({
           status: "ready",
-          statusMessage:
-            "Credentials are provided by the Account Pooler hub.",
+          statusMessage: "Credentials are provided by the Account Pooler hub.",
           planLabel: "Proxied",
           accountEmail: null,
           loginCommand: null,

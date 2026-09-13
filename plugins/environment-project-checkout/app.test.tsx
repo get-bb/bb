@@ -24,11 +24,40 @@ function inputsSlot() {
 }
 
 describe("checkout inputs control", () => {
+  it("selects a remote branch before the new machine exists", async () => {
+    const onChange = vi.fn();
+    const slot = renderSlot(
+      inputsSlot(),
+      {
+        projectId: "project-1",
+        target: { kind: "new-host" },
+        value: null,
+        onChange,
+      },
+      {
+        branchesState: {
+          branches: ["local-only"],
+          remoteBranches: ["origin/main", "origin/release"],
+        },
+      },
+    );
+    const trigger = slot.getByRole("combobox", { name: "Branch" });
+    expect(trigger.textContent).toContain("Default branch");
+    expect(trigger.hasAttribute("disabled")).toBe(false);
+    fireEvent.click(trigger);
+    fireEvent.click(await slot.findByRole("button", { name: "Checkout" }));
+    fireEvent.click(await slot.findByRole("button", { name: "release" }));
+    expect(onChange).toHaveBeenLastCalledWith({
+      status: "ready",
+      value: { branch: { kind: "existing", name: "release" } },
+    });
+  });
+
   it("submits the current checkout as soon as it mounts", async () => {
     const onChange = vi.fn();
     renderSlot(inputsSlot(), {
       projectId: "project-1",
-      hostId: "host-a",
+      target: { kind: "existing-host", hostId: "host-a" },
       value: null,
       onChange,
     });
@@ -40,7 +69,7 @@ describe("checkout inputs control", () => {
   it("renders the current checkout chip", () => {
     const slot = renderSlot(inputsSlot(), {
       projectId: "project-1",
-      hostId: "host-a",
+      target: { kind: "existing-host", hostId: "host-a" },
       value: null,
       onChange: vi.fn(),
     });
@@ -52,7 +81,7 @@ describe("checkout inputs control", () => {
   it("renders an existing branch pick on the chip", () => {
     const slot = renderSlot(inputsSlot(), {
       projectId: "project-1",
-      hostId: "host-a",
+      target: { kind: "existing-host", hostId: "host-a" },
       value: { branch: { kind: "existing", name: "release" } },
       onChange: vi.fn(),
     });
@@ -64,7 +93,7 @@ describe("checkout inputs control", () => {
   it("renders a new branch base on the chip", () => {
     const slot = renderSlot(inputsSlot(), {
       projectId: "project-1",
-      hostId: "host-a",
+      target: { kind: "existing-host", hostId: "host-a" },
       value: { branch: { kind: "new", baseBranch: "origin/main" } },
       onChange: vi.fn(),
     });
@@ -79,7 +108,7 @@ describe("checkout inputs control", () => {
       inputsSlot(),
       {
         projectId: "project-1",
-        hostId: "host-a",
+        target: { kind: "existing-host", hostId: "host-a" },
         value: { path: "/srv/other-checkout" },
         onChange,
       },
@@ -98,7 +127,7 @@ describe("checkout inputs control", () => {
     cleanup();
     const cleared = renderSlot(inputsSlot(), {
       projectId: "project-1",
-      hostId: "host-a",
+      target: { kind: "existing-host", hostId: "host-a" },
       value: {
         path: "/srv/other-checkout",
         branch: { kind: "existing", name: "release" },
@@ -119,7 +148,7 @@ describe("checkout inputs control", () => {
       inputsSlot(),
       {
         projectId: "project-1",
-        hostId: "host-a",
+        target: { kind: "existing-host", hostId: "host-a" },
         value: null,
         onChange,
       },
@@ -146,7 +175,7 @@ describe("checkout inputs control", () => {
       inputsSlot(),
       {
         projectId: "project-1",
-        hostId: "host-a",
+        target: { kind: "existing-host", hostId: "host-a" },
         value: { branch: { kind: "new", baseBranch: "main" } },
         onChange,
       },
@@ -172,7 +201,7 @@ describe("checkout inputs control", () => {
       inputsSlot(),
       {
         projectId: "project-1",
-        hostId: "host-a",
+        target: { kind: "existing-host", hostId: "host-a" },
         value: { branch: { kind: "existing", name: "release" } },
         onChange,
       },
@@ -207,7 +236,7 @@ describe("checkout inputs control", () => {
       inputsSlot(),
       {
         projectId: "project-1",
-        hostId: "host-a",
+        target: { kind: "existing-host", hostId: "host-a" },
         value: null,
         onChange,
       },

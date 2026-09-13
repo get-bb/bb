@@ -2,7 +2,6 @@ import type {
   RealtimeSocketErrorEvent,
   RealtimeSocketFactory,
   RealtimeSocketLike,
-  RealtimeSocketOptions,
 } from "./socket";
 
 export class FakeSocket implements RealtimeSocketLike {
@@ -18,10 +17,7 @@ export class FakeSocket implements RealtimeSocketLike {
   onclose: ((event: { code: number; reason: string }) => void) | null = null;
   onerror: ((event: RealtimeSocketErrorEvent) => void) | null = null;
 
-  constructor(
-    readonly url: string,
-    readonly options: RealtimeSocketOptions,
-  ) {}
+  constructor(readonly url: string) {}
 
   send(data: string): void {
     if (this.readyState !== FakeSocket.OPEN) throw new Error("not open");
@@ -67,8 +63,8 @@ export interface FakeSocketFactory extends RealtimeSocketFactory {
 export function createFakeSocketFactory(): FakeSocketFactory {
   const sockets: FakeSocket[] = [];
   return Object.assign(
-    (url: string, options: RealtimeSocketOptions) => {
-      const socket = new FakeSocket(url, options);
+    (url: string) => {
+      const socket = new FakeSocket(url);
       sockets.push(socket);
       return socket;
     },

@@ -15,7 +15,10 @@ function isWhitespace(value: string | undefined): boolean {
   return value !== undefined && /\s/u.test(value);
 }
 
-export function endsInsideExactRawThreadIdCodeSpan(text: string): boolean {
+function scanOpenCodeSpan(text: string): {
+  delimiterLength: number;
+  contentStart: number;
+} {
   let openDelimiterLength = 0;
   let openContentStart = -1;
   for (let index = 0; index < text.length; index++) {
@@ -32,10 +35,18 @@ export function endsInsideExactRawThreadIdCodeSpan(text: string): boolean {
     }
     index = delimiterEnd - 1;
   }
+  return {
+    delimiterLength: openDelimiterLength,
+    contentStart: openContentStart,
+  };
+}
+
+export function endsInsideExactRawThreadIdCodeSpan(text: string): boolean {
+  const { delimiterLength, contentStart } = scanOpenCodeSpan(text);
   return (
-    openDelimiterLength > 0 &&
-    openContentStart >= 0 &&
-    isRawThreadId(text.slice(openContentStart))
+    delimiterLength > 0 &&
+    contentStart >= 0 &&
+    isRawThreadId(text.slice(contentStart))
   );
 }
 
@@ -80,20 +91,6 @@ function isEscapedBacktick(text: string, index: number): boolean {
 }
 
 export function closeUnterminatedMarkdownCodeSpan(text: string): string {
-  let openDelimiterLength = 0;
-  for (let index = 0; index < text.length; index++) {
-    if (text[index] !== "`" || isEscapedBacktick(text, index)) continue;
-    let delimiterEnd = index + 1;
-    while (text[delimiterEnd] === "`") delimiterEnd += 1;
-    const delimiterLength = delimiterEnd - index;
-    if (openDelimiterLength === 0) {
-      openDelimiterLength = delimiterLength;
-    } else if (delimiterLength === openDelimiterLength) {
-      openDelimiterLength = 0;
-    }
-    index = delimiterEnd - 1;
-  }
-  return openDelimiterLength === 0
-    ? text
-    : `${text}${"`".repeat(openDelimiterLength)}`;
+  const { delimiterLength } = scanOpenCodeSpan(text);
+  return delimiterLength === 0 ? text : `${text}${"`".repeat(delimiterLength)}`;
 }

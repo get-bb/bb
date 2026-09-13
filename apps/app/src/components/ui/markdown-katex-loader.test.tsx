@@ -33,12 +33,27 @@ describe("MarkdownPreview lazy KaTeX", () => {
   it("loads the chunk once and re-renders every mounted preview with KaTeX", async () => {
     const first = render(<MarkdownPreview content={"One: $$a^2$$"} />);
     const second = render(<MarkdownPreview content={"Two: $$b^2$$"} />);
+    const mathPieces =
+      "Intro.\n\n$$\n\\frac{1}{2}\n$$\n\nMiddle paragraph.\n\n";
+    const incremental = render(
+      <MarkdownPreview content={"Intro.\n\n"} incrementalBlocks />,
+    );
+    incremental.rerender(
+      <MarkdownPreview content={mathPieces} incrementalBlocks />,
+    );
+    expect(incremental.container.querySelector(".katex-display")).toBeNull();
 
     await waitFor(() => {
       expect(first.container.querySelector(".katex")).not.toBeNull();
       expect(second.container.querySelector(".katex")).not.toBeNull();
+      expect(
+        incremental.container.querySelector(".katex-display"),
+      ).not.toBeNull();
     });
     expect(katexChunkLoads.count).toBe(1);
+    expect(incremental.container.innerHTML).toBe(
+      render(<MarkdownPreview content={mathPieces} />).container.innerHTML,
+    );
 
     const third = render(<MarkdownPreview content={"Three: $$c^2$$"} />);
     expect(third.container.querySelector(".katex")).not.toBeNull();

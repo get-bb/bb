@@ -46,7 +46,7 @@ were excluded. See the [audit](../MAINTENANCE.md) and
 | [Panels, files, terminals, splits, and embedded browser](workspace-panels.md) | 15 | 12 passed, 3 partial/blocked |
 | [Settings, keyboard, appearance controls, and usage](settings.md) | 13 | 6 passed, 7 partial/blocked |
 | [Skills, plugins, marketplaces, and plugin development](extensions.md) | 13 | 11 passed, 2 partial/blocked |
-| [Machines, daemon lifecycle, and updates](hosts-updates.md) | 8 | 2 passed, 6 partial/blocked |
+| [Machines, daemon lifecycle, and updates](hosts-updates.md) | 9 | 2 passed, 7 partial/blocked |
 | [Agent interfaces, route compatibility, and error contracts](compatibility-api.md) | 8 | 3 passed, 5 partial/blocked |
 | [Responsive layouts, accessibility, and performance](responsive-accessibility.md) | 8 | 8 partial/blocked |
 

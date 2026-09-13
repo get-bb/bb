@@ -43,7 +43,10 @@ import {
   setFocus,
   swapPanes,
 } from "@/lib/split-layout";
-import { createSplitResizeSnapSession } from "@/lib/split-resize-snap";
+import {
+  createSplitResizeFlexPair,
+  createSplitResizeSnapSession,
+} from "@/lib/split-resize-snap";
 import type {
   LayoutNode,
   PaneContent,
@@ -152,7 +155,7 @@ function PluginPagePanelHost({
       isFocused={pane?.isFocused ?? true}
     >
       <Suspense fallback={null}>
-        <LazyPluginPanelRightPanelHost {...props} pluginDetailTabsEnabled>
+        <LazyPluginPanelRightPanelHost {...props}>
           {children}
         </LazyPluginPanelRightPanelHost>
       </Suspense>
@@ -625,7 +628,6 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
   return (
     <>
       {commandHandlers}
-      {}
       <div
         ref={preservedScrollWorkspaceRef}
         className="relative -m-4 flex min-h-0 min-w-0 flex-1 overflow-hidden md:-m-5"
@@ -757,7 +759,6 @@ function SplitTree(props: SplitTreeProps) {
         data-focused={isFocused ? "true" : "false"}
         data-maximized={isMaximized ? "true" : undefined}
       >
-        {}
         {node.content.kind === "thread" ? (
           <PaneStaleWatcher
             threadId={node.content.threadId}
@@ -785,7 +786,6 @@ function SplitTree(props: SplitTreeProps) {
           onNavigateInPane={props.onNavigateInPane}
           onBeginPaneDrag={props.onBeginPaneDrag}
         />
-        {}
         <div
           aria-hidden
           data-pane-focus-scrim=""
@@ -1336,20 +1336,7 @@ function SplitDivider({
       const pointerDownPosition = horizontal ? event.clientX : event.clientY;
       snapSession.resolve({ end, pointer: pointerDownPosition, start });
 
-      const previousGrow = Number.parseFloat(
-        window.getComputedStyle(previous).flexGrow,
-      );
-      const nextGrow = Number.parseFloat(
-        window.getComputedStyle(next).flexGrow,
-      );
-      const pairTotal =
-        Number.isFinite(previousGrow) &&
-        Number.isFinite(nextGrow) &&
-        previousGrow + nextGrow > 0
-          ? previousGrow + nextGrow
-          : 1;
-      const previousFlex = previous.style.flex;
-      const nextFlex = next.style.flex;
+      const pair = createSplitResizeFlexPair(previous, next);
       const restoreTimelineRows = freezeOffscreenTimelineRows(previous, next);
       let pendingFraction: number | null = null;
       let finished = false;
@@ -1364,8 +1351,7 @@ function SplitDivider({
         });
         pendingFraction = fraction;
 
-        previous.style.flex = `${pairTotal * fraction} 1 0px`;
-        next.style.flex = `${pairTotal * (1 - fraction)} 1 0px`;
+        pair.apply(fraction);
       };
       const finish = (commit: boolean) => {
         if (finished) return;
@@ -1385,8 +1371,7 @@ function SplitDivider({
           onResize(pendingFraction);
           return;
         }
-        previous.style.flex = previousFlex;
-        next.style.flex = nextFlex;
+        pair.restore();
       };
       const onUp = (upEvent: PointerEvent) => {
         if (upEvent.pointerId !== pointerId) return;

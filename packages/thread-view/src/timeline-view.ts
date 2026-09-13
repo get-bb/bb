@@ -47,10 +47,6 @@ export type TimelineQuestionViewWorkRow = Extract<
   TimelineViewWorkRow,
   { workKind: "question" }
 >;
-export type TimelineImageViewViewWorkRow = Extract<
-  TimelineViewWorkRow,
-  { workKind: "image-view" }
->;
 export type TimelineViewWorkflowWorkRow = Extract<
   TimelineViewWorkRow,
   { workKind: "workflow" }
@@ -88,8 +84,6 @@ export interface TimelineBundleSummaryRow extends TimelineRowBase {
 export type TimelineWorkSummaryRow =
   | TimelineStepSummaryRow
   | TimelineBundleSummaryRow;
-
-export type TimelineWorkSummaryKind = TimelineWorkSummaryRow["kind"];
 
 export interface TimelineViewTurnRow extends Omit<TimelineTurnRow, "children"> {
   children: ThreadTimelineViewRow[] | null;

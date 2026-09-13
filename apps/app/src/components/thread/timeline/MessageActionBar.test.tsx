@@ -756,7 +756,7 @@ describe("MessageActionBar shared column width", () => {
 });
 
 describe("computeMessageActionRowLayout", () => {
-  const metrics = { actionWidth: 20, overflowTriggerWidth: 20 };
+  const metrics = { actionWidth: 20 };
 
   it("renders everything inline before the slot is measured", () => {
     expect(

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { getAppSettings, setAppSettings } from "@bb/db";
+import { getAppSettings, setAppSettings, updateHost } from "@bb/db";
+import { createDeferredPromise } from "@bb/test-helpers";
 import {
   hostDaemonServerWsMessageSchema,
   type HostDaemonOnlineRpcRequestMessage,
@@ -12,6 +13,7 @@ import {
 } from "../../src/services/system/execution-options.js";
 import { ApiError } from "../../src/errors.js";
 import { availableModelFixture } from "../helpers/available-models.js";
+import { listQueuedCommands } from "../helpers/commands.js";
 import {
   registerHostRpcResponder,
   registerProviderHostRpcResponder,
@@ -19,9 +21,9 @@ import {
 } from "../helpers/host-rpc.js";
 import {
   seedEnvironment,
+  seedHost,
   seedHostSession,
   seedProjectWithSource,
-  seedSession,
 } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 import {
@@ -32,6 +34,30 @@ import {
 import { createProviderRegistryService } from "../../src/services/providers/provider-registry.js";
 
 const registry = await createTestProviderRegistry();
+
+const INSTALLED_ONLY_PROVIDER_IDS = [
+  "acp-opencode",
+  "acp-omp",
+  "acp-grok",
+  "acp-hermes-agent",
+] as const;
+
+function registerInstalledOnlyProviderFixtures(harness: TestAppHarness): void {
+  const pluginId = "provider-acp";
+  harness.deps.pluginHostArtifacts.set(pluginId, {
+    digest: "a".repeat(64),
+    byteLength: 1,
+    path: "/unused/provider-acp.mjs",
+    generation: "test-provider-discovery",
+  });
+  for (const providerId of INSTALLED_ONLY_PROVIDER_IDS) {
+    const registration = registry.get(providerId);
+    if (registration === null) {
+      throw new Error(`Missing provider fixture ${providerId}`);
+    }
+    harness.deps.providerRegistry.register(registration);
+  }
+}
 
 function providerDiscoveryHealth(installed: boolean) {
   return {
@@ -561,43 +587,83 @@ describe("resolveSystemExecutionOptions", () => {
     });
   });
 
+  it("skips provider discovery while the host is suspended", async () => {
+    await withTestHarness({}, async (harness) => {
+      const warn = vi.fn();
+      harness.deps.logger = { ...harness.deps.logger, warn };
+      const host = seedHost(harness.deps, {
+        id: "host-execution-options-suspended",
+      });
+      updateHost(harness.db, harness.hub, host.id, {
+        phase: "suspended",
+        suspendedAt: 123,
+      });
+      const request = vi.spyOn(harness.hub, "requestHostOnlineRpc");
+
+      const response = await resolveSystemExecutionOptions(harness.deps, {
+        hostId: host.id,
+        providerId: "codex",
+      });
+
+      expect(response.providers.map((provider) => provider.id)).toEqual([
+        "codex",
+        "claude-code",
+        "pi",
+        "acp-cursor",
+      ]);
+      expect(response.modelLoadError).toEqual({
+        providerId: "codex",
+        code: "failed",
+      });
+      expect(request).not.toHaveBeenCalled();
+      expect(warn).not.toHaveBeenCalled();
+    });
+  });
+
   it("spends one command timeout across installed-only provider discovery", async () => {
-    vi.useFakeTimers();
-    try {
-      await withTestHarness({}, async (harness) => {
+    await withTestHarness(
+      { seedFirstPartyProviders: false },
+      async (harness) => {
+        registerInstalledOnlyProviderFixtures(harness);
         const { host, session } = seedHostSession(harness.deps, {
           id: "host-execution-options-provider-discovery-budget",
         });
-        const responder = registerHostRpcResponder(harness, {
-          hostId: host.id,
-          sessionId: session.id,
-          handle: () => new Promise(() => undefined),
-        });
+        let pendingProviders: ReturnType<
+          typeof listSystemProviderInfos
+        > | null = null;
+        vi.useFakeTimers();
+        try {
+          let settled = false;
+          pendingProviders = listSystemProviderInfos(harness.deps, {
+            hostId: host.id,
+          }).then((providers) => {
+            settled = true;
+            return providers;
+          });
 
-        let settled = false;
-        const pendingProviders = listSystemProviderInfos(harness.deps, {
-          hostId: host.id,
-        }).then((providers) => {
-          settled = true;
-          return providers;
-        });
+          await vi.advanceTimersByTimeAsync(0);
+          expect(listQueuedCommands(harness, "provider.health")).toHaveLength(
+            3,
+          );
+          await vi.advanceTimersByTimeAsync(29_999);
+          expect(settled).toBe(false);
 
-        await vi.advanceTimersByTimeAsync(0);
-        expect(responder.requests).toHaveLength(3);
-        await vi.advanceTimersByTimeAsync(29_999);
-        expect(settled).toBe(false);
-
-        await vi.advanceTimersByTimeAsync(1);
-        const providers = await pendingProviders;
-        expect(settled).toBe(true);
-        expect(responder.requests).toHaveLength(6);
-        expect(providers.map((provider) => provider.id)).not.toContain(
-          "acp-opencode",
-        );
-      });
-    } finally {
-      vi.useRealTimers();
-    }
+          await vi.advanceTimersByTimeAsync(1);
+          const providers = await pendingProviders;
+          expect(settled).toBe(true);
+          expect(listQueuedCommands(harness, "provider.health")).toHaveLength(
+            6,
+          );
+          expect(providers.map((provider) => provider.id)).not.toContain(
+            "acp-opencode",
+          );
+        } finally {
+          harness.hub.unregisterDaemon(session.id);
+          vi.useRealTimers();
+          await pendingProviders?.catch(() => undefined);
+        }
+      },
+    );
   });
 
   it.each([
@@ -1110,10 +1176,11 @@ describe("resolveSystemExecutionOptions", () => {
       });
 
       const providerModelWarning = warn.mock.calls.find(
-        ([, message]) => message === "Failed to resolve provider models",
+        ([, message]) => message === "Provider model catalog refresh settled",
       );
       expect(providerModelWarning).toBeDefined();
       expect(providerModelWarning?.[0]).toMatchObject({
+        outcome: "failed",
         errorCode: "command_failed",
         errorMessage: "model list failed",
         errorRetryable: false,
@@ -1452,7 +1519,7 @@ function seedEnvironmentPath(
   }).id;
 }
 
-describe("resolveSystemExecutionOptions model probe memo", () => {
+describe("resolveSystemExecutionOptions provider model catalog", () => {
   it("serves a host-scoped catalog to every environment on the host from one probe without the workspace path", async () => {
     await withTestHarness({}, async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
@@ -1579,85 +1646,59 @@ describe("resolveSystemExecutionOptions model probe memo", () => {
     });
   });
 
-  it("does not memoize a failed probe and re-probes after the daemon reconnects", async () => {
+  it("serves expired installed-only answers without waiting and revalidates each provider once in the background", async () => {
     await withTestHarness({}, async (harness) => {
-      const { host, session } = seedHostSession(harness.deps, {
-        id: "host-model-memo-invalidation",
-      });
-      const catalogModel = availableModelFixture({ model: "gpt-5" });
-      let failProbe = true;
-      const responder = registerHostRpcResponder(harness, {
-        hostId: host.id,
-        sessionId: session.id,
-        handle: (request) => {
-          if (request.command.type === "provider.health") {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      try {
+        vi.setSystemTime(1_800_000_000_000);
+        const { host, session } = seedHostSession(harness.deps, {
+          id: "host-installed-only-serve-stale",
+        });
+        const heldHealth = createDeferredPromise<void>();
+        let expired = false;
+        const responder = registerHostRpcResponder(harness, {
+          hostId: host.id,
+          sessionId: session.id,
+          handle: async (request) => {
+            if (request.command.type !== "provider.health") {
+              throw new Error(`Unexpected RPC command ${request.command.type}`);
+            }
+            const opencode = request.command.providerId === "acp-opencode";
+            if (expired && opencode) {
+              await heldHealth.promise;
+            }
             return {
               ok: true,
-              result: providerDiscoveryHealth(false),
+              result: providerDiscoveryHealth(!expired && opencode),
             };
-          }
-          if (request.command.type !== "provider.list_models") {
-            throw new Error(`Unexpected RPC command ${request.command.type}`);
-          }
-          if (failProbe) {
-            return {
-              ok: false,
-              errorCode: "command_timeout",
-              errorMessage: "Model probe timed out",
-            };
-          }
-          return {
-            ok: true,
-            result: { models: [catalogModel], selectedOnlyModels: [] },
-          };
-        },
-      });
-      const query = { hostId: host.id, providerId: "codex" };
-
-      const failed = await resolveSystemExecutionOptions(harness.deps, query);
-      expect(failed.modelLoadError).toEqual({
-        providerId: "codex",
-        code: "timeout",
-      });
-
-      failProbe = false;
-      const recovered = await resolveSystemExecutionOptions(
-        harness.deps,
-        query,
-      );
-      expect(recovered.modelLoadError).toBeNull();
-      expect(recovered.models).toEqual([catalogModel]);
-      await resolveSystemExecutionOptions(harness.deps, query);
-      expect(
-        responder.requests.filter(
-          (request) => request.command.type === "provider.list_models",
-        ),
-      ).toHaveLength(2);
-
-      harness.hub.unregisterDaemon(session.id);
-      const nextSession = seedSession(harness.deps, host.id);
-      const nextResponder = registerProviderHostRpcResponder(harness, {
-        hostId: host.id,
-        sessionId: nextSession.id,
-        modelsByProviderId: {
-          codex: {
-            models: [availableModelFixture({ model: "gpt-6" })],
-            selectedOnlyModels: [],
           },
-        },
-      });
-      const afterReconnect = await resolveSystemExecutionOptions(
-        harness.deps,
-        query,
-      );
-      expect(afterReconnect.models.map((model) => model.model)).toEqual([
-        "gpt-6",
-      ]);
-      expect(
-        nextResponder.requests.filter(
-          (request) => request.command.type === "provider.list_models",
-        ),
-      ).toHaveLength(1);
+        });
+        const healthCount = () => responder.requests.length;
+        const listIds = async () =>
+          (
+            await listSystemProviderInfos(harness.deps, { hostId: host.id })
+          ).map((provider) => provider.id);
+        expect(await listIds()).toContain("acp-opencode");
+        const probeCount = healthCount();
+        expect(probeCount).toBeGreaterThan(1);
+
+        vi.setSystemTime(1_800_000_000_000 + 5 * 60_000);
+        expired = true;
+        expect(await listIds()).toContain("acp-opencode");
+        await vi.waitFor(() => {
+          expect(healthCount()).toBe(2 * probeCount);
+        });
+        expect(await listIds()).toContain("acp-opencode");
+        expect(healthCount()).toBe(2 * probeCount);
+
+        heldHealth.resolve();
+        await vi.waitFor(async () => {
+          expect(await listIds()).not.toContain("acp-opencode");
+        });
+        expect(healthCount()).toBe(2 * probeCount);
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 });

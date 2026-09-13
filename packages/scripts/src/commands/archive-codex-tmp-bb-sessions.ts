@@ -3,11 +3,18 @@ import { existsSync as pathExistsSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import type { Readable, Writable } from "node:stream";
-import { fileURLToPath } from "node:url";
-import readline from "node:readline/promises";
 import type { ChildProcessByStdio } from "node:child_process";
 import { resolveCodexHome } from "@bb/config/codex-home";
-import { bold, cyan, dim, green, yellow, log } from "../lib/script-helpers.js";
+import { runMainIfEntrypoint } from "../lib/script-entry.js";
+import {
+  bold,
+  confirmTypedWord,
+  cyan,
+  dim,
+  green,
+  yellow,
+  log,
+} from "../lib/script-helpers.js";
 
 const DEFAULT_TMP_BB_PATTERNS: readonly string[] = [
   "*/bb-standalone-*",
@@ -670,44 +677,37 @@ function formatPatternList(patterns: readonly string[]): string {
   return patterns.map((pattern) => cyan(pattern)).join(", ");
 }
 
+function logThreadPreviews(
+  previews: MatchingThreadPreview[],
+  total: number,
+): void {
+  for (const preview of previews) {
+    log(" ", `${dim(preview.updatedAt)}  ${preview.id}  ${dim(preview.cwd)}`);
+  }
+  if (total > previews.length) {
+    log(" ", dim(`...and ${total - previews.length} more`));
+  }
+}
+
 async function confirmArchive(
   options: ArchiveTmpBbSessionsOptions,
   previews: MatchingThreadPreview[],
   total: number,
 ): Promise<boolean> {
-  if (!process.stdin.isTTY || !process.stdout.isTTY) {
-    throw new Error(
-      "Interactive confirmation requires a TTY. Re-run with --yes to confirm.",
-    );
-  }
-
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
+  return confirmTypedWord({
+    renderIntro: () => {
+      process.stdout.write("\n");
+      log(
+        yellow("!"),
+        `This will archive ${bold(String(total))} Codex session(s) matching ${formatPatternList(options.patterns)}.`,
+      );
+      log(" ", `${dim("Codex home:")} ${options.codexHome}`);
+      process.stdout.write("\n");
+      logThreadPreviews(previews, total);
+      process.stdout.write("\n");
+    },
+    word: "archive",
   });
-
-  try {
-    process.stdout.write("\n");
-    log(
-      yellow("!"),
-      `This will archive ${bold(String(total))} Codex session(s) matching ${formatPatternList(options.patterns)}.`,
-    );
-    log(" ", `${dim("Codex home:")} ${options.codexHome}`);
-    process.stdout.write("\n");
-    for (const preview of previews) {
-      log(" ", `${dim(preview.updatedAt)}  ${preview.id}  ${dim(preview.cwd)}`);
-    }
-    if (total > previews.length) {
-      log(" ", dim(`...and ${total - previews.length} more`));
-    }
-    process.stdout.write("\n");
-    const answer = await rl.question(
-      `  ${dim("?")}  Type ${bold('"archive"')} to continue: `,
-    );
-    return answer.trim() === "archive";
-  } finally {
-    rl.close();
-  }
 }
 
 function ensureCodexStateDbExists(dbPath: string): void {
@@ -747,12 +747,7 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
   );
 
   if (options.dryRun) {
-    for (const preview of previews) {
-      log(" ", `${dim(preview.updatedAt)}  ${preview.id}  ${dim(preview.cwd)}`);
-    }
-    if (threadIds.length > previews.length) {
-      log(" ", dim(`...and ${threadIds.length - previews.length} more`));
-    }
+    logThreadPreviews(previews, threadIds.length);
     process.stdout.write("\n");
     return;
   }
@@ -815,14 +810,4 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
   process.stdout.write("\n");
 }
 
-if (
-  process.argv[1] != null &&
-  resolve(process.argv[1]) === fileURLToPath(import.meta.url)
-) {
-  void main().catch((error) => {
-    const message =
-      error instanceof Error ? (error.stack ?? error.message) : String(error);
-    process.stderr.write(`${message}\n`);
-    process.exitCode = 1;
-  });
-}
+runMainIfEntrypoint(import.meta.url, main);

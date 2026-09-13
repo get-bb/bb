@@ -174,7 +174,6 @@ export function TimelineSelectionMenu({
         if (!next) onDismiss();
       }}
     >
-      {}
       <PopoverPrimitive.Anchor virtualRef={virtualAnchorRef} />
       <PopoverPrimitive.Portal>
         <PopoverPrimitive.Content

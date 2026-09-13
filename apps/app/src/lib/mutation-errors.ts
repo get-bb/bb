@@ -36,7 +36,7 @@ function stripHttpStatusPrefix(message: string): string {
   return message.replace(HTTP_STATUS_PREFIX_PATTERN, "");
 }
 
-function isAbortLikeError(error: unknown): boolean {
+export function isAbortLikeError(error: unknown): boolean {
   return toRecord(error)?.name === "AbortError";
 }
 

@@ -26,6 +26,14 @@ const cursorSchema = z.object({
 export type TimelineSnapshot = z.infer<typeof snapshotSchema>;
 const PREFIX = "timeline-v1:";
 
+function decodeTimelineCursor(anchorId: string): z.infer<typeof cursorSchema> {
+  return cursorSchema.parse(
+    JSON.parse(
+      Buffer.from(anchorId.slice(PREFIX.length), "base64url").toString("utf8"),
+    ),
+  );
+}
+
 export function resolveTimelineSnapshot(
   db: DbConnection,
   thread: Thread,
@@ -46,14 +54,7 @@ export function resolveTimelineSnapshot(
   try {
     if (!page.beforeCursor.anchorId.startsWith(PREFIX))
       throw new Error("Legacy cursor");
-    const decoded = cursorSchema.parse(
-      JSON.parse(
-        Buffer.from(
-          page.beforeCursor.anchorId.slice(PREFIX.length),
-          "base64url",
-        ).toString("utf8"),
-      ),
-    );
+    const decoded = decodeTimelineCursor(page.beforeCursor.anchorId);
     const { snapshot } = decoded;
     if (
       decoded.anchorSeq !== page.beforeCursor.anchorSeq ||
@@ -84,14 +85,7 @@ export function readTimelineContentCursor(
   page: ThreadTimelinePageRequest,
 ): TimelineContentCursor | undefined {
   if (page.kind === "latest") return undefined;
-  return cursorSchema.parse(
-    JSON.parse(
-      Buffer.from(
-        page.beforeCursor.anchorId.slice(PREFIX.length),
-        "base64url",
-      ).toString("utf8"),
-    ),
-  ).content;
+  return decodeTimelineCursor(page.beforeCursor.anchorId).content;
 }
 
 export function bindTimelineCursor(

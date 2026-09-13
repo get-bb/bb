@@ -1,10 +1,15 @@
+import { getHost, updateHost } from "@bb/db";
+import { setPluginMachineProviderBridge } from "../../src/services/plugins/plugin-machine-provider-registry.js";
 import type {
   HostDaemonOnlineRpcRequestMessage,
   ProviderCliStatusResponse,
 } from "@bb/host-daemon-contract";
 import { systemProviderInfoSchema } from "@bb/server-contract";
 import { DEFAULT_BB_REQUEST_TIMEOUT_MS } from "@bb/sdk";
-import { validatePluginProviderDeclaration } from "@get-bb/plugin-sdk/internal/host-policy";
+import {
+  validatePluginProviderDeclaration,
+  validatePluginMachineProviderDeclaration,
+} from "@get-bb/plugin-sdk/internal/host-policy";
 import { describe, expect, it, vi } from "vitest";
 import { COMMAND_TIMEOUT_MS } from "../../src/constants.js";
 import { buildPluginProviderRegistration } from "../../src/services/providers/plugin-provider-registration.js";
@@ -262,6 +267,73 @@ describe("public provider installation routes", () => {
       });
     });
   });
+
+  it.each(["suspended", "suspending"] as const)(
+    "does not resume a %s machine when reading provider status",
+    async (phase) => {
+      await withTestHarness(async (harness) => {
+        const { host } = seedHostSession(harness.deps, {
+          id: "provider-installation-suspended-host",
+        });
+        registerInstallationProviders(
+          harness,
+          ["suspended-installed-provider"],
+          "installed",
+        );
+        const resume = vi.fn(async () => ({ resource: { id: "owned" } }));
+        const record = {
+          pluginId: "test-machine",
+          provider: validatePluginMachineProviderDeclaration({
+            description: "Provision a test machine.",
+            icon: "Terminal",
+            id: "test-machine",
+            displayName: "Test machine",
+
+            reconcileCleanup: async () => ({ status: "removed" }),
+            create: async () => ({
+              status: "created",
+              name: "Test machine",
+              hostId: host.id,
+              resource: { id: "owned" },
+            }),
+            suspend: async () => ({ resource: { id: "owned" } }),
+            resume,
+            remove: async () => ({ status: "removed" }),
+          }),
+        };
+        setPluginMachineProviderBridge({
+          listMachineProviders: () => [record],
+          getMachineProvider: () => record,
+          invokeProvider: async (_pluginId, _label, run) => ({
+            ok: true,
+            value: await run(),
+          }),
+          decisionTimeoutMs: 10_000,
+        });
+        try {
+          updateHost(harness.db, harness.hub, host.id, {
+            machineProviderId: "test-machine",
+            phase,
+            suspendedAt: phase === "suspended" ? Date.now() : null,
+            resource: { id: "owned" },
+          });
+          const rpc = vi.spyOn(harness.hub, "requestHostOnlineRpc");
+          const response = await harness.app.request(
+            `${API}/hosts/${host.id}/provider-clis/status`,
+          );
+          expect(response.status).toBe(502);
+          expect(await readJson(response)).toMatchObject({
+            code: "host_unavailable",
+          });
+          expect(getHost(harness.db, host.id)?.phase).toBe(phase);
+          expect(resume).not.toHaveBeenCalled();
+          expect(rpc).not.toHaveBeenCalled();
+        } finally {
+          setPluginMachineProviderBridge(undefined);
+        }
+      });
+    },
+  );
 
   it("finishes stalled provider aggregation before the SDK request timeout", async () => {
     const statusRequestBatchSize = 3;

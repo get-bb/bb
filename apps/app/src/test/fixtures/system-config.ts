@@ -11,6 +11,12 @@ export function makeSystemConfig(
   overrides: Partial<SystemConfigResponse> = {},
 ): SystemConfigResponse {
   return {
+    serverAccess: {
+      providers: [],
+      defaultProviderId: "direct",
+      effectiveUrl: null,
+      urlSource: null,
+    },
     generalSettings: defaultAppSettings,
     keybindings: [],
     defaultKeybindings: [],

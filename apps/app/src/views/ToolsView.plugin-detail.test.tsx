@@ -1,7 +1,10 @@
 // @vitest-environment jsdom
 
+import { createStore, Provider } from "jotai";
+import { splitLayoutAtom, maximizedPaneIdAtom } from "@/lib/split-layout/atoms";
 import type { ReactNode } from "react";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -42,6 +45,7 @@ import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-qu
 import { pluginSourceQueryKey } from "@/hooks/queries/query-keys";
 import type { PluginFrontendDiagnostic } from "@/lib/plugin-frontend";
 import {
+  makeInstalledPlugin,
   makePluginListItem,
   makePluginRegistrationSet,
 } from "@/test/fixtures/plugins";
@@ -1767,4 +1771,101 @@ describe("PluginDetail capability inventory", () => {
       expect(screen.getByText(label)).toBeTruthy();
     }
   });
+});
+
+describe("detail disable workspace cleanup", () => {
+  it.each([false, true])(
+    "preserves the workspace until disable settles (failure=%s)",
+    async (fails) => {
+      const store = createStore();
+      const layout = {
+        root: {
+          type: "pane" as const,
+          paneId: "github",
+          content: {
+            kind: "plugin-panel" as const,
+            pluginId: "github",
+            panelPath: "main",
+            subPath: "",
+          },
+        },
+        focusedPaneId: "github",
+      };
+      store.set(splitLayoutAtom, layout);
+      store.set(maximizedPaneIdAtom, "github");
+      let complete: ((response: Response) => void) | undefined;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (input: RequestInfo | URL) => {
+          const url = String(input);
+          if (url.includes("/github/disable"))
+            return new Promise<Response>((resolve) => {
+              complete = resolve;
+            });
+          if (url === "/api/v1/plugins")
+            return Response.json({
+              plugins: [makeInstalledPlugin({ id: "github", name: "GitHub" })],
+            });
+          if (url.includes("plugin-catalog/search"))
+            return Response.json({ results: [], collections: [] });
+          return Response.json({ error: "not found" }, { status: 404 });
+        }),
+      );
+      const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+      render(
+        <QueryClientWrapper>
+          <Provider store={store}>
+            <MemoryRouter initialEntries={["/skills", "/plugins/github/main"]}>
+              <TooltipProvider>
+                <PluginDetailPaneView pluginId="github" />
+              </TooltipProvider>
+              <LocationProbe />
+              <HistoryBackButton />
+            </MemoryRouter>
+          </Provider>
+        </QueryClientWrapper>,
+      );
+      fireEvent.click(
+        await screen.findByRole("switch", { name: "Disable GitHub" }),
+      );
+      await waitFor(() =>
+        expect(
+          screen
+            .getByRole("switch", { name: "Disable GitHub" })
+            .hasAttribute("disabled"),
+        ).toBe(true),
+      );
+      await waitFor(() => expect(complete).toBeDefined());
+      expect(store.get(splitLayoutAtom)).toEqual(layout);
+      await act(async () =>
+        complete?.(
+          fails
+            ? Response.json({ error: "denied" }, { status: 500 })
+            : Response.json({
+                ok: true,
+                plugin: makeInstalledPlugin({
+                  id: "github",
+                  enabled: false,
+                  status: "disabled",
+                }),
+              }),
+        ),
+      );
+      if (fails) {
+        expect(store.get(splitLayoutAtom)).toEqual(layout);
+        expect(store.get(maximizedPaneIdAtom)).toBe("github");
+        expect(screen.getByTestId("route-path").textContent).toBe(
+          "/plugins/github/main",
+        );
+      } else {
+        expect(store.get(splitLayoutAtom)?.root).toMatchObject({
+          content: { kind: "new-thread" },
+        });
+        expect(store.get(maximizedPaneIdAtom)).toBeNull();
+        expect(screen.getByTestId("route-path").textContent).toBe("/");
+        fireEvent.click(screen.getByRole("button", { name: "Browser back" }));
+        expect(screen.getByTestId("route-path").textContent).toBe("/skills");
+      }
+    },
+  );
 });

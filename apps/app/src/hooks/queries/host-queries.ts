@@ -12,33 +12,47 @@ import {
 } from "./query-keys";
 import type { QueryOptions } from "./query-helpers";
 
-export function useHosts(options?: QueryOptions) {
+export function useHosts(
+  options?: QueryOptions & { includeCreating?: boolean },
+) {
   const enabled = options?.enabled ?? true;
+  const includeCreating = options?.includeCreating ?? false;
   useHostListRealtimeSubscription({ enabled });
 
   return useQuery<Host[]>({
-    queryKey: hostsQueryKey(),
-    queryFn: ({ signal }) => sdk.hosts.list({ signal }),
+    queryKey: hostsQueryKey(includeCreating),
+    queryFn: ({ signal }) => sdk.hosts.list({ signal, includeCreating }),
     enabled,
     staleTime: 60_000,
   });
 }
 
-export function selectPersistentHosts(
+export type HostScope = "persistent" | "all";
+
+export function selectHosts(
   hosts: readonly Host[] | undefined,
+  scope: HostScope,
 ): Host[] {
-  return hosts ? [...hosts] : [];
+  const everyHost = hosts ? [...hosts] : [];
+  return scope === "all"
+    ? everyHost
+    : everyHost.filter((host) => host.type !== "ephemeral");
 }
 
 export function selectPrimaryHost(
   hosts: readonly Host[] | undefined,
   primaryHostId: string | null,
 ): Host | null {
-  if (!hosts || hosts.length === 0) return null;
+  const availableHosts = selectHosts(hosts, "persistent");
+  if (availableHosts.length === 0) return null;
   if (primaryHostId !== null) {
-    return hosts.find((host) => host.id === primaryHostId) ?? null;
+    return availableHosts.find((host) => host.id === primaryHostId) ?? null;
   }
-  return hosts.find((host) => host.status === "connected") ?? hosts[0] ?? null;
+  return (
+    availableHosts.find((host) => host.status === "connected") ??
+    availableHosts[0] ??
+    null
+  );
 }
 
 export function usePrimaryHost(options?: QueryOptions): Host | null {

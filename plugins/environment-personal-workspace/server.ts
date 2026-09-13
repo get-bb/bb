@@ -12,6 +12,7 @@ export default async function personalWorkspacePlugin(
   bb.experimental_environments.register({
     id: PERSONAL_WORKSPACE_ENVIRONMENT_PROVIDER_ID,
     displayName: "Personal workspace",
+    description: "Create a personal directory without a project.",
     icon: "Folder",
     requires: { projectless: true },
     async create({ host: machine, pathKey, rebuild, report, signal }) {

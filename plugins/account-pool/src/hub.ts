@@ -1,5 +1,6 @@
 import type {
   Account,
+  AccountPoolConfig,
   AccountQuota,
   AccountSecret,
   ModelFamily,
@@ -60,23 +61,16 @@ const DROPPED_RESPONSE_HEADERS = new Set([
   "upgrade",
 ]);
 
-export interface HubSettings {
-  anthropicUpstreamBaseUrl: string;
-  codexUpstreamBaseUrl: string;
-  switchThreshold: number;
-}
-
 interface HubOptions {
   accounts: AccountStore;
   quotas: QuotaStore;
   affinity: PoolAffinityStore;
   maxAffinityBindings: number;
   hubTokens: HubTokenStore;
-  getSettings: () => HubSettings;
+  getSettings: () => AccountPoolConfig;
   adapters: ReadonlyMap<PoolProvider, ProviderAdapter>;
   fetch: typeof fetch;
   now: () => number;
-  usageRefreshIntervalMs: number;
   drainTimeoutMs: number;
   onAccountsChanged: () => void;
   onUpstreamError: (provider: PoolProvider, error: unknown) => void;
@@ -158,7 +152,7 @@ export class AccountPoolHub {
     this.accepting = true;
     while (!signal.aborted) {
       await this.refreshUsage();
-      await waitForDelay(this.options.usageRefreshIntervalMs, signal);
+      await waitForDelay(DEFAULT_USAGE_REFRESH_INTERVAL_MS, signal);
     }
     await this.stop();
   }
@@ -182,15 +176,6 @@ export class AccountPoolHub {
     if (hostId === null) {
       return adapter.errorResponse(401, "Invalid Account Pooler bearer token.");
     }
-    return this.handleAuthenticated(request, provider, hostId);
-  }
-
-  async handleAuthenticated(
-    request: Request,
-    provider: PoolProvider,
-    hostId: string | null = null,
-  ): Promise<Response> {
-    const adapter = this.adapter(provider);
     if (!this.accepting)
       return adapter.errorResponse(
         503,
@@ -221,17 +206,13 @@ export class AccountPoolHub {
     force: boolean,
   ): Promise<void> {
     const adapter = this.adapter(account.provider);
-    if (
-      adapter.refreshUsage === undefined ||
-      (this.inFlightByAccount.get(account.id) ?? 0) > 0
-    )
-      return;
+    if ((this.inFlightByAccount.get(account.id) ?? 0) > 0) return;
     const now = this.options.now();
     const last = this.lastUsageRefreshAt.get(account.id);
     if (
       !force &&
       last !== undefined &&
-      now - last < this.options.usageRefreshIntervalMs
+      now - last < DEFAULT_USAGE_REFRESH_INTERVAL_MS
     )
       return;
     const running = this.usageRefreshes.get(account.id);
@@ -289,21 +270,11 @@ export class AccountPoolHub {
       hosts: await this.options.hubTokens.list(),
       accounts: accounts.map((account) => {
         const quota = this.options.quotas.get(account.id);
+        const { accountId: _accountId, ...quotaFields } = quota;
         return {
           ...account,
           lastUsedHostName: null,
-          fiveHourUtilization: quota.fiveHourUtilization,
-          fiveHourResetAt: quota.fiveHourResetAt,
-          fiveHourStatus: quota.fiveHourStatus,
-          sevenDayUtilization: quota.sevenDayUtilization,
-          sevenDayResetAt: quota.sevenDayResetAt,
-          sevenDayStatus: quota.sevenDayStatus,
-          representativeClaim: quota.representativeClaim,
-          familyWeekly: quota.familyWeekly,
-          limitWindows: quota.limitWindows,
-          observedAt: quota.observedAt,
-          heldUntil: quota.heldUntil,
-          error: quota.error,
+          ...quotaFields,
           inFlight: this.inFlightByAccount.get(account.id) ?? 0,
           status: accountStatus(account, quota, settings.switchThreshold, now),
         };
@@ -315,7 +286,7 @@ export class AccountPoolHub {
     request: Request,
     body: Uint8Array,
     adapter: ProviderAdapter,
-    hostId: string | null,
+    hostId: string,
   ): Promise<Response> {
     const signal = AbortSignal.any([request.signal, this.stopped.signal]);
     const attempted = new Set<string>();
@@ -334,7 +305,7 @@ export class AccountPoolHub {
     const parsed = adapter.parseRequest(body, request.headers);
     const family = parsed.family;
     const affinityKey =
-      hostId === null || parsed.affinityId === null
+      parsed.affinityId === null
         ? null
         : JSON.stringify([adapter.provider, hostId, parsed.affinityId]);
     const parentAffinityKey =
@@ -398,14 +369,12 @@ export class AccountPoolHub {
         }
         previousAccountId = selected.account.id;
         attempted.add(selected.account.id);
-        if (hostId !== null) {
-          const changed = await this.options.accounts.recordUsed(
-            selected.account.id,
-            this.options.now(),
-            hostId,
-          );
-          if (changed) this.options.onAccountsChanged();
-        }
+        const changed = await this.options.accounts.recordUsed(
+          selected.account.id,
+          this.options.now(),
+          hostId,
+        );
+        if (changed) this.options.onAccountsChanged();
         let secret: AccountSecret;
         try {
           signal.throwIfAborted();
@@ -1177,7 +1146,7 @@ export function createHub(options: {
   quotas: QuotaStore;
   affinity: PoolAffinityStore;
   hubTokens: HubTokenStore;
-  getSettings: () => HubSettings;
+  getSettings: () => AccountPoolConfig;
   fetch?: typeof fetch;
   now?: () => number;
   refreshUrl?: string;
@@ -1187,7 +1156,6 @@ export function createHub(options: {
   importCodexCredentials?: () => Promise<ImportedCodexCredentials>;
   usageUrl?: string;
   profileUrl?: string;
-  usageRefreshIntervalMs?: number;
   drainTimeoutMs?: number;
   maxAffinityBindings?: number;
   onAccountsChanged?: () => void;
@@ -1222,8 +1190,6 @@ export function createHub(options: {
     adapters,
     fetch: options.fetch ?? fetch,
     now: options.now ?? Date.now,
-    usageRefreshIntervalMs:
-      options.usageRefreshIntervalMs ?? DEFAULT_USAGE_REFRESH_INTERVAL_MS,
     drainTimeoutMs: options.drainTimeoutMs ?? 60_000,
     onAccountsChanged: options.onAccountsChanged ?? (() => {}),
     onUpstreamError: options.onUpstreamError ?? (() => {}),

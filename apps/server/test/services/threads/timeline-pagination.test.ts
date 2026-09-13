@@ -59,6 +59,10 @@ describe("paginateTimelineRows", () => {
     const page = paginateTimelineRows({
       contextBoundarySeq: null,
       knownHasOlderSegments: null,
+      maxLeaves: 1_000,
+      maxBytes: 1_000_000,
+      ownedSequenceStart: 0,
+      ownedSequenceEnd: 4,
       page: { kind: "latest", segmentLimit: 2 },
       rows,
     });

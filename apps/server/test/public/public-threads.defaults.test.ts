@@ -6,7 +6,7 @@ import {
 import {
   createProjectSource,
   getProjectExecutionDefaults,
-  listThreads,
+  listThreadsWithPendingInteractionState,
   setExperiments,
   upsertProjectExecutionDefaults,
 } from "@bb/db";
@@ -526,9 +526,11 @@ describe("public thread default routes", () => {
         details: { providerId: "codex", code: "failed" },
         retryable: true,
       });
-      expect(listThreads(harness.db, { projectId: project.id })).toHaveLength(
-        0,
-      );
+      expect(
+        listThreadsWithPendingInteractionState(harness.db, {
+          projectId: project.id,
+        }),
+      ).toHaveLength(0);
     });
   });
 

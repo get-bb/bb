@@ -12,6 +12,7 @@ type ThreadResponse = PluginThreadEventPayloads["thread.created"]["thread"];
 type QueueEntry = PluginThreadEventPayloads["message.queued"]["entry"];
 type TurnFailedEvent = PluginThreadEventPayloads["turn.failed"];
 type PluginAgentConfigurationContextOverrides = {
+  pluginMetadata?: PluginAgentConfigurationContext["pluginMetadata"];
   thread?: Partial<PluginAgentConfigurationContext["thread"]>;
   project?: Partial<PluginAgentConfigurationContext["project"]>;
   environment?: Partial<PluginAgentConfigurationContext["environment"]>;
@@ -65,8 +66,16 @@ export function makeHostResponse(
   return {
     id: "host-1",
     name: "Test host",
-    status: "connected",
     type: "persistent",
+    status: "connected",
+    machineProviderId: null,
+    lifecycle: {
+      phase: "active",
+      suspendedAt: null,
+      message: null,
+      pendingLog: "",
+      teardown: null,
+    },
     maxPermissionMode: "full",
     lastSeenAt: null,
     lastRejectedProtocolVersion: null,
@@ -124,6 +133,7 @@ export function makePluginAgentConfigurationContext(
   overrides: PluginAgentConfigurationContextOverrides = {},
 ): PluginAgentConfigurationContext {
   const context: PluginAgentConfigurationContext = {
+    pluginMetadata: {},
     thread: {
       id: "thread-test",
       title: null,
@@ -152,6 +162,7 @@ export function makePluginAgentConfigurationContext(
     origin: { kind: null, pluginId: null },
   };
   return {
+    pluginMetadata: overrides.pluginMetadata ?? context.pluginMetadata,
     thread: { ...context.thread, ...overrides.thread },
     project: { ...context.project, ...overrides.project },
     environment: { ...context.environment, ...overrides.environment },
@@ -236,17 +247,7 @@ export function makeMessageDispatchHookContext(
     createdAt: 0,
     updatedAt: 0,
   };
-  const hostDefaults: NonNullable<MessageDispatchHookContext["host"]> = {
-    id: "host-1",
-    name: "Test host",
-    status: "connected",
-    type: "persistent",
-    maxPermissionMode: "full",
-    lastSeenAt: null,
-    lastRejectedProtocolVersion: null,
-    createdAt: 0,
-    updatedAt: 0,
-  };
+  const hostDefaults = makeHostResponse();
   const project = { ...context.project, ...overrides.project };
   const host =
     overrides.host === undefined

@@ -58,6 +58,7 @@ export interface TopLevelSidebarSectionProps {
   children: ReactNode;
   sectionId?: string;
   stickyHeader?: boolean;
+  status?: ReactNode;
   actions?: ReactNode;
   actionsAlwaysVisible?: boolean;
   actionsMobileAlways?: boolean;
@@ -77,6 +78,7 @@ export function TopLevelSidebarSection({
   children,
   sectionId,
   stickyHeader = true,
+  status,
   actions,
   actionsAlwaysVisible = false,
   actionsMobileAlways = false,
@@ -96,6 +98,7 @@ export function TopLevelSidebarSection({
   );
   const pluginStatus = usePluginThreadRowStatusForThreads(collapsedThreads);
   const showCollapsedActivity =
+    !status &&
     collapseControl?.isCollapsed === true &&
     (collapsedSplitIndicator.miniMap !== null ||
       collapsedActivity !== undefined ||
@@ -220,12 +223,16 @@ export function TopLevelSidebarSection({
             </button>
           ) : null}
         </span>
-        {actions || collapsedActivityIndicator ? (
+        {status || actions || collapsedActivityIndicator ? (
           <span
             data-sidebar-trailing-controls=""
-            className="relative z-20 inline-flex h-7 shrink-0 items-center max-md:pointer-coarse:h-9"
-            onClick={actions ? stopActionsClick : undefined}
+            className={cn(
+              "relative z-20 inline-flex h-7 shrink-0 items-center max-md:pointer-coarse:h-9",
+              SIDEBAR_HOVER_ACTIONS_GAP_CLASS,
+            )}
+            onClick={status || actions ? stopActionsClick : undefined}
           >
+            {status}
             {collapsedActivityIndicator}
             {actions ? (
               <span
@@ -241,6 +248,8 @@ export function TopLevelSidebarSection({
                   "inline-flex shrink-0 items-center",
                   SIDEBAR_HOVER_ACTIONS_GAP_CLASS,
                   !actionsAlwaysVisible && SIDEBAR_HOVER_ACTIONS_CLASS,
+                  collapseControl?.isCollapsed &&
+                    "max-md:pointer-coarse:hidden",
                 )}
               >
                 {actions}

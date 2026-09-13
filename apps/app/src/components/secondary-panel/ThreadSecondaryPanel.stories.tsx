@@ -41,7 +41,7 @@ import {
   makePullRequest,
   makeWorkspaceStatus,
 } from "./ThreadMetadataContent.fixtures";
-import { resolveRightPanelFileVisual } from "./rightPanelFileVisuals";
+import { resolveRightPanelFileIconName } from "./rightPanelFileVisuals";
 import { useThreadStorageBrowser } from "./useThreadStorageBrowser";
 import { FilePreview } from "./FilePreview";
 import { threadListQueryKey } from "@/hooks/queries/query-keys";
@@ -409,12 +409,15 @@ function FileTabsShellInner({
     () =>
       openFiles.map((filename) => {
         const tab = createStoryFileTab(filename);
-        const visual = resolveRightPanelFileVisual({ path: filename });
         return {
           label: filename,
           isPinned: filename === pinnedFilename,
           leadingVisual: (
-            <Icon name={visual.iconName} className="size-3.5" aria-hidden />
+            <Icon
+              name={resolveRightPanelFileIconName(filename)}
+              className="size-3.5"
+              aria-hidden
+            />
           ),
           statusLabel: null,
           onSelect: () => setActiveFilename(filename),

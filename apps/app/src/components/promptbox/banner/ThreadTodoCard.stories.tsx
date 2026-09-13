@@ -1,39 +1,12 @@
 import { useState } from "react";
 import type { ThreadTimelinePendingTodos } from "@bb/domain";
 import { StoryCard, StoryRow } from "../../../../.ladle/story-card";
+import { ResponsiveStage } from "./banner-story-stages";
 import { ThreadTodoCard } from "./ThreadTodoCard";
 
 export default {
   title: "promptbox/banner/Todo Card",
 };
-
-type StageSize = "desktop" | "mobile";
-
-function Stage({
-  children,
-  size,
-}: {
-  children: React.ReactNode;
-  size: StageSize;
-}) {
-  return (
-    <div
-      data-promptbox-shell=""
-      className={size === "desktop" ? "min-w-0 flex-1" : "w-[20rem] shrink-0"}
-    >
-      {children}
-    </div>
-  );
-}
-
-function ResponsiveStage({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="flex w-full min-w-0 items-start gap-3 overflow-x-auto">
-      <Stage size="desktop">{children}</Stage>
-      <Stage size="mobile">{children}</Stage>
-    </div>
-  );
-}
 
 const mixedTodos: ThreadTimelinePendingTodos = {
   sourceSeq: 0,

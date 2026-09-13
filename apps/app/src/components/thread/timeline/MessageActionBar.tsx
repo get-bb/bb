@@ -82,6 +82,36 @@ interface MessageOverflowAction {
   kind?: "copy";
 }
 
+function MessageActionIcon({
+  action,
+  className,
+  ariaHidden,
+}: {
+  action: MessageOverflowAction;
+  className?: string;
+  ariaHidden?: "true";
+}) {
+  return action.plugin ? (
+    <PluginActionIcon
+      pluginId={action.plugin.pluginId}
+      icon={action.plugin.icon}
+      className={className}
+    />
+  ) : (
+    <Icon name={action.icon} className={className} aria-hidden={ariaHidden} />
+  );
+}
+
+function useTransientFlag(): [boolean, (flag: boolean) => void] {
+  const [flag, setFlag] = useState(false);
+  useEffect(() => {
+    if (!flag) return;
+    const timeoutId = window.setTimeout(() => setFlag(false), 2000);
+    return () => window.clearTimeout(timeoutId);
+  }, [flag]);
+  return [flag, setFlag];
+}
+
 const DESKTOP_ACTION_WIDTH_PX = 20;
 const TOUCH_ACTION_WIDTH_PX = 28;
 const ACTION_ROW_GAP_PX = 8;
@@ -102,12 +132,10 @@ export function computeMessageActionRowLayout({
   actionCount,
   availableWidth,
   actionWidth,
-  overflowTriggerWidth,
 }: {
   actionCount: number;
   availableWidth: number | undefined;
   actionWidth: number;
-  overflowTriggerWidth: number;
 }): MessageActionRowLayout {
   if (actionCount <= 0) {
     return { inlineCount: 0, overflowCount: 0 };
@@ -124,7 +152,7 @@ export function computeMessageActionRowLayout({
       actionCount - 1,
       Math.floor(
         (availableWidth -
-          overflowTriggerWidth -
+          actionWidth -
           OVERFLOW_TRIGGER_GAP_PX +
           ACTION_ROW_GAP_PX) /
           (actionWidth + ACTION_ROW_GAP_PX),
@@ -192,13 +220,8 @@ function MobileMessageOverflowPopover({
   triggerClassName,
 }: MobileMessageOverflowPopoverProps) {
   const [open, setOpen] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useTransientFlag();
   const portalScopeProps = usePortalScopeProps();
-  useEffect(() => {
-    if (!copied) return;
-    const timeoutId = window.setTimeout(() => setCopied(false), 2000);
-    return () => window.clearTimeout(timeoutId);
-  }, [copied]);
   const selectAction = useCallback((action: MessageOverflowAction) => {
     flushSync(() => setOpen(false));
     action.onSelect();
@@ -255,15 +278,10 @@ function MobileMessageOverflowPopover({
                 selectAction(action);
               }}
             >
-              {action.plugin ? (
-                <PluginActionIcon
-                  pluginId={action.plugin.pluginId}
-                  icon={action.plugin.icon}
-                  className="size-3.5"
-                />
-              ) : (
-                <Icon name={action.icon} className="size-3.5 shrink-0" />
-              )}
+              <MessageActionIcon
+                action={action}
+                className="size-3.5 shrink-0"
+              />
               {action.label}
             </button>
           ))}
@@ -333,15 +351,7 @@ function DesktopMessageAction({
             disabled={action.disabled}
             aria-label={action.label}
           >
-            {action.plugin ? (
-              <PluginActionIcon
-                pluginId={action.plugin.pluginId}
-                icon={action.plugin.icon}
-                className="size-3"
-              />
-            ) : (
-              <Icon name={action.icon} className="size-3" />
-            )}
+            <MessageActionIcon action={action} className="size-3" />
           </button>
         )}
       </TooltipTrigger>
@@ -367,14 +377,7 @@ function MessageActionMenuItems({
       onSelect={action.onSelect}
       textValue={action.label}
     >
-      {action.plugin ? (
-        <PluginActionIcon
-          pluginId={action.plugin.pluginId}
-          icon={action.plugin.icon}
-        />
-      ) : (
-        <Icon name={action.icon} aria-hidden="true" />
-      )}
+      <MessageActionIcon action={action} ariaHidden="true" />
       {action.label}
     </DropdownMenuItem>
   ));
@@ -452,12 +455,7 @@ export function MessageActionBar({
       setExpanded(false);
     }
   };
-  const [copiedFromRow, setCopiedFromRow] = useState(false);
-  useEffect(() => {
-    if (!copiedFromRow) return;
-    const timeoutId = window.setTimeout(() => setCopiedFromRow(false), 2000);
-    return () => window.clearTimeout(timeoutId);
-  }, [copiedFromRow]);
+  const [copiedFromRow, setCopiedFromRow] = useTransientFlag();
   const mobileDirectActionClass =
     mobileActionDisplay === "inline"
       ? MOBILE_INLINE_ACTION_CLASS
@@ -557,7 +555,6 @@ export function MessageActionBar({
             actionCount: actions.length,
             availableWidth,
             actionWidth: TOUCH_ACTION_WIDTH_PX,
-            overflowTriggerWidth: TOUCH_ACTION_WIDTH_PX,
           });
     const canExpandInline =
       columnWidth !== undefined &&
@@ -634,7 +631,6 @@ export function MessageActionBar({
     actionCount: actions.length,
     availableWidth,
     actionWidth: DESKTOP_ACTION_WIDTH_PX,
-    overflowTriggerWidth: DESKTOP_ACTION_WIDTH_PX,
   });
 
   return (
@@ -760,15 +756,7 @@ function MobileInlineActions({
         disabled={action.disabled}
         aria-label={action.label}
       >
-        {action.plugin ? (
-          <PluginActionIcon
-            pluginId={action.plugin.pluginId}
-            icon={action.plugin.icon}
-            className="size-3"
-          />
-        ) : (
-          <Icon name={action.icon} className="size-3" />
-        )}
+        <MessageActionIcon action={action} className="size-3" />
       </button>
     ),
   );

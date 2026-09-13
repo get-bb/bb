@@ -1,4 +1,4 @@
-import { createMMKV } from "react-native-mmkv";
+import { getPreferencesStorage } from "../native/preferences-storage";
 import {
   createShellPreferenceStore,
   type ShellPreferenceStore,
@@ -7,6 +7,6 @@ import {
 let store: ShellPreferenceStore | null = null;
 
 export function getShellPreferenceStore(): ShellPreferenceStore {
-  store ??= createShellPreferenceStore(createMMKV({ id: "bb.preferences" }));
+  store ??= createShellPreferenceStore(getPreferencesStorage());
   return store;
 }

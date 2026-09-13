@@ -18,9 +18,9 @@ import {
   isPathWithinDirectory,
   readJsonFile,
   readParsedFile,
+  resolveConfiguredHomeDirectory,
   resolveConfiguredPath,
   resolveProjectAncestorDirectories,
-  resolveStoredPath,
   skillsRoot,
   type ResolvedRootOrigin,
 } from "./shared.js";
@@ -87,10 +87,7 @@ export function resolveGrokDir(
   homeDir: string,
   env: AcpNativeRootsEnvironment,
 ): string {
-  const configured = env.GROK_HOME?.trim();
-  return configured
-    ? resolveStoredPath(homeDir, configured)
-    : path.join(homeDir, GROK_DIR_NAME);
+  return resolveConfiguredHomeDirectory(homeDir, env.GROK_HOME, GROK_DIR_NAME);
 }
 
 function grokCompatEnabled(

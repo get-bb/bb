@@ -1,7 +1,7 @@
 import { watch } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { parseMarkdownDocument } from "./markdown-document.js";
+import { isRecord, parseMarkdownDocument } from "./markdown-document.js";
 import {
   defineRpcContract,
   type BbPluginApi,
@@ -120,7 +120,7 @@ const vaultPathSchema = z.string().transform((value, context) => {
   } catch (error) {
     context.addIssue({
       code: "custom",
-      message: error instanceof Error ? error.message : String(error),
+      message: errorMessage(error),
     });
     return z.NEVER;
   }
@@ -435,8 +435,8 @@ export const docsRpcContract = defineRpcContract({
   },
 });
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function requireRecord(value: unknown): Record<string, unknown> {
@@ -528,8 +528,27 @@ function normalizeHostRoot(value: string): string {
     : path.posix.normalize(value);
 }
 
+function hostIdArgs(hostId: string | null | undefined): { hostId?: string } {
+  return hostId ? { hostId } : {};
+}
+
 function hostArgs(vault: Vault): { hostId?: string } {
-  return vault.hostId ? { hostId: vault.hostId } : {};
+  return hostIdArgs(vault.hostId);
+}
+
+function syncEntryFromFile(
+  relativePath: string,
+  file: Awaited<ReturnType<BbPluginApi["sdk"]["files"]["read"]>>,
+): SyncStateEntry {
+  return {
+    remotePath: relativePath,
+    localPath: relativePath,
+    sha256: file.sha256,
+    sizeBytes: file.sizeBytes,
+    contentEncoding: file.contentEncoding,
+    mimeType: file.mimeType ?? null,
+    modifiedAtMs: file.modifiedAtMs ?? null,
+  };
 }
 
 function cleanLine(line: string): string {
@@ -809,16 +828,12 @@ export default async function plugin(
     try {
       await bb.sdk.files.mkdir({ path: vault.rootPath, recursive: true });
     } catch (error) {
-      bb.log.warn(
-        `could not create default vault: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      bb.log.warn(`could not create default vault: ${errorMessage(error)}`);
     }
   }
 
-  async function listEntries(
-    vault: Vault,
-  ): Promise<{ entries: VaultEntry[]; truncated: boolean }> {
-    const result = await bb.sdk.files.listPaths({
+  function listVaultPaths(vault: Vault) {
+    return bb.sdk.files.listPaths({
       ...hostArgs(vault),
       path: vault.rootPath,
       includeFiles: true,
@@ -826,6 +841,12 @@ export default async function plugin(
       includeHidden: false,
       limit: MAX_TREE_ENTRIES,
     });
+  }
+
+  async function listEntries(
+    vault: Vault,
+  ): Promise<{ entries: VaultEntry[]; truncated: boolean }> {
+    const result = await listVaultPaths(vault);
     return {
       entries: result.paths
         .filter(
@@ -896,7 +917,7 @@ export default async function plugin(
         entryOrder: listEntryOrder(vault.id),
         notes: [],
         truncated: false,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       };
     }
   }
@@ -1105,7 +1126,7 @@ export default async function plugin(
   }
 
   function isMissingFileError(error: unknown): boolean {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = errorMessage(error);
     return /\bENOENT\b|path does not exist|not found/i.test(message);
   }
 
@@ -1136,24 +1157,11 @@ export default async function plugin(
     if (normalizedScope.kind === "file") {
       const file = await readFile(vault.id, normalizedScope.path);
       files.push({
-        remotePath: normalizedScope.path,
-        localPath: normalizedScope.path,
-        sha256: file.sha256,
-        sizeBytes: file.sizeBytes,
-        contentEncoding: file.contentEncoding,
-        mimeType: file.mimeType ?? null,
-        modifiedAtMs: file.modifiedAtMs ?? null,
+        ...syncEntryFromFile(normalizedScope.path, file),
         content: file.content,
       });
     } else {
-      const result = await bb.sdk.files.listPaths({
-        ...hostArgs(vault),
-        path: vault.rootPath,
-        includeFiles: true,
-        includeDirectories: true,
-        includeHidden: false,
-        limit: MAX_TREE_ENTRIES,
-      });
+      const result = await listVaultPaths(vault);
       if (result.truncated) {
         throw new Error(
           `Sync scope exceeds ${MAX_TREE_ENTRIES} entries; narrow the folder scope`,
@@ -1190,13 +1198,7 @@ export default async function plugin(
         }
         const file = await readFile(vault.id, entry.path);
         files.push({
-          remotePath: entry.path,
-          localPath: entry.path,
-          sha256: file.sha256,
-          sizeBytes: file.sizeBytes,
-          contentEncoding: file.contentEncoding,
-          mimeType: file.mimeType ?? null,
-          modifiedAtMs: file.modifiedAtMs ?? null,
+          ...syncEntryFromFile(entry.path, file),
           content: file.content,
         });
       }
@@ -1301,14 +1303,7 @@ export default async function plugin(
       ],
       "Sync request",
     );
-    const currentListing = await bb.sdk.files.listPaths({
-      ...hostArgs(vault),
-      path: vault.rootPath,
-      includeFiles: true,
-      includeDirectories: true,
-      includeHidden: false,
-      limit: MAX_TREE_ENTRIES,
-    });
+    const currentListing = await listVaultPaths(vault);
     if (currentListing.truncated) {
       throw new Error(
         `Vault exceeds ${MAX_TREE_ENTRIES} entries; narrow the sync scope`,
@@ -1430,7 +1425,7 @@ export default async function plugin(
       } catch (error) {
         errors.push({
           path: directory,
-          message: error instanceof Error ? error.message : String(error),
+          message: errorMessage(error),
         });
       }
     }
@@ -1453,19 +1448,11 @@ export default async function plugin(
           continue;
         }
         const refreshed = await readFile(vault.id, write.path);
-        written.push({
-          remotePath: write.path,
-          localPath: write.path,
-          sha256: refreshed.sha256,
-          sizeBytes: refreshed.sizeBytes,
-          contentEncoding: refreshed.contentEncoding,
-          mimeType: refreshed.mimeType ?? null,
-          modifiedAtMs: refreshed.modifiedAtMs ?? null,
-        });
+        written.push(syncEntryFromFile(write.path, refreshed));
       } catch (error) {
         errors.push({
           path: write.path,
-          message: error instanceof Error ? error.message : String(error),
+          message: errorMessage(error),
         });
       }
     }
@@ -1485,7 +1472,7 @@ export default async function plugin(
       } catch (error) {
         errors.push({
           path: deletion.path,
-          message: error instanceof Error ? error.message : String(error),
+          message: errorMessage(error),
         });
       }
     }
@@ -1501,7 +1488,7 @@ export default async function plugin(
         if (isMissingFileError(error)) continue;
         errors.push({
           path: directory,
-          message: error instanceof Error ? error.message : String(error),
+          message: errorMessage(error),
         });
       }
     }
@@ -1641,7 +1628,7 @@ export default async function plugin(
       const hostId = optionalString(input.hostId) ?? null;
       const resolvedRoot = normalizeHostRoot(rootPath);
       await bb.sdk.files.mkdir({
-        ...(hostId ? { hostId } : {}),
+        ...hostIdArgs(hostId),
         path: resolvedRoot,
         recursive: true,
       });
@@ -1718,14 +1705,14 @@ export default async function plugin(
     async openFile(input) {
       const target = await resolveOpenerFile(input.source, input.path);
       const args = {
-        ...(target.hostId ? { hostId: target.hostId } : {}),
+        ...hostIdArgs(target.hostId),
         path: target.path,
         rootPath: target.rootPath,
       };
       const [file, preview] = await Promise.all([
         bb.sdk.files.read(args),
         bb.sdk.files.createPreview({
-          ...(target.hostId ? { hostId: target.hostId } : {}),
+          ...hostIdArgs(target.hostId),
           rootPath: target.rootPath,
         }),
       ]);
@@ -1743,7 +1730,7 @@ export default async function plugin(
     async saveOpenedFile(input) {
       const target = await resolveOpenerFile(input.source, input.path);
       return bb.sdk.files.write({
-        ...(target.hostId ? { hostId: target.hostId } : {}),
+        ...hostIdArgs(target.hostId),
         path: target.path,
         rootPath: target.rootPath,
         content: input.content,
@@ -1802,19 +1789,24 @@ export default async function plugin(
     };
   }
 
-  bb.http.route(
-    "POST",
-    "/list",
-    async (context) => {
-      const input = await readHttpInput(
-        context,
-        docsRpcContract.listNotes.input,
-      );
-      if (!input.ok) return input.response;
-      return context.json(await handlers.listNotes(input.value));
-    },
-    { auth: "token" },
-  );
+  function routeRpc<Schema extends z.ZodType>(
+    routePath: string,
+    schema: Schema,
+    handle: (input: z.output<Schema>) => object | Promise<object>,
+  ): void {
+    bb.http.route(
+      "POST",
+      routePath,
+      async (context) => {
+        const input = await readHttpInput(context, schema);
+        if (!input.ok) return input.response;
+        return context.json(await handle(input.value));
+      },
+      { auth: "token" },
+    );
+  }
+
+  routeRpc("/list", docsRpcContract.listNotes.input, handlers.listNotes);
 
   function hostPathApi(
     rootPath: string,
@@ -1847,10 +1839,6 @@ export default async function plugin(
     return environment.hostId;
   }
 
-  function workspaceFileArgs(hostId: string | undefined): { hostId?: string } {
-    return hostId ? { hostId } : {};
-  }
-
   async function readWorkspaceFile(
     rootPath: string,
     hostId: string | undefined,
@@ -1858,7 +1846,7 @@ export default async function plugin(
   ): Promise<Awaited<ReturnType<typeof bb.sdk.files.read>> | null> {
     try {
       return await bb.sdk.files.read({
-        ...workspaceFileArgs(hostId),
+        ...hostIdArgs(hostId),
         path: localFilePath(rootPath, relativePath),
         rootPath,
       });
@@ -1926,7 +1914,7 @@ export default async function plugin(
     expectedSha256: string | null,
   ): Promise<void> {
     const result = await bb.sdk.files.write({
-      ...workspaceFileArgs(hostId),
+      ...hostIdArgs(hostId),
       path: localFilePath(rootPath, SYNC_STATE_FILE),
       rootPath,
       content: `${JSON.stringify(state, null, 2)}\n`,
@@ -2111,13 +2099,13 @@ export default async function plugin(
     const deletedDirectories: string[] = [];
     try {
       await bb.sdk.files.mkdir({
-        ...workspaceFileArgs(hostId),
+        ...hostIdArgs(hostId),
         path: rootPath,
         recursive: true,
       });
       for (const directory of snapshot.directories) {
         await bb.sdk.files.mkdir({
-          ...workspaceFileArgs(hostId),
+          ...hostIdArgs(hostId),
           path: localFilePath(rootPath, directory),
           rootPath,
           recursive: true,
@@ -2125,7 +2113,7 @@ export default async function plugin(
       }
       for (const write of writes) {
         const result = await bb.sdk.files.write({
-          ...workspaceFileArgs(hostId),
+          ...hostIdArgs(hostId),
           path: localFilePath(rootPath, write.file.localPath),
           rootPath,
           content: write.file.content,
@@ -2152,7 +2140,7 @@ export default async function plugin(
           );
         }
         await bb.sdk.files.remove({
-          ...workspaceFileArgs(hostId),
+          ...hostIdArgs(hostId),
           path: localFilePath(rootPath, deletion.path),
           rootPath,
           recursive: false,
@@ -2166,7 +2154,7 @@ export default async function plugin(
       )) {
         try {
           await bb.sdk.files.remove({
-            ...workspaceFileArgs(hostId),
+            ...hostIdArgs(hostId),
             path: localFilePath(rootPath, directory),
             rootPath,
             recursive: false,
@@ -2194,7 +2182,7 @@ export default async function plugin(
         conflicts: [],
         errors: [
           {
-            message: error instanceof Error ? error.message : String(error),
+            message: errorMessage(error),
           },
         ],
       };
@@ -2242,7 +2230,7 @@ export default async function plugin(
       existing.state.scope,
     );
     const listing = await bb.sdk.files.listPaths({
-      ...workspaceFileArgs(hostId),
+      ...hostIdArgs(hostId),
       path: rootPath,
       includeFiles: true,
       includeDirectories: true,
@@ -2574,97 +2562,17 @@ export default async function plugin(
     }
     return JSON.stringify(result, null, 2);
   }
-  bb.http.route(
-    "POST",
-    "/read",
-    async (context) => {
-      const input = await readHttpInput(
-        context,
-        docsRpcContract.readNote.input,
-      );
-      if (!input.ok) return input.response;
-      return context.json(await handlers.readNote(input.value));
-    },
-    { auth: "token" },
-  );
-  bb.http.route(
-    "POST",
-    "/write",
-    async (context) => {
-      const input = await readHttpInput(
-        context,
-        docsRpcContract.saveNote.input,
-      );
-      if (!input.ok) return input.response;
-      return context.json(await handlers.saveNote(input.value));
-    },
-    { auth: "token" },
-  );
-  bb.http.route(
-    "POST",
-    "/mkdir",
-    async (context) => {
-      const input = await readHttpInput(
-        context,
-        docsRpcContract.createFolder.input,
-      );
-      if (!input.ok) return input.response;
-      return context.json(await handlers.createFolder(input.value));
-    },
-    { auth: "token" },
-  );
-  bb.http.route(
-    "POST",
-    "/move",
-    async (context) => {
-      const input = await readHttpInput(
-        context,
-        docsRpcContract.movePath.input,
-      );
-      if (!input.ok) return input.response;
-      return context.json(await handlers.movePath(input.value));
-    },
-    { auth: "token" },
-  );
-  bb.http.route(
-    "POST",
-    "/remove",
-    async (context) => {
-      const input = await readHttpInput(
-        context,
-        docsRpcContract.deletePath.input,
-      );
-      if (!input.ok) return input.response;
-      return context.json(await handlers.deletePath(input.value));
-    },
-    { auth: "token" },
-  );
-  bb.http.route(
-    "POST",
+  routeRpc("/read", docsRpcContract.readNote.input, handlers.readNote);
+  routeRpc("/write", docsRpcContract.saveNote.input, handlers.saveNote);
+  routeRpc("/mkdir", docsRpcContract.createFolder.input, handlers.createFolder);
+  routeRpc("/move", docsRpcContract.movePath.input, handlers.movePath);
+  routeRpc("/remove", docsRpcContract.deletePath.input, handlers.deletePath);
+  routeRpc(
     "/sync/snapshot",
-    async (context) => {
-      const input = await readHttpInput(
-        context,
-        docsRpcContract.syncSnapshot.input,
-      );
-      if (!input.ok) return input.response;
-      return context.json(await handlers.syncSnapshot(input.value));
-    },
-    { auth: "token" },
+    docsRpcContract.syncSnapshot.input,
+    handlers.syncSnapshot,
   );
-  bb.http.route(
-    "POST",
-    "/sync/apply",
-    async (context) => {
-      const input = await readHttpInput(
-        context,
-        docsRpcContract.syncApply.input,
-      );
-      if (!input.ok) return input.response;
-      return context.json(await handlers.syncApply(input.value));
-    },
-    { auth: "token" },
-  );
+  routeRpc("/sync/apply", docsRpcContract.syncApply.input, handlers.syncApply);
 
   bb.cli.register({
     name: "docs",
@@ -2848,7 +2756,7 @@ export default async function plugin(
           ...(warning ? { stderr: warning } : {}),
         };
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
+        const message = errorMessage(error);
         const usageError = error instanceof CliUsageError;
         return {
           exitCode: usageError ? 2 : 1,
@@ -2949,7 +2857,7 @@ export default async function plugin(
             } catch (error) {
               if (!retryNative.has(vault.id)) {
                 bb.log.warn(
-                  `cannot watch ${vault.rootPath}; using polling: ${error instanceof Error ? error.message : String(error)}`,
+                  `cannot watch ${vault.rootPath}; using polling: ${errorMessage(error)}`,
                 );
               }
               retryNative.add(vault.id);

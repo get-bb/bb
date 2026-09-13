@@ -20,12 +20,6 @@ class FakeSignalProcess implements DesktopSignalProcess {
     }
   }
 
-  off(signal: DesktopShutdownSignal, listener: DesktopSignalListener): void {
-    this.listeners[signal] = this.listeners[signal].filter(
-      (currentListener) => currentListener !== listener,
-    );
-  }
-
   on(signal: DesktopShutdownSignal, listener: DesktopSignalListener): void {
     this.listeners[signal].push(listener);
   }
@@ -61,14 +55,14 @@ describe("desktop shutdown supervision", () => {
     expect(exitCode).toBe(143);
   });
 
-  it("registers removable SIGINT and SIGTERM handlers", async () => {
+  it("registers SIGINT and SIGTERM handlers that shut down once", async () => {
     const fakeProcess = new FakeSignalProcess();
     const state = createDesktopShutdownState();
     let stopCount = 0;
     let quitCount = 0;
     let exitCode: number | null = null;
 
-    const registeredHandlers = registerDesktopShutdownSignalHandlers({
+    registerDesktopShutdownSignalHandlers({
       exitProcess(code) {
         exitCode = code;
       },
@@ -84,7 +78,6 @@ describe("desktop shutdown supervision", () => {
 
     fakeProcess.emit("SIGINT");
     await flushPromises();
-    registeredHandlers.remove();
     fakeProcess.emit("SIGTERM");
     await flushPromises();
 

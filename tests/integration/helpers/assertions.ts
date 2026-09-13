@@ -9,11 +9,16 @@ import type {
 } from "@bb/domain";
 import { createPublicApiClient } from "@bb/server-contract";
 import {
-  describeThreadEvent,
   previewThreadText,
   stringifyThreadEventData,
+  summarizeThreadEventTail,
 } from "./thread-diagnostics.js";
-import { getThreadEvents } from "./api.js";
+import {
+  getEnvironment,
+  getThread,
+  getThreadEvents,
+  getThreadOutput,
+} from "./api.js";
 
 const POLL_INTERVAL_MS = 100;
 
@@ -44,44 +49,6 @@ async function pollUntil<T>(
   throw new Error(`${expectation}. Current state: ${getCurrentState()}`);
 }
 
-async function readThread(
-  api: PublicApiClient,
-  threadId: string,
-): Promise<Thread> {
-  const response = await api.threads[":id"].$get({
-    param: { id: threadId },
-  });
-  if (response.status !== 200) {
-    throw new Error(
-      `Expected thread ${threadId} to exist, got ${response.status}`,
-    );
-  }
-  return response.json();
-}
-
-async function readThreadEvents(
-  api: PublicApiClient,
-  threadId: string,
-): Promise<ThreadEventRow[]> {
-  return getThreadEvents(api, threadId);
-}
-
-async function readThreadOutput(
-  api: PublicApiClient,
-  threadId: string,
-): Promise<string | null> {
-  const response = await api.threads[":id"].output.$get({
-    param: { id: threadId },
-  });
-  if (response.status !== 200) {
-    throw new Error(
-      `Expected thread output for ${threadId}, got ${response.status}`,
-    );
-  }
-  const payload = await response.json();
-  return payload.output;
-}
-
 async function readHost(api: PublicApiClient, hostId: string): Promise<Host> {
   const response = await api.hosts[":id"].$get({
     param: { id: hostId },
@@ -92,42 +59,16 @@ async function readHost(api: PublicApiClient, hostId: string): Promise<Host> {
   return response.json();
 }
 
-async function readEnvironment(
-  api: PublicApiClient,
-  environmentId: string,
-): Promise<Environment> {
-  const response = await api.environments[":id"].$get({
-    param: { id: environmentId },
-  });
-  if (response.status !== 200) {
-    throw new Error(
-      `Expected environment ${environmentId} to exist, got ${response.status}`,
-    );
-  }
-  return response.json();
-}
-
 async function buildThreadStatusFailureMessage(
   api: PublicApiClient,
   context: ThreadStatusFailureContext,
 ): Promise<string> {
   const [events, output] = await Promise.all([
-    readThreadEvents(api, context.threadId),
-    readThreadOutput(api, context.threadId).catch(() => null),
+    getThreadEvents(api, context.threadId),
+    getThreadOutput(api, context.threadId).catch(() => null),
   ]);
-  const recentEvents = events.slice(-12).map(describeThreadEvent).join(" | ");
-  const lastError = [...events]
-    .reverse()
-    .find(
-      (event) =>
-        event.type === "provider/error" || event.type === "system/error",
-    );
-  const lastTurnStarted = [...events]
-    .reverse()
-    .find((event) => event.type === "turn/started");
-  const lastTurnCompleted = [...events]
-    .reverse()
-    .find((event) => event.type === "turn/completed");
+  const { lastError, lastTurnCompleted, lastTurnStarted, recentEvents } =
+    summarizeThreadEventTail(events, 12);
 
   return [
     `Thread ${context.threadId} entered ${context.currentStatus} while waiting for ${context.expectedStatus}`,
@@ -150,7 +91,7 @@ export async function waitForThreadStatus(
   try {
     return await pollUntil(
       async () => {
-        const thread = await readThread(api, threadId);
+        const thread = await getThread(api, threadId);
         currentStatus = thread.status;
         if (thread.status === "error" && status !== "error") {
           throw new Error(
@@ -196,7 +137,7 @@ export async function waitForThreadOutputContaining(
   let currentOutput = "";
   return pollUntil(
     async () => {
-      const output = await readThreadOutput(api, threadId);
+      const output = await getThreadOutput(api, threadId);
       currentOutput = previewThreadText(output);
       return output?.includes(expectedText) ? output : null;
     },
@@ -215,7 +156,7 @@ export async function waitForEventType(
   let lastTypes = "none";
   return pollUntil(
     async () => {
-      const events = await readThreadEvents(api, threadId);
+      const events = await getThreadEvents(api, threadId);
       lastTypes = events.map((event) => event.type).join(", ") || "none";
       return events.find((event) => event.type === eventType) ?? null;
     },
@@ -274,7 +215,7 @@ export async function waitForEnvironmentStatus(
   let currentStatus = "unknown";
   return pollUntil(
     async () => {
-      const environment = await readEnvironment(api, environmentId);
+      const environment = await getEnvironment(api, environmentId);
       currentStatus = environment.status;
       return environment.status === status ? environment : null;
     },

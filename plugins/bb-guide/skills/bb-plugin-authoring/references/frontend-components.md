@@ -228,6 +228,21 @@ className?, draftKey? }` — the `default*` props are SEEDS, not controlled
   provider's control owns the base branch, and the checkout provider's owns
   the directory and the branch to switch to.
 
+  An environment composition declares `machineProviderId` and
+  `environmentProviderId`; choosing it creates the machine and runs the concrete
+  environment provider. It appears once, outside existing-host groups.
+  Machine-only registrations do not contribute environment-picker entries.
+  When the composition's machine provider declares inputs, its
+  `experimental_machineProviderInputs` compact chip renders before the
+  environment provider's inputs chip. It reports a ready default on mount and
+  opens richer configuration in the shared responsive drawer; a blocked or
+  crashed control disables submit with its short reason.
+  The Machines page renders the machine provider's icon and display name as the
+  kind next to each provider-created machine's name. Manually enrolled machines
+  have no kind.
+  Machine inputs are persisted and readable by every plugin, so never put
+  secrets in them; store credentials in plugin settings and emit only
+  non-secret configuration or references.
   Store-then-restore: the request's selection fields map to the `default*`
   seed props. The host composer creates `input` and `executionInputSources`
   from its draft and selection provenance. A plugin can re-open a saved
@@ -294,3 +309,42 @@ serviceTier?, executionInputSources, environment, input }`. Forward it
   Experimental: the `experimental_` prefix will drop once the entry in
   `docs/api_to_audit.md` is audited. Give it real width — the control row
   does not fit in a ~420px column.
+
+
+## Shared app and provider icons
+
+Use `app.experimental_icons.register({ name, component })` during
+`definePluginApp` setup to add or override a shared app icon. Names are trimmed
+and must be nonempty; namespacing is recommended, not required. Any plugin can
+render the name with `experimental_Icon`. Duplicate names within a plugin reject
+setup. Across plugins, the first plugin id in lexical order wins and bb warns.
+Registration returns `void`; reload replaces registrations and unload restores
+the next owner or built-in. A rejected setup preserves the previous generation.
+
+`experimental_Icon` accepts `name`, optional `fallback` (default `Zap`),
+`className`, `style`, `aria-label`, and `aria-hidden`. Registered artwork receives
+`className` for sizing and inherits color. Missing names try the fallback, then
+built-in `Zap`; throwing and recursive artwork is contained. Mounted icons update
+when plugins load, reload or unload.
+
+`experimental_ProviderIcon` requires `providerKind` (`agent`, `machine`, or
+`environment`) and the existing provider record as `provider`, plus optional `fallback` (default `Code`), `className`, `aria-label`,
+and `aria-hidden`. It reads `id`, `logoUrl`, `icon` (agent `{ glyph }` or machine/environment
+string), and `strings.iconTint` without fetching. An id-only record resolves a
+frontend registration or fallback. For example:
+
+```tsx
+<ProviderIcon providerKind="agent" provider={provider} fallback="Bot" className="size-4" />
+```
+
+ Resolution is the matching kind/id `app.slots.experimental_providerIcon` override,
+then a legacy unscoped override, then
+declared logo mask, then glyph through the shared app registry, then fallback.
+Invalid tints are ignored. Overrides update and remount per plugin generation;
+throwing or recursive overrides fall back to declared artwork. Without a label,
+the mark is decorative. Provider Usage and Tasks use this shared renderer.
+
+These APIs do not change manifest branding, declared SVG assets, or server-side
+presentation validation. Plugin branding does not consult provider icon slots.
+The Plugin Guide's Host components card documents the public contract and the
+SDK declarations supply the exact types.

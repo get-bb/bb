@@ -191,7 +191,6 @@ export function ThreadDetailHeader({
           {childPillLabel}
         </Pill>
       ) : null}
-      {}
       {actionsMenu == null ? null : (
         <span
           data-testid="thread-detail-header-actions-menu"

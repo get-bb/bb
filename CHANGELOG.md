@@ -1,5 +1,83 @@
 # Changelog
 
+## 0.43.0
+
+This release gives plugins new ways to create workspaces, manage machines, and control bb's built-in browser. Experimental Modal sandbox and Browser Automation plugins put those APIs to work for cloud development and agent-driven browsing.
+
+### New features
+
+- **Custom environments.** New environment APIs let plugins define how working areas are created for threads. For example, a plugin can use a copy-on-write filesystem to create a workspace instead of a Git worktree.
+- **Machine plugins.** New APIs let plugins provision and manage machines for development, including cloud machines that can pause and resume.
+- **Browser control.** A new plugin API lets plugins control bb's built-in desktop browser.
+- **Drag to nest threads.** Drag a thread onto another thread in the sidebar to make it a child of that thread.
+
+### Built-in plugin updates
+
+- **Modal sandboxes — experimental.** Use the new plugin for cloud development, with configurable images and machine sizes. Sandboxes can pause when idle and restore their files when work resumes. Shared machines stay available until their final owner releases them.
+- **Browser Automation — experimental.** Install and enable the new plugin to let agents control the bb desktop app browser or create headless browsers on a selected machine. Automation tabs belong to their thread, with controls to stop the agent or take over.
+- **Account Pooler.** Add multiple Claude and Codex accounts in one place. Threads automatically rotate through your accounts as they hit usage limits, without requiring you to sign into each account on every machine. This release adds account email addresses, drag reordering, and usage limits on mobile. Cached usage stays visible while fresh data loads. Fixes improve Codex reply history, generated images, account retries, reset-time reporting, and standalone search through the pool.
+- **BB Guide.** Choose whether agents receive bb's introduction and bundled skills, with controls for individual skills. Connect's remote-access instructions can also be turned off independently.
+- **Inline previews.** Read Markdown reports directly in chat and preview HTML or Markdown artifacts saved in thread storage.
+- **Provider Usage.** See which account a usage report belongs to.
+
+### Other improvements
+
+- **Message editing is out of experiments.** Editing messages is now available to everyone.
+- **Synced sidebar organization.** Sections, ordering, navigation preferences, and collapsed rows now sync through the server across devices. Move threads between sections from their menus.
+- **Projects settings.** Reorder projects by dragging and open a dedicated settings page for each project.
+- Import cookies from supported installed browsers through Settings → Browsers to reuse existing sign-ins in bb.
+- Plugins and Skills now have separate workspaces. Installed plugins have row actions and detail tabs, and remain accessible from Settings.
+- Preview color palettes by hovering or moving through the choices in Settings → Appearance.
+- Reasoning choices use compact, wrapping controls and support Left and Right arrow keys.
+
+### Performance
+
+- Faster file mentions by skipping Git-ignored paths, less GitHub background polling, and smaller startup JavaScript.
+
+### Notable fixes
+
+- Follow-ups preserve their chosen reasoning level.
+- Fixes prevent provider session mixups when threads start together, Codex subagent events appearing in the main feed, and stale Codex Fast settings after queued sends.
+- Pi extension dialogs become answerable bb interactions. Pi-native skills run through native commands, and dynamic tool results reach Bun-based Pi sessions.
+- Large tool outputs are retained, and generated images render in conversation history.
+- Thinking rows use a consistent presentation and preserve their content after completion. A setting controls diagnostic event visibility.
+- Older timeline details stay expandable, and pagination keeps conversation groups together.
+- Streaming Markdown handles incomplete formatting more cleanly. Local images and links resolve relative to their document.
+- Browser Automation works in the Linux AppImage. Browser discovery works when connected to a remote server, and controlled pages reveal in the focused thread.
+- Retry recoverable desktop startup failures from the app.
+- More reliable environment creation, cancellation, recovery, and cleanup after interruptions.
+- Fixes for plugin installation failures, Personal workspace file access, stale diff loading, panel navigation, and nested-thread archiving.
+- Ctrl+Enter works as the modifier submit shortcut on non-Mac keyboards. The command palette handles IME input correctly.
+
+### Thanks
+
+Thank you to the fourteen contributors and co-authors outside the core team:
+
+- [@andrewkchan](https://github.com/andrewkchan)
+- [@ariofrio](https://github.com/ariofrio)
+- [@dillonzq](https://github.com/dillonzq)
+- [@fgrehm](https://github.com/fgrehm)
+- [@hemaaanth](https://github.com/hemaaanth)
+- [@IlyaM](https://github.com/IlyaM)
+- [@kongenpei](https://github.com/kongenpei)
+- [@MacHatter1](https://github.com/MacHatter1)
+- [@noih](https://github.com/noih)
+- [@nqrwhal](https://github.com/nqrwhal)
+- [@salemsayed](https://github.com/salemsayed)
+- [@smsunarto](https://github.com/smsunarto)
+- [@vburojevic](https://github.com/vburojevic)
+- [@vznh](https://github.com/vznh)
+
+Thank you also to everyone who reported an issue addressed in this release: **[@0xferrous](https://github.com/0xferrous)**, **[@albrand](https://github.com/albrand)**, **[@andrewkchan](https://github.com/andrewkchan)**, **[@apsknight](https://github.com/apsknight)**, **[@ariofrio](https://github.com/ariofrio)**, **[@ComicBit](https://github.com/ComicBit)**, **[@dillonzq](https://github.com/dillonzq)**, **[@erwinkn](https://github.com/erwinkn)**, **[@hemaaanth](https://github.com/hemaaanth)**, **[@hxy91819](https://github.com/hxy91819)**, **[@IlyaM](https://github.com/IlyaM)**, **[@jjanousek](https://github.com/jjanousek)**, **[@kongenpei](https://github.com/kongenpei)**, **[@MacKevinroe](https://github.com/MacKevinroe)**, **[@markasoftware-tc](https://github.com/markasoftware-tc)**, **[@nawatt-works](https://github.com/nawatt-works)**, **[@noih](https://github.com/noih)**, **[@nqrwhal](https://github.com/nqrwhal)**, **[@salemsayed](https://github.com/salemsayed)**, **[@skyblue](https://github.com/skyblue)**, **[@smsunarto](https://github.com/smsunarto)**, **[@trieloff](https://github.com/trieloff)**, **[@vixalien](https://github.com/vixalien)**, and **[@xMinor-1](https://github.com/xMinor-1)**.
+
+### Mobile app
+
+[Join the iOS TestFlight](https://testflight.apple.com/join/T9MayTMb).
+
+- Fixes for iOS message sending, touch latency, and follow-up taps accidentally stopping active threads.
+- Queued message actions appear inline. The compact composer shows attachment counts and keeps dictation and send controls stable.
+- Model reasoning controls remain reachable on small screens. Pickers, notification drawers, and plugin navigation fit compact layouts more reliably.
+
 ## 0.42.0
 
 This release adds Account Pooler for Claude and Codex, push notifications across devices, and a new plugin catalog.

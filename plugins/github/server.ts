@@ -261,6 +261,7 @@ export const githubRpcContract = defineRpcContract({
 
 type RepoInfo = z.infer<typeof repoInfoSchema>;
 type CachedItem = z.infer<typeof itemSchema>;
+type ThreadLink = z.infer<typeof threadLinkSchema>;
 
 interface GhListEntry {
   number?: unknown;
@@ -276,21 +277,8 @@ interface GhListEntry {
 
 type GhRunner = (args: string[]) => Promise<string>;
 
-interface ThreadLink {
-  kind: "issue" | "pr";
-  repo: string;
-  number: number;
-  threadId: string;
-  createdAt: string;
-}
-
-interface BbProjectSummary {
-  id: string;
-  sources?: Array<{ type: string; path: string }>;
-}
-
-interface SpawnedThreadSummary {
-  id: string;
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function needsConfiguration(message: string): Error {
@@ -590,7 +578,7 @@ export default async function plugin(bb: BbPluginApi) {
       ghAuthError = null;
       return;
     } catch (error) {
-      ghAuthError = error instanceof Error ? error.message : String(error);
+      ghAuthError = errorMessage(error);
       if (isNeedsConfigurationError(error)) {
         ghState = "needs_configuration";
         throw error;
@@ -600,7 +588,7 @@ export default async function plugin(bb: BbPluginApi) {
     try {
       await gh(["auth", "token", "--hostname", GH_HOST], 5_000);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = errorMessage(error);
       hasCredentials = !GH_NO_CREDENTIALS.test(message);
     }
     if (!hasCredentials) {
@@ -638,8 +626,7 @@ export default async function plugin(bb: BbPluginApi) {
     }
     const byRepo = new Map<string, RepoInfo>();
     try {
-      const projects =
-        (await bb.sdk.projects.list()) as unknown as BbProjectSummary[];
+      const projects = await bb.sdk.projects.list();
       for (const project of projects) {
         for (const source of project.sources ?? []) {
           if (source.type !== "local_path") continue;
@@ -657,9 +644,7 @@ export default async function plugin(bb: BbPluginApi) {
         }
       }
     } catch (error) {
-      bb.log.warn(
-        `project discovery failed: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      bb.log.warn(`project discovery failed: ${errorMessage(error)}`);
     }
     const { extraRepos } = await settings.get();
     const parsed = parseExtraRepos(extraRepos);
@@ -801,25 +786,24 @@ export default async function plugin(bb: BbPluginApi) {
   }
 
   function patchCachedItem(
-    kind: "issue" | "pr",
     repo: string,
     number: number,
     patch: { state?: string; assignees?: string[]; labels?: string[] },
   ): void {
     if (patch.state !== undefined) {
       db.prepare(
-        "UPDATE items SET state = ? WHERE repo = ? AND kind = ? AND number = ?",
-      ).run(patch.state, repo, kind, number);
+        "UPDATE items SET state = ? WHERE repo = ? AND kind = 'issue' AND number = ?",
+      ).run(patch.state, repo, number);
     }
     if (patch.assignees !== undefined) {
       db.prepare(
-        "UPDATE items SET assignees = ? WHERE repo = ? AND kind = ? AND number = ?",
-      ).run(JSON.stringify(patch.assignees), repo, kind, number);
+        "UPDATE items SET assignees = ? WHERE repo = ? AND kind = 'issue' AND number = ?",
+      ).run(JSON.stringify(patch.assignees), repo, number);
     }
     if (patch.labels !== undefined) {
       db.prepare(
-        "UPDATE items SET labels = ? WHERE repo = ? AND kind = ? AND number = ?",
-      ).run(JSON.stringify(patch.labels), repo, kind, number);
+        "UPDATE items SET labels = ? WHERE repo = ? AND kind = 'issue' AND number = ?",
+      ).run(JSON.stringify(patch.labels), repo, number);
     }
     bb.realtime.publish("data-changed", {});
   }
@@ -846,7 +830,7 @@ export default async function plugin(bb: BbPluginApi) {
         total += items.length;
       } catch (error) {
         failed += 1;
-        lastFailure = error instanceof Error ? error.message : String(error);
+        lastFailure = errorMessage(error);
         bb.log.warn(`sync failed for ${repo}: ${lastFailure}`);
       }
     }
@@ -890,9 +874,9 @@ export default async function plugin(bb: BbPluginApi) {
             SYNC_RETRY_MAX_MS,
           );
           bb.log.warn(
-            `sync failed (retry in ${Math.round(delayMs / 1000)}s): ${
-              error instanceof Error ? error.message : String(error)
-            }`,
+            `sync failed (retry in ${Math.round(delayMs / 1000)}s): ${errorMessage(
+              error,
+            )}`,
           );
         }
         if (signal.aborted) break;
@@ -993,12 +977,12 @@ export default async function plugin(bb: BbPluginApi) {
               "Summarize your findings with file/line references. Do not push " +
               "changes or post to GitHub unless asked.",
           ].join("\n");
-    const thread = (await bb.sdk.threads.spawn({
+    const thread = await bb.sdk.threads.spawn({
       projectId,
       environment: { type: "project-default" },
       title: `${ref}: ${title}`.slice(0, 120),
       prompt,
-    })) as unknown as SpawnedThreadSummary;
+    });
     await addLink({
       kind,
       repo,
@@ -1127,7 +1111,7 @@ export default async function plugin(bb: BbPluginApi) {
         "-R",
         repo,
       ]);
-      patchCachedItem("issue", repo, number, {
+      patchCachedItem(repo, number, {
         state: state === "closed" ? "CLOSED" : "OPEN",
       });
       return { ok: true };
@@ -1148,7 +1132,7 @@ export default async function plugin(bb: BbPluginApi) {
       if (add.length > 0) args.push("--add-assignee", add.join(","));
       if (remove.length > 0) args.push("--remove-assignee", remove.join(","));
       await gh(args);
-      patchCachedItem("issue", repo, number, { assignees: next });
+      patchCachedItem(repo, number, { assignees: next });
       return { ok: true, assignees: next };
     },
 
@@ -1178,7 +1162,7 @@ export default async function plugin(bb: BbPluginApi) {
       for (const label of add) args.push("--add-label", label);
       for (const label of remove) args.push("--remove-label", label);
       await gh(args);
-      patchCachedItem("issue", repo, number, { labels: next });
+      patchCachedItem(repo, number, { labels: next });
       return { ok: true, labels: next };
     },
 
@@ -1445,9 +1429,7 @@ export default async function plugin(bb: BbPluginApi) {
     async pullForThread({ threadId }) {
       let environmentId: string | null = null;
       try {
-        const thread = (await bb.sdk.threads.get({ threadId })) as unknown as {
-          environmentId?: string | null;
-        };
+        const thread = await bb.sdk.threads.get({ threadId });
         if (thread?.environmentId) {
           environmentId = thread.environmentId;
           const result = await bb.sdk.environments.pullRequest({
@@ -1739,7 +1721,7 @@ export default async function plugin(bb: BbPluginApi) {
       } catch (error) {
         return {
           exitCode: 1,
-          stderr: error instanceof Error ? error.message : String(error),
+          stderr: errorMessage(error),
         };
       }
     },

@@ -8,13 +8,13 @@ import type {
   ProviderResolvedNativeRoot,
 } from "@bb/domain";
 import type { HostDaemonOnlineRpcResult } from "@bb/host-daemon-contract";
+import { isPathWithinDirectory } from "@bb/process-utils";
 import {
   CommandDispatchError,
   type CommandOf,
 } from "../command-dispatch-support.js";
 import {
   discoverProviderCommands,
-  isPathWithinDirectory,
   type CommandScanRoot,
 } from "../command-discovery.js";
 

@@ -7,7 +7,10 @@ import {
   WORKSPACE_STATUS_MAX_UNTRACKED_LINE_STAT_FILES,
 } from "../../constants.js";
 import type { AppDeps } from "../../types.js";
-import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
+import {
+  callHostRetryableOnlineRpc,
+  callHostRetryableOnlineRpcForWork,
+} from "../hosts/online-rpc.js";
 import type { WorkspaceCommandTarget } from "./workspace-command-target.js";
 
 type WorkspaceStatusResult = HostDaemonOnlineRpcResult<"workspace.status">;
@@ -26,7 +29,30 @@ export async function callEnvironmentWorkspaceStatus(
   deps: AppDeps,
   args: CallEnvironmentWorkspaceStatusArgs,
 ): Promise<WorkspaceStatusResult> {
-  const result = await callHostRetryableOnlineRpc(deps, {
+  return callEnvironmentWorkspaceStatusWith(
+    deps,
+    args,
+    callHostRetryableOnlineRpc,
+  );
+}
+
+export async function callEnvironmentWorkspaceStatusForWork(
+  deps: AppDeps,
+  args: CallEnvironmentWorkspaceStatusArgs,
+): Promise<WorkspaceStatusResult> {
+  return callEnvironmentWorkspaceStatusWith(
+    deps,
+    args,
+    callHostRetryableOnlineRpcForWork,
+  );
+}
+
+async function callEnvironmentWorkspaceStatusWith(
+  deps: AppDeps,
+  args: CallEnvironmentWorkspaceStatusArgs,
+  callRpc: typeof callHostRetryableOnlineRpc,
+): Promise<WorkspaceStatusResult> {
+  const result = await callRpc(deps, {
     hostId: args.target.hostId,
     timeoutMs: COMMAND_TIMEOUT_MS,
     command: {

@@ -31,7 +31,6 @@ describe("host runtime preparation", () => {
     );
     const factory = vi.fn(async (): Promise<RuntimeSession> => ({
       close: async () => {},
-      stop: async () => {},
       run: async () => {
         throw new Error("unused");
       },
@@ -136,7 +135,7 @@ describe("host long-poll abandonment", () => {
   });
 });
 describe("host session lifetime", () => {
-  it("stop disposes only the selected runtime and reload disposes the rest", async () => {
+  it("close disposes only the selected runtime and reload disposes the rest", async () => {
     const firstClose = vi.fn(async () => {});
     const secondClose = vi.fn(async () => {});
     const factory = vi
@@ -151,7 +150,7 @@ describe("host session lifetime", () => {
     await harness.experimental_call("open", open(a));
     await harness.experimental_call("open", open(b));
     expect(harness.experimental_getRetainedWorkerLeaseCount()).toBe(2);
-    await harness.experimental_call("stop", { sessionId: a });
+    await harness.experimental_call("close", { sessionId: a });
     expect(firstClose).toHaveBeenCalledOnce();
     expect(secondClose).not.toHaveBeenCalled();
     expect(harness.experimental_getRetainedWorkerLeaseCount()).toBe(1);
@@ -165,7 +164,6 @@ describe("host session lifetime", () => {
       createHostEntry(
         async () => ({
           close,
-          stop: close,
           run: async (_script, _timeout, signal) =>
             new Promise((_resolve, reject) => {
               signal.addEventListener(

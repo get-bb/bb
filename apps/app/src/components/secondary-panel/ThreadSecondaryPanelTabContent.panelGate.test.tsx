@@ -70,7 +70,6 @@ describe("GitDiffTabContent panel gating", () => {
         <GitDiffTabContent
           environmentId={ENVIRONMENT_ID}
           target={TARGET}
-          isDiffPanelActive
           isPanelOpen={isPanelOpen}
           gitDiffPresentation={{
             view: "unified",

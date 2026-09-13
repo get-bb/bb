@@ -247,6 +247,20 @@ Sort by selects a field, and selecting it again reverses its arrow/direction.
 The default preserves each field's original order (newest first for dates,
 A–Z for titles). For example: `bb settings ui set sidebar.sortDirection ascending`.
 
+Sidebar footer actions
+
+Settings → Appearance → Sidebar footer supports drag ordering and visibility.
+Right-click an action and choose Hide to move it into the More menu. Hidden
+shortcuts remain actionable; hiding an open disclosure closes it. The More menu
+appears only when hidden actions are available and links back to customization.
+`sidebar.footerOrder` and `sidebar.hiddenFooterItems` are string lists. Keys are
+`builtin:settings`, `builtin:report-bug`, or `plugin:<encoded pluginId>/<encoded registrationId>`.
+Preferences survive plugin reloads and temporarily unavailable plugins; new items
+are visible by default. Example:
+
+  bb settings ui set sidebar.hiddenFooterItems '["plugin:provider-usage/usage"]'
+  bb settings ui reset sidebar.hiddenFooterItems
+
 Client-local UI preferences
 
 Some Settings values live only in the current browser/client. Sidebar width

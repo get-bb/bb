@@ -177,3 +177,5 @@ For review or fix pipelines, get the environment ID from
   `bb terminal close <terminal-id>` when the process is no longer needed.
 - `bb terminal restart <terminal-id>` replaces the session with a shell in the
   same scope, size, and title. It does not replay the original launch command.
+
+Clearing a thread's parent with `bb thread update --clear-parent-thread` inherits the former parent's section unless the update explicitly supplies a section. Children released by environment archiving also inherit their former parent's section.

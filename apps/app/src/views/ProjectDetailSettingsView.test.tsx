@@ -165,6 +165,37 @@ afterEach(() => {
 });
 
 describe("ProjectDetailSettingsView", () => {
+  it("keeps checkout counts in sync with the show-all machine toggle", async () => {
+    const sandbox = host({
+      id: "host_sandbox",
+      name: "Sandbox",
+      type: "ephemeral",
+    });
+    vi.mocked(sdk.hosts.list).mockResolvedValue([
+      primaryHost,
+      remoteHost,
+      sandbox,
+    ]);
+    stubSidebarBootstrapFetch(
+      [primaryHost, remoteHost, sandbox].map((machine) => ({
+        hostId: machine.id,
+        path: `/repos/${machine.id}`,
+      })),
+    );
+    renderView();
+    await screen.findByRole("heading", { name: "bb" });
+    expect(screen.getByText(/2 of 2 machines/)).toBeDefined();
+    expect(screen.queryByRole("link", { name: sandbox.name })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Show all machines" }));
+    expect(screen.getByText(/3 of 3 machines/)).toBeDefined();
+    expect(screen.getByRole("link", { name: sandbox.name })).toBeDefined();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show fewer machines" }),
+    );
+    expect(screen.getByText(/2 of 2 machines/)).toBeDefined();
+    expect(screen.queryByRole("link", { name: sandbox.name })).toBeNull();
+  });
+
   it("lists every paired machine with its checkout or a set-up action", async () => {
     stubSidebarBootstrapFetch([
       { hostId: "host_primary", path: "/Users/me/bb" },

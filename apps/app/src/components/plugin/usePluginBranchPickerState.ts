@@ -1,3 +1,4 @@
+import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useCallback, useMemo } from "react";
 import { useProjectSourceBranches } from "@/hooks/queries/project-queries";
 import type {
@@ -12,10 +13,21 @@ export function usePluginBranches({
   projectId,
   query = "",
 }: UseBranchesArgs): BranchesState {
-  const enabled = hostId !== null && projectId !== null;
+  const navigation = useSidebarNavigation({
+    enabled: hostId === null && projectId !== null,
+  });
+  const sources = navigation.data?.projects.find(
+    (project) => project.id === projectId,
+  )?.sources;
+  const source =
+    sources?.find(
+      (source) => source.type === "local_path" && source.isDefault,
+    ) ?? sources?.find((source) => source.type === "local_path");
+  const branchHostId = hostId ?? source?.hostId ?? null;
+  const enabled = branchHostId !== null && projectId !== null;
   const branchesQuery = useProjectSourceBranches(
     projectId ?? undefined,
-    hostId,
+    branchHostId,
     {
       enabled,
       query,

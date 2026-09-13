@@ -6,18 +6,13 @@ import type {
   EventProjectionWorkflowMessage,
 } from "./event-projection-message.js";
 
-const eventProjectionTurnStatusValues = [
-  "pending",
-  "completed",
-  "error",
-  "interrupted",
-] as const;
 export type EventProjectionTurnStatus =
-  (typeof eventProjectionTurnStatusValues)[number];
+  | "pending"
+  | "completed"
+  | "error"
+  | "interrupted";
 
-const eventProjectionTurnMessageDetailValues = ["summary", "full"] as const;
-export type EventProjectionTurnMessageDetail =
-  (typeof eventProjectionTurnMessageDetailValues)[number];
+export type EventProjectionTurnMessageDetail = "summary" | "full";
 
 interface EventProjectionState {
   activeThinking: ActiveThinking | null;
@@ -27,7 +22,6 @@ interface EventProjectionState {
 
 export interface BuildEventProjectionOptions extends BuildEventProjectionMessagesOptions {
   acceptedClientRequestContext?: AcceptedClientRequestContext;
-  contextOnlyToolCallIds?: ReadonlySet<string>;
   turnMessageDetail: EventProjectionTurnMessageDetail;
 }
 

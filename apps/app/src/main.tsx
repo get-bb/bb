@@ -35,12 +35,11 @@ createRoot(document.getElementById("root")!, {
   },
 }).render(
   <StrictMode>
-    {}
     <AppErrorBoundary>
       <QueryClientProvider client={appQueryClient}>
         <BrowserRouter>
           <App />
-          <AppToaster position="bottom-right" />
+          <AppToaster />
         </BrowserRouter>
       </QueryClientProvider>
     </AppErrorBoundary>

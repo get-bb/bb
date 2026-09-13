@@ -80,18 +80,6 @@ const piAssistantUsageSchema = z
   })
   .passthrough();
 
-const piAssistantMessageSchema = z
-  .object({
-    role: z.literal("assistant"),
-    content: z.array(piMessageContentBlockSchema),
-    stopReason: z.string().optional(),
-    errorMessage: z.string().optional(),
-    provider: z.string().optional(),
-    model: z.string().optional(),
-    usage: piAssistantUsageSchema.optional(),
-  })
-  .passthrough();
-
 const piConversationMessageSchema = z
   .object({
     role: z.string(),
@@ -105,6 +93,11 @@ const piConversationMessageSchema = z
     usage: piAssistantUsageSchema.optional(),
   })
   .passthrough();
+
+const piAssistantMessageSchema = piConversationMessageSchema.extend({
+  role: z.literal("assistant"),
+  content: z.array(piMessageContentBlockSchema),
+});
 
 const piCustomMessageBoundaryEventSchema = z
   .object({
@@ -520,10 +513,7 @@ export function createPiDeltaTranslator(
             typeof used === "number" && Number.isFinite(used) && used >= 0
               ? used
               : null,
-          size:
-            typeof size === "number" && Number.isFinite(size) && size > 0
-              ? size
-              : null,
+          size: toPositiveNumber(size) ?? null,
           estimated: contextWindowUsage.estimated,
           attach: "currentOrLast",
         },

@@ -25,12 +25,3 @@ export function assertEnvironmentPathAvailable(
       throw new ApiError(409, "workspace_busy", CHECKOUT_BUSY_MESSAGE);
   }
 }
-
-export async function withEnvironmentPathAdmission<T>(
-  deps: WorkSessionDeps,
-  args: { hostId: string; path: string | null; threadId: string | null },
-  admit: () => T,
-): Promise<T> {
-  assertEnvironmentPathAvailable(deps, args);
-  return admit();
-}

@@ -21,6 +21,7 @@ import { searchPickerOptions } from "./picker-search";
 import { useResetPickerScroll } from "./useResetPickerScroll";
 
 const PROJECT_SEARCH_MIN_OPTIONS = 5;
+const NO_HIGHLIGHT_VALUE = "__project-picker-idle__";
 const PROJECT_PICKER_ITEM_CLASS_NAME = "py-[0.3125rem] text-xs max-md:py-2";
 
 export interface ProjectSelectorOption {
@@ -63,6 +64,7 @@ export function ProjectSelector({
 }: ProjectSelectorProps) {
   const [open, setOpen] = useState(defaultOpen ?? false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [highlightedValue, setHighlightedValue] = useState(NO_HIGHLIGHT_VALUE);
   const commandRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const listRef = useResetPickerScroll<HTMLDivElement>(searchQuery);
@@ -97,6 +99,7 @@ export function ProjectSelector({
     projects.length > 0 && (Boolean(createProjectAction) || allowNoProject);
   const handleOpenChange = (nextOpen: boolean) => {
     setOpen(nextOpen);
+    setHighlightedValue(NO_HIGHLIGHT_VALUE);
     if (!nextOpen) {
       setSearchQuery("");
     }
@@ -165,6 +168,8 @@ export function ProjectSelector({
           ref={commandRef}
           label="Search projects"
           shouldFilter={false}
+          value={highlightedValue}
+          onValueChange={setHighlightedValue}
           className="min-h-0"
         >
           {showSearch ? (

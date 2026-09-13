@@ -474,14 +474,10 @@ function pathMentionResource(token: string): PromptMentionResource {
   };
 }
 
-function threadMentionResource(
+function threadResourceFromThread(
   threadId: string,
-  resources: ThreadTitleMentionResources,
-): PromptMentionResource | null {
-  const thread = resources.threadById.get(threadId);
-  if (!thread) {
-    return null;
-  }
+  thread: ThreadTitleMentionThread,
+): PromptMentionResource {
   return {
     kind: "thread",
     threadId,
@@ -490,8 +486,20 @@ function threadMentionResource(
   };
 }
 
+function threadMentionResource(
+  threadId: string,
+  resources: ThreadTitleMentionResources,
+): PromptMentionResource | null {
+  const thread = resources.threadById.get(threadId);
+  if (!thread) {
+    return null;
+  }
+  return threadResourceFromThread(threadId, thread);
+}
+
 const UNRESOLVED_THREAD_MENTION_LABEL = "Thread";
 const UNAVAILABLE_THREAD_MENTION_LABEL = "Unavailable thread";
+const SECTION_MENTION_PREFIXES = ["section:", "folder:"] as const;
 
 function unresolvedThreadMentionResource(
   threadId: string,
@@ -527,17 +535,11 @@ function resolveTitleMentionResource(
     };
   }
 
-  if (serializedValue.startsWith("section:")) {
-    const sectionId = serializedValue.slice("section:".length);
-    return {
-      kind: "section",
-      sectionId,
-      label: resources.sectionNamesById.get(sectionId) ?? sectionId,
-    };
-  }
-
-  if (serializedValue.startsWith("folder:")) {
-    const sectionId = serializedValue.slice("folder:".length);
+  const sectionPrefix = SECTION_MENTION_PREFIXES.find((prefix) =>
+    serializedValue.startsWith(prefix),
+  );
+  if (sectionPrefix !== undefined) {
+    const sectionId = serializedValue.slice(sectionPrefix.length);
     return {
       kind: "section",
       sectionId,
@@ -720,12 +722,7 @@ export function useThreadMentionResource(
     if (threadQuery.data === undefined) {
       return null;
     }
-    return {
-      kind: "thread",
-      threadId,
-      projectId: threadQuery.data.projectId,
-      label: getThreadDisplayTitle(threadQuery.data),
-    };
+    return threadResourceFromThread(threadId, threadQuery.data);
   }, [sidebarResource, threadId, threadQuery.data]);
 }
 
@@ -747,12 +744,7 @@ export function useRawThreadMentionResource(
     return sidebarResource;
   }
   if (cachedThread !== undefined) {
-    return {
-      kind: "thread",
-      threadId,
-      projectId: cachedThread.projectId,
-      label: getThreadDisplayTitle(cachedThread),
-    };
+    return threadResourceFromThread(threadId, cachedThread);
   }
   return batch.resourceById.get(threadId) ?? null;
 }
@@ -796,12 +788,10 @@ export function useRawThreadMentionResources(
         threadQueryKey(threadId),
       );
       if (cachedThread !== undefined) {
-        resourceById.set(threadId, {
-          kind: "thread",
+        resourceById.set(
           threadId,
-          projectId: cachedThread.projectId,
-          label: getThreadDisplayTitle(cachedThread),
-        });
+          threadResourceFromThread(threadId, cachedThread),
+        );
         continue;
       }
       const batchResource = resolutionContext.resourceById.get(threadId);

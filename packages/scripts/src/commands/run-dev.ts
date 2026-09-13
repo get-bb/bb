@@ -1,7 +1,6 @@
 import { access } from "node:fs/promises";
 import { createServer } from "node:net";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
 import {
   resolveCurrentDevInstanceConfig,
   toDevProcessEnv,
@@ -9,6 +8,7 @@ import {
 } from "@bb/config/runtime";
 import { migrateLegacyDevData } from "../lib/legacy-dev-data-migration.js";
 import { runScriptProcess } from "../lib/process-helpers.js";
+import { repoRoot, runMainIfEntrypoint } from "../lib/script-entry.js";
 
 interface PortAvailabilityCheck {
   label: string;
@@ -23,10 +23,6 @@ interface DevCommand {
 export type DevLaunchMode = "vite" | "worktree";
 
 const LOOPBACK_HOST = "127.0.0.1";
-
-const commandDir = dirname(fileURLToPath(import.meta.url));
-const packageRoot = resolve(commandDir, "..", "..");
-const repoRoot = resolve(packageRoot, "..", "..");
 
 export function createDevTurboCommand(): DevCommand {
   return {
@@ -193,14 +189,4 @@ async function main(): Promise<void> {
   });
 }
 
-if (
-  process.argv[1] != null &&
-  resolve(process.argv[1]) === fileURLToPath(import.meta.url)
-) {
-  void main().catch((error) => {
-    const message =
-      error instanceof Error ? (error.stack ?? error.message) : String(error);
-    process.stderr.write(`${message}\n`);
-    process.exitCode = 1;
-  });
-}
+runMainIfEntrypoint(import.meta.url, main);

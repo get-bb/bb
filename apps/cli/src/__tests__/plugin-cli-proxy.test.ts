@@ -377,12 +377,7 @@ describe("findDisabledPluginForCommand", () => {
     );
     await expect(
       findDisabledPluginForCommand("http://localhost", "connect"),
-    ).resolves.toEqual({
-      id: "connect",
-      enabled: false,
-      status: null,
-      statusDetail: null,
-    });
+    ).resolves.toBe("connect");
     await expect(
       findDisabledPluginForCommand("http://localhost", "automations"),
     ).resolves.toBeNull();
@@ -413,12 +408,7 @@ describe("findDisabledPluginForCommand", () => {
     );
     await expect(
       findDisabledPluginForCommand("http://localhost", "automations"),
-    ).resolves.toEqual({
-      id: "automations",
-      enabled: true,
-      status: "disabled",
-      statusDetail: "plugin failed to load",
-    });
+    ).resolves.toBe("automations");
   });
 
   it("returns null on any fetch failure", async () => {

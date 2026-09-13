@@ -11,10 +11,12 @@ import {
 
 import type { rpcContract } from "./server";
 import {
-  COMPONENT_SPECIMENS,
+  COLOR_GROUPS,
   MOCK_VIEWS,
-  OVERLAY_SPECIMENS,
-  STYLESHEET_SPECIMEN_IDS,
+  RADIUS_SPECIMENS,
+  RHYTHM_SPECIMENS,
+  SHADOW_SPECIMENS,
+  TYPE_SPECIMENS,
 } from "./taxonomy";
 
 vi.mock("sonner", () => ({
@@ -22,6 +24,16 @@ vi.mock("sonner", () => ({
 }));
 
 type Catalog = Awaited<ReturnType<PluginRpcTestHandlers<typeof rpcContract>["themeCatalog"]>>;
+
+const COMPONENT_SPECIMEN_IDS = ["buttons", "badges", "inputs", "switch", "checkbox"] as const;
+const OVERLAY_LABELS = ["Menu", "Dialog", "Popover", "Tooltip", "Hover card", "Toast"] as const;
+const STYLESHEET_SPECIMEN_IDS = [
+  ...COLOR_GROUPS.flatMap((group) => group.tokens.map((token) => `color:${token}`)),
+  ...TYPE_SPECIMENS.map((specimen) => `type:${specimen.id}`),
+  ...RHYTHM_SPECIMENS.map((specimen) => `rhythm:${specimen.id}`),
+  ...RADIUS_SPECIMENS.map((specimen) => `radius:${specimen.id}`),
+  ...SHADOW_SPECIMENS.map((specimen) => `shadow:${specimen.id}`),
+];
 
 const DEFAULT_CATALOG: Catalog = {
   activeThemeId: "default",
@@ -464,15 +476,15 @@ describe("Theme Preview", () => {
       expect(document.querySelector('[data-tp-column="token"]')).toBeNull();
       expect(document.querySelector('[data-tp-column="value"]')).toBeNull();
       // Area 3: every static component block renders.
-      for (const specimen of COMPONENT_SPECIMENS) {
-        expect(document.querySelector(`[data-tp-block="${specimen.id}"]`), specimen.id).not.toBeNull();
+      for (const specimenId of COMPONENT_SPECIMEN_IDS) {
+        expect(document.querySelector(`[data-tp-block="${specimenId}"]`), specimenId).not.toBeNull();
       }
       // The mock already carries representative sidebar rows; there is no
       // redundant standalone thread-list card in the rail.
       expect(document.querySelector("[data-tp-thread-list]")).toBeNull();
       // Area 4: every overlay has its launcher (in the rail at this width).
-      for (const overlay of OVERLAY_SPECIMENS) {
-        expect(screen.getByRole("button", { name: overlay.label })).toBeDefined();
+      for (const overlayLabel of OVERLAY_LABELS) {
+        expect(screen.getByRole("button", { name: overlayLabel })).toBeDefined();
       }
     } finally {
       width.mockRestore();

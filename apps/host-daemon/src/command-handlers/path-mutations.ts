@@ -1,10 +1,10 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { HostDaemonOnlineRpcResult } from "@bb/host-daemon-contract";
+import { isPathWithinDirectory } from "@bb/process-utils";
 import { CommandDispatchError } from "../command-dispatch-support.js";
 import type { CommandOf } from "../command-dispatch-support.js";
 import { resolveNonSymlinkDirectoryPath } from "./root-path.js";
-import { isPathWithinRoot } from "./file-read.js";
 import { resolveWriteTarget } from "./file-write.js";
 
 function assertAbsolute(value: string, field: string): void {
@@ -40,7 +40,7 @@ async function requireExistingWithin(
     fs.realpath(targetPath),
     requireRoot(rootPath),
   ]);
-  if (root !== null && !isPathWithinRoot(target, root)) {
+  if (root !== null && !isPathWithinDirectory(root, target)) {
     throw new CommandDispatchError(
       "invalid_path",
       `Path "${targetPath}" escapes root`,
@@ -59,7 +59,7 @@ async function requireDestinationWithin(
     requireRoot(rootPath),
   ]);
   const target = path.join(parent, path.basename(destinationPath));
-  if (root !== null && !isPathWithinRoot(target, root)) {
+  if (root !== null && !isPathWithinDirectory(root, target)) {
     throw new CommandDispatchError(
       "invalid_path",
       `Path "${destinationPath}" escapes root`,
@@ -74,7 +74,7 @@ export async function mkdirHostPath(
   assertAbsolute(command.path, "Path");
   const root = await requireRoot(command.rootPath);
   const target = await resolveWriteTarget(command.path, command.path);
-  if (root !== null && !isPathWithinRoot(target.writePath, root)) {
+  if (root !== null && !isPathWithinDirectory(root, target.writePath)) {
     throw new CommandDispatchError(
       "invalid_path",
       `Path "${command.path}" escapes root`,

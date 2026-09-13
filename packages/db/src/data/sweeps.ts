@@ -14,19 +14,13 @@ import {
   type RetainedEventOutputTarget,
 } from "../retained-event-output.js";
 import { environments, events, maintenanceScanCursors } from "../schema.js";
+import { bumpThreadEventRewriteGeneration } from "./event-rewrite-generation.js";
 import {
   insertPreparedRetainedEventOutput,
   prepareCompletedEventOutputData,
   prepareLegacyImageGenerationOutputData,
   type PreparedCompletedEventOutputData,
 } from "./retained-event-outputs.js";
-
-export {
-  COMPLETED_EVENT_OUTPUT_RETAINED_HEAD_CHARS,
-  COMPLETED_EVENT_OUTPUT_RETAINED_TAIL_CHARS,
-  COMPLETED_EVENT_OUTPUT_RETENTION_MS,
-  COMPLETED_EVENT_OUTPUT_TRUNCATION_THRESHOLD_CHARS,
-} from "../retained-event-output.js";
 
 export const DESTROYED_ENVIRONMENT_TTL_MS = 7 * 24 * 60 * 60_000;
 
@@ -703,6 +697,7 @@ function migrateNextCompletedEventOutput(
       if (update.changes !== 1) {
         throw new Error(strategy.eventChangedError);
       }
+      bumpThreadEventRewriteGeneration(candidate.thread_id);
       if (retained) {
         insertPreparedRetainedEventOutput(tx, {
           eventId: candidate.id,

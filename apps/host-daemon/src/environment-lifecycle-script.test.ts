@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  buildSetupScriptCommand,
+  buildLifecycleScriptCommand,
   runSetupScript,
   runTeardownScript,
 } from "./environment-lifecycle-script.js";
@@ -30,6 +30,30 @@ afterEach(async () => {
 });
 
 describe("core environment scripts", () => {
+  it.each(["setup", "teardown"] as const)(
+    "supplies stdin EOF so %s continues to completion",
+    async (kind) => {
+      const workspacePath = await workspace(
+        kind,
+        'cat >/dev/null\nprintf complete > marker\nprintf "\\342"\nsleep 0.05\nprintf "\\234\\223\\n"\nprintf "done\\n" >&2\n',
+      );
+      const output: string[] = [];
+      const run = kind === "setup" ? runSetupScript : runTeardownScript;
+      const result = await run({
+        workspacePath,
+        timeoutMs: 1000,
+        env: { PATH: "/usr/bin:/bin" },
+        onProgress: (entry) => output.push(entry.text),
+      });
+      expect(result).toEqual({ ran: true });
+      expect(await readFile(join(workspacePath, "marker"), "utf8")).toBe(
+        "complete",
+      );
+      expect(output).toContain("✓");
+      expect(output).toContain("done");
+    },
+  );
+
   it("runs in the environment directory and streams stdout and stderr", async () => {
     const workspacePath = await workspace(
       "setup",
@@ -122,7 +146,9 @@ describe("core environment scripts", () => {
 
   it("reports unsupported POSIX scripts on Windows for each hook", async () => {
     expect(() =>
-      buildSetupScriptCommand({
+      buildLifecycleScriptCommand({
+        kind: "setup",
+        scriptName: ".bb-env-setup.sh",
         platform: "win32",
         scriptPath: ".bb-env-setup.sh",
       }),

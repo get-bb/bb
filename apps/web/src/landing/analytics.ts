@@ -1,4 +1,5 @@
 import type { PostHog } from "posthog-js";
+import { useEffect } from "react";
 import type { CtaPlacement } from "./site";
 
 type LandingEvent =
@@ -64,6 +65,12 @@ export function initAnalytics(): void {
       client.capture(event.name, event.properties);
     }
   });
+}
+
+export function useInitAnalytics(): void {
+  useEffect(() => {
+    initAnalytics();
+  }, []);
 }
 
 export function trackLandingEvent(event: LandingEvent): void {

@@ -13,10 +13,7 @@ import {
 import { Switch } from "@bb/shared-ui/switch";
 import { AddPluginDialog } from "@/components/plugin/management/AddPluginDialog";
 import { PluginDetailReleaseControl } from "@/components/plugin/management/PluginUpdatesCard";
-import {
-  AutomationLifecycleControl,
-  AutomationRunStatusIndicator,
-} from "bb-plugin-automations/detail-view";
+import { AutomationLifecycleControl } from "bb-plugin-automations/detail-view";
 import { AUTOMATION_CREATE_TEMPLATES } from "bb-plugin-automations/overview-view";
 import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
 import { pluginSourceQueryKey } from "@/hooks/queries/query-keys";
@@ -1413,18 +1410,6 @@ export function ResourceControlStates() {
             }
             meaning="The scheduled time passed without a completed run."
           />
-          {(["succeeded", "failed", "running", "skipped"] as const).map(
-            (status) => (
-              <ControlRow
-                key={status}
-                state={`Run · ${status}`}
-                control={
-                  <AutomationRunStatusIndicator status={status} showLabel />
-                }
-                meaning="Persisted run status used in automation history."
-              />
-            ),
-          )}
           <ControlRow
             state="Create"
             control={

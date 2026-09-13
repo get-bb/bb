@@ -38,7 +38,6 @@ interface CreateSidebarNavigationItemsOptions {
   newThreadShortcut: ExperimentalSidebarNavigationShortcut | null;
   searchThreadsDisabled: boolean;
   searchThreadsShortcut: ExperimentalSidebarNavigationShortcut | null;
-  showResourceWorkspaces: boolean;
   splitPropsFor(
     action: ExperimentalSidebarNavigationAction,
     label: string,
@@ -51,7 +50,6 @@ export function createSidebarNavigationItems({
   newThreadShortcut,
   searchThreadsDisabled,
   searchThreadsShortcut,
-  showResourceWorkspaces,
   splitPropsFor,
 }: CreateSidebarNavigationItemsOptions): readonly ExperimentalSidebarNavigationItem[] {
   const newThreadAction = { kind: "new-thread" } as const;
@@ -76,28 +74,24 @@ export function createSidebarNavigationItems({
       shortcut: searchThreadsShortcut,
       experimental_splitProps: {},
     },
-    ...(showResourceWorkspaces
-      ? [
-          {
-            id: PLUGINS_NAVIGATION_ITEM_ID,
-            label: "Plugins",
-            icon: { kind: "host", name: "extensions" },
-            action: resourceWorkspaceAction,
-            isDisabled: false,
-            shortcut: null,
-            experimental_splitProps: {},
-          } satisfies ExperimentalSidebarNavigationItem,
-          {
-            id: SKILLS_NAVIGATION_ITEM_ID,
-            label: "Skills",
-            icon: { kind: "host", name: "extensions" },
-            action: resourceWorkspaceAction,
-            isDisabled: false,
-            shortcut: null,
-            experimental_splitProps: {},
-          } satisfies ExperimentalSidebarNavigationItem,
-        ]
-      : []),
+    {
+      id: PLUGINS_NAVIGATION_ITEM_ID,
+      label: "Plugins",
+      icon: { kind: "host", name: "extensions" },
+      action: resourceWorkspaceAction,
+      isDisabled: false,
+      shortcut: null,
+      experimental_splitProps: {},
+    },
+    {
+      id: SKILLS_NAVIGATION_ITEM_ID,
+      label: "Skills",
+      icon: { kind: "host", name: "extensions" },
+      action: resourceWorkspaceAction,
+      isDisabled: false,
+      shortcut: null,
+      experimental_splitProps: {},
+    },
     ...navPanels.map((panel): ExperimentalSidebarNavigationItem => {
       const action = {
         kind: "open-plugin-panel",

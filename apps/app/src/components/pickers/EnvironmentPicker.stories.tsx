@@ -1,5 +1,8 @@
 import type { ProjectSource } from "@bb/domain";
+import type { SystemEnvironmentProvider } from "@bb/server-contract";
+import modalLogoUrl from "../../../../../plugins/environment-modal-sandbox/modal-logo.svg?url";
 import { EnvironmentPickerUI } from "./EnvironmentPicker";
+import { ProjectSelector } from "./ProjectSelector";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import {
   HOST_IDS,
@@ -239,5 +242,63 @@ export function ManyMachines() {
       defaultOpen
       modal={false}
     />
+  );
+}
+
+const modalComposition: SystemEnvironmentProvider = {
+  machineProviderId: "modal-sandbox",
+  id: "modal-composition",
+  displayName: "Modal Sandbox",
+  description: "Create a project checkout in a new Modal sandbox.",
+  icon: "Box",
+  logoUrl: modalLogoUrl,
+  pluginId: "environment-modal-sandbox",
+  acceptsEmptyInputs: true,
+  machineAvailability: {},
+  availability: null,
+  requires: {
+    projectCheckout: false,
+    gitCheckout: false,
+    gitRemote: true,
+    projectless: false,
+  },
+  inputs: null,
+};
+
+export function IconAlignment() {
+  return (
+    <StoryCard>
+      <StoryRow label="Project selector reference">
+        <ProjectSelector
+          projects={[{ id: "proj_demo", name: "bb" }]}
+          value="proj_demo"
+          onChange={noop}
+        />
+      </StoryRow>
+      {[
+        ["Persistent host · checkout", "project-checkout"],
+        ["Persistent host · worktree", "git-worktree"],
+        ["Modal sandbox", modalComposition.id],
+      ].map(([label, providerId]) => (
+        <StoryRow key={providerId} label={label}>
+          <EnvironmentPickerUI
+            value={`provider:${providerId}`}
+            sources={machineSources}
+            host={machineHosts[0] ?? null}
+            isLocal={false}
+            providers={[...STORY_ENVIRONMENT_PROVIDERS, modalComposition]}
+            selectedProviderHostId={HOST_IDS.local}
+            onSelectProvider={noop}
+            machines={{
+              hosts: machineHosts,
+              localDaemonHostId: null,
+              primaryHostId: HOST_IDS.local,
+            }}
+            muted
+            modal={false}
+          />
+        </StoryRow>
+      ))}
+    </StoryCard>
   );
 }

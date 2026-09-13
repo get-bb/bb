@@ -9,7 +9,10 @@ import type {
 } from "@bb/domain";
 import { getEnvironment } from "@bb/db";
 import { DEFAULT_ENVIRONMENT_PROVIDER_ID } from "../environments/environment-provider-ids.js";
-import { PERSONAL_PROJECT_ID, clampPermissionModeToCeiling } from "@bb/domain";
+import {
+  PERSONAL_PROJECT_ID,
+  clampPermissionModeToCeiling,
+} from "@bb/domain";
 import type {
   EnvironmentArgs,
   ProviderEnvironmentArgs,

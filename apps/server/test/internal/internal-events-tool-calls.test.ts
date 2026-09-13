@@ -1,5 +1,7 @@
+import { Buffer } from "node:buffer";
 import { once } from "node:events";
 import { setTimeout as sleep } from "node:timers/promises";
+import { gunzipSync } from "node:zlib";
 import { eq } from "drizzle-orm";
 import {
   closeSession,
@@ -13,6 +15,7 @@ import {
 import { threadScope, turnScope, type ToolCallResponse } from "@bb/domain";
 import {
   groupHostDaemonEvents,
+  hostDaemonEventBatchResponseSchema,
   type HostDaemonEventEnvelope,
 } from "@bb/host-daemon-contract";
 import { describe, expect, it, vi } from "vitest";
@@ -30,26 +33,47 @@ import {
   seedHostSession,
   seedProjectWithSource,
   seedThread,
+  seedThreadFixture,
   seedThreadRuntimeState,
 } from "../helpers/seed.js";
-import { withTestHarness } from "../helpers/test-app.js";
+import { startTestServer, withTestHarness } from "../helpers/test-app.js";
 import type { TestAppHarness } from "../helpers/test-app.js";
 import { setPluginAgentContributions } from "../../src/services/plugins/plugin-agent-contributions.js";
 import type { PluginAgentToolRecord } from "../../src/services/plugins/plugin-api.js";
 
 async function postEventBatch(args: {
+  acceptEncoding?: string;
   events: HostDaemonEventEnvelope[];
   harness: TestAppHarness;
   sessionId: string;
 }): Promise<Response> {
+  const headers = new Headers(internalAuthHeaders(args.harness));
+  if (args.acceptEncoding !== undefined) {
+    headers.set("accept-encoding", args.acceptEncoding);
+  }
   return args.harness.app.request("/internal/session/events", {
     method: "POST",
-    headers: internalAuthHeaders(args.harness),
+    headers,
     body: JSON.stringify({
       sessionId: args.sessionId,
       eventGroups: groupHostDaemonEvents(args.events),
     }),
   });
+}
+
+function systemErrorEnvelopes(
+  threadId: string,
+  count: number,
+): HostDaemonEventEnvelope[] {
+  return Array.from({ length: count }, (_, index) => ({
+    threadId,
+    event: {
+      type: "system/error",
+      threadId,
+      scope: threadScope(),
+      message: `daemon error ${index}`,
+    },
+  }));
 }
 
 async function postToolCall(args: {
@@ -332,6 +356,79 @@ describe("internal event and tool-call routes", () => {
           .where(eq(events.threadId, thread.id))
           .all(),
       ).toHaveLength(2);
+    });
+  });
+
+  it("serves a small event batch response over HTTP with an exact Content-Length", async () => {
+    const server = await startTestServer();
+    try {
+      const { session, thread } = seedThreadFixture(server, {
+        thread: { status: "active" },
+      });
+      const headers = new Headers(internalAuthHeaders(server));
+      headers.set("accept-encoding", "gzip, deflate");
+      const response = await fetch(
+        `${server.baseUrl}/internal/session/events`,
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            sessionId: session.id,
+            eventGroups: groupHostDaemonEvents(
+              systemErrorEnvelopes(thread.id, 1),
+            ),
+          }),
+        },
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.headers.has("content-encoding")).toBe(false);
+      expect(response.headers.has("transfer-encoding")).toBe(false);
+      expect(response.headers.get("content-type")).toBe("application/json");
+      const text = await response.text();
+      expect(response.headers.get("content-length")).toBe(
+        String(Buffer.byteLength(text)),
+      );
+      expect(
+        hostDaemonEventBatchResponseSchema.parse(JSON.parse(text)),
+      ).toEqual({
+        acceptedEvents: [{ eventIndex: 0, sequence: 1, threadId: thread.id }],
+        rejectedEvents: [],
+      });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("still compresses a large event batch response", async () => {
+    await withTestHarness(async (harness) => {
+      const { session, thread } = seedThreadFixture(harness, {
+        thread: { status: "active" },
+      });
+
+      const response = await postEventBatch({
+        acceptEncoding: "gzip, deflate",
+        harness,
+        sessionId: session.id,
+        events: systemErrorEnvelopes(thread.id, 40),
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-encoding")).toBe("gzip");
+      expect(response.headers.get("content-type")).toBe("application/json");
+      const bytes = Buffer.from(await response.arrayBuffer());
+      expect(
+        hostDaemonEventBatchResponseSchema.parse(
+          JSON.parse(gunzipSync(bytes).toString("utf8")),
+        ),
+      ).toEqual({
+        acceptedEvents: Array.from({ length: 40 }, (_, index) => ({
+          eventIndex: index,
+          sequence: index + 1,
+          threadId: thread.id,
+        })),
+        rejectedEvents: [],
+      });
     });
   });
 

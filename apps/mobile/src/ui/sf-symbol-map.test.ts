@@ -3,7 +3,7 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { ICON_NAMES, isIconName, type IconName } from "./icon-map";
+import { ICON_MAP, isIconName, type IconName } from "./icon-map";
 import {
   SF_SYMBOL_MAP,
   SF_SYMBOL_WEIGHT,
@@ -19,13 +19,6 @@ const SELF_FILES = new Set([
   "sf-symbol-map.ts",
   "sf-symbol-map.test.ts",
 ]);
-
-const BRAND_MARKS: readonly IconName[] = [
-  "Discord",
-  "DiscordLogo",
-  "Github",
-  "GithubLogo",
-];
 
 const MAX_SF_SYMBOLS_VERSION = "4.2";
 
@@ -106,11 +99,11 @@ function isAtMost(version: string, limit: string): boolean {
 }
 
 describe("SF_SYMBOL_MAP", () => {
-  it("maps every icon name except the brand marks", () => {
-    const unmapped = ICON_NAMES.filter(
-      (name) => sfSymbolFor(name) === undefined,
+  it("maps every icon name", () => {
+    const unmapped = Object.keys(ICON_MAP).filter(
+      (name) => !isIconName(name) || sfSymbolFor(name) === undefined,
     );
-    expect(unmapped.sort()).toEqual([...BRAND_MARKS].sort());
+    expect(unmapped).toEqual([]);
     for (const key of Object.keys(SF_SYMBOL_MAP)) {
       expect(isIconName(key), key).toBe(true);
     }
@@ -120,10 +113,7 @@ describe("SF_SYMBOL_MAP", () => {
     const used = usedIconNames();
     expect(used.size).toBeGreaterThan(12);
     const missing = [...used]
-      .filter(
-        ([name]) =>
-          sfSymbolFor(name) === undefined && !BRAND_MARKS.includes(name),
-      )
+      .filter(([name]) => sfSymbolFor(name) === undefined)
       .map(([name, locations]) => `${name} (${locations[0]})`);
     expect(missing).toEqual([]);
   });
@@ -149,11 +139,9 @@ describe("SF_SYMBOL_MAP", () => {
     expect(problems).toEqual([]);
   });
 
-  it("sfSymbolFor returns the mapped symbol and nothing for brand marks", () => {
+  it("sfSymbolFor returns the mapped symbol", () => {
     expect(sfSymbolFor("Plus")).toBe("plus");
     expect(sfSymbolFor("Trash2")).toBe("trash");
-    expect(sfSymbolFor("Github")).toBeUndefined();
-    expect(sfSymbolFor("Discord")).toBeUndefined();
   });
 
   it("symbol weights are the numeric fontWeight strings expo-image parses", () => {

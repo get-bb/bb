@@ -13,10 +13,10 @@ import { createMigratedConnection } from "../helpers/migrated-connection.js";
 
 function setup() {
   const db = createMigratedConnection();
-  const hostA = upsertHost(db, noopNotifier, { type: "persistent",
+  const hostA = upsertHost(db, noopNotifier, {
     name: "host-a",
   });
-  const hostB = upsertHost(db, noopNotifier, { type: "persistent",
+  const hostB = upsertHost(db, noopNotifier, {
     name: "host-b",
   });
   const { project } = createProject(db, noopNotifier, {

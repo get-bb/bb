@@ -14,9 +14,6 @@ import {
 } from "./file-content-urls";
 
 const HTML_DOCUMENT_PATTERN = /<!doctype html|<html[\s>]/i;
-const ERROR_EXTRACT_OPTS = {
-  legacyKeys: ["detail"] as const,
-};
 
 function normalizeErrorText(raw: string): string {
   return raw.replace(/\s+/g, " ").trim();
@@ -45,61 +42,41 @@ export class HttpError extends Error {
   }
 }
 
-function deriveHttpErrorMessage(
+function parseHttpError(
   status: number,
   statusText: string,
   rawBody: string,
   contentType: string | null,
-): string {
+): { message: string; body: unknown } {
   const normalized = normalizeErrorText(rawBody);
   if (normalized.length === 0) {
-    return statusText || "Request failed";
+    return { message: statusText || "Request failed", body: undefined };
   }
   const shouldParseAsJson =
     (contentType?.includes("application/json") ?? false) ||
     normalized.startsWith("{") ||
     normalized.startsWith("[");
+  let body: unknown;
   if (shouldParseAsJson) {
     try {
-      const parsed = JSON.parse(normalized) as unknown;
-      const message = extractErrorMessage(parsed, ERROR_EXTRACT_OPTS);
+      body = JSON.parse(normalized);
+      const message = extractErrorMessage(body);
       if (message) {
-        return message;
+        return { message, body };
       }
     } catch {}
   }
   if (HTML_DOCUMENT_PATTERN.test(normalized)) {
     if (status === 401 || status === 403) {
-      return "Authentication failed";
+      return { message: "Authentication failed", body };
     }
-    return statusText || "Request failed";
+    return { message: statusText || "Request failed", body };
   }
-  return (
-    (extractErrorMessage(normalized, ERROR_EXTRACT_OPTS) ?? statusText) ||
-    "Request failed"
-  );
-}
-
-function parseHttpErrorBody(
-  rawBody: string,
-  contentType: string | null,
-): unknown | undefined {
-  const normalized = normalizeErrorText(rawBody);
-  if (normalized.length === 0) {
-    return undefined;
-  }
-  const shouldParseAsJson =
-    (contentType?.includes("application/json") ?? false) ||
-    normalized.startsWith("{") ||
-    normalized.startsWith("[");
-  if (!shouldParseAsJson) {
-    return undefined;
-  }
-  try {
-    return JSON.parse(normalized) as unknown;
-  } catch {
-    return undefined;
-  }
+  return {
+    message:
+      (extractErrorMessage(normalized) ?? statusText) || "Request failed",
+    body,
+  };
 }
 
 function extractErrorCode(value: unknown): string | undefined {
@@ -114,14 +91,12 @@ function extractErrorCode(value: unknown): string | undefined {
 
 async function throwHttpError(res: Response): Promise<never> {
   const rawBody = await res.text().catch(() => "");
-  const contentType = res.headers.get("content-type");
-  const message = deriveHttpErrorMessage(
+  const { message, body } = parseHttpError(
     res.status,
     res.statusText,
     rawBody,
-    contentType,
+    res.headers.get("content-type"),
   );
-  const body = parseHttpErrorBody(rawBody, contentType);
   throw new HttpError({
     status: res.status,
     message,
@@ -186,19 +161,16 @@ async function postMultipart<T>(
     }
   }
   formData.set("file", file, file.name);
-  const res = await fetch(
-    toRelativeUrl(url),
-    appSurfaceRequestInit({
-      method: "POST",
-      body: formData,
-      signal,
-    }),
+  return request<T>(
+    fetch(
+      toRelativeUrl(url),
+      appSurfaceRequestInit({
+        method: "POST",
+        body: formData,
+        signal,
+      }),
+    ),
   );
-  if (!res.ok) {
-    await throwHttpError(res);
-  }
-  const text = await res.text();
-  return JSON.parse(text) as T;
 }
 
 export async function transcribeVoiceInput(

@@ -40,30 +40,18 @@ const STATUS_SET = new Set<string>(TASK_STATUSES);
 const PRIORITY_SET = new Set<string>(TASK_PRIORITIES);
 const SORT_SET = new Set<string>(TASK_SORTS);
 
-function uniqueValidStatuses(values: unknown): TaskStatus[] {
+function uniqueValidValues<T extends string>(
+  values: unknown,
+  allowed: ReadonlySet<string>,
+): T[] {
   if (!Array.isArray(values)) return [];
-  const seen = new Set<TaskStatus>();
-  const result: TaskStatus[] = [];
+  const seen = new Set<string>();
+  const result: T[] = [];
   for (const value of values) {
-    if (typeof value !== "string" || !STATUS_SET.has(value)) continue;
-    const status = value as TaskStatus;
-    if (seen.has(status)) continue;
-    seen.add(status);
-    result.push(status);
-  }
-  return result;
-}
-
-function uniqueValidPriorities(values: unknown): TaskPriority[] {
-  if (!Array.isArray(values)) return [];
-  const seen = new Set<TaskPriority>();
-  const result: TaskPriority[] = [];
-  for (const value of values) {
-    if (typeof value !== "string" || !PRIORITY_SET.has(value)) continue;
-    const priority = value as TaskPriority;
-    if (seen.has(priority)) continue;
-    seen.add(priority);
-    result.push(priority);
+    if (typeof value !== "string" || !allowed.has(value)) continue;
+    if (seen.has(value)) continue;
+    seen.add(value);
+    result.push(value as T);
   }
   return result;
 }
@@ -106,8 +94,11 @@ export function sanitizeListPreference(raw: unknown): ListPreference {
       : record;
   return {
     filters: {
-      statuses: uniqueValidStatuses(filtersRaw.statuses),
-      priorities: uniqueValidPriorities(filtersRaw.priorities),
+      statuses: uniqueValidValues<TaskStatus>(filtersRaw.statuses, STATUS_SET),
+      priorities: uniqueValidValues<TaskPriority>(
+        filtersRaw.priorities,
+        PRIORITY_SET,
+      ),
       labelNames: uniqueLabelNames(filtersRaw.labelNames),
     },
     sort: sanitizeSort(record.sort),
@@ -115,7 +106,6 @@ export function sanitizeListPreference(raw: unknown): ListPreference {
 }
 
 interface ParsedStorage {
-  version: number | null;
   scopes: Record<string, unknown>;
   isFutureVersion: boolean;
 }
@@ -150,7 +140,6 @@ function readStorage(): ParsedStorage | null {
       return null;
     }
     return {
-      version,
       scopes: record.scopes as Record<string, unknown>,
       isFutureVersion,
     };

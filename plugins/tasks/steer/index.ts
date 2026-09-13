@@ -1,5 +1,6 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import type { TasksStore } from "../db";
+import { errorMessage } from "../shared/errors";
 import { isSideChatShapedThread } from "../shared/side-chat";
 
 interface DeliverCommentInput {
@@ -7,16 +8,6 @@ interface DeliverCommentInput {
   commentId: string;
   body: string;
   authorName: string;
-}
-
-type CommentDeliveryOutcome =
-  | { threadId: string; status: "delivered" }
-  | { threadId: string | null; status: "skipped"; reason: string }
-  | { threadId: string; status: "failed"; reason: string };
-
-interface CommentDeliveryResult {
-  notifiedCount: number;
-  outcomes: CommentDeliveryOutcome[];
 }
 
 function steerPrompt(
@@ -31,15 +22,11 @@ function steerPrompt(
   );
 }
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 export async function deliverCommentToLatestAgent(
   bb: BbPluginApi,
   store: TasksStore,
   input: DeliverCommentInput,
-): Promise<CommentDeliveryResult> {
+): Promise<number> {
   const task = store.getTask(input.taskId);
   if (!task) throw new Error(`Task not found: ${input.taskId}`);
 
@@ -47,49 +34,23 @@ export async function deliverCommentToLatestAgent(
     input.taskId,
     input.commentId,
   );
-  if (!latestReply) return { notifiedCount: 0, outcomes: [] };
-  if (latestReply.threadId === null) {
-    return {
-      notifiedCount: 0,
-      outcomes: [
-        {
-          threadId: null,
-          status: "skipped",
-          reason: "latest agent reply has no thread",
-        },
-      ],
-    };
-  }
+  if (!latestReply || latestReply.threadId === null) return 0;
 
   const threadId = latestReply.threadId;
   const prompt = steerPrompt(task.key, input.authorName, input.body);
-  let outcome: CommentDeliveryOutcome;
   try {
     const thread = await bb.sdk.threads.get({ threadId });
-    if (isSideChatShapedThread(thread)) {
-      outcome = {
-        threadId,
-        status: "skipped",
-        reason: "latest agent reply belongs to a side chat",
-      };
-    } else {
-      await bb.sdk.threads.send({
-        threadId,
-        input: [{ type: "text", text: prompt, mentions: [] }],
-        mode: "steer-if-active",
-      });
-      outcome = { threadId, status: "delivered" };
-    }
+    if (isSideChatShapedThread(thread)) return 0;
+    await bb.sdk.threads.send({
+      threadId,
+      input: [{ type: "text", text: prompt, mentions: [] }],
+      mode: "steer-if-active",
+    });
+    return 1;
   } catch (error) {
-    const reason = errorMessage(error);
     bb.log.warn(
-      `failed to deliver comment ${input.commentId} to thread ${threadId}: ${reason}`,
+      `failed to deliver comment ${input.commentId} to thread ${threadId}: ${errorMessage(error)}`,
     );
-    outcome = { threadId, status: "failed", reason };
+    return 0;
   }
-
-  return {
-    notifiedCount: outcome.status === "delivered" ? 1 : 0,
-    outcomes: [outcome],
-  };
 }

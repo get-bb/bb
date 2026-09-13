@@ -8,8 +8,8 @@ import type {
 import {
   configuredSkillRoot,
   readParsedFile,
+  resolveConfiguredHomeDirectory,
   resolveConfiguredPath,
-  resolveStoredPath,
   skillsRoot,
 } from "./shared.js";
 
@@ -30,10 +30,11 @@ export function resolveHermesDir(
   homeDir: string,
   env: AcpNativeRootsEnvironment,
 ): string {
-  const configured = env.HERMES_HOME?.trim();
-  return configured
-    ? resolveStoredPath(homeDir, configured)
-    : path.join(homeDir, HERMES_DIR_NAME);
+  return resolveConfiguredHomeDirectory(
+    homeDir,
+    env.HERMES_HOME,
+    HERMES_DIR_NAME,
+  );
 }
 
 export const resolveHermesNativeRoots: AcpNativeRootsResolver = async (

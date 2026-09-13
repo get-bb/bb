@@ -13,10 +13,7 @@ import {
 } from "../../src/services/plugins/plugin-hook-registry.js";
 import { noteDispatchRequeued } from "../../src/services/threads/dispatch-hooks.js";
 import { recordQueuedMessageDrainFailure } from "../../src/services/threads/queue-drain-failure.js";
-import {
-  requestQueuedMessageDispatch,
-  runQueuedMessageDispatch,
-} from "../../src/services/threads/queued-message-dispatch.js";
+import { runQueuedMessageDispatch } from "../../src/services/threads/queued-message-dispatch.js";
 import { toThreadQueuedMessage } from "../../src/services/threads/thread-queued-messages.js";
 import { textInput } from "../helpers/prompt-input.js";
 import {
@@ -81,7 +78,7 @@ function reread(harness: TestAppHarness, queuedMessageId: string) {
 }
 
 describe("host-connected queue dispatch", () => {
-  it("releases exactly the returning machine's host-offline rows", async () => {
+  it("dispatches only the returning machine's rows after its daemon connects", async () => {
     await withTestHarness(async (harness) => {
       const away = seedQueuedRow(harness, {
         hostConnected: false,
@@ -99,15 +96,25 @@ describe("host-connected queue dispatch", () => {
         });
       }
 
-      requestQueuedMessageDispatch(harness.deps, {
+      await runQueuedMessageDispatch(harness.deps, {
         hostId: away.host.id,
         kind: "host-connected",
       });
-
-      // The returning machine's row is an ordinary queued row again, eligible
-      // at the next drain; the other machine is still away and its row still
-      // says so — a reconnect is one host's signal, not an amnesty.
-      expect(reread(harness, away.row.id).waitingOn).toBeNull();
+      expect(reread(harness, away.row.id).waitingOn).toEqual({
+        kind: "host-offline",
+        hostName: "M4",
+      });
+      seedHostSession(harness.deps, { id: away.host.id, name: "M4" });
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: away.thread.environmentId,
+        providerThreadId: "returning-machine-thread",
+        threadId: away.thread.id,
+      });
+      await runQueuedMessageDispatch(harness.deps, {
+        hostId: away.host.id,
+        kind: "host-connected",
+      });
+      expect(getQueuedThreadMessage(harness.db, away.row.id)).toBeNull();
       expect(reread(harness, otherAway.row.id).waitingOn).toEqual({
         kind: "host-offline",
         hostName: "M2",

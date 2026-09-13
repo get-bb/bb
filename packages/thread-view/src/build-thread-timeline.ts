@@ -33,6 +33,7 @@ import type {
   EventProjectionProvisioningTranscriptEntry,
   EventProjectionToolParsedIntent,
   EventProjectionTurn,
+  EventProjectionTurnMessageDetail,
 } from "./event-projection-types.js";
 import { assertNever } from "./assert-never.js";
 import {
@@ -70,10 +71,7 @@ import { extractThreadTimelineModelFallback } from "./model-fallback-extraction.
 import { extractThreadTimelinePendingTodos } from "./todo-snapshot-extraction.js";
 import { buildTimelineErrorDisplay } from "./error-display.js";
 
-type ThreadTimelineTurnMessageDetail = "summary" | "full";
-
 interface ThreadTimelineFromEventsBaseOptions {
-  contextOnlyToolCallIds?: ReadonlySet<string>;
   includeDiagnosticOperations: boolean;
   isLatestPage: boolean;
   providerId?: string;
@@ -86,7 +84,7 @@ interface ThreadTimelineFromEventsBaseOptions {
 
 interface ThreadTimelineFromEventsOptions extends ThreadTimelineFromEventsBaseOptions {
   includeNestedRows: boolean;
-  turnMessageDetail: ThreadTimelineTurnMessageDetail;
+  turnMessageDetail: EventProjectionTurnMessageDetail;
 }
 
 interface BuildThreadTimelineFromEventsArgs {
@@ -1357,7 +1355,6 @@ export function buildThreadTimelineFromEvents(
   const projectionOptions = {
     acceptedClientRequestContext: args.acceptedClientRequestContext,
     includeDiagnosticOperations: args.options.includeDiagnosticOperations,
-    contextOnlyToolCallIds: args.options.contextOnlyToolCallIds,
     providerDisplayName: args.options.providerDisplayName,
     threadStatus: args.options.threadStatus,
     threadName: args.options.threadName,

@@ -8,6 +8,7 @@ import {
 } from "./thread-startup-store.js";
 import { advanceThreadProvisioning } from "./thread-provisioning.js";
 import type { ThreadProvisioningDeps } from "./thread-provisioning-environment.js";
+import { removeCreatingMachine } from "../machines/provider-orchestration.js";
 
 export function scheduleEnvironmentProvisioning(
   deps: ThreadProvisioningDeps,
@@ -70,11 +71,7 @@ export function cancelAbandonedProviderCreations(
   void cancelProviderEnvironmentCreation(deps, threadId).catch((error) =>
     deps.logger.warn({ threadId, error }, "Environment cancellation failed"),
   );
-}
-
-export function cancelEnvironmentProviderCreation(
-  deps: ThreadProvisioningDeps,
-  args: { threadId: string },
-): void {
-  cancelAbandonedProviderCreations(deps, args.threadId);
+  void removeCreatingMachine(deps, threadId).catch((error) =>
+    deps.logger.warn({ threadId, error }, "Machine cancellation failed"),
+  );
 }

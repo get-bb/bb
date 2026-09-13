@@ -3,8 +3,10 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { createDeferredPromise } from "@bb/test-helpers";
-import { withGitRefMutationLock } from "../src/git-ref-mutation-lock.js";
-import { ProcessLocalQueuedLockTimeoutError } from "../src/process-local-queued-lock.js";
+import {
+  ProcessLocalQueuedLockTimeoutError,
+  withGitRefMutationLock,
+} from "bb-environment-provider-host/process-local-lock";
 
 const tempDirs: string[] = [];
 

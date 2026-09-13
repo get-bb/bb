@@ -3,28 +3,9 @@ import path from "node:path";
 
 const REPO_DIR_NAME_PATTERN = /^[A-Za-z0-9._][A-Za-z0-9._-]*$/;
 
-function tryParseUrlPath(value: string): string | null {
-  try {
-    const url = new URL(value);
-    if (
-      url.protocol === "http:" ||
-      url.protocol === "https:" ||
-      url.protocol === "ssh:"
-    ) {
-      return url.pathname;
-    }
-  } catch {}
-  return null;
-}
-
 export function deriveRepoDirName(sourcePath: string): string {
   const trimmed = sourcePath.replace(/\/+$/, "");
-
-  const scpMatch = /^[^:/]+@[^:]+:(?<path>.+)$/.exec(trimmed);
-  const pathPart =
-    scpMatch?.groups?.path ?? tryParseUrlPath(trimmed) ?? trimmed;
-
-  const basename = path.posix.basename(pathPart);
+  const basename = path.posix.basename(trimmed);
   const candidate = basename.endsWith(".git")
     ? basename.slice(0, -".git".length)
     : basename;

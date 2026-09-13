@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { spawn } from "node:child_process";
-import { once } from "node:events";
+import { forwardSignalsAndMirrorExit } from "./child-process-helpers.mjs";
 import {
   createDesktopReleaseConfig,
   resolveDesktopReleaseChannel,
@@ -36,16 +36,4 @@ const child = spawn(
   },
 );
 
-process.once("SIGINT", () => {
-  child.kill("SIGINT");
-});
-process.once("SIGTERM", () => {
-  child.kill("SIGTERM");
-});
-
-const [code, signal] = await once(child, "exit");
-if (typeof code === "number") {
-  process.exitCode = code;
-} else {
-  process.exitCode = signal === null ? 1 : 128;
-}
+await forwardSignalsAndMirrorExit(child);

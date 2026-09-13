@@ -1,10 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { isAbsolute, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import {
   checkRecordedCellReplay,
   RECORDED_CONFORMANCE_CELLS,
-  type RecordedCellReplay,
 } from "../conformance/recorded.js";
 import { formatConformanceReport } from "../conformance/index.js";
 import { createBridgeDeltaEventCollector } from "./bridge-delta-assembly.js";
@@ -13,12 +12,11 @@ import {
   resolveProviderBridgeLaunch,
   type ProviderBridgeLaunch,
   type ReplayProviderProfile,
-  type ReplayRecordedCellsOptions,
 } from "./parity.js";
 import {
   COMMITTED_RECORDINGS_ROOT,
+  RECORDINGS_CHECKOUT_ROOT,
   type BridgeRecording,
-  type RecordedCell,
 } from "./recording.js";
 
 export const FIRST_PARTY_BRIDGE_MODULES: Readonly<
@@ -49,13 +47,6 @@ export const FIRST_PARTY_BRIDGE_MODULES: Readonly<
 
 const BRIDGE_WORKER_ENTRY =
   "packages/provider-bridge-protocol/src/bridge-worker-entry.ts";
-
-export interface ParityBridgeSpec {
-  checkoutRoot: string;
-  providerId: string;
-  modulePath?: string;
-  pluginId?: string;
-}
 
 export class UnreplayableProviderError extends Error {
   constructor(providerId: string, reason: string) {
@@ -124,20 +115,29 @@ function piSessionDir(stateDir: string): string {
   return join(stateDir, "pi-sessions");
 }
 
+function recordedForkRequestParams(
+  recording: BridgeRecording,
+): Record<string, unknown>[] {
+  const forkParams: Record<string, unknown>[] = [];
+  for (const entry of recording.entries) {
+    if (entry.dir !== "runtime→bridge") continue;
+    const message = parseWire(entry.line);
+    if (message === null || message.method !== "thread/fork") continue;
+    const params = message.params;
+    if (typeof params !== "object" || params === null) continue;
+    forkParams.push(params as Record<string, unknown>);
+  }
+  return forkParams;
+}
+
 function seedPiSessionFiles(args: {
   recording: BridgeRecording;
   stateDir: string;
 }): void {
   const sessionDir = piSessionDir(args.stateDir);
   mkdirSync(sessionDir, { recursive: true });
-  for (const entry of args.recording.entries) {
-    if (entry.dir !== "runtime→bridge") continue;
-    const message = parseWire(entry.line);
-    if (message === null || message.method !== "thread/fork") continue;
-    const params = message.params as
-      | { sourceProviderThreadId?: unknown }
-      | undefined;
-    const sourceThreadId = params?.sourceProviderThreadId;
+  for (const params of recordedForkRequestParams(args.recording)) {
+    const sourceThreadId = params.sourceProviderThreadId;
     if (typeof sourceThreadId !== "string") continue;
     writeFileSync(
       join(
@@ -163,20 +163,11 @@ function seedClaudeForkTranscripts(args: {
     "projects",
     claudeProjectDirName(args.workspaceDir),
   );
-  for (const entry of args.recording.entries) {
-    if (entry.dir !== "runtime→bridge") continue;
-    const message = parseWire(entry.line);
-    if (message === null || message.method !== "thread/fork") continue;
-    const params = message.params as
-      | {
-          sourceProviderThreadId?: unknown;
-          sourceProviderCheckpointId?: unknown;
-        }
-      | undefined;
-    const sessionId = params?.sourceProviderThreadId;
+  for (const params of recordedForkRequestParams(args.recording)) {
+    const sessionId = params.sourceProviderThreadId;
     if (typeof sessionId !== "string") continue;
     const checkpointId =
-      typeof params?.sourceProviderCheckpointId === "string"
+      typeof params.sourceProviderCheckpointId === "string"
         ? params.sourceProviderCheckpointId
         : randomUUID();
     const userUuid = randomUUID();
@@ -280,20 +271,17 @@ function resolveModulePath(
 }
 
 export function resolveBridgeLaunch(
-  spec: ParityBridgeSpec,
+  checkoutRoot: string,
+  providerId: string,
 ): ProviderBridgeLaunch {
-  const checkoutRoot = resolve(spec.checkoutRoot);
-  const profile = resolveReplayProfile(spec.providerId);
+  const root = resolve(checkoutRoot);
+  const profile = resolveReplayProfile(providerId);
   const defaults = FIRST_PARTY_BRIDGE_MODULES[profile.bridgeFamily];
-  const modulePath =
-    spec.modulePath ?? resolveModulePath(checkoutRoot, defaults);
   return resolveProviderBridgeLaunch({
-    modulePath: isAbsolute(modulePath)
-      ? modulePath
-      : join(checkoutRoot, modulePath),
-    pluginId: spec.pluginId ?? defaults.pluginId,
-    bootstrapPath: join(checkoutRoot, BRIDGE_WORKER_ENTRY),
-    cwd: checkoutRoot,
+    modulePath: join(root, resolveModulePath(root, defaults)),
+    pluginId: defaults.pluginId,
+    bootstrapPath: join(root, BRIDGE_WORKER_ENTRY),
+    cwd: root,
   });
 }
 
@@ -302,36 +290,9 @@ export function firstPartyReplayBridge(
   checkoutRoot: string,
 ): { launch: ProviderBridgeLaunch; profile: ReplayProviderProfile } {
   return {
-    launch: resolveBridgeLaunch({ checkoutRoot, providerId }),
+    launch: resolveBridgeLaunch(checkoutRoot, providerId),
     profile: resolveReplayProfile(providerId),
   };
-}
-
-export interface ReplayFirstPartyRecordedCellsOptions extends Omit<
-  ReplayRecordedCellsOptions,
-  "bridge" | "recordingsRoot"
-> {
-  checkoutRoot?: string;
-  recordingsRoot?: string;
-}
-
-export function replayFirstPartyRecordedCells(
-  options: ReplayFirstPartyRecordedCellsOptions,
-): Promise<RecordedCellReplay[]> {
-  const recordingsRoot = options.recordingsRoot ?? COMMITTED_RECORDINGS_ROOT;
-  const checkoutRoot =
-    options.checkoutRoot ?? resolve(recordingsRoot, "../../..");
-  const {
-    checkoutRoot: _checkoutRoot,
-    recordingsRoot: _recordingsRoot,
-    ...rest
-  } = options;
-  return replayRecordedCells({
-    ...rest,
-    recordingsRoot,
-    bridge: (cell: RecordedCell) =>
-      firstPartyReplayBridge(cell.provider, checkoutRoot),
-  });
 }
 
 export interface FirstPartyRecordedConformanceOptions {
@@ -348,7 +309,7 @@ export interface FirstPartyRecordedConformanceRun {
 export async function runFirstPartyRecordedConformance(
   options: FirstPartyRecordedConformanceOptions,
 ): Promise<FirstPartyRecordedConformanceRun> {
-  const replays = await replayFirstPartyRecordedCells({
+  const replays = await replayRecordedCells({
     servesProvider: options.servesProvider,
     cells: RECORDED_CONFORMANCE_CELLS,
     createAssembler: (providerId) => {
@@ -359,6 +320,9 @@ export async function runFirstPartyRecordedConformance(
     },
     timeoutMs: 60_000,
     onStderr: (text) => process.stderr.write(`[bridge] ${text}`),
+    recordingsRoot: COMMITTED_RECORDINGS_ROOT,
+    bridge: (cell) =>
+      firstPartyReplayBridge(cell.provider, RECORDINGS_CHECKOUT_ROOT),
   });
   const results = replays.flatMap((replay) => checkRecordedCellReplay(replay));
   const report = formatConformanceReport({

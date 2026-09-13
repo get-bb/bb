@@ -7,14 +7,14 @@ import { TimelineDetailScroll } from "./TimelineDetailScroll.js";
 
 interface TerminalOutputBlockProps {
   output: string;
-  commandLine?: string;
-  exitCode?: number | null;
-  metadataLines?: readonly string[];
-  streaming?: boolean;
+  commandLine: string;
+  exitCode: number | null;
+  metadataLines: readonly string[];
+  streaming: boolean;
 }
 
 interface TerminalScrollContentKeyArgs {
-  commandLine: string | undefined;
+  commandLine: string;
   exitCode: number | null;
   metadataLines: readonly string[];
   output: string;
@@ -87,7 +87,7 @@ function terminalScrollContentKey({
   output,
 }: TerminalScrollContentKeyArgs): string {
   return [
-    commandLine?.length ?? 0,
+    commandLine.length,
     stringLengthSum(metadataLines),
     output.length,
     exitCode ?? "",
@@ -96,10 +96,10 @@ function terminalScrollContentKey({
 
 export function TerminalOutputBlock({
   commandLine,
-  exitCode = null,
-  metadataLines = [],
+  exitCode,
+  metadataLines,
   output,
-  streaming = false,
+  streaming,
 }: TerminalOutputBlockProps) {
   const renderedOutputHtml = useMemo(
     () =>
@@ -120,19 +120,17 @@ export function TerminalOutputBlock({
   return (
     <div className="overflow-hidden rounded-lg border border-border bg-card">
       <div className="px-4 py-3 font-mono text-xs leading-tight text-foreground opacity-70">
-        {commandLine ? (
-          <ExpandableLine
-            fullText={commandLine}
-            collapsedClassName="max-h-[2lh] overflow-hidden whitespace-pre-wrap break-words"
-            collapsedStyle={COMMAND_LINE_CLAMP_STYLE}
-            expandedClassName={cn(
-              "overflow-auto whitespace-pre-wrap break-words",
-              getDetailScrollMaxHeightClass("base"),
-            )}
-          >
-            {commandLine}
-          </ExpandableLine>
-        ) : null}
+        <ExpandableLine
+          fullText={commandLine}
+          collapsedClassName="max-h-[2lh] overflow-hidden whitespace-pre-wrap break-words"
+          collapsedStyle={COMMAND_LINE_CLAMP_STYLE}
+          expandedClassName={cn(
+            "overflow-auto whitespace-pre-wrap break-words",
+            getDetailScrollMaxHeightClass("base"),
+          )}
+        >
+          {commandLine}
+        </ExpandableLine>
         {metadataLines.map((line, index) => (
           <div key={`${index}:${line}`} className="mt-1 text-muted-foreground">
             {line}
@@ -143,21 +141,14 @@ export function TerminalOutputBlock({
             size="base"
             streaming={streaming}
             contentKey={outputContentKey}
-            className={cn(
-              commandLine || metadataLines.length > 0 ? "mt-1.5" : null,
-            )}
+            className="mt-1.5"
             scrollClassName="whitespace-pre leading-tight text-muted-foreground"
           >
             <div dangerouslySetInnerHTML={{ __html: renderedOutputHtml }} />
           </TimelineDetailScroll>
         ) : null}
         {showExitCode ? (
-          <div
-            className={cn(
-              renderedOutputHtml ? "mt-1.5" : commandLine ? "mt-1.5" : null,
-              "font-mono text-xs leading-tight text-muted-foreground",
-            )}
-          >
+          <div className="mt-1.5 font-mono text-xs leading-tight text-muted-foreground">
             exit code {exitCode}
           </div>
         ) : null}

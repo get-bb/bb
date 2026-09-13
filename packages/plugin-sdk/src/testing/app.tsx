@@ -37,7 +37,7 @@ import {
   type PluginNavPanelRegistration,
   type PluginNewThreadPanelActionRegistration,
   type PluginPendingInteractionRegistration,
-  type PluginProviderIconRegistration,
+  type ExperimentalIconRegistration,
   type PluginTimelineRendererRegistration,
   type PluginRealtimeConnectionState,
   type PluginRpcClient,
@@ -73,6 +73,7 @@ import {
   type ExperimentalPermissionModePickerProps,
   type ExperimentalProviderModelPickerProps,
   type PluginEnvironmentProviderInputsRegistration,
+  type PluginMachineProviderInputsRegistration,
   type ThreadChatProps,
   type DiffProps,
   type SourceCodeProps,
@@ -83,6 +84,7 @@ import { normalizePluginThreadRowStatus } from "../internal/composer-customizati
 import { normalizeExperimentalFileOpenOptions } from "../internal/file-navigation-validation.js";
 import {
   collectPluginAppRegistrations,
+  type CollectedPluginProviderIconRegistration,
   type CollectedExperimentalSidebarFooterItem,
 } from "../internal/plugin-app-collector.js";
 
@@ -847,6 +849,33 @@ const testPluginSdkApp = {
   ThreadChat: TestThreadChat,
   Markdown: TestMarkdown,
   experimental_FileLink: TestFileLink,
+  experimental_Icon: ({ name, fallback, ...props }) => (
+    <span {...props} data-icon={name} data-icon-fallback={fallback} />
+  ),
+  experimental_ProviderIcon: ({
+    providerKind,
+    provider,
+    fallback,
+    ...props
+  }) => (
+    <span
+      {...props}
+      data-provider-kind={providerKind}
+      data-provider-id={provider.id}
+      data-provider-logo={provider.logoUrl ?? undefined}
+      data-provider-glyph={
+        (typeof provider.icon === "string"
+          ? provider.icon
+          : provider.icon?.glyph) ?? undefined
+      }
+      data-provider-tint={
+        provider.strings?.iconTint == null
+          ? undefined
+          : JSON.stringify(provider.strings.iconTint)
+      }
+      data-provider-fallback={fallback}
+    />
+  ),
   UrlLink: TestUrlLink,
   experimental_NewThreadComposer: TestNewThreadComposer,
   experimental_ProviderModelPicker: TestProviderModelPicker,
@@ -963,9 +992,11 @@ export interface CapturedPluginApp {
   diffRenderers: PluginDiffRendererRegistration[];
   messageDirectives: PluginMessageDirectiveRegistration[];
   messageActions: PluginMessageActionRegistration[];
-  providerIcons: PluginProviderIconRegistration[];
+  providerIcons: CollectedPluginProviderIconRegistration[];
+  icons: ExperimentalIconRegistration[];
   timelineRenderers: PluginTimelineRendererRegistration[];
   environmentProviderInputs: PluginEnvironmentProviderInputsRegistration[];
+  machineProviderInputs: PluginMachineProviderInputsRegistration[];
   contentScripts: PluginContentScriptRegistration[];
 }
 

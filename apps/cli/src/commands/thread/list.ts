@@ -3,7 +3,11 @@ import { PERSONAL_PROJECT_ID, type Thread } from "@bb/domain";
 import { action } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
 import { resolveExplicitIdFlag } from "../../context-env.js";
-import { renderBorderlessTable } from "../../table.js";
+import {
+  columnWidths,
+  printBorderlessTable,
+  truncateCell,
+} from "../../table.js";
 import { outputJson } from "../helpers.js";
 
 interface ThreadListCommandOptions {
@@ -89,21 +93,13 @@ function printThreadTable(
     formatThreadListProject(thread, projectNames),
     formatThreadListStatus(thread),
   ]);
-  const idWidth = Math.max(4, ...rows.map((row) => row[0].length));
-  const titleWidth = Math.max(5, ...rows.map((row) => row[1].length));
-  const projectWidth = Math.max(7, ...rows.map((row) => row[2].length));
-  const statusWidth = Math.max(12, ...rows.map((row) => row[3].length));
-  const table = renderBorderlessTable(
+  printBorderlessTable(
     {
       head: ["ID", "Title", "Project", "Status"],
-      colWidths: [idWidth, titleWidth, projectWidth, statusWidth],
+      colWidths: columnWidths(rows, [4, 5, 7, 12]),
     },
     rows,
   );
-
-  console.log("");
-  console.log(table);
-  console.log("");
 }
 
 function formatThreadListTitle(thread: Thread): string {
@@ -120,12 +116,6 @@ function formatThreadListProject(
 ): string {
   if (thread.projectId === PERSONAL_PROJECT_ID) return "-";
   return projectNames.get(thread.projectId) ?? thread.projectId;
-}
-
-function truncateCell(value: string, maxWidth: number): string {
-  const singleLine = value.replace(/\s+/g, " ");
-  if (singleLine.length <= maxWidth) return singleLine;
-  return `${singleLine.slice(0, maxWidth - 1)}…`;
 }
 
 function formatThreadListStatus(thread: Thread): string {

@@ -5,8 +5,10 @@ import type {
 } from "@bb/domain";
 import { AnimatedBody } from "@/components/promptbox/banner/AnimatedBody";
 import {
+  PROMPT_STACK_CARD_HEADER_BUTTON_CLASS,
   PROMPT_STACK_CARD_ROW_HEIGHT,
   PromptStackCard,
+  PromptStackCardChevron,
 } from "@/components/promptbox/banner/PromptStackCard";
 import {
   activityIconClass,
@@ -42,7 +44,7 @@ const BODY_ID = "thread-todo-card-body";
 const TOGGLE_ID = "thread-todo-card-toggle";
 const TODO_HEADER_BUTTON_CLASS = activityRowClass(
   "active",
-  "flex min-h-8 w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-none px-3 py-1.5 text-xs text-foreground transition-colors hover:bg-background/80",
+  PROMPT_STACK_CARD_HEADER_BUTTON_CLASS,
 );
 const TODO_ACTIVE_ROW_CLASS = "shadow-none ring-0";
 const TODO_ACTIVE_ICON_CLASS = "text-foreground";
@@ -178,14 +180,9 @@ export function ThreadTodoCard({
           >
             {summary.visible}
           </span>
-          <Icon
-            name="ChevronDown"
-            className={cn(
-              activityIconClass("active"),
-              "size-3.5 shrink-0 transition-transform duration-200",
-              isExpanded && "rotate-180",
-            )}
-            aria-hidden="true"
+          <PromptStackCardChevron
+            isExpanded={isExpanded}
+            className={activityIconClass("active")}
           />
         </button>
       </div>

@@ -24,6 +24,11 @@ import {
 } from "../src/hooks/useUpdateInventory";
 import { createAppQueryClient } from "../src/lib/query-client";
 import { makeSystemConfig } from "../src/test/fixtures/system-config";
+import { systemMachineProvidersQueryKey } from "../src/hooks/queries/query-keys";
+import {
+  MANUAL_MACHINE_PROVIDER,
+  MODAL_MACHINE_PROVIDER,
+} from "./machine-story-fixtures";
 import { makeProviderInfo } from "@bb/test-helpers/domain-fixtures";
 import { getSettingsRoutePath } from "../src/lib/route-paths";
 import {
@@ -278,6 +283,7 @@ function createSettingsStoryQueryClient() {
     },
   });
   queryClient.setQueryData(hostsQueryKey(), SETTINGS_STORY_HOSTS);
+  queryClient.setQueryData(hostsQueryKey(true), SETTINGS_STORY_HOSTS);
   queryClient.setQueryData(systemConfigQueryKey(), systemConfig);
   queryClient.setQueryData(systemProvidersQueryKey(), systemProviders);
   queryClient.setQueryData(systemVersionQueryKey(), systemVersion);
@@ -292,6 +298,10 @@ function createSettingsStoryQueryClient() {
     remoteProviderStatus,
   );
   queryClient.setQueryData(pluginListQueryKey(true), []);
+  queryClient.setQueryData(systemMachineProvidersQueryKey(), [
+    MANUAL_MACHINE_PROVIDER,
+    MODAL_MACHINE_PROVIDER,
+  ]);
   return queryClient;
 }
 

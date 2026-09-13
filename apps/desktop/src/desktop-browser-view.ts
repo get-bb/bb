@@ -384,7 +384,6 @@ export function createDesktopBrowserViewManager(
 ): DesktopBrowserViewManager {
   const partition = args.partition ?? BB_BROWSER_PARTITION;
   const entries = new Map<string, BrowserViewEntry>();
-  const entriesByWebContentsId = new Map<number, BrowserViewEntry>();
   const automationTabListeners = new Set<() => void>();
   const popupWindows = new Set<BrowserWindow>();
   const resizingHostIds = new Set<number>();
@@ -812,7 +811,6 @@ export function createDesktopBrowserViewManager(
     wireWebContents(args.hostWindow, args.tabId, entry);
     args.hostWindow.contentView.addChildView(view);
     entries.set(browserViewKey(args.hostWindow, args.tabId), entry);
-    entriesByWebContentsId.set(view.webContents.id, entry);
     return entry;
   }
 
@@ -830,6 +828,19 @@ export function createDesktopBrowserViewManager(
     entry.view.webContents.loadURL(url).catch(() => {});
   }
 
+  function disposeEntry(key: string, entry: BrowserViewEntry): void {
+    entries.delete(key);
+    clearEntryRendererRecoveryTimer(entry);
+    for (const popupWindow of [...entry.popupWindows]) {
+      if (!popupWindow.isDestroyed()) popupWindow.destroy();
+    }
+    entry.popupWindows.clear();
+    if (!entry.view.webContents.isDestroyed()) {
+      entry.view.webContents.close();
+    }
+    notifyAutomationTabs();
+  }
+
   function destroyEntry(
     hostWindow: DesktopBrowserHostWindow,
     key: string,
@@ -838,20 +849,10 @@ export function createDesktopBrowserViewManager(
     if (!entry) {
       return;
     }
-    entries.delete(key);
-    entriesByWebContentsId.delete(entry.view.webContents.id);
-    clearEntryRendererRecoveryTimer(entry);
-    for (const popupWindow of [...entry.popupWindows]) {
-      if (!popupWindow.isDestroyed()) popupWindow.destroy();
-    }
-    entry.popupWindows.clear();
     if (!hostWindow.isDestroyed()) {
       hostWindow.contentView.removeChildView(entry.view);
     }
-    if (!entry.view.webContents.isDestroyed()) {
-      entry.view.webContents.close();
-    }
-    notifyAutomationTabs();
+    disposeEntry(key, entry);
   }
 
   function withEntry(
@@ -1199,19 +1200,7 @@ export function createDesktopBrowserViewManager(
         if (!key.startsWith(prefix)) {
           continue;
         }
-        entries.delete(key);
-        entriesByWebContentsId.delete(entry.view.webContents.id);
-        clearEntryRendererRecoveryTimer(entry);
-        for (const popupWindow of [...entry.popupWindows]) {
-          if (!popupWindow.isDestroyed()) {
-            popupWindow.destroy();
-          }
-        }
-        entry.popupWindows.clear();
-        if (!entry.view.webContents.isDestroyed()) {
-          entry.view.webContents.close();
-        }
-        notifyAutomationTabs();
+        disposeEntry(key, entry);
       }
     },
     destroyAll() {
@@ -1223,13 +1212,7 @@ export function createDesktopBrowserViewManager(
       }
       popupWindows.clear();
       for (const [key, entry] of [...entries.entries()]) {
-        entries.delete(key);
-        entriesByWebContentsId.delete(entry.view.webContents.id);
-        clearEntryRendererRecoveryTimer(entry);
-        if (!entry.view.webContents.isDestroyed()) {
-          entry.view.webContents.close();
-        }
-        notifyAutomationTabs();
+        disposeEntry(key, entry);
       }
     },
   };

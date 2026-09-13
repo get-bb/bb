@@ -6,17 +6,22 @@ import {
   type QueuedMessageWaitHolder,
 } from "@bb/domain";
 import type { ThreadQueuedMessagesResult } from "@bb/sdk";
-import { renderBorderlessTable } from "../../table.js";
+import {
+  columnWidths,
+  printBorderlessTable,
+  truncateCell,
+} from "../../table.js";
 import { describeQueueWait } from "./actions.js";
 import { formatQueueSendCountdown } from "./send-time.js";
 import { action } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
 import {
+  collectOption,
   confirmDestructiveAction,
   outputJson,
   requireThreadIdOrSelf,
 } from "../helpers.js";
-import { buildPromptInputs, collectOption } from "./helpers.js";
+import { buildPromptInputs } from "./helpers.js";
 
 interface JsonOptions {
   json?: boolean;
@@ -111,28 +116,17 @@ function printQueueTable(rows: ThreadQueuedMessagesResult): void {
       : row.initiator === "system"
         ? "System"
         : (row.senderThreadId ?? "Agent"),
-    truncateQueueCell(queuedMessagePreview(row.content)),
-    truncateQueueCell(describeQueueWait(row)),
+    truncateCell(queuedMessagePreview(row.content), MAX_QUEUE_TEXT_WIDTH),
+    truncateCell(describeQueueWait(row), MAX_QUEUE_TEXT_WIDTH),
     formatQueueSendCountdown(row.sendAt, now),
   ]);
-  console.log("");
-  console.log(
-    renderBorderlessTable(
-      {
-        head: ["ID", "Thread", "Sender", "Message", "Waiting on", "Send at"],
-        colWidths: [
-          queueColumnWidth(table, 0, 2),
-          queueColumnWidth(table, 1, 6),
-          queueColumnWidth(table, 2, 6),
-          queueColumnWidth(table, 3, 7),
-          queueColumnWidth(table, 4, 10),
-          queueColumnWidth(table, 5, 7),
-        ],
-      },
-      table,
-    ),
+  printBorderlessTable(
+    {
+      head: ["ID", "Thread", "Sender", "Message", "Waiting on", "Send at"],
+      colWidths: columnWidths(table, [2, 6, 6, 7, 10, 7]),
+    },
+    table,
   );
-  console.log("");
 }
 
 function queuedMessagePreview(content: PromptInput[]): string {
@@ -141,20 +135,6 @@ function queuedMessagePreview(content: PromptInput[]): string {
     .map((block) => block.text)
     .join(" ");
   return text.trim() === "" ? "(no text)" : text;
-}
-
-function queueColumnWidth(
-  rows: string[][],
-  index: number,
-  headWidth: number,
-): number {
-  return Math.max(headWidth, ...rows.map((row) => row[index]!.length));
-}
-
-function truncateQueueCell(value: string): string {
-  const singleLine = value.replace(/\s+/gu, " ");
-  if (singleLine.length <= MAX_QUEUE_TEXT_WIDTH) return singleLine;
-  return `${singleLine.slice(0, MAX_QUEUE_TEXT_WIDTH - 1)}…`;
 }
 
 /**

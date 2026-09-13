@@ -1,5 +1,6 @@
 import type { AppShortcut } from "@bb/domain";
 import {
+  browserPlatform,
   formatAppShortcut,
   formatAppShortcutAria,
 } from "@/lib/app-keybindings";
@@ -12,10 +13,6 @@ const MODIFIER_SUBMIT_SHORTCUT: AppShortcut = {
   alt: false,
   shift: false,
 };
-
-function currentPlatform(): string {
-  return typeof navigator === "undefined" ? "" : navigator.platform;
-}
 
 export function isModifierSubmitKeyEvent(event: {
   key: string;
@@ -33,9 +30,9 @@ export function isModifierSubmitKeyEvent(event: {
 }
 
 export function modifierSubmitShortcutLabel(): string {
-  return formatAppShortcut(MODIFIER_SUBMIT_SHORTCUT, currentPlatform());
+  return formatAppShortcut(MODIFIER_SUBMIT_SHORTCUT, browserPlatform());
 }
 
 export function modifierSubmitShortcutAria(): string {
-  return formatAppShortcutAria(MODIFIER_SUBMIT_SHORTCUT, currentPlatform());
+  return formatAppShortcutAria(MODIFIER_SUBMIT_SHORTCUT, browserPlatform());
 }

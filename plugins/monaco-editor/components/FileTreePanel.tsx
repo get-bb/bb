@@ -6,7 +6,7 @@ import {
   type FlatEntry,
   type TreeNode,
 } from "../lib/file-tree.js";
-import { toast } from "sonner";
+import { copy } from "../lib/editor-commands.js";
 import {
   clampTreeHeight,
   readStoredTreeHeight,
@@ -97,7 +97,7 @@ export function FileTreePanel({
         {
           label: "Copy absolute path",
           onSelect: () =>
-            copy(
+            void copy(
               root === ""
                 ? node.path
                 : root.includes("\\")
@@ -108,11 +108,11 @@ export function FileTreePanel({
         },
         {
           label: "Copy relative path",
-          onSelect: () => copy(node.path, "Relative path copied"),
+          onSelect: () => void copy(node.path, "Relative path copied"),
         },
         {
           label: "Copy filename",
-          onSelect: () => copy(node.name, "Filename copied"),
+          onSelect: () => void copy(node.name, "Filename copied"),
         },
       ],
     });
@@ -159,7 +159,6 @@ export function FileTreePanel({
         background === null && "bg-surface-recessed",
       )}
     >
-      {}
       <div className="flex h-9 shrink-0 items-center gap-1.5 bg-surface-raised px-4">
         <input
           type="text"
@@ -312,13 +311,6 @@ function ResizeHandle({
 }
 
 const KEYBOARD_RESIZE_STEP_PX = 24;
-
-function copy(text: string, successMessage: string): void {
-  void navigator.clipboard
-    .writeText(text)
-    .then(() => toast.success(successMessage))
-    .catch(() => toast.error("Failed to copy"));
-}
 
 function Rows({
   activePath,

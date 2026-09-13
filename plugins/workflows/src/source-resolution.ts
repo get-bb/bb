@@ -2,8 +2,6 @@ import path from "node:path";
 import type { WorkflowReference } from "./types.js";
 import { MAX_WORKFLOW_SOURCE_BYTES } from "./validation.js";
 
-export { MAX_WORKFLOW_SOURCE_BYTES };
-
 export interface WorkflowSourceInput {
   script?: string;
   source?: string;

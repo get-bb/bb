@@ -1,15 +1,16 @@
 import type {
   Account,
+  AccountPoolConfig,
   AccountQuota,
   AccountSecret,
   ModelFamily,
   PoolProvider,
 } from "./contracts.js";
-import type { HubSettings } from "./hub.js";
 import { retryAfterMilliseconds } from "./quota.js";
 import type { AccountStore, QuotaStore } from "./store.js";
 
 const OAUTH_REFRESH_TIMEOUT_MS = 15_000;
+const OAUTH_REFRESH_WINDOW_MS = 5 * 60 * 1_000;
 
 export class TransientOAuthRefreshError extends Error {
   constructor(
@@ -62,7 +63,7 @@ export interface ProviderAdapter {
     parentAffinityId: string | null;
     forAccount: (account: Account) => Uint8Array;
   };
-  upstreamUrl(request: Request, settings: HubSettings): URL;
+  upstreamUrl(request: Request, settings: AccountPoolConfig): URL;
   requestHeaders(
     inbound: Headers,
     account: Account,
@@ -79,12 +80,27 @@ export interface ProviderAdapter {
   refreshSecret(
     context: AdapterSecretContext,
   ): Promise<{ secret: AccountSecret; refreshed: boolean }>;
-  refreshUsage?(context: AdapterUsageContext): Promise<void>;
+  refreshUsage(context: AdapterUsageContext): Promise<void>;
   errorResponse(
     status: number,
     message: string,
     headers?: HeadersInit,
   ): Response;
+}
+
+export function oauthSecretDueForRefresh(
+  context: AdapterSecretContext,
+): Extract<AccountSecret, { kind: "oauth" }> | null {
+  const secret = context.secret;
+  if (
+    secret.kind !== "oauth" ||
+    (!context.forceRefresh &&
+      (secret.expiresAt === null ||
+        secret.expiresAt > context.now() + OAUTH_REFRESH_WINDOW_MS))
+  ) {
+    return null;
+  }
+  return secret;
 }
 
 export async function fetchOAuthRefresh(

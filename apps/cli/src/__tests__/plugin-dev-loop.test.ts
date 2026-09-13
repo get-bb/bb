@@ -13,7 +13,6 @@ describe("createPluginDevLoop", () => {
     overrides: {
       hasApp?: boolean;
       hasHost?: boolean;
-      hasProviderBridge?: boolean;
     } = {},
   ) {
     const calls: string[] = [];
@@ -27,15 +26,11 @@ describe("createPluginDevLoop", () => {
           hasApp: overrides.hasApp ?? true,
           hasHost: overrides.hasHost ?? false,
         }),
-        hasProviderBridge: overrides.hasProviderBridge ?? false,
         buildApp: vi.fn(async () => {
           calls.push("build");
         }),
         buildHost: vi.fn(async () => {
           calls.push("build-host");
-        }),
-        buildProviderBridge: vi.fn(async () => {
-          calls.push("build-provider-bridge");
         }),
         reloadPlugin: vi.fn(async () => {
           calls.push("reload");
@@ -43,7 +38,6 @@ describe("createPluginDevLoop", () => {
         log: (line: string) => {
           lines.push(line);
         },
-        debounceMs: 300,
       },
     };
   }

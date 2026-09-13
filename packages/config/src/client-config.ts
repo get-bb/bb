@@ -60,7 +60,3 @@ export function resolveClientSshAuthority(
   const serverOrigin = normalizeClientServerOrigin(key.serverOrigin);
   return config.servers[serverOrigin]?.hosts[key.hostId]?.sshAuthority ?? null;
 }
-
-export function listClientServerOrigins(config: ClientConfig): string[] {
-  return Object.keys(config.servers).sort();
-}

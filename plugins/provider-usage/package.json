@@ -6,7 +6,7 @@
   "description": "Show live agent-provider usage in the bb sidebar footer",
   "engines": {
     "bb": ">=0.0",
-    "bbPluginSdk": ">=0.4.47"
+    "bbPluginSdk": ">=0.4.84"
   },
   "bb": {
     "name": "Provider usage",

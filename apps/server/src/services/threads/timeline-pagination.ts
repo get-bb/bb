@@ -100,10 +100,10 @@ function buildTimelineLogicalSegments(
 
 interface PaginateTimelineRowsArgs {
   contentCursor?: TimelineContentCursor;
-  maxLeaves?: number;
-  maxBytes?: number;
-  ownedSequenceStart?: number;
-  ownedSequenceEnd?: number;
+  maxLeaves: number;
+  maxBytes: number;
+  ownedSequenceStart: number;
+  ownedSequenceEnd: number;
   contextBoundarySeq: number | null;
   knownHasOlderSegments: boolean | null;
   page: ThreadTimelinePageRequest;
@@ -119,81 +119,69 @@ export function paginateTimelineRows(
     contextBoundarySeq,
   ).filter(
     (segment) =>
-      (args.ownedSequenceStart === undefined ||
-        segment.cursor.anchorSeq >= args.ownedSequenceStart) &&
-      (args.ownedSequenceEnd === undefined ||
-        segment.cursor.anchorSeq < args.ownedSequenceEnd),
+      segment.cursor.anchorSeq >= args.ownedSequenceStart &&
+      segment.cursor.anchorSeq < args.ownedSequenceEnd,
   );
   const selectedSegments = segments.slice(-page.segmentLimit);
-  if (
-    args.maxLeaves !== undefined &&
-    args.maxBytes !== undefined &&
-    selectedSegments.length > 0
-  ) {
-    const resultRows: TimelineRow[] = [];
-    let remainingLeaves = args.maxLeaves;
-    let remainingBytes = args.maxBytes;
-    let returnedSegmentCount = 0;
-    for (let index = selectedSegments.length - 1; index >= 0; index -= 1) {
-      const segment = selectedSegments[index]!;
-      const contents = paginateTimelineContents(
-        segment.rows,
-        args.contentCursor?.beforeLeaf,
-        remainingLeaves,
-        remainingBytes,
-      );
-      resultRows.unshift(...contents.rows);
-      returnedSegmentCount += 1;
-      remainingLeaves -= contents.end - contents.start;
-      remainingBytes -= Buffer.byteLength(JSON.stringify(contents.rows));
-      if (contents.start > 0 || remainingLeaves <= 0 || remainingBytes <= 0) {
-        const hasOlderRows =
-          contents.start > 0 ||
-          index > 0 ||
-          (knownHasOlderSegments ?? segments.length > selectedSegments.length);
-        return {
-          rows: resultRows,
-          returnedSegmentCount,
-          hasOlderRows,
-          olderCursor: hasOlderRows ? segment.cursor : null,
-          contentCursor:
-            contents.start > 0
-              ? {
-                  beforeLeaf: contents.start,
-                  beforeSequence:
-                    selectedSegments[index + 1]?.cursor.anchorSeq ??
-                    args.ownedSequenceEnd!,
-                }
-              : undefined,
-          contentPage: {
-            anchorSeq: segment.cursor.anchorSeq,
-            start: contents.start,
-            end: contents.end,
-            total: contents.total,
-          },
-        };
-      }
-    }
-    const hasOlderRows =
-      knownHasOlderSegments ?? segments.length > selectedSegments.length;
+  if (selectedSegments.length === 0) {
     return {
-      rows: resultRows,
-      returnedSegmentCount,
-      hasOlderRows,
-      olderCursor: hasOlderRows ? selectedSegments[0]!.cursor : null,
+      hasOlderRows:
+        knownHasOlderSegments ?? segments.length > selectedSegments.length,
+      olderCursor: null,
+      returnedSegmentCount: 0,
+      rows: [],
     };
+  }
+  const resultRows: TimelineRow[] = [];
+  let remainingLeaves = args.maxLeaves;
+  let remainingBytes = args.maxBytes;
+  let returnedSegmentCount = 0;
+  for (let index = selectedSegments.length - 1; index >= 0; index -= 1) {
+    const segment = selectedSegments[index]!;
+    const contents = paginateTimelineContents(
+      segment.rows,
+      args.contentCursor?.beforeLeaf,
+      remainingLeaves,
+      remainingBytes,
+    );
+    resultRows.unshift(...contents.rows);
+    returnedSegmentCount += 1;
+    remainingLeaves -= contents.end - contents.start;
+    remainingBytes -= Buffer.byteLength(JSON.stringify(contents.rows));
+    if (contents.start > 0 || remainingLeaves <= 0 || remainingBytes <= 0) {
+      const hasOlderRows =
+        contents.start > 0 ||
+        index > 0 ||
+        (knownHasOlderSegments ?? segments.length > selectedSegments.length);
+      return {
+        rows: resultRows,
+        returnedSegmentCount,
+        hasOlderRows,
+        olderCursor: hasOlderRows ? segment.cursor : null,
+        contentCursor:
+          contents.start > 0
+            ? {
+                beforeLeaf: contents.start,
+                beforeSequence:
+                  selectedSegments[index + 1]?.cursor.anchorSeq ??
+                  args.ownedSequenceEnd,
+              }
+            : undefined,
+        contentPage: {
+          anchorSeq: segment.cursor.anchorSeq,
+          start: contents.start,
+          end: contents.end,
+          total: contents.total,
+        },
+      };
+    }
   }
   const hasOlderRows =
     knownHasOlderSegments ?? segments.length > selectedSegments.length;
-  const oldestSelectedSegment = selectedSegments[0];
-
   return {
+    rows: resultRows,
+    returnedSegmentCount,
     hasOlderRows,
-    olderCursor:
-      hasOlderRows && oldestSelectedSegment
-        ? oldestSelectedSegment.cursor
-        : null,
-    returnedSegmentCount: selectedSegments.length,
-    rows: selectedSegments.flatMap((segment) => segment.rows),
+    olderCursor: hasOlderRows ? selectedSegments[0]!.cursor : null,
   };
 }

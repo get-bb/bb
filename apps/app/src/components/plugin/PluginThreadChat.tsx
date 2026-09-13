@@ -32,6 +32,7 @@ import {
   getEnvironmentWorkspaceSummaryDisplay,
 } from "@/lib/environment-workspace-display";
 import { useSystemEnvironmentProviders } from "@/hooks/queries/environment-provider-queries";
+import { useSystemMachineProviders } from "@/hooks/queries/machine-provider-queries";
 import { formatWorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
 import { BbHttpError } from "@/lib/sdk";
 import {
@@ -114,12 +115,13 @@ function PluginThreadChatBody({
   const environmentQuery = useEnvironment(thread?.environmentId ?? null);
   const environment = environmentQuery.data ?? null;
   const hostsQuery = useHosts({ enabled: environment !== null });
-  const environmentHostName = environment
-    ? (hostsQuery.data?.find((host) => host.id === environment.hostId)?.name ??
-      null)
+  const environmentHost = environment
+    ? (hostsQuery.data?.find((host) => host.id === environment.hostId) ?? null)
     : null;
+  const environmentHostName = environmentHost?.name ?? null;
   const hasMultipleMachines = (hostsQuery.data?.length ?? 0) > 1;
   const { providers: environmentProviders } = useSystemEnvironmentProviders();
+  const { providers: machineProviders } = useSystemMachineProviders();
   const timelineNavigation = useThreadTimelineNavigation();
   const canUseHostFileNavigation =
     thread !== undefined &&
@@ -205,13 +207,24 @@ function PluginThreadChatBody({
       environmentName: environment.name,
       hasMultipleMachines,
       hostName: environmentHostName,
+      hostType: environmentHost?.type ?? null,
       isProjectless: thread?.projectId === PERSONAL_PROJECT_ID,
     });
+    const summaryHost =
+      environmentHost !== null &&
+      environment.name === null &&
+      summaryDisplay?.label === environmentHost.name
+        ? environmentHost
+        : undefined;
     return (
       <ThreadEnvironmentSummary
         environmentLabel={summaryDisplay?.label}
         environmentCompactLabel={summaryDisplay?.compactLabel}
+        environmentHost={summaryHost}
         environmentIcon={summaryDisplay?.icon}
+        environmentMachineProvider={machineProviders?.find(
+          (provider) => provider.id === summaryHost?.machineProviderId,
+        )}
         environmentTypeLabel={summaryDisplay?.typeLabel}
         environmentCheckout={
           environment.branchName
@@ -228,10 +241,12 @@ function PluginThreadChatBody({
     );
   }, [
     environment,
+    environmentHost,
     environmentHostName,
     environmentProviders,
     hasMultipleMachines,
     isLocalDaemonHost,
+    machineProviders,
     thread?.projectId,
   ]);
 

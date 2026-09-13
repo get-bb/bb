@@ -10,6 +10,7 @@ import type {
   ThreadNotWritableErrorDetails,
   ThreadNotWritableReason,
 } from "@bb/server-contract";
+import { hostUnavailableErrorDetailsSchema } from "@bb/server-contract";
 import { ApiError } from "../../errors.js";
 
 type EnvironmentReadinessFields = Pick<Environment, "path" | "status">;
@@ -19,6 +20,8 @@ type ThreadEnvironmentStatusFields = Pick<Environment, "status">;
 type ThreadWritableFields = Pick<Thread, "archivedAt" | "deletedAt" | "status">;
 
 type HostUnavailableStatus = 404 | 502;
+
+type HostLifecycleFields = Pick<Host["lifecycle"], "phase" | "suspendedAt">;
 
 interface ParentThreadInvalidDetailsArgs {
   reason: ParentThreadInvalidReason;
@@ -125,15 +128,32 @@ export function throwThreadNotWritable(
   });
 }
 
-export function disconnectedHostUnavailableDetails(
+export function inactiveHostUnavailableDetails(
   hostStatus: Host["status"] = "disconnected",
+  lifecycle?: HostLifecycleFields,
 ): HostUnavailableErrorDetails {
+  const suspended =
+    lifecycle !== undefined &&
+    (lifecycle.phase === "suspending" ||
+      lifecycle.phase === "suspended" ||
+      lifecycle.phase === "resuming" ||
+      lifecycle.suspendedAt !== null);
   return {
-    reason: "disconnected",
+    reason: suspended ? "suspended" : "disconnected",
     hostStatus,
-    suspendedAt: null,
+    suspendedAt: suspended ? lifecycle.suspendedAt : null,
     destroyedAt: null,
   };
+}
+
+export function isSuspendedHostUnavailableError(error: unknown): boolean {
+  if (!(error instanceof ApiError) || error.body.code !== "host_unavailable") {
+    return false;
+  }
+  const details = hostUnavailableErrorDetailsSchema.safeParse(
+    error.body.details,
+  );
+  return details.success && details.data.reason === "suspended";
 }
 
 export function destroyedHostUnavailableDetails(

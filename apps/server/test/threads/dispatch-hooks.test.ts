@@ -11,6 +11,7 @@ import type { PluginHookName } from "@get-bb/plugin-sdk";
 import { afterEach, describe, expect, it } from "vitest";
 import { ApiError } from "../../src/errors.js";
 import {
+  invokePluginInline,
   setPluginHookProvider,
   type PluginHookRegistration,
 } from "../../src/services/plugins/plugin-hook-registry.js";
@@ -67,16 +68,7 @@ function installHooks(
     listHooks: (hook) => registry[hook],
     // Mirrors the plugin service's failure isolation: a throw is reported, not
     // propagated, and the runner is what turns it into a failed dispatch.
-    invokeHook: async (_pluginId, _label, run) => {
-      try {
-        return { ok: true, value: await run() };
-      } catch (error) {
-        return {
-          ok: false,
-          error: error instanceof Error ? error.message : String(error),
-        };
-      }
-    },
+    invokeHook: (_pluginId, _label, run) => invokePluginInline(run),
     decisionTimeoutMs: options.decisionTimeoutMs ?? 10_000,
   });
 }

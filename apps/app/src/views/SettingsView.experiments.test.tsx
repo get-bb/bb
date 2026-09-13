@@ -1,33 +1,24 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen, fireEvent } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { ExperimentKey } from "@bb/domain";
 import { ExperimentsSettingsSection } from "./SettingsView";
 
 afterEach(cleanup);
 
-function renderSection(overrides?: {
-  onChangelogPreviewEnabledChange?: (enabled: boolean) => void;
-  onMobileAppEnabledChange?: (enabled: boolean) => void;
-  onSidebarProgressiveDisclosureEnabledChange?: (enabled: boolean) => void;
-  onTimelineWindowingEnabledChange?: (enabled: boolean) => void;
-}) {
+function renderSection(
+  onExperimentChange: (key: ExperimentKey, enabled: boolean) => void,
+) {
   return render(
     <ExperimentsSettingsSection
-      changelogPreviewEnabled={false}
       disabled={false}
-      mobileAppEnabled={false}
-      sidebarProgressiveDisclosureEnabled={false}
-      timelineWindowingEnabled={false}
-      onChangelogPreviewEnabledChange={
-        overrides?.onChangelogPreviewEnabledChange ?? vi.fn()
-      }
-      onMobileAppEnabledChange={overrides?.onMobileAppEnabledChange ?? vi.fn()}
-      onSidebarProgressiveDisclosureEnabledChange={
-        overrides?.onSidebarProgressiveDisclosureEnabledChange ?? vi.fn()
-      }
-      onTimelineWindowingEnabledChange={
-        overrides?.onTimelineWindowingEnabledChange ?? vi.fn()
-      }
+      experiments={{
+        changelogPreview: false,
+        mobileApp: false,
+        sidebarProgressiveDisclosure: false,
+        timelineWindowing: false,
+      }}
+      onExperimentChange={onExperimentChange}
     />,
   );
 }
@@ -35,29 +26,29 @@ function renderSection(overrides?: {
 describe("ExperimentsSettingsSection", () => {
   it("reports changelog preview changes", () => {
     const onChange = vi.fn();
-    renderSection({ onChangelogPreviewEnabledChange: onChange });
+    renderSection(onChange);
     fireEvent.click(screen.getByLabelText("Changelog preview"));
-    expect(onChange).toHaveBeenCalledWith(true);
+    expect(onChange).toHaveBeenCalledWith("changelogPreview", true);
   });
 
   it("reports mobile app changes", () => {
     const onChange = vi.fn();
-    renderSection({ onMobileAppEnabledChange: onChange });
+    renderSection(onChange);
     fireEvent.click(screen.getByLabelText("Mobile app"));
-    expect(onChange).toHaveBeenCalledWith(true);
+    expect(onChange).toHaveBeenCalledWith("mobileApp", true);
   });
 
   it("reports sidebar progressive disclosure changes", () => {
     const onChange = vi.fn();
-    renderSection({ onSidebarProgressiveDisclosureEnabledChange: onChange });
+    renderSection(onChange);
     fireEvent.click(screen.getByLabelText("Sidebar progressive disclosure"));
-    expect(onChange).toHaveBeenCalledWith(true);
+    expect(onChange).toHaveBeenCalledWith("sidebarProgressiveDisclosure", true);
   });
 
   it("reports timeline windowing changes", () => {
     const onChange = vi.fn();
-    renderSection({ onTimelineWindowingEnabledChange: onChange });
+    renderSection(onChange);
     fireEvent.click(screen.getByLabelText("Timeline windowing"));
-    expect(onChange).toHaveBeenCalledWith(true);
+    expect(onChange).toHaveBeenCalledWith("timelineWindowing", true);
   });
 });

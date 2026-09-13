@@ -6,7 +6,7 @@ import {
   activityTextClass,
   type ActivityRowState,
 } from "./activity-row-styles";
-import { Icon } from "./icon";
+import { Icon, type IconName } from "./icon";
 import { cn } from "../../lib/utils";
 
 export type WorkflowProgressAgentState =
@@ -77,6 +77,19 @@ function deriveAgentDisplayState(
   return agent.state;
 }
 
+const AGENT_STATE_ICON: Record<
+  WorkflowAgentDisplayState,
+  { name: IconName; className: string }
+> = {
+  done: { name: "Check", className: "text-muted-foreground/60" },
+  failed: { name: "X", className: "text-destructive/80" },
+  skipped: { name: "X", className: "text-muted-foreground/45" },
+  cancelled: { name: "Pause", className: "text-muted-foreground/45" },
+  running: { name: "Spinner", className: "animate-spin text-foreground" },
+  queued: { name: "Circle", className: "text-muted-foreground/45" },
+  interrupted: { name: "Circle", className: "text-muted-foreground/45" },
+};
+
 function WorkflowAgentStateIcon({
   state,
   className: overrideClassName,
@@ -84,82 +97,14 @@ function WorkflowAgentStateIcon({
   state: WorkflowAgentDisplayState;
   className?: string;
 }) {
-  const baseClassName = "size-3.5 shrink-0";
-  switch (state) {
-    case "done":
-      return (
-        <Icon
-          name="Check"
-          className={cn(
-            baseClassName,
-            "text-muted-foreground/60",
-            overrideClassName,
-          )}
-          aria-hidden="true"
-        />
-      );
-    case "failed":
-      return (
-        <Icon
-          name="X"
-          className={cn(
-            baseClassName,
-            "text-destructive/80",
-            overrideClassName,
-          )}
-          aria-hidden="true"
-        />
-      );
-    case "skipped":
-      return (
-        <Icon
-          name="X"
-          className={cn(
-            baseClassName,
-            "text-muted-foreground/45",
-            overrideClassName,
-          )}
-          aria-hidden="true"
-        />
-      );
-    case "cancelled":
-      return (
-        <Icon
-          name="Pause"
-          className={cn(
-            baseClassName,
-            "text-muted-foreground/45",
-            overrideClassName,
-          )}
-          aria-hidden="true"
-        />
-      );
-    case "running":
-      return (
-        <Icon
-          name="Spinner"
-          className={cn(
-            baseClassName,
-            "animate-spin text-foreground",
-            overrideClassName,
-          )}
-          aria-hidden="true"
-        />
-      );
-    case "queued":
-    case "interrupted":
-      return (
-        <Icon
-          name="Circle"
-          className={cn(
-            baseClassName,
-            "text-muted-foreground/45",
-            overrideClassName,
-          )}
-          aria-hidden="true"
-        />
-      );
-  }
+  const entry = AGENT_STATE_ICON[state];
+  return (
+    <Icon
+      name={entry.name}
+      className={cn("size-3.5 shrink-0", entry.className, overrideClassName)}
+      aria-hidden="true"
+    />
+  );
 }
 
 function formatCompactTokens(tokens: number): string {
@@ -756,11 +701,30 @@ export type WorkflowStatusPillState =
   | "failed"
   | "cancelled";
 
-const STATUS_PILL_LABEL: Record<WorkflowStatusPillState, string> = {
-  queued: "Queued",
-  completed: "Complete",
-  failed: "Failed",
-  cancelled: "Cancelled",
+const STATUS_PILL: Record<
+  WorkflowStatusPillState,
+  { label: string; className: string; icon: IconName | null }
+> = {
+  queued: {
+    label: "Queued",
+    className: "bg-surface-recessed text-muted-foreground",
+    icon: null,
+  },
+  completed: {
+    label: "Complete",
+    className: "bg-success/10 text-success",
+    icon: "Check",
+  },
+  failed: {
+    label: "Failed",
+    className: "bg-destructive/10 text-destructive-text",
+    icon: "X",
+  },
+  cancelled: {
+    label: "Cancelled",
+    className: "bg-surface-recessed text-subtle-foreground",
+    icon: "Pause",
+  },
 };
 
 export function WorkflowStatusPill({
@@ -770,59 +734,30 @@ export function WorkflowStatusPill({
   state: WorkflowStatusPillState;
   className?: string;
 }) {
-  const base =
-    "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-2xs font-medium";
-  switch (state) {
-    case "queued":
-      return (
+  const entry = STATUS_PILL[state];
+  return (
+    <span
+      className={cn(
+        "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-2xs font-medium",
+        entry.className,
+        className,
+      )}
+    >
+      {entry.icon === null ? (
         <span
-          className={cn(
-            base,
-            "bg-surface-recessed text-muted-foreground",
-            className,
-          )}
-        >
-          <span
-            className="size-1.5 shrink-0 rounded-full bg-muted-foreground/50"
-            aria-hidden="true"
-          />
-          {STATUS_PILL_LABEL[state]}
-        </span>
-      );
-    case "completed":
-      return (
-        <span className={cn(base, "bg-success/10 text-success", className)}>
-          <Icon name="Check" className="size-3 shrink-0" aria-hidden="true" />
-          {STATUS_PILL_LABEL[state]}
-        </span>
-      );
-    case "failed":
-      return (
-        <span
-          className={cn(
-            base,
-            "bg-destructive/10 text-destructive-text",
-            className,
-          )}
-        >
-          <Icon name="X" className="size-3 shrink-0" aria-hidden="true" />
-          {STATUS_PILL_LABEL[state]}
-        </span>
-      );
-    case "cancelled":
-      return (
-        <span
-          className={cn(
-            base,
-            "bg-surface-recessed text-subtle-foreground",
-            className,
-          )}
-        >
-          <Icon name="Pause" className="size-3 shrink-0" aria-hidden="true" />
-          {STATUS_PILL_LABEL[state]}
-        </span>
-      );
-  }
+          className="size-1.5 shrink-0 rounded-full bg-muted-foreground/50"
+          aria-hidden="true"
+        />
+      ) : (
+        <Icon
+          name={entry.icon}
+          className="size-3 shrink-0"
+          aria-hidden="true"
+        />
+      )}
+      {entry.label}
+    </span>
+  );
 }
 
 type PhaseStripSegmentState = "done" | "active" | "failed" | "upcoming";

@@ -15,6 +15,7 @@ import {
 } from "node:fs/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import semver from "semver";
+import { resolvePluginNpmCli } from "@bb/plugin-build";
 import {
   omitNpmScriptPolicyEnv,
   spawnPortableOutputProcess,
@@ -303,6 +304,10 @@ export function npmInstallPrefix(
   return join(dataDir, "plugins", "npm", ...`${name}@${version}`.split("/"));
 }
 
+export function npmPackageRoot(prefix: string, packageName: string): string {
+  return join(prefix, "node_modules", ...packageName.split("/"));
+}
+
 function resolveInside(
   root: string,
   segments: string[],
@@ -583,9 +588,10 @@ export async function runInstallCommand(
   },
 ): Promise<string> {
   const timeoutMs = 5 * 60_000;
+  const npmCliPath = command === "npm" ? resolvePluginNpmCli() : null;
   const child = spawnPortableOutputProcess({
-    command,
-    args,
+    command: npmCliPath === null ? command : process.execPath,
+    args: npmCliPath === null ? args : [npmCliPath, ...args],
     env: omitNpmScriptPolicyEnv(process.env),
   });
   let stderr = "";

@@ -11,6 +11,7 @@ import {
   WorkspaceError,
   type GitProcessOptions,
 } from "@bb/host-workspace";
+import { isPathWithinDirectory } from "@bb/process-utils";
 import {
   CommandDispatchError,
   ExpectedCommandDispatchError,
@@ -97,17 +98,6 @@ function getFileSizeLimitBytes(mimeType?: string): number {
   return isBinaryImageMimeType(mimeType)
     ? IMAGE_FILE_SIZE_LIMIT_BYTES
     : NON_IMAGE_FILE_SIZE_LIMIT_BYTES;
-}
-
-export function isPathWithinRoot(
-  candidatePath: string,
-  rootPath: string,
-): boolean {
-  const relativePath = path.relative(rootPath, candidatePath);
-  return (
-    relativePath === "" ||
-    (!relativePath.startsWith("..") && !path.isAbsolute(relativePath))
-  );
 }
 
 function getContentEncoding(
@@ -277,7 +267,7 @@ async function resolveReadablePath(
   const realResolvedPath = await fs
     .realpath(args.resolvedPath)
     .catch((error: unknown) => throwMissingTargetOrRethrow(args, error));
-  if (!isPathWithinRoot(realResolvedPath, realRootPath)) {
+  if (!isPathWithinDirectory(realRootPath, realResolvedPath)) {
     throw new CommandDispatchError(
       "invalid_path",
       `Path "${args.resultPath}" escapes read root`,

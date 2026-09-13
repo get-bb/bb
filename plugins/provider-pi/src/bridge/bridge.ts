@@ -820,21 +820,6 @@ async function constructPiThreadSession(
   }
 }
 
-async function startPiThreadSession(
-  threadId: string,
-  providerThreadId: string,
-  params: PiSessionParams,
-): Promise<void> {
-  const existing = sessions.get(threadId);
-  if (existing) {
-    await closeThreadSession({
-      message: "Pi thread session replaced while tool call was pending",
-      threadId,
-    });
-  }
-  await constructPiThreadSession(threadId, providerThreadId, params);
-}
-
 function retireReplacedPiChild(replaced: ThreadSession): void {
   replaced.closing = true;
   resolvePendingToolCalls(
@@ -890,7 +875,14 @@ async function handleThreadConstruction(
   providerThreadId: string,
   params: PiSessionParams,
 ): Promise<void> {
-  await startPiThreadSession(threadId, providerThreadId, params);
+  const existing = sessions.get(threadId);
+  if (existing) {
+    await closeThreadSession({
+      message: "Pi thread session replaced while tool call was pending",
+      threadId,
+    });
+  }
+  await constructPiThreadSession(threadId, providerThreadId, params);
   sendThreadSessionResult(id, threadId, providerThreadId);
 }
 

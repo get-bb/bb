@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  listClientServerOrigins,
   normalizeClientServerOrigin,
   parseClientConfig,
   resolveClientSshAuthority,
@@ -20,9 +19,7 @@ describe("client config", () => {
       },
     });
 
-    expect(listClientServerOrigins(config)).toEqual([
-      "https://bb.example.test",
-    ]);
+    expect(Object.keys(config.servers)).toEqual(["https://bb.example.test"]);
     expect(
       resolveClientSshAuthority(config, {
         serverOrigin: "https://bb.example.test/thread/thr_1",

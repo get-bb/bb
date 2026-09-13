@@ -13,7 +13,6 @@ import {
   type TasksApiStore,
 } from "../api";
 import {
-  buildAttachmentUrl,
   publishAttachmentChanged,
   readAttachmentContent,
   saveAttachmentFromBytes,
@@ -22,6 +21,7 @@ import { delegationRpcContract } from "../delegate/contract";
 import { handlers as delegationHandlers } from "../delegate";
 import {
   tasksRpcContract,
+  ULID_PATTERN,
   type Attachment,
   type Folder,
   type Label,
@@ -30,12 +30,15 @@ import {
   type Task,
   type TaskMutationResult,
 } from "../shared/contract";
+import { attachmentDownloadUrl } from "../shared/attachments";
+import { errorMessage } from "../shared/errors";
 import {
   TASK_SORTS,
   TASKS_PAGE_DEFAULT_LIMIT,
   TASKS_PAGE_MAX_LIMIT,
 } from "../shared/pagination";
 import {
+  allocatePrefix,
   assertAllowed,
   CliError,
   option,
@@ -45,10 +48,9 @@ import {
   requirePositionals,
   type ParsedArgs,
 } from "./args";
-import { bytes, detail, table } from "./format";
+import { bytes, detail, oneLine, table } from "./format";
 import { seedDemo } from "./seed";
 
-const ULID_PATTERN = /^[0-7][0-9A-HJKMNP-TV-Z]{25}$/;
 const TASK_KEY_PATTERN = /^([A-Z][A-Z0-9]{0,9})-(\d+)$/;
 const ACTIVE_THREAD_STATUSES = new Set(["starting", "working"]);
 const DEFAULT_PROJECT_COLOR = "blue";
@@ -161,7 +163,7 @@ async function resolveClientHostId(
 }
 
 function isMissingClientFileError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error);
+  const message = errorMessage(error);
   return /\bENOENT\b|does not exist|not found|is a directory/i.test(message);
 }
 
@@ -240,7 +242,7 @@ async function readFileOption(
     return text;
   } catch (error) {
     if (error instanceof CliError) throw error;
-    const message = error instanceof Error ? error.message : String(error);
+    const message = errorMessage(error);
     throw new CliError(`could not read ${file}: ${message}`);
   }
 }
@@ -260,14 +262,14 @@ function derivePrefix(name: string, projects: readonly Project[]): string {
   let base = name.toUpperCase().replace(/[^A-Z0-9]/gu, "");
   if (!base || !/^[A-Z]/u.test(base)) base = `P${base}`;
   base = base.slice(0, 10);
-  const used = new Set(projects.map((project) => project.prefix));
-  if (!used.has(base)) return base;
-  for (let number = 2; number < 10_000; number += 1) {
-    const suffix = String(number);
-    const candidate = `${base.slice(0, 10 - suffix.length)}${suffix}`;
-    if (!used.has(candidate)) return candidate;
+  const prefix = allocatePrefix(
+    base,
+    new Set(projects.map((project) => project.prefix)),
+  );
+  if (prefix === null) {
+    throw new CliError(`could not derive a unique prefix from ${name}`);
   }
-  throw new CliError(`could not derive a unique prefix from ${name}`);
+  return prefix;
 }
 
 async function listProjects(domain: TasksDomain): Promise<Project[]> {
@@ -424,10 +426,42 @@ function resolvePreset(presets: readonly Preset[], address: string): Preset {
   return matches[0]!;
 }
 
+async function listTaskAttachments(
+  domain: TasksDomain,
+  taskId: string,
+  comments: readonly { id: string }[],
+): Promise<Attachment[]> {
+  const attachments = [
+    ...tasksRpcContract.listAttachments.output.parse(
+      await domain.listAttachments(
+        tasksRpcContract.listAttachments.input.parse({ taskId }),
+      ),
+    ).attachments,
+  ];
+  for (const comment of comments) {
+    attachments.push(
+      ...tasksRpcContract.listAttachments.output.parse(
+        await domain.listAttachments(
+          tasksRpcContract.listAttachments.input.parse({
+            commentId: comment.id,
+          }),
+        ),
+      ).attachments,
+    );
+  }
+  return attachments;
+}
+
 async function listPresets(domain: TasksDomain): Promise<Preset[]> {
   return tasksRpcContract.listPresets.output.parse(
     await domain.listPresets(tasksRpcContract.listPresets.input.parse(null)),
   ).presets;
+}
+
+function presetEnvironmentLabel(preset: Preset): string {
+  return preset.environmentKind === "new-worktree"
+    ? "worktree"
+    : "project-default";
 }
 
 function parsePresetEnvironment(
@@ -949,7 +983,7 @@ async function runCreate(
     } catch (error) {
       failedAttachments.push({
         path: source.path,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
     }
   }
@@ -1118,24 +1152,7 @@ async function runShow(domain: TasksDomain, argv: string[]): Promise<string> {
       tasksRpcContract.listComments.input.parse({ taskId: task.id }),
     ),
   ).comments;
-  const directAttachments = tasksRpcContract.listAttachments.output.parse(
-    await domain.listAttachments(
-      tasksRpcContract.listAttachments.input.parse({ taskId: task.id }),
-    ),
-  ).attachments;
-  const commentAttachments = [];
-  for (const comment of comments) {
-    commentAttachments.push(
-      ...tasksRpcContract.listAttachments.output.parse(
-        await domain.listAttachments(
-          tasksRpcContract.listAttachments.input.parse({
-            commentId: comment.id,
-          }),
-        ),
-      ).attachments,
-    );
-  }
-  const attachments = [...directAttachments, ...commentAttachments];
+  const attachments = await listTaskAttachments(domain, task.id, comments);
   const taskThreads = tasksRpcContract.listTaskThreads.output.parse(
     await domain.listTaskThreads(
       tasksRpcContract.listTaskThreads.input.parse({ taskId: task.id }),
@@ -1500,7 +1517,7 @@ async function runAttachment(
     publishAttachmentChanged(bb, store.tasks, attachment);
     const payload = {
       attachment,
-      url: buildAttachmentUrl(attachment.id),
+      url: attachmentDownloadUrl(attachment.id),
     };
     return args.flags.has("json")
       ? JSON.stringify(payload)
@@ -1535,29 +1552,12 @@ async function runAttachment(
       "bb tasks attachment list <key> [--json]",
     );
     const task = await resolveTask(domain, address!);
-    const directAttachments = tasksRpcContract.listAttachments.output.parse(
-      await domain.listAttachments(
-        tasksRpcContract.listAttachments.input.parse({ taskId: task.id }),
-      ),
-    ).attachments;
     const comments = tasksRpcContract.listComments.output.parse(
       await domain.listComments(
         tasksRpcContract.listComments.input.parse({ taskId: task.id }),
       ),
     ).comments;
-    const commentAttachments: Attachment[] = [];
-    for (const comment of comments) {
-      commentAttachments.push(
-        ...tasksRpcContract.listAttachments.output.parse(
-          await domain.listAttachments(
-            tasksRpcContract.listAttachments.input.parse({
-              commentId: comment.id,
-            }),
-          ),
-        ).attachments,
-      );
-    }
-    const attachments = [...directAttachments, ...commentAttachments];
+    const attachments = await listTaskAttachments(domain, task.id, comments);
     return args.flags.has("json")
       ? JSON.stringify({ task, attachments })
       : table(
@@ -1632,9 +1632,7 @@ async function runPreset(domain: TasksDomain, argv: string[]): Promise<string> {
             preset.reasoningLevel,
             preset.serviceTier ?? "-",
             preset.permissionMode,
-            preset.environmentKind === "new-worktree"
-              ? "worktree"
-              : "project-default",
+            presetEnvironmentLabel(preset),
             preset.baseBranch ?? "-",
             preset.machineId ?? "-",
             preset.builtin ? "yes" : "no",
@@ -1661,12 +1659,7 @@ async function runPreset(domain: TasksDomain, argv: string[]): Promise<string> {
           ["Reasoning", preset.reasoningLevel],
           ["Service tier", preset.serviceTier ?? "-"],
           ["Permission", preset.permissionMode],
-          [
-            "Environment",
-            preset.environmentKind === "new-worktree"
-              ? "worktree"
-              : "project-default",
-          ],
+          ["Environment", presetEnvironmentLabel(preset)],
           ["Base branch", preset.baseBranch ?? "-"],
           ["Machine", preset.machineId ?? "-"],
           ["Instructions", preset.instructions || "-"],
@@ -1930,7 +1923,7 @@ function friendlyError(error: unknown): string {
     const path = issue?.path.length ? `${issue.path.join(".")}: ` : "";
     return `${path}${issue?.message ?? "invalid input"}`;
   }
-  const message = error instanceof Error ? error.message : String(error);
+  const message = errorMessage(error);
   if (message.includes("UNIQUE constraint failed: projects.prefix")) {
     return "project prefix is already in use";
   }
@@ -1940,13 +1933,6 @@ function friendlyError(error: unknown): string {
     return "label name is already in use in this project";
   }
   return message;
-}
-
-function singleLine(value: string): string {
-  return value
-    .replace(/[\r\n]+/gu, " ")
-    .replace(/\s+/gu, " ")
-    .trim();
 }
 
 export function registerTasksCli(
@@ -2133,7 +2119,7 @@ export function registerTasksCli(
         }
         return { exitCode: 0, stdout };
       } catch (error) {
-        return { exitCode: 1, stderr: singleLine(friendlyError(error)) };
+        return { exitCode: 1, stderr: oneLine(friendlyError(error)) };
       }
     },
   });

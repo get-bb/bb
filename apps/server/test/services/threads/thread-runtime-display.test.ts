@@ -131,7 +131,6 @@ function setup(): SetupResult {
   const host = upsertHost(db, noopNotifier, {
     id: "host-runtime-display",
     name: "Runtime Display Host",
-    type: "persistent",
   });
   return { db, hostId: host.id, hub };
 }
@@ -151,7 +150,6 @@ function openTestSession(args: OpenTestSessionArgs) {
     hostId: args.hostId,
     instanceId: `instance-${randomUUID()}`,
     hostName: "Runtime Display Host",
-    hostType: "persistent",
     dataDir: `/tmp/${args.hostId}`,
     protocolVersion: 1,
     heartbeatIntervalMs: 5_000,

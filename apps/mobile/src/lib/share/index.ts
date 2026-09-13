@@ -1,4 +1,3 @@
-export { shareThreadLink } from "./share-thread";
 export {
   composeSeedFromShareIntent,
   loadShareIntentModule,

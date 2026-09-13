@@ -1,4 +1,5 @@
 import {
+  contextSnapshotSchema,
   backgroundTaskStatusSchema,
   backgroundTaskUsageSchema,
   clientTurnRequestIdSchema,
@@ -320,6 +321,7 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
 
   z.object({
     kind: z.literal("contextWindow"),
+    snapshot: contextSnapshotSchema.optional(),
     used: z.number().nullable(),
     size: z.number().nullable().optional(),
     estimated: z.boolean(),

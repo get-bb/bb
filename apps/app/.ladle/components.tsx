@@ -53,7 +53,6 @@ export const Provider: GlobalProvider = ({ globalState, children }) => {
 
   return (
     <MemoryRouter initialEntries={["/"]}>
-      {}
       <RouteNavigationProvider>
         <JotaiProvider store={store}>
           <QueryClientProvider client={queryClient}>
@@ -67,7 +66,7 @@ export const Provider: GlobalProvider = ({ globalState, children }) => {
               <TooltipProvider delayDuration={300} disableHoverableContent>
                 <div className="min-h-screen text-foreground">
                   {children}
-                  <AppToaster position="bottom-right" />
+                  <AppToaster />
                 </div>
               </TooltipProvider>
             </WorkerPoolContextProvider>

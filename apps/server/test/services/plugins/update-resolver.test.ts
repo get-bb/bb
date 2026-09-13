@@ -13,10 +13,16 @@ import {
   resolveGitUpdate,
   resolveNpmUpdate,
   selectGitSemverTag,
+  type GitCandidateProbe,
 } from "../../../src/services/plugins/update-resolver.js";
 
 const run = promisify(execFile);
 const cleanup: string[] = [];
+const compatibleProbe: GitCandidateProbe = async () => ({
+  outcome: "compatible",
+  devMode: false,
+  packagedBuildProblems: [],
+});
 
 afterEach(async () => {
   await Promise.all(
@@ -257,6 +263,7 @@ describe("git update resolution", () => {
         url: repo,
         intent: { kind: "ref", ref: "main", refKind: "branch" },
         currentCommit: first,
+        probeCandidate: compatibleProbe,
       }),
     ).toMatchObject({ outcome: "current" });
 
@@ -270,6 +277,7 @@ describe("git update resolution", () => {
         url: repo,
         intent: { kind: "ref", ref: "main", refKind: "branch" },
         currentCommit: first,
+        probeCandidate: compatibleProbe,
       }),
     ).toMatchObject({
       outcome: "update-available",
@@ -280,6 +288,7 @@ describe("git update resolution", () => {
         url: repo,
         intent: { kind: "ref", ref: "v1", refKind: "tag" },
         currentCommit: first,
+        probeCandidate: compatibleProbe,
       }),
     ).toMatchObject({ outcome: "pinned" });
     expect(
@@ -287,6 +296,7 @@ describe("git update resolution", () => {
         url: repo,
         intent: { kind: "ref", ref: first, refKind: "commit" },
         currentCommit: first,
+        probeCandidate: compatibleProbe,
       }),
     ).toMatchObject({ outcome: "pinned" });
   });
@@ -410,7 +420,12 @@ describe("git semver tag resolution", () => {
     const { repo, commitOf } = await tagRepo();
 
     expect(
-      await resolveGitRange({ url: repo, range: "^1.0.0", tagPrefix: "" }),
+      await resolveGitRange({
+        url: repo,
+        range: "^1.0.0",
+        tagPrefix: "",
+        probeCandidate: compatibleProbe,
+      }),
     ).toEqual({
       outcome: "resolved",
       tag: "v1.1.0",
@@ -422,6 +437,7 @@ describe("git semver tag resolution", () => {
         url: repo,
         range: "^9.0.0",
         tagPrefix: "notes/",
+        probeCandidate: compatibleProbe,
       }),
     ).toMatchObject({
       outcome: "unavailable",
@@ -443,6 +459,7 @@ describe("git semver tag resolution", () => {
           resolvedTag: "v1.0.0",
         },
         currentCommit: installed,
+        probeCandidate: compatibleProbe,
       }),
     ).toMatchObject({
       outcome: "update-available",
@@ -458,6 +475,7 @@ describe("git semver tag resolution", () => {
           resolvedTag: "v1.0.0",
         },
         currentCommit: installed,
+        probeCandidate: compatibleProbe,
       }),
     ).toMatchObject({ outcome: "current" });
 
@@ -475,7 +493,12 @@ describe("git semver tag resolution", () => {
       { kind: "ref" as const, ref: "v1.0.0", refKind: "tag" as const },
     ]) {
       expect(
-        await resolveGitUpdate({ url: repo, intent, currentCommit: installed }),
+        await resolveGitUpdate({
+          url: repo,
+          intent,
+          currentCommit: installed,
+          probeCandidate: compatibleProbe,
+        }),
       ).toMatchObject({
         outcome: "unavailable",
         detail: expect.stringContaining(
@@ -483,7 +506,12 @@ describe("git semver tag resolution", () => {
         ),
       });
       expect(
-        await resolveGitUpdate({ url: repo, intent, currentCommit: installed }),
+        await resolveGitUpdate({
+          url: repo,
+          intent,
+          currentCommit: installed,
+          probeCandidate: compatibleProbe,
+        }),
       ).toMatchObject({
         detail: expect.stringContaining(`${installed} to ${moved}`),
       });
@@ -503,6 +531,7 @@ describe("git semver tag resolution", () => {
           resolvedTag: "v1.0.0",
         },
         currentCommit: commitOf.get("v1.0.0") ?? "",
+        probeCandidate: compatibleProbe,
       }),
     ).toMatchObject({
       outcome: "update-available",
@@ -608,6 +637,7 @@ describe("git semver tag resolution", () => {
           resolvedTag: "v1.1.0",
         },
         currentCommit: commitOf.get("v1.1.0") ?? "",
+        probeCandidate: compatibleProbe,
       }),
     ).toMatchObject({
       outcome: "unavailable",

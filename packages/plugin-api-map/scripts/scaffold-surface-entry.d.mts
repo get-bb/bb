@@ -32,8 +32,6 @@ export interface SurfaceEntryScaffold {
   };
 }
 
-export const FIXTURE_FIDELITY_LEVELS: readonly FixtureFidelity[];
-export const FIXTURE_RESPONSIVE_STRATEGIES: readonly FixtureResponsiveStrategy[];
 export function classifyFixtureFidelity(
   input: Pick<
     SurfaceEntryScaffoldInput,

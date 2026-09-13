@@ -58,8 +58,6 @@ type ThreadEventScopePolicyByType = Record<
   ThreadEventScopePolicy
 >;
 
-type ThreadScopeRationaleByType = Partial<Record<ThreadEventType, string>>;
-
 interface ThreadEventScopePolicyDefinitionEntry {
   definition: ThreadEventScopePolicyDefinition;
   type: ThreadEventType;
@@ -236,14 +234,6 @@ function getThreadEventScopePolicyDefinitionEntries(): ThreadEventScopePolicyDef
   );
 }
 
-function getThreadEventTypesForScopePolicy(
-  policy: ThreadEventScopePolicy,
-): ThreadEventType[] {
-  return getThreadEventScopePolicyDefinitionEntries()
-    .filter((entry) => entry.definition.policy === policy)
-    .map((entry) => entry.type);
-}
-
 function buildThreadEventScopePolicyByType(): ThreadEventScopePolicyByType {
   const policies: Partial<ThreadEventScopePolicyByType> = {};
   for (const entry of getThreadEventScopePolicyDefinitionEntries()) {
@@ -252,24 +242,7 @@ function buildThreadEventScopePolicyByType(): ThreadEventScopePolicyByType {
   return policies as ThreadEventScopePolicyByType;
 }
 
-function buildThreadScopeRationaleByType(): ThreadScopeRationaleByType {
-  const rationales: ThreadScopeRationaleByType = {};
-  for (const entry of getThreadEventScopePolicyDefinitionEntries()) {
-    if (entry.definition.rationale) {
-      rationales[entry.type] = entry.definition.rationale;
-    }
-  }
-  return rationales;
-}
-
-export const turnOnlyThreadEventTypes =
-  getThreadEventTypesForScopePolicy("turn");
-export const threadOnlyThreadEventTypes =
-  getThreadEventTypesForScopePolicy("thread");
-export const threadOrTurnThreadEventTypes =
-  getThreadEventTypesForScopePolicy("thread-or-turn");
 const threadEventScopePolicyByType = buildThreadEventScopePolicyByType();
-export const threadScopeRationaleByType = buildThreadScopeRationaleByType();
 
 export function threadScope(): ThreadEventScope {
   return { kind: "thread" };

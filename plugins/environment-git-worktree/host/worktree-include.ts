@@ -9,7 +9,6 @@ export const WORKTREE_INCLUDE_FILE_NAME = ".worktreeinclude";
 interface CopyWorktreeIncludeFilesArgs {
   sourcePath: string;
   targetPath: string;
-  shellPath?: string | undefined;
   signal?: AbortSignal | undefined;
 }
 
@@ -56,7 +55,6 @@ async function readIncludeFile(sourcePath: string): Promise<string | null> {
 
 async function listMatchingFiles(
   sourcePath: string,
-  shellPath: string | undefined,
   signal: AbortSignal | undefined,
 ): Promise<string[]> {
   const result = await runGit(
@@ -69,7 +67,6 @@ async function listMatchingFiles(
     ],
     {
       cwd: sourcePath,
-      ...(shellPath !== undefined ? { shellPath } : {}),
       ...(signal !== undefined ? { signal } : {}),
     },
   );
@@ -108,11 +105,7 @@ export async function copyWorktreeIncludeFiles(
     return EMPTY_RESULT;
   }
 
-  const relativePaths = await listMatchingFiles(
-    args.sourcePath,
-    args.shellPath,
-    args.signal,
-  );
+  const relativePaths = await listMatchingFiles(args.sourcePath, args.signal);
   if (relativePaths.length === 0) {
     return { ran: true, copied: [], skipped: [] };
   }

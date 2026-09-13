@@ -6,6 +6,10 @@ export interface AppShortcutPresentation {
   label: string;
 }
 
+export function browserPlatform(): string {
+  return typeof navigator === "undefined" ? "" : navigator.platform;
+}
+
 export function isEditableKeyboardTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) {
     return false;
@@ -77,4 +81,14 @@ export function formatAppShortcutAria(
     shortcut.key.length === 1 ? shortcut.key.toUpperCase() : shortcut.key,
   );
   return parts.join("+");
+}
+
+export function presentAppShortcut(
+  shortcut: AppShortcut,
+  platform: string,
+): AppShortcutPresentation {
+  return {
+    ariaKeyshortcuts: formatAppShortcutAria(shortcut, platform),
+    label: formatAppShortcut(shortcut, platform),
+  };
 }

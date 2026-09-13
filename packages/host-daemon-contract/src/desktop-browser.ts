@@ -180,7 +180,6 @@ export type DesktopBrowserInstance = z.infer<
   typeof desktopBrowserInstanceSchema
 >;
 export type DesktopBrowserTab = z.infer<typeof desktopBrowserTabSchema>;
-export type DesktopBrowserProfile = z.infer<typeof desktopBrowserProfileSchema>;
 
 export const DESKTOP_BROWSER_BROKER_DESCRIPTOR_FILE =
   "desktop-browser-broker.json";
@@ -223,9 +222,6 @@ export const desktopBrowserBrokerRequestSchema = z
     command: desktopBrowserCommandSchema,
   })
   .strict();
-export type DesktopBrowserBrokerRequest = z.infer<
-  typeof desktopBrowserBrokerRequestSchema
->;
 export const desktopBrowserBrokerResponseSchema = z.discriminatedUnion("type", [
   z
     .object({ type: z.literal("result"), requestId: id, result: z.unknown() })

@@ -16,7 +16,6 @@ import {
   ProviderResponseEncodeError,
   sendJsonRpcError,
   sendJsonRpcResult,
-  sendProviderRequestDecodeErrorIfKnown,
   sendProviderResponseEncodeErrorIfKnown,
 } from "@bb/provider-bridge-protocol/bridge-kit";
 import { shouldAutoDenyInteractiveRequest } from "@bb/provider-bridge-protocol/bridge-kit";
@@ -61,25 +60,6 @@ interface ResolveRuntimeProviderRequestTurnIdArgs extends HandleRuntimeProviderR
   turnId: string | null;
 }
 
-interface ExplicitProviderRequestTurnId {
-  kind: "explicit";
-  turnId: string;
-}
-
-interface UnresolvedProviderRequestTurnId {
-  kind: "unresolved";
-}
-
-interface InvalidProviderRequestTurnId {
-  kind: "invalid";
-  message: string;
-}
-
-type ProviderRequestTurnIdWireValue =
-  | ExplicitProviderRequestTurnId
-  | UnresolvedProviderRequestTurnId
-  | InvalidProviderRequestTurnId;
-
 function scopeProviderRequestId(
   scope: string,
   requestId: string | number,
@@ -105,36 +85,11 @@ function buildDeniedInteractiveResolution(
   };
 }
 
-function classifyProviderRequestTurnIdWireValue(
-  turnId: string | null,
-): ProviderRequestTurnIdWireValue {
-  if (turnId === null) {
-    return { kind: "unresolved" };
-  }
-  if (turnId.length === 0) {
-    return {
-      kind: "invalid",
-      message:
-        "Provider request turnId must be a non-empty string when known; use null when unresolved",
-    };
-  }
-  return { kind: "explicit", turnId };
-}
-
 function resolveRuntimeProviderRequestTurnId(
   args: ResolveRuntimeProviderRequestTurnIdArgs,
 ): string | null {
-  const providerTurnId = classifyProviderRequestTurnIdWireValue(args.turnId);
-  if (providerTurnId.kind === "invalid") {
-    sendJsonRpcError({
-      child: args.providerProcess.child,
-      id: args.parsedId,
-      message: providerTurnId.message,
-    });
-    return null;
-  }
-  if (providerTurnId.kind === "explicit") {
-    return providerTurnId.turnId;
+  if (args.turnId !== null) {
+    return args.turnId;
   }
 
   const activeTurnId = args.getActiveTurnId(args.resolvedThreadId);
@@ -153,23 +108,9 @@ function resolveRuntimeProviderRequestTurnId(
 function handleToolCallProviderRequest(
   args: HandleRuntimeProviderRequestArgs,
 ): boolean {
-  let toolCallReq: ReturnType<BridgeProtocolAdapter["decodeToolCallRequest"]>;
-  try {
-    toolCallReq = args.providerProcess.adapter.decodeToolCallRequest(
-      args.rawRequest,
-    );
-  } catch (error) {
-    if (
-      sendProviderRequestDecodeErrorIfKnown({
-        child: args.providerProcess.child,
-        error,
-        id: args.parsedId,
-      })
-    ) {
-      return true;
-    }
-    throw error;
-  }
+  const toolCallReq = args.providerProcess.adapter.decodeToolCallRequest(
+    args.rawRequest,
+  );
   if (!toolCallReq) {
     return false;
   }
@@ -227,25 +168,9 @@ function handleInteractiveProviderRequest(
   args: HandleRuntimeProviderRequestArgs,
 ): boolean {
   const providerId = args.providerProcess.adapter.id;
-  let interactiveReq: ReturnType<
-    BridgeProtocolAdapter["decodeInteractiveRequest"]
-  >;
-  try {
-    interactiveReq = args.providerProcess.adapter.decodeInteractiveRequest(
-      args.rawRequest,
-    );
-  } catch (error) {
-    if (
-      sendProviderRequestDecodeErrorIfKnown({
-        child: args.providerProcess.child,
-        error,
-        id: args.parsedId,
-      })
-    ) {
-      return true;
-    }
-    throw error;
-  }
+  const interactiveReq = args.providerProcess.adapter.decodeInteractiveRequest(
+    args.rawRequest,
+  );
   if (!interactiveReq) {
     return false;
   }

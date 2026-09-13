@@ -21,6 +21,20 @@ export const appSettingsSchema = z
     defaultProviderId: z.string().min(1).nullable(),
     streamerMode: z.boolean(),
     managedBranchPrefix: managedBranchPrefixSchema,
+    machineServerUrl: z
+      .string()
+      .url()
+      .refine((value) => {
+        const url = new URL(value);
+        return (
+          ["http:", "https:"].includes(url.protocol) &&
+          !url.username &&
+          !url.password
+        );
+      })
+      .nullable(),
+    machineGitCredentialsEnabled: z.boolean(),
+    defaultMachineAccess: z.string().min(1).nullable(),
   })
   .strict();
 export type AppSettings = z.infer<typeof appSettingsSchema>;
@@ -33,6 +47,9 @@ export const defaultAppSettings: AppSettings = {
   defaultProviderId: null,
   streamerMode: false,
   managedBranchPrefix: DEFAULT_MANAGED_BRANCH_PREFIX,
+  machineServerUrl: null,
+  defaultMachineAccess: null,
+  machineGitCredentialsEnabled: true,
 };
 
 export const appSettingsUpdateSchema = z.union([

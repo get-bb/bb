@@ -35,11 +35,6 @@ interface BuiltInSidebarSectionProps extends BuiltInSidebarSectionOptions {
   onToggleCollapsed: (id: CollapsibleSidebarSectionId) => void;
 }
 
-export type BuiltInSidebarSectionNodes = Record<
-  CollapsibleSidebarSectionId,
-  ReactNode
->;
-
 export type BuiltInSidebarSectionOptionsById = Record<
   CollapsibleSidebarSectionId,
   BuiltInSidebarSectionOptions
@@ -110,16 +105,6 @@ function BuiltInSidebarSection({
       {content}
     </SortableSidebarSection>
   );
-}
-
-export function getBuiltInSidebarSectionNode(
-  sectionId: SidebarSectionId,
-  sections: BuiltInSidebarSectionNodes,
-): ReactNode | undefined {
-  if (sectionId !== "pinned" && sectionId !== "threads") {
-    return undefined;
-  }
-  return sections[sectionId];
 }
 
 export function renderBuiltInSidebarSection({

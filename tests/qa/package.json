@@ -15,6 +15,7 @@
     "@bb/domain": "workspace:*",
     "@bb/host-daemon-contract": "workspace:*",
     "@bb/server-contract": "workspace:*",
+    "@bb/test-helpers": "workspace:*",
     "zod": "^4.3.6"
   },
   "devDependencies": {

@@ -14,7 +14,6 @@ import {
   parsePorcelainEntries,
   readDefaultBranchRefs,
   readGitBlob,
-  readGitRepositoryState,
   runGit,
   runGitWithNullRecordLimit,
   runShellPipeline,
@@ -262,14 +261,6 @@ describe("detectGitRepoKind", () => {
 
     await expect(detectGitRepo(root)).resolves.toBe(false);
     await expect(detectGitRepo(worktreePath)).resolves.toBe(true);
-  });
-});
-
-describe("readGitRepositoryState", () => {
-  it("treats a bare repository root as a repository with commits", async () => {
-    const { root } = await initBareWorktreeLayout();
-
-    await expect(readGitRepositoryState(root)).resolves.toBe("has_commits");
   });
 });
 

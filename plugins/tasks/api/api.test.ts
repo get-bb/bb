@@ -5,7 +5,8 @@ import {
   makeThreadResponse,
 } from "@get-bb/plugin-sdk/testing";
 import { describe, expect, it, vi } from "vitest";
-import { buildAttachmentUrl, registerAttachments } from "../attachments";
+import { registerAttachments } from "../attachments";
+import { attachmentDownloadUrl } from "../shared/attachments";
 import { tasksRpcContract } from "../shared/contract";
 import { createComment, createStore, registerTasksApi } from ".";
 
@@ -33,7 +34,7 @@ describe("Tasks RPC domain API", () => {
       attachmentId: string;
     };
     store.tasks.updateTask(task.id, {
-      description: `![diagram](${buildAttachmentUrl(attachmentId)})`,
+      description: `![diagram](${attachmentDownloadUrl(attachmentId)})`,
     });
     const signalsBeforeConflict = harness.realtimeSignals.length;
 
@@ -140,7 +141,7 @@ describe("Tasks RPC domain API", () => {
     ]);
     expect(harness.realtimeSignals.at(-1)).toEqual({
       channel: "comments:changed",
-      payload: { taskId: task.id, notifiedCount: 1 },
+      payload: { taskId: task.id },
     });
     await harness.dispose();
   });
@@ -306,7 +307,13 @@ describe("Tasks RPC domain API", () => {
         },
         providers: {
           list: async () => [
-            { id: "codex", displayName: "Codex", logoUrl: null },
+            {
+              id: "codex",
+              displayName: "Codex",
+              logoUrl: null,
+              icon: { glyph: "Check" },
+              strings: { iconTint: { light: "#123456", dark: "#abcdef" } },
+            },
             { id: "claude-code", displayName: "Claude Code", logoUrl: null },
             {
               id: "acp-custom",
@@ -363,22 +370,30 @@ describe("Tasks RPC domain API", () => {
       id: "codex",
       name: "Codex",
       logoUrl: null,
+      icon: { glyph: "Check" },
+      strings: { iconTint: { light: "#123456", dark: "#abcdef" } },
     });
     expect(byBody.get("Custom logo")?.provider).toEqual({
       id: "acp-custom",
       name: "Custom Agent",
       logoUrl: "/api/v1/system/providers/acp-custom/logo",
+      icon: null,
+      strings: { iconTint: null },
     });
     expect(byBody.get("Side chat")?.provider).toEqual({
       id: "claude-code",
       name: "Claude Code",
       logoUrl: null,
+      icon: null,
+      strings: { iconTint: null },
     });
     expect(byBody.get("Side chat")?.threadTitle).toBeNull();
     expect(byBody.get("Uninstalled")?.provider).toEqual({
       id: "acp-gone",
       name: "acp-gone",
       logoUrl: null,
+      icon: null,
+      strings: { iconTint: null },
     });
     expect(byBody.get("Missing thread")?.provider).toBeNull();
     expect(byBody.get("Legacy")?.provider).toBeNull();
@@ -563,11 +578,11 @@ describe("Tasks RPC domain API", () => {
     expect(harness.realtimeSignals.slice(-2)).toEqual([
       {
         channel: "comments:changed",
-        payload: { taskId: task.id, notifiedCount: 0 },
+        payload: { taskId: task.id },
       },
       {
         channel: "comments:changed",
-        payload: { taskId: task.id, notifiedCount: 0 },
+        payload: { taskId: task.id },
       },
     ]);
     await harness.dispose();

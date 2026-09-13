@@ -1,4 +1,4 @@
-import { extname, isAbsolute, resolve } from "node:path";
+import { isAbsolute, resolve } from "node:path";
 import type {
   BbPluginApi,
   PluginCliContext,
@@ -28,7 +28,11 @@ import {
 import {
   AUTOMATION_SCRIPT_TIMEOUT_DEFAULT_MS,
   automationScriptInterpreterSchema,
+  permissionModeSchema,
+  reasoningLevelSchema,
+  serviceTierSchema,
 } from "./rpc-types.js";
+import { interpreterForPath } from "./script-files.js";
 
 const DURATION_PATTERN =
   /^(\d+)\s*(s|sec|secs|second|seconds|m|min|mins|minute|minutes|h|hr|hrs|hour|hours|d|day|days)$/iu;
@@ -153,35 +157,25 @@ function parsePermissionMode(
   value: string | undefined,
 ): PermissionMode | undefined {
   if (value === undefined) return undefined;
-  if (value === "accept-edits" || value === "auto" || value === "full") {
-    return value;
-  }
+  const parsed = permissionModeSchema.safeParse(value);
+  if (parsed.success) return parsed.data;
   throw new Error(
     "Invalid --permission-mode. Expected accept-edits, auto, or full.",
   );
 }
 
 function parseReasoningLevel(value: string): ReasoningLevel {
-  if (
-    value === "none" ||
-    value === "low" ||
-    value === "medium" ||
-    value === "high" ||
-    value === "xhigh" ||
-    value === "ultracode" ||
-    value === "max" ||
-    value === "ultra"
-  ) {
-    return value;
-  }
+  const parsed = reasoningLevelSchema.safeParse(value);
+  if (parsed.success) return parsed.data;
   throw new Error(
     "Invalid --reasoning. Expected none, low, medium, high, xhigh, ultracode, max, or ultra.",
   );
 }
 
 function parseServiceTier(value: string): ServiceTier | null {
-  if (value === "default" || value === "fast") return value;
   if (value === "none") return null;
+  const parsed = serviceTierSchema.safeParse(value);
+  if (parsed.success) return parsed.data;
   throw new Error("Invalid --service-tier. Expected default, fast, or none.");
 }
 
@@ -218,20 +212,6 @@ function parseScriptInterpreter(
   throw new Error(
     "Invalid --interpreter. Expected bash, sh, node, or python3.",
   );
-}
-
-const INTERPRETER_BY_EXTENSION: Record<string, AutomationScriptInterpreter> = {
-  ".sh": "bash",
-  ".bash": "bash",
-  ".js": "node",
-  ".mjs": "node",
-  ".py": "python3",
-};
-
-function inferInterpreterFromPath(
-  filePath: string,
-): AutomationScriptInterpreter | undefined {
-  return INTERPRETER_BY_EXTENSION[extname(filePath).toLowerCase()];
 }
 
 function parseTimeoutMs(value: string | undefined): number | undefined {
@@ -508,7 +488,7 @@ async function buildExecution(
   if (!content) throw new Error("Missing script content.");
   const interpreter =
     explicitInterpreter ??
-    (scriptSource ? inferInterpreterFromPath(scriptSource.path) : undefined);
+    (scriptSource ? interpreterForPath(scriptSource.path) : undefined);
   return {
     execution: {
       mode: "script",

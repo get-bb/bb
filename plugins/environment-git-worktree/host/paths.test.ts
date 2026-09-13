@@ -10,15 +10,12 @@ describe("deriveRepoDirName", () => {
       "/Users/someone/code/my-repo/",
       "my-repo",
     ],
-    ["https URL", "https://github.com/octocat/Hello-World.git", "Hello-World"],
-    ["ssh URL", "ssh://git@github.com/octocat/Hello-World.git", "Hello-World"],
-    ["scp-style", "git@github.com:octocat/Hello-World.git", "Hello-World"],
+    ["dotted name", "/Users/me/code/my.repo", "my.repo"],
     [
-      "scp-style without .git",
-      "git@github.com:octocat/Hello-World",
+      "local path with .git suffix",
+      "/Users/me/code/Hello-World.git",
       "Hello-World",
     ],
-    ["dotted name", "/Users/me/code/my.repo", "my.repo"],
   ])("derives %s", (_label, input, expected) => {
     expect(deriveRepoDirName(input)).toBe(expected);
   });

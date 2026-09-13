@@ -7,7 +7,6 @@ import type {
 import {
   findLastTerminalTimelineMessage,
   isSingletonContextManagementOperation,
-  isTimelineSummaryCountedMessage,
   isTimelineTerminalMessage,
   isTimelineUngroupableMessage,
 } from "./timeline-message-helpers.js";
@@ -30,7 +29,7 @@ export function getProjectionSummaryCount(
     if (terminalMessage && message.id === terminalMessage.id) {
       break;
     }
-    if (isTimelineSummaryCountedMessage(message)) {
+    if (!isTimelineUngroupableMessage(message)) {
       count += getProjectionMessageSummaryCount(message);
     }
   }

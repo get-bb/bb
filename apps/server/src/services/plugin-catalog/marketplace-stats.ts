@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { parseJsonDocument } from "../plugins/collection-manifest.js";
 import {
   boundedResponseBytes,
   MARKETPLACE_FETCH_TIMEOUT_MS,
@@ -26,14 +27,7 @@ export function parseMarketplaceStatsJson(
   raw: string,
   location: string,
 ): MarketplaceStats {
-  let document: unknown;
-  try {
-    document = JSON.parse(raw);
-  } catch (error) {
-    throw new Error(
-      `invalid ${location}: not valid JSON (${error instanceof Error ? error.message : String(error)})`,
-    );
-  }
+  const document = parseJsonDocument(raw, location);
   const parsed = marketplaceStatsSchema.safeParse(document);
   if (!parsed.success) {
     const [issue] = parsed.error.issues;

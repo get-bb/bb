@@ -19,9 +19,7 @@ import {
   ResourceInstalledControl,
   ResourceListState,
   ResourceShelfSeeAllAction,
-  ResourceSortMenu,
   ResourceSourceShelf,
-  ResourceToolbar,
 } from "@bb/shared-ui/resource-list";
 import { BrowseArchetypeCards } from "@/components/plugin/browse-hero/BrowseArchetypeCards";
 import { BrowseHeroCarousel } from "@/components/plugin/browse-hero/BrowseHeroCarousel";
@@ -36,10 +34,9 @@ import { PluginAuthorAvatar } from "./PluginAuthorAvatar";
 import { PluginAuthorLink } from "./PluginAuthorLink";
 import { pluginAuthorGithub } from "./plugin-marketplace-author";
 import {
-  PluginBrowseCategoryFilter,
+  PluginBrowseToolbar,
   pluginBrowseSort,
   pluginBrowseSortDirection,
-  pluginBrowseSortOptions,
   type PluginBrowseCategoryOption,
 } from "./PluginBrowseControls";
 import {
@@ -51,9 +48,9 @@ import {
 } from "./plugin-browse-discovery";
 import {
   CatalogEntryIconChip,
-  formatPluginInstallCount,
   PluginCategoryLabel,
   pluginCatalogCategoryMutedAccentStyle,
+  pluginInstallCountPresentation,
 } from "./plugin-ui";
 
 const SHELF_ENTRY_LIMIT = 6;
@@ -198,61 +195,15 @@ export function BrowsePluginsTab({
           <BrowseArchetypeCards onCreate={openComposer} />
         ) : (
           <section className="space-y-6">
-            <div className="mx-auto w-full max-w-3xl">
-              <ResourceToolbar
-                searchValue={query}
-                searchPlaceholder="Search plugins"
-                onSearchChange={(value) =>
-                  changeSearchParams((next) => {
-                    if (value === "") next.delete("query");
-                    else next.set("query", value);
-                  })
-                }
-                controls={
-                  <>
-                    <PluginBrowseCategoryFilter
-                      selectionMode="multiple"
-                      value={selectedCategories}
-                      options={categoryOptions}
-                      onChange={(values) =>
-                        changeSearchParams((next) => {
-                          next.delete("category");
-                          for (const value of values) {
-                            next.append("category", value);
-                          }
-                        })
-                      }
-                    />
-                    <ResourceSortMenu
-                      value={sort}
-                      direction={sortDirection}
-                      compact
-                      placeholderLabel="Featured"
-                      options={pluginBrowseSortOptions(installsKnown)}
-                      onChange={(value) =>
-                        changeSearchParams((next) => {
-                          if (value === sort) {
-                            next.set(
-                              "direction",
-                              sortDirection === "asc" ? "desc" : "asc",
-                            );
-                          } else {
-                            next.set("sort", value);
-                            next.set("direction", "desc");
-                          }
-                        })
-                      }
-                      onClear={() =>
-                        changeSearchParams((next) => {
-                          next.delete("sort");
-                          next.delete("direction");
-                        })
-                      }
-                    />
-                  </>
-                }
-              />
-            </div>
+            <PluginBrowseToolbar
+              query={query}
+              selectedCategories={selectedCategories}
+              categoryOptions={categoryOptions}
+              sort={sort}
+              sortDirection={sortDirection}
+              installsKnown={installsKnown}
+              changeSearchParams={changeSearchParams}
+            />
 
             {searchQuery.isError && entries.length > 0 ? (
               <p className="text-xs text-warning-text" role="status">
@@ -302,7 +253,6 @@ export function BrowsePluginsTab({
             ) : (
               <PluginCatalogGrid
                 entries={flatEntries}
-                showCategory
                 onInstall={onInstall}
                 onOpenPlugin={onOpenPlugin}
               />
@@ -388,8 +338,6 @@ function BrowseShelf({
     <ResourceSourceShelf
       label={shelf.label}
       description={shelf.description}
-      contentMode="panel"
-      contentSurface="plain"
       leading={
         <span
           className="size-2 rounded-full"
@@ -422,12 +370,10 @@ function BrowseShelf({
 
 export function PluginCatalogGrid({
   entries,
-  showCategory,
   onInstall,
   onOpenPlugin,
 }: {
   entries: readonly PluginCatalogSearchEntry[];
-  showCategory: boolean;
   onInstall: (initial: AddPluginInitial) => void;
   onOpenPlugin: (pluginId: string, trigger: HTMLButtonElement) => void;
 }) {
@@ -437,7 +383,7 @@ export function PluginCatalogGrid({
         <PluginCatalogCard
           key={`${entry.marketplace}/${entry.entryId}`}
           entry={entry}
-          showCategory={showCategory}
+          showCategory
           onInstall={onInstall}
           onOpenPlugin={onOpenPlugin}
         />
@@ -457,13 +403,7 @@ function PluginCatalogCard({
   onInstall: (initial: AddPluginInitial) => void;
   onOpenPlugin: (pluginId: string, trigger: HTMLButtonElement) => void;
 }) {
-  const count =
-    entry.installs === null
-      ? undefined
-      : {
-          display: formatPluginInstallCount(entry.installs),
-          accessibleLabel: `${entry.installs.toLocaleString()} ${entry.installs === 1 ? "install" : "installs"}`,
-        };
+  const count = pluginInstallCountPresentation(entry.installs);
   const authorName = entry.author?.name ?? entry.publisherLabel;
   return (
     <ResourceBrowseCard
@@ -504,11 +444,7 @@ function PluginCatalogCard({
       }
       headerAction={
         entry.installed ? (
-          <ResourceInstalledControl
-            accessibleLabel="Installed"
-            presentation="compact"
-            count={count}
-          />
+          <ResourceInstalledControl accessibleLabel="Installed" count={count} />
         ) : (
           <ResourceInstallControl
             accessibleLabel={`Install ${entry.displayName}${

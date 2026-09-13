@@ -8,7 +8,7 @@ const bbDesktopVersionFeedFileSchema = z.object({
   size: z.number().int().nonnegative(),
 });
 
-const bbDesktopVersionFeedPlatformSchema = z.enum(["macos", "linux"]);
+export const bbDesktopVersionFeedPlatformSchema = z.enum(["macos", "linux"]);
 export type BbDesktopVersionFeedPlatform = z.infer<
   typeof bbDesktopVersionFeedPlatformSchema
 >;

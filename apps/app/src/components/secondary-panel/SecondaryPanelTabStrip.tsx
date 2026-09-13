@@ -359,7 +359,6 @@ export function SecondaryPanelTabStrip({
             />
           ))}
         </SortableContext>
-        {}
         {createPortal(
           <DragOverlay className="cursor-grabbing">
             {draggingTab === null ? null : (
@@ -403,7 +402,6 @@ export function SecondaryPanelTabStrip({
         onClick={() => scrollByStep(-1)}
       />
       <div data-secondary-panel-tab-scroll-region className="relative min-w-0">
-        {}
         <OverflowFade
           placement="left"
           tone={SECONDARY_PANEL_TAB_STRIP_FADE_TONE}

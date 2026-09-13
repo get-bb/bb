@@ -101,10 +101,6 @@ export const hostContract = defineRpcContract({
       .strict(),
     output: outputSchema,
   },
-  stop: {
-    input: z.object({ sessionId: sessionIdSchema }).strict(),
-    output: z.null(),
-  },
   close: {
     input: z.object({ sessionId: sessionIdSchema }).strict(),
     output: z.null(),

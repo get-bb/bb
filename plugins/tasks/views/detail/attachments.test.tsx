@@ -36,6 +36,8 @@ describe("AttachmentsGrid layout", () => {
           }),
           imageAttachment({ id: "01JIMAGE0000000000000000A2" }),
         ]}
+        onRemove={vi.fn().mockResolvedValue(undefined)}
+        onError={vi.fn()}
       />,
     );
     const fileCard = screen.getByText("notes.md");
@@ -85,12 +87,5 @@ describe("AttachmentsGrid removal", () => {
 
     await waitFor(() => expect(onError).toHaveBeenCalledWith("blob is busy"));
     expect(onRemove).toHaveBeenCalledTimes(1);
-  });
-
-  it("shows no remove affordance without an onRemove handler", () => {
-    const screen = render(
-      <AttachmentsGrid attachments={[imageAttachment()]} />,
-    );
-    expect(screen.queryByLabelText("Remove diagram.png")).toBeNull();
   });
 });

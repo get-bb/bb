@@ -27,8 +27,9 @@ import { ThreadActionsProvider } from "@/components/thread/ThreadActionsProvider
 import { Icon } from "@bb/shared-ui/icon";
 import {
   ProjectList,
-  ProjectListActionButtons,
   ProjectListNavigationLoadingState,
+  ProjectListNewThreadAction,
+  ProjectListSearchThreadsAction,
   ProjectListShell,
 } from "./ProjectList";
 import {
@@ -276,7 +277,10 @@ function SidebarFrame({ children, navigation }: SidebarFrameProps) {
           {navigation ?? (
             <>
               <div className="shrink-0 px-2 py-2">
-                <ProjectListActionButtons onNewChat={noop} />
+                <div className="space-y-1">
+                  <ProjectListNewThreadAction onNewChat={noop} />
+                  <ProjectListSearchThreadsAction />
+                </div>
               </div>
               <PluginNavSidebarItems />
             </>
@@ -435,10 +439,7 @@ function LoadedSidebarWithPluginPages() {
       <StoryPluginPageRegistrations />
       <SidebarFrame
         navigation={
-          <BuiltInSidebarNavigation
-            onNewChat={() => void navigate("/")}
-            toolsRoutePath="/extensions"
-          />
+          <BuiltInSidebarNavigation onNewChat={() => void navigate("/")} />
         }
       >
         <LoadedSidebar />
@@ -628,11 +629,14 @@ export function SplitPageLabels() {
         >
           <div className="w-full max-w-[320px] rounded-md bg-sidebar py-2 text-sidebar-foreground">
             <div className="px-2">
-              <ProjectListActionButtons
-                splitEnabled
-                newThreadSplit={{ openInSplit: noop }}
-                onNewChat={noop}
-              />
+              <div className="space-y-1">
+                <ProjectListNewThreadAction
+                  splitEnabled
+                  newThreadSplit={{ openInSplit: noop }}
+                  onNewChat={noop}
+                />
+                <ProjectListSearchThreadsAction />
+              </div>
             </div>
             <PluginNavSidebarItems splitEnabled />
           </div>

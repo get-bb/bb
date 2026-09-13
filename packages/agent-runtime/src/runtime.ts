@@ -1454,7 +1454,6 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       contributedEnv = [],
       clientRequestId,
       input,
-      inputGroups,
       options: execOpts,
       instructions,
       dynamicTools,
@@ -1511,7 +1510,6 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             envVars: resolvedEnvironment.envVars,
             execOpts,
             instructions,
-            skillRoots,
           });
           const adapterCommand: AdapterCommand = fork
             ? {
@@ -1588,7 +1586,6 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             await runtime.runTurn({
               threadId,
               input,
-              ...(inputGroups !== undefined ? { inputGroups } : {}),
               clientRequestId,
               options: execOpts,
               contributedEnv,
@@ -1674,7 +1671,6 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
                 envVars: resolvedEnvironment.envVars,
                 execOpts,
                 instructions,
-                skillRoots,
               }),
               dynamicTools,
               disallowedTools,
@@ -1844,7 +1840,6 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
               envVars: resolvedEnvironment.envVars,
               execOpts,
               instructions,
-              skillRoots,
             }),
             dynamicTools,
             disallowedTools,
@@ -1899,7 +1894,6 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     async runTurn({
       threadId,
       input,
-      inputGroups,
       clientRequestId,
       options: execOpts,
       contributedEnv,
@@ -1949,7 +1943,6 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             threadId,
             providerThreadId,
             input,
-            ...(inputGroups !== undefined ? { inputGroups } : {}),
             clientRequestId,
             options: toProviderExecutionContext({
               envVars: resolvedEnvironment.envVars,
@@ -2006,7 +1999,6 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       threadId,
       expectedTurnId,
       input,
-      inputGroups,
       clientRequestId,
       options: execOpts,
       contributedEnv,
@@ -2068,7 +2060,6 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             providerThreadId,
             expectedTurnId,
             input,
-            ...(inputGroups !== undefined ? { inputGroups } : {}),
             clientRequestId,
             options: toProviderExecutionContext({
               envVars: resolvedEnvironment.envVars,

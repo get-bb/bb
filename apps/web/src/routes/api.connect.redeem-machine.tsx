@@ -1,5 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { depsFromEnv, redeemMachineCode } from "@/server/api";
+import {
+  connectApiResponse,
+  depsFromEnv,
+  redeemMachineCode,
+} from "@/server/api";
 import { getEnv } from "@/server/env";
 
 export const Route = createFileRoute("/api/connect/redeem-machine")({
@@ -13,13 +17,7 @@ export const Route = createFileRoute("/api/connect/redeem-machine")({
           depsFromEnv(getEnv()),
           body.code ?? "",
         );
-        if ("error" in result) {
-          return Response.json(
-            { error: result.error },
-            { status: result.status },
-          );
-        }
-        return Response.json(result);
+        return connectApiResponse(result);
       },
     },
   },

@@ -528,28 +528,18 @@ export function toCodexThreadPermissionSettings(
 export function toCodexPermissionSettings(
   args: ToCodexPermissionSettingsArgs,
 ): CodexPermissionSettings {
-  const permissionPolicy = args.options;
-  switch (permissionPolicy.permissionScope) {
-    case "workspace":
-      return {
-        approvalPolicy: toWorkspaceApprovalPolicy(permissionPolicy),
-        approvalsReviewer: toCodexApprovalsReviewer(args.options),
-        sandbox: "workspace-write",
-        sandboxPolicy: toWorkspaceWriteCodexSandboxPolicy(
-          combineWorkspaceWriteRoots(
-            args.gitWritableRoots,
-            args.additionalWorkspaceWriteRoots,
-          ),
-        ),
-      };
-    case "full":
-      return {
-        approvalPolicy: "never",
-        approvalsReviewer: toCodexApprovalsReviewer(args.options),
-        sandbox: "danger-full-access",
-        sandboxPolicy: { type: "dangerFullAccess" },
-      };
-  }
+  return {
+    ...toCodexThreadPermissionSettings(args.options),
+    sandboxPolicy:
+      args.options.permissionScope === "workspace"
+        ? toWorkspaceWriteCodexSandboxPolicy(
+            combineWorkspaceWriteRoots(
+              args.gitWritableRoots,
+              args.additionalWorkspaceWriteRoots,
+            ),
+          )
+        : { type: "dangerFullAccess" },
+  };
 }
 
 export function toCodexServiceTier(

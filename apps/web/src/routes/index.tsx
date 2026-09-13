@@ -33,7 +33,7 @@ import type { CSSProperties, ReactNode } from "react";
 
 import changelogMd from "../../../../CHANGELOG.md?raw";
 import { RELEASE_META } from "../../../../changelog-metadata";
-import { initAnalytics, trackLandingEvent } from "../landing/analytics";
+import { trackLandingEvent, useInitAnalytics } from "../landing/analytics";
 import blackstoneLogo from "../assets/company-logos/blackstone.png";
 import datadogLogo from "../assets/company-logos/datadog.svg";
 import figmaLogo from "../assets/company-logos/figma.svg";
@@ -47,14 +47,15 @@ import shortcutLogo from "../assets/company-logos/shortcut.svg";
 import simileLogo from "../assets/company-logos/simile.svg";
 import hermesAvatar from "../assets/hermes-avatar.jpg";
 import vscodeIcon from "../assets/vscode.png";
-import { parseChangelog } from "../landing/changelog";
+import { parseChangelog } from "../../../../changelog-parser";
 import { CommandButton } from "../landing/command-button";
 import {
   DiscordLink,
   DownloadLink,
-  EmailSignup,
   GitHubLink,
+  SubscribeSection,
 } from "../landing/cta";
+import { siteHeadLinks } from "../landing/page-head";
 import { SiteFooter, SiteNav } from "../landing/site-chrome";
 import { useDesktopPlatform } from "../landing/desktop-platform";
 import {
@@ -77,8 +78,6 @@ import {
   SITE_TITLE,
   unfurlMeta,
 } from "../landing/site";
-import interWoff2 from "@fontsource-variable/inter/files/inter-latin-wght-normal.woff2?url";
-import landingCss from "../landing/landing.css?url";
 
 const COMPANY_PROOF = [
   ["Meta", metaLogo, "glyph"],
@@ -132,24 +131,13 @@ export const Route = createFileRoute("/")({
       { name: "description", content: SITE_DESCRIPTION },
       ...unfurlMeta("bb", OG_DESCRIPTION, "/"),
     ],
-    links: [
-      {
-        rel: "preload",
-        href: interWoff2,
-        as: "font",
-        type: "font/woff2",
-        crossOrigin: "anonymous",
-      },
-      { rel: "stylesheet", href: landingCss },
-    ],
+    links: siteHeadLinks(),
   }),
   component: LandingRoute,
 });
 
 function LandingRoute() {
-  useEffect(() => {
-    initAnalytics();
-  }, []);
+  useInitAnalytics();
   return <LandingPage />;
 }
 
@@ -1782,11 +1770,12 @@ function LandingPage() {
         </div>
       </section>
 
-      <section className="subscribe" data-reveal>
-        <h2 className="subscribe-title">Stay in the loop.</h2>
-        <p>Product updates and what we&rsquo;re building next. No spam.</p>
-        <EmailSignup placement="footer" />
-      </section>
+      <SubscribeSection
+        reveal
+        blurb={
+          <>Product updates and what we&rsquo;re building next. No spam.</>
+        }
+      />
 
       <SiteFooter />
     </div>

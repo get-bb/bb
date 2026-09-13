@@ -1,3 +1,4 @@
+import type { MachineBootstrapApi } from "./machine-bootstrap.js";
 import type Database from "better-sqlite3";
 import type { Context } from "hono";
 import type * as z from "zod";
@@ -18,14 +19,20 @@ import type {
   WorkspaceProvisionType,
 } from "@bb/domain";
 import type { ProviderFork } from "@bb/domain/provider-fork";
-import type { BbSdk } from "@bb/sdk";
+import type {
+  BbSdk,
+  ThreadPluginMetadataArgs,
+  ThreadPluginMetadataUpdateArgs,
+  ThreadPluginMetadataResult,
+} from "@bb/sdk";
 import type {
   ExecutionInputFieldSource,
   StartedOnBehalfOf,
   ThreadCreateOrigin,
   ThreadResponse,
+  TerminalSession,
 } from "@bb/server-contract";
-import type { JsonValue } from "./json-value.js";
+import type { JsonValue, ReadonlyJsonValue } from "./json-value.js";
 import type {
   PluginRpcContract,
   PluginRpcHandlers,
@@ -258,6 +265,10 @@ export interface PluginTurnFailedEvent {
  * queued row GET /threads/:id/queued-messages serves.
  */
 export interface PluginThreadEventPayloads {
+  /** Debounced per thread (at most once per second), with the latest sequence and current thread DTO. Reading history does not emit this event. */
+  "experimental_thread.events": { thread: ThreadResponse; sequence: number };
+  /** Real accepted terminal input; excludes output, keepalives and input contents. */
+  "experimental_terminal.input": { terminal: TerminalSession };
   /** Fired after a thread row is created. */
   "thread.created": { thread: ThreadResponse };
   /** Fired when a thread transitions into `active`. */
@@ -398,7 +409,18 @@ export interface PluginEnvironments {
       import("./environment-provider.js").PluginEnvironmentProviderInputsSchema =
       undefined,
   >(
-    declaration: PluginEnvironmentProviderDeclaration<Requires, Inputs>,
+    declaration:
+      | PluginEnvironmentProviderDeclaration<Requires, Inputs>
+      | {
+          id: string;
+          displayName: string;
+          description: string;
+          icon: string;
+          machineProviderId: string;
+          environmentProviderId: string;
+          create?: never;
+          remove?: never;
+        },
   ): void;
   /**
    * Ask core to re-ask this plugin's waiting providers now instead of at their
@@ -406,6 +428,70 @@ export interface PluginEnvironments {
    * `experimental_hooks.recheck`.
    */
   recheck(): Promise<void>;
+}
+
+export type PluginMachineValidateDecision =
+  | { action: "accept" }
+  | { action: "refuse"; message: string };
+
+export type PluginMachineProviderDeclaration<
+  Inputs extends
+    import("./machine-provider.js").PluginMachineProviderInputsSchema =
+    import("./machine-provider.js").PluginMachineProviderInputsSchema,
+> = import("./machine-provider.js").PluginMachineProviderDefinition<Inputs>;
+
+export interface ServerAccessGrant {
+  id: string;
+  serverUrl: string;
+  headers?: Record<string, string>;
+}
+
+export interface ServerAccessProviderDeclaration {
+  id: string;
+  displayName: string;
+  description: string;
+  availability():
+    | (import("./machine-provider.js").PluginMachineProviderAvailability & {
+        serverUrl?: string;
+      })
+    | Promise<
+        import("./machine-provider.js").PluginMachineProviderAvailability & {
+          serverUrl?: string;
+        }
+      >;
+  acquire(context: {
+    key: string;
+    hostId: string;
+    signal: AbortSignal;
+  }): Promise<ServerAccessGrant | { status: "failed"; message: string }>;
+  release(context: {
+    key: string;
+    hostId: string;
+    /** Null when acquisition was interrupted before a grant was returned. Reconcile using key and hostId. */
+    grantId: string | null;
+  }): Promise<void>;
+}
+
+export interface PluginServerAccess {
+  register(declaration: ServerAccessProviderDeclaration): void;
+  /**
+   * Notify connected clients that server access configuration changed.
+   * Call when access is gained or lost. Clients reload system configuration,
+   * which re-checks availability for Machines settings and creation banners.
+   */
+  recheck(): void;
+}
+
+export interface PluginMachines extends MachineBootstrapApi {
+  /** Read core’s current persisted provider resource, or null when the host or resource is absent. Available across plugins; resources must not contain credentials. */
+  getResource(hostId: string): Promise<JsonValue | null>;
+  register<
+    const Inputs extends
+      import("./machine-provider.js").PluginMachineProviderInputsSchema =
+      undefined,
+  >(
+    declaration: PluginMachineProviderDeclaration<Inputs>,
+  ): void;
 }
 
 /**
@@ -419,7 +505,13 @@ export type PluginDispatchEnvironmentIntent =
   | {
       kind: "provider";
       environmentProviderId: string;
-      machine: { type: "existing"; hostId: string };
+      machine:
+        | { type: "existing"; hostId: string }
+        | {
+            type: "new";
+            machineProviderId: string;
+            inputs: JsonValue | null;
+          };
       inputs: JsonValue | null;
     };
 
@@ -950,6 +1042,13 @@ export interface PluginAgentToolRegistrationBase {
 
 /** Stable, plain-data context resolved by the server for one agent session. */
 export interface PluginAgentConfigurationContext {
+  /**
+   * The thread's metadata stored under this plugin's id, or `{}` when absent,
+   * as a deep-frozen snapshot for this configure call. Any API client, another
+   * plugin, or the thread's own agent can write it; treat values as untrusted,
+   * and quote or escape any value you put into returned instructions.
+   */
+  readonly pluginMetadata: { readonly [key: string]: ReadonlyJsonValue };
   thread: {
     id: string;
     title: string | null;
@@ -1524,7 +1623,6 @@ export interface ExperimentalPluginProviderEnvEntry {
   name: string;
   value: string | { serverPath: string };
   reason: string;
-  secret: boolean;
 }
 
 export interface ExperimentalPluginProviderEnvHealthContext {
@@ -1747,6 +1845,31 @@ export interface PluginStatusApi {
 }
 
 /**
+ * The BB SDK bound to one plugin (`bb.sdk`). `threads.getPluginMetadata` and
+ * `threads.updatePluginMetadata` default `pluginId` to that plugin's id. An
+ * explicit `pluginId` must be a plugin id (lowercase letters, digits, and
+ * dashes) or the request fails with HTTP 400. A `pluginMetadata` seed or a
+ * `set` that is over 256 KiB on its own rejects before any request is sent. A
+ * patch whose merged namespace would exceed 256 KiB fails with HTTP 413 and
+ * leaves the namespace unchanged.
+ */
+export type PluginBbSdk = Omit<BbSdk, "threads"> & {
+  threads: Omit<
+    BbSdk["threads"],
+    "getPluginMetadata" | "updatePluginMetadata"
+  > & {
+    getPluginMetadata(
+      args: Omit<ThreadPluginMetadataArgs, "pluginId"> & { pluginId?: string },
+    ): Promise<ThreadPluginMetadataResult>;
+    updatePluginMetadata(
+      args: Omit<ThreadPluginMetadataUpdateArgs, "pluginId"> & {
+        pluginId?: string;
+      },
+    ): Promise<ThreadPluginMetadataResult>;
+  };
+};
+
+/**
  * The API object handed to a plugin's factory (design §4). Implemented by
  * the BB server; this contract is what plugin `server.ts` files compile
  * against.
@@ -1794,6 +1917,9 @@ export interface BbPluginApi {
    * docs/api_to_audit.md.
    */
   readonly experimental_environments: PluginEnvironments;
+  /** Machine providers provision execution machines. Experimental: see docs/api_to_audit.md. */
+  readonly experimental_machines: PluginMachines;
+  readonly experimental_serverAccess: PluginServerAccess;
   /** Plugin-reported status (needs-configuration). */
   readonly status: PluginStatusApi;
   /** Read-only facts about the running server (loopback base URL). */
@@ -1811,10 +1937,12 @@ export interface BbPluginApi {
    * server binds it before loading plugins, so it is available from the
    * moment factories run there — but isolated harnesses may not, so prefer
    * using it from handlers, services, and timers for portability.
-   * `threads.spawn` defaults `origin` to "plugin" and `originPluginId` to
-   * this plugin's id so spawned threads are attributed automatically.
+   * `threads.spawn` and `threads.fork` default `origin` to "plugin" and, for
+   * that origin, `originPluginId` to this plugin's id unless you set them.
+   * Seeding `pluginMetadata` always attributes the new thread to this plugin,
+   * overriding an explicit `origin` or `originPluginId`.
    */
-  readonly sdk: BbSdk;
+  readonly sdk: PluginBbSdk;
   /**
    * Register cleanup to run on reload/disable/shutdown. Hooks run LIFO.
    * The sanctioned place to clear timers and close connections.

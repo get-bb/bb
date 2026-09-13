@@ -1,3 +1,4 @@
+import { operationEnvironment } from "./operation-environment.js";
 import { fork, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
 import { rm } from "node:fs/promises";
@@ -18,6 +19,7 @@ import {
 } from "@bb/process-utils";
 import type { HostDaemonLogger } from "./logger.js";
 import { ensureCachedPluginHostArtifact } from "./plugin-host-artifact-cache.js";
+import { runInSerialLane } from "./serial-lane.js";
 
 type PluginHostCallCommand = Extract<
   HostDaemonOnlineRpcCommand,
@@ -49,7 +51,6 @@ interface WorkerState {
   readyAtMs: number | null;
   child: ChildProcess;
   closed: Promise<void>;
-  dataDir: string;
   tempDir: string;
   pending: Map<string, PendingCall>;
   ready: Promise<void>;
@@ -296,6 +297,10 @@ export class PluginHostManager {
             callId: command.callId,
             method: command.method,
             input: command.input,
+            envVars: operationEnvironment(
+              command.contributedEnv,
+              this.options.shellEnv?.() ?? {},
+            ),
           })
         ) {
           worker.pending.delete(command.callId);
@@ -495,7 +500,6 @@ export class PluginHostManager {
       readyAtMs: null,
       child,
       closed,
-      dataDir,
       tempDir,
       pending: new Map(),
       ready,
@@ -543,7 +547,11 @@ export class PluginHostManager {
     if (child.stderr !== null) {
       observeBoundedStderr(child.stderr, (line) => {
         this.options.logger.warn(
-          { pluginId: worker.pluginId, origin: "host", stderr: line },
+          {
+            pluginId: worker.pluginId,
+            origin: "host",
+            stderr: line,
+          },
           "Host plugin stderr",
         );
       });
@@ -1134,20 +1142,7 @@ export class PluginHostManager {
     pluginId: string,
     work: () => Promise<T>,
   ): Promise<T> {
-    const previous =
-      this.workerMutationTails.get(pluginId) ?? Promise.resolve();
-    const next = previous.then(work, work);
-    const tail = next.then(
-      () => undefined,
-      () => undefined,
-    );
-    this.workerMutationTails.set(pluginId, tail);
-    void tail.then(() => {
-      if (this.workerMutationTails.get(pluginId) === tail) {
-        this.workerMutationTails.delete(pluginId);
-      }
-    });
-    return next;
+    return runInSerialLane(this.workerMutationTails, pluginId, work);
   }
 
   private retireGeneration(pluginId: string, generation: string): void {

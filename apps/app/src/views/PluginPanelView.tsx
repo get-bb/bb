@@ -1,4 +1,3 @@
-import { useParams } from "react-router-dom";
 import { PageShell } from "@/components/ui/page-shell.js";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
@@ -6,20 +5,16 @@ import { usePluginFrontendsSettled } from "@/lib/plugin-frontend-boot-state";
 import { usePluginSlots } from "@/lib/plugin-slots";
 
 interface PluginPanelViewProps {
-  pluginId?: string;
-  panelPath?: string;
-  subPath?: string;
+  pluginId: string;
+  panelPath: string;
+  subPath: string;
 }
 
-export function PluginPanelView(props: PluginPanelViewProps = {}) {
-  const params = useParams<{
-    pluginId: string;
-    panelPath: string;
-    "*": string;
-  }>();
-  const pluginId = props.pluginId ?? params.pluginId;
-  const panelPath = props.panelPath ?? params.panelPath;
-  const subPath = props.subPath ?? params["*"] ?? "";
+export function PluginPanelView({
+  pluginId,
+  panelPath,
+  subPath,
+}: PluginPanelViewProps) {
   const { navPanels } = usePluginSlots();
   const pluginsSettled = usePluginFrontendsSettled();
   const panel =
@@ -30,10 +25,14 @@ export function PluginPanelView(props: PluginPanelViewProps = {}) {
 
   if (panel === null) {
     if (!pluginsSettled) {
-      return <PageShell contentClassName="pt-4 md:pt-5">{null}</PageShell>;
+      return (
+        <PageShell contentClassName="pt-[calc(var(--bb-app-chrome-row-height)+1rem)] md:pt-[calc(var(--bb-app-chrome-row-height)+1.25rem)]">
+          {null}
+        </PageShell>
+      );
     }
     return (
-      <PageShell contentClassName="pt-4 md:pt-5">
+      <PageShell contentClassName="pt-[calc(var(--bb-app-chrome-row-height)+1rem)] md:pt-[calc(var(--bb-app-chrome-row-height)+1.25rem)]">
         <EmptyStatePanel className="rounded-lg p-6 text-sm">
           This plugin panel is not available. The plugin may have been disabled
           or removed.

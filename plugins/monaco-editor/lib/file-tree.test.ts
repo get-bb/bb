@@ -56,17 +56,23 @@ describe("filterTree", () => {
   it("keeps matches with the directories leading to them, and says which to open", () => {
     const filtered = filterTree(tree, "button");
 
-    expect(filtered.matchCount).toBe(1);
     expect(filtered.nodes.map((node) => node.name)).toEqual(["src"]);
     expect([...filtered.expand].sort()).toEqual(["src", "src/ui"]);
   });
 
   it("matches on the whole relative path, not just the file name", () => {
-    expect(filterTree(tree, "src/ui").matchCount).toBe(1);
+    const filtered = filterTree(tree, "src/ui");
+
+    expect(filtered.nodes.map((node) => node.name)).toEqual(["src"]);
+    expect(filtered.nodes[0]!.children.map((node) => node.path)).toEqual([
+      "src/ui",
+    ]);
   });
 
   it("is case-insensitive and returns nothing when nothing matches", () => {
-    expect(filterTree(tree, "BUTTON").matchCount).toBe(1);
+    expect(filterTree(tree, "BUTTON").nodes.map((node) => node.name)).toEqual([
+      "src",
+    ]);
     expect(filterTree(tree, "nothing-here").nodes).toEqual([]);
   });
 

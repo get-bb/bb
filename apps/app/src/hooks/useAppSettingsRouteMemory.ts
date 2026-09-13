@@ -2,7 +2,6 @@ import { useEffect, useRef } from "react";
 import { matchPath, useLocation } from "react-router-dom";
 import {
   getRootComposeRoutePath,
-  getPluginsRoutePath,
   isToolsRoutePath,
   SETTINGS_ROUTE_PATH,
   LEGACY_PROJECT_SETTINGS_ROUTE_PATH,
@@ -11,7 +10,6 @@ import {
 interface AppSettingsRouteMemory {
   appRoutePath: string;
   settingsRoutePath: string;
-  toolsRoutePath: string;
   toolsBackRoutePath: string;
 }
 
@@ -66,9 +64,6 @@ export function useAppSettingsRouteMemory(): AppSettingsRouteMemory {
     settingsRoutePath: isSettingsRoute
       ? currentRoutePath
       : lastSettingsRoutePathRef.current,
-    toolsRoutePath: isCurrentToolsRoute
-      ? currentRoutePath
-      : getPluginsRoutePath(),
     toolsBackRoutePath: isCurrentToolsRoute
       ? lastCoreAppRoutePathRef.current
       : currentRoutePath,

@@ -8,7 +8,6 @@ export type ProbeServerResult =
   | {
       ok: true;
       serverUrl: string;
-      primaryHostId: string | null;
       advertisedServerUrl: string | null;
     }
   | { ok: false; serverUrl: string; stage: ProbeStage; error: string };
@@ -110,7 +109,6 @@ export async function probeServer(
   return {
     ok: true,
     serverUrl: base,
-    primaryHostId: parsed.data.primaryHostId,
     advertisedServerUrl: advertisedServerUrl(base, parsed.data.serverUrl),
   };
 }

@@ -276,7 +276,7 @@ added/updated/unchanged counts.
                                  URL, local path, builtin:<name>,
                                  git:<url>[@<ref|semver-range>], or
                                  npm:<package>[@<version|tag|range>]
-                                 (npm: needs npm on PATH; installs prompt —
+                                 (installs prompt —
                                  pass --yes to skip). Managed git:/npm:
                                  installs refuse engines.bb / engines.bbPluginSdk
                                  mismatches, manifest/artifact identity
@@ -581,8 +581,12 @@ from dependencies you have already installed. A build failure fails the
 install. npm packages must ship a metadata-validated prebuilt app or the
 install is refused. The server rebuilds source-built apps after a bb upgrade.
 
-Installing or updating a git plugin requires `npm` on PATH. Checking for
-updates does not: a check reads the candidate's manifest and stops, so
+BB ships a pinned npm for plugin installation and updates; npm and Node do
+not need to be on PATH. Git sources still require `git`. Git installs use
+`--omit=dev --omit=optional --ignore-scripts`. Plugins may keep normal
+development dependencies in their manifests; npm resolves these but does not
+install them.
+Checking for updates does not install dependencies: a check reads the candidate's manifest and stops, so
 polling never resolves a dependency tree or builds. A candidate that fails to
 build is reported as available and fails when you apply it.
 
@@ -904,3 +908,16 @@ bot), agent-enrichment (agent surfaces), and composer-customization (all
 composer regions). Thread Hover
 Cards installs from the BB Community marketplace (source: the bb-plugins
 repo).
+
+Modal setup uses `bb modal account inspect --json` to check credentials, then
+`bb machine create --provider modal-sandbox --json` to create a
+machine. Settings edits its shared Dockerfile; `bb modal image set --file PATH [--json]` saves it and `bb modal image reset [--json]` restores the bundled default for future machines; `bb modal image show [--json]`
+reads the same file without cloud access. The image builds automatically and is reused across projects;
+core installs the daemon on demand. Project dependencies and services belong in
+`.bb-env-setup.sh`. Read the plugin's skill for connection and lifecycle details.
+
+Contributed commands may accept `--stdin`: the calling CLI transfers up to
+256 KiB of multiline text as `--input-text`, without reading server-local files.
+The existing `--<flag>-stdin` form still accepts one line.
+
+Modal image debugging: `bb modal image build [--json]` prepares the saved image; `bb modal sandbox run [--json]` starts a 30-minute standalone sandbox; `bb modal sandbox exec ID [--json] -- COMMAND...` runs a command (60-second timeout); `bb modal sandbox stop ID [--json]` cleans up. These debug sandboxes skip BB enrollment, clone and setup. Logs are returned after the build finishes.

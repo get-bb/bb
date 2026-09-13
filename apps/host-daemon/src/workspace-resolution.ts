@@ -12,7 +12,6 @@ import {
   ExpectedCommandDispatchError,
   requireWorkspaceEnvironment,
 } from "./command-dispatch-support.js";
-import { reconnectProvisionArgsFromWorkspaceContext } from "./workspace-provision-target.js";
 
 const WORKSPACE_RESOLUTION_FAILURE_CODES: readonly WorkspaceResolutionFailureCode[] =
   workspaceResolutionFailureCodeSchema.options;
@@ -23,7 +22,6 @@ interface WorkspaceResolutionFailureFromErrorArgs {
 }
 
 interface ResolveWorkspaceForCommandArgs {
-  dataDir?: string;
   environmentId: string;
   injectedSkillSources?: readonly HostDaemonInjectedSkillSource[];
   requireGit?: boolean;
@@ -66,16 +64,10 @@ export function workspaceResolutionFailureFromError(
   args: WorkspaceResolutionFailureFromErrorArgs,
 ): WorkspaceResolutionFailure {
   const { error, workspacePath } = args;
-  if (error instanceof WorkspaceError) {
-    return {
-      code: isWorkspaceResolutionFailureCode(error.code)
-        ? error.code
-        : "unknown",
-      message: error.message,
-      workspacePath,
-    };
-  }
-  if (error instanceof CommandDispatchError) {
+  if (
+    error instanceof WorkspaceError ||
+    error instanceof CommandDispatchError
+  ) {
     return {
       code: isWorkspaceResolutionFailureCode(error.code)
         ? error.code
@@ -111,7 +103,6 @@ export async function resolveWorkspaceForCommand(
   try {
     const entry = await requireWorkspaceEnvironment(
       {
-        dataDir: args.dataDir,
         environmentId: args.environmentId,
         ...(args.injectedSkillSources !== undefined
           ? { injectedSkillSources: args.injectedSkillSources }
@@ -126,9 +117,7 @@ export async function resolveWorkspaceForCommand(
     if (args.requireGit === true && !entry.workspace.isGitRepo) {
       const workspace = await args.runtimeManager.refreshEnvironmentWorkspace({
         environmentId: args.environmentId,
-        provision: reconnectProvisionArgsFromWorkspaceContext({
-          workspaceContext: args.workspaceContext,
-        }),
+        provision: { path: args.workspaceContext.workspacePath },
         workspacePath: args.workspaceContext.workspacePath,
       });
       if (!workspace.isGitRepo) {

@@ -66,7 +66,6 @@ export interface NativeThemeTokens {
   primary: string;
   primaryForeground: string;
   readbackForeground: string;
-  resourceSourceShelfCardHoverBorder: string;
   ring: string;
   secondary: string;
   secondaryForeground: string;
@@ -176,7 +175,6 @@ export const nativeThemes: Record<BuiltInThemeId, NativeThemeModes> = {
       primary: "#8839ef",
       primaryForeground: "#eff1f5",
       readbackForeground: "#6c6f85",
-      resourceSourceShelfCardHoverBorder: "#c6c7d2",
       ring: "#8839ef",
       secondary: "#e2e3e9",
       secondaryForeground: "#4c4f69",
@@ -278,7 +276,6 @@ export const nativeThemes: Record<BuiltInThemeId, NativeThemeModes> = {
       primary: "#cba6f7",
       primaryForeground: "#1e1e2e",
       readbackForeground: "#a6adc8",
-      resourceSourceShelfCardHoverBorder: "#4d4f64",
       ring: "#cba6f7",
       secondary: "#4b4d62",
       secondaryForeground: "#cdd6f4",
@@ -382,7 +379,6 @@ export const nativeThemes: Record<BuiltInThemeId, NativeThemeModes> = {
       primary: "#007aff",
       primaryForeground: "#ffffff",
       readbackForeground: "#747474",
-      resourceSourceShelfCardHoverBorder: "#b1b1b1",
       ring: "#007aff",
       secondary: "#e4e4e4",
       secondaryForeground: "#000000",
@@ -484,7 +480,6 @@ export const nativeThemes: Record<BuiltInThemeId, NativeThemeModes> = {
       primary: "#0a84ff",
       primaryForeground: "#ffffff",
       readbackForeground: "#808080",
-      resourceSourceShelfCardHoverBorder: "#2e2e2e",
       ring: "#0a84ff",
       secondary: "#2b2b2b",
       secondaryForeground: "#ffffff",
@@ -588,7 +583,6 @@ export const nativeThemes: Record<BuiltInThemeId, NativeThemeModes> = {
       primary: "#7d5bbe",
       primaryForeground: "#ffffff",
       readbackForeground: "#6b6d78",
-      resourceSourceShelfCardHoverBorder: "#bfc1c9",
       ring: "#7d5bbe",
       secondary: "#e4e5eb",
       secondaryForeground: "#282a36",
@@ -690,7 +684,6 @@ export const nativeThemes: Record<BuiltInThemeId, NativeThemeModes> = {
       primary: "#bd93f9",
       primaryForeground: "#282a36",
       readbackForeground: "#a5a7b0",
-      resourceSourceShelfCardHoverBorder: "#5f616c",
       ring: "#bd93f9",
       secondary: "#5d5f6a",
       secondaryForeground: "#f8f8f2",
@@ -794,7 +787,6 @@ export const nativeThemes: Record<BuiltInThemeId, NativeThemeModes> = {
       primary: "#076678",
       primaryForeground: "#fbf1c7",
       readbackForeground: "#7a7666",
-      resourceSourceShelfCardHoverBorder: "#c9c1a1",
       ring: "#076678",
       secondary: "#eae1ba",
       secondaryForeground: "#3c3836",
@@ -896,7 +888,6 @@ export const nativeThemes: Record<BuiltInThemeId, NativeThemeModes> = {
       primary: "#83a598",
       primaryForeground: "#282828",
       readbackForeground: "#9f957d",
-      resourceSourceShelfCardHoverBorder: "#5c584e",
       ring: "#83a598",
       secondary: "#5a574d",
       secondaryForeground: "#ebdbb2",
@@ -1000,7 +991,6 @@ export const nativeThemes: Record<BuiltInThemeId, NativeThemeModes> = {
       primary: "#5e81ac",
       primaryForeground: "#eceff4",
       readbackForeground: "#6c727c",
-      resourceSourceShelfCardHoverBorder: "#babec5",
       ring: "#5e81ac",
       secondary: "#dbdee4",
       secondaryForeground: "#2e3440",
@@ -1102,7 +1092,6 @@ export const nativeThemes: Record<BuiltInThemeId, NativeThemeModes> = {
       primary: "#88c0d0",
       primaryForeground: "#2e3440",
       readbackForeground: "#969ca8",
-      resourceSourceShelfCardHoverBorder: "#5c626f",
       ring: "#88c0d0",
       secondary: "#5b616d",
       secondaryForeground: "#d8dee9",
@@ -1206,7 +1195,6 @@ export const nativeThemes: Record<BuiltInThemeId, NativeThemeModes> = {
       primary: "#268bd2",
       primaryForeground: "#fdf6e3",
       readbackForeground: "#577a6f",
-      resourceSourceShelfCardHoverBorder: "#bfc6af",
       ring: "#268bd2",
       secondary: "#e9e6d1",
       secondaryForeground: "#073642",
@@ -1308,7 +1296,6 @@ export const nativeThemes: Record<BuiltInThemeId, NativeThemeModes> = {
       primary: "#268bd2",
       primaryForeground: "#002b36",
       readbackForeground: "#5e747b",
-      resourceSourceShelfCardHoverBorder: "#2e4c55",
       ring: "#268bd2",
       secondary: "#2d4b54",
       secondaryForeground: "#93a1a1",

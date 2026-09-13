@@ -1,4 +1,4 @@
-const DEFAULT_DEBOUNCE_MS = 300;
+const DEBOUNCE_MS = 300;
 const IGNORED_SEGMENTS = new Set(["dist", "node_modules", ".git"]);
 
 export function isIgnoredPluginDevPath(relativePath: string): boolean {
@@ -14,16 +14,11 @@ export interface PluginDevLoopTargets {
 
 interface PluginDevLoopDeps {
   pluginId: string;
-  // Re-resolved every cycle: a plugin can add or drop its app/host entry
-  // while the dev loop is watching, and a stale snapshot would demand a
-  // build that can never succeed again (or skip one that now must run).
   targets: () => Promise<PluginDevLoopTargets>;
   buildApp: () => Promise<void>;
   buildHost: () => Promise<void>;
   reloadPlugin: () => Promise<void>;
   log: (line: string) => void;
-  debounceMs?: number;
-  now?: () => number;
 }
 
 interface PluginDevLoop {
@@ -37,8 +32,6 @@ function errorMessage(error: unknown): string {
 }
 
 export function createPluginDevLoop(deps: PluginDevLoopDeps): PluginDevLoop {
-  const debounceMs = deps.debounceMs ?? DEFAULT_DEBOUNCE_MS;
-  const now = deps.now ?? (() => Date.now());
   const pending = new Set<string>();
   let timer: ReturnType<typeof setTimeout> | null = null;
   let disposed = false;
@@ -57,11 +50,11 @@ export function createPluginDevLoop(deps: PluginDevLoopDeps): PluginDevLoop {
       return;
     }
     if (targets.hasApp) {
-      const startedAt = now();
+      const startedAt = Date.now();
       try {
         await deps.buildApp();
         parts.push(
-          `rebuilt app in ${Math.max(0, Math.round(now() - startedAt))}ms`,
+          `rebuilt app in ${Math.max(0, Math.round(Date.now() - startedAt))}ms`,
         );
       } catch (error) {
         parts.push(`build failed: ${errorMessage(error)}`);
@@ -70,11 +63,11 @@ export function createPluginDevLoop(deps: PluginDevLoopDeps): PluginDevLoop {
       }
     }
     if (targets.hasHost) {
-      const startedAt = now();
+      const startedAt = Date.now();
       try {
         await deps.buildHost();
         parts.push(
-          `rebuilt host in ${Math.max(0, Math.round(now() - startedAt))}ms`,
+          `rebuilt host in ${Math.max(0, Math.round(Date.now() - startedAt))}ms`,
         );
       } catch (error) {
         parts.push(`host build failed: ${errorMessage(error)}`);
@@ -102,7 +95,7 @@ export function createPluginDevLoop(deps: PluginDevLoopDeps): PluginDevLoop {
       if (disposed || isIgnoredPluginDevPath(relativePath)) return;
       pending.add(relativePath);
       if (timer !== null) clearTimeout(timer);
-      timer = setTimeout(flush, debounceMs);
+      timer = setTimeout(flush, DEBOUNCE_MS);
     },
     settled: () => queueTail,
     dispose() {

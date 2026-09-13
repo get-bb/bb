@@ -31,6 +31,7 @@ describe("Mobile E2E flow boundaries", () => {
       "flows/shell-launch.yaml",
       "flows/shell-deep-link.yaml",
       "flows/shell-send.yaml",
+      "flows/shell-send-sidebar-swipe.yaml",
     ]) {
       expect(flowSource(flow), flow).toContain(
         "- runFlow: ../subflows/pair-direct-server.yaml",

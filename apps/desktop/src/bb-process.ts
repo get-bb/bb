@@ -1,5 +1,11 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { posix as posixPath } from "node:path";
+import {
+  hasProcessExited,
+  waitForProcessExit,
+  waitForProcessExitWithTimeout,
+  type ChildProcessExitResult,
+} from "@bb/config/child-process-exit";
 
 interface RuntimeLogBuffer {
   append(chunk: Buffer | string): void;
@@ -26,10 +32,7 @@ export interface BbAppProcess {
   stop(args: StopBbAppProcessArgs): Promise<void>;
 }
 
-export interface BbAppProcessExit {
-  code: number | null;
-  signal: NodeJS.Signals | null;
-}
+export type BbAppProcessExit = ChildProcessExitResult;
 
 interface StopBbAppProcessArgs {
   killSignal: NodeJS.Signals;
@@ -80,16 +83,6 @@ interface ResolveBbAppProcessRuntimeArgs {
   platform: NodeJS.Platform;
   processExecPath: string;
 }
-
-interface WaitForProcessExitWithTimeoutArgs {
-  childProcess: ChildProcess;
-  timeoutMs: number;
-}
-
-type WaitForProcessExitWithTimeoutResult = "exited" | "timed-out";
-type ResolveWaitForProcessExitWithTimeout = (
-  result: WaitForProcessExitWithTimeoutResult,
-) => void;
 
 const APPIMAGE_BRIDGE_RELATIVE_PATH_ENV =
   "BB_DESKTOP_APPIMAGE_BRIDGE_RELATIVE_PATH";
@@ -318,61 +311,6 @@ export function createBbAppProcessLaunch(
     },
     executablePath: args.runtime.executablePath,
   };
-}
-
-function hasProcessExited(childProcess: ChildProcess): boolean {
-  return childProcess.exitCode !== null || childProcess.signalCode !== null;
-}
-
-function waitForProcessExit(
-  childProcess: ChildProcess,
-): Promise<BbAppProcessExit> {
-  if (hasProcessExited(childProcess)) {
-    return Promise.resolve({
-      code: childProcess.exitCode,
-      signal: childProcess.signalCode,
-    });
-  }
-
-  return new Promise<BbAppProcessExit>((resolvePromise) => {
-    childProcess.once("exit", (code, signal) => {
-      resolvePromise({ code, signal });
-    });
-  });
-}
-
-function waitForProcessExitWithTimeout(
-  args: WaitForProcessExitWithTimeoutArgs,
-): Promise<WaitForProcessExitWithTimeoutResult> {
-  if (hasProcessExited(args.childProcess)) {
-    return Promise.resolve("exited");
-  }
-
-  return new Promise<WaitForProcessExitWithTimeoutResult>((resolvePromise) => {
-    let settled = false;
-    let timeout: ReturnType<typeof setTimeout>;
-    const finish: ResolveWaitForProcessExitWithTimeout = (result) => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      clearTimeout(timeout);
-      args.childProcess.off("exit", exitHandler);
-      resolvePromise(result);
-    };
-    const exitHandler = (): void => {
-      finish("exited");
-    };
-    timeout = setTimeout(() => {
-      finish("timed-out");
-    }, args.timeoutMs);
-    timeout.unref();
-
-    args.childProcess.once("exit", exitHandler);
-    if (hasProcessExited(args.childProcess)) {
-      finish("exited");
-    }
-  });
 }
 
 export function startBbAppProcess(args: StartBbAppProcessArgs): BbAppProcess {

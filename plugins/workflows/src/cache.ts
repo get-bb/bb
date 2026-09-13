@@ -31,8 +31,7 @@ export type WorkflowCallResultStatus =
   | "running"
   | "succeeded"
   | "failed"
-  | "cancelled"
-  | "incomplete";
+  | "cancelled";
 
 type NonNullJsonValue = Exclude<JsonValue, null>;
 

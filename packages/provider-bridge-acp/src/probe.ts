@@ -3,8 +3,8 @@ import { withoutBridgeRuntimeEnv } from "@bb/provider-bridge-protocol/bridge-kit
 import {
   AcpAgentExitedError,
   createAcpAgentConnection,
+  requestAcpInitialize,
 } from "./bridge/agent-connection.js";
-import { ACP_PROTOCOL_VERSION, acpInitializeResultSchema } from "./wire.js";
 
 const PROBE_TIMEOUT_MS = 10_000;
 
@@ -67,17 +67,9 @@ export async function probeAcpAgent(
 
   try {
     const result = await Promise.race([
-      connected.request({
-        method: "initialize",
-        params: {
-          protocolVersion: ACP_PROTOCOL_VERSION,
-          clientInfo: { name: "bb", version: "1.0.0" },
-          clientCapabilities: {
-            fs: { readTextFile: true, writeTextFile: true },
-            terminal: false,
-          },
-        },
-        resultSchema: acpInitializeResultSchema,
+      requestAcpInitialize(connected, {
+        parameterizedModelPicker: false,
+        fsAccess: true,
       }),
       timeout,
     ]);

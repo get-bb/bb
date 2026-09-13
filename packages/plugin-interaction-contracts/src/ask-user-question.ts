@@ -16,7 +16,6 @@ const interactionOptionSchema = z.object({
   description: z.string().min(1).optional(),
   preview: z.string().min(1).optional(),
 });
-export type InteractionOption = z.infer<typeof interactionOptionSchema>;
 
 const interactionQuestionSchema = z.object({
   id: z.string().min(1),

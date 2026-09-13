@@ -26,8 +26,11 @@ export function loadFixture(name: string): Record<string, unknown> {
   return parsed;
 }
 
-export function loadSessionFixture(name: string): Record<string, unknown>[] {
-  return readFileSync(resolve(FIXTURES, "sessions", name), "utf8")
+export function loadSessionFixture(
+  name: string,
+  directory: "sessions" | "transcripts" = "sessions",
+): Record<string, unknown>[] {
+  return readFileSync(resolve(FIXTURES, directory, name), "utf8")
     .trim()
     .split("\n")
     .map((line) => {

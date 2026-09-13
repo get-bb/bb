@@ -68,6 +68,26 @@ function parseEntry(
   return { ...entry, run: typeof entry.run === "number" ? entry.run : 0 };
 }
 
+function readLaneEntries(
+  file: string,
+  direction: BridgeRecordingDirection,
+  laneLabel: string,
+): BridgeRecordingEntry[] {
+  const entries: BridgeRecordingEntry[] = [];
+  const lines = readFileSync(file, "utf8").split("\n");
+  for (const [index, raw] of lines.entries()) {
+    if (raw.length === 0) continue;
+    const entry = parseEntry(raw, file, index + 1);
+    if (entry.dir !== direction) {
+      throw new Error(
+        `${file}:${index + 1}: entry direction ${entry.dir} in the ${laneLabel}`,
+      );
+    }
+    entries.push(entry);
+  }
+  return entries;
+}
+
 export function readBridgeRecordingLane(
   dir: string,
   direction: BridgeRecordingDirection,
@@ -76,19 +96,7 @@ export function readBridgeRecordingLane(
   if (!existsSync(file)) {
     return [];
   }
-  const entries: BridgeRecordingEntry[] = [];
-  const lines = readFileSync(file, "utf8").split("\n");
-  for (const [index, raw] of lines.entries()) {
-    if (raw.length === 0) continue;
-    const entry = parseEntry(raw, file, index + 1);
-    if (entry.dir !== direction) {
-      throw new Error(
-        `${file}:${index + 1}: entry direction ${entry.dir} in the ${direction} lane`,
-      );
-    }
-    entries.push(entry);
-  }
-  return entries;
+  return readLaneEntries(file, direction, `${direction} lane`);
 }
 
 export const CURRENT_BRIDGE_LANE_FILE = "bridge→runtime.current.ndjson";
@@ -100,19 +108,7 @@ export function readCurrentBridgeLane(
   if (!existsSync(file)) {
     return null;
   }
-  const entries: BridgeRecordingEntry[] = [];
-  const lines = readFileSync(file, "utf8").split("\n");
-  for (const [index, raw] of lines.entries()) {
-    if (raw.length === 0) continue;
-    const entry = parseEntry(raw, file, index + 1);
-    if (entry.dir !== "bridge→runtime") {
-      throw new Error(
-        `${file}:${index + 1}: entry direction ${entry.dir} in the current bridge lane`,
-      );
-    }
-    entries.push(entry);
-  }
-  return entries;
+  return readLaneEntries(file, "bridge→runtime", "current bridge lane");
 }
 
 export function withCurrentBridgeLane(

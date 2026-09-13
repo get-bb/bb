@@ -71,7 +71,6 @@ export function ResourceDetailPage({
   overflowMenu,
   actions,
   metadata,
-  description,
   maxWidthClassName = "max-w-3xl",
   children,
 }: {
@@ -83,7 +82,6 @@ export function ResourceDetailPage({
   overflowMenu?: ReactNode;
   actions?: ReactNode;
   metadata?: ReactNode;
-  description?: ReactNode;
   maxWidthClassName?: string;
   children: ReactNode;
 }) {
@@ -113,9 +111,6 @@ export function ResourceDetailPage({
           </div>
           {metadata ? (
             <div className="text-xs text-subtle-foreground">{metadata}</div>
-          ) : null}
-          {description ? (
-            <p className="text-xs text-muted-foreground">{description}</p>
           ) : null}
         </div>
         {actions || lifecycleControl || overflowMenu ? (

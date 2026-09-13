@@ -16,7 +16,6 @@
     "**/dist/**",
     "**/coverage/**",
     "**/routeTree.gen.ts",
-    "packages/core/src/generated/**",
     "apps/mobile/ios/**",
     "apps/mobile/android/**",
     "apps/mobile/.expo/**",

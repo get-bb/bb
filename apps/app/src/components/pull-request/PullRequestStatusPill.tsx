@@ -50,20 +50,6 @@ export function PullRequestStateIcon({
   );
 }
 
-export function PullRequestGithubCheckIcon({
-  pullRequest,
-  className,
-}: {
-  pullRequest: ThreadPullRequest;
-  className?: string;
-}) {
-  const status = getPullRequestGithubCheckStatus(pullRequest);
-  if (status === null) {
-    return null;
-  }
-  return <GithubFaviconIcon status={status} className={className} />;
-}
-
 export function PullRequestStatusPill({
   pullRequest,
   className,
@@ -71,20 +57,20 @@ export function PullRequestStatusPill({
   pullRequest: ThreadPullRequest;
   className?: string;
 }) {
-  const hasCheckIcon = getPullRequestGithubCheckStatus(pullRequest) !== null;
+  const checkStatus = getPullRequestGithubCheckStatus(pullRequest);
   return (
     <span
       title={PR_STATUS_ICON[pullRequest.state].title}
       className={cn(
         "flex h-5 shrink-0 cursor-pointer items-center gap-1",
-        hasCheckIcon
+        checkStatus !== null
           ? CHECKED_PULL_REQUEST_STATUS_MIN_WIDTH_CLASS
           : SINGLE_PULL_REQUEST_STATUS_MIN_WIDTH_CLASS,
         className,
       )}
     >
       <PullRequestStateIcon state={pullRequest.state} />
-      <PullRequestGithubCheckIcon pullRequest={pullRequest} />
+      {checkStatus === null ? null : <GithubFaviconIcon status={checkStatus} />}
     </span>
   );
 }

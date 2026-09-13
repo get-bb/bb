@@ -27,14 +27,6 @@ export const sessionReplacedNotificationSchema = z
   })
   .passthrough();
 
-export const providerRawNotificationSchema = z
-  .object({
-    threadId: z.string().min(1).optional(),
-    coverage: z.enum(["noise", "unknown"]),
-    payload: z.unknown(),
-  })
-  .passthrough();
-
 export const providerRecoveryNotificationSchema = z
   .object({
     threadId: z.string().min(1).optional(),
@@ -49,6 +41,7 @@ export type ProviderRecoveryNotification = z.infer<
 export const errorNotificationSchema = z
   .object({
     threadId: z.string().min(1).optional(),
+    providerThreadId: z.string().min(1).optional(),
     message: z.string().min(1),
   })
   .passthrough();

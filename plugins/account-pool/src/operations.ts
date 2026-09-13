@@ -264,13 +264,9 @@ export class PoolOperations {
     return { threadId, bypassed };
   }
 
-  async hasUsableEnabledAccount(provider?: PoolProvider): Promise<boolean> {
+  async hasUsableEnabledAccount(provider: PoolProvider): Promise<boolean> {
     for (const account of await this.accounts.list()) {
-      if (
-        !account.enabled ||
-        (provider !== undefined && account.provider !== provider)
-      )
-        continue;
+      if (!account.enabled || account.provider !== provider) continue;
       try {
         await this.accounts.readSecret(account.id);
         return true;

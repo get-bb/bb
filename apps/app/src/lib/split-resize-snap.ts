@@ -29,6 +29,42 @@ export interface SplitResizeGridTarget {
   childCount: number;
 }
 
+interface SplitResizeFlexPair {
+  apply: (fraction: number) => void;
+  restore: () => void;
+}
+
+export function createSplitResizeFlexPair(
+  previous: HTMLElement,
+  next: HTMLElement,
+  ownerWindow: Window = window,
+): SplitResizeFlexPair {
+  const previousGrow = Number.parseFloat(
+    ownerWindow.getComputedStyle(previous).flexGrow,
+  );
+  const nextGrow = Number.parseFloat(
+    ownerWindow.getComputedStyle(next).flexGrow,
+  );
+  const total =
+    Number.isFinite(previousGrow) &&
+    Number.isFinite(nextGrow) &&
+    previousGrow + nextGrow > 0
+      ? previousGrow + nextGrow
+      : 1;
+  const previousFlex = previous.style.flex;
+  const nextFlex = next.style.flex;
+  return {
+    apply: (fraction) => {
+      previous.style.flex = `${total * fraction} 1 0px`;
+      next.style.flex = `${total * (1 - fraction)} 1 0px`;
+    },
+    restore: () => {
+      previous.style.flex = previousFlex;
+      next.style.flex = nextFlex;
+    },
+  };
+}
+
 function createGuide(
   document: Document,
   axis: SplitResizeAxis,

@@ -41,7 +41,6 @@ function AnsweredQuestionRow({ question, answer }: AnsweredQuestionRowProps) {
 
   return (
     <div>
-      {}
       <div className="text-subtle-foreground">{question.prompt}</div>
       {hasContent ? (
         <div className="mt-0.5 text-foreground">

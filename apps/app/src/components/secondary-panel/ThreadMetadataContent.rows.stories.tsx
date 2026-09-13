@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { EnvironmentDisplayHostContext } from "@bb/core-ui";
+import type { WorkspaceMergeBase, WorkspaceWorkingTree } from "@bb/domain";
 import {
   ParentSelectorRow,
   EnvironmentRow,
@@ -34,6 +35,59 @@ const noop = () => {};
 const remoteEnvironmentDisplayHost: EnvironmentDisplayHostContext = {
   locality: "remote",
   identity: null,
+};
+
+const DIRTY_WORKING_TREE: Omit<WorkspaceWorkingTree, "state"> = {
+  hasUncommittedChanges: true,
+  insertions: 47,
+  deletions: 21,
+  lineStatsComplete: true,
+  files: [
+    {
+      path: "apps/app/src/components/sidebar/ProjectRow.tsx",
+      status: "M",
+      insertions: 18,
+      deletions: 9,
+    },
+    {
+      path: "apps/app/src/components/sidebar/ThreadRow.tsx",
+      status: "M",
+      insertions: 5,
+      deletions: 12,
+    },
+    {
+      path: "apps/app/src/components/sidebar/ProjectRow.stories.tsx",
+      status: "A",
+      insertions: 24,
+      deletions: 0,
+    },
+  ],
+};
+
+const COMMITTED_MERGE_BASE: WorkspaceMergeBase = {
+  mergeBaseBranch: "main",
+  baseRef: "main",
+  aheadCount: 2,
+  behindCount: 0,
+  hasCommittedUnmergedChanges: true,
+  commits: [],
+  insertions: 110,
+  deletions: 24,
+  lineStatsComplete: true,
+  files: [
+    {
+      path: "apps/app/src/components/right-panel/ThreadMetadataContent.stories.tsx",
+      status: "M",
+      insertions: 38,
+      deletions: 12,
+    },
+    {
+      path: "apps/app/src/components/right-panel/ThreadMetadataContent.rows.stories.tsx",
+      status: "A",
+      insertions: 72,
+      deletions: 0,
+    },
+  ],
 };
 
 function RowStage({ children }: { children: ReactNode }) {
@@ -144,7 +198,8 @@ export function Environment() {
         <RowStage>
           <EnvironmentRow
             thread={makeThread()}
-            environment={makeEnvironment({})}
+            environment={makeEnvironment({
+            })}
             environmentDisplayHost={localEnvironmentDisplayHost}
           />
         </RowStage>
@@ -153,7 +208,8 @@ export function Environment() {
         <RowStage>
           <EnvironmentRow
             thread={makeThread()}
-            environment={makeEnvironment({})}
+            environment={makeEnvironment({
+            })}
             environmentDisplayHost={remoteEnvironmentDisplayHost}
           />
         </RowStage>
@@ -589,31 +645,8 @@ export function GitStatus() {
             environment={makeEnvironment()}
             workspaceStatus={makeWorkspaceStatus({
               workingTree: {
-                hasUncommittedChanges: true,
+                ...DIRTY_WORKING_TREE,
                 state: "dirty_uncommitted",
-                insertions: 47,
-                deletions: 21,
-                lineStatsComplete: true,
-                files: [
-                  {
-                    path: "apps/app/src/components/sidebar/ProjectRow.tsx",
-                    status: "M",
-                    insertions: 18,
-                    deletions: 9,
-                  },
-                  {
-                    path: "apps/app/src/components/sidebar/ThreadRow.tsx",
-                    status: "M",
-                    insertions: 5,
-                    deletions: 12,
-                  },
-                  {
-                    path: "apps/app/src/components/sidebar/ProjectRow.stories.tsx",
-                    status: "A",
-                    insertions: 24,
-                    deletions: 0,
-                  },
-                ],
               },
             })}
             workspaceStatusError={null}
@@ -825,31 +858,8 @@ export function ChangedFiles() {
           <ChangedFilesRow
             workspaceStatus={makeWorkspaceStatus({
               workingTree: {
-                hasUncommittedChanges: true,
+                ...DIRTY_WORKING_TREE,
                 state: "dirty_uncommitted",
-                insertions: 47,
-                deletions: 21,
-                lineStatsComplete: true,
-                files: [
-                  {
-                    path: "apps/app/src/components/sidebar/ProjectRow.tsx",
-                    status: "M",
-                    insertions: 18,
-                    deletions: 9,
-                  },
-                  {
-                    path: "apps/app/src/components/sidebar/ThreadRow.tsx",
-                    status: "M",
-                    insertions: 5,
-                    deletions: 12,
-                  },
-                  {
-                    path: "apps/app/src/components/sidebar/ProjectRow.stories.tsx",
-                    status: "A",
-                    insertions: 24,
-                    deletions: 0,
-                  },
-                ],
               },
             })}
             onChangedFileClick={noop}
@@ -860,31 +870,7 @@ export function ChangedFiles() {
         <RowStage>
           <ChangedFilesRow
             workspaceStatus={makeWorkspaceStatus({
-              mergeBase: {
-                mergeBaseBranch: "main",
-                baseRef: "main",
-                aheadCount: 2,
-                behindCount: 0,
-                hasCommittedUnmergedChanges: true,
-                commits: [],
-                insertions: 110,
-                deletions: 24,
-                lineStatsComplete: true,
-                files: [
-                  {
-                    path: "apps/app/src/components/right-panel/ThreadMetadataContent.stories.tsx",
-                    status: "M",
-                    insertions: 38,
-                    deletions: 12,
-                  },
-                  {
-                    path: "apps/app/src/components/right-panel/ThreadMetadataContent.rows.stories.tsx",
-                    status: "A",
-                    insertions: 72,
-                    deletions: 0,
-                  },
-                ],
-              },
+              mergeBase: COMMITTED_MERGE_BASE,
             })}
             onChangedFileClick={noop}
           />
@@ -895,57 +881,10 @@ export function ChangedFiles() {
           <ChangedFilesRow
             workspaceStatus={makeWorkspaceStatus({
               workingTree: {
-                hasUncommittedChanges: true,
+                ...DIRTY_WORKING_TREE,
                 state: "dirty_and_committed_unmerged",
-                insertions: 47,
-                deletions: 21,
-                lineStatsComplete: true,
-                files: [
-                  {
-                    path: "apps/app/src/components/sidebar/ProjectRow.tsx",
-                    status: "M",
-                    insertions: 18,
-                    deletions: 9,
-                  },
-                  {
-                    path: "apps/app/src/components/sidebar/ThreadRow.tsx",
-                    status: "M",
-                    insertions: 5,
-                    deletions: 12,
-                  },
-                  {
-                    path: "apps/app/src/components/sidebar/ProjectRow.stories.tsx",
-                    status: "A",
-                    insertions: 24,
-                    deletions: 0,
-                  },
-                ],
               },
-              mergeBase: {
-                mergeBaseBranch: "main",
-                baseRef: "main",
-                aheadCount: 2,
-                behindCount: 0,
-                hasCommittedUnmergedChanges: true,
-                commits: [],
-                insertions: 110,
-                deletions: 24,
-                lineStatsComplete: true,
-                files: [
-                  {
-                    path: "apps/app/src/components/right-panel/ThreadMetadataContent.stories.tsx",
-                    status: "M",
-                    insertions: 38,
-                    deletions: 12,
-                  },
-                  {
-                    path: "apps/app/src/components/right-panel/ThreadMetadataContent.rows.stories.tsx",
-                    status: "A",
-                    insertions: 72,
-                    deletions: 0,
-                  },
-                ],
-              },
+              mergeBase: COMMITTED_MERGE_BASE,
             })}
             onChangedFileClick={noop}
           />

@@ -27,6 +27,7 @@ import {
   visibleBoardStatuses,
 } from "./drop-position.js";
 import { PriorityIcon, StatusIcon } from "./icons.js";
+import { isActiveThread } from "../detail/meta.js";
 import { STATUS_LABELS } from "../list/lib.js";
 import { Button } from "@bb/shared-ui/button";
 import { DelayedLoading } from "@bb/shared-ui/delayed-loading";
@@ -93,14 +94,7 @@ async function fetchBoard(
             (result) => result.taskThreads,
             () => [],
           );
-        workingByTaskId.set(
-          task.id,
-          threads.filter(
-            (thread) =>
-              thread.liveStatus === "working" ||
-              thread.liveStatus === "starting",
-          ),
-        );
+        workingByTaskId.set(task.id, threads.filter(isActiveThread));
       }),
   );
   const attachmentCounts = new Map<string, number>();

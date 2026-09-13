@@ -2,39 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   requireThreadEventScopeTurnId,
   threadEventScopeSchema,
-  threadEventTypeValues,
-  threadOnlyThreadEventTypes,
-  threadOrTurnThreadEventTypes,
-  threadScopeRationaleByType,
   threadScope,
   turnScope,
-  turnOnlyThreadEventTypes,
   validateThreadEventScope,
 } from "../src/index.js";
 
 describe("thread event scope policy", () => {
-  it("classifies every normalized event type exactly once", () => {
-    const classifiedTypes = [
-      ...threadOnlyThreadEventTypes,
-      ...turnOnlyThreadEventTypes,
-      ...threadOrTurnThreadEventTypes,
-    ];
-
-    expect([...new Set(classifiedTypes)].sort()).toEqual(
-      [...threadEventTypeValues].sort(),
-    );
-    expect(classifiedTypes).toHaveLength(threadEventTypeValues.length);
-  });
-
-  it("documents why each non-turn-only event can be thread-scoped", () => {
-    for (const type of [
-      ...threadOnlyThreadEventTypes,
-      ...threadOrTurnThreadEventTypes,
-    ]) {
-      expect(threadScopeRationaleByType[type]?.length).toBeGreaterThan(0);
-    }
-  });
-
   it("rejects invalid scope at runtime", () => {
     expect(
       validateThreadEventScope({

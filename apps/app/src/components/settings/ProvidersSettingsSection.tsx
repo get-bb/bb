@@ -1,22 +1,5 @@
-import { useMemo, useState, type CSSProperties } from "react";
-import {
-  closestCenter,
-  DndContext,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-  type Modifier,
-} from "@dnd-kit/core";
-import {
-  arrayMove,
-  SortableContext,
-  sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
+import { useState } from "react";
+import { arrayMove } from "@dnd-kit/sortable";
 import type { AppSettings, ProviderInfo } from "@bb/domain";
 import { Button } from "@bb/shared-ui/button";
 import { COARSE_POINTER_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
@@ -25,25 +8,21 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import {
   SettingsBadge,
   SettingsRow,
-  SettingsRowList,
   SettingsSection,
 } from "@/components/ui/settings-section";
 import { useSystemProviders } from "@/hooks/queries/system-queries";
 import { getProviderIconInfo } from "@/lib/provider-icon";
 import { ProviderIconMark } from "./ProviderIconMark";
+import {
+  SortableSettingsRowList,
+  useSortableSettingsRow,
+} from "./sortable-settings-rows";
 
 interface ProvidersSettingsSectionProps {
   disabled: boolean;
   generalSettings: AppSettings;
   onGeneralSettingsChange: (next: AppSettings) => Promise<unknown> | void;
 }
-
-const restrictProviderDragToVerticalAxis: Modifier = ({ transform }) => ({
-  ...transform,
-  x: 0,
-});
-
-const providerDragModifiers: Modifier[] = [restrictProviderDragToVerticalAxis];
 
 function applyProviderOrder(
   providers: readonly ProviderInfo[],
@@ -93,23 +72,16 @@ function SortableProviderRow({
   onGeneralSettingsChange,
   provider,
 }: SortableProviderRowProps) {
-  const {
-    attributes,
-    isDragging,
-    listeners,
-    setActivatorNodeRef,
-    setNodeRef,
-    transform,
-    transition,
-  } = useSortable({ id: provider.id, disabled });
-  const style = useMemo<CSSProperties>(
-    () => ({
-      transform: CSS.Translate.toString(transform),
-      transition,
-    }),
-    [transform, transition],
-  );
-  const ProviderIcon = getProviderIconInfo(provider.id, provider)?.icon;
+  const { setNodeRef, style, isDragging, handle } = useSortableSettingsRow({
+    id: provider.id,
+    disabled,
+    label: provider.displayName,
+  });
+  const ProviderIcon = getProviderIconInfo(
+    "agent",
+    provider.id,
+    provider,
+  )?.icon;
   const isDefault =
     generalSettings.defaultProviderId === provider.id ||
     (generalSettings.defaultProviderId === null && index === 0);
@@ -123,22 +95,7 @@ function SortableProviderRow({
         isDragging && "relative z-10 rounded-md bg-card opacity-90 shadow-lift",
       )}
     >
-      <Button
-        ref={setActivatorNodeRef}
-        type="button"
-        variant="ghost"
-        size="icon"
-        className={cn(
-          "-ml-2 h-8 w-7 shrink-0 touch-none text-muted-foreground",
-          !disabled && "cursor-grab active:cursor-grabbing",
-        )}
-        disabled={disabled}
-        aria-label={`Reorder ${provider.displayName}`}
-        {...attributes}
-        {...listeners}
-      >
-        <Icon name="DragDropVertical" aria-hidden="true" />
-      </Button>
+      {handle}
       <span className="flex size-5 items-center justify-center">
         {ProviderIcon ? (
           <ProviderIconMark
@@ -185,22 +142,9 @@ export function ProvidersSettingsSection({
   const [optimisticOrder, setOptimisticOrder] = useState<string[] | null>(null);
   const providers = applyProviderOrder(serverProviders, optimisticOrder);
   const ids = providers.map((provider) => provider.id);
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    }),
-  );
 
-  const handleDragEnd = (event: DragEndEvent): void => {
-    if (
-      disabled ||
-      typeof event.active.id !== "string" ||
-      typeof event.over?.id !== "string"
-    ) {
-      return;
-    }
-    const next = reorderProviderIds(ids, event.active.id, event.over.id);
+  const handleReorder = (activeId: string, overId: string): void => {
+    const next = reorderProviderIds(ids, activeId, overId);
     if (next === null) return;
     setOptimisticOrder(next);
     let write: Promise<unknown> | void;
@@ -230,27 +174,22 @@ export function ProvidersSettingsSection({
           No agent provider is enabled. Enable a provider plugin under Plugins.
         </p>
       ) : (
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          modifiers={providerDragModifiers}
-          onDragEnd={handleDragEnd}
+        <SortableSettingsRowList
+          ids={ids}
+          disabled={disabled}
+          onReorder={handleReorder}
         >
-          <SortableContext items={ids} strategy={verticalListSortingStrategy}>
-            <SettingsRowList>
-              {providers.map((provider, index) => (
-                <SortableProviderRow
-                  key={provider.id}
-                  disabled={disabled}
-                  generalSettings={generalSettings}
-                  index={index}
-                  onGeneralSettingsChange={onGeneralSettingsChange}
-                  provider={provider}
-                />
-              ))}
-            </SettingsRowList>
-          </SortableContext>
-        </DndContext>
+          {providers.map((provider, index) => (
+            <SortableProviderRow
+              key={provider.id}
+              disabled={disabled}
+              generalSettings={generalSettings}
+              index={index}
+              onGeneralSettingsChange={onGeneralSettingsChange}
+              provider={provider}
+            />
+          ))}
+        </SortableSettingsRowList>
       )}
     </SettingsSection>
   );

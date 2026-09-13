@@ -8,9 +8,12 @@ import {
   type TaskSort,
 } from "../shared/pagination.js";
 import {
+  ISO_DATE_PATTERN,
+  PROJECT_PREFIX_PATTERN,
   presetPermissionModeSchema,
   presetReasoningLevelSchema,
   presetServiceTierSchema,
+  ULID_PATTERN,
 } from "../shared/contract.js";
 import type {
   Attachment,
@@ -30,7 +33,6 @@ import type {
   Preset,
   PresetEnvironmentKind,
   Project,
-  SubtaskDoneCounts,
   Task,
   TaskLabel,
   TaskThread,
@@ -52,9 +54,6 @@ type SqlParameter = string | number;
 const ULID_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 const POSITION_STEP = 1_024;
 const MIN_POSITION_GAP = 0.000_001;
-const PROJECT_PREFIX_PATTERN = /^[A-Z][A-Z0-9]{0,9}$/;
-const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-const ULID_PATTERN = /^[0-7][0-9A-HJKMNP-TV-Z]{25}$/;
 
 interface FolderRow {
   id: string;
@@ -1078,21 +1077,6 @@ export function createTasksStore(db: PluginDatabase) {
       .map(taskFromRow);
   }
 
-  function getSubtaskDoneCounts(parentTaskId: string): SubtaskDoneCounts {
-    requireTask(parentTaskId);
-    return (
-      db
-        .prepare<[string], SubtaskDoneCounts>(
-          `
-        SELECT COUNT(*) AS total,
-          COALESCE(SUM(CASE WHEN status = 'done' THEN 1 ELSE 0 END), 0) AS done
-        FROM tasks WHERE parent_task_id = ?
-      `,
-        )
-        .get(parentTaskId) ?? { total: 0, done: 0 }
-    );
-  }
-
   const updateTaskTransaction = db.transaction(
     (id: string, input: UpdateTaskInput): Task => {
       const current = requireTask(id);
@@ -1454,13 +1438,6 @@ export function createTasksStore(db: PluginDatabase) {
       id,
     );
     return requireComment(id);
-  }
-
-  function deleteComment(id: string): boolean {
-    return (
-      db.prepare<[string]>("DELETE FROM comments WHERE id = ?").run(id)
-        .changes > 0
-    );
   }
 
   function getAttachment(id: string): Attachment | undefined {
@@ -1841,7 +1818,6 @@ export function createTasksStore(db: PluginDatabase) {
     listTasksPage,
     listTasks,
     listSubtasks,
-    getSubtaskDoneCounts,
     updateTask,
     updatePosition,
     deleteTask,
@@ -1859,7 +1835,6 @@ export function createTasksStore(db: PluginDatabase) {
     listComments,
     getLatestAgentComment,
     updateComment,
-    deleteComment,
     createAttachment,
     getAttachment,
     listAttachmentsForTask,

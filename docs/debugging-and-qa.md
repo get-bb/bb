@@ -195,7 +195,14 @@ Gates under `apps/server/test/provider-corpus/`:
 - `timeline-perf.test.ts` measures the 10 largest threads per provider (latest
   page and full page walk, five builds each, calibrated against a synthetic
   thread built in the same run) and compares with `snapshots/perf-baseline.json`.
-  The CI micro-benchmark in the same file needs no corpus.
+  The CI micro-benchmark in the same file needs no corpus. Each sample clears
+  the decoded-event cache and the latest-page selection memo, so the gate keeps
+  measuring cold builds.
+- `timeline-streaming-memo.test.ts` marks each thread active, appends streaming
+  rows to its latest turn tick by tick (plus one late output delta for the
+  previous root turn), and requires every latest-page build to equal a build on
+  a fresh connection with empty caches. It prints how many builds reused the
+  selection memo and the warm and cold tick build times.
 
 Run them:
 
@@ -395,3 +402,10 @@ generated modules and SDK artifacts arrive through explicit dependency edges.
 The source preparation runner supplies `BB_BUILD_TOOLCHAIN` with Node, OS, and
 architecture to partition Turbo cache entries; callers should use the runner
 rather than set this internal build identity themselves.
+
+Built source servers resolve plugins and the bundled marketplace from
+`packages/bundled-plugins/dist` before looking beside the server bundle.
+This prevents legacy `apps/server/dist/builtin-plugins` artifacts left by a
+Turbo cache restore from overriding newly prepared plugins. Installed packages
+use their shipped `server/dist/builtin-plugins` directory. Built-in plugins
+update with the server; users do not update them separately.

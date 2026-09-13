@@ -29,6 +29,8 @@ import type { ThreadTimelinePageRequest } from "../../src/services/threads/timel
 import { resolveProviderPlanCommand } from "../../src/services/providers/provider-plan-command.js";
 import type { ProviderRegistryService } from "../../src/services/providers/provider-registry.js";
 import { previewTimelineResponseOutputs } from "../../src/services/threads/timeline-output-preview.js";
+import { clearStoredEventDecodeCache } from "../../src/services/threads/stored-event-decode-cache.js";
+import { clearTimelineSelectionMemo } from "../../src/services/threads/timeline-selection-memo.js";
 import {
   DEFAULT_MAX_INLINE_OUTPUT_CHARS,
   truncateTimelineResponseOutputs,
@@ -81,7 +83,6 @@ export function loadCorpusThreadIntoDb(
   if (connection === undefined) migrate(db);
   const host = upsertHost(db, noopNotifier, {
     name: "provider-corpus-host",
-    type: "persistent",
   });
   const { project } = createProject(db, noopNotifier, {
     name: "provider-corpus",
@@ -153,6 +154,9 @@ export interface BuiltTimelinePage {
 
 export interface BuildRouteTimelinePageArgs {
   db: DbConnection;
+  eventBudget?: number;
+  includeDiagnosticOperations?: boolean;
+  maxSeq?: number;
   page: ThreadTimelinePageRequest;
   registry: ProviderRegistryService;
   thread: Thread;
@@ -163,18 +167,18 @@ export function buildRouteTimelinePage(
   args: BuildRouteTimelinePageArgs,
 ): BuiltTimelinePage {
   const includeNestedRows = args.variant === "nested";
-  const maxSeq = getLatestThreadSequence(args.db, {
-    threadId: args.thread.id,
-  });
   const { profile, response } = buildThreadTimelineWithProfile(
     args.db,
     args.thread,
     {
-      eventBudget: defaultFeatureFlags.timelineWindowEventBudget,
-      includeDiagnosticOperations: true,
+      eventBudget:
+        args.eventBudget ?? defaultFeatureFlags.timelineWindowEventBudget,
+      includeDiagnosticOperations: args.includeDiagnosticOperations ?? true,
       includeNestedRows,
       maxInlineOutputChars: DEFAULT_MAX_INLINE_OUTPUT_CHARS,
-      maxSeq,
+      maxSeq:
+        args.maxSeq ??
+        getLatestThreadSequence(args.db, { threadId: args.thread.id }),
       page: args.page,
       providerDisplayName: args.registry.get(args.thread.providerId)?.info
         .displayName,
@@ -195,6 +199,22 @@ export function buildRouteTimelinePage(
       ? truncated
       : previewTimelineResponseOutputs(truncated),
   };
+}
+
+export function clearCrossBuildTimelineCaches(db: DbConnection): void {
+  clearStoredEventDecodeCache(db);
+  clearTimelineSelectionMemo(db);
+}
+
+export function selectionWasReused(
+  profile: ThreadTimelineBuildProfile,
+): boolean {
+  const stages = new Set(profile.stageTimings.map((timing) => timing.stage));
+  return (
+    stages.has("selection-memo-lookup") &&
+    !stages.has("group-context-query") &&
+    !stages.has("ordering-context-query")
+  );
 }
 
 export function latestTimelinePage(): ThreadTimelinePageRequest {

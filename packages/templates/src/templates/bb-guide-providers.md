@@ -24,6 +24,10 @@ the explicitly requested provider or Codex, then resolves the model marked
 default by that provider on the target machine (falling back to the first
 catalog model when none is marked).
 
+Model lists answer from the machine's last stored list while a background
+refresh runs, so a list can be hours old. A provider whose refresh keeps
+failing or timing out keeps answering from its last stored list.
+
 Provider-native memory can be controlled on the separate Settings → Providers
 → Codex and Settings → Providers → Claude Code pages. Codex memory controls
 both recall (`memories.use_memories`) and future generation

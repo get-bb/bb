@@ -1,10 +1,10 @@
 import { TERMINAL_DATA_MAX_BYTES } from "@bb/domain";
 import { Terminal } from "@xterm/xterm";
 import { describe, expect, it, vi } from "vitest";
+import { decodeBase64Bytes } from "@/lib/base64-bytes";
 import {
   buildTerminalThemeFromCssColors,
   captureTerminalContextMenuState,
-  decodeTerminalOutputBytes,
   encodeTerminalInputChunks,
   focusTerminalFromTouchRelease,
   forwardTerminalData,
@@ -277,10 +277,10 @@ describe("terminal output encoding", () => {
 
   it("keeps UTF-8 bytes intact when a glyph spans output chunks", () => {
     const encoded = new TextEncoder().encode("🙂");
-    const first = decodeTerminalOutputBytes(
+    const first = decodeBase64Bytes(
       Buffer.from(encoded.subarray(0, 2)).toString("base64"),
     );
-    const second = decodeTerminalOutputBytes(
+    const second = decodeBase64Bytes(
       Buffer.from(encoded.subarray(2)).toString("base64"),
     );
     const decoder = new TextDecoder();

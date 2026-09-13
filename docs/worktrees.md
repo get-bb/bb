@@ -187,3 +187,21 @@ A few quick checks:
    outside bb before debugging through the provisioning transcript.
 5. Run `bash .bb-env-teardown.sh` manually before you delete a test worktree.
    Confirm that repeated runs do not fail or remove shared resources.
+
+## Fresh project clones on machines
+
+Core applies the same setup and teardown policy when a project checkout is freshly
+cloned onto a new machine and the environment provider reports that it owns the
+checkout. `.bb-env-setup.sh` must succeed before the environment is ready.
+`.bb-env-teardown.sh` runs before removal with its own 15-minute timeout; a failure
+is reported but does not prevent removal. A user-maintained checkout attached to
+BB remains unowned and runs neither hook.
+
+Fresh machine clones do not apply `.worktreeinclude`: no local source checkout
+exists on the new host. Supply local files and secrets through core Machine
+environment settings. Keep the repo hook's cache/no-op logic in the repository;
+Modal's stored Dockerfile recipe contains image-build instructions only.
+
+Restoring a machine filesystem does not rerun `.bb-env-setup.sh`. Setup runs when core first creates an owned environment. Fresh machine clones do not apply `.worktreeinclude`; supply local files and secrets through Machine environment settings.
+
+Thread startup does not validate workspace fingerprints, probe agent authentication, or automatically install agent CLIs.

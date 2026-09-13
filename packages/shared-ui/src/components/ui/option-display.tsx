@@ -1,4 +1,4 @@
-import type { ComponentType, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { cn } from "../../lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./tooltip";
 
@@ -16,29 +16,19 @@ export const OPTION_MUTED_CLASS_NAME =
 export interface OptionDisplayProps {
   label: string;
   value: ReactNode;
-  tone?: "default" | "warning";
-  icon?: ComponentType<{ className?: string }>;
   leading?: ReactNode;
   compactValue?: ReactNode;
-  compactValueHiddenWhenTiny?: boolean;
   className?: string;
-  title?: string;
   tooltip?: ReactNode;
-  muted?: boolean;
 }
 
 export function OptionDisplay({
   label,
   value,
-  tone = "default",
-  icon: BrandIcon,
   leading,
   compactValue,
-  compactValueHiddenWhenTiny,
   className,
-  title,
   tooltip,
-  muted,
 }: OptionDisplayProps) {
   const defaultTitle =
     typeof value === "string" ? `${label}: ${value}` : undefined;
@@ -46,33 +36,25 @@ export function OptionDisplay({
   const display = (
     <div
       data-option-display=""
-      title={tooltip ? undefined : (title ?? defaultTitle)}
+      title={tooltip ? undefined : defaultTitle}
       tabIndex={tooltip ? 0 : undefined}
       className={cn(
         "inline-flex",
         OPTION_BASE_CLASS_NAME,
         tooltip &&
           "rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-        muted && OPTION_MUTED_CLASS_NAME,
-        tone === "warning" && "text-warning-text",
+        OPTION_MUTED_CLASS_NAME,
         className,
       )}
     >
       <span className={OPTION_CONTENT_CLASS_NAME}>
-        {leading ??
-          (BrandIcon ? <BrandIcon className="size-4 shrink-0" /> : null)}
+        {leading}
         <span className="sr-only">{label}: </span>
         <span className="min-w-0 truncate" data-promptbox-full-label="">
           {value}
         </span>
         {compactValue ? (
-          <span
-            className="min-w-0 truncate"
-            data-promptbox-compact-label=""
-            data-promptbox-hide-tiny={
-              compactValueHiddenWhenTiny ? "" : undefined
-            }
-          >
+          <span className="min-w-0 truncate" data-promptbox-compact-label="">
             {compactValue}
           </span>
         ) : null}

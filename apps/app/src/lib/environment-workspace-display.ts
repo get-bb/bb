@@ -1,3 +1,4 @@
+import type { Host } from "@bb/domain";
 import type {
   EnvironmentDisplayInfo,
   EnvironmentDisplayProviderLookup,
@@ -22,8 +23,9 @@ export const REUSE_ENVIRONMENT_ICON_NAME: IconName = "Folder02";
 export function shouldShowEnvironmentHostIdentity(
   hasMultipleMachines: boolean,
   isProjectless: boolean,
+  hostType: Host["type"] | null,
 ): boolean {
-  return hasMultipleMachines || isProjectless;
+  return hasMultipleMachines || isProjectless || hostType === "ephemeral";
 }
 
 interface EnvironmentWorkspaceLabelArgs {
@@ -33,6 +35,7 @@ interface EnvironmentWorkspaceLabelArgs {
 }
 
 interface EnvironmentWorkspaceSummaryDisplayArgs extends EnvironmentWorkspaceLabelArgs {
+  hostType: Host["type"] | null;
   hasMultipleMachines: boolean;
   hostName: string | null;
   isProjectless: boolean;
@@ -112,6 +115,7 @@ export function getEnvironmentWorkspaceSummaryDisplay({
   providerLookup,
   environmentName,
   hasMultipleMachines,
+  hostType,
   hostName,
   isProjectless,
 }: EnvironmentWorkspaceSummaryDisplayArgs): EnvironmentWorkspaceSummaryDisplay | null {
@@ -143,7 +147,11 @@ export function getEnvironmentWorkspaceSummaryDisplay({
     return null;
   }
   if (machineIsWorkspaceIdentity(providerLookup)) {
-    return (hasMultipleMachines || isProjectless) && hostName !== null
+    return shouldShowEnvironmentHostIdentity(
+      hasMultipleMachines,
+      isProjectless,
+      hostType,
+    ) && hostName !== null
       ? {
           label: hostName,
           compactLabel: hostName,

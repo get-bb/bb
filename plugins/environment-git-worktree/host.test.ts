@@ -95,7 +95,6 @@ function createInput(args: {
     ...args,
     baseBranch: { kind: "default" as const },
     branchMode: "reset" as const,
-    timeoutMs: 30_000,
   };
 }
 
@@ -131,7 +130,6 @@ describe("worktree host entry", () => {
       branchName: "bb/named-thr_1",
       baseBranch: { kind: "named", name: "release" },
       branchMode: "reset",
-      timeoutMs: 30_000,
     });
     expect(result).toMatchObject({
       status: "created",
@@ -157,7 +155,6 @@ describe("worktree host entry", () => {
       branchName: "bb/detached-thr",
       baseBranch: { kind: "named", name: "v1.0" },
       branchMode: "reset",
-      timeoutMs: 30_000,
     });
     expect(result).toMatchObject({
       status: "created",
@@ -347,7 +344,6 @@ describe("worktree host entry", () => {
       operationId: "remove",
       pathKey: "thr_6",
       path: created.path,
-      timeoutMs: 30_000,
     });
     const lingeringAlive = isPidAlive(lingering.pid ?? 0);
     lingering.kill("SIGKILL");

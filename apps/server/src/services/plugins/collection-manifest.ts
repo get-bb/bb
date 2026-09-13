@@ -72,18 +72,21 @@ export function formatIssues(error: z.ZodError): string {
     .join("; ");
 }
 
-export function parsePluginCollectionManifest(
-  raw: string,
-  location: string,
-): PluginCollectionManifest {
-  let json: unknown;
+export function parseJsonDocument(raw: string, location: string): unknown {
   try {
-    json = JSON.parse(raw);
+    return JSON.parse(raw);
   } catch (error) {
     throw new Error(
       `invalid ${location}: not valid JSON (${error instanceof Error ? error.message : String(error)})`,
     );
   }
+}
+
+export function parsePluginCollectionManifest(
+  raw: string,
+  location: string,
+): PluginCollectionManifest {
+  const json = parseJsonDocument(raw, location);
   const parsed = pluginCollectionManifestSchema.safeParse(json);
   if (!parsed.success) {
     throw new Error(`invalid ${location}: ${formatIssues(parsed.error)}`);

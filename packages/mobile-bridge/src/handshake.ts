@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { MOBILE_BRIDGE_VERSION } from "./version.js";
 
 export const safeAreaInsetsSchema = z
   .object({
@@ -43,8 +42,4 @@ export function parseNativeShellHandshake(
 ): NativeShellHandshake | null {
   const parsed = nativeShellHandshakeSchema.safeParse(value);
   return parsed.success ? parsed.data : null;
-}
-
-export function currentBridgeVersion(): number {
-  return MOBILE_BRIDGE_VERSION;
 }

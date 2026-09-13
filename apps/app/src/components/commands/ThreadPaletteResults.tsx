@@ -10,15 +10,8 @@ import type { ThreadListEntry } from "@bb/domain";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type { ThreadSearchMatch } from "@bb/server-contract";
 import {
-  hasActiveBackgroundAgentActivity,
-  hasActiveBackgroundCommandActivity,
-  hasActiveGoalActivity,
-  hasActivePlanModeActivity,
-  hasActiveWorkflowActivity,
-  isRuntimeBusyThread,
-  isUnreadDoneThread,
   resolveThreadListIndicator,
-  type ThreadListIndicatorState,
+  threadListIndicatorStateForThread,
 } from "@bb/client-core";
 import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
@@ -398,25 +391,15 @@ function ThreadPaletteResultRowComponent({
   const primaryMatch = snippetMatch ?? titleMatch;
   const primaryText = primaryMatch?.text ?? title;
   const primaryHighlightRanges = primaryMatch?.highlightRanges ?? [];
-  const threadUnreadDone = isUnreadDoneThread(thread);
   const hasUnsubmittedDraft = usePromptDraftHasInput({
     kind: "thread",
     projectId: thread.projectId,
     threadId: thread.id,
   });
-  const indicatorState: ThreadListIndicatorState = {
-    hasPendingInteraction: thread.hasPendingInteraction,
+  const indicatorState = threadListIndicatorStateForThread(
+    thread,
     hasUnsubmittedDraft,
-    hasUnreadError: threadUnreadDone && thread.status === "error",
-    hasUnreadSuccess: threadUnreadDone && thread.status !== "error",
-    isBackgroundAgentActive: hasActiveBackgroundAgentActivity(thread),
-    isBackgroundCommandActive: hasActiveBackgroundCommandActivity(thread),
-    isGoalActive: hasActiveGoalActivity(thread),
-    queuedWork: thread.queuedWork,
-    isPlanModeActive: hasActivePlanModeActivity(thread),
-    isRuntimeActive: isRuntimeBusyThread(thread),
-    isWorkflowActive: hasActiveWorkflowActivity(thread),
-  };
+  );
   const indicatorKind = resolveThreadListIndicator(indicatorState);
   const projectMetadata =
     thread.projectId !== PERSONAL_PROJECT_ID && projectName

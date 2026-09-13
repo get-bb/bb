@@ -14,6 +14,8 @@ Use the top-level `bb automation` command. The CLI routes it to this plugin.
 
 Pass `--project` explicitly for every automation command. Inside a thread, automations are stamped origin `agent` and record the creating thread automatically. Automation-spawned threads cannot create automations.
 
+Personal supports automations with `--project proj_personal`. Use `bb project list --include-personal --json` to include it in discovery; an empty default project list does not mean Personal is unavailable.
+
 Choosing a mode:
 
 Use `script` when the output is fully determined by code: watchdogs, threshold alerts, health checks, heartbeats, and API pollers with a fixed output shape. Scripts run on the bb server, with cwd inside the plugin data directory's `scripts/` area. Script automations do not have an environment field and do not accept environment flags.

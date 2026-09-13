@@ -4,9 +4,13 @@ import {
   type FakePluginHost,
   makePluginAgentConfigurationContext,
 } from "@get-bb/plugin-sdk/testing";
-import plugin, { RENDERER_ID, TOOL_NAME } from "./server.js";
+import plugin, { TOOL_NAME } from "./server.js";
 import { TOOL_INPUT_JSON_SCHEMA } from "./tool-definition.js";
-import type { InteractionPayload, ToolResult } from "./contracts.js";
+import {
+  ASK_USER_QUESTION_RENDERER_ID,
+  type InteractionPayload,
+  type ToolResult,
+} from "./contracts.js";
 
 function createHost(): FakePluginHost {
   const host = createFakePluginHost({ pluginId: "ask-user-question" });
@@ -112,7 +116,7 @@ describe("asking a question", () => {
       expect(host.harness.pendingInteractions).toHaveLength(1),
     );
     const pending = host.harness.pendingInteractions[0]!;
-    expect(pending.rendererId).toBe(RENDERER_ID);
+    expect(pending.rendererId).toBe(ASK_USER_QUESTION_RENDERER_ID);
     expect(pending.title).toBe("Database");
     const payload = pending.payload as InteractionPayload;
     expect(payload.questions[0]).toMatchObject({

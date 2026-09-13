@@ -1,15 +1,5 @@
-import { z } from "zod";
+import { toolCallRequestParamsSchema } from "../bridge-requests.js";
 import type { DecodedToolCallRequest } from "./contracts.js";
-
-const normalizedToolCallRequestSchema = z.object({
-  providerThreadId: z.string().min(1),
-  threadId: z.string().min(1).optional(),
-  turnId: z.union([z.string().min(1), z.null()]),
-  callId: z.string().min(1),
-  tool: z.string().min(1),
-  arguments: z.unknown(),
-  providerNativeIds: z.boolean().optional(),
-});
 
 export function decodeNormalizedProviderToolCallRequest(
   requestId: string | number,
@@ -20,7 +10,7 @@ export function decodeNormalizedProviderToolCallRequest(
     return null;
   }
 
-  const parsed = normalizedToolCallRequestSchema.safeParse(params);
+  const parsed = toolCallRequestParamsSchema.safeParse(params);
   if (!parsed.success) {
     return null;
   }

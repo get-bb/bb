@@ -89,6 +89,14 @@ export const familyWeeklySchema = z
 
 export type FamilyWeekly = z.infer<typeof familyWeeklySchema>;
 
+export const EMPTY_FAMILY_WEEKLY: FamilyWeekly = {
+  fable: null,
+  sonnet: null,
+  opus: null,
+  haiku: null,
+  other: null,
+};
+
 export const limitWindowSlotSchema = z.enum(["primary", "secondary"]);
 
 export type LimitWindowSlot = z.infer<typeof limitWindowSlotSchema>;
@@ -97,11 +105,7 @@ export const limitWindowSchema = z
   .object({
     slot: limitWindowSlotSchema,
     windowMinutes: z.number().int().positive().nullable(),
-    utilization: z.number().nullable(),
-    resetAt: z.number().int().nullable(),
-    status: z.string().nullable(),
-    observedAt: z.number().int(),
-    source: z.enum(["header", "usage"]),
+    ...familyQuotaSchema.shape,
   })
   .strict();
 
@@ -152,28 +156,7 @@ export const accountSecretSchema = z.discriminatedUnion("kind", [
 
 export type AccountSecret = z.infer<typeof accountSecretSchema>;
 
-export const quotaSchema = z
-  .object({
-    accountId: z.string().uuid(),
-    fiveHourUtilization: z.number().nullable(),
-    fiveHourResetAt: z.number().int().nullable(),
-    fiveHourStatus: z.string().nullable(),
-    sevenDayUtilization: z.number().nullable(),
-    sevenDayResetAt: z.number().int().nullable(),
-    sevenDayStatus: z.string().nullable(),
-    representativeClaim: z.string().nullable(),
-    familyWeekly: familyWeeklySchema,
-    limitWindows: z.array(limitWindowSchema),
-    observedAt: z.number().int().nullable(),
-    heldUntil: z.number().int().nullable(),
-    error: z.string().nullable(),
-  })
-  .strict();
-
-export type AccountQuota = z.infer<typeof quotaSchema>;
-
-export const accountSummarySchema = accountSchema.extend({
-  lastUsedHostName: z.string().min(1).nullable(),
+const quotaFieldsShape = {
   fiveHourUtilization: z.number().nullable(),
   fiveHourResetAt: z.number().int().nullable(),
   fiveHourStatus: z.string().nullable(),
@@ -186,6 +169,20 @@ export const accountSummarySchema = accountSchema.extend({
   observedAt: z.number().int().nullable(),
   heldUntil: z.number().int().nullable(),
   error: z.string().nullable(),
+};
+
+export const quotaSchema = z
+  .object({
+    accountId: z.string().uuid(),
+    ...quotaFieldsShape,
+  })
+  .strict();
+
+export type AccountQuota = z.infer<typeof quotaSchema>;
+
+export const accountSummarySchema = accountSchema.extend({
+  lastUsedHostName: z.string().min(1).nullable(),
+  ...quotaFieldsShape,
   inFlight: z.number().int().nonnegative(),
   status: z.enum(["disabled", "ready", "held", "exhausted", "error"]),
 });
@@ -319,5 +316,3 @@ export const tokenRotateInputSchema = z
 export const bypassInputSchema = z
   .object({ threadId: z.string().min(1), bypassed: z.boolean() })
   .strict();
-
-export const bypassResultSchema = bypassInputSchema;

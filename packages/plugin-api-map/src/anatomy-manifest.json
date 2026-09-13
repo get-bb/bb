@@ -156,8 +156,8 @@
         {
           "path": "apps/app/src/components/plugin/PluginSidebarFooterItems.tsx",
           "anchors": [
-            "\"aria-expanded\": isActive",
-            "onDisclosureCommand(itemKey, \"toggle\")",
+            "\"aria-expanded\": active",
+            "onDisclosureCommand(footerItemKey(slot), \"toggle\")",
             "<Component dismiss={onDismiss} />"
           ]
         },

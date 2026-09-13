@@ -13,7 +13,6 @@ interface AppLayoutSidebarProps {
   appRoutePath: string;
   settingsRoutePath: string;
   toolsBackRoutePath: string;
-  toolsRoutePath?: string;
 }
 
 export function AppLayoutSidebar({
@@ -23,7 +22,6 @@ export function AppLayoutSidebar({
   appRoutePath,
   settingsRoutePath,
   toolsBackRoutePath,
-  toolsRoutePath,
 }: AppLayoutSidebarProps) {
   const { isCompactViewport, isMobileSidebarClosing } = useSidebar();
   const holdCurrentMode = isCompactViewport && isMobileSidebarClosing;
@@ -39,16 +37,13 @@ export function AppLayoutSidebar({
         <AppSidebar
           onResizeMouseDown={onResizeMouseDown}
           isResizing={isResizing}
-          showTopReserve={true}
           settingsRoutePath={settingsRoutePath}
-          toolsRoutePath={toolsRoutePath}
           mobileHosted={{ hidden: renderedMode !== "app" }}
         />
         {renderedMode === "settings" ? (
           <SettingsSidebar
             onResizeMouseDown={onResizeMouseDown}
             isResizing={isResizing}
-            showTopReserve={true}
             appRoutePath={appRoutePath}
             mobileHosted
           />
@@ -59,7 +54,6 @@ export function AppLayoutSidebar({
             workspace={renderedMode}
             onResizeMouseDown={onResizeMouseDown}
             isResizing={isResizing}
-            showTopReserve={true}
             appRoutePath={toolsBackRoutePath}
             mobileHosted
           />
@@ -73,7 +67,6 @@ export function AppLayoutSidebar({
       <SettingsSidebar
         onResizeMouseDown={onResizeMouseDown}
         isResizing={isResizing}
-        showTopReserve={true}
         appRoutePath={appRoutePath}
       />
     );
@@ -86,7 +79,6 @@ export function AppLayoutSidebar({
         workspace={renderedMode}
         onResizeMouseDown={onResizeMouseDown}
         isResizing={isResizing}
-        showTopReserve={true}
         appRoutePath={toolsBackRoutePath}
       />
     );
@@ -96,9 +88,7 @@ export function AppLayoutSidebar({
     <AppSidebar
       onResizeMouseDown={onResizeMouseDown}
       isResizing={isResizing}
-      showTopReserve={true}
       settingsRoutePath={settingsRoutePath}
-      toolsRoutePath={toolsRoutePath}
     />
   );
 }

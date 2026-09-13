@@ -2,7 +2,6 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { DEFAULT_ENV_SETUP_SCRIPT_NAME } from "@bb/domain";
 import { provisionWorkspace } from "../src/index.js";
 import { listBranches, runGit } from "../src/git.js";
 
@@ -14,19 +13,12 @@ async function makeTempDir(prefix: string): Promise<string> {
   return dir;
 }
 
-async function initRepo(opts?: { setupScript?: string }): Promise<string> {
+async function initRepo(): Promise<string> {
   const repoPath = await makeTempDir("bb-provision-repo-");
   await runGit(["init", "-b", "main"], { cwd: repoPath });
   await runGit(["config", "user.name", "BB Tests"], { cwd: repoPath });
   await runGit(["config", "user.email", "bb@example.com"], { cwd: repoPath });
   await fs.writeFile(path.join(repoPath, "README.md"), "hello\n", "utf8");
-  if (opts?.setupScript) {
-    await fs.writeFile(
-      path.join(repoPath, DEFAULT_ENV_SETUP_SCRIPT_NAME),
-      opts.setupScript,
-      "utf8",
-    );
-  }
   await runGit(["add", "."], { cwd: repoPath });
   await runGit(["commit", "-m", "Initial commit"], { cwd: repoPath });
   return repoPath;
@@ -135,11 +127,6 @@ describe("provisionWorkspace", () => {
         noVerify: false,
       });
       expect(result.commitSha).toBeTruthy();
-
-      await fs.writeFile(path.join(repoPath, "dirty.txt"), "dirty\n", "utf8");
-      await ws.reset();
-      const statusAfter = await ws.getStatus();
-      expect(statusAfter.workingTree.state).toBe("clean");
 
       const branches = await listBranches(ws.path);
       expect(branches).toContain("main");

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   createThreadProvisioningId,
+  getThreadStartupContext,
   threads,
   type DbConnection,
   type DbTransaction,
@@ -184,23 +185,32 @@ function persistThreadProvisionContext(
   );
 }
 
-export function readThreadProvisionContext(
+export function readThreadStartupContextOfKind<T>(
   db: DbConnection | DbTransaction,
   threadId: string,
-): ThreadProvisionContext | null {
-  const stored = db
-    .select({ value: threads.startupContext })
-    .from(threads)
-    .where(eq(threads.id, threadId))
-    .get()?.value;
-  if (stored === null || stored === undefined) return null;
+  kind: "pending" | "provisioning",
+  schema: z.ZodType<T>,
+): T | null {
+  const stored = getThreadStartupContext(db, threadId);
+  if (stored === null) return null;
   const value: unknown = JSON.parse(stored);
   const header = z
     .object({ kind: z.enum(["pending", "provisioning", "dispatched"]) })
     .parse(value);
-  if (header.kind !== "provisioning") return null;
-  const context = persistedThreadProvisionContextSchema.parse(value);
-  return context;
+  if (header.kind !== kind) return null;
+  return schema.parse(value);
+}
+
+export function readThreadProvisionContext(
+  db: DbConnection | DbTransaction,
+  threadId: string,
+): ThreadProvisionContext | null {
+  return readThreadStartupContextOfKind(
+    db,
+    threadId,
+    "provisioning",
+    persistedThreadProvisionContextSchema,
+  );
 }
 
 export function createThreadStartup(

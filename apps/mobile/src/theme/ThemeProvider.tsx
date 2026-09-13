@@ -10,7 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { Appearance, useColorScheme } from "react-native";
-import { FONT_FAMILIES } from "./fonts";
+import { getPreferencesStorage } from "@/lib/native/preferences-storage";
 import {
   readThemePreference,
   resolveThemeMode,
@@ -19,12 +19,10 @@ import {
   type ThemeModePreference,
   type ThemePreferenceStorage,
 } from "./theme-preference";
-import { createThemePreferenceStorage } from "./theme-storage";
 import { buildThemeVars } from "./theme-vars";
 import {
   nativeRadii,
   nativeThemes,
-  nativeTypography,
   type NativeThemeTokens,
 } from "./theme.native";
 
@@ -34,8 +32,6 @@ export interface Theme {
   preference: ThemeModePreference;
   tokens: NativeThemeTokens;
   radii: typeof nativeRadii;
-  typography: typeof nativeTypography;
-  fonts: typeof FONT_FAMILIES;
   setMode: (preference: ThemeModePreference) => void;
 }
 
@@ -46,17 +42,11 @@ export interface ThemeProviderProps {
   palette?: BuiltInThemeId;
 }
 
-let defaultStorage: ThemePreferenceStorage | null = null;
-function getDefaultStorage(): ThemePreferenceStorage {
-  defaultStorage ??= createThemePreferenceStorage();
-  return defaultStorage;
-}
-
 export function ThemeProvider({
   children,
   palette = "default",
 }: ThemeProviderProps) {
-  const [store] = useState(getDefaultStorage);
+  const [store] = useState<ThemePreferenceStorage>(getPreferencesStorage);
   const [preference, setPreference] = useState<ThemeModePreference>(() =>
     readThemePreference(store),
   );
@@ -86,8 +76,6 @@ export function ThemeProvider({
       preference,
       tokens,
       radii: nativeRadii,
-      typography: nativeTypography,
-      fonts: FONT_FAMILIES,
       setMode,
     }),
     [palette, mode, preference, tokens, setMode],

@@ -9,14 +9,18 @@ import {
   fetchOAuthRefresh,
   filterRequestHeaders,
   mountedUpstreamUrl,
+  oauthSecretDueForRefresh,
 } from "./provider-adapter.js";
-import { isQuotaRejection, quotaFromHeaders } from "./quota.js";
+import {
+  epochMilliseconds,
+  isQuotaRejection,
+  quotaFromHeaders,
+} from "./quota.js";
 import { parseRequestBody } from "./request-body.js";
 import { quotaFromUsage } from "./usage.js";
 
 const OAUTH_CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
 const OAUTH_BETA = "oauth-2025-04-20";
-const REFRESH_WINDOW_MS = 5 * 60 * 1_000;
 const USAGE_REQUEST_TIMEOUT_MS = 10_000;
 const ALLOWED_REQUEST_HEADERS = new Set([
   "accept",
@@ -100,15 +104,8 @@ export function createClaudeAdapter(options: {
     quotaFromHeaders,
     isQuotaRejection,
     async refreshSecret(context) {
-      const secret = context.secret;
-      if (
-        secret.kind !== "oauth" ||
-        (!context.forceRefresh &&
-          (secret.expiresAt === null ||
-            secret.expiresAt > context.now() + REFRESH_WINDOW_MS))
-      ) {
-        return { secret, refreshed: false };
-      }
+      const secret = oauthSecretDueForRefresh(context);
+      if (secret === null) return { secret: context.secret, refreshed: false };
       const parsed = refreshResponseSchema.parse(
         JSON.parse(
           await fetchOAuthRefresh(context, options.refreshUrl, {
@@ -127,10 +124,7 @@ export function createClaudeAdapter(options: {
         kind: "oauth",
         accessToken: parsed.access_token,
         refreshToken: parsed.refresh_token ?? secret.refreshToken,
-        expiresAt:
-          rawExpiresAt < 1_000_000_000_000
-            ? Math.round(rawExpiresAt * 1_000)
-            : Math.round(rawExpiresAt),
+        expiresAt: epochMilliseconds(rawExpiresAt),
         ...(secret.idToken === undefined ? {} : { idToken: secret.idToken }),
       };
       await context.accounts.writeSecret(context.account.id, refreshed);

@@ -137,4 +137,3 @@ export const gitBranchOptionsSchema = z.object({
 export const projectSourceCheckoutSchema = gitSourceInspectionSchema.extend(
   gitBranchOptionsSchema.shape,
 );
-export type ProjectSourceCheckout = z.infer<typeof projectSourceCheckoutSchema>;

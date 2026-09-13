@@ -40,11 +40,6 @@ import {
   type ViewProviderExecutionMessage,
   type ViewWebActivityMessage,
 } from "./tool-activity-cells.js";
-export { flushActiveToolCell } from "./tool-activity-cells.js";
-export {
-  onWebActivityBegin,
-  onWebActivityEnd,
-} from "./tool-activity-web-projection.js";
 
 type InterruptibleToolMessage =
   | ViewProviderExecutionMessage

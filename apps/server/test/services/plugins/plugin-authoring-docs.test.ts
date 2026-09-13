@@ -2,6 +2,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import ts from "typescript";
 import * as pluginSdkApp from "@get-bb/plugin-sdk/app";
 import {
   type BbPluginApi,
@@ -24,6 +25,7 @@ import {
   type PluginNewThreadPanelProps,
   type PluginPendingInteractionProps,
   type PluginEnvironmentProviderInputsProps,
+  type PluginMachineProviderInputsProps,
   type PluginProviderIconRegistration,
   type PluginTimelineRendererProps,
   type PluginSettingDescriptor,
@@ -165,6 +167,8 @@ const BB_PLUGIN_API_KEYS = [
   "experimental_aiServices",
   "experimental_hooks",
   "experimental_environments",
+  "experimental_machines",
+  "experimental_serverAccess",
   "sdk",
   "onDispose",
 ] as const satisfies readonly (keyof BbPluginApi)[];
@@ -209,6 +213,8 @@ const _assertAllAuthModesListed: MissingAuthMode extends never ? true : never =
 void _assertAllAuthModesListed;
 
 const THREAD_EVENT_PAYLOAD_FIELDS = {
+  "experimental_thread.events": ["thread", "sequence"],
+  "experimental_terminal.input": ["terminal"],
   "thread.created": ["thread"],
   "thread.active": ["thread"],
   "thread.idle": ["thread", "lastAssistantText"],
@@ -267,6 +273,7 @@ type SlotPropsByName = {
   experimental_providerIcon: PluginProviderIconRegistration;
   experimental_timelineRenderer: PluginTimelineRendererProps;
   experimental_environmentProviderInputs: PluginEnvironmentProviderInputsProps;
+  experimental_machineProviderInputs: PluginMachineProviderInputsProps;
 };
 
 type MissingSlot = Exclude<keyof PluginAppSlots, keyof SlotPropsByName>;
@@ -274,6 +281,7 @@ const _assertAllSlotsListed: MissingSlot extends never ? true : never = true;
 void _assertAllSlotsListed;
 
 const APP_BUILDER_FIELDS = [
+  "experimental_icons",
   "slots",
   "composer",
   "contentScripts",
@@ -377,7 +385,7 @@ const FRONTEND_SLOT_PROP_FIELDS = {
   messageDirective: ["attributes", "source", "message", "openWorkspaceFile"],
   messageAction: ["threadId", "message", "selectedText", "openPanel"],
   commandPaletteAction: ["threadId", "projectId", "openPanel"],
-  experimental_providerIcon: ["providerId", "icon"],
+  experimental_providerIcon: ["providerKind", "providerId", "icon"],
   experimental_timelineRenderer: [
     "row",
     "payload",
@@ -387,10 +395,11 @@ const FRONTEND_SLOT_PROP_FIELDS = {
   ],
   experimental_environmentProviderInputs: [
     "projectId",
-    "hostId",
+    "target",
     "value",
     "onChange",
   ],
+  experimental_machineProviderInputs: ["value", "onChange"],
 } as const satisfies {
   [S in keyof SlotPropsByName]: readonly (keyof SlotPropsByName[S])[];
 };
@@ -515,14 +524,41 @@ describe("bb-plugin-authoring skill", () => {
   const skillEntry = readFileSync(SKILL_PATH, "utf8");
   const skill = readSkillTree();
 
-  it("does not advertise unshipped machine providers", () => {
-    for (const doc of [
-      skillEntry,
-      readReference("frontend-renderer-slots.md"),
-      readReference("backend-events.md"),
-    ]) {
-      expect(doc).not.toMatch(/machine providers?|custom-machine/);
-    }
+  it("typechecks the machine provider guide example against the public SDK", () => {
+    const source = readReference("backend-machines.md").match(
+      /```ts\n([\s\S]*?)```/u,
+    )?.[1];
+    expect(source).toBeDefined();
+    const filename = fileURLToPath(
+      new URL("./machine-guide-example.ts", import.meta.url),
+    );
+    const options: ts.CompilerOptions = {
+      strict: true,
+      noEmit: true,
+      skipLibCheck: true,
+      target: ts.ScriptTarget.ESNext,
+      module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext,
+    };
+    const host = ts.createCompilerHost(options);
+    const readSource = host.getSourceFile.bind(host);
+    host.getSourceFile = (
+      file,
+      languageVersion,
+      onError,
+      shouldCreateNewSourceFile,
+    ) =>
+      file === filename
+        ? ts.createSourceFile(filename, source!, languageVersion)
+        : readSource(file, languageVersion, onError, shouldCreateNewSourceFile);
+    const program = ts.createProgram([filename], options, host);
+    expect(
+      ts
+        .getPreEmitDiagnostics(program)
+        .map((diagnostic) =>
+          ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"),
+        ),
+    ).toEqual([]);
   });
 
   it("has frontmatter naming the skill after its directory", () => {
@@ -667,7 +703,7 @@ describe("bb-plugin-authoring skill", () => {
     expect(readReference("frontend-components.md")).not.toContain(
       'workspace: { type: "personal" }',
     );
-    expect(readReference("backend-events.md")).toContain("Twelve events.");
+    expect(readReference("backend-events.md")).toContain("Fourteen events.");
     expect(readReference("backend-events.md")).toContain(
       "The seven `thread.*` ones",
     );

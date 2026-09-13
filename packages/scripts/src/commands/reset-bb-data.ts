@@ -1,11 +1,10 @@
 import { existsSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, isAbsolute, resolve } from "node:path";
+import { isAbsolute, resolve } from "node:path";
 import { resolveContainedPath } from "@bb/process-utils";
-import readline from "node:readline/promises";
-import { fileURLToPath } from "node:url";
 import {
   bold,
+  confirmTypedWord,
   cyan,
   dim,
   green,
@@ -13,20 +12,17 @@ import {
   log,
   endStep,
 } from "../lib/script-helpers.js";
+import { resolveDevDataDir } from "../lib/dev-restart-utils.js";
+import { runMainIfEntrypoint } from "../lib/script-entry.js";
 import {
-  resolveCurrentDevInstanceConfig,
   resolveRuntimeDataDir,
   resolveRuntimeMode,
   type BbRuntimeMode,
 } from "@bb/config/runtime";
 
-const commandDir = dirname(fileURLToPath(import.meta.url));
-const packageRoot = resolve(commandDir, "..", "..");
-const repoRoot = resolve(packageRoot, "..", "..");
-
 function resolveResetDataDir(mode: BbRuntimeMode): string {
   if (mode === "dev") {
-    return resolveCurrentDevInstanceConfig(repoRoot).dataDir;
+    return resolveDevDataDir();
   }
 
   return resolveRuntimeDataDir({
@@ -50,7 +46,7 @@ export function resolveResetTargets(args: Set<string>): string[] {
         homeDir: homedir(),
         mode: "prod",
       }),
-      resolveCurrentDevInstanceConfig(repoRoot).dataDir,
+      resolveDevDataDir(),
     ]);
   }
 
@@ -93,36 +89,25 @@ export function renderHelpText(): string {
 }
 
 async function confirmReset(targets: string[]): Promise<boolean> {
-  if (!process.stdin.isTTY || !process.stdout.isTTY) {
-    throw new Error(
-      "Interactive confirmation requires a TTY. Re-run with --yes to confirm.",
-    );
-  }
-
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
+  return confirmTypedWord({
+    renderIntro: () => {
+      process.stdout.write("\n");
+      log(
+        yellow("!"),
+        "This will permanently delete bb-managed local data at:",
+      );
+      for (const target of targets) {
+        log(" ", dim(target));
+      }
+      process.stdout.write("\n");
+      log(
+        " ",
+        dim("Provider auth/config managed outside bb will be left untouched."),
+      );
+      process.stdout.write("\n");
+    },
+    word: "reset",
   });
-
-  try {
-    process.stdout.write("\n");
-    log(yellow("!"), "This will permanently delete bb-managed local data at:");
-    for (const target of targets) {
-      log(" ", dim(target));
-    }
-    process.stdout.write("\n");
-    log(
-      " ",
-      dim("Provider auth/config managed outside bb will be left untouched."),
-    );
-    process.stdout.write("\n");
-    const answer = await rl.question(
-      `  ${dim("?")}  Type ${bold('"reset"')} to continue: `,
-    );
-    return answer.trim() === "reset";
-  } finally {
-    rl.close();
-  }
 }
 
 async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
@@ -175,14 +160,4 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
   process.stdout.write("\n");
 }
 
-if (
-  process.argv[1] != null &&
-  resolve(process.argv[1]) === fileURLToPath(import.meta.url)
-) {
-  void main().catch((error) => {
-    const message =
-      error instanceof Error ? (error.stack ?? error.message) : String(error);
-    process.stderr.write(`${message}\n`);
-    process.exitCode = 1;
-  });
-}
+runMainIfEntrypoint(import.meta.url, main);

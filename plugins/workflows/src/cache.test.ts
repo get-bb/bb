@@ -276,7 +276,6 @@ describe("workflow call result reuse", () => {
       "running",
       "failed",
       "cancelled",
-      "incomplete",
     ];
     for (const status of nonReusableStatuses) {
       expect(reusableSuccessfulResult({ status, result: "stale" })).toEqual({

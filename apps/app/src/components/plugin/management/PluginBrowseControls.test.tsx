@@ -31,7 +31,6 @@ describe("PluginBrowseCategoryFilter", () => {
   it("shows searchable counts and checkboxes", () => {
     render(
       <PluginBrowseCategoryFilter
-        selectionMode="multiple"
         options={OPTIONS}
         value={[]}
         onChange={() => undefined}
@@ -64,7 +63,6 @@ describe("PluginBrowseCategoryFilter", () => {
       const [value, setValue] = useState<string[]>([]);
       return (
         <PluginBrowseCategoryFilter
-          selectionMode="multiple"
           options={OPTIONS}
           value={value}
           onChange={setValue}
@@ -98,9 +96,8 @@ describe("PluginBrowseCategoryFilter", () => {
     const onChange = vi.fn();
     render(
       <PluginBrowseCategoryFilter
-        selectionMode="single"
         options={OPTIONS}
-        value="tasks-and-workflows"
+        value={["tasks-and-workflows"]}
         onChange={onChange}
       />,
     );
@@ -113,20 +110,18 @@ describe("PluginBrowseCategoryFilter", () => {
     fireEvent.keyDown(document.activeElement as HTMLElement, { key: "End" });
     expect(document.activeElement?.textContent).toContain("Tasks & Workflows");
     fireEvent.click(document.activeElement as HTMLElement);
-    expect(onChange).toHaveBeenCalledWith(null);
+    expect(onChange).toHaveBeenCalledWith([]);
   });
 
   it("keeps keyboard focus inside each filter instance", () => {
     render(
       <>
         <PluginBrowseCategoryFilter
-          selectionMode="multiple"
           options={OPTIONS}
           value={[]}
           onChange={() => undefined}
         />
         <PluginBrowseCategoryFilter
-          selectionMode="multiple"
           options={OPTIONS}
           value={[]}
           onChange={() => undefined}

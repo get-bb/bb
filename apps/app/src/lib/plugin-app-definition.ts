@@ -1,11 +1,7 @@
 import type { PluginAppDefinition, PluginAppSetup } from "@get-bb/plugin-sdk";
-import {
-  collectPluginAppRegistrations,
-  type CollectedPluginAppRegistrations,
-} from "@get-bb/plugin-sdk/internal/plugin-app-collector";
+import { collectPluginAppRegistrations } from "@get-bb/plugin-sdk/internal/plugin-app-collector";
 
 export { collectPluginAppRegistrations };
-export type { CollectedPluginAppRegistrations };
 
 export function definePluginApp(setup: PluginAppSetup): PluginAppDefinition {
   if (typeof setup !== "function") {

@@ -212,9 +212,9 @@ describe("workspace root watch events inside nested heavy directories (#1779)", 
           "module.exports={changed:true}\n",
         );
         await fs.writeFile(nestedGitFile, "marker\n");
+        await fs.writeFile(visibleFile, "visible\n");
         await vi.waitFor(
-          async () => {
-            await fs.writeFile(visibleFile, `visible ${Date.now()}\n`);
+          () => {
             expect(
               events.some((event) => event.changedPaths.includes(visibleFile)),
             ).toBe(true);

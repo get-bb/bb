@@ -92,7 +92,6 @@ export const scriptedEchoOptionsSchema = z
     goalClearReportsCleared: z.boolean().optional(),
     swallowTurnStart: z.boolean().optional(),
     sessionRestorable: z.boolean().optional(),
-    warnOnTurn: z.boolean().optional(),
     toolCallThreadIdHint: z.string().min(1).optional(),
     recoveryThreadIdHint: z.string().min(1).optional(),
     approvalEnforcedBy: z.enum(["runtime", "provider"]).optional(),
@@ -572,14 +571,6 @@ function beginTurn(args: {
     });
   }
   deltas.push({ kind: "turn.open", providerTurnId });
-  if (session.options.warnOnTurn === true) {
-    deltas.push({
-      kind: "provider.warning",
-      category: "general",
-      summary: "scripted warning",
-      vouchedTurn: true,
-    });
-  }
   emitDeltas(session.threadId, deltas);
   emitRecoveryHint(session.threadId, plan.recoverNowKind);
   if (plan.backgroundTask) {

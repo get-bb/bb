@@ -5,7 +5,6 @@ import {
   readFile,
   realpath,
   rm,
-  stat,
   symlink,
   writeFile,
 } from "node:fs/promises";
@@ -15,21 +14,13 @@ import { isPluginOwnedIconPath, pluginPackageJsonSchema } from "@bb/domain";
 import { buildPluginApp } from "./build-plugin-app.js";
 import { buildPluginServer } from "./build-plugin-server.js";
 import { buildPluginHost } from "./build-plugin-host.js";
+import { pathExists } from "./plugin-sdk-install.js";
 import type { PluginBuildToolchain } from "./toolchain.js";
 
 const RUNTIME_DIRS = ["dist", "skills"] as const;
 
-async function exists(filePath: string): Promise<boolean> {
-  try {
-    await stat(filePath);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 async function copyIfExists(from: string, to: string): Promise<void> {
-  if (await exists(from)) {
+  if (await pathExists(from)) {
     await cp(from, to, { recursive: true });
   }
 }
@@ -65,7 +56,7 @@ async function writeRuntimePackageJson(args: {
 
 async function runStageAssets(sourceRoot: string): Promise<void> {
   const scriptPath = path.join(sourceRoot, "scripts", "stage-assets.mjs");
-  if (!(await exists(scriptPath))) return;
+  if (!(await pathExists(scriptPath))) return;
   await import(pathToFileURL(scriptPath).href);
 }
 
@@ -140,7 +131,7 @@ export async function preparePluginRuntime(args: {
         ),
     });
     const modules = path.join(args.sourceRoot, "node_modules");
-    if (await exists(modules)) {
+    if (await pathExists(modules)) {
       await symlink(
         await realpath(modules),
         path.join(buildRoot, "node_modules"),

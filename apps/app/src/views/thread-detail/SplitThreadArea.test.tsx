@@ -216,13 +216,11 @@ vi.mock("@/components/plugin/PluginPanelRightPanelHost", () => ({
     children,
     flushPageInsets,
     panelPath,
-    pluginDetailTabsEnabled,
     pluginId,
   }: {
     children: ReactNode;
     flushPageInsets?: boolean;
     panelPath: string;
-    pluginDetailTabsEnabled?: boolean;
     pluginId: string;
   }) => {
     const pane = useContext(PaneContext);
@@ -262,18 +260,13 @@ vi.mock("@/components/plugin/PluginPanelRightPanelHost", () => ({
         data-testid="plugin-browser-host"
         data-flush-page-insets={String(flushPageInsets === true)}
         data-panel-path={panelPath}
-        data-plugin-detail-tabs-enabled={String(
-          pluginDetailTabsEnabled === true,
-        )}
         data-plugin-id={pluginId}
         data-detail-tab-open={String(isDetailTabOpen)}
       >
         {children}
-        {pluginDetailTabsEnabled === true ? (
-          <button type="button" onClick={() => setIsDetailTabOpen(true)}>
-            Open plugin detail tab
-          </button>
-        ) : null}
+        <button type="button" onClick={() => setIsDetailTabOpen(true)}>
+          Open plugin detail tab
+        </button>
       </div>
     );
   },
@@ -672,7 +665,6 @@ describe("SplitThreadArea", () => {
     expect(host.dataset.pluginId).toBe("docs");
     expect(host.dataset.panelPath).toBe("docs");
     expect(host.dataset.flushPageInsets).toBe("true");
-    expect(host.dataset.pluginDetailTabsEnabled).toBe("true");
   });
 
   it("preserves detail state within the Guide and clears it for another plugin page", async () => {
@@ -682,7 +674,6 @@ describe("SplitThreadArea", () => {
     });
 
     const host = await screen.findByTestId("plugin-browser-host");
-    expect(host.dataset.pluginDetailTabsEnabled).toBe("true");
     fireEvent.click(
       screen.getByRole("button", { name: "Open plugin detail tab" }),
     );

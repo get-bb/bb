@@ -395,6 +395,24 @@ describe("Account Pool settings", () => {
     expect(slot.getByText("Opus 7 day")).toBeTruthy();
   });
 
+  it("shows the email beside a display-name label in the row and detail dialog", async () => {
+    const slot = render([
+      account({ label: "Person Example", email: "person@example.com" }),
+      account({
+        id: "22222222-2222-4222-8222-222222222222",
+        label: "Claude API key",
+        email: null,
+      }),
+    ]);
+    expect(await slot.findByText("Person Example")).toBeTruthy();
+    expect(slot.getAllByText("person@example.com")).toHaveLength(1);
+    fireEvent.click(
+      slot.getByRole("button", { name: "Open Person Example details" }),
+    );
+    expect(await slot.findByText("Email")).toBeTruthy();
+    expect(slot.getAllByText("person@example.com")).toHaveLength(2);
+  });
+
   function codexLoginStart() {
     return {
       sessionId: "33333333-3333-4333-8333-333333333333",

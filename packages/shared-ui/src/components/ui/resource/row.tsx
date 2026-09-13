@@ -1,4 +1,4 @@
-import type { ComponentProps, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { Button } from "../button";
 import { EmptyStatePanel } from "../empty-state";
 import {
@@ -124,9 +124,7 @@ export function ResourceOverflowMenu({
 export function ResourceActionButton({
   label,
   tooltipLabel,
-  tooltipSide,
   icon,
-  tone = "muted",
   loading = false,
   disabled = false,
   disabledReason,
@@ -135,9 +133,7 @@ export function ResourceActionButton({
 }: {
   label: string;
   tooltipLabel?: string;
-  tooltipSide?: ComponentProps<typeof TooltipContent>["side"];
   icon: IconName;
-  tone?: "muted" | "destructive";
   loading?: boolean;
   disabled?: boolean;
   disabledReason?: ReactNode;
@@ -154,7 +150,6 @@ export function ResourceActionButton({
             size="icon"
             className={cn(
               "size-6 p-0 text-muted-foreground hover:text-foreground",
-              tone === "destructive" && "hover:text-destructive",
               disabled &&
                 disabledReason !== undefined &&
                 "cursor-not-allowed opacity-50 hover:bg-transparent hover:text-muted-foreground",
@@ -179,7 +174,7 @@ export function ResourceActionButton({
             />
           </Button>
         </TooltipTrigger>
-        <TooltipContent side={tooltipSide}>
+        <TooltipContent>
           {disabled && disabledReason
             ? disabledReason
             : (tooltipLabel ?? label)}
@@ -194,9 +189,7 @@ export function ResourceRow({
   title,
   titleMeta,
   description,
-  status,
   state,
-  selected = false,
   muted = false,
   persistentActions,
   trailingMeta,
@@ -211,9 +204,7 @@ export function ResourceRow({
   title: ReactNode;
   titleMeta?: ReactNode;
   description?: ReactNode;
-  status?: ReactNode;
   state?: ReactNode;
-  selected?: boolean;
   muted?: boolean;
   persistentActions?: ReactNode;
   trailingMeta?: ReactNode;
@@ -224,7 +215,6 @@ export function ResourceRow({
   openLabel?: string;
   onOpen: () => void;
 }) {
-  const rowState = state ?? status;
   const hasLeading =
     leading !== undefined && leading !== null && leading !== false;
   return (
@@ -235,7 +225,6 @@ export function ResourceRow({
         hasLeading
           ? "grid-cols-[1.5rem_minmax(0,1fr)_auto]"
           : "grid-cols-[minmax(0,1fr)_auto]",
-        selected && "bg-state-active/50",
         muted && "opacity-60",
         className,
       )}
@@ -265,7 +254,7 @@ export function ResourceRow({
                 {titleMeta}
               </span>
             ) : null}
-            {rowState}
+            {state}
           </span>
         </button>
         {description ? (
@@ -325,11 +314,9 @@ export function ResourceRowDetailChevron() {
 
 export function ResourceListPanel({
   children,
-  maxHeightClassName,
   className,
 }: {
   children: ReactNode;
-  maxHeightClassName?: string;
   className?: string;
 }) {
   return (
@@ -340,14 +327,7 @@ export function ResourceListPanel({
         className,
       )}
     >
-      <div
-        className={cn(
-          maxHeightClassName && "overflow-y-auto",
-          maxHeightClassName,
-        )}
-      >
-        <div className="cursor-default divide-y divide-border">{children}</div>
-      </div>
+      <div className="cursor-default divide-y divide-border">{children}</div>
     </div>
   );
 }

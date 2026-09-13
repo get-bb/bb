@@ -3,6 +3,7 @@ import {
   type ConnectCredential,
   type DesktopSession,
 } from "@bb/connect-client";
+import { describeError } from "../describe-error";
 import type { ConnectServerProfile } from "../profiles/profile";
 import { mapAuthError } from "./auth-error";
 import { installSessionCookie, type CookieStoreLike } from "./cookie-store";
@@ -31,10 +32,6 @@ export interface SessionScheduler {
   stop(): void;
   getState(): SessionState;
   onStateChange(listener: (state: SessionState) => void): () => void;
-}
-
-function describe(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 export function createSessionScheduler(
@@ -104,12 +101,12 @@ export function createSessionScheduler(
       if (!isCurrent()) return state;
       if (mapAuthError(error) === "auth-required") {
         clearTimer();
-        setState({ status: "auth-required", detail: describe(error) });
+        setState({ status: "auth-required", detail: describeError(error) });
         return state;
       }
       if (mode === "verify") return state;
       const retryAt = Date.now() + SESSION_RETRY_DELAY_MS;
-      setState({ status: "error", detail: describe(error), retryAt });
+      setState({ status: "error", detail: describeError(error), retryAt });
       scheduleAt(retryAt, startedGeneration);
       return state;
     }

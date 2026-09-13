@@ -10,8 +10,8 @@ import {
   pluginCommandsSkillDir,
 } from "../../../src/services/plugins/plugin-commands-skill.js";
 import {
-  resolveInjectedSkillSources,
   resolveProjectSkillSourceFromContent,
+  resolveSkillCatalogEntries,
 } from "../../../src/services/skills/injected-skills.js";
 import { applyLoggedThreadLifecycleEvent } from "../../../src/services/threads/lifecycle-outcome.js";
 import {
@@ -123,14 +123,13 @@ describe("hero plugin: agent-enrichment", () => {
     expect(content).toContain("## bb docs —");
     expect(content).toContain("bb docs search <query...>");
 
-    const sources = resolveInjectedSkillSources(testLogger, {
+    const sources = resolveSkillCatalogEntries(testLogger, {
       additionalSkillsRootPaths: [
         generatedSkillsRootPath(harness.config.dataDir),
       ],
-      builtinSkillsRootPath: join(harness.config.dataDir, "builtin-skills"),
       dataDir: harness.config.dataDir,
       skillTreeRegistry: harness.deps.skillTreeRegistry,
-    });
+    }).map((entry) => entry.runtimeSource);
     expect(
       sources.find((source) => source.name === "plugin-commands"),
     ).toMatchObject({ kind: "tree", entryPath: "SKILL.md" });
@@ -143,12 +142,11 @@ describe("hero plugin: agent-enrichment", () => {
         rootPath: join(EXAMPLES_DIR, "agent-enrichment", "skills"),
       }),
     );
-    const sources = resolveInjectedSkillSources(testLogger, {
-      builtinSkillsRootPath: join(harness.config.dataDir, "builtin-skills"),
+    const sources = resolveSkillCatalogEntries(testLogger, {
       dataDir: harness.config.dataDir,
       pluginSkillRoots,
       skillTreeRegistry: harness.deps.skillTreeRegistry,
-    });
+    }).map((entry) => entry.runtimeSource);
     const skill = sources.find((source) => source.name === "repo-conventions");
     expect(skill).toBeDefined();
     const skillRoot = join(

@@ -57,6 +57,27 @@ BB_HOST_DAEMON_PORT only for an intentional non-default target.
   providers that accept `{}` use it when the flag is omitted
   (`bb environment providers --json` prints both facts). `--base-branch`
   belongs to `--new-environment worktree` only.
+- Enroll an existing machine with `bb machine create --provider manual`; run
+  the printed command on the target. `--no-wait` returns its host ID.
+  Cancel with `bb machine remove <host-id>`. Removal revokes access; use the
+  original `install-machine.sh --uninstall --host-id <host-id>` on that box.
+- Create a standalone machine with `bb machine create --provider <id>`; use
+  `--inputs <JSON>` for non-secret provider inputs and `--key` for retry identity.
+- List plugin-provisioned machine choices with `bb machine providers`. Create a
+  machine and an explicit environment with
+  `bb thread spawn --new-machine <provider-id> --environment-provider <id>`; add
+  `--machine-inputs <json>` when its schema requires inputs. Machine inputs are
+  persisted and non-secret; credentials belong in plugin settings. Composed
+  environments choose their own machine: use `--environment-provider modal-sandbox`
+  without machine selectors and pass `--machine-inputs <json>` when configuring
+  the composition's machine provider.
+- Use `bb machine enroll` for a private core-prepared bundle. Local lifecycle is
+  handled by `install-machine.sh --start|--stop|--uninstall --host-id <id>`;
+  see references/thread-creation.md for ownership checks.
+- Use `bb machine suspend|resume <id-or-name>` only for providers that expose
+  suspend and resume. Resume waits for pending suspension and is a no-op
+  when already active. Use `bb machine retry-cleanup <id-or-name>` to retry a
+  failed provider teardown immediately.
 - `bb environment providers` lists Project checkout, Worktree, then other
   installed providers by display name. With `--project <id> --machine <id>`
   it also prints that machine's availability (`available`, `setup-required`,
@@ -64,7 +85,7 @@ BB_HOST_DAEMON_PORT only for an intentional non-default target.
   through `bb settings show` and `bb settings general <key> <value>`.
 - The server keeps a registry of sidebar layout preferences (organization
   mode, section order, collapsed rows, navigation entries): `bb settings ui
-  list`, `get`, `set`, and `reset`.
+list`, `get`, `set`, and `reset`.
 - Query provider models on the machine that will run the thread.
 - Prefer non-interactive commands and machine-readable output for automation.
 - Pass `--yes` for a confirmed destructive command in a non-interactive shell.
@@ -85,6 +106,7 @@ bb machine list --json
 bb environment providers --json
 bb provider list --environment "$BB_ENVIRONMENT_ID" --json
 bb thread show "$BB_THREAD_ID" --json
+bb thread context --self --json
 bb environment status "$BB_ENVIRONMENT_ID" --json
 bb plugin list --json
 bb skill list --environment "$BB_ENVIRONMENT_ID" --json
@@ -112,3 +134,10 @@ plugins; do not add plugin command manuals here.
 ## Built-in browser control
 
 Use `bb browser instances --host <host-id> --json` to discover a desktop. Commands `tabs`, `create`, `acquire`, `connection`, `release`, `reveal`, `capture`, `close`, and `watch` require explicit `--host`, `--instance`, `--generation`, and `--thread`. See `bb guide browser` and `bb browser --help` for flags. New tabs use separate automation profiles; personal-tab control needs an explicit handoff. Revealing tabs or acquiring control opens the side panel and selects the tab only in the already focused thread, without switching threads or activating the desktop window. Connection credentials are written with `connection --output <new-file>` and work only on the browser host; keep them out of chat and public port shares. `import-sources` and `import-cookies --from <source> --profile <dir> [--into personal|automation:<id>]` copy signed-in cookies from an installed browser into a BB browser profile; they need `--host`, `--instance`, and `--generation` only, and the source browser must be quit first.
+
+`bb machine show <id-or-name> --json` includes provider-owned inventory and
+estimates in `providerDetails` when available. Provider inventory failures are
+reported; this is not billing/invoice data. Suspension requires idle live threads
+and no open terminals; empty machines can use an opted-in provider idle policy.
+
+`bb thread context` reads recorded context usage without sending a model request. A breakdown is optional; absent usage is returned as `null`.

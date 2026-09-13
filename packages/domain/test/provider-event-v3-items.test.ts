@@ -1,15 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
-  CORE_ITEM_KINDS,
   THREAD_EVENT_ITEM_PRESENTATION_DETAIL_MAX_LENGTH,
-  isCoreItemKind,
   threadEventItemPresentationSchema,
   threadEventItemSchema,
   threadEventSchema,
   threadScope,
   turnScope,
   type ThreadEventItem,
-  type ThreadEventItemType,
 } from "../src/index.js";
 
 const presentation = {
@@ -204,17 +201,5 @@ describe("grammar v3 item variants", () => {
         item: { ...item, background: false },
       }).success,
     ).toBe(true);
-  });
-});
-
-describe("CORE_ITEM_KINDS (guardrail G4)", () => {
-  it("enumerates every persisted item kind except extension, exactly once", () => {
-    const schemaKinds = threadEventItemSchema.options
-      .map((option) => option.shape.type.value)
-      .filter((kind): kind is ThreadEventItemType => kind !== "extension");
-    expect([...CORE_ITEM_KINDS].sort()).toEqual([...schemaKinds].sort());
-    expect(new Set(CORE_ITEM_KINDS).size).toBe(CORE_ITEM_KINDS.length);
-    expect(isCoreItemKind("extension")).toBe(false);
-    expect(isCoreItemKind("fileRead")).toBe(true);
   });
 });

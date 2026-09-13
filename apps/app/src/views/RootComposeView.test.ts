@@ -4,7 +4,6 @@ import {
   type ThreadListEntry,
 } from "@bb/domain";
 import type {
-  ProjectBranchesResponse,
   ProjectWithThreadsResponse,
   SidebarBootstrapResponse,
   SystemEnvironmentProvider,
@@ -13,7 +12,6 @@ import type {
 import { describe, expect, it } from "vitest";
 import type { ReuseThreadOption } from "@/components/pickers/ReuseEnvironmentPicker";
 import {
-  hasPromptOptionValueChanged,
   mergeMissingPromptDraftAttachments,
   resolveNewThreadProjectDefaultsState,
   resolveNewThreadSubmitDisabledReason,
@@ -43,7 +41,6 @@ import {
 import { makeTerminalSession as makeTerminalSessionFixture } from "@/test/fixtures/terminal-sessions";
 import {
   buildReuseThreadOptions,
-  resolveProjectSourceGitDisabledReason,
   resolveRootComposeEffectiveEnvironmentValue,
 } from "./root-compose-environment-selection";
 
@@ -157,6 +154,7 @@ describe("resolveNewThreadProjectDefaultsState", () => {
 describe("resolveNewThreadSubmitDisabledReason", () => {
   const readyState = {
     environmentProviderInputsBlocker: null,
+    environmentSetupRequiredReason: null,
     isCopyingAttachments: false,
     isLoadingModels: false,
     isSubmitting: false,
@@ -170,6 +168,18 @@ describe("resolveNewThreadSubmitDisabledReason", () => {
     selectedThreadModel: "gpt-5.6-sol",
     submissionEnvironmentUnavailable: false,
   } satisfies ResolveNewThreadSubmitDisabledReasonArgs;
+
+  it("blocks the send while the selected environment needs setting up", () => {
+    expect(
+      resolveNewThreadSubmitDisabledReason({
+        ...readyState,
+        environmentSetupRequiredReason:
+          "Modal Sandbox is not configured: set tokenId, tokenSecret in the plugin's settings.",
+      }),
+    ).toBe(
+      "Modal Sandbox is not configured: set tokenId, tokenSecret in the plugin's settings.",
+    );
+  });
 
   it.each<
     [
@@ -275,9 +285,11 @@ function makeProjectSource(hostId = "host_1"): ProjectSource {
 
 function makeProjectProvider(id: string): SystemEnvironmentProvider {
   return {
+    machineProviderId: null,
     id,
     displayName: id,
-    icon: null,
+    description: "Prepare a workspace for this thread.",
+    icon: "Folder",
     logoUrl: null,
     pluginId: id,
     acceptsEmptyInputs: true,
@@ -298,9 +310,11 @@ function makeProjectlessProvider(
   projectless: boolean,
 ): SystemEnvironmentProvider {
   return {
+    machineProviderId: null,
     id,
     displayName: id,
-    icon: null,
+    description: "Prepare a workspace for this thread.",
+    icon: "Folder",
     logoUrl: null,
     pluginId: id,
     acceptsEmptyInputs: true,
@@ -361,27 +375,6 @@ function makeTerminalSession(
     updatedAt: 1,
     ...overrides,
   });
-}
-
-function makeProjectBranchesResponse(
-  overrides: Partial<ProjectBranchesResponse>,
-): ProjectBranchesResponse {
-  return {
-    branches: [],
-    branchesTruncated: false,
-    checkout: { kind: "branch", branchName: "main", headSha: null },
-    defaultBranch: "main",
-    defaultBranchRelation: "equal",
-    defaultWorktreeBaseBranch: "main",
-    isWorktree: false,
-    hasUncommittedChanges: false,
-    operation: { kind: "none" },
-    originDefaultBranch: "main",
-    remoteBranches: [],
-    remoteBranchesTruncated: false,
-    selectedBranch: null,
-    ...overrides,
-  };
 }
 
 describe("buildMobileRecentThreads", () => {
@@ -720,18 +713,6 @@ describe("restorePromptDraftAfterOptionChange", () => {
   });
 });
 
-describe("hasPromptOptionValueChanged", () => {
-  it("treats unchanged prompt option values as no-ops", () => {
-    expect(hasPromptOptionValueChanged("codex", "codex")).toBe(false);
-    expect(hasPromptOptionValueChanged(undefined, undefined)).toBe(false);
-  });
-
-  it("detects changed prompt option values", () => {
-    expect(hasPromptOptionValueChanged("codex", "claude")).toBe(true);
-    expect(hasPromptOptionValueChanged(undefined, "auto")).toBe(true);
-  });
-});
-
 describe("hasSingleUseRootComposeTargetState", () => {
   it("treats section targets as single-use navigation state", () => {
     expect(hasSingleUseRootComposeTargetState({ sectionId: "sec_work" })).toBe(
@@ -802,42 +783,6 @@ describe("shouldNavigateAfterThreadCreate", () => {
         navigateToThreadAfterCreate: false,
       }),
     ).toBe(true);
-  });
-});
-
-describe("resolveProjectSourceGitDisabledReason", () => {
-  it("explains why non-git and commitless sources cannot create worktrees", () => {
-    expect(resolveProjectSourceGitDisabledReason(undefined)).toBeNull();
-    expect(
-      resolveProjectSourceGitDisabledReason(makeProjectBranchesResponse({})),
-    ).toBeNull();
-    expect(
-      resolveProjectSourceGitDisabledReason(
-        makeProjectBranchesResponse({
-          checkout: {
-            kind: "unknown",
-            reason: "Path is not a git repository",
-          },
-          defaultBranch: null,
-          defaultBranchRelation: null,
-          defaultWorktreeBaseBranch: null,
-          originDefaultBranch: null,
-        }),
-      ),
-    ).toBe("New worktrees require a Git repository with at least one commit");
-    expect(
-      resolveProjectSourceGitDisabledReason(
-        makeProjectBranchesResponse({
-          checkout: { kind: "unborn", branchName: "main" },
-          defaultBranch: null,
-          defaultBranchRelation: null,
-          defaultWorktreeBaseBranch: null,
-          originDefaultBranch: null,
-        }),
-      ),
-    ).toBe(
-      "Project source has no commits. Create an initial commit before creating a worktree",
-    );
   });
 });
 

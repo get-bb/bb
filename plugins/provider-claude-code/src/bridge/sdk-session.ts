@@ -189,6 +189,10 @@ export class SdkSession {
     await this.query?.setPermissionMode(mode);
   }
 
+  async getContextUsage(): Promise<unknown> {
+    return this.query ? this.query.getContextUsage() : null;
+  }
+
   async setModel(model: string | undefined): Promise<void> {
     await this.query?.setModel(model);
     this.options.model = model;
