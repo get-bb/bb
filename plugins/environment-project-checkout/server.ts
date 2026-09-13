@@ -1,3 +1,4 @@
+import { setTimeout as delay } from "node:timers/promises";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import type { PluginEnvironmentProviderProgress } from "@get-bb/plugin-sdk/environment-provider";
 import { reportHostProgress } from "bb-environment-provider-host/progress";
@@ -183,12 +184,16 @@ export default async function checkoutPlugin(bb: BbPluginApi): Promise<void> {
       const hostId = context.host.id;
       const path = context.inputs.path ?? context.projectCheckout.path;
       const branchInput = context.inputs.branch;
-      if (!(await context.experimental_claimPath(path))) {
-        return {
-          status: "failed",
-
-          message: LIVE_THREAD_MESSAGE,
-        };
+      const claimDeadline = Date.now() + ATTACH_TIMEOUT_MS;
+      while (!(await context.experimental_claimPath(path))) {
+        context.signal.throwIfAborted();
+        if (branchInput !== undefined || Date.now() >= claimDeadline) {
+          return {
+            status: "failed",
+            message: "Workspace is being prepared by another thread",
+          };
+        }
+        await delay(50, undefined, { signal: context.signal });
       }
       if (
         branchInput !== undefined &&
