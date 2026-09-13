@@ -22,8 +22,11 @@ Making your repo work with bb:
   present and will not run.
 
   BB runs the hook as `env bash .bb-env-setup.sh` with cwd set to the new
-  workspace. POSIX shell setup scripts are not supported on Windows. The hook
-  inherits the host daemon's sanitized environment: NODE_ENV and every BB_*
+  workspace. On native Windows the hook is `.bb-env-setup.ps1`, which BB runs
+  as `powershell.exe -NoProfile -ExecutionPolicy Bypass -File`; a
+  `.bb-env-setup.sh` file is ignored on native Windows, and a
+  `.bb-env-setup.ps1` file is ignored on macOS and Linux. The hook inherits the
+  host daemon's sanitized environment: NODE_ENV and every BB_*
   variable are removed, and bb does not inject BB_PROJECT_ID, BB_ENVIRONMENT_ID,
   or BB_SOURCE_PATH.
 
@@ -34,14 +37,17 @@ Making your repo work with bb:
   A non-zero exit, timeout, signal, or cancellation fails provisioning and bb
   removes the new worktree. Keep optional setup steps non-fatal inside the
   script if the environment should still open. Provisioning progress reports
-  "Running .bb-env-setup.sh" and then ".bb-env-setup.sh finished",
-  ".bb-env-setup.sh failed", or ".bb-env-setup.sh cancelled".
+  "Running .bb-env-setup.sh" (or ".bb-env-setup.ps1" on native Windows) and
+  then ".bb-env-setup.sh finished", ".bb-env-setup.sh failed", or
+  ".bb-env-setup.sh cancelled".
 
   Commit a .bb-env-teardown.sh script at the repo root when setup creates
   resources outside the managed worktree. BB runs the hook as
   `env bash .bb-env-teardown.sh` from the worktree before it removes the
-  worktree. The hook receives the same sanitized environment as the setup
-  hook, and stdin is closed.
+  worktree. On native Windows the hook is `.bb-env-teardown.ps1`, which BB runs
+  as `powershell.exe -NoProfile -ExecutionPolicy Bypass -File`. The hook
+  receives the same sanitized environment as the setup hook, and stdin is
+  closed.
 
   Teardown has a separate 15-minute timeout. A non-zero exit, timeout, or
   signal reports failure in the destroy transcript, but bb removes the

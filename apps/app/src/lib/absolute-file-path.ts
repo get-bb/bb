@@ -46,8 +46,8 @@ function isAbsoluteFilePath(path: string): boolean {
   return path.startsWith("/") || WINDOWS_DRIVE_ABSOLUTE_PATH_PATTERN.test(path);
 }
 
-function isWindowsRootPath(path: string): boolean {
-  return /^[A-Za-z]:$/u.test(path);
+function isWindowsDrivePath(path: string): boolean {
+  return /^[A-Za-z]:($|\/)/u.test(path);
 }
 
 function normalizeSegments({ path }: NormalizeSegmentsArgs): string[] {
@@ -107,7 +107,10 @@ export function isAbsoluteFilePathWithinRoot({
     return normalizedCandidatePath.startsWith("/");
   }
 
-  if (isWindowsRootPath(normalizedRootPath)) {
+  if (
+    isWindowsDrivePath(normalizedRootPath) &&
+    isWindowsDrivePath(normalizedCandidatePath)
+  ) {
     const candidate = normalizedCandidatePath.toLowerCase();
     const root = normalizedRootPath.toLowerCase();
     return candidate === root || candidate.startsWith(`${root}/`);

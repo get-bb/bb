@@ -246,6 +246,13 @@ const immediateDelay: DelayMillisecondsFn = () => {
   return Promise.resolve();
 };
 
+function expectRestrictedFileMode(filePath: string): void {
+  if (process.platform === "win32") {
+    return;
+  }
+  expect(statSync(filePath).mode & 0o777).toBe(0o600);
+}
+
 function createTestStartContext(): BbAppStartContext {
   return {
     appDistDir: "/tmp/bb-app-test/app/dist",
@@ -579,17 +586,17 @@ describe("bb-app launcher", () => {
       homeDir: "/home/tester",
     });
 
-    expect(context.dataDir).toBe("/home/tester/.bb");
-    expect(context.configFile).toBe("/home/tester/.bb/config.json");
-    expect(context.envFile).toBe("/home/tester/.bb/env.json");
+    expect(context.dataDir).toBe(join("/home/tester", ".bb"));
+    expect(context.configFile).toBe(join("/home/tester", ".bb", "config.json"));
+    expect(context.envFile).toBe(join("/home/tester", ".bb", "env.json"));
     expect(context.serverPort).toBe(38886);
     expect(context.daemonPort).toBe(38887);
     expect(context.serverUrl).toBe("http://127.0.0.1:38886");
     expect(context.serverEntry).toBe(
-      "/repo/packages/bb-app/server/dist/index.js",
+      resolve("/repo/packages/bb-app/server/dist/index.js"),
     );
     expect(context.daemonEntry).toBe(
-      "/repo/packages/bb-app/host-daemon/dist/daemon-bundle.mjs",
+      resolve("/repo/packages/bb-app/host-daemon/dist/daemon-bundle.mjs"),
     );
     expect(context.appVersion).toBe("0.0.0-dev");
   });
@@ -602,12 +609,16 @@ describe("bb-app launcher", () => {
       homeDir: "/home/tester",
     });
 
-    expect(context.packageRoot).toBe("/repo/packages/bb-app");
-    expect(context.appDistDir).toBe("/repo/apps/app/dist");
-    expect(context.serverEntry).toBe("/repo/apps/server/dist/index.js");
-    expect(context.daemonBundleDir).toBe("/repo/apps/host-daemon/dist");
+    expect(context.packageRoot).toBe(resolve("/repo/packages/bb-app"));
+    expect(context.appDistDir).toBe(resolve("/repo/apps/app/dist"));
+    expect(context.serverEntry).toBe(
+      resolve("/repo/apps/server/dist/index.js"),
+    );
+    expect(context.daemonBundleDir).toBe(
+      resolve("/repo/apps/host-daemon/dist"),
+    );
     expect(context.daemonEntry).toBe(
-      "/repo/apps/host-daemon/dist/daemon-bundle.mjs",
+      resolve("/repo/apps/host-daemon/dist/daemon-bundle.mjs"),
     );
   });
 
@@ -635,7 +646,7 @@ describe("bb-app launcher", () => {
     };
 
     expect(resolveDataDir({ env, homeDir: "/home/tester" })).toBe(
-      "/home/tester/custom-bb",
+      resolve("/home/tester", "custom-bb"),
     );
     expect(
       resolvePortFromEnv({ defaultPort: 1, env, name: "BB_SERVER_PORT" }),
@@ -1136,8 +1147,8 @@ describe("bb-app launcher", () => {
         },
       },
     );
-    expect(statSync(join(dataDir, "config.json")).mode & 0o777).toBe(0o600);
-    expect(statSync(join(dataDir, "env.json")).mode & 0o777).toBe(0o600);
+    expectRestrictedFileMode(join(dataDir, "config.json"));
+    expectRestrictedFileMode(join(dataDir, "env.json"));
   });
 
   it("stores client SSH targets from the client command", async () => {
@@ -1175,7 +1186,7 @@ describe("bb-app launcher", () => {
           },
         },
       });
-      expect(statSync(join(dataDir, "client.json")).mode & 0o777).toBe(0o600);
+      expectRestrictedFileMode(join(dataDir, "client.json"));
 
       await runBbApp([
         "--data-dir",
@@ -1447,7 +1458,7 @@ describe("bb-app launcher", () => {
         },
       },
     );
-    expect(statSync(join(dataDir, "env.json")).mode & 0o777).toBe(0o600);
+    expectRestrictedFileMode(join(dataDir, "env.json"));
   });
 
   it("rejects invalid server bind hosts before writing managed env", async () => {
@@ -2176,7 +2187,7 @@ describe("bb-app launcher", () => {
       }
 
       const missingChunks =
-        /^Missing bundled bb CLI chunks at .*\/host-daemon\/dist\/bb-chunks\. Rebuild bb-app/;
+        /^Missing bundled bb CLI chunks at .*[\\/]host-daemon[\\/]dist[\\/]bb-chunks\. Rebuild bb-app/;
       expect(() => assertBbAppArtifacts(context)).toThrow(missingChunks);
 
       const chunkDir = join(context.daemonBundleDir, "bb-chunks");

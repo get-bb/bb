@@ -144,6 +144,21 @@ export function Overview() {
         </DialogStage>
       </StoryRow>
       <StoryRow
+        label="windows"
+        hint="Windows host — description and placeholder show drive-letter and UNC paths"
+      >
+        <DialogStage>
+          <ProjectPathDialogContent
+            target={createTarget}
+            pending={false}
+            platform="windows"
+            hostId={null}
+            hostName="Sawyer's PC"
+            onSubmit={noop}
+          />
+        </DialogStage>
+      </StoryRow>
+      <StoryRow
         label="wsl"
         hint="WSL host — description hints at /mnt/c/... paths"
       >

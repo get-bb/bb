@@ -33,7 +33,12 @@ async function removeWorkspaceDir(workspaceDir: string): Promise<void> {
   const deadline = Date.now() + 2_000;
   for (;;) {
     try {
-      rmSync(workspaceDir, { recursive: true, force: true });
+      rmSync(workspaceDir, {
+        recursive: true,
+        force: true,
+        maxRetries: 10,
+        retryDelay: 100,
+      });
       return;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "EBUSY") throw error;

@@ -1,5 +1,10 @@
-import { describe, expect, it } from "vitest";
-import { piLaunchRequiresWindowsShell } from "./rpc-child.js";
+import { EventEmitter } from "node:events";
+import { describe, expect, it, vi } from "vitest";
+import {
+  escalateWindowsShellChildKill,
+  piLaunchRequiresWindowsShell,
+  planPiChildKill,
+} from "./rpc-child.js";
 
 describe("piLaunchRequiresWindowsShell", () => {
   it("requires the Windows shell for an extensionless command on win32", () => {
@@ -26,5 +31,86 @@ describe("piLaunchRequiresWindowsShell", () => {
       expect(piLaunchRequiresWindowsShell(command, "darwin")).toBe(false);
       expect(piLaunchRequiresWindowsShell(command, "linux")).toBe(false);
     }
+  });
+});
+
+describe("planPiChildKill", () => {
+  it("escalates immediately without a signal for a Windows shell child", () => {
+    expect(
+      planPiChildKill({ windowsShellChild: true, platform: "win32" }),
+    ).toEqual({ signal: null, escalateImmediately: true });
+  });
+
+  it("keeps SIGTERM with delayed escalation on POSIX", () => {
+    expect(
+      planPiChildKill({ windowsShellChild: false, platform: "linux" }),
+    ).toEqual({ signal: "SIGTERM", escalateImmediately: false });
+  });
+
+  it("never sends SIGTERM to a direct child on win32", () => {
+    expect(
+      planPiChildKill({ windowsShellChild: false, platform: "win32" }),
+    ).toEqual({ signal: null, escalateImmediately: false });
+  });
+});
+
+describe("escalateWindowsShellChildKill", () => {
+  it("runs taskkill against the process tree", () => {
+    const taskkill = new EventEmitter();
+    const spawnProcess = vi.fn(() => taskkill);
+    const killFallback = vi.fn();
+
+    escalateWindowsShellChildKill({
+      pid: 1234,
+      killFallback,
+      spawnProcess,
+    });
+
+    expect(spawnProcess).toHaveBeenCalledWith(
+      "taskkill",
+      ["/pid", "1234", "/T", "/F"],
+      { stdio: "ignore", windowsHide: true },
+    );
+    expect(killFallback).not.toHaveBeenCalled();
+  });
+
+  it("falls back to SIGKILL when taskkill cannot start", () => {
+    const taskkill = new EventEmitter();
+    const killFallback = vi.fn();
+
+    escalateWindowsShellChildKill({
+      pid: 1234,
+      killFallback,
+      spawnProcess: () => taskkill,
+    });
+    taskkill.emit("error", new Error("ENOENT"));
+
+    expect(killFallback).toHaveBeenCalledWith("SIGKILL");
+  });
+
+  it("falls back to SIGKILL when spawning taskkill throws", () => {
+    const killFallback = vi.fn();
+
+    escalateWindowsShellChildKill({
+      pid: 1234,
+      killFallback,
+      spawnProcess: () => {
+        throw new Error("boom");
+      },
+    });
+
+    expect(killFallback).toHaveBeenCalledWith("SIGKILL");
+  });
+
+  it("does nothing without a pid", () => {
+    const spawnProcess = vi.fn();
+
+    escalateWindowsShellChildKill({
+      pid: undefined,
+      killFallback: vi.fn(),
+      spawnProcess,
+    });
+
+    expect(spawnProcess).not.toHaveBeenCalled();
   });
 });

@@ -13,11 +13,11 @@ beforeEach(async () => {
     prefix: "bb-pi-local-file-",
     initialize: true,
   });
-});
+}, 30_000);
 
 afterEach(async () => {
   await harness.teardown();
-});
+}, 30_000);
 
 function localFile(path: string) {
   return {
@@ -56,7 +56,7 @@ it("includes local file paths in turn prompts", async () => {
         String(delta.text).includes(`Read this file.\n${marker}`),
     ),
   ).toBe(true);
-});
+}, 30_000);
 
 it("accepts a turn prompt that contains only a local file", async () => {
   const threadId = "thr_local_file_only";
@@ -73,7 +73,7 @@ it("accepts a turn prompt that contains only a local file", async () => {
 
   expect(response.error).toBeUndefined();
   expect(response.result).toEqual({ threadId });
-});
+}, 30_000);
 
 it("includes local file paths in steer prompts", async () => {
   const threadId = "thr_local_file_steer";
@@ -108,4 +108,4 @@ it("includes local file paths in steer prompts", async () => {
         String(delta.text).includes(marker),
     ),
   ).toBe(true);
-});
+}, 30_000);

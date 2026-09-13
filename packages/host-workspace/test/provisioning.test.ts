@@ -1029,6 +1029,50 @@ describe("workspace provisioning", () => {
     ).resolves.toEqual({ ran: false });
   });
 
+  it("warns when only the POSIX setup hook exists on Windows", async () => {
+    const workspacePath = await makeTempDir("bb-setup-windows-sh-only-");
+    await fs.writeFile(
+      path.join(workspacePath, DEFAULT_ENV_SETUP_SCRIPT_NAME),
+      "echo ignored\n",
+      "utf8",
+    );
+
+    const entries: string[] = [];
+    const result = await runSetupScript({
+      workspacePath,
+      timeoutMs: 900000,
+      platform: "win32",
+      onProgress: (entry) => entries.push(`${entry.type}:${entry.text}`),
+    });
+
+    expect(result).toEqual({ ran: false });
+    expect(entries).toContain(
+      `output:${DEFAULT_ENV_SETUP_SCRIPT_NAME} is ignored on Windows; use .bb-env-setup.ps1 instead`,
+    );
+  });
+
+  it("warns when only the POSIX teardown hook exists on Windows", async () => {
+    const workspacePath = await makeTempDir("bb-teardown-windows-sh-only-");
+    await fs.writeFile(
+      path.join(workspacePath, DEFAULT_ENV_TEARDOWN_SCRIPT_NAME),
+      "echo ignored\n",
+      "utf8",
+    );
+
+    const entries: string[] = [];
+    const result = await runTeardownScript({
+      workspacePath,
+      timeoutMs: 900000,
+      platform: "win32",
+      onProgress: (entry) => entries.push(`${entry.type}:${entry.text}`),
+    });
+
+    expect(result).toEqual({ ran: false });
+    expect(entries).toContain(
+      `output:${DEFAULT_ENV_TEARDOWN_SCRIPT_NAME} is ignored on Windows; use .bb-env-teardown.ps1 instead`,
+    );
+  });
+
   it.skipIf(process.platform === "win32")("runs teardown scripts before it removes managed worktrees", async () => {
     const sourceRepo = await initRepoWithOptionalSetup();
     const markerPath = path.join(

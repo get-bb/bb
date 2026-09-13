@@ -94,6 +94,12 @@ set -euo pipefail
 pnpm install
 ```
 
+On native Windows, name the hook `.bb-env-setup.ps1` instead. bb runs it with
+`powershell.exe -NoProfile -ExecutionPolicy Bypass -File .bb-env-setup.ps1`
+from the new worktree. A `.bb-env-setup.sh` file is ignored on native Windows,
+and a `.bb-env-setup.ps1` file is ignored on macOS, Linux, and WSL2; commit the
+hook that matches the host platform.
+
 Contract:
 
 - The script runs with `env bash`, working directory set to the new worktree.
@@ -101,8 +107,8 @@ Contract:
   transcript in the app.
 - A non-zero exit, a signal, or a timeout (15 minutes) fails provisioning and
   the thread doesn't start.
-- POSIX only — supported on macOS, Linux, and WSL2. Native Windows isn't
-  supported.
+- Supported on macOS, Linux, and WSL2 as `.bb-env-setup.sh`, and on native
+  Windows as `.bb-env-setup.ps1`.
 
 ## Cleanup
 
@@ -133,6 +139,10 @@ set -euo pipefail
 docker rm -f "my-project-${USER}"
 ```
 
+On native Windows, name the teardown hook `.bb-env-teardown.ps1`. bb runs it
+with `powershell.exe -NoProfile -ExecutionPolicy Bypass -File
+.bb-env-teardown.ps1` from the worktree before removing it.
+
 Contract:
 
 - bb runs the script only when it destroys a managed worktree.
@@ -144,8 +154,8 @@ Contract:
 - A non-zero exit, a signal, or a timeout reports a failure. It never stops bb
   from removing the worktree.
 - The script receives the same sanitized environment as the setup script.
-- POSIX only — supported on macOS, Linux, and WSL2. Native Windows isn't
-  supported.
+- Supported on macOS, Linux, and WSL2 as `.bb-env-teardown.sh`, and on native
+  Windows as `.bb-env-teardown.ps1`.
 
 ## If something isn't working
 

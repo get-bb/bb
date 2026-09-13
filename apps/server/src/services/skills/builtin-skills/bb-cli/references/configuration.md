@@ -4,6 +4,7 @@
 
 - To make a repo work with bb worktrees, run `bb guide environments`. It
   documents the repo-level `.bb-env-setup.sh` and `.bb-env-teardown.sh` hooks,
+  the native Windows `.bb-env-setup.ps1` and `.bb-env-teardown.ps1` variants,
   and the `.worktreeinclude` file.
 - A new worktree checks out tracked files only. Commit a `.worktreeinclude`
   file at the repo root to list untracked files, such as `.env`, that bb must

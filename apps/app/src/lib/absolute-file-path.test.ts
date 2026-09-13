@@ -93,6 +93,21 @@ describe("isAbsoluteFilePathWithinRoot", () => {
     ).toBe(true);
   });
 
+  it("compares full Windows paths case-insensitively", () => {
+    expect(
+      isAbsoluteFilePathWithinRoot({
+        candidatePath: "C:\\users\\me\\project\\File.ts",
+        rootPath: "c:/Users/me/project",
+      }),
+    ).toBe(true);
+    expect(
+      isAbsoluteFilePathWithinRoot({
+        candidatePath: "C:\\USERS\\ME\\PROJECT-COPY\\File.ts",
+        rootPath: "c:/Users/me/project",
+      }),
+    ).toBe(false);
+  });
+
   it("keeps native Windows paths outside their root", () => {
     expect(
       isAbsoluteFilePathWithinRoot({

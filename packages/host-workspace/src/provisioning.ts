@@ -67,6 +67,7 @@ interface RunSetupScriptArgs {
   shellPath?: string;
   onProgress?: ProgressCallback;
   signal?: AbortSignal;
+  platform?: NodeJS.Platform;
 }
 
 interface RunTeardownScriptArgs {
@@ -75,6 +76,7 @@ interface RunTeardownScriptArgs {
   /** Resolved user-shell PATH. Falls back to the daemon process PATH. */
   shellPath?: string;
   onProgress?: ProgressCallback;
+  platform?: NodeJS.Platform;
 }
 
 interface RemoveWorktreeArgs {
@@ -102,6 +104,7 @@ interface BuildLifecycleScriptCommandArgs {
 interface RunLifecycleScriptArgs extends RunSetupScriptArgs {
   kind: "setup" | "teardown";
   scriptName: string;
+  alternateScriptName?: string;
 }
 
 const SETUP_SCRIPT_ABORT_KILL_GRACE_MS = 2_000;
@@ -725,21 +728,35 @@ async function runLifecycleScript(
     args.scriptName,
   );
   if (!scriptPath) {
+    if (args.alternateScriptName !== undefined) {
+      const alternatePath = await resolveLifecycleScriptPath(
+        args.workspacePath,
+        args.alternateScriptName,
+      );
+      if (alternatePath) {
+        emitOutput(
+          args.onProgress,
+          `${args.kind}-script-ignored`,
+          `${args.alternateScriptName} is ignored on Windows; use ${args.scriptName} instead`,
+        );
+      }
+    }
     return { ran: false };
   }
 
   if (args.kind === "setup") {
     throwIfProvisionAborted(args.signal);
   }
+  const platform = args.platform ?? process.platform;
   const command =
     args.kind === "setup"
       ? buildSetupScriptCommand({
-          platform: process.platform,
+          platform,
           scriptName: args.scriptName,
           scriptPath,
         })
       : buildTeardownScriptCommand({
-          platform: process.platform,
+          platform,
           scriptName: args.scriptName,
           scriptPath,
         });
@@ -912,19 +929,24 @@ async function runLifecycleScript(
 export function runSetupScript(
   args: RunSetupScriptArgs,
 ): Promise<{ ran: boolean; exitCode?: number; output?: string }> {
+  const platform = args.platform ?? process.platform;
   return runLifecycleScript({
     ...args,
     kind: "setup",
     scriptName:
-      process.platform === "win32"
+      platform === "win32"
         ? WINDOWS_ENV_SETUP_SCRIPT_NAME
         : DEFAULT_ENV_SETUP_SCRIPT_NAME,
+    ...(platform === "win32"
+      ? { alternateScriptName: DEFAULT_ENV_SETUP_SCRIPT_NAME }
+      : {}),
   });
 }
 
 export async function runTeardownScript(
   args: RunTeardownScriptArgs,
 ): Promise<{ ran: boolean; exitCode?: number; output?: string }> {
+  const platform = args.platform ?? process.platform;
   const startedAt = Date.now();
   let failureReported = false;
   const onProgress: ProgressCallback = (entry) => {
@@ -939,9 +961,12 @@ export async function runTeardownScript(
       onProgress,
       kind: "teardown",
       scriptName:
-        process.platform === "win32"
+        platform === "win32"
           ? WINDOWS_ENV_TEARDOWN_SCRIPT_NAME
           : DEFAULT_ENV_TEARDOWN_SCRIPT_NAME,
+      ...(platform === "win32"
+        ? { alternateScriptName: DEFAULT_ENV_TEARDOWN_SCRIPT_NAME }
+        : {}),
     });
   } catch (error) {
     if (!failureReported) {

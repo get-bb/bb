@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { createServer, type Server, type Socket } from "node:net";
 import { extname } from "node:path";
 import { PassThrough, Writable, type Readable } from "node:stream";
@@ -21,6 +22,7 @@ export const NO_REQUEST_TIMEOUT = 0;
 const STDERR_TAIL_BYTES = 4_096;
 const SIGTERM_GRACE_MS = 4_000;
 const SIGKILL_ESCALATION_MS = 4_000;
+const MAX_CHANNEL_PIPE_PENDING_WRITES = 10_000;
 
 export interface PiRpcChildExitInfo {
   code: number | null;
@@ -103,7 +105,50 @@ export function piLaunchRequiresWindowsShell(
   return extension === "" || WINDOWS_BATCH_EXTENSIONS.has(extension);
 }
 
-let windowsChannelPipeCounter = 0;
+export function planPiChildKill(args: {
+  windowsShellChild: boolean;
+  platform: NodeJS.Platform;
+}): { signal: NodeJS.Signals | null; escalateImmediately: boolean } {
+  if (args.windowsShellChild) {
+    return { signal: null, escalateImmediately: true };
+  }
+  return {
+    signal: args.platform === "win32" ? null : "SIGTERM",
+    escalateImmediately: false,
+  };
+}
+
+export interface WindowsShellKillSpawn {
+  (
+    command: string,
+    args: readonly string[],
+    options: { stdio: "ignore"; windowsHide: boolean },
+  ): { on(event: "error", listener: (error: Error) => void): unknown };
+}
+
+export function escalateWindowsShellChildKill(args: {
+  pid: number | undefined;
+  killFallback: (signal: NodeJS.Signals) => unknown;
+  spawnProcess?: WindowsShellKillSpawn;
+}): void {
+  const { pid } = args;
+  if (pid === undefined) {
+    return;
+  }
+  const spawnProcess = args.spawnProcess ?? spawn;
+  try {
+    const taskkill = spawnProcess(
+      "taskkill",
+      ["/pid", String(pid), "/T", "/F"],
+      { stdio: "ignore", windowsHide: true },
+    );
+    taskkill.on("error", () => {
+      args.killFallback("SIGKILL");
+    });
+  } catch {
+    args.killFallback("SIGKILL");
+  }
+}
 
 class WindowsChannelPipe {
   readonly pipePath: string;
@@ -112,8 +157,7 @@ class WindowsChannelPipe {
   private readonly pendingWrites: string[] = [];
 
   constructor(onLine: (line: string) => void) {
-    windowsChannelPipeCounter += 1;
-    this.pipePath = `\\\\.\\pipe\\bb-pi-${process.pid}-${windowsChannelPipeCounter}`;
+    this.pipePath = `\\\\.\\pipe\\bb-pi-${process.pid}-${randomUUID()}`;
     this.server = createServer((socket) => {
       if (this.socket !== null) {
         socket.destroy();
@@ -147,6 +191,12 @@ class WindowsChannelPipe {
   write(line: string): void {
     const socket = this.socket;
     if (socket === null || socket.destroyed || socket.writableEnded) {
+      if (this.pendingWrites.length >= MAX_CHANNEL_PIPE_PENDING_WRITES) {
+        process.stderr.write(
+          `pi bridge: dropped a channel line; ${MAX_CHANNEL_PIPE_PENDING_WRITES} pending writes buffered\n`,
+        );
+        return;
+      }
       this.pendingWrites.push(line);
       return;
     }
@@ -371,6 +421,14 @@ export class PiRpcChild {
       return;
     }
     this.endWriters();
+    const plan = planPiChildKill({
+      windowsShellChild: this.windowsShellChild,
+      platform: process.platform,
+    });
+    if (plan.escalateImmediately) {
+      this.escalateKill();
+      return;
+    }
     if (this.killEscalation === null) {
       this.killEscalation = setTimeout(() => {
         this.killEscalation = null;
@@ -380,10 +438,9 @@ export class PiRpcChild {
       }, SIGKILL_ESCALATION_MS);
       this.killEscalation.unref?.();
     }
-    if (process.platform === "win32") {
-      return;
+    if (plan.signal !== null) {
+      this.child.kill(plan.signal);
     }
-    this.child.kill("SIGTERM");
   }
 
   private escalateKill(): void {
@@ -391,21 +448,10 @@ export class PiRpcChild {
       this.child.kill("SIGKILL");
       return;
     }
-    const pid = this.child.pid;
-    if (pid === undefined) {
-      return;
-    }
-    try {
-      const taskkill = spawn("taskkill", ["/pid", String(pid), "/T", "/F"], {
-        stdio: "ignore",
-        windowsHide: true,
-      });
-      taskkill.on("error", () => {
-        this.child.kill("SIGKILL");
-      });
-    } catch {
-      this.child.kill("SIGKILL");
-    }
+    escalateWindowsShellChildKill({
+      pid: this.child.pid,
+      killFallback: (signal) => this.child.kill(signal),
+    });
   }
 
   private endWriters(): void {

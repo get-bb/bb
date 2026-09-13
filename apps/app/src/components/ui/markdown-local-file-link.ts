@@ -207,6 +207,14 @@ function hasControlCharacter(value: string): boolean {
   return false;
 }
 
+function isAbsoluteLocalFilePathCandidate(value: string): boolean {
+  return (
+    (value.startsWith("/") && !value.startsWith("//")) ||
+    /^[A-Za-z]:[\\/]/u.test(value) ||
+    value.startsWith("\\\\")
+  );
+}
+
 function isValidAbsoluteLocalFilePath({
   path,
   requireLikelyFileBasename,
@@ -227,7 +235,8 @@ function isValidAbsoluteLocalFilePath({
   const posixAbsolute =
     path.startsWith("/") && !path.startsWith("//") && path !== "/";
   const windowsAbsolute = /^[A-Za-z]:[\\/]/u.test(path);
-  if (!posixAbsolute && !windowsAbsolute) {
+  const uncAbsolute = /^\\\\[^\\/]+[\\/][^\\/]+/u.test(path);
+  if (!posixAbsolute && !windowsAbsolute && !uncAbsolute) {
     return false;
   }
   return !requireLikelyFileBasename || hasLikelyFileBasename(path);
@@ -240,8 +249,7 @@ function parseAbsoluteLocalFileHref(
   if (
     href.length === 0 ||
     href.trim() !== href ||
-    href.startsWith("//") ||
-    (!href.startsWith("/") && !/^[A-Za-z]:[\\/]/u.test(href))
+    !isAbsoluteLocalFilePathCandidate(href)
   ) {
     return null;
   }

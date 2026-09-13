@@ -195,6 +195,25 @@ rebuild the native dependency, for example `npm rebuild better-sqlite3`.
 - The `.worktreeinclude` copy step runs no shell. It works on every platform,
   including native Windows.
 
+## Pi Bridge Command On Native Windows
+
+The Pi provider starts `pi` from `BB_PI_BRIDGE_COMMAND` (default `pi`). On
+native Windows a command that needs a shell — `pi`, `pi.cmd`, `pi.bat`, or an
+extensionless path — is started through Node's `shell: true`, which joins the
+command and its arguments into one `cmd.exe` string without quoting them.
+
+- A `BB_PI_BRIDGE_COMMAND` whose path contains spaces fails: `cmd.exe` splits
+  the path at the first space and reports that the truncated path cannot be
+  found. Arguments that contain spaces (for example a session directory or an
+  extension path) fail the same way because they share that string.
+- Spawning a `.cmd` shim directly without `shell: true` is not a workaround on
+  Node.js 22: it throws `EINVAL`.
+- On macOS and Linux the bridge spawns the command directly and does not use
+  the shell, so spaced paths work there.
+
+Keep the Pi install, the bb data directory, and other bridge argument paths
+free of spaces on native Windows.
+
 ## Line Ending Policy
 
 - The repository enforces LF checkout for supported text files via

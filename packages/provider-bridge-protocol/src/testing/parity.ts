@@ -320,7 +320,12 @@ async function removeDirectoryForTests(target: string): Promise<void> {
   const deadline = Date.now() + 2_000;
   for (;;) {
     try {
-      rmSync(target, { recursive: true, force: true });
+      rmSync(target, {
+        recursive: true,
+        force: true,
+        maxRetries: 10,
+        retryDelay: 100,
+      });
       return;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "EBUSY") throw error;

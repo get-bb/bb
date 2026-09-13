@@ -1365,10 +1365,22 @@ function ensureWindowsBbCliShim(context: BbAppStartContext): void {
   }
   const bbEntry = join(context.daemonBundleDir, "bb");
   const shimPath = join(context.daemonBundleDir, "bb.cmd");
-  writeFileSync(
-    shimPath,
-    `@echo off\r\n"${process.execPath}" "${bbEntry}" %*\r\n`,
-  );
+  const shimContents = `@echo off\r\n"${process.execPath}" "${bbEntry}" %*\r\n`;
+  try {
+    if (
+      existsSync(shimPath) &&
+      readFileSync(shimPath, "utf8") === shimContents
+    ) {
+      return;
+    }
+    writeFileSync(shimPath, shimContents);
+  } catch (error) {
+    process.stderr.write(
+      `bb-app: could not write Windows bb CLI shim ${shimPath}: ${
+        error instanceof Error ? error.message : String(error)
+      }\n`,
+    );
+  }
 }
 
 export async function resolveBbAppRuntimeState(
