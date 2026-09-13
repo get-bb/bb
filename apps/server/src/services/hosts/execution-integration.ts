@@ -17,14 +17,13 @@ type ExecutionDeps = Pick<
   "db" | "providerRegistry" | "pluginHostArtifacts"
 >;
 
-export function executionProviderRegistry(
-  deps: Pick<AppDeps, "db" | "providerRegistry">,
-  hostId: string | null,
-): ProviderRegistryService {
-  if (hostId === null || getHost(deps.db, hostId)?.executionIntegration == null)
-    return deps.providerRegistry;
-  const binding = getHost(deps.db, hostId)!.executionIntegration!;
-  const integration = deps.providerRegistry.getExecutionIntegration(binding.id);
+function requireExecutionIntegration(
+  registry: ProviderRegistryService,
+  host: typeof hosts.$inferSelect,
+) {
+  const binding = host.executionIntegration;
+  if (binding === null) return null;
+  const integration = registry.getExecutionIntegration(binding.id);
   if (integration === null || integration.pluginId !== binding.pluginId) {
     throw new ApiError(
       409,
@@ -34,13 +33,26 @@ export function executionProviderRegistry(
   }
   if (
     integration.hostIds !== undefined &&
-    !integration.hostIds.includes(hostId)
+    !integration.hostIds.includes(host.id)
   )
     throw new ApiError(
       409,
       "execution_integration_incompatible_machine",
       `Execution integration "${binding.displayName}" does not support this machine`,
     );
+  return integration;
+}
+
+export function executionProviderRegistry(
+  deps: Pick<AppDeps, "db" | "providerRegistry">,
+  hostId: string | null,
+): ProviderRegistryService {
+  const host = hostId === null ? null : getHost(deps.db, hostId);
+  const integration =
+    host === null
+      ? null
+      : requireExecutionIntegration(deps.providerRegistry, host);
+  if (integration === null) return deps.providerRegistry;
   const get = (providerId: string) =>
     integration.providers.find((provider) => provider.info.id === providerId) ??
     null;
@@ -150,25 +162,8 @@ export function resolveExecutionProvider(
   const host = getHost(deps.db, hostId);
   if (host === null)
     throw new ApiError(404, "host_not_found", "Host not found");
-  const binding = host.executionIntegration;
-  if (binding === null) return deps.providerRegistry.get(providerId);
-  const integration = deps.providerRegistry.getExecutionIntegration(binding.id);
-  if (integration === null || integration.pluginId !== binding.pluginId) {
-    throw new ApiError(
-      409,
-      "execution_integration_unavailable",
-      `Machine "${host.name}" requires "${binding.displayName}" (${binding.id}), but its execution integration is unavailable`,
-    );
-  }
-  if (
-    integration.hostIds !== undefined &&
-    !integration.hostIds.includes(hostId)
-  )
-    throw new ApiError(
-      409,
-      "execution_integration_incompatible_machine",
-      `Execution integration "${binding.displayName}" is not compatible with machine "${host.name}"`,
-    );
+  const integration = requireExecutionIntegration(deps.providerRegistry, host);
+  if (integration === null) return deps.providerRegistry.get(providerId);
   const provider = integration.providers.find(
     (entry) => entry.info.id === providerId,
   );
@@ -176,7 +171,7 @@ export function resolveExecutionProvider(
     throw new ApiError(
       409,
       "execution_integration_unsupported_provider",
-      `Execution integration "${binding.displayName}" does not support harness "${providerId}" on machine "${host.name}"`,
+      `Execution integration "${integration.displayName}" does not support harness "${providerId}" on machine "${host.name}"`,
     );
   return provider;
 }

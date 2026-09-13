@@ -257,10 +257,6 @@ function resolveSystemProviderInfosPlan(
   deps = { ...deps, providerRegistry: providerRegistryForQuery(deps, query) };
   try {
     const hostId = resolveSystemLookupHostId(deps, query);
-    deps = {
-      ...deps,
-      providerRegistry: executionProviderRegistry(deps, hostId),
-    };
     requireConnectedHostSession(deps, hostId);
     return {
       hostId,
