@@ -57,15 +57,11 @@ function setup(secondarySize = 50) {
   function Harness() {
     const panel = useRef<ImperativePanelHandle>(null);
     const hitTargetRef = usePanelResizeSnap({
-      axis: "x",
-      minFraction: 0.3,
-      maxFraction: 0.76,
       onResize: (fraction) => {
         onResize(fraction);
         panel.current?.resize((1 - fraction) * 100);
       },
       onDragging,
-      target: { boundaryIndex: 1, childCount: 2 },
     });
     return (
       <PanelGroup

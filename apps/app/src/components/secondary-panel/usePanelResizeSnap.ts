@@ -1,29 +1,20 @@
 import { useEffect, useRef } from "react";
 import { flushSync } from "react-dom";
+import { createSplitResizeSnapSession } from "@/lib/split-resize-snap";
 import {
-  createSplitResizeSnapSession,
-  type SplitResizeAxis,
-  type SplitResizeGridTarget,
-} from "@/lib/split-resize-snap";
+  THREAD_SECONDARY_PANEL_MAX_SIZE_PERCENT,
+  THREAD_SECONDARY_PANEL_MIN_SIZE_PERCENT,
+} from "./secondaryPanelSizing";
 
 interface UsePanelResizeSnapArgs {
-  axis: SplitResizeAxis;
-  minFraction: number;
-  maxFraction: number;
   onResize: (leadingFraction: number) => void;
   onDragging: (isDragging: boolean) => void;
-  target: SplitResizeGridTarget;
 }
 
 export function usePanelResizeSnap({
-  axis,
-  minFraction,
-  maxFraction,
   onResize,
   onDragging,
-  target,
 }: UsePanelResizeSnapArgs) {
-  const { boundaryIndex, childCount } = target;
   const hitTargetRef = useRef<HTMLSpanElement>(null);
   const activeDragRef = useRef<((commit: boolean) => void) | null>(null);
 
@@ -51,10 +42,8 @@ export function usePanelResizeSnap({
       ) {
         return;
       }
-      const previousRect = previous.getBoundingClientRect();
-      const nextRect = next.getBoundingClientRect();
-      const start = axis === "x" ? previousRect.left : previousRect.top;
-      const end = axis === "x" ? nextRect.right : nextRect.bottom;
+      const start = previous.getBoundingClientRect().left;
+      const end = next.getBoundingClientRect().right;
       if (end <= start) return;
 
       const ownerWindow = divider.ownerDocument.defaultView;
@@ -62,9 +51,9 @@ export function usePanelResizeSnap({
       event.preventDefault();
       event.stopPropagation();
       divider.focus({ preventScroll: true });
-      const snapSession = createSplitResizeSnapSession(divider, axis, {
-        boundaryIndex,
-        childCount,
+      const snapSession = createSplitResizeSnapSession(divider, "x", {
+        boundaryIndex: 1,
+        childCount: 2,
       });
       const grid = divider.closest<HTMLElement>(
         "[data-split-resize-grid-root]",
@@ -79,8 +68,7 @@ export function usePanelResizeSnap({
       const pointerId = event.pointerId;
       divider.setPointerCapture(pointerId);
       divider.dataset.dragging = "true";
-      const pointer = axis === "x" ? event.clientX : event.clientY;
-      snapSession.resolve({ end, pointer, start });
+      snapSession.resolve({ end, pointer: event.clientX, start });
 
       let finished = false;
       let pendingFraction: number | null = null;
@@ -103,18 +91,18 @@ export function usePanelResizeSnap({
         }
         moveEvent.preventDefault();
         moveEvent.stopPropagation();
-        const nextPointer =
-          axis === "x" ? moveEvent.clientX : moveEvent.clientY;
         const result = snapSession.resolve({
           end,
-          pointer: nextPointer,
+          pointer: moveEvent.clientX,
           start,
         });
-        const fraction = Math.max(
-          minFraction,
-          Math.min(maxFraction, result.fraction),
+        pendingFraction = Math.max(
+          (100 - THREAD_SECONDARY_PANEL_MAX_SIZE_PERCENT) / 100,
+          Math.min(
+            (100 - THREAD_SECONDARY_PANEL_MIN_SIZE_PERCENT) / 100,
+            result.fraction,
+          ),
         );
-        pendingFraction = fraction;
         if (frame === null) {
           frame = ownerWindow.requestAnimationFrame(applyResize);
         }
@@ -178,7 +166,7 @@ export function usePanelResizeSnap({
 
     window.addEventListener("pointerdown", onPointerDownCapture, true);
     return () => window.removeEventListener("pointerdown", onPointerDownCapture, true);
-  }, [axis, boundaryIndex, childCount, maxFraction, minFraction, onDragging, onResize]);
+  }, [onDragging, onResize]);
 
   return hitTargetRef;
 }

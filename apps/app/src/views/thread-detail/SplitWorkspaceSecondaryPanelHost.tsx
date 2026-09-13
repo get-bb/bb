@@ -166,12 +166,8 @@ export function SplitWorkspaceSecondaryPanelHost({
     setPanelWidthPercent(lastEmptyPanelSizeRef.current);
   };
   const emptyPanelHitTargetRef = usePanelResizeSnap({
-    axis: "x",
-    minFraction: (100 - THREAD_SECONDARY_PANEL_MAX_SIZE_PERCENT) / 100,
-    maxFraction: (100 - THREAD_SECONDARY_PANEL_MIN_SIZE_PERCENT) / 100,
     onResize: handleEmptyPanelPointerResize,
     onDragging: handleEmptyPanelDragging,
-    target: { boundaryIndex: 1, childCount: 2 },
   });
   const handleEmptyPanelCollapse = () => {
     if (lastEmptyPanelSizeRef.current <= 0) return;
