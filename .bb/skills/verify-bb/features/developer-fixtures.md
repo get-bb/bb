@@ -11,7 +11,7 @@ typechecks and package tests use Turbo with the applicable package filter.
 ## Source
 
 - `apps/demo-server/package.json`
-- `scripts/bb-dev-app`
+- `packages/scripts/src/commands/run-dev.ts`
 - `scripts/bb-cloud-dev.mjs`
 - `packages/plugin-api-map/src/surfaces.ts`
 
@@ -19,7 +19,7 @@ typechecks and package tests use Turbo with the applicable package filter.
 
 | Feature | Drive | Observable success |
 | --- | --- | --- |
-| Dev launcher and status | Run the main skill’s preflight, launch, doctor and cleanup; inspect failure logs. | Checkout-derived ports/store and owned processes agree; failed attempts clean up only their own resources. |
+| Dev server lifecycle | Run the main skill’s preflight, launch, doctor and cleanup; inspect failure logs. | Checkout-derived ports/store and owned processes agree; failed attempts clean up only their own resources. |
 | Demo and performance fixtures | Inspect apps/demo-server and performance seed inputs, start only an isolated fixture and open its intended view. | Fixture content is recognizable and reproducible; mocked/seeded data is labeled and never counted as actual provider execution. |
 | Plugin development tools | Run extensions.md scaffold/build/types/dev checks and open the Guide/tester/theme-preview surfaces. | Developer output is usable in the actual test app and public symbol links match source. |
 | CLI help and guides | Reconcile new commands/config with their guide/skill documentation and run the discoverability recipe. | Agent/user instructions expose the current contract with correct flags and target selection. |

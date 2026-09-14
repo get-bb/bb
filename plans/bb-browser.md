@@ -209,7 +209,7 @@ Validation:
 
 - `pnpm exec turbo run test --filter=@bb/desktop -- desktop-browser`
 - `pnpm exec turbo run typecheck --filter=@bb/desktop`
-- Manual smoke test through `scripts/bb-dev-app current`
+- Manual smoke test through `pnpm dev` and `pnpm exec turbo run dev --filter=@bb/desktop` in separate terminals
 
 ## Phase 5 - CLI Commands
 

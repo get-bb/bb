@@ -386,7 +386,7 @@ has been exercised or that every behavior has been understood.
 
 ## dev-harness
 
-4 source files. Recipes: [developer-fixtures](features/developer-fixtures.md).
+3 source files. Recipes: [developer-fixtures](features/developer-fixtures.md).
 
 ## domain-contracts
 

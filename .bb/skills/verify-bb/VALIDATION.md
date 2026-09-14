@@ -11,7 +11,7 @@ added during the run; product code was unchanged.
 
 Linux, Node 22.23.2, pnpm 9.15.0, `dev-browser@next` resolving to
 `1.0.0-rc.3`, and headless Chromium. Desktop viewport: 1280 × 720.
-Compact touch viewport: 390 × 844. The source dev launcher started a fresh
+Compact touch viewport: 390 × 844. The source dev app used a fresh
 store and local host daemon. Project data was a synthetic empty Git repository.
 A real authenticated Codex provider performed the short conversation.
 
@@ -39,8 +39,7 @@ not a behavioral benchmark of skill triggering.
 - Use the supported Node 22 runtime. The exploratory Node 24.18.0 launch
   crashed in native-module setup; Node 22 startup succeeded without product
   changes. This records the observed setup result, not a diagnosed Node bug.
-- Check all three ports before invoking `current`: the launcher stops their
-  listeners before startup. Stopped screen sessions alone do not prove the
+- Check all three ports before starting the app. Confirm the
   ports are unused.
 - Mark a fresh dev directory before startup so legacy dev data is not adopted.
 - Wait for the chosen folder's breadcrumbs before submitting Add project.

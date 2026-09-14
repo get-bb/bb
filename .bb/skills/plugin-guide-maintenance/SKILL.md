@@ -111,6 +111,6 @@ bb plugin build plugins/plugin-api-docs
 
 For annotation-only maintenance, use the affected package and Plugin Guide
 checks required by repository validation policy. Start
-`scripts/bb-dev-app current`; inspect the affected entry and reachable actions
+`pnpm dev`; inspect the affected entry and reachable actions
 for a public API change, or the affected annotations and adjacent interactive
 surfaces for annotation-only maintenance.

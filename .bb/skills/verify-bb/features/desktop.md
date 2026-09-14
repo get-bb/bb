@@ -6,7 +6,8 @@ Status: **2026-09-05: 12 partial/blocked**. See [the audit](../MAINTENANCE.md) a
 
 Use a graphical macOS or Linux test host with the source desktop build. Follow
 the main launch preflight and fresh-store marker, then use
-`scripts/bb-dev-app current --desktop` in place of the web-only launch. Confirm
+`pnpm dev` and `pnpm exec turbo run dev --filter=@bb/desktop` in separate
+terminals. Confirm
 that Electron and its owned runtime use this checkout's isolated store. Browser
 automation against the web app cannot prove native menu, window, or update behavior.
 Native actions need OS/Electron automation and inspected screenshots.
@@ -46,5 +47,5 @@ preferences, and remove only synthetic resources after evidence is preserved.
 ## Maintenance notes
 
 - Before native recipes, check Accessibility automation and screen-capture availability without prompting or changing owner settings. If unavailable, record native-input rows blocked; Electron CDP renderer coverage does not prove native menu/window actions. Source: `apps/desktop/scripts/run-electron-dev.mjs:116; live native-access.txt`.
-- The --desktop launcher attaches to the running Vite app. For enabled Server & Daemon Logs and desktop-owned runtime lifetime tests, use a separately marked disposable standalone desktop runtime; record reuse-mode disabled log actions separately. Source: `apps/desktop/scripts/run-electron-dev.mjs:78; apps/desktop/src/main.ts:1335`.
-- For a shared source dev app, do not run `current --desktop`. Turbo-build @bb/desktop, then run its standalone run-electron-dev.mjs from apps/desktop with Node22, an owned DISPLAY, isolated BB_DESKTOP_USER_DATA_DIR and BB_DESKTOP_ELECTRON_ARGS CDP port. It detects the existing Vite app and attaches without restarting shared server/daemon. Attach CDP by an existing target id; Electron does not support Target.createTarget. Source: `apps/desktop/scripts/run-electron-dev.mjs:72`.
+- The desktop dev command attaches to the running Vite app. For enabled Server & Daemon Logs and desktop-owned runtime lifetime tests, use a separately marked disposable standalone desktop runtime; record reuse-mode disabled log actions separately. Source: `apps/desktop/scripts/run-electron-dev.mjs:78; apps/desktop/src/main.ts:1335`.
+- For a shared source dev app, Turbo-build @bb/desktop, then run its standalone run-electron-dev.mjs from apps/desktop with Node22, an owned DISPLAY, isolated BB_DESKTOP_USER_DATA_DIR and BB_DESKTOP_ELECTRON_ARGS CDP port. It detects the existing Vite app and attaches without restarting shared server/daemon. Attach CDP by an existing target id; Electron does not support Target.createTarget. Source: `apps/desktop/scripts/run-electron-dev.mjs:72`.
