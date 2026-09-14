@@ -394,12 +394,7 @@ describe("BrowsePluginsTab", () => {
     expect(cardOrder()).toHaveLength(8);
   });
 
-  it("shows all five cards in a narrow shelf", async () => {
-    const originalWidth = window.innerWidth;
-    Object.defineProperty(window, "innerWidth", {
-      configurable: true,
-      value: 700,
-    });
+  it("expands a shelf with fewer entries than the desktop limit", async () => {
     const entries = Array.from({ length: 5 }, (_, index) => ({
       ...MEMORY_ENTRY,
       entryId: `memory-${index}`,
@@ -409,12 +404,9 @@ describe("BrowsePluginsTab", () => {
     renderBrowse({ entries, collections: [] });
 
     await screen.findByTestId("plugin-browse-shelves");
+    fireEvent.click(screen.getByRole("button", { name: "See all" }));
     expect(cardOrder()).toHaveLength(5);
     expect(screen.queryByRole("button", { name: "See all" })).toBeNull();
-    Object.defineProperty(window, "innerWidth", {
-      configurable: true,
-      value: originalWidth,
-    });
   });
 
   it("uses the shared error state and retries catalog searches", async () => {

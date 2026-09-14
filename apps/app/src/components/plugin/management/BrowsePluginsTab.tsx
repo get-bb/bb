@@ -9,6 +9,8 @@ import {
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
 import { Icon } from "@bb/shared-ui/icon";
+import bbLogoUrl from "../../../../../../assets/bb-logo.svg";
+import { OpenPluginGuideButton } from "./OpenPluginGuideButton";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import {
@@ -155,7 +157,7 @@ export function BrowsePluginsTab({
   return (
     <ResourceCollectionViewport scrollId="plugins-browse-results">
       <div className={cn("space-y-7 pb-8", TOOLS_PAGE_BAND_CLASSES)}>
-        <div className="flex items-center justify-end gap-3">
+        <div className="ml-auto flex w-fit flex-col items-center gap-2">
           <div className="flex items-stretch">
             <Button
               className="rounded-r-none"
@@ -184,6 +186,7 @@ export function BrowsePluginsTab({
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
+          <OpenPluginGuideButton />
         </div>
 
         <BrowseHeroCarousel
@@ -339,20 +342,44 @@ function BrowseShelf({
       label={shelf.label}
       description={shelf.description}
       leading={
-        <span
-          className="size-2 rounded-full"
-          style={pluginCatalogCategoryMutedAccentStyle(shelf.categoryId)}
-          aria-hidden
-        />
+        shelf.key === "collection:bb-official" ? (
+          <span
+            className="size-4 shrink-0 bg-current text-foreground"
+            style={{ mask: `url(${bbLogoUrl}) center / contain no-repeat` }}
+            aria-hidden
+          />
+        ) : shelf.key === "collection:new-and-notable" ? (
+          <Icon name="News01" className="size-4 text-foreground" aria-hidden />
+        ) : (
+          <span
+            className="size-2 rounded-full"
+            style={pluginCatalogCategoryMutedAccentStyle(shelf.categoryId)}
+            aria-hidden
+          />
+        )
       }
       browseAction={
-        visible.length < shelf.entries.length ? (
-          <ResourceShelfSeeAllAction type="button" onClick={onExpand} />
+        !expanded && shelf.entries.length > 2 ? (
+          <ResourceShelfSeeAllAction
+            type="button"
+            onClick={onExpand}
+            className={
+              shelf.entries.length <= SHELF_ENTRY_LIMIT
+                ? "sm:hidden"
+                : undefined
+            }
+          />
         ) : undefined
       }
     >
       <div data-plugin-shelf>
-        <div data-plugin-shelf-grid className="grid gap-2">
+        <div
+          data-plugin-shelf-grid
+          className={cn(
+            "grid gap-2",
+            !expanded && "max-sm:[&>*:nth-child(n+3)]:hidden",
+          )}
+        >
           {visible.map((entry) => (
             <PluginCatalogCard
               key={`${entry.marketplace}/${entry.entryId}`}
