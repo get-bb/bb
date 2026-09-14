@@ -128,7 +128,6 @@ interface EnvironmentSummaryArgs {
   hostType?: Host["type"];
   branchName?: string;
   environmentCheckout?: WorkspaceCheckoutDisplay;
-  onCreateNewThreadInEnvironment?: () => void;
 }
 
 function makeEnvironmentSummary({
@@ -140,7 +139,6 @@ function makeEnvironmentSummary({
   hostType = "persistent",
   branchName,
   environmentCheckout,
-  onCreateNewThreadInEnvironment,
 }: EnvironmentSummaryArgs): ReactNode {
   const providerLookup = findEnvironmentDisplayProvider(
     STORY_ENVIRONMENT_PROVIDERS,
@@ -183,7 +181,11 @@ function makeEnvironmentSummary({
       environmentHost={chrome.environmentHost}
       environmentMachineProvider={chrome.environmentMachineProvider}
       environmentCheckout={checkoutDisplay}
-      onCreateNewThreadInEnvironment={onCreateNewThreadInEnvironment}
+      onCreateNewThreadInEnvironment={
+        environment.status === "ready" && environment.path !== null
+          ? noop
+          : undefined
+      }
     />
   );
 }
@@ -225,7 +227,6 @@ const sandboxWorktreeEnvironmentSummary: ReactNode = makeEnvironmentSummary({
   machineName: "Modal sandbox",
   hostType: "ephemeral",
   branchName: STORY_BRANCH_NAME,
-  onCreateNewThreadInEnvironment: noop,
 });
 
 const namedLocalEnvironmentSummary: ReactNode = makeEnvironmentSummary({
@@ -237,7 +238,6 @@ const namedLocalEnvironmentSummary: ReactNode = makeEnvironmentSummary({
   machineName: "Bersabel's MacBook Pro",
   hasMultipleMachines: true,
   branchName: STORY_BRANCH_NAME,
-  onCreateNewThreadInEnvironment: noop,
 });
 
 const detachedWorktreeEnvironmentSummary: ReactNode = makeEnvironmentSummary({
@@ -253,7 +253,6 @@ const detachedWorktreeEnvironmentSummary: ReactNode = makeEnvironmentSummary({
       headSha: "abcdef1234567890",
     },
   }),
-  onCreateNewThreadInEnvironment: noop,
 });
 
 const provisioningEnvironmentSummary: ReactNode = makeEnvironmentSummary({
@@ -272,7 +271,6 @@ const personalEnvironmentSummary: ReactNode = makeEnvironmentSummary({
   }),
   host: localEnvironmentDisplayHost,
   projectName: null,
-  onCreateNewThreadInEnvironment: noop,
 });
 
 const destroyedEnvironmentSummary: ReactNode = makeEnvironmentSummary({
