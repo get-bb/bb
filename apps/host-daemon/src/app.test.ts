@@ -29,6 +29,10 @@ import {
   type HostDaemonApp,
 } from "./app.js";
 import type { HostDaemonLogger } from "./logger.js";
+import {
+  PACKAGE_MANAGER_FILE_NAME,
+  readPersistedPackageManager,
+} from "./protocol-self-update.js";
 import type {
   RuntimeManagerReapIdleProviderSessionsArgs,
   RuntimeManagerReapIdleProviderSessionsResult,
@@ -54,6 +58,7 @@ interface CreateFetchRecorderArgs {
   inactiveSessionOnFirstEventPost?: boolean;
   interactiveRequestError?: Error;
   interactiveRequestResponse?: HostDaemonInteractiveRequestResponse;
+  packageManager?: "auto" | "mise" | "npm";
   retiredEnvironmentIds?: string[];
   sessionIds?: string[];
 }
@@ -142,7 +147,7 @@ function createFetchRecorder(
           },
           heartbeatIntervalMs: 30000,
           leaseTimeoutMs: 90000,
-          packageManager: "auto",
+          packageManager: args.packageManager ?? "auto",
           retiredEnvironmentIds: args.retiredEnvironmentIds ?? [],
         },
         { status: 201 },
@@ -500,6 +505,22 @@ describe("createHostDaemonApp", () => {
       JSON.stringify({ type: "machine.shutdown-ack" }),
     );
     expect(exitProcess).toHaveBeenCalledWith(0);
+  });
+
+  it("persists the effective package manager reported on session open", async () => {
+    const { app, dataDir } = await createAppFixture({
+      packageManager: "mise",
+    });
+    try {
+      await app.daemon.start();
+      await expect(
+        readPersistedPackageManager(
+          path.join(dataDir, PACKAGE_MANAGER_FILE_NAME),
+        ),
+      ).resolves.toBe("mise");
+    } finally {
+      await app.daemon.shutdown("test", 0);
+    }
   });
 
   it("closes the machine authentication proxy during daemon shutdown", async () => {

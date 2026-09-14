@@ -233,6 +233,7 @@ export function createBridgeProtocolAdapter(
             method: BRIDGE_REQUEST_METHODS.providerInstallationStatus,
             params: {
               providerId: options.id,
+              packageManager: command.packageManager,
               ...(command.requirement !== undefined
                 ? { requirement: command.requirement }
                 : {}),
@@ -246,6 +247,7 @@ export function createBridgeProtocolAdapter(
             params: {
               providerId: options.id,
               action: command.action,
+              packageManager: command.packageManager,
               ...cwdAndStaticProviderOptions(command.cwd),
             },
           };

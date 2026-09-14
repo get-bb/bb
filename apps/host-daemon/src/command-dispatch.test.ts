@@ -24,6 +24,10 @@ import {
 } from "../test/command/dispatch-helpers.js";
 import type { CommandOf } from "./command-dispatch-support.js";
 import { RuntimeManager } from "./runtime-manager.js";
+import {
+  PACKAGE_MANAGER_FILE_NAME,
+  writePersistedPackageManager,
+} from "./protocol-self-update.js";
 
 const WORKSPACE_PATH = "/tmp/bb-command-dispatch-test";
 
@@ -1611,6 +1615,35 @@ describe("dispatchCommand", () => {
     expect(runtime.startThread).toHaveBeenCalledTimes(2);
   });
 
+  it("reads the persisted package manager for the thread-start installation gate", async () => {
+    const dataDir = await makeTempDir("bb-command-dispatch-provider-cli-");
+    await writePersistedPackageManager(
+      path.join(dataDir, PACKAGE_MANAGER_FILE_NAME),
+      "mise",
+    );
+    const runtime = createRuntime();
+    const manager = new RuntimeManager({
+      createRuntime: () => runtime,
+      provisionWorkspace: async () => createWorkspace(),
+    });
+    const providerInstallationStatus = vi.fn(async () =>
+      supportedCodexInstallationStatus(),
+    );
+    const options = makeDispatchOptions({
+      dataDir,
+      runtimeManager: manager,
+      providerInstallationStatus,
+    });
+
+    await expect(
+      dispatchCommand(createInstallationGatedThreadStart("thread-1"), options),
+    ).resolves.toEqual({ providerThreadId: "provider-thread-1" });
+
+    expect(providerInstallationStatus).toHaveBeenCalledWith(
+      expect.objectContaining({ packageManager: "mise" }),
+    );
+  });
+
   it("shares one in-flight probe between concurrent thread starts", async () => {
     const runtime = createRuntime();
     const manager = new RuntimeManager({
@@ -1940,9 +1973,36 @@ describe("dispatchCommand", () => {
     const streamProviderInstallation = vi.fn(() =>
       createProviderCliInstallEventStream(events),
     );
+    const providerInstallationRun = vi.fn(async () => ({
+      available: true as const,
+      command: {
+        command: "codex",
+        args: ["update"],
+        displayCommand: "codex update",
+      },
+      verification: {
+        kind: "version_changed" as const,
+        previousVersion: "0.1.0",
+      },
+    }));
+    const providerInstallationStatus = vi.fn(async () => ({
+      executableName: "codex",
+      executablePath: "/usr/local/bin/codex",
+      installed: true,
+      installSource: "external" as const,
+      currentVersion: "0.2.0",
+      latestVersion: "0.2.0",
+      minimumSupportedVersion: null,
+      npmPackageName: null,
+      npmGlobalPackageVersion: null,
+      installAction: null,
+      shadowingInstall: null,
+      needsUpdate: false,
+      versionUnsupported: false,
+    }));
     const command: CommandOf<"provider.installation.run"> = {
       type: "provider.installation.run",
-      packageManager: "auto",
+      packageManager: "mise",
       bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
       providerId: "codex",
       action: "update",
@@ -1961,35 +2021,19 @@ describe("dispatchCommand", () => {
       fetchPluginHostArtifact: fetchDispatchTestArtifact,
       ...unexpectedProviderMaintenance,
       runtimeManager: manager,
-      providerInstallationRun: async () => ({
-        available: true,
-        command: {
-          command: "codex",
-          args: ["update"],
-          displayCommand: "codex update",
-        },
-        verification: { kind: "version_changed", previousVersion: "0.1.0" },
-      }),
-      providerInstallationStatus: async () => ({
-        executableName: "codex",
-        executablePath: "/usr/local/bin/codex",
-        installed: true,
-        installSource: "external",
-        currentVersion: "0.2.0",
-        latestVersion: "0.2.0",
-        minimumSupportedVersion: null,
-        npmPackageName: null,
-        npmGlobalPackageVersion: null,
-        installAction: null,
-        shadowingInstall: null,
-        needsUpdate: false,
-        versionUnsupported: false,
-      }),
+      providerInstallationRun,
+      providerInstallationStatus,
       streamProviderInstallation,
       threadStorageRootPath: "/tmp/bb-thread-storage",
     });
 
     expect(result).toEqual({ events });
+    expect(providerInstallationRun).toHaveBeenCalledWith(
+      expect.objectContaining({ packageManager: "mise" }),
+    );
+    expect(providerInstallationStatus).toHaveBeenCalledWith(
+      expect.objectContaining({ packageManager: "mise" }),
+    );
     expect(streamProviderInstallation).toHaveBeenCalledWith(
       expect.objectContaining({
         providerId: "codex",

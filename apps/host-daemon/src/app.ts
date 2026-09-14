@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { startDesktopBrowserBroker } from "./desktop-browser-broker.js";
 import { MachineEnvironment } from "./machine-environment.js";
 import { CommandRouter } from "./command-router.js";
@@ -44,7 +45,11 @@ import {
 import { runtimeErrorLogFields, summarizeError } from "./error-utils.js";
 import { ensureThreadStorageRoot } from "./thread-storage-root.js";
 import type { AgentRuntime, AgentRuntimeOptions } from "@bb/agent-runtime";
-import { createProtocolSelfUpdater } from "./protocol-self-update.js";
+import {
+  createProtocolSelfUpdater,
+  PACKAGE_MANAGER_FILE_NAME,
+  writePersistedPackageManager,
+} from "./protocol-self-update.js";
 import type { PackageManagerPreference } from "@bb/provider-bridge-protocol";
 import {
   disposeParcelWatcherBackend,
@@ -818,6 +823,10 @@ export async function createHostDaemonApp(
     onTerminalMessage: (message) => terminalManager.handleMessage(message),
     onSessionOpened: async (session) => {
       sessionState.value = session.sessionId;
+      await writePersistedPackageManager(
+        join(options.dataDir, PACKAGE_MANAGER_FILE_NAME),
+        session.packageManager,
+      );
       connectTunnel.replaceAuthoritativeShareSet(session.connectShares);
       await pluginHostManager.reconcileGenerations(
         session.pluginHostGenerations,

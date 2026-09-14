@@ -161,6 +161,7 @@ describe("handshake gating", () => {
     expect(
       adapter.buildCommandPlan({
         type: "provider/installation/status",
+        packageManager: "auto",
         cwd: "/workspace",
         requirement: "thread_rewind",
       }),
@@ -169,6 +170,7 @@ describe("handshake gating", () => {
       method: "provider/installation/status",
       params: {
         providerId: "fake-bridge",
+        packageManager: "auto",
         cwd: "/workspace",
         requirement: "thread_rewind",
       },
@@ -177,11 +179,16 @@ describe("handshake gating", () => {
       adapter.buildCommandPlan({
         type: "provider/installation/run",
         action: "update",
+        packageManager: "mise",
       }),
     ).toEqual({
       kind: "request",
       method: "provider/installation/run",
-      params: { providerId: "fake-bridge", action: "update" },
+      params: {
+        providerId: "fake-bridge",
+        action: "update",
+        packageManager: "mise",
+      },
     });
   });
 });

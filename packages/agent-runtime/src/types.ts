@@ -16,6 +16,7 @@ import type {
   ToolCallResponse,
 } from "@bb/domain";
 import type {
+  PackageManagerPreference,
   ProviderHealthResult,
   ProviderInstallationRunResult,
   ProviderInstallationStatus,
@@ -284,7 +285,11 @@ interface ProviderMaintenanceArgs {
   cwd?: string;
 }
 
-interface ProviderInstallationStatusArgs extends ProviderMaintenanceArgs {
+interface ProviderInstallationArgs extends ProviderMaintenanceArgs {
+  packageManager: PackageManagerPreference;
+}
+
+interface ProviderInstallationStatusArgs extends ProviderInstallationArgs {
   requirement?: "thread_rewind";
 }
 
@@ -329,7 +334,7 @@ export interface AgentRuntime {
   ): Promise<ProviderInstallationStatus>;
 
   providerInstallationRun(
-    args: ProviderMaintenanceArgs & { action: "install" | "update" },
+    args: ProviderInstallationArgs & { action: "install" | "update" },
   ): Promise<ProviderInstallationRunResult>;
 
   listRunningProviders(): string[];

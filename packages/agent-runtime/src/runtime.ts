@@ -2346,6 +2346,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       bridgeLaunch,
       cwd,
       requirement,
+      packageManager,
     }) {
       await runtime.ensureProvider({ providerId, bridgeLaunch });
       const proc = providerProcesses.requireProviderProcess({
@@ -2356,6 +2357,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
         commandType: "provider/installation/status",
         plan: proc.adapter.buildCommandPlan({
           type: "provider/installation/status",
+          packageManager,
           ...(cwd !== undefined ? { cwd } : {}),
           ...(requirement !== undefined ? { requirement } : {}),
         }),
@@ -2368,7 +2370,13 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       });
     },
 
-    async providerInstallationRun({ providerId, bridgeLaunch, cwd, action }) {
+    async providerInstallationRun({
+      providerId,
+      bridgeLaunch,
+      cwd,
+      action,
+      packageManager,
+    }) {
       await runtime.ensureProvider({ providerId, bridgeLaunch });
       const proc = providerProcesses.requireProviderProcess({
         processKey: resolveProviderProcessKey({ bridgeLaunch, providerId }),
@@ -2379,6 +2387,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
         plan: proc.adapter.buildCommandPlan({
           type: "provider/installation/run",
           action,
+          packageManager,
           ...(cwd !== undefined ? { cwd } : {}),
         }),
         providerId,

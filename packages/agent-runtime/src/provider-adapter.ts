@@ -9,6 +9,7 @@ import type {
   RuntimePermissionPolicy,
   ServiceTier,
 } from "@bb/domain";
+import type { PackageManagerPreference } from "@bb/provider-bridge-protocol";
 import type {
   AgentRuntimeBridgeLaunch,
   AgentRuntimeSkillRoot,
@@ -42,12 +43,14 @@ export type AdapterCommand =
   | { type: "provider/usage"; cwd?: string }
   | {
       type: "provider/installation/status";
+      packageManager: PackageManagerPreference;
       cwd?: string;
       requirement?: "thread_rewind";
     }
   | {
       type: "provider/installation/run";
       action: "install" | "update";
+      packageManager: PackageManagerPreference;
       cwd?: string;
     }
   | {

@@ -233,6 +233,7 @@ async function runProviderInstallationOnHost(
     );
     const maintenanceArgs = {
       providerId: command.providerId,
+      packageManager: command.packageManager,
       ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
       bridgeLaunch,
     };
@@ -658,6 +659,7 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
     );
     return options.providerInstallationStatus({
       providerId: command.providerId,
+      packageManager: command.packageManager,
       ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
       ...(command.requirement !== undefined
         ? { requirement: command.requirement }

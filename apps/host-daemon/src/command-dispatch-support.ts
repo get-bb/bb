@@ -14,6 +14,7 @@ import type {
   WorkspaceContext,
 } from "@bb/host-daemon-contract";
 import type {
+  PackageManagerPreference,
   ProviderInstallationCommand,
   ProviderInstallationRunResult,
   ProviderInstallationStatus,
@@ -76,12 +77,14 @@ export interface CommandDispatchOptions {
     bridgeLaunch: AgentRuntimeBridgeLaunch;
     cwd?: string;
     requirement?: "thread_rewind";
+    packageManager: PackageManagerPreference;
   }) => Promise<ProviderInstallationStatus>;
   providerInstallationRun: (args: {
     providerId: string;
     action: "install" | "update";
     bridgeLaunch: AgentRuntimeBridgeLaunch;
     cwd?: string;
+    packageManager: PackageManagerPreference;
   }) => Promise<ProviderInstallationRunResult>;
   streamProviderInstallation?: (args: {
     providerId: string;

@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { join } from "node:path";
 import type { AgentRuntimeBridgeLaunch } from "@bb/agent-runtime";
 import { flattenPromptInputGroups } from "@bb/domain";
 import type { HostDaemonCommandResult } from "@bb/host-daemon-contract";
@@ -16,6 +17,10 @@ import {
   stagePromptAttachments,
 } from "./prompt-attachments.js";
 import { providerInstallationGateKey } from "../provider-installation-gate.js";
+import {
+  PACKAGE_MANAGER_FILE_NAME,
+  readPersistedPackageManager,
+} from "../protocol-self-update.js";
 import { requireResolvedWorkspaceForCommand } from "../workspace-resolution.js";
 
 type TurnSubmitCommand = CommandOf<"turn.submit">;
@@ -93,9 +98,14 @@ async function requireSupportedProviderCliForThreadStart({
         command.bridgeLaunch,
         options,
       );
+      const packageManager =
+        (await readPersistedPackageManager(
+          join(options.dataDir, PACKAGE_MANAGER_FILE_NAME),
+        )) ?? "auto";
       return options.providerInstallationStatus({
         providerId: command.providerId,
         bridgeLaunch,
+        packageManager,
         ...(requirement !== undefined ? { requirement } : {}),
       });
     },
