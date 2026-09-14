@@ -1773,13 +1773,19 @@ async function handleRequest(
     case "provider/installation/status":
       sendResult(
         request.id,
-        await getCodexProviderInstallationStatus(request.params.requirement),
+        await getCodexProviderInstallationStatus(
+          request.params.packageManager,
+          request.params.requirement,
+        ),
       );
       break;
     case "provider/installation/run":
       sendResult(
         request.id,
-        await getCodexProviderInstallationRun(request.params.action),
+        await getCodexProviderInstallationRun(
+          request.params.packageManager,
+          request.params.action,
+        ),
       );
       break;
     case "thread/start":

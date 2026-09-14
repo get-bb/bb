@@ -25,6 +25,7 @@ function installationStatus() {
       label: "Update" as const,
       command: "codex update",
     },
+    shadowingInstall: null,
     needsUpdate: true,
     versionUnsupported: false,
   };
@@ -74,8 +75,27 @@ describe("Codex provider maintenance", () => {
   });
 
   it("resolves a fresh typed update plan and rejects a stale action", () => {
+    const npmInstaller = {
+      packageManager: "npm" as const,
+      source: "npmGlobal" as const,
+      installCommand: {
+        command: "npm",
+        args: ["install", "-g", "@openai/codex@latest"],
+        displayCommand: "npm install -g @openai/codex@latest",
+      },
+      updateCommand: {
+        command: "npm",
+        args: ["install", "-g", "@openai/codex@latest"],
+        displayCommand: "npm install -g @openai/codex@latest",
+      },
+      shadowingInstall: null,
+    };
     expect(
-      __testing.buildProviderInstallationRun(installationStatus(), "update"),
+      __testing.buildProviderInstallationRun(
+        installationStatus(),
+        npmInstaller,
+        "update",
+      ),
     ).toEqual({
       available: true,
       command: {
@@ -86,7 +106,11 @@ describe("Codex provider maintenance", () => {
       verification: { kind: "version_at_least", version: "1.1.0" },
     });
     expect(
-      __testing.buildProviderInstallationRun(installationStatus(), "install"),
+      __testing.buildProviderInstallationRun(
+        installationStatus(),
+        npmInstaller,
+        "install",
+      ),
     ).toEqual({
       available: false,
       message: "Codex install is no longer available on this host.",

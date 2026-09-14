@@ -1,5 +1,8 @@
 import {
+  type ExperimentalPackageInstallerResolution as PackageInstallerResolution,
+  type ExperimentalPackageManagerPreference as PackageManagerPreference,
   type ProviderHealthResult,
+  type ProviderInstallationCommand,
   type ProviderInstallationRunResult,
   type ProviderInstallationStatus,
   type ProviderUsage,
@@ -10,12 +13,11 @@ import {
   experimental_compareVersions as compareVersions,
   experimental_formatCommand as formatCommand,
   experimental_installationVerification as installationVerification,
-  experimental_npmGlobalInstallCommand as npmGlobalInstallCommand,
-  experimental_npmGlobalInstallSource as npmGlobalInstallSource,
   experimental_npmLatestVersion as npmLatestVersion,
   experimental_probeNpmGlobalPackage as probeNpmGlobalPackage,
   experimental_readCliVersion as readCliVersion,
   experimental_resolveExecutablePath as resolveExecutablePath,
+  experimental_resolvePackageInstaller as resolvePackageInstaller,
   experimental_versionFrom as versionFrom,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { z } from "zod";
@@ -69,11 +71,7 @@ function minimumSupportedVersionForRequirement(
     : CODEX_MINIMUM_SUPPORTED_VERSION;
 }
 
-function codexUpdateCommand(): {
-  command: string;
-  args: string[];
-  displayCommand: string;
-} {
+function codexUpdateCommand(): ProviderInstallationCommand {
   const args = ["update"];
   return {
     command: "codex",
@@ -82,9 +80,25 @@ function codexUpdateCommand(): {
   };
 }
 
-export async function getCodexProviderInstallationStatus(
+function codexInstallationCommand(
+  installer: PackageInstallerResolution,
+  action: "install" | "update",
+): ProviderInstallationCommand {
+  if (action === "install") return installer.installCommand;
+  return installer.packageManager === "mise"
+    ? installer.updateCommand
+    : codexUpdateCommand();
+}
+
+interface CodexInstallationDetails {
+  status: ProviderInstallationStatus;
+  installer: PackageInstallerResolution;
+}
+
+async function resolveCodexInstallationDetails(
+  packageManager: PackageManagerPreference,
   requirement?: "thread_rewind",
-): Promise<ProviderInstallationStatus> {
+): Promise<CodexInstallationDetails> {
   const minimumSupportedVersion =
     minimumSupportedVersionForRequirement(requirement);
   const [resolvedExecutable, versionOutput, latestVersion, npmGlobal] =
@@ -112,15 +126,20 @@ export async function getCodexProviderInstallationStatus(
       ? "update"
       : null;
 
-  return {
+  const installer = await resolvePackageInstaller({
+    packageManager,
+    npmPackage: CODEX_NPM_PACKAGE,
+    installed,
+    executablePath: resolvedExecutable,
+    npmBin: npmGlobal.npmBin,
+    latestVersion,
+  });
+
+  const status: ProviderInstallationStatus = {
     executableName: "codex",
     executablePath: resolvedExecutable,
     installed,
-    installSource: npmGlobalInstallSource({
-      installed,
-      executablePath: resolvedExecutable,
-      npmBin: npmGlobal.npmBin,
-    }),
+    installSource: installer.source,
     currentVersion,
     latestVersion,
     minimumSupportedVersion,
@@ -132,25 +151,37 @@ export async function getCodexProviderInstallationStatus(
         : {
             kind: actionKind,
             label: actionKind === "install" ? "Install" : "Update",
-            command:
-              actionKind === "install"
-                ? npmGlobalInstallCommand(CODEX_NPM_PACKAGE).displayCommand
-                : codexUpdateCommand().displayCommand,
+            command: codexInstallationCommand(installer, actionKind)
+              .displayCommand,
           },
+    shadowingInstall: installer.shadowingInstall,
     needsUpdate,
     versionUnsupported,
   };
+
+  return { status, installer };
+}
+
+export async function getCodexProviderInstallationStatus(
+  packageManager: PackageManagerPreference,
+  requirement?: "thread_rewind",
+): Promise<ProviderInstallationStatus> {
+  return (await resolveCodexInstallationDetails(packageManager, requirement))
+    .status;
 }
 
 export async function getCodexProviderInstallationRun(
+  packageManager: PackageManagerPreference,
   action: "install" | "update",
 ): Promise<ProviderInstallationRunResult> {
-  const status = await getCodexProviderInstallationStatus();
-  return buildCodexProviderInstallationRun(status, action);
+  const { status, installer } =
+    await resolveCodexInstallationDetails(packageManager);
+  return buildCodexProviderInstallationRun(status, installer, action);
 }
 
 function buildCodexProviderInstallationRun(
   status: ProviderInstallationStatus,
+  installer: PackageInstallerResolution,
   action: "install" | "update",
 ): ProviderInstallationRunResult {
   if (status.installAction?.kind !== action) {
@@ -161,10 +192,7 @@ function buildCodexProviderInstallationRun(
   }
   return {
     available: true,
-    command:
-      action === "install"
-        ? npmGlobalInstallCommand(CODEX_NPM_PACKAGE)
-        : codexUpdateCommand(),
+    command: codexInstallationCommand(installer, action),
     verification: installationVerification(status, action),
   };
 }
