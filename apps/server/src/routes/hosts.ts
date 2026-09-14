@@ -197,6 +197,10 @@ export function registerHostRoutes(
     if (!updated) {
       throw new ApiError(404, "host_not_found", "Host not found");
     }
+    deps.hub.sendDaemonMessage(hostId, {
+      type: "package-manager.replace",
+      packageManager: resolveHostPackageManager(deps, hostId),
+    });
     deps.hub.notifyHost(hostId, ["host-connected"]);
     return context.json(requireNonDestroyedHostWithStatus(deps, updated.id));
   });

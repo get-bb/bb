@@ -523,6 +523,39 @@ describe("createHostDaemonApp", () => {
     }
   });
 
+  it("persists a package manager preference the server replaces during the session", async () => {
+    let socket: ReconnectingWebSocketLike | undefined;
+    const { app, dataDir } = await createAppFixture(
+      { packageManager: "auto" },
+      {
+        createWebSocket: createOpeningWebSocket((created) => {
+          socket = created;
+        }),
+      },
+    );
+    const packageManagerPath = path.join(dataDir, PACKAGE_MANAGER_FILE_NAME);
+    try {
+      await app.daemon.start();
+      await expect(
+        readPersistedPackageManager(packageManagerPath),
+      ).resolves.toBe("auto");
+      if (!socket) throw new Error("Expected daemon socket");
+      socket.onmessage?.({
+        data: JSON.stringify({
+          type: "package-manager.replace",
+          packageManager: "npm",
+        }),
+      });
+      await vi.waitFor(() =>
+        expect(readPersistedPackageManager(packageManagerPath)).resolves.toBe(
+          "npm",
+        ),
+      );
+    } finally {
+      await app.daemon.shutdown("test", 0);
+    }
+  });
+
   it("closes the machine authentication proxy during daemon shutdown", async () => {
     const closeMachineAuthProxy = vi.fn(async () => undefined);
     const { app } = await createAppFixture({}, { closeMachineAuthProxy });

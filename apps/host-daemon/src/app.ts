@@ -800,6 +800,11 @@ export async function createHostDaemonApp(
     onMachineShutdown: () => requestMachineShutdown(),
     onMachineEnvironment: (environment) =>
       machineEnvironment.replace(environment.entries),
+    onPackageManager: (packageManager) =>
+      writePersistedPackageManager(
+        join(options.dataDir, PACKAGE_MANAGER_FILE_NAME),
+        packageManager,
+      ),
     createWebSocket: options.createWebSocket,
     getActiveThreads: () => runtimeManager.listActiveThreads(),
     getLoadedEnvironments: () => runtimeManager.listLoadedEnvironments(),

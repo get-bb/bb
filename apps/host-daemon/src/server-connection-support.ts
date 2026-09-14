@@ -47,6 +47,7 @@ export type HostDaemonServerTerminalMessage = Exclude<
   | { type: "session-close" }
   | { type: "heartbeat-ack" }
   | { type: "machine-environment.replace" }
+  | { type: "package-manager.replace" }
   | HostDaemonOnlineRpcRequestMessage
   | HostDaemonWatchSetReplaceMessage
   | HostDaemonConnectSharesReplaceMessage
@@ -91,6 +92,9 @@ export interface ServerConnectionOptions {
   onMachineEnvironment?: (
     environment: HostDaemonSessionOpenResponse["machineEnvironment"],
   ) => void;
+  onPackageManager?: (
+    packageManager: HostDaemonSessionOpenResponse["packageManager"],
+  ) => void | Promise<void>;
   onMachineShutdown?: () => void | Promise<void>;
   createWebSocket?: CreateReconnectingWebSocket;
   startupTimeoutMs?: number;

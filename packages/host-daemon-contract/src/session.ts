@@ -595,6 +595,12 @@ export const hostDaemonServerWsMessageSchema = z.discriminatedUnion("type", [
     .strict(),
   z
     .object({
+      type: z.literal("package-manager.replace"),
+      packageManager: packageManagerPreferenceSchema,
+    })
+    .strict(),
+  z
+    .object({
       type: z.literal("machine.shutdown"),
     })
     .strict(),

@@ -605,6 +605,19 @@ export class ServerConnection {
       return;
     }
 
+    if (message.data.type === "package-manager.replace") {
+      const { packageManager } = message.data;
+      void Promise.resolve(
+        this.options.onPackageManager?.(packageManager),
+      ).catch((error) => {
+        this.options.logger.warn(
+          { packageManager, ...runtimeErrorLogFields(error) },
+          "Failed to persist the package manager preference",
+        );
+      });
+      return;
+    }
+
     if (message.data.type === "heartbeat-ack") {
       if (this.session !== null) {
         this.lastHeartbeatAcknowledgedAt = Date.now();

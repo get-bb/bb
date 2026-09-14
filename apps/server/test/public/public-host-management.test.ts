@@ -298,6 +298,7 @@ describe("public host management", () => {
     await withTestHarness(async (harness) => {
       const host = seedHost(harness.deps, { id: "host_package_manager" });
       expect(getHost(harness.db, host.id)?.packageManager).toBe("auto");
+      const sendDaemonMessage = vi.spyOn(harness.hub, "sendDaemonMessage");
 
       const response = await harness.app.request(
         `${API}/hosts/${host.id}/package-manager`,
@@ -318,6 +319,10 @@ describe("public host management", () => {
         packageManagerOverride: null,
       });
       expect(getHost(harness.db, host.id)?.packageManager).toBe("mise");
+      expect(sendDaemonMessage).toHaveBeenCalledWith(host.id, {
+        type: "package-manager.replace",
+        packageManager: "mise",
+      });
     });
   });
 
