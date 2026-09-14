@@ -137,7 +137,12 @@ describe("guide fixture boundaries", () => {
     expect(tabStrip).not.toContain("items-end");
     expect(tabStrip).not.toContain("pb-2");
     expect(tabStrip).not.toContain("data-guide-badge=");
-    for (const id of ["thread-panel", "file-opener", "code-renderers"]) {
+    for (const id of [
+      "browser-toolbar",
+      "thread-panel",
+      "file-opener",
+      "code-renderers",
+    ]) {
       expect(appMarkup).toMatch(
         new RegExp(
           `data-guide-badge="${id}"[\\s\\S]*?data-guide-badge-placement="lane"`,
@@ -288,6 +293,7 @@ describe("guide fixture boundaries", () => {
   });
 
   it.each([
+    ["browser-toolbar", "browser-toolbar", "https://example.com"],
     ["thread-panel", "thread-panel", "Release checklist"],
     ["file-opener", "file-viewer", "Checkout retry notes"],
     ["code-renderers", "diff-renderer", "checkout.test.ts"],
