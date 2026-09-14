@@ -164,6 +164,7 @@ import {
 } from "./BuiltInSidebarSection";
 import { SectionThreadDndProvider } from "./SectionThreadDndContext";
 import {
+  SIDEBAR_THREAD_DRAG_OVERLAY_MODIFIERS,
   SIDEBAR_THREAD_DRAG_CHIP_CLASS,
   SIDEBAR_THREAD_DRAG_CHIP_STYLE,
 } from "./sidebarThreadDragChip";
@@ -1344,6 +1345,7 @@ export function SectionThreadDragOverlayPortal({
     <DragOverlay
       className="cursor-grabbing"
       dropAnimation={activeThread ? SIDEBAR_DRAG_OVERLAY_DROP_ANIMATION : null}
+      modifiers={SIDEBAR_THREAD_DRAG_OVERLAY_MODIFIERS}
     >
       {activeThread ? <SectionThreadDragOverlay thread={activeThread} /> : null}
     </DragOverlay>,

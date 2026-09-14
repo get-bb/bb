@@ -290,21 +290,25 @@ describe("useSectionThreadDnd nest hover delay", () => {
     vi.useFakeTimers();
     const { result } = renderSectionThreadDnd();
     const props = () => result.current!.dndContextProps;
-    const collide = (y: number) =>
+    const collide = (y: number, left = 0) =>
       props().collisionDetection!({
         active: { id: "dragged" },
-        collisionRect: rowRect,
+        collisionRect: {
+          ...rowRect,
+          left,
+          right: left + rowRect.width,
+        },
         droppableRects: new Map([[rowDroppableId, rowRect]]),
         droppableContainers: [{ id: rowDroppableId }],
         pointerCoordinates: { x: 20, y },
       } as unknown as Parameters<CollisionDetection>[0]).map(({ id }) => id);
 
     act(() => props().onDragStart?.(dragStart("dragged")));
-    expect(collide(114)).toEqual([]);
+    expect(collide(114, 48)).toEqual([]);
     act(() => vi.advanceTimersByTime(NEST_HOVER_DELAY_MS - 1));
-    expect(collide(114)).toEqual([]);
+    expect(collide(114, 48)).toEqual([]);
     act(() => vi.advanceTimersByTime(1));
-    expect(collide(114)).toEqual([rowDroppableId]);
+    expect(collide(114, 48)).toEqual([rowDroppableId]);
 
     expect(collide(140)).toEqual([]);
     expect(collide(114)).toEqual([]);

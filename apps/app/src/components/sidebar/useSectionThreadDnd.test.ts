@@ -11,7 +11,6 @@ import {
   NEST_BAND_ARMED_FRACTION,
   NEST_BAND_FRACTION,
   NEST_CANCEL_OFFSET_PX,
-  NEST_INDENTATION_PX,
   PINNED_THREAD_PARENT_KEY,
   resolvePinnedReorderPlacement,
   resolveSectionThreadDropDecision,
@@ -580,25 +579,22 @@ describe("thread row nest collisions", () => {
     ]);
   });
 
-  it("nests immediately after moving one indentation step to the right", () => {
-    const intents: unknown[] = [];
+  it("still requires a dwell after moving to the right", () => {
+    const candidates: unknown[] = [];
     const collisions = resolveThreadRowNestCollisions({
       collisions: [rowCollision, groupCollision],
-      draggedLeft: NEST_INDENTATION_PX,
+      draggedLeft: 48,
       droppableRects,
-      pointerCoordinates: { x: 20, y: 106 },
+      pointerCoordinates: { x: 20, y: 114 },
       getBandFraction: () => NEST_BAND_FRACTION,
-      holdNestCandidate: (threadId, intent) => {
-        intents.push({ threadId, intent });
-        return intent === "immediate";
+      holdNestCandidate: (threadId) => {
+        candidates.push(threadId);
+        return false;
       },
     });
 
-    expect(collisions).toEqual([rowCollision, groupCollision]);
-    expect(intents).toEqual([{ threadId: "parent-a", intent: "immediate" }]);
-    expect(resolve(106, NEST_BAND_FRACTION, NEST_INDENTATION_PX - 1)).toEqual([
-      groupCollision,
-    ]);
+    expect(collisions).toEqual([groupCollision]);
+    expect(candidates).toEqual(["parent-a"]);
   });
 
   it("retains an armed parent through its projected child row", () => {
@@ -617,16 +613,13 @@ describe("thread row nest collisions", () => {
         retainedThreadId: "parent-a",
       });
 
-    expect(resolveRetained(140, NEST_INDENTATION_PX)).toEqual([
-      rowCollision,
-      groupCollision,
-    ]);
+    expect(resolveRetained(140, 48)).toEqual([rowCollision, groupCollision]);
     expect(resolveRetained(140, -NEST_CANCEL_OFFSET_PX)).toEqual([
       groupCollision,
     ]);
-    expect(resolveRetained(157, NEST_INDENTATION_PX)).toEqual([groupCollision]);
+    expect(resolveRetained(157, 48)).toEqual([groupCollision]);
     expect(
-      resolveRetained(170, NEST_INDENTATION_PX, {
+      resolveRetained(170, 48, {
         ...rect,
         top: 158,
         bottom: 186,
@@ -643,7 +636,7 @@ describe("thread row nest collisions", () => {
     expect(
       resolveThreadRowNestCollisions({
         collisions: [rowCollision, groupCollision],
-        draggedLeft: NEST_INDENTATION_PX,
+        draggedLeft: 48,
         droppableRects: new Map([[rowId("parent-a"), shiftedRect]]),
         fallbackRowRects: new Map([["parent-a", rect]]),
         pointerCoordinates: { x: 20, y: 114 },
