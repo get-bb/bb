@@ -20,6 +20,8 @@ import {
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { threadQueryKey } from "@/hooks/queries/query-keys";
+import { useThread } from "@/hooks/queries/thread-queries";
+import { useUnarchiveThread } from "@/hooks/mutations/thread-state-mutations";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import type { SplitLayout } from "@/lib/split-layout";
 import { PaneContext } from "./PaneContext";
@@ -56,7 +58,10 @@ vi.mock("@/hooks/useRealtimeSubscription", () => ({
 
 vi.mock("@/lib/sdk", () => ({
   sdk: {
-    threads: { get: () => new Promise<never>(() => {}) },
+    threads: {
+      get: () => new Promise<never>(() => {}),
+      unarchive: () => pendingArchive!.promise,
+    },
   },
 }));
 
@@ -71,10 +76,12 @@ vi.mock("@/components/commands/AppCommandProvider", () => ({
 vi.mock("./ThreadDetailView", () => ({
   ThreadDetailView: ({ threadId }: { threadId: string }) => {
     const pane = useContext(PaneContext);
+    const { data: thread } = useThread(threadId);
     return (
       <div
         data-testid={`pane-${threadId}`}
         data-focused={pane?.isFocused ? "true" : "false"}
+        data-archived={thread?.archivedAt !== null ? "true" : "false"}
       />
     );
   },
@@ -118,6 +125,19 @@ function LocationProbe() {
   return <div data-testid="location">{location.pathname}</div>;
 }
 
+function UnarchiveHarness() {
+  const mutation = useUnarchiveThread();
+  return (
+    <button
+      type="button"
+      data-testid="unarchive"
+      onClick={() => mutation.mutate({ id: "thr-b" })}
+    >
+      unarchive
+    </button>
+  );
+}
+
 function twoPaneLayout(focusedPaneId: "pane-1" | "pane-2"): SplitLayout {
   const content = (threadId: string) => ({
     kind: "thread" as const,
@@ -138,14 +158,14 @@ function twoPaneLayout(focusedPaneId: "pane-1" | "pane-2"): SplitLayout {
   };
 }
 
-function renderArchiveScenario() {
+function renderArchiveScenario(initialArchivedAt: number | null = null) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   for (const id of ["thr-a", "thr-b"]) {
     queryClient.setQueryData<SeedThread>(threadQueryKey(id), {
       id,
-      archivedAt: null,
+      archivedAt: id === "thr-b" ? initialArchivedAt : null,
       deletedAt: null,
     });
   }
@@ -158,6 +178,7 @@ function renderArchiveScenario() {
           <SplitThreadArea />
           <LocationProbe />
           <ArchiveHarness threadId="thr-b" />
+          <UnarchiveHarness />
         </MemoryRouter>
       </QueryClientProvider>
     </JotaiProvider>,
@@ -177,6 +198,52 @@ afterEach(() => {
 });
 
 describe("SplitThreadArea archive pruning", () => {
+  it("keeps the archived pane and its focus when unarchiving is rejected", async () => {
+    deferArchive();
+    const queryClient = renderArchiveScenario(ARCHIVED_AT);
+    expect(await screen.findByTestId("pane-thr-b")).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("unarchive"));
+    await waitFor(() => expect(archivedAtOf(queryClient, "thr-b")).toBeNull());
+    await act(async () => pendingArchive!.reject(new Error("unarchive failed")));
+
+    await waitFor(() =>
+      expect(archivedAtOf(queryClient, "thr-b")).toBe(ARCHIVED_AT),
+    );
+    expect(screen.getByTestId("pane-thr-b").dataset.focused).toBe("true");
+    expect(screen.getByTestId("pane-thr-a")).toBeTruthy();
+    expect(screen.getByTestId("location").textContent).toBe("/threads/thr-b");
+  });
+
+  it("keeps an archived pane when its thread first loads, but closes it after unarchiving and archiving again", async () => {
+    deferArchive();
+    const queryClient = renderArchiveScenario(ARCHIVED_AT);
+    expect(await screen.findByTestId("pane-thr-b")).toBeTruthy();
+    expect(archivedAtOf(queryClient, "thr-b")).toBe(ARCHIVED_AT);
+
+    await act(async () => {
+      queryClient.setQueryData<SeedThread>(threadQueryKey("thr-b"), {
+        id: "thr-b",
+        archivedAt: null,
+        deletedAt: null,
+      });
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("pane-thr-b").dataset.archived).toBe("false"),
+    );
+    fireEvent.click(screen.getByTestId("archive"));
+    await waitFor(() =>
+      expect(archivedAtOf(queryClient, "thr-b")).toBe(ARCHIVED_AT),
+    );
+    expect(screen.getByTestId("pane-thr-b")).toBeTruthy();
+
+    await act(async () => pendingArchive!.resolve());
+
+    await waitFor(() => expect(screen.queryByTestId("pane-thr-b")).toBeNull());
+    expect(screen.getByTestId("pane-thr-a")).toBeTruthy();
+    expect(screen.getByTestId("location").textContent).toBe("/threads/thr-a");
+  });
+
   it("restores the pane, focus, and URL when a deferred archive is rejected", async () => {
     deferArchive();
     const queryClient = renderArchiveScenario();
