@@ -348,6 +348,7 @@ export function CommandPalette({
                 ? undefined
                 : `${optionIdPrefix}-${activeIndex}`
             }
+            footerKeys={[]}
             inputDescription={PALETTE_INPUT_DESCRIPTION}
             inputLabel={PALETTE_INPUT_LABEL}
             listId={listId}
