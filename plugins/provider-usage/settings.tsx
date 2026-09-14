@@ -217,7 +217,7 @@ function ProviderUsageBlock({
   return (
     <section
       aria-labelledby={headingId}
-      className="space-y-3.5 border-t border-border py-3.5 first:border-t-0 first:pt-0 last:pb-0"
+      className="space-y-3.5 py-3.5 first:pt-0 last:pb-0"
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 flex-1 items-start gap-2.5">

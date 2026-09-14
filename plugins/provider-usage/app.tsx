@@ -28,6 +28,12 @@ import {
   formatUsdCents,
   usageBarColorClass,
 } from "@bb/shared-ui/lib/usage-format";
+import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
+import {
+  OPTION_BASE_CLASS_NAME,
+  OPTION_INTERACTIVE_CLASS_NAME,
+  OPTION_TRIGGER_CONTENT_CLASS_NAME,
+} from "@bb/shared-ui/option-display";
 import {
   providerUsageTone,
   selectUsageMachine,
@@ -265,7 +271,7 @@ function MachineSelector({
       <DropdownMenuTrigger asChild disabled={machines.length === 0}>
         <Button
           type="button"
-          variant="outline"
+          variant="ghost"
           size="sm"
           aria-label={
             activeMachine === null
@@ -273,16 +279,18 @@ function MachineSelector({
               : "Usage machine: " + activeMachine.displayName
           }
           disabled={machines.length === 0}
-          className="h-7 max-w-48 gap-1.5 px-2 text-sidebar-foreground"
+          className={cn(
+            OPTION_BASE_CLASS_NAME,
+            OPTION_INTERACTIVE_CLASS_NAME,
+            LIST_HOVER_TRANSITION,
+            "h-7 max-w-32 px-1 text-sidebar-foreground hover:bg-sidebar-accent",
+          )}
         >
-          <Icon
-            name={activeMachine?.id.startsWith("source:") ? "Layers" : "Laptop"}
-            className="size-3.5 shrink-0"
-          />
-          <span className="min-w-0 truncate">
-            {activeMachine?.displayName ?? "Source"}
+          <span className={OPTION_TRIGGER_CONTENT_CLASS_NAME}>
+            <span className="min-w-0 truncate">
+              {activeMachine?.displayName ?? "Usage"}
+            </span>
           </span>
-          <Icon name="ChevronDown" className="size-3.5 shrink-0" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
