@@ -6,6 +6,7 @@ import {
   upsertHost,
   updateHost,
 } from "@bb/db";
+import { packageManagerPreferenceSchema } from "@bb/domain";
 import {
   HOST_DAEMON_PROTOCOL_VERSION,
   hostDaemonProjectAttachmentContentQuerySchema,
@@ -35,6 +36,10 @@ const sessionOpenCompatibilitySchema = z
   .object({
     hostId: z.string().min(1),
     protocolVersion: z.number().int().positive(),
+    packageManagerOverride: packageManagerPreferenceSchema
+      .nullable()
+      .default(null)
+      .catch(null),
   })
   .passthrough();
 
@@ -78,6 +83,7 @@ export function registerInternalSessionRoutes(
     if (compatibility.data.protocolVersion !== HOST_DAEMON_PROTOCOL_VERSION) {
       updateHost(deps.db, deps.hub, daemon.hostId, {
         lastRejectedProtocolVersion: compatibility.data.protocolVersion,
+        packageManagerOverride: compatibility.data.packageManagerOverride,
       });
       const retryUpdate = deps.hub.takeHostProtocolUpdateRetry(daemon.hostId);
       deps.hub.notifyHost(daemon.hostId, ["host-disconnected"]);

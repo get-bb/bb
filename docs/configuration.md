@@ -622,6 +622,11 @@ version as the active entry. Otherwise it fails with a log line naming the versi
 and the manual fix, and the normal retry backoff applies. `BB_APP_NPM_PREFIX`
 installs from `install-machine.sh` always use the tarball flow.
 
+Daemons older than host-daemon protocol 208 ignore the package manager preference.
+Their first update to this release still installs bb-app with `npm install -g`. On a
+mise machine, run `mise use -g npm:bb-app@<server-version>` after that update, then
+restart bb from the mise installation with `bb-app stop && bb-app start`.
+
 On the server process, `BB_PACKAGE_MANAGER` selects the bb-app upgrade command
 that Settings → Updates and `bb updates` print: `mise use -g npm:bb-app@latest`
 or `npx bb-app@latest`. With `auto`, the server prints the mise command only when

@@ -36,6 +36,11 @@ seconds and caps at 5 minutes. A daemon never auto-downgrades to an older server
 protocol. Use Settings → Machines or `bb machine retry-update` to bypass the
 current backoff after a transient failure.
 
+Daemons older than host-daemon protocol 208 ignore the package manager preference.
+Their first update to this release still installs bb-app with `npm install -g`. On a
+mise machine, run `mise use -g npm:bb-app@<server-version>` after that update, then
+restart bb from the mise installation with `bb-app stop && bb-app start`.
+
 To opt out, remove `--auto-update` from the launchd plist or systemd user unit
 and reload that service. Foreground/manual `bb-app host-daemon` runs leave it off
 unless you pass `--auto-update` explicitly.

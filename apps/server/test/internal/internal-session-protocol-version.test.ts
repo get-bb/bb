@@ -134,6 +134,66 @@ describe("internal session protocol version", () => {
     },
   );
 
+  it.each([
+    {
+      storedOverride: "npm",
+      requestOverride: null,
+      setting: "mise",
+      expected: "mise",
+    },
+    {
+      storedOverride: null,
+      requestOverride: "mise",
+      setting: "npm",
+      expected: "mise",
+    },
+  ] as const)(
+    "resolves the mismatch package manager from request override $requestOverride over stored override $storedOverride and setting $setting",
+    async ({ storedOverride, requestOverride, setting, expected }) => {
+      const server = await startTestServer();
+      try {
+        const hostId = "host-override-mismatch";
+        upsertHost(server.db, server.hub, {
+          id: hostId,
+          name: "Override daemon",
+        });
+        updateHost(server.db, server.hub, hostId, {
+          packageManager: setting,
+          packageManagerOverride: storedOverride,
+        });
+        const daemon = createHostDaemonClient(
+          server.baseUrl,
+          createTestDaemonHostKey({ hostId }),
+        );
+        const response = await daemon.session.open.$post({
+          json: {
+            hostId,
+            instanceId: "instance-override",
+            hostName: "Override daemon",
+            hasMachineCredential: true,
+            platform: "linux",
+            dataDir: "/tmp/override-machine",
+            localApiPort: 38888,
+            packageManagerOverride: requestOverride,
+            protocolVersion: HOST_DAEMON_PROTOCOL_VERSION - 1,
+            activeThreads: [],
+            loadedEnvironments: [],
+          },
+        });
+        expect(response.status).toBe(400);
+        expect(await response.json()).toMatchObject({
+          code: "protocol_version_mismatch",
+          details: { packageManager: expected },
+        });
+        expect(getHost(server.db, hostId)?.packageManagerOverride).toBe(
+          requestOverride,
+        );
+      } finally {
+        await server.close();
+      }
+    },
+  );
+
   it("rejects a session open whose protocol version does not match the server", async () => {
     const server = await startTestServer();
     try {
