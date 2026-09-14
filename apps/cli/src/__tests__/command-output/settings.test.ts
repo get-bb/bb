@@ -163,6 +163,8 @@ describe("bb settings commands", () => {
           status: "connected",
           lastSeenAt: 1,
           lastRejectedProtocolVersion: null,
+          packageManager: "auto",
+          packageManagerOverride: null,
           createdAt: 1,
           updatedAt: 1,
         },

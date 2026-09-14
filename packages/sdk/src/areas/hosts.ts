@@ -18,6 +18,7 @@ import type {
   HostProviderCliStatusResponse,
   HostRetryUpdateResponse,
   UpdateHostRequest,
+  UpdateHostPackageManagerRequest,
   SystemMachineProvider,
 } from "@bb/server-contract";
 import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
@@ -36,6 +37,11 @@ export interface HostUpdateArgs extends UpdateHostRequest {
 }
 
 export interface HostRetryUpdateArgs {
+  hostId: string;
+}
+
+export interface HostUpdatePackageManagerArgs
+  extends UpdateHostPackageManagerRequest {
   hostId: string;
 }
 
@@ -124,6 +130,9 @@ export interface HostsArea {
   retryUpdate(args: HostRetryUpdateArgs): Promise<HostRetryUpdateResult>;
   experimental_suspend(args: HostActionArgs): Promise<Host>;
   update(args: HostUpdateArgs): Promise<HostUpdateResult>;
+  experimental_updatePackageManager(
+    args: HostUpdatePackageManagerArgs,
+  ): Promise<HostUpdateResult>;
 }
 
 export function createHostsArea(args: CreateSdkAreaArgs): HostsArea {
@@ -322,6 +331,14 @@ export function createHostsArea(args: CreateSdkAreaArgs): HostsArea {
         transport.api.v1.hosts[":id"].$patch({
           param: { id: input.hostId },
           json: { name: input.name },
+        }),
+      );
+    },
+    async experimental_updatePackageManager(input) {
+      return transport.readJson(
+        transport.api.v1.hosts[":id"]["package-manager"].$patch({
+          param: { id: input.hostId },
+          json: { packageManager: input.packageManager },
         }),
       );
     },

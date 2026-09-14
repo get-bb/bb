@@ -77,6 +77,8 @@ export function makeHost(overrides: Partial<Host> = {}): Host {
     lastSeenAt: null,
     maxPermissionMode: "full",
     lastRejectedProtocolVersion: null,
+    packageManager: "auto",
+    packageManagerOverride: null,
     createdAt: 0,
     updatedAt: 0,
     ...overrides,

@@ -6,6 +6,7 @@ import {
   discoveredWorkspacePropertiesSchema,
   ENVIRONMENT_CHANGE_KINDS,
   jsonValueSchema,
+  packageManagerPreferenceSchema,
   pendingInteractionCreateSchema,
   pendingInteractionStatusSchema,
   terminalColsSchema,
@@ -103,6 +104,9 @@ export const hostDaemonSessionOpenRequestSchema = z
     platform: hostPlatformSchema,
     dataDir: z.string().min(1),
     localApiPort: z.number().int().min(1).max(65_535).nullable().default(null),
+    packageManagerOverride: packageManagerPreferenceSchema
+      .nullable()
+      .default(null),
     protocolVersion: z.number().int().positive(),
     activeThreads: z.array(hostDaemonActiveThreadSchema),
     loadedEnvironments: z.array(hostDaemonLoadedEnvironmentSchema).default([]),
@@ -161,6 +165,7 @@ export const hostDaemonSessionOpenResponseSchema = z
   .object({
     sessionId: z.string().min(1),
     machineEnvironment: machineEnvironmentSchema,
+    packageManager: packageManagerPreferenceSchema,
     heartbeatIntervalMs: z.number().int().positive(),
     leaseTimeoutMs: z.number().int().positive(),
     watchSet: hostDaemonWatchSetSchema.default({

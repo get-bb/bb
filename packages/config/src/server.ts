@@ -21,6 +21,7 @@ import {
   BB_INFERENCE_FALLBACK_ENV,
   BB_INFERENCE_ENV,
   BB_MARKETPLACE_URL_ENV,
+  BB_PACKAGE_MANAGER_ENV,
   BB_POSTHOG_API_KEY_ENV,
   BB_SERVER_BIND_HOST_ENV,
   BB_SERVER_LAUNCH_ID_ENV,
@@ -40,6 +41,7 @@ import {
   DEFAULT_OPENAI_API_KEY,
   OPENAI_API_KEY_ENV,
   parseServerBindHost,
+  type HostPackageManagerPreference,
   type ServerBindHost,
 } from "./env-vars.js";
 import { loadFeatureFlags } from "./feature-flags.js";
@@ -60,6 +62,7 @@ export interface ServerConfig
   BB_INFERENCE_FALLBACK: string;
   BB_POSTHOG_API_KEY: string;
   BB_MARKETPLACE_URL: string;
+  BB_PACKAGE_MANAGER?: HostPackageManagerPreference;
   BB_SERVER_BIND_HOST: ServerBindHost;
   BB_SERVER_LAUNCH_ID?: string;
   BB_TELEMETRY: boolean;
@@ -207,6 +210,15 @@ export function loadServerConfig(
     value: readOptionalEnvVar({
       context: loader.context,
       definition: BB_SERVER_LAUNCH_ID_ENV,
+      env: loader.env,
+    }),
+  });
+  assignIfDefined({
+    key: "BB_PACKAGE_MANAGER",
+    target: config,
+    value: readOptionalEnvVar({
+      context: loader.context,
+      definition: BB_PACKAGE_MANAGER_ENV,
       env: loader.env,
     }),
   });

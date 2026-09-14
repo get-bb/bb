@@ -342,6 +342,7 @@ export class ServerConnection {
         hostName: this.options.hostName,
         dataDir: this.options.dataDir,
         localApiPort: this.options.localApiPort,
+        packageManagerOverride: this.options.packageManagerOverride,
         activeThreads: this.options.getActiveThreads?.() ?? [],
         loadedEnvironments: this.options.getLoadedEnvironments?.() ?? [],
       });

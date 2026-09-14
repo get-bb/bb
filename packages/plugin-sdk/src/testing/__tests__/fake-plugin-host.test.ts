@@ -39,6 +39,8 @@ describe("fixtures", () => {
       maxPermissionMode: "full",
       lastSeenAt: null,
       lastRejectedProtocolVersion: null,
+      packageManager: "auto",
+      packageManagerOverride: null,
       createdAt: 0,
       updatedAt: 0,
     });

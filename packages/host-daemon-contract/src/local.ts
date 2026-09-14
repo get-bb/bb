@@ -167,6 +167,7 @@ const providerCliInstallOutputStreamSchema = z.enum(
 const providerCliInstallSourceValues = [
   "notInstalled",
   "npmGlobal",
+  "mise",
   "external",
 ] as const;
 const providerCliInstallSourceSchema = z.enum(providerCliInstallSourceValues);
@@ -188,6 +189,14 @@ export type ProviderCliInstallAction = z.infer<
   typeof providerCliInstallActionSchema
 >;
 
+const providerCliShadowingInstallSchema = z.object({
+  executablePath: z.string().min(1),
+  removeCommand: z.string().min(1),
+});
+export type ProviderCliShadowingInstall = z.infer<
+  typeof providerCliShadowingInstallSchema
+>;
+
 const providerCliStatusSchema = z.object({
   displayName: z.string().min(1),
   executableName: z.string().min(1),
@@ -200,6 +209,7 @@ const providerCliStatusSchema = z.object({
   npmPackageName: z.string().min(1).nullable(),
   npmGlobalPackageVersion: z.string().min(1).nullable(),
   installAction: providerCliInstallActionSchema.nullable(),
+  shadowingInstall: providerCliShadowingInstallSchema.nullable(),
   needsUpdate: z.boolean(),
   versionUnsupported: z.boolean(),
 });

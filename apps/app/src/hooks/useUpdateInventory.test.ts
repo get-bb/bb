@@ -25,6 +25,7 @@ function providerStatus(
     npmPackageName: null,
     npmGlobalPackageVersion: null,
     installAction: null,
+    shadowingInstall: null,
     needsUpdate: false,
     versionUnsupported: false,
     ...overrides,
@@ -38,6 +39,7 @@ describe("buildUpdateInventoryProviderIssues", () => {
       "claude-code": providerStatus("Claude Code"),
       "acp-cursor": providerStatus("Cursor", {
         latestVersion: "1.1.0",
+        shadowingInstall: null,
         needsUpdate: true,
       }),
     };

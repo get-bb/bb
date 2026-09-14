@@ -1,9 +1,10 @@
 import { z } from "zod";
+import {
+  packageManagerPreferenceSchema,
+  type PackageManagerPreference,
+} from "@bb/domain";
 
-export const packageManagerPreferenceSchema = z.enum(["auto", "mise", "npm"]);
-export type PackageManagerPreference = z.infer<
-  typeof packageManagerPreferenceSchema
->;
+export { packageManagerPreferenceSchema, type PackageManagerPreference };
 
 export const providerMaintenanceParamsSchema = z
   .object({

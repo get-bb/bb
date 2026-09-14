@@ -11,6 +11,7 @@ import {
   callHostRetryableOnlineRpc,
   isHostUnavailableApiError,
 } from "../hosts/online-rpc.js";
+import { resolveHostPackageManager } from "../hosts/package-manager.js";
 import { listSystemProviderInfos } from "./execution-options.js";
 import { resolveBridgeLaunchForProviderId } from "./provider-bridge-launch.js";
 import { mapProviderMaintenanceRequests } from "./provider-maintenance-concurrency.js";
@@ -77,6 +78,7 @@ export async function getProviderInstallations(
     hostId: args.hostId,
     capability: "installation",
   });
+  const packageManager = resolveHostPackageManager(deps, args.hostId);
   return aggregateProviderInstallations(providers, {
     deadlineMs: deadline,
     now: Date.now,
@@ -112,6 +114,7 @@ export async function getProviderInstallations(
               type: "provider.installation.status",
               providerId: provider.id,
               bridgeLaunch,
+              packageManager,
             },
           });
         } catch (error) {

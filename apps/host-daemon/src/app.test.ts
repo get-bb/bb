@@ -142,6 +142,7 @@ function createFetchRecorder(
           },
           heartbeatIntervalMs: 30000,
           leaseTimeoutMs: 90000,
+          packageManager: "auto",
           retiredEnvironmentIds: args.retiredEnvironmentIds ?? [],
         },
         { status: 201 },

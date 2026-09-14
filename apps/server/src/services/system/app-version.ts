@@ -2,11 +2,11 @@ import semver from "semver";
 import { z } from "zod";
 import type { SystemVersionResponse } from "@bb/server-contract";
 import type { ServerLogger, ServerRuntimeConfig } from "../../types.js";
+import { NPM_UPGRADE_COMMAND } from "./bb-app-upgrade-command.js";
 
 const NPM_LATEST_URL = "https://registry.npmjs.org/bb-app/latest";
 const NPM_LATEST_TIMEOUT_MS = 5_000;
 const NPM_LATEST_CACHE_TTL_MS = 60 * 60 * 1000;
-const UPGRADE_COMMAND = "npx bb-app@latest";
 
 const npmLatestResponseSchema = z
   .object({
@@ -30,6 +30,7 @@ interface CreateAppVersionServiceArgs {
   logger: ServerLogger;
   cacheTtlMs?: number;
   now?: () => number;
+  upgradeCommand?: string;
 }
 
 interface NpmLatestCacheEntry {
@@ -45,6 +46,7 @@ export function createAppVersionService(
   const now = args.now ?? (() => Date.now());
   const logger = args.logger;
   const config = args.config;
+  const upgradeCommand = args.upgradeCommand ?? NPM_UPGRADE_COMMAND;
 
   let cache: NpmLatestCacheEntry | null = null;
   let inflight: Promise<string | null> | null = null;
@@ -130,7 +132,7 @@ export function createAppVersionService(
         source: "npm",
         updateAvailable: false,
         isDevelopment: config.isDevelopment,
-        upgradeCommand: UPGRADE_COMMAND,
+        upgradeCommand,
       };
 
       if (config.isDevelopment) {

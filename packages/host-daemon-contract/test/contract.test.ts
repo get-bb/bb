@@ -448,6 +448,7 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       label: "Install",
       command: "npm install -g @openai/codex@latest",
     },
+    shadowingInstall: null,
     needsUpdate: false,
     versionUnsupported: false,
   },
@@ -1003,7 +1004,7 @@ const CONTRIBUTED_ENV = [
 
 describe("host-daemon command schemas", () => {
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(207);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(208);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
@@ -3106,6 +3107,7 @@ describe("host-daemon session schemas", () => {
       hostId: "host_123",
       hasMachineCredential: true,
       loadedEnvironments: [],
+      packageManagerOverride: null,
     });
 
     expect(
@@ -3184,6 +3186,7 @@ describe("host-daemon session schemas", () => {
     expect(
       hostDaemonSessionOpenResponseSchema.parse({
         sessionId: "session_123",
+        packageManager: "auto",
         machineEnvironment: { revision: 0, entries: [] },
         heartbeatIntervalMs: 5_000,
         leaseTimeoutMs: 30_000,
@@ -3209,6 +3212,7 @@ describe("host-daemon session schemas", () => {
     expect(
       hostDaemonSessionOpenResponseSchema.parse({
         sessionId: "session_default_shares",
+        packageManager: "auto",
         machineEnvironment: { revision: 0, entries: [] },
         heartbeatIntervalMs: 5_000,
         leaseTimeoutMs: 30_000,

@@ -98,6 +98,7 @@ function providerCliStatus(
     npmPackageName: null,
     npmGlobalPackageVersion: null,
     installAction: null,
+    shadowingInstall: null,
     needsUpdate: false,
     versionUnsupported: false,
   };
@@ -284,6 +285,7 @@ describe("MachineSettingsView", () => {
       codex: {
         ...statuses.codex,
         latestVersion: "0.149.0",
+        shadowingInstall: null,
         needsUpdate: true,
         installAction: {
           kind: "update",

@@ -29,6 +29,7 @@ import { handleHostSessionOpened } from "./session-owner-side-effects.js";
 import { resolveReportedConnectMachineId } from "./hosts.js";
 import type { PluginService } from "../services/plugins/plugin-service.js";
 import { HostEnvironmentSync } from "../services/hosts/host-environment-sync.js";
+import { resolveHostPackageManager } from "../services/hosts/package-manager.js";
 
 const sessionOpenCompatibilitySchema = z
   .object({
@@ -129,6 +130,7 @@ export function registerInternalSessionRoutes(
     });
     updateHost(deps.db, deps.hub, daemon.hostId, {
       lastRejectedProtocolVersion: null,
+      packageManagerOverride: payload.packageManagerOverride,
     });
     const session = openSession(deps.db, {
       hostId: daemon.hostId,
@@ -176,6 +178,7 @@ export function registerInternalSessionRoutes(
         pluginHostGenerations: plugins.listHostArtifactGenerations(),
         retiredEnvironmentIds,
         machineEnvironment: await machineEnvironment.snapshot(daemon.hostId),
+        packageManager: resolveHostPackageManager(deps, daemon.hostId),
       },
       201,
     );

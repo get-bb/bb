@@ -23,6 +23,7 @@ import {
   gitBranchNameSchema,
   jsonObjectSchema,
   jsonValueSchema,
+  packageManagerPreferenceSchema,
   providerNativeRootSetSchema,
   BRANCH_LIST_LIMIT_MAX,
   BRANCH_LIST_QUERY_MAX_LENGTH,
@@ -850,6 +851,7 @@ const providerInstallationStatusCommandSchema = z
     type: z.literal("provider.installation.status"),
     providerId: z.string().min(1),
     bridgeLaunch: hostDaemonBridgeLaunchSchema,
+    packageManager: packageManagerPreferenceSchema,
     cwd: z.string().min(1).optional(),
     requirement: z.literal("thread_rewind").optional(),
   })
@@ -861,6 +863,7 @@ const providerInstallationRunCommandSchema = z
     providerId: z.string().min(1),
     action: providerCliInstallActionKindSchema,
     bridgeLaunch: hostDaemonBridgeLaunchSchema,
+    packageManager: packageManagerPreferenceSchema,
     cwd: z.string().min(1).optional(),
   })
   .strict();

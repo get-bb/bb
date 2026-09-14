@@ -47,6 +47,8 @@ describe("bb provider command output", () => {
           status: "connected",
           lastSeenAt: 1,
           lastRejectedProtocolVersion: null,
+          packageManager: "auto",
+          packageManagerOverride: null,
           createdAt: 1,
           updatedAt: 1,
         },

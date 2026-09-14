@@ -581,6 +581,7 @@ export function makeProviderCliStatus(
     npmPackageName: null,
     npmGlobalPackageVersion: null,
     installAction: null,
+    shadowingInstall: null,
     needsUpdate: false,
     versionUnsupported: false,
     ...overrides,

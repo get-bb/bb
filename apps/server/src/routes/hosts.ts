@@ -30,6 +30,7 @@ import {
   resolvePrimaryHostId,
 } from "../services/hosts/primary-host.js";
 import { issueHostEnrollKey } from "../services/hosts/host-enrollment.js";
+import { resolveHostPackageManager } from "../services/hosts/package-manager.js";
 import {
   callHostOnlineRpcForWork,
   callHostRetryableOnlineRpc,
@@ -178,6 +179,20 @@ export function registerHostRoutes(
     requireMutableHost(deps, hostId);
     const updated = updateHost(deps.db, deps.hub, hostId, {
       maxPermissionMode: payload.maxPermissionMode,
+    });
+    if (!updated) {
+      throw new ApiError(404, "host_not_found", "Host not found");
+    }
+    deps.hub.notifyHost(hostId, ["host-connected"]);
+    return context.json(requireNonDestroyedHostWithStatus(deps, updated.id));
+  });
+
+  patch(routes.updatePackageManager, (context, payload) => {
+    assertHostManagementAllowed(context);
+    const hostId = context.req.param("id");
+    requireMutableHost(deps, hostId);
+    const updated = updateHost(deps.db, deps.hub, hostId, {
+      packageManager: payload.packageManager,
     });
     if (!updated) {
       throw new ApiError(404, "host_not_found", "Host not found");
@@ -374,6 +389,7 @@ export function registerHostRoutes(
           providerId: payload.provider,
           action: payload.actionKind,
           bridgeLaunch,
+          packageManager: resolveHostPackageManager(deps, hostId),
         },
       }),
     );

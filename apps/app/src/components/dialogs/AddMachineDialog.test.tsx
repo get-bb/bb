@@ -42,6 +42,8 @@ const reservedHost: Awaited<ReturnType<typeof sdk.hosts.experimental_create>> =
     maxPermissionMode: "full",
     lastSeenAt: null,
     lastRejectedProtocolVersion: null,
+    packageManager: "auto",
+    packageManagerOverride: null,
     createdAt: 1,
     updatedAt: 1,
   };

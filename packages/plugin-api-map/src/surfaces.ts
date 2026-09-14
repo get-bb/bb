@@ -836,6 +836,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "HostsArea.experimental_suspend",
           "HostsArea.experimental_resume",
           "HostsArea.experimental_retryCleanup",
+          "HostsArea.experimental_updatePackageManager",
           "PluginMachines.getResource",
           "MachineExecutorRequest",
           "MachineExecutor",

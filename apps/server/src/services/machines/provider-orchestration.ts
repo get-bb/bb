@@ -603,6 +603,8 @@ function machineHostResponse(
             },
     },
     maxPermissionMode: row.maxPermissionMode,
+    packageManager: row.packageManager,
+    packageManagerOverride: row.packageManagerOverride,
     lastSeenAt: row.lastSeenAt,
     lastRejectedProtocolVersion: row.lastRejectedProtocolVersion,
     createdAt: row.createdAt,

@@ -620,6 +620,20 @@ function dropHostMaxPermissionModeColumn(db: DbConnection): void {
   }
 }
 
+function dropHostPackageManagerColumns(db: DbConnection): void {
+  const columns = new Set(
+    db.$client
+      .prepare<[], TableInfoRow>("PRAGMA table_info(hosts)")
+      .all()
+      .map((column) => column.name),
+  );
+  for (const column of ["package_manager", "package_manager_override"]) {
+    if (columns.has(column)) {
+      db.$client.prepare(`ALTER TABLE hosts DROP COLUMN ${column}`).run();
+    }
+  }
+}
+
 function dropSteerActiveThreadOnEnterColumn(db: DbConnection): void {
   const columns = db.$client
     .prepare<[], TableInfoRow>("PRAGMA table_info(app_settings)")
@@ -841,6 +855,7 @@ function rewindEnvironmentRowFactsMigration(db: DbConnection): void {
 }
 
 function rewindMachineProvidersMigration(db: DbConnection): void {
+  dropHostPackageManagerColumns(db);
   db.$client.exec("DROP TABLE IF EXISTS thread_plugin_metadata");
   db.$client.exec("DROP TABLE IF EXISTS provider_model_catalogs");
   db.$client.exec("DROP TABLE IF EXISTS environment_hook_operations");

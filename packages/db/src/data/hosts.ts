@@ -1,5 +1,10 @@
 import { and, eq, inArray, isNull, ne } from "drizzle-orm";
-import type { HostChangeKind, JsonValue, PermissionMode } from "@bb/domain";
+import type {
+  HostChangeKind,
+  JsonValue,
+  PackageManagerPreference,
+  PermissionMode,
+} from "@bb/domain";
 import type { DbConnection, DbTransaction } from "../connection.js";
 import type { DbNotifier } from "../notifier.js";
 import { hosts } from "../schema.js";
@@ -26,6 +31,8 @@ export interface UpdateHostInput {
   lastRejectedProtocolVersion?: number | null;
   maxPermissionMode?: PermissionMode;
   name?: string;
+  packageManager?: PackageManagerPreference;
+  packageManagerOverride?: PackageManagerPreference | null;
   machineProviderId?: string | null;
   phase?:
     | "creating"
@@ -234,6 +241,12 @@ export function updateHost(
         : {}),
       ...(input.lastRejectedProtocolVersion !== undefined
         ? { lastRejectedProtocolVersion: input.lastRejectedProtocolVersion }
+        : {}),
+      ...(input.packageManager !== undefined
+        ? { packageManager: input.packageManager }
+        : {}),
+      ...(input.packageManagerOverride !== undefined
+        ? { packageManagerOverride: input.packageManagerOverride }
         : {}),
       ...(input.machineProviderId !== undefined
         ? { machineProviderId: input.machineProviderId }

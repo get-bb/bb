@@ -26,6 +26,11 @@ export const machineLifecycleSchema = z.object({
 });
 export type MachineLifecycle = z.infer<typeof machineLifecycleSchema>;
 
+export const packageManagerPreferenceSchema = z.enum(["auto", "mise", "npm"]);
+export type PackageManagerPreference = z.infer<
+  typeof packageManagerPreferenceSchema
+>;
+
 export const hostSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -34,6 +39,8 @@ export const hostSchema = z.object({
   machineProviderId: z.string().nullable(),
   lifecycle: machineLifecycleSchema,
   maxPermissionMode: permissionModeSchema,
+  packageManager: packageManagerPreferenceSchema,
+  packageManagerOverride: packageManagerPreferenceSchema.nullable(),
   lastSeenAt: z.number().nullable(),
   lastRejectedProtocolVersion: z.number().int().positive().nullable(),
   createdAt: z.number(),

@@ -95,6 +95,7 @@ function issueForProvider(
       npmPackageName: null,
       npmGlobalPackageVersion: null,
       installAction: action,
+      shadowingInstall: null,
       needsUpdate: true,
       versionUnsupported: false,
     },

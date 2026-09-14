@@ -1,5 +1,9 @@
 import { z } from "zod";
-import { jsonValueSchema, permissionModeSchema } from "@bb/domain";
+import {
+  jsonValueSchema,
+  packageManagerPreferenceSchema,
+  permissionModeSchema,
+} from "@bb/domain";
 import {
   pathsExistRequestSchema,
   providerCliInstallEventSchema,
@@ -91,6 +95,15 @@ export const updateHostPermissionCeilingRequestSchema = z
   .strict();
 export type UpdateHostPermissionCeilingRequest = z.infer<
   typeof updateHostPermissionCeilingRequestSchema
+>;
+
+export const updateHostPackageManagerRequestSchema = z
+  .object({
+    packageManager: packageManagerPreferenceSchema,
+  })
+  .strict();
+export type UpdateHostPackageManagerRequest = z.infer<
+  typeof updateHostPackageManagerRequestSchema
 >;
 
 export const hostActionResponseSchema = z

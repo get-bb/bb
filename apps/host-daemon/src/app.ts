@@ -778,6 +778,7 @@ export async function createHostDaemonApp(
     dataDir: options.dataDir,
     instanceId: options.instanceId,
     localApiPort: options.localApiConfig?.port ?? null,
+    packageManagerOverride: options.packageManager ?? null,
     logger: options.logger,
     serverHeaders: options.serverHeaders,
     serverClient,

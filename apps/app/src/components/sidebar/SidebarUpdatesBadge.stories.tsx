@@ -21,6 +21,7 @@ const action: ProviderCliInstallAction = {
 const status = makeProviderCliStatus("codex", {
   currentVersion: "0.150.0",
   latestVersion: "0.151.0",
+  shadowingInstall: null,
   needsUpdate: true,
   installAction: action,
 });

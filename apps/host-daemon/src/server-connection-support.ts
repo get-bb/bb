@@ -8,6 +8,7 @@ import {
   type HostDaemonSessionOpenResponse,
   type HostDaemonWatchSetReplaceMessage,
 } from "@bb/host-daemon-contract";
+import type { PackageManagerPreference } from "@bb/domain";
 import type { HostDaemonLogger } from "./logger.js";
 import type { ServerClient } from "./server-client.js";
 import type { ProtocolSelfUpdater } from "./protocol-self-update.js";
@@ -64,6 +65,7 @@ export interface ServerConnectionOptions {
   dataDir: string;
   instanceId: string;
   localApiPort: number | null;
+  packageManagerOverride: PackageManagerPreference | null;
   setSession?: (session: HostDaemonSessionOpenResponse | null) => void;
   getActiveThreads?: () =>
     | HostDaemonActiveThread[]

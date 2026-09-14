@@ -123,6 +123,8 @@ describe("@bb/sdk", () => {
       maxPermissionMode: "full",
       lastSeenAt: 1,
       lastRejectedProtocolVersion: null,
+      packageManager: "auto",
+      packageManagerOverride: null,
       createdAt: 1,
       updatedAt: 1,
     };

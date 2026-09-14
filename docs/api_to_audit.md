@@ -2961,6 +2961,20 @@ returns a credential only while that host is creating.
 Before stabilizing, verify creation cancellation through host removal,
 same-host restoration, serialized removal, plugin callers and UI/CLI parity.
 
+## `bb.sdk.hosts.experimental_updatePackageManager`
+
+`experimental_updatePackageManager({ hostId, packageManager })` stores the
+per-machine package manager preference (`auto`, `mise`, or `npm`) through
+`PATCH /hosts/:id/package-manager` and returns the updated host. The host view
+carries `packageManager` (the stored setting) and `packageManagerOverride` (the
+`BB_PACKAGE_MANAGER` value the daemon reported at session open, or null). The
+server resolves the effective value as override, then setting, then `auto`, and
+sends it to the daemon on session open and on every provider installation
+command. An invalid value is rejected with 400.
+
+Before stabilizing, verify the override precedence against a live daemon, the
+Machines settings select, and `bb machine package-manager`.
+
 ## `app.experimental_icons.register` and `experimental_Icon`
 
 Plugins register inline React artwork during app setup with `{ name, component }`.

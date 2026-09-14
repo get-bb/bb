@@ -251,6 +251,7 @@ import type {
   UpdateTerminalRequest,
   UpdateHostRequest,
   UpdateHostPermissionCeilingRequest,
+  UpdateHostPackageManagerRequest,
   UpdateProjectRequest,
   UpdateProjectSourceRequest,
   UpdateThreadPluginMetadataRequest,
@@ -367,6 +368,7 @@ import {
   updateEnvironmentRequestSchema,
   updateHostRequestSchema,
   updateHostPermissionCeilingRequestSchema,
+  updateHostPackageManagerRequestSchema,
   updateThreadSectionRequestSchema,
   updateTerminalRequestSchema,
   updateProjectRequestSchema,
@@ -801,6 +803,14 @@ export const publicApiRoutes = {
       method: "patch",
       request: jsonRequest<PathId, UpdateHostPermissionCeilingRequest>(
         updateHostPermissionCeilingRequestSchema,
+      ),
+      response: jsonResponse<Host>(),
+    }),
+    updatePackageManager: defineRoute({
+      path: "/hosts/:id/package-manager",
+      method: "patch",
+      request: jsonRequest<PathId, UpdateHostPackageManagerRequest>(
+        updateHostPackageManagerRequestSchema,
       ),
       response: jsonResponse<Host>(),
     }),

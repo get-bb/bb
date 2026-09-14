@@ -294,6 +294,54 @@ describe("public host management", () => {
     });
   });
 
+  it("stores a package manager preference for a session-gated request", async () => {
+    await withTestHarness(async (harness) => {
+      const host = seedHost(harness.deps, { id: "host_package_manager" });
+      expect(getHost(harness.db, host.id)?.packageManager).toBe("auto");
+
+      const response = await harness.app.request(
+        `${API}/hosts/${host.id}/package-manager`,
+        {
+          method: "PATCH",
+          headers: {
+            "content-type": "application/json",
+            "x-bb-gate-auth": "session",
+          },
+          body: JSON.stringify({ packageManager: "mise" }),
+        },
+      );
+
+      expect(response.status).toBe(200);
+      expect(await readJson(response)).toMatchObject({
+        id: host.id,
+        packageManager: "mise",
+        packageManagerOverride: null,
+      });
+      expect(getHost(harness.db, host.id)?.packageManager).toBe("mise");
+    });
+  });
+
+  it("rejects an unknown package manager preference", async () => {
+    await withTestHarness(async (harness) => {
+      const host = seedHost(harness.deps, { id: "host_package_manager_bad" });
+
+      const response = await harness.app.request(
+        `${API}/hosts/${host.id}/package-manager`,
+        {
+          method: "PATCH",
+          headers: {
+            "content-type": "application/json",
+            "x-bb-gate-auth": "session",
+          },
+          body: JSON.stringify({ packageManager: "bun" }),
+        },
+      );
+
+      expect(response.status).toBe(400);
+      expect(getHost(harness.db, host.id)?.packageManager).toBe("auto");
+    });
+  });
+
   it("allows session-gated join-code minting", async () => {
     await withTestHarness(async (harness) => {
       const response = await harness.app.request(`${API}/hosts/join-codes`, {

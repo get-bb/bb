@@ -290,7 +290,8 @@ type ExpectedHostsKey =
   | "experimental_retryCleanup"
   | "retryUpdate"
   | "experimental_suspend"
-  | "update";
+  | "update"
+  | "experimental_updatePackageManager";
 
 type ExpectedPluginsKey =
   | "applyUpdate"

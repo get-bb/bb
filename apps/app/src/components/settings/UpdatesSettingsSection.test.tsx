@@ -160,6 +160,7 @@ function makeUpdateIssue(args: {
       npmPackageName: null,
       npmGlobalPackageVersion: null,
       installAction: action,
+      shadowingInstall: null,
       needsUpdate: true,
       versionUnsupported: false,
     },
@@ -203,6 +204,7 @@ function makeMachine(args: {
     return {
       ...base,
       latestVersion: base.currentVersion,
+      shadowingInstall: null,
       needsUpdate: false,
     };
   };
@@ -214,6 +216,7 @@ function makeMachine(args: {
       installed: false,
       currentVersion: null,
       latestVersion: null,
+      shadowingInstall: null,
       needsUpdate: false,
       installAction: null,
     } as const);

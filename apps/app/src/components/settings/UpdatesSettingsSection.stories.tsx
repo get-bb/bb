@@ -74,6 +74,7 @@ function updateIssue(
       currentVersion,
       latestVersion,
       installAction: action,
+      shadowingInstall: null,
       needsUpdate: true,
     },
     action,
@@ -230,6 +231,7 @@ function manualUpdateIssue(
     currentVersion,
     latestVersion,
     installAction: null,
+    shadowingInstall: null,
     needsUpdate: true,
   });
   return {
@@ -254,6 +256,7 @@ function missingProviderIssue(provider: ProviderCliKey): ProviderCliIssue {
       label: "Install",
       command: "npm install -g @anthropic-ai/claude-code",
     },
+    shadowingInstall: null,
     needsUpdate: false,
   });
   return {

@@ -17,6 +17,7 @@ import { PluginHostArtifactRegistry } from "./services/plugins/plugin-host-artif
 import { createProviderNativeRootsCache } from "./services/providers/native-roots.js";
 import { createAiServiceRegistry } from "./services/ai/ai-service-registry.js";
 import { createAppVersionService } from "./services/system/app-version.js";
+import { resolveBbAppUpgradeCommand } from "./services/system/bb-app-upgrade-command.js";
 import { createBbAppManagedConfigReloader } from "./services/system/bb-app-managed-config.js";
 import { startEventLoopStallMonitor } from "./services/system/event-loop-stall-monitor.js";
 import {
@@ -157,6 +158,10 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
   const appVersion = createAppVersionService({
     config: runtimeConfig,
     logger,
+    upgradeCommand: await resolveBbAppUpgradeCommand({
+      packageManager: serverConfig.BB_PACKAGE_MANAGER ?? "auto",
+      pathEnv: process.env.PATH,
+    }),
   });
   const {
     app,

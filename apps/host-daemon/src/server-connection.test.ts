@@ -54,6 +54,7 @@ function createSession(args: CreateSessionArgs): HostDaemonSessionOpenResponse {
     machineEnvironment: { revision: 0, entries: [] },
     leaseTimeoutMs: args.leaseTimeoutMs,
     retiredEnvironmentIds: [],
+    packageManager: "auto",
     connectShares: { generation: 0, ports: [] },
     pluginHostGenerations: [],
     sessionId: args.sessionId,
@@ -176,6 +177,7 @@ function createConnectionFixture(args: ConnectionFixtureArgs = {}) {
     hostName: "Server Connection Test Host",
     instanceId: "instance-server-connection-test",
     localApiPort: 38_887,
+    packageManagerOverride: null,
     logger,
     ...(args.serverHeaders !== undefined
       ? { serverHeaders: args.serverHeaders }

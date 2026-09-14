@@ -24,7 +24,11 @@ import {
   type HostDaemonSkillTree,
 } from "@bb/host-daemon-contract";
 import { HOST_ARTIFACT_MAX_BYTES } from "@bb/host-daemon-contract/protocol";
-import type { PendingInteractionCreate, ToolCallRequest } from "@bb/domain";
+import type {
+  PackageManagerPreference,
+  PendingInteractionCreate,
+  ToolCallRequest,
+} from "@bb/domain";
 import type { HostDaemonLogger } from "./logger.js";
 import type { EventPostResult } from "./event-sink.js";
 import { runtimeErrorLogFields } from "./error-utils.js";
@@ -167,6 +171,7 @@ interface OpenSessionArgs {
   dataDir: string;
   instanceId: string;
   localApiPort: number | null;
+  packageManagerOverride: PackageManagerPreference | null;
   activeThreads: HostDaemonActiveThread[] | Promise<HostDaemonActiveThread[]>;
   loadedEnvironments:
     | HostDaemonLoadedEnvironment[]
@@ -441,6 +446,7 @@ export function createServerClient(
         platform: resolveHostPlatform(),
         dataDir: args.dataDir,
         localApiPort: args.localApiPort,
+        packageManagerOverride: args.packageManagerOverride,
         protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
         activeThreads: await args.activeThreads,
         loadedEnvironments: await args.loadedEnvironments,

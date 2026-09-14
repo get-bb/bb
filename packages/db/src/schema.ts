@@ -19,6 +19,7 @@ import type {
   EnvironmentStatus,
   FaviconColorPreference,
   PendingInteractionStatus,
+  PackageManagerPreference,
   PermissionMode,
   PromptHistoryScope,
   ProjectSourceType,
@@ -128,6 +129,13 @@ export const hosts = sqliteTable(
       .$type<PermissionMode>()
       .notNull()
       .default("full"),
+    packageManager: text("package_manager")
+      .$type<PackageManagerPreference>()
+      .notNull()
+      .default("auto"),
+    packageManagerOverride: text("package_manager_override").$type<
+      PackageManagerPreference | null
+    >(),
     destroyedAt: integer("destroyed_at"),
     lastSeenAt: integer("last_seen_at"),
     lastRejectedProtocolVersion: integer("last_rejected_protocol_version"),

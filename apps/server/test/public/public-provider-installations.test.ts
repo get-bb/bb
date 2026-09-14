@@ -94,6 +94,7 @@ function installationStatus(providerId: string) {
       label: "Update" as const,
       command: `${executableName} update`,
     },
+    shadowingInstall: null,
     needsUpdate: true,
     versionUnsupported: false,
   };

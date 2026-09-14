@@ -954,6 +954,9 @@ importers:
       '@bb/process-utils':
         specifier: workspace:*
         version: link:../../packages/process-utils
+      '@bb/provider-bridge-protocol':
+        specifier: workspace:*
+        version: link:../../packages/provider-bridge-protocol
       '@bb/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk

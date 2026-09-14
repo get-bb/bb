@@ -67,6 +67,7 @@ describe("createServerClient", () => {
       dataDir: "/tmp/bb",
       instanceId: "instance-1",
       localApiPort: null,
+      packageManagerOverride: null,
       activeThreads: [],
       loadedEnvironments: [],
     });
@@ -94,6 +95,7 @@ describe("createServerClient", () => {
         return Response.json(
           {
             sessionId: "session-1",
+            packageManager: "auto",
             machineEnvironment: { revision: 0, entries: [] },
             heartbeatIntervalMs: 5_000,
             leaseTimeoutMs: 30_000,
@@ -116,6 +118,7 @@ describe("createServerClient", () => {
         dataDir: "/tmp/bb",
         instanceId: "instance-1",
         localApiPort: 38_888,
+        packageManagerOverride: null,
         activeThreads: [],
         loadedEnvironments: [],
       });

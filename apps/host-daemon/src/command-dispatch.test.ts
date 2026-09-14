@@ -284,6 +284,7 @@ function claudeCodeStatus(args: {
       label: "Update",
       command: "claude update",
     },
+    shadowingInstall: null,
     needsUpdate:
       args.latestVersion === null || args.currentVersion !== args.latestVersion,
     versionUnsupported: false,
@@ -303,6 +304,7 @@ function supportedCodexInstallationStatus(): ProviderCliStatus {
     npmPackageName: "@openai/codex",
     npmGlobalPackageVersion: "0.146.0",
     installAction: null,
+    shadowingInstall: null,
     needsUpdate: false,
     versionUnsupported: false,
   };
@@ -376,6 +378,7 @@ async function runSuccessfulClaudeCodeUpdateVerification(args: {
   const result = await dispatchOnlineRpcCommand(
     {
       type: "provider.installation.run",
+      packageManager: "auto",
       bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
       providerId: "claude-code",
       action: "update",
@@ -1346,6 +1349,7 @@ describe("dispatchCommand", () => {
         label: "Update",
         command: "example-agent update",
       },
+      shadowingInstall: null,
       needsUpdate: false,
       versionUnsupported: true,
     };
@@ -1487,6 +1491,7 @@ describe("dispatchCommand", () => {
       npmPackageName: "@openai/codex",
       npmGlobalPackageVersion: "0.146.0",
       installAction: null,
+      shadowingInstall: null,
       needsUpdate: false,
       versionUnsupported: false,
     };
@@ -1937,6 +1942,7 @@ describe("dispatchCommand", () => {
     );
     const command: CommandOf<"provider.installation.run"> = {
       type: "provider.installation.run",
+      packageManager: "auto",
       bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
       providerId: "codex",
       action: "update",
@@ -1975,6 +1981,7 @@ describe("dispatchCommand", () => {
         npmPackageName: null,
         npmGlobalPackageVersion: null,
         installAction: null,
+        shadowingInstall: null,
         needsUpdate: false,
         versionUnsupported: false,
       }),
@@ -2037,6 +2044,7 @@ describe("dispatchCommand", () => {
       const result = await dispatchOnlineRpcCommand(
         {
           type: "provider.installation.run",
+          packageManager: "auto",
           bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
           providerId: testCase.provider,
           action: testCase.action,
@@ -2098,6 +2106,7 @@ describe("dispatchCommand", () => {
     const result = await dispatchOnlineRpcCommand(
       {
         type: "provider.installation.run",
+        packageManager: "auto",
         bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         providerId: "claude-code",
         action: "update",
@@ -2184,6 +2193,7 @@ describe("dispatchCommand", () => {
     const result = await dispatchOnlineRpcCommand(
       {
         type: "provider.installation.run",
+        packageManager: "auto",
         bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         providerId: "claude-code",
         action: "update",
