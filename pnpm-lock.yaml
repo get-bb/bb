@@ -1460,6 +1460,9 @@ importers:
       bb-plugin-environment-project-checkout:
         specifier: workspace:*
         version: link:../../plugins/environment-project-checkout
+      bb-plugin-git-graph:
+        specifier: workspace:*
+        version: link:../../plugins/git-graph
       bb-plugin-github:
         specifier: workspace:*
         version: link:../../plugins/github
@@ -1475,6 +1478,9 @@ importers:
       bb-plugin-monaco-editor:
         specifier: workspace:*
         version: link:../../plugins/monaco-editor
+      bb-plugin-pc-control:
+        specifier: workspace:*
+        version: link:../../plugins/pc-control
       bb-plugin-pdf-preview:
         specifier: workspace:*
         version: link:../../plugins/pdf-preview
@@ -1526,6 +1532,9 @@ importers:
       bb-plugin-workflows:
         specifier: workspace:*
         version: link:../../plugins/workflows
+      bb-plugin-workspace-explorer:
+        specifier: workspace:*
+        version: link:../../plugins/workspace-explorer
 
   packages/client-core:
     dependencies:
