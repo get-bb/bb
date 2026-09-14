@@ -177,7 +177,6 @@ export function openExistingServerDialog(
   args: OpenExistingServerDialogArgs,
 ): Promise<ExistingServerDialogChoice> {
   const dialogWindow = createDesktopDialogWindow({
-    height: args.details === null ? 182 : 280,
     parentWindow: args.parentWindow,
     preloadPath: args.preloadPath,
     title: "bb is already running",
