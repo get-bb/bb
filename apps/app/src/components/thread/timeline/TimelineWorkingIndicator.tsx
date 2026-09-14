@@ -1,6 +1,9 @@
+import { cn } from "@bb/shared-ui/lib/utils";
 import { ExpandableTimelineRow } from "./ExpandableTimelineRow.js";
 import { TimelineReasoningDetail } from "./TimelineReasoningDetail.js";
 import { TimelineStatusIndicator } from "./TimelineStatusIndicator.js";
+
+const INDICATOR_HEADER_CLASS_NAME = "min-h-7 items-center";
 
 interface TimelineWorkingIndicatorProps {
   label?: string;
@@ -24,6 +27,7 @@ export function TimelineWorkingIndicator({
         <ExpandableTimelineRow
           reasoningExpansionKey={reasoningId}
           expandable={hasDetails}
+          headerClassName={INDICATOR_HEADER_CLASS_NAME}
           title={{
             segments: [
               { text: resolvedLabel, em: false, shimmer: true, truncate: true },
@@ -42,7 +46,7 @@ export function TimelineWorkingIndicator({
   return (
     <TimelineStatusIndicator
       label={<span className="animate-shine">{resolvedLabel}</span>}
-      className="mt-4 flex min-h-7 items-center"
+      className={cn("mt-4 flex", INDICATOR_HEADER_CLASS_NAME)}
     />
   );
 }

@@ -75,6 +75,27 @@ afterEach(() => {
 });
 
 describe("reasoning disclosure lifecycle", () => {
+  it.each([
+    { isThinking: false, details: undefined, label: "Working..." },
+    { isThinking: true, details: undefined, label: "Thinking…" },
+    {
+      isThinking: true,
+      details: "Compare both render paths.",
+      label: "Thinking…",
+    },
+  ])(
+    "keeps the $label header height stable",
+    ({ isThinking, details, label }) => {
+      render(
+        <TimelineReasoningExpansionProvider>
+          <TimelineWorkingIndicator isThinking={isThinking} details={details} />
+        </TimelineReasoningExpansionProvider>,
+      );
+
+      expect(screen.getByText(label).closest(".min-h-7")).not.toBeNull();
+    },
+  );
+
   it.each([false, true])(
     "keeps expansion and prose styling on completion (nested: %s)",
     (nested) => {
