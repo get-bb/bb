@@ -780,7 +780,7 @@ export function createPluginApi(options: {
   };
 
   const rpc: PluginRpc = {
-    register(contract, handlers) {
+    register(contract, handlers, options) {
       assertLive();
       for (const [name, record] of normalizeRpcRegistration(
         contract,
