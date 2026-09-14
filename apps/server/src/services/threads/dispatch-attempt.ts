@@ -293,14 +293,11 @@ async function runDispatchAttempt(
   reattempted: boolean,
 ): Promise<DispatchAttemptOutcome> {
   const { payload, thread } = args;
-  const initialHost = dispatchEnvironmentAndHost(
-    deps,
-    thread.environmentId,
-  ).host;
-  ensureThreadIsWritable(
-    thread,
-    initialHost !== null && isMachineWaitingForExecution(deps, initialHost.id),
-  );
+  // A stopping thread is writable HERE and nowhere upstream: the checkpoint
+  // below turns it into a core wait, which is a truthful "not yet" the row can
+  // recover from, rather than the 409 that used to make a stop a dead end for
+  // everything the user lined up behind it.
+  ensureThreadIsWritable(thread, true);
   if (args.trigger === "user" && args.source.kind === "inline") {
     // Reject what can never deliver while the sender is still listening; a
     // drain has nobody to tell, and its rows were validated when they were queued.
@@ -378,6 +375,13 @@ async function runDispatchAttempt(
   const sendAt = payload.sendAt ?? null;
   if (!sendNow && sendAt !== null && sendAt > Date.now()) {
     return waitOn({ kind: "time" }, sendAt);
+  }
+
+  // Ahead of the host and turn waits because a thread on its way down has no
+  // meaningful answer to either: there is nothing to steer, nothing to start,
+  // and no machine worth waking for a session that is being torn down.
+  if (thread.status === "stopping") {
+    return waitOn({ kind: "stopping" }, null);
   }
 
   const { environment: dispatchEnvironment, host: dispatchHost } =

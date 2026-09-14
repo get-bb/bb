@@ -962,7 +962,11 @@ export function settleThreadStopCommandResult(
     finalizeStoppedThreadInTransaction(args.deps, {
       threadId: args.command.threadId,
     });
-    return emptyCommandResultSideEffects();
+    return {
+      postCommitActions: [
+        drainQueuedMessagesAfterStopAction(args.command.threadId),
+      ],
+    };
   }
 
   finalizeStoppedThreadInTransaction(args.deps, {
@@ -981,7 +985,28 @@ export function settleThreadStopCommandResult(
           });
         },
       },
+      drainQueuedMessagesAfterStopAction(args.command.threadId),
     ],
+  };
+}
+
+/**
+ * The drain a settled stop owes the rows that were waiting on it.
+ *
+ * A completed turn wakes the queue; a stopped one never did, because the
+ * manual-stop pause meant there was nothing for the drain to find. Rows
+ * carrying a `stopping` wait are outside that pause — the user asked for them
+ * after requesting the stop — so the moment the stop lands is the moment they
+ * become dispatchable, and nothing else would tell the queue about it before
+ * the next recovery sweep.
+ */
+function drainQueuedMessagesAfterStopAction(
+  threadId: string,
+): CommandResultPostCommitAction {
+  return {
+    run: (deps) => {
+      requestQueuedMessageDispatch(deps, { kind: "thread-ready", threadId });
+    },
   };
 }
 
@@ -1670,6 +1695,10 @@ export function finalizeStoppedThread(
     { behavior: "immediate" },
   );
   notificationBuffer.flushInto(deps.hub);
+  requestQueuedMessageDispatch(deps, {
+    kind: "thread-ready",
+    threadId: args.threadId,
+  });
   dispatchSettledArchivedThreadProviderArchiveCommand(deps, {
     threadId: args.threadId,
   });

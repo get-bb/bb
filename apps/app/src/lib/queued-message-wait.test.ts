@@ -47,6 +47,9 @@ describe("describeQueuedMessageWait", () => {
   });
 
   it("names each core wait a reader cannot otherwise explain", () => {
+    expect(describeWait({ kind: "stopping" })).toBe(
+      "Sending when the thread stops",
+    );
     expect(describeWait({ kind: "turn-starting" })).toBe(
       "Waiting for turn to start",
     );
@@ -210,6 +213,7 @@ describe("isQueuedMessageSendNowAllowed", () => {
       }),
     ).toBe(true);
     expect(isQueuedMessageSendNowAllowed({ kind: "thread-busy" })).toBe(true);
+    expect(isQueuedMessageSendNowAllowed({ kind: "stopping" })).toBe(false);
     expect(isQueuedMessageSendNowAllowed({ kind: "turn-starting" })).toBe(
       false,
     );

@@ -245,10 +245,9 @@ function FollowUpPromptBoxWithComposer({
   const submitMode = composer.submitMode;
   const hasPendingInteraction =
     pendingInteraction !== null && pendingInteraction !== undefined;
-  const canQueueFollowUp = submitMode.kind === "queue";
-  const canSubmit = submitMode.kind === "ready" || submitMode.kind === "queue";
-  const isStopping =
-    submitMode.kind === "blocked" && submitMode.reason === "stopping";
+  const isStopping = submitMode.kind === "queue-while-stopping";
+  const canQueueFollowUp = submitMode.kind === "queue" || isStopping;
+  const canSubmit = submitMode.kind === "ready" || canQueueFollowUp;
   const isLoadingExecutionOptions =
     submitMode.kind === "blocked" &&
     submitMode.reason === "loading-execution-options";
@@ -270,8 +269,8 @@ function FollowUpPromptBoxWithComposer({
     layout: composerLayout,
     text: composer.message,
     attachmentCount,
-    isRunning: canStopRuntime,
-    isSubmitting: composer.isFollowUpSubmitting || isStopping,
+    isRunning: canStopRuntime || isStopping,
+    isSubmitting: composer.isFollowUpSubmitting,
   });
   const promptBoxRef = useRef<PromptBoxHandle>(null);
   const paneContext = useOptionalPaneContext();
@@ -723,7 +722,7 @@ function FollowUpPromptBoxWithComposer({
           label: composer.submitLabel,
           icon: composer.submitIcon,
           onStop: onStopRuntime,
-          isSubmitting: composer.isFollowUpSubmitting || isStopping,
+          isSubmitting: composer.isFollowUpSubmitting,
           disabled:
             !canSubmit ||
             composer.isFollowUpSubmitting ||
@@ -733,14 +732,14 @@ function FollowUpPromptBoxWithComposer({
             ? "Submitting..."
             : canSubmit && composer.submitTitle !== undefined
               ? composer.submitTitle
-              : canQueueFollowUp
-                ? steerOnPrimarySubmit
-                  ? isSteeringWhenReady
-                    ? `Steer when ready (Enter)${modifierSubmitHint("queue")}`
-                    : `Steer current run (Enter)${modifierSubmitHint("queue")}`
-                  : `Queue follow-up (Enter)${modifierSubmitHint("steer")}`
-                : isStopping
-                  ? "Stopping run..."
+              : isStopping
+                ? "Queue for after the stop (Enter)"
+                : canQueueFollowUp
+                  ? steerOnPrimarySubmit
+                    ? isSteeringWhenReady
+                      ? `Steer when ready (Enter)${modifierSubmitHint("queue")}`
+                      : `Steer current run (Enter)${modifierSubmitHint("queue")}`
+                    : `Queue follow-up (Enter)${modifierSubmitHint("steer")}`
                   : isLoadingExecutionOptions
                     ? "Loading models..."
                     : isLoadingPendingInteractions

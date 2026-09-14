@@ -47,6 +47,7 @@ import {
 import {
   ensureThreadIsNotAwaitingUserInteraction,
   ensureThreadIsWritable,
+  ensureThreadQueueIsWritable,
   sendThreadMessage,
 } from "../../services/threads/thread-send.js";
 import { acceptThreadSendRequest } from "../../services/threads/thread-send-request.js";
@@ -261,7 +262,7 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
 
   post(routes.sendQueuedMessage, async (context, payload) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
-    ensureThreadIsWritable(thread);
+    ensureThreadQueueIsWritable(thread);
     ensureThreadIsNotAwaitingUserInteraction(deps, thread.id);
     const result = await sendQueuedMessageNow(deps, {
       queuedMessageId: context.req.param("queuedMessageId"),
@@ -273,7 +274,7 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
 
   patch(routes.reorderQueuedMessage, (context, payload) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
-    ensureThreadIsWritable(thread);
+    ensureThreadQueueIsWritable(thread);
     return context.json(
       toQueuedMessageOrderResponse(
         reorderQueuedThreadMessage({
@@ -291,7 +292,7 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
 
   patch(routes.setQueuedMessageGroupBoundary, (context, payload) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
-    ensureThreadIsWritable(thread);
+    ensureThreadQueueIsWritable(thread);
     return context.json(
       toQueuedMessageGroupBoundaryResponse(
         setQueuedThreadMessageGroupBoundary({
@@ -308,7 +309,7 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
 
   patch(routes.updateQueuedMessage, async (context, payload) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
-    ensureThreadIsWritable(thread);
+    ensureThreadQueueIsWritable(thread);
     await validatePromptAttachmentReferences({
       dataDir: deps.config.dataDir,
       input: payload.input,

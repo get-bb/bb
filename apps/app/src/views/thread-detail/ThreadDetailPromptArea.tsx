@@ -878,12 +878,12 @@ export function ThreadDetailPromptArea({
     isStopRequested,
     runtimeDisplayStatus,
   ]);
-  const promptPlaceholder = isStopRequested
-    ? "Stopping thread..."
-    : getFollowUpPromptPlaceholder(runtimeDisplayStatus);
-  const compactPromptPlaceholder = isStopRequested
-    ? "Stopping thread..."
-    : getCompactFollowUpPromptPlaceholder(runtimeDisplayStatus);
+  const promptPlaceholder = getFollowUpPromptPlaceholder(
+    isStopRequested ? "stopping" : runtimeDisplayStatus,
+  );
+  const compactPromptPlaceholder = getCompactFollowUpPromptPlaceholder(
+    isStopRequested ? "stopping" : runtimeDisplayStatus,
+  );
   const submitScheduledRef = useRef<
     (options: { sendAt: number }) => Promise<void>
   >(async () => {});
@@ -1846,7 +1846,7 @@ export function ThreadDetailPromptArea({
             inlineEditor={queuedMessageEditor ?? undefined}
             sendAction={shouldSteerWhenReady ? "steer-when-ready" : "send-now"}
             sendDisabled={
-              !(submitMode.kind === "ready" || submitMode.kind === "queue") ||
+              submitMode.kind === "blocked" ||
               runtimeDisplayStatus === "waiting-for-host" ||
               isFollowUpSubmitting ||
               isQueueMutationPending

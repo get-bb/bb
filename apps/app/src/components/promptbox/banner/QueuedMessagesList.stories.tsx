@@ -227,6 +227,14 @@ const waitingForWorkspace: readonly ThreadQueuedMessage[] = [
   }),
 ];
 
+const sendingAfterStop: readonly ThreadQueuedMessage[] = [
+  makeQueuedMessage({
+    id: "q_stopping",
+    text: "Summarise what you changed before you stopped.",
+    waitingOn: { kind: "stopping" },
+  }),
+];
+
 const waitingForReply: readonly ThreadQueuedMessage[] = [
   makeQueuedMessage({
     id: "q_interaction",
@@ -625,6 +633,14 @@ export function SteerWaitStates() {
       >
         <ResponsivePromptStage>
           <StaticQueuedMessagesList queuedMessages={waitingForWorkspace} />
+        </ResponsivePromptStage>
+      </StoryRow>
+      <StoryRow
+        label="sending after a stop"
+        hint="the user pressed Send now while the thread was stopping; the row explains itself and drops Send now because pressing it again would change nothing"
+      >
+        <ResponsivePromptStage>
+          <StaticQueuedMessagesList queuedMessages={sendingAfterStop} />
         </ResponsivePromptStage>
       </StoryRow>
       <StoryRow

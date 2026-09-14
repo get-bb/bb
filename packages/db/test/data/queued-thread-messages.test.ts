@@ -880,6 +880,106 @@ describe("queued thread messages", () => {
     ).toEqual([ordinary.id]);
   });
 
+  it("lets a row the user asked for during the stop out of the manual-stop pause", () => {
+    const { db, project } = setup();
+    const thread = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+      status: "idle",
+    });
+    const heldBack = createQueuedThreadMessage(db, noopNotifier, {
+      threadId: thread.id,
+      content: defaultInput,
+      model: "gpt-5",
+      reasoningLevel: "medium",
+      permissionMode: "full",
+      serviceTier: "default",
+      waitingOn: { kind: "thread-busy" },
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
+    });
+    const askedForDuringStop = createQueuedThreadMessage(db, noopNotifier, {
+      threadId: thread.id,
+      content: altInput,
+      model: "gpt-5",
+      reasoningLevel: "medium",
+      permissionMode: "full",
+      serviceTier: "default",
+      waitingOn: { kind: "stopping" },
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
+    });
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 1,
+        type: "system/thread/interrupted",
+        scope: threadScope(),
+        itemId: null,
+        itemKind: null,
+        parentToolCallId: null,
+        data: JSON.stringify({ reason: "manual-stop" }),
+      },
+    ]);
+
+    expect(
+      listIdleThreadsWithQueuedMessages(db).map((row) => row.threadId),
+    ).toContain(thread.id);
+    expect(
+      claimQueuedThreadMessageGroup(db, noopNotifier, heldBack.id, {
+        kind: "automatic",
+        isGroupEligible: () => true,
+      }),
+    ).toBeNull();
+    expect(
+      claimNextQueuedThreadMessageGroup(db, noopNotifier, thread.id)?.map(
+        (row) => row.id,
+      ),
+    ).toEqual([askedForDuringStop.id]);
+    expect(
+      listQueuedThreadMessages(db, thread.id).map((row) => row.id),
+    ).toEqual([heldBack.id]);
+  });
+
+  it("keeps a paused thread off the idle drain when every row is an ordinary turn-end wait", () => {
+    const { db, project } = setup();
+    const thread = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+      status: "idle",
+    });
+    createQueuedThreadMessage(db, noopNotifier, {
+      threadId: thread.id,
+      content: defaultInput,
+      model: "gpt-5",
+      reasoningLevel: "medium",
+      permissionMode: "full",
+      serviceTier: "default",
+      waitingOn: { kind: "thread-busy" },
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: null,
+    });
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 1,
+        type: "system/thread/interrupted",
+        scope: threadScope(),
+        itemId: null,
+        itemKind: null,
+        parentToolCallId: null,
+        data: JSON.stringify({ reason: "manual-stop" }),
+      },
+    ]);
+
+    expect(
+      listIdleThreadsWithQueuedMessages(db).map((row) => row.threadId),
+    ).not.toContain(thread.id);
+  });
+
   it("does not split a requeued group: the tail waits with its blocked lead", () => {
     const { db, thread } = setup();
     const lead = createQueuedThreadMessage(db, noopNotifier, {

@@ -1447,8 +1447,7 @@ describe("FollowUpPromptBox", () => {
   it("uses the caller-specific compact placeholder", () => {
     mocks.isCompactViewport = true;
     const props = createFollowUpPromptBoxProps({
-      kind: "blocked",
-      reason: "stopping",
+      kind: "queue-while-stopping",
     });
     if (props.composer === null) throw new Error("Missing composer");
     props.composer.compactPromptPlaceholder = "Stopping side chat...";

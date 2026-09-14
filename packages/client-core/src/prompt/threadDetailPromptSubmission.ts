@@ -127,6 +127,7 @@ export function shouldQueueFollowUpMessage(
     displayStatus === "host-reconnecting" ||
     displayStatus === "provisioning" ||
     displayStatus === "starting" ||
+    displayStatus === "stopping" ||
     displayStatus === "waiting-for-host"
   );
 }
@@ -140,7 +141,7 @@ export function buildFollowUpSubmitMode({
   runtimeDisplayStatus,
 }: BuildFollowUpSubmitModeArgs): FollowUpSubmitMode {
   if (isStopRequested) {
-    return { kind: "blocked", reason: "stopping" };
+    return { kind: "queue-while-stopping" };
   }
   if (isPendingInteractionsInitialLoading) {
     return { kind: "blocked", reason: "loading-pending-interactions" };

@@ -630,6 +630,8 @@ export function describeQueueWait(row: {
         : `scheduled for ${new Date(row.sendAt).toLocaleString()}`;
     case "thread-busy":
       return "waiting for the current turn to finish";
+    case "stopping":
+      return "sending once the thread finishes stopping";
     case "turn-starting":
       return "waiting for the current turn to start";
     case "provisioning":
