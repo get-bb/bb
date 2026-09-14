@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { PI_BRIDGE_ARGS_ENV, PI_BRIDGE_COMMAND_ENV } from "./rpc-child.js";
 import {
@@ -82,28 +83,76 @@ it("reports not_installed when the launch command is missing", async () => {
   });
 });
 
-it("fails closed when pi cannot report its version, with install guidance", async () => {
-  vi.stubEnv("FAKE_PI_VERSION", "crash");
-  const health = await harness.request(nextRequestId(), "provider/health", {
-    providerId: "pi",
-    cwd: harness.workspaceDir,
-  });
-  expect(health.result).toMatchObject({
-    health: {
-      status: "unknown",
-      installedVersion: null,
-      statusMessage: expect.stringMatching(
-        /^Could not determine the pi version: `.*--version` exited with 1\. Install @earendil-works\/pi-coding-agent 0\.84\.0 or newer: (?:npm install -g |bun add -g |mise use -g -y npm:)@earendil-works\/pi-coding-agent@latest$/u,
-      ),
-    },
-  });
-  const models = await harness.request(nextRequestId(), "model/list", {
-    cwd: harness.workspaceDir,
-  });
-  expect(models.error).toMatchObject({
-    message: expect.stringContaining("Could not determine the pi version"),
-  });
-}, 30_000);
+const PI_PACKAGE = "@earendil-works/pi-coding-agent";
+
+async function stubDetectedPackageManager(
+  manager: "npm" | "bun" | "mise",
+): Promise<void> {
+  const binDir = join(harness.workspaceDir, "tools", "bin");
+  const miseDataDir = join(harness.workspaceDir, "tools", "mise");
+  await mkdir(binDir, { recursive: true });
+  const miseEntries =
+    manager === "mise"
+      ? [
+          {
+            version: "0.84.0",
+            requested_version: "latest",
+            install_path: join(miseDataDir, "installs", "npm-pi", "0.84.0"),
+            installed: true,
+            active: true,
+          },
+        ]
+      : [];
+  await writeFile(
+    join(binDir, "mise"),
+    `#!/bin/sh\nprintf '%s\\n' '${JSON.stringify(miseEntries)}'\n`,
+    { mode: 0o755 },
+  );
+  if (manager === "bun") {
+    await writeFile(
+      join(binDir, "bun"),
+      `#!/bin/sh\nprintf '%s\\n' '${dirname(process.execPath)}'\n`,
+      { mode: 0o755 },
+    );
+  }
+  vi.stubEnv("PATH", binDir);
+  vi.stubEnv("MISE_DATA_DIR", miseDataDir);
+}
+
+it.each([
+  { manager: "npm", command: `npm install -g ${PI_PACKAGE}@latest` },
+  { manager: "bun", command: `bun add -g ${PI_PACKAGE}@latest` },
+  { manager: "mise", command: `mise use -g -y npm:${PI_PACKAGE}@latest` },
+] as const)(
+  "fails closed when pi cannot report its version, with $manager install guidance",
+  async ({ manager, command }) => {
+    await stubDetectedPackageManager(manager);
+    vi.stubEnv("FAKE_PI_VERSION", "crash");
+    const health = await harness.request(nextRequestId(), "provider/health", {
+      providerId: "pi",
+      cwd: harness.workspaceDir,
+    });
+    expect(health.result).toMatchObject({
+      health: {
+        status: "unknown",
+        installedVersion: null,
+        statusMessage: expect.stringMatching(
+          new RegExp(
+            `^Could not determine the pi version: \`.*--version\` exited with 1\\. Install ${PI_PACKAGE} 0\\.84\\.0 or newer: ${command.replace(/[.+]/gu, "\\$&")}$`,
+            "u",
+          ),
+        ),
+      },
+    });
+    const models = await harness.request(nextRequestId(), "model/list", {
+      cwd: harness.workspaceDir,
+    });
+    expect(models.error).toMatchObject({
+      message: expect.stringContaining("Could not determine the pi version"),
+    });
+  },
+  30_000,
+);
 
 it("memoizes the install gate per launch path across health polls", async () => {
   const processLog = join(harness.workspaceDir, "process.log");
