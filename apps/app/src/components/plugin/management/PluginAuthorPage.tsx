@@ -66,10 +66,12 @@ function authorForEntries(
 export function PluginAuthorPage({
   authorKey,
   onInstall,
+  onUninstall,
   onOpenPlugin,
 }: {
   authorKey: string;
   onInstall: (initial: AddPluginInitial) => void;
+  onUninstall?: (entry: PluginCatalogSearchEntry) => void;
   onOpenPlugin: (pluginId: string, trigger: HTMLButtonElement) => void;
 }) {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -230,6 +232,7 @@ export function PluginAuthorPage({
               <PluginCatalogGrid
                 entries={visibleEntries}
                 onInstall={onInstall}
+                onUninstall={onUninstall}
                 onOpenPlugin={onOpenPlugin}
               />
             )}

@@ -16,8 +16,6 @@ import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import {
   ResourceBrowseGrid,
   ResourceCollectionViewport,
-  ResourceInstallControl,
-  ResourceInstalledControl,
   ResourceListState,
   ResourceShelfSeeAllAction,
   ResourceSourceShelf,
@@ -32,6 +30,7 @@ import {
 } from "@/hooks/queries/plugin-catalog-queries";
 import type { AddPluginInitial } from "./AddPluginDialog";
 import { PluginCard, PluginCardAuthor } from "./PluginCard";
+import { PluginCatalogInstallControl } from "./PluginCatalogInstallControl";
 import {
   PluginCollectionToolbar,
   pluginBrowseSort,
@@ -56,10 +55,12 @@ const SHELF_ENTRY_LIMIT = 6;
 
 export function BrowsePluginsTab({
   onInstall,
+  onUninstall,
   onOpenPlugin,
   onInstallFromSource,
 }: {
   onInstall: (initial: AddPluginInitial) => void;
+  onUninstall?: (entry: PluginCatalogSearchEntry) => void;
   onOpenPlugin: (pluginId: string, trigger: HTMLButtonElement) => void;
   onInstallFromSource: () => void;
 }) {
@@ -250,6 +251,7 @@ export function BrowsePluginsTab({
                       )
                     }
                     onInstall={onInstall}
+                    onUninstall={onUninstall}
                     onOpenPlugin={onOpenPlugin}
                   />
                 ))}
@@ -258,6 +260,7 @@ export function BrowsePluginsTab({
               <PluginCatalogGrid
                 entries={flatEntries}
                 onInstall={onInstall}
+                onUninstall={onUninstall}
                 onOpenPlugin={onOpenPlugin}
               />
             )}
@@ -327,12 +330,14 @@ function BrowseShelf({
   expanded,
   onExpand,
   onInstall,
+  onUninstall,
   onOpenPlugin,
 }: {
   shelf: PluginBrowseShelf;
   expanded: boolean;
   onExpand: () => void;
   onInstall: (initial: AddPluginInitial) => void;
+  onUninstall?: (entry: PluginCatalogSearchEntry) => void;
   onOpenPlugin: (pluginId: string, trigger: HTMLButtonElement) => void;
 }) {
   const visible = expanded
@@ -387,6 +392,7 @@ function BrowseShelf({
               entry={entry}
               showCategory={false}
               onInstall={onInstall}
+              onUninstall={onUninstall}
               onOpenPlugin={onOpenPlugin}
             />
           ))}
@@ -399,10 +405,12 @@ function BrowseShelf({
 export function PluginCatalogGrid({
   entries,
   onInstall,
+  onUninstall,
   onOpenPlugin,
 }: {
   entries: readonly PluginCatalogSearchEntry[];
   onInstall: (initial: AddPluginInitial) => void;
+  onUninstall?: (entry: PluginCatalogSearchEntry) => void;
   onOpenPlugin: (pluginId: string, trigger: HTMLButtonElement) => void;
 }) {
   return (
@@ -413,6 +421,7 @@ export function PluginCatalogGrid({
           entry={entry}
           showCategory
           onInstall={onInstall}
+          onUninstall={onUninstall}
           onOpenPlugin={onOpenPlugin}
         />
       ))}
@@ -424,11 +433,13 @@ function PluginCatalogCard({
   entry,
   showCategory,
   onInstall,
+  onUninstall,
   onOpenPlugin,
 }: {
   entry: PluginCatalogSearchEntry;
   showCategory: boolean;
   onInstall: (initial: AddPluginInitial) => void;
+  onUninstall?: (entry: PluginCatalogSearchEntry) => void;
   onOpenPlugin: (pluginId: string, trigger: HTMLButtonElement) => void;
 }) {
   const count = pluginInstallCountPresentation(entry.installs);
@@ -448,18 +459,22 @@ function PluginCatalogCard({
       }
       headerAction={
         entry.installed ? (
-          <ResourceInstalledControl accessibleLabel="Installed" count={count} />
-        ) : (
-          <ResourceInstallControl
-            accessibleLabel={`Install ${entry.displayName}${
-              count === undefined ? "" : ` — ${count.accessibleLabel}`
-            }`}
-            disabled={!entry.compatible}
-            presentation="compact"
-            tooltip={`Install ${entry.displayName}`}
+          <PluginCatalogInstallControl
+            displayName={entry.displayName}
+            installed
+            included={entry.source.startsWith("builtin:")}
             count={count}
-            className="border-border/80 bg-background text-foreground shadow-none hover:bg-state-hover"
-            onAction={() =>
+            onUninstall={
+              onUninstall === undefined ? undefined : () => onUninstall(entry)
+            }
+          />
+        ) : (
+          <PluginCatalogInstallControl
+            displayName={entry.displayName}
+            installed={false}
+            disabled={!entry.compatible}
+            count={count}
+            onInstall={() =>
               onInstall({
                 entryId: entry.entryId,
                 marketplace: entry.marketplace,
