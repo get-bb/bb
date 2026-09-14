@@ -117,6 +117,9 @@ For review or fix pipelines, get the environment ID from
 
 ## Opening Threads And Files In The App
 
+- Reference a BB thread in chat as `@thread:thr_abc123`, substituting its
+  actual ID. BB renders the mention with the correct project-aware link; do not
+  construct `/threads/...` or `/projects/.../threads/...` URLs manually.
 - Use `bb thread open <path>` inside a BB thread to open a Markdown, HTML, or
   other workspace file for the user in the BB IDE's thread panel.
 - Use `bb thread open <thread-id> --split right|down|left|top|replace` to open

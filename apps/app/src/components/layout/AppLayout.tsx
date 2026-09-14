@@ -3,7 +3,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { atom, useAtom, useAtomValue, useStore } from "jotai";
 import { atomWithStorage } from "jotai/utils";
-import { Link, matchPath, useLocation, useNavigate } from "react-router-dom";
+import {
+  Link,
+  matchPath,
+  Navigate,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
 import type { ProjectResponse } from "@bb/server-contract";
 import { Icon } from "@bb/shared-ui/icon";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
@@ -492,6 +498,18 @@ export function AppLayout({ children }: AppLayoutProps) {
   });
   const hasThreadDetailBootstrapSettled =
     threadDetailBootstrapQuery.isSuccess || threadDetailBootstrapQuery.isError;
+  const resolvedThreadProjectId = threadDetailBootstrapQuery.data?.projectId;
+  const canonicalThreadRoutePath =
+    isThreadView &&
+    projectId !== undefined &&
+    threadId !== undefined &&
+    resolvedThreadProjectId !== undefined &&
+    resolvedThreadProjectId !== projectId
+      ? getThreadRoutePath({
+          projectId: resolvedThreadProjectId,
+          threadId,
+        })
+      : null;
   const [isSidebarResizing, setIsSidebarResizing] = useState(false);
   const startXRef = useRef(0);
   const startWidthRef = useRef(0);
@@ -700,6 +718,19 @@ export function AppLayout({ children }: AppLayoutProps) {
     if (typeof document === "undefined") return;
     document.title = documentTitle;
   }, [documentTitle]);
+
+  if (canonicalThreadRoutePath !== null) {
+    return (
+      <Navigate
+        to={{
+          pathname: canonicalThreadRoutePath,
+          search: location.search,
+          hash: location.hash,
+        }}
+        replace
+      />
+    );
+  }
 
   return (
     <TooltipProvider delayDuration={300} disableHoverableContent>

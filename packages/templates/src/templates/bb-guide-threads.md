@@ -205,6 +205,9 @@ Inspecting:
 
 Opening threads and files in the app:
 
+  In chat, reference a thread as @thread:thr_abc123, substituting its actual ID.
+  BB renders the correct project-aware link; do not construct thread URLs manually.
+
   bb thread open <path>                    Open a file in the current BB thread panel
   bb thread open <thread-id> [path]        Open a thread, optionally with a panel file
     --line <number>                        Line number to focus
