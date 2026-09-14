@@ -1,11 +1,11 @@
 import { eq } from "drizzle-orm";
-import type { DbConnection } from "../connection.js";
+import type { DbQueryConnection } from "../connection.js";
 import { claimedThreadSpawns } from "../schema.js";
 
 export type ClaimedThreadSpawnRow = typeof claimedThreadSpawns.$inferSelect;
 
 export function getClaimedThreadSpawn(
-  db: DbConnection,
+  db: DbQueryConnection,
   claimId: string,
 ): ClaimedThreadSpawnRow | null {
   return (
@@ -18,7 +18,7 @@ export function getClaimedThreadSpawn(
 }
 
 export function getClaimedThreadSpawnByAttemptId(
-  db: DbConnection,
+  db: DbQueryConnection,
   attemptId: string,
 ): ClaimedThreadSpawnRow | null {
   return (
@@ -31,7 +31,7 @@ export function getClaimedThreadSpawnByAttemptId(
 }
 
 export function getClaimedThreadSpawnByAuthorizationId(
-  db: DbConnection,
+  db: DbQueryConnection,
   authorizationId: string,
 ): ClaimedThreadSpawnRow | null {
   return (
@@ -44,14 +44,14 @@ export function getClaimedThreadSpawnByAuthorizationId(
 }
 
 export function insertClaimedThreadSpawn(
-  db: DbConnection,
+  db: DbQueryConnection,
   row: typeof claimedThreadSpawns.$inferInsert,
 ): void {
   db.insert(claimedThreadSpawns).values(row).run();
 }
 
 export function updateClaimedThreadSpawn(
-  db: DbConnection,
+  db: DbQueryConnection,
   claimId: string,
   change: Partial<typeof claimedThreadSpawns.$inferInsert>,
 ): void {

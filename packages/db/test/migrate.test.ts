@@ -11,7 +11,7 @@ import {
   createProject,
   getAppKeybindingOverrides,
   getAppSettings,
-  migrate,
+  migrate as runMigrations,
   noopNotifier,
   upsertHost,
   type DbConnection,
@@ -260,17 +260,72 @@ interface SeededLargeValueBackfillValues {
 }
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const migrationJournal = JSON.parse(
+  readFileSync(resolve(__dirname, "../drizzle/meta/_journal.json"), "utf-8"),
+) as { entries: Array<{ tag: string; when: number }> };
+const claimedThreadSpawnMigrationWhen = migrationJournal.entries.find(
+  ({ tag }) => tag === "0120_watery_red_hulk",
+)?.when;
+
+if (claimedThreadSpawnMigrationWhen === undefined) {
+  throw new Error("Claimed thread spawn migration is absent from the journal");
+}
+const requiredClaimedThreadSpawnMigrationWhen =
+  claimedThreadSpawnMigrationWhen;
 
 const latestMigrationWhen = Math.max(
-  ...(
-    JSON.parse(
-      readFileSync(
-        resolve(__dirname, "../drizzle/meta/_journal.json"),
-        "utf-8",
-      ),
-    ) as { entries: { when: number }[] }
-  ).entries.map((entry) => entry.when),
+  ...migrationJournal.entries.map((entry) => entry.when),
 );
+
+function migrate(...args: Parameters<typeof runMigrations>): void {
+  const [db] = args;
+  const migrationTableExists = db.$client
+    .prepare<[string], TableNameRow>(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
+    )
+    .get("__drizzle_migrations");
+  const migrationApplied =
+    migrationTableExists === undefined
+      ? undefined
+      : db.$client
+          .prepare<[number], MigrationCreatedAtRow>(
+            "SELECT created_at AS createdAt FROM __drizzle_migrations WHERE created_at = ?",
+          )
+          .get(requiredClaimedThreadSpawnMigrationWhen);
+  const tableExists = db.$client
+    .prepare<[string], TableNameRow>(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
+    )
+    .get("claimed_thread_spawns");
+  if (migrationApplied === undefined && tableExists !== undefined) {
+    db.$client.exec(`
+      DROP TABLE claimed_thread_spawns;
+      DROP INDEX IF EXISTS environments_provision_request_idx;
+    `);
+    const environmentColumns = db.$client
+      .prepare<[], TableInfoRow>("PRAGMA table_info(environments)")
+      .all();
+    if (
+      environmentColumns.some(
+        (column) => column.name === "provision_request_id",
+      )
+    ) {
+      db.$client.exec(
+        "ALTER TABLE environments DROP COLUMN provision_request_id",
+      );
+    }
+    if (
+      environmentColumns.some(
+        (column) => column.name === "provision_request_sha256",
+      )
+    ) {
+      db.$client.exec(
+        "ALTER TABLE environments DROP COLUMN provision_request_sha256",
+      );
+    }
+  }
+  runMigrations(...args);
+}
 
 function restoreWideExperimentsTable(db: DbConnection): void {
   const columns = db.$client

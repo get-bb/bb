@@ -570,6 +570,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "storage",
           "bb-sdk",
           "thread-plugin-metadata",
+          "claimed-thread-effects",
           "desktop-browsers",
           "ai-services",
           "host-components",
@@ -995,14 +996,17 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         summary:
           "Consumes a current host-side claim and a complete thread request under one durable BB identity. With this, a plugin can:",
         bullets: [
-          "Ask the currently installed host artifact to validate the exact canonical request at use time",
+          "Register one installed host method during plugin activation, then ask it to validate the exact controller authorization and canonical request at use time",
+          "Require one ready provisioned unmanaged environment before claim, during delivery, and after a returned or recovered thread",
           "Persist claim, authorization, delivery intent and terminal result across restart",
           "Replay a completed thread without another provider start",
           "Stop at delivery_uncertain after an unverified external effect instead of retrying",
         ],
         apiSymbols: [
           "ExperimentalPluginEffects",
-          "ExperimentalClaimAuthority",
+          "ExperimentalClaimAuthorityRegistration",
+          "ExperimentalClaimedEnvironmentBindingV2",
+          "ExperimentalClaimedThreadSpawnRequestV2",
           "ExperimentalClaimedThreadSpawnArgs",
           "ExperimentalClaimedThreadSpawnResult",
         ],

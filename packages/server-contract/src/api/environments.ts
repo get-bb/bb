@@ -65,6 +65,7 @@ export type ProvisionUnmanagedEnvironmentRequest = z.infer<
 export interface ProvisionUnmanagedEnvironmentResult {
   schema: "bb.environment-provision-result/v1";
   requestId: string;
+  requestSha256: string;
   state: "provisioning" | "ready" | "terminal_refused";
   replay: boolean;
   environment: Environment;
@@ -73,6 +74,7 @@ export interface ProvisionUnmanagedEnvironmentResult {
 export const provisionUnmanagedEnvironmentResultSchema = z.object({
   schema: z.literal("bb.environment-provision-result/v1"),
   requestId: z.string().min(1),
+  requestSha256: z.string().regex(/^[0-9a-f]{64}$/u),
   state: z.enum(["provisioning", "ready", "terminal_refused"]),
   replay: z.boolean(),
   environment: environmentSchema,

@@ -1,13 +1,18 @@
 # APIs To Audit
 
-## `bb.experimental_effects.experimental_spawnClaimed`
+## `bb.experimental_effects.experimental_registerClaimAuthority` and `experimental_spawnClaimed`
 
-**What it does.** Persists a plugin-scoped claim and complete canonical thread
-spawn request before invoking the plugin's currently installed host artifact.
-Only a strict, matching claim response permits the exact bound request to cross
-the thread-spawn boundary. Exact replay returns the same thread. A response loss
-or restart after that boundary recovers a thread carrying BB's reserved claim
-marker; otherwise it returns terminal `delivery_uncertain` and never resends.
+**What it does.** Registers one immutable host-side claim capability while the
+plugin factory is loading. A later claimed spawn can name only that registered
+identity. BB validates the exact provisioned non-worktree environment, invokes
+the installed host artifact for a current matching claim, persists the claim
+and complete RFC 8785 canonical request, revalidates the provision record in
+the claim and delivery transactions and after the effect, and only then crosses
+the thread-spawn boundary. The claim must repeat the exact registered authority
+and caller-named controller authorization identity.
+Exact replay returns the same thread. A response loss or restart after that
+boundary recovers a thread carrying BB's reserved claim marker; otherwise it
+returns terminal `delivery_uncertain` and never resends.
 
 **Audit before stabilizing.**
 

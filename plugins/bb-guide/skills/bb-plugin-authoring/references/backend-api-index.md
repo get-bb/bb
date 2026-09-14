@@ -58,11 +58,14 @@ Read the installed declarations for exact current signatures.
 - `ExperimentalPluginWebSocketContext`
 - `ExperimentalPluginWebSocketHandler`
 - `ExperimentalPluginWebSocketHandlers`
-- `ExperimentalClaimAuthority`
+- `ExperimentalClaimAuthorityRegistration`
+- `ExperimentalClaimedEnvironmentBindingV2`
+- `ExperimentalClaimedThreadSpawnRequestV2`
 - `ExperimentalClaimedThreadSpawnArgs`
 - `ExperimentalClaimedThreadSpawnResult`
 - `ExperimentalPluginEffects` — `bb.experimental_effects` and its durable
-  `experimental_spawnClaimed` thread effect (see backend-sdk.md)
+  `experimental_registerClaimAuthority` and `experimental_spawnClaimed`
+  thread effects (see backend-sdk.md)
 - `ExperimentalProviderModelPickerProps`
 - `ExperimentalProviderModelPickerRouting`
 - `ExperimentalProviderModelPickerValue`

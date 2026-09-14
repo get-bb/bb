@@ -660,13 +660,7 @@ export const claimedThreadSpawns = sqliteTable(
     requestSha256: text("request_sha256").notNull(),
     requestCanonicalJson: text("request_canonical_json").notNull(),
     state: text("state")
-      .$type<
-        | "claiming"
-        | "claimed"
-        | "delivering"
-        | "completed"
-        | "delivery_uncertain"
-      >()
+      .$type<"claimed" | "delivering" | "completed" | "delivery_uncertain">()
       .notNull(),
     authorizationId: text("authorization_id"),
     threadJson: text("thread_json"),

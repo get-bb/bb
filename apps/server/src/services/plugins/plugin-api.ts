@@ -21,6 +21,7 @@ import {
   type DbConnection,
 } from "@bb/db";
 import type { JsonValue } from "@bb/domain";
+import { ApiError } from "../../errors.js";
 import type {
   BbPluginApi,
   PluginAgentConfiguration,
@@ -42,6 +43,7 @@ import type {
   PluginEvents,
   ExperimentalClaimedThreadSpawnArgs,
   ExperimentalClaimedThreadSpawnResult,
+  ExperimentalClaimAuthorityRegistration,
   ExperimentalPluginEffects,
   PluginHttp,
   PluginHttpAuthMode,
@@ -80,6 +82,7 @@ import type {
 } from "@get-bb/plugin-sdk";
 import {
   CLAIMED_THREAD_SPAWN_METADATA_KEY,
+  claimedThreadSpawnOperationDigest,
   spawnClaimedThread,
 } from "./claimed-thread-spawn.js";
 import {
@@ -558,7 +561,14 @@ export function createPluginApi(options: {
   let wrappedSdk: PluginBbSdk | undefined;
   const claimedSpawnOperations = new Map<
     string,
-    Promise<ExperimentalClaimedThreadSpawnResult>
+    {
+      identity: string;
+      operation: Promise<ExperimentalClaimedThreadSpawnResult>;
+    }
+  >();
+  const claimAuthorities = new Map<
+    string,
+    ExperimentalClaimAuthorityRegistration
   >();
   let pendingNeedsConfiguration: string | null = null;
   const pendingAgentToolProblems: string[] = [];
@@ -1288,7 +1298,34 @@ export function createPluginApi(options: {
   };
 
   const experimental_effects: ExperimentalPluginEffects = {
-    experimental_spawnClaimed(rawArgs) {
+    experimental_registerClaimAuthority(authority) {
+      assertLive();
+      if (activated) {
+        throw new Error(
+          "claim authorities must be registered during plugin factory registration",
+        );
+      }
+      if (
+        !authority.authorityId ||
+        !authority.hostId ||
+        !authority.method ||
+        authority.contract[authority.method] === undefined
+      ) {
+        throw new Error(
+          "claim authority requires an id, host, and declared RPC method",
+        );
+      }
+      if (claimAuthorities.has(authority.authorityId)) {
+        throw new Error(
+          `claim authority "${authority.authorityId}" is already registered`,
+        );
+      }
+      claimAuthorities.set(authority.authorityId, {
+        ...authority,
+        contract: { ...authority.contract },
+      });
+    },
+    async experimental_spawnClaimed(rawArgs) {
       assertLive();
       if (!activated) {
         throw new Error(
@@ -1301,35 +1338,40 @@ export function createPluginApi(options: {
           "bb.sdk is not available until the server is listening",
         );
       }
-      const args: ExperimentalClaimedThreadSpawnArgs = {
-        ...rawArgs,
-        request: withPluginThreadAttribution(rawArgs.request, pluginId),
-      };
+      const args: ExperimentalClaimedThreadSpawnArgs = rawArgs;
+      const identity = claimedThreadSpawnOperationDigest(pluginId, args);
+      const authority = claimAuthorities.get(args.authorityId);
+      if (authority === undefined) {
+        throw new Error(
+          `claim authority "${args.authorityId}" is not registered by this plugin`,
+        );
+      }
       const active = claimedSpawnOperations.get(args.claimId);
       if (active !== undefined) {
-        return active.then((value) => ({ ...value, replay: true }));
+        if (active.identity !== identity) {
+          return Promise.reject(
+            new ApiError(
+              409,
+              "attempt_identity_conflict",
+              "Claim id is already bound to a different active thread spawn",
+            ),
+          );
+        }
+        return active.operation.then((value) => ({ ...value, replay: true }));
       }
       const operation = spawnClaimedThread(
         {
+          authorityHostId: authority.hostId,
+          authorityMethod: authority.method,
           db,
           pluginId,
-          claim: (claimArgs, input) => {
-            if (
-              typeof claimArgs.authority.method !== "string" ||
-              claimArgs.authority.contract[claimArgs.authority.method] ===
-                undefined
-            ) {
-              throw new Error(
-                "claimed spawn requires a declared host RPC method",
-              );
-            }
-            return callPluginHost({
-              contract: claimArgs.authority.contract,
-              method: claimArgs.authority.method,
+          claim: (input) =>
+            callPluginHost({
+              contract: authority.contract,
+              method: authority.method,
               input,
-              hostId: claimArgs.authority.hostId,
-            });
-          },
+              hostId: authority.hostId,
+            }),
           recover: async (recoveryArgs) => {
             const threadId = findThreadIdByPluginMetadataString(db, {
               pluginId,
@@ -1356,7 +1398,7 @@ export function createPluginApi(options: {
         },
         args,
       );
-      claimedSpawnOperations.set(args.claimId, operation);
+      claimedSpawnOperations.set(args.claimId, { identity, operation });
       void operation.then(
         () => claimedSpawnOperations.delete(args.claimId),
         () => claimedSpawnOperations.delete(args.claimId),

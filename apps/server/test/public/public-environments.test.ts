@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { getEnvironment } from "@bb/db";
 import {
@@ -14,6 +15,7 @@ import {
   seedThread,
 } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
+import { runEnvironmentProvisioningSweep } from "../../src/services/system/periodic-sweeps.js";
 
 describe("public environments", () => {
   it("provisions one unmanaged environment for an exact replayed request", async () => {
@@ -39,6 +41,19 @@ describe("public environments", () => {
         workspaceProvisionType: "unmanaged",
         isWorktree: false,
       } as const;
+      const requestSha256 = createHash("sha256")
+        .update(
+          JSON.stringify({
+            hostId: request.hostId,
+            isWorktree: request.isWorktree,
+            path: request.path,
+            projectId: request.projectId,
+            requestId: request.requestId,
+            schema: request.schema,
+            workspaceProvisionType: request.workspaceProvisionType,
+          }),
+        )
+        .digest("hex");
 
       const firstResponsePromise = harness.app.request(
         "/api/v1/environment-provisions",
@@ -71,6 +86,7 @@ describe("public environments", () => {
       const concurrent = await readJson(concurrentResponse);
       expect(concurrent).toMatchObject({
         requestId: request.requestId,
+        requestSha256,
         state: "provisioning",
         replay: true,
       });
@@ -90,6 +106,7 @@ describe("public environments", () => {
       expect(first).toMatchObject({
         schema: "bb.environment-provision-result/v1",
         requestId: request.requestId,
+        requestSha256,
         state: "ready",
         replay: false,
         environment: {
@@ -116,6 +133,7 @@ describe("public environments", () => {
       const replay = await readJson(replayResponse);
       expect(replay).toMatchObject({
         requestId: request.requestId,
+        requestSha256,
         state: "ready",
         replay: true,
         environment: {
@@ -140,6 +158,9 @@ describe("public environments", () => {
         },
       );
       expect(conflictResponse.status).toBe(409);
+      expect(await readJson(conflictResponse)).toMatchObject({
+        code: "idempotency_conflict",
+      });
       expect(listQueuedCommands(harness, "environment.attach")).toHaveLength(0);
     });
   });
@@ -173,6 +194,104 @@ describe("public environments", () => {
       expect(response.status).toBe(400);
       const listResponse = await harness.app.request("/api/v1/environments");
       expect(await readJson(listResponse)).toEqual([]);
+    });
+  });
+
+  it("recovers a persisted provision identity after restart", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-provision-restart",
+      });
+      registerTestHostRpcCapture(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+      });
+      const path = "/tmp/bb-provision-restart";
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path,
+      });
+      const request = {
+        schema: "bb.environment-provision-request/v1",
+        requestId: "provision-request-restart",
+        projectId: project.id,
+        hostId: host.id,
+        path,
+        workspaceProvisionType: "unmanaged",
+        isWorktree: false,
+      } as const;
+      const requestSha256 = createHash("sha256")
+        .update(
+          JSON.stringify({
+            hostId: request.hostId,
+            isWorktree: request.isWorktree,
+            path: request.path,
+            projectId: request.projectId,
+            requestId: request.requestId,
+            schema: request.schema,
+            workspaceProvisionType: request.workspaceProvisionType,
+          }),
+        )
+        .digest("hex");
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path,
+        isGitRepo: false,
+        status: "provisioning",
+        provisionRequestId: request.requestId,
+        provisionRequestSha256: requestSha256,
+      });
+
+      const pending = await harness.app.request(
+        "/api/v1/environment-provisions",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(request),
+        },
+      );
+      expect(pending.status).toBe(202);
+      expect(await readJson(pending)).toMatchObject({
+        requestId: request.requestId,
+        requestSha256,
+        state: "provisioning",
+        replay: true,
+        environment: { id: environment.id },
+      });
+
+      await runEnvironmentProvisioningSweep(harness.deps);
+      const attach = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "environment.attach" &&
+          command.environmentId === environment.id,
+      );
+      await reportQueuedCommandSuccess(harness, attach, {
+        path,
+        isGitRepo: false,
+        isWorktree: false,
+        branchName: null,
+        defaultBranch: null,
+        transcript: [],
+      });
+
+      const replay = await harness.app.request(
+        "/api/v1/environment-provisions",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(request),
+        },
+      );
+      expect(replay.status).toBe(200);
+      expect(await readJson(replay)).toMatchObject({
+        requestId: request.requestId,
+        requestSha256,
+        state: "ready",
+        replay: true,
+        environment: { id: environment.id },
+      });
     });
   });
 

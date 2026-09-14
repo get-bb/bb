@@ -47,12 +47,14 @@ function requestDigest(request: ProvisionUnmanagedEnvironmentRequest): string {
 
 function result(
   requestId: string,
+  requestSha256: string,
   environment: NonNullable<ReturnType<typeof getEnvironment>>,
   replay: boolean,
 ): ProvisionUnmanagedEnvironmentResult {
   return {
     schema: "bb.environment-provision-result/v1",
     requestId,
+    requestSha256,
     state:
       environment.status === "ready"
         ? "ready"
@@ -100,7 +102,7 @@ export async function provisionUnmanagedEnvironment(
         if (existing.provisionRequestSha256 !== digest) {
           throw new ApiError(
             409,
-            "invalid_request",
+            "idempotency_conflict",
             "Environment provision request id replay mismatch",
           );
         }
@@ -131,7 +133,7 @@ export async function provisionUnmanagedEnvironment(
   }
   if (!selection.created || selected.status !== "provisioning") {
     return {
-      body: result(request.requestId, selected, true),
+      body: result(request.requestId, digest, selected, true),
       status: selected.status === "provisioning" ? 202 : 200,
     };
   }
@@ -179,5 +181,8 @@ export async function provisionUnmanagedEnvironment(
       "Provisioned environment does not match the requested unmanaged workspace",
     );
   }
-  return { body: result(request.requestId, provisioned, false), status: 201 };
+  return {
+    body: result(request.requestId, digest, provisioned, false),
+    status: 201,
+  };
 }

@@ -248,7 +248,7 @@ Explicit environment or project deletion bypasses the retirement grace, includin
 
 `bb environment providers --json` includes each choice’s `description` and `icon`, as well as its label, inputs, and availability.
 
-`bb environment provision` creates no thread and starts no provider. It records the stable request before asking the connected host to attach the exact existing path as a non-worktree environment. A changed request under the same request id is refused. A crash or lost response can be retried with the exact request id; recovery reuses the recorded environment identity.
+`bb environment provision` creates no thread and starts no provider. It records the stable request before asking the connected host to attach the exact existing path as a non-worktree environment. The result returns both `requestId` and BB's `requestSha256`, so a later effect can bind the exact provision record without reimplementing its digest formula. A changed request under the same request id is refused. A crash or lost response can be retried with the exact request id; recovery reuses the recorded environment identity and digest.
 
 `bb environment providers --project <id>` omits providers whose declared requirements are unmet on every persistent machine, and reports each provider's `machineAvailability` per machine in `--json`. Add `--machine <id>` to scope structural eligibility to that machine and print its availability: `available`, `setup-required`, `unavailable` with the plugin's reason, or `unknown` while the background probe has not answered. Listing never waits on a machine; probes run in the background, are cached for ten minutes per project and machine, and are checked afresh for the selected provider and machine during thread creation.
 

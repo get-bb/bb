@@ -846,6 +846,7 @@ describe("@bb/sdk", () => {
     const response = {
       schema: "bb.environment-provision-result/v1" as const,
       requestId: "request_test",
+      requestSha256: "1".repeat(64),
       state: "ready" as const,
       replay: false,
       environment,

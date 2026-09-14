@@ -1465,6 +1465,7 @@ function createFakePluginHostInternal(
   const bb: BbPluginApi = {
     pluginId,
     experimental_effects: {
+      experimental_registerClaimAuthority() {},
       async experimental_spawnClaimed() {
         throw new Error(
           "Configure claimed effects in createFakePluginHost to exercise claimed spawning",

@@ -2,19 +2,49 @@
 
 ## Claimed thread effects
 
-`bb.experimental_effects.experimental_spawnClaimed(args)` binds a complete
-attributed thread request to a stable claim and attempt. BB persists the binding,
-calls the plugin's installed host artifact to obtain a current matching claim,
-then passes that exact request to `threads.spawn`. Exact replay returns the same
-thread. A changed request refuses. If delivery may have happened but no matching
-thread can be recovered, the result is `delivery_uncertain` and BB does not
-automatically resend.
+Register a claim authority during the plugin factory before calling
+`bb.experimental_effects.experimental_spawnClaimed(args)` from a later handler:
 
-The authority contract is a typed host RPC method. Its result must use schema
-`bb.effect-claim-result/v1`, status `claimed`, and repeat the server-computed
-claim id, attempt id, and request digest with a unique authorization id. A local
-digest or a previously returned receipt is not sufficient. The controller
-behind that host method owns current task, flow, route, and policy validation.
+```ts
+bb.experimental_effects.experimental_registerClaimAuthority({
+  authorityId: "controller-v2",
+  contract: controllerContract,
+  hostId,
+  method: "claimThreadSpawn",
+});
+```
+
+The registration is immutable for that plugin generation. A spawn names only
+the registered `authorityId`; callers cannot substitute a host, method, or RPC
+contract at the effect boundary. BB invokes the installed host artifact on the
+same host as the provisioned environment and requires a current
+`bb.effect-claim-result/v2` response that repeats the authority, claim, attempt,
+caller-named controller authorization id, and server-computed request digest. A
+caller-supplied digest or old receipt is not authorization. An exact controller
+replay refusal is returned as `claim_replay_refused` before BB persists a local
+claim or invokes `threads.spawn`.
+
+`experimental_spawnClaimed` accepts only a closed
+`bb.thread-spawn-request/v2`. Nullable model, reasoning, service-tier, and title
+fields must be present. Unknown fields, `undefined`, invalid Unicode, a stale
+environment, or an authority registered on another host refuse before the host
+claim or thread effect. BB canonicalizes the full attributed request according
+to RFC 8785 for this closed string/null request, persists the binding after the
+positive claim, revalidates the exact provision record in both persistence
+transactions and after the effect, and then passes the same materialized
+request to `threads.spawn`.
+
+Exact completed replay returns the same thread. A changed request refuses. On
+restart, BB reconciles the reserved claim marker and exact project,
+environment, and provider identities. If delivery may have happened but no
+matching thread can be proven, the durable result is `delivery_uncertain` and
+BB never automatically resends.
+
+The controller behind the registered host method owns current task,
+dependency, flow, directive, Factory, route, and authorization validation at
+the time of use. BB authenticates which installed plugin generation and host
+method can answer; it does not infer those controller policies from the receipt
+shape.
 
 This boundary guarantees one durable BB delivery intent. It does not guarantee
 exactly one provider process start after a lost transport response unless the

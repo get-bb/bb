@@ -21,7 +21,6 @@ import type {
 import type { ProviderFork } from "@bb/domain/provider-fork";
 import type {
   BbSdk,
-  ThreadSpawnArgs,
   ThreadPluginMetadataArgs,
   ThreadPluginMetadataUpdateArgs,
   ThreadPluginMetadataResult,
@@ -1870,18 +1869,46 @@ export type PluginBbSdk = Omit<BbSdk, "threads"> & {
   };
 };
 
-export interface ExperimentalClaimAuthority {
+export interface ExperimentalClaimAuthorityRegistration {
   authorityId: string;
   contract: PluginRpcContract;
   hostId: string;
   method: string;
 }
 
+export interface ExperimentalClaimedEnvironmentBindingV2 {
+  canonicalPath: string;
+  environmentId: string;
+  hostId: string;
+  isWorktree: false;
+  projectId: string;
+  provisionRequestId: string;
+  provisionRequestSha256: string;
+  type: "reuse";
+  workspaceProvisionType: "unmanaged";
+}
+
+export interface ExperimentalClaimedThreadSpawnRequestV2 {
+  environment: { environmentId: string; type: "reuse" };
+  model: string | null;
+  permissionMode: PermissionMode;
+  projectId: string;
+  prompt: string;
+  providerId: string;
+  reasoningLevel: ReasoningLevel | null;
+  schema: "bb.thread-spawn-request/v2";
+  serviceTier: ServiceTier | null;
+  title: string | null;
+}
+
 export interface ExperimentalClaimedThreadSpawnArgs {
   attemptId: string;
-  authority: ExperimentalClaimAuthority;
+  authorityId: string;
+  authorizationId: string;
+  bindingVersion: 2;
   claimId: string;
-  request: ThreadSpawnArgs;
+  environmentBinding: ExperimentalClaimedEnvironmentBindingV2;
+  request: ExperimentalClaimedThreadSpawnRequestV2;
 }
 
 export interface ExperimentalClaimedThreadSpawnResult {
@@ -1894,6 +1921,9 @@ export interface ExperimentalClaimedThreadSpawnResult {
 }
 
 export interface ExperimentalPluginEffects {
+  experimental_registerClaimAuthority(
+    authority: ExperimentalClaimAuthorityRegistration,
+  ): void;
   experimental_spawnClaimed(
     args: ExperimentalClaimedThreadSpawnArgs,
   ): Promise<ExperimentalClaimedThreadSpawnResult>;

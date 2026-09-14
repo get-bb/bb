@@ -7,6 +7,15 @@ This change was prepared from upstream commit
 `df80-provision-claim-spawn-reconcile`. It has not been pushed, installed, or
 used against a live BB server, provider, controller, campaign, or task.
 
+The first frozen candidate at `87641123135e78af33387913b3f2353af59185c8`
+was rejected by Dark Factory commit `0a4f4cc`; report SHA-256
+`147aebb842e845415f13e7727be8aa5e46ebccd904a7e011ce242edd70dfa611`.
+This correction keeps that counterexample as RED evidence. It adds exact
+persisted-environment validation, replaces the caller-selected claim method
+with a factory-registered installed-artifact capability, closes the V2 and
+Unicode canonicalization boundary, removes the pre-claim `claiming` row, and
+adds file-backed restart and public end-to-end coverage.
+
 ## Root cause
 
 BB could create a non-worktree environment only as part of thread creation, so
@@ -25,10 +34,11 @@ same environment identity; a changed request refuses.
 
 `bb.experimental_effects.experimental_spawnClaimed` now owns the effect
 boundary. BB canonicalizes the complete attributed SDK request, persists the
-claim and attempt identities, and invokes the plugin's currently installed host
-artifact. Only a strict claim response containing the same claim, attempt, and
-request digest permits that exact in-memory request to reach `threads.spawn`.
-Authorization ids, attempt ids, and claim ids are durable uniqueness fences.
+claim and attempt identities, and invokes the plugin's factory-registered method
+from the currently installed host artifact. Only a strict claim response
+containing the same authority, authorization, claim, attempt, and request digest
+permits that exact in-memory request to reach `threads.spawn`. Authorization
+ids, attempt ids, and claim ids are durable uniqueness fences.
 
 Before delivery, BB writes `delivering`. A created thread carries a reserved
 claim marker in plugin metadata. After a lost response or restart, BB recovers
@@ -36,14 +46,20 @@ an exact thread with that marker and matching project, environment, and provider
 If no such result is provable, or the returned binding differs, the durable
 result is `delivery_uncertain`; replay never resends it.
 
+The exact ready provision row is checked before the authority call, again in
+the claim-persistence transaction, again in the delivery transaction, and after
+a returned or recovered thread. A stale or foreign environment can therefore
+neither create a local claim nor become a completed result.
+
 ## Authority and exactly-once boundary
 
 A digest supplied by the caller is not authorization. The server computes the
 digest itself and obtains the claim through the installed plugin host artifact
 on the requested connected host. The returned object is schema-checked and
-must match the server's identities. Fresh task, dependency, flow, directive,
-Factory, route, and authorization checks remain the controller's responsibility
-inside that current host call.
+must match the server's identities, including the caller-named controller
+authorization id. A replay refusal is typed and creates no local row. Fresh
+task, dependency, flow, directive, Factory, route, and authorization checks
+remain the controller's responsibility inside that current host call.
 
 BB guarantees one durable delivery intent and no automatic resend after an
 unknown external result. It does not claim exactly one provider process start:
@@ -63,14 +79,18 @@ deliberately inadequate cooperative control.
 | Vectors                                         | Measurable implementation oracle                                                                                                               |
 | ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
 | `P01`, `P02`, `P03`, `P04`, `P05`, `P06`, `X01` | one provision request row and environment id; exact concurrent/restart replay; changed request and worktree refusal; no thread/provider effect |
-| `C01`, `C02`, `C03`, `C04`, `I01`, `I02`, `U01` | current installed host call; strict matching result; unique claim/attempt/authorization; no spawn before a matching claim                      |
-| `S01`, `S03`, `S05`, `S06`, `A01`               | persisted claim then persisted delivery boundary; one in-process operation; exact request digest; changed request refuses                      |
+| `C01`, `C02`, `C03`, `C04`, `I01`, `I02`, `U01` | current registered installed-host call; typed replay refusal; exact authority and authorization; no row or spawn before a fresh matching claim |
+| `S01`, `S03`, `S05`, `S06`, `A01`               | persisted claim then persisted delivery boundary; process-local coalescing plus database uniqueness; changed request refuses                   |
 | `S02`, `S04`, `R01`, `R02`, `X02`               | reserved durable thread marker recovers a matching thread; completed replay returns the same result                                            |
 | `R03`, `R04`, `U02`                             | project/environment/provider mismatch or unprovable response becomes stable `delivery_uncertain`; no resend                                    |
 | `A02`                                           | remains a negative control: caller-local hashing alone is not accepted as authority                                                            |
 
-The public-boundary tests use in-memory migrated SQLite stores, host-command
-captures, and provider transport doubles. They do not contact a real provider.
+One running-server test composes the real public provision HTTP route, the
+registered plugin host-RPC claim, the loopback SDK thread route, and durable
+completed replay against the same migrated SQLite store. Separate file-backed
+SQLite restart tests close and reopen the database across every durable state;
+they do not simulate a new OS process. Host commands and provider delivery use
+isolated captures and doubles, and no real provider is contacted.
 
 ## TDD and verification
 
@@ -79,24 +99,37 @@ plugin test was first run without `experimental_effects` and failed. The
 implementations were added only after those RED observations. Generated Drizzle
 migrations were produced from the schema rather than edited by hand.
 
-Final focused verification on the candidate:
+Verification after the independent rejection and correction:
 
-- server public environment, recovery, response, claimed-spawn, and authoring
-  documentation: 82 tests passed;
-- DB migrations and environment/metadata data access: 32 tests passed;
-- public SDK: 61 tests passed;
-- CLI environment command: 36 tests passed;
-- plugin SDK public types: 6 tests passed;
-- Turbo typechecks: 12 tasks passed across the 7 affected package scopes;
-- Turbo builds: 9 tasks passed across server, CLI, SDK, and plugin SDK;
+- server public environment, response, registered-authority, public composition,
+  file-backed recovery, and authoring documentation: 101 tests passed;
+- full DB suite: 520 tests passed across 40 files;
+- server contract: 79 tests passed;
+- public SDK: 112 tests passed;
+- plugin SDK: 277 tests passed;
+- plugin API map: 72 tests passed;
+- CLI: 609 tests passed;
+- Turbo typechecks: 13 tasks passed across the 8 affected package scopes;
+- Turbo builds: 9 tasks passed for server, CLI, SDK, and plugin SDK;
 - `git diff --check`: passed.
 
-All changed paths pass `oxfmt`. The repository-wide `pnpm format:check` remains
-red on 231 pre-existing paths outside this change; none of this candidate's
-paths appears in that output.
+The 21 changed paths other than `packages/db/test/migrate.test.ts` pass targeted
+`oxfmt`. That migration harness file retains its pre-existing whole-file format;
+formatting it would create unrelated churn. A direct `oxfmt --check` therefore
+still reports that one file. The repository-wide `pnpm format:check` remains red
+on 231 pre-existing paths outside this change.
 
-The tests exercise only migrated in-memory stores, host-command captures, and
-provider doubles. No test contacted a live BB server, controller, or provider.
+A full `@bb/server` test run was also attempted: 2,649 tests passed and 53
+failed for host-test infrastructure reasons outside this fence. The failures
+were dominated by a percent-encoded checkout path passed to shell fixtures,
+an unwritable existing npm cache, and the process file-watcher limit. The five
+focused server files were then rerun alone and passed 101/101. The full-suite
+failures are not waived release checks; they remain an upstream release-gate
+gap for a normal checkout and test environment.
+
+The tests exercise migrated in-memory and temporary file-backed stores, an
+in-process loopback BB server, host-command captures, and provider doubles. No
+test contacted an installed BB server, external controller, or provider.
 
 ## Release boundary
 
