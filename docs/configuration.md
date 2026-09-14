@@ -304,6 +304,21 @@ uses `Mod+1…9`. The web aliases leave native browser `Mod+1…9` tab switching
 untouched. Previous and next thread use `Mod+Shift+[/]` on desktop and
 `Control+Shift+[/]` on the web.
 
+
+Plugin commands use `plugin:<plugin-id>/<command-id>` as their stable binding
+ID. For example: `bb settings keyboard set plugin:example/open-issue Mod+Shift+I`.
+`bb settings keyboard reset plugin:example/open-issue` restores the plugin's
+default; `set ... disabled` explicitly unbinds it. The SDK supports the same IDs
+through `system.updateKeyboardSettings` and `system.config`.
+Overrides survive plugin disable/re-enable and reload. Every active plugin
+command appears in Keyboard Settings; commands without defaults start unbound.
+Conflicting plugin defaults stay unbound and display the conflicting command.
+The UI offers Replace binding or Cancel when assigning an occupied shortcut.
+`keyboard list` includes all saved overrides and core effective bindings;
+plugin defaults and availability are resolved in each app window, where the
+plugin frontend runs. CLI/SDK callers should clear conflicting explicit
+bindings in the same update; plugin defaults yield to explicit bindings.
+
 The "Show keyboard hints when holding CMD / Control" preference defaults
 to on. Set it with
 `bb settings keyboard hints <true|false>`. Turning it off hides the

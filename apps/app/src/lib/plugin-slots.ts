@@ -9,7 +9,6 @@ import type {
   PluginPendingInteractionRegistration,
   PluginFileOpenerRegistration,
   PluginHomepageSectionRegistration,
-  PluginCommandRegistration,
   PluginMessageActionRegistration,
   PluginMessageDirectiveRegistration,
   PluginNavPanelRegistration,
@@ -25,6 +24,7 @@ import type {
   PluginTimelineRendererRegistration,
 } from "@get-bb/plugin-sdk";
 import {
+  type CollectedPluginCommandRegistration,
   adaptSidebarFooterAction,
   getCollectedSidebarFooterItems,
   type CollectedPluginProviderIconRegistration,
@@ -52,7 +52,7 @@ export interface PluginRegistrationSet {
   diffRenderers?: readonly PluginDiffRendererRegistration[];
   messageDirectives: readonly PluginMessageDirectiveRegistration[];
   messageActions?: readonly PluginMessageActionRegistration[];
-  commandPaletteActions?: readonly PluginCommandRegistration[];
+  commandPaletteActions?: readonly CollectedPluginCommandRegistration[];
   providerIcons?: readonly CollectedPluginProviderIconRegistration[];
   icons?: readonly ExperimentalIconRegistration[];
   timelineRenderers?: readonly PluginTimelineRendererRegistration[];
@@ -100,7 +100,7 @@ export interface PluginMessageDirectiveSlot
 export interface PluginMessageActionSlot
   extends PluginMessageActionRegistration, PluginSlotBase {}
 export interface PluginCommandPaletteActionSlot
-  extends PluginCommandRegistration, PluginSlotBase {}
+  extends CollectedPluginCommandRegistration, PluginSlotBase {}
 interface PluginIconSlot extends ExperimentalIconRegistration, PluginSlotBase {}
 interface PluginProviderIconSlot
   extends CollectedPluginProviderIconRegistration, PluginSlotBase {}

@@ -300,6 +300,9 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Registers a command with app.commands.register and adds a row under Plugins in bb's quick command palette. With this, a plugin can:",
         bullets: [
           "Supply the row's label and run behavior; bb owns matching, ordering, and recency",
+          "Offer a defaultShortcut with key and optional mod, meta, control, alt, and shift modifiers; mod means Command on macOS and Control elsewhere",
+          "Let users bind or rebind every command in Keyboard Settings; conflicts offer Replace binding or Cancel, and conflicting plugin defaults stay unbound",
+          "Keep saved bindings across reloads and disable/re-enable using plugin:<plugin-id>/<command-id>; palette and keyboard invocation share availability and error handling",
           "Migrate slots.commandPaletteAction to commands.register with the same fields; the old method remains a deprecated alias",
           "Read the current thread and project, and hide the row when it is unavailable",
           "Open one of the plugin's own thread side-panel tabs when a thread is on screen",
@@ -309,6 +312,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginAppCommands",
           "PluginCommandRegistration",
           "PluginCommandContext",
+          "PluginCommandShortcut",
         ],
       },
     ],

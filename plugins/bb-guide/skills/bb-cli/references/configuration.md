@@ -144,3 +144,17 @@ Plugin host calls start immediately using the current environment while any call
 are active in that plugin worker. Changed or removed machine variables take
 effect on the next call after all active calls finish. Continuous overlapping
 calls can keep the previous values until the worker becomes idle.
+
+Plugin commands use `plugin:<plugin-id>/<command-id>` as their stable binding
+ID. For example: `bb settings keyboard set plugin:example/open-issue Mod+Shift+I`.
+`bb settings keyboard reset plugin:example/open-issue` restores the plugin's
+default; `set ... disabled` explicitly unbinds it. The SDK supports the same IDs
+through `system.updateKeyboardSettings` and `system.config`.
+Overrides survive plugin disable/re-enable and reload. Every active plugin
+command appears in Keyboard Settings; commands without defaults start unbound.
+Conflicting plugin defaults stay unbound and display the conflicting command.
+The UI offers Replace binding or Cancel when assigning an occupied shortcut.
+`keyboard list` includes all saved overrides and core effective bindings;
+plugin defaults and availability are resolved in each app window, where the
+plugin frontend runs. CLI/SDK callers should clear conflicting explicit
+bindings in the same update; plugin defaults yield to explicit bindings.

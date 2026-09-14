@@ -2,7 +2,7 @@
 
 ## `app.commands.register`
 
-Registers frontend commands with `{ id, title, isAvailable?, run }`. The command
+Registers frontend commands with `{ id, title, defaultShortcut?, isAvailable?, run }`. The command
 palette consumes the same registrations as the deprecated
 `app.slots.commandPaletteAction` alias. Both paths share validation and a
 per-plugin ID namespace. The public name follows the explicitly requested API
@@ -12,7 +12,15 @@ type names remain deprecated aliases of `PluginCommandContext` and
 
 Audit command identity, availability outside the palette, shortcut conflicts,
 and saved binding lifecycle before extending commands to keyboard shortcuts.
-This move preserves palette behavior and does not add shortcut fields.
+`defaultShortcut` uses a key and optional boolean modifiers, normalized when
+registered. The palette and keyboard path share availability and invocation.
+Every command is rebindable under `plugin:<plugin-id>/<command-id>` through
+Keyboard Settings or the existing keyboard settings SDK/CLI. Overrides persist
+while plugins are inactive; inactive commands never handle keyboard events.
+Conflicting plugin defaults are suppressed without load-order arbitration;
+manual reassignment asks to replace the current binding or cancel. Audit
+cross-platform conflicts and plugin lifecycle before extending the context
+model or default binding policy.
 
 ## Discoverable RPC
 

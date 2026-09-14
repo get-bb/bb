@@ -87,10 +87,10 @@ openWorkspaceFile }` — register a leaf
   logged, never breaking the timeline.
 - `app.commands.register` → a row in bb's quick palette (Mod+Shift+P), listed
   under "Plugins" beside bb's own commands. Host-rendered chrome, no plugin
-  component — registration: `{ id, title, isAvailable?, run }`. Both callbacks
+  component — registration: `{ id, title, defaultShortcut?, isAvailable?, run }`. Both callbacks
   receive `{ threadId, projectId, openPanel }`, where `threadId` and
   `projectId` are null on surfaces without one and `openPanel` matches
-  `messageAction`'s. `isAvailable` is called while the palette is open — keep
+  `messageAction`'s. `isAvailable` is called for palette listing and keyboard invocation — keep
   it cheap and synchronous — and hides the row when it returns false; a row
   that needs a thread should use it, because the palette opens anywhere and
   `openPanel` declines (returning false) unless a thread view is focused.
@@ -100,6 +100,16 @@ openWorkspaceFile }` — register a leaf
   `app.slots.commandPaletteAction` is a deprecated alias accepting the same
   fields. Both entry points share one ID namespace; registering the same ID
   through either path twice rejects plugin setup.
+  `defaultShortcut: { key: "i", mod: true, shift: true }` supplies an initial
+  binding. `mod` means Command on macOS and Control elsewhere; omitted `meta`,
+  `control`, `alt`, `shift`, and `mod` are false. Use a Command/Control/Alt
+  chord or function key. Every command appears in Settings → Keyboard, even
+  without a default. Colliding plugin defaults remain unbound with an
+  explanation; assigning an occupied shortcut offers Replace binding or
+  Cancel. User overrides survive plugin reload, disable, and re-enable under
+  `plugin:<plugin-id>/<command-id>`. Keyboard invocation uses the same current
+  context and error handling as the palette and is suppressed while a modal
+  is open. Shortcuts run only while the plugin frontend is active.
 - `experimental_timelineRenderer` → the expanded body of the timeline rows a
   provider plugin owns. Registration: `{ kind, component }`, where `kind` is
   one of the plugin's own extension item kinds (`"<pluginId>/<name>"`, as

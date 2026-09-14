@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import {
-  appCommandIdSchema,
+  keyboardCommandIdSchema,
   appShortcutSchema,
   appSettingsSchema,
   describeUiPreference,
@@ -349,7 +349,7 @@ export function registerSettingsCommands(
     .action(
       action(
         async (commandInput: string, shortcut: string, opts: JsonOptions) => {
-          const command = appCommandIdSchema.parse(commandInput);
+          const command = keyboardCommandIdSchema.parse(commandInput);
           const sdk = createCliBbSdk(getUrl());
           const config = await sdk.system.config();
           const next = config.keybindingOverrides.filter(
@@ -378,7 +378,7 @@ export function registerSettingsCommands(
             ? []
             : config.keybindingOverrides.filter(
                 (item) =>
-                  item.command !== appCommandIdSchema.parse(commandInput),
+                  item.command !== keyboardCommandIdSchema.parse(commandInput),
               );
         const result = await sdk.system.updateKeyboardSettings(next);
         if (outputJson(opts, result)) return;

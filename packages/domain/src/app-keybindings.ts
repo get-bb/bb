@@ -81,6 +81,28 @@ export const APP_COMMAND_IDS = [
 export const appCommandIdSchema = z.enum(APP_COMMAND_IDS);
 export type AppCommandId = z.infer<typeof appCommandIdSchema>;
 
+export const pluginCommandIdSchema = z
+  .templateLiteral(["plugin:", z.string(), "/", z.string()])
+  .refine(
+    (id) =>
+      /^plugin:[a-z0-9][a-z0-9-]*\/[a-zA-Z0-9_-]+$/u.test(id) &&
+      id.length <= 256,
+    "Invalid plugin command ID",
+  );
+export type PluginCommandId = z.infer<typeof pluginCommandIdSchema>;
+export const keyboardCommandIdSchema = z.union([
+  appCommandIdSchema,
+  pluginCommandIdSchema,
+]);
+export type KeyboardCommandId = z.infer<typeof keyboardCommandIdSchema>;
+
+export function pluginCommandId(
+  pluginId: string,
+  commandId: string,
+): PluginCommandId {
+  return pluginCommandIdSchema.parse(`plugin:${pluginId}/${commandId}`);
+}
+
 const APP_COMMAND_CONTEXT_KEYS = [
   "mainSurface",
   "modalOpen",
@@ -197,7 +219,7 @@ const appCommandWhenSchema = z
 
 export const appKeybindingSchema = z
   .object({
-    command: appCommandIdSchema,
+    command: keyboardCommandIdSchema,
     desktopOnly: z.boolean(),
     shortcut: appShortcutSchema,
     when: appCommandWhenSchema,
@@ -233,16 +255,16 @@ export type AppDefaultKeybindings = z.infer<typeof appDefaultKeybindingsSchema>;
 
 const appKeybindingOverrideSchema = z
   .object({
-    command: appCommandIdSchema,
+    command: keyboardCommandIdSchema,
     shortcut: appShortcutSchema.nullable(),
   })
   .strict();
 
 export const appKeybindingOverridesSchema = z
   .array(appKeybindingOverrideSchema)
-  .max(APP_COMMAND_IDS.length)
+  .max(1024)
   .superRefine((overrides, context) => {
-    const seen = new Set<AppCommandId>();
+    const seen = new Set<KeyboardCommandId>();
     for (const [index, override] of overrides.entries()) {
       if (seen.has(override.command)) {
         context.addIssue({

@@ -145,6 +145,7 @@ Read the installed SDK declarations for the exact current signatures.
 - `PluginAppCommands`
 - `PluginCommandContext`
 - `PluginCommandPaletteActionContext` (deprecated alias)
+- `PluginCommandShortcut`
 - `PluginCommandRegistration`
 - `PluginCommandPaletteActionRegistration` (deprecated alias)
 - `PluginProviderIconRegistration`

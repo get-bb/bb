@@ -1267,7 +1267,7 @@ export interface PluginMessageActionRegistration {
   run(context: PluginMessageActionContext): void | Promise<void>;
 }
 
-/** Context handed to a command's `isAvailable` and `run`. */
+/** Current context for palette and keyboard command invocations. */
 export interface PluginCommandContext {
   /** The thread in view, or null on a surface without one. */
   threadId: string | null;
@@ -1285,6 +1285,17 @@ export interface PluginCommandContext {
   openPanel(options: PluginTargetedPanelActionOpenOptions): boolean;
 }
 
+/** A default keyboard shortcut. Omitted modifiers are false. */
+export interface PluginCommandShortcut {
+  key: string;
+  /** Command on macOS, Control elsewhere. */
+  mod?: boolean;
+  meta?: boolean;
+  control?: boolean;
+  alt?: boolean;
+  shift?: boolean;
+}
+
 /**
  * A command registered with `app.commands.register`, listed in bb's quick
  * palette (Mod+Shift+P) under the plugin's name
@@ -1292,19 +1303,21 @@ export interface PluginCommandContext {
  * `run`, and the host owns matching, ordering, and recency.
  */
 export interface PluginCommandRegistration {
+  /** Initial keyboard binding. Users can rebind every command, including ones without a default. Conflicting defaults remain unbound. */
+  defaultShortcut?: PluginCommandShortcut;
   /** Unique within the plugin; letters, digits, `-`, `_`. */
   id: string;
   /** The row's label, e.g. "Linear: open issue for this thread". */
   title: string;
   /**
    * Hide the row when it cannot do anything — typically when it needs a thread
-   * and there is none. Called while the palette is open; keep it cheap and
-   * synchronous. Omitted means always listed.
+   * and there is none. Called before palette listing and keyboard invocation;
+   * keep it cheap and synchronous. Omitted means always listed.
    */
   isAvailable?(context: PluginCommandContext): boolean;
   /**
-   * Runs after the palette closes and focus is restored. Errors (sync or
-   * async) are contained and logged; they never break the palette.
+   * Runs on keyboard invocation, or after the palette closes and focus is
+   * restored. Errors (sync or async) are contained and logged; they never break the palette.
    */
   run(context: PluginCommandContext): void | Promise<void>;
 }

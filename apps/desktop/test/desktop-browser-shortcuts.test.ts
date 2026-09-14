@@ -32,6 +32,37 @@ const keybindings: AppKeybindings = [
 ];
 
 describe("resolveDesktopBrowserAppCommand", () => {
+  it("keeps frontend plugin commands out of native browser dispatch", () => {
+    expect(
+      resolveDesktopBrowserAppCommand({
+        input: {
+          key: "i",
+          code: "KeyI",
+          altKey: false,
+          ctrlKey: true,
+          metaKey: false,
+          shiftKey: false,
+        },
+        isMac: false,
+        keybindings: [
+          {
+            command: "plugin:example/open",
+            desktopOnly: false,
+            shortcut: {
+              key: "i",
+              mod: true,
+              meta: false,
+              control: false,
+              alt: false,
+              shift: false,
+            },
+            when: { all: ["browserFocus"], none: [] },
+          },
+        ],
+      }),
+    ).toBeNull();
+  });
+
   it("resolves only browser commands using platform modifier semantics", () => {
     expect(
       resolveDesktopBrowserAppCommand({

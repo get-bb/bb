@@ -133,6 +133,7 @@ Read the installed declarations for exact current signatures.
 - `PluginAppCommands`
 - `PluginCommandContext`
 - `PluginCommandPaletteActionContext` (deprecated alias)
+- `PluginCommandShortcut`
 - `PluginCommandRegistration`
 - `PluginCommandPaletteActionRegistration` (deprecated alias)
 - `PluginComposerApi`

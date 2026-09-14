@@ -1,3 +1,4 @@
+import { z } from "zod";
 import type {
   ComposerCustomization,
   ExperimentalAppOverlayRegistration,
@@ -291,6 +292,48 @@ export type CollectedPluginProviderIconRegistration = Omit<
 };
 
 /** Validated registrations produced by one plugin app setup execution. */
+const commandShortcutSchema = z
+  .object({
+    key: z
+      .string()
+      .min(1)
+      .max(32)
+      .refine(
+        (key) =>
+          ![
+            "Alt",
+            "Control",
+            "Meta",
+            "OS",
+            "Shift",
+            "Dead",
+            "Unidentified",
+          ].includes(key),
+      ),
+    mod: z.boolean().default(false),
+    meta: z.boolean().default(false),
+    control: z.boolean().default(false),
+    alt: z.boolean().default(false),
+    shift: z.boolean().default(false),
+  })
+  .strict()
+  .refine(
+    (shortcut) =>
+      shortcut.mod ||
+      shortcut.meta ||
+      shortcut.control ||
+      shortcut.alt ||
+      /^F(?:[1-9]|1[0-9]|2[0-4])$/u.test(shortcut.key),
+    "Use Command, Control, or Alt with a key, or a function key",
+  );
+
+export interface CollectedPluginCommandRegistration extends Omit<
+  PluginCommandRegistration,
+  "defaultShortcut"
+> {
+  defaultShortcut: z.infer<typeof commandShortcutSchema> | null;
+}
+
 export interface CollectedPluginAppRegistrations {
   homepageSections: PluginHomepageSectionRegistration[];
   settingsSections: PluginSettingsSectionRegistration[];
@@ -310,7 +353,7 @@ export interface CollectedPluginAppRegistrations {
   diffRenderers: PluginDiffRendererRegistration[];
   messageDirectives: PluginMessageDirectiveRegistration[];
   messageActions: PluginMessageActionRegistration[];
-  commandPaletteActions: PluginCommandRegistration[];
+  commandPaletteActions: CollectedPluginCommandRegistration[];
   providerIcons: CollectedPluginProviderIconRegistration[];
   icons: ExperimentalIconRegistration[];
   timelineRenderers: PluginTimelineRendererRegistration[];
@@ -484,6 +527,10 @@ export function collectPluginAppRegistrations(
     }
     collected.commandPaletteActions.push({
       id,
+      defaultShortcut:
+        registration.defaultShortcut === undefined
+          ? null
+          : commandShortcutSchema.parse(registration.defaultShortcut),
       title: requireNonEmptyString(kind, "title", registration.title),
       ...(registration.isAvailable !== undefined
         ? { isAvailable: registration.isAvailable }

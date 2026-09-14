@@ -183,6 +183,20 @@ same resolved bindings. The complete default table is in docs/configuration.md.
   bb settings keyboard set <command> <shortcut|disabled>
   bb settings keyboard reset [command]
 
+Plugin commands use `plugin:<plugin-id>/<command-id>` as their stable binding
+ID. For example: `bb settings keyboard set plugin:example/open-issue Mod+Shift+I`.
+`bb settings keyboard reset plugin:example/open-issue` restores the plugin's
+default; `set ... disabled` explicitly unbinds it. The SDK supports the same IDs
+through `system.updateKeyboardSettings` and `system.config`.
+Overrides survive plugin disable/re-enable and reload. Every active plugin
+command appears in Keyboard Settings; commands without defaults start unbound.
+Conflicting plugin defaults stay unbound and display the conflicting command.
+The UI offers Replace binding or Cancel when assigning an occupied shortcut.
+`keyboard list` includes all saved overrides and core effective bindings;
+plugin defaults and availability are resolved in each app window, where the
+plugin frontend runs. CLI/SDK callers should clear conflicting explicit
+bindings in the same update; plugin defaults yield to explicit bindings.
+
 Push notifications
 
 The built-in Push notifications plugin sends mobile updates through Expo and

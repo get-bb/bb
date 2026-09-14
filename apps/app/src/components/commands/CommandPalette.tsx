@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { pluginCommandId, pluginCommandIdSchema } from "@bb/domain";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { Dialog, DialogContent, DialogTitle } from "@bb/shared-ui/dialog";
@@ -15,6 +16,7 @@ import { COARSE_POINTER_TEXT_SM_CLASS } from "@bb/shared-ui/coarse-pointer-sizin
 import { LAUNCHER_ACTION_ROW_BASE_CLASS } from "@/components/secondary-panel/launcherRow";
 import {
   useAppCommandHandler,
+  useIndexedAppCommandHandlers,
   useAppCommandRunner,
   useAppCommandShortcuts,
 } from "./AppCommandProvider";
@@ -87,6 +89,27 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
     readonly PluginSettingsCandidate[]
   >([]);
   const pluginSlots = usePluginSlots();
+  const pluginCommandIds = useMemo(
+    () =>
+      pluginSlots.commandPaletteActions.map((command) =>
+        pluginCommandId(command.pluginId, command.id),
+      ),
+    [pluginSlots.commandPaletteActions],
+  );
+  const pluginShortcuts = useAppCommandShortcuts(pluginCommandIds);
+  useIndexedAppCommandHandlers(pluginCommandIds, (index) => {
+    const slot = pluginSlots.commandPaletteActions[index];
+    if (!slot) return false;
+    const action = buildPluginPaletteActions({
+      slots: [slot],
+      threadId,
+      projectId,
+      openThreadPanel: getActiveThreadPanelOpener(),
+    })[0];
+    if (!action) return false;
+    action.run();
+    return true;
+  });
   const sections = useSettingsNavSections(pluginSlots.fileOpeners);
   const pluginSettingsEntries = useMemo(
     () =>
@@ -139,11 +162,16 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
         threadId,
         projectId,
         openThreadPanel: getActiveThreadPanelOpener(),
-      }),
+      }).map((action) => ({
+        ...action,
+        shortcut:
+          pluginShortcuts.get(pluginCommandIdSchema.parse(action.id)) ?? null,
+      })),
     ],
     [
       projectId,
       pluginSlots.commandPaletteActions,
+      pluginShortcuts,
       runner.dispatch,
       runner.isCommandAvailable,
       shortcuts,

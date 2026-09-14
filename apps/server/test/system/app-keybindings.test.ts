@@ -50,6 +50,40 @@ function commandPair(left: string, right: string): string {
 }
 
 describe("app keybindings", () => {
+  it("persists plugin bindings even before the plugin is loaded", async () => {
+    await withTestHarness(async (harness) => {
+      const overrides = [
+        {
+          command: "plugin:example/open",
+          shortcut: {
+            key: "i",
+            mod: true,
+            meta: false,
+            control: false,
+            alt: false,
+            shift: true,
+          },
+        },
+      ];
+      const response = await harness.app.request("/api/v1/settings/keyboard", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(overrides),
+      });
+      expect(response.status).toBe(200);
+      expect(getAppKeybindingOverrides(harness.db)).toEqual(overrides);
+      const config = systemConfigResponseSchema.parse(
+        await readJson(await harness.app.request("/api/v1/system/config")),
+      );
+      expect(config.keybindingOverrides).toEqual(overrides);
+      expect(
+        config.keybindings.some(
+          (binding) => binding.command === "plugin:example/open",
+        ),
+      ).toBe(false);
+    });
+  });
+
   it("limits overlapping default chords to intentional scoped navigation", () => {
     const assignedDefaults = applyAppKeybindingOverrides(
       DEFAULT_APP_KEYBINDINGS,
@@ -306,9 +340,7 @@ describe("app keybindings", () => {
             desktopOnly: binding.desktopOnly,
             key: binding.shortcut.key,
           })),
-      ).toEqual([
-        { desktopOnly: false, key: "Enter" },
-      ]);
+      ).toEqual([{ desktopOnly: false, key: "Enter" }]);
       expect(
         assignedDefaultKeybindings.find(
           (binding) => binding.command === "composer.focus",

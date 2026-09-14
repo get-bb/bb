@@ -17,6 +17,44 @@ function register(
 }
 
 describe("app.commands.register", () => {
+  it("normalizes shortcut modifiers and rejects unsafe or malformed defaults", () => {
+    const collect = (
+      defaultShortcut: PluginCommandRegistration["defaultShortcut"],
+    ) =>
+      collectPluginAppRegistrations({
+        __bbPluginApp: true,
+        setup(app) {
+          app.commands.register({
+            id: "open",
+            title: "Open",
+            defaultShortcut,
+            run() {},
+          });
+        },
+      });
+    expect(
+      collect({ key: "i", mod: true }).commandPaletteActions[0]
+        ?.defaultShortcut,
+    ).toEqual({
+      key: "i",
+      mod: true,
+      meta: false,
+      control: false,
+      alt: false,
+      shift: false,
+    });
+    expect(
+      collect(undefined).commandPaletteActions[0]?.defaultShortcut,
+    ).toBeNull();
+    for (const keys of [
+      { key: "i" },
+      { key: "" },
+      { key: "Shift", mod: true },
+    ]) {
+      expect(() => collect(keys)).toThrow();
+    }
+  });
+
   it.each(entryPoints)(
     "preserves callbacks through the %s entry point",
     (entryPoint) => {

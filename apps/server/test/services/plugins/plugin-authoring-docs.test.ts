@@ -469,6 +469,7 @@ const _assertAllMessageActionRegistrationFieldsListed: MissingMessageActionRegis
 void _assertAllMessageActionRegistrationFieldsListed;
 
 const COMMAND_PALETTE_ACTION_REGISTRATION_FIELDS = [
+  "defaultShortcut",
   "id",
   "title",
   "isAvailable",
