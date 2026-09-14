@@ -11,7 +11,6 @@ export const providerMaintenanceParamsSchema = z
     providerId: z.string().min(1),
     cwd: z.string().min(1).optional(),
     providerOptions: z.record(z.string(), z.unknown()).optional(),
-    packageManager: packageManagerPreferenceSchema,
   })
   .passthrough();
 
@@ -26,6 +25,7 @@ export type ProviderInstallationRequirement = z.infer<
 
 export const providerInstallationStatusParamsSchema =
   providerMaintenanceParamsSchema.extend({
+    packageManager: packageManagerPreferenceSchema,
     requirement: providerInstallationRequirementSchema.optional(),
   });
 export type ProviderInstallationStatusParams = z.infer<
@@ -181,6 +181,7 @@ export type ProviderInstallationStatus = z.infer<
 
 export const providerInstallationRunParamsSchema =
   providerMaintenanceParamsSchema.extend({
+    packageManager: packageManagerPreferenceSchema,
     action: providerInstallationActionKindSchema,
   });
 export type ProviderInstallationRunParams = z.infer<

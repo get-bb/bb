@@ -9,7 +9,9 @@ import {
   bridgeCapabilitiesSchema,
   initializeResultSchema,
   PROVIDER_BRIDGE_PROTOCOL_VERSION,
+  providerInstallationRunParamsSchema,
   providerInstallationStatusParamsSchema,
+  providerMaintenanceParamsSchema,
   threadStopParamsSchema,
   ThreadEventGrammar,
   toolCallRequestParamsSchema,
@@ -71,6 +73,19 @@ describe("provider installation status", () => {
         packageManager: "yarn",
       }).success,
     ).toBe(false);
+    expect(
+      providerInstallationRunParamsSchema.safeParse({
+        providerId: "codex",
+        action: "update",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("keeps health and usage params free of the package manager", () => {
+    expect(
+      providerMaintenanceParamsSchema.safeParse({ providerId: "codex" })
+        .success,
+    ).toBe(true);
   });
 });
 
