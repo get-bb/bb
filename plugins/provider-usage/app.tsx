@@ -272,7 +272,7 @@ function MachineSelector({
       <DropdownMenuTrigger asChild disabled={machines.length === 0}>
         <Button
           type="button"
-          variant="ghost"
+          variant="outline"
           size="sm"
           aria-label={
             activeMachine === null
@@ -280,24 +280,22 @@ function MachineSelector({
               : "Usage machine: " + activeMachine.displayName
           }
           disabled={machines.length === 0}
-          className={cn(
-            OPTION_BASE_CLASS_NAME,
-            OPTION_INTERACTIVE_CLASS_NAME,
-            LIST_HOVER_TRANSITION,
-            "h-7 max-w-32 px-1 text-sidebar-foreground hover:bg-sidebar-accent",
-          )}
+          className="h-7 max-w-36 gap-1.5 px-2 text-sidebar-foreground"
         >
-          <span className={OPTION_TRIGGER_CONTENT_CLASS_NAME}>
-            <span className="min-w-0 truncate">
-              {activeMachine?.displayName ?? "Usage"}
-            </span>
+          <Icon
+            name={activeMachine?.id.startsWith("source:") ? "Layers" : "Laptop"}
+            className="size-3.5 shrink-0"
+          />
+          <span className="min-w-0 truncate">
+            {activeMachine?.displayName ?? "Source"}
           </span>
+          <Icon name="ChevronDown" className="size-3.5 shrink-0" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="end"
-        mobileTitle="Usage machine"
-        className={cn(OPTION_MENU_CONTENT_CLASS_NAME, "max-w-72")}
+        mobileTitle="Usage source"
+        className="max-w-72"
       >
         {machines.map((machine) => {
           const isActive = machine.id === activeMachine?.id;
@@ -308,23 +306,13 @@ function MachineSelector({
               aria-label={machine.displayName}
               aria-checked={isActive}
               onSelect={() => onSelect(machine.id)}
-              className={cn(
-                "flex items-center justify-between gap-3",
-                LIST_HOVER_TRANSITION,
-              )}
+              className="flex items-center gap-2"
             >
+              <Icon
+                name={machine.id.startsWith("source:") ? "Layers" : "Laptop"}
+                className="size-3.5 shrink-0"
+              />
               <span className="flex min-w-0 flex-1 items-center gap-1.5">
-                <span
-                  aria-hidden="true"
-                  className={cn(
-                    "size-1.5 shrink-0 rounded-full",
-                    machine.error !== null
-                      ? "bg-warning"
-                      : machine.status === "connected"
-                        ? "bg-success"
-                        : "border border-muted-foreground",
-                  )}
-                />
                 <span className="min-w-0 truncate">{machine.displayName}</span>
                 {machine.error !== null ? (
                   <span className="shrink-0 text-muted-foreground">
