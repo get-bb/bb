@@ -14,6 +14,7 @@ import {
   turnSteerParamsSchema as canonicalTurnSteerParamsSchema,
   skillsConfigureParamsSchema,
   bridgeRequestEnvelopeSchema,
+  providerInstallationStatusParamsSchema,
   providerMaintenanceParamsSchema,
   providerInstallationRunParamsSchema,
 } from "@get-bb/plugin-sdk/provider-bridge";
@@ -110,7 +111,7 @@ const claudeCodeCommandSchema = z.discriminatedUnion("method", [
   }),
   z.object({
     method: z.literal("provider/installation/status"),
-    params: providerMaintenanceParamsSchema,
+    params: providerInstallationStatusParamsSchema,
   }),
   z.object({
     method: z.literal("provider/installation/run"),
