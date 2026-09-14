@@ -16,6 +16,15 @@ with a factory-registered installed-artifact capability, closes the V2 and
 Unicode canonicalization boundary, removes the pre-claim `claiming` row, and
 adds file-backed restart and public end-to-end coverage.
 
+The corrected candidate at `d86fa2395f6541fd1ae9970aa1afe42bb4ca90c0`
+was rejected by Dark Factory commit `e6eb54e`; report SHA-256
+`2edca809149fc8cd5c0a738aa65cd02fd7f1d792d1a8769819296b04173313c5`.
+Its counterexample changed the persisted environment row and caller binding
+coherently from A to B after a durable claim. Because the claim stored only the
+thread request, replay accepted B under the same environment id. The current
+correction stores the canonical environment-binding bytes and SHA-256 in the
+claim transaction and compares both before every claimed or delivering resume.
+
 ## Root cause
 
 BB could create a non-worktree environment only as part of thread creation, so
@@ -50,6 +59,11 @@ The exact ready provision row is checked before the authority call, again in
 the claim-persistence transaction, again in the delivery transaction, and after
 a returned or recovered thread. A stale or foreign environment can therefore
 neither create a local claim nor become a completed result.
+
+The durable claim also stores the canonical bytes and SHA-256 of the exact
+environment binding. A caller and environment row that move coherently from A
+to B under the same environment id are refused as `environment_binding_mismatch`
+before claim replay, recovery, or spawn.
 
 ## Authority and exactly-once boundary
 
@@ -99,10 +113,15 @@ plugin test was first run without `experimental_effects` and failed. The
 implementations were added only after those RED observations. Generated Drizzle
 migrations were produced from the schema rather than edited by hand.
 
+The A-to-B binding regression first resolved to `completed` after a durable
+`claimed` row. The delivering-resume variant also resolved to `completed` when
+the persisted-binding comparison was removed. Both now return the typed
+environment-binding refusal with zero authority, recovery, or spawn calls.
+
 Verification after the independent rejection and correction:
 
 - server public environment, response, registered-authority, public composition,
-  file-backed recovery, and authoring documentation: 101 tests passed;
+  file-backed recovery, and authoring documentation: 103 tests passed;
 - full DB suite: 520 tests passed across 40 files;
 - server contract: 79 tests passed;
 - public SDK: 112 tests passed;
@@ -130,6 +149,17 @@ gap for a normal checkout and test environment.
 The tests exercise migrated in-memory and temporary file-backed stores, an
 in-process loopback BB server, host-command captures, and provider doubles. No
 test contacted an installed BB server, external controller, or provider.
+
+## Cycle reflection
+
+The prior environment-currentness improvement was applied but did not bind the
+environment identity retained by the claim. The independent A-to-B
+counterexample escaped that gate. The smallest correction is now `APPLIED` and
+`EFFECT_VERIFIED` locally by the two restart regressions: persist canonical
+binding bytes plus digest and compare both at claimed and delivering resume.
+Axon owns the correction; Dark Factory owns independent acceptance. Provider,
+human, and economic cost are unknown. This reflection grants no release or
+activation authority.
 
 ## Release boundary
 

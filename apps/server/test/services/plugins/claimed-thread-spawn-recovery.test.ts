@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -317,7 +318,23 @@ describe("file-backed claimed thread spawn recovery", () => {
     await expect(
       spawnClaimedThread(deps(initial, { spawn }), args),
     ).rejects.toThrow("injected interruption");
-    expect(getClaimedThreadSpawn(initial, args.claimId)?.state).toBe("claimed");
+    const persisted = getClaimedThreadSpawn(initial, args.claimId);
+    expect(persisted?.state).toBe("claimed");
+    const environmentBindingCanonicalJson = JSON.stringify(
+      Object.fromEntries(
+        Object.entries(args.environmentBinding).sort(([left], [right]) =>
+          left < right ? -1 : left > right ? 1 : 0,
+        ),
+      ),
+    );
+    expect(persisted?.environmentBindingCanonicalJson).toBe(
+      environmentBindingCanonicalJson,
+    );
+    expect(persisted?.environmentBindingSha256).toBe(
+      createHash("sha256")
+        .update(environmentBindingCanonicalJson)
+        .digest("hex"),
+    );
     expect(spawn).not.toHaveBeenCalled();
     close();
     const restarted = open();
@@ -329,6 +346,109 @@ describe("file-backed claimed thread spawn recovery", () => {
     ).resolves.toMatchObject({ state: "completed", replay: false });
     expect(claim).not.toHaveBeenCalled();
     expect(spawn).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses a changed environment binding after a persisted claim", async () => {
+    const initial = db;
+    if (initial === null) throw new Error("database is not open");
+    initial.$client.exec(`
+      CREATE TRIGGER interrupt_before_binding_change
+      BEFORE UPDATE OF state ON claimed_thread_spawns
+      WHEN NEW.state = 'delivering'
+      BEGIN SELECT RAISE(ABORT, 'injected interruption'); END;
+    `);
+    await expect(spawnClaimedThread(deps(initial), args)).rejects.toThrow(
+      "injected interruption",
+    );
+    expect(getClaimedThreadSpawn(initial, args.claimId)?.state).toBe("claimed");
+    close();
+
+    const restarted = open();
+    restarted.$client.exec("DROP TRIGGER interrupt_before_binding_change");
+    const changed = {
+      ...args,
+      environmentBinding: {
+        ...args.environmentBinding,
+        canonicalPath: "/tmp/claimed-spawn-recovery-replaced",
+        provisionRequestId: "provision-recovery-replaced",
+        provisionRequestSha256: "2".repeat(64),
+      },
+    };
+    restarted
+      .update(environments)
+      .set({
+        path: changed.environmentBinding.canonicalPath,
+        provisionRequestId: changed.environmentBinding.provisionRequestId,
+        provisionRequestSha256:
+          changed.environmentBinding.provisionRequestSha256,
+      })
+      .run();
+    const claim = vi.fn();
+    const spawn = vi.fn(async () => threadResult());
+
+    await expect(
+      spawnClaimedThread(deps(restarted, { claim, spawn }), changed),
+    ).rejects.toMatchObject({
+      status: 409,
+      body: { code: "environment_binding_mismatch" },
+    });
+    expect(getClaimedThreadSpawn(restarted, args.claimId)?.state).toBe(
+      "claimed",
+    );
+    expect(claim).not.toHaveBeenCalled();
+    expect(spawn).not.toHaveBeenCalled();
+  });
+
+  it("refuses a changed environment binding after delivery intent", async () => {
+    const initial = db;
+    if (initial === null) throw new Error("database is not open");
+    await expect(
+      spawnClaimedThread(
+        deps(initial, {
+          spawn: async () => {
+            close();
+            throw new Error("process stopped after possible delivery");
+          },
+        }),
+        args,
+      ),
+    ).rejects.toThrow();
+
+    const restarted = open();
+    const changed = {
+      ...args,
+      environmentBinding: {
+        ...args.environmentBinding,
+        canonicalPath: "/tmp/claimed-spawn-recovery-replaced",
+        provisionRequestId: "provision-recovery-replaced",
+        provisionRequestSha256: "2".repeat(64),
+      },
+    };
+    restarted
+      .update(environments)
+      .set({
+        path: changed.environmentBinding.canonicalPath,
+        provisionRequestId: changed.environmentBinding.provisionRequestId,
+        provisionRequestSha256:
+          changed.environmentBinding.provisionRequestSha256,
+      })
+      .run();
+    const claim = vi.fn();
+    const recover = vi.fn(async () => threadResult());
+    const spawn = vi.fn(async () => threadResult());
+
+    await expect(
+      spawnClaimedThread(deps(restarted, { claim, recover, spawn }), changed),
+    ).rejects.toMatchObject({
+      status: 409,
+      body: { code: "environment_binding_mismatch" },
+    });
+    expect(getClaimedThreadSpawn(restarted, args.claimId)?.state).toBe(
+      "delivering",
+    );
+    expect(claim).not.toHaveBeenCalled();
+    expect(recover).not.toHaveBeenCalled();
+    expect(spawn).not.toHaveBeenCalled();
   });
 
   it("refuses a stale environment after restart without another effect", async () => {

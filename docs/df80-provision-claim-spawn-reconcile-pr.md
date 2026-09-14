@@ -21,6 +21,9 @@ fully bound request at the actual effect boundary.
 - Validate the exact ready, unmanaged, non-worktree provision record before the
   current claim, in claim persistence, in the delivery transaction, and after a
   returned or recovered thread.
+- Persist the canonical environment-binding bytes and digest with the claim,
+  then refuse a coherent A-to-B row/binding change before claimed or delivering
+  resume can recover or spawn.
 - Canonicalize the complete attributed request with the RFC 8785 rules relevant
   to its closed string/null shape. Unknown fields, `undefined`, invalid Unicode,
   stale bindings, and mismatched claim receipts fail closed.

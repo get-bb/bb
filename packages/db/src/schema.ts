@@ -657,6 +657,12 @@ export const claimedThreadSpawns = sqliteTable(
     authorityId: text("authority_id").notNull(),
     authorityHostId: text("authority_host_id").notNull(),
     authorityMethod: text("authority_method").notNull(),
+    environmentBindingSha256: text("environment_binding_sha256")
+      .notNull()
+      .default(""),
+    environmentBindingCanonicalJson: text("environment_binding_canonical_json")
+      .notNull()
+      .default(""),
     requestSha256: text("request_sha256").notNull(),
     requestCanonicalJson: text("request_canonical_json").notNull(),
     state: text("state")

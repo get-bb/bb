@@ -1,0 +1,2 @@
+ALTER TABLE `claimed_thread_spawns` ADD `environment_binding_sha256` text DEFAULT '' NOT NULL;--> statement-breakpoint
+ALTER TABLE `claimed_thread_spawns` ADD `environment_binding_canonical_json` text DEFAULT '' NOT NULL;

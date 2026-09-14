@@ -231,6 +231,12 @@ function canonicalRequest(
   );
 }
 
+function canonicalEnvironmentBinding(
+  args: ExperimentalClaimedThreadSpawnArgs,
+): string {
+  return JSON.stringify(canonicalizeJcs(args.environmentBinding));
+}
+
 export function claimedThreadSpawnOperationDigest(
   pluginId: string,
   rawArgs: ExperimentalClaimedThreadSpawnArgs,
@@ -353,6 +359,8 @@ function assertSameRequest(
   deps: ClaimedThreadSpawnDeps,
   requestSha256: string,
 ): void {
+  const environmentBindingCanonicalJson = canonicalEnvironmentBinding(args);
+  const environmentBindingSha256 = digest(environmentBindingCanonicalJson);
   if (row.attemptId !== args.attemptId) {
     throw new ApiError(
       409,
@@ -366,12 +374,17 @@ function assertSameRequest(
     row.authorizationId !== args.authorizationId ||
     row.authorityHostId !== deps.authorityHostId ||
     row.authorityMethod !== deps.authorityMethod ||
+    row.environmentBindingSha256 !== environmentBindingSha256 ||
+    row.environmentBindingCanonicalJson !== environmentBindingCanonicalJson ||
     row.requestSha256 !== requestSha256
   ) {
     throw new ApiError(
       409,
-      "spawn_request_digest_mismatch",
-      "Claim id is already bound to a different thread spawn",
+      row.environmentBindingSha256 !== environmentBindingSha256 ||
+        row.environmentBindingCanonicalJson !== environmentBindingCanonicalJson
+        ? "environment_binding_mismatch"
+        : "spawn_request_digest_mismatch",
+      "Claim id is already bound to a different thread spawn or environment",
     );
   }
 }
@@ -460,6 +473,8 @@ function persistClaim(
   requestSha256: string,
   authorizationId: string,
 ) {
+  const environmentBindingCanonicalJson = canonicalEnvironmentBinding(args);
+  const environmentBindingSha256 = digest(environmentBindingCanonicalJson);
   return deps.db.transaction(
     (tx) => {
       requireProvisionedReuseEnvironment(deps.authorityHostId, tx, args);
@@ -501,6 +516,8 @@ function persistClaim(
           authorityId: args.authorityId,
           authorityHostId: deps.authorityHostId,
           authorityMethod: deps.authorityMethod,
+          environmentBindingSha256,
+          environmentBindingCanonicalJson,
           requestSha256,
           requestCanonicalJson,
           state: "claimed",
@@ -537,6 +554,7 @@ function persistClaim(
 function beginDelivery(
   deps: ClaimedThreadSpawnDeps,
   args: ExperimentalClaimedThreadSpawnArgs,
+  requestSha256: string,
 ): void {
   deps.db.transaction(
     (tx) => {
@@ -549,6 +567,7 @@ function beginDelivery(
           "Claimed spawn is not ready for delivery",
         );
       }
+      assertSameRequest(row, args, deps, requestSha256);
       updateClaimedThreadSpawn(tx, args.claimId, {
         state: "delivering",
         updatedAt: Date.now(),
@@ -643,7 +662,7 @@ export async function spawnClaimedThread(
     }
   }
 
-  beginDelivery(deps, args);
+  beginDelivery(deps, args, requestSha256);
   try {
     const thread = await deps.spawn(request);
     if (!threadMatchesClaimedRequest(request, thread)) {
