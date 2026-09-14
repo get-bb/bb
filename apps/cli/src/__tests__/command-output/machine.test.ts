@@ -214,6 +214,71 @@ describe("bb machine command output", () => {
     },
   );
 
+  it("bb machine show prints the package manager setting and the host override", async () => {
+    const overridden: Host = {
+      ...hosts[0]!,
+      packageManager: "mise",
+      packageManagerOverride: "npm",
+    };
+    stubServerApi({
+      "v1.hosts.$get": vi.fn(async () => [overridden, hosts[1]!]),
+      "v1.hosts.:id.$get": vi.fn(async () => overridden),
+    });
+
+    await runCommand(["machine", "show", "workstation"], register);
+
+    const output = collectLogPayloads(vi.mocked(console.log)).join("\n");
+    expect(output).toContain('"packageManager": "mise"');
+    expect(output).toContain('"packageManagerOverride": "npm"');
+  });
+
+  it("bb machine package-manager sets the preference and prints the host with --json", async () => {
+    const updated: Host = { ...hosts[0]!, packageManager: "mise" };
+    const patch = vi.fn(async () => updated);
+    stubServerApi({
+      "v1.hosts.$get": vi.fn(async () => hosts),
+      "v1.hosts.:id.package-manager.$patch": patch,
+    });
+
+    await runCommand(
+      ["machine", "package-manager", "workstation", "mise", "--json"],
+      register,
+    );
+
+    expect(patch).toHaveBeenCalledWith({
+      param: { id: "host-primary" },
+      json: { packageManager: "mise" },
+    });
+    expect(
+      JSON.parse(String(vi.mocked(console.log).mock.calls[0]?.[0])),
+    ).toEqual(updated);
+
+    vi.mocked(console.log).mockClear();
+    await runCommand(
+      ["machine", "package-manager", "workstation", "mise"],
+      register,
+    );
+    expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
+      "Machine host-primary package manager set to mise",
+    ]);
+  });
+
+  it("bb machine package-manager rejects an unknown preference", async () => {
+    const patch = vi.fn(async () => hosts[0]);
+    stubServerApi({
+      "v1.hosts.$get": vi.fn(async () => hosts),
+      "v1.hosts.:id.package-manager.$patch": patch,
+    });
+
+    await expect(
+      runCommand(
+        ["machine", "package-manager", "workstation", "bun"],
+        register,
+      ),
+    ).rejects.toThrow();
+    expect(patch).not.toHaveBeenCalled();
+  });
+
   it("bb machine list renders names, IDs, status, and relative last seen", async () => {
     vi.spyOn(Date, "now").mockReturnValue(1_700_000_120_000);
     stubServerApi({ "v1.hosts.$get": vi.fn(async () => hosts) });

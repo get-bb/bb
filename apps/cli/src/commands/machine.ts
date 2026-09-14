@@ -4,7 +4,12 @@ import {
   type MachineEnrollmentOptions,
 } from "./machine-enrollment.js";
 import { Command } from "commander";
-import { jsonValueSchema, type Host, type JsonValue } from "@bb/domain";
+import {
+  jsonValueSchema,
+  packageManagerPreferenceSchema,
+  type Host,
+  type JsonValue,
+} from "@bb/domain";
 import { action, CliExitError } from "../action.js";
 import { createCliBbSdk } from "../client.js";
 import { columnWidths, printBorderlessTable } from "../table.js";
@@ -522,15 +527,19 @@ export function registerMachineCommands(
             await sdk.hosts.list({ includeCreating: true }),
             target,
           );
-          if (packageManager !== "auto" && packageManager !== "mise" && packageManager !== "npm") {
+          const parsed =
+            packageManagerPreferenceSchema.safeParse(packageManager);
+          if (!parsed.success) {
             throw new Error("Package manager must be auto, mise, or npm.");
           }
           const result = await sdk.hosts.experimental_updatePackageManager({
             hostId,
-            packageManager: packageManager as "auto" | "mise" | "npm",
+            packageManager: parsed.data,
           });
           if (outputJson(opts, result)) return;
-          console.log(`Machine ${hostId} package manager set to ${packageManager}`);
+          console.log(
+            `Machine ${hostId} package manager set to ${packageManager}`,
+          );
         },
       ),
     );

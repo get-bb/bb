@@ -42,6 +42,16 @@ function providerState(status: ProviderCliStatus): UpdateState {
   return "up-to-date";
 }
 
+const INSTALL_SOURCE_LABELS: Record<
+  ProviderCliStatus["installSource"],
+  string
+> = {
+  notInstalled: "-",
+  npmGlobal: "npm",
+  mise: "mise",
+  external: "external",
+};
+
 function providerStateLabel(status: ProviderCliStatus): string {
   return UPDATE_STATE_PRESENTATION[providerState(status)].label;
 }
@@ -126,16 +136,20 @@ function printUpdatesTable(args: {
       continue;
     }
     if (entry.providerStatus === null) {
-      rows.push([entry.host.name, "-", entry.statusError ?? "status failed", "-"]);
+      rows.push([
+        entry.host.name,
+        "-",
+        entry.statusError ?? "status failed",
+        "-",
+      ]);
       continue;
     }
     for (const status of Object.values(entry.providerStatus)) {
-      const source = status.installSource ?? "unknown";
       rows.push([
         `${entry.host.name} · ${status.displayName}`,
         providerVersionLabel(status),
         providerStateLabel(status),
-        source,
+        INSTALL_SOURCE_LABELS[status.installSource],
       ]);
       if (status.shadowingInstall !== null) {
         warnings.push(

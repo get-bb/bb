@@ -146,6 +146,54 @@ describe("bb updates command output", () => {
     expect(output).toContain("offline");
   });
 
+  it("bb updates shows user-facing source labels and a shadowed-install warning", async () => {
+    const status = providerStatus({ codexNeedsUpdate: false });
+    status.codex.installSource = "mise";
+    status.codex.shadowingInstall = {
+      executablePath: "/usr/local/bin/codex",
+      removeCommand: "npm uninstall -g @openai/codex",
+    };
+    status["claude-code"].installSource = "external";
+    status["acp-cursor"].installSource = "notInstalled";
+    stubServerApi({
+      "v1.system.version.$get": vi.fn(async () => version),
+      "v1.hosts.$get": vi.fn(async () => [hosts[0]!]),
+      "v1.hosts.:id.provider-clis.status.$get": vi.fn(async () => status),
+    });
+
+    await runCommand(["updates"], register);
+
+    const output = collectLogPayloads(vi.mocked(console.log)).join("\n");
+    const lines = output.split("\n");
+    expect(lines.find((line) => line.includes("Target"))).toMatch(/Source$/u);
+    expect(
+      lines.find((line) => line.startsWith("workstation · Codex")),
+    ).toMatch(/ mise$/u);
+    expect(
+      lines.find((line) => line.startsWith("workstation · Claude Code")),
+    ).toMatch(/ external$/u);
+    expect(
+      lines.find((line) => line.startsWith("workstation · Cursor")),
+    ).toMatch(/ -$/u);
+    expect(output).not.toContain("npmGlobal");
+    expect(output).not.toContain("notInstalled");
+    expect(output).toContain(
+      "⚠ workstation · Codex: shadowed install at /usr/local/bin/codex. Remove with: npm uninstall -g @openai/codex",
+    );
+
+    status.codex.installSource = "npmGlobal";
+    status.codex.shadowingInstall = null;
+    vi.mocked(console.log).mockClear();
+    await runCommand(["updates"], register);
+    const npmOutput = collectLogPayloads(vi.mocked(console.log)).join("\n");
+    expect(
+      npmOutput
+        .split("\n")
+        .find((line) => line.startsWith("workstation · Codex")),
+    ).toMatch(/ npm$/u);
+    expect(npmOutput).not.toContain("shadowed install");
+  });
+
   it("bb updates --json prints the aggregate", async () => {
     const status = providerStatus({ codexNeedsUpdate: false });
     stubServerApi({
