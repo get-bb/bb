@@ -218,7 +218,6 @@ describe("BrowsePluginsTab", () => {
     const trigger = await screen.findByRole("button", {
       name: "Filter plugins by category: Memory & Context, Security",
     });
-    expect(trigger.textContent).toContain("2 categories");
     fireEvent.click(trigger);
     fireEvent.click(
       await screen.findByRole("option", { name: /Tasks & Workflows/u }),
@@ -296,7 +295,7 @@ describe("BrowsePluginsTab", () => {
     });
 
     const sortTrigger = await screen.findByRole("button", {
-      name: "Sort: Featured",
+      name: "Sort: Default",
     });
     fireEvent.pointerDown(sortTrigger);
     expect(
@@ -370,7 +369,7 @@ describe("BrowsePluginsTab", () => {
     });
     expect(screen.queryByTestId("plugin-browse-shelves")).toBeNull();
     fireEvent.pointerDown(trigger);
-    fireEvent.click(screen.getByRole("menuitemradio", { name: "Featured" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Clear sort" }));
     expect(await screen.findByTestId("plugin-browse-shelves")).toBeTruthy();
     const params = new URLSearchParams(
       screen.getByTestId("location-search").textContent ?? "",

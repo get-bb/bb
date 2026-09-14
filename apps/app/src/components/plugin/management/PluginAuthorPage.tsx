@@ -20,7 +20,7 @@ import {
 } from "./BrowsePluginsTab";
 import { PluginAuthorAvatar } from "./PluginAuthorAvatar";
 import {
-  PluginBrowseToolbar,
+  PluginCollectionToolbar,
   pluginBrowseSort,
   pluginBrowseSortDirection,
 } from "./PluginBrowseControls";
@@ -78,7 +78,8 @@ export function PluginAuthorPage({
   const selectedCategories = searchParams.getAll("category");
   const requestedSort = pluginBrowseSort(searchParams.get("sort"));
   const sortDirection =
-    pluginBrowseSortDirection(searchParams.get("direction")) ?? "desc";
+    pluginBrowseSortDirection(searchParams.get("direction")) ??
+    (requestedSort === "name" ? "asc" : "desc");
   const catalogQuery = usePluginCatalogSearch("", { enabled: true });
   const searchQuery = usePluginCatalogSearch(debouncedQuery, {
     enabled: debouncedQuery !== "",
@@ -204,7 +205,7 @@ export function PluginAuthorPage({
           <ResourceListState state="empty" message="Author not found." />
         ) : (
           <section className="space-y-6">
-            <PluginBrowseToolbar
+            <PluginCollectionToolbar
               query={query}
               selectedCategories={selectedCategories}
               categoryOptions={categoryOptions}

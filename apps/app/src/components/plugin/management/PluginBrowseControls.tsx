@@ -1,6 +1,19 @@
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { Button } from "@bb/shared-ui/button";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+  TooltipProvider,
+} from "@bb/shared-ui/tooltip";
 import { Input } from "@bb/shared-ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@bb/shared-ui/popover";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -12,16 +25,19 @@ import type {
 } from "./plugin-browse-discovery";
 
 const PLUGIN_BROWSE_SORTS = [
+  "name",
   "recently-added",
   "most-installed",
 ] as const satisfies readonly PluginBrowseSort[];
 
 const PLUGIN_BROWSE_SORT_LABELS: Record<PluginBrowseSort, string> = {
+  name: "Plugin name",
   "recently-added": "Recently added",
   "most-installed": "Most installed",
 };
 
 const PLUGIN_BROWSE_SORT_ICONS: Record<PluginBrowseSort, IconName> = {
+  name: "Sort",
   "recently-added": "Clock",
   "most-installed": "Download",
 };
@@ -53,7 +69,7 @@ export interface PluginBrowseCategoryOption {
   count: number;
 }
 
-export function PluginBrowseToolbar({
+export function PluginCollectionToolbar({
   query,
   selectedCategories,
   categoryOptions,
@@ -61,7 +77,15 @@ export function PluginBrowseToolbar({
   sortDirection,
   installsKnown,
   changeSearchParams,
+  searchPlaceholder = "Search plugins",
+  action,
+  additionalControls,
+  className,
 }: {
+  searchPlaceholder?: string;
+  action?: ReactNode;
+  additionalControls?: ReactNode;
+  className?: string;
   query: string;
   selectedCategories: readonly string[];
   categoryOptions: readonly PluginBrowseCategoryOption[];
@@ -71,10 +95,12 @@ export function PluginBrowseToolbar({
   changeSearchParams: (change: (next: URLSearchParams) => void) => void;
 }) {
   return (
-    <div className="mx-auto w-full max-w-3xl">
+    <div className={cn("mx-auto w-full max-w-3xl", className)}>
       <ResourceToolbar
+        compact
+        action={action}
         searchValue={query}
-        searchPlaceholder="Search plugins"
+        searchPlaceholder={searchPlaceholder}
         onSearchChange={(value) =>
           changeSearchParams((next) => {
             if (value === "") next.delete("query");
@@ -83,6 +109,33 @@ export function PluginBrowseToolbar({
         }
         controls={
           <>
+            <ResourceSortMenu
+              value={sort}
+              direction={sortDirection}
+              compact
+              clearInFooter
+              placeholderLabel="Default"
+              options={pluginBrowseSortOptions(installsKnown)}
+              onChange={(value) =>
+                changeSearchParams((next) => {
+                  if (value === sort) {
+                    next.set(
+                      "direction",
+                      sortDirection === "asc" ? "desc" : "asc",
+                    );
+                  } else {
+                    next.set("sort", value);
+                    next.set("direction", value === "name" ? "asc" : "desc");
+                  }
+                })
+              }
+              onClear={() =>
+                changeSearchParams((next) => {
+                  next.delete("sort");
+                  next.delete("direction");
+                })
+              }
+            />
             <PluginBrowseCategoryFilter
               value={selectedCategories}
               options={categoryOptions}
@@ -95,32 +148,7 @@ export function PluginBrowseToolbar({
                 })
               }
             />
-            <ResourceSortMenu
-              value={sort}
-              direction={sortDirection}
-              compact
-              placeholderLabel="Featured"
-              options={pluginBrowseSortOptions(installsKnown)}
-              onChange={(value) =>
-                changeSearchParams((next) => {
-                  if (value === sort) {
-                    next.set(
-                      "direction",
-                      sortDirection === "asc" ? "desc" : "asc",
-                    );
-                  } else {
-                    next.set("sort", value);
-                    next.set("direction", "desc");
-                  }
-                })
-              }
-              onClear={() =>
-                changeSearchParams((next) => {
-                  next.delete("sort");
-                  next.delete("direction");
-                })
-              }
-            />
+            {additionalControls}
           </>
         }
       />
@@ -172,12 +200,6 @@ export function PluginBrowseCategoryFilter({
     const option = options.find((candidate) => candidate.id === selectedId);
     return option === undefined ? [] : [option];
   });
-  const selectionLabel =
-    selectedOptions.length === 0
-      ? "All categories"
-      : selectedOptions.length === 1
-        ? (selectedOptions[0]?.label ?? "Category")
-        : `${selectedOptions.length} categories`;
   const accessibleSelectionLabel =
     selectedOptions.length === 0
       ? "All categories"
@@ -256,40 +278,45 @@ export function PluginBrowseCategoryFilter({
         if (!nextOpen) setSearch("");
       }}
     >
-      <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          className={cn(
-            "h-8 max-w-52 gap-2 px-2.5 text-xs font-normal",
-            (open || value.length > 0) && ENGAGED_CONTROL_CLASS,
-          )}
-          aria-label={`Filter plugins by category: ${accessibleSelectionLabel}`}
-          aria-expanded={open}
-          onPointerDown={() => {
-            keyboardFocusRef.current = false;
-            setShowKeyboardFocus(false);
-          }}
-          onKeyDown={(event) => {
-            if (
-              event.key === "Enter" ||
-              event.key === " " ||
-              event.key === "ArrowDown"
-            ) {
-              keyboardFocusRef.current = true;
-              setShowKeyboardFocus(true);
-            }
-          }}
-        >
-          <Icon
-            name="SlidersHorizontal"
-            className="size-3.5 shrink-0"
-            aria-hidden
-          />
-          <span className="min-w-0 truncate">{selectionLabel}</span>
-          <Icon name="ChevronDown" className="size-3 shrink-0" aria-hidden />
-        </Button>
-      </PopoverTrigger>
+      <TooltipProvider delayDuration={250}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <PopoverTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                className={cn(
+                  "size-8 shrink-0 px-0 text-xs font-normal",
+                  (open || value.length > 0) && ENGAGED_CONTROL_CLASS,
+                )}
+                aria-label={`Filter plugins by category: ${accessibleSelectionLabel}`}
+                aria-expanded={open}
+                onPointerDown={() => {
+                  keyboardFocusRef.current = false;
+                  setShowKeyboardFocus(false);
+                }}
+                onKeyDown={(event) => {
+                  if (
+                    event.key === "Enter" ||
+                    event.key === " " ||
+                    event.key === "ArrowDown"
+                  ) {
+                    keyboardFocusRef.current = true;
+                    setShowKeyboardFocus(true);
+                  }
+                }}
+              >
+                <Icon
+                  name="SlidersHorizontal"
+                  className="size-3.5 shrink-0"
+                  aria-hidden
+                />
+              </Button>
+            </PopoverTrigger>
+          </TooltipTrigger>
+          <TooltipContent>{`Category: ${accessibleSelectionLabel}`}</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
       <PopoverContent
         align="end"
         mobileTitle="Filter plugins by category"

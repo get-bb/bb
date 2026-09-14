@@ -282,7 +282,7 @@ describe("PluginsOverview", () => {
     );
   });
 
-  it("shows category filters only in Browse", async () => {
+  it("filters Browse by category", async () => {
     installFetch([
       AUTOMATIONS_PLUGIN,
       {
@@ -339,7 +339,7 @@ describe("PluginsOverview", () => {
     expect(screen.getByTestId("location-path").textContent).toBe("/");
   });
 
-  it("shows the Type filter on Installed instead of Category", async () => {
+  it("shows the same category control on Installed", async () => {
     installFetch([AUTOMATIONS_PLUGIN]);
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     render(
@@ -354,7 +354,11 @@ describe("PluginsOverview", () => {
 
     expect(await screen.findByText("Automations")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Category" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Type" })).toBeTruthy();
+    expect(
+      screen.getByRole("button", {
+        name: "Filter plugins by category: All categories",
+      }),
+    ).toBeTruthy();
     expect(screen.getByRole("button", { name: "New plugin" })).toBeTruthy();
   });
 
@@ -582,62 +586,65 @@ describe("PluginsOverview", () => {
     expect(officialPills).toHaveLength(2);
     expect(screen.getAllByText("BB Community")).toHaveLength(1);
 
-    const sortTrigger = screen.getByRole("button", {
-      name: "Sort: Plugin name, ascending",
-    });
-    expect(sortTrigger.querySelector('[data-icon="ArrowUpDown"]')).toBeTruthy();
+    const sortTrigger = screen.getByRole("button", { name: "Sort: Default" });
     fireEvent.pointerDown(sortTrigger);
+    expect(
+      screen.getByRole("menuitemradio", { name: "Recently added" }),
+    ).toBeTruthy();
+    expect(
+      screen
+        .getByRole("menuitemradio", { name: "Most installed" })
+        .getAttribute("aria-disabled"),
+    ).toBe("true");
+    const rowIds = () =>
+      [...document.querySelectorAll('[data-testid^="plugin-row-"]')].map(
+        (row) => row.getAttribute("data-testid"),
+      );
     fireEvent.click(screen.getByRole("menuitemradio", { name: "Plugin name" }));
-    expect(
-      [...document.querySelectorAll('[data-testid^="plugin-row-"]')].map(
-        (row) => row.getAttribute("data-testid"),
-      ),
-    ).toEqual([
+    expect(rowIds()).toEqual([
+      "plugin-row-enabled-local-alpha",
+      "plugin-row-enabled-official-alpha",
+      "plugin-row-enabled-official-zulu",
+      "plugin-row-inactive-local",
+      "plugin-row-inactive-official",
+    ]);
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Plugin name" }));
+    expect(rowIds()).toEqual([
+      "plugin-row-inactive-official",
+      "plugin-row-inactive-local",
       "plugin-row-enabled-official-zulu",
       "plugin-row-enabled-official-alpha",
       "plugin-row-enabled-local-alpha",
-      "plugin-row-inactive-official",
-      "plugin-row-inactive-local",
     ]);
-
-    fireEvent.keyDown(
-      screen.getByRole("menu", {
-        name: "Sort: Plugin name, descending",
-      }),
-      { key: "Escape" },
-    );
-    fireEvent.click(screen.getByText("switch-to-browse"));
-    await screen.findByText("GitHub");
-    fireEvent.click(screen.getByText("switch-to-installed"));
-    expect(
-      [...document.querySelectorAll('[data-testid^="plugin-row-"]')].map(
-        (row) => row.getAttribute("data-testid"),
-      ),
-    ).toEqual([
-      "plugin-row-enabled-official-zulu",
+    fireEvent.click(screen.getByRole("menuitem", { name: "Clear sort" }));
+    expect(rowIds()).toEqual([
       "plugin-row-enabled-official-alpha",
+      "plugin-row-enabled-official-zulu",
       "plugin-row-enabled-local-alpha",
-      "plugin-row-inactive-official",
       "plugin-row-inactive-local",
+      "plugin-row-inactive-official",
     ]);
+    expect(screen.queryByRole("menuitem", { name: "Clear sort" })).toBeNull();
   });
 
-  it("gives each publisher its own Type facet, separate from User", async () => {
+  it("filters Installed by catalog and local categories and clears the selection", async () => {
     installFetch([
-      { ...AUTOMATIONS_PLUGIN, id: "builtin-one", name: "Builtin One" },
+      AUTOMATIONS_PLUGIN,
       {
         ...AUTOMATIONS_PLUGIN,
-        id: "catalog-one",
-        name: "Catalog One",
-        provenance: "catalog",
-        publisherKey: "bb-community",
-        publisherLabel: "BB Community",
-        catalogEntryId: "catalog-one",
+        id: "local-notes",
+        source: "path:/workspace/notes",
+        name: "Local Notes",
+        provenance: "direct",
+        publisherLabel: null,
+        categoryId: "memory-and-context",
+        category: "Memory & Context",
       },
       {
         ...AUTOMATIONS_PLUGIN,
-        id: "direct-one",
-        name: "Direct One",
+        id: "uncategorized",
+        source: "path:/workspace/other",
+        name: "Other Plugin",
         provenance: "direct",
         publisherLabel: null,
       },
@@ -647,117 +654,27 @@ describe("PluginsOverview", () => {
       <MemoryRouter initialEntries={["/plugins?view=installed"]}>
         <QueryClientWrapper>
           <PluginsOverview />
-          <SwitchViewButton view="browse" />
-          <SwitchViewButton view="installed" />
         </QueryClientWrapper>
       </MemoryRouter>,
     );
-
-    await screen.findByText("Direct One");
-    const rowIds = () =>
-      [...document.querySelectorAll('[data-testid^="plugin-row-"]')].map(
-        (row) => row.getAttribute("data-testid"),
-      );
-
-    const typeTrigger = screen.getByRole("button", { name: "Type" });
-    expect(rowIds()).toEqual([
-      "plugin-row-builtin-one",
-      "plugin-row-catalog-one",
-      "plugin-row-direct-one",
-    ]);
-    fireEvent.pointerDown(typeTrigger);
-    expect(screen.queryByRole("menuitemcheckbox", { name: "All" })).toBeNull();
-
+    await screen.findByText("Local Notes");
     fireEvent.click(
-      screen.getByRole("menuitemcheckbox", { name: "BB Official" }),
-    );
-    await waitFor(() => {
-      expect(rowIds()).toEqual(["plugin-row-builtin-one"]);
-    });
-
-    fireEvent.click(
-      screen.getByRole("menuitemcheckbox", { name: "BB Community" }),
-    );
-    await waitFor(() => {
-      expect(rowIds()).toEqual([
-        "plugin-row-builtin-one",
-        "plugin-row-catalog-one",
-      ]);
-    });
-
-    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "User" }));
-    fireEvent.click(
-      screen.getByRole("menuitemcheckbox", { name: "BB Official" }),
+      screen.getByRole("button", {
+        name: "Filter plugins by category: All categories",
+      }),
     );
     fireEvent.click(
-      screen.getByRole("menuitemcheckbox", { name: "BB Community" }),
+      await screen.findByRole("option", { name: /Memory & Context, 1 plugin/ }),
     );
-    await waitFor(() => {
-      expect(rowIds()).toEqual(["plugin-row-direct-one"]);
-    });
-
-    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "User" }));
-    await waitFor(() => {
-      expect(rowIds()).toEqual([
-        "plugin-row-builtin-one",
-        "plugin-row-catalog-one",
-        "plugin-row-direct-one",
-      ]);
-    });
-    expect(screen.queryByText("No plugins match these filters.")).toBeNull();
-  });
-
-  it("drops a Type selection whose facet no longer has any plugin", async () => {
-    installFetch([
-      { ...AUTOMATIONS_PLUGIN, id: "builtin-one", name: "Builtin One" },
-      {
-        ...AUTOMATIONS_PLUGIN,
-        id: "acme-one",
-        name: "Acme One",
-        provenance: "catalog",
-        publisherKey: "acme-plugins",
-        publisherLabel: "Acme Plugins",
-        catalogEntryId: "acme-one",
-      },
-    ]);
-    const { wrapper: QueryClientWrapper, queryClient } =
-      createQueryClientTestHarness();
-    render(
-      <MemoryRouter initialEntries={["/plugins?view=installed"]}>
-        <QueryClientWrapper>
-          <PluginsOverview />
-        </QueryClientWrapper>
-      </MemoryRouter>,
-    );
-
-    await screen.findByText("Acme One");
-    fireEvent.pointerDown(screen.getByRole("button", { name: "Type" }));
+    expect(screen.getByText("Local Notes")).toBeTruthy();
+    expect(screen.queryByText("Automations")).toBeNull();
     fireEvent.click(
-      screen.getByRole("menuitemcheckbox", { name: "Acme Plugins" }),
+      screen.getByRole("option", { name: /Workflow management, 1 plugin/ }),
     );
-    await waitFor(() => {
-      expect(
-        [...document.querySelectorAll('[data-testid^="plugin-row-"]')].map(
-          (row) => row.getAttribute("data-testid"),
-        ),
-      ).toEqual(["plugin-row-acme-one"]);
-    });
-
-    installFetch([
-      { ...AUTOMATIONS_PLUGIN, id: "builtin-one", name: "Builtin One" },
-    ]);
-    await act(async () => {
-      await queryClient.invalidateQueries();
-    });
-
-    await waitFor(() => {
-      expect(
-        [...document.querySelectorAll('[data-testid^="plugin-row-"]')].map(
-          (row) => row.getAttribute("data-testid"),
-        ),
-      ).toEqual(["plugin-row-builtin-one"]);
-    });
-    expect(screen.queryByText("No plugins match these filters.")).toBeNull();
+    expect(screen.getByText("Automations")).toBeTruthy();
+    expect(screen.queryByText("Other Plugin")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Clear filter" }));
+    expect(screen.getByText("Other Plugin")).toBeTruthy();
   });
 
   it("keeps disabled plugins installed regardless of provenance", async () => {
