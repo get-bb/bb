@@ -78,6 +78,11 @@ BB_HOST_DAEMON_PORT only for an intentional non-default target.
   suspend and resume. Resume waits for pending suspension and is a no-op
   when already active. Use `bb machine retry-cleanup <id-or-name>` to retry a
   failed provider teardown immediately.
+- Set a machine's package manager with
+  `bb machine package-manager <id-or-name> <auto|mise|npm>`. The daemon env var
+  `BB_PACKAGE_MANAGER` overrides it; `bb machine show` reports both values.
+  `mise` never falls back to npm. `bb updates` shows each provider CLI's install
+  source and warns about shadowed installs; bb never deletes them.
 - `bb environment providers` lists Project checkout, Worktree, then other
   installed providers by display name. With `--project <id> --machine <id>`
   it also prints that machine's availability (`available`, `setup-required`,

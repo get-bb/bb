@@ -25,11 +25,13 @@ server at `/install/bb-app.tgz`; only servers that do not implement the route
 machine enrollment's bb data directory, so the installer needs neither `sudo`
 nor a global npm configuration. Installed launchd/systemd services pass
 `--auto-update`. On a newer server protocol mismatch, the daemon runs a self-update
-strategy determined by the machine's package manager preference. With mise installed,
-the daemon runs `mise use -g npm:bb-app@<version>` and verifies the installed version.
-With npm selected or when mise is unavailable, the daemon downloads that
-same artifact, updates its private install, and exits for the service manager to
-restart. Failed updates use a persisted exponential backoff that starts at 5
+strategy determined by the machine's package manager preference. With `mise`
+selected, or with `auto` when mise manages the running bb-app, the daemon runs
+`mise use -g npm:bb-app@<version>`, verifies that mise reports it as the active
+version, and restarts. A forced `mise` preference never falls back to npm: a missing
+mise binary or a failed mise command fails the update. With `npm` selected, or with
+`auto` when mise does not manage bb-app, the daemon downloads that same artifact,
+updates its private install, and exits for the service manager to restart. Failed updates use a persisted exponential backoff that starts at 5
 seconds and caps at 5 minutes. A daemon never auto-downgrades to an older server
 protocol. Use Settings → Machines or `bb machine retry-update` to bypass the
 current backoff after a transient failure.
@@ -84,6 +86,12 @@ machine cannot set it for any machine, so a sandbox machine can stay at Full
 Access while your laptop stays lower. `bb machine list --json` and `bb machine
 show` report the current limit.
 
+Each machine also has a package manager preference: `auto` (default), `mise`, or
+`npm`. Set it with `bb machine package-manager` or in Settings → Machines. The
+`BB_PACKAGE_MANAGER` environment variable on the daemon overrides it; `bb machine
+show` reports `packageManager` and the daemon's `packageManagerOverride`. Provider
+CLI updates and daemon self-update follow the effective preference.
+
 Standalone create does not create a thread or workspace. Omit inputs to use the
 provider defaults; supply JSON when its schema requires additional values. Omit
 `--key` to let the server generate one, or supply a stable key for retries.
@@ -110,7 +118,7 @@ CLI counterpart of Settings → Updates and the sidebar Updates badge.
 
 bb updates [status] Show bb-app and provider CLI update
 status for every machine. The table includes
-the install source (npm, mise, bun, external)
+the install source (npm, mise, external)
 and warns about shadowed installs
 --machine <id-or-name> Limit to one machine
 --json Print the aggregate as JSON
@@ -120,7 +128,8 @@ install/update, one at a time
 --json Print per-target results as JSON
 
 `bb updates apply` covers provider CLIs only. Update bb-app itself with the
-printed upgrade command (`npx bb-app@latest`) or the desktop app's relaunch;
+printed upgrade command (`npx bb-app@latest`, or `mise use -g npm:bb-app@latest`
+when mise manages the server's bb-app) or the desktop app's relaunch;
 connected daemons then follow the server version automatically. Shadowed installs
 occur when one package manager finds an executable installed by another; they are
 shown but never deleted by bb.

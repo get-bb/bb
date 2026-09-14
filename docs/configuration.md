@@ -597,23 +597,35 @@ machine. The current value is readable through the host API and
 Each machine has a package manager preference (`auto`, `mise`, or `npm`, default `auto`).
 Set it in Settings → Machines → the machine → Package manager, or use the CLI:
 `bb machine package-manager <id-or-name> <auto|mise|npm>`.
-The effective preference is sent on every provider CLI update and daemon self-update.
 
-With `mise` selected or when `auto` detects mise manages the executable,
-the daemon and provider CLIs run install/update through mise.
-With `npm` selected or when mise is unavailable, they use npm or native installers.
-`auto` treats a mise-detected executable as managed only when the realpath lies inside
-the mise install directory, not inside a stray node prefix where shadowing occurs.
-A shadowed install is shown with its path and removal command; bb never deletes it.
+Set the `BB_PACKAGE_MANAGER` environment variable (`auto`, `mise`, or `npm`) on
+the daemon process to override the machine setting. The daemon reports this
+override at session open, and `bb machine show` prints it as
+`packageManagerOverride`. The server resolves the effective preference as the
+override, then the machine setting, then `auto`. The server sends the effective
+preference at session open, on each provider CLI status and install command, and
+when the machine setting changes. The daemon stores the last value in
+`package-manager.json` in its data directory for self-update before a session.
+These fields require host-daemon protocol 208.
 
-Override the server setting with the `BB_PACKAGE_MANAGER` environment variable
-on the daemon process (or set `BB_PACKAGE_MANAGER_ENV` in the daemon startup scripts).
-The daemon reports the effective preference at session open and on every command.
+`mise` always uses mise. If the `mise` binary is missing or a mise command fails,
+the install or update fails; bb never falls back to npm. `auto` uses mise only when
+mise manages the package, and uses npm, Bun, or the native installer otherwise.
+`npm` always uses the npm or native installer path. For the daemon, `auto` detects
+mise when the realpath of the running bb-app package is inside the install path of
+the active `mise ls --json npm:bb-app` entry. A shadowed install is shown with its
+path and removal command; bb never deletes it.
 
-Daemon self-update with mise: `mise use -g npm:bb-app@<server-version>` and verify
-the installed version from `mise where npm:bb-app`. With a failed mise invocation,
-the update returns failed with a log line naming the version and manual fix.
-No fallback to npm occurs on mise failure.
+Daemon self-update with mise runs `mise use -g npm:bb-app@<server-version>`. The
+update succeeds only when `mise ls --json npm:bb-app` then reports the server
+version as the active entry. Otherwise it fails with a log line naming the version
+and the manual fix, and the normal retry backoff applies. `BB_APP_NPM_PREFIX`
+installs from `install-machine.sh` always use the tarball flow.
+
+On the server process, `BB_PACKAGE_MANAGER` selects the bb-app upgrade command
+that Settings → Updates and `bb updates` print: `mise use -g npm:bb-app@latest`
+or `npx bb-app@latest`. With `auto`, the server prints the mise command only when
+mise manages the running server's bb-app.
 
 Machine installation and daemon protocol repair use the owning server as the
 distribution source: `/install/version` reports the server package/protocol and
