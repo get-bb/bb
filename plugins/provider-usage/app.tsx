@@ -467,7 +467,7 @@ export function ProviderUsageStatusContent({
     <div className="flex max-h-80 flex-col">
       <div
         data-provider-usage-header=""
-        className="flex min-w-0 shrink-0 items-center gap-1 border-b border-sidebar-border px-1.5"
+        className="flex h-10 min-w-0 shrink-0 items-center gap-1 border-b border-sidebar-border px-1.5"
       >
         {providers.length === 0 ? null : (
           <div
