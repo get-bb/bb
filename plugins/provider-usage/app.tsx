@@ -42,6 +42,13 @@ import {
   type UsageSnapshot,
   type UsageWindow as UsageWindowValue,
 } from "./usage-schema.js";
+import {
+  emptyUsageMessage,
+  hasReportedUsage,
+  offlineUsageMessage,
+  UsageFeedback,
+  usageFeedbackMessages,
+} from "./usage-feedback.js";
 
 import { UsageSettings } from "./settings.js";
 
@@ -385,6 +392,26 @@ export function ProviderUsageStatusContent({
     providers.find((provider) => provider.id === requestedProviderId) ??
     providers[0] ??
     null;
+  const activeAccounts = activeProvider?.accounts ?? [];
+  const hasActiveUsage = hasReportedUsage(activeAccounts);
+  const feedback =
+    activeMachine === null
+      ? snapshot.error !== null
+        ? usageFeedbackMessages.loadFailed
+        : snapshot.isRefreshing
+          ? usageFeedbackMessages.loading
+          : usageFeedbackMessages.noSources
+      : activeMachine.status === "disconnected"
+        ? offlineUsageMessage(activeMachine, hasActiveUsage)
+        : snapshot.error !== null || activeMachine.error !== null
+          ? hasActiveUsage
+            ? usageFeedbackMessages.refreshFailed
+            : usageFeedbackMessages.loadFailed
+          : activeProvider === null
+            ? emptyUsageMessage(activeMachine)
+            : null;
+  const feedbackCanRetry =
+    snapshot.error !== null || activeMachine?.error != null;
   const panelId = useId();
   const activeMachineId = activeMachine?.id ?? null;
   const activeProviderId = activeProvider?.id ?? null;
@@ -569,26 +596,26 @@ export function ProviderUsageStatusContent({
         }
         className="min-h-0 overflow-y-auto p-2.5"
       >
-        {activeMachine === null ? (
-          snapshot.error !== null ? null : (
-            <p className="text-xs text-muted-foreground">
-              {snapshot.isRefreshing
-                ? "Loading provider usage…"
-                : "No machines are enrolled."}
-            </p>
-          )
-        ) : activeProvider === null ? (
-          <p className="text-xs text-muted-foreground">
-            {activeMachine.status === "disconnected"
-              ? activeMachine.displayName +
-                " is offline. Usage will refresh when it reconnects."
-              : activeMachine.error !== null
-                ? null
-                : activeMachine.id.startsWith("source:")
-                  ? "No accounts report usage yet. Configure accounts in the source plugin’s settings."
-                  : "No providers report usage limits on this machine."}
-          </p>
-        ) : (
+        {feedback === null ? null : (
+          <UsageFeedback
+            message={feedback}
+            retrying={snapshot.isRefreshing}
+            onRetry={
+              feedbackCanRetry
+                ? () =>
+                    void refreshUsage({
+                      force: true,
+                      machineIds:
+                        activeMachineId === null ? null : [activeMachineId],
+                      maxAgeMs: 0,
+                      providerId: activeProvider?.id ?? null,
+                    })
+                : undefined
+            }
+            className={activeProvider === null ? undefined : "mb-2"}
+          />
+        )}
+        {activeProvider === null ? null : (
           <>
             <div className="divide-y divide-sidebar-border">
               {activeProvider.accounts.map((account) => (
@@ -624,19 +651,15 @@ export function ProviderUsageStatusContent({
                     ) : null}
                   </div>
                   <div className="mt-1">
-                    {activeMachine.status === "disconnected" ? (
+                    {account.usage === null && snapshot.isRefreshing ? (
                       <p className="text-xs text-muted-foreground">
-                        {activeMachine.displayName} is offline. Usage will
-                        refresh when it reconnects.
-                      </p>
-                    ) : account.usage === null && snapshot.isRefreshing ? (
-                      <p className="text-xs text-muted-foreground">
-                        Loading usage…
+                        {usageFeedbackMessages.loading}
                       </p>
                     ) : account.usage === null &&
-                      activeMachine.error !== null ? (
+                      (activeMachine?.error != null ||
+                        snapshot.error !== null) ? (
                       <p className="text-xs text-muted-foreground">
-                        Couldn’t load this account’s usage.
+                        {usageFeedbackMessages.unavailable}
                       </p>
                     ) : (
                       <ProviderUsageBody provider={account} />
@@ -646,43 +669,6 @@ export function ProviderUsageStatusContent({
               ))}
             </div>
           </>
-        )}
-        {snapshot.error === null && activeMachine?.error == null ? null : (
-          <div
-            role="status"
-            className={cn(
-              "flex items-center gap-2 text-2xs text-subtle-foreground",
-              snapshot.data === null
-                ? ""
-                : "mt-2 border-t border-sidebar-border pt-2",
-            )}
-          >
-            <span className="min-w-0 flex-1">
-              {snapshot.data === null ||
-              !activeProvider?.accounts.some(
-                (account) => account.usage !== null,
-              )
-                ? "Couldn’t load usage."
-                : "Couldn’t refresh. Showing the last update."}
-            </span>
-            <button
-              type="button"
-              disabled={snapshot.isRefreshing}
-              aria-label="Retry usage refresh"
-              className="shrink-0 rounded-sm px-1 py-0.5 font-medium text-sidebar-foreground hover:bg-sidebar-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring disabled:opacity-50"
-              onClick={() =>
-                void refreshUsage({
-                  force: true,
-                  machineIds:
-                    activeMachineId === null ? null : [activeMachineId],
-                  maxAgeMs: 0,
-                  providerId: activeProvider?.id ?? null,
-                })
-              }
-            >
-              Retry
-            </button>
-          </div>
         )}
       </div>
     </div>

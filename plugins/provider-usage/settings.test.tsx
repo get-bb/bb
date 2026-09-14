@@ -139,9 +139,12 @@ it("renders loading and a friendly transport error without exposing raw errors",
     {},
     { rpc: { getUsage: () => pending } },
   );
-  expect(slot.getByText("Loading providers and usage…")).toBeTruthy();
+  expect(slot.getByText("Loading usage…")).toBeTruthy();
   reject(new Error("Unexpected token 'b', bb connect..."));
-  await slot.findByText("Couldn’t load usage. Try reloading usage.");
+  await slot.findByText("Couldn’t load usage.");
+  expect(
+    slot.getByRole("button", { name: "Retry usage refresh" }),
+  ).toBeTruthy();
   expect(slot.queryByText(/Unexpected token/)).toBeNull();
 });
 
@@ -201,10 +204,8 @@ it("shows pending measurements without inventing usage, then reports an unavaila
   await slot.findByText("Loading usage…");
   expect(slot.queryByText("0% used")).toBeNull();
   finish();
-  await slot.findByText("Couldn’t load usage. Try reloading usage.");
-  expect(
-    slot.getByText("Couldn't load usage right now. Try reloading usage."),
-  ).toBeTruthy();
+  await slot.findByText("Couldn’t load usage.");
+  expect(slot.getByText("Usage unavailable.")).toBeTruthy();
   expect(slot.queryByText(/Showing the last/)).toBeNull();
 });
 

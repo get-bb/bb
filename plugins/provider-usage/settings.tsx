@@ -14,6 +14,13 @@ import {
 import { cn } from "@bb/shared-ui/lib/utils";
 import type { providerUsageRpcContract } from "./server.js";
 import {
+  emptyUsageMessage,
+  hasReportedUsage,
+  offlineUsageMessage,
+  UsageFeedback,
+  usageFeedbackMessages,
+} from "./usage-feedback.js";
+import {
   selectUsageMachine,
   type UsageMachine,
   type UsageProvider,
@@ -311,7 +318,7 @@ function ProviderUsageBody({
   if (isError) {
     return (
       <p className="text-xs text-muted-foreground">
-        Couldn&apos;t load usage right now. Try reloading usage.
+        {usageFeedbackMessages.unavailable}
       </p>
     );
   }
@@ -384,14 +391,18 @@ export function UsageSettingsContent({
   }
   const notice =
     selected?.status === "disconnected"
-      ? `${selected.displayName} is offline. Usage will refresh when it reconnects.`
+      ? offlineUsageMessage(selected, hasReportedUsage(selected.providers))
       : error || selected?.error
-        ? [...groups.values()].some((accounts) =>
-            accounts.some((account) => account.usage !== null),
-          )
-          ? "Couldn’t refresh usage. Showing the last available update. Try reloading usage."
-          : "Couldn’t load usage. Try reloading usage."
-        : null;
+        ? hasReportedUsage(selected?.providers ?? [])
+          ? usageFeedbackMessages.refreshFailed
+          : usageFeedbackMessages.loadFailed
+        : selected === null
+          ? loading
+            ? usageFeedbackMessages.loading
+            : usageFeedbackMessages.noSources
+          : groups.size === 0
+            ? emptyUsageMessage(selected)
+            : null;
   return (
     <section className="space-y-3">
       <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:gap-4 sm:items-start">
@@ -439,9 +450,12 @@ export function UsageSettingsContent({
       </div>
       <div className="rounded-lg border border-border bg-card px-4 py-3.5">
         {notice ? (
-          <p role="status" className="mb-3 text-xs text-muted-foreground">
-            {notice}
-          </p>
+          <UsageFeedback
+            message={notice}
+            retrying={loading}
+            onRetry={error || Boolean(selected?.error) ? onRefresh : undefined}
+            className={groups.size > 0 ? "mb-3" : undefined}
+          />
         ) : null}
         <div className="divide-y divide-border">
           {[...groups].map(([id, resources]) => {
@@ -462,15 +476,6 @@ export function UsageSettingsContent({
               />
             );
           })}
-          {groups.size === 0 && !notice ? (
-            <p className="text-xs text-muted-foreground">
-              {loading
-                ? "Loading providers and usage…"
-                : selected?.id.startsWith("source:")
-                  ? "No accounts report usage yet. Configure accounts in the source plugin’s settings, or choose a machine."
-                  : "No providers report usage limits on this machine."}
-            </p>
-          ) : null}
         </div>
       </div>
     </section>

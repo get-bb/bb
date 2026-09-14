@@ -393,7 +393,9 @@ describe("provider usage footer disclosure", () => {
       );
       await waitFor(() =>
         expect(
-          slot.getByText("Couldn’t refresh. Showing the last update."),
+          slot.getByText(
+            "Couldn’t refresh usage. Showing the last available update.",
+          ),
         ).toBeTruthy(),
       );
       expect(slot.getByText("claude-team@example.com")).toBeTruthy();
@@ -405,7 +407,9 @@ describe("provider usage footer disclosure", () => {
       );
       await waitFor(() =>
         expect(
-          slot.queryByText("Couldn’t refresh. Showing the last update."),
+          slot.queryByText(
+            "Couldn’t refresh usage. Showing the last available update.",
+          ),
         ).toBeNull(),
       );
     }
@@ -422,7 +426,10 @@ it.each([
     "Sign in to this account in the source plugin’s settings.",
   ],
   ["no-limits", "No usage limits reported for this plan."],
-  ["source-error", "Couldn’t refresh. Showing the last update."],
+  [
+    "source-error",
+    "Couldn’t refresh usage. Showing the last available update.",
+  ],
 ] as const)("renders the %s shared-source state", async (state, expected) => {
   const usage: UsageProvider["usage"] =
     state === "expired" || state === "unauthenticated"
