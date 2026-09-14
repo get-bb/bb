@@ -59,7 +59,6 @@ import {
   makeEnvironment,
   makeExecutionControlsProps,
   useInteractiveExecutionControls,
-  STORY_CODEX_MODELS,
   STORY_ENVIRONMENT_PROVIDERS,
   PROJECT_NAMES,
   STORY_PROVIDER_OPTIONS,
@@ -119,31 +118,6 @@ const promptActions: readonly PromptBoxAction[] = [
   AUTOMATION_PROMPT_ACTION,
   CREATE_PLUGIN_PROMPT_ACTION,
 ];
-
-const readOnlyExecution = makeExecutionControlsProps({
-  provider: {
-    options: STORY_PROVIDER_OPTIONS,
-    selectedId: "codex",
-    onChange: noop,
-    hasMultiple: false,
-  },
-  model: {
-    active: { model: "gpt-5.5" },
-    selected: "gpt-5.5",
-    options: STORY_CODEX_MODELS,
-    moreOptions: [],
-    isLoading: false,
-    loadFailed: false,
-    onChange: noop,
-  },
-});
-
-const readOnlyPermission: ExecutionPermissionConfig = {
-  value: "accept-edits",
-  options: permissionModeOptions,
-  onChange: noop,
-  supported: true,
-};
 
 interface EnvironmentSummaryArgs {
   environment: Environment;
@@ -229,17 +203,6 @@ const localEnvironmentSummary: ReactNode = makeEnvironmentSummary({
     status: "ready",
   }),
   host: localEnvironmentDisplayHost,
-  branchName: STORY_BRANCH_NAME,
-});
-
-const longHostEnvironmentSummary: ReactNode = makeEnvironmentSummary({
-  environment: makeEnvironment({
-    status: "ready",
-  }),
-  host: localEnvironmentDisplayHost,
-  projectName: "bb UI QA",
-  machineName: "Bersabel's MacBook Pro",
-  hasMultipleMachines: true,
   branchName: STORY_BRANCH_NAME,
 });
 
@@ -946,38 +909,6 @@ export function Overview() {
           submitMode={{ kind: "queue", onStop: noop }}
           threadRuntimeDisplayStatus="starting"
           environmentSummary={provisioningEnvironmentSummary}
-        />
-      </StoryRow>
-      <StoryRow
-        label="env: long machine name"
-        hint="full machine name when space allows; truncates with a title when constrained"
-      >
-        <Row
-          submitMode={{ kind: "ready" }}
-          environmentSummary={longHostEnvironmentSummary}
-        />
-      </StoryRow>
-      <StoryRow
-        label="eight queued follow-ups"
-        hint="the centered handle stays quiet; hover the header to reveal the right-aligned caret"
-      >
-        <Row
-          submitMode={{ kind: "queue", onStop: noop }}
-          threadRuntimeDisplayStatus="active"
-          queuedMessages={queuedMessages}
-          contextWindowUsage={usage}
-        />
-      </StoryRow>
-      <StoryRow
-        label="read-only footer"
-        hint="same model & permission pickers as the main thread, just disabled"
-      >
-        <Row
-          submitMode={{ kind: "ready" }}
-          execution={readOnlyExecution}
-          permission={readOnlyPermission}
-          readOnly
-          environmentSummary={multiMachineEnvironmentSummary}
         />
       </StoryRow>
     </StoryCard>
