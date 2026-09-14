@@ -452,6 +452,7 @@ export function UsageSettingsContent({
         {notice ? (
           <UsageFeedback
             message={notice}
+            loading={notice === usageFeedbackMessages.loading}
             className={groups.size > 0 ? "mb-3" : undefined}
           />
         ) : null}

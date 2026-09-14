@@ -31,24 +31,29 @@ export function offlineUsageMessage(
 
 export function UsageFeedback({
   message,
+  loading = false,
   className,
 }: {
   message: string;
+  loading?: boolean;
   className?: string;
 }) {
   return (
     <div
       role="status"
       className={cn(
-        "flex min-w-0 items-start gap-2 rounded-md bg-muted/60 px-2.5 py-2 text-xs text-muted-foreground",
+        "flex min-w-0 items-start text-xs text-muted-foreground",
+        !loading && "gap-2 rounded-md bg-muted/60 px-2.5 py-2",
         className,
       )}
     >
-      <Icon
-        name="Info"
-        aria-hidden="true"
-        className="mt-0.5 size-3.5 shrink-0"
-      />
+      {loading ? null : (
+        <Icon
+          name="Info"
+          aria-hidden="true"
+          className="mt-0.5 size-3.5 shrink-0"
+        />
+      )}
       <span className="min-w-0 flex-1">{message}</span>
     </div>
   );

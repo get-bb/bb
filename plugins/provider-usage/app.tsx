@@ -597,6 +597,7 @@ export function ProviderUsageStatusContent({
         {feedback === null ? null : (
           <UsageFeedback
             message={feedback}
+            loading={feedback === usageFeedbackMessages.loading}
             className={activeProvider === null ? undefined : "mb-2"}
           />
         )}
