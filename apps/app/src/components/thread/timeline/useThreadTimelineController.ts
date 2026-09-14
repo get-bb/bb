@@ -190,18 +190,16 @@ export function useThreadTimelineController({
       updateLoadedTimeline((current) => {
         if (
           current.surfaceKey !== surfaceKey ||
-          current.historySnapshot !== response.timelinePage.historySnapshot
+          !areTimelinePaginationCursorsEqual({
+            left: current.olderCursor,
+            right: nextOlderCursor,
+          })
         ) {
           return current;
         }
         return {
           ...current,
-          olderCursor: areTimelinePaginationCursorsEqual({
-            left: current.olderCursor,
-            right: nextOlderCursor,
-          })
-            ? response.timelinePage.olderCursor
-            : current.olderCursor,
+          olderCursor: response.timelinePage.olderCursor,
           rows: prependOlderTimelineRows({
             loadedRows: current.rows,
             olderRows,
