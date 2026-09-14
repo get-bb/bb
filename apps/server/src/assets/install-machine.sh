@@ -25,6 +25,7 @@ requested_data_dir=
 
 CURL_CONNECT_TIMEOUT_SECONDS=10
 PACKAGE_DOWNLOAD_TIMEOUT_SECONDS=300
+PACKAGE_DOWNLOAD_RETRIES=3
 MACHINE_CODE_REDEEM_TIMEOUT_SECONDS=30
 DAEMON_WAIT_ATTEMPTS=60
 WAIT_PROGRESS_EVERY_ATTEMPTS=5
@@ -578,6 +579,7 @@ if [ -n "$installed_artifact_digest" ]; then
   package_status=$(curl --config "$access_config" "$curl_output_mode" --show-error --location \
     --connect-timeout "$CURL_CONNECT_TIMEOUT_SECONDS" \
     --max-time "$PACKAGE_DOWNLOAD_TIMEOUT_SECONDS" \
+    --retry "$PACKAGE_DOWNLOAD_RETRIES" \
     --header "If-None-Match: \"sha256-$installed_artifact_digest\"" \
     --dump-header "$package_headers" \
     --output "$package_file" \
@@ -587,6 +589,7 @@ else
   package_status=$(curl --config "$access_config" "$curl_output_mode" --show-error --location \
     --connect-timeout "$CURL_CONNECT_TIMEOUT_SECONDS" \
     --max-time "$PACKAGE_DOWNLOAD_TIMEOUT_SECONDS" \
+    --retry "$PACKAGE_DOWNLOAD_RETRIES" \
     --dump-header "$package_headers" \
     --output "$package_file" \
     --write-out '%{http_code}' \
