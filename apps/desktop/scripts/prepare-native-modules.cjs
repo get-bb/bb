@@ -179,6 +179,11 @@ async function runPrebuildInstall(packageDirectory, prebuildArguments) {
 }
 
 async function prepareBetterSqlite3PackageDirectory(packageDirectory, options) {
+  const packageJson = JSON.parse(
+    await readFile(path.join(packageDirectory, "package.json"), "utf8"),
+  );
+  const supportsLegacyPrebuild =
+    typeof packageJson.dependencies?.["prebuild-install"] === "string";
   const canVerify =
     options.platform === process.platform &&
     options.arch === process.arch &&
@@ -204,7 +209,9 @@ async function prepareBetterSqlite3PackageDirectory(packageDirectory, options) {
     try {
       verify();
       return;
-    } catch {}
+    } catch (error) {
+      if (!supportsLegacyPrebuild) throw error;
+    }
   }
   await runPrebuildInstall(
     packageDirectory,

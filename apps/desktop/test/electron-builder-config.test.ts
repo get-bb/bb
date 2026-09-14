@@ -467,7 +467,7 @@ describe("electron-builder signing config", () => {
     }
   });
 
-  it("accepts bundled N-API SQLite without downloading an Electron prebuild", async () => {
+  it("validates bundled N-API SQLite without using the legacy prebuild installer", async () => {
     const appOutDir = await mkdtemp(resolve(tmpdir(), "bb-desktop-napi-"));
     const nodeModules = resolve(appOutDir, "node_modules");
     const requireFromRuntime = createRequire(
@@ -490,6 +490,18 @@ describe("electron-builder signing config", () => {
       ]);
       expect(result.stderr).toBe("");
       expect(result.exitCode).toBe(0);
+      const binaryPath = resolve(
+        nodeModules,
+        "better-sqlite3/prebuilds",
+        `${process.platform}-${process.arch}.node`,
+      );
+      await writeFile(binaryPath, "invalid native binary");
+      const invalidResult = await runNativePrepScript(appOutDir, [
+        "--electron-version=44.3.0",
+      ]);
+      expect(invalidResult.exitCode).not.toBe(0);
+      expect(invalidResult.stderr).toContain(binaryPath);
+      expect(invalidResult.stderr).not.toContain("prebuild-install");
     } finally {
       await rm(appOutDir, { recursive: true, force: true });
     }
