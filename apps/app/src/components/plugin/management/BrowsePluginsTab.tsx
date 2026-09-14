@@ -211,9 +211,19 @@ export function BrowsePluginsTab({
             />
 
             {searchQuery.isError && entries.length > 0 ? (
-              <p className="text-xs text-warning-text" role="status">
-                The latest search failed. The page shows saved catalog results.
-              </p>
+              <div
+                className="flex items-center gap-3 text-xs text-warning-text"
+                role="status"
+              >
+                <p>Showing saved plugins. The latest request failed.</p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void searchQuery.refetch()}
+                >
+                  Retry
+                </Button>
+              </div>
             ) : null}
             {searchQuery.isPending ? (
               <ResourceListState state="loading" message="Loading plugins" />
