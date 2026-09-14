@@ -1,9 +1,19 @@
 import { execFile } from "node:child_process";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { delimiter, dirname, isAbsolute, join } from "node:path";
+import { delimiter, dirname, isAbsolute, join, relative } from "node:path";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { calculateExponentialBackoffDelay } from "@bb/domain";
 import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
+import {
+  packageManagerPreferenceSchema,
+  type PackageManagerPreference,
+} from "@bb/provider-bridge-protocol";
+import {
+  type MiseKitIo,
+  probeMisePackage,
+  resolveMiseBinary,
+} from "@bb/provider-bridge-protocol/bridge-kit";
 import type { HostDaemonLogger } from "./logger.js";
 import type { FetchFn } from "./server-client.js";
 import { usesSecureInternalFetchTransport } from "./server-client.js";
@@ -14,6 +24,8 @@ export const SELF_UPDATE_INITIAL_RETRY_DELAY_MS = 5_000;
 export const SELF_UPDATE_MAX_RETRY_DELAY_MS = 5 * 60 * 1000;
 const ATTEMPT_FILE_NAME = "host-daemon-update-attempt.json";
 const INSTALLED_ARTIFACT_DIGEST_FILE_NAME = "host-artifact.sha256";
+export const PACKAGE_MANAGER_FILE_NAME = "package-manager.json";
+const BB_APP_NPM_PACKAGE = "bb-app";
 const ARTIFACT_DIGEST_HEADER = "x-bb-artifact-sha256";
 const ARTIFACT_DIGEST_PATTERN = /^[a-f0-9]{64}$/u;
 
@@ -48,11 +60,19 @@ interface SelfUpdateProcessRunner {
   ): Promise<void>;
 }
 
+type SelfUpdateStrategy =
+  | { strategy: "tarball" }
+  | { strategy: "mise"; mise: string };
+
 interface CreateProtocolSelfUpdaterOptions {
   dataDir: string;
   enabled: boolean;
   logger: HostDaemonLogger;
   serverUrl: string;
+  packageManager?: PackageManagerPreference;
+  shellPath?: () => string | undefined;
+  bundlePath?: string;
+  miseIo?: MiseKitIo;
   fetchFn?: FetchFn;
   installTarball?: ProtocolSelfUpdateInstaller;
   runProcess?: SelfUpdateProcessRunner;
@@ -135,6 +155,79 @@ async function writeInstalledArtifactDigest(
   await rename(temporary, path);
 }
 
+export async function readPersistedPackageManager(
+  path: string,
+): Promise<PackageManagerPreference | null> {
+  try {
+    const parsed: unknown = JSON.parse(await readFile(path, "utf8"));
+    if (
+      parsed !== null &&
+      typeof parsed === "object" &&
+      "packageManager" in parsed
+    ) {
+      const result = packageManagerPreferenceSchema.safeParse(
+        parsed.packageManager,
+      );
+      if (result.success) return result.data;
+    }
+  } catch {}
+  return null;
+}
+
+export async function writePersistedPackageManager(
+  path: string,
+  packageManager: PackageManagerPreference,
+): Promise<void> {
+  const temporary = `${path}.${process.pid}.tmp`;
+  await writeFile(temporary, `${JSON.stringify({ packageManager })}\n`, {
+    mode: 0o600,
+  });
+  await rename(temporary, path);
+}
+
+function pathIsInside(child: string, parent: string): boolean {
+  const relativePath = relative(parent, child);
+  return (
+    relativePath === "" ||
+    (!relativePath.startsWith("..") && !isAbsolute(relativePath))
+  );
+}
+
+async function packageJsonName(directory: string): Promise<string | null> {
+  try {
+    const parsed: unknown = JSON.parse(
+      await readFile(join(directory, "package.json"), "utf8"),
+    );
+    return parsed !== null &&
+      typeof parsed === "object" &&
+      "name" in parsed &&
+      typeof parsed.name === "string"
+      ? parsed.name
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+async function findBbAppPackageRoot(
+  bundlePath: string,
+): Promise<string | null> {
+  let directory = dirname(bundlePath);
+  while (true) {
+    if ((await packageJsonName(directory)) === BB_APP_NPM_PACKAGE) {
+      return directory;
+    }
+    const parent = dirname(directory);
+    if (parent === directory) return null;
+    directory = parent;
+  }
+}
+
+function configuredNpmPrefix(): string | undefined {
+  const rawConfiguredPrefix = process.env.BB_APP_NPM_PREFIX?.trim();
+  return rawConfiguredPrefix === "" ? undefined : rawConfiguredPrefix;
+}
+
 function responseArtifactDigest(response: Response): string | null {
   const digest = response.headers.get(ARTIFACT_DIGEST_HEADER);
   return digest !== null && ARTIFACT_DIGEST_PATTERN.test(digest)
@@ -162,9 +255,7 @@ async function defaultInstallTarball(
   const path = inheritedPath
     ? `${executableDirectory}${delimiter}${inheritedPath}`
     : executableDirectory;
-  const rawConfiguredPrefix = process.env.BB_APP_NPM_PREFIX?.trim();
-  const configuredPrefix =
-    rawConfiguredPrefix === "" ? undefined : rawConfiguredPrefix;
+  const configuredPrefix = configuredNpmPrefix();
   if (configuredPrefix !== undefined && !isAbsolute(configuredPrefix)) {
     throw new Error("BB_APP_NPM_PREFIX must be an absolute path");
   }
@@ -183,19 +274,149 @@ export function createProtocolSelfUpdater(
   options: CreateProtocolSelfUpdaterOptions,
 ): ProtocolSelfUpdater {
   const fetchFn = options.fetchFn ?? fetch;
+  const runProcess = options.runProcess ?? defaultRunProcess;
   const installTarball =
     options.installTarball ??
-    ((tarballPath) =>
-      defaultInstallTarball(
-        tarballPath,
-        options.runProcess ?? defaultRunProcess,
-      ));
+    ((tarballPath) => defaultInstallTarball(tarballPath, runProcess));
   const now = options.now ?? Date.now;
+  const bundlePath = options.bundlePath ?? fileURLToPath(import.meta.url);
   const attemptPath = join(options.dataDir, ATTEMPT_FILE_NAME);
   const installedArtifactDigestPath = join(
     options.dataDir,
     INSTALLED_ARTIFACT_DIGEST_FILE_NAME,
   );
+  const packageManagerPath = join(options.dataDir, PACKAGE_MANAGER_FILE_NAME);
+
+  async function effectivePackageManager(): Promise<PackageManagerPreference> {
+    return (
+      options.packageManager ??
+      (await readPersistedPackageManager(packageManagerPath)) ??
+      "auto"
+    );
+  }
+
+  async function miseBbAppProbe(mise: string) {
+    return probeMisePackage(
+      {
+        mise,
+        npmPackage: BB_APP_NPM_PACKAGE,
+        executablePath: null,
+        npmBin: null,
+      },
+      options.miseIo,
+    );
+  }
+
+  async function chooseStrategy(): Promise<SelfUpdateStrategy> {
+    if (configuredNpmPrefix() !== undefined) return { strategy: "tarball" };
+    const packageManager = await effectivePackageManager();
+    if (packageManager === "npm") return { strategy: "tarball" };
+    const mise = await resolveMiseBinary(
+      options.shellPath?.() ?? process.env.PATH,
+      options.miseIo,
+    );
+    if (packageManager === "mise") {
+      if (mise === null) {
+        throw new Error(
+          "The package manager preference is mise but no mise binary was found on the shell PATH, ~/.local/bin, /opt/homebrew/bin, or /usr/local/bin. Install mise or set the preference to npm.",
+        );
+      }
+      return { strategy: "mise", mise };
+    }
+    if (mise === null) return { strategy: "tarball" };
+    const [installDir, packageRoot] = await Promise.all([
+      miseBbAppProbe(mise).then((probe) => probe.installDir),
+      findBbAppPackageRoot(bundlePath),
+    ]);
+    return installDir !== null &&
+      packageRoot !== null &&
+      pathIsInside(packageRoot, installDir)
+      ? { strategy: "mise", mise }
+      : { strategy: "tarball" };
+  }
+
+  async function installWithMise(mise: string, version: string): Promise<void> {
+    const spec = `npm:${BB_APP_NPM_PACKAGE}@${version}`;
+    const inheritedPath = options.shellPath?.() ?? process.env.PATH;
+    const path = inheritedPath
+      ? `${dirname(mise)}${delimiter}${inheritedPath}`
+      : dirname(mise);
+    try {
+      await runProcess(mise, ["use", "-g", "-y", spec], {
+        env: { ...process.env, MISE_YES: "1", PATH: path },
+      });
+    } catch (error) {
+      throw new Error(
+        `mise could not install ${spec}. Run \`mise use -g ${spec}\` manually and check that bb-app ${version} is published to npm.`,
+        { cause: error },
+      );
+    }
+    const installed = (await miseBbAppProbe(mise)).installedVersion;
+    if (installed !== version) {
+      throw new Error(
+        `mise reports bb-app ${installed ?? "missing"} after installing ${spec}. Run \`mise use -g ${spec}\` manually and check that bb-app ${version} is published to npm.`,
+      );
+    }
+    await rm(installedArtifactDigestPath, { force: true });
+  }
+
+  async function installFromTarball(): Promise<"installed" | "unchanged"> {
+    const tarballPath = join(
+      options.dataDir,
+      `bb-app-update-${process.pid}.tgz`,
+    );
+    try {
+      const tarballUrl = new URL("/install/bb-app.tgz", options.serverUrl);
+      const installedDigest = await readInstalledArtifactDigest(
+        installedArtifactDigestPath,
+      );
+      const response = await fetchFn(tarballUrl, {
+        method: "GET",
+        ...(installedDigest === null
+          ? {}
+          : {
+              headers: {
+                "if-none-match": `"sha256-${installedDigest}"`,
+              },
+            }),
+      });
+      if (response.status === 304 && installedDigest !== null) {
+        options.logger.info(
+          { artifactDigest: installedDigest },
+          "The server-matched bb host artifact is already installed; restarting the daemon.",
+        );
+        return "unchanged";
+      }
+      if (!response.ok) {
+        throw new Error(
+          `Package download failed: ${response.status} ${response.statusText}`,
+        );
+      }
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      const expectedDigest = responseArtifactDigest(response);
+      if (expectedDigest !== null) {
+        const actualDigest = sha256Hex(bytes);
+        if (actualDigest !== expectedDigest) {
+          throw new Error(
+            `Package digest mismatch: expected ${expectedDigest}, received ${actualDigest}`,
+          );
+        }
+      }
+      await writeFile(tarballPath, bytes, { mode: 0o600 });
+      await installTarball(tarballPath);
+      if (expectedDigest === null) {
+        await rm(installedArtifactDigestPath, { force: true });
+      } else {
+        await writeInstalledArtifactDigest(
+          installedArtifactDigestPath,
+          expectedDigest,
+        );
+      }
+      return "installed";
+    } finally {
+      await rm(tarballPath, { force: true });
+    }
+  }
 
   return {
     async handleProtocolMismatch(
@@ -279,59 +500,11 @@ export function createProtocolSelfUpdater(
           protocolVersion: server.protocolVersion,
         });
 
-        const tarballPath = join(
-          options.dataDir,
-          `bb-app-update-${process.pid}.tgz`,
-        );
-        try {
-          const tarballUrl = new URL("/install/bb-app.tgz", options.serverUrl);
-          const installedDigest = await readInstalledArtifactDigest(
-            installedArtifactDigestPath,
-          );
-          const response = await fetchFn(tarballUrl, {
-            method: "GET",
-            ...(installedDigest === null
-              ? {}
-              : {
-                  headers: {
-                    "if-none-match": `"sha256-${installedDigest}"`,
-                  },
-                }),
-          });
-          if (response.status === 304 && installedDigest !== null) {
-            options.logger.info(
-              { artifactDigest: installedDigest },
-              "The server-matched bb host artifact is already installed; restarting the daemon.",
-            );
-            return "updated";
-          }
-          if (!response.ok) {
-            throw new Error(
-              `Package download failed: ${response.status} ${response.statusText}`,
-            );
-          }
-          const bytes = new Uint8Array(await response.arrayBuffer());
-          const expectedDigest = responseArtifactDigest(response);
-          if (expectedDigest !== null) {
-            const actualDigest = sha256Hex(bytes);
-            if (actualDigest !== expectedDigest) {
-              throw new Error(
-                `Package digest mismatch: expected ${expectedDigest}, received ${actualDigest}`,
-              );
-            }
-          }
-          await writeFile(tarballPath, bytes, { mode: 0o600 });
-          await installTarball(tarballPath);
-          if (expectedDigest === null) {
-            await rm(installedArtifactDigestPath, { force: true });
-          } else {
-            await writeInstalledArtifactDigest(
-              installedArtifactDigestPath,
-              expectedDigest,
-            );
-          }
-        } finally {
-          await rm(tarballPath, { force: true });
+        const chosen = await chooseStrategy();
+        if (chosen.strategy === "mise") {
+          await installWithMise(chosen.mise, server.version);
+        } else if ((await installFromTarball()) === "unchanged") {
+          return "updated";
         }
 
         options.logger.info(
@@ -340,7 +513,9 @@ export function createProtocolSelfUpdater(
             serverProtocolVersion: server.protocolVersion,
             serverVersion: server.version,
           },
-          "Installed the server-matched bb host package; restarting the daemon.",
+          chosen.strategy === "mise"
+            ? "Installed the server-matched bb-app through mise; restarting the daemon."
+            : "Installed the server-matched bb host package; restarting the daemon.",
         );
         return "updated";
       } catch (error) {

@@ -45,6 +45,7 @@ import { runtimeErrorLogFields, summarizeError } from "./error-utils.js";
 import { ensureThreadStorageRoot } from "./thread-storage-root.js";
 import type { AgentRuntime, AgentRuntimeOptions } from "@bb/agent-runtime";
 import { createProtocolSelfUpdater } from "./protocol-self-update.js";
+import type { PackageManagerPreference } from "@bb/provider-bridge-protocol";
 import {
   disposeParcelWatcherBackend,
   type HostWatcher,
@@ -108,6 +109,7 @@ interface CreateHostDaemonAppOptions {
   logger: HostDaemonLogger;
   serverHeaders?: Record<string, string>;
   autoUpdate?: boolean;
+  packageManager?: PackageManagerPreference;
   releaseLock: () => Promise<void>;
   localApiConfig: HostDaemonLocalApiConfig | null;
   createRuntime?: RuntimeManagerOptions["createRuntime"];
@@ -784,7 +786,9 @@ export async function createHostDaemonApp(
       enabled: options.autoUpdate ?? false,
       fetchFn: options.fetchFn,
       logger: options.logger,
+      packageManager: options.packageManager,
       serverUrl: options.serverUrl,
+      shellPath: () => runtimeManager.getShellEnv().PATH,
     }),
     onSelfUpdateInstalled: () => requestDaemonRestart(),
     onMachineShutdown: () => requestMachineShutdown(),

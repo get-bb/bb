@@ -753,6 +753,7 @@ describe("consumer-specific config", () => {
         BB_HOST_DAEMON_AUTO_UPDATE: "true",
         BB_HOST_ID: " host-123 ",
         BB_HOST_NAME: " host-123 ",
+        BB_PACKAGE_MANAGER: " Mise ",
       },
     });
 
@@ -763,7 +764,16 @@ describe("consumer-specific config", () => {
       BB_HOST_DAEMON_AUTO_UPDATE: true,
       BB_HOST_ID: "host-123",
       BB_HOST_NAME: "host-123",
+      BB_PACKAGE_MANAGER: "mise",
     });
+  });
+
+  it("rejects an unknown host package manager override", () => {
+    expect(() =>
+      loadHostDaemonEntrypointConfig({
+        env: { BB_PACKAGE_MANAGER: "bun" },
+      }),
+    ).toThrow("BB_PACKAGE_MANAGER must be one of auto, mise, npm");
   });
 
   it("drops empty optional host-daemon entrypoint env vars", () => {
@@ -773,6 +783,7 @@ describe("consumer-specific config", () => {
         BB_CLI_DIR: "   ",
         BB_HOST_ENROLL_KEY: " ",
         BB_HOST_NAME: "",
+        BB_PACKAGE_MANAGER: " ",
       },
     });
 

@@ -12,6 +12,8 @@ import {
   BB_HOST_DAEMON_AUTO_UPDATE_ENV,
   BB_HOST_ID_ENV,
   BB_HOST_NAME_ENV,
+  BB_PACKAGE_MANAGER_ENV,
+  type HostPackageManagerPreference,
 } from "./env-vars.js";
 import { assignIfDefined } from "./objects.js";
 
@@ -23,6 +25,7 @@ export interface HostDaemonEntrypointConfig {
   BB_HOST_DAEMON_AUTO_UPDATE?: boolean;
   BB_HOST_ID?: string;
   BB_HOST_NAME?: string;
+  BB_PACKAGE_MANAGER?: HostPackageManagerPreference;
 }
 
 type LoadHostDaemonEntrypointConfigArgs = EnvLoaderArgs;
@@ -76,6 +79,11 @@ export function loadHostDaemonEntrypointConfig(
     definition: BB_HOST_NAME_ENV,
     env: loader.env,
   });
+  const packageManager = readOptionalEnvVar({
+    context: loader.context,
+    definition: BB_PACKAGE_MANAGER_ENV,
+    env: loader.env,
+  });
 
   assignIfDefined({
     key: "BB_BRIDGE_DIR",
@@ -111,6 +119,11 @@ export function loadHostDaemonEntrypointConfig(
     key: "BB_HOST_NAME",
     target: config,
     value: hostName,
+  });
+  assignIfDefined({
+    key: "BB_PACKAGE_MANAGER",
+    target: config,
+    value: packageManager,
   });
   return config;
 }

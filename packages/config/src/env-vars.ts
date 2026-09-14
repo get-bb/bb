@@ -337,6 +337,41 @@ export const BB_HOST_DAEMON_AUTO_UPDATE_ENV = defineEnvVar<boolean>({
   parse: parseBooleanEnvValue,
 });
 
+export const HOST_PACKAGE_MANAGER_PREFERENCES = [
+  "auto",
+  "mise",
+  "npm",
+] as const;
+export type HostPackageManagerPreference =
+  (typeof HOST_PACKAGE_MANAGER_PREFERENCES)[number];
+
+function parseHostPackageManagerEnvValue(
+  args: EnvVarParseArgs,
+): HostPackageManagerPreference | undefined {
+  const normalizedValue = args.value.trim().toLowerCase();
+  if (normalizedValue.length === 0) {
+    return undefined;
+  }
+  const match = HOST_PACKAGE_MANAGER_PREFERENCES.find(
+    (preference) => preference === normalizedValue,
+  );
+  if (match !== undefined) {
+    return match;
+  }
+  throw new Error(
+    `${args.name} must be one of ${HOST_PACKAGE_MANAGER_PREFERENCES.join(", ")}`,
+  );
+}
+
+export const BB_PACKAGE_MANAGER_ENV = defineEnvVar<
+  HostPackageManagerPreference | undefined
+>({
+  description:
+    "Host override for the package manager bb uses to install and update bb-app and provider CLIs on this machine: auto, mise, or npm. Wins over the server-side machine setting.",
+  name: "BB_PACKAGE_MANAGER",
+  parse: parseHostPackageManagerEnvValue,
+});
+
 export const BB_HOST_ID_ENV = defineEnvVar<string | undefined>({
   description:
     "Preferred host ID to persist for the daemon instead of generating one locally",

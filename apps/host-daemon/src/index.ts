@@ -61,6 +61,7 @@ async function runHostDaemonEntrypoint(): Promise<void> {
       resolveEntrypointBridgeBundleDir(),
     serverHeaders: hostDaemonEntrypointConfig.BB_SERVER_HEADERS,
     autoUpdate: hostDaemonEntrypointConfig.BB_HOST_DAEMON_AUTO_UPDATE,
+    packageManager: hostDaemonEntrypointConfig.BB_PACKAGE_MANAGER,
     enrollKey: hostDaemonEntrypointConfig.BB_HOST_ENROLL_KEY,
     hostId: hostDaemonEntrypointConfig.BB_HOST_ID,
     hostName: hostDaemonEntrypointConfig.BB_HOST_NAME,

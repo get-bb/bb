@@ -7,6 +7,7 @@ import {
   setParcelWatcherBackend,
 } from "@bb/host-watcher";
 import { createLogger } from "@bb/logger";
+import type { PackageManagerPreference } from "@bb/provider-bridge-protocol";
 import { createHostDaemonApp } from "./app.js";
 import {
   readHostAuthState,
@@ -38,6 +39,7 @@ interface StartHostDaemonOptions {
   bridgeBundleDir?: string;
   serverHeaders?: Record<string, string>;
   autoUpdate?: boolean;
+  packageManager?: PackageManagerPreference;
 }
 
 export async function startHostDaemon(
@@ -168,6 +170,7 @@ export async function startHostDaemon(
       hostKey,
       serverHeaders: options.serverHeaders,
       autoUpdate: options.autoUpdate,
+      packageManager: options.packageManager,
       bridgeBundleDir: options.bridgeBundleDir,
       hostId: identity.hostId,
       hostName: identity.hostName,
