@@ -292,3 +292,9 @@ and open state stay local because they depend on the window size. The Voice Inpu
 microphone picker stores the selected browser MediaDevices device id in
 localStorage as `bb.voiceInput.audioInputDeviceId`; it does not have a `bb`
 command and does not change the server-side transcription model.
+
+Anonymous usage telemetry can be disabled in Settings → General → Share anonymous usage data,
+or with `bb settings general telemetryEnabled false`. The saved server-wide preference
+takes effect immediately and persists across restarts. SDK callers can use
+`system.updateGeneralSettings` with `telemetryEnabled`. `BB_TELEMETRY=false`
+always disables telemetry, even when the saved preference is enabled.

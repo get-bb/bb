@@ -269,6 +269,7 @@ export function registerSystemRoutes(
       deps.db,
       appSettingsSchema.parse({
         ...settings,
+        telemetryEnabled: settings.telemetryEnabled ?? current.telemetryEnabled,
         showDiagnosticEvents:
           diagnosticValue === undefined ||
           (showUnhandledProviderEvents !== undefined &&

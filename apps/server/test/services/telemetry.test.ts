@@ -1,6 +1,12 @@
 import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import {
+  createConnection,
+  migrate,
+  getAppSettings,
+  setAppSettings,
+} from "@bb/db";
 import { DEFAULTS } from "@bb/config/defaults";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -38,6 +44,7 @@ describe("telemetry service", () => {
       appSurface: "web",
       appVersion: "1.2.3",
       dataDir,
+      isEnabled: () => true,
       enabled: true,
       logger: createTestLogger(),
     });
@@ -114,6 +121,7 @@ describe("telemetry service", () => {
       appSurface: "web" as const,
       appVersion: "1.2.3",
       dataDir,
+      isEnabled: () => true,
       enabled: true,
       logger: createTestLogger(),
     };
@@ -154,6 +162,7 @@ describe("telemetry service", () => {
       appSurface: "web",
       appVersion,
       dataDir,
+      isEnabled: () => true,
       enabled,
       logger: createTestLogger(),
     });
@@ -161,6 +170,36 @@ describe("telemetry service", () => {
 
     expect(fetchMock).not.toHaveBeenCalled();
     await expect(readdir(dataDir)).resolves.toEqual([]);
+  });
+
+  it("honors persisted opt-out at startup and changes without restarting", async () => {
+    const db = createConnection(":memory:");
+    migrate(db);
+    try {
+      setAppSettings(db, { ...getAppSettings(db), telemetryEnabled: false });
+      const args = {
+        apiKey: "phc_test",
+        appSurface: "web" as const,
+        appVersion: "1.2.3",
+        dataDir,
+        enabled: true,
+        isEnabled: () => getAppSettings(db).telemetryEnabled,
+        logger: createTestLogger(),
+      };
+      const telemetry = await createTelemetryService(args);
+      telemetry.capture({ name: "app_started" });
+      expect(fetchMock).not.toHaveBeenCalled();
+      setAppSettings(db, { ...getAppSettings(db), telemetryEnabled: true });
+      telemetry.capture({ name: "app_started" });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      setAppSettings(db, { ...getAppSettings(db), telemetryEnabled: false });
+      telemetry.capture({ name: "app_started" });
+      const restarted = await createTelemetryService(args);
+      restarted.capture({ name: "app_started" });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      db.$client.close();
+    }
   });
 
   it("logs and swallows send failures", async () => {
@@ -171,6 +210,7 @@ describe("telemetry service", () => {
       appSurface: "desktop",
       appVersion: "1.2.3",
       dataDir,
+      isEnabled: () => true,
       enabled: true,
       logger,
     });

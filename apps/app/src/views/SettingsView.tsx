@@ -180,6 +180,8 @@ interface GeneralSettingsSectionProps {
   richTextEditing: boolean;
   steerActiveThreadOnEnter: boolean;
   streamerMode: boolean;
+  telemetryEnabled: boolean;
+  onTelemetryEnabledChange: (enabled: boolean) => void;
 }
 
 interface DebugSettingsSectionProps {
@@ -849,6 +851,8 @@ export function GeneralSettingsSection({
   richTextEditing,
   steerActiveThreadOnEnter,
   streamerMode,
+  telemetryEnabled,
+  onTelemetryEnabledChange,
 }: GeneralSettingsSectionProps) {
   return (
     <SettingsSection title="General">
@@ -953,6 +957,18 @@ export function GeneralSettingsSection({
           disabled={generalSettingsDisabled}
           onChange={onManagedBranchPrefixChange}
         />
+
+        <SettingsWithControl
+          label="Share anonymous usage data"
+          description="Send anonymous app starts, thread and message counts, and plugin installs to help improve BB. Turning this off takes effect immediately for this server."
+        >
+          <Switch
+            checked={telemetryEnabled}
+            disabled={generalSettingsDisabled}
+            onCheckedChange={onTelemetryEnabledChange}
+            aria-label="Share anonymous usage data"
+          />
+        </SettingsWithControl>
 
         <SettingsWithControl
           label={STREAMER_MODE_SETTING_LABEL}
@@ -1262,6 +1278,13 @@ export function SettingsView() {
             updateGeneralSettingsMutation.mutate({
               ...generalSettings,
               steerActiveThreadOnEnter: enabled,
+            })
+          }
+          telemetryEnabled={generalSettings.telemetryEnabled}
+          onTelemetryEnabledChange={(enabled) =>
+            updateGeneralSettingsMutation.mutate({
+              ...generalSettings,
+              telemetryEnabled: enabled,
             })
           }
           streamerMode={generalSettings.streamerMode}

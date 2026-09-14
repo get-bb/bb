@@ -120,6 +120,7 @@ function useSettingsStoryState() {
   const [steerActiveThreadOnEnter, setSteerActiveThreadOnEnter] =
     useState(false);
   const [streamerMode, setStreamerMode] = useState(false);
+  const [telemetryEnabled, setTelemetryEnabled] = useState(true);
   const [managedBranchPrefix, setManagedBranchPrefix] = useState(
     defaultAppSettings.managedBranchPrefix,
   );
@@ -146,6 +147,8 @@ function useSettingsStoryState() {
     richTextEditing,
     steerActiveThreadOnEnter,
     streamerMode,
+    telemetryEnabled,
+    setTelemetryEnabled,
     showDiagnosticEvents,
     setAppearance,
     setDirectoryTargetId,
@@ -208,6 +211,8 @@ function GeneralSettingsStory({
         rewriteLocalhostLinks={state.rewriteLocalhostLinks}
         richTextEditing={state.richTextEditing}
         steerActiveThreadOnEnter={state.steerActiveThreadOnEnter}
+        telemetryEnabled={state.telemetryEnabled}
+        onTelemetryEnabledChange={state.setTelemetryEnabled}
         streamerMode={state.streamerMode}
       />
       <DebugSettingsSection

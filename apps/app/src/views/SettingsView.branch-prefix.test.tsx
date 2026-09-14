@@ -12,6 +12,8 @@ import { GeneralSettingsSection } from "./SettingsView";
 afterEach(cleanup);
 
 function renderSection(overrides?: {
+  telemetryEnabled?: boolean;
+  onTelemetryEnabledChange?: (enabled: boolean) => void;
   managedBranchPrefix?: string;
   onManagedBranchPrefixChange?: (prefix: string) => void;
 }) {
@@ -34,6 +36,8 @@ function renderSection(overrides?: {
       rewriteLocalhostLinks={false}
       richTextEditing={false}
       steerActiveThreadOnEnter={false}
+      telemetryEnabled={overrides?.telemetryEnabled ?? true}
+      onTelemetryEnabledChange={overrides?.onTelemetryEnabledChange ?? vi.fn()}
       streamerMode={false}
     />,
   );
@@ -97,4 +101,22 @@ describe("new branch prefix setting", () => {
     expect(input.value).toBe("bb/");
     expect(onChange).not.toHaveBeenCalled();
   });
+});
+
+it("shows the saved telemetry preference and allows opting out", () => {
+  const onChange = vi.fn();
+  renderSection({ onTelemetryEnabledChange: onChange });
+  const toggle = screen.getByRole("switch", {
+    name: "Share anonymous usage data",
+  });
+  expect(toggle.getAttribute("aria-checked")).toBe("true");
+  fireEvent.click(toggle);
+  expect(onChange).toHaveBeenCalledWith(false);
+  cleanup();
+  renderSection({ telemetryEnabled: false });
+  expect(
+    screen
+      .getByRole("switch", { name: "Share anonymous usage data" })
+      .getAttribute("aria-checked"),
+  ).toBe("false");
 });

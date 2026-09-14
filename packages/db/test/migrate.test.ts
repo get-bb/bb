@@ -1943,6 +1943,7 @@ describe("migrate", () => {
         defaultMachineAccess: null,
         machineGitCredentialsEnabled: true,
         streamerMode: false,
+        telemetryEnabled: true,
         managedBranchPrefix: "bb/",
       });
       expect(

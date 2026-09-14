@@ -46,6 +46,7 @@ interface CreateTelemetryServiceArgs {
   appVersion: string;
   dataDir: string;
   enabled: boolean;
+  isEnabled: () => boolean;
   logger: ServerLogger;
 }
 
@@ -87,6 +88,7 @@ export async function createTelemetryService(
   };
   return {
     capture(event: TelemetryEvent): void {
+      if (!args.isEnabled()) return;
       const appSurface =
         telemetryAppSurfaceStorage.getStore() ?? args.appSurface;
       const eventProperties = "properties" in event ? event.properties : {};

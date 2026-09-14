@@ -1464,3 +1464,9 @@ invalid, or corrupt entries are rebuilt; development and compiler diagnostic
 modes bypass the cache. The cache has no user configuration and can be removed
 while no builds are running. See [build performance](build-performance.md) for
 its identity, portability, and verification contract.
+
+Anonymous usage telemetry can be disabled in Settings → General → Share anonymous usage data,
+or with `bb settings general telemetryEnabled false`. The saved server-wide preference
+takes effect immediately and persists across restarts. SDK callers can use
+`system.updateGeneralSettings` with `telemetryEnabled`. `BB_TELEMETRY=false`
+always disables telemetry, even when the saved preference is enabled.
