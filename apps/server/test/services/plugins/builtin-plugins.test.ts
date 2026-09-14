@@ -268,6 +268,7 @@ describe("builtin plugin reconciliation", () => {
       ["secrets", "Lock"],
       ["side-chat", "SideChat"],
       ["workflows", "Workflow"],
+      // bb-fork: icons for fork-bundled plugins.
       ["git-graph", "GitBranch"],
       ["pc-control", "Laptop"],
       ["workspace-explorer", "FolderOpen"],

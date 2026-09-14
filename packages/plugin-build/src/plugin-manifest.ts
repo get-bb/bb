@@ -15,6 +15,8 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+// bb-fork(windows): relative()/sep-based check works with backslash paths;
+// the upstream startsWith(root + "/") test fails on win32.
 function isPathWithinDirectory(
   candidatePath: string,
   directory: string,
@@ -55,6 +57,7 @@ export function resolveManifestPath(
     throw new Error(`manifest ${label} must be relative, got "${entry}"`);
   }
   const resolved = resolve(rootDir, entry);
+  // bb-fork(windows): separator-agnostic containment check.
   if (!isPathWithinDirectory(resolved, rootDir)) {
     throw new Error(
       `manifest ${label} escapes the plugin directory: "${entry}"`,
@@ -95,6 +98,7 @@ export async function resolveManifestAssetFile(
     realpath(rootDir),
     realpath(assetPath),
   ]);
+  // bb-fork(windows): separator-agnostic containment check.
   if (!isPathWithinDirectory(realAsset, realRoot)) {
     throw new Error(
       `manifest ${label} escapes the plugin directory through a symlink`,

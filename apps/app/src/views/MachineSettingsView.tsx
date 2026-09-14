@@ -74,6 +74,7 @@ const PLATFORM_LABELS: Record<HostPlatform, string | null> = {
   darwin: "macOS",
   linux: "Linux",
   wsl: "WSL",
+  // bb-fork(windows): native Windows hosts.
   windows: "Windows",
   unknown: null,
 };

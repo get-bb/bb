@@ -132,6 +132,7 @@ interface SettleJsonRpcResponseArgs {
   response: JsonRpcObject;
 }
 
+// bb-fork(windows): Windows pipe teardown surfaces EOF alongside EPIPE.
 const closedJsonRpcStdinErrorCodes = new Set([
   "EPIPE",
   "ERR_STREAM_DESTROYED",

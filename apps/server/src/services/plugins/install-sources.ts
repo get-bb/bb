@@ -14,6 +14,8 @@ import {
   stat,
 } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+// bb-fork(windows): drive-letter local paths hash into a portable repoPath.
+import { localGitSourceRepoPath } from "./install-sources-windows.js";
 import semver from "semver";
 import { resolvePluginNpmCli } from "@bb/plugin-build";
 import {
@@ -181,16 +183,8 @@ function parseGitSource(spec: string): ParsedPluginSource {
   } else if (isAbsolute(urlish)) {
     url = urlish;
     host = "local";
-    const normalizedLocalPath = urlish
-      .replaceAll("\\", "/")
-      .replace(/^\/+/, "")
-      .replace(/\.git$/, "");
-    repoPath =
-      process.platform === "win32"
-        ? createHash("sha256")
-            .update(normalizedLocalPath.toLowerCase())
-            .digest("hex")
-        : normalizedLocalPath;
+    // bb-fork(windows): isAbsolute also matches drive-letter and UNC paths.
+    repoPath = localGitSourceRepoPath(urlish);
   } else if (/^[a-z0-9]/i.test(urlish)) {
     url = `https://${urlish}`;
     const parsed = new URL(url);

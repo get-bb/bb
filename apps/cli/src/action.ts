@@ -26,6 +26,8 @@ export function action<TArgs extends CommandActionArgs>(
       }
       if (err instanceof CliExitError) {
         console.error(`Error: ${err.message}`);
+        // bb-fork(windows): process.exit truncates pending stdout on Windows;
+        // rethrow and set exitCode in main() instead.
         throw err;
       }
       console.error(`Error: ${getErrorMessage(err)}`);

@@ -7,6 +7,7 @@ import { Type } from "typebox";
 
 const CHILD_TO_BRIDGE_FD = 3;
 const BRIDGE_TO_CHILD_FD = 4;
+// bb-fork(windows): named-pipe channel for children spawned through cmd.exe.
 const CHANNEL_PIPE_PATH = process.env.BB_PI_BRIDGE_CHANNEL_PIPE || null;
 
 let channelSocket = null;
@@ -15,6 +16,7 @@ const channelWriteQueue = [];
 function writeLine(fd, message) {
   const line = JSON.stringify(message) + "\n";
   try {
+    // bb-fork(windows): write to the named pipe when the bridge exposes one.
     if (CHANNEL_PIPE_PATH !== null) {
       if (channelSocket === null) {
         channelWriteQueue.push(line);
@@ -59,8 +61,9 @@ function readLines(input, onLine) {
   });
 }
 
-// Windows cannot pass the fd 3/4 pipes into a child spawned through cmd.exe,
-// so the bridge exposes a named pipe instead and points us at it via the env.
+// bb-fork(windows): Windows cannot pass the fd 3/4 pipes into a child
+// spawned through cmd.exe, so the bridge exposes a named pipe instead and
+// points us at it via the env.
 function connectChannelPipe(pipePath, onLine, attemptsLeft) {
   const socket = new Socket();
   socket.on("error", () => undefined);
@@ -236,6 +239,7 @@ export default function bbExtension(pi) {
   }
 
   if (CHANNEL_PIPE_PATH !== null) {
+    // bb-fork(windows): prefer the named pipe over fd/Bun channels.
     connectChannelPipe(CHANNEL_PIPE_PATH, handleBridgeLine, 100);
   } else if (typeof Bun !== "undefined") {
     // pi ships as a Bun-compiled binary, and Bun's net.Socket cannot attach

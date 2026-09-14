@@ -215,6 +215,7 @@ function isAbsoluteLocalFilePathCandidate(value: string): boolean {
   );
 }
 
+// bb-fork(windows): accepts drive-letter and UNC paths alongside POSIX ones.
 function isValidAbsoluteLocalFilePath({
   path,
   requireLikelyFileBasename,

@@ -1,4 +1,4 @@
-const WINDOWS_DRIVE_ABSOLUTE_PATH_PATTERN = /^[A-Za-z]:[\\/]/u;
+const WINDOWS_DRIVE_ABSOLUTE_PATH_PATTERN = /^[A-Za-z]:[\\/]/u; // bb-fork(windows)
 
 interface ResolveAbsoluteFilePathArgs {
   path: string;

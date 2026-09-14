@@ -1,10 +1,12 @@
 import { StringDecoder } from "node:string_decoder";
+import { DEFAULT_ENV_TEARDOWN_SCRIPT_NAME } from "@bb/domain";
+// bb-fork(windows): PowerShell hooks and script-name selection live in a
+// fork module.
 import {
-  DEFAULT_ENV_SETUP_SCRIPT_NAME,
-  DEFAULT_ENV_TEARDOWN_SCRIPT_NAME,
-  WINDOWS_ENV_SETUP_SCRIPT_NAME,
-  WINDOWS_ENV_TEARDOWN_SCRIPT_NAME,
-} from "@bb/domain";
+  buildWindowsLifecycleScriptCommand,
+  emitIgnoredAlternateLifecycleScript,
+  resolveLifecycleScriptNames,
+} from "./windows-lifecycle-script.js";
 import { operationEnvironment } from "./operation-environment.js";
 import type { HostDaemonContributedEnvEntry } from "@bb/host-daemon-contract";
 import {
@@ -33,6 +35,7 @@ export interface RunSetupScriptArgs {
   env?: NodeJS.ProcessEnv;
   contributedEnv?: readonly HostDaemonContributedEnvEntry[];
   onProgress?: ProgressCallback;
+  // bb-fork(windows): inject the platform so Windows hook selection is testable.
   platform?: NodeJS.Platform;
   signal?: AbortSignal;
 }
@@ -55,6 +58,7 @@ interface BuildLifecycleScriptCommandArgs {
 interface RunLifecycleScriptArgs extends RunSetupScriptArgs {
   kind: "setup" | "teardown";
   scriptName: string;
+  // bb-fork(windows): POSIX hook name to warn about on Windows hosts.
   alternateScriptName?: string;
 }
 
@@ -62,18 +66,8 @@ export function buildLifecycleScriptCommand(
   args: BuildLifecycleScriptCommandArgs,
 ): LifecycleScriptCommand {
   if (args.platform === "win32") {
-    return {
-      command: "powershell.exe",
-      args: [
-        "-NoLogo",
-        "-NoProfile",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-File",
-        args.scriptPath,
-      ],
-      text: `powershell.exe -NoProfile -ExecutionPolicy Bypass -File ${args.scriptName}`,
-    };
+    // bb-fork(windows): run hooks through PowerShell instead of failing.
+    return buildWindowsLifecycleScriptCommand(args);
   }
 
   return {
@@ -105,19 +99,8 @@ async function runLifecycleScript(
     args.scriptName,
   );
   if (!scriptPath) {
-    if (args.alternateScriptName !== undefined) {
-      const alternatePath = await resolveLifecycleScriptPath(
-        args.workspacePath,
-        args.alternateScriptName,
-      );
-      if (alternatePath) {
-        emitOutput(
-          args.onProgress,
-          `${args.kind}-script-ignored`,
-          `${args.alternateScriptName} is ignored on Windows; use ${args.scriptName} instead`,
-        );
-      }
-    }
+    // bb-fork(windows): warn when only the POSIX hook exists on Windows.
+    await emitIgnoredAlternateLifecycleScript(args);
     return { ran: false };
   }
 
@@ -270,13 +253,8 @@ export function runSetupScript(
   return runLifecycleScript({
     ...args,
     kind: "setup",
-    scriptName:
-      platform === "win32"
-        ? WINDOWS_ENV_SETUP_SCRIPT_NAME
-        : DEFAULT_ENV_SETUP_SCRIPT_NAME,
-    ...(platform === "win32"
-      ? { alternateScriptName: DEFAULT_ENV_SETUP_SCRIPT_NAME }
-      : {}),
+    // bb-fork(windows): .ps1 hooks on Windows, .sh elsewhere.
+    ...resolveLifecycleScriptNames("setup", platform),
   });
 }
 
@@ -297,13 +275,8 @@ export async function runTeardownScript(
       ...args,
       onProgress,
       kind: "teardown",
-      scriptName:
-        platform === "win32"
-          ? WINDOWS_ENV_TEARDOWN_SCRIPT_NAME
-          : DEFAULT_ENV_TEARDOWN_SCRIPT_NAME,
-      ...(platform === "win32"
-        ? { alternateScriptName: DEFAULT_ENV_TEARDOWN_SCRIPT_NAME }
-        : {}),
+      // bb-fork(windows): .ps1 hooks on Windows, .sh elsewhere.
+      ...resolveLifecycleScriptNames("teardown", platform),
     });
   } catch (error) {
     if (args.signal?.aborted) throw error;

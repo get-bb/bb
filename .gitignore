@@ -91,7 +91,8 @@ provider-recordings/raw/
 **/provider-corpus/**
 !apps/server/test/provider-corpus/**
 !scripts/provider-corpus/**
-.kilo/start-bb.out.log
+# bb-fork(windows): local supervisor runtime state and logs.
+/.kilo/
 /.runtime/
 /windows-*.log
 .builtin-server-test-*/

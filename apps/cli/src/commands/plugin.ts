@@ -36,9 +36,10 @@ import {
   createPluginDevLoop,
   PLUGIN_TOOLCHAIN_PINS,
   resolvePluginBuildToolchain,
-  resolvePluginNpmCli,
   type PluginBuildToolchain,
 } from "@bb/plugin-build";
+// bb-fork(windows): npm is npm.cmd; execFile spawns node + npm-cli.js instead.
+import { npmExecInvocation } from "../npm-exec.js";
 import { runPluginCliCommand } from "../plugin-cli-proxy.js";
 import { resolveBbCliVersion } from "../version.js";
 
@@ -341,10 +342,11 @@ async function probeSdkVersionPublished(): Promise<
   const { execFile } = await import("node:child_process");
   const { promisify } = await import("node:util");
   try {
+    const npm = npmExecInvocation();
     const { stdout } = await promisify(execFile)(
-      process.platform === "win32" ? process.execPath : "npm",
+      npm.command,
       [
-        ...(process.platform === "win32" ? [resolvePluginNpmCli()] : []),
+        ...npm.prefixArgs,
         "view",
         `@get-bb/plugin-sdk@${PLUGIN_SDK_VERSION}`,
         "version",
@@ -392,10 +394,11 @@ async function installScaffoldDependencies(
   const { execFile } = await import("node:child_process");
   const { promisify } = await import("node:util");
   try {
+    const npm = npmExecInvocation();
     await promisify(execFile)(
-      process.platform === "win32" ? process.execPath : "npm",
+      npm.command,
       [
-        ...(process.platform === "win32" ? [resolvePluginNpmCli()] : []),
+        ...npm.prefixArgs,
         "install",
         "--include=dev",
         "--no-fund",

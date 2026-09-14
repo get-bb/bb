@@ -433,14 +433,17 @@
       "dependsOn": [],
       "inputs": [
         "scripts/generate-bb-official-marketplace.ts",
+        "scripts/fork-catalog-fields.ts",
         "src/services/plugin-catalog/bundled-marketplace-paths.ts",
         "src/services/plugins/builtin-registry.ts",
+        "src/services/plugins/builtin-registry.fork.ts",
         "$TURBO_ROOT$/packages/domain/src/plugin-catalog-category.ts",
         "$TURBO_ROOT$/packages/domain/src/plugin-id.ts",
         "$TURBO_ROOT$/packages/domain/src/plugin-manifest.ts",
         "$TURBO_ROOT$/plugins/*/package.json",
         "$TURBO_ROOT$/plugins/*/PLUGIN_OVERVIEW.md",
-        "$TURBO_ROOT$/plugins/bb-official.json"
+        "$TURBO_ROOT$/plugins/bb-official.json",
+        "$TURBO_ROOT$/plugins/bb-fork.json"
       ],
       "outputs": ["src/generated/bb-official-marketplace/marketplace.json"]
     },

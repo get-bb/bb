@@ -19,6 +19,8 @@ import {
   BUNDLED_MARKETPLACE_NAME,
 } from "../src/services/plugin-catalog/bundled-marketplace-paths.js";
 import { BUNDLED_PLUGINS } from "../src/services/plugins/builtin-registry.js";
+// bb-fork: merges plugins/bb-fork.json into the catalog fields.
+import { readMergedCatalogFields } from "./fork-catalog-fields.js";
 
 const run = promisify(execFile);
 
@@ -213,13 +215,15 @@ function marketplaceIcon(pluginName: string, declared: string) {
 export async function generateBbOfficialMarketplace(args: {
   repositoryRoot: string;
   catalogFieldsPath: string;
+  // bb-fork: merged catalog (bb-official.json + bb-fork.json) takes precedence.
+  catalogFieldsOverride?: unknown;
   outputPath: string;
   plugins: readonly BundledPluginIdentity[];
   warn: (message: string) => void;
 }): Promise<void> {
-  const catalogJson: unknown = JSON.parse(
-    await readFile(args.catalogFieldsPath, "utf8"),
-  );
+  const catalogJson: unknown =
+    args.catalogFieldsOverride ??
+    JSON.parse(await readFile(args.catalogFieldsPath, "utf8"));
   const fields = parseBbOfficialCatalogFields(catalogJson, args.plugins);
   const dates = await readPluginGitDates({
     repositoryRoot: args.repositoryRoot,
@@ -306,6 +310,8 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   await generateBbOfficialMarketplace({
     repositoryRoot,
     catalogFieldsPath: path.join(repositoryRoot, "plugins", "bb-official.json"),
+    // bb-fork: plugins/bb-fork.json is merged in; bb-official.json stays pristine.
+    catalogFieldsOverride: await readMergedCatalogFields(repositoryRoot),
     outputPath,
     plugins: BUNDLED_PLUGINS,
     warn: (message) => process.stderr.write(`warning: ${message}\n`),

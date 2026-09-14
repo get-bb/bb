@@ -10,6 +10,8 @@ it("keeps bundled stages out of discovery without hiding real plugin packages", 
   const root = await mkdtemp(join(tmpdir(), "bb-bundled-workspace-"));
   const graph = () =>
     spawnSync(
+      // bb-fork(windows): .CMD shims do not spawn without a shell; run turbo's
+      // JS entry through node.
       process.execPath,
       [
         join(repositoryRoot, "node_modules/turbo/bin/turbo"),

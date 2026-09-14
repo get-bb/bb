@@ -392,6 +392,7 @@ export async function resolveLocalBbExecutablePath(
   return cliEntryPath;
 }
 
+// bb-fork(windows): the bundled CLI is bb.cmd on Windows hosts.
 function bbExecutableFileName(): string {
   return process.platform === "win32" ? "bb.cmd" : "bb";
 }

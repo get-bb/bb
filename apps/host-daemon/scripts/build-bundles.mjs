@@ -88,6 +88,7 @@ async function main() {
   const outputTitleCommandPath = resolve(packageRoot, "dist", "title");
   await copyFile(titleCommandPath, outputTitleCommandPath);
   await chmod(outputTitleCommandPath, 0o755);
+  // bb-fork(windows): ship the cmd shim next to the extensionless bb entry.
   await copyFile(
     resolve(workspaceRoot, "apps", "cli", "bin", "bb.cmd"),
     resolve(packageRoot, "dist", "bb.cmd"),

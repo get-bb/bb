@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { PLUGIN_CATALOG_CATEGORIES } from "@bb/domain";
 import { afterEach, describe, expect, it } from "vitest";
@@ -12,6 +12,8 @@ import {
   readBundledPluginOverview,
   readPluginGitDates,
 } from "../../../scripts/generate-bb-official-marketplace.js";
+// bb-fork: merged bb-official.json + bb-fork.json catalog fields.
+import { readMergedCatalogFields } from "../../../scripts/fork-catalog-fields.js";
 import {
   BUNDLED_MARKETPLACE_NAME,
   isBundledMarketplaceEntry,
@@ -48,11 +50,9 @@ describe("bb-official marketplace generator", () => {
       "generated marketplace",
     );
     const fields = parseBbOfficialCatalogFields(
-      JSON.parse(
-        await readFile(
-          new URL("../../../../../plugins/bb-official.json", import.meta.url),
-          "utf8",
-        ),
+      // bb-fork: merged bb-official.json + bb-fork.json catalog fields.
+      await readMergedCatalogFields(
+        fileURLToPath(new URL("../../../../../", import.meta.url)),
       ),
       BUNDLED_PLUGINS,
     );

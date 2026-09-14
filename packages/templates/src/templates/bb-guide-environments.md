@@ -30,11 +30,8 @@ Making your repo work with bb:
   present and will not run.
 
   BB runs the hook as `env bash .bb-env-setup.sh` with cwd set to the new
-  workspace. On native Windows the hook is `.bb-env-setup.ps1`, which BB runs
-  as `powershell.exe -NoProfile -ExecutionPolicy Bypass -File`; a
-  `.bb-env-setup.sh` file is ignored on native Windows, and a
-  `.bb-env-setup.ps1` file is ignored on macOS and Linux. The hook inherits the
-  host daemon's sanitized environment: NODE_ENV and every BB_*
+  workspace. POSIX shell setup scripts are not supported on Windows. The hook
+  inherits the host daemon's sanitized environment: NODE_ENV and every BB_*
   variable are removed, and bb does not inject BB_PROJECT_ID, BB_ENVIRONMENT_ID,
   or BB_SOURCE_PATH.
 
@@ -49,17 +46,14 @@ Making your repo work with bb:
   hook outcome blocks automatic cleanup and requires inspection before recovery.
   Keep optional setup steps non-fatal inside the
   script if the environment should still open. Provisioning progress reports
-  "Running .bb-env-setup.sh" (or ".bb-env-setup.ps1" on native Windows) and
-  then ".bb-env-setup.sh finished", ".bb-env-setup.sh failed", or
-  ".bb-env-setup.sh cancelled".
+  "Running .bb-env-setup.sh" and then ".bb-env-setup.sh finished",
+  ".bb-env-setup.sh failed", or ".bb-env-setup.sh cancelled".
 
   Commit a .bb-env-teardown.sh script at the repo root when setup creates
   resources outside the managed worktree. BB runs the hook as
   `env bash .bb-env-teardown.sh` from the worktree before it removes the
-  worktree. On native Windows the hook is `.bb-env-teardown.ps1`, which BB runs
-  as `powershell.exe -NoProfile -ExecutionPolicy Bypass -File`. The hook
-  receives the same sanitized environment as the setup hook, and stdin is
-  closed.
+  worktree. The hook receives the same sanitized environment as the setup
+  hook, and stdin is closed.
 
   Teardown has a separate 15-minute timeout. A non-zero exit, timeout, or
   signal reports failure in the destroy transcript, but bb removes the
@@ -265,3 +259,18 @@ BB source checkout startup
   preserve its data and ports. See `docs/debugging-and-qa.md` for the restart
   sequence and source programmatic helpers. These are repository maintenance
   commands, not environment lifecycle hooks or installed `bb` commands.
+
+## Native Windows environment hooks
+
+<!-- bb-fork(windows): native Windows hosts are supported in this fork. -->
+
+On a native Windows host the setup hook is `.bb-env-setup.ps1` and the
+teardown hook is `.bb-env-teardown.ps1`. BB runs each with
+`powershell.exe -NoProfile -ExecutionPolicy Bypass -File <script>`. The
+`.sh` hooks described above are ignored on native Windows, and the `.ps1`
+hooks are ignored on macOS, Linux, and WSL2, so commit the hook that matches
+the host platform. When only a `.sh` hook is present on a native Windows
+host, provisioning records a `setup-script-ignored` progress note instead of
+failing. Everything else — the tracked-file requirement, cwd, sanitized
+environment, timeouts, failure semantics, and ownership gating — matches the
+POSIX hooks.

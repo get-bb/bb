@@ -50,7 +50,8 @@
     "bb:dev": "cross-env NODE_ENV=development node --conditions=source --import tsx packages/scripts/src/commands/run-cli.ts",
     "server": "pnpm --filter @bb/server start",
     "drizzle-studio": "cross-env NODE_ENV=development pnpm --filter @bb/db db:studio",
-    "drizzle-studio:prod": "cross-env NODE_ENV=production pnpm --filter @bb/db db:studio"
+    "drizzle-studio:prod": "cross-env NODE_ENV=production pnpm --filter @bb/db db:studio",
+    "merge:upstream": "pwsh -NoProfile -File scripts/windows/merge-upstream.ps1"
   },
   "devDependencies": {
     "@vitest/coverage-v8": "4.1.1",

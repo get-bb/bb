@@ -10,6 +10,8 @@ import { isPathWithinDirectory } from "@bb/process-utils";
 import { SKILL_FILE_NAME } from "./command-discovery.js";
 import { isFsErrorWithCode } from "./fs-errors.js";
 import { runInSerialLane } from "./serial-lane.js";
+// bb-fork(windows): NTFS mode-bit mapping lives in a fork module.
+import { skillEntryFileMode } from "./skill-entry-file-mode.js";
 import type { FetchSkillTree } from "./skill-trees.js";
 
 const STAGING_ROOT_SEGMENTS = ["runtime", "global-skills"] as const;
@@ -285,12 +287,8 @@ async function walkSkillTree(args: WalkSkillTreeArgs): Promise<void> {
     const bytes = await fs.readFile(sourcePath);
     args.state.files.push({
       bytes,
-      mode:
-        process.platform === "win32"
-          ? entryStat.mode & 0o222
-            ? 0o644
-            : 0o444
-          : entryStat.mode & 0o777,
+      // bb-fork(windows): NTFS has no POSIX bits; derive read-only vs read-write.
+      mode: skillEntryFileMode(entryStat.mode),
       relativePath,
     });
     args.state.totalBytes += entryStat.size;

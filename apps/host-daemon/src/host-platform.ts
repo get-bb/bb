@@ -5,6 +5,7 @@ export function resolveHostPlatform(
   env: NodeJS.ProcessEnv = process.env,
 ): HostPlatform {
   if (nodePlatform === "darwin") return "darwin";
+  // bb-fork(windows): native Windows hosts report their own platform.
   if (nodePlatform === "win32") return "windows";
   if (nodePlatform === "linux") {
     const isWsl = env.WSL_DISTRO_NAME != null || env.WSL_INTEROP != null;

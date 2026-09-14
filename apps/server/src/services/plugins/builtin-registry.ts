@@ -1,6 +1,9 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+// bb-fork: fork-bundled plugins live in a separate module so this registry
+// stays identical to upstream.
+import { FORK_BUILTIN_PLUGINS } from "./builtin-registry.fork.js";
 
 export interface BundledPluginDefinition {
   name: string;
@@ -158,21 +161,8 @@ export const BUILTIN_PLUGINS = [
     pluginId: "workflows",
     defaultEnabled: false,
   },
-  {
-    name: "git-graph",
-    pluginId: "git-graph",
-    defaultEnabled: true,
-  },
-  {
-    name: "pc-control",
-    pluginId: "pc-control",
-    defaultEnabled: true,
-  },
-  {
-    name: "workspace-explorer",
-    pluginId: "workspace-explorer",
-    defaultEnabled: true,
-  },
+  // bb-fork: fork plugins are appended from builtin-registry.fork.ts.
+  ...FORK_BUILTIN_PLUGINS,
 ].map((plugin): BundledPluginDefinition => ({
   ...plugin,
   autoInstall: true,

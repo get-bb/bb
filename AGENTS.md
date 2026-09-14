@@ -55,3 +55,65 @@
 - Use [.github/PULL_REQUEST_TEMPLATE.md](.github/PULL_REQUEST_TEMPLATE.md): root cause, change, verification that demonstrates the fix, and `Fixes #N` when applicable.
 - End every agent-created issue and PR body with `> AGENT GENERATED`.
 - Ground debugging in observed state: logs, database queries, server APIs, or CLI output. For dev ports, data directories, entity IDs, and the local QA launcher, see [docs/debugging-and-qa.md](docs/debugging-and-qa.md).
+
+## Fork Merge Conventions
+
+This repository is a fork of `get-bb/bb` that adds native Windows support. Keep
+the fork delta small and merges cheap with these rules.
+
+### Keep fork code in fork-owned files
+
+- Put new behavior in new files (`*.windows.ts`, `*-windows.ts`, `*.fork.ts`,
+  `docs/windows.md`, `plugins/bb-fork.json`). Prefer a fork-owned module plus a
+  one-line import and call site over editing upstream logic.
+- Limit edits inside an upstream file to roughly five lines per seam. When a
+  change needs more, extract a helper into a fork-owned module and leave only
+  the call site behind.
+- Append fork code at the end of a file rather than interleaving it through
+  upstream functions. A single-file bundle that cannot import siblings (for
+  example `bb-pi-extension.ts`) keeps fork code grouped and marked instead.
+- Do not delete upstream exports, options, or constants to make fork behavior
+  work; extend beside them. Deletions conflict on every upstream refactor.
+- Compose instead of rewriting: keep an upstream function intact and wrap or
+  call it from fork code rather than replacing its body.
+- Registration lists (builtin plugins, catalog fields, turbo task inputs) get a
+  fork-owned fragment file and a single spread or include line. Never add fork
+  entries directly to `plugins/bb-official.json`, which stays identical to
+  upstream; fork entries live in `plugins/bb-fork.json`.
+
+### Mark every fork edit
+
+- Prefix fork additions and edits with a searchable marker comment:
+  `// bb-fork(windows): <why>`, `<!-- bb-fork(windows): <why> -->`, or
+  `# bb-fork(windows): <why>`. This is the one sanctioned exception to the
+  no-code-comments rule.
+- Find the full fork surface with `git diff upstream/main --stat` and
+  `rg "bb-fork"`.
+
+### Documentation stays atomic
+
+- Do not rewrite upstream documentation paragraphs. Add fork-owned pages (for
+  example [docs/windows.md](docs/windows.md)) and link them from the upstream
+  file with a single marked line.
+
+### Protocol version
+
+- The fork carries a wire delta (`hostPlatformSchema` gains `windows`), so
+  `HOST_DAEMON_PROTOCOL_VERSION` is upstream's value + 1 after every merge.
+  Update the constant and the assertion in
+  `packages/host-daemon-contract/test/contract.test.ts` together.
+
+### Merge ritual
+
+- Merge often (weekly) against `upstream/main`; a single 200-commit merge
+  produces dozens of avoidable conflicts.
+- Run `pwsh -NoProfile -File scripts/windows/merge-upstream.ps1` (or
+  `pnpm run merge:upstream`). It fetches, merges, resolves `pnpm-lock.yaml`
+  from upstream and regenerates it, keeps `plugins/bb-official.json` pristine,
+  and sets the protocol version to upstream + 1.
+- Keep `git config rerere.enabled true` enabled so repeated conflict
+  resolutions are replayed automatically.
+- After resolving conflicts: `pnpm exec turbo run typecheck`, run the affected
+  package tests, and regenerate the marketplace when plugin lists changed.
+- Track the fork surface with `git diff upstream/main --stat`; the number of
+  patched upstream files should shrink over time.

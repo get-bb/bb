@@ -58,6 +58,7 @@ export function maybeReexecViaBbCli(
     return;
   }
 
+  // bb-fork(windows): extensionless/js CLI entries need an explicit node host.
   const nodeEntry =
     process.platform === "win32" &&
     ["", ".js", ".mjs", ".cjs"].includes(extname(target).toLowerCase());

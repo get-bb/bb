@@ -4,7 +4,7 @@ import {
   escalateWindowsShellChildKill,
   piLaunchRequiresWindowsShell,
   planPiChildKill,
-} from "./rpc-child.js";
+} from "./rpc-child.windows.js";
 
 describe("piLaunchRequiresWindowsShell", () => {
   it("requires the Windows shell for an extensionless command on win32", () => {

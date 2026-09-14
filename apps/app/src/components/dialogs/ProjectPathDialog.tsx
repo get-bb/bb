@@ -135,6 +135,7 @@ function getPlatformCopy(
 ): PlatformCopy {
   const placeholder = "/path/to/project";
   const hostSuffix = hostName ? ` on ${hostName}` : "";
+  // bb-fork(windows): drive-letter and UNC path examples for Windows hosts.
   if (platform === "windows") {
     return {
       description: `Enter an absolute Windows path${hostSuffix} to the project folder, such as C:\\Users\\me\\repo or a UNC path like \\\\server\\share\\repo.`,

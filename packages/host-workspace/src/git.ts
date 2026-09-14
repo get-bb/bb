@@ -285,6 +285,7 @@ export async function runGit(
       maxBuffer: options.maxBufferBytes ?? DEFAULT_BUFFER_BYTES,
       signal: options.signal,
       timeout: options.timeoutMs,
+      // bb-fork(windows): no console windows for git helper processes.
       windowsHide: true,
     } as const;
     const stderrListener = options.onStderr;
@@ -1464,6 +1465,7 @@ export async function readGitBlob(
         shellPath: options.shellPath,
       }),
       maxBuffer: maxBytes,
+      // bb-fork(windows): no console windows for git helper processes.
       windowsHide: true,
     });
     const contents = Buffer.from(result.stdout);

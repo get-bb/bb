@@ -2,7 +2,12 @@
 import type { ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+// bb-fork(windows): the bb.cmd shim and CLI entry selection live in a fork module.
+import {
+  ensureWindowsBbCliShim,
+  resolveBundledBbCliEntry,
+} from "./windows-bb-cli-shim.js";
 import { spawnLoggedProcess } from "./logged-process.js";
 import {
   access,
@@ -1276,37 +1281,6 @@ export function resolveBbAppStartContext(
   };
 }
 
-function resolveBundledBbCliEntry(context: BbAppStartContext): string {
-  return join(
-    context.daemonBundleDir,
-    process.platform === "win32" ? "bb.cmd" : "bb",
-  );
-}
-
-function ensureWindowsBbCliShim(context: BbAppStartContext): void {
-  if (process.platform !== "win32") {
-    return;
-  }
-  const bbEntry = join(context.daemonBundleDir, "bb");
-  const shimPath = join(context.daemonBundleDir, "bb.cmd");
-  const shimContents = `@echo off\r\n"${process.execPath}" "${bbEntry}" %*\r\n`;
-  try {
-    if (
-      existsSync(shimPath) &&
-      readFileSync(shimPath, "utf8") === shimContents
-    ) {
-      return;
-    }
-    writeFileSync(shimPath, shimContents);
-  } catch (error) {
-    process.stderr.write(
-      `bb-app: could not write Windows bb CLI shim ${shimPath}: ${
-        error instanceof Error ? error.message : String(error)
-      }\n`,
-    );
-  }
-}
-
 export async function resolveBbAppRuntimeState(
   args: ResolveBbAppRuntimeStateArgs,
 ): Promise<BbAppRuntimeState> {
@@ -1319,6 +1293,7 @@ export async function resolveBbAppRuntimeState(
     env: initialEnv,
     homeDir: args.homeDir,
   });
+  // bb-fork(windows): the bundled CLI needs a bb.cmd shim for child spawns.
   ensureWindowsBbCliShim(initialContext);
   const config = await readManagedConfig({ dataDir: initialContext.dataDir });
   const envFile = await readManagedEnvFile({ dataDir: initialContext.dataDir });
@@ -2453,6 +2428,7 @@ export function createServerEnv(args: CreateServerEnvArgs): NodeJS.ProcessEnv {
     ...args.env,
     BB_APP_VERSION: args.context.appVersion,
     [APP_SURFACE_ENV_NAME]: resolveServerAppSurface(args.env),
+    // bb-fork(windows): point at bb.cmd on Windows hosts.
     BB_CLI: resolveBundledBbCliEntry(args.context),
     BB_CLI_DIR: args.context.daemonBundleDir,
     BB_DATA_DIR: args.context.dataDir,
@@ -2569,6 +2545,7 @@ export async function runBundledCliCommand(
   args: RunBundledCliCommandArgs,
 ): Promise<number> {
   const bbCliOverride = toOptionalString(args.env.BB_CLI);
+  // bb-fork(windows): point at bb.cmd on Windows hosts.
   const cliPath = bbCliOverride ?? resolveBundledBbCliEntry(args.context);
   const childProcess = spawn(cliPath, args.args, {
     cwd: process.cwd(),

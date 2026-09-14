@@ -140,6 +140,8 @@ export const pathsExistResponseSchema = z.object({
 });
 export type PathsExistResponse = z.infer<typeof pathsExistResponseSchema>;
 
+// bb-fork(windows): "windows" is a fork wire delta; keep the protocol version
+// at max(upstream) + 1 on every merge.
 export const hostPlatformSchema = z.enum([
   "darwin",
   "linux",

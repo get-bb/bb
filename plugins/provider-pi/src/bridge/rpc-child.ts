@@ -1,8 +1,13 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { randomUUID } from "node:crypto";
-import { createServer, type Server, type Socket } from "node:net";
-import { extname } from "node:path";
 import { PassThrough, Writable, type Readable } from "node:stream";
+// bb-fork(windows): cmd-shim launches and the named-pipe channel live in a
+// fork module; this file keeps only the integration seams.
+import {
+  escalateWindowsShellChildKill,
+  planPiChildKill,
+  planWindowsShellChild,
+  type WindowsChannelPipe,
+} from "./rpc-child.windows.js";
 import {
   experimental_isProviderBridgeRecording,
   experimental_readBoundedLines,
@@ -13,7 +18,6 @@ import {
 
 export const PI_BRIDGE_COMMAND_ENV = "BB_PI_BRIDGE_COMMAND";
 export const PI_BRIDGE_ARGS_ENV = "BB_PI_BRIDGE_ARGS";
-export const PI_CHANNEL_PIPE_ENV = "BB_PI_BRIDGE_CHANNEL_PIPE";
 
 export const PI_CHANNEL_RECORDING_KEY = "bbChannel";
 
@@ -22,7 +26,6 @@ export const NO_REQUEST_TIMEOUT = 0;
 const STDERR_TAIL_BYTES = 4_096;
 const SIGTERM_GRACE_MS = 4_000;
 const SIGKILL_ESCALATION_MS = 4_000;
-const MAX_CHANNEL_PIPE_PENDING_WRITES = 10_000;
 
 export interface PiRpcChildExitInfo {
   code: number | null;
@@ -89,131 +92,6 @@ export function resolvePiLaunch(env: NodeJS.ProcessEnv): {
   return { command, args: parsed };
 }
 
-const WINDOWS_BATCH_EXTENSIONS = new Set([".bat", ".cmd"]);
-
-export function piLaunchRequiresWindowsShell(
-  command: string,
-  platform: NodeJS.Platform = process.platform,
-): boolean {
-  if (platform !== "win32") {
-    return false;
-  }
-  const extension = extname(command).toLowerCase();
-  return extension === "" || WINDOWS_BATCH_EXTENSIONS.has(extension);
-}
-
-export function planPiChildKill(args: {
-  windowsShellChild: boolean;
-  platform: NodeJS.Platform;
-}): { signal: NodeJS.Signals | null; escalateImmediately: boolean } {
-  if (args.windowsShellChild) {
-    return { signal: null, escalateImmediately: true };
-  }
-  return {
-    signal: args.platform === "win32" ? null : "SIGTERM",
-    escalateImmediately: false,
-  };
-}
-
-export interface WindowsShellKillSpawn {
-  (
-    command: string,
-    args: readonly string[],
-    options: { stdio: "ignore"; windowsHide: boolean },
-  ): { on(event: "error", listener: (error: Error) => void): unknown };
-}
-
-export function escalateWindowsShellChildKill(args: {
-  pid: number | undefined;
-  killFallback: (signal: NodeJS.Signals) => unknown;
-  spawnProcess?: WindowsShellKillSpawn;
-}): void {
-  const { pid } = args;
-  if (pid === undefined) {
-    return;
-  }
-  const spawnProcess = args.spawnProcess ?? spawn;
-  try {
-    const taskkill = spawnProcess(
-      "taskkill",
-      ["/pid", String(pid), "/T", "/F"],
-      { stdio: "ignore", windowsHide: true },
-    );
-    taskkill.on("error", () => {
-      args.killFallback("SIGKILL");
-    });
-  } catch {
-    args.killFallback("SIGKILL");
-  }
-}
-
-class WindowsChannelPipe {
-  readonly pipePath: string;
-  private readonly server: Server;
-  private socket: Socket | null = null;
-  private readonly pendingWrites: string[] = [];
-
-  constructor(onLine: (line: string) => void) {
-    this.pipePath = `\\\\.\\pipe\\bb-pi-${process.pid}-${randomUUID()}`;
-    this.server = createServer((socket) => {
-      if (this.socket !== null) {
-        socket.destroy();
-        return;
-      }
-      this.socket = socket;
-      socket.on("error", () => undefined);
-      socket.on("close", () => {
-        if (this.socket === socket) {
-          this.socket = null;
-        }
-      });
-      experimental_readBoundedLines({
-        input: socket,
-        onLine,
-        onOverflow: (bytes) => {
-          process.stderr.write(
-            `pi bridge: dropped a ${bytes}-byte channel line\n`,
-          );
-        },
-      });
-      for (const line of this.pendingWrites.splice(0)) {
-        socket.write(line);
-      }
-    });
-    this.server.on("error", () => undefined);
-    this.server.listen(this.pipePath);
-    this.server.unref();
-  }
-
-  write(line: string): void {
-    const socket = this.socket;
-    if (socket === null || socket.destroyed || socket.writableEnded) {
-      if (this.pendingWrites.length >= MAX_CHANNEL_PIPE_PENDING_WRITES) {
-        process.stderr.write(
-          `pi bridge: dropped a channel line; ${MAX_CHANNEL_PIPE_PENDING_WRITES} pending writes buffered\n`,
-        );
-        return;
-      }
-      this.pendingWrites.push(line);
-      return;
-    }
-    socket.write(line);
-  }
-
-  endWrites(): void {
-    const socket = this.socket;
-    if (socket !== null && !socket.destroyed && !socket.writableEnded) {
-      socket.end();
-    }
-  }
-
-  close(): void {
-    this.socket?.destroy();
-    this.socket = null;
-    this.server.close();
-  }
-}
-
 export function buildPiChildEnv(
   overrides: Record<string, string>,
 ): NodeJS.ProcessEnv {
@@ -236,7 +114,6 @@ export class PiRpcChild {
   private readonly channelRecorder: ChannelRecorder | null;
   private killEscalation: ReturnType<typeof setTimeout> | null = null;
   private readonly windowsChannel: WindowsChannelPipe | null;
-  private readonly windowsShellChild: boolean;
   private readonly stdoutLines: string[] = [];
   private stdoutDraining = false;
 
@@ -247,24 +124,19 @@ export class PiRpcChild {
       resolveSettledExit = resolve;
     });
     const launch = resolvePiLaunch(process.env);
-    let childEnv = args.env;
-    this.windowsShellChild = piLaunchRequiresWindowsShell(launch.command);
-    this.windowsChannel = this.windowsShellChild
-      ? new WindowsChannelPipe((line) => this.handleChannelLine(line))
-      : null;
-    if (this.windowsChannel !== null) {
-      childEnv = {
-        ...args.env,
-        [PI_CHANNEL_PIPE_ENV]: this.windowsChannel.pipePath,
-      };
-    }
+    // bb-fork(windows): a pi launched through a cmd.exe shim cannot inherit
+    // the fd 3/4 channel, so it talks to the bridge over a named pipe.
+    const windowsChild = planWindowsShellChild({
+      command: launch.command,
+      env: args.env,
+      onLine: (line) => this.handleChannelLine(line),
+    });
+    this.windowsChannel = windowsChild?.channel ?? null;
     this.child = spawn(launch.command, [...launch.args, ...args.args], {
       cwd: args.cwd,
-      env: childEnv,
-      stdio: this.windowsShellChild
-        ? ["pipe", "pipe", "pipe"]
-        : ["pipe", "pipe", "pipe", "pipe", "pipe"],
-      shell: this.windowsShellChild,
+      env: windowsChild?.env ?? args.env,
+      stdio: windowsChild?.stdio ?? ["pipe", "pipe", "pipe", "pipe", "pipe"],
+      shell: windowsChild !== null,
       windowsHide: process.platform === "win32",
     });
     experimental_recordProviderChildIo(this.child, {
@@ -314,6 +186,7 @@ export class PiRpcChild {
         clearTimeout(this.killEscalation);
         this.killEscalation = null;
       }
+      // bb-fork(windows): release the named-pipe server with the child.
       this.windowsChannel?.close();
       const info: PiRpcChildExitInfo = {
         code,
@@ -381,6 +254,7 @@ export class PiRpcChild {
   }
 
   sendChannel(message: Record<string, unknown>): void {
+    // bb-fork(windows): route the channel over the named pipe when present.
     if (this.windowsChannel !== null) {
       this.channelRecorder?.toChild(message);
       this.windowsChannel.write(`${JSON.stringify(message)}\n`);
@@ -412,8 +286,10 @@ export class PiRpcChild {
       return;
     }
     this.endWriters();
+    // bb-fork(windows): signals do not reach grandchildren of cmd.exe, so
+    // shell children escalate to taskkill immediately.
     const plan = planPiChildKill({
-      windowsShellChild: this.windowsShellChild,
+      windowsShellChild: this.windowsChannel !== null,
       platform: process.platform,
     });
     if (plan.escalateImmediately) {
@@ -435,7 +311,8 @@ export class PiRpcChild {
   }
 
   private escalateKill(): void {
-    if (!this.windowsShellChild) {
+    // bb-fork(windows): taskkill /T /F for cmd.exe shell children.
+    if (this.windowsChannel === null) {
       this.child.kill("SIGKILL");
       return;
     }
@@ -461,6 +338,7 @@ export class PiRpcChild {
     try {
       this.channelWriter?.end();
     } catch {}
+    // bb-fork(windows): signal EOF on the named-pipe channel too.
     this.windowsChannel?.endWrites();
   }
 

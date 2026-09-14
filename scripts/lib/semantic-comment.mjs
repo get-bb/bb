@@ -22,6 +22,8 @@ export function isSemanticComment(commentText) {
     /^[@#]__PURE__\b/.test(directive) ||
     /^(?:#|@)?\s*sourceMappingURL=|^(?:#|@)?\s*sourceURL=/.test(directive) ||
     /^@(?:license|preserve)\b/i.test(directive) ||
+    // bb-fork(windows): fork markers keep the upstream delta greppable.
+    /^#?\s*bb-fork\(/i.test(directive) ||
     /@(?:deprecated|experimental|internal)\b/.test(commentText)
   );
 }

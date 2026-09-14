@@ -1,10 +1,11 @@
 export * from "./event-loop-delay.js";
 export * from "./plugin-process-paths.js";
+import type { ChildProcess, StdioOptions } from "node:child_process";
+// bb-fork(windows): taskkill-based tree termination lives in a fork module.
 import {
-  spawn as spawnRaw,
-  type ChildProcess,
-  type StdioOptions,
-} from "node:child_process";
+  killProcessGroupOnWindows,
+  stopWindowsProcessTree,
+} from "./process-tree-windows.js";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { access, lstat, readdir, readlink, realpath } from "node:fs/promises";
@@ -51,7 +52,7 @@ interface PortableOutputChildProcess extends PortableChildProcess {
   stderr: Readable;
 }
 
-interface KillProcessGroupArgs {
+export interface KillProcessGroupArgs {
   child: {
     pid?: number | undefined;
     kill: (signal: NodeJS.Signals) => unknown;
@@ -59,7 +60,7 @@ interface KillProcessGroupArgs {
   signal: NodeJS.Signals;
 }
 
-interface StopProcessGroupLeaderFirstArgs {
+export interface StopProcessGroupLeaderFirstArgs {
   child: ChildProcess;
   timeoutMs: number;
   killGraceMs: number;
@@ -145,6 +146,7 @@ export function spawnPortableProcess(
     detached: request.detached,
     env: request.env,
     stdio: request.stdio,
+    // bb-fork(windows): no console windows for helper processes.
     windowsHide: true,
   });
 }
@@ -192,15 +194,8 @@ export function supportsProcessGroups(): boolean {
 }
 
 export function killProcessGroup(args: KillProcessGroupArgs): void {
-  if (process.platform === "win32") {
-    if (
-      args.child.pid === undefined ||
-      !terminateWindowsProcessTree(args.child.pid)
-    ) {
-      args.child.kill(args.signal);
-    }
-    return;
-  }
+  // bb-fork(windows): no POSIX process groups; taskkill the tree instead.
+  if (killProcessGroupOnWindows(args)) return;
   if (supportsProcessGroups() && args.child.pid !== undefined) {
     try {
       process.kill(-args.child.pid, args.signal);
@@ -208,19 +203,6 @@ export function killProcessGroup(args: KillProcessGroupArgs): void {
     } catch {}
   }
   args.child.kill(args.signal);
-}
-
-function terminateWindowsProcessTree(pid: number): boolean {
-  try {
-    const killer = spawnRaw("taskkill.exe", ["/PID", String(pid), "/T", "/F"], {
-      stdio: "ignore",
-      windowsHide: true,
-    });
-    killer.once("error", () => undefined);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 export function isProcessGroupAlive(child: {
@@ -247,8 +229,9 @@ export function stopProcessGroupLeaderFirst(
   args: StopProcessGroupLeaderFirstArgs,
 ): Promise<void> {
   const { child, timeoutMs, killGraceMs } = args;
+  // bb-fork(windows): close stdin, then taskkill /T /F the tree.
   if (process.platform === "win32") {
-    return stopWindowsProcessTree({ child, timeoutMs });
+    return stopWindowsProcessTree(args);
   }
   if (hasChildExited(child) && !isProcessGroupAlive(child)) {
     return Promise.resolve();
@@ -306,47 +289,6 @@ export function stopProcessGroupLeaderFirst(
     child.once("exit", stopSurvivingMembers);
     child.kill("SIGTERM");
   });
-}
-
-async function stopWindowsProcessTree(args: {
-  child: ChildProcess;
-  timeoutMs: number;
-}): Promise<void> {
-  const { child, timeoutMs } = args;
-  if (child.stdin && !child.stdin.destroyed) {
-    child.stdin.end();
-  }
-  if (!hasChildExited(child)) {
-    await new Promise<void>((resolveWait) => {
-      const giveUp = setTimeout(resolveWait, Math.min(timeoutMs, 250));
-      giveUp.unref?.();
-      child.once("exit", () => {
-        clearTimeout(giveUp);
-        resolveWait();
-      });
-    });
-  }
-  if (hasChildExited(child)) return;
-  const pid = child.pid;
-  if (pid === undefined) return;
-  await new Promise<void>((resolveKill) => {
-    const killer = spawnRaw("taskkill.exe", ["/PID", String(pid), "/T", "/F"], {
-      stdio: "ignore",
-      windowsHide: true,
-    });
-    killer.once("exit", () => resolveKill());
-    killer.once("error", () => resolveKill());
-  });
-  if (!hasChildExited(child)) {
-    await new Promise<void>((resolveWait) => {
-      const giveUp = setTimeout(resolveWait, 500);
-      giveUp.unref?.();
-      child.once("exit", () => {
-        clearTimeout(giveUp);
-        resolveWait();
-      });
-    });
-  }
 }
 
 function isPathUnderDirectory(candidate: string, directory: string): boolean {

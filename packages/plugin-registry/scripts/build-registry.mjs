@@ -41,6 +41,7 @@ function resolveLocal(specifier, importerRel) {
   if (specifier.startsWith("@/")) {
     base = specifier.slice(2);
   } else if (specifier.startsWith(".")) {
+    // bb-fork(windows): module specifiers are posix-style even on win32.
     base = path.posix.normalize(
       path.posix.join(path.posix.dirname(importerRel), specifier),
     );

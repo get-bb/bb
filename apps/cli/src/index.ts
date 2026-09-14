@@ -131,12 +131,14 @@ Quick start:
 
   const candidate = pluginProxyCandidate(firstArg, KNOWN_COMMAND_NAMES);
   if (candidate !== null) {
+    // bb-fork(windows): return instead of process.exit so stdout flushes.
     if (await tryPluginCommandProxy(candidate, deps.getUrl)) return;
   }
   await program.parseAsync(process.argv);
 }
 
 main().catch(async (err: unknown) => {
+  // bb-fork(windows): set exitCode instead of process.exit so stdout flushes.
   const { CliExitError } = await import("./action.js");
   if (err instanceof CliExitError) {
     process.exitCode = err.exitCode;
