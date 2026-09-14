@@ -330,12 +330,37 @@ export function applyTerminalFontFamily(
 }
 
 export function forceTerminalFontMeasurement(
-  terminal: Pick<XTermTerminal, "options" | "refresh" | "rows">,
+  terminal: Pick<
+    XTermTerminal,
+    "options" | "clearTextureAtlas" | "refresh" | "rows"
+  >,
 ): void {
   const fontFamily = terminal.options.fontFamily;
   terminal.options.fontFamily = `${fontFamily} `;
   terminal.options.fontFamily = fontFamily;
+  terminal.clearTextureAtlas();
   terminal.refresh(0, terminal.rows - 1);
+}
+
+export function observeTerminalFontLoading(
+  fontSet: Pick<
+    FontFaceSet,
+    "ready" | "addEventListener" | "removeEventListener"
+  >,
+  onFontsLoaded: () => void,
+): () => void {
+  let disposed = false;
+  const refresh = () => {
+    if (!disposed) {
+      onFontsLoaded();
+    }
+  };
+  fontSet.addEventListener("loadingdone", refresh);
+  void fontSet.ready.then(refresh);
+  return () => {
+    disposed = true;
+    fontSet.removeEventListener("loadingdone", refresh);
+  };
 }
 
 interface ThreadTerminalViewProps {
@@ -805,8 +830,7 @@ export function ThreadTerminalView({
   const handleTerminalPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
       pointerIsDownRef.current = true;
-      pointerStartPointRef.current =
-        anchorPointFromMouseEvent(event);
+      pointerStartPointRef.current = anchorPointFromMouseEvent(event);
     },
     [],
   );
@@ -902,6 +926,7 @@ export function ThreadTerminalView({
     let selectionAnimationFrame: number | null = null;
     let resizeObserver: ResizeObserver | null = null;
     let selectionChangeDisposable: { dispose: () => void } | null = null;
+    let stopObservingFonts: (() => void) | null = null;
 
     async function mountTerminal(
       containerElement: HTMLDivElement,
@@ -1002,12 +1027,12 @@ export function ThreadTerminalView({
       fitTerminal();
       const fontSet = document.fonts;
       if (fontSet !== undefined) {
-        void fontSet.ready.then(() => {
-          if (disposed || terminal === null) {
+        stopObservingFonts = observeTerminalFontLoading(fontSet, () => {
+          if (terminal === null) {
             return;
           }
           forceTerminalFontMeasurement(terminal);
-          fitTerminal();
+          scheduleFit();
         });
       }
       scheduleFitRef.current = scheduleFit;
@@ -1143,6 +1168,7 @@ export function ThreadTerminalView({
 
     return () => {
       disposed = true;
+      stopObservingFonts?.();
       if (resizeAnimationFrame !== null) {
         window.cancelAnimationFrame(resizeAnimationFrame);
       }
@@ -1193,23 +1219,9 @@ export function ThreadTerminalView({
     if (!terminal) {
       return;
     }
-    const fontFamilyChanged = applyTerminalFontFamily(
-      terminal,
-      readTerminalFontFamily(),
-      () => scheduleFitRef.current?.(),
+    applyTerminalFontFamily(terminal, readTerminalFontFamily(), () =>
+      scheduleFitRef.current?.(),
     );
-    if (fontFamilyChanged) {
-      const fontSet = document.fonts;
-      if (fontSet !== undefined) {
-        void fontSet.ready.then(() => {
-          if (terminalRef.current !== terminal) {
-            return;
-          }
-          forceTerminalFontMeasurement(terminal);
-          scheduleFitRef.current?.();
-        });
-      }
-    }
     terminal.options.theme = buildTerminalTheme();
   }, [preferredTheme, appThemeEpoch]);
 
