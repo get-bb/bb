@@ -23,6 +23,7 @@ import {
 } from "@/lib/plugin-slots";
 import { CommandPalette } from "./CommandPalette";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
+import { collectPluginAppRegistrations } from "@get-bb/plugin-sdk/internal/plugin-app-collector";
 
 const PALETTE_SHORTCUT = {
   key: "p",
@@ -488,32 +489,38 @@ describe("CommandPalette", () => {
     scrollIntoView.mockRestore();
   });
 
-  it("lists a plugin's commandPaletteAction and runs it", async () => {
-    setPluginSlotRegistrations(
-      "linear",
-      makePluginRegistrationSet({
-        commandPaletteActions: [
-          {
-            id: "open-issue",
-            title: "Linear: open issue",
-            run: () => {
-              testState.calls.push("plugin-ran");
-            },
+  it.each(["commands", "legacy"])(
+    "lists a plugin's registered command and runs it",
+    async (entryPoint) => {
+      setPluginSlotRegistrations(
+        "linear",
+        collectPluginAppRegistrations({
+          __bbPluginApp: true,
+          setup(app) {
+            const registration = {
+              id: "open-issue",
+              title: "Linear: open issue",
+              run: () => {
+                testState.calls.push("plugin-ran");
+              },
+            };
+            if (entryPoint === "commands") app.commands.register(registration);
+            else app.slots.commandPaletteAction(registration);
           },
-        ],
-      }),
-    );
-    renderPalette();
-    openPalette();
-    await waitFor(() => expect(searchField()).toBeTruthy());
+        }),
+      );
+      renderPalette();
+      openPalette();
+      await waitFor(() => expect(searchField()).toBeTruthy());
 
-    fireEvent.change(searchField(), { target: { value: ">linear" } });
-    await waitFor(() => expect(optionTitles()).toHaveLength(1));
-    expect(optionTitles()?.[0]).toContain("Linear: open issue");
-    fireEvent.keyDown(searchField(), { key: "Enter" });
+      fireEvent.change(searchField(), { target: { value: ">linear" } });
+      await waitFor(() => expect(optionTitles()).toHaveLength(1));
+      expect(optionTitles()?.[0]).toContain("Linear: open issue");
+      fireEvent.keyDown(searchField(), { key: "Enter" });
 
-    await waitFor(() => expect(testState.calls).toEqual(["plugin-ran"]));
-  });
+      await waitFor(() => expect(testState.calls).toEqual(["plugin-ran"]));
+    },
+  );
 
   it("says so when nothing matches", async () => {
     renderPalette();

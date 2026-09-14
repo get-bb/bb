@@ -14,7 +14,7 @@ import type {
   PluginMachineProviderInputsRegistration,
   PluginFileOpenerRegistration,
   PluginHomepageSectionRegistration,
-  PluginCommandPaletteActionRegistration,
+  PluginCommandRegistration,
   PluginMessageActionRegistration,
   PluginMessageDirectiveRegistration,
   PluginNavPanelRegistration,
@@ -310,7 +310,7 @@ export interface CollectedPluginAppRegistrations {
   diffRenderers: PluginDiffRendererRegistration[];
   messageDirectives: PluginMessageDirectiveRegistration[];
   messageActions: PluginMessageActionRegistration[];
-  commandPaletteActions: PluginCommandPaletteActionRegistration[];
+  commandPaletteActions: PluginCommandRegistration[];
   providerIcons: CollectedPluginProviderIconRegistration[];
   icons: ExperimentalIconRegistration[];
   timelineRenderers: PluginTimelineRendererRegistration[];
@@ -461,7 +461,7 @@ export function collectPluginAppRegistrations(
     diffRenderer: new Set<string>(),
     messageDirective: new Set<string>(),
     messageAction: new Set<string>(),
-    commandPaletteAction: new Set<string>(),
+    command: new Set<string>(),
     providerIcon: new Set<string>(),
     timelineRenderer: new Set<string>(),
     environmentProviderInputs: new Set<string>(),
@@ -469,7 +469,31 @@ export function collectPluginAppRegistrations(
     contentScript: new Set<string>(),
   };
 
+  function registerCommand(registration: PluginCommandRegistration): void {
+    const kind = "commands.register";
+    const id = requireSlotId(kind, registration?.id);
+    requireUniqueId(kind, seenIds.command, id);
+    if (typeof registration.run !== "function") {
+      throw new Error(`${kind}: "run" must be a function`);
+    }
+    if (
+      registration.isAvailable !== undefined &&
+      typeof registration.isAvailable !== "function"
+    ) {
+      throw new Error(`${kind}: "isAvailable" must be a function`);
+    }
+    collected.commandPaletteActions.push({
+      id,
+      title: requireNonEmptyString(kind, "title", registration.title),
+      ...(registration.isAvailable !== undefined
+        ? { isAvailable: registration.isAvailable }
+        : {}),
+      run: registration.run,
+    });
+  }
+
   definition.setup({
+    commands: { register: registerCommand },
     slots: {
       homepageSection(registration) {
         const kind = "slots.homepageSection";
@@ -760,26 +784,7 @@ export function collectPluginAppRegistrations(
         });
       },
       commandPaletteAction(registration) {
-        const kind = "slots.commandPaletteAction";
-        const id = requireSlotId(kind, registration?.id);
-        requireUniqueId(kind, seenIds.commandPaletteAction, id);
-        if (typeof registration.run !== "function") {
-          throw new Error(`${kind}: "run" must be a function`);
-        }
-        if (
-          registration.isAvailable !== undefined &&
-          typeof registration.isAvailable !== "function"
-        ) {
-          throw new Error(`${kind}: "isAvailable" must be a function`);
-        }
-        collected.commandPaletteActions.push({
-          id,
-          title: requireNonEmptyString(kind, "title", registration.title),
-          ...(registration.isAvailable !== undefined
-            ? { isAvailable: registration.isAvailable }
-            : {}),
-          run: registration.run,
-        });
+        registerCommand(registration);
       },
       experimental_providerIcon(registration) {
         const kind = "slots.experimental_providerIcon";

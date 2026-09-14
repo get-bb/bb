@@ -85,7 +85,7 @@ openWorkspaceFile }` — register a leaf
   `useBbNavigate().openThreadPanel`. Errors from `run` (sync or
   async) are contained and
   logged, never breaking the timeline.
-- `commandPaletteAction` → a row in bb's quick palette (Mod+Shift+P), listed
+- `app.commands.register` → a row in bb's quick palette (Mod+Shift+P), listed
   under "Plugins" beside bb's own commands. Host-rendered chrome, no plugin
   component — registration: `{ id, title, isAvailable?, run }`. Both callbacks
   receive `{ threadId, projectId, openPanel }`, where `threadId` and
@@ -97,6 +97,9 @@ openWorkspaceFile }` — register a leaf
   Errors from either callback are contained and logged, never breaking the
   palette. Write self-identifying titles ("Linear: open issue for this
   thread"): the palette matches the query against the title.
+  `app.slots.commandPaletteAction` is a deprecated alias accepting the same
+  fields. Both entry points share one ID namespace; registering the same ID
+  through either path twice rejects plugin setup.
 - `experimental_timelineRenderer` → the expanded body of the timeline rows a
   provider plugin owns. Registration: `{ kind, component }`, where `kind` is
   one of the plugin's own extension item kinds (`"<pluginId>/<name>"`, as

@@ -130,8 +130,11 @@ Read the installed declarations for exact current signatures.
 - `PluginCodeThemeData`
 - `PluginCodeThemeState`
 - `PluginCodeThemeTokenRule`
-- `PluginCommandPaletteActionContext`
-- `PluginCommandPaletteActionRegistration`
+- `PluginAppCommands`
+- `PluginCommandContext`
+- `PluginCommandPaletteActionContext` (deprecated alias)
+- `PluginCommandRegistration`
+- `PluginCommandPaletteActionRegistration` (deprecated alias)
 - `PluginComposerApi`
 - `PluginComposerMention`
 - `PluginComposerScope`

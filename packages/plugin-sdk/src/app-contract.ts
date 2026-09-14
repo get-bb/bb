@@ -1267,8 +1267,8 @@ export interface PluginMessageActionRegistration {
   run(context: PluginMessageActionContext): void | Promise<void>;
 }
 
-/** Context handed to a `commandPaletteAction`'s `isAvailable` and `run`. */
-export interface PluginCommandPaletteActionContext {
+/** Context handed to a command's `isAvailable` and `run`. */
+export interface PluginCommandContext {
   /** The thread in view, or null on a surface without one. */
   threadId: string | null;
   projectId: string | null;
@@ -1286,11 +1286,12 @@ export interface PluginCommandPaletteActionContext {
 }
 
 /**
- * A row in bb's quick palette (Mod+Shift+P), listed under the plugin's name
+ * A command registered with `app.commands.register`, listed in bb's quick
+ * palette (Mod+Shift+P) under the plugin's name
  * beside bb's own commands. Host-rendered: the plugin supplies a title and
  * `run`, and the host owns matching, ordering, and recency.
  */
-export interface PluginCommandPaletteActionRegistration {
+export interface PluginCommandRegistration {
   /** Unique within the plugin; letters, digits, `-`, `_`. */
   id: string;
   /** The row's label, e.g. "Linear: open issue for this thread". */
@@ -1300,12 +1301,24 @@ export interface PluginCommandPaletteActionRegistration {
    * and there is none. Called while the palette is open; keep it cheap and
    * synchronous. Omitted means always listed.
    */
-  isAvailable?(context: PluginCommandPaletteActionContext): boolean;
+  isAvailable?(context: PluginCommandContext): boolean;
   /**
    * Runs after the palette closes and focus is restored. Errors (sync or
    * async) are contained and logged; they never break the palette.
    */
-  run(context: PluginCommandPaletteActionContext): void | Promise<void>;
+  run(context: PluginCommandContext): void | Promise<void>;
+}
+
+/** @deprecated Use PluginCommandContext. */
+export type PluginCommandPaletteActionContext = PluginCommandContext;
+
+/** @deprecated Use PluginCommandRegistration. */
+export type PluginCommandPaletteActionRegistration = PluginCommandRegistration;
+
+/** Registers commands for bb's command palette. */
+export interface PluginAppCommands {
+  /** Register a command. IDs are unique within this plugin, including legacy slot registrations. */
+  register(registration: PluginCommandRegistration): void;
 }
 
 /**
@@ -1559,12 +1572,10 @@ export interface PluginAppSlots {
   messageDirective(registration: PluginMessageDirectiveRegistration): void;
   messageAction(registration: PluginMessageActionRegistration): void;
   /**
-   * Add a row to the quick palette (see
-   * {@link PluginCommandPaletteActionRegistration}).
+   * @deprecated Use `app.commands.register` with the same registration.
+   * Both entry points share the same command registry and ID namespace.
    */
-  commandPaletteAction(
-    registration: PluginCommandPaletteActionRegistration,
-  ): void;
+  commandPaletteAction(registration: PluginCommandRegistration): void;
   /**
    * Draw one agent, environment, or machine provider's icon with an inline
    * React component instead of its masked logo asset (see
@@ -1711,6 +1722,7 @@ export interface ExperimentalAppIcons {
 
 export interface PluginAppBuilder {
   experimental_icons: ExperimentalAppIcons;
+  commands: PluginAppCommands;
   slots: PluginAppSlots;
   composer: PluginAppComposer;
   contentScripts: PluginAppContentScripts;

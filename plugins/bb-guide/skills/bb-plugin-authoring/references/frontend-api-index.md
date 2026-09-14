@@ -142,8 +142,11 @@ Read the installed SDK declarations for the exact current signatures.
 - `PluginTargetedPanelActionOpenOptions`
 - `PluginMessageActionContext`
 - `PluginMessageActionRegistration`
-- `PluginCommandPaletteActionContext`
-- `PluginCommandPaletteActionRegistration`
+- `PluginAppCommands`
+- `PluginCommandContext`
+- `PluginCommandPaletteActionContext` (deprecated alias)
+- `PluginCommandRegistration`
+- `PluginCommandPaletteActionRegistration` (deprecated alias)
 - `PluginProviderIconRegistration`
 - `PluginTimelineRowPresentation`
 - `PluginTimelineRowStatus`

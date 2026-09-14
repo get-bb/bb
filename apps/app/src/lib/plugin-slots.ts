@@ -9,7 +9,7 @@ import type {
   PluginPendingInteractionRegistration,
   PluginFileOpenerRegistration,
   PluginHomepageSectionRegistration,
-  PluginCommandPaletteActionRegistration,
+  PluginCommandRegistration,
   PluginMessageActionRegistration,
   PluginMessageDirectiveRegistration,
   PluginNavPanelRegistration,
@@ -52,7 +52,7 @@ export interface PluginRegistrationSet {
   diffRenderers?: readonly PluginDiffRendererRegistration[];
   messageDirectives: readonly PluginMessageDirectiveRegistration[];
   messageActions?: readonly PluginMessageActionRegistration[];
-  commandPaletteActions?: readonly PluginCommandPaletteActionRegistration[];
+  commandPaletteActions?: readonly PluginCommandRegistration[];
   providerIcons?: readonly CollectedPluginProviderIconRegistration[];
   icons?: readonly ExperimentalIconRegistration[];
   timelineRenderers?: readonly PluginTimelineRendererRegistration[];
@@ -100,7 +100,7 @@ export interface PluginMessageDirectiveSlot
 export interface PluginMessageActionSlot
   extends PluginMessageActionRegistration, PluginSlotBase {}
 export interface PluginCommandPaletteActionSlot
-  extends PluginCommandPaletteActionRegistration, PluginSlotBase {}
+  extends PluginCommandRegistration, PluginSlotBase {}
 interface PluginIconSlot extends ExperimentalIconRegistration, PluginSlotBase {}
 interface PluginProviderIconSlot
   extends CollectedPluginProviderIconRegistration, PluginSlotBase {}

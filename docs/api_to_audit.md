@@ -1,5 +1,19 @@
 # APIs To Audit
 
+## `app.commands.register`
+
+Registers frontend commands with `{ id, title, isAvailable?, run }`. The command
+palette consumes the same registrations as the deprecated
+`app.slots.commandPaletteAction` alias. Both paths share validation and a
+per-plugin ID namespace. The public name follows the explicitly requested API
+spelling without an experimental prefix. Existing context and registration
+type names remain deprecated aliases of `PluginCommandContext` and
+`PluginCommandRegistration`.
+
+Audit command identity, availability outside the palette, shortcut conflicts,
+and saved binding lifecycle before extending commands to keyboard shortcuts.
+This move preserves palette behavior and does not add shortcut fields.
+
 ## Discoverable RPC
 
 `bb.rpc.register` accepts optional `experimental_discoverable` and `experimental_description` options. Method definitions accept `experimental_description`. Discoverable registration exports wire schemas through Standard JSON Schema; validation-only schemas remain usable without publication. Descriptions are published separately and absent descriptions become null. Discovery advertises methods without changing RPC authorization or dispatch.

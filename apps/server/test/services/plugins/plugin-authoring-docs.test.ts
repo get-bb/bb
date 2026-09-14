@@ -281,6 +281,7 @@ const _assertAllSlotsListed: MissingSlot extends never ? true : never = true;
 void _assertAllSlotsListed;
 
 const APP_BUILDER_FIELDS = [
+  "commands",
   "experimental_icons",
   "slots",
   "composer",
