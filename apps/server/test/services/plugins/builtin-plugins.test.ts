@@ -247,6 +247,9 @@ describe("builtin plugin reconciliation", () => {
       ["secrets", "Lock"],
       ["side-chat", "SideChat"],
       ["workflows", "Workflow"],
+      ["git-graph", "GitBranch"],
+      ["pc-control", "Laptop"],
+      ["workspace-explorer", "FolderOpen"],
     ]);
 
     expect(BUILTIN_PLUGINS).toHaveLength(expectedIcons.size);

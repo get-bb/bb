@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Git Graph · D3 prototype gallery</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="gg-shell">
+      <header class="gg-header">
+        <h1>Git Graph · D3 prototype gallery</h1>
+        <p>
+          Three live renderings of the same demo history. Switch tabs, hover
+          commits, and compare which layout fits the bb panel best.
+        </p>
+        <div class="gg-chips" id="chips"></div>
+      </header>
+      <nav class="gg-tabs" id="tabs" role="tablist"></nav>
+      <p class="gg-blurb" id="blurb"></p>
+      <div class="gg-stage" id="stage"></div>
+      <section class="gg-notes" id="notes"></section>
+      <p class="gg-footer">
+        Prototype gallery for the git-graph plugin — not part of the production
+        panel. Data is static; nothing touches a real repository.
+      </p>
+    </div>
+    <script src="/vendor/d3.js"></script>
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>

@@ -138,6 +138,21 @@ export const BUILTIN_PLUGINS = [
     pluginId: "workflows",
     defaultEnabled: false,
   },
+  {
+    name: "git-graph",
+    pluginId: "git-graph",
+    defaultEnabled: true,
+  },
+  {
+    name: "pc-control",
+    pluginId: "pc-control",
+    defaultEnabled: true,
+  },
+  {
+    name: "workspace-explorer",
+    pluginId: "workspace-explorer",
+    defaultEnabled: true,
+  },
 ].map((plugin): BundledPluginDefinition => ({
   ...plugin,
   autoInstall: true,

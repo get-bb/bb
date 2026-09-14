@@ -1,0 +1,70 @@
+{
+  "name": "bb-plugin-pc-control",
+  "version": "0.1.0",
+  "description": "Local PC resource overview and saved program profiles in the thread side panel, with the bb pc CLI.",
+  "private": true,
+  "license": "MIT",
+  "homepage": "https://github.com/get-bb/bb#readme",
+  "bugs": {
+    "url": "https://github.com/get-bb/bb/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/get-bb/bb.git",
+    "directory": "plugins/pc-control"
+  },
+  "type": "module",
+  "files": [
+    "dist",
+    "server.ts",
+    "app.tsx",
+    "contract.ts",
+    "host.ts",
+    "host-contract.ts",
+    "pc",
+    "components",
+    "README.md"
+  ],
+  "engines": {
+    "bb": ">=0.0",
+    "bbPluginSdk": ">=0.4.13"
+  },
+  "bb": {
+    "name": "PC Control",
+    "description": "Local PC resource overview and saved program profiles in the thread side panel, with the bb pc CLI.",
+    "branding": {
+      "icon": "Laptop"
+    },
+    "server": "./server.ts",
+    "app": "./app.tsx",
+    "host": "./host.ts"
+  },
+  "keywords": [
+    "bb-plugin"
+  ],
+  "scripts": {
+    "build": "node --conditions=source --import tsx ../../apps/cli/src/index.ts plugin build .",
+    "prepare:bundled": "bb-plugin-build prepare-bundled",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --config vitest.config.ts"
+  },
+  "devDependencies": {
+    "@bb/plugin-build": "workspace:*",
+    "@get-bb/plugin-sdk": "workspace:*",
+    "@testing-library/react": "^16.3.2",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "jsdom": "^29.0.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "sonner": "^1.7.4",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "typescript-7": "npm:typescript@^7.0.2",
+    "vitest": "^4.1.1"
+  },
+  "dependencies": {
+    "@bb/shared-ui": "workspace:*",
+    "zod": "^4.3.6"
+  }
+}
