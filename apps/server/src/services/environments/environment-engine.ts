@@ -8,6 +8,8 @@ import {
   resolveProviderOperationContext,
 } from "../threads/thread-environment-placement.js";
 import { withEnvironmentCleanupSlot } from "./cleanup-concurrency.js";
+// bb-fork(windows): cross-platform absolute-path check for path claims.
+import { parseClaimableEnvironmentPath } from "./environment-path.windows.js";
 import { ensureHostSessionReadyForWork } from "../hosts/host-lifecycle.js";
 import { foreignProviderOwnedPathRefusal } from "../threads/workspace-path-claims.js";
 import {
@@ -346,12 +348,8 @@ async function runCreate(
             attempt: provisioning.attempt,
             rebuild: previous !== null,
             experimental_claimPath: async (value) => {
-              const path = z
-                .string()
-                .min(1)
-                .startsWith("/")
-                .refine((path) => !path.includes("\0"))
-                .parse(value);
+              // bb-fork(windows): accept Windows absolute host paths.
+              const path = parseClaimableEnvironmentPath(value);
               if (signal.aborted) return false;
               return claimEnvironmentPath(
                 deps.db,
