@@ -473,11 +473,11 @@ describe("PluginNavSidebarItems", () => {
         ).toEqual(expected.map(([label]) => label));
         expect(within(menu).getAllByRole("separator")).toHaveLength(1);
         for (const [label, icon] of expected) {
-          expect(
-            within(menu)
-              .getByRole("menuitem", { name: label })
-              .querySelector(`[data-icon="${icon}"]`),
-          ).not.toBeNull();
+          const iconElement = within(menu)
+            .getByRole("menuitem", { name: label })
+            .querySelector(`[data-icon="${icon}"]`);
+          expect(iconElement).not.toBeNull();
+          expect(iconElement?.hasAttribute("data-icon-root")).toBe(true);
         }
       };
       expectFocusedMenu(dropdownMenu);
@@ -1112,6 +1112,13 @@ describe("PluginNavSidebarItems", () => {
       "Search threads",
       "Customize sidebar",
     ]);
+    expect(
+      screen
+        .getByRole("menuitem", { name: "Customize sidebar" })
+        .querySelectorAll(
+          ':scope > [data-icon="FilterHorizontal"][data-icon-root]',
+        ),
+    ).toHaveLength(1);
 
     fireEvent.click(screen.getByRole("menuitem", { name: "Search threads" }));
 

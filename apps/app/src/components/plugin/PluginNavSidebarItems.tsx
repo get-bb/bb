@@ -14,11 +14,6 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useAtom } from "jotai";
 import { DndContext, type DragEndEvent } from "@dnd-kit/core";
 import {
-  FilterHorizontalIcon,
-  UnavailableIcon,
-} from "@hugeicons/core-free-icons";
-import { HugeiconsIcon } from "@hugeicons/react";
-import {
   SortableContext,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
@@ -108,7 +103,7 @@ export interface SidebarNavActivationModifiers {
 function CustomizeMenuItemContent() {
   return (
     <>
-      <HugeiconsIcon icon={FilterHorizontalIcon} aria-hidden="true" />
+      <Icon name="FilterHorizontal" aria-hidden="true" />
       Customize sidebar
     </>
   );
@@ -973,11 +968,7 @@ function PluginNavRowMenuItems({
       </Item>
       <Separator />
       <Item disabled={disablePending} onSelect={onDisable}>
-        <HugeiconsIcon
-          icon={UnavailableIcon}
-          aria-hidden="true"
-          data-icon="Unavailable"
-        />
+        <Icon name="Unavailable" aria-hidden="true" />
         Disable
       </Item>
     </>
