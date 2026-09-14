@@ -1,4 +1,5 @@
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
+import { StoryCard, StoryRow } from "../../apps/app/.ladle/story-card.js";
 import { ProviderUsageStatusContent, type UsageStoreSnapshot } from "./app.js";
 import { UsageSettingsContent } from "./settings.js";
 import type {
@@ -154,29 +155,11 @@ function storySnapshot(name: ScenarioName): UsageStoreSnapshot {
   };
 }
 
-function Stage({
-  title,
-  description,
-  children,
-}: {
-  title: string;
-  description: string;
-  children: ReactNode;
-}) {
-  return (
-    <main className="mx-auto w-full max-w-5xl p-6">
-      <h1 className="text-sm font-semibold text-foreground">{title}</h1>
-      <p className="mt-1 text-xs text-muted-foreground">{description}</p>
-      <div className="mt-5">{children}</div>
-    </main>
-  );
-}
-
 function SettingsPreview({ scenario }: { scenario: ScenarioName }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const machines = scenario === "loading" ? [] : scenarios[scenario].machines;
   return (
-    <div className="mx-auto min-h-56 w-full max-w-3xl rounded-lg bg-background p-5">
+    <div className="min-h-56 w-full max-w-3xl rounded-lg bg-background p-5">
       <UsageSettingsContent
         machines={machines}
         selectedId={selectedId}
@@ -213,34 +196,36 @@ const descriptions: Record<ScenarioName, string> = {
     "The latest refresh failed while cached measurements remain visible.",
 };
 
-function settingsStory(scenario: ScenarioName) {
+const storyRows: readonly { label: string; scenario: ScenarioName }[] = [
+  { label: "healthy", scenario: "healthy" },
+  { label: "empty account pool", scenario: "emptyPool" },
+  { label: "loading", scenario: "loading" },
+  { label: "offline machine", scenario: "offline" },
+  { label: "authentication", scenario: "authentication" },
+  { label: "missing provider", scenario: "missingProvider" },
+  { label: "failed refresh", scenario: "failedRefresh" },
+];
+
+export function Settings() {
   return (
-    <Stage title="Provider usage settings" description={descriptions[scenario]}>
-      <SettingsPreview scenario={scenario} />
-    </Stage>
+    <StoryCard labelWidth="180px">
+      {storyRows.map(({ label, scenario }) => (
+        <StoryRow key={scenario} label={label} hint={descriptions[scenario]}>
+          <SettingsPreview scenario={scenario} />
+        </StoryRow>
+      ))}
+    </StoryCard>
   );
 }
 
-function footerStory(scenario: ScenarioName) {
+export function Disclosure() {
   return (
-    <Stage title="Provider usage footer" description={descriptions[scenario]}>
-      <FooterPreview scenario={scenario} />
-    </Stage>
+    <StoryCard labelWidth="180px">
+      {storyRows.map(({ label, scenario }) => (
+        <StoryRow key={scenario} label={label} hint={descriptions[scenario]}>
+          <FooterPreview scenario={scenario} />
+        </StoryRow>
+      ))}
+    </StoryCard>
   );
 }
-
-export const SettingsHealthy = () => settingsStory("healthy");
-export const SettingsEmptyPool = () => settingsStory("emptyPool");
-export const SettingsLoading = () => settingsStory("loading");
-export const SettingsOffline = () => settingsStory("offline");
-export const SettingsAuthentication = () => settingsStory("authentication");
-export const SettingsMissingProvider = () => settingsStory("missingProvider");
-export const SettingsFailedRefresh = () => settingsStory("failedRefresh");
-
-export const FooterHealthy = () => footerStory("healthy");
-export const FooterEmptyPool = () => footerStory("emptyPool");
-export const FooterLoading = () => footerStory("loading");
-export const FooterOffline = () => footerStory("offline");
-export const FooterAuthentication = () => footerStory("authentication");
-export const FooterMissingProvider = () => footerStory("missingProvider");
-export const FooterFailedRefresh = () => footerStory("failedRefresh");
