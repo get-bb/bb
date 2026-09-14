@@ -138,13 +138,29 @@ formatting it would create unrelated churn. A direct `oxfmt --check` therefore
 still reports that one file. The repository-wide `pnpm format:check` remains red
 on 231 pre-existing paths outside this change.
 
-A full `@bb/server` test run was also attempted: 2,649 tests passed and 53
-failed for host-test infrastructure reasons outside this fence. The failures
-were dominated by a percent-encoded checkout path passed to shell fixtures,
-an unwritable existing npm cache, and the process file-watcher limit. The five
-focused server files were then rerun alone and passed 101/101. The full-suite
-failures are not waived release checks; they remain an upstream release-gate
-gap for a normal checkout and test environment.
+A first full `@bb/server` test run passed 2,649 tests and failed 53. The failures
+had three measured infrastructure causes. The install-machine harness passed a
+percent-encoded `URL.pathname` to `sh`, the inherited npm cache was not writable,
+and unrestricted Vitest concurrency exhausted the process file-watcher limit.
+The path defect was reproduced as exit 127 before changing the harness and as
+the expected exit 2 afterward; all 33 tests in that file then passed. The npm
+dependency file passed 3/3 with a task-specific cache.
+
+The bounded watcher probe exposed one additional pre-existing test-infrastructure
+race: the composed machine lifecycle test used one-second observers for an
+asynchronous seven-command chain. It failed both alone and in the probe with no
+captured command, then passed 2/2 after the integration case received explicit
+five-second command budgets and a 30-second whole-case ceiling. The change does
+not alter a production timeout or assertion.
+
+The final release run used the mounted external APFS target
+`/Users/fedor/.build-temp/df80-release-test`, separate writable `TMPDIR` and npm
+cache directories, Turbo concurrency 2, and Vitest `--maxWorkers=2`. It passed
+all 9 Turbo tasks: 265 server test files passed, 3 skipped, 2,704 tests passed,
+1 skipped, and 0 failed in 2 minutes 44.412 seconds. The retained log SHA-256 is
+`99ea8b0da7cfca5b799bceb8b28bfe8a39a943a90fb54df79ccc90f92ae8049c`;
+it contains no `EMFILE` occurrence. The former 53 failures are therefore
+resolved rather than waived.
 
 The tests exercise migrated in-memory and temporary file-backed stores, an
 in-process loopback BB server, host-command captures, and provider doubles. No
@@ -157,16 +173,23 @@ environment identity retained by the claim. The independent A-to-B
 counterexample escaped that gate. The smallest correction is now `APPLIED` and
 `EFFECT_VERIFIED` locally by the two restart regressions: persist canonical
 binding bytes plus digest and compare both at claimed and delivering resume.
-Axon owns the correction; Dark Factory owns independent acceptance. Provider,
-human, and economic cost are unknown. This reflection grants no release or
-activation authority.
+Independent review accepted that source delta. The release-readiness cycle then
+converted 53 infrastructure failures into four measured causes, made two
+bounded test-harness corrections, and produced a green full server suite. This
+shows that the prior independent-review improvement worked and that release
+evidence must keep test-environment custody explicit. Axon owns the correction;
+Dark Factory owns independent acceptance. Provider and economic cost are
+unknown; the measured final suite cost is 2 minutes 44.412 seconds of local wall
+time. This reflection grants no release or activation authority.
 
 ## Release boundary
 
 This candidate adds an experimental plugin API and a public HTTP/SDK/CLI
-surface. It requires independent source review, normal upstream acceptance, a
-released BB build, and an isolated canary before any controller flow can consume
-it. It grants no authority to resume DF-74.
+surface. Its prevention-first source delta has independent acceptance; the two
+release-readiness test-harness changes require an independent delta review.
+After that, the remaining boundaries are normal upstream acceptance, a released
+BB build, and an isolated canary before any controller flow can consume it. It
+grants no authority to resume DF-74.
 
 The related Factory diagnostic-retention audit is bound separately at commit
 `20e8923` and report SHA-256

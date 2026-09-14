@@ -33,6 +33,9 @@ fully bound request at the actual effect boundary.
   uncertainty without redelivery.
 - Compose the public provision route, installed host claim, loopback SDK spawn,
   and durable replay in one running-server acceptance test.
+- Decode the install-machine fixture URL before passing it to `sh`, and give the
+  composed machine-lifecycle integration chain explicit local observation and
+  whole-case budgets so host scheduling cannot leak unfinished work.
 - Document the experimental API in the Plugin Guide and API audit map. This is
   a server/API change only; `HOST_DAEMON_PROTOCOL_VERSION` is unchanged because
   no server/daemon command or result shape changed.
@@ -54,6 +57,10 @@ does not contact an installed server, controller, or provider.
 - `pnpm exec turbo run test --filter=@bb/server -- --run test/public/public-environments.test.ts test/services/plugins/plugin-sdk.test.ts test/services/plugins/claimed-thread-spawn-recovery.test.ts`
 - affected DB, SDK, CLI, plugin SDK, API-map, template, and server tests
 - Turbo typechecks for every affected package
+- full `@bb/server` Turbo suite with isolated external tmp/npm cache,
+  concurrency 2, and Vitest `--maxWorkers=2`: 9/9 tasks, 265 files passed,
+  3 skipped, 2,704 tests passed, 1 skipped, 0 failed in 2m44.412s; retained log
+  SHA-256 `99ea8b0da7cfca5b799bceb8b28bfe8a39a943a90fb54df79ccc90f92ae8049c`
 - `pnpm exec oxfmt --check` on every changed source, test, and document
 - `git diff --check`
 

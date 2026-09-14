@@ -32,6 +32,9 @@ import {
 } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
 
+const COMMAND_TIMEOUT_MS = 5_000;
+const CASE_TIMEOUT_MS = 30_000;
+
 afterEach(() => {
   clearAllThreadProvisionSchedules();
   setPluginEnvironmentProviderBridge(undefined);
@@ -146,7 +149,7 @@ describe("composed machine thread lifecycle", () => {
         const defaultPath = await waitForQueuedCommand(
           harness,
           ({ command }) => command.type === "project.clone_default_path",
-          5_000,
+          COMMAND_TIMEOUT_MS,
         );
         const hostId = defaultPath.row.hostId;
         expect(getHost(harness.db, hostId)).toMatchObject({
@@ -164,6 +167,7 @@ describe("composed machine thread lifecycle", () => {
         const exists = await waitForQueuedCommand(
           harness,
           ({ command }) => command.type === "host.paths_exist",
+          COMMAND_TIMEOUT_MS,
         );
         await reportQueuedCommandSuccess(harness, exists, {
           existence: { [path]: false },
@@ -171,6 +175,7 @@ describe("composed machine thread lifecycle", () => {
         const clone = await waitForQueuedCommand(
           harness,
           ({ command }) => command.type === "project.clone",
+          COMMAND_TIMEOUT_MS,
         );
         await reportQueuedCommandSuccess(harness, clone, {
           path,
@@ -179,6 +184,7 @@ describe("composed machine thread lifecycle", () => {
         const attach = await waitForQueuedCommand(
           harness,
           ({ command }) => command.type === "environment.attach",
+          COMMAND_TIMEOUT_MS,
         );
         if (attach.command.type !== "environment.attach")
           throw new Error("Missing environment attach");
@@ -193,6 +199,7 @@ describe("composed machine thread lifecycle", () => {
         const start = await waitForQueuedCommand(
           harness,
           ({ command }) => command.type === "thread.start",
+          COMMAND_TIMEOUT_MS,
         );
         const providerThreadId = "provider-machine-lifecycle";
         await reportQueuedCommandSuccess(harness, start, { providerThreadId });
@@ -241,6 +248,7 @@ describe("composed machine thread lifecycle", () => {
           const stop = await waitForQueuedCommand(
             harness,
             ({ command }) => command.type === "thread.stop",
+            COMMAND_TIMEOUT_MS,
           );
           await reportQueuedCommandSuccess(harness, stop, {
             providerCheckpointId: null,
@@ -307,6 +315,7 @@ describe("composed machine thread lifecycle", () => {
         const followup = await waitForQueuedCommand(
           harness,
           ({ command }) => command.type === "turn.submit",
+          COMMAND_TIMEOUT_MS,
         );
         expect(followup.row.hostId).toBe(hostId);
         await reportQueuedCommandSuccess(harness, followup, {
@@ -354,5 +363,6 @@ describe("composed machine thread lifecycle", () => {
         expect(getHost(harness.db, source.host.id)?.destroyedAt).toBeNull();
       });
     },
+    CASE_TIMEOUT_MS,
   );
 });

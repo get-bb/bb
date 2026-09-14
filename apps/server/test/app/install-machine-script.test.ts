@@ -15,11 +15,11 @@ import {
 import { tmpdir } from "node:os";
 import { createServer as createNetServer } from "node:net";
 import { delimiter, dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
-const SCRIPT_PATH = new URL(
-  "../../src/assets/install-machine.sh",
-  import.meta.url,
+const SCRIPT_PATH = fileURLToPath(
+  new URL("../../src/assets/install-machine.sh", import.meta.url),
 );
 const createdDirectories: string[] = [];
 const FIXTURE_ARTIFACT_DIGEST = createHash("sha256")
@@ -65,7 +65,7 @@ function runScript(
   fixture: Fixture,
   env: Record<string, string | undefined> = {},
 ) {
-  return spawnSync("sh", [SCRIPT_PATH.pathname, ...args], {
+  return spawnSync("sh", [SCRIPT_PATH, ...args], {
     encoding: "utf8",
     env: createScriptEnv(fixture, env),
   });
