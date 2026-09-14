@@ -33,8 +33,10 @@ import { PluginLogo, PluginCategoryLabel } from "./plugin-ui";
 
 export function InstalledPluginsTab({
   plugins,
+  onOpenPlugin,
 }: {
   plugins: readonly PluginListItem[];
+  onOpenPlugin?: (pluginId: string, trigger: HTMLButtonElement) => void;
 }) {
   const catalogQuery = usePluginCatalogSearch("", { enabled: true });
   const [updateTargetId, setUpdateTargetId] = useState<string | null>(null);
@@ -61,6 +63,7 @@ export function InstalledPluginsTab({
               catalogQuery.data?.entries ?? [],
             )}
             onUpdateClick={() => setUpdateTargetId(plugin.id)}
+            onOpenPlugin={onOpenPlugin}
           />
         ))}
       </ResourceBrowseGrid>
@@ -81,10 +84,12 @@ export function InstalledPluginRow({
   plugin,
   onUpdateClick,
   catalogEntry,
+  onOpenPlugin,
 }: {
   plugin: PluginListItem;
   catalogEntry?: PluginCatalogSearchEntry;
   onUpdateClick: () => void;
+  onOpenPlugin?: (pluginId: string, trigger: HTMLButtonElement) => void;
 }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -119,12 +124,25 @@ export function InstalledPluginRow({
         ? "text-warning-text"
         : "text-muted-foreground";
 
-  const openDetail = () =>
-    navigate(
-      isPluginsRoutePath(location.pathname)
-        ? `${getPluginDetailRoutePath({ pluginId: plugin.id })}?view=installed`
-        : getPluginDetailRoutePath({ pluginId: plugin.id, view: "installed" }),
-    );
+  const openDetail = (trigger?: HTMLButtonElement) => {
+    if (onOpenPlugin !== undefined && trigger !== undefined) {
+      onOpenPlugin(plugin.id, trigger);
+      return;
+    }
+    if (!isPluginsRoutePath(location.pathname)) {
+      navigate(
+        getPluginDetailRoutePath({ pluginId: plugin.id, view: "installed" }),
+      );
+      return;
+    }
+    const params = new URLSearchParams(location.search);
+    params.set("view", "installed");
+    params.delete("configure");
+    navigate({
+      pathname: getPluginDetailRoutePath({ pluginId: plugin.id }),
+      search: params.toString(),
+    });
+  };
   return (
     <div data-testid={`plugin-row-${plugin.id}`}>
       <PluginCard
