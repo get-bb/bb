@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import {
   mkdir,
   mkdtemp,
+  readdir,
   readFile,
   rm,
   symlink,
@@ -646,6 +647,28 @@ describe("protocol self-update package-manager strategy", () => {
 
     expectMiseUse(test.runProcess);
     expectNoNpm(test.runProcess);
+  });
+
+  it("serializes concurrent package manager writes so the last value wins", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "bb-self-update-test-"));
+    roots.push(dataDir);
+    const filePath = join(dataDir, PACKAGE_MANAGER_FILE_NAME);
+    const values: PackageManagerPreference[] = [
+      "mise",
+      "npm",
+      "auto",
+      "mise",
+      "npm",
+    ];
+    await expect(
+      Promise.all(
+        values.map((value) => writePersistedPackageManager(filePath, value)),
+      ),
+    ).resolves.toHaveLength(values.length);
+    await expect(readPersistedPackageManager(filePath)).resolves.toBe("npm");
+    await expect(readdir(dataDir)).resolves.toEqual([
+      PACKAGE_MANAGER_FILE_NAME,
+    ]);
   });
 
   it("fails without an npm fallback when mise installs a different version", async () => {

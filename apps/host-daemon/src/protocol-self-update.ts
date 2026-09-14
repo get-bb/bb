@@ -181,15 +181,33 @@ export async function readPersistedPackageManager(
   return null;
 }
 
-export async function writePersistedPackageManager(
+const persistedPackageManagerWrites = new Map<string, Promise<void>>();
+let persistedPackageManagerWriteCount = 0;
+
+export function writePersistedPackageManager(
   path: string,
   packageManager: PackageManagerPreference,
 ): Promise<void> {
-  const temporary = `${path}.${process.pid}.tmp`;
-  await writeFile(temporary, `${JSON.stringify({ packageManager })}\n`, {
-    mode: 0o600,
-  });
-  await rename(temporary, path);
+  persistedPackageManagerWriteCount += 1;
+  const temporary = `${path}.${process.pid}.${persistedPackageManagerWriteCount}.tmp`;
+  const previous = persistedPackageManagerWrites.get(path) ?? Promise.resolve();
+  const write = previous
+    .catch(() => {})
+    .then(async () => {
+      await writeFile(temporary, `${JSON.stringify({ packageManager })}\n`, {
+        mode: 0o600,
+      });
+      await rename(temporary, path);
+    });
+  persistedPackageManagerWrites.set(path, write);
+  write
+    .finally(() => {
+      if (persistedPackageManagerWrites.get(path) === write) {
+        persistedPackageManagerWrites.delete(path);
+      }
+    })
+    .catch(() => {});
+  return write;
 }
 
 function pathIsInside(child: string, parent: string): boolean {
