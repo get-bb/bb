@@ -403,7 +403,7 @@ describe("provider usage footer disclosure", () => {
         slot.queryByText(/Unexpected token|bb connect|invalid JSON/i),
       ).toBeNull();
       fireEvent.click(
-        slot.getByRole("button", { name: "Retry usage refresh" }),
+        slot.getByRole("button", { name: "Reload provider usage" }),
       );
       await waitFor(() =>
         expect(
@@ -495,8 +495,8 @@ it.each([
     expect(slot.getByText("42%")).toBeTruthy();
     expect(slot.queryByText("private backend error")).toBeNull();
     expect(
-      slot.getByRole("button", { name: "Retry usage refresh" }),
-    ).toBeTruthy();
+      slot.queryByRole("button", { name: "Retry usage refresh" }),
+    ).toBeNull();
   }
   await mounted.lifecycle.dispose();
 });

@@ -30,13 +30,9 @@ export function offlineUsageMessage(
 
 export function UsageFeedback({
   message,
-  retrying = false,
-  onRetry,
   className,
 }: {
   message: string;
-  retrying?: boolean;
-  onRetry?: () => void;
   className?: string;
 }) {
   return (
@@ -48,17 +44,6 @@ export function UsageFeedback({
       )}
     >
       <span className="min-w-0 flex-1">{message}</span>
-      {onRetry ? (
-        <button
-          type="button"
-          aria-label="Retry usage refresh"
-          disabled={retrying}
-          className="shrink-0 rounded-sm px-1 py-0.5 font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
-          onClick={onRetry}
-        >
-          Retry
-        </button>
-      ) : null}
     </div>
   );
 }

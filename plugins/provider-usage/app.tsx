@@ -410,8 +410,6 @@ export function ProviderUsageStatusContent({
           : activeProvider === null
             ? emptyUsageMessage(activeMachine)
             : null;
-  const feedbackCanRetry =
-    snapshot.error !== null || activeMachine?.error != null;
   const panelId = useId();
   const activeMachineId = activeMachine?.id ?? null;
   const activeProviderId = activeProvider?.id ?? null;
@@ -599,19 +597,6 @@ export function ProviderUsageStatusContent({
         {feedback === null ? null : (
           <UsageFeedback
             message={feedback}
-            retrying={snapshot.isRefreshing}
-            onRetry={
-              feedbackCanRetry
-                ? () =>
-                    void refreshUsage({
-                      force: true,
-                      machineIds:
-                        activeMachineId === null ? null : [activeMachineId],
-                      maxAgeMs: 0,
-                      providerId: activeProvider?.id ?? null,
-                    })
-                : undefined
-            }
             className={activeProvider === null ? undefined : "mb-2"}
           />
         )}

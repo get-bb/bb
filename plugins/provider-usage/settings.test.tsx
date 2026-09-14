@@ -143,8 +143,8 @@ it("renders loading and a friendly transport error without exposing raw errors",
   reject(new Error("Unexpected token 'b', bb connect..."));
   await slot.findByText("Couldn’t load usage.");
   expect(
-    slot.getByRole("button", { name: "Retry usage refresh" }),
-  ).toBeTruthy();
+    slot.queryByRole("button", { name: "Retry usage refresh" }),
+  ).toBeNull();
   expect(slot.queryByText(/Unexpected token/)).toBeNull();
 });
 

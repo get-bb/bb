@@ -452,8 +452,6 @@ export function UsageSettingsContent({
         {notice ? (
           <UsageFeedback
             message={notice}
-            retrying={loading}
-            onRetry={error || Boolean(selected?.error) ? onRefresh : undefined}
             className={groups.size > 0 ? "mb-3" : undefined}
           />
         ) : null}
