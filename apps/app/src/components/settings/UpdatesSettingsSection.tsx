@@ -10,6 +10,7 @@ import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { BbDesktopInfo } from "@bb/desktop-contract";
 import type { SystemVersionResponse } from "@bb/server-contract";
+import type { ProviderCliStatus } from "@bb/host-daemon-contract";
 import {
   RETRY_ACTION_ICON,
   UPDATE_ACTION_ICON,
@@ -247,6 +248,76 @@ function RowVersions({
         </>
       ) : null}
     </span>
+  );
+}
+
+const INSTALL_SOURCE_LABELS: Record<
+  ProviderCliStatus["installSource"],
+  string
+> = {
+  notInstalled: "not installed",
+  npmGlobal: "npm",
+  mise: "mise",
+  external: "external",
+};
+
+function RowSourceLabel({
+  source,
+}: {
+  source: ProviderCliStatus["installSource"];
+}) {
+  return (
+    <span
+      data-install-source={source}
+      className="shrink-0 text-2xs text-muted-foreground"
+    >
+      {INSTALL_SOURCE_LABELS[source]}
+    </span>
+  );
+}
+
+function ShadowedInstallWarning({
+  displayName,
+  shadowingInstall,
+}: {
+  displayName: string;
+  shadowingInstall: NonNullable<ProviderCliStatus["shadowingInstall"]>;
+}) {
+  return (
+    <div role="alert" className="pt-2 first:pt-0">
+      <div className="flex flex-col gap-2 rounded-lg border border-attention/50 bg-surface-attention px-3 py-2.5 sm:flex-row sm:items-center sm:gap-3">
+        <div className="flex min-w-0 flex-1 items-start gap-2">
+          <Icon
+            name="AlertTriangle"
+            className="mt-0.5 size-3.5 shrink-0 text-warning-text"
+            aria-hidden
+          />
+          <div className="min-w-0">
+            <p className="text-xs font-medium text-foreground">
+              Another {displayName} install shadows the managed one
+            </p>
+            <p className="mt-0.5 break-all font-mono text-2xs leading-snug text-subtle-foreground">
+              {shadowingInstall.executablePath}
+            </p>
+          </div>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-6 shrink-0 gap-1.5 self-start px-2 text-xs sm:self-center"
+          onClick={() => {
+            void copyToClipboardWithToast(shadowingInstall.removeCommand, {
+              successMessage: "Remove command copied",
+              errorMessage: "Couldn't copy the remove command",
+            });
+          }}
+        >
+          <Icon aria-hidden name="Copy" className="size-3" />
+          Copy remove command
+        </Button>
+      </div>
+    </div>
   );
 }
 
@@ -1042,7 +1113,7 @@ export function MachineUpdatesRows({
     return null;
   }
 
-  const rows = providerEntries.map(({ provider, status }) => {
+  const rows = providerEntries.flatMap(({ provider, status }) => {
     const issue = issuesByProvider.get(provider) ?? null;
     const state = providerRowState({ issue });
     const jobKey = providerCliJobKey(host.id, provider);
@@ -1064,7 +1135,7 @@ export function MachineUpdatesRows({
       providerId,
       providerInfo ?? null,
     )?.icon;
-    return (
+    const row = (
       <ResourceRow
         key={provider}
         className={ROW_SPACING}
@@ -1089,6 +1160,7 @@ export function MachineUpdatesRows({
               current={status.currentVersion}
               latest={issue !== null ? status.latestVersion : null}
             />
+            <RowSourceLabel source={status.installSource} />
             {failure === null ? null : (
               <>
                 <RowStateCaption state="failed">Failed</RowStateCaption>
@@ -1144,6 +1216,17 @@ export function MachineUpdatesRows({
         }
       />
     );
+    if (status.shadowingInstall === null) {
+      return [row];
+    }
+    return [
+      row,
+      <ShadowedInstallWarning
+        key={`${provider}-shadow`}
+        displayName={status.displayName}
+        shadowingInstall={status.shadowingInstall}
+      />,
+    ];
   });
 
   return <>{rows}</>;

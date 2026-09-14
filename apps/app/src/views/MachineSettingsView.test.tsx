@@ -6,6 +6,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import type { Host } from "@bb/domain";
 import { makeHost as makeHostFixture } from "@bb/test-helpers/domain-fixtures";
@@ -32,6 +33,7 @@ vi.mock("@/lib/sdk", () => ({
       providerCliStatus: vi.fn(),
       experimental_resume: vi.fn(),
       experimental_retryCleanup: vi.fn(),
+      experimental_updatePackageManager: vi.fn(),
       retryUpdate: vi.fn(),
       experimental_suspend: vi.fn(),
       update: vi.fn(),
@@ -174,15 +176,20 @@ describe("MachineSettingsView", () => {
       name: /dev-vm/u,
     });
     expect(machineHeading.tagName).toBe("H1");
+    const permissionLimitGroup = await screen.findByRole("radiogroup", {
+      name: "Permission limit",
+    });
     const checkedByMode = Object.fromEntries(
-      (await screen.findAllByRole("radio")).map((option) => [
-        option.textContent?.startsWith("Accept Edits")
-          ? "accept-edits"
-          : option.textContent?.startsWith("Approve for me")
-            ? "auto"
-            : "full",
-        option.getAttribute("aria-checked"),
-      ]),
+      within(permissionLimitGroup)
+        .getAllByRole("radio")
+        .map((option) => [
+          option.textContent?.startsWith("Accept Edits")
+            ? "accept-edits"
+            : option.textContent?.startsWith("Approve for me")
+              ? "auto"
+              : "full",
+          option.getAttribute("aria-checked"),
+        ]),
     );
     expect(checkedByMode).toEqual({
       "accept-edits": "false",
@@ -341,6 +348,42 @@ describe("MachineSettingsView", () => {
     expect(JSON.parse(requests[0]?.body ?? "{}")).toEqual({
       maxPermissionMode: "accept-edits",
     });
+  });
+
+  it("sends the selected package manager to the SDK", async () => {
+    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
+    vi.mocked(sdk.hosts.list).mockResolvedValue([
+      host({ packageManager: "auto", packageManagerOverride: null }),
+    ]);
+    stubSupportingFetches();
+    vi.mocked(sdk.hosts.experimental_updatePackageManager).mockResolvedValue(
+      host({ packageManager: "npm" }),
+    );
+
+    renderView();
+
+    fireEvent.click(await screen.findByRole("radio", { name: /^npm/u }));
+
+    await waitFor(() => {
+      expect(sdk.hosts.experimental_updatePackageManager).toHaveBeenCalledWith({
+        hostId: HOST_ID,
+        packageManager: "npm",
+      });
+    });
+  });
+
+  it("shows the machine's package manager override as read-only text", async () => {
+    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
+    vi.mocked(sdk.hosts.list).mockResolvedValue([
+      host({ packageManager: "auto", packageManagerOverride: "npm" }),
+    ]);
+    stubSupportingFetches();
+
+    renderView();
+
+    expect(
+      await screen.findByText(/BB_PACKAGE_MANAGER overrides this to npm/u),
+    ).toBeDefined();
   });
 
   it("refuses to remove the primary machine", async () => {

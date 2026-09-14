@@ -1,5 +1,9 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { Host, PermissionMode } from "@bb/domain";
+import type {
+  Host,
+  PackageManagerPreference,
+  PermissionMode,
+} from "@bb/domain";
 import { apiClient } from "@/lib/api-server";
 import { request } from "@/lib/api";
 import { sdk } from "@/lib/sdk";
@@ -63,6 +67,26 @@ export function useUpdateHostPermissionCeiling() {
           json: { maxPermissionMode },
         }),
       ),
+    onSuccess: () => {
+      invalidateHostListQueries({ queryClient });
+    },
+  });
+}
+
+interface UpdateHostPackageManagerRequest {
+  hostId: string;
+  packageManager: PackageManagerPreference;
+}
+
+export function useUpdateHostPackageManager() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    meta: {
+      showErrorToast: false,
+    },
+    mutationFn: ({ hostId, packageManager }: UpdateHostPackageManagerRequest) =>
+      sdk.hosts.experimental_updatePackageManager({ hostId, packageManager }),
     onSuccess: () => {
       invalidateHostListQueries({ queryClient });
     },

@@ -1,7 +1,7 @@
 import { MachineLifecycleNoticeContent } from "@/components/machines/MachineLifecycleNotice";
 import { useMemo, useState, type ComponentProps } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import type { Host, PermissionMode } from "@bb/domain";
+import type { Host, PackageManagerPreference } from "@bb/domain";
 import type { SystemMachineProvider } from "@bb/server-contract";
 import type { HostPlatform } from "@bb/host-daemon-contract";
 import { Button } from "@bb/shared-ui/button";
@@ -36,6 +36,7 @@ import {
   useRetryHostCleanup,
   useRetryHostUpdate,
   useSuspendHost,
+  useUpdateHostPackageManager,
   useUpdateHostPermissionCeiling,
 } from "@/hooks/mutations/host-mutations";
 import { useHosts } from "@/hooks/queries/host-queries";
@@ -70,6 +71,31 @@ const PRIMARY_REMOVE_DISABLED_REASON = "bb's primary machine can't be removed.";
 const PERMISSION_LIMIT_DESCRIPTION =
   "Highest permission mode any thread on the selected machine may run with. Threads that ask for more resolve down to it, and a provider that supports nothing this low can't run here.";
 
+const PACKAGE_MANAGER_DESCRIPTION =
+  "Controls how bb installs and updates provider CLIs and itself on this machine.";
+
+const PACKAGE_MANAGER_OPTIONS: {
+  value: PackageManagerPreference;
+  label: string;
+  description: string;
+}[] = [
+  {
+    value: "auto",
+    label: "Auto",
+    description: "Uses mise when it manages a CLI, otherwise npm.",
+  },
+  {
+    value: "mise",
+    label: "mise",
+    description: "Always installs and updates through mise.",
+  },
+  {
+    value: "npm",
+    label: "npm",
+    description: "Always installs and updates through npm.",
+  },
+];
+
 const PLATFORM_LABELS: Record<HostPlatform, string | null> = {
   darwin: "macOS",
   linux: "Linux",
@@ -99,21 +125,29 @@ function headerMeta({
   return parts.join(" · ");
 }
 
-interface PermissionLimitCardProps {
-  disabled: boolean;
-  onSelect: (permissionMode: PermissionMode) => void;
-  value: PermissionMode;
+interface RadioCardOption<Value extends string> {
+  value: Value;
+  label: string;
+  description?: string;
 }
 
-function PermissionLimitCards({
+function RadioCards<Value extends string>({
+  ariaLabel,
   disabled,
+  options,
   onSelect,
   value,
-}: PermissionLimitCardProps) {
+}: {
+  ariaLabel: string;
+  disabled: boolean;
+  options: readonly RadioCardOption<Value>[];
+  onSelect: (value: Value) => void;
+  value: Value;
+}) {
   return (
-    <div role="radiogroup" aria-label="Permission limit">
+    <div role="radiogroup" aria-label={ariaLabel}>
       <SettingsRowList>
-        {PERMISSION_MODE_OPTIONS.map((option) => {
+        {options.map((option) => {
           const selected = option.value === value;
           return (
             <SettingsRow key={option.value} className="items-start">
@@ -251,6 +285,7 @@ export function MachineSettingsView() {
   const resumeHost = useResumeHost();
   const retryHostCleanup = useRetryHostCleanup();
   const updatePermissionCeiling = useUpdateHostPermissionCeiling();
+  const updatePackageManager = useUpdateHostPackageManager();
   const [renameOpen, setRenameOpen] = useState(false);
   const [removeOpen, setRemoveOpen] = useState(false);
 
@@ -383,9 +418,11 @@ export function MachineSettingsView() {
           title="Permission limit"
           description={PERMISSION_LIMIT_DESCRIPTION}
         >
-          <PermissionLimitCards
+          <RadioCards
+            ariaLabel="Permission limit"
             value={host.maxPermissionMode}
             disabled={updatePermissionCeiling.isPending}
+            options={PERMISSION_MODE_OPTIONS}
             onSelect={(maxPermissionMode) =>
               updatePermissionCeiling.mutate(
                 { hostId: host.id, maxPermissionMode },
@@ -400,6 +437,36 @@ export function MachineSettingsView() {
               )
             }
           />
+        </SettingsSection>
+
+        <SettingsSection
+          title="Package manager"
+          description={PACKAGE_MANAGER_DESCRIPTION}
+        >
+          <RadioCards
+            ariaLabel="Package manager"
+            value={host.packageManager}
+            disabled={updatePackageManager.isPending}
+            options={PACKAGE_MANAGER_OPTIONS}
+            onSelect={(packageManager) =>
+              updatePackageManager.mutate(
+                { hostId: host.id, packageManager },
+                {
+                  onError: (error) => {
+                    showMutationErrorToast({
+                      error,
+                      fallbackMessage: `Couldn't change the package manager for ${host.name}.`,
+                    });
+                  },
+                },
+              )
+            }
+          />
+          {host.packageManagerOverride === null ? null : (
+            <p className="mt-2 text-xs leading-snug text-subtle-foreground/75">
+              {`BB_PACKAGE_MANAGER overrides this to ${host.packageManagerOverride} on ${host.name}.`}
+            </p>
+          )}
         </SettingsSection>
 
         <SettingsSection title="Provider CLIs">

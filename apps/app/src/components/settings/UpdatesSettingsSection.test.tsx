@@ -400,6 +400,73 @@ describe("UpdatesSettingsSection", () => {
     ).toBeDefined();
   });
 
+  it("shows the install source for each installed provider", () => {
+    useDesktopUpdateInfoMock.mockReturnValue({
+      desktopApi: null,
+      desktopInfo: null,
+      isDesktop: false,
+    });
+    useUpdateInventoryMock.mockReturnValue(
+      makeInventory({
+        machines: [
+          makeMachine({
+            host: makeHost({ id: "host_1", name: "workstation" }),
+          }),
+        ],
+      }),
+    );
+
+    renderSection();
+
+    const sourceLabels = document.querySelectorAll("[data-install-source]");
+    expect(sourceLabels.length).toBeGreaterThan(0);
+    expect(
+      [...sourceLabels].every(
+        (label) => label.getAttribute("data-install-source") === "npmGlobal",
+      ),
+    ).toBe(true);
+    expect(sourceLabels[0]?.textContent).toBe("npm");
+  });
+
+  it("shows a shadowed install warning with a copy button for the remove command", () => {
+    useDesktopUpdateInfoMock.mockReturnValue({
+      desktopApi: null,
+      desktopInfo: null,
+      isDesktop: false,
+    });
+    const shadowedIssue = makeUpdateIssue({ provider: "codex" });
+    shadowedIssue.status = {
+      ...shadowedIssue.status,
+      shadowingInstall: {
+        executablePath: "/usr/local/bin/codex",
+        removeCommand: "npm uninstall -g --prefix /usr/local @openai/codex",
+      },
+    };
+    useUpdateInventoryMock.mockReturnValue(
+      makeInventory({
+        machines: [
+          makeMachine({
+            host: makeHost({ id: "host_1", name: "workstation" }),
+            issues: [shadowedIssue],
+          }),
+        ],
+      }),
+    );
+
+    renderSection();
+
+    const warning = screen.getByRole("alert");
+    expect(
+      within(warning).getByText(
+        "Another Codex install shadows the managed one",
+      ),
+    ).toBeDefined();
+    expect(within(warning).getByText("/usr/local/bin/codex")).toBeDefined();
+    expect(
+      within(warning).getByRole("button", { name: "Copy remove command" }),
+    ).toBeDefined();
+  });
+
   it("keeps the changelog preview behind its experiment", () => {
     useDesktopUpdateInfoMock.mockReturnValue({
       desktopApi: null,

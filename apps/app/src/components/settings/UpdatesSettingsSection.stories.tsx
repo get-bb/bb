@@ -84,6 +84,25 @@ function updateIssue(
   };
 }
 
+function shadowedUpdateIssue(
+  provider: ProviderCliKey,
+  currentVersion: string,
+  latestVersion: string,
+): ProviderCliIssue {
+  const issue = updateIssue(provider, currentVersion, latestVersion);
+  return {
+    ...issue,
+    status: {
+      ...issue.status,
+      installSource: "mise",
+      shadowingInstall: {
+        executablePath: "/usr/local/lib/node_modules/@openai/codex/bin/codex",
+        removeCommand: "npm uninstall -g --prefix /usr/local @openai/codex",
+      },
+    },
+  };
+}
+
 function machineOf({
   host,
   isPrimary = false,
@@ -281,6 +300,10 @@ export function UpdateStates() {
   const providerManual = machineOf({
     host: makeHost({ id: "state-provider-manual", name: "homelab" }),
     issues: [manualUpdateIssue("codex", "0.145.0", "0.146.0")],
+  });
+  const providerShadowed = machineOf({
+    host: makeHost({ id: "state-provider-shadowed", name: "workstation" }),
+    issues: [shadowedUpdateIssue("codex", "0.145.0", "0.146.0")],
   });
   const providerMissing = machineOf({
     host: makeHost({ id: "state-provider-missing", name: "workstation" }),
@@ -494,6 +517,13 @@ export function UpdateStates() {
           note="The CLI was installed outside bb, so the update must run in its own package manager."
         >
           <StoryMachineSection machine={providerManual} />
+        </State>
+
+        <State
+          name="Shadowed install"
+          note="A copy outside mise's control still answers to codex; bb shows where it is and how to remove it, but never deletes it."
+        >
+          <StoryMachineSection machine={providerShadowed} />
         </State>
 
         <State
