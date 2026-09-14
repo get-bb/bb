@@ -29,7 +29,7 @@ function selectedSkillMention(
 }
 
 function extractText(input: PromptInput[]): string | undefined {
-  return extractPiPromptInput(input).text;
+  return extractPiPromptInput(input)?.text;
 }
 
 it("preserves local file paths with and without text", () => {
@@ -127,6 +127,33 @@ it("preserves text chunks, local files, and local images", () => {
         },
       ],
     });
+  } finally {
+    rmSync(workspaceDir, { recursive: true, force: true });
+  }
+});
+
+it("distinguishes an image-only prompt from empty input", () => {
+  const workspaceDir = mkdtempSync(join(tmpdir(), "bb-pi-image-input-"));
+  try {
+    const imagePath = join(workspaceDir, "screenshot.png");
+    writeFileSync(imagePath, Buffer.from("fake png data"));
+
+    expect(
+      extractPiPromptInput([{ type: "localImage", path: imagePath }]),
+    ).toEqual({
+      text: "",
+      images: [
+        {
+          data: Buffer.from("fake png data").toString("base64"),
+          mimeType: "image/png",
+          type: "image",
+        },
+      ],
+    });
+    expect(extractPiPromptInput([])).toBeNull();
+    expect(
+      extractPiPromptInput([{ type: "text", text: "", mentions: [] }]),
+    ).toBeNull();
   } finally {
     rmSync(workspaceDir, { recursive: true, force: true });
   }
