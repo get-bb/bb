@@ -28,7 +28,7 @@ import {
 } from "@/components/promptbox/follow-up-placeholder";
 import {
   findEnvironmentDisplayProvider,
-  getEnvironmentWorkspaceSummaryDisplay,
+  getEnvironmentSummaryChrome,
 } from "@/lib/environment-workspace-display";
 import {
   INERT_TYPEAHEAD_COMMAND_CONFIG,
@@ -208,13 +208,16 @@ function makeEnvironmentSummary({
     host,
     providerLookup,
   });
-  const summaryDisplay = getEnvironmentWorkspaceSummaryDisplay({
+  const chrome = getEnvironmentSummaryChrome({
     display,
     providerLookup,
     environmentName: environment.name,
     hasMultipleMachines,
-    hostName: machineName ?? null,
-    hostType,
+    host:
+      machineName === undefined
+        ? null
+        : { name: machineName, type: hostType, machineProviderId: null },
+    machineProviders: undefined,
   });
   const checkoutDisplay =
     environmentCheckout ??
@@ -230,10 +233,12 @@ function makeEnvironmentSummary({
   return (
     <ThreadEnvironmentSummary
       projectName={projectName ?? undefined}
-      environmentLabel={summaryDisplay?.label}
-      environmentCompactLabel={summaryDisplay?.compactLabel}
-      environmentIcon={summaryDisplay?.icon}
-      environmentProviderName={summaryDisplay?.providerName ?? undefined}
+      environmentLabel={chrome.environmentLabel}
+      environmentCompactLabel={chrome.environmentCompactLabel}
+      environmentIcon={chrome.environmentIcon}
+      environmentProviderName={chrome.environmentProviderName}
+      environmentHost={chrome.environmentHost}
+      environmentMachineProvider={chrome.environmentMachineProvider}
       environmentCheckout={checkoutDisplay}
       onCreateNewThreadInEnvironment={onCreateNewThreadInEnvironment}
     />

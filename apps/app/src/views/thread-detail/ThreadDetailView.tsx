@@ -112,7 +112,7 @@ import {
 } from "@/hooks/queries/thread-terminal-queries";
 import {
   findEnvironmentDisplayProvider,
-  getEnvironmentWorkspaceSummaryDisplay,
+  getEnvironmentSummaryChrome,
   isHostAmbiguous,
 } from "@/lib/environment-workspace-display";
 import { useSystemEnvironmentProviders } from "@/hooks/queries/environment-provider-queries";
@@ -2389,25 +2389,16 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
         providerLookup: threadEnvironmentProviderLookup,
       })
     : undefined;
-  const composerEnvironmentSummary = threadEnvironmentDisplay
-    ? getEnvironmentWorkspaceSummaryDisplay({
+  const composerEnvironmentChrome = threadEnvironmentDisplay
+    ? getEnvironmentSummaryChrome({
         display: threadEnvironmentDisplay,
         providerLookup: threadEnvironmentProviderLookup,
         environmentName: environment?.name ?? null,
         hasMultipleMachines,
-        hostName: resolvedThreadEnvironmentHost?.name ?? null,
-        hostType: resolvedThreadEnvironmentHost?.type ?? null,
+        host: resolvedThreadEnvironmentHost,
+        machineProviders: registeredMachineProviders,
       })
     : undefined;
-  const composerEnvironmentHost =
-    resolvedThreadEnvironmentHost !== null &&
-    environment?.name === null &&
-    composerEnvironmentSummary?.label === resolvedThreadEnvironmentHost?.name
-      ? resolvedThreadEnvironmentHost
-      : undefined;
-  const composerEnvironmentMachineProvider = registeredMachineProviders?.find(
-    (provider) => provider.id === composerEnvironmentHost?.machineProviderId,
-  );
   const isThreadOnReusableEnvironment =
     environment !== undefined &&
     environment.status === "ready" &&
@@ -2528,12 +2519,12 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
       canUseGitUi={canUseGitUi}
       contextWindowUsage={contextWindowUsage}
       environmentCheckout={threadCheckoutDisplay}
-      environmentCompactLabel={composerEnvironmentSummary?.compactLabel}
-      environmentHost={composerEnvironmentHost}
-      environmentIcon={composerEnvironmentSummary?.icon}
-      environmentLabel={composerEnvironmentSummary?.label}
-      environmentMachineProvider={composerEnvironmentMachineProvider}
-      environmentProviderName={composerEnvironmentSummary?.providerName ?? undefined}
+      environmentCompactLabel={composerEnvironmentChrome?.environmentCompactLabel}
+      environmentHost={composerEnvironmentChrome?.environmentHost}
+      environmentIcon={composerEnvironmentChrome?.environmentIcon}
+      environmentLabel={composerEnvironmentChrome?.environmentLabel}
+      environmentMachineProvider={composerEnvironmentChrome?.environmentMachineProvider}
+      environmentProviderName={composerEnvironmentChrome?.environmentProviderName}
       environmentGoneStatus={threadEnvironmentGoneStatus}
       environmentHostId={environment?.hostId}
       isEnvironmentActionPending={requestEnvironmentAction.isPending}
