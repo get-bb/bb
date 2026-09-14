@@ -493,6 +493,17 @@ describe("QueuedMessagesList", () => {
     }
   });
 
+  it("limits collapsed action hiding to compact widths", () => {
+    const { container } = renderQueuedMessages([
+      makeQueuedMessage("q_one", "First queued message"),
+    ]);
+    const actions = container.querySelector("[data-queued-message-actions]");
+
+    expect(actions?.classList.contains("max-md:hidden")).toBe(true);
+    expect(actions?.classList.contains("hidden")).toBe(false);
+    expect(actions?.classList.contains("md:flex")).toBe(true);
+  });
+
   it("expands one row's actions inline and resets them outside the queue", () => {
     const { getByRole, getByText, queryByRole } = renderQueuedMessages([
       makeQueuedMessage("q_one", "First queued message"),

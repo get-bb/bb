@@ -941,7 +941,7 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
                   "pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 items-center gap-0.5 rounded-md opacity-0 transition-opacity duration-[120ms] ease-out md:flex",
                   mobileActionsExpanded
                     ? "flex max-md:pointer-events-auto max-md:opacity-100"
-                    : "hidden",
+                    : "max-md:hidden",
                   "group-hover/dispatch-row:pointer-events-auto group-hover/dispatch-row:opacity-100",
                   "group-focus-within/dispatch-row:pointer-events-auto group-focus-within/dispatch-row:opacity-100",
                 )}
