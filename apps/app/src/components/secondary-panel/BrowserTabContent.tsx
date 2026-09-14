@@ -37,6 +37,7 @@ import { useBrowserHistory } from "@/lib/browser-history";
 import { BROWSER_VIEW_BOUNDS_SYNC_EVENT } from "@/lib/browser-view-bounds-sync";
 import { useIsBrowserDimmingModalOpen } from "@/hooks/useBrowserDimmingModal";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
+import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import {
   BrowserChromeIconButton,
   BrowserFindBar,
@@ -405,6 +406,7 @@ export function BrowserTabContent({
   const addressInputRef = useRef<HTMLInputElement>(null);
   const findInputRef = useRef<HTMLInputElement>(null);
   const isPointerCoarse = usePointerCoarse();
+  const isCompactViewport = useIsCompactViewport();
   const {
     entries: recent,
     recordVisit,
@@ -882,7 +884,7 @@ export function BrowserTabContent({
             threadId={threadId}
             tabId={tabId}
             url={currentUrl}
-            isCompactViewport={isPointerCoarse}
+            isCompactViewport={isCompactViewport}
           />
         }
       />
