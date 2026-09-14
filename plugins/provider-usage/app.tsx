@@ -310,17 +310,8 @@ function MachineSelector({
                 name={machine.id.startsWith("source:") ? "Layers" : "Laptop"}
                 className="size-3.5 shrink-0"
               />
-              <span className="flex min-w-0 flex-1 items-center gap-1.5">
-                <span className="min-w-0 truncate">{machine.displayName}</span>
-                {machine.error !== null ? (
-                  <span className="shrink-0 text-muted-foreground">
-                    Unavailable
-                  </span>
-                ) : machine.status === "disconnected" ? (
-                  <span className="shrink-0 text-muted-foreground">
-                    Offline
-                  </span>
-                ) : null}
+              <span className="min-w-0 flex-1 truncate">
+                {machine.displayName}
               </span>
               <Icon
                 name="Check"
