@@ -1,10 +1,16 @@
 import { z } from "zod";
 
+export const packageManagerPreferenceSchema = z.enum(["auto", "mise", "npm"]);
+export type PackageManagerPreference = z.infer<
+  typeof packageManagerPreferenceSchema
+>;
+
 export const providerMaintenanceParamsSchema = z
   .object({
     providerId: z.string().min(1),
     cwd: z.string().min(1).optional(),
     providerOptions: z.record(z.string(), z.unknown()).optional(),
+    packageManager: packageManagerPreferenceSchema,
   })
   .passthrough();
 
@@ -134,10 +140,21 @@ export type ProviderInstallationAction = z.infer<
 export const providerInstallationSourceSchema = z.enum([
   "notInstalled",
   "npmGlobal",
+  "mise",
   "external",
 ]);
 export type ProviderInstallationSource = z.infer<
   typeof providerInstallationSourceSchema
+>;
+
+export const providerInstallationShadowingInstallSchema = z
+  .object({
+    executablePath: z.string().min(1),
+    removeCommand: z.string().min(1),
+  })
+  .passthrough();
+export type ProviderInstallationShadowingInstall = z.infer<
+  typeof providerInstallationShadowingInstallSchema
 >;
 
 export const providerInstallationStatusSchema = z
@@ -152,6 +169,7 @@ export const providerInstallationStatusSchema = z
     npmPackageName: z.string().min(1).nullable(),
     npmGlobalPackageVersion: z.string().min(1).nullable(),
     installAction: providerInstallationActionSchema.nullable(),
+    shadowingInstall: providerInstallationShadowingInstallSchema.nullable(),
     needsUpdate: z.boolean(),
     versionUnsupported: z.boolean(),
   })

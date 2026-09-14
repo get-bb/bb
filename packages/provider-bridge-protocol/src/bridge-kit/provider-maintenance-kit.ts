@@ -1,11 +1,14 @@
 import { execFile } from "node:child_process";
 import { constants as fsConstants } from "node:fs";
-import { access } from "node:fs/promises";
+import { access, realpath } from "node:fs/promises";
+import { homedir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod";
 import type {
+  PackageManagerPreference,
   ProviderInstallationCommand,
+  ProviderInstallationShadowingInstall,
   ProviderInstallationSource,
   ProviderInstallationStatus,
   ProviderInstallationVerification,
@@ -244,4 +247,290 @@ export function clampPercent(value: number): number {
     100,
     Math.max(0, Math.round(Number.isFinite(value) ? value : 0)),
   );
+}
+
+export interface MiseKitIo {
+  commandStdout(
+    command: string,
+    args: readonly string[],
+  ): Promise<string | null>;
+  isExecutable(filePath: string): Promise<boolean>;
+  realpath(filePath: string): Promise<string | null>;
+  env: NodeJS.ProcessEnv;
+  homeDir: string;
+}
+
+function defaultMiseKitIo(): MiseKitIo {
+  return {
+    async commandStdout(command, args) {
+      try {
+        const { stdout } = await execFileAsync(command, [...args], {
+          timeout: INSTALLATION_CHECK_TIMEOUT_MS,
+        });
+        return stdout;
+      } catch {
+        return null;
+      }
+    },
+    async isExecutable(filePath) {
+      try {
+        await access(filePath, fsConstants.X_OK);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    async realpath(filePath) {
+      try {
+        return await realpath(filePath);
+      } catch {
+        return null;
+      }
+    },
+    env: process.env,
+    homeDir: homedir(),
+  };
+}
+
+function miseExecutableName(): string {
+  return process.platform === "win32" ? "mise.exe" : "mise";
+}
+
+export async function resolveMiseBinary(
+  pathEnv: string | undefined,
+  io: MiseKitIo = defaultMiseKitIo(),
+): Promise<string | null> {
+  const directories = [
+    ...(pathEnv ?? "").split(path.delimiter).filter(Boolean),
+    path.join(io.homeDir, ".local", "bin"),
+    "/opt/homebrew/bin",
+    "/usr/local/bin",
+  ];
+  for (const directory of directories) {
+    const candidate = path.join(directory, miseExecutableName());
+    if (await io.isExecutable(candidate)) return candidate;
+  }
+  return null;
+}
+
+function miseDataDir(io: MiseKitIo): string {
+  return (
+    io.env.MISE_DATA_DIR ??
+    path.join(
+      io.env.XDG_DATA_HOME ?? path.join(io.homeDir, ".local", "share"),
+      "mise",
+    )
+  );
+}
+
+const miseListEntrySchema = z.object({
+  version: z.string().min(1),
+  requested_version: z.string().min(1).optional(),
+  install_path: z.string().min(1),
+  installed: z.boolean(),
+  active: z.boolean().optional(),
+});
+
+function miseListEntry(
+  output: string | null,
+): z.infer<typeof miseListEntrySchema> | null {
+  if (output === null) return null;
+  try {
+    const parsed = z
+      .array(miseListEntrySchema.passthrough())
+      .safeParse(JSON.parse(output));
+    if (!parsed.success) return null;
+    const installed = parsed.data.filter((entry) => entry.installed);
+    return (
+      installed.find((entry) => entry.active === true) ?? installed[0] ?? null
+    );
+  } catch {
+    return null;
+  }
+}
+
+export interface MisePackageProbe {
+  installDir: string | null;
+  installedVersion: string | null;
+  requestedVersion: string | null;
+  executableManaged: boolean;
+  shadowingInstall: ProviderInstallationShadowingInstall | null;
+}
+
+export async function probeMisePackage(
+  args: {
+    mise: string;
+    npmPackage: string;
+    executablePath: string | null;
+    npmBin: string | null;
+  },
+  io: MiseKitIo = defaultMiseKitIo(),
+): Promise<MisePackageProbe> {
+  const entry = miseListEntry(
+    await io.commandStdout(args.mise, [
+      "-y",
+      "ls",
+      "--json",
+      `npm:${args.npmPackage}`,
+    ]),
+  );
+  if (entry === null) {
+    return {
+      installDir: null,
+      installedVersion: null,
+      requestedVersion: null,
+      executableManaged: false,
+      shadowingInstall: null,
+    };
+  }
+  const installDir = entry.install_path;
+  const installsDir = path.dirname(path.dirname(installDir));
+  const shimsDir = io.env.MISE_SHIMS_DIR ?? path.join(miseDataDir(io), "shims");
+  const realExecutable =
+    args.executablePath === null
+      ? null
+      : ((await io.realpath(args.executablePath)) ?? args.executablePath);
+  const executableManaged =
+    args.executablePath !== null &&
+    realExecutable !== null &&
+    (pathIsInside(args.executablePath, shimsDir) ||
+      pathIsInside(args.executablePath, installDir) ||
+      pathIsInside(realExecutable, installDir));
+  return {
+    installDir,
+    installedVersion: entry.version,
+    requestedVersion: entry.requested_version ?? null,
+    executableManaged,
+    shadowingInstall:
+      args.executablePath === null ||
+      realExecutable === null ||
+      executableManaged
+        ? null
+        : shadowingInstall({
+            npmPackage: args.npmPackage,
+            executablePath: args.executablePath,
+            realExecutable,
+            miseNodeDir: path.join(installsDir, "node"),
+            npmBin: args.npmBin,
+          }),
+  };
+}
+
+function shadowingInstall(args: {
+  npmPackage: string;
+  executablePath: string;
+  realExecutable: string;
+  miseNodeDir: string;
+  npmBin: string | null;
+}): ProviderInstallationShadowingInstall | null {
+  const npm = npmCommand();
+  if (pathIsInside(args.realExecutable, args.miseNodeDir)) {
+    const nodeVersionDir = path
+      .relative(args.miseNodeDir, args.realExecutable)
+      .split(path.sep)[0];
+    if (nodeVersionDir === undefined || nodeVersionDir === "") return null;
+    const prefix = path.join(args.miseNodeDir, nodeVersionDir);
+    return {
+      executablePath: args.executablePath,
+      removeCommand: formatCommand(npm, [
+        "uninstall",
+        "-g",
+        "--prefix",
+        prefix,
+        args.npmPackage,
+      ]),
+    };
+  }
+  if (args.npmBin !== null && pathIsInside(args.executablePath, args.npmBin)) {
+    return {
+      executablePath: args.executablePath,
+      removeCommand: formatCommand(npm, ["uninstall", "-g", args.npmPackage]),
+    };
+  }
+  return null;
+}
+
+export function misePackageSpec(
+  requestedVersion: string | null,
+  latestVersion: string | null,
+): string {
+  if (requestedVersion === null) return "latest";
+  if (!/^\d/u.test(requestedVersion)) return requestedVersion;
+  return latestVersion ?? "latest";
+}
+
+export function miseUseCommand(
+  mise: string,
+  npmPackage: string,
+  spec: string,
+): ProviderInstallationCommand {
+  const args = ["use", "-g", "-y", `npm:${npmPackage}@${spec}`];
+  return {
+    command: mise,
+    args,
+    displayCommand: formatCommand("mise", args),
+  };
+}
+
+export interface PackageInstallerResolution {
+  packageManager: "mise" | "npm";
+  source: ProviderInstallationSource;
+  installCommand: ProviderInstallationCommand;
+  updateCommand: ProviderInstallationCommand;
+  shadowingInstall: ProviderInstallationShadowingInstall | null;
+}
+
+export async function resolvePackageInstaller(
+  args: {
+    packageManager: PackageManagerPreference;
+    npmPackage: string;
+    installed: boolean;
+    executablePath: string | null;
+    npmBin: string | null;
+    latestVersion: string | null;
+  },
+  io: MiseKitIo = defaultMiseKitIo(),
+): Promise<PackageInstallerResolution> {
+  const mise = await resolveMiseBinary(io.env.PATH, io);
+  const probe =
+    mise === null
+      ? null
+      : await probeMisePackage(
+          {
+            mise,
+            npmPackage: args.npmPackage,
+            executablePath: args.executablePath,
+            npmBin: args.npmBin,
+          },
+          io,
+        );
+  const managed = probe?.installDir != null;
+  const useMise =
+    args.packageManager === "mise" ||
+    (args.packageManager === "auto" && managed);
+  const source: ProviderInstallationSource = !args.installed
+    ? "notInstalled"
+    : probe?.executableManaged
+      ? "mise"
+      : npmGlobalInstallSource({
+          installed: true,
+          executablePath: args.executablePath,
+          npmBin: args.npmBin,
+        });
+  const miseBinary = mise ?? miseExecutableName();
+  return {
+    packageManager: useMise ? "mise" : "npm",
+    source,
+    installCommand: useMise
+      ? miseUseCommand(miseBinary, args.npmPackage, "latest")
+      : npmGlobalInstallCommand(args.npmPackage),
+    updateCommand: useMise
+      ? miseUseCommand(
+          miseBinary,
+          args.npmPackage,
+          misePackageSpec(probe?.requestedVersion ?? null, args.latestVersion),
+        )
+      : npmGlobalInstallCommand(args.npmPackage),
+    shadowingInstall: probe?.shadowingInstall ?? null,
+  };
 }

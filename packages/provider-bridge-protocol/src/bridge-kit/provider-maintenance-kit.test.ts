@@ -3,13 +3,73 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  type MiseKitIo,
   compareVersions,
   formatCommand,
   installationVerification,
+  misePackageSpec,
+  miseUseCommand,
   npmGlobalInstallSource,
+  probeMisePackage,
   readCliVersion,
+  resolveMiseBinary,
+  resolvePackageInstaller,
   versionFrom,
 } from "./provider-maintenance-kit.js";
+
+const home = path.join(path.sep, "Users", "test");
+const miseBinary = path.join(home, ".local", "bin", "mise");
+const miseDataDir = path.join(home, ".local", "share", "mise");
+const codexInstallDir = path.join(
+  miseDataDir,
+  "installs",
+  "npm-openai-codex",
+  "0.153.4",
+);
+const miseNodeBin = path.join(miseDataDir, "installs", "node", "22", "bin");
+const miseNodePrefix = path.join(miseDataDir, "installs", "node", "22.23.2");
+const npmBin = path.join(path.sep, "usr", "local", "bin");
+const CODEX = "@openai/codex";
+
+function miseListJson(requestedVersion: string | undefined): string {
+  return JSON.stringify([
+    {
+      version: "0.153.4",
+      ...(requestedVersion === undefined
+        ? {}
+        : { requested_version: requestedVersion }),
+      install_path: codexInstallDir,
+      installed: true,
+      active: true,
+    },
+  ]);
+}
+
+function fakeIo(args: {
+  miseInstalled?: boolean;
+  listJson?: string | null;
+  realpaths?: Record<string, string>;
+  pathEnv?: string;
+}): MiseKitIo & { calls: string[][] } {
+  const calls: string[][] = [];
+  return {
+    calls,
+    async commandStdout(command, commandArgs) {
+      calls.push([command, ...commandArgs]);
+      return command === miseBinary && commandArgs[1] === "ls"
+        ? (args.listJson ?? null)
+        : null;
+    },
+    async isExecutable(filePath) {
+      return (args.miseInstalled ?? true) && filePath === miseBinary;
+    },
+    async realpath(filePath) {
+      return args.realpaths?.[filePath] ?? null;
+    },
+    env: { PATH: args.pathEnv ?? path.join(path.sep, "usr", "bin") },
+    homeDir: home,
+  };
+}
 
 describe("provider maintenance kit", () => {
   it.skipIf(process.platform === "win32")(
@@ -103,5 +163,270 @@ describe("provider maintenance kit", () => {
         "install",
       ),
     ).toEqual({ kind: "installed" });
+  });
+
+  it("finds mise on the shell PATH before the well-known fallback directories", async () => {
+    const onPath = path.join(path.sep, "opt", "tools", "bin");
+    const io = fakeIo({});
+    io.isExecutable = async (filePath) =>
+      filePath === path.join(onPath, "mise") || filePath === miseBinary;
+    expect(await resolveMiseBinary(onPath, io)).toBe(path.join(onPath, "mise"));
+    expect(await resolveMiseBinary(undefined, io)).toBe(miseBinary);
+    expect(
+      await resolveMiseBinary(onPath, fakeIo({ miseInstalled: false })),
+    ).toBeNull();
+  });
+
+  it("keeps alias pins and bumps concrete pins to the latest version", () => {
+    expect(misePackageSpec("latest", "0.154.0")).toBe("latest");
+    expect(misePackageSpec("lts", "0.154.0")).toBe("lts");
+    expect(misePackageSpec("0.153.4", "0.154.0")).toBe("0.154.0");
+    expect(misePackageSpec("0.153.4", null)).toBe("latest");
+    expect(misePackageSpec(null, "0.154.0")).toBe("latest");
+  });
+
+  it("builds a non-interactive global mise use command", () => {
+    expect(miseUseCommand(miseBinary, CODEX, "latest")).toEqual({
+      command: miseBinary,
+      args: ["use", "-g", "-y", "npm:@openai/codex@latest"],
+      displayCommand: "mise use -g -y npm:@openai/codex@latest",
+    });
+  });
+
+  it("attributes an executable inside the mise install directory or shims to mise", async () => {
+    const executablePath = path.join(codexInstallDir, "bin", "codex");
+    const io = fakeIo({
+      listJson: miseListJson("latest"),
+      realpaths: {
+        [executablePath]: path.join(
+          codexInstallDir,
+          "lib",
+          "node_modules",
+          "@openai",
+          "codex",
+          "bin",
+          "codex.js",
+        ),
+      },
+    });
+    const probe = await probeMisePackage(
+      { mise: miseBinary, npmPackage: CODEX, executablePath, npmBin },
+      io,
+    );
+    expect(probe).toEqual({
+      installDir: codexInstallDir,
+      installedVersion: "0.153.4",
+      requestedVersion: "latest",
+      executableManaged: true,
+      shadowingInstall: null,
+    });
+    expect(io.calls).toEqual([
+      [miseBinary, "-y", "ls", "--json", "npm:@openai/codex"],
+    ]);
+    const shim = path.join(miseDataDir, "shims", "codex");
+    expect(
+      (
+        await probeMisePackage(
+          { mise: miseBinary, npmPackage: CODEX, executablePath: shim, npmBin },
+          fakeIo({
+            listJson: miseListJson("latest"),
+            realpaths: { [shim]: miseBinary },
+          }),
+        )
+      ).executableManaged,
+    ).toBe(true);
+  });
+
+  it("reports a stray global inside a mise node prefix as a shadowing install", async () => {
+    const executablePath = path.join(miseNodeBin, "codex");
+    const io = fakeIo({
+      listJson: miseListJson("latest"),
+      realpaths: {
+        [executablePath]: path.join(
+          miseNodePrefix,
+          "lib",
+          "node_modules",
+          "@openai",
+          "codex",
+          "bin",
+          "codex.js",
+        ),
+      },
+    });
+    const resolution = await resolvePackageInstaller(
+      {
+        packageManager: "auto",
+        npmPackage: CODEX,
+        installed: true,
+        executablePath,
+        npmBin,
+        latestVersion: "0.154.0",
+      },
+      io,
+    );
+    expect(resolution.packageManager).toBe("mise");
+    expect(resolution.source).toBe("external");
+    expect(resolution.shadowingInstall).toEqual({
+      executablePath,
+      removeCommand: `npm uninstall -g --prefix ${miseNodePrefix} @openai/codex`,
+    });
+    expect(resolution.updateCommand.displayCommand).toBe(
+      "mise use -g -y npm:@openai/codex@latest",
+    );
+    expect(io.calls.some((call) => call[0] === "npm")).toBe(false);
+  });
+
+  it("reports a stray npm global as a shadowing install when mise manages the package", async () => {
+    const executablePath = path.join(npmBin, "codex");
+    const resolution = await resolvePackageInstaller(
+      {
+        packageManager: "auto",
+        npmPackage: CODEX,
+        installed: true,
+        executablePath,
+        npmBin,
+        latestVersion: "0.154.0",
+      },
+      fakeIo({
+        listJson: miseListJson("latest"),
+        realpaths: { [executablePath]: executablePath },
+      }),
+    );
+    expect(resolution.source).toBe("npmGlobal");
+    expect(resolution.shadowingInstall).toEqual({
+      executablePath,
+      removeCommand: "npm uninstall -g @openai/codex",
+    });
+  });
+
+  it("uses npm in auto mode when mise does not manage the package", async () => {
+    const executablePath = path.join(npmBin, "codex");
+    const resolution = await resolvePackageInstaller(
+      {
+        packageManager: "auto",
+        npmPackage: CODEX,
+        installed: true,
+        executablePath,
+        npmBin,
+        latestVersion: "0.154.0",
+      },
+      fakeIo({ listJson: "[]" }),
+    );
+    expect(resolution).toEqual({
+      packageManager: "npm",
+      source: "npmGlobal",
+      installCommand: {
+        command: "npm",
+        args: ["install", "-g", "@openai/codex@latest"],
+        displayCommand: "npm install -g @openai/codex@latest",
+      },
+      updateCommand: {
+        command: "npm",
+        args: ["install", "-g", "@openai/codex@latest"],
+        displayCommand: "npm install -g @openai/codex@latest",
+      },
+      shadowingInstall: null,
+    });
+  });
+
+  it("uses npm and skips every mise probe when mise is missing", async () => {
+    const io = fakeIo({ miseInstalled: false });
+    const resolution = await resolvePackageInstaller(
+      {
+        packageManager: "auto",
+        npmPackage: CODEX,
+        installed: false,
+        executablePath: null,
+        npmBin,
+        latestVersion: null,
+      },
+      io,
+    );
+    expect(resolution.packageManager).toBe("npm");
+    expect(resolution.source).toBe("notInstalled");
+    expect(io.calls).toEqual([]);
+  });
+
+  it("bumps a concrete mise pin to the latest version on update", async () => {
+    const executablePath = path.join(codexInstallDir, "bin", "codex");
+    const resolution = await resolvePackageInstaller(
+      {
+        packageManager: "auto",
+        npmPackage: CODEX,
+        installed: true,
+        executablePath,
+        npmBin,
+        latestVersion: "0.154.0",
+      },
+      fakeIo({
+        listJson: miseListJson("0.153.4"),
+        realpaths: { [executablePath]: executablePath },
+      }),
+    );
+    expect(resolution.source).toBe("mise");
+    expect(resolution.installCommand.args).toEqual([
+      "use",
+      "-g",
+      "-y",
+      "npm:@openai/codex@latest",
+    ]);
+    expect(resolution.updateCommand.args).toEqual([
+      "use",
+      "-g",
+      "-y",
+      "npm:@openai/codex@0.154.0",
+    ]);
+  });
+
+  it("obeys a forced package manager without hiding the observed source", async () => {
+    const managedExecutable = path.join(codexInstallDir, "bin", "codex");
+    const forcedNpm = await resolvePackageInstaller(
+      {
+        packageManager: "npm",
+        npmPackage: CODEX,
+        installed: true,
+        executablePath: managedExecutable,
+        npmBin,
+        latestVersion: "0.154.0",
+      },
+      fakeIo({
+        listJson: miseListJson("latest"),
+        realpaths: { [managedExecutable]: managedExecutable },
+      }),
+    );
+    expect(forcedNpm.packageManager).toBe("npm");
+    expect(forcedNpm.source).toBe("mise");
+    expect(forcedNpm.updateCommand.command).toBe("npm");
+
+    const forcedMise = await resolvePackageInstaller(
+      {
+        packageManager: "mise",
+        npmPackage: CODEX,
+        installed: true,
+        executablePath: path.join(npmBin, "codex"),
+        npmBin,
+        latestVersion: "0.154.0",
+      },
+      fakeIo({ listJson: "[]" }),
+    );
+    expect(forcedMise.packageManager).toBe("mise");
+    expect(forcedMise.source).toBe("npmGlobal");
+    expect(forcedMise.updateCommand).toEqual(
+      miseUseCommand(miseBinary, CODEX, "latest"),
+    );
+
+    const forcedMiseWithoutMise = await resolvePackageInstaller(
+      {
+        packageManager: "mise",
+        npmPackage: CODEX,
+        installed: true,
+        executablePath: path.join(npmBin, "codex"),
+        npmBin,
+        latestVersion: "0.154.0",
+      },
+      fakeIo({ miseInstalled: false }),
+    );
+    expect(forcedMiseWithoutMise.packageManager).toBe("mise");
+    expect(forcedMiseWithoutMise.installCommand.command).toBe("mise");
   });
 });

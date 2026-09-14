@@ -1085,6 +1085,60 @@ dist-tag and `doctor` parsing) beside them.
    and `bash`; there is no Windows form. Decide whether it should refuse on
    win32 rather than hand the daemon a command that cannot run.
 
+## mise package-manager toolkit (`experimental_resolveMiseBinary`, `experimental_probeMisePackage`, `experimental_misePackageSpec`, `experimental_miseUseCommand`, `experimental_resolvePackageInstaller`, `experimental_packageManagerPreferenceSchema`, `experimental_providerInstallationShadowingInstallSchema`) (`@get-bb/plugin-sdk/provider-bridge`)
+
+**What it does.** The mise-aware half of the provider maintenance toolkit,
+for a bridge whose provider is an npm CLI that the user may manage with
+[mise](https://mise.jdx.dev) (`mise use -g npm:<package>`). The server
+resolves one effective package-manager preference per host (`auto`, `mise`
+or `npm`; the `BB_PACKAGE_MANAGER` daemon override wins over the per-machine
+setting) and sends it as the required `packageManager` field of every
+`provider/installation/*` request (`experimental_packageManagerPreferenceSchema`).
+`experimental_resolvePackageInstaller` turns that preference into the
+bridge's answer: `experimental_resolveMiseBinary` finds `mise` on the given
+PATH, then `~/.local/bin`, `/opt/homebrew/bin` and `/usr/local/bin` (a
+launchd daemon has none of them on its own PATH); `experimental_probeMisePackage`
+reads `mise ls --json npm:<package>` for the install directory, the
+installed version and the requested pin, and decides whether the executable
+bb found is the mise-managed one (its path sits inside mise's shims
+directory, or its realpath inside the install directory). `auto` uses mise
+only when mise manages the package; `mise` and `npm` force one path. A
+forced `mise` without a `mise` binary yields a bare `mise` command that
+fails at run time rather than an npm fallback. The result carries the
+effective manager, the observed `installSource` (`mise`, `npmGlobal`,
+`external`, `notInstalled`), an install and an update
+`ProviderInstallationCommand`, and `shadowingInstall`: when mise manages the
+package but the executable in use resolves elsewhere, the stray path plus a
+display-only `npm uninstall -g [--prefix <mise node prefix>] <package>`
+command (`experimental_providerInstallationShadowingInstallSchema`, a
+required nullable field of the installation status). bb never runs the
+remove command. `experimental_miseUseCommand` builds `mise use -g -y
+npm:<package>@<spec>` with the resolved binary as the command and `mise` in
+the display string; `experimental_misePackageSpec` keeps an alias pin such
+as `latest` or `lts` (mise re-resolves it) and bumps a numeric pin to the
+latest version the status saw, or to `latest` when the registry was
+unreachable. Every helper takes an optional `ExperimentalMiseKitIo` (stdout
+runner, executable check, realpath, env, home) so a bridge test injects
+fixtures instead of a real mise.
+
+**Audit before stabilizing.**
+
+1. **One probe, one layout.** `mise ls --json` is the only mise call; the
+   shims and installs directories derive from `MISE_SHIMS_DIR`,
+   `MISE_DATA_DIR`, `XDG_DATA_HOME` and the install path. Decide whether
+   `MISE_INSTALLS_DIR` and a backend other than `npm:` are owed.
+2. **Shadow detection covers two origins.** A stray copy inside a mise node
+   prefix or inside npm's global bin is reported; a copy elsewhere reads as
+   `external` with no remove command. Decide whether the field should carry
+   an origin-less shadow.
+3. **The pin rule is prefix-based.** A pin that starts with a digit is
+   concrete and gets bumped; anything else is an alias and kept. A fuzzy
+   numeric pin such as `0.153` is therefore rewritten to the concrete
+   latest. Decide whether the fuzzy form should survive an update.
+4. **`ExperimentalMiseKitIo` is a test seam on a public signature.** Decide
+   whether the injection stays on the helpers or moves behind a factory
+   before the shape is a promise.
+
 ## Presentation builders (`experimental_presentationTitle`, `experimental_presentationDetail`, `experimental_withTitle`, `experimental_presentationFileName`, `experimental_COMPACTION_PRESENTATION`, `experimental_REASONING_PRESENTATION`, `experimental_fileReadPresentation`, `experimental_searchPresentation`, `experimental_webSearchPresentation`, `experimental_webFetchPresentation`, `experimental_planStepsPresentation`, `experimental_toolPresentation`) (`@get-bb/plugin-sdk/provider-bridge`)
 
 **What it does.** The bridge kit's presentation building blocks for the
@@ -2907,7 +2961,6 @@ returns a credential only while that host is creating.
 Before stabilizing, verify creation cancellation through host removal,
 same-host restoration, serialized removal, plugin callers and UI/CLI parity.
 
-
 ## `app.experimental_icons.register` and `experimental_Icon`
 
 Plugins register inline React artwork during app setup with `{ name, component }`.
@@ -2943,7 +2996,6 @@ components. The existing built-in icon list and artwork remain fixed; new
 plugin app icons use this registration API. The manifest API is unchanged,
 and individual plugins can still declare their own branding SVG assets using
 the existing manifest fields.
-
 
 ## `experimental_ProviderIcon`
 

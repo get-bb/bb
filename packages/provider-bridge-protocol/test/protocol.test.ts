@@ -47,13 +47,28 @@ describe("provider installation status", () => {
     expect(
       providerInstallationStatusParamsSchema.parse({
         providerId: "codex",
+        packageManager: "auto",
         requirement: "thread_rewind",
       }).requirement,
     ).toBe("thread_rewind");
     expect(
       providerInstallationStatusParamsSchema.safeParse({
         providerId: "codex",
+        packageManager: "auto",
         requirement: "anything",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("requires the effective package manager the server resolved", () => {
+    expect(
+      providerInstallationStatusParamsSchema.safeParse({ providerId: "codex" })
+        .success,
+    ).toBe(false);
+    expect(
+      providerInstallationStatusParamsSchema.safeParse({
+        providerId: "codex",
+        packageManager: "yarn",
       }).success,
     ).toBe(false);
   });

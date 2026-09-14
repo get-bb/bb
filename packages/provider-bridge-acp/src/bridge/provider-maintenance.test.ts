@@ -12,6 +12,7 @@ function cursorMissingInstallationStatus() {
     minimumSupportedVersion: null,
     npmPackageName: null,
     npmGlobalPackageVersion: null,
+    shadowingInstall: null,
     installAction: {
       kind: "install" as const,
       label: "Install" as const,

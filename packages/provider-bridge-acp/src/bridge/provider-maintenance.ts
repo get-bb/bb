@@ -231,6 +231,7 @@ export async function getAcpProviderInstallationStatus(args: {
     npmPackageName: null,
     npmGlobalPackageVersion: null,
     installAction,
+    shadowingInstall: null,
     needsUpdate: false,
     versionUnsupported: false,
   };
