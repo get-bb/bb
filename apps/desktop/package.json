@@ -48,7 +48,7 @@
     "@types/node": "^24.9.0",
     "@types/semver": "^7.7.0",
     "@types/ws": "^8.18.1",
-    "electron": "41.7.0",
+    "electron": "44.3.0",
     "electron-builder": "^26.15.7",
     "electron-builder-squirrel-windows": "26.15.7",
     "esbuild": "^0.28.0",

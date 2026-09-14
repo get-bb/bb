@@ -38,6 +38,7 @@
   ],
   "mac": {
     "category": "public.app-category.developer-tools",
+    "minimumSystemVersion": "13.0.0",
     "entitlements": "build/entitlements.mac.plist",
     "entitlementsInherit": "build/entitlements.mac.inherit.plist",
     "gatekeeperAssess": false,
