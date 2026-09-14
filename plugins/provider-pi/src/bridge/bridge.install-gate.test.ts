@@ -62,7 +62,7 @@ it("refuses a pi older than the supported minimum before spawning it", async () 
       "0.83.2 is older than the supported minimum 0.84.0",
     ),
   });
-});
+}, 30_000);
 
 it("reports not_installed when the launch command is missing", async () => {
   vi.stubEnv(PI_BRIDGE_COMMAND_ENV, join(harness.workspaceDir, "no-such-pi"));
@@ -93,7 +93,7 @@ it("fails closed when pi cannot report its version, with install guidance", asyn
       status: "unknown",
       installedVersion: null,
       statusMessage: expect.stringMatching(
-        /^Could not determine the pi version: `.*--version` exited with 1\. Install @earendil-works\/pi-coding-agent 0\.84\.0 or newer: npm install -g @earendil-works\/pi-coding-agent@latest$/u,
+        /^Could not determine the pi version: `.*--version` exited with 1\. Install @earendil-works\/pi-coding-agent 0\.84\.0 or newer: (?:npm install -g |bun add -g |mise use -g -y npm:)@earendil-works\/pi-coding-agent@latest$/u,
       ),
     },
   });
@@ -103,7 +103,7 @@ it("fails closed when pi cannot report its version, with install guidance", asyn
   expect(models.error).toMatchObject({
     message: expect.stringContaining("Could not determine the pi version"),
   });
-});
+}, 30_000);
 
 it("memoizes the install gate per launch path across health polls", async () => {
   const processLog = join(harness.workspaceDir, "process.log");

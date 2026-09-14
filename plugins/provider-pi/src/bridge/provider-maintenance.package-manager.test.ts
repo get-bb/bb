@@ -32,13 +32,16 @@ vi.mock("./rpc-child.js", () => ({
 }));
 
 import {
+  getPiInstallGate,
   getPiProviderInstallationRun,
   getPiProviderInstallationStatus,
+  resetPiInstallGateForTests,
 } from "./provider-maintenance.js";
 
 const temporaryDirectories: string[] = [];
 
 afterEach(async () => {
+  resetPiInstallGateForTests();
   await Promise.all(
     temporaryDirectories
       .splice(0)
@@ -149,6 +152,73 @@ describe("Pi provider installation with package manager preference", () => {
     expect(run).toMatchObject({
       available: true,
       command: npmInstallCommand,
+    });
+  });
+
+  it("uses npm when the package manager is forced to npm, even for a Bun-managed Pi", async () => {
+    await writePiExecutable("0.90.0");
+    state.bunBin = path.dirname(state.executablePath);
+    state.installerResult = {
+      packageManager: "npm",
+      source: "npmGlobal",
+      installCommand: npmInstallCommand,
+      updateCommand: npmInstallCommand,
+      shadowingInstall: null,
+    };
+
+    const status = await getPiProviderInstallationStatus("npm");
+    expect(status.installAction?.command).toBe(
+      npmInstallCommand.displayCommand,
+    );
+    expect(await getPiProviderInstallationRun("npm", "update")).toMatchObject({
+      available: true,
+      command: npmInstallCommand,
+    });
+
+    const autoStatus = await getPiProviderInstallationStatus("auto");
+    expect(autoStatus.installAction?.command).toBe(
+      "bun add -g @earendil-works/pi-coding-agent@latest",
+    );
+  });
+
+  it("names the mise command in install guidance when mise manages Pi", async () => {
+    await writePiExecutable("0.80.0");
+    state.bunBin = null;
+    state.installerResult = {
+      packageManager: "mise",
+      source: "mise",
+      installCommand: miseInstallCommand,
+      updateCommand: miseUpdateCommand,
+      shadowingInstall: null,
+    };
+
+    const gate = await getPiInstallGate();
+    expect(gate).toMatchObject({
+      ok: false,
+      status: "unsupported_version",
+      statusMessage: expect.stringMatching(
+        /or newer: mise use -g -y npm:@earendil-works\/pi-coding-agent@latest$/u,
+      ),
+    });
+  });
+
+  it("names the Bun command in install guidance when Bun manages Pi", async () => {
+    await writePiExecutable("0.80.0");
+    state.bunBin = path.dirname(state.executablePath);
+    state.installerResult = {
+      packageManager: "npm",
+      source: "npmGlobal",
+      installCommand: npmInstallCommand,
+      updateCommand: npmInstallCommand,
+      shadowingInstall: null,
+    };
+
+    const gate = await getPiInstallGate();
+    expect(gate).toMatchObject({
+      ok: false,
+      statusMessage: expect.stringMatching(
+        /or newer: bun add -g @earendil-works\/pi-coding-agent@latest$/u,
+      ),
     });
   });
 
