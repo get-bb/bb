@@ -949,69 +949,6 @@ export function Overview() {
         />
       </StoryRow>
       <StoryRow
-        label="ready · one machine"
-        hint="provider name; the machine is unambiguous so it stays hidden"
-      >
-        <Row
-          submitMode={{ kind: "ready" }}
-          environmentSummary={localEnvironmentSummary}
-        />
-      </StoryRow>
-      <StoryRow
-        label="ready · personal workspace"
-        hint="no project chip, no branch; the provider names the environment"
-      >
-        <Row
-          submitMode={{ kind: "ready" }}
-          environmentSummary={personalEnvironmentSummary}
-        />
-      </StoryRow>
-      <StoryRow
-        label="ready · second machine"
-        hint="machine name once more than one machine exists"
-      >
-        <Row
-          submitMode={{ kind: "ready" }}
-          environmentSummary={multiMachineEnvironmentSummary}
-        />
-      </StoryRow>
-      <StoryRow
-        label="ready · worktree on a sandbox"
-        hint="an ephemeral host is ambiguous, so it is named"
-      >
-        <Row
-          submitMode={{ kind: "ready" }}
-          environmentSummary={sandboxWorktreeEnvironmentSummary}
-        />
-      </StoryRow>
-      <StoryRow
-        label="ready · named environment"
-        hint="a custom name wins over both machine and provider"
-      >
-        <Row
-          submitMode={{ kind: "ready" }}
-          environmentSummary={namedLocalEnvironmentSummary}
-        />
-      </StoryRow>
-      <StoryRow
-        label="ready · detached worktree"
-        hint="provider icon · detached commit checkout"
-      >
-        <Row
-          submitMode={{ kind: "ready" }}
-          environmentSummary={detachedWorktreeEnvironmentSummary}
-        />
-      </StoryRow>
-      <StoryRow
-        label="destroyed environment"
-        hint="lifecycle label replaces the provider name"
-      >
-        <Row
-          submitMode={{ kind: "ready" }}
-          environmentSummary={destroyedEnvironmentSummary}
-        />
-      </StoryRow>
-      <StoryRow
         label="env: long machine name"
         hint="full machine name when space allows; truncates with a title when constrained"
       >
@@ -1047,3 +984,30 @@ export function Overview() {
   );
 }
 
+export function EnvironmentSummary() {
+  return (
+    <StoryCard>
+      <StoryRow label="ready · one machine" hint="provider name; the machine is unambiguous so it stays hidden">
+        {localEnvironmentSummary}
+      </StoryRow>
+      <StoryRow label="ready · personal workspace" hint="no project chip, no branch; the provider names the environment">
+        {personalEnvironmentSummary}
+      </StoryRow>
+      <StoryRow label="ready · second machine" hint="machine name once more than one machine exists">
+        {multiMachineEnvironmentSummary}
+      </StoryRow>
+      <StoryRow label="ready · worktree on a sandbox" hint="an ephemeral host is ambiguous, so it is named">
+        {sandboxWorktreeEnvironmentSummary}
+      </StoryRow>
+      <StoryRow label="ready · named environment" hint="a custom name wins over both machine and provider">
+        {namedLocalEnvironmentSummary}
+      </StoryRow>
+      <StoryRow label="ready · detached worktree" hint="provider icon · detached commit checkout">
+        {detachedWorktreeEnvironmentSummary}
+      </StoryRow>
+      <StoryRow label="destroyed environment" hint="lifecycle label replaces the provider name">
+        {destroyedEnvironmentSummary}
+      </StoryRow>
+    </StoryCard>
+  );
+}
