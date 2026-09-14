@@ -13,6 +13,9 @@ import {
 } from "../src/commands/archive-codex-tmp-bb-sessions.js";
 
 const tempDirs: string[] = [];
+// bb-fork(windows): an absolute fixture home keeps the resolved expectations
+// bb-fork(windows): identical on Windows and POSIX.
+const TEST_HOME = path.resolve("/Users/tester");
 
 afterEach(() => {
   for (const tempDir of tempDirs.splice(0)) {
@@ -25,13 +28,13 @@ describe("archive-codex-tmp-bb-sessions", () => {
     const parsedArgs = parseArchiveTmpBbSessionsArgs(
       [],
       { CODEX_BIN: "/custom/codex" },
-      "/Users/tester",
+      TEST_HOME,
     );
 
     expect(parsedArgs.help).toBe(false);
     expect(parsedArgs.options).toEqual({
       codexBin: "/custom/codex",
-      codexHome: path.join("/Users/tester", ".codex"),
+      codexHome: path.join(TEST_HOME, ".codex"),
       concurrency: 25,
       dryRun: false,
       patterns: [
@@ -48,11 +51,11 @@ describe("archive-codex-tmp-bb-sessions", () => {
     const parsedArgs = parseArchiveTmpBbSessionsArgs(
       [],
       { CODEX_HOME: "~/custom-codex" },
-      "/Users/tester",
+      TEST_HOME,
     );
 
     expect(parsedArgs.options.codexHome).toBe(
-      path.join("/Users/tester", "custom-codex"),
+      path.join(TEST_HOME, "custom-codex"),
     );
   });
 
@@ -70,12 +73,12 @@ describe("archive-codex-tmp-bb-sessions", () => {
         "--concurrency=7",
       ],
       {},
-      "/Users/tester",
+      TEST_HOME,
     );
 
     expect(parsedArgs.options).toEqual({
-      codexBin: path.join("/Users/tester", "bin", "codex"),
-      codexHome: path.join("/Users/tester", "custom-codex"),
+      codexBin: path.join(TEST_HOME, "bin", "codex"),
+      codexHome: path.join(TEST_HOME, "custom-codex"),
       concurrency: 7,
       dryRun: true,
       patterns: ["/tmp/custom-bb-*"],
@@ -87,7 +90,7 @@ describe("archive-codex-tmp-bb-sessions", () => {
     const parsedArgs = parseArchiveTmpBbSessionsArgs(
       ["--pattern", "*/bb-foo-*", "--pattern=*/bb-bar-*"],
       {},
-      "/Users/tester",
+      TEST_HOME,
     );
 
     expect(parsedArgs.options.patterns).toEqual(["*/bb-foo-*", "*/bb-bar-*"]);

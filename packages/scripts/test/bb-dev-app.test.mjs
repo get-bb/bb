@@ -39,6 +39,8 @@ exec ${JSON.stringify(process.execPath)} "$@"
 }
 
 describe("bb-dev-app", () => {
+  // bb-fork(windows): the bash launcher plus git-bash process startup exceeds the
+  // bb-fork(windows): 5s default when the suite runs in parallel.
   it("keeps the caller's Node when another Node 22 version is installed", () => {
     const tempRoot = mkdtempSync(join(tmpdir(), "bb-dev-node-"));
     try {
@@ -78,14 +80,16 @@ describe("bb-dev-app", () => {
 
       expect(result.status).toBe(0);
       expect(result.stderr).toBe("");
-      expect(result.stdout).toContain(
-        `Node: v24.18.0 (ABI 137) at ${join(callerBin, "node")}`,
+      // bb-fork(windows): git-bash prints the caller's Node through its own path
+      // bb-fork(windows): mapping, so assert the caller's bin rather than its prefix.
+      expect(result.stdout).toMatch(
+        /Node: v24\.18\.0 \(ABI 137\) at .*caller-bin[/\\]node/u,
       );
       expect(result.stdout).not.toContain("Node: v22.23.2");
     } finally {
       rmSync(tempRoot, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 
   it("pins the root engine floor for primary development", () => {
     const packageJson = JSON.parse(

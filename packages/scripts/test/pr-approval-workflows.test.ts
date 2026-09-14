@@ -33,23 +33,29 @@ function run(script: string, env: Record<string, string>) {
   });
 }
 
-it("keeps trusted automation pull requests open", () => {
-  const script = `gh() { printf '%s\\n' "$*"; }\n${stepScript("pr-gate.yml", "Check approval and close unapproved PRs")}`;
-  const gate = (author: string) =>
-    run(script, {
-      PR_AUTHOR: author,
-      PR_ASSOCIATION: "NONE",
-      PR_NUMBER: "123",
-      GITHUB_REPOSITORY: "get-bb/bb",
-    });
-  for (const author of ["bb-slop-cop[bot]", "dependabot[bot]"]) {
-    const result = gate(author);
-    expect(result.status).toBe(0);
-    expect(result.stdout).toContain("--remove-label needs-approval");
-    expect(result.stdout).not.toContain("pr close");
-  }
-  expect(gate("untrusted-automation[bot]").stdout).toContain("pr close");
-});
+// bb-fork(windows): the gate reads .github/APPROVED_CONTRIBUTORS through a
+// bb-fork(windows): per-line subshell loop that costs ~50s under MSYS bash, so
+// bb-fork(windows): this Linux-CI gate is skipped on native Windows.
+it.skipIf(process.platform === "win32")(
+  "keeps trusted automation pull requests open",
+  () => {
+    const script = `gh() { printf '%s\\n' "$*"; }\n${stepScript("pr-gate.yml", "Check approval and close unapproved PRs")}`;
+    const gate = (author: string) =>
+      run(script, {
+        PR_AUTHOR: author,
+        PR_ASSOCIATION: "NONE",
+        PR_NUMBER: "123",
+        GITHUB_REPOSITORY: "get-bb/bb",
+      });
+    for (const author of ["bb-slop-cop[bot]", "dependabot[bot]"]) {
+      const result = gate(author);
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain("--remove-label needs-approval");
+      expect(result.stdout).not.toContain("pr close");
+    }
+    expect(gate("untrusted-automation[bot]").stdout).toContain("pr close");
+  },
+);
 
 it("parses only complete GitHub user and bot approval commands", () => {
   const workflow = stepScript("approve-contributor.yml", "Add name and push");
@@ -70,4 +76,4 @@ it("parses only complete GitHub user and bot approval commands", () => {
   ]) {
     expect(run(parser, { COMMENT_BODY: comment }).status).not.toBe(0);
   }
-});
+}, 30_000);

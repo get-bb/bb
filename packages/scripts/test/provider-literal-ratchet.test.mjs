@@ -265,7 +265,7 @@ describe("ratchet CLI refusal paths (fixture root)", () => {
     expect(r.code, r.out).toBe(1);
     expect(r.out).toMatch(/FAILED vs HEAD/);
     expect(r.out).toMatch(/↑ packages\/core\/a\.ts: 1 → 2/);
-  });
+  }, 30_000);
 
   it("fails when a counted file has no allowlist entry", () => {
     write("packages/core/a.ts", 'const id = "codex";\n');

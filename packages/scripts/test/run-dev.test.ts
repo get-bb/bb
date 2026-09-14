@@ -41,6 +41,12 @@ async function pathExists(pathToCheck: string): Promise<boolean> {
   }
 }
 
+// bb-fork(windows): fixture paths go through the platform path helpers so the
+// bb-fork(windows): expectations hold on Windows as well as on POSIX.
+function homePath(...segments: string[]): string {
+  return path.join(path.resolve("/Users/tester"), ...segments);
+}
+
 afterEach(async () => {
   vi.restoreAllMocks();
   await Promise.all(
@@ -139,17 +145,22 @@ describe("run-dev", () => {
   });
 
   it("inherits parent bb skills for managed worktree dev apps", () => {
-    const homeDir = "/Users/tester";
-    const repoRoot =
-      "/Users/tester/.bb-dev/code-bb-abc123/worktrees/env_feature/bb";
+    const homeDir = homePath();
+    const repoRoot = homePath(
+      ".bb-dev",
+      "code-bb-abc123",
+      "worktrees",
+      "env_feature",
+      "bb",
+    );
     const config = resolveDevInstanceConfig({
       homeDir,
       repoRoot,
     });
 
     const inheritedSkillsRootPaths = [
-      "/Users/tester/.bb-dev/code-bb-abc123/skills",
-      "/Users/tester/.bb/skills",
+      homePath(".bb-dev", "code-bb-abc123", "skills"),
+      homePath(".bb", "skills"),
     ];
     expect(resolveInheritedDevSkillsRootPaths({ homeDir, repoRoot })).toEqual(
       inheritedSkillsRootPaths,
@@ -160,34 +171,34 @@ describe("run-dev", () => {
   });
 
   it("dedupes inherited bb skills for prod-managed worktree dev apps", () => {
-    const homeDir = "/Users/tester";
-    const repoRoot = "/Users/tester/.bb/worktrees/env_feature/bb";
+    const homeDir = homePath();
+    const repoRoot = homePath(".bb", "worktrees", "env_feature", "bb");
     const config = resolveDevInstanceConfig({
       homeDir,
       repoRoot,
     });
 
     expect(resolveInheritedDevSkillsRootPaths({ homeDir, repoRoot })).toEqual([
-      "/Users/tester/.bb/skills",
+      homePath(".bb", "skills"),
     ]);
     expect(toDevProcessEnv({ baseEnv: {}, config })).toMatchObject({
-      BB_INHERITED_SKILLS_ROOTS: "/Users/tester/.bb/skills",
+      BB_INHERITED_SKILLS_ROOTS: homePath(".bb", "skills"),
     });
   });
 
   it("inherits prod bb skills for ordinary checkout dev apps", () => {
-    const homeDir = "/Users/tester";
-    const repoRoot = "/Users/tester/src/bb";
+    const homeDir = homePath();
+    const repoRoot = homePath("src", "bb");
     const config = resolveDevInstanceConfig({
       homeDir,
       repoRoot,
     });
 
     expect(resolveInheritedDevSkillsRootPaths({ homeDir, repoRoot })).toEqual([
-      "/Users/tester/.bb/skills",
+      homePath(".bb", "skills"),
     ]);
     expect(toDevProcessEnv({ baseEnv: {}, config })).toMatchObject({
-      BB_INHERITED_SKILLS_ROOTS: "/Users/tester/.bb/skills",
+      BB_INHERITED_SKILLS_ROOTS: homePath(".bb", "skills"),
     });
   });
 
