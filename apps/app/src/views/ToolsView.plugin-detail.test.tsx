@@ -686,18 +686,18 @@ describe("BB Official plugin detail routing", () => {
 
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     render(
-      <MemoryRouter initialEntries={["/extensions/plugins/github"]}>
+      <MemoryRouter initialEntries={["/settings/plugins/github"]}>
         <Routes>
-          <Route path="/extensions/plugins/*" element={<RoutedToolsView />} />
+          <Route path="/settings/plugins/*" element={<RoutedPluginsView />} />
         </Routes>
       </MemoryRouter>,
       { wrapper: QueryClientWrapper },
     );
 
     await waitFor(() => {
-      expect(
-        document.querySelector("[data-plugin-summary]")?.textContent,
-      ).toBe("Description from the installed catalog.");
+      expect(document.querySelector("[data-plugin-summary]")?.textContent).toBe(
+        "Description from the installed catalog.",
+      );
     });
   });
 
@@ -760,18 +760,18 @@ describe("BB Official plugin detail routing", () => {
 
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     render(
-      <MemoryRouter initialEntries={["/extensions/plugins/github"]}>
+      <MemoryRouter initialEntries={["/settings/plugins/github"]}>
         <Routes>
-          <Route path="/extensions/plugins/*" element={<RoutedToolsView />} />
+          <Route path="/settings/plugins/*" element={<RoutedPluginsView />} />
         </Routes>
       </MemoryRouter>,
       { wrapper: QueryClientWrapper },
     );
 
     await waitFor(() => {
-      expect(
-        document.querySelector("[data-plugin-summary]")?.textContent,
-      ).toBe("Description from installed metadata.");
+      expect(document.querySelector("[data-plugin-summary]")?.textContent).toBe(
+        "Description from installed metadata.",
+      );
     });
   });
 
