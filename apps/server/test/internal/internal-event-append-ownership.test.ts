@@ -1,5 +1,10 @@
 import { eq } from "drizzle-orm";
-import { events, getThread, listQueuedThreadMessages } from "@bb/db";
+import {
+  events,
+  getThread,
+  listEvents,
+  listQueuedThreadMessages,
+} from "@bb/db";
 import { threadScope, turnScope } from "@bb/domain";
 import {
   groupHostDaemonEvents,
@@ -76,6 +81,65 @@ function setupEventRoute(args: SeedEventRouteArgs = {}) {
 }
 
 describe("internal event append ownership", () => {
+  it("keeps late provisioning output terminal after setup has failed", async () => {
+    const { environment, harness, session, thread } = await setupEventRoute();
+    try {
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        sequence: 1,
+        type: "system/thread-provisioning",
+        scope: threadScope(),
+        data: {
+          provisioningId: "tpv-terminal",
+          environmentId: environment.id,
+          status: "failed",
+          entries: [],
+        },
+      });
+
+      const response = await postEventBatch({
+        harness,
+        sessionId: session.id,
+        events: [
+          {
+            threadId: thread.id,
+            event: {
+              type: "system/thread-provisioning",
+              threadId: thread.id,
+              scope: threadScope(),
+              provisioningId: "tpv-terminal",
+              environmentId: environment.id,
+              status: "active",
+              entries: [
+                {
+                  type: "output",
+                  key: "setup-output",
+                  text: "late buffered setup output",
+                },
+              ],
+            },
+          },
+        ],
+      });
+
+      expect(response.status).toBe(200);
+      expect(
+        listEvents(harness.db, { threadId: thread.id }).map((row) =>
+          JSON.parse(row.data),
+        ),
+      ).toMatchObject([
+        { status: "failed" },
+        {
+          status: "failed",
+          entries: [{ text: "late buffered setup output" }],
+        },
+      ]);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
   it("stores thread-scoped ACP context usage for the timeline display", async () => {
     const { harness, session, thread } = await setupEventRoute();
     try {

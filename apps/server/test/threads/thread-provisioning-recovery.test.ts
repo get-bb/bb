@@ -6,6 +6,7 @@ import { eq } from "drizzle-orm";
 import {
   environments,
   getEnvironment,
+  getLatestSessionForHost,
   getThread,
   listEvents,
   setThreadStartupContext,
@@ -16,7 +17,7 @@ import {
   threadScope,
   type ResolvedThreadExecutionOptions,
 } from "@bb/domain";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   runThreadLifecycleSweep,
   runPeriodicSweeps,
@@ -37,7 +38,9 @@ import {
   requestThreadProvision,
 } from "../../src/services/threads/thread-provisioning.js";
 import {
+  internalAuthHeaders,
   listQueuedThreadCommands,
+  registerTestHostRpcCapture,
   reportNextEnvironmentAttachSuccess,
   reportQueuedCommandError,
   reportQueuedCommandSuccess,
@@ -56,6 +59,10 @@ import {
 } from "../helpers/seed.js";
 import { installFakeEnvironmentProvider } from "../helpers/environment-provider.js";
 import { withTestHarness } from "../helpers/test-app.js";
+import { handleDaemonSocketClosed } from "../../src/internal/session-owner-side-effects.js";
+import { DAEMON_ACTIVE_WORK_DISCONNECT_GRACE_MS } from "../../src/constants.js";
+import { onDaemonSocketOpen } from "../../src/ws/daemon-protocol.js";
+import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
 
 const THREAD_START_EXECUTION = {
   model: "gpt-5",
@@ -846,6 +853,139 @@ it("waits for the host to reconnect before recovering workspace setup", async ()
       ({ command }) => command.type === "thread.start",
     );
     expect(getEnvironment(harness.db, environment.id)?.status).toBe("ready");
+  });
+});
+
+it("resumes workspace setup when the same daemon reconnects", async () => {
+  await withTestHarness(async (harness) => {
+    const { host, session } = seedHostSession(harness.deps, {
+      id: "host-provision-reconnect",
+    });
+    const { project } = seedProjectWithSource(harness.deps, {
+      hostId: host.id,
+    });
+    const environment = seedEnvironment(harness.deps, {
+      hostId: host.id,
+      projectId: project.id,
+      path: "/tmp/provision-reconnect",
+      status: "provisioning",
+    });
+    const thread = seedThread(harness.deps, {
+      projectId: project.id,
+      environmentId: environment.id,
+      status: "starting",
+    });
+    requestThreadProvision(harness.deps, {
+      thread,
+      environmentIntent: { type: "reuse", environmentId: environment.id },
+      execution: THREAD_START_EXECUTION,
+      fork: null,
+      input: textInput("resume after reconnect"),
+      startedOnBehalfOf: null,
+      titleProvided: true,
+    });
+    await advanceThreadProvisioning(harness.deps, { threadId: thread.id });
+    handleDaemonSocketClosed(harness.deps, { sessionId: session.id });
+
+    const response = await harness.app.request("/internal/session/open", {
+      method: "POST",
+      headers: internalAuthHeaders(harness, { hostId: host.id }),
+      body: JSON.stringify({
+        hostId: host.id,
+        instanceId: session.instanceId,
+        hostName: host.name,
+        hasMachineCredential: false,
+        platform: "darwin",
+        dataDir: "/tmp/provision-reconnect-host-data",
+        localApiPort: null,
+        protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
+        activeThreads: [],
+      }),
+    });
+    expect(response.status).toBe(201);
+    const reconnectedSession = getLatestSessionForHost(harness.db, {
+      hostId: host.id,
+    });
+    expect(reconnectedSession).not.toBeNull();
+    const socket = registerTestHostRpcCapture(harness, {
+      hostId: host.id,
+      sessionId: reconnectedSession!.id,
+    });
+    onDaemonSocketOpen(harness.deps, {
+      hostId: host.id,
+      sessionId: reconnectedSession!.id,
+      socket,
+    });
+
+    const attach = await waitForQueuedCommand(
+      harness,
+      ({ command }) =>
+        command.type === "environment.attach" &&
+        command.environmentId === environment.id,
+    );
+    expect(attach.command).toMatchObject({ environmentId: environment.id });
+    expect(getEnvironment(harness.db, environment.id)?.status).toBe(
+      "provisioning",
+    );
+    await reportQueuedCommandError(harness, attach, {
+      errorCode: "test_cleanup",
+      errorMessage: "test cleanup",
+    });
+  });
+});
+
+it("fails workspace setup only after the active-work disconnect grace", async () => {
+  await withTestHarness(async (harness) => {
+    const { host, session } = seedHostSession(harness.deps, {
+      id: "host-provision-disconnect-grace",
+    });
+    const { project } = seedProjectWithSource(harness.deps, {
+      hostId: host.id,
+    });
+    const environment = seedEnvironment(harness.deps, {
+      hostId: host.id,
+      projectId: project.id,
+      path: "/tmp/provision-disconnect-grace",
+      status: "provisioning",
+    });
+    const thread = seedThread(harness.deps, {
+      projectId: project.id,
+      environmentId: environment.id,
+      status: "starting",
+    });
+    requestThreadProvision(harness.deps, {
+      thread,
+      environmentIntent: { type: "reuse", environmentId: environment.id },
+      execution: THREAD_START_EXECUTION,
+      fork: null,
+      input: textInput("survive a brief disconnect"),
+      startedOnBehalfOf: null,
+      titleProvided: true,
+    });
+    await advanceThreadProvisioning(harness.deps, { threadId: thread.id });
+
+    vi.useFakeTimers();
+    try {
+      handleDaemonSocketClosed(harness.deps, { sessionId: session.id });
+      await vi.advanceTimersByTimeAsync(
+        DAEMON_ACTIVE_WORK_DISCONNECT_GRACE_MS - 1,
+      );
+      expect(getEnvironment(harness.db, environment.id)?.status).toBe(
+        "provisioning",
+      );
+      expect(getThread(harness.db, thread.id)?.status).toBe("starting");
+
+      await vi.advanceTimersByTimeAsync(1);
+      expect(getEnvironment(harness.db, environment.id)?.status).toBe("error");
+      expect(getThread(harness.db, thread.id)?.status).toBe("error");
+      expect(
+        listEvents(harness.db, { threadId: thread.id })
+          .map((row) => row.type)
+          .slice(-2),
+      ).toEqual(["system/thread-provisioning", "system/error"]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

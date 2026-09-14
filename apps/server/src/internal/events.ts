@@ -100,6 +100,42 @@ interface NotifyInsertedEventThreadsArgs {
   insertedInputIndexes: number[];
 }
 
+function preserveTerminalProvisioningStatus(
+  deps: Pick<AppDeps, "db">,
+  entry: PostableEventBatchEntry,
+): PostableEventBatchEntry {
+  const event = entry.envelope.event;
+  if (event.type !== "system/thread-provisioning") {
+    return entry;
+  }
+  const latest = deps.db
+    .select({
+      status: sql<unknown>`json_extract(${storedEvents.data}, '$.status')`,
+    })
+    .from(storedEvents)
+    .where(
+      and(
+        eq(storedEvents.threadId, entry.envelope.threadId),
+        eq(storedEvents.type, "system/thread-provisioning"),
+        sql`json_extract(${storedEvents.data}, '$.provisioningId') = ${event.provisioningId}`,
+      ),
+    )
+    .orderBy(desc(storedEvents.sequence))
+    .limit(1)
+    .get();
+  const status = latest?.status;
+  if (status !== "completed" && status !== "failed" && status !== "cancelled") {
+    return entry;
+  }
+  return {
+    ...entry,
+    envelope: {
+      ...entry.envelope,
+      event: { ...event, status },
+    },
+  };
+}
+
 function parseStoredBackgroundTaskItemStatus(data: string): string | undefined {
   const parsed: unknown = JSON.parse(data);
   if (parsed === null || typeof parsed !== "object" || !("item" in parsed)) {
@@ -923,16 +959,20 @@ export function registerInternalEventRoutes(app: Hono, deps: AppDeps): void {
           entries.map((entry) => entry.envelope),
         ),
       );
-      const labelledEntries = entries.map((entry, index) => {
-        const validated = validatedEnvelopes[index];
-        if (validated === undefined) {
-          throw new Error("Missing validated envelope for daemon event entry");
-        }
-        return {
-          ...entry,
-          envelope: validated,
-        };
-      });
+      const labelledEntries = entries
+        .map((entry, index) => {
+          const validated = validatedEnvelopes[index];
+          if (validated === undefined) {
+            throw new Error(
+              "Missing validated envelope for daemon event entry",
+            );
+          }
+          return {
+            ...entry,
+            envelope: validated,
+          };
+        })
+        .map((entry) => preserveTerminalProvisioningStatus(deps, entry));
       const eventInputs = labelledEntries.map((entry) => {
         return toStoredEvent({
           envelope: entry.envelope,
