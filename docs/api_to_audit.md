@@ -2,6 +2,9 @@
 
 ## `app.commands.register`
 
+`app.commands.register` requires SDK 0.4.91; `defaultShortcut` and keyboard
+bindings require SDK 0.4.92.
+
 Registers frontend commands with `{ id, title, defaultShortcut?, isAvailable?, run }`. The command
 palette consumes the same registrations as the deprecated
 `app.slots.commandPaletteAction` alias. Both paths share validation and a
@@ -11,7 +14,7 @@ type names remain deprecated aliases of `PluginCommandContext` and
 `PluginCommandRegistration`.
 
 Audit command identity, availability outside the palette, shortcut conflicts,
-and saved binding lifecycle before extending commands to keyboard shortcuts.
+and saved binding lifecycle before stabilizing the keyboard shortcut contract.
 `defaultShortcut` uses a key and optional boolean modifiers, normalized when
 registered. The palette and keyboard path share availability and invocation.
 Every command is rebindable under `plugin:<plugin-id>/<command-id>` through

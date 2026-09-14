@@ -100,6 +100,8 @@ openWorkspaceFile }` — register a leaf
   `app.slots.commandPaletteAction` is a deprecated alias accepting the same
   fields. Both entry points share one ID namespace; registering the same ID
   through either path twice rejects plugin setup.
+  Require `engines.bbPluginSdk: ">=0.4.91"` for `commands.register`, or
+  `">=0.4.92"` when using keyboard bindings.
   `defaultShortcut: { key: "i", mod: true, shift: true }` supplies an initial
   binding. `mod` means Command on macOS and Control elsewhere; omitted `meta`,
   `control`, `alt`, `shift`, and `mod` are false. Use a Command/Control/Alt
