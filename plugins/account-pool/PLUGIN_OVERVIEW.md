@@ -16,6 +16,15 @@ The pool waits once on the same account for short temporary rate limits. Longer 
 
 The pooler owns its upstream HTTP connections and uses HTTP/1.1, so a broken HTTP/2 session in the server's shared fetch dispatcher does not strand pooled requests. The transport honors standard proxy environment variables and is disposed on plugin unload. This does not add request replay; existing account-fallback rules still apply. Pooled request connection failures log a known error code when available, without request bodies, credentials, URLs, or raw exception messages.
 
+## Nested bb servers
+
+A bb server started inside another bb server's thread detects the parent's pooler and enables this plugin. Choose in settings or with `bb pool parent`:
+
+- **proxy** (default): keep a local hub with its own machine tokens and forward pooled traffic to the parent, so the parent's token never reaches this server's agents. Routing is contributed only for providers the parent can serve.
+- **isolate**: neutralise the inherited routing and use this instance's own accounts, or each provider's own credentials.
+
+Proxied traffic authenticates as the parent machine's token, so the parent attributes it to itself.
+
 ## Requirements
 
 Accounts you own and are permitted to use this way.
@@ -24,4 +33,4 @@ This plugin is experimental. Routing behavior, stored data, and the CLI can chan
 
 ## For agents
 
-`bb pool account add|list|remove|enable|disable|priority|reorder`, `bb pool status`, `bb pool routing <claude|codex> [--off]`, `bb pool config`, `bb pool config set`, `bb pool token rotate`, and `bb pool bypass <thread-id>`. `list` and `status` take `--json`.
+`bb pool account add|list|remove|enable|disable|priority|reorder`, `bb pool status`, `bb pool routing <claude|codex> [--off]`, `bb pool config`, `bb pool config set`, `bb pool parent [proxy|isolate]`, `bb pool token rotate`, and `bb pool bypass <thread-id>`. `list` and `status` take `--json`.

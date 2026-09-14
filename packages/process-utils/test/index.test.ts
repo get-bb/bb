@@ -298,6 +298,28 @@ describe("process utils", () => {
     expect("SKIP_ME" in sanitizedEnv).toBe(false);
   });
 
+  it("keeps provider credentials a nested bb server needs and drops the pool marker", () => {
+    const env: NodeJS.ProcessEnv = {
+      ANTHROPIC_BASE_URL: "http://127.0.0.1:38886/pool/http",
+      ANTHROPIC_AUTH_TOKEN: "parent-hub-token",
+      CODEX_OPENAI_BASE_URL: "http://127.0.0.1:38886/pool/http/v1",
+      CODEX_POOL_AUTH_TOKEN: "parent-hub-token",
+      ENABLE_TOOL_SEARCH: "true",
+      BB_ACCOUNT_POOL_PARENT_URL: "http://127.0.0.1:38886/pool/http",
+      BB_ACCOUNT_POOL_PARENT_TOKEN: "parent-hub-token",
+      PATH: "/bin",
+    };
+
+    expect(sanitizeInheritedChildProcessEnv({ env })).toEqual({
+      ANTHROPIC_BASE_URL: "http://127.0.0.1:38886/pool/http",
+      ANTHROPIC_AUTH_TOKEN: "parent-hub-token",
+      CODEX_OPENAI_BASE_URL: "http://127.0.0.1:38886/pool/http/v1",
+      CODEX_POOL_AUTH_TOKEN: "parent-hub-token",
+      ENABLE_TOOL_SEARCH: "true",
+      PATH: "/bin",
+    });
+  });
+
   it("does not mutate the inherited env", () => {
     const env: NodeJS.ProcessEnv = {
       BB_DATA_DIR: "/tmp/bb-data",

@@ -28,6 +28,7 @@ import {
 } from "../../../src/services/plugins/plugin-service.js";
 import { readPluginManifest } from "../../../src/services/plugins/manifest.js";
 import {
+  accountPoolDefaultEnabled,
   BUILTIN_PLUGINS,
   OFFICIAL_PLUGINS,
   resolveBuiltinPluginRootPath,
@@ -238,6 +239,19 @@ describe("builtin plugin reconciliation", () => {
       expect(BUILTIN_PLUGINS.map((plugin) => plugin.name)).not.toContain(name);
     }
     expect(OFFICIAL_PLUGINS.every((plugin) => !plugin.autoInstall)).toBe(true);
+  });
+
+  it("enables the account pooler only when a parent bb server pool is present", () => {
+    expect(accountPoolDefaultEnabled({})).toBe(false);
+    expect(accountPoolDefaultEnabled({ BB_ACCOUNT_POOL_PARENT_URL: "" })).toBe(
+      false,
+    );
+    expect(
+      accountPoolDefaultEnabled({
+        BB_ACCOUNT_POOL_PARENT_URL:
+          "http://127.0.0.1:38886/api/v1/plugins/account-pool/http",
+      }),
+    ).toBe(true);
   });
 
   it("gives every builtin plugin a deliberate settings icon", async () => {

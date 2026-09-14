@@ -10,6 +10,7 @@ import {
   codexLoginPollInputSchema,
   loginCompleteInputSchema,
   modelFamilySchema,
+  parentModeSchema,
   tokenRotateInputSchema,
   routingSetInputSchema,
   type AccountPoolConfig,
@@ -19,6 +20,7 @@ import {
   type FamilyQuota,
   type LimitWindow,
   type ModelFamily,
+  type PoolStatus,
   type PoolStatusReport,
 } from "./contracts.js";
 import type { PoolOperations } from "./operations.js";
@@ -50,11 +52,13 @@ const HELP = [
   "  bb pool status [--json]",
   "  bb pool routing <claude|codex> [--off]",
   "  bb pool config",
-  "  bb pool config set <anthropicUpstreamBaseUrl|codexUpstreamBaseUrl|switchThreshold> <value>",
+  "  bb pool config set <anthropicUpstreamBaseUrl|codexUpstreamBaseUrl|switchThreshold|parentMode> <value>",
+  "  bb pool parent [proxy|isolate]",
   "  bb pool token rotate --machine <id-or-name>",
   "  bb pool bypass <thread-id> [--off]",
   "",
   "Accounts run sequentially by priority, then order added. The current fallback stays active until unavailable.",
+  "When this bb server runs inside another bb server's thread, parent proxy routes its pooled traffic through that parent; isolate neutralises the inherited routing.",
   "Reorder includes every account for the provider and changes the next failover sequence; existing conversations stay pinned.",
 ].join("\n");
 
@@ -207,6 +211,19 @@ function formatConfig(config: AccountPoolConfig): string {
     `anthropicUpstreamBaseUrl: ${config.anthropicUpstreamBaseUrl}`,
     `codexUpstreamBaseUrl: ${config.codexUpstreamBaseUrl}`,
     `switchThreshold: ${config.switchThreshold}`,
+    `parentMode: ${config.parentMode}`,
+  ].join("\n");
+}
+
+function formatParent(parent: PoolStatus["parent"]): string {
+  if (parent === null) {
+    return "No parent bb server Account Pooler was detected for this instance.";
+  }
+  return [
+    `parent: ${parent.baseUrl}`,
+    `mode: ${parent.mode}`,
+    `parentServes.claude: ${parent.availability.claude}`,
+    `parentServes.codex: ${parent.availability.codex}`,
   ].join("\n");
 }
 
@@ -230,8 +247,11 @@ function parseConfigUpdate(
       switchThreshold: Number(value),
     });
   }
+  if (key === "parentMode") {
+    return accountPoolConfigSetInputSchema.parse({ parentMode: value });
+  }
   throw new Error(
-    "Config key must be anthropicUpstreamBaseUrl, codexUpstreamBaseUrl, or switchThreshold.",
+    "Config key must be anthropicUpstreamBaseUrl, codexUpstreamBaseUrl, switchThreshold, or parentMode.",
   );
 }
 
@@ -323,7 +343,13 @@ export function registerPoolCli(
         name: "config-set",
         summary: "Update one Account Pooler routing configuration value",
         usage:
-          "bb pool config set <anthropicUpstreamBaseUrl|codexUpstreamBaseUrl|switchThreshold> <value>",
+          "bb pool config set <anthropicUpstreamBaseUrl|codexUpstreamBaseUrl|switchThreshold|parentMode> <value>",
+      },
+      {
+        name: "parent",
+        summary:
+          "Show or set how this instance uses a parent bb server's Account Pooler",
+        usage: "bb pool parent [proxy|isolate]",
       },
       {
         name: "token-rotate",
@@ -586,6 +612,19 @@ export function registerPoolCli(
           if (argv.length !== 4) throw new Error(HELP);
           const next = await config.set(parseConfigUpdate(argv[2], argv[3]));
           return { exitCode: 0, stdout: `${formatConfig(next)}\n` };
+        }
+        if (argv[0] === "parent") {
+          if (argv.length === 1) {
+            const status = await operations.status();
+            return { exitCode: 0, stdout: `${formatParent(status.parent)}\n` };
+          }
+          if (argv.length !== 2) throw new Error(HELP);
+          const parentMode = parentModeSchema.parse(argv[1]);
+          const next = await config.set({ parentMode });
+          return {
+            exitCode: 0,
+            stdout: `Set the Account Pooler parent mode to ${next.parentMode}.\n`,
+          };
         }
         if (argv[0] === "token" && argv[1] === "rotate") {
           const flags = parseFlags(argv.slice(2), [], ["machine"]);

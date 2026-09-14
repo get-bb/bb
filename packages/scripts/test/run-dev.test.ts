@@ -211,6 +211,30 @@ describe("run-dev", () => {
     expect(env.BB_PROJECT_ID).toBe("proj_parent");
   });
 
+  it("passes the account pool marker to a nested dev server", () => {
+    const config = resolveDevInstanceConfig({
+      homeDir: "/Users/tester",
+      repoRoot: "/Users/tester/src/bb",
+    });
+    const baseEnv: NodeJS.ProcessEnv = {
+      BB_ACCOUNT_POOL_PARENT_URL:
+        "http://127.0.0.1:38886/api/v1/plugins/account-pool/http",
+      BB_ACCOUNT_POOL_PARENT_TOKEN: "parent-hub-token",
+      ANTHROPIC_BASE_URL:
+        "http://127.0.0.1:38886/api/v1/plugins/account-pool/http",
+      ANTHROPIC_AUTH_TOKEN: "parent-hub-token",
+    };
+
+    const env = toDevProcessEnv({ baseEnv, config });
+
+    expect(env.BB_ACCOUNT_POOL_PARENT_URL).toBe(
+      "http://127.0.0.1:38886/api/v1/plugins/account-pool/http",
+    );
+    expect(env.BB_ACCOUNT_POOL_PARENT_TOKEN).toBe("parent-hub-token");
+    expect(env.ANTHROPIC_AUTH_TOKEN).toBe("parent-hub-token");
+    expect(env.BB_SERVER_URL).toBe(config.serverUrl);
+  });
+
   it("runs the same persistent dev tasks as pnpm dev", () => {
     expect(createDevTurboCommand()).toEqual({
       args: [

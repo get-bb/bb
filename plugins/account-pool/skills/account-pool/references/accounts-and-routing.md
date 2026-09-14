@@ -78,3 +78,30 @@ one provider. Include disabled accounts too. Reordering changes the next failove
 sequence without moving the current account. `bb pool account priority <id> <n>`
 sets an individual priority; the same operations are available through the
 `account.reorder` and `account.setPriority` plugin RPCs.
+
+## Nested bb servers
+
+A bb server started from inside another bb server's thread inherits that parent's
+pooler routing through its environment. The parent contributes
+`BB_ACCOUNT_POOL_PARENT_URL` and `BB_ACCOUNT_POOL_PARENT_TOKEN` alongside the
+provider routing variables, and the nested server enables the pooler on first run
+when it sees them.
+
+`bb pool parent` reports the detected parent, the current mode, and which
+providers the parent can serve. `bb pool parent proxy` and `bb pool parent
+isolate` set the mode; `bb pool config` shows it as `parentMode`.
+
+In `proxy` mode the nested server runs its own hub and mints its own machine
+tokens, forwarding pooled traffic upstream with the parent's token, so the
+parent's token is never handed to the nested server's agents. It reads the
+parent's `/availability` endpoint and contributes routing only for providers the
+parent can actually serve; if the parent is unreachable it contributes nothing
+and neutralises the inherited values rather than pointing agents at a dead hub.
+
+In `isolate` mode the nested server contributes empty routing variables, which
+overrides the inherited values so threads fall back to that instance's own
+accounts or to each provider's own credentials.
+
+Proxied traffic authenticates as the parent machine's token, so `bb pool status`
+on the parent attributes it to the parent host rather than to the nested
+instance.

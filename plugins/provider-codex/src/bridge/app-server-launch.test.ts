@@ -36,3 +36,28 @@ describe("Codex Account Pool launch", () => {
     });
   });
 });
+
+describe("Codex Account Pool isolation", () => {
+  it.each([
+    { label: "base URL", env: { CODEX_OPENAI_BASE_URL: "" } },
+    { label: "hub token", env: { CODEX_POOL_AUTH_TOKEN: "" } },
+    {
+      label: "both values",
+      env: { CODEX_OPENAI_BASE_URL: "", CODEX_POOL_AUTH_TOKEN: "" },
+    },
+  ])(
+    "drops pool routing when an inherited $label is neutralised with an empty value",
+    (args) => {
+      const launch = resolveAppServerLaunch({
+        CODEX_OPENAI_BASE_URL: "https://parent.example/pool/v1",
+        CODEX_POOL_AUTH_TOKEN: "inherited-parent-token",
+        ...args.env,
+      });
+      expect(launch).toEqual({ command: "codex", args: ["app-server"] });
+      expect(JSON.stringify(launch.args)).not.toContain("parent.example");
+      expect(JSON.stringify(launch.args)).not.toContain(
+        "inherited-parent-token",
+      );
+    },
+  );
+});
