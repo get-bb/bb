@@ -38,17 +38,19 @@
         {
           "path": "apps/app/src/components/commands/CommandPalette.tsx",
           "anchors": [
-            "top-[12%] max-w-xl translate-y-0 gap-0 p-0",
-            "aria-label={inputLabel}",
-            "role=\"listbox\"",
+            "top-[12%] max-w-[640px] translate-y-0 gap-0 p-0",
             "aria-selected={isActive}",
-            "LAUNCHER_ACTION_ROW_BASE_CLASS",
+            "flex min-h-9 w-full min-w-0 cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-left text-sm outline-none",
             "bg-state-hover text-foreground"
           ]
         },
         {
+          "path": "apps/app/src/components/commands/PaletteShell.tsx",
+          "anchors": ["aria-label={inputLabel}", "role=\"listbox\""]
+        },
+        {
           "path": "apps/app/src/lib/command-palette/palette-plugin-actions.ts",
-          "anchors": ["group: \"Plugins\"", "run: () =>"]
+          "anchors": ["bucket: \"Plugins\"", "run: () =>"]
         },
         {
           "path": "apps/app/src/components/commands/CommandPalette.test.tsx",

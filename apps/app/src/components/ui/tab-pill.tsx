@@ -4,6 +4,7 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
 import type { ReactNode } from "react";
 import { CONTEXT_SELECTION_SURFACE_CLASS } from "./context-selection";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 
 const TAB_PILL_DEFAULT_LABEL_MAX_WIDTH_CLASS = "max-w-[180px]";
 const TAB_PILL_AFFORDANCE_BUTTON_BASE_CLASS =
@@ -18,10 +19,12 @@ const TAB_PILL_LEADING_VISUAL_CLASS =
 interface TabPillCloseAction {
   onClose: () => void;
   closeLabel: string;
+  tooltip?: string;
 }
 
 interface TabPillProps {
   label: string;
+  className?: string;
   ariaLabel?: string;
   ariaKeyshortcuts?: string;
   iconOnly?: boolean;
@@ -37,6 +40,7 @@ interface TabPillProps {
 
 export function TabPill({
   label,
+  className,
   ariaLabel,
   ariaKeyshortcuts,
   iconOnly = false,
@@ -65,6 +69,7 @@ export function TabPill({
         isActive
           ? cn(CONTEXT_SELECTION_SURFACE_CLASS, "text-foreground")
           : "text-muted-foreground hover:bg-state-hover",
+        className,
       )}
     >
       <button
@@ -76,9 +81,7 @@ export function TabPill({
         className={cn(
           "flex h-full min-w-0 items-center rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
           iconOnly ? "px-1.5" : "pl-1.5 pr-2",
-          !iconOnly &&
-            closeAction !== null &&
-            enlargeCloseTargetOnCoarsePointer
+          !iconOnly && closeAction !== null && enlargeCloseTargetOnCoarsePointer
             ? "max-md:pointer-coarse:pl-3.5"
             : null,
         )}
@@ -112,22 +115,45 @@ export function TabPill({
         ) : null}
       </button>
       {closeAction ? (
-        <button
-          type="button"
-          onMouseDown={(event) => event.stopPropagation()}
-          onTouchStart={(event) => event.stopPropagation()}
-          onClick={closeAction.onClose}
-          aria-label={closeAction.closeLabel}
-          data-tab-pill-close
-          className={cn(
-            TAB_PILL_CLOSE_BUTTON_CLASS,
-            enlargeCloseTargetOnCoarsePointer &&
-              TAB_PILL_LARGE_COARSE_POINTER_CLOSE_BUTTON_CLASS,
-          )}
-        >
-          <Icon name="X" className={TAB_PILL_AFFORDANCE_ICON_CLASS} />
-        </button>
+        <TabPillCloseButton
+          closeAction={closeAction}
+          enlargeCloseTargetOnCoarsePointer={enlargeCloseTargetOnCoarsePointer}
+        />
       ) : null}
     </div>
+  );
+}
+
+function TabPillCloseButton({
+  closeAction,
+  enlargeCloseTargetOnCoarsePointer,
+}: {
+  closeAction: TabPillCloseAction;
+  enlargeCloseTargetOnCoarsePointer: boolean;
+}) {
+  const button = (
+    <button
+      type="button"
+      onMouseDown={(event) => event.stopPropagation()}
+      onTouchStart={(event) => event.stopPropagation()}
+      onClick={closeAction.onClose}
+      aria-label={closeAction.closeLabel}
+      data-tab-pill-close
+      className={cn(
+        TAB_PILL_CLOSE_BUTTON_CLASS,
+        enlargeCloseTargetOnCoarsePointer &&
+          TAB_PILL_LARGE_COARSE_POINTER_CLOSE_BUTTON_CLASS,
+      )}
+    >
+      <Icon name="X" className={TAB_PILL_AFFORDANCE_ICON_CLASS} />
+    </button>
+  );
+  return closeAction.tooltip === undefined ? (
+    button
+  ) : (
+    <Tooltip>
+      <TooltipTrigger asChild>{button}</TooltipTrigger>
+      <TooltipContent>{closeAction.tooltip}</TooltipContent>
+    </Tooltip>
   );
 }
