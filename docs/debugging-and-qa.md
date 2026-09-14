@@ -14,6 +14,8 @@
 
 Use `scripts/bb-dev-app` when validating changes in the desktop dev app or helping QA from this checkout:
 
+<!-- bb-fork(windows): on native Windows use `pnpm dev` with `pnpm dev:restart-*`; `scripts/bb-dev-app` needs `screen`. See docs/windows.md. -->
+
 - `pnpm dev:status` runs `scripts/bb-dev-app status` to print the active branch, Node runtime, dev URLs, data dir, and logs.
 - `scripts/bb-dev-app current` restarts the dev server on the current branch.
 - `scripts/bb-dev-app main` fetches `origin/main`, fast-forwards `main`, and launches the dev server from this checkout.

@@ -5,6 +5,8 @@ import {
   resolveDevHostDaemonPort,
   resolveSupervisorPidPath,
 } from "../lib/dev-restart-utils.js";
+// bb-fork(windows): request dev restarts through a file where SIGUSR1 is unavailable.
+import { requestDevSupervisorRestart } from "../lib/dev-restart-windows.js";
 import { readRunningPid } from "../lib/pid-file.js";
 import { runScriptProcess } from "../lib/process-helpers.js";
 import { runMainIfEntrypoint } from "../lib/script-entry.js";
@@ -158,7 +160,7 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
   }
 
   for (const [serviceName, pid] of supervisorPids) {
-    process.kill(pid, "SIGUSR1");
+    requestDevSupervisorRestart({ pid, serviceName });
     process.stdout.write(`[dev] Requested ${serviceName} restart.\n`);
   }
 }

@@ -1,5 +1,7 @@
 import { calculateExponentialBackoffDelay } from "@bb/domain";
 import { spawnPortableProcess } from "@bb/process-utils";
+// bb-fork(windows): dev restarts arrive as a request file instead of SIGUSR1.
+import { installDevRestartWatcher } from "./dev-restart-windows.js";
 import { resolveSupervisorPidPath } from "./dev-restart-utils.js";
 import {
   removePidFileSync,
@@ -223,7 +225,9 @@ function spawnNodeChildProcess(
   };
 }
 
-function createNodeDevSupervisorRuntime(): DevSupervisorRuntime {
+function createNodeDevSupervisorRuntime(args: {
+  serviceName: string;
+}): DevSupervisorRuntime {
   return {
     currentPid: process.pid,
     now: () => Date.now(),
@@ -234,8 +238,14 @@ function createNodeDevSupervisorRuntime(): DevSupervisorRuntime {
       handler: DevSupervisorRestartSignalHandler,
     ): DevSupervisorSignalHandlerCleanup {
       process.on("SIGUSR1", handler);
+      // bb-fork(windows): SIGUSR1 never reaches a Windows supervisor; poll a file.
+      const removeDevRestartWatcher = installDevRestartWatcher({
+        onRestart: handler,
+        serviceName: args.serviceName,
+      });
       return () => {
         process.off("SIGUSR1", handler);
+        removeDevRestartWatcher();
       };
     },
     registerExitHandler(handler: DevSupervisorExitHandler): void {
@@ -261,7 +271,9 @@ export async function runDevSupervisor(
 ): Promise<void> {
   await runDevSupervisorWithRuntime({
     options,
-    runtime: createNodeDevSupervisorRuntime(),
+    runtime: createNodeDevSupervisorRuntime({
+      serviceName: options.serviceName,
+    }),
   });
 }
 

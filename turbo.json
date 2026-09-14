@@ -180,6 +180,12 @@
     "@bb/bundled-plugins#build": {
       "dependsOn": [
         "^prepare:bundled",
+        // bb-fork(windows): fork plugins are registered in builtin-registry.fork.ts
+        // bb-fork(windows): but are not dependencies of @bb/bundled-plugins, so ^prepare:bundled misses them
+        // bb-fork(windows): and build.ts fails to copy plugins/<name>/.bundled-runtime.
+        "bb-plugin-git-graph#prepare:bundled",
+        "bb-plugin-pc-control#prepare:bundled",
+        "bb-plugin-workspace-explorer#prepare:bundled",
         "@bb/server#generate:bb-official-marketplace"
       ],
       "inputs": [
