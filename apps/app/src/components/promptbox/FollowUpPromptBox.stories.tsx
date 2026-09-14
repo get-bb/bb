@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 import type {
   Environment,
   Host,
@@ -47,7 +47,6 @@ import {
   type QueuedMessageInlineEditor,
 } from "@/components/promptbox/banner/QueuedMessagesList";
 import { ThreadEnvironmentSummary } from "@/components/promptbox/ThreadEnvironmentSummary";
-import { EnvironmentRenameDialogContent } from "@/components/dialogs/EnvironmentRenameDialog";
 import {
   formatWorkspaceCheckoutDisplay,
   type WorkspaceCheckoutDisplay,
@@ -56,7 +55,6 @@ import type { PickerOption } from "@/components/pickers/OptionPicker";
 import { selectWorkspaceChangedFilesSection } from "@/components/workspace/workspace-change-summary";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import { ModelPickerStoryQueryProvider } from "../../../.ladle/model-picker-query-provider";
-import { DialogStage } from "../../../.ladle/story-dialog-stage";
 import {
   makeEnvironment,
   makeExecutionControlsProps,
@@ -889,18 +887,6 @@ function InteractiveRow() {
   );
 }
 
-export function ControlEmphasis() {
-  return (
-    <div className="mx-auto flex min-h-[28rem] w-full max-w-3xl items-end p-4">
-      <Row
-        submitMode={{ kind: "ready" }}
-        permission={{ ...basePermission, value: "full" }}
-        environmentSummary={worktreeEnvironmentSummary}
-      />
-    </div>
-  );
-}
-
 export function Overview() {
   return (
     <StoryCard>
@@ -922,32 +908,12 @@ export function Overview() {
         />
       </StoryRow>
       <StoryRow
-        label="queue: host-reconnecting"
-        hint="host-reconnecting — submit queues; stop button visible"
-      >
-        <Row
-          submitMode={{ kind: "queue", onStop: noop }}
-          threadRuntimeDisplayStatus="host-reconnecting"
-          environmentSummary={multiMachineEnvironmentSummary}
-        />
-      </StoryRow>
-      <StoryRow
         label="blocked: pending interaction"
         hint="agent is waiting on a tool decision — composer locked"
       >
         <Row
           submitMode={{ kind: "blocked", reason: "pending-interaction" }}
           environmentSummary={sandboxWorktreeEnvironmentSummary}
-        />
-      </StoryRow>
-      <StoryRow
-        label="queue: starting"
-        hint="environment still spinning up — submit queues; stop button visible"
-      >
-        <Row
-          submitMode={{ kind: "queue", onStop: noop }}
-          threadRuntimeDisplayStatus="starting"
-          environmentSummary={provisioningEnvironmentSummary}
         />
       </StoryRow>
       <StoryRow
@@ -1021,18 +987,6 @@ export function Overview() {
           environmentSummary={detachedWorktreeEnvironmentSummary}
         />
       </StoryRow>
-      <StoryRow
-        label="with queued messages"
-        hint="drag the queue header up; Edit moves this real composer inline"
-      >
-        <Row
-          submitMode={{ kind: "queue", onStop: noop }}
-          threadRuntimeDisplayStatus="active"
-          queuedMessages={queuedMessages}
-          contextWindowUsage={usage}
-          environmentSummary={sandboxWorktreeEnvironmentSummary}
-        />
-      </StoryRow>
       <StoryRow label="with promptbox context banner">
         <Row
           submitMode={{ kind: "ready" }}
@@ -1078,104 +1032,11 @@ export function Overview() {
         />
       </StoryRow>
       <StoryRow
-        label="stacked cards"
-        hint="banner + queued messages composed in the same stack slot"
-      >
-        <Row
-          submitMode={{ kind: "queue", onStop: noop }}
-          threadRuntimeDisplayStatus="active"
-          stack={contextBannerElement}
-          queuedMessages={queuedMessages}
-          contextWindowUsage={usage}
-          environmentSummary={namedWorktreeEnvironmentSummary}
-        />
-      </StoryRow>
-      <StoryRow
         label="stacked cards with Markdown + pills"
         hint="collapse on mobile to verify the quoted prompt and pills truncate to one line"
       >
         <StackedCardsWithPillsRow />
       </StoryRow>
-      <StoryRow label="env: worktree" hint="managed worktree label + icon">
-        <Row
-          submitMode={{ kind: "ready" }}
-          environmentSummary={worktreeEnvironmentSummary}
-        />
-      </StoryRow>
-      <StoryRow
-        label="env: worktree on a sandbox"
-        hint="sandbox machine name + worktree branch stay distinguishable"
-      >
-        <Row
-          submitMode={{ kind: "ready" }}
-          environmentSummary={sandboxWorktreeEnvironmentSummary}
-        />
-      </StoryRow>
-      <StoryRow
-        label="env: named worktree"
-        hint="existing environment name + provider icon"
-      >
-        <Row
-          submitMode={{ kind: "ready" }}
-          environmentSummary={namedWorktreeEnvironmentSummary}
-        />
-      </StoryRow>
-      <StoryRow
-        label="env: long machine name"
-        hint="full machine name when space allows; truncates with a title when constrained"
-      >
-        <Row
-          submitMode={{ kind: "ready" }}
-          environmentSummary={longHostEnvironmentSummary}
-        />
-      </StoryRow>
-      <StoryRow label="env: detached" hint="detached checkout label">
-        <Row
-          submitMode={{ kind: "ready" }}
-          environmentSummary={detachedWorktreeEnvironmentSummary}
-        />
-      </StoryRow>
-      <StoryRow
-        label="env: second machine"
-        hint="machine name + icon when the host is ambiguous"
-      >
-        <Row
-          submitMode={{ kind: "ready" }}
-          environmentSummary={multiMachineEnvironmentSummary}
-        />
-      </StoryRow>
-      <StoryRow
-        label="read-only footer"
-        hint="same model & permission pickers as the main thread, just disabled"
-      >
-        <Row
-          submitMode={{ kind: "ready" }}
-          execution={readOnlyExecution}
-          permission={readOnlyPermission}
-          readOnly
-          environmentSummary={multiMachineEnvironmentSummary}
-        />
-      </StoryRow>
-    </StoryCard>
-  );
-}
-
-export function StackedCardsWithPills() {
-  return (
-    <StoryCard>
-      <StoryRow
-        label="stacked cards with pills"
-        hint="banner + queued messages above a composer seeded with mention pills"
-      >
-        <StackedCardsWithPillsRow />
-      </StoryRow>
-    </StoryCard>
-  );
-}
-
-export function EnvironmentMatrix() {
-  return (
-    <StoryCard>
       <StoryRow
         label="provisioning"
         hint="runtime loading icon + lifecycle label"
@@ -1214,15 +1075,6 @@ export function EnvironmentMatrix() {
         />
       </StoryRow>
       <StoryRow
-        label="ready · worktree, one machine"
-        hint="provider icon + provider name"
-      >
-        <Row
-          submitMode={{ kind: "ready" }}
-          environmentSummary={worktreeEnvironmentSummary}
-        />
-      </StoryRow>
-      <StoryRow
         label="ready · worktree on a sandbox"
         hint="an ephemeral host is ambiguous, so it is named"
       >
@@ -1238,15 +1090,6 @@ export function EnvironmentMatrix() {
         <Row
           submitMode={{ kind: "ready" }}
           environmentSummary={namedLocalEnvironmentSummary}
-        />
-      </StoryRow>
-      <StoryRow
-        label="ready · named worktree"
-        hint="provider icon · custom environment name"
-      >
-        <Row
-          submitMode={{ kind: "ready" }}
-          environmentSummary={namedWorktreeEnvironmentSummary}
         />
       </StoryRow>
       <StoryRow
@@ -1268,73 +1111,14 @@ export function EnvironmentMatrix() {
         />
       </StoryRow>
       <StoryRow
-        label="destroyed"
-        hint="composer hidden; lifecycle state remains in the context banner"
-      >
-        <Row
-          submitMode={{ kind: "blocked", reason: "pending-interaction" }}
-          stack={environmentGoneContextBannerElement}
-          hideComposer
-        />
-      </StoryRow>
-    </StoryCard>
-  );
-}
-
-export function WorktreeNamingContract() {
-  const inputRef = useRef<HTMLInputElement | null>(null);
-  return (
-    <StoryCard>
-      <StoryRow
-        label="custom name"
-        hint="clearing the alias falls back to the provider name"
-      >
-        <DialogStage>
-          <EnvironmentRenameDialogContent
-            target={{
-              id: "env_named",
-              currentName: "Design system polish",
-              branchName: STORY_BRANCH_NAME,
-              canClearName: true,
-            }}
-            pending={false}
-            onRename={noop}
-            inputRef={inputRef}
-          />
-        </DialogStage>
-      </StoryRow>
-      <StoryRow
-        label="after clear"
-        hint="the provider names the environment; branch remains checkout metadata"
+        label="env: long machine name"
+        hint="full machine name when space allows; truncates with a title when constrained"
       >
         <Row
           submitMode={{ kind: "ready" }}
-          environmentSummary={worktreeEnvironmentSummary}
+          environmentSummary={longHostEnvironmentSummary}
         />
       </StoryRow>
-    </StoryCard>
-  );
-}
-
-export function WorktreeCopyAction() {
-  return (
-    <StoryCard>
-      <StoryRow
-        label="copy action"
-        hint="branch stays visible as secondary checkout metadata and copies on click"
-      >
-        <Row
-          submitMode={{ kind: "ready" }}
-          environmentSummary={worktreeEnvironmentSummary}
-        />
-      </StoryRow>
-    </StoryCard>
-  );
-}
-
-export function QueuedWorkspace() {
-  return (
-    <StoryCard>
       <StoryRow
         label="eight queued follow-ups"
         hint="the centered handle stays quiet; hover the header to reveal the right-aligned caret"
@@ -1346,6 +1130,19 @@ export function QueuedWorkspace() {
           contextWindowUsage={usage}
         />
       </StoryRow>
+      <StoryRow
+        label="read-only footer"
+        hint="same model & permission pickers as the main thread, just disabled"
+      >
+        <Row
+          submitMode={{ kind: "ready" }}
+          execution={readOnlyExecution}
+          permission={readOnlyPermission}
+          readOnly
+          environmentSummary={multiMachineEnvironmentSummary}
+        />
+      </StoryRow>
     </StoryCard>
   );
 }
+
