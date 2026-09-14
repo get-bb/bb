@@ -1,3 +1,4 @@
+import { CliSkillsSettingsSectionContent } from "@/components/settings/CliSkillsSettingsSection";
 import { useEffect, useRef, useState } from "react";
 import { Route, Routes, useNavigate } from "react-router-dom";
 import {
@@ -37,7 +38,7 @@ import {
 } from "@/lib/route-paths";
 import {
   AppearanceSettingsSection,
-  DebugSettingsSection,
+  PrivacySettingsSection,
   ExperimentsSettingsSection,
   GeneralSettingsSection,
   LocalOpenTargetSettingsSection,
@@ -206,16 +207,23 @@ function GeneralSettingsStory({
         onRewriteLocalhostLinksChange={state.setRewriteLocalhostLinks}
         onRichTextEditingChange={state.setRichTextEditing}
         onSteerActiveThreadOnEnterChange={state.setSteerActiveThreadOnEnter}
-        onStreamerModeChange={state.setStreamerMode}
         openLinksInAppBrowser={state.openLinksInAppBrowser}
         rewriteLocalhostLinks={state.rewriteLocalhostLinks}
         richTextEditing={state.richTextEditing}
         steerActiveThreadOnEnter={state.steerActiveThreadOnEnter}
+      />
+      <CliSkillsSettingsSectionContent
+        hasConnectedMachine={false}
+        onOpenPicker={() => {}}
+        pending={false}
+        statusBadge={null}
+      />
+      <VoiceInputStory />
+      <PrivacySettingsSection
+        onStreamerModeChange={state.setStreamerMode}
         telemetryEnabled={state.telemetryEnabled}
         onTelemetryEnabledChange={state.setTelemetryEnabled}
         streamerMode={state.streamerMode}
-      />
-      <DebugSettingsSection
         disabled={false}
         enabled={state.showDiagnosticEvents}
         onEnabledChange={state.setShowDiagnosticEvents}
@@ -349,7 +357,6 @@ function SettingsStoryContent({ route }: { route: SettingsStoryRoute }) {
       return (
         <>
           <GeneralSettingsStory desktopBrowserAvailable />
-          <VoiceInputStory />
         </>
       );
   }

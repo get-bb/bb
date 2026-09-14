@@ -174,5 +174,5 @@ restores visibility and drag-reorders actions. CLI example:
 Use `bb settings ui reset sidebar.hiddenFooterItems` to show everything again.
 
 Disable anonymous usage telemetry with `bb settings general telemetryEnabled false`
-or Settings → General → Share anonymous usage data. This server-wide preference
+or Settings → General → Privacy & diagnostics → Share anonymous usage data. This server-wide preference
 applies immediately and persists across restarts. `BB_TELEMETRY=false` overrides it.

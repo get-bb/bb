@@ -207,7 +207,7 @@ bb concurrency-limit global [unlimited|<limit>] [--json]
 bb concurrency-limit host <host-id> [auto|<limit>] [--json]
 ```
 
-The "Show diagnostic events" toggle in Settings → General shows provider
+The "Show diagnostic events" toggle in Settings → General → Privacy & diagnostics shows provider
 environment resolution and raw provider events that bb does not yet understand.
 It defaults to off in all builds. Warnings, errors, and model fallback remain
 visible. An existing unhandled-provider-events preference is preserved.
@@ -1465,7 +1465,7 @@ modes bypass the cache. The cache has no user configuration and can be removed
 while no builds are running. See [build performance](build-performance.md) for
 its identity, portability, and verification contract.
 
-Anonymous usage telemetry can be disabled in Settings → General → Share anonymous usage data,
+Anonymous usage telemetry can be disabled in Settings → General → Privacy & diagnostics → Share anonymous usage data,
 or with `bb settings general telemetryEnabled false`. The saved server-wide preference
 takes effect immediately and persists across restarts. SDK callers can use
 `system.updateGeneralSettings` with `telemetryEnabled`. `BB_TELEMETRY=false`

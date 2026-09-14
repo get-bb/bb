@@ -7,7 +7,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { GeneralSettingsSection } from "./SettingsView";
+import { GeneralSettingsSection, PrivacySettingsSection } from "./SettingsView";
 
 afterEach(cleanup);
 
@@ -18,28 +18,37 @@ function renderSection(overrides?: {
   onManagedBranchPrefixChange?: (prefix: string) => void;
 }) {
   return render(
-    <GeneralSettingsSection
-      desktopBrowserAvailable={false}
-      generalSettingsDisabled={false}
-      managedBranchPrefix={overrides?.managedBranchPrefix ?? "bb/"}
-      navigateToThreadAfterCreate={false}
-      onManagedBranchPrefixChange={
-        overrides?.onManagedBranchPrefixChange ?? vi.fn()
-      }
-      onNavigateToThreadAfterCreateChange={vi.fn()}
-      onOpenLinksInAppBrowserChange={vi.fn()}
-      onRewriteLocalhostLinksChange={vi.fn()}
-      onRichTextEditingChange={vi.fn()}
-      onSteerActiveThreadOnEnterChange={vi.fn()}
-      onStreamerModeChange={vi.fn()}
-      openLinksInAppBrowser={false}
-      rewriteLocalhostLinks={false}
-      richTextEditing={false}
-      steerActiveThreadOnEnter={false}
-      telemetryEnabled={overrides?.telemetryEnabled ?? true}
-      onTelemetryEnabledChange={overrides?.onTelemetryEnabledChange ?? vi.fn()}
-      streamerMode={false}
-    />,
+    <>
+      <GeneralSettingsSection
+        desktopBrowserAvailable={false}
+        generalSettingsDisabled={false}
+        managedBranchPrefix={overrides?.managedBranchPrefix ?? "bb/"}
+        navigateToThreadAfterCreate={false}
+        onManagedBranchPrefixChange={
+          overrides?.onManagedBranchPrefixChange ?? vi.fn()
+        }
+        onNavigateToThreadAfterCreateChange={vi.fn()}
+        onOpenLinksInAppBrowserChange={vi.fn()}
+        onRewriteLocalhostLinksChange={vi.fn()}
+        onRichTextEditingChange={vi.fn()}
+        onSteerActiveThreadOnEnterChange={vi.fn()}
+        openLinksInAppBrowser={false}
+        rewriteLocalhostLinks={false}
+        richTextEditing={false}
+        steerActiveThreadOnEnter={false}
+      />
+      <PrivacySettingsSection
+        disabled={false}
+        enabled={false}
+        onEnabledChange={vi.fn()}
+        onStreamerModeChange={vi.fn()}
+        streamerMode={false}
+        telemetryEnabled={overrides?.telemetryEnabled ?? true}
+        onTelemetryEnabledChange={
+          overrides?.onTelemetryEnabledChange ?? vi.fn()
+        }
+      />
+    </>,
   );
 }
 
