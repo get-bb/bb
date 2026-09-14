@@ -1,6 +1,10 @@
 import { spawnSync } from "node:child_process";
 import { realpathSync } from "node:fs";
-import { extname, resolve } from "node:path";
+import { resolve } from "node:path";
+import {
+  resolveBbCliEntryTarget,
+  resolveBbCliSpawn,
+} from "./bb-cli-reexec.windows.js";
 
 export const BB_CLI_REEXEC_ENV = "BB_CLI_REEXEC";
 
@@ -43,7 +47,13 @@ export function maybeReexecViaBbCli(
 
   const target = tryRealpath(targetRaw);
   const current = tryRealpath(currentRaw);
-  if (target === null || current === null || target === current) {
+  if (target === null || current === null) {
+    return;
+  }
+
+  // bb-fork(windows): a bb.cmd shim and its sibling bb entry are one CLI.
+  const entryTarget = tryRealpath(resolveBbCliEntryTarget(target));
+  if (entryTarget === null || entryTarget === current) {
     return;
   }
 
@@ -54,23 +64,16 @@ export function maybeReexecViaBbCli(
   };
 
   if (options.reexec) {
-    options.reexec({ target, argv, env: childEnv });
+    options.reexec({ target: entryTarget, argv, env: childEnv });
     return;
   }
 
-  // bb-fork(windows): extensionless/js CLI entries need an explicit node host.
-  const nodeEntry =
-    process.platform === "win32" &&
-    ["", ".js", ".mjs", ".cjs"].includes(extname(target).toLowerCase());
-  const result = spawnSync(
-    nodeEntry ? process.execPath : target,
-    nodeEntry ? [target, ...argv] : argv,
-    {
-      env: childEnv,
-      stdio: "inherit",
-      windowsHide: true,
-    },
-  );
+  const spawn = resolveBbCliSpawn(entryTarget, argv);
+  const result = spawnSync(spawn.command, spawn.args, {
+    env: childEnv,
+    stdio: "inherit",
+    windowsHide: true,
+  });
   if (result.error) {
     process.stderr.write(
       `bb: failed to re-exec BB_CLI=${target}: ${result.error.message}\n`,
