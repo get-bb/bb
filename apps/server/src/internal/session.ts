@@ -95,6 +95,7 @@ export function registerInternalSessionRoutes(
         `Daemon protocol version ${compatibility.data.protocolVersion} does not match server protocol version ${HOST_DAEMON_PROTOCOL_VERSION}`,
         {
           details: {
+            packageManager: resolveHostPackageManager(deps, daemon.hostId),
             retryUpdate,
             serverProtocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
           },

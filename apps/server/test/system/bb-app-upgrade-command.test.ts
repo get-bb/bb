@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { MiseKitIo } from "@bb/provider-bridge-protocol/bridge-kit";
@@ -101,6 +101,22 @@ describe("resolveBbAppUpgradeCommand", () => {
         pathEnv: undefined,
         bundlePath,
         io: createMiseIo({ miseInstalled: true, installPath: installRoot }),
+      }),
+    ).resolves.toBe(MISE_UPGRADE_COMMAND);
+  });
+
+  it("uses the mise command when auto reaches the mise install through a symlink", async () => {
+    const realRoot = await createTempDir("bb-upgrade-symlink-real-");
+    const linkParent = await createTempDir("bb-upgrade-symlink-link-");
+    const linkRoot = join(linkParent, "mise-install");
+    await symlink(realRoot, linkRoot);
+    const bundlePath = await createBbAppPackage(linkRoot);
+    await expect(
+      resolveBbAppUpgradeCommand({
+        packageManager: "auto",
+        pathEnv: undefined,
+        bundlePath,
+        io: createMiseIo({ miseInstalled: true, installPath: realRoot }),
       }),
     ).resolves.toBe(MISE_UPGRADE_COMMAND);
   });

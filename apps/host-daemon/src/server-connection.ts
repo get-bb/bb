@@ -10,6 +10,7 @@ import {
   type HostDaemonSessionOpenResponse,
   type HostDaemonDaemonWsMessage,
 } from "@bb/host-daemon-contract";
+import type { PackageManagerPreference } from "@bb/domain";
 import { z } from "zod";
 import {
   DEFAULT_CONNECTION_TIMEOUT_MS,
@@ -356,6 +357,9 @@ export class ServerConnection {
         error.code === "protocol_version_mismatch"
       ) {
         this.protocolMismatchObserved = true;
+        if (error.packageManager !== null) {
+          await this.persistPackageManager(error.packageManager);
+        }
         const result =
           await this.options.protocolSelfUpdater?.handleProtocolMismatch({
             force: error.protocolUpdateRetryRequested,
@@ -373,6 +377,19 @@ export class ServerConnection {
         this.logFatalConnectError(error);
       }
       throw error;
+    }
+  }
+
+  private async persistPackageManager(
+    packageManager: PackageManagerPreference,
+  ): Promise<void> {
+    try {
+      await this.options.onPackageManager?.(packageManager);
+    } catch (error) {
+      this.options.logger.warn(
+        { packageManager, ...runtimeErrorLogFields(error) },
+        "Failed to persist the package manager preference",
+      );
     }
   }
 
@@ -606,15 +623,7 @@ export class ServerConnection {
     }
 
     if (message.data.type === "package-manager.replace") {
-      const { packageManager } = message.data;
-      void Promise.resolve(
-        this.options.onPackageManager?.(packageManager),
-      ).catch((error) => {
-        this.options.logger.warn(
-          { packageManager, ...runtimeErrorLogFields(error) },
-          "Failed to persist the package manager preference",
-        );
-      });
+      void this.persistPackageManager(message.data.packageManager);
       return;
     }
 

@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, realpath } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { PackageManagerPreference } from "@bb/domain";
@@ -76,10 +76,15 @@ export async function resolveBbAppUpgradeCommand(
     ),
     findBbAppPackageRoot(args.bundlePath ?? fileURLToPath(import.meta.url)),
   ]);
-  return probe.active &&
-    probe.installDir !== null &&
-    packageRoot !== null &&
-    pathIsInside(packageRoot, probe.installDir)
+  const probedInstallDir = probe.active ? probe.installDir : null;
+  if (probedInstallDir === null || packageRoot === null) {
+    return NPM_UPGRADE_COMMAND;
+  }
+  const [installDir, resolvedPackageRoot] = await Promise.all([
+    realpath(probedInstallDir).catch(() => probedInstallDir),
+    realpath(packageRoot).catch(() => packageRoot),
+  ]);
+  return pathIsInside(resolvedPackageRoot, installDir)
     ? MISE_UPGRADE_COMMAND
     : NPM_UPGRADE_COMMAND;
 }

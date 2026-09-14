@@ -47,7 +47,7 @@ describe("createServerClient", () => {
       Response.json(
         {
           code: "protocol_version_mismatch",
-          details: { retryUpdate: true },
+          details: { packageManager: "mise", retryUpdate: true },
           message: "protocol mismatch",
         },
         { status: 400 },
@@ -74,7 +74,45 @@ describe("createServerClient", () => {
 
     await expect(result).rejects.toMatchObject({
       code: "protocol_version_mismatch",
+      packageManager: "mise",
       protocolUpdateRetryRequested: true,
+    });
+  });
+
+  it("ignores a missing or invalid package manager in error details", async () => {
+    const fetchFn = vi.fn<FetchFn>(async () =>
+      Response.json(
+        {
+          code: "protocol_version_mismatch",
+          details: { packageManager: "yarn" },
+          message: "protocol mismatch",
+        },
+        { status: 400 },
+      ),
+    );
+    const client = createServerClient({
+      fetchFn,
+      getSessionId: () => "session-1",
+      hostKey: "host-key",
+      logger: createLogger(),
+      serverUrl: "https://bb.example.test",
+    });
+
+    const result = client.openSession({
+      hostId: "host-1",
+      hostName: "Host",
+      dataDir: "/tmp/bb",
+      instanceId: "instance-1",
+      localApiPort: null,
+      packageManagerOverride: null,
+      activeThreads: [],
+      loadedEnvironments: [],
+    });
+
+    await expect(result).rejects.toMatchObject({
+      code: "protocol_version_mismatch",
+      packageManager: null,
+      protocolUpdateRetryRequested: false,
     });
   });
 

@@ -30,6 +30,9 @@ interface ConnectionFixtureArgs extends CreateServerClientFixtureArgs {
   onMachineEnvironment?: (
     environment: HostDaemonSessionOpenResponse["machineEnvironment"],
   ) => void;
+  onPackageManager?: (
+    packageManager: HostDaemonSessionOpenResponse["packageManager"],
+  ) => void | Promise<void>;
   startupTimeoutMs?: number;
 }
 
@@ -188,6 +191,7 @@ function createConnectionFixture(args: ConnectionFixtureArgs = {}) {
     onSelfUpdateInstalled: args.onSelfUpdateInstalled,
     onMachineShutdown: args.onMachineShutdown,
     onMachineEnvironment: args.onMachineEnvironment,
+    onPackageManager: args.onPackageManager,
     startupTimeoutMs: args.startupTimeoutMs,
     setSession,
     createWebSocket: webSocket.createWebSocket,
@@ -292,6 +296,40 @@ describe("ServerConnection", () => {
       expect(handleProtocolMismatch).toHaveBeenCalledWith({ force: false });
       expect(onSelfUpdateInstalled).toHaveBeenCalledOnce();
     });
+    await connection.shutdown();
+  });
+
+  it("persists the package manager from the mismatch response before self-update runs", async () => {
+    const calls: string[] = [];
+    const onPackageManager = vi.fn(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      calls.push("persist");
+    });
+    const handleProtocolMismatch = vi.fn(async () => {
+      calls.push("self-update");
+      return "failed" as const;
+    });
+    const protocolError = new ServerResponseError({
+      action: "open session",
+      bodyMessage: "protocol mismatch",
+      code: "protocol_version_mismatch",
+      packageManager: "mise",
+      retryable: false,
+      status: 400,
+      statusText: "Bad Request",
+    });
+    const { connection } = createConnectionFixture({
+      openSessionError: protocolError,
+      protocolSelfUpdater: { handleProtocolMismatch },
+      onPackageManager,
+    });
+
+    void connection.start();
+    await vi.waitFor(() => {
+      expect(handleProtocolMismatch).toHaveBeenCalledOnce();
+    });
+    expect(onPackageManager).toHaveBeenCalledWith("mise");
+    expect(calls).toEqual(["persist", "self-update"]);
     await connection.shutdown();
   });
 

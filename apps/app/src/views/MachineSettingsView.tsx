@@ -82,17 +82,20 @@ const PACKAGE_MANAGER_OPTIONS: {
   {
     value: "auto",
     label: "Auto",
-    description: "Uses mise when it manages a CLI, otherwise npm.",
+    description:
+      "Uses mise when it manages a CLI, otherwise each provider's own installer (npm, Bun, or native).",
   },
   {
     value: "mise",
     label: "mise",
-    description: "Always installs and updates through mise.",
+    description:
+      "Installs and updates through mise; a bb install with BB_APP_NPM_PREFIX keeps its npm tarball updates.",
   },
   {
     value: "npm",
     label: "npm",
-    description: "Always installs and updates through npm.",
+    description:
+      "Never uses mise; providers keep their own update commands (npm, Bun, or native).",
   },
 ];
 

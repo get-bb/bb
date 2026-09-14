@@ -96,6 +96,7 @@ describe("internal session protocol version", () => {
       try {
         const hostId = "host-pr2-only";
         upsertHost(server.db, server.hub, { id: hostId, name: "PR 2 daemon" });
+        updateHost(server.db, server.hub, hostId, { packageManager: "mise" });
         const daemon = createHostDaemonClient(
           server.baseUrl,
           createTestDaemonHostKey({ hostId }),
@@ -118,7 +119,10 @@ describe("internal session protocol version", () => {
         expect(response.status).toBe(400);
         expect(await response.json()).toMatchObject({
           code: "protocol_version_mismatch",
-          details: { serverProtocolVersion: HOST_DAEMON_PROTOCOL_VERSION },
+          details: {
+            packageManager: "mise",
+            serverProtocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
+          },
           message: `Daemon protocol version ${protocolVersion} does not match server protocol version ${HOST_DAEMON_PROTOCOL_VERSION}`,
         });
         expect(getHost(server.db, hostId)?.lastRejectedProtocolVersion).toBe(

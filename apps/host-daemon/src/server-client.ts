@@ -24,10 +24,11 @@ import {
   type HostDaemonSkillTree,
 } from "@bb/host-daemon-contract";
 import { HOST_ARTIFACT_MAX_BYTES } from "@bb/host-daemon-contract/protocol";
-import type {
-  PackageManagerPreference,
-  PendingInteractionCreate,
-  ToolCallRequest,
+import {
+  packageManagerPreferenceSchema,
+  type PackageManagerPreference,
+  type PendingInteractionCreate,
+  type ToolCallRequest,
 } from "@bb/domain";
 import type { HostDaemonLogger } from "./logger.js";
 import type { EventPostResult } from "./event-sink.js";
@@ -45,6 +46,7 @@ interface JsonRecord {
 interface ApiErrorResponseBody {
   code: string;
   message: string;
+  packageManager: PackageManagerPreference | null;
   protocolUpdateRetryRequested: boolean;
   retryable?: boolean;
 }
@@ -53,6 +55,7 @@ interface ServerResponseErrorArgs {
   action: string;
   bodyMessage: string | null;
   code: string | null;
+  packageManager?: PackageManagerPreference | null;
   protocolUpdateRetryRequested?: boolean;
   retryable: boolean;
   status: number;
@@ -63,6 +66,7 @@ export class ServerResponseError extends Error {
   readonly action: string;
   readonly bodyMessage: string | null;
   readonly code: string | null;
+  readonly packageManager: PackageManagerPreference | null;
   readonly protocolUpdateRetryRequested: boolean;
   readonly retryable: boolean;
   readonly status: number;
@@ -77,6 +81,7 @@ export class ServerResponseError extends Error {
     this.action = args.action;
     this.bodyMessage = args.bodyMessage;
     this.code = args.code;
+    this.packageManager = args.packageManager ?? null;
     this.protocolUpdateRetryRequested =
       args.protocolUpdateRetryRequested ?? false;
     this.retryable = args.retryable;
@@ -116,11 +121,18 @@ function parseApiErrorResponseBody(text: string): ApiErrorResponseBody | null {
 
   const details = toJsonRecord(record.details);
   const protocolUpdateRetryRequested = details?.retryUpdate === true;
+  const packageManager = packageManagerPreferenceSchema.safeParse(
+    details?.packageManager,
+  );
+  const parsedPackageManager = packageManager.success
+    ? packageManager.data
+    : null;
 
   if (typeof record.retryable === "boolean") {
     return {
       code: record.code,
       message: record.message,
+      packageManager: parsedPackageManager,
       protocolUpdateRetryRequested,
       retryable: record.retryable,
     };
@@ -129,6 +141,7 @@ function parseApiErrorResponseBody(text: string): ApiErrorResponseBody | null {
   return {
     code: record.code,
     message: record.message,
+    packageManager: parsedPackageManager,
     protocolUpdateRetryRequested,
   };
 }
@@ -425,6 +438,7 @@ export function createServerClient(
       action,
       bodyMessage: body?.message ?? null,
       code: body?.code ?? null,
+      packageManager: body?.packageManager ?? null,
       protocolUpdateRetryRequested: body?.protocolUpdateRetryRequested ?? false,
       retryable: body?.retryable ?? defaultRetryableForStatus(response.status),
       status: response.status,
