@@ -28,13 +28,6 @@ import {
   formatUsdCents,
   usageBarColorClass,
 } from "@bb/shared-ui/lib/usage-format";
-import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
-import {
-  OPTION_BASE_CLASS_NAME,
-  OPTION_INTERACTIVE_CLASS_NAME,
-  OPTION_MENU_CONTENT_CLASS_NAME,
-  OPTION_TRIGGER_CONTENT_CLASS_NAME,
-} from "@bb/shared-ui/option-display";
 import {
   providerUsageTone,
   selectUsageMachine,
@@ -280,7 +273,7 @@ function MachineSelector({
               : "Usage machine: " + activeMachine.displayName
           }
           disabled={machines.length === 0}
-          className="h-7 max-w-36 gap-1.5 px-2 text-sidebar-foreground"
+          className="h-7 max-w-48 gap-1.5 px-2 text-sidebar-foreground"
         >
           <Icon
             name={activeMachine?.id.startsWith("source:") ? "Layers" : "Laptop"}

@@ -17,6 +17,12 @@ it("lists cheaply, fetches only the selected source/provider, preserves failed m
             label: "Account Pooler",
             resources: [
               {
+                id: "claude",
+                providerId: "claude-code",
+                label: "claude@example.com",
+                scope: { kind: "shared" },
+              },
+              {
                 id: "personal",
                 providerId: "codex",
                 label: "personal@example.com",
@@ -32,12 +38,6 @@ it("lists cheaply, fetches only the selected source/provider, preserves failed m
                     },
                   ]
                 : []),
-              {
-                id: "claude",
-                providerId: "claude-code",
-                label: "claude@example.com",
-                scope: { kind: "shared" },
-              },
             ],
           }
         : {

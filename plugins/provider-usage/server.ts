@@ -360,6 +360,15 @@ export default function providerUsagePlugin(bb: BbPluginApi): void {
           machine.error = "Some usage could not be refreshed.";
       }
     }
+    const providerOrder = new Map(
+      providers.map((provider, index) => [provider.id, index]),
+    );
+    for (const machine of machines)
+      machine.providers.sort(
+        (a, b) =>
+          (providerOrder.get(a.providerId) ?? Number.MAX_SAFE_INTEGER) -
+          (providerOrder.get(b.providerId) ?? Number.MAX_SAFE_INTEGER),
+      );
     return { machines };
   };
   bb.rpc.register(providerUsageRpcContract, { getUsage: readUsage });
