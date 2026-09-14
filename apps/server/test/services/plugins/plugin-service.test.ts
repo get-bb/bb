@@ -145,7 +145,10 @@ describe("plugin service", () => {
         notifySystem: () => {},
       },
       logger,
-      telemetry: { capture: (event) => captured.push(event) },
+      telemetry: {
+        ...createNoopTelemetryService(),
+        capture: (event) => captured.push(event),
+      },
       dataDir: join(workDir, "data"),
       appVersion: "0.9.0",
       bundledPlugins: [],

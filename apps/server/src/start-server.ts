@@ -125,7 +125,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     appVersion: serverConfig.BB_APP_VERSION,
     dataDir: serverConfig.BB_DATA_DIR,
     enabled: serverConfig.BB_TELEMETRY && isProduction,
-    isEnabled: () => getAppSettings(db).telemetryEnabled,
+    telemetryEnabled: getAppSettings(db).telemetryEnabled,
     logger,
   });
 

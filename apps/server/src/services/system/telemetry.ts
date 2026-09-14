@@ -38,6 +38,7 @@ export type TelemetryEvent =
 
 export interface TelemetryService {
   capture(event: TelemetryEvent): void;
+  setEnabled(enabled: boolean): void;
 }
 
 interface CreateTelemetryServiceArgs {
@@ -46,12 +47,13 @@ interface CreateTelemetryServiceArgs {
   appVersion: string;
   dataDir: string;
   enabled: boolean;
-  isEnabled: () => boolean;
+  telemetryEnabled: boolean;
   logger: ServerLogger;
 }
 
 const noopTelemetryService: TelemetryService = {
   capture: () => {},
+  setEnabled: () => {},
 };
 
 export function createNoopTelemetryService(): TelemetryService {
@@ -81,14 +83,18 @@ export async function createTelemetryService(
     encoding: "hex",
     fileName: TELEMETRY_ID_FILE_NAME,
   });
+  let telemetryEnabled = args.telemetryEnabled;
   const commonProperties = {
     app_version: args.appVersion,
     arch: process.arch,
     platform: process.platform,
   };
   return {
+    setEnabled(enabled: boolean): void {
+      telemetryEnabled = enabled;
+    },
     capture(event: TelemetryEvent): void {
-      if (!args.isEnabled()) return;
+      if (!telemetryEnabled) return;
       const appSurface =
         telemetryAppSurfaceStorage.getStore() ?? args.appSurface;
       const eventProperties = "properties" in event ? event.properties : {};

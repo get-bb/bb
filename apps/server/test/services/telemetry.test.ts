@@ -7,6 +7,8 @@ import {
   getAppSettings,
   setAppSettings,
 } from "@bb/db";
+import { defaultAppSettings } from "@bb/domain";
+import { withTestHarness } from "../helpers/test-app.js";
 import { DEFAULTS } from "@bb/config/defaults";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -44,7 +46,7 @@ describe("telemetry service", () => {
       appSurface: "web",
       appVersion: "1.2.3",
       dataDir,
-      isEnabled: () => true,
+      telemetryEnabled: true,
       enabled: true,
       logger: createTestLogger(),
     });
@@ -121,7 +123,7 @@ describe("telemetry service", () => {
       appSurface: "web" as const,
       appVersion: "1.2.3",
       dataDir,
-      isEnabled: () => true,
+      telemetryEnabled: true,
       enabled: true,
       logger: createTestLogger(),
     };
@@ -162,10 +164,11 @@ describe("telemetry service", () => {
       appSurface: "web",
       appVersion,
       dataDir,
-      isEnabled: () => true,
+      telemetryEnabled: true,
       enabled,
       logger: createTestLogger(),
     });
+    telemetry.setEnabled(true);
     telemetry.capture({ name: "app_started" });
 
     expect(fetchMock).not.toHaveBeenCalled();
@@ -183,23 +186,67 @@ describe("telemetry service", () => {
         appVersion: "1.2.3",
         dataDir,
         enabled: true,
-        isEnabled: () => getAppSettings(db).telemetryEnabled,
+        telemetryEnabled: getAppSettings(db).telemetryEnabled,
         logger: createTestLogger(),
       };
       const telemetry = await createTelemetryService(args);
       telemetry.capture({ name: "app_started" });
       expect(fetchMock).not.toHaveBeenCalled();
       setAppSettings(db, { ...getAppSettings(db), telemetryEnabled: true });
+      telemetry.setEnabled(true);
       telemetry.capture({ name: "app_started" });
       expect(fetchMock).toHaveBeenCalledTimes(1);
       setAppSettings(db, { ...getAppSettings(db), telemetryEnabled: false });
+      telemetry.setEnabled(false);
       telemetry.capture({ name: "app_started" });
-      const restarted = await createTelemetryService(args);
+      const restarted = await createTelemetryService({
+        ...args,
+        telemetryEnabled: getAppSettings(db).telemetryEnabled,
+      });
       restarted.capture({ name: "app_started" });
       expect(fetchMock).toHaveBeenCalledTimes(1);
     } finally {
       db.$client.close();
     }
+  });
+
+  it("updates the cached preference only after valid settings writes", async () => {
+    await withTestHarness(async (harness) => {
+      const telemetry = await createTelemetryService({
+        apiKey: "phc_test",
+        appSurface: "web",
+        appVersion: "1.2.3",
+        dataDir,
+        enabled: true,
+        telemetryEnabled: getAppSettings(harness.db).telemetryEnabled,
+        logger: createTestLogger(),
+      });
+      harness.deps.telemetry = telemetry;
+      const put = (settings: object) =>
+        harness.app.request("/api/v1/settings/general", {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(settings),
+        });
+      telemetry.capture({ name: "app_started" });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(
+        (await put({ ...defaultAppSettings, telemetryEnabled: false })).status,
+      ).toBe(200);
+      telemetry.capture({ name: "app_started" });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect((await put({ telemetryEnabled: true })).status).toBe(400);
+      telemetry.capture({ name: "app_started" });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const { telemetryEnabled, ...legacy } = defaultAppSettings;
+      expect(telemetryEnabled).toBe(true);
+      expect((await put(legacy)).status).toBe(200);
+      telemetry.capture({ name: "app_started" });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect((await put(defaultAppSettings)).status).toBe(200);
+      telemetry.capture({ name: "app_started" });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
   });
 
   it("logs and swallows send failures", async () => {
@@ -210,7 +257,7 @@ describe("telemetry service", () => {
       appSurface: "desktop",
       appVersion: "1.2.3",
       dataDir,
-      isEnabled: () => true,
+      telemetryEnabled: true,
       enabled: true,
       logger,
     });
