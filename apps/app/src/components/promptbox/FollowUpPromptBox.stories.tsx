@@ -59,9 +59,6 @@ import {
   makeEnvironment,
   makeExecutionControlsProps,
   useInteractiveExecutionControls,
-  STORY_CLAUDE_CODE_MORE_MODELS,
-  STORY_CLAUDE_CODE_MODELS,
-  STORY_CLAUDE_REASONING,
   STORY_CODEX_MODELS,
   STORY_ENVIRONMENT_PROVIDERS,
   PROJECT_NAMES,
@@ -87,32 +84,6 @@ const baseExecution = makeExecutionControlsProps({
     options: STORY_PROVIDER_OPTIONS,
     selectedId: "codex",
     hasMultiple: true,
-  },
-});
-const claudePlanExecution = makeExecutionControlsProps({
-  provider: {
-    options: STORY_PROVIDER_OPTIONS,
-    selectedId: "claude-code",
-    hasMultiple: true,
-  },
-  model: {
-    active: { model: "claude-sonnet-5" },
-    selected: "claude-sonnet-5",
-    options: STORY_CLAUDE_CODE_MODELS,
-    moreOptions: STORY_CLAUDE_CODE_MORE_MODELS,
-    isLoading: false,
-    loadFailed: false,
-    onChange: noop,
-  },
-  serviceTier: {
-    value: undefined,
-    onChange: noop,
-    supported: false,
-  },
-  reasoning: {
-    value: "medium",
-    options: STORY_CLAUDE_REASONING,
-    onChange: noop,
   },
 });
 const codexModelLoadError = {
@@ -282,16 +253,6 @@ const multiMachineEnvironmentSummary: ReactNode = makeEnvironmentSummary({
   branchName: STORY_BRANCH_NAME,
 });
 
-const worktreeEnvironmentSummary: ReactNode = makeEnvironmentSummary({
-  environment: makeEnvironment({
-    environmentProviderId: "git-worktree",
-    status: "ready",
-  }),
-  host: localEnvironmentDisplayHost,
-  branchName: STORY_BRANCH_NAME,
-  onCreateNewThreadInEnvironment: noop,
-});
-
 const sandboxWorktreeEnvironmentSummary: ReactNode = makeEnvironmentSummary({
   environment: makeEnvironment({
     environmentProviderId: "git-worktree",
@@ -312,17 +273,6 @@ const namedLocalEnvironmentSummary: ReactNode = makeEnvironmentSummary({
   host: localEnvironmentDisplayHost,
   machineName: "Bersabel's MacBook Pro",
   hasMultipleMachines: true,
-  branchName: STORY_BRANCH_NAME,
-  onCreateNewThreadInEnvironment: noop,
-});
-
-const namedWorktreeEnvironmentSummary: ReactNode = makeEnvironmentSummary({
-  environment: makeEnvironment({
-    environmentProviderId: "git-worktree",
-    name: "Design system polish",
-    status: "ready",
-  }),
-  host: localEnvironmentDisplayHost,
   branchName: STORY_BRANCH_NAME,
   onCreateNewThreadInEnvironment: noop,
 });
@@ -897,38 +847,6 @@ export function Overview() {
         <InteractiveRow />
       </StoryRow>
       <StoryRow
-        label="queue"
-        hint="active runtime — submit queues; stop button visible"
-      >
-        <Row
-          submitMode={{ kind: "queue", onStop: noop }}
-          threadRuntimeDisplayStatus="active"
-          contextWindowUsage={usage}
-          environmentSummary={worktreeEnvironmentSummary}
-        />
-      </StoryRow>
-      <StoryRow
-        label="blocked: pending interaction"
-        hint="agent is waiting on a tool decision — composer locked"
-      >
-        <Row
-          submitMode={{ kind: "blocked", reason: "pending-interaction" }}
-          environmentSummary={sandboxWorktreeEnvironmentSummary}
-        />
-      </StoryRow>
-      <StoryRow
-        label="submitting"
-        hint="send mutation in flight; submitMode separately tells stop visibility"
-      >
-        <Row
-          submitMode={{ kind: "queue", onStop: noop }}
-          isFollowUpSubmitting
-          threadRuntimeDisplayStatus="active"
-          initialMessage="And confirm the new env summary renders correctly."
-          environmentSummary={namedWorktreeEnvironmentSummary}
-        />
-      </StoryRow>
-      <StoryRow
         label="loading models"
         hint="locked provider while execution options load"
       >
@@ -992,23 +910,6 @@ export function Overview() {
           submitMode={{ kind: "ready" }}
           stack={contextBannerElement}
           environmentSummary={localEnvironmentSummary}
-        />
-      </StoryRow>
-      <StoryRow
-        label="plan mode: permission locked"
-        hint="active Claude Code plan mode shows Plan Mode and disables the dropdown"
-      >
-        <Row
-          submitMode={{ kind: "queue", onStop: noop }}
-          threadRuntimeDisplayStatus="active"
-          execution={claudePlanExecution}
-          permission={{ ...basePermission, value: "full" }}
-          activePromptMode={{
-            mode: "plan",
-            providerId: "claude-code",
-            prompt: "inspect the failing command before making changes",
-          }}
-          environmentSummary={multiMachineEnvironmentSummary}
         />
       </StoryRow>
       <StoryRow
