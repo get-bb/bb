@@ -1099,7 +1099,8 @@ bridge's answer: `experimental_resolveMiseBinary` finds `mise` on the given
 PATH, then `~/.local/bin`, `/opt/homebrew/bin` and `/usr/local/bin` (a
 launchd daemon has none of them on its own PATH); `experimental_probeMisePackage`
 reads `mise ls --json npm:<package>` for the install directory, the
-installed version and the requested pin, and decides whether the executable
+installed version, the requested pin and whether mise marks that entry
+active, and decides whether the executable
 bb found is the mise-managed one (its path sits inside mise's shims
 directory, or its realpath inside the install directory). `auto` uses mise
 only when mise manages the package; `mise` and `npm` force one path. A

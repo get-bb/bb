@@ -1,5 +1,12 @@
 import { execFile } from "node:child_process";
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  readFile,
+  realpath,
+  rename,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { delimiter, dirname, isAbsolute, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -324,13 +331,19 @@ export function createProtocolSelfUpdater(
       return { strategy: "mise", mise };
     }
     if (mise === null) return { strategy: "tarball" };
-    const [installDir, packageRoot] = await Promise.all([
-      miseBbAppProbe(mise).then((probe) => probe.installDir),
+    const [probe, packageRoot] = await Promise.all([
+      miseBbAppProbe(mise),
       findBbAppPackageRoot(bundlePath),
     ]);
-    return installDir !== null &&
-      packageRoot !== null &&
-      pathIsInside(packageRoot, installDir)
+    if (!probe.active || probe.installDir === null || packageRoot === null) {
+      return { strategy: "tarball" };
+    }
+    const installDir = probe.installDir;
+    const [realInstallDir, realPackageRoot] = await Promise.all([
+      realpath(installDir).catch(() => installDir),
+      realpath(packageRoot).catch(() => packageRoot),
+    ]);
+    return pathIsInside(realPackageRoot, realInstallDir)
       ? { strategy: "mise", mise }
       : { strategy: "tarball" };
   }
@@ -351,10 +364,11 @@ export function createProtocolSelfUpdater(
         { cause: error },
       );
     }
-    const installed = (await miseBbAppProbe(mise)).installedVersion;
-    if (installed !== version) {
+    const probe = await miseBbAppProbe(mise);
+    const activeVersion = probe.active ? probe.installedVersion : null;
+    if (activeVersion !== version) {
       throw new Error(
-        `mise reports bb-app ${installed ?? "missing"} after installing ${spec}. Run \`mise use -g ${spec}\` manually and check that bb-app ${version} is published to npm.`,
+        `mise reports ${activeVersion === null ? "no active bb-app" : `bb-app ${activeVersion} as active`} after installing ${spec}. Run \`mise use -g ${spec}\` manually and check that bb-app ${version} is published to npm.`,
       );
     }
     await rm(installedArtifactDigestPath, { force: true });

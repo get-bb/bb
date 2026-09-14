@@ -217,6 +217,7 @@ describe("provider maintenance kit", () => {
       installDir: codexInstallDir,
       installedVersion: "0.153.4",
       requestedVersion: "latest",
+      active: true,
       executableManaged: true,
       shadowingInstall: null,
     });

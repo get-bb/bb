@@ -1,5 +1,12 @@
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
@@ -43,6 +50,7 @@ const miseInstallDir = join(
 
 function fakeMiseIo(args: {
   installed?: boolean;
+  active?: boolean;
   installDir?: string | null;
   versionsAfterUse?: string;
   onUse?: () => void;
@@ -60,7 +68,7 @@ function fakeMiseIo(args: {
           requested_version: io.installedVersion,
           install_path: args.installDir ?? miseInstallDir,
           installed: true,
-          active: true,
+          active: args.active ?? true,
         },
       ]);
     },
@@ -537,6 +545,53 @@ describe("protocol self-update package-manager strategy", () => {
     expectNoNpm(test.runProcess);
   });
 
+  it("uses mise in auto mode when the running bb-app reaches the mise install through a symlink", async () => {
+    const installRoot = await mkdtemp(join(tmpdir(), "bb-mise-install-"));
+    const linkParent = await mkdtemp(join(tmpdir(), "bb-mise-link-"));
+    roots.push(installRoot, linkParent);
+    await createBbAppPackage(installRoot);
+    const linkRoot = join(linkParent, "bb-app-link");
+    await symlink(installRoot, linkRoot);
+    const test = await createFixture({
+      miseIo: fakeMiseIo({ installDir: installRoot }),
+      packageManager: "auto",
+      bundlePath: join(
+        linkRoot,
+        "lib",
+        "node_modules",
+        "bb-app",
+        "host-daemon",
+        "dist",
+        "daemon-bundle.mjs",
+      ),
+    });
+
+    await expect(test.updater.handleProtocolMismatch()).resolves.toBe(
+      "updated",
+    );
+
+    expectMiseUse(test.runProcess);
+    expectNoNpm(test.runProcess);
+  });
+
+  it("uses the tarball flow in auto mode when the mise bb-app entry is not active", async () => {
+    const installRoot = await mkdtemp(join(tmpdir(), "bb-mise-install-"));
+    roots.push(installRoot);
+    const bundlePath = await createBbAppPackage(installRoot);
+    const test = await createFixture({
+      miseIo: fakeMiseIo({ installDir: installRoot, active: false }),
+      packageManager: "auto",
+      bundlePath,
+    });
+
+    await expect(test.updater.handleProtocolMismatch()).resolves.toBe(
+      "updated",
+    );
+
+    expect(test.fetchFn).toHaveBeenCalledTimes(2);
+    expect(test.runProcess.mock.calls[0]?.[0]).toBe("npm");
+  });
+
   it("uses the tarball flow in auto mode when the running bb-app is not mise-managed", async () => {
     const miseIo = fakeMiseIo({});
     const test = await createFixture({ miseIo, packageManager: "auto" });
@@ -612,6 +667,29 @@ describe("protocol self-update package-manager strategy", () => {
           message: expect.stringContaining(
             `mise use -g npm:bb-app@${SERVER_VERSION}`,
           ),
+        }),
+      }),
+      expect.stringContaining("self-update failed"),
+    );
+  });
+
+  it("fails when mise installs the server version but does not mark it active", async () => {
+    const miseIo = fakeMiseIo({ active: false });
+    const test = await createFixture({ miseIo, packageManager: "mise" });
+    await writeFile(join(test.dataDir, "host-artifact.sha256"), "a".repeat(64));
+
+    await expect(test.updater.handleProtocolMismatch()).resolves.toBe("failed");
+
+    expectMiseUse(test.runProcess);
+    expectNoNpm(test.runProcess);
+    expect(miseIo.installedVersion).toBe(SERVER_VERSION);
+    await expect(
+      readFile(join(test.dataDir, "host-artifact.sha256"), "utf8"),
+    ).resolves.toBe("a".repeat(64));
+    expect(test.logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({
+        err: expect.objectContaining({
+          message: expect.stringContaining("no active bb-app"),
         }),
       }),
       expect.stringContaining("self-update failed"),

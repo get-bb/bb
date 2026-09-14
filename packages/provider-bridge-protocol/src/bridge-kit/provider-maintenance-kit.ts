@@ -353,6 +353,7 @@ export interface MisePackageProbe {
   installDir: string | null;
   installedVersion: string | null;
   requestedVersion: string | null;
+  active: boolean;
   executableManaged: boolean;
   shadowingInstall: ProviderInstallationShadowingInstall | null;
 }
@@ -379,6 +380,7 @@ export async function probeMisePackage(
       installDir: null,
       installedVersion: null,
       requestedVersion: null,
+      active: false,
       executableManaged: false,
       shadowingInstall: null,
     };
@@ -400,6 +402,7 @@ export async function probeMisePackage(
     installDir,
     installedVersion: entry.version,
     requestedVersion: entry.requested_version ?? null,
+    active: entry.active === true,
     executableManaged,
     shadowingInstall:
       args.executablePath === null ||
