@@ -45,7 +45,7 @@ import {
 
 import { UsageSettings } from "./settings.js";
 
-interface UsageStoreSnapshot {
+export interface UsageStoreSnapshot {
   data: UsageSnapshot | null;
   error: string | null;
   isRefreshing: boolean;
@@ -338,9 +338,16 @@ function MachineSelector({
   );
 }
 
-function ProviderUsageStatus({
+export function ProviderUsageStatusContent({
   dismiss,
-}: ExperimentalSidebarFooterDisclosureProps) {
+  snapshot,
+  threadMachineId,
+  refreshEnabled = true,
+}: ExperimentalSidebarFooterDisclosureProps & {
+  snapshot: UsageStoreSnapshot;
+  threadMachineId: string | null;
+  refreshEnabled?: boolean;
+}) {
   const [, refreshCountdowns] = useState(0);
   useEffect(() => {
     const timer = window.setInterval(
@@ -349,20 +356,7 @@ function ProviderUsageStatus({
     );
     return () => window.clearInterval(timer);
   }, []);
-  const snapshot = useSyncExternalStore(
-    subscribeStore,
-    getStoreSnapshot,
-    getStoreSnapshot,
-  );
   const machines = snapshot.data?.machines ?? [];
-  const { threadId } = useBbContext();
-  const sidebarThreads = experimental_useSidebarThreads();
-  const threadMachineId = useMemo(
-    () =>
-      sidebarThreads.threads.find((thread) => thread.id === threadId)?.host
-        ?.id ?? null,
-    [sidebarThreads.threads, threadId],
-  );
   const [requestedMachineId, setRequestedMachineId] = useState<string | null>(
     lastMachineId,
   );
@@ -405,6 +399,7 @@ function ProviderUsageStatus({
   const activeProviderId = activeProvider?.id ?? null;
 
   useEffect(() => {
+    if (!refreshEnabled) return;
     if (activeMachineId === null || activeProviderId === null) return;
     const refresh = () => {
       if (document.visibilityState === "hidden") return;
@@ -422,7 +417,7 @@ function ProviderUsageStatus({
       window.clearInterval(timer);
       window.removeEventListener("focus", refresh);
     };
-  }, [activeMachineId, activeProviderId]);
+  }, [activeMachineId, activeProviderId, refreshEnabled]);
 
   const selectMachine = useCallback((machineId: string) => {
     lastMachineId = machineId;
@@ -700,6 +695,29 @@ function ProviderUsageStatus({
         )}
       </div>
     </div>
+  );
+}
+
+function ProviderUsageStatus(props: ExperimentalSidebarFooterDisclosureProps) {
+  const snapshot = useSyncExternalStore(
+    subscribeStore,
+    getStoreSnapshot,
+    getStoreSnapshot,
+  );
+  const { threadId } = useBbContext();
+  const sidebarThreads = experimental_useSidebarThreads();
+  const threadMachineId = useMemo(
+    () =>
+      sidebarThreads.threads.find((thread) => thread.id === threadId)?.host
+        ?.id ?? null,
+    [sidebarThreads.threads, threadId],
+  );
+  return (
+    <ProviderUsageStatusContent
+      {...props}
+      snapshot={snapshot}
+      threadMachineId={threadMachineId}
+    />
   );
 }
 

@@ -359,6 +359,124 @@ function ProviderUsageBody({
   }
 }
 
+export function UsageSettingsContent({
+  machines,
+  selectedId,
+  loading,
+  error,
+  onSelect,
+  onRefresh,
+}: {
+  machines: UsageMachine[];
+  selectedId: string | null;
+  loading: boolean;
+  error: boolean;
+  onSelect: (machineId: string) => void;
+  onRefresh: () => void;
+}) {
+  const selected = selectUsageMachine(machines, selectedId, null);
+  const groups = new Map<string, UsageProvider[]>();
+  for (const provider of selected?.providers ?? []) {
+    if (provider.usage?.status === "not_installed") continue;
+    const group = groups.get(provider.providerId);
+    if (group) group.push(provider);
+    else groups.set(provider.providerId, [provider]);
+  }
+  const notice =
+    selected?.status === "disconnected"
+      ? `${selected.displayName} is offline. Usage will refresh when it reconnects.`
+      : error || selected?.error
+        ? [...groups.values()].some((accounts) =>
+            accounts.some((account) => account.usage !== null),
+          )
+          ? "Couldn’t refresh usage. Showing the last available update. Try reloading usage."
+          : "Couldn’t load usage. Try reloading usage."
+        : null;
+  return (
+    <section className="space-y-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:gap-4 sm:items-start">
+        <div className="min-w-0">
+          <div className="flex min-w-0 items-center gap-1.5">
+            <h2 className="min-w-0 text-sm font-semibold text-foreground">
+              Usage limits
+            </h2>
+          </div>
+          <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
+            Your provider subscription usage.
+          </p>
+        </div>
+        <div className="shrink-0 self-start">
+          <div className="flex items-center gap-1">
+            {machines.length > 1 ? (
+              <UsageLocationPicker
+                locations={machines.map((machine) => ({
+                  id: machine.id,
+                  name: machine.displayName,
+                  kind: machine.id.startsWith("source:") ? "source" : "host",
+                  disabled: machine.status !== "connected",
+                }))}
+                selectedLocationId={selected?.id ?? null}
+                onSelectLocation={onSelect}
+              />
+            ) : null}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-7 text-muted-foreground hover:text-foreground"
+              disabled={loading}
+              onClick={onRefresh}
+              aria-label={
+                loading ? "Reloading usage data" : "Reload usage data"
+              }
+            >
+              <Icon
+                name="RotateCcw"
+                className={cn("size-3.5", loading && "animate-spin")}
+              />
+            </Button>
+          </div>
+        </div>
+      </div>
+      <div className="rounded-lg border border-border bg-card px-4 py-3.5">
+        {notice ? (
+          <p role="status" className="mb-3 text-xs text-muted-foreground">
+            {notice}
+          </p>
+        ) : null}
+        <div className="divide-y divide-border">
+          {[...groups].map(([id, resources]) => {
+            const provider = resources[0]!;
+            return (
+              <UsageResourceGroup
+                key={id}
+                config={{
+                  name: provider.displayName,
+                  providerId: id,
+                  signInHint: provider.signInHint,
+                  expiredHint: provider.expiredHint,
+                  provider,
+                }}
+                resources={resources}
+                isLoading={loading}
+                isError={error || Boolean(selected?.error)}
+              />
+            );
+          })}
+          {groups.size === 0 && !notice ? (
+            <p className="text-xs text-muted-foreground">
+              {loading
+                ? "Loading providers and usage…"
+                : selected?.id.startsWith("source:")
+                  ? "No accounts report usage yet. Configure accounts in the source plugin’s settings, or choose a machine."
+                  : "No providers report usage limits on this machine."}
+            </p>
+          ) : null}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export function UsageSettings() {
   const rpc = useRpc<typeof providerUsageRpcContract>();
   const [machines, setMachines] = useState<UsageMachine[]>([]);
@@ -421,105 +539,14 @@ export function UsageSettings() {
       window.clearInterval(timer);
     };
   }, [rpc, selectedId, refresh]);
-  const selected = selectUsageMachine(machines, selectedId, null);
-  const groups = new Map<string, UsageProvider[]>();
-  for (const provider of selected?.providers ?? []) {
-    if (provider.usage?.status === "not_installed") continue;
-    const group = groups.get(provider.providerId);
-    if (group) group.push(provider);
-    else groups.set(provider.providerId, [provider]);
-  }
-  const notice =
-    selected?.status === "disconnected"
-      ? `${selected.displayName} is offline. Usage will refresh when it reconnects.`
-      : error || selected?.error
-        ? [...groups.values()].some((accounts) =>
-            accounts.some((account) => account.usage !== null),
-          )
-          ? "Couldn’t refresh usage. Showing the last available update. Try reloading usage."
-          : "Couldn’t load usage. Try reloading usage."
-        : null;
   return (
-    <section className="space-y-3">
-      <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:gap-4 sm:items-start">
-        <div className="min-w-0">
-          <div className="flex min-w-0 items-center gap-1.5">
-            <h2 className="min-w-0 text-sm font-semibold text-foreground">
-              Usage limits
-            </h2>
-          </div>
-          <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
-            Your provider subscription usage.
-          </p>
-        </div>
-        <div className="shrink-0 self-start">
-          <div className="flex items-center gap-1">
-            {machines.length > 1 ? (
-              <UsageLocationPicker
-                locations={machines.map((machine) => ({
-                  id: machine.id,
-                  name: machine.displayName,
-                  kind: machine.id.startsWith("source:") ? "source" : "host",
-                  disabled: machine.status !== "connected",
-                }))}
-                selectedLocationId={selected?.id ?? null}
-                onSelectLocation={setSelectedId}
-              />
-            ) : null}
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-7 text-muted-foreground hover:text-foreground"
-              disabled={loading}
-              onClick={() => setRefresh((value) => value + 1)}
-              aria-label={
-                loading ? "Reloading usage data" : "Reload usage data"
-              }
-            >
-              <Icon
-                name="RotateCcw"
-                className={cn("size-3.5", loading && "animate-spin")}
-              />
-            </Button>
-          </div>
-        </div>
-      </div>
-      <div className="rounded-lg border border-border bg-card px-4 py-3.5">
-        {notice ? (
-          <p role="status" className="mb-3 text-xs text-muted-foreground">
-            {notice}
-          </p>
-        ) : null}
-        <div className="divide-y divide-border">
-          {[...groups].map(([id, resources]) => {
-            const provider = resources[0]!;
-            return (
-              <UsageResourceGroup
-                key={id}
-                config={{
-                  name: provider.displayName,
-                  providerId: id,
-                  signInHint: provider.signInHint,
-                  expiredHint: provider.expiredHint,
-                  provider,
-                }}
-                resources={resources}
-                isLoading={loading}
-                isError={error || Boolean(selected?.error)}
-              />
-            );
-          })}
-          {groups.size === 0 && !notice ? (
-            <p className="text-xs text-muted-foreground">
-              {loading
-                ? "Loading providers and usage…"
-                : selected?.id.startsWith("source:")
-                  ? "No accounts report usage yet. Configure accounts in the source plugin’s settings, or choose a machine."
-                  : "No providers report usage limits on this machine."}
-            </p>
-          ) : null}
-        </div>
-      </div>
-    </section>
+    <UsageSettingsContent
+      machines={machines}
+      selectedId={selectedId}
+      loading={loading}
+      error={error}
+      onSelect={setSelectedId}
+      onRefresh={() => setRefresh((value) => value + 1)}
+    />
   );
 }
