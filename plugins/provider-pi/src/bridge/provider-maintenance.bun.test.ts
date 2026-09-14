@@ -22,6 +22,21 @@ vi.mock("@get-bb/plugin-sdk/provider-bridge", async (importOriginal) => {
     experimental_resolveExecutablePath: vi.fn(
       async () => probeState.executablePath,
     ),
+    experimental_resolvePackageInstaller: vi.fn(async () => ({
+      packageManager: "npm",
+      source: "npmGlobal",
+      installCommand: {
+        command: "npm",
+        args: ["install", "-g", "@earendil-works/pi-coding-agent@latest"],
+        displayCommand: "npm install -g @earendil-works/pi-coding-agent@latest",
+      },
+      updateCommand: {
+        command: "npm",
+        args: ["install", "-g", "@earendil-works/pi-coding-agent@latest"],
+        displayCommand: "npm install -g @earendil-works/pi-coding-agent@latest",
+      },
+      shadowingInstall: null,
+    })),
   };
 });
 
@@ -68,8 +83,8 @@ describe("Pi provider maintenance with a Bun-managed executable", () => {
       chmod(probeState.executablePath, 0o755),
     ]);
 
-    const status = await getPiProviderInstallationStatus();
-    const run = await getPiProviderInstallationRun("update");
+    const status = await getPiProviderInstallationStatus("auto");
+    const run = await getPiProviderInstallationRun("auto", "update");
 
     expect(status.installAction?.command).toBe(
       "bun add -g @earendil-works/pi-coding-agent@latest",

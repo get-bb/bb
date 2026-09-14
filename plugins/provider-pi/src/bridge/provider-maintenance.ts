@@ -4,6 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import {
+  type ExperimentalPackageInstallerResolution as PackageInstallerResolution,
+  type ExperimentalPackageManagerPreference as PackageManagerPreference,
   type ProviderHealthResult,
   type ProviderInstallationCommand,
   type ProviderInstallationRunResult,
@@ -13,10 +15,10 @@ import {
   experimental_formatCommand as formatCommand,
   experimental_installationVerification as installationVerification,
   experimental_npmGlobalInstallCommand as npmGlobalInstallCommand,
-  experimental_npmGlobalInstallSource as npmGlobalInstallSource,
   experimental_npmLatestVersion as npmLatestVersion,
   experimental_probeNpmGlobalPackage as probeNpmGlobalPackage,
   experimental_resolveExecutablePath as resolveExecutablePath,
+  experimental_resolvePackageInstaller as resolvePackageInstaller,
   experimental_versionFrom as versionFrom,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { resolvePiLaunch } from "./rpc-child.js";
@@ -121,12 +123,17 @@ async function isBunManagedPi(executablePath: string | null): Promise<boolean> {
   );
 }
 
-async function piGlobalInstallCommand(
+async function piInstallationCommand(
+  installer: PackageInstallerResolution,
   executablePath: string | null,
+  action: "install" | "update",
 ): Promise<ProviderInstallationCommand> {
+  const fallback =
+    action === "install" ? installer.installCommand : installer.updateCommand;
+  if (installer.packageManager === "mise") return fallback;
   return (await isBunManagedPi(executablePath))
     ? bunGlobalInstallCommand(PI_NPM_PACKAGE)
-    : npmGlobalInstallCommand(PI_NPM_PACKAGE);
+    : fallback;
 }
 
 export async function probePiVersion(): Promise<PiVersionProbe> {
@@ -170,7 +177,14 @@ export function describePiVersionProbeFailure(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-export async function getPiProviderInstallationStatus(): Promise<ProviderInstallationStatus> {
+interface PiInstallationDetails {
+  status: ProviderInstallationStatus;
+  installer: PackageInstallerResolution;
+}
+
+async function resolvePiInstallationDetails(
+  packageManager: PackageManagerPreference,
+): Promise<PiInstallationDetails> {
   const launch = resolvePiLaunch(process.env);
   const [resolvedExecutable, probe, latestVersion, npmGlobal] =
     await Promise.all([
@@ -195,40 +209,62 @@ export async function getPiProviderInstallationStatus(): Promise<ProviderInstall
     : needsUpdate || versionUnsupported
       ? "update"
       : null;
+
+  const installer = await resolvePackageInstaller({
+    packageManager,
+    npmPackage: PI_NPM_PACKAGE,
+    installed,
+    executablePath: resolvedExecutable,
+    npmBin: npmGlobal.npmBin,
+    latestVersion,
+  });
+
   const installAction: ProviderInstallationStatus["installAction"] =
     actionKind === null
       ? null
       : {
           kind: actionKind,
           label: actionKind === "install" ? "Install" : "Update",
-          command: (await piGlobalInstallCommand(resolvedExecutable))
-            .displayCommand,
+          command: (
+            await piInstallationCommand(
+              installer,
+              resolvedExecutable,
+              actionKind,
+            )
+          ).displayCommand,
         };
 
-  return {
+  const status: ProviderInstallationStatus = {
     executableName: "pi",
     executablePath: resolvedExecutable,
     installed,
-    installSource: npmGlobalInstallSource({
-      installed,
-      executablePath: resolvedExecutable,
-      npmBin: npmGlobal.npmBin,
-    }),
+    installSource: installer.source,
     currentVersion,
     latestVersion,
     minimumSupportedVersion: PI_MINIMUM_SUPPORTED_VERSION,
     npmPackageName: PI_NPM_PACKAGE,
     npmGlobalPackageVersion: npmGlobal.npmGlobalPackageVersion,
     installAction,
+    shadowingInstall: installer.shadowingInstall,
     needsUpdate,
     versionUnsupported,
   };
+
+  return { status, installer };
+}
+
+export async function getPiProviderInstallationStatus(
+  packageManager: PackageManagerPreference,
+): Promise<ProviderInstallationStatus> {
+  return (await resolvePiInstallationDetails(packageManager)).status;
 }
 
 export async function getPiProviderInstallationRun(
+  packageManager: PackageManagerPreference,
   action: "install" | "update",
 ): Promise<ProviderInstallationRunResult> {
-  const status = await getPiProviderInstallationStatus();
+  const { status, installer } =
+    await resolvePiInstallationDetails(packageManager);
   if (status.installAction?.kind !== action) {
     return {
       available: false,
@@ -237,7 +273,11 @@ export async function getPiProviderInstallationRun(
   }
   return {
     available: true,
-    command: await piGlobalInstallCommand(status.executablePath),
+    command: await piInstallationCommand(
+      installer,
+      status.executablePath,
+      action,
+    ),
     verification: installationVerification(status, action),
   };
 }

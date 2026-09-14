@@ -541,12 +541,18 @@ async function handleRequest(
       sendResult(request.id, { supported: false });
       break;
     case "provider/installation/status":
-      sendResult(request.id, await getPiProviderInstallationStatus());
+      sendResult(
+        request.id,
+        await getPiProviderInstallationStatus(request.params.packageManager),
+      );
       break;
     case "provider/installation/run":
       sendResult(
         request.id,
-        await getPiProviderInstallationRun(request.params.action),
+        await getPiProviderInstallationRun(
+          request.params.packageManager,
+          request.params.action,
+        ),
       );
       break;
     case "thread/start":
