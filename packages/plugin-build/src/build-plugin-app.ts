@@ -32,6 +32,7 @@ import {
   SHARED_UI_ICON_SPECIFIER,
 } from "./runtime-shims.mjs";
 import {
+  PLUGIN_UTILITIES_LAYER,
   pluginScopeRoots,
   scopePluginUtilities,
 } from "./scope-plugin-utilities.js";
@@ -298,11 +299,11 @@ async function buildTailwindCss(
     >,
   ]);
   const input = [
-    `@layer theme, utilities;`,
+    `@layer theme, ${PLUGIN_UTILITIES_LAYER};`,
     `@import "tailwindcss/theme.css" layer(theme);`,
     TW_ANIMATE_CSS,
     PLUGIN_THEME_CSS,
-    `@layer utilities {`,
+    `@layer ${PLUGIN_UTILITIES_LAYER} {`,
     `  @tailwind utilities;`,
     `}`,
     ``,

@@ -7,6 +7,8 @@ const NESTED_STYLE_RULE_AT_RULES = new Set([
   "starting-style",
 ]);
 
+export const PLUGIN_UTILITIES_LAYER = "bb-plugin-utilities";
+
 interface Statement {
   prelude: string;
   body: string | null;
@@ -38,7 +40,8 @@ function assertNoUnscopedClassRule(statement: Statement): void {
   if (!prelude.startsWith("@")) {
     if (!prelude.includes(".")) return;
     throw new Error(
-      `Compiled plugin CSS has a class rule outside the utilities layer ` +
+      `Compiled plugin CSS has a class rule outside the ` +
+        `${PLUGIN_UTILITIES_LAYER} layer ` +
         `(${prelude.slice(0, 80)}). Its utilities would leak into the host ` +
         `page; check the Tailwind version against buildTailwindCss()'s input.`,
     );
@@ -52,7 +55,9 @@ function assertNoUnscopedClassRule(statement: Statement): void {
 }
 
 function isUtilitiesLayer(prelude: string): boolean {
-  return /^@layer\s+utilities$/.test(prelude.trim());
+  return new RegExp(`^@layer\\s+${PLUGIN_UTILITIES_LAYER}$`).test(
+    prelude.trim(),
+  );
 }
 
 function scopeStatements(css: string, scope: string): string {

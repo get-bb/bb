@@ -1,3 +1,12 @@
+/*
+ * Plugin bundles compile their own Tailwind and load after this sheet.
+ * Naming their utilities layer here, ahead of the app's own, keeps a base
+ * utility from a plugin (e.g. .hidden) from outranking an app variant
+ * utility (e.g. .md\:flex) on host components rendered inside a plugin
+ * root. Layer order is fixed at first appearance, so this must stay above
+ * the Tailwind import; see PLUGIN_UTILITIES_LAYER in @bb/plugin-build.
+ */
+@layer theme, base, components, bb-plugin-utilities, utilities;
 @import "tailwindcss";
 @import "tw-animate-css";
 @source "..";
