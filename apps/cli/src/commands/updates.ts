@@ -115,35 +115,49 @@ function actionableTargets(
 }
 
 function printUpdatesTable(args: {
-  appRow: readonly [string, string, string];
+  appRow: readonly [string, string, string, string];
   entries: readonly MachineUpdatesEntry[];
 }): void {
   const rows: string[][] = [[...args.appRow]];
+  const warnings: string[] = [];
   for (const entry of args.entries) {
     if (entry.host.status !== "connected") {
-      rows.push([entry.host.name, "-", "offline"]);
+      rows.push([entry.host.name, "-", "offline", "-"]);
       continue;
     }
     if (entry.providerStatus === null) {
-      rows.push([entry.host.name, "-", entry.statusError ?? "status failed"]);
+      rows.push([entry.host.name, "-", entry.statusError ?? "status failed", "-"]);
       continue;
     }
     for (const status of Object.values(entry.providerStatus)) {
+      const source = status.installSource ?? "unknown";
       rows.push([
         `${entry.host.name} · ${status.displayName}`,
         providerVersionLabel(status),
         providerStateLabel(status),
+        source,
       ]);
+      if (status.shadowingInstall !== null) {
+        warnings.push(
+          `⚠ ${entry.host.name} · ${status.displayName}: shadowed install at ${status.shadowingInstall.executablePath}. Remove with: ${status.shadowingInstall.removeCommand}`,
+        );
+      }
     }
   }
   printBorderlessTable(
     {
-      head: ["Target", "Version", "State"],
-      colWidths: columnWidths(rows, [6, 7, 5]),
+      head: ["Target", "Version", "State", "Source"],
+      colWidths: columnWidths(rows, [6, 7, 5, 6]),
       trimTrailingWhitespace: true,
     },
     rows,
   );
+  if (warnings.length > 0) {
+    for (const warning of warnings) {
+      console.log(warning);
+    }
+    console.log("");
+  }
 }
 
 export function registerUpdatesCommands(
@@ -194,7 +208,7 @@ export function registerUpdatesCommands(
             ? `${version.currentVersion} -> ${version.latestVersion}`
             : version.currentVersion;
         printUpdatesTable({
-          appRow: ["bb-app", appVersionLabel, appState],
+          appRow: ["bb-app", appVersionLabel, appState, "external"],
           entries,
         });
       }),

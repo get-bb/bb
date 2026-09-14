@@ -592,6 +592,29 @@ it is trusted as the owner here exactly as it is for renaming or removing a
 machine. The current value is readable through the host API and
 `bb machine list --json`.
 
+### Package manager preference
+
+Each machine has a package manager preference (`auto`, `mise`, or `npm`, default `auto`).
+Set it in Settings → Machines → the machine → Package manager, or use the CLI:
+`bb machine package-manager <id-or-name> <auto|mise|npm>`.
+The effective preference is sent on every provider CLI update and daemon self-update.
+
+With `mise` selected or when `auto` detects mise manages the executable,
+the daemon and provider CLIs run install/update through mise.
+With `npm` selected or when mise is unavailable, they use npm or native installers.
+`auto` treats a mise-detected executable as managed only when the realpath lies inside
+the mise install directory, not inside a stray node prefix where shadowing occurs.
+A shadowed install is shown with its path and removal command; bb never deletes it.
+
+Override the server setting with the `BB_PACKAGE_MANAGER` environment variable
+on the daemon process (or set `BB_PACKAGE_MANAGER_ENV` in the daemon startup scripts).
+The daemon reports the effective preference at session open and on every command.
+
+Daemon self-update with mise: `mise use -g npm:bb-app@<server-version>` and verify
+the installed version from `mise where npm:bb-app`. With a failed mise invocation,
+the update returns failed with a log line naming the version and manual fix.
+No fallback to npm occurs on mise failure.
+
 Machine installation and daemon protocol repair use the owning server as the
 distribution source: `/install/version` reports the server package/protocol and
 `/install/bb-app.tgz` serves its exact host-only package with a SHA-256 digest

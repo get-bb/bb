@@ -506,6 +506,35 @@ export function registerMachineCommands(
       }),
     );
 
+  machine
+    .command("package-manager <id-or-name> <auto|mise|npm>")
+    .description("Set the package manager preference for a machine")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(
+        async (
+          target: string,
+          packageManager: string,
+          opts: MachineListCommandOptions,
+        ) => {
+          const sdk = createCliBbSdk(getUrl());
+          const hostId = resolveMachineId(
+            await sdk.hosts.list({ includeCreating: true }),
+            target,
+          );
+          if (packageManager !== "auto" && packageManager !== "mise" && packageManager !== "npm") {
+            throw new Error("Package manager must be auto, mise, or npm.");
+          }
+          const result = await sdk.hosts.experimental_updatePackageManager({
+            hostId,
+            packageManager: packageManager as "auto" | "mise" | "npm",
+          });
+          if (outputJson(opts, result)) return;
+          console.log(`Machine ${hostId} package manager set to ${packageManager}`);
+        },
+      ),
+    );
+
   const providerCli = machine
     .command("provider-cli")
     .description("Inspect and install provider CLIs on a machine");

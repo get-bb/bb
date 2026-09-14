@@ -80,6 +80,7 @@ This index lists every command path that the core CLI registers. Read the task-s
 - `bb machine show`
 - `bb machine join-code`
 - `bb machine rename`
+- `bb machine package-manager`
 - `bb machine remove`
 - `bb machine suspend`
 - `bb machine resume`
