@@ -4435,7 +4435,7 @@ importers:
         version: 1.19.14(hono@4.12.28)
       drizzle-orm:
         specifier: ^0.38.4
-        version: 0.38.4(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(@types/react@19.2.13)(better-sqlite3@13.0.3)(kysely@0.29.3)(react@19.2.4)
+        version: 0.38.4(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(@types/react@19.2.13)(better-sqlite3@12.10.0)(kysely@0.29.3)(react@19.2.4)
       zod:
         specifier: 4.3.6
         version: 4.3.6
@@ -4446,6 +4446,9 @@ importers:
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.10
+      better-sqlite3:
+        specifier: 12.10.0
+        version: 12.10.0
       typescript:
         specifier: npm:@typescript/typescript6@^6.0.2
         version: '@typescript/typescript6@6.0.2'
@@ -23689,16 +23692,6 @@ snapshots:
       '@types/better-sqlite3': 7.6.13
       '@types/react': 19.2.13
       better-sqlite3: 12.10.0
-      kysely: 0.29.3
-      react: 19.2.4
-
-  drizzle-orm@0.38.4(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(@types/react@19.2.13)(better-sqlite3@13.0.3)(kysely@0.29.3)(react@19.2.4):
-    optionalDependencies:
-      '@cloudflare/workers-types': 4.20260702.1
-      '@opentelemetry/api': 1.9.1
-      '@types/better-sqlite3': 7.6.13
-      '@types/react': 19.2.13
-      better-sqlite3: 13.0.3
       kysely: 0.29.3
       react: 19.2.4
 

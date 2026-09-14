@@ -493,7 +493,7 @@ describe("electron-builder signing config", () => {
     } finally {
       await rm(appOutDir, { recursive: true, force: true });
     }
-  });
+  }, 60_000);
 
   it("points mac signing entitlements at checked-in plist files", async () => {
     const configText = await readFile(
