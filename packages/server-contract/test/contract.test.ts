@@ -58,6 +58,7 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
     fields: [
       "threadTimelineResponseSchema.timelinePage.contentPage",
       "threadTimelineResponseSchema.timelinePage.historySnapshot",
+      "threadTimelineResponseSchema.timelinePage.olderGroupsSourceSeqEnd",
       "timelineTurnSummaryDetailsQuerySchema.beforeCursor",
     ],
   },
