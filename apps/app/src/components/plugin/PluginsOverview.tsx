@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   ResourceInfiniteScrollSentinel,
   useResourceInfiniteItems,
-  useResourceViewportPageSize,
+  RESOURCE_GRID_PAGE_SIZE,
 } from "@bb/shared-ui/resource-pagination";
 import {
   ResourceCollectionPage,
@@ -54,8 +54,6 @@ export function PluginsOverview({
     mode ?? (searchParams.get("view") === "installed" ? "installed" : "browse");
   const authorKey = searchParams.get("author");
   const [installedQuery, setInstalledQuery] = useState("");
-  const [installedViewport, setInstalledViewport] =
-    useState<HTMLDivElement | null>(null);
   const [installedSortDirection, setInstalledSortDirection] = useState<
     "asc" | "desc"
   >("asc");
@@ -74,9 +72,6 @@ export function PluginsOverview({
     installedSortDirection,
     [...activeTypeFilters].sort().join(","),
   ].join("\u0000");
-  const installedPageSize = useResourceViewportPageSize(installedViewport, {
-    resetKey: installedResetKey,
-  });
   const [addDialog, setAddDialog] = useState<{
     open: boolean;
     initial: AddPluginInitial | null;
@@ -130,7 +125,7 @@ export function PluginsOverview({
     ],
   );
   const installedList = useResourceInfiniteItems(visiblePlugins, {
-    pageSize: installedPageSize,
+    pageSize: RESOURCE_GRID_PAGE_SIZE,
     resetKey: installedResetKey,
   });
 
@@ -186,7 +181,6 @@ export function PluginsOverview({
     content = (
       <ResourceCollectionViewport
         scrollId="plugins-installed-results"
-        viewportRef={setInstalledViewport}
         bandClassName={TOOLS_PAGE_BAND_CLASSES}
         toolbar={
           <ResourceToolbar

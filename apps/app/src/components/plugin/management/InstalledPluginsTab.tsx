@@ -5,11 +5,9 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { EmptyState } from "@bb/shared-ui/empty-state";
 import { Switch } from "@bb/shared-ui/switch";
 import {
-  ResourceListPanel,
-  ResourceRow,
-  ResourceRowDetailChevron,
+  ResourceBrowseGrid,
+  ResourceIconFrame,
 } from "@bb/shared-ui/resource-list";
-import { ProvenancePill } from "@/components/tools/ProvenancePill";
 import { appToast } from "@/components/ui/app-toast.js";
 import { invalidatePluginList } from "@/hooks/cache-owners/plugin-cache-owner";
 import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
@@ -24,14 +22,21 @@ import {
   pluginRuntimeStatusPresentation,
 } from "./plugin-status";
 import { PluginRowSignalView, PluginSignalLogo } from "./PluginRowSignal";
+import { PluginCard, PluginCardAuthor, PluginAuthorByline } from "./PluginCard";
+import { installedPluginCatalogEntry } from "./installed-plugin-catalog";
+import {
+  usePluginCatalogSearch,
+  type PluginCatalogSearchEntry,
+} from "@/hooks/queries/plugin-catalog-queries";
 import { UpdatePluginDialog } from "./UpdatePluginDialog";
-import { PluginLogo } from "./plugin-ui";
+import { PluginLogo, PluginCategoryLabel } from "./plugin-ui";
 
 export function InstalledPluginsTab({
   plugins,
 }: {
   plugins: readonly PluginListItem[];
 }) {
+  const catalogQuery = usePluginCatalogSearch("", { enabled: true });
   const [updateTargetId, setUpdateTargetId] = useState<string | null>(null);
   const updateTarget =
     updateTargetId === null
@@ -46,17 +51,19 @@ export function InstalledPluginsTab({
 
   return (
     <>
-      <ResourceListPanel>
-        <div className="divide-y divide-border">
-          {plugins.map((plugin) => (
-            <InstalledPluginRow
-              key={plugin.id}
-              plugin={plugin}
-              onUpdateClick={() => setUpdateTargetId(plugin.id)}
-            />
-          ))}
-        </div>
-      </ResourceListPanel>
+      <ResourceBrowseGrid className="w-full grid-cols-[repeat(auto-fill,minmax(min(100%,18rem),1fr))] gap-2">
+        {plugins.map((plugin) => (
+          <InstalledPluginRow
+            key={plugin.id}
+            plugin={plugin}
+            catalogEntry={installedPluginCatalogEntry(
+              plugin,
+              catalogQuery.data?.entries ?? [],
+            )}
+            onUpdateClick={() => setUpdateTargetId(plugin.id)}
+          />
+        ))}
+      </ResourceBrowseGrid>
       {updateTarget !== null ? (
         <UpdatePluginDialog
           plugin={updateTarget}
@@ -73,8 +80,10 @@ export function InstalledPluginsTab({
 export function InstalledPluginRow({
   plugin,
   onUpdateClick,
+  catalogEntry,
 }: {
   plugin: PluginListItem;
+  catalogEntry?: PluginCatalogSearchEntry;
   onUpdateClick: () => void;
 }) {
   const navigate = useNavigate();
@@ -118,58 +127,79 @@ export function InstalledPluginRow({
     );
   return (
     <div data-testid={`plugin-row-${plugin.id}`}>
-      <ResourceRow
+      <PluginCard
         leading={
           <PluginSignalLogo signal={statusSignal} onStatusClick={openDetail}>
-            <PluginLogo plugin={plugin} className="size-6 shrink-0" />
+            <ResourceIconFrame className="size-6 rounded border border-border bg-muted/40 text-muted-foreground">
+              {() => <PluginLogo plugin={plugin} className="size-4" />}
+            </ResourceIconFrame>
           </PluginSignalLogo>
         }
         title={plugin.name ?? plugin.id}
-        titleMeta={
-          plugin.publisherLabel === null ? undefined : (
-            <ProvenancePill label={plugin.publisherLabel} />
-          )
-        }
-        state={
-          runtimeStatus === null ? undefined : (
-            <span
-              data-testid={`plugin-runtime-status-${plugin.id}`}
-              className={cn(
-                "shrink-0 text-xs font-medium",
-                runtimeStatusToneClass,
-              )}
-            >
-              {runtimeStatus.label}
+        byline={
+          plugin.source.startsWith("path:") ? (
+            <span className="font-mono text-2xs" title={plugin.source.slice(5)}>
+              {plugin.sourceDisplay}
             </span>
-          )
+          ) : catalogEntry !== undefined ? (
+            <PluginCardAuthor entry={catalogEntry} />
+          ) : plugin.publisherLabel !== null ? (
+            <PluginAuthorByline
+              name={
+                plugin.provenance === "builtin"
+                  ? "BB Official"
+                  : plugin.publisherLabel
+              }
+              github={null}
+              official={plugin.provenance === "builtin"}
+            >
+              {plugin.provenance === "builtin"
+                ? "BB Official"
+                : plugin.publisherLabel}
+            </PluginAuthorByline>
+          ) : null
+        }
+        footerMeta={
+          (catalogEntry?.category ?? plugin.category) !== undefined ? (
+            <PluginCategoryLabel
+              categoryId={catalogEntry?.categoryId ?? plugin.categoryId}
+              label={catalogEntry?.category ?? plugin.category ?? ""}
+            />
+          ) : null
         }
         description={
-          runtimeStatus === null
-            ? plugin.description
-            : (plugin.statusDetail ?? runtimeStatus.condition)
+          runtimeStatus === null ? (
+            plugin.description
+          ) : (
+            <span>
+              <span
+                data-testid={`plugin-runtime-status-${plugin.id}`}
+                className={cn("font-medium", runtimeStatusToneClass)}
+              >
+                {runtimeStatus.label}
+              </span>
+              {" · "}
+              <span>{plugin.statusDetail ?? runtimeStatus.condition}</span>
+            </span>
+          )
         }
         openLabel={`${plugin.name ?? plugin.id} plugin details`}
         onOpen={openDetail}
-        trailingMeta={
-          updateSignal !== null ? (
-            <span data-testid={`plugin-update-signal-${plugin.id}`}>
-              <PluginRowSignalView
-                signal={updateSignal}
-                onUpdateClick={onUpdateClick}
-                onStatusClick={openDetail}
-              />
-            </span>
-          ) : undefined
-        }
-        persistentActions={
-          <>
+        headerAction={
+          <span className="flex items-center gap-2">
+            {updateSignal !== null ? (
+              <span data-testid={`plugin-update-signal-${plugin.id}`}>
+                <PluginRowSignalView
+                  signal={updateSignal}
+                  onUpdateClick={onUpdateClick}
+                  onStatusClick={openDetail}
+                />
+              </span>
+            ) : undefined}
             {notRunning ? (
               <span
                 data-testid={`plugin-not-running-${plugin.id}`}
-                className={cn(
-                  "mr-1 text-2xs font-medium",
-                  runtimeStatusToneClass,
-                )}
+                className={cn("sr-only", runtimeStatusToneClass)}
               >
                 not running
               </span>
@@ -182,9 +212,8 @@ export function InstalledPluginRow({
                 notRunning ? ` (${plugin.status}, not running)` : ""
               }`}
             />
-          </>
+          </span>
         }
-        trailingVisual={<ResourceRowDetailChevron />}
       />
     </div>
   );

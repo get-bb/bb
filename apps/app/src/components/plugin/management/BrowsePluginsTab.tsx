@@ -14,7 +14,6 @@ import { OpenPluginGuideButton } from "./OpenPluginGuideButton";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import {
-  ResourceBrowseCard,
   ResourceBrowseGrid,
   ResourceCollectionViewport,
   ResourceInstallControl,
@@ -32,9 +31,7 @@ import {
   type PluginCatalogSearchEntry,
 } from "@/hooks/queries/plugin-catalog-queries";
 import type { AddPluginInitial } from "./AddPluginDialog";
-import { PluginAuthorAvatar } from "./PluginAuthorAvatar";
-import { PluginAuthorLink } from "./PluginAuthorLink";
-import { pluginAuthorGithub } from "./plugin-marketplace-author";
+import { PluginCard, PluginCardAuthor } from "./PluginCard";
 import {
   PluginBrowseToolbar,
   pluginBrowseSort,
@@ -431,36 +428,12 @@ function PluginCatalogCard({
   onOpenPlugin: (pluginId: string, trigger: HTMLButtonElement) => void;
 }) {
   const count = pluginInstallCountPresentation(entry.installs);
-  const authorName = entry.author?.name ?? entry.publisherLabel;
   return (
-    <ResourceBrowseCard
-      className="min-h-28 gap-x-2 gap-y-1.5 p-3"
-      leading={<CatalogEntryIconChip entry={entry} />}
-      leadingClassName="size-10"
+    <PluginCard
+      leading={<CatalogEntryIconChip entry={entry} compact />}
       title={entry.displayName}
       description={entry.description || undefined}
-      byline={
-        <span className="flex items-center gap-1.5">
-          <PluginAuthorAvatar
-            name={authorName}
-            github={pluginAuthorGithub(entry.author)}
-            size="detail"
-          />
-          <span className="truncate">
-            By{" "}
-            {entry.author === null ? (
-              authorName
-            ) : (
-              <PluginAuthorLink
-                entry={entry}
-                className="pointer-events-auto relative z-10 rounded-sm underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              >
-                {authorName}
-              </PluginAuthorLink>
-            )}
-          </span>
-        </span>
-      }
+      byline={<PluginCardAuthor entry={entry} />}
       footerMeta={
         showCategory && entry.category !== undefined ? (
           <PluginCategoryLabel

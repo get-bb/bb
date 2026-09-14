@@ -199,7 +199,7 @@ describe("BrowsePluginsTab", () => {
       onOpenPlugin,
     );
 
-    fireEvent.click(await screen.findByRole("link", { name: "BB" }));
+    fireEvent.click(await screen.findByRole("link", { name: "BB Official" }));
     const params = new URLSearchParams(
       screen.getByTestId("location-search").textContent ?? "",
     );
