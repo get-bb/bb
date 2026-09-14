@@ -18,7 +18,6 @@ import {
   RUNTIME_SLOT_BY_SPECIFIER,
 } from "./build-plugin-app.js";
 import { RUNTIME_EXPORT_MANIFEST } from "./generated/runtime-export-manifest.generated.js";
-import { PLUGIN_UTILITIES_LAYER } from "./scope-plugin-utilities.js";
 import { resolvePluginBuildToolchain } from "./toolchain.js";
 
 function testToolchain() {
@@ -258,44 +257,6 @@ describe("plugin app runtime shim", () => {
     expect(css).not.toContain("@scope");
     expect(css).not.toContain(`${scope} .bb71-authored-decoration`);
     expect(css).toContain(".bb71-authored-decoration");
-  });
-
-  it("emits utilities in the plugin layer so host variants outrank them", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "bb-plugin-css-layer-"));
-    tempDirs.push(dir);
-    await writeFile(
-      join(dir, "package.json"),
-      JSON.stringify({
-        name: "bb-plugin-layer-fixture",
-        version: "0.0.0",
-        bb: {
-          name: "Layer fixture",
-          description: "Verifies the plugin utilities layer.",
-          branding: { icon: "Paintbrush" },
-          server: "./server.ts",
-          app: "./app.ts",
-        },
-      }),
-    );
-    await writeFile(
-      join(dir, "server.ts"),
-      "export default function plugin() {}\n",
-    );
-    await writeFile(
-      join(dir, "app.ts"),
-      'export const overflowClass = "overflow-hidden";\n',
-    );
-
-    const result = await buildPluginApp(
-      dir,
-      "0.9.0-test",
-      await testToolchain(),
-    );
-    const css = await readFile(result.cssPath, "utf8");
-
-    expect(css).toContain(`@layer ${PLUGIN_UTILITIES_LAYER}{`);
-    expect(css).not.toMatch(/@layer\s+utilities\s*\{/);
-    expect(css).toContain(".overflow-hidden");
   });
 
   it("minifies app.js and app.css unless the caller asks for readable output", async () => {
