@@ -282,7 +282,7 @@ function MachineSelector({
             OPTION_BASE_CLASS_NAME,
             OPTION_INTERACTIVE_CLASS_NAME,
             LIST_HOVER_TRANSITION,
-            "h-7 max-w-16 shrink overflow-hidden px-1 text-sidebar-foreground hover:bg-sidebar-accent",
+            "h-7 shrink overflow-hidden px-1 text-sidebar-foreground hover:bg-sidebar-accent",
           )}
         >
           <span className="block min-w-0 flex-1 truncate">
@@ -474,13 +474,11 @@ function ProviderUsageStatus({
         data-provider-usage-header=""
         className="flex min-w-0 shrink-0 items-center gap-1 border-b border-sidebar-border px-1.5"
       >
-        {providers.length === 0 ? (
-          <div className="min-w-0 flex-1" />
-        ) : (
+        {providers.length === 0 ? null : (
           <div
             role="tablist"
             aria-label="Usage provider"
-            className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto"
+            className="flex min-w-0 shrink items-center gap-0.5 overflow-x-auto"
           >
             {providers.map((provider, index) => {
               const isActive = provider.id === activeProvider?.id;
@@ -534,11 +532,13 @@ function ProviderUsageStatus({
             })}
           </div>
         )}
-        <MachineSelector
-          machines={machines}
-          activeMachine={activeMachine}
-          onSelect={selectMachine}
-        />
+        <div className="flex min-w-0 flex-1 justify-end">
+          <MachineSelector
+            machines={machines}
+            activeMachine={activeMachine}
+            onSelect={selectMachine}
+          />
+        </div>
         <button
           type="button"
           aria-label="Reload provider usage"
