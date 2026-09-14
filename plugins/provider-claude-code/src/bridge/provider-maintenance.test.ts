@@ -17,6 +17,7 @@ function missingInstallationStatus() {
       label: "Install" as const,
       command: "install Claude Code",
     },
+    shadowingInstall: null,
     needsUpdate: false,
     versionUnsupported: false,
   };
@@ -68,6 +69,21 @@ describe("Claude Code provider maintenance", () => {
   it("keeps the native installer plan private behind the run method", () => {
     const run = __testing.buildProviderInstallationRun(
       missingInstallationStatus(),
+      {
+        packageManager: "npm",
+        source: "notInstalled",
+        installCommand: {
+          command: "npm",
+          args: ["install", "-g", "@anthropic-ai/claude-code@latest"],
+          displayCommand: "npm install -g @anthropic-ai/claude-code@latest",
+        },
+        updateCommand: {
+          command: "npm",
+          args: ["install", "-g", "@anthropic-ai/claude-code@latest"],
+          displayCommand: "npm install -g @anthropic-ai/claude-code@latest",
+        },
+        shadowingInstall: null,
+      },
       "install",
     );
     expect(run).toMatchObject({
