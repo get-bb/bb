@@ -39,6 +39,7 @@ function status(
     minimumSupportedVersion: "0.136.0",
     npmPackageName: "@openai/codex",
     npmGlobalPackageVersion: "0.146.0",
+    shadowingInstall: null,
     installAction: null,
     needsUpdate: false,
     versionUnsupported: false,
@@ -81,6 +82,7 @@ describe("createProviderInstallationGate", () => {
       executablePath: null,
       currentVersion: null,
       npmGlobalPackageVersion: null,
+      shadowingInstall: null,
       installAction: {
         kind: "install",
         label: "Install",
@@ -113,6 +115,7 @@ describe("createProviderInstallationGate", () => {
       minimumSupportedVersion: null,
       npmPackageName: "@anthropic-ai/claude-code",
       npmGlobalPackageVersion: null,
+      shadowingInstall: null,
     });
     const probe = vi.fn(async () => notInstalled);
 
