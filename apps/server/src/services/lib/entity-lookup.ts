@@ -8,14 +8,15 @@ import {
   listPublicHosts,
   type HostDaemonSessionRow,
 } from "@bb/db";
-import type { Environment, Host } from "@bb/domain";
+import type { EnvironmentRow } from "@bb/db";
+import type { Host } from "@bb/domain";
 import type { DbConnection } from "@bb/db";
 import type { NotificationHub } from "../../ws/hub.js";
 import { ApiError } from "../../errors.js";
 import {
   destroyedHostUnavailableDetails,
   destroyedThreadEnvironmentDetails,
-  disconnectedHostUnavailableDetails,
+  inactiveHostUnavailableDetails,
   throwEnvironmentNotReady,
   throwHostUnavailable,
   throwProjectUnavailable,
@@ -35,7 +36,7 @@ interface HostLookupDeps {
 }
 
 interface ThreadEnvironmentLookupResult {
-  environment: Environment;
+  environment: EnvironmentRow;
   thread: ThreadRow;
 }
 
@@ -79,6 +80,20 @@ function toHostRecord(row: HostRow, status: Host["status"]): Host {
     name: row.name,
     type: row.type,
     status,
+    machineProviderId: row.machineProviderId,
+    lifecycle: {
+      phase: row.phase,
+      suspendedAt: row.suspendedAt,
+      message: row.statusMessage,
+      pendingLog: row.pendingLog,
+      teardown:
+        row.teardownStatus === null
+          ? null
+          : {
+              status: row.teardownStatus,
+              attempt: row.teardownAttempt,
+            },
+    },
     maxPermissionMode: row.maxPermissionMode,
     lastSeenAt: row.lastSeenAt,
     lastRejectedProtocolVersion: row.lastRejectedProtocolVersion,
@@ -95,8 +110,11 @@ function isStandardProject(project: ProjectRow): project is StandardProject {
   return project.kind === "standard";
 }
 
-export function listPublicHostsWithStatus(deps: HostLookupDeps): Host[] {
-  const rows = listPublicHosts(deps.db);
+export function listPublicHostsWithStatus(
+  deps: HostLookupDeps,
+  options?: { includeCreating?: boolean },
+): Host[] {
+  const rows = listPublicHosts(deps.db, options);
 
   return rows.map((row) =>
     toHostRecord(
@@ -139,25 +157,27 @@ export function requireConnectedHostSession(
   deps: HostLookupDeps,
   hostId: string,
 ) {
-  const session = getOpenDaemonSessionForHost(deps, hostId);
-  if (!session) {
-    const host = getHost(deps.db, hostId);
-    if (!host) {
-      throwHostNotFound();
-    }
-    if (host.destroyedAt !== null) {
-      throwHostUnavailable(
-        404,
-        "Host is unavailable",
-        destroyedHostUnavailableDetails(host.destroyedAt),
-      );
-    }
-    const hostStatus = toHostStatus(deps, hostId);
+  const host = getHost(deps.db, hostId);
+  if (!host) {
+    throwHostNotFound();
+  }
+  if (host.destroyedAt !== null) {
     throwHostUnavailable(
-      502,
-      "Host is not connected",
-      disconnectedHostUnavailableDetails(hostStatus),
+      404,
+      "Host is unavailable",
+      destroyedHostUnavailableDetails(host.destroyedAt),
     );
+  }
+  const session = getOpenDaemonSessionForHost(deps, hostId);
+  const details = inactiveHostUnavailableDetails(
+    session ? "connected" : "disconnected",
+    host,
+  );
+  if (details.reason === "suspended") {
+    throwHostUnavailable(502, "Host is suspended", details);
+  }
+  if (!session) {
+    throwHostUnavailable(502, "Host is not connected", details);
   }
   return session;
 }
@@ -221,7 +241,7 @@ export function requirePublicThread(
 export function requireEnvironment(
   db: DbConnection,
   environmentId: string,
-): Environment {
+): EnvironmentRow {
   const environment = getEnvironment(db, environmentId);
   if (!environment) {
     throw new ApiError(404, "environment_not_found", "Environment not found");
@@ -232,7 +252,7 @@ export function requireEnvironment(
 export function requireReadyEnvironment(
   db: DbConnection,
   environmentId: string,
-): Environment & { path: string; status: "ready" } {
+): EnvironmentRow & { path: string; status: "ready" } {
   const environment = requireEnvironment(db, environmentId);
   if (environment.status !== "ready" || !environment.path) {
     throwEnvironmentNotReady(environment);
@@ -247,7 +267,7 @@ export function requireReadyEnvironment(
 function requireEnvironmentForThread(
   db: DbConnection,
   thread: ThreadRow,
-): Environment {
+): EnvironmentRow {
   if (!thread.environmentId) {
     throwThreadEnvironmentUnavailable(
       threadEnvironmentUnavailableDetails("never_attached", null),
@@ -256,7 +276,7 @@ function requireEnvironmentForThread(
   return requireEnvironment(db, thread.environmentId);
 }
 
-function ensureThreadEnvironmentAvailable(environment: Environment): void {
+function ensureThreadEnvironmentAvailable(environment: EnvironmentRow): void {
   const unavailableDetails = destroyedThreadEnvironmentDetails(environment);
   if (unavailableDetails) {
     throwThreadEnvironmentUnavailable(unavailableDetails);

@@ -29,7 +29,7 @@ command’s `--help` before mutation. Use fresh browser snapshots for controls.
 | Tool work and errors | Expand command output, file changes, grouped tool calls, nested agents, and a provider error. | Arguments/results and failure details correspond to the correct call and are readable after reload. |
 | Images and media | Open an attachment image/lightbox, zoom or dismiss, and load a missing asset. | Correct media opens and missing content shows an error; closing restores the thread. |
 | Copy, selection, Add to chat | Copy a whole message and selected text, add a quote to the composer, then remove it. | Clipboard/quote content matches the selection, without hidden tool payloads or duplicate context. |
-| Edit accepted message | With Edit messages enabled and a supporting provider, replace a user message and rerun. | History is rewound from the intended checkpoint; later content is not treated as unchanged. |
+| Edit accepted message | With a supporting provider, replace a user message and rerun. | History is rewound from the intended checkpoint; later content is not treated as unchanged. |
 | Checkpoint fork and handoff | Fork at a chosen message and separately from current context; select workspace reuse/new workspace as offered. | Fork contains the correct prefix and parent relationship and executes in the chosen environment. |
 | Side chat | Follow plugin-side-chat for selected-message forks and Send to main. | Main history remains untouched until an explicit send-back queues content. |
 | File links and external links | Open an absolute file link with a line number, thread-storage attachment, and HTTP link. | Correct file/line/source opens; external/embedded browser policy is respected. |

@@ -3,7 +3,7 @@ import type { AvailableModel } from "@bb/domain";
 import type { SystemProviderInfo } from "@bb/server-contract";
 import { action } from "../action.js";
 import { createCliBbSdk } from "../client.js";
-import { renderBorderlessTable } from "../table.js";
+import { columnWidths, printBorderlessTable } from "../table.js";
 import { outputJson } from "./helpers.js";
 import { resolveMachineEnvironmentRouting } from "./machine.js";
 
@@ -117,19 +117,13 @@ function includeSelectedOnlyModel(
 
 function printProviderTable(providers: SystemProviderInfo[]): void {
   const rows = providers.map((provider) => [provider.id, provider.displayName]);
-  const idWidth = Math.max(4, ...rows.map((row) => row[0].length));
-  const nameWidth = Math.max(4, ...rows.map((row) => row[1].length));
-  const table = renderBorderlessTable(
+  printBorderlessTable(
     {
       head: ["ID", "Name"],
-      colWidths: [idWidth, nameWidth],
+      colWidths: columnWidths(rows, [4, 4]),
     },
     rows,
   );
-
-  console.log("");
-  console.log(table);
-  console.log("");
 }
 
 function printModelTable(models: AvailableModel[], providerId?: string): void {
@@ -142,19 +136,12 @@ function printModelTable(models: AvailableModel[], providerId?: string): void {
     model.displayName ?? model.model,
     model.isDefault ? "*" : "",
   ]);
-  const modelWidth = Math.max(5, ...rows.map((row) => row[0].length));
-  const nameWidth = Math.max(4, ...rows.map((row) => row[1].length));
-  const defaultWidth = Math.max(7, ...rows.map((row) => row[2].length));
-  const table = renderBorderlessTable(
+  printBorderlessTable(
     {
       head: ["Model", "Name", "Default"],
-      colWidths: [modelWidth, nameWidth, defaultWidth],
+      colWidths: columnWidths(rows, [5, 4, 7]),
       trimTrailingWhitespace: true,
     },
     rows,
   );
-
-  console.log("");
-  console.log(table);
-  console.log("");
 }

@@ -46,3 +46,10 @@ export function buildDevWebSocketUrl(
   url.hash = "";
   return url.toString();
 }
+
+export function buildBrowserWebSocketUrl(path: string): string {
+  return (
+    buildDevWebSocketUrl({ path }) ??
+    `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}${path}`
+  );
+}

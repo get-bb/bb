@@ -84,7 +84,7 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
       command(
         "app.back",
         "Back to app",
-        "Return from Settings or Extensions to the app.",
+        "Return from Settings, Plugins, or Skills to the app.",
       ),
       command("settings.open", "Open settings", "Open bb settings."),
       command(

@@ -15,6 +15,7 @@ import { act, render, type RenderResult } from "@testing-library/react";
 import {
   type BbContext,
   type BbNavigate,
+  type BranchesState,
   type ComposerCustomization,
   type ComposerView,
   type ExperimentalAppOverlayRegistration,
@@ -36,7 +37,7 @@ import {
   type PluginNavPanelRegistration,
   type PluginNewThreadPanelActionRegistration,
   type PluginPendingInteractionRegistration,
-  type PluginProviderIconRegistration,
+  type ExperimentalIconRegistration,
   type PluginTimelineRendererRegistration,
   type PluginRealtimeConnectionState,
   type PluginRpcClient,
@@ -67,8 +68,12 @@ import {
   type ExperimentalOpenFixedTabOptions,
   type ExperimentalPluginFixedTabReference,
   type NewThreadComposerProps,
+  type BranchPickerProps,
+  type CheckoutState,
   type ExperimentalPermissionModePickerProps,
   type ExperimentalProviderModelPickerProps,
+  type PluginEnvironmentProviderInputsRegistration,
+  type PluginMachineProviderInputsRegistration,
   type ThreadChatProps,
   type DiffProps,
   type SourceCodeProps,
@@ -79,6 +84,7 @@ import { normalizePluginThreadRowStatus } from "../internal/composer-customizati
 import { normalizeExperimentalFileOpenOptions } from "../internal/file-navigation-validation.js";
 import {
   collectPluginAppRegistrations,
+  type CollectedPluginProviderIconRegistration,
   type CollectedExperimentalSidebarFooterItem,
 } from "../internal/plugin-app-collector.js";
 
@@ -201,6 +207,8 @@ interface SlotEnv {
   sidebarPullRequests: ReadonlyMap<string, PluginSidebarPullRequest>;
   providers: PluginProvidersState;
   codeTheme: PluginCodeThemeState;
+  branchesState: BranchesState;
+  checkoutState: CheckoutState;
 }
 
 interface TestFixedTabTargetStore {
@@ -607,6 +615,41 @@ function TestProviderModelPicker({
   );
 }
 
+function TestBranchPicker({
+  hostId,
+  projectId,
+  value,
+  onChange,
+  label,
+  placeholder,
+  disabled,
+}: BranchPickerProps) {
+  const inert = hostId === null || projectId === null || disabled === true;
+  return (
+    <div
+      data-testid="bb-branch-picker"
+      data-host-id={hostId ?? ""}
+      data-project-id={projectId ?? ""}
+      data-disabled={inert ? "true" : "false"}
+    >
+      <input
+        aria-label={label ?? "Branch"}
+        placeholder={placeholder ?? ""}
+        disabled={inert}
+        value={value ?? ""}
+        onChange={(event) => {
+          const next = event.target.value;
+          if (next.length === 0) {
+            onChange(null);
+          } else {
+            onChange(next);
+          }
+        }}
+      />
+    </div>
+  );
+}
+
 function TestPermissionModePicker({
   providerId,
   value,
@@ -806,10 +849,44 @@ const testPluginSdkApp = {
   ThreadChat: TestThreadChat,
   Markdown: TestMarkdown,
   experimental_FileLink: TestFileLink,
+  experimental_Icon: ({ name, fallback, ...props }) => (
+    <span {...props} data-icon={name} data-icon-fallback={fallback} />
+  ),
+  experimental_ProviderIcon: ({
+    providerKind,
+    provider,
+    fallback,
+    ...props
+  }) => (
+    <span
+      {...props}
+      data-provider-kind={providerKind}
+      data-provider-id={provider.id}
+      data-provider-logo={provider.logoUrl ?? undefined}
+      data-provider-glyph={
+        (typeof provider.icon === "string"
+          ? provider.icon
+          : provider.icon?.glyph) ?? undefined
+      }
+      data-provider-tint={
+        provider.strings?.iconTint == null
+          ? undefined
+          : JSON.stringify(provider.strings.iconTint)
+      }
+      data-provider-fallback={fallback}
+    />
+  ),
   UrlLink: TestUrlLink,
   experimental_NewThreadComposer: TestNewThreadComposer,
   experimental_ProviderModelPicker: TestProviderModelPicker,
   experimental_PermissionModePicker: TestPermissionModePicker,
+  experimental_BranchPicker: TestBranchPicker,
+  experimental_useBranches(): BranchesState {
+    return useSlotEnv("experimental_useBranches").branchesState;
+  },
+  experimental_useCheckoutState(): CheckoutState {
+    return useSlotEnv("experimental_useCheckoutState").checkoutState;
+  },
   experimental_SourceCode: TestSourceCode,
   experimental_Diff: TestDiff,
   experimental_useSidebarThreads(): PluginSidebarThreadsState {
@@ -915,8 +992,11 @@ export interface CapturedPluginApp {
   diffRenderers: PluginDiffRendererRegistration[];
   messageDirectives: PluginMessageDirectiveRegistration[];
   messageActions: PluginMessageActionRegistration[];
-  providerIcons: PluginProviderIconRegistration[];
+  providerIcons: CollectedPluginProviderIconRegistration[];
+  icons: ExperimentalIconRegistration[];
   timelineRenderers: PluginTimelineRendererRegistration[];
+  environmentProviderInputs: PluginEnvironmentProviderInputsRegistration[];
+  machineProviderInputs: PluginMachineProviderInputsRegistration[];
   contentScripts: PluginContentScriptRegistration[];
 }
 
@@ -1135,6 +1215,9 @@ export interface RenderSlotOptions<
    * mode with no resolved document, the state a plugin sees on first paint.
    */
   codeTheme?: Partial<PluginCodeThemeState>;
+  branchesState?: Partial<BranchesState>;
+  /** Checkout facts `experimental_useCheckoutState()` reports. */
+  checkoutState?: Partial<CheckoutState>;
   /**
    * Pull requests `experimental_useSidebarThreadPullRequest()` reports, keyed
    * by thread id. Omitted → every thread reports none.
@@ -1599,6 +1682,21 @@ export function renderSlot<
     sidebarPullRequests,
     providers,
     codeTheme,
+    branchesState: {
+      branches: options.branchesState?.branches ?? [],
+      remoteBranches: options.branchesState?.remoteBranches ?? [],
+      isLoading: options.branchesState?.isLoading ?? false,
+      refresh: options.branchesState?.refresh ?? (() => Promise.resolve()),
+    },
+    checkoutState: {
+      isGit: true,
+      unborn: false,
+      detached: false,
+      dirty: false,
+      currentBranch: "main",
+      operation: { kind: "none" },
+      ...options.checkoutState,
+    },
   };
 
   const releaseComposerOwnership = (): void => {

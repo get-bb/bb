@@ -9,31 +9,31 @@ afterEach(() => {
 });
 
 describe("AppToastContent", () => {
-  it("keeps titles, descriptions, and actions from wrapping", () => {
+  it("wraps titles and descriptions while keeping actions available", () => {
     render(
       <AppToastContent
         action={{ label: "View log", onClick: vi.fn() }}
         cancel={{ label: "Dismiss", onClick: vi.fn() }}
-        description="A deliberately long detail that must truncate"
-        title="A deliberately long visual bell title that must truncate"
+        description="A deliberately long detail that can wrap"
+        title="A deliberately long visual bell title that can wrap"
         tone="error"
       />,
     );
 
     expect(
       screen
-        .getByText("A deliberately long visual bell title that must truncate")
-        .classList.contains("truncate"),
+        .getByText("A deliberately long visual bell title that can wrap")
+        .classList.contains("line-clamp-4"),
     ).toBe(true);
     expect(
       screen
-        .getByText("A deliberately long detail that must truncate")
-        .classList.contains("truncate"),
+        .getByText("A deliberately long detail that can wrap")
+        .classList.contains("line-clamp-4"),
     ).toBe(true);
     expect(
       screen
         .getByRole("button", { name: "View log" })
-        .parentElement?.classList.contains("flex-nowrap"),
+        .parentElement?.classList.contains("flex-wrap"),
     ).toBe(true);
     expect(
       screen

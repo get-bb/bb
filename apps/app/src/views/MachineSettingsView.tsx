@@ -1,19 +1,29 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { MachineLifecycleNoticeContent } from "@/components/machines/MachineLifecycleNotice";
+import { useMemo, useState, type ComponentProps } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import type { Host, PermissionMode } from "@bb/domain";
+import type { SystemMachineProvider } from "@bb/server-contract";
 import type { HostPlatform } from "@bb/host-daemon-contract";
 import { Button } from "@bb/shared-ui/button";
-import { DialogFooter, DialogHeader, DialogTitle } from "@bb/shared-ui/dialog";
-import { DialogDescription } from "@bb/shared-ui/dialog";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { Pill } from "@bb/shared-ui/pill";
 import { ResourceOverflowMenu } from "@bb/shared-ui/resource-list";
-import { ConfirmDeleteDialog } from "@/components/dialogs/ConfirmDeleteDialog";
+import { MachineLifecycleActions } from "@/components/machines/MachineLifecycleActions";
+import {
+  MachineRemoveDialog,
+  machineRemovalConsequences,
+} from "@/components/machines/MachineRemoveDialog";
 import { MachineStatusDot } from "@/components/machines/MachineStatusDot";
+import {
+  machineStatusLabel,
+  machineStatusTone,
+} from "@/components/machines/machine-status";
+import { MachineLabel } from "@/components/machines/MachineLabel";
 import { PageShell } from "@/components/ui/page-shell.js";
 import {
   SettingsBadge,
+  SettingsDetailRow,
   SettingsRow,
   SettingsRowList,
   SettingsSection,
@@ -21,12 +31,15 @@ import {
 import { appToast } from "@/components/ui/app-toast";
 import { MachineRenameDialog } from "@/components/settings/MachineRenameDialog";
 import {
-  useRemoveHost,
   useRenameHost,
+  useResumeHost,
+  useRetryHostCleanup,
   useRetryHostUpdate,
+  useSuspendHost,
   useUpdateHostPermissionCeiling,
 } from "@/hooks/mutations/host-mutations";
 import { useHosts } from "@/hooks/queries/host-queries";
+import { useSystemMachineProviders } from "@/hooks/queries/machine-provider-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import {
   useSystemConfig,
@@ -39,13 +52,16 @@ import {
   formatHostUpdateStatus,
   hostCanRetryUpdate,
 } from "@/lib/host-update-status";
-import { getMutationErrorMessage } from "@/lib/mutation-errors";
+import {
+  getMutationErrorMessage,
+  showMutationErrorToast,
+} from "@/lib/mutation-errors";
 import { PERMISSION_MODE_OPTIONS } from "@/lib/permission-mode-options";
 import { formatRelativeTime } from "@/lib/relative-time";
 import { ProviderIconMark } from "@/components/settings/ProviderIconMark";
 import { getProviderIconInfo } from "@/lib/provider-icon";
 import {
-  getProjectSettingsRoutePath,
+  getSettingsProjectRoutePath,
   getSettingsRoutePath,
 } from "@/lib/route-paths";
 
@@ -76,12 +92,7 @@ function headerMeta({
   platformLabel: string | null;
   now: number;
 }): string {
-  const parts: string[] = [host.status === "connected" ? "Online" : "Offline"];
-  if (host.status !== "connected" && host.lastSeenAt !== null) {
-    parts.push(
-      `last seen ${formatRelativeTime({ timestamp: host.lastSeenAt, now })}`,
-    );
-  }
+  const parts: string[] = [machineStatusLabel({ host, now })];
   if (platformLabel !== null) parts.push(platformLabel);
   parts.push(
     `paired ${formatRelativeTime({ timestamp: host.createdAt, now })}`,
@@ -149,19 +160,80 @@ function PermissionLimitCards({
   );
 }
 
-interface DetailRowProps {
-  label: string;
-  children: ReactNode;
-}
-
-function DetailRow({ label, children }: DetailRowProps) {
+export function MachineSettingsHeader({
+  host,
+  machineProvider,
+  platformLabel,
+  now,
+  isPrimary,
+  isThisMachine,
+  showPrimaryBadge,
+  lifecycleNotice,
+  lifecycleActionPending,
+  onSuspend,
+  onResume,
+  onRetryCleanup,
+  onRename,
+}: {
+  host: Host;
+  machineProvider: SystemMachineProvider | null;
+  platformLabel: string | null;
+  now: number;
+  isPrimary: boolean;
+  isThisMachine: boolean;
+  showPrimaryBadge: boolean;
+  lifecycleNotice: ComponentProps<
+    typeof MachineLifecycleNoticeContent
+  >["notice"];
+  lifecycleActionPending: boolean;
+  onSuspend: () => void;
+  onResume: () => void;
+  onRetryCleanup: () => void;
+  onRename: () => void;
+}) {
   return (
-    <SettingsRow className="flex-col items-stretch gap-1.5 sm:flex-row sm:items-center sm:gap-3">
-      <span className="shrink-0 text-foreground">{label}</span>
-      <div className="flex min-w-0 flex-wrap items-center justify-start gap-2 text-left text-subtle-foreground sm:ml-auto sm:justify-end sm:text-right">
-        {children}
+    <div className="space-y-3">
+      <Link
+        to={getSettingsRoutePath("machines")}
+        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+      >
+        <Icon name="ChevronLeft" className="size-3.5" />
+        Machines
+      </Link>
+      <div className="flex min-w-0 items-start justify-between gap-3">
+        <div className="min-w-0 space-y-1">
+          <div className="flex min-w-0 items-center gap-2">
+            <h1 className="min-w-0 text-sm font-semibold text-foreground">
+              <MachineLabel host={host} machineProvider={machineProvider} />
+            </h1>
+            {isThisMachine ? <SettingsBadge>This machine</SettingsBadge> : null}
+            {showPrimaryBadge ? <SettingsBadge>Primary</SettingsBadge> : null}
+          </div>
+          <div className="flex min-w-0 items-center gap-2">
+            <MachineStatusDot tone={machineStatusTone(host)} />
+            <p className="min-w-0 text-xs text-subtle-foreground/75">
+              {headerMeta({ host, platformLabel, now })}
+            </p>
+          </div>
+          <MachineLifecycleNoticeContent notice={lifecycleNotice} />
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <MachineLifecycleActions
+            host={host}
+            machineProvider={machineProvider}
+            pending={lifecycleActionPending}
+            presentation="buttons"
+            onSuspend={onSuspend}
+            onResume={onResume}
+            onRetryCleanup={onRetryCleanup}
+          />
+          <ResourceOverflowMenu
+            label={`${host.name} actions`}
+            items={[{ label: "Rename", icon: "Edit", onSelect: onRename }]}
+          />
+        </div>
       </div>
-    </SettingsRow>
+    </div>
   );
 }
 
@@ -169,24 +241,38 @@ export function MachineSettingsView() {
   const { hostId } = useParams<{ hostId: string }>();
   const navigate = useNavigate();
   const hostsQuery = useHosts();
+  const { providers: machineProviders } = useSystemMachineProviders();
   const systemConfig = useSystemConfig();
   const { localDaemonHostId, platform: localDaemonPlatform } = useHostDaemon();
   const sidebarNavigationQuery = useSidebarNavigation();
   const updateInventory = useUpdateInventory();
   const renameHost = useRenameHost();
-  const removeHost = useRemoveHost();
   const retryHostUpdate = useRetryHostUpdate();
+  const suspendHost = useSuspendHost();
+  const resumeHost = useResumeHost();
+  const retryHostCleanup = useRetryHostCleanup();
   const updatePermissionCeiling = useUpdateHostPermissionCeiling();
   const [renameOpen, setRenameOpen] = useState(false);
   const [removeOpen, setRemoveOpen] = useState(false);
 
   const hosts = hostsQuery.data;
   const host = hosts?.find((candidate) => candidate.id === hostId) ?? null;
+  const lifecycleMessage = host?.lifecycle.message ?? null;
+  const lifecycleNotice =
+    host === null
+      ? null
+      : { phase: host.lifecycle.phase, message: lifecycleMessage };
   const primaryHostId = systemConfig.data?.primaryHostId ?? null;
   const isPrimary = host !== null && host.id === primaryHostId;
   const showMachineIdentityBadges = (hosts?.length ?? 0) > 1;
   const isThisMachine =
     showMachineIdentityBadges && host !== null && host.id === localDaemonHostId;
+  const machineProvider =
+    host?.machineProviderId === null || host?.machineProviderId === undefined
+      ? null
+      : (machineProviders?.find(
+          (provider) => provider.id === host.machineProviderId,
+        ) ?? null);
 
   const projects: MachineProject[] = useMemo(() => {
     const navigation = sidebarNavigationQuery.data?.projects ?? [];
@@ -217,7 +303,11 @@ export function MachineSettingsView() {
           ...entry,
           providerId,
           provider,
-          ProviderIcon: getProviderIconInfo(providerId, provider ?? null)?.icon,
+          ProviderIcon: getProviderIconInfo(
+            "agent",
+            providerId,
+            provider ?? null,
+          )?.icon,
         },
       ];
     });
@@ -267,49 +357,28 @@ export function MachineSettingsView() {
   return (
     <PageShell contentClassName="pt-4 md:pt-5">
       <div className="mx-auto w-full max-w-3xl space-y-6 pb-10">
-        <div className="space-y-3">
-          <Link
-            to={getSettingsRoutePath("machines")}
-            className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-          >
-            <Icon name="ChevronLeft" className="size-3.5" />
-            Machines
-          </Link>
-          <div className="flex min-w-0 items-start justify-between gap-3">
-            <div className="min-w-0">
-              <div className="flex min-w-0 items-center gap-2">
-                <h1 className="min-w-0 truncate text-sm font-semibold text-foreground">
-                  {host.name}
-                </h1>
-                {isThisMachine ? (
-                  <SettingsBadge>This machine</SettingsBadge>
-                ) : null}
-                {showMachineIdentityBadges && isPrimary ? (
-                  <SettingsBadge>Primary</SettingsBadge>
-                ) : null}
-              </div>
-              <div className="mt-1 flex min-w-0 items-center gap-2">
-                <MachineStatusDot connected={host.status === "connected"} />
-                <p className="min-w-0 text-xs text-subtle-foreground/75">
-                  {headerMeta({ host, platformLabel, now })}
-                </p>
-              </div>
-            </div>
-            <ResourceOverflowMenu
-              label={`${host.name} actions`}
-              items={[
-                {
-                  label: "Rename",
-                  icon: "Edit",
-                  onSelect: () => {
-                    renameHost.reset();
-                    setRenameOpen(true);
-                  },
-                },
-              ]}
-            />
-          </div>
-        </div>
+        <MachineSettingsHeader
+          host={host}
+          machineProvider={machineProvider}
+          platformLabel={platformLabel}
+          now={now}
+          isPrimary={isPrimary}
+          isThisMachine={isThisMachine}
+          showPrimaryBadge={showMachineIdentityBadges && isPrimary}
+          lifecycleNotice={lifecycleNotice}
+          lifecycleActionPending={
+            suspendHost.isPending ||
+            resumeHost.isPending ||
+            retryHostCleanup.isPending
+          }
+          onSuspend={() => suspendHost.mutate(host.id)}
+          onResume={() => resumeHost.mutate(host.id)}
+          onRetryCleanup={() => retryHostCleanup.mutate(host.id)}
+          onRename={() => {
+            renameHost.reset();
+            setRenameOpen(true);
+          }}
+        />
 
         <SettingsSection
           title="Permission limit"
@@ -323,12 +392,10 @@ export function MachineSettingsView() {
                 { hostId: host.id, maxPermissionMode },
                 {
                   onError: (error) => {
-                    appToast.error(
-                      getMutationErrorMessage({
-                        error,
-                        fallbackMessage: `Couldn't change the permission limit for ${host.name}.`,
-                      }),
-                    );
+                    showMutationErrorToast({
+                      error,
+                      fallbackMessage: `Couldn't change the permission limit for ${host.name}.`,
+                    });
                   },
                 },
               )
@@ -338,7 +405,7 @@ export function MachineSettingsView() {
 
         <SettingsSection title="Provider CLIs">
           <SettingsRowList>
-            <DetailRow label="Installed">
+            <SettingsDetailRow label="Installed">
               {host.status !== "connected" ? (
                 <span>Unavailable while offline</span>
               ) : machine?.statusPending ? (
@@ -397,13 +464,13 @@ export function MachineSettingsView() {
                   ) : null}
                 </>
               )}
-            </DetailRow>
+            </SettingsDetailRow>
           </SettingsRowList>
         </SettingsSection>
 
         <SettingsSection title="Machine information">
           <SettingsRowList>
-            <DetailRow label="Projects">
+            <SettingsDetailRow label="Projects">
               {projects.length === 0 ? (
                 <span>None</span>
               ) : (
@@ -412,7 +479,7 @@ export function MachineSettingsView() {
                     <span key={project.id}>
                       {index > 0 ? " · " : ""}
                       <Link
-                        to={getProjectSettingsRoutePath(project.id)}
+                        to={getSettingsProjectRoutePath(project.id)}
                         className="hover:text-foreground"
                       >
                         {project.name}
@@ -421,8 +488,8 @@ export function MachineSettingsView() {
                   ))}
                 </span>
               )}
-            </DetailRow>
-            <DetailRow label="Updates">
+            </SettingsDetailRow>
+            <SettingsDetailRow label="Updates">
               <span>{updateStatus ?? "Up to date"}</span>
               {hostCanRetryUpdate(host) ? (
                 <Button
@@ -444,7 +511,7 @@ export function MachineSettingsView() {
                   {retryHostUpdate.isPending ? "Retrying…" : "Retry update"}
                 </Button>
               ) : null}
-            </DetailRow>
+            </SettingsDetailRow>
           </SettingsRowList>
         </SettingsSection>
 
@@ -453,7 +520,7 @@ export function MachineSettingsView() {
           description={
             isPrimary
               ? PRIMARY_REMOVE_DISABLED_REASON
-              : `Revokes ${host.name}'s access to this server. Project checkouts stay on its disk.`
+              : `Revokes ${host.name}'s access to this server. ${machineRemovalConsequences(host)}`
           }
         >
           <SettingsRowList>
@@ -463,10 +530,7 @@ export function MachineSettingsView() {
                 variant="destructive"
                 size="sm"
                 disabled={isPrimary}
-                onClick={() => {
-                  removeHost.reset();
-                  setRemoveOpen(true);
-                }}
+                onClick={() => setRemoveOpen(true)}
               >
                 Remove machine
               </Button>
@@ -497,46 +561,11 @@ export function MachineSettingsView() {
         }
       />
 
-      <ConfirmDeleteDialog
-        open={removeOpen}
-        onOpenChange={(open) => {
-          if (!open && !removeHost.isPending) setRemoveOpen(false);
-        }}
-      >
-        <DialogHeader>
-          <DialogTitle>Remove {host.name}?</DialogTitle>
-          <DialogDescription>
-            This revokes {host.name}'s access to this server. Project checkouts
-            stay on its disk, but its environments become read-only history and
-            it can't run new work until it's paired again.
-          </DialogDescription>
-        </DialogHeader>
-        {removeHost.isError ? (
-          <p className="text-sm text-destructive" role="alert">
-            {getMutationErrorMessage({
-              error: removeHost.error,
-              fallbackMessage: `Couldn't remove ${host.name}.`,
-            })}
-          </p>
-        ) : null}
-        <DialogFooter>
-          <Button
-            type="button"
-            variant="destructive"
-            disabled={removeHost.isPending}
-            onClick={() =>
-              removeHost.mutate(host.id, {
-                onSuccess: () => {
-                  setRemoveOpen(false);
-                  navigate(getSettingsRoutePath("machines"));
-                },
-              })
-            }
-          >
-            Remove machine
-          </Button>
-        </DialogFooter>
-      </ConfirmDeleteDialog>
+      <MachineRemoveDialog
+        target={removeOpen ? host : null}
+        onOpenChange={setRemoveOpen}
+        onRemoved={() => navigate(getSettingsRoutePath("machines"))}
+      />
     </PageShell>
   );
 }

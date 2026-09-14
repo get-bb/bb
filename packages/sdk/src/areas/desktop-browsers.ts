@@ -11,6 +11,10 @@ import type {
   ExperimentalDesktopBrowserCapture,
   ExperimentalDesktopBrowserConnection,
   ExperimentalDesktopBrowserLease,
+  ExperimentalDesktopBrowserInstanceRequest,
+  ExperimentalDesktopBrowserImportCookiesInput,
+  ExperimentalDesktopBrowserImportSources,
+  ExperimentalDesktopBrowserImportOutcome,
 } from "@bb/server-contract";
 import type { CreateSdkAreaArgs } from "./common.js";
 
@@ -27,6 +31,10 @@ export type {
   ExperimentalDesktopBrowserCapture,
   ExperimentalDesktopBrowserConnection,
   ExperimentalDesktopBrowserLease,
+  ExperimentalDesktopBrowserInstanceRequest,
+  ExperimentalDesktopBrowserImportCookiesInput,
+  ExperimentalDesktopBrowserImportSources,
+  ExperimentalDesktopBrowserImportOutcome,
 } from "@bb/server-contract";
 
 export interface ExperimentalDesktopBrowsersArea {
@@ -53,6 +61,12 @@ export interface ExperimentalDesktopBrowsersArea {
   captureTab(
     input: ExperimentalDesktopBrowserTabRequest,
   ): Promise<ExperimentalDesktopBrowserCapture>;
+  listImportSources(
+    input: ExperimentalDesktopBrowserInstanceRequest,
+  ): Promise<ExperimentalDesktopBrowserImportSources>;
+  importCookies(
+    input: ExperimentalDesktopBrowserImportCookiesInput,
+  ): Promise<ExperimentalDesktopBrowserImportOutcome>;
   subscribe(
     input: ExperimentalDesktopBrowserScope & {
       onChange: (result: ExperimentalDesktopBrowserTabs) => void;
@@ -84,6 +98,10 @@ export function createDesktopBrowsersArea({
     closeTab: (input) => transport.readJson(api().close.$post({ json: input })),
     captureTab: (input) =>
       transport.readJson(api().capture.$post({ json: input })),
+    listImportSources: (input) =>
+      transport.readJson(api()["import-sources"].$post({ json: input })),
+    importCookies: (input) =>
+      transport.readJson(api()["import-cookies"].$post({ json: input })),
     subscribe(input) {
       let disposed = false;
       let timer: ReturnType<typeof setTimeout> | undefined;

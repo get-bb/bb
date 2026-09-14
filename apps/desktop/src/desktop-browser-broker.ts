@@ -3,6 +3,7 @@ import type {
   BbDesktopBrowserControlState,
   BbDesktopBrowserTarget,
 } from "@bb/desktop-contract";
+import { isRawThreadId } from "@bb/domain";
 import type {
   DesktopBrowserChanged,
   DesktopBrowserCommand,
@@ -25,16 +26,11 @@ import type {
   DesktopBrowserNativeTab,
   DesktopBrowserViewManager,
 } from "./desktop-browser-view.js";
-
-interface BrokerWindow extends DesktopBrowserHostWindow {
-  focus(): void;
-  show(): void;
-  restore(): void;
-  isMinimized(): boolean;
-}
+import type { BrowserImportService } from "./browser-import/browser-import.js";
 
 interface InstanceEntry {
-  window: BrokerWindow;
+  webContentsId: number;
+  window: DesktopBrowserHostWindow;
   descriptor: DesktopBrowserInstance;
   threads: Set<string>;
 }
@@ -52,6 +48,7 @@ interface ControlLease {
 export function createDesktopBrowserBroker(args: {
   manager: DesktopBrowserViewManager;
   product: string;
+  browserImport?: BrowserImportService;
 }) {
   const instances = new Map<string, InstanceEntry>();
   const leases = new Map<string, ControlLease>();
@@ -62,7 +59,7 @@ export function createDesktopBrowserBroker(args: {
 
   function instanceForWindow(webContentsId: number): InstanceEntry | undefined {
     return [...instances.values()].find(
-      (entry) => entry.window.webContents.id === webContentsId,
+      (entry) => entry.webContentsId === webContentsId,
     );
   }
 
@@ -80,7 +77,7 @@ export function createDesktopBrowserBroker(args: {
     threadId: string,
   ): DesktopBrowserNativeTab[] {
     return args.manager.listTabs({
-      hostWebContentsId: instance.window.webContents.id,
+      hostWebContentsId: instance.webContentsId,
       threadId,
     });
   }
@@ -116,7 +113,8 @@ export function createDesktopBrowserBroker(args: {
     const serialized = JSON.stringify(event);
     if (snapshots.get(key) === serialized) return;
     snapshots.set(key, serialized);
-    for (const listener of listeners) listener(event);
+    if (isRawThreadId(threadId))
+      for (const listener of listeners) listener(event);
     if (
       instance.window.isDestroyed() ||
       instance.window.webContents.isDestroyed()
@@ -153,7 +151,7 @@ export function createDesktopBrowserBroker(args: {
     }
     for (const instance of instances.values()) {
       for (const tab of args.manager.listTabs({
-        hostWebContentsId: instance.window.webContents.id,
+        hostWebContentsId: instance.webContentsId,
         threadId: null,
       }))
         instance.threads.add(tab.threadId);
@@ -194,9 +192,6 @@ export function createDesktopBrowserBroker(args: {
     requireTab(instance, threadId, tabId);
     if (hostId === null)
       throw new Error("Desktop is not connected to its host daemon");
-    if (instance.window.isMinimized()) instance.window.restore();
-    instance.window.show();
-    instance.window.focus();
     instance.window.webContents.send(BB_DESKTOP_BROWSER_REVEAL_CHANNEL, {
       tabId,
       threadId,
@@ -211,7 +206,7 @@ export function createDesktopBrowserBroker(args: {
   async function openConnection(lease: ControlLease) {
     if (lease.connection !== null) return lease.connection;
     const scope = {
-      hostWebContentsId: lease.instance.window.webContents.id,
+      hostWebContentsId: lease.instance.webContentsId,
       threadId: lease.threadId,
     };
     const ensureLease = () => {
@@ -297,7 +292,7 @@ export function createDesktopBrowserBroker(args: {
   }
 
   return {
-    registerWindow(window: BrokerWindow) {
+    registerWindow(window: DesktopBrowserHostWindow) {
       if (instanceForWindow(window.webContents.id)) return;
       const descriptor = {
         instanceId: randomUUID(),
@@ -306,6 +301,7 @@ export function createDesktopBrowserBroker(args: {
       };
       instances.set(descriptor.instanceId, {
         window,
+        webContentsId: window.webContents.id,
         descriptor,
         threads: new Set(),
       });
@@ -393,8 +389,24 @@ export function createDesktopBrowserBroker(args: {
       if (command.type === "desktop.browser.list_instances")
         return { instances: this.listInstances() };
       const instance = requireInstance(command);
+      if (command.type === "desktop.browser.list_import_sources") {
+        if (!args.browserImport)
+          throw new Error("Browser cookie import is unavailable");
+        return { sources: await args.browserImport.listSources() };
+      }
+      if (command.type === "desktop.browser.import_cookies") {
+        if (!args.browserImport)
+          throw new Error("Browser cookie import is unavailable");
+        return args.browserImport.importCookies(
+          {
+            sourceId: command.sourceId,
+            sourceProfileDirectory: command.sourceProfileDirectory,
+          },
+          args.manager.profileSession(command.profile),
+        );
+      }
       const scope = {
-        hostWebContentsId: instance.window.webContents.id,
+        hostWebContentsId: instance.webContentsId,
         threadId: command.threadId,
       };
       switch (command.type) {

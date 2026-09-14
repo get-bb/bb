@@ -1,4 +1,6 @@
+import { useCallback } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import type { Thread } from "@bb/domain";
 import type {
   ReorderPinnedThreadRequest,
   ThreadArchiveAllResponse,
@@ -25,6 +27,8 @@ import {
   rollbackDeleteThreadTransaction,
   rollbackReorderPinnedThreadTransaction,
   rollbackThreadListMutationTransaction,
+  rollbackThreadReadStateTransaction,
+  type ThreadReadStateTransaction,
   settleArchiveThreadsTransaction,
   settleDeleteThreadTransaction,
   settleThreadListMembershipMutation,
@@ -45,6 +49,11 @@ type UnpinAndMoveThreadMutationRequest = ThreadMutationRequest & {
   sectionId: string | null;
 };
 
+interface MoveThreadToSectionRequest {
+  sectionId: string | null;
+  thread: Pick<Thread, "id" | "pinnedAt" | "sectionId">;
+}
+
 interface UpdateThreadMutationOptions {
   errorMessage?: string | undefined;
   lifecycleOperation?: LifecycleErrorOperation | undefined;
@@ -57,6 +66,11 @@ interface ArchiveThreadAndChildrenMutationRequest {
 interface DeleteThreadMutationRequest {
   id: string;
   childThreadsConfirmed: boolean;
+}
+
+interface ThreadReadMutationInput {
+  signal?: AbortSignal;
+  threadId: string;
 }
 
 export function useUpdateThread(options?: UpdateThreadMutationOptions) {
@@ -77,15 +91,21 @@ export function useUpdateThread(options?: UpdateThreadMutationOptions) {
     mutationFn: ({ id, ...request }: UpdateThreadMutationRequest) =>
       sdk.threads.update({ threadId: id, ...request }),
     onMutate: ({
+      parentThreadId,
       sectionId,
       id,
       title,
     }): Promise<ThreadListMutationTransaction | undefined> | undefined => {
-      if (title === undefined && sectionId === undefined) {
+      if (
+        title === undefined &&
+        sectionId === undefined &&
+        parentThreadId === undefined
+      ) {
         return undefined;
       }
 
       return beginThreadMetadataTransaction({
+        parentThreadId,
         sectionId,
         queryClient,
         threadId: id,
@@ -208,6 +228,27 @@ export function useUnpinAndMoveThread() {
       });
     },
   });
+}
+
+export function useMoveThreadToSection() {
+  const { mutate: updateThread } = useUpdateThread();
+  const { mutate: unpinThread } = useUnpinThread();
+  const { mutate: unpinAndMoveThread } = useUnpinAndMoveThread();
+
+  return useCallback(
+    ({ thread, sectionId }: MoveThreadToSectionRequest) => {
+      if (thread.pinnedAt !== null) {
+        if (thread.sectionId === sectionId) {
+          unpinThread({ id: thread.id });
+        } else {
+          unpinAndMoveThread({ id: thread.id, sectionId });
+        }
+      } else if (thread.sectionId !== sectionId) {
+        updateThread({ id: thread.id, sectionId });
+      }
+    },
+    [unpinAndMoveThread, unpinThread, updateThread],
+  );
 }
 
 export function useReorderPinnedThread() {
@@ -341,17 +382,17 @@ export function useMarkThreadRead() {
       errorMessage: "Failed to mark thread read.",
       showErrorToast: false,
     },
-    mutationFn: (threadId: string) => sdk.threads.markRead({ threadId }),
-    onMutate: (threadId): Promise<ThreadListMutationTransaction> =>
+    mutationFn: (input: ThreadReadMutationInput) => sdk.threads.markRead(input),
+    onMutate: (input): Promise<ThreadReadStateTransaction> =>
       beginThreadReadStateTransaction({
         lastReadAt: Date.now(),
         queryClient,
-        threadId,
+        threadId: input.threadId,
       }),
-    onError: (_error, threadId, context) => {
-      rollbackThreadListMutationTransaction({
+    onError: (_error, input, context) => {
+      rollbackThreadReadStateTransaction({
         queryClient,
-        threadId,
+        threadId: input.threadId,
         transaction: context,
       });
     },
@@ -369,17 +410,18 @@ export function useMarkThreadUnread() {
       errorMessage: "Failed to mark thread unread.",
       showErrorToast: false,
     },
-    mutationFn: (threadId: string) => sdk.threads.markUnread({ threadId }),
-    onMutate: (threadId): Promise<ThreadListMutationTransaction> =>
+    mutationFn: (input: ThreadReadMutationInput) =>
+      sdk.threads.markUnread(input),
+    onMutate: (input): Promise<ThreadListMutationTransaction> =>
       beginThreadReadStateTransaction({
         lastReadAt: null,
         queryClient,
-        threadId,
+        threadId: input.threadId,
       }),
-    onError: (_error, threadId, context) => {
+    onError: (_error, input, context) => {
       rollbackThreadListMutationTransaction({
         queryClient,
-        threadId,
+        threadId: input.threadId,
         transaction: context,
       });
     },

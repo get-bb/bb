@@ -47,22 +47,6 @@ export function resolveHapticCall(
   }
 }
 
-export type ButtonHaptic = "light" | "medium" | "heavy" | "selection";
-
-export function hapticKindForButton(haptic: ButtonHaptic | true): HapticKind {
-  switch (haptic) {
-    case true:
-    case "light":
-      return "impact-light";
-    case "medium":
-      return "impact-medium";
-    case "heavy":
-      return "impact-heavy";
-    case "selection":
-      return "selection";
-  }
-}
-
 export interface HapticsPreferenceStorage {
   getString(key: string): string | undefined;
   set(key: string, value: string): void;

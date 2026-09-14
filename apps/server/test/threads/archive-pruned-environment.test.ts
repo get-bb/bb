@@ -29,8 +29,8 @@ function seedThreadWithPrunedEnvironment(
   const environment = seedEnvironment(deps, {
     hostId: host.id,
     projectId: project.id,
-    managed: true,
-    workspaceProvisionType: "managed-worktree",
+    environmentProviderId: "personal-workspace",
+    isGitRepo: false,
   });
   const thread = seedThread(deps, {
     environmentId: environment.id,
@@ -39,7 +39,11 @@ function seedThreadWithPrunedEnvironment(
   });
   deps.db
     .update(environments)
-    .set({ status: "destroyed", updatedAt: Date.now() - EIGHT_DAYS_MS })
+    .set({
+      status: "destroyed",
+      teardownStatus: "removed",
+      updatedAt: Date.now() - EIGHT_DAYS_MS,
+    })
     .where(eq(environments.id, environment.id))
     .run();
   expect(
@@ -68,10 +72,9 @@ function seedPointerlessThread(
 async function expectArchiveRefused(
   harness: TestAppHarness,
   threadId: string,
-  route: "archive" | "archive-all",
 ): Promise<void> {
   const response = await harness.app.request(
-    `/api/v1/threads/${threadId}/${route}`,
+    `/api/v1/threads/${threadId}/archive-all`,
     { method: "POST" },
   );
   expect(response.status).toBe(409);
@@ -83,19 +86,6 @@ async function expectArchiveRefused(
 }
 
 describe("archive after environment prune", () => {
-  it("POST /threads/:id/archive succeeds for a thread whose environment was pruned", async () => {
-    await withTestHarness(async (harness) => {
-      const { thread } = seedThreadWithPrunedEnvironment(harness.deps);
-      const response = await harness.app.request(
-        `/api/v1/threads/${thread.id}/archive`,
-        { method: "POST" },
-      );
-      expect(response.status).toBe(200);
-      expect(await readJson(response)).toEqual({ ok: true });
-      expect(getThread(harness.deps.db, thread.id)?.archivedAt).not.toBeNull();
-    });
-  });
-
   it("POST /threads/:id/archive-all succeeds for a thread whose environment was pruned", async () => {
     await withTestHarness(async (harness) => {
       const { thread } = seedThreadWithPrunedEnvironment(harness.deps);
@@ -117,8 +107,7 @@ describe("archive after environment prune", () => {
     async (status) => {
       await withTestHarness(async (harness) => {
         const thread = seedPointerlessThread(harness.deps, status);
-        await expectArchiveRefused(harness, thread.id, "archive");
-        await expectArchiveRefused(harness, thread.id, "archive-all");
+        await expectArchiveRefused(harness, thread.id);
       });
     },
   );

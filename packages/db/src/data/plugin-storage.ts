@@ -1,6 +1,7 @@
 import { and, asc, eq, sql } from "drizzle-orm";
 import type { DbConnection } from "../connection.js";
 import { pluginKv, pluginSettings } from "../schema.js";
+import { likePrefixPattern } from "./sql-like.js";
 
 export interface PluginKvRow {
   pluginId: string;
@@ -64,8 +65,9 @@ export function listPluginKvKeys(
 ): string[] {
   const conditions = [eq(pluginKv.pluginId, pluginId)];
   if (prefix !== undefined && prefix.length > 0) {
-    const escaped = prefix.replace(/[\\%_]/g, (match) => `\\${match}`);
-    conditions.push(sql`${pluginKv.key} LIKE ${`${escaped}%`} ESCAPE '\\'`);
+    conditions.push(
+      sql`${pluginKv.key} LIKE ${likePrefixPattern(prefix)} ESCAPE '\\'`,
+    );
   }
   return db
     .select({ key: pluginKv.key })

@@ -5,7 +5,6 @@ import {
   readFile,
   rm,
   symlink,
-  writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -31,14 +30,7 @@ const version = z
     (await promisify(execFile)(runtimeBinary, ["--version"])).stdout.trim(),
   )
   .split(" ")[1]!;
-if (process.env.DEV_BROWSER_SMOKE_NO_SANDBOX === "1") {
-  const escaped = `'${resolve(chrome).replaceAll("'", "'\\''")}'`;
-  await writeFile(
-    join(dataDir, "runtime", "chrome"),
-    `#!/bin/sh\nexec ${escaped} --no-sandbox "$@"\n`,
-    { mode: 0o700 },
-  );
-} else await symlink(resolve(chrome), join(dataDir, "runtime", "chrome"));
+await symlink(resolve(chrome), join(dataDir, "runtime", "chrome"));
 const attachedBrowsers: ReturnType<typeof supervise>[] = [];
 const sessions: Awaited<ReturnType<typeof createRuntime>>[] = [];
 try {
@@ -115,13 +107,14 @@ try {
     (await c.run("await browser.listPages()", 10_000, args.signal)).exitCode,
     0,
   );
-  await c.stop();
+  await c.close();
   await assert.rejects(c.run("1", 1000, args.signal));
   const profile = join(root, "handed-off-profile");
   const attachedBrowser = supervise(
     join(dataDir, "runtime", "chrome"),
     [
       "--headless=new",
+      "--no-sandbox",
       "--remote-debugging-port=0",
       `--user-data-dir=${profile}`,
       "--no-first-run",
@@ -154,7 +147,7 @@ try {
     ).exitCode,
     0,
   );
-  await attached.stop();
+  await attached.close();
   assert.equal(attachedBrowser.alive(), true);
   const reattached = await createRuntime({ ...args, connectionUrl });
   sessions.push(reattached);
@@ -173,8 +166,8 @@ try {
         "cancellation isolation",
         "infinite-loop timeout",
         "reopen after timeout",
-        "stop rejects further work",
-        "attachment stop preserves browser and page state",
+        "close rejects further work",
+        "attachment close preserves browser and page state",
       ],
     }),
   );

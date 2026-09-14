@@ -18,8 +18,8 @@ function renderSection(overrides?: {
   return render(
     <GeneralSettingsSection
       desktopBrowserAvailable={false}
+      generalSettingsDisabled={false}
       managedBranchPrefix={overrides?.managedBranchPrefix ?? "bb/"}
-      managedBranchPrefixDisabled={false}
       navigateToThreadAfterCreate={false}
       onManagedBranchPrefixChange={
         overrides?.onManagedBranchPrefixChange ?? vi.fn()
@@ -34,22 +34,20 @@ function renderSection(overrides?: {
       rewriteLocalhostLinks={false}
       richTextEditing={false}
       steerActiveThreadOnEnter={false}
-      steerActiveThreadOnEnterDisabled={false}
       streamerMode={false}
-      streamerModeDisabled={false}
     />,
   );
 }
 
 function branchPrefixInput() {
-  const input = screen.getByLabelText("Worktree branch prefix");
+  const input = screen.getByLabelText("New branch prefix");
   if (!(input instanceof HTMLInputElement)) {
-    throw new Error("Worktree branch prefix control is not an input");
+    throw new Error("New branch prefix control is not an input");
   }
   return input;
 }
 
-describe("worktree branch prefix setting", () => {
+describe("new branch prefix setting", () => {
   it("saves a valid prefix on Enter", () => {
     const onChange = vi.fn();
     renderSection({ onManagedBranchPrefixChange: onChange });

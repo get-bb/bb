@@ -11,6 +11,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { createStore, Provider } from "jotai";
+import { useNavigate } from "react-router-dom";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type { SidebarBootstrapResponse } from "@bb/server-contract";
 import {
@@ -26,8 +27,9 @@ import { ThreadActionsProvider } from "@/components/thread/ThreadActionsProvider
 import { Icon } from "@bb/shared-ui/icon";
 import {
   ProjectList,
-  ProjectListActionButtons,
   ProjectListNavigationLoadingState,
+  ProjectListNewThreadAction,
+  ProjectListSearchThreadsAction,
   ProjectListShell,
 } from "./ProjectList";
 import {
@@ -36,6 +38,15 @@ import {
 } from "@/hooks/queries/query-keys";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import { PluginNavSidebarItems } from "@/components/plugin/PluginNavSidebarItems";
+import {
+  pluginNavPanelOrderAtom,
+  pluginNavVisiblePanelKeysAtom,
+} from "@/components/plugin/pluginNavSidebarAtoms";
+import {
+  BUILT_IN_SIDEBAR_NAVIGATION_KEYS,
+  DEFAULT_BUILT_IN_SIDEBAR_NAVIGATION_ORDER,
+} from "@/components/plugin/pluginNavSidebarOrder";
+import { BuiltInSidebarNavigation } from "./BuiltInSidebarNavigation";
 import {
   removePluginSlotRegistrations,
   setPluginSlotRegistrations,
@@ -47,7 +58,6 @@ import {
 } from "@/lib/route-paths";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import {
-  SIDEBAR_ORGANIZATION_MODE_STORAGE_KEY,
   sidebarOrganizationModeAtom,
   type SidebarOrganizationMode,
 } from "./sidebarCollapsedAtoms";
@@ -63,6 +73,7 @@ export default {
 
 interface SidebarFrameProps {
   children: ReactNode;
+  navigation?: ReactNode;
 }
 
 const noop = () => {};
@@ -180,8 +191,8 @@ const loadedSidebarNavigation = makeSidebarBootstrapResponse({
           environmentId: "env_story_sidebar",
           environmentName: "Sidebar polish",
           environmentBranchName: BRANCH_NAMES.feature,
+          environmentProviderId: "git-worktree",
           queuedWork: "none",
-          environmentWorkspaceDisplayKind: "managed-worktree",
           title: "Tighten loading skeleton",
           titleFallback: "Tighten loading skeleton",
           latestAttentionAt: 170,
@@ -194,8 +205,8 @@ const loadedSidebarNavigation = makeSidebarBootstrapResponse({
           environmentId: "env_story_sidebar",
           environmentName: "Sidebar polish",
           environmentBranchName: BRANCH_NAMES.feature,
+          environmentProviderId: "git-worktree",
           queuedWork: "none",
-          environmentWorkspaceDisplayKind: "managed-worktree",
           title: "Audit sidebar stories",
           titleFallback: "Audit sidebar stories",
           hasPendingInteraction: true,
@@ -258,16 +269,22 @@ const machineSidebarNavigation = {
   })),
 } satisfies SidebarBootstrapResponse;
 
-function SidebarFrame({ children }: SidebarFrameProps) {
+function SidebarFrame({ children, navigation }: SidebarFrameProps) {
   return (
     <ProjectActionsProvider>
       <ThreadActionsProvider>
         <div className="flex h-[680px] w-full max-w-[320px] min-w-0 flex-col overflow-hidden rounded-md border border-sidebar-border bg-sidebar text-sidebar-foreground shadow-sm">
-          <div className="shrink-0 px-2 py-2">
-            <ProjectListActionButtons onNewChat={noop} />
-          </div>
-          {}
-          <PluginNavSidebarItems />
+          {navigation ?? (
+            <>
+              <div className="shrink-0 px-2 py-2">
+                <div className="space-y-1">
+                  <ProjectListNewThreadAction onNewChat={noop} />
+                  <ProjectListSearchThreadsAction />
+                </div>
+              </div>
+              <PluginNavSidebarItems />
+            </>
+          )}
           <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
           <div className="shrink-0 border-t border-sidebar-border/70 px-2 py-2">
             <button
@@ -351,7 +368,7 @@ function StoryPluginPageRegistrations() {
         panel: {
           id: AUTOMATIONS_PLUGIN_PANEL_PATH,
           title: "Automations",
-          icon: "TimeSchedule" as const,
+          icon: "Repeat" as const,
           path: AUTOMATIONS_PLUGIN_PANEL_PATH,
           component: () => null,
         },
@@ -402,11 +419,29 @@ function StoryPluginPageRegistrations() {
 }
 
 function LoadedSidebarWithPluginPages() {
-  const [store] = useState(() => createStore());
+  const navigate = useNavigate();
+  const [store] = useState(() => {
+    const seededStore = createStore();
+    seededStore.set(pluginNavPanelOrderAtom, [
+      ...DEFAULT_BUILT_IN_SIDEBAR_NAVIGATION_ORDER,
+      "github/github",
+      "docs/docs",
+      "tasks/tasks",
+    ]);
+    seededStore.set(pluginNavVisiblePanelKeysAtom, [
+      BUILT_IN_SIDEBAR_NAVIGATION_KEYS.newThread,
+      "github/github",
+    ]);
+    return seededStore;
+  });
   return (
     <Provider store={store}>
       <StoryPluginPageRegistrations />
-      <SidebarFrame>
+      <SidebarFrame
+        navigation={
+          <BuiltInSidebarNavigation onNewChat={() => void navigate("/")} />
+        }
+      >
         <LoadedSidebar />
       </SidebarFrame>
     </Provider>
@@ -437,39 +472,8 @@ function OrganizationSidebar({
 
   useLayoutEffect(() => {
     setIsModeSeeded(false);
-
-    let localStorage: Storage | null = null;
-    let persistedMode: string | null = null;
-
-    if (typeof window !== "undefined") {
-      try {
-        localStorage = window.localStorage;
-        persistedMode = localStorage.getItem(
-          SIDEBAR_ORGANIZATION_MODE_STORAGE_KEY,
-        );
-      } catch {
-        localStorage = null;
-      }
-    }
-
     const unsubscribe = store.sub(sidebarOrganizationModeAtom, noop);
-
-    try {
-      store.set(sidebarOrganizationModeAtom, mode);
-    } finally {
-      if (localStorage) {
-        try {
-          if (persistedMode === null) {
-            localStorage.removeItem(SIDEBAR_ORGANIZATION_MODE_STORAGE_KEY);
-          } else {
-            localStorage.setItem(
-              SIDEBAR_ORGANIZATION_MODE_STORAGE_KEY,
-              persistedMode,
-            );
-          }
-        } catch {}
-      }
-    }
+    store.set(sidebarOrganizationModeAtom, mode);
 
     setIsModeSeeded(true);
 
@@ -511,10 +515,7 @@ export function Overview() {
 export function PluginPages() {
   return (
     <StoryCard labelWidth="120px">
-      <StoryRow
-        label="expanded"
-        hint="all shipped plugin navigation above the real thread list"
-      >
+      <StoryRow label="sidebar">
         <LoadedSidebarWithPluginPages />
       </StoryRow>
     </StoryCard>
@@ -628,11 +629,14 @@ export function SplitPageLabels() {
         >
           <div className="w-full max-w-[320px] rounded-md bg-sidebar py-2 text-sidebar-foreground">
             <div className="px-2">
-              <ProjectListActionButtons
-                splitEnabled
-                newThreadSplit={{ openInSplit: noop }}
-                onNewChat={noop}
-              />
+              <div className="space-y-1">
+                <ProjectListNewThreadAction
+                  splitEnabled
+                  newThreadSplit={{ openInSplit: noop }}
+                  onNewChat={noop}
+                />
+                <ProjectListSearchThreadsAction />
+              </div>
             </div>
             <PluginNavSidebarItems splitEnabled />
           </div>

@@ -10,12 +10,6 @@ export interface PluginSurfaceAgentMention {
   label: string;
 }
 
-export function pluginSurfaceAgentMention(
-  surface: PluginSurface,
-): PluginSurfaceAgentMention {
-  return createPluginSurfaceAgentReference(surface).identity;
-}
-
 export interface PluginSurfaceAgentClipboardContent {
   text: string;
   html: string;

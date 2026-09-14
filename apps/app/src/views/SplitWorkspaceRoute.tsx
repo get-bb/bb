@@ -1,4 +1,5 @@
 import { lazy, useMemo } from "react";
+import { disableGlobalCursorStyles } from "react-resizable-panels";
 import { matchPath, Navigate, useLocation } from "react-router-dom";
 import { useAtomValue } from "jotai";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
@@ -7,18 +8,20 @@ import "@bb/shared-ui/icon-extended";
 import {
   APP_ROOT_ROUTE_PATH,
   LEGACY_PROJECT_COMPOSE_ROUTE_PATH,
+  PLUGIN_DETAIL_ROUTE_PATH,
   PLUGIN_PANEL_ROUTE_PATH,
-  TOOLS_PLUGIN_DETAIL_ROUTE_PATH,
 } from "@/lib/route-paths";
 import type { PaneContent } from "@/lib/split-layout";
 import { useRouteState } from "@/hooks/useRouteState";
 import { LegacyProjectComposeRedirect } from "./RootComposeView";
 import { SplitThreadArea } from "./thread-detail/SplitThreadArea";
 
+disableGlobalCursorStyles();
+
 const ROOT_COMPOSE_CONTENT = { kind: "new-thread" } as const;
 
-const ToolsView = lazy(() =>
-  import("./ToolsView").then((m) => ({ default: m.ToolsView })),
+const PluginsView = lazy(() =>
+  import("./ToolsView").then((m) => ({ default: m.PluginsView })),
 );
 
 export default function SplitWorkspaceRoute() {
@@ -26,7 +29,7 @@ export default function SplitWorkspaceRoute() {
   const { projectId, threadId, isThreadView } = useRouteState();
   const pluginMatch = matchPath(PLUGIN_PANEL_ROUTE_PATH, location.pathname);
   const pluginDetailMatch = matchPath(
-    TOOLS_PLUGIN_DETAIL_ROUTE_PATH,
+    PLUGIN_DETAIL_ROUTE_PATH,
     location.pathname,
   );
   const legacyProjectMatch = matchPath(
@@ -81,7 +84,7 @@ export default function SplitWorkspaceRoute() {
     routeContent.kind === "plugin-detail" &&
     !holdsPluginDetailPane(layout, routeContent.pluginId)
   ) {
-    return <ToolsView pluginId={routeContent.pluginId} />;
+    return <PluginsView pluginId={routeContent.pluginId} />;
   }
   return <SplitThreadArea routeContent={routeContent} />;
 }

@@ -48,7 +48,6 @@ export type ThreadNotWritableErrorDetails = z.infer<
 export const threadEnvironmentUnavailableReasonSchema = z.enum([
   "never_attached",
   "destroyed",
-  "destroying",
   "provisioning",
   "errored",
 ]);
@@ -121,9 +120,6 @@ export type ParentThreadInvalidErrorDetails = z.infer<
 export const dispatchHookErrorDetailsSchema = z.object({
   pluginId: pluginIdSchema,
 });
-export type DispatchHookErrorDetails = z.infer<
-  typeof dispatchHookErrorDetailsSchema
->;
 
 export const environmentNotReadyApiErrorSchema = apiErrorSchema.extend({
   code: z.literal("environment_not_ready"),

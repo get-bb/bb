@@ -6,8 +6,8 @@ import {
 } from "@bb/host-daemon-contract";
 import type { LoggedWorkSessionDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
-import { roundDurationMs } from "../lib/duration.js";
-import { callHostOnlineRpc } from "./online-rpc.js";
+import { roundDurationMs } from "@bb/process-utils";
+import { callHostOnlineRpcForWork } from "./online-rpc.js";
 
 interface RunLiveCommandAndWaitArgs<
   TType extends HostDaemonSettledCommandType,
@@ -127,7 +127,7 @@ export async function runLiveCommandAndWait(
   let completed = true;
   let failureLogFields: SlowCommandWaitFailureLogFields | null = null;
   try {
-    return await callHostOnlineRpc(deps, {
+    return await callHostOnlineRpcForWork(deps, {
       command: args.command,
       hostId: args.hostId,
       timeoutMs: args.timeoutMs,

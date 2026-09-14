@@ -24,6 +24,10 @@ the explicitly requested provider or Codex, then resolves the model marked
 default by that provider on the target machine (falling back to the first
 catalog model when none is marked).
 
+Model lists answer from the machine's last stored list while a background
+refresh runs, so a list can be hours old. A provider whose refresh keeps
+failing or timing out keeps answering from its last stored list.
+
 Provider-native memory can be controlled on the separate Settings → Providers
 → Codex and Settings → Providers → Claude Code pages. Codex memory controls
 both recall (`memories.use_memories`) and future generation
@@ -77,13 +81,6 @@ it — waiting does not fix it.
 Claude Code's native Workflow tool can be disabled separately on its provider
 page. This preference also defaults off and applies to newly started, resumed,
 or forked provider sessions.
-
-Claude Code can opt into releasing its native process after 30 seconds of
-quiescence while keeping the bb thread attached and resumable. This defaults
-off during its bake period. Enable it with
-`bb plugin config provider-claude-code set idleQueryReleaseEnabled true`.
-Changes apply on the next start, resume, or turn command and do not interrupt
-active work.
 
 Claude Code runs without its Claude in Chrome browser tools under bb by
 default. Enable them with

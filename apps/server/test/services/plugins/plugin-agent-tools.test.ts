@@ -6,18 +6,18 @@ import { z } from "zod";
 import { createConnection, migrate, type DbConnection } from "@bb/db";
 import { encodeClientTurnRequestIdNumber } from "@bb/domain";
 import type { Logger } from "@bb/logger";
-import { RESERVED_AGENT_TOOL_NAMES } from "../../../src/services/plugins/plugin-api.js";
+import { RESERVED_AGENT_TOOL_NAMES } from "@get-bb/plugin-sdk/internal/host-policy";
 import { createAiServiceRegistry } from "../../../src/services/ai/ai-service-registry.js";
 import {
   createPluginService,
   type PluginService,
 } from "../../../src/services/plugins/plugin-service.js";
 import {
+  buildExecutionOptions,
   buildThreadStartCommand,
   prepareTurnSubmitCommandPayload,
 } from "../../../src/services/threads/thread-commands.js";
 import { UPDATE_ENVIRONMENT_DIRECTORY_TOOL_NAME } from "../../../src/services/threads/thread-environment-directory.js";
-import { resolveExecutionOptions } from "../../../src/services/threads/thread-runtime-config.js";
 import { internalAuthHeaders } from "../../helpers/commands.js";
 import { readJson } from "../../helpers/json.js";
 import { textInput } from "../../helpers/prompt-input.js";
@@ -464,6 +464,44 @@ describe("bb.agents.registerTool", () => {
     expect(service.findAgentTool("shared_tool")?.pluginId).toBe("collide-a");
   });
 
+  it("fails a plugin's load when its environment provider id is already registered", async () => {
+    const first = await writePlugin(workDir, {
+      name: "bb-plugin-env-a",
+      serverSource: `
+        export default function plugin(bb: any) {
+          bb.experimental_environments.register({
+            id: "shared-env",
+            displayName: "Shared",
+            description: "Create a shared workspace.",
+            icon: "Folder",
+            create: async () => ({ status: "failed", message: "waiting" }), remove: async () => ({ status: "removed" }),
+          });
+        }
+      `,
+    });
+    const second = await writePlugin(workDir, {
+      name: "bb-plugin-env-b",
+      serverSource: `
+        export default function plugin(bb: any) {
+          bb.experimental_environments.register({
+            id: "shared-env",
+            displayName: "Shared again",
+            description: "Create another shared workspace.",
+            icon: "Folder",
+            create: async () => ({ status: "failed", message: "waiting" }), remove: async () => ({ status: "removed" }),
+          });
+        }
+      `,
+    });
+    await service.installPath(first);
+    const entry = await service.installPath(second);
+
+    expect(entry.status).toBe("error");
+    expect(entry.statusDetail).toContain(
+      'environment provider "shared-env" is already registered by plugin "env-a"',
+    );
+  });
+
   it("rejects the reserved built-in tool name at registration", async () => {
     expect(RESERVED_AGENT_TOOL_NAMES).toContain(
       UPDATE_ENVIRONMENT_DIRECTORY_TOOL_NAME,
@@ -755,10 +793,11 @@ describe("plugin tools reach thread runtime config", () => {
       environmentId: environment.id,
       providerId: "codex",
     });
-    const execution = await resolveExecutionOptions(harness.deps, {
-      threadId: thread.id,
-      requestedExecution: { model: "gpt-5", source: "client/turn/requested" },
-    });
+    const execution = await buildExecutionOptions(
+      harness.deps,
+      { model: "gpt-5" },
+      { threadId: thread.id },
+    );
     const buildCommand = (requestValue: number) =>
       buildThreadStartCommand(harness.deps, {
         environment,
@@ -927,13 +966,11 @@ describe("plugin tools reach thread runtime config", () => {
       model: "claude-opus-4-6",
     });
     const build = async (target: typeof alpha, requestValue: number) => {
-      const execution = await resolveExecutionOptions(harness.deps, {
-        threadId: target.thread.id,
-        requestedExecution: {
-          model: target.model,
-          source: "client/turn/requested",
-        },
-      });
+      const execution = await buildExecutionOptions(
+        harness.deps,
+        { model: target.model },
+        { threadId: target.thread.id },
+      );
       return buildThreadStartCommand(harness.deps, {
         environment: target.environment,
         execution,
@@ -1052,13 +1089,11 @@ describe("plugin tools reach thread runtime config", () => {
     const betaAgain = await build(beta, 13);
     expect(betaAgain.instructions).toContain("factory=1;configure=4");
 
-    const betaExecution = await resolveExecutionOptions(harness.deps, {
-      threadId: beta.thread.id,
-      requestedExecution: {
-        model: beta.model,
-        source: "client/turn/requested",
-      },
-    });
+    const betaExecution = await buildExecutionOptions(
+      harness.deps,
+      { model: beta.model },
+      { threadId: beta.thread.id },
+    );
     const turnSubmit = await prepareTurnSubmitCommandPayload(harness.deps, {
       environment: beta.environment,
       execution: betaExecution,

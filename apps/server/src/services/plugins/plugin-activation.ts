@@ -24,10 +24,8 @@ import {
   garbageCollectPluginArtifacts,
   pluginArtifactStorageRoot,
 } from "./plugin-artifact-gc.js";
-import type {
-  PluginRuntimeStatus,
-  PluginServiceDeps,
-} from "./plugin-service-internal.js";
+import type { PluginRuntimeStatus } from "@bb/server-contract";
+import type { PluginServiceDeps } from "./plugin-service-internal.js";
 import type { PluginManifest } from "./manifest.js";
 
 export class PluginActivationRolledBackError extends Error {

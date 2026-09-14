@@ -24,32 +24,43 @@ function ghCalls(): string[] {
 beforeEach(() => {
   binDir = mkdtempSync(join(tmpdir(), "bb-github-rpc-"));
   callLog = join(binDir, "gh-calls.log");
-  const openIssue = JSON.stringify([
+  const openIssue = [
     {
       number: 7,
       title: "Cache mutations",
       state: "OPEN",
-      author: { login: "alice" },
-      labels: [{ name: "bug" }, { name: "old" }],
-      assignees: [{ login: "octocat" }],
+      author: { login: "alice", id: "user-alice" },
+      labels: { nodes: [{ name: "bug" }, { name: "old" }] },
+      assignees: { nodes: [{ login: "octocat" }] },
       url: "https://github.com/acme/widgets/issues/7",
       body: "Keep the cache synchronized.",
       updatedAt: "2026-08-19T12:00:00Z",
     },
-  ]);
-  const openPull = JSON.stringify([
+  ];
+  const openPull = [
     {
       number: 42,
       title: "Normalize pull details",
       state: "OPEN",
-      author: { login: "bob" },
-      labels: [{ name: "enhancement" }],
-      assignees: [],
+      author: { login: "bob", id: "user-bob" },
+      labels: { nodes: [{ name: "enhancement" }] },
+      assignees: { nodes: [] },
       url: "https://github.com/acme/widgets/pull/42",
       body: "Normalize every GitHub shape.",
       updatedAt: "2026-08-19T13:00:00Z",
     },
-  ]);
+  ];
+  const lists = JSON.stringify({
+    data: {
+      repository: {
+        hasIssuesEnabled: true,
+        openIssues: { nodes: openIssue },
+        closedIssues: { nodes: [] },
+        openPrs: { nodes: openPull },
+        closedPrs: { nodes: [] },
+      },
+    },
+  });
   const issueDetail = JSON.stringify({
     number: 7,
     title: "Cache mutations",
@@ -172,10 +183,7 @@ case "$*" in
   "api user") printf '%s\n' '{"login":"octocat"}';;
   "api repos/acme/widgets/assignees?per_page=100") printf '%s\n' '[{"login":"zoe"},{"login":"alice"},{"login":""}]';;
   "api repos/acme/widgets/labels?per_page=100") printf '%s\n' '[{"name":"triage"},{"name":" bug "},{"name":""}]';;
-  "issue list -R acme/widgets --state open"*) printf '%s\n' '${openIssue}';;
-  "issue list -R acme/widgets --state closed"*) printf '%s\n' '[]';;
-  "pr list -R acme/widgets --state open"*) printf '%s\n' '${openPull}';;
-  "pr list -R acme/widgets --state closed"*) printf '%s\n' '[]';;
+  "api graphql "*) printf '%s\n' '${lists}';;
   "issue view 7 -R acme/widgets --json labels") printf '%s\n' '{"labels":[{"name":"bug"},{"name":"old"}]}';;
   "issue view 7 -R acme/widgets --json"*) printf '%s\n' '${issueDetail}';;
   "pr view 42 -R acme/widgets --json"*) printf '%s\n' '${pullDetail}';;

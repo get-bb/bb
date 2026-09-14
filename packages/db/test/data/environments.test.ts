@@ -1,13 +1,18 @@
+import { eq } from "drizzle-orm";
 import { describe, expect, it, vi } from "vitest";
 import { noopNotifier } from "../../src/notifier.js";
 import type { DbNotifier } from "../../src/notifier.js";
 import {
   createEnvironment,
+  findForeignManagedEnvironmentAtHostPath,
+  findProviderEnvironmentContainingPath,
   listRetiredLoadedEnvironmentIdsOnHost,
+  markHostEnvironmentsDestroyed,
   recordEnvironmentCurrentBranch,
   recordProvisionedEnvironmentWorkspace,
   updateEnvironmentMetadata,
 } from "../../src/data/environments.js";
+import { environments } from "../../src/schema.js";
 import { createProject } from "../../src/data/projects.js";
 import { upsertHost } from "../../src/data/hosts.js";
 import { createMigratedConnection } from "../helpers/migrated-connection.js";
@@ -16,7 +21,6 @@ function setup() {
   const db = createMigratedConnection();
   const host = upsertHost(db, noopNotifier, {
     name: "test-host",
-    type: "persistent",
   });
   const { project } = createProject(db, noopNotifier, {
     name: "test-project",
@@ -36,12 +40,89 @@ function createNotifierSpy(): DbNotifier {
 }
 
 describe("environments", () => {
+  it("marks every environment on a removed host as destroyed history", () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(25_000);
+    const { db, host, project } = setup();
+    const first = createEnvironment(db, noopNotifier, {
+      providerOwnsPath: true,
+      projectId: project.id,
+      hostId: host.id,
+      path: "/tmp/removed-host-first",
+      status: "ready",
+    });
+    const second = createEnvironment(db, noopNotifier, {
+      providerOwnsPath: false,
+      projectId: project.id,
+      hostId: host.id,
+      path: "/tmp/removed-host-second",
+      status: "error",
+    });
+    db.update(environments)
+      .set({
+        resource: { provider: "state" },
+        retireAt: 30_000,
+        teardownMessage: "previous failure",
+        teardownStatus: "failed",
+      })
+      .where(eq(environments.id, second.id))
+      .run();
+    const notifier = createNotifierSpy();
+
+    const updated = markHostEnvironmentsDestroyed(db, notifier, host.id);
+
+    expect(updated.map((environment) => environment.id)).toEqual([
+      first.id,
+      second.id,
+    ]);
+    for (const environment of updated) {
+      expect(environment).toMatchObject({
+        path: null,
+        resource: null,
+        retireAt: null,
+        status: "destroyed",
+        teardownMessage: null,
+        teardownStatus: "removed",
+        updatedAt: 25_000,
+      });
+      expect(notifier.notifyEnvironment).toHaveBeenCalledWith(environment.id, [
+        "metadata-changed",
+        "status-changed",
+      ]);
+    }
+  });
+
+  it("keeps a path unique while provider teardown is pending", () => {
+    const { db, host, project } = setup();
+    const first = createEnvironment(db, noopNotifier, {
+      providerOwnsPath: true,
+      projectId: project.id,
+      hostId: host.id,
+      path: "/tmp/teardown-path",
+      status: "ready",
+    });
+    db.update(environments)
+      .set({ teardownStatus: "running" })
+      .where(eq(environments.id, first.id))
+      .run();
+
+    expect(() =>
+      createEnvironment(db, noopNotifier, {
+        providerOwnsPath: true,
+        projectId: project.id,
+        hostId: host.id,
+        path: "/tmp/teardown-path",
+        status: "provisioning",
+      }),
+    ).toThrow(/unique/iu);
+  });
+
   it("emits metadata-changed when merge base branch changes", () => {
     const { db, host, project } = setup();
     const environment = createEnvironment(db, noopNotifier, {
+      providerOwnsPath: false,
       projectId: project.id,
       hostId: host.id,
-      workspaceProvisionType: "unmanaged",
       status: "ready",
     });
     const notifier = createNotifierSpy();
@@ -59,9 +140,9 @@ describe("environments", () => {
   it("emits metadata-changed when environment name changes", () => {
     const { db, host, project } = setup();
     const environment = createEnvironment(db, noopNotifier, {
+      providerOwnsPath: false,
       projectId: project.id,
       hostId: host.id,
-      workspaceProvisionType: "managed-worktree",
       status: "ready",
     });
     const notifier = createNotifierSpy();
@@ -79,9 +160,9 @@ describe("environments", () => {
   it("does not emit metadata-changed when merge base branch is unchanged", () => {
     const { db, host, project } = setup();
     const environment = createEnvironment(db, noopNotifier, {
+      providerOwnsPath: false,
       projectId: project.id,
       hostId: host.id,
-      workspaceProvisionType: "unmanaged",
       mergeBaseBranch: "main",
       status: "ready",
     });
@@ -98,9 +179,9 @@ describe("environments", () => {
   it("does not emit metadata-changed when environment name is unchanged", () => {
     const { db, host, project } = setup();
     const environment = createEnvironment(db, noopNotifier, {
+      providerOwnsPath: false,
       projectId: project.id,
       hostId: host.id,
-      workspaceProvisionType: "managed-worktree",
       name: "Review workspace",
       status: "ready",
     });
@@ -117,9 +198,9 @@ describe("environments", () => {
   it("records provisioned workspace metadata without touching status", () => {
     const { db, host, project } = setup();
     const environment = createEnvironment(db, noopNotifier, {
+      providerOwnsPath: false,
       projectId: project.id,
       hostId: host.id,
-      workspaceProvisionType: "unmanaged",
       status: "provisioning",
     });
     const notifier = createNotifierSpy();
@@ -131,7 +212,7 @@ describe("environments", () => {
       {
         path: "/tmp/project",
         isGitRepo: true,
-        isWorktree: false,
+        isWorktree: true,
         branchName: "bb/test",
         defaultBranch: "main",
       },
@@ -141,6 +222,7 @@ describe("environments", () => {
       path: "/tmp/project",
       status: "provisioning",
       isGitRepo: true,
+      isWorktree: true,
       branchName: "bb/test",
       defaultBranch: "main",
     });
@@ -152,9 +234,9 @@ describe("environments", () => {
   it("records the current branch observed for an environment", () => {
     const { db, host, project } = setup();
     const environment = createEnvironment(db, noopNotifier, {
+      providerOwnsPath: false,
       projectId: project.id,
       hostId: host.id,
-      workspaceProvisionType: "managed-worktree",
       branchName: "bb/old",
       defaultBranch: "main",
       status: "ready",
@@ -185,9 +267,9 @@ describe("environments", () => {
   it("clears the current branch when a detached checkout is observed", () => {
     const { db, host, project } = setup();
     const environment = createEnvironment(db, noopNotifier, {
+      providerOwnsPath: false,
       projectId: project.id,
       hostId: host.id,
-      workspaceProvisionType: "managed-worktree",
       branchName: "bb/old",
       defaultBranch: "main",
       status: "ready",
@@ -216,7 +298,6 @@ describe("environments", () => {
     const { db, host, project } = setup();
     const otherHost = upsertHost(db, noopNotifier, {
       name: "other-host",
-      type: "persistent",
     });
     const { project: otherProject } = createProject(db, noopNotifier, {
       name: "other-project",
@@ -227,21 +308,21 @@ describe("environments", () => {
       },
     });
     const retainedEnvironment = createEnvironment(db, noopNotifier, {
+      providerOwnsPath: false,
       projectId: project.id,
       hostId: host.id,
-      workspaceProvisionType: "unmanaged",
       status: "ready",
     });
     const destroyedEnvironment = createEnvironment(db, noopNotifier, {
+      providerOwnsPath: false,
       projectId: project.id,
       hostId: host.id,
-      workspaceProvisionType: "unmanaged",
       status: "destroyed",
     });
     const otherHostEnvironment = createEnvironment(db, noopNotifier, {
+      providerOwnsPath: false,
       projectId: otherProject.id,
       hostId: otherHost.id,
-      workspaceProvisionType: "unmanaged",
       status: "ready",
     });
 
@@ -260,5 +341,93 @@ describe("environments", () => {
       otherHostEnvironment.id,
       "env_missing",
     ]);
+  });
+});
+
+describe("environment path claims", () => {
+  function seedClaim(
+    args: ReturnType<typeof setup>,
+    input: {
+      environmentProviderId: string;
+      path: string;
+      providerOwnsPath: boolean;
+    },
+  ) {
+    return createEnvironment(args.db, noopNotifier, {
+      projectId: args.project.id,
+      hostId: args.host.id,
+      path: input.path,
+      status: "ready",
+      providerOwnsPath: input.providerOwnsPath,
+      environmentProvider: {
+        environmentProviderId: input.environmentProviderId,
+        instanceKey: null,
+        selection: {
+          machine: { type: "existing", hostId: args.host.id },
+          inputs: null,
+        },
+      },
+    });
+  }
+
+  it("claims a path only for a provider that owns the directory", () => {
+    const fixture = setup();
+    seedClaim(fixture, {
+      environmentProviderId: "project-checkout",
+      path: "/tmp/attached",
+      providerOwnsPath: false,
+    });
+    const owned = seedClaim(fixture, {
+      environmentProviderId: "git-worktree",
+      path: "/tmp/owned",
+      providerOwnsPath: true,
+    });
+
+    expect(
+      findProviderEnvironmentContainingPath(fixture.db, "/tmp/attached"),
+    ).toBeNull();
+    expect(
+      findProviderEnvironmentContainingPath(fixture.db, "/tmp/attached/pkg"),
+    ).toBeNull();
+    expect(
+      findProviderEnvironmentContainingPath(fixture.db, "/tmp/owned/pkg")?.id,
+    ).toBe(owned.id);
+  });
+
+  it("refuses a foreign project only inside a directory a provider owns", () => {
+    const fixture = setup();
+    const { project: other } = createProject(fixture.db, noopNotifier, {
+      name: "other-project",
+      source: {
+        type: "local_path",
+        hostId: fixture.host.id,
+        path: "/tmp/other",
+      },
+    });
+    seedClaim(fixture, {
+      environmentProviderId: "project-checkout",
+      path: "/tmp/shared-checkout",
+      providerOwnsPath: false,
+    });
+    const owned = seedClaim(fixture, {
+      environmentProviderId: "git-worktree",
+      path: "/tmp/owned-worktree",
+      providerOwnsPath: true,
+    });
+
+    expect(
+      findForeignManagedEnvironmentAtHostPath(fixture.db, {
+        hostId: fixture.host.id,
+        path: "/tmp/shared-checkout",
+        projectId: other.id,
+      }),
+    ).toBeNull();
+    expect(
+      findForeignManagedEnvironmentAtHostPath(fixture.db, {
+        hostId: fixture.host.id,
+        path: "/tmp/owned-worktree",
+        projectId: other.id,
+      })?.id,
+    ).toBe(owned.id);
   });
 });

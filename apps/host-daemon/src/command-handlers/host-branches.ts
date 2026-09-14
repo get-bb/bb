@@ -5,6 +5,7 @@ import type {
 } from "@bb/domain";
 import {
   detectGitRepoKind,
+  detectLinkedWorktree,
   fetchRemoteBranches,
   getCheckoutRef,
   getGitCommonDir,
@@ -56,9 +57,15 @@ const REMOTE_BRANCH_FETCH_THROTTLE_MS = 30_000;
 const REMOTE_BRANCH_FETCH_TIMEOUT_MS = 5_000;
 const NO_GIT_OPERATION: WorkspaceGitOperation = { kind: "none" };
 
+type RemoteRefreshMode = "background" | "blocking";
+
 const remoteBranchFetchStateByCommonDir = new Map<
   string,
-  { fetchedAt: number; inFlight: Promise<void> | null }
+  {
+    fetchedAt: number;
+    inFlight: Promise<void> | null;
+    needsInteractiveRetry: boolean;
+  }
 >();
 
 function limitBranchList({
@@ -110,22 +117,24 @@ function classifySelectedBranch({
 async function refreshRemoteBranches(
   cwd: string,
   options: GitProcessOptions,
+  mode: RemoteRefreshMode,
 ): Promise<void> {
   const commonDir = await getGitCommonDir(cwd, options);
-  const now = Date.now();
+  const interactive = mode === "blocking";
   const existingState = remoteBranchFetchStateByCommonDir.get(commonDir);
-  if (
-    existingState &&
-    now - existingState.fetchedAt < REMOTE_BRANCH_FETCH_THROTTLE_MS
-  ) {
-    if (existingState.inFlight) {
-      await existingState.inFlight;
-    }
-    return;
-  }
-
   if (existingState?.inFlight) {
     await existingState.inFlight;
+  }
+
+  const settledState = remoteBranchFetchStateByCommonDir.get(commonDir);
+  if (settledState?.inFlight) {
+    await settledState.inFlight;
+    return;
+  }
+  const throttled =
+    settledState !== undefined &&
+    Date.now() - settledState.fetchedAt < REMOTE_BRANCH_FETCH_THROTTLE_MS;
+  if (throttled && !(interactive && settledState.needsInteractiveRetry)) {
     return;
   }
 
@@ -136,23 +145,28 @@ async function refreshRemoteBranches(
       const remainingTimeoutMs = Math.max(1, refreshDeadline - Date.now());
       return fetchRemoteBranches(cwd, {
         ...options,
+        interactive,
         timeoutMs: remainingTimeoutMs,
       });
     },
     { timeoutMs: REMOTE_BRANCH_FETCH_TIMEOUT_MS },
   )
-    .catch(() => undefined)
-    .then(() => undefined)
-    .finally(() => {
+    .then(
+      (result) => !interactive && result.status === "failed",
+      () => false,
+    )
+    .then((needsInteractiveRetry) => {
       remoteBranchFetchStateByCommonDir.set(commonDir, {
         fetchedAt: Date.now(),
         inFlight: null,
+        needsInteractiveRetry,
       });
     });
 
   remoteBranchFetchStateByCommonDir.set(commonDir, {
-    fetchedAt: now,
+    fetchedAt: Date.now(),
     inFlight,
+    needsInteractiveRetry: false,
   });
 
   await inFlight;
@@ -221,9 +235,11 @@ export async function listHostBranchOptions(
   }
 
   if (command.remoteRefresh === "background") {
-    void refreshRemoteBranches(command.path, gitProcessOptions).catch(
-      () => undefined,
-    );
+    void refreshRemoteBranches(
+      command.path,
+      gitProcessOptions,
+      "background",
+    ).catch(() => undefined);
   }
 
   return readBranchOptions({ ...command, ...gitProcessOptions });
@@ -246,6 +262,7 @@ export async function inspectHostGitSource(
       checkout: { kind: "unknown", reason: "Path is not a git repository" },
       defaultBranch: null,
       defaultBranchRelation: null,
+      isWorktree: false,
       hasUncommittedChanges: false,
       operation: { kind: "none" },
       originDefaultBranch: null,
@@ -253,29 +270,36 @@ export async function inspectHostGitSource(
   }
 
   if (command.remoteRefresh === "blocking") {
-    await refreshRemoteBranches(command.path, gitProcessOptions);
+    await refreshRemoteBranches(command.path, gitProcessOptions, "blocking");
   } else {
-    void refreshRemoteBranches(command.path, gitProcessOptions).catch(
-      () => undefined,
-    );
+    void refreshRemoteBranches(
+      command.path,
+      gitProcessOptions,
+      "background",
+    ).catch(() => undefined);
   }
 
-  const [checkout, defaultRefs, dirty, operation] = await Promise.all([
-    getCheckoutRef(command.path, gitProcessOptions),
-    readDefaultBranchRefs(command.path, gitProcessOptions),
-    repoKind === "work-tree"
-      ? hasUncommittedChanges(command.path, gitProcessOptions)
-      : false,
-    repoKind === "work-tree"
-      ? getWorkspaceGitOperation(command.path, gitProcessOptions)
-      : NO_GIT_OPERATION,
-  ]);
+  const [checkout, defaultRefs, dirty, operation, isWorktree] =
+    await Promise.all([
+      getCheckoutRef(command.path, gitProcessOptions),
+      readDefaultBranchRefs(command.path, gitProcessOptions),
+      repoKind === "work-tree"
+        ? hasUncommittedChanges(command.path, gitProcessOptions)
+        : false,
+      repoKind === "work-tree"
+        ? getWorkspaceGitOperation(command.path, gitProcessOptions)
+        : NO_GIT_OPERATION,
+      repoKind === "work-tree"
+        ? detectLinkedWorktree(command.path, gitProcessOptions)
+        : false,
+    ]);
   const defaultBranch = defaultRefs.defaultBranch;
   const originDefaultBranch = defaultRefs.originDefaultBranch;
   return {
     checkout,
     defaultBranch: defaultBranch ?? null,
     defaultBranchRelation: defaultRefs.defaultBranchRelation ?? null,
+    isWorktree,
     hasUncommittedChanges: dirty,
     operation,
     originDefaultBranch: originDefaultBranch ?? null,

@@ -30,7 +30,6 @@ interface ClaudeTrackedTask {
   providerItemKey: string;
   toolUseId: string | undefined;
   taskType: string;
-  materialized: boolean;
   generation: number;
   workflowName: string | undefined;
   description: string;
@@ -63,15 +62,6 @@ export function hasCompletionBlockingClaudeTasks(
       !task.skipTranscript &&
       isBackgroundAgentTaskType(task.taskType)
     ) {
-      return true;
-    }
-  }
-  return false;
-}
-
-export function hasPendingClaudeTasks(tasks: ClaudeTaskMap): boolean {
-  for (const task of tasks.values()) {
-    if (!task.terminal) {
       return true;
     }
   }
@@ -274,8 +264,7 @@ export function translateClaudeTaskMessage(
   if (started.success) {
     const message = started.data;
     const taskType = message.task_type ?? "unknown";
-    const materialized = isMaterializedTaskType(taskType);
-    if (!materialized && taskType !== "monitor") {
+    if (!isMaterializedTaskType(taskType)) {
       return [];
     }
     const existing = args.tasks.get(message.task_id);
@@ -283,7 +272,6 @@ export function translateClaudeTaskMessage(
       return [];
     }
     if (
-      materialized &&
       existing === undefined &&
       message.tool_use_id !== undefined &&
       !args.hasForwardedToolUse(message.tool_use_id)
@@ -291,7 +279,7 @@ export function translateClaudeTaskMessage(
       return [];
     }
     const generation = existing ? existing.generation + 1 : 1;
-    if (materialized && args.turnStartSuppressed) {
+    if (args.turnStartSuppressed) {
       return [];
     }
     const task: ClaudeTrackedTask = {
@@ -299,7 +287,6 @@ export function translateClaudeTaskMessage(
       providerItemKey: buildClaudeTaskItemKey(message.task_id, generation),
       toolUseId: message.tool_use_id,
       taskType,
-      materialized,
       generation,
       workflowName: message.workflow_name,
       description: message.description,
@@ -314,9 +301,6 @@ export function translateClaudeTaskMessage(
       terminal: false,
     };
     args.tasks.set(message.task_id, task);
-    if (!materialized) {
-      return [];
-    }
     return [
       { kind: "turn.open" },
       {
@@ -339,9 +323,6 @@ export function translateClaudeTaskMessage(
       foldWorkflowProgressRecords(task, message.workflow_progress);
     }
     task.usage = toBackgroundTaskUsage(message.usage);
-    if (!task.materialized) {
-      return [];
-    }
     return [buildClaudeTaskProgressDelta(task, false)];
   }
 
@@ -364,9 +345,6 @@ export function translateClaudeTaskMessage(
     if (patch.error !== undefined) {
       task.error = patch.error;
     }
-    if (!task.materialized) {
-      return [];
-    }
     return [buildClaudeTaskProgressDelta(task, statusChanged)];
   }
 
@@ -388,9 +366,6 @@ export function translateClaudeTaskMessage(
       task.usage = toBackgroundTaskUsage(message.usage);
     }
     task.terminal = true;
-    if (!task.materialized) {
-      return [];
-    }
     return [buildClaudeTaskCloseDelta(task)];
   }
 
@@ -409,9 +384,7 @@ export function buildInterruptedClaudeTaskDeltas(args: {
       task.taskStatus = "stopped";
     }
     task.terminal = true;
-    if (task.materialized) {
-      deltas.push(buildClaudeTaskCloseDelta(task));
-    }
+    deltas.push(buildClaudeTaskCloseDelta(task));
   }
   return deltas;
 }

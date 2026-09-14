@@ -29,11 +29,10 @@ import {
   shareLoopbackHost,
   shareLoopbackOrigin,
   sharePublicUrl,
-  type ShareListing,
   type ShareRemoval,
 } from "./shares.js";
 import type { ShareHost } from "./hosts.js";
-import type { ConnectStateName, ConnectStatus } from "./types.js";
+import type { ConnectStateName, ConnectStatus, ShareListing } from "./types.js";
 
 const DISCONNECT_TIMEOUT_MS = 5_000;
 const TUNNEL_HANDSHAKE_TIMEOUT_MS = 15_000;
@@ -82,10 +81,6 @@ export class ConnectTunnel {
   private shareActivationEpoch = 0;
 
   constructor(private readonly options: ConnectTunnelOptions) {}
-
-  get shares(): ShareRegistry {
-    return this.options.shares;
-  }
 
   getCredential(): ConnectCredential | null {
     return this.credential;
@@ -208,7 +203,7 @@ export class ConnectTunnel {
     if (this.credential === null) {
       throw new MachineCodeError("not_paired");
     }
-    return fetchMachineCode(this.credential);
+    return fetchMachineCode(this.credential, AbortSignal.timeout(10_000));
   }
 
   async revokeMachine(machineId: string): Promise<void> {

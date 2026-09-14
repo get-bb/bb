@@ -274,6 +274,7 @@ export interface DesktopBrowserViewManager {
     threadId: string;
   }): Array<{ tabId: string; webContents: WebContents }>;
   subscribeAutomationTabs(listener: () => void): () => void;
+  profileSession(profile: DesktopBrowserTabProfile): Session;
   attach(args: HostScopedRequestArgs<BbDesktopBrowserAttachRequest>): void;
   detach(args: HostScopedTabArgs): void;
   focus(args: HostScopedTabArgs): void;
@@ -383,7 +384,6 @@ export function createDesktopBrowserViewManager(
 ): DesktopBrowserViewManager {
   const partition = args.partition ?? BB_BROWSER_PARTITION;
   const entries = new Map<string, BrowserViewEntry>();
-  const entriesByWebContentsId = new Map<number, BrowserViewEntry>();
   const automationTabListeners = new Set<() => void>();
   const popupWindows = new Set<BrowserWindow>();
   const resizingHostIds = new Set<number>();
@@ -489,6 +489,12 @@ export function createDesktopBrowserViewManager(
         clearTimeout(hideCap);
         applyEntryVisibility(entry, hostWindow);
       });
+  }
+
+  function partitionForProfile(profile: DesktopBrowserTabProfile): string {
+    return profile.kind === "personal"
+      ? partition
+      : `persist:bb-browser-automation-${createHash("sha256").update(profile.id).digest("hex")}`;
   }
 
   function ensureHardenedSession(tabPartition: string): Session {
@@ -776,10 +782,7 @@ export function createDesktopBrowserViewManager(
   }
 
   function createEntry(args: CreateEntryArgs): BrowserViewEntry {
-    const tabPartition =
-      args.profile.kind === "personal"
-        ? partition
-        : `persist:bb-browser-automation-${createHash("sha256").update(args.profile.id).digest("hex")}`;
+    const tabPartition = partitionForProfile(args.profile);
     ensureHardenedSession(tabPartition);
     const view = new WebContentsView({
       webPreferences: {
@@ -808,7 +811,6 @@ export function createDesktopBrowserViewManager(
     wireWebContents(args.hostWindow, args.tabId, entry);
     args.hostWindow.contentView.addChildView(view);
     entries.set(browserViewKey(args.hostWindow, args.tabId), entry);
-    entriesByWebContentsId.set(view.webContents.id, entry);
     return entry;
   }
 
@@ -826,6 +828,19 @@ export function createDesktopBrowserViewManager(
     entry.view.webContents.loadURL(url).catch(() => {});
   }
 
+  function disposeEntry(key: string, entry: BrowserViewEntry): void {
+    entries.delete(key);
+    clearEntryRendererRecoveryTimer(entry);
+    for (const popupWindow of [...entry.popupWindows]) {
+      if (!popupWindow.isDestroyed()) popupWindow.destroy();
+    }
+    entry.popupWindows.clear();
+    if (!entry.view.webContents.isDestroyed()) {
+      entry.view.webContents.close();
+    }
+    notifyAutomationTabs();
+  }
+
   function destroyEntry(
     hostWindow: DesktopBrowserHostWindow,
     key: string,
@@ -834,20 +849,10 @@ export function createDesktopBrowserViewManager(
     if (!entry) {
       return;
     }
-    entries.delete(key);
-    entriesByWebContentsId.delete(entry.view.webContents.id);
-    clearEntryRendererRecoveryTimer(entry);
-    for (const popupWindow of [...entry.popupWindows]) {
-      if (!popupWindow.isDestroyed()) popupWindow.destroy();
-    }
-    entry.popupWindows.clear();
     if (!hostWindow.isDestroyed()) {
       hostWindow.contentView.removeChildView(entry.view);
     }
-    if (!entry.view.webContents.isDestroyed()) {
-      entry.view.webContents.close();
-    }
-    notifyAutomationTabs();
+    disposeEntry(key, entry);
   }
 
   function withEntry(
@@ -977,6 +982,9 @@ export function createDesktopBrowserViewManager(
         entry.hostWindow,
         browserViewKey(entry.hostWindow, ref.tabId),
       );
+    },
+    profileSession(profile) {
+      return ensureHardenedSession(partitionForProfile(profile));
     },
     async captureTab(request) {
       const entry = requireNativeEntry(request);
@@ -1192,19 +1200,7 @@ export function createDesktopBrowserViewManager(
         if (!key.startsWith(prefix)) {
           continue;
         }
-        entries.delete(key);
-        entriesByWebContentsId.delete(entry.view.webContents.id);
-        clearEntryRendererRecoveryTimer(entry);
-        for (const popupWindow of [...entry.popupWindows]) {
-          if (!popupWindow.isDestroyed()) {
-            popupWindow.destroy();
-          }
-        }
-        entry.popupWindows.clear();
-        if (!entry.view.webContents.isDestroyed()) {
-          entry.view.webContents.close();
-        }
-        notifyAutomationTabs();
+        disposeEntry(key, entry);
       }
     },
     destroyAll() {
@@ -1216,13 +1212,7 @@ export function createDesktopBrowserViewManager(
       }
       popupWindows.clear();
       for (const [key, entry] of [...entries.entries()]) {
-        entries.delete(key);
-        entriesByWebContentsId.delete(entry.view.webContents.id);
-        clearEntryRendererRecoveryTimer(entry);
-        if (!entry.view.webContents.isDestroyed()) {
-          entry.view.webContents.close();
-        }
-        notifyAutomationTabs();
+        disposeEntry(key, entry);
       }
     },
   };

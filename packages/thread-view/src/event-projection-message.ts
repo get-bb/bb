@@ -215,6 +215,21 @@ export interface EventProjectionImageViewMessage
   >;
 }
 
+export interface EventProjectionImageGenerationMessage
+  extends EventProjectionMessageBase, EventProjectionPresentedMessage {
+  kind: "image-generation";
+  callId: string;
+  prompt: string | null;
+  path: string | null;
+  error: string | null;
+  transparentBackground: boolean;
+  completedAt: number | null;
+  status: Extract<
+    EventProjectionMessageStatus,
+    "pending" | "completed" | "error" | "interrupted"
+  >;
+}
+
 type EventProjectionItemActivityStatus = Extract<
   EventProjectionMessageStatus,
   "pending" | "completed" | "error" | "interrupted"
@@ -284,6 +299,7 @@ export interface EventProjectionFileEditMessage
 }
 
 const eventProjectionOperationTypeValues = [
+  "reasoning",
   "provider-unhandled",
   "provider-environment",
   "warning",
@@ -461,6 +477,7 @@ export type EventProjectionMessage =
   | EventProjectionWebSearchMessage
   | EventProjectionWebFetchMessage
   | EventProjectionImageViewMessage
+  | EventProjectionImageGenerationMessage
   | EventProjectionFileReadMessage
   | EventProjectionSearchMessage
   | EventProjectionPlanStepsMessage
@@ -474,7 +491,7 @@ export type EventProjectionMessage =
   | EventProjectionErrorMessage;
 
 export interface BuildEventProjectionMessagesOptions {
-  includeProviderUnhandledOperations?: boolean;
+  includeDiagnosticOperations?: boolean;
   threadStatus?: Thread["status"];
   threadName: string;
   providerDisplayName?: string;

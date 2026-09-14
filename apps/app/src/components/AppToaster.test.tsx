@@ -23,7 +23,7 @@ afterEach(() => {
 async function renderToaster(isCompactViewport: boolean) {
   render(
     <CompactViewportOverrideProvider isCompactViewport={isCompactViewport}>
-      <AppToaster position="bottom-right" />
+      <AppToaster />
     </CompactViewportOverrideProvider>,
   );
 
@@ -246,7 +246,7 @@ describe("AppToaster", () => {
     const onOpenThread = vi.fn();
     render(
       <CompactViewportOverrideProvider isCompactViewport>
-        <AppToaster position="bottom-right" />
+        <AppToaster />
       </CompactViewportOverrideProvider>,
     );
     act(() => {
@@ -310,7 +310,7 @@ describe("AppToaster", () => {
     const onDismissC = vi.fn();
     render(
       <CompactViewportOverrideProvider isCompactViewport>
-        <AppToaster position="bottom-right" />
+        <AppToaster />
       </CompactViewportOverrideProvider>,
     );
     act(() => {

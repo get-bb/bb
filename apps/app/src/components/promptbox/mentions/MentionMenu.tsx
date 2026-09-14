@@ -12,10 +12,8 @@ import {
 } from "@bb/server-contract";
 import { directoryFromPath } from "@bb/thread-view";
 import { promptMentionResourceFromSuggestion } from "@/components/promptbox/editor/prompt-editor-serialization";
-import {
-  promptCommandIconName,
-  promptMentionIconName,
-} from "@/components/promptbox/mentions/prompt-mention-display";
+import { promptCommandIconName } from "@/components/promptbox/mentions/prompt-mention-display";
+import { PromptMentionIcon } from "@/components/promptbox/mentions/PromptMentionIcon";
 import { shouldLoadMoreCommandResults } from "@/components/promptbox/mentions/mention-menu-scroll";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
 import { Icon } from "@bb/shared-ui/icon";
@@ -23,15 +21,15 @@ import { TruncateStart } from "@/components/ui/truncate-start.js";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   EMPTY_ORDERED_MENTION_SUGGESTIONS,
-  type ComposerCommandSuggestion,
   type OrderedMentionSuggestions,
   type PromptMentionSuggestion,
+  type ProviderCommandSuggestion,
   type TypeaheadMenuState,
 } from "@bb/client-core";
 
 export type TypeaheadSuggestion =
   | PromptMentionSuggestion
-  | ComposerCommandSuggestion;
+  | ProviderCommandSuggestion;
 
 interface MentionMenuProps {
   state: TypeaheadMenuState;
@@ -50,7 +48,7 @@ interface MentionResultsProps {
 }
 
 interface CommandResultsProps {
-  suggestions: readonly ComposerCommandSuggestion[];
+  suggestions: readonly ProviderCommandSuggestion[];
   selectedIndex: number;
   onApply: (item: TypeaheadSuggestion) => void;
   onDismiss?: () => void;
@@ -158,7 +156,7 @@ function getCommandSectionLabel(kind: CommandSectionKind): string {
 
 const ROW_ICON_CLASS = "size-3.5 shrink-0 text-muted-foreground";
 
-function getCommandIcon(item: ComposerCommandSuggestion): ReactNode {
+function getCommandIcon(item: ProviderCommandSuggestion): ReactNode {
   if (item.pluginId !== undefined) {
     return (
       <PluginIcon
@@ -177,26 +175,7 @@ function getCommandIcon(item: ComposerCommandSuggestion): ReactNode {
   );
 }
 
-function getMentionIcon(item: PromptMentionSuggestion): ReactNode {
-  if (item.kind === "plugin") {
-    return (
-      <PluginIcon
-        pluginId={item.pluginId}
-        icon={item.icon}
-        className={ROW_ICON_CLASS}
-      />
-    );
-  }
-  return (
-    <Icon
-      name={promptMentionIconName(promptMentionResourceFromSuggestion(item))}
-      className={ROW_ICON_CLASS}
-      aria-hidden
-    />
-  );
-}
-
-function getCommandKey(item: ComposerCommandSuggestion): string {
+function getCommandKey(item: ProviderCommandSuggestion): string {
   return JSON.stringify([
     item.kind,
     item.source,
@@ -233,7 +212,6 @@ interface SuggestionRowProps {
   primary: string;
   trailing: ReactNode;
   title: string;
-  rowKey: string;
   onApply: () => void;
   itemRefs: React.MutableRefObject<Array<HTMLButtonElement | null>>;
 }
@@ -245,14 +223,12 @@ function SuggestionRow({
   primary,
   trailing,
   title,
-  rowKey,
   onApply,
   itemRefs,
 }: SuggestionRowProps) {
   const isSelected = index === selectedIndex;
   return (
     <button
-      key={rowKey}
       ref={(element) => {
         itemRefs.current[index] = element;
       }}
@@ -393,7 +369,12 @@ function MentionResults({
                   key={getMentionKey(item)}
                   index={index}
                   selectedIndex={selectedIndex}
-                  icon={getMentionIcon(item)}
+                  icon={
+                    <PromptMentionIcon
+                      resource={promptMentionResourceFromSuggestion(item)}
+                      className={ROW_ICON_CLASS}
+                    />
+                  }
                   primary={primary}
                   trailing={
                     secondaryContext === null ? null : secondaryContextKind ===
@@ -404,7 +385,6 @@ function MentionResults({
                     )
                   }
                   title={getMentionTitle(item)}
-                  rowKey={getMentionKey(item)}
                   onApply={() => onApply(item)}
                   itemRefs={itemRefs}
                 />
@@ -467,7 +447,6 @@ function CommandResults({
                   </>
                 }
                 title={item.description ?? item.name}
-                rowKey={getCommandKey(item)}
                 onApply={() => onApply(item)}
                 itemRefs={itemRefs}
               />
@@ -496,7 +475,7 @@ function mentionResults(state: TypeaheadMenuState): OrderedMentionSuggestions {
 
 function commandSuggestions(
   state: TypeaheadMenuState,
-): readonly ComposerCommandSuggestion[] {
+): readonly ProviderCommandSuggestion[] {
   return state.trigger === "command" && state.state.kind === "results"
     ? state.state.suggestions
     : [];

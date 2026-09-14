@@ -1,6 +1,14 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, expectTypeOf, it } from "vitest";
-import type { BbPluginApi } from "../index.js";
+import type {
+  BbPluginApi,
+  JsonValue,
+  PluginAgentConfigurationContext,
+  PluginEnvironmentProviderDeclaration,
+  PluginEnvironments,
+  ReadonlyJsonValue,
+} from "../index.js";
+import type { PluginProviderIconRegistration } from "../app-contract.js";
 
 type ExpectedBbPluginApiKey =
   | "agents"
@@ -8,7 +16,10 @@ type ExpectedBbPluginApiKey =
   | "cli"
   | "events"
   | "experimental_aiServices"
+  | "experimental_environments"
   | "experimental_hooks"
+  | "experimental_machines"
+  | "experimental_serverAccess"
   | "hosts"
   | "http"
   | "log"
@@ -42,6 +53,7 @@ const EXPECTED_BACKEND_ROOT_TYPE_EXPORTS = [
   "PluginAgentToolResult",
   "PluginAgentToolSelection",
   "PluginBackground",
+  "PluginBbSdk",
   "PluginCli",
   "PluginCliCommandInfo",
   "PluginCliContext",
@@ -50,6 +62,11 @@ const EXPECTED_BACKEND_ROOT_TYPE_EXPORTS = [
   "PluginCliRegistration",
   "PluginCliResult",
   "PluginDispatchAttemptKind",
+  "PluginEnvironmentValidateDecision",
+  "PluginEnvironmentProviderDeclaration",
+  "PluginEnvironmentProviderRequirements",
+  "PluginEnvironments",
+  "PluginDispatchEnvironmentIntent",
   "PluginDispatchExecution",
   "PluginDispatchExecutionSources",
   "PluginDispatchInput",
@@ -71,6 +88,9 @@ const EXPECTED_BACKEND_ROOT_TYPE_EXPORTS = [
   "PluginInteractionResult",
   "PluginKvStorage",
   "PluginLogger",
+  "PluginMachineProviderDeclaration",
+  "PluginMachineValidateDecision",
+  "PluginMachines",
   "PluginMentionItem",
   "PluginMentionProviderRegistration",
   "PluginMentionSearchContext",
@@ -111,6 +131,9 @@ const EXPECTED_BACKEND_ROOT_TYPE_EXPORTS = [
   "PluginThreadEventPayloads",
   "PluginTurnFailedEvent",
   "PluginUi",
+  "PluginServerAccess",
+  "ServerAccessGrant",
+  "ServerAccessProviderDeclaration",
 ] as const;
 
 const EXPECTED_BACKEND_ROOT_VALUE_EXPORTS = [
@@ -180,6 +203,28 @@ function rootExportNames(
 describe("backend plugin SDK public surface", () => {
   it("snapshots every BbPluginApi root member", () => {
     expectTypeOf<keyof BbPluginApi>().toEqualTypeOf<ExpectedBbPluginApiKey>();
+  });
+
+  it("types configure plugin metadata as deep-readonly JSON", () => {
+    expectTypeOf<
+      PluginAgentConfigurationContext["pluginMetadata"]
+    >().toEqualTypeOf<{ readonly [key: string]: ReadonlyJsonValue }>();
+    expectTypeOf<ReadonlyJsonValue>().not.toMatchTypeOf<JsonValue>();
+
+    function writeMetadata(context: PluginAgentConfigurationContext): void {
+      // @ts-expect-error configure receives a deep-frozen snapshot
+      context.pluginMetadata.counter = 1;
+      // @ts-expect-error configure receives a deep-frozen snapshot
+      delete context.pluginMetadata.counter;
+    }
+    function borrowNestedValue(
+      context: PluginAgentConfigurationContext,
+    ): JsonValue | undefined {
+      // @ts-expect-error nested snapshot values are read-only too
+      return context.pluginMetadata.nested;
+    }
+    expectTypeOf(writeMetadata).toBeFunction();
+    expectTypeOf(borrowNestedValue).toBeFunction();
   });
 
   it("keeps every backend contract export in the root declaration bundle", async () => {
@@ -272,4 +317,24 @@ describe("backend plugin SDK public surface", () => {
       expect(rootValueExports.has(exportName), exportName).toBe(true);
     }
   });
+});
+
+it("requires provider presentation fields in author-facing declarations", () => {
+  expectTypeOf<
+    Pick<PluginProviderIconRegistration, "providerKind">
+  >().toEqualTypeOf<{
+    providerKind: "agent" | "machine" | "environment";
+  }>();
+  expectTypeOf<
+    Pick<PluginEnvironmentProviderDeclaration, "description" | "icon">
+  >().toEqualTypeOf<{
+    description: string;
+    icon: string;
+  }>();
+  expectTypeOf<
+    Pick<Parameters<PluginEnvironments["register"]>[0], "description" | "icon">
+  >().toEqualTypeOf<{
+    description: string;
+    icon: string;
+  }>();
 });

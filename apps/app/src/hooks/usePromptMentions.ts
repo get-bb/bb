@@ -1,16 +1,12 @@
 import { useCallback, useMemo, useState } from "react";
 import type { SidebarBootstrapResponse } from "@bb/server-contract";
-import { useDebounceValue } from "usehooks-ts";
-import {
-  buildSectionMentionSuggestions,
-  type SectionMentionCandidate,
-} from "./sectionMentionSuggestions";
-import { buildPathMentionSuggestions } from "./pathMentionSuggestions";
-import { buildPluginMentionSuggestions } from "./pluginMentionSuggestions";
 import {
   buildProjectMentionSuggestions,
-  type ProjectMentionCandidate,
-} from "./projectMentionSuggestions";
+  buildSectionMentionSuggestions,
+  type NamedMentionCandidate,
+} from "./namedMentionSuggestions";
+import { buildPathMentionSuggestions } from "./pathMentionSuggestions";
+import { buildPluginMentionSuggestions } from "./pluginMentionSuggestions";
 import {
   usePluginContributions,
   usePluginMentionSearch,
@@ -22,6 +18,7 @@ import {
   usePathSuggestions,
   PATH_SUGGESTION_DEBOUNCE_MS,
 } from "./usePathSuggestions";
+import { useDebouncedValue } from "./useDebouncedValue";
 import {
   DEFAULT_PLUGIN_MENTION_TRIGGER,
   PLUGIN_MENTION_TRIGGER_VALUES,
@@ -67,7 +64,7 @@ function buildProjectNamesById(
 
 function buildProjectMentionCandidates(
   sidebarNavigation: SidebarBootstrapResponse | undefined,
-): ProjectMentionCandidate[] {
+): NamedMentionCandidate[] {
   if (!sidebarNavigation) {
     return [];
   }
@@ -79,7 +76,7 @@ function buildProjectMentionCandidates(
 
 function buildSectionMentionCandidates(
   sidebarNavigation: SidebarBootstrapResponse | undefined,
-): SectionMentionCandidate[] {
+): NamedMentionCandidate[] {
   return (
     sidebarNavigation?.sections.map((section) => ({
       id: section.id,
@@ -158,7 +155,7 @@ export function usePromptMentions(
       ),
     [pluginContributions.data?.mentionProviders],
   );
-  const [debouncedQuery] = useDebounceValue(
+  const debouncedQuery = useDebouncedValue(
     trimmedQuery,
     PATH_SUGGESTION_DEBOUNCE_MS,
   );

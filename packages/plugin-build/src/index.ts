@@ -8,20 +8,23 @@ export {
   PLUGIN_SERVER_EXTERNALS,
 } from "./build-plugin-server.js";
 export { buildPluginHost } from "./build-plugin-host.js";
+export { resolvePluginNpmCli } from "./npm-cli.js";
 export * from "./plugin-dev-loop.js";
 export {
   PLUGIN_TOOLCHAIN_PINS,
   resolvePluginBuildToolchain,
   type PluginBuildToolchain,
 } from "./toolchain.js";
-export { resolvePluginNpmCli } from "./npm-cli.js";
 export {
   assertValidPluginCompactIconSvg,
   assertValidPluginIconSvg,
-  assertValidPluginLogoSvg,
 } from "./svg-asset.js";
 
 export {
-  isPathWithinDirectory,
+  readPluginPackageJsonFile,
+  resolveManifestAssetFile,
+  resolveManifestEntryFile,
   resolveManifestPath,
 } from "./plugin-manifest.js";
+
+export { copyPluginRuntime } from "./prepare-plugin-runtime.js";

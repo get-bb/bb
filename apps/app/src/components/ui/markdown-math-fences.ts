@@ -6,8 +6,8 @@ import {
 } from "./markdown-prompt-blockquote-boundaries.js";
 
 const OPEN_WITH_META_PATTERN = /^( {0,3})\$\$[ \t]*([^$]+?)[ \t]*$/u;
-const BARE_FENCE_PATTERN = /^( {0,3})\$\$[ \t]*$/u;
-const TRAILING_CLOSE_PATTERN = /^(.*?[^$\s])[ \t]*\$\$[ \t]*$/u;
+export const BARE_FENCE_PATTERN = /^( {0,3})\$\$[ \t]*$/u;
+export const TRAILING_CLOSE_PATTERN = /^(.*?[^$\s])[ \t]*\$\$[ \t]*$/u;
 
 interface MathFenceClose {
   index: number;

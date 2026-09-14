@@ -7,7 +7,7 @@ import type {
 import { formatModelLabel } from "@/hooks/useThreadCreationOptions";
 import {
   ModelReasoningPicker,
-  type ModelReasoningPickerFooterAction,
+  type ModelReasoningPickerHandoff,
 } from "@/components/pickers/ModelReasoningPicker";
 import { type PickerOption } from "@/components/pickers/OptionPicker";
 import type { ModelPickerOption } from "@/components/pickers/model-picker-option";
@@ -58,7 +58,7 @@ export interface ExecutionControlsProps {
   model: ExecutionModelConfig;
   serviceTier?: ExecutionServiceTierConfig;
   reasoning: ExecutionReasoningConfig;
-  footerAction?: ModelReasoningPickerFooterAction;
+  handoff?: ModelReasoningPickerHandoff;
   disabled?: boolean;
 }
 
@@ -68,7 +68,7 @@ export const ExecutionControls = memo(function ExecutionControls({
   model,
   serviceTier,
   reasoning,
-  footerAction,
+  handoff,
   disabled,
 }: ExecutionControlsProps) {
   const handleServiceTierChange = serviceTier?.onChange ?? (() => {});
@@ -86,7 +86,7 @@ export const ExecutionControls = memo(function ExecutionControls({
     model.options.length > 0 ||
     canSwitchProviders ||
     selectedProviderId.length > 0 ||
-    footerAction !== undefined;
+    handoff !== undefined;
 
   return (
     <>
@@ -117,7 +117,7 @@ export const ExecutionControls = memo(function ExecutionControls({
           fastModeLabel={serviceTier?.fastLabel}
           muted
           disabled={disabled}
-          footerAction={footerAction}
+          handoff={handoff}
         />
       ) : null}
     </>

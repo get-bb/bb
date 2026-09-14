@@ -297,6 +297,7 @@ function RootComposeFilePreviewTabContent({
     staleTime: 5_000,
   });
   const environment = environmentQuery.data;
+  const imageThreadId = fileOpenerSource?.threadId ?? rootPanelThreadId;
   const storageThreadId =
     tab.kind === "thread-storage-file-preview"
       ? fileOpenerSource === null
@@ -436,7 +437,7 @@ function RootComposeFilePreviewTabContent({
             onSelectionAddToChat={onSelectionAddToChat}
             source={tab.source}
             statusLabel={tab.statusLabel}
-            threadId={rootPanelThreadId}
+            threadId={imageThreadId}
           />
         ) : projectPreviewId !== null ? (
           <LazyProjectFilePreviewTabContent
@@ -449,6 +450,8 @@ function RootComposeFilePreviewTabContent({
             onOpenInEditor={onOpenInEditor}
             onSelectionAddToChat={onSelectionAddToChat}
             projectId={projectPreviewId}
+            rootPath={projectPreviewRootPath}
+            threadId={imageThreadId}
           />
         ) : (
           <LazyFilePreview

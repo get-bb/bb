@@ -331,10 +331,6 @@ interface TurnRowArgs extends RowBaseOverrideArgs {
   turnId?: string;
 }
 
-interface ReadIntentArgs {
-  path: string;
-}
-
 interface RowSequenceArgs {
   seq: number | undefined;
   sourceSeqStart: number | undefined;
@@ -508,15 +504,6 @@ export function conversationRow({
     text,
     attachments,
     turnRequest: null,
-  };
-}
-
-export function readIntent({ path }: ReadIntentArgs): TimelineActivityIntent {
-  return {
-    type: "read",
-    command: `cat ${path}`,
-    name: path.split("/").pop() ?? path,
-    path,
   };
 }
 

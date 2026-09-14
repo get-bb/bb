@@ -11,20 +11,28 @@ import type { Host } from "@bb/domain";
 import { makeHost } from "@bb/test-helpers/domain-fixtures";
 import { RETRY_ACTION_ICON } from "@bb/domain/update-state";
 import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
-import type { SystemConfigResponse } from "@bb/server-contract";
-import { MemoryRouter } from "react-router-dom";
+import type {
+  SystemConfigResponse,
+  SystemMachineProvider,
+} from "@bb/server-contract";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { makeSystemConfig } from "@/test/fixtures/system-config";
 import { MachinesSettingsSection } from "./MachinesSettingsSection";
+import { focusWithKeyboard } from "@/test/keyboard-focus";
 
 vi.mock("@/lib/sdk", () => ({
   sdk: {
     hosts: {
       delete: vi.fn(),
       list: vi.fn(),
+      experimental_listProviders: vi.fn(),
+      experimental_resume: vi.fn(),
+      experimental_retryCleanup: vi.fn(),
       retryUpdate: vi.fn(),
+      experimental_suspend: vi.fn(),
       update: vi.fn(),
     },
     system: { config: vi.fn() },
@@ -63,6 +71,23 @@ const offlineHost = host({
   status: "disconnected",
   lastSeenAt: NOW - 2 * 60 * 60 * 1000,
 });
+const sandboxHost = host({
+  id: "host_sandbox",
+  name: "Modal sandbox 3f9a",
+  type: "ephemeral",
+  machineProviderId: "modal-sandbox",
+});
+const modalMachineProvider: SystemMachineProvider = {
+  id: "modal-sandbox",
+  displayName: "Modal Sandbox",
+  description: "Create a sandbox in your Modal account.",
+  icon: "Box",
+  logoUrl: null,
+  pluginId: "environment-modal-sandbox",
+  inputs: null,
+  acceptsEmptyInputs: true,
+  supportsSuspend: true,
+};
 
 function systemConfig(): SystemConfigResponse {
   return makeSystemConfig({
@@ -99,11 +124,17 @@ function stubSidebarBootstrapFetch(): void {
   );
 }
 
+function LocationProbe() {
+  const location = useLocation();
+  return <div data-testid="location">{location.pathname}</div>;
+}
+
 function renderSection() {
   const { wrapper } = createQueryClientTestHarness();
   return render(
     <MemoryRouter>
       <MachinesSettingsSection />
+      <LocationProbe />
     </MemoryRouter>,
     { wrapper },
   );
@@ -119,6 +150,7 @@ async function openHostMenu(hostName: string): Promise<void> {
 beforeEach(() => {
   hostDaemon.localDaemonHostId = "host_primary";
   hostDaemon.platform = "darwin";
+  vi.mocked(sdk.hosts.experimental_listProviders).mockResolvedValue([]);
 });
 
 afterEach(() => {
@@ -128,6 +160,57 @@ afterEach(() => {
 });
 
 describe("MachinesSettingsSection", () => {
+  it("reveals sandboxes in the machine list behind Show all machines", async () => {
+    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
+    vi.mocked(sdk.hosts.list).mockResolvedValue([primaryHost, sandboxHost]);
+    vi.mocked(sdk.hosts.experimental_listProviders).mockResolvedValue([
+      modalMachineProvider,
+    ]);
+    stubSidebarBootstrapFetch();
+
+    renderSection();
+
+    const persistentName = await screen.findByText(primaryHost.name);
+    expect(
+      persistentName.parentElement?.querySelector('[data-icon="Laptop"]'),
+    ).not.toBeNull();
+    expect(screen.queryByText(sandboxHost.name)).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Show all machines" }));
+
+    const sandboxName = screen.getByText(sandboxHost.name);
+    expect(sandboxName.parentElement?.querySelector("svg")).not.toBeNull();
+    expect(
+      sandboxName.parentElement?.querySelector('[data-icon="Laptop"]'),
+    ).toBeNull();
+    expect(screen.queryByText(modalMachineProvider.displayName)).toBeNull();
+    await openHostMenu(sandboxHost.name);
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Suspend" }));
+    await waitFor(() => {
+      expect(vi.mocked(sdk.hosts.experimental_suspend)).toHaveBeenCalledWith({
+        hostId: sandboxHost.id,
+      });
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show fewer machines" }),
+    );
+    expect(screen.queryByText(sandboxHost.name)).toBeNull();
+  });
+
+  it("offers no reveal when every machine is already listed", async () => {
+    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
+    vi.mocked(sdk.hosts.list).mockResolvedValue([primaryHost]);
+    stubSidebarBootstrapFetch();
+
+    renderSection();
+
+    await screen.findByText(primaryHost.name);
+    expect(
+      screen.queryByRole("button", { name: "Show all machines" }),
+    ).toBeNull();
+  });
+
   it("renders machine status, project, and permission metadata as visible text", async () => {
     vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
     vi.mocked(sdk.hosts.list).mockResolvedValue([primaryHost, offlineHost]);
@@ -148,8 +231,8 @@ describe("MachinesSettingsSection", () => {
     expect(
       screen
         .getByRole("link", { name: "Open MacBook Pro" })
-        .querySelector("[data-icon]"),
-    ).toBeNull();
+        .querySelector('[data-icon="Laptop"]'),
+    ).not.toBeNull();
   });
 
   it("distinguishes the client-local daemon from the primary machine", async () => {
@@ -163,12 +246,18 @@ describe("MachinesSettingsSection", () => {
 
     const primaryName = await screen.findByText("MacBook Pro");
     const localName = screen.getByText("dev-vm");
-    expect(primaryName.parentElement?.textContent).toContain("primary");
-    expect(primaryName.parentElement?.textContent).not.toContain(
+    expect(primaryName.parentElement?.parentElement?.textContent).toContain(
+      "primary",
+    );
+    expect(primaryName.parentElement?.parentElement?.textContent).not.toContain(
       "this machine",
     );
-    expect(localName.parentElement?.textContent).toContain("this machine");
-    expect(localName.parentElement?.textContent).not.toContain("primary");
+    expect(localName.parentElement?.parentElement?.textContent).toContain(
+      "this machine",
+    );
+    expect(localName.parentElement?.parentElement?.textContent).not.toContain(
+      "primary",
+    );
     expect(screen.getByText("Linux")).toBeDefined();
   });
 
@@ -292,7 +381,12 @@ describe("MachinesSettingsSection", () => {
     expect(action?.parentElement?.className).toContain("sm:flex-row");
     fireEvent.click(addMachine);
     expect(
-      await screen.findByRole("heading", { name: "Add a machine" }),
+      await screen.findByRole("heading", { name: "Set up machine access" }),
+    ).toBeDefined();
+    expect(
+      screen.getByText(
+        "A new machine has to reach this server over the network. Choose the address it should use.",
+      ),
     ).toBeDefined();
   });
 
@@ -368,6 +462,46 @@ describe("MachinesSettingsSection", () => {
     ).toBe(true);
   });
 
+  it("navigates to the machine detail route when the row caret is clicked", async () => {
+    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
+    vi.mocked(sdk.hosts.list).mockResolvedValue([primaryHost, offlineHost]);
+    stubSidebarBootstrapFetch();
+
+    renderSection();
+
+    const machineLink = await screen.findByRole("link", {
+      name: "Open dev-vm",
+    });
+    const row = machineLink.closest("[data-machine-row]");
+    const caret = row?.querySelector('[data-icon="ChevronRight"]');
+    expect(caret).not.toBeNull();
+    if (caret === null || caret === undefined) return;
+
+    fireEvent.click(caret);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("location").textContent).toBe(
+        "/settings/machines/host_remote",
+      );
+    });
+  });
+
+  it("keeps the row menu open without navigating when its trigger is clicked", async () => {
+    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
+    vi.mocked(sdk.hosts.list).mockResolvedValue([primaryHost, offlineHost]);
+    stubSidebarBootstrapFetch();
+
+    renderSection();
+
+    await screen.findByText("dev-vm");
+    await openHostMenu("dev-vm");
+
+    expect(
+      await screen.findByRole("menuitem", { name: "Rename" }),
+    ).toBeDefined();
+    expect(screen.getByTestId("location").textContent).toBe("/");
+  });
+
   it("renames a machine through the row menu", async () => {
     vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
     vi.mocked(sdk.hosts.list).mockResolvedValue([primaryHost, offlineHost]);
@@ -435,7 +569,7 @@ describe("MachinesSettingsSection", () => {
     });
     expect(removeItem.getAttribute("aria-disabled")).toBe("true");
     expect(removeItem.textContent).toBe("Remove machine");
-    fireEvent.focus(removeItem);
+    focusWithKeyboard(removeItem);
     expect(
       await screen.findByRole("tooltip", {
         name: "bb's primary machine can't be removed.",

@@ -9,9 +9,19 @@ interface TimelineLatestRows {
 }
 
 interface TimelineLatestRowsCache {
-  get(paramsKey: string, maxSeq: number): TimelineLatestRows | undefined;
-  set(paramsKey: string, value: TimelineLatestRows): void;
+  get(
+    threadId: string,
+    paramsKey: string,
+    maxSeq: number,
+  ): TimelineLatestRows | undefined;
+  invalidateThread(threadId: string): void;
+  set(threadId: string, paramsKey: string, value: TimelineLatestRows): void;
   readonly size: number;
+}
+
+interface TimelineLatestRowsCacheEntry {
+  ring: TimelineLatestRows[];
+  threadId: string;
 }
 
 export function createTimelineLatestRowsCache(
@@ -19,24 +29,34 @@ export function createTimelineLatestRowsCache(
 ): TimelineLatestRowsCache {
   const maxEntries = options.maxEntries ?? DEFAULT_MAX_ENTRIES;
   const ringSize = options.ringSize ?? DEFAULT_RING_SIZE;
-  const entries = new Map<string, TimelineLatestRows[]>();
+  const entries = new Map<string, TimelineLatestRowsCacheEntry>();
 
-  function touch(paramsKey: string, ring: TimelineLatestRows[]): void {
+  function touch(paramsKey: string, entry: TimelineLatestRowsCacheEntry): void {
     entries.delete(paramsKey);
-    entries.set(paramsKey, ring);
+    entries.set(paramsKey, entry);
   }
 
   return {
-    get(paramsKey, maxSeq) {
-      const ring = entries.get(paramsKey);
-      if (ring === undefined) {
+    get(threadId, paramsKey, maxSeq) {
+      const entry = entries.get(paramsKey);
+      if (entry === undefined || entry.threadId !== threadId) {
         return undefined;
       }
-      touch(paramsKey, ring);
-      return ring.find((entry) => entry.maxSeq === maxSeq);
+      touch(paramsKey, entry);
+      return entry.ring.find((value) => value.maxSeq === maxSeq);
     },
-    set(paramsKey, value) {
-      const ring = entries.get(paramsKey) ?? [];
+    invalidateThread(threadId) {
+      for (const [paramsKey, entry] of entries) {
+        if (entry.threadId === threadId) {
+          entries.delete(paramsKey);
+        }
+      }
+    },
+    set(threadId, paramsKey, value) {
+      const cached = entries.get(paramsKey);
+      const entry =
+        cached?.threadId === threadId ? cached : { ring: [], threadId };
+      const ring = entry.ring;
       const existingIndex = ring.findIndex(
         (entry) => entry.maxSeq === value.maxSeq,
       );
@@ -47,7 +67,7 @@ export function createTimelineLatestRowsCache(
       while (ring.length > ringSize) {
         ring.shift();
       }
-      touch(paramsKey, ring);
+      touch(paramsKey, entry);
       while (entries.size > maxEntries) {
         const oldest = entries.keys().next().value;
         if (oldest === undefined) {

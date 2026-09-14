@@ -18,16 +18,19 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --config vitest.config.ts"
+    "test": "vitest run --config vitest.config.ts",
+    "prepare:bundled": "bb-plugin-build prepare-bundled"
   },
   "dependencies": {
     "@bb/shared-ui": "workspace:*",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
-    "zod": "^4.3.6"
+    "zod": "^4.3.6",
+    "undici": "^7.28.0"
   },
   "devDependencies": {
+    "@bb/plugin-build": "workspace:*",
     "@get-bb/plugin-sdk": "workspace:*",
     "@radix-ui/react-dialog": "^1.1.19",
     "@testing-library/react": "^16.3.2",

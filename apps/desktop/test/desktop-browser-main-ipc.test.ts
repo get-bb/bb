@@ -123,6 +123,10 @@ class RecordingDesktopBrowserViewManager implements DesktopBrowserViewManager {
     return () => undefined;
   }
 
+  profileSession(): never {
+    throw new Error("profileSession is not used by IPC tests");
+  }
+
   public readonly attachCalls: AttachCall[] = [];
   public readonly beginWindowResizeCalls: WindowResizeCall[] = [];
   public readonly destroyAllCalls: string[] = [];

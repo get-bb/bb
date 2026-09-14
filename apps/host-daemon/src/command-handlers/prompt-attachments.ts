@@ -131,16 +131,17 @@ function validateFetchedAttachmentSize(
   }
 }
 
-function requireContainedPath(rootPath: string, candidatePath: string): string {
+export function requireContainedPath(
+  rootPath: string,
+  candidatePath: string,
+  message: string,
+): string {
   const resolved = resolveContainedPath({
     rootPath,
     candidatePath,
   });
   if (!resolved) {
-    throw new CommandDispatchError(
-      "invalid_path",
-      "Attachment staging path escapes the thread storage root",
-    );
+    throw new CommandDispatchError("invalid_path", message);
   }
   return resolved;
 }
@@ -149,10 +150,12 @@ function resolveStagingDir(args: StagePromptAttachmentsArgs): string {
   const threadDir = requireContainedPath(
     args.threadStorageRootPath,
     path.join(args.threadStorageRootPath, args.threadId),
+    "Attachment staging path escapes the thread storage root",
   );
   return requireContainedPath(
     args.threadStorageRootPath,
     path.join(threadDir, "Attachments"),
+    "Attachment staging path escapes the thread storage root",
   );
 }
 
@@ -248,31 +251,14 @@ async function stagePromptInputList(
 export async function stagePromptAttachments(
   args: StagePromptAttachmentsArgs,
 ): Promise<StagedPromptAttachments> {
-  if (!args.input.some(shouldStageAttachment)) {
-    return {
-      cleanup: async () => undefined,
-      input: args.input,
-    };
-  }
-
-  const stagingDir = resolveStagingDir(args);
-  await mkdir(stagingDir, { recursive: true });
-
-  const stagedPaths: string[] = [];
-  try {
-    const input = await stagePromptInputList({
-      ...args,
-      stagedPaths,
-      stagingDir,
-    });
-    return {
-      cleanup: () => cleanupStagedAttachments(stagingDir, stagedPaths),
-      input,
-    };
-  } catch (error) {
-    await cleanupStagedAttachments(stagingDir, stagedPaths);
-    throw error;
-  }
+  const staged = await stagePromptAttachmentGroups({
+    ...args,
+    inputGroups: [args.input],
+  });
+  return {
+    cleanup: staged.cleanup,
+    input: staged.inputGroups[0] ?? args.input,
+  };
 }
 
 export async function stagePromptAttachmentGroups(

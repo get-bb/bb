@@ -3,6 +3,7 @@ import type { Hono } from "hono";
 import {
   desktopBrowserCreateRequestSchema,
   desktopBrowserAcquireRequestSchema,
+  desktopBrowserImportCookiesRequestSchema,
   publicApiRoutes,
   typedRoutes,
   type PublicApiSchema,
@@ -14,6 +15,8 @@ import {
   captureDesktopBrowserTab,
   createDesktopBrowserTab,
   desktopBrowserTabAction,
+  importDesktopBrowserCookies,
+  listDesktopBrowserImportSources,
   listDesktopBrowserInstances,
   listDesktopBrowserTabs,
   openDesktopBrowserConnection,
@@ -81,4 +84,16 @@ export function registerDesktopBrowserRoutes(app: Hono, deps: AppDeps) {
   post(routes.closeTab, async (c, input) =>
     c.json(await desktopBrowserTabAction(deps, input, "close")),
   );
+  post(routes.listImportSources, async (c, input) =>
+    c.json(await listDesktopBrowserImportSources(deps, input)),
+  );
+  post(routes.importCookies, async (c, input) => {
+    c.header("Cache-Control", "no-store");
+    return c.json(
+      await importDesktopBrowserCookies(
+        deps,
+        desktopBrowserImportCookiesRequestSchema.parse(input),
+      ),
+    );
+  });
 }

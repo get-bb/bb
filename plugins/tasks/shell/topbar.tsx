@@ -67,7 +67,6 @@ function TaskPager({
   };
   return (
     <div className="hidden shrink-0 items-center gap-0.5 text-xs tabular-nums text-muted-foreground @sm:flex">
-      {}
       <span className="hidden px-1 @md:inline">
         {position.index} / {position.total}
       </span>
@@ -238,7 +237,6 @@ export function TasksTopbar({
             >
               <Icon name="ChevronLeft" className="size-4" />
             </Button>
-            {}
             {project ? (
               <button
                 type="button"
@@ -294,7 +292,6 @@ export function TasksTopbar({
           />
         </span>
       ) : null}
-      {}
       <RefreshTasksButton />
       {route.kind !== "task" && route.kind !== "manage" ? (
         <Button
@@ -304,7 +301,6 @@ export function TasksTopbar({
           onClick={onNewTask}
         >
           <Icon name="Plus" className="size-3.5" />
-          {}
           <span className="hidden @lg:inline">New task</span>
         </Button>
       ) : null}

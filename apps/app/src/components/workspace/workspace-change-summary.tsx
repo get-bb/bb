@@ -28,7 +28,9 @@ function formatWorkspaceChangedFilesLabel(changedFiles: number): string {
   return `${changedFiles} file${changedFiles === 1 ? "" : "s"}`;
 }
 
-export function formatChangeSummary(tally: ChangeTally): string {
+function formatChangeSummaryWithoutLineStats(
+  tally: ChangeTally,
+): string | null {
   if (
     tally.filesCount === 0 &&
     tally.insertions === 0 &&
@@ -36,43 +38,38 @@ export function formatChangeSummary(tally: ChangeTally): string {
   ) {
     return "No changes";
   }
-  const filesLabel = formatWorkspaceChangedFilesLabel(tally.filesCount);
   if (
     !tally.lineStatsComplete ||
     (tally.insertions === 0 && tally.deletions === 0)
   ) {
-    return filesLabel;
+    return formatWorkspaceChangedFilesLabel(tally.filesCount);
   }
-  const diffText = formatDiffStatsText({
-    added: tally.insertions,
-    removed: tally.deletions,
-  });
-  return `${filesLabel}, ${diffText}`;
+  return null;
+}
+
+export function formatChangeSummary(tally: ChangeTally): string {
+  return (
+    formatChangeSummaryWithoutLineStats(tally) ??
+    `${formatWorkspaceChangedFilesLabel(tally.filesCount)}, ${formatDiffStatsText(
+      {
+        added: tally.insertions,
+        removed: tally.deletions,
+      },
+    )}`
+  );
 }
 
 export function renderChangeSummary(tally: ChangeTally): ReactNode {
-  if (
-    tally.filesCount === 0 &&
-    tally.insertions === 0 &&
-    tally.deletions === 0
-  ) {
-    return "No changes";
-  }
-  const filesLabel = formatWorkspaceChangedFilesLabel(tally.filesCount);
-  if (
-    !tally.lineStatsComplete ||
-    (tally.insertions === 0 && tally.deletions === 0)
-  ) {
-    return filesLabel;
-  }
   return (
-    <>
-      {filesLabel},{" "}
-      <DiffStatsTally
-        insertions={tally.insertions}
-        deletions={tally.deletions}
-      />
-    </>
+    formatChangeSummaryWithoutLineStats(tally) ?? (
+      <>
+        {formatWorkspaceChangedFilesLabel(tally.filesCount)},{" "}
+        <DiffStatsTally
+          insertions={tally.insertions}
+          deletions={tally.deletions}
+        />
+      </>
+    )
   );
 }
 

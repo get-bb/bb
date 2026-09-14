@@ -2,6 +2,7 @@ import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { publishCommentsChanged, type TasksApiStore } from "../api";
 import type { TaskThread, TaskThreadLiveStatus } from "../db";
 import { createSystemComment, publishThreadsChanged } from "../delegate";
+import { errorMessage } from "../shared/errors";
 
 const TERMINAL_LIVE_STATUSES = new Set<TaskThreadLiveStatus>(["completed"]);
 export const THREAD_STATUS_RECONCILE_INTERVAL_MS = 5 * 60_000;
@@ -14,8 +15,6 @@ function liveStatusFromThread(thread: SdkThread): TaskThreadLiveStatus {
   if (thread.deletedAt !== null) return "completed";
 
   switch (thread.status) {
-    // A pending thread has been created but has never dispatched. It is on
-    // its way to running, which is exactly what "starting" means to a task.
     case "pending":
     case "starting":
       return "starting";
@@ -27,13 +26,11 @@ function liveStatusFromThread(thread: SdkThread): TaskThreadLiveStatus {
   }
 }
 
-function trackedThreads(store: TasksApiStore, threadId?: string): TaskThread[] {
+function trackedThreads(store: TasksApiStore): TaskThread[] {
   const tracked: TaskThread[] = [];
   for (const task of store.tasks.listTasks()) {
     for (const thread of store.tasks.listTaskThreads(task.id)) {
-      if (threadId === undefined || thread.threadId === threadId) {
-        tracked.push(thread);
-      }
+      tracked.push(thread);
     }
   }
   return tracked;
@@ -90,7 +87,7 @@ function transitionTrackedThread(
   threadId: string,
   liveStatus: TaskThreadLiveStatus,
 ): void {
-  for (const thread of trackedThreads(store, threadId)) {
+  for (const thread of store.tasks.listTaskThreadsByThreadId(threadId)) {
     transitionThread(bb, store, thread, liveStatus);
   }
 }
@@ -111,9 +108,9 @@ async function reconcileTrackedThread(
       return;
     }
     bb.log.warn(
-      `Could not reconcile task thread ${trackedThread.threadId}: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
+      `Could not reconcile task thread ${trackedThread.threadId}: ${errorMessage(
+        error,
+      )}`,
     );
   }
 }

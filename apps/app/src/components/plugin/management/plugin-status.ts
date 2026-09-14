@@ -5,7 +5,7 @@ import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
 export interface PluginRuntimeStatusPresentation {
   icon: IconName;
   label: string;
-  tone: "error" | "warning";
+  tone: "error" | "warning" | "muted";
   condition: string;
   recovery: string;
 }
@@ -19,6 +19,7 @@ const PLUGIN_RUNTIME_STATUS_DEFINITIONS: Record<
   PluginRuntimeStatus,
   PluginRuntimeStatusDefinition | null
 > = {
+  starting: { icon: "Clock", label: "Starting", tone: "muted" },
   running: null,
   error: { icon: "CircleX", label: "Failed", tone: "error" },
   incompatible: {
@@ -67,6 +68,8 @@ function pluginRuntimeRecovery(plugin: PluginListItem): string {
 
 function pluginRuntimeCondition(plugin: PluginListItem): string {
   switch (plugin.status) {
+    case "starting":
+      return "The plugin is starting. This can take a moment.";
     case "error":
       return "The plugin couldn't start.";
     case "incompatible":
@@ -100,7 +103,7 @@ export type PluginRowSignal =
       kind: "status";
       icon: IconName;
       label: string;
-      tone: "error" | "warning";
+      tone: PluginRuntimeStatusPresentation["tone"];
       detail: string | null;
     };
 

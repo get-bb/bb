@@ -1,3 +1,6 @@
+import { ensureHostSessionReadyForWork } from "../hosts/host-lifecycle.js";
+import { isMachineWaitingForExecution } from "../machines/lifecycle.js";
+import { waitForMachineMaintenance } from "../machines/provider-orchestration.js";
 import {
   getQueuedThreadMessage,
   getThread,
@@ -57,7 +60,7 @@ interface QueuedMessageDispatchRef {
 
 type PreparedQueuedMessageDispatchWake = Exclude<
   QueuedMessageDispatchWake,
-  { kind: "provisioning-ended" } | { kind: "host-connected" }
+  { kind: "provisioning-ended" }
 >;
 
 const pendingPluginRechecks = new WeakSet<
@@ -92,20 +95,8 @@ function prepareQueuedMessageDispatchWake(
       });
       return [];
     case "host-connected": {
-      const prepared: PreparedQueuedMessageDispatchWake[] = [];
-      for (const threadId of listThreadIdsWithHostOfflineQueueWaits(
-        deps.db,
-        wake.hostId,
-      )) {
-        const cleared = clearThreadQueueWaitsOfKind(deps, {
-          threadId,
-          kind: "host-offline",
-        });
-        if (cleared > 0) {
-          prepared.push({ kind: "thread-ready", threadId });
-        }
-      }
-      return prepared;
+      if (isMachineWaitingForExecution(deps, wake.hostId)) return [];
+      return [wake];
     }
     default:
       return [wake];
@@ -116,6 +107,8 @@ function dispatchWakeContext(
   wake: PreparedQueuedMessageDispatchWake,
 ): Record<string, number | string | undefined> {
   switch (wake.kind) {
+    case "host-connected":
+      return { hostId: wake.hostId, wake: wake.kind };
     case "workspace-ready":
     case "thread-ready":
     case "turn-started":
@@ -156,10 +149,50 @@ function schedulePreparedQueuedMessageDispatch(
   });
 }
 
+const queuedMachineReadiness = new WeakMap<
+  QueueDispatchDeps["db"],
+  Set<string>
+>();
+
+export function requestQueuedMachineReadiness(
+  deps: QueueDispatchDeps,
+  hostId: string,
+): void {
+  const pending = queuedMachineReadiness.get(deps.db) ?? new Set<string>();
+  queuedMachineReadiness.set(deps.db, pending);
+  if (pending.has(hostId)) return;
+  pending.add(hostId);
+  void waitForMachineMaintenance(deps, hostId)
+    .then(() => {
+      return ensureHostSessionReadyForWork(deps, { hostId });
+    })
+    .then(() => {
+      requestQueuedMessageDispatch(deps, { kind: "host-connected", hostId });
+    })
+    .catch((error) => {
+      deps.logger.warn(
+        { hostId, error },
+        "Could not prepare machine for queued messages",
+      );
+    })
+    .finally(() => pending.delete(hostId));
+}
+
 export function requestQueuedMessageDispatch(
   deps: QueueDispatchDeps,
   wake: QueuedMessageDispatchWake,
 ): void {
+  if (
+    wake.kind === "host-connected" &&
+    isMachineWaitingForExecution(deps, wake.hostId)
+  ) {
+    if (
+      listThreadIdsWithHostOfflineQueueWaits(deps.db, wake.hostId).length > 0
+    ) {
+      requestQueuedMachineReadiness(deps, wake.hostId);
+    }
+    return;
+  }
   for (const prepared of prepareQueuedMessageDispatchWake(deps, wake)) {
     schedulePreparedQueuedMessageDispatch(deps, prepared);
   }
@@ -179,6 +212,22 @@ async function executePreparedQueuedMessageDispatch(
   wake: PreparedQueuedMessageDispatchWake,
 ): Promise<void> {
   switch (wake.kind) {
+    case "host-connected":
+      for (const threadId of listThreadIdsWithHostOfflineQueueWaits(
+        deps.db,
+        wake.hostId,
+      )) {
+        for (const row of listQueuedThreadMessagesWaitingOnKind(deps.db, {
+          kind: "host-offline",
+          threadId,
+        })) {
+          await attemptAutomaticQueuedMessage(deps, row, {
+            now: Date.now(),
+            respectRequeuePacing: false,
+          });
+        }
+      }
+      return;
     case "workspace-ready":
       await runWorkspaceReadyDispatch(deps, wake.threadId);
       return;

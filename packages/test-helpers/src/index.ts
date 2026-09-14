@@ -12,17 +12,14 @@ export {
   makeWorkspaceWorkingTree,
 } from "./workspace-status.js";
 export {
-  PROVIDER_CORPUS_DIR_ENV,
+  listOpenFilePids,
+  readPositivePidFile,
+  resolveProjectEnvCandidates,
+} from "./process-fixtures.js";
+export {
   corpusAvailable,
-  decodeCorpusStoredEventRow,
   listCorpusThreads,
   loadCorpusThread,
   resolveProviderCorpusDir,
 } from "./provider-corpus.js";
-export type {
-  CorpusManifestThread,
-  CorpusStoredEventRow,
-  CorpusThread,
-  CorpusThreadRow,
-  ListCorpusThreadsArgs,
-} from "./provider-corpus.js";
+export type { CorpusThread } from "./provider-corpus.js";

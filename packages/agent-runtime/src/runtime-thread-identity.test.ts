@@ -14,7 +14,6 @@ describe("RuntimeThreadIdentityRegistry", () => {
     registry.registerThreadProvider({
       providerId: "codex",
       providerState,
-      expectsIdentityNotification: true,
       threadId: "thread-1",
     });
     registry.recordProviderThreadIdentity({
@@ -39,13 +38,11 @@ describe("RuntimeThreadIdentityRegistry", () => {
     registry.registerThreadProvider({
       providerId: "codex",
       providerState,
-      expectsIdentityNotification: false,
       threadId: "thread-1",
     });
     registry.registerThreadProvider({
       providerId: "codex",
       providerState,
-      expectsIdentityNotification: false,
       threadId: "thread-2",
     });
     registry.recordProviderThreadIdentity({
@@ -89,7 +86,6 @@ describe("RuntimeThreadIdentityRegistry", () => {
     registry.registerThreadProvider({
       providerId: "claude-code",
       providerState: singleThreadState,
-      expectsIdentityNotification: false,
       threadId: "thread-3",
     });
     expect(
@@ -129,5 +125,86 @@ describe("RuntimeThreadIdentityRegistry", () => {
       providerThreadId: "provider-thread-1",
       scope: turnScope("turn-1"),
     });
+  });
+
+  it("preserves an explicit checkpoint/session pair when the current session differs", () => {
+    const event: ThreadEvent = {
+      type: "turn/completed",
+      threadId: "provider-source",
+      providerThreadId: "provider-source",
+      providerCheckpointId: "source-checkpoint",
+      status: "completed",
+      scope: turnScope("source-turn"),
+    };
+    expect(
+      stampThreadEventScope({
+        event,
+        threadId: "source",
+        providerThreadId: "provider-fork",
+      }),
+    ).toEqual({ ...event, threadId: "source" });
+    expect(
+      stampThreadEventScope({
+        event: { ...event, providerThreadId: "" },
+        threadId: "source",
+        providerThreadId: "provider-source",
+      }),
+    ).toEqual({ ...event, threadId: "source" });
+  });
+
+  it("requires explicit ownership for identities even with one unresolved thread", () => {
+    const registry = new RuntimeThreadIdentityRegistry();
+    const providerState = registry.createProviderState({ providerId: "codex" });
+    registry.registerThreadProvider({
+      providerId: "codex",
+      providerState,
+      threadId: "source",
+    });
+    expect(
+      registry.resolveProviderIdentityThreadId({
+        providerState,
+        eventThreadId: "unknown",
+        sourceThreadId: undefined,
+      }),
+    ).toBeUndefined();
+    expect(
+      registry.resolveProviderIdentityThreadId({
+        providerState,
+        eventThreadId: "unstamped",
+        sourceThreadId: "source",
+      }),
+    ).toBe("source");
+    registry.recordProviderThreadIdentity({
+      providerState,
+      threadId: "source",
+      providerThreadId: "provider-source",
+    });
+    expect(
+      registry.resolveProviderIdentityThreadId({
+        providerState,
+        eventThreadId: "provider-source",
+        sourceThreadId: undefined,
+      }),
+    ).toBe("source");
+    registry.forgetThread({ providerState, threadId: "source" });
+    registry.registerThreadProvider({
+      providerId: "codex",
+      providerState,
+      threadId: "fork",
+    });
+    expect(
+      registry.resolveProviderIdentityThreadId({
+        providerState,
+        eventThreadId: "provider-source",
+        sourceThreadId: "source",
+      }),
+    ).toBeUndefined();
+    expect(() =>
+      registry.recordProviderThreadIdentity({
+        providerState,
+        threadId: "source",
+        providerThreadId: "provider-source",
+      }),
+    ).toThrow("No provider associated");
   });
 });

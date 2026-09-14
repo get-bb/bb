@@ -319,12 +319,6 @@ function parsePathFromUserShellEnv(stdout: string): string | null {
   return null;
 }
 
-export async function resolveUserShellPath(
-  options: ResolveUserShellPathOptions = {},
-): Promise<string | null> {
-  return resolveUserShellPathWithPrevious(options, null);
-}
-
 async function resolveUserShellPathWithPrevious(
   options: ResolveUserShellPathOptions,
   previousPath: string | null,

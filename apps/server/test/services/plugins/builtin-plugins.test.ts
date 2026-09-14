@@ -28,12 +28,11 @@ import {
 } from "../../../src/services/plugins/plugin-service.js";
 import { readPluginManifest } from "../../../src/services/plugins/manifest.js";
 import {
-  BUILTIN_PLUGIN_NAMES,
   BUILTIN_PLUGINS,
   OFFICIAL_PLUGINS,
   resolveBuiltinPluginRootPath,
 } from "../../../src/services/plugins/builtin-registry.js";
-import { copyBuiltinPlugins } from "../../../scripts/copy-builtin-plugins.js";
+import { copyPluginRuntime } from "@bb/plugin-build";
 import { testLogger } from "../../helpers/test-app.js";
 import { createNoopTelemetryService } from "../../../src/services/system/telemetry.js";
 
@@ -57,11 +56,14 @@ function packagedLoadCount(): number {
   return (globals.__packagedBuiltinLoads as number | undefined) ?? 0;
 }
 
-async function writePackagedBuiltinSource(workDir: string): Promise<{
+async function writePackagedBuiltinSource(
+  workDir: string,
+  names: readonly string[],
+): Promise<{
   sourceModuleDir: string;
 }> {
   const sourceModuleDir = join(workDir, "source-module");
-  for (const name of BUILTIN_PLUGIN_NAMES) {
+  for (const name of names) {
     const sourceRoot = join(sourceModuleDir, "builtin-plugins", name);
     const usesPluginOwnedIcon = name === "automations";
     const usesDeclaredIcons = name === "provider-acp";
@@ -144,6 +146,21 @@ async function writePackagedBuiltinSource(workDir: string): Promise<{
   return { sourceModuleDir };
 }
 
+async function copyPackagedBuiltinRuntime(
+  workDir: string,
+  names: readonly string[],
+): Promise<{ targetRoot: string }> {
+  const { sourceModuleDir } = await writePackagedBuiltinSource(workDir, names);
+  const targetRoot = join(workDir, "builtin-plugins");
+  for (const name of names) {
+    await copyPluginRuntime({
+      sourceRoot: join(sourceModuleDir, "builtin-plugins", name),
+      targetDir: join(targetRoot, name),
+    });
+  }
+  return { targetRoot };
+}
+
 function createService(args: {
   dataDir: string;
   db: DbConnection;
@@ -209,6 +226,7 @@ describe("builtin plugin reconciliation", () => {
   it("keeps official plugins bundled but out of the auto-install builtins", () => {
     const optionalNames = OFFICIAL_PLUGINS.map((plugin) => plugin.name);
     expect(optionalNames).toEqual([
+      "environment-modal-sandbox",
       "browser-automation",
       "github",
       "docs",
@@ -224,9 +242,10 @@ describe("builtin plugin reconciliation", () => {
 
   it("gives every builtin plugin a deliberate settings icon", async () => {
     const expectedIcons = new Map([
+      ["bb-guide", "Explore"],
       ["account-pool", "Layers"],
       ["ask-user-question", "MessageQuestion"],
-      ["automations", "Clock"],
+      ["automations", "Repeat"],
       ["concurrency-limit", "Limitation"],
       ["connect", "Smartphone"],
       ["custom-instructions", "EditFile"],
@@ -235,6 +254,8 @@ describe("builtin plugin reconciliation", () => {
       ["keep-awake", "Coffee"],
       ["monaco-editor", "Code"],
       ["pdf-preview", "FileText"],
+      ["environment-project-checkout", "Laptop"],
+      ["environment-personal-workspace", "Folder"],
       ["provider-acp", "./icons/acp.svg"],
       ["plugin-api-docs", "./icons/ai-generative.svg"],
       ["provider-claude-code", "./icons/claude-code.svg"],
@@ -250,6 +271,7 @@ describe("builtin plugin reconciliation", () => {
       ["git-graph", "GitBranch"],
       ["pc-control", "Laptop"],
       ["workspace-explorer", "FolderOpen"],
+      ["environment-git-worktree", "FolderGit"],
     ]);
 
     expect(BUILTIN_PLUGINS).toHaveLength(expectedIcons.size);
@@ -932,15 +954,9 @@ describe("builtin plugin reconciliation", () => {
   });
 
   it("installs and loads a packaged builtin whose source files are omitted", async () => {
-    const { sourceModuleDir } = await writePackagedBuiltinSource(workDir);
-    const targetRoot = join(workDir, "builtin-plugins");
-    await copyBuiltinPlugins({
-      bbVersion: "0.9.0-test",
-      build: false,
-      plugins: BUILTIN_PLUGINS,
-      sourceModuleDir,
-      targetRoot,
-    });
+    const { targetRoot } = await copyPackagedBuiltinRuntime(workDir, [
+      "automations",
+    ]);
     const copiedRoot = join(targetRoot, "automations");
 
     service = createService({
@@ -970,16 +986,10 @@ describe("builtin plugin reconciliation", () => {
   });
 
   it("registers but does not load a packaged builtin with stale backend metadata", async () => {
-    const { sourceModuleDir } = await writePackagedBuiltinSource(workDir);
+    const { targetRoot } = await copyPackagedBuiltinRuntime(workDir, [
+      "automations",
+    ]);
     const incompatibleMajor = PLUGIN_SDK_MAJOR + 1;
-    const targetRoot = join(workDir, "builtin-plugins");
-    await copyBuiltinPlugins({
-      bbVersion: "0.9.0-test",
-      build: false,
-      plugins: BUILTIN_PLUGINS,
-      sourceModuleDir,
-      targetRoot,
-    });
     const copiedRoot = join(targetRoot, "automations");
     await writeFile(
       join(copiedRoot, "dist", "server.meta.json"),
@@ -1012,15 +1022,9 @@ describe("builtin plugin reconciliation", () => {
   });
 
   it("explicitly installs a packaged builtin without rebuilding its app bundle", async () => {
-    const { sourceModuleDir } = await writePackagedBuiltinSource(workDir);
-    const targetRoot = join(workDir, "builtin-plugins");
-    await copyBuiltinPlugins({
-      bbVersion: "0.9.0-test",
-      build: false,
-      plugins: BUILTIN_PLUGINS,
-      sourceModuleDir,
-      targetRoot,
-    });
+    const { targetRoot } = await copyPackagedBuiltinRuntime(workDir, [
+      "automations",
+    ]);
     const copiedRoot = join(targetRoot, "automations");
 
     service = createService({
@@ -1054,16 +1058,11 @@ describe("builtin plugin packaging", () => {
   });
 
   it("copies only the runtime layout for packaged builtins", async () => {
-    const { sourceModuleDir } = await writePackagedBuiltinSource(workDir);
-    const targetRoot = join(workDir, "builtin-plugins");
-
-    await copyBuiltinPlugins({
-      bbVersion: "0.9.0-test",
-      build: false,
-      plugins: BUILTIN_PLUGINS,
-      sourceModuleDir,
-      targetRoot,
-    });
+    const { targetRoot } = await copyPackagedBuiltinRuntime(workDir, [
+      "automations",
+      "provider-acp",
+      "connect",
+    ]);
 
     const copiedRoot = join(targetRoot, "automations");
     const packageJson = JSON.parse(
@@ -1087,9 +1086,6 @@ describe("builtin plugin packaging", () => {
       stat(join(copiedRoot, "dist", "app.css")),
     ).resolves.toBeTruthy();
     await expect(stat(join(copiedRoot, "skills"))).resolves.toBeTruthy();
-    await expect(
-      readFile(join(targetRoot, "marketplace.json"), "utf8"),
-    ).resolves.toContain('"name": "bb-official"');
     await expect(
       readFile(join(copiedRoot, "assets", "icon.svg"), "utf8"),
     ).resolves.toBe("<svg/>\n");

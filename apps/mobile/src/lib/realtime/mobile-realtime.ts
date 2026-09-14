@@ -7,11 +7,8 @@ import {
   threadPaneActionSignalLenientSchema,
   type ChangedMessage,
   type ClientMessage,
-  type PluginSignal,
   type RealtimeSubscriptionTarget,
-  type ThreadOpenFile,
   type ThreadOpenSignal,
-  type ThreadPaneActionSignal,
 } from "@bb/server-contract";
 import {
   SOCKET_OPEN,
@@ -53,10 +50,6 @@ export interface MobileRealtime {
   unsubscribe(target: RealtimeSubscriptionTarget): void;
   onChanged(callback: (message: ChangedMessage) => void): () => void;
   onThreadOpen(callback: (signal: ThreadOpenSignal) => void): () => void;
-  onThreadPaneAction(
-    callback: (signal: ThreadPaneActionSignal) => void,
-  ): () => void;
-  onPluginSignal(callback: (signal: PluginSignal) => void): () => void;
   onConnected(
     callback: (event: MobileRealtimeConnectedEvent) => void,
   ): () => void;
@@ -66,14 +59,12 @@ export interface MobileRealtime {
   onConnectionStateChange(callback: () => void): () => void;
   getConnectionState(): MobileRealtimeConnectionState;
   isSuspended(): boolean;
-  consumePendingOpenFile(threadId: string): ThreadOpenFile | null;
   dispose(): void;
 }
 
 export interface CreateMobileRealtimeOptions {
   url: string;
   socketFactory?: RealtimeSocketFactory;
-  headers?: () => Record<string, string>;
   connectionTimeoutMs?: number;
   onInvalidMessage?: (error: unknown) => void;
 }
@@ -124,10 +115,6 @@ export function createMobileRealtime(
   const subscriptions = new Map<string, ActiveSubscription>();
   const changedCallbacks = new Set<(message: ChangedMessage) => void>();
   const threadOpenCallbacks = new Set<(signal: ThreadOpenSignal) => void>();
-  const paneActionCallbacks = new Set<
-    (signal: ThreadPaneActionSignal) => void
-  >();
-  const pluginSignalCallbacks = new Set<(signal: PluginSignal) => void>();
   const connectedCallbacks = new Set<
     (event: MobileRealtimeConnectedEvent) => void
   >();
@@ -135,7 +122,6 @@ export function createMobileRealtime(
     (event: MobileRealtimeConnectFailedEvent) => void
   >();
   const connectionStateCallbacks = new Set<() => void>();
-  const pendingOpenFileByThreadId = new Map<string, ThreadOpenFile>();
 
   let socket: RealtimeSocketLike | null = null;
   let socketOpened = false;
@@ -304,9 +290,7 @@ export function createMobileRealtime(
   function openSocket(): void {
     if (socket || disposed || suspended || !started) return;
     clearReconnectTimer();
-    const next = socketFactory(options.url, {
-      headers: options.headers?.() ?? {},
-    });
+    const next = socketFactory(options.url);
     socket = next;
     socketOpened = false;
     socketErrorMessage = null;
@@ -372,27 +356,13 @@ export function createMobileRealtime(
 
     const threadOpen = threadOpenSignalLenientSchema.safeParse(parsed);
     if (threadOpen.success) {
-      if (threadOpen.data.file !== null) {
-        pendingOpenFileByThreadId.set(
-          threadOpen.data.threadId,
-          threadOpen.data.file,
-        );
-      }
       for (const callback of threadOpenCallbacks) callback(threadOpen.data);
       return;
     }
 
-    const paneAction = threadPaneActionSignalLenientSchema.safeParse(parsed);
-    if (paneAction.success) {
-      for (const callback of paneActionCallbacks) callback(paneAction.data);
-      return;
-    }
+    if (threadPaneActionSignalLenientSchema.safeParse(parsed).success) return;
 
-    const pluginSignal = pluginSignalLenientSchema.safeParse(parsed);
-    if (pluginSignal.success) {
-      for (const callback of pluginSignalCallbacks) callback(pluginSignal.data);
-      return;
-    }
+    if (pluginSignalLenientSchema.safeParse(parsed).success) return;
 
     const changed = changedMessageLenientSchema.safeParse(parsed);
     if (changed.success) {
@@ -473,20 +443,12 @@ export function createMobileRealtime(
     },
     onChanged: (callback) => listen(changedCallbacks, callback),
     onThreadOpen: (callback) => listen(threadOpenCallbacks, callback),
-    onThreadPaneAction: (callback) => listen(paneActionCallbacks, callback),
-    onPluginSignal: (callback) => listen(pluginSignalCallbacks, callback),
     onConnected: (callback) => listen(connectedCallbacks, callback),
     onConnectFailed: (callback) => listen(connectFailedCallbacks, callback),
     onConnectionStateChange: (callback) =>
       listen(connectionStateCallbacks, callback),
     getConnectionState: () => connectionState,
     isSuspended: () => suspended,
-    consumePendingOpenFile(threadId) {
-      const pending = pendingOpenFileByThreadId.get(threadId);
-      if (!pending) return null;
-      pendingOpenFileByThreadId.delete(threadId);
-      return pending;
-    },
     dispose() {
       if (disposed) return;
       disposed = true;
@@ -496,13 +458,10 @@ export function createMobileRealtime(
       teardownSocket();
       changedCallbacks.clear();
       threadOpenCallbacks.clear();
-      paneActionCallbacks.clear();
-      pluginSignalCallbacks.clear();
       connectFailedCallbacks.clear();
       connectedCallbacks.clear();
       connectionStateCallbacks.clear();
       subscriptions.clear();
-      pendingOpenFileByThreadId.clear();
     },
   };
 }

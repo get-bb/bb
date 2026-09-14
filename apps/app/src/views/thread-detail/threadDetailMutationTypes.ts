@@ -14,11 +14,9 @@ export interface RequestEnvironmentActionMutationLike {
   ) => Promise<EnvironmentActionResponse>;
 }
 
-type SendMessageMutationRequest = SendThreadMessageMutationRequest;
-
 export interface SendMessageMutationLike {
   isPending: boolean;
   mutateAsync: (
-    request: SendMessageMutationRequest,
+    request: SendThreadMessageMutationRequest,
   ) => Promise<SendMessageResponse>;
 }

@@ -160,6 +160,7 @@ describe("installPluginRuntime", () => {
       "pierreDiffs",
       "pierreDiffsReact",
       "pluginSdkApp",
+      "questionFormHost",
       "radixAlertDialog",
       "radixContextMenu",
       "radixDialog",

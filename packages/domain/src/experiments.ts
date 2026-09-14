@@ -2,7 +2,6 @@ import { z } from "zod";
 
 export const experimentKeys = [
   "changelogPreview",
-  "editMessages",
   "mobileApp",
   "sidebarProgressiveDisclosure",
   "timelineWindowing",
@@ -15,7 +14,6 @@ export type Experiments = z.infer<typeof experimentsSchema>;
 
 export const defaultExperiments: Experiments = {
   changelogPreview: false,
-  editMessages: true,
   mobileApp: false,
   sidebarProgressiveDisclosure: false,
   timelineWindowing: false,

@@ -81,32 +81,37 @@ function assertGithubFrontendInference(
 describe("GitHub RPC contract", () => {
   it("keeps pull requests when a repository has GitHub Issues disabled", async () => {
     const calls: string[][] = [];
-    const openPulls = JSON.stringify([
-      {
-        number: 17,
-        title: "Keep syncing pull requests",
-        state: "OPEN",
-        author: { login: "octocat" },
-        labels: [{ name: "bug" }],
-        assignees: [],
-        url: "https://github.com/acme/widgets/pull/17",
-        body: "",
-        updatedAt: "2026-08-10T00:00:00Z",
-      },
-    ]);
-
     const items = await fetchRepoItems(async (args) => {
       calls.push(args);
-      if (args[0] === "issue") {
-        throw new Error(
-          "gh issue list failed: the 'acme/widgets' repository has disabled Issues",
-        );
-      }
-      return args.includes("open") ? openPulls : "[]";
+      return JSON.stringify({
+        data: {
+          repository: {
+            hasIssuesEnabled: false,
+            openIssues: { nodes: [] },
+            closedIssues: { nodes: [] },
+            openPrs: {
+              nodes: [
+                {
+                  number: 17,
+                  title: "Keep syncing pull requests",
+                  state: "OPEN",
+                  author: { login: "octocat" },
+                  labels: { nodes: [{ name: "bug" }] },
+                  assignees: { nodes: [] },
+                  url: "https://github.com/acme/widgets/pull/17",
+                  body: "",
+                  updatedAt: "2026-08-10T00:00:00Z",
+                },
+              ],
+            },
+            closedPrs: { nodes: [] },
+          },
+        },
+      });
     }, "acme/widgets");
 
-    expect(calls).toHaveLength(4);
-    expect(calls.filter(([kind]) => kind === "pr")).toHaveLength(2);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.slice(0, 2)).toEqual(["api", "graphql"]);
     expect(items).toEqual([
       expect.objectContaining({
         repo: "acme/widgets",

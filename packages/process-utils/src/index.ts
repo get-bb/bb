@@ -1,3 +1,4 @@
+export * from "./event-loop-delay.js";
 export * from "./plugin-process-paths.js";
 import {
   spawn as spawnRaw,
@@ -6,7 +7,7 @@ import {
 } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
-import { lstat, readdir, readlink, realpath } from "node:fs/promises";
+import { access, lstat, readdir, readlink, realpath } from "node:fs/promises";
 import {
   basename,
   dirname,
@@ -515,6 +516,26 @@ export function resolveContainedPath(
   }
 
   return resolvedCandidatePath;
+}
+
+export function isPathWithinDirectory(
+  directoryPath: string,
+  candidatePath: string,
+): boolean {
+  const relativePath = relative(directoryPath, candidatePath);
+  return (
+    relativePath === "" ||
+    (!relativePath.startsWith("..") && !isAbsolute(relativePath))
+  );
+}
+
+export async function pathExists(targetPath: string): Promise<boolean> {
+  try {
+    await access(targetPath);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function sanitizeInheritedChildProcessEnv(

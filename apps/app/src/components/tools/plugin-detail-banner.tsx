@@ -2,11 +2,12 @@ import type { AriaRole, ReactNode } from "react";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 
-type PluginBannerTone = "destructive" | "warning";
+type PluginBannerTone = "destructive" | "warning" | "muted";
 
 const TONE_ICON: Record<PluginBannerTone, string> = {
   destructive: "text-destructive",
   warning: "text-warning",
+  muted: "text-muted-foreground",
 };
 
 export function PluginBannerBar({
@@ -34,13 +35,13 @@ export function PluginBannerBar({
         separator && "border-b border-border",
       )}
     >
-      <div className="mx-auto flex w-full min-w-0 max-w-5xl items-start gap-3 px-4 py-2.5 md:px-5">
+      <div className="mx-auto flex w-full min-w-0 max-w-5xl flex-wrap items-start gap-x-3 gap-y-2 px-4 py-2.5 md:px-5">
         <Icon
           name={icon}
           className={cn("mt-0.5 size-4 shrink-0", TONE_ICON[tone])}
           aria-hidden
         />
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 basis-64">
           <p className="text-sm font-medium text-foreground">{title}</p>
           {detail === null || detail === undefined ? null : (
             <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
@@ -49,7 +50,9 @@ export function PluginBannerBar({
           )}
         </div>
         {action ? (
-          <span className="flex shrink-0 items-center pt-0.5">{action}</span>
+          <span className="ms-auto flex shrink-0 items-center pt-0.5">
+            {action}
+          </span>
         ) : null}
       </div>
     </div>

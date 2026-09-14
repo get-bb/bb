@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { open } from "node:fs/promises";
 import {
   listPluginMarketplaceIcons,
@@ -14,6 +13,7 @@ import {
   MARKETPLACE_FETCH_TIMEOUT_MS,
   type MarketplaceFetch,
 } from "./marketplace-http.js";
+import { brandingAssetHash } from "../plugins/app-bundle.js";
 import { realPathInside } from "../plugins/install-sources.js";
 import {
   resolveEntryIcon,
@@ -252,7 +252,7 @@ async function readOneLocalIcon(args: {
       bytes,
     ),
     etag: null,
-    contentHash: createHash("sha256").update(bytes).digest("hex").slice(0, 16),
+    contentHash: brandingAssetHash(bytes),
     bytes: Buffer.from(bytes),
   };
 }
@@ -305,7 +305,7 @@ async function fetchOneIcon(args: {
     sourceUrl: args.iconUrl,
     contentType,
     etag: response.headers.get("etag"),
-    contentHash: createHash("sha256").update(bytes).digest("hex").slice(0, 16),
+    contentHash: brandingAssetHash(bytes),
     bytes: Buffer.from(bytes),
   };
 }

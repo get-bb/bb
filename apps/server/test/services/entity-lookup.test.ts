@@ -39,7 +39,6 @@ function setup(): SetupResult {
   const hostRow = upsertHost(db, noopNotifier, {
     id: "host_entity_lookup",
     name: "Entity Lookup Host",
-    type: "persistent",
   });
   const { project } = createProject(db, noopNotifier, {
     name: "Entity Lookup Project",
@@ -52,7 +51,6 @@ function setup(): SetupResult {
   const host = makeHost({
     id: hostRow.id,
     name: hostRow.name,
-    type: hostRow.type,
     status: "disconnected",
     maxPermissionMode: hostRow.maxPermissionMode,
     lastSeenAt: hostRow.lastSeenAt,
@@ -79,9 +77,17 @@ describe("entity lookup lifecycle errors", () => {
     const { db, host, project } = setup();
     try {
       const environment = createEnvironment(db, noopNotifier, {
+        providerOwnsPath: false,
         hostId: host.id,
         projectId: project.id,
-        workspaceProvisionType: "managed-worktree",
+        environmentProvider: {
+          environmentProviderId: "git-worktree",
+          instanceKey: null,
+          selection: {
+            machine: { type: "existing", hostId: host.id },
+            inputs: null,
+          },
+        },
         path: null,
         status: "destroyed",
       });
@@ -124,9 +130,17 @@ describe("entity lookup lifecycle errors", () => {
       });
 
       const environment = createEnvironment(db, noopNotifier, {
+        providerOwnsPath: false,
         hostId: host.id,
         projectId: project.id,
-        workspaceProvisionType: "managed-worktree",
+        environmentProvider: {
+          environmentProviderId: "git-worktree",
+          instanceKey: null,
+          selection: {
+            machine: { type: "existing", hostId: host.id },
+            inputs: null,
+          },
+        },
         path: null,
         status: "destroyed",
       });
@@ -167,6 +181,34 @@ describe("entity lookup lifecycle errors", () => {
           suspendedAt: null,
           destroyedAt: null,
         },
+      });
+
+      updateHost(db, noopNotifier, host.id, {
+        phase: "suspended",
+        suspendedAt: 123,
+      });
+      const suspendedError = captureApiError(() => {
+        requireConnectedHostSession({ db, hub }, host.id);
+      });
+      expect(suspendedError.status).toBe(502);
+      expect(suspendedError.body).toEqual({
+        code: "host_unavailable",
+        message: "Host is suspended",
+        details: {
+          reason: "suspended",
+          hostStatus: "disconnected",
+          suspendedAt: 123,
+          destroyedAt: null,
+        },
+      });
+
+      updateHost(db, noopNotifier, host.id, { suspendedAt: null });
+      const legacySuspendedError = captureApiError(() => {
+        requireConnectedHostSession({ db, hub }, host.id);
+      });
+      expect(legacySuspendedError.body.details).toMatchObject({
+        reason: "suspended",
+        suspendedAt: null,
       });
 
       updateHost(db, noopNotifier, host.id, { destroyedAt: 456 });

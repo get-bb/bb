@@ -1,6 +1,6 @@
-import type { ChangedMessage } from "@bb/domain";
 import { createDeferredPromise, type DeferredPromise } from "@bb/test-helpers";
 import { describe, expect, it } from "vitest";
+import type { ServerChangedMessage } from "../../ws/hub.js";
 import {
   EnvironmentReadCache,
   WorkspaceReadCaches,
@@ -33,15 +33,15 @@ function createCounter<T>(values: T[]) {
 }
 
 function createFakeHub() {
-  const listeners = new Set<(message: ChangedMessage) => void>();
+  const listeners = new Set<(message: ServerChangedMessage) => void>();
   return {
-    onChangedMessage(listener: (message: ChangedMessage) => void) {
+    onChangedMessage(listener: (message: ServerChangedMessage) => void) {
       listeners.add(listener);
       return () => {
         listeners.delete(listener);
       };
     },
-    emit(message: ChangedMessage) {
+    emit(message: ServerChangedMessage) {
       for (const listener of listeners) {
         listener(message);
       }
@@ -253,6 +253,20 @@ describe("WorkspaceReadCaches", () => {
       changes: ["host-connected"],
     });
     expect(await primed.readBoth()).toEqual({ status: 2, pullRequest: 2 });
+  });
+
+  it("keeps a host's cached reads when only its provider model catalog changed", async () => {
+    const hub = createFakeHub();
+    const caches = new WorkspaceReadCaches({ hub, now: () => 0 });
+    const primed = await primeBoth(caches);
+
+    hub.emit({
+      type: "changed",
+      entity: "host",
+      id: "host-1",
+      changes: ["provider-model-catalog-changed"],
+    });
+    expect(await primed.readBoth()).toEqual({ status: 1, pullRequest: 1 });
   });
 
   it("drops both caches when a server-side mutation invalidates the environment or host", async () => {

@@ -6,7 +6,7 @@ import { CREATE_PLUGIN_PROMPT } from "@bb/client-core";
 import {
   BROWSE_ARCHETYPES,
   UTILITY_EXAMPLES,
-  archetypePrompt,
+  briefPrompt,
 } from "./browse-hero-archetypes";
 import { BrowseArchetypeCards } from "./BrowseArchetypeCards";
 import { BrowseHeroCarousel } from "./BrowseHeroCarousel";
@@ -142,28 +142,28 @@ describe("BrowseHeroCarousel", () => {
     rerender(
       <BrowseHeroCarousel
         autoplay={false}
-        openRequest={{ nonce: 1, seed: archetypePrompt(first) }}
+        openRequest={{ nonce: 1, seed: briefPrompt(first) }}
       />,
     );
-    expect(openComposer).toHaveBeenLastCalledWith(archetypePrompt(first));
+    expect(openComposer).toHaveBeenLastCalledWith(briefPrompt(first));
 
     rerender(
       <BrowseHeroCarousel
         autoplay={false}
-        openRequest={{ nonce: 2, seed: archetypePrompt(second) }}
+        openRequest={{ nonce: 2, seed: briefPrompt(second) }}
       />,
     );
-    expect(openComposer).toHaveBeenLastCalledWith(archetypePrompt(second));
+    expect(openComposer).toHaveBeenLastCalledWith(briefPrompt(second));
 
     rerender(
       <BrowseHeroCarousel
         autoplay={false}
-        openRequest={{ nonce: 2, seed: archetypePrompt(second) }}
+        openRequest={{ nonce: 2, seed: briefPrompt(second) }}
       />,
     );
-    expect(openComposer).toHaveBeenLastCalledWith(archetypePrompt(second));
+    expect(openComposer).toHaveBeenLastCalledWith(briefPrompt(second));
     expect(screen.getByTestId("real-composer").textContent).toBe(
-      archetypePrompt(second),
+      briefPrompt(second),
     );
   });
 
@@ -191,7 +191,7 @@ describe("BrowseArchetypeCards", () => {
     const target = BROWSE_ARCHETYPES[2]!;
     fireEvent.click(screen.getByText(target.title));
 
-    expect(onCreate).toHaveBeenCalledWith(archetypePrompt(target));
+    expect(onCreate).toHaveBeenCalledWith(briefPrompt(target));
   });
 
   it("seeds a utility example's prompt and shows both tiers", () => {

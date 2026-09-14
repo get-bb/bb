@@ -230,6 +230,36 @@ function UnavailableActionTab() {
   );
 }
 
+function PanelActionTabFrame({
+  layout,
+  testId,
+  children,
+}: {
+  layout: "padded" | "flush" | undefined;
+  testId: string;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      className={
+        layout === "flush"
+          ? "h-full min-h-0 flex-1 overflow-hidden"
+          : "h-full min-h-0 flex-1 overflow-y-auto p-4"
+      }
+      data-testid={testId}
+    >
+      {children}
+    </div>
+  );
+}
+
+function usePersistedActionParams(tab: PluginPanelFixedPanelTab) {
+  return useMemo(
+    () => parsePersistedPluginPanelParams(tab.paramsJson),
+    [tab.paramsJson],
+  );
+}
+
 function ThreadActionTabContent({
   tab,
   threadId,
@@ -243,19 +273,12 @@ function ThreadActionTabContent({
       (candidate) =>
         candidate.pluginId === tab.pluginId && candidate.id === tab.actionId,
     ) ?? null;
-  const params = useMemo(
-    () => parsePersistedPluginPanelParams(tab.paramsJson),
-    [tab.paramsJson],
-  );
+  const params = usePersistedActionParams(tab);
   if (action === null) return <UnavailableActionTab />;
   return (
-    <div
-      className={
-        action.layout === "flush"
-          ? "h-full min-h-0 flex-1 overflow-hidden"
-          : "h-full min-h-0 flex-1 overflow-y-auto p-4"
-      }
-      data-testid="plugin-panel-tab-content"
+    <PanelActionTabFrame
+      layout={action.layout}
+      testId="plugin-panel-tab-content"
     >
       <PluginSlotMount
         key={`thread/${action.pluginId}/${action.id}/${action.generation}`}
@@ -265,7 +288,7 @@ function ThreadActionTabContent({
       >
         <action.component threadId={threadId} params={params} />
       </PluginSlotMount>
-    </div>
+    </PanelActionTabFrame>
   );
 }
 
@@ -282,19 +305,12 @@ function NewThreadActionTabContent({
       (candidate) =>
         candidate.pluginId === tab.pluginId && candidate.id === tab.actionId,
     ) ?? null;
-  const params = useMemo(
-    () => parsePersistedPluginPanelParams(tab.paramsJson),
-    [tab.paramsJson],
-  );
+  const params = usePersistedActionParams(tab);
   if (action === null) return <UnavailableActionTab />;
   return (
-    <div
-      className={
-        action.layout === "flush"
-          ? "h-full min-h-0 flex-1 overflow-hidden"
-          : "h-full min-h-0 flex-1 overflow-y-auto p-4"
-      }
-      data-testid="plugin-new-thread-panel-tab-content"
+    <PanelActionTabFrame
+      layout={action.layout}
+      testId="plugin-new-thread-panel-tab-content"
     >
       <PluginSlotMount
         key={`new-thread/${action.pluginId}/${action.id}/${action.generation}`}
@@ -304,7 +320,7 @@ function NewThreadActionTabContent({
       >
         <action.component projectId={projectId} params={params} />
       </PluginSlotMount>
-    </div>
+    </PanelActionTabFrame>
   );
 }
 
@@ -327,11 +343,12 @@ function FileOpenerTabContent({
     () => parseFileOpenerParams(tab.paramsJson),
     [tab.paramsJson],
   );
-  if (
-    file === null ||
-    tab.fileOpenerOwner === undefined ||
-    original === undefined
-  ) {
+  const owner = tab.fileOpenerOwner;
+  const lineRange = useMemo(() => {
+    const range = owner?.tab.lineRange;
+    return range == null ? null : { ...range };
+  }, [owner]);
+  if (file === null || owner === undefined || original === undefined) {
     return <UnavailableFileOpenerTab />;
   }
   return (
@@ -348,6 +365,7 @@ function FileOpenerTabContent({
           <opener.component
             path={file.path}
             source={file.source}
+            experimental_lineRange={lineRange}
             Original={BoundOriginal}
             experimental_Original={deprecatedOriginalAlias(BoundOriginal)}
           />

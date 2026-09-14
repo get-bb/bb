@@ -99,53 +99,13 @@ export function usePaneContentSplitActions() {
       { content, enabled, label, onNavigate }: PaneContentSplitOptions,
     ) => {
       if (!enabled || isCompact || event.button !== 0) return;
-      const rowEl = event.currentTarget;
-      const sidebarEl = rowEl.closest(SIDEBAR_SELECTOR);
-      const sidebarRightEdge = (sidebarEl ?? rowEl).getBoundingClientRect()
-        .right;
-      const startX = event.clientX;
-      const startY = event.clientY;
-      const startLayout = store.get(splitLayoutAtom);
-      const fallback = singlePaneFallback(startLayout);
-      beginSplitDrag({
-        ghostLabel: label,
-        sourceEl: rowEl,
-        cancelSidebarReorderOnEngage: true,
-        ...(fallback ? { fallback } : {}),
-        shouldEngage: (x, y) =>
-          shouldEngageSidebarSplitDrag({
-            startX,
-            startY,
-            x,
-            y,
-            sidebarRightEdge,
-          }),
-        decide: (_paneId, zone) => {
-          const layout = store.get(splitLayoutAtom);
-          if (layout === null) return null;
-          return decideThreadDrop({
-            zone,
-            threadAlreadyOpen: findPaneByContent(layout.root, content) !== null,
-            atMaxPanes: countPanes(layout.root) >= MAX_PANES,
-          });
-        },
-        onDrop: (target) => {
-          const layout = store.get(splitLayoutAtom);
-          if (layout === null) return;
-          const existing = findPaneByContent(layout.root, content);
-          const next =
-            existing !== null
-              ? setFocus(layout, existing.paneId)
-              : target.zone === "center"
-                ? replacePaneContent(layout, target.paneId, content)
-                : splitPane(layout, target.paneId, target.zone, content);
-          if (next !== layout) store.set(splitLayoutAtom, next);
-          onNavigate?.();
-          navigate(
-            routeForContent(content),
-            existing !== null ? { replace: true } : undefined,
-          );
-        },
+      beginSidebarPaneContentSplitDrag({
+        event,
+        store,
+        navigate,
+        content,
+        label,
+        onNavigate,
       });
     },
     [isCompact, navigate, store],
@@ -155,6 +115,75 @@ export function usePaneContentSplitActions() {
     () => ({ beginDrag: onPointerDown, isCompact, openInSplit }),
     [isCompact, onPointerDown, openInSplit],
   );
+}
+
+interface BeginSidebarPaneContentSplitDragArgs {
+  event: ReactPointerEvent<HTMLElement>;
+  store: ReturnType<typeof useStore>;
+  navigate: (
+    route: string,
+    options?: { replace?: boolean },
+  ) => void | Promise<void>;
+  content: PaneContent;
+  label: string;
+  onNavigate?: () => void;
+}
+
+export function beginSidebarPaneContentSplitDrag({
+  event,
+  store,
+  navigate,
+  content,
+  label,
+  onNavigate,
+}: BeginSidebarPaneContentSplitDragArgs): void {
+  const rowEl = event.currentTarget;
+  const sidebarEl = rowEl.closest(SIDEBAR_SELECTOR);
+  const sidebarRightEdge = (sidebarEl ?? rowEl).getBoundingClientRect().right;
+  const startX = event.clientX;
+  const startY = event.clientY;
+  const startLayout = store.get(splitLayoutAtom);
+  const fallback = singlePaneFallback(startLayout);
+  beginSplitDrag({
+    ghostLabel: label,
+    sourceEl: rowEl,
+    cancelSidebarReorderOnEngage: true,
+    ...(fallback ? { fallback } : {}),
+    shouldEngage: (x, y) =>
+      shouldEngageSidebarSplitDrag({
+        startX,
+        startY,
+        x,
+        y,
+        sidebarRightEdge,
+      }),
+    decide: (_paneId, zone) => {
+      const layout = store.get(splitLayoutAtom);
+      if (layout === null) return null;
+      return decideThreadDrop({
+        zone,
+        threadAlreadyOpen: findPaneByContent(layout.root, content) !== null,
+        atMaxPanes: countPanes(layout.root) >= MAX_PANES,
+      });
+    },
+    onDrop: (target) => {
+      const layout = store.get(splitLayoutAtom);
+      if (layout === null) return;
+      const existing = findPaneByContent(layout.root, content);
+      const next =
+        existing !== null
+          ? setFocus(layout, existing.paneId)
+          : target.zone === "center"
+            ? replacePaneContent(layout, target.paneId, content)
+            : splitPane(layout, target.paneId, target.zone, content);
+      if (next !== layout) store.set(splitLayoutAtom, next);
+      onNavigate?.();
+      void navigate(
+        routeForContent(content),
+        existing !== null ? { replace: true } : undefined,
+      );
+    },
+  });
 }
 
 function singlePaneFallback(

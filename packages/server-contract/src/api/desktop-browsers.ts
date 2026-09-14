@@ -1,4 +1,8 @@
-import { desktopBrowserNavigationUrlSchema } from "@bb/host-daemon-contract";
+import {
+  desktopBrowserImportSelectionSchema,
+  desktopBrowserNavigationUrlSchema,
+  desktopBrowserProfileSchema,
+} from "@bb/host-daemon-contract";
 import { z } from "zod";
 
 const id = z.string().min(1).max(256);
@@ -39,6 +43,17 @@ export const desktopBrowserAcquireRequestSchema = desktopBrowserScopeSchema
 export const desktopBrowserLeaseRequestSchema = desktopBrowserScopeSchema
   .extend({ leaseId: id })
   .strict();
+export const desktopBrowserInstanceRequestSchema =
+  desktopBrowserHostRequestSchema
+    .extend({ instanceId: id, generation: id })
+    .strict();
+export const desktopBrowserImportCookiesRequestSchema =
+  desktopBrowserInstanceRequestSchema
+    .extend({
+      ...desktopBrowserImportSelectionSchema.shape,
+      profile: desktopBrowserProfileSchema.default({ kind: "personal" }),
+    })
+    .strict();
 
 export type ExperimentalDesktopBrowserHostRequest = z.infer<
   typeof desktopBrowserHostRequestSchema
@@ -88,3 +103,16 @@ export type ExperimentalDesktopBrowserConnection = {
   wsEndpoint: string;
   expiresAt: number;
 };
+export type ExperimentalDesktopBrowserInstanceRequest = z.infer<
+  typeof desktopBrowserInstanceRequestSchema
+>;
+export type ExperimentalDesktopBrowserImportCookiesRequest = z.infer<
+  typeof desktopBrowserImportCookiesRequestSchema
+>;
+export type ExperimentalDesktopBrowserImportCookiesInput = z.input<
+  typeof desktopBrowserImportCookiesRequestSchema
+>;
+export type ExperimentalDesktopBrowserImportSources =
+  import("@bb/host-daemon-contract").DesktopBrowserResult<"desktop.browser.list_import_sources">;
+export type ExperimentalDesktopBrowserImportOutcome =
+  import("@bb/host-daemon-contract").DesktopBrowserResult<"desktop.browser.import_cookies">;

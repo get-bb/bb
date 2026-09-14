@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { performance } from "node:perf_hooks";
-import { roundDurationMs } from "../lib/duration.js";
+import { roundDurationMs } from "@bb/process-utils";
 
 interface EventLoopWorkFrame {
   blocksEventLoop: boolean;
@@ -117,6 +117,12 @@ export function takeEventLoopWorkWindowSnapshot(): EventLoopWorkSnapshot {
   const snapshot = getEventLoopWorkSnapshot();
   completedInWindow.length = 0;
   return snapshot;
+}
+
+export function hasCompletedEventLoopWorkForTests(label: string): boolean {
+  return completedInWindow.some(
+    (completed) => completed.blocksEventLoop && completed.label === label,
+  );
 }
 
 export function runEventLoopWorkSync<T>(label: string, work: () => T): T {

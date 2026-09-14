@@ -27,7 +27,6 @@ export function PluginThreadHeaderActions({
             instanceId={threadId}
             crashFallback={null}
           >
-            {}
             <span
               role="group"
               aria-label={slot.title}

@@ -1,5 +1,6 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "globalEnv": ["BB_BUILD_TOOLCHAIN"],
   "tasks": {
     "//#test:windows:lifecycle": {
       "cache": false,
@@ -11,6 +12,7 @@
       ],
       "outputs": []
     },
+    "@bb/db#db:generate": { "cache": false },
     "@bb/desktop#smoke:browser-broker": {
       "cache": false,
       "dependsOn": [
@@ -30,6 +32,7 @@
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/CHANGELOG.md",
         "$TURBO_ROOT$/changelog-metadata.ts",
+        "$TURBO_ROOT$/changelog-parser.ts",
         "$TURBO_ROOT$/apps/web/package.json",
         "$TURBO_ROOT$/apps/web/src/**",
         "$TURBO_ROOT$/apps/web/tsconfig.json",
@@ -54,6 +57,7 @@
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/CHANGELOG.md",
         "$TURBO_ROOT$/changelog-metadata.ts",
+        "$TURBO_ROOT$/changelog-parser.ts",
         "$TURBO_ROOT$/packages/plugin-api-map/src/anatomy-manifest.json",
         "$TURBO_ROOT$/vitest.shared.ts"
       ]
@@ -65,11 +69,9 @@
       "inputs": [
         "$TURBO_DEFAULT$",
         // wireframes.test.ts asserts fixture fidelity against the real app
-        // source, and maintenance-skill.test.ts reads the repository skill plus
-        // Plugin Guide source; all are inputs to prevent stale cache hits.
+        // source, and plugin-app-layout.test.ts reads the Plugin Guide source;
+        // both are inputs to prevent stale cache hits.
         "$TURBO_ROOT$/apps/app/src/views/thread-detail/ThreadDetailView.tsx",
-        "$TURBO_ROOT$/.agents/skills/plugin-guide-maintenance/**",
-        "$TURBO_ROOT$/.bb/skills/plugin-guide-maintenance/**",
         "$TURBO_ROOT$/plugins/plugin-api-docs/**",
         "$TURBO_ROOT$/vitest.shared.ts"
       ]
@@ -78,11 +80,21 @@
       "cache": false
     },
     "@bb/app#build": {
+      "env": [
+        "NODE_OPTIONS",
+        "NODE_ENV",
+        "BABEL_*",
+        "ENABLE_REACT_COMPILER_TIMINGS",
+        "VITE_*"
+      ],
       "dependsOn": ["topo"],
       "inputs": [
         "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/.env*",
+        ".env*",
         "$TURBO_ROOT$/CHANGELOG.md",
         "$TURBO_ROOT$/changelog-metadata.ts",
+        "$TURBO_ROOT$/changelog-parser.ts",
         "$TURBO_ROOT$/package.json",
         "$TURBO_ROOT$/packages/tsconfig/*.json",
         "$TURBO_ROOT$/pnpm-lock.yaml",
@@ -134,13 +146,54 @@
         "$TURBO_ROOT$/vitest.shared.ts"
       ]
     },
+    "@bb/server#build": {
+      "dependsOn": ["topo"],
+      "outputs": ["dist/**"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/plugins/bb-guide/skills/**",
+        "$TURBO_ROOT$/package.json",
+        "$TURBO_ROOT$/packages/tsconfig/*.json",
+        "$TURBO_ROOT$/pnpm-lock.yaml",
+        "$TURBO_ROOT$/pnpm-workspace.yaml",
+        "$TURBO_ROOT$/scripts/build-node-entry.mjs",
+        "$TURBO_ROOT$/scripts/build-package.mjs",
+        "$TURBO_ROOT$/scripts/build-utils.mjs",
+        "$TURBO_ROOT$/turbo.json"
+      ]
+    },
+    "@bb/plugin-build#build": {
+      "dependsOn": ["topo"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/build-utils.mjs",
+        "$TURBO_ROOT$/scripts/build-node-entry.mjs",
+        "$TURBO_ROOT$/packages/bb-app/package.json"
+      ],
+      "outputs": ["dist/**"]
+    },
+    "prepare:bundled": {
+      "dependsOn": ["topo", "^build"],
+      "inputs": ["$TURBO_DEFAULT$", "!dist/**", "!.bundled-runtime/**"],
+      "outputs": [".bundled-runtime/**"]
+    },
+    "@bb/bundled-plugins#build": {
+      "dependsOn": [
+        "^prepare:bundled",
+        "@bb/server#generate:bb-official-marketplace"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/apps/server/src/services/plugins/builtin-registry.ts",
+        "$TURBO_ROOT$/apps/server/src/services/plugin-catalog/bundled-marketplace-paths.ts"
+      ],
+      "outputs": ["dist/**"]
+    },
     "bb-app#build": {
-      // copy-builtin-plugins bundles every plugin in BUNDLED_PLUGINS; the
-      // tasks plugin's app bundle imports the @get-bb/plugin-sdk root at runtime
-      // (shared RPC contract), so the SDK dist must exist first.
       "dependsOn": [
         "@bb/app#build",
         "@bb/server#build",
+        "@bb/bundled-plugins#build",
         "@bb/host-daemon#build",
         "@bb/cli#build",
         "@bb/sdk#build",
@@ -148,9 +201,6 @@
       ],
       "inputs": [
         "$TURBO_DEFAULT$",
-        "$TURBO_ROOT$/apps/app/dist/**",
-        "$TURBO_ROOT$/apps/server/dist/**",
-        "$TURBO_ROOT$/apps/host-daemon/dist/**",
         "$TURBO_ROOT$/packages/bb-app/package.json",
         "$TURBO_ROOT$/packages/bb-app/scripts/**",
         "$TURBO_ROOT$/packages/bb-app/src/**",
@@ -162,9 +212,6 @@
         "$TURBO_ROOT$/packages/shared-ui/src/**",
         "$TURBO_ROOT$/packages/shared-ui/tsconfig.json",
         "$TURBO_ROOT$/packages/tsconfig/*.json",
-        "$TURBO_ROOT$/plugins/*/**",
-        "!$TURBO_ROOT$/plugins/*/dist/**",
-        "!$TURBO_ROOT$/plugins/*/node_modules/**",
         "$TURBO_ROOT$/scripts/*.mjs"
       ],
       "outputs": ["app/**", "dist/**", "host-daemon/**", "server/**"]
@@ -225,6 +272,23 @@
       "outputs": [],
       "passThroughEnv": ["*"]
     },
+    "@bb/desktop#smoke:packaged-npm": {
+      "cache": false,
+      "outputs": [],
+      "passThroughEnv": ["BB_DESKTOP_RELEASE_CHANNEL"]
+    },
+    "@bb/desktop#package": {
+      "dependsOn": ["bb-app#build", "@bb/desktop#build"],
+      "cache": false,
+      "outputs": ["release/**"],
+      "passThroughEnv": ["*"]
+    },
+    "@bb/desktop#package:linux": {
+      "dependsOn": ["bb-app#build", "@bb/desktop#build"],
+      "cache": false,
+      "outputs": ["release/**"],
+      "passThroughEnv": ["*"]
+    },
     "@bb/desktop#smoke:appimage-lifecycle": {
       "cache": false,
       "outputs": [],
@@ -243,10 +307,6 @@
       "passThroughEnv": ["*"]
     },
     "bundle": {
-      "cache": false,
-      "outputs": []
-    },
-    "template:build": {
       "cache": false,
       "outputs": []
     },
@@ -427,11 +487,19 @@
     },
     "@bb/app#typecheck": {
       "dependsOn": ["topo"],
-      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/changelog-metadata.ts"]
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/changelog-metadata.ts",
+        "$TURBO_ROOT$/changelog-parser.ts"
+      ]
     },
     "@bb/web#typecheck": {
       "dependsOn": ["topo"],
-      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/changelog-metadata.ts"]
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/changelog-metadata.ts",
+        "$TURBO_ROOT$/changelog-parser.ts"
+      ]
     },
     // The packaged CLI (host-daemon/dist/bb) inlines the SDK declaration
     // bundles for `bb plugin types` on vendored-layout plugins; see
@@ -462,7 +530,7 @@
       ],
       "inputs": [
         "$TURBO_DEFAULT$",
-        "$TURBO_ROOT$/apps/server/src/services/skills/builtin-skills/bb-cli/**",
+        "$TURBO_ROOT$/plugins/bb-guide/skills/bb-cli/**",
         "$TURBO_ROOT$/vitest.shared.ts"
       ]
     },
@@ -494,8 +562,33 @@
         "$TURBO_ROOT$/.github/workflows/approve-contributor.yml",
         "$TURBO_ROOT$/.github/workflows/pr-gate.yml",
         "$TURBO_ROOT$/package.json",
+        "$TURBO_ROOT$/scripts/*.mjs",
+        "$TURBO_ROOT$/turbo.json",
+        "$TURBO_ROOT$/plugins/*/package.json",
+        "$TURBO_ROOT$/packages/bundled-plugins/package.json",
+        "$TURBO_ROOT$/apps/server/src/services/plugins/builtin-registry.ts",
         "$TURBO_ROOT$/vitest.shared.ts"
       ]
+    },
+    "@bb/provider-parity#test": {
+      "dependsOn": ["//#ensure-native-modules", "topo"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/plugins/provider-acp/package.json",
+        "$TURBO_ROOT$/plugins/provider-acp/src/**",
+        "$TURBO_ROOT$/plugins/provider-acp/tsconfig.json",
+        "$TURBO_ROOT$/plugins/provider-claude-code/package.json",
+        "$TURBO_ROOT$/plugins/provider-claude-code/src/**",
+        "$TURBO_ROOT$/plugins/provider-claude-code/tsconfig.json",
+        "$TURBO_ROOT$/plugins/provider-codex/package.json",
+        "$TURBO_ROOT$/plugins/provider-codex/src/**",
+        "$TURBO_ROOT$/plugins/provider-codex/tsconfig.json",
+        "$TURBO_ROOT$/plugins/provider-pi/package.json",
+        "$TURBO_ROOT$/plugins/provider-pi/src/**",
+        "$TURBO_ROOT$/plugins/provider-pi/tsconfig.json",
+        "$TURBO_ROOT$/vitest.shared.ts"
+      ],
+      "passThroughEnv": ["UPDATE_PARITY_ROW_COUNTS"]
     },
     "test": {
       "dependsOn": ["//#ensure-native-modules", "topo"],
@@ -528,6 +621,7 @@
     // bundling step — so the SDK dist must exist before the suite runs.
     "@bb/server#test": {
       "dependsOn": [
+        "@bb/agent-runtime#generate:test-bridges",
         "//#ensure-native-modules",
         "@get-bb/plugin-sdk#build",
         "topo"
@@ -586,6 +680,7 @@
       // The SVG validator suite reads every first-party branding SVG.
       "inputs": [
         "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/pnpm-workspace.yaml",
         "$TURBO_ROOT$/vitest.shared.ts",
         "$TURBO_ROOT$/plugins/*/icons/**",
         "$TURBO_ROOT$/examples/plugins/*/icons/**"
@@ -607,18 +702,6 @@
       "outputs": ["dist/test-bridges/**"]
     },
     "@bb/agent-runtime#test": {
-      "dependsOn": [
-        "//#ensure-native-modules",
-        "@bb/agent-runtime#generate:test-bridges",
-        "topo"
-      ],
-      "inputs": [
-        "$TURBO_DEFAULT$",
-        "$TURBO_ROOT$/tests/scripted-echo-provider/src/**",
-        "$TURBO_ROOT$/vitest.shared.ts"
-      ]
-    },
-    "@bb/agent-runtime#test:unit": {
       "dependsOn": [
         "//#ensure-native-modules",
         "@bb/agent-runtime#generate:test-bridges",
@@ -733,28 +816,14 @@
     // consumers depend on it. Generated modules are excluded from the hash:
     // they are derived from sources already hashed here.
     "@get-bb/plugin-sdk#build:types": {
-      "dependsOn": [],
-      "inputs": [
-        "$TURBO_DEFAULT$",
-        "$TURBO_ROOT$/packages/*/package.json",
-        "$TURBO_ROOT$/packages/*/src/**",
-        "!$TURBO_ROOT$/packages/*/src/generated/**",
-        "$TURBO_ROOT$/packages/plugin-sdk/scripts/**",
-        "$TURBO_ROOT$/packages/tsconfig/*.json"
-      ],
+      "dependsOn": ["topo"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/build-utils.mjs"],
       "outputs": ["bundled-types/**"]
     },
     // `build` = runtime dist + types (prepack runs both outside turbo).
     "@get-bb/plugin-sdk#build": {
-      "dependsOn": ["@get-bb/plugin-sdk#build:types"],
-      "inputs": [
-        "$TURBO_DEFAULT$",
-        "$TURBO_ROOT$/packages/*/package.json",
-        "$TURBO_ROOT$/packages/*/src/**",
-        "!$TURBO_ROOT$/packages/*/src/generated/**",
-        "$TURBO_ROOT$/packages/plugin-sdk/scripts/**",
-        "$TURBO_ROOT$/packages/tsconfig/*.json"
-      ],
+      "dependsOn": ["topo", "@get-bb/plugin-sdk#build:types"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/build-utils.mjs"],
       "outputs": ["dist/**"]
     },
     "@get-bb/plugin-sdk#typecheck": {
@@ -770,13 +839,9 @@
       "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/vitest.shared.ts"]
     },
     "@get-bb/plugin-sdk#build:runtime": {
-      "inputs": [
-        "$TURBO_DEFAULT$",
-        "$TURBO_ROOT$/packages/*/package.json",
-        "$TURBO_ROOT$/packages/*/src/**",
-        "$TURBO_ROOT$/packages/plugin-sdk/scripts/build-runtime.mjs"
-      ],
-      "outputs": ["dist/**"]
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/build-utils.mjs"],
+      "outputs": ["dist/**"],
+      "dependsOn": ["topo"]
     },
     // ---- In-repo plugins typecheck against the SDK's bundled .d.ts ----------
     // Either through a tsconfig `paths` map or through the workspace symlink's
@@ -826,7 +891,22 @@
     "bb-plugin-concurrency-limit#typecheck": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
     },
+    "bb-plugin-environment-project-checkout#typecheck": {
+      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
+    },
+    "bb-plugin-environment-git-worktree#typecheck": {
+      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
+    },
+    "bb-plugin-environment-personal-workspace#typecheck": {
+      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
+    },
+    "bb-plugin-environment-modal-sandbox#typecheck": {
+      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
+    },
     "bb-plugin-connect#typecheck": {
+      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
+    },
+    "bb-plugin-bb-guide#typecheck": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
     },
     "bb-plugin-custom-instructions#typecheck": {

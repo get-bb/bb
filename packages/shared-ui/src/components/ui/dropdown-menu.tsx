@@ -6,6 +6,7 @@ import { usePortalScopeProps } from "../../lib/portal-scope";
 import { COARSE_POINTER_CHECK_SLOT_CLASS } from "./coarse-pointer-sizing.js";
 import {
   type ResponsiveOverlayContextValue,
+  COMPACT_SHEET_CONTENT_STYLE,
   useResponsiveRoot,
   MobileTrigger,
   ResponsiveDrawerShell,
@@ -139,7 +140,7 @@ const DropdownMenuContent = React.forwardRef<
     const scopeProps = usePortalScopeProps();
 
     if (isCompactViewport) {
-      const domProps = stripRadixContentProps(props);
+      const { style, ...domProps } = stripRadixContentProps(props);
       return (
         <ResponsiveDrawerShell
           open={open}
@@ -152,8 +153,8 @@ const DropdownMenuContent = React.forwardRef<
               "flex flex-col gap-0.5 overflow-y-auto p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]",
               className,
             )}
-            style={{ minWidth: "auto", maxWidth: "none", width: "auto" }}
             {...domProps}
+            style={{ ...style, ...COMPACT_SHEET_CONTENT_STYLE }}
           >
             {children}
           </div>
@@ -191,12 +192,19 @@ function createSelectEvent(): Event {
   return new Event("select", { cancelable: true });
 }
 
+type DropdownMenuItemProps = Omit<
+  React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Item>,
+  "onBlur" | "onFocus"
+> & {
+  inset?: boolean;
+  variant?: "default" | "destructive";
+  onBlur?: React.FocusEventHandler<HTMLElement>;
+  onFocus?: React.FocusEventHandler<HTMLElement>;
+};
+
 const DropdownMenuItem = React.forwardRef<
   React.ComponentRef<typeof DropdownMenuPrimitive.Item>,
-  React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Item> & {
-    inset?: boolean;
-    variant?: "default" | "destructive";
-  }
+  DropdownMenuItemProps
 >(
   (
     {
@@ -211,6 +219,8 @@ const DropdownMenuItem = React.forwardRef<
       children,
       onPointerEnter: callerPointerEnter,
       onKeyDown: callerKeyDown,
+      onFocus: callerFocus,
+      onBlur: callerBlur,
       ...domProps
     },
     ref,
@@ -237,6 +247,8 @@ const DropdownMenuItem = React.forwardRef<
             className,
           )}
           data-disabled={disabled ? "" : undefined}
+          onFocus={callerFocus}
+          onBlur={callerBlur}
           onClick={() => {
             if (disabled) return;
             const event = createSelectEvent();
@@ -268,6 +280,8 @@ const DropdownMenuItem = React.forwardRef<
         aria-checked={ariaChecked}
         onSelect={onSelect}
         textValue={_textValue}
+        onFocus={callerFocus}
+        onBlur={callerBlur}
         {...domProps}
         {...hoverProps}
       >

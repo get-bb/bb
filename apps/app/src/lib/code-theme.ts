@@ -69,8 +69,10 @@ function subscribeResolvedCodeTheme(callback: () => void): () => void {
   };
 }
 
-export function applyResolvedCodeTheme(resolved: ResolvedCodeTheme): void {
-  const published = publishableCodeTheme(resolved);
+let committedResolvedCodeTheme: ResolvedCodeTheme = defaultResolvedCodeTheme;
+let previewedResolvedCodeTheme: ResolvedCodeTheme | null = null;
+
+function renderResolvedCodeTheme(published: ResolvedCodeTheme): void {
   writeDocumentDataset(published);
   if (
     currentResolvedCodeTheme.dark === published.dark &&
@@ -80,6 +82,23 @@ export function applyResolvedCodeTheme(resolved: ResolvedCodeTheme): void {
   }
   currentResolvedCodeTheme = published;
   publish();
+}
+
+export function applyResolvedCodeTheme(resolved: ResolvedCodeTheme): void {
+  committedResolvedCodeTheme = publishableCodeTheme(resolved);
+  previewedResolvedCodeTheme = null;
+  renderResolvedCodeTheme(committedResolvedCodeTheme);
+}
+
+export function previewResolvedCodeTheme(resolved: ResolvedCodeTheme): void {
+  previewedResolvedCodeTheme = publishableCodeTheme(resolved);
+  renderResolvedCodeTheme(previewedResolvedCodeTheme);
+}
+
+export function clearResolvedCodeThemePreview(): void {
+  if (previewedResolvedCodeTheme === null) return;
+  previewedResolvedCodeTheme = null;
+  renderResolvedCodeTheme(committedResolvedCodeTheme);
 }
 
 export function useResolvedCodeTheme(): ResolvedCodeTheme {

@@ -245,6 +245,7 @@ export default async function plugin(bb: BbPluginApi) {
         path: target.rootPath,
         includeFiles: true,
         includeDirectories: true,
+        includeHidden: true,
         limit: MAX_TREE_ENTRIES,
         ...(target.hostId !== undefined ? { hostId: target.hostId } : {}),
       });

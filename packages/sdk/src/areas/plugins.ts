@@ -14,7 +14,7 @@ import {
   pluginMarketplaceRemoveResponseSchema,
   pluginApplyUpdateRequestSchema,
   pluginApplyUpdateResultSchema,
-  pluginInstallSourceRequestSchema,
+  pluginInstallRequestSchema,
   pluginRemoveResponseSchema,
   pluginSettingsResponseSchema,
   pluginSettingsUpdateRequestSchema,
@@ -438,7 +438,7 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
         selection === undefined
           ? { source: input.source }
           : { source: input.source, selection };
-      pluginInstallSourceRequestSchema.parse(body);
+      pluginInstallRequestSchema.parse(body);
       const response = await requestParsed(
         "/api/v1/plugins/install",
         pluginInstallResponseSchema,

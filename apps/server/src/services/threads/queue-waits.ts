@@ -17,6 +17,7 @@ import type {
   Thread,
   ThreadQueuedMessage,
 } from "@bb/domain";
+import { ApiError } from "../../errors.js";
 import {
   emitPluginMessageDispatched,
   emitPluginMessageQueued,
@@ -24,6 +25,26 @@ import {
 import { toThreadQueuedMessage } from "./thread-queued-messages.js";
 
 type QueueWaitDeps = { db: DbQueryConnection; hub: DbNotifier };
+
+export const QUEUED_MESSAGE_CLAIM_LOST_CODE = "queued_message_claim_lost";
+export const QUEUED_MESSAGE_AUTO_SEND_PAUSED_CODE =
+  "queued_message_auto_send_paused";
+
+export function createQueuedMessageClaimLostError(): ApiError {
+  return new ApiError(
+    409,
+    QUEUED_MESSAGE_CLAIM_LOST_CODE,
+    "Queued message claim expired before it could be sent",
+  );
+}
+
+export function createQueuedMessageAutoSendPausedError(): ApiError {
+  return new ApiError(
+    409,
+    QUEUED_MESSAGE_AUTO_SEND_PAUSED_CODE,
+    "Queued message auto-send was paused by a manual stop",
+  );
+}
 
 /**
  * A settling row, for the plugin event its transition raises.

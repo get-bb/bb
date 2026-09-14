@@ -59,8 +59,13 @@ function renderAssistantMessage(text: string, streaming: boolean) {
 
 function documents(container: HTMLElement): string[] {
   return Array.from(
-    container.querySelectorAll<HTMLElement>("[data-markdown-document]"),
-  ).map((node) => node.textContent ?? "");
+    container.querySelectorAll<HTMLElement>("[data-markdown-preview]"),
+    (preview) =>
+      Array.from(
+        preview.querySelectorAll<HTMLElement>("[data-markdown-document]"),
+        (node) => node.textContent ?? "",
+      ).join(""),
+  );
 }
 
 beforeEach(() => {
@@ -70,6 +75,89 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("ConversationMessageContent streaming split", () => {
+  it.each([
+    ["**Streaming bold", "**Streaming bold**"],
+    ["`streaming code", "`streaming code`"],
+    ["Read [the docs](https://example", "Read the docs"],
+    ["Image ![preview](/workspace/preview", "Image "],
+  ])(
+    "repairs an unsplit live tail and restores raw source on completion: %s",
+    (source, repaired) => {
+      const { view, update } = renderAssistantMessage(source, true);
+      expect(documents(view.container)).toEqual([repaired]);
+
+      update(source, false);
+      expect(documents(view.container)).toEqual([source]);
+    },
+  );
+
+  it("repairs only the live split tail without re-parsing the settled prefix", () => {
+    const { view, update } = renderAssistantMessage(
+      "Settled **source.\n\nSecond paragraph.\n\n`live code",
+      true,
+    );
+    expect(documents(view.container)).toEqual([
+      "Settled **source.\n\n",
+      "Second paragraph.\n\n`live code`",
+    ]);
+
+    markdownRenders.length = 0;
+    update("Settled **source.\n\nSecond paragraph.\n\n`live code grows", true);
+    expect(markdownRenders).toEqual([
+      "Second paragraph.\n\n",
+      "`live code grows`",
+    ]);
+
+    markdownRenders.length = 0;
+    update(
+      "Settled **source.\n\nSecond paragraph.\n\n`live code grows more",
+      true,
+    );
+    expect(markdownRenders).toEqual(["`live code grows more`"]);
+  });
+
+  it("repairs unfinished formatting after ordinary double-colon text", () => {
+    const source = "Call Namespace::Method, then **live bold";
+    const { view, update } = renderAssistantMessage(source, true);
+    expect(documents(view.container)).toEqual([
+      "Call Namespace::Method, then **live bold**",
+    ]);
+
+    update(`Settled.\n\nSecond paragraph.\n\n${source}`, true);
+    expect(documents(view.container)).toEqual([
+      "Settled.\n\n",
+      `Second paragraph.\n\n${source}**`,
+    ]);
+  });
+
+  it.each([
+    "::inline-vis[label",
+    "  ::inline-vis[label",
+    "> ::inline-vis[label",
+    "- ::inline-vis[label",
+    '::inline-vis{file="[draft.html"}',
+    '::inline-vis{file="a__b.html"}',
+    '::unknown{title="**source"}',
+  ])("preserves directive source in a live tail: %s", (source) => {
+    const { view } = renderAssistantMessage(source, true);
+    expect(documents(view.container)).toEqual([source]);
+  });
+
+  it("resumes repair after a directive moves into the settled prefix", () => {
+    const source = '::inline-vis{file="[draft.html"}';
+    const { view, update } = renderAssistantMessage(
+      source + "\n\n**live",
+      true,
+    );
+    expect(documents(view.container)).toEqual([source + "\n\n**live"]);
+
+    update(source + "\n\nSecond paragraph.\n\n**live", true);
+    expect(documents(view.container)).toEqual([
+      source + "\n\n",
+      "Second paragraph.\n\n**live**",
+    ]);
+  });
+
   it("re-parses only the live tail when a delta arrives and collapses to one document once complete", () => {
     const { view, update } = renderAssistantMessage(
       "Para one.\n\nPara two.\n\nPara th",
@@ -83,12 +171,20 @@ describe("ConversationMessageContent streaming split", () => {
 
     markdownRenders.length = 0;
     update("Para one.\n\nPara two.\n\nPara three.", true);
-    expect(markdownRenders).toEqual(["Para two.\n\nPara three."]);
+    expect(markdownRenders).toEqual(["Para two.\n\n", "Para three."]);
+
+    markdownRenders.length = 0;
+    update("Para one.\n\nPara two.\n\nPara three!", true);
+    expect(markdownRenders).toEqual(["Para three!"]);
 
     markdownRenders.length = 0;
     update("Para one.\n\nPara two.\n\nPara three.\n\nPara four", true);
     expect(documents(view.container)).toEqual([
       "Para one.\n\nPara two.\n\n",
+      "Para three.\n\nPara four",
+    ]);
+    expect(markdownRenders).toEqual([
+      "Para two.\n\n",
       "Para three.\n\nPara four",
     ]);
 
@@ -97,9 +193,16 @@ describe("ConversationMessageContent streaming split", () => {
     expect(documents(view.container)).toEqual([
       "Para one.\n\nPara two.\n\nPara three.\n\nPara four.",
     ]);
-    expect(markdownRenders).toEqual([
-      "Para one.\n\nPara two.\n\nPara three.\n\nPara four.",
-    ]);
+    expect(markdownRenders).toEqual(["Para three.\n\n", "Para four."]);
+  });
+
+  it.each([
+    '~~~ts\nconst x = "**text";\n',
+    '> ~~~ts\n> const x = "**text";\n',
+    '- ```ts\n  const x = "**text";\n',
+  ])("preserves fenced code verbatim in the live tail: %s", (source) => {
+    const { view } = renderAssistantMessage(source, true);
+    expect(documents(view.container)).toEqual([source]);
   });
 
   it("keeps an open fenced block inside the live tail", () => {

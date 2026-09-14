@@ -243,7 +243,6 @@ function createFakeRuntime(): AgentRuntime {
 function createFakeWorkspace(path: string): HostWorkspace {
   return {
     path,
-    managed: false,
     isGitRepo: true,
     isWorktree: false,
     getCurrentBranch: vi.fn(async () => "main"),
@@ -272,14 +271,11 @@ function createFakeWorkspace(path: string): HostWorkspace {
     })),
     diffPatch: vi.fn(async () => []),
     getPullRequest: vi.fn(async () => ({ outcome: "none" as const })),
-    listFiles: vi.fn(async () => []),
     commit: vi.fn(async () => ({
       commitSha: "commit-1",
       commitSubject: "commit",
     })),
-    reset: vi.fn(async () => undefined),
     runPullRequestAction: vi.fn(async () => undefined),
-    destroy: vi.fn(async () => undefined),
   };
 }
 
@@ -363,9 +359,11 @@ function shellQuote(value: string): string {
 
 async function openTerminal(
   harness: TerminalManagerHarness,
+  contributedEnv: import("@bb/host-daemon-contract").HostDaemonContributedEnvEntry[] = [],
 ): Promise<FakeTerminalPty> {
   await harness.manager.handleMessage({
     type: "terminal.open",
+    contributedEnv,
     requestId: "open-1",
     terminalId: "term-1",
     threadId: "thr-1",
@@ -374,7 +372,6 @@ async function openTerminal(
       environmentId: "env-1",
       workspaceContext: {
         workspacePath: "/tmp/terminal-workspace",
-        workspaceProvisionType: "unmanaged",
       },
     },
     cols: 100,
@@ -543,9 +540,35 @@ describe("TerminalManager", () => {
         title: "zsh",
       }),
     );
-    await expect(
-      harness.runtimeManager.evictIdleEnvironments(),
-    ).resolves.toEqual([]);
+    expect(harness.runtimeManager.get("env-1")?.terminals.has("term-1")).toBe(
+      true,
+    );
+    await harness.runtimeManager.replaceBaseShellEnv({ BB_BASE_ENV: "2" });
+    expect(harness.runtimeManager.get("env-1")).toBeDefined();
+    expect(harness.runtime.shutdown).not.toHaveBeenCalled();
+  });
+
+  it("injects host credentials into a PTY and forwards terminal output as-is", async () => {
+    const harness = createHarness();
+    const pty = await openTerminal(harness, [
+      {
+        name: "GH_TOKEN",
+        value: "terminal-private-token",
+        source: { core: "machine-git" },
+        reason: "Git",
+      },
+    ]);
+    expect(harness.adapter.spawned[0]?.args.env.GH_TOKEN).toBe(
+      "terminal-private-token",
+    );
+    pty.emitData("terminal-private-token");
+    await waitForOutputContaining({
+      messages: harness.messages,
+      text: "terminal-private-token",
+    });
+    expect(collectTerminalOutput(harness.messages)).toContain(
+      "terminal-private-token",
+    );
   });
 
   it("opens a command PTY through the resolved shell", async () => {
@@ -553,6 +576,7 @@ describe("TerminalManager", () => {
 
     await harness.manager.handleMessage({
       type: "terminal.open",
+      contributedEnv: [],
       requestId: "open-command",
       terminalId: "term-command",
       threadId: "thr-1",
@@ -561,7 +585,6 @@ describe("TerminalManager", () => {
         environmentId: "env-1",
         workspaceContext: {
           workspacePath: "/tmp/terminal-workspace",
-          workspaceProvisionType: "unmanaged",
         },
       },
       cols: 100,
@@ -580,9 +603,12 @@ describe("TerminalManager", () => {
         title: "pnpm dev",
       }),
     );
-    await expect(
-      harness.runtimeManager.evictIdleEnvironments(),
-    ).resolves.toEqual([]);
+    expect(
+      harness.runtimeManager.get("env-1")?.terminals.has("term-command"),
+    ).toBe(true);
+    await harness.runtimeManager.replaceBaseShellEnv({ BB_BASE_ENV: "2" });
+    expect(harness.runtimeManager.get("env-1")).toBeDefined();
+    expect(harness.runtime.shutdown).not.toHaveBeenCalled();
   });
 
   it("opens a PTY in a host path without an environment", async () => {
@@ -591,6 +617,7 @@ describe("TerminalManager", () => {
 
     await harness.manager.handleMessage({
       type: "terminal.open",
+      contributedEnv: [],
       requestId: "open-host-path",
       terminalId: "term-host-path",
       target: {
@@ -615,9 +642,7 @@ describe("TerminalManager", () => {
         initialCwd: cwd,
       }),
     );
-    await expect(
-      harness.runtimeManager.evictIdleEnvironments(),
-    ).resolves.toEqual([]);
+    expect(harness.runtimeManager.get("env-1")).toBeUndefined();
   });
 
   it("opens a host-path PTY in the home directory when no cwd is provided", async () => {
@@ -626,6 +651,7 @@ describe("TerminalManager", () => {
 
     await harness.manager.handleMessage({
       type: "terminal.open",
+      contributedEnv: [],
       requestId: "open-host-home",
       terminalId: "term-host-home",
       target: {
@@ -648,9 +674,7 @@ describe("TerminalManager", () => {
         initialCwd: expectedCwd,
       }),
     );
-    await expect(
-      harness.runtimeManager.evictIdleEnvironments(),
-    ).resolves.toEqual([]);
+    expect(harness.runtimeManager.get("env-1")).toBeUndefined();
   });
 
   it("closes a terminal after an in-progress open finishes", async () => {
@@ -665,6 +689,7 @@ describe("TerminalManager", () => {
 
     const openPromise = harness.manager.handleMessage({
       type: "terminal.open",
+      contributedEnv: [],
       requestId: "open-1",
       terminalId: "term-1",
       threadId: "thr-1",
@@ -673,7 +698,6 @@ describe("TerminalManager", () => {
         environmentId: "env-1",
         workspaceContext: {
           workspacePath: "/tmp/terminal-workspace",
-          workspaceProvisionType: "unmanaged",
         },
       },
       cols: 100,
@@ -716,65 +740,6 @@ describe("TerminalManager", () => {
     );
   });
 
-  it("closes environment terminals after in-progress opens finish", async () => {
-    const shell = createDeferredPromise<string>();
-    let resolveShellCalls = 0;
-    const harness = createHarnessWithShell({
-      resolveShell: () => {
-        resolveShellCalls += 1;
-        return shell.promise;
-      },
-    });
-
-    const openPromise = harness.manager.handleMessage({
-      type: "terminal.open",
-      requestId: "open-1",
-      terminalId: "term-1",
-      threadId: "thr-1",
-      target: {
-        kind: "workspace",
-        environmentId: "env-1",
-        workspaceContext: {
-          workspacePath: "/tmp/terminal-workspace",
-          workspaceProvisionType: "unmanaged",
-        },
-      },
-      cols: 100,
-      rows: 30,
-      start: DEFAULT_TERMINAL_START,
-    });
-    await vi.waitFor(() => expect(resolveShellCalls).toBe(1));
-
-    const closePromise = harness.manager.closeEnvironmentTerminals({
-      environmentId: "env-1",
-      reason: "environment-destroyed",
-    });
-    shell.resolve("/bin/zsh");
-    await Promise.all([openPromise, closePromise]);
-
-    const pty = harness.adapter.spawned[0]?.pty;
-    if (!pty) {
-      throw new Error("Expected terminal PTY to spawn");
-    }
-    await vi.waitFor(() => expect(pty.killCalls).toEqual([null]));
-
-    pty.emitExit(0);
-    await vi.waitFor(() =>
-      expect(
-        harness.messages.filter(
-          (message) => message.type === "terminal.exited",
-        ),
-      ).toEqual([
-        {
-          type: "terminal.exited",
-          terminalId: "term-1",
-          exitCode: 0,
-          closeReason: "environment-destroyed",
-        },
-      ]),
-    );
-  });
-
   it("shuts down terminals after in-progress opens finish", async () => {
     const shell = createDeferredPromise<string>();
     let resolveShellCalls = 0;
@@ -787,6 +752,7 @@ describe("TerminalManager", () => {
 
     const openPromise = harness.manager.handleMessage({
       type: "terminal.open",
+      contributedEnv: [],
       requestId: "open-1",
       terminalId: "term-1",
       threadId: "thr-1",
@@ -795,7 +761,6 @@ describe("TerminalManager", () => {
         environmentId: "env-1",
         workspaceContext: {
           workspacePath: "/tmp/terminal-workspace",
-          workspaceProvisionType: "unmanaged",
         },
       },
       cols: 100,
@@ -837,6 +802,7 @@ describe("TerminalManager", () => {
 
     const firstOpenPromise = harness.manager.handleMessage({
       type: "terminal.open",
+      contributedEnv: [],
       requestId: "open-1",
       terminalId: "term-1",
       threadId: "thr-1",
@@ -845,7 +811,6 @@ describe("TerminalManager", () => {
         environmentId: "env-1",
         workspaceContext: {
           workspacePath: "/tmp/terminal-workspace",
-          workspaceProvisionType: "unmanaged",
         },
       },
       cols: 100,
@@ -856,6 +821,7 @@ describe("TerminalManager", () => {
 
     const secondOpenPromise = harness.manager.handleMessage({
       type: "terminal.open",
+      contributedEnv: [],
       requestId: "open-2",
       terminalId: "term-1",
       threadId: "thr-1",
@@ -864,7 +830,6 @@ describe("TerminalManager", () => {
         environmentId: "env-1",
         workspaceContext: {
           workspacePath: "/tmp/terminal-workspace",
-          workspaceProvisionType: "unmanaged",
         },
       },
       cols: 100,
@@ -911,6 +876,7 @@ describe("TerminalManager", () => {
 
     const firstOpenPromise = harness.manager.handleMessage({
       type: "terminal.open",
+      contributedEnv: [],
       requestId: "open-1",
       terminalId: "term-1",
       threadId: "thr-1",
@@ -919,7 +885,6 @@ describe("TerminalManager", () => {
         environmentId: "env-1",
         workspaceContext: {
           workspacePath: "/tmp/terminal-workspace",
-          workspaceProvisionType: "unmanaged",
         },
       },
       cols: 100,
@@ -930,6 +895,7 @@ describe("TerminalManager", () => {
 
     const secondOpenPromise = harness.manager.handleMessage({
       type: "terminal.open",
+      contributedEnv: [],
       requestId: "open-2",
       terminalId: "term-1",
       threadId: "thr-1",
@@ -938,7 +904,6 @@ describe("TerminalManager", () => {
         environmentId: "env-1",
         workspaceContext: {
           workspacePath: "/tmp/terminal-workspace",
-          workspaceProvisionType: "unmanaged",
         },
       },
       cols: 100,
@@ -991,6 +956,7 @@ describe("TerminalManager", () => {
 
     await harness.manager.handleMessage({
       type: "terminal.open",
+      contributedEnv: [],
       requestId: "open-stale",
       terminalId: "term-stale",
       threadId: "thr-1",
@@ -999,7 +965,6 @@ describe("TerminalManager", () => {
         environmentId: "env-1",
         workspaceContext: {
           workspacePath: "/tmp/stale-terminal-workspace",
-          workspaceProvisionType: "unmanaged",
         },
       },
       cols: 100,
@@ -1399,9 +1364,8 @@ describe("TerminalManager", () => {
         closeReason: "user",
       },
     ]);
-    await expect(
-      harness.runtimeManager.evictIdleEnvironments(),
-    ).resolves.toEqual(["env-1"]);
+    await harness.runtimeManager.replaceBaseShellEnv({ BB_BASE_ENV: "2" });
+    expect(harness.runtimeManager.get("env-1")).toBeUndefined();
     expect(harness.runtime.shutdown).toHaveBeenCalledTimes(1);
   });
 
@@ -1452,9 +1416,8 @@ describe("TerminalManager", () => {
         closeReason: "user",
       },
     ]);
-    await expect(
-      harness.runtimeManager.evictIdleEnvironments(),
-    ).resolves.toEqual(["env-1"]);
+    await harness.runtimeManager.replaceBaseShellEnv({ BB_BASE_ENV: "2" });
+    expect(harness.runtimeManager.get("env-1")).toBeUndefined();
   });
 
   it("kills all terminals on shutdown", async () => {
@@ -1531,6 +1494,7 @@ describe("TerminalManager", () => {
 
     await harness.manager.handleMessage({
       type: "terminal.open",
+      contributedEnv: [],
       requestId: "open-1",
       terminalId: "term-1",
       threadId: "thr-1",
@@ -1539,7 +1503,6 @@ describe("TerminalManager", () => {
         environmentId: "env-1",
         workspaceContext: {
           workspacePath,
-          workspaceProvisionType: "unmanaged",
         },
       },
       cols: 100,
@@ -1573,6 +1536,7 @@ describe("TerminalManager", () => {
 
     await harness.manager.handleMessage({
       type: "terminal.open",
+      contributedEnv: [],
       requestId: "open-1",
       terminalId: "term-1",
       threadId: "thr-1",
@@ -1581,7 +1545,6 @@ describe("TerminalManager", () => {
         environmentId: "env-1",
         workspaceContext: {
           workspacePath,
-          workspaceProvisionType: "unmanaged",
         },
       },
       cols: 100,
@@ -1617,6 +1580,7 @@ describe("TerminalManager", () => {
 
         await harness.manager.handleMessage({
           type: "terminal.open",
+          contributedEnv: [],
           requestId: "open-1",
           terminalId: "term-1",
           threadId: "thr-1",
@@ -1625,7 +1589,6 @@ describe("TerminalManager", () => {
             environmentId: "env-1",
             workspaceContext: {
               workspacePath,
-              workspaceProvisionType: "unmanaged",
             },
           },
           cols: 80,
@@ -1652,6 +1615,7 @@ describe("TerminalManager", () => {
 
     await harness.manager.handleMessage({
       type: "terminal.open",
+      contributedEnv: [],
       requestId: "open-1",
       terminalId: "term-1",
       threadId: "thr-1",
@@ -1660,7 +1624,6 @@ describe("TerminalManager", () => {
         environmentId: "env-1",
         workspaceContext: {
           workspacePath,
-          workspaceProvisionType: "unmanaged",
         },
       },
       cols: 100,
@@ -1712,6 +1675,7 @@ describe("TerminalManager", () => {
 
     await manager.handleMessage({
       type: "terminal.open",
+      contributedEnv: [],
       requestId: "open-real",
       terminalId: "term-real",
       threadId: "thr-real",
@@ -1720,7 +1684,6 @@ describe("TerminalManager", () => {
         environmentId: "env-real",
         workspaceContext: {
           workspacePath,
-          workspaceProvisionType: "unmanaged",
         },
       },
       cols: 100,

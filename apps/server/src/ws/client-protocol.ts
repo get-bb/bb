@@ -1,5 +1,5 @@
 import { clientMessageSchema, type PongMessage } from "@bb/domain";
-import { decodeSocketPayload } from "./decode-payload.js";
+import { parseSocketMessage } from "./decode-payload.js";
 import type { NotificationHub } from "./hub.js";
 import type { WatchInterestCoordinator } from "./watch-interests.js";
 
@@ -28,20 +28,10 @@ export function onClientSocketMessage(
   socket: ClientSocket,
   raw: unknown,
 ): void {
-  let decoded: unknown;
-  try {
-    decoded = JSON.parse(decodeSocketPayload(raw));
-  } catch {
-    socket.close(1008, "invalid-message");
+  const parsed = parseSocketMessage(socket, raw, clientMessageSchema);
+  if (parsed === null) {
     return;
   }
-
-  const result = clientMessageSchema.safeParse(decoded);
-  if (!result.success) {
-    socket.close(1008, "invalid-message");
-    return;
-  }
-  const parsed = result.data;
 
   switch (parsed.type) {
     case "subscribe":

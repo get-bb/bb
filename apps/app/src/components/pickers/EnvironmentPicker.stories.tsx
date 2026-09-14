@@ -1,7 +1,15 @@
 import type { ProjectSource } from "@bb/domain";
+import type { SystemEnvironmentProvider } from "@bb/server-contract";
+import modalLogoUrl from "../../../../../plugins/environment-modal-sandbox/modal-logo.svg?url";
 import { EnvironmentPickerUI } from "./EnvironmentPicker";
+import { ProjectSelector } from "./ProjectSelector";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
-import { HOST_IDS, HOST_NAMES, makeHost } from "../../../.ladle/story-fixtures";
+import {
+  HOST_IDS,
+  HOST_NAMES,
+  makeHost,
+  STORY_ENVIRONMENT_PROVIDERS,
+} from "../../../.ladle/story-fixtures";
 
 const localHost = makeHost({ id: HOST_IDS.local });
 const remoteHost = makeHost({ id: HOST_IDS.local, name: "studio-mac-mini" });
@@ -41,57 +49,72 @@ const noop = () => {};
 export function Overview() {
   return (
     <StoryCard>
-      <StoryRow label="local direct" hint="selected: Work locally">
+      <StoryRow label="loading" hint="waiting for environment availability">
         <EnvironmentPickerUI
-          value={`host:${HOST_IDS.local}:local`}
-          onChange={noop}
+          value=""
           sources={localProjectSources}
           host={localHost}
           isLocal
+          isLoading
+          muted
+        />
+      </StoryRow>
+      <StoryRow label="local checkout" hint="selected: Project checkout">
+        <EnvironmentPickerUI
+          value="provider:project-checkout"
+          sources={localProjectSources}
+          host={localHost}
+          isLocal
+          providers={STORY_ENVIRONMENT_PROVIDERS}
+          selectedProviderHostId={HOST_IDS.local}
+          onSelectProvider={noop}
         />
       </StoryRow>
       <StoryRow label="muted" hint="prompt-box treatment">
         <EnvironmentPickerUI
-          value={`host:${HOST_IDS.local}:local`}
-          onChange={noop}
+          value="provider:project-checkout"
           sources={localProjectSources}
           host={localHost}
           isLocal
+          providers={STORY_ENVIRONMENT_PROVIDERS}
+          selectedProviderHostId={HOST_IDS.local}
+          onSelectProvider={noop}
           muted
         />
       </StoryRow>
       <StoryRow label="local worktree" hint="selected: New worktree">
         <EnvironmentPickerUI
-          value={`host:${HOST_IDS.local}:worktree`}
-          onChange={noop}
+          value="provider:git-worktree"
           sources={localProjectSources}
           host={localHost}
           isLocal
+          providers={STORY_ENVIRONMENT_PROVIDERS}
+          onSelectProvider={noop}
+        />
+      </StoryRow>
+      <StoryRow
+        label="worktree on an offline host"
+        hint="the offline machine outranks the selected provider — the trigger reads 'Host is offline'"
+      >
+        <EnvironmentPickerUI
+          value="provider:git-worktree"
+          sources={localProjectSources}
+          host={offlineHost}
+          isLocal={false}
+          providers={STORY_ENVIRONMENT_PROVIDERS}
+          onSelectProvider={noop}
+          modal={false}
         />
       </StoryRow>
       <StoryRow
         label="reuse selected"
-        hint="env mode is reuse — button shows 'Reuse worktree'; the specific worktree lives in the adjacent WorktreePicker"
+        hint="env mode is reuse — button shows 'Reuse environment'; the specific environment lives in the adjacent ReuseEnvironmentPicker"
       >
         <EnvironmentPickerUI
           value="reuse"
-          onChange={noop}
           sources={localProjectSources}
           host={localHost}
           isLocal
-        />
-      </StoryRow>
-      <StoryRow
-        label="no worktrees to reuse"
-        hint="reuseDisabled — open the menu to see the 'Existing worktree' row disabled with a hint about why"
-      >
-        <EnvironmentPickerUI
-          value={`host:${HOST_IDS.local}:local`}
-          onChange={noop}
-          sources={localProjectSources}
-          host={localHost}
-          isLocal
-          reuseDisabled
         />
       </StoryRow>
       <StoryRow
@@ -99,24 +122,28 @@ export function Overview() {
         hint="host down with a prior selection — the trigger reads 'Host is offline' (overriding the stale mode); open the menu for the host name and a single 'Host is offline' row, no options"
       >
         <EnvironmentPickerUI
-          value={`host:${HOST_IDS.local}:local`}
-          onChange={noop}
+          value="provider:project-checkout"
           sources={localProjectSources}
           host={offlineHost}
           isLocal={false}
+          providers={STORY_ENVIRONMENT_PROVIDERS}
+          selectedProviderHostId={HOST_IDS.local}
+          onSelectProvider={noop}
           modal={false}
         />
       </StoryRow>
       <StoryRow
         label="remote host (online)"
-        hint="viewed from another device: open the menu to see the host name and 'Work remotely' enabled"
+        hint="viewed from another device: open the menu to see the host name and 'Project checkout' enabled"
       >
         <EnvironmentPickerUI
-          value={`host:${HOST_IDS.local}:local`}
-          onChange={noop}
+          value="provider:project-checkout"
           sources={localProjectSources}
           host={remoteHost}
           isLocal={false}
+          providers={STORY_ENVIRONMENT_PROVIDERS}
+          selectedProviderHostId={HOST_IDS.local}
+          onSelectProvider={noop}
           modal={false}
         />
       </StoryRow>
@@ -125,11 +152,13 @@ export function Overview() {
         hint="open menu wraps the host label inside the menu"
       >
         <EnvironmentPickerUI
-          value={`host:${HOST_IDS.local}:local`}
-          onChange={noop}
+          value="provider:project-checkout"
           sources={localProjectSources}
           host={longRemoteHost}
           isLocal={false}
+          providers={STORY_ENVIRONMENT_PROVIDERS}
+          selectedProviderHostId={HOST_IDS.local}
+          onSelectProvider={noop}
           defaultOpen
           modal={false}
         />
@@ -139,11 +168,13 @@ export function Overview() {
         hint="defaultOpen + modal=false — local host, online: the full set of options enabled"
       >
         <EnvironmentPickerUI
-          value={`host:${HOST_IDS.local}:local`}
-          onChange={noop}
+          value="provider:project-checkout"
           sources={localProjectSources}
           host={localHost}
           isLocal
+          providers={STORY_ENVIRONMENT_PROVIDERS}
+          selectedProviderHostId={HOST_IDS.local}
+          onSelectProvider={noop}
           defaultOpen
           modal={false}
         />
@@ -167,14 +198,15 @@ export function MachineMenu() {
     <StoryCard>
       <StoryRow
         label="machine-grouped menu"
-        hint="two hosts viewed from another device (no local daemon) — checkout rows carry a path hint, 'Existing worktree' selected"
+        hint="two hosts viewed from another device (no local daemon) — a checkout row per machine, reuse selected"
       >
         <EnvironmentPickerUI
           value="reuse"
-          onChange={noop}
           sources={machineSources}
           host={machineHosts[0] ?? null}
           isLocal={false}
+          providers={STORY_ENVIRONMENT_PROVIDERS}
+          onSelectProvider={noop}
           machines={{
             hosts: machineHosts,
             localDaemonHostId: null,
@@ -184,6 +216,89 @@ export function MachineMenu() {
           modal={false}
         />
       </StoryRow>
+    </StoryCard>
+  );
+}
+
+export function ManyMachines() {
+  const hosts = Array.from({ length: 12 }, (_, index) =>
+    makeHost({ id: `host_scroll_${index}`, name: `Machine ${index + 1}` }),
+  );
+  return (
+    <EnvironmentPickerUI
+      value="provider:project-checkout"
+      sources={hosts.map((host, index) =>
+        makeSource(`src_scroll_${index}`, host.id, "/projects/bb"),
+      )}
+      host={hosts[0] ?? null}
+      isLocal={false}
+      providers={STORY_ENVIRONMENT_PROVIDERS}
+      onSelectProvider={noop}
+      machines={{
+        hosts,
+        localDaemonHostId: null,
+        primaryHostId: hosts[0]?.id ?? null,
+      }}
+      defaultOpen
+      modal={false}
+    />
+  );
+}
+
+const modalComposition: SystemEnvironmentProvider = {
+  machineProviderId: "modal-sandbox",
+  id: "modal-composition",
+  displayName: "Modal Sandbox",
+  description: "Create a project checkout in a new Modal sandbox.",
+  icon: "Box",
+  logoUrl: modalLogoUrl,
+  pluginId: "environment-modal-sandbox",
+  acceptsEmptyInputs: true,
+  machineAvailability: {},
+  availability: null,
+  requires: {
+    projectCheckout: false,
+    gitCheckout: false,
+    gitRemote: true,
+    projectless: false,
+  },
+  inputs: null,
+};
+
+export function IconAlignment() {
+  return (
+    <StoryCard>
+      <StoryRow label="Project selector reference">
+        <ProjectSelector
+          projects={[{ id: "proj_demo", name: "bb" }]}
+          value="proj_demo"
+          onChange={noop}
+        />
+      </StoryRow>
+      {[
+        ["Persistent host · checkout", "project-checkout"],
+        ["Persistent host · worktree", "git-worktree"],
+        ["Modal sandbox", modalComposition.id],
+      ].map(([label, providerId]) => (
+        <StoryRow key={providerId} label={label}>
+          <EnvironmentPickerUI
+            value={`provider:${providerId}`}
+            sources={machineSources}
+            host={machineHosts[0] ?? null}
+            isLocal={false}
+            providers={[...STORY_ENVIRONMENT_PROVIDERS, modalComposition]}
+            selectedProviderHostId={HOST_IDS.local}
+            onSelectProvider={noop}
+            machines={{
+              hosts: machineHosts,
+              localDaemonHostId: null,
+              primaryHostId: HOST_IDS.local,
+            }}
+            muted
+            modal={false}
+          />
+        </StoryRow>
+      ))}
     </StoryCard>
   );
 }

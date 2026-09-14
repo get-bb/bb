@@ -1,5 +1,6 @@
 import { commands, type Editor } from "@tiptap/core";
 import type { EditorState, Transaction } from "@tiptap/pm/state";
+import { dispatchPromptEditorTransaction } from "./prompt-editor-transaction";
 
 interface SplitListEditorContext {
   extensionManager: {
@@ -15,13 +16,10 @@ export function createSplitPromptListItemTransaction(args: {
   if (!listItemType) return null;
 
   const transaction = args.state.tr;
-  let nextTransaction: Transaction | null = null;
   const didSplit = commands.splitListItem(listItemType)({
     state: args.state,
     tr: transaction,
-    dispatch: () => {
-      nextTransaction = transaction;
-    },
+    dispatch: () => {},
     editor: args.editor as Editor,
     commands: null as never,
     can: null as never,
@@ -29,9 +27,7 @@ export function createSplitPromptListItemTransaction(args: {
     view: null as never,
   });
 
-  return didSplit && transaction.docChanged
-    ? (nextTransaction ?? transaction)
-    : null;
+  return didSplit && transaction.docChanged ? transaction : null;
 }
 
 function createLiftPromptListItemTransaction(args: {
@@ -98,11 +94,8 @@ export function createPromptListNewlineTransaction(args: {
 }
 
 export function applyPromptListNewline(editor: Editor): boolean {
-  const transaction = createPromptListNewlineTransaction({
-    state: editor.state,
+  return dispatchPromptEditorTransaction(
     editor,
-  });
-  if (transaction === null) return false;
-  editor.view.dispatch(transaction);
-  return true;
+    createPromptListNewlineTransaction({ state: editor.state, editor }),
+  );
 }

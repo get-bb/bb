@@ -41,7 +41,8 @@
   "scripts": {
     "test": "vitest run --config vitest.config.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "build:monaco": "node scripts/stage-assets.mjs"
+    "build:monaco": "node scripts/stage-assets.mjs",
+    "prepare:bundled": "bb-plugin-build prepare-bundled"
   },
   "dependencies": {
     "@bb/shared-ui": "workspace:*",
@@ -49,6 +50,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@bb/plugin-build": "workspace:*",
     "@get-bb/plugin-sdk": "workspace:*",
     "@testing-library/react": "^16.3.2",
     "@types/node": "^22.0.0",

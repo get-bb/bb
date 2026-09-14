@@ -4,10 +4,7 @@ import type {
   RealtimeSubscriptionTarget,
 } from "@bb/domain";
 import { realtimeSubscriptionTargetKey } from "@bb/domain";
-import {
-  serverMessageLenientSchema,
-  type ServerMessage,
-} from "@bb/server-contract";
+import { serverMessageLenientSchema } from "@bb/server-contract";
 import { resolveRealtimeUrl } from "./realtime-url.js";
 import type {
   BbRealtime,
@@ -128,8 +125,12 @@ function optionalTargetIdMatches(args: OptionalTargetIdMatchesArgs): boolean {
   return args.selectorId === undefined || args.messageId === args.selectorId;
 }
 
-export function wrapStandardWebsocket(socket: WebSocket): BbRealtimeSocket {
-  const adapter: BbRealtimeSocket = {
+export function createRealtimeSocketAdapter(socket: {
+  close(): void;
+  readonly readyState: number;
+  send(data: string): void;
+}): BbRealtimeSocket {
+  return {
     close: () => socket.close(),
     onclose: null,
     onerror: null,
@@ -140,6 +141,10 @@ export function wrapStandardWebsocket(socket: WebSocket): BbRealtimeSocket {
     },
     send: (data) => socket.send(data),
   };
+}
+
+export function wrapStandardWebsocket(socket: WebSocket): BbRealtimeSocket {
+  const adapter = createRealtimeSocketAdapter(socket);
   socket.onopen = () => adapter.onopen?.();
   socket.onmessage = (event) => adapter.onmessage?.({ data: event.data });
   socket.onclose = () => adapter.onclose?.();
@@ -197,7 +202,7 @@ export class BbRealtimeClient implements BbRealtime {
   ): BbRealtimeUnsubscribe {
     switch (args.event) {
       case "thread:changed":
-        return this.addChangedListener({
+        return this.activateListener({
           active: true,
           callback: args.callback,
           event: args.event,
@@ -205,7 +210,7 @@ export class BbRealtimeClient implements BbRealtime {
           target: threadRealtimeTarget(args.threadId),
         });
       case "project:changed":
-        return this.addChangedListener({
+        return this.activateListener({
           active: true,
           callback: args.callback,
           event: args.event,
@@ -213,7 +218,7 @@ export class BbRealtimeClient implements BbRealtime {
           target: projectRealtimeTarget(args.projectId),
         });
       case "environment:changed":
-        return this.addChangedListener({
+        return this.activateListener({
           active: true,
           callback: args.callback,
           event: args.event,
@@ -221,7 +226,7 @@ export class BbRealtimeClient implements BbRealtime {
           target: environmentRealtimeTarget(args.environmentId),
         });
       case "host:changed":
-        return this.addChangedListener({
+        return this.activateListener({
           active: true,
           callback: args.callback,
           event: args.event,
@@ -229,14 +234,14 @@ export class BbRealtimeClient implements BbRealtime {
           target: hostRealtimeTarget(args.hostId),
         });
       case "system:changed":
-        return this.addChangedListener({
+        return this.activateListener({
           active: true,
           callback: args.callback,
           event: args.event,
           target: { kind: "system" },
         });
       case "system:config-changed":
-        return this.addChangedListener({
+        return this.activateListener({
           active: true,
           callback: args.callback,
           event: args.event,
@@ -249,12 +254,6 @@ export class BbRealtimeClient implements BbRealtime {
           event: args.event,
         });
     }
-  }
-
-  private addChangedListener(
-    listener: ChangedListenerRecord,
-  ): BbRealtimeUnsubscribe {
-    return this.activateListener(listener);
   }
 
   private addConnectionListener(
@@ -387,17 +386,9 @@ export class BbRealtimeClient implements BbRealtime {
       if (this.socket !== socket) {
         return;
       }
-      if (openedAfterReconnect) {
-        this.emitConnection({
-          state: "connected",
-          reconnected: true,
-          reconnectDelayMs: null,
-        });
-        return;
-      }
       this.emitConnection({
         state: "connected",
-        reconnected: false,
+        reconnected: openedAfterReconnect,
         reconnectDelayMs: null,
       });
     };
@@ -528,11 +519,7 @@ export class BbRealtimeClient implements BbRealtime {
       );
       return;
     }
-    this.dispatchMessage(parseResult.data);
-  }
-
-  private dispatchMessage(message: ServerMessage): void {
-    this.dispatchChangedMessage(message);
+    this.dispatchChangedMessage(parseResult.data);
   }
 
   private dispatchChangedMessage(message: ChangedMessage): void {

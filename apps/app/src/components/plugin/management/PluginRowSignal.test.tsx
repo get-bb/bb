@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PluginRowSignalView } from "./PluginRowSignal";
 import { displayPluginVersion } from "./plugin-ui";
+import { focusWithKeyboard } from "@/test/keyboard-focus";
 
 afterEach(cleanup);
 
@@ -47,7 +48,7 @@ describe("PluginRowSignalView", () => {
     });
     expect(screen.queryByText("Degraded")).toBeNull();
 
-    fireEvent.focus(statusButton);
+    focusWithKeyboard(statusButton);
     expect((await screen.findByRole("tooltip")).textContent).toBe(
       "Degraded: One background service failed.",
     );

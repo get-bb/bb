@@ -1,3 +1,4 @@
+import { sleep, waitForChildExit } from "./child-process-helpers.mjs";
 import { appendOutput, formatProcessOutput } from "./smoke-output.mjs";
 import { execFile, spawn } from "node:child_process";
 import { createServer } from "node:net";
@@ -16,11 +17,6 @@ const startupTimeoutMs = 60_000;
 const exitTimeoutMs = 10_000;
 const outputFlushTimeoutMs = 2_000;
 const pollIntervalMs = 100;
-async function sleep(delayMs) {
-  await new Promise((resolvePromise) => {
-    setTimeout(resolvePromise, delayMs);
-  });
-}
 
 async function waitFor({
   describe,
@@ -390,27 +386,6 @@ async function pluginStartupIsSettled(serverUrl) {
   } catch {
     return false;
   }
-}
-
-async function waitForChildExit(child, timeoutMs) {
-  if (child.exitCode !== null || child.signalCode !== null) {
-    return true;
-  }
-  return await new Promise((resolvePromise) => {
-    const timeout = setTimeout(() => {
-      cleanup();
-      resolvePromise(false);
-    }, timeoutMs);
-    const handleExit = () => {
-      cleanup();
-      resolvePromise(true);
-    };
-    const cleanup = () => {
-      clearTimeout(timeout);
-      child.off("exit", handleExit);
-    };
-    child.once("exit", handleExit);
-  });
 }
 
 async function stopRuntime(runtime) {

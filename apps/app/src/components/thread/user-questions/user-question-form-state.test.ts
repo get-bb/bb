@@ -1,14 +1,15 @@
 import { describe, expect, it } from "vitest";
-import type { PendingInteractionUserQuestionQuestion } from "@bb/domain";
+import type { Question } from "@bb/shared-ui/question-form-state";
 import {
-  buildUserAnswerResolution,
+  buildQuestionAnswers,
   createInitialFormState,
   isQuestionAnswered,
-} from "./user-question-form-state.js";
+} from "@bb/shared-ui/question-form-state";
 
-const singleSelect: PendingInteractionUserQuestionQuestion = {
+const singleSelect: Question = {
   id: "branch",
   prompt: "Which branch?",
+  shortLabel: "Branch",
   multiSelect: false,
   allowFreeText: true,
   options: [
@@ -17,9 +18,10 @@ const singleSelect: PendingInteractionUserQuestionQuestion = {
   ],
 };
 
-const multiSelect: PendingInteractionUserQuestionQuestion = {
+const multiSelect: Question = {
   id: "areas",
   prompt: "Which areas?",
+  shortLabel: "Areas",
   multiSelect: true,
   allowFreeText: true,
   options: [
@@ -28,21 +30,22 @@ const multiSelect: PendingInteractionUserQuestionQuestion = {
   ],
 };
 
-const freeTextOnly: PendingInteractionUserQuestionQuestion = {
+const freeTextOnly: Question = {
   id: "notes",
   prompt: "Anything else?",
+  shortLabel: "Notes",
+  options: [],
   multiSelect: false,
   allowFreeText: true,
 };
 
-describe("buildUserAnswerResolution", () => {
+describe("buildQuestionAnswers", () => {
   it("returns the selected option for a single-select choice", () => {
     const state = createInitialFormState([singleSelect]);
     state.branch.selected = ["main"];
 
-    expect(buildUserAnswerResolution([singleSelect], state)).toEqual({
-      kind: "user_answer",
-      answers: { branch: { selected: ["main"] } },
+    expect(buildQuestionAnswers([singleSelect], state)).toEqual({
+      branch: { selected: ["main"] },
     });
   });
 
@@ -51,9 +54,10 @@ describe("buildUserAnswerResolution", () => {
     state.branch.otherSelected = true;
     state.branch.otherText = "  a custom branch  ";
 
-    expect(
-      buildUserAnswerResolution([singleSelect], state).answers.branch,
-    ).toEqual({ selected: [], freeText: "a custom branch" });
+    expect(buildQuestionAnswers([singleSelect], state).branch).toEqual({
+      selected: [],
+      freeText: "a custom branch",
+    });
   });
 
   it("omits free text when Other is selected but blank", () => {
@@ -61,9 +65,9 @@ describe("buildUserAnswerResolution", () => {
     state.branch.otherSelected = true;
     state.branch.otherText = "   ";
 
-    expect(
-      buildUserAnswerResolution([singleSelect], state).answers.branch,
-    ).toEqual({ selected: [] });
+    expect(buildQuestionAnswers([singleSelect], state).branch).toEqual({
+      selected: [],
+    });
   });
 
   it("keeps both options and free text for multi-select", () => {
@@ -72,18 +76,19 @@ describe("buildUserAnswerResolution", () => {
     state.areas.otherSelected = true;
     state.areas.otherText = "docs";
 
-    expect(
-      buildUserAnswerResolution([multiSelect], state).answers.areas,
-    ).toEqual({ selected: ["app", "cli"], freeText: "docs" });
+    expect(buildQuestionAnswers([multiSelect], state).areas).toEqual({
+      selected: ["app", "cli"],
+      freeText: "docs",
+    });
   });
 
   it("drops option values that aren't part of the question", () => {
     const state = createInitialFormState([singleSelect]);
     state.branch.selected = ["main", "ghost"];
 
-    expect(
-      buildUserAnswerResolution([singleSelect], state).answers.branch,
-    ).toEqual({ selected: ["main"] });
+    expect(buildQuestionAnswers([singleSelect], state).branch).toEqual({
+      selected: ["main"],
+    });
   });
 
   it("captures free text for an options-less question", () => {
@@ -91,9 +96,10 @@ describe("buildUserAnswerResolution", () => {
     expect(state.notes.otherSelected).toBe(true);
     state.notes.otherText = "ship it";
 
-    expect(
-      buildUserAnswerResolution([freeTextOnly], state).answers.notes,
-    ).toEqual({ selected: [], freeText: "ship it" });
+    expect(buildQuestionAnswers([freeTextOnly], state).notes).toEqual({
+      selected: [],
+      freeText: "ship it",
+    });
   });
 });
 

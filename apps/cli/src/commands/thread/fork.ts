@@ -8,10 +8,9 @@ import type { EnvironmentArgs } from "@bb/server-contract";
 import { action } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
 import { resolveExplicitIdFlag } from "../../context-env.js";
-import { outputJson, prependErrorContext } from "../helpers.js";
+import { collectOption, outputJson, prependErrorContext } from "../helpers.js";
 import {
   buildPromptInputs,
-  collectOption,
   parsePermissionMode,
   PERMISSION_MODE_HELP,
 } from "./helpers.js";
@@ -164,18 +163,30 @@ export function registerForkCommand(
             const hostId = needsHostId
               ? await resolveForkSourceHostId(sdk, sourceThreadId)
               : null;
-            environment =
+            if (
               environmentValue === undefined &&
               opts.newEnvironment === undefined &&
               opts.baseBranch === undefined
-                ? undefined
-                : buildSpawnEnvironment({
-                    defaultPersonalWorkspace: false,
-                    environmentValue,
-                    newEnvironmentKind: opts.newEnvironment,
-                    hostId,
-                    baseBranch: opts.baseBranch,
-                  });
+            ) {
+              environment = undefined;
+            } else {
+              const builtEnvironment = buildSpawnEnvironment({
+                defaultPersonalWorkspace: false,
+                environmentValue,
+                newEnvironmentKind: opts.newEnvironment,
+                hostId,
+                baseBranch: opts.baseBranch,
+              });
+              if (
+                builtEnvironment.type === "project-default" ||
+                builtEnvironment.type === "provider"
+              ) {
+                throw new Error(
+                  "Fork environment flags resolved no environment",
+                );
+              }
+              environment = builtEnvironment;
+            }
             thread = await sdk.threads.fork({
               sourceThreadId,
               origin: "cli",

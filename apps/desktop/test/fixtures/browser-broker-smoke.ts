@@ -38,6 +38,7 @@ async function main() {
   const client = createDesktopBrowserBrokerClient({
     broker,
     dataDir: config.dataDir,
+    homeDir: config.artifacts,
     getServerUrl: () => config.serverUrl,
   });
   writeFileSync(

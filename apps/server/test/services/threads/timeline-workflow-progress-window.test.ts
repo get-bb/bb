@@ -48,7 +48,6 @@ function setup(): { db: DbConnection; thread: Thread } {
   migrate(db);
   const host = upsertHost(db, noopNotifier, {
     name: "test-host",
-    type: "persistent",
   });
   const { project } = createProject(db, noopNotifier, {
     name: "test-project",
@@ -292,7 +291,7 @@ function buildPage(
 ) {
   return buildThreadTimelineWithProfile(db, thread, {
     eventBudget,
-    includeProviderUnhandledOperations: false,
+    includeDiagnosticOperations: false,
     includeNestedRows: false,
     maxInlineOutputChars: 32_000,
     maxSeq: 0,

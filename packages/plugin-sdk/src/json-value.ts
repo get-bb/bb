@@ -11,3 +11,16 @@ export type JsonValue =
   | null
   | JsonValue[]
   | { [key: string]: JsonValue };
+
+/**
+ * A `JsonValue` that is read-only at every depth. BB uses it for JSON
+ * snapshots it deep-freezes before handing them to a plugin, where any write
+ * throws at runtime.
+ */
+export type ReadonlyJsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | readonly ReadonlyJsonValue[]
+  | { readonly [key: string]: ReadonlyJsonValue };

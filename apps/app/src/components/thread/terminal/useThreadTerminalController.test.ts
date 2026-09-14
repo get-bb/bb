@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
-  isVisibleTerminalSession,
   pickActiveTerminalId,
   shouldAutoCloseCleanTerminalSession,
   shouldAutoCloseCleanTerminalSessionsForPanel,
-  shouldCloseDisconnectedTerminalSession,
 } from "./useThreadTerminalController";
+import {
+  shouldCloseUnretainedDisconnectedTerminalSession,
+  shouldShowRetainedTerminalSession,
+} from "@/lib/terminal-session-visibility";
 import { makeTerminalSession as terminalSession } from "@/test/fixtures/terminal-sessions";
 
 describe("terminal visibility", () => {
@@ -26,20 +28,20 @@ describe("terminal visibility", () => {
     });
 
     expect(
-      isVisibleTerminalSession({
-        retainedTerminalViewId: null,
+      shouldShowRetainedTerminalSession({
+        retainedTerminalId: null,
         session: disconnected,
       }),
     ).toBe(false);
     expect(
-      isVisibleTerminalSession({
-        retainedTerminalViewId: "term_disconnected",
+      shouldShowRetainedTerminalSession({
+        retainedTerminalId: "term_disconnected",
         session: disconnected,
       }),
     ).toBe(true);
     expect(
-      isVisibleTerminalSession({
-        retainedTerminalViewId: null,
+      shouldShowRetainedTerminalSession({
+        retainedTerminalId: null,
         session: terminalSession({ status: "running" }),
       }),
     ).toBe(true);
@@ -52,20 +54,20 @@ describe("terminal visibility", () => {
     });
 
     expect(
-      shouldCloseDisconnectedTerminalSession({
-        retainedTerminalViewId: null,
+      shouldCloseUnretainedDisconnectedTerminalSession({
+        retainedTerminalId: null,
         session: disconnected,
       }),
     ).toBe(true);
     expect(
-      shouldCloseDisconnectedTerminalSession({
-        retainedTerminalViewId: "term_disconnected",
+      shouldCloseUnretainedDisconnectedTerminalSession({
+        retainedTerminalId: "term_disconnected",
         session: disconnected,
       }),
     ).toBe(false);
     expect(
-      shouldCloseDisconnectedTerminalSession({
-        retainedTerminalViewId: null,
+      shouldCloseUnretainedDisconnectedTerminalSession({
+        retainedTerminalId: null,
         session: terminalSession({ status: "running" }),
       }),
     ).toBe(false);

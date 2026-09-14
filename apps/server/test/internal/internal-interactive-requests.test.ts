@@ -1,8 +1,9 @@
 import { setTimeout as sleep } from "node:timers/promises";
-import { deleteThread } from "@bb/db";
+import { deleteThread, listPendingInteractionsByThread } from "@bb/db";
 import type { HostDaemonInteractiveRequest } from "@bb/host-daemon-contract";
 import { renderTemplate } from "@bb/templates";
 import { describe, expect, it } from "vitest";
+import { toPendingInteraction } from "../../src/services/interactions/pending-interaction-serialization.js";
 import {
   internalAuthHeaders,
   reportQueuedCommandSuccess,
@@ -52,10 +53,9 @@ async function waitForPendingInteractionId(
   const deadline = Date.now() + 1_000;
 
   while (Date.now() < deadline) {
-    const interactions =
-      args.harness.deps.pendingInteractions.listThreadInteractions(
-        args.threadId,
-      );
+    const interactions = listPendingInteractionsByThread(args.harness.db, {
+      threadId: args.threadId,
+    }).map(toPendingInteraction);
     const pending = interactions.find(
       (interaction) => interaction.status === "pending",
     );
@@ -253,8 +253,9 @@ describe("internal interactive request lifecycle", () => {
         status: "pending",
       });
 
-      const [interaction] =
-        harness.deps.pendingInteractions.listThreadInteractions(thread.id);
+      const [interaction] = listPendingInteractionsByThread(harness.db, {
+        threadId: thread.id,
+      }).map(toPendingInteraction);
       if (!interaction) {
         throw new Error("Expected user-question interaction to be persisted");
       }
@@ -405,7 +406,9 @@ describe("internal interactive request lifecycle", () => {
         status: "pending",
       });
       expect(
-        harness.deps.pendingInteractions.listThreadInteractions(thread.id),
+        listPendingInteractionsByThread(harness.db, {
+          threadId: thread.id,
+        }).map(toPendingInteraction),
       ).toHaveLength(1);
     });
   });
@@ -668,7 +671,9 @@ describe("internal interactive request lifecycle", () => {
         retryable: true,
       });
       expect(
-        harness.deps.pendingInteractions.listThreadInteractions(thread.id),
+        listPendingInteractionsByThread(harness.db, {
+          threadId: thread.id,
+        }).map(toPendingInteraction),
       ).toEqual([]);
     });
   });
@@ -711,7 +716,9 @@ describe("internal interactive request lifecycle", () => {
         status: "resolving",
       });
       expect(
-        harness.deps.pendingInteractions.listThreadInteractions(thread.id),
+        listPendingInteractionsByThread(harness.db, {
+          threadId: thread.id,
+        }).map(toPendingInteraction),
       ).toEqual([
         expect.objectContaining({
           id: interactionId,
@@ -790,7 +797,9 @@ describe("internal interactive request lifecycle", () => {
       });
 
       expect(
-        harness.deps.pendingInteractions.listThreadInteractions(thread.id),
+        listPendingInteractionsByThread(harness.db, {
+          threadId: thread.id,
+        }).map(toPendingInteraction),
       ).toEqual([
         expect.objectContaining({
           status: "interrupted",
@@ -883,7 +892,9 @@ describe("internal interactive request lifecycle", () => {
       });
 
       expect(
-        harness.deps.pendingInteractions.listThreadInteractions(liveThread.id),
+        listPendingInteractionsByThread(harness.db, {
+          threadId: liveThread.id,
+        }).map(toPendingInteraction),
       ).toEqual([
         expect.objectContaining({
           id: interactionId,
@@ -962,7 +973,9 @@ describe("internal interactive request lifecycle", () => {
       expect(await threadEventWaiter.promise).toBe(true);
 
       expect(
-        harness.deps.pendingInteractions.listThreadInteractions(thread.id),
+        listPendingInteractionsByThread(harness.db, {
+          threadId: thread.id,
+        }).map(toPendingInteraction),
       ).toEqual([]);
     });
   });

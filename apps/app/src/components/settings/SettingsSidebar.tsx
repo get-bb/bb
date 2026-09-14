@@ -16,7 +16,6 @@ import { getSettingsSectionRoutePath } from "./settings-sections";
 interface SettingsSidebarProps {
   onResizeMouseDown: (event: ReactMouseEvent<HTMLDivElement>) => void;
   isResizing: boolean;
-  showTopReserve: boolean;
   appRoutePath: string;
   mobileHosted?: boolean;
 }
@@ -34,7 +33,6 @@ interface SettingsSidebarContentProps extends SettingsSidebarProps {
 export function SettingsSidebarContent({
   onResizeMouseDown,
   isResizing,
-  showTopReserve,
   appRoutePath,
   mobileHosted,
   navigation,
@@ -50,7 +48,6 @@ export function SettingsSidebarContent({
       isResizing={isResizing}
       mobileHosted={mobileHosted}
       onResizeMouseDown={onResizeMouseDown}
-      showTopReserve={showTopReserve}
       testIdPrefix={testIdPrefix}
     >
       <SectionSidebarLabel>Settings</SectionSidebarLabel>
@@ -135,7 +132,6 @@ export function SettingsSidebarContent({
 export function SettingsSidebar({
   onResizeMouseDown,
   isResizing,
-  showTopReserve,
   appRoutePath,
   mobileHosted,
 }: SettingsSidebarProps) {
@@ -148,7 +144,6 @@ export function SettingsSidebar({
       mobileHosted={mobileHosted}
       navigation={navigation}
       onResizeMouseDown={onResizeMouseDown}
-      showTopReserve={showTopReserve}
     />
   );
 }

@@ -11,6 +11,11 @@ permissions:
 jobs:
   validate:
     name: Parse the live v2 marketplace
+    # Scheduled runs are restricted to the canonical repository so that forks,
+    # on which GitHub happily runs cron workflows, do not run the validation
+    # against the upstream marketplace for no benefit. Manual dispatch keeps
+    # working in forks.
+    if: ${{ github.event_name != 'schedule' || github.repository == 'get-bb/bb' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 10
 

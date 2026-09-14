@@ -30,8 +30,9 @@ export type {
  * unit tests, tooling) resolves the same objects when a runtime is
  * installed — and `undefined` values, not a module-load throw, when none is.
  *
- * Hooks-only surface (the host-provided UI kit was removed 2026-07-03,
- * plugin design §5.5): components are vendored shadcn-style source from the
+ * Shared hooks and host components, including experimental_Icon. The generic
+ * host-provided UI kit was removed 2026-07-03,
+ * plugin design §5.5: other components are vendored shadcn-style source from the
  * BB registry (`npx shadcn add @bb/<name>`); `toast` comes from
  * `import { toast } from "sonner"` (runtime-shimmed to the host toaster).
  */
@@ -45,6 +46,8 @@ interface PluginRuntimeHost {
 const runtime = ((globalThis as PluginRuntimeHost).__bbPluginRuntime
   ?.pluginSdkApp ?? {}) as Partial<PluginSdkApp> as PluginSdkApp;
 
+export const experimental_Icon = runtime.experimental_Icon;
+export const experimental_ProviderIcon = runtime.experimental_ProviderIcon;
 export const definePluginApp = runtime.definePluginApp;
 export const ThreadChat = runtime.ThreadChat;
 export const Markdown = runtime.Markdown;
@@ -56,6 +59,10 @@ export const experimental_ProviderModelPicker =
   runtime.experimental_ProviderModelPicker;
 export const experimental_PermissionModePicker =
   runtime.experimental_PermissionModePicker;
+export const experimental_BranchPicker = runtime.experimental_BranchPicker;
+export const experimental_useBranches = runtime.experimental_useBranches;
+export const experimental_useCheckoutState =
+  runtime.experimental_useCheckoutState;
 // Host-owned code rendering (experimental — see docs/api_to_audit.md).
 export const experimental_SourceCode = runtime.experimental_SourceCode;
 export const experimental_Diff = runtime.experimental_Diff;

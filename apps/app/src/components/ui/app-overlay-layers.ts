@@ -3,5 +3,6 @@ export const APP_OVERLAY_LAYER = {
   secondaryPanelDismiss: 40,
   sidebarTrigger: 44,
   secondaryPanelFullPage: 45,
+  compactSidebarTrigger: 46,
   sharedPortaledOverlay: 50,
 } as const;

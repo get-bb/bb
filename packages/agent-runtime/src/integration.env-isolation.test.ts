@@ -185,3 +185,60 @@ for (const providerId of providers) {
     }, 95_000);
   });
 }
+
+it("codex provider applies rotated and removed contributions on the next turn", async () => {
+  const ctx = createTestRuntime("codex", {
+    onInteractiveRequest: createApprovalResolution,
+  });
+  const threadId = newThreadId();
+  const contribution = (value: string) => [
+    {
+      name: "BB_MACHINE_ROTATION_TEST",
+      value,
+      reason: "Verify next-turn rotation",
+      source: { core: "machine-git" as const },
+    },
+  ];
+  try {
+    const options = await resolveRuntimeOptions({
+      ctx,
+      providerId: "codex",
+      preset: "full",
+    });
+    await ctx.runtime.startThread({
+      environmentId: `env-rotation-${randomUUID()}`,
+      threadId,
+      projectId: `project-rotation-${randomUUID()}`,
+      providerId: "codex",
+      options,
+      contributedEnv: contribution("original"),
+    });
+    for (const [index, value] of ["original", "rotated", ""].entries()) {
+      const fileName = `rotation-${randomUUID()}.txt`;
+      await ctx.runtime.runTurn({
+        threadId,
+        clientRequestId: `creq_23456789a${index + 2}`,
+        options,
+        contributedEnv: value === "" ? [] : contribution(value),
+        input: [
+          promptTextInput({
+            text: createCapturePrompt(
+              `if [ "\${BB_MACHINE_ROTATION_TEST-}" = '${value}' ]; then printf PASS; else printf FAIL; fi > ${fileName}`,
+            ),
+          }),
+        ],
+      });
+      await waitForRuntimeCondition({
+        ctx,
+        label: `rotation turn ${index}`,
+        predicate: () =>
+          turnCompletedCountForThread(ctx.events, threadId) > index,
+        timeoutMs: 90_000,
+      });
+      expect(readFileSync(join(ctx.tmpDir, fileName), "utf8")).toBe("PASS");
+    }
+  } finally {
+    await ctx.runtime.shutdown();
+    cleanup(ctx);
+  }
+}, 180_000);

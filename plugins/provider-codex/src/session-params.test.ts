@@ -721,7 +721,7 @@ describe("toCodexReasoningEffort", () => {
 describe("toCodexServiceTier", () => {
   it("forwards only the fast tier", () => {
     expect(toCodexServiceTier("fast")).toBe("fast");
-    expect(toCodexServiceTier("default")).toBeUndefined();
+    expect(toCodexServiceTier("default")).toBeNull();
     expect(toCodexServiceTier(undefined)).toBeUndefined();
   });
 });

@@ -1,5 +1,6 @@
 import type { IconSvgElement } from "@hugeicons/react";
 import {
+  AiBrain01Icon,
   AiBrowserIcon,
   AiContentGenerator01Icon,
   ArrowDown02Icon,
@@ -68,11 +69,13 @@ import {
   Menu02Icon,
   MessageAdd02Icon,
   Mic02Icon,
+  MoveToIcon,
   PackageReceiveIcon,
   PauseIcon,
   PinIcon,
   PinOffIcon,
   PlayIcon,
+  Plug02Icon,
   PlusMinusSquare01Icon,
   PlusSignIcon,
   PuzzleIcon,
@@ -181,7 +184,30 @@ const PaletteStrokeRoundedIcon: IconSvgElement = [
   ],
 ];
 
+const DiscordLogoIcon: IconSvgElement = [
+  [
+    "path",
+    {
+      d: "M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189Z",
+      fill: "currentColor",
+      key: "0",
+    },
+  ],
+];
+
+const GithubLogoIcon: IconSvgElement = [
+  [
+    "path",
+    {
+      d: "M10.226 17.284c-2.965-.36-5.054-2.493-5.054-5.256 0-1.123.404-2.336 1.078-3.144-.292-.741-.247-2.314.09-2.965.898-.112 2.111.36 2.83 1.01.853-.269 1.752-.404 2.853-.404 1.1 0 1.999.135 2.807.382.696-.629 1.932-1.1 2.83-.988.315.606.36 2.179.067 2.942.72.854 1.101 2 1.101 3.167 0 2.763-2.089 4.852-5.098 5.234.763.494 1.28 1.572 1.28 2.807v2.336c0 .674.561 1.056 1.235.786 4.066-1.55 7.255-5.615 7.255-10.646C23.5 6.188 18.334 1 11.978 1 5.62 1 .5 6.188.5 12.545c0 4.986 3.167 9.12 7.435 10.669.606.225 1.19-.18 1.19-.786V20.63a2.9 2.9 0 0 1-1.078.224c-1.483 0-2.359-.808-2.987-2.313-.247-.607-.517-.966-1.034-1.033-.27-.023-.359-.135-.359-.27 0-.27.45-.471.898-.471.652 0 1.213.404 1.797 1.235.45.651.921.943 1.483.943.561 0 .92-.202 1.437-.719.382-.381.674-.718.944-.943",
+      fill: "currentColor",
+      key: "0",
+    },
+  ],
+];
+
 export const EXTENDED_ICON_MAP: ExtendedIconMap = {
+  AiBrain01: AiBrain01Icon,
   AiBrowser: AiBrowserIcon,
   AiContentGenerator01: AiContentGenerator01Icon,
   AlignLeft: Menu02Icon,
@@ -215,8 +241,10 @@ export const EXTENDED_ICON_MAP: ExtendedIconMap = {
   CornerDownLeft: ArrowMoveDownLeftIcon,
   CornerDownRight: ArrowMoveDownRightIcon,
   Discord: DiscordIcon,
+  DiscordLogo: DiscordLogoIcon,
   DateTime: DateTimeIcon,
   Github: GithubIcon,
+  GithubLogo: GithubLogoIcon,
   DragDropHorizontal: DragDropHorizontalIcon,
   DragDropVertical: DragDropVerticalIcon,
   EditFile: Edit04Icon,
@@ -252,6 +280,7 @@ export const EXTENDED_ICON_MAP: ExtendedIconMap = {
   Maximize2: ExpandIcon,
   Mic: Mic02Icon,
   Minimize2: CollapseIcon,
+  MoveTo: MoveToIcon,
   NewTab: DashedLine02Icon,
   PackageReceive: PackageReceiveIcon,
   Palette: PaletteStrokeRoundedIcon,
@@ -262,6 +291,7 @@ export const EXTENDED_ICON_MAP: ExtendedIconMap = {
   Pin: PinIcon,
   PinOff: PinOffIcon,
   Play: PlayIcon,
+  Plug02: Plug02Icon,
   Plus: PlusSignIcon,
   Puzzle: PuzzleIcon,
   Repeat: RepeatIcon,

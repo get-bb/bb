@@ -1,31 +1,20 @@
-export {
-  getPersonalWorkspaceRoot,
-  provisionWorkspace,
-  validatePersonalWorkspaceTargetPath,
-} from "./provision.js";
-export type {
-  DestroyWorkspaceArgs,
-  HostWorkspace,
-  ProvisionWorkspaceArgs,
-} from "./provision.js";
+export { provisionWorkspace } from "./provision.js";
+export type { HostWorkspace, ProvisionWorkspaceArgs } from "./provision.js";
 
 export type { PullRequestActionOptions } from "./workspace.js";
-export type { GitHostCliOptions } from "./git-host.js";
-export { withGitRefMutationLock } from "./git-ref-mutation-lock.js";
+export { withGitRefMutationLock } from "bb-environment-provider-host/process-local-lock";
 
 export {
   WorkspaceError,
   detectGitRepo,
+  detectLinkedWorktree,
   detectGitRepoKind,
   fetchRemoteBranches,
   getCheckoutRef,
-  getCurrentBranch,
   getWorkspaceGitOperation,
   getGitCommonDir,
   hasUncommittedChanges,
   listBranchRefsWithDefaults,
-  listBranches,
-  listRemoteBranches,
   readDefaultBranchRefs,
   readGitBlob,
   runGit,

@@ -3,8 +3,10 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { createDeferredPromise } from "@bb/test-helpers";
-import { withGitRefMutationLock } from "../src/git-ref-mutation-lock.js";
-import { ProcessLocalQueuedLockTimeoutError } from "../src/process-local-queued-lock.js";
+import {
+  ProcessLocalQueuedLockTimeoutError,
+  withGitRefMutationLock,
+} from "bb-environment-provider-host/process-local-lock";
 
 const tempDirs: string[] = [];
 
@@ -110,5 +112,30 @@ describe("git ref mutation lock", () => {
       releaseFirst.resolve();
       await first;
     }
+  });
+});
+
+describe("withGitRefMutationLock across processes", () => {
+  it("waits for a lock directory another process holds and takes over a stale one", async () => {
+    const commonDir = await fs.mkdtemp(path.join(os.tmpdir(), "bb-ref-lock-"));
+    const lockPath = path.join(commonDir, "bb-ref-mutation.lock");
+    await fs.mkdir(lockPath);
+    let entered = false;
+    const run = withGitRefMutationLock(commonDir, async () => {
+      entered = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    expect(entered).toBe(false);
+    await fs.rm(lockPath, { recursive: true, force: true });
+    await run;
+    expect(entered).toBe(true);
+    await expect(fs.stat(lockPath)).rejects.toMatchObject({ code: "ENOENT" });
+
+    await fs.mkdir(lockPath);
+    const stale = new Date(Date.now() - 11 * 60_000);
+    await fs.utimes(lockPath, stale, stale);
+    await expect(
+      withGitRefMutationLock(commonDir, async () => "took over"),
+    ).resolves.toBe("took over");
   });
 });

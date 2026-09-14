@@ -45,7 +45,7 @@ describe("plugin marketplace author links", () => {
   it("routes the detail author name to the author page", () => {
     render(
       <MemoryRouter
-        initialEntries={["/extensions/plugins/Current?category=security"]}
+        initialEntries={["/plugins/Current?category=security"]}
       >
         <PluginMarketplaceHeaderMetadata entry={catalogEntry("Current")} />
       </MemoryRouter>,
@@ -54,7 +54,7 @@ describe("plugin marketplace author links", () => {
     expect(
       screen.getByRole("link", { name: "Pat Lee" }).getAttribute("href"),
     ).toBe(
-      "/extensions/plugins?category=security&author=12%3Abb-community%3Agithub%3Apatlee",
+      "/plugins?category=security&author=12%3Abb-community%3Agithub%3Apatlee",
     );
   });
 

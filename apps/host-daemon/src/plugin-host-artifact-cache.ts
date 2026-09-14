@@ -37,7 +37,6 @@ export async function ensureCachedPluginHostArtifact(args: {
         digest,
         expectedByteLength: byteLength,
       }),
-    prune: { kind: "keep-only-current" },
     logger: args.logger,
   });
 }

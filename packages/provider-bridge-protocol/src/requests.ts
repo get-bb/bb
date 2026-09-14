@@ -1,5 +1,4 @@
 import {
-  availableModelSchema,
   clientTurnRequestIdSchema,
   dynamicToolSchema,
   instructionModeSchema,
@@ -139,14 +138,3 @@ export const threadIdentityResultSchema = z
     sessionRestorable: z.boolean().optional(),
   })
   .passthrough();
-
-export type ThreadIdentityResult = z.infer<typeof threadIdentityResultSchema>;
-
-export const modelListResultSchema = z
-  .object({
-    models: z.array(availableModelSchema),
-    selectedOnlyModels: z.array(availableModelSchema).default([]),
-  })
-  .passthrough();
-
-export type ModelListResult = z.infer<typeof modelListResultSchema>;

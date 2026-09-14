@@ -32,7 +32,6 @@ function createFakeWorkspace(path: string, isGitRepo = true) {
   let sharedGitRefsFingerprintError: Error | null = null;
   const workspace = {
     path,
-    managed: false,
     isGitRepo,
     isWorktree: false,
     getDefaultBranch: vi.fn(async () => "main"),
@@ -72,12 +71,10 @@ function createFakeWorkspace(path: string, isGitRepo = true) {
     diffPatch: vi.fn(async () => []),
     getPullRequest: vi.fn(async () => ({ outcome: "none" as const })),
     runPullRequestAction: vi.fn(async () => undefined),
-    listFiles: vi.fn(async () => []),
     commit: vi.fn(async () => ({
       commitSha: "commit-1",
       commitSubject: "commit",
     })),
-    reset: vi.fn(async () => undefined),
     setLocalStateFingerprint(value: GetLocalStateFingerprintResult) {
       localStateFingerprint = value;
     },
@@ -90,7 +87,6 @@ function createFakeWorkspace(path: string, isGitRepo = true) {
     setSharedGitRefsFingerprintError(error: Error | null) {
       sharedGitRefsFingerprintError = error;
     },
-    destroy: vi.fn(async () => undefined),
   } satisfies HostWorkspace & {
     setLocalStateFingerprint: (value: GetLocalStateFingerprintResult) => void;
     setLocalStateFingerprintError: (error: Error | null) => void;
@@ -148,7 +144,6 @@ describe("WatchManager", () => {
           environmentId: "env-watch",
           workspaceContext: {
             workspacePath: "/tmp/env-watch",
-            workspaceProvisionType: "unmanaged",
           },
         },
       ],
@@ -187,7 +182,6 @@ describe("WatchManager", () => {
           environmentId: "env-watch",
           workspaceContext: {
             workspacePath: "/tmp/env-watch",
-            workspaceProvisionType: "unmanaged",
           },
         },
       ],
@@ -226,7 +220,6 @@ describe("WatchManager", () => {
           environmentId: "env-watch",
           workspaceContext: {
             workspacePath: "/tmp/env-watch",
-            workspaceProvisionType: "unmanaged",
           },
         },
       ],
@@ -239,7 +232,6 @@ describe("WatchManager", () => {
           environmentId: "env-watch",
           workspaceContext: {
             workspacePath: "/tmp/env-watch",
-            workspaceProvisionType: "unmanaged",
           },
         },
       ],
@@ -294,7 +286,6 @@ describe("WatchManager", () => {
           environmentId: "env-watch",
           workspaceContext: {
             workspacePath: "/tmp/env-watch",
-            workspaceProvisionType: "unmanaged",
           },
         },
       ],
@@ -355,7 +346,6 @@ describe("WatchManager", () => {
           environmentId: "env-watch",
           workspaceContext: {
             workspacePath: "/tmp/env-watch",
-            workspaceProvisionType: "unmanaged",
           },
         },
       ],
@@ -431,7 +421,6 @@ describe("WatchManager", () => {
           environmentId: "env-watch",
           workspaceContext: {
             workspacePath: "/tmp/env-watch",
-            workspaceProvisionType: "unmanaged",
           },
         },
       ],
@@ -470,7 +459,6 @@ describe("WatchManager", () => {
           environmentId: "env-watch",
           workspaceContext: {
             workspacePath: "/tmp/env-watch",
-            workspaceProvisionType: "unmanaged",
           },
         },
       ],
@@ -499,7 +487,6 @@ describe("WatchManager", () => {
           environmentId: "env-watch",
           workspaceContext: {
             workspacePath: "/tmp/env-watch",
-            workspaceProvisionType: "unmanaged",
           },
         },
       ],
@@ -518,7 +505,6 @@ describe("WatchManager", () => {
           environmentId: "env-watch",
           workspaceContext: {
             workspacePath: "/tmp/env-watch",
-            workspaceProvisionType: "unmanaged",
           },
         },
       ],
@@ -552,7 +538,6 @@ describe("WatchManager", () => {
           environmentId: "env-watch",
           workspaceContext: {
             workspacePath: "/tmp/env-watch",
-            workspaceProvisionType: "unmanaged",
           },
         },
       ],
@@ -596,7 +581,6 @@ describe("WatchManager", () => {
           environmentId: "env-watch",
           workspaceContext: {
             workspacePath: "/tmp/env-watch",
-            workspaceProvisionType: "unmanaged",
           },
         },
       ],
@@ -638,7 +622,6 @@ describe("WatchManager", () => {
           environmentId: "env-watch",
           workspaceContext: {
             workspacePath: "/tmp/env-watch",
-            workspaceProvisionType: "unmanaged",
           },
         },
       ],
@@ -684,7 +667,6 @@ describe("WatchManager", () => {
           environmentId: "env-watch",
           workspaceContext: {
             workspacePath: "/tmp/env-watch",
-            workspaceProvisionType: "unmanaged",
           },
         },
       ],
@@ -732,7 +714,6 @@ describe("WatchManager", () => {
           environmentId: "env-watch",
           workspaceContext: {
             workspacePath: "/tmp/env-watch",
-            workspaceProvisionType: "unmanaged",
           },
         },
       ],
@@ -805,7 +786,6 @@ describe("WatchManager", () => {
           environmentId: "env-watch",
           workspaceContext: {
             workspacePath: "/tmp/env-watch",
-            workspaceProvisionType: "unmanaged",
           },
         },
       ],
@@ -872,7 +852,6 @@ describe("WatchManager", () => {
           environmentId: "env-watch",
           workspaceContext: {
             workspacePath: "/tmp/env-watch",
-            workspaceProvisionType: "unmanaged",
           },
         },
       ],

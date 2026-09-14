@@ -11,6 +11,8 @@ import {
   type MobilePairingPayload,
 } from "@bb/connect-client";
 import type { connectRpcContract } from "./src/rpc.js";
+import type { MachineCodeErrorCode } from "./src/machine-code.js";
+import type { ConnectPairErrorCode } from "./src/redeem.js";
 import QRCode from "qrcode";
 import { Button } from "@bb/shared-ui/button";
 import {
@@ -32,19 +34,13 @@ function errorText(error: unknown): string {
 const DANGER_QUIET_CLASS =
   "text-destructive-text hover:text-destructive-text hover:bg-surface-destructive";
 
-type PairErrorCode =
-  | "invalid_code"
-  | "expired_code"
-  | "already_used"
-  | "network";
-
 interface PairErrorCopy {
   lead: string;
   linkLabel: string;
   tail: string;
 }
 
-const PAIR_ERROR_COPY: Record<PairErrorCode, PairErrorCopy> = {
+const PAIR_ERROR_COPY: Record<ConnectPairErrorCode, PairErrorCopy> = {
   invalid_code: {
     lead: "That code is invalid or has expired.",
     linkLabel: "Get a new code",
@@ -67,7 +63,7 @@ const PAIR_ERROR_COPY: Record<PairErrorCode, PairErrorCopy> = {
   },
 };
 
-function toPairErrorCode(error: unknown): PairErrorCode {
+function toPairErrorCode(error: unknown): ConnectPairErrorCode {
   const message = errorText(error);
   if (
     message === "invalid_code" ||
@@ -230,7 +226,7 @@ function QrCodeImage({
   className,
 }: {
   value: string;
-  alt?: string;
+  alt: string;
   className?: string;
 }) {
   const [dataUrl, setDataUrl] = useState<string | null>(null);
@@ -252,7 +248,7 @@ function QrCodeImage({
   return (
     <img
       src={dataUrl}
-      alt={alt ?? `QR code for ${value}`}
+      alt={alt}
       className={cn(
         "size-32 rounded-md border border-border bg-white p-1.5",
         className,
@@ -380,7 +376,7 @@ function PairForm({
   const rpc = useRpc<typeof connectRpcContract>();
   const [code, setCode] = useState("");
   const [pending, setPending] = useState(false);
-  const [errorCode, setErrorCode] = useState<PairErrorCode | null>(null);
+  const [errorCode, setErrorCode] = useState<ConnectPairErrorCode | null>(null);
   const submittedRef = useRef<string | null>(null);
 
   const submit = useCallback(
@@ -468,8 +464,6 @@ function PairForm({
     </div>
   );
 }
-
-type MachineCodeErrorCode = "machine_limit" | "network" | "not_paired";
 
 function toMachineCodeErrorCode(error: unknown): MachineCodeErrorCode {
   const message = errorText(error);
@@ -1041,12 +1035,14 @@ function NotPairedContent({
   );
 }
 
-function ConnectedContent({
+function DisconnectControls({
   status,
+  note,
   onChanged,
   onDisconnected,
 }: {
   status: ConnectStatus;
+  note: string;
   onChanged: () => void;
   onDisconnected: () => void;
 }) {
@@ -1054,7 +1050,6 @@ function ConnectedContent({
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const [disconnectError, setDisconnectError] = useState<string | null>(null);
-  const [repairOpen, setRepairOpen] = useState(false);
 
   const disconnect = useCallback(() => {
     setDisconnecting(true);
@@ -1074,6 +1069,48 @@ function ConnectedContent({
   }, [rpc, onChanged, onDisconnected]);
 
   const host = status.url !== null ? hostOf(status.url) : "this bb";
+
+  return (
+    <>
+      <div className="-mx-4 mt-4 flex items-center gap-3 border-t border-border-seam px-4 pt-3">
+        <span className="min-w-0 text-xs text-muted-foreground">{note}</span>
+        <span className="flex-1" />
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className={DANGER_QUIET_CLASS}
+          onClick={() => setConfirmOpen(true)}
+        >
+          Disconnect
+        </Button>
+      </div>
+      {disconnectError !== null ? (
+        <p className="text-xs text-destructive-text">{disconnectError}</p>
+      ) : null}
+
+      <DisconnectDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        host={host}
+        dashboardHost={hostOf(status.dashboardUrl)}
+        pending={disconnecting}
+        onConfirm={disconnect}
+      />
+    </>
+  );
+}
+
+function ConnectedContent({
+  status,
+  onChanged,
+  onDisconnected,
+}: {
+  status: ConnectStatus;
+  onChanged: () => void;
+  onDisconnected: () => void;
+}) {
+  const [repairOpen, setRepairOpen] = useState(false);
 
   return (
     <div className="space-y-4">
@@ -1114,32 +1151,11 @@ function ConnectedContent({
 
       <SharedPortsSection shares={status.shares} dimmed={false} />
 
-      <div className="-mx-4 mt-4 flex items-center gap-3 border-t border-border-seam px-4 pt-3">
-        <span className="min-w-0 text-xs text-muted-foreground">
-          Disconnecting forgets this bb&apos;s credential.
-        </span>
-        <span className="flex-1" />
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className={DANGER_QUIET_CLASS}
-          onClick={() => setConfirmOpen(true)}
-        >
-          Disconnect
-        </Button>
-      </div>
-      {disconnectError !== null ? (
-        <p className="text-xs text-destructive-text">{disconnectError}</p>
-      ) : null}
-
-      <DisconnectDialog
-        open={confirmOpen}
-        onOpenChange={setConfirmOpen}
-        host={host}
-        dashboardHost={hostOf(status.dashboardUrl)}
-        pending={disconnecting}
-        onConfirm={disconnect}
+      <DisconnectControls
+        status={status}
+        note="Disconnecting forgets this bb's credential."
+        onChanged={onChanged}
+        onDisconnected={onDisconnected}
       />
     </div>
   );
@@ -1154,36 +1170,12 @@ function ReconnectingContent({
   onChanged: () => void;
   onDisconnected: () => void;
 }) {
-  const rpc = useRpc<typeof connectRpcContract>();
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const [disconnecting, setDisconnecting] = useState(false);
-  const [disconnectError, setDisconnectError] = useState<string | null>(null);
-
-  const disconnect = useCallback(() => {
-    setDisconnecting(true);
-    setDisconnectError(null);
-    rpc.call("disconnect").then(
-      () => {
-        setDisconnecting(false);
-        setConfirmOpen(false);
-        onDisconnected();
-        onChanged();
-      },
-      (error: unknown) => {
-        setDisconnecting(false);
-        setDisconnectError(errorText(error));
-      },
-    );
-  }, [rpc, onChanged, onDisconnected]);
-
-  const host = status.url !== null ? hostOf(status.url) : "this bb";
   const why = [status.lastError, retryHint(status.nextRetryAt)]
     .filter((part): part is string => part !== null && part.length > 0)
     .join(" · ");
 
   return (
     <div className="space-y-4">
-      {}
       <div className="-mx-4 -mt-3.5 flex items-center gap-2.5 rounded-t-lg border-b border-warning/40 bg-warning/10 px-4 py-3">
         <StatusDot tone="warn" />
         <span className="shrink-0 text-sm font-semibold text-warning-text">
@@ -1205,33 +1197,11 @@ function ReconnectingContent({
 
       <SharedPortsSection shares={status.shares} dimmed />
 
-      <div className="-mx-4 mt-4 flex items-center gap-3 border-t border-border-seam px-4 pt-3">
-        <span className="min-w-0 text-xs text-muted-foreground">
-          Remote devices can&apos;t reach this bb right now. Local access is
-          unaffected.
-        </span>
-        <span className="flex-1" />
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className={DANGER_QUIET_CLASS}
-          onClick={() => setConfirmOpen(true)}
-        >
-          Disconnect
-        </Button>
-      </div>
-      {disconnectError !== null ? (
-        <p className="text-xs text-destructive-text">{disconnectError}</p>
-      ) : null}
-
-      <DisconnectDialog
-        open={confirmOpen}
-        onOpenChange={setConfirmOpen}
-        host={host}
-        dashboardHost={hostOf(status.dashboardUrl)}
-        pending={disconnecting}
-        onConfirm={disconnect}
+      <DisconnectControls
+        status={status}
+        note="Remote devices can't reach this bb right now. Local access is unaffected."
+        onChanged={onChanged}
+        onDisconnected={onDisconnected}
       />
     </div>
   );

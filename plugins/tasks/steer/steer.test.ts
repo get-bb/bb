@@ -83,10 +83,7 @@ describe("comment notification delivery", () => {
 
     await expect(
       deliverCommentToLatestAgent(bb, store, { taskId: task.id, ...input }),
-    ).resolves.toEqual({
-      notifiedCount: 1,
-      outcomes: [{ threadId: "thr_second", status: "delivered" }],
-    });
+    ).resolves.toBe(1);
     expect(harness.sdk.callsTo("threads.send")).toEqual([
       [
         {
@@ -120,10 +117,7 @@ describe("comment notification delivery", () => {
 
     await expect(
       deliverCommentToLatestAgent(bb, store, { taskId: task.id, ...input }),
-    ).resolves.toEqual({
-      notifiedCount: 1,
-      outcomes: [{ threadId: "thr_idle", status: "delivered" }],
-    });
+    ).resolves.toBe(1);
     expect(harness.sdk.callsTo("threads.send")).toEqual([
       [
         expect.objectContaining({
@@ -139,7 +133,7 @@ describe("comment notification delivery", () => {
 
     await expect(
       deliverCommentToLatestAgent(bb, store, { taskId: task.id, ...input }),
-    ).resolves.toEqual({ notifiedCount: 0, outcomes: [] });
+    ).resolves.toBe(0);
     expect(harness.sdk.callsTo("threads.get")).toEqual([]);
     expect(harness.sdk.callsTo("threads.send")).toEqual([]);
   });
@@ -162,16 +156,8 @@ describe("comment notification delivery", () => {
 
     await expect(
       deliverCommentToLatestAgent(bb, store, { taskId: task.id, ...input }),
-    ).resolves.toEqual({
-      notifiedCount: 0,
-      outcomes: [
-        {
-          threadId: null,
-          status: "skipped",
-          reason: "latest agent reply has no thread",
-        },
-      ],
-    });
+    ).resolves.toBe(0);
+    expect(harness.sdk.callsTo("threads.get")).toEqual([]);
     expect(harness.sdk.callsTo("threads.send")).toEqual([]);
   });
 
@@ -195,16 +181,10 @@ describe("comment notification delivery", () => {
 
     await expect(
       deliverCommentToLatestAgent(bb, store, { taskId: task.id, ...input }),
-    ).resolves.toEqual({
-      notifiedCount: 0,
-      outcomes: [
-        {
-          threadId: "thr_side_chat",
-          status: "skipped",
-          reason: "latest agent reply belongs to a side chat",
-        },
-      ],
-    });
+    ).resolves.toBe(0);
+    expect(harness.sdk.callsTo("threads.get")).toEqual([
+      [{ threadId: "thr_side_chat" }],
+    ]);
     expect(harness.sdk.callsTo("threads.send")).toEqual([]);
   });
 
@@ -228,16 +208,10 @@ describe("comment notification delivery", () => {
 
     await expect(
       deliverCommentToLatestAgent(bb, store, { taskId: task.id, ...input }),
-    ).resolves.toEqual({
-      notifiedCount: 0,
-      outcomes: [
-        {
-          threadId: "thr_plugin_side_chat",
-          status: "skipped",
-          reason: "latest agent reply belongs to a side chat",
-        },
-      ],
-    });
+    ).resolves.toBe(0);
+    expect(harness.sdk.callsTo("threads.get")).toEqual([
+      [{ threadId: "thr_plugin_side_chat" }],
+    ]);
     expect(harness.sdk.callsTo("threads.send")).toEqual([]);
   });
 
@@ -258,16 +232,7 @@ describe("comment notification delivery", () => {
 
     await expect(
       deliverCommentToLatestAgent(bb, store, { taskId: task.id, ...input }),
-    ).resolves.toEqual({
-      notifiedCount: 0,
-      outcomes: [
-        {
-          threadId: "thr_latest",
-          status: "failed",
-          reason: "thread awaiting interaction",
-        },
-      ],
-    });
+    ).resolves.toBe(0);
     expect(harness.sdk.callsTo("threads.send")).toHaveLength(1);
     expect(harness.logEntries).toContainEqual({
       level: "warn",

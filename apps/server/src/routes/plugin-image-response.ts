@@ -1,5 +1,14 @@
 import type { Context } from "hono";
 
+export function hashedAssetCacheControl(
+  requestedHash: string | undefined,
+  hash: string,
+): string {
+  return requestedHash === hash
+    ? "public, max-age=31536000, immutable"
+    : "no-store";
+}
+
 export function pluginImageResponse(
   context: Pick<Context, "body">,
   asset: { bytes: Uint8Array; contentType: string },

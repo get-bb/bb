@@ -23,11 +23,11 @@ import {
   runPeriodicSweeps,
   runStartupRecoverySweep,
 } from "./services/system/periodic-sweeps.js";
+import { installProviderModelCatalogPrewarm } from "./services/providers/provider-model-catalog-prewarm.js";
 import { createProviderRegistryService } from "./services/providers/provider-registry.js";
 import { createTelemetryService } from "./services/system/telemetry.js";
 import { TerminalSessionLifecycle } from "./services/terminals/terminal-session-lifecycle.js";
 import { createLifecycleDedupers } from "./lifecycle-dedupers.js";
-import { MANAGED_ENVIRONMENT_RETIRE_GRACE_MS } from "./constants.js";
 import type { ServerRuntimeConfig } from "./types.js";
 import { NotificationHub } from "./ws/hub.js";
 import { WatchInterestCoordinator } from "./ws/watch-interests.js";
@@ -81,7 +81,6 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     inferenceFallbackModel: serverConfig.BB_INFERENCE_FALLBACK,
     inferenceModel: serverConfig.BB_INFERENCE,
     isDevelopment: !isProduction,
-    managedEnvironmentRetireGraceMs: MANAGED_ENVIRONMENT_RETIRE_GRACE_MS,
     openAiApiKey: serverConfig.OPENAI_API_KEY,
     serverPort: serverConfig.BB_SERVER_PORT,
     sharedSkillRoots: { user: [], project: [] },
@@ -208,6 +207,8 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     telemetry,
     terminalSessions,
   };
+  const providerModelCatalogPrewarm =
+    installProviderModelCatalogPrewarm(sweepDeps);
   await runStartupRecoverySweep(sweepDeps).catch((error) => {
     logger.error({ err: error }, "Startup recovery sweep failed");
   });
@@ -260,6 +261,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
       return shutdownPromise;
     }
     shutdownPromise = (async () => {
+      providerModelCatalogPrewarm.stop();
       eventLoopStallMonitor.stop();
       clearInterval(sweepInterval);
       pluginCatalogService.stopPeriodicRefresh();

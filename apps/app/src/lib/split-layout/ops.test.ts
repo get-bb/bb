@@ -6,7 +6,6 @@ import {
   findPaneByThread,
   listPanes,
   movePane,
-  normalize,
   removePane,
   replacePaneContent,
   resizeSplit,
@@ -229,56 +228,5 @@ describe("split layout operations", () => {
     }
     expect(resizeSplit(high, [], 1, 0.5)).toBe(high);
     expect(resizeSplit(high, [0], 0, 0.5)).toBe(high);
-  });
-
-  it("normalizes degenerate trees, invalid sizes, excess panes, and focus", () => {
-    const malformed: SplitLayout = {
-      root: {
-        type: "split",
-        dir: "row",
-        sizes: [Number.NaN, -1],
-        children: [
-          {
-            type: "split",
-            dir: "col",
-            sizes: [7],
-            children: [pane("pane-1")],
-          },
-          {
-            type: "split",
-            dir: "col",
-            sizes: [99, 1, 1, 1],
-            children: [
-              pane("pane-2"),
-              pane("pane-3"),
-              pane("pane-4"),
-              pane("pane-5"),
-              pane("pane-6"),
-              pane("pane-7"),
-              pane("pane-8"),
-              pane("pane-9"),
-            ],
-          },
-        ],
-      },
-      focusedPaneId: "missing-pane",
-    };
-
-    const normalized = normalize(malformed);
-
-    expect(countPanes(normalized.root)).toBe(MAX_PANES);
-    expect(listPanes(normalized.root).map((item) => item.paneId)).toEqual([
-      "pane-1",
-      "pane-2",
-      "pane-3",
-      "pane-4",
-      "pane-5",
-      "pane-6",
-      "pane-7",
-      "pane-8",
-    ]);
-    expect(normalized.focusedPaneId).toBe("pane-1");
-    expectNormalizedSizes(normalized);
-    expectValidFocus(normalized);
   });
 });

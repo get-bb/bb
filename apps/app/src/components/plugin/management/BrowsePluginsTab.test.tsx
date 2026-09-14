@@ -101,7 +101,7 @@ function LocationProbe() {
 
 function renderBrowse(
   data: PluginCatalogSearchData,
-  initialEntry = "/extensions/plugins",
+  initialEntry = "/plugins",
   onInstall = vi.fn(),
   onOpenPlugin = vi.fn(),
 ) {
@@ -175,7 +175,7 @@ describe("BrowsePluginsTab", () => {
   it("round trips the search parameter", async () => {
     renderBrowse(
       { entries: [MEMORY_ENTRY], collections: [] },
-      "/extensions/plugins?query=Mem",
+      "/plugins?query=Mem",
     );
 
     const search = await screen.findByRole("textbox", {
@@ -194,7 +194,7 @@ describe("BrowsePluginsTab", () => {
     const onOpenPlugin = vi.fn();
     renderBrowse(
       { entries: [MEMORY_ENTRY], collections: [] },
-      "/extensions/plugins?category=memory-and-context&sort=recently-added",
+      "/plugins?category=memory-and-context&sort=recently-added",
       vi.fn(),
       onOpenPlugin,
     );
@@ -212,7 +212,7 @@ describe("BrowsePluginsTab", () => {
   it("round trips repeatable category parameters", async () => {
     renderBrowse(
       { entries: [MEMORY_ENTRY, SECURITY_ENTRY, TASKS_ENTRY], collections: [] },
-      "/extensions/plugins?category=memory-and-context&category=security",
+      "/plugins?category=memory-and-context&category=security",
     );
 
     const trigger = await screen.findByRole("button", {
@@ -309,7 +309,7 @@ describe("BrowsePluginsTab", () => {
   it("sorts by install count and sinks uncounted entries in both directions", async () => {
     renderBrowse(
       { entries: [MEMORY_ENTRY, SECURITY_ENTRY, TASKS_ENTRY], collections: [] },
-      "/extensions/plugins?sort=most-installed",
+      "/plugins?sort=most-installed",
     );
 
     await screen.findByText("Memory");
@@ -336,7 +336,7 @@ describe("BrowsePluginsTab", () => {
   it("puts entries without a published date last in both directions", async () => {
     renderBrowse(
       { entries: [MEMORY_ENTRY, SECURITY_ENTRY, TASKS_ENTRY], collections: [] },
-      "/extensions/plugins?sort=recently-added",
+      "/plugins?sort=recently-added",
     );
 
     await screen.findByText("Memory");
@@ -362,7 +362,7 @@ describe("BrowsePluginsTab", () => {
   it("clears a flat sort and restores the shelves", async () => {
     renderBrowse(
       { entries: [MEMORY_ENTRY, SECURITY_ENTRY], collections: [] },
-      "/extensions/plugins?sort=most-installed",
+      "/plugins?sort=most-installed",
     );
 
     const trigger = await screen.findByRole("button", {
@@ -512,7 +512,7 @@ describe("BrowsePluginsTab", () => {
     const onOpenPlugin = vi.fn();
     renderBrowse(
       { entries: [MEMORY_ENTRY], collections: [] },
-      "/extensions/plugins?sort=most-installed",
+      "/plugins?sort=most-installed",
       onInstall,
       onOpenPlugin,
     );

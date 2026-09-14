@@ -47,7 +47,7 @@ async function sleep(args: SleepArgs): Promise<void> {
   });
 }
 
-function isProcessRunning(pid: number): boolean {
+export function isProcessRunning(pid: number): boolean {
   try {
     process.kill(pid, 0);
     return true;

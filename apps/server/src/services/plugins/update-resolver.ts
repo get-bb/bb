@@ -615,7 +615,7 @@ async function resolveGitRangeUpdate(args: {
   intent: Extract<GitUpdateIntent, { kind: "range" }>;
   current: PluginResolvedUpdateVersion;
   currentCommit: string;
-  probeCandidate?: GitCandidateProbe;
+  probeCandidate: GitCandidateProbe;
 }): Promise<PluginUpdateResolution> {
   const tags = await listGitSemverTags({
     url: args.url,
@@ -647,23 +647,6 @@ async function resolveGitRangeUpdate(args: {
       detail: `no tag of ${args.url} matches ${args.intent.range} (looking for tags named "${gitSemverTagName(args.intent.tagPrefix, "X.Y.Z")}")`,
     };
   }
-  const probeCandidate = args.probeCandidate;
-  if (probeCandidate === undefined) {
-    const selected = candidates[0];
-    if (selected === undefined || selected.commit === args.currentCommit) {
-      return { outcome: "current", current: args.current };
-    }
-    return {
-      outcome: "update-available",
-      current: args.current,
-      candidateGitTag: selected.tag,
-      candidate: gitResolvedVersion({
-        url: args.url,
-        ref: selected.tag,
-        commit: selected.commit,
-      }),
-    };
-  }
   let blocked: ResolutionFlags["blocked"] | undefined;
   let invalidDetail: string | undefined;
   let probes = 0;
@@ -687,7 +670,7 @@ async function resolveGitRangeUpdate(args: {
       };
     }
     probes += 1;
-    const probed = await probeCandidate(candidate);
+    const probed = await args.probeCandidate(candidate);
     if (probed.outcome === "invalid") {
       invalidDetail ??= probed.detail;
       continue;
@@ -728,7 +711,7 @@ export async function resolveGitUpdate(args: {
   url: string;
   intent: GitUpdateIntent;
   currentCommit: string;
-  probeCandidate?: GitCandidateProbe;
+  probeCandidate: GitCandidateProbe;
 }): Promise<PluginUpdateResolution> {
   const current = gitResolvedVersion({
     url: args.url,
@@ -742,9 +725,7 @@ export async function resolveGitUpdate(args: {
       intent: args.intent,
       current,
       currentCommit: args.currentCommit,
-      ...(args.probeCandidate === undefined
-        ? {}
-        : { probeCandidate: args.probeCandidate }),
+      probeCandidate: args.probeCandidate,
     });
   }
   if (args.intent.refKind === "commit") return { outcome: "pinned", current };
@@ -776,7 +757,7 @@ export async function resolveGitRange(args: {
   url: string;
   range: string;
   tagPrefix: string;
-  probeCandidate?: GitCandidateProbe;
+  probeCandidate: GitCandidateProbe;
 }): Promise<
   | { outcome: "resolved"; tag: string; version: string; commit: string }
   | { outcome: "unavailable"; detail: string }
@@ -791,15 +772,6 @@ export async function resolveGitRange(args: {
       outcome: "unavailable",
       detail: `no tag of ${args.url} matches ${args.range} (looking for tags named "${gitSemverTagName(args.tagPrefix, "X.Y.Z")}")`,
     };
-  }
-  if (args.probeCandidate === undefined) {
-    const selected = candidates[0];
-    return selected === undefined
-      ? {
-          outcome: "unavailable",
-          detail: `no tag of ${args.url} matches ${args.range}`,
-        }
-      : { outcome: "resolved", ...selected };
   }
   let firstProblem: string | undefined;
   let probes = 0;

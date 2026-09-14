@@ -189,10 +189,8 @@ prefix, so enrollment needs neither `sudo` nor a PATH change.
 Each joined server gets its own daemon instance, data directory
 (`~/.bb-machines/<server-host>`, override with `BB_DATA_DIR` when running the
 installer), local API port, and launchd/systemd service. The installer persists
-the selected port in that data directory and atomically reserves it under
-`~/.bb-machines/host-daemon-ports/`, including when `BB_DATA_DIR` points
-elsewhere. Subsequent runs reuse the reservation; pass `--host-daemon-port
-<port>` to the installer to override the selection. One machine can therefore
+the selected port in that data directory. Subsequent runs reuse it; pass
+`--host-daemon-port <port>` to the installer to override the selection. One machine can therefore
 serve several bb servers at once, and joining never touches a full local bb
 install's `~/.bb`. Each instance keeps its own `bb-app` under that data
 directory and self-updates against its own server, so servers running different

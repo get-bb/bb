@@ -1,5 +1,6 @@
 import type { registerHandlers } from "../api";
 import { tasksRpcContract, type Task } from "../shared/contract";
+import { allocatePrefix } from "./args";
 
 type TasksDomain = ReturnType<typeof registerHandlers>;
 
@@ -35,19 +36,12 @@ async function createTask(
 }
 
 function nextPrefix(base: string, used: Set<string>): string {
-  if (!used.has(base)) {
-    used.add(base);
-    return base;
+  const prefix = allocatePrefix(base, used);
+  if (prefix === null) {
+    throw new Error(`Could not allocate a demo prefix from ${base}`);
   }
-  for (let number = 2; number < 10_000; number += 1) {
-    const suffix = String(number);
-    const candidate = `${base.slice(0, 10 - suffix.length)}${suffix}`;
-    if (!used.has(candidate)) {
-      used.add(candidate);
-      return candidate;
-    }
-  }
-  throw new Error(`Could not allocate a demo prefix from ${base}`);
+  used.add(prefix);
+  return prefix;
 }
 
 export async function seedDemo(

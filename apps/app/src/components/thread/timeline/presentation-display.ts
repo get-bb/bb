@@ -1,19 +1,12 @@
 import type { CSSProperties } from "react";
 import { isPresentationTintColor } from "@bb/domain";
 import type { TimelineRowPresentation } from "@bb/server-contract";
-import { ICON_NAMES, type IconName } from "@bb/shared-ui/icon";
-
-const ICON_NAME_SET: ReadonlySet<string> = new Set(ICON_NAMES);
-
-export function isIconName(value: string): value is IconName {
-  return ICON_NAME_SET.has(value);
-}
+import { type IconName } from "@bb/shared-ui/icon";
 
 export function presentationIconName(
   presentation: { icon: TimelineRowPresentation["icon"] } | undefined,
 ): IconName | undefined {
-  const glyph = presentation?.icon.glyph;
-  return glyph !== undefined && isIconName(glyph) ? glyph : undefined;
+  return presentation?.icon.glyph;
 }
 
 export function presentationTintStyle(

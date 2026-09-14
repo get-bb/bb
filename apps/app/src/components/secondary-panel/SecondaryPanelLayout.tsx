@@ -1,5 +1,6 @@
 import {
   useCallback,
+  useContext,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -36,6 +37,7 @@ import {
   isCompactSidebarDrawerShowing,
   subscribeCompactSidebarDrawerShowing,
 } from "@/components/ui/sidebar-mobile-drawer-visibility";
+import { PluginDetailPanelContext } from "@/components/plugin/plugin-detail-navigation";
 
 const FULL_PANEL_SIZE_PERCENT = 100;
 const MAIN_PANEL_MIN_SIZE_PERCENT = 30;
@@ -85,12 +87,26 @@ export function SecondaryPanelLayout({
   mainHeader,
   main,
   collapse,
-  renderPanel,
+  renderPanel: renderWorkspacePanel,
   renderHostedPanel,
   composerHost,
-  compactPresentation,
+  compactPresentation: workspaceCompactPresentation,
 }: SecondaryPanelLayoutProps) {
   const paneContext = useOptionalPaneContext();
+  const pluginDetails = useContext(PluginDetailPanelContext);
+  const isPluginDetailOpen =
+    pluginDetails !== null && pluginDetails.activePluginId !== null;
+  const compactPresentation = isPluginDetailOpen
+    ? "full"
+    : workspaceCompactPresentation;
+  const renderPanel = useCallback(
+    (args: SecondaryPanelRenderArgs) => (
+      <PluginDetailPanelContext.Provider value={pluginDetails}>
+        {renderWorkspacePanel(args)}
+      </PluginDetailPanelContext.Provider>
+    ),
+    [pluginDetails, renderWorkspacePanel],
+  );
   const secondaryPanelHost = paneContext?.secondaryPanelHost ?? null;
   const renderAsDrawer = useIsCompactViewport();
   const sidebarDrawerShowing = useSyncExternalStore(
@@ -98,8 +114,12 @@ export function SecondaryPanelLayout({
     isCompactSidebarDrawerShowing,
     () => false,
   );
+  const previousSidebarDrawerShowing = useRef(sidebarDrawerShowing);
   useEffect(() => {
-    if (!renderAsDrawer || !open || !sidebarDrawerShowing) return;
+    const sidebarOpened =
+      sidebarDrawerShowing && !previousSidebarDrawerShowing.current;
+    previousSidebarDrawerShowing.current = sidebarDrawerShowing;
+    if (!renderAsDrawer || !open || !sidebarOpened) return;
     onClose();
   }, [onClose, open, renderAsDrawer, sidebarDrawerShowing]);
   const transitionsReady = usePanelCollapseTransitionsReady(
@@ -297,7 +317,6 @@ export function SecondaryPanelLayout({
 
   const mainContent = (
     <div
-      data-conversation-collapsed={isMainCollapsed}
       inert={isMainCollapsed}
       className={cn(
         "flex min-h-0 min-w-0 flex-1 flex-col transition-opacity",

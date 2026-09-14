@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
+import { useResponsiveOverlayBehavior } from "@bb/shared-ui/responsive-overlay";
 
 interface HoverPopoverHandlers {
   onBlur: () => void;
@@ -51,7 +51,7 @@ export function useHoverPopover({
   closeDelayMs = DEFAULT_CLOSE_DELAY_MS,
   hoverableContent = true,
 }: UseHoverPopoverOptions = {}): UseHoverPopoverResult {
-  const isPointerCoarse = usePointerCoarse();
+  const { supportsHover } = useResponsiveOverlayBehavior();
   const [open, setOpen] = useState(false);
   const [isFocusOverTrigger, setIsFocusOverTrigger] = useState(false);
   const [isFocusOverContent, setIsFocusOverContent] = useState(false);
@@ -68,9 +68,8 @@ export function useHoverPopover({
   }, []);
 
   useEffect(() => {
-    if (isPointerCoarse) return;
-
     clearToggleTimeout();
+    if (!supportsHover) return;
 
     if (isFocusOverTrigger || isFocusOverContent) {
       if (!open) setOpen(true);
@@ -106,7 +105,7 @@ export function useHoverPopover({
     closeDelayMs,
     isFocusOverContent,
     isFocusOverTrigger,
-    isPointerCoarse,
+    supportsHover,
     isPointerOverContent,
     isPointerOverTrigger,
     open,
@@ -134,7 +133,7 @@ export function useHoverPopover({
   );
 
   const triggerHoverProps = {
-    ...(isPointerCoarse
+    ...(!supportsHover
       ? EMPTY_HOVER_PROPS
       : {
           onPointerEnter: () => {
@@ -149,7 +148,7 @@ export function useHoverPopover({
   };
 
   const contentHoverProps = {
-    ...(isPointerCoarse
+    ...(!supportsHover
       ? EMPTY_HOVER_PROPS
       : hoverableContent
         ? {

@@ -1,3 +1,5 @@
+import { parseServerUrl } from "../shell/shell-url";
+
 const BB_URL_SCHEME = "bb";
 
 export interface LinkProfileLike {
@@ -27,11 +29,18 @@ const ADD_SERVER_PATH = "/settings/servers/add";
 
 const DEVELOPER_ROUTE_PREFIXES = ["/dev", "/e2e"] as const;
 
-export function isDeveloperRoutePath(path: string): boolean {
+export function pathMatchesPrefix(
+  path: string,
+  prefixes: readonly string[],
+): boolean {
   const pathname = path.split("?", 1)[0] ?? "";
-  return DEVELOPER_ROUTE_PREFIXES.some(
+  return prefixes.some(
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
   );
+}
+
+export function isDeveloperRoutePath(path: string): boolean {
+  return pathMatchesPrefix(path, DEVELOPER_ROUTE_PREFIXES);
 }
 
 const SCHEME_URL_PATTERN = /^([a-z][a-z0-9+.-]*):\/\/(.*)$/iu;
@@ -87,17 +96,6 @@ interface ProfileMatch {
   pathname: string;
 }
 
-function profilePrefix(
-  serverUrl: string,
-): { origin: string; prefix: string } | null {
-  try {
-    const url = new URL(serverUrl);
-    return { origin: url.origin, prefix: url.pathname.replace(/\/+$/u, "") };
-  } catch {
-    return null;
-  }
-}
-
 export function matchProfileForWebLink(
   profiles: readonly LinkProfileLike[],
   origin: string,
@@ -106,7 +104,7 @@ export function matchProfileForWebLink(
   let best: ProfileMatch | null = null;
   let bestPrefixLength = -1;
   for (const profile of profiles) {
-    const parsed = profilePrefix(profile.serverUrl);
+    const parsed = parseServerUrl(profile.serverUrl);
     if (!parsed || parsed.origin !== origin) continue;
     const { prefix } = parsed;
     const inside =

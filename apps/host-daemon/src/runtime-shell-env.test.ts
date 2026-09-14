@@ -6,7 +6,6 @@ import {
   createUserShellPathResolver,
   prepareRuntimeShellEnv,
   resolveLocalBbExecutablePath,
-  resolveUserShellPath,
   type SpawnUserShellEnv,
   type SpawnUserShellEnvArgs,
   type UserShellEnvSpawnResult,
@@ -227,7 +226,7 @@ describe("resolveLocalBbExecutablePath", () => {
   });
 });
 
-describe("resolveUserShellPath", () => {
+describe("createUserShellPathResolver", () => {
   it("settles when the shell env probe times out even if the shell ignores SIGTERM", async () => {
     const shellDir = await makeTempDir("bb-shell-timeout-");
     const shellPath = path.join(shellDir, "ignore-term-shell");
@@ -246,11 +245,11 @@ describe("resolveUserShellPath", () => {
     const startedAt = Date.now();
 
     await expect(
-      resolveUserShellPath({
+      createUserShellPathResolver({
         env: { SHELL: shellPath, PATH: "/usr/bin" },
         platform: "linux",
         timeoutMs: 25,
-      }),
+      })(),
     ).resolves.toBeNull();
     expect(Date.now() - startedAt).toBeLessThan(1_000);
   });
@@ -266,12 +265,12 @@ describe("resolveUserShellPath", () => {
     });
 
     await expect(
-      resolveUserShellPath({
+      createUserShellPathResolver({
         env: { SHELL: "/usr/bin/bash", PATH: "/usr/bin" },
         platform: "linux",
         spawnUserShellEnv: fakeSpawn.spawn,
         timeoutMs: 1234,
-      }),
+      })(),
     ).resolves.toBe(shellPath);
 
     expect(fakeSpawn.calls).toEqual([
@@ -302,11 +301,11 @@ describe("resolveUserShellPath", () => {
     });
 
     await expect(
-      resolveUserShellPath({
+      createUserShellPathResolver({
         env: { SHELL: "/bin/zsh", PATH: "/usr/bin" },
         platform: "linux",
         spawnUserShellEnv: fakeSpawn.spawn,
-      }),
+      })(),
     ).resolves.toBe(shellPath);
 
     expect(fakeSpawn.calls.map((call) => call.args[0])).toEqual([
@@ -354,11 +353,11 @@ describe("resolveUserShellPath", () => {
     });
 
     await expect(
-      resolveUserShellPath({
+      createUserShellPathResolver({
         env: { PATH: "/usr/bin" },
         platform: "linux",
         spawnUserShellEnv: fakeSpawn.spawn,
-      }),
+      })(),
     ).resolves.toBe("/usr/bin:/bin");
 
     expect(fakeSpawn.calls[0]?.command).toBe("/bin/sh");
@@ -375,11 +374,11 @@ describe("resolveUserShellPath", () => {
     });
 
     await expect(
-      resolveUserShellPath({
+      createUserShellPathResolver({
         env: { PATH: "/usr/bin" },
         platform: "darwin",
         spawnUserShellEnv: fakeSpawn.spawn,
-      }),
+      })(),
     ).resolves.toBe("/opt/homebrew/bin:/usr/bin");
 
     expect(fakeSpawn.calls[0]?.command).toBe("/bin/zsh");
@@ -396,11 +395,11 @@ describe("resolveUserShellPath", () => {
     });
 
     await expect(
-      resolveUserShellPath({
+      createUserShellPathResolver({
         env: { SHELL: "/bin/bash", PATH: "C:\\Windows" },
         platform: "win32",
         spawnUserShellEnv: fakeSpawn.spawn,
-      }),
+      })(),
     ).resolves.toBeNull();
 
     expect(fakeSpawn.calls).toEqual([]);

@@ -27,6 +27,3 @@ export function parseShellToPageEvent(value: unknown): ShellToPageEvent | null {
   const parsed = shellToPageEventSchema.safeParse(value);
   return parsed.success ? parsed.data : null;
 }
-
-export const shareResultSchema = z.object({ shared: z.boolean() }).strict();
-export type ShareResult = z.infer<typeof shareResultSchema>;

@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { ICON_MAP, ICON_NAMES, isIconName } from "./icon-map";
+import { ICON_MAP, isIconName } from "./icon-map";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SHARED_UI_DIR = join(
@@ -59,23 +59,21 @@ function webIconMapEntries(): Map<string, string> {
 }
 
 describe("ICON_MAP", () => {
-  it("has the same names bound to the same glyphs as @bb/shared-ui", () => {
+  it("binds every name to the same glyph as @bb/shared-ui", () => {
     const web = webIconMapEntries();
     const mobile = iconMapEntries(readFileSync(MOBILE_ICON_MAP_PATH, "utf8"), {
       start: "const ICON_MAP = {",
       end: "} as const satisfies",
     });
     expect(web.size).toBeGreaterThan(100);
-    expect([...mobile.keys()].sort()).toEqual([...web.keys()].sort());
-    for (const [name, glyph] of web) {
-      expect(mobile.get(name), name).toBe(glyph);
+    expect(mobile.size).toBe(Object.keys(ICON_MAP).length);
+    for (const [name, glyph] of mobile) {
+      expect(web.get(name), name).toBe(glyph);
     }
-    expect([...ICON_NAMES].sort()).toEqual([...web.keys()].sort());
   });
 
   it("every entry is non-empty svg element data", () => {
-    for (const name of ICON_NAMES) {
-      const glyph = ICON_MAP[name];
+    for (const [name, glyph] of Object.entries(ICON_MAP)) {
       expect(Array.isArray(glyph), name).toBe(true);
       expect(glyph.length, name).toBeGreaterThan(0);
       for (const [tag, attrs] of glyph) {

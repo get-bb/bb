@@ -1,4 +1,5 @@
 import { useMemo, type ReactNode } from "react";
+import { makeSystemConfig } from "../src/test/fixtures/system-config";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type {
   AvailableModel,
@@ -7,7 +8,11 @@ import type {
   ReasoningLevel,
 } from "@bb/domain";
 import type { SystemExecutionOptionsResponse } from "@bb/server-contract";
-import { systemExecutionOptionsQueryKey } from "../src/hooks/queries/query-keys";
+import {
+  hostsQueryKey,
+  systemConfigQueryKey,
+  systemExecutionOptionsQueryKey,
+} from "../src/hooks/queries/query-keys";
 import type { PickerOption } from "../src/components/pickers/OptionPicker";
 import type { ModelPickerOption } from "../src/components/pickers/model-picker-option";
 import {
@@ -17,6 +22,7 @@ import {
   STORY_CODEX_MODELS,
   STORY_CODEX_REASONING,
   STORY_PI_MODELS,
+  STORY_PI_REASONING,
   STORY_PROVIDER_OPTIONS,
   STORY_SERVICE_TIER_SUPPORT,
 } from "./story-fixtures";
@@ -86,29 +92,31 @@ function makeAvailableModels({
   reasoningOptions,
   markFirstDefault = true,
 }: {
-  models: readonly ModelPickerOption[];
+  models: readonly (ModelPickerOption & {
+    reasoningOptions?: readonly PickerOption<ReasoningLevel>[];
+  })[];
   reasoningOptions: readonly PickerOption<ReasoningLevel>[];
   markFirstDefault?: boolean;
 }): AvailableModel[] {
-  const defaultReasoningEffort =
-    reasoningOptions.find((option) => option.value === "medium")?.value ??
-    reasoningOptions[0]?.value ??
-    "medium";
-  const supportedReasoningEfforts =
-    makeSupportedReasoningEfforts(reasoningOptions);
-
-  return models.map((model, index) => ({
-    id: model.value,
-    model: model.value,
-    displayName: model.label,
-    ...(model.routeProviderId
-      ? { routeProviderId: model.routeProviderId }
-      : {}),
-    description: "",
-    supportedReasoningEfforts,
-    defaultReasoningEffort,
-    isDefault: markFirstDefault && index === 0,
-  }));
+  return models.map((model, index) => {
+    const modelReasoning = model.reasoningOptions ?? reasoningOptions;
+    const defaultReasoningEffort =
+      modelReasoning.find((option) => option.value === "medium")?.value ??
+      modelReasoning[0]?.value ??
+      "medium";
+    return {
+      id: model.value,
+      model: model.value,
+      displayName: model.label,
+      ...(model.routeProviderId
+        ? { routeProviderId: model.routeProviderId }
+        : {}),
+      description: "",
+      supportedReasoningEfforts: makeSupportedReasoningEfforts(modelReasoning),
+      defaultReasoningEffort,
+      isDefault: markFirstDefault && index === 0,
+    };
+  });
 }
 
 function makeExecutionOptions(
@@ -124,7 +132,7 @@ function makeExecutionOptions(
   };
 }
 
-function createStoryQueryClient(): QueryClient {
+function createStoryQueryClient(environmentId: string | null): QueryClient {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: {
@@ -159,7 +167,7 @@ function createStoryQueryClient(): QueryClient {
     pi: makeExecutionOptions(
       makeAvailableModels({
         models: STORY_PI_MODELS,
-        reasoningOptions: STORY_CODEX_REASONING,
+        reasoningOptions: STORY_PI_REASONING,
       }),
     ),
   };
@@ -169,7 +177,7 @@ function createStoryQueryClient(): QueryClient {
   )) {
     queryClient.setQueryData<SystemExecutionOptionsResponse>(
       systemExecutionOptionsQueryKey({
-        environmentId: null,
+        environmentId,
         hostId: null,
         providerId,
       }),
@@ -177,15 +185,23 @@ function createStoryQueryClient(): QueryClient {
     );
   }
 
+  queryClient.setQueryData(hostsQueryKey(), []);
+  queryClient.setQueryData(systemConfigQueryKey(), makeSystemConfig());
+
   return queryClient;
 }
 
 export function ModelPickerStoryQueryProvider({
   children,
+  environmentId = null,
 }: {
   children: ReactNode;
+  environmentId?: string | null;
 }) {
-  const queryClient = useMemo(createStoryQueryClient, []);
+  const queryClient = useMemo(
+    () => createStoryQueryClient(environmentId),
+    [environmentId],
+  );
 
   return (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>

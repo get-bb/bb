@@ -31,7 +31,7 @@ import {
  *   follow-ups and steers wait on this: a thread's first message rides the
  *   cold-start command instead.
  * - `host-offline` — the thread's workspace exists, but the machine it runs on
- *   has no live daemon session, so nothing can be delivered to it. Distinct
+ *   is disconnected or pausing/resuming, so execution waits for readiness. Distinct
  *   from `provisioning` because the two are cleared by different events and
  *   read differently to a user: a provisioning workspace is being built and
  *   will finish on its own, while an offline host is waiting on a machine that
@@ -96,16 +96,6 @@ export const queuedMessageWaitingOnSchema = z.discriminatedUnion("kind", [
 ]);
 export type QueuedMessageWaitingOn = z.infer<
   typeof queuedMessageWaitingOnSchema
->;
-
-export type QueuedMessagePluginWaitingOn = Extract<
-  QueuedMessageWaitingOn,
-  { kind: "plugin" }
->;
-
-export type QueuedMessageHostOfflineWaitingOn = Extract<
-  QueuedMessageWaitingOn,
-  { kind: "host-offline" }
 >;
 
 /**
@@ -191,11 +181,6 @@ export const queuedMessagePayloadSchema = z.discriminatedUnion("kind", [
   }),
 ]);
 export type QueuedMessagePayload = z.infer<typeof queuedMessagePayloadSchema>;
-
-export type QueuedMessageRetryPayload = Extract<
-  QueuedMessagePayload,
-  { kind: "retry" }
->;
 
 /**
  * Core's own taxonomy for a queued row that is a SYSTEM notice rather than

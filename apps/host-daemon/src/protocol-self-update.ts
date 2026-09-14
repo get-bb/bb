@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { delimiter, dirname, isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
+import { calculateExponentialBackoffDelay } from "@bb/domain";
 import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
 import type { HostDaemonLogger } from "./logger.js";
 import type { FetchFn } from "./server-client.js";
@@ -74,13 +75,6 @@ function parseUpdateVersion(value: unknown): UpdateVersion {
     protocolVersion: Number(value.protocolVersion),
     version: value.version,
   };
-}
-
-function retryDelayMs(attemptCount: number): number {
-  return Math.min(
-    SELF_UPDATE_INITIAL_RETRY_DELAY_MS * 2 ** Math.max(0, attemptCount - 1),
-    SELF_UPDATE_MAX_RETRY_DELAY_MS,
-  );
 }
 
 async function readLastAttempt(path: string): Promise<UpdateAttempt | null> {
@@ -255,7 +249,11 @@ export function createProtocolSelfUpdater(
         const delayMs =
           previousAttempt === null
             ? 0
-            : retryDelayMs(previousAttempt.attemptCount);
+            : calculateExponentialBackoffDelay({
+                attempt: previousAttempt.attemptCount,
+                baseDelayMs: SELF_UPDATE_INITIAL_RETRY_DELAY_MS,
+                maxDelayMs: SELF_UPDATE_MAX_RETRY_DELAY_MS,
+              });
         const retryAt =
           previousAttempt === null
             ? attemptedAt

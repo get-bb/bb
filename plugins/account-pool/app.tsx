@@ -36,6 +36,14 @@ import {
   CollapsibleTrigger,
 } from "@bb/shared-ui/collapsible";
 import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@bb/shared-ui/dialog";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -46,7 +54,6 @@ import { Icon } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { ResourceRowDetailChevron } from "@bb/shared-ui/resource-list";
-import { ResponsiveDrawerShell } from "@bb/shared-ui/responsive-overlay";
 import { Switch } from "@bb/shared-ui/switch";
 import type {
   AccountSummary,
@@ -59,40 +66,25 @@ import type {
   PoolStatus,
 } from "./src/contracts.js";
 import type { accountPoolRpcContract } from "./src/rpc.js";
+import type { OAuthLoginStart } from "./src/oauth-login.js";
+import type { CodexDeviceLoginStart } from "./src/codex-device-login.js";
+import {
+  DEFAULT_ACCOUNT_POOL_CONFIG,
+  modelFamilySchema,
+  statusSchema,
+} from "./src/contracts.js";
+import { blockingResetAt } from "./src/quota.js";
 import {
   ACCOUNT_POOL_ACCOUNTS_CHANGED,
   ACCOUNT_POOL_CONFIG_CHANGED,
 } from "./src/realtime.js";
 
-interface LoginStep {
-  sessionId: string;
-  authorizeUrl: string;
-}
-interface CodexLoginStep {
-  sessionId: string;
-  verificationUri: string;
-  userCode: string;
-  expiresAt: number;
-  intervalMs: number;
-}
-type DrawerState =
+type DialogState =
   | { kind: "account" | "priority" | "remove"; accountId: string }
   | { kind: "claude-login" | "codex-login" | "api-key" }
   | null;
 
 type ConfigField = keyof AccountPoolConfig;
-
-interface ConfigDrafts {
-  anthropicUpstreamBaseUrl: string;
-  codexUpstreamBaseUrl: string;
-  switchThreshold: string;
-}
-
-interface ConfigErrors {
-  anthropicUpstreamBaseUrl: string | null;
-  codexUpstreamBaseUrl: string | null;
-  switchThreshold: string | null;
-}
 
 const PROVIDERS: Array<{
   id: PoolProvider;
@@ -118,13 +110,6 @@ const FAMILY_LABELS: Record<ModelFamily, string> = {
   haiku: "Haiku 7 day",
   other: "Other 7 day",
 };
-const MODEL_FAMILIES: ModelFamily[] = [
-  "fable",
-  "sonnet",
-  "opus",
-  "haiku",
-  "other",
-];
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -141,7 +126,7 @@ function httpUrlError(value: string): string | null {
   }
 }
 
-function configDrafts(config: AccountPoolConfig): ConfigDrafts {
+function configDrafts(config: AccountPoolConfig): Record<ConfigField, string> {
   return {
     anthropicUpstreamBaseUrl: config.anthropicUpstreamBaseUrl,
     codexUpstreamBaseUrl: config.codexUpstreamBaseUrl,
@@ -176,14 +161,6 @@ function windowLongLabel(window: LimitWindow): string {
     return `${window.windowMinutes / 60} hour`;
   return `${window.windowMinutes} minute`;
 }
-function exhaustedResetAt(account: AccountSummary): number | null {
-  return (
-    account.fiveHourResetAt ??
-    account.sevenDayResetAt ??
-    account.limitWindows.find((window) => window.resetAt !== null)?.resetAt ??
-    null
-  );
-}
 function resetLabel(timestamp: number | null): string {
   if (timestamp === null) return "";
   const minutes = Math.max(1, Math.round((timestamp - Date.now()) / 60_000));
@@ -191,7 +168,31 @@ function resetLabel(timestamp: number | null): string {
     return `resets in ${minutes >= 60 ? `${Math.floor(minutes / 60)}h ${minutes % 60}m` : `${minutes}m`}`;
   return `resets ${new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(timestamp)}`;
 }
-function statusPresentation(account: AccountSummary): {
+const STATUS_CACHE_KEY = "account-pool:status";
+
+function readCachedStatus(): PoolStatus | null {
+  try {
+    const raw = window.localStorage.getItem(STATUS_CACHE_KEY);
+    if (raw === null) return null;
+    const parsed = statusSchema.safeParse(JSON.parse(raw));
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedStatus(status: PoolStatus): void {
+  try {
+    window.localStorage.setItem(STATUS_CACHE_KEY, JSON.stringify(status));
+  } catch {
+    return;
+  }
+}
+
+function statusPresentation(
+  account: AccountSummary,
+  threshold: number,
+): {
   label: string;
   dot: string;
 } {
@@ -200,11 +201,13 @@ function statusPresentation(account: AccountSummary): {
       label: `Held${account.heldUntil === null ? "" : ` · retry at ${new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" }).format(account.heldUntil)}`}`,
       dot: "bg-warning",
     };
-  if (account.status === "exhausted")
+  if (account.status === "exhausted") {
+    const resetAt = blockingResetAt(account, null, threshold, Date.now());
     return {
-      label: `Exhausted${exhaustedResetAt(account) === null ? "" : ` · ${resetLabel(exhaustedResetAt(account))}`}`,
+      label: `Exhausted${resetAt === null ? "" : ` · ${resetLabel(resetAt)}`}`,
       dot: "bg-destructive",
     };
+  }
   if (account.status === "error")
     return { label: "Error", dot: "bg-destructive" };
   if (account.status === "disabled")
@@ -216,6 +219,11 @@ function tier(account: AccountSummary): string {
     account.subscriptionType ??
     (account.kind === "api-key" ? "API key" : "OAuth")
   );
+}
+function secondaryEmail(account: AccountSummary): string | null {
+  return account.email === null || account.email === account.label
+    ? null
+    : account.email;
 }
 function SettingsBadge({ children }: { children: ReactNode }) {
   return (
@@ -252,39 +260,84 @@ function SettingsSection({
   );
 }
 
-function QuotaValue({
-  label,
-  utilization,
-  status,
-  threshold,
-}: {
+type QuotaSlot = {
+  key: string;
   label: string;
   utilization: number | null;
   status: string | null;
+};
+
+function quotaSlots(account: AccountSummary): QuotaSlot[] {
+  if (account.provider === "codex") {
+    if (account.limitWindows.length === 0)
+      return [
+        { key: "primary", label: "LIMIT", utilization: null, status: null },
+      ];
+    return account.limitWindows.map((window) => ({
+      key: window.slot,
+      label: windowShortLabel(window),
+      utilization: window.utilization,
+      status: window.status,
+    }));
+  }
+  return [
+    {
+      key: "five-hour",
+      label: "5H",
+      utilization: account.fiveHourUtilization,
+      status: account.fiveHourStatus,
+    },
+    {
+      key: "seven-day",
+      label: "7D",
+      utilization: account.sevenDayUtilization,
+      status: account.sevenDayStatus,
+    },
+    {
+      key: "fable",
+      label: "FABLE",
+      utilization: account.familyWeekly.fable?.utilization ?? null,
+      status: account.familyWeekly.fable?.status ?? null,
+    },
+  ];
+}
+
+function quotaToneClass(slot: QuotaSlot, threshold: number): string {
+  if (
+    slot.status?.toLowerCase() === "rejected" ||
+    (slot.utilization !== null && slot.utilization >= 1)
+  )
+    return "text-destructive-text";
+  if (slot.utilization !== null && slot.utilization >= threshold - 0.1)
+    return "text-warning-text";
+  return slot.utilization === null
+    ? "text-subtle-foreground/75"
+    : "text-foreground";
+}
+
+function QuotaValue({
+  slot,
+  threshold,
+  refreshing,
+}: {
+  slot: QuotaSlot;
   threshold: number;
+  refreshing: boolean;
 }) {
-  const destructive =
-    status?.toLowerCase() === "rejected" ||
-    (utilization !== null && utilization >= 1);
-  const warning = utilization !== null && utilization >= threshold - 0.1;
   return (
-    <div className="w-16 text-right tabular-nums">
+    <div
+      className={cn(
+        "w-16 text-left tabular-nums transition-opacity sm:text-right",
+        refreshing && "opacity-50",
+      )}
+    >
       <div className="text-2xs uppercase tracking-wide text-subtle-foreground/75">
-        {label}
+        {slot.label}
       </div>
       <div
-        className={cn(
-          "text-xs font-semibold",
-          destructive
-            ? "text-destructive-text"
-            : warning
-              ? "text-warning-text"
-              : utilization === null
-                ? "text-subtle-foreground/75"
-                : "text-foreground",
-        )}
+        className={cn("text-xs font-semibold", quotaToneClass(slot, threshold))}
       >
-        {percent(utilization)}
+        {percent(slot.utilization)}
       </div>
     </div>
   );
@@ -300,6 +353,7 @@ function AccountRow({
   account,
   threshold,
   pending,
+  refreshing,
   onAction,
   onOpen,
   reorderDisabled,
@@ -307,11 +361,14 @@ function AccountRow({
   account: AccountSummary;
   threshold: number;
   pending: boolean;
+  refreshing: boolean;
   onAction: (action: "toggle" | "priority" | "refresh" | "remove") => void;
   onOpen: () => void;
   reorderDisabled: boolean;
 }) {
-  const status = statusPresentation(account);
+  const status = statusPresentation(account, threshold);
+  const slots = quotaSlots(account);
+  const email = secondaryEmail(account);
   const {
     attributes,
     isDragging,
@@ -351,7 +408,7 @@ function AccountRow({
       >
         <button
           type="button"
-          className="flex min-w-0 flex-1 items-center rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="grid min-w-0 flex-1 grid-cols-1 items-center gap-y-1.5 rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-ring sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-y-0"
           aria-label={`Open ${account.label}`}
           onClick={onOpen}
         >
@@ -360,6 +417,11 @@ function AccountRow({
               <span className="truncate text-sm font-medium text-foreground">
                 {account.label}
               </span>
+              {email === null ? null : (
+                <span className="min-w-0 truncate text-xs text-subtle-foreground/75">
+                  {email}
+                </span>
+              )}
               <SettingsBadge>{tier(account)}</SettingsBadge>
             </div>
             <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-subtle-foreground/75">
@@ -370,50 +432,18 @@ function AccountRow({
               {account.lastUsedAt === null ? null : (
                 <span>used {relative(account.lastUsedAt)}</span>
               )}
+              {refreshing ? <span>refreshing usage…</span> : null}
             </div>
           </div>
-          <div className="hidden shrink-0 items-center gap-1 sm:flex">
-            {account.provider === "codex" ? (
-              account.limitWindows.length === 0 ? (
-                <QuotaValue
-                  label="LIMIT"
-                  utilization={null}
-                  status={null}
-                  threshold={threshold}
-                />
-              ) : (
-                account.limitWindows.map((window) => (
-                  <QuotaValue
-                    key={window.slot}
-                    label={windowShortLabel(window)}
-                    utilization={window.utilization}
-                    status={window.status}
-                    threshold={threshold}
-                  />
-                ))
-              )
-            ) : (
-              <>
-                <QuotaValue
-                  label="5H"
-                  utilization={account.fiveHourUtilization}
-                  status={account.fiveHourStatus}
-                  threshold={threshold}
-                />
-                <QuotaValue
-                  label="7D"
-                  utilization={account.sevenDayUtilization}
-                  status={account.sevenDayStatus}
-                  threshold={threshold}
-                />
-                <QuotaValue
-                  label="FABLE"
-                  utilization={account.familyWeekly.fable?.utilization ?? null}
-                  status={account.familyWeekly.fable?.status ?? null}
-                  threshold={threshold}
-                />
-              </>
-            )}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 sm:flex-nowrap sm:gap-1">
+            {slots.map((slot) => (
+              <QuotaValue
+                key={slot.key}
+                slot={slot}
+                threshold={threshold}
+                refreshing={refreshing}
+              />
+            ))}
           </div>
         </button>
         <DropdownMenu>
@@ -594,39 +624,165 @@ function QuotaDetail({
     </div>
   );
 }
-function DrawerFrame({
-  title,
-  onClose,
-  children,
-  footer,
-}: {
-  title: string;
-  onClose: () => void;
-  children: ReactNode;
-  footer?: ReactNode;
-}) {
+
+type CopyState = "idle" | "copied" | "manual";
+
+function useCopyToClipboard(text: string, selectFallback: () => void) {
+  const [copyState, setCopyState] = useState<CopyState>("idle");
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (timerRef.current !== null) clearTimeout(timerRef.current);
+    },
+    [],
+  );
+  useEffect(() => {
+    if (timerRef.current !== null) clearTimeout(timerRef.current);
+    setCopyState("idle");
+  }, [text]);
+
+  const copy = useCallback(() => {
+    navigator.clipboard.writeText(text).then(
+      () => {
+        setCopyState("copied");
+        if (timerRef.current !== null) clearTimeout(timerRef.current);
+        timerRef.current = setTimeout(() => setCopyState("idle"), 1500);
+      },
+      () => {
+        selectFallback();
+        setCopyState("manual");
+      },
+    );
+  }, [text, selectFallback]);
+
+  return { copyState, copy };
+}
+
+function UserCodeBlock({ userCode }: { userCode: string }) {
+  const codeRef = useRef<HTMLSpanElement>(null);
+  const selectCode = useCallback(() => {
+    const element = codeRef.current;
+    if (element === null) return;
+    const selection = window.getSelection();
+    if (selection === null) return;
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    selection.removeAllRanges();
+    selection.addRange(range);
+  }, []);
+  const { copyState, copy } = useCopyToClipboard(userCode, selectCode);
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex items-center justify-between border-b border-border px-5 pb-4">
-        <h2 className="text-base font-semibold text-foreground">{title}</h2>
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label="Close"
-          onClick={onClose}
+    <div className="rounded-lg border border-border bg-surface-recessed px-4 py-4">
+      <div className="grid grid-cols-[1fr_auto_1fr] items-center">
+        <span
+          ref={codeRef}
+          className="col-start-2 select-all text-center font-mono text-2xl font-semibold tracking-widest"
+          aria-label="Codex user code"
         >
-          <Icon name="X" />
+          {userCode}
+        </span>
+        <Button
+          type="button"
+          variant="ghost"
+          aria-label="Copy Codex sign-in code"
+          className="col-start-3 size-11 justify-self-start text-muted-foreground hover:text-foreground sm:size-9"
+          onClick={copy}
+        >
+          <Icon name={copyState === "copied" ? "Check" : "Copy"} />
         </Button>
       </div>
-      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-5">
-        {children}
-      </div>
-      {footer ? (
-        <div className="flex items-center gap-2 border-t border-border px-5 py-4">
-          {footer}
-        </div>
-      ) : null}
+      <span aria-live="polite" className="sr-only">
+        {copyState === "copied"
+          ? "Sign-in code copied"
+          : copyState === "manual"
+            ? "Your browser blocked copying. The code is selected; copy it manually."
+            : ""}
+      </span>
     </div>
+  );
+}
+
+function AuthorizationUrlRow({
+  name,
+  url,
+  openUrl,
+}: {
+  name: string;
+  url: string;
+  openUrl: (url: string) => boolean;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const selectUrl = useCallback(() => {
+    inputRef.current?.select();
+  }, []);
+  const { copyState, copy } = useCopyToClipboard(url, selectUrl);
+
+  return (
+    <div>
+      <div className="flex gap-2">
+        <Input
+          ref={inputRef}
+          readOnly
+          value={url}
+          aria-label={`${name} authorization URL`}
+        />
+        <Button
+          variant="outline"
+          className="shrink-0"
+          aria-label={`Copy ${name} authorization URL`}
+          onClick={copy}
+        >
+          {copyState === "copied" ? "Copied" : "Copy"}
+        </Button>
+        <Button className="shrink-0" onClick={() => openUrl(url)}>
+          Open
+        </Button>
+      </div>
+      <span aria-live="polite" className="sr-only">
+        {copyState === "copied"
+          ? "Authorization URL copied"
+          : copyState === "manual"
+            ? "Your browser blocked copying. The URL is selected; copy it manually."
+            : ""}
+      </span>
+    </div>
+  );
+}
+
+function DialogFrame({
+  title,
+  children,
+  footer,
+  className,
+}: {
+  title: string;
+  children: ReactNode;
+  footer: ReactNode;
+  className?: string;
+}) {
+  return (
+    <DialogContent
+      hideCloseButton
+      className={cn(
+        "max-h-[85vh] grid-rows-[auto_minmax(0,1fr)_auto]",
+        className,
+      )}
+    >
+      <DialogHeader className="flex-row items-start justify-between gap-4 space-y-0">
+        <DialogTitle>{title}</DialogTitle>
+        <DialogClose className="-mr-1 shrink-0 cursor-pointer rounded-sm opacity-70 transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2">
+          <Icon name="X" className="size-4" />
+          <span className="sr-only">Close</span>
+        </DialogClose>
+      </DialogHeader>
+      <div className="min-h-0 space-y-5 overflow-y-auto">{children}</div>
+      {footer === null ? null : (
+        <DialogFooter className="flex-row items-center gap-2 sm:space-x-0">
+          {footer}
+        </DialogFooter>
+      )}
+    </DialogContent>
   );
 }
 
@@ -664,19 +820,22 @@ function ConfigFieldRow({
 function AccountPoolSettings() {
   const rpc = useRpc<typeof accountPoolRpcContract>();
   const navigate = useBbNavigate();
-  const [status, setStatus] = useState<PoolStatus | null>(null);
+  const [status, setStatus] = useState<PoolStatus | null>(readCachedStatus);
+  const [statusIsCached, setStatusIsCached] = useState(status !== null);
   const [config, setConfig] = useState<AccountPoolConfig | null>(null);
-  const [drafts, setDrafts] = useState<ConfigDrafts>({
+  const [drafts, setDrafts] = useState<Record<ConfigField, string>>({
     anthropicUpstreamBaseUrl: "",
     codexUpstreamBaseUrl: "",
     switchThreshold: "",
   });
-  const [configErrors, setConfigErrors] = useState<ConfigErrors>({
+  const [configErrors, setConfigErrors] = useState<
+    Record<ConfigField, string | null>
+  >({
     anthropicUpstreamBaseUrl: null,
     codexUpstreamBaseUrl: null,
     switchThreshold: null,
   });
-  const [drawer, setDrawer] = useState<DrawerState>(null);
+  const [dialog, setDialog] = useState<DialogState>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<string | null>(null);
   const [optimisticOrder, setOptimisticOrder] = useState<{
@@ -689,15 +848,18 @@ function AccountPoolSettings() {
       coordinateGetter: sortableKeyboardCoordinates,
     }),
   );
-  const [loginStep, setLoginStep] = useState<LoginStep | null>(null);
-  const [codexStep, setCodexStep] = useState<CodexLoginStep | null>(null);
+  const [loginStep, setLoginStep] = useState<OAuthLoginStart | null>(null);
+  const [codexStep, setCodexStep] = useState<CodexDeviceLoginStart | null>(
+    null,
+  );
   const [loginDone, setLoginDone] = useState<string | null>(null);
   const [pastedCode, setPastedCode] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [priority, setPriority] = useState("100");
   const [countdown, setCountdown] = useState(0);
   const mounted = useRef(true);
-  const threshold = config?.switchThreshold ?? 0.98;
+  const threshold =
+    config?.switchThreshold ?? DEFAULT_ACCOUNT_POOL_CONFIG.switchThreshold;
   const applyConfig = useCallback((next: AccountPoolConfig) => {
     setConfig(next);
     setDrafts(configDrafts(next));
@@ -705,7 +867,10 @@ function AccountPoolSettings() {
   const refresh = useCallback(async () => {
     try {
       const next = await rpc.call("status.get", null);
-      if (mounted.current) setStatus(next);
+      writeCachedStatus(next);
+      if (!mounted.current) return;
+      setStatus(next);
+      setStatusIsCached(false);
     } catch (loadError) {
       if (mounted.current) setError(errorText(loadError));
     }
@@ -772,10 +937,10 @@ function AccountPoolSettings() {
   }, [codexStep, loginDone, refresh, rpc]);
   const accounts = status?.accounts ?? [];
   const selectedAccount =
-    drawer?.kind === "account" ||
-    drawer?.kind === "priority" ||
-    drawer?.kind === "remove"
-      ? (accounts.find((account) => account.id === drawer.accountId) ?? null)
+    dialog?.kind === "account" ||
+    dialog?.kind === "priority" ||
+    dialog?.kind === "remove"
+      ? (accounts.find((account) => account.id === dialog.accountId) ?? null)
       : null;
   async function run(key: string, action: () => Promise<void>): Promise<void> {
     if (pending !== null) return;
@@ -844,7 +1009,7 @@ function AccountPoolSettings() {
     }
   }
   async function startClaude(): Promise<void> {
-    setDrawer({ kind: "claude-login" });
+    setDialog({ kind: "claude-login" });
     setLoginDone(null);
     await run("claude-login", async () => {
       const started = await rpc.call("login.start", null);
@@ -853,7 +1018,7 @@ function AccountPoolSettings() {
     });
   }
   async function startCodex(): Promise<void> {
-    setDrawer({ kind: "codex-login" });
+    setDialog({ kind: "codex-login" });
     setLoginDone(null);
     await run("codex-login", async () => {
       setCodexStep(await rpc.call("codexLogin.start", null));
@@ -869,7 +1034,7 @@ function AccountPoolSettings() {
       return;
     }
     if (choice === "api-key") {
-      setDrawer({ kind: "api-key" });
+      setDialog({ kind: "api-key" });
       return;
     }
     await run(`import-${provider}`, async () => {
@@ -887,11 +1052,11 @@ function AccountPoolSettings() {
   ): Promise<void> {
     if (action === "priority") {
       setPriority(String(account.priority));
-      setDrawer({ kind: "priority", accountId: account.id });
+      setDialog({ kind: "priority", accountId: account.id });
       return;
     }
     if (action === "remove") {
-      setDrawer({ kind: "remove", accountId: account.id });
+      setDialog({ kind: "remove", accountId: account.id });
       return;
     }
     await run(`${action}-${account.id}`, async () => {
@@ -924,10 +1089,10 @@ function AccountPoolSettings() {
       setOptimisticOrder(null);
     }
   }
-  function closeDrawer(): void {
-    if (drawer?.kind === "codex-login" && codexStep !== null)
+  function closeDialog(): void {
+    if (dialog?.kind === "codex-login" && codexStep !== null)
       void rpc.call("codexLogin.cancel", { sessionId: codexStep.sessionId });
-    setDrawer(null);
+    setDialog(null);
     setLoginStep(null);
     setCodexStep(null);
     setLoginDone(null);
@@ -941,6 +1106,7 @@ function AccountPoolSettings() {
       <p className="text-xs text-subtle-foreground/75">
         Hub {status?.accepting ? "accepting" : "not accepting"} ·{" "}
         {status?.inFlight ?? 0} in flight · used by {hubHosts}
+        {statusIsCached ? " · refreshing…" : null}
       </p>
       {error === null ? null : (
         <div
@@ -950,7 +1116,7 @@ function AccountPoolSettings() {
           {error}
         </div>
       )}
-      {status !== null && accounts.length === 0 ? (
+      {status !== null && !statusIsCached && accounts.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border px-5 py-6 text-center">
           <h2 className="text-sm font-semibold text-foreground">
             No accounts in the pool
@@ -1041,12 +1207,15 @@ function AccountPoolSettings() {
                         account={account}
                         threshold={threshold}
                         pending={pending !== null}
+                        refreshing={
+                          statusIsCached || pending === `refresh-${account.id}`
+                        }
                         reorderDisabled={providerAccounts.length < 2}
                         onAction={(action) =>
                           void accountAction(account, action)
                         }
                         onOpen={() =>
-                          setDrawer({ kind: "account", accountId: account.id })
+                          setDialog({ kind: "account", accountId: account.id })
                         }
                       />
                     ))}
@@ -1168,30 +1337,27 @@ function AccountPoolSettings() {
           </div>
         </CollapsibleContent>
       </Collapsible>
-      <ResponsiveDrawerShell
-        open={drawer !== null}
+      <Dialog
+        open={dialog !== null}
         onOpenChange={(open) => {
-          if (!open) closeDrawer();
+          if (!open) closeDialog();
         }}
-        srLabel="Account Pooler details"
-        contentClassName="mx-auto w-full max-w-2xl"
       >
-        {drawer?.kind === "account" && selectedAccount !== null ? (
-          <AccountDrawer
+        {dialog?.kind === "account" && selectedAccount !== null ? (
+          <AccountDialog
             account={selectedAccount}
             threshold={threshold}
-            close={closeDrawer}
+            close={closeDialog}
             act={(action) => void accountAction(selectedAccount, action)}
           />
         ) : null}
-        {drawer?.kind === "priority" && selectedAccount !== null ? (
-          <DrawerFrame
+        {dialog?.kind === "priority" && selectedAccount !== null ? (
+          <DialogFrame
             title="Set priority"
-            onClose={closeDrawer}
             footer={
               <>
                 <span className="flex-1" />
-                <Button variant="outline" onClick={closeDrawer}>
+                <Button variant="outline" onClick={closeDialog}>
                   Cancel
                 </Button>
                 <Button
@@ -1204,7 +1370,7 @@ function AccountPoolSettings() {
                         accountId: selectedAccount.id,
                         priority: Number(priority),
                       });
-                      setDrawer(null);
+                      setDialog(null);
                     })
                   }
                 >
@@ -1223,16 +1389,15 @@ function AccountPoolSettings() {
               value={priority}
               onChange={(event) => setPriority(event.target.value)}
             />
-          </DrawerFrame>
+          </DialogFrame>
         ) : null}
-        {drawer?.kind === "api-key" ? (
-          <DrawerFrame
+        {dialog?.kind === "api-key" ? (
+          <DialogFrame
             title="Add an Anthropic API key"
-            onClose={closeDrawer}
             footer={
               <>
                 <span className="flex-1" />
-                <Button variant="outline" onClick={closeDrawer}>
+                <Button variant="outline" onClick={closeDialog}>
                   Cancel
                 </Button>
                 <Button
@@ -1246,7 +1411,7 @@ function AccountPoolSettings() {
                         priority: 100,
                       });
                       setApiKey("");
-                      setDrawer(null);
+                      setDialog(null);
                     })
                   }
                 >
@@ -1267,16 +1432,15 @@ function AccountPoolSettings() {
               value={apiKey}
               onChange={(event) => setApiKey(event.target.value)}
             />
-          </DrawerFrame>
+          </DialogFrame>
         ) : null}
-        {drawer?.kind === "remove" && selectedAccount !== null ? (
-          <DrawerFrame
+        {dialog?.kind === "remove" && selectedAccount !== null ? (
+          <DialogFrame
             title={`Remove ${selectedAccount.label}?`}
-            onClose={closeDrawer}
             footer={
               <>
                 <span className="flex-1" />
-                <Button variant="outline" onClick={closeDrawer}>
+                <Button variant="outline" onClick={closeDialog}>
                   Cancel
                 </Button>
                 <Button
@@ -1287,7 +1451,7 @@ function AccountPoolSettings() {
                       await rpc.call("account.remove", {
                         id: selectedAccount.id,
                       });
-                      setDrawer(null);
+                      setDialog(null);
                     })
                   }
                 >
@@ -1300,10 +1464,10 @@ function AccountPoolSettings() {
               This deletes the account&apos;s secret file. Threads fall back to
               their machine login when no other pooled account is available.
             </p>
-          </DrawerFrame>
+          </DialogFrame>
         ) : null}
-        {drawer?.kind === "claude-login" ? (
-          <LoginDrawer
+        {dialog?.kind === "claude-login" ? (
+          <LoginDialog
             provider="claude"
             loginStep={loginStep}
             codexStep={null}
@@ -1312,7 +1476,7 @@ function AccountPoolSettings() {
             pastedCode={pastedCode}
             countdown={0}
             error={error}
-            close={closeDrawer}
+            close={closeDialog}
             openUrl={navigate.openUrl}
             setPastedCode={setPastedCode}
             complete={() =>
@@ -1326,12 +1490,11 @@ function AccountPoolSettings() {
                 setLoginStep(null);
               })
             }
-            addAnother={() => void startClaude()}
-            retry={() => void startClaude()}
+            restart={() => void startClaude()}
           />
         ) : null}
-        {drawer?.kind === "codex-login" ? (
-          <LoginDrawer
+        {dialog?.kind === "codex-login" ? (
+          <LoginDialog
             provider="codex"
             loginStep={null}
             codexStep={codexStep}
@@ -1340,20 +1503,19 @@ function AccountPoolSettings() {
             pastedCode=""
             countdown={countdown}
             error={error}
-            close={closeDrawer}
+            close={closeDialog}
             openUrl={navigate.openUrl}
             setPastedCode={() => {}}
             complete={() => {}}
-            addAnother={() => void startCodex()}
-            retry={() => void startCodex()}
+            restart={() => void startCodex()}
           />
         ) : null}
-      </ResponsiveDrawerShell>
+      </Dialog>
     </div>
   );
 }
 
-function AccountDrawer({
+function AccountDialog({
   account,
   threshold,
   close,
@@ -1380,9 +1542,9 @@ function AccountDrawer({
       ? account.accountUuid
       : account.codexAccountId;
   return (
-    <DrawerFrame
+    <DialogFrame
       title={account.label}
-      onClose={close}
+      className="sm:max-w-xl"
       footer={
         <>
           <Button size="sm" variant="outline" onClick={() => act("toggle")}>
@@ -1405,7 +1567,9 @@ function AccountDrawer({
     >
       <div className="flex items-center gap-2">
         <SettingsBadge>{tier(account)}</SettingsBadge>
-        <SettingsBadge>{statusPresentation(account).label}</SettingsBadge>
+        <SettingsBadge>
+          {statusPresentation(account, threshold).label}
+        </SettingsBadge>
       </div>
       <div className="space-y-4">
         {account.provider === "codex" ? (
@@ -1443,7 +1607,7 @@ function AccountDrawer({
               )}
               threshold={threshold}
             />
-            {MODEL_FAMILIES.flatMap((family) =>
+            {modelFamilySchema.options.flatMap((family) =>
               account.familyWeekly[family] === null
                 ? []
                 : [
@@ -1459,6 +1623,12 @@ function AccountDrawer({
         )}
       </div>
       <dl className="grid grid-cols-[7rem_1fr] gap-x-3 gap-y-2 border-t border-border pt-4 text-sm">
+        {account.email === null ? null : (
+          <>
+            <dt className="text-muted-foreground">Email</dt>
+            <dd className="break-all">{account.email}</dd>
+          </>
+        )}
         <dt className="text-muted-foreground">Kind</dt>
         <dd>
           {account.kind === "oauth"
@@ -1484,11 +1654,11 @@ function AccountDrawer({
           </>
         )}
       </dl>
-    </DrawerFrame>
+    </DialogFrame>
   );
 }
 
-function LoginDrawer({
+function LoginDialog({
   provider,
   loginStep,
   codexStep,
@@ -1501,12 +1671,11 @@ function LoginDrawer({
   openUrl,
   setPastedCode,
   complete,
-  addAnother,
-  retry,
+  restart,
 }: {
   provider: PoolProvider;
-  loginStep: LoginStep | null;
-  codexStep: CodexLoginStep | null;
+  loginStep: OAuthLoginStart | null;
+  codexStep: CodexDeviceLoginStart | null;
   loginDone: string | null;
   pending: boolean;
   pastedCode: string;
@@ -1516,8 +1685,7 @@ function LoginDrawer({
   openUrl: (url: string) => boolean;
   setPastedCode: (value: string) => void;
   complete: () => void;
-  addAnother: () => void;
-  retry: () => void;
+  restart: () => void;
 }) {
   const name = provider === "claude" ? "Claude" : "Codex";
   const url =
@@ -1525,39 +1693,31 @@ function LoginDrawer({
       ? loginStep?.authorizeUrl
       : codexStep?.verificationUri;
   return (
-    <DrawerFrame
+    <DialogFrame
       title={`Sign in to ${name}`}
-      onClose={close}
+      className="sm:max-w-xl"
       footer={
-        <>
-          <span className="flex-1" />
-          {loginDone === null ? (
-            <>
-              <Button variant="ghost" onClick={close}>
-                Cancel
-              </Button>
-              {provider === "claude" ? (
-                <Button
-                  disabled={
-                    loginStep === null ||
-                    pastedCode.trim().length === 0 ||
-                    pending
-                  }
-                  onClick={complete}
-                >
-                  Complete
-                </Button>
-              ) : null}
-            </>
-          ) : (
-            <>
-              <Button variant="outline" onClick={addAnother}>
-                Add another
-              </Button>
-              <Button onClick={close}>Done</Button>
-            </>
-          )}
-        </>
+        loginDone !== null ? (
+          <>
+            <span className="flex-1" />
+            <Button variant="outline" onClick={restart}>
+              Add another
+            </Button>
+            <Button onClick={close}>Done</Button>
+          </>
+        ) : provider === "claude" ? (
+          <>
+            <span className="flex-1" />
+            <Button
+              disabled={
+                loginStep === null || pastedCode.trim().length === 0 || pending
+              }
+              onClick={complete}
+            >
+              Complete
+            </Button>
+          </>
+        ) : null
       }
     >
       <StepIndicator step={loginDone === null ? 2 : 3} />
@@ -1573,7 +1733,7 @@ function LoginDrawer({
         provider === "codex" && error !== null ? (
           <div className="space-y-3">
             <p className="text-sm text-destructive-text">{error}</p>
-            <Button variant="outline" onClick={retry}>
+            <Button variant="outline" onClick={restart}>
               Try again
             </Button>
           </div>
@@ -1582,36 +1742,15 @@ function LoginDrawer({
         )
       ) : (
         <>
-          <div>
-            <h3 className="text-base font-semibold">Sign in to {name}</h3>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {provider === "claude"
-                ? "Sign in at claude.ai, then paste the code from the final page."
-                : "Open the verification page, sign in to ChatGPT, and enter this code."}
-            </p>
-          </div>
+          <p className="text-sm text-muted-foreground">
+            {provider === "claude"
+              ? "Sign in at claude.ai, then paste the code from the final page."
+              : "Open the verification page, sign in to ChatGPT, and enter this code."}
+          </p>
           {codexStep === null ? null : (
-            <div
-              className="rounded-lg border border-border bg-surface-recessed px-5 py-5 text-center font-mono text-2xl font-semibold tracking-widest"
-              aria-label="Codex user code"
-            >
-              {codexStep.userCode}
-            </div>
+            <UserCodeBlock userCode={codexStep.userCode} />
           )}
-          <div className="flex gap-2">
-            <Input
-              readOnly
-              value={url}
-              aria-label={`${name} authorization URL`}
-            />
-            <Button
-              variant="outline"
-              onClick={() => void navigator.clipboard.writeText(url)}
-            >
-              Copy
-            </Button>
-            <Button onClick={() => openUrl(url)}>Open</Button>
-          </div>
+          <AuthorizationUrlRow name={name} url={url} openUrl={openUrl} />
           {provider === "claude" ? (
             <Input
               aria-label="Claude authorization code"
@@ -1628,7 +1767,7 @@ function LoginDrawer({
           )}
         </>
       )}
-    </DrawerFrame>
+    </DialogFrame>
   );
 }
 

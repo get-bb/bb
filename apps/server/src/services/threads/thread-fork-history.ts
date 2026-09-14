@@ -15,7 +15,7 @@ import {
   parseStoredTurnRequestEvent,
 } from "./thread-events.js";
 import { resolveTurnProviderCheckpointId } from "./thread-edit-message.js";
-import type { ThreadForkDescriptor } from "./thread-provisioning-context.js";
+import type { ThreadForkDescriptor } from "./thread-startup-store.js";
 
 export interface ThreadForkPoint {
   descriptor: ThreadForkDescriptor;

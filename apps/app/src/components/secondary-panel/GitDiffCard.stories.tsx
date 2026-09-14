@@ -113,11 +113,11 @@ function ProjectRowComponent({
       </SidebarMenuButton>
       {!isCollapsed ? (
         threadListState.status === "loading" ? (
-          <div className="group-data-[collapsible=icon]:hidden">
+          <div>
             <SidebarMenuSkeleton />
           </div>
         ) : projectThreads.length > 0 ? (
-          <div className="space-y-0.5 group-data-[collapsible=icon]:hidden">
+          <div className="space-y-0.5">
             {projectThreads.map((thread) => (
               <ThreadRow key={thread.id} thread={thread} />
             ))}
@@ -140,7 +140,7 @@ const THREAD_ROW_TSX = `import { memo, useMemo } from "react";
 import { SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar.js";
 import { Pill } from "@bb/shared-ui/pill";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { getEnvironmentWorkspaceDisplayIconName } from "@/lib/environment-workspace-display";
+import { getEnvironmentDisplayIconName } from "@/lib/environment-workspace-display";
 import type { ThreadListEntry } from "@bb/server-contract";
 
 export interface ThreadRowProps {
@@ -183,9 +183,10 @@ function ThreadRowComponent({
   const childBusyCount = parentOptions?.childBusyCount ?? 0;
   const isParentBusy =
     isParent && (threadIsBusy || childBusyCount > 0);
-  const environmentIcon = getEnvironmentWorkspaceDisplayIconName(
-    thread.environmentWorkspaceDisplayKind,
-  );
+  const environmentIcon = getEnvironmentDisplayIconName({
+    status: "loaded",
+    provider: null,
+  });
   const titleText = useMemo(
     () => thread.title?.trim() || thread.titleFallback || "Untitled thread",
     [thread.title, thread.titleFallback],
@@ -661,13 +662,11 @@ function getFixtureSideContents(
 interface InteractiveDiffPanelArgs {
   diffs: readonly InteractiveDiffPanelDiff[];
   initialCollapsed?: ReadonlySet<string>;
-  renderingFileKeys?: ReadonlySet<string>;
 }
 
 function InteractiveDiffPanel({
   diffs,
   initialCollapsed,
-  renderingFileKeys,
 }: InteractiveDiffPanelArgs) {
   const parsed = useMemo(
     () =>
@@ -792,7 +791,6 @@ function InteractiveDiffPanel({
               isCollapsed={collapsedFileKeys.has(fileKey)}
               onToggleCollapsed={() => toggleFileCollapsed(fileKey)}
               stickyHeader
-              isRendering={renderingFileKeys?.has(fileKey) ?? false}
               onRequestFileContents={onRequestFileContents}
             />
           ))}
@@ -874,18 +872,6 @@ export function Overview() {
             fileKey: `multi-${i}`,
             fixture,
           }))}
-        />
-      </StoryRow>
-      <StoryRow
-        label="rendering pending"
-        hint="syntax-highlighting worker hasn't enqueued the larger file yet — body shows a skeleton"
-      >
-        <InteractiveDiffPanel
-          diffs={[
-            { fileKey: "small", fixture: SMALL },
-            { fileKey: "larger", fixture: LARGER },
-          ]}
-          renderingFileKeys={new Set(["larger"])}
         />
       </StoryRow>
     </StoryCard>

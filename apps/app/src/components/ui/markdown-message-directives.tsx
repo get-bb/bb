@@ -216,10 +216,12 @@ function asDirectiveNode(node: unknown): DirectiveNode | null {
 }
 
 export function remarkMessageDirectives(args: {
+  indexBase: number;
+  limit: number;
   mounts: MountedMessageDirective[];
   registry: MessageDirectiveRegistry;
 }) {
-  const { mounts, registry } = args;
+  const { indexBase, limit, mounts, registry } = args;
   return (tree: Nodes, file: RemarkMessageDirectiveFile): void => {
     const markdownSource =
       typeof file.value === "string" ? file.value : String(file.value ?? "");
@@ -240,24 +242,18 @@ export function remarkMessageDirectives(args: {
         marker,
       );
 
-      if (directive.type !== "leafDirective") {
-        return spliceLiteralDirective(parent, index, directive.type, source);
-      }
-
-      if (name.length === 0) {
-        return spliceLiteralDirective(parent, index, directive.type, source);
-      }
-
       const entry = registry.get(name);
-      if (entry === undefined || entry.status === "collision") {
+      if (
+        directive.type !== "leafDirective" ||
+        name.length === 0 ||
+        entry === undefined ||
+        entry.status === "collision" ||
+        mounts.length >= limit
+      ) {
         return spliceLiteralDirective(parent, index, directive.type, source);
       }
 
-      if (mounts.length >= MESSAGE_DIRECTIVE_MOUNT_LIMIT) {
-        return spliceLiteralDirective(parent, index, directive.type, source);
-      }
-
-      const mountIndex = mounts.length;
+      const mountIndex = indexBase + mounts.length;
       mounts.push({
         attributes,
         index: mountIndex,
@@ -270,20 +266,26 @@ export function remarkMessageDirectives(args: {
   };
 }
 
-interface BuildMessageDirectiveComponentArgs {
-  mounts: readonly MountedMessageDirective[];
+export interface BuildMessageDirectiveComponentArgs {
   message: PluginMessageDirectiveProps["message"];
   openWorkspaceFile: PluginMessageDirectiveProps["openWorkspaceFile"];
   openThreadPanel: MarkdownMessageDirectiveOpenThreadPanel | null;
 }
 
+export const EMPTY_MOUNTED_MESSAGE_DIRECTIVES: readonly MountedMessageDirective[] =
+  [];
+
+export const MessageDirectiveMountsContext = createContext<
+  readonly MountedMessageDirective[]
+>(EMPTY_MOUNTED_MESSAGE_DIRECTIVES);
+
 export function buildMessageDirectiveComponent({
-  mounts,
   message,
   openWorkspaceFile,
   openThreadPanel,
 }: BuildMessageDirectiveComponentArgs): ComponentType<MessageDirectiveElementProps> {
   function MessageDirectiveElement(props: MessageDirectiveElementProps) {
+    const mounts = useContext(MessageDirectiveMountsContext);
     const rawIndex = props["data-directive-index"];
     if (rawIndex === undefined) {
       return null;
@@ -294,6 +296,14 @@ export function buildMessageDirectiveComponent({
     }
     const { slot, attributes, source } = mount;
     const Component = slot.component;
+    const element = (
+      <Component
+        attributes={attributes}
+        source={source}
+        message={message}
+        openWorkspaceFile={openWorkspaceFile}
+      />
+    );
     return (
       <PluginSlotMount
         key={`${slot.pluginId}/${slot.id}/${slot.generation}`}
@@ -303,22 +313,12 @@ export function buildMessageDirectiveComponent({
         crashFallback={source}
       >
         {openThreadPanel === null ? (
-          <Component
-            attributes={attributes}
-            source={source}
-            message={message}
-            openWorkspaceFile={openWorkspaceFile}
-          />
+          element
         ) : (
           <PluginThreadPanelNavigationProvider
             openThreadPanel={openThreadPanel}
           >
-            <Component
-              attributes={attributes}
-              source={source}
-              message={message}
-              openWorkspaceFile={openWorkspaceFile}
-            />
+            {element}
           </PluginThreadPanelNavigationProvider>
         )}
       </PluginSlotMount>

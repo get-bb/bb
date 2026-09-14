@@ -54,6 +54,7 @@ export type EnvironmentChangeKind = (typeof ENVIRONMENT_CHANGE_KINDS)[number];
 export const HOST_CHANGE_KINDS = [
   "host-connected",
   "host-disconnected",
+  "provider-model-catalog-changed",
 ] as const;
 export type HostChangeKind = (typeof HOST_CHANGE_KINDS)[number];
 
@@ -61,6 +62,8 @@ export const SYSTEM_CHANGE_KINDS = [
   "config-changed",
   "plugins-changed",
   "provider-registrations-changed",
+  "ui-preferences-changed",
+  "environment-availability-changed",
 ] as const;
 export type SystemChangeKind = (typeof SYSTEM_CHANGE_KINDS)[number];
 

@@ -2,6 +2,7 @@ import {
   isDeveloperRoutePath,
   matchProfileForWebLink,
   parseIncomingLink,
+  pathMatchesPrefix,
   type LinkProfileLike,
   type LinkResolution,
 } from "../links/incoming-link";
@@ -17,10 +18,7 @@ const NATIVE_ONLY_PREFIXES = [
 ] as const;
 
 export function isNativeOnlyShellPath(path: string): boolean {
-  const pathname = path.split("?", 1)[0] ?? "";
-  return NATIVE_ONLY_PREFIXES.some(
-    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
-  );
+  return pathMatchesPrefix(path, NATIVE_ONLY_PREFIXES);
 }
 
 export interface ShellHrefParams {

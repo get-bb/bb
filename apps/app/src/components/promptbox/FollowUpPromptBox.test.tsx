@@ -80,6 +80,7 @@ vi.mock("@/hooks/queries/system-queries", () => ({
 }));
 
 vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
+  DEFAULT_COMPOSER_SCOPE: { kind: "new-thread", projectId: null },
   PromptBoxInternal: ({
     footerStart,
     compact,
@@ -108,7 +109,7 @@ vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
         focusEnd: () => void;
       } | null;
     };
-    submission?: { onModifierSubmit?: () => void };
+    submission?: { onModifierSubmit?: () => void; title?: string };
     suppressPluginComposerCustomizations?: boolean;
     onCollapse?: () => void;
     heightAnimationKey?: string | number;
@@ -157,7 +158,11 @@ vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
       >
         Submit
       </button>
-      <button type="button" onClick={submission?.onModifierSubmit}>
+      <button
+        type="button"
+        title={submission?.title}
+        onClick={submission?.onModifierSubmit}
+      >
         Modifier submit
       </button>
       {onCollapse ? (
@@ -751,6 +756,38 @@ describe("FollowUpPromptBox", () => {
     },
   );
 
+  it.each([
+    { setting: false, title: "Queue follow-up (Enter), Ctrl + Enter to steer" },
+    {
+      setting: true,
+      title: "Steer current run (Enter), Ctrl + Enter to queue",
+    },
+  ])(
+    "shows the platform modifier shortcut in the submit title when steer-on-Enter is $setting",
+    ({ setting, title }) => {
+      const platformMock = vi
+        .spyOn(navigator, "platform", "get")
+        .mockReturnValue("Win32");
+      try {
+        const props = createFollowUpPromptBoxProps({
+          kind: "queue",
+          onStop: vi.fn(),
+        });
+        if (!props.composer) {
+          throw new Error("Expected follow-up composer props");
+        }
+        props.composer.steerActiveThreadOnEnter = setting;
+        render(<FollowUpPromptBox {...props} />);
+
+        expect(screen.getByText("Modifier submit").getAttribute("title")).toBe(
+          title,
+        );
+      } finally {
+        platformMock.mockRestore();
+      }
+    },
+  );
+
   it("disables the permission picker while plan mode is active", () => {
     const props = createFollowUpPromptBoxProps({
       kind: "queue",
@@ -835,6 +872,25 @@ describe("FollowUpPromptBox", () => {
       null,
     );
     expect(screen.getByText("Local environment")).toBeTruthy();
+  });
+
+  it("keeps a collapsed composer steady while a pointer focuses an action", () => {
+    const props = createFollowUpPromptBoxProps({ kind: "ready" });
+    render(<FollowUpPromptBox {...props} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Collapse prompt box" }),
+    );
+    const submit = screen.getByRole("button", { name: "Submit" });
+
+    fireEvent.pointerDown(submit, { button: 0, pointerType: "mouse" });
+    act(() => submit.focus());
+
+    expect(screen.getByTestId("prompt-box").getAttribute("data-compact")).toBe(
+      "true",
+    );
+    fireEvent.pointerUp(submit, { button: 0, pointerType: "mouse" });
+    fireEvent.click(submit);
+    expect(props.composer?.onSubmit).toHaveBeenCalledOnce();
   });
 
   it("toggles between focused and collapsed with the composer shortcut", () => {
@@ -1133,6 +1189,89 @@ describe("FollowUpPromptBox", () => {
       vi.useRealTimers();
     }
   });
+
+  it.each([false, true])(
+    "cancels a pending keyboard collapse when pressing a control (overlay: %s)",
+    (isOverlay) => {
+      mocks.isCompactViewport = true;
+      mocks.isPointerCoarse = true;
+      vi.useFakeTimers();
+      const originalDescriptor = Object.getOwnPropertyDescriptor(
+        window,
+        "visualViewport",
+      );
+      const visualViewport = Object.assign(new EventTarget(), { height: 500 });
+      Object.defineProperty(window, "visualViewport", {
+        configurable: true,
+        value: visualViewport,
+      });
+
+      try {
+        const props = createFollowUpPromptBoxProps({ kind: "ready" });
+        render(<FollowUpPromptBox {...props} />);
+        const input = screen.getByRole("textbox", { name: "Follow-up prompt" });
+        const control = screen.getByRole("button", { name: "Submit" });
+        if (isOverlay) control.setAttribute("aria-haspopup", "menu");
+        act(() => input.focus());
+        act(() => {
+          visualViewport.height = 300;
+          visualViewport.dispatchEvent(new Event("resize"));
+          vi.advanceTimersByTime(20);
+        });
+        act(() => input.blur());
+        act(() => vi.advanceTimersByTime(550));
+
+        fireEvent.pointerDown(control, { button: 0, pointerType: "touch" });
+        act(() => vi.advanceTimersByTime(300));
+
+        expect(
+          screen.getByTestId("prompt-box").getAttribute("data-compact"),
+        ).toBe("false");
+        fireEvent.pointerUp(control, { button: 0, pointerType: "touch" });
+        fireEvent.click(control);
+        expect(props.composer?.onSubmit).toHaveBeenCalledOnce();
+      } finally {
+        vi.useRealTimers();
+        if (originalDescriptor) {
+          Object.defineProperty(window, "visualViewport", originalDescriptor);
+        } else {
+          Reflect.deleteProperty(window, "visualViewport");
+        }
+      }
+    },
+  );
+
+  it.each(["pointerUp", "pointerCancel"] as const)(
+    "resumes deferred focus loss after a control gesture ends with %s",
+    (releaseEvent) => {
+      mocks.isCompactViewport = true;
+      vi.useFakeTimers();
+      try {
+        render(
+          <FollowUpPromptBox
+            {...createFollowUpPromptBoxProps({ kind: "ready" })}
+          />,
+        );
+        const input = screen.getByRole("textbox", { name: "Follow-up prompt" });
+        const control = screen.getByRole("button", { name: "Submit" });
+        act(() => input.focus());
+        fireEvent.pointerDown(control);
+        act(() => input.blur());
+        act(() => vi.advanceTimersByTime(20));
+        expect(
+          screen.getByTestId("prompt-box").getAttribute("data-compact"),
+        ).toBe("false");
+
+        fireEvent[releaseEvent](control);
+        act(() => vi.advanceTimersByTime(20));
+        expect(
+          screen.getByTestId("prompt-box").getAttribute("data-compact"),
+        ).toBe("true");
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
 
   it("stays expanded after pressing a non-focusable composer control", () => {
     mocks.isCompactViewport = true;

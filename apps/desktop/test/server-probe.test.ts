@@ -4,7 +4,11 @@ import {
   type ServerResponse,
 } from "node:http";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { probeBbServer, type ServerProbeFetch } from "../src/server-probe.js";
+import {
+  probeBbServer,
+  type ServerProbeFetch,
+  waitForCompatibleServer,
+} from "../src/server-probe.js";
 
 interface TestServer {
   close(): Promise<void>;
@@ -221,5 +225,37 @@ describe("probeBbServer", () => {
     });
 
     expect(result.kind).toBe("unavailable");
+  });
+});
+
+describe("waitForCompatibleServer", () => {
+  it("retries when system config is transiently unavailable", async () => {
+    const fetchImpl = vi
+      .fn<ServerProbeFetch>()
+      .mockResolvedValueOnce(Response.json({ ok: true }))
+      .mockRejectedValueOnce(
+        new DOMException("This operation was aborted", "AbortError"),
+      )
+      .mockResolvedValueOnce(Response.json({ ok: true }))
+      .mockResolvedValueOnce(
+        Response.json({
+          hostDaemonPort: 4_242,
+          voiceTranscriptionEnabled: false,
+        }),
+      );
+
+    await expect(
+      waitForCompatibleServer({
+        fetchImpl,
+        intervalMs: 1,
+        serverUrl: "http://127.0.0.1:65535",
+        timeoutMs: 100,
+      }),
+    ).resolves.toEqual({
+      dataDir: null,
+      kind: "compatible",
+      serverUrl: "http://127.0.0.1:65535",
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(4);
   });
 });

@@ -33,7 +33,33 @@ type SaveState =
   | { kind: "error"; message: string }
   | { kind: "conflict" };
 
-function MonacoFileOpener({ path, source, Original }: PluginFileOpenerProps) {
+function revealLineRange(
+  editor: MonacoNs.editor.IStandaloneCodeEditor,
+  lineRange: PluginFileOpenerProps["experimental_lineRange"],
+) {
+  const model = editor.getModel();
+  if (lineRange == null || model === null) return;
+  const startLineNumber = Math.min(
+    lineRange.startLineNumber,
+    model.getLineCount(),
+  );
+  const endLineNumber = Math.min(lineRange.endLineNumber, model.getLineCount());
+  const selection = {
+    startLineNumber,
+    startColumn: 1,
+    endLineNumber,
+    endColumn: model.getLineMaxColumn(endLineNumber),
+  };
+  editor.setSelection(selection);
+  editor.revealRangeInCenter(selection);
+}
+
+function MonacoFileOpener({
+  path,
+  source,
+  Original,
+  experimental_lineRange,
+}: PluginFileOpenerProps) {
   const rpc = useRpc<typeof rpcContract>();
   const codeTheme = experimental_useCodeTheme();
   const codeThemeRef = useRef(codeTheme);
@@ -41,6 +67,8 @@ function MonacoFileOpener({ path, source, Original }: PluginFileOpenerProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const monacoRef = useRef<typeof MonacoNs | null>(null);
   const editorRef = useRef<MonacoNs.editor.IStandaloneCodeEditor | null>(null);
+
+  const navigationRef = useRef({ path, lineRange: experimental_lineRange });
 
   const [activePath, setActivePath] = useState(path);
   useEffect(() => setActivePath(path), [path]);
@@ -78,31 +106,38 @@ function MonacoFileOpener({ path, source, Original }: PluginFileOpenerProps) {
     setSaveStateValue(next);
   }, []);
 
-  const save = useCallback(async () => {
-    const editor = editorRef.current;
-    if (!editor) return;
-    if (saveStateRef.current.kind === "saving") return;
-    setSaveState({ kind: "saving" });
-    try {
-      const result = await rpc.call("write", {
-        path: activePath,
-        source,
-        content: editor.getValue(),
-        expectedSha256: sha256Ref.current,
-      });
-      if (result.outcome === "conflict") {
-        setSaveState({ kind: "conflict" });
-        return;
+  const writeEditorContent = useCallback(
+    async (expectedSha256: string | null) => {
+      const editor = editorRef.current;
+      if (!editor) return;
+      setSaveState({ kind: "saving" });
+      try {
+        const result = await rpc.call("write", {
+          path: activePath,
+          source,
+          content: editor.getValue(),
+          expectedSha256,
+        });
+        if (result.outcome === "conflict") {
+          setSaveState({ kind: "conflict" });
+          return;
+        }
+        sha256Ref.current = result.sha256;
+        setSaveState({ kind: "clean" });
+      } catch (error) {
+        setSaveState({
+          kind: "error",
+          message: error instanceof Error ? error.message : "Save failed",
+        });
       }
-      sha256Ref.current = result.sha256;
-      setSaveState({ kind: "clean" });
-    } catch (error) {
-      setSaveState({
-        kind: "error",
-        message: error instanceof Error ? error.message : "Save failed",
-      });
-    }
-  }, [activePath, rpc, setSaveState, source]);
+    },
+    [activePath, rpc, setSaveState, source],
+  );
+
+  const save = useCallback(async () => {
+    if (saveStateRef.current.kind === "saving") return;
+    await writeEditorContent(sha256Ref.current);
+  }, [writeEditorContent]);
 
   const saveRef = useRef(save);
   saveRef.current = save;
@@ -184,29 +219,8 @@ function MonacoFileOpener({ path, source, Original }: PluginFileOpenerProps) {
 
   const overwrite = useCallback(async () => {
     sha256Ref.current = null;
-    const editor = editorRef.current;
-    if (!editor) return;
-    setSaveState({ kind: "saving" });
-    try {
-      const result = await rpc.call("write", {
-        path: activePath,
-        source,
-        content: editor.getValue(),
-        expectedSha256: null,
-      });
-      if (result.outcome === "conflict") {
-        setSaveState({ kind: "conflict" });
-        return;
-      }
-      sha256Ref.current = result.sha256;
-      setSaveState({ kind: "clean" });
-    } catch (error) {
-      setSaveState({
-        kind: "error",
-        message: error instanceof Error ? error.message : "Save failed",
-      });
-    }
-  }, [activePath, rpc, setSaveState, source]);
+    await writeEditorContent(null);
+  }, [writeEditorContent]);
 
   useEffect(() => {
     let disposed = false;
@@ -251,6 +265,9 @@ function MonacoFileOpener({ path, source, Original }: PluginFileOpenerProps) {
           overflowWidgetsDomNode: overflowWidgetsNode(),
         });
         editorRef.current = editor;
+        if (activePath === navigationRef.current.path) {
+          revealLineRange(editor, navigationRef.current.lineRange);
+        }
         const active = {
           editor,
           absolutePath: file.absolutePath,
@@ -287,6 +304,14 @@ function MonacoFileOpener({ path, source, Original }: PluginFileOpenerProps) {
       editorRef.current = null;
     };
   }, [activePath, rpc, setSaveState, source]);
+
+  useEffect(() => {
+    navigationRef.current = { path, lineRange: experimental_lineRange };
+    const editor = editorRef.current;
+    if (editor !== null && activePath === path) {
+      revealLineRange(editor, experimental_lineRange);
+    }
+  }, [activePath, path, experimental_lineRange]);
 
   useEffect(() => {
     const monaco = monacoRef.current;

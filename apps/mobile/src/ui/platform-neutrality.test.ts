@@ -163,7 +163,6 @@ describe("platform neutrality", () => {
       relative(MOBILE_ROOT, file),
     );
     expect(files).toContain("src/ui/Icon.ios.tsx");
-    expect(files).toContain("src/ui/NativeMenu.ios.tsx");
     expect(files).toContain("src/ui/GlassSurface.ios.tsx");
     const iconSource = readFileSync(
       join(SRC_ROOT, "ui", "Icon.ios.tsx"),

@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -105,6 +106,39 @@ describe("readHostFile (no ref — disk read)", () => {
     expect(result.content).toBe("hello world");
     expect(result.contentEncoding).toBe("utf8");
     expect(result.sizeBytes).toBe(11);
+  });
+
+  it("omits unchanged file content from conditional reads", async () => {
+    const repoPath = await initRepo();
+    const filePath = path.join(repoPath, "large.png");
+    const contents = Buffer.alloc(1024, "a");
+    const sha256 = createHash("sha256").update(contents).digest("hex");
+    await fs.writeFile(filePath, contents);
+
+    const result = await readHostFile({
+      type: "host.read_file",
+      path: filePath,
+      rootPath: repoPath,
+      ifNoneMatch: { kind: "sha256", values: [sha256] },
+    });
+
+    expect(result).toMatchObject({
+      path: filePath,
+      sha256,
+      sizeBytes: contents.byteLength,
+      notModified: true,
+    });
+    expect("content" in result).toBe(false);
+
+    const changed = await readHostFile({
+      type: "host.read_file",
+      path: filePath,
+      rootPath: repoPath,
+      ifNoneMatch: { kind: "sha256", values: ["0".repeat(64)] },
+    });
+    expect("content" in changed ? changed.content : undefined).toBe(
+      contents.toString("base64"),
+    );
   });
 
   it("rejects relative paths", async () => {

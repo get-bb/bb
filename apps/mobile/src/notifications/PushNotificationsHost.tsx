@@ -1,7 +1,7 @@
 import * as Notifications from "expo-notifications";
 import { getThreadRoutePath } from "@bb/client-core";
 import { useRouter } from "expo-router";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState, type AppStateStatus } from "react-native";
 import { useProfiles, useRealtimeConnectionState } from "@/app-shell";
 import {
@@ -9,7 +9,6 @@ import {
   resolvePushTargetProfile,
   isPushRegistrationAllowed,
   type PushNotificationTarget,
-  type PushSyncProfile,
 } from "@/data/notifications";
 import type { ServerProfile } from "@/lib/profiles";
 import { ActionSheet, toast, useSheet } from "@/ui";
@@ -36,20 +35,9 @@ export function PushNotificationsHost() {
     activeProfileIdRef.current = activeProfile?.id ?? null;
   }, [profiles, activeProfile]);
 
-  const syncProfile = useMemo<PushSyncProfile | null>(
-    () =>
-      activeProfile
-        ? {
-            id: activeProfile.id,
-            serverUrl: activeProfile.serverUrl,
-            mode: activeProfile.mode,
-          }
-        : null,
-    [activeProfile],
-  );
   const activeEnabled =
-    syncProfile !== null &&
-    storeSnapshot.enabledProfileIds.includes(syncProfile.id);
+    activeProfile !== null &&
+    storeSnapshot.enabledProfileIds.includes(activeProfile.id);
 
   useEffect(() => {
     Notifications.setNotificationHandler({
@@ -126,32 +114,25 @@ export function PushNotificationsHost() {
   }, [openTarget]);
 
   useEffect(() => {
-    if (!syncProfile || !connected) return;
-    void controller.sync(syncProfile);
-  }, [controller, syncProfile, connected, activeEnabled]);
+    if (!activeProfile || !connected) return;
+    void controller.sync(activeProfile);
+  }, [controller, activeProfile, connected, activeEnabled]);
 
   useEffect(() => {
     const onChange = (state: AppStateStatus) => {
       if (state !== "active") return;
       void controller.refreshPermission().then(() => {
-        if (syncProfile) void controller.sync(syncProfile);
+        if (activeProfile) void controller.sync(activeProfile);
       });
     };
     const subscription = AppState.addEventListener("change", onChange);
     return () => subscription.remove();
-  }, [controller, syncProfile]);
+  }, [controller, activeProfile]);
 
   useEffect(
     () =>
       notifications.addTokenListener((deviceToken) => {
-        void controller.handleTokenRolled(
-          profilesRef.current.map((profile) => ({
-            id: profile.id,
-            serverUrl: profile.serverUrl,
-            mode: profile.mode,
-          })),
-          deviceToken,
-        );
+        void controller.handleTokenRolled(profilesRef.current, deviceToken);
       }),
     [controller, notifications],
   );
@@ -169,7 +150,7 @@ export function PushNotificationsHost() {
         connected={connected}
         available={
           notifications.projectId !== null &&
-          (syncProfile === null || isPushRegistrationAllowed(syncProfile))
+          (activeProfile === null || isPushRegistrationAllowed(activeProfile))
         }
         prompted={storeSnapshot.prompted}
       />
@@ -213,18 +194,6 @@ function FirstRunPrompt({
     };
   }, [shouldAsk, profile, notifications, sheet]);
 
-  const target = useMemo(
-    () =>
-      profile
-        ? {
-            id: profile.id,
-            serverUrl: profile.serverUrl,
-            mode: profile.mode,
-          }
-        : null,
-    [profile],
-  );
-
   return (
     <ActionSheet
       controller={sheet}
@@ -236,8 +205,8 @@ function FirstRunPrompt({
           label: "Turn on notifications",
           icon: "Zap",
           onPress: () => {
-            if (!target) return;
-            void controller.setEnabled(target, true).then((outcome) => {
+            if (!profile) return;
+            void controller.setEnabled(profile, true).then((outcome) => {
               if (outcome.action === "failed") {
                 toast.error("Could not turn on notifications", {
                   description: outcome.error,

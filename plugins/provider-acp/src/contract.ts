@@ -1,12 +1,7 @@
 import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { experimental_nativeRootsHostContract } from "@get-bb/plugin-sdk/host";
-import {
-  experimental_acpAgentProbeSchema,
-  type AcpAgentProbe,
-} from "@get-bb/plugin-sdk/provider-bridge/acp";
+import { experimental_acpAgentProbeSchema } from "@get-bb/plugin-sdk/provider-bridge/acp";
 import { z } from "zod";
-
-export type AcpProbeResult = AcpAgentProbe;
 
 export const acpHostContract = defineRpcContract({
   probeAgent: {

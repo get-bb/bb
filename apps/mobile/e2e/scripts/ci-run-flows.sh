@@ -9,10 +9,11 @@
 #   e2e/scripts/ci-run-flows.sh <simulator udid> <artifacts dir> [flow...]
 #
 # Default flows (in this order): shell-launch, shell-deep-link, shell-send,
-# shell-unreachable-server. Every one drives the WebView shell, so the backend
-# must be started with BB_MOBILE_E2E_SERVE_APP=1 and apps/app must be built
-# (`pnpm exec turbo run build --filter=@bb/app`); without them the server
-# answers API routes only and the shell shows its native error state.
+# shell-send-sidebar-swipe, shell-unreachable-server. Every one drives the
+# WebView shell, so the backend must be started with
+# BB_MOBILE_E2E_SERVE_APP=1 and apps/app must be built (`pnpm exec turbo run
+# build --filter=@bb/app`); without them the server answers API routes only and
+# the shell shows its native error state.
 #
 # shell-connect is not in the default set: it needs the connect stub backend
 # (`pnpm --filter @bb/integration-tests e2e:mobile-connect-stub`), so it runs
@@ -41,7 +42,7 @@ ARTIFACTS="${2:?artifacts dir}"
 shift 2
 FLOWS=("$@")
 if [ ${#FLOWS[@]} -eq 0 ]; then
-  FLOWS=(shell-launch shell-deep-link shell-send shell-unreachable-server)
+  FLOWS=(shell-launch shell-deep-link shell-send shell-send-sidebar-swipe shell-unreachable-server)
 fi
 
 export SERVER_URL="${SERVER_URL:-http://127.0.0.1:41999}"
@@ -67,6 +68,20 @@ for flow in "${FLOWS[@]}"; do
     # A failed flow can leave the app on any screen; the next flow cold-starts
     # it, but keep a screenshot of where this one ended.
     xcrun simctl io "$UDID" screenshot "$out/final-screen.png" >/dev/null 2>&1 || true
+    cleanup="$out/cleanup"
+    mkdir -p "$cleanup"
+    if maestro --device "$UDID" test \
+        ${LAUNCH_ENV[@]+"${LAUNCH_ENV[@]}"} \
+        --format junit --output "$cleanup/junit.xml" \
+        --test-output-dir "$cleanup" \
+        ${MAESTRO_FLAGS:-} \
+        "subflows/clear-open-confirmation.yaml" 2>&1 | tee "$cleanup/maestro.log"; then
+      echo "RESET after $flow"
+    else
+      echo "Failed to clear native state after $flow; stopping before the next flow" >&2
+      echo "::endgroup::"
+      break
+    fi
   fi
   echo "::endgroup::"
 done

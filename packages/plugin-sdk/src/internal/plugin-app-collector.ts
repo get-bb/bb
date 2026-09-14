@@ -10,6 +10,8 @@ import type {
   PluginAppDefinition,
   PluginContentScriptRegistration,
   PluginDiffRendererRegistration,
+  PluginEnvironmentProviderInputsRegistration,
+  PluginMachineProviderInputsRegistration,
   PluginFileOpenerRegistration,
   PluginHomepageSectionRegistration,
   PluginCommandPaletteActionRegistration,
@@ -19,6 +21,7 @@ import type {
   PluginNewThreadPanelActionRegistration,
   PluginPendingInteractionRegistration,
   PluginProviderIconRegistration,
+  ExperimentalIconRegistration,
   PluginSettingsSectionRegistration,
   PluginSidebarFooterActionRegistration,
   ExperimentalSidebarNavigationRegistration,
@@ -32,6 +35,7 @@ import {
   collectComposerCustomization,
   PLUGIN_SLOT_ID_PATTERN,
   requireComponent,
+  requireEnvironmentProviderId,
   requireMessageDirectiveId,
   requireNonEmptyString,
   requireOptionalString,
@@ -279,6 +283,13 @@ function rejectStaleNavPanelKeys(kind: string, registration: object): void {
   }
 }
 
+export type CollectedPluginProviderIconRegistration = Omit<
+  PluginProviderIconRegistration,
+  "providerKind"
+> & {
+  providerKind: PluginProviderIconRegistration["providerKind"] | "all";
+};
+
 /** Validated registrations produced by one plugin app setup execution. */
 export interface CollectedPluginAppRegistrations {
   homepageSections: PluginHomepageSectionRegistration[];
@@ -300,8 +311,11 @@ export interface CollectedPluginAppRegistrations {
   messageDirectives: PluginMessageDirectiveRegistration[];
   messageActions: PluginMessageActionRegistration[];
   commandPaletteActions: PluginCommandPaletteActionRegistration[];
-  providerIcons: PluginProviderIconRegistration[];
+  providerIcons: CollectedPluginProviderIconRegistration[];
+  icons: ExperimentalIconRegistration[];
   timelineRenderers: PluginTimelineRendererRegistration[];
+  environmentProviderInputs: PluginEnvironmentProviderInputsRegistration[];
+  machineProviderInputs: PluginMachineProviderInputsRegistration[];
   contentScripts: PluginContentScriptRegistration[];
 }
 
@@ -314,6 +328,79 @@ export function getCollectedSidebarFooterItems(
   registrations: object,
 ): readonly CollectedSidebarFooterItem[] | null {
   return sidebarFooterItemsByRegistrationSet.get(registrations) ?? null;
+}
+
+function collectTitledComponent<C>(
+  kind: string,
+  seen: Set<string>,
+  registration: {
+    id: string;
+    title: string;
+    description?: string;
+    component: C;
+  },
+): { id: string; title: string; description?: string; component: C } {
+  const id = requireSlotId(kind, registration?.id);
+  requireUniqueId(kind, seen, id);
+  const description = requireOptionalString(
+    kind,
+    "description",
+    registration.description,
+  );
+  return {
+    id,
+    title: requireNonEmptyString(kind, "title", registration.title),
+    ...(description !== undefined ? { description } : {}),
+    component: requireComponent<C>(kind, registration.component),
+  };
+}
+
+function collectPanelAction<C, Run>(
+  kind: string,
+  seen: Set<string>,
+  registration: {
+    id: string;
+    title: string;
+    icon?: string;
+    component: C;
+    layout?: "padded" | "flush";
+    run?: Run;
+  },
+): {
+  id: string;
+  title: string;
+  icon?: string;
+  component: C;
+  layout?: "padded" | "flush";
+  run?: Run;
+} {
+  const id = requireSlotId(kind, registration?.id);
+  requireUniqueId(kind, seen, id);
+  if (
+    registration.run !== undefined &&
+    typeof registration.run !== "function"
+  ) {
+    throw new Error(`${kind}: "run" must be a function when set`);
+  }
+  if (
+    registration.layout !== undefined &&
+    registration.layout !== "padded" &&
+    registration.layout !== "flush"
+  ) {
+    throw new Error(`${kind}: "layout" must be "padded" or "flush"`);
+  }
+  return {
+    id,
+    title: requireNonEmptyString(kind, "title", registration.title),
+    ...(registration.icon !== undefined
+      ? { icon: requireNonEmptyString(kind, "icon", registration.icon) }
+      : {}),
+    component: requireComponent<C>(kind, registration.component),
+    ...(registration.layout !== undefined
+      ? { layout: registration.layout }
+      : {}),
+    ...(registration.run !== undefined ? { run: registration.run } : {}),
+  };
 }
 
 /**
@@ -349,7 +436,10 @@ export function collectPluginAppRegistrations(
     messageActions: [],
     commandPaletteActions: [],
     providerIcons: [],
+    icons: [],
     timelineRenderers: [],
+    environmentProviderInputs: [],
+    machineProviderInputs: [],
     contentScripts: [],
   };
   sidebarFooterItemsByRegistrationSet.set(collected, sidebarFooterItems);
@@ -374,6 +464,8 @@ export function collectPluginAppRegistrations(
     commandPaletteAction: new Set<string>(),
     providerIcon: new Set<string>(),
     timelineRenderer: new Set<string>(),
+    environmentProviderInputs: new Set<string>(),
+    machineProviderInputs: new Set<string>(),
     contentScript: new Set<string>(),
   };
 
@@ -527,68 +619,22 @@ export function collectPluginAppRegistrations(
         });
       },
       threadPanelAction(registration) {
-        const kind = "slots.threadPanelAction";
-        const id = requireSlotId(kind, registration?.id);
-        requireUniqueId(kind, seenIds.threadPanelAction, id);
-        if (
-          registration.run !== undefined &&
-          typeof registration.run !== "function"
-        ) {
-          throw new Error(`${kind}: "run" must be a function when set`);
-        }
-        if (
-          registration.layout !== undefined &&
-          registration.layout !== "padded" &&
-          registration.layout !== "flush"
-        ) {
-          throw new Error(`${kind}: "layout" must be "padded" or "flush"`);
-        }
-        collected.threadPanelActions.push({
-          id,
-          title: requireNonEmptyString(kind, "title", registration.title),
-          ...(registration.icon !== undefined
-            ? {
-                icon: requireNonEmptyString(kind, "icon", registration.icon),
-              }
-            : {}),
-          component: requireComponent(kind, registration.component),
-          ...(registration.layout !== undefined
-            ? { layout: registration.layout }
-            : {}),
-          ...(registration.run !== undefined ? { run: registration.run } : {}),
-        });
+        collected.threadPanelActions.push(
+          collectPanelAction(
+            "slots.threadPanelAction",
+            seenIds.threadPanelAction,
+            registration,
+          ),
+        );
       },
       experimental_newThreadPanelAction(registration) {
-        const kind = "slots.experimental_newThreadPanelAction";
-        const id = requireSlotId(kind, registration?.id);
-        requireUniqueId(kind, seenIds.newThreadPanelAction, id);
-        if (
-          registration.run !== undefined &&
-          typeof registration.run !== "function"
-        ) {
-          throw new Error(`${kind}: "run" must be a function when set`);
-        }
-        if (
-          registration.layout !== undefined &&
-          registration.layout !== "padded" &&
-          registration.layout !== "flush"
-        ) {
-          throw new Error(`${kind}: "layout" must be "padded" or "flush"`);
-        }
-        collected.newThreadPanelActions.push({
-          id,
-          title: requireNonEmptyString(kind, "title", registration.title),
-          ...(registration.icon !== undefined
-            ? {
-                icon: requireNonEmptyString(kind, "icon", registration.icon),
-              }
-            : {}),
-          component: requireComponent(kind, registration.component),
-          ...(registration.layout !== undefined
-            ? { layout: registration.layout }
-            : {}),
-          ...(registration.run !== undefined ? { run: registration.run } : {}),
-        });
+        collected.newThreadPanelActions.push(
+          collectPanelAction(
+            "slots.experimental_newThreadPanelAction",
+            seenIds.newThreadPanelAction,
+            registration,
+          ),
+        );
       },
       pendingInteraction(registration) {
         const kind = "slots.pendingInteraction";
@@ -616,36 +662,22 @@ export function collectPluginAppRegistrations(
         sidebarFooterItems.push(adaptSidebarFooterAction(legacyRegistration));
       },
       experimental_sidebarNavigation(registration) {
-        const kind = "slots.experimental_sidebarNavigation";
-        const id = requireSlotId(kind, registration?.id);
-        requireUniqueId(kind, seenIds.sidebarNavigation, id);
-        const description = requireOptionalString(
-          kind,
-          "description",
-          registration.description,
+        collected.experimentalSidebarNavigations.push(
+          collectTitledComponent(
+            "slots.experimental_sidebarNavigation",
+            seenIds.sidebarNavigation,
+            registration,
+          ),
         );
-        collected.experimentalSidebarNavigations.push({
-          id,
-          title: requireNonEmptyString(kind, "title", registration.title),
-          ...(description !== undefined ? { description } : {}),
-          component: requireComponent(kind, registration.component),
-        });
       },
       experimental_threadList(registration) {
-        const kind = "slots.experimental_threadList";
-        const id = requireSlotId(kind, registration?.id);
-        requireUniqueId(kind, seenIds.threadList, id);
-        const description = requireOptionalString(
-          kind,
-          "description",
-          registration.description,
+        collected.threadLists.push(
+          collectTitledComponent(
+            "slots.experimental_threadList",
+            seenIds.threadList,
+            registration,
+          ),
         );
-        collected.threadLists.push({
-          id,
-          title: requireNonEmptyString(kind, "title", registration.title),
-          ...(description !== undefined ? { description } : {}),
-          component: requireComponent(kind, registration.component),
-        });
       },
       experimental_threadHeaderAction(registration) {
         const kind = "slots.experimental_threadHeaderAction";
@@ -683,36 +715,22 @@ export function collectPluginAppRegistrations(
         });
       },
       experimental_sourceCodeRenderer(registration) {
-        const kind = "slots.experimental_sourceCodeRenderer";
-        const id = requireSlotId(kind, registration?.id);
-        requireUniqueId(kind, seenIds.sourceCodeRenderer, id);
-        const description = requireOptionalString(
-          kind,
-          "description",
-          registration.description,
+        collected.sourceCodeRenderers.push(
+          collectTitledComponent(
+            "slots.experimental_sourceCodeRenderer",
+            seenIds.sourceCodeRenderer,
+            registration,
+          ),
         );
-        collected.sourceCodeRenderers.push({
-          id,
-          title: requireNonEmptyString(kind, "title", registration.title),
-          ...(description !== undefined ? { description } : {}),
-          component: requireComponent(kind, registration.component),
-        });
       },
       experimental_diffRenderer(registration) {
-        const kind = "slots.experimental_diffRenderer";
-        const id = requireSlotId(kind, registration?.id);
-        requireUniqueId(kind, seenIds.diffRenderer, id);
-        const description = requireOptionalString(
-          kind,
-          "description",
-          registration.description,
+        collected.diffRenderers.push(
+          collectTitledComponent(
+            "slots.experimental_diffRenderer",
+            seenIds.diffRenderer,
+            registration,
+          ),
         );
-        collected.diffRenderers.push({
-          id,
-          title: requireNonEmptyString(kind, "title", registration.title),
-          ...(description !== undefined ? { description } : {}),
-          component: requireComponent(kind, registration.component),
-        });
       },
       messageDirective(registration) {
         const kind = "slots.messageDirective";
@@ -766,8 +784,23 @@ export function collectPluginAppRegistrations(
       experimental_providerIcon(registration) {
         const kind = "slots.experimental_providerIcon";
         const providerId = requireProviderId(kind, registration?.providerId);
-        requireUniqueId(kind, seenIds.providerIcon, providerId);
+        const declaredKind = registration.providerKind;
+        if (
+          declaredKind !== undefined &&
+          declaredKind !== "agent" &&
+          declaredKind !== "machine" &&
+          declaredKind !== "environment"
+        ) {
+          throw new Error(`${kind}: invalid providerKind`);
+        }
+        const providerKind = declaredKind ?? "all";
+        requireUniqueId(
+          kind,
+          seenIds.providerIcon,
+          `${providerKind}:${providerId}`,
+        );
         collected.providerIcons.push({
+          providerKind,
           providerId,
           icon: requireComponent(kind, registration.icon),
         });
@@ -778,6 +811,34 @@ export function collectPluginAppRegistrations(
         requireUniqueId(kind, seenIds.timelineRenderer, itemKind);
         collected.timelineRenderers.push({
           kind: itemKind,
+          component: requireComponent(kind, registration.component),
+        });
+      },
+      experimental_environmentProviderInputs(registration) {
+        const kind = "slots.experimental_environmentProviderInputs";
+        const environmentProviderId = requireEnvironmentProviderId(
+          kind,
+          registration?.environmentProviderId,
+        );
+        requireUniqueId(
+          kind,
+          seenIds.environmentProviderInputs,
+          environmentProviderId,
+        );
+        collected.environmentProviderInputs.push({
+          environmentProviderId,
+          component: requireComponent(kind, registration.component),
+        });
+      },
+      experimental_machineProviderInputs(registration) {
+        const kind = "slots.experimental_machineProviderInputs";
+        const machineProviderId = requireProviderId(
+          kind,
+          registration?.machineProviderId,
+        );
+        requireUniqueId(kind, seenIds.machineProviderInputs, machineProviderId);
+        collected.machineProviderInputs.push({
+          machineProviderId,
           component: requireComponent(kind, registration.component),
         });
       },
@@ -797,6 +858,25 @@ export function collectPluginAppRegistrations(
         if (customization !== null) {
           collected.composerCustomizations.push(customization);
         }
+      },
+    },
+    experimental_icons: {
+      register(registration) {
+        const kind = "experimental_icons.register";
+        const name = requireNonEmptyString(
+          kind,
+          "name",
+          registration?.name,
+        ).trim();
+        if (name.length === 0)
+          throw new Error(`${kind}: "name" must not be blank`);
+        if (collected.icons.some((icon) => icon.name === name)) {
+          throw new Error(`${kind}: duplicate icon name "${name}"`);
+        }
+        collected.icons.push({
+          name,
+          component: requireComponent(kind, registration.component),
+        });
       },
     },
     contentScripts: {

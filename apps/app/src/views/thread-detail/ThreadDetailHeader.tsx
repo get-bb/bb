@@ -168,7 +168,7 @@ export function ThreadDetailHeader({
         <p
           className={cn(
             "relative min-w-0 text-sm font-normal transition-colors",
-            isEditing ? "overflow-visible" : "truncate",
+            isEditing ? "overflow-visible" : "bb-thread-title",
             isSplitPaneHeader &&
               !isFocused &&
               dimsInactiveSplits &&
@@ -191,7 +191,6 @@ export function ThreadDetailHeader({
           {childPillLabel}
         </Pill>
       ) : null}
-      {}
       {actionsMenu == null ? null : (
         <span
           data-testid="thread-detail-header-actions-menu"

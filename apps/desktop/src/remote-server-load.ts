@@ -5,6 +5,7 @@ const ELECTRON_LOAD_ERROR_CODE = /\bERR_[A-Z_]+ \(-?\d+\)/u;
 interface RemoteServerStartupError {
   details: string;
   logs: string;
+  retryable: boolean;
   title: string;
 }
 
@@ -52,6 +53,7 @@ export async function loadRemoteServerPage(
         "Window ▸ Server to retry this server or switch to " +
         `${BUILTIN_SERVER_NAME}.`,
       logs: "",
+      retryable: true,
       title: "Could not reach this bb server",
     });
     return false;

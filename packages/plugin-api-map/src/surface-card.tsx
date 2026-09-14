@@ -114,7 +114,6 @@ export function SurfaceCard({
       className="w-full rounded-lg border border-border bg-popover p-3.5 shadow-lg"
     >
       <div className="flex items-start gap-2">
-        {}
         {number === null ? (
           icon ? (
             <HugeiconsIcon
@@ -195,8 +194,6 @@ export function SurfaceCard({
       {(surface.firstParty && surface.firstParty.length > 0) ||
       onCopyForAgent ? (
         <div className="mt-3 flex min-w-0 items-center gap-x-2 border-t border-border-hairline pt-2.5">
-          {}
-          {}
           {surface.firstParty && surface.firstParty.length > 0 ? (
             <>
               <span className="shrink-0 rounded bg-surface-recessed px-2 py-0.5 text-xs font-normal text-subtle-foreground">

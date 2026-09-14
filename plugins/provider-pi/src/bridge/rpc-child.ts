@@ -28,7 +28,6 @@ export interface PiRpcChildExitInfo {
   code: number | null;
   signal: NodeJS.Signals | null;
   stderrTail: string;
-  beforeFirstResponse: boolean;
 }
 
 export interface PiRpcResponse {
@@ -48,11 +47,10 @@ export interface SpawnPiRpcChildArgs {
   onChannelMessage: (message: Record<string, unknown>) => void;
   onExit: (info: PiRpcChildExitInfo) => void;
   recordThreadId: string | null;
+  onExtensionUiRequest?: (request: Record<string, unknown>) => void;
 }
 
 export class PiRpcChildExitedError extends Error {
-  readonly info: PiRpcChildExitInfo;
-
   constructor(info: PiRpcChildExitInfo) {
     super(
       `pi exited (code ${info.code ?? "null"}, signal ${info.signal ?? "null"})${
@@ -60,7 +58,6 @@ export class PiRpcChildExitedError extends Error {
       }`,
     );
     this.name = "PiRpcChildExitedError";
-    this.info = info;
   }
 }
 
@@ -233,7 +230,6 @@ export class PiRpcChild {
   private readonly pending = new Map<string, PendingRequest>();
   private nextRequestId = 0;
   private stderrTail = "";
-  private sawResponse = false;
   private exitInfo: PiRpcChildExitInfo | null = null;
   private readonly settledExit: Promise<PiRpcChildExitInfo>;
   private readonly channelWriter: Writable | null;
@@ -323,7 +319,6 @@ export class PiRpcChild {
         code,
         signal,
         stderrTail: this.stderrTail,
-        beforeFirstResponse: !this.sawResponse,
       };
       this.exitInfo = info;
       resolveSettledExit(info);
@@ -343,10 +338,6 @@ export class PiRpcChild {
 
   get exited(): boolean {
     return this.exitInfo !== null;
-  }
-
-  get pid(): number | undefined {
-    return this.child.pid;
   }
 
   waitForExit(): Promise<PiRpcChildExitInfo> {
@@ -454,6 +445,15 @@ export class PiRpcChild {
     });
   }
 
+  respondToExtensionUi(
+    id: string | number,
+    fields: Record<string, unknown>,
+  ): void {
+    this.writeStdin(
+      `${JSON.stringify({ type: "extension_ui_response", id, ...fields })}\n`,
+    );
+  }
+
   private endWriters(): void {
     try {
       this.child.stdin?.end();
@@ -509,7 +509,6 @@ export class PiRpcChild {
     }
     const message = parsed as Record<string, unknown>;
     if (message.type === "response") {
-      this.sawResponse = true;
       const id = typeof message.id === "string" ? message.id : undefined;
       const pending = id === undefined ? undefined : this.pending.get(id);
       if (pending && id !== undefined) {
@@ -520,13 +519,17 @@ export class PiRpcChild {
       return;
     }
     if (message.type === "extension_ui_request") {
-      this.writeStdin(
-        `${JSON.stringify({
-          type: "extension_ui_response",
-          id: message.id,
-          cancelled: true,
-        })}\n`,
-      );
+      if (this.args.onExtensionUiRequest) {
+        this.args.onExtensionUiRequest(message);
+      } else {
+        this.writeStdin(
+          `${JSON.stringify({
+            type: "extension_ui_response",
+            id: message.id,
+            cancelled: true,
+          })}\n`,
+        );
+      }
       return;
     }
     if (typeof message.type === "string") {

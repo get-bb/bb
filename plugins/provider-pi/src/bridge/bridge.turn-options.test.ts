@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { z } from "zod";
 import type {
@@ -70,6 +72,35 @@ function turnStart(
     options,
   });
 }
+
+it(
+  "rebuilds the session with environment from a later turn",
+  async () => {
+    const threadId = "thr_turn_options_env";
+    const envLog = join(harness.workspaceDir, "env.log");
+    const options = (marker: string) => ({
+      ...MINI,
+      envVars: { FAKE_PI_ENV_LOG: envLog, FAKE_PI_ENV_MARKER: marker },
+    });
+    await harness.startThread(threadId, { options: options("first") });
+
+    expect(
+      (await turnStart(1, threadId, "first", options("first"))).error,
+    ).toBeUndefined();
+    const seen = await harness.waitForTurnBoundary(threadId, 0);
+    expect(
+      (await turnStart(2, threadId, "second", options("second"))).error,
+    ).toBeUndefined();
+    await harness.waitForTurnBoundary(threadId, seen);
+
+    expect(readFileSync(envLog, "utf8").trim().split("\n")).toEqual([
+      "first",
+      "second",
+    ]);
+    expect(sessionReplacements(threadId)).toHaveLength(1);
+  },
+  TURN_OPTIONS_TEST_TIMEOUT_MS,
+);
 
 it(
   "rebuilds the session on the model a later turn carries",

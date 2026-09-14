@@ -1,4 +1,5 @@
 import {
+  contextSnapshotSchema,
   backgroundTaskStatusSchema,
   backgroundTaskUsageSchema,
   clientTurnRequestIdSchema,
@@ -152,6 +153,14 @@ export const deltaItemShapeSchema = z.discriminatedUnion("type", [
     pattern: z.string().nullable(),
   }),
   z.object({ type: z.literal("imageView"), path: z.string() }),
+  z.object({
+    type: z.literal("imageGeneration"),
+    prompt: z.string().nullable(),
+    path: z.string().nullable(),
+    result: z.string().optional(),
+    error: z.string().nullable(),
+    transparentBackground: z.boolean(),
+  }),
   deltaBackgroundTaskShapeSchema,
   deltaFileReadShapeSchema,
   deltaSearchShapeSchema,
@@ -312,6 +321,7 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
 
   z.object({
     kind: z.literal("contextWindow"),
+    snapshot: contextSnapshotSchema.optional(),
     used: z.number().nullable(),
     size: z.number().nullable().optional(),
     estimated: z.boolean(),

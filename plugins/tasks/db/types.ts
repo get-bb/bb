@@ -192,11 +192,6 @@ export interface UpdateTaskPositionInput {
   afterTaskId?: string | null;
 }
 
-export interface SubtaskDoneCounts {
-  total: number;
-  done: number;
-}
-
 export interface CreateLabelInput {
   id?: string;
   projectId: string;

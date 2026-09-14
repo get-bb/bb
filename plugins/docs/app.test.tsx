@@ -17,8 +17,26 @@ const navigationRegistration = {
   ...docsRegistration,
   component: navigationView.component,
 };
+const rangeGetBoundingClientRectDescriptor = Object.getOwnPropertyDescriptor(
+  Range.prototype,
+  "getBoundingClientRect",
+);
+const rangeGetClientRectsDescriptor = Object.getOwnPropertyDescriptor(
+  Range.prototype,
+  "getClientRects",
+);
 
 beforeEach(() => {
+  Object.defineProperties(Range.prototype, {
+    getBoundingClientRect: {
+      configurable: true,
+      value: () => new DOMRect(),
+    },
+    getClientRects: {
+      configurable: true,
+      value: () => ({ length: 0, item: () => null }),
+    },
+  });
   Object.defineProperty(window, "matchMedia", {
     writable: true,
     value: vi.fn((query: string) => ({
@@ -37,6 +55,24 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  if (rangeGetBoundingClientRectDescriptor) {
+    Object.defineProperty(
+      Range.prototype,
+      "getBoundingClientRect",
+      rangeGetBoundingClientRectDescriptor,
+    );
+  } else {
+    Reflect.deleteProperty(Range.prototype, "getBoundingClientRect");
+  }
+  if (rangeGetClientRectsDescriptor) {
+    Object.defineProperty(
+      Range.prototype,
+      "getClientRects",
+      rangeGetClientRectsDescriptor,
+    );
+  } else {
+    Reflect.deleteProperty(Range.prototype, "getClientRects");
+  }
 });
 
 interface NoteSummary {

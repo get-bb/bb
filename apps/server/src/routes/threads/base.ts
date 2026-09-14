@@ -1,9 +1,11 @@
+import { cancelAbandonedProviderCreations } from "../../services/threads/thread-environment-providers.js";
 import {
   THREAD_SEARCH_LIMIT_PER_GROUP_DEFAULT,
   THREAD_SEARCH_LIMIT_PER_GROUP_MAX,
   countNonDeletedAssignedChildThreads,
   countThreads,
   getEnvironment,
+  getThread,
   getThreadSectionById,
   listThreadMentionRowsByIds,
   listThreadsWithPendingInteractionState,
@@ -14,6 +16,7 @@ import {
   type UpdateThreadInput,
 } from "@bb/db";
 import type { Environment, Thread, ThreadListEntry } from "@bb/domain";
+import { toEnvironmentResponse } from "../../services/environments/environment-response.js";
 import {
   threadIncludeOptionSchema,
   THREAD_COUNT_ROOT_PARENT,
@@ -32,11 +35,10 @@ import {
 import type { Hono } from "hono";
 import type { AppDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
-import { parseOptionalInteger } from "../../services/lib/validation.js";
 import {
-  requestEnvironmentCleanup,
-  requestEnvironmentCleanupAdvance,
-} from "../../services/environments/environment-cleanup-internal.js";
+  parseInteger,
+  parsePaginationQuery,
+} from "../../services/lib/validation.js";
 import {
   getNonDestroyedHostWithStatus,
   requireEnvironment,
@@ -95,7 +97,8 @@ function resolveIncludedThreadEnvironment(
   if (thread.environmentId === null) {
     return null;
   }
-  return getEnvironment(deps.db, thread.environmentId);
+  const environment = getEnvironment(deps.db, thread.environmentId);
+  return environment === null ? null : toEnvironmentResponse(environment);
 }
 
 function buildThreadResponse(
@@ -147,10 +150,7 @@ function parseSearchLimitPerGroup(value: string | undefined): number {
   const limit =
     value === undefined
       ? THREAD_SEARCH_LIMIT_PER_GROUP_DEFAULT
-      : parseOptionalInteger(value, "limitPerGroup");
-  if (limit === undefined) {
-    return THREAD_SEARCH_LIMIT_PER_GROUP_DEFAULT;
-  }
+      : parseInteger(value, "limitPerGroup");
   if (limit <= 0) {
     throw new ApiError(
       400,
@@ -256,14 +256,10 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
   });
 
   get(routes.list, (context, query) => {
-    const limit = parseOptionalInteger(query.limit, "limit");
-    if (limit !== undefined && limit <= 0) {
-      throw new ApiError(400, "invalid_request", "limit must be positive");
-    }
-    const offset = parseOptionalInteger(query.offset, "offset");
-    if (offset !== undefined && offset < 0) {
-      throw new ApiError(400, "invalid_request", "offset must be non-negative");
-    }
+    const { limit, offset } = parsePaginationQuery({
+      limit: query.limit,
+      offset: query.offset,
+    });
     if (query.projectId) {
       requirePublicProject(deps.db, query.projectId);
     }
@@ -279,6 +275,7 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     }
     const threads = listThreadsWithPendingInteractionState(deps.db, {
       ...(query.projectId ? { projectId: query.projectId } : {}),
+      ...(query.environmentId ? { environmentId: query.environmentId } : {}),
       ...(query.parentThreadId ? { parentThreadId: query.parentThreadId } : {}),
       ...(query.sourceThreadId ? { sourceThreadId: query.sourceThreadId } : {}),
       ...(query.sectionId ? { sectionId: query.sectionId } : {}),
@@ -413,6 +410,12 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
         requireThreadSection(deps, sectionId);
       }
       metadataUpdate.sectionId = sectionId;
+    } else if (
+      payload.parentThreadId === null &&
+      thread.parentThreadId !== null
+    ) {
+      metadataUpdate.sectionId =
+        getThread(deps.db, thread.parentThreadId)?.sectionId ?? null;
     }
     if ("parentThreadId" in payload) {
       metadataUpdate.parentThreadId = payload.parentThreadId;
@@ -472,6 +475,7 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
       threadId: thread.id,
     });
     if (deletedThread) emitPluginThreadDeleted(deletedThread);
+    cancelAbandonedProviderCreations(deps, thread.id);
     deps.terminalSessions.closeDeletedThreadTerminals({ threadId: thread.id });
     if (thread.environmentId === null) {
       finalizeStoppedThread(deps, {
@@ -484,12 +488,6 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     requestActiveRuntimeThreadStopIfNeeded(deps, thread, environment);
     finalizeStoppedThread(deps, {
       threadId: thread.id,
-    });
-    requestEnvironmentCleanup(deps, {
-      environmentId: environment.id,
-    });
-    requestEnvironmentCleanupAdvance(deps, {
-      environmentId: environment.id,
     });
     return context.json({ ok: true });
   });

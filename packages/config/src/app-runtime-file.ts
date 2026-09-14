@@ -1,6 +1,7 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { z } from "zod";
+import { isProcessRunning } from "./verified-process-stop.js";
 
 const BB_APP_RUNTIME_FILE_NAME = "bb-app-runtime.json";
 
@@ -29,15 +30,6 @@ export function formatBbAppRuntimeFilePath(dataDir: string): string {
   return join(dataDir, BB_APP_RUNTIME_FILE_NAME);
 }
 
-function defaultIsRunning(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 export async function writeBbAppRuntimeFile(
   args: WriteBbAppRuntimeFileArgs,
 ): Promise<void> {
@@ -60,7 +52,7 @@ export async function writeBbAppRuntimeFile(
 export async function claimBbAppRuntimeFile(
   args: WriteBbAppRuntimeFileArgs & { isRunning?: (pid: number) => boolean },
 ): Promise<boolean> {
-  const isRunning = args.isRunning ?? defaultIsRunning;
+  const isRunning = args.isRunning ?? isProcessRunning;
   const existing = await readBbAppRuntimeFile(args.dataDir);
   if (
     existing !== null &&

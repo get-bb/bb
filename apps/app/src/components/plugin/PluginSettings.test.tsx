@@ -11,6 +11,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { InstalledPlugin } from "@bb/server-contract";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
+import { systemMachineProvidersQueryKey } from "@/hooks/queries/query-keys";
 import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
@@ -129,6 +130,39 @@ describe("PluginSettingsForm", () => {
     expect((screen.getByLabelText("Greeting") as HTMLInputElement).value).toBe(
       "hi there",
     );
+  });
+
+  it("refreshes machine providers after a save, so availability catches up", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        if (init?.method === "PUT") {
+          const body = JSON.parse(String(init.body)) as {
+            values: Record<string, unknown>;
+          };
+          return jsonOk({
+            ...SETTINGS_VIEW,
+            values: { ...SETTINGS_VIEW.values, ...body.values },
+          });
+        }
+        return jsonOk(SETTINGS_VIEW);
+      }),
+    );
+
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    queryClient.setQueryData(systemMachineProvidersQueryKey(), []);
+    render(<PluginSettingsForm pluginId="demo" />, { wrapper });
+
+    const greeting = await screen.findByLabelText("Greeting");
+    fireEvent.change(greeting, { target: { value: "hi there" } });
+    fireEvent.blur(greeting);
+
+    await vi.waitFor(() => {
+      expect(
+        queryClient.getQueryState(systemMachineProvidersQueryKey())
+          ?.isInvalidated,
+      ).toBe(true);
+    });
   });
 
   it("autosaves a number input on blur and unsets it when cleared", async () => {
@@ -645,6 +679,118 @@ describe("PluginSettingsPage", () => {
     expect(
       await screen.findByRole("heading", { name: "Configuration" }),
     ).toBeTruthy();
+  });
+
+  it("shows a skeleton while the plugin list loads, then the real settings", async () => {
+    let resolveList: (response: Response) => void = () => {
+      throw new Error("Plugin list request did not start");
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/api/v1/plugins/linear/settings")
+          return jsonOk(SETTINGS_VIEW);
+        return new Promise<Response>((resolve) => {
+          resolveList = resolve;
+        });
+      }),
+    );
+
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter>
+        <QueryClientWrapper>
+          <PluginSettingsPage pluginId="linear" />
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    const skeleton = await screen.findByTestId("plugin-settings-skeleton");
+    expect(skeleton.getAttribute("role")).toBe("status");
+    expect(screen.getByText("Loading plugin settings…")).toBeTruthy();
+
+    resolveList(jsonOk({ plugins: [installedPlugin(true)] }));
+
+    expect(await screen.findByRole("heading", { name: "Linear" })).toBeTruthy();
+    expect(screen.queryByTestId("plugin-settings-skeleton")).toBeNull();
+  });
+
+  it("reports a failed plugin list instead of a skeleton or a missing plugin", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new Error("offline");
+      }),
+    );
+
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter>
+        <QueryClientWrapper>
+          <PluginSettingsPage pluginId="linear" />
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    expect(
+      await screen.findByText("Could not load plugin settings."),
+    ).toBeTruthy();
+    expect(screen.queryByTestId("plugin-settings-skeleton")).toBeNull();
+  });
+
+  it("keeps loaded settings visible when a background plugin-list refresh fails", async () => {
+    let pluginListRequests = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/api/v1/plugins/linear/settings") {
+          return jsonOk(SETTINGS_VIEW);
+        }
+        pluginListRequests += 1;
+        if (pluginListRequests === 1) {
+          return jsonOk({ plugins: [installedPlugin(true)] });
+        }
+        throw new Error("offline");
+      }),
+    );
+
+    const { queryClient, wrapper: QueryClientWrapper } =
+      createQueryClientTestHarness();
+    render(
+      <MemoryRouter>
+        <QueryClientWrapper>
+          <PluginSettingsPage pluginId="linear" />
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByRole("heading", { name: "Linear" })).toBeTruthy();
+
+    await queryClient.invalidateQueries();
+
+    expect(screen.getByRole("heading", { name: "Linear" })).toBeTruthy();
+    expect(screen.queryByText("Could not load plugin settings.")).toBeNull();
+  });
+
+  it("keeps the not-installed message free of loading affordances", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => jsonOk({ plugins: [] })),
+    );
+
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter>
+        <QueryClientWrapper>
+          <PluginSettingsPage pluginId="linear" />
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    expect(
+      await screen.findByText("This plugin is not installed."),
+    ).toBeTruthy();
+    expect(screen.queryByTestId("plugin-settings-skeleton")).toBeNull();
   });
 
   it("omits Configuration for an enabled plugin with no available settings", async () => {

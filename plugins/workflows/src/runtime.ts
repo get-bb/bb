@@ -265,31 +265,30 @@ class SharedWorkflowScheduler implements WorkflowExecutionScheduler {
   }
 }
 
-interface PendingAgentCall {
+interface PendingHostCall {
   controller: AbortController;
   deferred: QuickJSDeferredPromise;
 }
 
-function installAgentFunction(
+function createHostCallBridge(
   vm: QuickJSContext,
   runtime: QuickJSRuntime,
-  capabilities: ExecuteWorkflowScriptArgs["capabilities"],
-  scheduler: SharedWorkflowScheduler,
   enterVm: () => void,
   signal: AbortSignal | undefined,
-  currentPhase: () => string | null,
-): { close(reason?: string): void } {
-  const pending = new Set<PendingAgentCall>();
+): {
+  isClosed(): boolean;
+  rejectImmediately(message: string): QuickJSHandle;
+  launch(
+    resultLabel: string,
+    run: (callSignal: AbortSignal) => Promise<JsonValue>,
+  ): QuickJSHandle;
+  close(reason?: string): void;
+} {
+  const pending = new Set<PendingHostCall>();
   let closed = false;
 
-  const pump = () => {
-    if (closed) return;
-    enterVm();
-    vm.unwrapResult(runtime.executePendingJobs());
-  };
-
   const finish = (
-    call: PendingAgentCall,
+    call: PendingHostCall,
     settlement: { value: JsonValue } | { error: unknown },
   ) => {
     if (closed || !pending.delete(call)) return;
@@ -303,7 +302,8 @@ function installAgentFunction(
       handle.dispose();
     }
     call.deferred.dispose();
-    pump();
+    enterVm();
+    vm.unwrapResult(runtime.executePendingJobs());
   };
 
   const rejectImmediately = (message: string): QuickJSHandle => {
@@ -316,39 +316,26 @@ function installAgentFunction(
     return promise;
   };
 
-  const fn = vm.newFunction("agent", (...handles) => {
-    if (closed) return rejectImmediately("Workflow is no longer running");
-    const promptValue = handles[0] ? vm.dump(handles[0]) : "";
-    const prompt =
-      typeof promptValue === "string" ? promptValue : String(promptValue);
-    const parsedOptions = parseAgentOptions(
-      handles[1] ? dumpJson(vm, handles[1], "agent options") : undefined,
-    );
-    const options: WorkflowAgentOptions = {
-      ...parsedOptions,
-      phase: parsedOptions.phase ?? currentPhase(),
-    };
-    const call: PendingAgentCall = {
+  const launch = (
+    resultLabel: string,
+    run: (callSignal: AbortSignal) => Promise<JsonValue>,
+  ): QuickJSHandle => {
+    const call: PendingHostCall = {
       controller: new AbortController(),
       deferred: vm.newPromise(),
     };
-    const agentSignal = call.controller.signal;
-    const runAgent = () => capabilities.agent(prompt, options, agentSignal);
     pending.add(call);
-    void scheduler
-      .schedule(runAgent, agentSignal)
+    void run(call.controller.signal)
       .then(
         (value) => {
-          assertJsonValue(value, "agent result");
+          assertJsonValue(value, resultLabel);
           finish(call, { value });
         },
         (error) => finish(call, { error }),
       )
       .catch((error) => finish(call, { error }));
     return call.deferred.handle;
-  });
-  vm.setProp(vm.global, "agent", fn);
-  fn.dispose();
+  };
 
   const close = (reason?: string) => {
     if (closed) return;
@@ -372,12 +359,46 @@ function installAgentFunction(
   const abort = () => close("Workflow cancelled");
   signal?.addEventListener("abort", abort, { once: true });
   if (signal?.aborted === true) abort();
-  return { close };
+
+  return { isClosed: () => closed, rejectImmediately, launch, close };
 }
 
-interface PendingWorkflowCall {
-  controller: AbortController;
-  deferred: QuickJSDeferredPromise;
+function installAgentFunction(
+  vm: QuickJSContext,
+  runtime: QuickJSRuntime,
+  capabilities: ExecuteWorkflowScriptArgs["capabilities"],
+  scheduler: SharedWorkflowScheduler,
+  enterVm: () => void,
+  signal: AbortSignal | undefined,
+  currentPhase: () => string | null,
+): { close(reason?: string): void } {
+  const bridge = createHostCallBridge(vm, runtime, enterVm, signal);
+
+  const fn = vm.newFunction("agent", (...handles) => {
+    if (bridge.isClosed()) {
+      return bridge.rejectImmediately("Workflow is no longer running");
+    }
+    const promptValue = handles[0] ? vm.dump(handles[0]) : "";
+    const prompt =
+      typeof promptValue === "string" ? promptValue : String(promptValue);
+    const parsedOptions = parseAgentOptions(
+      handles[1] ? dumpJson(vm, handles[1], "agent options") : undefined,
+    );
+    const options: WorkflowAgentOptions = {
+      ...parsedOptions,
+      phase: parsedOptions.phase ?? currentPhase(),
+    };
+    return bridge.launch("agent result", (agentSignal) =>
+      scheduler.schedule(
+        () => capabilities.agent(prompt, options, agentSignal),
+        agentSignal,
+      ),
+    );
+  });
+  vm.setProp(vm.global, "agent", fn);
+  fn.dispose();
+
+  return { close: bridge.close };
 }
 
 function installWorkflowFunction(
@@ -390,47 +411,19 @@ function installWorkflowFunction(
   enterVm: () => void,
   signal: AbortSignal | undefined,
 ): { close(reason?: string): void } {
-  const pending = new Set<PendingWorkflowCall>();
-  let closed = false;
-
-  const rejectImmediately = (message: string): QuickJSHandle => {
-    const deferred = vm.newPromise();
-    const promise = deferred.handle.dup();
-    const error = vm.newError(message);
-    deferred.reject(error);
-    error.dispose();
-    deferred.dispose();
-    return promise;
-  };
-
-  const finish = (
-    call: PendingWorkflowCall,
-    settlement: { value: JsonValue } | { error: unknown },
-  ) => {
-    if (closed || !pending.delete(call)) return;
-    if ("value" in settlement) {
-      const handle = jsonToHandle(vm, settlement.value);
-      call.deferred.resolve(handle);
-      handle.dispose();
-    } else {
-      const handle = vm.newError(errorMessage(settlement.error));
-      call.deferred.reject(handle);
-      handle.dispose();
-    }
-    call.deferred.dispose();
-    enterVm();
-    vm.unwrapResult(runtime.executePendingJobs());
-  };
+  const bridge = createHostCallBridge(vm, runtime, enterVm, signal);
 
   const fn = vm.newFunction("__bbWorkflow", (...handles) => {
-    if (closed) return rejectImmediately("Workflow is no longer running");
+    if (bridge.isClosed()) {
+      return bridge.rejectImmediately("Workflow is no longer running");
+    }
     if (depth >= 1) {
-      return rejectImmediately(
+      return bridge.rejectImmediately(
         "Nested workflow depth limit exceeded: workflows may invoke one child level only",
       );
     }
     if (capabilities.workflow === undefined) {
-      return rejectImmediately(
+      return bridge.rejectImmediately(
         "workflow() is unavailable: configure the workflow host capability to run nested workflows",
       );
     }
@@ -441,56 +434,21 @@ function installWorkflowFunction(
     const childArgs = handles[1]
       ? dumpJson(vm, handles[1], "workflow args")
       : null;
-    const call: PendingWorkflowCall = {
-      controller: new AbortController(),
-      deferred: vm.newPromise(),
-    };
-    pending.add(call);
-    void Promise.resolve()
-      .then(() =>
+    return bridge.launch("nested workflow result", (callSignal) =>
+      Promise.resolve().then(() =>
         capabilities.workflow!(reference, childArgs, {
-          signal: call.controller.signal,
+          signal: callSignal,
           limits,
           scheduler,
           depth: 1,
         }),
-      )
-      .then(
-        (value) => {
-          assertJsonValue(value, "nested workflow result");
-          finish(call, { value });
-        },
-        (error) => finish(call, { error }),
-      )
-      .catch((error) => finish(call, { error }));
-    return call.deferred.handle;
+      ),
+    );
   });
   vm.setProp(vm.global, "__bbWorkflow", fn);
   fn.dispose();
 
-  const close = (reason?: string) => {
-    if (closed) return;
-    closed = true;
-    signal?.removeEventListener("abort", abort);
-    for (const call of pending) {
-      call.controller.abort(reason);
-      if (reason !== undefined && call.deferred.alive) {
-        const error = vm.newError(reason);
-        call.deferred.reject(error);
-        error.dispose();
-      }
-      call.deferred.dispose();
-    }
-    pending.clear();
-    if (reason !== undefined) {
-      enterVm();
-      vm.unwrapResult(runtime.executePendingJobs());
-    }
-  };
-  const abort = () => close("Workflow cancelled");
-  signal?.addEventListener("abort", abort, { once: true });
-  if (signal?.aborted === true) abort();
-  return { close };
+  return { close: bridge.close };
 }
 
 function installHostVoidFunction(

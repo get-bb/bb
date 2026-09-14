@@ -4,17 +4,14 @@ import {
   type ThreadListEntry,
 } from "@bb/domain";
 import type {
-  ProjectBranchesResponse,
   ProjectWithThreadsResponse,
   SidebarBootstrapResponse,
+  SystemEnvironmentProvider,
   TerminalSession,
 } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
-import { parseEnvironmentValue } from "@/components/pickers/environment-picker-value";
-import type { ReuseThreadOption } from "@/components/pickers/WorktreePicker";
+import type { ReuseThreadOption } from "@/components/pickers/ReuseEnvironmentPicker";
 import {
-  hasPromptBranchSelectionChanged,
-  hasPromptOptionValueChanged,
   mergeMissingPromptDraftAttachments,
   resolveNewThreadProjectDefaultsState,
   resolveNewThreadSubmitDisabledReason,
@@ -22,7 +19,6 @@ import {
   type ResolveNewThreadSubmitDisabledReasonArgs,
 } from "@/components/promptbox/NewThreadComposer";
 import { getProjectStoredPromptAttachmentPaths } from "@bb/client-core";
-import { THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY } from "@bb/client-core";
 import {
   buildRootComposeTerminalSessions,
   buildMobileRecentThreads,
@@ -43,11 +39,8 @@ import {
 } from "@/test/fixtures/projects";
 import { makeTerminalSession as makeTerminalSessionFixture } from "@/test/fixtures/terminal-sessions";
 import {
-  resolveProjectSourceWorktreeDisabledReason,
-  resolveComposeHostId,
+  buildReuseThreadOptions,
   resolveRootComposeEffectiveEnvironmentValue,
-  resolveRootComposeProjectRouting,
-  resolveRootComposeProviderRouting,
 } from "./root-compose-environment-selection";
 
 describe("root-compose project file routing", () => {
@@ -159,12 +152,12 @@ describe("resolveNewThreadProjectDefaultsState", () => {
 
 describe("resolveNewThreadSubmitDisabledReason", () => {
   const readyState = {
-    branchMutationBlockerTitle: null,
+    environmentProviderInputsBlocker: null,
+    environmentSetupRequiredReason: null,
     isCopyingAttachments: false,
     isLoadingModels: false,
     isSubmitting: false,
     isUploading: false,
-    managedWorktreeUnavailableReason: null,
     modelLoadError: null,
     projectDefaultsStatus: "resolved",
     projectDefaultsUnavailable: false,
@@ -174,6 +167,18 @@ describe("resolveNewThreadSubmitDisabledReason", () => {
     selectedThreadModel: "gpt-5.6-sol",
     submissionEnvironmentUnavailable: false,
   } satisfies ResolveNewThreadSubmitDisabledReasonArgs;
+
+  it("blocks the send while the selected environment needs setting up", () => {
+    expect(
+      resolveNewThreadSubmitDisabledReason({
+        ...readyState,
+        environmentSetupRequiredReason:
+          "Modal Sandbox is not configured: set tokenId, tokenSecret in the plugin's settings.",
+      }),
+    ).toBe(
+      "Modal Sandbox is not configured: set tokenId, tokenSecret in the plugin's settings.",
+    );
+  });
 
   it.each<
     [
@@ -211,17 +216,21 @@ describe("resolveNewThreadSubmitDisabledReason", () => {
       "Select an environment.",
     ],
     [
-      "an unavailable worktree",
+      "an environment provider whose inputs are incomplete",
       {
-        managedWorktreeUnavailableReason:
-          "Project source has no commits. Create an initial commit before creating a worktree",
+        environmentProviderInputsBlocker: "Configure Docker container",
+        submissionEnvironmentUnavailable: true,
       },
-      "Project source has no commits. Create an initial commit before creating a worktree",
+      "Configure Docker container",
     ],
     [
-      "a blocked branch checkout",
-      { branchMutationBlockerTitle: "Checkout blocked by uncommitted changes" },
-      "Checkout blocked by uncommitted changes",
+      "an environment provider whose plugin registered no inputs control",
+      {
+        environmentProviderInputsBlocker:
+          "Docker container needs its plugin's control",
+        submissionEnvironmentUnavailable: true,
+      },
+      "Docker container needs its plugin's control",
     ],
     [
       "an empty prompt",
@@ -273,11 +282,60 @@ function makeProjectSource(hostId = "host_1"): ProjectSource {
   };
 }
 
+function makeProjectProvider(id: string): SystemEnvironmentProvider {
+  return {
+    machineProviderId: null,
+    id,
+    displayName: id,
+    description: "Prepare a workspace for this thread.",
+    icon: "Folder",
+    logoUrl: null,
+    pluginId: id,
+    acceptsEmptyInputs: true,
+    machineAvailability: {},
+    availability: null,
+    requires: {
+      projectCheckout: true,
+      gitCheckout: id === "git-worktree",
+      gitRemote: false,
+      projectless: false,
+    },
+    inputs: null,
+  };
+}
+
+function makeProjectlessProvider(
+  id: string,
+  projectless: boolean,
+): SystemEnvironmentProvider {
+  return {
+    machineProviderId: null,
+    id,
+    displayName: id,
+    description: "Prepare a workspace for this thread.",
+    icon: "Folder",
+    logoUrl: null,
+    pluginId: id,
+    acceptsEmptyInputs: true,
+    machineAvailability: {},
+    availability: null,
+    requires: {
+      projectCheckout: false,
+      gitCheckout: false,
+      gitRemote: false,
+      projectless,
+    },
+    inputs: null,
+  };
+}
+
 function makeReuseThreadOption(environmentId: string): ReuseThreadOption {
   return {
     environmentId,
     branchName: "feature",
     name: null,
+    path: null,
+    environmentProviderId: "git-worktree",
     threads: [{ id: "thr_1", title: "Thread" }],
   };
 }
@@ -316,26 +374,6 @@ function makeTerminalSession(
     updatedAt: 1,
     ...overrides,
   });
-}
-
-function makeProjectBranchesResponse(
-  overrides: Partial<ProjectBranchesResponse>,
-): ProjectBranchesResponse {
-  return {
-    branches: [],
-    branchesTruncated: false,
-    checkout: { kind: "branch", branchName: "main", headSha: null },
-    defaultBranch: "main",
-    defaultBranchRelation: "equal",
-    defaultWorktreeBaseBranch: "main",
-    hasUncommittedChanges: false,
-    operation: { kind: "none" },
-    originDefaultBranch: "main",
-    remoteBranches: [],
-    remoteBranchesTruncated: false,
-    selectedBranch: null,
-    ...overrides,
-  };
 }
 
 describe("buildMobileRecentThreads", () => {
@@ -674,45 +712,6 @@ describe("restorePromptDraftAfterOptionChange", () => {
   });
 });
 
-describe("hasPromptOptionValueChanged", () => {
-  it("treats unchanged prompt option values as no-ops", () => {
-    expect(hasPromptOptionValueChanged("codex", "codex")).toBe(false);
-    expect(hasPromptOptionValueChanged(undefined, undefined)).toBe(false);
-  });
-
-  it("detects changed prompt option values", () => {
-    expect(hasPromptOptionValueChanged("codex", "claude")).toBe(true);
-    expect(hasPromptOptionValueChanged(undefined, "auto")).toBe(true);
-  });
-});
-
-describe("hasPromptBranchSelectionChanged", () => {
-  it("treats the same branch selection as a no-op", () => {
-    expect(
-      hasPromptBranchSelectionChanged(
-        { name: "main", isNew: false },
-        { name: "main", isNew: false },
-      ),
-    ).toBe(false);
-    expect(hasPromptBranchSelectionChanged(null, null)).toBe(false);
-  });
-
-  it("detects changed branch selections", () => {
-    expect(
-      hasPromptBranchSelectionChanged(
-        { name: "main", isNew: false },
-        { name: "main", isNew: true },
-      ),
-    ).toBe(true);
-    expect(
-      hasPromptBranchSelectionChanged({ name: "main", isNew: false }, null),
-    ).toBe(true);
-    expect(
-      hasPromptBranchSelectionChanged(null, { name: "develop", isNew: false }),
-    ).toBe(true);
-  });
-});
-
 describe("hasSingleUseRootComposeTargetState", () => {
   it("treats section targets as single-use navigation state", () => {
     expect(hasSingleUseRootComposeTargetState({ sectionId: "sec_work" })).toBe(
@@ -724,19 +723,6 @@ describe("hasSingleUseRootComposeTargetState", () => {
     expect(hasSingleUseRootComposeTargetState({ focusPrompt: true })).toBe(
       true,
     );
-  });
-
-  it("treats handoff seeds as single-use target state", () => {
-    expect(
-      hasSingleUseRootComposeTargetState({
-        [THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY]: {
-          environmentId: "env_source",
-          projectId: "proj_source",
-          sourceThreadId: "thr_source",
-          sourceThreadTitle: "Source thread",
-        },
-      }),
-    ).toBe(true);
   });
 
   it("ignores non-target state", () => {
@@ -786,109 +772,76 @@ describe("shouldNavigateAfterThreadCreate", () => {
   });
 });
 
-describe("resolveProjectSourceWorktreeDisabledReason", () => {
-  it("explains why non-git and commitless sources cannot create worktrees", () => {
-    expect(resolveProjectSourceWorktreeDisabledReason(undefined)).toBeNull();
-    expect(
-      resolveProjectSourceWorktreeDisabledReason(
-        makeProjectBranchesResponse({}),
-      ),
-    ).toBeNull();
-    expect(
-      resolveProjectSourceWorktreeDisabledReason(
-        makeProjectBranchesResponse({
-          checkout: {
-            kind: "unknown",
-            reason: "Path is not a git repository",
-          },
-          defaultBranch: null,
-          defaultBranchRelation: null,
-          defaultWorktreeBaseBranch: null,
-          originDefaultBranch: null,
-        }),
-      ),
-    ).toBe("New worktrees require a Git repository with at least one commit");
-    expect(
-      resolveProjectSourceWorktreeDisabledReason(
-        makeProjectBranchesResponse({
-          checkout: { kind: "unborn", branchName: "main" },
-          defaultBranch: null,
-          defaultBranchRelation: null,
-          defaultWorktreeBaseBranch: null,
-          originDefaultBranch: null,
-        }),
-      ),
-    ).toBe(
-      "Project source has no commits. Create an initial commit before creating a worktree",
-    );
-  });
-});
-
-describe("resolveComposeHostId", () => {
-  it("keys provider-CLI eligibility to the selected remote host, not the primary", () => {
-    expect(
-      resolveComposeHostId(
-        parseEnvironmentValue("host:host_remote:worktree"),
-        "host_primary",
-      ),
-    ).toBe("host_remote");
-  });
-
-  it("falls back to the primary host when no host is selected", () => {
-    expect(
-      resolveComposeHostId(
-        parseEnvironmentValue("reuse:env_1"),
-        "host_primary",
-      ),
-    ).toBe("host_primary");
-    expect(resolveComposeHostId(parseEnvironmentValue(""), null)).toBeNull();
-  });
-});
-
-describe("resolveRootComposeProjectRouting", () => {
-  it("propagates the selected host or environment to project workspace calls", () => {
-    expect(
-      resolveRootComposeProjectRouting(
-        parseEnvironmentValue("host:host_remote:worktree"),
-        "host_primary",
-      ),
-    ).toEqual({ hostId: "host_remote" });
-    expect(
-      resolveRootComposeProjectRouting(
-        parseEnvironmentValue("reuse:env_remote"),
-        "host_primary",
-      ),
-    ).toEqual({ environmentId: "env_remote" });
-  });
-});
-
 describe("resolveRootComposeEffectiveEnvironmentValue", () => {
-  it("keeps host mode but rewrites the host id to the active project source host", () => {
+  const checkoutProvider = makeProjectProvider("project-checkout");
+  const worktreeProvider = makeProjectProvider("git-worktree");
+
+  it("falls back to the checkout on the primary host for a project with a source there", () => {
     expect(
       resolveRootComposeEffectiveEnvironmentValue({
         knownHostIds: new Set(["host_1"]),
-        environmentSelectionValue: "host:stale_host:worktree",
+        environmentSelectionValue: "",
+        environmentProviders: [checkoutProvider, worktreeProvider],
         isProjectless: false,
         primaryHostId: "host_1",
         projectSources: [makeProjectSource("host_1")],
         reuseThreadOptions: [],
         reuseThreadOptionsLoading: false,
       }),
-    ).toBe("host:host_1:worktree");
+    ).toBe("provider:project-checkout");
   });
 
-  it("does not invent a host workspace for a standard project without a source", () => {
+  it("does not invent a checkout for a standard project without a source on the primary host", () => {
     expect(
       resolveRootComposeEffectiveEnvironmentValue({
-        knownHostIds: new Set(["host_1"]),
-        environmentSelectionValue: "host:stale_host:local",
+        knownHostIds: new Set(["host_1", "host_2"]),
+        environmentSelectionValue: "",
+        environmentProviders: [checkoutProvider],
         isProjectless: false,
         primaryHostId: "host_1",
-        projectSources: [],
+        projectSources: [makeProjectSource("host_2")],
         reuseThreadOptions: [],
         reuseThreadOptionsLoading: false,
       }),
     ).toBe("");
+  });
+
+  it("holds the selection until the provider list has loaded", () => {
+    expect(
+      resolveRootComposeEffectiveEnvironmentValue({
+        knownHostIds: new Set(["host_1"]),
+        environmentSelectionValue: "provider:git-worktree",
+        isProjectless: false,
+        primaryHostId: "host_1",
+        projectSources: [makeProjectSource("host_1")],
+        reuseThreadOptions: [],
+        reuseThreadOptionsLoading: false,
+      }),
+    ).toBe("");
+  });
+
+  it("keeps a registered provider the user picked and drops one that is gone", () => {
+    const args = {
+      knownHostIds: new Set(["host_1"]),
+      environmentProviders: [checkoutProvider, worktreeProvider],
+      isProjectless: false,
+      primaryHostId: "host_1",
+      projectSources: [makeProjectSource("host_1")],
+      reuseThreadOptions: [],
+      reuseThreadOptionsLoading: false,
+    };
+    expect(
+      resolveRootComposeEffectiveEnvironmentValue({
+        ...args,
+        environmentSelectionValue: "provider:git-worktree",
+      }),
+    ).toBe("provider:git-worktree");
+    expect(
+      resolveRootComposeEffectiveEnvironmentValue({
+        ...args,
+        environmentSelectionValue: "provider:gone",
+      }),
+    ).toBe("provider:project-checkout");
   });
 
   it("keeps a reuse environment only when it belongs to the selected project", () => {
@@ -896,6 +849,7 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
       resolveRootComposeEffectiveEnvironmentValue({
         knownHostIds: new Set(["host_1"]),
         environmentSelectionValue: "reuse:env_current",
+        environmentProviders: [checkoutProvider],
         isProjectless: false,
         primaryHostId: "host_1",
         projectSources: [makeProjectSource("host_1")],
@@ -908,161 +862,113 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
       resolveRootComposeEffectiveEnvironmentValue({
         knownHostIds: new Set(["host_1"]),
         environmentSelectionValue: "reuse:env_stale",
+        environmentProviders: [checkoutProvider],
         isProjectless: false,
         primaryHostId: "host_1",
         projectSources: [makeProjectSource("host_1")],
         reuseThreadOptions: [makeReuseThreadOption("env_current")],
         reuseThreadOptionsLoading: false,
       }),
-    ).toBe("host:host_1:local");
+    ).toBe("provider:project-checkout");
   });
 
-  it("holds specific reuse values as incomplete while project worktrees load", () => {
+  it("holds a specific reuse selection while project worktrees load", () => {
     expect(
       resolveRootComposeEffectiveEnvironmentValue({
         knownHostIds: new Set(["host_1"]),
         environmentSelectionValue: "reuse:env_pending",
+        environmentProviders: [checkoutProvider],
         isProjectless: false,
         primaryHostId: "host_1",
         projectSources: [makeProjectSource("host_1")],
         reuseThreadOptions: [],
         reuseThreadOptionsLoading: true,
       }),
-    ).toBe("reuse");
+    ).toBe("reuse:env_pending");
   });
 
-  it("uses the primary host for projectless threads without requiring project sources", () => {
+  it("keeps a projectless reuse selection when the environment is one of its own", () => {
     expect(
       resolveRootComposeEffectiveEnvironmentValue({
         knownHostIds: new Set(["host_1"]),
-        environmentSelectionValue: "host:stale_host:worktree",
-        isProjectless: true,
-        primaryHostId: "host_1",
-        projectSources: [],
-        reuseThreadOptions: [],
-        reuseThreadOptionsLoading: false,
-      }),
-    ).toBe("host:host_1:local");
-  });
-
-  it("keeps a non-primary host selection when that host has a source", () => {
-    expect(
-      resolveRootComposeEffectiveEnvironmentValue({
-        knownHostIds: new Set(["host_1", "host_2"]),
-        environmentSelectionValue: "host:host_2:worktree",
-        isProjectless: false,
-        primaryHostId: "host_1",
-        projectSources: [
-          makeProjectSource("host_1"),
-          makeProjectSource("host_2"),
+        environmentSelectionValue: "reuse:env_personal",
+        environmentProviders: [
+          makeProjectlessProvider("personal-workspace", true),
         ],
-        reuseThreadOptions: [],
-        reuseThreadOptionsLoading: false,
-      }),
-    ).toBe("host:host_2:worktree");
-  });
-
-  it("falls back to the primary host when the selected host is gone", () => {
-    expect(
-      resolveRootComposeEffectiveEnvironmentValue({
-        knownHostIds: new Set(["host_1"]),
-        environmentSelectionValue: "host:host_gone:worktree",
-        isProjectless: false,
-        primaryHostId: "host_1",
-        projectSources: [makeProjectSource("host_1")],
-        reuseThreadOptions: [],
-        reuseThreadOptionsLoading: false,
-      }),
-    ).toBe("host:host_1:worktree");
-  });
-
-  it("keeps a projectless machine selection normalized to local mode", () => {
-    expect(
-      resolveRootComposeEffectiveEnvironmentValue({
-        knownHostIds: new Set(["host_1", "host_2"]),
-        environmentSelectionValue: "host:host_2:worktree",
         isProjectless: true,
         primaryHostId: "host_1",
         projectSources: [],
-        reuseThreadOptions: [],
+        reuseThreadOptions: [makeReuseThreadOption("env_personal")],
         reuseThreadOptionsLoading: false,
       }),
-    ).toBe("host:host_2:local");
+    ).toBe("reuse:env_personal");
   });
 
-  it("falls back to the primary host for a stale projectless machine selection", () => {
+  it("drops a projectless reuse selection whose environment is not among its own", () => {
     expect(
       resolveRootComposeEffectiveEnvironmentValue({
         knownHostIds: new Set(["host_1"]),
-        environmentSelectionValue: "host:host_gone:local",
-        isProjectless: true,
-        primaryHostId: "host_1",
-        projectSources: [],
-        reuseThreadOptions: [],
-        reuseThreadOptionsLoading: false,
-      }),
-    ).toBe("host:host_1:local");
-  });
-
-  it("falls back to the primary host when the selected host lacks a source", () => {
-    expect(
-      resolveRootComposeEffectiveEnvironmentValue({
-        knownHostIds: new Set(["host_1", "host_2"]),
-        environmentSelectionValue: "host:host_2:local",
-        isProjectless: false,
-        primaryHostId: "host_1",
-        projectSources: [makeProjectSource("host_1")],
-        reuseThreadOptions: [],
-        reuseThreadOptionsLoading: false,
-      }),
-    ).toBe("host:host_1:local");
-  });
-});
-
-describe("resolveRootComposeProviderRouting", () => {
-  it("routes discovery through the effective selected host", () => {
-    expect(
-      resolveRootComposeProviderRouting({
-        knownHostIds: new Set(["host_1", "host_2"]),
-        environmentSelectionValue: "host:host_2:worktree",
-        isProjectless: false,
-        primaryHostId: "host_1",
-        projectSources: [
-          makeProjectSource("host_1"),
-          makeProjectSource("host_2"),
+        environmentSelectionValue: "reuse:env_gone",
+        environmentProviders: [
+          makeProjectlessProvider("personal-workspace", true),
         ],
+        isProjectless: true,
+        primaryHostId: "host_1",
+        projectSources: [],
+        reuseThreadOptions: [makeReuseThreadOption("env_personal")],
+        reuseThreadOptionsLoading: false,
+      }),
+    ).toBe("provider:personal-workspace");
+  });
+
+  it("preselects the projectless-only provider once a projectless thread has a choice", () => {
+    expect(
+      resolveRootComposeEffectiveEnvironmentValue({
+        knownHostIds: new Set(["host_1"]),
+        environmentSelectionValue: "",
+        environmentProviders: [
+          makeProjectlessProvider("alpha-sandbox", true),
+          makeProjectlessProvider("personal-workspace", true),
+        ],
+        isProjectless: true,
+        primaryHostId: "host_1",
+        projectSources: [],
         reuseThreadOptions: [],
         reuseThreadOptionsLoading: false,
       }),
-    ).toEqual({ hostId: "host_2" });
+    ).toBe("provider:personal-workspace");
   });
 
-  it("routes stale selections through the effective primary fallback", () => {
+  it("replaces a provider a projectless thread cannot use", () => {
     expect(
-      resolveRootComposeProviderRouting({
+      resolveRootComposeEffectiveEnvironmentValue({
         knownHostIds: new Set(["host_1"]),
-        environmentSelectionValue: "host:host_gone:local",
-        isProjectless: false,
+        environmentSelectionValue: "provider:modal-sandbox",
+        environmentProviders: [
+          makeProjectlessProvider("modal-sandbox", false),
+          makeProjectlessProvider("personal-workspace", true),
+        ],
+        isProjectless: true,
         primaryHostId: "host_1",
-        projectSources: [makeProjectSource("host_1")],
+        projectSources: [],
         reuseThreadOptions: [],
         reuseThreadOptionsLoading: false,
       }),
-    ).toEqual({ hostId: "host_1" });
+    ).toBe("provider:personal-workspace");
   });
 
-  it("routes reusable worktrees by environment", () => {
+  it("selects nothing for a projectless thread until its providers have loaded", () => {
     expect(
-      resolveRootComposeProviderRouting({
+      resolveRootComposeEffectiveEnvironmentValue({
         knownHostIds: new Set(["host_1"]),
-        environmentSelectionValue: "reuse:env_remote",
-        isProjectless: false,
+        environmentSelectionValue: "provider:personal-workspace",
+        isProjectless: true,
         primaryHostId: "host_1",
-        projectSources: [makeProjectSource("host_1")],
-        reuseThreadOptions: [makeReuseThreadOption("env_remote")],
+        projectSources: [],
+        reuseThreadOptions: [],
         reuseThreadOptionsLoading: false,
       }),
-    ).toEqual({ environmentId: "env_remote" });
+    ).toBe("");
   });
 });
 
@@ -1186,4 +1092,19 @@ describe("canCreateRootComposeTerminal", () => {
       }),
     ).toBe(false);
   });
+});
+
+it("offers a core-owned directory attachment for reuse", () => {
+  const thread = makeThreadListEntry({
+    environmentId: "env_attachment",
+    environmentProviderId: null,
+    environmentPath: "/tmp/attached",
+  });
+  expect(buildReuseThreadOptions([thread])).toEqual([
+    expect.objectContaining({
+      environmentId: "env_attachment",
+      environmentProviderId: null,
+      path: "/tmp/attached",
+    }),
+  ]);
 });

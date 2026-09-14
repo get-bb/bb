@@ -11,6 +11,10 @@ import {
   setPluginThreadRowStatus,
 } from "@/lib/plugin-thread-row-status";
 import { SidebarSectionRow } from "./SidebarSectionRow";
+import {
+  SIDEBAR_CONTROL_STATE_CLASS,
+  SIDEBAR_GROUP_TEXT_CLASS,
+} from "./sidebarRowClasses";
 
 afterEach(() => {
   cleanup();
@@ -45,6 +49,13 @@ describe("SidebarSectionRow", () => {
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).not.toBe(0);
     expect(row?.style.paddingLeft).toBe("32px");
+    expect(row?.classList.contains(SIDEBAR_GROUP_TEXT_CLASS)).toBe(true);
+    for (const token of SIDEBAR_CONTROL_STATE_CLASS.split(" ")) {
+      expect(disclosure.classList.contains(token)).toBe(true);
+    }
+    expect(disclosure.classList.contains("hover:bg-sidebar-accent")).toBe(
+      false,
+    );
   });
 
   it("rolls hidden split threads up to the collapsed section row", () => {

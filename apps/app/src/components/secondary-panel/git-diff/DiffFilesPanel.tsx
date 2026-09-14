@@ -61,14 +61,24 @@ export function DiffFilesPanel({
   onSelectionAddToChat,
 }: DiffFilesPanelProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  const { requestPaths, getPatchState, retry, loadPath, seedInitialPatches } =
-    useEnvironmentDiffPatches(environmentId, { target });
+  const {
+    requestPaths,
+    getPatchState,
+    retry,
+    loadPath,
+    seedInitialPatches,
+    prunePaths,
+  } = useEnvironmentDiffPatches(environmentId, { target });
 
   useEffect(() => {
     if (initialPatches.length > 0) {
       seedInitialPatches(initialPatches);
     }
   }, [seedInitialPatches, initialPatches, filesUpdatedAt]);
+
+  useEffect(() => {
+    prunePaths(files.map((file) => file.path));
+  }, [files, prunePaths]);
 
   const virtualizer = useVirtualizer({
     count: files.length,

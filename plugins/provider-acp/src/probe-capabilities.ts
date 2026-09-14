@@ -1,5 +1,5 @@
 import type { AcpAgentDefinition } from "./agents.js";
-import type { AcpProbeResult } from "./contract.js";
+import type { AcpAgentProbe } from "@get-bb/plugin-sdk/provider-bridge/acp";
 
 export interface AcpProbeApplication {
   agent: AcpAgentDefinition;
@@ -8,7 +8,7 @@ export interface AcpProbeApplication {
 
 export function applyAcpAgentProbe(
   agent: AcpAgentDefinition,
-  probe: AcpProbeResult,
+  probe: AcpAgentProbe,
 ): AcpProbeApplication | null {
   if (!probe.reachable) {
     return null;

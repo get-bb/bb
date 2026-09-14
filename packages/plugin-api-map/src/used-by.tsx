@@ -1,45 +1,16 @@
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { ArrowLeft01Icon, ArrowRight01Icon } from "@hugeicons/core-free-icons";
 
 import { cn } from "./cn";
-import { SCROLLBAR_HIDDEN_CLASS, scrollEdgeFadeStyle } from "./scroll-edges";
+import {
+  SCROLLBAR_HIDDEN_CLASS,
+  scrollEdgeFadeStyle,
+  useScrollEdges,
+} from "./scroll-edges";
 
-const SCROLL_EPSILON_PX = 1;
 const SCROLL_OVERLAP_PX = 32;
 const MIN_SCROLL_STEP_PX = 80;
-
-export interface UsedByScrollState {
-  canScrollLeft: boolean;
-  canScrollRight: boolean;
-}
-
-export interface UsedByScrollMetrics {
-  scrollLeft: number;
-  scrollWidth: number;
-  clientWidth: number;
-}
-
-export function usedByScrollState({
-  scrollLeft,
-  scrollWidth,
-  clientWidth,
-}: UsedByScrollMetrics): UsedByScrollState {
-  const maxScroll = scrollWidth - clientWidth;
-  if (maxScroll <= SCROLL_EPSILON_PX) {
-    return { canScrollLeft: false, canScrollRight: false };
-  }
-  return {
-    canScrollLeft: scrollLeft > SCROLL_EPSILON_PX,
-    canScrollRight: scrollLeft < maxScroll - SCROLL_EPSILON_PX,
-  };
-}
 
 export function usedByScrollStep(clientWidth: number): number {
   return Math.max(clientWidth - SCROLL_OVERLAP_PX, MIN_SCROLL_STEP_PX);
@@ -114,37 +85,8 @@ export function UsedByList({
   renderItem: (item: string) => ReactNode;
 }) {
   const viewportRef = useRef<HTMLDivElement>(null);
-  const [scroll, setScroll] = useState<UsedByScrollState>({
-    canScrollLeft: false,
-    canScrollRight: false,
-  });
+  const scroll = useScrollEdges(viewportRef);
   const reducedMotion = useReducedMotion();
-
-  const sync = useCallback(() => {
-    const viewport = viewportRef.current;
-    if (viewport) {
-      setScroll(usedByScrollState(viewport));
-    }
-  }, []);
-
-  useEffect(() => {
-    const viewport = viewportRef.current;
-    if (!viewport) {
-      return;
-    }
-    sync();
-    const observer = new ResizeObserver(sync);
-    observer.observe(viewport);
-    const row = viewport.firstElementChild;
-    if (row) {
-      observer.observe(row);
-    }
-    viewport.addEventListener("scroll", sync, { passive: true });
-    return () => {
-      observer.disconnect();
-      viewport.removeEventListener("scroll", sync);
-    };
-  }, [items, sync]);
 
   const page = (direction: -1 | 1) => {
     const viewport = viewportRef.current;

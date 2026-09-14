@@ -9,7 +9,7 @@ import { derivePluginId } from "@bb/domain";
 
 const skillRoot = fileURLToPath(
   new URL(
-    "../../src/services/skills/builtin-skills/submit-a-plugin/",
+    "../../../../plugins/bb-guide/skills/submit-a-plugin/",
     import.meta.url,
   ),
 );

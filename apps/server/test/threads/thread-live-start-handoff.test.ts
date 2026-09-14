@@ -1,9 +1,9 @@
 import { getThread } from "@bb/db";
+import type { EnvironmentRow } from "@bb/db";
 import {
   encodeClientTurnRequestIdNumber,
   threadScope,
   turnScope,
-  type Environment,
   type ResolvedThreadExecutionOptions,
   type Thread,
 } from "@bb/domain";
@@ -46,7 +46,7 @@ interface StartLiveThreadStartRpcArgs {
 }
 
 interface LiveThreadStartRpcFixture {
-  environment: Environment;
+  environment: EnvironmentRow;
   startCommand: QueuedCommand;
   thread: Thread;
 }
@@ -157,7 +157,7 @@ describe("live thread start handoff", () => {
       });
       try {
         const response = await harness.app.request(
-          `/api/v1/threads/${fixture.thread.id}/archive`,
+          `/api/v1/threads/${fixture.thread.id}/archive-all`,
           { method: "POST" },
         );
 
@@ -384,7 +384,7 @@ describe("live thread start handoff", () => {
       });
 
       const response = await harness.app.request(
-        `/api/v1/threads/${fixture.thread.id}/archive`,
+        `/api/v1/threads/${fixture.thread.id}/archive-all`,
         { method: "POST" },
       );
       expect(response.status).toBe(200);

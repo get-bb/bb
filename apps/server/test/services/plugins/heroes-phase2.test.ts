@@ -3,9 +3,11 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { encodeClientTurnRequestIdNumber } from "@bb/domain";
 import type { PromptInput } from "@bb/domain";
-import { buildThreadStartCommand } from "../../../src/services/threads/thread-commands.js";
+import {
+  buildExecutionOptions,
+  buildThreadStartCommand,
+} from "../../../src/services/threads/thread-commands.js";
 import { UPDATE_ENVIRONMENT_DIRECTORY_TOOL_NAME } from "../../../src/services/threads/thread-environment-directory.js";
-import { resolveExecutionOptions } from "../../../src/services/threads/thread-runtime-config.js";
 import { sendThreadMessage } from "../../../src/services/threads/thread-send.js";
 import {
   internalAuthHeaders,
@@ -73,10 +75,11 @@ describe("hero plugin: agent-enrichment (Phase 2 surfaces)", () => {
 
   it("docs_search and the repo-conventions skill ride thread.start", async () => {
     const { environment, project, thread } = seedThreadFixture(1);
-    const execution = await resolveExecutionOptions(harness.deps, {
-      threadId: thread.id,
-      requestedExecution: { model: "gpt-5", source: "client/turn/requested" },
-    });
+    const execution = await buildExecutionOptions(
+      harness.deps,
+      { model: "gpt-5" },
+      { threadId: thread.id },
+    );
     const command = await buildThreadStartCommand(harness.deps, {
       environment,
       execution,

@@ -30,7 +30,6 @@ const mapState: SurfaceMapState = {
   activeId: null,
   setActiveId: vi.fn(),
   expandedId: null,
-  spotlightId: null,
   numberOf: (id) => SURFACE_NUMBERS.get(id) ?? null,
 };
 
@@ -92,18 +91,6 @@ describe("guide fixture boundaries", () => {
     expect(markup).toContain("min-w-0 w-full shrink-0 self-start px-1 pt-2");
     expect(markup).not.toContain("flex flex-wrap items-center justify-center");
     expect(markup).not.toContain("min-w-full flex-nowrap");
-  });
-
-  it("does not reserve the full header gap when the compact plugin page omits its header", () => {
-    const compactMarkup = renderToStaticMarkup(createElement(ProductMap));
-    const headedMarkup = renderToStaticMarkup(
-      createElement(ProductMap, {
-        header: createElement("h1", null, "Plugin surfaces"),
-      }),
-    );
-
-    expect(compactMarkup).toContain('class="mt-2"');
-    expect(headedMarkup).toContain('class="mt-8"');
   });
 
   it("never nests one annotation link inside another", () => {

@@ -284,34 +284,8 @@ export function usePierreLineSelectionActions({
   const currentLineRangeRef = useRef<SelectedLineRange | null>(null);
   const suppressedSelectionEndRangeRef = useRef<SelectedLineRange | null>(null);
 
-  const handlePointerDownCapture = useCallback(
-    (event: ReactPointerEvent<HTMLElement>) => {
-      if (!enabled) {
-        return;
-      }
-      const point = anchorPointFromMouseEvent(event);
-      if (isGutterUtilityPointerEvent(event)) {
-        lastUtilityAnchorRef.current =
-          point === null
-            ? null
-            : {
-                point,
-                side: lastLineSelectionAnchorRef.current?.side ?? "top",
-              };
-        return;
-      }
-      documentPointerReleaseAnchor = null;
-      pointerStartPointRef.current = point;
-      documentPointerStartPoint = point;
-    },
-    [enabled],
-  );
-
-  const handlePointerMoveCapture = useCallback(
-    (event: ReactPointerEvent<HTMLElement>) => {
-      if (!enabled || !isGutterUtilityPointerEvent(event)) {
-        return;
-      }
+  const recordUtilityAnchor = useCallback(
+    (event: Pick<MouseEvent, "clientX" | "clientY">) => {
       const point = anchorPointFromMouseEvent(event);
       lastUtilityAnchorRef.current =
         point === null
@@ -321,25 +295,21 @@ export function usePierreLineSelectionActions({
               side: lastLineSelectionAnchorRef.current?.side ?? "top",
             };
     },
-    [enabled],
+    [],
   );
 
-  const handlePointerUpCapture = useCallback(
-    (event: ReactPointerEvent<HTMLElement>) => {
-      if (!enabled) {
-        return;
-      }
-      if (isGutterUtilityPointerEvent(event)) {
-        const point = anchorPointFromMouseEvent(event);
-        lastUtilityAnchorRef.current =
-          point === null
-            ? null
-            : {
-                point,
-                side: lastLineSelectionAnchorRef.current?.side ?? "top",
-              };
-        return;
-      }
+  const recordPointerStart = useCallback(
+    (event: Pick<MouseEvent, "clientX" | "clientY">) => {
+      const point = anchorPointFromMouseEvent(event);
+      documentPointerReleaseAnchor = null;
+      pointerStartPointRef.current = point;
+      documentPointerStartPoint = point;
+    },
+    [],
+  );
+
+  const recordPointerRelease = useCallback(
+    (event: Pick<PointerEvent, "clientX" | "clientY" | "pointerType">) => {
       const pointerStartPoint =
         pointerStartPointRef.current ?? documentPointerStartPoint;
       pointerStartPointRef.current = null;
@@ -360,7 +330,45 @@ export function usePierreLineSelectionActions({
         lastLineSelectionAnchorRef.current = anchor;
       }
     },
-    [enabled],
+    [],
+  );
+
+  const handlePointerDownCapture = useCallback(
+    (event: ReactPointerEvent<HTMLElement>) => {
+      if (!enabled) {
+        return;
+      }
+      if (isGutterUtilityPointerEvent(event)) {
+        recordUtilityAnchor(event);
+        return;
+      }
+      recordPointerStart(event);
+    },
+    [enabled, recordPointerStart, recordUtilityAnchor],
+  );
+
+  const handlePointerMoveCapture = useCallback(
+    (event: ReactPointerEvent<HTMLElement>) => {
+      if (!enabled || !isGutterUtilityPointerEvent(event)) {
+        return;
+      }
+      recordUtilityAnchor(event);
+    },
+    [enabled, recordUtilityAnchor],
+  );
+
+  const handlePointerUpCapture = useCallback(
+    (event: ReactPointerEvent<HTMLElement>) => {
+      if (!enabled) {
+        return;
+      }
+      if (isGutterUtilityPointerEvent(event)) {
+        recordUtilityAnchor(event);
+        return;
+      }
+      recordPointerRelease(event);
+    },
+    [enabled, recordPointerRelease, recordUtilityAnchor],
   );
 
   useEffect(() => {
@@ -369,38 +377,16 @@ export function usePierreLineSelectionActions({
     }
 
     const handleDocumentPointerDown = (event: PointerEvent) => {
-      const path = event.composedPath();
-      if (isGutterUtilityPath(path)) {
+      if (isGutterUtilityPath(event.composedPath())) {
         return;
       }
-      const point = anchorPointFromMouseEvent(event);
-      documentPointerReleaseAnchor = null;
-      pointerStartPointRef.current = point;
-      documentPointerStartPoint = point;
+      recordPointerStart(event);
     };
     const handleDocumentPointerUp = (event: PointerEvent) => {
       if (isGutterUtilityPath(event.composedPath())) {
         return;
       }
-      const pointerStartPoint =
-        pointerStartPointRef.current ?? documentPointerStartPoint;
-      pointerStartPointRef.current = null;
-      documentPointerStartPoint = null;
-      if (pointerStartPoint === null) {
-        return;
-      }
-      const anchor = selectionAnchorFromPointerRelease(
-        pointerStartPoint,
-        event,
-      );
-      if (anchor === null) {
-        return;
-      }
-      lastPointerReleaseAnchorRef.current = anchor;
-      documentPointerReleaseAnchor = anchor;
-      if (currentLineRangeRef.current !== null) {
-        lastLineSelectionAnchorRef.current = anchor;
-      }
+      recordPointerRelease(event);
     };
     const handleDocumentPointerCancel = () => {
       pointerStartPointRef.current = null;
@@ -427,7 +413,7 @@ export function usePierreLineSelectionActions({
         true,
       );
     };
-  }, [enabled]);
+  }, [enabled, recordPointerRelease, recordPointerStart]);
 
   const dismissSelection = useCallback(() => {
     setActiveRange(null);

@@ -1,17 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  scrollUsedBy,
-  usedByScrollState,
-  usedByScrollStep,
-} from "../src/index";
+import { scrollUsedBy, usedByScrollStep } from "../src/index";
+import { scrollEdgeState } from "../src/scroll-edges";
 
 const FITS = { scrollLeft: 0, scrollWidth: 180, clientWidth: 240 };
 const AT_START = { scrollLeft: 0, scrollWidth: 900, clientWidth: 240 };
 
-describe("usedByScrollState", () => {
+describe("scrollEdgeState", () => {
   it("offers no carets when the items fit", () => {
-    expect(usedByScrollState(FITS)).toEqual({
+    expect(scrollEdgeState(FITS)).toEqual({
       canScrollLeft: false,
       canScrollRight: false,
     });
@@ -19,10 +16,10 @@ describe("usedByScrollState", () => {
 
   it("offers no carets for a row that is exactly full, or over by a rounding error", () => {
     expect(
-      usedByScrollState({ scrollLeft: 0, scrollWidth: 240, clientWidth: 240 }),
+      scrollEdgeState({ scrollLeft: 0, scrollWidth: 240, clientWidth: 240 }),
     ).toEqual({ canScrollLeft: false, canScrollRight: false });
     expect(
-      usedByScrollState({
+      scrollEdgeState({
         scrollLeft: 0,
         scrollWidth: 240.5,
         clientWidth: 240,
@@ -31,25 +28,25 @@ describe("usedByScrollState", () => {
   });
 
   it("offers only the right caret at the start", () => {
-    expect(usedByScrollState(AT_START)).toEqual({
+    expect(scrollEdgeState(AT_START)).toEqual({
       canScrollLeft: false,
       canScrollRight: true,
     });
   });
 
   it("offers both carets in the middle", () => {
-    expect(usedByScrollState({ ...AT_START, scrollLeft: 300 })).toEqual({
+    expect(scrollEdgeState({ ...AT_START, scrollLeft: 300 })).toEqual({
       canScrollLeft: true,
       canScrollRight: true,
     });
   });
 
   it("offers only the left caret at the end", () => {
-    expect(usedByScrollState({ ...AT_START, scrollLeft: 660 })).toEqual({
+    expect(scrollEdgeState({ ...AT_START, scrollLeft: 660 })).toEqual({
       canScrollLeft: true,
       canScrollRight: false,
     });
-    expect(usedByScrollState({ ...AT_START, scrollLeft: 659.4 })).toEqual({
+    expect(scrollEdgeState({ ...AT_START, scrollLeft: 659.4 })).toEqual({
       canScrollLeft: true,
       canScrollRight: false,
     });

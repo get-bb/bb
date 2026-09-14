@@ -1,7 +1,12 @@
 // @vitest-environment jsdom
-import { cleanup, renderHook, waitFor } from "@testing-library/react";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { ResolvedThreadExecutionOptions } from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { threadDefaultExecutionOptionsQueryKey } from "./query-keys";
+import {
+  readCachedThreadExecutionOptions,
+  threadExecutionOptionsCacheKey,
+} from "@/lib/thread-execution-options-cache";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { useThreadDefaultExecutionOptions } from "./thread-default-execution-options-query";
@@ -101,6 +106,39 @@ describe("useThreadDefaultExecutionOptions", () => {
       { wrapper: reload.wrapper },
     );
     expect(result.current.data).toBeUndefined();
+  });
+
+  it("does not persist a canceled response over newer execution defaults", async () => {
+    let resolveOld!: (value: ResolvedThreadExecutionOptions) => void;
+    vi.mocked(sdk.threads.defaultExecutionOptions)
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveOld = resolve;
+          }),
+      )
+      .mockResolvedValue(RESOLVED);
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    const { result } = renderHook(
+      () => useThreadDefaultExecutionOptions("thr_1"),
+      { wrapper },
+    );
+    await waitFor(() =>
+      expect(sdk.threads.defaultExecutionOptions).toHaveBeenCalledTimes(1),
+    );
+    const queryKey = threadDefaultExecutionOptionsQueryKey("thr_1");
+    await act(async () => {
+      await queryClient.cancelQueries({ queryKey });
+      await queryClient.invalidateQueries({ queryKey });
+    });
+    await waitFor(() => expect(result.current.data).toEqual(RESOLVED));
+    await act(async () => {
+      resolveOld({ ...RESOLVED, serviceTier: "fast" });
+    });
+    expect(result.current.data).toEqual(RESOLVED);
+    expect(
+      readCachedThreadExecutionOptions(threadExecutionOptionsCacheKey("thr_1")),
+    ).toEqual(RESOLVED);
   });
 
   it("ignores a stored value that no longer matches the schema", async () => {

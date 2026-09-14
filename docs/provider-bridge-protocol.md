@@ -231,6 +231,8 @@ range is what gates a bridge: every bridge in this repo reports
 `grammarVersions: [3, 3]`.
 
 - **Core item shapes** `fileRead`, `search` (`mode: content | path | list`),
+  `imageGeneration` (`prompt`, `path`, optional retained `result`, `error`, and
+  `transparentBackground`),
   `delegation` (`childRef`, `label`, `background`, `summary?`; one shape for
   codex `spawnAgent`/`wait`, the Claude `Agent` tool, and backgrounded
   agents, which replaced `thread/openWork`), and `planSteps` (a structured plan
@@ -332,8 +334,10 @@ rebuilds a thread's `codex app-server` child before the next turn after a
 terminal account error, and the claude bridge replaces its CLI child the same
 way; both still emit `authRequired`/`rateLimited` so the failure is typed.
 
-The assembler builds every v3 core kind: `fileRead`, `search` and
-`planSteps` open pending and settle from the terminal shape like `command`;
+The assembler builds every v3 core kind: `fileRead`, `search`,
+`imageGeneration` and `planSteps` open pending and settle from the terminal
+shape like `command`; an image generation's terminal `result` is preserved
+for retained-output storage while its prompt and path remain timeline metadata;
 a foreground `delegation` settles through the turn-scoped `item/completed`,
 and a `background: true` delegation is thread-attached like a background
 task — its `item.progress` snapshots and its `item.close` ride the

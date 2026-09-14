@@ -4,13 +4,7 @@ import { useIsRouteNavigationPending } from "./app-route-anchor";
 export const ROUTE_NAVIGATION_INDICATOR_REVEAL_DELAY_MS = 120;
 export const ROUTE_NAVIGATION_INDICATOR_MIN_VISIBLE_MS = 320;
 
-export function useDelayedBusyIndicator(
-  busy: boolean,
-  {
-    revealDelayMs = ROUTE_NAVIGATION_INDICATOR_REVEAL_DELAY_MS,
-    minVisibleMs = ROUTE_NAVIGATION_INDICATOR_MIN_VISIBLE_MS,
-  }: { revealDelayMs?: number; minVisibleMs?: number } = {},
-): boolean {
+export function useDelayedBusyIndicator(busy: boolean): boolean {
   const [visible, setVisible] = useState(false);
   const shownAtRef = useRef<number | null>(null);
 
@@ -20,7 +14,7 @@ export function useDelayedBusyIndicator(
       const revealTimeout = window.setTimeout(() => {
         shownAtRef.current = Date.now();
         setVisible(true);
-      }, revealDelayMs);
+      }, ROUTE_NAVIGATION_INDICATOR_REVEAL_DELAY_MS);
       return () => window.clearTimeout(revealTimeout);
     }
 
@@ -30,7 +24,8 @@ export function useDelayedBusyIndicator(
       return;
     }
 
-    const remainingMs = minVisibleMs - (Date.now() - shownAt);
+    const remainingMs =
+      ROUTE_NAVIGATION_INDICATOR_MIN_VISIBLE_MS - (Date.now() - shownAt);
     if (remainingMs <= 0) {
       shownAtRef.current = null;
       setVisible(false);
@@ -42,7 +37,7 @@ export function useDelayedBusyIndicator(
       setVisible(false);
     }, remainingMs);
     return () => window.clearTimeout(hideTimeout);
-  }, [busy, minVisibleMs, revealDelayMs]);
+  }, [busy]);
 
   return visible;
 }

@@ -66,9 +66,9 @@ case "$1 $2" in
       esac
     fi
     echo "github.com"; echo "  ✓ Logged in to github.com account someone (keyring)"; exit 0;;
-  "issue list"|"pr list")
+  "api graphql")
     if [ -e "${apiDownFlag}" ]; then echo "error connecting to api.github.com" >&2; exit 1; fi
-    echo "[]"; exit 0;;
+    echo '{"data":{"repository":{"hasIssuesEnabled":true,"openIssues":{"nodes":[]},"closedIssues":{"nodes":[]},"openPrs":{"nodes":[]},"closedPrs":{"nodes":[]}}}}'; exit 0;;
   *) echo "[]"; exit 0;;
 esac
 `,

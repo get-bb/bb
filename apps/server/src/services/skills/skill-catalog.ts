@@ -23,7 +23,6 @@ export function resolveSkillCatalog(
       ...deps.config.inheritedSkillsRootPaths,
       generatedSkillsRootPath(deps.config.dataDir),
     ],
-    builtinSkillsRootPath: deps.config.builtinSkillsRootPath,
     dataDir: deps.config.dataDir,
     pluginSkillRoots: getPluginSkillRootContributions(),
     ...(args.pluginSkillSelections !== undefined

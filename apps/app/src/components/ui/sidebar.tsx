@@ -11,7 +11,6 @@ import { Icon } from "@bb/shared-ui/icon";
 import {
   Tooltip,
   TooltipContent,
-  TooltipProvider,
   TooltipTrigger,
 } from "@bb/shared-ui/tooltip";
 import { setCompactSidebarDrawerShowing } from "./sidebar-mobile-drawer-visibility.js";
@@ -19,12 +18,16 @@ import {
   getCompactSecondaryPanelPresentation,
   subscribeCompactSecondaryPanelShelfShowing,
 } from "./secondary-panel-shelf-visibility.js";
+import {
+  findTouchById,
+  hasTextSelectionWithin,
+  isHorizontallyScrollableElement,
+} from "./gesture-dom.js";
 import { useHorizontalDismissDrag } from "./use-horizontal-dismiss-drag.js";
 
 const SIDEBAR_WIDTH = "16rem";
 const SIDEBAR_MOBILE_VIEWPORT_FRACTION = 0.76;
 const SIDEBAR_WIDTH_MOBILE = `min(${SIDEBAR_MOBILE_VIEWPORT_FRACTION * 100}vw, 320px)`;
-const SIDEBAR_WIDTH_ICON = "3rem";
 const SIDEBAR_MOBILE_SWIPE_BROWSER_EDGE_GUARD_PX = 24;
 const SIDEBAR_MOBILE_SWIPE_OPEN_EDGE_ZONE_PX = 72;
 const SIDEBAR_MOBILE_SWIPE_OPEN_INTENT_PX = 12;
@@ -44,8 +47,6 @@ const SIDEBAR_MOBILE_BACKDROP_TRANSITION_CLASS =
   "[transition:opacity_220ms_cubic-bezier(0.32,0.72,0,1),translate_220ms_cubic-bezier(0.32,0.72,0,1)]";
 const SIDEBAR_GROUP_LABEL_BASE_CLASS =
   "duration-200 flex shrink-0 items-center rounded-md px-1 text-xs font-medium text-sidebar-foreground/75 outline-none ring-sidebar-ring transition-[margin,opa] ease-linear focus-visible:ring-2 [&>svg]:size-4 [&>svg]:shrink-0";
-const SIDEBAR_GROUP_LABEL_COLLAPSED_CLASS =
-  "group-data-[collapsible=icon]:-mt-8 group-data-[collapsible=icon]:opacity-0";
 
 type SidebarMobileWidthStyle = React.CSSProperties & {
   "--sidebar-width-mobile": string;
@@ -215,24 +216,6 @@ function shouldOpenSidebarMobileSwipe(
   );
 }
 
-function isHorizontallyScrollableElement(element: Element): boolean {
-  const view = element.ownerDocument.defaultView;
-  if (view === null || !(element instanceof view.HTMLElement)) {
-    return false;
-  }
-
-  const overflowX = view.getComputedStyle(element).overflowX;
-  if (
-    overflowX !== "auto" &&
-    overflowX !== "scroll" &&
-    overflowX !== "overlay"
-  ) {
-    return false;
-  }
-
-  return element.scrollWidth > element.clientWidth + 1;
-}
-
 function isInsideHorizontalScrollRegion(target: Element): boolean {
   let element: Element | null = target;
   while (element !== null) {
@@ -256,18 +239,6 @@ function getSidebarSwipeSelectionRoot(
   return target instanceof Element
     ? target.closest("[data-sidebar-swipe-selectable]")
     : null;
-}
-
-function hasExpandedTextSelectionWithin(root: Element): boolean {
-  const selection = root.ownerDocument.getSelection();
-  if (selection === null || selection.isCollapsed) {
-    return false;
-  }
-
-  return (
-    (selection.anchorNode !== null && root.contains(selection.anchorNode)) ||
-    (selection.focusNode !== null && root.contains(selection.focusNode))
-  );
 }
 
 function shouldIgnoreSidebarSwipeTarget(target: EventTarget | null): boolean {
@@ -295,9 +266,7 @@ function shouldIgnoreSidebarSwipeTarget(target: EventTarget | null): boolean {
   }
 
   const selectionRoot = getSidebarSwipeSelectionRoot(target);
-  return (
-    selectionRoot !== null && hasExpandedTextSelectionWithin(selectionRoot)
-  );
+  return selectionRoot !== null && hasTextSelectionWithin(selectionRoot);
 }
 
 function isSidebarInsetSwipeTarget(target: EventTarget | null): boolean {
@@ -324,26 +293,13 @@ function isSidebarInsetSwipeTarget(target: EventTarget | null): boolean {
   );
 }
 
-function getTouchByIdentifier(
-  touches: TouchList,
-  identifier: number,
-): Touch | null {
-  for (let index = 0; index < touches.length; index += 1) {
-    const touch = touches.item(index);
-    if (touch?.identifier === identifier) {
-      return touch;
-    }
-  }
-  return null;
-}
-
 function getTrackedSwipeTouch(
   event: TouchEvent,
   identifier: number,
 ): Touch | null {
   return (
-    getTouchByIdentifier(event.touches, identifier) ??
-    getTouchByIdentifier(event.changedTouches, identifier)
+    findTouchById(event.touches, identifier) ??
+    findTouchById(event.changedTouches, identifier)
   );
 }
 
@@ -658,25 +614,22 @@ const SidebarProvider = React.forwardRef<
         <SidebarShowingContext.Provider value={isSidebarShowing}>
           <SidebarWidthContext.Provider value={width}>
             {}
-            <TooltipProvider delayDuration={300} disableHoverableContent>
-              <div
-                style={
-                  {
-                    "--sidebar-width-icon": SIDEBAR_WIDTH_ICON,
-                    ...sidebarMobileWidthStyle,
-                    ...style,
-                  } as React.CSSProperties
-                }
-                className={cn(
-                  "group/sidebar-wrapper flex h-full min-h-0 w-full has-[[data-variant=inset]]:bg-sidebar max-md:overflow-clip",
-                  className,
-                )}
-                ref={ref}
-                {...props}
-              >
-                {children}
-              </div>
-            </TooltipProvider>
+            <div
+              style={
+                {
+                  ...sidebarMobileWidthStyle,
+                  ...style,
+                } as React.CSSProperties
+              }
+              className={cn(
+                "group/sidebar-wrapper flex h-full min-h-0 w-full max-md:overflow-clip",
+                className,
+              )}
+              ref={ref}
+              {...props}
+            >
+              {children}
+            </div>
           </SidebarWidthContext.Provider>
         </SidebarShowingContext.Provider>
       </SidebarContext.Provider>
@@ -767,8 +720,6 @@ const Sidebar = React.forwardRef<HTMLDivElement, React.ComponentProps<"div">>(
           className={cn(
             "relative hidden h-full w-(--sidebar-width) bg-transparent transition-[width] duration-200 ease-linear md:block",
             "group-data-[collapsible=offcanvas]:w-0",
-            "group-data-[side=right]:rotate-180",
-            "group-data-[collapsible=icon]:w-(--sidebar-width-icon)",
           )}
         />
         <div
@@ -777,7 +728,7 @@ const Sidebar = React.forwardRef<HTMLDivElement, React.ComponentProps<"div">>(
             "fixed inset-y-0 z-10 flex h-(--bb-shell-height) w-(--sidebar-width) select-none flex-col bg-sidebar text-sidebar-foreground [transition:left_200ms_linear,right_200ms_linear,width_200ms_linear,visibility_0s_linear_0s]",
             "group-data-[collapsible=offcanvas]:invisible group-data-[collapsible=offcanvas]:[transition:left_200ms_linear,right_200ms_linear,width_200ms_linear,visibility_0s_linear_200ms]",
             "left-0 group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)]",
-            "group-data-[collapsible=icon]:w-(--sidebar-width-icon) border-border-seam group-data-[side=left]:border-r group-data-[side=right]:border-l",
+            "border-border-seam group-data-[side=left]:border-r",
             className,
           )}
           style={{ ...widthStyle, ...style }}
@@ -785,7 +736,7 @@ const Sidebar = React.forwardRef<HTMLDivElement, React.ComponentProps<"div">>(
         >
           <div
             data-sidebar="sidebar"
-            className="flex h-full w-full flex-col bg-sidebar pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:border group-data-[variant=floating]:border-sidebar-border group-data-[variant=floating]:shadow"
+            className="flex h-full w-full flex-col bg-sidebar pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)]"
           >
             {children}
           </div>
@@ -1008,7 +959,7 @@ const SidebarMobilePanel = React.forwardRef<
           data-vaul-drawer-direction="left"
           className={cn(
             "group fixed inset-y-0 left-0 z-0 flex h-(--bb-shell-height) w-(--sidebar-width-mobile) touch-pan-y select-none flex-col bg-sidebar text-sidebar-foreground outline-none",
-            "border-border-seam data-[side=left]:border-r data-[side=right]:border-l",
+            "border-border-seam data-[side=left]:border-r",
             className,
           )}
           style={
@@ -1023,7 +974,7 @@ const SidebarMobilePanel = React.forwardRef<
         >
           <div
             data-sidebar="sidebar"
-            className="flex h-full w-full flex-col bg-sidebar pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:border group-data-[variant=floating]:border-sidebar-border group-data-[variant=floating]:shadow"
+            className="flex h-full w-full flex-col bg-sidebar pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)]"
           >
             {children}
           </div>
@@ -1356,13 +1307,7 @@ const SidebarInset = React.forwardRef<
         return;
       }
 
-      const currentSession = swipeSessionRef.current;
-      if (currentSession !== null) {
-        if (currentSession.kind !== "pointer") {
-          return;
-        }
-        clearSwipeSession();
-      }
+      clearSwipeSession();
 
       const canPreventDefault = isSidebarSwipeEdgeZoneTouch(touch.clientX);
       swipeSessionRef.current = createSidebarInsetSwipeSession({
@@ -1403,15 +1348,16 @@ const SidebarInset = React.forwardRef<
         !isCompactViewport ||
         openMobile ||
         event.pointerType !== "touch" ||
+        !event.isPrimary ||
         event.button !== 0 ||
         event.clientX < SIDEBAR_MOBILE_SWIPE_BROWSER_EDGE_GUARD_PX ||
-        swipeSessionRef.current !== null ||
         !isSidebarInsetSwipeTarget(event.target) ||
         shouldIgnoreSidebarSwipeTarget(event.target)
       ) {
         return;
       }
 
+      clearSwipeSession();
       swipeSessionRef.current = createSidebarInsetSwipeSession({
         kind: "pointer",
         id: event.pointerId,
@@ -1434,7 +1380,13 @@ const SidebarInset = React.forwardRef<
       window.addEventListener("pointercancel", handleSwipeEnd);
       removeSwipeListenersRef.current = removeListeners;
     },
-    [handleSwipeEnd, handleSwipeMove, isCompactViewport, openMobile],
+    [
+      clearSwipeSession,
+      handleSwipeEnd,
+      handleSwipeMove,
+      isCompactViewport,
+      openMobile,
+    ],
   );
 
   React.useEffect(() => {
@@ -1443,7 +1395,7 @@ const SidebarInset = React.forwardRef<
       if (
         selectionRoot !== null &&
         selectionRoot !== undefined &&
-        hasExpandedTextSelectionWithin(selectionRoot)
+        hasTextSelectionWithin(selectionRoot)
       ) {
         clearSwipeSession();
       }
@@ -1603,7 +1555,6 @@ const SidebarInset = React.forwardRef<
         "data-[sidebar-shelf=open]:translate-x-(--sidebar-width-mobile) data-[sidebar-shelf]:will-change-[translate]",
         "data-[panel-shelf=shelf]:-translate-x-(--secondary-panel-width-mobile) data-[panel-shelf]:will-change-[translate]",
         "data-[panel-shelf=full]:-translate-x-full",
-        "md:peer-data-[variant=inset]:m-2 md:peer-data-[variant=inset]:ml-0 md:peer-data-[variant=inset]:rounded-xl md:peer-data-[variant=inset]:shadow",
         className,
       )}
       {...props}
@@ -1651,7 +1602,7 @@ const SidebarContent = React.forwardRef<
       ref={setContentRef}
       data-sidebar="content"
       className={cn(
-        "flex min-h-0 flex-1 flex-col gap-2 overflow-auto bg-sidebar group-data-[collapsible=icon]:overflow-hidden",
+        "flex min-h-0 flex-1 flex-col gap-2 overflow-auto bg-sidebar",
         className,
       )}
       {...props}
@@ -1713,7 +1664,6 @@ const SidebarStickyTier = React.forwardRef<
       data-sidebar-sticky-tier={tier}
       className={cn(
         tier === "label" && SIDEBAR_GROUP_LABEL_BASE_CLASS,
-        tier === "label" && SIDEBAR_GROUP_LABEL_COLLAPSED_CLASS,
         "bg-sidebar",
         className,
       )}
@@ -1781,7 +1731,7 @@ const SidebarMenuItem = React.forwardRef<
 SidebarMenuItem.displayName = "SidebarMenuItem";
 
 const SIDEBAR_MENU_BUTTON_CLASS =
-  "flex h-8 w-full cursor-pointer items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm outline-none ring-sidebar-ring transition-[width,height,padding] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:!size-8 group-data-[collapsible=icon]:!p-2 [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0";
+  "flex h-8 w-full cursor-pointer items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm outline-none ring-sidebar-ring transition-[width,height,padding] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0";
 
 const SidebarMenuButton = React.forwardRef<
   HTMLButtonElement,

@@ -1,8 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { shellSingleQuote } from "@bb/test-helpers";
-import { provisionWorkspace, type HostWorkspace } from "@bb/host-workspace";
 import { dispatchOnlineRpcCommand } from "../../src/command-dispatch.js";
 import {
   cleanupTempDirs,
@@ -78,6 +76,50 @@ async function initStaleOriginMainRepo(): Promise<StaleOriginMainRepo> {
     cwd: repoPath,
   });
   return { releaseRefreshPath, refreshStartedPath, repoPath };
+}
+
+interface SshRemoteRepo {
+  repoPath: string;
+  sshLogPath: string;
+}
+
+async function initSshRemoteRepo(): Promise<SshRemoteRepo> {
+  const repoPath = await initBranchRepo();
+  const sshLogPath = path.join(repoPath, "ssh-invocations.log");
+  const sshScriptPath = path.join(repoPath, "recording-ssh.sh");
+  await fs.writeFile(
+    sshScriptPath,
+    `#!/bin/sh\nprintf '%s\\n' "$@" >> ${JSON.stringify(sshLogPath)}\nprintf 'GIT_TERMINAL_PROMPT=%s\\n' "\${GIT_TERMINAL_PROMPT-unset}" >> ${JSON.stringify(sshLogPath)}\nprintf -- '--\\n' >> ${JSON.stringify(sshLogPath)}\nexit 255\n`,
+    { encoding: "utf8", mode: 0o755 },
+  );
+  await runGitCommand(
+    ["remote", "add", "origin", "ssh://git.invalid/repo.git"],
+    { cwd: repoPath },
+  );
+  await runGitCommand(["config", "core.sshCommand", sshScriptPath], {
+    cwd: repoPath,
+  });
+  return { repoPath, sshLogPath };
+}
+
+async function readUploadPackInvocations(
+  sshLogPath: string,
+): Promise<string[]> {
+  const log = await fs.readFile(sshLogPath, "utf8").catch(() => "");
+  return log.split("--\n").filter((entry) => entry.includes("git-upload-pack"));
+}
+
+async function waitForUploadPackInvocations(
+  sshLogPath: string,
+  count: number,
+): Promise<string[]> {
+  const deadline = Date.now() + 2_000;
+  while (Date.now() < deadline) {
+    const invocations = await readUploadPackInvocations(sshLogPath);
+    if (invocations.length >= count) return invocations;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error(`Expected ${count} upload-pack invocations in ${sshLogPath}`);
 }
 
 async function expectResolvesWithin<T>(
@@ -226,6 +268,70 @@ describe("host.inspect_git_source dispatch", () => {
     });
   });
 
+  it("keeps a background refresh from prompting for ssh credentials", async () => {
+    const { repoPath, sshLogPath } = await initSshRemoteRepo();
+    const harness = createHarness();
+
+    await dispatchOnlineRpcCommand(
+      {
+        type: "host.inspect_git_source",
+        path: repoPath,
+        remoteRefresh: "background",
+      },
+      harness.dispatchOptions(),
+    );
+
+    const invocations = await waitForUploadPackInvocations(sshLogPath, 1);
+    expect(invocations).toHaveLength(1);
+    expect(invocations[0]).toContain("GIT_TERMINAL_PROMPT=0");
+  });
+
+  it("lets a blocking refresh prompt for ssh credentials", async () => {
+    const { repoPath, sshLogPath } = await initSshRemoteRepo();
+    const harness = createHarness();
+
+    await dispatchOnlineRpcCommand(
+      {
+        type: "host.inspect_git_source",
+        path: repoPath,
+        remoteRefresh: "blocking",
+      },
+      harness.dispatchOptions(),
+    );
+
+    const invocations = await readUploadPackInvocations(sshLogPath);
+    expect(invocations).toHaveLength(1);
+    expect(invocations[0]).toContain("GIT_TERMINAL_PROMPT=unset");
+  });
+
+  it("retries interactively when a blocking refresh follows a failed background refresh", async () => {
+    const { repoPath, sshLogPath } = await initSshRemoteRepo();
+    const harness = createHarness();
+
+    await dispatchOnlineRpcCommand(
+      {
+        type: "host.inspect_git_source",
+        path: repoPath,
+        remoteRefresh: "background",
+      },
+      harness.dispatchOptions(),
+    );
+    await waitForUploadPackInvocations(sshLogPath, 1);
+    await dispatchOnlineRpcCommand(
+      {
+        type: "host.inspect_git_source",
+        path: repoPath,
+        remoteRefresh: "blocking",
+      },
+      harness.dispatchOptions(),
+    );
+
+    const invocations = await readUploadPackInvocations(sshLogPath);
+    expect(invocations).toHaveLength(2);
+    expect(invocations[0]).toContain("GIT_TERMINAL_PROMPT=0");
+    expect(invocations[1]).toContain("GIT_TERMINAL_PROMPT=unset");
+  });
+
   it("reports detached HEAD in checkout state", async () => {
     const repoPath = await initBranchRepo();
     await runGitCommand(["switch", "--detach", "HEAD"], { cwd: repoPath });
@@ -304,6 +410,7 @@ describe("host.inspect_git_source dispatch", () => {
       checkout: { kind: "unknown", reason: "Path is not a git repository" },
       defaultBranch: null,
       defaultBranchRelation: null,
+      isWorktree: false,
       hasUncommittedChanges: false,
       operation: { kind: "none" },
       originDefaultBranch: null,
@@ -327,114 +434,12 @@ describe("host.inspect_git_source dispatch", () => {
       checkout: { kind: "unknown", reason: "Path is not a git repository" },
       defaultBranch: null,
       defaultBranchRelation: null,
+      isWorktree: false,
       hasUncommittedChanges: false,
       operation: { kind: "none" },
       originDefaultBranch: null,
     });
   });
-
-  it.runIf(process.platform !== "win32")(
-    "serializes branch refresh and provisioning fetches for one repository",
-    async () => {
-      const repoPath = await initBranchRepo();
-      const remotePath = await makeTempDir("bb-host-branches-lock-remote-");
-      await runGitCommand(["init", "--bare"], { cwd: remotePath });
-      await runGitCommand(["remote", "add", "origin", remotePath], {
-        cwd: repoPath,
-      });
-      await runGitCommand(["push", "origin", "develop", "main"], {
-        cwd: repoPath,
-      });
-      await runGitCommand(["fetch", "origin"], { cwd: repoPath });
-
-      const refreshStartedPath = path.join(repoPath, "refresh-started");
-      const releaseRefreshPath = path.join(repoPath, "release-refresh");
-      const uploadPackPath = path.join(repoPath, "delayed-upload-pack.sh");
-      await fs.writeFile(
-        uploadPackPath,
-        `#!/bin/sh\ntouch ${JSON.stringify(refreshStartedPath)}\nwhile [ ! -f ${JSON.stringify(releaseRefreshPath)} ]; do sleep 0.01; done\nexec git-upload-pack "$@"\n`,
-        { encoding: "utf8", mode: 0o755 },
-      );
-      await runGitCommand(
-        ["config", "remote.origin.uploadpack", uploadPackPath],
-        { cwd: repoPath },
-      );
-
-      const binPath = await makeTempDir("bb-host-branches-lock-bin-");
-      const commonDirMarker = path.join(binPath, "common-dir-resolved");
-      const targetedFetchMarker = path.join(binPath, "targeted-fetch");
-      const gitWrapperPath = path.join(binPath, "git");
-      const systemPath = process.env.PATH ?? "";
-      await fs.writeFile(
-        gitWrapperPath,
-        [
-          "#!/bin/sh",
-          "set -u",
-          `system_path=${shellSingleQuote(systemPath)}`,
-          `common_dir_marker=${shellSingleQuote(commonDirMarker)}`,
-          `targeted_fetch_marker=${shellSingleQuote(targetedFetchMarker)}`,
-          'if [ "$#" -eq 2 ] && [ "$1" = "rev-parse" ] && [ "$2" = "--git-common-dir" ]; then',
-          '  PATH="$system_path" git "$@"',
-          "  status=$?",
-          '  touch "$common_dir_marker"',
-          '  exit "$status"',
-          "fi",
-          'if [ "$#" -eq 4 ] && [ "$1" = "fetch" ] && [ "$2" = "--quiet" ] && [ "$3" = "origin" ] && [ "$4" = "+refs/heads/main:refs/remotes/origin/main" ]; then',
-          '  touch "$targeted_fetch_marker"',
-          "fi",
-          'PATH="$system_path" exec git "$@"',
-        ].join("\n") + "\n",
-        { encoding: "utf8", mode: 0o755 },
-      );
-
-      const harness = createHarness();
-      const sourceInspection = dispatchOnlineRpcCommand(
-        {
-          type: "host.inspect_git_source",
-          path: repoPath,
-          remoteRefresh: "blocking",
-        },
-        harness.dispatchOptions(),
-      );
-      let provisioning: Promise<HostWorkspace> | undefined;
-      try {
-        await waitForFile(refreshStartedPath);
-        const targetParent = await makeTempDir(
-          "bb-host-branches-lock-worktree-",
-        );
-        const targetPath = path.join(targetParent, "coordinated");
-        provisioning = provisionWorkspace({
-          workspaceProvisionType: "managed-worktree",
-          sourcePath: repoPath,
-          targetPath,
-          branchName: "bb/coordinated",
-          baseBranch: "origin/main",
-          timeoutMs: 900_000,
-          shellPath: `${binPath}${path.delimiter}${systemPath}`,
-        });
-
-        await waitForFile(commonDirMarker);
-        await new Promise((resolve) => setTimeout(resolve, 100));
-        await expect(fs.access(targetedFetchMarker)).rejects.toThrow();
-
-        await fs.writeFile(releaseRefreshPath, "release\n", "utf8");
-        await sourceInspection;
-        const workspace = await provisioning;
-        expect(workspace.path).toBe(targetPath);
-        await expect(fs.access(targetedFetchMarker)).resolves.toBeUndefined();
-      } finally {
-        await fs.writeFile(releaseRefreshPath, "release\n", "utf8");
-        await Promise.allSettled([sourceInspection]);
-        const provisionResult = await Promise.allSettled(
-          provisioning ? [provisioning] : [],
-        );
-        const workspace = provisionResult[0];
-        if (workspace?.status === "fulfilled") {
-          await workspace.value.destroy({ timeoutMs: 900_000 });
-        }
-      }
-    },
-  );
 });
 
 describe("host.list_branch_options dispatch", () => {

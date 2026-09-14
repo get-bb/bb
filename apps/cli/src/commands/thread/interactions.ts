@@ -33,8 +33,9 @@ import {
 } from "@bb/domain";
 import { action } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
-import { renderBorderlessTable } from "../../table.js";
+import { printBorderlessTable } from "../../table.js";
 import {
+  collectOption,
   outputJson,
   prependErrorContext,
   requireThreadIdOrSelf,
@@ -351,13 +352,6 @@ async function fetchInteraction(
   });
 }
 
-function appendRepeatableOption(
-  value: string,
-  previous: string[] = [],
-): string[] {
-  return [...previous, value];
-}
-
 function parseChoiceFlagValue(input: ChoiceFlagParseInput): ChoiceFlagEntry {
   const separatorIndex = input.rawValue.indexOf("=");
   if (separatorIndex === -1) {
@@ -553,19 +547,8 @@ interface ResolveInteractionArgs {
 }
 
 interface ResolveInteractionSuccessMessageArgs {
-  interaction: PendingInteraction;
-  resolution: PendingInteractionResolution;
-  updated: PendingInteraction;
-}
-
-interface FormatResolutionSuccessMessageArgs {
   interactionId: string;
   resolution: PendingInteractionResolution;
-  updated: PendingInteraction;
-}
-
-interface FormatAnswerResolutionSuccessMessageArgs {
-  interactionId: string;
   updated: PendingInteraction;
 }
 
@@ -597,7 +580,7 @@ async function resolveInteraction(args: ResolveInteractionArgs): Promise<void> {
 
   console.log(
     args.successMessage({
-      interaction,
+      interactionId: args.interactionId,
       resolution,
       updated,
     }),
@@ -675,7 +658,7 @@ function formatBinaryResolutionMessage(
 }
 
 function formatResolutionSuccessMessage(
-  args: FormatResolutionSuccessMessageArgs,
+  args: ResolveInteractionSuccessMessageArgs,
 ): string {
   const resolution = args.updated.resolution ?? args.resolution;
   const outcome = formatBinaryResolutionMessage(resolution);
@@ -687,13 +670,47 @@ function formatResolutionSuccessMessage(
 }
 
 function formatAnswerResolutionSuccessMessage(
-  args: FormatAnswerResolutionSuccessMessageArgs,
+  args: Pick<ResolveInteractionSuccessMessageArgs, "interactionId" | "updated">,
 ): string {
   if (args.updated.status === "resolving") {
     return `Interaction ${args.interactionId} submitted (answered); delivering to provider`;
   }
 
   return `Interaction ${args.interactionId} answered`;
+}
+
+function registerBinaryResolutionCommand(
+  interactions: Command,
+  getUrl: () => string,
+  name: "approve" | "deny",
+  description: string,
+): void {
+  interactions
+    .command(`${name} <interactionId> [id]`)
+    .description(description)
+    .option("--self", "Target the current thread (from BB_THREAD_ID)")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(
+        async (
+          interactionId: string,
+          id: string | undefined,
+          opts: ThreadInteractionTargetOptions,
+        ) => {
+          const threadId = requireThreadIdOrSelf(id, opts);
+          await resolveInteraction({
+            buildResolution: (interaction) =>
+              buildBinaryResolution(interaction, name),
+            failureAction: name,
+            getUrl,
+            interactionId,
+            json: opts.json,
+            threadId,
+            successMessage: formatResolutionSuccessMessage,
+          });
+        },
+      ),
+    );
 }
 
 export function registerInteractionCommands(
@@ -730,7 +747,7 @@ export function registerInteractionCommands(
             return;
           }
 
-          const table = renderBorderlessTable(
+          printBorderlessTable(
             {
               head: ["ID", "Kind", "Status", "Summary"],
               colWidths: [20, 12, 12, 70],
@@ -740,15 +757,9 @@ export function registerInteractionCommands(
               interaction.id,
               formatInteractionKind(interaction),
               interaction.status,
-              formatPendingInteractionSummary({
-                interaction,
-                surface: "cli",
-              }),
+              formatPendingInteractionSummary({ interaction }),
             ]),
           );
-          console.log("");
-          console.log(table);
-          console.log("");
         },
       ),
     );
@@ -780,39 +791,12 @@ export function registerInteractionCommands(
       ),
     );
 
-  interactions
-    .command("approve <interactionId> [id]")
-    .description(
-      "Approve a command, file-change, or plan interaction for this turn",
-    )
-    .option("--self", "Target the current thread (from BB_THREAD_ID)")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(
-        async (
-          interactionId: string,
-          id: string | undefined,
-          opts: ThreadInteractionTargetOptions,
-        ) => {
-          const threadId = requireThreadIdOrSelf(id, opts);
-          await resolveInteraction({
-            buildResolution: (interaction) =>
-              buildBinaryResolution(interaction, "approve"),
-            failureAction: "approve",
-            getUrl,
-            interactionId,
-            json: opts.json,
-            threadId,
-            successMessage: ({ resolution, updated }) =>
-              formatResolutionSuccessMessage({
-                interactionId,
-                resolution,
-                updated,
-              }),
-          });
-        },
-      ),
-    );
+  registerBinaryResolutionCommand(
+    interactions,
+    getUrl,
+    "approve",
+    "Approve a command, file-change, or plan interaction for this turn",
+  );
 
   interactions
     .command("grant <interactionId> [id]")
@@ -837,12 +821,7 @@ export function registerInteractionCommands(
             interactionId,
             json: opts.json,
             threadId,
-            successMessage: ({ resolution, updated }) =>
-              formatResolutionSuccessMessage({
-                interactionId,
-                resolution,
-                updated,
-              }),
+            successMessage: formatResolutionSuccessMessage,
           });
         },
       ),
@@ -856,13 +835,13 @@ export function registerInteractionCommands(
     .option(
       "--choice <questionId=value>",
       "Select an option value; repeat for multi-select answers",
-      appendRepeatableOption,
+      collectOption,
       [],
     )
     .option(
       "--text <questionId=text>",
       "Provide a free-text answer",
-      appendRepeatableOption,
+      collectOption,
       [],
     )
     .action(
@@ -885,11 +864,7 @@ export function registerInteractionCommands(
             interactionId,
             json: opts.json,
             threadId,
-            successMessage: ({ updated }) =>
-              formatAnswerResolutionSuccessMessage({
-                interactionId,
-                updated,
-              }),
+            successMessage: formatAnswerResolutionSuccessMessage,
           });
         },
       ),
@@ -928,43 +903,16 @@ export function registerInteractionCommands(
             return;
           }
           console.log(
-            updated.status === "resolving"
-              ? `Interaction ${interactionId} submitted (answered); delivering to provider`
-              : `Interaction ${interactionId} answered`,
+            formatAnswerResolutionSuccessMessage({ interactionId, updated }),
           );
         },
       ),
     );
 
-  interactions
-    .command("deny <interactionId> [id]")
-    .description("Deny a command, file-change, plan, or permission interaction")
-    .option("--self", "Target the current thread (from BB_THREAD_ID)")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(
-        async (
-          interactionId: string,
-          id: string | undefined,
-          opts: ThreadInteractionTargetOptions,
-        ) => {
-          const threadId = requireThreadIdOrSelf(id, opts);
-          await resolveInteraction({
-            buildResolution: (interaction) =>
-              buildBinaryResolution(interaction, "deny"),
-            failureAction: "deny",
-            getUrl,
-            interactionId,
-            json: opts.json,
-            threadId,
-            successMessage: ({ resolution, updated }) =>
-              formatResolutionSuccessMessage({
-                interactionId,
-                resolution,
-                updated,
-              }),
-          });
-        },
-      ),
-    );
+  registerBinaryResolutionCommand(
+    interactions,
+    getUrl,
+    "deny",
+    "Deny a command, file-change, plan, or permission interaction",
+  );
 }

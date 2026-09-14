@@ -32,15 +32,6 @@ const CLASS_WEIGHTS: readonly { token: string; weight: FontWeightName }[] = [
 export interface ResolvedFont {
   fontFamily?: string;
   fontWeight: FontWeightValue;
-  fontStyle?: "italic";
-}
-
-export function resolveItalicFont(weight: FontWeightName): ResolvedFont {
-  return {
-    fontFamily: FONT_FAMILIES.sans[weight],
-    fontWeight: FONT_WEIGHT_VALUES[weight],
-    fontStyle: "italic",
-  };
 }
 
 export function resolveFont(options: {

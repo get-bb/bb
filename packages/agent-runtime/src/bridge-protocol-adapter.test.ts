@@ -10,7 +10,6 @@ function makeAdapter(staticProviderOptions?: Record<string, unknown>) {
       supportsThreadArchive: false,
       supportsThreadRename: false,
       supportsServiceTier: false,
-      supportsNativeUserQuestion: false,
       fork: "checkpoint",
       permissionModes: ["full"],
     },
@@ -293,7 +292,6 @@ describe("options mapping", () => {
     const options = (plan as { params: { options: Record<string, unknown> } })
       .params.options;
     expect(options).not.toHaveProperty("memoryEnabled");
-    expect(options).not.toHaveProperty("skillRoots");
   });
 });
 

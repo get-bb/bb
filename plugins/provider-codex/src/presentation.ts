@@ -43,6 +43,11 @@ export const IMAGE_VIEW_PRESENTATION: DeltaPresentation = {
   icon: { glyph: "Eye" },
 };
 
+export const IMAGE_GENERATION_PRESENTATION: DeltaPresentation = {
+  label: { pending: "Generating image", completed: "Generated image" },
+  icon: { glyph: "Palette" },
+};
+
 export function commandPresentation(command: string): DeltaPresentation {
   return withTitle(
     {
@@ -75,6 +80,18 @@ export function imageViewPresentation(path: string): DeltaPresentation {
     IMAGE_VIEW_PRESENTATION,
     presentationTitle(presentationFileName(path)),
   );
+}
+
+export function imageGenerationPresentation(args: {
+  path: string | null;
+  prompt: string | null;
+}): DeltaPresentation {
+  const title = args.path
+    ? presentationTitle(presentationFileName(args.path))
+    : args.prompt
+      ? presentationTitle(args.prompt)
+      : undefined;
+  return withTitle(IMAGE_GENERATION_PRESENTATION, title);
 }
 
 export function planStepsPresentation(args: {

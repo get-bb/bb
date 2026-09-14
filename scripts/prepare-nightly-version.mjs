@@ -1,15 +1,9 @@
-import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { bumpVersion } from "./bump-version.mjs";
-import { compareSemver } from "./lib/semver.mjs";
+import { bumpVersion, readMaxTargetVersion } from "./bump-version.mjs";
 
 const scriptPath = fileURLToPath(import.meta.url);
 const defaultRepoRoot = resolve(dirname(scriptPath), "..");
-const packagePaths = [
-  "packages/bb-app/package.json",
-  "apps/desktop/package.json",
-];
 const semverCorePattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)/u;
 const positiveIntegerPattern = /^[1-9]\d*$/u;
 
@@ -37,30 +31,10 @@ export function deriveNightlyVersion(currentVersion, runId, runAttempt) {
   return `${major}.${minor}.${BigInt(patch) + 1n}-nightly.${normalizedRunId}.${normalizedRunAttempt}`;
 }
 
-async function readCurrentVersions(repoRoot) {
-  return await Promise.all(
-    packagePaths.map(async (packagePath) => {
-      const packageJson = JSON.parse(
-        await readFile(resolve(repoRoot, packagePath), "utf8"),
-      );
-      if (
-        typeof packageJson !== "object" ||
-        packageJson === null ||
-        typeof packageJson.version !== "string"
-      ) {
-        throw new Error(`Missing string version in ${packagePath}.`);
-      }
-
-      return packageJson.version;
-    }),
-  );
-}
-
 export async function prepareNightlyVersion(options) {
-  const currentVersions = await readCurrentVersions(options.repoRoot);
-  const maxCurrentVersion = currentVersions.reduce((maxVersion, version) =>
-    compareSemver(version, maxVersion) > 0 ? version : maxVersion,
-  );
+  const maxCurrentVersion = await readMaxTargetVersion({
+    repoRoot: options.repoRoot,
+  });
   const nightlyVersion = deriveNightlyVersion(
     maxCurrentVersion,
     options.runId,

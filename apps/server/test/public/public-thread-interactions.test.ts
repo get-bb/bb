@@ -472,10 +472,15 @@ describe("public thread interaction routes", () => {
           "Invalid discriminator value. Expected 'allow_once' | 'allow_for_session' | 'deny'",
       });
 
-      harness.deps.pendingInteractions.interruptPendingInteraction({
-        interactionId: commandApproval.interaction.id,
-        reason: "Provider exited",
-      });
+      harness.db.transaction((tx) =>
+        harness.deps.pendingInteractions.interruptPendingInteractionInTransaction(
+          { db: tx, hub: harness.deps.hub },
+          {
+            interactionId: commandApproval.interaction.id,
+            reason: "Provider exited",
+          },
+        ),
+      );
 
       const interruptedResolution = await harness.app.request(
         `/api/v1/threads/${thread.id}/interactions/${commandApproval.interaction.id}/resolve`,

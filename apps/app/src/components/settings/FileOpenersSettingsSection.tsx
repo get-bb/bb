@@ -19,13 +19,13 @@ import {
 } from "@/lib/file-opener-preference";
 import { usePluginSlots, type PluginFileOpenerSlot } from "@/lib/plugin-slots";
 import { cn } from "@bb/shared-ui/lib/utils";
+import {
+  SETTINGS_DROPDOWN_CONTENT_CLASS,
+  SETTINGS_DROPDOWN_TRIGGER_CLASS,
+} from "./settings-dropdown";
 
 const AUTOMATIC_FILE_OPENER_PREFERENCE = "__automatic__";
 const BUILTIN_LABEL = "Built-in preview";
-const DROPDOWN_TRIGGER_CLASS =
-  "h-7 w-full justify-between border-border/60 bg-card px-2 text-xs sm:w-44";
-const DROPDOWN_CONTENT_CLASS =
-  "min-w-[var(--radix-dropdown-menu-trigger-width)]";
 
 export function FileOpenersSettingsSection() {
   const { fileOpeners } = usePluginSlots();
@@ -109,7 +109,7 @@ function ExtensionOpenerControl({
           <Button
             variant="outline"
             size="sm"
-            className={DROPDOWN_TRIGGER_CLASS}
+            className={SETTINGS_DROPDOWN_TRIGGER_CLASS}
             aria-label={`Default opener for .${extension} files`}
           >
             <span className="min-w-0 truncate">{selected.label}</span>
@@ -119,7 +119,10 @@ function ExtensionOpenerControl({
             />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className={DROPDOWN_CONTENT_CLASS}>
+        <DropdownMenuContent
+          align="end"
+          className={SETTINGS_DROPDOWN_CONTENT_CLASS}
+        >
           {options.map((option) => (
             <DropdownMenuItem
               key={option.key}

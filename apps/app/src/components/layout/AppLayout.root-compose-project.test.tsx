@@ -34,7 +34,6 @@ vi.mock("@/hooks/queries/system-queries", () => ({
     data: {
       experiments: {
         changelogPreview: false,
-        editMessages: false,
         mobileApp: false,
         sidebarProgressiveDisclosure: false,
         timelineWindowing: false,
@@ -90,7 +89,6 @@ vi.mock("@/lib/bb-desktop", () => ({
   DEFAULT_DESKTOP_WINDOW_STATE: { isFullScreen: false },
   MACOS_CHROME_CONTROL_AXIS_CLASS: "",
   MACOS_CHROME_CONTROL_NO_DRAG_CLASS: "",
-  MACOS_CHROME_TRAFFIC_LIGHT_AXIS_NUDGE_CLASS: "",
   MACOS_TRAFFIC_LIGHT_RESERVE_OFFSET_CLASS: "",
   MACOS_WINDOW_DRAG_CLASS: "",
   MACOS_WINDOW_NO_DRAG_CLASS: "",

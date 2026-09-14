@@ -5,6 +5,7 @@ import { cn } from "../../lib/utils";
 import { usePortalScopeProps } from "../../lib/portal-scope";
 import {
   type ResponsiveOverlayContextValue,
+  COMPACT_SHEET_CONTENT_STYLE,
   useResponsiveRoot,
   MobileTrigger,
   ResponsiveDrawerShell,
@@ -106,6 +107,7 @@ PopoverTrigger.displayName = "PopoverTrigger";
 const PopoverContent = React.forwardRef<
   HTMLDivElement,
   React.ComponentPropsWithoutRef<typeof PopoverPrimitive.Content> & {
+    dismissOnOutsideInteraction?: boolean;
     mobileTitle?: string;
     mobileClassName?: string;
     onMobileContentAnimationEnd?: (open: boolean) => void;
@@ -118,6 +120,8 @@ const PopoverContent = React.forwardRef<
       align = "center",
       sideOffset = 4,
       children,
+      dismissOnOutsideInteraction = true,
+      onInteractOutside,
       mobileTitle,
       mobileClassName,
       onMobileContentAnimationEnd,
@@ -143,13 +147,14 @@ const PopoverContent = React.forwardRef<
     }, [autoFocusRef, isCompactViewport, isPointerCoarse, open]);
 
     if (isCompactViewport) {
-      const domProps = stripRadixContentProps(props);
+      const { style, ...domProps } = stripRadixContentProps(props);
 
       return (
         <ResponsiveDrawerShell
           open={open}
           onOpenChange={onOpenChange}
           srLabel={mobileTitle ?? "Options"}
+          closeOnBackdropClick={dismissOnOutsideInteraction}
           contentClassName={mobileClassName}
           onContentAnimationEnd={onMobileContentAnimationEnd}
         >
@@ -160,6 +165,7 @@ const PopoverContent = React.forwardRef<
               className,
             )}
             {...domProps}
+            style={{ ...style, ...COMPACT_SHEET_CONTENT_STYLE }}
           >
             {children}
           </div>
@@ -183,6 +189,10 @@ const PopoverContent = React.forwardRef<
             className,
           )}
           {...props}
+          onInteractOutside={(event) => {
+            if (!dismissOnOutsideInteraction) event.preventDefault();
+            onInteractOutside?.(event);
+          }}
         >
           {children}
         </PopoverPrimitive.Content>

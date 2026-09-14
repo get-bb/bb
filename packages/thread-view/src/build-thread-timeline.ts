@@ -33,6 +33,7 @@ import type {
   EventProjectionProvisioningTranscriptEntry,
   EventProjectionToolParsedIntent,
   EventProjectionTurn,
+  EventProjectionTurnMessageDetail,
 } from "./event-projection-types.js";
 import { assertNever } from "./assert-never.js";
 import {
@@ -70,11 +71,8 @@ import { extractThreadTimelineModelFallback } from "./model-fallback-extraction.
 import { extractThreadTimelinePendingTodos } from "./todo-snapshot-extraction.js";
 import { buildTimelineErrorDisplay } from "./error-display.js";
 
-type ThreadTimelineTurnMessageDetail = "summary" | "full";
-
 interface ThreadTimelineFromEventsBaseOptions {
-  contextOnlyToolCallIds?: ReadonlySet<string>;
-  includeProviderUnhandledOperations: boolean;
+  includeDiagnosticOperations: boolean;
   isLatestPage: boolean;
   providerId?: string;
   providerDisplayName?: string;
@@ -86,7 +84,7 @@ interface ThreadTimelineFromEventsBaseOptions {
 
 interface ThreadTimelineFromEventsOptions extends ThreadTimelineFromEventsBaseOptions {
   includeNestedRows: boolean;
-  turnMessageDetail: ThreadTimelineTurnMessageDetail;
+  turnMessageDetail: EventProjectionTurnMessageDetail;
 }
 
 interface BuildThreadTimelineFromEventsArgs {
@@ -114,7 +112,7 @@ interface ThreadTimelineSourceSeqRange {
 }
 
 interface BuildThreadTimelineTurnDetailsFromEventsOptions extends ThreadTimelineSourceSeqRange {
-  includeProviderUnhandledOperations: boolean;
+  includeDiagnosticOperations: boolean;
   providerDisplayName?: string;
   threadStatus: Thread["status"];
   threadName: string;
@@ -213,6 +211,7 @@ function operationKindForMessage(
   parentChange: TimelineParentChange | null,
 ): TimelineSystemOperationKind {
   switch (message.opType) {
+    case "reasoning":
     case "compaction":
     case "context-clear":
     case "thread-provisioning":
@@ -271,6 +270,7 @@ function buildGenericOperationSystemRow({
     kind: "system",
     systemKind: "operation",
     operationKind,
+    ...(operationKind === "reasoning" ? { reasoningId: message.id } : {}),
     title: message.title,
     detail: buildTimelineOperationDetail(message),
     status: message.status ?? null,
@@ -661,6 +661,22 @@ function convertMessage(
           status: message.status,
           callId: message.callId,
           path: message.path,
+          completedAt: message.completedAt,
+          ...rowPresentation(message),
+        },
+      ];
+    case "image-generation":
+      return [
+        {
+          ...buildTimelineRowBase(message, options.rowIdPrefix),
+          kind: "work",
+          workKind: "image-generation",
+          status: message.status,
+          callId: message.callId,
+          prompt: message.prompt,
+          path: message.path,
+          error: message.error,
+          transparentBackground: message.transparentBackground,
           completedAt: message.completedAt,
           ...rowPresentation(message),
         },
@@ -1338,9 +1354,7 @@ export function buildThreadTimelineFromEvents(
 ): ThreadTimelineFromEventsResult {
   const projectionOptions = {
     acceptedClientRequestContext: args.acceptedClientRequestContext,
-    includeProviderUnhandledOperations:
-      args.options.includeProviderUnhandledOperations,
-    contextOnlyToolCallIds: args.options.contextOnlyToolCallIds,
+    includeDiagnosticOperations: args.options.includeDiagnosticOperations,
     providerDisplayName: args.options.providerDisplayName,
     threadStatus: args.options.threadStatus,
     threadName: args.options.threadName,
@@ -1404,8 +1418,7 @@ export function buildThreadTimelineTurnDetailsFromEvents(
   args: BuildThreadTimelineTurnDetailsFromEventsArgs,
 ): ThreadTimelineTurnDetailsFromEventsResult {
   const projection = buildEventProjectionEntries(args.events, {
-    includeProviderUnhandledOperations:
-      args.options.includeProviderUnhandledOperations,
+    includeDiagnosticOperations: args.options.includeDiagnosticOperations,
     providerDisplayName: args.options.providerDisplayName,
     threadStatus: args.options.threadStatus,
     threadName: args.options.threadName,

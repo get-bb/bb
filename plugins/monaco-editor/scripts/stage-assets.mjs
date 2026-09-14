@@ -15,7 +15,7 @@
  * pruned is requested later at runtime.
  *
  * Packaging ships only a builtin's `dist/` and `skills/`
- * (`apps/server/scripts/copy-builtin-plugins.ts`, which runs this), so
+ * (`bb-plugin-build prepare-bundled`, which runs this), so
  * `dist/` is the only place these files can live.
  */
 import { mkdir, readFile, rm } from "node:fs/promises";
@@ -67,8 +67,18 @@ await esbuild.build({
 const inputs = Object.keys(editor.metafile.inputs);
 const output = await readFile(path.join(outDir, "editor.js"), "utf8");
 const missing = [
-  ["language grammars", () => inputs.some((i) => i.includes("languages/definitions/") || i.includes("basic-languages"))],
-  ["editor contributions", () => inputs.some((i) => i.includes("editor/contrib/"))],
+  [
+    "language grammars",
+    () =>
+      inputs.some(
+        (i) =>
+          i.includes("languages/definitions/") || i.includes("basic-languages"),
+      ),
+  ],
+  [
+    "editor contributions",
+    () => inputs.some((i) => i.includes("editor/contrib/")),
+  ],
   ["find widget", () => output.includes("find-widget")],
   ["folding", () => output.includes("foldRecursively")],
   ["word navigation", () => output.includes("cursorWordLeft")],

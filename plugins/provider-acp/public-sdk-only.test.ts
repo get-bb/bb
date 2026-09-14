@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -17,7 +18,13 @@ describe("provider-acp imports only the public SDK", () => {
     expect(scan.violations).toEqual([]);
   });
 
-  it("declares no @bb/* dependency in package.json", () => {
-    expect(scan.privateDependencies).toEqual([]);
+  it("allows only the bundled build tool as a private dev dependency", () => {
+    expect(scan.privateDependencies).toEqual(["@bb/plugin-build"]);
+    const manifest: unknown = JSON.parse(
+      readFileSync(new URL("./package.json", import.meta.url), "utf8"),
+    );
+    expect(manifest).toMatchObject({
+      devDependencies: { "@bb/plugin-build": "workspace:*" },
+    });
   });
 });

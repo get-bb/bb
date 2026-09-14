@@ -1,11 +1,12 @@
+import { prependOlderTimelineRows } from "@bb/client-core";
 import {
   useInfiniteQuery,
   useQuery,
   useQueryClient,
+  type NotifyOnChangeProps,
   type QueryClient,
 } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
-import { useDebounceValue } from "usehooks-ts";
 import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { getMediaQuerySnapshot } from "@bb/shared-ui/hooks/use-media-query";
 import type { PendingInteraction, ThreadListEntry } from "@bb/domain";
@@ -24,6 +25,7 @@ import type {
   ThreadTimelineResponse,
   TimelineTurnSummaryDetailsResponse,
 } from "@bb/server-contract";
+import { useDebouncedValue } from "../useDebouncedValue";
 import { applyTimelineDelta } from "@bb/server-contract";
 import type { ThreadListFilters } from "@bb/client-core";
 import type { FilePreview } from "@bb/client-core";
@@ -117,7 +119,11 @@ export function didThreadDetailBootstrapRefreshAfterMount(query: {
   );
 }
 
-type ThreadTimelineQueryOptions = QueryOptions;
+interface ThreadTimelineQueryOptions extends QueryOptions {
+  notifyOnChangeProps?: NotifyOnChangeProps;
+}
+
+type ThreadConversationOutlineQueryOptions = QueryOptions;
 
 type ThreadTimelineTurnSummaryDetailsQueryOptions = QueryOptions;
 
@@ -577,10 +583,7 @@ export function useThreadSearch({
   limitPerGroup = THREAD_SEARCH_LIMIT_PER_GROUP,
   query,
 }: UseThreadSearchArgs): UseThreadSearchResult {
-  const [debouncedRawQuery] = useDebounceValue(
-    query,
-    THREAD_SEARCH_DEBOUNCE_MS,
-  );
+  const debouncedRawQuery = useDebouncedValue(query, THREAD_SEARCH_DEBOUNCE_MS);
   const trimmedQuery = query.trim();
   const debouncedQuery = debouncedRawQuery.trim();
   const liveQueryIsSearchable = hasThreadSearchableQuery(trimmedQuery);
@@ -950,6 +953,9 @@ export function useThreadTimeline(
       });
     },
     enabled,
+    ...(options?.notifyOnChangeProps === undefined
+      ? {}
+      : { notifyOnChangeProps: options.notifyOnChangeProps }),
     refetchOnMount: options?.refetchOnMount ?? true,
     ...(options?.staleTime === undefined
       ? {}
@@ -967,7 +973,7 @@ export function useThreadTimeline(
 
 export function useThreadConversationOutline(
   id: string,
-  options?: ThreadTimelineQueryOptions,
+  options?: ThreadConversationOutlineQueryOptions,
 ) {
   const enabled = (options?.enabled ?? true) && Boolean(id);
   useThreadDetailRealtimeSubscription(id, { enabled });
@@ -992,8 +998,8 @@ export function useThreadTimelineTurnSummaryDetails(
 ) {
   return useQuery<TimelineTurnSummaryDetailsResponse>({
     queryKey: threadTimelineTurnSummaryDetailsQueryKey(identity),
-    queryFn: ({ signal }) =>
-      sdk.threads.timelineTurnSummaryDetails({
+    queryFn: async ({ signal }) => {
+      const input = {
         threadId: requireThreadId(
           identity.threadId,
           "useThreadTimelineTurnSummaryDetails",
@@ -1002,7 +1008,23 @@ export function useThreadTimelineTurnSummaryDetails(
         sourceSeqStart: String(identity.sourceSeqStart),
         turnId: identity.turnId,
         signal,
-      }),
+      };
+      const response = await sdk.threads.timelineTurnSummaryDetails(input);
+      let rows = response.rows;
+      let cursor = response.olderCursor;
+      while (cursor) {
+        const older = await sdk.threads.timelineTurnSummaryDetails({
+          ...input,
+          beforeCursor: cursor,
+        });
+        rows = prependOlderTimelineRows({
+          olderRows: older.rows,
+          loadedRows: rows,
+        });
+        cursor = older.olderCursor;
+      }
+      return { ...response, rows, olderCursor: null };
+    },
     enabled:
       (options?.enabled ?? true) &&
       Boolean(identity.threadId) &&

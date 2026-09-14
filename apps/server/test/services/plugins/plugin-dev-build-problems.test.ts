@@ -13,6 +13,7 @@ async function createRuntime() {
   const db = createConnection(":memory:");
   migrate(db);
   return createPluginRuntime({
+    machineEnrollments: null,
     deps: {
       db,
       hub: {
@@ -26,8 +27,6 @@ async function createRuntime() {
       dataDir: await mkdtemp(join(tmpdir(), "bb-dev-build-problems-")),
       appVersion: "0.9.0",
     },
-    nextCronRunAt: () => Number.MAX_SAFE_INTEGER,
-    settledWithin: async () => true,
   });
 }
 

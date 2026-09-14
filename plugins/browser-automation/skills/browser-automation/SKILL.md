@@ -9,8 +9,11 @@ act, and verify in short scripts.
 Choose `--backend local --headless --machine <host-id>` for headless Chrome on
 an enrolled host. Choose `--backend desktop --machine <host-id> --desktop
 <instance-id>` for a new dedicated desktop automation tab. Starting desktop
-control opens and focuses the browser panel; new pages created through that
-controller are selected automatically. Headless sessions remain headless.
+control opens the side panel and selects the browser tab only if its thread is
+already focused. New or activated controller pages follow the same rule;
+automation does not switch threads or bring the desktop window forward. Headless sessions remain headless.
+Plugin-owned local/headless Chrome launches with `--no-sandbox`, disabling Chrome's
+sandbox. Desktop attachment does not change the browser's launch flags.
 Resolve the explicit instance with `bb browser instances --host <host-id> --json`
 first. Never silently choose a different host, mode, or login profile.
 Adding `--tab <tab-id>` hands off an existing tab and its profile's logged-in

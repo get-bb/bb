@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
+import {
+  MemoryRouter,
+  Route,
+  Routes,
+  useNavigate,
+  useParams,
+} from "react-router-dom";
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   act,
@@ -75,6 +81,21 @@ import type { PromptDraftState } from "@bb/client-core";
 
 function composerTextEffectValues(storageKey: string | null) {
   return getComposerTextEffects(storageKey).map(({ effect }) => effect);
+}
+
+function RoutedPluginPanelView() {
+  const params = useParams<{
+    pluginId: string;
+    panelPath: string;
+    "*": string;
+  }>();
+  return (
+    <PluginPanelView
+      pluginId={params.pluginId ?? ""}
+      panelPath={params.panelPath ?? ""}
+      subPath={params["*"] ?? ""}
+    />
+  );
 }
 
 afterEach(() => {
@@ -1352,7 +1373,10 @@ describe("PluginNavSidebarItems + PluginPanelView", () => {
         <PluginNavSidebarItems />
         <Routes>
           <Route path="/" element={<div>home</div>} />
-          <Route path={PLUGIN_PANEL_ROUTE_PATH} element={<PluginPanelView />} />
+          <Route
+            path={PLUGIN_PANEL_ROUTE_PATH}
+            element={<RoutedPluginPanelView />}
+          />
         </Routes>
       </MemoryRouter>,
     );
@@ -1393,7 +1417,7 @@ describe("PluginNavSidebarItems + PluginPanelView", () => {
             element={
               <>
                 <LeavePanel />
-                <PluginPanelView />
+                <RoutedPluginPanelView />
               </>
             }
           />
@@ -1578,7 +1602,10 @@ describe("PluginNavSidebarItems + PluginPanelView", () => {
     render(
       <MemoryRouter initialEntries={["/plugins/ghost/board"]}>
         <Routes>
-          <Route path={PLUGIN_PANEL_ROUTE_PATH} element={<PluginPanelView />} />
+          <Route
+            path={PLUGIN_PANEL_ROUTE_PATH}
+            element={<RoutedPluginPanelView />}
+          />
         </Routes>
       </MemoryRouter>,
     );
@@ -1615,7 +1642,10 @@ describe("plugin panel shared title bar and full-bleed body", () => {
     return render(
       <MemoryRouter initialEntries={[route]}>
         <Routes>
-          <Route path={PLUGIN_PANEL_ROUTE_PATH} element={<PluginPanelView />} />
+          <Route
+            path={PLUGIN_PANEL_ROUTE_PATH}
+            element={<RoutedPluginPanelView />}
+          />
         </Routes>
       </MemoryRouter>,
     );
@@ -2039,7 +2069,14 @@ describe("plugin file opener tabs", () => {
             id: "editor",
             title: "Notes editor",
             extensions: ["md"],
-            component: MarkdownEditorProbe,
+            component: (props) => (
+              <>
+                <MarkdownEditorProbe {...props} />
+                <output data-testid="opener-target">
+                  {JSON.stringify(props.experimental_lineRange)}
+                </output>
+              </>
+            ),
           },
         ],
       }),
@@ -2084,7 +2121,108 @@ describe("plugin file opener tabs", () => {
     expect(
       screen.getByText("editor notes/todo.md @ workspace:env_1"),
     ).toBeDefined();
+    expect(screen.getByTestId("opener-target").textContent).toBe(
+      '{"startLineNumber":7,"endLineNumber":9}',
+    );
   });
+
+  it.each(["workspace", "host", "thread-storage"] as const)(
+    "forwards %s targets and refreshes only when the owner changes",
+    (kind) => {
+      const seen = vi.fn<(props: PluginFileOpenerProps) => void>();
+      setPluginSlotRegistrations(
+        "notes",
+        registrationSet({
+          fileOpeners: [
+            {
+              id: "editor",
+              title: "Notes editor",
+              extensions: ["md"],
+              component: (props) => {
+                seen(props);
+                return <div>editor</div>;
+              },
+            },
+          ],
+        }),
+      );
+      const makeTab = (
+        lineRange: { startLineNumber: number; endLineNumber: number } | null,
+      ) =>
+        buildFileOpenerPanelTab(
+          { id: "editor", pluginId: "notes" },
+          {
+            path: "notes/todo.md",
+            source: {
+              kind,
+              environmentId: "env_1",
+              projectId: null,
+              threadId: "thr_1",
+            },
+          },
+          kind === "workspace"
+            ? {
+                kind: "workspace-file-preview",
+                environmentId: "env_1",
+                projectId: null,
+                threadId: "thr_1",
+                tab: {
+                  path: "notes/todo.md",
+                  lineRange,
+                  source: { kind: "working-tree" },
+                  statusLabel: null,
+                },
+              }
+            : kind === "host"
+              ? {
+                  kind: "host-file-preview",
+                  environmentId: "env_1",
+                  hostId: null,
+                  threadId: "thr_1",
+                  tab: { path: "notes/todo.md", lineRange },
+                }
+              : {
+                  kind: "thread-storage-file-preview",
+                  environmentId: "env_1",
+                  threadId: "thr_1",
+                  tab: { path: "notes/todo.md", lineRange },
+                },
+        );
+      let tab = makeTab({ startLineNumber: 12, endLineNumber: 12 });
+      const content = () => (
+        <PluginPanelTabContent
+          tab={tab}
+          context={{ kind: "thread", threadId: "thr_1" }}
+          fileOpenerOriginal={<div>native</div>}
+        />
+      );
+      const mounted = render(content());
+      const first = seen.mock.lastCall?.[0];
+      expect(first?.experimental_lineRange).toEqual({
+        startLineNumber: 12,
+        endLineNumber: 12,
+      });
+      mounted.rerender(content());
+      expect(seen.mock.lastCall?.[0].experimental_lineRange).toBe(
+        first?.experimental_lineRange,
+      );
+      tab = makeTab({ startLineNumber: 12, endLineNumber: 12 });
+      mounted.rerender(content());
+      expect(seen.mock.lastCall?.[0].experimental_lineRange).not.toBe(
+        first?.experimental_lineRange,
+      );
+      expect(seen.mock.lastCall?.[0].source).toBe(first?.source);
+      tab = makeTab({ startLineNumber: 20, endLineNumber: 24 });
+      mounted.rerender(content());
+      expect(seen.mock.lastCall?.[0].experimental_lineRange).toEqual({
+        startLineNumber: 20,
+        endLineNumber: 24,
+      });
+      tab = makeTab(null);
+      mounted.rerender(content());
+      expect(seen.mock.lastCall?.[0].experimental_lineRange).toBeNull();
+    },
+  );
 
   it("lets an opener delegate to the exact native preview node", () => {
     function DelegatingEditor({ Original }: PluginFileOpenerProps) {

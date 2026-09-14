@@ -91,7 +91,6 @@ export function AddServerScreen() {
 
   return (
     <>
-      {}
       <Stack.Screen
         options={{ title: firstRun ? "Connect to a bb server" : "Add server" }}
       />

@@ -34,28 +34,21 @@ vi.mock("@/components/commands/AppCommandProvider", () => ({
   useIsAppCommandModifierHeld: () => false,
 }));
 vi.mock("@/components/plugin/PluginNavSidebarItems", () => ({
-  ExtensionsNavSidebarItem: () => <div>Extensions</div>,
+  ResourceNavSidebarItem: () => <div />,
   PluginNavSidebarItems: ({
     builtInEntries = [],
-    entries = [],
   }: {
     builtInEntries?: Array<{
       id: string;
       title: string;
       onActivate: MouseEventHandler<HTMLButtonElement>;
     }>;
-    entries?: Array<{ chrome: { pluginId: string; title: string } }>;
   }) => (
     <div>
       {builtInEntries.map((entry) => (
         <button key={entry.id} type="button" onClick={entry.onActivate}>
           {entry.title}
         </button>
-      ))}
-      {entries.map(({ chrome }) => (
-        <div key={chrome.pluginId} data-testid="built-in-plugin-entry">
-          {chrome.title}
-        </div>
       ))}
     </div>
   ),
@@ -69,6 +62,7 @@ vi.mock("./usePaneContentSplitDrag", () => ({
 }));
 
 function Replacement({
+  activeItemId,
   experimental_Original: Original,
   experimental_activate,
   items,
@@ -83,6 +77,7 @@ function Replacement({
         <button
           key={item.id}
           type="button"
+          aria-current={activeItemId === item.id ? "page" : undefined}
           {...item.experimental_splitProps}
           onClick={(event) =>
             experimental_activate(item.id, {
@@ -121,7 +116,6 @@ function Harness({ onOwnerMount }: { onOwnerMount: () => void }) {
         onNavigate={vi.fn()}
         onNewChat={vi.fn()}
         onSearchThreads={mocks.onSearchThreads}
-        toolsRoutePath="/tools/plugins"
       />
       <RetainedOwner onMount={onOwnerMount} />
       <LocationProbe />
@@ -129,10 +123,13 @@ function Harness({ onOwnerMount }: { onOwnerMount: () => void }) {
   );
 }
 
-function renderHarness(onOwnerMount = vi.fn()) {
+function renderHarness(
+  onOwnerMount = vi.fn(),
+  initialEntries: string[] = ["/"],
+) {
   return render(
     <Provider store={createStore()}>
-      <MemoryRouter>
+      <MemoryRouter initialEntries={initialEntries}>
         <SidebarProvider>
           <Harness onOwnerMount={onOwnerMount} />
         </SidebarProvider>
@@ -188,28 +185,6 @@ describe("SidebarNavigationRegion", () => {
     expect(mocks.openNewThreadInSplit).toHaveBeenCalledOnce();
   });
 
-  it("passes Automations through the plugin navigation row path", () => {
-    setPluginSlotRegistrations(
-      "automations",
-      registrationSet({
-        navPanels: [
-          {
-            id: "automations",
-            title: "Automations",
-            icon: "Calendar",
-            path: "automations",
-            component: () => null,
-          },
-        ],
-      }),
-    );
-    renderHarness();
-
-    expect(screen.getByTestId("built-in-plugin-entry").textContent).toBe(
-      "Automations",
-    );
-  });
-
   it("routes Search through the quick palette without inline search UI", () => {
     registerFixture();
     renderHarness();
@@ -232,6 +207,37 @@ describe("SidebarNavigationRegion", () => {
 
     expect(screen.getByTestId("pathname").textContent).toBe(
       "/plugins/garden/docs",
+    );
+  });
+
+  it("routes Plugins and Skills while preserving the active resource row", () => {
+    registerFixture();
+    renderHarness(vi.fn(), ["/skills/library/demo"]);
+
+    expect(
+      screen
+        .getByRole("button", { name: "Skills" })
+        .getAttribute("aria-current"),
+    ).toBe("page");
+    expect(
+      screen
+        .getByRole("button", { name: "Plugins" })
+        .getAttribute("aria-current"),
+    ).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Plugins" }));
+    expect(screen.getByTestId("pathname").textContent).toBe(
+      "/plugins",
+    );
+    expect(
+      screen
+        .getByRole("button", { name: "Plugins" })
+        .getAttribute("aria-current"),
+    ).toBe("page");
+
+    fireEvent.click(screen.getByRole("button", { name: "Skills" }));
+    expect(screen.getByTestId("pathname").textContent).toBe(
+      "/skills",
     );
   });
 

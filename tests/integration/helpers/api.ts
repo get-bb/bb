@@ -48,19 +48,20 @@ import {
   threadPendingInteractionsResponseSchema,
   threadResponseSchema,
   threadTimelineResponseSchema,
+  THREAD_EVENT_LIST_PAGE_SIZE,
 } from "@bb/server-contract";
 
 export interface CreateHostThreadOptions {
   execution?: ThreadExecutionRequestOptions;
   hostId: string;
   input?: CreateThreadRequest["input"];
-  origin?: CreateThreadRequest["origin"];
   parentThreadId?: string;
   projectId: string;
   providerId?: string;
   title?: string;
   workspace:
     | { type: "managed-worktree" }
+    | { type: "personal" }
     | { path: string | null; type: "unmanaged" };
 }
 
@@ -68,7 +69,6 @@ export interface CreateReuseThreadOptions {
   execution?: ThreadExecutionRequestOptions;
   environmentId: string;
   input?: CreateThreadRequest["input"];
-  origin?: CreateThreadRequest["origin"];
   parentThreadId?: string;
   projectId: string;
   providerId?: string;
@@ -131,7 +131,7 @@ function defaultModelForProvider(providerId: string): string {
 function toWorkspaceArgs(
   workspace: CreateHostThreadOptions["workspace"],
 ): WorkspaceArgs {
-  if (workspace.type === "unmanaged") {
+  if (workspace.type === "unmanaged" || workspace.type === "personal") {
     return workspace;
   }
   return { ...workspace, baseBranch: { kind: "default" } };
@@ -159,7 +159,7 @@ export async function archiveThread(
   api: PublicApiClient,
   threadId: string,
 ): Promise<void> {
-  const response = await api.threads[":id"].archive.$post({
+  const response = await api.threads[":id"]["archive-all"].$post({
     param: { id: threadId },
   });
   await expectStatus(response, 200, `archive thread ${threadId}`);
@@ -176,22 +176,19 @@ export async function createProject(
   return projectResponseSchema.parse(await response.json());
 }
 
-export async function createHostThread(
+async function postThread(
   api: PublicApiClient,
-  options: CreateHostThreadOptions,
+  environment: CreateThreadRequest["environment"],
+  options: CreateHostThreadOptions | CreateReuseThreadOptions,
+  label: string,
 ): Promise<Thread> {
-  const origin = options.origin ?? DEFAULT_PUBLIC_TEST_THREAD_ORIGIN;
   const providerId = options.providerId ?? "fake";
   const { model, ...execution } = options.execution ?? {};
   const response = await api.threads.$post({
     json: {
-      environment: {
-        type: "host",
-        hostId: options.hostId,
-        workspace: toWorkspaceArgs(options.workspace),
-      },
+      environment,
       input: options.input ?? defaultThreadInput(DEFAULT_THREAD_BOOTSTRAP_TEXT),
-      origin,
+      origin: DEFAULT_PUBLIC_TEST_THREAD_ORIGIN,
       ...execution,
       model: model ?? defaultModelForProvider(providerId),
       parentThreadId: options.parentThreadId,
@@ -202,37 +199,39 @@ export async function createHostThread(
       originKind: null,
     },
   });
-  await expectStatus(response, 201, "create host thread");
+  await expectStatus(response, 201, label);
   return threadSchema.parse(await response.json());
+}
+
+export async function createHostThread(
+  api: PublicApiClient,
+  options: CreateHostThreadOptions,
+): Promise<Thread> {
+  return postThread(
+    api,
+    {
+      type: "host",
+      hostId: options.hostId,
+      workspace: toWorkspaceArgs(options.workspace),
+    },
+    options,
+    "create host thread",
+  );
 }
 
 export async function createReuseThread(
   api: PublicApiClient,
   options: CreateReuseThreadOptions,
 ): Promise<Thread> {
-  const origin = options.origin ?? DEFAULT_PUBLIC_TEST_THREAD_ORIGIN;
-  const providerId = options.providerId ?? "fake";
-  const { model, ...execution } = options.execution ?? {};
-  const response = await api.threads.$post({
-    json: {
-      environment: {
-        type: "reuse",
-        environmentId: options.environmentId,
-      },
-      input: options.input ?? defaultThreadInput(DEFAULT_THREAD_BOOTSTRAP_TEXT),
-      origin,
-      ...execution,
-      model: model ?? defaultModelForProvider(providerId),
-      parentThreadId: options.parentThreadId,
-      projectId: options.projectId,
-      providerId,
-      title: options.title,
-      startedOnBehalfOf: null,
-      originKind: null,
+  return postThread(
+    api,
+    {
+      type: "reuse",
+      environmentId: options.environmentId,
     },
-  });
-  await expectStatus(response, 201, "create reuse thread");
-  return threadSchema.parse(await response.json());
+    options,
+    "create reuse thread",
+  );
 }
 
 export async function deleteThread(
@@ -391,12 +390,26 @@ export async function getThreadEvents(
   api: PublicApiClient,
   threadId: string,
 ): Promise<ThreadEventRow[]> {
-  const response = await api.threads[":id"].events.$get({
-    param: { id: threadId },
-    query: { limit: "10000" },
-  });
-  await expectStatus(response, 200, `get thread events ${threadId}`);
-  return threadEventRowSchema.array().parse(await response.json());
+  const rows: ThreadEventRow[] = [];
+  let afterSeq: string | undefined;
+  for (;;) {
+    const response = await api.threads[":id"].events.$get({
+      param: { id: threadId },
+      query: {
+        ...(afterSeq === undefined ? {} : { afterSeq }),
+        limit: String(THREAD_EVENT_LIST_PAGE_SIZE),
+        order: "asc",
+      },
+    });
+    await expectStatus(response, 200, `get thread events ${threadId}`);
+    const page = threadEventRowSchema.array().parse(await response.json());
+    rows.push(...page);
+    const last = page.at(-1);
+    if (last === undefined || page.length < THREAD_EVENT_LIST_PAGE_SIZE) {
+      return rows;
+    }
+    afterSeq = String(last.seq);
+  }
 }
 
 export async function getThreadOutput(

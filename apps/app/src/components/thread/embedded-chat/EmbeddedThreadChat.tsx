@@ -63,7 +63,7 @@ import {
 import { useMarkThreadRead } from "@/hooks/mutations/thread-state-mutations";
 import { useThreadReadTracking } from "@/hooks/useThreadReadTracking";
 import { useComposerTextEffects } from "@/lib/composer-text-effects";
-import { getMutationErrorMessage } from "@/lib/mutation-errors";
+import { showMutationErrorToast } from "@/lib/mutation-errors";
 import type { PromptDraftScope } from "@/hooks/usePromptDraftStorage";
 import { appToast } from "@/components/ui/app-toast";
 import {
@@ -93,20 +93,6 @@ function createPluginComposerHostIdentity(scopeIdentity: string): string {
   pluginComposerHostOwnershipSequence += 1;
   return `${scopeIdentity}:ownership:${pluginComposerHostOwnershipSequence}`;
 }
-
-interface EmbeddedThreadChatLabels {
-  placeholder: string;
-  stopping: string;
-  provisioning: string;
-  sendError: string;
-}
-
-const DEFAULT_LABELS: EmbeddedThreadChatLabels = {
-  placeholder: "Reply…",
-  stopping: "Stopping thread...",
-  provisioning: "Provisioning thread...",
-  sendError: "Failed to send message",
-};
 
 type PendingInteractionsQueryBannerProps =
   | { state: "loading" }
@@ -244,7 +230,6 @@ function EmbeddedThreadChatWithComposer({
   surfaceTone = "background",
   composer,
 }: EmbeddedThreadChatComposerModeProps) {
-  const labels = DEFAULT_LABELS;
   const systemConfigQuery = useSystemConfig();
   const steerActiveThreadOnEnter =
     systemConfigQuery.data?.generalSettings.steerActiveThreadOnEnter ??
@@ -518,15 +503,13 @@ function EmbeddedThreadChatWithComposer({
           return;
         }
         promptDraft.restoreIfEmpty(submittedDraft);
-        appToast.error(
-          getMutationErrorMessage({
-            error,
-            fallbackMessage: labels.sendError,
-            lifecycleOperation: shouldQueueFollowUpMessage(displayStatus)
-              ? "queue_message"
-              : "send_message",
-          }),
-        );
+        showMutationErrorToast({
+          error,
+          fallbackMessage: "Failed to send message",
+          lifecycleOperation: shouldQueueFollowUpMessage(displayStatus)
+            ? "queue_message"
+            : "send_message",
+        });
       })
       .finally(() => {
         if (isMountedRef.current) {
@@ -539,7 +522,6 @@ function EmbeddedThreadChatWithComposer({
     defaultSendOrQueueInput,
     displayStatus,
     isTurnSubmitting,
-    labels.sendError,
     promptDraft,
     setBottomAttachmentError,
   ]);
@@ -602,13 +584,11 @@ function EmbeddedThreadChatWithComposer({
           return;
         }
         promptDraft.restoreIfEmpty(submittedDraft);
-        appToast.error(
-          getMutationErrorMessage({
-            error,
-            fallbackMessage: labels.sendError,
-            lifecycleOperation: "send_message",
-          }),
-        );
+        showMutationErrorToast({
+          error,
+          fallbackMessage: "Failed to send message",
+          lifecycleOperation: "send_message",
+        });
       })
       .finally(() => {
         if (isMountedRef.current) {
@@ -620,7 +600,6 @@ function EmbeddedThreadChatWithComposer({
     currentPromptDraft,
     currentPromptDraftInput,
     executionRequestFields,
-    labels.sendError,
     promptDraft,
     queuedMessages,
     sendQueuedMessageById,
@@ -799,20 +778,18 @@ function EmbeddedThreadChatWithComposer({
     subscribeQueuedDraft,
     updateInlineQueuedMessage,
   ]);
-  const activeBottomPluginComposerHost = bottomPluginComposerHost;
-  const activeQueuedPluginComposerHost = queuedPluginComposerHost;
   const bottomComposerTextEffects = useComposerTextEffects(
-    activeBottomPluginComposerHost?.textEffectKey ?? null,
+    bottomPluginComposerHost?.textEffectKey ?? null,
   );
   const queuedComposerTextEffects = useComposerTextEffects(
-    activeQueuedPluginComposerHost?.textEffectKey ?? null,
+    queuedPluginComposerHost?.textEffectKey ?? null,
   );
 
   const composerPlaceholder = isStopRequested
-    ? labels.stopping
+    ? "Stopping thread..."
     : isProvisioning
-      ? labels.provisioning
-      : labels.placeholder;
+      ? "Provisioning thread..."
+      : "Reply…";
 
   const bottomComposerConfig = useMemo<FollowUpComposerProps>(
     () => ({
@@ -1063,8 +1040,8 @@ function EmbeddedThreadChatWithComposer({
           attachments={inlineAttachmentsConfig}
           stack={null}
           composer={inlineComposerConfig}
-          pluginComposerHost={activeQueuedPluginComposerHost}
-          pluginComposerScope={activeQueuedPluginComposerHost?.scope ?? null}
+          pluginComposerHost={queuedPluginComposerHost}
+          pluginComposerScope={queuedPluginComposerHost?.scope ?? null}
           textEffects={queuedComposerTextEffects}
           environmentSummary={null}
           contextWindowUsage={null}
@@ -1082,7 +1059,6 @@ function EmbeddedThreadChatWithComposer({
       ),
     };
   }, [
-    activeQueuedPluginComposerHost,
     dismissInlineQueuedMessageEditor,
     inlineAttachmentsConfig,
     inlineComposerConfig,
@@ -1092,6 +1068,7 @@ function EmbeddedThreadChatWithComposer({
     inlinePermissionConfig,
     promptActions,
     queuedComposerTextEffects,
+    queuedPluginComposerHost,
     surfaceKey,
     typeaheadConfig,
   ]);
@@ -1159,8 +1136,8 @@ function EmbeddedThreadChatWithComposer({
           stack={queuedMessagesStack}
           pendingInteraction={pendingInteractionBanner}
           composer={bottomComposerConfig}
-          pluginComposerHost={activeBottomPluginComposerHost}
-          pluginComposerScope={activeBottomPluginComposerHost?.scope ?? null}
+          pluginComposerHost={bottomPluginComposerHost}
+          pluginComposerScope={bottomPluginComposerHost?.scope ?? null}
           textEffects={bottomComposerTextEffects}
           environmentSummary={composer.environmentSummary}
           contextWindowUsage={null}

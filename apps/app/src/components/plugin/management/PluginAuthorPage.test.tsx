@@ -154,7 +154,7 @@ afterEach(() => {
 describe("PluginAuthorPage", () => {
   it("aligns the author header with the toolbar and card grid", async () => {
     renderPage(
-      "/extensions/plugins?author=12%3Abb-community%3Agithub%3Apatlee",
+      "/plugins?author=12%3Abb-community%3Agithub%3Apatlee",
     );
 
     await screen.findByRole("heading", { name: /^Pat Lee/u });
@@ -197,7 +197,7 @@ describe("PluginAuthorPage", () => {
     },
   ])("selects an author name by $rule", async ({ entries, expected }) => {
     renderPage(
-      "/extensions/plugins?author=12%3Abb-community%3Agithub%3Apatlee",
+      "/plugins?author=12%3Abb-community%3Agithub%3Apatlee",
       vi.fn(),
       entries,
     );
@@ -208,7 +208,7 @@ describe("PluginAuthorPage", () => {
 
   it("restores the URL and shows only the selected author's plugins", async () => {
     renderPage(
-      "/extensions/plugins?author=12%3Abb-community%3Agithub%3Apatlee&sort=recently-added&direction=asc",
+      "/plugins?author=12%3Abb-community%3Agithub%3Apatlee&sort=recently-added&direction=asc",
     );
 
     expect(
@@ -233,7 +233,7 @@ describe("PluginAuthorPage", () => {
 
   it("applies search, multiple categories, and both optional-value sorts", async () => {
     const onOpenPlugin = renderPage(
-      "/extensions/plugins?author=12%3Abb-community%3Agithub%3Apatlee&sort=most-installed",
+      "/plugins?author=12%3Abb-community%3Agithub%3Apatlee&sort=most-installed",
     );
 
     await screen.findByRole("heading", { name: /^Pat Lee/u });
@@ -283,7 +283,7 @@ describe("PluginAuthorPage", () => {
 
   it("uses the catalog search result for a tag-only query", async () => {
     renderPage(
-      "/extensions/plugins?author=12%3Abb-community%3Agithub%3Apatlee&query=agent-interaction",
+      "/plugins?author=12%3Abb-community%3Agithub%3Apatlee&query=agent-interaction",
     );
 
     expect(

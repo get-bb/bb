@@ -3,16 +3,39 @@ import { Icon } from "@bb/shared-ui/icon";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import {
   definePluginApp,
+  Markdown,
   useRpc,
   type PluginMessageDirectiveProps,
+  type MarkdownProps,
 } from "@get-bb/plugin-sdk/app";
 import type { inlineVisRpcContract } from "./server.js";
+
+type PreviewSource = "workspace" | "thread-storage";
+
+const PREVIEW_SOURCE_CONFIG = {
+  workspace: { route: "worktree/files", opensWorkspace: true },
+  "thread-storage": {
+    route: "thread-storage/files",
+    opensWorkspace: false,
+  },
+} as const satisfies Record<
+  PreviewSource,
+  { route: string; opensWorkspace: boolean }
+>;
 
 type LoadState =
   | { status: "missing-file" }
   | { status: "invalid-height"; message: string }
   | { status: "loading"; file: string }
-  | { status: "ready"; file: string }
+  | { status: "ready"; kind: "html"; file: string; source: PreviewSource }
+  | {
+      status: "ready";
+      kind: "markdown";
+      file: string;
+      source: PreviewSource;
+      content: string;
+      document: NonNullable<MarkdownProps["experimental_document"]>;
+    }
   | { status: "error"; file: string; message: string };
 
 const DEFAULT_HEIGHT_PX = 224;
@@ -23,8 +46,13 @@ function encodePathSegments(file: string): string {
   return file.split("/").map(encodeURIComponent).join("/");
 }
 
-function buildWorktreePreviewUrl(threadId: string, file: string): string {
-  return `/api/v1/threads/${encodeURIComponent(threadId)}/worktree/files/${encodePathSegments(file)}`;
+function buildPreviewUrl(
+  threadId: string,
+  file: string,
+  source: PreviewSource,
+): string {
+  const route = PREVIEW_SOURCE_CONFIG[source].route;
+  return `/api/v1/threads/${encodeURIComponent(threadId)}/${route}/${encodePathSegments(file)}`;
 }
 
 function parsePreviewHeight(value: string | undefined): number | null {
@@ -70,6 +98,7 @@ function InlineVisDirective({
 }: PluginMessageDirectiveProps) {
   const rpc = useRpc<typeof inlineVisRpcContract>();
   const fileAttr = attributes.file?.trim() ?? "";
+  const sourceAttr = attributes.source;
   const heightAttr = attributes.height;
   const previewHeight = parsePreviewHeight(heightAttr);
   const heightError =
@@ -93,21 +122,18 @@ function InlineVisDirective({
       setState({ status: "missing-file" });
       return;
     }
-
     let cancelled = false;
     setState({ status: "loading", file: fileAttr });
 
     void (async () => {
       try {
-        const result = await rpc.call("prepareHtmlPreview", {
+        const result = await rpc.call("preparePreview", {
           threadId: message.threadId,
           file: fileAttr,
+          ...(sourceAttr === undefined ? {} : { source: sourceAttr }),
         });
         if (cancelled) return;
-        setState({
-          status: "ready",
-          file: result.file,
-        });
+        setState({ status: "ready", ...result });
       } catch (error) {
         if (cancelled) return;
         setState({
@@ -121,7 +147,7 @@ function InlineVisDirective({
     return () => {
       cancelled = true;
     };
-  }, [fileAttr, heightError, message.threadId, rpc]);
+  }, [fileAttr, heightError, message.threadId, rpc, sourceAttr]);
 
   if (state.status === "missing-file") {
     return (
@@ -183,13 +209,13 @@ function InlineVisDirective({
     );
   }
 
-  const previewUrl = buildWorktreePreviewUrl(message.threadId, state.file);
+  const sourceConfig = PREVIEW_SOURCE_CONFIG[state.source];
 
   return (
     <PreviewCard
       file={state.file}
       action={
-        openWorkspaceFile === null ? null : (
+        !sourceConfig.opensWorkspace || openWorkspaceFile === null ? null : (
           <button
             type="button"
             aria-label={`Open ${state.file} in sidebar`}
@@ -204,13 +230,25 @@ function InlineVisDirective({
         )
       }
     >
-      <iframe
-        title={`inline-vis: ${state.file}`}
-        src={previewUrl}
-        sandbox="allow-scripts"
-        style={{ height: previewHeight ?? DEFAULT_HEIGHT_PX }}
-        className="block w-full border-0 bg-background"
-      />
+      {state.kind === "markdown" ? (
+        <div
+          style={{ height: previewHeight ?? DEFAULT_HEIGHT_PX }}
+          className="overflow-auto p-3"
+        >
+          <Markdown
+            content={state.content}
+            experimental_document={state.document}
+          />
+        </div>
+      ) : (
+        <iframe
+          title={`inline-vis: ${state.file}`}
+          src={buildPreviewUrl(message.threadId, state.file, state.source)}
+          sandbox="allow-scripts"
+          style={{ height: previewHeight ?? DEFAULT_HEIGHT_PX }}
+          className="block w-full border-0 bg-background"
+        />
+      )}
     </PreviewCard>
   );
 }

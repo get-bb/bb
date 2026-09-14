@@ -1,13 +1,7 @@
-import {
-  chmod,
-  mkdir,
-  mkdtemp,
-  readFile,
-  rm,
-  writeFile,
-} from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
-import { basename, delimiter, join } from "node:path";
+import { basename, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildPluginApp } from "./build-plugin-app.js";
 import {
@@ -118,17 +112,22 @@ describe("plugin build toolchain", () => {
     );
 
     it.skipIf(process.platform === "win32")(
-      "keeps script-policy npm config out of the fetch",
+      "fetches with the shipped npm and excludes script-policy config without PATH executables",
       async () => {
-        const binDir = join(baseDir, "bin");
         const envDump = join(baseDir, "npm-env.txt");
-        await mkdir(binDir, { recursive: true });
-        const fakeNpm = join(binDir, "npm");
-        await writeFile(fakeNpm, `#!/bin/sh\nenv > "${envDump}"\nexit 0\n`);
-        await chmod(fakeNpm, 0o755);
+        const preload = join(baseDir, "capture-npm-env.mjs");
+        await writeFile(
+          preload,
+          [
+            'import { writeFileSync } from "node:fs";',
+            `writeFileSync(${JSON.stringify(envDump)}, Object.entries(process.env).map(([key, value]) => key + "=" + value).join("\\n"));`,
+            "process.exit(0);",
+          ].join("\n"),
+        );
 
         const overrides: Record<string, string> = {
-          PATH: `${binDir}${delimiter}${process.env.PATH ?? ""}`,
+          PATH: baseDir,
+          NODE_OPTIONS: `--import=${pathToFileURL(preload).href}`,
           npm_config_allow_scripts: "@github/keytar,node-pty",
           NPM_CONFIG_IGNORE_SCRIPTS: "false",
           npm_config_registry: "https://registry.example.invalid/",

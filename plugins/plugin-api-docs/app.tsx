@@ -48,7 +48,7 @@ function PluginApiMapPage({ subPath }: { subPath: string }) {
     (displayName: string) => {
       const id = firstPartyPluginId(displayName);
       if (!id || !resolvable?.has(id)) return null;
-      return `/extensions/plugins/${id}`;
+      return `/plugins/${id}`;
     },
     [resolvable],
   );

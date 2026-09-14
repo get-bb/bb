@@ -1,5 +1,8 @@
 import { closeSession, getThread, listEvents } from "@bb/db";
-import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
+import {
+  HOST_DAEMON_PROTOCOL_VERSION,
+  hostDaemonServerWsMessageSchema,
+} from "@bb/host-daemon-contract";
 import { threadScope, turnScope } from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { settleDanglingBackgroundTasks } from "../../src/services/threads/background-task-reconciliation.js";
@@ -301,13 +304,11 @@ describe("background-task lifecycle reconciliation triggers", () => {
         method: "POST",
         headers: internalAuthHeaders(harness, {
           hostId: host.id,
-          hostType: host.type,
         }),
         body: JSON.stringify({
           hostId: host.id,
           instanceId: "instance-restarted",
           hostName: host.name,
-          hostType: host.type,
           hasMachineCredential: false,
           platform: "darwin",
           dataDir: "/tmp/host-daemon-task-settle-restart",
@@ -339,13 +340,11 @@ describe("background-task lifecycle reconciliation triggers", () => {
         method: "POST",
         headers: internalAuthHeaders(harness, {
           hostId: host.id,
-          hostType: host.type,
         }),
         body: JSON.stringify({
           hostId: host.id,
           instanceId: "instance-1",
           hostName: host.name,
-          hostType: host.type,
           hasMachineCredential: false,
           platform: "darwin",
           dataDir: "/tmp/host-daemon-task-settle-same-instance",
@@ -370,13 +369,11 @@ describe("background-task lifecycle reconciliation triggers", () => {
         method: "POST",
         headers: internalAuthHeaders(harness, {
           hostId: host.id,
-          hostType: host.type,
         }),
         body: JSON.stringify({
           hostId: host.id,
           instanceId: session.instanceId,
           hostName: host.name,
-          hostType: host.type,
           hasMachineCredential: false,
           platform: "darwin",
           dataDir: "/tmp/host-daemon-task-live-same-instance",
@@ -387,7 +384,16 @@ describe("background-task lifecycle reconciliation triggers", () => {
       });
 
       expect(response.status).toBe(201);
-      expect(previousSocket.messages).toEqual([]);
+      expect(
+        previousSocket.messages.map((message) =>
+          hostDaemonServerWsMessageSchema.parse(JSON.parse(message)),
+        ),
+      ).toEqual([
+        {
+          type: "machine-environment.replace",
+          environment: { revision: expect.any(Number), entries: [] },
+        },
+      ]);
       expect(previousSocket.closed).toEqual([
         { code: 1000, reason: "replaced" },
       ]);
@@ -405,13 +411,11 @@ describe("background-task lifecycle reconciliation triggers", () => {
         method: "POST",
         headers: internalAuthHeaders(harness, {
           hostId: host.id,
-          hostType: host.type,
         }),
         body: JSON.stringify({
           hostId: host.id,
           instanceId: "instance-restarted",
           hostName: host.name,
-          hostType: host.type,
           hasMachineCredential: false,
           platform: "darwin",
           dataDir: "/tmp/host-daemon-task-live-restarted",
@@ -422,8 +426,16 @@ describe("background-task lifecycle reconciliation triggers", () => {
       });
 
       expect(response.status).toBe(201);
-      expect(previousSocket.messages).toEqual([
-        JSON.stringify({ type: "session-close", reason: "replaced" }),
+      expect(
+        previousSocket.messages.map((message) =>
+          hostDaemonServerWsMessageSchema.parse(JSON.parse(message)),
+        ),
+      ).toEqual([
+        {
+          type: "machine-environment.replace",
+          environment: { revision: expect.any(Number), entries: [] },
+        },
+        { type: "session-close", reason: "replaced" },
       ]);
       expect(previousSocket.closed).toEqual([
         { code: 1000, reason: "replaced" },
@@ -466,13 +478,11 @@ describe("active thread disconnect reconciliation triggers", () => {
         method: "POST",
         headers: internalAuthHeaders(harness, {
           hostId: host.id,
-          hostType: host.type,
         }),
         body: JSON.stringify({
           hostId: host.id,
           instanceId: "instance-1",
           hostName: host.name,
-          hostType: host.type,
           hasMachineCredential: false,
           platform: "darwin",
           dataDir: "/tmp/host-daemon-active-same-instance",
@@ -492,55 +502,62 @@ describe("active thread disconnect reconciliation triggers", () => {
     });
   });
 
-  it("records a confirmed daemon restart when a different daemon instance registers", async () => {
-    await withTestHarness(async (harness) => {
-      const { host, session, thread } = seedActiveTurnThread(harness);
+  it.each(["instance-1", "instance-restarted"])(
+    "distinguishes a missing turn from a daemon restart for %s",
+    async (instanceId) => {
+      await withTestHarness(async (harness) => {
+        const { host, session, thread } = seedActiveTurnThread(harness);
 
-      handleDaemonSocketClosed(harness.deps, { sessionId: session.id });
+        handleDaemonSocketClosed(harness.deps, { sessionId: session.id });
 
-      const response = await harness.app.request("/internal/session/open", {
-        method: "POST",
-        headers: internalAuthHeaders(harness, {
-          hostId: host.id,
-          hostType: host.type,
-        }),
-        body: JSON.stringify({
-          hostId: host.id,
-          instanceId: "instance-restarted",
-          hostName: host.name,
-          hostType: host.type,
-          hasMachineCredential: false,
-          platform: "darwin",
-          dataDir: "/tmp/host-daemon-active-restarted-instance",
-          localApiPort: null,
-          protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
-          activeThreads: [],
-        }),
-      });
+        const response = await harness.app.request("/internal/session/open", {
+          method: "POST",
+          headers: internalAuthHeaders(harness, {
+            hostId: host.id,
+          }),
+          body: JSON.stringify({
+            hostId: host.id,
+            instanceId,
+            hostName: host.name,
+            hasMachineCredential: false,
+            platform: "darwin",
+            dataDir: "/tmp/host-daemon-active-restarted-instance",
+            localApiPort: null,
+            protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
+            activeThreads: [],
+          }),
+        });
 
-      expect(response.status).toBe(201);
-      expect(getThread(harness.deps.db, thread.id)?.status).toBe("error");
-      const rows = listEvents(harness.deps.db, { threadId: thread.id }).filter(
-        (row) => row.type !== "turn/started",
-      );
-      expect(rows.map((row) => row.type)).toEqual([
-        "turn/completed",
-        "system/error",
-        "system/thread/interrupted",
-      ]);
-      expect(JSON.parse(rows[0]!.data)).toMatchObject({
-        status: "interrupted",
+        expect(response.status).toBe(201);
+        expect(getThread(harness.deps.db, thread.id)?.status).toBe("error");
+        const rows = listEvents(harness.deps.db, {
+          threadId: thread.id,
+        }).filter((row) => row.type !== "turn/started");
+        expect(rows.map((row) => row.type)).toEqual([
+          "turn/completed",
+          "system/error",
+          "system/thread/interrupted",
+        ]);
+        expect(JSON.parse(rows[0]!.data)).toMatchObject({
+          status: "interrupted",
+        });
+        expect(JSON.parse(rows[1]!.data)).toMatchObject({
+          code: "thread_command_failed",
+          message:
+            instanceId === "instance-1"
+              ? "Thread interrupted because the connection to the host was lost"
+              : "Thread interrupted because the host daemon disconnected",
+          detail: "Please retry the thread to continue.",
+        });
+        expect(JSON.parse(rows[2]!.data)).toEqual({
+          reason: "host-daemon-restarted",
+          ...(instanceId === "instance-1"
+            ? { cause: "host-connection-lost" }
+            : {}),
+        });
       });
-      expect(JSON.parse(rows[1]!.data)).toMatchObject({
-        code: "thread_command_failed",
-        message: "Thread interrupted because the host daemon disconnected",
-        detail: "Please retry the thread to continue.",
-      });
-      expect(JSON.parse(rows[2]!.data)).toEqual({
-        reason: "host-daemon-restarted",
-      });
-    });
-  });
+    },
+  );
 
   it("records a lost host connection after the live event window elapses without a reconnect", async () => {
     await withTestHarness(async (harness) => {

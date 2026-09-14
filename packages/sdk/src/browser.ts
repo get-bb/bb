@@ -45,8 +45,6 @@ export function createBrowserBbSdk(
   });
 }
 
-export const bb = createBrowserBbSdk();
-
 export { BbHttpError, BbRequestTimeoutError } from "./response.js";
 export type { BbHttpErrorArgs } from "./response.js";
 export { createBbSdk, createBuiltinPlanCommandTextInput, createHttpTransport };

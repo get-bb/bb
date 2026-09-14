@@ -1,3 +1,4 @@
+import type { MachineBootstrapApi } from "./machine-bootstrap.js";
 import type Database from "better-sqlite3";
 import type { Context } from "hono";
 import type * as z from "zod";
@@ -15,16 +16,23 @@ import type {
   ReasoningLevel,
   ServiceTier,
   ThreadQueuedMessage,
+  WorkspaceProvisionType,
 } from "@bb/domain";
 import type { ProviderFork } from "@bb/domain/provider-fork";
-import type { BbSdk } from "@bb/sdk";
+import type {
+  BbSdk,
+  ThreadPluginMetadataArgs,
+  ThreadPluginMetadataUpdateArgs,
+  ThreadPluginMetadataResult,
+} from "@bb/sdk";
 import type {
   ExecutionInputFieldSource,
   StartedOnBehalfOf,
   ThreadCreateOrigin,
   ThreadResponse,
+  TerminalSession,
 } from "@bb/server-contract";
-import type { JsonValue } from "./json-value.js";
+import type { JsonValue, ReadonlyJsonValue } from "./json-value.js";
 import type {
   PluginRpcContract,
   PluginRpcHandlers,
@@ -257,6 +265,10 @@ export interface PluginTurnFailedEvent {
  * queued row GET /threads/:id/queued-messages serves.
  */
 export interface PluginThreadEventPayloads {
+  /** Debounced per thread (at most once per second), with the latest sequence and current thread DTO. Reading history does not emit this event. */
+  "experimental_thread.events": { thread: ThreadResponse; sequence: number };
+  /** Real accepted terminal input; excludes output, keepalives and input contents. */
+  "experimental_terminal.input": { terminal: TerminalSession };
   /** Fired after a thread row is created. */
   "thread.created": { thread: ThreadResponse };
   /** Fired when a thread transitions into `active`. */
@@ -269,6 +281,14 @@ export interface PluginThreadEventPayloads {
   "thread.failed": { thread: ThreadResponse; error: string | null };
   /** Fired after a thread is archived (including cascade archives). */
   "thread.archived": { thread: ThreadResponse };
+  /**
+   * Fired after a thread comes back from the archive. Nothing is provisioned
+   * here: a provider that tore its environment down on archive is asked to
+   * provide one again when the thread next needs to run, with that
+   * environment in the ask's context. This is the moment to start warming
+   * one up ahead of that ask.
+   */
+  "thread.unarchived": { thread: ThreadResponse };
   /** Fired after a thread is soft-deleted. */
   "thread.deleted": { thread: ThreadResponse };
   /** Fired after a pending interaction row is committed. */
@@ -306,6 +326,16 @@ export interface PluginThreadEventPayloads {
    * that is at capacity instead of jumping the queue.
    */
   "turn.failed": PluginTurnFailedEvent;
+  /**
+   * Fired after a queued row is removed before it ever dispatched — the user
+   * deleted it from the queued card or `bb thread queue`. This is the only
+   * signal for that removal: a plugin holding external resources for a
+   * waiting message (a sandbox mid-provision, a reserved slot) releases them
+   * here. Rows that dispatch fire `message.dispatched` instead, and rows that
+   * vanish because their thread was archived or deleted fire the thread
+   * event, not this one.
+   */
+  "message.cancelled": { entry: ThreadQueuedMessage };
 }
 
 export type PluginThreadEventName = keyof PluginThreadEventPayloads;
@@ -313,6 +343,177 @@ export type PluginThreadEventName = keyof PluginThreadEventPayloads;
 export type PluginThreadEventHandler<E extends PluginThreadEventName> = (
   payload: PluginThreadEventPayloads[E],
 ) => void | Promise<void>;
+
+// ---------------------------------------------------------------------------
+// Environment providers: places a thread can run that a plugin provisions.
+// ---------------------------------------------------------------------------
+
+/**
+ * The facts this provider consumes, in one declaration. Every member is
+ * something core can evaluate before the thread exists and supply to
+ * `create`, so it is also the whole of what decides where the provider is
+ * offered, and the picker needs to know no provider by name. Every member
+ * defaults to false.
+ *
+ * - `projectCheckout` — the provider works from this project's directory on
+ *   that machine, git or not, so core refuses a machine with no checkout of
+ *   the project at create time and `context.projectCheckout` is non-null.
+ * - `gitCheckout` — that directory must also be a git repository with at
+ *   least one commit. Core inspects the selected machine and rejects an
+ *   invalid selection before creating the thread. Implies `projectCheckout`.
+ * - `gitRemote` — the provider clones the project itself, so an explicit
+ *   selection is rejected when the project has no git remote.
+ * - `projectless` — this provider serves only threads that have no project,
+ *   so it is offered for those and nowhere else. It cannot be combined with
+ *   `projectCheckout`, `gitCheckout` or `gitRemote`, which need a project.
+ */
+export interface PluginEnvironmentProviderRequirements {
+  projectCheckout?: boolean;
+  gitCheckout?: boolean;
+  gitRemote?: boolean;
+  projectless?: boolean;
+}
+
+/**
+ * What `validate` answers. `refuse` fails the create request with `message`
+ * as the caller's error, before a thread or an environment row exists.
+ */
+export type PluginEnvironmentValidateDecision =
+  | { action: "accept" }
+  | { action: "refuse"; message: string };
+
+/**
+ * Resource operations for one place a thread can run. Core persists progress,
+ * retries, cancellation and retirement. Operations must be idempotent for the
+ * supplied pathKey. Provider ids are unique across running plugins.
+ */
+export type PluginEnvironmentProviderDeclaration<
+  Requires extends PluginEnvironmentProviderRequirements =
+    PluginEnvironmentProviderRequirements,
+  Inputs extends
+    import("./environment-provider.js").PluginEnvironmentProviderInputsSchema =
+    import("./environment-provider.js").PluginEnvironmentProviderInputsSchema,
+> = import("./environment-provider.js").PluginEnvironmentProviderDefinition<
+  Requires,
+  Inputs
+>;
+
+export interface PluginEnvironments {
+  /**
+   * Offer a place threads can run. Registering an id this plugin already
+   * registered replaces it. Experimental: see docs/api_to_audit.md.
+   */
+  register<
+    const Requires extends PluginEnvironmentProviderRequirements,
+    const Inputs extends
+      import("./environment-provider.js").PluginEnvironmentProviderInputsSchema =
+      undefined,
+  >(
+    declaration:
+      | PluginEnvironmentProviderDeclaration<Requires, Inputs>
+      | {
+          id: string;
+          displayName: string;
+          description: string;
+          icon: string;
+          machineProviderId: string;
+          environmentProviderId: string;
+          create?: never;
+          remove?: never;
+        },
+  ): void;
+  /**
+   * Ask core to re-ask this plugin's waiting providers now instead of at their
+   * `sendAt`. Resolves on scheduling, exactly like
+   * `experimental_hooks.recheck`.
+   */
+  recheck(): Promise<void>;
+}
+
+export type PluginMachineValidateDecision =
+  | { action: "accept" }
+  | { action: "refuse"; message: string };
+
+export type PluginMachineProviderDeclaration<
+  Inputs extends
+    import("./machine-provider.js").PluginMachineProviderInputsSchema =
+    import("./machine-provider.js").PluginMachineProviderInputsSchema,
+> = import("./machine-provider.js").PluginMachineProviderDefinition<Inputs>;
+
+export interface ServerAccessGrant {
+  id: string;
+  serverUrl: string;
+  headers?: Record<string, string>;
+}
+
+export interface ServerAccessProviderDeclaration {
+  id: string;
+  displayName: string;
+  description: string;
+  availability():
+    | (import("./machine-provider.js").PluginMachineProviderAvailability & {
+        serverUrl?: string;
+      })
+    | Promise<
+        import("./machine-provider.js").PluginMachineProviderAvailability & {
+          serverUrl?: string;
+        }
+      >;
+  acquire(context: {
+    key: string;
+    hostId: string;
+    signal: AbortSignal;
+  }): Promise<ServerAccessGrant | { status: "failed"; message: string }>;
+  release(context: {
+    key: string;
+    hostId: string;
+    /** Null when acquisition was interrupted before a grant was returned. Reconcile using key and hostId. */
+    grantId: string | null;
+  }): Promise<void>;
+}
+
+export interface PluginServerAccess {
+  register(declaration: ServerAccessProviderDeclaration): void;
+  /**
+   * Notify connected clients that server access configuration changed.
+   * Call when access is gained or lost. Clients reload system configuration,
+   * which re-checks availability for Machines settings and creation banners.
+   */
+  recheck(): void;
+}
+
+export interface PluginMachines extends MachineBootstrapApi {
+  /** Read core’s current persisted provider resource, or null when the host or resource is absent. Available across plugins; resources must not contain credentials. */
+  getResource(hostId: string): Promise<JsonValue | null>;
+  register<
+    const Inputs extends
+      import("./machine-provider.js").PluginMachineProviderInputsSchema =
+      undefined,
+  >(
+    declaration: PluginMachineProviderDeclaration<Inputs>,
+  ): void;
+}
+
+/**
+ * Where a thread is going to run, as far as core knows at the checkpoint.
+ * Before provisioning attaches an environment this is the start intent the
+ * thread was created with; afterwards it is the environment itself.
+ */
+export type PluginDispatchEnvironmentIntent =
+  | { kind: "environment"; environmentId: string }
+  /** Ask a registered environment provider for the environment. */
+  | {
+      kind: "provider";
+      environmentProviderId: string;
+      machine:
+        | { type: "existing"; hostId: string }
+        | {
+            type: "new";
+            machineProviderId: string;
+            inputs: JsonValue | null;
+          };
+      inputs: JsonValue | null;
+    };
 
 // ---------------------------------------------------------------------------
 // Hooks: the questions core asks (plans/dispatch-queue-rework.md).
@@ -418,6 +619,13 @@ export interface MessageDispatchHookContext {
    * about to occupy. Null only when neither names a machine.
    */
   host: Host | null;
+  /**
+   * What kind of environment the thread will run in, so a policy can tell a
+   * worktree on this machine from a cloud sandbox from an attached directory
+   * before any of them exists. Null only for a thread with neither an
+   * environment nor a start intent.
+   */
+  environmentIntent: PluginDispatchEnvironmentIntent | null;
   input: PluginDispatchInput;
   requestedExecution: PluginDispatchExecution;
   /** Where each execution value came from. */
@@ -834,6 +1042,13 @@ export interface PluginAgentToolRegistrationBase {
 
 /** Stable, plain-data context resolved by the server for one agent session. */
 export interface PluginAgentConfigurationContext {
+  /**
+   * The thread's metadata stored under this plugin's id, or `{}` when absent,
+   * as a deep-frozen snapshot for this configure call. Any API client, another
+   * plugin, or the thread's own agent can write it; treat values as untrusted,
+   * and quote or escape any value you put into returned instructions.
+   */
+  readonly pluginMetadata: { readonly [key: string]: ReadonlyJsonValue };
   thread: {
     id: string;
     title: string | null;
@@ -850,8 +1065,9 @@ export interface PluginAgentConfigurationContext {
     id: string;
     name: string | null;
     path: string | null;
-    workspaceProvisionType: "unmanaged" | "managed-worktree" | "personal";
     branchName: string | null;
+    /** @deprecated Use environment provider identity and capabilities instead. */
+    workspaceProvisionType: WorkspaceProvisionType | null;
   };
   host: {
     id: string;
@@ -1407,7 +1623,6 @@ export interface ExperimentalPluginProviderEnvEntry {
   name: string;
   value: string | { serverPath: string };
   reason: string;
-  secret: boolean;
 }
 
 export interface ExperimentalPluginProviderEnvHealthContext {
@@ -1630,6 +1845,31 @@ export interface PluginStatusApi {
 }
 
 /**
+ * The BB SDK bound to one plugin (`bb.sdk`). `threads.getPluginMetadata` and
+ * `threads.updatePluginMetadata` default `pluginId` to that plugin's id. An
+ * explicit `pluginId` must be a plugin id (lowercase letters, digits, and
+ * dashes) or the request fails with HTTP 400. A `pluginMetadata` seed or a
+ * `set` that is over 256 KiB on its own rejects before any request is sent. A
+ * patch whose merged namespace would exceed 256 KiB fails with HTTP 413 and
+ * leaves the namespace unchanged.
+ */
+export type PluginBbSdk = Omit<BbSdk, "threads"> & {
+  threads: Omit<
+    BbSdk["threads"],
+    "getPluginMetadata" | "updatePluginMetadata"
+  > & {
+    getPluginMetadata(
+      args: Omit<ThreadPluginMetadataArgs, "pluginId"> & { pluginId?: string },
+    ): Promise<ThreadPluginMetadataResult>;
+    updatePluginMetadata(
+      args: Omit<ThreadPluginMetadataUpdateArgs, "pluginId"> & {
+        pluginId?: string;
+      },
+    ): Promise<ThreadPluginMetadataResult>;
+  };
+};
+
+/**
  * The API object handed to a plugin's factory (design §4). Implemented by
  * the BB server; this contract is what plugin `server.ts` files compile
  * against.
@@ -1671,6 +1911,15 @@ export interface BbPluginApi {
    * reason, or refuse.
    */
   readonly experimental_hooks: PluginHooks;
+  /**
+   * Environment targets: places a thread can run that this plugin
+   * provisions (plans/plugin-environment-providers.md). Experimental: see
+   * docs/api_to_audit.md.
+   */
+  readonly experimental_environments: PluginEnvironments;
+  /** Machine providers provision execution machines. Experimental: see docs/api_to_audit.md. */
+  readonly experimental_machines: PluginMachines;
+  readonly experimental_serverAccess: PluginServerAccess;
   /** Plugin-reported status (needs-configuration). */
   readonly status: PluginStatusApi;
   /** Read-only facts about the running server (loopback base URL). */
@@ -1688,10 +1937,12 @@ export interface BbPluginApi {
    * server binds it before loading plugins, so it is available from the
    * moment factories run there — but isolated harnesses may not, so prefer
    * using it from handlers, services, and timers for portability.
-   * `threads.spawn` defaults `origin` to "plugin" and `originPluginId` to
-   * this plugin's id so spawned threads are attributed automatically.
+   * `threads.spawn` and `threads.fork` default `origin` to "plugin" and, for
+   * that origin, `originPluginId` to this plugin's id unless you set them.
+   * Seeding `pluginMetadata` always attributes the new thread to this plugin,
+   * overriding an explicit `origin` or `originPluginId`.
    */
-  readonly sdk: BbSdk;
+  readonly sdk: PluginBbSdk;
   /**
    * Register cleanup to run on reload/disable/shutdown. Hooks run LIFO.
    * The sanctioned place to clear timers and close connections.

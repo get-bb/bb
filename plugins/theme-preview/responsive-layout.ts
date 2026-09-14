@@ -10,14 +10,6 @@ export function layoutBandForWidth(width: number): LayoutBand {
   return "desktop";
 }
 
-export function surfaceRailWidth(_width: number): number {
-  // The rail contains compact controls whose badge row is intentionally
-  // single-line. Below the mobile boundary the whole rail restacks instead of
-  // squeezing those controls, so every persistent rail uses their natural
-  // minimum width.
-  return SURFACE_RAIL_WIDTH;
-}
-
 export function contentInsetForWidth(width: number): number {
   return width < 720 ? 16 : 20;
 }

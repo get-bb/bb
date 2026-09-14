@@ -47,8 +47,8 @@ const codexAuthFileSchema = z
 
 const jwtPayloadSchema = z.record(z.string(), z.json());
 type JwtPayload = z.infer<typeof jwtPayloadSchema>;
-const CHATGPT_AUTH_CLAIM = "https://api.openai.com/auth";
-const CHATGPT_PROFILE_CLAIM = "https://api.openai.com/profile";
+export const CHATGPT_AUTH_CLAIM = "https://api.openai.com/auth";
+export const CHATGPT_PROFILE_CLAIM = "https://api.openai.com/profile";
 
 export interface ImportedClaudeCredentials {
   accessToken: string;

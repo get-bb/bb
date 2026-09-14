@@ -94,3 +94,8 @@ provider-recordings/raw/
 .kilo/start-bb.out.log
 /.runtime/
 /windows-*.log
+.builtin-server-test-*/
+.builtin-host-test-*/
+
+/plugins/.bundled-stage-*/
+/plugins/*/.bundled-runtime/

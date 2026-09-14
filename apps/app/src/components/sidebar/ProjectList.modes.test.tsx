@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { useMemo, type ReactNode } from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   act,
   cleanup,
@@ -44,6 +45,8 @@ vi.mock("@/hooks/queries/system-queries", () => ({
   useSystemConfig: () => ({ data: undefined }),
 }));
 
+const queryClient = new QueryClient();
+
 vi.mock("@bb/client-core", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@bb/client-core")>();
   return {
@@ -75,7 +78,6 @@ function ModeOrderProbe({ mode }: { mode: SidebarOrganizationMode }) {
     entitySectionIds: config.entitySectionIds,
     hasThreadsSection: config.hasThreadsSection,
     showPinnedSection: true,
-    isReady: true,
   });
 
   return <div data-testid={`${mode}-order`}>{order.join(",")}</div>;
@@ -154,25 +156,30 @@ function MachineModeProbe({ threads = [] }: { threads?: ThreadListEntry[] }) {
   };
 
   return (
-    <MachineModeSections
-      threads={threads}
-      draftThreadIds={new Set()}
-      effectivePinnedThreadIds={new Set()}
-      status="ready"
-      isReady
-      showPinnedSection={false}
-      pinnedSection={{ label: "Pinned", content: null }}
-      threadsSection={{ label: "Threads" }}
-      collapsedSectionIds={collapsedSectionIdSet}
-      collapsedThreadIds={new Set()}
-      collapsedEnvironmentIds={new Set()}
-      compareThreads={() => 0}
-      renderSectionDisplayOptions={() => null}
-      isSectionDisplayOptionsOpen={() => false}
-      onToggleCollapsed={handleToggleCollapsed}
-      onToggleThreadCollapsed={vi.fn()}
-      onToggleEnvironmentCollapsed={vi.fn()}
-    />
+    <QueryClientProvider client={queryClient}>
+      <MachineModeSections
+        threads={threads}
+        draftThreadIds={new Set()}
+        effectivePinnedThreadIds={new Set()}
+        status="ready"
+        showPinnedSection={false}
+        pinnedSection={{ label: "Pinned", content: null }}
+        pinnedReorderPending={false}
+        pinnedRootNodes={[]}
+        pinnedThreads={[]}
+        onReorderPinnedThread={vi.fn()}
+        threadsSection={{ label: "Threads" }}
+        collapsedSectionIds={collapsedSectionIdSet}
+        collapsedThreadIds={new Set()}
+        collapsedEnvironmentIds={new Set()}
+        compareThreads={() => 0}
+        renderSectionDisplayOptions={() => null}
+        isSectionDisplayOptionsOpen={() => false}
+        onToggleCollapsed={handleToggleCollapsed}
+        onToggleThreadCollapsed={vi.fn()}
+        onToggleEnvironmentCollapsed={vi.fn()}
+      />
+    </QueryClientProvider>
   );
 }
 

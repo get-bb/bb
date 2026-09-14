@@ -82,28 +82,3 @@ export const SHADOW_SPECIMENS = [
   { id: "color", title: "Color", token: "tp-shadow-color" },
   { id: "opacity", title: "Opacity", token: "tp-shadow-opacity-percent" },
 ] as const;
-
-export const COMPONENT_SPECIMENS = [
-  { id: "buttons", title: "Buttons", vendored: "@bb/shared-ui/button" },
-  { id: "badges", title: "Badges", vendored: "@bb/shared-ui/badge" },
-  { id: "inputs", title: "Inputs", vendored: "@bb/shared-ui/input" },
-  { id: "switch", title: "Switch", vendored: "@bb/shared-ui/switch" },
-  { id: "checkbox", title: "Checkbox", vendored: "@bb/shared-ui/checkbox" },
-] as const;
-
-export const OVERLAY_SPECIMENS = [
-  { id: "menu", label: "Menu", vendored: "@bb/shared-ui/dropdown-menu" },
-  { id: "dialog", label: "Dialog", vendored: "@bb/shared-ui/dialog" },
-  { id: "popover", label: "Popover", vendored: "@bb/shared-ui/popover" },
-  { id: "tooltip", label: "Tooltip", vendored: "@bb/shared-ui/tooltip" },
-  { id: "hover-card", label: "Hover card", vendored: "@bb/shared-ui/hover-card" },
-  { id: "toast", label: "Toast", vendored: "sonner via the app-mounted Toaster" },
-] as const;
-
-export const STYLESHEET_SPECIMEN_IDS: readonly string[] = [
-  ...COLOR_GROUPS.flatMap((group) => group.tokens.map((token) => `color:${token}`)),
-  ...TYPE_SPECIMENS.map((specimen) => `type:${specimen.id}`),
-  ...RHYTHM_SPECIMENS.map((specimen) => `rhythm:${specimen.id}`),
-  ...RADIUS_SPECIMENS.map((specimen) => `radius:${specimen.id}`),
-  ...SHADOW_SPECIMENS.map((specimen) => `shadow:${specimen.id}`),
-];

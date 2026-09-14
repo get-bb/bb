@@ -1,16 +1,9 @@
-export interface Item {
-  repo: string;
-  number: number;
-  kind: "issue" | "pr";
-  title: string;
-  state: string;
-  author: string;
-  labels: string[];
-  assignees: string[];
-  url: string;
-  body: string;
-  updatedAt: string;
-}
+import type { PluginRpcResult } from "@get-bb/plugin-sdk/app";
+import type { githubRpcContract } from "./server.js";
+
+export type Item = PluginRpcResult<
+  (typeof githubRpcContract)["listItems"]
+>["items"][number];
 
 export type Route =
   | { view: "issues" }

@@ -10,6 +10,7 @@ import {
   preventOverlayTriggerSelection,
 } from "./overlay-trigger.js";
 import { useIsCompactViewport } from "./hooks/use-compact-viewport.js";
+import { usePointerCoarse } from "./hooks/use-pointer-coarse.js";
 import { usePortalScopeProps } from "../../lib/portal-scope.js";
 import { cn } from "../../lib/utils.js";
 
@@ -21,11 +22,97 @@ export interface ResponsiveOverlayContextValue {
 
 const RESPONSIVE_DRAWER_REALIZE_FALLBACK_MS = 120;
 
+export const COMPACT_SHEET_CONTENT_STYLE: React.CSSProperties = {
+  width: "auto",
+  minWidth: "auto",
+  maxWidth: "none",
+};
+
+const DRAWER_KEYBOARD_INSET_PROPERTY = "--bb-drawer-keyboard-inset";
+const DRAWER_KEYBOARD_MIN_OVERLAP_PX = 80;
+
 function resetDrawerKeyboardStyles(drawerElement: HTMLElement | null): void {
   if (drawerElement === null) return;
 
   drawerElement.style.height = "";
   drawerElement.style.bottom = "";
+  drawerElement.style.removeProperty(DRAWER_KEYBOARD_INSET_PROPERTY);
+}
+
+export function measureDrawerKeyboardOverlap({
+  layoutViewportHeight,
+  visualViewportHeight,
+  visualViewportOffsetTop,
+}: {
+  layoutViewportHeight: number;
+  visualViewportHeight: number;
+  visualViewportOffsetTop: number;
+}): number {
+  const overlap = Math.round(
+    layoutViewportHeight - (visualViewportHeight + visualViewportOffsetTop),
+  );
+  return overlap >= DRAWER_KEYBOARD_MIN_OVERLAP_PX ? overlap : 0;
+}
+
+function useDrawerKeyboardInset(
+  panelRef: React.RefObject<HTMLElement | null>,
+  open: boolean,
+): void {
+  React.useEffect(() => {
+    const panel = panelRef.current;
+    const visualViewport = window.visualViewport;
+    if (panel === null || !open || !visualViewport) return;
+
+    let animationFrame: number | null = null;
+    const applyInset = () => {
+      animationFrame = null;
+      if (visualViewport.scale !== 1) {
+        resetDrawerKeyboardStyles(panel);
+        return;
+      }
+      const overlap = measureDrawerKeyboardOverlap({
+        layoutViewportHeight: panel.ownerDocument.documentElement.clientHeight,
+        visualViewportHeight: visualViewport.height,
+        visualViewportOffsetTop: visualViewport.offsetTop,
+      });
+      if (overlap === 0) {
+        panel.style.bottom = "";
+        panel.style.removeProperty(DRAWER_KEYBOARD_INSET_PROPERTY);
+        return;
+      }
+      panel.style.bottom = `${overlap}px`;
+      panel.style.setProperty(DRAWER_KEYBOARD_INSET_PROPERTY, `${overlap}px`);
+    };
+    const scheduleUpdate = () => {
+      if (animationFrame !== null) {
+        window.cancelAnimationFrame(animationFrame);
+      }
+      animationFrame = window.requestAnimationFrame(applyInset);
+    };
+
+    applyInset();
+    visualViewport.addEventListener("resize", scheduleUpdate);
+    visualViewport.addEventListener("scroll", scheduleUpdate);
+
+    return () => {
+      visualViewport.removeEventListener("resize", scheduleUpdate);
+      visualViewport.removeEventListener("scroll", scheduleUpdate);
+      if (animationFrame !== null) {
+        window.cancelAnimationFrame(animationFrame);
+      }
+      resetDrawerKeyboardStyles(panel);
+    };
+  }, [open, panelRef]);
+}
+
+export function useResponsiveOverlayBehavior() {
+  const presentation = useIsCompactViewport() ? "drawer" : "floating";
+  const isPointerCoarse = usePointerCoarse();
+
+  return {
+    presentation,
+    supportsHover: presentation === "floating" && !isPointerCoarse,
+  };
 }
 
 export function useResponsiveRoot(
@@ -33,7 +120,8 @@ export function useResponsiveRoot(
   controlledOnChange: ((open: boolean) => void) | undefined,
   defaultOpen: boolean = false,
 ): ResponsiveOverlayContextValue {
-  const isCompactViewport = useIsCompactViewport();
+  const { presentation } = useResponsiveOverlayBehavior();
+  const isCompactViewport = presentation === "drawer";
   const [internalOpen, setInternalOpen] = React.useState(defaultOpen);
   const isControlled = controlledOpen !== undefined;
   const open = isControlled ? controlledOpen : internalOpen;
@@ -176,6 +264,7 @@ export function stripRadixContentProps<T extends Record<string, unknown>>(
 interface ResponsiveDrawerShellProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  closeOnBackdropClick?: boolean;
   onAfterCloseAutoFocus?: () => void;
   srLabel?: string;
   labelledBy?: string;
@@ -238,6 +327,7 @@ export function ResponsiveDrawerShell({
   open,
   onOpenChange,
   onAfterCloseAutoFocus,
+  closeOnBackdropClick = true,
   srLabel,
   labelledBy,
   describedBy,
@@ -256,6 +346,7 @@ export function ResponsiveDrawerShell({
       open={open}
       onOpenChange={onOpenChange}
       onAfterCloseAutoFocus={onAfterCloseAutoFocus}
+      closeOnBackdropClick={closeOnBackdropClick}
       srLabel={srLabel}
       labelledBy={labelledBy}
       describedBy={describedBy}
@@ -278,6 +369,7 @@ export function ResponsiveDrawerShell({
 interface PersistentResponsiveDrawerShellProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  closeOnBackdropClick?: boolean;
   onAfterCloseAutoFocus?: () => void;
   srLabel?: string;
   labelledBy?: string;
@@ -480,8 +572,7 @@ export function usePersistentOverlayFocus({
               }
               onAfterCloseAutoFocus?.();
             });
-            cancelDeferredFocus = () =>
-              ownerWindow.cancelAnimationFrame(frame);
+            cancelDeferredFocus = () => ownerWindow.cancelAnimationFrame(frame);
           }
         }
       }
@@ -508,6 +599,7 @@ export function PersistentResponsiveDrawerShell({
   open,
   onOpenChange,
   onAfterCloseAutoFocus,
+  closeOnBackdropClick = true,
   srLabel,
   labelledBy,
   describedBy,
@@ -545,6 +637,8 @@ export function PersistentResponsiveDrawerShell({
     panelRef,
     requestClose,
   });
+
+  useDrawerKeyboardInset(panelRef, open);
 
   const reportSettled = React.useCallback(
     (settledOpen: boolean) => {
@@ -670,7 +764,7 @@ export function PersistentResponsiveDrawerShell({
           pointerEvents: open ? "auto" : "none",
           transition: backdropTransition,
         }}
-        onClick={requestClose}
+        onClick={closeOnBackdropClick ? requestClose : undefined}
         onTouchMove={(event) => event.preventDefault()}
       />
       <div
@@ -689,7 +783,7 @@ export function PersistentResponsiveDrawerShell({
         role="dialog"
         tabIndex={-1}
         className={cn(
-          "fixed inset-x-0 bottom-0 z-50 mt-24 flex max-h-[92dvh] flex-col rounded-t-xl border bg-background outline-none",
+          "fixed inset-x-0 bottom-0 z-50 mt-24 flex max-h-[calc(92dvh-var(--bb-drawer-keyboard-inset,0px))] flex-col rounded-t-xl border bg-background outline-none",
           contentClassName,
         )}
         style={{

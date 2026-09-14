@@ -2,11 +2,12 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { JsonValue } from "@get-bb/plugin-sdk";
-import { z } from "zod";
+import {
+  jsonValueSchema,
+  type JsonObject,
+} from "@get-bb/plugin-sdk/provider-bridge";
 import { resolveCodexHome } from "../codex-home.js";
 import { AiServiceFailure } from "./failure.js";
-
-export type JsonObject = { [key: string]: JsonValue };
 
 const CODEX_AUTH_FILE_NAME = "auth.json";
 const CHATGPT_AUTH_CLAIM_PATH = "https://api.openai.com/auth";
@@ -54,7 +55,7 @@ function codexAuthPath(): string {
   );
 }
 
-function toJsonObject(value: JsonValue | undefined): JsonObject | null {
+export function toJsonObject(value: JsonValue | undefined): JsonObject | null {
   if (
     value === undefined ||
     value === null ||
@@ -69,17 +70,6 @@ function toJsonObject(value: JsonValue | undefined): JsonObject | null {
 function nonEmptyString(value: JsonValue | undefined): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
 }
-
-const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
-  z.union([
-    z.string(),
-    z.number(),
-    z.boolean(),
-    z.null(),
-    z.array(jsonValueSchema),
-    z.record(z.string(), jsonValueSchema),
-  ]),
-);
 
 export function parseJsonValue(raw: string): JsonValue {
   return jsonValueSchema.parse(JSON.parse(raw));

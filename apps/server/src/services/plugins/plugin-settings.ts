@@ -10,11 +10,9 @@ import type {
   PluginSettingDescriptors,
   PluginSettingValue,
 } from "@get-bb/plugin-sdk";
+import { coerceStoredPluginSettingValue } from "@get-bb/plugin-sdk/internal/host-policy";
 import type { PluginSettingDescriptor as PublicPluginSettingDescriptor } from "@bb/server-contract";
-import { validateSettingsUpdate } from "@get-bb/plugin-sdk/internal/host-policy";
 import { deleteSecretFile, writeSecretFile } from "@bb/secret-storage";
-
-export { validateSettingsUpdate as validatePluginSettingsUpdate };
 
 export class PluginSettingsValidationError extends Error {
   constructor(message: string) {
@@ -39,7 +37,7 @@ function isSecret(descriptor: PluginSettingDescriptor): boolean {
   return descriptor.type === "string" && descriptor.secret === true;
 }
 
-async function readSecret(
+export async function readSecret(
   dataDir: string,
   pluginId: string,
   key: string,
@@ -73,35 +71,7 @@ function parseStoredSettingValue(
       parsed = undefined;
     }
   }
-  if (descriptor.type === "number" && typeof parsed === "string") {
-    const legacyNumber = Number(parsed.trim());
-    parsed =
-      parsed.trim().length > 0 && Number.isFinite(legacyNumber)
-        ? legacyNumber
-        : undefined;
-  }
-  if (
-    descriptor.type === "number" &&
-    typeof parsed === "number" &&
-    !Number.isFinite(parsed)
-  ) {
-    parsed = undefined;
-  }
-  const expected =
-    descriptor.type === "boolean"
-      ? "boolean"
-      : descriptor.type === "number"
-        ? "number"
-        : "string";
-  if (typeof parsed !== expected) parsed = undefined;
-  if (
-    descriptor.type === "select" &&
-    typeof parsed === "string" &&
-    !descriptor.options.includes(parsed)
-  ) {
-    parsed = undefined;
-  }
-  return (parsed as PluginSettingValue | undefined) ?? descriptor.default;
+  return coerceStoredPluginSettingValue(descriptor, parsed);
 }
 
 export function readPluginSettingsValuesSync(

@@ -27,8 +27,6 @@ export interface PromptBoxAction {
   kind: PromptBoxActionKind;
   text: string;
   command?: ProviderPromptActionCommand;
-  label?: string;
-  disabled?: boolean;
 }
 
 interface PromptBoxActionsMenuProps {
@@ -90,7 +88,7 @@ const PROMPT_ACTION_PRESENTATION = {
   },
   plugin: {
     label: "Plugin",
-    icon: "ElectricPlugs",
+    icon: "Plug02",
   },
 } as const satisfies Record<
   PromptBoxActionKind,
@@ -233,7 +231,6 @@ export function PromptBoxActionsMenu({
           return (
             <DropdownMenuItem
               key={action.kind}
-              disabled={action.disabled}
               onSelect={() => {
                 selectedItemRef.current = true;
                 onAction(action);
@@ -244,7 +241,7 @@ export function PromptBoxActionsMenu({
                 className="size-4 text-muted-foreground"
                 aria-hidden
               />
-              {action.label ?? presentation.label}
+              {presentation.label}
             </DropdownMenuItem>
           );
         })}

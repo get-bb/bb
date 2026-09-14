@@ -3,11 +3,12 @@ import {
   definePluginApp,
   experimental_Diff as Diff,
   experimental_FileLink as FileLink,
-  UrlLink as UrlLink,
+  UrlLink,
   useBbNavigate,
   useRealtime,
   useRpc,
   type PluginNavPanelProps,
+  type PluginRpcResult,
   type PluginThreadPanelProps,
 } from "@get-bb/plugin-sdk/app";
 import {
@@ -49,90 +50,21 @@ import { Textarea } from "@bb/shared-ui/textarea";
 import { EmptyState } from "@/components/empty-state";
 import { Markdown } from "@/components/markdown-lite";
 
-interface IssueComment {
-  author: string;
-  body: string;
-  createdAt: string;
-}
-
-interface IssueDetail extends Omit<Item, "kind"> {
-  comments: IssueComment[];
-}
-
-interface PullCheck {
-  name: string;
-  status: "success" | "failure" | "pending" | "neutral";
-  url: string;
-}
-
-interface PullReview {
-  author: string;
-  state: string;
-  body: string;
-  createdAt: string;
-}
-
-interface ReviewThread {
-  path: string;
-  line: number | null;
-  diffHunk: string;
-  comments: IssueComment[];
-}
-
-interface PullFile {
-  path: string;
-  status: string;
-  additions: number;
-  deletions: number;
-  patch: string | null;
-}
-
-interface PullDetail {
-  repo: string;
-  number: number;
-  title: string;
-  state: string;
-  author: string;
-  body: string;
-  url: string;
-  createdAt: string;
-  updatedAt: string;
-  baseRefName: string;
-  headRefName: string;
-  additions: number;
-  deletions: number;
-  changedFiles: number;
-  labels: string[];
-  assignees: string[];
-  reviewDecision: string;
-  mergeStateStatus: string;
-  reviewRequests: string[];
-  checks: PullCheck[];
-  comments: IssueComment[];
-  reviews: PullReview[];
-  reviewThreads: ReviewThread[];
-  files: PullFile[];
-}
-
-interface RepoInfo {
-  repo: string;
-  projectId: string | null;
-}
-
-interface ThreadLink {
-  kind: "issue" | "pr";
-  repo: string;
-  number: number;
-  threadId: string;
-  createdAt: string;
-}
-
-type LinksMap = Record<string, ThreadLink[]>;
-
-function asItems(result: unknown): Item[] {
-  const items = (result as { items?: unknown })?.items;
-  return Array.isArray(items) ? (items as Item[]) : [];
-}
+type IssueDetail = PluginRpcResult<
+  (typeof githubRpcContract)["getIssue"]
+>["issue"];
+type PullDetail = PluginRpcResult<
+  (typeof githubRpcContract)["getPull"]
+>["pull"];
+type PullCheck = PullDetail["checks"][number];
+type ReviewThread = PullDetail["reviewThreads"][number];
+type PullFile = PullDetail["files"][number];
+type Status = PluginRpcResult<(typeof githubRpcContract)["status"]>;
+type RepoInfo = Status["repos"][number];
+type LinksMap = PluginRpcResult<
+  (typeof githubRpcContract)["listLinks"]
+>["links"];
+type ThreadLink = LinksMap[string][number];
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -175,7 +107,7 @@ function useItems(kind: "issue" | "pr"): {
   });
   const refetch = useCallback(() => {
     rpc.call("listItems", { kind }).then(
-      (result) => setState({ items: asItems(result), error: null }),
+      (result) => setState({ items: result.items, error: null }),
       (error: unknown) => setState({ items: null, error: errorText(error) }),
     );
   }, [rpc, kind]);
@@ -191,10 +123,7 @@ function useLinks(): LinksMap {
   const [links, setLinks] = useState<LinksMap>({});
   const refetch = useCallback(() => {
     rpc.call("listLinks").then(
-      (result) => {
-        const map = (result as { links?: unknown })?.links;
-        if (map !== null && typeof map === "object") setLinks(map as LinksMap);
-      },
+      (result) => setLinks(result.links),
       () => {},
     );
   }, [rpc]);
@@ -222,10 +151,7 @@ function useSpawn(): {
       rpc
         .call(method, { repo, number })
         .then((result) => {
-          const threadId = (result as { threadId?: unknown })?.threadId;
-          if (typeof threadId !== "string")
-            throw new Error("malformed spawn result");
-          navigate.toThread(threadId);
+          navigate.toThread(result.threadId);
         })
         .catch((error: unknown) => toast.error(errorText(error)))
         .finally(() => setSpawningKey(null));
@@ -244,11 +170,8 @@ function useViewer(): string | null {
     if (viewerLogin !== null) return;
     rpc.call("viewer").then(
       (result) => {
-        const value = (result as { login?: unknown })?.login;
-        if (typeof value === "string" && value.length > 0) {
-          viewerLogin = value;
-          setLogin(value);
-        }
+        viewerLogin = result.login;
+        setLogin(result.login);
       },
       () => {},
     );
@@ -501,7 +424,6 @@ function FilterBar({
 
   return (
     <div className="relative">
-      {}
       <input
         ref={inputRef}
         value={value}
@@ -918,10 +840,7 @@ function AssigneePicker({
   const load = useCallback(() => {
     if (users !== null) return;
     rpc.call("assignableUsers", { repo }).then(
-      (result) => {
-        const list = (result as { users?: unknown })?.users;
-        setUsers(Array.isArray(list) ? list.map(String) : []);
-      },
+      (result) => setUsers(result.users),
       (error: unknown) => setLoadError(errorText(error)),
     );
   }, [rpc, repo, users]);
@@ -992,10 +911,7 @@ function LabelPicker({
   const load = useCallback(() => {
     if (available !== null) return;
     rpc.call("repositoryLabels", { repo }).then(
-      (result) => {
-        const list = (result as { labels?: unknown })?.labels;
-        setAvailable(Array.isArray(list) ? list.map(String) : []);
-      },
+      (result) => setAvailable(result.labels),
       (error: unknown) => setLoadError(errorText(error)),
     );
   }, [rpc, repo, available]);
@@ -1067,9 +983,7 @@ function IssueDetailView({
   const load = useCallback(() => {
     rpc.call("getIssue", { repo, number }).then(
       (result) => {
-        const issue = (result as { issue?: IssueDetail })?.issue;
-        if (issue === undefined) throw new Error("malformed getIssue result");
-        setDetail(issue);
+        setDetail(result.issue);
         setError(null);
       },
       (err: unknown) => setError(errorText(err)),
@@ -1706,9 +1620,7 @@ function PullDetailView({
   const load = useCallback(() => {
     rpc.call("getPull", { repo, number }).then(
       (result) => {
-        const detail = (result as { pull?: PullDetail })?.pull;
-        if (detail === undefined) throw new Error("malformed getPull result");
-        setPull(detail);
+        setPull(result.pull);
         setError(null);
       },
       (err: unknown) => setError(errorText(err)),
@@ -1945,29 +1857,7 @@ function PullPanelTab({ threadId }: PluginThreadPanelProps) {
     rpc.call("pullForThread", { threadId }).then(
       (result) => {
         if (cancelled) return;
-        const pull = (
-          result as {
-            pull?: {
-              repo?: unknown;
-              number?: unknown;
-              environmentId?: unknown;
-            } | null;
-          }
-        )?.pull;
-        if (
-          pull &&
-          typeof pull.repo === "string" &&
-          typeof pull.number === "number"
-        ) {
-          setSelected({
-            repo: pull.repo,
-            number: pull.number,
-            environmentId:
-              typeof pull.environmentId === "string"
-                ? pull.environmentId
-                : null,
-          });
-        }
+        if (result.pull !== null) setSelected(result.pull);
         setResolved(true);
       },
       () => {
@@ -2028,9 +1918,8 @@ function NewIssueForm({
     rpc
       .call("createIssue", { repo, title, body })
       .then((result) => {
-        const number = (result as { number?: unknown })?.number;
         toast.success("Issue created");
-        onCreated(repo, typeof number === "number" ? number : null);
+        onCreated(repo, result.number);
       })
       .catch((err: unknown) => toast.error(errorText(err)))
       .finally(() => setCreating(false));
@@ -2078,20 +1967,12 @@ function NewIssueForm({
   );
 }
 
-interface Status {
-  ghOk: boolean;
-  ghState: "ready" | "needs_configuration" | "unavailable";
-  ghError: string | null;
-  repos: RepoInfo[];
-  lastSyncedAt: string | null;
-}
-
 function useStatus(): { status: Status | null; refetch: () => void } {
   const rpc = useRpc<typeof githubRpcContract>();
   const [status, setStatus] = useState<Status | null>(null);
   const refetch = useCallback(() => {
     rpc.call("status").then(
-      (result) => setStatus(result as Status),
+      (result) => setStatus(result),
       () => {},
     );
   }, [rpc]);
@@ -2336,9 +2217,7 @@ function GithubPanelBody({
         query={query}
         setQuery={setQuery}
         repos={status?.repos ?? []}
-        onOpenItem={(repo, number) =>
-          openItem(kind === "pr" ? "pr" : "issue", repo, number)
-        }
+        onOpenItem={(repo, number) => openItem(kind, repo, number)}
       />
     </div>
   );

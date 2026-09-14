@@ -60,6 +60,7 @@ function defaultSpawnLoginShellPath(
   const result = spawnSync(args.command, args.args, {
     encoding: "utf8",
     timeout: args.timeoutMs,
+    killSignal: "SIGKILL",
   });
 
   return {

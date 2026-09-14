@@ -190,6 +190,7 @@ vi.mock("@/hooks/useThreadCreationOptions", () => ({
     moreModelOptions: [],
     permissionMode: "auto",
     permissionModeOptions: [],
+    providers: [],
     providerOptions: [],
     reasoningLevel: "medium",
     reasoningOptions: [],
@@ -225,6 +226,7 @@ vi.mock("@/hooks/mutations/thread-runtime-mutations", () => {
   return {
     useCancelThreadPlan: idleMutation,
     useClearThreadGoal: idleMutation,
+    useCreateThread: idleMutation,
     useCreateThreadQueuedMessage: idleMutation,
     useDeleteThreadQueuedMessage: idleMutation,
     useReorderThreadQueuedMessage: idleMutation,

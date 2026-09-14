@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import type { Host, ProviderInfo } from "@bb/domain";
 import type {
   ProviderUsage,
@@ -26,10 +26,19 @@ import {
   useSystemProviders,
   type ProviderUsageQueryState,
 } from "@/hooks/queries/system-queries";
-import { selectPrimaryHost, useHosts } from "@/hooks/queries/host-queries";
+import {
+  selectHosts,
+  selectPrimaryHost,
+  useHosts,
+} from "@/hooks/queries/host-queries";
 import { getProviderIconInfo } from "@/lib/provider-icon";
 import { ProviderIconMark } from "./ProviderIconMark";
 import { cn } from "@bb/shared-ui/lib/utils";
+import {
+  formatUsageReset,
+  formatUsdCents,
+  usageBarColorClass,
+} from "@bb/shared-ui/lib/usage-format";
 
 interface ProviderConfig {
   name: string;
@@ -58,63 +67,6 @@ function providerConfig(
   };
 }
 
-function barColorClass(usedPercent: number): string {
-  if (usedPercent >= 95) {
-    return "bg-destructive";
-  }
-  if (usedPercent >= 80) {
-    return "bg-warning";
-  }
-  return "bg-primary";
-}
-
-function formatReset(resetsAt: string | null): string | null {
-  if (!resetsAt) {
-    return null;
-  }
-  const reset = new Date(resetsAt);
-  if (Number.isNaN(reset.getTime())) {
-    return null;
-  }
-  const diffMs = reset.getTime() - Date.now();
-  if (diffMs <= 0) {
-    return "Resetting now";
-  }
-
-  const diffMinutes = Math.round(diffMs / 60_000);
-  if (diffMinutes < 60) {
-    return `Resets in ${diffMinutes} min`;
-  }
-
-  const diffHours = Math.floor(diffMinutes / 60);
-  if (diffHours < 24) {
-    const minutes = diffMinutes % 60;
-    return minutes > 0
-      ? `Resets in ${diffHours} hr ${minutes} min`
-      : `Resets in ${diffHours} hr`;
-  }
-
-  const withinWeek = diffMs < 7 * 24 * 60 * 60_000;
-  const formatted = reset.toLocaleString(undefined, {
-    weekday: withinWeek ? "short" : undefined,
-    month: withinWeek ? undefined : "short",
-    day: withinWeek ? undefined : "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-  return `Resets ${formatted}`;
-}
-
-function formatUsdCents(cents: number, alwaysShowCents: boolean): string {
-  const hasFractionalDollar = cents % 100 !== 0;
-  return new Intl.NumberFormat(undefined, {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: alwaysShowCents || hasFractionalDollar ? 2 : 0,
-    maximumFractionDigits: 2,
-  }).format(cents / 100);
-}
-
 function usageWindowValue(window: ProviderUsageWindow): string {
   if (!window.cost) {
     return `${window.usedPercent}% used`;
@@ -123,7 +75,7 @@ function usageWindowValue(window: ProviderUsageWindow): string {
 }
 
 function UsageWindowRow({ window }: { window: ProviderUsageWindow }) {
-  const reset = formatReset(window.resetsAt);
+  const reset = formatUsageReset(window.resetsAt);
   return (
     <div className="space-y-1">
       <div className="flex items-baseline justify-between gap-2">
@@ -136,7 +88,7 @@ function UsageWindowRow({ window }: { window: ProviderUsageWindow }) {
         <div
           className={cn(
             "h-full rounded-full",
-            barColorClass(window.usedPercent),
+            usageBarColorClass(window.usedPercent),
           )}
           style={{ width: `${Math.max(window.usedPercent, 2)}%` }}
         />
@@ -229,6 +181,7 @@ function ProviderUsageBlock({
   const planLabel = usage?.status === "ok" ? usage.planLabel : null;
   const accountEmail = usage?.status === "ok" ? usage.accountEmail : null;
   const iconInfo = getProviderIconInfo(
+    "agent",
     config.providerId,
     config.provider ?? null,
   );
@@ -450,7 +403,10 @@ export function UsageLimitsSettingsSectionContent({
 export function UsageLimitsSettingsSection() {
   const systemConfigQuery = useSystemConfig();
   const hostsQuery = useHosts();
-  const hosts = hostsQuery.data ?? [];
+  const hosts = useMemo(
+    () => selectHosts(hostsQuery.data, "persistent"),
+    [hostsQuery.data],
+  );
   const [selectedHostId, setSelectedHostId] = useState<string | null>(null);
   const primaryHost = selectPrimaryHost(
     hosts,

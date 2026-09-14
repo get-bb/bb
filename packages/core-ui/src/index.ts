@@ -1,9 +1,14 @@
 export { assertNever } from "./assert-never.js";
 
-export { formatEnvironmentDisplay } from "./environment-display.js";
+export {
+  formatEnvironmentDisplay,
+  resolveEnvironmentDisplayName,
+  resolveEnvironmentDisplayProvider,
+} from "./environment-display.js";
 export type {
   EnvironmentDisplayHostContext,
   EnvironmentDisplayInfo,
+  EnvironmentDisplayProviderLookup,
 } from "./environment-display.js";
 
 export {
@@ -16,13 +21,7 @@ export {
   formatPendingInteractionSummary,
   formatPendingInteractionUserQuestionOptionLabel,
 } from "./pending-interaction-presentation.js";
-export {
-  describePendingInteractionToolUse,
-  formatPendingInteractionToolUseDetailLines,
-} from "./pending-interaction-tool-use.js";
-export type {
-  PendingInteractionToolUseAsk,
-  ToolUseApprovalPendingInteractionPayload,
-} from "./pending-interaction-tool-use.js";
+export { describePendingInteractionToolUse } from "./pending-interaction-tool-use.js";
+export type { PendingInteractionToolUseAsk } from "./pending-interaction-tool-use.js";
 
 export { extractErrorMessage, toRecord } from "./unknown-helpers.js";

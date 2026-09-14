@@ -1,3 +1,4 @@
+import type { Writable } from "node:stream";
 import {
   resolveContextProjectId,
   resolveContextThreadId,
@@ -220,12 +221,7 @@ export async function findDisabledPluginForCommand(
   baseUrl: string,
   name: string,
   timeoutMs: number = CONTRIBUTIONS_TIMEOUT_MS,
-): Promise<{
-  id: string;
-  enabled: boolean;
-  status: string | null;
-  statusDetail: string | null;
-} | null> {
+): Promise<string | null> {
   try {
     const response = await cliFetch(`${baseUrl}/api/v1/plugins`, {
       signal: AbortSignal.timeout(timeoutMs),
@@ -234,14 +230,7 @@ export async function findDisabledPluginForCommand(
     const parsed = (await response.json()) as { plugins?: unknown } | null;
     if (!Array.isArray(parsed?.plugins)) return null;
     const match = parsed.plugins.find(
-      (
-        entry,
-      ): entry is {
-        id: string;
-        enabled: boolean;
-        status?: unknown;
-        statusDetail?: unknown;
-      } =>
+      (entry): entry is { id: string } =>
         typeof entry === "object" &&
         entry !== null &&
         (entry as { id?: unknown }).id === name &&
@@ -249,15 +238,7 @@ export async function findDisabledPluginForCommand(
         ((entry as { enabled?: unknown }).enabled === false ||
           (entry as { status?: unknown }).status === "disabled"),
     );
-    return match === undefined
-      ? null
-      : {
-          id: match.id,
-          enabled: match.enabled,
-          status: typeof match.status === "string" ? match.status : null,
-          statusDetail:
-            typeof match.statusDetail === "string" ? match.statusDetail : null,
-        };
+    return match === undefined ? null : match.id;
   } catch {
     return null;
   }
@@ -270,9 +251,7 @@ export function findPluginCliCommand(
   return contributions.find((entry) => entry.name === name);
 }
 
-interface PluginCliOutputStream {
-  write(chunk: string, callback: (error?: Error | null) => void): boolean;
-}
+type PluginCliOutputStream = Writable;
 
 interface PluginCliOutputStreams {
   stdout: PluginCliOutputStream;
@@ -337,10 +316,36 @@ async function writePluginCliOutput(
   if (value.length === 0) return;
   const output = value.endsWith("\n") ? value : `${value}\n`;
   await new Promise<void>((resolvePromise, rejectPromise) => {
-    stream.write(output, (error) => {
-      if (error) rejectPromise(error);
-      else resolvePromise();
-    });
+    const settle = (error?: Error | null) => {
+      stream.off("error", onError);
+      stream.off("close", onClose);
+      if (error && !("code" in error && error.code === "EPIPE")) {
+        rejectPromise(error);
+      } else {
+        resolvePromise();
+      }
+    };
+    const onError = (error: Error) => settle(error);
+    const onClose = () =>
+      settle(
+        stream.errored ??
+          new Error("Plugin CLI output stream closed before flushing"),
+      );
+    stream.once("error", onError);
+    stream.once("close", onClose);
+    if (stream.destroyed) {
+      if (stream.closed) process.nextTick(onClose);
+      return;
+    }
+    try {
+      stream.write(output, (error) => {
+        if (!error) settle();
+      });
+    } catch (error) {
+      stream.off("error", onError);
+      stream.off("close", onClose);
+      rejectPromise(error);
+    }
   });
 }
 

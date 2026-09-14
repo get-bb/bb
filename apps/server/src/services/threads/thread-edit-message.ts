@@ -4,7 +4,6 @@ import {
   deleteThreadEventSuffixInTransaction,
   events,
   getActivePendingInteractionForThread,
-  getExperiments,
   getHighWaterMarks,
   getThread,
   hasQueuedThreadMessages,
@@ -65,6 +64,13 @@ interface EditableTurn {
   requestSequence: number;
   sourceProviderThreadId: string | null;
 }
+
+const TURN_REQUEST_ROW_COLUMNS = {
+  data: events.data,
+  sequence: events.sequence,
+  threadId: events.threadId,
+  type: events.type,
+};
 
 function conflict(message: string): never {
   throw new ApiError(409, "invalid_request", message);
@@ -314,12 +320,7 @@ function resolveEditableTurn(
 
   if (requestSequence !== undefined) {
     const requestRow = db
-      .select({
-        data: events.data,
-        sequence: events.sequence,
-        threadId: events.threadId,
-        type: events.type,
-      })
+      .select(TURN_REQUEST_ROW_COLUMNS)
       .from(events)
       .where(
         and(
@@ -337,12 +338,7 @@ function resolveEditableTurn(
   }
 
   const requestRows = db
-    .select({
-      data: events.data,
-      sequence: events.sequence,
-      threadId: events.threadId,
-      type: events.type,
-    })
+    .select(TURN_REQUEST_ROW_COLUMNS)
     .from(events)
     .where(
       and(
@@ -399,9 +395,6 @@ export async function editThreadMessage(
     thread: Thread;
   },
 ): Promise<EditMessageResponse> {
-  if (!getExperiments(deps.db).editMessages) {
-    conflict("Enable the Edit messages experiment before editing a message");
-  }
   if (!deps.providerRegistry.supportsSessionRewind(args.thread.providerId)) {
     conflict(`Editing messages is not supported for ${args.thread.providerId}`);
   }

@@ -22,6 +22,10 @@ import {
   useAudioInputDevicePreference,
   type PreferredAudioInputDeviceId,
 } from "@/lib/audio-input-device-preference";
+import {
+  SETTINGS_DROPDOWN_CONTENT_CLASS,
+  SETTINGS_DROPDOWN_TRIGGER_CLASS,
+} from "./settings-dropdown";
 
 interface VoiceInputSettingsSectionContentProps {
   devices: readonly AudioInputDeviceOption[];
@@ -33,10 +37,6 @@ interface VoiceInputSettingsSectionContentProps {
   preferredDeviceId: PreferredAudioInputDeviceId;
 }
 
-const SETTINGS_DROPDOWN_TRIGGER_CLASS =
-  "h-7 w-full justify-between border-border/60 bg-card px-2 text-xs sm:w-44";
-const SETTINGS_DROPDOWN_CONTENT_CLASS =
-  "min-w-[var(--radix-dropdown-menu-trigger-width)]";
 const SYSTEM_DEFAULT_MICROPHONE_LABEL = "System default";
 const MICROPHONE_SETTING_LABEL = "Microphone";
 

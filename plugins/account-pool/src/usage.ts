@@ -1,9 +1,10 @@
 import { z } from "zod";
-import type {
-  AccountQuota,
-  FamilyQuota,
-  FamilyWeekly,
-  ModelFamily,
+import {
+  EMPTY_FAMILY_WEEKLY,
+  type AccountQuota,
+  type FamilyQuota,
+  type FamilyWeekly,
+  type ModelFamily,
 } from "./contracts.js";
 import { modelFamily, parseReset } from "./quota.js";
 
@@ -132,13 +133,7 @@ export function quotaFromUsage(
   const familyWeekly: FamilyWeekly =
     data.limits === undefined
       ? { ...previous.familyWeekly }
-      : {
-          fable: null,
-          sonnet: null,
-          opus: null,
-          haiku: null,
-          other: null,
-        };
+      : { ...EMPTY_FAMILY_WEEKLY };
   for (const limit of data.limits ?? []) {
     if (
       limit.kind !== "weekly_scoped" &&

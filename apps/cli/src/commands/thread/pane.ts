@@ -6,7 +6,11 @@ import {
   resolveContextThreadId,
   resolveExplicitIdFlag,
 } from "../../context-env.js";
-import { outputJson, printContextLabel, type ResolvedId } from "../helpers.js";
+import {
+  outputJson,
+  printThreadContextLabel,
+  type ResolvedId,
+} from "../helpers.js";
 
 interface ThreadPaneCommandOptions {
   json?: boolean;
@@ -65,7 +69,7 @@ export function registerPaneCommand(
           ) {
             return;
           }
-          printContextLabel(target, "Thread", "BB_THREAD_ID", opts);
+          printThreadContextLabel(target);
           console.log(`Thread: ${target.id}`);
           console.log(`Pane action: ${paneAction}`);
           console.log(`Delivered: ${result.delivered}`);

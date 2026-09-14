@@ -1,6 +1,11 @@
 import * as React from "react";
 
 import { useLatestRef } from "@/hooks/useLatestRef";
+import {
+  findTouchById,
+  hasTextSelectionWithin,
+  isHorizontallyScrollableElement,
+} from "./gesture-dom";
 
 const DRAG_INTENT_PX = 12;
 const DRAG_SETTLE_MS = 220;
@@ -46,14 +51,6 @@ type Options = {
 
 type Point = { x: number; y: number };
 
-function getTouch(touches: TouchList, id: number): Touch | null {
-  for (let index = 0; index < touches.length; index += 1) {
-    const touch = touches.item(index);
-    if (touch?.identifier === id) return touch;
-  }
-  return null;
-}
-
 function isTouchEvent(event: Event): event is TouchEvent {
   return "touches" in event && "changedTouches" in event;
 }
@@ -62,8 +59,8 @@ function trackedPoint(event: Event, session: DragSession): Point | null {
   if (session.input === "touch") {
     if (!isTouchEvent(event)) return null;
     const touch =
-      getTouch(event.touches, session.id) ??
-      getTouch(event.changedTouches, session.id);
+      findTouchById(event.touches, session.id) ??
+      findTouchById(event.changedTouches, session.id);
     return touch === null ? null : { x: touch.clientX, y: touch.clientY };
   }
   if (
@@ -79,34 +76,14 @@ function trackedPoint(event: Event, session: DragSession): Point | null {
   return { x: event.clientX, y: event.clientY };
 }
 
-function isScrollable(element: Element): boolean {
-  const view = element.ownerDocument.defaultView;
-  if (view === null || !(element instanceof view.HTMLElement)) return false;
-  const overflow = view.getComputedStyle(element).overflowX;
-  return (
-    (overflow === "auto" || overflow === "scroll" || overflow === "overlay") &&
-    element.scrollWidth > element.clientWidth + 1
-  );
-}
-
 function startsInHorizontalScroller(session: DragSession): boolean {
   let element = session.target;
   while (element !== null) {
-    if (isScrollable(element)) return true;
+    if (isHorizontallyScrollableElement(element)) return true;
     if (element === session.boundary) return false;
     element = element.parentElement;
   }
   return false;
-}
-
-function hasTextSelectionWithin(boundary: Element): boolean {
-  const selection = boundary.ownerDocument.getSelection();
-  if (selection === null || selection.isCollapsed) return false;
-  return (
-    (selection.anchorNode !== null &&
-      boundary.contains(selection.anchorNode)) ||
-    (selection.focusNode !== null && boundary.contains(selection.focusNode))
-  );
 }
 
 function suppressNextClick() {

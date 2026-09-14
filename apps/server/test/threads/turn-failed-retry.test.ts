@@ -10,6 +10,7 @@ import type { ThreadQueuedMessage } from "@bb/domain";
 import type { PluginHookName } from "@get-bb/plugin-sdk";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  invokePluginInline,
   setPluginHookProvider,
   type PluginHookRegistration,
 } from "../../src/services/plugins/plugin-hook-registry.js";
@@ -49,16 +50,7 @@ function installHooks(
   };
   setPluginHookProvider({
     listHooks: (hook) => registry[hook],
-    invokeHook: async (_pluginId, _label, run) => {
-      try {
-        return { ok: true, value: await run() };
-      } catch (error) {
-        return {
-          ok: false,
-          error: error instanceof Error ? error.message : String(error),
-        };
-      }
-    },
+    invokeHook: (_pluginId, _label, run) => invokePluginInline(run),
     decisionTimeoutMs: 10_000,
   });
 }
@@ -75,6 +67,8 @@ afterEach(() => {
 function recordTurnFailedAnnouncements(): string[] {
   const announced: string[] = [];
   setPluginThreadEventEmitter({
+    emitThreadEvents: () => {},
+    emitTerminalInput: () => {},
     emitThreadCreated: () => {},
     emitThreadActive: () => {},
     emitThreadIdle: () => {},
@@ -84,6 +78,8 @@ function recordTurnFailedAnnouncements(): string[] {
     emitInteractionPending: () => {},
     emitMessageQueued: () => {},
     emitMessageDispatched: () => {},
+    emitMessageCancelled: () => {},
+    emitThreadUnarchived: () => {},
     emitTurnFailed: (threadId) => announced.push(threadId),
   });
   return announced;
@@ -558,6 +554,7 @@ describe("retrying a failed turn", () => {
       setThreadExecutionOverride(harness.db, {
         threadId: thread.id,
         modelOverride: "gpt-6-pro",
+        reasoningLevelOverride: "max",
       });
 
       await retryFailedTurn(harness.deps, {
@@ -570,6 +567,9 @@ describe("retrying a failed turn", () => {
       if (retryRequest === undefined) throw new Error("expected a retry turn");
       expect(turnRequestData(retryRequest).execution.model).toBe("gpt-5");
       expect(requireThread(harness, thread.id).modelOverride).toBe("gpt-6-pro");
+      expect(requireThread(harness, thread.id).reasoningLevelOverride).toBe(
+        "max",
+      );
     });
   });
 

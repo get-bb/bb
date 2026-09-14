@@ -13,33 +13,19 @@ import {
   type Range,
   type Virtualizer,
 } from "@tanstack/react-virtual";
-import type { TimelineWindowedItemsProps } from "./TimelineWindowedItemsLoader.js";
-
-export type { TimelineWindowedItemRenderState } from "./TimelineWindowedItemsLoader.js";
+import {
+  DEFAULT_WINDOWING_MIN_ITEM_COUNT,
+  NOOP_ITEM_REF,
+  recordTimelineMeasurement,
+  type TimelineWindowedItemsProps,
+} from "./TimelineWindowedItemsLoader.js";
 
 const TIMELINE_WINDOW_OVERSCAN_ITEMS = 8;
 const TIMELINE_WINDOW_IDLE_DELAY_MS = 300;
 const TIMELINE_WINDOW_MAX_INTERACTION_PINS = 24;
-const TIMELINE_WINDOW_MAX_MEASUREMENTS = 2_000;
-const TIMELINE_WINDOWING_MIN_ITEM_COUNT = 20;
 
 const EMPTY_KEY_SET: ReadonlySet<string> = new Set();
 const GET_NO_SCROLL_ELEMENT = () => null;
-const NOOP_ITEM_REF = () => {};
-
-function recordTimelineMeasurement(
-  measurements: Map<string, number>,
-  key: string,
-  height: number,
-): void {
-  measurements.delete(key);
-  measurements.set(key, height);
-  while (measurements.size > TIMELINE_WINDOW_MAX_MEASUREMENTS) {
-    const oldestKey = measurements.keys().next().value;
-    if (oldestKey === undefined) break;
-    measurements.delete(oldestKey);
-  }
-}
 
 interface ScrollSample {
   at: number;
@@ -77,7 +63,7 @@ export function TimelineWindowedItems({
   getScrollElement,
   itemKeys,
   measurements,
-  minItemCount = TIMELINE_WINDOWING_MIN_ITEM_COUNT,
+  minItemCount = DEFAULT_WINDOWING_MIN_ITEM_COUNT,
   renderItem,
 }: TimelineWindowedItemsProps) {
   const configured =

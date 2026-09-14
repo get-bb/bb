@@ -72,7 +72,9 @@ function renderChildCompleted(text = MARKDOWN_BODY) {
           attachments={null}
           mentions={mentions}
           text={text}
+          threadId="thr_parent"
           turnRequest={{ kind: "message", status: "accepted" }}
+          workspaceRootPath="/workspace"
           projectId="proj_demo"
         />
       </RouteNavigationProvider>
@@ -84,6 +86,18 @@ afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+});
+
+describe("GeneratedConversationMessage images", () => {
+  it("routes images in generated system messages through the current thread", () => {
+    renderChildCompleted("![report](reports/result.png)");
+
+    expect(
+      screen.getByRole("img", { name: "report" }).getAttribute("src"),
+    ).toBe(
+      "/api/v1/threads/thr_parent/host-files/content?path=%2Fworkspace%2Freports%2Fresult.png",
+    );
+  });
 });
 
 const AGENT_BODY = "# notes\nedited path:src/app.ts here";

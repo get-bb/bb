@@ -3,20 +3,21 @@ import {
   type ProjectSource,
   type ThreadListEntry,
 } from "@bb/domain";
-import type {
-  ProjectBranchesResponse,
-  SystemProvidersQuery,
-} from "@bb/server-contract";
+import type { SystemEnvironmentProvider } from "@bb/server-contract";
 import {
-  encodeHostValue,
+  PERSONAL_WORKSPACE_ENVIRONMENT_PROVIDER_ID,
+  PROJECT_CHECKOUT_ENVIRONMENT_PROVIDER_ID,
+} from "@bb/client-core";
+import {
+  encodeProviderValue,
   parseEnvironmentValue,
-  REUSE_VALUE_WITHOUT_ENVIRONMENT,
 } from "@/components/pickers/environment-picker-value";
-import type { ReuseThreadOption } from "@/components/pickers/WorktreePicker";
+import type { ReuseThreadOption } from "@/components/pickers/ReuseEnvironmentPicker";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 
 interface ResolveRootComposeEffectiveEnvironmentValueArgs {
   environmentSelectionValue: string;
+  environmentProviders?: readonly SystemEnvironmentProvider[];
   isProjectless: boolean;
   knownHostIds: ReadonlySet<string>;
   primaryHostId: string | null;
@@ -25,17 +26,13 @@ interface ResolveRootComposeEffectiveEnvironmentValueArgs {
   reuseThreadOptionsLoading: boolean;
 }
 
-const PROJECT_SOURCE_NOT_GIT_WORKTREE_DISABLED_REASON =
-  "New worktrees require a Git repository with at least one commit";
-const PROJECT_SOURCE_NO_COMMITS_WORKTREE_DISABLED_REASON =
-  "Project source has no commits. Create an initial commit before creating a worktree";
-
-function isWorktreeWithEnv(thread: ThreadListEntry): boolean {
-  if (thread.environmentId === null) return false;
-  return (
-    thread.environmentWorkspaceDisplayKind === "managed-worktree" ||
-    thread.environmentWorkspaceDisplayKind === "unmanaged-worktree"
-  );
+interface ResolveProjectlessEnvironmentValueArgs {
+  environmentProviders: readonly SystemEnvironmentProvider[] | undefined;
+  environmentSelectionValue: string;
+  parsedSelection: ReturnType<typeof parseEnvironmentValue>;
+  primaryHostId: string | null;
+  reuseThreadOptions: readonly ReuseThreadOption[];
+  reuseThreadOptionsLoading: boolean;
 }
 
 export function buildReuseThreadOptions(
@@ -45,9 +42,10 @@ export function buildReuseThreadOptions(
   const threadsByEnvironmentId = new Map<string, ThreadListEntry[]>();
   const branchByEnvironmentId = new Map<string, string | null>();
   const nameByEnvironmentId = new Map<string, string | null>();
+  const pathByEnvironmentId = new Map<string, string | null>();
+  const providerIdByEnvironmentId = new Map<string, string | null>();
   const hostIdByEnvironmentId = new Map<string, string | null>();
   for (const thread of threads) {
-    if (!isWorktreeWithEnv(thread)) continue;
     if (thread.environmentId === null) continue;
     let bucket = threadsByEnvironmentId.get(thread.environmentId);
     if (!bucket) {
@@ -58,6 +56,11 @@ export function buildReuseThreadOptions(
         thread.environmentBranchName,
       );
       nameByEnvironmentId.set(thread.environmentId, thread.environmentName);
+      pathByEnvironmentId.set(thread.environmentId, thread.environmentPath);
+      providerIdByEnvironmentId.set(
+        thread.environmentId,
+        thread.environmentProviderId,
+      );
       hostIdByEnvironmentId.set(thread.environmentId, thread.environmentHostId);
     }
     bucket.push(thread);
@@ -72,6 +75,9 @@ export function buildReuseThreadOptions(
       environmentId,
       branchName: branchByEnvironmentId.get(environmentId) ?? null,
       name: nameByEnvironmentId.get(environmentId) ?? null,
+      path: pathByEnvironmentId.get(environmentId) ?? null,
+      environmentProviderId:
+        providerIdByEnvironmentId.get(environmentId) ?? null,
       hostName:
         hostNameById !== null && hostId !== null
           ? (hostNameById.get(hostId) ?? null)
@@ -93,23 +99,61 @@ export function buildReuseThreadOptions(
   return options;
 }
 
-export function resolveProjectSourceWorktreeDisabledReason(
-  data: ProjectBranchesResponse | undefined,
-): string | null {
-  switch (data?.checkout.kind) {
-    case "unknown":
-      return PROJECT_SOURCE_NOT_GIT_WORKTREE_DISABLED_REASON;
-    case "unborn":
-      return PROJECT_SOURCE_NO_COMMITS_WORKTREE_DISABLED_REASON;
-    case "branch":
-    case "detached":
-    case undefined:
-      return null;
+export function resolveProjectlessDefaultEnvironmentProvider(
+  providers: readonly SystemEnvironmentProvider[],
+): SystemEnvironmentProvider | null {
+  return (
+    providers.find(
+      (provider) =>
+        provider.id === PERSONAL_WORKSPACE_ENVIRONMENT_PROVIDER_ID &&
+        provider.requires.projectless,
+    ) ?? null
+  );
+}
+
+function resolveProjectlessEnvironmentValue({
+  environmentProviders,
+  environmentSelectionValue,
+  parsedSelection,
+  primaryHostId,
+  reuseThreadOptions,
+  reuseThreadOptionsLoading,
+}: ResolveProjectlessEnvironmentValueArgs): string {
+  if (
+    parsedSelection?.type === "reuse" &&
+    parsedSelection.environmentId !== null &&
+    (reuseThreadOptionsLoading ||
+      reuseThreadOptions.some(
+        (option) => option.environmentId === parsedSelection.environmentId,
+      ))
+  ) {
+    return environmentSelectionValue;
   }
+  if (environmentProviders === undefined) {
+    return "";
+  }
+  if (
+    parsedSelection?.type === "provider" &&
+    environmentProviders.some((provider) => {
+      if (provider.id !== parsedSelection.environmentProviderId) return false;
+      return provider.requires.projectless && primaryHostId !== null;
+    })
+  ) {
+    return environmentSelectionValue;
+  }
+  const defaultProvider = resolveProjectlessDefaultEnvironmentProvider(
+    environmentProviders.filter(
+      (provider) => provider.requires.projectless && primaryHostId !== null,
+    ),
+  );
+  return defaultProvider === null
+    ? ""
+    : encodeProviderValue(defaultProvider.id);
 }
 
 export function resolveRootComposeEffectiveEnvironmentValue({
   environmentSelectionValue,
+  environmentProviders,
   isProjectless,
   knownHostIds,
   primaryHostId,
@@ -117,102 +161,65 @@ export function resolveRootComposeEffectiveEnvironmentValue({
   reuseThreadOptions,
   reuseThreadOptionsLoading,
 }: ResolveRootComposeEffectiveEnvironmentValueArgs): string {
-  if (!primaryHostId) {
-    return "";
-  }
-
   const parsedSelection = parseEnvironmentValue(environmentSelectionValue);
 
-  if (
-    parsedSelection?.type === "host" &&
-    knownHostIds.has(parsedSelection.hostId)
-  ) {
-    if (isProjectless) {
-      return encodeHostValue(parsedSelection.hostId, "local");
-    }
-    if (
-      findLocalPathProjectSourceForHost(
-        projectSources,
-        parsedSelection.hostId,
-      ) !== undefined
-    ) {
-      return environmentSelectionValue;
-    }
-  }
-  const canUseHostWorkspace =
-    isProjectless ||
-    findLocalPathProjectSourceForHost(projectSources, primaryHostId) !==
-      undefined;
-  const fallbackHostValue = canUseHostWorkspace
-    ? encodeHostValue(primaryHostId, "local")
-    : "";
-
   if (isProjectless) {
-    return fallbackHostValue;
+    return resolveProjectlessEnvironmentValue({
+      environmentProviders,
+      environmentSelectionValue,
+      parsedSelection,
+      primaryHostId,
+      reuseThreadOptions,
+      reuseThreadOptionsLoading,
+    });
   }
+
+  if (environmentProviders === undefined) {
+    return "";
+  }
+  const providerRegistered = (environmentProviderId: string): boolean =>
+    environmentProviders.some(
+      (provider) => provider.id === environmentProviderId,
+    );
+  const selectedProvider =
+    parsedSelection?.type === "provider"
+      ? environmentProviders.find(
+          (provider) => provider.id === parsedSelection.environmentProviderId,
+        )
+      : undefined;
+  const fallbackValue =
+    primaryHostId !== null &&
+    knownHostIds.has(primaryHostId) &&
+    findLocalPathProjectSourceForHost(projectSources, primaryHostId) !==
+      undefined &&
+    providerRegistered(PROJECT_CHECKOUT_ENVIRONMENT_PROVIDER_ID)
+      ? encodeProviderValue(PROJECT_CHECKOUT_ENVIRONMENT_PROVIDER_ID)
+      : "";
 
   if (parsedSelection?.type === "reuse") {
     if (parsedSelection.environmentId === null) {
       return reuseThreadOptionsLoading || reuseThreadOptions.length > 0
         ? environmentSelectionValue
-        : fallbackHostValue;
+        : fallbackValue;
     }
 
     if (reuseThreadOptionsLoading) {
-      return REUSE_VALUE_WITHOUT_ENVIRONMENT;
+      return environmentSelectionValue;
     }
 
     return reuseThreadOptions.some(
       (option) => option.environmentId === parsedSelection.environmentId,
     )
       ? environmentSelectionValue
-      : fallbackHostValue;
+      : fallbackValue;
   }
 
-  if (!canUseHostWorkspace) {
-    return "";
+  if (
+    selectedProvider !== undefined &&
+    (selectedProvider.machineProviderId !== null || primaryHostId !== null)
+  ) {
+    return environmentSelectionValue;
   }
 
-  if (parsedSelection?.type === "host") {
-    return encodeHostValue(primaryHostId, parsedSelection.mode);
-  }
-
-  return fallbackHostValue;
-}
-
-export function resolveComposeHostId(
-  parsedEnvironment: ReturnType<typeof parseEnvironmentValue>,
-  primaryHostId: string | null,
-): string | null {
-  return parsedEnvironment?.type === "host"
-    ? parsedEnvironment.hostId
-    : primaryHostId;
-}
-
-export function resolveRootComposeProjectRouting(
-  parsedEnvironment: ReturnType<typeof parseEnvironmentValue>,
-  primaryHostId: string | null,
-): { environmentId?: string; hostId?: string } {
-  if (parsedEnvironment?.type === "reuse") {
-    return parsedEnvironment.environmentId === null
-      ? {}
-      : { environmentId: parsedEnvironment.environmentId };
-  }
-  const hostId = resolveComposeHostId(parsedEnvironment, primaryHostId);
-  return hostId === null ? {} : { hostId };
-}
-
-export function resolveRootComposeProviderRouting(
-  args: ResolveRootComposeEffectiveEnvironmentValueArgs,
-): SystemProvidersQuery {
-  const parsed = parseEnvironmentValue(
-    resolveRootComposeEffectiveEnvironmentValue(args),
-  );
-  if (parsed?.type === "host") {
-    return { hostId: parsed.hostId };
-  }
-  if (parsed?.type === "reuse" && parsed.environmentId !== null) {
-    return { environmentId: parsed.environmentId };
-  }
-  return {};
+  return fallbackValue;
 }

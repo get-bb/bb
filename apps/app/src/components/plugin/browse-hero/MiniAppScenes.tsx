@@ -271,7 +271,6 @@ function ChiefOfStaffScene({ accentToken }: SceneProps) {
               </span>
             )}
           </div>
-          {}
           <div className="flex items-center gap-0.5">
             {Array.from({ length: lane.agents }, (_, index) => (
               <div

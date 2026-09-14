@@ -1,5 +1,13 @@
 import { collectOptionalFieldPaths } from "@bb/test-helpers";
-import { threadScope, turnScope, type JsonObject } from "@bb/domain";
+import {
+  TERMINAL_COLS_MAX,
+  TERMINAL_DATA_MAX_BASE64_LENGTH,
+  TERMINAL_DATA_MAX_BYTES,
+  TERMINAL_ROWS_MAX,
+  threadScope,
+  turnScope,
+  type JsonObject,
+} from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import * as contract from "../src/index.js";
 import {
@@ -7,10 +15,6 @@ import {
   HOST_DAEMON_PROTOCOL_VERSION,
   HOST_DAEMON_ONLINE_RPC_COMMAND_TYPES,
   HOST_DAEMON_SETTLED_COMMAND_TYPES,
-  TERMINAL_COLS_MAX,
-  TERMINAL_DATA_MAX_BASE64_LENGTH,
-  TERMINAL_DATA_MAX_BYTES,
-  TERMINAL_ROWS_MAX,
   createHostDaemonClient,
   hostDaemonEnrollRequestSchema,
   hostDaemonEnrollResponseSchema,
@@ -173,6 +177,8 @@ const WORKSPACE_DIFF_AVAILABLE_RESULT: JsonObject = {
 };
 
 const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
+  "environment.hook.run": {},
+  "environment.hook.cancel": { status: "terminated" },
   "desktop.browser.list_instances": { instances: [] },
   "desktop.browser.list_tabs": { tabs: [] },
   "desktop.browser.create_tab": {
@@ -206,6 +212,27 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
     expiresAt: 1700000000000,
   },
   "desktop.browser.release_control": { ok: true },
+  "desktop.browser.list_import_sources": {
+    sources: [
+      {
+        id: "chrome",
+        name: "Google Chrome",
+        profiles: [{ directory: "Default", name: "Person 1", cookieCount: 12 }],
+      },
+      {
+        id: "safari",
+        name: "Safari",
+        profiles: [],
+        unavailable: "notInstalled",
+      },
+    ],
+  },
+  "desktop.browser.import_cookies": {
+    ok: true,
+    imported: 12,
+    skipped: 1,
+    skippedDomains: ["example.com"],
+  },
   "plugin.host.call": { output: { ok: true } },
   "plugin.host.cancel": { cancelled: true },
   "plugin.host.dispose": { disposed: true },
@@ -314,6 +341,7 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
     },
     defaultBranch: "main",
     defaultBranchRelation: "equal",
+    isWorktree: false,
     hasUncommittedChanges: false,
     operation: {
       kind: "none",
@@ -489,30 +517,19 @@ const SETTLED_RESPONSE_RESULT_FIXTURES: SettledResponseResultFixtures = {
   "thread.archive": {},
   "thread.unarchive": {},
   "interactive.resolve": {},
-  "environment.provision": {
+  "environment.attach": {
     path: "/tmp/env",
     isGitRepo: true,
-    isWorktree: true,
+    isWorktree: false,
     branchName: "bb/env-123",
     defaultBranch: "main",
-    transcript: [
-      {
-        type: "step",
-        key: "setup",
-        text: "/bin/bash .bb-env-setup.sh",
-        status: "completed",
-      },
-    ],
   },
-  "environment.provision.cancel": {
+  "environment.attach.cancel": {
     aborted: true,
   },
   "project.clone": {
     path: "/home/me/.bb/checkouts/project",
     gitRemoteUrl: "git@example.com:me/project.git",
-  },
-  "environment.destroy": {
-    transcript: [],
   },
   "workspace.commit": {
     commitSha: "abcdef123456",
@@ -552,6 +569,18 @@ const WORKSPACE_DIFF_PATCH_AVAILABLE_RESULT: JsonObject = {
 
 const ADDITIONAL_ONLINE_RPC_RESPONSE_ROUND_TRIP_CASES: OnlineRpcResponseRoundTripCase[] =
   [
+    {
+      name: "host.read_file not-modified result",
+      commandType: "host.read_file",
+      result: {
+        path: "/tmp/preview.png",
+        contentEncoding: "base64",
+        mimeType: "image/png",
+        sizeBytes: 1024,
+        sha256: "a".repeat(64),
+        notModified: true,
+      },
+    },
     {
       name: "workspace.status available result",
       commandType: "workspace.status",
@@ -659,12 +688,12 @@ function terminalDataBase64(byteLength: number): string {
 }
 
 const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
-  "hostDaemonCommandSchema.checkout":
-    "environment.provision only includes checkout instructions for unmanaged workspaces that requested a branch mutation.",
   "hostDaemonCommandSchema.targetPath":
     "project.clone omits targetPath when the daemon should derive its default checkout location for the project.",
   "hostDaemonOnlineRpcCommandSchema.expectedSha256":
     "host.write_file may omit expectedSha256 for unconditional writes; a hash is the compare-and-swap guard and null means create-only.",
+  "hostDaemonOnlineRpcCommandSchema.ifNoneMatch":
+    "host.read_file omits ifNoneMatch for unconditional reads; when present the daemon may omit unchanged file content.",
   "hostDaemonOnlineRpcCommandSchema.mode":
     "host.write_file may omit mode to preserve existing permissions; when present it only controls newly created files.",
   "hostDaemonOnlineRpcCommandSchema.mergeBaseBranch":
@@ -969,13 +998,12 @@ const CONTRIBUTED_ENV = [
     value: { serverPath: "/plugins/auth-proxy/api" },
     source: { plugin: "auth-proxy" },
     reason: "Route provider traffic through the plugin",
-    secret: true,
   },
 ] as const;
 
 describe("host-daemon command schemas", () => {
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(184);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(208);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
@@ -1080,11 +1108,9 @@ describe("host-daemon command schemas", () => {
       hostDaemonEnrollRequestSchema.parse({
         hostId: "host_123",
         hostName: "test-host",
-        hostType: "persistent",
       }),
     ).toMatchObject({
       hostId: "host_123",
-      hostType: "persistent",
     });
 
     expect(
@@ -1102,7 +1128,6 @@ describe("host-daemon command schemas", () => {
         environmentId: "env_123",
         workspaceContext: {
           workspacePath: "/tmp/workspace",
-          workspaceProvisionType: "unmanaged",
         },
         message: "Checkpoint work",
       }),
@@ -1111,9 +1136,10 @@ describe("host-daemon command schemas", () => {
       message: "Checkpoint work",
     });
 
-    expect(
+    expect(() =>
       hostDaemonCommandSchema.parse({
-        type: "environment.provision",
+        type: "environment.attach",
+        contributedEnv: [],
         environmentId: "env_123",
         initiator: {
           threadId: "thr_123",
@@ -1126,65 +1152,32 @@ describe("host-daemon command schemas", () => {
         baseBranch: null,
         setupTimeoutMs: 900000,
       }),
-    ).toMatchObject({
-      type: "environment.provision",
-      workspaceProvisionType: "managed-worktree",
-    });
+    ).toThrow();
 
-    expect(
+    expect(() =>
       hostDaemonCommandSchema.parse({
-        type: "environment.provision",
+        type: "environment.attach",
+        contributedEnv: [],
         environmentId: "env_personal",
         initiator: null,
         workspaceProvisionType: "personal",
         targetPath: "/tmp/bb/personal-workspaces/env_personal",
       }),
-    ).toMatchObject({
-      type: "environment.provision",
-      workspaceProvisionType: "personal",
-    });
+    ).toThrow();
 
     expect(
       hostDaemonCommandSchema.parse({
-        type: "environment.provision",
+        type: "environment.attach",
+        contributedEnv: [],
         environmentId: "env_123",
         initiator: null,
-        workspaceProvisionType: "unmanaged",
         path: "/tmp/project",
-        checkout: {
-          kind: "existing",
-          name: "feature/test",
-        },
+        setupScriptTimeoutMs: null,
       }),
     ).toMatchObject({
-      type: "environment.provision",
-      workspaceProvisionType: "unmanaged",
-      checkout: {
-        kind: "existing",
-        name: "feature/test",
-      },
-    });
-
-    expect(
-      hostDaemonCommandSchema.parse({
-        type: "environment.provision",
-        environmentId: "env_123",
-        initiator: null,
-        workspaceProvisionType: "unmanaged",
-        path: "/tmp/project",
-        checkout: {
-          kind: "new",
-          name: "bb/env-123",
-          baseBranch: "release",
-        },
-      }),
-    ).toMatchObject({
-      type: "environment.provision",
-      workspaceProvisionType: "unmanaged",
-      checkout: {
-        kind: "new",
-        baseBranch: "release",
-      },
+      type: "environment.attach",
+      contributedEnv: [],
+      path: "/tmp/project",
     });
 
     expect(
@@ -1193,7 +1186,6 @@ describe("host-daemon command schemas", () => {
         environmentId: "env_123",
         workspaceContext: {
           workspacePath: "/tmp/workspace",
-          workspaceProvisionType: "unmanaged",
         },
         message: "Checkpoint work",
       }),
@@ -1209,7 +1201,6 @@ describe("host-daemon command schemas", () => {
         environmentId: "env_123",
         workspaceContext: {
           workspacePath: "/tmp/workspace",
-          workspaceProvisionType: "unmanaged",
         },
       }),
     ).toMatchObject({
@@ -1224,7 +1215,6 @@ describe("host-daemon command schemas", () => {
         environmentId: "env_123",
         workspaceContext: {
           workspacePath: "/tmp/workspace",
-          workspaceProvisionType: "unmanaged",
         },
       }),
     ).toMatchObject({
@@ -1240,7 +1230,6 @@ describe("host-daemon command schemas", () => {
         environmentId: "env_123",
         workspaceContext: {
           workspacePath: "/tmp/workspace",
-          workspaceProvisionType: "unmanaged",
         },
       }),
     ).toMatchObject({
@@ -1256,7 +1245,6 @@ describe("host-daemon command schemas", () => {
         environmentId: "env_123",
         workspaceContext: {
           workspacePath: "/tmp/workspace",
-          workspaceProvisionType: "unmanaged",
         },
       }),
     ).toThrow();
@@ -1266,11 +1254,17 @@ describe("host-daemon command schemas", () => {
         type: "host.list_files",
         path: "/tmp/workspace",
         limit: 1000,
+        includeHidden: true,
+        respectGitIgnore: false,
+        excludeNames: [],
       }),
     ).toMatchObject({
       type: "host.list_files",
       path: "/tmp/workspace",
       limit: 1000,
+      includeHidden: true,
+      respectGitIgnore: false,
+      excludeNames: [],
     });
 
     expect(
@@ -1278,6 +1272,9 @@ describe("host-daemon command schemas", () => {
         type: "host.list_paths",
         path: "/tmp/workspace",
         limit: 1000,
+        includeHidden: true,
+        respectGitIgnore: false,
+        excludeNames: [],
         includeFiles: true,
         includeDirectories: true,
       }),
@@ -1285,6 +1282,9 @@ describe("host-daemon command schemas", () => {
       type: "host.list_paths",
       path: "/tmp/workspace",
       limit: 1000,
+      includeHidden: true,
+      respectGitIgnore: false,
+      excludeNames: [],
       includeFiles: true,
       includeDirectories: true,
     });
@@ -1450,11 +1450,19 @@ describe("host-daemon command schemas", () => {
         type: "host.read_file",
         path: "/tmp/bb-data/thread-storage/thread-123/notes.md",
         rootPath: "/tmp/bb-data/thread-storage/thread-123",
+        ifNoneMatch: {
+          kind: "sha256",
+          values: ["a".repeat(64)],
+        },
       }),
     ).toMatchObject({
       type: "host.read_file",
       path: "/tmp/bb-data/thread-storage/thread-123/notes.md",
       rootPath: "/tmp/bb-data/thread-storage/thread-123",
+      ifNoneMatch: {
+        kind: "sha256",
+        values: ["a".repeat(64)],
+      },
     });
 
     expect(
@@ -1500,11 +1508,17 @@ describe("host-daemon command schemas", () => {
         type: "host.list_files",
         path: "/tmp/bb-data/thread-storage/thread-123",
         limit: 100,
+        includeHidden: true,
+        respectGitIgnore: false,
+        excludeNames: [],
       }),
     ).toMatchObject({
       type: "host.list_files",
       path: "/tmp/bb-data/thread-storage/thread-123",
       limit: 100,
+      includeHidden: true,
+      respectGitIgnore: false,
+      excludeNames: [],
     });
 
     expect(
@@ -1571,11 +1585,21 @@ describe("host-daemon command schemas", () => {
 
   it("rejects online-RPC-only read commands from the settled command schema", () => {
     const onlineReadCommands = [
-      { type: "host.list_files", path: "/tmp/workspace", limit: 100 },
+      {
+        type: "host.list_files",
+        path: "/tmp/workspace",
+        limit: 100,
+        includeHidden: true,
+        respectGitIgnore: false,
+        excludeNames: [],
+      },
       {
         type: "host.list_paths",
         path: "/tmp/workspace",
         limit: 100,
+        includeHidden: true,
+        respectGitIgnore: false,
+        excludeNames: [],
         includeFiles: true,
         includeDirectories: true,
       },
@@ -1618,7 +1642,6 @@ describe("host-daemon command schemas", () => {
         maxUntrackedLineStatBytes: 8 * 1024 * 1024,
         workspaceContext: {
           workspacePath: "/tmp/workspace",
-          workspaceProvisionType: "managed-worktree",
         },
       },
       {
@@ -1626,7 +1649,6 @@ describe("host-daemon command schemas", () => {
         environmentId: "env_123",
         workspaceContext: {
           workspacePath: "/tmp/workspace",
-          workspaceProvisionType: "managed-worktree",
         },
         target: { type: "uncommitted" },
         maxDiffBytes: 1000,
@@ -1643,10 +1665,20 @@ describe("host-daemon command schemas", () => {
     }
   });
 
-  it("rejects malformed environment.provision commands at parse time", () => {
+  it("rejects malformed environment.attach commands at parse time", () => {
     expect(() =>
       hostDaemonCommandSchema.parse({
         type: "environment.provision",
+        environmentId: "env_123",
+        initiator: null,
+        path: "/tmp/project",
+        checkout: null,
+      }),
+    ).toThrow();
+    expect(() =>
+      hostDaemonCommandSchema.parse({
+        type: "environment.attach",
+        contributedEnv: [],
         environmentId: "env_123",
         initiator: null,
         workspaceProvisionType: "managed-worktree",
@@ -1657,19 +1689,19 @@ describe("host-daemon command schemas", () => {
 
     expect(() =>
       hostDaemonCommandSchema.parse({
-        type: "environment.provision",
+        type: "environment.attach",
+        contributedEnv: [],
         environmentId: "env_123",
         initiator: null,
-        workspaceProvisionType: "unmanaged",
       }),
     ).toThrow();
 
     expect(() =>
       hostDaemonCommandSchema.parse({
-        type: "environment.provision",
+        type: "environment.attach",
+        contributedEnv: [],
         environmentId: "env_123",
         initiator: null,
-        workspaceProvisionType: "unmanaged",
         path: "/tmp/project",
         checkout: { kind: "new", name: "bb/env-123" },
       }),
@@ -1677,10 +1709,10 @@ describe("host-daemon command schemas", () => {
 
     expect(() =>
       hostDaemonCommandSchema.parse({
-        type: "environment.provision",
+        type: "environment.attach",
+        contributedEnv: [],
         environmentId: "env_123",
         initiator: null,
-        workspaceProvisionType: "unmanaged",
         path: "/tmp/project",
         checkout: { kind: "existing" },
       }),
@@ -1711,7 +1743,6 @@ describe("host-daemon command schemas", () => {
         threadId: "thr_123",
         workspaceContext: {
           workspacePath: "/tmp/workspace",
-          workspaceProvisionType: "unmanaged",
         },
         projectId: "proj_123",
         providerId: "codex",
@@ -1756,7 +1787,6 @@ describe("host-daemon command schemas", () => {
           bridgeLaunch: BRIDGE_LAUNCH,
           workspaceContext: {
             workspacePath: "/tmp/workspace",
-            workspaceProvisionType: "unmanaged",
           },
           projectId: "proj_123",
           providerId: "codex",
@@ -1781,7 +1811,6 @@ describe("host-daemon command schemas", () => {
         threadId: "thr_123",
         workspaceContext: {
           workspacePath: "/tmp/workspace",
-          workspaceProvisionType: "unmanaged",
         },
         projectId: "proj_123",
         providerId: "codex",
@@ -1843,7 +1872,6 @@ describe("host-daemon command schemas", () => {
       ],
       workspaceContext: {
         workspacePath: "/tmp/workspace",
-        workspaceProvisionType: "unmanaged",
       },
     });
   });
@@ -1869,7 +1897,6 @@ describe("host-daemon command schemas", () => {
         threadId: "thr_123",
         workspaceContext: {
           workspacePath: "/tmp/workspace",
-          workspaceProvisionType: "unmanaged" as const,
         },
         projectId: "proj_123",
         providerId: "codex",
@@ -1943,7 +1970,6 @@ describe("host-daemon command schemas", () => {
           bridgeLaunch: BRIDGE_LAUNCH,
           workspaceContext: {
             workspacePath: "/tmp/workspace",
-            workspaceProvisionType: "unmanaged",
           },
           projectId: "proj_123",
           providerId: "codex",
@@ -1983,7 +2009,6 @@ describe("host-daemon command schemas", () => {
       threadId: "thr_123",
       workspaceContext: {
         workspacePath: "/tmp/workspace",
-        workspaceProvisionType: "unmanaged",
       },
       projectId: "proj_123",
       providerId: "codex",
@@ -2040,7 +2065,6 @@ describe("host-daemon command schemas", () => {
         bridgeLaunch: BRIDGE_LAUNCH,
         workspaceContext: {
           workspacePath: "/tmp/workspace",
-          workspaceProvisionType: "unmanaged",
         },
         projectId: "proj_123",
         providerId: "codex",
@@ -2091,7 +2115,6 @@ describe("host-daemon command schemas", () => {
       threadId: "thr_123",
       workspaceContext: {
         workspacePath: "/tmp/workspace",
-        workspaceProvisionType: "unmanaged",
       },
       projectId: "proj_123",
       providerId: "acp-local",
@@ -2140,7 +2163,6 @@ describe("host-daemon command schemas", () => {
         bridgeLaunch: ACP_BRIDGE_LAUNCH,
         workspaceContext: {
           workspacePath: "/tmp/workspace",
-          workspaceProvisionType: "unmanaged",
         },
         projectId: "proj_123",
         providerId: "acp-local",
@@ -2206,7 +2228,6 @@ describe("host-daemon command schemas", () => {
       threadId: "thr_123",
       workspaceContext: {
         workspacePath: "/tmp/workspace",
-        workspaceProvisionType: "unmanaged",
       },
       projectId: "proj_123",
       providerId: "echo-agent",
@@ -2385,7 +2406,6 @@ describe("host-daemon command schemas", () => {
           bridgeLaunch: BRIDGE_LAUNCH,
           workspaceContext: {
             workspacePath: "/tmp/workspace",
-            workspaceProvisionType: "unmanaged",
           },
           projectId: "proj_123",
           providerId: "codex",
@@ -2405,7 +2425,6 @@ describe("host-daemon command schemas", () => {
         bridgeLaunch: BRIDGE_LAUNCH,
         workspaceContext: {
           workspacePath: "/tmp/workspace",
-          workspaceProvisionType: "unmanaged",
         },
       },
       target: { mode: "start" },
@@ -2433,7 +2452,6 @@ describe("host-daemon command schemas", () => {
           bridgeLaunch: BRIDGE_LAUNCH,
           workspaceContext: {
             workspacePath: "/tmp/workspace",
-            workspaceProvisionType: "unmanaged",
           },
           projectId: "proj_123",
           providerId: "codex",
@@ -2474,7 +2492,6 @@ describe("host-daemon command schemas", () => {
           bridgeLaunch: BRIDGE_LAUNCH,
           workspaceContext: {
             workspacePath: "/tmp/workspace",
-            workspaceProvisionType: "unmanaged",
           },
           projectId: "proj_123",
           providerId: "codex",
@@ -2493,7 +2510,6 @@ describe("host-daemon command schemas", () => {
         threadId: "thr_123",
         workspaceContext: {
           workspacePath: "/tmp/workspace",
-          workspaceProvisionType: "unmanaged",
         },
         projectId: "proj_123",
         providerId: "codex",
@@ -2524,7 +2540,6 @@ describe("host-daemon command schemas", () => {
         threadId: "thr_123",
         workspaceContext: {
           workspacePath: "/tmp/workspace",
-          workspaceProvisionType: "unmanaged",
         },
         projectId: "proj_123",
         providerId: "codex",
@@ -2572,7 +2587,6 @@ describe("host-daemon command schemas", () => {
           bridgeLaunch: BRIDGE_LAUNCH,
           workspaceContext: {
             workspacePath: "/tmp/workspace",
-            workspaceProvisionType: "unmanaged",
           },
           projectId: "proj_123",
           providerId: "codex",
@@ -2589,7 +2603,8 @@ describe("host-daemon command schemas", () => {
 
     expect(() =>
       hostDaemonCommandSchema.parse({
-        type: "environment.provision",
+        type: "environment.attach",
+        contributedEnv: [],
         environmentId: "env_123",
         initiator: {
           threadId: "thr_123",
@@ -2618,10 +2633,10 @@ describe("host-daemon command schemas", () => {
 
     expect(
       hostDaemonCommandSchema.safeParse({
-        type: "environment.provision",
+        type: "environment.attach",
+        contributedEnv: [],
         environmentId: "env_123",
         initiator: null,
-        workspaceProvisionType: "unmanaged",
         path: "/tmp/project",
         checkout: { kind: "existing", name: "feature/test lock" },
       }).success,
@@ -2629,10 +2644,10 @@ describe("host-daemon command schemas", () => {
 
     expect(
       hostDaemonCommandSchema.safeParse({
-        type: "environment.provision",
+        type: "environment.attach",
+        contributedEnv: [],
         environmentId: "env_123",
         initiator: null,
-        workspaceProvisionType: "unmanaged",
         path: "/tmp/project",
         checkout: {
           kind: "new",
@@ -2644,7 +2659,8 @@ describe("host-daemon command schemas", () => {
 
     expect(
       hostDaemonCommandSchema.safeParse({
-        type: "environment.provision",
+        type: "environment.attach",
+        contributedEnv: [],
         environmentId: "env_123",
         initiator: null,
         workspaceProvisionType: "managed-worktree",
@@ -2658,7 +2674,8 @@ describe("host-daemon command schemas", () => {
 
     expect(
       hostDaemonCommandSchema.safeParse({
-        type: "environment.provision",
+        type: "environment.attach",
+        contributedEnv: [],
         environmentId: "env_123",
         initiator: null,
         workspaceProvisionType: "managed-worktree",
@@ -2679,7 +2696,6 @@ describe("host-daemon command schemas", () => {
         maxUntrackedLineStatBytes: 8 * 1024 * 1024,
         workspaceContext: {
           workspacePath: "/tmp/workspace",
-          workspaceProvisionType: "unmanaged",
         },
         mergeBaseBranch: "origin/main lock",
       }).success,
@@ -2708,6 +2724,51 @@ describe("host-daemon command schemas", () => {
     ).toBe(false);
   });
 
+  it("requires file list commands to state their entry filters", () => {
+    const listFiles = {
+      type: "host.list_files",
+      path: "/tmp/workspace",
+      limit: 100,
+      includeHidden: true,
+      respectGitIgnore: false,
+      excludeNames: ["node_modules"],
+    };
+    const listPaths = {
+      type: "host.list_paths",
+      path: "/tmp/workspace",
+      limit: 100,
+      includeFiles: true,
+      includeDirectories: true,
+      includeHidden: true,
+      respectGitIgnore: false,
+      excludeNames: ["node_modules"],
+    };
+    const parses = (command: Record<string, unknown>) =>
+      hostDaemonOnlineRpcCommandSchema.safeParse(command).success;
+
+    expect(parses(listFiles)).toBe(true);
+    expect(parses(listPaths)).toBe(true);
+    for (const command of [listFiles, listPaths]) {
+      const { includeHidden: _hidden, ...withoutHidden } = command;
+      const { respectGitIgnore: _ignore, ...withoutIgnorePolicy } = command;
+      const { excludeNames: _names, ...withoutNames } = command;
+      expect(parses(withoutHidden)).toBe(false);
+      expect(parses(withoutIgnorePolicy)).toBe(false);
+      expect(parses({ ...command, respectGitIgnore: true })).toBe(true);
+      expect(parses(withoutNames)).toBe(false);
+      expect(parses({ ...command, excludeNames: [""] })).toBe(false);
+      expect(
+        parses({
+          ...command,
+          excludeNames: Array.from(
+            { length: contract.FILE_LIST_EXCLUDE_NAMES_MAX + 1 },
+            (_, index) => `name-${index}`,
+          ),
+        }),
+      ).toBe(false);
+    }
+  });
+
   it("bounds file list command queries and limits", () => {
     const longQuery = "a".repeat(contract.FILE_LIST_QUERY_MAX_LENGTH + 1);
 
@@ -2717,6 +2778,9 @@ describe("host-daemon command schemas", () => {
         path: "/tmp/bb-data/thread-storage/thread-123",
         query: longQuery,
         limit: 100,
+        includeHidden: true,
+        respectGitIgnore: false,
+        excludeNames: [],
       }),
     ).toThrow();
 
@@ -2725,6 +2789,9 @@ describe("host-daemon command schemas", () => {
         type: "host.list_files",
         path: "/tmp/bb-data/thread-storage/thread-123",
         limit: contract.FILE_LIST_LIMIT_MAX + 1,
+        includeHidden: true,
+        respectGitIgnore: false,
+        excludeNames: [],
       }),
     ).toThrow();
 
@@ -2734,6 +2801,9 @@ describe("host-daemon command schemas", () => {
         path: "/tmp/workspace",
         query: longQuery,
         limit: 100,
+        includeHidden: true,
+        respectGitIgnore: false,
+        excludeNames: [],
       }),
     ).toThrow();
 
@@ -2742,6 +2812,9 @@ describe("host-daemon command schemas", () => {
         type: "host.list_files",
         path: "/tmp/workspace",
         limit: contract.FILE_LIST_LIMIT_MAX + 1,
+        includeHidden: true,
+        respectGitIgnore: false,
+        excludeNames: [],
       }),
     ).toThrow();
 
@@ -2751,6 +2824,9 @@ describe("host-daemon command schemas", () => {
         path: "/tmp/workspace",
         query: longQuery,
         limit: 100,
+        includeHidden: true,
+        respectGitIgnore: false,
+        excludeNames: [],
         includeFiles: true,
         includeDirectories: true,
       }),
@@ -2761,6 +2837,9 @@ describe("host-daemon command schemas", () => {
         type: "host.list_paths",
         path: "/tmp/workspace",
         limit: contract.FILE_LIST_LIMIT_MAX + 1,
+        includeHidden: true,
+        respectGitIgnore: false,
+        excludeNames: [],
         includeFiles: true,
         includeDirectories: true,
       }),
@@ -2771,6 +2850,9 @@ describe("host-daemon command schemas", () => {
         type: "host.list_paths",
         path: "/tmp/workspace",
         limit: 100,
+        includeHidden: true,
+        respectGitIgnore: false,
+        excludeNames: [],
         includeFiles: false,
         includeDirectories: false,
       }),
@@ -2825,6 +2907,7 @@ describe("host-daemon command schemas", () => {
         },
         defaultBranch: "main",
         defaultBranchRelation: "equal",
+        isWorktree: false,
         hasUncommittedChanges: true,
         operation: { kind: "merge", hasConflicts: true },
         originDefaultBranch: "origin/main",
@@ -2834,6 +2917,7 @@ describe("host-daemon command schemas", () => {
         kind: "branch",
         branchName: "feature/test",
       },
+      isWorktree: false,
       hasUncommittedChanges: true,
       operation: { kind: "merge", hasConflicts: true },
     });
@@ -2851,6 +2935,21 @@ describe("host-daemon command schemas", () => {
       path: "/tmp/bb-data/thread-storage/thread-123/notes.md",
       content: "# Notes",
       contentEncoding: "utf8",
+    });
+
+    expect(
+      hostDaemonOnlineRpcResultSchemaByType["host.read_file"].parse({
+        path: "/tmp/bb-data/thread-storage/thread-123/notes.md",
+        contentEncoding: "utf8",
+        mimeType: "text/markdown",
+        sizeBytes: 13,
+        sha256: "d".repeat(64),
+        notModified: true,
+      }),
+    ).toMatchObject({
+      path: "/tmp/bb-data/thread-storage/thread-123/notes.md",
+      sha256: "d".repeat(64),
+      notModified: true,
     });
 
     expect(
@@ -2936,39 +3035,62 @@ describe("host-daemon command schemas", () => {
     ).toThrow();
   });
 
-  it("includes discovered workspace properties in environment.provision result", () => {
+  it("includes discovered workspace properties in environment.attach result", () => {
     expect(
-      hostDaemonCommandResultSchemaByType["environment.provision"].parse({
+      hostDaemonCommandResultSchemaByType["environment.attach"].parse({
         path: "/tmp/env",
         isGitRepo: true,
         isWorktree: true,
         branchName: "bb/env-123",
         defaultBranch: "main",
-        transcript: [
-          {
-            type: "step",
-            key: "setup",
-            text: "/bin/bash .bb-env-setup.sh",
-            status: "completed",
-          },
-        ],
       }),
     ).toMatchObject({
       isGitRepo: true,
       isWorktree: true,
       branchName: "bb/env-123",
     });
+    expect(() =>
+      hostDaemonCommandResultSchemaByType["environment.attach"].parse({
+        path: "/tmp/env",
+        isGitRepo: true,
+        branchName: "bb/env-123",
+        defaultBranch: "main",
+      }),
+    ).toThrow();
   });
 });
 
 describe("host-daemon session schemas", () => {
+  it("rejects the deleted host type from enrolment and session payloads", () => {
+    expect(
+      hostDaemonEnrollRequestSchema.safeParse({
+        hostId: "host_123",
+        hostName: "test-host",
+        hostType: "persistent",
+      }).success,
+    ).toBe(false);
+    expect(
+      hostDaemonSessionOpenRequestSchema.safeParse({
+        hostId: "host_123",
+        instanceId: "instance_1",
+        hostName: "test-host",
+        hostType: "persistent",
+        hasMachineCredential: true,
+        platform: "linux",
+        dataDir: "/tmp/bb-data",
+        localApiPort: null,
+        protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
+        activeThreads: [],
+      }).success,
+    ).toBe(false);
+  });
+
   it("parses valid session open and event batch payloads", () => {
     expect(
       hostDaemonSessionOpenRequestSchema.parse({
         hostId: "host_123",
         instanceId: "instance_1",
         hostName: "Michael's MacBook",
-        hostType: "persistent",
         hasMachineCredential: true,
         platform: "darwin",
         dataDir: "/tmp/bb-data",
@@ -2982,7 +3104,6 @@ describe("host-daemon session schemas", () => {
       }),
     ).toMatchObject({
       hostId: "host_123",
-      hostType: "persistent",
       hasMachineCredential: true,
       loadedEnvironments: [],
     });
@@ -2992,7 +3113,6 @@ describe("host-daemon session schemas", () => {
         hostId: "host_123",
         instanceId: "instance_1",
         hostName: "Michael's MacBook",
-        hostType: "persistent",
         hasMachineCredential: false,
         platform: "darwin",
         dataDir: "/tmp/bb-data",
@@ -3018,7 +3138,6 @@ describe("host-daemon session schemas", () => {
         hostId: "host_123",
         instanceId: "instance_1",
         hostName: "Michael's MacBook",
-        hostType: "persistent",
         hasMachineCredential: true,
         platform: "darwin",
         dataDir: "/tmp/bb-data",
@@ -3037,7 +3156,6 @@ describe("host-daemon session schemas", () => {
         hostId: "host_123",
         instanceId: "instance_1",
         hostName: "Michael's MacBook",
-        hostType: "persistent",
         hasMachineCredential: true,
         platform: "darwin",
         dataDir: "/tmp/bb-data",
@@ -3054,7 +3172,6 @@ describe("host-daemon session schemas", () => {
         hostId: "host_123",
         instanceId: "instance_1",
         hostName: "Michael's MacBook",
-        hostType: "persistent",
         hasMachineCredential: true,
         platform: "darwin",
         dataDir: "/tmp/bb-data",
@@ -3067,6 +3184,7 @@ describe("host-daemon session schemas", () => {
     expect(
       hostDaemonSessionOpenResponseSchema.parse({
         sessionId: "session_123",
+        machineEnvironment: { revision: 0, entries: [] },
         heartbeatIntervalMs: 5_000,
         leaseTimeoutMs: 30_000,
         connectShares: {
@@ -3091,6 +3209,7 @@ describe("host-daemon session schemas", () => {
     expect(
       hostDaemonSessionOpenResponseSchema.parse({
         sessionId: "session_default_shares",
+        machineEnvironment: { revision: 0, entries: [] },
         heartbeatIntervalMs: 5_000,
         leaseTimeoutMs: 30_000,
       }).connectShares,
@@ -3508,7 +3627,6 @@ describe("host-daemon session schemas", () => {
             environmentId: "env_123",
             workspaceContext: {
               workspacePath: "/tmp/env-123",
-              workspaceProvisionType: "unmanaged",
             },
           },
         ],
@@ -3747,6 +3865,7 @@ describe("host-daemon session schemas", () => {
     expect(
       hostDaemonServerWsMessageSchema.safeParse({
         type: "terminal.open",
+        contributedEnv: [],
         requestId: "request-1",
         terminalId: "term_123",
         threadId: "thr_123",
@@ -3755,7 +3874,6 @@ describe("host-daemon session schemas", () => {
           environmentId: "env_123",
           workspaceContext: {
             workspacePath: "/tmp/workspace",
-            workspaceProvisionType: "unmanaged",
           },
         },
         cols: TERMINAL_COLS_MAX,

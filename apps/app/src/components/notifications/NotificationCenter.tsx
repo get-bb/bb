@@ -181,6 +181,7 @@ export function NotificationCenter() {
         />
       </PopoverAnchor>
       <PopoverContent
+        dismissOnOutsideInteraction={false}
         side="top"
         align="end"
         onOpenAutoFocus={(event) => {

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { ClaudeContextUsageCollector } from "./context-usage.js";
 
 import {
   type PendingInteractionGrantedPermissionProfile,
@@ -89,13 +90,12 @@ import {
   createClaudeSkillPluginsRoot,
   ensureClaudeSkillPlugin,
 } from "./skill-plugins.js";
-import { buildReadonlyBashUpdatedInput } from "./readonly-bash-policy.js";
 import {
   buildBridgeMcpServer,
   getAllowedToolNames,
-  BRIDGE_MCP_SERVER_NAME,
   type ToolCallForwarder,
 } from "./tool-proxy-mcp.js";
+import { BB_BRIDGE_MCP_SERVER_NAME } from "../tool-classification.js";
 import {
   type ClaudeInteractiveResponse,
   type ClaudePermissionMode,
@@ -136,12 +136,6 @@ const promptInputItemSchema = z.discriminatedUnion("type", [
 
 const CLAUDE_PROVIDER_SUBAGENT_TOOL_NAMES = new Set(["Agent", "Task"]);
 const CLAUDE_WORKFLOW_TOOL_NAME = "Workflow";
-
-interface SdkMessageNotification {
-  jsonrpc: "2.0";
-  method: "sdk/message";
-  params: { threadId: string; message: SDKMessage };
-}
 
 interface BridgeEventNotification {
   jsonrpc: "2.0";
@@ -201,26 +195,19 @@ interface ClaudeSessionPermissionGrantCoverageArgs {
   toolName: string;
 }
 
-type ClaudeSdkSessionState = Extract<
-  SDKMessage,
-  { type: "system"; subtype: "session_state_changed" }
->["state"];
-
 interface ClaudeSessionRestart {
   reason: string;
   showRuntimeNote: boolean;
 }
 
 interface ThreadSession {
+  contextUsageCollector: ClaudeContextUsageCollector;
   session: SdkSession;
   attachment: ThreadAttachment;
   sessionSerial: number;
   closing: boolean;
-  pendingForwardedToolCalls: number;
-  pendingSessionCronIds: Set<string>;
   restartBeforeNextTurn: ClaudeSessionRestart | null;
   recoveryHintRaisedThisTurn: "authRequired" | "rateLimited" | null;
-  sdkSessionState: ClaudeSdkSessionState | undefined;
   streamEnded: boolean;
   translator: ClaudeDeltaTranslator;
   pendingInteractiveRequests: Map<string | number, PendingInteractiveRequest>;
@@ -239,10 +226,6 @@ interface ThreadAttachment {
   sessionOptions: SdkSessionOptions;
   closing: boolean;
   residentSession: ThreadSession | null;
-  idleTimer: ReturnType<typeof setTimeout> | null;
-  residencyGeneration: number;
-  wakePromise: Promise<ThreadSession | undefined> | null;
-  idleQueryReleaseEnabled: boolean;
   permissionEscalation: PermissionEscalation | null;
   permissionMode: ClaudePermissionMode;
   liveSettings: ClaudeLiveSessionSettings;
@@ -256,12 +239,10 @@ interface CreateThreadAttachmentArgs {
   permissionEscalation: PermissionEscalation | null;
   permissionMode: ClaudePermissionMode;
   liveSettings: ClaudeLiveSessionSettings;
-  idleQueryReleaseEnabled: boolean;
   approvedPlanPermissionMode: ClaudePermissionMode;
   providerThreadId?: string;
   sessionConstructionConfig: SessionConstructionConfig;
   sessionOptions: SdkSessionOptions;
-  sessionPermissionGrants?: ClaudeSessionPermissionGrant[];
   threadIdRef: ThreadIdRef;
 }
 
@@ -278,11 +259,7 @@ interface SessionConstructionConfig {
   dynamicTools: ThreadResumeParams["dynamicTools"];
   sessionOptions: Omit<
     BuildSessionOptionsArgs,
-    | "getPermissionEscalation"
-    | "memoryEnabled"
-    | "model"
-    | "reasoningLevel"
-    | "workflowsEnabled"
+    "memoryEnabled" | "model" | "reasoningLevel" | "workflowsEnabled"
   >;
 }
 
@@ -397,11 +374,10 @@ function requireSkillPluginsRoot(): string {
 }
 
 const THREAD_STOP_CLOSE_TIMEOUT_MS = 4_000;
-export const CLAUDE_IDLE_QUERY_GRACE_MS = 30_000;
 const CLAUDE_CHROME_SETTING_RESTART_REASON = "Claude in Chrome setting changed";
 
 const { send, sendResult, sendError } = createBridgeIo<
-  SdkMessageNotification | BridgeEventNotification | BridgeToolCallRequest
+  BridgeEventNotification | BridgeToolCallRequest
 >();
 
 const threadAttachments = new Map<string, ThreadAttachment>();
@@ -415,90 +391,6 @@ function resolvePendingSessionWork(
 ): void {
   toolCallTracker.resolvePendingToolCalls(threadSession, message);
   resolvePendingInteractiveRequests(threadSession, message);
-}
-
-function cancelIdleQueryRelease(attachment: ThreadAttachment): void {
-  attachment.residencyGeneration += 1;
-  if (attachment.idleTimer !== null) {
-    clearTimeout(attachment.idleTimer);
-    attachment.idleTimer = null;
-  }
-}
-
-function isThreadSessionQuiescent(
-  threadSession: ThreadSession,
-  threadId: string,
-): boolean {
-  return (
-    !threadSession.translator.hasOpenSessionWork(threadId) &&
-    threadSession.pendingForwardedToolCalls === 0 &&
-    threadSession.pendingInteractiveRequests.size === 0 &&
-    threadSession.pendingSessionCronIds.size === 0 &&
-    (threadSession.sdkSessionState === undefined ||
-      threadSession.sdkSessionState === "idle")
-  );
-}
-
-function scheduleIdleQueryRelease(
-  threadSession: ThreadSession,
-  threadId: string,
-): void {
-  const attachment = threadSession.attachment;
-  if (
-    attachment.closing ||
-    threadSession.closing ||
-    attachment.residentSession !== threadSession
-  ) {
-    return;
-  }
-  if (!attachment.idleQueryReleaseEnabled) {
-    cancelIdleQueryRelease(attachment);
-    return;
-  }
-  cancelIdleQueryRelease(attachment);
-  const generation = attachment.residencyGeneration;
-  attachment.idleTimer = setTimeout(() => {
-    attachment.idleTimer = null;
-    if (
-      attachment.closing ||
-      attachment.residencyGeneration !== generation ||
-      threadAttachments.get(threadId) !== attachment ||
-      attachment.residentSession !== threadSession ||
-      threadSession.closing
-    ) {
-      return;
-    }
-    if (!isThreadSessionQuiescent(threadSession, threadId)) {
-      scheduleIdleQueryRelease(threadSession, threadId);
-      return;
-    }
-    threadSession.closing = true;
-    attachment.residentSession = null;
-    attachment.residencyGeneration += 1;
-    threadSession.session.stop();
-  }, CLAUDE_IDLE_QUERY_GRACE_MS);
-}
-
-function refreshIdleQueryRelease(
-  threadSession: ThreadSession,
-  threadId: string,
-): void {
-  if (threadSession.attachment.idleTimer !== null) {
-    scheduleIdleQueryRelease(threadSession, threadId);
-  }
-}
-
-function applyIdleQueryReleaseSetting(
-  attachment: ThreadAttachment,
-  enabled: boolean | undefined,
-): void {
-  if (enabled === undefined || attachment.idleQueryReleaseEnabled === enabled) {
-    return;
-  }
-  attachment.idleQueryReleaseEnabled = enabled;
-  if (!enabled) {
-    cancelIdleQueryRelease(attachment);
-  }
 }
 
 function applyChromeSetting(
@@ -540,16 +432,12 @@ function createForwardToolCall(getThreadId: () => string): ToolCallForwarder {
         isError: true,
       });
     }
-    threadSession.pendingForwardedToolCalls += 1;
     return forwardToolCall({
       arguments: args,
       providerThreadId: attachment.providerThreadId ?? threadId,
       scope: threadSession,
       threadId,
       toolName,
-    }).finally(() => {
-      threadSession.pendingForwardedToolCalls -= 1;
-      refreshIdleQueryRelease(threadSession, threadId);
     });
   };
 }
@@ -570,7 +458,6 @@ async function closeThreadSession(args: {
   }
 
   attachment.closing = true;
-  cancelIdleQueryRelease(attachment);
   const threadSession = attachment.residentSession;
   if (threadSession) {
     threadSession.closing = true;
@@ -578,15 +465,8 @@ async function closeThreadSession(args: {
   }
   const closePromise = Promise.resolve()
     .then(async () => {
-      await attachment.wakePromise;
-      const residentSession = attachment.residentSession;
-      if (residentSession) {
-        residentSession.closing = true;
-        resolvePendingSessionWork(residentSession, args.message);
-        await closeClaudeThreadSession(
-          residentSession,
-          args.graceful !== false,
-        );
+      if (threadSession) {
+        await closeClaudeThreadSession(threadSession, args.graceful !== false);
       }
     })
     .finally(() => {
@@ -750,32 +630,6 @@ async function applyLiveSessionSettings(
   threadSession.attachment.liveSettings = next;
 }
 
-function applyDormantLiveSessionSettings(
-  attachment: ThreadAttachment,
-  next: ClaudeLiveSessionSettings,
-): void {
-  attachment.sessionOptions.model = next.model;
-  attachment.sessionOptions.effort =
-    next.reasoningLevel === undefined
-      ? undefined
-      : toSdkEffort(next.reasoningLevel);
-  const mutableSettings = buildMutableFlagSettings({
-    memoryEnabled: next.memoryEnabled,
-    reasoningLevel: next.reasoningLevel,
-    workflowsEnabled: next.workflowsEnabled,
-  });
-  const { effortLevel: _effortLevel, ...sessionSettings } = mutableSettings;
-  const currentSettings =
-    typeof attachment.sessionOptions.settings === "object"
-      ? attachment.sessionOptions.settings
-      : {};
-  attachment.sessionOptions.settings = {
-    ...currentSettings,
-    ...sessionSettings,
-  };
-  attachment.liveSettings = next;
-}
-
 const MODEL_LIST_MEMO_TTL_MS = 2 * 60_000;
 const listModelsMemoized = createClaudeCodeBridgeModelListMemo({
   ttlMs: MODEL_LIST_MEMO_TTL_MS,
@@ -796,7 +650,15 @@ function sendThreadDeltas(
 }
 
 function sendSessionReset(threadId: string): void {
-  sendThreadDeltas(threadId, [{ kind: "session.reset" }]);
+  sendThreadDeltas(threadId, [
+    { kind: "session.reset" },
+    {
+      kind: "contextWindow",
+      used: null,
+      estimated: true,
+      attach: "currentOrLast",
+    },
+  ]);
 }
 
 function emitForSession(
@@ -830,9 +692,6 @@ function emitForSession(
     }
     if (delta.kind === "turn.boundary" || delta.kind === "session.reset") {
       threadSession.recoveryHintRaisedThisTurn = null;
-    }
-    if (delta.kind === "turn.boundary") {
-      scheduleIdleQueryRelease(threadSession, threadId);
     }
   }
 }
@@ -910,7 +769,6 @@ function emitSessionError(
 }
 
 function emitSessionReplacement(args: {
-  contextLost: boolean;
   providerThreadId: string | null;
   reason: string;
   showRuntimeNote?: boolean;
@@ -928,7 +786,7 @@ function emitSessionReplacement(args: {
       threadId: args.threadId,
       providerThreadId: args.providerThreadId,
       reason: args.reason,
-      contextLost: args.contextLost,
+      contextLost: false,
       showRuntimeNote: args.showRuntimeNote ?? false,
     },
   });
@@ -939,6 +797,7 @@ function emitCanonicalTurnInputAccepted(
   acceptance: CanonicalTurnAcceptance,
   threadId: string,
 ): void {
+  threadSession.contextUsageCollector.invalidate();
   sendThreadDeltas(
     threadId,
     threadSession.translator.acceptInput(threadId, acceptance.clientRequestId),
@@ -1012,24 +871,6 @@ function withTurnLiveSessionSettings(
   };
 }
 
-function withTrackedPermissionEscalation(
-  params: SessionConstructionParams,
-  threadIdRef: ThreadIdRef,
-): BuildSessionOptionsArgs {
-  return {
-    ...toSessionConstructionConfig(params).sessionOptions,
-    ...toInitialLiveSessionSettings(params),
-    getPermissionEscalation: (context) => {
-      const threadSession = threadAttachments.get(
-        threadIdRef.current,
-      )?.residentSession;
-      return threadSession
-        ? resolvePermissionEscalationForWork(threadSession, context)
-        : null;
-    },
-  };
-}
-
 function seedModelContextWindowHint(
   threadSession: ThreadSession,
   threadId: string,
@@ -1052,10 +893,6 @@ function createThreadAttachment(
     sessionOptions: args.sessionOptions,
     closing: false,
     residentSession: null,
-    idleTimer: null,
-    residencyGeneration: 0,
-    wakePromise: null,
-    idleQueryReleaseEnabled: args.idleQueryReleaseEnabled,
     permissionEscalation: args.permissionEscalation,
     permissionMode: args.permissionMode,
     liveSettings: args.liveSettings,
@@ -1063,7 +900,7 @@ function createThreadAttachment(
     ...(args.providerThreadId
       ? { providerThreadId: args.providerThreadId }
       : {}),
-    sessionPermissionGrants: [...(args.sessionPermissionGrants ?? [])],
+    sessionPermissionGrants: [],
     threadIdRef: args.threadIdRef,
   };
   attachment.residentSession = createThreadSession(attachment);
@@ -1097,15 +934,13 @@ function createThreadSession(attachment: ThreadAttachment): ThreadSession {
     })),
   );
   const threadSession: ThreadSession = {
+    contextUsageCollector: new ClaudeContextUsageCollector(),
     session,
     attachment,
     sessionSerial,
     closing: false,
-    pendingForwardedToolCalls: 0,
-    pendingSessionCronIds: new Set(),
     restartBeforeNextTurn: null,
     recoveryHintRaisedThisTurn: null,
-    sdkSessionState: undefined,
     streamEnded: false,
     translator,
     pendingInteractiveRequests: new Map(),
@@ -1137,18 +972,6 @@ function startResidentThreadSession(
     attachment.residentSession = null;
     throw error;
   }
-  return threadSession;
-}
-
-function startAttachedResidentThreadSession(
-  attachment: ThreadAttachment,
-  resumeProviderThreadId?: string,
-): ThreadSession {
-  const threadSession = startResidentThreadSession(
-    attachment,
-    resumeProviderThreadId,
-  );
-  scheduleIdleQueryRelease(threadSession, attachment.threadIdRef.current);
   return threadSession;
 }
 
@@ -1356,71 +1179,14 @@ function buildSessionTrackingHooks(
     return { continue: true };
   };
 
-  const trackSessionCrons: HookCallback = async (input) => {
-    if (input.hook_event_name !== "Stop" || input.session_crons === undefined) {
-      return { continue: true };
-    }
-    const threadSession = threadAttachments.get(
-      threadIdRef.current,
-    )?.residentSession;
-    if (threadSession) {
-      threadSession.pendingSessionCronIds = new Set(
-        input.session_crons.map((cron) => cron.id),
-      );
-      refreshIdleQueryRelease(threadSession, threadIdRef.current);
-    }
-    return { continue: true };
-  };
-
   return {
     PermissionDenied: [{ hooks: [clearToolUse] }],
     PermissionRequest: [{ hooks: [trackPermissionRequest] }],
     PostToolUse: [{ hooks: [clearToolUse] }],
     PostToolUseFailure: [{ hooks: [clearToolUse] }],
     PreToolUse: [{ hooks: [trackPreToolUse] }],
-    Stop: [{ hooks: [trackSessionCrons] }],
     SubagentStart: [{ hooks: [trackSubagentStart] }],
     SubagentStop: [{ hooks: [clearSubagent] }],
-  };
-}
-
-function addSessionTrackingHooks(
-  sessionOptions: SdkSessionOptions,
-  threadIdRef: ThreadIdRef,
-): void {
-  const existingHooks = sessionOptions.hooks;
-  const trackingHooks = buildSessionTrackingHooks(threadIdRef);
-  sessionOptions.hooks = {
-    ...existingHooks,
-    PermissionDenied: [
-      ...(trackingHooks.PermissionDenied ?? []),
-      ...(existingHooks?.PermissionDenied ?? []),
-    ],
-    PermissionRequest: [
-      ...(trackingHooks.PermissionRequest ?? []),
-      ...(existingHooks?.PermissionRequest ?? []),
-    ],
-    PostToolUse: [
-      ...(trackingHooks.PostToolUse ?? []),
-      ...(existingHooks?.PostToolUse ?? []),
-    ],
-    PostToolUseFailure: [
-      ...(trackingHooks.PostToolUseFailure ?? []),
-      ...(existingHooks?.PostToolUseFailure ?? []),
-    ],
-    PreToolUse: [
-      ...(trackingHooks.PreToolUse ?? []),
-      ...(existingHooks?.PreToolUse ?? []),
-    ],
-    Stop: [...(trackingHooks.Stop ?? []), ...(existingHooks?.Stop ?? [])],
-    SubagentStart: [
-      ...(trackingHooks.SubagentStart ?? []),
-      ...(existingHooks?.SubagentStart ?? []),
-    ],
-    SubagentStop: [
-      ...(trackingHooks.SubagentStop ?? []),
-      ...(existingHooks?.SubagentStop ?? []),
-    ],
   };
 }
 
@@ -1430,10 +1196,13 @@ function buildTrackedSessionOptions(
   threadIdRef: ThreadIdRef,
 ): SdkSessionOptions {
   const sessionOptions = buildSessionOptions(
-    withTrackedPermissionEscalation(params, threadIdRef),
+    {
+      ...toSessionConstructionConfig(params).sessionOptions,
+      ...toInitialLiveSessionSettings(params),
+    },
     env,
   );
-  addSessionTrackingHooks(sessionOptions, threadIdRef);
+  sessionOptions.hooks = buildSessionTrackingHooks(threadIdRef);
   sessionOptions.recordThreadId = () => threadIdRef.current;
   return sessionOptions;
 }
@@ -1442,7 +1211,6 @@ function replaceThreadSession(args: ReplaceThreadSessionArgs): ThreadSession {
   args.threadSession.closing = true;
   resolvePendingSessionWork(args.threadSession, args.restart.reason);
   emitSessionReplacement({
-    contextLost: false,
     providerThreadId: args.providerThreadId,
     reason: args.restart.reason,
     showRuntimeNote: args.restart.showRuntimeNote,
@@ -1487,20 +1255,11 @@ async function getWritableThreadSession(
   if (!attachment || attachment.closing) {
     return undefined;
   }
-  cancelIdleQueryRelease(attachment);
-
-  const existingWake = attachment.wakePromise;
-  if (existingWake) {
-    return existingWake;
-  }
-
   const threadSession = attachment.residentSession;
-  const replacement: ClaudeSessionRestart | null = !threadSession
-    ? {
-        reason: "Claude query resumed after idle release",
-        showRuntimeNote: false,
-      }
-    : threadSession.streamEnded
+  if (!threadSession) {
+    return undefined;
+  }
+  const replacement: ClaudeSessionRestart | null = threadSession.streamEnded
       ? {
           reason: "Thread session replaced after Claude SDK stream ended",
           showRuntimeNote: false,
@@ -1508,69 +1267,15 @@ async function getWritableThreadSession(
       : intent === "new-turn"
         ? threadSession.restartBeforeNextTurn
         : null;
-  if (threadSession && replacement === null) {
+  if (replacement === null) {
     return threadSession;
   }
-
-  if (!threadSession && intent === "steer") {
-    return undefined;
-  }
-
-  const wakePromise = Promise.resolve().then(() => {
-    if (attachment.closing || threadAttachments.get(threadId) !== attachment) {
-      return undefined;
-    }
-
-    const currentSession = attachment.residentSession;
-    if (currentSession) {
-      const currentRestart: ClaudeSessionRestart | null =
-        currentSession.streamEnded
-          ? {
-              reason: "Thread session replaced after Claude SDK stream ended",
-              showRuntimeNote: false,
-            }
-          : intent === "new-turn"
-            ? currentSession.restartBeforeNextTurn
-            : null;
-      return currentRestart === null
-        ? currentSession
-        : replaceThreadSessionBeforeNextTurn({
-            attachment,
-            restart: currentRestart,
-            threadId,
-            threadSession: currentSession,
-          });
-    }
-
-    const providerThreadId = attachment.providerThreadId;
-    if (!providerThreadId) {
-      return undefined;
-    }
-    const replacementSession = createThreadSession(attachment);
-    attachment.residentSession = replacementSession;
-    startResidentThreadSession(attachment, providerThreadId);
-    send({
-      jsonrpc: "2.0",
-      method: BRIDGE_NOTIFICATION_METHODS.sessionReplaced,
-      params: {
-        threadId,
-        providerThreadId,
-        reason: "Claude query resumed after idle release",
-        contextLost: false,
-      },
-    });
-    sendThreadIdentity(threadId, providerThreadId);
-    sendSessionReset(threadId);
-    return replacementSession;
+  return replaceThreadSessionBeforeNextTurn({
+    attachment,
+    restart: replacement,
+    threadId,
+    threadSession,
   });
-  attachment.wakePromise = wakePromise;
-  try {
-    return await wakePromise;
-  } finally {
-    if (attachment.wakePromise === wakePromise) {
-      attachment.wakePromise = null;
-    }
-  }
 }
 
 function getAuthenticationFailureRestartReason(
@@ -1612,6 +1317,13 @@ function createOnSdkMessage(
       threadId: args.threadIdRef.current,
     });
     if (!threadSession) return;
+    if (
+      message.type === "assistant" ||
+      message.type === "user" ||
+      message.type === "stream_event"
+    ) {
+      threadSession.contextUsageCollector.invalidate();
+    }
     const providerThreadId = message.session_id?.trim() ?? "";
     if (
       providerThreadId.length > 0 &&
@@ -1629,16 +1341,47 @@ function createOnSdkMessage(
       };
     }
     trackSdkAssistantPermissionEscalation(threadSession, message);
-    if (
-      message.type === "system" &&
-      message.subtype === "session_state_changed"
-    ) {
-      threadSession.sdkSessionState = message.state;
-    }
     emitForSession(threadSession, args.threadIdRef.current, "sdk/message", {
       threadId: args.threadIdRef.current,
       message,
     });
+    if (
+      message.type === "result" ||
+      (message.type === "system" && message.subtype === "compact_boundary")
+    ) {
+      if (message.type === "system") {
+        sendThreadDeltas(args.threadIdRef.current, [
+          {
+            kind: "contextWindow",
+            used: null,
+            estimated: true,
+            attach: "currentOrLast",
+          },
+        ]);
+      }
+      if (providerThreadId) {
+        void threadSession.contextUsageCollector.capture({
+          read: () => threadSession.session.getContextUsage(),
+          providerSessionId: providerThreadId,
+          isCurrent: () =>
+            getCurrentThreadSession({
+              sessionSerial: args.sessionSerial,
+              threadId: args.threadIdRef.current,
+            }) === threadSession && !threadSession.streamEnded,
+          publish: (snapshot) =>
+            sendThreadDeltas(args.threadIdRef.current, [
+              {
+                kind: "contextWindow",
+                used: snapshot.usedTokens,
+                size: snapshot.contextWindowTokens,
+                estimated: snapshot.estimated,
+                snapshot,
+                attach: "currentOrLast",
+              },
+            ]),
+        });
+      }
+    }
     const recoveryKind = getAssistantMessageRecoveryKind(message);
     if (recoveryKind !== null) {
       emitTerminalAccountErrorHint(
@@ -1648,7 +1391,6 @@ function createOnSdkMessage(
         getAssistantMessageErrorText(message),
       );
     }
-    refreshIdleQueryRelease(threadSession, args.threadIdRef.current);
   };
 }
 
@@ -1920,7 +1662,6 @@ function createForwardInteractiveRequest(
       const finish = (result: PermissionResult): void => {
         args.signal.removeEventListener("abort", onAbort);
         resolve(result);
-        refreshIdleQueryRelease(threadSession, threadIdRef.current);
       };
 
       const onAbort = (): void => {
@@ -1985,7 +1726,6 @@ function createForwardUserQuestionRequest(
       const finish = (result: PermissionResult): void => {
         args.signal.removeEventListener("abort", onAbort);
         resolve(result);
-        refreshIdleQueryRelease(threadSession, threadIdRef.current);
       };
 
       const onAbort = (): void => {
@@ -2165,21 +1905,6 @@ function createCanUseTool(threadIdRef: ThreadIdRef): CanUseTool {
       };
     }
 
-    if (
-      toolName === "Bash" &&
-      (threadSession.attachment.permissionMode === "default" ||
-        threadSession.attachment.permissionMode === "dontAsk")
-    ) {
-      const updatedInput = buildReadonlyBashUpdatedInput(input);
-      if (updatedInput) {
-        return {
-          behavior: "allow",
-          updatedInput,
-          toolUseID: options.toolUseID,
-        };
-      }
-    }
-
     const shouldRequestApproval =
       shouldRequestClaudePermissionApproval(requestContext) ||
       (options.suggestions?.length ?? 0) > 0;
@@ -2200,10 +1925,7 @@ function createCanUseTool(threadIdRef: ThreadIdRef): CanUseTool {
       };
     }
 
-    if (
-      shouldAutoDenyInteractiveRequest(interactiveRequestPolicy) ||
-      threadSession.attachment.permissionMode === "dontAsk"
-    ) {
+    if (shouldAutoDenyInteractiveRequest(interactiveRequestPolicy)) {
       const policyMessage =
         threadSession.attachment.permissionMode === "acceptEdits" ||
         threadSession.attachment.permissionMode === "auto"
@@ -2320,53 +2042,60 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
   }
 }
 
-async function handleThreadStart(
+function attachThreadSession(
   id: string | number,
-  params: ThreadStartParams,
-): Promise<void> {
+  params: SessionConstructionParams,
+  providerThreadId: string,
+  resume: boolean,
+): void {
   const threadIdRef = { current: params.threadId };
-
-  const existing = threadAttachments.get(threadIdRef.current);
-  if (existing) {
-    await closeThreadSession({
-      graceful: false,
-      message: "Thread session replaced while awaiting permission approval",
-      threadId: threadIdRef.current,
-    });
-  }
-
   const env = buildSessionEnv(readConfigEnvOverrides(params.config));
   const sessionOptions = buildTrackedSessionOptions(params, env, threadIdRef);
-  const providerThreadId = randomUUID();
-  sessionOptions.sessionId = providerThreadId;
+  if (!resume) {
+    sessionOptions.sessionId = providerThreadId;
+  }
   sessionOptions.canUseTool = createCanUseTool(threadIdRef);
   if (params.dynamicTools && params.dynamicTools.length > 0) {
     const mcpServer = buildBridgeMcpServer(
       params.dynamicTools,
       createForwardToolCall(() => threadIdRef.current),
     );
-    sessionOptions.mcpServers = { [BRIDGE_MCP_SERVER_NAME]: mcpServer };
+    sessionOptions.mcpServers = { [BB_BRIDGE_MCP_SERVER_NAME]: mcpServer };
     sessionOptions.allowedTools = getAllowedToolNames(params.dynamicTools);
   }
 
   const attachment = createThreadAttachment({
     liveSettings: toInitialLiveSessionSettings(params),
-    idleQueryReleaseEnabled: params.idleQueryReleaseEnabled,
     permissionEscalation: params.permissionEscalation,
     permissionMode: params.permissionMode,
     approvedPlanPermissionMode: params.approvedPlanPermissionMode,
     providerThreadId,
     sessionConstructionConfig: toSessionConstructionConfig(params),
     sessionOptions,
-    sessionPermissionGrants: [],
     threadIdRef,
   });
-  threadAttachments.set(threadIdRef.current, attachment);
-  startAttachedResidentThreadSession(attachment);
+  threadAttachments.set(params.threadId, attachment);
+  startResidentThreadSession(attachment, resume ? providerThreadId : undefined);
 
-  sendThreadIdentity(threadIdRef.current, providerThreadId);
-  sendSessionReset(threadIdRef.current);
+  sendThreadIdentity(params.threadId, providerThreadId);
+  sendSessionReset(params.threadId);
   sendResult(id, { providerThreadId, sessionRestorable: true });
+}
+
+async function handleThreadStart(
+  id: string | number,
+  params: ThreadStartParams,
+): Promise<void> {
+  const existing = threadAttachments.get(params.threadId);
+  if (existing) {
+    await closeThreadSession({
+      graceful: false,
+      message: "Thread session replaced while awaiting permission approval",
+      threadId: params.threadId,
+    });
+  }
+
+  attachThreadSession(id, params, randomUUID(), false);
 }
 
 async function handleThreadResume(
@@ -2399,16 +2128,12 @@ async function handleThreadResume(
     )
   ) {
     const liveSettings = toInitialLiveSessionSettings(params);
-    applyIdleQueryReleaseSetting(existing, params.idleQueryReleaseEnabled);
     if (existingSession) {
       await applyLiveSessionSettings(
         existingSession,
         params.threadId,
         liveSettings,
       );
-      scheduleIdleQueryRelease(existingSession, threadId);
-    } else {
-      applyDormantLiveSessionSettings(existing, liveSettings);
     }
     existing.permissionEscalation = params.permissionEscalation;
     sendResult(id, {
@@ -2421,7 +2146,6 @@ async function handleThreadResume(
   if (existing) {
     if (!existing.closing && existingSession) {
       emitSessionReplacement({
-        contextLost: false,
         providerThreadId: requestedProviderThreadId ?? null,
         reason:
           "Claude session restarted: construction-scoped settings changed",
@@ -2436,41 +2160,7 @@ async function handleThreadResume(
     });
   }
 
-  const env = buildSessionEnv(readConfigEnvOverrides(params.config));
-  const threadIdRef = { current: threadId };
-  const sessionOptions = buildTrackedSessionOptions(params, env, threadIdRef);
-  sessionOptions.canUseTool = createCanUseTool(threadIdRef);
-  if (params.dynamicTools && params.dynamicTools.length > 0) {
-    const mcpServer = buildBridgeMcpServer(
-      params.dynamicTools,
-      createForwardToolCall(() => threadIdRef.current),
-    );
-    sessionOptions.mcpServers = { [BRIDGE_MCP_SERVER_NAME]: mcpServer };
-    sessionOptions.allowedTools = getAllowedToolNames(params.dynamicTools);
-  }
-  const attachment = createThreadAttachment({
-    liveSettings: toInitialLiveSessionSettings(params),
-    idleQueryReleaseEnabled: params.idleQueryReleaseEnabled,
-    permissionEscalation: params.permissionEscalation,
-    permissionMode: params.permissionMode,
-    approvedPlanPermissionMode: params.approvedPlanPermissionMode,
-    ...(requestedProviderThreadId
-      ? { providerThreadId: requestedProviderThreadId }
-      : {}),
-    sessionConstructionConfig,
-    sessionOptions,
-    sessionPermissionGrants: [],
-    threadIdRef,
-  });
-  threadAttachments.set(threadId, attachment);
-  startAttachedResidentThreadSession(attachment, requestedProviderThreadId);
-
-  sendThreadIdentity(threadId, requestedProviderThreadId);
-  sendSessionReset(threadId);
-  sendResult(id, {
-    providerThreadId: requestedProviderThreadId,
-    sessionRestorable: true,
-  });
+  attachThreadSession(id, params, requestedProviderThreadId, true);
 }
 
 async function handleThreadFork(
@@ -2502,39 +2192,7 @@ async function handleThreadFork(
     return;
   }
 
-  const env = buildSessionEnv(readConfigEnvOverrides(params.config));
-  const threadIdRef = { current: threadId };
-  const sessionOptions = buildTrackedSessionOptions(params, env, threadIdRef);
-  sessionOptions.canUseTool = createCanUseTool(threadIdRef);
-  if (params.dynamicTools && params.dynamicTools.length > 0) {
-    const mcpServer = buildBridgeMcpServer(
-      params.dynamicTools,
-      createForwardToolCall(() => threadIdRef.current),
-    );
-    sessionOptions.mcpServers = { [BRIDGE_MCP_SERVER_NAME]: mcpServer };
-    sessionOptions.allowedTools = getAllowedToolNames(params.dynamicTools);
-  }
-  const attachment = createThreadAttachment({
-    liveSettings: toInitialLiveSessionSettings(params),
-    idleQueryReleaseEnabled: params.idleQueryReleaseEnabled,
-    permissionEscalation: params.permissionEscalation,
-    permissionMode: params.permissionMode,
-    approvedPlanPermissionMode: params.approvedPlanPermissionMode,
-    providerThreadId: forkedProviderThreadId,
-    sessionConstructionConfig: toSessionConstructionConfig(params),
-    sessionOptions,
-    sessionPermissionGrants: [],
-    threadIdRef,
-  });
-  threadAttachments.set(threadId, attachment);
-  startAttachedResidentThreadSession(attachment, forkedProviderThreadId);
-
-  sendThreadIdentity(threadId, forkedProviderThreadId);
-  sendSessionReset(threadId);
-  sendResult(id, {
-    providerThreadId: forkedProviderThreadId,
-    sessionRestorable: true,
-  });
+  attachThreadSession(id, params, forkedProviderThreadId, true);
 }
 
 function toClaudeSessionParams(
@@ -2551,10 +2209,11 @@ function toClaudeSessionParams(
   });
 }
 
-async function runTurnStart(
+async function runTurnInput(
   id: string | number,
-  params: TurnStartParams,
+  params: TurnStartParams | TurnSteerParams,
   acceptance: CanonicalTurnAcceptance,
+  intent: "new-turn" | "steer",
 ): Promise<void> {
   const promptText = buildPromptText(params.input);
   if (promptText === undefined) {
@@ -2564,22 +2223,19 @@ async function runTurnStart(
 
   const attachment = threadAttachments.get(params.threadId);
   if (attachment) {
-    applyTurnEnvironment(attachment, params.config);
-    applyIdleQueryReleaseSetting(attachment, params.idleQueryReleaseEnabled);
+    if ("config" in params) {
+      applyTurnEnvironment(attachment, params.config);
+    }
     applyChromeSetting(attachment, params.chromeEnabled);
   }
 
-  const threadSession = await getWritableThreadSession(
-    params.threadId,
-    "new-turn",
-  );
+  const threadSession = await getWritableThreadSession(params.threadId, intent);
   if (!threadSession) {
     sendError(id, -32000, "No active session");
     return;
   }
 
   if (!threadSession.session.canPushInput()) {
-    scheduleIdleQueryRelease(threadSession, params.threadId);
     sendError(id, -32000, "Claude SDK input stream is closed");
     return;
   }
@@ -2594,7 +2250,6 @@ async function runTurnStart(
     );
     await enterPlanModeIfRequested(threadSession, params);
   } catch (error) {
-    scheduleIdleQueryRelease(threadSession, params.threadId);
     const message = error instanceof Error ? error.message : String(error);
     sendError(id, -32000, message);
     return;
@@ -2610,7 +2265,6 @@ async function runTurnStart(
     threadSession.attachment.permissionEscalation = params.permissionEscalation;
     sendResult(id, { threadId: params.threadId });
   } catch (error) {
-    scheduleIdleQueryRelease(threadSession, params.threadId);
     const message = error instanceof Error ? error.message : String(error);
     sendError(id, -32000, message);
   }
@@ -2620,7 +2274,7 @@ async function handleTurnStart(
   id: string | number,
   params: CanonicalTurnStartParams,
 ): Promise<void> {
-  await runTurnStart(
+  await runTurnInput(
     id,
     claudeTurnStartParamsSchema.parse(
       buildClaudeTurnParams({
@@ -2634,78 +2288,15 @@ async function handleTurnStart(
       clientRequestId: params.clientRequestId,
       providerThreadId: params.providerThreadId,
     },
+    "new-turn",
   );
-}
-
-async function runTurnSteer(
-  id: string | number,
-  params: TurnSteerParams,
-  acceptance: CanonicalTurnAcceptance,
-): Promise<void> {
-  const promptText = buildPromptText(params.input);
-  if (promptText === undefined) {
-    sendError(id, BRIDGE_JSON_RPC_ERRORS.INVALID_PARAMS, "Missing input text");
-    return;
-  }
-
-  const attachment = threadAttachments.get(params.threadId);
-  if (attachment) {
-    applyIdleQueryReleaseSetting(attachment, params.idleQueryReleaseEnabled);
-    applyChromeSetting(attachment, params.chromeEnabled);
-  }
-
-  const threadSession = await getWritableThreadSession(
-    params.threadId,
-    "steer",
-  );
-  if (!threadSession) {
-    sendError(id, -32000, "No active session");
-    return;
-  }
-
-  if (!threadSession.session.canPushInput()) {
-    scheduleIdleQueryRelease(threadSession, params.threadId);
-    sendError(id, -32000, "Claude SDK input stream is closed");
-    return;
-  }
-  try {
-    await applyLiveSessionSettings(
-      threadSession,
-      params.threadId,
-      withTurnLiveSessionSettings(
-        threadSession.attachment.liveSettings,
-        params,
-      ),
-    );
-    await enterPlanModeIfRequested(threadSession, params);
-  } catch (error) {
-    scheduleIdleQueryRelease(threadSession, params.threadId);
-    const message = error instanceof Error ? error.message : String(error);
-    sendError(id, -32000, message);
-    return;
-  }
-
-  try {
-    await pushPromptInput(
-      threadSession,
-      promptText,
-      params.permissionEscalation,
-    );
-    emitCanonicalTurnInputAccepted(threadSession, acceptance, params.threadId);
-    threadSession.attachment.permissionEscalation = params.permissionEscalation;
-    sendResult(id, { threadId: params.threadId });
-  } catch (error) {
-    scheduleIdleQueryRelease(threadSession, params.threadId);
-    const message = error instanceof Error ? error.message : String(error);
-    sendError(id, -32000, message);
-  }
 }
 
 async function handleTurnSteer(
   id: string | number,
   params: CanonicalTurnSteerParams,
 ): Promise<void> {
-  await runTurnSteer(
+  await runTurnInput(
     id,
     claudeTurnSteerParamsSchema.parse(
       buildClaudeTurnParams({
@@ -2720,6 +2311,7 @@ async function handleTurnSteer(
       clientRequestId: params.clientRequestId,
       providerThreadId: params.providerThreadId,
     },
+    "steer",
   );
 }
 
@@ -2811,8 +2403,10 @@ function handleParsedMessage(parsed: unknown): void {
     return;
   }
 
-  if (response && findSessionByPendingInteractiveRequest(response.id)) {
-    const threadSession = findSessionByPendingInteractiveRequest(response.id)!;
+  const threadSession = response
+    ? findSessionByPendingInteractiveRequest(response.id)
+    : undefined;
+  if (response && threadSession) {
     const pending = threadSession.pendingInteractiveRequests.get(response.id)!;
     threadSession.pendingInteractiveRequests.delete(response.id);
     if ("error" in response) {

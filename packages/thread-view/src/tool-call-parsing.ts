@@ -558,20 +558,3 @@ export function parseShellCommandIntents(
   }
   return [];
 }
-
-export function formatToolCallCommand(
-  toolName: string,
-  args: Record<string, unknown> | null,
-): string {
-  if (!args) return toolName;
-  const entries = Object.entries(args).filter(([, v]) => v !== undefined);
-  if (entries.length === 0) return toolName;
-  const compact = entries
-    .map(([k, v]) => {
-      const vs = typeof v === "string" ? v.trim() : JSON.stringify(v);
-      const display = vs.length > 40 ? `${vs.slice(0, 37)}...` : vs;
-      return `${k}: ${display}`;
-    })
-    .join(", ");
-  return `${toolName} { ${compact} }`;
-}

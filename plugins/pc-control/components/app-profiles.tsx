@@ -6,15 +6,13 @@ import { Input } from "@bb/shared-ui/input";
 import { Label } from "@bb/shared-ui/label";
 import { Textarea } from "@bb/shared-ui/textarea";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@bb/shared-ui/alert-dialog";
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@bb/shared-ui/dialog";
 import type { AppProfileInput, ProfileWithStatus } from "../contract.js";
 
 export interface AppProfilesProps {
@@ -69,7 +67,8 @@ function parseArgsText(text: string): { args: string[]; error: string | null } {
   } catch {}
   return {
     args: [],
-    error: "Arguments must be a JSON array of strings, e.g. [\"--verbose\", \"--port\", \"8080\"]",
+    error:
+      'Arguments must be a JSON array of strings, e.g. ["--verbose", "--port", "8080"]',
   };
 }
 
@@ -185,7 +184,10 @@ function AppProfileEditor({
         </div>
       </div>
       {formError !== null ? (
-        <p className="text-xs text-destructive" data-testid="pc-profile-form-error">
+        <p
+          className="text-xs text-destructive"
+          data-testid="pc-profile-form-error"
+        >
           {formError}
         </p>
       ) : null}
@@ -207,7 +209,11 @@ function AppProfileEditor({
           onClick={handleSubmit}
           data-testid="pc-profile-save"
         >
-          {saving ? "Saving…" : editor.mode === "edit" ? "Save changes" : "Add profile"}
+          {saving
+            ? "Saving…"
+            : editor.mode === "edit"
+              ? "Save changes"
+              : "Add profile"}
         </Button>
       </div>
     </div>
@@ -296,7 +302,10 @@ export function AppProfiles({
       ) : null}
       {error !== null ? (
         <div className="flex items-center justify-between gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-2 py-1.5">
-          <p className="min-w-0 truncate text-xs text-destructive" title={error}>
+          <p
+            className="min-w-0 truncate text-xs text-destructive"
+            title={error}
+          >
             {error}
           </p>
           <Button
@@ -310,15 +319,16 @@ export function AppProfiles({
           </Button>
         </div>
       ) : null}
-      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto" data-testid="pc-profiles-list">
+      <div
+        className="min-h-0 flex-1 space-y-2 overflow-y-auto"
+        data-testid="pc-profiles-list"
+      >
         {loading && profiles.length === 0 ? (
           <p className="p-4 text-center text-xs text-muted-foreground">
             Loading profiles…
           </p>
         ) : profiles.length === 0 && error === null ? (
-          <EmptyState
-            message="No program profiles yet. Add a program you want to start, stop, and restart from bb."
-          />
+          <EmptyState message="No program profiles yet. Add a program you want to start, stop, and restart from bb." />
         ) : (
           profiles.map((profile) => (
             <div
@@ -359,7 +369,9 @@ export function AppProfiles({
                     }`}
                   >
                     {profile.exePath}
-                    {profile.args.length > 0 ? ` ${profile.args.join(" ")}` : ""}
+                    {profile.args.length > 0
+                      ? ` ${profile.args.join(" ")}`
+                      : ""}
                   </p>
                 </div>
               </div>
@@ -438,38 +450,46 @@ export function AppProfiles({
           ))
         )}
       </div>
-      <AlertDialog
+      <Dialog
         open={confirmation !== null}
         onOpenChange={(open) => {
           if (!open) setConfirmation(null);
         }}
       >
-        <AlertDialogContent data-testid="pc-confirm-dialog">
-          <AlertDialogHeader>
-            <AlertDialogTitle>
+        <DialogContent data-testid="pc-confirm-dialog" className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>
               {confirmation !== null
                 ? `${confirmationCopy[confirmation.kind].title.replace("program", confirmation.profile.name)}`
                 : ""}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
+            </DialogTitle>
+            <DialogDescription>
               {confirmation !== null
                 ? confirmationCopy[confirmation.kind].body
                 : ""}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel data-testid="pc-confirm-cancel">Cancel</AlertDialogCancel>
-            <AlertDialogAction
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              size="sm"
+              data-testid="pc-confirm-cancel"
+              onClick={() => setConfirmation(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              size="sm"
               onClick={() => void runConfirmation()}
               data-testid="pc-confirm-accept"
             >
               {confirmation !== null
                 ? confirmationCopy[confirmation.kind].action
                 : "Confirm"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

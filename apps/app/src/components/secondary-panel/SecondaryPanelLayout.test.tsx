@@ -677,6 +677,24 @@ describe("SecondaryPanelLayout", () => {
 });
 
 describe("compact sidebar and right panel", () => {
+  it("keeps a newly requested panel open while the sidebar is dismissing", () => {
+    const onClose = vi.fn();
+    const view = renderLayout({
+      isCompactViewport: true,
+      onClose,
+      open: false,
+      renderPanel: createPanelRenderer(),
+      resetKey: "thread-1",
+    });
+    act(() => setCompactSidebarDrawerShowing(true));
+    view.rerenderWith({ open: true });
+    act(() => setCompactSidebarDrawerShowing(false));
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByTestId("responsive-drawer-shell").dataset.open).toBe(
+      "true",
+    );
+  });
+
   it("closes the right panel when the sidebar drawer opens so only one shelf is engaged", () => {
     const onClose = vi.fn();
     renderLayout({

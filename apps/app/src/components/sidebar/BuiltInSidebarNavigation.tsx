@@ -2,26 +2,30 @@ import type { ComponentProps } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   type BuiltInSidebarNavEntry,
-  ExtensionsNavSidebarItem,
+  ResourceNavSidebarItem,
   PluginNavSidebarItems,
   type SidebarNavActivationModifiers,
 } from "@/components/plugin/PluginNavSidebarItems";
 import { useAppCommandRunner } from "@/components/commands/AppCommandProvider";
 import { Icon } from "@bb/shared-ui/icon";
-import { usePluginNavPanelChrome } from "@/lib/plugin-nav-panel-chrome";
 import {
   ProjectListNewThreadAction,
   ProjectListSearchThreadsAction,
 } from "./ProjectList";
 import { DEFAULT_BUILT_IN_SIDEBAR_NAVIGATION_ORDER } from "@/components/plugin/pluginNavSidebarOrder";
+import { getPluginsRoutePath, getSkillsRoutePath } from "@/lib/route-paths";
 
 export type BuiltInSidebarNavigationProps = ComponentProps<
   typeof ProjectListNewThreadAction
 > &
   ComponentProps<typeof ProjectListSearchThreadsAction> &
-  ComponentProps<typeof PluginNavSidebarItems> & {
-    toolsRoutePath?: string;
-  };
+  Pick<
+    ComponentProps<typeof PluginNavSidebarItems>,
+    | "compactCustomizeMode"
+    | "onCompactCustomizeModeChange"
+    | "onNavigate"
+    | "splitEnabled"
+  >;
 
 export function BuiltInSidebarNavigation({
   compactCustomizeMode,
@@ -31,11 +35,11 @@ export function BuiltInSidebarNavigation({
   onNewChat,
   onSearchThreads,
   splitEnabled,
-  toolsRoutePath,
 }: BuiltInSidebarNavigationProps) {
   const navigate = useNavigate();
   const commandRunner = useAppCommandRunner();
-  const pluginNavPanels = usePluginNavPanelChrome();
+  const pluginsRoutePath = getPluginsRoutePath();
+  const skillsRoutePath = getSkillsRoutePath();
   const builtInEntries: BuiltInSidebarNavEntry[] = [
     {
       kind: "built-in",
@@ -74,27 +78,44 @@ export function BuiltInSidebarNavigation({
         commandRunner.dispatch("thread.search", null);
       },
     },
-    ...(toolsRoutePath
-      ? [
-          {
-            kind: "built-in" as const,
-            pluginId: "__bb__" as const,
-            id: "extensions",
-            title: "Extensions",
-            icon: <Icon name="Toolbox" aria-hidden="true" />,
-            content: (
-              <ExtensionsNavSidebarItem
-                routePath={toolsRoutePath}
-                onNavigate={onNavigate}
-              />
-            ),
-            onActivate: () => {
-              onNavigate?.();
-              void navigate(toolsRoutePath);
-            },
-          },
-        ]
-      : []),
+    {
+      kind: "built-in",
+      pluginId: "__bb__",
+      id: "extensions",
+      title: "Plugins",
+      icon: <Icon name="Plug02" aria-hidden="true" />,
+      content: (
+        <ResourceNavSidebarItem
+          icon="Plug02"
+          title="Plugins"
+          routePath={pluginsRoutePath}
+          onNavigate={onNavigate}
+        />
+      ),
+      onActivate: () => {
+        onNavigate?.();
+        void navigate(pluginsRoutePath);
+      },
+    },
+    {
+      kind: "built-in",
+      pluginId: "__bb__",
+      id: "skills",
+      title: "Skills",
+      icon: <Icon name="Zap" aria-hidden="true" />,
+      content: (
+        <ResourceNavSidebarItem
+          icon="Zap"
+          title="Skills"
+          routePath={skillsRoutePath}
+          onNavigate={onNavigate}
+        />
+      ),
+      onActivate: () => {
+        onNavigate?.();
+        void navigate(skillsRoutePath);
+      },
+    },
   ];
 
   return (
@@ -107,7 +128,6 @@ export function BuiltInSidebarNavigation({
         <PluginNavSidebarItems
           builtInEntries={builtInEntries}
           compactCustomizeMode={compactCustomizeMode}
-          entries={pluginNavPanels}
           leadingOrderKeys={DEFAULT_BUILT_IN_SIDEBAR_NAVIGATION_ORDER}
           onCompactCustomizeModeChange={onCompactCustomizeModeChange}
           onNavigate={onNavigate}

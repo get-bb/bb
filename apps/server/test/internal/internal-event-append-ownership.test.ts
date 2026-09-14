@@ -7,7 +7,7 @@ import {
   type HostDaemonEventEnvelope,
 } from "@bb/host-daemon-contract";
 import { describe, expect, it } from "vitest";
-import { buildThreadTimeline } from "../../src/services/threads/timeline.js";
+import { buildThreadTimelineWithProfile } from "../../src/services/threads/timeline.js";
 import {
   internalAuthHeaders,
   waitForQueuedCommand,
@@ -30,9 +30,7 @@ import {
 import { createTestAppHarness } from "../helpers/test-app.js";
 import type { TestAppHarness } from "../helpers/test-app.js";
 
-interface SeedEventRouteArgs {
-  hostType?: "persistent";
-}
+interface SeedEventRouteArgs {}
 
 interface PostEventBatchArgs {
   harness: TestAppHarness;
@@ -53,9 +51,7 @@ async function postEventBatch(args: PostEventBatchArgs): Promise<Response> {
 
 function setupEventRoute(args: SeedEventRouteArgs = {}) {
   return createTestAppHarness().then((harness) => {
-    const { host, session } = seedHostSession(harness.deps, {
-      type: args.hostType,
-    });
+    const { host, session } = seedHostSession(harness.deps);
     const { project } = seedProjectWithSource(harness.deps, {
       hostId: host.id,
     });
@@ -106,16 +102,16 @@ describe("internal event append ownership", () => {
 
       expect(response.status).toBe(200);
       expect(
-        buildThreadTimeline(harness.db, thread, {
+        buildThreadTimelineWithProfile(harness.db, thread, {
           eventBudget: 1_000_000,
-          includeProviderUnhandledOperations: true,
+          includeDiagnosticOperations: true,
           maxInlineOutputChars: null,
           maxSeq: 1,
           page: {
             kind: "latest",
             segmentLimit: Number.MAX_SAFE_INTEGER,
           },
-        }).contextWindowUsage,
+        }).response.contextWindowUsage,
       ).toEqual({
         usedTokens: 24_000,
         modelContextWindow: 128_000,
@@ -1034,13 +1030,13 @@ describe("interaction lifecycle records from the daemon", () => {
           .all()
           .map((row) => row.sequence),
       );
-      const questionRows = buildThreadTimeline(harness.db, thread, {
+      const questionRows = buildThreadTimelineWithProfile(harness.db, thread, {
         eventBudget: 1_000_000,
-        includeProviderUnhandledOperations: true,
+        includeDiagnosticOperations: true,
         maxInlineOutputChars: null,
         maxSeq,
         page: { kind: "latest", segmentLimit: Number.MAX_SAFE_INTEGER },
-      }).rows.flatMap((row) =>
+      }).response.rows.flatMap((row) =>
         row.kind === "work" && row.workKind === "question" ? [row] : [],
       );
       expect(questionRows).toHaveLength(1);

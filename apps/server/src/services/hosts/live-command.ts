@@ -1,3 +1,5 @@
+import { getEnvironment } from "@bb/db";
+import { resolveHostEnvironment } from "./host-environment.js";
 import { randomUUID } from "node:crypto";
 import {
   type HostDaemonCommand,
@@ -8,7 +10,9 @@ import { ApiError } from "../../errors.js";
 import {
   buildCommandResultSettlementDeps,
   type CommandResultPostCommitAction,
+  type CommandResultSettlementDeps,
   type CommandResultSideEffectsDeps,
+  type CommandResultSideEffectsResult,
   type HostDaemonCommandExecutionRecord,
   type HostDaemonCommandForType,
   type LiveHostCommandFailureResultReportForType,
@@ -16,7 +20,7 @@ import {
 } from "../../internal/command-result-side-effects.js";
 import { handleLiveCommandResultSideEffects } from "../../internal/command-results.js";
 import { NotificationBuffer } from "../lib/notification-buffer.js";
-import { callHostOnlineRpc } from "./online-rpc.js";
+import { callHostOnlineRpc, callHostOnlineRpcForWork } from "./online-rpc.js";
 
 export const LIVE_DAEMON_COMMAND_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 
@@ -44,7 +48,6 @@ interface StartLiveHostCommandArgs<
   TType extends HostDaemonSettledCommandType,
 > extends RunLiveHostCommandArgs<TType> {
   onError?: LiveHostCommandErrorHandler<TType>;
-  onExpectedError?: LiveHostCommandErrorHandler<TType>;
   onSettled?: () => void | Promise<void>;
 }
 
@@ -133,7 +136,7 @@ export function expectedLiveHostCommandErrorLogFields(
   };
 }
 
-function buildLiveHostCommandFailureReport<
+export function buildLiveHostCommandFailureReport<
   TType extends HostDaemonSettledCommandType,
 >(
   args: BuildLiveHostCommandFailureReportArgs<TType>,
@@ -148,7 +151,7 @@ function buildLiveHostCommandFailureReport<
   };
 }
 
-function buildLiveHostCommandSuccessReport<
+export function buildLiveHostCommandSuccessReport<
   TType extends HostDaemonSettledCommandType,
 >(
   args: BuildLiveHostCommandSuccessReportArgs<TType>,
@@ -171,27 +174,37 @@ async function runPostCommitActions(
   }
 }
 
+export async function runLiveHostCommandSettlement(
+  deps: CommandResultSideEffectsDeps,
+  settle: (
+    settlementDeps: CommandResultSettlementDeps,
+  ) => CommandResultSideEffectsResult,
+): Promise<void> {
+  const notificationBuffer = new NotificationBuffer();
+  const sideEffects = deps.db.transaction(
+    (tx) =>
+      settle(
+        buildCommandResultSettlementDeps({
+          db: tx,
+          deps,
+          hub: notificationBuffer,
+        }),
+      ),
+    { behavior: "immediate" },
+  );
+  notificationBuffer.flushInto(deps.hub);
+  await runPostCommitActions(deps, sideEffects.postCommitActions);
+}
+
 async function applyLiveHostCommandReport<
   TType extends HostDaemonSettledCommandType,
 >(
   deps: CommandResultSideEffectsDeps,
   args: ApplyLiveHostCommandReportArgs<TType>,
 ): Promise<void> {
-  const notificationBuffer = new NotificationBuffer();
-  const sideEffects = deps.db.transaction(
-    (tx) =>
-      handleLiveCommandResultSideEffects(
-        buildCommandResultSettlementDeps({
-          db: tx,
-          deps,
-          hub: notificationBuffer,
-        }),
-        args,
-      ),
-    { behavior: "immediate" },
+  await runLiveHostCommandSettlement(deps, (settlementDeps) =>
+    handleLiveCommandResultSideEffects(settlementDeps, args),
   );
-  notificationBuffer.flushInto(deps.hub);
-  await runPostCommitActions(deps, sideEffects.postCommitActions);
 }
 
 export function createLiveHostCommandExecution(
@@ -213,8 +226,29 @@ export async function runLiveHostCommand<
   const execution =
     args.execution ?? createLiveHostCommandExecution(args.hostId);
   try {
-    const result = await callHostOnlineRpc(deps, {
-      command: args.command,
+    const call =
+      args.command.type === "thread.stop"
+        ? callHostOnlineRpc
+        : callHostOnlineRpcForWork;
+    const sourceCommand: HostDaemonCommand = args.command;
+    const command = {
+      ...args.command,
+      ...(sourceCommand.type === "environment.attach"
+        ? {
+            contributedEnv:
+              sourceCommand.setupScriptTimeoutMs === null
+                ? []
+                : await resolveHostEnvironment(deps, {
+                    hostId: args.hostId,
+                    projectId:
+                      getEnvironment(deps.db, sourceCommand.environmentId)
+                        ?.projectId ?? null,
+                  }),
+          }
+        : {}),
+    };
+    const result = await call(deps, {
+      command,
       hostId: args.hostId,
       timeoutMs: args.timeoutMs,
     });
@@ -286,7 +320,6 @@ export function startLiveHostCommand<
           },
           "Expected live host command failure",
         );
-        args.onExpectedError?.(handlerArgs);
         return;
       }
       args.onError?.(handlerArgs);

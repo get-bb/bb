@@ -1,4 +1,4 @@
-import { forwardRef, type ButtonHTMLAttributes } from "react";
+import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { cn } from "@bb/shared-ui/lib/utils";
 
 export const PROMPT_BANNER_ACTION_FILL_CLASS = "bg-background shadow-xs";
@@ -34,3 +34,23 @@ export const PromptBannerActionButton = forwardRef<
 
 export const PROMPT_STACK_ROW_ACTION_TAKEOVER_CLASS =
   "relative bg-surface-raised-solid before:pointer-events-none before:absolute before:inset-y-0 before:right-full before:w-4 before:bg-gradient-to-r before:from-transparent before:to-surface-raised-solid before:content-['']";
+
+export function BannerActionSlot({
+  children,
+  hideInCompact = false,
+  hideInTiny = true,
+}: {
+  children: ReactNode;
+  hideInCompact?: boolean;
+  hideInTiny?: boolean;
+}) {
+  return (
+    <div
+      className="ml-auto flex shrink-0 items-center gap-1.5 pr-2 text-xs text-muted-foreground"
+      data-promptbox-hide-compact={hideInCompact ? "" : undefined}
+      data-promptbox-hide-tiny={hideInTiny ? "" : undefined}
+    >
+      {children}
+    </div>
+  );
+}

@@ -10,11 +10,13 @@ import {
 } from "@testing-library/react";
 import { useEffect, useState, type ComponentType } from "react";
 import { createStore, Provider } from "jotai";
-import { MemoryRouter, useLocation } from "react-router-dom";
+import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { SidebarProvider } from "@/components/ui/sidebar.js";
+import { SIDEBAR_CONTROL_STATE_CLASS } from "@/components/sidebar/sidebarRowClasses";
+import { useSidebarReorderDnd } from "@/components/sidebar/useSidebarReorderDnd";
 import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
@@ -27,9 +29,14 @@ import {
   resetAllCrashedPluginSlotsForTest,
   resetCrashedPluginSlots,
 } from "./PluginSlotMount";
+import { appToast } from "@/components/ui/app-toast";
+import {
+  makeInstalledPlugin,
+  makePluginRegistrationSet as registrationSet,
+} from "@/test/fixtures/plugins";
 import {
   type BuiltInSidebarNavEntry,
-  ExtensionsNavSidebarItem,
+  ResourceNavSidebarItem,
   PluginNavSidebarItems,
   type SidebarNavActivationModifiers,
 } from "./PluginNavSidebarItems";
@@ -37,9 +44,76 @@ import {
   pluginNavPanelOrderAtom,
   pluginNavVisiblePanelKeysAtom,
 } from "./pluginNavSidebarAtoms";
-import { splitLayoutAtom } from "@/lib/split-layout/atoms";
-import { countPanes, findPaneByContent } from "@/lib/split-layout";
-import { makePluginRegistrationSet as registrationSet } from "@/test/fixtures/plugins";
+import {
+  markPluginFrontendsSettled,
+  resetPluginFrontendBootStateForTest,
+  setServerPluginsStarting,
+  setPluginFrontendReconcilePending,
+} from "@/lib/plugin-frontend-boot-state";
+import { writeLastKnownPluginNavPanelChrome } from "@/lib/plugin-nav-panel-chrome";
+import { maximizedPaneIdAtom, splitLayoutAtom } from "@/lib/split-layout/atoms";
+import {
+  countPanes,
+  findPaneByContent,
+  type SplitLayout,
+} from "@/lib/split-layout";
+import { usePublishPluginDetailOpener } from "./plugin-detail-opener";
+vi.mock("@/components/ui/app-toast", () => ({
+  appToast: {
+    dismiss: vi.fn(),
+    error: vi.fn(),
+    loading: vi.fn(),
+    message: vi.fn(),
+    success: vi.fn(),
+    warning: vi.fn(),
+  },
+}));
+
+function disabledPluginMutationResponse(id: string) {
+  return {
+    ok: true,
+    plugin: makeInstalledPlugin({
+      id,
+      enabled: false,
+      status: "disabled",
+      app: { hasApp: true, bundle: null },
+    }),
+  };
+}
+
+vi.mock("@/components/sidebar/useSidebarReorderDnd", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@/components/sidebar/useSidebarReorderDnd")
+    >();
+  return {
+    ...actual,
+    useSidebarReorderDnd: vi.fn(actual.useSidebarReorderDnd),
+  };
+});
+
+function reorderSidebar(activeId: string, overId: string) {
+  const options = vi.mocked(useSidebarReorderDnd).mock.lastCall?.[0];
+  if (!options) throw new Error("Sidebar reorder handler is not mounted");
+  act(() => {
+    options.onDragEnd({
+      active: {
+        id: activeId,
+        data: { current: {} },
+        rect: { current: { initial: null, translated: null } },
+      },
+      over: {
+        id: overId,
+        data: { current: {} },
+        rect: new DOMRect(),
+        disabled: false,
+      },
+      activatorEvent: new Event("pointerdown"),
+      collisions: [],
+      delta: { x: 0, y: 0 },
+    });
+  });
+}
 
 function registerPanel(
   pluginId: string,
@@ -73,6 +147,9 @@ interface RenderSidebarItemsOptions {
   storedVisibleKeys?: string[] | null;
   compactViewport?: boolean;
   compactCustomizeMode?: boolean;
+  initialEntry?: string;
+  initialEntries?: string[];
+  initialLayout?: SplitLayout;
   onCompactCustomizeModeChange?: (isCustomizing: boolean) => void;
   splitEnabled?: boolean;
 }
@@ -125,13 +202,18 @@ function renderSidebarItems(options: RenderSidebarItemsOptions = {}) {
       focusedPaneId: "pane-1",
     });
   }
+  if (options.initialLayout) store.set(splitLayoutAtom, options.initialLayout);
   const view = render(
     <CompactViewportOverrideProvider
       isCompactViewport={options.compactViewport ?? false}
     >
       <QueryClientProvider client={queryClient}>
         <Provider store={store}>
-          <MemoryRouter initialEntries={["/"]}>
+          <MemoryRouter
+            initialEntries={
+              options.initialEntries ?? [options.initialEntry ?? "/"]
+            }
+          >
             <SidebarProvider>
               <PluginNavSidebarItemsHarness options={options} />
               <LocationProbe />
@@ -145,7 +227,15 @@ function renderSidebarItems(options: RenderSidebarItemsOptions = {}) {
 }
 
 function LocationProbe() {
-  return <output data-testid="location-path">{useLocation().pathname}</output>;
+  const location = useLocation();
+  const navigate = useNavigate();
+  return (
+    <>
+      <output data-testid="location-path">{location.pathname}</output>
+      <button onClick={() => void navigate(-1)}>History back</button>
+      <button onClick={() => void navigate(1)}>History forward</button>
+    </>
+  );
 }
 
 function panelRowNames(
@@ -219,6 +309,9 @@ async function openCustomizeFromContextMenu(
 }
 
 beforeEach(() => {
+  vi.clearAllMocks();
+  resetPluginFrontendBootStateForTest();
+  markPluginFrontendsSettled();
   window.localStorage.clear();
   resetAllCrashedPluginSlotsForTest();
   vi.spyOn(console, "error").mockImplementation(() => {});
@@ -227,13 +320,63 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  resetPluginFrontendBootStateForTest();
   resetPluginSlotStoreForTest();
   resetAllCrashedPluginSlotsForTest();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   window.localStorage.clear();
 });
 
 describe("PluginNavSidebarItems", () => {
+  it("keeps built-in actions visible without placeholders during startup", () => {
+    resetPluginFrontendBootStateForTest();
+    renderSidebarItems({
+      builtInEntries: [builtInEntry("new-thread", "New thread")],
+    });
+    expect(
+      screen.queryByRole("status", { name: "Loading plugins" }),
+    ).toBeNull();
+    expect(screen.queryByTestId("plugin-nav-loading-placeholders")).toBeNull();
+    expect(screen.getByRole("button", { name: "New thread" })).toBeTruthy();
+    act(() => markPluginFrontendsSettled());
+    expect(
+      screen.queryByRole("status", { name: "Loading plugins" }),
+    ).toBeNull();
+    expect(screen.queryByTestId("plugin-nav-loading-placeholders")).toBeNull();
+  });
+
+  it("keeps remembered labels while the server starts, then reveals ready panels in place", () => {
+    writeLastKnownPluginNavPanelChrome([
+      {
+        pluginId: "docs",
+        id: "main",
+        path: "main",
+        title: "Docs",
+        icon: "Puzzle",
+      },
+    ]);
+    setServerPluginsStarting(true);
+    renderSidebarItems();
+    const row = screen.getByRole("button", { name: "Docs" });
+    expect(row.getAttribute("aria-busy")).toBe("true");
+    expect(screen.queryByTestId("plugin-nav-loading-placeholders")).toBeNull();
+    act(() => {
+      setPluginFrontendReconcilePending(true);
+      setServerPluginsStarting(false);
+      registerPanel("docs", "Docs");
+    });
+    expect(screen.getByRole("button", { name: "Docs" })).toBe(row);
+    expect(row.hasAttribute("aria-busy")).toBe(false);
+    expect(
+      screen.queryByRole("status", { name: "Loading plugins" }),
+    ).toBeNull();
+    act(() => setPluginFrontendReconcilePending(false));
+    expect(
+      screen.queryByRole("status", { name: "Loading plugins" }),
+    ).toBeNull();
+  });
+
   it("collapses the entire subsection with zero traditional plugins", () => {
     renderSidebarItems();
 
@@ -241,7 +384,7 @@ describe("PluginNavSidebarItems", () => {
     expect(screen.queryByText("Plugins")).toBeNull();
   });
 
-  it("shows one plugin without a More row and reaches Customize from the row menu", async () => {
+  it("shows one plugin without a More row", () => {
     registerPanel("docs", "Docs");
     renderSidebarItems();
 
@@ -252,13 +395,9 @@ describe("PluginNavSidebarItems", () => {
       screen.queryByRole("button", { name: "Customize sidebar navigation" }),
     ).toBeNull();
 
-    await openCustomizeFromContextMenu(
-      screen.getByRole("button", { name: "Docs" }),
-    );
-
-    expect(customizeRows().map((row) => row.textContent?.trim())).toEqual([
-      "Docs",
-    ]);
+    expect(
+      screen.queryByRole("button", { name: "Docs panel options" }),
+    ).not.toBeNull();
   });
 
   it("keeps an accessory-less plugin row unchanged", () => {
@@ -275,9 +414,16 @@ describe("PluginNavSidebarItems", () => {
     expect(
       screen.getByRole("button", { name: "Docs" }).classList.contains("pr-18"),
     ).toBe(false);
+    const options = screen.getByRole("button", {
+      name: "Docs panel options",
+    });
+    for (const token of SIDEBAR_CONTROL_STATE_CLASS.split(" ")) {
+      expect(options.classList.contains(token)).toBe(true);
+    }
     expect(
-      screen.queryByRole("button", { name: "Docs panel options" }),
-    ).not.toBeNull();
+      options.classList.contains("data-[state=open]:bg-sidebar-accent"),
+    ).toBe(false);
+    expect(options.classList.contains("hover:text-foreground")).toBe(false);
     expect(
       view.container.querySelector("[data-plugin-nav-sidebar-accessory]"),
     ).toBeNull();
@@ -294,6 +440,333 @@ describe("PluginNavSidebarItems", () => {
         .closest("[data-sidebar-hover-actions-mobile]")
         ?.getAttribute("data-sidebar-hover-actions-mobile"),
     ).toBe("always");
+  });
+
+  it.each([false, true])(
+    "uses the focused plugin action set for the options button and right-click (compact=%s)",
+    async (compactViewport) => {
+      registerPanel("docs", "Docs");
+      renderSidebarItems({ splitEnabled: true, compactViewport });
+
+      const trigger = screen.getByRole("button", {
+        name: "Docs panel options",
+      });
+      if (compactViewport) {
+        fireEvent.click(trigger);
+      } else {
+        fireEvent.pointerDown(trigger, { button: 0 });
+      }
+      await screen.findByRole("menuitem", { name: "Hide from sidebar" });
+      const dropdownRole = compactViewport ? "dialog" : "menu";
+      const dropdownMenu = screen.getByRole(dropdownRole);
+      const expected = [
+        ...(compactViewport ? [] : [["Open in split", "Columns2"]]),
+        ["View details", "Info"],
+        ["Hide from sidebar", "EyeOff"],
+        ["Disable", "Unavailable"],
+      ] as const;
+      const expectFocusedMenu = (menu: HTMLElement) => {
+        expect(
+          within(menu)
+            .getAllByRole("menuitem")
+            .map((item) => item.textContent?.trim()),
+        ).toEqual(expected.map(([label]) => label));
+        expect(within(menu).getAllByRole("separator")).toHaveLength(1);
+        for (const [label, icon] of expected) {
+          expect(
+            within(menu)
+              .getByRole("menuitem", { name: label })
+              .querySelector(`[data-icon="${icon}"]`),
+          ).not.toBeNull();
+        }
+      };
+      expectFocusedMenu(dropdownMenu);
+      fireEvent.keyDown(dropdownMenu, { key: "Escape" });
+      await waitFor(() => expect(screen.queryByRole(dropdownRole)).toBeNull());
+
+      fireEvent.contextMenu(screen.getByRole("button", { name: "Docs" }));
+      expectFocusedMenu(await screen.findByRole("menu"));
+    },
+  );
+
+  it("hides an active plugin through the compact menu without disabling or navigating", async () => {
+    const fetchMock = vi.fn<typeof fetch>();
+    vi.stubGlobal("fetch", fetchMock);
+    registerPanel("docs", "Docs");
+    const initialLayout: SplitLayout = {
+      root: {
+        type: "pane",
+        paneId: "docs-pane",
+        content: {
+          kind: "plugin-panel",
+          pluginId: "docs",
+          panelPath: "main",
+          subPath: "",
+        },
+      },
+      focusedPaneId: "docs-pane",
+    };
+    const { store } = renderSidebarItems({
+      compactViewport: true,
+      initialEntry: "/plugins/docs/main",
+      initialLayout,
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Docs panel options" }));
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Hide from sidebar" }),
+    );
+
+    expect(store.get(pluginNavVisiblePanelKeysAtom)).toEqual([]);
+    expect(visibleRowKeys()).toEqual([]);
+    expect(store.get(splitLayoutAtom)).toEqual(initialLayout);
+    expect(screen.getByTestId("location-path").textContent).toBe(
+      "/plugins/docs/main",
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+    fireEvent.click(moreTrigger());
+    expect(
+      await screen.findByRole("menuitem", { name: "Docs" }),
+    ).not.toBeNull();
+    expect(
+      screen.getAllByRole("menuitem").map((item) => item.textContent?.trim()),
+    ).toEqual(["Docs", "Customize sidebar"]);
+  });
+
+  it("opens plugin details and omits split when the layout cannot split", async () => {
+    registerPanel("docs", "Docs");
+    renderSidebarItems();
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Docs panel options" }),
+      { button: 0 },
+    );
+    expect(
+      screen.queryByRole("menuitem", { name: "Open in split" }),
+    ).toBeNull();
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "View details" }),
+    );
+    expect(screen.getByTestId("location-path").textContent).toBe(
+      "/plugins/docs",
+    );
+  });
+
+  it("opens details in the active workspace without changing its route", async () => {
+    const open = vi.fn(() => true);
+    function Workspace() {
+      usePublishPluginDetailOpener(open, true);
+      return null;
+    }
+    render(<Workspace />);
+    registerPanel("docs", "Docs");
+    renderSidebarItems({ initialEntry: "/plugins/docs/main" });
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Docs panel options" }),
+      { button: 0 },
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "View details" }),
+    );
+    expect(open).toHaveBeenCalledWith({ pluginId: "docs", title: "Docs" });
+    expect(screen.getByTestId("location-path").textContent).toBe(
+      "/plugins/docs/main",
+    );
+  });
+
+  it.each([
+    { pluginId: "docs", title: "Docs" },
+    {
+      pluginId: AUTOMATIONS_PLUGIN_ID,
+      title: "Automations",
+    },
+  ])(
+    "replaces $title with New thread after disabling",
+    async ({ pluginId, title }) => {
+      let completeDisable: (response: Response) => void = () => {};
+      const fetchMock = vi.fn<typeof fetch>(
+        () =>
+          new Promise((resolve) => {
+            completeDisable = resolve;
+          }),
+      );
+      vi.stubGlobal("fetch", fetchMock);
+      registerPanel(pluginId, title);
+      const { store } = renderSidebarItems({
+        initialEntries: ["/skills", `/plugins/${pluginId}/main`],
+        initialLayout: {
+          root: {
+            type: "pane",
+            paneId: "docs",
+            content: {
+              kind: "plugin-panel",
+              pluginId,
+              panelPath: "main",
+              subPath: "",
+            },
+          },
+          focusedPaneId: "docs",
+        },
+      });
+
+      fireEvent.pointerDown(
+        screen.getByRole("button", { name: `${title} panel options` }),
+        { button: 0 },
+      );
+      fireEvent.click(await screen.findByRole("menuitem", { name: "Disable" }));
+
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+      expect(String(fetchMock.mock.calls[0]?.[0])).toContain(
+        `/plugins/${pluginId}/disable`,
+      );
+      expect(screen.getByTestId("location-path").textContent).toBe(
+        `/plugins/${pluginId}/main`,
+      );
+      expect(appToast.success).not.toHaveBeenCalled();
+      await act(async () => {
+        completeDisable(
+          new Response(
+            JSON.stringify(disabledPluginMutationResponse(pluginId)),
+            {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            },
+          ),
+        );
+      });
+      await waitFor(() =>
+        expect(screen.getByTestId("location-path").textContent).toBe("/"),
+      );
+      expect(store.get(splitLayoutAtom)?.root).toMatchObject({
+        content: { kind: "new-thread" },
+      });
+      expect(appToast.success).toHaveBeenCalledWith(`${title} disabled`);
+      fireEvent.click(screen.getByRole("button", { name: "History back" }));
+      await waitFor(() =>
+        expect(screen.getByTestId("location-path").textContent).toBe("/skills"),
+      );
+      fireEvent.click(screen.getByRole("button", { name: "History forward" }));
+      await waitFor(() =>
+        expect(screen.getByTestId("location-path").textContent).toBe("/"),
+      );
+    },
+  );
+
+  it.each(["docs", "github"])(
+    "closes only the disabled plugin panes with %s focused",
+    async (focusedPaneId) => {
+      registerPanel("docs", "Docs");
+      registerPanel("github", "GitHub");
+      const { store } = renderSidebarItems({
+        initialEntry: `/plugins/${focusedPaneId}/main`,
+        initialLayout: {
+          root: {
+            type: "split",
+            dir: "row",
+            sizes: [1, 1, 1],
+            children: [
+              {
+                type: "pane",
+                paneId: "docs",
+                content: {
+                  kind: "plugin-panel",
+                  pluginId: "docs",
+                  panelPath: "main",
+                  subPath: "",
+                },
+              },
+              {
+                type: "pane",
+                paneId: "github",
+                content: {
+                  kind: "plugin-panel",
+                  pluginId: "github",
+                  panelPath: "main",
+                  subPath: "",
+                },
+              },
+              {
+                type: "pane",
+                paneId: "docs-other",
+                content: {
+                  kind: "plugin-panel",
+                  pluginId: "docs",
+                  panelPath: "other",
+                  subPath: "",
+                },
+              },
+            ],
+          },
+          focusedPaneId,
+        },
+      });
+      store.set(maximizedPaneIdAtom, "docs");
+      const layoutsAtDisable: Array<SplitLayout | null> = [];
+      const fetchMock = vi.fn<typeof fetch>(async () => {
+        layoutsAtDisable.push(store.get(splitLayoutAtom));
+        return new Response(
+          JSON.stringify(disabledPluginMutationResponse("docs")),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        );
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      fireEvent.pointerDown(
+        screen.getByRole("button", { name: "Docs panel options" }),
+        { button: 0 },
+      );
+      fireEvent.click(await screen.findByRole("menuitem", { name: "Disable" }));
+      await waitFor(() =>
+        expect(appToast.success).toHaveBeenCalledWith("Docs disabled"),
+      );
+      const survivingLayout = {
+        root: {
+          type: "pane",
+          paneId: "github",
+          content: {
+            kind: "plugin-panel",
+            pluginId: "github",
+            panelPath: "main",
+            subPath: "",
+          },
+        },
+        focusedPaneId: "github",
+      };
+      expect(layoutsAtDisable[0]?.root.type).toBe("split");
+      expect(store.get(splitLayoutAtom)).toEqual(survivingLayout);
+      expect(store.get(maximizedPaneIdAtom)).toBeNull();
+      expect(screen.getByTestId("location-path").textContent).toBe(
+        "/plugins/github/main",
+      );
+    },
+  );
+
+  it("keeps the current workspace when disabling a plugin that is not open", async () => {
+    registerPanel("docs", "Docs");
+    const fetchMock = vi.fn<typeof fetch>(
+      async () =>
+        new Response(JSON.stringify(disabledPluginMutationResponse("docs")), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { store } = renderSidebarItems({
+      initialEntry: "/",
+      splitEnabled: true,
+    });
+    const originalLayout = store.get(splitLayoutAtom);
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Docs panel options" }),
+      { button: 0 },
+    );
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Disable" }));
+    await waitFor(() =>
+      expect(appToast.success).toHaveBeenCalledWith("Docs disabled"),
+    );
+    expect(store.get(splitLayoutAtom)).toBe(originalLayout);
+    expect(screen.getByTestId("location-path").textContent).toBe("/");
   });
 
   it("bounds and truncates a long sidebar accessory", () => {
@@ -546,11 +1019,11 @@ describe("PluginNavSidebarItems", () => {
     const { store } = renderSidebarItems({
       builtInEntries: [
         builtInEntry("new-thread", "New thread"),
-        builtInEntry("extensions", "Extensions"),
+        builtInEntry("extensions", "Plugins"),
       ],
     });
 
-    fireEvent.contextMenu(screen.getByRole("button", { name: "Extensions" }));
+    fireEvent.contextMenu(screen.getByRole("button", { name: "Plugins" }));
     fireEvent.click(
       await screen.findByRole("menuitem", { name: "Hide from sidebar" }),
     );
@@ -622,7 +1095,19 @@ describe("PluginNavSidebarItems", () => {
       screen.getByTestId("plugin-nav-sidebar-items").lastElementChild,
     ).toBe(screen.getByTestId("sidebar-navigation-more-row"));
 
+    const trigger = moreTrigger();
+    for (const token of [
+      "text-muted-foreground",
+      "hover:text-sidebar-foreground",
+      "focus-visible:text-sidebar-foreground",
+      "data-[state=open]:text-sidebar-foreground",
+    ]) {
+      expect(trigger.classList.contains(token)).toBe(true);
+    }
+    expect(trigger.getAttribute("data-state")).toBe("closed");
+
     const items = await openMoreMenu();
+    expect(trigger.getAttribute("data-state")).toBe("open");
     expect(items.map((item) => item.textContent?.trim())).toEqual([
       "Search threads",
       "Customize sidebar",
@@ -636,6 +1121,7 @@ describe("PluginNavSidebarItems", () => {
       ctrlKey: false,
     });
     await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    expect(trigger.getAttribute("data-state")).toBe("closed");
   });
 
   it("opens a hidden plugin in a split on modifier-click from More", async () => {
@@ -667,10 +1153,12 @@ describe("PluginNavSidebarItems", () => {
   it("keeps launch and visibility as distinct targets with a clear row hover state", async () => {
     const labels = ["One", "Two", "Three", "Four"];
     labels.forEach((label, index) => registerPanel(`plugin-${index}`, label));
-    const { store, unmount } = renderSidebarItems();
+    const { store, unmount } = renderSidebarItems({
+      builtInEntries: [builtInEntry("new-thread", "New thread")],
+    });
 
     await openCustomizeFromContextMenu(
-      screen.getByRole("button", { name: "One" }),
+      screen.getByRole("button", { name: "New thread" }),
     );
     const choices = screen.getAllByRole("checkbox");
     await waitFor(() =>
@@ -678,9 +1166,10 @@ describe("PluginNavSidebarItems", () => {
         document.activeElement?.getAttribute(
           "data-sidebar-navigation-customize-launch",
         ),
-      ).toBe("plugin-0/main"),
+      ).toBe("__bb__/new-thread"),
     );
     expect(choices.map((choice) => choice.getAttribute("data-state"))).toEqual([
+      "checked",
       "checked",
       "checked",
       "checked",
@@ -688,16 +1177,17 @@ describe("PluginNavSidebarItems", () => {
     ]);
     expect(
       document.querySelectorAll("[data-plugin-nav-customize-drag-handle]"),
-    ).toHaveLength(4);
+    ).toHaveLength(5);
     expect(
       customizeRows()[0]?.classList.contains("hover:bg-sidebar-accent"),
     ).toBe(true);
 
-    fireEvent.click(choices[0]!);
+    fireEvent.click(choices[1]!);
     expect(
       screen.getByRole("list", { name: "Sidebar navigation" }),
     ).not.toBeNull();
     expect(store.get(pluginNavVisiblePanelKeysAtom)).toEqual([
+      "__bb__/new-thread",
       "plugin-1/main",
       "plugin-2/main",
       "plugin-3/main",
@@ -707,7 +1197,10 @@ describe("PluginNavSidebarItems", () => {
     expect(screen.getByTestId("sidebar-navigation-more-row")).not.toBeNull();
 
     unmount();
-    renderSidebarItems();
+    renderSidebarItems({
+      storedOrder: store.get(pluginNavPanelOrderAtom),
+      storedVisibleKeys: store.get(pluginNavVisiblePanelKeysAtom),
+    });
     expect(panelRowNames(labels)).toEqual(["Two", "Three", "Four"]);
     expect(screen.queryByRole("button", { name: "One" })).toBeNull();
 
@@ -725,6 +1218,96 @@ describe("PluginNavSidebarItems", () => {
     expect(panelRowNames(labels)).toEqual(["Two", "Three", "Four"]);
   });
 
+  it.each(["sidebar", "desktop customize", "compact customize"])(
+    "persists new rows and existing hidden choices when reordered through %s",
+    async (mode) => {
+      registerPanel("docs", "Docs");
+      registerPanel("github", "GitHub");
+      registerPanel("tasks", "Tasks");
+      const builtInEntries = [
+        builtInEntry("new-thread", "New thread"),
+        builtInEntry("search-threads", "Search threads"),
+        builtInEntry("extensions", "Plugins"),
+        builtInEntry("skills", "Skills"),
+      ];
+      const view = renderSidebarItems({
+        builtInEntries,
+        compactViewport: mode === "compact customize",
+        storedOrder: [
+          "__bb__/extensions",
+          "docs/main",
+          "github/main",
+          "unregistered/main",
+        ],
+        storedVisibleKeys: [
+          "__bb__/extensions",
+          "docs/main",
+          "unregistered/main",
+        ],
+      });
+      const initialVisibleKeys = visibleRowKeys();
+      expect(initialVisibleKeys).toEqual([
+        "__bb__/new-thread",
+        "__bb__/extensions",
+        "__bb__/skills",
+        "docs/main",
+        "tasks/main",
+      ]);
+      if (mode !== "sidebar") {
+        await openCustomizeFromContextMenu(
+          screen.getByRole("button", { name: "New thread" }),
+        );
+      }
+      reorderSidebar("tasks/main", "docs/main");
+      const storedOrder = view.store.get(pluginNavPanelOrderAtom);
+      const storedVisibleKeys = view.store.get(pluginNavVisiblePanelKeysAtom);
+      expect(new Set(storedVisibleKeys)).toEqual(
+        new Set([...initialVisibleKeys, "unregistered/main"]),
+      );
+      expect(storedOrder).toContain("unregistered/main");
+      expect(storedOrder.indexOf("tasks/main")).toBeLessThan(
+        storedOrder.indexOf("docs/main"),
+      );
+      view.unmount();
+      renderSidebarItems({ builtInEntries, storedOrder, storedVisibleKeys });
+      expect(visibleRowKeys()).toEqual([
+        "__bb__/new-thread",
+        "__bb__/extensions",
+        "__bb__/skills",
+        "tasks/main",
+        "docs/main",
+      ]);
+    },
+  );
+
+  it("keeps Skills hidden when inherited from a hidden Plugins row after reordering", () => {
+    registerPanel("docs", "Docs");
+    registerPanel("tasks", "Tasks");
+    const { store } = renderSidebarItems({
+      builtInEntries: [
+        builtInEntry("extensions", "Plugins"),
+        builtInEntry("skills", "Skills"),
+      ],
+      storedOrder: ["__bb__/extensions", "docs/main"],
+      storedVisibleKeys: ["docs/main"],
+    });
+    reorderSidebar("tasks/main", "docs/main");
+    expect(visibleRowKeys()).toEqual(["tasks/main", "docs/main"]);
+    expect(store.get(pluginNavVisiblePanelKeysAtom)).toEqual([
+      "tasks/main",
+      "docs/main",
+    ]);
+  });
+
+  it("preserves default visibility when reordering the sidebar without saved choices", () => {
+    registerPanel("docs", "Docs");
+    registerPanel("tasks", "Tasks");
+    const { store } = renderSidebarItems({ storedVisibleKeys: null });
+    reorderSidebar("tasks/main", "docs/main");
+    expect(visibleRowKeys()).toEqual(["tasks/main", "docs/main"]);
+    expect(store.get(pluginNavVisiblePanelKeysAtom)).toBeNull();
+  });
+
   it("seeds newly introduced built-ins without overriding existing plugin visibility", () => {
     registerPanel("docs", "Docs");
     registerPanel("tasks", "Tasks");
@@ -738,8 +1321,9 @@ describe("PluginNavSidebarItems", () => {
     });
 
     expect(visibleRowKeys()).toEqual(["__bb__/new-thread", "docs/main"]);
-    expect(store.get(pluginNavVisiblePanelKeysAtom)).toEqual([
-      "__bb__/new-thread",
+    expect(store.get(pluginNavVisiblePanelKeysAtom)).toEqual(["docs/main"]);
+    expect(store.get(pluginNavPanelOrderAtom)).toEqual([
+      "tasks/main",
       "docs/main",
     ]);
   });
@@ -755,13 +1339,11 @@ describe("PluginNavSidebarItems", () => {
 
     expect(visibleRowKeys()).toEqual(["__bb__/new-thread", "tasks/main"]);
     expect(store.get(pluginNavVisiblePanelKeysAtom)).toEqual([
-      "tasks/main",
       "__bb__/new-thread",
     ]);
     expect(store.get(pluginNavPanelOrderAtom)).toEqual([
       "__bb__/new-thread",
       "docs/main",
-      "tasks/main",
     ]);
   });
 
@@ -919,17 +1501,21 @@ describe("PluginNavSidebarItems", () => {
 
   it("preserves modifier-click when launching a plugin from Customize", async () => {
     registerPanel("docs", "Docs");
-    const { store } = renderSidebarItems({ splitEnabled: true });
+    const { store } = renderSidebarItems({
+      builtInEntries: [builtInEntry("new-thread", "New thread")],
+      splitEnabled: true,
+    });
 
     await openCustomizeFromContextMenu(
-      screen.getByRole("button", { name: "Docs" }),
+      screen.getByRole("button", { name: "New thread" }),
     );
-    const row = customizeRows()[0];
-    expect(row).toBeDefined();
-    fireEvent.click(
-      within(row as HTMLElement).getByRole("button", { name: "Docs" }),
-      { metaKey: true },
+    const row = customizeRows().find((item) =>
+      item.textContent?.includes("Docs"),
     );
+    if (!row) throw new Error("Docs customization row is missing");
+    fireEvent.click(within(row).getByRole("button", { name: "Docs" }), {
+      metaKey: true,
+    });
 
     const layout = store.get(splitLayoutAtom);
     expect(layout).not.toBeNull();
@@ -985,18 +1571,28 @@ describe("PluginNavSidebarItems", () => {
   });
 });
 
-describe("ExtensionsNavSidebarItem", () => {
-  it("is host-owned and has no plugin-panel options menu", () => {
-    render(
-      <MemoryRouter>
-        <ExtensionsNavSidebarItem routePath="/extensions/plugins" />
-      </MemoryRouter>,
-    );
+describe("ResourceNavSidebarItem", () => {
+  it.each([
+    ["Plugins", "Plug02", "/plugins"],
+    ["Skills", "Zap", "/skills"],
+  ] as const)(
+    "renders the static %s icon without plugin-panel options",
+    (title, icon, routePath) => {
+      render(
+        <MemoryRouter>
+          <ResourceNavSidebarItem
+            icon={icon}
+            title={title}
+            routePath={routePath}
+          />
+        </MemoryRouter>,
+      );
 
-    const row = screen.getByRole("button", { name: "Extensions" });
-    expect(row.querySelector(".bb-sidebar-row-icon-swap")).not.toBeNull();
-    expect(
-      screen.queryByRole("button", { name: "Extensions panel options" }),
-    ).toBeNull();
-  });
+      const row = screen.getByRole("button", { name: title });
+      expect(row.querySelector(`[data-icon="${icon}"]`)).not.toBeNull();
+      expect(
+        screen.queryByRole("button", { name: `${title} panel options` }),
+      ).toBeNull();
+    },
+  );
 });

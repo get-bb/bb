@@ -29,18 +29,19 @@ import {
   runBridgeRequest,
   withoutBridgeRuntimeEnv,
 } from "@bb/provider-bridge-protocol/bridge-kit";
-import type { BridgeJsonRpcResponse } from "@bb/provider-bridge-protocol/bridge-kit";
+import type {
+  BridgeJsonRpcResponse,
+  BridgeToolCallContent,
+  BridgeToolCallImage,
+} from "@bb/provider-bridge-protocol/bridge-kit";
 import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { promises as fs, readFileSync } from "node:fs";
 import { createServer, type Server, type Socket } from "node:net";
 import { dirname, isAbsolute, basename, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
-
-type DecodedToolCallResponse = ReturnType<typeof decodeToolCallResponsePayload>;
-type BridgeToolCallContent = DecodedToolCallResponse["contentBlocks"][number];
-type BridgeToolCallImage = DecodedToolCallResponse["images"][number];
 import {
   ACP_BRIDGE_NO_ACTIVE_TURN_ERROR_CODE,
   ACP_COMPACTION_COMPLETED_METHOD,
@@ -88,10 +89,8 @@ import {
   getAcpProviderUsage,
 } from "./provider-maintenance.js";
 import {
-  ACP_PROTOCOL_VERSION,
   type AcpConfigOption,
   acpConfigStateResultSchema,
-  acpInitializeResultSchema,
   acpPromptResultSchema,
   acpReadTextFileParamsSchema,
   acpRequestPermissionParamsSchema,
@@ -112,6 +111,7 @@ import {
 import {
   AcpAgentResponseError,
   createAcpAgentConnection,
+  requestAcpInitialize,
   type AcpAgentConnection,
   type AcpAgentRequestResponder,
 } from "./agent-connection.js";
@@ -137,6 +137,7 @@ import {
 import {
   ACP_BRIDGE_MCP_SERVER_NAME,
   buildAcpMcpServerConfig,
+  dynamicToolBridgeRequestSchema,
   runAcpDynamicToolMcpServer,
   type AcpMcpServerConfig,
 } from "./tool-proxy-mcp.js";
@@ -159,6 +160,7 @@ interface AcpPendingTurnInput {
 
 interface AcpThreadSession {
   bbThreadId: string;
+  construction: AcpSessionParams;
   providerThreadId: string;
   cwd: string;
   dialect: AcpDialect;
@@ -640,23 +642,6 @@ interface AcpDynamicToolBridge {
   token: string;
 }
 
-const dynamicToolBridgeRequestSchema = z.discriminatedUnion("kind", [
-  z.object({
-    kind: z.literal("initialized"),
-    threadId: z.string().min(1),
-    token: z.string().min(1),
-    toolCount: z.number().int().nonnegative(),
-  }),
-  z.object({
-    kind: z.literal("toolCall"),
-    arguments: z.record(z.string(), z.unknown()).default({}),
-    callId: z.string().min(1),
-    threadId: z.string().min(1),
-    token: z.string().min(1),
-    tool: z.string().min(1),
-  }),
-]);
-
 let cachedModelCatalog: { key: string; catalog: AgentModelCatalog } | null =
   null;
 const SESSION_MODEL_DISCOVERY_TTL_MS = 60_000;
@@ -706,19 +691,6 @@ async function authenticateAcpAgent(args: {
       error instanceof Error ? error.message : String(error),
     );
   }
-}
-
-function acpClientCapabilities(
-  parameterizedModelPicker: boolean,
-  fsAccess = false,
-) {
-  return {
-    fs: { readTextFile: fsAccess, writeTextFile: fsAccess },
-    terminal: false,
-    ...(parameterizedModelPicker === true
-      ? { _meta: { parameterizedModelPicker: true } }
-      : {}),
-  };
 }
 
 async function loadAgentModelCatalog(
@@ -821,14 +793,9 @@ async function loadSessionDiscoveredModels(
   try {
     const newSession = await Promise.race([
       (async () => {
-        const initializeResult = await connection.request({
-          method: "initialize",
-          params: {
-            protocolVersion: ACP_PROTOCOL_VERSION,
-            clientInfo: { name: "bb", version: "1.0.0" },
-            clientCapabilities: acpClientCapabilities(parameterizedModelPicker),
-          },
-          resultSchema: acpInitializeResultSchema,
+        const initializeResult = await requestAcpInitialize(connection, {
+          parameterizedModelPicker,
+          fsAccess: false,
         });
         await authenticateAcpAgent({
           connection,
@@ -1427,39 +1394,37 @@ function handlePermissionRequest(
         }
       : undefined;
 
-  {
-    const payload = buildAcpPermissionInteractionPayload({
-      toolCall: normalizedToolCall,
-      options: parsed.data.options,
-      cwd: session.cwd,
-      classifyToolCall: session.dialect.classifyToolCall,
-    });
-    void sendRuntimeRequest(BRIDGE_INBOUND_REQUEST_METHODS.interactionRequest, {
-      providerThreadId: session.providerThreadId,
-      threadId: session.bbThreadId,
-      turnId: null,
-      payload,
+  const payload = buildAcpPermissionInteractionPayload({
+    toolCall: normalizedToolCall,
+    options: parsed.data.options,
+    cwd: session.cwd,
+    classifyToolCall: session.dialect.classifyToolCall,
+  });
+  void sendRuntimeRequest(BRIDGE_INBOUND_REQUEST_METHODS.interactionRequest, {
+    providerThreadId: session.providerThreadId,
+    threadId: session.bbThreadId,
+    turnId: null,
+    payload,
+  })
+    .then((result) => {
+      if (!session.pendingPermissions.delete(pending)) {
+        return;
+      }
+      const resolution = pendingInteractionResolutionSchema.safeParse(result);
+      const response = resolution.success
+        ? resolveAcpPermissionDecision({
+            payload,
+            resolution: resolution.data,
+          })
+        : null;
+      respondPermission(pending, response?.decision ?? null);
     })
-      .then((result) => {
-        if (!session.pendingPermissions.delete(pending)) {
-          return;
-        }
-        const resolution = pendingInteractionResolutionSchema.safeParse(result);
-        const response = resolution.success
-          ? resolveAcpPermissionDecision({
-              payload,
-              resolution: resolution.data,
-            })
-          : null;
-        respondPermission(pending, response?.decision ?? null);
-      })
-      .catch(() => {
-        if (!session.pendingPermissions.delete(pending)) {
-          return;
-        }
-        respondPermission(pending, null);
-      });
-  }
+    .catch(() => {
+      if (!session.pendingPermissions.delete(pending)) {
+        return;
+      }
+      respondPermission(pending, null);
+    });
 }
 
 function isPathInsideRoots(targetPath: string, roots: string[]): boolean {
@@ -1699,6 +1664,7 @@ async function startAgentSession(
   });
   session = {
     bbThreadId,
+    construction: params,
     providerThreadId: "",
     cwd: params.cwd,
     dialect,
@@ -1728,17 +1694,9 @@ async function startAgentSession(
   sessionsByBbThreadId.set(bbThreadId, session);
 
   try {
-    const initializeResult = await connection.request({
-      method: "initialize",
-      params: {
-        protocolVersion: ACP_PROTOCOL_VERSION,
-        clientInfo: { name: "bb", version: "1.0.0" },
-        clientCapabilities: acpClientCapabilities(
-          params.parameterizedModelPicker,
-          true,
-        ),
-      },
-      resultSchema: acpInitializeResultSchema,
+    const initializeResult = await requestAcpInitialize(connection, {
+      parameterizedModelPicker: params.parameterizedModelPicker,
+      fsAccess: true,
     });
     await authenticateAcpAgent({
       connection,
@@ -2267,7 +2225,7 @@ type DecodedAcpBridgeRequest =
 
 function decodeAcpBridgeJsonRpcRequest(raw: unknown): DecodedAcpBridgeRequest {
   const envelope = bridgeRequestEnvelopeSchema.safeParse(raw);
-  if (!envelope.success || envelope.data.id === undefined) {
+  if (!envelope.success) {
     return { kind: "ignored" };
   }
   const command = acpBridgeCommandSchema.safeParse({
@@ -2306,23 +2264,27 @@ async function handleModelList(
   params: AcpModelListParams,
   dialectId: string | undefined,
 ): Promise<void> {
-  const catalog = params.listCommand
-    ? await loadAgentModelCatalog(params.listCommand)
-    : null;
-  if (catalog) {
-    const catalogModels =
-      params.parameterizedModelPicker && dialectId === "cursor"
-        ? buildCursorParameterizedModelCatalog(catalog.models)
-        : catalog.models;
+  function sendModels(models: readonly AvailableModel[]): void {
     sendResult(
       id,
       splitPrimaryModels(
-        applyConfiguredReasoningToModels(catalogModels, {
+        applyConfiguredReasoningToModels(models, {
           reasoningCli: params.reasoningCli,
           nativeReasoning: params.nativeReasoning,
         }),
         params.primaryModels,
       ),
+    );
+  }
+
+  const catalog = params.listCommand
+    ? await loadAgentModelCatalog(params.listCommand)
+    : null;
+  if (catalog) {
+    sendModels(
+      params.parameterizedModelPicker && dialectId === "cursor"
+        ? buildCursorParameterizedModelCatalog(catalog.models)
+        : catalog.models,
     );
     return;
   }
@@ -2335,16 +2297,7 @@ async function handleModelList(
         )
       : null;
   if (sessionDiscoveredModels) {
-    sendResult(
-      id,
-      splitPrimaryModels(
-        applyConfiguredReasoningToModels(sessionDiscoveredModels, {
-          reasoningCli: params.reasoningCli,
-          nativeReasoning: params.nativeReasoning,
-        }),
-        params.primaryModels,
-      ),
-    );
+    sendModels(sessionDiscoveredModels);
     return;
   }
   sendResult(id, {
@@ -2424,6 +2377,16 @@ function maintenanceForRequest(
   }).maintenance;
 }
 
+function maintenanceTarget(
+  providerOptions: Record<string, unknown> | undefined,
+): { maintenance: AcpMaintenanceDialect | undefined; command: string | null } {
+  const launchSpec = decodeLaunchSpec(providerOptions);
+  return {
+    maintenance: maintenanceForRequest(providerOptions, launchSpec),
+    command: launchSpec?.command ?? null,
+  };
+}
+
 async function handleRequest(
   request: AcpBridgeCommand & { id: string | number },
 ): Promise<void> {
@@ -2462,66 +2425,42 @@ async function handleRequest(
       return;
     }
 
-    case "provider/health": {
-      const launchSpec = decodeLaunchSpec(request.params.providerOptions);
+    case "provider/health":
       sendResult(
         request.id,
-        await getAcpProviderHealth({
-          maintenance: maintenanceForRequest(
-            request.params.providerOptions,
-            launchSpec,
-          ),
-          command: launchSpec?.command ?? null,
-        }),
+        await getAcpProviderHealth(
+          maintenanceTarget(request.params.providerOptions),
+        ),
       );
       return;
-    }
 
-    case "provider/usage": {
-      const launchSpec = decodeLaunchSpec(request.params.providerOptions);
+    case "provider/usage":
       sendResult(
         request.id,
-        await getAcpProviderUsage({
-          maintenance: maintenanceForRequest(
-            request.params.providerOptions,
-            launchSpec,
-          ),
-          command: launchSpec?.command ?? null,
-        }),
+        await getAcpProviderUsage(
+          maintenanceTarget(request.params.providerOptions),
+        ),
       );
       return;
-    }
 
-    case "provider/installation/status": {
-      const launchSpec = decodeLaunchSpec(request.params.providerOptions);
+    case "provider/installation/status":
       sendResult(
         request.id,
-        await getAcpProviderInstallationStatus({
-          maintenance: maintenanceForRequest(
-            request.params.providerOptions,
-            launchSpec,
-          ),
-          command: launchSpec?.command ?? null,
-        }),
+        await getAcpProviderInstallationStatus(
+          maintenanceTarget(request.params.providerOptions),
+        ),
       );
       return;
-    }
 
-    case "provider/installation/run": {
-      const launchSpec = decodeLaunchSpec(request.params.providerOptions);
+    case "provider/installation/run":
       sendResult(
         request.id,
         await getAcpProviderInstallationRun({
-          maintenance: maintenanceForRequest(
-            request.params.providerOptions,
-            launchSpec,
-          ),
-          command: launchSpec?.command ?? null,
+          ...maintenanceTarget(request.params.providerOptions),
           action: request.params.action,
         }),
       );
       return;
-    }
 
     case "thread/start":
     case "thread/resume":
@@ -2590,7 +2529,7 @@ async function handleRequest(
 
     case "turn/start": {
       const params = request.params;
-      const session = liveSessionForThread(params.threadId);
+      let session = liveSessionForThread(params.threadId);
       if (session === undefined) {
         sendError(request.id, -32000, "No active ACP session");
         return;
@@ -2598,6 +2537,27 @@ async function handleRequest(
       if (session.activePromptKind !== null) {
         sendError(request.id, -32000, "A turn is already active");
         return;
+      }
+      if (Object.keys(params.options.envVars ?? {}).length > 0) {
+        const envVars = {
+          ...(decodeLaunchSpec(params.options.providerOptions)?.env ?? {}),
+          ...params.options.envVars,
+        };
+        if (!isDeepStrictEqual(envVars, session.construction.envVars ?? {})) {
+          const previousProviderThreadId = session.providerThreadId;
+          session = await startAgentSession({
+            kind: "resume",
+            params: { ...session.construction, envVars },
+            resumeProviderThreadId: previousProviderThreadId,
+          });
+          sendNotification(BRIDGE_NOTIFICATION_METHODS.sessionReplaced, {
+            threadId: params.threadId,
+            providerThreadId: session.providerThreadId,
+            reason:
+              "Execution settings changed; the ACP session was rebuilt to apply them.",
+            contextLost: session.providerThreadId !== previousProviderThreadId,
+          });
+        }
       }
       const pending: AcpPendingTurnInput = {
         clientRequestId: params.clientRequestId,

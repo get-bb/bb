@@ -11,7 +11,7 @@ import {
   parseLifecycleError,
   type LifecycleErrorDescription,
 } from "@/lib/lifecycle-errors";
-import { getMutationErrorMessage } from "@/lib/mutation-errors";
+import { showMutationErrorToast } from "@/lib/mutation-errors";
 import { useUpdateEnvironment } from "../../../hooks/mutations/environment-mutations";
 
 interface UseEnvironmentMergeBaseParams {
@@ -231,13 +231,11 @@ export function useEnvironmentMergeBase({
               return;
             }
 
-            appToast.error(
-              getMutationErrorMessage({
-                error,
-                fallbackMessage: "Failed to update merge base branch",
-                lifecycleOperation: "update_merge_base",
-              }),
-            );
+            showMutationErrorToast({
+              error,
+              fallbackMessage: "Failed to update merge base branch",
+              lifecycleOperation: "update_merge_base",
+            });
           },
         },
       );

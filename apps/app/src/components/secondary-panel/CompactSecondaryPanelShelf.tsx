@@ -11,6 +11,7 @@ import { createPortal } from "react-dom";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { usePersistentOverlayFocus } from "@bb/shared-ui/responsive-overlay";
 import { APP_OVERLAY_LAYER } from "@/components/ui/app-overlay-layers";
+import { hasTextSelectionWithin } from "@/components/ui/gesture-dom";
 import { useHorizontalDismissDrag } from "@/components/ui/use-horizontal-dismiss-drag";
 import {
   setCompactSecondaryPanelPresentation,
@@ -29,7 +30,7 @@ interface CompactSecondaryPanelShelfProps {
   onContentAnimationEnd?: (open: boolean) => void;
   open: boolean;
   presentation: Exclude<CompactSecondaryPanelPresentation, "closed">;
-  srLabel?: string;
+  srLabel: string;
 }
 
 export function CompactSecondaryPanelShelf({
@@ -116,6 +117,15 @@ export function CompactSecondaryPanelShelf({
     requestClose,
   });
 
+  useLayoutEffect(() => {
+    if (open) return;
+    const panel = panelRef.current;
+    if (panel === null) return;
+    if (hasTextSelectionWithin(panel)) {
+      panel.ownerDocument.getSelection()?.removeAllRanges();
+    }
+  }, [open]);
+
   useEffect(() => {
     setCompactSecondaryPanelPresentation(state);
     return () => setCompactSecondaryPanelPresentation("closed");
@@ -138,7 +148,6 @@ export function CompactSecondaryPanelShelf({
     <>
       <div
         ref={dismissRef}
-        data-secondary-panel-shelf-dismiss=""
         data-testid="secondary-panel-shelf-dismiss"
         data-state={state}
         aria-hidden="true"
@@ -158,11 +167,10 @@ export function CompactSecondaryPanelShelf({
         ref={panelRef}
         role="dialog"
         aria-modal="true"
-        aria-labelledby={srLabel === undefined ? undefined : labelId}
+        aria-labelledby={labelId}
         data-bb-portaled-overlay=""
         tabIndex={-1}
         inert={!open}
-        data-secondary-panel-shelf=""
         data-testid="secondary-panel-shelf"
         data-state={state}
         style={{
@@ -180,11 +188,9 @@ export function CompactSecondaryPanelShelf({
         onPointerDown={beginPointerDrag}
         onTouchStart={beginTouchDrag}
       >
-        {srLabel === undefined ? null : (
-          <span id={labelId} className="sr-only">
-            {srLabel}
-          </span>
-        )}
+        <span id={labelId} className="sr-only">
+          {srLabel}
+        </span>
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           {children}
         </div>

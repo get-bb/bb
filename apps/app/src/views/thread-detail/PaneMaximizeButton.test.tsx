@@ -11,6 +11,7 @@ import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import type { BbDesktopInfo } from "@bb/desktop-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createBbDesktopApi } from "@/test/bb-desktop-test-utils";
+import { focusWithKeyboard } from "@/test/keyboard-focus";
 import { useIsBrowserDimmingModalOpen } from "@/hooks/useBrowserDimmingModal";
 import { PaneContext, type PaneContextValue } from "./PaneContext";
 import {
@@ -96,7 +97,7 @@ describe("PaneMaximizeButton", () => {
     });
     expect(button.getAttribute("aria-pressed")).toBe("true");
 
-    fireEvent.focus(button);
+    focusWithKeyboard(button);
     await waitFor(() => {
       expect(
         screen

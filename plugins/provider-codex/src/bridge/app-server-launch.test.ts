@@ -16,7 +16,16 @@ describe("Codex Account Pool launch", () => {
     expect(launch.args).toContain(
       'model_providers.bb-account-pool.env_http_headers.x-bb-account-pool-token="CODEX_POOL_AUTH_TOKEN"',
     );
+    expect(launch.args).toContain(
+      "model_providers.bb-account-pool.supports_websockets=false",
+    );
     expect(JSON.stringify(launch.args)).not.toContain("secret-machine-token");
+  });
+
+  it("leaves Codex's default transport alone when the pool is not routed", () => {
+    const launch = resolveAppServerLaunch({});
+    expect(launch).toEqual({ command: "codex", args: ["app-server"] });
+    expect(JSON.stringify(launch.args)).not.toContain("supports_websockets");
   });
 
   it("does not partially route when either required variable is missing", () => {

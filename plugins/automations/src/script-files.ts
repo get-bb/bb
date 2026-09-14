@@ -22,13 +22,6 @@ const INTERPRETER_BY_EXTENSION: Record<string, AutomationScriptInterpreter> = {
   ".py": "python3",
 };
 
-const INTERPRETER_COMMAND: Record<AutomationScriptInterpreter, string> = {
-  bash: "bash",
-  sh: "sh",
-  node: "node",
-  python3: "python3",
-};
-
 export function scriptsRoot(dataDir: string): string {
   return join(dataDir, SCRIPT_DIR_NAME);
 }
@@ -45,16 +38,16 @@ function sanitizeScriptFileName(name: string): string {
   return base.length > 0 ? base : DEFAULT_SCRIPT_FILE_NAME;
 }
 
+export function interpreterForPath(
+  path: string,
+): AutomationScriptInterpreter | undefined {
+  return INTERPRETER_BY_EXTENSION[extname(path).toLowerCase()];
+}
+
 export function resolveDefaultInterpreter(
   scriptFile: string,
 ): AutomationScriptInterpreter {
-  return INTERPRETER_BY_EXTENSION[extname(scriptFile).toLowerCase()] ?? "bash";
-}
-
-export function resolveInterpreterCommand(
-  interpreter: AutomationScriptInterpreter,
-): string {
-  return INTERPRETER_COMMAND[interpreter];
+  return interpreterForPath(scriptFile) ?? "bash";
 }
 
 async function pathExists(path: string): Promise<boolean> {

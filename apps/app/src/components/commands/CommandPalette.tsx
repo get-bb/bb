@@ -52,6 +52,15 @@ import {
 
 type PaletteMode = "commands" | "threads";
 
+function invocationTarget(invocation: {
+  target: EventTarget | null;
+}): EventTarget | null {
+  return (
+    invocation.target ??
+    (typeof document === "undefined" ? null : document.activeElement)
+  );
+}
+
 export interface CommandPaletteProps {
   threadId: string | null;
   projectId: string | null;
@@ -156,24 +165,18 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
   );
 
   useAppCommandHandler("palette.open", (invocation) => {
-    const target =
-      invocation.target ??
-      (typeof document === "undefined" ? null : document.activeElement);
-    openPalette("commands", target);
+    openPalette("commands", invocationTarget(invocation));
     return true;
   });
 
   useAppCommandHandler("thread.search", (invocation) => {
-    const target =
-      invocation.target ??
-      (typeof document === "undefined" ? null : document.activeElement);
-    openPalette("threads", target);
+    openPalette("threads", invocationTarget(invocation));
     return true;
   });
 
   const mode: PaletteMode = query.startsWith(">") ? "commands" : "threads";
   const modeQuery = mode === "commands" ? query.slice(1) : query;
-  const commandActions = useMemo(
+  const commandActions = useMemo<readonly PaletteAction[]>(
     () => [...actions, ...settingsActions, ...pluginPageActions],
     [actions, pluginPageActions, settingsActions],
   );
@@ -248,6 +251,7 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
 
   const handleKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLInputElement>) => {
+      if (event.nativeEvent.isComposing) return;
       if (resultCount === 0) return;
       if (event.key === "ArrowDown") {
         event.preventDefault();

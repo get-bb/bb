@@ -1181,39 +1181,15 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
 
   function emitTranslatedEvents(args: EmitTranslatedEventsArgs): void {
     for (const event of args.events) {
-      if (event.type !== "thread/identity" || !event.providerThreadId) {
-        continue;
-      }
-
-      if (args.proc.identity.threadIds.has(event.threadId)) {
-        recordProviderThreadIdentity(
-          args.proc,
-          event.threadId,
-          event.providerThreadId,
-        );
-        continue;
-      }
-
-      const bbThreadId =
-        threadIdentityRegistry.resolvePendingProviderThreadIdentity(
-          args.proc.identity,
-        );
-      if (bbThreadId) {
-        recordProviderThreadIdentity(
-          args.proc,
-          bbThreadId,
-          event.providerThreadId,
-        );
-      }
-    }
-
-    for (const event of args.events) {
+      const scope = {
+        eventThreadId: event.threadId,
+        providerState: args.proc.identity,
+        sourceThreadId: args.sourceThreadId,
+      };
       const resolvedBbThreadId =
-        threadIdentityRegistry.resolveProviderEventThreadId({
-          eventThreadId: event.threadId,
-          providerState: args.proc.identity,
-          sourceThreadId: args.sourceThreadId,
-        });
+        event.type === "thread/identity"
+          ? threadIdentityRegistry.resolveProviderIdentityThreadId(scope)
+          : threadIdentityRegistry.resolveProviderEventThreadId(scope);
 
       if (!resolvedBbThreadId) {
         options.onStderr?.(
@@ -1225,6 +1201,13 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
 
       if (suppressedThreadEventIds.has(targetThreadId)) {
         continue;
+      }
+      if (event.type === "thread/identity" && event.providerThreadId) {
+        recordProviderThreadIdentity(
+          args.proc,
+          targetThreadId,
+          event.providerThreadId,
+        );
       }
       const stampedEvent = stampThreadEventScope({
         event,
@@ -1471,7 +1454,6 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       contributedEnv = [],
       clientRequestId,
       input,
-      inputGroups,
       options: execOpts,
       instructions,
       dynamicTools,
@@ -1506,7 +1488,6 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
           threadIdentityRegistry.registerThreadProvider({
             providerId,
             providerState: proc.identity,
-            expectsIdentityNotification: true,
             threadId,
           });
           setThreadRuntimeConfig(threadId, {
@@ -1529,7 +1510,6 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             envVars: resolvedEnvironment.envVars,
             execOpts,
             instructions,
-            skillRoots,
           });
           const adapterCommand: AdapterCommand = fork
             ? {
@@ -1606,7 +1586,6 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             await runtime.runTurn({
               threadId,
               input,
-              ...(inputGroups !== undefined ? { inputGroups } : {}),
               clientRequestId,
               options: execOpts,
               contributedEnv,
@@ -1671,7 +1650,6 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
           threadIdentityRegistry.registerThreadProvider({
             providerId,
             providerState: proc.identity,
-            expectsIdentityNotification: true,
             threadId: stagingThreadId,
           });
           let retainedForDiscard = false;
@@ -1693,7 +1671,6 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
                 envVars: resolvedEnvironment.envVars,
                 execOpts,
                 instructions,
-                skillRoots,
               }),
               dynamicTools,
               disallowedTools,
@@ -1831,7 +1808,6 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
           threadIdentityRegistry.registerThreadProvider({
             providerId,
             providerState: proc.identity,
-            expectsIdentityNotification: providerThreadId === undefined,
             threadId,
           });
           setThreadRuntimeConfig(threadId, {
@@ -1864,7 +1840,6 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
               envVars: resolvedEnvironment.envVars,
               execOpts,
               instructions,
-              skillRoots,
             }),
             dynamicTools,
             disallowedTools,
@@ -1919,7 +1894,6 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     async runTurn({
       threadId,
       input,
-      inputGroups,
       clientRequestId,
       options: execOpts,
       contributedEnv,
@@ -1969,7 +1943,6 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             threadId,
             providerThreadId,
             input,
-            ...(inputGroups !== undefined ? { inputGroups } : {}),
             clientRequestId,
             options: toProviderExecutionContext({
               envVars: resolvedEnvironment.envVars,
@@ -2026,7 +1999,6 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       threadId,
       expectedTurnId,
       input,
-      inputGroups,
       clientRequestId,
       options: execOpts,
       contributedEnv,
@@ -2088,7 +2060,6 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             providerThreadId,
             expectedTurnId,
             input,
-            ...(inputGroups !== undefined ? { inputGroups } : {}),
             clientRequestId,
             options: toProviderExecutionContext({
               envVars: resolvedEnvironment.envVars,

@@ -9,6 +9,7 @@ import { promptMentionClipboardDataAttributes } from "@/components/promptbox/men
 import { cn } from "@bb/shared-ui/lib/utils";
 import { PromptMentionLinkContext } from "./prompt-mention-link";
 import { parsePromptEditorMentionAttrs } from "./prompt-editor-serialization";
+import { useThreadTitleDisplayText } from "@/components/thread/ThreadTitleMentions";
 
 const EDITOR_MENTION_PILL_CLASS = cn(
   "group",
@@ -22,6 +23,9 @@ export function PromptMentionPillNodeView({
 }: NodeViewProps) {
   const resolveLink = useContext(PromptMentionLinkContext);
   const attrs = parsePromptEditorMentionAttrs(node.attrs);
+  const threadDisplayLabel = useThreadTitleDisplayText(
+    attrs?.resource.kind === "thread" ? attrs.resource.label : "",
+  );
   const fallbackSerializedText =
     typeof node.attrs.serializedText === "string"
       ? node.attrs.serializedText
@@ -43,7 +47,10 @@ export function PromptMentionPillNodeView({
     );
   }
 
-  const resource = attrs.resource;
+  const resource =
+    attrs.resource.kind === "thread"
+      ? { ...attrs.resource, label: threadDisplayLabel }
+      : attrs.resource;
   const activate = resolveLink?.(resource) ?? null;
   const title = promptMentionTooltipLabel(resource);
   const activationLabel = activate ? `Open ${title}` : undefined;

@@ -1,7 +1,6 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { ThreadEvent } from "@bb/domain";
 import {
@@ -10,31 +9,20 @@ import {
 } from "@get-bb/plugin-sdk/provider-bridge/testing";
 
 import { handleLine } from "./bridge.js";
+import {
+  FULL_ACCESS_SESSION_OPTIONS,
+  stubFakeCodexAppServer,
+} from "./fake-codex-app-server-harness.js";
 
 const THREAD_ID = "thr_1727_resume_usage";
 const PROVIDER_THREAD_ID = "usage-replay-1727";
-
-const fakeAppServerPath = fileURLToPath(
-  new URL("./fake-codex-app-server.mjs", import.meta.url),
-);
-
-const sessionOptions = {
-  permissionMode: "full",
-  permissionScope: "full",
-  approvalReviewer: null,
-  permissionEscalation: null,
-} as const;
 
 let harness: ReturnType<typeof createBridgeJsonRpcTestHarness>;
 let workspaceDir: string;
 
 beforeEach(() => {
   workspaceDir = mkdtempSync(join(tmpdir(), "bb-codex-1727-ws-"));
-  vi.stubEnv("BB_CODEX_BRIDGE_APP_SERVER_COMMAND", process.execPath);
-  vi.stubEnv(
-    "BB_CODEX_BRIDGE_APP_SERVER_ARGS",
-    JSON.stringify([fakeAppServerPath]),
-  );
+  stubFakeCodexAppServer();
   harness = createBridgeJsonRpcTestHarness(handleLine);
 });
 
@@ -82,7 +70,7 @@ it("drops replayed token usage and thread-scopes replayed context usage on resum
     providerThreadId: PROVIDER_THREAD_ID,
     cwd: workspaceDir,
     instructionMode: "append",
-    options: { ...sessionOptions },
+    options: { ...FULL_ACCESS_SESSION_OPTIONS },
   });
   const resumed1 = await harness.waitForResponse(1);
   expect(resumed1.error).toBeUndefined();
@@ -92,7 +80,7 @@ it("drops replayed token usage and thread-scopes replayed context usage on resum
     providerThreadId: PROVIDER_THREAD_ID,
     clientRequestId: "creq_a2b3c4d5e6",
     input: [{ type: "text", text: "Reply only with ok.", mentions: [] }],
-    options: { ...sessionOptions },
+    options: { ...FULL_ACCESS_SESSION_OPTIONS },
   });
   await harness.waitForResponse(2);
   await waitFor(
@@ -131,7 +119,7 @@ it("drops replayed token usage and thread-scopes replayed context usage on resum
     providerThreadId: PROVIDER_THREAD_ID,
     cwd: workspaceDir,
     instructionMode: "append",
-    options: { ...sessionOptions },
+    options: { ...FULL_ACCESS_SESSION_OPTIONS },
   });
   const resumed2 = await harness.waitForResponse(4);
   expect(resumed2.error).toBeUndefined();
@@ -156,7 +144,7 @@ it("drops replayed token usage and thread-scopes replayed context usage on fork"
     sourceProviderThreadId: PROVIDER_THREAD_ID,
     cwd: workspaceDir,
     instructionMode: "append",
-    options: { ...sessionOptions },
+    options: { ...FULL_ACCESS_SESSION_OPTIONS },
   });
   const forked = await harness.waitForResponse(1);
   expect(forked.error).toBeUndefined();
@@ -179,7 +167,7 @@ it("drops replayed token usage and thread-scopes replayed context usage on fork"
     providerThreadId: forkedProviderThreadId,
     clientRequestId: "creq_fkr2k3d4e5",
     input: [{ type: "text", text: "Reply only with ok.", mentions: [] }],
-    options: { ...sessionOptions },
+    options: { ...FULL_ACCESS_SESSION_OPTIONS },
   });
   const turnResponse = await harness.waitForResponse(2);
   expect(turnResponse.error).toBeUndefined();

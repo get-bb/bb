@@ -1,3 +1,4 @@
+import { closeSecondaryPanelTabInState } from "@bb/client-core";
 import type { QueryClient } from "@tanstack/react-query";
 import {
   threadTabsSchema,
@@ -23,6 +24,7 @@ interface ThreadTabsSyncArgs {
 }
 
 interface PersistThreadTabsArgs extends ThreadTabsSyncArgs {
+  previousTabs: readonly FixedPanelTab[];
   tabs: readonly FixedPanelTab[];
 }
 
@@ -71,15 +73,19 @@ export function reconcileFixedPanelTabsState(
     return current;
   }
   const tabs = persistedThreadTabs(serverTabs);
-  const activeTabId = tabs.some(
-    (tab) => tab.id === current.secondary.activeTabId,
-  )
-    ? current.secondary.activeTabId
-    : null;
+  const retainedIds = new Set(tabs.map((tab) => tab.id));
+  let reconciled = current;
+  for (const tab of current.secondary.tabs) {
+    if (!retainedIds.has(tab.id)) {
+      reconciled = closeSecondaryPanelTabInState(reconciled, tab.id);
+    }
+  }
+  const activeTabId = reconciled.secondary.activeTabId;
   return {
     ...current,
     secondary: {
-      ...current.secondary,
+      ...reconciled.secondary,
+      isOpen: current.secondary.isOpen,
       activeTabId,
       tabs,
     },
@@ -141,13 +147,66 @@ function isThreadTabsConflict(error: unknown): boolean {
   );
 }
 
+export function mergeThreadTabChanges(
+  serverTabs: readonly ThreadTab[],
+  previousTabs: readonly FixedPanelTab[],
+  nextTabs: readonly FixedPanelTab[],
+): readonly PersistedThreadFixedPanelTab[] {
+  const previous = persistedThreadTabs(previousTabs);
+  const next = persistedThreadTabs(nextTabs);
+  const previousById = new Map(previous.map((tab) => [tab.id, tab]));
+  const nextById = new Map(next.map((tab) => [tab.id, tab]));
+  const merged = persistedThreadTabs(serverTabs)
+    .filter((tab) => !previousById.has(tab.id) || nextById.has(tab.id))
+    .map((tab) => {
+      const before = previousById.get(tab.id);
+      const after = nextById.get(tab.id);
+      return after !== undefined &&
+        (before === undefined || !areFixedPanelTabsEquivalent(before, after))
+        ? after
+        : tab;
+    });
+  for (const [index, tab] of next.entries()) {
+    if (previousById.has(tab.id) || merged.some((item) => item.id === tab.id)) {
+      continue;
+    }
+    const followingIds = new Set(next.slice(index + 1).map((item) => item.id));
+    const insertionIndex = merged.findIndex((item) =>
+      followingIds.has(item.id),
+    );
+    merged.splice(
+      insertionIndex === -1 ? merged.length : insertionIndex,
+      0,
+      tab,
+    );
+  }
+  const retainedIds = new Set(merged.map((tab) => tab.id));
+  const beforeOrder = previous.filter(
+    (tab) => nextById.has(tab.id) && retainedIds.has(tab.id),
+  );
+  const afterOrder = next.filter(
+    (tab) => previousById.has(tab.id) && retainedIds.has(tab.id),
+  );
+  if (beforeOrder.some((tab, index) => tab.id !== afterOrder[index]?.id)) {
+    const ordered = next
+      .filter((tab) => retainedIds.has(tab.id))
+      .map((tab) => merged.find((item) => item.id === tab.id) ?? tab);
+    let index = 0;
+    return merged.map((tab) =>
+      nextById.has(tab.id) ? (ordered[index++] ?? tab) : tab,
+    );
+  }
+  return merged;
+}
+
 async function persistThreadTabs({
+  previousTabs,
   tabs,
   queryClient,
   threadId,
 }: PersistThreadTabsArgs): Promise<void> {
   const current = await readCurrentThreadTabs({ queryClient, threadId });
-  const tabsToPersist = persistedThreadTabs(tabs);
+  const tabsToPersist = mergeThreadTabChanges(current.tabs, previousTabs, tabs);
   if (areThreadTabListsEquivalent(current.tabs, tabsToPersist)) {
     return;
   }

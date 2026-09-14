@@ -22,6 +22,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
+import { ThreadTitleMentionResourcesProvider } from "@/components/thread/ThreadTitleMentions";
 import {
   EMPTY_ORDERED_MENTION_SUGGESTIONS,
   emptyPromptDraftState,
@@ -69,7 +70,10 @@ import {
   type PromptVoiceConfig,
   type TypeaheadConfig,
 } from "./PromptBoxInternal";
-import { promptMentionClipboardContent } from "./mentions/prompt-mention-clipboard";
+import {
+  promptMentionClipboardDataAttributes,
+  serializedTextForPromptMentionResource,
+} from "./mentions/prompt-mention-clipboard";
 import { orderPromptMentionSuggestions } from "@/hooks/promptMentionCandidates";
 import type {
   PromptMentionSuggestion,
@@ -1449,6 +1453,60 @@ describe("PromptBoxInternal submit shortcuts", () => {
     }
   });
 
+  it("routes Control+Enter to modifier submit and labels the shortcut for the platform", () => {
+    const platformMock = vi
+      .spyOn(navigator, "platform", "get")
+      .mockReturnValue("Linux x86_64");
+    try {
+      const onModifierSubmit = vi.fn();
+      const onSubmit = vi.fn();
+      render(
+        <PromptBoxInternal
+          {...createPromptBoxProps({
+            value: "Follow up",
+            onSubmit,
+            submission: { onModifierSubmit },
+          })}
+        />,
+      );
+
+      const editor = getPromptEditorElement();
+      expect(editor.getAttribute("aria-keyshortcuts")).toBe("Control+Enter");
+      act(() => editor.focus());
+      fireEvent.keyDown(editor, {
+        key: "Enter",
+        code: "Enter",
+        ctrlKey: true,
+      });
+
+      expect(onModifierSubmit).toHaveBeenCalledOnce();
+      expect(onSubmit).not.toHaveBeenCalled();
+    } finally {
+      platformMock.mockRestore();
+    }
+  });
+
+  it("labels the modifier submit shortcut with Meta on Mac", () => {
+    const platformMock = vi
+      .spyOn(navigator, "platform", "get")
+      .mockReturnValue("MacIntel");
+    try {
+      render(
+        <PromptBoxInternal
+          {...createPromptBoxProps({
+            value: "Follow up",
+            submission: { onModifierSubmit: vi.fn() },
+          })}
+        />,
+      );
+      expect(getPromptEditorElement().getAttribute("aria-keyshortcuts")).toBe(
+        "Meta+Enter",
+      );
+    } finally {
+      platformMock.mockRestore();
+    }
+  });
+
   it("does not submit a hardware Enter that is committing IME composition", () => {
     const restoreMatchMedia = mockPointerCoarse(true);
     const restoreNavigator = mockIPadOSWebKit();
@@ -1991,6 +2049,51 @@ describe("PromptBoxInternal plugin composer actions", () => {
 });
 
 describe("PromptBoxInternal compact layout", () => {
+  it("shows only an attachment count when compact and removal controls when expanded", () => {
+    const items: NonNullable<
+      NonNullable<PromptBoxProps["attachments"]>["items"]
+    > = [
+      {
+        type: "localImage",
+        name: "photo.png",
+        path: "photo.png",
+        sizeBytes: 1,
+      },
+      { type: "localFile", name: "notes.txt", path: "notes.txt", sizeBytes: 1 },
+    ];
+    const props = createPromptBoxProps({
+      attachments: { items, onRemove: vi.fn() },
+      compact: { isCompact: true },
+    });
+    const { rerender } = render(<PromptBoxInternal {...props} />);
+    expect(screen.getByRole("img", { name: "2 attachments" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Remove / })).toBeNull();
+    expect(
+      document.querySelector("[data-promptbox-attachments] button"),
+    ).toBeNull();
+    rerender(<PromptBoxInternal {...props} compact={{ isCompact: false }} />);
+    expect(
+      screen.getByRole("button", { name: "Remove photo.png" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Remove notes.txt" }),
+    ).toBeTruthy();
+    rerender(
+      <PromptBoxInternal
+        {...props}
+        attachments={{ ...props.attachments, items: items.slice(1) }}
+      />,
+    );
+    expect(screen.getByRole("img", { name: "1 attachment" })).toBeTruthy();
+    rerender(
+      <PromptBoxInternal
+        {...props}
+        attachments={{ ...props.attachments, items: [] }}
+      />,
+    );
+    expect(document.querySelector("[data-promptbox-attachments]")).toBeNull();
+  });
+
   it("shows attachment upload progress on the submit button", () => {
     const restoreMatchMedia = mockPointerCoarse(true);
     try {
@@ -2020,8 +2123,8 @@ describe("PromptBoxInternal compact layout", () => {
       expect(submit.hasAttribute("disabled")).toBe(true);
       expect(submit.querySelector('[data-icon="Spinner"]')).not.toBeNull();
       expect(
-        screen.queryByRole("button", { name: "Start voice input" }),
-      ).toBeNull();
+        screen.getByRole("button", { name: "Start voice input" }),
+      ).toBeTruthy();
     } finally {
       restoreMatchMedia();
     }
@@ -2135,7 +2238,7 @@ describe("PromptBoxInternal compact layout", () => {
     expect(form.style.height).toBe("");
   });
 
-  it("keeps only the one-line editor and primary action", () => {
+  it("keeps the one-line editor, voice input, and submit action", () => {
     const voice: PromptVoiceConfig = {
       state: "idle",
       isSupported: true,
@@ -2169,8 +2272,8 @@ describe("PromptBoxInternal compact layout", () => {
     expect(screen.queryByRole("button", { name: "Model selector" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Attach files" })).toBeNull();
     expect(
-      screen.queryByRole("button", { name: "Start voice input" }),
-    ).toBeNull();
+      screen.getByRole("button", { name: "Start voice input" }),
+    ).toBeTruthy();
     expect(
       screen.queryByRole("button", { name: /Make prompt box/u }),
     ).toBeNull();
@@ -2234,6 +2337,312 @@ describe("PromptBoxInternal compact layout", () => {
     }
   });
 
+  it.each([false, true])(
+    "keeps voice input available beside stop while running (compact: %s)",
+    (isCompact) => {
+      const restoreMatchMedia = mockPointerCoarse(true);
+      try {
+        const start = vi.fn();
+        const onStop = vi.fn();
+        render(
+          <PromptBoxInternal
+            {...createPromptBoxProps({
+              submission: { isRunning: true, onStop },
+              compact: { isCompact, placeholder: "Ask a follow-up" },
+              voice: {
+                state: "idle",
+                isSupported: true,
+                stream: null,
+                start,
+                stop: vi.fn(),
+                cancel: vi.fn(),
+              },
+            })}
+          />,
+        );
+
+        const voiceButton = screen.getByRole("button", {
+          name: "Start voice input",
+        });
+        const stopButton = screen.getByRole("button", { name: "Stop run" });
+        expect(voiceButton.hasAttribute("disabled")).toBe(false);
+        fireEvent.pointerDown(voiceButton, {
+          button: 0,
+          pointerType: "touch",
+        });
+        fireEvent.click(voiceButton, { detail: 1 });
+        expect(start).toHaveBeenCalledOnce();
+        expect(onStop).not.toHaveBeenCalled();
+
+        fireEvent.pointerDown(stopButton, {
+          button: 0,
+          pointerType: "touch",
+        });
+        fireEvent.click(stopButton, { detail: 1 });
+        expect(onStop).toHaveBeenCalledOnce();
+      } finally {
+        restoreMatchMedia();
+      }
+    },
+  );
+
+  it.each([false, true])(
+    "dictates into a compact draft without submitting (running: %s)",
+    (isRunning) => {
+      const restoreMatchMedia = mockPointerCoarse(true);
+      try {
+        const start = vi.fn();
+        const onSubmit = vi.fn();
+        render(
+          <PromptBoxInternal
+            {...createPromptBoxProps({
+              value: "Please also check the mobile layout.",
+              onSubmit,
+              submission: { isRunning, onStop: vi.fn() },
+              compact: { isCompact: true, placeholder: "Ask a follow-up" },
+              voice: {
+                state: "idle",
+                isSupported: true,
+                stream: null,
+                start,
+                stop: vi.fn(),
+                cancel: vi.fn(),
+              },
+            })}
+          />,
+        );
+
+        const voiceButton = screen.getByRole("button", {
+          name: "Start voice input",
+        });
+        expect(screen.getByRole("button", { name: "Submit (Enter)" })).toBeTruthy();
+        fireEvent.pointerDown(voiceButton, {
+          button: 0,
+          pointerType: "touch",
+        });
+        fireEvent.click(voiceButton, { detail: 1 });
+        expect(start).toHaveBeenCalledOnce();
+        expect(onSubmit).not.toHaveBeenCalled();
+        expect(getPromptEditorElement().textContent).toBe(
+          "Please also check the mobile layout.",
+        );
+      } finally {
+        restoreMatchMedia();
+      }
+    },
+  );
+
+  it("does not start voice input from the trailing click of a touch submit", () => {
+    const restoreMatchMedia = mockPointerCoarse(true);
+    try {
+      const start = vi.fn();
+      const voice = {
+        state: "idle" as const,
+        isSupported: true,
+        stream: null,
+        start,
+        stop: vi.fn(),
+        cancel: vi.fn(),
+      };
+      const onSubmit = vi.fn();
+      const { rerender } = render(
+        <PromptBoxInternal
+          {...createPromptBoxProps({
+            value: "Send this",
+            onSubmit,
+            voice,
+            compact: { isCompact: true, placeholder: "Ask a follow-up" },
+          })}
+        />,
+      );
+
+      const submit = screen.getByRole("button", { name: "Submit (Enter)" });
+      vi.spyOn(submit, "getBoundingClientRect").mockReturnValue(
+        new DOMRect(0, 0, 40, 40),
+      );
+      const touch = {
+        button: 0,
+        pointerType: "touch",
+        pointerId: 1,
+        isPrimary: true,
+        clientX: 20,
+        clientY: 20,
+      };
+      fireEvent.pointerDown(submit, touch);
+      fireEvent.pointerUp(submit, touch);
+      expect(onSubmit).toHaveBeenCalledOnce();
+
+      rerender(
+        <PromptBoxInternal
+          {...createPromptBoxProps({
+            value: "",
+            onSubmit,
+            voice,
+            compact: { isCompact: true, placeholder: "Ask a follow-up" },
+          })}
+        />,
+      );
+
+      const replacement = screen.getByRole("button", {
+        name: "Start voice input",
+      });
+      expect(replacement).not.toBe(submit);
+
+      fireEvent.click(replacement, { detail: 1 });
+
+      expect(start).not.toHaveBeenCalled();
+      expect(onSubmit).toHaveBeenCalledOnce();
+    } finally {
+      restoreMatchMedia();
+    }
+  });
+
+  it.each([false, true])(
+    "does not stop from the trailing click of a touch submit (already running: %s)",
+    (isRunning) => {
+      const restoreMatchMedia = mockPointerCoarse(true);
+      try {
+        const onSubmit = vi.fn();
+        const onStop = vi.fn();
+        const props = createPromptBoxProps({
+          value: "Send this follow-up",
+          onSubmit,
+          submission: { isRunning, onStop },
+          compact: { isCompact: true, placeholder: "Ask a follow-up" },
+        });
+        const { rerender } = render(<PromptBoxInternal {...props} />);
+        const submit = screen.getByRole("button", { name: "Submit (Enter)" });
+        vi.spyOn(submit, "getBoundingClientRect").mockReturnValue(
+          new DOMRect(0, 0, 40, 40),
+        );
+        const touch = {
+          button: 0,
+          pointerType: "touch",
+          pointerId: 1,
+          isPrimary: true,
+          clientX: 20,
+          clientY: 20,
+        };
+        fireEvent.pointerDown(submit, touch);
+        fireEvent.pointerUp(submit, touch);
+        expect(onSubmit).toHaveBeenCalledOnce();
+
+        rerender(
+          <PromptBoxInternal
+            {...props}
+            value=""
+            submission={{ isRunning: true, onStop }}
+          />,
+        );
+        const stop = screen.getByRole("button", { name: "Stop run" });
+        expect(stop).not.toBe(submit);
+        fireEvent.click(stop, { detail: 1 });
+        expect(onStop).not.toHaveBeenCalled();
+        expect(onSubmit).toHaveBeenCalledOnce();
+
+        fireEvent.pointerDown(stop, touch);
+        fireEvent.pointerUp(stop, touch);
+        fireEvent.click(stop, { detail: 1 });
+        expect(onStop).toHaveBeenCalledOnce();
+      } finally {
+        restoreMatchMedia();
+      }
+    },
+  );
+
+  it.each(["mouse", "touch", "keyboard"])(
+    "stops a run for deliberate %s activation",
+    (input) => {
+      const onStop = vi.fn();
+      render(
+        <PromptBoxInternal
+          {...createPromptBoxProps({
+            submission: { isRunning: true, onStop },
+          })}
+        />,
+      );
+      const stop = screen.getByRole("button", { name: "Stop run" });
+      if (input !== "keyboard") {
+        fireEvent.pointerDown(stop, { button: 0, pointerType: input });
+        fireEvent.pointerUp(stop, { button: 0, pointerType: input });
+      }
+      fireEvent.click(stop, { detail: input === "keyboard" ? 0 : 1 });
+      expect(onStop).toHaveBeenCalledOnce();
+    },
+  );
+
+  it("starts voice input once for a deliberate touch tap on the voice action", () => {
+    const restoreMatchMedia = mockPointerCoarse(true);
+    try {
+      const start = vi.fn();
+      render(
+        <PromptBoxInternal
+          {...createPromptBoxProps({
+            compact: { isCompact: true, placeholder: "Ask a follow-up" },
+            voice: {
+              state: "idle",
+              isSupported: true,
+              stream: null,
+              start,
+              stop: vi.fn(),
+              cancel: vi.fn(),
+            },
+          })}
+        />,
+      );
+
+      const voiceButton = screen.getByRole("button", {
+        name: "Start voice input",
+      });
+      const touch = {
+        button: 0,
+        pointerType: "touch",
+        pointerId: 1,
+        isPrimary: true,
+      };
+      fireEvent.pointerDown(voiceButton, touch);
+      fireEvent.pointerUp(voiceButton, touch);
+      fireEvent.click(voiceButton, { detail: 1 });
+
+      expect(start).toHaveBeenCalledOnce();
+    } finally {
+      restoreMatchMedia();
+    }
+  });
+
+  it("starts voice input for keyboard activation without a pointer gesture", () => {
+    const restoreMatchMedia = mockPointerCoarse(true);
+    try {
+      const start = vi.fn();
+      render(
+        <PromptBoxInternal
+          {...createPromptBoxProps({
+            compact: { isCompact: true, placeholder: "Ask a follow-up" },
+            voice: {
+              state: "idle",
+              isSupported: true,
+              stream: null,
+              start,
+              stop: vi.fn(),
+              cancel: vi.fn(),
+            },
+          })}
+        />,
+      );
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "Start voice input" }),
+        {
+          detail: 0,
+        },
+      );
+
+      expect(start).toHaveBeenCalledOnce();
+    } finally {
+      restoreMatchMedia();
+    }
+  });
+
   it("keeps an unfocused compact submit stable on coarse pointers", () => {
     const restoreMatchMedia = mockPointerCoarse(true);
     try {
@@ -2265,6 +2674,118 @@ describe("PromptBoxInternal compact layout", () => {
       restoreMatchMedia();
     }
   });
+
+  it("sends before dismissing the keyboard when a touch synthesizes mousedown", () => {
+    const restoreMatchMedia = mockPointerCoarse(true);
+    try {
+      const onSubmit = vi.fn(() => {
+        expect(document.activeElement).toBe(getPromptEditorElement());
+      });
+      render(
+        <PromptBoxInternal
+          {...createPromptBoxProps({
+            value: "Send with the keyboard open",
+            onSubmit,
+            blurOnPointerSubmit: true,
+          })}
+        />,
+      );
+
+      const editor = getPromptEditorElement();
+      act(() => editor.focus());
+      const submit = screen.getByRole("button", { name: "Submit (Enter)" });
+      fireEvent.pointerDown(submit, { button: 0, pointerType: "touch" });
+      fireEvent.pointerUp(submit, { button: 0, pointerType: "touch" });
+
+      const allowsFocusChange = fireEvent.mouseDown(submit, { button: 0 });
+      if (allowsFocusChange) act(() => editor.blur());
+      expect(allowsFocusChange).toBe(false);
+      fireEvent.mouseUp(submit, { button: 0 });
+      fireEvent.click(submit, { detail: 1 });
+
+      expect(onSubmit).toHaveBeenCalledOnce();
+      expect(document.activeElement).not.toBe(editor);
+    } finally {
+      restoreMatchMedia();
+    }
+  });
+
+  it("submits on touch release without waiting for or duplicating the click", () => {
+    const onSubmit = vi.fn();
+    render(
+      <PromptBoxInternal
+        {...createPromptBoxProps({
+          value: "Send immediately",
+          onSubmit,
+          blurOnPointerSubmit: true,
+        })}
+      />,
+    );
+    const editor = getPromptEditorElement();
+    act(() => editor.focus());
+    const submit = screen.getByRole("button", { name: "Submit (Enter)" });
+    vi.spyOn(submit, "getBoundingClientRect").mockReturnValue(
+      new DOMRect(0, 0, 40, 40),
+    );
+    const touch = {
+      button: 0,
+      pointerType: "touch",
+      pointerId: 1,
+      isPrimary: true,
+      clientX: 20,
+      clientY: 20,
+    };
+
+    fireEvent.pointerDown(submit, touch);
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(editor);
+    fireEvent.pointerUp(submit, touch);
+    expect(onSubmit).toHaveBeenCalledOnce();
+    expect(document.activeElement).not.toBe(editor);
+    fireEvent.click(submit, { detail: 1 });
+    expect(onSubmit).toHaveBeenCalledOnce();
+
+    fireEvent.click(submit, { detail: 0 });
+    expect(onSubmit).toHaveBeenCalledTimes(2);
+    fireEvent.pointerDown(submit, touch);
+    fireEvent.pointerUp(submit, touch);
+    expect(onSubmit).toHaveBeenCalledTimes(3);
+  });
+
+  it.each(["cancel", "drag", "outside"])(
+    "does not send after a touch %s",
+    (gesture) => {
+      const onSubmit = vi.fn();
+      render(
+        <PromptBoxInternal
+          {...createPromptBoxProps({ value: "Keep this draft", onSubmit })}
+        />,
+      );
+      const submit = screen.getByRole("button", { name: "Submit (Enter)" });
+      vi.spyOn(submit, "getBoundingClientRect").mockReturnValue(
+        new DOMRect(0, 0, 40, 40),
+      );
+      const touch = {
+        button: 0,
+        pointerType: "touch",
+        pointerId: 1,
+        isPrimary: true,
+        clientX: 38,
+        clientY: 20,
+      };
+      fireEvent.pointerDown(submit, touch);
+      if (gesture === "cancel") fireEvent.pointerCancel(submit, touch);
+      if (gesture === "drag") {
+        fireEvent.pointerMove(submit, { ...touch, clientX: 60 });
+      }
+      fireEvent.pointerUp(submit, {
+        ...touch,
+        clientX: gesture === "outside" ? 42 : touch.clientX,
+      });
+      fireEvent.click(submit, { detail: 1 });
+      expect(onSubmit).not.toHaveBeenCalled();
+    },
+  );
 
   it("keeps the editor focused through a pointer submit", async () => {
     const onSubmit = vi.fn();
@@ -3012,6 +3533,54 @@ describe("PromptBoxInternal mention triggers", () => {
     rectSpy.mockRestore();
   });
 
+  it("resolves title mentions inside an existing thread chip without changing its target", async () => {
+    const value = "Continue from @thread:thr_handoff";
+    render(
+      <ThreadTitleMentionResourcesProvider
+        sectionNamesById={new Map()}
+        projectNamesById={new Map()}
+        threadById={
+          new Map([
+            [
+              "thr_source",
+              {
+                id: "thr_source",
+                projectId: "proj_test",
+                title: "test",
+                titleFallback: null,
+              },
+            ],
+          ])
+        }
+      >
+        <PromptBoxInternal
+          {...createPromptBoxProps({
+            value,
+            mentionRanges: [
+              {
+                start: "Continue from ".length,
+                end: value.length,
+                resource: {
+                  kind: "thread",
+                  projectId: "proj_test",
+                  threadId: "thr_handoff",
+                  label: "Continue from @thread:thr_source",
+                },
+              },
+            ],
+          })}
+        />
+      </ThreadTitleMentionResourcesProvider>,
+    );
+
+    await waitFor(() => {
+      const chip = getPromptEditorElement().querySelector(
+        '[data-prompt-mention-serialized-text="@thread:thr_handoff"]',
+      );
+      expect(chip?.textContent).toBe("Continue from test");
+    });
+  });
+
   it("renders a plugin mention's named icon hint", async () => {
     const suggestion = { ...githubIssueSuggestion, icon: "FileText" };
     const { promptBoxRef } = renderPromptBox("@fix", {
@@ -3412,16 +3981,24 @@ describe("PromptBoxInternal prompt actions", () => {
   it("keeps multiple pasted plugin references as distinct pills", async () => {
     const { changes, promptBoxRef } = renderPromptBox("");
     const reference = (id: string, label: string) => {
-      const pill = promptMentionClipboardContent({
-        kind: "plugin",
+      const resource = {
+        kind: "plugin" as const,
         pluginId: "plugin-api-docs",
         icon: null,
         itemId: `surface:${id}`,
         label,
-      });
+      };
+      const serializedText = serializedTextForPromptMentionResource(resource);
+      const pill = document.createElement("span");
+      for (const [name, value] of Object.entries(
+        promptMentionClipboardDataAttributes({ resource, serializedText }),
+      )) {
+        pill.setAttribute(name, value);
+      }
+      pill.textContent = serializedText;
       return {
-        text: `Build a plugin capability like ${pill.text.trimEnd()} using bb's Plugin Guide. `,
-        html: `Build a plugin capability like ${pill.html.trimEnd()} using bb's Plugin Guide. `,
+        text: `Build a plugin capability like ${serializedText} using bb's Plugin Guide. `,
+        html: `Build a plugin capability like ${pill.outerHTML} using bb's Plugin Guide. `,
       };
     };
 

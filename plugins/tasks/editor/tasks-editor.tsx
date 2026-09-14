@@ -198,7 +198,6 @@ interface TasksEditorProps {
   onChange(markdown: string): void;
   placeholder?: string;
   readOnly?: boolean;
-  autofocus?: boolean;
   variant?: "doc" | "comment";
   onUploadImage?: (
     file: File,
@@ -216,7 +215,6 @@ export function TasksEditor({
   onChange,
   placeholder,
   readOnly = false,
-  autofocus = false,
   variant = "doc",
   onUploadImage,
   onAttachFiles,
@@ -248,7 +246,6 @@ export function TasksEditor({
   const readyRef = useRef(onEditorReady);
   readyRef.current = onEditorReady;
   const initialValueRef = useRef(value);
-  const autofocusRef = useRef(autofocus);
   const isPointerCoarse = usePointerCoarse();
   const canSubmitWithEnterKey = Boolean(onSubmit) && !isPointerCoarse;
   const canSubmitWithEnterRef = useRef(canSubmitWithEnterKey);
@@ -339,7 +336,7 @@ export function TasksEditor({
         mentionHandle,
       }),
       content: initialValueRef.current,
-      autofocus: autofocusRef.current && !readOnly ? "end" : false,
+      autofocus: false,
       editorProps: {
         handleKeyDown(_view, event) {
           if (!onSubmitRef.current || readOnly) return false;
@@ -542,7 +539,6 @@ export function TasksEditor({
       data-variant={variant}
       onMouseDown={variant === "doc" ? focusOnEmptyMouseDown : undefined}
     >
-      {}
       {variant === "doc" && !readOnly ? (
         <div
           ref={bubbleRef}

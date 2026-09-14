@@ -1,3 +1,4 @@
+import type { MachineEnrollmentService } from "../machines/machine-services.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import {
   assertAiServiceRegistrable,
@@ -21,6 +22,7 @@ import { createJiti } from "jiti";
 import semver from "semver";
 import { HOST_ARTIFACT_MAX_BYTES } from "@bb/host-daemon-contract/protocol";
 import {
+  calculateExponentialBackoffDelay,
   isPluginOwnedIconPath,
   parseNamespacedGlyph,
   PLUGIN_SDK_MAJOR,
@@ -61,11 +63,18 @@ import { buildPluginProviderRegistration } from "../providers/plugin-provider-re
 import type { ProviderInstallRank } from "../providers/provider-registry.js";
 import { BUNDLED_PLUGINS } from "./builtin-registry.js";
 import { readPluginSettingsValuesSync } from "./plugin-settings.js";
+import {
+  nextCronRunAt,
+  raceTimeout,
+  settledWithin,
+} from "./plugin-time-box.js";
 import type {
   PluginHookName,
   PluginSettingDescriptors,
 } from "@get-bb/plugin-sdk";
 import type { PluginHookRegistration } from "./plugin-hook-registry.js";
+import type { PluginEnvironmentProviderRecord } from "./plugin-environment-provider-registry.js";
+import type { PluginMachineProviderRecord } from "./plugin-machine-provider-registry.js";
 import {
   isPluginSdkRangeSatisfied,
   pluginSdkRangeProblem,
@@ -74,18 +83,22 @@ import {
   createPluginApi,
   isNeedsConfigurationError,
   type BbPluginApi,
+  type PluginApiHandle,
   type PluginThreadEventName,
   type PluginThreadEventPayloads,
 } from "./plugin-api.js";
 import type {
-  LoadedPlugin,
   PluginHandlerStats,
   PluginRuntimeStatus,
+} from "@bb/server-contract";
+import type {
+  LoadedPlugin,
   PluginServiceDeps,
   PluginHostArtifactSnapshot,
   PluginWireLookup,
   ServiceRuntime,
 } from "./plugin-service-internal.js";
+import { createKeyedLock } from "../lib/async-deduper.js";
 import { runEventLoopWork } from "../system/event-loop-work.js";
 
 const pluginSdkRuntimePath = join(
@@ -272,34 +285,13 @@ interface ServiceInstance {
 }
 
 interface PluginRuntimeContext {
+  machineEnrollments: MachineEnrollmentService | null;
   deps: PluginServiceDeps;
   settingsChanged?: () => void;
-  nextCronRunAt: (cron: string, now: number) => number;
-  settledWithin: (
-    promise: Promise<unknown>,
-    timeoutMs: number,
-  ) => Promise<boolean>;
-}
-
-function createKeyedLock() {
-  const chains = new Map<string, Promise<void>>();
-  return <T>(key: string, fn: () => Promise<T>): Promise<T> => {
-    const previous = chains.get(key) ?? Promise.resolve();
-    const result = previous.then(fn);
-    const tail = result.then(
-      () => {},
-      () => {},
-    );
-    chains.set(key, tail);
-    void tail.then(() => {
-      if (chains.get(key) === tail) chains.delete(key);
-    });
-    return result;
-  };
 }
 
 export function createPluginRuntime(context: PluginRuntimeContext) {
-  const { deps, nextCronRunAt, settledWithin } = context;
+  const { deps } = context;
   const settingsChanged = context.settingsChanged ?? (() => {});
   const logger = deps.logger;
   const loadTimeoutMs = deps.loadTimeoutMs ?? DEFAULT_LOAD_TIMEOUT_MS;
@@ -316,9 +308,9 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     string,
     Array<{ dispose(): void }>
   >();
-  const withLifecycleLock = createKeyedLock();
-  const withArtifactLock = createKeyedLock();
-  const withPluginOperationLock = createKeyedLock();
+  const withLifecycleLock = createKeyedLock<string>();
+  const withArtifactLock = createKeyedLock<string>();
+  const withPluginOperationLock = createKeyedLock<string>();
   const REGISTRATION_MUTATION_KEY = "plugin-registration-mutations";
   const disposingPluginIds = new Set<string>();
   const builtinSourceWatchers: FSWatcher[] = [];
@@ -380,6 +372,18 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       [detail, buildProblems?.frontend, buildProblems?.host]
         .filter((part): part is string => part !== null && part !== undefined)
         .join("; ") || null,
+    );
+  }
+
+  function getStatus(row: Pick<InstalledPluginRow, "id" | "enabled">): {
+    status: PluginRuntimeStatus;
+    detail: string | null;
+  } {
+    return (
+      statuses.get(row.id) ?? {
+        status: row.enabled ? "starting" : "disabled",
+        detail: null,
+      }
     );
   }
 
@@ -546,10 +550,11 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     if (Date.now() - service.startedAt >= SERVICE_HEALTHY_RESET_MS) {
       service.consecutiveCrashes = 0;
     }
-    const delayMs = Math.min(
-      serviceRestartBaseMs * 2 ** service.consecutiveCrashes,
-      SERVICE_RESTART_MAX_MS,
-    );
+    const delayMs = calculateExponentialBackoffDelay({
+      attempt: service.consecutiveCrashes + 1,
+      baseDelayMs: serviceRestartBaseMs,
+      maxDelayMs: SERVICE_RESTART_MAX_MS,
+    });
     service.consecutiveCrashes += 1;
     service.state = "backoff";
     logger.warn(
@@ -623,6 +628,103 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     return registrations;
   }
 
+  function resolveRegisteredProviderIcon(
+    pluginId: string,
+    plugin: LoadedPlugin,
+    icon: string | null,
+  ): ReturnType<typeof readPluginProviderIcon> {
+    const declared = icon === null ? null : parseNamespacedGlyph(icon);
+    return declared !== null
+      ? (brandingAssets.get(pluginId)?.icons.get(declared.name) ?? null)
+      : readPluginProviderIcon(plugin.manifest.rootDir, icon ?? undefined);
+  }
+
+  function listPluginEnvironmentCompositions() {
+    return Array.from(loaded).flatMap(([pluginId, plugin]) =>
+      Array.from(
+        plugin.handle.environmentCompositions.values(),
+        (composition) => {
+          const icon = resolveRegisteredProviderIcon(
+            pluginId,
+            plugin,
+            composition.icon,
+          );
+          return { pluginId, composition, ...(icon === null ? {} : { icon }) };
+        },
+      ),
+    );
+  }
+
+  function collectUniqueProviderRecords<
+    P extends { id: string; icon: string | null },
+  >(kindLabel: string, select: (plugin: LoadedPlugin) => Iterable<P>) {
+    const records: Array<{
+      pluginId: string;
+      provider: P;
+      icon?: NonNullable<ReturnType<typeof readPluginProviderIcon>>;
+    }> = [];
+    const seen = new Set<string>();
+    for (const [pluginId, plugin] of loaded) {
+      for (const provider of select(plugin)) {
+        if (seen.has(provider.id)) {
+          logger.warn(
+            `[plugin:${pluginId}] ${kindLabel} provider "${provider.id}" is already registered by another plugin; ignoring`,
+          );
+          continue;
+        }
+        seen.add(provider.id);
+        const icon = resolveRegisteredProviderIcon(
+          pluginId,
+          plugin,
+          provider.icon,
+        );
+        records.push({
+          pluginId,
+          provider,
+          ...(icon === null ? {} : { icon }),
+        });
+      }
+    }
+    return records;
+  }
+
+  function listPluginEnvironmentProviders(): PluginEnvironmentProviderRecord[] {
+    return collectUniqueProviderRecords("environment", (plugin) =>
+      plugin.handle.environmentProviders.values(),
+    );
+  }
+
+  function getPluginEnvironmentProvider(
+    id: string,
+  ): PluginEnvironmentProviderRecord | undefined {
+    return listPluginEnvironmentProviders().find(
+      (record) => record.provider.id === id,
+    );
+  }
+
+  function listPluginServerAccessProviders() {
+    return [...loaded].flatMap(([pluginId, plugin]) =>
+      [...plugin.handle.serverAccessProviders.values()].map((provider) => ({
+        pluginId,
+        provider,
+      })),
+    );
+  }
+
+  function listPluginMachineProviders(): PluginMachineProviderRecord[] {
+    return collectUniqueProviderRecords("machine", (plugin) =>
+      plugin.handle.machineProviders.values(),
+    );
+  }
+
+  function getPluginMachineProvider(
+    id: string,
+  ): PluginMachineProviderRecord | undefined {
+    return listPluginMachineProviders().find(
+      (record) => record.provider.id === id,
+    );
+  }
+
   function hasThreadEventHandlers(event: PluginThreadEventName): boolean {
     if (loaded.size === 0) return false;
     for (const plugin of loaded.values()) {
@@ -678,15 +780,10 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   async function drainInvocations(id: string): Promise<void> {
     const pending = pendingInvocations.get(id);
     if (!pending || pending.size === 0) return;
-    let timer: NodeJS.Timeout | undefined;
-    const drained = await Promise.race([
-      Promise.all([...pending]).then(() => true),
-      new Promise<boolean>((resolveTimeout) => {
-        timer = setTimeout(() => resolveTimeout(false), serviceStopTimeoutMs);
-        timer.unref?.();
-      }),
-    ]);
-    if (timer !== undefined) clearTimeout(timer);
+    const drained = await settledWithin(
+      Promise.all([...pending]),
+      serviceStopTimeoutMs,
+    );
     if (!drained) {
       logger.warn(
         `plugin ${id}: ${pending.size} in-flight invocation(s) did not settle before dispose; proceeding`,
@@ -777,21 +874,11 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     factory: (api: BbPluginApi) => unknown,
     api: BbPluginApi,
   ): Promise<void> {
-    let timer: NodeJS.Timeout | undefined;
-    try {
-      await Promise.race([
-        Promise.resolve(factory(api)),
-        new Promise((_, reject) => {
-          timer = setTimeout(
-            () => reject(new Error(`load timed out after ${loadTimeoutMs}ms`)),
-            loadTimeoutMs,
-          );
-          timer.unref?.();
-        }),
-      ]);
-    } finally {
-      if (timer !== undefined) clearTimeout(timer);
-    }
+    await raceTimeout(
+      Promise.resolve(factory(api)),
+      loadTimeoutMs,
+      `load timed out after ${loadTimeoutMs}ms`,
+    );
   }
 
   function sourceKind(source: string): "path" | "git" | "npm" | "builtin" {
@@ -1220,7 +1307,17 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     return `service ${[...hung].join(", ")} did not stop`;
   }
 
+  function discardCandidateHandle(handle: PluginApiHandle): void {
+    for (const database of handle.databaseHandles.splice(0)) {
+      try {
+        database.close();
+      } catch {}
+    }
+    handle.invalidate();
+  }
+
   async function loadOne(row: InstalledPluginRow): Promise<string | null> {
+    if (row.enabled && !loaded.has(row.id)) setStatus(row.id, "starting");
     await populateIdentity(row);
     if (!row.enabled) {
       setStatus(row.id, "disabled");
@@ -1300,6 +1397,13 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       db: deps.db,
       dataDir: deps.dataDir,
       getSdk: () => boundSdk,
+      getMachineEnrollments: () => {
+        if (!context.machineEnrollments)
+          throw new Error(
+            "Machine enrollment is unavailable in this plugin host",
+          );
+        return context.machineEnrollments.forOwner(row.id);
+      },
       getAppUrl: deps.getAppUrl ?? (() => null),
       getLoopbackBaseUrl: () => boundLoopbackBaseUrl,
       publishSignal: (channel, payload) => {
@@ -1313,6 +1417,26 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         reportNeedsConfiguration(row.id, message);
       },
       isAgentToolNameTaken: (name) => findAgentToolOwner(name, row.id),
+      isEnvironmentProviderIdTaken: (id) => {
+        for (const [pluginId, plugin] of loaded) {
+          if (
+            pluginId !== row.id &&
+            (plugin.handle.environmentProviders.has(id) ||
+              plugin.handle.environmentCompositions.has(id))
+          ) {
+            return pluginId;
+          }
+        }
+        return undefined;
+      },
+      isMachineProviderIdTaken: (id) => {
+        for (const [pluginId, plugin] of loaded) {
+          if (pluginId !== row.id && plugin.handle.machineProviders.has(id)) {
+            return pluginId;
+          }
+        }
+        return undefined;
+      },
       reportAgentToolProblem: (message) => {
         reportAgentToolProblem(row.id, message);
       },
@@ -1477,12 +1601,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       );
     } catch (error) {
       rollbackGeneration?.();
-      for (const database of handle.databaseHandles.splice(0)) {
-        try {
-          database.close();
-        } catch {}
-      }
-      handle.invalidate();
+      discardCandidateHandle(handle);
       let message = error instanceof Error ? error.message : String(error);
       if (/ERR_DLOPEN_FAILED|\.node/.test(message)) {
         message += " (native dependencies are not supported in BB plugins)";
@@ -1513,12 +1632,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
           error instanceof Error ? error.message : String(error)
         }`;
       }
-      for (const database of handle.databaseHandles.splice(0)) {
-        try {
-          database.close();
-        } catch {}
-      }
-      handle.invalidate();
+      discardCandidateHandle(handle);
       setStatus(row.id, "error", hostArtifactProblem);
       logger.warn(`plugin ${row.id} failed to load: ${hostArtifactProblem}`);
       return hostArtifactProblem;
@@ -1543,12 +1657,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       if (hungAfterDispose !== undefined && hungAfterDispose.size > 0) {
         loaded.delete(row.id);
         deps.sharedPorts?.clearDeclarationsForOwner(row.id);
-        for (const database of handle.databaseHandles.splice(0)) {
-          try {
-            database.close();
-          } catch {}
-        }
-        handle.invalidate();
+        discardCandidateHandle(handle);
         return hungServicesDetail(hungAfterDispose);
       }
     }
@@ -1686,11 +1795,9 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     if (!plugin) {
       const row = getInstalledPlugin(deps.db, id);
       if (!row) return { outcome: "unknown-plugin" };
-      const runtime = statuses.get(id);
       return {
         outcome: "not-running",
-        status: runtime?.status ?? (row.enabled ? "error" : "disabled"),
-        detail: runtime?.detail ?? (row.enabled ? "not loaded" : null),
+        ...getStatus(row),
       };
     }
     const value = find(plugin);
@@ -1717,12 +1824,19 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     disposeOne,
     buildQueuedMessageEventEmitter,
     emitThreadEvent,
+    getStatus,
     handlerStats,
     handleUncaughtException,
     hungServices,
     invokeWrapped,
     isBuiltinPluginId,
     listPluginHooks,
+    listPluginEnvironmentCompositions,
+    listPluginEnvironmentProviders,
+    getPluginEnvironmentProvider,
+    listPluginMachineProviders,
+    listPluginServerAccessProviders,
+    getPluginMachineProvider,
     identities,
     isPackagedBuiltinEntry,
     loadAll,

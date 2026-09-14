@@ -13,8 +13,6 @@ export const LAUNCHER_ROW_BASE_CLASS = `${LAUNCHER_ROW_SHELL_CLASS} focus-visibl
 export const LAUNCHER_ACTION_ROW_BASE_CLASS = `${LAUNCHER_ROW_SHELL_CLASS} focus-visible:bg-state-hover focus-visible:text-foreground`;
 export const LAUNCHER_ROW_ICON_CLASS = `flex shrink-0 items-center justify-center overflow-hidden text-muted-foreground ${COARSE_POINTER_ICON_SIZE_CLASS}`;
 
-const LAUNCHER_SECTION_LABEL_CLASS = CHROME_SECTION_LABEL_CLASS;
-
 interface LauncherRowTrailingProps {
   idle: ReactNode;
   isActive: boolean;
@@ -71,7 +69,7 @@ export function LauncherSectionHeader({
     <div
       className={cn(
         "flex items-baseline gap-2 px-2 pb-2",
-        LAUNCHER_SECTION_LABEL_CLASS,
+        CHROME_SECTION_LABEL_CLASS,
         sticky && "sticky top-0 z-10 bg-sidebar",
         className,
       )}

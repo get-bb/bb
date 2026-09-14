@@ -1,14 +1,31 @@
 import { describe, expect, it } from "vitest";
-import { threadScope, turnScope } from "@bb/domain";
+import {
+  encodeClientTurnRequestIdNumber,
+  threadScope,
+  turnScope,
+  type Thread,
+} from "@bb/domain";
+import { createConnection, getAppSettings } from "@bb/db";
 import {
   applyTimelineDelta,
   threadTimelineResponseSchema,
   type ThreadTimelineResponse,
+  type TimelineRow,
 } from "@bb/server-contract";
+import { countTimelineSelectionMemoEntries } from "../../src/services/threads/timeline-selection-memo.js";
 import { readJson } from "../helpers/json.js";
-import { seedEvent, seedThreadFixture } from "../helpers/seed.js";
+import {
+  seedEvent,
+  seedThreadFixture,
+  seedThreadRuntimeState,
+  seedTurnStarted,
+} from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
 import type { TestAppHarness } from "../helpers/test-app.js";
+import {
+  buildRouteTimelinePage,
+  latestTimelinePage,
+} from "../provider-corpus/corpus-harness.js";
 
 async function getTimeline(
   harness: TestAppHarness,
@@ -26,6 +43,39 @@ async function getTimeline(
     );
   }
   return threadTimelineResponseSchema.parse(await readJson(response));
+}
+
+function buildColdLatestRows(
+  harness: TestAppHarness,
+  thread: Thread,
+): TimelineRow[] {
+  const clone = createConnection(harness.deps.db.$client.serialize());
+  try {
+    return buildRouteTimelinePage({
+      db: clone,
+      eventBudget: harness.deps.config.featureFlags.timelineWindowEventBudget,
+      includeDiagnosticOperations: getAppSettings(clone).showDiagnosticEvents,
+      page: latestTimelinePage(),
+      registry: harness.deps.providerRegistry,
+      thread,
+      variant: "default",
+    }).response.rows;
+  } finally {
+    clone.$client.close();
+  }
+}
+
+function assistantText(rows: readonly TimelineRow[]): string | null {
+  for (const row of rows) {
+    if (row.kind === "conversation" && row.role === "assistant") {
+      return row.text;
+    }
+    if (row.kind === "turn" && row.children !== null) {
+      const nested = assistantText(row.children);
+      if (nested !== null) return nested;
+    }
+  }
+  return null;
 }
 
 describe("GET /threads/:id/timeline?afterSequence (row-patch delta)", () => {
@@ -225,6 +275,68 @@ describe("GET /threads/:id/timeline?afterSequence (row-patch delta)", () => {
       const evicted = await getTimeline(harness, thread.id, 2);
       expect(evicted.delta).toBeUndefined();
       expect(evicted.rows.length).toBeGreaterThan(0);
+    });
+  });
+
+  it("streaming deltas: delta + merge equals a cold window on invisible and visible ticks", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedThreadFixture(harness, {
+        thread: { status: "active" },
+      });
+      const turn = {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "p1",
+        scope: turnScope("turn-1"),
+      } as const;
+      seedThreadRuntimeState(harness.deps, turn);
+      seedTurnStarted(harness.deps, { ...turn, turnId: "turn-1" });
+      seedEvent(harness.deps, {
+        ...turn,
+        sequence: 4,
+        type: "turn/input/accepted",
+        data: {
+          clientRequestId: encodeClientTurnRequestIdNumber({ value: 1 }),
+        },
+      });
+      seedEvent(harness.deps, {
+        ...turn,
+        sequence: 5,
+        type: "item/started",
+        data: { item: { type: "agentMessage", id: "assistant-1", text: "" } },
+      });
+
+      let before = await getTimeline(harness, thread.id);
+      let streamed = "";
+      for (const chunk of [
+        "Roses",
+        " are red",
+        "\nViolets",
+        " are",
+        " blue\n",
+        "Sugar",
+      ]) {
+        streamed += chunk;
+        seedEvent(harness.deps, {
+          ...turn,
+          sequence: before.maxSeq + 1,
+          type: "item/agentMessage/delta",
+          data: { itemId: "assistant-1", delta: chunk },
+        });
+
+        const tick = await getTimeline(harness, thread.id, before.maxSeq);
+        expect(tick.maxSeq).toBe(before.maxSeq + 1);
+        expect(tick.delta).toBeDefined();
+        const merged = applyTimelineDelta(before.rows, tick.delta!) ?? [];
+        expect(merged).toEqual(buildColdLatestRows(harness, thread));
+        expect(assistantText(merged) ?? "").toBe(
+          streamed.slice(0, streamed.lastIndexOf("\n") + 1),
+        );
+        before = { ...tick, rows: merged };
+      }
+      expect(
+        countTimelineSelectionMemoEntries(harness.deps.db),
+      ).toBeGreaterThan(0);
     });
   });
 

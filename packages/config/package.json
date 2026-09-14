@@ -3,20 +3,10 @@
   "version": "0.0.1",
   "type": "module",
   "exports": {
-    "./common": {
-      "source": "./src/common.ts",
-      "types": "./src/common.ts",
-      "default": "./src/common.ts"
-    },
     "./server": {
       "source": "./src/server.ts",
       "types": "./src/server.ts",
       "default": "./src/server.ts"
-    },
-    "./dev-app": {
-      "source": "./src/dev-app.ts",
-      "types": "./src/dev-app.ts",
-      "default": "./src/dev-app.ts"
     },
     "./vite-dev": {
       "source": "./src/vite-dev.ts",
@@ -127,6 +117,11 @@
       "source": "./src/verified-process-stop.ts",
       "types": "./src/verified-process-stop.ts",
       "default": "./src/verified-process-stop.ts"
+    },
+    "./child-process-exit": {
+      "source": "./src/child-process-exit.ts",
+      "types": "./src/child-process-exit.ts",
+      "default": "./src/child-process-exit.ts"
     }
   },
   "scripts": {

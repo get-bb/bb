@@ -172,9 +172,7 @@ describe("createConnectServerSync", () => {
       onUnauthorized: () => undefined,
       fetchImpl,
       now: () => now,
-      minIntervalMs: 60_000,
       setIntervalFn: () => 0,
-      clearIntervalFn: () => undefined,
     });
 
     await sync.syncNow();
@@ -247,7 +245,6 @@ describe("createConnectServerSync", () => {
         logs.push(message);
       },
       setIntervalFn: () => 0,
-      clearIntervalFn: () => undefined,
     });
 
     await sync.syncNow();
@@ -304,7 +301,6 @@ describe("createConnectServerSync without a local server", () => {
       onSkipped: () => undefined,
       onUnauthorized: () => undefined,
       setIntervalFn: () => 0,
-      clearIntervalFn: () => undefined,
     });
 
     await sync.syncNow();
@@ -339,7 +335,6 @@ describe("createConnectServerSync without a local server", () => {
         unauthorized += 1;
       },
       setIntervalFn: () => 0,
-      clearIntervalFn: () => undefined,
     });
 
     await sync.syncNow();
@@ -359,7 +354,6 @@ describe("createConnectServerSync without a local server", () => {
       },
       onUnauthorized: () => undefined,
       setIntervalFn: () => 0,
-      clearIntervalFn: () => undefined,
     });
 
     await sync.syncNow();
@@ -383,7 +377,6 @@ describe("createConnectServerSync without a local server", () => {
         logs.push(message);
       },
       setIntervalFn: () => 0,
-      clearIntervalFn: () => undefined,
     });
 
     await sync.syncNow();

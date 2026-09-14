@@ -6,10 +6,8 @@ import {
   listEvents,
   listStoredProjectPromptHistoryRows,
   listStoredThreadPromptHistoryRows,
-  setExperiments,
 } from "@bb/db";
 import {
-  defaultExperiments,
   encodeClientTurnRequestIdNumber,
   threadScope,
   turnScope,
@@ -192,7 +190,6 @@ function seedTurn(
 function seedEditableThread(
   harness: TestAppHarness,
   args: {
-    editMessagesExperiment?: boolean;
     firstCompletionStatus?: ThreadEventTurnStatus | null;
     firstProviderCheckpoint?: string | null;
     firstProviderThreadId?: string;
@@ -205,10 +202,11 @@ function seedEditableThread(
     threadStatus?: ThreadStatus;
   } = {},
 ) {
-  setExperiments(harness.db, {
-    ...defaultExperiments,
-    editMessages: args.editMessagesExperiment ?? true,
-  });
+  harness.db.$client
+    .prepare(
+      "INSERT INTO system_experiments (key, value, updated_at) VALUES ('editMessages', false, 1)",
+    )
+    .run();
   const { host } = seedHostSession(harness.deps, {
     id: "host-edit-message",
   });
@@ -1383,36 +1381,49 @@ describe("editThreadMessage", () => {
     },
   );
 
-  it("leaves the original suffix untouched when Codex cannot stage the rewind", async () => {
-    await withTestHarness(async (harness) => {
-      const { environment, thread } = seedEditableThread(harness);
-      const editPromise = editThreadMessage(harness.deps, {
-        environment,
-        thread,
-        payload: {
-          operationId: "edit-op-failure",
-          expectedRequestSequence: 7,
-          input: [{ type: "text", text: "Replacement", mentions: [] }],
-        },
-      });
-      const rejectedEdit =
-        expect(editPromise).rejects.toThrow("Codex fork failed");
-      const rewind = await waitForQueuedCommand(
-        harness,
-        (queued) => queued.command.type === "thread.rewind.prepare",
-      );
-      await reportQueuedCommandError(harness, rewind, {
-        errorCode: "provider_error",
-        errorMessage: "Codex fork failed",
-      });
+  it.each(["provider-original", "provider-other-session"])(
+    "preserves history without guessing a repair when checkpoint session %s cannot stage the rewind",
+    async (firstProviderThreadId) => {
+      await withTestHarness(async (harness) => {
+        const { environment, thread } = seedEditableThread(harness, {
+          firstProviderThreadId,
+        });
+        const originalEvents = listEvents(harness.db, { threadId: thread.id });
+        const editPromise = editThreadMessage(harness.deps, {
+          environment,
+          thread,
+          payload: {
+            operationId: "edit-op-failure",
+            expectedRequestSequence: 7,
+            input: [{ type: "text", text: "Replacement", mentions: [] }],
+          },
+        });
+        const rejectedEdit = expect(editPromise).rejects.toThrow(
+          "turn not found: checkpoint-first",
+        );
+        const rewind = await waitForQueuedCommand(
+          harness,
+          (queued) => queued.command.type === "thread.rewind.prepare",
+        );
+        await reportQueuedCommandError(harness, rewind, {
+          errorCode: "provider_error",
+          errorMessage: "turn not found: checkpoint-first",
+        });
 
-      await rejectedEdit;
-      expect(listEvents(harness.db, { threadId: thread.id })).toHaveLength(11);
-      expect(
-        listQueuedThreadCommands(harness, "thread.start", thread.id),
-      ).toHaveLength(0);
-    });
-  });
+        await rejectedEdit;
+        expect(rewind.command).toMatchObject({
+          sourceProviderThreadId: firstProviderThreadId,
+          retainThroughProviderCheckpoint: "checkpoint-first",
+        });
+        expect(listEvents(harness.db, { threadId: thread.id })).toEqual(
+          originalEvents,
+        );
+        expect(
+          listQueuedThreadCommands(harness, "thread.start", thread.id),
+        ).toHaveLength(0);
+      });
+    },
+  );
 
   it("rejects an edit on a provider that declares no session rewind", async () => {
     await withTestHarness(async (harness) => {
@@ -1431,26 +1442,6 @@ describe("editThreadMessage", () => {
           },
         }),
       ).rejects.toThrow("Editing messages is not supported for acp-cursor");
-    });
-  });
-
-  it("rejects mutations while the experiment is disabled", async () => {
-    await withTestHarness(async (harness) => {
-      const { environment, thread } = seedEditableThread(harness, {
-        editMessagesExperiment: false,
-      });
-
-      await expect(
-        editThreadMessage(harness.deps, {
-          environment,
-          thread,
-          payload: {
-            operationId: "edit-op-disabled",
-            expectedRequestSequence: 7,
-            input: [{ type: "text", text: "Replacement", mentions: [] }],
-          },
-        }),
-      ).rejects.toThrow("Enable the Edit messages experiment");
     });
   });
 });

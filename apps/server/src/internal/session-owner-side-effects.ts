@@ -85,12 +85,12 @@ export async function handleHostSessionOpened(
     "Session opened",
   );
 
+  const sameDaemonInstance =
+    args.previousSession?.instanceId === args.openedSession.instanceId;
   if (
     args.previousSession &&
     args.previousSession.id !== args.openedSession.id
   ) {
-    const sameDaemonInstance =
-      args.previousSession.instanceId === args.openedSession.instanceId;
     deps.hub.cancelPendingDaemonDisconnect(args.previousSession.id);
 
     if (args.previousSession.status === "active") {
@@ -120,6 +120,7 @@ export async function handleHostSessionOpened(
   await reconcileDaemonReportedThreads(deps, {
     activeThreadIds: args.activeThreads.map((thread) => thread.threadId),
     hostId: args.hostId,
+    sameDaemonInstance,
   });
 }
 
@@ -165,7 +166,7 @@ export function handleDaemonSocketClosed(
 }
 
 export function handleHostRemoved(
-  deps: DaemonSocketClosedDeps,
+  deps: Omit<DaemonSocketClosedDeps, "sharedPorts">,
   args: HandleHostRemovedArgs,
 ): void {
   const session = deps.db

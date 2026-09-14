@@ -22,6 +22,7 @@ import {
   systemProvidersQueryKey,
 } from "./query-keys";
 import {
+  prefetchSystemExecutionOptions,
   useHostProviderCliStatus,
   useSystemExecutionOptions,
   useSystemProviderInfo,
@@ -588,6 +589,34 @@ describe("useSystemExecutionOptions", () => {
     expect(result.current[0]!.data?.models).toEqual([]);
     expect(result.current[1]!.isPlaceholderData).toBe(false);
     expect(result.current[1]!.data).toBeUndefined();
+  });
+
+  it("prefetches sibling catalogs without touching remembered localStorage catalogs", async () => {
+    vi.mocked(sdk.system.executionOptions).mockImplementation(async (args) => ({
+      ...CODEX_CATALOG,
+      models: [{ ...CODEX_MODEL, id: `${args?.providerId}-model` }],
+    }));
+    const { queryClient } = createQueryClientTestHarness();
+
+    prefetchSystemExecutionOptions(queryClient, {
+      routing: { hostId: "host-a" },
+      providerIds: ["pi", "claude-code"],
+    });
+
+    await waitFor(() => {
+      for (const providerId of ["pi", "claude-code"]) {
+        expect(
+          queryClient.getQueryData<SystemExecutionOptionsResponse>(
+            systemExecutionOptionsQueryKey({
+              environmentId: null,
+              hostId: "host-a",
+              providerId,
+            }),
+          )?.models[0]?.id,
+        ).toBe(`${providerId}-model`);
+      }
+    });
+    expect(window.localStorage.length).toBe(0);
   });
 
   it("retries one transient failure before surfacing model selector errors", async () => {

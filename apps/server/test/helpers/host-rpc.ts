@@ -7,12 +7,10 @@ import {
 } from "@bb/host-daemon-contract";
 import type { AvailableModel } from "@bb/domain";
 import type { TestAppHarness } from "./test-app.js";
-import { registerTestHostRpcCapture } from "./commands.js";
-
-interface TestHostRpcSocket {
-  close(code?: number, reason?: string): void;
-  send(data: string): void;
-}
+import {
+  registerTestHostRpcCapture,
+  type TestHostRpcSocket,
+} from "./commands.js";
 
 interface ProviderModelResponse {
   models: AvailableModel[];
@@ -85,7 +83,7 @@ function buildTestFailureResponse(
 function buildProviderRpcResponse(
   args: RegisterProviderHostRpcArgs,
   request: HostDaemonOnlineRpcRequestMessage,
-): HostDaemonOnlineRpcResponseMessage {
+): HostRpcHandlerResult {
   if (request.command.type !== "provider.list_models") {
     throw new Error(`Unexpected provider RPC command ${request.command.type}`);
   }
@@ -94,9 +92,6 @@ function buildProviderRpcResponse(
   const error = args.modelErrorsByProviderId?.[providerId];
   if (error) {
     return {
-      type: "host-rpc.response",
-      requestId: request.requestId,
-      commandType: request.command.type,
       ok: false,
       errorCode: error.errorCode,
       errorMessage: error.errorMessage,
@@ -107,13 +102,7 @@ function buildProviderRpcResponse(
     models: [],
     selectedOnlyModels: [],
   };
-  return {
-    type: "host-rpc.response",
-    requestId: request.requestId,
-    commandType: request.command.type,
-    ok: true,
-    result,
-  };
+  return { ok: true, result };
 }
 
 function buildHostRpcResponse(
@@ -209,16 +198,6 @@ export function registerProviderHostRpcResponder(
     hostId: args.hostId,
     sessionId: args.sessionId,
     restoreCommandCaptureAfterResponse: args.restoreCommandCaptureAfterResponse,
-    handle: (request) => {
-      const response = buildProviderRpcResponse(args, request);
-      if (response.ok) {
-        return { ok: true, result: response.result };
-      }
-      return {
-        ok: false,
-        errorCode: response.errorCode,
-        errorMessage: response.errorMessage,
-      };
-    },
+    handle: (request) => buildProviderRpcResponse(args, request),
   });
 }

@@ -28,12 +28,6 @@ export function isTimelineUngroupableMessage(
   return false;
 }
 
-export function isTimelineSummaryCountedMessage(
-  message: EventProjectionMessage,
-): boolean {
-  return !isTimelineUngroupableMessage(message);
-}
-
 export function isSingletonContextManagementOperation(
   messages: readonly EventProjectionMessage[],
 ): boolean {

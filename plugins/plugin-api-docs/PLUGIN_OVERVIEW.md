@@ -2,7 +2,7 @@ Find out where a plugin can add to bb before you write one. The Plugin Guide is 
 
 ## What you get
 
-- Seven maps. They cover the app window, the command palette, the composer, and the home page. They also cover plugin settings, the plugin page in Extensions, and the plugin backend.
+- Seven maps. They cover the app window, the command palette, the composer, and the home page. They also cover plugin settings, the Plugins page, and the plugin backend.
 - A numbered card for each surface with a summary and the SDK symbols to use.
 - A list of first-party plugins that use each surface. Each name links to the plugin page when that plugin is installed or in the catalog.
 - A URL for each map, so you can link to one and use the back and forward buttons.

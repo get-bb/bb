@@ -2,7 +2,6 @@ import type { ThreadEvent } from "@bb/domain";
 import type { AgentRuntimeProviderSession } from "./types.js";
 
 export interface RuntimeProviderIdentityState {
-  pendingIdentityThreadIds: string[];
   providerId: string;
   threadIds: Set<string>;
 }
@@ -14,7 +13,6 @@ interface CreateRuntimeProviderIdentityStateArgs {
 interface RegisterThreadProviderArgs {
   providerId: string;
   providerState: RuntimeProviderIdentityState;
-  expectsIdentityNotification: boolean;
   threadId: string;
 }
 
@@ -54,7 +52,6 @@ export class RuntimeThreadIdentityRegistry {
     args: CreateRuntimeProviderIdentityStateArgs,
   ): RuntimeProviderIdentityState {
     return {
-      pendingIdentityThreadIds: [],
       providerId: args.providerId,
       threadIds: new Set(),
     };
@@ -63,9 +60,6 @@ export class RuntimeThreadIdentityRegistry {
   registerThreadProvider(args: RegisterThreadProviderArgs): void {
     this.threadToProvider.set(args.threadId, args.providerId);
     args.providerState.threadIds.add(args.threadId);
-    if (args.expectsIdentityNotification) {
-      args.providerState.pendingIdentityThreadIds.push(args.threadId);
-    }
   }
 
   resolveProviderForThread(threadId: string): string {
@@ -90,6 +84,9 @@ export class RuntimeThreadIdentityRegistry {
   }
 
   recordProviderThreadIdentity(args: RecordProviderThreadIdentityArgs): void {
+    if (!args.providerState.threadIds.has(args.threadId)) {
+      throw new Error(`No provider associated with thread "${args.threadId}"`);
+    }
     this.threadToProviderThread.set(args.threadId, args.providerThreadId);
   }
 
@@ -113,7 +110,7 @@ export class RuntimeThreadIdentityRegistry {
     return undefined;
   }
 
-  resolveProviderEventThreadId(
+  resolveProviderIdentityThreadId(
     args: ResolveProviderEventThreadIdArgs,
   ): string | undefined {
     if (
@@ -143,6 +140,17 @@ export class RuntimeThreadIdentityRegistry {
       }
     }
 
+    return undefined;
+  }
+
+  resolveProviderEventThreadId(
+    args: ResolveProviderEventThreadIdArgs,
+  ): string | undefined {
+    const explicitThreadId = this.resolveProviderIdentityThreadId(args);
+    if (explicitThreadId !== undefined) {
+      return explicitThreadId;
+    }
+
     if (
       args.providerState.threadIds.size === 1 &&
       !this.namesForeignThread(args.providerState, args.eventThreadId) &&
@@ -167,12 +175,6 @@ export class RuntimeThreadIdentityRegistry {
     );
   }
 
-  resolvePendingProviderThreadIdentity(
-    providerState: RuntimeProviderIdentityState,
-  ): string | undefined {
-    return providerState.pendingIdentityThreadIds.shift();
-  }
-
   clearThread(threadId: string): void {
     this.threadToProvider.delete(threadId);
     this.threadToProviderThread.delete(threadId);
@@ -180,10 +182,6 @@ export class RuntimeThreadIdentityRegistry {
 
   forgetThread(args: ForgetThreadArgs): void {
     args.providerState.threadIds.delete(args.threadId);
-    args.providerState.pendingIdentityThreadIds =
-      args.providerState.pendingIdentityThreadIds.filter(
-        (pendingThreadId) => pendingThreadId !== args.threadId,
-      );
     this.clearThread(args.threadId);
   }
 }
@@ -191,7 +189,11 @@ export class RuntimeThreadIdentityRegistry {
 export function stampThreadEventScope(
   args: StampThreadEventScopeArgs,
 ): ThreadEvent {
-  if ("providerThreadId" in args.event && args.providerThreadId) {
+  if (
+    "providerThreadId" in args.event &&
+    !args.event.providerThreadId &&
+    args.providerThreadId
+  ) {
     return {
       ...args.event,
       providerThreadId: args.providerThreadId,

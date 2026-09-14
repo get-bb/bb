@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { GitBranchRefClassification } from "@bb/domain";
 import { useEnvironmentMergeBaseBranches } from "../../../hooks/queries/environment-queries";
 import type { SecondaryFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import type { ThreadSecondaryPanel as ThreadSecondaryPanelTab } from "@/lib/thread-secondary-panel";
@@ -35,6 +36,20 @@ type PendingGitDiffIntent =
       path: string;
       threadId: string;
     };
+
+function prependSelectedBranch(
+  list: string[] | undefined,
+  selectedRef: GitBranchRefClassification | null | undefined,
+  kind: "local" | "remote",
+): string[] | undefined {
+  if (!list) {
+    return undefined;
+  }
+
+  return selectedRef?.kind === kind && !list.includes(selectedRef.name)
+    ? [selectedRef.name, ...list]
+    : list;
+}
 
 export function useGitDiffPanel({
   activeSecondaryTab,
@@ -101,26 +116,24 @@ export function useGitDiffPanel({
   const selectedMergeBaseBranchRef = mergeBaseBranches?.selectedBranch;
   const mergeBaseBranchList = mergeBaseBranches?.branches;
   const mergeBaseRemoteBranchList = mergeBaseBranches?.remoteBranches;
-  const mergeBaseBranchOptions = useMemo(() => {
-    if (!mergeBaseBranchList) {
-      return undefined;
-    }
-
-    return selectedMergeBaseBranchRef?.kind === "local" &&
-      !mergeBaseBranchList.includes(selectedMergeBaseBranchRef.name)
-      ? [selectedMergeBaseBranchRef.name, ...mergeBaseBranchList]
-      : mergeBaseBranchList;
-  }, [mergeBaseBranchList, selectedMergeBaseBranchRef]);
-  const mergeBaseRemoteBranchOptions = useMemo(() => {
-    if (!mergeBaseRemoteBranchList) {
-      return undefined;
-    }
-
-    return selectedMergeBaseBranchRef?.kind === "remote" &&
-      !mergeBaseRemoteBranchList.includes(selectedMergeBaseBranchRef.name)
-      ? [selectedMergeBaseBranchRef.name, ...mergeBaseRemoteBranchList]
-      : mergeBaseRemoteBranchList;
-  }, [mergeBaseRemoteBranchList, selectedMergeBaseBranchRef]);
+  const mergeBaseBranchOptions = useMemo(
+    () =>
+      prependSelectedBranch(
+        mergeBaseBranchList,
+        selectedMergeBaseBranchRef,
+        "local",
+      ),
+    [mergeBaseBranchList, selectedMergeBaseBranchRef],
+  );
+  const mergeBaseRemoteBranchOptions = useMemo(
+    () =>
+      prependSelectedBranch(
+        mergeBaseRemoteBranchList,
+        selectedMergeBaseBranchRef,
+        "remote",
+      ),
+    [mergeBaseRemoteBranchList, selectedMergeBaseBranchRef],
+  );
   useEffect(() => {
     setMergeBaseBranchSearchQuery("");
     setPendingGitDiffIntent(null);

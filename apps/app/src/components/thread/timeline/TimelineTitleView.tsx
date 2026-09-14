@@ -14,10 +14,9 @@ import {
 } from "@bb/thread-view";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { Icon } from "@bb/shared-ui/icon";
-import { isIconName } from "./presentation-display.js";
 import { DiffStatsTally } from "@/components/ui/diff-stats-tally.js";
 import { RouteAnchor } from "@/components/ui/app-route-anchor.js";
-import { useSecondTick } from "@/hooks/useSecondTick";
+import { LiveDurationText } from "./LiveDurationText.js";
 
 export type TimelineTitleActionResolver = (
   action: TimelineTitleAction,
@@ -183,13 +182,6 @@ function renderSegment(
   );
 }
 
-function LiveDurationText({ startedAt }: { startedAt: number }) {
-  const elapsedMs = useSecondTick() - startedAt;
-
-  if (elapsedMs <= 1_000) return null;
-  return <>{durationToCompactString(elapsedMs)}</>;
-}
-
 function renderDecoration(
   decoration: TimelineTitleDecoration,
   index: number,
@@ -288,13 +280,6 @@ function renderDecoration(
     }
     case "badge": {
       const badgeClass = badgeToneClass(decoration.tone);
-      if (!isIconName(decoration.glyph)) {
-        return (
-          <span key={index} className={cn(baseClass, badgeClass)}>
-            {decoration.label}
-          </span>
-        );
-      }
       return (
         <span
           key={index}
@@ -327,7 +312,6 @@ export function TimelineTitleView({
       className="inline-flex min-w-0 max-w-full items-baseline gap-1 overflow-hidden whitespace-nowrap text-sm leading-5"
       title={title.plain}
     >
-      {}
       {title.segments.map((segment, index) => {
         const linkHref =
           segment.link && resolveSegmentLinkHref

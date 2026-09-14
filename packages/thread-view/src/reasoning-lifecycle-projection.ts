@@ -19,7 +19,6 @@ import {
 } from "./buffered-text-identity.js";
 
 interface ActiveThinkingLifecycle {
-  itemId: string;
   messageKey: string;
   parentToolCallId: string | null;
   sourceSeqStart: number;
@@ -37,6 +36,7 @@ interface ReasoningTurnLifecycleState {
 
 export interface ReasoningProjectionState {
   finalizedReasoningKeys: Set<string>;
+  reasoningDeltaTextByKey: Map<string, { content: string; summary: string }>;
   reasoningMessagesAwaitingCompletion: Map<
     string,
     EventProjectionOperationMessage
@@ -66,12 +66,13 @@ type ReasoningCompletionStatus = Extract<
 const MAX_REASONING_DETAIL_CHARS = 32_000;
 const REASONING_DETAIL_TRUNCATION_SUFFIX_TAIL = " more characters truncated]";
 
-function truncateReasoningDetail(detail: string): string {
-  if (detail.length <= MAX_REASONING_DETAIL_CHARS) {
-    return detail;
+function normalizeReasoningDetail(detail: string): string {
+  const trimmed = detail.trim();
+  if (trimmed.length <= MAX_REASONING_DETAIL_CHARS) {
+    return trimmed;
   }
-  const dropped = detail.length - MAX_REASONING_DETAIL_CHARS;
-  return `${detail.slice(0, MAX_REASONING_DETAIL_CHARS)}\n…[${dropped.toLocaleString("en-US")}${REASONING_DETAIL_TRUNCATION_SUFFIX_TAIL}`;
+  const dropped = trimmed.length - MAX_REASONING_DETAIL_CHARS;
+  return `${trimmed.slice(0, MAX_REASONING_DETAIL_CHARS)}\n…[${dropped.toLocaleString("en-US")}${REASONING_DETAIL_TRUNCATION_SUFFIX_TAIL}`;
 }
 
 interface FinalizeReasoningLifecycleArgs {
@@ -95,6 +96,7 @@ interface FinalizeOpenReasoningLifecyclesForTurnArgs extends FinalizeOpenReasoni
 export function createReasoningProjectionState(): ReasoningProjectionState {
   return {
     openReasoningLifecyclesByKey: new Map(),
+    reasoningDeltaTextByKey: new Map(),
     reasoningTextBuffersByKey: new Map(),
     finalizedReasoningKeys: new Set(),
     reasoningMessagesAwaitingCompletion: new Map(),
@@ -131,7 +133,7 @@ function getActiveThinkingText(
   messageKey: string,
 ): string {
   const buffer = state.reasoningTextBuffersByKey.get(messageKey);
-  return (buffer ? getVisibleTextBufferText(buffer) : undefined) ?? "";
+  return (buffer ? getVisibleTextBufferText(buffer) : undefined)?.trim() ?? "";
 }
 
 export function buildProjectionActiveThinking(
@@ -150,7 +152,11 @@ export function buildProjectionActiveThinking(
   }
 
   return {
-    id: latestLifecycle.itemId,
+    id: messageId(
+      latestLifecycle.threadId,
+      "op",
+      `reasoning:${latestLifecycle.messageKey}`,
+    ),
     text: getActiveThinkingText(state, latestLifecycle.messageKey),
     startedAt: latestLifecycle.startedAt,
     updatedAt: latestLifecycle.updatedAt,
@@ -183,7 +189,6 @@ export function upsertReasoningLifecycle(
   }
 
   args.state.openReasoningLifecyclesByKey.set(messageKey, {
-    itemId: args.identity.itemId,
     messageKey,
     parentToolCallId: args.parentToolCallId ?? null,
     sourceSeqStart: args.meta.seq,
@@ -231,11 +236,11 @@ function finalizeReasoningLifecycleByKey(
     ...(lifecycle.parentToolCallId
       ? { parentToolCallId: lifecycle.parentToolCallId }
       : {}),
-    opType: "operation",
+    opType: "reasoning",
     title: `Thought for ${durationToCompactString(
       args.meta.createdAt - lifecycle.startedAt,
     )}`,
-    detail: truncateReasoningDetail(detail),
+    detail: normalizeReasoningDetail(detail),
     status: args.status,
   };
   args.state.messages.push(message);
@@ -250,13 +255,14 @@ export function finalizeReasoningLifecycle(
   }
 
   const messageKey = createBufferedTextInstanceKey(args.identity);
+  args.state.reasoningDeltaTextByKey.delete(messageKey);
   const message =
     args.state.reasoningMessagesAwaitingCompletion.get(messageKey);
   if (message) {
     args.state.reasoningMessagesAwaitingCompletion.delete(messageKey);
     message.sourceSeqEnd = args.meta.seq;
     if (args.text?.trim()) {
-      message.detail = truncateReasoningDetail(args.text);
+      message.detail = normalizeReasoningDetail(args.text);
     }
     return;
   }

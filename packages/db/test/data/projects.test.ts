@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import { noopNotifier } from "../../src/notifier.js";
+import { projects } from "../../src/schema.js";
 import {
   createProject,
   ensurePersonalProject,
   findOrCreateProjectByLocalPathSource,
   getProject,
-  listProjects,
   listPublicProjects,
   markProjectDeleted,
   reorderProject,
@@ -19,7 +19,6 @@ function setup() {
   const db = createMigratedConnection();
   const host = upsertHost(db, noopNotifier, {
     name: "projects-host",
-    type: "persistent",
   });
   return { db, host };
 }
@@ -53,7 +52,6 @@ describe("projects", () => {
     const { db, host } = setup();
     const otherHost = upsertHost(db, noopNotifier, {
       name: "other-projects-host",
-      type: "persistent",
     });
 
     const first = findOrCreateProjectByLocalPathSource(db, noopNotifier, {
@@ -119,7 +117,11 @@ describe("projects", () => {
     expect(first.id).toBe(PERSONAL_PROJECT_ID);
     expect(second.id).toBe(PERSONAL_PROJECT_ID);
     expect(
-      listProjects(db).filter((project) => project.kind === "personal"),
+      db
+        .select()
+        .from(projects)
+        .all()
+        .filter((project) => project.kind === "personal"),
     ).toEqual([expect.objectContaining({ id: PERSONAL_PROJECT_ID })]);
   });
 
@@ -146,7 +148,11 @@ describe("projects", () => {
       projectId: deletingProject.id,
     });
 
-    const allProjectIds = listProjects(db).map((project) => project.id);
+    const allProjectIds = db
+      .select()
+      .from(projects)
+      .all()
+      .map((project) => project.id);
     expect(allProjectIds).toHaveLength(3);
     expect(allProjectIds).toEqual(
       expect.arrayContaining([

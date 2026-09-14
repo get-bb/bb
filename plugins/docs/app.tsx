@@ -19,7 +19,7 @@ import {
   type ExperimentalLiveFileTarget,
 } from "@get-bb/plugin-sdk/app";
 import type { docsRpcContract } from "./server.js";
-import { parseMarkdownDocument } from "./markdown-document.js";
+import { isRecord, parseMarkdownDocument } from "./markdown-document.js";
 import {
   Editor,
   Extension,
@@ -120,8 +120,8 @@ interface PreviewLease {
   expiresAtMs: number;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function encodePath(value: string): string {
@@ -579,7 +579,7 @@ function refreshNotebookStore(
         notebookStores.get(store.vaultId) !== store
       )
         return;
-      const message = error instanceof Error ? error.message : String(error);
+      const message = errorMessage(error);
       if (store.data === null) store.error = message;
       else store.data = { ...store.data, error: message };
       notifyNotebookStore(store);
@@ -809,7 +809,7 @@ function HtmlDocumentPanelBody({ document }: { document: DocumentRef }) {
       .catch((error: unknown) => {
         if (active)
           setState({
-            error: error instanceof Error ? error.message : String(error),
+            error: errorMessage(error),
           });
       });
     return () => {
@@ -921,7 +921,7 @@ function NotePane({
       .catch((error: unknown) => {
         if (active)
           setState({
-            error: error instanceof Error ? error.message : String(error),
+            error: errorMessage(error),
           });
       });
     return () => {
@@ -940,7 +940,7 @@ function NotePane({
       setSaveError(null);
       const content = markdownRef.current;
       try {
-        const value = await rpc.call("saveNote", {
+        const result = await rpc.call("saveNote", {
           vaultId,
           path: pathRef.current,
           content,
@@ -948,7 +948,6 @@ function NotePane({
             ? { expectedSha256: shaRef.current }
             : {}),
         });
-        const result = value;
         if (result.outcome === "conflict") {
           setConflict(true);
           return;
@@ -968,7 +967,7 @@ function NotePane({
           }
         }
       } catch (error) {
-        setSaveError(error instanceof Error ? error.message : String(error));
+        setSaveError(errorMessage(error));
       } finally {
         savingRef.current = false;
       }
@@ -1118,7 +1117,7 @@ function DocsFileOpener({ path: filePath, source }: PluginFileOpenerProps) {
       .catch((error: unknown) => {
         if (active) {
           setState({
-            error: error instanceof Error ? error.message : String(error),
+            error: errorMessage(error),
           });
         }
       });
@@ -1154,7 +1153,7 @@ function DocsFileOpener({ path: filePath, source }: PluginFileOpenerProps) {
         shaRef.current = result.sha256;
         setConflict(false);
       } catch (error) {
-        setSaveError(error instanceof Error ? error.message : String(error));
+        setSaveError(errorMessage(error));
       } finally {
         savingRef.current = false;
       }
@@ -1266,9 +1265,7 @@ function HtmlPane({
     void rpc
       .call("preparePreview", { vaultId, path: filePath })
       .then((value) => setLease(value))
-      .catch((reason: unknown) =>
-        setError(reason instanceof Error ? reason.message : String(reason)),
-      );
+      .catch((reason: unknown) => setError(errorMessage(reason)));
   }, [filePath, rpc, vaultId]);
   if (error)
     return (
@@ -1501,18 +1498,29 @@ function Tree({
     draggingPathRef.current !== null ||
     Array.from(event.dataTransfer.types).includes("text/plain");
 
+  const clearDrag = () => {
+    draggingPathRef.current = null;
+    setDraggingPath(null);
+    setDropTarget(null);
+    setFolderDropTarget(null);
+  };
+
+  const dropEdge = (
+    event: ReactDragEvent<HTMLButtonElement>,
+  ): "before" | "after" => {
+    const targetRect = event.currentTarget.getBoundingClientRect();
+    return event.clientY < targetRect.top + targetRect.height / 2
+      ? "before"
+      : "after";
+  };
+
   const reorderAtTarget = (
     event: ReactDragEvent<HTMLButtonElement>,
     targetPath: string,
   ) => {
     if (!acceptsFileDrag(event)) return;
     event.preventDefault();
-    const targetRect = event.currentTarget.getBoundingClientRect();
-    const edge =
-      event.clientY < targetRect.top + targetRect.height / 2
-        ? "before"
-        : "after";
-    setDropTarget({ path: targetPath, edge });
+    setDropTarget({ path: targetPath, edge: dropEdge(event) });
     setFolderDropTarget(null);
     event.dataTransfer.dropEffect = "move";
   };
@@ -1529,11 +1537,7 @@ function Tree({
       return;
     }
     const parent = dirname(targetPath);
-    const targetRect = event.currentTarget.getBoundingClientRect();
-    const edge =
-      event.clientY < targetRect.top + targetRect.height / 2
-        ? "before"
-        : "after";
+    const edge = dropEdge(event);
     const siblings = orderEntries(data.entries, data.entryOrder)
       .filter(
         (entry) => entry.kind === "file" && dirname(entry.path) === parent,
@@ -1554,10 +1558,7 @@ function Tree({
     } else {
       onMoveFile(sourcePath, parent, siblings);
     }
-    draggingPathRef.current = null;
-    setDraggingPath(null);
-    setDropTarget(null);
-    setFolderDropTarget(null);
+    clearDrag();
   };
 
   const moveIntoFolder = (
@@ -1569,10 +1570,7 @@ function Tree({
       event.dataTransfer.getData("text/plain") || draggingPathRef.current;
     if (!sourcePath || dirname(sourcePath) === targetFolder) return;
     onMoveFile(sourcePath, targetFolder);
-    draggingPathRef.current = null;
-    setDraggingPath(null);
-    setDropTarget(null);
-    setFolderDropTarget(null);
+    clearDrag();
   };
 
   return (
@@ -1649,12 +1647,7 @@ function Tree({
                 if (isFolder) moveIntoFolder(event, entry.path);
                 else dropAtTarget(event, entry.path);
               }}
-              onDragEnd={() => {
-                draggingPathRef.current = null;
-                setDraggingPath(null);
-                setDropTarget(null);
-                setFolderDropTarget(null);
-              }}
+              onDragEnd={clearDrag}
               onClick={() => {
                 if (isFolder)
                   setCollapsed((current) => {
@@ -1878,7 +1871,7 @@ function NotesWorkspace({
       setFolderDialogOpen(false);
       refresh();
     } catch (error) {
-      setFolderError(error instanceof Error ? error.message : String(error));
+      setFolderError(errorMessage(error));
     }
   };
 
@@ -1902,7 +1895,7 @@ function NotesWorkspace({
         subPath: value.id,
       });
     } catch (error) {
-      setVaultError(error instanceof Error ? error.message : String(error));
+      setVaultError(errorMessage(error));
     }
   };
 
@@ -1922,9 +1915,7 @@ function NotesWorkspace({
       }
       toast.success(`Deleted ${path}`);
     } catch (error) {
-      toast.error(
-        `Could not delete ${path}: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      toast.error(`Could not delete ${path}: ${errorMessage(error)}`);
     }
   };
 
@@ -1938,9 +1929,7 @@ function NotesWorkspace({
       if (!isCurrentVault(activeVaultId)) return;
       refresh();
     } catch (error) {
-      toast.error(
-        `Could not reorder files: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      toast.error(`Could not reorder files: ${errorMessage(error)}`);
     }
   };
 
@@ -1970,7 +1959,7 @@ function NotesWorkspace({
         } catch (error) {
           orderPreserved = false;
           toast.error(
-            `Moved ${fileName}, but could not preserve its drop position: ${error instanceof Error ? error.message : String(error)}`,
+            `Moved ${fileName}, but could not preserve its drop position: ${errorMessage(error)}`,
           );
         }
       }
@@ -1985,9 +1974,7 @@ function NotesWorkspace({
         );
       }
     } catch (error) {
-      toast.error(
-        `Could not move ${fileName}: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      toast.error(`Could not move ${fileName}: ${errorMessage(error)}`);
     }
   };
 

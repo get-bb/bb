@@ -24,6 +24,11 @@ import {
 } from "../src/hooks/useUpdateInventory";
 import { createAppQueryClient } from "../src/lib/query-client";
 import { makeSystemConfig } from "../src/test/fixtures/system-config";
+import { systemMachineProvidersQueryKey } from "../src/hooks/queries/query-keys";
+import {
+  MANUAL_MACHINE_PROVIDER,
+  MODAL_MACHINE_PROVIDER,
+} from "./machine-story-fixtures";
 import { makeProviderInfo } from "@bb/test-helpers/domain-fixtures";
 import { getSettingsRoutePath } from "../src/lib/route-paths";
 import {
@@ -37,9 +42,11 @@ import {
   HOST_IDS,
   HOST_NAMES,
   PROJECT_IDS,
+  PROJECT_NAMES,
   STORY_PROJECT_SOURCES,
   makeHost,
   makeProject,
+  makeThreadListEntry,
   makeProviderCliStatus,
 } from "./story-fixtures";
 import codexLogoUrl from "../../../plugins/provider-codex/icons/codex.svg";
@@ -111,7 +118,31 @@ const remoteProviderStatus = {
 
 const project = makeProject({
   id: PROJECT_IDS.bb,
+  gitRemoteUrl: "git@github.com:get-bb/bb.git",
   sources: [...STORY_PROJECT_SOURCES],
+});
+const pierreProject = makeProject({
+  id: PROJECT_IDS.pierre,
+  name: PROJECT_NAMES.pierre,
+  gitRemoteUrl: "https://github.com/get-bb/pierre.git",
+  sources: [
+    {
+      id: "src_pierre_remote",
+      projectId: PROJECT_IDS.pierre,
+      type: "local_path",
+      hostId: HOST_IDS.remote,
+      path: "/home/michael/pierre",
+      isDefault: true,
+      createdAt: 0,
+      updatedAt: 0,
+    },
+  ],
+});
+const ingestProject = makeProject({
+  id: PROJECT_IDS.ingest,
+  name: PROJECT_NAMES.ingest,
+  gitRemoteUrl: null,
+  sources: [],
 });
 const personalProject = makeProject({
   id: PERSONAL_PROJECT_ID,
@@ -122,7 +153,28 @@ const personalProject = makeProject({
 
 const sidebarNavigation = {
   sections: [],
-  projects: [{ ...project, defaultExecutionOptions: null, threads: [] }],
+  projects: [
+    {
+      ...project,
+      defaultExecutionOptions: null,
+      threads: [
+        makeThreadListEntry({ id: "thr_bb_1", projectId: PROJECT_IDS.bb }),
+        makeThreadListEntry({ id: "thr_bb_2", projectId: PROJECT_IDS.bb }),
+        makeThreadListEntry({ id: "thr_bb_3", projectId: PROJECT_IDS.bb }),
+      ],
+    },
+    {
+      ...pierreProject,
+      defaultExecutionOptions: null,
+      threads: [
+        makeThreadListEntry({
+          id: "thr_pierre_1",
+          projectId: PROJECT_IDS.pierre,
+        }),
+      ],
+    },
+    { ...ingestProject, defaultExecutionOptions: null, threads: [] },
+  ],
   personalProject: {
     ...personalProject,
     defaultExecutionOptions: null,
@@ -231,6 +283,7 @@ function createSettingsStoryQueryClient() {
     },
   });
   queryClient.setQueryData(hostsQueryKey(), SETTINGS_STORY_HOSTS);
+  queryClient.setQueryData(hostsQueryKey(true), SETTINGS_STORY_HOSTS);
   queryClient.setQueryData(systemConfigQueryKey(), systemConfig);
   queryClient.setQueryData(systemProvidersQueryKey(), systemProviders);
   queryClient.setQueryData(systemVersionQueryKey(), systemVersion);
@@ -245,6 +298,10 @@ function createSettingsStoryQueryClient() {
     remoteProviderStatus,
   );
   queryClient.setQueryData(pluginListQueryKey(true), []);
+  queryClient.setQueryData(systemMachineProvidersQueryKey(), [
+    MANUAL_MACHINE_PROVIDER,
+    MODAL_MACHINE_PROVIDER,
+  ]);
   return queryClient;
 }
 

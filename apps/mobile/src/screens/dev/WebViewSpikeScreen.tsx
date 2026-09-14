@@ -16,6 +16,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { WebView, type WebViewMessageEvent } from "react-native-webview";
+import { firstParam } from "@/screens/shell/hrefs";
 import type { MediaCapturePermissionGrantType } from "react-native-webview/lib/WebViewTypes";
 import {
   BOOT_TIMING_PROBE,
@@ -57,10 +58,6 @@ function appendSessionLine(event: SpikeEvent): void {
       handle.close();
     }
   } catch {}
-}
-
-function firstParam(value: string | string[] | undefined): string | undefined {
-  return Array.isArray(value) ? value[0] : value;
 }
 
 const APEX_URL = process.env.EXPO_PUBLIC_BB_CONNECT_APEX ?? "https://getbb.app";

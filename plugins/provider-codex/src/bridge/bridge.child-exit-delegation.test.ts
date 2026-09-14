@@ -1,26 +1,18 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { experimental_createBridgeJsonRpcTestHarness as createBridgeJsonRpcTestHarness } from "@get-bb/plugin-sdk/provider-bridge/testing";
 import type { BridgeJsonRpcTestHarness } from "@get-bb/plugin-sdk/provider-bridge/testing";
 import type { ThreadDelta } from "@get-bb/plugin-sdk/provider-bridge";
 
 import { handleLine } from "./bridge.js";
+import {
+  FULL_ACCESS_SESSION_OPTIONS,
+  stubFakeCodexAppServer,
+} from "./fake-codex-app-server-harness.js";
 
 const THREAD_ID = "thr_child_exit_open_work";
-
-const fakeAppServerPath = fileURLToPath(
-  new URL("./fake-codex-app-server.mjs", import.meta.url),
-);
-
-const sessionOptions = {
-  permissionMode: "full",
-  permissionScope: "full",
-  approvalReviewer: null,
-  permissionEscalation: null,
-} as const;
 
 let harness: BridgeJsonRpcTestHarness;
 let workspaceDir: string;
@@ -68,11 +60,7 @@ async function waitForDelegationDeltas(
 
 beforeEach(() => {
   workspaceDir = mkdtempSync(join(tmpdir(), "bb-codex-child-exit-ws-"));
-  vi.stubEnv("BB_CODEX_BRIDGE_APP_SERVER_COMMAND", process.execPath);
-  vi.stubEnv(
-    "BB_CODEX_BRIDGE_APP_SERVER_ARGS",
-    JSON.stringify([fakeAppServerPath]),
-  );
+  stubFakeCodexAppServer();
   harness = createBridgeJsonRpcTestHarness(handleLine);
 });
 
@@ -95,7 +83,7 @@ it("settles the open delegation as failed when the app-server child dies", async
     threadId: THREAD_ID,
     cwd: workspaceDir,
     instructionMode: "append",
-    options: { ...sessionOptions },
+    options: { ...FULL_ACCESS_SESSION_OPTIONS },
   });
   const startResponse = await harness.waitForResponse(1);
   const providerThreadId = (
@@ -110,7 +98,7 @@ it("settles the open delegation as failed when the app-server child dies", async
     providerThreadId,
     input: [{ type: "text", text: "/subagent-then-crash", mentions: [] }],
     clientRequestId: "creq_chidexit22",
-    options: { ...sessionOptions },
+    options: { ...FULL_ACCESS_SESSION_OPTIONS },
   });
   await harness.waitForResponse(2);
 

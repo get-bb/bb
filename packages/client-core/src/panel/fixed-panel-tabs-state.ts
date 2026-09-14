@@ -309,6 +309,7 @@ interface FixedPanelTabGroupState {
 
 interface FixedSecondaryPanelTabGroupState extends FixedPanelTabGroupState {
   isOpen: boolean;
+  previousActiveTabId?: string;
 }
 
 export interface FixedPanelTabsState {

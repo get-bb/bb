@@ -1,25 +1,21 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { experimental_createBridgeJsonRpcTestHarness as createBridgeJsonRpcTestHarness } from "@get-bb/plugin-sdk/provider-bridge/testing";
 import type { BridgeJsonRpcOutputMessage } from "@get-bb/plugin-sdk/provider-bridge/testing";
 import { handleLine } from "./bridge.js";
+import {
+  FULL_ACCESS_SESSION_OPTIONS,
+  stubFakeCodexAppServer,
+} from "./fake-codex-app-server-harness.js";
 
 const THREAD_ID = "thr_archived_rebuild_1";
 const PROVIDER_THREAD_ID = "rebuild-rollout-1";
 const ARCHIVED_ERROR_TEXT = `session ${PROVIDER_THREAD_ID} is archived; unarchive it and retry`;
 
-const fakeAppServerPath = fileURLToPath(
-  new URL("./fake-codex-app-server.mjs", import.meta.url),
-);
-
 const sessionOptions = {
-  permissionMode: "full",
-  permissionScope: "full",
-  approvalReviewer: null,
-  permissionEscalation: null,
+  ...FULL_ACCESS_SESSION_OPTIONS,
   reasoningLevel: "low",
 } as const;
 
@@ -44,11 +40,7 @@ beforeEach(() => {
     scriptPath,
     JSON.stringify({ archiveStatePath, processLogPath }),
   );
-  vi.stubEnv("BB_CODEX_BRIDGE_APP_SERVER_COMMAND", process.execPath);
-  vi.stubEnv(
-    "BB_CODEX_BRIDGE_APP_SERVER_ARGS",
-    JSON.stringify([fakeAppServerPath, scriptPath]),
-  );
+  stubFakeCodexAppServer(scriptPath);
   harness = createBridgeJsonRpcTestHarness(handleLine);
 });
 

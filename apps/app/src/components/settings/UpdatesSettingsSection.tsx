@@ -243,7 +243,6 @@ function RowVersions({
       {latest !== null && latest !== current ? (
         <>
           <span className="px-1">→</span>
-          {}
           <span className="font-semibold text-version-upgrade">{latest}</span>
         </>
       ) : null}
@@ -325,7 +324,6 @@ function RowStateControl({
   if (onClick !== undefined && buttonLabel !== undefined) {
     return (
       <span className="flex min-w-0 items-center gap-1.5">
-        {}
         <Button
           type="button"
           variant="outline"
@@ -398,7 +396,6 @@ function RowStateControl({
       <TooltipProvider delayDuration={250}>
         <Tooltip>
           <TooltipTrigger asChild>{mark}</TooltipTrigger>
-          {}
           <TooltipContent>{presentation.label}</TooltipContent>
         </Tooltip>
       </TooltipProvider>
@@ -1063,6 +1060,7 @@ export function MachineUpdatesRows({
       (candidate) => candidate.id === providerId,
     );
     const ProviderIcon = getProviderIconInfo(
+      "agent",
       providerId,
       providerInfo ?? null,
     )?.icon;

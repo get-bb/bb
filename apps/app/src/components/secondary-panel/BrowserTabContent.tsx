@@ -22,7 +22,6 @@ import {
 } from "@bb/desktop-contract";
 import {
   COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
-  COARSE_POINTER_HEADER_ICON_BUTTON_CLASS,
   COARSE_POINTER_TEXT_SM_CLASS,
 } from "@bb/shared-ui/coarse-pointer-sizing";
 import { Icon } from "@bb/shared-ui/icon";
@@ -37,7 +36,11 @@ import { useBrowserHistory } from "@/lib/browser-history";
 import { BROWSER_VIEW_BOUNDS_SYNC_EVENT } from "@/lib/browser-view-bounds-sync";
 import { useIsBrowserDimmingModalOpen } from "@/hooks/useBrowserDimmingModal";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
-import { BrowserFindBar, type BrowserFindMatches } from "./BrowserFindBar";
+import {
+  BrowserChromeIconButton,
+  BrowserFindBar,
+  type BrowserFindMatches,
+} from "./BrowserFindBar";
 import { BrowserNewTabScreen } from "./BrowserNewTabScreen";
 import {
   registerBrowserView,
@@ -50,7 +53,6 @@ import {
   useAppCommandShortcut,
 } from "@/components/commands/AppCommandProvider";
 import type { AppShortcutPresentation } from "@/lib/app-keybindings";
-import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { isLocalOnlyUrl } from "@/lib/loopback-hostname";
 
 interface BrowserTabContentProps {
@@ -89,14 +91,6 @@ interface BrowserChromeProps {
   onOpenExternal: () => void;
   locationShortcut: AppShortcutPresentation | null;
   reloadShortcut: AppShortcutPresentation | null;
-}
-
-interface NavButtonProps {
-  icon: "ChevronLeft" | "ChevronRight" | "RotateCcw" | "X" | "ExternalLink";
-  label: string;
-  disabled?: boolean;
-  onClick: () => void;
-  shortcut?: AppShortcutPresentation | null;
 }
 
 interface BrowserViewBoundsFromElementArgs {
@@ -179,32 +173,6 @@ function browserPageLoadErrorTitle(args: {
   return "Page unavailable";
 }
 
-function NavButton({
-  icon,
-  label,
-  disabled,
-  onClick,
-  shortcut,
-}: NavButtonProps) {
-  const accessibleLabel = shortcut ? `${label} (${shortcut.label})` : label;
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      aria-label={accessibleLabel}
-      aria-keyshortcuts={shortcut?.ariaKeyshortcuts}
-      className={cn(
-        "flex shrink-0 items-center justify-center transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40",
-        COARSE_POINTER_HEADER_ICON_BUTTON_CLASS,
-        CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS,
-      )}
-    >
-      <Icon name={icon} aria-hidden />
-    </button>
-  );
-}
-
 function BrowserChrome({
   addressDraft,
   isEditing,
@@ -243,19 +211,19 @@ function BrowserChrome({
           "absolute inset-x-0 top-0 flex h-11 translate-y-0 items-center gap-1 py-1.5 pl-2 pr-4 opacity-100 max-md:pointer-coarse:h-[52px]",
         )}
       >
-        <NavButton
+        <BrowserChromeIconButton
           icon="ChevronLeft"
           label="Go back"
           disabled={!(state?.canGoBack ?? false)}
           onClick={onBack}
         />
-        <NavButton
+        <BrowserChromeIconButton
           icon="ChevronRight"
           label="Go forward"
           disabled={!(state?.canGoForward ?? false)}
           onClick={onForward}
         />
-        <NavButton
+        <BrowserChromeIconButton
           icon={isLoading ? "X" : "RotateCcw"}
           label={isLoading ? "Stop loading" : "Reload"}
           shortcut={isLoading ? null : reloadShortcut}
@@ -314,7 +282,7 @@ function BrowserChrome({
             />
           </div>
         </form>
-        <NavButton
+        <BrowserChromeIconButton
           icon="ExternalLink"
           label="Open in external browser"
           disabled={currentUrl.length === 0}

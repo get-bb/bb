@@ -35,3 +35,21 @@ export {
   type ExperimentalVendorPluginRoots,
   type ExperimentalVendorPluginRootsArgs,
 } from "./vendor-plugin-roots.js";
+
+/**
+ * Kills every process whose working directory is at or under `directory`,
+ * SIGTERM first and SIGKILL after the grace, for a provider tearing down a
+ * workspace it made. Experimental: see docs/api_to_audit.md.
+ */
+export { killProcessesWithCwdUnder as experimental_killProcessesWithCwdUnder } from "@bb/process-utils";
+
+/**
+ * Spawns output-only child processes with a sanitized inherited environment
+ * for host-local plugin operations such as git.
+ * Experimental: see docs/api_to_audit.md.
+ */
+export {
+  sanitizeInheritedChildProcessEnv as experimental_sanitizeInheritedChildProcessEnv,
+  spawnPortableOutputProcess as experimental_spawnPortableOutputProcess,
+} from "@bb/process-utils";
+export type { SanitizeInheritedChildProcessEnvArgs as ExperimentalSanitizeInheritedChildProcessEnvArgs } from "@bb/process-utils";

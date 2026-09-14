@@ -120,6 +120,24 @@ interface QueueActiveParentSystemMessageInTransactionArgs extends QueueReadyPare
   preparedCommand: PreparedTurnSubmitCommandPayload;
 }
 
+function parentSystemTurnRequestFields(
+  args: QueueReadyParentSystemMessageArgs,
+) {
+  return {
+    threadId: args.thread.id,
+    environmentId: args.environment.id,
+    type: "client/turn/requested",
+    input: args.input,
+    execution: args.execution,
+    initiator: "system",
+    senderThreadId: null,
+    systemMessageKind: args.systemMessageKind,
+    systemMessageSubject: args.systemMessageSubject,
+    requestMethod: "turn/start",
+    source: PARENT_SYSTEM_MESSAGE_SOURCE,
+  } as const;
+}
+
 function splitRenderedParentSystemSlot(
   args: BuildParentSystemInputFromTemplateSlotArgs,
 ): RenderedParentSystemSlotParts {
@@ -216,17 +234,7 @@ function queueActiveParentSystemMessageInTransaction(
 
   const expectedSteerTurnId = getActiveTurnId({ db: tx }, args.thread.id);
   const request = appendClientTurnEventInTransaction(tx, {
-    threadId: args.thread.id,
-    environmentId: args.environment.id,
-    type: "client/turn/requested",
-    input: args.input,
-    execution: args.execution,
-    initiator: "system",
-    senderThreadId: null,
-    systemMessageKind: args.systemMessageKind,
-    systemMessageSubject: args.systemMessageSubject,
-    requestMethod: "turn/start",
-    source: PARENT_SYSTEM_MESSAGE_SOURCE,
+    ...parentSystemTurnRequestFields(args),
     target: {
       kind: "auto",
       expectedTurnId: expectedSteerTurnId,
@@ -302,7 +310,6 @@ async function queueActiveParentSystemMessage(
       hostId: args.environment.hostId,
       path: args.environment.path,
       status: args.environment.status,
-      workspaceProvisionType: args.environment.workspaceProvisionType,
     },
   });
 
@@ -360,7 +367,6 @@ async function queueReadyParentSystemMessage(
       hostId: args.environment.hostId,
       path: args.environment.path,
       status: args.environment.status,
-      workspaceProvisionType: args.environment.workspaceProvisionType,
     },
     projectId: args.thread.projectId,
     providerId: args.thread.providerId,
@@ -370,17 +376,7 @@ async function queueReadyParentSystemMessage(
     (tx) => {
       ensureThreadCanStartRequest(args.thread);
       appendPreparedClientTurnRequestedEventWithNotificationInTransaction(tx, {
-        threadId: args.thread.id,
-        environmentId: args.environment.id,
-        type: "client/turn/requested",
-        input: args.input,
-        execution: args.execution,
-        initiator: "system",
-        senderThreadId: null,
-        systemMessageKind: args.systemMessageKind,
-        systemMessageSubject: args.systemMessageSubject,
-        requestMethod: "turn/start",
-        source: PARENT_SYSTEM_MESSAGE_SOURCE,
+        ...parentSystemTurnRequestFields(args),
         target: { kind: "new-turn" },
         requestId,
       });

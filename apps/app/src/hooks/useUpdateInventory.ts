@@ -60,6 +60,10 @@ export function buildUpdateInventoryProviderIssues(
     .filter(isProviderCliIssue);
 }
 
+export function updateInventoryHosts(hosts: readonly Host[]): Host[] {
+  return hosts.filter((host) => host.type !== "ephemeral");
+}
+
 export function useUpdateInventory(
   options?: UseUpdateInventoryOptions,
 ): UpdateInventory {
@@ -73,9 +77,9 @@ export function useUpdateInventory(
   ).length;
 
   const hosts = useMemo(() => hostsQuery.data ?? [], [hostsQuery.data]);
-  const connectedHosts = useMemo(
-    () => hosts.filter((host) => host.status === "connected"),
-    [hosts],
+  const updateHosts = updateInventoryHosts(hosts);
+  const connectedHosts = updateHosts.filter(
+    (host) => host.status === "connected",
   );
   const primaryHostId =
     selectPrimaryHost(hosts, systemConfigQuery.data?.primaryHostId ?? null)
@@ -101,7 +105,7 @@ export function useUpdateInventory(
     }
   });
 
-  const machines: UpdateInventoryMachine[] = hosts.map((host) => {
+  const machines: UpdateInventoryMachine[] = updateHosts.map((host) => {
     const statusQuery = providerStatusByHostId.get(host.id);
     const providerStatus = statusQuery?.data ?? null;
     const issues =

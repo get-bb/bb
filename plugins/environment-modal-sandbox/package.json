@@ -1,0 +1,47 @@
+{
+  "name": "bb-plugin-environment-modal-sandbox",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Run bb threads in on-demand, isolated sandboxes",
+  "engines": {
+    "bb": ">=0.0"
+  },
+  "bb": {
+    "name": "Modal Sandbox [Experimental]",
+    "description": "Run bb threads in on-demand, isolated sandboxes",
+    "branding": {
+      "icon": "./modal-logo.svg"
+    },
+    "server": "./server.ts",
+    "skills": [
+      "skills"
+    ],
+    "app": "./app.tsx"
+  },
+  "keywords": [
+    "bb-plugin"
+  ],
+  "scripts": {
+    "lint": "oxlint .",
+    "test": "vitest run --config vitest.config.ts",
+    "typecheck": "tsc --noEmit",
+    "prepare:bundled": "bb-plugin-build prepare-bundled"
+  },
+  "dependencies": {
+    "modal": "0.10.0",
+    "zod": "^4.3.6",
+    "@bb/shared-ui": "workspace:*"
+  },
+  "devDependencies": {
+    "@get-bb/plugin-sdk": "workspace:*",
+    "@types/node": "^22.0.0",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "vitest": "^4.1.1",
+    "better-sqlite3": "^12.6.2",
+    "@types/react": "^19.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "@bb/plugin-build": "workspace:*"
+  }
+}

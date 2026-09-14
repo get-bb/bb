@@ -1,6 +1,14 @@
 import { writeFile } from "node:fs/promises";
 import { Command } from "commander";
-import type { ExperimentalDesktopBrowserScope } from "@bb/sdk";
+import type {
+  ExperimentalDesktopBrowserImportOutcome,
+  ExperimentalDesktopBrowserImportSources,
+  ExperimentalDesktopBrowserScope,
+} from "@bb/sdk";
+import {
+  DESKTOP_BROWSER_IMPORT_FAILURE_COPY,
+  desktopBrowserImportSourceIdSchema,
+} from "@bb/host-daemon-contract";
 import { action } from "../action.js";
 import { createCliBbSdk } from "../client.js";
 
@@ -18,6 +26,63 @@ function scope(options: ScopeOptions): ExperimentalDesktopBrowserScope {
     generation: options.generation,
     threadId: options.thread,
   };
+}
+interface InstanceOptions {
+  json?: boolean;
+  host: string;
+  instance: string;
+  generation: string;
+}
+function instanceScoped(command: Command) {
+  return command
+    .requiredOption("--host <id>", "Browser host ID")
+    .requiredOption("--instance <id>", "Desktop window instance ID")
+    .requiredOption("--generation <id>", "Desktop connection generation")
+    .option("--json", "Print machine-readable JSON output");
+}
+function parseImportTarget(
+  value: string | undefined,
+): { kind: "personal" } | { kind: "automation"; id: string } {
+  if (value === undefined || value === "personal") return { kind: "personal" };
+  const match = /^automation:(.+)$/.exec(value);
+  if (!match) {
+    throw new Error(
+      "Expected --into personal or --into automation:<profile-id>",
+    );
+  }
+  return { kind: "automation", id: match[1] };
+}
+export function formatImportSources(
+  result: ExperimentalDesktopBrowserImportSources,
+): string {
+  const lines = result.sources.map((source) => {
+    const status = source.unavailable ?? "ready";
+    const profiles = source.profiles
+      .map(
+        (profile) =>
+          `${profile.directory}${
+            profile.name === profile.directory ? "" : ` "${profile.name}"`
+          }${profile.cookieCount === undefined ? "" : ` (${profile.cookieCount})`}`,
+      )
+      .join(", ");
+    return `${source.id}  ${status}  ${profiles}`.trimEnd();
+  });
+  return lines.join("\n") || "No importable browsers found";
+}
+export function formatImportOutcome(
+  outcome: ExperimentalDesktopBrowserImportOutcome,
+): string {
+  if (!outcome.ok)
+    return `Import failed: ${DESKTOP_BROWSER_IMPORT_FAILURE_COPY[outcome.reason]}`;
+  const skipped =
+    outcome.skipped > 0
+      ? `, skipped ${outcome.skipped}${
+          outcome.skippedDomains.length > 0
+            ? ` (${outcome.skippedDomains.join(", ")})`
+            : ""
+        }`
+      : "";
+  return `Imported ${outcome.imported} cookies${skipped}`;
 }
 function scoped(command: Command) {
   return command
@@ -223,6 +288,63 @@ export function registerBrowserCommands(
             options,
             `Saved screenshot to ${options.output}`,
           );
+        },
+      ),
+    );
+  instanceScoped(
+    browser
+      .command("import-sources")
+      .description(
+        "List browsers on the desktop host whose cookies can be imported",
+      ),
+  ).action(
+    action(async (options: InstanceOptions) => {
+      const result = await api().listImportSources({
+        hostId: options.host,
+        instanceId: options.instance,
+        generation: options.generation,
+      });
+      print(result, options, formatImportSources(result));
+    }),
+  );
+  instanceScoped(
+    browser
+      .command("import-cookies")
+      .description(
+        "Copy signed-in cookies from an installed browser into the BB browser",
+      ),
+  )
+    .requiredOption(
+      "--from <source>",
+      "Source browser ID from `bb browser import-sources`",
+    )
+    .requiredOption(
+      "--profile <directory>",
+      "Source profile directory as printed by `bb browser import-sources`",
+    )
+    .option(
+      "--into <target>",
+      "Target profile: personal (default) or automation:<profile-id>",
+    )
+    .action(
+      action(
+        async (
+          options: InstanceOptions & {
+            from: string;
+            profile: string;
+            into?: string;
+          },
+        ) => {
+          const outcome = await api().importCookies({
+            hostId: options.host,
+            instanceId: options.instance,
+            generation: options.generation,
+            sourceId: desktopBrowserImportSourceIdSchema.parse(options.from),
+            sourceProfileDirectory: options.profile,
+            profile: parseImportTarget(options.into),
+          });
+          print(outcome, options, formatImportOutcome(outcome));
+          if (!outcome.ok) process.exitCode = 1;
         },
       ),
     );

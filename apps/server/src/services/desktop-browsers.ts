@@ -3,12 +3,15 @@ import { getStoredThreadTabs, replaceStoredThreadTabs } from "@bb/db";
 import type { DesktopBrowserTab } from "@bb/host-daemon-contract";
 import {
   threadTabsSchema,
+  type ThreadTab,
   type ExperimentalDesktopBrowserScope,
   type ExperimentalDesktopBrowserCreateRequest,
   type ExperimentalDesktopBrowserAcquireRequest,
   type ExperimentalDesktopBrowserLeaseRequest,
   type ExperimentalDesktopBrowserTabRequest,
   type ExperimentalDesktopBrowserLease,
+  type ExperimentalDesktopBrowserInstanceRequest,
+  type ExperimentalDesktopBrowserImportCookiesRequest,
 } from "@bb/server-contract";
 import type { WorkSessionDeps } from "../types.js";
 import { ApiError } from "../errors.js";
@@ -16,7 +19,10 @@ import {
   requirePublicThread,
   requireNonDestroyedHostWithStatus,
 } from "./lib/entity-lookup.js";
-import { callHostOnlineRpc } from "./hosts/online-rpc.js";
+import {
+  callHostOnlineRpc,
+  callHostOnlineRpcForWork,
+} from "./hosts/online-rpc.js";
 
 interface LeaseEntry {
   lease: ExperimentalDesktopBrowserLease;
@@ -86,18 +92,19 @@ function requireLease(
   return entry;
 }
 
-export function persistDesktopBrowserTab(
-  deps: Pick<WorkSessionDeps, "db" | "hub">,
+function readStoredTabs(db: WorkSessionDeps["db"], threadId: string) {
+  const stored = getStoredThreadTabs(db, threadId);
+  return {
+    stored,
+    tabs: stored ? threadTabsSchema.parse(JSON.parse(stored.tabsJson)) : [],
+  };
+}
+
+function toStoredBrowserTab(
   scope: ExperimentalDesktopBrowserScope,
   tab: DesktopBrowserTab,
 ) {
-  if (tab.threadId !== scope.threadId || tab.url.length > 4096) return;
-  requirePublicThread(deps.db, scope.threadId);
-  const stored = getStoredThreadTabs(deps.db, scope.threadId);
-  const tabs = stored
-    ? threadTabsSchema.parse(JSON.parse(stored.tabsJson))
-    : [];
-  const next = {
+  return {
     id: tab.tabId,
     kind: "browser" as const,
     environmentId: null,
@@ -109,6 +116,59 @@ export function persistDesktopBrowserTab(
       generation: scope.generation,
     },
   };
+}
+
+function sameDesktopTarget(
+  tab: ThreadTab,
+  scope: ExperimentalDesktopBrowserScope,
+) {
+  return (
+    tab.kind === "browser" &&
+    tab.desktopTarget?.hostId === scope.hostId &&
+    tab.desktopTarget.instanceId === scope.instanceId &&
+    tab.desktopTarget.generation === scope.generation
+  );
+}
+
+function assertTabsInThread(
+  tabs: readonly DesktopBrowserTab[],
+  threadId: string,
+) {
+  if (tabs.some((tab) => tab.threadId !== threadId)) {
+    throw new ApiError(
+      502,
+      "desktop_tab_scope",
+      "Desktop returned tabs outside the requested thread",
+    );
+  }
+}
+
+function sendReleaseControl(
+  call: typeof callHostOnlineRpc,
+  deps: WorkSessionDeps,
+  input: ExperimentalDesktopBrowserScope,
+  leaseId: string,
+) {
+  return call(deps, {
+    hostId: input.hostId,
+    timeoutMs: 10000,
+    command: {
+      type: "desktop.browser.release_control",
+      ...scopeCommand(input),
+      leaseId,
+    },
+  });
+}
+
+export function persistDesktopBrowserTab(
+  deps: Pick<WorkSessionDeps, "db" | "hub">,
+  scope: ExperimentalDesktopBrowserScope,
+  tab: DesktopBrowserTab,
+) {
+  if (tab.threadId !== scope.threadId || tab.url.length > 4096) return;
+  requirePublicThread(deps.db, scope.threadId);
+  const { stored, tabs } = readStoredTabs(deps.db, scope.threadId);
+  const next = toStoredBrowserTab(scope, tab);
   const index = tabs.findIndex((value) => value.id === tab.tabId);
   if (index < 0) tabs.push(next);
   else tabs[index] = next;
@@ -126,18 +186,10 @@ export function removeDesktopBrowserTab(
   scope: ExperimentalDesktopBrowserScope,
   tabId: string,
 ) {
-  const stored = getStoredThreadTabs(deps.db, scope.threadId);
+  const { stored, tabs } = readStoredTabs(deps.db, scope.threadId);
   if (!stored) return;
-  const tabs = threadTabsSchema.parse(JSON.parse(stored.tabsJson));
   const filtered = tabs.filter(
-    (tab) =>
-      !(
-        tab.id === tabId &&
-        tab.kind === "browser" &&
-        tab.desktopTarget?.hostId === scope.hostId &&
-        tab.desktopTarget.instanceId === scope.instanceId &&
-        tab.desktopTarget.generation === scope.generation
-      ),
+    (tab) => !(tab.id === tabId && sameDesktopTarget(tab, scope)),
   );
   if (filtered.length === tabs.length) return;
   replaceStoredThreadTabs(deps.db, {
@@ -173,13 +225,7 @@ export async function listDesktopBrowserTabs(
     timeoutMs: 10000,
     command: { type: "desktop.browser.list_tabs", ...scopeCommand(scope) },
   });
-  if (result.tabs.some((tab) => tab.threadId !== scope.threadId)) {
-    throw new ApiError(
-      502,
-      "desktop_tab_scope",
-      "Desktop returned tabs outside the requested thread",
-    );
-  }
+  assertTabsInThread(result.tabs, scope.threadId);
   return result;
 }
 
@@ -188,7 +234,7 @@ export async function createDesktopBrowserTab(
   input: ExperimentalDesktopBrowserCreateRequest,
 ) {
   authorize(deps, input);
-  const result = await callHostOnlineRpc(deps, {
+  const result = await callHostOnlineRpcForWork(deps, {
     hostId: input.hostId,
     timeoutMs: 15000,
     command: {
@@ -228,16 +274,24 @@ export async function releaseDesktopBrowserControl(
   entry.active = false;
   clearTimeout(entry.timer);
   registry(deps).delete(input.leaseId);
-  await callHostOnlineRpc(deps, {
-    hostId: input.hostId,
-    timeoutMs: 10000,
-    command: {
-      type: "desktop.browser.release_control",
-      ...scopeCommand(input),
-      leaseId: input.leaseId,
-    },
-  });
+  await sendReleaseControl(
+    callHostOnlineRpcForWork,
+    deps,
+    input,
+    input.leaseId,
+  );
   return { ok: true as const };
+}
+
+async function releaseExpiredDesktopBrowserControl(
+  deps: WorkSessionDeps,
+  input: ExperimentalDesktopBrowserLeaseRequest,
+) {
+  const entry = registry(deps).get(input.leaseId);
+  if (!entry || !sameScope(entry.lease, input)) return;
+  entry.active = false;
+  registry(deps).delete(input.leaseId);
+  await sendReleaseControl(callHostOnlineRpc, deps, input, input.leaseId);
 }
 
 export async function acquireDesktopBrowserControl(
@@ -254,13 +308,21 @@ export async function acquireDesktopBrowserControl(
     expiresAt: Date.now() + input.ttlMs,
   };
   const timer = setTimeout(() => {
-    void releaseDesktopBrowserControl(deps, lease).catch(() => {});
+    void releaseExpiredDesktopBrowserControl(deps, lease).catch(() => {});
   }, input.ttlMs);
   timer.unref();
   const entry: LeaseEntry = { lease, timer, active: true };
   registry(deps).set(lease.leaseId, entry);
   try {
-    const { tabs } = await listDesktopBrowserTabs(deps, input);
+    const { tabs } = await callHostOnlineRpcForWork(deps, {
+      hostId: input.hostId,
+      timeoutMs: 10000,
+      command: {
+        type: "desktop.browser.list_tabs",
+        ...scopeCommand(input),
+      },
+    });
+    assertTabsInThread(tabs, input.threadId);
     const selected = input.tabIds.map((id) =>
       tabs.find((tab) => tab.tabId === id),
     );
@@ -285,7 +347,7 @@ export async function acquireDesktopBrowserControl(
         "desktop_control_expired",
         "Browser control was cancelled while checking tabs",
       );
-    await callHostOnlineRpc(deps, {
+    await callHostOnlineRpcForWork(deps, {
       hostId: input.hostId,
       timeoutMs: 10000,
       command: {
@@ -298,15 +360,12 @@ export async function acquireDesktopBrowserControl(
       },
     });
     if (!entry.active || lease.expiresAt <= Date.now()) {
-      await callHostOnlineRpc(deps, {
-        hostId: input.hostId,
-        timeoutMs: 10000,
-        command: {
-          type: "desktop.browser.release_control",
-          ...scopeCommand(input),
-          leaseId: lease.leaseId,
-        },
-      });
+      await sendReleaseControl(
+        callHostOnlineRpcForWork,
+        deps,
+        input,
+        lease.leaseId,
+      );
       throw new ApiError(
         409,
         "desktop_control_expired",
@@ -343,7 +402,7 @@ export async function openDesktopBrowserConnection(
   input: ExperimentalDesktopBrowserLeaseRequest,
 ) {
   const entry = requireLease(deps, input);
-  const result = await callHostOnlineRpc(deps, {
+  const result = await callHostOnlineRpcForWork(deps, {
     hostId: input.hostId,
     timeoutMs: 10000,
     command: {
@@ -363,7 +422,7 @@ export async function desktopBrowserTabAction(
   action: "reveal" | "close",
 ) {
   authorize(deps, input);
-  const result = await callHostOnlineRpc(deps, {
+  const result = await callHostOnlineRpcForWork(deps, {
     hostId: input.hostId,
     timeoutMs: 10000,
     command: {
@@ -384,13 +443,48 @@ export async function captureDesktopBrowserTab(
   input: ExperimentalDesktopBrowserTabRequest,
 ) {
   authorize(deps, input);
-  return callHostOnlineRpc(deps, {
+  return callHostOnlineRpcForWork(deps, {
     hostId: input.hostId,
     timeoutMs: 15000,
     command: {
       type: "desktop.browser.capture_tab",
       ...scopeCommand(input),
       tabId: input.tabId,
+    },
+  });
+}
+
+export async function listDesktopBrowserImportSources(
+  deps: WorkSessionDeps,
+  input: ExperimentalDesktopBrowserInstanceRequest,
+) {
+  requireNonDestroyedHostWithStatus(deps, input.hostId);
+  return callHostOnlineRpc(deps, {
+    hostId: input.hostId,
+    timeoutMs: 15000,
+    command: {
+      type: "desktop.browser.list_import_sources",
+      instanceId: input.instanceId,
+      generation: input.generation,
+    },
+  });
+}
+
+export async function importDesktopBrowserCookies(
+  deps: WorkSessionDeps,
+  input: ExperimentalDesktopBrowserImportCookiesRequest,
+) {
+  requireNonDestroyedHostWithStatus(deps, input.hostId);
+  return callHostOnlineRpc(deps, {
+    hostId: input.hostId,
+    timeoutMs: 120000,
+    command: {
+      type: "desktop.browser.import_cookies",
+      instanceId: input.instanceId,
+      generation: input.generation,
+      sourceId: input.sourceId,
+      sourceProfileDirectory: input.sourceProfileDirectory,
+      profile: input.profile,
     },
   });
 }
@@ -413,20 +507,10 @@ export function syncDesktopBrowserTabs(
   nativeTabs: DesktopBrowserTab[],
 ) {
   requirePublicThread(deps.db, scope.threadId);
-  const stored = getStoredThreadTabs(deps.db, scope.threadId);
-  const tabs = stored
-    ? threadTabsSchema.parse(JSON.parse(stored.tabsJson))
-    : [];
+  const { stored, tabs } = readStoredTabs(deps.db, scope.threadId);
   const ids = new Set(nativeTabs.map((tab) => tab.tabId));
   const next = tabs.filter(
-    (tab) =>
-      !(
-        tab.kind === "browser" &&
-        tab.desktopTarget?.hostId === scope.hostId &&
-        tab.desktopTarget.instanceId === scope.instanceId &&
-        tab.desktopTarget.generation === scope.generation &&
-        !ids.has(tab.id)
-      ),
+    (tab) => !(sameDesktopTarget(tab, scope) && !ids.has(tab.id)),
   );
   for (const tab of nativeTabs) {
     if (tab.threadId !== scope.threadId || tab.url.length > 4096) continue;
@@ -440,18 +524,7 @@ export function syncDesktopBrowserTabs(
             previous.desktopTarget.instanceId !== scope.instanceId)))
     )
       continue;
-    const value = {
-      id: tab.tabId,
-      kind: "browser" as const,
-      environmentId: null,
-      title: tab.title.slice(0, 1024) || null,
-      url: tab.url,
-      desktopTarget: {
-        hostId: scope.hostId,
-        instanceId: scope.instanceId,
-        generation: scope.generation,
-      },
-    };
+    const value = toStoredBrowserTab(scope, tab);
     if (index === -1) next.push(value);
     else next[index] = value;
   }

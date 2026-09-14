@@ -7,10 +7,9 @@ import {
 } from "@bb/connect-client";
 import { ConnectPairError } from "./redeem.js";
 import type { ConnectTunnel } from "./tunnel.js";
-import type { ConnectStatus } from "./types.js";
+import type { ConnectStatus, ShareListing } from "./types.js";
 import { MachineCodeError, type MachineCode } from "./machine-code.js";
 import type { ShareHostResolver } from "./hosts.js";
-import type { ShareListing } from "./shares.js";
 
 const pairInputSchema = z.object({
   code: z.string().min(1),
@@ -26,7 +25,7 @@ const portInputSchema = z
   .strict();
 const revokeMachineInputSchema = z.object({ machineId: z.string().min(1) });
 
-const connectShareStatusSchema = z
+const shareListingSchema: z.ZodType<ShareListing> = z
   .object({
     hostId: z.string(),
     hostName: z.string(),
@@ -49,18 +48,7 @@ const connectStatusSchema: z.ZodType<ConnectStatus> = z
     since: z.number(),
     remoteClients: z.number().int(),
     lastRemoteActivityAt: z.number().nullable(),
-    shares: z.array(connectShareStatusSchema),
-  })
-  .strict();
-
-const shareListingSchema: z.ZodType<ShareListing> = z
-  .object({
-    hostId: z.string(),
-    hostName: z.string(),
-    port: z.number().int(),
-    createdAt: z.number(),
-    url: z.string(),
-    unavailableReason: z.string().optional(),
+    shares: z.array(shareListingSchema),
   })
   .strict();
 
@@ -139,6 +127,18 @@ export const connectRpcContract = defineRpcContract({
 
 type ConnectRpcHandlers = PluginRpcHandlers<typeof connectRpcContract>;
 
+async function rethrowErrorCode<T>(
+  operation: () => Promise<T>,
+  isCoded: (error: unknown) => error is { code: string },
+): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    if (isCoded(error)) throw new Error(error.code);
+    throw error;
+  }
+}
+
 export interface MobilePairingGate {
   enabled(): Promise<boolean>;
 }
@@ -150,18 +150,15 @@ export function createRpcHandlers(
 ): ConnectRpcHandlers {
   return {
     async pair(args) {
-      try {
-        return await tunnel.pair({
-          code: args.code,
-          ...(args.server !== undefined ? { serverUrl: args.server } : {}),
-          ...(args.baseUrl !== undefined ? { baseUrl: args.baseUrl } : {}),
-        });
-      } catch (error) {
-        if (error instanceof ConnectPairError) {
-          throw new Error(error.code);
-        }
-        throw error;
-      }
+      return rethrowErrorCode(
+        () =>
+          tunnel.pair({
+            code: args.code,
+            ...(args.server !== undefined ? { serverUrl: args.server } : {}),
+            ...(args.baseUrl !== undefined ? { baseUrl: args.baseUrl } : {}),
+          }),
+        (error) => error instanceof ConnectPairError,
+      );
     },
     async status() {
       return tunnel.refreshStatus();
@@ -186,37 +183,25 @@ export function createRpcHandlers(
       return tunnel.listShares();
     },
     async listAccountServers() {
-      try {
-        return await tunnel.listAccountServers();
-      } catch (error) {
-        if (error instanceof ConnectListError) {
-          throw new Error(error.code);
-        }
-        throw error;
-      }
+      return rethrowErrorCode(
+        () => tunnel.listAccountServers(),
+        (error) => error instanceof ConnectListError,
+      );
     },
     async createDesktopSession() {
-      try {
-        return await tunnel.createDesktopSession();
-      } catch (error) {
-        if (error instanceof ConnectListError) {
-          throw new Error(error.code);
-        }
-        throw error;
-      }
+      return rethrowErrorCode(
+        () => tunnel.createDesktopSession(),
+        (error) => error instanceof ConnectListError,
+      );
     },
     async mobilePairing() {
       return { enabled: await mobilePairing.enabled() };
     },
     async createMachineCode() {
-      try {
-        return await tunnel.createMachineCode();
-      } catch (error) {
-        if (error instanceof MachineCodeError) {
-          throw new Error(error.code);
-        }
-        throw error;
-      }
+      return rethrowErrorCode(
+        () => tunnel.createMachineCode(),
+        (error) => error instanceof MachineCodeError,
+      );
     },
     async revokeMachine(args) {
       await tunnel.revokeMachine(args.machineId);

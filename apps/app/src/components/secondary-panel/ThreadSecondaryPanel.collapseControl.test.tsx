@@ -195,6 +195,11 @@ describe("ThreadSecondaryPanel compact file content", () => {
     );
 
     expect(screen.getByText("Recovered tab body")).toBeTruthy();
+    expect(
+      screen
+        .getByTestId("thread-secondary-panel-top-chrome")
+        .classList.contains("pl-14"),
+    ).toBe(true);
   });
 
   it("renders arbitrary fixed-tab content through the shared surface", () => {
@@ -702,6 +707,11 @@ describe("ThreadSecondaryPanel hide control glyph", () => {
 
     const hideControl = view.getByRole("button", { name: "Hide right panel" });
     expect(hideControl.querySelector('[data-icon="PanelRight"]')).toBeTruthy();
+    expect(
+      screen
+        .getByTestId("thread-secondary-panel-top-chrome")
+        .classList.contains("pl-14"),
+    ).toBe(false);
   });
 
   it("shows the side-panel glyph on a wide viewport", () => {

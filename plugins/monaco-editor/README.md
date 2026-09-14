@@ -35,7 +35,7 @@ pnpm exec turbo run typecheck test --filter=bb-plugin-monaco-editor
 ```
 
 `scripts/stage-assets.mjs` builds the Monaco bundle the editor loads, into
-`dist/monaco`. Packaging runs it (`apps/server/scripts/copy-builtin-plugins.ts`),
+`dist/monaco`. Packaging runs it (`bb-plugin-build prepare-bundled`),
 since only a builtin's `dist/` ships. A source checkout never runs that path —
 the dev server loads builtins straight from `plugins/<name>` — so the plugin
 builds the bundle itself when it is missing or older than `monaco-bundle/`,

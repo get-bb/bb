@@ -27,3 +27,12 @@ the server tunnel. Other enrolled hosts use
 `https://<machine-label>--<port>.<base-domain>` through their daemon. If a
 machine was not enrolled through Connect, expose fails with instructions to
 remove and re-add it under Settings > Machines.
+
+## Agent instructions setting
+
+Settings → Installed plugins → Connect has a "Tell agents about remote access"
+toggle, enabled by default. Use
+`bb plugin config connect set sendRemoteInstructions false` to suppress the
+remote-access message, or `true` to restore it. This controls only the message;
+sharing still works. The message otherwise requires active or recent remote
+usage. Changes apply when session instructions are next assembled.

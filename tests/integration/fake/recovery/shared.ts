@@ -15,11 +15,6 @@ export const STOP_DELAY_TEXT = "delay:5000 recovery turn";
 
 type RecoveryWorkspaceType = "unmanaged" | "managed-worktree";
 
-interface RecoveryThreadFixture extends ReadyThreadFixture {
-  projectName: string;
-  projectRootPath: string;
-}
-
 export function requireSessionId(harness: IntegrationHarness): string {
   const sessionId = harness.daemonApp.connection.sessionId;
   if (!sessionId) {
@@ -32,20 +27,15 @@ export async function createRecoveryThread(
   harness: IntegrationHarness,
   name: string,
   workspaceType: RecoveryWorkspaceType = "unmanaged",
-): Promise<RecoveryThreadFixture> {
+): Promise<ReadyThreadFixture> {
   const project = await createProjectFixture(harness, { name });
   const workspace =
     workspaceType === "unmanaged"
       ? { type: "unmanaged" as const, path: harness.repoDir }
       : { type: "managed-worktree" as const };
-  const readyThread = await createReadyHostThread(harness, {
+  return createReadyHostThread(harness, {
     projectId: project.id,
     timeoutMs: DEFAULT_TIMEOUT_MS,
     workspace,
   });
-  return {
-    ...readyThread,
-    projectName: name,
-    projectRootPath: harness.repoDir,
-  };
 }

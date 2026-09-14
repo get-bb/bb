@@ -4,10 +4,7 @@ import type {
   ExperimentalAiVoiceTranscribeInput,
   ExperimentalAiVoiceTranscribeOutput,
 } from "@get-bb/plugin-sdk/ai-services";
-import type {
-  PluginAiServiceDeclaration,
-  PluginAiServiceKind,
-} from "@get-bb/plugin-sdk";
+import type { PluginAiServiceDeclaration } from "@get-bb/plugin-sdk";
 import { aiServiceAlreadyRegisteredMessage } from "@get-bb/plugin-sdk/internal/host-policy";
 
 export interface AiServiceCallOptions {
@@ -35,7 +32,6 @@ export interface AiServiceInfo extends PluginAiServiceDeclaration {
 export interface AiServiceRegistry {
   register(registration: AiServiceRegistration): { dispose(): void };
   get(id: string): AiServiceRegistration | null;
-  serves(id: string, kind: PluginAiServiceKind): boolean;
   list(): AiServiceInfo[];
 }
 
@@ -60,9 +56,6 @@ export function createAiServiceRegistry(): AiServiceRegistry {
     },
     get(id) {
       return services.get(id) ?? null;
-    },
-    serves(id, kind) {
-      return services.get(id)?.kinds.includes(kind) ?? false;
     },
     list() {
       return [...services.values()].map((service) => ({

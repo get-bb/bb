@@ -1,16 +1,16 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { isPathWithinDirectory } from "@bb/process-utils";
+import type {
+  ParcelWatcherEventBatch,
+  ParcelWatcherSubscribeOptions,
+} from "./parcel-watcher-backend.js";
 import type { WorkspaceStatusChangeEvent } from "./watch-status-types.js";
-
-type ParcelWatcherSubscribe = (typeof import("@parcel/watcher"))["subscribe"];
-type ParcelWatcherOptions = Parameters<ParcelWatcherSubscribe>[2];
-type ParcelWatcherCallback = Parameters<ParcelWatcherSubscribe>[1];
-type ParcelWatcherEventBatch = Parameters<ParcelWatcherCallback>[1];
 
 export interface WatchSubscriptionSpec {
   includeSharedGitRefs?: boolean;
   kind: "common-dir" | "git-dir" | "workspace-root";
-  options?: ParcelWatcherOptions;
+  options?: ParcelWatcherSubscribeOptions;
   rootPath: string;
 }
 
@@ -19,7 +19,7 @@ interface GitMetadataLayout {
   gitDirPath: string;
 }
 
-async function canonicalizePath(inputPath: string): Promise<string> {
+export async function canonicalizePath(inputPath: string): Promise<string> {
   try {
     return await fs.realpath(inputPath);
   } catch {
@@ -83,21 +83,13 @@ async function resolveGitMetadataLayout(
   };
 }
 
-function createCommonDirWatchOptions(): ParcelWatcherOptions {
+function createCommonDirWatchOptions(): ParcelWatcherSubscribeOptions {
   return {
     ignore: ["hooks", "info", "logs", "modules", "objects", "worktrees"],
   };
 }
 
-function isPathWithinRoot(rootPath: string, candidatePath: string): boolean {
-  const relativePath = path.relative(rootPath, candidatePath);
-  return (
-    relativePath.length === 0 ||
-    (!relativePath.startsWith("..") && !path.isAbsolute(relativePath))
-  );
-}
-
-function resolveEventPath(rootPath: string, eventPath: string): string {
+export function resolveEventPath(rootPath: string, eventPath: string): string {
   return path.isAbsolute(eventPath)
     ? path.normalize(eventPath)
     : path.resolve(rootPath, eventPath);
@@ -154,7 +146,7 @@ export function collectWorkspaceStatusChanges(args: {
 
   for (const event of args.events) {
     const candidatePath = resolveEventPath(args.spec.rootPath, event.path);
-    if (!isPathWithinRoot(args.spec.rootPath, candidatePath)) {
+    if (!isPathWithinDirectory(args.spec.rootPath, candidatePath)) {
       continue;
     }
 

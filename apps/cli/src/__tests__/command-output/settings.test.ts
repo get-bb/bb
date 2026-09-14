@@ -25,12 +25,33 @@ describe("bb settings commands", () => {
     });
 
     await runCommand(
-      ["settings", "general", "showUnhandledProviderEvents", "true"],
+      ["settings", "general", "showDiagnosticEvents", "true"],
       register,
     );
 
     expect(put).toHaveBeenCalledWith({
-      json: { ...defaultAppSettings, showUnhandledProviderEvents: true },
+      json: { ...defaultAppSettings, showDiagnosticEvents: true },
+    });
+  });
+
+  it("disables automatic machine Git credentials despite the legacy response alias", async () => {
+    const put = vi.fn(async ({ json }) => json);
+    stubServerApi({
+      "v1.system.config.$get": vi.fn(async () => ({
+        generalSettings: {
+          ...defaultAppSettings,
+          showUnhandledProviderEvents: false,
+        },
+        experiments: defaultExperiments,
+      })),
+      "v1.settings.general.$put": put,
+    });
+    await runCommand(
+      ["settings", "general", "machineGitCredentialsEnabled", "false"],
+      register,
+    );
+    expect(put).toHaveBeenCalledWith({
+      json: { ...defaultAppSettings, machineGitCredentialsEnabled: false },
     });
   });
 
@@ -139,7 +160,6 @@ describe("bb settings commands", () => {
         {
           id: "host-remote",
           name: "builder",
-          type: "persistent",
           status: "connected",
           lastSeenAt: 1,
           lastRejectedProtocolVersion: null,

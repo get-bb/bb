@@ -33,11 +33,7 @@ import {
   resetCommandShortcutOverride,
   setCommandShortcutOverride,
 } from "@/lib/keyboard-shortcut-settings";
-import {
-  formatAppShortcut,
-  formatAppShortcutAria,
-  type AppShortcutPresentation,
-} from "@/lib/app-keybindings";
+import { browserPlatform, presentAppShortcut } from "@/lib/app-keybindings";
 import {
   useUpdateGeneralSettings,
   useUpdateKeyboardSettings,
@@ -59,20 +55,6 @@ const SETTINGS_DEFAULT_SHORTCUT_CLASS =
   "bg-muted/40 px-1.5 py-0.5 text-foreground opacity-100";
 const SETTINGS_SEGMENTED_DEFAULT_SHORTCUT_CLASS =
   "rounded-none border-l border-border bg-transparent px-1.5 py-0.5 text-foreground opacity-100";
-
-function browserPlatform(): string {
-  return typeof navigator === "undefined" ? "" : navigator.platform;
-}
-
-function presentShortcut(
-  shortcut: AppShortcut,
-  platform: string,
-): AppShortcutPresentation {
-  return {
-    ariaKeyshortcuts: formatAppShortcutAria(shortcut, platform),
-    label: formatAppShortcut(shortcut, platform),
-  };
-}
 
 function areNullableAppShortcutsEqual(
   left: AppShortcut | null,
@@ -105,7 +87,7 @@ const ShortcutRecorder = memo(
     const platform = browserPlatform();
     const [error, setError] = useState<string | null>(null);
     const shortcutPresentation =
-      shortcut === null ? null : presentShortcut(shortcut, platform);
+      shortcut === null ? null : presentAppShortcut(shortcut, platform);
     const formattedShortcut = shortcutPresentation?.label ?? "unassigned";
 
     function handleKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
@@ -372,7 +354,7 @@ const KeyboardCommandRow = memo(
                 <AppCommandShortcutPill
                   ariaHidden={false}
                   className={SETTINGS_DEFAULT_SHORTCUT_CLASS}
-                  shortcut={presentShortcut(sharedDefaultShortcut, platform)}
+                  shortcut={presentAppShortcut(sharedDefaultShortcut, platform)}
                 />
               ) : (
                 splitDefaults?.map((entry) => (
@@ -386,7 +368,7 @@ const KeyboardCommandRow = memo(
                     <AppCommandShortcutPill
                       ariaHidden={false}
                       className={SETTINGS_SEGMENTED_DEFAULT_SHORTCUT_CLASS}
-                      shortcut={presentShortcut(entry.shortcut, platform)}
+                      shortcut={presentAppShortcut(entry.shortcut, platform)}
                     />
                   </span>
                 ))
@@ -531,10 +513,25 @@ export function KeyboardSettingsSection() {
     };
   }, [defaults, isDesktop, overrides, platform, serverOverridesKey]);
 
+  const applyOverrides = useCallback(
+    (
+      next: AppKeybindingOverrides,
+      pending: AppCommandId | null,
+      previous: AppKeybindingOverrides,
+      sourceKey: string,
+    ) => {
+      pendingCommandRef.current = pending;
+      setDraft({ sourceKey, value: next });
+      mutateKeyboardSettings(next, {
+        onError: () => setDraft({ sourceKey, value: previous }),
+      });
+    },
+    [mutateKeyboardSettings],
+  );
+
   const updateCommand = useCallback(
     (command: AppCommandId, shortcut: AppShortcut | null) => {
       const current = latestSettingsRef.current;
-      const previous = current.overrides;
       const next = setCommandShortcutOverride(
         current.defaults,
         current.overrides,
@@ -543,35 +540,28 @@ export function KeyboardSettingsSection() {
         current.isDesktop,
         current.platform,
       );
-      pendingCommandRef.current = command;
-      setDraft({ sourceKey: current.serverOverridesKey, value: next });
-      mutateKeyboardSettings(next, {
-        onError: () =>
-          setDraft({
-            sourceKey: current.serverOverridesKey,
-            value: previous,
-          }),
-      });
+      applyOverrides(
+        next,
+        command,
+        current.overrides,
+        current.serverOverridesKey,
+      );
     },
-    [mutateKeyboardSettings],
+    [applyOverrides],
   );
 
   const resetCommand = useCallback(
     (command: AppCommandId) => {
       const current = latestSettingsRef.current;
-      const previous = current.overrides;
       const next = resetCommandShortcutOverride(current.overrides, command);
-      pendingCommandRef.current = command;
-      setDraft({ sourceKey: current.serverOverridesKey, value: next });
-      mutateKeyboardSettings(next, {
-        onError: () =>
-          setDraft({
-            sourceKey: current.serverOverridesKey,
-            value: previous,
-          }),
-      });
+      applyOverrides(
+        next,
+        command,
+        current.overrides,
+        current.serverOverridesKey,
+      );
     },
-    [mutateKeyboardSettings],
+    [applyOverrides],
   );
 
   const pendingCommand = isKeyboardSettingsPending
@@ -585,15 +575,9 @@ export function KeyboardSettingsSection() {
       action={
         <Button
           disabled={disabled || !hasOverrides}
-          onClick={() => {
-            const previous = overrides;
-            pendingCommandRef.current = null;
-            setDraft({ sourceKey: serverOverridesKey, value: [] });
-            mutateKeyboardSettings([], {
-              onError: () =>
-                setDraft({ sourceKey: serverOverridesKey, value: previous }),
-            });
-          }}
+          onClick={() =>
+            applyOverrides([], null, overrides, serverOverridesKey)
+          }
           size="sm"
           type="button"
           variant="outline"
@@ -629,7 +613,6 @@ export function KeyboardSettingsSection() {
           placeholder="Search shortcuts"
           value={search}
         />
-        {}
         <fieldset
           className={cn(
             "m-0 min-w-0 space-y-5 border-0 p-0",

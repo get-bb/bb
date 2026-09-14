@@ -114,7 +114,6 @@ function CopyablePath({ path }: { path: string }) {
       )}
       style={{ direction: "rtl", textAlign: "left" }}
     >
-      {}
       <bdi>{path}</bdi>
     </button>
   );

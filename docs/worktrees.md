@@ -21,14 +21,22 @@ branch. Under the hood it's `git worktree add` plus some bookkeeping:
 - It shares the repo's `.git` state with your main checkout — cheap to
   create, no full clone.
 - It gets its own branch so multiple threads can run in parallel.
-- It lives at `<BB_DATA_DIR>/worktrees/<environment-id>/<repo-name>` — for
-  example, `~/.bb/worktrees/env_abc.../myrepo`.
-- Once every thread using the environment is archived or deleted, bb cleans the
-  worktree up (`git worktree remove --force`) along with the branch.
+- It lives at
+  `<BB_DATA_DIR>/plugins/environment-git-worktree/host-data/worktrees/<thread-id>/<repo-name>`
+  — for example, `~/.bb/plugins/environment-git-worktree/host-data/worktrees/thr_abc.../myrepo`.
+- Once every thread using the environment is deleted, bb cleans the worktree up
+  (`git worktree remove --force`). Archiving the last thread starts a
+  five-minute grace period instead, so unarchiving within it keeps the
+  worktree; after it elapses the worktree is removed the same way.
+
+Worktrees are created by bb's built-in **Worktree** plugin, which is enabled by
+default. Disabling it in Settings → Installed plugins leaves existing worktrees alone
+but stops bb from making new ones: a thread that asks for one waits until the
+plugin is running again.
 
 ## Start a thread in a worktree
 
-In the app, pick **New worktree** in the environment picker when starting
+In the app, pick **Worktree** in the environment picker when starting
 a thread.
 
 From the CLI:
@@ -80,8 +88,11 @@ Contract:
 ## Run setup with `.bb-env-setup.sh`
 
 Drop a file named `.bb-env-setup.sh` at the root of your project. If bb finds
-one when it creates a worktree, it runs the script inside the new worktree
-before handing the thread to the agent.
+one after an environment provider creates a path it owns (`ownsPath: true`), bb
+runs the script inside that path before handing the thread to the agent. Core
+owns this policy for every provider. Attaching a project checkout or personal
+workspace (`ownsPath: false`) does not run either hook. Provider-specific
+preparation, including `.worktreeinclude` copying, finishes before setup starts.
 
 Use it for anything the agent will need in a fresh checkout — install
 dependencies, sync local state, generate tokens, etc. To bring local files in
@@ -112,19 +123,24 @@ Contract:
 
 ## Cleanup
 
-You don't need to clean up worktrees by hand — bb removes them once every
-thread using the environment is archived or deleted, and the branch goes with
-it. If you
-want to keep work the agent did, commit and push (or open a PR) from inside
-the worktree before letting the thread go.
+You don't need to clean up worktrees by hand. The Worktree plugin watches every
+worktree it made and removes the ones nothing is using:
 
-Before bb removes the directory, it stops every process whose working
-directory is inside the worktree — the agent's provider process, its
-background jobs (dev servers, MCP servers, `nohup` jobs), and any process
-you started there yourself, such as a shell you `cd`'d into the worktree or
-an editor terminal. Each process gets `SIGTERM`, then `SIGKILL` after a
-short grace period. Move your own shells out of the worktree before you
-delete the environment if you want to keep them.
+- Deleting the last thread on a worktree removes it right away.
+- Archiving the last thread starts a five-minute grace period. Unarchive a
+  thread within it and the worktree is kept; let it elapse and the worktree
+  goes.
+
+Removal runs `.bb-env-teardown.sh` inside the worktree first, then stops
+every process whose working directory is inside the worktree — the agent's
+provider process, its background jobs (dev servers, MCP servers, `nohup`
+jobs), and any process you started there yourself, such as a shell you `cd`'d
+into the worktree or an editor terminal. Each process gets `SIGTERM`, then
+`SIGKILL` after a short grace period. Then `git worktree remove --force` runs
+and the directory is deleted. The branch is left behind, so work you committed
+to it survives the worktree. If you want to keep uncommitted work, commit and
+push (or open a PR) from inside the worktree before letting the thread go, and
+move your own shells out of the worktree first if you want to keep them.
 
 ## Run teardown with `.bb-env-teardown.sh`
 
@@ -145,17 +161,24 @@ with `powershell.exe -NoProfile -ExecutionPolicy Bypass -File
 
 Contract:
 
-- bb runs the script only when it destroys a managed worktree.
+- bb runs the script before calling a provider to remove a path it owns,
+  including cleanup after failed setup. Attached paths do not run it.
 - bb runs `env bash .bb-env-teardown.sh` from the worktree before it removes
   the worktree, so the script can read tracked and generated files.
-- stdin is closed. bb records stdout and stderr in the environment destroy
-  transcript.
+- stdin is closed. bb records stdout and stderr in the server lifecycle logs.
 - The script gets a separate 15-minute timeout.
 - A non-zero exit, a signal, or a timeout reports a failure. It never stops bb
   from removing the worktree.
 - The script receives the same sanitized environment as the setup script.
 - Supported on macOS, Linux, and WSL2 as `.bb-env-teardown.sh`, and on native
   Windows as `.bb-env-teardown.ps1`.
+
+Hook operation IDs and their started/finished state are saved per launch attempt.
+After a server restart, bb reconciles the original daemon operation instead of
+starting setup again. If an RPC disconnects, cleanup cancels the operation and
+waits for its process group to terminate before releasing the path. An
+unreachable daemon leaves cleanup pending for retry. Durable daemon cancellation
+records resolve never-started operations and prevent delayed execution.
 
 ## If something isn't working
 
@@ -174,3 +197,21 @@ A few quick checks:
    outside bb before debugging through the provisioning transcript.
 5. Run `bash .bb-env-teardown.sh` manually before you delete a test worktree.
    Confirm that repeated runs do not fail or remove shared resources.
+
+## Fresh project clones on machines
+
+Core applies the same setup and teardown policy when a project checkout is freshly
+cloned onto a new machine and the environment provider reports that it owns the
+checkout. `.bb-env-setup.sh` must succeed before the environment is ready.
+`.bb-env-teardown.sh` runs before removal with its own 15-minute timeout; a failure
+is reported but does not prevent removal. A user-maintained checkout attached to
+BB remains unowned and runs neither hook.
+
+Fresh machine clones do not apply `.worktreeinclude`: no local source checkout
+exists on the new host. Supply local files and secrets through core Machine
+environment settings. Keep the repo hook's cache/no-op logic in the repository;
+Modal's stored Dockerfile recipe contains image-build instructions only.
+
+Restoring a machine filesystem does not rerun `.bb-env-setup.sh`. Setup runs when core first creates an owned environment. Fresh machine clones do not apply `.worktreeinclude`; supply local files and secrets through Machine environment settings.
+
+Thread startup does not validate workspace fingerprints, probe agent authentication, or automatically install agent CLIs.

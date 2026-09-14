@@ -66,31 +66,31 @@
     "grammarDrops": 0
   },
   "claude-code/approval-allow": {
-    "events": 11,
-    "rows": 2,
-    "unhandled": 0,
-    "grammarDrops": 0
-  },
-  "claude-code/approval-deny": {
     "events": 12,
     "rows": 2,
     "unhandled": 0,
     "grammarDrops": 0
   },
+  "claude-code/approval-deny": {
+    "events": 13,
+    "rows": 2,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
   "claude-code/auth-failure": {
-    "events": 7,
+    "events": 8,
     "rows": 2,
     "unhandled": 0,
     "grammarDrops": 0
   },
   "claude-code/compaction": {
-    "events": 59,
+    "events": 61,
     "rows": 3,
     "unhandled": 2,
     "grammarDrops": 0
   },
   "claude-code/fork": {
-    "events": 9,
+    "events": 10,
     "rows": 1,
     "unhandled": 0,
     "grammarDrops": 0
@@ -102,49 +102,49 @@
     "grammarDrops": 0
   },
   "claude-code/plan-mode": {
-    "events": 41,
+    "events": 42,
     "rows": 2,
     "unhandled": 0,
     "grammarDrops": 0
   },
   "claude-code/resume": {
-    "events": 18,
+    "events": 20,
     "rows": 2,
     "unhandled": 0,
     "grammarDrops": 0
   },
   "claude-code/steer": {
-    "events": 59,
+    "events": 61,
     "rows": 3,
     "unhandled": 2,
     "grammarDrops": 0
   },
   "claude-code/stop-interrupt": {
-    "events": 53,
+    "events": 55,
     "rows": 2,
     "unhandled": 0,
     "grammarDrops": 0
   },
   "claude-code/subagent": {
-    "events": 21,
+    "events": 22,
     "rows": 2,
     "unhandled": 0,
     "grammarDrops": 0
   },
   "claude-code/turn-tools": {
-    "events": 13,
+    "events": 14,
     "rows": 2,
     "unhandled": 0,
     "grammarDrops": 0
   },
   "claude-code/user-question": {
-    "events": 12,
+    "events": 13,
     "rows": 1,
     "unhandled": 0,
     "grammarDrops": 0
   },
   "claude-code/web-search": {
-    "events": 14,
+    "events": 15,
     "rows": 2,
     "unhandled": 0,
     "grammarDrops": 0
@@ -170,7 +170,7 @@
   "codex/auth-failure": {
     "events": 16,
     "rows": 3,
-    "unhandled": 1,
+    "unhandled": 0,
     "grammarDrops": 0
   },
   "codex/compaction": {

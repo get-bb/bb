@@ -6,7 +6,6 @@ import {
   useRef,
   useState,
   type KeyboardEventHandler,
-  type PointerEventHandler,
   type ReactNode,
 } from "react";
 import type {
@@ -14,6 +13,7 @@ import type {
   SystemProvidersQuery,
 } from "@bb/server-contract";
 import type { ReasoningLevel } from "@bb/domain";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   stripModelBrandPrefix,
   type ProviderPickerOption,
@@ -36,6 +36,7 @@ import {
 } from "@bb/shared-ui/popover";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import { Switch } from "@bb/shared-ui/switch";
+import { ToggleGroup, ToggleGroupItem } from "@bb/shared-ui/toggle-group";
 import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
 import {
   MENU_ITEM_LAST_HOVERED_CLASS,
@@ -43,7 +44,10 @@ import {
   useMenuItemHover,
 } from "@bb/shared-ui/menu-item-hover";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { useSystemExecutionOptions } from "@/hooks/queries/system-queries";
+import {
+  prefetchSystemExecutionOptions,
+  useSystemExecutionOptions,
+} from "@/hooks/queries/system-queries";
 import { resolveModelCatalogSelection } from "@/hooks/thread-creation-options/model-catalog-selection";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import {
@@ -53,6 +57,7 @@ import {
   OPTION_TRIGGER_CONTENT_CLASS_NAME,
 } from "@bb/shared-ui/option-display";
 import { type PickerOption } from "./OptionPicker";
+import { PickerLoadingRows } from "./PickerLoadingRows";
 import type { ModelPickerOption } from "./model-picker-option";
 import { searchPickerOptions } from "./picker-search";
 import { useResetPickerScroll } from "./useResetPickerScroll";
@@ -92,6 +97,17 @@ interface ResolvedProviderPreview {
   supportsServiceTier: boolean;
 }
 
+export interface ModelReasoningPickerHandoffSelection {
+  providerId: string;
+  model: string;
+  reasoningLevel: ReasoningLevel;
+}
+
+export interface ModelReasoningPickerHandoff {
+  sourceProviderId: string;
+  onSelect: (selection: ModelReasoningPickerHandoffSelection) => void;
+}
+
 const FAILED_TO_LOAD_MODELS_LABEL = "Failed to load models";
 const EMPTY_MODEL_OPTIONS: readonly ModelPickerOption[] = [];
 const preserveModelLabel = (displayName: string): string => displayName;
@@ -109,7 +125,10 @@ const REASONING_CYCLE_COMMANDS = [
 ] as const;
 
 const MODEL_SEARCH_MIN_OPTIONS = 5;
-const MODEL_PICKER_MENU_WIDTH_CLASS_NAME = "w-max min-w-52 max-w-80";
+const MODEL_PICKER_MENU_WIDTH_CLASS_NAME = "w-max min-w-64 max-w-80";
+
+const HANDOFF_DRAWER_TOP_CLASS_NAME =
+  "[&>[data-persistent-drawer-handle]]:w-full [&>[data-persistent-drawer-handle]]:rounded-t-xl [&>[data-persistent-drawer-handle]]:bg-background";
 
 function splitModelLabelTag(label: string): ModelLabelParts {
   const match = label.match(/^(.*\S)\s*\(([^()]+)\)$/u);
@@ -186,19 +205,10 @@ interface ModelReasoningPickerProps {
   className?: string;
   fastModeLabel?: string;
   muted?: boolean;
-  defaultOpen?: boolean;
   modal?: boolean;
   align?: "start" | "center" | "end";
   disabled?: boolean;
-  footerAction?: ModelReasoningPickerFooterAction;
-}
-
-export interface ModelReasoningPickerFooterAction {
-  label: string;
-  onClick: () => void;
-  disabled?: boolean;
-  title?: string;
-  iconName?: IconName;
+  handoff?: ModelReasoningPickerHandoff;
 }
 
 export function ModelReasoningPicker({
@@ -228,14 +238,13 @@ export function ModelReasoningPicker({
   className,
   fastModeLabel,
   muted,
-  defaultOpen = false,
   modal = true,
   align = "start",
   disabled,
-  footerAction,
+  handoff,
 }: ModelReasoningPickerProps) {
   const isCompactViewport = useIsCompactViewport();
-  const [open, setOpen] = useState(defaultOpen);
+  const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const registeredToggleShortcut = useAppCommandShortcut("modelPicker.toggle");
   const toggleShortcut = commandShortcutsEnabled
@@ -257,9 +266,18 @@ export function ModelReasoningPicker({
   const [moreModelsOpen, setMoreModelsOpen] = useState(false);
   const [trackedSelectedProviderId, setTrackedSelectedProviderId] =
     useState(selectedProviderId);
+  const [handoffMode, setHandoffMode] = useState(false);
+  const [handoffReasoningLevel, setHandoffReasoningLevel] =
+    useState<ReasoningLevel | null>(null);
 
   if (trackedSelectedProviderId !== selectedProviderId) {
     setTrackedSelectedProviderId(selectedProviderId);
+    setHandoffMode(
+      open &&
+        handoff !== undefined &&
+        selectedProviderId !== handoff.sourceProviderId,
+    );
+    setHandoffReasoningLevel(null);
     setPreviewProviderId(null);
     setShowMoreModels(false);
     setMoreModelsOpen(false);
@@ -285,6 +303,32 @@ export function ModelReasoningPicker({
     hasMultipleProviders &&
     onSelectedProviderChange !== undefined &&
     providerOptions.length > 1;
+  const queryClient = useQueryClient();
+  const prefetchRoutingEnvironmentId = providerRouting?.environmentId;
+  const prefetchRoutingHostId = providerRouting?.hostId;
+  const siblingIdsKey = providerOptions
+    .map((option) => option.value)
+    .filter((id) => id !== selectedProviderId)
+    .join("\0");
+  useEffect(() => {
+    if (!open || !canSwitchProviders || siblingIdsKey.length === 0) {
+      return;
+    }
+    prefetchSystemExecutionOptions(queryClient, {
+      routing: {
+        environmentId: prefetchRoutingEnvironmentId,
+        hostId: prefetchRoutingHostId,
+      },
+      providerIds: siblingIdsKey.split("\0"),
+    });
+  }, [
+    canSwitchProviders,
+    open,
+    prefetchRoutingEnvironmentId,
+    prefetchRoutingHostId,
+    queryClient,
+    siblingIdsKey,
+  ]);
   const hasAlternateSelectionPath =
     modelOptions.length > 0 ||
     (selectedModelLoadErrorMatches && canSwitchProviders);
@@ -327,19 +371,14 @@ export function ModelReasoningPicker({
     ...providerRouting,
     providerId: isPreviewing ? previewProviderId : undefined,
   });
-  const previewSelectionBlocked =
-    requireVerifiedProviderPreview &&
-    isPreviewing &&
-    (previewQuery.data === undefined ||
-      previewQuery.isPlaceholderData ||
-      previewQuery.isError ||
-      previewQuery.data.modelLoadError !== null);
   const previewCatalogIsVerified =
     isPreviewing &&
     previewQuery.data !== undefined &&
     !previewQuery.isPlaceholderData &&
     !previewQuery.isError &&
     previewQuery.data.modelLoadError === null;
+  const previewSelectionBlocked =
+    requireVerifiedProviderPreview && isPreviewing && !previewCatalogIsVerified;
 
   const previewProvider = useMemo(
     () =>
@@ -403,6 +442,13 @@ export function ModelReasoningPicker({
   const activeReasoningOptions = isPreviewing
     ? (previewSelection?.reasoningOptions ?? [])
     : reasoningOptions;
+  const activeReasoningValue: ReasoningLevel | "" = handoffMode
+    ? (handoffReasoningLevel ??
+      (isPreviewing ? previewSelection?.reasoningLevel : reasoningValue) ??
+      "")
+    : isPreviewing
+      ? ""
+      : reasoningValue;
   const activeModelLoadError = isPreviewing
     ? (previewQuery.data?.modelLoadError ?? null)
     : (modelLoadError ?? null);
@@ -437,8 +483,7 @@ export function ModelReasoningPicker({
   const isShowingModelError =
     !activeModelIsLoading && !hasActiveModelOptions && activeModelLoadFailed;
   const showProviderTabs =
-    hasMultipleProviders &&
-    onSelectedProviderChange !== undefined &&
+    (handoffMode || canSwitchProviders) &&
     providerOptions.length > 1 &&
     (!isShowingModelError || activeModelErrorIsProviderSpecific);
 
@@ -490,6 +535,7 @@ export function ModelReasoningPicker({
     activeIndex >= 0 && activeIndex < navRows.length ? activeIndex : -1;
 
   const effectiveShowFastModeToggle =
+    !handoffMode &&
     hasActiveModelOptions &&
     (serviceTierSupportByProvider
       ? (serviceTierSupportByProvider[activeProviderId] ?? false)
@@ -508,6 +554,8 @@ export function ModelReasoningPicker({
       : hasSelectedModel && !modelIsLoading && !selectedModelLoadFailed);
 
   const resetBrowseState = useCallback(() => {
+    setHandoffMode(false);
+    setHandoffReasoningLevel(null);
     setPreviewProviderId(null);
     setShowMoreModels(false);
     setMoreModelsOpen(false);
@@ -530,15 +578,68 @@ export function ModelReasoningPicker({
   const handleModelSelect = useCallback(
     (model: string) => {
       if (previewSelectionBlocked) return;
+      if (handoff !== undefined && handoffMode) {
+        handoff.onSelect({
+          providerId: activeProviderId,
+          model,
+          reasoningLevel:
+            handoffReasoningLevel ??
+            (isPreviewing ? previewSelection?.reasoningLevel : undefined) ??
+            reasoningValue,
+        });
+        setMoreModelsOpen(false);
+        return;
+      }
       onModelChange(model);
       setMoreModelsOpen(false);
       setPreviewProviderId(null);
     },
-    [onModelChange, previewSelectionBlocked],
+    [
+      activeProviderId,
+      handoff,
+      handoffMode,
+      handoffReasoningLevel,
+      isPreviewing,
+      onModelChange,
+      previewSelection,
+      previewSelectionBlocked,
+      reasoningValue,
+    ],
   );
 
+  const handoffProviderOptions = useMemo(
+    () =>
+      handoff === undefined
+        ? providerOptions
+        : providerOptions.filter(
+            (provider) => provider.value !== handoff.sourceProviderId,
+          ),
+    [handoff, providerOptions],
+  );
+  const handleHandoffProviderSelect = useCallback(
+    (providerId: string) => {
+      setHandoffMode(true);
+      setPreviewProviderId(
+        providerId === selectedProviderId ? null : providerId,
+      );
+      setHandoffReasoningLevel(null);
+      setShowMoreModels(false);
+      setMoreModelsOpen(false);
+      setSearchQuery("");
+      setActiveIndex(-1);
+    },
+    [selectedProviderId],
+  );
   const handleProviderSelect = useCallback(
     (providerId: string) => {
+      if (
+        open &&
+        handoff !== undefined &&
+        providerId !== handoff.sourceProviderId
+      ) {
+        handleHandoffProviderSelect(providerId);
+        return;
+      }
       onSelectedProviderChange?.(providerId);
       const nextPreviewProviderId =
         open && providerId !== selectedProviderId ? providerId : null;
@@ -546,7 +647,60 @@ export function ModelReasoningPicker({
       setSearchQuery("");
       setActiveIndex(-1);
     },
-    [onSelectedProviderChange, open, selectedProviderId],
+    [
+      handoff,
+      handleHandoffProviderSelect,
+      onSelectedProviderChange,
+      open,
+      selectedProviderId,
+    ],
+  );
+  const startHandoffMode = useCallback(() => {
+    const firstProvider = handoffProviderOptions[0];
+    handleHandoffProviderSelect(firstProvider?.value ?? selectedProviderId);
+  }, [handleHandoffProviderSelect, handoffProviderOptions, selectedProviderId]);
+  const exitHandoffMode = useCallback(() => {
+    setHandoffMode(false);
+    setHandoffReasoningLevel(null);
+    setPreviewProviderId(null);
+    setSearchQuery("");
+    setActiveIndex(-1);
+  }, []);
+  const returnToSourceProvider = useCallback(() => {
+    if (handoff === undefined) {
+      return;
+    }
+    exitHandoffMode();
+    if (selectedProviderId !== handoff.sourceProviderId) {
+      onSelectedProviderChange?.(handoff.sourceProviderId);
+    }
+  }, [exitHandoffMode, handoff, onSelectedProviderChange, selectedProviderId]);
+
+  const handleReasoningSelect = useCallback(
+    (level: ReasoningLevel) => {
+      if (previewSelectionBlocked) return;
+      if (handoffMode) {
+        setHandoffReasoningLevel(level);
+        if (!isPreviewing) {
+          onReasoningChange(level);
+        }
+        return;
+      }
+      if (isPreviewing && previewSelection?.selectedModel) {
+        onModelChange(previewSelection.selectedModel);
+      }
+      onReasoningChange(level);
+      setPreviewProviderId(null);
+      setMoreModelsOpen(false);
+    },
+    [
+      handoffMode,
+      isPreviewing,
+      previewSelection,
+      onModelChange,
+      onReasoningChange,
+      previewSelectionBlocked,
+    ],
   );
 
   const paneContext = useOptionalPaneContext();
@@ -609,13 +763,22 @@ export function ModelReasoningPicker({
     MODEL_CYCLE_COMMANDS,
     (index, { target }) => {
       if (!ownsCycleChord(target)) return false;
+      const options = handoffMode ? activeModelOptions : modelOptions;
+      const value =
+        handoffMode && isPreviewing
+          ? (previewSelection?.selectedModel ?? "")
+          : modelValue;
       const next =
         index === 0
-          ? nextCycleValue(modelOptions, modelValue)
-          : previousCycleValue(modelOptions, modelValue);
+          ? nextCycleValue(options, value)
+          : previousCycleValue(options, value);
       if (next !== null) {
-        onModelChange(next);
-        setPreviewProviderId(null);
+        if (handoffMode) {
+          handleModelSelect(next);
+        } else {
+          onModelChange(next);
+          setPreviewProviderId(null);
+        }
       }
       return true;
     },
@@ -626,6 +789,16 @@ export function ModelReasoningPicker({
     PROVIDER_CYCLE_COMMANDS,
     (index, { target }) => {
       if (!ownsCycleChord(target)) return false;
+      if (handoffMode) {
+        const next =
+          index === 0
+            ? nextCycleValue(handoffProviderOptions, activeProviderId)
+            : previousCycleValue(handoffProviderOptions, activeProviderId);
+        if (next !== null) {
+          handleHandoffProviderSelect(next);
+        }
+        return true;
+      }
       if (canSwitchProviders && onSelectedProviderChange !== undefined) {
         const next =
           index === 0
@@ -644,48 +817,58 @@ export function ModelReasoningPicker({
     REASONING_CYCLE_COMMANDS,
     (index, { target }) => {
       if (!ownsCycleChord(target)) return false;
+      const value = handoffMode ? activeReasoningValue : reasoningValue;
+      if (value === "") return true;
       const next = cycleReasoningValue(
-        reasoningOptions,
-        reasoningValue,
+        handoffMode ? activeReasoningOptions : reasoningOptions,
+        value,
         index === 0 ? "forward" : "backward",
       );
       if (next !== null) {
-        onReasoningChange(next);
-        setPreviewProviderId(null);
+        if (handoffMode) {
+          handleReasoningSelect(next);
+        } else {
+          onReasoningChange(next);
+          setPreviewProviderId(null);
+        }
       }
       return true;
     },
     50,
     commandShortcutsEnabled,
   );
-  const handleReasoningSelect = useCallback(
-    (level: ReasoningLevel) => {
-      if (previewSelectionBlocked) return;
-      if (isPreviewing && previewSelection?.selectedModel) {
-        onModelChange(previewSelection.selectedModel);
-      }
-      onReasoningChange(level);
-      setPreviewProviderId(null);
-      setMoreModelsOpen(false);
-    },
-    [
-      isPreviewing,
-      previewSelection,
-      onModelChange,
-      onReasoningChange,
-      previewSelectionBlocked,
-    ],
-  );
-
-  const handleFooterActionClick = useCallback(() => {
-    if (!footerAction || footerAction.disabled) {
+  const handleReasoningArrowKeyDown: KeyboardEventHandler<HTMLElement> = (
+    event,
+  ) => {
+    if (
+      event.defaultPrevented ||
+      event.altKey ||
+      event.ctrlKey ||
+      event.metaKey ||
+      event.shiftKey ||
+      disabled ||
+      !showReasoningSection ||
+      previewSelectionBlocked ||
+      (event.key !== "ArrowLeft" && event.key !== "ArrowRight")
+    ) {
       return;
     }
-    footerAction.onClick();
-    setOpen(false);
-    setPreviewProviderId(null);
-    setMoreModelsOpen(false);
-  }, [footerAction]);
+    if (
+      isEditableKeyboardTarget(event.target) &&
+      (event.target !== searchInputRef.current || searchQuery.length > 0)
+    ) {
+      return;
+    }
+    const index = activeReasoningOptions.findIndex(
+      (option) => option.value === activeReasoningValue,
+    );
+    if (index < 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const next =
+      activeReasoningOptions[index + (event.key === "ArrowRight" ? 1 : -1)];
+    if (next) handleReasoningSelect(next.value);
+  };
 
   const handleQueryChange = useCallback((value: string) => {
     setSearchQuery(value);
@@ -764,6 +947,7 @@ export function ModelReasoningPicker({
       }
       aria-keyshortcuts={toggleShortcut?.ariaKeyshortcuts}
       disabled={disabled}
+      onKeyDown={handleReasoningArrowKeyDown}
       className={cn(
         OPTION_BASE_CLASS_NAME,
         OPTION_INTERACTIVE_CLASS_NAME,
@@ -864,40 +1048,53 @@ export function ModelReasoningPicker({
       <PopoverTrigger asChild>{trigger}</PopoverTrigger>
       <PopoverContent
         align={align}
-        mobileTitle="Model"
+        mobileTitle={handoffMode ? "Handoff to new thread" : "Model"}
+        mobileClassName={
+          handoffMode ? HANDOFF_DRAWER_TOP_CLASS_NAME : undefined
+        }
+        onKeyDown={handleReasoningArrowKeyDown}
         onMobileContentAnimationEnd={handleMobileContentAnimationEnd}
         autoFocusRef={showSearchInput ? searchInputRef : undefined}
         className={cn(
-          "flex flex-col p-0",
+          "flex min-h-0 flex-col p-0",
           MODEL_PICKER_MENU_WIDTH_CLASS_NAME,
-          "max-md:w-full max-md:min-w-0 max-md:max-w-none",
-          !isCompactViewport &&
-            "max-h-[min(var(--radix-popover-content-available-height),calc(100dvh-0.5rem))] overflow-hidden",
+          isCompactViewport
+            ? "overflow-y-hidden"
+            : "max-h-[min(var(--radix-popover-content-available-height),calc(100dvh-0.5rem))] overflow-hidden",
         )}
       >
         <ResetBrowseStateOnContentUnmount onReset={resetBrowseState} />
+        {handoffMode ? <HandoffModeHeader onBack={exitHandoffMode} /> : null}
         {showProviderTabs ? (
           <div
-            className={cn(
-              "flex items-center gap-0.5 border-b border-border px-2.5 pt-1",
-              isCompactViewport
-                ? "sticky top-0 z-10 bg-background"
-                : "shrink-0 bg-surface-recessed",
-            )}
+            className="flex shrink-0 items-center gap-0.5 border-b border-border bg-background px-2.5 pt-1"
           >
             {providerOptions.map((provider) => {
               const TabIcon = provider.icon;
               const isActive = provider.value === activeProviderId;
+              const isHandoffSource =
+                handoffMode &&
+                handoff !== undefined &&
+                provider.value === handoff.sourceProviderId;
               return (
                 <button
                   key={provider.value}
                   type="button"
-                  title={provider.label}
+                  title={
+                    isHandoffSource
+                      ? `${provider.label} (current thread)`
+                      : provider.label
+                  }
                   onMouseDown={(event) => event.preventDefault()}
                   onClick={() => {
-                    if (provider.value !== activeProviderId) {
-                      handleProviderSelect(provider.value);
+                    if (isHandoffSource) {
+                      returnToSourceProvider();
+                      return;
                     }
+                    if (provider.value === activeProviderId) {
+                      return;
+                    }
+                    handleProviderSelect(provider.value);
                   }}
                   className={cn(
                     "flex items-center justify-center border-b-2 focus-visible:outline-none",
@@ -940,12 +1137,7 @@ export function ModelReasoningPicker({
         ) : null}
 
         <MenuHoverProvider>
-          <div
-            className={cn(
-              !isCompactViewport &&
-                "min-h-0 flex flex-1 flex-col overflow-hidden",
-            )}
-          >
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
             <div
               ref={listRef}
               key={activeProviderId || "no-provider"}
@@ -953,17 +1145,18 @@ export function ModelReasoningPicker({
               id={showSearchInput ? listboxId : undefined}
               aria-label={showSearchInput ? "Models" : undefined}
               className={cn(
-                "px-1 pb-1 pt-0",
-                isCompactViewport
-                  ? "overflow-y-auto"
-                  : "min-h-0 max-h-64 flex-1 overflow-y-auto overscroll-contain",
+                "min-h-0 flex-1 overflow-y-auto overscroll-contain px-1 pb-1 pt-0",
+                !isCompactViewport && "max-h-64",
               )}
             >
               {isShowingModelError ? null : (
                 <MenuSectionLabel>Model</MenuSectionLabel>
               )}
               {activeModelIsLoading ? (
-                <ModelPickerLoadingRows />
+                <PickerLoadingRows
+                  label="Loading models"
+                  rowDataAttribute="data-model-loading-row"
+                />
               ) : hasActiveModelOptions ? (
                 <>
                   {navRows.map((row, index) => {
@@ -1053,19 +1246,38 @@ export function ModelReasoningPicker({
             {showReasoningSection ? (
               <>
                 <div className="shrink-0 border-t border-border" />
-                <div className="shrink-0 px-1 pb-1 pt-0">
-                  <MenuSectionLabel>Reasoning</MenuSectionLabel>
-                  {activeReasoningOptions.map((option) => (
-                    <MenuRowButton
-                      key={option.value}
-                      label={option.label}
-                      selected={
-                        !isPreviewing && option.value === reasoningValue
-                      }
-                      disabled={previewSelectionBlocked}
-                      onClick={() => handleReasoningSelect(option.value)}
-                    />
-                  ))}
+                <div className="shrink-0 px-2 py-2.5">
+                  <MenuSectionLabel className="mb-2 px-1 py-0">
+                    Reasoning
+                  </MenuSectionLabel>
+                  <ToggleGroup
+                    type="single"
+                    aria-label="Reasoning"
+                    value={activeReasoningValue}
+                    onValueChange={(value) => {
+                      const option = activeReasoningOptions.find(
+                        (candidate) => candidate.value === value,
+                      );
+                      if (option) handleReasoningSelect(option.value);
+                    }}
+                    disabled={previewSelectionBlocked}
+                    className="flex gap-1"
+                  >
+                    {activeReasoningOptions.map((option) => (
+                      <ToggleGroupItem
+                        key={option.value}
+                        value={option.value}
+                        aria-label={option.label}
+                        className={cn(
+                          "h-6 min-w-0 flex-auto shrink-0 whitespace-nowrap rounded-sm px-1 text-xs font-normal shadow-none hover:bg-state-hover hover:text-foreground data-[state=on]:bg-state-active data-[state=on]:text-foreground data-[state=on]:hover:bg-state-active",
+                          isCompactViewport && "h-9 text-sm",
+                          LIST_HOVER_TRANSITION,
+                        )}
+                      >
+                        {option.label}
+                      </ToggleGroupItem>
+                    ))}
+                  </ToggleGroup>
                 </div>
               </>
             ) : null}
@@ -1086,23 +1298,23 @@ export function ModelReasoningPicker({
                       checked={fastModeEnabled}
                       onCheckedChange={onFastModeChange}
                       aria-label={fastModeText}
-                      className={LIST_HOVER_TRANSITION}
+                      className={cn(LIST_HOVER_TRANSITION, "[&>span]:size-3.5")}
                     />
                   </div>
                 </div>
               </>
             ) : null}
 
-            {footerAction ? (
+            {handoff !== undefined &&
+            !handoffMode &&
+            handoffProviderOptions.length > 0 ? (
               <>
                 <div className="shrink-0 border-t border-border" />
                 <div className="shrink-0 p-1">
                   <MenuActionButton
-                    label={footerAction.label}
-                    iconName={footerAction.iconName ?? "MessageSquarePlus"}
-                    disabled={footerAction.disabled}
-                    title={footerAction.title}
-                    onClick={handleFooterActionClick}
+                    label="Handoff to new thread"
+                    iconName="MessageSquarePlus"
+                    onClick={startHandoffMode}
                   />
                 </div>
               </>
@@ -1114,7 +1326,34 @@ export function ModelReasoningPicker({
   );
 }
 
-function MenuSectionLabel({ children }: { children: ReactNode }) {
+function HandoffModeHeader({ onBack }: { onBack: () => void }) {
+  return (
+    <div className="flex shrink-0 items-center gap-1 bg-background px-2 pb-1 pt-1.5">
+      <button
+        type="button"
+        aria-label="Back to model picker"
+        onClick={onBack}
+        className={cn(
+          "flex size-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-state-hover hover:text-foreground",
+          LIST_HOVER_TRANSITION,
+        )}
+      >
+        <Icon name="ChevronLeft" className="size-3.5" aria-hidden />
+      </button>
+      <span className="min-w-0 truncate text-xs font-normal text-subtle-foreground">
+        Handoff to new thread
+      </span>
+    </div>
+  );
+}
+
+function MenuSectionLabel({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
   const isCompactViewport = useIsCompactViewport();
 
   return (
@@ -1122,36 +1361,10 @@ function MenuSectionLabel({ children }: { children: ReactNode }) {
       className={cn(
         "sticky top-0 z-10 bg-background px-2 text-xs font-medium text-muted-foreground",
         isCompactViewport ? "pb-1.5 pt-2" : "pb-[0.3125rem] pt-2",
+        className,
       )}
     >
       {children}
-    </div>
-  );
-}
-
-const MODEL_LOADING_ROW_WIDTHS = ["w-20", "w-28", "w-24", "w-32"] as const;
-
-function ModelPickerLoadingRows() {
-  const isCompactViewport = useIsCompactViewport();
-
-  return (
-    <div role="status" aria-label="Loading models" className="pb-1">
-      <span className="sr-only">Loading models</span>
-      {MODEL_LOADING_ROW_WIDTHS.map((widthClassName) => (
-        <div
-          key={widthClassName}
-          data-model-loading-row=""
-          aria-hidden
-          className={cn(
-            "flex items-center rounded-sm px-2",
-            isCompactViewport ? "py-2" : "py-[0.3125rem]",
-          )}
-        >
-          <Skeleton
-            className={cn("h-3 max-w-[75%] rounded-sm", widthClassName)}
-          />
-        </div>
-      ))}
     </div>
   );
 }
@@ -1161,20 +1374,13 @@ function MoreModelsToggleRow({
   onToggle,
   isActive,
   id,
-  onPointerEnter: callerPointerEnter,
-  onKeyDown: callerKeyDown,
 }: {
   expanded: boolean;
   onToggle: () => void;
   isActive?: boolean;
   id?: string;
-  onPointerEnter?: PointerEventHandler<HTMLButtonElement>;
-  onKeyDown?: KeyboardEventHandler<HTMLButtonElement>;
 }) {
-  const { hoverProps } = useMenuItemHover({
-    onPointerEnter: callerPointerEnter,
-    onKeyDown: callerKeyDown,
-  });
+  const { hoverProps } = useMenuItemHover();
   const isCompactViewport = useIsCompactViewport();
   return (
     <button
@@ -1329,8 +1535,6 @@ function MenuRowButton({
   isActive,
   id,
   role,
-  onPointerEnter: callerPointerEnter,
-  onKeyDown: callerKeyDown,
 }: {
   label: string;
   qualifier?: string;
@@ -1340,13 +1544,8 @@ function MenuRowButton({
   isActive?: boolean;
   id?: string;
   role?: React.AriaRole;
-  onPointerEnter?: PointerEventHandler<HTMLButtonElement>;
-  onKeyDown?: KeyboardEventHandler<HTMLButtonElement>;
 }) {
-  const { hoverProps } = useMenuItemHover({
-    onPointerEnter: callerPointerEnter,
-    onKeyDown: callerKeyDown,
-  });
+  const { hoverProps } = useMenuItemHover();
   const isCompactViewport = useIsCompactViewport();
   const { base, tag } = splitModelLabelTag(label);
   return (
@@ -1384,6 +1583,7 @@ function MenuRowButton({
           name="Check"
           className={cn(
             COARSE_POINTER_ICON_SIZE_SHRINK_CLASS,
+            "text-subtle-foreground",
             selected ? "opacity-100" : "opacity-0",
           )}
         />
@@ -1395,14 +1595,10 @@ function MenuRowButton({
 function MenuActionButton({
   label,
   iconName,
-  disabled,
-  title,
   onClick,
 }: {
   label: string;
   iconName: IconName;
-  disabled?: boolean;
-  title?: string;
   onClick: () => void;
 }) {
   const { hoverProps } = useMenuItemHover();
@@ -1410,11 +1606,9 @@ function MenuActionButton({
   return (
     <button
       type="button"
-      disabled={disabled}
-      title={title}
       onClick={onClick}
       className={cn(
-        "relative flex w-full cursor-default select-none items-center gap-2 rounded-sm px-2 text-xs outline-none hover:bg-state-hover hover:text-foreground disabled:pointer-events-none disabled:opacity-50",
+        "relative flex w-full cursor-default select-none items-center gap-2 rounded-sm px-2 text-xs outline-none hover:bg-state-hover hover:text-foreground",
         LIST_HOVER_TRANSITION,
         MENU_ITEM_LAST_HOVERED_CLASS,
         isCompactViewport ? "py-2" : "py-[0.3125rem]",
@@ -1462,7 +1656,7 @@ function ModelSearchInput({
           aria-controls={listboxId}
           aria-autocomplete="list"
           aria-activedescendant={activeOptionId}
-          className="h-7 border-0 bg-transparent pl-8 pr-2 text-xs shadow-none focus-visible:ring-0"
+          className="h-7 border-0 bg-transparent pl-8 pr-2 text-xs text-foreground placeholder:text-subtle-foreground shadow-none focus-visible:ring-0"
         />
       </div>
     </div>

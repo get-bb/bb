@@ -1,55 +1,39 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
+import { flushSync } from "react-dom";
+import { createSplitResizeSnapSession } from "@/lib/split-resize-snap";
 import {
-  createSplitResizeSnapSession,
-  type SplitResizeAxis,
-  type SplitResizeGridTarget,
-} from "@/lib/split-resize-snap";
+  THREAD_SECONDARY_PANEL_MAX_SIZE_PERCENT,
+  THREAD_SECONDARY_PANEL_MIN_SIZE_PERCENT,
+} from "./secondaryPanelSizing";
 
 interface UsePanelResizeSnapArgs {
-  axis: SplitResizeAxis;
   onResize: (leadingFraction: number) => void;
-  target: SplitResizeGridTarget;
-}
-
-interface PanelResizeSnapDrag {
-  cancel: () => void;
-  finish: () => void;
-}
-
-export interface PanelResizeSnapController {
-  finish: () => void;
-  onPointerDownCapture: (event: PointerEvent) => void;
+  onDragging: (isDragging: boolean) => void;
 }
 
 export function usePanelResizeSnap({
-  axis,
   onResize,
-  target,
-}: UsePanelResizeSnapArgs): PanelResizeSnapController {
-  const { boundaryIndex, childCount } = target;
-  const activeDragRef = useRef<PanelResizeSnapDrag | null>(null);
-  const finish = useCallback(() => {
-    const activeDrag = activeDragRef.current;
-    activeDragRef.current = null;
-    activeDrag?.finish();
-  }, []);
-  const cancel = useCallback(() => {
-    const activeDrag = activeDragRef.current;
-    activeDragRef.current = null;
-    activeDrag?.cancel();
-  }, []);
+  onDragging,
+}: UsePanelResizeSnapArgs) {
+  const hitTargetRef = useRef<HTMLSpanElement>(null);
+  const activeDragRef = useRef<((commit: boolean) => void) | null>(null);
 
-  useEffect(() => cancel, [cancel]);
+  useEffect(() => () => activeDragRef.current?.(false), []);
 
-  const onPointerDownCapture = useCallback(
-    (event: PointerEvent) => {
-      finish();
+  useEffect(() => {
+    const onPointerDownCapture = (event: PointerEvent) => {
       const eventTarget = event.target;
       if (!(eventTarget instanceof HTMLElement)) return;
       const divider = eventTarget.closest<HTMLElement>(
         "[data-panel-resize-snap-handle]",
       );
-      if (divider === null) return;
+      if (
+        divider === null ||
+        hitTargetRef.current?.parentElement !== divider ||
+        divider.getAttribute("data-panel-resize-handle-enabled") !== "true" ||
+        event.button !== 0
+      ) return;
+      activeDragRef.current?.(true);
       const previous = divider.previousElementSibling;
       const next = divider.nextElementSibling;
       if (
@@ -58,31 +42,18 @@ export function usePanelResizeSnap({
       ) {
         return;
       }
-      const previousRect = previous.getBoundingClientRect();
-      const nextRect = next.getBoundingClientRect();
-      const start = axis === "x" ? previousRect.left : previousRect.top;
-      const end = axis === "x" ? nextRect.right : nextRect.bottom;
+      const start = previous.getBoundingClientRect().left;
+      const end = next.getBoundingClientRect().right;
       if (end <= start) return;
 
       const ownerWindow = divider.ownerDocument.defaultView;
       if (ownerWindow === null) return;
-      const previousGrow = Number.parseFloat(
-        ownerWindow.getComputedStyle(previous).flexGrow,
-      );
-      const nextGrow = Number.parseFloat(
-        ownerWindow.getComputedStyle(next).flexGrow,
-      );
-      const pairTotal =
-        Number.isFinite(previousGrow) &&
-        Number.isFinite(nextGrow) &&
-        previousGrow + nextGrow > 0
-          ? previousGrow + nextGrow
-          : 1;
-      const previousFlex = previous.style.flex;
-      const nextFlex = next.style.flex;
-      const snapSession = createSplitResizeSnapSession(divider, axis, {
-        boundaryIndex,
-        childCount,
+      event.preventDefault();
+      event.stopPropagation();
+      divider.focus({ preventScroll: true });
+      const snapSession = createSplitResizeSnapSession(divider, "x", {
+        boundaryIndex: 1,
+        childCount: 2,
       });
       const grid = divider.closest<HTMLElement>(
         "[data-split-resize-grid-root]",
@@ -95,29 +66,46 @@ export function usePanelResizeSnap({
       );
       grid?.style.setProperty("--panel-collapse-duration", "0ms");
       const pointerId = event.pointerId;
-      const pointer = axis === "x" ? event.clientX : event.clientY;
-      snapSession.resolve({ end, pointer, start });
+      divider.setPointerCapture(pointerId);
+      divider.dataset.dragging = "true";
+      snapSession.resolve({ end, pointer: event.clientX, start });
 
       let finished = false;
       let pendingFraction: number | null = null;
+      let frame: number | null = null;
+      const applyResize = () => {
+        frame = null;
+        const fraction = pendingFraction;
+        pendingFraction = null;
+        if (fraction !== null) onResize(fraction);
+      };
+      const flushResize = () => {
+        if (frame !== null) ownerWindow.cancelAnimationFrame(frame);
+        flushSync(applyResize);
+      };
       const move = (moveEvent: PointerEvent) => {
         if (moveEvent.pointerId !== pointerId) return;
         if (moveEvent.buttons === 0) {
-          finish();
+          complete(true);
           return;
         }
         moveEvent.preventDefault();
         moveEvent.stopPropagation();
-        const nextPointer =
-          axis === "x" ? moveEvent.clientX : moveEvent.clientY;
         const result = snapSession.resolve({
           end,
-          pointer: nextPointer,
+          pointer: moveEvent.clientX,
           start,
         });
-        pendingFraction = result.fraction;
-        previous.style.flex = `${pairTotal * result.fraction} 1 0px`;
-        next.style.flex = `${pairTotal * (1 - result.fraction)} 1 0px`;
+        pendingFraction = Math.max(
+          (100 - THREAD_SECONDARY_PANEL_MAX_SIZE_PERCENT) / 100,
+          Math.min(
+            (100 - THREAD_SECONDARY_PANEL_MIN_SIZE_PERCENT) / 100,
+            result.fraction,
+          ),
+        );
+        if (frame === null) {
+          frame = ownerWindow.requestAnimationFrame(applyResize);
+        }
       };
       const complete = (commit: boolean) => {
         if (finished) return;
@@ -129,9 +117,25 @@ export function usePanelResizeSnap({
           finishForPointer,
           true,
         );
-        ownerWindow.removeEventListener("mouseup", finishOnMouseUp, true);
-        ownerWindow.removeEventListener("blur", finishOnBlur);
+        ownerWindow.removeEventListener("mouseup", commitDrag, true);
+        ownerWindow.removeEventListener("blur", commitDrag);
+        divider.removeEventListener("keydown", flushResize, true);
+        divider.removeEventListener("lostpointercapture", finishForPointer);
+        delete divider.dataset.dragging;
+        if (divider.hasPointerCapture(pointerId)) {
+          divider.releasePointerCapture(pointerId);
+        }
         snapSession.clear();
+        if (activeDragRef.current === complete) {
+          activeDragRef.current = null;
+        }
+        if (commit) {
+          flushResize();
+          previous.getBoundingClientRect();
+        } else if (frame !== null) {
+          ownerWindow.cancelAnimationFrame(frame);
+        }
+        onDragging(false);
         if (grid !== null) {
           if (transitionDuration === "" || transitionDuration === undefined) {
             grid.style.removeProperty("--panel-collapse-duration");
@@ -143,39 +147,26 @@ export function usePanelResizeSnap({
             );
           }
         }
-        if (
-          activeDragRef.current?.finish === commitDrag ||
-          activeDragRef.current?.cancel === cancelDrag
-        ) {
-          activeDragRef.current = null;
-        }
-        if (commit && pendingFraction !== null) {
-          onResize(pendingFraction);
-          return;
-        }
-        if (!commit) {
-          previous.style.flex = previousFlex;
-          next.style.flex = nextFlex;
-        }
       };
       const commitDrag = () => complete(true);
-      const cancelDrag = () => complete(false);
       const finishForPointer = (finishEvent: PointerEvent) => {
         if (finishEvent.pointerId !== pointerId) return;
         commitDrag();
       };
-      const finishOnMouseUp = () => commitDrag();
-      const finishOnBlur = () => commitDrag();
-
-      activeDragRef.current = { cancel: cancelDrag, finish: commitDrag };
+      activeDragRef.current = complete;
       ownerWindow.addEventListener("pointermove", move, true);
       ownerWindow.addEventListener("pointerup", finishForPointer, true);
       ownerWindow.addEventListener("pointercancel", finishForPointer, true);
-      ownerWindow.addEventListener("mouseup", finishOnMouseUp, true);
-      ownerWindow.addEventListener("blur", finishOnBlur);
-    },
-    [axis, boundaryIndex, childCount, finish, onResize],
-  );
+      ownerWindow.addEventListener("mouseup", commitDrag, true);
+      ownerWindow.addEventListener("blur", commitDrag);
+      divider.addEventListener("keydown", flushResize, true);
+      divider.addEventListener("lostpointercapture", finishForPointer);
+      onDragging(true);
+    };
 
-  return { finish, onPointerDownCapture };
+    window.addEventListener("pointerdown", onPointerDownCapture, true);
+    return () => window.removeEventListener("pointerdown", onPointerDownCapture, true);
+  }, [onDragging, onResize]);
+
+  return hitTargetRef;
 }

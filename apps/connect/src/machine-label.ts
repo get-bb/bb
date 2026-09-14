@@ -8,6 +8,7 @@ import {
   type ConnectDb,
 } from "@bb/connect-db";
 import { verifyMachineCredentialDetails } from "./session.js";
+import { methodNotAllowed } from "./json-response.js";
 import { MACHINE_CREDENTIAL_HEADER } from "./protocol-headers.js";
 import type { Env } from "./tunnel-do.js";
 
@@ -140,13 +141,7 @@ export async function handleAssignMachineLabel(
   env: Env,
 ): Promise<Response> {
   if (request.method !== "POST") {
-    return new Response(JSON.stringify({ error: "method_not_allowed" }), {
-      status: 405,
-      headers: {
-        "content-type": "application/json; charset=utf-8",
-        allow: "POST",
-      },
-    });
+    return methodNotAllowed("POST");
   }
 
   const db = drizzle(env.DB, { schema });

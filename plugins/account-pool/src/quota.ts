@@ -23,21 +23,19 @@ function parseNumber(value: string | null): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+export function epochMilliseconds(value: number): number {
+  return Math.round(value < 1_000_000_000_000 ? value * 1_000 : value);
+}
+
 export function parseReset(value: string | number | null): number | null {
   if (value === null) return null;
   if (typeof value === "number") {
     if (!Number.isFinite(value)) return null;
-    return value < 1_000_000_000_000
-      ? Math.round(value * 1_000)
-      : Math.round(value);
+    return epochMilliseconds(value);
   }
   if (value.trim() === "") return null;
   const numeric = Number(value);
-  if (Number.isFinite(numeric)) {
-    return numeric < 1_000_000_000_000
-      ? Math.round(numeric * 1_000)
-      : Math.round(numeric);
-  }
+  if (Number.isFinite(numeric)) return epochMilliseconds(numeric);
   const parsed = Date.parse(value);
   return Number.isNaN(parsed) ? null : parsed;
 }
@@ -156,6 +154,43 @@ function activeFamilyWindow(
   );
 }
 
+export function blockingResetAt(
+  quota: AccountQuota | AccountSummary,
+  family: ModelFamily | null,
+  threshold: number,
+  now: number,
+): number | null {
+  let latest: number | null = null;
+  let unknown = false;
+  const include = (
+    utilization: number | null,
+    status: string | null,
+    resetAt: number | null,
+  ) => {
+    if (!activeWindow(utilization, status, resetAt, threshold, now)) return;
+    if (resetAt === null) unknown = true;
+    else latest = Math.max(latest ?? resetAt, resetAt);
+  };
+  include(
+    quota.fiveHourUtilization,
+    quota.fiveHourStatus,
+    quota.fiveHourResetAt,
+  );
+  include(
+    quota.sevenDayUtilization,
+    quota.sevenDayStatus,
+    quota.sevenDayResetAt,
+  );
+  for (const window of quota.limitWindows)
+    include(window.utilization, window.status, window.resetAt);
+  if (family !== null) {
+    const familyQuota = quota.familyWeekly[family];
+    if (familyQuota !== null)
+      include(familyQuota.utilization, familyQuota.status, familyQuota.resetAt);
+  }
+  return unknown ? null : latest;
+}
+
 export function isSharedQuotaExhausted(
   quota: AccountQuota,
   threshold: number,
@@ -187,8 +222,6 @@ export function isSharedQuotaExhausted(
     )
   );
 }
-
-export const WEEKLY_WINDOW_MINUTES = 7 * 24 * 60;
 
 export function longestLimitWindow(
   windows: readonly LimitWindow[],

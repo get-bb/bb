@@ -1,15 +1,17 @@
 import { execFile } from "node:child_process";
-import fs from "node:fs/promises";
 import path from "node:path";
-import { calculateExponentialBackoffDelay } from "@bb/domain";
+import {
+  calculateExponentialBackoffDelay,
+  createDebouncedCallbackScheduler,
+} from "@bb/domain";
 import {
   RootSubscription,
   type ParcelWatcherEventBatch,
 } from "./root-subscription.js";
-import { createDebouncedCallbackScheduler } from "./watch-callback-scheduler.js";
 import { pathExists } from "./path-exists.js";
 import { toWatchErrorMessage } from "./watch-error.js";
 import {
+  canonicalizePath,
   collectWorkspaceStatusChanges,
   resolveMetadataWatchSpecs,
   type WatchSubscriptionSpec,
@@ -152,14 +154,6 @@ async function createWorkspaceRootWatchSpec(
   };
 }
 
-async function resolveWatchRootPath(rootPath: string): Promise<string> {
-  try {
-    return await fs.realpath(rootPath);
-  } catch {
-    return rootPath;
-  }
-}
-
 function isPathInsideDotGit(cwd: string, candidatePath: string): boolean {
   const relativePath = path.relative(cwd, candidatePath);
   return relativePath === ".git" || relativePath.startsWith(`.git${path.sep}`);
@@ -227,7 +221,7 @@ class WorkspaceStatusWatcher {
   }
 
   private async startAsync(): Promise<void> {
-    const rootPath = await resolveWatchRootPath(this.args.cwd);
+    const rootPath = await canonicalizePath(this.args.cwd);
     if (this.disposed) {
       return;
     }

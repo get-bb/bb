@@ -9,17 +9,15 @@ import {
   type ReapedIdleProviderSession,
 } from "@bb/agent-runtime";
 import type { Logger } from "@bb/logger";
-import { killProcessesWithCwdUnder } from "@bb/process-utils";
 import type {
   PendingInteractionCreate,
   PendingInteractionResolution,
   ThreadEvent,
-  WorkspaceProvisionType,
 } from "@bb/domain";
 import { threadScope, turnScope } from "@bb/domain";
 import type {
   HostDaemonActiveThread,
-  HostDaemonEnvironmentChange,
+  HostDaemonContributedEnvEntry,
   HostDaemonLoadedEnvironment,
   HostDaemonInjectedSkillSource,
 } from "@bb/host-daemon-contract";
@@ -31,7 +29,6 @@ import type {
 import {
   provisionWorkspace,
   WorkspaceError,
-  type DestroyWorkspaceArgs,
   type HostWorkspace,
   type ProvisionWorkspaceArgs,
 } from "@bb/host-workspace";
@@ -41,7 +38,6 @@ import {
   stageInjectedSkillSources,
   type InjectedSkillsLogger,
 } from "./injected-skills.js";
-import { reconnectProvisionArgs } from "./workspace-provision-target.js";
 import {
   createProviderInstallationGate,
   PROVIDER_INSTALLATION_GATE_TTL_MS,
@@ -49,6 +45,8 @@ import {
 } from "./provider-installation-gate.js";
 import type { FetchSkillTree } from "./skill-trees.js";
 import { userExecutableProcessOptions } from "./user-executable-env.js";
+import { runSetupScript } from "./environment-lifecycle-script.js";
+import { runInSerialLane } from "./serial-lane.js";
 
 type StopWatching = () => void | Promise<void>;
 
@@ -68,12 +66,6 @@ interface CreateEntryArgs extends Omit<
 > {
   provisionSignal: AbortSignal;
   skillConfig: RuntimeSkillConfig | null;
-}
-
-interface ApplyExistingEnvironmentProvisionArgs {
-  entry: RuntimeEntry;
-  provision: ProvisionWorkspaceArgs | undefined;
-  signal: AbortSignal;
 }
 
 interface EnsureCompatibleEntryArgs {
@@ -135,7 +127,6 @@ export interface RuntimeEntry {
   runtime: AgentRuntime;
   skillCatalogHash: string | null;
   lastWarnedStaleSkillCatalogHash: string | null;
-  stopWatchingStatus: StopWatching;
   workspace: HostWorkspace;
   path: string;
   terminals: Set<string>;
@@ -149,10 +140,10 @@ interface InjectedSkillsChangedNotification {
 export interface EnsureEnvironmentArgs {
   environmentId: string;
   injectedSkillSources?: readonly HostDaemonInjectedSkillSource[];
-  personalWorkspaceRoot?: string;
+  setupScriptTimeoutMs?: number | null;
+  setupContributedEnv?: readonly HostDaemonContributedEnvEntry[];
   targetThreadId?: string;
   workspacePath?: string;
-  workspaceProvisionType?: WorkspaceProvisionType;
   provision?: ProvisionWorkspaceArgs;
 }
 
@@ -184,15 +175,14 @@ export interface RuntimeManagerOptions {
   providerInstallationGateTtlMs?: number;
   providerMaintenanceIdleTimeoutMs?: number;
   shellEnv?: AgentRuntimeOptions["shellEnv"];
+  applyMachineEnvironment?: (
+    shell: NonNullable<AgentRuntimeOptions["shellEnv"]>,
+  ) => NonNullable<AgentRuntimeOptions["shellEnv"]>;
   onEvent?: (args: { environmentId: string; event: ThreadEvent }) => void;
   threadStorageRootPath?: string | null;
   onInjectedSkillsChanged?: (args: InjectedSkillsChangedNotification) => void;
   onDataDirSkillsWatchError?: (args: {
     error: DataDirSkillsWatchError;
-  }) => void;
-  onWorkspaceStatusChanged?: (args: {
-    changeKinds: HostDaemonEnvironmentChange[];
-    environmentId: string;
   }) => void;
   onInteractiveRequest?: (
     request: PendingInteractionCreate,
@@ -236,11 +226,6 @@ interface PendingEnvironmentProvision {
 interface PendingProviderMaintenanceRuntime {
   generation: number;
   promise: Promise<AgentRuntime>;
-}
-
-interface RunCancellableEnvironmentProvisionArgs {
-  environmentId: string;
-  work: (signal: AbortSignal) => Promise<void>;
 }
 
 function shellEnvEquals(
@@ -349,19 +334,7 @@ export class RuntimeManager {
     threadId: string,
     work: () => T | PromiseLike<T>,
   ): Promise<T> {
-    const previous = this.threadControlTails.get(threadId) ?? Promise.resolve();
-    const next = previous.catch(() => undefined).then(work);
-    const settled = next.then(
-      () => undefined,
-      () => undefined,
-    );
-    this.threadControlTails.set(threadId, settled);
-    void settled.then(() => {
-      if (this.threadControlTails.get(threadId) === settled) {
-        this.threadControlTails.delete(threadId);
-      }
-    });
-    return next;
+    return runInSerialLane(this.threadControlTails, threadId, work);
   }
 
   async releaseThreadFromOtherEnvironments(args: {
@@ -570,7 +543,11 @@ export class RuntimeManager {
   }
 
   getShellEnv(): NonNullable<AgentRuntimeOptions["shellEnv"]> {
-    return { ...this.baseShellEnv };
+    return (
+      this.options.applyMachineEnvironment?.(this.baseShellEnv) ?? {
+        ...this.baseShellEnv,
+      }
+    );
   }
 
   async replaceBaseShellEnv(
@@ -702,7 +679,6 @@ export class RuntimeManager {
     }
 
     this.entries.delete(args.entry.environmentId);
-    await this.stopWatchingStatus(args.entry);
     await args.entry.runtime.shutdown();
     await this.cleanupUnusedInjectedSkillStagingDirs([
       args.skillConfig.catalogHash,
@@ -831,7 +807,6 @@ export class RuntimeManager {
     );
 
     for (const entry of idleEntries) {
-      await this.stopWatchingStatus(entry);
       this.entries.delete(entry.environmentId);
     }
 
@@ -896,15 +871,6 @@ export class RuntimeManager {
     const skillConfig = await this.resolveRuntimeSkillConfig(args);
     const existing = this.entries.get(args.environmentId);
     if (existing) {
-      await this.runCancellableEnvironmentProvision({
-        environmentId: args.environmentId,
-        work: (signal) =>
-          this.applyExistingEnvironmentProvision({
-            entry: existing,
-            provision: args.provision,
-            signal,
-          }),
-      });
       const compatible = await this.ensureCompatibleEntry({
         entry: existing,
         skillConfig,
@@ -1023,27 +989,6 @@ export class RuntimeManager {
     return { aborted: true };
   }
 
-  private async runCancellableEnvironmentProvision(
-    args: RunCancellableEnvironmentProvisionArgs,
-  ): Promise<void> {
-    const existing = this.pendingEnvironmentProvisions.get(args.environmentId);
-    if (existing) {
-      await existing.done;
-      return;
-    }
-
-    const pending = this.createPendingEnvironmentProvision(args.environmentId);
-    const done = Promise.resolve().then(() =>
-      args.work(pending.abortController.signal),
-    );
-    pending.done = done;
-    try {
-      return await done;
-    } finally {
-      this.clearPendingEnvironmentProvision(args.environmentId, pending);
-    }
-  }
-
   private createPendingEnvironmentProvision(
     environmentId: string,
   ): PendingEnvironmentProvision {
@@ -1064,83 +1009,9 @@ export class RuntimeManager {
     }
   }
 
-  private async applyExistingEnvironmentProvision(
-    args: ApplyExistingEnvironmentProvisionArgs,
-  ): Promise<void> {
-    if (
-      args.provision?.workspaceProvisionType !== "unmanaged" ||
-      !args.provision.checkout
-    ) {
-      return;
-    }
-    if (args.provision.path !== args.entry.path) {
-      throw new Error(
-        `Cannot reprovision existing environment ${args.entry.environmentId} at a different path`,
-      );
-    }
-
-    await this.provisionHostWorkspace({
-      ...args.provision,
-      signal: args.signal,
-    });
-    this.options.onWorkspaceStatusChanged?.({
-      environmentId: args.entry.environmentId,
-      changeKinds: ["work-status-changed", "git-refs-changed"],
-    });
-  }
-
-  async destroyEnvironment(
+  private async shutDownEntry(
     environmentId: string,
-    args: DestroyWorkspaceArgs,
-  ): Promise<void> {
-    const existing = this.entries.get(environmentId);
-    const pending = this.pendingEntries.get(environmentId);
-    const entry = existing ?? (pending ? await pending : undefined);
-
-    if (!entry) {
-      return;
-    }
-
-    this.entries.delete(environmentId);
-    await this.stopWatchingStatus(entry);
-    await entry.runtime.shutdown();
-    await this.killManagedWorkspaceProcesses(entry);
-    await entry.workspace.destroy(args);
-    await this.cleanupUnusedInjectedSkillStagingDirs([]);
-  }
-
-  private async killManagedWorkspaceProcesses(
-    entry: RuntimeEntry,
-  ): Promise<void> {
-    if (!entry.workspace.managed) {
-      return;
-    }
-    try {
-      const killed = await killProcessesWithCwdUnder({
-        directory: entry.workspace.path,
-      });
-      if (killed.length > 0) {
-        this.options.logger?.warn(
-          {
-            environmentId: entry.environmentId,
-            workspacePath: entry.workspace.path,
-            pids: killed.map((process) => process.pid),
-          },
-          "Killed processes still running in a destroyed environment",
-        );
-      }
-    } catch (error) {
-      this.options.logger?.warn(
-        {
-          environmentId: entry.environmentId,
-          reason: error instanceof Error ? error.message : String(error),
-        },
-        "Failed to reap processes in a destroyed environment",
-      );
-    }
-  }
-
-  async forgetEnvironment(environmentId: string): Promise<void> {
+  ): Promise<RuntimeEntry | undefined> {
     const existing = this.entries.get(environmentId);
     const pending = this.pendingEntries.get(environmentId);
     let entry = existing;
@@ -1153,46 +1024,20 @@ export class RuntimeManager {
     }
 
     if (!entry) {
-      return;
+      return undefined;
     }
 
     this.entries.delete(environmentId);
-    await this.stopWatchingStatus(entry);
     await entry.runtime.shutdown();
-    await this.cleanupUnusedInjectedSkillStagingDirs([]);
+    return entry;
   }
 
-  async evictIdleEnvironments(): Promise<string[]> {
-    if (this.pendingEntries.size > 0) {
-      return [];
+  async forgetEnvironment(environmentId: string): Promise<void> {
+    const entry = await this.shutDownEntry(environmentId);
+    if (!entry) {
+      return;
     }
-
-    const idleEntries = [...this.entries.values()].filter(
-      (entry) => !this.entryHasActiveEnvironmentWork(entry),
-    );
-
-    for (const entry of idleEntries) {
-      await this.stopWatchingStatus(entry);
-      this.entries.delete(entry.environmentId);
-    }
-
-    const shutdownResults = await Promise.allSettled(
-      idleEntries.map(async (entry) => {
-        await entry.runtime.shutdown();
-        return entry.environmentId;
-      }),
-    );
-    const firstRejected = shutdownResults.find(
-      (result) => result.status === "rejected",
-    );
-    if (firstRejected && firstRejected.status === "rejected") {
-      throw firstRejected.reason;
-    }
-
     await this.cleanupUnusedInjectedSkillStagingDirs([]);
-    return shutdownResults.flatMap((result) =>
-      result.status === "fulfilled" ? [result.value] : [],
-    );
   }
 
   async shutdownAll(): Promise<void> {
@@ -1206,7 +1051,6 @@ export class RuntimeManager {
     this.pendingEntries.clear();
 
     for (const entry of entries) {
-      await this.stopWatchingStatus(entry);
       await entry.runtime.shutdown();
     }
     await this.shutdownProviderMaintenanceRuntime();
@@ -1312,21 +1156,23 @@ export class RuntimeManager {
   private async createEntry(args: CreateEntryArgs): Promise<RuntimeEntry> {
     const provision =
       args.provision ??
-      (args.workspacePath
-        ? reconnectProvisionArgs({
-            environmentId: args.environmentId,
-            ...(args.personalWorkspaceRoot !== undefined
-              ? { personalWorkspaceRoot: args.personalWorkspaceRoot }
-              : {}),
-            workspacePath: args.workspacePath,
-            workspaceProvisionType: args.workspaceProvisionType ?? "unmanaged",
-          })
-        : null);
+      (args.workspacePath ? { path: args.workspacePath } : null);
 
     if (!provision) {
       throw new Error(
         `Missing workspace path for environment ${args.environmentId}`,
       );
+    }
+
+    if (args.setupScriptTimeoutMs != null) {
+      await runSetupScript({
+        workspacePath: provision.path,
+        timeoutMs: args.setupScriptTimeoutMs,
+        contributedEnv: args.setupContributedEnv,
+        shellPath: this.getShellEnv().PATH,
+        signal: args.provisionSignal,
+        onProgress: provision.onProgress,
+      });
     }
 
     const workspace = await this.provisionHostWorkspace({
@@ -1403,7 +1249,6 @@ export class RuntimeManager {
       runtime,
       skillCatalogHash: args.skillConfig?.catalogHash ?? null,
       lastWarnedStaleSkillCatalogHash: null,
-      stopWatchingStatus: STOP_WATCHING,
       terminals: new Set<string>(),
       workspace,
       path: workspace.path,
@@ -1417,12 +1262,6 @@ export class RuntimeManager {
       ...provision,
       ...userExecutableProcessOptions(this.getShellEnv()),
     });
-  }
-
-  private async stopWatchingStatus(entry: RuntimeEntry): Promise<void> {
-    const stopWatchingStatus = entry.stopWatchingStatus;
-    entry.stopWatchingStatus = STOP_WATCHING;
-    await stopWatchingStatus();
   }
 
   private ensureDataDirSkillsWatcher(): void {

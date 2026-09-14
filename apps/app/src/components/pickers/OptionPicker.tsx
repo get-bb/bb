@@ -164,7 +164,6 @@ export function OptionPicker<T extends string>({
                   option.tone === "warning" && "text-warning-text",
                 )}
               >
-                {}
                 {OptionIcon ? (
                   <OptionIcon className="size-4 shrink-0 max-md:pointer-coarse:mt-0.5" />
                 ) : null}

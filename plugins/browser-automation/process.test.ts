@@ -1,11 +1,103 @@
-import { spawn } from "node:child_process";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { execFile, spawn } from "node:child_process";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { promisify } from "node:util";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import { supervise } from "./process.js";
 
 describe("process ownership", () => {
+  it.each([false, true])(
+    "runs the supervisor in Node mode without leaking it to external children (Electron: %s)",
+    async (electron) => {
+      const root = await mkdtemp(join(tmpdir(), "db-supervisor-environment-"));
+      const launcher = join(root, "runtime");
+      const supervisorEnvironment = join(root, "supervisor.json");
+      const childEnvironment = join(root, "child.json");
+      await writeFile(
+        launcher,
+        `#!${process.execPath}
+const { writeFileSync } = require("node:fs");
+const { spawnSync } = require("node:child_process");
+if (process.env.ELECTRON_RUN_AS_NODE !== ${electron ? '"1"' : "undefined"}) process.exit(42);
+writeFileSync(${JSON.stringify(supervisorEnvironment)}, JSON.stringify(process.env));
+const result = spawnSync(${JSON.stringify(process.execPath)}, process.argv.slice(2), { stdio: "inherit", env: process.env });
+process.exit(result.status ?? 1);
+`,
+        { mode: 0o700 },
+      );
+      const childCode = `require("node:fs").writeFileSync(${JSON.stringify(childEnvironment)}, JSON.stringify(process.env)); setInterval(() => {}, 1000);`;
+      const code = `
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { setTimeout as delay } from "node:timers/promises";
+import { supervise, execute } from ${JSON.stringify(new URL("./process.ts", import.meta.url).href)};
+import { runtimeEnvironment } from ${JSON.stringify(new URL("./runtime.ts", import.meta.url).href)};
+Object.defineProperty(process, "execPath", { value: ${JSON.stringify(launcher)} });
+${electron ? 'Object.defineProperty(process.versions, "electron", { value: "41.0.0" });' : ""}
+const env = runtimeEnvironment(${JSON.stringify(root)});
+assert.equal(env.ELECTRON_RUN_AS_NODE, undefined);
+const original = { ...env };
+const child = supervise(${JSON.stringify(process.execPath)}, ["-e", ${JSON.stringify(childCode)}], env);
+try {
+  const deadline = AbortSignal.timeout(5000);
+  while (true) {
+    deadline.throwIfAborted();
+    assert.ok(child.alive(), "Supervisor exited before external child started");
+    try { await readFile(${JSON.stringify(childEnvironment)}, "utf8"); break; } catch {}
+    await delay(25);
+  }
+  assert.deepEqual(env, original);
+  const output = await execute(${JSON.stringify(process.execPath)}, ["-e", "process.stdout.write(JSON.stringify(process.env))"], env, deadline);
+  const executedEnv = JSON.parse(output);
+  for (const [key, value] of Object.entries(original)) {
+    assert.equal(executedEnv[key], value);
+  }
+  assert.equal(executedEnv.ELECTRON_RUN_AS_NODE, undefined);
+  assert.deepEqual(env, original);
+} finally {
+  await child.close();
+}
+`;
+      try {
+        await promisify(execFile)(
+          process.execPath,
+          [
+            "--conditions=source",
+            "--import",
+            "tsx",
+            "--input-type=module",
+            "-e",
+            code,
+          ],
+          {
+            env: {
+              ...process.env,
+              ELECTRON_RUN_AS_NODE: "1",
+              TSX_TSCONFIG_PATH: fileURLToPath(
+                new URL("./tsconfig.smoke.json", import.meta.url),
+              ),
+            },
+            timeout: 10_000,
+          },
+        );
+        const supervisorEnv = JSON.parse(
+          await readFile(supervisorEnvironment, "utf8"),
+        );
+        const childEnv = JSON.parse(await readFile(childEnvironment, "utf8"));
+        expect(supervisorEnv.ELECTRON_RUN_AS_NODE).toBe(
+          electron ? "1" : undefined,
+        );
+        expect(childEnv.ELECTRON_RUN_AS_NODE).toBeUndefined();
+        expect(childEnv.DEV_BROWSER_HOME).toBe(root);
+        expect(childEnv.DEV_BROWSER_SOCKET).toBe(join(root, "daemon.sock"));
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+    12_000,
+  );
   it("worker death closes the supervisor pipe and kills its child", async () => {
     const root = await mkdtemp(join(tmpdir(), "db-worker-death-"));
     const file = join(root, "pid");

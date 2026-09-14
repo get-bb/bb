@@ -39,7 +39,7 @@ import { getProviderModelFallbackData } from "./model-fallback-extraction.js";
 
 type ParseOperationMessageOptions = Pick<
   BuildEventProjectionMessagesOptions,
-  "includeProviderUnhandledOperations" | "providerDisplayName" | "threadName"
+  "includeDiagnosticOperations" | "providerDisplayName" | "threadName"
 >;
 
 function withThreadName(threadName: string, verb: string): string {
@@ -461,7 +461,7 @@ export function parseOperationMessage(
   }
 
   if (decoded.type === "provider/unhandled") {
-    if (options?.includeProviderUnhandledOperations !== true) {
+    if (options?.includeDiagnosticOperations !== true) {
       return null;
     }
 
@@ -477,9 +477,18 @@ export function parseOperationMessage(
   }
 
   if (decoded.type === "provider.env-resolved") {
+    if (options?.includeDiagnosticOperations !== true) {
+      return null;
+    }
+
     const detail = decoded.entries
       .map((entry) => {
-        const source = entry.source === "shell" ? "shell" : entry.source.plugin;
+        const source =
+          entry.source === "shell"
+            ? "shell"
+            : "plugin" in entry.source
+              ? entry.source.plugin
+              : entry.source.core;
         const value = typeof entry.value === "string" ? entry.value : "••••••";
         const reason = entry.reason ? ` — ${entry.reason}` : "";
         return `${entry.name}=${value} (${source})${reason}`;
@@ -548,7 +557,7 @@ export function parseOperationMessage(
       title: provisioningTitleForStatus(operationStatus),
       status: operationStatus,
       provisioning: {
-        environmentId,
+        ...(environmentId !== null ? { environmentId } : {}),
         provisioningId,
         ...(transcript ? { transcript } : {}),
       },

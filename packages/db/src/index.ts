@@ -10,14 +10,8 @@ export type {
 export * from "./schema.js";
 export {
   createQueuedThreadMessageId,
-  createEnvironmentId,
   createEventId,
-  createHostDaemonSessionId,
   createHostId,
-  createProjectId,
-  createPromptHistoryEntryId,
-  createProjectSourceId,
-  createThreadId,
   createThreadProvisioningId,
 } from "./ids.js";
 
@@ -27,10 +21,7 @@ export {
   isSqliteUniqueConstraintOnColumns,
 } from "./sqlite-errors.js";
 export type { MigrationWarningLogger } from "./migrate.js";
-export {
-  deriveStoredEventItemFields,
-  deriveStoredEventItemFieldsFromSource,
-} from "./stored-event-item-fields.js";
+export { deriveStoredEventItemFields } from "./stored-event-item-fields.js";
 export { noopNotifier } from "./notifier.js";
 export type { DbNotifier } from "./notifier.js";
 

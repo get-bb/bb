@@ -1,3 +1,4 @@
+import { EnvironmentProviderIcon } from "@/components/plugin/EnvironmentProviderIcon";
 import {
   useCallback,
   useEffect,
@@ -25,7 +26,14 @@ import {
 } from "@bb/core-ui";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
-import { getEnvironmentWorkspaceLabelIconName } from "@/lib/environment-workspace-display";
+import {
+  findEnvironmentDisplayProvider,
+  getEnvironmentWorkspaceInfoDisplay,
+} from "@/lib/environment-workspace-display";
+import { useSystemEnvironmentProviders } from "@/hooks/queries/environment-provider-queries";
+import { useSystemMachineProviders } from "@/hooks/queries/machine-provider-queries";
+import { useHosts } from "@/hooks/queries/host-queries";
+import { MachineLabel } from "@/components/machines/MachineLabel";
 import { formatWorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
 import { Button } from "@bb/shared-ui/button";
 import {
@@ -40,7 +48,7 @@ import {
   DetailRowIconLabel,
 } from "@/components/ui/detail-card.js";
 import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
-import { useCreateThreadInWorktree } from "@/hooks/useCreateThreadInWorktree";
+import { useCreateThreadInEnvironment } from "@/hooks/useCreateThreadInEnvironment";
 import { Icon } from "@bb/shared-ui/icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import {
@@ -64,13 +72,11 @@ import {
   PULL_REQUEST_STATE_DISPLAY,
   getPullRequestAttentionDisplay,
   getPullRequestChecksDisplay,
+  getPullRequestGithubCheckStatus,
   getPullRequestMergeabilityDisplay,
   getPullRequestReviewDisplay,
 } from "@/lib/pull-request-display";
-import {
-  PullRequestGithubCheckIcon,
-  PullRequestStateIcon,
-} from "@/components/pull-request/PullRequestStatusPill";
+import { PullRequestStateIcon } from "@/components/pull-request/PullRequestStatusPill";
 import { GithubFaviconIcon } from "@/components/pull-request/GithubFaviconIcon";
 import { useUrlAnchorClickHandler } from "@/lib/url-open-routing";
 import { ParentThreadPicker } from "@/components/pickers/ParentThreadPicker";
@@ -232,44 +238,83 @@ export function EnvironmentRow({
   environment,
   environmentDisplayHost,
 }: EnvironmentRowProps) {
-  const createThreadInWorktree = useCreateThreadInWorktree({
+  const createThreadInEnvironment = useCreateThreadInEnvironment({
     projectId: thread.projectId,
     environmentId: environment?.id ?? "",
   });
+  const { providers } = useSystemEnvironmentProviders();
+  const { providers: machineProviders } = useSystemMachineProviders();
+  const hosts = useHosts();
   if (!environment) return null;
+  const environmentHost = hosts.data?.find(
+    (host) => host.id === environment.hostId,
+  );
+  const machineProvider = machineProviders?.find(
+    (provider) => provider.id === environmentHost?.machineProviderId,
+  );
+  const providerLookup = findEnvironmentDisplayProvider(
+    providers,
+    environment.environmentProviderId,
+  );
   const display = formatEnvironmentDisplay({
     environment,
     host: environmentDisplayHost,
+    providerLookup,
   });
-  const showCreateThreadButton = isProvisionedWorktreeEnvironment(environment);
+  const infoDisplay = getEnvironmentWorkspaceInfoDisplay({
+    display,
+    providerLookup,
+    environmentName: environment.name,
+    hostName: environmentDisplayHost.identity?.name ?? null,
+  });
+  const displayHost = environmentHost ?? {
+    name:
+      environmentDisplayHost.identity?.name ?? infoDisplay.machineName ?? "",
+    type: "persistent" as const,
+    machineProviderId: null,
+  };
+  const showCreateThreadButton = isReusableEnvironment(environment);
   return (
     <DetailRow
       label={
-        <DetailRowIconLabel
-          icon={getEnvironmentWorkspaceLabelIconName(
-            display.workspaceDisplayKind,
-          )}
-        >
-          Environment
-        </DetailRowIconLabel>
+        providerLookup.status === "loaded" &&
+        providerLookup.provider !== null ? (
+          <span className="flex items-center gap-1.5">
+            <EnvironmentProviderIcon
+              provider={providerLookup.provider}
+              className="size-3.5 shrink-0 text-muted-foreground"
+            />
+            <span className="min-w-0 truncate">Environment</span>
+          </span>
+        ) : (
+          <DetailRowIconLabel icon={infoDisplay.icon}>
+            Environment
+          </DetailRowIconLabel>
+        )
       }
       valueClassName="min-w-0"
     >
       <span className="flex min-w-0 items-center gap-1">
-        <span className="min-w-0 truncate" title={display.modeLabel}>
-          {display.compactModeLabel}
+        <span className="min-w-0 truncate" title={infoDisplay.label}>
+          {infoDisplay.label}
         </span>
-        {environmentDisplayHost.identity ? (
+        {infoDisplay.machineName !== null && environmentDisplayHost.identity ? (
           <span
-            className="min-w-0 shrink-0 truncate text-muted-foreground"
+            className="inline-flex min-w-0 shrink-0 items-center gap-1.5 text-muted-foreground"
             title={`On ${environmentDisplayHost.identity.name} (${
               environmentDisplayHost.identity.connected
                 ? "connected"
                 : "offline"
             })`}
           >
-            · {environmentDisplayHost.identity.name}
-            {environmentDisplayHost.identity.connected ? "" : " (offline)"}
+            <span>·</span>
+            <MachineLabel
+              host={displayHost}
+              machineProvider={machineProvider}
+            />
+            {environmentDisplayHost.identity.connected ? null : (
+              <span>(offline)</span>
+            )}
           </span>
         ) : null}
         {showCreateThreadButton ? (
@@ -277,16 +322,41 @@ export function EnvironmentRow({
             <TooltipTrigger asChild>
               <button
                 type="button"
-                aria-label="Create thread in worktree"
-                onClick={createThreadInWorktree}
+                aria-label="New thread in this environment"
+                onClick={createThreadInEnvironment}
                 className="inline-flex shrink-0 items-center justify-center rounded-md p-0.5 text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
               >
                 <Icon name="MessageSquarePlus" className="size-4" />
               </button>
             </TooltipTrigger>
-            <TooltipContent>Create thread in worktree</TooltipContent>
+            <TooltipContent>New thread in this environment</TooltipContent>
           </Tooltip>
         ) : null}
+      </span>
+    </DetailRow>
+  );
+}
+
+export function EnvironmentProvisioningFailureRow({
+  failed,
+}: {
+  failed: boolean;
+}) {
+  if (!failed) return null;
+  return (
+    <DetailRow
+      label={
+        <DetailRowIconLabel icon="AlertTriangle">
+          Environment
+        </DetailRowIconLabel>
+      }
+      valueClassName="min-w-0"
+    >
+      <span className="flex min-w-0 items-center gap-1">
+        <span className="min-w-0 truncate">Not created</span>
+        <span className="shrink-0 text-muted-foreground">
+          · provisioning failed
+        </span>
       </span>
     </DetailRow>
   );
@@ -296,19 +366,8 @@ interface WorkspacePathRowProps {
   environment: Environment | null;
 }
 
-function isWorktreeEnvironment(environment: Environment): boolean {
-  return (
-    environment.isWorktree ||
-    environment.workspaceProvisionType === "managed-worktree"
-  );
-}
-
-function isProvisionedWorktreeEnvironment(environment: Environment): boolean {
-  return (
-    environment.status === "ready" &&
-    environment.path !== null &&
-    isWorktreeEnvironment(environment)
-  );
+function isReusableEnvironment(environment: Environment): boolean {
+  return environment.status === "ready" && environment.path !== null;
 }
 
 export function WorkspacePathRow({ environment }: WorkspacePathRowProps) {
@@ -379,15 +438,7 @@ export function PullRequestRow({ pullRequest }: PullRequestRowProps) {
   const stateDisplay = PULL_REQUEST_STATE_DISPLAY[pullRequest.state];
   const attentionDisplay = getPullRequestAttentionDisplay(pullRequest);
   const checksDisplay = getPullRequestChecksDisplay(pullRequest);
-  const showGithubCheckIcon =
-    (pullRequest.state === "open" || pullRequest.state === "draft") &&
-    (pullRequest.checks.state === "passing" ||
-      pullRequest.checks.state === "failing" ||
-      pullRequest.checks.state === "pending");
-  const canShowChecksStatus =
-    (pullRequest.state === "open" || pullRequest.state === "draft") &&
-    pullRequest.checks.state !== "no_checks" &&
-    pullRequest.checks.state !== "unknown";
+  const checkStatus = getPullRequestGithubCheckStatus(pullRequest);
   const statusDisplay =
     pullRequest.attention === "changes_requested" ||
     pullRequest.attention === "review_requested"
@@ -397,7 +448,7 @@ export function PullRequestRow({ pullRequest }: PullRequestRowProps) {
         ? getPullRequestMergeabilityDisplay(pullRequest)
         : attentionDisplay.label !== stateDisplay.label
           ? attentionDisplay
-          : canShowChecksStatus
+          : checkStatus !== null
             ? checksDisplay
             : null;
   const useNeutralStatusText =
@@ -427,11 +478,7 @@ export function PullRequestRow({ pullRequest }: PullRequestRowProps) {
         aria-label={`Pull request ${pullRequest.number}: ${attentionDisplay.label}`}
         className="flex h-5 max-w-full min-w-0 items-center gap-2 text-xs text-foreground no-underline transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
       >
-        {showGithubCheckIcon ? (
-          <PullRequestGithubCheckIcon pullRequest={pullRequest} />
-        ) : (
-          <GithubFaviconIcon />
-        )}
+        <GithubFaviconIcon status={checkStatus} />
         <span className="shrink-0 text-muted-foreground">
           #{pullRequest.number}
         </span>
@@ -449,6 +496,40 @@ export function PullRequestRow({ pullRequest }: PullRequestRowProps) {
         ) : null}
       </a>
     </DetailRow>
+  );
+}
+
+function resolveDisplayedMergeBaseBranch(
+  selectedMergeBaseBranch: string | undefined,
+  workspaceStatus: WorkspaceStatus | undefined,
+): string | undefined {
+  return (
+    selectedMergeBaseBranch ??
+    workspaceStatus?.mergeBase?.mergeBaseBranch ??
+    workspaceStatus?.branch.defaultBranch
+  );
+}
+
+function shouldShowWorkspaceStatus({
+  thread,
+  environment,
+  workspaceStatus,
+  workspaceStatusError,
+  workspaceUnavailable,
+}: Pick<
+  ThreadMetadataContentProps,
+  | "thread"
+  | "environment"
+  | "workspaceStatus"
+  | "workspaceStatusError"
+  | "workspaceUnavailable"
+>): boolean {
+  return (
+    (Boolean(workspaceStatus) ||
+      Boolean(workspaceStatusError) ||
+      Boolean(workspaceUnavailable) ||
+      environment?.status === "destroyed") &&
+    !(thread.archivedAt != null && environment?.managed !== true)
   );
 }
 
@@ -477,11 +558,10 @@ export function MergeBaseRow({
   onMergeBaseBranchSearchQueryChange,
   defaultOpen,
 }: MergeBaseRowProps) {
-  const effectiveMergeBaseBranch =
-    selectedMergeBaseBranch ??
-    workspaceStatus?.mergeBase?.mergeBaseBranch ??
-    workspaceStatus?.branch.defaultBranch;
-  const mergeBaseBranch = effectiveMergeBaseBranch;
+  const mergeBaseBranch = resolveDisplayedMergeBaseBranch(
+    selectedMergeBaseBranch,
+    workspaceStatus,
+  );
   const mergeBaseCandidateGroups = useMemo(
     () =>
       getMergeBaseBranchCandidateGroups({
@@ -499,15 +579,11 @@ export function MergeBaseRow({
   );
   const mergeBaseCandidates = mergeBaseCandidateGroups.options;
   const remoteMergeBaseCandidates = mergeBaseCandidateGroups.remoteOptions;
-  const showBranchComparisonUi = Boolean(
-    effectiveMergeBaseBranch || workspaceStatus?.branch.defaultBranch,
-  );
   const isOnDefaultBranch =
     workspaceStatus?.branch.currentBranch != null &&
     workspaceStatus.branch.currentBranch ===
       workspaceStatus.branch.defaultBranch;
-  const showMergeBase =
-    showBranchComparisonUi && Boolean(mergeBaseBranch) && !isOnDefaultBranch;
+  const showMergeBase = Boolean(mergeBaseBranch) && !isOnDefaultBranch;
   if (!showMergeBase) return null;
   const canRequestMergeBaseOptions =
     mergeBaseBranchOptions === undefined &&
@@ -567,19 +643,23 @@ export function GitStatusRow({
   workspaceUnavailable,
   selectedMergeBaseBranch,
 }: GitStatusRowProps) {
-  const isWorkspaceDeleted = environment?.status === "destroyed";
-  const showWorkspaceStatus =
-    (Boolean(workspaceStatus) ||
-      Boolean(workspaceStatusError) ||
-      Boolean(workspaceUnavailable) ||
-      isWorkspaceDeleted) &&
-    !(thread.archivedAt != null && environment?.managed !== true);
-  if (!showWorkspaceStatus) return null;
+  if (
+    !shouldShowWorkspaceStatus({
+      thread,
+      environment,
+      workspaceStatus,
+      workspaceStatusError,
+      workspaceUnavailable,
+    })
+  ) {
+    return null;
+  }
 
-  const effectiveMergeBaseBranch =
-    selectedMergeBaseBranch ??
-    workspaceStatus?.mergeBase?.mergeBaseBranch ??
-    workspaceStatus?.branch.defaultBranch;
+  const isWorkspaceDeleted = environment?.status === "destroyed";
+  const effectiveMergeBaseBranch = resolveDisplayedMergeBaseBranch(
+    selectedMergeBaseBranch,
+    workspaceStatus,
+  );
   const showBranchComparisonUi = Boolean(
     effectiveMergeBaseBranch || workspaceStatus?.branch.defaultBranch,
   );
@@ -609,7 +689,7 @@ export function GitStatusRow({
           {display.label}
         </span>
         <span className="min-w-0 truncate text-muted-foreground">
-          {display.summaryContent}
+          {display.summary}
         </span>
       </div>
     </DetailRow>
@@ -697,7 +777,6 @@ export function ThreadCommitsRow({
   if (commits.length === 0) return null;
   return (
     <>
-      {}
       <div className="mb-1 mt-3 border-t border-border" aria-hidden />
       <DetailRow
         label="Commits"
@@ -802,6 +881,7 @@ export interface ThreadMetadataContentProps {
   isLoadingParentThreads: boolean;
   isParentThreadsError: boolean;
   environment: Environment | null;
+  environmentProvisioningFailure: boolean;
   environmentDisplayHost: EnvironmentDisplayHostContext;
   workspaceStatus: WorkspaceStatus | undefined;
   workspaceStatusError: Error | null;
@@ -827,8 +907,8 @@ export interface ThreadMetadataContentProps {
 export function hasAnyThreadMetadata(
   {
     thread,
-    parentThreadDisplayName,
     environment,
+    environmentProvisioningFailure,
     workspaceStatus,
     workspaceStatusError,
     workspaceUnavailable,
@@ -836,8 +916,8 @@ export function hasAnyThreadMetadata(
   }: Pick<
     ThreadMetadataContentProps,
     | "thread"
-    | "parentThreadDisplayName"
     | "environment"
+    | "environmentProvisioningFailure"
     | "workspaceStatus"
     | "workspaceStatusError"
     | "workspaceUnavailable"
@@ -846,13 +926,13 @@ export function hasAnyThreadMetadata(
   hasForks: boolean,
 ): boolean {
   const parentThreadId = thread.parentThreadId ?? undefined;
-  const isWorkspaceDeleted = environment?.status === "destroyed";
-  const showWorkspaceStatus =
-    (Boolean(workspaceStatus) ||
-      Boolean(workspaceStatusError) ||
-      Boolean(workspaceUnavailable) ||
-      isWorkspaceDeleted) &&
-    !(thread.archivedAt != null && environment?.managed !== true);
+  const showWorkspaceStatus = shouldShowWorkspaceStatus({
+    thread,
+    environment,
+    workspaceStatus,
+    workspaceStatusError,
+    workspaceUnavailable,
+  });
   const branchName = workspaceStatus?.branch.currentBranch ?? null;
   const workspaceChangedFilesSections =
     selectWorkspaceChangedFilesSections(workspaceStatus);
@@ -861,12 +941,12 @@ export function hasAnyThreadMetadata(
   return Boolean(
     parentThreadId ||
     environment ||
+    environmentProvisioningFailure ||
     branchName ||
     pullRequest ||
     showWorkspaceStatus ||
     showThreadChangedFiles ||
     thread.archivedAt != null ||
-    (parentThreadDisplayName && parentThreadId) ||
     hasForks,
   );
 }
@@ -926,6 +1006,7 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
     isLoadingParentThreads,
     isParentThreadsError,
     environment,
+    environmentProvisioningFailure,
     environmentDisplayHost,
     workspaceStatus,
     workspaceStatusError,
@@ -970,6 +1051,9 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
         thread={thread}
         environment={environment}
         environmentDisplayHost={environmentDisplayHost}
+      />
+      <EnvironmentProvisioningFailureRow
+        failed={environmentProvisioningFailure}
       />
       <WorkspacePathRow environment={environment} />
       <BranchRow workspaceStatus={workspaceStatus} />

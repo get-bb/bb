@@ -5,6 +5,7 @@ import {
   deleteClaimedQueuedThreadMessageBatchInTransaction,
   getQueuedThreadMessage,
   getEnvironment,
+  getHost,
   getThread,
   isOrdinaryTurnEndQueuedMessage,
   isThreadQueueAutoSendPaused,
@@ -14,7 +15,10 @@ import {
   type QueuedThreadMessageGroupClaimPolicy,
   type QueuedThreadMessageGroupEligibility,
 } from "@bb/db";
-import { queuedMessageSystemNoticeSchema } from "@bb/domain";
+import {
+  flattenPromptInputGroups,
+  queuedMessageSystemNoticeSchema,
+} from "@bb/domain";
 import type {
   PromptInput,
   QueuedMessageWaitingOn,
@@ -47,7 +51,6 @@ import {
   buildExecutionOptions,
   prepareTurnSubmitCommandPayload,
 } from "./thread-commands.js";
-import { resolvePluginMentionContextInputs } from "../plugins/plugin-mentions.js";
 import {
   prependDeferredFirstTurnContext,
   requireDeferredFirstTurnContextCurrent,
@@ -65,19 +68,25 @@ import { resolvePermissionEscalation } from "./thread-runtime-config.js";
 import { hasMessageDispatchHooks } from "./dispatch-hooks.js";
 import { attemptDispatch } from "./dispatch-attempt.js";
 import { deliverParentSystemMessage } from "./parent-system-messages.js";
-import { settleQueueRowDispatched } from "./queue-waits.js";
+import {
+  createQueuedMessageAutoSendPausedError,
+  createQueuedMessageClaimLostError,
+  QUEUED_MESSAGE_AUTO_SEND_PAUSED_CODE,
+  QUEUED_MESSAGE_CLAIM_LOST_CODE,
+  settleQueueRowDispatched,
+} from "./queue-waits.js";
 import { recordQueuedMessageDrainFailure } from "./queue-drain-failure.js";
 import {
+  appendPluginMentionContext,
+  captureUserMessageSentTelemetry,
   ensureThreadIsWritable,
   formatAgentThreadInput,
-  groupedInputForRuntime,
   resolveMessageSenderThreadId,
 } from "./thread-send.js";
 import { recordAcceptedPromptHistoryEntry } from "../prompt-history.js";
 import { requireThreadCommandEnvironment } from "./thread-command-environment.js";
 import { applyLoggedThreadLifecycleEventInTransaction } from "./lifecycle-outcome.js";
 import { buildThreadStatusChangeMetadata } from "./thread-runtime-display.js";
-import { applyLoggedEnvironmentLifecycleEvent } from "../environments/lifecycle-outcome.js";
 import {
   goneThreadEnvironmentDetails,
   threadEnvironmentUnavailableDetails,
@@ -118,7 +127,7 @@ interface SendClaimedQueuedMessageForThreadArgs {
 }
 
 export function createAutomaticQueuedMessageGroupEligibility(
-  deps: Pick<AppDeps, "db">,
+  deps: Pick<AppDeps, "db" | "hub">,
   args: { now: number; thread: Thread },
 ): QueuedThreadMessageGroupEligibility {
   const activeTurnId = getActiveTurnId(deps, args.thread.id);
@@ -141,8 +150,21 @@ export function createAutomaticQueuedMessageGroupEligibility(
             args.thread.status === "idle" ||
             (args.thread.status === "active" && activeTurnId !== null)
           );
+        case "host-offline": {
+          const environment =
+            args.thread.environmentId === null
+              ? null
+              : getEnvironment(deps.db, args.thread.environmentId);
+          const host =
+            environment === null ? null : getHost(deps.db, environment.hostId);
+          return (
+            host !== null &&
+            host.destroyedAt === null &&
+            host.phase === "active" &&
+            deps.hub.hasDaemonForHost(host.id)
+          );
+        }
         case "provisioning":
-        case "host-offline":
         case "interaction":
           return false;
       }
@@ -154,15 +176,7 @@ async function requireReadyQueuedMessageEnvironment(
   thread: Thread,
 ) {
   const environment = await requireThreadCommandEnvironment(deps, { thread });
-  if (environment.status === "retiring") {
-    applyLoggedEnvironmentLifecycleEvent(deps, {
-      environmentId: environment.id,
-      event: { type: "retire.cancelled" },
-    });
-  }
-  return requireReadyThreadEnvironment(
-    getEnvironment(deps.db, environment.id) ?? environment,
-  );
+  return requireReadyThreadEnvironment(environment);
 }
 
 export interface CreateQueuedMessageForThreadArgs {
@@ -243,13 +257,10 @@ export async function createQueuedMessageForThread(
     );
   deps.hub.notifyThread(thread.id, ["queue-changed"]);
   if (senderThreadId === null && payload.input.length > 0) {
-    deps.telemetry.capture({
-      name: "user_message_sent",
-      properties: {
-        is_child_thread: thread.parentThreadId !== null,
-        message_source: "queued_message",
-        provider: thread.providerId,
-      },
+    captureUserMessageSentTelemetry(deps, {
+      isChildThread: thread.parentThreadId !== null,
+      messageSource: "queued_message",
+      providerId: thread.providerId,
     });
   }
   if (currentThread.status === "idle" && providerThreadId !== null) {
@@ -278,8 +289,6 @@ interface FormatQueuedMessageInputForSenderArgs {
 }
 
 const STALE_QUEUED_MESSAGE_CLAIM_MS = 5 * 60 * 1000;
-const QUEUED_MESSAGE_CLAIM_LOST_CODE = "queued_message_claim_lost";
-const QUEUED_MESSAGE_AUTO_SEND_PAUSED_CODE = "queued_message_auto_send_paused";
 const activeQueuedMessageClaimTokens = new Set<string>();
 
 function respectsManualStopPause(
@@ -388,26 +397,10 @@ function claimQueuedThreadMessageForSend(
   );
 }
 
-function createQueuedMessageClaimLostError(): ApiError {
-  return new ApiError(
-    409,
-    QUEUED_MESSAGE_CLAIM_LOST_CODE,
-    "Queued message claim expired before it could be sent",
-  );
-}
-
 function isQueuedMessageClaimLostError(error: unknown): boolean {
   return (
     error instanceof ApiError &&
     error.body.code === QUEUED_MESSAGE_CLAIM_LOST_CODE
-  );
-}
-
-function createQueuedMessageAutoSendPausedError(): ApiError {
-  return new ApiError(
-    409,
-    QUEUED_MESSAGE_AUTO_SEND_PAUSED_CODE,
-    "Queued message auto-send was paused by a manual stop",
   );
 }
 
@@ -472,16 +465,11 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
       senderThreadId: claimedQueuedMessage.senderThreadId,
     }),
   );
-  let input = groupedInputForRuntime(inputGroups);
-  const pluginMentionContext = await resolvePluginMentionContextInputs(input);
-  if (pluginMentionContext.length > 0) {
-    input = [...input, ...pluginMentionContext];
-    const lastGroup = inputGroups[inputGroups.length - 1]!;
-    inputGroups = [
-      ...inputGroups.slice(0, -1),
-      [...lastGroup, ...pluginMentionContext],
-    ];
-  }
+  let input = flattenPromptInputGroups(inputGroups);
+  ({ input, inputGroups } = await appendPluginMentionContext({
+    input,
+    inputGroups,
+  }));
   const deferredFirstTurnContext = resolveDeferredFirstTurnContext(
     deps.db,
     thread.id,
@@ -504,6 +492,8 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
     await recoverThreadModelOverride(deps, {
       model: payload.model,
       modelSource: "explicit",
+      reasoningLevel: payload.reasoningLevel,
+      reasoningLevelSource: "explicit",
       thread,
     });
   }
@@ -684,7 +674,7 @@ async function sendClaimedQueuedMessageForThread(
   const inputGroups = queuedMessages.map(
     (queuedMessage) => queuedMessage.content,
   );
-  const input = groupedInputForRuntime(inputGroups);
+  const input = flattenPromptInputGroups(inputGroups);
   const lead = args.queuedMessages[0]!;
   const outcome = await attemptDispatch(deps, {
     thread: args.thread,
@@ -736,7 +726,7 @@ function describeCoreWait(waitingOn: QueuedMessageWaitingOn | null): string {
     case "provisioning":
       return "the thread's workspace is still being prepared";
     case "host-offline":
-      return `the "${waitingOn.hostName}" host is not connected`;
+      return `the "${waitingOn.hostName}" host is not ready`;
     case "interaction":
       return "the thread is waiting for you to answer a pending interaction";
     case "turn-starting":

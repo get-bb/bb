@@ -8,6 +8,7 @@ import {
   type Task,
   type TaskThread,
 } from "../db";
+import { displayName } from "../shared/display-name";
 
 const SEARCH_LIMIT = 10;
 const RECENT_COMMENT_LIMIT = 5;
@@ -25,13 +26,6 @@ interface MentionTaskRow {
 interface AttachmentManifestRow {
   id: string;
   file_name: string;
-}
-
-function displayName(value: string): string {
-  return value
-    .split("_")
-    .map((part) => `${part[0]?.toUpperCase() ?? ""}${part.slice(1)}`)
-    .join(" ");
 }
 
 function searchTasks(

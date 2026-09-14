@@ -1,3 +1,7 @@
+import {
+  createServerAccessRecheck,
+  registerServerAccess,
+} from "./server-access.js";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { registerConnectCli } from "./cli.js";
 import { createKvCredentialStore } from "./credential.js";
@@ -17,6 +21,19 @@ import {
 } from "./types.js";
 
 export default async function plugin(bb: BbPluginApi) {
+  const settings = bb.settings.define({
+    sendRemoteInstructions: {
+      type: "boolean",
+      label: "Tell agents about remote access",
+      description:
+        "When you use BB remotely, tell agents to share servers through Connect. Applies to new agent sessions.",
+      default: true,
+    },
+  });
+  let currentSettings = await settings.get();
+  settings.onChange((next) => {
+    currentSettings = next;
+  });
   const store = createKvCredentialStore(bb.storage.kv);
   let tunnel!: ConnectTunnel;
   const hostResolver = new ShareHostResolver(() => bb.sdk);
@@ -38,15 +55,20 @@ export default async function plugin(bb: BbPluginApi) {
     },
   });
 
+  const recheckServerAccess = createServerAccessRecheck(bb);
   tunnel = new ConnectTunnel({
     store,
     shares,
     defaultBaseUrl: resolveDefaultConnectBaseUrl(process.env),
     getLoopbackBaseUrl,
     log: bb.log,
-    onStatusChange: (status) =>
-      bb.realtime.publish(CONNECT_REALTIME_CHANNEL, status),
+    onStatusChange: (status) => {
+      bb.realtime.publish(CONNECT_REALTIME_CHANNEL, status);
+      recheckServerAccess(status);
+    },
   });
+
+  await registerServerAccess(bb, tunnel);
 
   const mobilePairing: MobilePairingGate = {
     enabled: async () => (await bb.sdk.system.config()).experiments.mobileApp,
@@ -59,6 +81,7 @@ export default async function plugin(bb: BbPluginApi) {
   registerConnectCli({ bb, tunnel, hostResolver, mobilePairing });
 
   bb.agents.contributeInstructions(() => {
+    if (!currentSettings.sendRemoteInstructions) return null;
     const status = tunnel.status();
     if (!status.paired || status.url === null) return null;
     const recent =

@@ -99,3 +99,18 @@ export function buildEnvironmentDiffFileContentUrl(
     }),
   );
 }
+
+export function getFilePreviewLeaseBaseUrl(url: string): string | null {
+  return (
+    /^((?:https?:\/\/[^/?#]+)?\/api\/v1\/file-previews\/[^/?#]+)(?:\/|$)/u.exec(
+      url,
+    )?.[1] ?? null
+  );
+}
+
+export function buildFilePreviewLeaseContentUrl(
+  baseUrl: string,
+  path: string,
+): string {
+  return `${baseUrl.replace(/\/+$/u, "")}/${encodePathSegments(path)}`;
+}

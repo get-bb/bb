@@ -5,17 +5,26 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
 } from "@testing-library/react";
+import { Provider, createStore } from "jotai";
+import {
+  sidebarFooterOrderAtom,
+  sidebarFooterHiddenAtom,
+} from "@/components/sidebar/sidebarFooterPreferences";
+import { SidebarFooterSettings } from "@/components/settings/SidebarFooterSettings";
 import type { ReactNode } from "react";
 import type {
   ExperimentalSidebarFooterActionContext,
   ExperimentalSidebarFooterDisclosureController,
 } from "@get-bb/plugin-sdk";
 import { MemoryRouter, useLocation } from "react-router-dom";
+import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SidebarMenu, SidebarProvider } from "@/components/ui/sidebar.js";
 import {
   resetPluginSlotStoreForTest,
+  removePluginSlotRegistrations,
   setPluginSlotRegistrations,
   type PluginRegistrationSet,
 } from "@/lib/plugin-slots";
@@ -58,14 +67,18 @@ function LocationProbe() {
   );
 }
 
-function renderWithProviders(ui: ReactNode) {
+function renderWithProviders(ui: ReactNode, store = createStore()) {
   return render(
-    <MemoryRouter>
-      <SidebarProvider>
-        {ui}
-        <LocationProbe />
-      </SidebarProvider>
-    </MemoryRouter>,
+    <Provider store={store}>
+      <MemoryRouter>
+        <TooltipProvider delayDuration={0}>
+          <SidebarProvider>
+            {ui}
+            <LocationProbe />
+          </SidebarProvider>
+        </TooltipProvider>
+      </MemoryRouter>
+    </Provider>,
   );
 }
 
@@ -80,8 +93,6 @@ function FooterHarness() {
       <SidebarMenu>
         <PluginSidebarFooterItems
           activeDisclosureKey={disclosure.activeKey}
-          suppressedTooltipKey={disclosure.suppressedTooltipKey}
-          onTooltipSuppressionEnd={disclosure.clearTooltipSuppression}
           onDisclosureCommand={disclosure.handleCommand}
         />
       </SidebarMenu>
@@ -271,6 +282,48 @@ describe("PluginSidebarFooterItems", () => {
     expect(screen.queryByRole("tooltip")).toBeNull();
   });
 
+  it("keeps the tooltip closed when the More drawer returns focus after a touch dismissal", () => {
+    const definition = definePluginApp((app) => {
+      app.experimental_sidebarFooter.register({
+        kind: "disclosure",
+        id: "usage",
+        label: "Provider usage",
+        icon: "ChartColumn",
+        component: UsageDisclosure,
+      });
+    });
+    setPluginSlotRegistrations(
+      "usage-plugin",
+      collectPluginAppRegistrations(definition),
+    );
+
+    renderWithProviders(<FooterHarness />);
+    const trigger = screen.getByRole("button", { name: "Provider usage" });
+
+    fireEvent.pointerDown(trigger, { pointerType: "touch" });
+    fireEvent.pointerUp(trigger, { pointerType: "touch" });
+    fireEvent.click(trigger);
+    expect(screen.getByText("Provider usage content")).toBeDefined();
+
+    const dismissButton = screen.getByRole("button", { name: "Dismiss usage" });
+    fireEvent.pointerDown(dismissButton, { pointerType: "touch" });
+    fireEvent.pointerUp(dismissButton, { pointerType: "touch" });
+    fireEvent.click(dismissButton);
+    expect(document.activeElement).toBe(trigger);
+    expect(screen.queryByRole("tooltip")).toBeNull();
+
+    fireEvent.pointerDown(document.body, { pointerType: "touch" });
+    fireEvent.pointerUp(document.body, { pointerType: "touch" });
+    fireEvent.blur(trigger);
+    fireEvent.pointerDown(document.body, { pointerType: "touch" });
+    fireEvent.pointerUp(document.body, { pointerType: "touch" });
+    trigger.focus();
+    fireEvent.focus(trigger);
+
+    expect(document.activeElement).toBe(trigger);
+    expect(screen.queryByRole("tooltip")).toBeNull();
+  });
+
   it("lets the host coordinate disclosures from multiple plugins", () => {
     let first: ExperimentalSidebarFooterDisclosureController | null = null;
     let second: ExperimentalSidebarFooterDisclosureController | null = null;
@@ -329,5 +382,192 @@ describe("PluginSidebarFooterItems", () => {
 
     fireEvent.keyDown(window, { key: "Escape" });
     expect(screen.queryByText("First content")).toBeNull();
+  });
+
+  it("moves an open disclosure into More, still opens it there, and restores it through appearance settings", async () => {
+    const definition = definePluginApp((app) => {
+      app.experimental_sidebarFooter.register({
+        kind: "disclosure",
+        id: "usage",
+        label: "Provider usage",
+        icon: "ChartColumn",
+        component: () => <p>Usage detail</p>,
+      });
+    });
+    setPluginSlotRegistrations(
+      "usage-plugin",
+      collectPluginAppRegistrations(definition),
+    );
+    const store = createStore();
+    renderWithProviders(
+      <>
+        <FooterHarness />
+        <SidebarFooterSettings />
+      </>,
+      store,
+    );
+    expect(
+      screen.queryByRole("button", { name: "More footer actions" }),
+    ).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Provider usage" }));
+    expect(screen.getByText("Usage detail")).toBeDefined();
+    fireEvent.contextMenu(
+      screen.getByRole("button", { name: "Provider usage" }),
+    );
+    fireEvent.pointerUp(
+      await screen.findByRole("menuitem", { name: "Customize footer" }),
+      { button: 2, pointerType: "mouse" },
+    );
+    expect(screen.getByLabelText("Current path").textContent).toBe("/");
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Hide" }));
+    await waitFor(() => expect(screen.queryByText("Usage detail")).toBeNull());
+    expect(store.get(sidebarFooterHiddenAtom)).toEqual([
+      "plugin:usage-plugin/usage",
+    ]);
+    expect(screen.queryByRole("button", { name: "Provider usage" })).toBeNull();
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "More footer actions" }),
+      { button: 0, ctrlKey: false, pointerType: "mouse" },
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Provider usage" }),
+    );
+    await screen.findByText("Usage detail");
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() =>
+      expect(document.activeElement?.id).toBe("sidebar-footer-more"),
+    );
+    fireEvent.click(
+      screen.getByRole("switch", { name: "Show Provider usage in footer" }),
+    );
+    expect(
+      screen.getByRole("button", { name: "Provider usage" }),
+    ).toBeDefined();
+    expect(
+      screen.queryByRole("button", { name: "More footer actions" }),
+    ).toBeNull();
+  });
+
+  it("keeps hidden actions callable and preserves preferences across plugin reloads", async () => {
+    const run = vi.fn();
+    const registration = collectPluginAppRegistrations(
+      definePluginApp((app) => {
+        app.experimental_sidebarFooter.register({
+          kind: "action",
+          id: "action",
+          label: "Run action",
+          icon: "Zap",
+          onActivate: run,
+        });
+      }),
+    );
+    setPluginSlotRegistrations("example", registration);
+    const store = createStore();
+    store.set(sidebarFooterHiddenAtom, ["plugin:example/action"]);
+    store.set(sidebarFooterOrderAtom, [
+      "plugin:missing/item",
+      "plugin:example/action",
+    ]);
+    renderWithProviders(<FooterHarness />, store);
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "More footer actions" }),
+      { button: 0, ctrlKey: false, pointerType: "mouse" },
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Run action" }),
+    );
+    expect(run).toHaveBeenCalledTimes(1);
+    act(() => removePluginSlotRegistrations("example"));
+    expect(
+      screen.queryByRole("button", { name: "More footer actions" }),
+    ).toBeNull();
+    act(() =>
+      setPluginSlotRegistrations(
+        "new-plugin",
+        collectPluginAppRegistrations(
+          definePluginApp((app) => {
+            app.experimental_sidebarFooter.register({
+              kind: "action",
+              id: "new",
+              label: "New action",
+              icon: "Zap",
+              onActivate: run,
+            });
+          }),
+        ),
+      ),
+    );
+    expect(screen.getByRole("button", { name: "New action" })).toBeDefined();
+    act(() => setPluginSlotRegistrations("example", registration));
+    expect(screen.queryByRole("button", { name: "Run action" })).toBeNull();
+    expect(store.get(sidebarFooterHiddenAtom)).toEqual([
+      "plugin:example/action",
+    ]);
+    expect(store.get(sidebarFooterOrderAtom)).toEqual([
+      "plugin:missing/item",
+      "plugin:example/action",
+    ]);
+  });
+
+  it("orders built-in and plugin shortcuts together and keeps all-hidden actions reachable", async () => {
+    const run = vi.fn();
+    setPluginSlotRegistrations(
+      "example",
+      collectPluginAppRegistrations(
+        definePluginApp((app) => {
+          app.experimental_sidebarFooter.register({
+            kind: "action",
+            id: "action",
+            label: "Run action",
+            icon: "Zap",
+            onActivate: run,
+          });
+        }),
+      ),
+    );
+    const store = createStore();
+    store.set(sidebarFooterOrderAtom, [
+      "builtin:report-bug",
+      "plugin:example/action",
+      "builtin:settings",
+    ]);
+    const view = renderWithProviders(
+      <SidebarMenu>
+        <PluginSidebarFooterItems
+          activeDisclosureKey={null}
+          onDisclosureCommand={vi.fn()}
+          builtInActions={[
+            { id: "settings", onActivate: run },
+            { id: "report-bug", onActivate: run },
+          ]}
+        />
+      </SidebarMenu>,
+      store,
+    );
+    expect(
+      [...view.container.querySelectorAll("[data-footer-item]")].map((item) =>
+        item.getAttribute("data-footer-item"),
+      ),
+    ).toEqual([
+      "builtin:report-bug",
+      "plugin:example/action",
+      "builtin:settings",
+    ]);
+    act(() =>
+      store.set(sidebarFooterHiddenAtom, [
+        "builtin:settings",
+        "builtin:report-bug",
+        "plugin:example/action",
+      ]),
+    );
+    expect(view.container.querySelectorAll("[data-footer-item]")).toHaveLength(
+      0,
+    );
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "More footer actions" }),
+      { button: 0, ctrlKey: false, pointerType: "mouse" },
+    );
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Settings" }));
+    expect(run).toHaveBeenCalledTimes(1);
   });
 });

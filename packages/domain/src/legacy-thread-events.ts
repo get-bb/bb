@@ -3,26 +3,6 @@ import type { ThreadEventType } from "./provider-event.js";
 
 export const LEGACY_CODEX_GOAL_EXTENSION_KIND = "provider-codex/goal";
 
-export const LEGACY_THREAD_EVENT_TYPES = [
-  "thread/goal/updated",
-  "thread/goal/cleared",
-  "turn/plan/updated",
-  "system/permissionGrant/lifecycle",
-  "system/userQuestion/lifecycle",
-] as const satisfies readonly ThreadEventType[];
-
-export type LegacyThreadEventType = (typeof LEGACY_THREAD_EVENT_TYPES)[number];
-
-const legacyThreadEventTypeSet: ReadonlySet<string> = new Set(
-  LEGACY_THREAD_EVENT_TYPES,
-);
-
-export function isLegacyThreadEventType(
-  type: string,
-): type is LegacyThreadEventType {
-  return legacyThreadEventTypeSet.has(type);
-}
-
 export interface StoredThreadEventShape {
   type: ThreadEventType;
   data: Record<string, unknown>;
@@ -163,8 +143,6 @@ function withoutGoalFields(
   return rest;
 }
 
-export const LEGACY_TOOL_ITEM_BACKFILL_MIGRATION = "legacy-tool-item-backfill";
-
 const LEGACY_READ_TOOL_NAMES: ReadonlySet<string> = new Set(["Read", "read"]);
 const LEGACY_CONTENT_SEARCH_TOOL_NAMES: ReadonlySet<string> = new Set([
   "Grep",
@@ -213,9 +191,9 @@ function firstStringField(
   return undefined;
 }
 
-function legacyToolCallCommand(
+export function formatToolCallCommand(
   tool: string,
-  args: Record<string, unknown> | undefined,
+  args: Record<string, unknown> | null | undefined,
 ): string {
   if (!args) return tool;
   const entries = Object.entries(args).filter(([, v]) => v !== undefined);
@@ -300,7 +278,7 @@ export function upgradeLegacyToolItem(item: unknown): unknown {
       type: "fileRead",
       ...sharedLegacyItemFields(item),
       path,
-      cmd: legacyToolCallCommand(item.tool, args),
+      cmd: formatToolCallCommand(item.tool, args),
     };
   }
   if (LEGACY_CONTENT_SEARCH_TOOL_NAMES.has(tool)) {
@@ -313,7 +291,7 @@ export function upgradeLegacyToolItem(item: unknown): unknown {
       mode: "content",
       query,
       ...(path === undefined ? {} : { path }),
-      cmd: legacyToolCallCommand(item.tool, args),
+      cmd: formatToolCallCommand(item.tool, args),
     };
   }
   if (LEGACY_PATH_SEARCH_TOOL_NAMES.has(tool)) {
@@ -326,7 +304,7 @@ export function upgradeLegacyToolItem(item: unknown): unknown {
       mode: "path",
       query: query ?? "",
       ...(path === undefined ? {} : { path }),
-      cmd: legacyToolCallCommand(item.tool, args),
+      cmd: formatToolCallCommand(item.tool, args),
     };
   }
   if (LEGACY_LIST_TOOL_NAMES.has(tool)) {
@@ -338,7 +316,7 @@ export function upgradeLegacyToolItem(item: unknown): unknown {
       mode: "list",
       query: "",
       path,
-      cmd: legacyToolCallCommand(item.tool, args),
+      cmd: formatToolCallCommand(item.tool, args),
     };
   }
   if (LEGACY_SUPPRESSED_TOOL_NAMES.has(tool)) {

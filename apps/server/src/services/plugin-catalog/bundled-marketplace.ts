@@ -19,6 +19,7 @@ export function resolveBundledMarketplaceDirectory(
   baseDirectory = moduleDirectory,
 ): string {
   const candidates = [
+    path.resolve(baseDirectory, "../../../packages/bundled-plugins/dist"),
     path.resolve(baseDirectory, "builtin-plugins"),
     path.resolve(
       baseDirectory,
@@ -34,7 +35,7 @@ export function resolveBundledMarketplaceDirectory(
   return (
     candidates.find((candidate) =>
       existsSync(path.join(candidate, BUNDLED_MARKETPLACE_FILENAME)),
-    ) ?? candidates[1]
+    ) ?? candidates[2]
   );
 }
 

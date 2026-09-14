@@ -544,6 +544,12 @@ interface TsconfigPlan {
   text: string | null;
 }
 
+function isSdkPathMapKey(key: string): boolean {
+  return SDK_PATH_MAP_PREFIXES.some(
+    (name) => key === name || key.startsWith(`${name}/`),
+  );
+}
+
 async function planTsconfig(
   rootDir: string,
   options: { removeTypesIncludes: boolean },
@@ -575,11 +581,7 @@ async function planTsconfig(
 
   const compilerOptions = asRecord(tsconfig.compilerOptions);
   const paths = asRecord(compilerOptions.paths);
-  const removedPathMaps = Object.keys(paths).filter((key) =>
-    SDK_PATH_MAP_PREFIXES.some(
-      (name) => key === name || key.startsWith(`${name}/`),
-    ),
-  );
+  const removedPathMaps = Object.keys(paths).filter(isSdkPathMapKey);
   const include = Array.isArray(tsconfig.include) ? tsconfig.include : null;
   const removedIncludes =
     include === null || !options.removeTypesIncludes
@@ -663,14 +665,7 @@ async function pathExists(path: string): Promise<boolean> {
 
 async function readDeclaredSdkPin(rootDir: string): Promise<string | null> {
   const manifest = await readJsonFile(join(rootDir, "package.json"));
-  if (manifest === null) return null;
-  for (const field of ["devDependencies", "dependencies"] as const) {
-    const deps = manifest[field];
-    if (typeof deps !== "object" || deps === null) continue;
-    const declared = (deps as Record<string, unknown>)["@get-bb/plugin-sdk"];
-    if (typeof declared === "string") return declared;
-  }
-  return null;
+  return manifest === null ? null : readSdkPinFrom(manifest).version;
 }
 
 async function tsconfigMapsSdk(rootDir: string): Promise<boolean> {
@@ -693,13 +688,7 @@ async function tsconfigMapsSdk(rootDir: string): Promise<boolean> {
   }
   const paths = (compilerOptions as Record<string, unknown>).paths;
   if (typeof paths !== "object" || paths === null) return false;
-  return Object.keys(paths).some(
-    (key) =>
-      key === "@get-bb/plugin-sdk" ||
-      key.startsWith("@get-bb/plugin-sdk/") ||
-      key === "@bb/plugin-sdk" ||
-      key.startsWith("@bb/plugin-sdk/"),
-  );
+  return Object.keys(paths).some(isSdkPathMapKey);
 }
 
 async function readJsonFile(

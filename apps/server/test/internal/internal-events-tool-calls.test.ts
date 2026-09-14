@@ -1,5 +1,7 @@
+import { Buffer } from "node:buffer";
 import { once } from "node:events";
 import { setTimeout as sleep } from "node:timers/promises";
+import { gunzipSync } from "node:zlib";
 import { eq } from "drizzle-orm";
 import {
   closeSession,
@@ -13,6 +15,7 @@ import {
 import { threadScope, turnScope, type ToolCallResponse } from "@bb/domain";
 import {
   groupHostDaemonEvents,
+  hostDaemonEventBatchResponseSchema,
   type HostDaemonEventEnvelope,
 } from "@bb/host-daemon-contract";
 import { describe, expect, it, vi } from "vitest";
@@ -30,26 +33,47 @@ import {
   seedHostSession,
   seedProjectWithSource,
   seedThread,
+  seedThreadFixture,
   seedThreadRuntimeState,
 } from "../helpers/seed.js";
-import { withTestHarness } from "../helpers/test-app.js";
+import { startTestServer, withTestHarness } from "../helpers/test-app.js";
 import type { TestAppHarness } from "../helpers/test-app.js";
 import { setPluginAgentContributions } from "../../src/services/plugins/plugin-agent-contributions.js";
 import type { PluginAgentToolRecord } from "../../src/services/plugins/plugin-api.js";
 
 async function postEventBatch(args: {
+  acceptEncoding?: string;
   events: HostDaemonEventEnvelope[];
   harness: TestAppHarness;
   sessionId: string;
 }): Promise<Response> {
+  const headers = new Headers(internalAuthHeaders(args.harness));
+  if (args.acceptEncoding !== undefined) {
+    headers.set("accept-encoding", args.acceptEncoding);
+  }
   return args.harness.app.request("/internal/session/events", {
     method: "POST",
-    headers: internalAuthHeaders(args.harness),
+    headers,
     body: JSON.stringify({
       sessionId: args.sessionId,
       eventGroups: groupHostDaemonEvents(args.events),
     }),
   });
+}
+
+function systemErrorEnvelopes(
+  threadId: string,
+  count: number,
+): HostDaemonEventEnvelope[] {
+  return Array.from({ length: count }, (_, index) => ({
+    threadId,
+    event: {
+      type: "system/error",
+      threadId,
+      scope: threadScope(),
+      message: `daemon error ${index}`,
+    },
+  }));
 }
 
 async function postToolCall(args: {
@@ -332,6 +356,79 @@ describe("internal event and tool-call routes", () => {
           .where(eq(events.threadId, thread.id))
           .all(),
       ).toHaveLength(2);
+    });
+  });
+
+  it("serves a small event batch response over HTTP with an exact Content-Length", async () => {
+    const server = await startTestServer();
+    try {
+      const { session, thread } = seedThreadFixture(server, {
+        thread: { status: "active" },
+      });
+      const headers = new Headers(internalAuthHeaders(server));
+      headers.set("accept-encoding", "gzip, deflate");
+      const response = await fetch(
+        `${server.baseUrl}/internal/session/events`,
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            sessionId: session.id,
+            eventGroups: groupHostDaemonEvents(
+              systemErrorEnvelopes(thread.id, 1),
+            ),
+          }),
+        },
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.headers.has("content-encoding")).toBe(false);
+      expect(response.headers.has("transfer-encoding")).toBe(false);
+      expect(response.headers.get("content-type")).toBe("application/json");
+      const text = await response.text();
+      expect(response.headers.get("content-length")).toBe(
+        String(Buffer.byteLength(text)),
+      );
+      expect(
+        hostDaemonEventBatchResponseSchema.parse(JSON.parse(text)),
+      ).toEqual({
+        acceptedEvents: [{ eventIndex: 0, sequence: 1, threadId: thread.id }],
+        rejectedEvents: [],
+      });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("still compresses a large event batch response", async () => {
+    await withTestHarness(async (harness) => {
+      const { session, thread } = seedThreadFixture(harness, {
+        thread: { status: "active" },
+      });
+
+      const response = await postEventBatch({
+        acceptEncoding: "gzip, deflate",
+        harness,
+        sessionId: session.id,
+        events: systemErrorEnvelopes(thread.id, 40),
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-encoding")).toBe("gzip");
+      expect(response.headers.get("content-type")).toBe("application/json");
+      const bytes = Buffer.from(await response.arrayBuffer());
+      expect(
+        hostDaemonEventBatchResponseSchema.parse(
+          JSON.parse(gunzipSync(bytes).toString("utf8")),
+        ),
+      ).toEqual({
+        acceptedEvents: Array.from({ length: 40 }, (_, index) => ({
+          eventIndex: index,
+          sequence: index + 1,
+          threadId: thread.id,
+        })),
+        rejectedEvents: [],
+      });
     });
   });
 
@@ -1116,8 +1213,7 @@ describe("internal event and tool-call routes", () => {
         hostId: host.id,
         projectId: project.id,
         path: "/tmp/existing-managed-worktree",
-        managed: true,
-        workspaceProvisionType: "managed-worktree",
+        environmentProviderId: "git-worktree",
       });
       const thread = seedThread(harness.deps, {
         projectId: project.id,
@@ -1159,7 +1255,9 @@ describe("internal event and tool-call routes", () => {
       expect(getThread(harness.db, thread.id)?.environmentId).toBe(
         targetEnvironment.id,
       );
-      expect(listEnvironments(harness.db, project.id)).toHaveLength(2);
+      expect(
+        listEnvironments(harness.db, { projectId: project.id }),
+      ).toHaveLength(2);
       const storedEvents = harness.db
         .select()
         .from(events)
@@ -1215,19 +1313,18 @@ describe("internal event and tool-call routes", () => {
       const provisionCommand = await waitForQueuedCommand(
         harness,
         ({ command }) =>
-          command.type === "environment.provision" &&
-          command.workspaceProvisionType === "unmanaged" &&
+          command.type === "environment.attach" &&
           command.path === "/tmp/new-unmanaged-worktree",
       );
-      if (provisionCommand.command.type !== "environment.provision") {
-        throw new Error("Expected environment.provision command");
+      if (provisionCommand.command.type !== "environment.attach") {
+        throw new Error("Expected environment.attach command");
       }
       expect(provisionCommand.command.initiator).toBeNull();
 
       await reportQueuedCommandSuccess(harness, provisionCommand, {
         path: "/tmp/new-unmanaged-worktree",
         isGitRepo: true,
-        isWorktree: true,
+        isWorktree: false,
         branchName: "feature/new-worktree",
         defaultBranch: "main",
         transcript: [],
@@ -1246,14 +1343,15 @@ describe("internal event and tool-call routes", () => {
           },
         ],
       });
-      const targetEnvironment = listEnvironments(harness.db, project.id).find(
+      const targetEnvironment = listEnvironments(harness.db, {
+        projectId: project.id,
+      }).find(
         (environment) => environment.path === "/tmp/new-unmanaged-worktree",
       );
       expect(targetEnvironment).toMatchObject({
         hostId: host.id,
         projectId: project.id,
         status: "ready",
-        workspaceProvisionType: "unmanaged",
       });
       expect(getThread(harness.db, thread.id)?.environmentId).toBe(
         targetEnvironment?.id,
@@ -1265,7 +1363,6 @@ describe("internal event and tool-call routes", () => {
       ).toMatchObject({
         branchName: "feature/new-worktree",
         isGitRepo: true,
-        isWorktree: true,
       });
       const storedEvents = harness.db
         .select()
@@ -1334,9 +1431,7 @@ describe("internal event and tool-call routes", () => {
       const provisionCommand = await waitForQueuedCommand(
         harness,
         ({ command }) =>
-          command.type === "environment.provision" &&
-          command.workspaceProvisionType === "unmanaged" &&
-          command.path === sharedPath,
+          command.type === "environment.attach" && command.path === sharedPath,
       );
       await reportQueuedCommandSuccess(harness, provisionCommand, {
         path: sharedPath,
@@ -1375,8 +1470,8 @@ describe("internal event and tool-call routes", () => {
         hostId: host.id,
         projectId: owner.id,
         path: worktreePath,
-        managed: true,
-        workspaceProvisionType: "managed-worktree",
+        environmentProviderId: "git-worktree",
+        providerOwnsPath: true,
       });
 
       const { project } = seedProjectWithSource(harness.deps, {
@@ -1427,7 +1522,9 @@ describe("internal event and tool-call routes", () => {
       expect(getThread(harness.db, thread.id)?.environmentId).toBe(
         currentEnvironment.id,
       );
-      expect(listEnvironments(harness.db, project.id)).toHaveLength(1);
+      expect(
+        listEnvironments(harness.db, { projectId: project.id }),
+      ).toHaveLength(1);
     });
   });
 
@@ -1467,7 +1564,9 @@ describe("internal event and tool-call routes", () => {
       expect(getThread(harness.db, thread.id)?.environmentId).toBe(
         environment.id,
       );
-      expect(listEnvironments(harness.db, project.id)).toHaveLength(1);
+      expect(
+        listEnvironments(harness.db, { projectId: project.id }),
+      ).toHaveLength(1);
     });
   });
 

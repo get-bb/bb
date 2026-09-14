@@ -97,7 +97,9 @@ export function PluginRowSignalView({
                 : "size-7",
               signal.tone === "error"
                 ? "text-destructive hover:text-destructive"
-                : "text-warning-text hover:text-warning-text",
+                : signal.tone === "warning"
+                  ? "text-warning-text hover:text-warning-text"
+                  : "text-muted-foreground hover:text-muted-foreground",
             )}
             aria-label={statusDescription}
             onClick={onStatusClick}
