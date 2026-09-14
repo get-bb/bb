@@ -3266,7 +3266,9 @@ export async function runBbApp(
     entryPath: resolveLauncherEntryPath(),
     pid: process.pid,
     serverUrl: context.serverUrl,
-    startedAt: new Date().toISOString(),
+    // bb-fork(windows): record the process start time, not the write time, so a
+    // bb-fork(windows): verified stop still matches after a slow first boot.
+    startedAt: new Date(Date.now() - process.uptime() * 1_000).toISOString(),
     surface:
       parseAppSurface(runtime.env[APP_SURFACE_ENV_NAME]) ?? APP_SURFACE_WEB,
     version: context.appVersion,

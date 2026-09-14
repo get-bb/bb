@@ -1,5 +1,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+// bb-fork(windows): native Windows process details come from WMI, not POSIX `ps`.
+import { createWindowsVerifiedProcessOps } from "./verified-process-windows.js";
 
 const execFileAsync = promisify(execFile);
 const POLL_INTERVAL_MS = 100;
@@ -93,6 +95,11 @@ async function waitForProcessExit(
 }
 
 export function createNodeVerifiedProcessOps(): VerifiedProcessOps {
+  // bb-fork(windows): `ps` sees no native Windows processes and returns nothing.
+  if (process.platform === "win32") {
+    return createWindowsVerifiedProcessOps();
+  }
+
   return {
     isRunning: (pid) => isProcessRunning(pid),
     kill(pid, signal) {
