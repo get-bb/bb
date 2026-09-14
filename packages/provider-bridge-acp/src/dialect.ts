@@ -1,3 +1,4 @@
+import type { ProviderErrorCategory } from "@bb/domain";
 import type { DeltaItemShape } from "@bb/provider-bridge-protocol";
 import { basename } from "node:path";
 import { z } from "zod";
@@ -34,12 +35,29 @@ type AcpCompactionOutcome =
   | { status: "skipped"; detail: string }
   | { status: "failed"; error: string };
 
+export const CURSOR_TERMINAL_ERROR_NAMES = [
+  "RetriableError",
+  "NonRetriableError",
+  "ActionRequiredError",
+] as const;
+export type CursorTerminalErrorName =
+  (typeof CURSOR_TERMINAL_ERROR_NAMES)[number];
+
+export interface AcpTerminalAgentError {
+  name: CursorTerminalErrorName;
+  message: string;
+  category: ProviderErrorCategory;
+}
+
 export interface AcpDialect {
   readonly id: string;
   toolIdentity?(event: AcpToolCallUpdateEvent): AcpToolIdentity | undefined;
   classifyToolCall?(
     event: AcpToolCallUpdateEvent,
   ): AcpClassifiedToolCall | undefined;
+  classifyTerminalAgentMessage?(
+    text: string,
+  ): AcpTerminalAgentError | undefined;
   commandResult?(event: AcpToolCallUpdateEvent): AcpCommandResult | undefined;
   normalizeCommandEvent?(event: AcpToolCallUpdateEvent): AcpToolCallUpdateEvent;
   handleClientRequest?(
@@ -189,9 +207,39 @@ function cursorHandleClientRequest(
   };
 }
 
+const CURSOR_TERMINAL_ERROR_PATTERN =
+  /^\n\nError: (RetriableError|NonRetriableError|ActionRequiredError): ([\s\S]*)$/;
+
+function isCursorTerminalErrorName(
+  value: string,
+): value is CursorTerminalErrorName {
+  return (CURSOR_TERMINAL_ERROR_NAMES as readonly string[]).includes(value);
+}
+
+export function cursorClassifyTerminalAgentMessage(
+  text: string,
+): AcpTerminalAgentError | undefined {
+  const match = CURSOR_TERMINAL_ERROR_PATTERN.exec(text);
+  const name = match?.[1];
+  const message = match?.[2];
+  if (
+    name === undefined ||
+    message === undefined ||
+    !isCursorTerminalErrorName(name)
+  ) {
+    return undefined;
+  }
+  return {
+    name,
+    message,
+    category: name === "RetriableError" ? "connection-failed" : "unknown",
+  };
+}
+
 export const CURSOR_ACP_DIALECT: AcpDialect = {
   id: "cursor",
   classifyToolCall: cursorClassifyToolCall,
+  classifyTerminalAgentMessage: cursorClassifyTerminalAgentMessage,
   handleClientRequest: cursorHandleClientRequest,
   maintenance: CURSOR_ACP_MAINTENANCE,
 };

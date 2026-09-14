@@ -22,6 +22,7 @@ export const RESET_JITTER_MS = 30_000;
 export const DEFAULT_MAXIMUM_WAIT_MS = 6 * 60 * 60 * 1_000;
 
 export const OVERLOAD_RETRY_BASE_MS = 5_000;
+export const TRANSPORT_RETRY_BASE_MS = 5_000;
 
 /**
  * The cap on a turn's TOTAL attempts: the original dispatch plus at most four
@@ -46,7 +47,7 @@ export type RetryDecision =
   | {
       kind: "retry";
       sendAt: number;
-      reason: "Rate limited" | "Provider overloaded";
+      reason: "Rate limited" | "Provider overloaded" | "Connection failed";
     };
 
 export interface RetryPolicyInput {
@@ -93,7 +94,30 @@ export function overloadedSendAtMs(args: {
   now: number;
   random: number;
 }): number {
-  const delay = OVERLOAD_RETRY_BASE_MS * 2 ** (args.attemptNumber - 1);
+  return exponentialSendAtMs({
+    ...args,
+    baseMs: OVERLOAD_RETRY_BASE_MS,
+  });
+}
+
+export function transportSendAtMs(args: {
+  attemptNumber: number;
+  now: number;
+  random: number;
+}): number {
+  return exponentialSendAtMs({
+    ...args,
+    baseMs: TRANSPORT_RETRY_BASE_MS,
+  });
+}
+
+function exponentialSendAtMs(args: {
+  baseMs: number;
+  attemptNumber: number;
+  now: number;
+  random: number;
+}): number {
+  const delay = args.baseMs * 2 ** (args.attemptNumber - 1);
   return args.now + delay + Math.floor(args.random * delay);
 }
 
@@ -124,6 +148,17 @@ export function decideRetry(input: RetryPolicyInput): RetryDecision {
         random: input.random,
       }),
       reason: "Provider overloaded",
+    };
+  }
+  if (failure.errorInfo?.category === "connection-failed") {
+    return {
+      kind: "retry",
+      sendAt: transportSendAtMs({
+        attemptNumber: failure.attemptNumber,
+        now: input.now,
+        random: input.random,
+      }),
+      reason: "Connection failed",
     };
   }
   if (failure.errorInfo?.category !== "rate-limit") {

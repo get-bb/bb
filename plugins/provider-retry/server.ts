@@ -1,5 +1,6 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { registerProviderRetryCli } from "./src/cli.js";
+import { findQueuedRetry } from "./src/queued-retries.js";
 import { DEFAULT_MAXIMUM_WAIT_MS, decideRetry } from "./src/retry-policy.js";
 
 const MAXIMUM_WAIT_OPTIONS = ["6 hours", "24 hours", "No limit"] as const;
@@ -36,6 +37,17 @@ export default async function plugin(bb: BbPluginApi) {
     maximumWait = maximumWaitMs(next.maximumWait);
   });
 
+  async function cancelQueuedRetry(threadId: string): Promise<void> {
+    const queued = await findQueuedRetry(bb, threadId);
+    if (queued === null) {
+      return;
+    }
+    await bb.sdk.threads.queuedMessages.delete({
+      threadId: queued.threadId,
+      queuedMessageId: queued.id,
+    });
+  }
+
   /**
    * The retry decision, which is the whole plugin.
    *
@@ -60,6 +72,19 @@ export default async function plugin(bb: BbPluginApi) {
       sendAt: decision.sendAt,
       reason: decision.reason,
     });
+  });
+
+  bb.events.on("thread.active", async ({ thread }) => {
+    await cancelQueuedRetry(thread.id);
+  });
+  bb.events.on("thread.idle", async ({ thread }) => {
+    await cancelQueuedRetry(thread.id);
+  });
+  bb.events.on("message.queued", async ({ entry }) => {
+    if (entry.payload.kind === "retry") {
+      return;
+    }
+    await cancelQueuedRetry(entry.threadId);
   });
 
   registerProviderRetryCli(bb);

@@ -2700,3 +2700,186 @@ describe("acp delta translation (bb-injected tools)", () => {
     expect(settled[1]).toMatchObject({ tool: "ask_user_question" });
   });
 });
+
+describe("cursor terminal error emission", () => {
+  function cursorHarness(): AcpEquivalenceHarness {
+    const translator = createAcpDeltaTranslator({
+      cwd: SESSION_CWD,
+      dialect: resolveAcpDialect({ dialectId: "cursor", command: "node" }),
+    });
+    const assembler = createDeltaAssembler({
+      providerId: "acp",
+      entropyPrefix: ENTROPY,
+      textDeltaFlushMs: 0,
+    });
+    const harness: AcpEquivalenceHarness = {
+      assembler,
+      translator,
+      translate: (event) =>
+        assembler.assemble({
+          threadId: THREAD_ID,
+          deltas: translator.translateAcpEvent(event, { threadId: THREAD_ID }),
+        }),
+      openTurnId: () => assembler.getOpenTurnId(THREAD_ID) ?? "",
+    };
+    harness.translate(turnStartedEvent());
+    return harness;
+  }
+
+  function agentMessage(text: string): ProviderRuntimeEvent {
+    return updateEvent({
+      sessionUpdate: "agent_message_chunk",
+      content: { type: "text", text },
+    });
+  }
+
+  it("turns a single-chunk Cursor terminal error into a failed provider error", () => {
+    const harness = cursorHarness();
+    harness.translate(
+      agentMessage(
+        "\n\nError: RetriableError: Stream ended without turnEnded — connection likely dropped mid-stream",
+      ),
+    );
+
+    const events = harness.translate(turnCompletedEvent("end_turn"));
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "provider/error",
+        errorInfo: {
+          category: "connection-failed",
+          providerCode: "RetriableError",
+          httpStatusCode: null,
+        },
+      }),
+    );
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: "turn/completed", status: "failed" }),
+    );
+    expect(
+      events.some(
+        (event) =>
+          event.type === "turn/completed" && event.status === "completed",
+      ),
+    ).toBe(false);
+  });
+
+  it("joins split chunks before classifying the terminal emission", () => {
+    const harness = cursorHarness();
+    harness.translate(agentMessage("\n\nError: "));
+    harness.translate(agentMessage("RetriableError: "));
+    harness.translate(agentMessage("[unavailable] PING timed out"));
+
+    const events = harness.translate(turnCompletedEvent("end_turn"));
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "provider/error",
+        errorInfo: {
+          category: "connection-failed",
+          providerCode: "RetriableError",
+          httpStatusCode: null,
+        },
+      }),
+    );
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: "turn/completed", status: "failed" }),
+    );
+  });
+
+  it("does not treat a quoted RetriableError inside a longer reply as a failure", () => {
+    const harness = cursorHarness();
+    harness.translate(
+      agentMessage(
+        "I saw this in the log:\n\nError: RetriableError: [unavailable] HTTP 502\n\nIt was quoted.",
+      ),
+    );
+
+    const events = harness.translate(turnCompletedEvent("end_turn"));
+    expect(events.some((event) => event.type === "provider/error")).toBe(false);
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: "turn/completed", status: "completed" }),
+    );
+  });
+
+  it("does not classify the same text on a non-Cursor dialect", () => {
+    const harness = createHarness();
+    harness.translate(turnStartedEvent());
+    harness.translate(
+      agentMessage(
+        "\n\nError: RetriableError: [unavailable] getaddrinfo ENOTFOUND api2.cursor.sh",
+      ),
+    );
+
+    const events = harness.translate(turnCompletedEvent("end_turn"));
+    expect(events.some((event) => event.type === "provider/error")).toBe(false);
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: "turn/completed", status: "completed" }),
+    );
+  });
+
+  it("does not mark pending fileChange or toolCall items completed after the error", () => {
+    const harness = cursorHarness();
+    harness.translate(
+      updateEvent({
+        sessionUpdate: "tool_call",
+        toolCallId: "edit-1",
+        title: "Edit file",
+        kind: "edit",
+        status: "in_progress",
+        locations: [{ path: "/tmp/notes.md" }],
+      }),
+    );
+    harness.translate(
+      updateEvent({
+        sessionUpdate: "tool_call",
+        toolCallId: "search-1",
+        title: "Search",
+        kind: "other",
+        status: "in_progress",
+      }),
+    );
+    harness.translate(
+      agentMessage(
+        "\n\nError: RetriableError: [canceled] http/2 stream closed with error code CANCEL (0x8)",
+      ),
+    );
+
+    const events = harness.translate(turnCompletedEvent("end_turn"));
+    const settled = completedItems(events);
+    const fileChange = settled.find((item) => item.type === "fileChange");
+    const toolCall = settled.find((item) => item.type === "toolCall");
+    expect(fileChange).toMatchObject({ type: "fileChange", status: "failed" });
+    expect(toolCall).toMatchObject({ type: "toolCall", status: "failed" });
+    expect(
+      settled.some(
+        (item) =>
+          (item.type === "fileChange" || item.type === "toolCall") &&
+          item.status === "completed",
+      ),
+    ).toBe(false);
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: "turn/completed", status: "failed" }),
+    );
+  });
+
+  it("keeps ActionRequiredError out of the transport category", () => {
+    const harness = cursorHarness();
+    harness.translate(
+      agentMessage("\n\nError: ActionRequiredError: please sign in again"),
+    );
+
+    const events = harness.translate(turnCompletedEvent("end_turn"));
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "provider/error",
+        errorInfo: {
+          category: "unknown",
+          providerCode: "ActionRequiredError",
+          httpStatusCode: null,
+        },
+      }),
+    );
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: "turn/completed", status: "failed" }),
+    );
+  });
+});

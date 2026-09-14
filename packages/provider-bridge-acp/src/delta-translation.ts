@@ -171,6 +171,7 @@ export function createAcpDeltaTranslator(
   const dialect = options.dialect ?? GENERIC_ACP_DIALECT;
   const pathOptions = { cwd: options.cwd };
   const mergedToolCalls = new Map<string, AcpOpenToolCall>();
+  const assistantTextByThread = new Map<string, string>();
 
   let injectedToolsByName = new Map<string, AcpInjectedTool>();
   const injectedToolBindings = new Map<string, AcpInjectedTool>();
@@ -181,6 +182,38 @@ export function createAcpDeltaTranslator(
     toolCallId: string,
   ): string {
     return `${context?.threadId ?? ""} ${toolCallId}`;
+  }
+
+  function assistantThreadKey(
+    context: AcpDeltaTranslationContext | undefined,
+  ): string {
+    return context?.threadId ?? "";
+  }
+
+  function appendAssistantText(
+    context: AcpDeltaTranslationContext | undefined,
+    text: string,
+  ): void {
+    const key = assistantThreadKey(context);
+    assistantTextByThread.set(
+      key,
+      `${assistantTextByThread.get(key) ?? ""}${text}`,
+    );
+  }
+
+  function takeAssistantText(
+    context: AcpDeltaTranslationContext | undefined,
+  ): string {
+    const key = assistantThreadKey(context);
+    const text = assistantTextByThread.get(key) ?? "";
+    assistantTextByThread.delete(key);
+    return text;
+  }
+
+  function resetAssistantText(
+    context: AcpDeltaTranslationContext | undefined,
+  ): void {
+    assistantTextByThread.delete(assistantThreadKey(context));
   }
 
   function threadCallEntries(
@@ -221,6 +254,7 @@ export function createAcpDeltaTranslator(
       injectedToolBindings.delete(key);
     }
     pendingInjectedCalls.delete(context?.threadId ?? "");
+    resetAssistantText(context);
   }
 
   function configureInjectedTools(tools: readonly AcpInjectedTool[]): void {
@@ -608,6 +642,7 @@ export function createAcpDeltaTranslator(
         if (text === undefined) {
           return suppressedUnhandled(rawEvent);
         }
+        appendAssistantText(context, text);
         return [
           closeThoughtStream(),
           {
@@ -646,6 +681,7 @@ export function createAcpDeltaTranslator(
         }
         const event = withDialectIdentity(parsed.data);
         const flush = [closeThoughtStream(), closeAssistantStream()];
+        resetAssistantText(context);
         const announcedKey = callKey(context, event.toolCallId);
         const bound = bindAnnouncedCall(context, event);
         if (bound !== undefined) {
@@ -827,6 +863,27 @@ export function createAcpDeltaTranslator(
     stopReason: AcpStopReason,
     context: AcpDeltaTranslationContext | undefined,
   ): ThreadDelta[] {
+    const assistantText = takeAssistantText(context);
+    const terminalError =
+      stopReason === "end_turn"
+        ? dialect.classifyTerminalAgentMessage?.(assistantText)
+        : undefined;
+    if (terminalError !== undefined) {
+      return [
+        ...flushOpenTurnWork(context, "failed"),
+        {
+          kind: "provider.error",
+          message: `${terminalError.name}: ${terminalError.message}`,
+          detail: assistantText,
+          errorInfo: {
+            category: terminalError.category,
+            providerCode: terminalError.name,
+            httpStatusCode: null,
+          },
+          settlesTurn: true,
+        },
+      ];
+    }
     const status = turnStatusForStopReason(stopReason);
     return [
       ...flushOpenTurnWork(context, itemStatusForTurnStatus(status)),

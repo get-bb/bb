@@ -5,6 +5,7 @@ import {
   GROK_ACP_DIALECT,
   OMP_ACP_DIALECT,
   OPENCODE_ACP_DIALECT,
+  cursorClassifyTerminalAgentMessage,
   resolveAcpDialect,
 } from "./dialect.js";
 import type { AcpToolCallUpdateEvent } from "./wire.js";
@@ -49,6 +50,7 @@ describe("resolveAcpDialect", () => {
     expect(dialect).toBe(GENERIC_ACP_DIALECT);
     expect(dialect.toolIdentity).toBeUndefined();
     expect(dialect.classifyToolCall).toBeUndefined();
+    expect(dialect.classifyTerminalAgentMessage).toBeUndefined();
     expect(dialect.commandResult).toBeUndefined();
     expect(dialect.normalizeCommandEvent).toBeUndefined();
     expect(dialect.handleClientRequest).toBeUndefined();
@@ -303,6 +305,50 @@ describe("cursor sub-agents", () => {
     expect(
       CURSOR_ACP_DIALECT.handleClientRequest?.("cursor/other", {}),
     ).toBeUndefined();
+  });
+});
+
+describe("cursor terminal agent messages", () => {
+  it("classifies Cursor's exact terminal error emission", () => {
+    expect(
+      cursorClassifyTerminalAgentMessage(
+        "\n\nError: RetriableError: [unavailable] getaddrinfo ENOTFOUND api2.cursor.sh",
+      ),
+    ).toEqual({
+      name: "RetriableError",
+      message: "[unavailable] getaddrinfo ENOTFOUND api2.cursor.sh",
+      category: "connection-failed",
+    });
+    expect(
+      cursorClassifyTerminalAgentMessage(
+        "\n\nError: NonRetriableError: request rejected",
+      )?.category,
+    ).toBe("unknown");
+    expect(
+      cursorClassifyTerminalAgentMessage(
+        "\n\nError: ActionRequiredError: please authenticate",
+      ),
+    ).toEqual({
+      name: "ActionRequiredError",
+      message: "please authenticate",
+      category: "unknown",
+    });
+  });
+
+  it("ignores quoted or prefix-shifted RetriableError text", () => {
+    expect(
+      cursorClassifyTerminalAgentMessage(
+        "The agent printed Error: RetriableError: [canceled] http/2 stream closed",
+      ),
+    ).toBeUndefined();
+    expect(
+      cursorClassifyTerminalAgentMessage(
+        "\n\nError: CancelledError: user stopped",
+      ),
+    ).toBeUndefined();
+    expect(CURSOR_ACP_DIALECT.classifyTerminalAgentMessage).toBe(
+      cursorClassifyTerminalAgentMessage,
+    );
   });
 });
 

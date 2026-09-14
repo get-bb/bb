@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createFakePluginHost,
   makeQueueEntry,
+  makeThreadResponse,
   makeTurnFailedEvent,
   type CreateFakePluginHostOptions,
 } from "@get-bb/plugin-sdk/testing";
@@ -10,6 +11,7 @@ import plugin from "./server.js";
 import {
   MAX_RETRY_ATTEMPTS,
   OVERLOAD_RETRY_BASE_MS,
+  TRANSPORT_RETRY_BASE_MS,
   RESET_BUFFER_MS,
   RESET_JITTER_MS,
   decideRetry,
@@ -69,6 +71,20 @@ function overloadedFailure(
       category: "overloaded",
       providerCode: "serverOverloaded",
       httpStatusCode: 529,
+    },
+    rateLimits: null,
+    ...overrides,
+  });
+}
+
+function connectionFailedFailure(
+  overrides: Partial<PluginTurnFailedEvent> = {},
+): PluginTurnFailedEvent {
+  return failure({
+    errorInfo: {
+      category: "connection-failed",
+      providerCode: "RetriableError",
+      httpStatusCode: null,
     },
     rateLimits: null,
     ...overrides,
@@ -283,6 +299,53 @@ describe("provider retry policy", () => {
     expect(fourthAttempt.sendAt).toBeLessThan(NOW_MS + fourthDelay * 2);
   });
 
+  it("retries connection failures with the same exponential backoff as overloads", () => {
+    const dropped = connectionFailedFailure();
+    expect(
+      decideRetry({
+        failure: dropped,
+        maximumWaitMs: null,
+        now: NOW_MS,
+        random: 0,
+      }),
+    ).toEqual({
+      kind: "retry",
+      sendAt: NOW_MS + TRANSPORT_RETRY_BASE_MS,
+      reason: "Connection failed",
+    });
+    const fourthAttempt = decideRetry({
+      failure: { ...dropped, attemptNumber: 4 },
+      maximumWaitMs: null,
+      now: NOW_MS,
+      random: 0.999_999,
+    });
+    expect(fourthAttempt.kind).toBe("retry");
+    if (fourthAttempt.kind !== "retry") return;
+    const fourthDelay = TRANSPORT_RETRY_BASE_MS * 2 ** 3;
+    expect(fourthAttempt.sendAt).toBeGreaterThan(NOW_MS + fourthDelay);
+    expect(fourthAttempt.sendAt).toBeLessThan(NOW_MS + fourthDelay * 2);
+  });
+
+  it("does not retry authentication, payment, or unknown failures", () => {
+    for (const category of ["unauthorized", "billing", "unknown"] as const) {
+      expect(
+        decideRetry({
+          failure: failure({
+            errorInfo: {
+              category,
+              providerCode: null,
+              httpStatusCode: null,
+            },
+            rateLimits: null,
+          }),
+          maximumWaitMs: null,
+          now: NOW_MS,
+          random: 0,
+        }),
+      ).toEqual({ kind: "decline", reason: "not-retryable" });
+    }
+  });
+
   it("declines failures that are not retryable, and limits that do not reset", () => {
     expect(
       decideRetry({
@@ -342,6 +405,16 @@ describe("provider retry policy", () => {
         random: 0,
       }),
     ).toEqual({ kind: "decline", reason: "attempts-exhausted" });
+    expect(
+      decideRetry({
+        failure: connectionFailedFailure({
+          attemptNumber: MAX_RETRY_ATTEMPTS,
+        }),
+        maximumWaitMs: null,
+        now: NOW_MS,
+        random: 0,
+      }),
+    ).toEqual({ kind: "decline", reason: "attempts-exhausted" });
   });
 });
 
@@ -354,7 +427,7 @@ describe("provider retry plugin", () => {
     vi.useRealTimers();
   });
 
-  it("listens for one event and answers no hook", async () => {
+  it("listens for failure and supersession and answers no hook", async () => {
     // The load-bearing half is the empty hook slot. This plugin must never
     // intercept a send: a remembered rate limit is a stale cache of provider
     // state, and refusing an attempt on it strands a user who fixed the limit
@@ -375,6 +448,15 @@ describe("provider retry plugin", () => {
     expect(host.harness.registrations.threadEventHandlers["turn.failed"]).toBe(
       1,
     );
+    expect(
+      host.harness.registrations.threadEventHandlers["thread.active"],
+    ).toBe(1);
+    expect(host.harness.registrations.threadEventHandlers["thread.idle"]).toBe(
+      1,
+    );
+    expect(
+      host.harness.registrations.threadEventHandlers["message.queued"],
+    ).toBe(1);
     expect(host.harness.registrations.hooks["message.dispatch"]).toBeNull();
     expect(
       host.harness.registrations.cli?.commands.map((command) => command.name),
@@ -426,6 +508,31 @@ describe("provider retry plugin", () => {
     );
     expect(host.retries[0]?.sendAt).toBeLessThan(
       NOW_MS + OVERLOAD_RETRY_BASE_MS * 2,
+    );
+    await host.harness.dispose();
+  });
+
+  it("asks core to retry a connection-failed turn after backoff", async () => {
+    const host = createHost();
+    await plugin(host.bb);
+
+    const { errors } = await host.harness.behavior.emitThreadEvent(
+      "turn.failed",
+      connectionFailedFailure(),
+    );
+
+    expect(errors).toEqual([]);
+    expect(host.retries).toHaveLength(1);
+    expect(host.retries[0]).toMatchObject({
+      threadId: THREAD_ID,
+      turnRequestId: REQUEST_ID,
+      reason: "Connection failed",
+    });
+    expect(host.retries[0]?.sendAt).toBeGreaterThanOrEqual(
+      NOW_MS + TRANSPORT_RETRY_BASE_MS,
+    );
+    expect(host.retries[0]?.sendAt).toBeLessThan(
+      NOW_MS + TRANSPORT_RETRY_BASE_MS * 2,
     );
     await host.harness.dispose();
   });
@@ -516,6 +623,77 @@ describe("provider retry plugin", () => {
     expect(host.sent).toEqual([
       { threadId: THREAD_ID, queuedMessageId: "queued_1", mode: "auto" },
     ]);
+    await host.harness.dispose();
+  });
+
+  it("cancels a queued retry when the user starts a new turn", async () => {
+    const host = createHost([queuedRetry()]);
+    await plugin(host.bb);
+
+    const { errors } = await host.harness.behavior.emitThreadEvent(
+      "thread.active",
+      { thread: makeThreadResponse({ id: THREAD_ID, status: "active" }) },
+    );
+
+    expect(errors).toEqual([]);
+    expect(host.deleted).toEqual([
+      { threadId: THREAD_ID, queuedMessageId: "queued_1" },
+    ]);
+    await host.harness.dispose();
+  });
+
+  it("cancels a queued retry when the thread returns to idle after a stop", async () => {
+    const host = createHost([queuedRetry()]);
+    await plugin(host.bb);
+
+    const { errors } = await host.harness.behavior.emitThreadEvent(
+      "thread.idle",
+      {
+        thread: makeThreadResponse({ id: THREAD_ID, status: "idle" }),
+        lastAssistantText: null,
+      },
+    );
+
+    expect(errors).toEqual([]);
+    expect(host.deleted).toEqual([
+      { threadId: THREAD_ID, queuedMessageId: "queued_1" },
+    ]);
+    await host.harness.dispose();
+  });
+
+  it("cancels a queued retry when a later user message is queued", async () => {
+    const host = createHost([queuedRetry()]);
+    await plugin(host.bb);
+
+    const { errors } = await host.harness.behavior.emitThreadEvent(
+      "message.queued",
+      {
+        entry: makeQueueEntry({
+          id: "queued_user",
+          threadId: THREAD_ID,
+          payload: { kind: "inline" },
+        }),
+      },
+    );
+
+    expect(errors).toEqual([]);
+    expect(host.deleted).toEqual([
+      { threadId: THREAD_ID, queuedMessageId: "queued_1" },
+    ]);
+    await host.harness.dispose();
+  });
+
+  it("does not cancel its own retry when that retry is queued", async () => {
+    const host = createHost([queuedRetry()]);
+    await plugin(host.bb);
+
+    const { errors } = await host.harness.behavior.emitThreadEvent(
+      "message.queued",
+      { entry: queuedRetry() },
+    );
+
+    expect(errors).toEqual([]);
+    expect(host.deleted).toEqual([]);
     await host.harness.dispose();
   });
 
