@@ -170,6 +170,11 @@ export const OFFICIAL_PLUGINS = [
     defaultEnabled: true,
   },
   {
+    name: "environment-ssh-sandbox",
+    pluginId: "environment-ssh-sandbox",
+    defaultEnabled: true,
+  },
+  {
     name: "browser-automation",
     pluginId: "browser-automation",
     defaultEnabled: false,

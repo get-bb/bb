@@ -1420,6 +1420,22 @@ Create with `bb machine create --provider modal-sandbox --project PROJECT --json
 See [modal-sandboxes](../plugins/environment-modal-sandbox/skills/modal-sandboxes/SKILL.md)
 for prerequisites and lifecycle commands.
 
+## SSH machines
+
+The optional SSH sandbox plugin enrolls an existing SSH host as a BB machine.
+BB runs the installer over SSH, so you do not log into Daytona, E2B, or a VM
+to download BB by hand. Machine inputs are `{destination, port?}`.
+`destination` is an SSH alias, hostname, `user@host`, or `user@[IPv6]`.
+Optional `identityFile` is a key path on the BB server; blank uses ssh-agent.
+`knownHosts` defaults to `accept-new`. Core installs the daemon, then clones
+the project and runs its setup hook. Removing the machine revokes access and
+leaves the remote host in place.
+
+`bb ssh-sandbox probe --destination user@host [--json]` tests connectivity
+without enrollment. Create with
+`bb machine create --provider ssh-sandbox --inputs '{"destination":"user@host"}' --json`.
+See [ssh-sandboxes](../plugins/environment-ssh-sandbox/skills/ssh-sandboxes/SKILL.md).
+
 ## Repository build caches
 
 App production builds persist validated React Compiler transform results at

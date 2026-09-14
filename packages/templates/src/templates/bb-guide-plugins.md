@@ -916,6 +916,13 @@ reads the same file without cloud access. The image builds automatically and is 
 core installs the daemon on demand. Project dependencies and services belong in
 `.bb-env-setup.sh`. Read the plugin's skill for connection and lifecycle details.
 
+SSH sandbox setup uses `bb ssh-sandbox probe --destination user@host [--json]`
+to check connectivity, then
+`bb machine create --provider ssh-sandbox --inputs '{"destination":"user@host"}' --json`
+to install the daemon over SSH. Optional `identityFile` is a key path on the
+bb server; blank uses ssh-agent. Removing the machine revokes access and does
+not destroy the remote host.
+
 Contributed commands may accept `--stdin`: the calling CLI transfers up to
 256 KiB of multiline text as `--input-text`, without reading server-local files.
 The existing `--<flag>-stdin` form still accepts one line.

@@ -1,0 +1,41 @@
+{
+  "name": "bb-plugin-environment-ssh-sandbox",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Enroll any SSH host as a bb machine without logging in to install the daemon",
+  "engines": {
+    "bb": ">=0.0"
+  },
+  "bb": {
+    "name": "SSH sandbox [Experimental]",
+    "description": "Enroll Daytona, E2B, or any SSH box as a bb machine without installing bb by hand",
+    "branding": {
+      "icon": "Cloud"
+    },
+    "server": "./server.ts",
+    "skills": [
+      "skills"
+    ]
+  },
+  "keywords": [
+    "bb-plugin"
+  ],
+  "scripts": {
+    "lint": "oxlint .",
+    "test": "vitest run --config vitest.config.ts",
+    "typecheck": "tsc --noEmit",
+    "prepare:bundled": "bb-plugin-build prepare-bundled"
+  },
+  "dependencies": {
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@bb/plugin-build": "workspace:*",
+    "@get-bb/plugin-sdk": "workspace:*",
+    "@types/node": "^22.0.0",
+    "better-sqlite3": "^12.6.2",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "vitest": "^4.1.1"
+  }
+}

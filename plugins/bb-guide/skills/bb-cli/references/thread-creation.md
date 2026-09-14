@@ -21,7 +21,9 @@
   For Modal's composed environment, use `--environment-provider modal-sandbox`
   without machine selectors; `--machine-inputs <json>` configures that composed
   machine with optional configured names such as
-  `{"preset":"Large","image":"Node 22"}`. These inputs are persisted and
+  `{"preset":"Large","image":"Node 22"}`. For an SSH host, use
+  `--environment-provider ssh-sandbox --machine-inputs '{"destination":"user@host"}'`
+  with optional `"port"`. These inputs are persisted and
   readable by plugins, so keep credentials in plugin settings and send only
   non-secret configuration or references.
 - Omit `--base-branch` for bb's default. Explicit values are exact; use

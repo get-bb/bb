@@ -314,5 +314,9 @@ For a new thread on a new Modal sandbox, select the environment composition:
 It creates the machine, prepares the project checkout, and runs environment setup.
 Progress and failures appear in the thread's provisioning details. If cloning
 fails, the machine remains available for retry or explicit removal.
+For an existing SSH host, use
+`--environment-provider ssh-sandbox --machine-inputs '{"destination":"user@host"}'`
+with optional `"port"`. `bb ssh-sandbox probe --destination user@host [--json]`
+checks connectivity without installing the daemon.
 `--new-machine <id>` requires an explicit `--environment-provider <id>`; machine
 providers do not implicitly choose an environment.

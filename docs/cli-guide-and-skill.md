@@ -31,6 +31,8 @@ Local installed-daemon start, stop, and uninstall operations are flags on
 
 Modal connection and machine commands are documented in [modal-sandboxes](../plugins/environment-modal-sandbox/skills/modal-sandboxes/SKILL.md). `bb modal image show [--json]` reads the Dockerfile shown in settings; `bb modal image set --file PATH [--json]` saves a validated plugin-wide override and `bb modal image reset [--json]` restores the bundled default for future machines; `bb modal account inspect --json` checks credentials; `bb machine create --provider modal-sandbox --json` automatically prepares the bundled image and installs the daemon. `bb machine remove MACHINE --yes` explicitly removes compute and private snapshots.
 
+SSH sandbox commands are documented in [ssh-sandboxes](../plugins/environment-ssh-sandbox/skills/ssh-sandboxes/SKILL.md). `bb ssh-sandbox probe --destination user@host [--port N] [--json]` checks SSH connectivity and that node, npm, and curl exist on the host. `bb machine create --provider ssh-sandbox --inputs '{"destination":"user@host"}' --json` installs the daemon over SSH. `bb machine remove MACHINE --yes` revokes BB access and does not destroy the remote host.
+
 `bb thread spawn --machine-inputs <json>` configures either an explicit
 `--new-machine` or the machine provider owned by a composed
 `--environment-provider`; a composition rejects separate machine selectors.

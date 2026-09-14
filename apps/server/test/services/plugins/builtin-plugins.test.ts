@@ -227,6 +227,7 @@ describe("builtin plugin reconciliation", () => {
     const optionalNames = OFFICIAL_PLUGINS.map((plugin) => plugin.name);
     expect(optionalNames).toEqual([
       "environment-modal-sandbox",
+      "environment-ssh-sandbox",
       "browser-automation",
       "github",
       "docs",

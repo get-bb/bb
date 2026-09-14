@@ -16,13 +16,14 @@ until a user installs them.
 
 The official plugins are:
 
-| Directory                    | Package name                   | Store entry          | Plugin id            |
-| ---------------------------- | ------------------------------ | -------------------- | -------------------- |
-| `plugins/browser-automation` | `bb-plugin-browser-automation` | `browser-automation` | `browser-automation` |
-| `plugins/github`             | `bb-plugin-github`             | `github`             | `github`             |
-| `plugins/docs`               | `bb-plugin-simple-notes`       | `docs`               | `simple-notes`       |
-| `plugins/memory`             | `bb-plugin-memory`             | `memory`             | `memory`             |
-| `plugins/tasks`              | `bb-plugin-tasks`              | `tasks`              | `tasks`              |
+| Directory                         | Package name                        | Store entry               | Plugin id                 |
+| --------------------------------- | ----------------------------------- | ------------------------- | ------------------------- |
+| `plugins/browser-automation`      | `bb-plugin-browser-automation`      | `browser-automation`      | `browser-automation`      |
+| `plugins/environment-ssh-sandbox` | `bb-plugin-environment-ssh-sandbox` | `environment-ssh-sandbox` | `environment-ssh-sandbox` |
+| `plugins/github`                  | `bb-plugin-github`                  | `github`                  | `github`                  |
+| `plugins/docs`                    | `bb-plugin-simple-notes`            | `docs`                    | `simple-notes`            |
+| `plugins/memory`                  | `bb-plugin-memory`                  | `memory`                  | `memory`                  |
+| `plugins/tasks`                   | `bb-plugin-tasks`                   | `tasks`                   | `tasks`                   |
 
 ## Releasing a change
 

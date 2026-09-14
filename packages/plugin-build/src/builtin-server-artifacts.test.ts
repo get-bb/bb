@@ -74,6 +74,7 @@ describe("builtin server artifacts", () => {
     { pluginDir: "environment-git-worktree" },
     { pluginDir: "environment-personal-workspace" },
     { pluginDir: "environment-modal-sandbox" },
+    { pluginDir: "environment-ssh-sandbox" },
   ])(
     "inlines the environment-provider runtime into the $pluginDir server entry",
     async ({ pluginDir }) => {
