@@ -76,7 +76,8 @@ export async function resolveBbAppUpgradeCommand(
     ),
     findBbAppPackageRoot(args.bundlePath ?? fileURLToPath(import.meta.url)),
   ]);
-  return probe.installDir !== null &&
+  return probe.active &&
+    probe.installDir !== null &&
     packageRoot !== null &&
     pathIsInside(packageRoot, probe.installDir)
     ? MISE_UPGRADE_COMMAND

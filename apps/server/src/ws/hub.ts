@@ -1136,7 +1136,11 @@ export class NotificationHub implements DbNotifier {
     if (!session) {
       return false;
     }
-    session.socket.send(JSON.stringify(message));
-    return true;
+    try {
+      session.socket.send(JSON.stringify(message));
+      return true;
+    } catch {
+      return false;
+    }
   }
 }

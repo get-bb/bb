@@ -281,6 +281,27 @@ describe("NotificationHub", () => {
     }
   });
 
+  it("reports a daemon message as undelivered when the socket send throws", () => {
+    const hub = new NotificationHub();
+    const socket = createMockHubSocket();
+    hub.registerDaemon("session-1", "host-1", socket);
+    socket.send = () => {
+      throw new Error("socket closed");
+    };
+    expect(
+      hub.sendDaemonMessage("host-1", {
+        type: "package-manager.replace",
+        packageManager: "mise",
+      }),
+    ).toBe(false);
+    expect(
+      hub.sendDaemonMessage("host-2", {
+        type: "package-manager.replace",
+        packageManager: "mise",
+      }),
+    ).toBe(false);
+  });
+
   it("sends host RPC requests to the active daemon and resolves responses", async () => {
     const hub = new NotificationHub();
     const socket = createMockHubSocket();

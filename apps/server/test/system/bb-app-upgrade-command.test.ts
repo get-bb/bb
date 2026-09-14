@@ -34,6 +34,7 @@ async function createBbAppPackage(root: string): Promise<string> {
 function createMiseIo(args: {
   miseInstalled: boolean;
   installPath: string | null;
+  active?: boolean;
 }): MiseKitIo {
   return {
     async commandStdout(command, commandArgs) {
@@ -45,7 +46,7 @@ function createMiseIo(args: {
           requested_version: "latest",
           install_path: args.installPath,
           installed: true,
-          active: true,
+          active: args.active ?? true,
         },
       ]);
     },
@@ -61,7 +62,9 @@ function createMiseIo(args: {
 }
 
 afterEach(async () => {
-  await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true })));
+  await Promise.all(
+    tempDirs.splice(0).map((dir) => rm(dir, { recursive: true })),
+  );
 });
 
 describe("resolveBbAppUpgradeCommand", () => {
@@ -100,6 +103,23 @@ describe("resolveBbAppUpgradeCommand", () => {
         io: createMiseIo({ miseInstalled: true, installPath: installRoot }),
       }),
     ).resolves.toBe(MISE_UPGRADE_COMMAND);
+  });
+
+  it("uses the npm command when auto finds bb-app inside an inactive mise install", async () => {
+    const installRoot = await createTempDir("bb-upgrade-inactive-");
+    const bundlePath = await createBbAppPackage(installRoot);
+    await expect(
+      resolveBbAppUpgradeCommand({
+        packageManager: "auto",
+        pathEnv: undefined,
+        bundlePath,
+        io: createMiseIo({
+          miseInstalled: true,
+          installPath: installRoot,
+          active: false,
+        }),
+      }),
+    ).resolves.toBe(NPM_UPGRADE_COMMAND);
   });
 
   it("uses the npm command when auto finds bb-app outside the mise install", async () => {
