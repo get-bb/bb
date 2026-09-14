@@ -32,7 +32,6 @@ import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
 import {
   OPTION_BASE_CLASS_NAME,
   OPTION_INTERACTIVE_CLASS_NAME,
-  OPTION_TRIGGER_CONTENT_CLASS_NAME,
 } from "@bb/shared-ui/option-display";
 import {
   providerUsageTone,
@@ -283,13 +282,11 @@ function MachineSelector({
             OPTION_BASE_CLASS_NAME,
             OPTION_INTERACTIVE_CLASS_NAME,
             LIST_HOVER_TRANSITION,
-            "h-7 max-w-32 px-1 text-sidebar-foreground hover:bg-sidebar-accent",
+            "h-7 max-w-16 shrink overflow-hidden px-1 text-sidebar-foreground hover:bg-sidebar-accent",
           )}
         >
-          <span className={OPTION_TRIGGER_CONTENT_CLASS_NAME}>
-            <span className="min-w-0 truncate">
-              {activeMachine?.displayName ?? "Usage"}
-            </span>
+          <span className="block min-w-0 flex-1 truncate">
+            {activeMachine?.displayName ?? "Usage"}
           </span>
         </Button>
       </DropdownMenuTrigger>
