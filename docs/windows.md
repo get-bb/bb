@@ -86,14 +86,17 @@ their dev supervisors, so iterating needs no production build.
   to both services when the running host daemon reports a different
   `HOST_DAEMON_PROTOCOL_VERSION`, because a mismatched server/daemon pair cannot
   connect.
-- Windows has no `SIGUSR1`, so a restart request travels through
-  `<data dir>/dev-supervisors/<service>.restart`, which the dev supervisor polls;
-  POSIX keeps the signal path. Supervisor pid files live in the same directory,
-  and a pid file left behind by a forced stop is reported as stale and removed on
-  the next restart request.
-- `scripts/bb-dev-app` — and with it `pnpm dev:status` and `pnpm dev:stop` — needs
-  the POSIX `screen` multiplexer and does not run on native Windows. Stop a dev
-  stack launched from a terminal with Ctrl+C.
+- Windows has no `SIGUSR1` and cannot deliver `SIGTERM` to another process, so
+  restart and stop requests travel through `<data dir>/dev-supervisors/<service>.restart`
+  and `<service>.stop`, which the dev supervisor polls; POSIX keeps the signal
+  paths. Supervisor pid files live in the same directory, and a pid file left
+  behind by a forced stop is reported as stale and removed on the next request.
+- `pnpm dev:status` prints the instance data directory, URLs, supervisor pids, and
+  whether the app, server, and host-daemon ports are listening. `pnpm dev:stop`
+  stops both dev supervisors through their stop files and then removes the
+  remaining `pnpm dev` process tree, so ports and pid files are released.
+  `scripts/bb-dev-app` itself, and with it `pnpm dev:desktop`, still needs the
+  POSIX `screen` multiplexer; Ctrl+C in the `pnpm dev` terminal keeps working.
 - Terminals, providers, plugin host workers, and the bundled `bb` CLI behave as
   they do on a supervisor-managed host; the fork only changes how the dev server
   and the dev host daemon start and restart.

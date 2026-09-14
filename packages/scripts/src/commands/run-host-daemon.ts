@@ -29,6 +29,10 @@ interface HostDaemonProcessCommand {
   command: string;
 }
 
+// bb-fork(windows): the upstream 15s default made the wrapper exit and restart on
+// bb-fork(windows): a cold dev server, which needs over a minute to start listening.
+const DEV_SERVER_HEALTH_TIMEOUT_MS = 120_000;
+
 interface CreateAutoJoinRequestArgs {
   requestedHostId: string | null;
 }
@@ -165,7 +169,7 @@ export async function maybeAddAutoJoinEnv(
     return env;
   }
 
-  await waitForServerHealth(env.BB_SERVER_URL);
+  await waitForServerHealth(env.BB_SERVER_URL, DEV_SERVER_HEALTH_TIMEOUT_MS);
   const requestedHostId =
     env.BB_HOST_ID?.trim() || (await readPersistedHostId(env.BB_DATA_DIR));
 

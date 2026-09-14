@@ -6,7 +6,7 @@ import {
   resolveSupervisorPidPath,
 } from "../lib/dev-restart-utils.js";
 // bb-fork(windows): request dev restarts through a file where SIGUSR1 is unavailable.
-import { requestDevSupervisorRestart } from "../lib/dev-restart-windows.js";
+import { requestDevSupervisorRestart } from "../lib/dev-supervisor-windows.js";
 import { readRunningPid } from "../lib/pid-file.js";
 import { runScriptProcess } from "../lib/process-helpers.js";
 import { runMainIfEntrypoint } from "../lib/script-entry.js";

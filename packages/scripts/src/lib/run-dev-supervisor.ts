@@ -1,7 +1,10 @@
 import { calculateExponentialBackoffDelay } from "@bb/domain";
 import { spawnPortableProcess } from "@bb/process-utils";
-// bb-fork(windows): dev restarts arrive as a request file instead of SIGUSR1.
-import { installDevRestartWatcher } from "./dev-restart-windows.js";
+// bb-fork(windows): dev restarts and stops arrive as request files instead of signals.
+import {
+  installDevRestartWatcher,
+  installDevStopWatcher,
+} from "./dev-supervisor-windows.js";
 import { resolveSupervisorPidPath } from "./dev-restart-utils.js";
 import {
   removePidFileSync,
@@ -233,7 +236,22 @@ function createNodeDevSupervisorRuntime(args: {
     now: () => Date.now(),
     setTimeout: createNodeTimer,
     spawnChildProcess: spawnNodeChildProcess,
-    installTerminationSignalForwarding,
+    installTerminationSignalForwarding(
+      handler: DevSupervisorTerminationSignalHandler,
+    ): DevSupervisorSignalHandlerCleanup {
+      const removeSignalForwarding =
+        installTerminationSignalForwarding(handler);
+      // bb-fork(windows): a Windows supervisor cannot receive SIGTERM either, so a
+      // bb-fork(windows): stop request file stops it the way Ctrl+C would.
+      const removeDevStopWatcher = installDevStopWatcher({
+        onStop: () => handler("SIGTERM"),
+        serviceName: args.serviceName,
+      });
+      return () => {
+        removeSignalForwarding();
+        removeDevStopWatcher();
+      };
+    },
     installRestartSignalHandler(
       handler: DevSupervisorRestartSignalHandler,
     ): DevSupervisorSignalHandlerCleanup {

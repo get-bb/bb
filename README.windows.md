@@ -90,7 +90,14 @@ pnpm dev:restart
 
 Каждая команда пересобирает при необходимости и перезапускает только затронутый сервис. `dev:restart-server` сам перезапускает и host-daemon, если у запущенного демона другая версия протокола. На Windows запрос на перезапуск идёт через файл `<каталог данных>\dev-supervisors\<сервис>.restart` (в Windows нет `SIGUSR1`); POSIX-путь не меняется.
 
-Остановка — Ctrl+C в окне с `pnpm dev`. Команды `pnpm dev:status` и `pnpm dev:stop` на нативном Windows не работают: `scripts/bb-dev-app` требует POSIX `screen`.
+Состояние и остановка тоже работают на Windows:
+
+```powershell
+pnpm dev:status
+pnpm dev:stop
+```
+
+`pnpm dev:status` печатает каталог данных, URL, pid супервизоров и какие порты слушают. `pnpm dev:stop` штатно останавливает оба супервизора через stop-файлы, затем убирает оставшееся дерево `pnpm dev` — порты и pid-файлы освобождаются. Сам `scripts/bb-dev-app` (и `pnpm dev:desktop`) по-прежнему требует POSIX `screen`, а Ctrl+C в окне `pnpm dev` работает как раньше.
 
 Подробности и ограничения — в [docs/windows.md](docs/windows.md).
 
