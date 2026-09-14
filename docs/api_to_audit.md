@@ -1,5 +1,28 @@
 # APIs To Audit
 
+## `bb.experimental_effects.experimental_spawnClaimed`
+
+**What it does.** Persists a plugin-scoped claim and complete canonical thread
+spawn request before invoking the plugin's currently installed host artifact.
+Only a strict, matching claim response permits the exact bound request to cross
+the thread-spawn boundary. Exact replay returns the same thread. A response loss
+or restart after that boundary recovers a thread carrying BB's reserved claim
+marker; otherwise it returns terminal `delivery_uncertain` and never resends.
+
+**Audit before stabilizing.**
+
+1. Replace the experimental host-RPC claim result with a shared, versioned
+   authorization contract once more than one controller implements it.
+2. Decide whether claimed effects should be a general API or remain specific to
+   thread spawning.
+3. Confirm the reserved thread metadata marker should become a first-class
+   thread column before supporting untrusted plugin authorities.
+4. Add a receiver-side idempotency key before claiming provider exactly-once;
+   BB currently guarantees one durable send intent and no resend after an
+   unknown result, not exactly one provider start.
+5. Confirm operator reconciliation should gain a public mutation beyond the
+   current stable `delivery_uncertain` result.
+
 ## `bb.http.experimental_websocket`
 
 **What it does.** Registers an exact-path WebSocket upgrade in the plugin's
@@ -2907,7 +2930,6 @@ returns a credential only while that host is creating.
 Before stabilizing, verify creation cancellation through host removal,
 same-host restoration, serialized removal, plugin callers and UI/CLI parity.
 
-
 ## `app.experimental_icons.register` and `experimental_Icon`
 
 Plugins register inline React artwork during app setup with `{ name, component }`.
@@ -2943,7 +2965,6 @@ components. The existing built-in icon list and artwork remain fixed; new
 plugin app icons use this registration API. The manifest API is unchanged,
 and individual plugins can still declare their own branding SVG assets using
 the existing manifest fields.
-
 
 ## `experimental_ProviderIcon`
 

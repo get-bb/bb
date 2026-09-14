@@ -38,6 +38,14 @@ interface EnvironmentProvidersCommandOptions {
   host?: string;
 }
 
+interface EnvironmentProvisionCommandOptions {
+  host: string;
+  json?: boolean;
+  path: string;
+  project: string;
+  requestId: string;
+}
+
 interface EnvironmentShowCommandOptions {
   json?: boolean;
 }
@@ -386,6 +394,36 @@ export function registerEnvironmentCommands(
             `${provider.id}  ${provider.displayName}  ${requirements || "-"}${inputs}${availability}`,
           );
         }
+      }),
+    );
+
+  environment
+    .command("provision")
+    .description("Provision a replay-safe unmanaged environment")
+    .requiredOption("--project <id>", "Project that owns the environment")
+    .requiredOption("--host <id-or-name>", "Machine that owns the path")
+    .requiredOption("--path <absolute-path>", "Existing unmanaged project path")
+    .requiredOption("--request-id <id>", "Stable idempotency key")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (opts: EnvironmentProvisionCommandOptions) => {
+        const hostId = await resolveMachineHostId({
+          serverUrl: getUrl(),
+          target: opts.host,
+          requireConnected: true,
+        });
+        const result = await createCliBbSdk(
+          getUrl(),
+        ).environments.provisionUnmanaged({
+          requestId: opts.requestId,
+          projectId: opts.project,
+          hostId,
+          path: opts.path,
+        });
+        if (outputJson(opts, result)) return;
+        console.log(
+          `${result.environment.id}  ${result.state}  ${result.environment.path ?? "-"}`,
+        );
       }),
     );
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { getEnvironment } from "@bb/db";
 import {
+  listQueuedCommands,
   registerTestHostRpcCapture,
   reportQueuedCommandSuccess,
   waitForQueuedCommand,
@@ -15,6 +16,229 @@ import {
 import { withTestHarness } from "../helpers/test-app.js";
 
 describe("public environments", () => {
+  it("provisions one unmanaged environment for an exact replayed request", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-provision-only",
+      });
+      registerTestHostRpcCapture(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+      });
+      const path = "/tmp/bb-provision-only";
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path,
+      });
+      const request = {
+        schema: "bb.environment-provision-request/v1",
+        requestId: "provision-request-1",
+        projectId: project.id,
+        hostId: host.id,
+        path,
+        workspaceProvisionType: "unmanaged",
+        isWorktree: false,
+      } as const;
+
+      const firstResponsePromise = harness.app.request(
+        "/api/v1/environment-provisions",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(request),
+        },
+      );
+      const attach = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "environment.attach" &&
+          command.path === request.path,
+      );
+      if (attach.command.type !== "environment.attach") {
+        throw new Error("Expected environment.attach command");
+      }
+      expect(attach.command.initiator).toBeNull();
+      expect(listQueuedCommands(harness, "environment.attach")).toHaveLength(1);
+      const concurrentResponse = await harness.app.request(
+        "/api/v1/environment-provisions",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(request),
+        },
+      );
+      expect(concurrentResponse.status).toBe(202);
+      const concurrent = await readJson(concurrentResponse);
+      expect(concurrent).toMatchObject({
+        requestId: request.requestId,
+        state: "provisioning",
+        replay: true,
+      });
+      expect(listQueuedCommands(harness, "environment.attach")).toHaveLength(1);
+      await reportQueuedCommandSuccess(harness, attach, {
+        path: request.path,
+        isGitRepo: false,
+        isWorktree: false,
+        branchName: null,
+        defaultBranch: null,
+        transcript: [],
+      });
+
+      const firstResponse = await firstResponsePromise;
+      expect(firstResponse.status).toBe(201);
+      const first = await readJson(firstResponse);
+      expect(first).toMatchObject({
+        schema: "bb.environment-provision-result/v1",
+        requestId: request.requestId,
+        state: "ready",
+        replay: false,
+        environment: {
+          projectId: project.id,
+          hostId: host.id,
+          path: request.path,
+          isWorktree: false,
+          status: "ready",
+        },
+      });
+      expect(
+        (concurrent as { environment: { id: string } }).environment.id,
+      ).toBe((first as { environment: { id: string } }).environment.id);
+
+      const replayResponse = await harness.app.request(
+        "/api/v1/environment-provisions",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(request),
+        },
+      );
+      expect(replayResponse.status).toBe(200);
+      const replay = await readJson(replayResponse);
+      expect(replay).toMatchObject({
+        requestId: request.requestId,
+        state: "ready",
+        replay: true,
+        environment: {
+          id: (first as { environment: { id: string } }).environment.id,
+        },
+      });
+      expect(listQueuedCommands(harness, "environment.attach")).toHaveLength(0);
+
+      const { project: conflictingProject } = seedProjectWithSource(
+        harness.deps,
+        { hostId: host.id, path },
+      );
+      const conflictResponse = await harness.app.request(
+        "/api/v1/environment-provisions",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            ...request,
+            projectId: conflictingProject.id,
+          }),
+        },
+      );
+      expect(conflictResponse.status).toBe(409);
+      expect(listQueuedCommands(harness, "environment.attach")).toHaveLength(0);
+    });
+  });
+
+  it("rejects a worktree provision request before creating an environment", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-provision-worktree-refusal",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+
+      const response = await harness.app.request(
+        "/api/v1/environment-provisions",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            schema: "bb.environment-provision-request/v1",
+            requestId: "provision-request-worktree",
+            projectId: project.id,
+            hostId: host.id,
+            path: "/tmp/bb-provision-worktree",
+            workspaceProvisionType: "unmanaged",
+            isWorktree: true,
+          }),
+        },
+      );
+
+      expect(response.status).toBe(400);
+      const listResponse = await harness.app.request("/api/v1/environments");
+      expect(await readJson(listResponse)).toEqual([]);
+    });
+  });
+
+  it("makes a mismatched host provision terminal and replayable", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-provision-mismatch",
+      });
+      registerTestHostRpcCapture(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+      });
+      const path = "/tmp/bb-provision-mismatch";
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path,
+      });
+      const request = {
+        schema: "bb.environment-provision-request/v1",
+        requestId: "provision-request-mismatch",
+        projectId: project.id,
+        hostId: host.id,
+        path,
+        workspaceProvisionType: "unmanaged",
+        isWorktree: false,
+      } as const;
+      const firstResponsePromise = harness.app.request(
+        "/api/v1/environment-provisions",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(request),
+        },
+      );
+      const attach = await waitForQueuedCommand(
+        harness,
+        ({ command }) => command.type === "environment.attach",
+      );
+      await reportQueuedCommandSuccess(harness, attach, {
+        path,
+        isGitRepo: true,
+        isWorktree: true,
+        branchName: "forbidden-worktree",
+        defaultBranch: "main",
+        transcript: [],
+      });
+      expect((await firstResponsePromise).status).toBe(409);
+
+      const replayResponse = await harness.app.request(
+        "/api/v1/environment-provisions",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(request),
+        },
+      );
+      expect(replayResponse.status).toBe(200);
+      expect(await readJson(replayResponse)).toMatchObject({
+        state: "terminal_refused",
+        replay: true,
+        environment: { status: "error" },
+      });
+      expect(listQueuedCommands(harness, "environment.attach")).toHaveLength(0);
+    });
+  });
+
   it("lists cached branch options while remotes refresh in the background", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {

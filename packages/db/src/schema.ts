@@ -519,6 +519,8 @@ export const environments = sqliteTable(
     statusMessage: text("status_message"),
     pendingLog: text("pending_log").notNull().default(""),
     claimPath: text("claim_path"),
+    provisionRequestId: text("provision_request_id"),
+    provisionRequestSha256: text("provision_request_sha256"),
     status: text("status")
       .$type<EnvironmentStatus>()
       .notNull()
@@ -535,6 +537,9 @@ export const environments = sqliteTable(
     index("environments_host_path_lookup_idx").on(table.hostId, table.path),
     uniqueIndex("environments_owner_thread_idx").on(table.ownerThreadId),
     index("environments_claim_idx").on(table.hostId, table.claimPath),
+    uniqueIndex("environments_provision_request_idx").on(
+      table.provisionRequestId,
+    ),
     index("environments_project_idx").on(table.projectId),
     index("environments_status_idx").on(table.status),
     index("environments_provider_instance_idx").on(
@@ -641,6 +646,40 @@ export const threadPluginMetadata = sqliteTable(
     metadataJson: text("metadata_json").notNull(),
   },
   (table) => [primaryKey({ columns: [table.threadId, table.pluginId] })],
+);
+
+export const claimedThreadSpawns = sqliteTable(
+  "claimed_thread_spawns",
+  {
+    claimId: text("claim_id").primaryKey(),
+    attemptId: text("attempt_id").notNull(),
+    pluginId: text("plugin_id").notNull(),
+    authorityId: text("authority_id").notNull(),
+    authorityHostId: text("authority_host_id").notNull(),
+    authorityMethod: text("authority_method").notNull(),
+    requestSha256: text("request_sha256").notNull(),
+    requestCanonicalJson: text("request_canonical_json").notNull(),
+    state: text("state")
+      .$type<
+        | "claiming"
+        | "claimed"
+        | "delivering"
+        | "completed"
+        | "delivery_uncertain"
+      >()
+      .notNull(),
+    authorizationId: text("authorization_id"),
+    threadJson: text("thread_json"),
+    failureMessage: text("failure_message"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("claimed_thread_spawns_attempt_idx").on(table.attemptId),
+    uniqueIndex("claimed_thread_spawns_authorization_idx").on(
+      table.authorizationId,
+    ),
+  ],
 );
 
 export const threadTabs = sqliteTable("thread_tabs", {

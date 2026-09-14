@@ -9,6 +9,7 @@ import {
   pullRequestDraftActionResponseSchema,
   pullRequestMergeActionResponseSchema,
   pullRequestReadyActionResponseSchema,
+  provisionUnmanagedEnvironmentResultSchema,
   updateEnvironmentRequestSchema,
 } from "@bb/server-contract";
 import type {
@@ -31,6 +32,7 @@ import type {
   PullRequestMergeActionResponse,
   PullRequestReadyActionResponse,
   EnvironmentStatusQuery,
+  ProvisionUnmanagedEnvironmentResult,
   UpdateEnvironmentRequest,
   WorkspacePathListResponse,
   SystemEnvironmentProvider,
@@ -152,6 +154,17 @@ export interface EnvironmentListProvidersArgs {
 }
 export type EnvironmentListProvidersResult = SystemEnvironmentProvider[];
 
+export interface EnvironmentProvisionUnmanagedArgs {
+  hostId: string;
+  path: string;
+  projectId: string;
+  requestId: string;
+  signal?: AbortSignal;
+}
+
+export type EnvironmentProvisionUnmanagedResult =
+  ProvisionUnmanagedEnvironmentResult;
+
 const okResponseSchema = z.object({ ok: z.literal(true) });
 
 export interface EnvironmentsArea {
@@ -185,6 +198,9 @@ export interface EnvironmentsArea {
     args: EnvironmentPullRequestMergeArgs,
   ): Promise<EnvironmentMergePullRequestResult>;
   paths(args: EnvironmentPathsArgs): Promise<EnvironmentPathsResult>;
+  provisionUnmanaged(
+    args: EnvironmentProvisionUnmanagedArgs,
+  ): Promise<EnvironmentProvisionUnmanagedResult>;
   status(args: EnvironmentStatusArgs): Promise<EnvironmentStatusResult>;
   update(args: EnvironmentUpdateArgs): Promise<EnvironmentUpdateResult>;
 }
@@ -468,6 +484,25 @@ export function createEnvironmentsArea(
           ...signalRequestArgs(input.signal),
         ),
       );
+    },
+    async provisionUnmanaged(input) {
+      const body = await transport.readJson(
+        transport.api.v1["environment-provisions"].$post(
+          {
+            json: {
+              schema: "bb.environment-provision-request/v1",
+              requestId: input.requestId,
+              projectId: input.projectId,
+              hostId: input.hostId,
+              path: input.path,
+              workspaceProvisionType: "unmanaged",
+              isWorktree: false,
+            },
+          },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+      return provisionUnmanagedEnvironmentResultSchema.parse(body);
     },
     async status(input) {
       return transport.readJson(

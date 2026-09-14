@@ -7,8 +7,16 @@ import {
 } from "@bb/db";
 import { describe, expect, it } from "vitest";
 import { ApiError } from "../../src/errors.js";
-import { runStartupRecoverySweep } from "../../src/services/system/periodic-sweeps.js";
+import {
+  runEnvironmentProvisioningSweep,
+  runStartupRecoverySweep,
+} from "../../src/services/system/periodic-sweeps.js";
 import { createThreadFromRequest } from "../../src/services/threads/thread-create.js";
+import {
+  registerTestHostRpcCapture,
+  reportQueuedCommandSuccess,
+  waitForQueuedCommand,
+} from "../helpers/commands.js";
 import {
   seedEnvironment,
   seedHost,
@@ -20,6 +28,59 @@ import { textInput } from "../helpers/prompt-input.js";
 import { withTestHarness } from "../helpers/test-app.js";
 
 describe("environment reprovisioning", () => {
+  it("recovers a provision-only unmanaged environment after restart", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-provision-only-recovery",
+      });
+      registerTestHostRpcCapture(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+      });
+      const path = "/tmp/provision-only-recovery";
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path,
+        status: "provisioning",
+        provisionRequestId: "provision-only-recovery-request",
+        provisionRequestSha256: "a".repeat(64),
+      });
+
+      const sweep = runEnvironmentProvisioningSweep(harness.deps);
+      const attach = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "environment.attach" &&
+          command.environmentId === environment.id,
+      );
+      if (attach.command.type !== "environment.attach") {
+        throw new Error("Expected environment.attach command");
+      }
+      expect(attach.command.initiator).toBeNull();
+      await reportQueuedCommandSuccess(harness, attach, {
+        path,
+        isGitRepo: false,
+        isWorktree: false,
+        branchName: null,
+        defaultBranch: null,
+        transcript: [],
+      });
+      await sweep;
+
+      expect(getEnvironment(harness.db, environment.id)).toMatchObject({
+        status: "ready",
+        path,
+        isWorktree: false,
+        provisionRequestId: "provision-only-recovery-request",
+      });
+    });
+  });
+
   it("fails host-backed thread creation before creating provisioning state when the host is disconnected", async () => {
     await withTestHarness(async (harness) => {
       const host = seedHost(harness.deps, {

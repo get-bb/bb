@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import {
   exceedsPluginMetadataLimit,
   parsePersistedPluginMetadata,
@@ -70,6 +70,25 @@ export function listThreadPluginMetadataRows(
       ),
     )
     .all();
+}
+
+export function findThreadIdByPluginMetadataString(
+  db: DbQueryConnection,
+  input: { pluginId: string; key: string; nestedKey: string; value: string },
+): string | null {
+  const path = `$.${JSON.stringify(input.key)}.${JSON.stringify(input.nestedKey)}`;
+  return (
+    db
+      .select({ threadId: threadPluginMetadata.threadId })
+      .from(threadPluginMetadata)
+      .where(
+        and(
+          eq(threadPluginMetadata.pluginId, input.pluginId),
+          sql`json_extract(${threadPluginMetadata.metadataJson}, ${path}) = ${input.value}`,
+        ),
+      )
+      .get()?.threadId ?? null
+  );
 }
 
 export function insertThreadPluginMetadata(

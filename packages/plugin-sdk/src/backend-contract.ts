@@ -21,6 +21,7 @@ import type {
 import type { ProviderFork } from "@bb/domain/provider-fork";
 import type {
   BbSdk,
+  ThreadSpawnArgs,
   ThreadPluginMetadataArgs,
   ThreadPluginMetadataUpdateArgs,
   ThreadPluginMetadataResult,
@@ -1869,6 +1870,35 @@ export type PluginBbSdk = Omit<BbSdk, "threads"> & {
   };
 };
 
+export interface ExperimentalClaimAuthority {
+  authorityId: string;
+  contract: PluginRpcContract;
+  hostId: string;
+  method: string;
+}
+
+export interface ExperimentalClaimedThreadSpawnArgs {
+  attemptId: string;
+  authority: ExperimentalClaimAuthority;
+  claimId: string;
+  request: ThreadSpawnArgs;
+}
+
+export interface ExperimentalClaimedThreadSpawnResult {
+  schema: "bb.claimed-thread-spawn-result/v1";
+  attemptId: string;
+  claimId: string;
+  replay: boolean;
+  state: "completed" | "delivery_uncertain";
+  thread: ThreadResponse | null;
+}
+
+export interface ExperimentalPluginEffects {
+  experimental_spawnClaimed(
+    args: ExperimentalClaimedThreadSpawnArgs,
+  ): Promise<ExperimentalClaimedThreadSpawnResult>;
+}
+
 /**
  * The API object handed to a plugin's factory (design §4). Implemented by
  * the BB server; this contract is what plugin `server.ts` files compile
@@ -1877,6 +1907,7 @@ export type PluginBbSdk = Omit<BbSdk, "threads"> & {
 export interface BbPluginApi {
   /** The plugin's own id (namespaces storage, routes, commands). */
   readonly pluginId: string;
+  readonly experimental_effects: ExperimentalPluginEffects;
   /** Leveled, plugin-scoped logger. */
   readonly log: PluginLogger;
   /** Declarative settings (design §4.2). */

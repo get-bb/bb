@@ -256,6 +256,7 @@ type ExpectedEnvironmentsKey =
   | "markPullRequestReady"
   | "mergePullRequest"
   | "paths"
+  | "provisionUnmanaged"
   | "pullRequest"
   | "status"
   | "update";

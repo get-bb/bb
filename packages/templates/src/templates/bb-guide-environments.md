@@ -106,6 +106,12 @@ Making your repo work with bb:
                                           ready, error, destroyed (the only way to see
                                           destroyed rows)
     --limit <n> / --offset <n>            Page through the rows, oldest first
+  bb environment provision                Attach one dedicated unmanaged project checkout
+    --project <id>                        Public project that owns the checkout
+    --host <id-or-name>                   Connected machine whose project source is the checkout
+    --path <absolute-path>                Canonical path; must equal that project's source on the host
+    --request-id <stable-id>              Idempotency key; exact replay returns the same environment
+    --json                                Print the typed provision result
   bb environment delete <id>              Request provider cleanup; refused while threads are
                                           live or stopping. The command returns with cleanup
                                           requested; lifecycle becomes destroyed only after
@@ -241,6 +247,8 @@ Core owns environment retirement and teardown. After the last live thread is arc
 Explicit environment or project deletion bypasses the retirement grace, including the never-retire policy. Provider cleanup retains the host, path and resource until removal completes; inspect progress with `bb environment show <id>`.
 
 `bb environment providers --json` includes each choice’s `description` and `icon`, as well as its label, inputs, and availability.
+
+`bb environment provision` creates no thread and starts no provider. It records the stable request before asking the connected host to attach the exact existing path as a non-worktree environment. A changed request under the same request id is refused. A crash or lost response can be retried with the exact request id; recovery reuses the recorded environment identity.
 
 `bb environment providers --project <id>` omits providers whose declared requirements are unmet on every persistent machine, and reports each provider's `machineAvailability` per machine in `--json`. Add `--machine <id>` to scope structural eligibility to that machine and print its availability: `available`, `setup-required`, `unavailable` with the plugin's reason, or `unknown` while the background probe has not answered. Listing never waits on a machine; probes run in the background, are cached for ten minutes per project and machine, and are checked afresh for the selected provider and machine during thread creation.
 

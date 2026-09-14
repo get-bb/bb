@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  environmentSchema,
   environmentStatusSchema,
   FILE_LIST_QUERY_MAX_LENGTH,
   gitBranchNameSchema,
@@ -8,6 +9,7 @@ import {
   threadPullRequestSchema,
   workspaceDiffTargetSchema,
   workspaceStatusSchema,
+  type Environment,
 } from "@bb/domain";
 import { workspaceResolutionFailureSchema } from "@bb/host-daemon-contract/workspace";
 import { apiErrorSchema } from "../errors.js";
@@ -44,6 +46,37 @@ export const listEnvironmentsQuerySchema = z.object({
   offset: z.string().regex(/^\d+$/).optional(),
 });
 export type ListEnvironmentsQuery = z.infer<typeof listEnvironmentsQuerySchema>;
+
+export const provisionUnmanagedEnvironmentRequestSchema = z
+  .object({
+    schema: z.literal("bb.environment-provision-request/v1"),
+    requestId: z.string().min(1).max(128),
+    projectId: z.string().min(1),
+    hostId: z.string().min(1),
+    path: z.string().min(1),
+    workspaceProvisionType: z.literal("unmanaged"),
+    isWorktree: z.literal(false),
+  })
+  .strict();
+export type ProvisionUnmanagedEnvironmentRequest = z.infer<
+  typeof provisionUnmanagedEnvironmentRequestSchema
+>;
+
+export interface ProvisionUnmanagedEnvironmentResult {
+  schema: "bb.environment-provision-result/v1";
+  requestId: string;
+  state: "provisioning" | "ready" | "terminal_refused";
+  replay: boolean;
+  environment: Environment;
+}
+
+export const provisionUnmanagedEnvironmentResultSchema = z.object({
+  schema: z.literal("bb.environment-provision-result/v1"),
+  requestId: z.string().min(1),
+  state: z.enum(["provisioning", "ready", "terminal_refused"]),
+  replay: z.boolean(),
+  environment: environmentSchema,
+});
 
 export const environmentPathsQuerySchema = z.object({
   query: z.string().min(1).max(FILE_LIST_QUERY_MAX_LENGTH).optional(),

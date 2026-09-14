@@ -12,8 +12,10 @@ import Database from "better-sqlite3";
 import { CronExpressionParser } from "cron-parser";
 import {
   deletePluginKvValue,
+  findThreadIdByPluginMetadataString,
   getPluginKvValue,
   getHost,
+  getThreadPluginMetadata,
   listPluginKvKeys,
   setPluginKvValue,
   type DbConnection,
@@ -38,6 +40,9 @@ import type {
   PluginHookHandler,
   PluginHookName,
   PluginEvents,
+  ExperimentalClaimedThreadSpawnArgs,
+  ExperimentalClaimedThreadSpawnResult,
+  ExperimentalPluginEffects,
   PluginHttp,
   PluginHttpAuthMode,
   PluginHttpHandler,
@@ -73,6 +78,10 @@ import type {
   StandardSchemaV1,
   PluginRpcContract,
 } from "@get-bb/plugin-sdk";
+import {
+  CLAIMED_THREAD_SPAWN_METADATA_KEY,
+  spawnClaimedThread,
+} from "./claimed-thread-spawn.js";
 import {
   KV_VALUE_MAX_BYTES,
   normalizeAgentToolRegistration,
@@ -547,6 +556,10 @@ export function createPluginApi(options: {
   let invalidated = false;
   let activated = false;
   let wrappedSdk: PluginBbSdk | undefined;
+  const claimedSpawnOperations = new Map<
+    string,
+    Promise<ExperimentalClaimedThreadSpawnResult>
+  >();
   let pendingNeedsConfiguration: string | null = null;
   const pendingAgentToolProblems: string[] = [];
   const pendingSharedPorts = new Map<string, readonly number[]>();
@@ -1274,8 +1287,87 @@ export function createPluginApi(options: {
     register: aiServiceRegistrations.register,
   };
 
+  const experimental_effects: ExperimentalPluginEffects = {
+    experimental_spawnClaimed(rawArgs) {
+      assertLive();
+      if (!activated) {
+        throw new Error(
+          "claimed thread spawns are unavailable during factory registration",
+        );
+      }
+      const sdk = getSdk();
+      if (!sdk) {
+        throw new Error(
+          "bb.sdk is not available until the server is listening",
+        );
+      }
+      const args: ExperimentalClaimedThreadSpawnArgs = {
+        ...rawArgs,
+        request: withPluginThreadAttribution(rawArgs.request, pluginId),
+      };
+      const active = claimedSpawnOperations.get(args.claimId);
+      if (active !== undefined) {
+        return active.then((value) => ({ ...value, replay: true }));
+      }
+      const operation = spawnClaimedThread(
+        {
+          db,
+          pluginId,
+          claim: (claimArgs, input) => {
+            if (
+              typeof claimArgs.authority.method !== "string" ||
+              claimArgs.authority.contract[claimArgs.authority.method] ===
+                undefined
+            ) {
+              throw new Error(
+                "claimed spawn requires a declared host RPC method",
+              );
+            }
+            return callPluginHost({
+              contract: claimArgs.authority.contract,
+              method: claimArgs.authority.method,
+              input,
+              hostId: claimArgs.authority.hostId,
+            });
+          },
+          recover: async (recoveryArgs) => {
+            const threadId = findThreadIdByPluginMetadataString(db, {
+              pluginId,
+              key: CLAIMED_THREAD_SPAWN_METADATA_KEY,
+              nestedKey: "claimId",
+              value: recoveryArgs.claimId,
+            });
+            if (threadId === null) return null;
+            const marker = getThreadPluginMetadata(db, threadId, pluginId)
+              .metadata[CLAIMED_THREAD_SPAWN_METADATA_KEY];
+            if (
+              marker === null ||
+              typeof marker !== "object" ||
+              Array.isArray(marker) ||
+              marker.claimId !== recoveryArgs.claimId ||
+              marker.attemptId !== recoveryArgs.attemptId
+            ) {
+              return null;
+            }
+            const thread = await sdk.threads.get({ threadId });
+            return thread.id === threadId ? thread : null;
+          },
+          spawn: (request) => sdk.threads.spawn(request),
+        },
+        args,
+      );
+      claimedSpawnOperations.set(args.claimId, operation);
+      void operation.then(
+        () => claimedSpawnOperations.delete(args.claimId),
+        () => claimedSpawnOperations.delete(args.claimId),
+      );
+      return operation;
+    },
+  };
+
   const api: BbPluginApi = {
     pluginId,
+    experimental_effects,
     log,
     settings,
     storage,

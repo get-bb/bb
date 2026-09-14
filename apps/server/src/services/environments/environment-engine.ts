@@ -1457,6 +1457,17 @@ function recoverEnvironmentProvisionRequest(
   environment: EnvironmentRow,
 ): EnvironmentProvisionRequest | null {
   if (environment.path === null) return null;
+  if (environment.provisionRequestId !== null) {
+    return {
+      command: buildEnvironmentProvisionCommand({
+        environmentId: environment.id,
+        hostId: environment.hostId,
+        initiator: null,
+        path: environment.path,
+        setupScriptTimeoutMs: null,
+      }),
+    };
+  }
   const owners = deps.db
     .select({ id: threads.id })
     .from(threads)

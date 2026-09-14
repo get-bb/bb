@@ -834,6 +834,56 @@ describe("@bb/sdk", () => {
     ]);
   });
 
+  it("provisions an unmanaged environment with a stable request id", async () => {
+    const environment = makeEnvironment({
+      id: "env_provisioned",
+      projectId: "proj_test",
+      hostId: "host_test",
+      path: "/srv/bb/project",
+      isWorktree: false,
+      status: "ready",
+    });
+    const response = {
+      schema: "bb.environment-provision-result/v1" as const,
+      requestId: "request_test",
+      state: "ready" as const,
+      replay: false,
+      environment,
+    };
+    const queue = createFetchQueue([{ body: response, status: 201 }]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(
+      sdk.environments.provisionUnmanaged({
+        requestId: "request_test",
+        projectId: "proj_test",
+        hostId: "host_test",
+        path: "/srv/bb/project",
+      }),
+    ).resolves.toEqual(response);
+    expect(queue.requests).toEqual([
+      {
+        bodyText: JSON.stringify({
+          schema: "bb.environment-provision-request/v1",
+          requestId: "request_test",
+          projectId: "proj_test",
+          hostId: "host_test",
+          path: "/srv/bb/project",
+          workspaceProvisionType: "unmanaged",
+          isWorktree: false,
+        }),
+        method: "POST",
+        url: "http://bb.test/api/v1/environment-provisions",
+      },
+    ]);
+  });
+
   it("routes onboarding agent status through a reused environment", async () => {
     const states = { providers: [] };
     const queue = createFetchQueue([{ body: states }]);

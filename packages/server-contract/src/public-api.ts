@@ -108,6 +108,8 @@ import type {
   EnvironmentDiffResponse,
   EnvironmentPathsQuery,
   EnvironmentPullRequestResponse,
+  ProvisionUnmanagedEnvironmentRequest,
+  ProvisionUnmanagedEnvironmentResult,
   EnvironmentStatusQuery,
   EnvironmentStatusResponse,
   HostDirectoryListing,
@@ -299,6 +301,7 @@ import {
   environmentDiffQuerySchema,
   environmentPathsQuerySchema,
   environmentStatusQuerySchema,
+  provisionUnmanagedEnvironmentRequestSchema,
   hostDirectoryQuerySchema,
   hostListQuerySchema,
   hostCloneDefaultPathQuerySchema,
@@ -956,6 +959,19 @@ export const publicApiRoutes = {
   },
 
   environments: {
+    provisionUnmanaged: defineRoute({
+      path: "/environment-provisions",
+      method: "post",
+      request: jsonRequest<EmptyInput, ProvisionUnmanagedEnvironmentRequest>(
+        provisionUnmanagedEnvironmentRequestSchema,
+      ),
+      response: [
+        jsonResponse<ProvisionUnmanagedEnvironmentResult>({ status: 201 }),
+        jsonResponse<ProvisionUnmanagedEnvironmentResult>(),
+        jsonResponse<ProvisionUnmanagedEnvironmentResult, 202>({ status: 202 }),
+        jsonResponse<ApiError>({ status: 409 }),
+      ],
+    }),
     list: defineRoute({
       path: "/environments",
       method: "get",

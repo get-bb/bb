@@ -181,6 +181,7 @@ configures the machine with optional configured `preset` and `image` names;
 - `bb environment`
 - `bb environment providers`
 - `bb environment list`
+- `bb environment provision`
 - `bb environment delete`
 - `bb environment show`
 - `bb environment status`

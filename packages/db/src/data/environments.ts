@@ -29,6 +29,8 @@ export interface CreateEnvironmentInput {
   mergeBaseBranch?: string | null;
   status?: EnvironmentStatus;
   providerOwnsPath: boolean;
+  provisionRequestId?: string | null;
+  provisionRequestSha256?: string | null;
   environmentProvider?: {
     environmentProviderId: string;
     pluginId?: string;
@@ -65,6 +67,8 @@ export function createEnvironment(
       environmentProviderInstanceKey:
         input.environmentProvider?.instanceKey ?? null,
       providerOwnsPath: input.providerOwnsPath,
+      provisionRequestId: input.provisionRequestId ?? null,
+      provisionRequestSha256: input.provisionRequestSha256 ?? null,
       status: input.status ?? "provisioning",
       createdAt: now,
       updatedAt: now,
@@ -73,6 +77,19 @@ export function createEnvironment(
     .get();
   notifier.notifyEnvironment(id, ["environment-created"]);
   return row;
+}
+
+export function getEnvironmentByProvisionRequestId(
+  db: EnvironmentReadConnection,
+  requestId: string,
+) {
+  return (
+    db
+      .select()
+      .from(environments)
+      .where(eq(environments.provisionRequestId, requestId))
+      .get() ?? null
+  );
 }
 
 export function getEnvironment(db: EnvironmentReadConnection, id: string) {

@@ -87,6 +87,7 @@ describe("bb environment command output", () => {
     const help = await getHelpOutput(["environment"], register);
 
     expect(help).toContain("providers [options]");
+    expect(help).toContain("provision [options]");
     expect(help).toContain("status [options] <id>");
     expect(help).toContain("branches [options] <id>");
     expect(help).toContain("paths [options] <id>");
@@ -99,6 +100,74 @@ describe("bb environment command output", () => {
       /List environments, including destroyed ones\s+when requested/u,
     );
     expect(help).not.toContain("squash-merge");
+  });
+
+  it("bb environment provision creates a replay-safe unmanaged environment", async () => {
+    const environment = fixtures.makeEnvironment({
+      id: "env-provisioned",
+      projectId: "proj-1",
+      hostId: "host-local",
+      path: "/srv/bb/project",
+      isWorktree: false,
+    });
+    const provision = vi.fn(async () => ({
+      schema: "bb.environment-provision-result/v1" as const,
+      requestId: "request-1",
+      state: "ready" as const,
+      replay: false,
+      environment,
+    }));
+    stubServerApi({
+      "v1.hosts.$get": vi.fn(async () => [
+        {
+          id: "host-local",
+          name: "local",
+          status: "connected",
+          createdAt: 1,
+          updatedAt: 1,
+          lastSeenAt: 1,
+        },
+      ]),
+      "v1.environment-provisions.$post": provision,
+    });
+
+    await runCommand(
+      [
+        "environment",
+        "provision",
+        "--project",
+        "proj-1",
+        "--host",
+        "host-local",
+        "--path",
+        "/srv/bb/project",
+        "--request-id",
+        "request-1",
+        "--json",
+      ],
+      register,
+    );
+
+    expect(provision).toHaveBeenCalledWith({
+      json: {
+        schema: "bb.environment-provision-request/v1",
+        requestId: "request-1",
+        projectId: "proj-1",
+        hostId: "host-local",
+        path: "/srv/bb/project",
+        workspaceProvisionType: "unmanaged",
+        isWorktree: false,
+      },
+    });
+    expect(
+      JSON.parse(collectLogLines(vi.mocked(console.log))[0] ?? ""),
+    ).toEqual(
+      expect.objectContaining({
+        requestId: "request-1",
+        state: "ready",
+        environment: expect.objectContaining({ id: "env-provisioned" }),
+      }),
+    );
   });
 
   it("bb environment providers lists selectable ids and required inputs", async () => {

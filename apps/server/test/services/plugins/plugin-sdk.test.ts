@@ -9,8 +9,11 @@ import {
   createThread,
   getThread,
   insertThreadPluginMetadata,
+  updateClaimedThreadSpawn,
   markThreadDeleted,
   migrate,
+  noopNotifier,
+  projects,
   type DbConnection,
 } from "@bb/db";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
@@ -140,7 +143,8 @@ describe("plugin bb.sdk bind gate", () => {
     sharedPorts.replaceDeclarationsForOwner.mockClear();
     sharedPorts.clearDeclarationsForOwner.mockClear();
     ensureSharedPortTunnel.mockClear();
-    callPluginHost.mockClear();
+    callPluginHost.mockReset();
+    callPluginHost.mockImplementation(async () => ({ pong: true }));
     disposePluginHost.mockClear();
     appUrl = "https://bb.example.test";
     pluginHostArtifacts = new PluginHostArtifactRegistry();
@@ -295,6 +299,490 @@ describe("plugin bb.sdk bind gate", () => {
       expect(requests[2]).toMatchObject({ origin: "sdk" });
       expect(requests[2]).not.toHaveProperty("originPluginId");
     }
+  });
+
+  it("claims one exact thread spawn and replays its durable result", async () => {
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-claimed-spawn",
+      serverSource: `export default function plugin() {}`,
+      hostSource: `export default { experimental_apiVersion: 1, contract: {}, handlers: {} };`,
+    });
+    await service.installPath(rootDir);
+    service.bindSdk({ baseUrl: "https://bb.example.test" });
+    const api = requireApi(service, "claimed-spawn");
+    const authority = defineRpcContract({
+      claim: {
+        input: z.unknown(),
+        output: z.unknown(),
+      },
+    });
+    callPluginHost.mockImplementationOnce(async (args) => {
+      const input = args.input as { requestSha256: string };
+      return {
+        schema: "bb.effect-claim-result/v1",
+        status: "claimed",
+        claimId: "claim-1",
+        attemptId: "attempt-1",
+        requestSha256: input.requestSha256,
+        authorizationId: "authorization-1",
+      } as never;
+    });
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "thread-claimed-1",
+          projectId: "project-1",
+          environmentId: "environment-1",
+          title: null,
+          status: "pending",
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+    const request = {
+      projectId: "project-1",
+      environment: { type: "reuse", environmentId: "environment-1" },
+      prompt: "one exact effect",
+    } as const;
+
+    const effect = () =>
+      api.experimental_effects.experimental_spawnClaimed({
+        claimId: "claim-1",
+        attemptId: "attempt-1",
+        authority: {
+          authorityId: "authority-1",
+          hostId: "host-1",
+          contract: authority,
+          method: "claim",
+        },
+        request,
+      });
+    const [first, concurrent] = await Promise.all([effect(), effect()]);
+    const replay = await api.experimental_effects.experimental_spawnClaimed({
+      claimId: "claim-1",
+      attemptId: "attempt-1",
+      authority: {
+        authorityId: "authority-1",
+        hostId: "host-1",
+        contract: authority,
+        method: "claim",
+      },
+      request,
+    });
+
+    expect(first).toMatchObject({
+      schema: "bb.claimed-thread-spawn-result/v1",
+      state: "completed",
+      replay: false,
+      thread: { id: "thread-claimed-1" },
+    });
+    expect(concurrent).toEqual({ ...first, replay: true });
+    expect(replay).toEqual({ ...first, replay: true });
+    expect(callPluginHost).toHaveBeenCalledTimes(1);
+    expect(callPluginHost).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pluginId: "claimed-spawn",
+        hostId: "host-1",
+        method: "claim",
+        artifact: expect.objectContaining({
+          digest: expect.stringMatching(/^[0-9a-f]{64}$/u),
+          generation: expect.any(String),
+        }),
+      }),
+    );
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(fetchSpy.mock.calls[0]?.[1]?.body).toContain(
+      '"__bbClaimedThreadSpawnV1":{"claimId":"claim-1","attemptId":"attempt-1"}',
+    );
+
+    await expect(
+      api.experimental_effects.experimental_spawnClaimed({
+        claimId: "claim-1",
+        attemptId: "attempt-1",
+        authority: {
+          authorityId: "authority-1",
+          hostId: "host-1",
+          contract: authority,
+          method: "claim",
+        },
+        request: { ...request, prompt: "different effect" },
+      }),
+    ).rejects.toMatchObject({ status: 409 });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+
+    db.insert(projects)
+      .values({
+        id: "project-1",
+        name: "Claim recovery",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      })
+      .run();
+    const recoveredThread = createThread(db, noopNotifier, {
+      projectId: "project-1",
+      providerId: "codex",
+      pluginMetadata: {
+        pluginId: "claimed-spawn",
+        metadata: {
+          __bbClaimedThreadSpawnV1: {
+            claimId: "claim-1",
+            attemptId: "attempt-1",
+          },
+        },
+      },
+    });
+    updateClaimedThreadSpawn(db, "claim-1", {
+      state: "delivering",
+      threadJson: null,
+    });
+    fetchSpy.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          ...recoveredThread,
+          environmentId: "environment-1",
+          status: "pending",
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      ),
+    );
+    await expect(
+      api.experimental_effects.experimental_spawnClaimed({
+        claimId: "claim-1",
+        attemptId: "attempt-1",
+        authority: {
+          authorityId: "authority-1",
+          hostId: "host-1",
+          contract: authority,
+          method: "claim",
+        },
+        request,
+      }),
+    ).resolves.toMatchObject({
+      state: "completed",
+      replay: true,
+      thread: { id: recoveredThread.id },
+    });
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("never retries a claimed spawn whose delivery result is unknown", async () => {
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-uncertain-spawn",
+      serverSource: `export default function plugin() {}`,
+      hostSource: `export default { experimental_apiVersion: 1, contract: {}, handlers: {} };`,
+    });
+    await service.installPath(rootDir);
+    service.bindSdk({ baseUrl: "https://bb.example.test" });
+    const api = requireApi(service, "uncertain-spawn");
+    const authority = defineRpcContract({
+      claim: { input: z.unknown(), output: z.unknown() },
+    });
+    callPluginHost.mockImplementationOnce(async (args) => {
+      const input = args.input as {
+        attemptId: string;
+        claimId: string;
+        requestSha256: string;
+      };
+      return {
+        schema: "bb.effect-claim-result/v1",
+        status: "claimed",
+        claimId: input.claimId,
+        attemptId: input.attemptId,
+        requestSha256: input.requestSha256,
+        authorizationId: "authorization-uncertain",
+      } as never;
+    });
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockRejectedValue(new Error("response lost"));
+    const args = {
+      claimId: "claim-uncertain",
+      attemptId: "attempt-uncertain",
+      authority: {
+        authorityId: "authority-uncertain",
+        hostId: "host-1",
+        contract: authority,
+        method: "claim",
+      },
+      request: {
+        projectId: "project-1",
+        environment: { type: "reuse", environmentId: "environment-1" },
+        prompt: "do not resend",
+      },
+    } as const;
+
+    await expect(
+      api.experimental_effects.experimental_spawnClaimed(args),
+    ).resolves.toMatchObject({
+      state: "delivery_uncertain",
+      replay: false,
+      thread: null,
+    });
+    await expect(
+      api.experimental_effects.experimental_spawnClaimed(args),
+    ).resolves.toMatchObject({
+      state: "delivery_uncertain",
+      replay: true,
+      thread: null,
+    });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("revalidates a persisted claim before delivery after restart", async () => {
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-current-claim",
+      serverSource: `export default function plugin() {}`,
+      hostSource: `export default { experimental_apiVersion: 1, contract: {}, handlers: {} };`,
+    });
+    await service.installPath(rootDir);
+    service.bindSdk({ baseUrl: "https://bb.example.test" });
+    const api = requireApi(service, "current-claim");
+    const authority = defineRpcContract({
+      claim: { input: z.unknown(), output: z.unknown() },
+    });
+    callPluginHost.mockImplementationOnce(async (call) => {
+      const input = call.input as {
+        attemptId: string;
+        claimId: string;
+        requestSha256: string;
+      };
+      return {
+        schema: "bb.effect-claim-result/v1",
+        status: "claimed",
+        claimId: input.claimId,
+        attemptId: input.attemptId,
+        requestSha256: input.requestSha256,
+        authorizationId: "authorization-current",
+      } as never;
+    });
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "thread-current-claim",
+          projectId: "project-1",
+          environmentId: "environment-1",
+          status: "pending",
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+    const args = {
+      claimId: "claim-current",
+      attemptId: "attempt-current",
+      authority: {
+        authorityId: "authority-current",
+        hostId: "host-1",
+        contract: authority,
+        method: "claim",
+      },
+      request: {
+        projectId: "project-1",
+        environment: { type: "reuse", environmentId: "environment-1" },
+        prompt: "revalidate before delivery",
+      },
+    } as const;
+
+    await expect(
+      api.experimental_effects.experimental_spawnClaimed(args),
+    ).resolves.toMatchObject({ state: "completed" });
+    updateClaimedThreadSpawn(db, args.claimId, {
+      state: "claimed",
+      threadJson: null,
+    });
+    callPluginHost.mockRejectedValueOnce(
+      new Error("claim is no longer current"),
+    );
+
+    await expect(
+      api.experimental_effects.experimental_spawnClaimed(args),
+    ).rejects.toThrow("claim is no longer current");
+    expect(callPluginHost).toHaveBeenCalledTimes(2);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not spawn when the current claim binds a different request", async () => {
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-claim-mismatch",
+      serverSource: `export default function plugin() {}`,
+      hostSource: `export default { experimental_apiVersion: 1, contract: {}, handlers: {} };`,
+    });
+    await service.installPath(rootDir);
+    service.bindSdk({ baseUrl: "https://bb.example.test" });
+    const api = requireApi(service, "claim-mismatch");
+    const authority = defineRpcContract({
+      claim: { input: z.unknown(), output: z.unknown() },
+    });
+    callPluginHost.mockImplementationOnce(async (call) => {
+      const input = call.input as { attemptId: string; claimId: string };
+      return {
+        schema: "bb.effect-claim-result/v1",
+        status: "claimed",
+        claimId: input.claimId,
+        attemptId: input.attemptId,
+        requestSha256: "0".repeat(64),
+        authorizationId: "authorization-wrong-request",
+      } as never;
+    });
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+    await expect(
+      api.experimental_effects.experimental_spawnClaimed({
+        claimId: "claim-wrong-request",
+        attemptId: "attempt-wrong-request",
+        authority: {
+          authorityId: "authority-wrong-request",
+          hostId: "host-1",
+          contract: authority,
+          method: "claim",
+        },
+        request: {
+          projectId: "project-1",
+          environment: { type: "reuse", environmentId: "environment-1" },
+          prompt: "exact request",
+        },
+      }),
+    ).rejects.toMatchObject({ status: 409 });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("refuses one authorization bound to two distinct attempts", async () => {
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-authorization-replay",
+      serverSource: `export default function plugin() {}`,
+      hostSource: `export default { experimental_apiVersion: 1, contract: {}, handlers: {} };`,
+    });
+    await service.installPath(rootDir);
+    service.bindSdk({ baseUrl: "https://bb.example.test" });
+    const api = requireApi(service, "authorization-replay");
+    const authority = defineRpcContract({
+      claim: { input: z.unknown(), output: z.unknown() },
+    });
+    callPluginHost.mockImplementation(async (call) => {
+      const input = call.input as {
+        attemptId: string;
+        claimId: string;
+        requestSha256: string;
+      };
+      return {
+        schema: "bb.effect-claim-result/v1",
+        status: "claimed",
+        claimId: input.claimId,
+        attemptId: input.attemptId,
+        requestSha256: input.requestSha256,
+        authorizationId: "authorization-once",
+      } as never;
+    });
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "thread-authorization-once",
+          projectId: "project-1",
+          environmentId: "environment-1",
+          status: "pending",
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+    const request = {
+      projectId: "project-1",
+      environment: { type: "reuse", environmentId: "environment-1" },
+      prompt: "one authorization",
+    } as const;
+    const effect = (claimId: string, attemptId: string) =>
+      api.experimental_effects.experimental_spawnClaimed({
+        claimId,
+        attemptId,
+        authority: {
+          authorityId: "authority-replay",
+          hostId: "host-1",
+          contract: authority,
+          method: "claim",
+        },
+        request,
+      });
+
+    await expect(effect("claim-first", "attempt-first")).resolves.toMatchObject(
+      {
+        state: "completed",
+      },
+    );
+    await expect(
+      effect("claim-second", "attempt-second"),
+    ).rejects.toMatchObject({
+      status: 409,
+    });
+    expect(callPluginHost).toHaveBeenCalledTimes(2);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("contains a thread returned for the wrong environment", async () => {
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-spawn-mismatch",
+      serverSource: `export default function plugin() {}`,
+      hostSource: `export default { experimental_apiVersion: 1, contract: {}, handlers: {} };`,
+    });
+    await service.installPath(rootDir);
+    service.bindSdk({ baseUrl: "https://bb.example.test" });
+    const api = requireApi(service, "spawn-mismatch");
+    const authority = defineRpcContract({
+      claim: { input: z.unknown(), output: z.unknown() },
+    });
+    callPluginHost.mockImplementationOnce(async (call) => {
+      const input = call.input as {
+        attemptId: string;
+        claimId: string;
+        requestSha256: string;
+      };
+      return {
+        schema: "bb.effect-claim-result/v1",
+        status: "claimed",
+        claimId: input.claimId,
+        attemptId: input.attemptId,
+        requestSha256: input.requestSha256,
+        authorizationId: "authorization-mismatch",
+      } as never;
+    });
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "thread-wrong-environment",
+          projectId: "project-1",
+          environmentId: "environment-wrong",
+          status: "pending",
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+    const args = {
+      claimId: "claim-mismatch",
+      attemptId: "attempt-mismatch",
+      authority: {
+        authorityId: "authority-mismatch",
+        hostId: "host-1",
+        contract: authority,
+        method: "claim",
+      },
+      request: {
+        projectId: "project-1",
+        environment: { type: "reuse", environmentId: "environment-1" },
+        prompt: "must stay in environment-1",
+      },
+    } as const;
+
+    await expect(
+      api.experimental_effects.experimental_spawnClaimed(args),
+    ).resolves.toMatchObject({ state: "delivery_uncertain", thread: null });
+    await expect(
+      api.experimental_effects.experimental_spawnClaimed(args),
+    ).resolves.toMatchObject({
+      state: "delivery_uncertain",
+      replay: true,
+      thread: null,
+    });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
   it("serves the current public app URL without the SDK bind gate", async () => {

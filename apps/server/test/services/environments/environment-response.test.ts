@@ -32,6 +32,8 @@ function makeRow(overrides: Partial<EnvironmentRow> = {}): EnvironmentRow {
     attempt: 0,
     statusMessage: null,
     pendingLog: "",
+    provisionRequestId: null,
+    provisionRequestSha256: null,
     claimPath: null,
     status: "ready",
     createdAt: 1,

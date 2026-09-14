@@ -31,6 +31,7 @@ import {
 import { ApiError } from "../errors.js";
 import { requestEnvironmentRemoval } from "../services/environments/environment-engine.js";
 import { toEnvironmentResponse } from "../services/environments/environment-response.js";
+import { provisionUnmanagedEnvironment } from "../services/environments/unmanaged-environment-provision.js";
 import {
   requireEnvironment,
   requireReadyEnvironment,
@@ -278,6 +279,11 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
   });
   const routes = publicApiRoutes.environments;
+
+  post(routes.provisionUnmanaged, async (context, payload) => {
+    const response = await provisionUnmanagedEnvironment(deps, payload);
+    return context.json(response.body, response.status);
+  });
 
   get(routes.list, async (context, query) => {
     const { limit, offset } = parsePaginationQuery({

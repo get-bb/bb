@@ -165,6 +165,7 @@ const BB_PLUGIN_API_KEYS = [
   "server",
   "hosts",
   "experimental_aiServices",
+  "experimental_effects",
   "experimental_hooks",
   "experimental_environments",
   "experimental_machines",

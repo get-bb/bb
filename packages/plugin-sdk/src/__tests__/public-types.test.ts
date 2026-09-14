@@ -16,6 +16,7 @@ type ExpectedBbPluginApiKey =
   | "cli"
   | "events"
   | "experimental_aiServices"
+  | "experimental_effects"
   | "experimental_environments"
   | "experimental_hooks"
   | "experimental_machines"
@@ -75,6 +76,10 @@ const EXPECTED_BACKEND_ROOT_TYPE_EXPORTS = [
   "ExperimentalPluginWebSocketContext",
   "ExperimentalPluginWebSocketHandler",
   "ExperimentalPluginWebSocketHandlers",
+  "ExperimentalClaimAuthority",
+  "ExperimentalClaimedThreadSpawnArgs",
+  "ExperimentalClaimedThreadSpawnResult",
+  "ExperimentalPluginEffects",
   "PluginHookHandler",
   "PluginHookName",
   "PluginHookSignatures",

@@ -989,6 +989,26 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         ],
       },
       {
+        id: "claimed-thread-effects",
+        tagline: "Bind controller authority to one spawn",
+        title: "Claimed thread effects",
+        summary:
+          "Consumes a current host-side claim and a complete thread request under one durable BB identity. With this, a plugin can:",
+        bullets: [
+          "Ask the currently installed host artifact to validate the exact canonical request at use time",
+          "Persist claim, authorization, delivery intent and terminal result across restart",
+          "Replay a completed thread without another provider start",
+          "Stop at delivery_uncertain after an unverified external effect instead of retrying",
+        ],
+        apiSymbols: [
+          "ExperimentalPluginEffects",
+          "ExperimentalClaimAuthority",
+          "ExperimentalClaimedThreadSpawnArgs",
+          "ExperimentalClaimedThreadSpawnResult",
+        ],
+        experimental: true,
+      },
+      {
         id: "desktop-browsers",
         title: "Desktop browser control",
         tagline: "Use your automation tool on BB-owned tabs",

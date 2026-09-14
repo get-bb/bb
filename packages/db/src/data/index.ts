@@ -35,6 +35,15 @@ export {
 export type { StoredPromptHistoryEntryRow } from "./prompt-history.js";
 
 export {
+  getClaimedThreadSpawn,
+  getClaimedThreadSpawnByAuthorizationId,
+  getClaimedThreadSpawnByAttemptId,
+  insertClaimedThreadSpawn,
+  updateClaimedThreadSpawn,
+} from "./claimed-thread-spawns.js";
+export type { ClaimedThreadSpawnRow } from "./claimed-thread-spawns.js";
+
+export {
   getProjectExecutionDefaults,
   listProjectExecutionDefaultsByProjectIds,
   upsertProjectExecutionDefaults,
@@ -51,6 +60,7 @@ export {
   deleteProjectSource,
 } from "./project-sources.js";
 export {
+  findThreadIdByPluginMetadataString,
   getThreadPluginMetadata,
   insertThreadPluginMetadata,
   listThreadPluginMetadataRows,
@@ -224,6 +234,7 @@ export {
   bindEnvironmentPath,
   createEnvironment,
   getEnvironment,
+  getEnvironmentByProvisionRequestId,
   findProjectEnvironmentByHostPath,
   listEnvironments,
   findForeignManagedEnvironmentAtHostPath,
