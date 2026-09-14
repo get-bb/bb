@@ -918,6 +918,12 @@ timelines and large expanded timeline details retain stable height-preserving
 wrappers while mounting only rows near their active scrollport. Toggle it with
 `bb settings experiment timelineWindowing <true|false>`.
 
+The `multiMachinePicker` experiment is off by default. When enabled, projects
+with at least three machines use a searchable, target-first environment picker,
+and machine-only pickers become searchable when they have more than five
+machines. Toggle it with `bb settings experiment multiMachinePicker
+<true|false>`.
+
 ## Thread Timeline Window
 
 Timeline pages select conversation groups using user-message anchors. The
@@ -1423,10 +1429,3 @@ invalid, or corrupt entries are rebuilt; development and compiler diagnostic
 modes bypass the cache. The cache has no user configuration and can be removed
 while no builds are running. See [build performance](build-performance.md) for
 its identity, portability, and verification contract.
-
-## Provider Usage
-
-Provider Usage is enabled by default for newly registered installations; existing
-plugin enable/disable choices are preserved. Its plugin settings page contains
-provider subscription usage. See [Sidebar footer](#sidebar-footer) for ordering
-and hiding its footer shortcut.
