@@ -238,6 +238,42 @@ describe("provider maintenance kit", () => {
     ).toBe(true);
   });
 
+  it("attributes a symlink that resolves into the shims or install directory to mise", async () => {
+    const shim = path.join(miseDataDir, "shims", "codex");
+    const linkedShim = path.join(npmBin, "codex");
+    const linkedInstall = path.join(path.sep, "opt", "bin", "codex");
+    const homebrewMise = path.join(path.sep, "opt", "homebrew", "bin", "mise");
+    const cases = [
+      { executablePath: linkedShim, realpaths: { [linkedShim]: shim } },
+      {
+        executablePath: linkedShim,
+        realpaths: { [linkedShim]: homebrewMise, [miseBinary]: homebrewMise },
+      },
+      {
+        executablePath: linkedInstall,
+        realpaths: {
+          [linkedInstall]: path.join(codexInstallDir, "bin", "codex"),
+        },
+      },
+    ];
+    for (const testCase of cases) {
+      const probe = await probeMisePackage(
+        {
+          mise: miseBinary,
+          npmPackage: CODEX,
+          executablePath: testCase.executablePath,
+          npmBin,
+        },
+        fakeIo({
+          listJson: miseListJson("latest"),
+          realpaths: testCase.realpaths,
+        }),
+      );
+      expect(probe.executableManaged).toBe(true);
+      expect(probe.shadowingInstall).toBeNull();
+    }
+  });
+
   it("reports a stray global inside a mise node prefix as a shadowing install", async () => {
     const executablePath = path.join(miseNodeBin, "codex");
     const io = fakeIo({
@@ -275,6 +311,53 @@ describe("provider maintenance kit", () => {
       "mise use -g -y npm:@openai/codex@latest",
     );
     expect(io.calls.some((call) => call[0] === "npm")).toBe(false);
+  });
+
+  it("treats an installed but inactive mise entry as not mise-managed", async () => {
+    const executablePath = path.join(codexInstallDir, "bin", "codex");
+    const inactiveListJson = JSON.stringify([
+      {
+        version: "0.153.4",
+        requested_version: "latest",
+        install_path: codexInstallDir,
+        installed: true,
+        active: false,
+      },
+    ]);
+    const probe = await probeMisePackage(
+      { mise: miseBinary, npmPackage: CODEX, executablePath, npmBin },
+      fakeIo({
+        listJson: inactiveListJson,
+        realpaths: { [executablePath]: executablePath },
+      }),
+    );
+    expect(probe).toEqual({
+      installDir: null,
+      installedVersion: null,
+      requestedVersion: null,
+      active: false,
+      executableManaged: false,
+      shadowingInstall: null,
+    });
+    const resolution = await resolvePackageInstaller(
+      {
+        packageManager: "auto",
+        npmPackage: CODEX,
+        installed: true,
+        executablePath,
+        npmBin,
+        latestVersion: "0.154.0",
+      },
+      fakeIo({
+        listJson: inactiveListJson,
+        realpaths: { [executablePath]: executablePath },
+      }),
+    );
+    expect(resolution.packageManager).toBe("npm");
+    expect(resolution.source).toBe("external");
+    expect(resolution.updateCommand.displayCommand).toBe(
+      "npm install -g @openai/codex@latest",
+    );
   });
 
   it("reports a stray npm global as a shadowing install when mise manages the package", async () => {

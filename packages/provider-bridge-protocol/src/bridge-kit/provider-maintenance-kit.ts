@@ -340,9 +340,9 @@ function miseListEntry(
       .array(miseListEntrySchema.passthrough())
       .safeParse(JSON.parse(output));
     if (!parsed.success) return null;
-    const installed = parsed.data.filter((entry) => entry.installed);
     return (
-      installed.find((entry) => entry.active === true) ?? installed[0] ?? null
+      parsed.data.find((entry) => entry.installed && entry.active === true) ??
+      null
     );
   } catch {
     return null;
@@ -392,12 +392,15 @@ export async function probeMisePackage(
     args.executablePath === null
       ? null
       : ((await io.realpath(args.executablePath)) ?? args.executablePath);
+  const realMise = (await io.realpath(args.mise)) ?? args.mise;
   const executableManaged =
     args.executablePath !== null &&
     realExecutable !== null &&
     (pathIsInside(args.executablePath, shimsDir) ||
       pathIsInside(args.executablePath, installDir) ||
-      pathIsInside(realExecutable, installDir));
+      pathIsInside(realExecutable, shimsDir) ||
+      pathIsInside(realExecutable, installDir) ||
+      realExecutable === realMise);
   return {
     installDir,
     installedVersion: entry.version,
