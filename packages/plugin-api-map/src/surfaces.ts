@@ -1069,6 +1069,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Renders bb's conversation, prompt box, and shared app icons inside plugin pages. With this, a plugin can:",
         bullets: [
           "Embed the thread view and the new-thread prompt box as components",
+          "Seed experimental_NewThreadComposer or navigate.toCompose with initialPrompt containing @thread:<id>, @project:<id>, or @section:<id> to create mention pills with host-resolved labels; composer seeds preserve non-empty drafts",
           "Render message text with the same Markdown renderer bb uses",
           "Resolve document links and images beside a workspace or thread-storage file with Markdown.experimental_document",
           "Inherit bb's styling, so embedded UI matches the rest of the app",
