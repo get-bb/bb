@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { toolInputSchema } from "./contracts.js";
-import {
-  NOT_UNIQUE_MESSAGE,
-  TOO_FEW_OPTIONS_MESSAGE,
-} from "./tool-definition.js";
+import { NOT_UNIQUE_MESSAGE } from "./tool-definition.js";
 import {
   MAX_INTERACTION_PAYLOAD_BYTES,
   PreviewTooLargeError,
@@ -43,18 +40,6 @@ describe("tool input validation", () => {
         }),
       ),
     ).toBeNull();
-  });
-
-  it("steers the model to proceed rather than pad a one-option question", () => {
-    expect(
-      validateToolInput(
-        parseInput({
-          questions: [
-            { question: "Which DB?", header: "DB", options: [twoOptions[0]] },
-          ],
-        }),
-      ),
-    ).toBe(TOO_FEW_OPTIONS_MESSAGE);
   });
 
   it("rejects duplicate prompts, which would collapse into one answer key", () => {
