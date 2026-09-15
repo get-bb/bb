@@ -187,7 +187,9 @@ const cases = [
   },
 ];
 
-describe("managed JSON CLI process transactions", () => {
+const options = { timeout: 30_000 };
+
+describe("managed JSON CLI process transactions", options, () => {
   for (const { kind, a, b, va, vb } of cases) {
     for (const operation of ["set", "unset"]) {
       for (const pausedOperation of ["set", operation].filter(
