@@ -482,11 +482,13 @@ function useStageHeight(
 
 export function ProductMap({
   pluginPageHref,
+  renderPluginIcon,
   initialSlideId,
   onSlideChange,
   onCopyForAgent,
 }: {
   pluginPageHref?: (displayName: string) => string | null;
+  renderPluginIcon?: (displayName: string) => ReactNode;
   initialSlideId?: string;
   onSlideChange?: (slideId: string) => void;
   onCopyForAgent?: (surface: PluginSurface) => Promise<boolean>;
@@ -559,11 +561,12 @@ export function ProductMap({
       numberOf: (id: string) => SURFACE_NUMBERS.get(id) ?? null,
       onSelect: card.open,
       pluginPageHref,
+      renderPluginIcon,
       currentGroupId: slides[index].id,
       onGoToSurface: goToSurface,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [hoverId, card.openId, pluginPageHref, index],
+    [hoverId, card.openId, pluginPageHref, renderPluginIcon, index],
   );
 
   const cardNode = openSurface ? (

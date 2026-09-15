@@ -4,53 +4,124 @@ import {
   ProductMap,
 } from "@bb/plugin-api-map";
 import { useCallback, useEffect, useState } from "react";
-import { definePluginApp, useBbNavigate } from "@get-bb/plugin-sdk/app";
+import {
+  definePluginApp,
+  experimental_Icon as Icon,
+  useBbNavigate,
+} from "@get-bb/plugin-sdk/app";
 
-function useResolvablePluginIds(): ReadonlySet<string> | null {
-  const [ids, setIds] = useState<ReadonlySet<string> | null>(null);
+interface PluginReference {
+  id: string;
+  icon: string | null;
+  iconUrl: string | null;
+  iconTinted: boolean;
+}
+
+function usePluginReferences(): ReadonlyMap<string, PluginReference> {
+  const [plugins, setPlugins] = useState<ReadonlyMap<string, PluginReference>>(
+    () => new Map(),
+  );
   useEffect(() => {
     const controller = new AbortController();
-    const read = async (url: string, pick: (row: never) => string) => {
+    const read = async (url: string): Promise<PluginReference[]> => {
       try {
         const response = await fetch(url, { signal: controller.signal });
         if (!response.ok) return [];
-        const body = (await response.json()) as unknown;
+        const body: unknown = await response.json();
         const rows = Array.isArray(body)
           ? body
-          : ((body as { plugins?: unknown[]; results?: unknown[] }).plugins ??
-            (body as { results?: unknown[] }).results ??
-            []);
-        return rows.map((row) => pick(row as never)).filter(Boolean);
+          : body !== null && typeof body === "object"
+            ? "plugins" in body
+              ? body.plugins
+              : "results" in body
+                ? body.results
+                : []
+            : [];
+        if (!Array.isArray(rows)) return [];
+        return rows.flatMap((row: unknown) => {
+          if (row === null || typeof row !== "object") return [];
+          const id =
+            "pluginId" in row ? row.pluginId : "id" in row ? row.id : null;
+          if (typeof id !== "string" || !id) return [];
+          return [
+            {
+              id,
+              icon:
+                "icon" in row && typeof row.icon === "string" ? row.icon : null,
+              iconUrl:
+                "iconUrl" in row && typeof row.iconUrl === "string"
+                  ? row.iconUrl
+                  : null,
+              iconTinted: !("iconTinted" in row) || row.iconTinted === true,
+            },
+          ];
+        });
       } catch {
         return [];
       }
     };
     void Promise.all([
-      read("/api/v1/plugins", (row: { id?: string }) => row.id ?? ""),
-      read(
-        "/api/v1/plugin-catalog/search?q=",
-        (row: { pluginId?: string }) => row.pluginId ?? "",
-      ),
+      read("/api/v1/plugins"),
+      read("/api/v1/plugin-catalog/search?q="),
     ]).then(([installed, catalog]) => {
       if (!controller.signal.aborted) {
-        setIds(new Set([...installed, ...catalog]));
+        setPlugins(
+          new Map(
+            [...catalog, ...installed].map((plugin) => [plugin.id, plugin]),
+          ),
+        );
       }
     });
     return () => controller.abort();
   }, []);
-  return ids;
+  return plugins;
 }
 
 function PluginApiMapPage({ subPath }: { subPath: string }) {
-  const resolvable = useResolvablePluginIds();
+  const plugins = usePluginReferences();
   const bbNavigate = useBbNavigate();
   const pluginPageHref = useCallback(
     (displayName: string) => {
       const id = firstPartyPluginId(displayName);
-      if (!id || !resolvable?.has(id)) return null;
+      if (!id || !plugins.has(id)) return null;
       return `/plugins/${id}`;
     },
-    [resolvable],
+    [plugins],
+  );
+  const renderPluginIcon = useCallback(
+    (displayName: string) => {
+      const id = firstPartyPluginId(displayName);
+      const plugin = id ? plugins.get(id) : undefined;
+      if (!plugin) return null;
+      const className = "inline-block size-3.5 shrink-0 text-subtle-foreground";
+      if (plugin.iconUrl) {
+        if (!plugin.iconTinted) {
+          return <img src={plugin.iconUrl} alt="" className={className} />;
+        }
+        const maskImage = `url(${JSON.stringify(plugin.iconUrl)})`;
+        return (
+          <span
+            aria-hidden="true"
+            className={className}
+            style={{
+              backgroundColor: "currentColor",
+              maskImage,
+              maskPosition: "center",
+              maskRepeat: "no-repeat",
+              maskSize: "contain",
+              WebkitMaskImage: maskImage,
+              WebkitMaskPosition: "center",
+              WebkitMaskRepeat: "no-repeat",
+              WebkitMaskSize: "contain",
+            }}
+          />
+        );
+      }
+      return plugin.icon ? (
+        <Icon name={plugin.icon} className={className} aria-hidden />
+      ) : null;
+    },
+    [plugins],
   );
   const onSlideChange = useCallback(
     (slideId: string) => {
@@ -68,6 +139,7 @@ function PluginApiMapPage({ subPath }: { subPath: string }) {
     >
       <ProductMap
         pluginPageHref={pluginPageHref}
+        renderPluginIcon={renderPluginIcon}
         initialSlideId={subPath.split("/")[0] || undefined}
         onSlideChange={onSlideChange}
         onCopyForAgent={copyPluginSurfaceAgentReference}
