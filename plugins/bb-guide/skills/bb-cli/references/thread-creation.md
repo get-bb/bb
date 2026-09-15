@@ -238,6 +238,13 @@ data directory without calling a server. It refuses when that directory has a
 imported one: both hold the same connect credential and would take each
 other's tunnel.
 
+An import also writes `server-connect-hold.json`, so the imported server starts
+without its connect tunnel. After the original server is stopped,
+`bb server allow-connect [--data-dir <dir>] [--yes] [--json]` removes the hold;
+the tunnel starts the next time that server starts. The imported server only
+finishes its import (path fixups and machine roles) while the `serverMove`
+experiment is on; until then it keeps `server-import.json` and logs why.
+
 The old computer's data directory keeps a `server-moved.json` lock, so bb runs
 there as a regular machine. `bb server delete-old-copy` deletes the server files
 the move left behind and keeps the lock. `bb server unlock` removes the lock so

@@ -144,7 +144,11 @@ import {
 } from "./plugin-hook-registry.js";
 import type { PluginEnvironmentProviderBridge } from "./plugin-environment-provider-registry.js";
 import { createPluginRegistration } from "./plugin-registration.js";
-import { createPluginRuntime, forgetMutableRoot } from "./plugin-runtime.js";
+import {
+  createPluginRuntime,
+  forgetMutableRoot,
+  type PluginLoadHold,
+} from "./plugin-runtime.js";
 import { nextCronRunAt, raceTimeout } from "./plugin-time-box.js";
 import { createPluginUpdates } from "./plugin-updates.js";
 
@@ -207,6 +211,10 @@ export function superviseBuiltinPluginSourceWatcher(args: {
   });
 }
 
+export interface PluginStartOptions {
+  hold: PluginLoadHold | null;
+}
+
 export interface PluginService {
   isBuiltin(id: string): boolean;
   events: PluginThreadEventEmitter;
@@ -220,7 +228,7 @@ export interface PluginService {
    * listener is up, before start(): bb.sdk throws until this runs.
    */
   bindSdk(args: { baseUrl: string }): void;
-  start(): Promise<void>;
+  start(options?: PluginStartOptions): Promise<void>;
   stop(): Promise<void>;
   handleUncaughtException(error: unknown): boolean;
   list(): InstalledPlugin[];
@@ -1293,7 +1301,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
     bindSdk: bindRuntimeSdk,
 
-    async start() {
+    async start(options) {
       await backfillNormalizedPluginRegistrations();
       await withPluginOperationLock(REGISTRATION_MUTATION_KEY, async () => {
         for (const artifact of listPendingGitPluginArtifacts(deps.db)) {
@@ -1304,7 +1312,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         await recoverIncompletePluginRollbacks();
       });
       await reconcileBundled();
-      await loadAll();
+      await loadAll(options?.hold ?? null);
       await withPluginOperationLock(REGISTRATION_MUTATION_KEY, runArtifactGc);
       if (deps.watchBuiltinPluginSources) {
         for (const bundled of bundledPlugins) {

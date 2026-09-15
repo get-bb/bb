@@ -121,6 +121,13 @@ closes; `bb server move status` shows the same steps.
 - `bb server unlock` on the old computer restarts the old copy as a last resort.
   It warns that everything since the move is lost and that the new server must
   be stopped first.
+- `bb server import` writes `server-connect-hold.json`, so the imported server
+  starts without bb connect and can't take the original server's tunnel.
+  `bb server allow-connect` removes the hold after the original server is
+  stopped. A move never writes the hold.
+- An imported server only finishes its import (path fixups and machine roles)
+  while the `serverMove` experiment is on; otherwise it keeps
+  `server-import.json` and logs why.
 
 ### Export files
 
@@ -155,10 +162,12 @@ bb server move cancel [--json]
 bb server export --out <file> [--unencrypted] [--json]
 bb server import <file> [--data-dir <dir>] [--yes] [--json]
 bb server unlock [--data-dir <dir>] [--force] [--yes] [--json]
+bb server allow-connect [--data-dir <dir>] [--yes] [--json]
 bb server delete-old-copy [--data-dir <dir>] [--yes] [--json]
 ```
 
-`import`, `unlock`, and `delete-old-copy` run locally and do not call a server.
+`import`, `unlock`, `allow-connect`, and `delete-old-copy` run locally and do
+not call a server.
 Export passphrases need at least 8 characters (`BB_SERVER_EXPORT_PASSPHRASE` or
 a hidden prompt).
 
@@ -185,8 +194,9 @@ All refuse requests authenticated by a machine credential.
   directory makes it the server machine.
 - **Markers:** `server-import.json` on the target while the imported server is
   pending (no plugins, sweeps, telemetry, or daemon sessions), `server-moved.json`
-  on the old computer after the switch, and `last-server-move.json` on the new
-  server.
+  on the old computer after the switch, `last-server-move.json` on the new
+  server, and `server-connect-hold.json` after a manual import until
+  `bb server allow-connect`.
 - **Before export:** running turns stop, plugin schedules pause, and every plugin
   except bb connect is suspended so nothing writes after the snapshot. SQLite
   databases are copied with the online backup API.

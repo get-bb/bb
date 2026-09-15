@@ -1,6 +1,7 @@
 import { readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
+  readServerConnectHoldFile,
   readServerImportFile,
   readServerMovedFile,
   writeServerMovedFile,
@@ -104,6 +105,7 @@ describe("ServerMoveService.prepare", () => {
       createdAt: expect.any(Number),
       fixupsAppliedAt: null,
     });
+    expect(await readServerConnectHoldFile(fixture.dataDir)).toBeNull();
     expect(fixture.launches).toEqual([
       {
         bbServerEntry: join(fixture.packageRoot, "dist", "bb-server.js"),

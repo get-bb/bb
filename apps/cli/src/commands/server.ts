@@ -1,10 +1,14 @@
 import { randomBytes } from "node:crypto";
-import { createWriteStream } from "node:fs";
+import { createWriteStream, existsSync } from "node:fs";
 import { rename, rm, stat } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { pipeline } from "node:stream/promises";
 import type { Command } from "commander";
-import { readServerMovedFile } from "@bb/server-archive";
+import {
+  readServerMovedFile,
+  removeServerConnectHoldFile,
+  SERVER_CONNECT_HOLD_FILE_NAME,
+} from "@bb/server-archive";
 import type { ServerMoveStatus } from "@bb/server-contract";
 import { action, CliExitError } from "../action.js";
 import { createCliBbSdk } from "../client.js";
@@ -69,6 +73,12 @@ function startServerHint(dataDir: string): string {
   return isDefaultDataDir(dataDir)
     ? "npx bb-app or the desktop app"
     : `npx bb-app --data-dir ${dataDir}`;
+}
+
+function allowConnectCommand(dataDir: string): string {
+  return isDefaultDataDir(dataDir)
+    ? "bb server allow-connect"
+    : `bb server allow-connect --data-dir ${dataDir}`;
 }
 
 const STOPPED_FOLLOWING_MESSAGE =
@@ -364,6 +374,9 @@ export function registerServerCommands(
         console.log(
           "Stop the original bb server before you start this one. Two servers holding the same bb connect credential take each other's tunnel.",
         );
+        console.log(
+          `bb connect stays off in this copy until you run ${allowConnectCommand(dataDir)}.`,
+        );
         console.log(`Then start it with ${startServerHint(dataDir)}.`);
       }),
     );
@@ -439,6 +452,45 @@ export function registerServerCommands(
         }
         console.log(
           `Unlocked ${dataDir}. bb on this computer starts the old server again within a few seconds; if bb isn't running, start it with ${startServerHint(dataDir)}.`,
+        );
+      }),
+    );
+
+  server
+    .command("allow-connect")
+    .description(
+      "Let bb connect start from an imported server copy (does not call a server)",
+    )
+    .option(
+      "--data-dir <dir>",
+      "Data directory of the imported server (default: BB_DATA_DIR or ~/.bb)",
+    )
+    .option("--yes", "Skip the confirmation prompt")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (opts: LocalServerCommandOptions) => {
+        const dataDir = resolveLocalDataDir(opts.dataDir);
+        if (!existsSync(join(dataDir, SERVER_CONNECT_HOLD_FILE_NAME))) {
+          if (!outputJson(opts, { dataDir, connectHoldRemoved: false })) {
+            console.log(`${dataDir} has no bb connect hold.`);
+          }
+          return;
+        }
+        console.error(
+          "Stop the original bb server first. Two servers holding the same bb connect credential take each other's tunnel.",
+        );
+        if (
+          !opts.yes &&
+          !(await confirmDestructiveAction(
+            `Let bb connect start from the imported bb server in ${dataDir}?`,
+          ))
+        ) {
+          return;
+        }
+        const connectHoldRemoved = await removeServerConnectHoldFile(dataDir);
+        if (outputJson(opts, { dataDir, connectHoldRemoved })) return;
+        console.log(
+          `Removed the bb connect hold from ${dataDir}. bb connect starts the next time this server starts; restart bb if it's already running.`,
         );
       }),
     );

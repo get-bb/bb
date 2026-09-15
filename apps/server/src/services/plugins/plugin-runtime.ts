@@ -290,6 +290,11 @@ interface PluginRuntimeContext {
   settingsChanged?: () => void;
 }
 
+export interface PluginLoadHold {
+  source: string;
+  detail: string;
+}
+
 export function createPluginRuntime(context: PluginRuntimeContext) {
   const { deps } = context;
   const settingsChanged = context.settingsChanged ?? (() => {});
@@ -1777,13 +1782,25 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     ownedRootUrls.clear();
   }
 
-  async function loadAll(): Promise<void> {
+  async function loadAll(hold: PluginLoadHold | null): Promise<void> {
     const rows = listInstalledPlugins(deps.db).sort((a, b) =>
       a.id.localeCompare(b.id),
     );
     for (const row of rows) {
       if (loaded.has(row.id)) continue;
-      await withLifecycleLock(row.id, () => loadOne(row));
+      const heldDetail =
+        hold !== null && row.enabled && row.source === hold.source
+          ? hold.detail
+          : null;
+      await withLifecycleLock(row.id, async () => {
+        if (heldDetail === null) {
+          await loadOne(row);
+          return;
+        }
+        await populateIdentity(row);
+        setStatus(row.id, "disabled", heldDetail);
+        logger.warn(`plugin ${row.id} not loaded (held): ${heldDetail}`);
+      });
     }
   }
 

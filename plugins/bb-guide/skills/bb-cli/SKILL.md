@@ -77,8 +77,10 @@ BB_HOST_DAEMON_PORT only for an intentional non-default target.
 - Move the bb server to another machine with
   `bb server move --to <machine> --check`, then the same command without
   `--check`; it stops all running work. `bb server export --out <file>` backs
-  up a running server. `bb server import`, `unlock`, and `delete-old-copy` act
-  on this computer's data directory without calling a server.
+  up a running server. `bb server import`, `unlock`, `allow-connect`, and
+  `delete-old-copy` act on this computer's data directory without calling a
+  server. An imported server keeps its connect tunnel off until
+  `bb server allow-connect`.
 - Use `bb machine suspend|resume <id-or-name>` only for providers that expose
   suspend and resume. Resume waits for pending suspension and is a no-op
   when already active. Use `bb machine retry-cleanup <id-or-name>` to retry a

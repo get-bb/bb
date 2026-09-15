@@ -204,6 +204,7 @@ checkouts stay on the machines that own them.
     --data-dir <dir>                      Target data directory
   bb server unlock                        Let this computer's old copy start again
     --force                               Skip the new-server health check
+  bb server allow-connect                 Turn bb connect on for an imported copy
   bb server delete-old-copy               Delete the old copy a move left here
 
 `--check` exits nonzero while a blocker remains. With bb connect, machines and
@@ -221,6 +222,12 @@ without echo, and refuses without either unless `--unencrypted` is passed.
 or a running bb, refuses an export made by a newer bb, reads the passphrase the
 same way, and applies path fixups when the imported server first starts. Stop the original server before starting the imported one; two servers
 holding the same bb connect credential take each other's tunnel.
+
+An imported server starts with bb connect off (`server-connect-hold.json`) and
+only finishes importing while the `serverMove` experiment is on.
+`bb server allow-connect [--data-dir <dir>] [--yes] [--json]` removes the hold
+once the original server is stopped; bb connect starts the next time that
+server starts.
 
 After a move, the old computer's data directory keeps `server-moved.json`, so
 bb there refuses to start the old server and runs as a regular machine.

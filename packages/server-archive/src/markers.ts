@@ -1,12 +1,15 @@
+import { unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { lastServerMoveSchema, serverMoveModeSchema } from "@bb/domain";
 import { z } from "zod";
+import { hasErrorCode } from "./errors.js";
 import { readJsonFile, writeJsonFileAtomically } from "./json-file.js";
 import { isServerOwnedPath } from "./server-owned-paths.js";
 
 export const SERVER_MOVED_FILE_NAME = "server-moved.json";
 export const SERVER_IMPORT_FILE_NAME = "server-import.json";
 export const LAST_SERVER_MOVE_FILE_NAME = "last-server-move.json";
+export const SERVER_CONNECT_HOLD_FILE_NAME = "server-connect-hold.json";
 
 const identifierSchema = z.string().min(1);
 const timestampSchema = z.number().int().nonnegative();
@@ -74,6 +77,15 @@ export const lastServerMoveFileSchema = lastServerMoveSchema
   .strict();
 export type LastServerMoveFile = z.infer<typeof lastServerMoveFileSchema>;
 
+export const serverConnectHoldFileSchema = z
+  .object({
+    version: z.literal(1),
+    reason: z.literal("manual-import"),
+    createdAt: timestampSchema,
+  })
+  .strict();
+export type ServerConnectHoldFile = z.infer<typeof serverConnectHoldFileSchema>;
+
 export function readServerMovedFile(
   dataDir: string,
 ): Promise<ServerMovedFile | null> {
@@ -129,4 +141,37 @@ export async function writeLastServerMoveFile(
     join(dataDir, LAST_SERVER_MOVE_FILE_NAME),
     lastServerMoveFileSchema.parse(file),
   );
+}
+
+export function readServerConnectHoldFile(
+  dataDir: string,
+): Promise<ServerConnectHoldFile | null> {
+  return readJsonFile(
+    join(dataDir, SERVER_CONNECT_HOLD_FILE_NAME),
+    serverConnectHoldFileSchema,
+  );
+}
+
+export async function writeServerConnectHoldFile(
+  dataDir: string,
+  file: ServerConnectHoldFile,
+): Promise<void> {
+  await writeJsonFileAtomically(
+    join(dataDir, SERVER_CONNECT_HOLD_FILE_NAME),
+    serverConnectHoldFileSchema.parse(file),
+  );
+}
+
+export async function removeServerConnectHoldFile(
+  dataDir: string,
+): Promise<boolean> {
+  try {
+    await unlink(join(dataDir, SERVER_CONNECT_HOLD_FILE_NAME));
+    return true;
+  } catch (error) {
+    if (hasErrorCode(error, "ENOENT")) {
+      return false;
+    }
+    throw error;
+  }
 }

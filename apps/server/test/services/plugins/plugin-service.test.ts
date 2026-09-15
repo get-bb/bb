@@ -1037,6 +1037,56 @@ describe("plugin service", () => {
     expect(enabled?.status).toBe("running");
   });
 
+  it("holds a plugin at start without running its factory or starting its services", async () => {
+    const globals = globalThis as Record<string, unknown>;
+    const heldRoot = await writePlugin(workDir, {
+      name: "bb-plugin-held-tunnel",
+      serverSource: `export default function plugin(bb: any) {
+        const g = globalThis as any;
+        g.__heldFactoryRuns = (g.__heldFactoryRuns ?? 0) + 1;
+        bb.background.service("tunnel", {
+          start(signal: any) {
+            g.__heldServiceStarts = (g.__heldServiceStarts ?? 0) + 1;
+            return new Promise<void>((resolve) => {
+              signal.addEventListener("abort", () => resolve());
+            });
+          },
+        });
+      }`,
+    });
+    const otherRoot = await writePlugin(workDir, {
+      name: "bb-plugin-unheld",
+      serverSource: `export default function plugin() {}`,
+    });
+    const held = await service.installPath(heldRoot);
+    await service.installPath(otherRoot);
+    await service.stop();
+    globals.__heldFactoryRuns = 0;
+    globals.__heldServiceStarts = 0;
+    service = createTelemetryTrackedService([]);
+
+    try {
+      await service.start({
+        hold: { source: held.source, detail: "Held for this test." },
+      });
+
+      expect(service.isPluginLoaded("held-tunnel")).toBe(false);
+      expect(
+        service.list().find((entry) => entry.id === "held-tunnel"),
+      ).toMatchObject({
+        enabled: true,
+        status: "disabled",
+        statusDetail: "Held for this test.",
+      });
+      expect(globals.__heldFactoryRuns).toBe(0);
+      expect(globals.__heldServiceStarts).toBe(0);
+      expect(service.isPluginLoaded("unheld")).toBe(true);
+    } finally {
+      delete globals.__heldFactoryRuns;
+      delete globals.__heldServiceStarts;
+    }
+  });
+
   it("enables a disabled path plugin when it is reinstalled", async () => {
     const rootDir = await writePlugin(workDir, {
       name: "bb-plugin-reinstalled",

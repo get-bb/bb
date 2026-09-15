@@ -25,10 +25,12 @@ import {
   installImportedServerFiles,
   discardImportBackups,
   removeImportedServerFiles,
+  removeServerConnectHoldFile,
   SERVER_MOVED_FILE_NAME,
   ServerArchiveError,
   type ServerArchiveEncryption,
   type ServerMovedFile,
+  writeServerConnectHoldFile,
   writeServerImportFile,
   writeServerMovedFile,
 } from "@bb/server-archive";
@@ -331,6 +333,11 @@ export async function importServerArchive(
       throw describeUnsafeImport(archivePath, error);
     });
     try {
+      await writeServerConnectHoldFile(dataDir, {
+        version: 1,
+        reason: "manual-import",
+        createdAt: args.now(),
+      });
       await writeServerImportFile(dataDir, {
         version: 1,
         kind: "manual",
@@ -345,6 +352,7 @@ export async function importServerArchive(
         fixupsAppliedAt: null,
       });
     } catch (error) {
+      await removeServerConnectHoldFile(dataDir);
       await removeImportedServerFiles({
         dataDir,
         importedEntries: installed.importedEntries,

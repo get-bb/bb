@@ -37,6 +37,7 @@ import {
   applyServerImportAtBoot,
   repairLastServerMoveHostName,
 } from "./services/server-move/pending-boot.js";
+import { readConnectHold } from "./services/server-move/connect-hold.js";
 import { isServerMoveFrozen } from "./services/server-move/freeze-state.js";
 import {
   retireServerProcess as retireProcessWithDeadline,
@@ -277,8 +278,12 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
   let sweepInterval: ReturnType<typeof setInterval> | null = null;
   if (pendingServerMove === null) {
     telemetry.capture({ name: "app_started" });
+    const connectHold = await readConnectHold({
+      dataDir: serverConfig.BB_DATA_DIR,
+      logger,
+    });
     void pluginService
-      .start()
+      .start({ hold: connectHold })
       .catch((error: unknown) => {
         logger.error({ err: error }, "Plugin startup failed");
       })
