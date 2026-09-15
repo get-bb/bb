@@ -419,13 +419,13 @@ actions.openNewThread({ projectId, environmentId }); // reuse an environment
 actions.setPinned(id, true);
 actions.setRead(id, false);
 actions.rename(id, "New title"); // silent; for inline editing
-actions.archive(id); // archives children too, closes their panes
+actions.archive(id); // opens bb's archive confirmation; cascades to children
 actions.requestDelete(id); // opens bb's delete confirmation
 ```
 
-Destructive actions deliberately route through the host's own flow, so there
-is no silent `delete`: deletion is recursive, and only bb can show the
-confirmation that counts the child threads.
+Cascading actions deliberately route through the host's own flow, so there is
+no silent `delete` or `archive`: both reach child threads, and only bb can show
+the confirmation that counts them.
 
 Unit-test a list with `renderSlot(...)` from `@get-bb/plugin-sdk/testing/app`:
 seed rows with the `sidebarThreads` option (plus `sidebarDraftThreadIds`,
