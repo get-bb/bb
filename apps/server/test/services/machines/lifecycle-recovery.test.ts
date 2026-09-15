@@ -1,8 +1,14 @@
 import { z } from "zod";
 import { afterEach, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
+import { maintainMachine } from "../../../src/services/machines/lifecycle.js";
+import {
+  SERVER_MOVE_FROZEN_RETRY_MS,
+  setServerMoveFrozen,
+} from "../../../src/services/server-move/freeze-state.js";
 import {
   createEnvironment,
+  createTerminalSession,
   environments,
   getEnvironment,
   getAppSettings,
@@ -354,4 +360,54 @@ it("removes a suspended machine when its last thread is archived with an offline
     await sweepProviderMachine(harness.deps, target.host.id);
     expect(getHost(harness.db, target.host.id)?.phase).toBe("destroyed");
     expect(remove).toHaveBeenCalledOnce();
+  }));
+
+it("holds the machine drain deadline while the server is moving", async () =>
+  withTestHarness({ terminalCloseTimeoutMs: 60 * 60_000 }, async (harness) => {
+    const target = seedHostSession(harness.deps, {
+      id: "review-frozen-drain",
+    });
+    createTerminalSession(harness.db, {
+      cols: 80,
+      daemonSessionId: target.session.id,
+      environmentId: null,
+      hostId: target.host.id,
+      initialCwd: "~",
+      rows: 24,
+      status: "running",
+      threadId: null,
+      title: "zsh",
+    });
+    const save = vi.fn(async () => {});
+    vi.useFakeTimers();
+    const outcome = maintainMachine(
+      harness.deps,
+      target.host.id,
+      "operation-frozen-drain",
+      save,
+    ).then(
+      () => null,
+      (error: unknown) => error,
+    );
+
+    setServerMoveFrozen(harness.db, true);
+    try {
+      await vi.advanceTimersByTimeAsync(
+        5 * 60_000 + SERVER_MOVE_FROZEN_RETRY_MS,
+      );
+      expect(getHost(harness.db, target.host.id)).toMatchObject({
+        phase: "suspending",
+        suspendRetryAt: null,
+      });
+    } finally {
+      setServerMoveFrozen(harness.db, false);
+    }
+
+    await vi.advanceTimersByTimeAsync(SERVER_MOVE_FROZEN_RETRY_MS);
+    expect(await outcome).toMatchObject({
+      message: "Machine drain exceeded its deadline; old compute is retained",
+    });
+    expect(save).not.toHaveBeenCalled();
+    expect(getHost(harness.db, target.host.id)?.phase).toBe("active");
+    expect(getHost(harness.db, target.host.id)?.suspendRetryAt).not.toBeNull();
   }));
