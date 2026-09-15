@@ -14,7 +14,7 @@ export async function mutateManagedJsonFile<T extends object>(args: {
   path: string;
   read: () => Promise<T>;
   mutate: (current: T) => T;
-}): Promise<void> {
+}): Promise<T> {
   const directory = dirname(args.path);
   await mkdir(directory, { recursive: true });
   const lockPath = join(directory, `.${basename(args.path)}.lock`);
@@ -40,7 +40,7 @@ export async function mutateManagedJsonFile<T extends object>(args: {
         }
         if (performance.now() >= deadline) {
           throw new Error(
-            `Timed out waiting to update ${args.path}; another bb-app command is updating it. Retry the command.`,
+            `Timed out waiting to update ${args.path}; another bb command is updating it. Retry the command.`,
           );
         }
         await sleep(LOCK_RETRY_MS);
@@ -63,6 +63,7 @@ export async function mutateManagedJsonFile<T extends object>(args: {
         mode: 0o600,
       });
       await rename(tempPath, args.path);
+      return next;
     } finally {
       await unlink(tempPath).catch(() => undefined);
     }

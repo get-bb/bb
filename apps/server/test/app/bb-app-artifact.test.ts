@@ -23,6 +23,7 @@ const packageJson = {
   engines: { node: ">=22.19.0" },
   dependencies: {
     "@parcel/watcher": "2.5.6",
+    "better-sqlite3": "13.0.3",
     "node-pty": "1.2.0-beta.15",
     pino: "9.6.0",
     "pino-pretty": "13.0.0",
@@ -240,6 +241,7 @@ describe.each(MODES)("bb-app artifact service (%s)", (mode) => {
       });
       expect(Object.keys(packedPackageJson.dependencies).sort()).toEqual([
         "@parcel/watcher",
+        "better-sqlite3",
         "node-pty",
         "pino",
         "pino-pretty",

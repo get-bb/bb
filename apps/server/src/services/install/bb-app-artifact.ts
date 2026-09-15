@@ -20,6 +20,7 @@ import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
 const execFileAsync = promisify(execFile);
 const HOST_DEPENDENCIES = [
   "@parcel/watcher",
+  "better-sqlite3",
   "node-pty",
   "pino",
   "pino-pretty",

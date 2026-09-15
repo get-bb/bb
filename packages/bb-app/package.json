@@ -84,7 +84,6 @@
     "@bb/config": "workspace:*",
     "@bb/sdk": "workspace:*",
     "@bb/tsconfig": "workspace:*",
-    "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.0.0",
     "rimraf": "^6.1.0",
     "rollup": "^4.62.2",

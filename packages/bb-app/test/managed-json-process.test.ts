@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { bbAppManagedEnvFileSchema } from "@bb/config/bb-app-managed-config";
 import { readFile } from "node:fs/promises";
-import { mutateManagedJsonFile } from "../src/managed-json-file.js";
+import { mutateManagedJsonFile } from "@bb/config/managed-json-file";
 import {
   chmodSync,
   existsSync,
@@ -21,6 +21,10 @@ import { afterEach, describe, expect, it } from "vitest";
 const packageRoot = fileURLToPath(new URL("..", import.meta.url));
 const observer = join(packageRoot, "test/fixtures/managed-json-observer.cjs");
 const entry = join(packageRoot, "src/bin/bb-app.ts");
+const enrollmentEntry = join(
+  packageRoot,
+  "test/fixtures/machine-enrollment-process.mjs",
+);
 const cleanups: Array<() => void | Promise<void>> = [];
 
 afterEach(async () => {
@@ -36,9 +40,26 @@ function directory(): string {
 function start(
   dir: string,
   args: string[],
-  controls: { pause?: string; fail?: string } = {},
+  controls: {
+    entry?: string;
+    env?: NodeJS.ProcessEnv;
+    fail?: string;
+    pause?: string;
+    target?: string;
+  } = {},
 ) {
-  const target = join(dir, `${args[0]}.json`);
+  const target = controls.target ?? join(dir, `${args[0]}.json`);
+  const processArgs =
+    controls.entry === undefined
+      ? [
+          entry,
+          "--data-dir",
+          dir,
+          "--server-url",
+          "http://127.0.0.1:1",
+          ...args,
+        ]
+      : [controls.entry, ...args];
   const child = spawn(
     process.execPath,
     [
@@ -47,12 +68,7 @@ function start(
       "--conditions=source",
       "--import",
       "tsx",
-      entry,
-      "--data-dir",
-      dir,
-      "--server-url",
-      "http://127.0.0.1:1",
-      ...args,
+      ...processArgs,
     ],
     {
       cwd: resolve(packageRoot, "../.."),
@@ -64,6 +80,7 @@ function start(
         BB_TEST_TARGET: target,
         BB_TEST_PAUSE: controls.pause,
         BB_TEST_FAIL: controls.fail,
+        ...controls.env,
       },
       stdio: ["ignore", "pipe", "pipe", "ipc"],
     },
@@ -457,4 +474,44 @@ describe("managed JSON CLI process transactions", () => {
       cleanAndPrivate(dir, "client");
     });
   }
+
+  it("serializes machine enrollment with launcher config changes", async () => {
+    const dir = directory();
+    const path = seed(dir, "config", {
+      config: { BB_LOG_LEVEL: "debug" },
+    });
+    const launcher = start(
+      dir,
+      ["config", "set", "BB_APP_URL", "https://app.example.test"],
+      { pause: "read" },
+    );
+    await launcher.event("paused");
+    const enrollment = start(dir, [], {
+      entry: enrollmentEntry,
+      env: {
+        BB_ENROLLMENT: JSON.stringify({
+          credential: "synthetic-bootstrap",
+          expiresAt: Date.now() + 60_000,
+          hostId: "host_synthetic",
+          serverUrl: "https://server.example.test",
+        }),
+      },
+      target: path,
+    });
+    expect(await enrollment.event("blocked", "snapshot")).toBe("blocked");
+    launcher.release();
+    await Promise.all([success(launcher), success(enrollment)]);
+    expect(read(path)).toEqual({
+      config: {
+        BB_APP_URL: "https://app.example.test",
+        BB_LOG_LEVEL: "debug",
+      },
+      serverUrl: "https://server.example.test",
+    });
+    expect(read(join(dir, "auth.json"))).toEqual({
+      hostId: "host_synthetic",
+      hostKey: "synthetic-host-key",
+    });
+    cleanAndPrivate(dir, "config");
+  });
 });

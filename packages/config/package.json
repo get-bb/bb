@@ -88,6 +88,11 @@
       "types": "./src/bb-app-managed-config.ts",
       "default": "./src/bb-app-managed-config.ts"
     },
+    "./managed-json-file": {
+      "source": "./src/managed-json-file.ts",
+      "types": "./src/managed-json-file.ts",
+      "default": "./src/managed-json-file.ts"
+    },
     "./client-config": {
       "source": "./src/client-config.ts",
       "types": "./src/client-config.ts",
@@ -131,10 +136,12 @@
   },
   "dependencies": {
     "@bb/domain": "workspace:*",
+    "better-sqlite3": "13.0.3",
     "zod": "4.3.6"
   },
   "devDependencies": {
     "@bb/tsconfig": "workspace:*",
+    "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.0.0",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "typescript-7": "npm:typescript@^7.0.2"

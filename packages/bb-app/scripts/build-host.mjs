@@ -22,6 +22,7 @@ const hostDaemonSource = resolve(workspaceRoot, "apps", "host-daemon", "dist");
 const hostDaemonTarget = resolve(hostPackageRoot, "host-daemon", "dist");
 const dependencyNames = [
   "@parcel/watcher",
+  "better-sqlite3",
   "node-pty",
   "pino",
   "pino-pretty",
