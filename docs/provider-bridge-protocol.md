@@ -211,7 +211,9 @@ reasoningSummary | plan, text }` synthesizes the channel's `item/started`
 
   `cacheReadInputTokens` and `cacheWriteInputTokens` independently preserve
   finite nonnegative reported counts. Omission means unreported, including
-  historical events; explicit zero means reported zero. Claude maps
+  historical events; explicit zero means reported zero. Pi treats invalid
+  cache counts as unavailable at the provider boundary, preserving valid
+  usage, reply text, errors, and turn completion. Claude maps
   `cache_read_input_tokens` / `cache_creation_input_tokens`, Pi maps
   `cacheRead` / `cacheWrite`, and Codex maps `cachedInputTokens` /
   `cacheWriteInputTokens`. Older Codex versions may omit writes.

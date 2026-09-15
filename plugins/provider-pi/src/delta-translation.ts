@@ -74,8 +74,8 @@ const piAssistantUsageSchema = z
   .object({
     input: z.number().optional(),
     output: z.number().optional(),
-    cacheRead: z.number().nonnegative().optional(),
-    cacheWrite: z.number().nonnegative().optional(),
+    cacheRead: z.number().nonnegative().optional().catch(undefined),
+    cacheWrite: z.number().nonnegative().optional().catch(undefined),
     totalTokens: z.number().optional(),
   })
   .passthrough();
