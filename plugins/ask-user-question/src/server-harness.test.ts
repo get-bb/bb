@@ -91,11 +91,14 @@ describe("provider gating", () => {
       configurationContext("codex"),
     );
     expect(resolved.tools[0]?.inputSchema).toMatchObject({
+      additionalProperties: false,
+      required: ["questions"],
       properties: {
         questions: {
           minItems: 1,
           maxItems: 4,
           items: {
+            additionalProperties: false,
             required: ["question", "header", "options"],
             properties: {
               question: { minLength: 1, description: expect.any(String) },
@@ -105,6 +108,7 @@ describe("provider gating", () => {
                 minItems: 2,
                 maxItems: 4,
                 items: {
+                  additionalProperties: false,
                   required: ["label", "description"],
                   properties: {
                     label: { minLength: 1, description: expect.any(String) },
@@ -141,6 +145,34 @@ describe("provider gating", () => {
 });
 
 describe("asking a question", () => {
+  it.each([
+    ["root", { questions, extra: true }],
+    [
+      "question",
+      {
+        questions: questions.map((question) => ({ ...question, extra: true })),
+      },
+    ],
+    [
+      "option",
+      {
+        questions: questions.map((question) => ({
+          ...question,
+          options: question.options.map((option) => ({
+            ...option,
+            extra: true,
+          })),
+        })),
+      },
+    ],
+  ])("rejects unknown fields on the %s object", async (_level, input) => {
+    const host = createHost();
+    await expect(host.harness.callAgentTool(TOOL_NAME, input)).rejects.toThrow(
+      'Unrecognized key: "extra"',
+    );
+    expect(host.harness.pendingInteractions).toHaveLength(0);
+  });
+
   it.each([0, 1])(
     "rejects %i options with guidance to proceed before opening an interaction",
     async (optionCount) => {

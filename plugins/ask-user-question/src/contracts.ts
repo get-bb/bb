@@ -19,7 +19,7 @@ export {
 
 const nonBlank = (value: string) => value.trim().length > 0;
 
-const toolOptionSchema = z.object({
+const toolOptionSchema = z.strictObject({
   label: z
     .string()
     .min(1)
@@ -43,7 +43,7 @@ const toolOptionSchema = z.object({
     ),
 });
 
-const toolQuestionSchema = z.object({
+const toolQuestionSchema = z.strictObject({
   question: z
     .string()
     .min(1)
@@ -73,7 +73,7 @@ const toolQuestionSchema = z.object({
     ),
 });
 
-export const toolInputSchema = z.object({
+export const toolInputSchema = z.strictObject({
   questions: z
     .array(toolQuestionSchema)
     .min(1)
