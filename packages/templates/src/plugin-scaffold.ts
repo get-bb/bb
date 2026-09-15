@@ -11,6 +11,8 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative } from "node:path";
+import semverCompare from "semver/functions/compare.js";
+import minVersion from "semver/ranges/min-version.js";
 import { derivePluginId, PLUGIN_SDK_VERSION } from "@bb/domain";
 import { loadPluginSdkDeclarations } from "./plugin-sdk-dts.js";
 import {
@@ -523,19 +525,12 @@ function insertDependency(
 
 function isFloorBelow(range: string | null, version: string): boolean {
   if (range === null || range.trim().length === 0) return true;
-  const floor = parseVersionTuple(range);
-  const target = parseVersionTuple(version);
-  if (floor === null || target === null) return false;
-  for (let index = 0; index < 3; index += 1) {
-    if (floor[index]! !== target[index]!) return floor[index]! < target[index]!;
+  try {
+    const floor = minVersion(range);
+    return floor !== null && semverCompare(floor, version) < 0;
+  } catch {
+    return false;
   }
-  return false;
-}
-
-function parseVersionTuple(value: string): [number, number, number] | null {
-  const match = /(\d+)\.(\d+)(?:\.(\d+))?/.exec(value);
-  if (match === null) return null;
-  return [Number(match[1]), Number(match[2]), Number(match[3] ?? 0)];
 }
 
 interface TsconfigPlan {

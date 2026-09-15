@@ -37,7 +37,51 @@ describe("provider maintenance kit", () => {
     expect(compareVersions("0.136.0", "0.136.0-beta.1")).toBeGreaterThan(0);
     expect(compareVersions("1.0.0", "0.136.0")).toBeGreaterThan(0);
     expect(compareVersions("1.2.3", "1.2.3")).toBe(0);
-    expect(compareVersions("not-a-version", "0.0.1")).toBeLessThan(0);
+  });
+
+  it.each([
+    ["1.0.0-alpha", "1.0.0-alpha.1"],
+    ["1.0.0-alpha.1", "1.0.0-alpha.beta"],
+    ["1.0.0-alpha.beta", "1.0.0-beta"],
+    ["1.0.0-beta", "1.0.0-beta.2"],
+    ["1.0.0-beta.2", "1.0.0-beta.11"],
+    ["1.0.0-beta.9", "1.0.0-beta.10"],
+    ["1.0.0-beta.11", "1.0.0-rc.1"],
+    ["1.0.0-rc.2", "1.0.0-rc.10"],
+    ["1.0.0-rc.10", "1.0.0"],
+    ["1.0.0-9", "1.0.0-alpha"],
+    ["1.0.0-B", "1.0.0-a"],
+    ["1.0.0-alpha.2", "1.0.0-alpha.2.1"],
+    ["1.0.0", "1.0.1-alpha"],
+  ])("orders %s below %s in both directions", (older, newer) => {
+    expect(compareVersions(older, newer)).toBeLessThan(0);
+    expect(compareVersions(newer, older)).toBeGreaterThan(0);
+    expect(compareVersions(older, older)).toBe(0);
+  });
+
+  it("ignores build metadata for precedence", () => {
+    expect(compareVersions("1.0.0+build.9", "1.0.0+build.10")).toBe(0);
+    expect(compareVersions("1.0.0-beta.2+x", "1.0.0-beta.2+y")).toBe(0);
+    expect(compareVersions("1.0.0-beta.9+x", "1.0.0-beta.10+y")).toBeLessThan(
+      0,
+    );
+  });
+
+  it.each([
+    "not-a-version",
+    "",
+    "1.0",
+    "1.0.0.1",
+    "01.0.0",
+    "1.0.0-beta.01",
+    "1.0.0-beta..1",
+    "1.0.0-",
+    "1.0.0+",
+    "tool 1.0.0",
+    "1.0.0 trailing",
+  ])("rejects invalid version %j in either operand", (invalid) => {
+    expect(() => compareVersions(invalid, "0.0.0")).toThrow(TypeError);
+    expect(() => compareVersions("0.0.0", invalid)).toThrow(TypeError);
   });
 
   it("reads the version out of a CLI banner", () => {

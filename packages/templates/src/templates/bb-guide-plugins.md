@@ -776,6 +776,10 @@ default. Scoped names such as `@acme/bb-plugin-hello` are also supported. The
 plugin id is the final package-name component minus `bb-plugin-`, so both forms
 use `hello`.
 
+SDK layout migration compares the minimum version of the complete
+`engines.bbPluginSdk` SemVer range, including prereleases. Invalid ranges
+are preserved for manual correction.
+
 The scaffold also writes `PLUGIN_OVERVIEW.md` beside package.json: the
 long-form store listing, shown in an Overview section under `bb.description` on
 the plugin detail page in the app and on getbb.app. It says the same thing as
