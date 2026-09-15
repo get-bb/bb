@@ -496,9 +496,8 @@ Beta App Review and another build of the same version usually does not.
 
 - Server profiles: `expo-secure-store`, one key per profile
   (`bb.profile.<id>`) plus `bb.profiles.index`.
-- Preferences (theme mode `bb.theme`, haptics `bb.haptics.enabled`, the
-  shell's last page path `bb.webviewShell.lastPath.<profileId>`): MMKV store
-  `bb.preferences`, one shared instance from
+- Preferences (theme mode `bb.theme`, haptics `bb.haptics.enabled`): MMKV
+  store `bb.preferences`, one shared instance from
   `src/lib/native/preferences-storage.ts`. Push state shares it:
   `bb.push.enabled.<profileId>` (+ `bb.push.enabledProfiles` index),
   `bb.push.registration.<profileId>` (+ `bb.push.registrations` index: the
