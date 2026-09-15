@@ -1,3 +1,4 @@
+import { createCloneProgressReporter } from "./clone-progress.js";
 import type { PluginEnvironmentProviderProgress } from "@get-bb/plugin-sdk/environment-provider";
 import { registerEnvironmentProgressReport } from "../environments/environment-hooks.js";
 import { resolveHostEnvironment } from "../hosts/host-environment.js";
@@ -83,14 +84,20 @@ export async function cloneProjectSourceOnHost(
       "A remoteUrl is required because this project has no git remote anchor",
     );
   }
+  const contributedEnv = await resolveHostEnvironment(deps, {
+    hostId: args.hostId,
+    projectId: args.projectId,
+  });
+  const progress =
+    args.report === undefined ? null : createCloneProgressReporter(args.report);
   const operationId = `project-clone-${randomUUID()}`;
   const unregister =
-    args.report === undefined
+    progress === null
       ? undefined
       : registerEnvironmentProgressReport(deps, {
           hostId: args.hostId,
           operationId,
-          report: args.report,
+          report: progress.report,
         });
   try {
     const resolved = await runLiveHostCommand(deps, {
@@ -99,10 +106,7 @@ export async function cloneProjectSourceOnHost(
       command: {
         type: "project.clone",
         operationId,
-        contributedEnv: await resolveHostEnvironment(deps, {
-          hostId: args.hostId,
-          projectId: args.projectId,
-        }),
+        contributedEnv,
         remoteUrl: args.remoteUrl,
         projectSlug: args.projectName,
         ...(args.targetPath !== undefined
@@ -118,6 +122,7 @@ export async function cloneProjectSourceOnHost(
     });
   } finally {
     unregister?.();
+    progress?.dispose();
   }
 }
 

@@ -1,3 +1,4 @@
+import { errorMessage } from "./error-message.js";
 import { createHash } from "node:crypto";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
@@ -17,7 +18,7 @@ const allocationSchema = z.object({
 export type ModalAllocation = z.infer<typeof allocationSchema>;
 
 export function modalAllocations(
-  bb: Pick<BbPluginApi, "storage">,
+  bb: Pick<BbPluginApi, "storage" | "log">,
   now: () => number,
 ) {
   const allocating = new Set<string>();
@@ -44,8 +45,14 @@ export function modalAllocations(
           ...sandbox,
           async terminate() {
             await sandbox.terminate();
-            if ((await client.fromId(sandbox.sandboxId)) === null)
-              await forget(sandbox.sandboxId);
+            try {
+              if ((await client.fromId(sandbox.sandboxId)) === null)
+                await forget(sandbox.sandboxId);
+            } catch (error) {
+              bb.log.warn(
+                `Modal stopped ${sandbox.sandboxId}; allocation tracking will retry: ${errorMessage(error)}`,
+              );
+            }
           },
         };
       }

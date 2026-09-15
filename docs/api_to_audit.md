@@ -3020,7 +3020,9 @@ and plugin branding separate from provider artwork resolution.
 
 Explicitly reconcile a provider-managed machine with core’s recorded state.
 For suspended machines, coordinate the existing provider suspension operation
-and wait for completion. Active and transitional states are left unchanged;
+and return HTTP 202 after starting it; callers can poll host status for completion.
+Provider suspend and resume implementations must be idempotent.
+Active and transitional states are left unchanged;
 the plugin uses `experimental_suspend` to request a new pause. Core schedules
 no provider polling. Validate concurrent resume/removal, failure reporting,
 long-running caller behavior, and the scope of supported states before

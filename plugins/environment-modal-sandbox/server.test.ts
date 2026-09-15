@@ -1291,6 +1291,11 @@ describe("Modal allocation tracking", () => {
     };
     const paused = await h.provider.suspend!(context);
     expect(await h.bb.storage.kv.list("allocations/")).toEqual([]);
+    const pausedAgain = await h.provider.suspend!({
+      ...context,
+      resource: paused.resource,
+    });
+    expect(pausedAgain.resource).toEqual(paused.resource);
     const resumed = await h.provider.resume!({
       ...context,
       resource: paused.resource,
@@ -1298,6 +1303,12 @@ describe("Modal allocation tracking", () => {
     expect(await h.bb.storage.kv.list("allocations/")).toEqual([
       "allocations/sandbox/sandbox-2",
     ]);
+    const resumedAgain = await h.provider.resume!({
+      ...context,
+      resource: resumed.resource,
+    });
+    expect(resumedAgain.resource).toEqual(resumed.resource);
+    expect(h.backend.states).toHaveLength(2);
     await h.provider.remove({ ...context, resource: resumed.resource });
     expect(await h.bb.storage.kv.list("allocations/")).toEqual([]);
   });
@@ -1496,3 +1507,33 @@ describe("Modal allocation tracking", () => {
     create.mockRestore();
   });
 });
+
+it.each(["lookup", "delete"] as const)(
+  "keeps successful termination successful when tracking %s fails",
+  async (failure) => {
+    const h = await setup();
+    const tracker = modalAllocations(h.bb, Date.now);
+    const client = tracker.wrap(h.backend.backend);
+    const created = await h.provider.create(createContext());
+    if (created.status !== "created")
+      throw new Error("Expected created machine");
+    const sandbox = await client.fromId("sandbox-1");
+    if (sandbox === null) throw new Error("Expected sandbox");
+    const spy =
+      failure === "lookup"
+        ? vi
+            .spyOn(h.backend.backend, "fromId")
+            .mockRejectedValueOnce(new Error("lookup unavailable"))
+        : vi
+            .spyOn(h.bb.storage.kv, "delete")
+            .mockRejectedValueOnce(new Error("storage unavailable"));
+    await expect(sandbox.terminate()).resolves.toBeUndefined();
+    expect(h.backend.states[0]?.terminated).toBe(true);
+    expect(await h.bb.storage.kv.list("allocations/")).toEqual([
+      "allocations/sandbox/sandbox-1",
+    ]);
+    spy.mockRestore();
+    await h.harness.runSchedule("pause-idle-machines");
+    expect(await h.bb.storage.kv.list("allocations/")).toEqual([]);
+  },
+);

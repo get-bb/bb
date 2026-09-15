@@ -884,8 +884,26 @@ export async function reconcileMachine(
 ): Promise<void> {
   const row = requireSuspendableMachine(deps, hostId);
   if (row.phase !== "suspended") return;
+  if (
+    perDbRegistry(resumeOperations, deps.db).has(hostId) ||
+    perDbRegistry(removeOperations, deps.db).has(hostId) ||
+    perDbRegistry(suspendOperations, deps.db).has(hostId)
+  )
+    return;
   assertMachineProvisioningComplete(deps, hostId);
   await suspendMachine(deps, hostId, true, true);
+}
+
+export function startMachineReconciliation(deps: Deps, hostId: string): void {
+  const row = requireSuspendableMachine(deps, hostId);
+  if (row.phase !== "suspended") return;
+  assertMachineProvisioningComplete(deps, hostId);
+  void reconcileMachine(deps, hostId).catch((error: unknown) => {
+    deps.logger.warn(
+      { hostId, error: errorMessage(error) },
+      "Requested machine reconciliation failed",
+    );
+  });
 }
 
 export async function waitForMachineMaintenance(

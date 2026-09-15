@@ -814,7 +814,7 @@ export const publicApiRoutes = {
       path: "/hosts/:id/reconcile",
       method: "post",
       request: noRequest<PathId>(),
-      response: jsonResponse<Host>(),
+      response: jsonResponse<Host, 202>({ status: 202 }),
     }),
     suspend: defineRoute({
       path: "/hosts/:id/suspend",

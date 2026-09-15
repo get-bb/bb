@@ -417,7 +417,53 @@ it("exposes reconciliation through the host API without changing active intent",
       `/api/v1/hosts/${host.id}/reconcile`,
       { method: "POST" },
     );
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(202);
     expect(suspend).not.toHaveBeenCalled();
     expect(getHost(harness.db, host.id)?.phase).toBe("active");
+  }));
+
+it("accepts reconciliation before the provider finishes and coalesces repeated requests", async () =>
+  withTestHarness(async (harness) => {
+    const { host, session } = seedHostSession(harness.deps, {
+      id: "reconcile-slow",
+    });
+    harness.hub.unregisterDaemon(session.id);
+    let finish!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const suspend = vi.fn(async () => {
+      await pending;
+      return { resource: { id: "saved" } };
+    });
+    installMachineProvider({
+      suspend,
+      resume: async ({ resource }) => ({ resource }),
+    });
+    updateHost(harness.db, harness.hub, host.id, {
+      machineProviderId: "test-machine",
+      phase: "suspended",
+      suspendedAt: 1,
+      resource: { id: "running" },
+    });
+    try {
+      const response = await harness.app.request(
+        `/api/v1/hosts/${host.id}/reconcile`,
+        { method: "POST" },
+      );
+      expect(response.status).toBe(202);
+      await expect.poll(() => suspend.mock.calls.length).toBe(1);
+      expect(getHost(harness.db, host.id)?.phase).toBe("suspending");
+      const repeated = await harness.app.request(
+        `/api/v1/hosts/${host.id}/reconcile`,
+        { method: "POST" },
+      );
+      expect(repeated.status).toBe(202);
+      expect(suspend).toHaveBeenCalledOnce();
+    } finally {
+      finish();
+      await expect
+        .poll(() => getHost(harness.db, host.id)?.phase)
+        .toBe("suspended");
+    }
   }));

@@ -456,7 +456,15 @@ export function registerMachineCommands(
           serverUrl: getUrl(),
           target,
         });
-        const result = await sdk.hosts.experimental_reconcile({ hostId });
+        const requested = await sdk.hosts.experimental_reconcile({ hostId });
+        const result =
+          requested.lifecycle.phase === "suspending"
+            ? await waitForMachineLifecycle({
+                host: requested,
+                targetPhase: "suspended",
+                getHost: () => sdk.hosts.get({ hostId }),
+              })
+            : requested;
         if (!outputJson(opts, result))
           console.log(`Machine ${hostId}: ${result.lifecycle.phase}`);
       }),

@@ -138,7 +138,9 @@ absent pending entries expire after the requested sandbox lifetime.
 
 When compute is running for a machine core marks suspended, the plugin calls
 `hosts.experimental_reconcile` (`bb machine reconcile MACHINE --json`). Core
-checks its current state and coordinates save-and-stop; it does not poll Modal.
+checks its current state and starts save-and-stop, returning acceptance immediately;
+the CLI polls until completion. Core does not poll Modal. Tracking cleanup failures
+after a successful stop retain the entry for the next sweep without failing pause.
 The idle policy separately calls `hosts.experimental_suspend`. Allocation cleanup
 continues when idle pausing is disabled. Allocations without a matching machine
 are reported and retained until Modal confirms they are gone.

@@ -96,7 +96,8 @@ yet imply an agent-ready checkout and authenticated provider.
 
 `bb machine reconcile` / `hosts.experimental_reconcile` is an explicit request,
 not a core timer. For a machine core records as suspended, it runs the provider’s
-save-and-stop operation and waits for completion. Active machines and lifecycle
+save-and-stop operation. The API returns HTTP 202 immediately; the CLI polls
+machine status until completion. Active machines and lifecycle
 operations already in progress are left alone. Plugins request suspension
 separately when their idle policy decides an active machine should pause.
 
