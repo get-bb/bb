@@ -8,11 +8,15 @@ import {
   createParcelWatcherProxy,
   type ChildChannel,
 } from "../src/parcel-subprocess/parcel-watcher-proxy.js";
-import type {
-  ParcelWatcherBackend,
-  ParcelWatcherError,
-  ParcelWatcherEventBatch,
+import {
+  disposeParcelWatcherBackend,
+  setParcelWatcherBackend,
+  type ParcelWatcherBackend,
+  type ParcelWatcherError,
+  type ParcelWatcherEventBatch,
 } from "../src/parcel-watcher-backend.js";
+import * as pathExistsModule from "../src/path-exists.js";
+import { RootSubscription } from "../src/root-subscription.js";
 import { RESCAN_REQUIRED_MESSAGE } from "../src/watch-recovery.js";
 
 async function flush(times = 5): Promise<void> {
@@ -32,18 +36,27 @@ interface FakeSubscription {
 
 class FakeParcel implements ParcelWatcherBackend {
   readonly subscriptions: FakeSubscription[] = [];
-  failNextSubscribe = false;
+  readonly subscribeAttempts: string[] = [];
+  nextSubscribeFailure: string | null = null;
+  failAllSubscribesWith: string | null = null;
+  subscribeGate: Promise<void> | null = null;
+  unsubscribeGate: Promise<void> | null = null;
 
-  subscribe(
+  async subscribe(
     dir: string,
     callback: (
       error: ParcelWatcherError,
       events: ParcelWatcherEventBatch,
     ) => unknown,
   ): Promise<{ unsubscribe(): Promise<void> }> {
-    if (this.failNextSubscribe) {
-      this.failNextSubscribe = false;
-      return Promise.reject(new Error(`cannot watch ${dir}`));
+    this.subscribeAttempts.push(dir);
+    if (this.subscribeGate !== null) {
+      await this.subscribeGate;
+    }
+    const failure = this.failAllSubscribesWith ?? this.nextSubscribeFailure;
+    if (failure !== null) {
+      this.nextSubscribeFailure = null;
+      throw new Error(failure);
     }
     const subscription: FakeSubscription = {
       dir,
@@ -51,12 +64,14 @@ class FakeParcel implements ParcelWatcherBackend {
       unsubscribed: false,
     };
     this.subscriptions.push(subscription);
-    return Promise.resolve({
-      unsubscribe: () => {
+    return {
+      unsubscribe: async () => {
+        if (this.unsubscribeGate !== null) {
+          await this.unsubscribeGate;
+        }
         subscription.unsubscribed = true;
-        return Promise.resolve();
       },
-    });
+    };
   }
 
   emit(dir: string, events: ParcelWatcherEventBatch): void {
@@ -141,12 +156,14 @@ function createHarness(options?: {
   baseRestartDelayMs?: number;
   maxRestartDelayMs?: number;
   listEntries?: (dir: string) => Promise<string[]>;
+  configureChild?: (child: FakeChild) => void;
 }) {
   const children: FakeChild[] = [];
   const listEntries = options?.listEntries ?? (() => Promise.resolve([]));
   const proxy = createParcelWatcherProxy({
     spawnChannel: () => {
       const child = new FakeChild(listEntries);
+      options?.configureChild?.(child);
       children.push(child);
       return child.channel;
     },
@@ -536,23 +553,188 @@ describe("createParcelWatcherProxy", () => {
     }
   });
 
-  it("surfaces a replay subscribe failure as recoverable, not terminal", async () => {
-    const { proxy, children } = createHarness();
-    const errors: string[] = [];
+  it("resolves subscribe only after the child has established the native subscription", async () => {
+    const { proxy, current } = createHarness();
+    let releaseNativeSubscribe!: () => void;
+    const pending = proxy.subscribe("/root", () => {});
+    current().parcel.subscribeGate = new Promise<void>((resolve) => {
+      releaseNativeSubscribe = resolve;
+    });
+    let settled = false;
+    void pending.then(() => {
+      settled = true;
+    });
+    await flush(20);
+    expect(current().parcel.subscribeAttempts).toEqual(["/root"]);
+    expect(settled).toBe(false);
+
+    releaseNativeSubscribe();
+    await flush(20);
+    expect(settled).toBe(true);
+    proxy.dispose();
+  });
+
+  it("rejects a subscribe the child cannot establish and never replays it", async () => {
+    const { proxy, children, current } = createHarness();
+    const callbackErrors: string[] = [];
     const pending = proxy.subscribe("/root", (error) => {
+      if (error) {
+        callbackErrors.push(error.message);
+      }
+    });
+    current().parcel.nextSubscribeFailure = "cannot watch /root";
+
+    await expect(pending).rejects.toThrow("cannot watch /root");
+    expect(callbackErrors).toEqual([]);
+    expect(children).toHaveLength(1);
+
+    current().exit();
+    await flush();
+    expect(children).toHaveLength(2);
+    expect(current().parcel.subscribeAttempts).toEqual([]);
+    proxy.dispose();
+  });
+
+  it("surfaces a replay subscribe failure as recoverable, not terminal", async () => {
+    const { proxy, children, current } = createHarness();
+    const errors: string[] = [];
+    await proxy.subscribe("/root", (error) => {
       if (error) {
         errors.push(error.message);
       }
     });
-    const firstChild = children[0];
-    if (firstChild) {
-      firstChild.parcel.failNextSubscribe = true;
-    }
-    await pending;
-    await flush();
+    current().exit();
+    expect(children).toHaveLength(2);
+    current().parcel.nextSubscribeFailure = "cannot watch /root";
+    await flush(20);
 
-    expect(errors).toContain(RESCAN_REQUIRED_MESSAGE);
+    expect(errors).toEqual([RESCAN_REQUIRED_MESSAGE]);
+    expect(current().parcel.activeDirs()).toEqual([]);
     proxy.dispose();
+  });
+
+  it("recycles the child after a subscribe that leaked native watches, replaying only healthy subscriptions", async () => {
+    const { proxy, children, current } = createHarness();
+    await proxy.subscribe("/healthy", () => {});
+    const failure =
+      "inotify_add_watch on '/huge/node_modules/pkg' failed: No space left on device";
+    current().parcel.nextSubscribeFailure = failure;
+
+    await expect(proxy.subscribe("/huge", () => {})).rejects.toThrow(failure);
+    await flush(20);
+
+    expect(children).toHaveLength(2);
+    expect(children[0]?.exited).toBe(true);
+    expect(current().parcel.activeDirs()).toEqual(["/healthy"]);
+    proxy.dispose();
+  });
+
+  it("replays a subscribe that was still pending when the child died", async () => {
+    const { proxy, children, current } = createHarness();
+    const pending = proxy.subscribe("/root", () => {});
+    current().parcel.subscribeGate = new Promise<void>(() => {});
+    await flush(20);
+
+    current().exit();
+    await pending;
+
+    expect(children).toHaveLength(2);
+    expect(current().parcel.activeDirs()).toEqual(["/root"]);
+    proxy.dispose();
+  });
+
+  it("rejects pending subscribes when the proxy is disposed", async () => {
+    const { proxy, current } = createHarness();
+    const pending = proxy.subscribe("/root", () => {});
+    current().parcel.subscribeGate = new Promise<void>(() => {});
+    await flush(20);
+
+    proxy.dispose();
+
+    await expect(pending).rejects.toThrow("Parcel watcher proxy is disposed");
+  });
+
+  it("resolves unsubscribe only after the child released the native subscription", async () => {
+    const { proxy, current } = createHarness();
+    const subscription = await proxy.subscribe("/root", () => {});
+    let releaseNativeUnsubscribe!: () => void;
+    current().parcel.unsubscribeGate = new Promise<void>((resolve) => {
+      releaseNativeUnsubscribe = resolve;
+    });
+    let settled = false;
+    void subscription.unsubscribe().then(() => {
+      settled = true;
+    });
+    await flush(20);
+    expect(settled).toBe(false);
+
+    releaseNativeUnsubscribe();
+    await flush(20);
+    expect(settled).toBe(true);
+    expect(current().parcel.activeDirs()).toEqual([]);
+    proxy.dispose();
+  });
+
+  it("releases a pending unsubscribe when the child exits", async () => {
+    const { proxy, current } = createHarness({ pingIntervalMs: 100_000 });
+    const subscription = await proxy.subscribe("/root", () => {});
+    current().parcel.unsubscribeGate = new Promise<void>(() => {});
+    const pending = subscription.unsubscribe();
+    await flush(20);
+
+    current().exit();
+
+    await pending;
+    expect(current().parcel.activeDirs()).toEqual([]);
+    proxy.dispose();
+  });
+
+  it("backs off a root whose subscribe keeps hitting the inotify watch limit", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(pathExistsModule, "pathExists").mockResolvedValue(true);
+    const failure =
+      "inotify_add_watch on '/huge/node_modules/pkg' failed: No space left on device";
+    const { proxy, children } = createHarness({
+      configureChild: (child) => {
+        child.parcel.failAllSubscribesWith = failure;
+      },
+    });
+    setParcelWatcherBackend(proxy);
+    const watchErrors: string[] = [];
+    let droppedEvents = 0;
+    const subscription = new RootSubscription({
+      rootPath: "/huge",
+      retryDelayMs: 250,
+      maxRetryDelayMs: 30_000,
+      onEvents: () => {},
+      onDroppedEvents: () => {
+        droppedEvents += 1;
+      },
+      onWatchError: (message) => {
+        watchErrors.push(message);
+      },
+    });
+    try {
+      subscription.start();
+      await vi.advanceTimersByTimeAsync(60_000);
+
+      const attempts = children.reduce(
+        (total, child) => total + child.parcel.subscribeAttempts.length,
+        0,
+      );
+      expect(attempts).toBeGreaterThanOrEqual(3);
+      expect(attempts).toBeLessThanOrEqual(10);
+      expect(children.length).toBeLessThanOrEqual(attempts + 1);
+      expect(droppedEvents).toBe(0);
+      expect(watchErrors).toEqual([
+        `${failure} (inotify watch limit reached; see fs.inotify.max_user_watches)`,
+      ]);
+    } finally {
+      disposeParcelWatcherBackend();
+      await subscription.dispose();
+      vi.restoreAllMocks();
+      vi.useRealTimers();
+    }
   });
 
   it("does not double-subscribe a subscription added during the respawn window", async () => {

@@ -40,11 +40,17 @@ type SubscribeCallback = (
   events: ParcelWatcherEventBatch,
 ) => unknown;
 
+interface SubscribeConfirmation {
+  resolve: (subscription: ParcelAsyncSubscription) => void;
+  reject: (error: Error) => void;
+}
+
 interface SubscriptionRecord {
   id: string;
   dir: string;
   opts?: ParcelWatcherSubscribeOptions;
   callback: SubscribeCallback;
+  confirmation: SubscribeConfirmation | null;
 }
 
 export interface ParcelWatcherProxy extends ParcelWatcherBackend {
@@ -74,6 +80,7 @@ export function createParcelWatcherProxy(
   const log = options.log ?? (() => {});
 
   const subscriptions = new Map<string, SubscriptionRecord>();
+  const pendingUnsubscribes = new Map<string, () => void>();
   let channel: ChildChannel | null = null;
   let childReady = false;
   let disposed = false;
@@ -191,6 +198,7 @@ export function createParcelWatcherProxy(
     channel = null;
     childReady = false;
     stopPing();
+    releasePendingUnsubscribes();
     dying.kill();
     scheduleRespawn();
   }
@@ -202,6 +210,7 @@ export function createParcelWatcherProxy(
     channel = null;
     childReady = false;
     stopPing();
+    releasePendingUnsubscribes();
     if (disposed) {
       return;
     }
@@ -251,15 +260,68 @@ export function createParcelWatcherProxy(
         });
         killAndRespawn();
         break;
-      case "subscribe-failed": {
+      case "subscribed": {
         const record = subscriptions.get(message.id);
-        record?.callback(new Error(RESCAN_REQUIRED_MESSAGE), []);
+        const confirmation = record?.confirmation ?? null;
+        if (record && confirmation) {
+          record.confirmation = null;
+          confirmation.resolve(createSubscriptionHandle(record.id));
+        }
         break;
       }
-      case "subscribed":
-      case "unsubscribed":
+      case "subscribe-failed": {
+        const record = subscriptions.get(message.id);
+        if (record) {
+          subscriptions.delete(message.id);
+          if (record.confirmation) {
+            record.confirmation.reject(new Error(message.message));
+          } else {
+            record.callback(new Error(RESCAN_REQUIRED_MESSAGE), []);
+          }
+        }
+        if (message.recovery === "recycle-child") {
+          log(
+            "warn",
+            "Watcher subscribe failed after adding native watches; recycling to release them",
+            {
+              activeSubscriptions: subscriptions.size,
+              watchError: message.message,
+            },
+          );
+          killAndRespawn();
+        }
         break;
+      }
+      case "unsubscribed": {
+        const release = pendingUnsubscribes.get(message.id);
+        pendingUnsubscribes.delete(message.id);
+        release?.();
+        break;
+      }
     }
+  }
+
+  function releasePendingUnsubscribes(): void {
+    const releases = [...pendingUnsubscribes.values()];
+    pendingUnsubscribes.clear();
+    for (const release of releases) {
+      release();
+    }
+  }
+
+  function createSubscriptionHandle(id: string): ParcelAsyncSubscription {
+    return {
+      unsubscribe() {
+        const target = channel;
+        if (!subscriptions.delete(id) || target === null) {
+          return Promise.resolve();
+        }
+        return new Promise<void>((resolve) => {
+          pendingUnsubscribes.set(id, resolve);
+          target.send({ kind: "unsubscribe", id });
+        });
+      },
+    };
   }
 
   function subscribe(
@@ -271,17 +333,19 @@ export function createParcelWatcherProxy(
       return Promise.reject(new Error("Parcel watcher proxy is disposed"));
     }
     const id = nextId();
-    subscriptions.set(id, { id, dir, opts, callback });
-    if (channel !== null && childReady) {
-      channel.send({ kind: "subscribe", id, dir, opts, rescan: false });
-    } else if (channel === null && respawnTimer === null) {
-      startChild();
-    }
-    return Promise.resolve({
-      async unsubscribe() {
-        subscriptions.delete(id);
-        channel?.send({ kind: "unsubscribe", id });
-      },
+    return new Promise<ParcelAsyncSubscription>((resolve, reject) => {
+      subscriptions.set(id, {
+        id,
+        dir,
+        opts,
+        callback,
+        confirmation: { resolve, reject },
+      });
+      if (channel !== null && childReady) {
+        channel.send({ kind: "subscribe", id, dir, opts, rescan: false });
+      } else if (channel === null && respawnTimer === null) {
+        startChild();
+      }
     });
   }
 
@@ -292,7 +356,13 @@ export function createParcelWatcherProxy(
       clearTimeout(respawnTimer);
       respawnTimer = null;
     }
+    for (const record of subscriptions.values()) {
+      record.confirmation?.reject(
+        new Error("Parcel watcher proxy is disposed"),
+      );
+    }
     subscriptions.clear();
+    releasePendingUnsubscribes();
     if (channel !== null) {
       const dying = channel;
       channel = null;

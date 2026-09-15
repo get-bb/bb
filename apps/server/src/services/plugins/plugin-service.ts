@@ -189,6 +189,24 @@ export function dispatchPluginSourceWatchChange(
   handleChange(filename === null || filename.length === 0 ? "." : filename);
 }
 
+interface BuiltinPluginSourceWatcher {
+  close(): void;
+  on(event: "close", listener: () => void): unknown;
+  on(event: "error", listener: (error: Error) => void): unknown;
+}
+
+export function superviseBuiltinPluginSourceWatcher(args: {
+  watcher: BuiltinPluginSourceWatcher;
+  onClose: () => void;
+  onError: (error: Error) => void;
+}): void {
+  args.watcher.on("close", args.onClose);
+  args.watcher.on("error", (error) => {
+    args.onError(error);
+    args.watcher.close();
+  });
+}
+
 export interface PluginService {
   isBuiltin(id: string): boolean;
   events: PluginThreadEventEmitter;
@@ -1359,7 +1377,14 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
               dispatchPluginSourceWatchChange(loop.handleChange, filename);
             },
           );
-          watcher.on("close", () => loop.dispose());
+          superviseBuiltinPluginSourceWatcher({
+            watcher,
+            onClose: () => loop.dispose(),
+            onError: (error) =>
+              logger.warn(
+                `plugin ${row.id}: source watcher failed; hot reload is off until the server restarts: ${error.message}`,
+              ),
+          });
           builtinSourceWatchers.push(watcher);
         }
       }

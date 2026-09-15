@@ -8,7 +8,10 @@ import {
 } from "./parcel-watcher-backend.js";
 import { pathExists } from "./path-exists.js";
 import { isRescanRequiredMessage } from "./watch-recovery.js";
-import { toWatchErrorMessage } from "./watch-error.js";
+import {
+  describeSubscribeFailure,
+  toWatchErrorMessage,
+} from "./watch-error.js";
 
 export type { ParcelWatcherEventBatch } from "./parcel-watcher-backend.js";
 
@@ -181,7 +184,9 @@ export class RootSubscription {
       if (this.disposed) {
         return;
       }
-      this.reportWatchError(toWatchErrorMessage(error));
+      this.reportWatchError(
+        describeSubscribeFailure(toWatchErrorMessage(error)),
+      );
       this.scheduleRetry();
     }
   }
