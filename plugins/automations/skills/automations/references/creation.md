@@ -35,4 +35,5 @@ Script mode flags:
 --interpreter <name>           bash, sh, node, or python3
 --timeout <ms>                 Timeout in milliseconds, default 120000, max 900000
 --env-json <json>              Script variables as a string-to-string JSON object
+--working-directory <value>    legacy, project (default), or an absolute server-host path
 ```

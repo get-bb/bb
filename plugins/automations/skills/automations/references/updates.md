@@ -39,6 +39,17 @@ bb automation update <automationId> --project <id> \
 exclusive. These flags apply only to agent automations; script automations have
 no execution environment.
 
+For a script automation, update only its working-directory policy without
+replacing the stored script:
+
+```bash
+bb automation update <automationId> --project <id> \
+  --working-directory legacy|project|<absolute-server-path>
+```
+
+A complete script replacement preserves the current policy when the flag is
+omitted.
+
 Every command supports `--json`. For `list` and `show`, the JSON result is a
 union discriminated by `problem`: canonical records omit it, while degraded
 records use `"missing-agent-prompt"` or `"invalid-stored-data"`. The

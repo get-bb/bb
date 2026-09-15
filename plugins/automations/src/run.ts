@@ -15,7 +15,10 @@ import {
 } from "./data.js";
 import { publishAutomationChange } from "./realtime.js";
 import { executeStoredScript, mapScriptResultToRun } from "./script-runner.js";
-import type { AutomationExecution } from "./rpc-types.js";
+import type {
+  AutomationExecution,
+  AutomationScriptWorkingDirectory,
+} from "./rpc-types.js";
 
 type RunFailureHandler = (error: unknown) => void;
 type AgentThreadsSdk = {
@@ -31,6 +34,17 @@ type AgentThreadsSdk = {
 };
 export type AgentRunApi = Pick<BbPluginApi, "realtime" | "log"> & {
   sdk: { threads: AgentThreadsSdk };
+};
+type ProjectsSdk = {
+  get(
+    args: Parameters<BbPluginApi["sdk"]["projects"]["get"]>[0],
+  ): Promise<unknown>;
+};
+type SystemSdk = {
+  config(): Promise<unknown>;
+};
+export type ScriptRunApi = Pick<BbPluginApi, "realtime" | "log"> & {
+  sdk: { projects: ProjectsSdk; system: SystemSdk };
 };
 
 const sdkThreadSchema = z
@@ -49,6 +63,22 @@ const sdkThreadSchema = z
   })
   .passthrough();
 type SdkThread = z.infer<typeof sdkThreadSchema>;
+
+const projectSourcesSchema = z
+  .object({ sources: z.array(z.unknown()) })
+  .passthrough();
+
+const localPathProjectSourceSchema = z
+  .object({
+    type: z.literal("local_path"),
+    hostId: z.string().min(1),
+    path: z.string().min(1),
+  })
+  .passthrough();
+
+const serverHostConfigSchema = z
+  .object({ primaryHostId: z.string().min(1).nullable() })
+  .passthrough();
 
 const projectGoneErrorSchema = z
   .object({
@@ -246,8 +276,43 @@ function closeRunForUnusableTargetThread(
   );
 }
 
+function serverHostProjectPath(
+  project: unknown,
+  primaryHostId: string | null,
+): string | null {
+  if (primaryHostId === null) return null;
+  const parsed = projectSourcesSchema.safeParse(project);
+  if (!parsed.success) return null;
+  for (const source of parsed.data.sources) {
+    const local = localPathProjectSourceSchema.safeParse(source);
+    if (local.success && local.data.hostId === primaryHostId) {
+      return local.data.path;
+    }
+  }
+  return null;
+}
+
+async function resolveScriptWorkingDir(
+  bb: ScriptRunApi,
+  projectId: string,
+  workingDirectory: AutomationScriptWorkingDirectory,
+): Promise<string | null> {
+  if (workingDirectory.type === "legacy") return null;
+  if (workingDirectory.type === "path") return workingDirectory.path;
+  const [project, config] = await Promise.all([
+    bb.sdk.projects.get({ projectId }),
+    bb.sdk.system.config(),
+  ]);
+  const { primaryHostId } = serverHostConfigSchema.parse(config);
+  const projectPath = serverHostProjectPath(project, primaryHostId);
+  if (projectPath === null) {
+    throw new Error(`Project ${projectId} has no source on the bb server host`);
+  }
+  return projectPath;
+}
+
 export async function executeScriptRun(
-  bb: Pick<BbPluginApi, "realtime" | "log">,
+  bb: ScriptRunApi,
   db: Db,
   args: {
     pluginDataDir: string;
@@ -279,6 +344,11 @@ export async function executeScriptRun(
       timeoutMs: args.execution.timeoutMs,
       env: args.execution.env,
       serverUrl: args.serverUrl,
+      workingDir: await resolveScriptWorkingDir(
+        bb,
+        args.automation.projectId,
+        args.execution.workingDirectory,
+      ),
     });
     const mapped = mapScriptResultToRun(result);
     closeAutomationRun(db, {

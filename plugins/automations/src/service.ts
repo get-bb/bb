@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import {
@@ -31,11 +31,13 @@ import {
   automationsOverviewResponseSchema,
   type AgentExecutionUpdate,
   type AutomationExecution,
+  type AutomationExecutionRequest,
   type AutomationReadProblem,
   type AutomationReadResult,
   type AutomationRunListResponse,
   type AutomationRunRpcResponse,
   type AutomationResponse,
+  type AutomationScriptWorkingDirectory,
   type AutomationsOverviewResponse,
   type ResolvedCreateAutomationInput,
   type ResolvedAutomationRunsInput,
@@ -55,12 +57,18 @@ import {
   readAutomationScript,
   writeInlineAutomationScript,
 } from "./script-files.js";
-import { errorMessage, executeAgentRun, executeScriptRun } from "./run.js";
+import {
+  errorMessage,
+  executeAgentRun,
+  executeScriptRun,
+  type ScriptRunApi,
+} from "./run.js";
 
 type ServiceApi = Pick<BbPluginApi, "realtime" | "log"> & {
   sdk: {
     projects: Pick<BbPluginApi["sdk"]["projects"], "get" | "list">;
     providers: Pick<BbPluginApi["sdk"]["providers"], "list">;
+    system: ScriptRunApi["sdk"]["system"];
     threads: Pick<BbPluginApi["sdk"]["threads"], "get" | "send" | "spawn">;
   };
 };
@@ -139,28 +147,47 @@ type ResolvedStoredExecution = {
   writtenScriptFile?: string;
 };
 
+const PROJECT_WORKING_DIRECTORY = { type: "project" } as const;
+
+function validateScriptWorkingDirectory(
+  workingDirectory: AutomationScriptWorkingDirectory,
+): void {
+  if (workingDirectory.type === "path" && !isAbsolute(workingDirectory.path)) {
+    throw new Error(
+      "A script working directory must be legacy, project, or an absolute path on the bb server host",
+    );
+  }
+}
+
 async function resolveStoredExecution(args: {
   pluginDataDir: string;
   automationId: string;
-  execution: AutomationExecution;
+  execution: AutomationExecutionRequest;
+  defaultWorkingDirectory: AutomationScriptWorkingDirectory;
 }): Promise<ResolvedStoredExecution> {
   if (args.execution.mode !== "script") {
     return { execution: args.execution };
   }
-  if (args.execution.script !== undefined) {
+  const execution = {
+    ...args.execution,
+    workingDirectory:
+      args.execution.workingDirectory ?? args.defaultWorkingDirectory,
+  };
+  validateScriptWorkingDirectory(execution.workingDirectory);
+  if (execution.script !== undefined) {
     const scriptFile = await writeInlineAutomationScript({
       dataDir: args.pluginDataDir,
       automationId: args.automationId,
-      content: args.execution.script,
-      scriptFile: args.execution.scriptFile,
+      content: execution.script,
+      scriptFile: execution.scriptFile,
     });
-    const { script: _script, ...rest } = args.execution;
+    const { script: _script, ...rest } = execution;
     return {
       execution: { ...rest, scriptFile },
       writtenScriptFile: scriptFile,
     };
   }
-  return { execution: args.execution };
+  return { execution };
 }
 
 async function discardUncommittedScript(args: {
@@ -510,6 +537,7 @@ export function createAutomationService(args: {
         pluginDataDir,
         automationId,
         execution: payload.execution,
+        defaultWorkingDirectory: PROJECT_WORKING_DIRECTORY,
       });
       let created: AutomationRow;
       try {
@@ -556,8 +584,14 @@ export function createAutomationService(args: {
           currentAutomation.problem,
         );
       }
-      if (input.execution !== undefined && input.agent !== undefined) {
-        throw new Error("execution and agent updates cannot be combined");
+      if (
+        [input.execution, input.agent, input.script].filter(
+          (entry) => entry !== undefined,
+        ).length > 1
+      ) {
+        throw new Error(
+          "execution, agent, and script updates cannot be combined",
+        );
       }
       const now = Date.now();
       const currentExecution = currentAutomation.execution;
@@ -584,6 +618,10 @@ export function createAutomationService(args: {
           pluginDataDir,
           automationId: current.id,
           execution: input.execution,
+          defaultWorkingDirectory:
+            currentExecution.mode === "script"
+              ? currentExecution.workingDirectory
+              : PROJECT_WORKING_DIRECTORY,
         });
         patch.execution = stored.execution;
         stagedScriptFile = stored.writtenScriptFile;
@@ -606,6 +644,18 @@ export function createAutomationService(args: {
           );
         }
         patch.execution = updatedExecution;
+      }
+      if (input.script !== undefined) {
+        if (currentExecution.mode !== "script") {
+          throw new Error(
+            "Script execution options can only update script automations",
+          );
+        }
+        validateScriptWorkingDirectory(input.script.workingDirectory);
+        patch.execution = {
+          ...currentExecution,
+          workingDirectory: input.script.workingDirectory,
+        };
       }
       if (
         "problem" in currentAutomation &&

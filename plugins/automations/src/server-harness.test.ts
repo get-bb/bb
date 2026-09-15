@@ -386,6 +386,7 @@ describe("automations server plugin harness", () => {
         new RegExp(`/scripts/${created.id}/script\\.sh$`),
       ),
       interpreter: "bash",
+      workingDirectory: { type: "project" },
       timeoutMs: 12_000,
       env: { CHANNEL: "qa" },
     });
@@ -402,6 +403,7 @@ describe("automations server plugin harness", () => {
         new RegExp(`/scripts/${created.id}/script\\.sh$`),
       ),
       interpreter: "bash",
+      workingDirectory: { type: "project" },
       timeoutMs: 12_000,
       env: { CHANNEL: "qa" },
     });

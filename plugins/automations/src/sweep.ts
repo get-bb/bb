@@ -17,6 +17,7 @@ import {
   executeAgentRun,
   executeScriptRun,
   type AgentRunApi,
+  type ScriptRunApi,
 } from "./run.js";
 
 const DUE_AUTOMATION_BATCH_SIZE = 100;
@@ -25,9 +26,10 @@ export const SWEEP_INTERVAL_MS = 10_000;
 const hostListSchema = z.array(
   z.object({ status: z.enum(["connected", "disconnected"]) }).passthrough(),
 );
-type SweepApi = AgentRunApi & {
-  sdk: { hosts: { list(): Promise<unknown> } };
-};
+type SweepApi = AgentRunApi &
+  ScriptRunApi & {
+    sdk: { hosts: { list(): Promise<unknown> } };
+  };
 
 function buildScheduleFailureHandler(
   db: Db,
