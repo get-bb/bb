@@ -165,6 +165,7 @@ const SCRIPT_AUTOMATION: AutomationResponse = {
   lastRunStatus: "succeeded",
   execution: {
     mode: "script",
+    workingDirectory: { type: "project" },
     script: `#!/usr/bin/env bash
 set -euo pipefail
 
@@ -544,6 +545,7 @@ export function DetailStates() {
           <ScriptAutomationDefinition
             execution={{
               mode: "script",
+              workingDirectory: { type: "project" },
               script: 'echo "Preparing report"',
               interpreter: "bash",
               timeoutMs: 60000,

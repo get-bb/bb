@@ -1179,6 +1179,7 @@ describe("Automation detail recipe", () => {
             ...AUTOMATION,
             execution: {
               mode: "script",
+              workingDirectory: { type: "project" },
               script: storedScript,
               interpreter: "bash",
               timeoutMs: 60_000,
