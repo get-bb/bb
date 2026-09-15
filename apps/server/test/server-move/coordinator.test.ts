@@ -485,20 +485,22 @@ describe("server move coordinator", () => {
         .toBe(true);
       expect(await readServerMoveRunFile(dataDir)).toMatchObject({
         status: { state: "switching" },
-        configBackup: { path: config.path, originalText: config.text },
+        configBackup: null,
         movedAt: expect.any(Number),
         activationRequestedAt: expect.any(Number),
         activationConfirmedAt: null,
       });
+      expect(await readFile(config.path, "utf8")).toBe(config.text);
 
       activateReply.resolve(ok({ ok: true }));
       await expect.poll(() => events.includes("retire")).toBe(true);
       await expect
         .poll(async () => (await readServerMoveRunFile(dataDir))?.status.state)
         .toBe("completed");
-      expect(
-        (await readServerMoveRunFile(dataDir))?.activationConfirmedAt,
-      ).toEqual(expect.any(Number));
+      expect(await readServerMoveRunFile(dataDir)).toMatchObject({
+        activationConfirmedAt: expect.any(Number),
+        configBackup: { path: config.path, originalText: config.text },
+      });
     }));
 
   it("returns the move underway for a retry to the same target and refuses a different target", () =>
@@ -1160,9 +1162,9 @@ describe("server move coordinator", () => {
         expect(
           await readServerMovedFile(harness.config.dataDir),
         ).not.toBeNull();
-        expect(JSON.parse(await readFile(config.path, "utf8"))).toMatchObject({
-          serverUrl: DIRECT_URL,
-        });
+        expect(JSON.parse(await readFile(config.path, "utf8"))).toEqual(
+          JSON.parse(config.text),
+        );
         await expect(
           coordinator.start({ ...START_DIRECT, targetHostId: WORKER }),
         ).rejects.toMatchObject({
@@ -1185,6 +1187,9 @@ describe("server move coordinator", () => {
           "retire",
         ]);
         expect(coordinator.movedTo()).toMatchObject({ serverUrl: DIRECT_URL });
+        expect(JSON.parse(await readFile(config.path, "utf8"))).toMatchObject({
+          serverUrl: DIRECT_URL,
+        });
       } finally {
         coordinator.dispose();
       }

@@ -372,6 +372,11 @@ describe("server move boot reconciliation", () => {
         expect(coordinator.isFrozen()).toBe(true);
         expect(isServerMoveSnapshotFenced(harness.db)).toBe(true);
         await expect.poll(() => events.includes("retire")).toBe(true);
+        expect(
+          JSON.parse(
+            await readFile(join(harness.config.dataDir, "config.json"), "utf8"),
+          ),
+        ).toMatchObject({ serverUrl: DIRECT_URL });
       } finally {
         coordinator.dispose();
       }

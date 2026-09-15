@@ -47,6 +47,7 @@ import {
   lockOldServerDataDir,
   restoreOldServerDaemonConfig,
   unlockOldServerDataDir,
+  validateOldServerDaemonConfig,
   writeOldServerDaemonConfig,
   type OldServerDaemonConfigBackup,
 } from "./switch.js";
@@ -940,7 +941,7 @@ export function createServerMoveCoordinator(
         connectHandle: move.connectHandle,
         oldCopyEntries: archive.oldCopyEntries,
       });
-      move.configBackup = await writeOldServerDaemonConfig({
+      await validateOldServerDaemonConfig({
         dataDir: deps.config.dataDir,
         headers: grant.headers,
         serverUrl: grant.serverUrl,
@@ -968,6 +969,25 @@ export function createServerMoveCoordinator(
     await completeSwitch(move, grant);
   }
 
+  async function pointOldServerDaemonAtTarget(
+    move: MoveRun,
+    grant: ServerMoveGrant,
+  ): Promise<void> {
+    try {
+      move.configBackup = await writeOldServerDaemonConfig({
+        dataDir: deps.config.dataDir,
+        headers: grant.headers,
+        serverUrl: grant.serverUrl,
+      });
+      await persistRun(move);
+    } catch (error) {
+      deps.logger.warn(
+        { err: error, moveId: move.status.moveId },
+        "Server move could not point this machine's daemon at the new server; it follows server.moved instead",
+      );
+    }
+  }
+
   async function completeSwitch(
     move: MoveRun,
     grant: ServerMoveGrant,
@@ -977,6 +997,7 @@ export function createServerMoveCoordinator(
     move.status.cancellable = false;
     notify();
     await persistRun(move).catch(() => undefined);
+    await pointOldServerDaemonAtTarget(move, grant);
     await stopPlugins(move);
     sendServerMoved(move, grant);
     move.status.state = "completed";
@@ -1542,9 +1563,16 @@ export function createServerMoveCoordinator(
       environment.plugins.setSchedulesPaused(true);
       if (restored.kind === "completed") {
         move.movedAt = restored.movedAt;
-        setTimeout(() => {
-          environment.retireProcess();
-        }, timings.retireDelayMs);
+        const grant = move.grant;
+        void (
+          grant === null
+            ? Promise.resolve()
+            : pointOldServerDaemonAtTarget(move, grant)
+        ).finally(() => {
+          setTimeout(() => {
+            environment.retireProcess();
+          }, timings.retireDelayMs);
+        });
         return;
       }
       void persistRun(move).catch(() => undefined);

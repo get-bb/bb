@@ -45,6 +45,35 @@ export interface OldCopyInventoryEntry {
   path: string;
 }
 
+function nextOldServerDaemonConfig(
+  {
+    machineCredential: _machineCredential,
+    serverHeaders: _serverHeaders,
+    ...current
+  }: Record<string, unknown>,
+  args: WriteOldServerDaemonConfigArgs,
+): Record<string, unknown> {
+  const next: Record<string, unknown> = {
+    ...current,
+    serverUrl: args.serverUrl,
+    ...(Object.keys(args.headers).length > 0
+      ? { serverHeaders: args.headers }
+      : {}),
+  };
+  parseBbAppManagedConfig(next);
+  return next;
+}
+
+export async function validateOldServerDaemonConfig(
+  args: WriteOldServerDaemonConfigArgs,
+): Promise<void> {
+  const path = formatBbAppConfigPath(args.dataDir);
+  nextOldServerDaemonConfig(
+    parseManagedConfigObject(path, await readOptionalText(path)),
+    args,
+  );
+}
+
 export async function writeOldServerDaemonConfig(
   args: WriteOldServerDaemonConfigArgs,
 ): Promise<OldServerDaemonConfigBackup> {
@@ -56,21 +85,7 @@ export async function writeOldServerDaemonConfig(
       backup.originalText = await readOptionalText(path);
       return parseManagedConfigObject(path, backup.originalText);
     },
-    mutate: ({
-      machineCredential: _machineCredential,
-      serverHeaders: _serverHeaders,
-      ...current
-    }) => {
-      const next: Record<string, unknown> = {
-        ...current,
-        serverUrl: args.serverUrl,
-        ...(Object.keys(args.headers).length > 0
-          ? { serverHeaders: args.headers }
-          : {}),
-      };
-      parseBbAppManagedConfig(next);
-      return next;
-    },
+    mutate: (current) => nextOldServerDaemonConfig(current, args),
   });
   return backup;
 }
