@@ -35,6 +35,7 @@ import { WorkspaceReadCaches } from "./services/environments/workspace-read-cach
 import { HostSharedPortCoordinator } from "./ws/host-shared-ports.js";
 import {
   applyServerImportAtBoot,
+  refuseInterruptedServerImport,
   repairLastServerMoveHostName,
 } from "./services/server-move/pending-boot.js";
 import { readConnectHold } from "./services/server-move/connect-hold.js";
@@ -62,6 +63,10 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
   const logger = createLogger({
     component: "server",
     dataDir: serverConfig.BB_DATA_DIR,
+  });
+  await refuseInterruptedServerImport({
+    dataDir: serverConfig.BB_DATA_DIR,
+    logger,
   });
   const db = initDb(serverConfig.databasePath, {
     dataDir: serverConfig.BB_DATA_DIR,

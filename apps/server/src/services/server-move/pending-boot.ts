@@ -18,6 +18,7 @@ import { appSettingsSchema } from "@bb/domain";
 import {
   readLastServerMoveFile,
   readServerImportFile,
+  readServerImportJournalStatus,
   SERVER_IMPORT_FILE_NAME,
   writeLastServerMoveFile,
   writeServerImportFile,
@@ -321,6 +322,23 @@ async function finishManualImport(args: {
     "Finished importing server data",
   );
   return hostRoles;
+}
+
+export interface RefuseInterruptedServerImportArgs {
+  dataDir: string;
+  logger: Pick<ServerLogger, "error">;
+}
+
+export async function refuseInterruptedServerImport(
+  args: RefuseInterruptedServerImportArgs,
+): Promise<void> {
+  const status = await readServerImportJournalStatus(args.dataDir);
+  if (status.kind !== "interrupted") {
+    return;
+  }
+  const message = `bb server import into ${args.dataDir} was interrupted, so this server won't start on partial data. Run bb server import <file> --data-dir ${args.dataDir} again; it rolls back the interrupted import first.`;
+  args.logger.error({ dataDir: args.dataDir }, message);
+  throw new Error(message);
 }
 
 export async function applyServerImportAtBoot(

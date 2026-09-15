@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   getAppSettings,
   getHost,
@@ -22,6 +23,7 @@ import {
   readLastServerMoveFile,
   readServerImportFile,
   SERVER_IMPORT_FILE_NAME,
+  SERVER_IMPORT_JOURNAL_FILE_NAME,
   writeLastServerMoveFile,
   writeServerImportFile,
   type ServerImportFile,
@@ -33,6 +35,7 @@ import {
   applyServerImportAtBoot,
   applyServerImportFixups,
   completeManualServerImport,
+  refuseInterruptedServerImport,
   repairLastServerMoveHostName,
   verifyPendingServerMove,
 } from "../../src/services/server-move/pending-boot.js";
@@ -550,6 +553,59 @@ function sessionOpenRequest(hostId: string, hostName: string) {
     }),
   };
 }
+
+describe("interrupted server import at boot", () => {
+  async function writeJournal(dataDir: string, entries: string[]) {
+    await writeFile(
+      join(dataDir, SERVER_IMPORT_JOURNAL_FILE_NAME),
+      JSON.stringify({ version: 1, entries, preexistingEntries: [] }),
+    );
+  }
+
+  it("refuses to boot on an import that server-import.json never recorded and logs how to roll it back", async () => {
+    const dataDir = await makeDataDir();
+    await writeFile(join(dataDir, "bb.db"), "partial database");
+    await writeJournal(dataDir, ["plugins/npm", "bb.db"]);
+    const logger = { error: vi.fn() };
+    const message = `bb server import into ${dataDir} was interrupted, so this server won't start on partial data. Run bb server import <file> --data-dir ${dataDir} again; it rolls back the interrupted import first.`;
+
+    await expect(
+      refuseInterruptedServerImport({ dataDir, logger }),
+    ).rejects.toThrow(message);
+
+    expect(logger.error).toHaveBeenCalledWith({ dataDir }, message);
+    expect(await readFile(join(dataDir, "bb.db"), "utf8")).toBe(
+      "partial database",
+    );
+  });
+
+  it("boots without a journal and past a journal that server-import.json records", async () => {
+    const dataDir = await makeDataDir();
+    const logger = { error: vi.fn() };
+
+    await expect(
+      refuseInterruptedServerImport({ dataDir, logger }),
+    ).resolves.toBeUndefined();
+    await writeJournal(dataDir, ["plugins/npm", "bb.db"]);
+    await writeServerImportFile(dataDir, manualMarker());
+    await expect(
+      refuseInterruptedServerImport({ dataDir, logger }),
+    ).resolves.toBeUndefined();
+
+    expect(logger.error).not.toHaveBeenCalled();
+  });
+
+  it("checks for an interrupted import before the server opens its database", async () => {
+    const source = await readFile(
+      fileURLToPath(new URL("../../src/start-server.ts", import.meta.url)),
+      "utf8",
+    );
+    const refusal = source.indexOf("await refuseInterruptedServerImport({");
+
+    expect(refusal).toBeGreaterThanOrEqual(0);
+    expect(refusal).toBeLessThan(source.indexOf("initDb("));
+  });
+});
 
 describe("last server move repair", () => {
   it("restores the old server machine's name after a self-activation wrote its id", async () => {
