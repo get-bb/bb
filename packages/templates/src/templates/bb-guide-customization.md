@@ -146,6 +146,10 @@ the same per-provider switch.
 
 The default-off `changelogPreview` experiment shows the latest release notes
 as a compact, dismissible card on Settings → Updates.
+The default-off `legacyJitiPluginLoader` experiment restores the previous JITI
+loader the next time a plugin loads. Toggling it does not disturb running
+plugin instances. Enable it with
+`bb settings experiment legacyJitiPluginLoader true`.
 Message editing is available for eligible, accepted
 root user messages in Codex, Claude Code, and Pi threads, including failed or
 incomplete turns. Opening the editor is

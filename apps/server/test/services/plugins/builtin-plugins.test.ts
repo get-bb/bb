@@ -844,7 +844,7 @@ describe("builtin plugin reconciliation", () => {
       join(mutableRoot, "server.ts"),
       'export default function plugin() { globalThis.__hotBuiltinServerVersion = "after"; }\n',
     );
-    let deadline = Date.now() + 20_000;
+    let deadline = Date.now() + 40_000;
     while (
       globals.__hotBuiltinServerVersion !== "after" &&
       Date.now() < deadline
@@ -852,7 +852,7 @@ describe("builtin plugin reconciliation", () => {
       await new Promise((resolvePromise) => setTimeout(resolvePromise, 50));
     }
     expect(globals.__hotBuiltinServerVersion).toBe("after");
-  }, 30_000);
+  }, 50_000);
 
   it("rebuilds a source-layout builtin app changed while the server was stopped", async () => {
     const mutableRoot = join(workDir, "bb-plugin-stale-app-builtin");

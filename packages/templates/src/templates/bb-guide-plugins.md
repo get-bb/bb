@@ -626,8 +626,13 @@ SDK subpath (`@get-bb/plugin-sdk/host`, `/provider-bridge`,
 bundled from the plugin's own installed SDK, so a plugin that imports one
 needs the SDK as a real dependency; the build names the missing install
 rather than shipping an import bb cannot serve.
-Path installs always load server.ts from source, so `bb plugin dev`/reload see
-edits immediately.
+Path installs compile server.ts into a versioned bb-owned cache and load the
+result with native ESM. The cache follows source, SDK, bb, and Node versions,
+so `bb plugin dev`/reload sees edits immediately without running the source
+transformer on the server event loop.
+The Legacy plugin loader (JITI) experiment restores the previous loader on the
+next install, reload, enable, update, or server restart; running instances are
+unchanged when the experiment is toggled.
 
 `bb plugin dev` is the edit loop: it requires the directory to already be
 installed as a plugin (`bb plugin install .` first), ignores dist/,
