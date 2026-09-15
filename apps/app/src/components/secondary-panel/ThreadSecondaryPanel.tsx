@@ -55,10 +55,7 @@ import type {
   SecondaryPanelTabReorderHandler,
 } from "./secondaryPanelTab";
 import { useEnvironmentDiffFiles } from "@/hooks/queries/environment-queries";
-import {
-  DEFAULT_CODE_OVERFLOW_MODE,
-  type CodeOverflowMode,
-} from "@/lib/code-overflow-mode";
+import { useGitDiffLineOverflowModePreference } from "@/lib/git-diff-view-preferences";
 import type { DiffPresentation } from "@/components/code/code-rendering";
 import { useGitDiffPanelState } from "./git-diff/useGitDiffPanelState";
 import { useResponsiveGitDiffPanelDisplay } from "./git-diff/useResponsiveGitDiffPanelDisplay";
@@ -119,6 +116,7 @@ const SECONDARY_RESIZABLE_PANEL_STYLE: CSSProperties = {
 const SECONDARY_PANEL_CHROME_ICON_BUTTON_CLASS = `${COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS} shrink-0 ${CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS}`;
 const SECONDARY_PANEL_HIDE_ICON_BUTTON_CLASS = `${COARSE_POINTER_HEADER_ICON_BUTTON_CLASS} shrink-0 ${CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS}`;
 const EMPTY_DIFF_FILES: readonly DiffFileEntry[] = [];
+function noopSecondaryPanelResizeStart(): void {}
 
 export function getSecondaryPanelChromeStackClassName(
   hasGitDiffToolbar: boolean,
@@ -268,7 +266,6 @@ function ThreadSecondaryPanelContent({
   const {
     gitDiffDisplayMode,
     handleGitDiffDisplayModeChange,
-    handleSecondaryPanelResizeStart,
     handleSecondaryPanelWidthChange,
   } = useResponsiveGitDiffPanelDisplay({ isSecondaryPanelOpen: isOpen });
   const {
@@ -280,7 +277,7 @@ function ThreadSecondaryPanelContent({
   } = useSecondaryPanelResize({
     isSecondaryPanelOpen: isOpen,
     onPanelWidthChange: handleSecondaryPanelWidthChange,
-    onResizeStart: handleSecondaryPanelResizeStart,
+    onResizeStart: noopSecondaryPanelResizeStart,
   });
   const hasPanelExpandedRef = useRef(false);
   useLayoutEffect(() => {
@@ -388,7 +385,7 @@ function ThreadSecondaryPanelContent({
   );
   const [desktopInfo] = useState(getBbDesktopInfo);
   const [gitDiffLineOverflowMode, setGitDiffLineOverflowMode] =
-    useState<CodeOverflowMode>(DEFAULT_CODE_OVERFLOW_MODE);
+    useGitDiffLineOverflowModePreference();
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
   const desktopWindowState = useDesktopWindowState();
   const isSidebarShowing = useOptionalIsSidebarShowing();
