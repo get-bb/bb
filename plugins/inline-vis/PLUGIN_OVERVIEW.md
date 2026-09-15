@@ -5,6 +5,7 @@ See an agent's chart, demo, report, or Markdown document in the conversation wit
 - A live HTML preview or formatted Markdown document in the message.
 - A default viewport height of 224 pixels. The agent can set a height from 120 to 1200 pixels.
 - A header action that opens workspace source files in the workspace viewer. Thread-storage previews omit this action.
+- An Export menu: save the source (HTML or Markdown), convert to Word (.docx) with rendered charts embedded as images, or print (choose "Save as PDF" in the dialog).
 - A clear inline error when the file is missing, too large, or unsupported.
 
 ## How it works

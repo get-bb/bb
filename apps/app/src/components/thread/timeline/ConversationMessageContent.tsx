@@ -529,7 +529,9 @@ function AssistantConversationMessage({
         absoluteLinks: { kind: "contained", rootPath: workspaceRootPath },
         href,
       });
-      return link === null ? false : onOpenLocalFileLink(link);
+      return link === null
+        ? false
+        : onOpenLocalFileLink(link, { viewer: "builtin" });
     };
   }, [onOpenLocalFileLink, workspaceRootPath]);
   const messageDirectives = useMemo<

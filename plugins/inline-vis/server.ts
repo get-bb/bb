@@ -111,6 +111,7 @@ export const inlineVisRpcContract = defineRpcContract({
           kind: z.literal("html"),
           file: z.string(),
           source: z.enum(["workspace", "thread-storage"]),
+          content: z.string(),
         })
         .strict(),
       z
@@ -228,7 +229,7 @@ export default async function plugin(bb: BbPluginApi) {
             content: result.content,
             document: { rootPath, threadId, target },
           }
-        : { kind, file, source };
+        : { kind, file, source, content: result.content };
     },
   });
 }

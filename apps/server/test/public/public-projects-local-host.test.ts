@@ -1,3 +1,4 @@
+import path from "node:path";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import {
@@ -350,6 +351,53 @@ describe("public project local host routes", () => {
       expect(revalidated.headers.get("etag")).toBe(`"${"0".repeat(64)}"`);
       expect(revalidated.headers.get("x-bb-content-encoding")).toBe("utf8");
       expect((await revalidated.arrayBuffer()).byteLength).toBe(0);
+    });
+  });
+
+  it("serves project HTML content as a sandboxed preview", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-project-html-content",
+      });
+      seedPrimaryHost(harness.deps, host.id);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/project-html-content",
+      });
+
+      const expectedPath = path.join(
+        "/tmp/project-html-content",
+        "report.html",
+      );
+      const filePromise = harness.app.request(
+        `/api/v1/projects/${project.id}/files/content?path=${encodeURIComponent("report.html")}`,
+      );
+      const fileCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "host.read_file" &&
+          command.path === expectedPath,
+      );
+      await reportQueuedCommandSuccess(harness, fileCommand, {
+        path: expectedPath,
+        content: "<h1>Report</h1>",
+        contentEncoding: "utf8",
+        mimeType: "text/html",
+        sizeBytes: 15,
+        sha256: "1".repeat(64),
+      });
+
+      const response = await filePromise;
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-type")).toBe(
+        "text/html; charset=utf-8",
+      );
+      expect(response.headers.get("content-security-policy")).toBe(
+        "sandbox allow-scripts",
+      );
+      expect(response.headers.get("cache-control")).toBe("no-store");
+      expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+      await expect(response.text()).resolves.toBe("<h1>Report</h1>");
     });
   });
 });

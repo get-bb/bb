@@ -90,6 +90,17 @@ export const hostRemovePathRequestSchema = z
   .strict();
 export type HostRemovePathRequest = z.infer<typeof hostRemovePathRequestSchema>;
 
+export const fileExportRequestSchema = z
+  .object({
+    content: z.string(),
+    sourceKind: z.enum(["html", "markdown"]),
+    format: z.enum(["docx", "print", "capture"]),
+    baseHref: z.string().min(1).nullable().optional(),
+    filename: z.string().min(1).max(255).optional(),
+  })
+  .strict();
+export type FileExportRequest = z.infer<typeof fileExportRequestSchema>;
+
 export const createFilePreviewRequestSchema = z
   .object({
     hostId: z.string().min(1).optional(),

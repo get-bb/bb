@@ -37,6 +37,11 @@ equivalent. For a read-only thread-storage artifact, write the document to
   browser CORS, mixed-content, and remote-server policies. Scripts execute in an
   opaque-origin iframe and cannot access the bb page, cookies, or storage.
   Markdown uses BB's renderer with raw HTML disabled.
+- Users can export the preview: save the source (HTML or Markdown), convert to
+  Word (.docx), or print (with "Save as PDF" in the dialog). Charts the page
+  draws at runtime (canvas or inline SVG) are rasterized and embedded in the
+  Word and print output; keep charts on screen and give them a moment to finish
+  animating so the snapshot is complete.
 - Keep files small (under the sidebar preview's 5 MiB document limit).
 - Emit the directive only after the file exists on disk in the selected source.
 - Prefer `thread-storage` for read-only generated reports and other artifacts

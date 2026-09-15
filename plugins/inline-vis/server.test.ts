@@ -277,6 +277,7 @@ describe("preparePreview rpc", () => {
       kind: "html",
       file: "charts/demo.html",
       source: "workspace",
+      content: "<html><body>ok</body></html>",
     });
     expect(harness.sdk.callsTo("files.read")).toHaveLength(1);
   });
@@ -316,6 +317,7 @@ describe("preparePreview rpc", () => {
       kind: "html",
       file: "reports/result.html",
       source: "thread-storage",
+      content: "<html><body>ok</body></html>",
     });
     expect(harness.sdk.callsTo("threads.storageLocation")).toHaveLength(1);
     expect(harness.sdk.callsTo("threads.get")).toHaveLength(0);

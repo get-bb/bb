@@ -7,6 +7,7 @@ import {
 import { hashSourceContents } from "@/components/code/source-code-budget";
 import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing.js";
 import { HttpError } from "@/lib/api";
+import { resolveExportBaseHref } from "@/lib/document-export";
 import type {
   FilePreview,
   FilePreviewLineRange,
@@ -105,8 +106,14 @@ function resolveSecondaryPanelFilePreviewState({
     return { kind: "loading" };
   }
 
-  if (htmlPreviewUrl !== null && isHtmlFilePreviewPath(activePath)) {
+  if (isHtmlFilePreviewPath(activePath)) {
     if (filePreview.kind !== "text") {
+      if (htmlPreviewUrl === null) {
+        return {
+          kind: "error",
+          message: `Preview not available for ${filePreview.mimeType}.`,
+        };
+      }
       return {
         kind: "iframe",
         sandbox: GENERIC_HTML_IFRAME_SANDBOX,
@@ -121,7 +128,8 @@ function resolveSecondaryPanelFilePreviewState({
       iframe: {
         sandbox: GENERIC_HTML_IFRAME_SANDBOX,
         title: activePath,
-        url: htmlPreviewUrl,
+        url: htmlPreviewUrl ?? "",
+        ...(htmlPreviewUrl === null ? { srcdoc: filePreview.content } : {}),
       },
       lineRange,
     };
@@ -176,10 +184,14 @@ export function SecondaryPanelFilePreview({
     isLoading,
     lineRange,
   });
+  const exportBaseHref = resolveExportBaseHref(
+    htmlPreviewUrl ?? filePreview?.url ?? null,
+  );
   return (
     <FilePreviewSurface
       path={activePath}
       copyPath={copyPath}
+      exportBaseHref={exportBaseHref}
       onSelectionAddToChat={onSelectionAddToChat}
       onOpenInEditor={onOpenInEditor}
       onRefresh={onRefresh}

@@ -32,6 +32,10 @@ import {
   DEFAULT_PATH_LIST_EXCLUDE_NAMES,
   WORKSPACE_PATH_LIST_INCLUDE_HIDDEN,
 } from "./path-list-policy.js";
+import {
+  createFileExport,
+  FileExportInputError,
+} from "../services/files/document-export.js";
 
 const HOST_FILE_LIST_LIMIT_DEFAULT = 1000;
 
@@ -98,6 +102,30 @@ function assertHtmlPreviewPath(filePath: string): void {
   if (!isHtmlMimeType(mimeTypes.lookup(filePath) || null)) {
     throw createRawFilesystemPathUnsupportedError();
   }
+}
+
+const BIDI_CONTROL_PATTERN = /[\u202a-\u202e\u2066-\u2069]/g;
+
+function encodeExtValue(value: string): string {
+  let encoded = "";
+  for (const byte of Buffer.from(value, "utf8")) {
+    const char = String.fromCharCode(byte);
+    encoded += /[A-Za-z0-9!#$&+\-.^_`|~]/.test(char)
+      ? char
+      : `%${byte.toString(16).toUpperCase().padStart(2, "0")}`;
+  }
+  return encoded;
+}
+
+function buildContentDisposition(
+  disposition: "inline" | "attachment",
+  fileName: string,
+): string {
+  const visibleName = fileName.replace(BIDI_CONTROL_PATTERN, "_");
+  const asciiFallback = visibleName
+    .replace(/[^\x20-\x7e]/g, "-")
+    .replace(/["\\]/g, "_");
+  return `${disposition}; filename="${asciiFallback}"; filename*=UTF-8''${encodeExtValue(visibleName)}`;
 }
 
 function assertRawFilesystemHtmlPreviewResult(
@@ -191,6 +219,7 @@ export function registerFileRoutes(app: Hono, deps: AppDeps): void {
     fileRoutes.mkdir,
     fileRoutes.move,
     fileRoutes.remove,
+    fileRoutes.export,
   ]) {
     app.use(route.path, async (context, next) => {
       requirePrivilegedJsonMutation(context);
@@ -232,6 +261,35 @@ export function registerFileRoutes(app: Hono, deps: AppDeps): void {
       return remapDaemonFileRouteError(error);
     }
   };
+
+  post(fileRoutes.export, async (context, payload) => {
+    let result: Awaited<ReturnType<typeof createFileExport>>;
+    try {
+      result = await createFileExport(payload);
+    } catch (error) {
+      if (error instanceof FileExportInputError) {
+        throw new ApiError(
+          error.status,
+          "file_export_failed",
+          error.message,
+          false,
+        );
+      }
+      throw error;
+    }
+    return new Response(new Uint8Array(result.body), {
+      headers: {
+        "cache-control": NO_STORE_CACHE_CONTROL,
+        "content-disposition": buildContentDisposition(
+          "attachment",
+          result.fileName,
+        ),
+        "content-length": String(result.body.byteLength),
+        "content-type": result.contentType,
+        "x-content-type-options": NOSNIFF_CONTENT_TYPE_OPTIONS,
+      },
+    });
+  });
 
   post(fileRoutes.read, (context, payload) =>
     withHostFileRoute(payload.hostId, async (hostId) => {

@@ -22,7 +22,7 @@ const MARKDOWN_FILE_EXTENSIONS = [".md", ".markdown"];
 const MARKDOWN_MIME_TYPES = new Set(["text/markdown", "text/x-markdown"]);
 const CSV_FILE_EXTENSIONS = [".csv"];
 const CSV_MIME_TYPES = new Set(["application/csv", "text/csv"]);
-const HTML_FILE_EXTENSION = ".html";
+const HTML_FILE_EXTENSIONS = [".html", ".htm", ".xhtml"];
 const NULL_CHARACTER = "\u0000";
 
 export interface FilePreviewTarget {
@@ -205,7 +205,10 @@ function hasCsvExtension(path: string): boolean {
 }
 
 export function isHtmlFilePreviewPath(path: string): boolean {
-  return path.toLowerCase().endsWith(HTML_FILE_EXTENSION);
+  const normalizedPath = path.toLowerCase();
+  return HTML_FILE_EXTENSIONS.some((extension) =>
+    normalizedPath.endsWith(extension),
+  );
 }
 
 export function normalizeFilePreviewMimeType(value: string | null): string {

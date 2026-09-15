@@ -39,6 +39,32 @@ bb replaces that leaf with this plugin's React component, which:
    and WebSockets work subject to ordinary browser CORS, mixed-content, and
    remote-server policies.
 5. Renders Markdown files with bb's Markdown renderer. Raw HTML is disabled.
+6. Offers an Export menu with **Save HTML / Save Markdown**, **Word (.docx)**,
+   and **Печать** (rendered canvas/SVG charts are embedded in Word and PDF).
+
+## Export and print
+
+The export menu appears on the inline preview card and on bb's sidebar file
+preview, so HTML and Markdown files open from the workspace explorer export the
+same way.
+
+- **Save HTML / Save Markdown** downloads the artifact source exactly as
+  authored.
+- **Word (.docx)** converts the artifact to a Word document. For an HTML
+  artifact the exporter renders it once more in a sandboxed frame, waits for
+  charts and images to settle, rasterizes canvases and inline SVG to PNG, and
+  embeds those images. Scripts, styles, and other non-content elements are
+  never included as text. Relative asset URLs are resolved against the file's
+  served location. If the rendered capture fails, it falls back to the static
+  document. The Word document uses **Arial** on
+  **A4 portrait**.
+- **Печать** opens a print-ready copy in a sandboxed frame, waits for charts to
+  settle, and starts the browser print dialog. The print page is sized
+  **A4 portrait**, so "Save as PDF" produces an A4 document. Choose "Save as
+  PDF" there to produce a PDF.
+
+Export runs through the core route `POST /api/v1/files/export`, so it keeps
+working when this plugin is disabled. Export inputs are capped at 5 MiB.
 
 ## Backend security
 

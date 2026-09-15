@@ -102,6 +102,13 @@ import {
 
 type ProjectResponseProjectFields = Omit<ProjectResponse, "sources">;
 const ATTACHMENT_CONTENT_CACHE_CONTROL = "private, immutable, max-age=31536000";
+const HTML_PREVIEW_MAX_BYTES = 5 * 1024 * 1024;
+const HTML_PREVIEW_CSP = "sandbox allow-scripts";
+
+function isHtmlPreviewPath(value: string): boolean {
+  const normalized = value.toLowerCase();
+  return normalized.endsWith(".html") || normalized.endsWith(".htm");
+}
 
 function toProjectResponseProjectFields(
   project: ProjectResponseProjectFields,
@@ -597,20 +604,41 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
       hostId: query.hostId,
     });
     const filePath = parseSafeRelativeRoutePath(query.path);
+    const isHtml = isHtmlPreviewPath(filePath.relativePath);
 
     return serveDaemonFileContent(
       deps,
       {
         hostId: target.hostId,
-        ifNoneMatch: context.req.header("if-none-match"),
+        ...(!isHtml ? { ifNoneMatch: context.req.header("if-none-match") } : {}),
         path: path.join(target.path, filePath.relativePath),
         rootPath: target.path,
       },
-      (result) =>
-        createDaemonFileContentResponse(result, {
-          headers: { "x-bb-content-encoding": result.contentEncoding },
-          ifNoneMatch: context.req.header("if-none-match"),
-        }),
+      (result) => {
+        if (isHtml && result.sizeBytes > HTML_PREVIEW_MAX_BYTES) {
+          throw new ApiError(
+            413,
+            "file_too_large",
+            "HTML preview exceeds the 5 MB limit",
+            false,
+          );
+        }
+        const headers = new Headers({
+          "x-bb-content-encoding": result.contentEncoding,
+        });
+        if (isHtml) {
+          headers.set("cache-control", "no-store");
+          headers.set("content-security-policy", HTML_PREVIEW_CSP);
+          headers.set("content-type", "text/html; charset=utf-8");
+          headers.set("x-content-type-options", "nosniff");
+        }
+        return createDaemonFileContentResponse(result, {
+          headers,
+          ifNoneMatch: isHtml
+            ? undefined
+            : context.req.header("if-none-match"),
+        });
+      },
     );
   });
 

@@ -437,12 +437,20 @@ export function ProjectFilePreviewTabContent({
     rootPath,
     threadId,
   ]);
+  const htmlPreviewUrl = buildProjectFileContentUrl(projectId, activePath, {
+    ...(environmentId !== null
+      ? { environmentId }
+      : hostId !== null
+        ? { hostId }
+        : {}),
+  });
 
   return (
     <SecondaryPanelFilePreview
       {...filePreviewQueryProps(projectFilePreviewQuery)}
       activePath={activePath}
       copyPath={copyPath}
+      htmlPreviewUrl={htmlPreviewUrl}
       lineRange={lineRange}
       markdownLinkRouting={resolvedMarkdownLinkRouting}
       onSelectionAddToChat={onSelectionAddToChat}

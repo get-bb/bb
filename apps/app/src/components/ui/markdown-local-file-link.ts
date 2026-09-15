@@ -2,6 +2,7 @@ import {
   isAbsoluteFilePathWithinRoot,
   normalizeAbsoluteFilePath,
 } from "@/lib/absolute-file-path";
+import type { FileOpenerOverride } from "@/lib/plugin-slot-resolvers";
 import {
   createFilePreviewLineRange,
   type FilePreviewLineRange,
@@ -12,8 +13,13 @@ export interface MarkdownPreviewLocalFileLink {
   path: string;
 }
 
+export interface MarkdownPreviewLocalFileLinkOpenOptions {
+  viewer?: FileOpenerOverride;
+}
+
 export type MarkdownPreviewLocalFileLinkHandler = (
   link: MarkdownPreviewLocalFileLink,
+  options?: MarkdownPreviewLocalFileLinkOpenOptions,
 ) => boolean;
 
 interface MarkdownTrustedAbsoluteLocalFileLinkRouting {

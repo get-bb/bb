@@ -28,7 +28,12 @@ import {
 } from "@bb/shared-ui/tooltip";
 import { TruncateStart } from "@/components/ui/truncate-start.js";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
+import { resolveExportBaseHref } from "@/lib/document-export";
 import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
+import {
+  FileExportMenu,
+  type FileExportTarget,
+} from "./FileExportMenu.js";
 import type {
   FilePreviewLineRange,
   WorkspaceFilePreviewStatusLabel,
@@ -54,6 +59,7 @@ interface IframeFilePreviewTarget {
   sandbox: IframePreviewSandbox;
   title: string;
   url: string;
+  srcdoc?: string;
 }
 
 export type FilePreviewState =
@@ -81,6 +87,7 @@ interface FilePreviewProps {
   state: FilePreviewState;
   path: string;
   copyPath?: string | null;
+  exportBaseHref?: string | null;
   headerMode?: FilePreviewHeaderMode;
   onSelectionAddToChat?: (text: string) => void;
   onOpenInEditor?: (path: string) => void;
@@ -111,6 +118,7 @@ interface FilePreviewHeaderProps {
   copyPath: string | null;
   rawContents: string | null;
   externalUrl: string | null;
+  exportTarget: FileExportTarget | null;
   onOpenInEditor?: (path: string) => void;
   onRefresh?: () => void;
   isRefreshing: boolean;
@@ -211,7 +219,7 @@ function getFilePreviewExternalUrl(state: FilePreviewState): string | null {
     return state.url;
   }
   if (state.kind === "html") {
-    return state.iframe.url;
+    return state.iframe.url.length === 0 ? null : state.iframe.url;
   }
   return null;
 }
@@ -423,6 +431,7 @@ export function FilePreview({
   state,
   path,
   copyPath = null,
+  exportBaseHref = null,
   headerMode = "file",
   onSelectionAddToChat,
   onOpenInEditor,
@@ -435,6 +444,25 @@ export function FilePreview({
   const filePreviewLineRange = getFilePreviewLineRange(state);
   const rawContents = getRawFilePreviewContents(state);
   const externalUrl = getFilePreviewExternalUrl(state);
+  const exportTarget = useMemo((): FileExportTarget | null => {
+    if (state.kind === "html") {
+      return {
+        baseHref: resolveExportBaseHref(state.iframe.url),
+        content: state.file.contents,
+        fileName: state.file.name,
+        sourceKind: "html",
+      };
+    }
+    if (state.kind === "ready" && state.textPreviewKind === "markdown") {
+      return {
+        baseHref: exportBaseHref,
+        content: state.file.contents,
+        fileName: state.file.name,
+        sourceKind: "markdown",
+      };
+    }
+    return null;
+  }, [exportBaseHref, state]);
   const [viewMode, setViewMode] = useState<FilePreviewViewMode>(
     getInitialFilePreviewViewMode({
       lineRange: filePreviewLineRange,
@@ -489,6 +517,7 @@ export function FilePreview({
           copyPath={copyPath}
           rawContents={rawContents}
           externalUrl={externalUrl}
+          exportTarget={exportTarget}
           onOpenInEditor={onOpenInEditor}
           onRefresh={onRefresh}
           isRefreshing={isRefreshing}
@@ -596,6 +625,7 @@ function FilePreviewHeader({
   copyPath,
   rawContents,
   externalUrl,
+  exportTarget,
   onOpenInEditor,
   onRefresh,
   isRefreshing,
@@ -727,6 +757,12 @@ function FilePreviewHeader({
                 <AppCommandShortcutHint shortcut={openShortcut} />
               </>
             ) : null}
+            {exportTarget === null ? null : (
+              <FileExportMenu
+                className={FILE_PREVIEW_HEADER_ICON_BUTTON_CLASS}
+                target={exportTarget}
+              />
+            )}
           </TooltipProvider>
         </div>
         {showHeaderControls ? (
@@ -868,6 +904,7 @@ function HtmlFilePreviewBody({
         <IframeFilePreview
           key={state.file.cacheKey}
           sandbox={state.iframe.sandbox}
+          srcdoc={state.iframe.srcdoc}
           title={state.iframe.title}
           url={state.iframe.url}
         />
@@ -1085,13 +1122,19 @@ function FilePreviewVideo({ url, title }: FilePreviewVideoProps) {
   );
 }
 
-function IframeFilePreview({ sandbox, title, url }: IframeFilePreviewTarget) {
+function IframeFilePreview({
+  sandbox,
+  srcdoc,
+  title,
+  url,
+}: IframeFilePreviewTarget) {
   const [loadState, setLoadState] = useState<IframeLoadState>("loading");
   const [showLoadingIndicator, setShowLoadingIndicator] = useState(false);
+  const source = srcdoc ?? url;
 
   useEffect(() => {
     setLoadState("loading");
-  }, [url]);
+  }, [source]);
 
   useEffect(() => {
     if (loadState !== "loading") {
@@ -1107,7 +1150,7 @@ function IframeFilePreview({ sandbox, title, url }: IframeFilePreviewTarget) {
     return () => {
       window.clearTimeout(timeoutId);
     };
-  }, [loadState, url]);
+  }, [loadState, source]);
 
   if (loadState === "error") {
     return (
@@ -1129,7 +1172,7 @@ function IframeFilePreview({ sandbox, title, url }: IframeFilePreviewTarget) {
       ) : null}
       <iframe
         title={title}
-        src={url}
+        {...(srcdoc === undefined ? { src: url } : { srcDoc: srcdoc })}
         sandbox={sandbox}
         style={HTML_FILE_PREVIEW_IFRAME_STYLE}
         onLoad={() => setLoadState("loaded")}

@@ -470,3 +470,185 @@ describe("InlineVisDirective", () => {
     expect(slot.container.querySelector("iframe")).toBeNull();
   });
 });
+
+function mockDownloadEnvironment(): {
+  clicks: string[];
+  restore: () => void;
+} {
+  const clicks: string[] = [];
+  const originalCreate = URL.createObjectURL;
+  const originalRevoke = URL.revokeObjectURL;
+  const originalClick = HTMLAnchorElement.prototype.click;
+  URL.createObjectURL = () => "blob:inline-vis-export";
+  URL.revokeObjectURL = () => {};
+  HTMLAnchorElement.prototype.click = function click(this: HTMLAnchorElement) {
+    clicks.push(this.download);
+  };
+  return {
+    clicks,
+    restore: () => {
+      URL.createObjectURL = originalCreate;
+      URL.revokeObjectURL = originalRevoke;
+      HTMLAnchorElement.prototype.click = originalClick;
+    },
+  };
+}
+
+describe("InlineVis export menu", () => {
+  function renderHtmlArtifact() {
+    return renderSlot(
+      app.messageDirectives[0]!,
+      {
+        attributes: { file: "charts/demo file.html" },
+        source: '::inline-vis{file="charts/demo file.html"}',
+        message,
+        openWorkspaceFile: vi.fn(() => true),
+      },
+      {
+        rpc: {
+          preparePreview: () => ({
+            kind: "html",
+            file: "charts/demo file.html",
+            source: "workspace",
+            content: "<h1>Chart</h1>",
+          }),
+        },
+      },
+    );
+  }
+
+  it("offers source, Word, and Print exports for an HTML artifact", async () => {
+    const slot = renderHtmlArtifact();
+    await waitFor(() => {
+      expect(slot.container.querySelector("iframe")).toBeTruthy();
+    });
+    fireEvent.pointerDown(
+      slot.getByRole("button", { name: "Export charts/demo file.html" }),
+      { button: 0 },
+    );
+    expect(await slot.findByRole("menuitem", { name: "Save HTML" })).toBeTruthy();
+    expect(slot.getByRole("menuitem", { name: "Word (.docx)" })).toBeTruthy();
+    expect(slot.getByRole("menuitem", { name: "Печать" })).toBeTruthy();
+  });
+
+  it("downloads the source without calling the export route", async () => {
+    const downloads = mockDownloadEnvironment();
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const slot = renderHtmlArtifact();
+      await waitFor(() => {
+        expect(slot.container.querySelector("iframe")).toBeTruthy();
+      });
+      fireEvent.pointerDown(
+        slot.getByRole("button", { name: "Export charts/demo file.html" }),
+        { button: 0 },
+      );
+      fireEvent.click(await slot.findByRole("menuitem", { name: "Save HTML" }));
+      await waitFor(() => {
+        expect(downloads.clicks).toEqual(["demo file.html"]);
+      });
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      downloads.restore();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("posts the artifact and base href to the export route for Word", async () => {
+    const downloads = mockDownloadEnvironment();
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      blob: async () => new Blob(["docx"]),
+      text: async () => "",
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const slot = renderHtmlArtifact();
+      await waitFor(() => {
+        expect(slot.container.querySelector("iframe")).toBeTruthy();
+      });
+      fireEvent.pointerDown(
+        slot.getByRole("button", { name: "Export charts/demo file.html" }),
+        { button: 0 },
+      );
+      fireEvent.click(await slot.findByRole("menuitem", { name: "Word (.docx)" }));
+      await waitFor(() => {
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+      });
+      const [url, init] = fetchMock.mock.calls[0] as unknown as [
+        string,
+        RequestInit,
+      ];
+      expect(url).toBe("/api/v1/files/export");
+      expect(init.method).toBe("POST");
+      expect(JSON.parse(String(init.body))).toMatchObject({
+        content: "<h1>Chart</h1>",
+        sourceKind: "html",
+        format: "docx",
+        filename: "charts/demo file.html",
+      });
+      expect(JSON.parse(String(init.body)).baseHref).toContain(
+        "/api/v1/threads/thr_1/worktree/files/charts/demo%20file.html",
+      );
+      await waitFor(() => {
+        expect(downloads.clicks).toEqual(["demo file.docx"]);
+      });
+    } finally {
+      downloads.restore();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("prints a Markdown artifact through a sandboxed iframe", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      blob: async () => new Blob(["<html>print</html>"], { type: "text/html" }),
+      text: async () => "",
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const slot = renderSlot(
+        app.messageDirectives[0]!,
+        {
+          attributes: { file: "reports/notes.md" },
+          source: '::inline-vis{file="reports/notes.md"}',
+          message,
+          openWorkspaceFile: null,
+        },
+        {
+          rpc: {
+            preparePreview: () => ({
+              kind: "markdown",
+              file: "reports/notes.md",
+              source: "workspace",
+              content: "# Notes",
+            }),
+          },
+        },
+      );
+      await slot.findByTestId("bb-markdown");
+      fireEvent.pointerDown(
+        slot.getByRole("button", { name: "Export reports/notes.md" }),
+        { button: 0 },
+      );
+      fireEvent.click(await slot.findByRole("menuitem", { name: "Печать" }));
+      await waitFor(() => {
+        const printFrame = Array.from(
+          document.querySelectorAll("iframe"),
+        ).find(
+          (frame) => frame.getAttribute("sandbox") === "allow-scripts allow-modals",
+        );
+        expect(printFrame).toBeTruthy();
+        expect(printFrame?.getAttribute("srcdoc")).toBe("<html>print</html>");
+      });
+      for (const frame of document.querySelectorAll(
+        'iframe[sandbox="allow-scripts allow-modals"]',
+      )) {
+        frame.remove();
+      }
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
