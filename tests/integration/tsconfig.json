@@ -9,5 +9,11 @@
     "sourceMap": false,
     "types": ["node"]
   },
-  "include": ["./**/*.ts", "../../apps/host-daemon/src/**/*.d.ts"]
+  "include": [
+    "./**/*.ts",
+    "../../apps/host-daemon/src/**/*.d.ts",
+    // bb-fork(windows): fork document-export imports html-to-docx, whose ambient
+    // declaration lives under apps/server/src/types.
+    "../../apps/server/src/**/*.d.ts"
+  ]
 }

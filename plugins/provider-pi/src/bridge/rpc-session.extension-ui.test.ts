@@ -56,7 +56,11 @@ it("auto-cancels extension dialogs in a helper session without a UI handler", as
       await session.closeGracefully(1000);
     } finally {
       vi.unstubAllEnvs();
-      rmSync(dir, { recursive: true, force: true });
+      // bb-fork(windows): the helper child's cwd sits inside `dir` and Windows
+      // bb-fork(windows): only releases that handle after process exit, so wait
+      // bb-fork(windows): for exit before removing and retry a lingering EBUSY.
+      await session.waitForChildExit();
+      rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     }
   }
 });
