@@ -116,7 +116,9 @@ closes; `bb server move status` shows the same steps.
 
 - Any failure before the switch resumes the old server untouched and cleans up
   the target. A move can be cancelled until the switch.
-- After the switch there is no undo; moving back is another move.
+- Once the target confirms the switch there is no undo; moving back is another
+  move. Until it confirms, the move waits in `recovery_required` and can be
+  abandoned.
 - The locked old copy stays until the user deletes it from that machine's page
   or with `bb server delete-old-copy` on that computer.
 - `bb server unlock` on the old computer restarts the old copy as a last resort.
@@ -164,7 +166,7 @@ CLI (`bb server`):
 ```
 bb server move --to <machine> [--address <url>] [--check] [--archive-existing-data] [--yes] [--json]
 bb server move status [--json]
-bb server move cancel [--json]
+bb server move cancel [--yes] [--json]
 bb server export --out <file> [--json]
 bb server import <file> [--data-dir <dir>] [--yes] [--json]
 bb server unlock [--data-dir <dir>] [--force] [--yes] [--json]
@@ -219,8 +221,24 @@ All refuse requests authenticated by a machine credential.
   `server.moved` to machines that need a new address, and retire the old server.
   The target replies to activate, waits for its session to the old server to
   close, stops the pending server, and swaps its service. A refused activation
-  rolls the old server back. A lost reply commits, and the target finishes
-  activation on its own, from its persisted state or from a matching 410.
+  rolls the old server back.
+- **Unconfirmed activation (`recovery_required`):** when activation gets no
+  answer (a lost reply, or the target dropped after the request), the move
+  waits in `recovery_required` in both modes. The old server stays up and
+  frozen, keeps bb connect running, keeps `server-moved.json` and the rewritten
+  `config.json`, sends no `server.moved`, does not retire, and keeps reporting
+  no moved address to daemons. It retries `server_move.activate` whenever the
+  target daemon is connected (already-activated counts as confirmed) and every
+  5 seconds asks a connected daemon, preferably the old server machine's own,
+  to probe `<serverUrl>/health` for this move in the ready state. Either
+  confirmation finishes the switch exactly like a confirmed activation: plugins
+  stop, `server.moved` goes out, and the old server retires. Cancelling in this
+  state abandons the move: it removes the lock, restores `config.json` from the
+  backup, unfreezes, resumes plugins, and aborts the target once it is
+  reachable. If the target already took over, abandoning leaves two servers
+  holding the same data, so the CLI asks before abandoning and the app shows
+  the warning before its Abandon button. `bb server unlock` stays the exit when
+  the old copy has stopped.
 - **The old computer:** the `bb-app` launcher sees the lock, runs the daemon
   against the new address, and answers the old port with 410 `server_moved`
   (HTML requests redirect in direct mode). Moving the server back releases that

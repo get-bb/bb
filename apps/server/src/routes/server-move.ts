@@ -25,7 +25,10 @@ import {
   assertUsableHostId,
   readPrimaryHostIdFromDataDir,
 } from "../services/hosts/primary-host.js";
-import type { ServerMoveCoordinator } from "../services/server-move/coordinator.js";
+import {
+  isServerMoveInFlight,
+  type ServerMoveCoordinator,
+} from "../services/server-move/coordinator.js";
 import { exportServerArchive } from "../services/server-move/export.js";
 import type { AppDeps } from "../types.js";
 
@@ -109,13 +112,7 @@ export function registerServerMoveRoutes(
   post(routes.export, async (context) => {
     assertServerManagementAllowed(context);
     assertServerMoveExperimentEnabled(deps);
-    const status = serverMove.getStatus();
-    if (
-      status !== null &&
-      (status.state === "preparing" ||
-        status.state === "switching" ||
-        status.state === "completed")
-    ) {
+    if (isServerMoveInFlight(serverMove.getStatus())) {
       throw new ApiError(
         409,
         "server_move_in_progress",

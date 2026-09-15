@@ -43,6 +43,7 @@ export const TEST_SERVER_MOVE_TIMINGS: ServerMoveTimings = {
   pluginShutdownTimeoutMs: 2_000,
   prepareTimeoutMs: 10_000,
   probeTimeoutMs: 2_000,
+  recoveryProbeIntervalMs: 50,
   retireDelayMs: 0,
   stopWorkTimeoutMs: 2_000,
 };

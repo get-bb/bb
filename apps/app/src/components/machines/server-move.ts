@@ -29,6 +29,7 @@ export function isServerMoveUnderway(move: ServerMoveStatus | null): boolean {
     move !== null &&
     (move.state === "preparing" ||
       move.state === "switching" ||
+      move.state === "recovery_required" ||
       move.state === "completed")
   );
 }
@@ -205,6 +206,7 @@ export function nextFollowedServerMove(
 
 export type ServerMoveOverlayContent =
   | { kind: "progress"; move: ServerMoveStatus }
+  | { kind: "recovery"; move: ServerMoveStatus }
   | { kind: "redirecting"; move: ServerMoveStatus; destination: string }
   | { kind: "reconnecting"; move: ServerMoveStatus }
   | { kind: "arrived"; move: ServerMoveStatus; lastMove: LastServerMove }
@@ -244,7 +246,9 @@ export function resolveServerMoveOverlay({
     };
   }
   if (live === null) {
-    return move.state === "preparing" || move.state === "switching"
+    return move.state === "preparing" ||
+      move.state === "switching" ||
+      move.state === "recovery_required"
       ? { kind: "abandoned", move }
       : move.state === "completed"
         ? completedContent(move, location)
@@ -254,6 +258,8 @@ export function resolveServerMoveOverlay({
     case "preparing":
     case "switching":
       return { kind: "progress", move };
+    case "recovery_required":
+      return { kind: "recovery", move };
     case "completed":
       return completedContent(move, location);
     case "failed":
@@ -286,6 +292,9 @@ export function serverMoveOverlayPollIntervalMs(args: {
   }
   if (content.kind === "reconnecting") {
     return args.intervalMs;
+  }
+  if (content.kind === "recovery") {
+    return args.realtimeConnected ? null : args.intervalMs;
   }
   if (content.kind !== "progress") {
     return null;

@@ -2964,8 +2964,14 @@ archived. `startMove({ targetHostId, serverUrl, stopRunningWork: true,
 archiveExistingTargetServerData })` freezes the server, stops running work,
 copies server-owned data to the target, starts the new server there, switches
 machines over, and retires this server process. `moveStatus()` returns the
-active move and the last completed move (`lastMove`); `cancelMove()` works
-until the switch starts. `export({ signal })` streams an unencrypted gzip server
+active move and the last completed move (`lastMove`). A move whose activation
+was never confirmed reports `recovery_required`: this server stays up and
+frozen until the target confirms (activation retry or `<serverUrl>/health`
+reporting ready). In direct mode the status carries `destinationStatusUrl`, the
+new server's CORS-readable `/health`, so a client can follow the destination
+after this server retires; it is null for bb connect. `cancelMove()` works
+until the switch starts, and in `recovery_required` it abandons the move and
+rolls the switch back. `export({ signal })` streams an unencrypted gzip server
 archive and returns its `fileName`, `body`, and the `sha256` digest the server
 sent. `hosts.experimental_deleteOldServerCopy({
 hostId })` deletes the locked old server data on that machine. All refuse

@@ -31,11 +31,15 @@ import {
   formatDataSize,
   formatServerMoveFailure,
   formatServerMovedMessage,
+  formatServerMoveRecoveryExit,
   missingAddressGuidance,
   printServerMoveCheck,
   printServerMoveCheckItems,
+  printServerMoveRecovery,
   printServerMoveStatus,
   printServerMoveStatusResponse,
+  SERVER_MOVE_RECOVERY_EXIT_CODE,
+  serverMoveAbandonWarning,
 } from "./server-move.js";
 
 interface JsonCommandOptions {
@@ -47,6 +51,10 @@ interface ServerMoveCommandOptions extends JsonCommandOptions {
   address?: string;
   check?: boolean;
   archiveExistingData?: boolean;
+  yes?: boolean;
+}
+
+interface ServerMoveCancelCommandOptions extends JsonCommandOptions {
   yes?: boolean;
 }
 
@@ -238,6 +246,13 @@ async function runServerMove(
     STOPPED_FOLLOWING_MESSAGE,
   );
   outputJson(opts, outcome.status);
+  if (outcome.kind === "recovery") {
+    if (!opts.json) printServerMoveRecovery(outcome.status);
+    throw new CliExitError(
+      formatServerMoveRecoveryExit(outcome.status),
+      SERVER_MOVE_RECOVERY_EXIT_CODE,
+    );
+  }
   if (outcome.kind === "ended") {
     throw new CliExitError(formatServerMoveFailure(outcome.status), 1);
   }
@@ -281,23 +296,52 @@ export function registerServerCommands(
       action(async (opts: JsonCommandOptions) => {
         const response =
           await createCliBbSdk(getUrl()).experimental_server.moveStatus();
-        if (outputJson(opts, response)) return;
-        printServerMoveStatusResponse(response);
+        if (!outputJson(opts, response)) {
+          printServerMoveStatusResponse(response);
+        }
+        if (response.move?.state === "recovery_required") {
+          throw new CliExitError(
+            formatServerMoveRecoveryExit(response.move),
+            SERVER_MOVE_RECOVERY_EXIT_CODE,
+          );
+        }
       }),
     );
 
   move
     .command("cancel")
-    .description("Cancel the server move before the switch starts")
+    .description(
+      "Cancel the server move before the switch starts, or abandon a move that needs recovery",
+    )
+    .option(
+      "--yes",
+      "Skip the confirmation before abandoning a move that needs recovery",
+    )
     .option("--json", "Print machine-readable JSON output")
     .action(
-      action(async (opts: JsonCommandOptions) => {
-        const status =
-          await createCliBbSdk(getUrl()).experimental_server.cancelMove();
+      action(async (opts: ServerMoveCancelCommandOptions) => {
+        const sdk = createCliBbSdk(getUrl());
+        const { move: current } = await sdk.experimental_server.moveStatus();
+        if (current?.state === "recovery_required") {
+          for (const line of serverMoveAbandonWarning(current)) {
+            console.error(line);
+          }
+          if (
+            !opts.yes &&
+            !(await confirmDestructiveAction(
+              `Abandon the server move to ${current.targetHostName}?`,
+            ))
+          ) {
+            return;
+          }
+        }
+        const status = await sdk.experimental_server.cancelMove();
         if (outputJson(opts, status)) return;
         if (status.state === "cancelled") {
           console.log(
-            `Cancelled the server move to ${status.targetHostName}. The server stays where it is.`,
+            status.error?.step === "switch"
+              ? `Abandoned the server move to ${status.targetHostName}. The server stays on this computer.`
+              : `Cancelled the server move to ${status.targetHostName}. The server stays where it is.`,
           );
           return;
         }

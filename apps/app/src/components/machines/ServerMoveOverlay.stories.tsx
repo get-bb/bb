@@ -158,6 +158,35 @@ export function Progress() {
           }}
         />
       </StoryRow>
+      <StoryRow
+        label="needs recovery"
+        hint="the target never confirmed it took over, so the server stays up read-only while bb keeps checking; Abandon asks first"
+      >
+        <Overlay
+          content={{
+            kind: "recovery",
+            move: move({
+              state: "recovery_required",
+              error: {
+                step: "switch",
+                message: "desk disconnected before confirming",
+              },
+              steps: steps(
+                {
+                  "stop-work": "done",
+                  "update-target": "done",
+                  export: "done",
+                  transfer: "done",
+                  "start-target": "done",
+                  "verify-address": "skipped",
+                  switch: "running",
+                },
+                { switch: "Waiting for desk to confirm it took over" },
+              ),
+            }),
+          }}
+        />
+      </StoryRow>
     </StoryCard>
   );
 }

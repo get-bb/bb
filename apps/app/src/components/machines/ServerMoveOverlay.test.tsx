@@ -213,6 +213,107 @@ describe("ServerMoveOverlay", () => {
     });
   });
 
+  it("names the recovery exits and asks before abandoning a move that needs recovery", async () => {
+    const recovering = move({
+      state: "recovery_required",
+      cancellable: true,
+      error: { step: "switch", message: "desk disconnected before confirming" },
+      steps: steps({
+        "stop-work": "done",
+        "update-target": "done",
+        export: "done",
+        transfer: "done",
+        "start-target": "done",
+        "verify-address": "skipped",
+        switch: "running",
+      }),
+    });
+    const abandoned = move({
+      state: "cancelled",
+      cancellable: false,
+      finishedAt: 3_000,
+      error: {
+        step: "switch",
+        message: "The move was abandoned before desk confirmed it took over",
+      },
+      steps: steps({
+        "stop-work": "done",
+        "update-target": "done",
+        export: "done",
+        transfer: "done",
+        "start-target": "done",
+        "verify-address": "skipped",
+        switch: "skipped",
+      }),
+    });
+    vi.mocked(sdk.experimental_server.moveStatus).mockResolvedValue({
+      move: recovering,
+      lastMove: null,
+    });
+    vi.mocked(sdk.experimental_server.cancelMove).mockImplementation(
+      async () => {
+        vi.mocked(sdk.experimental_server.moveStatus).mockResolvedValue({
+          move: abandoned,
+          lastMove: null,
+        });
+        return abandoned;
+      },
+    );
+    renderOverlay();
+
+    const overlay = await screen.findByRole("dialog", {
+      name: "Couldn't confirm the switch to desk",
+    });
+    expect(
+      within(overlay).getByText(
+        "desk didn't confirm that it took over, so this server stays up but read-only. bb keeps checking and finishes the move as soon as desk answers.",
+      ),
+    ).toBeDefined();
+    expect(
+      within(overlay).getByText(
+        "If desk isn't running the server, abandon the move to keep the server here. If this server stops, run bb server unlock on this computer.",
+      ),
+    ).toBeDefined();
+    expect(stepStatus(overlay, "Switching machines over")).toBe("running");
+
+    fireEvent.click(
+      within(overlay).getByRole("button", { name: "Abandon move…" }),
+    );
+    expect(
+      vi.mocked(sdk.experimental_server.cancelMove),
+    ).not.toHaveBeenCalled();
+    expect(
+      within(overlay).getByText(
+        "Abandon only if desk isn't running the server. If it already took over, two servers will run with the same data.",
+      ),
+    ).toBeDefined();
+    fireEvent.click(
+      within(overlay).getByRole("button", { name: "Keep waiting" }),
+    );
+    expect(
+      within(overlay).queryByRole("button", { name: "Abandon move" }),
+    ).toBeNull();
+
+    fireEvent.click(
+      within(overlay).getByRole("button", { name: "Abandon move…" }),
+    );
+    fireEvent.click(
+      within(overlay).getByRole("button", { name: "Abandon move" }),
+    );
+
+    const ended = await screen.findByRole("dialog", {
+      name: "Server move abandoned",
+    });
+    expect(vi.mocked(sdk.experimental_server.cancelMove)).toHaveBeenCalledTimes(
+      1,
+    );
+    expect(
+      within(ended).getByText(
+        "The server keeps running here. If desk took over anyway, stop the server there.",
+      ),
+    ).toBeDefined();
+  });
+
   it("hides Cancel once the move is switching machines over", async () => {
     vi.mocked(sdk.experimental_server.moveStatus).mockResolvedValue({
       move: move({

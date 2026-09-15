@@ -301,6 +301,15 @@ function ServerMoveOverlayActions({
       </div>
     );
   }
+  if (content.kind === "recovery") {
+    return (
+      <ServerMoveRecoveryActions
+        targetHostName={content.move.targetHostName}
+        cancelPending={cancelPending}
+        onAbandon={onCancel}
+      />
+    );
+  }
   if (content.kind === "redirecting") {
     return (
       <div className="flex justify-end">
@@ -322,16 +331,75 @@ function ServerMoveOverlayActions({
   );
 }
 
+function ServerMoveRecoveryActions({
+  targetHostName,
+  cancelPending,
+  onAbandon,
+}: {
+  targetHostName: string;
+  cancelPending: boolean;
+  onAbandon: () => void;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  if (!confirming) {
+    return (
+      <div className="flex justify-end">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => setConfirming(true)}
+        >
+          Abandon move…
+        </Button>
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-3">
+      <p className="text-sm text-destructive-text">
+        {`Abandon only if ${targetHostName} isn't running the server. If it already took over, two servers will run with the same data.`}
+      </p>
+      <div className="flex justify-end gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          disabled={cancelPending}
+          onClick={() => setConfirming(false)}
+        >
+          Keep waiting
+        </Button>
+        <Button
+          type="button"
+          variant="destructive"
+          disabled={cancelPending}
+          onClick={onAbandon}
+        >
+          {cancelPending ? "Abandoning…" : "Abandon move"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function isAbandonedSwitch(move: ServerMoveStatus): boolean {
+  return move.state === "cancelled" && move.error?.step === "switch";
+}
+
 function overlayTitle(content: VisibleServerMoveOverlayContent): string {
   const name = content.move.targetHostName;
   switch (content.kind) {
     case "progress":
       return `Moving server to ${name}`;
+    case "recovery":
+      return `Couldn't confirm the switch to ${name}`;
     case "redirecting":
       return `Server moved to ${name}`;
     case "reconnecting":
       return `Reconnecting to ${name}…`;
     case "ended":
+      if (isAbandonedSwitch(content.move)) {
+        return "Server move abandoned";
+      }
       return content.move.state === "cancelled"
         ? "Server move cancelled"
         : `Couldn't move the server to ${name}`;
@@ -347,11 +415,16 @@ function overlayDescription(content: VisibleServerMoveOverlayContent): string {
       return content.move.state === "switching"
         ? `Every machine and app is switching over to ${name}. The move can't be cancelled now.`
         : `bb is copying the server to ${name}. Every app shows this screen until the move finishes.`;
+    case "recovery":
+      return `${name} didn't confirm that it took over, so this server stays up but read-only. bb keeps checking and finishes the move as soon as ${name} answers.`;
     case "redirecting":
       return `Opening the server at ${content.move.serverUrl}…`;
     case "reconnecting":
       return `The server on ${name} is starting. This page reconnects as soon as it answers.`;
     case "ended":
+      if (isAbandonedSwitch(content.move)) {
+        return `The server keeps running here. If ${name} took over anyway, stop the server there.`;
+      }
       return content.move.state === "cancelled"
         ? "The server keeps running where it was."
         : (content.move.error?.message ??
@@ -362,6 +435,10 @@ function overlayDescription(content: VisibleServerMoveOverlayContent): string {
 }
 
 function overlayNote(content: VisibleServerMoveOverlayContent): string | null {
+  if (content.kind === "recovery") {
+    const name = content.move.targetHostName;
+    return `If ${name} isn't running the server, abandon the move to keep the server here. If this server stops, run bb server unlock on this computer.`;
+  }
   if (
     content.kind === "ended" &&
     content.move.state === "failed" &&

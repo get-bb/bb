@@ -6,6 +6,7 @@ import {
   type ServerMoveCheckItem,
   type ServerMoveCheckResponse,
   type ServerMoveCheckSeverity,
+  type ServerMoveState,
   type ServerMoveStatus,
   type ServerMoveStatusResponse,
   type ServerMoveStep,
@@ -16,6 +17,7 @@ import { CliExitError } from "../action.js";
 import { getErrorMessage } from "./helpers.js";
 
 export const SERVER_MOVE_POLL_INTERVAL_MS = 1_000;
+export const SERVER_MOVE_RECOVERY_EXIT_CODE = 2;
 const MAX_CONSECUTIVE_STATUS_FAILURES = 5;
 const SERVER_MOVED_ERROR_CODE = "server_moved";
 const SERVER_MOVE_BLOCKED_ERROR_CODE = "server_move_blocked";
@@ -56,6 +58,7 @@ const blockedErrorBodySchema = z.object({
 
 export type ServerMoveFollowOutcome =
   | { kind: "moved"; status: ServerMoveStatus }
+  | { kind: "recovery"; status: ServerMoveStatus }
   | { kind: "ended"; status: ServerMoveStatus };
 
 export interface FollowServerMoveArgs {
@@ -184,6 +187,44 @@ const STEP_STATUS_LABELS: Record<ServerMoveStepStatus, string> = {
   skipped: "skipped",
 };
 
+const STATE_LABELS: Record<ServerMoveState, string> = {
+  preparing: "preparing",
+  switching: "switching",
+  recovery_required: "recovery required",
+  completed: "completed",
+  failed: "failed",
+  cancelled: "cancelled",
+};
+
+export function serverMoveRecoveryGuidance(status: ServerMoveStatus): string[] {
+  const name = status.targetHostName;
+  const problem = status.error === null ? "" : ` (${status.error.message})`;
+  return [
+    `bb couldn't confirm that ${name} took over${problem}.`,
+    `This server stays up but read-only, and bb finishes the move on its own as soon as ${name} answers.`,
+    `If ${name} isn't running the server, run bb server move cancel --yes to abandon the move and keep the server here.`,
+    "If this server stops, run bb server unlock on this computer.",
+  ];
+}
+
+export function printServerMoveRecovery(status: ServerMoveStatus): void {
+  for (const line of serverMoveRecoveryGuidance(status)) {
+    console.log(line);
+  }
+}
+
+export function formatServerMoveRecoveryExit(status: ServerMoveStatus): string {
+  return `The move to ${status.targetHostName} wasn't confirmed and needs recovery.`;
+}
+
+export function serverMoveAbandonWarning(status: ServerMoveStatus): string[] {
+  const name = status.targetHostName;
+  return [
+    `The move to ${name} wasn't confirmed. Abandoning rolls back the switch and keeps the server on this computer.`,
+    `If ${name} already took over, two servers will run with the same data and bb connect credential. Stop the server on ${name} first.`,
+  ];
+}
+
 function reportStepChanges(
   status: ServerMoveStatus,
   reported: Map<ServerMoveStepId, string>,
@@ -209,6 +250,9 @@ export async function followServerMove(
   for (;;) {
     reportStepChanges(status, reported, args.report);
     if (status.state === "completed") return { kind: "moved", status };
+    if (status.state === "recovery_required") {
+      return { kind: "recovery", status };
+    }
     if (status.state === "failed" || status.state === "cancelled") {
       return { kind: "ended", status };
     }
@@ -259,7 +303,7 @@ export function formatServerMoveFailure(status: ServerMoveStatus): string {
 
 export function printServerMoveStatus(status: ServerMoveStatus): void {
   console.log(
-    `Moving the bb server to ${status.targetHostName} (${status.state})`,
+    `Moving the bb server to ${status.targetHostName} (${STATE_LABELS[status.state]})`,
   );
   console.log(`Address: ${status.serverUrl} (${describeMode(status.mode)})`);
   console.log(`Started: ${new Date(status.startedAt).toLocaleString()}`);
@@ -271,6 +315,11 @@ export function printServerMoveStatus(status: ServerMoveStatus): void {
     console.log(
       `  ${STEP_STATUS_LABELS[step.status].padEnd(8)} ${serverMoveStepLabel(step.id, status.targetHostName)}${formatStepMessage(step)}`,
     );
+  }
+  if (status.state === "recovery_required") {
+    console.log("");
+    printServerMoveRecovery(status);
+    return;
   }
   if (status.error !== null) {
     console.log("");

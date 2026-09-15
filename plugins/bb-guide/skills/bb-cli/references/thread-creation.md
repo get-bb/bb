@@ -223,10 +223,16 @@ app will use to reach the new server. When the target already has bb server
 data, pass `--archive-existing-data` to move it aside; it is never merged.
 Without `--check`, the command confirms (pass `--yes` in a non-interactive
 shell), stops all running work, and follows the steps. It exits 0 once the
-server has moved and nonzero when the move fails or is cancelled; `--json`
-prints the final status. SIGINT stops following while the move continues.
-`bb server move status` shows the steps or the last move, and
-`bb server move cancel` cancels before the switch starts.
+server has moved, 1 when the move fails or is cancelled, and 2 when the target
+never confirmed the switch; `--json` prints the final status. SIGINT stops
+following while the move continues. `bb server move status` shows the steps or
+the last move and also exits 2 while a move needs recovery.
+`bb server move cancel` cancels before the switch starts. While a move needs
+recovery (`recovery_required`: the old server stays up read-only and keeps
+retrying activation and checking `<serverUrl>/health`), cancel abandons it,
+rolling back the lock and `config.json` and keeping the server here; it warns
+and asks first because a target that already took over would leave two
+servers, and `--yes` skips the question.
 
 `bb server export --out <file>` writes a gzip archive of a running server with
 file mode 0600 and keeps it only when it matches the SHA-256 digest the server

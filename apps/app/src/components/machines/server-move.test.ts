@@ -119,19 +119,21 @@ describe("canMoveServerHere", () => {
     ).toBe(false);
   });
 
-  it.each(["preparing", "switching", "completed"] as const)(
-    "refuses while a move is %s",
-    (state) => {
-      expect(
-        canMoveServerHere({
-          host: eligible,
-          primaryHostId: "host_laptop",
-          move: move({ state }),
-          serverMoveEnabled: true,
-        }),
-      ).toBe(false);
-    },
-  );
+  it.each([
+    "preparing",
+    "switching",
+    "recovery_required",
+    "completed",
+  ] as const)("refuses while a move is %s", (state) => {
+    expect(
+      canMoveServerHere({
+        host: eligible,
+        primaryHostId: "host_laptop",
+        move: move({ state }),
+        serverMoveEnabled: true,
+      }),
+    ).toBe(false);
+  });
 
   it("allows a new move after the previous one failed", () => {
     expect(
@@ -228,6 +230,35 @@ describe("resolveServerMoveOverlay", () => {
         location: LOCATION,
       }),
     ).toEqual({ kind: "progress", move: next });
+  });
+
+  it("shows the recovery arm for a move that needs recovery, polling only without realtime", () => {
+    const recovering = move({
+      state: "recovery_required",
+      error: { step: "switch", message: "desk disconnected before confirming" },
+    });
+    const content = resolveServerMoveOverlay({
+      response: { move: recovering, lastMove: null },
+      error: null,
+      followed: null,
+      dismissedMoveId: null,
+      location: LOCATION,
+    });
+    expect(content).toEqual({ kind: "recovery", move: recovering });
+    expect(
+      serverMoveOverlayPollIntervalMs({
+        content,
+        realtimeConnected: true,
+        intervalMs: 500,
+      }),
+    ).toBeNull();
+    expect(
+      serverMoveOverlayPollIntervalMs({
+        content,
+        realtimeConnected: false,
+        intervalMs: 500,
+      }),
+    ).toBe(500);
   });
 
   it("polls while switching or reconnecting, and while preparing only without realtime", () => {

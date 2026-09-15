@@ -26,6 +26,7 @@ export type ServerMoveStep = z.infer<typeof serverMoveStepSchema>;
 export const serverMoveStateSchema = z.enum([
   "preparing",
   "switching",
+  "recovery_required",
   "completed",
   "failed",
   "cancelled",

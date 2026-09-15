@@ -198,6 +198,7 @@ checkouts stay on the machines that own them.
     --json                                Print the final move status
   bb server move status                   Show the steps, or the last move
   bb server move cancel                   Cancel before the switch starts
+    --yes                                 Abandon a move that needs recovery without asking
   bb server export --out <file>           Export a running server
   bb server import <file>                 Install an export on this computer
     --data-dir <dir>                      Target data directory
@@ -205,6 +206,14 @@ checkouts stay on the machines that own them.
     --force                               Skip the new-server health check
   bb server allow-connect                 Turn bb connect on for an imported copy
   bb server delete-old-copy               Delete the old copy a move left here
+
+When the target never confirms that it took over, the move waits in
+`recovery_required`: the old server stays up and read-only, and bb finishes the
+move on its own once the target answers. `bb server move` and
+`bb server move status` exit 2 in that state and name the exits:
+`bb server move cancel` abandons the move and keeps the server here (it asks
+first, since abandoning while the target took over leaves two servers; `--yes`
+skips the question), and `bb server unlock` recovers an old copy that stopped.
 
 `--check` exits nonzero while a blocker remains. With bb connect, machines and
 apps keep the same URL. A direct-address server needs `--address`: the URL every

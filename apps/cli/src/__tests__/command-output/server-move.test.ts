@@ -113,6 +113,39 @@ function step(
   return { id, status, message };
 }
 
+function recovering(): ServerMoveStatus {
+  return moveStatus(
+    "recovery_required",
+    {
+      "stop-work": step("stop-work", "done"),
+      "update-target": step("update-target", "skipped"),
+      export: step("export", "done"),
+      transfer: step("transfer", "done"),
+      "start-target": step("start-target", "done"),
+      "verify-address": step("verify-address", "skipped"),
+      switch: step(
+        "switch",
+        "running",
+        "Waiting for desktop to confirm it took over",
+      ),
+    },
+    {
+      cancellable: true,
+      error: {
+        step: "switch",
+        message: "desktop disconnected before confirming",
+      },
+    },
+  );
+}
+
+const RECOVERY_GUIDANCE = [
+  "bb couldn't confirm that desktop took over (desktop disconnected before confirming).",
+  "This server stays up but read-only, and bb finishes the move on its own as soon as desktop answers.",
+  "If desktop isn't running the server, run bb server move cancel --yes to abandon the move and keep the server here.",
+  "If this server stops, run bb server unlock on this computer.",
+];
+
 function statusResponse(
   move: ServerMoveStatus | null,
   lastMove: ServerMoveStatusResponse["lastMove"] = null,
@@ -562,6 +595,26 @@ describe("bb server move", () => {
     );
   });
 
+  it("exits 2 with the recovery exits when the switch is not confirmed", async () => {
+    stubServerApi({
+      "v1.hosts.$get": vi.fn(async () => [desktop]),
+      "v1.server.move.check.$post": vi.fn(async () => check()),
+      "v1.server.move.$post": vi.fn(async () => moveStatus("preparing")),
+      "v1.server.move.$get": vi.fn(async () => statusResponse(recovering())),
+    });
+
+    await expect(
+      runCommand(["server", "move", "--to", "desktop", "--yes"], register),
+    ).rejects.toThrow("process.exit:2");
+
+    expect(collectLogPayloads(vi.mocked(console.log)).slice(-4)).toEqual(
+      RECOVERY_GUIDANCE,
+    );
+    expect(collectLogPayloads(vi.mocked(console.error)).at(-1)).toBe(
+      "Error: The move to desktop wasn't confirmed and needs recovery.",
+    );
+  });
+
   it("fails when the server forgets the move before the switch", async () => {
     stubServerApi({
       "v1.hosts.$get": vi.fn(async () => [desktop]),
@@ -740,6 +793,42 @@ describe("bb server move status and cancel", () => {
     );
   });
 
+  it("status explains a move that needs recovery and exits 2", async () => {
+    stubServerApi({
+      "v1.server.move.$get": vi.fn(async () => statusResponse(recovering())),
+    });
+
+    await expect(
+      runCommand(["server", "move", "status"], register),
+    ).rejects.toThrow("process.exit:2");
+
+    const payloads = collectLogPayloads(vi.mocked(console.log));
+    expect(payloads[0]).toBe(
+      "Moving the bb server to desktop (recovery required)",
+    );
+    expect(payloads).toContain(
+      "  running  Switch machines over: Waiting for desktop to confirm it took over",
+    );
+    expect(payloads.slice(-4)).toEqual(RECOVERY_GUIDANCE);
+    expect(payloads).not.toContain("Cancel it with bb server move cancel.");
+    expect(collectLogPayloads(vi.mocked(console.error))).toEqual([
+      "Error: The move to desktop wasn't confirmed and needs recovery.",
+    ]);
+  });
+
+  it("status --json prints the move that needs recovery and still exits 2", async () => {
+    const response = statusResponse(recovering());
+    stubServerApi({ "v1.server.move.$get": vi.fn(async () => response) });
+
+    await expect(
+      runCommand(["server", "move", "status", "--json"], register),
+    ).rejects.toThrow("process.exit:2");
+
+    const payloads = collectLogPayloads(vi.mocked(console.log));
+    expect(payloads).toHaveLength(1);
+    expect(JSON.parse(payloads[0]!)).toEqual(response);
+  });
+
   it("cancel reports the cancelled move", async () => {
     const cancel = vi.fn(async () =>
       moveStatus(
@@ -748,18 +837,75 @@ describe("bb server move status and cancel", () => {
         { error: { step: "export", message: "The move was cancelled" } },
       ),
     );
-    stubServerApi({ "v1.server.move.cancel.$post": cancel });
+    stubServerApi({
+      "v1.server.move.$get": vi.fn(async () =>
+        statusResponse(moveStatus("preparing")),
+      ),
+      "v1.server.move.cancel.$post": cancel,
+    });
 
     await runCommand(["server", "move", "cancel"], register);
 
     expect(cancel).toHaveBeenCalledOnce();
+    expect(readlineMocks.question).not.toHaveBeenCalled();
     expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
       "Cancelled the server move to desktop. The server stays where it is.",
     ]);
   });
 
+  it("cancel warns and asks before abandoning a move that needs recovery", async () => {
+    const cancel = vi.fn();
+    stubServerApi({
+      "v1.server.move.$get": vi.fn(async () => statusResponse(recovering())),
+      "v1.server.move.cancel.$post": cancel,
+    });
+    readlineMocks.question.mockResolvedValue("n");
+
+    await runCommand(["server", "move", "cancel"], register);
+
+    expect(cancel).not.toHaveBeenCalled();
+    expect(readlineMocks.question).toHaveBeenCalledWith(
+      "Abandon the server move to desktop? [y/N] ",
+    );
+    expect(collectLogPayloads(vi.mocked(console.error))).toEqual([
+      "The move to desktop wasn't confirmed. Abandoning rolls back the switch and keeps the server on this computer.",
+      "If desktop already took over, two servers will run with the same data and bb connect credential. Stop the server on desktop first.",
+    ]);
+  });
+
+  it("cancel --yes abandons a move that needs recovery", async () => {
+    const cancel = vi.fn(async () =>
+      moveStatus(
+        "cancelled",
+        {},
+        {
+          error: {
+            step: "switch",
+            message:
+              "The move was abandoned before desktop confirmed it took over",
+          },
+        },
+      ),
+    );
+    stubServerApi({
+      "v1.server.move.$get": vi.fn(async () => statusResponse(recovering())),
+      "v1.server.move.cancel.$post": cancel,
+    });
+
+    await runCommand(["server", "move", "cancel", "--yes"], register);
+
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(readlineMocks.question).not.toHaveBeenCalled();
+    expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
+      "Abandoned the server move to desktop. The server stays on this computer.",
+    ]);
+  });
+
   it("cancel surfaces the server's refusal after the switch starts", async () => {
     stubServerApi({
+      "v1.server.move.$get": vi.fn(async () =>
+        statusResponse(moveStatus("switching")),
+      ),
       "v1.server.move.cancel.$post": vi.fn(async () =>
         errorResponse(409, {
           code: "server_move_not_cancellable",

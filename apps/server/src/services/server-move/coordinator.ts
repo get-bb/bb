@@ -68,6 +68,7 @@ export interface ServerMoveTimings {
   pluginShutdownTimeoutMs: number;
   prepareTimeoutMs: number;
   probeTimeoutMs: number;
+  recoveryProbeIntervalMs: number;
   retireDelayMs: number;
   stopWorkTimeoutMs: number;
 }
@@ -125,6 +126,7 @@ export interface ResolveServerMoveDownloadArgs {
 export interface ServerMoveCoordinator {
   cancel(): ServerMoveStatus;
   check(request: ServerMoveCheckRequest): Promise<ServerMoveCheckResponse>;
+  dispose(): void;
   getStatus(): ServerMoveStatus | null;
   handleProgress(hostId: string, message: ServerMoveProgressMessage): void;
   isFrozen(): boolean;
@@ -142,16 +144,19 @@ interface MoveHost {
 
 interface MoveRun {
   abort: AbortController;
+  activationRequestedAt: number | null;
   activationToken: string;
   archive: ServerArchiveExport | null;
   archiveExistingTargetServerData: boolean;
   bbApp: FullBbAppArtifact | null;
+  configBackup: OldServerDaemonConfigBackup | null;
   connectHandle: string | null;
   finished: boolean;
   frozen: boolean;
   grant: ServerMoveGrant | null;
   movedAt: number | null;
   pluginsSuspended: boolean;
+  recovery: AbortController | null;
   sourceServerHost: MoveHost;
   status: ServerMoveStatus;
   workDir: string;
@@ -215,6 +220,16 @@ export function describeServerMoveError(error: unknown): string {
       ? "The machine couldn't unpack the export"
       : null);
   return summary === null ? error.message : `${summary}: ${error.message}`;
+}
+
+export function isServerMoveInFlight(status: ServerMoveStatus | null): boolean {
+  return (
+    status !== null &&
+    (status.state === "preparing" ||
+      status.state === "switching" ||
+      status.state === "recovery_required" ||
+      status.state === "completed")
+  );
 }
 
 function formatBytes(bytes: number): string {
@@ -290,12 +305,7 @@ export function createServerMoveCoordinator(
   }
 
   function isBlocking(move: MoveRun | null): boolean {
-    return (
-      move !== null &&
-      (move.status.state === "preparing" ||
-        move.status.state === "switching" ||
-        move.status.state === "completed")
-    );
+    return move !== null && isServerMoveInFlight(move.status);
   }
 
   function findStep(move: MoveRun, id: ServerMoveStepId): ServerMoveStep {
@@ -771,7 +781,6 @@ export function createServerMoveCoordinator(
     move.status.state = "switching";
     setStep(move, "switch", "running", `Switching to ${targetName}`);
     const movedAt = environment.now();
-    let configBackup: OldServerDaemonConfigBackup | null = null;
     try {
       await lockOldServerDataDir(deps.config.dataDir, {
         version: 1,
@@ -785,40 +794,239 @@ export function createServerMoveCoordinator(
         connectHandle: move.connectHandle,
         oldCopyEntries: archive.oldCopyEntries,
       });
-      configBackup = await writeOldServerDaemonConfig({
+      move.configBackup = await writeOldServerDaemonConfig({
         dataDir: deps.config.dataDir,
         headers: grant.headers,
         serverUrl: grant.serverUrl,
       });
     } catch (error) {
-      await rollbackSwitchFiles(configBackup);
+      await rollbackSwitchFiles(move.configBackup);
       throw error;
     }
-    const activation = await activateTarget(move, environment.now());
+    move.activationRequestedAt = environment.now();
+    const activation = await activateTarget(move, move.activationRequestedAt);
     if (activation.outcome === "refused") {
-      await rollbackSwitchFiles(configBackup);
+      await rollbackSwitchFiles(move.configBackup);
       throw new Error(activation.message);
     }
     move.finished = true;
     move.movedAt = movedAt;
     if (activation.outcome === "unconfirmed") {
-      deps.logger.warn(
-        {
-          err: activation.message,
-          moveId: move.status.moveId,
-          targetHostId: move.status.targetHostId,
-        },
-        "Server move target did not confirm activation; continuing the switch",
-      );
+      enterRecovery(move, grant, activation.message);
+      return;
     }
+    await completeSwitch(move, grant);
+  }
+
+  async function completeSwitch(
+    move: MoveRun,
+    grant: ServerMoveGrant,
+  ): Promise<void> {
+    move.status.state = "switching";
+    move.status.cancellable = false;
+    notify();
     await stopPlugins(move);
     sendServerMoved(move, grant);
     move.status.state = "completed";
+    move.status.error = null;
     move.status.finishedAt = environment.now();
-    setStep(move, "switch", "done", `The server now runs on ${targetName}`);
+    setStep(
+      move,
+      "switch",
+      "done",
+      `The server now runs on ${move.status.targetHostName}`,
+    );
     setTimeout(() => {
       environment.retireProcess();
     }, timings.retireDelayMs);
+  }
+
+  function enterRecovery(
+    move: MoveRun,
+    grant: ServerMoveGrant,
+    message: string,
+  ): void {
+    deps.logger.warn(
+      {
+        err: message,
+        moveId: move.status.moveId,
+        targetHostId: move.status.targetHostId,
+      },
+      "Server move target did not confirm activation; keeping this server up until it does",
+    );
+    move.status.state = "recovery_required";
+    move.status.cancellable = true;
+    move.status.error = { step: "switch", message };
+    const recovery = new AbortController();
+    move.recovery = recovery;
+    setStep(
+      move,
+      "switch",
+      "running",
+      `Waiting for ${move.status.targetHostName} to confirm it took over`,
+    );
+    void runRecovery(move, grant, recovery.signal).catch((error: unknown) => {
+      deps.logger.error(
+        { err: error, moveId: move.status.moveId },
+        "Server move recovery stopped unexpectedly",
+      );
+    });
+  }
+
+  function isRecovering(move: MoveRun, signal: AbortSignal): boolean {
+    return (
+      !signal.aborted &&
+      current === move &&
+      move.status.state === "recovery_required"
+    );
+  }
+
+  async function runRecovery(
+    move: MoveRun,
+    grant: ServerMoveGrant,
+    signal: AbortSignal,
+  ): Promise<void> {
+    while (isRecovering(move, signal)) {
+      const confirmed = await confirmRecoveredActivation(move);
+      if (!isRecovering(move, signal)) {
+        return;
+      }
+      if (confirmed) {
+        move.recovery = null;
+        deps.logger.info(
+          {
+            moveId: move.status.moveId,
+            targetHostId: move.status.targetHostId,
+          },
+          "Server move target confirmed activation after recovery",
+        );
+        await completeSwitch(move, grant);
+        return;
+      }
+      await waitForRecoveryTick(move, signal);
+    }
+  }
+
+  async function confirmRecoveredActivation(move: MoveRun): Promise<boolean> {
+    const targetHostId = move.status.targetHostId;
+    if (deps.hub.hasDaemonForHost(targetHostId)) {
+      try {
+        await requestActivation(
+          move,
+          requireValue(move.activationRequestedAt, "its activation time"),
+          timings.activateAttemptTimeoutMs,
+        );
+        return true;
+      } catch (error) {
+        if (isAlreadyActivatedError(error)) {
+          return true;
+        }
+        deps.logger.warn(
+          { err: error, moveId: move.status.moveId, targetHostId },
+          "Server move activation retry was not confirmed",
+        );
+      }
+    }
+    return destinationReportsReady(move);
+  }
+
+  function recoveryProbeHostId(move: MoveRun): string | null {
+    const sourceHostId = move.sourceServerHost.id;
+    if (deps.hub.hasDaemonForHost(sourceHostId)) {
+      return sourceHostId;
+    }
+    return (
+      listNonDestroyedHostsByIds(deps.db, deps.hub.listConnectedHostIds()).find(
+        (host) =>
+          host.type === "persistent" && host.id !== move.status.targetHostId,
+      )?.id ?? null
+    );
+  }
+
+  async function destinationReportsReady(move: MoveRun): Promise<boolean> {
+    const hostId = recoveryProbeHostId(move);
+    if (hostId === null) {
+      return false;
+    }
+    try {
+      const probe = await callHostOnlineRpc(deps, {
+        hostId,
+        timeoutMs: timings.probeTimeoutMs,
+        command: {
+          type: "server_move.probe",
+          url: move.status.serverUrl,
+          moveId: move.status.moveId,
+        },
+      });
+      return probe.reachable && probe.state === "ready";
+    } catch (error) {
+      deps.logger.warn(
+        { err: error, hostId, moveId: move.status.moveId },
+        "Server move could not check the new server during recovery",
+      );
+      return false;
+    }
+  }
+
+  async function waitForRecoveryTick(
+    move: MoveRun,
+    signal: AbortSignal,
+  ): Promise<void> {
+    const targetHostId = move.status.targetHostId;
+    if (!deps.hub.hasDaemonForHost(targetHostId)) {
+      await deps.hub.waitForDaemonForHost(
+        targetHostId,
+        timings.recoveryProbeIntervalMs,
+      );
+      return;
+    }
+    await sleep(timings.recoveryProbeIntervalMs, undefined, { signal }).catch(
+      () => undefined,
+    );
+  }
+
+  function abandonRecovery(move: MoveRun): ServerMoveStatus {
+    move.recovery?.abort();
+    move.recovery = null;
+    const message = `The move was abandoned before ${move.status.targetHostName} confirmed it took over`;
+    const step = findStep(move, "switch");
+    step.status = "skipped";
+    step.message = message;
+    move.status.state = "cancelled";
+    move.status.error = { step: "switch", message };
+    move.status.cancellable = false;
+    move.status.finishedAt = environment.now();
+    move.frozen = false;
+    setServerMoveSnapshotFence(deps.db, false);
+    notify();
+    deps.logger.warn(
+      { moveId: move.status.moveId, targetHostId: move.status.targetHostId },
+      "Server move abandoned before the target confirmed activation",
+    );
+    void finishAbandon(move);
+    return structuredClone(move.status);
+  }
+
+  async function finishAbandon(move: MoveRun): Promise<void> {
+    await rollbackSwitchFiles(move.configBackup);
+    await Promise.all([resumeFrozenWork(move), abortTargetWhenReachable(move)]);
+  }
+
+  async function abortTargetWhenReachable(move: MoveRun): Promise<void> {
+    const targetHostId = move.status.targetHostId;
+    if (
+      !(await deps.hub.waitForDaemonForHost(
+        targetHostId,
+        timings.abortTimeoutMs,
+      ))
+    ) {
+      deps.logger.warn(
+        { moveId: move.status.moveId, targetHostId },
+        "Server move abort could not reach the target machine",
+      );
+      return;
+    }
+    await sendAbort(move);
   }
 
   async function sendAbort(move: MoveRun): Promise<void> {
@@ -829,6 +1037,17 @@ export function createServerMoveCoordinator(
         command: { type: "server_move.abort", moveId: move.status.moveId },
       });
     } catch (error) {
+      if (isAlreadyActivatedError(error)) {
+        deps.logger.error(
+          {
+            err: error,
+            moveId: move.status.moveId,
+            targetHostId: move.status.targetHostId,
+          },
+          "The target machine already activated the moved server; stop one of the two servers",
+        );
+        return;
+      }
       deps.logger.warn(
         {
           err: error,
@@ -922,6 +1141,9 @@ export function createServerMoveCoordinator(
   return {
     cancel() {
       const move = current;
+      if (move?.status.state === "recovery_required") {
+        return abandonRecovery(move);
+      }
       if (
         move === null ||
         move.status.state !== "preparing" ||
@@ -948,6 +1170,10 @@ export function createServerMoveCoordinator(
         request,
       });
       return result.response;
+    },
+
+    dispose() {
+      current?.recovery?.abort();
     },
 
     getStatus() {
@@ -1073,17 +1299,20 @@ export function createServerMoveCoordinator(
         const moveId = randomUUID();
         const move: MoveRun = {
           abort: new AbortController(),
+          activationRequestedAt: null,
           activationToken: randomBytes(32).toString("base64url"),
           archive: null,
           archiveExistingTargetServerData:
             request.archiveExistingTargetServerData,
           bbApp: null,
+          configBackup: null,
           connectHandle: mode.mode === "connect" ? mode.connectHandle : null,
           finished: false,
           frozen: false,
           grant: null,
           movedAt: null,
           pluginsSuspended: false,
+          recovery: null,
           sourceServerHost: {
             id: sourceServerHost.id,
             name: sourceServerHost.name,
