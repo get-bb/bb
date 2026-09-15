@@ -90,18 +90,13 @@ export function mergeImportedManagedConfig(
   if (Object.keys(configValues).length > 0) {
     merged.config = configValues;
   }
-  const customModels =
-    importedConfig.customModels ?? existingConfig.customModels;
+  const { customAcpAgents, customModels, sharedSkillRoots } = importedConfig;
   if (customModels !== undefined && customModels.length > 0) {
     merged.customModels = customModels;
   }
-  const customAcpAgents =
-    importedConfig.customAcpAgents ?? existingConfig.customAcpAgents;
   if (customAcpAgents !== undefined && customAcpAgents.length > 0) {
     merged.customAcpAgents = customAcpAgents;
   }
-  const sharedSkillRoots =
-    importedConfig.sharedSkillRoots ?? existingConfig.sharedSkillRoots;
   if (sharedSkillRoots !== undefined) {
     merged.sharedSkillRoots = sharedSkillRoots;
   }

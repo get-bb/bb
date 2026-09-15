@@ -197,10 +197,23 @@ describe("mergeImportedManagedConfig", () => {
 
     expect(merged).toEqual({
       config: { BB_LOG_LEVEL: "info", BB_APP_URL: "https://target.example" },
-      customModels: [{ providerId: "codex", model: "gpt-5.4" }],
       customAcpAgents: [{ id: "raw-agent", futureField: 1 }],
       serverUrl: "http://127.0.0.1:39886",
     });
+  });
+
+  it("takes custom models, ACP agents, and shared skill roots only from the imported server", () => {
+    expect(
+      mergeImportedManagedConfig({
+        importedConfig: {},
+        existingConfig: {
+          customModels: [{ providerId: "codex", model: "target-model" }],
+          customAcpAgents: [{ id: "target-agent" }],
+          sharedSkillRoots: { user: ["~/target-skills"], project: [] },
+        },
+        localServerUrl: null,
+      }),
+    ).toEqual({});
   });
 
   it("omits serverUrl when no local server address is known and lets empty imported lists win", () => {
