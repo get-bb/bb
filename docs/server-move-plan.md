@@ -213,8 +213,12 @@ All refuse requests authenticated by a machine credential.
   nothing writes during the update or after the snapshot. Suspending and the
   later plugin shutdown are each time-boxed at 30 seconds; on expiry the move
   logs a warning and continues, and retirement's forced exit covers a hung
-  tunnel. A failed or cancelled move resumes the suspended plugins. SQLite
-  databases are copied with the online backup API.
+  tunnel. A failed, cancelled, or abandoned move lifts the freeze at once, so
+  writes, dispatch, and sweeps work again without waiting for plugins, then
+  resumes the suspended plugins and plugin schedules. Plugin suspend, resume,
+  and stop run one at a time, and a move whose release runs after a newer move
+  took over resumes and unfreezes nothing; the newer move owns the plugins.
+  SQLite databases are copied with the online backup API.
 - **Switch order:** write the lock and the old computer's `config.json`, send
   `server_move.activate` while the tunnel is still up (retrying while the
   target session exists), stop plugins (the old tunnel closes), send

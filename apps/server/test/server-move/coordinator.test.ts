@@ -995,7 +995,8 @@ describe("server move coordinator", () => {
         error: { step: "transfer", message: "The move was cancelled" },
       });
       expect(coordinator.isFrozen()).toBe(false);
-      await expect.poll(() => isServerMoveFrozen(harness.db)).toBe(false);
+      expect(isServerMoveFrozen(harness.db)).toBe(false);
+      await expect.poll(() => events.includes("schedules:resumed")).toBe(true);
       expect(events.indexOf("plugins:resume")).toBeLessThan(
         events.indexOf("schedules:resumed"),
       );
@@ -1327,8 +1328,9 @@ describe("server move coordinator", () => {
           },
         });
         expect(coordinator.isFrozen()).toBe(false);
-        await expect.poll(() => isServerMoveFrozen(harness.db)).toBe(false);
-        expect(plugins).toMatchObject({ paused: false, resumes: 1, stops: 0 });
+        expect(isServerMoveFrozen(harness.db)).toBe(false);
+        await expect.poll(() => plugins.paused).toBe(false);
+        expect(plugins).toMatchObject({ resumes: 1, stops: 0 });
         expect(await readServerMovedFile(harness.config.dataDir)).toBeNull();
         expect(JSON.parse(await readFile(config.path, "utf8"))).toEqual(
           JSON.parse(config.text),
@@ -1417,7 +1419,7 @@ describe("server move coordinator", () => {
       expect(coordinator.isFrozen()).toBe(false);
     }));
 
-  it("keeps a newer move frozen when the cancelled move's plugins finish resuming late", () =>
+  it("keeps a newer move frozen and suspends its plugins only after the cancelled move's slow resume finishes", () =>
     withTestHarness(async (harness) => {
       seedTopology(harness);
       const base = createTestServerMoveEnvironment(harness);
@@ -1430,6 +1432,7 @@ describe("server move coordinator", () => {
           resumeSuspended: async () => {
             await base.environment.plugins.resumeSuspended();
             await slowResume.promise;
+            events.push("plugins:resume:settled");
           },
         },
       });
@@ -1459,16 +1462,22 @@ describe("server move coordinator", () => {
       await expect.poll(() => prepares).toBe(1);
       coordinator.cancel();
       await expect.poll(() => plugins.resumes).toBe(1);
-      expect(isServerMoveFrozen(harness.db)).toBe(true);
 
       await coordinator.start(START_DIRECT);
-      await expect.poll(() => prepares).toBe(2);
-      slowResume.resolve();
+      await expect
+        .poll(() => coordinator.getStatus()?.steps[0]?.message)
+        .toBe("Pausing plugins");
       await new Promise<void>((resolve) => setTimeout(resolve, 20));
+      expect(plugins.suspends).toBe(1);
+      slowResume.resolve();
+      await expect.poll(() => prepares).toBe(2);
 
       expect(coordinator.getStatus()?.state).toBe("preparing");
       expect(isServerMoveFrozen(harness.db)).toBe(true);
-      expect(plugins.paused).toBe(true);
+      expect(plugins).toMatchObject({ paused: true, resumes: 1, suspends: 2 });
+      expect(events.indexOf("plugins:resume:settled")).toBeLessThan(
+        events.lastIndexOf("plugins:suspend"),
+      );
       expect(events).not.toContain("deferred-work:resumed");
 
       secondPrepare.resolve(
@@ -1476,6 +1485,107 @@ describe("server move coordinator", () => {
       );
       await expect.poll(() => events.includes("retire")).toBe(true);
       expect(coordinator.getStatus()?.state).toBe("completed");
+    }));
+
+  it("resumes nothing for a cancelled move whose release runs after a newer move took over", () =>
+    withTestHarness(async (harness) => {
+      seedTopology(harness);
+      const base = createTestServerMoveEnvironment(harness);
+      const { events, plugins } = base;
+      const firstSuspension = createDeferredPromise<void>();
+      let suspensions = 0;
+      const coordinator = createServerMoveCoordinator({
+        ...base.environment,
+        plugins: {
+          ...base.environment.plugins,
+          suspendAllButConnect: async () => {
+            suspensions += 1;
+            await base.environment.plugins.suspendAllButConnect();
+            if (suspensions === 1) {
+              await firstSuspension.promise;
+            }
+          },
+        },
+      });
+      registerFakeDaemon(harness, { events, hostId: OLD, handle: probeReply });
+      registerFakeDaemon(harness, {
+        events,
+        hostId: WORKER,
+        handle: probeReply,
+      });
+      registerFakeDaemon(harness, { events, hostId: NEW, handle: targetReply });
+
+      const first = await coordinator.start(START_DIRECT);
+      await expect.poll(() => suspensions).toBe(1);
+      coordinator.cancel();
+      const second = await coordinator.start(START_DIRECT);
+      expect(second.moveId).not.toBe(first.moveId);
+      await expect.poll(() => isServerMoveFrozen(harness.db)).toBe(true);
+      firstSuspension.resolve();
+      await expect.poll(() => events.includes("retire")).toBe(true);
+
+      expect(coordinator.getStatus()).toMatchObject({
+        moveId: second.moveId,
+        state: "completed",
+      });
+      expect(plugins).toMatchObject({ resumes: 0, suspends: 2, stops: 1 });
+      expect(events).not.toContain("plugins:resume");
+      expect(events).not.toContain("deferred-work:resumed");
+      expect(isServerMoveFrozen(harness.db)).toBe(true);
+    }));
+
+  it("lets queued dispatch run at cancel while a slow plugin resume is still running", () =>
+    withTestHarness(async (harness) => {
+      seedTopology(harness);
+      const base = createTestServerMoveEnvironment(harness);
+      const { events, plugins } = base;
+      const slowResume = createDeferredPromise<void>();
+      const coordinator = createServerMoveCoordinator({
+        ...base.environment,
+        plugins: {
+          ...base.environment.plugins,
+          resumeSuspended: async () => {
+            await base.environment.plugins.resumeSuspended();
+            await slowResume.promise;
+          },
+        },
+      });
+      registerFakeDaemon(harness, { events, hostId: OLD, handle: probeReply });
+      registerFakeDaemon(harness, {
+        events,
+        hostId: WORKER,
+        handle: probeReply,
+      });
+      registerFakeDaemon(harness, {
+        events,
+        hostId: NEW,
+        handle: (request) =>
+          request.command.type === "server_move.prepare"
+            ? createDeferredPromise<FakeDaemonReply>().promise
+            : targetReply(request),
+      });
+
+      await coordinator.start(START_DIRECT);
+      await expect
+        .poll(() => events.includes(`${NEW}:server_move.prepare`))
+        .toBe(true);
+      expect(isServerMoveFrozen(harness.db)).toBe(true);
+
+      coordinator.cancel();
+
+      expect(coordinator.isFrozen()).toBe(false);
+      expect(isServerMoveFrozen(harness.db)).toBe(false);
+      await expect.poll(() => plugins.resumes).toBe(1);
+      await new Promise<void>((resolve) => setTimeout(resolve, 20));
+      expect(isServerMoveFrozen(harness.db)).toBe(false);
+      expect(plugins.paused).toBe(true);
+      expect(events).not.toContain("deferred-work:resumed");
+
+      slowResume.resolve();
+      await expect
+        .poll(() => events.includes("deferred-work:resumed"))
+        .toBe(true);
+      expect(plugins.paused).toBe(false);
     }));
 
   it("refuses to cancel once the switch starts", () =>

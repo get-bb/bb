@@ -164,7 +164,6 @@ interface MoveRun {
   frozen: boolean;
   grant: ServerMoveGrant | null;
   movedAt: number | null;
-  pluginsSuspended: boolean;
   recovery: AbortController | null;
   sourceServerHost: MoveHost;
   status: ServerMoveStatus;
@@ -313,7 +312,6 @@ function moveFromRunFile(run: ServerMoveRunFile): MoveRun {
     frozen: false,
     grant: run.grant,
     movedAt: run.movedAt,
-    pluginsSuspended: false,
     recovery: null,
     sourceServerHost: { ...run.sourceServerHost },
     status: structuredClone(run.status),
@@ -337,6 +335,8 @@ export function createServerMoveCoordinator(
   let current: MoveRun | null = null;
   let pendingStart: PendingStart | null = null;
   let runFileWork: Promise<void> = Promise.resolve();
+  let pluginWork: Promise<void> = Promise.resolve();
+  let pluginsSuspended = false;
 
   function notify(): void {
     deps.hub.notifySystem(["server-move-changed"]);
@@ -456,7 +456,7 @@ export function createServerMoveCoordinator(
 
   async function settlePluginWork(
     move: MoveRun,
-    operation: "suspension" | "shutdown",
+    operation: "suspension" | "resume" | "shutdown",
     work: Promise<void>,
   ): Promise<void> {
     const outcome = work.then(
@@ -479,24 +479,70 @@ export function createServerMoveCoordinator(
     }
   }
 
-  async function suspendPlugins(move: MoveRun): Promise<void> {
-    move.pluginsSuspended = true;
-    await settlePluginWork(
-      move,
-      "suspension",
-      environment.plugins.suspendAllButConnect(),
-    );
+  function queuePluginWork(work: () => Promise<void>): Promise<void> {
+    const next = pluginWork.then(work);
+    pluginWork = next.catch(() => undefined);
+    return next;
+  }
+
+  function suspendPlugins(move: MoveRun): Promise<void> {
+    return queuePluginWork(async () => {
+      if (current !== move || !isServerMoveInFlight(move.status)) {
+        return;
+      }
+      pluginsSuspended = true;
+      await settlePluginWork(
+        move,
+        "suspension",
+        environment.plugins.suspendAllButConnect(),
+      );
+    });
   }
 
   async function stopPlugins(move: MoveRun): Promise<void> {
-    await settlePluginWork(move, "shutdown", environment.plugins.stop()).catch(
-      (error: unknown) => {
-        deps.logger.warn(
-          { err: error, moveId: move.status.moveId },
-          "Server move plugin shutdown failed",
-        );
-      },
-    );
+    await queuePluginWork(() =>
+      settlePluginWork(move, "shutdown", environment.plugins.stop()),
+    ).catch((error: unknown) => {
+      deps.logger.warn(
+        { err: error, moveId: move.status.moveId },
+        "Server move plugin shutdown failed",
+      );
+    });
+  }
+
+  function clearFreeze(move: MoveRun): void {
+    if (current !== move) {
+      return;
+    }
+    move.frozen = false;
+    setServerMoveFrozen(deps.db, false);
+    setServerMoveSnapshotFence(deps.db, false);
+  }
+
+  function resumePluginWork(move: MoveRun): Promise<void> {
+    return queuePluginWork(async () => {
+      if (current !== move) {
+        return;
+      }
+      if (pluginsSuspended) {
+        pluginsSuspended = false;
+        await settlePluginWork(
+          move,
+          "resume",
+          environment.plugins.resumeSuspended(),
+        ).catch((error: unknown) => {
+          deps.logger.error(
+            { err: error, moveId: move.status.moveId },
+            "Server move could not restart paused plugins",
+          );
+        });
+      }
+      if (current !== move) {
+        return;
+      }
+      environment.plugins.setSchedulesPaused(false);
+      environment.resumeDeferredWork();
+    });
   }
 
   async function runStopWork(move: MoveRun): Promise<void> {
@@ -1104,8 +1150,7 @@ export function createServerMoveCoordinator(
     move.status.error = { step: "switch", message };
     move.status.cancellable = false;
     move.status.finishedAt = environment.now();
-    move.frozen = false;
-    setServerMoveSnapshotFence(deps.db, false);
+    clearFreeze(move);
     notify();
     deps.logger.warn(
       { moveId: move.status.moveId, targetHostId: move.status.targetHostId },
@@ -1118,7 +1163,7 @@ export function createServerMoveCoordinator(
 
   async function finishAbandon(move: MoveRun): Promise<void> {
     await rollbackSwitchFiles(move.configBackup);
-    await Promise.all([resumeFrozenWork(move), abortTargetWhenReachable(move)]);
+    await Promise.all([resumePluginWork(move), abortTargetWhenReachable(move)]);
     await forgetRun(move).catch(() => undefined);
   }
 
@@ -1191,8 +1236,7 @@ export function createServerMoveCoordinator(
     move.status.error = { step: failedStepId, message };
     move.status.cancellable = false;
     move.status.finishedAt = environment.now();
-    move.frozen = false;
-    setServerMoveSnapshotFence(deps.db, false);
+    clearFreeze(move);
     notify();
     if (!cancelled) {
       deps.logger.warn(
@@ -1200,26 +1244,8 @@ export function createServerMoveCoordinator(
         "Server move failed",
       );
     }
-    await Promise.all([resumeFrozenWork(move), sendAbort(move)]);
+    await Promise.all([resumePluginWork(move), sendAbort(move)]);
     await forgetRun(move).catch(() => undefined);
-  }
-
-  async function resumeFrozenWork(move: MoveRun): Promise<void> {
-    if (move.pluginsSuspended) {
-      move.pluginsSuspended = false;
-      await environment.plugins.resumeSuspended().catch((error: unknown) => {
-        deps.logger.error(
-          { err: error, moveId: move.status.moveId },
-          "Server move could not restart paused plugins",
-        );
-      });
-    }
-    if (current !== move) {
-      return;
-    }
-    setServerMoveFrozen(deps.db, false);
-    environment.plugins.setSchedulesPaused(false);
-    environment.resumeDeferredWork();
   }
 
   async function run(move: MoveRun): Promise<void> {
@@ -1326,7 +1352,7 @@ export function createServerMoveCoordinator(
       if (
         move === null ||
         move.status.state !== "recovery_required" ||
-        move.pluginsSuspended
+        pluginsSuspended
       ) {
         return;
       }
@@ -1455,7 +1481,6 @@ export function createServerMoveCoordinator(
             frozen: false,
             grant: null,
             movedAt: null,
-            pluginsSuspended: false,
             recovery: null,
             sourceServerHost: {
               id: sourceServerHost.id,
