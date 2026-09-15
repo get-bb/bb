@@ -684,14 +684,19 @@ export function AgentAutomationDefinition({
 export function ScriptAutomationDefinition({
   execution,
 }: {
-  execution: Extract<AutomationExecution, { mode: "script" }>;
+  execution: Extract<AutomationResponse["execution"], { mode: "script" }>;
 }) {
   const workingDirectoryLabel =
-    execution.workingDirectory.type === "legacy"
-      ? "Legacy plugin storage"
-      : execution.workingDirectory.type === "project"
-        ? "Project source"
-        : formatHomePathForDisplay(execution.workingDirectory.path);
+    execution.resolvedWorkingDirectory !== undefined &&
+    execution.resolvedWorkingDirectory !== null
+      ? formatHomePathForDisplay(execution.resolvedWorkingDirectory)
+      : execution.workingDirectory.type === "path"
+        ? formatHomePathForDisplay(execution.workingDirectory.path)
+        : "Working directory unavailable";
+  const workingDirectoryAriaLabel =
+    workingDirectoryLabel === "Working directory unavailable"
+      ? workingDirectoryLabel
+      : `Working directory: ${workingDirectoryLabel}`;
   return (
     <ResourceDetailPanel
       surface="flat"
@@ -715,7 +720,7 @@ export function ScriptAutomationDefinition({
         </span>
         <span
           className="inline-flex min-w-0 items-center gap-1.5"
-          aria-label={`Working directory: ${workingDirectoryLabel}`}
+          aria-label={workingDirectoryAriaLabel}
           title={workingDirectoryLabel}
         >
           <Icon name="Folder" className="size-3.5 shrink-0" aria-hidden />
