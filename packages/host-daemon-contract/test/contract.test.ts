@@ -512,7 +512,7 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
     pathsExist: { "/home/me/plugins/local": false },
     diskFreeBytes: 1_000_000,
   },
-  "server_move.probe": { reachable: true, message: null },
+  "server_move.probe": { reachable: true, message: null, state: "ready" },
   "server_move.prepare": {
     localServerUrl: "http://127.0.0.1:38886",
     pid: 4242,
