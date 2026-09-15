@@ -12,6 +12,9 @@ patchedDependencies:
   '@pierre/diffs@1.2.9':
     hash: wdjikkl65wfpocm6wrflymrtdq
     path: patches/@pierre__diffs@1.2.9.patch
+  app-builder-lib@26.15.7:
+    hash: scgv4ewg5tckryfa75t2kkkney
+    path: patches/app-builder-lib@26.15.7.patch
   expo-modules-jsi@57.0.4:
     hash: raucdrgf3mznkb7qkl7fkzjw5u
     path: patches/expo-modules-jsi@57.0.4.patch
@@ -22421,7 +22424,7 @@ snapshots:
 
   any-promise@1.3.0: {}
 
-  app-builder-lib@26.15.7(dmg-builder@26.15.7)(electron-builder-squirrel-windows@26.15.7):
+  app-builder-lib@26.15.7(patch_hash=scgv4ewg5tckryfa75t2kkkney)(dmg-builder@26.15.7)(electron-builder-squirrel-windows@26.15.7):
     dependencies:
       '@electron/asar': 3.4.1
       '@electron/fuses': 1.8.0
@@ -23648,7 +23651,7 @@ snapshots:
 
   dmg-builder@26.15.7(electron-builder-squirrel-windows@26.15.7):
     dependencies:
-      app-builder-lib: 26.15.7(dmg-builder@26.15.7)(electron-builder-squirrel-windows@26.15.7)
+      app-builder-lib: 26.15.7(patch_hash=scgv4ewg5tckryfa75t2kkkney)(dmg-builder@26.15.7)(electron-builder-squirrel-windows@26.15.7)
       builder-util: 26.15.3
       fs-extra: 10.1.0
       js-yaml: 4.3.2
@@ -23870,7 +23873,7 @@ snapshots:
 
   electron-builder-squirrel-windows@26.15.7(dmg-builder@26.15.7):
     dependencies:
-      app-builder-lib: 26.15.7(dmg-builder@26.15.7)(electron-builder-squirrel-windows@26.15.7)
+      app-builder-lib: 26.15.7(patch_hash=scgv4ewg5tckryfa75t2kkkney)(dmg-builder@26.15.7)(electron-builder-squirrel-windows@26.15.7)
       builder-util: 26.15.3
       electron-winstaller: 5.4.0
     transitivePeerDependencies:
@@ -23879,7 +23882,7 @@ snapshots:
 
   electron-builder@26.15.7(electron-builder-squirrel-windows@26.15.7):
     dependencies:
-      app-builder-lib: 26.15.7(dmg-builder@26.15.7)(electron-builder-squirrel-windows@26.15.7)
+      app-builder-lib: 26.15.7(patch_hash=scgv4ewg5tckryfa75t2kkkney)(dmg-builder@26.15.7)(electron-builder-squirrel-windows@26.15.7)
       builder-util: 26.15.3
       builder-util-runtime: 9.7.0
       chalk: 4.1.2

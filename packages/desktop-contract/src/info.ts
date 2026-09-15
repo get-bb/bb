@@ -48,6 +48,7 @@ export interface BbDesktopApi extends BbDesktopInfo {
   browser: BbDesktopBrowserApi;
   checkForUpdates(): Promise<BbDesktopInfo>;
   getInfo(): Promise<BbDesktopInfo>;
+  focusWindow?(): void;
   getWindowState?(): Promise<BbDesktopWindowState>;
   installUpdate(): Promise<void>;
   onChange(listener: BbDesktopInfoChangeHandler): BbDesktopInfoUnsubscribe;
