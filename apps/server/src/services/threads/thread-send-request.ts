@@ -29,6 +29,7 @@ export async function acceptThreadSendRequest(
     });
     return { ok: true, delivery: "sent" };
   }
+
   const outcome = await attemptDispatch(deps, {
     thread: args.thread,
     payload: args.payload,

@@ -92,12 +92,12 @@ import {
   threadEnvironmentUnavailableDetails,
   throwThreadEnvironmentUnavailable,
 } from "../lib/lifecycle-api-errors.js";
+import { validatePromptAttachmentReferences } from "../projects/attachments.js";
 import { requestQueuedMessageDispatch } from "./queued-message-dispatch.js";
 import {
   ThreadContextClearInProgressError,
   withThreadSendGuard,
 } from "./thread-context-mutation-guard.js";
-import { prepareThreadPromptInputForPersistence } from "./durable-prompt-attachments.js";
 
 interface SendQueuedMessageArgs {
   claimPolicy: QueuedThreadMessageGroupClaimPolicy;
@@ -215,9 +215,10 @@ export async function createQueuedMessageForThread(
 ): Promise<ThreadQueuedMessage> {
   const { payload, thread } = args;
   ensureThreadQueueIsWritable(thread);
-  const preparedInput = await prepareThreadPromptInputForPersistence(deps, {
+  await validatePromptAttachmentReferences({
+    dataDir: deps.config.dataDir,
     input: payload.input,
-    thread,
+    projectId: thread.projectId,
   });
   const execution = await buildExecutionOptions(deps, payload, {
     threadId: thread.id,
@@ -236,7 +237,7 @@ export async function createQueuedMessageForThread(
         const { providerThreadId } = admitQueuedMessage(tx, currentThread);
         const queuedMessage = createQueuedThreadMessageInTransaction(tx, {
           threadId: thread.id,
-          content: preparedInput,
+          content: payload.input,
           senderThreadId,
           model: execution.model,
           reasoningLevel: execution.reasoningLevel,

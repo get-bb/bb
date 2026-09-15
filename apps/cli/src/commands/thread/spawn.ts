@@ -29,6 +29,7 @@ import {
 import {
   parsePermissionMode,
   buildPromptInputs,
+  uploadClientImageInputs,
   PERMISSION_MODE_HELP,
   PLAN_HELP,
   parseServiceTier,
@@ -357,7 +358,7 @@ export function registerSpawnCommand(
     )
     .option(
       "--image <path>",
-      "Pass a host-readable absolute or uploaded attachment image path (repeatable)",
+      "Upload an absolute path from this CLI machine or pass an uploaded attachment path (repeatable)",
       collectOption,
       [],
     )
@@ -537,17 +538,22 @@ export function registerSpawnCommand(
         let thread: Thread;
         try {
           const sdk = createCliBbSdk(getUrl());
-          thread = await sdk.threads.spawn({
-            origin: "cli",
-            projectId,
-            ...(providerId ? { providerId } : {}),
-            ...(opts.model ? { model: opts.model } : {}),
+          const input = await uploadClientImageInputs({
             input: buildPromptInputs({
               message: opts.prompt,
               plan: opts.plan,
               files: opts.file,
               images: opts.image,
             }),
+            resolveProjectId: async () => projectId,
+            sdk,
+          });
+          thread = await sdk.threads.spawn({
+            origin: "cli",
+            projectId,
+            ...(providerId ? { providerId } : {}),
+            ...(opts.model ? { model: opts.model } : {}),
+            input,
             ...(reasoningLevel ? { reasoningLevel } : {}),
             ...(opts.title ? { title: opts.title } : {}),
             ...(serviceTier ? { serviceTier } : {}),

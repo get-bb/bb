@@ -7,10 +7,6 @@ import {
 } from "../../ui/image-lightbox.js";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { buildProjectAttachmentContentUrl } from "@/lib/file-content-urls";
-import {
-  isAbsoluteLocalAttachmentPath,
-  isProjectAttachmentPath,
-} from "@/lib/user-attachment-images";
 import type {
   ThreadTimelineLocalFileLinkHandler,
   UserAttachmentImageSrcResolver,
@@ -43,11 +39,31 @@ interface ProjectAttachmentHrefArgs {
   projectId: string | undefined;
 }
 
+interface PathClassificationArgs {
+  path: string;
+}
+
+const WINDOWS_ABSOLUTE_PATH_PATTERN = /^[a-zA-Z]:[\\/]/u;
+const URL_SCHEME_PATTERN = /^[a-zA-Z][a-zA-Z0-9+.-]*:/u;
+
+function isAbsoluteLocalPath({ path }: PathClassificationArgs): boolean {
+  return path.startsWith("/") || WINDOWS_ABSOLUTE_PATH_PATTERN.test(path);
+}
+
+function isProjectAttachmentPath({ path }: PathClassificationArgs): boolean {
+  return (
+    path.length > 0 &&
+    !path.startsWith("\\") &&
+    !isAbsoluteLocalPath({ path }) &&
+    !URL_SCHEME_PATTERN.test(path)
+  );
+}
+
 function projectAttachmentHref({
   path,
   projectId,
 }: ProjectAttachmentHrefArgs): string | null {
-  if (!projectId || !isProjectAttachmentPath(path)) {
+  if (!projectId || !isProjectAttachmentPath({ path })) {
     return null;
   }
 
@@ -175,7 +191,7 @@ export function ConversationAttachments({
               );
             }
 
-            if (!onOpenLocalFileLink || !isAbsoluteLocalAttachmentPath(path)) {
+            if (!onOpenLocalFileLink || !isAbsoluteLocalPath({ path })) {
               return (
                 <span key={path} className={cn(className, "cursor-default")}>
                   {label}

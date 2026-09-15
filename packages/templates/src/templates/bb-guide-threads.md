@@ -47,7 +47,7 @@ Spawning:
     --visibility <visibility>      visible or hidden; a child inherits its parent by default
     --send-at <when>               Dispatch the first message at an ISO 8601 timestamp or a duration from now (30s, 10m, 2h, 7d)
     --file <path>                  Host-readable absolute or uploaded file path
-    --image <path>                 Host-readable absolute or uploaded image path
+    --image <path>                 Absolute CLI-local or uploaded image path
     --origin-kind <kind>           Create a fork thread
     --source-thread <id>           Source thread for a fork
     --source-seq-end <seq>         Fork after the source turn containing this event sequence
@@ -96,7 +96,7 @@ Forking:
     --visibility <visibility>      visible (default) or hidden
     --agent-context-seed <text>    Persist agent-only context without a first run
     --file <path>                  Host-readable absolute or uploaded file path
-    --image <path>                 Host-readable absolute or uploaded image path
+    --image <path>                 Absolute CLI-local or uploaded image path
 
   Forks clone the source provider session on the same machine and inherit the
   source conversation in their timeline. --source-seq-end anchors the fork on
@@ -237,7 +237,7 @@ Messaging:
     --plan                                 Send the message as the provider's /plan action
     --send-at <when>                       Dispatch at an ISO 8601 timestamp or a duration from now (30s, 10m, 2h, 7d)
     --file <path>                          Host-readable absolute or uploaded file path
-    --image <path>                         Host-readable absolute or uploaded image path
+    --image <path>                         Absolute CLI-local or uploaded image path
 
   Tell steers by default, delivering the message immediately into the active
   turn. Use --mode queue for non-urgent follow-ups that can wait until the agent

@@ -127,9 +127,9 @@ describe("bb thread organization commands", () => {
         "--file",
         "/tmp/data.json",
         "--image",
-        "/tmp/mock.png",
+        "mock-uploaded.png",
         "--image",
-        "/tmp/detail.png",
+        "detail-uploaded.png",
       ],
       register,
     );
@@ -143,8 +143,8 @@ describe("bb thread organization commands", () => {
           { type: "text", text: "revised task", mentions: [] },
           { type: "localFile", path: "/tmp/spec.md" },
           { type: "localFile", path: "/tmp/data.json" },
-          { type: "localImage", path: "/tmp/mock.png" },
-          { type: "localImage", path: "/tmp/detail.png" },
+          { type: "localImage", path: "mock-uploaded.png" },
+          { type: "localImage", path: "detail-uploaded.png" },
         ],
       },
     });

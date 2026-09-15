@@ -13,7 +13,6 @@ import {
   type RunningThreadRow,
 } from "@bb/db";
 import {
-  flattenPromptInputGroups,
   promptInputSchema,
   type PromptInput,
   type QueuedMessagePayload,
@@ -40,6 +39,7 @@ import {
   goneThreadEnvironmentDetails,
   throwThreadNotWritable,
 } from "../lib/lifecycle-api-errors.js";
+import { validatePromptAttachmentReferences } from "../projects/attachments.js";
 import {
   dispatchEnvironmentAndHost,
   dispatchExecutionSources,
@@ -87,10 +87,6 @@ import {
 } from "./thread-send.js";
 import type { TurnRequestRetryMarker } from "./thread-events.js";
 import { restoreInterruptedThreadStartupRequest } from "./thread-provisioning.js";
-import {
-  prepareThreadPromptInputForPersistence,
-  prepareThreadPromptInputGroupsForPersistence,
-} from "./durable-prompt-attachments.js";
 
 export const pendingThreadStartContextSchema = z.object({
   environmentIntent: threadProvisionEnvironmentIntentSchema,
@@ -297,37 +293,21 @@ async function runDispatchAttempt(
   args: DispatchAttemptArgs,
   reattempted: boolean,
 ): Promise<DispatchAttemptOutcome> {
-  let { payload } = args;
-  const { thread } = args;
+  const { payload, thread } = args;
   // A stopping thread is writable HERE and nowhere upstream: the checkpoint
   // below turns it into a core wait, which is a truthful "not yet" the row can
   // recover from, rather than the 409 that used to make a stop a dead end for
   // everything the user lined up behind it.
   ensureThreadIsWritable(thread, true);
-  if (args.source.kind === "inline") {
-    if (payload.inputGroups === undefined) {
-      const input = await prepareThreadPromptInputForPersistence(deps, {
-        input: payload.input,
-        thread,
-      });
-      payload = { ...payload, input };
-    } else {
-      const inputGroups = await prepareThreadPromptInputGroupsForPersistence(
-        deps,
-        {
-          inputGroups: payload.inputGroups,
-          thread,
-        },
-      );
-      payload = {
-        ...payload,
-        input: flattenPromptInputGroups(inputGroups),
-        inputGroups,
-      };
-    }
+  if (args.trigger === "user" && args.source.kind === "inline") {
+    // Reject what can never deliver while the sender is still listening; a
+    // drain has nobody to tell, and its rows were validated when they were queued.
+    await validatePromptAttachmentReferences({
+      dataDir: deps.config.dataDir,
+      input: payload.input,
+      projectId: thread.projectId,
+    });
   }
-  const currentAttemptArgs =
-    payload === args.payload ? args : { ...args, payload };
   const senderThreadId = resolveMessageSenderThreadId(deps, {
     ...(payload.senderThreadId !== undefined
       ? { senderThreadId: payload.senderThreadId }
@@ -572,7 +552,7 @@ async function runDispatchAttempt(
   if (continued.reattemptThread !== null) {
     return reattemptDispatchForThreadChange(
       deps,
-      currentAttemptArgs,
+      args,
       continued.reattemptThread,
       reattempted,
     );
@@ -590,12 +570,7 @@ async function runDispatchAttempt(
       // for a thread that is gone. Reporting a dispatch here would tell the
       // caller their message went when it went nowhere.
       const current = getThread(deps.db, thread.id);
-      return reattemptDispatchForThreadChange(
-        deps,
-        currentAttemptArgs,
-        current,
-        reattempted,
-      );
+      return reattemptDispatchForThreadChange(deps, args, current, reattempted);
     }
     await launchAdmittedThread(deps, admission);
     return { kind: "dispatched" };
