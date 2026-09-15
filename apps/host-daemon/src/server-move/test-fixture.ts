@@ -148,6 +148,7 @@ interface SourceServer {
   archiveSha256: string;
   archiveSizeBytes: number;
   bbAppSha256: string;
+  bbAppSizeBytes: number;
   archiveRequests: IncomingMessage[];
   url: string;
 }
@@ -210,8 +211,8 @@ async function createSourceServer(root: string): Promise<SourceServer> {
       return;
     }
     if (request.url === `/internal/server-move/${MOVE_ID}/bb-app.tgz`) {
-      response.setHeader("content-length", String(bbAppBytes.byteLength));
-      response.end(bbAppBytes);
+      response.write(bbAppBytes);
+      response.end();
       return;
     }
     response.statusCode = 404;
@@ -221,6 +222,7 @@ async function createSourceServer(root: string): Promise<SourceServer> {
     archiveSha256: archive.sha256,
     archiveSizeBytes: archive.sizeBytes,
     bbAppSha256: createHash("sha256").update(bbAppBytes).digest("hex"),
+    bbAppSizeBytes: bbAppBytes.byteLength,
     archiveRequests,
     url,
   };

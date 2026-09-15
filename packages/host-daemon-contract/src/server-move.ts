@@ -68,6 +68,7 @@ export const serverMoveCommandSchemas = {
         .object({
           downloadPath: z.string().min(1),
           sha256: sha256HexSchema,
+          sizeBytes: z.number().int().nonnegative(),
           version: z.string().min(1),
         })
         .strict()

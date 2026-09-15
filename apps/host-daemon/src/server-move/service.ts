@@ -1450,7 +1450,7 @@ export class ServerMoveService {
       downloadPath: bbApp.downloadPath,
       destinationPath: tarballPath,
       sha256: bbApp.sha256,
-      sizeBytes: null,
+      sizeBytes: bbApp.sizeBytes,
       maxSizeBytes: BB_APP_MAX_DOWNLOAD_BYTES,
       signal,
     });

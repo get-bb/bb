@@ -57,6 +57,7 @@ describe("ServerMoveService.prepare", () => {
       bbApp: {
         downloadPath: `/internal/server-move/${MOVE_ID}/bb-app.tgz`,
         sha256: fixture.source.bbAppSha256,
+        sizeBytes: fixture.source.bbAppSizeBytes,
         version: "1.0.0",
       },
     });

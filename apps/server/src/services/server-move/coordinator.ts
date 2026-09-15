@@ -688,6 +688,7 @@ export function createServerMoveCoordinator(
               : {
                   downloadPath: serverMoveBbAppDownloadPath(move.status.moveId),
                   sha256: move.bbApp.sha256,
+                  sizeBytes: move.bbApp.sizeBytes,
                   version: move.bbApp.version,
                 },
           serverPort: environment.targetServerPort(),

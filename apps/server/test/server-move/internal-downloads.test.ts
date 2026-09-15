@@ -123,6 +123,7 @@ describe("server move downloads", () => {
           String(artifactBytes.byteLength),
         );
         expect(Buffer.from(await bbApp.arrayBuffer())).toEqual(artifactBytes);
+        expect(prepare.bbApp.sizeBytes).toBe(artifactBytes.byteLength);
 
         const archive = await app.request(prepare.archive.downloadPath, {
           headers: { "x-test-host": "host-new" },
