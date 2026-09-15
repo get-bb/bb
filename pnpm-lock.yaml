@@ -1381,6 +1381,9 @@ importers:
       npm:
         specifier: 11.16.0
         version: 11.16.0
+      picocolors:
+        specifier: ^1.1.1
+        version: 1.1.1
       pino:
         specifier: ^9.6.0
         version: 9.14.0

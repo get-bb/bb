@@ -102,6 +102,10 @@ block service logging. To follow output with the default data directory:
 tail -F ~/.bb/logs/server-stdio.log ~/.bb/logs/host-daemon-stdio.log
 ```
 
+Launcher status output is plain when stdout is redirected, including in CI.
+Set `FORCE_COLOR=1` to request color or `NO_COLOR=1` to disable it; `NO_COLOR`
+takes precedence. In-place progress updates require a stdout TTY.
+
 The same output capture applies to `bb-server` and `bb-host-daemon`.
 
 To stop a bb that runs in another terminal or in the background:

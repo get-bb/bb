@@ -1,5 +1,9 @@
 # Configuration
 
+Launcher status output is plain when stdout is redirected, including in CI.
+Set `FORCE_COLOR=1` to request color or `NO_COLOR=1` to disable it; `NO_COLOR`
+takes precedence. In-place progress updates require a stdout TTY.
+
 The packaged `npx bb-app` flow stores persistent package settings under
 `~/.bb/config.json`, provider environment values under `~/.bb/env.json`, and
 client SSH target mappings under `~/.bb/client.json`.
