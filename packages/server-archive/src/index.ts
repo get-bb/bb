@@ -1,10 +1,6 @@
-export type {
-  ServerArchiveEncryption,
-  ServerArchiveEncryptionKind,
-} from "./encryption.js";
+export { assertServerArchiveFormat } from "./archive-format.js";
 export { ServerArchiveError, type ServerArchiveErrorCode } from "./errors.js";
 export {
-  detectServerArchiveEncryption,
   type ExtractServerArchiveArgs,
   extractServerArchive,
 } from "./extract-archive.js";

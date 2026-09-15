@@ -22,7 +22,7 @@ import { stopRunningServerWork } from "./stop-work.js";
 export const SERVER_MOVE_ALLOW_LOOPBACK_URL_ENV =
   "BB_SERVER_MOVE_ALLOW_LOOPBACK_URL";
 export const SERVER_MOVE_TARGET_PORT_ENV = "BB_SERVER_MOVE_TARGET_PORT";
-const SERVER_MOVE_ARCHIVE_FILE_NAME = "server.bbsa";
+const SERVER_MOVE_ARCHIVE_FILE_NAME = "server.tar.gz";
 
 export const SERVER_MOVE_TIMINGS: ServerMoveTimings = {
   abortTimeoutMs: 60_000,
@@ -102,7 +102,6 @@ export function createDefaultServerMoveEnvironment(
         appVersion: deps.config.appVersion,
         dataDir: deps.config.dataDir,
         db: deps.db,
-        encryption: { kind: "key", key: exportArgs.key },
         fileName: SERVER_MOVE_ARCHIVE_FILE_NAME,
         logger: deps.logger,
         now: Date.now(),

@@ -20,7 +20,7 @@ import {
 import { parseDataDirEnvValue, resolveProdDataDir } from "@bb/config/runtime";
 import { isProcessRunning } from "@bb/config/verified-process-stop";
 import {
-  detectServerArchiveEncryption,
+  assertServerArchiveFormat,
   extractServerArchive,
   installImportedServerFiles,
   discardImportBackups,
@@ -28,7 +28,6 @@ import {
   removeServerConnectHoldFile,
   SERVER_MOVED_FILE_NAME,
   ServerArchiveError,
-  type ServerArchiveEncryption,
   type ServerMovedFile,
   writeServerConnectHoldFile,
   writeServerImportFile,
@@ -77,7 +76,6 @@ export interface ServerImportArgs {
   archivePath: string;
   dataDir: string;
   confirm: (message: string) => Promise<boolean>;
-  readPassphrase: () => Promise<string>;
   now: () => number;
   cliVersion: string;
 }
@@ -289,12 +287,7 @@ export async function importServerArchive(
   await assertArchiveFile(archivePath);
   await assertNoServerDatabase(dataDir);
   await assertNoRunningBb(dataDir);
-  const encryptionKind = await detectServerArchiveEncryption(archivePath);
-  if (encryptionKind === "key") {
-    throw new Error(
-      `${archivePath} was created for a server move and can only be installed by that move. Create an export with bb server export.`,
-    );
-  }
+  await assertServerArchiveFormat(archivePath);
   if (
     !(await args.confirm(
       `Import the bb server from ${archivePath} into ${dataDir}?`,
@@ -302,10 +295,6 @@ export async function importServerArchive(
   ) {
     return null;
   }
-  const encryption: ServerArchiveEncryption | null =
-    encryptionKind === "passphrase"
-      ? { kind: "passphrase", passphrase: await args.readPassphrase() }
-      : null;
   const parentDir = dirname(dataDir);
   await mkdir(parentDir, { recursive: true });
   const stagingDir = await mkdtemp(
@@ -314,7 +303,6 @@ export async function importServerArchive(
   try {
     const manifest = await extractServerArchive({
       archivePath,
-      encryption,
       destinationDir: stagingDir,
     }).catch((error: unknown) => {
       throw describeUnsafeImport(archivePath, error);

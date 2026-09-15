@@ -81,7 +81,8 @@ Not moved: logs, caches (`install-cache/`, `plugin-host-artifacts/`,
    through the existing machine update artifact. The update stays on the
    target even if the move is cancelled.
 4. **Freeze and copy:** the old server stops accepting writes and streams an
-   encrypted export over the target's existing daemon connection.
+   export over the target's existing daemon connection, which only that target
+   may download, checked end to end with a SHA-256 digest.
 5. **Start:** the target imports the export, installs a background service that
    runs server and daemon and starts on boot, and must pass a health check
    before anything switches.
@@ -132,9 +133,12 @@ closes; `bb server move status` shows the same steps.
 ### Export files
 
 `bb server export` works on a running server through an online SQLite snapshot,
-so backups need no downtime. Exports are encrypted with a passphrase by default;
-`--unencrypted` opts out. `bb server import` runs locally on a machine with no
-server running.
+so backups need no downtime. Exports are gzip tar archives and are not
+encrypted: they hold the server's credentials and plugin secrets. The CLI writes
+them with mode 0600, keeps the file only when it matches the SHA-256 digest the
+server sent, and warns that the file must stay private. `bb server import` runs
+locally on a machine with no server running and tells the user to re-export an
+archive encrypted by an older bb.
 
 ## Surfaces
 
@@ -159,7 +163,7 @@ CLI (`bb server`):
 bb server move --to <machine> [--address <url>] [--check] [--archive-existing-data] [--yes] [--json]
 bb server move status [--json]
 bb server move cancel [--json]
-bb server export --out <file> [--unencrypted] [--json]
+bb server export --out <file> [--json]
 bb server import <file> [--data-dir <dir>] [--yes] [--json]
 bb server unlock [--data-dir <dir>] [--force] [--yes] [--json]
 bb server allow-connect [--data-dir <dir>] [--yes] [--json]
@@ -168,8 +172,6 @@ bb server delete-old-copy [--data-dir <dir>] [--yes] [--json]
 
 `import`, `unlock`, `allow-connect`, and `delete-old-copy` run locally and do
 not call a server.
-Export passphrases need at least 8 characters (`BB_SERVER_EXPORT_PASSPHRASE` or
-a hidden prompt).
 
 Routes and SDK (`docs/api_to_audit.md` covers stabilization):
 

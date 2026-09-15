@@ -228,13 +228,15 @@ prints the final status. SIGINT stops following while the move continues.
 `bb server move status` shows the steps or the last move, and
 `bb server move cancel` cancels before the switch starts.
 
-`bb server export --out <file>` writes an archive of a running server with file
-mode 0600. It reads the passphrase (at least 8 characters) from
-`BB_SERVER_EXPORT_PASSPHRASE` or prompts twice without echo; without either it
-refuses unless `--unencrypted` is passed.
+`bb server export --out <file>` writes a gzip archive of a running server with
+file mode 0600 and keeps it only when it matches the SHA-256 digest the server
+sent. The archive is not encrypted and holds the server's credentials and
+plugin secrets; the command warns about that, and `--json` prints `path`,
+`sizeBytes`, `sha256`, and `warning`.
 `bb server import <file> [--data-dir <dir>]` installs an export into a local
 data directory without calling a server. It refuses when that directory has a
-`bb.db` or bb is running from it, and refuses an export made by a newer bb. Stop the original server before you start the
+`bb.db` or bb is running from it, refuses an export made by a newer bb, and
+asks you to re-export an archive encrypted by an older bb. Stop the original server before you start the
 imported one: both hold the same connect credential and would take each
 other's tunnel.
 

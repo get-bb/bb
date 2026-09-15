@@ -374,11 +374,9 @@ import {
   updateThreadRequestSchema,
 } from "./api-types.js";
 import {
-  serverExportRequestSchema,
   serverMoveCheckRequestSchema,
   serverMoveStartRequestSchema,
   type DeleteOldServerCopyResponse,
-  type ServerExportRequest,
   type ServerMoveCheckRequest,
   type ServerMoveCheckResponse,
   type ServerMoveStartRequest,
@@ -931,9 +929,7 @@ export const publicApiRoutes = {
     export: defineRoute({
       path: "/server/export",
       method: "post",
-      request: jsonRequest<EmptyInput, ServerExportRequest>(
-        serverExportRequestSchema,
-      ),
+      request: noRequest(),
       response: binaryResponse<Uint8Array>(),
     }),
   },

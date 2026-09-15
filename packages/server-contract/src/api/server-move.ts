@@ -129,15 +129,6 @@ export type ServerMoveStartRequest = z.infer<
   typeof serverMoveStartRequestSchema
 >;
 
-export const SERVER_EXPORT_PASSPHRASE_MIN_LENGTH = 8;
-
-export const serverExportRequestSchema = z
-  .object({
-    passphrase: z.string().min(SERVER_EXPORT_PASSPHRASE_MIN_LENGTH).nullable(),
-  })
-  .strict();
-export type ServerExportRequest = z.infer<typeof serverExportRequestSchema>;
-
 export const deleteOldServerCopyResponseSchema = z
   .object({
     deleted: z.boolean(),

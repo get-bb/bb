@@ -663,15 +663,6 @@ from 5 seconds to 5 minutes, and never downgrade a daemon. Settings → Machines
 and `bb machine retry-update <id-or-name>` can bypass the current backoff after
 a transient failure.
 
-### Server export passphrase
-
-`BB_SERVER_EXPORT_PASSPHRASE` is read by the `bb` CLI, not `bb-app config`.
-`bb server export --out <file>` uses it to encrypt the archive, and
-`bb server import <file>` uses it to decrypt one. When it is unset, both prompt
-without echo in an interactive terminal (export asks twice) and refuse
-otherwise; export can opt out with `--unencrypted`. An export passphrase must be
-at least 8 characters; an empty value is an error.
-
 ## Sidebar preferences
 
 Sidebar layout preferences are stored on the server in a keyed registry so

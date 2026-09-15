@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import {
   mkdir,
@@ -147,7 +147,6 @@ export async function readJson(path: string): Promise<unknown> {
 interface SourceServer {
   archiveSha256: string;
   archiveSizeBytes: number;
-  archiveKey: Buffer;
   bbAppSha256: string;
   archiveRequests: IncomingMessage[];
   url: string;
@@ -172,8 +171,7 @@ async function createSourceServer(root: string): Promise<SourceServer> {
     join(sourceDir, "plugins", "tasks", "data.db"),
     "tasks database",
   );
-  const archiveKey = randomBytes(32);
-  const archivePath = join(root, "server-archive.bbsa");
+  const archivePath = join(root, "server-archive.tar.gz");
   const archive = await writeServerArchive({
     outPath: archivePath,
     files: [
@@ -193,7 +191,6 @@ async function createSourceServer(root: string): Promise<SourceServer> {
       sourceDataDir: "/Users/me/.bb",
       sourceServerHostId: "host-source",
     },
-    encryption: { kind: "key", key: archiveKey },
   });
   const bbAppPath = join(root, "bb-app.tgz");
   await writeFile(bbAppPath, "full bb-app package");
@@ -222,7 +219,6 @@ async function createSourceServer(root: string): Promise<SourceServer> {
   return {
     archiveSha256: archive.sha256,
     archiveSizeBytes: archive.sizeBytes,
-    archiveKey,
     bbAppSha256: createHash("sha256").update(bbAppBytes).digest("hex"),
     archiveRequests,
     url,
@@ -441,7 +437,6 @@ export async function prepareCommand(
       downloadPath: `/internal/server-move/${MOVE_ID}/archive`,
       sha256: fixture.source.archiveSha256,
       sizeBytes: fixture.source.archiveSizeBytes,
-      key: fixture.source.archiveKey.toString("base64"),
     },
     bbApp: null,
     serverPort: await freePort(),

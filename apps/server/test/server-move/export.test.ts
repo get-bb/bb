@@ -1,13 +1,18 @@
 import Database from "better-sqlite3";
-import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { createConnection, getHost } from "@bb/db";
 import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
 import {
-  detectServerArchiveEncryption,
   extractServerArchive,
   serverMovedFileSchema,
 } from "@bb/server-archive";
@@ -69,7 +74,6 @@ describe("server archive export", () => {
         .prepare("INSERT INTO items (name) VALUES (?)")
         .run("written only to the WAL");
       const workDir = join(dataDir, "server-move", "move-1");
-      const key = randomBytes(32);
       try {
         expect(existsSync(`${pluginDatabasePath}-wal`)).toBe(true);
 
@@ -77,22 +81,23 @@ describe("server archive export", () => {
           appVersion: harness.config.appVersion,
           dataDir,
           db: harness.db,
-          encryption: { kind: "key", key },
-          fileName: "server.bbsa",
+          fileName: "server.tar.gz",
           logger: harness.deps.logger,
           now: 1_700_000_000_000,
           sourceServerHostId: "host-old",
           workDir,
         });
 
-        expect(archive.path).toBe(join(workDir, "server.bbsa"));
+        expect(archive.path).toBe(join(workDir, "server.tar.gz"));
         expect(archive.skippedPaths).toEqual(["skills/linked-skill"]);
         expect(warn).toHaveBeenCalledWith(
           { dataDir, skippedPaths: ["skills/linked-skill"] },
           "Server export skipped symbolic links and special files",
         );
         expect(existsSync(join(workDir, "snapshot"))).toBe(false);
-        expect(await detectServerArchiveEncryption(archive.path)).toBe("key");
+        expect((await readFile(archive.path)).subarray(0, 2)).toEqual(
+          Buffer.from([0x1f, 0x8b]),
+        );
         expect(archive.oldCopyEntries).toEqual([
           "attachments",
           "auth-secret",
@@ -109,7 +114,6 @@ describe("server archive export", () => {
         const destination = await makeTempDir();
         const manifest = await extractServerArchive({
           archivePath: archive.path,
-          encryption: { kind: "key", key },
           destinationDir: destination,
         });
         expect(manifest).toMatchObject({
@@ -168,14 +172,6 @@ describe("server archive export", () => {
         } finally {
           importedPluginDatabase.close();
         }
-
-        await expect(
-          extractServerArchive({
-            archivePath: archive.path,
-            encryption: { kind: "key", key: randomBytes(32) },
-            destinationDir: await makeTempDir(),
-          }),
-        ).rejects.toMatchObject({ code: "bad_passphrase" });
       } finally {
         pluginDatabase.close();
       }

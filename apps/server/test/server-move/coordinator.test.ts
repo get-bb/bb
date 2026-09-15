@@ -302,7 +302,11 @@ describe("server move coordinator", () => {
         serverUrl: DIRECT_URL,
         archiveExistingServerData: false,
       });
-      expect(Buffer.from(prepare.archive.key, "base64")).toHaveLength(32);
+      expect(Object.keys(prepare.archive).sort()).toEqual([
+        "downloadPath",
+        "sha256",
+        "sizeBytes",
+      ]);
       expect(requireCommand(target.requests, "server_move.activate")).toEqual({
         type: "server_move.activate",
         moveId: started.moveId,
@@ -599,8 +603,8 @@ describe("server move coordinator", () => {
           request.command.type === "server_move.prepare"
             ? {
                 ok: false,
-                errorCode: "server_move_archive_bad_passphrase",
-                errorMessage: "Archive key is wrong",
+                errorCode: "server_move_archive_corrupt",
+                errorMessage: "Archive data is corrupt: unexpected end of file",
               }
             : targetReply(request),
       });
@@ -610,7 +614,8 @@ describe("server move coordinator", () => {
 
       expect(coordinator.getStatus()?.error).toEqual({
         step: "transfer",
-        message: "The machine couldn't unpack the export: Archive key is wrong",
+        message:
+          "The machine couldn't unpack the export: Archive data is corrupt: unexpected end of file",
       });
     }));
 

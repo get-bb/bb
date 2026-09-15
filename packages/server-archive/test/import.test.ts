@@ -150,12 +150,10 @@ async function stageImport(): Promise<{
       sourceDataDir,
       sourceServerHostId: "host-old",
     },
-    encryption: null,
   });
   const stagingDir = path.join(workDir, "staging");
   const manifest = await extractServerArchive({
     archivePath,
-    encryption: null,
     destinationDir: stagingDir,
   });
   return { stagingDir, manifest };
@@ -457,12 +455,10 @@ describe("server-owned allowlist on import", () => {
         sourceDataDir,
         sourceServerHostId: "host-old",
       },
-      encryption: null,
     });
     const stagingDir = path.join(workDir, "staging");
     const manifest = await extractServerArchive({
       archivePath,
-      encryption: null,
       destinationDir: stagingDir,
     });
     const dataDir = await makeTempDir();

@@ -661,6 +661,9 @@ describe("server move checks", () => {
         expect(byId.get("unencrypted-transfer")?.detail).toContain(
           "http://laptop.lan.test:38887",
         );
+        expect(byId.get("unencrypted-transfer")?.detail).toContain(
+          "the export, which holds the server's credentials, travels in the clear",
+        );
         expect(byId.get("skipped-server-files")?.detail).toContain(
           "skills/linked-skill",
         );

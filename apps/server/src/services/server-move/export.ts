@@ -6,7 +6,6 @@ import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
 import {
   listServerOwnedEntries,
   writeServerArchive,
-  type ServerArchiveEncryption,
   type ServerArchiveSourceFile,
 } from "@bb/server-archive";
 import type { ServerLogger } from "../../types.js";
@@ -19,7 +18,6 @@ export interface ExportServerArchiveArgs {
   appVersion: string;
   dataDir: string;
   db: DbConnection;
-  encryption: ServerArchiveEncryption | null;
   fileName: string;
   logger: Pick<ServerLogger, "warn">;
   now: number;
@@ -103,7 +101,6 @@ export async function exportServerArchive(
         sourceDataDir: args.dataDir,
         sourceServerHostId: args.sourceServerHostId,
       },
-      encryption: args.encryption,
     });
     return {
       oldCopyEntries: listOldCopyEntries(inventory.entries),

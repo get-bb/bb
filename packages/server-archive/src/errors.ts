@@ -1,8 +1,6 @@
 export type ServerArchiveErrorCode =
-  | "bad_passphrase"
   | "corrupt"
   | "digest_mismatch"
-  | "encryption_mismatch"
   | "server_data_exists"
   | "unsafe_entry"
   | "unsupported_version";

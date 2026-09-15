@@ -27,13 +27,13 @@ export interface ServerMoveStatusArgs {
 }
 
 export interface ServerExportArgs {
-  passphrase: string | null;
   signal?: AbortSignal;
 }
 
 export interface ServerExportResult {
   fileName: string;
   body: ReadableStream<Uint8Array>;
+  sha256: string;
 }
 
 export interface ExperimentalServerArea {
@@ -41,10 +41,12 @@ export interface ExperimentalServerArea {
   startMove(args: ServerMoveStartRequest): Promise<ServerMoveStatus>;
   moveStatus(args?: ServerMoveStatusArgs): Promise<ServerMoveStatusResponse>;
   cancelMove(): Promise<ServerMoveStatus>;
-  export(args: ServerExportArgs): Promise<ServerExportResult>;
+  export(args?: ServerExportArgs): Promise<ServerExportResult>;
 }
 
 const EXPORT_FILE_NAME_PATTERN = /filename="([^"]+)"/u;
+const EXPORT_SHA256_HEADER = "x-bb-archive-sha256";
+const SHA256_HEX_PATTERN = /^[0-9a-f]{64}$/u;
 
 function exportFileName(contentDisposition: string | null): string {
   const match =
@@ -99,16 +101,24 @@ export function createServerArea(
     async export(input) {
       const response = await transport.resolve(
         transport.api.v1.server.export.$post(
-          { json: { passphrase: input.passphrase } },
-          ...signalRequestArgs(input.signal),
+          {},
+          ...signalRequestArgs(input?.signal),
         ),
       );
       if (response.body === null) {
         throw new Error("The server returned an empty export");
       }
+      const sha256 = response.headers.get(EXPORT_SHA256_HEADER);
+      if (sha256 === null || !SHA256_HEX_PATTERN.test(sha256)) {
+        await response.body.cancel().catch(() => undefined);
+        throw new Error(
+          "The server did not send a SHA-256 digest for the export",
+        );
+      }
       return {
         fileName: exportFileName(response.headers.get("content-disposition")),
         body: response.body,
+        sha256,
       };
     },
   };

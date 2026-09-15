@@ -15,11 +15,9 @@ import path from "node:path";
 import { gzipSync } from "node:zlib";
 import { Header } from "tar/header";
 import type { EntryTypeName } from "tar/types";
-import { afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
-  detectServerArchiveEncryption,
   extractServerArchive,
-  type ServerArchiveEncryption,
   ServerArchiveError,
   type ServerArchiveErrorCode,
   type ServerArchiveManifestInput,
@@ -52,8 +50,6 @@ const MANIFEST_INPUT: ServerArchiveManifestInput = {
   sourceServerHostId: "host-old",
 };
 
-const PLAINTEXT_MARKER = "plaintext-marker-3f9a1c";
-
 interface SourceTree {
   root: string;
   files: ServerArchiveSourceFile[];
@@ -67,9 +63,7 @@ async function createSourceTree(): Promise<SourceTree> {
     { archivePath: "bb.db", body: randomBytes(300 * 1024), mode: 0o644 },
     {
       archivePath: "config.json",
-      body: Buffer.from(
-        JSON.stringify({ config: { BB_LOG_LEVEL: PLAINTEXT_MARKER } }),
-      ),
+      body: Buffer.from(JSON.stringify({ config: { BB_LOG_LEVEL: "debug" } })),
       mode: 0o600,
     },
     { archivePath: "telemetry-id", body: Buffer.alloc(0), mode: 0o644 },
@@ -206,18 +200,14 @@ async function extractCrafted(entries: CraftedEntry[]): Promise<{
   await writeFile(archivePath, craftArchive(entries));
   const destinationDir = path.join(root, "nested", "staging");
   return {
-    result: extractServerArchive({
-      archivePath,
-      encryption: null,
-      destinationDir,
-    }),
+    result: extractServerArchive({ archivePath, destinationDir }),
     destinationDir,
     root,
   };
 }
 
 describe("writeServerArchive and extractServerArchive", () => {
-  it("round trips a plain archive with long, unicode, empty, and executable files", async () => {
+  it("round trips a gzip archive with long, unicode, empty, and executable files", async () => {
     const tree = await createSourceTree();
     const outPath = path.join(tree.root, "out", "server.tar.gz");
 
@@ -225,10 +215,10 @@ describe("writeServerArchive and extractServerArchive", () => {
       outPath,
       files: tree.files,
       manifest: MANIFEST_INPUT,
-      encryption: null,
     });
 
     const archiveBytes = await readFile(outPath);
+    expect(archiveBytes.subarray(0, 2)).toEqual(Buffer.from([0x1f, 0x8b]));
     expect(written.sizeBytes).toBe(archiveBytes.length);
     expect(written.sha256).toBe(sha256(archiveBytes));
     expect((await stat(outPath)).mode & 0o777).toBe(0o600);
@@ -243,12 +233,10 @@ describe("writeServerArchive and extractServerArchive", () => {
         };
       }),
     );
-    expect(await detectServerArchiveEncryption(outPath)).toBe("none");
 
     const destinationDir = path.join(tree.root, "staging");
     const manifest = await extractServerArchive({
       archivePath: outPath,
-      encryption: null,
       destinationDir,
     });
 
@@ -262,42 +250,6 @@ describe("writeServerArchive and extractServerArchive", () => {
     expect((await stat(toolPath)).mode & 0o100).toBe(0o100);
   });
 
-  it("round trips an archive encrypted with a raw key and rejects a different key", async () => {
-    const tree = await createSourceTree();
-    const outPath = path.join(tree.root, "server.bbsa");
-    const key = randomBytes(32);
-
-    await writeServerArchive({
-      outPath,
-      files: tree.files,
-      manifest: MANIFEST_INPUT,
-      encryption: { kind: "key", key },
-    });
-
-    expect(await detectServerArchiveEncryption(outPath)).toBe("key");
-    expect((await readFile(outPath)).subarray(0, 5)).toEqual(
-      Buffer.from([0x42, 0x42, 0x53, 0x41, 0x01]),
-    );
-
-    const wrongKeyDir = path.join(tree.root, "wrong-key");
-    await expectArchiveError(
-      extractServerArchive({
-        archivePath: outPath,
-        encryption: { kind: "key", key: randomBytes(32) },
-        destinationDir: wrongKeyDir,
-      }),
-      ["bad_passphrase"],
-    );
-
-    const destinationDir = path.join(tree.root, "staging");
-    await extractServerArchive({
-      archivePath: outPath,
-      encryption: { kind: "key", key },
-      destinationDir,
-    });
-    await expectExtractedTree(destinationDir, tree);
-  });
-
   it("refuses symbolic link sources and unsafe or conflicting archive paths", async () => {
     const tree = await createSourceTree();
     const linkPath = path.join(tree.root, "link");
@@ -307,7 +259,6 @@ describe("writeServerArchive and extractServerArchive", () => {
         outPath: path.join(tree.root, "out.tar.gz"),
         files,
         manifest: MANIFEST_INPUT,
-        encryption: null,
       });
     const sourcePath = tree.files[0]?.sourcePath ?? "";
 
@@ -346,30 +297,24 @@ describe("writeServerArchive and extractServerArchive", () => {
       outPath,
       files: tree.files,
       manifest: MANIFEST_INPUT,
-      encryption: null,
     });
     const destinationDir = path.join(tree.root, "staging");
     await mkdir(destinationDir);
     await writeFile(path.join(destinationDir, "existing"), "keep");
 
     await expect(
-      extractServerArchive({
-        archivePath: outPath,
-        encryption: null,
-        destinationDir,
-      }),
+      extractServerArchive({ archivePath: outPath, destinationDir }),
     ).rejects.toThrow(/not empty/u);
     expect(await readdir(destinationDir)).toEqual(["existing"]);
   });
 
-  it("reports corrupt data for truncated archives and non-archives", async () => {
+  it("reports corrupt data for a truncated archive and removes the partial extraction", async () => {
     const tree = await createSourceTree();
     const outPath = path.join(tree.root, "server.tar.gz");
     await writeServerArchive({
       outPath,
       files: tree.files,
       manifest: MANIFEST_INPUT,
-      encryption: null,
     });
     const bytes = await readFile(outPath);
     const truncatedPath = path.join(tree.root, "truncated.tar.gz");
@@ -380,155 +325,58 @@ describe("writeServerArchive and extractServerArchive", () => {
     const destinationDir = path.join(tree.root, "staging");
 
     await expectArchiveError(
-      extractServerArchive({
-        archivePath: truncatedPath,
-        encryption: null,
-        destinationDir,
-      }),
+      extractServerArchive({ archivePath: truncatedPath, destinationDir }),
       ["corrupt"],
     );
     expect(await readdir(destinationDir)).toEqual([]);
-
-    const junkPath = path.join(tree.root, "junk.bin");
-    await writeFile(junkPath, "not an archive at all");
-    await expectArchiveError(detectServerArchiveEncryption(junkPath), [
-      "corrupt",
-    ]);
   });
 });
 
-describe("passphrase-encrypted archives", () => {
-  const passphrase = "correct horse battery staple";
-  let tree: SourceTree;
-  let archiveBytes: Buffer;
-
-  beforeAll(async () => {
-    tree = await createSourceTree();
-    const outPath = path.join(tree.root, "server.bbsa");
-    await writeServerArchive({
-      outPath,
-      files: tree.files,
-      manifest: MANIFEST_INPUT,
-      encryption: { kind: "passphrase", passphrase },
-    });
-    archiveBytes = await readFile(outPath);
-    tempDirs.splice(tempDirs.indexOf(tree.root), 1);
-    return () => rm(tree.root, { force: true, recursive: true });
-  });
-
-  async function writeVariant(
-    bytes: Buffer,
-  ): Promise<{ archivePath: string; root: string }> {
+describe("archive format sniffing", () => {
+  it("tells the user to re-export an archive encrypted by an older bb", async () => {
     const root = await makeTempDir();
-    const archivePath = path.join(root, "variant.bbsa");
-    await writeFile(archivePath, bytes);
-    return { archivePath, root };
-  }
-
-  async function extractVariant(
-    bytes: Buffer,
-    encryption: ServerArchiveEncryption | null,
-  ): Promise<{ result: Promise<unknown>; destinationDir: string }> {
-    const { archivePath, root } = await writeVariant(bytes);
-    const destinationDir = path.join(root, "staging");
-    return {
-      result: extractServerArchive({ archivePath, encryption, destinationDir }),
-      destinationDir,
-    };
-  }
-
-  it("round trips with the passphrase and never stores plaintext", async () => {
-    expect(archiveBytes.includes(Buffer.from(PLAINTEXT_MARKER))).toBe(false);
-    const { archivePath, root } = await writeVariant(archiveBytes);
-    expect(await detectServerArchiveEncryption(archivePath)).toBe("passphrase");
-
-    const destinationDir = path.join(root, "staging");
-    await extractServerArchive({
+    const archivePath = path.join(root, "old-export.bbsa");
+    await writeFile(
       archivePath,
-      encryption: { kind: "passphrase", passphrase },
-      destinationDir,
-    });
-    await expectExtractedTree(destinationDir, tree);
-  });
+      Buffer.concat([
+        Buffer.from("BBSA", "ascii"),
+        Buffer.from([0x01, 0x00, 0x00, 0x00, 0x02]),
+        Buffer.from("{}"),
+        randomBytes(128),
+      ]),
+    );
+    const destinationDir = path.join(root, "staging");
 
-  it("rejects a wrong passphrase before writing anything", async () => {
-    const { result, destinationDir } = await extractVariant(archiveBytes, {
-      kind: "passphrase",
-      passphrase: "wrong horse battery staple",
-    });
-    await expectArchiveError(result, ["bad_passphrase"]);
+    const error = await expectArchiveError(
+      extractServerArchive({ archivePath, destinationDir }),
+      ["unsupported_version"],
+    );
+
+    expect(error.message).toBe(
+      "This export was encrypted by an older bb; re-export it with bb server export",
+    );
     await expect(readdir(destinationDir)).rejects.toThrow(/ENOENT/u);
   });
 
-  it("rejects a missing passphrase or a key for a passphrase archive", async () => {
-    const missing = await extractVariant(archiveBytes, null);
-    await expectArchiveError(missing.result, ["encryption_mismatch"]);
-    const withKey = await extractVariant(archiveBytes, {
-      kind: "key",
-      key: randomBytes(32),
-    });
-    await expectArchiveError(withKey.result, ["encryption_mismatch"]);
-  });
+  it("says a file that is neither gzip nor an old encrypted archive is not a bb server archive", async () => {
+    const root = await makeTempDir();
+    for (const [name, bytes] of [
+      ["junk.bin", Buffer.from("not an archive at all")],
+      ["empty.bin", Buffer.alloc(0)],
+      ["short.bin", Buffer.from("BB")],
+    ] as const) {
+      const archivePath = path.join(root, name);
+      await writeFile(archivePath, bytes);
+      const destinationDir = path.join(root, `${name}-staging`);
 
-  it("rejects a tampered authentication tag and removes the partial extraction", async () => {
-    const tampered = Buffer.from(archiveBytes);
-    const lastIndex = tampered.length - 1;
-    tampered[lastIndex] = (tampered[lastIndex] ?? 0) ^ 0xff;
+      const error = await expectArchiveError(
+        extractServerArchive({ archivePath, destinationDir }),
+        ["corrupt"],
+      );
 
-    const { result, destinationDir } = await extractVariant(tampered, {
-      kind: "passphrase",
-      passphrase,
-    });
-
-    const error = await expectArchiveError(result, ["corrupt"]);
-    expect(error.message).toMatch(/authentication/u);
-    expect(await readdir(destinationDir)).toEqual([]);
-  });
-
-  it("rejects tampered ciphertext", async () => {
-    const tampered = Buffer.from(archiveBytes);
-    const middle = Math.floor(tampered.length / 2);
-    tampered[middle] = (tampered[middle] ?? 0) ^ 0x01;
-
-    const { result, destinationDir } = await extractVariant(tampered, {
-      kind: "passphrase",
-      passphrase,
-    });
-
-    await expectArchiveError(result, ["corrupt", "digest_mismatch"]);
-    expect(await readdir(destinationDir)).toEqual([]);
-  });
-
-  it("rejects a modified header that still parses", async () => {
-    const headerLength = archiveBytes.readUInt32BE(5);
-    const spacedHeader = Buffer.concat([
-      Buffer.from(" "),
-      archiveBytes.subarray(9, 9 + headerLength),
-    ]);
-    const fixedPrefix = Buffer.from(archiveBytes.subarray(0, 9));
-    fixedPrefix.writeUInt32BE(spacedHeader.length, 5);
-    const tampered = Buffer.concat([
-      fixedPrefix,
-      spacedHeader,
-      archiveBytes.subarray(9 + headerLength),
-    ]);
-
-    const { result } = await extractVariant(tampered, {
-      kind: "passphrase",
-      passphrase,
-    });
-
-    const error = await expectArchiveError(result, ["corrupt"]);
-    expect(error.message).toMatch(/authentication/u);
-  });
-
-  it("rejects an unsupported encrypted format version", async () => {
-    const future = Buffer.from(archiveBytes);
-    future[4] = 2;
-    const { archivePath } = await writeVariant(future);
-    await expectArchiveError(detectServerArchiveEncryption(archivePath), [
-      "unsupported_version",
-    ]);
+      expect(error.message).toBe("File is not a bb server archive");
+      await expect(readdir(destinationDir)).rejects.toThrow(/ENOENT/u);
+    }
   });
 });
 

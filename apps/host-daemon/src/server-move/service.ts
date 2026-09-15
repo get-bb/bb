@@ -142,7 +142,7 @@ const SERVER_DATABASE_FILE_NAME = "bb.db";
 const SERVER_MOVE_LOG_FILE_NAME = "server-move.log";
 const INSTALL_DAEMON_PID_FILE_NAME = "install-daemon.pid";
 const PENDING_SERVER_LOG_FILE_NAME = "server-move-pending-server.log";
-const ARCHIVE_FILE_NAME = "server-archive.bbsa";
+const ARCHIVE_FILE_NAME = "server-archive.tar.gz";
 const STAGING_DIR_NAME = "staging";
 const ACTIVATION_REJECTED = "server_move_activation_rejected";
 const OLD_COPY_PROTECTED_ENTRIES: ReadonlySet<string> = new Set([
@@ -1304,10 +1304,6 @@ export class ServerMoveService {
       await rm(stagingDir, { recursive: true, force: true });
       const manifest = await extractServerArchive({
         archivePath,
-        encryption: {
-          kind: "key",
-          key: Buffer.from(command.archive.key, "base64"),
-        },
         destinationDir: stagingDir,
       });
       signal.throwIfAborted();

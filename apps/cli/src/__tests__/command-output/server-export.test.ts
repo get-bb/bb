@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdtemp, readdir, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -38,15 +39,29 @@ function streamOf(chunks: readonly Uint8Array[], failure?: Error) {
   });
 }
 
-function exportResponse(body: ReadableStream<Uint8Array>): Response {
+function sha256Of(chunks: readonly Uint8Array[]): string {
+  const hash = createHash("sha256");
+  for (const chunk of chunks) hash.update(chunk);
+  return hash.digest("hex");
+}
+
+function exportResponse(
+  body: ReadableStream<Uint8Array>,
+  sha256: string | null,
+): Response {
   return new Response(body, {
     status: 200,
     headers: {
-      "content-disposition": 'attachment; filename="bb-server-2026-09-15.bbsa"',
-      "content-type": "application/octet-stream",
+      "content-disposition":
+        'attachment; filename="bb-server-2026-09-15.tar.gz"',
+      "content-type": "application/gzip",
+      ...(sha256 === null ? {} : { "x-bb-archive-sha256": sha256 }),
     },
   });
 }
+
+const UNENCRYPTED_EXPORT_WARNING =
+  "This export is not encrypted and holds the server's credentials and plugin secrets. Keep it private; bb wrote it with mode 0600.";
 
 describe("bb server export", () => {
   setupCommandOutputTestEnvironment();
@@ -65,87 +80,106 @@ describe("bb server export", () => {
       () => "http://server",
     );
 
-  it("streams the archive to a private file using the passphrase from the environment", async () => {
+  it("streams the archive to a private file after checking the server's digest", async () => {
     const dir = await makeTempDir();
-    const outPath = join(dir, "backup.bbsa");
+    const outPath = join(dir, "backup.tar.gz");
+    const chunks = [
+      Buffer.from([0x1f, 0x8b]),
+      Buffer.alloc(1024 * 1024 + 512, 7),
+      Buffer.from("tail"),
+    ];
     const exportRoute = vi.fn(async () =>
-      exportResponse(
-        streamOf([
-          Buffer.from("BBSA"),
-          Buffer.alloc(1024 * 1024 + 512, 7),
-          Buffer.from("tail"),
-        ]),
-      ),
+      exportResponse(streamOf(chunks), sha256Of(chunks)),
     );
     stubServerApi({ "v1.server.export.$post": exportRoute });
-    vi.stubEnv("BB_SERVER_EXPORT_PASSPHRASE", "correct horse battery staple");
 
     await runCommand(["server", "export", "--out", outPath], register);
 
     expect(exportRoute).toHaveBeenCalledWith(
-      { json: { passphrase: "correct horse battery staple" } },
+      {},
       expect.objectContaining({ init: expect.anything() }),
     );
     const written = await readFile(outPath);
-    expect(written.subarray(0, 4).toString()).toBe("BBSA");
-    expect(written.length).toBe(4 + 1024 * 1024 + 512 + 4);
+    expect(written.subarray(0, 2)).toEqual(Buffer.from([0x1f, 0x8b]));
+    expect(written.length).toBe(2 + 1024 * 1024 + 512 + 4);
     expect((await stat(outPath)).mode & 0o777).toBe(0o600);
-    expect(await readdir(dir)).toEqual(["backup.bbsa"]);
+    expect(await readdir(dir)).toEqual(["backup.tar.gz"]);
+  });
+
+  it("warns that the export is unencrypted and holds the server's credentials", async () => {
+    const dir = await makeTempDir();
+    const outPath = join(dir, "backup.tar.gz");
+    const chunks = [Buffer.from([0x1f, 0x8b]), Buffer.alloc(1024 * 1024, 3)];
+    const sha256 = sha256Of(chunks);
+    stubServerApi({
+      "v1.server.export.$post": vi.fn(async () =>
+        exportResponse(streamOf(chunks), sha256),
+      ),
+    });
+
+    await runCommand(["server", "export", "--out", outPath], register);
+
     expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
       `Exported the bb server to ${outPath} (1.0 MB)`,
     ]);
-  });
+    expect(collectLogPayloads(vi.mocked(console.error))).toEqual([
+      UNENCRYPTED_EXPORT_WARNING,
+    ]);
 
-  it("--unencrypted asks the server for a plain archive without a passphrase", async () => {
-    const dir = await makeTempDir();
-    const outPath = join(dir, "backup.tar.gz");
-    const exportRoute = vi.fn(async () =>
-      exportResponse(streamOf([Buffer.from([0x1f, 0x8b, 0, 0])])),
-    );
-    stubServerApi({ "v1.server.export.$post": exportRoute });
-    vi.stubEnv("BB_SERVER_EXPORT_PASSPHRASE", undefined);
-    Object.defineProperty(process.stdin, "isTTY", {
-      value: false,
-      configurable: true,
-    });
-
+    vi.mocked(console.log).mockClear();
+    vi.mocked(console.error).mockClear();
     await runCommand(
-      ["server", "export", "--out", outPath, "--unencrypted", "--json"],
+      ["server", "export", "--out", outPath, "--json"],
       register,
     );
 
-    expect(exportRoute).toHaveBeenCalledWith(
-      { json: { passphrase: null } },
-      expect.anything(),
-    );
     expect(JSON.parse(collectLogPayloads(vi.mocked(console.log))[0]!)).toEqual({
       path: outPath,
-      sizeBytes: 4,
-      encrypted: false,
+      sizeBytes: 2 + 1024 * 1024,
+      sha256,
+      warning: UNENCRYPTED_EXPORT_WARNING,
     });
+    expect(collectLogPayloads(vi.mocked(console.error))).toEqual([]);
   });
 
-  it("refuses without a passphrase source instead of exporting unencrypted", async () => {
+  it("refuses to keep an export whose bytes do not match the server's digest", async () => {
     const dir = await makeTempDir();
-    const exportRoute = vi.fn();
-    stubServerApi({ "v1.server.export.$post": exportRoute });
-    vi.stubEnv("BB_SERVER_EXPORT_PASSPHRASE", undefined);
-    Object.defineProperty(process.stdin, "isTTY", {
-      value: false,
-      configurable: true,
+    const outPath = join(dir, "backup.tar.gz");
+    stubServerApi({
+      "v1.server.export.$post": vi.fn(async () =>
+        exportResponse(
+          streamOf([Buffer.from("truncated export")]),
+          sha256Of([Buffer.from("the export the server wrote")]),
+        ),
+      ),
     });
 
     await expect(
-      runCommand(
-        ["server", "export", "--out", join(dir, "backup.bbsa")],
-        register,
-      ),
+      runCommand(["server", "export", "--out", outPath], register),
     ).rejects.toThrow("process.exit:1");
 
-    expect(exportRoute).not.toHaveBeenCalled();
     expect(await readdir(dir)).toEqual([]);
     expect(collectLogPayloads(vi.mocked(console.error))).toEqual([
-      "Error: Set BB_SERVER_EXPORT_PASSPHRASE or run this command in an interactive terminal to enter a passphrase. Pass --unencrypted to export without encryption.",
+      `Error: The downloaded export does not match the SHA-256 digest the server sent, so ${outPath} was not written. Try the export again.`,
+    ]);
+  });
+
+  it("refuses an export response without a digest before writing anything", async () => {
+    const dir = await makeTempDir();
+    const outPath = join(dir, "backup.tar.gz");
+    stubServerApi({
+      "v1.server.export.$post": vi.fn(async () =>
+        exportResponse(streamOf([Buffer.from([0x1f, 0x8b])]), null),
+      ),
+    });
+
+    await expect(
+      runCommand(["server", "export", "--out", outPath], register),
+    ).rejects.toThrow("process.exit:1");
+
+    expect(await readdir(dir)).toEqual([]);
+    expect(collectLogPayloads(vi.mocked(console.error))).toEqual([
+      "Error: The server did not send a SHA-256 digest for the export",
     ]);
   });
 
@@ -164,11 +198,10 @@ describe("bb server export", () => {
           ),
       ),
     });
-    vi.stubEnv("BB_SERVER_EXPORT_PASSPHRASE", "long enough secret");
 
     await expect(
       runCommand(
-        ["server", "export", "--out", join(dir, "backup.bbsa")],
+        ["server", "export", "--out", join(dir, "backup.tar.gz")],
         register,
       ),
     ).rejects.toThrow("process.exit:1");
@@ -179,48 +212,13 @@ describe("bb server export", () => {
     expect(await readdir(dir)).toEqual([]);
   });
 
-  it("refuses a passphrase variable shorter than 8 characters", async () => {
-    const dir = await makeTempDir();
-    const exportRoute = vi.fn();
-    stubServerApi({ "v1.server.export.$post": exportRoute });
-    vi.stubEnv("BB_SERVER_EXPORT_PASSPHRASE", "short");
-
-    await expect(
-      runCommand(
-        ["server", "export", "--out", join(dir, "backup.bbsa")],
-        register,
-      ),
-    ).rejects.toThrow("process.exit:1");
-
-    expect(exportRoute).not.toHaveBeenCalled();
-    expect(collectLogPayloads(vi.mocked(console.error))).toEqual([
-      "Error: BB_SERVER_EXPORT_PASSPHRASE must be at least 8 characters.",
-    ]);
-  });
-
-  it("rejects an empty passphrase variable", async () => {
-    const dir = await makeTempDir();
-    const exportRoute = vi.fn();
-    stubServerApi({ "v1.server.export.$post": exportRoute });
-    vi.stubEnv("BB_SERVER_EXPORT_PASSPHRASE", "");
-
-    await expect(
-      runCommand(
-        ["server", "export", "--out", join(dir, "backup.bbsa")],
-        register,
-      ),
-    ).rejects.toThrow("process.exit:1");
-
-    expect(exportRoute).not.toHaveBeenCalled();
-  });
-
   it("removes the partial file and keeps an existing archive when the download breaks", async () => {
     const dir = await makeTempDir();
-    const outPath = join(dir, "backup.bbsa");
-    vi.stubEnv("BB_SERVER_EXPORT_PASSPHRASE", "long enough secret");
+    const outPath = join(dir, "backup.tar.gz");
+    const previous = [Buffer.from("previous backup")];
     stubServerApi({
       "v1.server.export.$post": vi.fn(async () =>
-        exportResponse(streamOf([Buffer.from("previous backup")])),
+        exportResponse(streamOf(previous), sha256Of(previous)),
       ),
     });
     await runCommand(["server", "export", "--out", outPath], register);
@@ -228,6 +226,7 @@ describe("bb server export", () => {
       "v1.server.export.$post": vi.fn(async () =>
         exportResponse(
           streamOf([Buffer.from("partial")], new Error("connection reset")),
+          sha256Of([Buffer.from("partial and the rest")]),
         ),
       ),
     });
@@ -236,7 +235,7 @@ describe("bb server export", () => {
       runCommand(["server", "export", "--out", outPath], register),
     ).rejects.toThrow("process.exit:1");
 
-    expect(await readdir(dir)).toEqual(["backup.bbsa"]);
+    expect(await readdir(dir)).toEqual(["backup.tar.gz"]);
     expect(await readFile(outPath, "utf8")).toBe("previous backup");
     expect(collectLogPayloads(vi.mocked(console.error)).at(-1)).toBe(
       "Error: connection reset",
@@ -247,11 +246,10 @@ describe("bb server export", () => {
     const dir = await makeTempDir();
     const exportRoute = vi.fn();
     stubServerApi({ "v1.server.export.$post": exportRoute });
-    vi.stubEnv("BB_SERVER_EXPORT_PASSPHRASE", "long enough secret");
 
     await expect(
       runCommand(
-        ["server", "export", "--out", join(dir, "missing", "backup.bbsa")],
+        ["server", "export", "--out", join(dir, "missing", "backup.tar.gz")],
         register,
       ),
     ).rejects.toThrow("process.exit:1");

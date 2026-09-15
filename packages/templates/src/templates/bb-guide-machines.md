@@ -199,7 +199,6 @@ checkouts stay on the machines that own them.
   bb server move status                   Show the steps, or the last move
   bb server move cancel                   Cancel before the switch starts
   bb server export --out <file>           Export a running server
-    --unencrypted                         Write a plain archive
   bb server import <file>                 Install an export on this computer
     --data-dir <dir>                      Target data directory
   bb server unlock                        Let this computer's old copy start again
@@ -215,12 +214,14 @@ target is archived to `<dir>.before-move-<date>` only with
 the new server takes over; SIGINT stops following while the move continues.
 Failure or cancellation before the switch leaves the server where it was.
 
-`bb server export` streams the archive to a 0600 file. It reads the passphrase
-(at least 8 characters) from `BB_SERVER_EXPORT_PASSPHRASE` or prompts twice
-without echo, and refuses without either unless `--unencrypted` is passed.
+`bb server export` streams a gzip archive to a 0600 file and keeps it only when
+it matches the SHA-256 digest the server sent. The archive is not encrypted and
+holds the server's credentials and plugin secrets, so keep it private; `--json`
+prints `path`, `sizeBytes`, `sha256`, and that `warning`.
 `bb server import` works offline: it refuses a data directory that has `bb.db`
-or a running bb, refuses an export made by a newer bb, reads the passphrase the
-same way, and applies path fixups when the imported server first starts. Stop the original server before starting the imported one; two servers
+or a running bb, refuses an export made by a newer bb, asks you to re-export an
+archive encrypted by an older bb, and applies path fixups when the imported
+server first starts. Stop the original server before starting the imported one; two servers
 holding the same bb connect credential take each other's tunnel.
 
 An imported server starts with bb connect off (`server-connect-hold.json`) and

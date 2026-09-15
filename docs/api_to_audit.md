@@ -2965,8 +2965,9 @@ archiveExistingTargetServerData })` freezes the server, stops running work,
 copies server-owned data to the target, starts the new server there, switches
 machines over, and retires this server process. `moveStatus()` returns the
 active move and the last completed move (`lastMove`); `cancelMove()` works
-until the switch starts. `export({ passphrase })` streams a server archive,
-encrypted when a passphrase is given. `hosts.experimental_deleteOldServerCopy({
+until the switch starts. `export({ signal })` streams an unencrypted gzip server
+archive and returns its `fileName`, `body`, and the `sha256` digest the server
+sent. `hosts.experimental_deleteOldServerCopy({
 hostId })` deletes the locked old server data on that machine. All refuse
 requests authenticated by a machine credential. `checkMove`, `startMove`,
 `export`, and old-copy deletion also require the default-off `serverMove`

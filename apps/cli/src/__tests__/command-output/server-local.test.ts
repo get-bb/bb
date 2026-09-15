@@ -28,7 +28,6 @@ import {
   readServerMovedFile,
   SERVER_IMPORT_FILE_NAME,
   SERVER_MOVED_FILE_NAME,
-  type ServerArchiveEncryption,
   type ServerMovedFile,
   writeServerArchive,
   writeServerConnectHoldFile,
@@ -44,7 +43,6 @@ import type { CommandRegistrar } from "../helpers/command-output-harness.js";
 import { registerServerCommands } from "../../commands/server.js";
 import { isNewerBbVersion } from "../../commands/server-local.js";
 
-const PASSPHRASE = "correct horse battery staple";
 const tempDirs: string[] = [];
 
 async function makeTempDir(prefix: string): Promise<string> {
@@ -64,10 +62,7 @@ async function writeDataFile(
   return path;
 }
 
-async function buildArchive(
-  encryption: ServerArchiveEncryption | null,
-  bbVersion = "0.50.0",
-): Promise<string> {
+async function buildArchive(bbVersion = "0.50.0"): Promise<string> {
   const sourceDataDir = await makeTempDir("bb-cli-server-source-");
   const files = [
     { archivePath: "bb.db", body: "sqlite database" },
@@ -91,7 +86,7 @@ async function buildArchive(
   );
   const outPath = join(
     await makeTempDir("bb-cli-server-archive-"),
-    encryption === null ? "export.tar.gz" : "export.bbsa",
+    "export.tar.gz",
   );
   await writeServerArchive({
     outPath,
@@ -104,7 +99,6 @@ async function buildArchive(
       sourceDataDir: "/home/old/.bb",
       sourceServerHostId: "host-old-server",
     },
-    encryption,
   });
   return outPath;
 }
@@ -199,14 +193,9 @@ const register: CommandRegistrar = (program) =>
   );
 
 let plainArchive: string;
-let encryptedArchive: string;
 
 beforeAll(async () => {
-  plainArchive = await buildArchive(null);
-  encryptedArchive = await buildArchive({
-    kind: "passphrase",
-    passphrase: PASSPHRASE,
-  });
+  plainArchive = await buildArchive();
 }, 60_000);
 
 afterAll(async () => {
@@ -297,15 +286,14 @@ describe("bb server import", () => {
     ]);
   });
 
-  it("decrypts a passphrase export with the passphrase from the environment", async () => {
+  it("prints the import result as JSON", async () => {
     const dataDir = join(await makeDataDirParent(), "bb-data");
-    vi.stubEnv("BB_SERVER_EXPORT_PASSPHRASE", PASSPHRASE);
 
     await runCommand(
       [
         "server",
         "import",
-        encryptedArchive,
+        plainArchive,
         "--data-dir",
         dataDir,
         "--yes",
@@ -322,48 +310,6 @@ describe("bb server import", () => {
       bbVersion: "0.50.0",
       sourceServerHostId: "host-old-server",
     });
-  });
-
-  it("leaves the data directory without server files when the passphrase is wrong", async () => {
-    const parent = await makeDataDirParent();
-    const dataDir = join(parent, "bb-data");
-    await mkdir(dataDir);
-    await writeFile(join(dataDir, "host-id"), "host-desktop");
-    vi.stubEnv("BB_SERVER_EXPORT_PASSPHRASE", "wrong passphrase");
-
-    await expect(
-      runCommand(
-        ["server", "import", encryptedArchive, "--data-dir", dataDir, "--yes"],
-        register,
-      ),
-    ).rejects.toThrow("process.exit:1");
-
-    expect(collectLogPayloads(vi.mocked(console.error))).toEqual([
-      "Error: Archive passphrase is incorrect",
-    ]);
-    expect(await readdir(dataDir)).toEqual(["host-id"]);
-    expect(await readdir(parent)).toEqual(["bb-data"]);
-  });
-
-  it("refuses an encrypted export without a passphrase source", async () => {
-    const dataDir = join(await makeDataDirParent(), "bb-data");
-    vi.stubEnv("BB_SERVER_EXPORT_PASSPHRASE", undefined);
-    Object.defineProperty(process.stdin, "isTTY", {
-      value: false,
-      configurable: true,
-    });
-
-    await expect(
-      runCommand(
-        ["server", "import", encryptedArchive, "--data-dir", dataDir, "--yes"],
-        register,
-      ),
-    ).rejects.toThrow("process.exit:1");
-
-    expect(collectLogPayloads(vi.mocked(console.error))).toEqual([
-      "Error: This export is encrypted. Set BB_SERVER_EXPORT_PASSPHRASE or run this command in an interactive terminal to enter its passphrase.",
-    ]);
-    await expect(stat(join(dataDir, "bb.db"))).rejects.toThrow();
   });
 
   it("refuses a data directory that already has a server database", async () => {
@@ -453,23 +399,26 @@ describe("bb server import", () => {
     expect(await readdir(parent)).toEqual([]);
   });
 
-  it("refuses a move archive encrypted with a raw key", async () => {
-    const keyArchive = await buildArchive({
-      kind: "key",
-      key: randomBytes(32),
-    });
-    const dataDir = join(await makeDataDirParent(), "bb-data");
+  it("asks for a new export when the file was encrypted by an older bb", async () => {
+    const parent = await makeDataDirParent();
+    const oldExport = await writeDataFile(
+      parent,
+      "old-export.bbsa",
+      `BBSA${randomBytes(64).toString("hex")}`,
+    );
+    const dataDir = join(parent, "bb-data");
 
     await expect(
       runCommand(
-        ["server", "import", keyArchive, "--data-dir", dataDir, "--yes"],
+        ["server", "import", oldExport, "--data-dir", dataDir, "--yes"],
         register,
       ),
     ).rejects.toThrow("process.exit:1");
 
-    expect(collectLogPayloads(vi.mocked(console.error))[0]).toBe(
-      `Error: ${keyArchive} was created for a server move and can only be installed by that move. Create an export with bb server export.`,
-    );
+    expect(collectLogPayloads(vi.mocked(console.error))).toEqual([
+      "Error: This export was encrypted by an older bb; re-export it with bb server export",
+    ]);
+    expect(await readdir(parent)).toEqual(["old-export.bbsa"]);
   });
 
   it("rejects a file that is not a server archive", async () => {
@@ -490,7 +439,7 @@ describe("bb server import", () => {
   });
 
   it("refuses an export made by a newer bb and leaves nothing behind", async () => {
-    const newerArchive = await buildArchive(null, "0.51.0");
+    const newerArchive = await buildArchive("0.51.0");
     const parent = await makeDataDirParent();
     const dataDir = join(parent, "bb-data");
 

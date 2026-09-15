@@ -44,7 +44,6 @@ export const serverMoveCommandSchemas = {
           downloadPath: z.string().min(1),
           sha256: sha256HexSchema,
           sizeBytes: z.number().int().nonnegative(),
-          key: z.string().min(1),
         })
         .strict(),
       bbApp: z

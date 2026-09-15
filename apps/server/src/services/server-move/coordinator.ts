@@ -68,7 +68,6 @@ export interface ServerMoveTimings {
 }
 
 export interface ServerMoveExportArgs {
-  key: Buffer;
   sourceServerHostId: string;
   workDir: string;
 }
@@ -141,7 +140,6 @@ interface MoveRun {
   activationToken: string;
   archive: ServerArchiveExport | null;
   archiveExistingTargetServerData: boolean;
-  archiveKey: Buffer | null;
   bbApp: FullBbAppArtifact | null;
   connectHandle: string | null;
   finished: boolean;
@@ -435,14 +433,11 @@ export function createServerMoveCoordinator(
     await environment.plugins.suspendAllButConnect();
     assertNotCancelled(move);
     setStep(move, "export", "running", "Exporting server data");
-    const key = randomBytes(32);
     const archive = await environment.exportArchive({
-      key,
       sourceServerHostId: move.sourceServerHost.id,
       workDir: move.workDir,
     });
     move.archive = archive;
-    move.archiveKey = key;
     assertNotCancelled(move);
     setStep(
       move,
@@ -454,7 +449,6 @@ export function createServerMoveCoordinator(
 
   async function runPrepare(move: MoveRun): Promise<void> {
     const archive = requireValue(move.archive, "its export");
-    const key = requireValue(move.archiveKey, "its export key");
     const targetName = move.status.targetHostName;
     setStep(
       move,
@@ -475,7 +469,6 @@ export function createServerMoveCoordinator(
             downloadPath: serverMoveArchiveDownloadPath(move.status.moveId),
             sha256: archive.sha256,
             sizeBytes: archive.sizeBytes,
-            key: key.toString("base64"),
           },
           bbApp:
             move.bbApp === null
@@ -860,7 +853,6 @@ export function createServerMoveCoordinator(
     } catch (error) {
       await failMove(move, error);
     } finally {
-      move.archiveKey = null;
       await rm(move.workDir, { force: true, recursive: true }).catch(
         (error: unknown) => {
           deps.logger.warn(
@@ -1031,7 +1023,6 @@ export function createServerMoveCoordinator(
           archive: null,
           archiveExistingTargetServerData:
             request.archiveExistingTargetServerData,
-          archiveKey: null,
           bbApp: null,
           connectHandle: mode.mode === "connect" ? mode.connectHandle : null,
           finished: false,

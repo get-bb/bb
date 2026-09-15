@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { createWriteStream, existsSync } from "node:fs";
 import { rename, rm, stat } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
@@ -37,11 +37,6 @@ import {
   printServerMoveStatus,
   printServerMoveStatusResponse,
 } from "./server-move.js";
-import {
-  processPassphraseTerminal,
-  readArchivePassphrase,
-  readNewExportPassphrase,
-} from "./server-passphrase.js";
 
 interface JsonCommandOptions {
   json?: boolean;
@@ -57,7 +52,6 @@ interface ServerMoveCommandOptions extends JsonCommandOptions {
 
 interface ServerExportCommandOptions extends JsonCommandOptions {
   out: string;
-  unencrypted?: boolean;
 }
 
 interface LocalServerCommandOptions extends JsonCommandOptions {
@@ -68,6 +62,9 @@ interface LocalServerCommandOptions extends JsonCommandOptions {
 interface UnlockCommandOptions extends LocalServerCommandOptions {
   force?: boolean;
 }
+
+const SERVER_EXPORT_UNENCRYPTED_WARNING =
+  "This export is not encrypted and holds the server's credentials and plugin secrets. Keep it private; bb wrote it with mode 0600.";
 
 function startServerHint(dataDir: string): string {
   return isDefaultDataDir(dataDir)
@@ -103,20 +100,24 @@ async function assertWritableOutPath(outPath: string): Promise<void> {
   }
 }
 
-async function writeExportFile(
-  body: ReadableStream<Uint8Array>,
-  outPath: string,
-): Promise<number> {
+async function writeExportFile(args: {
+  body: ReadableStream<Uint8Array>;
+  outPath: string;
+  expectedSha256: string;
+}): Promise<number> {
+  const { outPath } = args;
   const tempPath = join(
     dirname(outPath),
     `.${basename(outPath)}.${randomBytes(6).toString("hex")}.tmp`,
   );
+  const hash = createHash("sha256");
   async function* chunks(): AsyncGenerator<Uint8Array> {
-    const reader = body.getReader();
+    const reader = args.body.getReader();
     try {
       for (;;) {
         const result = await reader.read();
         if (result.done) return;
+        hash.update(result.value);
         yield result.value;
       }
     } finally {
@@ -128,6 +129,11 @@ async function writeExportFile(
       chunks,
       createWriteStream(tempPath, { flags: "wx", mode: 0o600 }),
     );
+    if (hash.digest("hex") !== args.expectedSha256) {
+      throw new Error(
+        `The downloaded export does not match the SHA-256 digest the server sent, so ${outPath} was not written. Try the export again.`,
+      );
+    }
     await rename(tempPath, outPath);
   } catch (error) {
     await rm(tempPath, { force: true });
@@ -303,36 +309,33 @@ export function registerServerCommands(
     .command("export")
     .description("Export the bb server's data to an archive")
     .requiredOption("--out <file>", "Write the archive to this file")
-    .option("--unencrypted", "Write a plain archive without a passphrase")
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (opts: ServerExportCommandOptions) => {
         const outPath = resolve(opts.out);
         await assertWritableOutPath(outPath);
-        const passphrase = opts.unencrypted
-          ? null
-          : await readNewExportPassphrase({
-              env: process.env,
-              terminal: processPassphraseTerminal(),
-            });
-        const sizeBytes = await withSigint(async (signal) => {
-          const exported = await callServerMoveRoute(() =>
-            createCliBbSdk(getUrl()).experimental_server.export({
-              passphrase,
-              signal,
-            }),
+        const exported = await withSigint(async (signal) => {
+          const response = await callServerMoveRoute(() =>
+            createCliBbSdk(getUrl()).experimental_server.export({ signal }),
           );
-          return writeExportFile(exported.body, outPath);
+          const sizeBytes = await writeExportFile({
+            body: response.body,
+            outPath,
+            expectedSha256: response.sha256,
+          });
+          return { sizeBytes, sha256: response.sha256 };
         }, "Stopped the export.");
         const result = {
           path: outPath,
-          sizeBytes,
-          encrypted: passphrase !== null,
+          sizeBytes: exported.sizeBytes,
+          sha256: exported.sha256,
+          warning: SERVER_EXPORT_UNENCRYPTED_WARNING,
         };
         if (outputJson(opts, result)) return;
         console.log(
-          `Exported the bb server to ${outPath} (${formatDataSize(sizeBytes)}${passphrase === null ? ", unencrypted" : ""})`,
+          `Exported the bb server to ${outPath} (${formatDataSize(exported.sizeBytes)})`,
         );
+        console.error(SERVER_EXPORT_UNENCRYPTED_WARNING);
       }),
     );
 
@@ -357,11 +360,6 @@ export function registerServerCommands(
             opts.yes
               ? Promise.resolve(true)
               : confirmDestructiveAction(message),
-          readPassphrase: () =>
-            readArchivePassphrase({
-              env: process.env,
-              terminal: processPassphraseTerminal(),
-            }),
           now: () => Date.now(),
           cliVersion: resolveBbCliVersion(),
         });

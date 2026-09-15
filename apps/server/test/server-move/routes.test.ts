@@ -8,7 +8,6 @@ import {
   type HostDaemonRpcCommand,
 } from "@bb/host-daemon-contract";
 import {
-  detectServerArchiveEncryption,
   extractServerArchive,
   readLastServerMoveFile,
   readServerMovedFile,
@@ -74,6 +73,15 @@ function postJson(
   );
 }
 
+function postExport(
+  harness: TestAppHarness,
+  headers: Record<string, string> = {},
+): Promise<Response> {
+  return Promise.resolve(
+    harness.app.request(`${API}/server/export`, { method: "POST", headers }),
+  );
+}
+
 function daemonHeaders(hostId: string): Record<string, string> {
   return {
     authorization: `Bearer ${createTestDaemonHostKey({ hostId })}`,
@@ -112,7 +120,7 @@ describe("server move routes", () => {
           stopRunningWork: true,
           archiveExistingTargetServerData: false,
         }),
-        postJson(harness, `${API}/server/export`, { passphrase: null }),
+        postExport(harness),
         harness.app.request(`${API}/hosts/${OLD}/old-server-copy`, {
           method: "DELETE",
         }),
@@ -279,14 +287,10 @@ describe("server move routes", () => {
       expect(createHash("sha256").update(archiveBytes).digest("hex")).toBe(
         prepareCommand.archive.sha256,
       );
-      const downloaded = join(await makeTempDir(), "server.bbsa");
+      const downloaded = join(await makeTempDir(), "server.tar.gz");
       await writeFile(downloaded, archiveBytes);
       const manifest = await extractServerArchive({
         archivePath: downloaded,
-        encryption: {
-          kind: "key",
-          key: Buffer.from(prepareCommand.archive.key, "base64"),
-        },
         destinationDir: await makeTempDir(),
       });
       expect(manifest.entries.map((entry) => entry.path)).toContain("bb.db");
@@ -383,12 +387,7 @@ describe("server move routes", () => {
           method: "POST",
           headers: machine,
         }),
-        postJson(
-          harness,
-          `${API}/server/export`,
-          { passphrase: null },
-          machine,
-        ),
+        postExport(harness, machine),
         harness.app.request(`${API}/hosts/${OLD}/old-server-copy`, {
           method: "DELETE",
           headers: machine,
@@ -461,23 +460,23 @@ describe("server move routes", () => {
       ).toEqual(expect.any(Number));
     }));
 
-  it("streams unencrypted and passphrase exports with dated file names", () =>
+  it("streams a gzip export with a dated file name and its SHA-256 digest", () =>
     withTestHarness(async (harness) => {
       seedTopology(harness);
-      const plain = await postJson(harness, `${API}/server/export`, {
-        passphrase: null,
-      });
-      expect(plain.status).toBe(200);
-      expect(plain.headers.get("content-type")).toBe("application/gzip");
-      expect(plain.headers.get("content-disposition")).toMatch(
+      const response = await postExport(harness);
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-type")).toBe("application/gzip");
+      expect(response.headers.get("content-disposition")).toMatch(
         /^attachment; filename="bb-server-\d{4}-\d{2}-\d{2}\.tar\.gz"$/u,
       );
-      const plainPath = join(await makeTempDir(), "export.tar.gz");
-      await writeFile(plainPath, Buffer.from(await plain.arrayBuffer()));
-      expect(await detectServerArchiveEncryption(plainPath)).toBe("none");
+      const bytes = Buffer.from(await response.arrayBuffer());
+      expect(response.headers.get("x-bb-archive-sha256")).toBe(
+        createHash("sha256").update(bytes).digest("hex"),
+      );
+      const exportPath = join(await makeTempDir(), "export.tar.gz");
+      await writeFile(exportPath, bytes);
       const manifest = await extractServerArchive({
-        archivePath: plainPath,
-        encryption: null,
+        archivePath: exportPath,
         destinationDir: await makeTempDir(),
       });
       expect(manifest).toMatchObject({
@@ -485,22 +484,6 @@ describe("server move routes", () => {
         sourceServerHostId: OLD,
       });
       expect(manifest.entries.map((entry) => entry.path)).toContain("bb.db");
-
-      const encrypted = await postJson(harness, `${API}/server/export`, {
-        passphrase: "correct horse battery staple",
-      });
-      expect(encrypted.status).toBe(200);
-      expect(encrypted.headers.get("content-disposition")).toMatch(
-        /filename="bb-server-\d{4}-\d{2}-\d{2}\.bbsa"$/u,
-      );
-      const encryptedPath = join(await makeTempDir(), "export.bbsa");
-      await writeFile(
-        encryptedPath,
-        Buffer.from(await encrypted.arrayBuffer()),
-      );
-      expect(await detectServerArchiveEncryption(encryptedPath)).toBe(
-        "passphrase",
-      );
       await expect
         .poll(
           async () =>

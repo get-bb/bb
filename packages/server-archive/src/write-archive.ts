@@ -5,10 +5,6 @@ import { basename, dirname, join } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { createGzip } from "node:zlib";
-import {
-  createArchiveEncryptor,
-  type ServerArchiveEncryption,
-} from "./encryption.js";
 import { hasErrorCode, ServerArchiveError } from "./errors.js";
 import {
   SERVER_ARCHIVE_FILES_DIR_NAME,
@@ -39,7 +35,6 @@ export interface WriteServerArchiveArgs {
   outPath: string;
   files: readonly ServerArchiveSourceFile[];
   manifest: ServerArchiveManifestInput;
-  encryption: ServerArchiveEncryption | null;
 }
 
 export interface WriteServerArchiveResult {
@@ -204,10 +199,6 @@ export async function writeServerArchive(
     version: SERVER_ARCHIVE_VERSION,
     entries: plannedFiles.map((file) => file.entry),
   });
-  const encryptor =
-    args.encryption === null
-      ? null
-      : await createArchiveEncryptor(args.encryption);
 
   await mkdir(dirname(args.outPath), { recursive: true });
   const tempPath = join(
@@ -221,23 +212,11 @@ export async function writeServerArchive(
       Readable.from(generateTarChunks(manifest, plannedFiles)),
       createGzip(),
       async function* (source: AsyncIterable<Buffer>) {
-        const record = (chunk: Buffer): Buffer => {
+        for await (const chunk of source) {
           archiveHash.update(chunk);
           sizeBytes += chunk.length;
-          return chunk;
-        };
-        if (encryptor === null) {
-          for await (const chunk of source) {
-            yield record(chunk);
-          }
-          return;
+          yield chunk;
         }
-        yield record(encryptor.prefix);
-        for await (const chunk of source) {
-          yield record(encryptor.cipher.update(chunk));
-        }
-        yield record(encryptor.cipher.final());
-        yield record(encryptor.cipher.getAuthTag());
       },
       createWriteStream(tempPath, { flags: "wx", mode: 0o600 }),
     );

@@ -552,7 +552,7 @@ function appendTransportItems(args: {
     id: "unencrypted-transfer",
     severity: "warning",
     title: "Server data will cross the network unencrypted",
-    detail: `Machines reach this server at ${address.origin} over plain HTTP, so the export and the key that unlocks it travel in the clear. Use an https address, for example with Tailscale Serve.`,
+    detail: `Machines reach this server at ${address.origin} over plain HTTP, so the export, which holds the server's credentials, travels in the clear. Use an https address, for example with Tailscale Serve.`,
   });
 }
 

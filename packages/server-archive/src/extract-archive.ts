@@ -1,18 +1,10 @@
-import { createHash, type DecipherGCM } from "node:crypto";
+import { createHash } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
-import { mkdir, open, readdir, rm } from "node:fs/promises";
+import { mkdir, readdir, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { createGunzip } from "node:zlib";
-import {
-  archivePrefixEncryptionKind,
-  createArchiveDecryptor,
-  GCM_TAG_BYTES,
-  readArchivePrefix,
-  readArchiveTag,
-  type ServerArchiveEncryption,
-  type ServerArchiveEncryptionKind,
-} from "./encryption.js";
+import { assertServerArchiveFormat } from "./archive-format.js";
 import { hasErrorCode, ServerArchiveError } from "./errors.js";
 import {
   parseServerArchiveManifest,
@@ -28,58 +20,7 @@ const MAX_MANIFEST_BYTES = 64 * 1024 * 1024;
 
 export interface ExtractServerArchiveArgs {
   archivePath: string;
-  encryption: ServerArchiveEncryption | null;
   destinationDir: string;
-}
-
-type ExtractionPlan =
-  | { kind: "none" }
-  | {
-      kind: "encrypted";
-      decipher: DecipherGCM;
-      ciphertextStart: number;
-      ciphertextEnd: number;
-    };
-
-export async function detectServerArchiveEncryption(
-  archivePath: string,
-): Promise<ServerArchiveEncryptionKind> {
-  const handle = await open(archivePath, "r");
-  try {
-    return archivePrefixEncryptionKind(await readArchivePrefix(handle));
-  } finally {
-    await handle.close();
-  }
-}
-
-async function planExtraction(
-  archivePath: string,
-  encryption: ServerArchiveEncryption | null,
-): Promise<ExtractionPlan> {
-  const handle = await open(archivePath, "r");
-  try {
-    const prefix = await readArchivePrefix(handle);
-    if (prefix.kind === "none") {
-      if (encryption !== null) {
-        throw new ServerArchiveError(
-          "encryption_mismatch",
-          "Archive is not encrypted",
-        );
-      }
-      return prefix;
-    }
-    const { size } = await handle.stat();
-    const ciphertextStart = prefix.bytes.length;
-    const ciphertextEnd = size - GCM_TAG_BYTES;
-    if (ciphertextEnd <= ciphertextStart) {
-      throw new ServerArchiveError("corrupt", "Archive is truncated");
-    }
-    const decipher = await createArchiveDecryptor(prefix, encryption);
-    decipher.setAuthTag(await readArchiveTag(handle, size));
-    return { kind: "encrypted", decipher, ciphertextStart, ciphertextEnd };
-  } finally {
-    await handle.close();
-  }
 }
 
 async function assertEmptyDestination(destinationDir: string): Promise<void> {
@@ -246,7 +187,7 @@ function normalizeExtractionError(error: unknown): unknown {
 export async function extractServerArchive(
   args: ExtractServerArchiveArgs,
 ): Promise<ServerArchiveManifest> {
-  const plan = await planExtraction(args.archivePath, args.encryption);
+  await assertServerArchiveFormat(args.archivePath);
   await assertEmptyDestination(args.destinationDir);
   const extracted: { manifest: ServerArchiveManifest | null } = {
     manifest: null,
@@ -255,39 +196,7 @@ export async function extractServerArchive(
     extracted.manifest = await extractTarEntries(source, args.destinationDir);
   };
   try {
-    if (plan.kind === "none") {
-      await pipeline(
-        createReadStream(args.archivePath),
-        createGunzip(),
-        consume,
-      );
-    } else {
-      const { decipher } = plan;
-      await pipeline(
-        createReadStream(args.archivePath, {
-          start: plan.ciphertextStart,
-          end: plan.ciphertextEnd - 1,
-        }),
-        async function* (source: AsyncIterable<Buffer>) {
-          for await (const chunk of source) {
-            yield decipher.update(chunk);
-          }
-          let finalChunk: Buffer;
-          try {
-            finalChunk = decipher.final();
-          } catch (error) {
-            throw new ServerArchiveError(
-              "corrupt",
-              "Archive failed authentication",
-              { cause: error },
-            );
-          }
-          yield finalChunk;
-        },
-        createGunzip(),
-        consume,
-      );
-    }
+    await pipeline(createReadStream(args.archivePath), createGunzip(), consume);
   } catch (error) {
     await rm(join(args.destinationDir, SERVER_ARCHIVE_FILES_DIR_NAME), {
       force: true,

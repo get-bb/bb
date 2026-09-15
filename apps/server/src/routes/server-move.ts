@@ -66,9 +66,8 @@ export async function readLastServerMove(
   return lastMove;
 }
 
-function serverExportFileName(now: Date, encrypted: boolean): string {
-  const date = now.toISOString().slice(0, 10);
-  return `bb-server-${date}.${encrypted ? "bbsa" : "tar.gz"}`;
+function serverExportFileName(now: Date): string {
+  return `bb-server-${now.toISOString().slice(0, 10)}.tar.gz`;
 }
 
 export function registerServerMoveRoutes(
@@ -107,7 +106,7 @@ export function registerServerMoveRoutes(
     return context.json(serverMove.cancel());
   });
 
-  post(routes.export, async (context, payload) => {
+  post(routes.export, async (context) => {
     assertServerManagementAllowed(context);
     assertServerMoveExperimentEnabled(deps);
     const status = serverMove.getStatus();
@@ -124,8 +123,7 @@ export function registerServerMoveRoutes(
       );
     }
     const now = new Date();
-    const encrypted = payload.passphrase !== null;
-    const fileName = serverExportFileName(now, encrypted);
+    const fileName = serverExportFileName(now);
     const workDir = join(
       deps.config.dataDir,
       SERVER_EXPORT_WORK_DIR_NAME,
@@ -144,10 +142,6 @@ export function registerServerMoveRoutes(
         appVersion: deps.config.appVersion,
         dataDir: deps.config.dataDir,
         db: deps.db,
-        encryption:
-          payload.passphrase === null
-            ? null
-            : { kind: "passphrase", passphrase: payload.passphrase },
         fileName,
         logger: deps.logger,
         now: now.getTime(),
@@ -170,9 +164,7 @@ export function registerServerMoveRoutes(
         "cache-control": "no-store",
         "content-disposition": `attachment; filename="${fileName}"`,
         "content-length": String(archive.sizeBytes),
-        "content-type": encrypted
-          ? "application/octet-stream"
-          : "application/gzip",
+        "content-type": "application/gzip",
         "x-bb-archive-sha256": archive.sha256,
       },
     });
