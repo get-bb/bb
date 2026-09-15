@@ -20,8 +20,14 @@ import { requireAuthenticatedDaemonSession } from "./session-state.js";
 
 const textEncoder = new TextEncoder();
 
-function streamToolCallResponse(result: Promise<ToolCallResponse>): Response {
+function streamToolCallResponse(
+  result: Promise<ToolCallResponse>,
+  abortController: AbortController,
+): Response {
   const body = new ReadableStream<Uint8Array>({
+    cancel() {
+      abortController.abort();
+    },
     start(controller) {
       void result.then(
         (response) => {
@@ -80,15 +86,21 @@ export function registerInternalToolCallRoutes(app: Hono, deps: AppDeps): void {
 
       const pluginTool = findPluginAgentTool(payload.tool);
       if (pluginTool) {
+        const controller = new AbortController();
+        const signal = AbortSignal.any([
+          context.req.raw.signal,
+          controller.signal,
+        ]);
         return streamToolCallResponse(
           invokePluginAgentTool(pluginTool, {
             input: payload.arguments,
             ctx: {
               threadId: thread.id,
               projectId: thread.projectId,
-              signal: context.req.raw.signal,
+              signal,
             },
           }),
+          controller,
         );
       }
 

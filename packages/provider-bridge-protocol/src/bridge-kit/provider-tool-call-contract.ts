@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { toolCallRequestParamsSchema } from "../bridge-requests.js";
 import type { DecodedToolCallRequest } from "./contracts.js";
 
@@ -27,3 +28,8 @@ export function decodeNormalizedProviderToolCallRequest(
     ...(parsed.data.threadId ? { threadId: parsed.data.threadId } : {}),
   };
 }
+
+export const providerToolCallCancellationSchema = z.object({
+  requestId: z.union([z.string(), z.number().int()]),
+});
+export const PROVIDER_TOOL_CALL_CANCELLED_METHOD = "notifications/cancelled";

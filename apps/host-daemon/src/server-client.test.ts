@@ -531,3 +531,37 @@ describe("createServerClient", () => {
     expect(logger.warn).not.toHaveBeenCalled();
   });
 });
+
+describe("dynamic tool cancellation", () => {
+  it("passes cancellation to the tool-call HTTP transport", async () => {
+    const controller = new AbortController();
+    let transportSignal: AbortSignal | null | undefined;
+    const fetchFn = vi.fn<FetchFn>(async (_input, init) => {
+      transportSignal = init?.signal;
+      return Response.json({ success: true, contentItems: [] });
+    });
+    const client = createServerClient({
+      fetchFn,
+      getSessionId: () => "session-1",
+      hostKey: "key",
+      logger: createLogger(),
+      serverUrl: "http://localhost",
+    });
+    await client.callTool(
+      {
+        requestId: 1,
+        threadId: "thread",
+        providerThreadId: "provider-thread",
+        turnId: "turn",
+        callId: "call",
+        tool: "question",
+      },
+      controller.signal,
+    );
+    controller.abort();
+    expect(transportSignal?.aborted).toBe(true);
+    expect(
+      JSON.parse(String(fetchFn.mock.calls[0]?.[1]?.body)),
+    ).not.toHaveProperty("signal");
+  });
+});
