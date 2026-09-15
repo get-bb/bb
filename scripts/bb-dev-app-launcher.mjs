@@ -1,6 +1,7 @@
 // bb-fork(windows): package scripts run through cmd.exe on Windows, which cannot
-// bb-fork(windows): execute the extensionless bash launcher, so `pnpm dev:status`
-// bb-fork(windows): and `pnpm dev:stop` route to the native dev instance control.
+// bb-fork(windows): execute a bash launcher, so `pnpm dev:status` and
+// bb-fork(windows): `pnpm dev:stop` route to the native dev instance control on
+// bb-fork(windows): every platform (upstream removed scripts/bb-dev-app in #3669).
 import { spawn } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -24,21 +25,18 @@ function run(command, args) {
   });
 }
 
-if (process.platform === "win32") {
-  run(process.execPath, [
-    "--conditions=source",
-    "--import",
-    "tsx",
-    resolve(
-      repoRoot,
-      "packages",
-      "scripts",
-      "src",
-      "commands",
-      "dev-instance-control.ts",
-    ),
-    action,
-  ]);
-} else {
-  run("bash", [resolve(scriptDir, "bb-dev-app"), action, ...rest]);
-}
+run(process.execPath, [
+  "--conditions=source",
+  "--import",
+  "tsx",
+  resolve(
+    repoRoot,
+    "packages",
+    "scripts",
+    "src",
+    "commands",
+    "dev-instance-control.ts",
+  ),
+  action,
+  ...rest,
+]);

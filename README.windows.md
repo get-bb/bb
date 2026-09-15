@@ -97,7 +97,7 @@ pnpm dev:status
 pnpm dev:stop
 ```
 
-`pnpm dev:status` печатает каталог данных, URL, pid супервизоров и какие порты слушают. `pnpm dev:stop` штатно останавливает оба супервизора через stop-файлы, затем убирает оставшееся дерево `pnpm dev` — порты и pid-файлы освобождаются. Сам `scripts/bb-dev-app` (и `pnpm dev:desktop`) по-прежнему требует POSIX `screen`, а Ctrl+C в окне `pnpm dev` работает как раньше.
+`pnpm dev:status` печатает каталог данных, URL, pid супервизоров и какие порты слушают. `pnpm dev:stop` штатно останавливает оба супервизора через stop-файлы, затем убирает оставшееся дерево `pnpm dev` — порты и pid-файлы освобождаются. Апстрим убрал `scripts/bb-dev-app` и `pnpm dev:desktop` (#3669), поэтому лаунчер на всех платформах ходит в нативный dev instance control; Ctrl+C в окне `pnpm dev` работает как раньше.
 
 Подробности и ограничения — в [docs/windows.md](docs/windows.md).
 

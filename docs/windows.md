@@ -95,8 +95,9 @@ their dev supervisors, so iterating needs no production build.
   whether the app, server, and host-daemon ports are listening. `pnpm dev:stop`
   stops both dev supervisors through their stop files and then removes the
   remaining `pnpm dev` process tree, so ports and pid files are released.
-  `scripts/bb-dev-app` itself, and with it `pnpm dev:desktop`, still needs the
-  POSIX `screen` multiplexer; Ctrl+C in the `pnpm dev` terminal keeps working.
+  Upstream removed `scripts/bb-dev-app` and `pnpm dev:desktop` (#3669); the
+  launcher now routes `dev:status`/`dev:stop` to the native dev instance control
+  on every platform. Ctrl+C in the `pnpm dev` terminal keeps working.
 - Terminals, providers, plugin host workers, and the bundled `bb` CLI behave as
   they do on a supervisor-managed host; the fork only changes how the dev server
   and the dev host daemon start and restart.
