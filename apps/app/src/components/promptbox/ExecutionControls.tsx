@@ -1,4 +1,6 @@
 import { memo } from "react";
+import { Button } from "@bb/shared-ui/button";
+import { Icon } from "@bb/shared-ui/icon";
 import type { PermissionMode, ReasoningLevel, ServiceTier } from "@bb/domain";
 import type {
   SystemExecutionOptionsModelLoadError,
@@ -119,6 +121,19 @@ export const ExecutionControls = memo(function ExecutionControls({
           disabled={disabled}
           handoff={handoff}
         />
+      ) : null}
+      {handoff?.active ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={handoff.onExit}
+          disabled={disabled}
+          className="gap-1 text-muted-foreground"
+        >
+          <Icon name="X" className="size-3.5" aria-hidden />
+          Exit handoff
+        </Button>
       ) : null}
     </>
   );

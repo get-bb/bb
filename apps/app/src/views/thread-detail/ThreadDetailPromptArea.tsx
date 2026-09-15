@@ -18,6 +18,8 @@ import {
 } from "@/components/promptbox/follow-up-placeholder";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type {
+  PermissionMode,
+  ServiceTier,
   PendingInteraction,
   PromptInput,
   ThreadQueuedMessage,
@@ -662,7 +664,16 @@ export function ThreadDetailPromptArea({
   const [overriddenFallbackIdentity, setOverriddenFallbackIdentity] = useState<
     string | null
   >(null);
+  const [handoffSourceSelection, setHandoffSourceSelection] = useState<{
+    threadId: string;
+    execution: ModelReasoningPickerHandoffSelection;
+    serviceTier: ServiceTier | undefined;
+    permissionMode: PermissionMode;
+    overriddenFallbackIdentity: string | null;
+  } | null>(null);
+  const isHandoffSelection = handoffSourceSelection?.threadId === thread.id;
   const isFallbackModelActive =
+    !isHandoffSelection &&
     selectedProviderId === thread.providerId &&
     modelFallback !== null &&
     overriddenFallbackIdentity !== fallbackIdentity;
@@ -678,14 +689,6 @@ export function ThreadDetailPromptArea({
     },
     [fallbackIdentity, setSelectedModel],
   );
-  const isHandoffProviderId = useCallback(
-    (providerId: string) =>
-      providerId.length > 0 &&
-      providerId !== thread.providerId &&
-      providerOptions.some((option) => option.value === thread.providerId),
-    [providerOptions, thread.providerId],
-  );
-  const isHandoffSelection = isHandoffProviderId(selectedProviderId);
   const sourceThreadDisplayTitle = getThreadDisplayTitle({
     id: thread.id,
     title: thread.title,
@@ -705,26 +708,66 @@ export function ThreadDetailPromptArea({
       thread.projectId,
     ],
   );
-  const syncHandoffDraft = useCallback(
-    (nextProviderId: string) => {
-      const currentDraft = promptDraft.getCurrent();
-      if (isHandoffProviderId(nextProviderId)) {
-        const seededDraft = buildThreadHandoffFollowUpDraft(
-          handoffSeed,
-          currentDraft,
-        );
-        if (seededDraft !== currentDraft) {
-          promptDraft.setDraft(seededDraft);
-        }
-        return;
-      }
-      const restoredDraft = stripThreadHandoffPrefix(handoffSeed, currentDraft);
-      if (restoredDraft !== null) {
-        promptDraft.setDraft(restoredDraft);
-      }
-    },
-    [handoffSeed, isHandoffProviderId, promptDraft],
-  );
+  const beginHandoff = useCallback(() => {
+    setHandoffSourceSelection((current) =>
+      current?.threadId === thread.id
+        ? current
+        : {
+            threadId: thread.id,
+            execution: {
+              providerId: thread.providerId,
+              model: effectiveSelectedModel,
+              reasoningLevel,
+            },
+            serviceTier,
+            permissionMode,
+            overriddenFallbackIdentity,
+          },
+    );
+    const currentDraft = promptDraft.getCurrent();
+    const seededDraft = buildThreadHandoffFollowUpDraft(
+      handoffSeed,
+      currentDraft,
+    );
+    if (seededDraft !== currentDraft) {
+      promptDraft.setDraft(seededDraft);
+    }
+  }, [
+    effectiveSelectedModel,
+    handoffSeed,
+    overriddenFallbackIdentity,
+    permissionMode,
+    promptDraft,
+    reasoningLevel,
+    serviceTier,
+    thread.id,
+    thread.providerId,
+  ]);
+  const exitHandoff = useCallback(() => {
+    if (handoffSourceSelection?.threadId !== thread.id) return;
+    setProviderModelReasoning(handoffSourceSelection.execution);
+    setServiceTier(handoffSourceSelection.serviceTier);
+    setPermissionMode(handoffSourceSelection.permissionMode);
+    setOverriddenFallbackIdentity(
+      handoffSourceSelection.overriddenFallbackIdentity,
+    );
+    setHandoffSourceSelection(null);
+    const restoredDraft = stripThreadHandoffPrefix(
+      handoffSeed,
+      promptDraft.getCurrent(),
+    );
+    if (restoredDraft !== null) {
+      promptDraft.setDraft(restoredDraft);
+    }
+  }, [
+    handoffSeed,
+    handoffSourceSelection,
+    promptDraft,
+    setPermissionMode,
+    setProviderModelReasoning,
+    setServiceTier,
+    thread.id,
+  ]);
   const handleProviderChange = useCallback(
     (providerId: string) => {
       if (providerId === selectedProviderId) {
@@ -733,25 +776,20 @@ export function ThreadDetailPromptArea({
       if (fallbackIdentity !== null) {
         setOverriddenFallbackIdentity(fallbackIdentity);
       }
+      beginHandoff();
       setSelectedProviderId(providerId);
-      syncHandoffDraft(providerId);
     },
-    [
-      fallbackIdentity,
-      selectedProviderId,
-      setSelectedProviderId,
-      syncHandoffDraft,
-    ],
+    [fallbackIdentity, selectedProviderId, setSelectedProviderId, beginHandoff],
   );
   const handleHandoffSelect = useCallback(
     (selection: ModelReasoningPickerHandoffSelection) => {
       if (fallbackIdentity !== null) {
         setOverriddenFallbackIdentity(fallbackIdentity);
       }
+      beginHandoff();
       setProviderModelReasoning(selection);
-      syncHandoffDraft(selection.providerId);
     },
-    [fallbackIdentity, setProviderModelReasoning, syncHandoffDraft],
+    [beginHandoff, fallbackIdentity, setProviderModelReasoning],
   );
   useEffect(() => {
     if (isHandoffSelection) {
@@ -768,16 +806,9 @@ export function ThreadDetailPromptArea({
   const hasSentMessageEdit = sentMessageEdit !== undefined;
   useEffect(() => {
     if (hasSentMessageEdit && isHandoffSelection) {
-      setSelectedProviderId(thread.providerId);
-      syncHandoffDraft(thread.providerId);
+      exitHandoff();
     }
-  }, [
-    hasSentMessageEdit,
-    isHandoffSelection,
-    setSelectedProviderId,
-    syncHandoffDraft,
-    thread.providerId,
-  ]);
+  }, [hasSentMessageEdit, isHandoffSelection, exitHandoff]);
   const { typeaheadConfig, promptActions } = useComposerTypeahead({
     projectId: thread.projectId,
     mentionsProjectId: projectId,
@@ -1403,6 +1434,9 @@ export function ThreadDetailPromptArea({
       },
       handoff: {
         sourceProviderId: thread.providerId,
+        active: isHandoffSelection,
+        onStart: beginHandoff,
+        onExit: exitHandoff,
         onSelect: handleHandoffSelect,
       },
     }),
@@ -1411,6 +1445,9 @@ export function ThreadDetailPromptArea({
       executionOptionsRouting,
       hasMultipleProviders,
       handleHandoffSelect,
+      beginHandoff,
+      isHandoffSelection,
+      exitHandoff,
       handleModelChange,
       handleProviderChange,
       isLoadingModels,

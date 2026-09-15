@@ -82,6 +82,16 @@ Spawning:
   unavailable and why. The first-party providers are Project checkout,
   Worktree, and Personal workspace.
 
+Handoff:
+  In the follow-up model picker, Handoff to new thread starts a new-thread
+  draft with a reference to the source thread. Choose any model, including
+  one from the current provider. Exit handoff restores the original execution
+  settings and keeps draft edits, removing the automatic source reference.
+  Closing the picker keeps handoff active; the composer also has Exit handoff.
+  CLI callers can use bb thread spawn with --provider, --model, --environment
+  and --prompt 'Continue from @thread:THREAD_ID ...'. SDK callers use
+  threads.spawn with the corresponding execution, environment and input fields.
+
 Forking:
 
   bb thread fork <source-thread-id> [options]
