@@ -36,6 +36,7 @@ import {
 import { useBrowserHistory } from "@/lib/browser-history";
 import { BROWSER_VIEW_BOUNDS_SYNC_EVENT } from "@/lib/browser-view-bounds-sync";
 import { useIsBrowserDimmingModalOpen } from "@/hooks/useBrowserDimmingModal";
+import { useBrowserViewOcclusion } from "./useBrowserViewOcclusion";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import {
@@ -453,9 +454,7 @@ export function BrowserTabContent({
   const [findMatches, setFindMatches] = useState<BrowserFindMatches | null>(
     null,
   );
-  const [resizeSnapshotUrl, setResizeSnapshotUrl] = useState<string | null>(
-    null,
-  );
+  const [snapshotUrl, setSnapshotUrl] = useState<string | null>(null);
 
   const onUpdateRef = useRef(onUpdate);
   const recordVisitRef = useRef(recordVisit);
@@ -581,7 +580,7 @@ export function BrowserTabContent({
       if (snapshot.tabId !== tabId) {
         return;
       }
-      setResizeSnapshotUrl(snapshot.dataUrl);
+      setSnapshotUrl(snapshot.dataUrl);
     });
 
     const unsubscribeFindResult = desktopBrowser.onFindResult?.((result) => {
@@ -647,13 +646,20 @@ export function BrowserTabContent({
     };
   }, [desktopBrowser, syncBoundsIfChanged]);
 
-  const isViewVisible =
+  const wantsNativeView =
     canShowNativeBrowserView &&
     (canHandleBrowserCommands || supportsNativePaneFocus) &&
     hasPage &&
     !hasPageLoadError &&
-    isBrowserViewAttached &&
-    !isBrowserDimmingModalOpen;
+    isBrowserViewAttached;
+  const isNativeViewOccluded = useBrowserViewOcclusion({
+    elementRef: contentRef,
+    enabled: wantsNativeView && !isBrowserDimmingModalOpen,
+  });
+  const isPageObscured = isBrowserDimmingModalOpen || isNativeViewOccluded;
+  const isPageObscuredRef = useRef(false);
+  isPageObscuredRef.current = isPageObscured;
+  const isViewVisible = wantsNativeView && !isPageObscured;
   useLayoutEffect(() => {
     if (visibilityCoordinator === null) {
       return;
@@ -663,10 +669,12 @@ export function BrowserTabContent({
         focus: canHandleBrowserCommands,
       });
       return () => {
-        visibilityCoordinator.hide(tabId);
+        visibilityCoordinator.hide(tabId, {
+          snapshot: isPageObscuredRef.current,
+        });
       };
     }
-    visibilityCoordinator.hide(tabId);
+    visibilityCoordinator.hide(tabId, { snapshot: isPageObscuredRef.current });
   }, [
     canHandleBrowserCommands,
     visibilityCoordinator,
@@ -942,9 +950,9 @@ export function BrowserTabContent({
             onClearRecent={clearRecent}
           />
         )}
-        {hasPage && resizeSnapshotUrl !== null ? (
+        {hasPage && snapshotUrl !== null ? (
           <img
-            src={resizeSnapshotUrl}
+            src={snapshotUrl}
             alt=""
             draggable={false}
             className="absolute inset-0 size-full"

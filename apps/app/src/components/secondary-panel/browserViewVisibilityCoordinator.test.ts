@@ -84,6 +84,35 @@ describe("browserViewVisibilityCoordinator", () => {
     ]);
   });
 
+  it("requests a snapshot only when hiding behind an overlay", () => {
+    const requests: Array<{
+      tabId: string;
+      visible: boolean;
+      snapshot?: true;
+    }> = [];
+    const api: BbDesktopBrowserApi = {
+      ...createNoopDesktopBrowserApi(),
+      setVisible(request) {
+        requests.push(request);
+      },
+    };
+    const coordinator = createBrowserViewVisibilityCoordinator(api);
+
+    coordinator.show("a", () => {});
+    coordinator.hide("a", { snapshot: true });
+    coordinator.show("a", () => {});
+    coordinator.hide("a", { snapshot: false });
+    coordinator.hide("a");
+
+    expect(requests).toEqual([
+      { tabId: "a", visible: true },
+      { tabId: "a", visible: false, snapshot: true },
+      { tabId: "a", visible: true },
+      { tabId: "a", visible: false },
+      { tabId: "a", visible: false },
+    ]);
+  });
+
   it("releases a tab so a later show does not touch the destroyed view", () => {
     const { api, visibility } = createRecordingApi();
     const coordinator = createBrowserViewVisibilityCoordinator(api);

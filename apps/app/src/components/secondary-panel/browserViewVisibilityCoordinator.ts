@@ -6,8 +6,12 @@ export interface BrowserViewVisibilityCoordinator {
     syncBounds: () => void,
     options?: { focus?: boolean },
   ): void;
-  hide(tabId: string): void;
+  hide(tabId: string, options?: BrowserViewHideOptions): void;
   release(tabId: string): void;
+}
+
+export interface BrowserViewHideOptions {
+  snapshot?: boolean;
 }
 
 interface BrowserViewRecord {
@@ -60,11 +64,15 @@ export function createBrowserViewVisibilityCoordinator(
         desktopBrowser.setVisible(request);
       }
     },
-    hide(tabId) {
+    hide(tabId, options) {
       if (visibleTabId === tabId) {
         visibleTabId = null;
       }
-      desktopBrowser.setVisible({ tabId, visible: false });
+      desktopBrowser.setVisible({
+        tabId,
+        visible: false,
+        ...(options?.snapshot === true ? { snapshot: true } : {}),
+      });
     },
     release(tabId) {
       if (visibleTabId === tabId) {

@@ -2736,6 +2736,116 @@ describe("DesktopBrowserViewManager", () => {
     manager.destroyAll();
   });
 
+  it("keeps a view visible until its snapshot is captured when hiding behind an overlay", async () => {
+    const manager = createDesktopBrowserViewManager({
+      partition: "persist:test",
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 71,
+    });
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      tabId: "browser:a",
+      url: "https://example.com/",
+    });
+    const view = requireFakeView(0);
+    expect(view.visible).toBe(true);
+
+    manager.setVisible({
+      hostWindow,
+      request: { tabId: "browser:a", visible: false, snapshot: true },
+    });
+    manager.setVisible({
+      hostWindow,
+      request: { tabId: "browser:a", visible: false },
+    });
+    expect(view.visible).toBe(true);
+
+    await settlePendingCaptures(view);
+    expect(view.visible).toBe(false);
+    expect(snapshotPushesOf(hostWindow)).toEqual([
+      {
+        tabId: "browser:a",
+        dataUrl: `data:image/jpeg;base64,${Buffer.from("jpeg-bytes").toString("base64")}`,
+      },
+    ]);
+
+    manager.setVisible({
+      hostWindow,
+      request: { tabId: "browser:a", visible: true },
+    });
+    expect(view.visible).toBe(true);
+    expect(snapshotPushesOf(hostWindow).at(-1)).toEqual({
+      tabId: "browser:a",
+      dataUrl: null,
+    });
+    manager.destroyAll();
+  });
+
+  it("discards the hide snapshot when the view is shown again before capture completes", async () => {
+    const manager = createDesktopBrowserViewManager({
+      partition: "persist:test",
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 72,
+    });
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      tabId: "browser:a",
+      url: "https://example.com/",
+    });
+    const view = requireFakeView(0);
+
+    manager.setVisible({
+      hostWindow,
+      request: { tabId: "browser:a", visible: false, snapshot: true },
+    });
+    manager.setVisible({
+      hostWindow,
+      request: { tabId: "browser:a", visible: true },
+    });
+    await settlePendingCaptures(view);
+
+    expect(view.visible).toBe(true);
+    expect(snapshotPushesOf(hostWindow)).toEqual([]);
+    manager.destroyAll();
+  });
+
+  it("hides without a snapshot when capture fails", async () => {
+    const manager = createDesktopBrowserViewManager({
+      partition: "persist:test",
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 73,
+    });
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      tabId: "browser:a",
+      url: "https://example.com/",
+    });
+    const view = requireFakeView(0);
+    const capture = vi
+      .spyOn(view.webContents, "capturePage")
+      .mockRejectedValue(new Error("Current display surface not available"));
+
+    manager.setVisible({
+      hostWindow,
+      request: { tabId: "browser:a", visible: false, snapshot: true },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(view.visible).toBe(false);
+    expect(snapshotPushesOf(hostWindow)).toEqual([]);
+    capture.mockRestore();
+    manager.destroyAll();
+  });
+
   it("snapshots then hides visible views on resize, revealing them clamped to the shrunken window", async () => {
     const manager = createDesktopBrowserViewManager({
       partition: "persist:test",

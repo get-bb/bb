@@ -155,6 +155,7 @@ export const bbDesktopBrowserSetVisibleRequestSchema = z
   .object({
     tabId: z.string().min(1),
     visible: z.boolean(),
+    snapshot: z.literal(true).optional(),
   })
   .strict();
 export type BbDesktopBrowserSetVisibleRequest = z.infer<

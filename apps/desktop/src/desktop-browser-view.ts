@@ -176,6 +176,9 @@ interface BrowserViewEntry {
   rendererRecoveryTimer: ReturnType<typeof setTimeout> | null;
   suppressNextFocusNotification: boolean;
   visible: boolean;
+  hideSnapshotGeneration: number;
+  hideSnapshotPending: boolean;
+  hideSnapshotSent: boolean;
   activeFindRequestId: number | null;
 }
 
@@ -489,6 +492,44 @@ export function createDesktopBrowserViewManager(
       .finally(() => {
         clearTimeout(hideCap);
         applyEntryVisibility(entry, hostWindow);
+      });
+  }
+
+  function startHideSnapshot(
+    hostWindow: DesktopBrowserHostWindow,
+    tabId: string,
+    entry: BrowserViewEntry,
+  ): void {
+    entry.hideSnapshotGeneration += 1;
+    entry.hideSnapshotPending = true;
+    const generation = entry.hideSnapshotGeneration;
+    const isCurrentHide = () =>
+      entry.hideSnapshotGeneration === generation && !entry.visible;
+    const settle = () => {
+      if (entry.hideSnapshotGeneration === generation) {
+        entry.hideSnapshotPending = false;
+      }
+      applyEntryVisibility(entry, hostWindow);
+    };
+    const hideCap = setTimeout(settle, RESIZE_SNAPSHOT_HIDE_CAP_MS);
+    entry.webContents
+      .capturePage()
+      .then((image) => {
+        if (!isCurrentHide() || image.isEmpty()) {
+          return;
+        }
+        entry.hideSnapshotSent = true;
+        send(hostWindow, BB_DESKTOP_BROWSER_SNAPSHOT_CHANNEL, {
+          tabId,
+          dataUrl: `data:image/jpeg;base64,${image
+            .toJPEG(RESIZE_SNAPSHOT_JPEG_QUALITY)
+            .toString("base64")}`,
+        });
+      })
+      .catch(() => {})
+      .finally(() => {
+        clearTimeout(hideCap);
+        settle();
       });
   }
 
@@ -808,6 +849,9 @@ export function createDesktopBrowserViewManager(
       rendererRecoveryTimer: null,
       suppressNextFocusNotification: false,
       visible: false,
+      hideSnapshotGeneration: 0,
+      hideSnapshotPending: false,
+      hideSnapshotSent: false,
       activeFindRequestId: null,
     };
     wireWebContents(args.hostWindow, args.tabId, entry);
@@ -926,7 +970,28 @@ export function createDesktopBrowserViewManager(
     withEntry({ hostWindow, tabId: request.tabId }, (entry) => {
       const wasVisible = entry.visible;
       entry.visible = request.visible;
-      applyEntryVisibility(entry, hostWindow);
+      if (request.visible) {
+        applyEntryVisibility(entry, hostWindow);
+        if (entry.hideSnapshotSent) {
+          entry.hideSnapshotSent = false;
+          send(hostWindow, BB_DESKTOP_BROWSER_SNAPSHOT_CHANNEL, {
+            tabId: request.tabId,
+            dataUrl: null,
+          });
+        }
+      } else if (entry.hideSnapshotPending) {
+        return;
+      } else if (
+        request.snapshot === true &&
+        wasVisible &&
+        entry.rendererRecoveryState === "healthy" &&
+        !isHostResizing(hostWindow) &&
+        !entry.webContents.isDestroyed()
+      ) {
+        startHideSnapshot(hostWindow, request.tabId, entry);
+      } else {
+        applyEntryVisibility(entry, hostWindow);
+      }
       scheduleEntryRendererRecovery(entry, hostWindow, request.tabId);
       if (
         focusOnShow &&
