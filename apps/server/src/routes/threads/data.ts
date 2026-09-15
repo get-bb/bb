@@ -47,7 +47,6 @@ import {
 } from "../../services/lib/lifecycle-api-errors.js";
 import { callHostRetryableOnlineRpc } from "../../services/hosts/online-rpc.js";
 import {
-  buildAttachmentContentDisposition,
   createDaemonFileContentResponse,
   type DaemonFileReadResult,
   serveDaemonFileContent,
@@ -804,14 +803,6 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       },
       (result) =>
         createDaemonFileContentResponse(result, {
-          headers:
-            query.disposition === "attachment"
-              ? {
-                  "content-disposition": buildAttachmentContentDisposition(
-                    query.path,
-                  ),
-                }
-              : undefined,
           ifNoneMatch: context.req.header("if-none-match"),
         }),
     );
@@ -835,14 +826,6 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       },
       (result) =>
         createDaemonFileContentResponse(result, {
-          headers:
-            query.disposition === "attachment"
-              ? {
-                  "content-disposition": buildAttachmentContentDisposition(
-                    query.path,
-                  ),
-                }
-              : undefined,
           ifNoneMatch: context.req.header("if-none-match"),
         }),
     );
