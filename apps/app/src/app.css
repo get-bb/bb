@@ -472,7 +472,8 @@
     display: none;
   }
 
-  [data-follow-up-composer] [data-follow-up-composer-footer] {
+  [data-follow-up-composer]:not([data-follow-up-composer-expanded])
+    [data-follow-up-composer-footer] {
     min-height: 0;
     max-height: 0;
     margin-top: 0;
