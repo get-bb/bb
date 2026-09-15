@@ -264,7 +264,10 @@ export type AutomationExecutionRequest = z.output<
 const automationResponseExecutionSchema = z.discriminatedUnion("mode", [
   automationAgentExecutionSchema,
   automationScriptExecutionSchema
-    .extend({ storedScriptPath: z.string().min(1).optional() })
+    .extend({
+      storedScriptPath: z.string().min(1).optional(),
+      resolvedWorkingDirectory: z.string().min(1).nullable().optional(),
+    })
     .strict(),
 ]);
 

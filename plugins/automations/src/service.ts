@@ -300,6 +300,7 @@ function toStoredAutomationReadResult(
 }
 
 async function toEditableAutomationResponse(args: {
+  bb: Pick<ServiceApi, "log" | "sdk" | "server">;
   pluginDataDir: string;
   automation: AutomationResponse;
 }): Promise<AutomationResponse> {
@@ -311,10 +312,37 @@ async function toEditableAutomationResponse(args: {
     return automation;
   }
   const { scriptFile, ...execution } = automation.execution;
+  let resolvedWorkingDirectory: string | null;
+  if (execution.workingDirectory.type === "legacy") {
+    resolvedWorkingDirectory = automationScriptDir(
+      args.pluginDataDir,
+      automation.id,
+    );
+  } else if (execution.workingDirectory.type === "path") {
+    resolvedWorkingDirectory = execution.workingDirectory.path;
+  } else {
+    const serverHostId = args.bb.server.experimental_hostId;
+    if (serverHostId === null) {
+      resolvedWorkingDirectory = null;
+    } else {
+      try {
+        resolvedWorkingDirectory = projectPathForHost(
+          await args.bb.sdk.projects.get({ projectId: automation.projectId }),
+          serverHostId,
+        );
+      } catch (error) {
+        args.bb.log.warn(
+          `Failed to resolve working directory for automation ${automation.id}: ${errorMessage(error)}`,
+        );
+        resolvedWorkingDirectory = null;
+      }
+    }
+  }
   return {
     ...automation,
     execution: {
       ...execution,
+      resolvedWorkingDirectory,
       script: await readAutomationScript({
         dataDir: args.pluginDataDir,
         automationId: automation.id,
@@ -325,7 +353,7 @@ async function toEditableAutomationResponse(args: {
 }
 
 async function toEditableAutomationReadResult(args: {
-  bb: Pick<ServiceApi, "log">;
+  bb: Pick<ServiceApi, "log" | "sdk" | "server">;
   pluginDataDir: string;
   row: AutomationRow;
 }): Promise<AutomationReadResult> {
@@ -336,6 +364,7 @@ async function toEditableAutomationReadResult(args: {
   );
   if ("problem" in automation) return automation;
   return toEditableAutomationResponse({
+    bb: args.bb,
     pluginDataDir: args.pluginDataDir,
     automation,
   });

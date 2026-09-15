@@ -1089,6 +1089,19 @@ describe("automation service", () => {
       expect(remoteOnly.execution).toMatchObject({
         workingDirectory: { type: "legacy" },
       });
+      await service.update({
+        projectId: "proj_remote",
+        automationId: remoteOnly.id,
+        script: { workingDirectory: { type: "project" } },
+      });
+      await expect(
+        service.get({
+          projectId: "proj_remote",
+          automationId: remoteOnly.id,
+        }),
+      ).resolves.toMatchObject({
+        execution: { resolvedWorkingDirectory: null },
+      });
 
       const legacyId = "auto_existing_legacy";
       const legacyScriptDir = automationScriptDir(pluginDataDir, legacyId);
@@ -1198,6 +1211,32 @@ describe("automation service", () => {
       expect(updated.execution).toMatchObject({
         mode: "script",
         workingDirectory: { type: "path", path: pluginDataDir },
+      });
+      await expect(
+        service.get({
+          projectId: "proj_test",
+          automationId: created.id,
+        }),
+      ).resolves.toMatchObject({
+        execution: { resolvedWorkingDirectory: pluginDataDir },
+      });
+      await service.update({
+        projectId: "proj_test",
+        automationId: created.id,
+        script: { workingDirectory: { type: "legacy" } },
+      });
+      await expect(
+        service.get({
+          projectId: "proj_test",
+          automationId: created.id,
+        }),
+      ).resolves.toMatchObject({
+        execution: {
+          resolvedWorkingDirectory: automationScriptDir(
+            pluginDataDir,
+            created.id,
+          ),
+        },
       });
       await expect(
         service.update({
@@ -1614,6 +1653,7 @@ describe("automation CLI --script-file", () => {
         {},
       );
       expect(shown.stdout).toContain(`Script:    ${storedPath}`);
+      expect(shown.stdout).toContain("Working dir: /server/project");
       const shownJson = await t.cli.run(
         ["show", automationId, "--project", "proj_test", "--json"],
         {},
@@ -1623,6 +1663,7 @@ describe("automation CLI --script-file", () => {
         script: '#!/bin/sh\necho "VERSION 1"\n',
         interpreter: "bash",
         workingDirectory: { type: "project" },
+        resolvedWorkingDirectory: "/server/project",
         timeoutMs: 120_000,
         storedScriptPath: storedPath,
       });

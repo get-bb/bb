@@ -340,6 +340,7 @@ describe("automations server plugin harness", () => {
     expect(editable.execution).toMatchObject({
       mode: "script",
       script: "echo ok",
+      resolvedWorkingDirectory: "/test/project",
     });
     expect(editable.execution).not.toHaveProperty("scriptFile");
 
@@ -424,6 +425,7 @@ describe("automations server plugin harness", () => {
       ),
       interpreter: "bash",
       workingDirectory: { type: "project" },
+      resolvedWorkingDirectory: "/test/project",
       timeoutMs: 12_000,
       env: { CHANNEL: "qa" },
     });

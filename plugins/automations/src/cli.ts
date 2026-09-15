@@ -692,13 +692,14 @@ function printAutomation(
   }
   if (automation.execution.mode === "script") {
     const workingDirectory = automation.execution.workingDirectory;
-    lines.push(
-      `  Working dir: ${
-        workingDirectory.type === "path"
-          ? workingDirectory.path
-          : workingDirectory.type
-      }`,
-    );
+    const displayedWorkingDirectory =
+      automation.execution.resolvedWorkingDirectory === null
+        ? "unavailable"
+        : (automation.execution.resolvedWorkingDirectory ??
+          (workingDirectory.type === "path"
+            ? workingDirectory.path
+            : workingDirectory.type));
+    lines.push(`  Working dir: ${displayedWorkingDirectory}`);
   }
   if (automation.execution.mode === "agent") {
     lines.push(
