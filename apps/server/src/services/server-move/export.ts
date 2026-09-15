@@ -1,7 +1,11 @@
 import Database from "better-sqlite3";
 import { mkdir, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { countAppliedMigrations, type DbConnection } from "@bb/db";
+import {
+  countAppliedMigrations,
+  getExperiments,
+  type DbConnection,
+} from "@bb/db";
 import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
 import {
   listServerOwnedEntries,
@@ -100,6 +104,7 @@ export async function exportServerArchive(
         migrationCount,
         sourceDataDir: args.dataDir,
         sourceServerHostId: args.sourceServerHostId,
+        serverMoveExperiment: getExperiments(args.db).serverMove,
       },
     });
     return {

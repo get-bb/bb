@@ -137,8 +137,10 @@ so backups need no downtime. Exports are gzip tar archives and are not
 encrypted: they hold the server's credentials and plugin secrets. The CLI writes
 them with mode 0600, keeps the file only when it matches the SHA-256 digest the
 server sent, and warns that the file must stay private. `bb server import` runs
-locally on a machine with no server running and tells the user to re-export an
-archive encrypted by an older bb.
+locally on a machine with no server running, tells the user to re-export an
+archive encrypted by an older bb, and refuses, before installing anything, an
+export whose manifest records the `serverMove` experiment as off on the server
+that wrote it.
 
 ## Surfaces
 

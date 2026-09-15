@@ -48,6 +48,7 @@ const MANIFEST_INPUT: ServerArchiveManifestInput = {
   migrationCount: 142,
   sourceDataDir: "/home/old/.bb",
   sourceServerHostId: "host-old",
+  serverMoveExperiment: true,
 };
 
 interface SourceTree {

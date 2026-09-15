@@ -10,7 +10,8 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { createConnection, getHost } from "@bb/db";
+import { createConnection, getHost, setExperiments } from "@bb/db";
+import { defaultExperiments } from "@bb/domain";
 import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
 import {
   extractServerArchive,
@@ -122,6 +123,7 @@ describe("server archive export", () => {
           protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
           sourceDataDir: dataDir,
           sourceServerHostId: "host-old",
+          serverMoveExperiment: false,
         });
         expect(manifest.migrationCount).toBeGreaterThan(100);
         const paths = manifest.entries.map((entry) => entry.path);
@@ -175,5 +177,27 @@ describe("server archive export", () => {
       } finally {
         pluginDatabase.close();
       }
+    }));
+
+  it("records the server's live serverMove experiment in the manifest", () =>
+    withTestHarness(async (harness) => {
+      setExperiments(harness.db, { ...defaultExperiments, serverMove: true });
+
+      const archive = await exportServerArchive({
+        appVersion: harness.config.appVersion,
+        dataDir: harness.config.dataDir,
+        db: harness.db,
+        fileName: "server.tar.gz",
+        logger: harness.deps.logger,
+        now: 1_700_000_000_000,
+        sourceServerHostId: null,
+        workDir: join(harness.config.dataDir, "server-export", "export-1"),
+      });
+
+      const manifest = await extractServerArchive({
+        archivePath: archive.path,
+        destinationDir: await makeTempDir(),
+      });
+      expect(manifest.serverMoveExperiment).toBe(true);
     }));
 });

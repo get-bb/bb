@@ -31,6 +31,7 @@ export const serverArchiveManifestSchema = z
     migrationCount: z.number().int().nonnegative(),
     sourceDataDir: z.string().min(1),
     sourceServerHostId: z.string().min(1).nullable(),
+    serverMoveExperiment: z.boolean(),
     entries: z.array(serverArchiveManifestEntrySchema),
   })
   .strict()

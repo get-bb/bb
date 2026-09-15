@@ -307,6 +307,11 @@ export async function importServerArchive(
     }).catch((error: unknown) => {
       throw describeUnsafeImport(archivePath, error);
     });
+    if (!manifest.serverMoveExperiment) {
+      throw new Error(
+        'This export came from a server with the "Server move" experiment off. Turn on the "Server move" experiment in Settings → Experiments, or run bb settings experiment serverMove true, on that server, then export again.',
+      );
+    }
     if (isNewerBbVersion(manifest.bbVersion, args.cliVersion)) {
       throw new Error(
         `This export came from bb ${manifest.bbVersion}; install that version or newer before importing.`,

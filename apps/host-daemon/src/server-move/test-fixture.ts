@@ -190,6 +190,7 @@ async function createSourceServer(root: string): Promise<SourceServer> {
       migrationCount: 10,
       sourceDataDir: "/Users/me/.bb",
       sourceServerHostId: "host-source",
+      serverMoveExperiment: true,
     },
   });
   const bbAppPath = join(root, "bb-app.tgz");

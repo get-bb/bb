@@ -62,7 +62,10 @@ async function writeDataFile(
   return path;
 }
 
-async function buildArchive(bbVersion = "0.50.0"): Promise<string> {
+async function buildArchive(
+  bbVersion = "0.50.0",
+  serverMoveExperiment = true,
+): Promise<string> {
   const sourceDataDir = await makeTempDir("bb-cli-server-source-");
   const files = [
     { archivePath: "bb.db", body: "sqlite database" },
@@ -98,6 +101,7 @@ async function buildArchive(bbVersion = "0.50.0"): Promise<string> {
       migrationCount: 150,
       sourceDataDir: "/home/old/.bb",
       sourceServerHostId: "host-old-server",
+      serverMoveExperiment,
     },
   });
   return outPath;
@@ -146,6 +150,7 @@ async function writeCraftedArchive(
       migrationCount: 150,
       sourceDataDir: "/home/old/.bb",
       sourceServerHostId: "host-old-server",
+      serverMoveExperiment: true,
       entries: files.map((file) => ({
         path: file.path,
         size: Buffer.byteLength(file.body),
@@ -452,6 +457,24 @@ describe("bb server import", () => {
 
     expect(collectLogPayloads(vi.mocked(console.error))).toEqual([
       "Error: This export came from bb 0.51.0; install that version or newer before importing.",
+    ]);
+    expect(await readdir(parent)).toEqual([]);
+  });
+
+  it("refuses an export from a server with the serverMove experiment off before installing anything", async () => {
+    const offArchive = await buildArchive("0.50.0", false);
+    const parent = await makeDataDirParent();
+    const dataDir = join(parent, "bb-data");
+
+    await expect(
+      runCommand(
+        ["server", "import", offArchive, "--data-dir", dataDir, "--yes"],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+
+    expect(collectLogPayloads(vi.mocked(console.error))).toEqual([
+      'Error: This export came from a server with the "Server move" experiment off. Turn on the "Server move" experiment in Settings → Experiments, or run bb settings experiment serverMove true, on that server, then export again.',
     ]);
     expect(await readdir(parent)).toEqual([]);
   });

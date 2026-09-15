@@ -235,8 +235,9 @@ plugin secrets; the command warns about that, and `--json` prints `path`,
 `sizeBytes`, `sha256`, and `warning`.
 `bb server import <file> [--data-dir <dir>]` installs an export into a local
 data directory without calling a server. It refuses when that directory has a
-`bb.db` or bb is running from it, refuses an export made by a newer bb, and
-asks you to re-export an archive encrypted by an older bb. Stop the original server before you start the
+`bb.db` or bb is running from it, refuses an export made by a newer bb or by a
+server with the `serverMove` experiment off, and asks you to re-export an
+archive encrypted by an older bb. Stop the original server before you start the
 imported one: both hold the same connect credential and would take each
 other's tunnel.
 

@@ -149,6 +149,7 @@ async function stageImport(): Promise<{
       migrationCount: 142,
       sourceDataDir,
       sourceServerHostId: "host-old",
+      serverMoveExperiment: true,
     },
   });
   const stagingDir = path.join(workDir, "staging");
@@ -422,6 +423,7 @@ async function stageManifestEntries(paths: readonly string[]): Promise<{
     migrationCount: 142,
     sourceDataDir: "/home/old/.bb",
     sourceServerHostId: "host-old",
+    serverMoveExperiment: true,
     entries,
   });
   return { stagingDir, manifest };
@@ -454,6 +456,7 @@ describe("server-owned allowlist on import", () => {
         migrationCount: 142,
         sourceDataDir,
         sourceServerHostId: "host-old",
+        serverMoveExperiment: true,
       },
     });
     const stagingDir = path.join(workDir, "staging");
