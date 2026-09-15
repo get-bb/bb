@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, open, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -10,7 +10,10 @@ import {
   upsertPluginSchedule,
 } from "@bb/db";
 import type { ServerMoveInspectResult } from "@bb/host-daemon-contract";
-import { writeLastServerMoveFile } from "@bb/server-archive";
+import {
+  listServerOwnedEntries,
+  writeLastServerMoveFile,
+} from "@bb/server-archive";
 import type { ServerMoveCheckRequest } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
 import {
@@ -500,13 +503,13 @@ describe("server move checks", () => {
         "thr_1",
       );
       await mkdir(attachmentDir, { recursive: true });
-      const video = await open(join(attachmentDir, "video.mp4"), "w");
-      try {
-        await video.truncate(20 * GIB);
-      } finally {
-        await video.close();
-      }
-      let inspect = inspectResult({ diskFreeBytes: 30 * GIB });
+      await writeFile(join(attachmentDir, "video.mp4"), Buffer.alloc(4_096));
+      const inventory = await listServerOwnedEntries(harness.config.dataDir);
+      const serverDataBytes = inventory.entries
+        .flatMap((entry) => entry.files)
+        .reduce((total, file) => total + file.sizeBytes, 0);
+      const required = 2 * serverDataBytes + GIB;
+      let inspect = inspectResult({ diskFreeBytes: required - 1 });
       registerFakeDaemon(harness, {
         events: [],
         hostId: NEW,
@@ -535,12 +538,12 @@ describe("server move checks", () => {
             severity: "blocker",
             title: "Desktop doesn't have room for the server data",
             detail:
-              "The move needs about 44 GB free in /home/me/.bb-machines/laptop, but only 30 GB is available. Free up space on Desktop, then check again.",
+              "The move needs about 1.0 GB free in /home/me/.bb-machines/laptop, but only 1.0 GB is available. Free up space on Desktop, then check again.",
           },
         ],
       });
 
-      inspect = inspectResult({ diskFreeBytes: 50 * GIB });
+      inspect = inspectResult({ diskFreeBytes: required });
       expect(await diskItems()).toEqual({
         canMove: true,
         items: [
@@ -549,12 +552,12 @@ describe("server move checks", () => {
             severity: "warning",
             title: "Space is tight on Desktop",
             detail:
-              "The move needs about 44 GB of the 50 GB free in /home/me/.bb-machines/laptop, which leaves little room for the server to grow.",
+              "The move needs about 1.0 GB of the 1.0 GB free in /home/me/.bb-machines/laptop, which leaves little room for the server to grow.",
           },
         ],
       });
 
-      inspect = inspectResult({ diskFreeBytes: 100 * GIB });
+      inspect = inspectResult({ diskFreeBytes: Math.ceil(required * 1.5) });
       expect(await diskItems()).toEqual({ canMove: true, items: [] });
 
       inspect = inspectResult({ diskFreeBytes: null });
@@ -562,14 +565,14 @@ describe("server move checks", () => {
 
       inspect = inspectResult({
         bbAppVersion: "0.0.0-alpha.1",
-        diskFreeBytes: 50 * GIB,
+        diskFreeBytes: 10 * GIB,
       });
       expect(await diskItems()).toMatchObject({
         canMove: false,
         items: [
           {
             id: "target-disk-space",
-            detail: expect.stringContaining("about 55 GB free"),
+            detail: expect.stringContaining("about 11 GB free"),
           },
         ],
       });
