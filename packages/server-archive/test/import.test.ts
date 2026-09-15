@@ -24,6 +24,7 @@ import {
   ServerArchiveError,
   type ServerArchiveErrorCode,
   type ServerArchiveManifest,
+  SERVER_ARCHIVE_VERSION,
   serverArchiveManifestSchema,
   writeServerArchive,
 } from "../src/index.js";
@@ -431,7 +432,7 @@ async function stageManifestEntries(paths: readonly string[]): Promise<{
   }
   const manifest = serverArchiveManifestSchema.parse({
     format: "bb-server-archive",
-    version: 1,
+    version: SERVER_ARCHIVE_VERSION,
     createdAt: 1,
     bbVersion: "0.43.1",
     protocolVersion: 209,

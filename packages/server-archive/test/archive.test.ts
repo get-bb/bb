@@ -18,6 +18,7 @@ import type { EntryTypeName } from "tar/types";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   extractServerArchive,
+  SERVER_ARCHIVE_VERSION,
   ServerArchiveError,
   type ServerArchiveErrorCode,
   type ServerArchiveManifestInput,
@@ -180,7 +181,7 @@ function craftedManifest(files: Array<{ path: string; body: Buffer }>): Buffer {
   return Buffer.from(
     JSON.stringify({
       format: "bb-server-archive",
-      version: 1,
+      version: SERVER_ARCHIVE_VERSION,
       ...MANIFEST_INPUT,
       entries: files.map((file) => ({
         path: file.path,
@@ -510,10 +511,40 @@ describe("extracting crafted archives", () => {
       {
         path: "manifest.json",
         body: Buffer.from(
-          JSON.stringify({ format: "bb-server-archive", version: 2 }),
+          JSON.stringify({
+            format: "bb-server-archive",
+            version: SERVER_ARCHIVE_VERSION + 1,
+          }),
         ),
       },
     ]);
     await expectArchiveError(futureManifest.result, ["unsupported_version"]);
+  });
+
+  it("reports an archive from a bb that didn't record the serverMove experiment as an unsupported version", async () => {
+    const olderManifest = Buffer.from(
+      JSON.stringify({
+        format: "bb-server-archive",
+        version: 1,
+        createdAt: MANIFEST_INPUT.createdAt,
+        bbVersion: MANIFEST_INPUT.bbVersion,
+        protocolVersion: MANIFEST_INPUT.protocolVersion,
+        migrationCount: MANIFEST_INPUT.migrationCount,
+        sourceDataDir: MANIFEST_INPUT.sourceDataDir,
+        sourceServerHostId: MANIFEST_INPUT.sourceServerHostId,
+        entries: [{ path: "bb.db", size: body.length, sha256: sha256(body) }],
+      }),
+    );
+    const older = await extractCrafted([
+      { path: "manifest.json", body: olderManifest },
+      { path: "files/bb.db", body },
+    ]);
+
+    const error = await expectArchiveError(older.result, [
+      "unsupported_version",
+    ]);
+
+    expect(error.message).toBe("Unsupported bb server archive version 1");
+    expect(await readdir(older.destinationDir)).toEqual([]);
   });
 });

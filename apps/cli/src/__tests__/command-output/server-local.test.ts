@@ -144,7 +144,7 @@ async function writeCraftedArchive(
   const manifest = Buffer.from(
     JSON.stringify({
       format: "bb-server-archive",
-      version: 1,
+      version: 2,
       createdAt: 1_700_000_000_000,
       bbVersion: "0.50.0",
       protocolVersion: 209,

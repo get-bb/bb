@@ -6,7 +6,7 @@ import {
 } from "./relative-path.js";
 
 export const SERVER_ARCHIVE_FORMAT = "bb-server-archive";
-export const SERVER_ARCHIVE_VERSION = 1;
+export const SERVER_ARCHIVE_VERSION = 2;
 export const SERVER_ARCHIVE_MANIFEST_PATH = "manifest.json";
 export const SERVER_ARCHIVE_FILES_DIR_NAME = "files";
 
