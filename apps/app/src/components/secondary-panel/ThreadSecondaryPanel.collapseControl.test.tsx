@@ -738,6 +738,7 @@ describe("ThreadSecondaryPanel resize boundary", () => {
     const seam = boundary.querySelector(
       "span:not([data-panel-resize-hit-target])",
     );
+    expect(boundary.tabIndex).toBe(-1);
     expect(seam?.className).toContain("bg-border-seam");
   });
 });

@@ -50,7 +50,6 @@ export function usePanelResizeSnap({
       if (ownerWindow === null) return;
       event.preventDefault();
       event.stopPropagation();
-      divider.focus({ preventScroll: true });
       const snapSession = createSplitResizeSnapSession(divider, "x", {
         boundaryIndex: 1,
         childCount: 2,
@@ -119,7 +118,6 @@ export function usePanelResizeSnap({
         );
         ownerWindow.removeEventListener("mouseup", commitDrag, true);
         ownerWindow.removeEventListener("blur", commitDrag);
-        divider.removeEventListener("keydown", flushResize, true);
         divider.removeEventListener("lostpointercapture", finishForPointer);
         delete divider.dataset.dragging;
         if (divider.hasPointerCapture(pointerId)) {
@@ -159,7 +157,6 @@ export function usePanelResizeSnap({
       ownerWindow.addEventListener("pointercancel", finishForPointer, true);
       ownerWindow.addEventListener("mouseup", commitDrag, true);
       ownerWindow.addEventListener("blur", commitDrag);
-      divider.addEventListener("keydown", flushResize, true);
       divider.addEventListener("lostpointercapture", finishForPointer);
       onDragging(true);
     };

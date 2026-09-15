@@ -1155,6 +1155,7 @@ function SecondaryPanelResizeHandle({
       disabled={!isOpen || isConversationCollapsed}
       data-panel-resize-snap-handle=""
       hitAreaMargins={{ coarse: 0, fine: 0 }}
+      tabIndex={-1}
       className={cn(
         "group relative shrink-0 overflow-visible transition-[width,opacity,background-color]",
         PANEL_RESIZE_HANDLE_LAYER_CLASS,
