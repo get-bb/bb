@@ -64,7 +64,6 @@ import {
   throwSenderThreadInvalid,
   throwThreadNotWritable,
 } from "../lib/lifecycle-api-errors.js";
-import { validatePromptAttachmentReferences } from "../projects/attachments.js";
 import { resolvePluginMentionContextInputs } from "../plugins/plugin-mentions.js";
 import { clearThreadContext } from "./thread-context-clear.js";
 import { withThreadSendGuard } from "./thread-context-mutation-guard.js";
@@ -76,6 +75,10 @@ import {
   type PromptWithGroups,
 } from "./deferred-first-turn-context.js";
 import type { TelemetryEvent } from "../system/telemetry.js";
+import {
+  preparePromptInputForPersistence,
+  preparePromptInputGroupsForPersistence,
+} from "./durable-prompt-attachments.js";
 
 type SendThreadMessageMode = SendMessageRequest["mode"];
 type TextPromptInput = Extract<PromptInput, { type: "text" }>;
@@ -520,6 +523,20 @@ async function sendThreadMessageWithoutContextClear(
     { input, ...(inputGroups !== undefined ? { inputGroups } : {}) },
     deferredFirstTurnContext,
   ));
+  if (inputGroups === undefined) {
+    input = await preparePromptInputForPersistence(deps, {
+      hostId: environment.hostId,
+      input,
+      projectId: thread.projectId,
+    });
+  } else {
+    inputGroups = await preparePromptInputGroupsForPersistence(deps, {
+      hostId: environment.hostId,
+      inputGroups,
+      projectId: thread.projectId,
+    });
+    input = flattenPromptInputGroups(inputGroups);
+  }
   const beforeAppendInTransaction: SendThreadMessageTransactionPreflight = ({
     tx,
   }) => {
@@ -531,11 +548,6 @@ async function sendThreadMessageWithoutContextClear(
       });
     }
   };
-  await validatePromptAttachmentReferences({
-    dataDir: deps.config.dataDir,
-    input,
-    projectId: thread.projectId,
-  });
   // Agent-originated CLI sends still appear as normal turn requests in the
   // timeline, while initiator lets policy distinguish the source. A retry is
   // `system` whatever the original was: nobody asked for it a second time, and

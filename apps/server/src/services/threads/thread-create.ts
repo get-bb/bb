@@ -28,7 +28,6 @@ import {
   rememberProjectExecutionDefaultsForCreate,
   resolveProjectExecutionDefaultsForCreate,
 } from "./project-execution-defaults.js";
-import { validatePromptAttachmentReferences } from "../projects/attachments.js";
 import {
   appendPluginMentionContext,
   captureUserMessageSentTelemetry,
@@ -69,6 +68,7 @@ import {
   getEnvironmentProvider,
   listEnvironmentCompositions,
 } from "../plugins/plugin-environment-provider-registry.js";
+import { preparePromptInputGroupsForPersistence } from "./durable-prompt-attachments.js";
 
 type ThreadCreateDeps = LoggedPendingInteractionWorkSessionDeps;
 
@@ -610,11 +610,6 @@ export async function createThreadFromRequest(
       );
     }
   }
-  await validatePromptAttachmentReferences({
-    dataDir: deps.config.dataDir,
-    input: requestInput.input,
-    projectId: requestInput.projectId,
-  });
   await deps.providerRegistry.whenRegistrationsSettled();
   const {
     executionDefaults,
@@ -653,7 +648,7 @@ export async function createThreadFromRequest(
   ) {
     throw new ApiError(400, "invalid_request", "unknown environment provider");
   }
-  const request: ThreadCreateServiceRequest = {
+  const requestBeforeAttachmentPreparation: ThreadCreateServiceRequest = {
     ...requestRest,
     ...(hierarchyParentThreadId
       ? { parentThreadId: hierarchyParentThreadId }
@@ -676,24 +671,42 @@ export async function createThreadFromRequest(
           allowUnmanagedPersonalProjectReuseEnvironmentId:
             forkSourceEnvironmentId,
           environment: requestedEnvironment,
-          projectId: request.projectId,
+          projectId: requestBeforeAttachmentPreparation.projectId,
         });
   const childHostId =
     resolvedEnvironment !== null
       ? childHostIdForResolvedEnvironment(resolvedEnvironment)
-      : request.environment.type === "provider"
-        ? request.environment.machine?.type === "existing"
-          ? request.environment.machine.hostId
+      : requestBeforeAttachmentPreparation.environment.type === "provider"
+        ? requestBeforeAttachmentPreparation.environment.machine?.type ===
+          "existing"
+          ? requestBeforeAttachmentPreparation.environment.machine.hostId
           : null
         : null;
   assertForkSourceHost(deps, {
     childHostId,
-    originKind: request.originKind ?? null,
+    originKind: requestBeforeAttachmentPreparation.originKind ?? null,
     sourceThread,
   });
   if (childHostId !== null) {
     await ensureHostSessionReadyForWork(deps, { hostId: childHostId });
   }
+  const preparedInputGroups = await preparePromptInputGroupsForPersistence(
+    deps,
+    {
+      hostId: childHostId,
+      inputGroups: [
+        requestBeforeAttachmentPreparation.input,
+        ...(options.providerInput !== undefined ? [options.providerInput] : []),
+      ],
+      projectId: requestBeforeAttachmentPreparation.projectId,
+    },
+  );
+  const request: ThreadCreateServiceRequest = {
+    ...requestBeforeAttachmentPreparation,
+    input: preparedInputGroups[0] ?? [],
+  };
+  const preparedProviderInput =
+    options.providerInput === undefined ? undefined : preparedInputGroups[1];
   const modelCatalogCwd =
     resolvedEnvironment !== null
       ? modelCatalogCwdForResolvedEnvironment(resolvedEnvironment)
@@ -755,8 +768,8 @@ export async function createThreadFromRequest(
     environmentIntent,
     executionDefaults: resolvedExecutionDefaults,
     fork,
-    ...(options.providerInput !== undefined
-      ? { providerInput: options.providerInput }
+    ...(preparedProviderInput !== undefined
+      ? { providerInput: preparedProviderInput }
       : {}),
     request,
   };

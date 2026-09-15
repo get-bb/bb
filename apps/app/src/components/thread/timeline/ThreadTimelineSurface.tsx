@@ -1,4 +1,10 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import type {
   ActiveThinking,
   ThreadOriginKind,
@@ -30,6 +36,7 @@ import type {
   ThreadTimelineLocalFileLinkHandler,
   ThreadTimelineOpenPluginPanelHandler,
   ThreadTimelineUnreadDividerPlacement,
+  UserAttachmentImageSrcResolver,
 } from "./types.js";
 
 export interface HostConnectionNotice {
@@ -204,6 +211,12 @@ export function ThreadTimelineSurface({
     onLoadOlderRows !== undefined &&
     !isThreadTimelinePending &&
     !timelineError;
+  const resolveUserAttachmentImageSrc =
+    useCallback<UserAttachmentImageSrcResolver>(
+      (pathOrUrl, attachmentProjectId) =>
+        toUserAttachmentImageSrc(pathOrUrl, attachmentProjectId, threadId),
+      [threadId],
+    );
 
   return (
     <TimelineReasoningExpansionProvider key={threadId}>
@@ -242,7 +255,7 @@ export function ThreadTimelineSurface({
             onTitleAction={onTitleAction}
             projectId={projectId}
             resolveMentionLink={resolveMentionLink}
-            resolveUserAttachmentImageSrc={toUserAttachmentImageSrc}
+            resolveUserAttachmentImageSrc={resolveUserAttachmentImageSrc}
             hasOlderTimelineRows={hasOlderTimelineRows}
             isLoadingOlderTimelineRows={isLoadingOlderTimelineRows}
             onLoadOlderRows={onLoadOlderRows}
