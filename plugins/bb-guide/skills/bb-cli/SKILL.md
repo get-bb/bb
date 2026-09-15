@@ -92,9 +92,6 @@ list`, `get`, `set`, and `reset`.
 - Treat plugin commands as normal top-level commands after installation.
 
 - Inspect real status, logs, API results, or diffs instead of assumptions.
-- Launcher status uses plain output in pipes and CI. `FORCE_COLOR=1` requests
-  color; `NO_COLOR=1` disables it and takes precedence. Cursor updates require
-  stdout to be a TTY.
 - For launcher startup errors and console output, read `logs/server-stdio.log`
   or `logs/host-daemon-stdio.log` under the selected bb data directory. These
   append across restarts; `bb-app`, `bb-server`, and `bb-host-daemon` capture

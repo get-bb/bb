@@ -35,10 +35,6 @@ To opt out, remove `--auto-update` from the launchd plist or systemd user unit
 and reload that service. Foreground/manual `bb-app host-daemon` runs leave it off
 unless you pass `--auto-update` explicitly.
 
-Launcher status output is plain when stdout is redirected, including in CI.
-Set `FORCE_COLOR=1` to request color or `NO_COLOR=1` to disable it; `NO_COLOR`
-takes precedence. In-place progress updates require a stdout TTY.
-
 `bb-app`, `bb-server`, and `bb-host-daemon` capture service stdout and stderr
 directly under the selected data directory in `logs/server-stdio.log` and
 `logs/host-daemon-stdio.log`. These files append across restarts and contain
