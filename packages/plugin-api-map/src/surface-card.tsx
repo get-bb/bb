@@ -204,12 +204,13 @@ export function SurfaceCard({
                   const href = pluginPageHref?.(plugin) ?? null;
                   const body = (
                     <>
-                      {icon ? (
-                        <HugeiconsIcon
-                          icon={icon}
-                          className="size-3.5 shrink-0 text-subtle-foreground"
-                        />
-                      ) : null}
+                      {surfaceMap?.renderPluginIcon?.(plugin) ??
+                        (icon ? (
+                          <HugeiconsIcon
+                            icon={icon}
+                            className="size-3.5 shrink-0 text-subtle-foreground"
+                          />
+                        ) : null)}
                       {plugin}
                     </>
                   );

@@ -3,10 +3,40 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import { SurfaceCard, SURFACE_GROUPS } from "../src/index";
+import { SurfaceMapContext } from "../src/wireframes";
 
 const surfaces = SURFACE_GROUPS[0]!.surfaces;
 
 describe("SurfaceCard annotation navigation", () => {
+  it("uses host-resolved provider artwork alongside its plugin link", () => {
+    const markup = renderToStaticMarkup(
+      createElement(
+        SurfaceMapContext.Provider,
+        {
+          value: {
+            activeId: null,
+            expandedId: null,
+            setActiveId: () => undefined,
+            numberOf: () => null,
+            pluginPageHref: () => "/plugins/provider-codex",
+            renderPluginIcon: () =>
+              createElement("img", { src: "/codex.svg", alt: "" }),
+          },
+        },
+        createElement(SurfaceCard, {
+          surface: { ...surfaces[1]!, firstParty: ["Codex provider"] },
+          number: 2,
+          onDismiss: () => undefined,
+        }),
+      ),
+    );
+
+    expect(markup).toMatch(
+      /href="\/plugins\/provider-codex"[^>]*><img[^>]*src="\/codex.svg"/,
+    );
+    expect(markup).toContain("Codex provider");
+  });
+
   it("renders compact previous and next annotation actions", () => {
     const markup = renderToStaticMarkup(
       createElement(SurfaceCard, {
