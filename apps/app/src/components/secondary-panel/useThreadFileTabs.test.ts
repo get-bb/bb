@@ -29,6 +29,10 @@ import {
 } from "@/lib/plugin-slots";
 import { makeTerminalSession as terminalSession } from "@/test/fixtures/terminal-sessions";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
+import {
+  DOWNLOAD_FILE_OPENER_PREFERENCE,
+  useFileOpenerPreference,
+} from "@/lib/file-opener-preference";
 
 const syncMocks = vi.hoisted(() => ({
   scheduleLocalThreadTabsMigration: vi.fn(),
@@ -1430,6 +1434,167 @@ describe("useThreadFileTabs file opener diversion", () => {
       actionId: "file-opener:editor",
       title: "other.md",
     });
+  });
+
+  it("downloads workspace, host, and thread-storage files without opening tabs", async () => {
+    const downloadUrls: string[] = [];
+    const downloadNames: string[] = [];
+    const fetchMock = vi.fn((_input: RequestInfo | URL) =>
+      Promise.resolve(new Response("%PDF", { status: 200 })),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const createObjectUrl = vi
+      .spyOn(URL, "createObjectURL")
+      .mockReturnValue("blob:download");
+    const revokeObjectUrl = vi
+      .spyOn(URL, "revokeObjectURL")
+      .mockImplementation(() => {});
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(function (this: HTMLAnchorElement) {
+        downloadUrls.push(this.href);
+        downloadNames.push(this.download);
+      });
+    const { result } = renderThreadHook(() =>
+      useThreadFileTabs({
+        panelStateId: "download-opener",
+        syncThreadId: "thr_download",
+        environmentId: "env_download",
+        projectId: "proj_download",
+        storageFiles: undefined,
+        terminalSessions: undefined,
+      }),
+    );
+
+    act(() =>
+      result.current.openTab(
+        {
+          kind: "workspace-file-preview",
+          tab: {
+            lineRange: null,
+            path: "reports/workspace.pdf",
+            source: { kind: "working-tree" },
+            statusLabel: null,
+          },
+        },
+        { viewer: "download" },
+      ),
+    );
+    act(() =>
+      result.current.openTab(
+        {
+          kind: "host-file-preview",
+          tab: { lineRange: null, path: "/tmp/host.pdf" },
+        },
+        { viewer: "download" },
+      ),
+    );
+    act(() =>
+      result.current.openTab(
+        {
+          kind: "thread-storage-file-preview",
+          tab: { lineRange: null, path: "reports/storage.pdf" },
+        },
+        { viewer: "download" },
+      ),
+    );
+
+    expect(
+      fetchMock.mock.calls.map(([url]) => {
+        const parsed = new URL(String(url), window.location.origin);
+        return `${parsed.pathname}?${parsed.searchParams.toString()}`;
+      }),
+    ).toEqual([
+      "/api/v1/projects/proj_download/files/content?path=reports%2Fworkspace.pdf&environmentId=env_download",
+      "/api/v1/threads/thr_download/host-files/content?path=%2Ftmp%2Fhost.pdf",
+      "/api/v1/threads/thr_download/thread-storage/content?path=reports%2Fstorage.pdf",
+    ]);
+    await waitFor(() => expect(downloadUrls).toHaveLength(3));
+    expect(downloadNames).toEqual(["workspace.pdf", "host.pdf", "storage.pdf"]);
+    expect(downloadUrls).toEqual([
+      "blob:download",
+      "blob:download",
+      "blob:download",
+    ]);
+    expect(result.current.orderedSecondaryFileTabs).toEqual([]);
+    expect(document.querySelector("a[download]")).toBeNull();
+    click.mockRestore();
+    createObjectUrl.mockRestore();
+    revokeObjectUrl.mockRestore();
+    vi.unstubAllGlobals();
+  });
+
+  it("uses the saved PDF download opener while preserving explicit preview", async () => {
+    const downloadUrls: string[] = [];
+    const fetchMock = vi.fn((_input: RequestInfo | URL) =>
+      Promise.resolve(new Response("%PDF", { status: 200 })),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const createObjectUrl = vi
+      .spyOn(URL, "createObjectURL")
+      .mockReturnValue("blob:download-preference");
+    const revokeObjectUrl = vi
+      .spyOn(URL, "revokeObjectURL")
+      .mockImplementation(() => {});
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(function (this: HTMLAnchorElement) {
+        downloadUrls.push(this.href);
+      });
+    const { result } = renderThreadHook(() => {
+      const [, setPreference] = useFileOpenerPreference();
+      const tabs = useThreadFileTabs({
+        panelStateId: "download-preference",
+        syncThreadId: "thr_download_preference",
+        environmentId: "env_download_preference",
+        projectId: "proj_download_preference",
+        storageFiles: undefined,
+        terminalSessions: undefined,
+      });
+      return { setPreference, tabs };
+    });
+
+    act(() => {
+      result.current.setPreference({
+        pdf: DOWNLOAD_FILE_OPENER_PREFERENCE,
+      });
+    });
+    act(() =>
+      result.current.tabs.openTab({
+        kind: "workspace-file-preview",
+        tab: {
+          lineRange: null,
+          path: "reports/default.pdf",
+          source: { kind: "working-tree" },
+          statusLabel: null,
+        },
+      }),
+    );
+    await waitFor(() => expect(downloadUrls).toHaveLength(1));
+    expect(result.current.tabs.orderedSecondaryFileTabs).toEqual([]);
+
+    act(() =>
+      result.current.tabs.openTab(
+        {
+          kind: "workspace-file-preview",
+          tab: {
+            lineRange: null,
+            path: "reports/preview.pdf",
+            source: { kind: "working-tree" },
+            statusLabel: null,
+          },
+        },
+        { viewer: "builtin" },
+      ),
+    );
+    expect(downloadUrls).toHaveLength(1);
+    expect(result.current.tabs.activeWorkspaceFilePath).toBe(
+      "reports/preview.pdf",
+    );
+    click.mockRestore();
+    createObjectUrl.mockRestore();
+    revokeObjectUrl.mockRestore();
+    vi.unstubAllGlobals();
   });
 });
 
