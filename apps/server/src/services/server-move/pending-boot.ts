@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import {
   countAppliedMigrations,
   getAppSettings,
+  getExperiments,
   getHost,
   getPluginKvValue,
   rerootServerOwnedPluginPaths,
@@ -72,7 +73,7 @@ export interface ApplyServerImportFixupsArgs {
 export interface ApplyServerImportAtBootArgs {
   dataDir: string;
   db: DbConnection;
-  logger: Pick<ServerLogger, "info">;
+  logger: Pick<ServerLogger, "info" | "warn">;
   now: number;
 }
 
@@ -327,6 +328,13 @@ export async function applyServerImportAtBoot(
 ): Promise<ServerImportBootResult> {
   const marker = await readServerImportFile(args.dataDir);
   if (marker === null) {
+    return { manualImportPending: false, pendingMove: null };
+  }
+  if (marker.kind === "manual" && !getExperiments(args.db).serverMove) {
+    args.logger.warn(
+      { sourceServerHostId: marker.sourceServerHostId },
+      'Imported server data isn\'t finished because moving the server is off. Turn on the "Server move" experiment in Settings → Experiments, or run bb settings experiment serverMove true, then restart bb.',
+    );
     return { manualImportPending: false, pendingMove: null };
   }
   const targetHostId =
