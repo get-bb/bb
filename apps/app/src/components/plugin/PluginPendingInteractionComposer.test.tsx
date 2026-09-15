@@ -4,8 +4,9 @@ import { useEffect, useState } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { PluginPendingInteraction } from "@bb/domain";
+import { defaultAppSettings, type PluginPendingInteraction } from "@bb/domain";
 import type { PluginPendingInteractionProps } from "@get-bb/plugin-sdk";
+import { loadPluginApp } from "@get-bb/plugin-sdk/testing/app";
 import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
@@ -22,10 +23,43 @@ import {
 import { resetAllCrashedPluginSlotsForTest } from "./PluginSlotMount";
 import { PluginPendingInteractionComposer } from "./PluginPendingInteractionComposer";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
+import { AppCommandProvider } from "@/components/commands/AppCommandProvider";
+
+vi.mock("@/hooks/queries/system-queries", () => ({
+  useSystemConfig: () => ({
+    data: {
+      generalSettings: { ...defaultAppSettings },
+      keybindings: [1, 2, 3].map((digit) => ({
+        command: `question.select.${digit}`,
+        desktopOnly: false,
+        shortcut: {
+          key: String(digit),
+          mod: false,
+          meta: false,
+          control: false,
+          alt: false,
+          shift: false,
+        },
+        when: { all: ["questionOpen"], none: [] },
+      })),
+    },
+  }),
+}));
+vi.mock("@/lib/bb-desktop", () => ({ getBbDesktopInfo: () => null }));
+const pane = vi.hoisted(() => ({ isFocused: true }));
+vi.mock("@/views/thread-detail/PaneContext", () => ({
+  useOptionalPaneContext: () => pane,
+}));
+
+const piApp = await loadPluginApp(() =>
+  import("../../../../../plugins/provider-pi/app"),
+);
 
 function renderComposer(ui: React.ReactElement) {
   return render(
-    <QueryClientProvider client={new QueryClient()}>{ui}</QueryClientProvider>,
+    <QueryClientProvider client={new QueryClient()}>
+      <AppCommandProvider>{ui}</AppCommandProvider>
+    </QueryClientProvider>,
   );
 }
 
@@ -217,6 +251,38 @@ describe("PluginPendingInteractionComposer", () => {
         .getByRole("button", { name: "Hide details" })
         .getAttribute("aria-expanded"),
     ).toBe("true");
+  });
+
+  it("selects a pi option with its displayed number key", () => {
+    setPluginSlotRegistrations(
+      "provider-pi",
+      registrations(piApp.pendingInteractions),
+    );
+    const data = {
+      requestId: "ui-1",
+      method: "select" as const,
+      options: ["Allow once", "Deny"],
+    };
+    renderComposer(
+      <PluginPendingInteractionComposer
+        interaction={interaction}
+        request={{
+          pluginId: "provider-pi",
+          rendererId: "extension-ui",
+          title: "Allow access?",
+          data,
+        }}
+        dismissal="cancel"
+      />,
+    );
+
+    expect(screen.getByText("1", { selector: "kbd" })).toBeDefined();
+    expect(screen.getByText("2", { selector: "kbd" })).toBeDefined();
+    fireEvent.keyDown(window, { key: "2" });
+    expect(
+      (screen.getByRole("radio", { name: "Deny" }) as HTMLInputElement)
+        .checked,
+    ).toBe(true);
   });
 
   it("mounts only the renderer registered by the interaction's plugin", () => {
