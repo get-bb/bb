@@ -14,5 +14,9 @@
   "workspace-explorer": {
     "category": "file-viewers-and-editors",
     "screenshots": []
+  },
+  "typst-inline": {
+    "category": "thread-content",
+    "screenshots": []
   }
 }

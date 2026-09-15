@@ -864,6 +864,10 @@
     "bb-plugin-workspace-explorer#typecheck": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
     },
+    // bb-fork(windows): the fork-bundled Typst inline artifact plugin.
+    "bb-plugin-typst-inline#typecheck": {
+      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
+    },
     "bb-plugin-plugin-api-docs#typecheck": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
     },

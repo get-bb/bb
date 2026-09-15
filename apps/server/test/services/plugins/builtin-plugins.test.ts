@@ -273,6 +273,7 @@ describe("builtin plugin reconciliation", () => {
       ["git-graph", "GitBranch"],
       ["pc-control", "Laptop"],
       ["workspace-explorer", "FolderOpen"],
+      ["typst-inline", "TextWrap"],
       ["environment-git-worktree", "FolderGit"],
     ]);
 

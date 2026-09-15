@@ -25,4 +25,9 @@ export const FORK_BUILTIN_PLUGINS: readonly ForkBuiltinPluginDefinition[] = [
     pluginId: "workspace-explorer",
     defaultEnabled: true,
   },
+  {
+    name: "typst-inline",
+    pluginId: "typst-inline",
+    defaultEnabled: true,
+  },
 ];
