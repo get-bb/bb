@@ -1,7 +1,11 @@
 import { readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { readLastServerMoveFile } from "@bb/server-archive";
+import {
+  readLastServerMoveFile,
+  readServerConnectHoldFile,
+  writeServerConnectHoldFile,
+} from "@bb/server-archive";
 import { describe, expect, it } from "vitest";
 import { readIncomingMoveState, writeIncomingMoveState } from "./move-state.js";
 import { isProcessGroupAlive } from "./pending-server.js";
@@ -269,6 +273,33 @@ describe("server_move.activate sequencing", () => {
     expect(
       await readFile(join(fixture.dataDir, "install-daemon.pid"), "utf8"),
     ).toBe("999999\n");
+    await expectMarkersRemoved(fixture);
+  });
+
+  it("removes a bb connect hold so the moved server starts bb connect", async () => {
+    const fixture = await createFixture();
+    const service = fixture.createService({
+      env: {
+        BB_SERVER_MOVE_SERVICE_MANAGER: "none",
+        BB_APP_NPM_PREFIX: fixture.npmPrefix,
+      },
+    });
+    await writeFile(
+      join(fixture.dataDir, "install-daemon.pid"),
+      `${PARENT_PID}\n`,
+    );
+    await service.prepare(await prepareCommand(fixture));
+    await writeServerConnectHoldFile(fixture.dataDir, {
+      version: 1,
+      reason: "manual-import",
+      createdAt: 1,
+    });
+
+    await service.activate(activateCommand);
+    await service.resumeActivation();
+
+    expect(fixture.shutdownRequests).toEqual([["server-move-activated", 0]]);
+    expect(await readServerConnectHoldFile(fixture.dataDir)).toBeNull();
     await expectMarkersRemoved(fixture);
   });
 

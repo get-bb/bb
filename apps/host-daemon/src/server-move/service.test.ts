@@ -230,6 +230,23 @@ describe("ServerMoveService.prepare", () => {
     ).resolves.toEqual({ ok: true });
   });
 
+  it("abort removes a bb connect hold left beside the imported server", async () => {
+    const fixture = await createFixture();
+    await fixture.service.prepare(await prepareCommand(fixture));
+    await writeServerConnectHoldFile(fixture.dataDir, {
+      version: 1,
+      reason: "manual-import",
+      createdAt: 1,
+    });
+
+    await expect(
+      fixture.service.abort({ type: "server_move.abort", moveId: MOVE_ID }),
+    ).resolves.toEqual({ ok: true });
+
+    expect(await exists(join(fixture.dataDir, "bb.db"))).toBe(false);
+    expect(await readServerConnectHoldFile(fixture.dataDir)).toBeNull();
+  });
+
   it("refuses to archive ~/.bb while bb is running from it", async () => {
     const fixture = await createFixture();
     await writeFileWithDirs(
@@ -569,6 +586,34 @@ describe("ServerMoveService own data dir guards", () => {
     expect(await exists(join(dataDir, "server-import-journal.json"))).toBe(
       false,
     );
+  });
+
+  it("removes the bb connect hold of an interrupted manual import it rolls back before a move", async () => {
+    const fixture = await createFixture();
+    const { dataDir } = fixture;
+    await writeFileWithDirs(join(dataDir, "bb.db"), "half-imported database");
+    await writeFileWithDirs(
+      join(dataDir, "server-import-journal.json"),
+      JSON.stringify({
+        version: 1,
+        entries: ["bb.db"],
+        preexistingEntries: [],
+      }),
+    );
+    await writeServerConnectHoldFile(dataDir, {
+      version: 1,
+      reason: "manual-import",
+      createdAt: 1,
+    });
+
+    await expect(
+      fixture.service.prepare(await prepareCommand(fixture)),
+    ).resolves.toMatchObject({ pid: expect.any(Number) });
+
+    expect(await readFile(join(dataDir, "bb.db"), "utf8")).toBe(
+      "sqlite database bytes",
+    );
+    expect(await readServerConnectHoldFile(dataDir)).toBeNull();
   });
 
   it("keeps a finished manual import whose journal outlived its marker and refuses the move", async () => {
