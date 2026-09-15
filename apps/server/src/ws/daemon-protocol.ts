@@ -25,6 +25,8 @@ import { requestQueuedMessageDispatch } from "../services/threads/queued-message
 import { runEventLoopWorkSync } from "../services/system/event-loop-work.js";
 import { parseSocketMessage } from "./decode-payload.js";
 import type { PluginService } from "../services/plugins/plugin-service.js";
+import type { ServerMoveCoordinator } from "../services/server-move/coordinator.js";
+import { isServerMoveFrozen } from "../services/server-move/freeze-state.js";
 import { resumeEnvironmentProvisioningForHost } from "../services/environments/environment-engine.js";
 
 interface DaemonSocket {
@@ -89,6 +91,9 @@ export function onDaemonSocketOpen(
     daemonSessionId: args.sessionId,
     hostId: args.hostId,
   });
+  if (isServerMoveFrozen(deps.db)) {
+    return;
+  }
   // A dispatch that arrived while this machine was away parked its row on a
   // `host-offline` wait with no schedule, so no sweep can see it — the
   // machine coming back is that wait's release signal, and this socket
@@ -118,6 +123,7 @@ export function onDaemonSocketMessage(
   >,
   args: DaemonSocketMessageArgs,
   plugins?: Pick<PluginService, "handleHostSignal" | "handleHostWorkerExit">,
+  serverMove?: Pick<ServerMoveCoordinator, "handleProgress">,
 ): void {
   const message = parseSocketMessage(
     args.socket,
@@ -220,6 +226,10 @@ export function onDaemonSocketMessage(
       }
       if (message.type === "environment.hook.progress") {
         reportEnvironmentHookProgress(deps, args.hostId, message);
+        return;
+      }
+      if (message.type === "server_move.progress") {
+        serverMove?.handleProgress(args.hostId, message);
         return;
       }
       if (message.type === "plugin-host.signal") {

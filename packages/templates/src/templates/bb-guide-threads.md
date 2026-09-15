@@ -73,7 +73,7 @@ Spawning:
   A machine selector accepts an exact ID or an unambiguous name. It works with
   an unmanaged --environment path, --new-environment worktree, or the personal
   workspace. It cannot be combined with an existing environment ID because that
-  environment already selects its machine. Without the flag, local/primary
+  environment already selects its machine. Without the flag, local/server
   machine resolution is unchanged.
   Omit --base-branch for bb's default. Explicit values are exact; use
   origin/<branch> for a remote ref.

@@ -28,7 +28,7 @@ List and create require exactly one explicit scope:
     --json                                Print machine-readable output
 
 Machine names are resolved to an explicit machine ID. No scope defaults to the
-primary machine, and --cwd is valid only with --machine or --host.
+server machine, and --cwd is valid only with --machine or --host.
 
 All other operations need only the terminal ID:
 

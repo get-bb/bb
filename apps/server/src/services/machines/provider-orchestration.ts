@@ -1,4 +1,5 @@
 import { withHostCleanup } from "../hosts/cleanup-context.js";
+import { isServerMachineHost } from "../hosts/primary-host.js";
 import { requestQueuedMachineReadiness } from "../threads/queued-message-dispatch.js";
 import { and, desc, eq } from "drizzle-orm";
 import { createHostId, hostDaemonSessions, hosts } from "@bb/db";
@@ -1356,6 +1357,7 @@ export async function sweepMachineLifecycles(
   const pending: Promise<void>[] = [];
   for (const record of listMachineProviders()) {
     for (const machine of listProviderMachines(deps.db, record.provider.id)) {
+      if (isServerMachineHost(deps, machine.id)) continue;
       requestAutomaticMachineRemoval(deps, machine.id);
       const sweeping = runTrackedOperation({
         map: perDbRegistry(machineSweepOperations, deps.db),

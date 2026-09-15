@@ -626,7 +626,7 @@ source. The CLI equivalents are `bb machine list`, `bb project create
 
 Multi-machine execution is independent of browser access. Tailscale and bb
 connect let another browser reach the bb server; multi-machine support lets
-that server dispatch work to non-primary host daemons. The Settings → Machines
+that server dispatch work to host daemons on other machines. The Settings → Machines
 installer can use a paired bb connect account to route the daemon and its CLI
 back to the server. Machine credentials remain locally managed as described at
 the top of this document.
@@ -662,6 +662,15 @@ to a newer server protocol, retry failures with a persisted exponential backoff
 from 5 seconds to 5 minutes, and never downgrade a daemon. Settings → Machines
 and `bb machine retry-update <id-or-name>` can bypass the current backoff after
 a transient failure.
+
+### Server export passphrase
+
+`BB_SERVER_EXPORT_PASSPHRASE` is read by the `bb` CLI, not `bb-app config`.
+`bb server export --out <file>` uses it to encrypt the archive, and
+`bb server import <file>` uses it to decrypt one. When it is unset, both prompt
+without echo in an interactive terminal (export asks twice) and refuse
+otherwise; export can opt out with `--unencrypted`. An export passphrase must be
+at least 8 characters; an empty value is an error.
 
 ## Sidebar preferences
 
@@ -974,6 +983,14 @@ The `timelineWindowing` experiment is off by default. When enabled, long
 timelines and large expanded timeline details retain stable height-preserving
 wrappers while mounting only rows near their active scrollport. Toggle it with
 `bb settings experiment timelineWindowing <true|false>`.
+
+The `serverMove` experiment is off by default. When enabled, Settings → Machines
+offers Move server here, and the server accepts `bb server move`,
+`bb server export`, and old server copy deletion (`POST /api/v1/server/move`,
+`/server/move/check`, `/server/export`, `DELETE /api/v1/hosts/:id/old-server-copy`).
+While it is off those routes return 403 `server_move_experiment_disabled`;
+move status and cancel stay available. Toggle it with
+`bb settings experiment serverMove <true|false>`.
 
 The `multiMachinePicker` experiment is off by default. When enabled, projects
 with at least three machines use a searchable, target-first environment picker,

@@ -33,6 +33,15 @@ import { NotificationHub } from "./ws/hub.js";
 import { WatchInterestCoordinator } from "./ws/watch-interests.js";
 import { WorkspaceReadCaches } from "./services/environments/workspace-read-cache.js";
 import { HostSharedPortCoordinator } from "./ws/host-shared-ports.js";
+import {
+  applyServerImportAtBoot,
+  repairLastServerMoveHostName,
+} from "./services/server-move/pending-boot.js";
+import { isServerMoveFrozen } from "./services/server-move/freeze-state.js";
+import {
+  retireServerProcess as retireProcessWithDeadline,
+  SERVER_RETIRE_FORCE_EXIT_MS,
+} from "./services/server-move/retire.js";
 
 interface StartHttpListenerArgs {
   fetch: Parameters<typeof serve>[0]["fetch"];
@@ -56,6 +65,20 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     dataDir: serverConfig.BB_DATA_DIR,
     logger,
   });
+  const serverImport = await applyServerImportAtBoot({
+    dataDir: serverConfig.BB_DATA_DIR,
+    db,
+    logger,
+    now: Date.now(),
+  });
+  const pendingServerMove = serverImport.pendingMove;
+  if (pendingServerMove === null) {
+    await repairLastServerMoveHostName({
+      dataDir: serverConfig.BB_DATA_DIR,
+      db,
+      logger,
+    });
+  }
   const hub = new NotificationHub();
   const watchInterests = new WatchInterestCoordinator({ db, hub });
   const sharedPorts = new HostSharedPortCoordinator({ db, hub });
@@ -124,7 +147,8 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     appSurface: serverConfig.BB_APP_SURFACE,
     appVersion: serverConfig.BB_APP_VERSION,
     dataDir: serverConfig.BB_DATA_DIR,
-    enabled: serverConfig.BB_TELEMETRY && isProduction,
+    enabled:
+      serverConfig.BB_TELEMETRY && isProduction && pendingServerMove === null,
     telemetryEnabled: getAppSettings(db).telemetryEnabled,
     logger,
   });
@@ -187,7 +211,15 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
       sharedPorts,
       workspaceReadCaches,
     },
-    { staticDir },
+    {
+      serverMove: {
+        bindHost: serverConfig.BB_SERVER_BIND_HOST,
+        manualImportPending: serverImport.manualImportPending,
+        pending: pendingServerMove,
+        retireProcess: retireServerProcess,
+      },
+      staticDir,
+    },
   );
   const eventLoopStallMonitor = startEventLoopStallMonitor({ logger });
 
@@ -209,10 +241,14 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     terminalSessions,
   };
   const providerModelCatalogPrewarm =
-    installProviderModelCatalogPrewarm(sweepDeps);
-  await runStartupRecoverySweep(sweepDeps).catch((error) => {
-    logger.error({ err: error }, "Startup recovery sweep failed");
-  });
+    pendingServerMove === null
+      ? installProviderModelCatalogPrewarm(sweepDeps)
+      : null;
+  if (pendingServerMove === null) {
+    await runStartupRecoverySweep(sweepDeps).catch((error) => {
+      logger.error({ err: error }, "Startup recovery sweep failed");
+    });
+  }
 
   if (!isLoopbackHostname(serverConfig.BB_SERVER_BIND_HOST)) {
     logger.warn(
@@ -235,26 +271,34 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     },
     "Server listening",
   );
-  telemetry.capture({ name: "app_started" });
-
   pluginService.bindSdk({
     baseUrl: `http://127.0.0.1:${serverConfig.BB_SERVER_PORT}`,
   });
-  void pluginService
-    .start()
-    .catch((error: unknown) => {
-      logger.error({ err: error }, "Plugin startup failed");
-    })
-    .finally(() => {
-      providerRegistry.markRegistrationsSettled();
-      pluginService.startPeriodicUpdateChecks();
-    });
-  pluginCatalogService.startPeriodicRefresh();
-
-  const sweepInterval = setInterval(() => {
-    void runPeriodicSweeps(sweepDeps);
-  }, 10_000);
-  sweepInterval.unref();
+  let sweepInterval: ReturnType<typeof setInterval> | null = null;
+  if (pendingServerMove === null) {
+    telemetry.capture({ name: "app_started" });
+    void pluginService
+      .start()
+      .catch((error: unknown) => {
+        logger.error({ err: error }, "Plugin startup failed");
+      })
+      .finally(() => {
+        providerRegistry.markRegistrationsSettled();
+        pluginService.startPeriodicUpdateChecks();
+      });
+    pluginCatalogService.startPeriodicRefresh();
+    sweepInterval = setInterval(() => {
+      if (!isServerMoveFrozen(db)) {
+        void runPeriodicSweeps(sweepDeps);
+      }
+    }, 10_000);
+    sweepInterval.unref();
+  } else {
+    logger.info(
+      { moveId: pendingServerMove.moveId },
+      "Server started in pending move mode; waiting for the target machine to activate it",
+    );
+  }
 
   let shutdownPromise: Promise<void> | null = null;
   const runShutdown = (): Promise<void> => {
@@ -262,14 +306,18 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
       return shutdownPromise;
     }
     shutdownPromise = (async () => {
-      providerModelCatalogPrewarm.stop();
+      providerModelCatalogPrewarm?.stop();
       eventLoopStallMonitor.stop();
-      clearInterval(sweepInterval);
+      if (sweepInterval !== null) {
+        clearInterval(sweepInterval);
+      }
       pluginCatalogService.stopPeriodicRefresh();
       await pluginService.stopPeriodicUpdateChecks();
-      await pluginService.stop().catch((error: unknown) => {
-        logger.warn({ err: error }, "Plugin shutdown failed");
-      });
+      if (pendingServerMove === null) {
+        await pluginService.stop().catch((error: unknown) => {
+          logger.warn({ err: error }, "Plugin shutdown failed");
+        });
+      }
       const closeServer = new Promise<void>((resolve, reject) => {
         server.close((error) => {
           if (error) {
@@ -284,6 +332,15 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     })();
     return shutdownPromise;
   };
+
+  function retireServerProcess(): void {
+    logger.info({}, "Server moved to another machine; shutting down");
+    retireProcessWithDeadline({
+      exit: (code) => process.exit(code),
+      forceExitAfterMs: SERVER_RETIRE_FORCE_EXIT_MS,
+      shutdown: runShutdown,
+    });
+  }
 
   process.on("uncaughtException", (error: unknown) => {
     if (pluginService.handleUncaughtException(error)) return;

@@ -25,6 +25,7 @@ import {
   projectPromptHistoryQueryKey,
   projectSourceBranchesQueryKey,
   projectsQueryKey,
+  serverMoveStatusQueryKey,
   sidebarNavigationQueryKey,
   systemConfigQueryKey,
   systemExecutionOptionsQueryKey,
@@ -266,6 +267,24 @@ describe("createRealtimeCacheEffects", () => {
       const dirty = REALTIME_SYSTEM_CHANGE_REGISTRY[changeKind]?.dirty ?? [];
       expect(dirty.length).toBeGreaterThan(0);
     }
+  });
+
+  it("refreshes only the server move status when a move changes", () => {
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    const statusKey = serverMoveStatusQueryKey();
+    const configKey = systemConfigQueryKey();
+    queryClient.setQueryData(statusKey, { move: null, lastMove: null });
+    queryClient.setQueryData(configKey, {});
+
+    effects.handleChanged({
+      type: "changed",
+      entity: "system",
+      changes: ["server-move-changed"],
+    });
+
+    expect(queryClient.getQueryState(statusKey)?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(configKey)?.isInvalidated).toBe(false);
+    effects.dispose();
   });
 
   it("invalidates the affected thread tabs when another client changes them", () => {

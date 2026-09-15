@@ -26,12 +26,17 @@ import {
 import { AddMachineDialog } from "@/components/dialogs/AddMachineDialog";
 import { appToast } from "@/components/ui/app-toast";
 import { MachineLifecycleActions } from "@/components/machines/MachineLifecycleActions";
-import { MachineRemoveDialog } from "@/components/machines/MachineRemoveDialog";
+import {
+  MachineRemoveDialog,
+  serverMachineRemoveDisabledReason,
+} from "@/components/machines/MachineRemoveDialog";
 import { MachineStatusDot } from "@/components/machines/MachineStatusDot";
+import { MoveServerDialog } from "@/components/machines/MoveServerDialog";
 import {
   machineStatusLabel,
   machineStatusTone,
 } from "@/components/machines/machine-status";
+import { canMoveServerHere } from "@/components/machines/server-move";
 import { MachineRenameDialog } from "@/components/settings/MachineRenameDialog";
 import { MachineLabel } from "@/components/machines/MachineLabel";
 import {
@@ -49,6 +54,7 @@ import {
 } from "@/hooks/mutations/host-mutations";
 import { useHosts } from "@/hooks/queries/host-queries";
 import { useSystemMachineProviders } from "@/hooks/queries/machine-provider-queries";
+import { useServerMoveStatus } from "@/hooks/queries/server-move-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
@@ -68,9 +74,10 @@ const PERMISSION_MODE_PRESENTATION: Record<
 ) as Record<PermissionMode, (typeof PERMISSION_MODE_OPTIONS)[number]>;
 
 const MACHINES_SECTION_DESCRIPTION =
-  "Computers that can run your tasks. Pair a machine to run projects and threads on it.";
+  "One machine runs the bb server. It stores your threads, database and settings, and your other machines and apps connect to it. Use a computer that stays on: while the server is asleep or off, you can't reach bb and running threads may stop.";
 
-const PRIMARY_REMOVE_DISABLED_REASON = "bb's primary machine can't be removed.";
+const MOVE_SERVER_EXPLAINER =
+  " To use a different computer as the server, choose Move server here in its menu.";
 
 const MACHINE_MENU_ITEM_CLASS = "min-h-9 px-2.5 py-2";
 
@@ -85,7 +92,7 @@ interface MachineRowProps {
   host: Host;
   isPrimary: boolean;
   isThisMachine: boolean;
-  showPrimaryBadge: boolean;
+  showServerBadge: boolean;
   platformLabel: string | null;
   projectCount: number;
   now: number;
@@ -95,6 +102,9 @@ interface MachineRowProps {
   onSuspend: () => void;
   onResume: () => void;
   onRetryCleanup: () => void;
+  canMoveServerHere: boolean;
+  onMoveServerHere: () => void;
+  serverMoveEnabled: boolean;
   lifecycleActionPending: boolean;
   retryUpdatePending: boolean;
   machineProvider: SystemMachineProvider | null;
@@ -104,7 +114,7 @@ export function MachineRowContent({
   host,
   isPrimary,
   isThisMachine,
-  showPrimaryBadge,
+  showServerBadge,
   platformLabel,
   projectCount,
   now,
@@ -114,6 +124,9 @@ export function MachineRowContent({
   onSuspend,
   onResume,
   onRetryCleanup,
+  canMoveServerHere,
+  onMoveServerHere,
+  serverMoveEnabled,
   lifecycleActionPending,
   retryUpdatePending,
   machineProvider,
@@ -171,9 +184,7 @@ export function MachineRowContent({
                 {isThisMachine ? (
                   <SettingsBadge>this machine</SettingsBadge>
                 ) : null}
-                {showPrimaryBadge ? (
-                  <SettingsBadge>primary</SettingsBadge>
-                ) : null}
+                {showServerBadge ? <SettingsBadge>server</SettingsBadge> : null}
               </div>
               <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-subtle-foreground/75">
                 <span className="inline-flex min-w-0 items-center gap-1.5">
@@ -244,11 +255,20 @@ export function MachineRowContent({
                     onResume={onResume}
                     onRetryCleanup={onRetryCleanup}
                   />
+                  {canMoveServerHere ? (
+                    <DropdownMenuItem
+                      className={MACHINE_MENU_ITEM_CLASS}
+                      onSelect={onMoveServerHere}
+                    >
+                      <Icon name="MoveTo" aria-hidden />
+                      <span className="min-w-0 truncate">Move server here</span>
+                    </DropdownMenuItem>
+                  ) : null}
                   {isPrimary ? (
                     <Tooltip>
                       <TooltipTrigger asChild>{removeItem}</TooltipTrigger>
                       <TooltipContent side="left">
-                        {PRIMARY_REMOVE_DISABLED_REASON}
+                        {serverMachineRemoveDisabledReason(serverMoveEnabled)}
                       </TooltipContent>
                     </Tooltip>
                   ) : (
@@ -276,13 +296,17 @@ export function MachinesSettingsSection() {
   const suspendHost = useSuspendHost();
   const resumeHost = useResumeHost();
   const retryHostCleanup = useRetryHostCleanup();
+  const serverMoveStatus = useServerMoveStatus();
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [showAllMachines, setShowAllMachines] = useState(false);
   const [renameTarget, setRenameTarget] = useState<Host | null>(null);
   const [removeTarget, setRemoveTarget] = useState<Host | null>(null);
+  const [moveServerTarget, setMoveServerTarget] = useState<Host | null>(null);
 
   const hosts = hostsQuery.data;
   const serverPrimaryHostId = systemConfig.data?.primaryHostId ?? null;
+  const serverMoveEnabled = systemConfig.data?.experiments.serverMove ?? false;
+  const serverMove = serverMoveStatus.data?.move ?? null;
   const projects = sidebarNavigationQuery.data?.projects;
   const projectCountByHostId = useMemo(() => {
     const counts = new Map<string, number>();
@@ -323,7 +347,7 @@ export function MachinesSettingsSection() {
           isThisMachine={
             showMachineIdentityBadges && host.id === localDaemonHostId
           }
-          showPrimaryBadge={
+          showServerBadge={
             showMachineIdentityBadges && host.id === serverPrimaryHostId
           }
           platformLabel={
@@ -368,6 +392,17 @@ export function MachinesSettingsSection() {
                 appToast.success(`Cleanup retried for ${host.name}`),
             })
           }
+          canMoveServerHere={
+            systemConfig.data !== undefined &&
+            canMoveServerHere({
+              host,
+              primaryHostId: serverPrimaryHostId,
+              move: serverMove,
+              serverMoveEnabled,
+            })
+          }
+          onMoveServerHere={() => setMoveServerTarget(host)}
+          serverMoveEnabled={serverMoveEnabled}
           lifecycleActionPending={
             (suspendHost.isPending && suspendHost.variables === host.id) ||
             (resumeHost.isPending && resumeHost.variables === host.id) ||
@@ -388,7 +423,11 @@ export function MachinesSettingsSection() {
     <>
       <SettingsSection
         title="Machines"
-        description={MACHINES_SECTION_DESCRIPTION}
+        description={
+          serverMoveEnabled
+            ? `${MACHINES_SECTION_DESCRIPTION}${MOVE_SERVER_EXPLAINER}`
+            : MACHINES_SECTION_DESCRIPTION
+        }
         bodyClassName={hasMachineRows ? "py-2" : undefined}
         action={
           <Button
@@ -458,6 +497,13 @@ export function MachinesSettingsSection() {
         target={removeTarget}
         onOpenChange={(open) => {
           if (!open) setRemoveTarget(null);
+        }}
+      />
+
+      <MoveServerDialog
+        target={moveServerTarget}
+        onOpenChange={(open) => {
+          if (!open) setMoveServerTarget(null);
         }}
       />
     </>

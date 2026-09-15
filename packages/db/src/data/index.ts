@@ -472,3 +472,13 @@ export {
   shouldRunIncrementalVacuum,
 } from "./maintenance.js";
 export * from "./machines.js";
+export {
+  listPathInstalledPluginSources,
+  rerootServerOwnedPluginPaths,
+  swapServerHostRoles,
+  type PathInstalledPluginSource,
+  type RerootServerOwnedPathsArgs,
+  type RerootServerOwnedPathsResult,
+  type SwapServerHostRolesArgs,
+  type SwapServerHostRolesResult,
+} from "./server-move.js";

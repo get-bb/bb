@@ -17,6 +17,7 @@ import type {
   HostProviderCliInstallRequest,
   HostProviderCliStatusResponse,
   HostRetryUpdateResponse,
+  DeleteOldServerCopyResponse,
   UpdateHostRequest,
   SystemMachineProvider,
 } from "@bb/server-contract";
@@ -104,6 +105,9 @@ export interface HostsArea {
   ): Promise<HostEnrollmentCommandResult>;
   createJoinCode(): Promise<HostCreateJoinCodeResult>;
   delete(args: HostDeleteArgs): Promise<HostDeleteResult>;
+  experimental_deleteOldServerCopy(
+    args: HostActionArgs,
+  ): Promise<DeleteOldServerCopyResponse>;
   directory(args: HostDirectoryArgs): Promise<HostDirectoryResult>;
   get(args: HostGetArgs): Promise<HostGetResult>;
   cloneDefaultPath(
@@ -181,6 +185,13 @@ export function createHostsArea(args: CreateSdkAreaArgs): HostsArea {
         }),
       );
       return { ok: true };
+    },
+    async experimental_deleteOldServerCopy(input) {
+      return transport.readJson(
+        transport.api.v1.hosts[":id"]["old-server-copy"].$delete({
+          param: { id: input.hostId },
+        }),
+      );
     },
     async directory(input) {
       return transport.readJson(

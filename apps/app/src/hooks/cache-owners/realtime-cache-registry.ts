@@ -53,6 +53,7 @@ import {
   environmentPullRequestQueryKey,
   environmentWorkStatusQueryKeyPrefix,
   hostsQueryKey,
+  serverMoveStatusQueryKey,
   sidebarNavigationQueryKey,
   systemConfigQueryKey,
   uiPreferencesQueryKey,
@@ -548,6 +549,9 @@ export const REALTIME_SYSTEM_CHANGE_REGISTRY = {
   },
   "ui-preferences-changed": {
     dirty: [dirtyUiPreferencesQueries],
+  },
+  "server-move-changed": {
+    dirty: [dirtyServerMoveStatusQueries],
   },
 } satisfies SystemChangeRegistry;
 
@@ -1154,6 +1158,10 @@ function dirtyUiPreferencesQueries({
     queryClient,
     queryKeys: [uiPreferencesQueryKey()],
   });
+}
+
+function dirtyServerMoveStatusQueries(): QueryKey[] {
+  return [serverMoveStatusQueryKey()];
 }
 
 function dirtyAllThreadTimelineQueries(): QueryKey[] {

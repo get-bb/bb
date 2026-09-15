@@ -27,6 +27,7 @@ import {
 } from "../services/lib/entity-lookup.js";
 import {
   assertUsableHostId,
+  isServerMachineHost,
   resolvePrimaryHostId,
 } from "../services/hosts/primary-host.js";
 import { issueHostEnrollKey } from "../services/hosts/host-enrollment.js";
@@ -67,6 +68,16 @@ function assertHostManagementAllowed(context: GateAuthHeaderReader): void {
       403,
       "machine_host_management_forbidden",
       "Machine credentials cannot manage hosts",
+    );
+  }
+}
+
+function assertNotServerMachine(deps: AppDeps, hostId: string): void {
+  if (isServerMachineHost(deps, hostId)) {
+    throw new ApiError(
+      400,
+      "server_host_lifecycle_refused",
+      "The server machine can't be suspended or resumed. Move the server to another machine first.",
     );
   }
 }
@@ -211,6 +222,7 @@ export function registerHostRoutes(
   post(routes.suspend, (context) => {
     assertHostManagementAllowed(context);
     const hostId = context.req.param("id");
+    assertNotServerMachine(deps, hostId);
     startMachineSuspension(deps, hostId);
     return context.json(requireNonDestroyedHostWithStatus(deps, hostId), 202);
   });
@@ -218,6 +230,7 @@ export function registerHostRoutes(
   post(routes.resume, (context) => {
     assertHostManagementAllowed(context);
     const hostId = context.req.param("id");
+    assertNotServerMachine(deps, hostId);
     startMachineResume(deps, hostId);
     return context.json(requireNonDestroyedHostWithStatus(deps, hostId), 202);
   });

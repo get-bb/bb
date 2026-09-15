@@ -164,6 +164,10 @@ groups stay visible through activity and sort-order changes.
 **Manually** is unchanged. Enable it with `bb settings experiment
 sidebarProgressiveDisclosure true`.
 
+The default-off `serverMove` experiment enables Move server here in Settings →
+Machines and the server-backed `bb server move` and `bb server export`
+commands. Enable it with `bb settings experiment serverMove true`.
+
 The default-off `timelineWindowing` experiment mounts only nearby rows in long
 timelines and large expanded timeline details. Enable it with
 `bb settings experiment timelineWindowing true`.

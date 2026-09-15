@@ -77,8 +77,8 @@ worktree` only; a provider takes its branch through `--environment-inputs`.
   launchd/systemd restart the daemon. Auto-update never downgrades. To bypass a
   transient backoff, use `bb machine retry-update <id-or-name>`. Remove
   `--auto-update` from the service definition and reload it to opt out.
-- Run `bb machine list` to see machine names, IDs, type, connection status, and
-  last seen time (`--json` returns the raw host list). It shows persistent
+- Run `bb machine list` to see machine names, the server role, IDs, type,
+  connection status, and last seen time (`--json` returns the raw host list). It shows persistent
   machines; pass `--all` to include the disposable sandboxes environment
   providers create per thread. Use `--machine <id-or-name>`
   (alias `--host`) on `bb thread spawn` to run in a personal or unmanaged
@@ -115,7 +115,7 @@ worktree` only; a provider takes its branch through `--environment-inputs`.
 - `bb project paths|files|content|commands` accept `--machine <id-or-name>`
   (`--host` alias) or `--environment <id>`, but not both. An environment uses
   its owning machine and workspace; an explicit machine uses that machine's
-  project source; omitting both intentionally uses the primary machine source.
+  project source; omitting both intentionally uses the server machine's source.
   `bb project content --json` returns UTF-8 text or base64 binary content with
   an explicit `contentEncoding`.
   Project/environment file and path searches honor Git ignore rules, retaining
@@ -167,7 +167,7 @@ environment pull-request show <id>`. Diff commands require an explicit target
   and `bb provider models <provider-id>`. Both accept `--machine <id-or-name>`
   (alias `--host`) or `--environment <id>` to inspect the machine where work
   will run; the selectors cannot be combined. With neither selector they
-  intentionally inspect the primary machine. Model lists answer from the
+  intentionally inspect the server machine. Model lists answer from the
   machine's last stored list while a background refresh runs, so a list can be
   hours old. A provider whose refresh keeps failing or timing out keeps
   answering from its last stored list.
@@ -208,6 +208,47 @@ installation. Optional `--server-url` and `--data-dir` assert its identity and
 installation location; BB_DATA_DIR is also an assertion, never permission to
 remove another installation. Uninstall checks ownership before stopping its
 service, releasing its port reservation and deleting its private files.
+
+### Moving the server
+
+Moving the server needs the default-off `serverMove` experiment:
+`bb settings experiment serverMove true`. Without it the server refuses
+`bb server move`, `bb server export`, and old-copy deletion with
+`server_move_experiment_disabled`.
+
+Run `bb server move --to <machine> --check` first. It prints blockers,
+warnings, and notes and exits nonzero while the move is blocked. A
+direct-address server also needs `--address <url>`: the URL every machine and
+app will use to reach the new server. When the target already has bb server
+data, pass `--archive-existing-data` to move it aside; it is never merged.
+Without `--check`, the command confirms (pass `--yes` in a non-interactive
+shell), stops all running work, and follows the steps. It exits 0 once the
+server has moved and nonzero when the move fails or is cancelled; `--json`
+prints the final status. SIGINT stops following while the move continues.
+`bb server move status` shows the steps or the last move, and
+`bb server move cancel` cancels before the switch starts.
+
+`bb server export --out <file>` writes an archive of a running server with file
+mode 0600. It reads the passphrase (at least 8 characters) from
+`BB_SERVER_EXPORT_PASSPHRASE` or prompts twice without echo; without either it
+refuses unless `--unencrypted` is passed.
+`bb server import <file> [--data-dir <dir>]` installs an export into a local
+data directory without calling a server. It refuses when that directory has a
+`bb.db` or bb is running from it, and refuses an export made by a newer bb. Stop the original server before you start the
+imported one: both hold the same connect credential and would take each
+other's tunnel.
+
+The old computer's data directory keeps a `server-moved.json` lock, so bb runs
+there as a regular machine. `bb server delete-old-copy` deletes the server files
+the move left behind and keeps the lock. `bb server unlock` removes the lock so
+the old copy can start again; everything since the move is lost there, and the
+new server must be stopped first. It probes `<serverUrl>/health` (connect
+mode: `/api/v1/system/version` with the machine grant in `config.json`) and
+refuses while the new server answers, unless you pass `--force`; bb on that computer
+then starts the old server within a few seconds. Unlock also removes the new server's
+`serverUrl`, `serverHeaders`, `machineCredential`, and `connectMachineId` from
+that directory's `config.json`. These two commands also act on the local data
+directory only.
 
 ### Private machine enrollment
 

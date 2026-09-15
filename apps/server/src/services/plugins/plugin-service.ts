@@ -395,6 +395,11 @@ export interface PluginService {
     itemId: string;
   }): Promise<PluginMentionResolveResult>;
   readLogTail(id: string, tail: number): Promise<string[] | undefined>;
+  setSchedulesPaused(paused: boolean): void;
+  suspendPlugins(args: {
+    keep(plugin: InstalledPluginRow): boolean;
+  }): Promise<string[]>;
+  resumeSuspendedPlugins(): Promise<string[]>;
   sweepDueSchedules(now: number): Promise<void>;
 }
 
@@ -540,6 +545,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     });
 
   const HTTP_TOKEN_FILE = ".http-token";
+  let schedulesPaused = false;
+  const suspendedPluginIds = new Set<string>();
 
   const {
     REGISTRATION_MUTATION_KEY,
@@ -2325,8 +2332,63 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       return readPluginLogTail(deps.dataDir, id, tail);
     },
 
+    setSchedulesPaused(paused) {
+      schedulesPaused = paused;
+    },
+
+    async suspendPlugins(args) {
+      return withPluginOperationLock(REGISTRATION_MUTATION_KEY, async () => {
+        const suspended: string[] = [];
+        const rows = listInstalledPlugins(deps.db).sort((left, right) =>
+          left.id.localeCompare(right.id),
+        );
+        for (const row of rows) {
+          if (!loaded.has(row.id) || args.keep(row)) continue;
+          await withLifecycleLock(row.id, async () => {
+            await disposeOne(row.id);
+            setStatus(
+              row.id,
+              "disabled",
+              "Paused while the server moves to another machine",
+            );
+          });
+          suspendedPluginIds.add(row.id);
+          suspended.push(row.id);
+        }
+        if (suspended.length > 0) {
+          await syncCliSkill();
+          notifyPluginsChanged();
+        }
+        return suspended;
+      });
+    },
+
+    async resumeSuspendedPlugins() {
+      return withPluginOperationLock(REGISTRATION_MUTATION_KEY, async () => {
+        const ids = [...suspendedPluginIds].sort();
+        suspendedPluginIds.clear();
+        const resumed: string[] = [];
+        for (const id of ids) {
+          const row = getInstalledPlugin(deps.db, id);
+          if (row === undefined) continue;
+          const problem = await withLifecycleLock(id, () => loadOne(row));
+          if (problem !== null) {
+            logger.warn(
+              `plugin ${id} did not resume after a server move: ${problem}`,
+            );
+          }
+          resumed.push(id);
+        }
+        if (ids.length > 0) {
+          await syncCliSkill();
+          notifyPluginsChanged();
+        }
+        return resumed;
+      });
+    },
+
     async sweepDueSchedules(now) {
-      if (loaded.size === 0) return;
+      if (schedulesPaused || loaded.size === 0) return;
       const due = listDuePluginSchedules(deps.db, {
         now,
         limit: SCHEDULE_SWEEP_BATCH_SIZE,

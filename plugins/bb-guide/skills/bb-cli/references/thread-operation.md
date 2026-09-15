@@ -163,7 +163,7 @@ For review or fix pipelines, get the environment ID from
 - `list` and `create` require exactly one explicit scope: `--thread <id>`,
   `--environment <id>`, or `--machine <id-or-name>` (`--host` is an alias).
   Add `--cwd <path>` only to a machine scope. Machine targets resolve to an
-  explicit host ID; terminal commands never silently fall back to primary.
+  explicit host ID; terminal commands never silently fall back to the server machine.
 - Start a server with
   `bb terminal create --thread <thread-id> --title "pnpm dev" --command "pnpm dev"`.
 - `bb terminal start` is an alias for create. `bb terminal stop` is an alias
