@@ -8,9 +8,8 @@ import {
 } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { setTimeout as sleep } from "node:timers/promises";
 import { withFileLock } from "@bb/config/file-lock";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   extractServerArchive,
   installImportedServerFiles,
@@ -18,6 +17,35 @@ import {
   type ServerArchiveManifest,
   writeServerArchive,
 } from "../src/index.js";
+
+const lockAttempts = vi.hoisted(() => {
+  const waiters = new Map<string, () => void>();
+  return {
+    notify(lockPath: string): void {
+      waiters.get(lockPath)?.();
+    },
+    next(lockPath: string): Promise<void> {
+      return new Promise<void>((resolve) => {
+        waiters.set(lockPath, resolve);
+      });
+    },
+  };
+});
+
+vi.mock("@bb/config/file-lock", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@bb/config/file-lock")>();
+  return {
+    ...actual,
+    withFileLock<T>(args: {
+      path: string;
+      timeoutMs: number;
+      work: () => Promise<T>;
+    }): Promise<T> {
+      lockAttempts.notify(args.path);
+      return actual.withFileLock(args);
+    },
+  };
+});
 
 const tempDirs: string[] = [];
 
@@ -45,6 +73,13 @@ async function writeDataFile(
   await writeFile(filePath, body);
 }
 
+async function readDataJson(
+  dataDir: string,
+  relativePath: string,
+): Promise<unknown> {
+  return JSON.parse(await readFile(path.join(dataDir, relativePath), "utf8"));
+}
+
 async function stageImport(): Promise<{
   stagingDir: string;
   manifest: ServerArchiveManifest;
@@ -55,6 +90,11 @@ async function stageImport(): Promise<{
     sourceDataDir,
     "config.json",
     JSON.stringify({ config: { BB_LOG_LEVEL: "info" } }),
+  );
+  await writeDataFile(
+    sourceDataDir,
+    "env.json",
+    JSON.stringify({ env: { SOURCE_ONLY: "1" } }),
   );
   await writeDataFile(sourceDataDir, "attachments/thr_1/image.png", "png");
   const inventory = await listServerOwnedEntries(sourceDataDir);
@@ -86,31 +126,41 @@ async function stageImport(): Promise<{
   return { stagingDir, manifest };
 }
 
-describe("installImportedServerFiles managed config lock", () => {
-  it("waits for another bb command's config.json lock before writing the merged config", async () => {
+async function holdLock(
+  lockPath: string,
+): Promise<{ release: () => void; released: Promise<void> }> {
+  let release: () => void = () => undefined;
+  const releaseRequested = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let acquired: () => void = () => undefined;
+  const lockAcquired = new Promise<void>((resolve) => {
+    acquired = resolve;
+  });
+  const released = withFileLock({
+    path: lockPath,
+    timeoutMs: 1_000,
+    work: async () => {
+      acquired();
+      await releaseRequested;
+    },
+  });
+  await lockAcquired;
+  return { release, released };
+}
+
+describe("installImportedServerFiles managed file locks", () => {
+  it("waits for another bb command's config.json lock and merges what that command wrote", async () => {
     const { stagingDir, manifest } = await stageImport();
     const dataDir = await makeTempDir();
-    const originalConfig = JSON.stringify({
-      config: { BB_APP_URL: "https://target.example" },
-    });
-    await writeDataFile(dataDir, "config.json", originalConfig);
-    let release: () => void = () => undefined;
-    const released = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    let acquired: () => void = () => undefined;
-    const lockAcquired = new Promise<void>((resolve) => {
-      acquired = resolve;
-    });
-    const holder = withFileLock({
-      path: path.join(dataDir, ".config.json.lock"),
-      timeoutMs: 1_000,
-      work: async () => {
-        acquired();
-        await released;
-      },
-    });
-    await lockAcquired;
+    await writeDataFile(
+      dataDir,
+      "config.json",
+      JSON.stringify({ config: { BB_APP_URL: "https://target.example" } }),
+    );
+    const lockPath = path.join(dataDir, ".config.json.lock");
+    const lock = await holdLock(lockPath);
+    const attempted = lockAttempts.next(lockPath);
 
     const install = installImportedServerFiles({
       stagingDir,
@@ -118,26 +168,72 @@ describe("installImportedServerFiles managed config lock", () => {
       manifest,
       localServerUrl: null,
     });
-    const whileLocked = await Promise.race([
+    const firstOutcome = await Promise.race([
+      attempted.then(() => "waiting on the lock" as const),
       install.then(() => "finished" as const),
-      sleep(500).then(() => "waiting" as const),
     ]);
-    const configWhileLocked = await readFile(
-      path.join(dataDir, "config.json"),
-      "utf8",
-    );
+    const configWhileLocked = await readDataJson(dataDir, "config.json");
     const entriesWhileLocked = await readdir(dataDir);
-    release();
-    await holder;
+    await writeDataFile(
+      dataDir,
+      "config.json",
+      JSON.stringify({ config: { BB_APP_URL: "https://changed.example" } }),
+    );
+    lock.release();
+    await lock.released;
     await install;
 
-    expect(whileLocked).toBe("waiting");
-    expect(configWhileLocked).toBe(originalConfig);
+    expect(firstOutcome).toBe("waiting on the lock");
+    expect(configWhileLocked).toEqual({
+      config: { BB_APP_URL: "https://target.example" },
+    });
     expect(entriesWhileLocked).not.toContain("bb.db");
-    expect(
-      JSON.parse(await readFile(path.join(dataDir, "config.json"), "utf8")),
-    ).toEqual({
-      config: { BB_APP_URL: "https://target.example", BB_LOG_LEVEL: "info" },
+    expect(await readDataJson(dataDir, "config.json")).toEqual({
+      config: { BB_APP_URL: "https://changed.example", BB_LOG_LEVEL: "info" },
+    });
+    expect(await readdir(dataDir)).toContain("bb.db");
+  });
+
+  it("waits for another bb command's env.json lock and merges what that command wrote", async () => {
+    const { stagingDir, manifest } = await stageImport();
+    const dataDir = await makeTempDir();
+    await writeDataFile(
+      dataDir,
+      "env.json",
+      JSON.stringify({ env: { TARGET_ONLY: "1" } }),
+    );
+    const lockPath = path.join(dataDir, ".env.json.lock");
+    const lock = await holdLock(lockPath);
+    const attempted = lockAttempts.next(lockPath);
+
+    const install = installImportedServerFiles({
+      stagingDir,
+      dataDir,
+      manifest,
+      localServerUrl: null,
+    });
+    const firstOutcome = await Promise.race([
+      attempted.then(() => "waiting on the lock" as const),
+      install.then(() => "finished" as const),
+    ]);
+    const envWhileLocked = await readDataJson(dataDir, "env.json");
+    const configWhileLocked = await readDataJson(dataDir, "config.json");
+    const entriesWhileLocked = await readdir(dataDir);
+    await writeDataFile(
+      dataDir,
+      "env.json",
+      JSON.stringify({ env: { TARGET_ONLY: "2" } }),
+    );
+    lock.release();
+    await lock.released;
+    await install;
+
+    expect(firstOutcome).toBe("waiting on the lock");
+    expect(envWhileLocked).toEqual({ env: { TARGET_ONLY: "1" } });
+    expect(configWhileLocked).toEqual({ config: { BB_LOG_LEVEL: "info" } });
+    expect(entriesWhileLocked).not.toContain("bb.db");
+    expect(await readDataJson(dataDir, "env.json")).toEqual({
+      env: { SOURCE_ONLY: "1", TARGET_ONLY: "2" },
     });
     expect(await readdir(dataDir)).toContain("bb.db");
   });
