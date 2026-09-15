@@ -160,7 +160,11 @@ export const createThreadRequestSchema = z
         path: ["originPluginId"],
       });
     }
-    if (value.originKind === null && value.input.length === 0) {
+    if (
+      value.originKind === null &&
+      value.parentThreadId === undefined &&
+      value.input.length === 0
+    ) {
       ctx.addIssue({
         code: "custom",
         message: "input must contain at least one entry",

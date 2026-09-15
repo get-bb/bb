@@ -2500,6 +2500,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
       actionsMenu={(includeResponsiveActions) => (
         <ThreadActionsMenu
           thread={thread}
+          canSpawnChild={thread.canSpawnChild}
           triggerClassName={HEADER_ICON_BUTTON_CLASS}
           responsiveActions={
             includeResponsiveActions ? responsiveHeaderActions : undefined

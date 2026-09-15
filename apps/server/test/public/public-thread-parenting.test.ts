@@ -12,7 +12,7 @@ import {
   threadChildSummaryResponseSchema,
   threadListResponseSchema,
 } from "@bb/server-contract";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { waitForQueuedCommand } from "../helpers/commands.js";
 import { readJson } from "../helpers/json.js";
 import {
@@ -175,6 +175,120 @@ describe("public thread parenting routes", () => {
           100,
         ),
       ).rejects.toThrow("Timed out waiting for queued command");
+    });
+  });
+
+  it("creates an idle child seed with no turn until its first message", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const parentThread = seedThread(harness.deps, {
+        environmentId: environment.id,
+        projectId: project.id,
+      });
+
+      const response = await harness.app.request("/api/v1/threads", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          origin: "app",
+          originKind: null,
+          projectId: project.id,
+          providerId: "codex",
+          input: [],
+          environment: {
+            type: "reuse",
+            environmentId: environment.id,
+          },
+          parentThreadId: parentThread.id,
+        }),
+      });
+
+      expect(response.status).toBe(201);
+      const createdThread = threadSchema.parse(await readJson(response));
+      expect(createdThread.parentThreadId).toBe(parentThread.id);
+      await vi.waitFor(() => {
+        expect(getThread(harness.db, createdThread.id)?.status).toBe("idle");
+      });
+      await expect(
+        waitForQueuedCommand(
+          harness,
+          ({ command }) =>
+            (command.type === "thread.start" ||
+              command.type === "turn.submit") &&
+            command.threadId === createdThread.id,
+          100,
+        ),
+      ).rejects.toThrow("Timed out waiting for queued command");
+    });
+  });
+
+  it("names an untitled child seed from its first user message", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const parentThread = seedThread(harness.deps, {
+        environmentId: environment.id,
+        projectId: project.id,
+      });
+
+      const createResponse = await harness.app.request("/api/v1/threads", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          origin: "app",
+          originKind: null,
+          projectId: project.id,
+          providerId: "codex",
+          input: [],
+          environment: {
+            type: "reuse",
+            environmentId: environment.id,
+          },
+          parentThreadId: parentThread.id,
+        }),
+      });
+      expect(createResponse.status).toBe(201);
+      const createdThread = threadSchema.parse(
+        await readJson(createResponse),
+      );
+      expect(createdThread.titleFallback).toBeNull();
+
+      const sendResponse = await harness.app.request(
+        `/api/v1/threads/${createdThread.id}/send`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            input: [
+              {
+                type: "text",
+                text: "Name this child from its first message",
+                mentions: [],
+              },
+            ],
+            mode: "auto",
+          }),
+        },
+      );
+      expect(sendResponse.status).toBe(200);
+      await vi.waitFor(() => {
+        expect(getThread(harness.db, createdThread.id)?.titleFallback).toBe(
+          "Name this child from its first message",
+        );
+      });
     });
   });
 

@@ -2461,7 +2461,11 @@ reimplementing it, and `indicatorLabel` carries the matching accessible string.
    `useThreadActions()`, so `archive` closes panes and repairs the route, and
    `requestDelete` opens bb's confirmation rather than deleting silently.
    Confirm that split (silent `rename`, host-confirmed delete) is the right
-   line, and decide whether bulk actions and undo belong here.
+   line, and decide whether bulk actions and undo belong here. The built-in
+   menu's newer **New child thread** action has no counterpart, because it
+   needs the parent's resolved execution defaults and a reuse-environment
+   spawn; decide whether to add a spawn-child action or leave that gap
+   documented on the built-in-only side.
 7. **Permission.** Decide whether `archive` and `requestDelete` need any plugin
    permission gate beyond installation trust.
 8. **`experimental_useSidebarThreadPullRequest`.** Per-row and opt-in, because

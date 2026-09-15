@@ -257,7 +257,9 @@ export function requestThreadProvision(
       ...args,
       clientRequestId: request.requestId,
       input: args.providerInput ?? args.input,
-      seedWithoutRun: args.startedOnBehalfOf !== null,
+      seedWithoutRun:
+        args.startedOnBehalfOf !== null ||
+        (args.providerInput ?? args.input).length === 0,
     });
     saveThreadProvisionContext({
       replace: true,

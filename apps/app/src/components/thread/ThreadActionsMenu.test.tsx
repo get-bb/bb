@@ -1,9 +1,17 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
+import { makeThreadResponse } from "@/test/fixtures/thread-responses";
 import { makeThreadListEntry } from "../../../.ladle/story-fixtures";
 import {
   ThreadActionsContextMenu,
@@ -13,6 +21,9 @@ import { ThreadSectionMoveProvider } from "./ThreadSectionMoveProvider";
 
 const moveThreadToSection = vi.hoisted(() => vi.fn());
 const copyToClipboardWithToast = vi.hoisted(() => vi.fn());
+const navigate = vi.hoisted(() => vi.fn());
+const defaultExecutionOptions = vi.hoisted(() => vi.fn());
+const spawn = vi.hoisted(() => vi.fn());
 const threadActions = vi.hoisted(() => ({
   archiveThreadAndChildren: vi.fn(),
   requestDelete: vi.fn(),
@@ -25,6 +36,31 @@ const threadActions = vi.hoisted(() => ({
 vi.mock("@/lib/clipboard", () => ({
   copyToClipboardWithToast,
 }));
+
+vi.mock("@/components/ui/app-route-anchor", () => ({
+  useRouteNavigate: () => navigate,
+}));
+
+vi.mock("@/hooks/queries/system-queries", () => ({
+  findCachedProviderInfo: () => ({
+    capabilities: { supportsServiceTier: true },
+  }),
+}));
+
+vi.mock("@/lib/sdk", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/sdk")>();
+  return {
+    ...actual,
+    sdk: {
+      ...actual.sdk,
+      threads: {
+        ...actual.sdk.threads,
+        defaultExecutionOptions,
+        spawn,
+      },
+    },
+  };
+});
 
 vi.mock("@/hooks/mutations/thread-state-mutations", () => ({
   useMoveThreadToSection: () => moveThreadToSection,
@@ -50,6 +86,7 @@ const thread = makeThreadListEntry({
 });
 
 function renderWide(children: ReactNode, withMoveProvider = true) {
+  const { wrapper: Wrapper } = createQueryClientTestHarness();
   const content = withMoveProvider ? (
     <ThreadSectionMoveProvider destinations={destinations}>
       {children}
@@ -58,19 +95,24 @@ function renderWide(children: ReactNode, withMoveProvider = true) {
     children
   );
   return render(
-    <CompactViewportOverrideProvider isCompactViewport={false}>
-      {content}
-    </CompactViewportOverrideProvider>,
+    <Wrapper>
+      <CompactViewportOverrideProvider isCompactViewport={false}>
+        {content}
+      </CompactViewportOverrideProvider>
+    </Wrapper>,
   );
 }
 
 function renderCompact(children: ReactNode) {
+  const { wrapper: Wrapper } = createQueryClientTestHarness();
   return render(
-    <CompactViewportOverrideProvider isCompactViewport>
-      <ThreadSectionMoveProvider destinations={destinations}>
-        {children}
-      </ThreadSectionMoveProvider>
-    </CompactViewportOverrideProvider>,
+    <Wrapper>
+      <CompactViewportOverrideProvider isCompactViewport>
+        <ThreadSectionMoveProvider destinations={destinations}>
+          {children}
+        </ThreadSectionMoveProvider>
+      </CompactViewportOverrideProvider>
+    </Wrapper>,
   );
 }
 
@@ -86,6 +128,9 @@ afterEach(() => {
   cleanup();
   moveThreadToSection.mockReset();
   copyToClipboardWithToast.mockReset();
+  navigate.mockReset();
+  defaultExecutionOptions.mockReset();
+  spawn.mockReset();
   for (const action of Object.values(threadActions)) {
     action.mockReset();
   }
@@ -108,6 +153,129 @@ describe("ThreadActionsMenu", () => {
         errorMessage: "Failed to copy thread link",
       },
     );
+  });
+});
+
+const resolvedChildDefaults = {
+  model: "gpt-5",
+  serviceTier: "default" as const,
+  reasoningLevel: "medium" as const,
+  permissionMode: "auto" as const,
+  source: "client/turn/requested" as const,
+};
+
+function makeChildCapableThread() {
+  return makeThreadListEntry({
+    id: "thread-parent",
+    projectId: "proj_child",
+    providerId: "codex",
+    environmentId: "env_parent",
+    pinnedAt: null,
+    sectionId: null,
+    title: "Parent",
+  });
+}
+
+async function openThreadActionsMenu() {
+  fireEvent.pointerDown(
+    screen.getByRole("button", { name: "Thread actions" }),
+    { button: 0 },
+  );
+  return screen.findByRole("menuitem", { name: "New child thread" });
+}
+
+describe("ThreadActionsMenu new child thread", () => {
+  it("creates a child thread with the parent defaults and opens it", async () => {
+    const parent = makeChildCapableThread();
+    defaultExecutionOptions.mockResolvedValue(resolvedChildDefaults);
+    spawn.mockResolvedValue(
+      makeThreadResponse({
+        id: "thread-child",
+        projectId: parent.projectId,
+        environmentId: parent.environmentId,
+        parentThreadId: parent.id,
+      }),
+    );
+    renderWide(<ThreadActionsMenu thread={parent} />);
+
+    fireEvent.click(await openThreadActionsMenu());
+
+    await waitFor(() =>
+      expect(spawn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          environment: { type: "reuse", environmentId: "env_parent" },
+          input: [],
+          originKind: null,
+          parentThreadId: "thread-parent",
+          permissionMode: "auto",
+          reasoningLevel: "medium",
+          serviceTier: "default",
+          startedOnBehalfOf: null,
+        }),
+      ),
+    );
+    expect(defaultExecutionOptions).toHaveBeenCalledWith({
+      signal: expect.any(AbortSignal),
+      threadId: "thread-parent",
+    });
+    await waitFor(() =>
+      expect(navigate).toHaveBeenCalledWith(
+        "/projects/proj_child/threads/thread-child",
+      ),
+    );
+  });
+
+  it("hides the item for archived and deleted threads", async () => {
+    const parent = makeChildCapableThread();
+    const archived = makeThreadListEntry({ ...parent, archivedAt: 1 });
+    const deleted = makeThreadListEntry({ ...parent, deletedAt: 1 });
+
+    const archivedView = renderWide(<ThreadActionsMenu thread={archived} />);
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Thread actions" }),
+      { button: 0 },
+    );
+    expect(
+      screen.queryByRole("menuitem", { name: "New child thread" }),
+    ).toBeNull();
+    archivedView.unmount();
+
+    renderWide(<ThreadActionsMenu thread={deleted} />);
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Thread actions" }),
+      { button: 0 },
+    );
+    expect(
+      screen.queryByRole("menuitem", { name: "New child thread" }),
+    ).toBeNull();
+  });
+
+  it("hides the item when the thread cannot spawn a child", async () => {
+    renderWide(
+      <ThreadActionsMenu thread={makeChildCapableThread()} canSpawnChild={false} />,
+    );
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Thread actions" }),
+      { button: 0 },
+    );
+    expect(
+      screen.queryByRole("menuitem", { name: "New child thread" }),
+    ).toBeNull();
+  });
+
+  it("hides the item for hidden threads", async () => {
+    const hidden = makeThreadListEntry({
+      ...makeChildCapableThread(),
+      visibility: "hidden",
+    });
+    renderWide(<ThreadActionsMenu thread={hidden} />);
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Thread actions" }),
+      { button: 0 },
+    );
+    expect(
+      screen.queryByRole("menuitem", { name: "New child thread" }),
+    ).toBeNull();
   });
 });
 

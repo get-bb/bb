@@ -134,6 +134,7 @@ export type ThreadRowOptions =
 interface ThreadRowProps {
   projectId: string;
   thread: ThreadListEntry;
+  canSpawnChild?: boolean;
   crossProjectId: string | null;
   isActive: boolean;
   hasComposerDraft: boolean;
@@ -499,6 +500,7 @@ function ThreadTrailingIndicator({
 function ThreadRowComponent({
   projectId,
   thread,
+  canSpawnChild,
   crossProjectId,
   isActive,
   hasComposerDraft,
@@ -802,6 +804,7 @@ function ThreadRowComponent({
                 >
                   <ThreadActionsMenu
                     thread={thread}
+                    canSpawnChild={canSpawnChild}
                     triggerClassName={SIDEBAR_CONTROL_BUTTON_CLASS}
                     onOpenInSplit={splitAvailable ? openInSplit : undefined}
                     onOpenChange={setIsDropdownActionsOpen}
@@ -833,6 +836,7 @@ function ThreadRowComponent({
   return (
     <ThreadActionsContextMenu
       thread={thread}
+      canSpawnChild={canSpawnChild}
       onOpenInSplit={splitAvailable ? openInSplit : undefined}
       onOpenChange={setIsContextActionsOpen}
     >

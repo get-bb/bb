@@ -246,6 +246,14 @@ in split, pin, mark read, rename, archive, request delete) is on
 `experimental_useSidebarThreadActions`, so a replaced sidebar can rebuild it,
 reorder it, or replace it with something else entirely.
 
+One bb menu item has no plugin counterpart yet: **New child thread** creates an
+idle child of the row's thread and opens it. Reproducing it needs the parent's
+resolved execution defaults and the same reuse-environment spawn the built-in
+list runs, so it is not a thin wrapper over an existing action. A replaced
+sidebar cannot offer it until `experimental_useSidebarThreadActions` grows a
+spawn-child action; that is tracked as an open question in
+[api_to_audit.md](api_to_audit.md).
+
 That is the point of replacing the list: a sidebar that cannot choose its own
 glyphs and its own menu is not really replaced.
 

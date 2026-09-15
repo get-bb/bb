@@ -25,7 +25,11 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { createPortal } from "react-dom";
-import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
+import {
+  canThreadAtHierarchyDepthSpawnChild,
+  PERSONAL_PROJECT_ID,
+  type ThreadListEntry,
+} from "@bb/domain";
 import type { ProjectResponse } from "@bb/server-contract";
 import { NavLink } from "react-router-dom";
 import { useCreateThreadInEnvironment } from "@/hooks/useCreateThreadInEnvironment";
@@ -1623,6 +1627,7 @@ export const ThreadTreeNodeRow = memo(function ThreadTreeNodeRow({
     ],
   );
   const showChildren = !isCollapsed && hasChildren;
+  const canSpawnChild = canThreadAtHierarchyDepthSpawnChild(node.depth + 1);
   const rowProjectId = node.thread.projectId;
   const crossProjectId = rowProjectId !== projectId ? rowProjectId : null;
   const hasComposerDraft = usePromptDraftHasInput({
@@ -1641,6 +1646,7 @@ export const ThreadTreeNodeRow = memo(function ThreadTreeNodeRow({
     <ThreadRow
       projectId={rowProjectId}
       thread={node.thread}
+      canSpawnChild={canSpawnChild}
       crossProjectId={crossProjectId}
       isActive={selectedThreadId === node.thread.id}
       hasComposerDraft={hasComposerDraft}

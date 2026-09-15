@@ -1,9 +1,11 @@
 import { getThread, listNonDeletedChildThreads } from "@bb/db";
-import type { Thread } from "@bb/domain";
+import {
+  canThreadAtHierarchyDepthSpawnChild,
+  MAX_THREAD_HIERARCHY_DEPTH,
+  type Thread,
+} from "@bb/domain";
 import type { AppDeps } from "../../types.js";
 import { throwParentThreadInvalid } from "../lib/lifecycle-api-errors.js";
-
-const MAX_THREAD_HIERARCHY_DEPTH = 4;
 
 export function isAgentDelegatedChildThread<
   T extends Pick<Thread, "parentThreadId">,
@@ -121,7 +123,7 @@ export function canThreadSpawnChild(
   const depth = resolveParentDepth(deps, {
     parentThread: args.thread,
   });
-  return depth < MAX_THREAD_HIERARCHY_DEPTH;
+  return canThreadAtHierarchyDepthSpawnChild(depth);
 }
 
 export function assertValidParentThread(

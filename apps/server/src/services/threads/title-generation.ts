@@ -1,6 +1,6 @@
 import { renderTemplate } from "@bb/templates";
 import { getThread, updateThread } from "@bb/db";
-import type { PromptInput } from "@bb/domain";
+import type { PromptInput, Thread } from "@bb/domain";
 import type { AppDeps, LoggedWorkSessionDeps } from "../../types.js";
 import { Type } from "@earendil-works/pi-ai";
 import {
@@ -180,5 +180,27 @@ export function applyGeneratedThreadTitle(
     title,
   });
 
+  return true;
+}
+
+interface ApplyFirstMessageTitleFallbackArgs {
+  input: PromptInput[];
+  thread: Pick<Thread, "id" | "title" | "titleFallback">;
+}
+
+export function applyFirstMessageTitleFallback(
+  deps: Pick<AppDeps, "db" | "hub">,
+  args: ApplyFirstMessageTitleFallbackArgs,
+): boolean {
+  if (args.thread.title || args.thread.titleFallback) {
+    return false;
+  }
+  const fallback = deriveTitleFallback(args.input);
+  if (!fallback) {
+    return false;
+  }
+  updateThread(deps.db, deps.hub, args.thread.id, {
+    titleFallback: fallback,
+  });
   return true;
 }

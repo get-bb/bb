@@ -34,11 +34,13 @@ import { CompactLongPressMenu } from "@/components/ui/compact-long-press-menu";
 import { isThreadRead } from "@bb/client-core";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
 import { getThreadRoutePath } from "@/lib/route-paths";
+import { useCreateChildThread } from "./useCreateChildThread";
 import { useThreadActions } from "./ThreadActionsProvider";
 import { useThreadSectionMove } from "./ThreadSectionMoveProvider";
 
 interface ThreadActionsMenuBaseProps {
   thread: Thread;
+  canSpawnChild?: boolean;
   onOpenInSplit?: () => void;
 }
 
@@ -173,6 +175,7 @@ function ThreadSectionMoveMenu({
 
 function ThreadActionsMenuItems({
   thread,
+  canSpawnChild = true,
   onOpenInSplit,
   compactStep = "actions",
   onCompactStepChange,
@@ -187,12 +190,18 @@ function ThreadActionsMenuItems({
     toggleRead,
     unarchiveThread,
   } = useThreadActions();
+  const createChildThread = useCreateChildThread();
   const isCompactViewport = useIsCompactViewport();
   const isDrawer = surface === "dropdown" && isCompactViewport;
   const showSeparators = !isDrawer;
   const isRead = isThreadRead(thread);
   const isArchived = thread.archivedAt != null;
   const isPinned = thread.pinnedAt !== null;
+  const showSpawnChild =
+    canSpawnChild &&
+    !isArchived &&
+    thread.deletedAt === null &&
+    thread.visibility !== "hidden";
   const threadUrl = new URL(
     getThreadRoutePath({ projectId: thread.projectId, threadId: thread.id }),
     window.location.origin,
@@ -242,6 +251,17 @@ function ThreadActionsMenuItems({
           </ActionMenuItem>
           {showSeparators ? <ActionMenuSeparator surface={surface} /> : null}
         </>
+      ) : null}
+      {showSpawnChild ? (
+        <ActionMenuItem
+          surface={surface}
+          icon="MessageSquarePlus"
+          onSelect={() => {
+            void createChildThread(thread);
+          }}
+        >
+          New child thread
+        </ActionMenuItem>
       ) : null}
       <ActionMenuItem
         surface={surface}
@@ -378,6 +398,7 @@ export function ThreadArchiveQuickAction({
 
 export function ThreadActionsMenu({
   thread,
+  canSpawnChild,
   onOpenInSplit,
   responsiveActions,
   onOpenChange,
@@ -412,6 +433,7 @@ export function ThreadActionsMenu({
       <DropdownMenuContent align="end">
         <ThreadActionsMenuItems
           thread={thread}
+          canSpawnChild={canSpawnChild}
           onOpenInSplit={onOpenInSplit}
           compactStep={compactStep}
           onCompactStepChange={setCompactStep}
@@ -434,6 +456,7 @@ export function ThreadActionsContextMenu(props: ThreadActionsContextMenuProps) {
 function ThreadActionsCompactLongPressMenu({
   children,
   thread,
+  canSpawnChild,
   onOpenInSplit,
   onOpenChange,
 }: ThreadActionsContextMenuProps) {
@@ -447,6 +470,7 @@ function ThreadActionsCompactLongPressMenu({
       items={
         <ThreadActionsMenuItems
           thread={thread}
+          canSpawnChild={canSpawnChild}
           onOpenInSplit={onOpenInSplit}
           compactStep={compactStep}
           onCompactStepChange={setCompactStep}
@@ -462,6 +486,7 @@ function ThreadActionsCompactLongPressMenu({
 function ThreadActionsDesktopContextMenu({
   children,
   thread,
+  canSpawnChild,
   onOpenInSplit,
   onOpenChange,
 }: ThreadActionsContextMenuProps) {
@@ -471,6 +496,7 @@ function ThreadActionsDesktopContextMenu({
       <ContextMenuContent aria-label="Thread actions">
         <ThreadActionsMenuItems
           thread={thread}
+          canSpawnChild={canSpawnChild}
           onOpenInSplit={onOpenInSplit}
           surface="context"
         />

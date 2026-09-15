@@ -68,6 +68,7 @@ import { validatePromptAttachmentReferences } from "../projects/attachments.js";
 import { resolvePluginMentionContextInputs } from "../plugins/plugin-mentions.js";
 import { clearThreadContext } from "./thread-context-clear.js";
 import { withThreadSendGuard } from "./thread-context-mutation-guard.js";
+import { applyFirstMessageTitleFallback } from "./title-generation.js";
 import {
   prependDeferredFirstTurnContext,
   requireDeferredFirstTurnContextCurrent,
@@ -531,6 +532,9 @@ async function sendThreadMessageWithoutContextClear(
     args.retryOf !== undefined ? "system" : senderThreadId ? "agent" : "user";
   const shouldCaptureUserMessageSent =
     args.trigger === "user" && initiator === "user" && input.length > 0;
+  if (initiator === "user") {
+    applyFirstMessageTitleFallback(deps, { input, thread });
+  }
   const expectedSteerTurnId =
     mode === "auto" || mode === "steer"
       ? getActiveTurnId(deps, thread.id)

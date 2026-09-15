@@ -1454,6 +1454,22 @@ describe("server-contract canonical schemas", () => {
     ).toThrow("input must contain at least one entry");
   });
 
+  it("accepts empty input for a child thread seed", () => {
+    const parsed = createThreadRequestSchema.parse({
+      projectId: "proj_123",
+      providerId: "codex",
+      origin: "app",
+      input: [],
+      environment: {
+        type: "reuse",
+        environmentId: "env_parent",
+      },
+      parentThreadId: "thr_parent",
+    });
+    expect(parsed.input).toEqual([]);
+    expect(parsed.parentThreadId).toBe("thr_parent");
+  });
+
   it("accepts empty input for an idle fork", () => {
     const parsed = createThreadRequestSchema.parse({
       projectId: "proj_123",

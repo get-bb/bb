@@ -7,6 +7,7 @@ import { MemoryRouter } from "react-router-dom";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { ProjectThreadTree } from "./ProjectRow";
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
+import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 
 vi.mock("@/hooks/useThreadSplitsEnabled", () => ({
   useThreadSplitsEnabled: () => false,
@@ -51,22 +52,25 @@ function renderThreadTree(
     selectedThreadId?: string;
   } = {},
 ) {
+  const { wrapper: Wrapper } = createQueryClientTestHarness();
   const tree = (entries: ThreadListEntry[]) => (
-    <TooltipProvider>
-      <MemoryRouter>
-        <ProjectThreadTree
-          threadListState={{ status: "ready", threads: entries }}
-          progressiveDisclosureEnabled={progressiveDisclosureEnabled}
-          compareThreads={() => 0}
-          selectedThreadId={selectedThreadId}
-          collapsedThreadIds={new Set()}
-          collapsedEnvironmentIds={new Set()}
-          variant="section"
-          onToggleThreadCollapsed={vi.fn()}
-          onToggleEnvironmentCollapsed={vi.fn()}
-        />
-      </MemoryRouter>
-    </TooltipProvider>
+    <Wrapper>
+      <TooltipProvider>
+        <MemoryRouter>
+          <ProjectThreadTree
+            threadListState={{ status: "ready", threads: entries }}
+            progressiveDisclosureEnabled={progressiveDisclosureEnabled}
+            compareThreads={() => 0}
+            selectedThreadId={selectedThreadId}
+            collapsedThreadIds={new Set()}
+            collapsedEnvironmentIds={new Set()}
+            variant="section"
+            onToggleThreadCollapsed={vi.fn()}
+            onToggleEnvironmentCollapsed={vi.fn()}
+          />
+        </MemoryRouter>
+      </TooltipProvider>
+    </Wrapper>
   );
   const view = render(tree(threads));
   return {
@@ -242,5 +246,49 @@ describe("ProjectThreadTree progressive disclosure", () => {
     expect(screen.queryByText("Thread 5")).toBeNull();
     expect(screen.getByText("Thread 6")).not.toBeNull();
     expect(screen.getByText("Thread 7")).not.toBeNull();
+  });
+});
+
+describe("ProjectThreadTree child hierarchy depth", () => {
+  afterEach(() => {
+    cleanup();
+    vi.clearAllMocks();
+  });
+
+  function makeDepthChain(): ThreadListEntry[] {
+    const overrides = [
+      { id: "thr_root", parentThreadId: null },
+      { id: "thr_level_2", parentThreadId: "thr_root" },
+      { id: "thr_level_3", parentThreadId: "thr_level_2" },
+      { id: "thr_level_4", parentThreadId: "thr_level_3" },
+    ];
+    return overrides.map(({ id, parentThreadId }) =>
+      makeThreadListEntry({
+        id,
+        title: id,
+        titleFallback: id,
+        parentThreadId,
+        environmentId: "env_shared",
+      }),
+    );
+  }
+
+  it("offers New child thread below the depth cap", async () => {
+    renderThreadTree(makeDepthChain());
+    fireEvent.contextMenu(screen.getByText("thr_root"));
+    expect(
+      await screen.findByRole("menuitem", { name: "New child thread" }),
+    ).not.toBeNull();
+  });
+
+  it("hides New child thread at the depth cap", async () => {
+    renderThreadTree(makeDepthChain());
+    fireEvent.contextMenu(screen.getByText("thr_level_4"));
+    expect(
+      await screen.findByRole("menuitem", { name: "Rename" }),
+    ).not.toBeNull();
+    expect(
+      screen.queryByRole("menuitem", { name: "New child thread" }),
+    ).toBeNull();
   });
 });
