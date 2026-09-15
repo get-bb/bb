@@ -184,6 +184,7 @@ export function buildPluginProviderRegistration(args: {
       modelCatalogScope: declaration.models.scope,
     },
     composerActions,
+    completedTurnDisplay: declaration.completedTurnDisplay,
     ...(strings === undefined
       ? {}
       : {

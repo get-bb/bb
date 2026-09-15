@@ -67,6 +67,7 @@ export function makeTimelineResponse(
   return {
     rows,
     contextBoundarySeq: null,
+    completedTurnDisplay: "collapse",
     activePromptMode: null,
     activeThinking: null,
     activeWorkflows: [],

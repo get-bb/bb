@@ -100,6 +100,23 @@ every window and client sees the same value.
 - `defaultProviderId` defaults to `null`. Set a provider ID or use `null` to
   clear it.
 
+## Finished turns
+
+- When a turn finishes, bb can collapse its work into one `Worked for` row
+  and leave the final answer visible (`collapse`), or keep every step visible
+  (`flat`). Each provider declares a default: Claude Code is `flat`; every
+  other first-party provider is `collapse`.
+- `bb settings completed-turns [--json]` lists every provider with its current
+  display and whether it comes from your setting or the provider default.
+- `bb settings completed-turns <provider-id> <collapse|flat|default>` sets the
+  display for one provider; `default` removes your setting so the provider
+  default applies again. Settings → Providers has the same switch per
+  provider.
+- The overrides are stored in `providerCompletedTurnDisplay`, a map of provider
+  ID to `collapse` or `flat`. The setting applies to every thread of that
+  provider, including finished turns in existing threads, the conversation
+  outline, and `bb thread log`.
+
 ## Message edits
 
 - Eligible accepted root user messages can be edited without enabling an

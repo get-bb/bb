@@ -49,6 +49,11 @@
       "types": "./src/provider-fork.ts",
       "default": "./src/provider-fork.ts"
     },
+    "./completed-turn-display": {
+      "source": "./src/completed-turn-display.ts",
+      "types": "./src/completed-turn-display.ts",
+      "default": "./src/completed-turn-display.ts"
+    },
     "./plugin-interaction-limits": {
       "source": "./src/plugin-interaction-limits.ts",
       "types": "./src/plugin-interaction-limits.ts",

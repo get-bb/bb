@@ -121,6 +121,7 @@ branches bb creates after the change.
   bb settings show
   bb settings ai-services
   bb settings general <key> <value>
+  bb settings completed-turns [provider-id] [collapse|flat|default]
   bb settings experiment <key> <value>
   bb settings usage [--machine <id-or-name>]
   bb settings version [--force]
@@ -134,6 +135,14 @@ settings (`BB_INFERENCE`, `BB_INFERENCE_FALLBACK`, `BB_TRANSCRIPTION`, set with
 `bb settings general` accepts any key from `generalSettings` in
 `bb settings show`. Boolean preferences take `true`, `false`, `on`, or `off`,
 and `null` clears a preference that can be unset.
+
+`bb settings completed-turns` lists how each provider shows a finished turn:
+`collapse` folds the turn's work into one "Worked for" row and keeps the final
+answer visible, and `flat` keeps every step visible. Each provider has a
+default (Claude Code is `flat`, the other first-party providers `collapse`).
+`bb settings completed-turns <provider-id> <collapse|flat>` overrides it for
+that provider, and `default` removes the override. Settings → Providers has
+the same per-provider switch.
 
 The default-off `changelogPreview` experiment shows the latest release notes
 as a compact, dismissible card on Settings → Updates.

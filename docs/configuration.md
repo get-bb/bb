@@ -264,6 +264,21 @@ provider new threads use when neither the caller nor the project chose one
 `bb settings general providerOrder '["claude-code","codex"]'` and
 `bb settings general defaultProviderId claude-code` (or `null`).
 
+The "Collapse finished turns" switches in Settings → Providers choose, per
+provider, how a finished turn appears in the thread timeline. Collapsed, the
+turn's work folds into one "Worked for" row and the final answer stays
+visible. Flat, every step of the finished turn stays visible, as it was while
+the turn ran. Each provider declares its default (`completedTurnDisplay` on
+its registration): Claude Code defaults to flat, and every other first-party
+provider defaults to collapsed. Your choice is stored in
+`providerCompletedTurnDisplay`, a map of provider id to `collapse` or `flat`;
+a provider without an entry uses its default. The display applies to existing
+threads as well as new ones, and to the conversation outline and
+`bb thread log`. Set it with
+`bb settings completed-turns <provider-id> <collapse|flat|default>`, where
+`default` removes your entry, and list every provider's current display with
+`bb settings completed-turns`.
+
 Each provider's own options live on its plugin: Codex memory and native
 subagents under the Codex provider plugin, and Claude Code memory, native
 subagents, and the Workflow tool under the Claude Code provider plugin.

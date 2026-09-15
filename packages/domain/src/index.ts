@@ -9,6 +9,7 @@ export * from "./app-theme.js";
 export * from "./background-task.js";
 export * from "./change-kinds.js";
 export * from "./code-theme.js";
+export * from "./completed-turn-display.js";
 export * from "./debounced-callback-scheduler.js";
 export * from "./environment-lifecycle.js";
 export * from "./environment.js";

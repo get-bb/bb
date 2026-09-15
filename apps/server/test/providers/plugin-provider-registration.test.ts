@@ -73,6 +73,7 @@ describe("buildPluginProviderRegistration", () => {
           command: { trigger: "/", name: "goal", trailingText: " " },
         },
       ],
+      completedTurnDisplay: "collapse",
       reasoningLevels: [
         { id: "low", label: "Low" },
         { id: "medium", label: "Medium" },
@@ -376,6 +377,32 @@ describe("buildPluginProviderRegistration", () => {
         icon: undefined,
       },
     ]);
+  });
+
+  it("keeps Claude Code's finished turns flat and collapses every other first-party provider", async () => {
+    const declarations = await loadFirstPartyProviderDeclarations();
+    const projected = [...declarations.entries()].flatMap(([pluginId, list]) =>
+      list.map((declared) => {
+        const { info } = buildPluginProviderRegistration({
+          available: true,
+          pluginId,
+          declaration: declared,
+          iconHash: null,
+          readSettings: NO_SETTINGS,
+        });
+        return [info.id, info.completedTurnDisplay];
+      }),
+    );
+    expect(Object.fromEntries(projected)).toStrictEqual({
+      codex: "collapse",
+      "claude-code": "flat",
+      pi: "collapse",
+      "acp-cursor": "collapse",
+      "acp-opencode": "collapse",
+      "acp-omp": "collapse",
+      "acp-grok": "collapse",
+      "acp-hermes-agent": "collapse",
+    });
   });
 });
 

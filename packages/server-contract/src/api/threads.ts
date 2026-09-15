@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   activeThinkingSchema,
   callerExecutionInputSourceSchema,
+  completedTurnDisplaySchema,
   environmentSchema,
   hostSchema,
   jsonValueSchema,
@@ -1021,6 +1022,7 @@ export type TimelineTurnSummaryDetailsResponse = z.infer<
 export const threadTimelineResponseSchema = z.object({
   rows: z.array(timelineRowSchema),
   contextBoundarySeq: z.number().int().nonnegative().nullable(),
+  completedTurnDisplay: completedTurnDisplaySchema,
   activePromptMode: threadTimelineActivePromptModeSchema.nullable(),
   activeThinking: activeThinkingSchema.nullable(),
   activeWorkflows: z.array(timelineWorkflowWorkRowSchema),

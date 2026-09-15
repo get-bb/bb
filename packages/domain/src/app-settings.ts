@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { completedTurnDisplaySchema } from "./completed-turn-display.js";
 import { isValidGitBranchName } from "./git-checkout.js";
 
 export const MANAGED_BRANCH_PREFIX_MAX_LENGTH = 64;
@@ -19,6 +20,10 @@ export const appSettingsSchema = z
     showDiagnosticEvents: z.boolean(),
     providerOrder: z.array(z.string().min(1)),
     defaultProviderId: z.string().min(1).nullable(),
+    providerCompletedTurnDisplay: z.record(
+      z.string().min(1),
+      completedTurnDisplaySchema,
+    ),
     streamerMode: z.boolean(),
     telemetryEnabled: z.boolean(),
     managedBranchPrefix: managedBranchPrefixSchema,
@@ -46,6 +51,7 @@ export const defaultAppSettings: AppSettings = {
   showDiagnosticEvents: false,
   providerOrder: [],
   defaultProviderId: null,
+  providerCompletedTurnDisplay: {},
   streamerMode: false,
   telemetryEnabled: true,
   managedBranchPrefix: DEFAULT_MANAGED_BRANCH_PREFIX,
