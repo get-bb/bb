@@ -77,7 +77,7 @@ vi.mock("@/components/thread/ThreadActionsProvider", () => ({
     renameThread: vi.fn(),
     requestRename: vi.fn(),
     requestDelete: vi.fn(),
-    archiveThreadAndChildren: vi.fn(),
+    requestArchive: vi.fn(),
     unarchiveThread: vi.fn(),
     togglePin: vi.fn(),
     toggleRead: vi.fn(),

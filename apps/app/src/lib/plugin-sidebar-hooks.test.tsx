@@ -39,7 +39,7 @@ vi.mock("@/hooks/queries/host-queries", () => {
 
 vi.mock("@/components/thread/ThreadActionsProvider", () => ({
   useThreadActions: () => ({
-    archiveThreadAndChildren: vi.fn(),
+    requestArchive: vi.fn(),
     requestDelete: vi.fn(),
     togglePin: vi.fn(),
     toggleRead: vi.fn(),

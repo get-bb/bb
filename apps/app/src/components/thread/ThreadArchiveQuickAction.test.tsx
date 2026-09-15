@@ -7,25 +7,25 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ThreadArchiveQuickAction } from "./ThreadActionsMenu";
 
 const mocks = vi.hoisted(() => ({
-  archiveThreadAndChildren: vi.fn(),
+  requestArchive: vi.fn(),
   unarchiveThread: vi.fn(),
 }));
 
 vi.mock("./ThreadActionsProvider", () => ({
   useThreadActions: () => ({
-    archiveThreadAndChildren: mocks.archiveThreadAndChildren,
+    requestArchive: mocks.requestArchive,
     unarchiveThread: mocks.unarchiveThread,
   }),
 }));
 
 afterEach(() => {
   cleanup();
-  mocks.archiveThreadAndChildren.mockReset();
+  mocks.requestArchive.mockReset();
   mocks.unarchiveThread.mockReset();
 });
 
 describe("ThreadArchiveQuickAction", () => {
-  it("archives the thread on one click without bubbling to the row", () => {
+  it("requests archive confirmation on one click without bubbling to the row", () => {
     const onRowClick = vi.fn();
     const thread = makeThread();
     render(
@@ -38,7 +38,7 @@ describe("ThreadArchiveQuickAction", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Archive thread" }));
 
-    expect(mocks.archiveThreadAndChildren).toHaveBeenCalledWith(thread);
+    expect(mocks.requestArchive).toHaveBeenCalledWith(thread);
     expect(mocks.unarchiveThread).not.toHaveBeenCalled();
     expect(onRowClick).not.toHaveBeenCalled();
   });
@@ -54,6 +54,6 @@ describe("ThreadArchiveQuickAction", () => {
     fireEvent.click(screen.getByRole("button", { name: "Unarchive thread" }));
 
     expect(mocks.unarchiveThread).toHaveBeenCalledWith(thread);
-    expect(mocks.archiveThreadAndChildren).not.toHaveBeenCalled();
+    expect(mocks.requestArchive).not.toHaveBeenCalled();
   });
 });
