@@ -1544,6 +1544,9 @@ importers:
       bb-plugin-theme-preview:
         specifier: workspace:*
         version: link:../../plugins/theme-preview
+      bb-plugin-typst-inline:
+        specifier: workspace:*
+        version: link:../../plugins/typst-inline
       bb-plugin-workflows:
         specifier: workspace:*
         version: link:../../plugins/workflows

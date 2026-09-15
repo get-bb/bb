@@ -44,6 +44,7 @@
     "bb-plugin-simple-notes": "workspace:*",
     "bb-plugin-tasks": "workspace:*",
     "bb-plugin-theme-preview": "workspace:*",
+    "bb-plugin-typst-inline": "workspace:*",
     "bb-plugin-workflows": "workspace:*",
     "bb-plugin-workspace-explorer": "workspace:*"
   }
