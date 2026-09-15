@@ -403,7 +403,7 @@ function snapshotFenceMove(
     hostId: MOVE_SOURCE_HOST_ID,
     handle: (request) =>
       request.command.type === "server_move.probe"
-        ? reply({ reachable: true, message: null })
+        ? reply({ reachable: true, message: null, state: "pending" })
         : reply(inspectResult()),
   });
   registerFakeDaemon(harness, {
@@ -507,11 +507,12 @@ describe("writes while a server move is frozen", () => {
           requestId: request.requestId,
           commandType: "server_move.probe",
           ok: true,
-          result: { reachable: true, message: null },
+          result: { reachable: true, message: null, state: "pending" },
         });
         await expect(probe).resolves.toEqual({
           reachable: true,
           message: null,
+          state: "pending",
         });
 
         feed({ type: "heartbeat" });
