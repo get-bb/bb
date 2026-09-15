@@ -10,14 +10,12 @@ import {
   getHost,
   noopNotifier,
   setAppSettings,
-  setExperiments,
   setPluginKvValue,
   updateHost,
   upsertHost,
   upsertInstalledPlugin,
   type DbConnection,
 } from "@bb/db";
-import { defaultExperiments } from "@bb/domain";
 import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
 import {
   readLastServerMoveFile,
@@ -145,10 +143,6 @@ function rootDirOf(db: DbConnection, pluginId: string): string | undefined {
     .get(pluginId)?.root_dir;
 }
 
-function enableServerMoveExperiment(db: DbConnection): void {
-  setExperiments(db, { ...defaultExperiments, serverMove: true });
-}
-
 describe("imported server boot", () => {
   it("applies fixups once to a real migrated database and keeps a move pending", async () => {
     const { dataDir, db, registrationPath } = await openImportedDataDir();
@@ -261,10 +255,9 @@ describe("imported server boot", () => {
     }
   });
 
-  it("finishes a manual import at boot and removes the marker", async () => {
+  it("finishes a manual import at boot and removes the marker, even with the serverMove experiment off", async () => {
     const { dataDir, db } = await openImportedDataDir();
     try {
-      enableServerMoveExperiment(db);
       await writeFile(join(dataDir, "host-id"), "host-new\n");
       await writeServerImportFile(dataDir, manualMarker());
 
@@ -287,43 +280,9 @@ describe("imported server boot", () => {
     }
   });
 
-  it("refuses to finish a manual import while the serverMove experiment is off and keeps its marker", async () => {
-    const { dataDir, db } = await openImportedDataDir();
-    try {
-      await writeFile(join(dataDir, "host-id"), "host-new\n");
-      await writeServerImportFile(dataDir, manualMarker());
-      const logger = { ...testLogger, warn: vi.fn() };
-
-      expect(
-        await applyServerImportAtBoot({ dataDir, db, logger, now: 1 }),
-      ).toEqual({ manualImportPending: false, pendingMove: null });
-
-      expect(await readServerImportFile(dataDir)).toEqual(manualMarker());
-      expect(rootDirOf(db, "tasks")).toBe(
-        `${SOURCE_DATA_DIR}/plugins/npm/tasks`,
-      );
-      expect(getHost(db, "host-new")?.machineProviderId).toBe("manual");
-      expect(getHost(db, "host-old")?.machineProviderId).toBeNull();
-      expect(logger.warn).toHaveBeenCalledWith(
-        { sourceServerHostId: "host-old" },
-        'Imported server data isn\'t finished because moving the server is off. Turn on the "Server move" experiment in Settings → Experiments, or run bb settings experiment serverMove true, then restart bb.',
-      );
-
-      enableServerMoveExperiment(db);
-      expect(
-        await applyServerImportAtBoot({ dataDir, db, logger, now: 2 }),
-      ).toEqual({ manualImportPending: false, pendingMove: null });
-      expect(existsSync(join(dataDir, SERVER_IMPORT_FILE_NAME))).toBe(false);
-      expect(getHost(db, "host-new")?.machineProviderId).toBeNull();
-    } finally {
-      db.$client.close();
-    }
-  });
-
   it("keeps a manual import pending until this machine enrolls, then swaps roles at a later boot", async () => {
     const { dataDir, db } = await openImportedDataDir();
     try {
-      enableServerMoveExperiment(db);
       await writeServerImportFile(dataDir, manualMarker());
 
       expect(
@@ -363,7 +322,6 @@ describe("imported server boot", () => {
   it("finishes a pending manual import when the local daemon's session opens", async () => {
     const { dataDir, db } = await openImportedDataDir();
     try {
-      enableServerMoveExperiment(db);
       await writeServerImportFile(dataDir, manualMarker());
       await applyServerImportAtBoot({
         dataDir,

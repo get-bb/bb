@@ -244,16 +244,15 @@ data directory without calling a server. It refuses when that directory has a
 `bb.db` or bb is running from it, refuses an export made by a newer bb or by a
 server with the `serverMove` experiment off, and asks you to re-export an
 archive encrypted by an older bb. A rerun rolls back an interrupted import from
-`server-import-journal.json` before importing again. Stop the original server before you start the
-imported one: both hold the same connect credential and would take each
-other's tunnel.
+`server-import-journal.json` before importing again, and bb refuses to start a
+server on an interrupted import until then. Stop the original server before
+you start the imported one: both hold the same connect credential and would
+take each other's tunnel.
 
 An import also writes `server-connect-hold.json`, so the imported server starts
 without its connect tunnel. After the original server is stopped,
 `bb server allow-connect [--data-dir <dir>] [--yes] [--json]` removes the hold;
-the tunnel starts the next time that server starts. The imported server only
-finishes its import (path fixups and machine roles) while the `serverMove`
-experiment is on; until then it keeps `server-import.json` and logs why.
+the tunnel starts the next time that server starts.
 
 The old computer's data directory keeps a `server-moved.json` lock, so bb runs
 there as a regular machine. `bb server delete-old-copy` deletes the server files

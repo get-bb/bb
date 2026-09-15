@@ -128,9 +128,13 @@ closes; `bb server move status` shows the same steps.
   starts without bb connect and can't take the original server's tunnel.
   `bb server allow-connect` removes the hold after the original server is
   stopped. A move never writes the hold.
-- An imported server only finishes its import (path fixups and machine roles)
-  while the `serverMove` experiment is on; otherwise it keeps
-  `server-import.json` and logs why.
+- An imported server applies its fixups (path fixups and machine roles) at its
+  first boot without checking the `serverMove` experiment. The import is
+  already gated: export needs the experiment on the source server, and
+  `bb server import` refuses a manifest that records it as off.
+- A server refuses to start on an interrupted import
+  (`server-import-journal.json` that no `server-import.json` records) and logs
+  that rerunning `bb server import` into that directory rolls it back first.
 
 ### Export files
 
