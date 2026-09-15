@@ -153,6 +153,7 @@ class FakeChild {
 function createHarness(options?: {
   pingIntervalMs?: number;
   pingTimeoutMs?: number;
+  unsubscribeTimeoutMs?: number;
   baseRestartDelayMs?: number;
   maxRestartDelayMs?: number;
   listEntries?: (dir: string) => Promise<string[]>;
@@ -169,6 +170,7 @@ function createHarness(options?: {
     },
     pingIntervalMs: options?.pingIntervalMs ?? 1_000,
     pingTimeoutMs: options?.pingTimeoutMs ?? 2_500,
+    unsubscribeTimeoutMs: options?.unsubscribeTimeoutMs ?? 2_500,
     baseRestartDelayMs: options?.baseRestartDelayMs ?? 1_000,
     maxRestartDelayMs: options?.maxRestartDelayMs ?? 30_000,
   });
@@ -527,12 +529,22 @@ describe("createParcelWatcherProxy", () => {
   it("recovers when a replacement child's pipe breaks mid-replay", async () => {
     vi.useFakeTimers();
     try {
+      const received: string[] = [];
       const { proxy, children, current } = createHarness({
         baseRestartDelayMs: 1_000,
         pingIntervalMs: 100_000,
+        listEntries: () => Promise.resolve(["gap-file"]),
       });
-      await proxy.subscribe("/root", () => {});
-      await proxy.subscribe("/other", () => {});
+      await proxy.subscribe("/root", (error, events) => {
+        if (!error) {
+          received.push(...events.map((event) => event.path));
+        }
+      });
+      await proxy.subscribe("/other", (error, events) => {
+        if (!error) {
+          received.push(...events.map((event) => event.path));
+        }
+      });
       await flush();
       expect(children).toHaveLength(1);
 
@@ -547,6 +559,7 @@ describe("createParcelWatcherProxy", () => {
 
       expect(children).toHaveLength(3);
       expect(current().parcel.activeDirs().sort()).toEqual(["/other", "/root"]);
+      expect(received.sort()).toEqual(["/other/gap-file", "/root/gap-file"]);
       proxy.dispose();
     } finally {
       vi.useRealTimers();
@@ -654,6 +667,35 @@ describe("createParcelWatcherProxy", () => {
     await expect(pending).rejects.toThrow("Parcel watcher proxy is disposed");
   });
 
+  it("settles root disposal while native subscribe is pending", async () => {
+    vi.spyOn(pathExistsModule, "pathExists").mockResolvedValue(true);
+    const subscribeGate = new Promise<void>(() => {});
+    const { proxy, current } = createHarness({
+      configureChild: (child) => {
+        child.parcel.subscribeGate = subscribeGate;
+      },
+    });
+    setParcelWatcherBackend(proxy);
+    const subscription = new RootSubscription({
+      rootPath: "/root",
+      retryDelayMs: 250,
+      maxRetryDelayMs: 30_000,
+      onEvents: () => {},
+      onDroppedEvents: () => {},
+      onWatchError: () => {},
+    });
+    try {
+      subscription.start();
+      await flush(20);
+      expect(current().parcel.subscribeAttempts).toEqual(["/root"]);
+
+      await subscription.dispose();
+    } finally {
+      disposeParcelWatcherBackend();
+      vi.restoreAllMocks();
+    }
+  });
+
   it("resolves unsubscribe only after the child released the native subscription", async () => {
     const { proxy, current } = createHarness();
     const subscription = await proxy.subscribe("/root", () => {});
@@ -687,6 +729,30 @@ describe("createParcelWatcherProxy", () => {
     await pending;
     expect(current().parcel.activeDirs()).toEqual([]);
     proxy.dispose();
+  });
+
+  it("recycles a child whose native unsubscribe does not settle", async () => {
+    vi.useFakeTimers();
+    try {
+      const { proxy, children, current } = createHarness({
+        pingIntervalMs: 100_000,
+        unsubscribeTimeoutMs: 1_000,
+      });
+      const subscription = await proxy.subscribe("/root", () => {});
+      current().parcel.unsubscribeGate = new Promise<void>(() => {});
+      const pending = subscription.unsubscribe();
+      await flush(20);
+
+      await vi.advanceTimersByTimeAsync(1_000);
+      await pending;
+
+      expect(children).toHaveLength(2);
+      expect(children[0]?.exited).toBe(true);
+      expect(current().parcel.activeDirs()).toEqual([]);
+      proxy.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("backs off a root whose subscribe keeps hitting the inotify watch limit", async () => {
