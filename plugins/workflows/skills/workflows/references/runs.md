@@ -106,3 +106,13 @@ concurrency and call count, total run timeout, retention, and UTF-8
 completion-message size are snapshotted per run. `status` is bounded
 to compact progress and call counts. Paged JSONL `history` carries ordered
 call-level execution, cache, child-thread, repair, result, and error details.
+
+Workers are hidden and owned by the workflow plugin across every retry attempt.
+Finished, replaced, cancelled, and unattached workers are stopped and archived
+by maintenance without waiting for history retention. Cleanup retries across
+restarts and survives history expiry. Archiving or deleting an origin cancels
+its outstanding workflows and retires its owned workers while preserving
+retained history. Completion notification becomes `abandoned` for an archived
+or deleted origin; unrelated send conflicts and transient failures retry.
+Upgrades recover existing call references; older attempts already missing from
+those references require a separate historical audit.

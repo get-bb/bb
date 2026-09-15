@@ -2,6 +2,7 @@ import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   attachCallThread,
+  retiredWorkers,
   cancelRun,
   countCallsForRun,
   createRun,
@@ -69,6 +70,63 @@ describe("workflow durable data", () => {
     reasoningLevel: "medium",
     permissionMode: "full",
   } as const;
+
+  it("backfills worker ownership from the pre-upgrade call pointers", () => {
+    db.close();
+    db = new Database(":memory:");
+    db.pragma("foreign_keys = ON");
+    db.exec(migrations.slice(0, -1).join("\n"));
+    const run = newRun();
+    markRunning(run.id);
+    const call = startCall(db, {
+      runId: run.id,
+      callIndex: 0,
+      cacheKey: "migration",
+      prompt: "work",
+      options: {
+        title: null,
+        phase: null,
+        outputSchema: null,
+        selection: null,
+      },
+      selection: resolvedSelection,
+      replay: null,
+    });
+    db.prepare(
+      `UPDATE workflow_calls SET child_thread_id = 'legacy-worker', status = 'failed' WHERE id = ?`,
+    ).run(call.id);
+    db.exec(migrations.at(-1)!);
+    expect(retiredWorkers(db, Date.now())).toEqual([
+      { threadId: "legacy-worker", callId: call.id },
+    ]);
+    expect(
+      db.prepare(`SELECT run_id, origin_thread_id FROM workflow_workers`).get(),
+    ).toEqual({ run_id: run.id, origin_thread_id: run.originThreadId });
+  });
+
+  it("retains unattached workers when attachment loses a cancellation race", () => {
+    const run = newRun();
+    markRunning(run.id);
+    const call = startCall(db, {
+      runId: run.id,
+      callIndex: 0,
+      cacheKey: "cancel",
+      prompt: "work",
+      options: {
+        title: null,
+        phase: null,
+        outputSchema: null,
+        selection: null,
+      },
+      selection: resolvedSelection,
+      replay: null,
+    });
+    cancelRun(db, run.id);
+    expect(attachCallThread(db, call.id, "unattached-worker")).toBe(false);
+    expect(retiredWorkers(db, Date.now())).toEqual([
+      { threadId: "unattached-worker", callId: call.id },
+    ]);
+  });
 
   it("records replay safety without a concurrency barrier", () => {
     const run = newRun();
