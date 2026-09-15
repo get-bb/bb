@@ -2,7 +2,7 @@ import { execFile, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { promisify } from "node:util";
 import { experimental_createHostEntryHarness } from "@get-bb/plugin-sdk/testing/host";
 import { afterEach, describe, expect, it } from "vitest";
@@ -34,14 +34,14 @@ async function git(cwd: string, ...args: string[]): Promise<string> {
   return result.stdout;
 }
 
-async function createSourceRepository(): Promise<{
+async function createSourceRepository(repositoryName = "repo"): Promise<{
   root: string;
   sourcePath: string;
   dataDir: string;
 }> {
   const root = await mkdtemp(join(tmpdir(), "bb-worktree-plugin-"));
   temporaryRoots.push(root);
-  const sourcePath = join(root, "repo");
+  const sourcePath = join(root, repositoryName);
   const dataDir = join(root, "plugin-data");
   await execFileAsync("mkdir", ["-p", sourcePath, dataDir]);
   await git(sourcePath, "init", "--initial-branch=main");
@@ -114,6 +114,103 @@ afterEach(async () => {
 });
 
 describe("worktree host entry", () => {
+  it.each([
+    ["spaces", "Repo With Space", "Repo-With-Space-7373994537587106"],
+    ["CJK", "資料庫", "repo-1b2c8c90d27707c4"],
+    ["NFC", "café", "cafe-850f7dc43910ff89"],
+    ["NFD", "cafe\u0301", "cafe-81ef060bcd98adc7"],
+    ["punctuation only", "!!!", "repo-e84c538e7fe25073"],
+  ])(
+    "creates and discovers cleanup paths for repository names with %s",
+    async (_label, repositoryName, expectedLeaf) => {
+      const { sourcePath, dataDir } =
+        await createSourceRepository(repositoryName);
+      const harness = createHarness(dataDir);
+      const pathKey = "special-name";
+      const result = await harness.experimental_call(
+        "create",
+        createInput({
+          operationId: "create-special",
+          sourcePath,
+          pathKey,
+          branchName: "bb/special-name",
+        }),
+      );
+      expect(result).toMatchObject({
+        status: "created",
+        path: join(dataDir, "worktrees", pathKey, expectedLeaf),
+      });
+      if (result.status !== "created") throw new Error(result.message);
+      expect(existsSync(join(result.path, "README.md"))).toBe(true);
+      expect(
+        await harness.experimental_call("remove", {
+          operationId: "remove-special",
+          pathKey,
+          path: null,
+        }),
+      ).toEqual({ status: "removed" });
+      expect(existsSync(join(dataDir, "worktrees", pathKey))).toBe(false);
+      await harness.experimental_dispose();
+    },
+  );
+
+  it("creates a bounded worktree path for a long repository name", async () => {
+    const repositoryName = "repository".repeat(24);
+    const { sourcePath, dataDir } =
+      await createSourceRepository(repositoryName);
+    const harness = createHarness(dataDir);
+    const result = await harness.experimental_call(
+      "create",
+      createInput({
+        operationId: "long-name",
+        sourcePath,
+        pathKey: "long-name",
+        branchName: "bb/long-name",
+      }),
+    );
+    expect(result.status).toBe("created");
+    if (result.status !== "created") throw new Error(result.message);
+    expect(Buffer.byteLength(basename(result.path), "utf8")).toBe(200);
+    expect(basename(result.path)).toMatch(/-[a-f0-9]{16}$/u);
+    expect(existsSync(join(result.path, "README.md"))).toBe(true);
+    await harness.experimental_dispose();
+  });
+
+  it("provisions the same specially named repository concurrently", async () => {
+    const { sourcePath, dataDir } =
+      await createSourceRepository("Concurrent Repo");
+    const harness = createHarness(dataDir);
+    const [first, second] = await Promise.all([
+      harness.experimental_call(
+        "create",
+        createInput({
+          operationId: "concurrent-first",
+          sourcePath,
+          pathKey: "concurrent-1",
+          branchName: "bb/concurrent-1",
+        }),
+      ),
+      harness.experimental_call(
+        "create",
+        createInput({
+          operationId: "concurrent-second",
+          sourcePath,
+          pathKey: "concurrent-2",
+          branchName: "bb/concurrent-2",
+        }),
+      ),
+    ]);
+    expect(first.status).toBe("created");
+    expect(second.status).toBe("created");
+    if (first.status !== "created") throw new Error(first.message);
+    if (second.status !== "created") throw new Error(second.message);
+    expect(first.path).not.toBe(second.path);
+    expect(basename(first.path)).toBe(basename(second.path));
+    expect(existsSync(join(first.path, "README.md"))).toBe(true);
+    expect(existsSync(join(second.path, "README.md"))).toBe(true);
+    await harness.experimental_dispose();
+  });
+
   it("creates a worktree on a named base under the path-key directory", async () => {
     const { sourcePath, dataDir } = await createSourceRepository();
     await git(sourcePath, "branch", "release");
@@ -167,7 +264,8 @@ describe("worktree host entry", () => {
   });
 
   it("re-runs create with the same path key without replacing a valid worktree", async () => {
-    const { sourcePath, dataDir } = await createSourceRepository();
+    const { sourcePath, dataDir } =
+      await createSourceRepository("Restartable Repo");
     const input = createInput({
       operationId: "first",
       sourcePath,
