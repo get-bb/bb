@@ -1,6 +1,6 @@
 # Account pooling
 
-Status: **2026-09-05: 7 partial/blocked**. See [the audit](../MAINTENANCE.md) and [per-recipe ledger](../validation-2026-09-05.json).
+Status: **2026-09-05: 7 partial/blocked**; the Cache miss debugging recipe was added later and has not been run. See [the audit](../MAINTENANCE.md) and [per-recipe ledger](../validation-2026-09-05.json).
 
 ## Setup and entry points
 
@@ -16,6 +16,7 @@ SKILL.md. Inspect nested `--help` before selecting flags and IDs.
 
 - `plugins/account-pool/package.json`
 - `plugins/account-pool/src/server.ts`
+- `plugins/account-pool/src/cache-miss.ts`
 - `plugins/account-pool/app.tsx`
 
 ## Feature recipes
@@ -29,6 +30,7 @@ SKILL.md. Inspect nested `--help` before selecting flags and IDs.
 | Session pinning and bypass | Continue an existing test session, change routing order, and enable a per-thread bypass. | Continuation uses the valid pinned session policy; bypass follows the intended direct provider path. |
 | Machine tokens and configuration | Create/rotate only a disposable machine token; exercise pool config/status and routing controls. | Old token no longer authorizes the test integration; new config persists without exposing values. |
 | Blocked and retry states | Use controlled failures for quota reset, unavailable credentials, and unsupported account/provider combinations. | Failure category and next available time are actionable; permanent errors do not cause unlimited retries. |
+| Cache miss debugging | Turn on cache miss debugging in settings or with `bb pool config set cacheMissDebug true`, lower `cacheMissMinTokens`, point `anthropicUpstreamBaseUrl` at a controlled fake upstream, then send two same-session requests that each carry a `cache_control` breakpoint, where the second changes one tool and reports a low cache read. List and clear through settings and `bb pool cache-miss list --json` / `clear`. | Both surfaces show one report naming `prompt-change` at the changed `tools[...]` path with before/after excerpts, and settings refresh without reload; server logs carry no prompt text; clear empties both; with debugging off, or on a proxy-mode child, nothing is recorded. |
 
 ## Evidence and cleanup
 

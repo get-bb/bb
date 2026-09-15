@@ -9,6 +9,7 @@ import http, { type IncomingMessage, type ServerResponse } from "node:http";
 import path from "node:path";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { zstdCompressSync } from "node:zlib";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -17,6 +18,7 @@ import {
   accountSummarySchema,
   accountPoolConfigSchema,
   accountPoolConfigSetInputSchema,
+  cacheMissReportListSchema,
   codexLoginPollSchema,
   codexLoginStartSchema,
   routedThreadStatusListSchema,
@@ -353,7 +355,34 @@ describe("Account Pool config schema", () => {
       codexUpstreamBaseUrl: "https://chatgpt.com/backend-api/codex",
       switchThreshold: 0.98,
       parentMode: "proxy",
+      cacheMissDebug: false,
+      cacheMissMinTokens: 10_000,
     });
+    expect(
+      accountPoolConfigSchema.parse({
+        anthropicUpstreamBaseUrl: "https://anthropic.example",
+        codexUpstreamBaseUrl: "https://codex.example",
+        switchThreshold: 0.9,
+        parentMode: "isolate",
+      }),
+    ).toEqual({
+      anthropicUpstreamBaseUrl: "https://anthropic.example",
+      codexUpstreamBaseUrl: "https://codex.example",
+      switchThreshold: 0.9,
+      parentMode: "isolate",
+      cacheMissDebug: false,
+      cacheMissMinTokens: 10_000,
+    });
+    for (const cacheMissMinTokens of [0, -1, 1.5]) {
+      expect(
+        accountPoolConfigSetInputSchema.safeParse({ cacheMissMinTokens })
+          .success,
+      ).toBe(false);
+    }
+    expect(
+      accountPoolConfigSetInputSchema.safeParse({ cacheMissDebug: "on" })
+        .success,
+    ).toBe(false);
     expect(
       accountPoolConfigSetInputSchema.safeParse({
         anthropicUpstreamBaseUrl: "ftp://example.com",
@@ -418,6 +447,8 @@ describe("Account Pool plugin", () => {
       codexUpstreamBaseUrl: "https://chatgpt.com/backend-api/codex",
       switchThreshold: 0.75,
       parentMode: "proxy",
+      cacheMissDebug: false,
+      cacheMissMinTokens: 10_000,
     });
     expect(
       accountPoolConfigSchema.parse(await host.bb.storage.kv.get("config")),
@@ -5930,6 +5961,896 @@ it("publishes an empty shared usage group before any accounts or settings are co
   }
 });
 
+const CACHE_MISS_SESSION = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+const CACHE_MISS_THREAD = "0199aaaa-bbbb-7ccc-8ddd-eeeeffff0000";
+const READ_TOOL_DESCRIPTION = "Read a file from disk.";
+const CHANGED_READ_TOOL_DESCRIPTION = "Read a UTF-8 file from the workspace.";
+
+interface ClaudeCacheUsage {
+  input: number;
+  creation: number;
+  read: number;
+}
+
+function cacheMissClaudeBody(
+  options: { turns?: number; readDescription?: string } = {},
+): string {
+  const turns = options.turns ?? 1;
+  const breakpoint = { type: "ephemeral" };
+  const messages: object[] = [];
+  for (let turn = 1; turn <= turns; turn += 1) {
+    const text = `Step ${turn}: inspect the workspace.`;
+    if (turn < turns) {
+      messages.push(
+        { role: "user", content: text },
+        {
+          role: "assistant",
+          content: [{ type: "text", text: `Finished step ${turn}.` }],
+        },
+      );
+    } else {
+      messages.push({
+        role: "user",
+        content: [{ type: "text", text, cache_control: breakpoint }],
+      });
+    }
+  }
+  return JSON.stringify({
+    model: "claude-fable-5",
+    max_tokens: 4_096,
+    stream: true,
+    metadata: {
+      user_id: JSON.stringify({
+        device_id: "device",
+        account_uuid: "",
+        session_id: CACHE_MISS_SESSION,
+      }),
+    },
+    tools: [
+      {
+        name: "Bash",
+        description: "Run a shell command.",
+        input_schema: {
+          type: "object",
+          properties: { command: { type: "string" } },
+        },
+      },
+      {
+        name: "Read",
+        description: options.readDescription ?? READ_TOOL_DESCRIPTION,
+        input_schema: {
+          type: "object",
+          properties: { path: { type: "string" } },
+        },
+      },
+    ],
+    system: [
+      {
+        type: "text",
+        text: "You are a coding agent.",
+        cache_control: breakpoint,
+      },
+    ],
+    messages,
+  });
+}
+
+function cacheMissClaudeStream(usage: ClaudeCacheUsage): string {
+  return [
+    `event: message_start\ndata: ${JSON.stringify({
+      type: "message_start",
+      message: {
+        id: "msg_cache",
+        type: "message",
+        role: "assistant",
+        content: [],
+        usage: {
+          input_tokens: usage.input,
+          cache_creation_input_tokens: usage.creation,
+          cache_read_input_tokens: usage.read,
+          output_tokens: 1,
+        },
+      },
+    })}\n\n`,
+    `event: content_block_delta\ndata: ${JSON.stringify({
+      type: "content_block_delta",
+      index: 0,
+      delta: { type: "text_delta", text: "Done." },
+    })}\n\n`,
+    `event: message_delta\ndata: ${JSON.stringify({
+      type: "message_delta",
+      delta: { stop_reason: "end_turn" },
+      usage: { output_tokens: 5 },
+    })}\n\n`,
+    'event: message_stop\ndata: {"type":"message_stop"}\n\n',
+  ].join("");
+}
+
+function cacheMissCodexBody(
+  permissions: string,
+  followUp: boolean,
+): Uint8Array<ArrayBuffer> {
+  const input: object[] = [
+    {
+      type: "message",
+      role: "developer",
+      content: [{ type: "input_text", text: permissions }],
+    },
+    {
+      type: "message",
+      role: "user",
+      content: [{ type: "input_text", text: "List the files." }],
+    },
+  ];
+  if (followUp) {
+    input.push(
+      {
+        type: "reasoning",
+        id: "rs_cache",
+        summary: [],
+        content: null,
+        encrypted_content: "opaque-reasoning",
+      },
+      {
+        type: "message",
+        role: "assistant",
+        content: [{ type: "output_text", text: "a.ts" }],
+      },
+      {
+        type: "message",
+        role: "user",
+        content: [{ type: "input_text", text: "Open a.ts." }],
+      },
+    );
+  }
+  const compressed = zstdCompressSync(
+    Buffer.from(
+      JSON.stringify({
+        model: "gpt-5.5",
+        instructions: "You are a coding agent.",
+        tools: [
+          {
+            type: "function",
+            name: "exec_command",
+            parameters: { type: "object", properties: {} },
+          },
+        ],
+        input,
+        tool_choice: "auto",
+        parallel_tool_calls: true,
+        reasoning: { effort: "medium" },
+        store: false,
+        stream: true,
+        include: ["reasoning.encrypted_content"],
+        prompt_cache_key: CACHE_MISS_THREAD,
+        client_metadata: { thread_id: CACHE_MISS_THREAD },
+      }),
+    ),
+  );
+  return new Uint8Array(compressed);
+}
+
+function cacheMissCodexStream(usage: {
+  input: number;
+  cached: number;
+}): string {
+  return [
+    `event: response.created\ndata: ${JSON.stringify({
+      type: "response.created",
+      response: { id: "resp_cache", status: "in_progress", usage: null },
+    })}\n\n`,
+    `event: response.completed\ndata: ${JSON.stringify({
+      type: "response.completed",
+      response: {
+        id: "resp_cache",
+        status: "completed",
+        usage: {
+          input_tokens: usage.input,
+          input_tokens_details: { cached_tokens: usage.cached },
+          output_tokens: 20,
+          total_tokens: usage.input + 20,
+        },
+      },
+    })}\n\n`,
+  ].join("");
+}
+
+function settleCacheMissAnalysis(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve));
+}
+
+async function listCacheMisses(host: Fixture["host"]) {
+  await settleCacheMissAnalysis();
+  return cacheMissReportListSchema.parse(
+    await host.harness.behavior.callRpc("cacheMiss.list", null),
+  );
+}
+
+function cacheMissSignalCount(host: Fixture["host"]): number {
+  return host.harness.inspection.realtimeSignals.filter(
+    (signal) => signal.channel === "cache-misses-changed",
+  ).length;
+}
+
+async function postClaude(
+  fixture: Fixture,
+  body: string,
+  route = "/v1/messages",
+): Promise<number> {
+  const response = await fixture.host.harness.behavior.fetchHttp(
+    "POST",
+    route,
+    { headers: authHeaders(fixture.key), body },
+  );
+  await response.text();
+  return response.status;
+}
+
+async function readGatedStream(
+  response: Response,
+  gate: { resolve: () => void },
+): Promise<Buffer[]> {
+  const reader = response.body?.getReader();
+  if (reader === undefined) throw new Error("Expected a streamed body.");
+  const chunks: Buffer[] = [];
+  while (true) {
+    const chunk = await reader.read();
+    if (chunk.done) return chunks;
+    chunks.push(Buffer.from(chunk.value));
+    gate.resolve();
+  }
+}
+
+describe("Account Pool cache miss debugging", () => {
+  it("reports a changed Claude tool through the CLI without changing the proxied stream", async () => {
+    const streams = [
+      Buffer.from(
+        cacheMissClaudeStream({ input: 40, creation: 24_000, read: 0 }),
+      ),
+      Buffer.from(
+        cacheMissClaudeStream({ input: 60, creation: 24_100, read: 1_200 }),
+      ),
+    ];
+    const splitAt = (stream: Buffer) =>
+      stream.indexOf("cache_read_input_tokens");
+    const gates = [deferred(), deferred()];
+    const received: Buffer[] = [];
+    const upstream = await startUpstream(async (request, response) => {
+      const index = received.length;
+      received.push(await readRequestBody(request));
+      const stream = streams[index];
+      const gate = gates[index];
+      if (stream === undefined || gate === undefined) {
+        response.writeHead(500);
+        response.end();
+        return;
+      }
+      response.writeHead(200, { "content-type": "text/event-stream" });
+      response.write(stream.subarray(0, splitAt(stream)));
+      await gate.promise;
+      response.end(stream.subarray(splitAt(stream)));
+    });
+    cleanups.push(async () => {
+      for (const gate of gates) gate.resolve();
+      await upstream.close();
+    });
+    const fixture = await createFixture({ upstreamUrl: upstream.url });
+    const enabled = await fixture.host.harness.behavior.runCli([
+      "config",
+      "set",
+      "cacheMissDebug",
+      "true",
+    ]);
+    expect(enabled.exitCode).toBe(0);
+    expect(enabled.stdout).toContain(
+      "cacheMissDebug: true\ncacheMissMinTokens: 10000\n",
+    );
+    const bodies = [
+      cacheMissClaudeBody(),
+      cacheMissClaudeBody({
+        turns: 2,
+        readDescription: CHANGED_READ_TOOL_DESCRIPTION,
+      }),
+    ];
+    for (const [index, body] of bodies.entries()) {
+      const stream = streams[index] ?? Buffer.alloc(0);
+      const response = await fixture.host.harness.behavior.fetchHttp(
+        "POST",
+        "/v1/messages?beta=true",
+        { headers: authHeaders(fixture.key), body },
+      );
+      expect(response.status).toBe(200);
+      const chunks = await readGatedStream(
+        response,
+        gates[index] ?? deferred(),
+      );
+      expect(chunks[0]).toEqual(stream.subarray(0, splitAt(stream)));
+      expect(Buffer.concat(chunks)).toEqual(stream);
+      if (index === 0) expect(await listCacheMisses(fixture.host)).toEqual([]);
+    }
+    expect(received).toEqual(bodies.map((body) => Buffer.from(body)));
+
+    await settleCacheMissAnalysis();
+    const listed = await fixture.host.harness.behavior.runCli([
+      "cache-miss",
+      "list",
+      "--json",
+    ]);
+    expect(listed.exitCode).toBe(0);
+    const { reports } = z
+      .object({
+        reports: cacheMissReportListSchema,
+        cacheMissDebug: z.literal(true),
+        forwardsToParent: z.literal(false),
+      })
+      .strict()
+      .parse(JSON.parse(listed.stdout));
+    const report = reports[0];
+    if (reports.length !== 1 || report === undefined)
+      throw new Error("Expected exactly one cache miss report.");
+    expect(report).toMatchObject({
+      provider: "claude",
+      model: "claude-fable-5",
+      sessionId: CACHE_MISS_SESSION,
+      hostId: "host-one",
+      hostName: "One",
+      accountId: fixture.account.id,
+      accountLabel: fixture.account.label,
+      previous: {
+        accountId: fixture.account.id,
+        model: "claude-fable-5",
+        usage: {
+          promptTokens: 24_040,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 24_000,
+        },
+      },
+      usage: {
+        promptTokens: 25_360,
+        cacheReadTokens: 1_200,
+        cacheWriteTokens: 24_100,
+      },
+      expectedCachedTokens: 24_000,
+      missedTokens: 22_800,
+      divergence: {
+        level: "tools",
+        path: "tools[1]",
+        label: "tool Read",
+        change: "modified",
+        keyOrderOnly: false,
+        sharedSegments: 1,
+        previousSegments: 4,
+        currentSegments: 6,
+      },
+    });
+    expect(report.causes.map((cause) => cause.kind)).toEqual(["prompt-change"]);
+    expect(report.divergence?.before).toContain(READ_TOOL_DESCRIPTION);
+    expect(report.divergence?.after).toContain(CHANGED_READ_TOOL_DESCRIPTION);
+    expect(cacheMissSignalCount(fixture.host)).toBe(1);
+    expect(fixture.host.harness.inspection.logEntries).toContainEqual({
+      level: "info",
+      message: `Account Pooler claude cache miss: session ${CACHE_MISS_SESSION}, account ${fixture.account.id}, missed 22800 of 24000 expected cached tokens, causes prompt-change, divergence tools[1].`,
+    });
+    const logText = fixture.host.harness.inspection.logEntries
+      .map((entry) => entry.message)
+      .join("\n");
+    for (const promptText of [
+      READ_TOOL_DESCRIPTION,
+      CHANGED_READ_TOOL_DESCRIPTION,
+      "inspect the workspace",
+      "You are a coding agent",
+    ]) {
+      expect(logText).not.toContain(promptText);
+    }
+
+    const human = await fixture.host.harness.behavior.runCli([
+      "cache-miss",
+      "list",
+    ]);
+    const unchanged = '{"name":"Read","description":"Read a ';
+    expect(report.divergence?.before?.startsWith(`${unchanged}file`)).toBe(
+      true,
+    );
+    expect(report.divergence?.after?.startsWith(`${unchanged}UTF-8`)).toBe(
+      true,
+    );
+    expect(human).toMatchObject({
+      exitCode: 0,
+      stdout: [
+        `${new Date(report.observedAt).toISOString()} claude claude-fable-5 session ${CACHE_MISS_SESSION} host One`,
+        `  Account: ${fixture.account.label}`,
+        "  Tokens: missed 22800, expected 24000, read 1200, write 24100, prompt 25360",
+        `  Cause prompt-change: ${report.causes[0]?.message}`,
+        "  Divergence: tools[1] (tool Read) modified",
+        `    unchanged: ${unchanged}`,
+        `    before: ${report.divergence?.before?.slice(unchanged.length)}`,
+        `    after: ${report.divergence?.after?.slice(unchanged.length)}`,
+        "",
+      ].join("\n"),
+    });
+  });
+
+  it("analyzes a zstd-compressed Codex body while forwarding the compressed bytes", async () => {
+    const usages = [
+      { input: 30_000, cached: 0 },
+      { input: 30_500, cached: 2_048 },
+    ];
+    const sent: Array<{
+      encoding: string | null;
+      threadId: string | null;
+      body: Buffer;
+    }> = [];
+    const fixture = await createOAuthRequestFixture(
+      "codex",
+      async (_input, init) => {
+        const headers = new Headers(init?.headers);
+        sent.push({
+          encoding: headers.get("content-encoding"),
+          threadId: headers.get("thread-id"),
+          body:
+            init?.body instanceof ArrayBuffer
+              ? Buffer.from(init.body)
+              : Buffer.alloc(0),
+        });
+        return new Response(
+          cacheMissCodexStream(
+            usages[sent.length - 1] ?? { input: 0, cached: 0 },
+          ),
+          { headers: { "content-type": "text/event-stream" } },
+        );
+      },
+      Date.now,
+    );
+    await fixture.host.harness.behavior.callRpc("config.set", {
+      cacheMissDebug: true,
+    });
+    const bodies = [
+      cacheMissCodexBody("Permissions: workspace write.", false),
+      cacheMissCodexBody("Permissions: read only.", true),
+    ];
+    for (const [index, body] of bodies.entries()) {
+      const response = await fixture.host.harness.behavior.fetchHttp(
+        "POST",
+        "/v1/responses",
+        {
+          headers: {
+            "content-type": "application/json",
+            "content-encoding": "zstd",
+            "thread-id": CACHE_MISS_THREAD,
+            "x-bb-account-pool-token": fixture.key,
+          },
+          body,
+        },
+      );
+      expect(response.status).toBe(200);
+      expect(await response.text()).toBe(
+        cacheMissCodexStream(usages[index] ?? { input: 0, cached: 0 }),
+      );
+    }
+    expect(sent).toEqual(
+      bodies.map((body) => ({
+        encoding: "zstd",
+        threadId: CACHE_MISS_THREAD,
+        body: Buffer.from(body),
+      })),
+    );
+    const reports = await listCacheMisses(fixture.host);
+    expect(reports).toEqual([
+      expect.objectContaining({
+        provider: "codex",
+        model: "gpt-5.5",
+        sessionId: CACHE_MISS_THREAD,
+        hostName: "One",
+        accountId: fixture.account.id,
+        usage: {
+          promptTokens: 30_500,
+          cacheReadTokens: 2_048,
+          cacheWriteTokens: null,
+        },
+        expectedCachedTokens: 30_000,
+        missedTokens: 27_952,
+        causes: [expect.objectContaining({ kind: "prompt-change" })],
+        divergence: expect.objectContaining({
+          level: "input",
+          path: "input[0]",
+          label: "message developer",
+          change: "modified",
+          sharedSegments: 2,
+          previousSegments: 4,
+          currentSegments: 7,
+        }),
+      }),
+    ]);
+    expect(reports[0]?.divergence?.before).toContain("workspace write");
+    expect(reports[0]?.divergence?.after).toContain("read only");
+    expect(cacheMissSignalCount(fixture.host)).toBe(1);
+    expect(fixture.host.harness.inspection.logEntries).toContainEqual({
+      level: "info",
+      message: `Account Pooler codex cache miss: session ${CACHE_MISS_THREAD}, account ${fixture.account.id}, missed 27952 of 30000 expected cached tokens, causes prompt-change, divergence input[0].`,
+    });
+    const logText = fixture.host.harness.inspection.logEntries
+      .map((entry) => entry.message)
+      .join("\n");
+    for (const privateText of [
+      "workspace write",
+      "read only",
+      "opaque-reasoning",
+      "codex@example.com",
+    ]) {
+      expect(logText).not.toContain(privateText);
+    }
+  });
+
+  it("stays off by default and ignores count_tokens and failed responses", async () => {
+    const replies: Array<{
+      status: number;
+      contentType: string;
+      body: string;
+    }> = [];
+    const paths: string[] = [];
+    const upstream = await startUpstream(async (request, response) => {
+      await readRequestBody(request);
+      paths.push(request.url ?? "");
+      const reply = replies.shift() ?? {
+        status: 500,
+        contentType: "text/plain",
+        body: "unexpected request",
+      };
+      response.writeHead(reply.status, { "content-type": reply.contentType });
+      response.end(reply.body);
+    });
+    cleanups.push(upstream.close);
+    const fixture = await createFixture({ upstreamUrl: upstream.url });
+    const stream = (usage: ClaudeCacheUsage) => ({
+      status: 200,
+      contentType: "text/event-stream",
+      body: cacheMissClaudeStream(usage),
+    });
+    const changedTool = cacheMissClaudeBody({
+      turns: 2,
+      readDescription: CHANGED_READ_TOOL_DESCRIPTION,
+    });
+
+    const shown = await fixture.host.harness.behavior.runCli(["config"]);
+    expect(shown.stdout).toContain(
+      "cacheMissDebug: false\ncacheMissMinTokens: 10000\n",
+    );
+    replies.push(
+      stream({ input: 40, creation: 24_000, read: 0 }),
+      stream({ input: 60, creation: 24_100, read: 0 }),
+    );
+    expect(await postClaude(fixture, cacheMissClaudeBody())).toBe(200);
+    expect(await postClaude(fixture, changedTool)).toBe(200);
+    expect(await listCacheMisses(fixture.host)).toEqual([]);
+    expect(
+      await fixture.host.harness.behavior.runCli(["cache-miss", "list"]),
+    ).toMatchObject({
+      exitCode: 0,
+      stdout:
+        "No cache miss reports. Enable reporting with bb pool config set cacheMissDebug true.\n",
+    });
+    const listedOff = await fixture.host.harness.behavior.runCli([
+      "cache-miss",
+      "list",
+      "--json",
+    ]);
+    expect(listedOff.exitCode).toBe(0);
+    expect(JSON.parse(listedOff.stdout)).toEqual({
+      reports: [],
+      cacheMissDebug: false,
+      forwardsToParent: false,
+    });
+
+    await fixture.host.harness.behavior.callRpc("config.set", {
+      cacheMissDebug: true,
+    });
+    const usageJson = JSON.stringify({
+      usage: {
+        input_tokens: 40,
+        cache_creation_input_tokens: 24_000,
+        cache_read_input_tokens: 0,
+      },
+    });
+    replies.push(
+      { status: 200, contentType: "application/json", body: usageJson },
+      { status: 400, contentType: "application/json", body: usageJson },
+      stream({ input: 60, creation: 24_100, read: 0 }),
+    );
+    expect(
+      await postClaude(
+        fixture,
+        cacheMissClaudeBody(),
+        "/v1/messages/count_tokens",
+      ),
+    ).toBe(200);
+    expect(await postClaude(fixture, cacheMissClaudeBody())).toBe(400);
+    expect(await postClaude(fixture, changedTool)).toBe(200);
+    expect(await listCacheMisses(fixture.host)).toEqual([]);
+    expect(
+      await fixture.host.harness.behavior.runCli(["cache-miss", "list"]),
+    ).toMatchObject({
+      exitCode: 0,
+      stdout: "No large cache misses observed yet.\n",
+    });
+    const listedOn = await fixture.host.harness.behavior.runCli([
+      "cache-miss",
+      "list",
+      "--json",
+    ]);
+    expect(JSON.parse(listedOn.stdout)).toEqual({
+      reports: [],
+      cacheMissDebug: true,
+      forwardsToParent: false,
+    });
+
+    replies.push(stream({ input: 60, creation: 24_100, read: 0 }));
+    expect(await postClaude(fixture, changedTool)).toBe(200);
+    const reports = await listCacheMisses(fixture.host);
+    expect(
+      reports.map((report) => report.causes.map((cause) => cause.kind)),
+    ).toEqual([["unexplained"]]);
+    expect(paths).toEqual([
+      "/v1/messages",
+      "/v1/messages",
+      "/v1/messages/count_tokens",
+      "/v1/messages",
+      "/v1/messages",
+      "/v1/messages",
+    ]);
+    expect(cacheMissSignalCount(fixture.host)).toBe(1);
+  });
+
+  it("reports an account switch on the final failover attempt and clears reports", async () => {
+    const usages = [
+      { input: 40, creation: 24_000, read: 0 },
+      { input: 60, creation: 24_100, read: 0 },
+    ];
+    const attempts: string[] = [];
+    let served = 0;
+    const upstream = await startUpstream(async (request, response) => {
+      await readRequestBody(request);
+      const apiKey = String(request.headers["x-api-key"] ?? "");
+      attempts.push(apiKey);
+      if (served === 1 && apiKey === "sk-account") {
+        response.writeHead(503, { "content-type": "application/json" });
+        response.end(
+          '{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}',
+        );
+        return;
+      }
+      const usage = usages[served] ?? { input: 0, creation: 0, read: 0 };
+      served += 1;
+      response.writeHead(200, { "content-type": "text/event-stream" });
+      response.end(cacheMissClaudeStream(usage));
+    });
+    cleanups.push(upstream.close);
+    const fixture = await createFixture({ upstreamUrl: upstream.url });
+    const second = await addApiAccount(fixture, "sk-second");
+    const help = await fixture.host.harness.behavior.runCli([
+      "cache-miss",
+      "--help",
+    ]);
+    expect(help.stdout).toContain("bb pool cache-miss list [--json]");
+    expect(help.stdout).toContain("bb pool cache-miss clear");
+    expect(
+      (
+        await fixture.host.harness.behavior.runCli([
+          "config",
+          "set",
+          "cacheMissDebug",
+          "on",
+        ])
+      ).exitCode,
+    ).toBe(0);
+    expect(await postClaude(fixture, cacheMissClaudeBody())).toBe(200);
+    expect(await postClaude(fixture, cacheMissClaudeBody({ turns: 2 }))).toBe(
+      200,
+    );
+    expect(attempts).toEqual(["sk-account", "sk-account", "sk-second"]);
+    const reports = await listCacheMisses(fixture.host);
+    expect(reports).toEqual([
+      expect.objectContaining({
+        accountId: second.id,
+        accountLabel: "sk-second",
+        previous: expect.objectContaining({
+          accountId: fixture.account.id,
+          accountLabel: fixture.account.label,
+        }),
+        expectedCachedTokens: 24_000,
+        missedTokens: 24_000,
+        causes: [expect.objectContaining({ kind: "account-switch" })],
+        divergence: null,
+      }),
+    ]);
+    const human = await fixture.host.harness.behavior.runCli([
+      "cache-miss",
+      "list",
+    ]);
+    expect(human.stdout).toContain(
+      `  Account: sk-second (previous: ${fixture.account.label})\n`,
+    );
+    expect(human.stdout).toContain(
+      `  Cause account-switch: ${reports[0]?.causes[0]?.message}\n`,
+    );
+    expect(human.stdout).not.toContain("Divergence:");
+
+    expect(
+      await fixture.host.harness.behavior.callRpc("cacheMiss.clear", null),
+    ).toEqual({ cleared: 1 });
+    expect(await listCacheMisses(fixture.host)).toEqual([]);
+    expect(cacheMissSignalCount(fixture.host)).toBe(2);
+    expect(
+      await fixture.host.harness.behavior.runCli(["cache-miss", "clear"]),
+    ).toMatchObject({ exitCode: 0, stdout: "Cleared 0 cache miss reports.\n" });
+    expect(
+      (
+        await fixture.host.harness.behavior.runCli([
+          "cache-miss",
+          "clear",
+          "extra",
+        ])
+      ).exitCode,
+    ).toBe(1);
+  });
+
+  it("delivers the end of the stream before it analyzes the response", async () => {
+    const usages = [
+      { input: 40, creation: 24_000, read: 0 },
+      { input: 60, creation: 24_100, read: 0 },
+    ];
+    let served = 0;
+    const upstream = await startUpstream(async (request, response) => {
+      await readRequestBody(request);
+      const usage = usages[served] ?? { input: 0, creation: 0, read: 0 };
+      served += 1;
+      response.writeHead(200, { "content-type": "text/event-stream" });
+      response.end(cacheMissClaudeStream(usage));
+    });
+    cleanups.push(upstream.close);
+    const fixture = await createFixture({ upstreamUrl: upstream.url });
+    await fixture.host.harness.behavior.callRpc("config.set", {
+      cacheMissDebug: true,
+    });
+    expect(await postClaude(fixture, cacheMissClaudeBody())).toBe(200);
+    await settleCacheMissAnalysis();
+    const response = await fixture.host.harness.behavior.fetchHttp(
+      "POST",
+      "/v1/messages",
+      {
+        headers: authHeaders(fixture.key),
+        body: cacheMissClaudeBody({ turns: 2 }),
+      },
+    );
+    const reader = response.body?.getReader();
+    if (reader === undefined) throw new Error("Expected a streamed body.");
+    let chunk = await reader.read();
+    while (!chunk.done) chunk = await reader.read();
+    expect(cacheMissSignalCount(fixture.host)).toBe(0);
+    expect(await listCacheMisses(fixture.host)).toHaveLength(1);
+    expect(cacheMissSignalCount(fixture.host)).toBe(1);
+  });
+
+  it("measures idle gaps from when the successful attempt was sent upstream", async () => {
+    let clock = Date.UTC(2026, 8, 15, 12, 0, 0);
+    const attempts: string[] = [];
+    const upstream = await startUpstream(async (request, response) => {
+      await readRequestBody(request);
+      attempts.push(String(request.headers["x-api-key"] ?? ""));
+      if (attempts.length === 2) {
+        clock += 60_000;
+        response.writeHead(503, { "content-type": "application/json" });
+        response.end(
+          '{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}',
+        );
+        return;
+      }
+      response.writeHead(200, { "content-type": "text/event-stream" });
+      response.end(
+        cacheMissClaudeStream(
+          attempts.length === 1
+            ? { input: 40, creation: 24_000, read: 0 }
+            : { input: 60, creation: 24_100, read: 0 },
+        ),
+      );
+    });
+    cleanups.push(upstream.close);
+    const fixture = await createFixture({
+      upstreamUrl: upstream.url,
+      options: { now: () => clock },
+    });
+    const second = await addApiAccount(fixture, "sk-second");
+    await fixture.host.harness.behavior.callRpc("config.set", {
+      cacheMissDebug: true,
+    });
+    expect(await postClaude(fixture, cacheMissClaudeBody())).toBe(200);
+    await settleCacheMissAnalysis();
+    clock += 270_000;
+    expect(await postClaude(fixture, cacheMissClaudeBody({ turns: 2 }))).toBe(
+      200,
+    );
+    expect(attempts).toEqual(["sk-account", "sk-account", "sk-second"]);
+    const reports = await listCacheMisses(fixture.host);
+    expect(reports).toHaveLength(1);
+    expect(reports[0]?.accountId).toBe(second.id);
+    expect(reports[0]?.causes.map((cause) => cause.kind)).toEqual([
+      "account-switch",
+      "idle-gap",
+    ]);
+    expect(reports[0]?.causes[1]?.message).toContain(
+      "5m 30s passed since the previous request started",
+    );
+  });
+
+  it("validates cache miss config through the CLI and forgets conversations when turned off", async () => {
+    const replies: string[] = [];
+    const upstream = await startUpstream(async (request, response) => {
+      await readRequestBody(request);
+      response.writeHead(200, { "content-type": "text/event-stream" });
+      response.end(replies.shift() ?? "");
+    });
+    cleanups.push(upstream.close);
+    const fixture = await createFixture({ upstreamUrl: upstream.url });
+    const cli = (argv: string[]) => fixture.host.harness.behavior.runCli(argv);
+    const send = async (turns: number, usage: ClaudeCacheUsage) => {
+      replies.push(cacheMissClaudeStream(usage));
+      expect(await postClaude(fixture, cacheMissClaudeBody({ turns }))).toBe(
+        200,
+      );
+    };
+
+    expect(await cli(["config", "set", "cacheMissDebug", "yes"])).toMatchObject(
+      {
+        exitCode: 1,
+        stderr: "cacheMissDebug must be true, false, on, or off.\n",
+      },
+    );
+    for (const value of ["0", "-5", "1.5", "many"]) {
+      expect(
+        (await cli(["config", "set", "cacheMissMinTokens", value])).exitCode,
+      ).toBe(1);
+    }
+    expect(
+      (await cli(["config", "set", "cacheMissLimit", "5"])).stderr,
+    ).toContain("parentMode, cacheMissDebug, or cacheMissMinTokens.");
+    expect(
+      accountPoolConfigSchema.parse(
+        await fixture.host.harness.behavior.callRpc("config.get", null),
+      ),
+    ).toMatchObject({ cacheMissDebug: false, cacheMissMinTokens: 10_000 });
+    expect(
+      (await cli(["config", "set", "cacheMissMinTokens", "30000"])).stdout,
+    ).toContain("cacheMissMinTokens: 30000\n");
+    expect(
+      (await cli(["config", "set", "cacheMissDebug", "on"])).stdout,
+    ).toContain("cacheMissDebug: true\n");
+
+    await send(1, { input: 40, creation: 24_000, read: 0 });
+    await send(2, { input: 60, creation: 24_100, read: 0 });
+    expect(await listCacheMisses(fixture.host)).toEqual([]);
+
+    expect(
+      (await cli(["config", "set", "cacheMissMinTokens", "20000"])).exitCode,
+    ).toBe(0);
+    expect(
+      (await cli(["config", "set", "cacheMissDebug", "off"])).stdout,
+    ).toContain("cacheMissDebug: false\n");
+    expect(
+      (await cli(["config", "set", "cacheMissDebug", "true"])).exitCode,
+    ).toBe(0);
+    await send(3, { input: 80, creation: 24_200, read: 0 });
+    expect(await listCacheMisses(fixture.host)).toEqual([]);
+
+    await send(4, { input: 100, creation: 24_300, read: 0 });
+    const reports = await listCacheMisses(fixture.host);
+    expect(
+      reports.map((report) => ({
+        missed: report.missedTokens,
+        causes: report.causes.map((cause) => cause.kind),
+      })),
+    ).toEqual([{ missed: 24_200, causes: ["unexplained"] }]);
+  });
+});
+
 describe("Account Pool nested proxy", () => {
   const PARENT_TOKEN = "vqMIj4xUiI3PyvKS2SllSKHsOfxLF_sAZwzNAAvV9TQ";
 
@@ -6135,6 +7056,78 @@ describe("Account Pool nested proxy", () => {
     expect(
       parent.records.filter((record) => record.url === "/v1/messages"),
     ).toHaveLength(0);
+  });
+
+  it("leaves cache miss analysis to the parent pool while proxying", async () => {
+    const usages = [
+      { input: 40, creation: 24_000, read: 0 },
+      { input: 60, creation: 24_100, read: 0 },
+    ];
+    const forwarded: string[] = [];
+    const parent = await startUpstream(async (request, response) => {
+      await readRequestBody(request);
+      if ((request.url ?? "").startsWith("/availability")) {
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(JSON.stringify({ claude: true, codex: true }));
+        return;
+      }
+      forwarded.push(request.url ?? "");
+      response.writeHead(200, { "content-type": "text/event-stream" });
+      response.end(
+        cacheMissClaudeStream(
+          usages[forwarded.length - 1] ?? { input: 0, creation: 0, read: 0 },
+        ),
+      );
+    });
+    cleanups.push(parent.close);
+    const host = await createChild({ parentUrl: parent.url });
+    expect(
+      (
+        await host.harness.behavior.runCli([
+          "config",
+          "set",
+          "cacheMissDebug",
+          "true",
+        ])
+      ).exitCode,
+    ).toBe(0);
+    const token = await resolveToken(host);
+    for (const body of [
+      cacheMissClaudeBody(),
+      cacheMissClaudeBody({
+        turns: 2,
+        readDescription: CHANGED_READ_TOOL_DESCRIPTION,
+      }),
+    ]) {
+      const response = await host.harness.behavior.fetchHttp(
+        "POST",
+        "/v1/messages",
+        { headers: authHeaders(token), body },
+      );
+      expect(response.status).toBe(200);
+      await response.text();
+    }
+    expect(forwarded).toEqual(["/v1/messages", "/v1/messages"]);
+    expect(await listCacheMisses(host)).toEqual([]);
+    expect(cacheMissSignalCount(host)).toBe(0);
+    expect(
+      await host.harness.behavior.runCli(["cache-miss", "list"]),
+    ).toMatchObject({
+      exitCode: 0,
+      stdout:
+        "No cache miss reports. This bb server forwards pooled traffic to its parent Account Pooler, which does the analysis; enable cacheMissDebug on the parent.\n",
+    });
+    const listed = await host.harness.behavior.runCli([
+      "cache-miss",
+      "list",
+      "--json",
+    ]);
+    expect(listed.exitCode).toBe(0);
+    expect(JSON.parse(listed.stdout)).toEqual({
+      reports: [],
+      cacheMissDebug: true,
+      forwardsToParent: true,
+    });
   });
 
   it("serves availability only to hub token holders", async () => {

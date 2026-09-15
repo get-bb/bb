@@ -21,7 +21,9 @@ bb pool account refresh <id>
 bb pool status [--json]
 bb pool routing <claude|codex> [--off]
 bb pool config
-bb pool config set <anthropicUpstreamBaseUrl|codexUpstreamBaseUrl|switchThreshold> <value>
+bb pool config set <anthropicUpstreamBaseUrl|codexUpstreamBaseUrl|switchThreshold|parentMode|cacheMissDebug|cacheMissMinTokens> <value>
+bb pool cache-miss list [--json]
+bb pool cache-miss clear
 bb pool token rotate --machine <id-or-name>
 bb pool bypass <thread-id> [--off]
 ```
@@ -105,3 +107,99 @@ accounts or to each provider's own credentials.
 Proxied traffic authenticates as the parent machine's token, so `bb pool status`
 on the parent attributes it to the parent host rather than to the nested
 instance.
+
+## Cache miss debugging
+
+Turn on reports with `bb pool config set cacheMissDebug true` or the cache miss
+debugging switch in Account Pooler settings; `false` is the default. While it is
+on, the hub follows successful Claude `/v1/messages` and Codex `/v1/responses`
+requests that carry a provider session id and report usage. Claude requests
+with no `cache_control` breakpoint are not tracked, because the API neither
+reads nor writes the prompt cache for them. Debugging adds no parsing before a
+request goes upstream: the hub decodes and parses the request body in a later
+event-loop turn after the first response chunk is forwarded, then drops the raw
+body, and pairing and analysis run after the client has received the end of the
+response.
+
+The hub pairs each request with the earlier request from the same session on
+the same host that shares the longest prompt prefix, preferring one whose whole
+prompt this request repeats. Claude sub-agent requests pair only with earlier
+requests that repeat their entire first user message, so a new sub-agent is not
+compared with a sibling. A Codex thread that names a parent thread is compared
+with a parent request only when its prompt continues that request, as a fork
+does; spawned agents and reviewers that start their own history are not paired
+with the parent. Codex lite requests rebuild the tools item and base
+instructions message at the start of `input` with ids derived from the thread
+id, so the comparison leaves those two ids out and a fork still continues its
+parent's prompt. Expected cached tokens are that earlier request's cache reads
+plus cache writes for Claude, or its prompt size for Codex, capped at this
+request's prompt size. Missed tokens are the expected cached tokens minus the
+tokens this request read from cache. A miss is reported when missed tokens
+reach `cacheMissMinTokens`, a positive integer that defaults to `10000`.
+`count_tokens` and failed responses are not tracked.
+
+A report lists every cause that applies, in this order:
+
+- `account-switch`: the earlier request used another pooled account; prompt
+  caches are isolated per organization.
+- `model-change`: the model changed.
+- `idle-gap`: more time passed between the times the hub sent the two requests
+  upstream than the cache lifetime: 5 minutes for Claude, 1 hour for a Claude 1h
+  breakpoint, and 30 minutes for Codex. OpenAI documents at least 30 minutes of
+  cached-prefix retention for GPT-5.6 and later; older models can drop prefixes
+  after 5 to 10 idle minutes, and such a shorter gap is reported as
+  `unexplained`. Rate-limit waits and failed failover attempts before a request
+  was sent do not count toward the gap.
+- `concurrent-request`: this request started before the earlier response began.
+- `parameter-change`: cache-relevant request parameters or headers changed. For
+  the `anthropic-beta` header the message names the betas that were removed and
+  added.
+- `compaction`: history was rewritten (compaction, rewind, or cleared context).
+  A Claude request counts as rewritten when it has fewer assistant messages than
+  the earlier request or a history block was removed, so system messages that
+  Claude Code folds into user messages do not count.
+- `prompt-change`: a prompt segment was modified, inserted, or removed. The
+  report names the first divergent path, such as `tools[1]`, `system[0]`,
+  `messages[4].content[0]`, `instructions`, or `input[3]`.
+- `lookback-window`: Claude only; the cache breakpoint moved 20 or more
+  positions with no prompt change.
+- `unexplained`: none of the above; the message states how long after the
+  previous request this one started. The provider likely evicted the entry or
+  routed the request to another backend.
+
+`bb pool cache-miss list` prints each report's time, provider, model, session
+id, host, account, token counts, causes, and the divergent segment with
+indented excerpts. For a modified segment it prints the start both excerpts
+share once as `unchanged:`, then `before:` and `after:` from the first
+differing character; the settings page shows the same excerpts with escaped
+line breaks as real line breaks and highlights the text from the first
+difference on. `--json` prints
+`{ "reports": [...], "cacheMissDebug": <boolean>, "forwardsToParent": <boolean> }`
+with the full excerpts, so a script can tell an empty list from reporting that
+is off or left to a parent pool. `bb pool cache-miss clear` removes the
+reports. The `cacheMiss.list` and `cacheMiss.clear` plugin RPCs return the same
+reports.
+
+Reports and prompt snapshots live only in server memory, and nothing is written
+to disk. The pool keeps the newest 50 reports. Snapshots cover up to 64
+conversations. Each conversation keeps the newest 8 requests of its main loop
+and of each of up to 16 sub-agents, where a sub-agent is identified by its
+first user message, and the least recently active sub-agent is dropped first.
+Prompt text and segment metadata stay within about 32 MiB; the least recently
+used conversations are dropped first. Excerpts
+extend at most 120 characters before and 180 after the first difference. When
+both versions of a modified segment are JSON objects with a top-level `id` and
+they still differ without it, as with Codex items that carry content-hash ids,
+the excerpts compare the objects without their `id`, whether or not the id
+changed. Images, documents, audio, and generated images, including
+Codex data URLs, as well as signatures and encrypted reasoning, appear only as
+hash markers. Turning `cacheMissDebug` off discards snapshots and stops new
+reports; existing reports remain until cleared, a server restart, or a plugin
+reload. Each report writes one info log line with the provider, session id,
+account id, missed and expected tokens, cause kinds, and divergence path, but
+no prompt text or account labels.
+
+A nested server in `proxy` mode does not analyze the traffic it forwards.
+`bb pool cache-miss list` there says so, and its `--json` output sets
+`forwardsToParent` to `true`. Enable `cacheMissDebug` on the parent pool that
+owns the accounts.

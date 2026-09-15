@@ -10,7 +10,7 @@ Use `bb pool` for this plugin's accounts and routes. Inspect current state with
 Use `bb pool --help` for available commands.
 
 For account login/import, secret handling, quota refresh, routing settings,
-ordering, or failover, read
+ordering, failover, or cache miss debugging, read
 [references/accounts-and-routing.md](references/accounts-and-routing.md).
 
 Use stdin or supported login/import flows for credentials; never put secret values

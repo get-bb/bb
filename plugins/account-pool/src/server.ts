@@ -11,9 +11,12 @@ import {
   accountPoolConfigSetInputSchema,
   poolAvailabilitySchema,
   type AccountPoolConfigController,
+  type CacheMissController,
+  type CacheMissReport,
   type PoolProvider,
   type PoolStatus,
 } from "./contracts.js";
+import { CacheMissMonitor } from "./cache-miss.js";
 import {
   AVAILABILITY_PATH,
   PARENT_TOKEN_ENV,
@@ -33,6 +36,7 @@ import { ClaudeOAuthLogin } from "./oauth-login.js";
 import { CodexDeviceLogin } from "./codex-device-login.js";
 import {
   ACCOUNT_POOL_ACCOUNTS_CHANGED,
+  ACCOUNT_POOL_CACHE_MISSES_CHANGED,
   ACCOUNT_POOL_CONFIG_CHANGED,
 } from "./realtime.js";
 import {
@@ -90,6 +94,15 @@ export function createAccountPoolPlugin(
     let currentSettings = accountPoolConfigSchema.parse(
       (await bb.storage.kv.get("config")) ?? {},
     );
+    const now = options.now ?? Date.now;
+    const cacheMisses = new CacheMissMonitor({
+      now,
+      settings: () => currentSettings,
+      onReport: (report) => {
+        bb.log.info(cacheMissLogMessage(report));
+        bb.realtime.publish(ACCOUNT_POOL_CACHE_MISSES_CHANGED, {});
+      },
+    });
     const config: AccountPoolConfigController = {
       get: () => currentSettings,
       set: async (input) => {
@@ -100,6 +113,7 @@ export function createAccountPoolPlugin(
         });
         await bb.storage.kv.set("config", next);
         currentSettings = next;
+        if (!next.cacheMissDebug) cacheMisses.clearSnapshots();
         bb.realtime.publish(ACCOUNT_POOL_CONFIG_CHANGED, {});
         return next;
       },
@@ -113,7 +127,6 @@ export function createAccountPoolPlugin(
     );
     const accounts = new AccountStore(bb.storage.kv, secretDir);
     await accounts.initialize();
-    const now = options.now ?? Date.now;
     const hubTokens = new HubTokenStore(secretDir, now);
     await hubTokens.initialize();
     const enrolledHosts = await bb.sdk.hosts.list();
@@ -154,6 +167,7 @@ export function createAccountPoolPlugin(
         ),
       onAccountsChanged: () =>
         bb.realtime.publish(ACCOUNT_POOL_ACCOUNTS_CHANGED, {}),
+      cacheMisses,
     });
     if (transport !== null) {
       bb.onDispose(async () => {
@@ -217,12 +231,44 @@ export function createAccountPoolPlugin(
         "Add and enable a Claude or Codex account with `bb pool account add`.",
       );
     }
+    const cacheMissReports: CacheMissController = {
+      list: async () => {
+        const reports = cacheMisses.reports();
+        if (reports.length === 0) return reports;
+        const hostNames = new Map(
+          (await bb.sdk.hosts.list()).map((host) => [host.id, host.name]),
+        );
+        return reports.map((report) => ({
+          ...report,
+          hostName: hostNames.get(report.hostId) ?? null,
+        }));
+      },
+      clear: async () => {
+        const cleared = cacheMisses.clearReports();
+        bb.realtime.publish(ACCOUNT_POOL_CACHE_MISSES_CHANGED, {});
+        return cleared;
+      },
+      forwardsToParent: () => proxyingParent() !== null,
+    };
     registerUsageSource(bb, hub);
     bb.rpc.register(
       accountPoolRpcContract,
-      createRpcHandlers(operations, login, codexLogin, config),
+      createRpcHandlers(
+        operations,
+        login,
+        codexLogin,
+        config,
+        cacheMissReports,
+      ),
     );
-    registerPoolCli(bb, operations, login, codexLogin, config);
+    registerPoolCli(
+      bb,
+      operations,
+      login,
+      codexLogin,
+      config,
+      cacheMissReports,
+    );
     const canServe = async (provider: PoolProvider): Promise<boolean> => {
       if (!(await operations.isRoutingEnabled(provider))) return false;
       if (proxyingParent() !== null && availability !== null) {
@@ -406,6 +452,12 @@ async function inspectDisableState(
   const warnings = await operations.routedThreadsWithoutLocalLogin();
   if (warnings.length === 0) return null;
   return `Account Pooler disabled with ${warnings.length} recently routed thread${warnings.length === 1 ? "" : "s"} on machines without a local Claude login. Run bb pool status before disabling to inspect them.`;
+}
+
+function cacheMissLogMessage(report: CacheMissReport): string {
+  const causes = report.causes.map((cause) => cause.kind).join(", ");
+  const divergence = report.divergence?.path ?? "none";
+  return `Account Pooler ${report.provider} cache miss: session ${report.sessionId}, account ${report.accountId}, missed ${report.missedTokens} of ${report.expectedCachedTokens} expected cached tokens, causes ${causes}, divergence ${divergence}.`;
 }
 
 export default createAccountPoolPlugin();
