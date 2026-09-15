@@ -904,6 +904,39 @@ describe("environment follow-up summary", () => {
 });
 
 describe("ThreadDetailPromptArea", () => {
+  it("preserves plugin submission data through a follow-up composer", async () => {
+    mocks.defaultExecutionOptions = {
+      model: "gpt-5",
+      permissionMode: "auto",
+      reasoningLevel: "medium",
+      serviceTier: "default",
+      source: "client/turn/requested",
+    };
+    mocks.promptDraft.text = "Keep this follow-up queued";
+    renderPromptArea();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Capture plugin host" }),
+    );
+    const pluginSubmission = {
+      pluginId: "drafts",
+      data: { kind: "draft" } as const,
+    };
+
+    await act(async () => {
+      await mocks.pluginComposerHost?.submit?.(
+        { experimental_data: pluginSubmission.data },
+        pluginSubmission,
+      );
+    });
+
+    expect(mocks.sendMessageMutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "thr_1",
+        pluginSubmission,
+      }),
+    );
+  });
+
   it("shows queued work while its message details are loading", () => {
     mocks.queuedMessages = undefined;
 

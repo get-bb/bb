@@ -547,6 +547,7 @@ export function RootComposeView() {
               input: request.input,
               model: request.model,
               permissionMode: request.permissionMode,
+              pluginSubmission: request.pluginSubmission,
               providerSupportsFork:
                 findCachedProviderInfo(queryClient, forkSeed.providerId)
                   ?.capabilities.supportsFork ?? false,

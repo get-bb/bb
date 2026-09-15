@@ -21,12 +21,16 @@ function makeThread(overrides: Partial<Thread> = {}): Thread {
 }
 
 describe("buildForkThreadRequest", () => {
-  it("reuses the source environment and starts with the user's first message", () => {
+  it("preserves plugin submission data in a fork dispatch request", () => {
     const request = buildForkThreadRequest({
       environmentId: "env_source",
       input: [{ type: "text", text: "Continue from here", mentions: [] }],
       model: "gpt-5",
       permissionMode: "accept-edits",
+      pluginSubmission: {
+        pluginId: "drafts",
+        data: { kind: "draft" },
+      },
       projectId: "proj_test",
       providerId: "codex",
       providerSupportsFork: true,
@@ -43,6 +47,10 @@ describe("buildForkThreadRequest", () => {
       model: "gpt-5",
       originKind: "fork",
       permissionMode: "accept-edits",
+      pluginSubmission: {
+        pluginId: "drafts",
+        data: { kind: "draft" },
+      },
       projectId: "proj_test",
       providerId: "codex",
       reasoningLevel: "high",
@@ -59,6 +67,7 @@ describe("buildForkThreadRequest", () => {
       input: [{ type: "text", text: "Continue from here", mentions: [] }],
       model: "gpt-5",
       permissionMode: "auto",
+      pluginSubmission: undefined,
       projectId: "proj_test",
       providerId: "codex",
       providerSupportsFork: true,
@@ -70,6 +79,7 @@ describe("buildForkThreadRequest", () => {
     });
 
     expect(request).not.toHaveProperty("serviceTier");
+    expect(request).not.toHaveProperty("pluginSubmission");
   });
 
   it("builds a fork request for a generic ACP provider", () => {
@@ -79,6 +89,7 @@ describe("buildForkThreadRequest", () => {
         input: [{ type: "text", text: "Continue from here", mentions: [] }],
         model: "gpt-5",
         permissionMode: "auto",
+        pluginSubmission: undefined,
         projectId: "proj_test",
         providerId: "acp-amp",
         providerSupportsFork: true,
@@ -102,6 +113,7 @@ describe("buildForkThreadRequest", () => {
         input: [{ type: "text", text: "Continue from here", mentions: [] }],
         model: "unknown-model",
         permissionMode: "auto",
+        pluginSubmission: undefined,
         projectId: "proj_test",
         providerId: "not-a-provider",
         providerSupportsFork: false,

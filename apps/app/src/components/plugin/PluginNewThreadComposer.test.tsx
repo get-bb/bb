@@ -895,6 +895,32 @@ describe("PluginNewThreadComposer seeding", () => {
     });
   });
 
+  it("preserves plugin submission data through a new-thread composer", async () => {
+    const submitted: NewThreadRequest[] = [];
+    renderComposer(
+      STORED_REQUEST,
+      (request) => submitted.push(request),
+      "plugin-submission",
+    );
+
+    await waitFor(() => {
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+    const pluginSubmission = {
+      pluginId: "drafts",
+      data: { kind: "draft" } as const,
+    };
+    await act(async () => {
+      await latestPromptBoxProps().pluginComposerHost.submit(
+        { experimental_data: pluginSubmission.data },
+        pluginSubmission,
+      );
+    });
+
+    expect(submitted).toHaveLength(1);
+    expect(submitted[0]).toMatchObject({ pluginSubmission });
+  });
+
   it("does not demote a project the replayed bootstrap does not know yet", async () => {
     mocks.sidebarNavigationReplayed = true;
     const submitted: NewThreadRequest[] = [];
