@@ -80,7 +80,7 @@ export async function validateDaemonWebSocket(
   };
 }
 
-const SERVER_MOVE_FENCED_DAEMON_MESSAGE_TYPES: ReadonlySet<
+export const SERVER_MOVE_FENCED_DAEMON_MESSAGE_TYPES: ReadonlySet<
   HostDaemonDaemonWsMessage["type"]
 > = new Set([
   "environment-metadata-change",
