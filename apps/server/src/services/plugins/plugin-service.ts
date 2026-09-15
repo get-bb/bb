@@ -212,7 +212,7 @@ export function superviseBuiltinPluginSourceWatcher(args: {
 }
 
 export interface PluginStartOptions {
-  hold: PluginLoadHold | null;
+  hold: PluginLoadHold;
 }
 
 export interface PluginService {
@@ -590,6 +590,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     loadOne,
     brandingAssets,
     setDevBuildProblem,
+    setLoadHold,
     setStatus,
     sourceKind,
     stabilizingPluginIds,
@@ -1302,6 +1303,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     bindSdk: bindRuntimeSdk,
 
     async start(options) {
+      setLoadHold(options?.hold ?? null);
       await backfillNormalizedPluginRegistrations();
       await withPluginOperationLock(REGISTRATION_MUTATION_KEY, async () => {
         for (const artifact of listPendingGitPluginArtifacts(deps.db)) {
@@ -1312,7 +1314,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         await recoverIncompletePluginRollbacks();
       });
       await reconcileBundled();
-      await loadAll(options?.hold ?? null);
+      await loadAll();
       await withPluginOperationLock(REGISTRATION_MUTATION_KEY, runArtifactGc);
       if (deps.watchBuiltinPluginSources) {
         for (const bundled of bundledPlugins) {

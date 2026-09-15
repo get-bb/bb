@@ -24,11 +24,15 @@ import {
   runStartupRecoverySweep,
 } from "./services/system/periodic-sweeps.js";
 import { installProviderModelCatalogPrewarm } from "./services/providers/provider-model-catalog-prewarm.js";
-import { createProviderRegistryService } from "./services/providers/provider-registry.js";
+import {
+  createProviderRegistryService,
+  type ProviderRegistryService,
+} from "./services/providers/provider-registry.js";
+import type { PluginService } from "./services/plugins/plugin-service.js";
 import { createTelemetryService } from "./services/system/telemetry.js";
 import { TerminalSessionLifecycle } from "./services/terminals/terminal-session-lifecycle.js";
 import { createLifecycleDedupers } from "./lifecycle-dedupers.js";
-import type { ServerRuntimeConfig } from "./types.js";
+import type { ServerLogger, ServerRuntimeConfig } from "./types.js";
 import { NotificationHub } from "./ws/hub.js";
 import { WatchInterestCoordinator } from "./ws/watch-interests.js";
 import { WorkspaceReadCaches } from "./services/environments/workspace-read-cache.js";
@@ -38,7 +42,7 @@ import {
   refuseInterruptedServerImport,
   repairLastServerMoveHostName,
 } from "./services/server-move/pending-boot.js";
-import { readConnectHold } from "./services/server-move/connect-hold.js";
+import { createConnectHold } from "./services/server-move/connect-hold.js";
 import { isServerMoveFrozen } from "./services/server-move/freeze-state.js";
 import { reconcileServerMoveRunAtBoot } from "./services/server-move/reconcile.js";
 import {
@@ -57,6 +61,29 @@ export function startHttpListener(args: StartHttpListenerArgs) {
     port: args.serverConfig.BB_SERVER_PORT,
     fetch: args.fetch,
   });
+}
+
+export interface StartServerPluginsArgs {
+  dataDir: string;
+  logger: Pick<ServerLogger, "error" | "warn">;
+  pluginService: Pick<PluginService, "start" | "startPeriodicUpdateChecks">;
+  providerRegistry: Pick<ProviderRegistryService, "markRegistrationsSettled">;
+}
+
+export function startServerPlugins(
+  args: StartServerPluginsArgs,
+): Promise<void> {
+  return args.pluginService
+    .start({
+      hold: createConnectHold({ dataDir: args.dataDir, logger: args.logger }),
+    })
+    .catch((error: unknown) => {
+      args.logger.error({ err: error }, "Plugin startup failed");
+    })
+    .finally(() => {
+      args.providerRegistry.markRegistrationsSettled();
+      args.pluginService.startPeriodicUpdateChecks();
+    });
 }
 
 export async function runServer(serverConfig: ServerConfig): Promise<void> {
@@ -301,20 +328,14 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
       );
       providerRegistry.markRegistrationsSettled();
     } else {
-      const connectHold = await readConnectHold({
+      void startServerPlugins({
         dataDir: serverConfig.BB_DATA_DIR,
         logger,
+        pluginService,
+        providerRegistry,
+      }).finally(() => {
+        void serverMove.handlePluginsStarted();
       });
-      void pluginService
-        .start({ hold: connectHold })
-        .catch((error: unknown) => {
-          logger.error({ err: error }, "Plugin startup failed");
-        })
-        .finally(() => {
-          providerRegistry.markRegistrationsSettled();
-          pluginService.startPeriodicUpdateChecks();
-          void serverMove.handlePluginsStarted();
-        });
     }
     pluginCatalogService.startPeriodicRefresh();
     sweepInterval = setInterval(() => {
