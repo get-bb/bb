@@ -379,7 +379,7 @@ describe("BrowsePluginsTab", () => {
     expect(params.has("direction")).toBe(false);
   });
 
-  it("expands a shelf beyond the six-entry limit", async () => {
+  it("opens a category shelf route and returns to Browse", async () => {
     const entries = Array.from({ length: 8 }, (_, index) => ({
       ...MEMORY_ENTRY,
       entryId: `memory-${index}`,
@@ -390,31 +390,80 @@ describe("BrowsePluginsTab", () => {
 
     await screen.findByTestId("plugin-browse-shelves");
     expect(cardOrder()).toHaveLength(6);
-    fireEvent.click(screen.getByRole("button", { name: "See all" }));
+    fireEvent.click(
+      screen.getAllByRole("link", { name: "See all Memory & Context" })[0]!,
+    );
     expect(cardOrder()).toHaveLength(8);
+    expect(screen.getByTestId("location-search").textContent).toBe(
+      "?shelf=category%3Amemory-and-context",
+    );
+    expect(
+      screen.getByRole("heading", { name: "Memory & Context 8 plugins" }),
+    ).toBeTruthy();
+    expect(screen.queryByTestId("plugin-browse-shelves")).toBeNull();
+    fireEvent.click(screen.getByRole("link", { name: "Browse plugins" }));
+    expect(await screen.findByTestId("plugin-browse-shelves")).toBeTruthy();
+    expect(cardOrder()).toHaveLength(6);
+    expect(screen.getByTestId("location-search").textContent).toBe("");
   });
 
-  it("shows all five cards in a narrow shelf", async () => {
-    const originalWidth = window.innerWidth;
-    Object.defineProperty(window, "innerWidth", {
-      configurable: true,
-      value: 700,
-    });
+  it("loads a curated shelf directly and preserves its order", async () => {
     const entries = Array.from({ length: 5 }, (_, index) => ({
       ...MEMORY_ENTRY,
       entryId: `memory-${index}`,
       pluginId: `memory-${index}`,
       displayName: `Memory ${index}`,
+      collections: [{ id: "new-and-notable", rank: 4 - index }],
     }));
-    renderBrowse({ entries, collections: [] });
+    renderBrowse(
+      {
+        entries: [...entries, SECURITY_ENTRY],
+        collections: [
+          {
+            id: "new-and-notable",
+            displayName: "New & notable",
+            pluginIds: [...entries].reverse().map((entry) => entry.entryId),
+          },
+        ],
+      },
+      "/plugins?shelf=collection%3Anew-and-notable",
+    );
 
-    await screen.findByTestId("plugin-browse-shelves");
-    expect(cardOrder()).toHaveLength(5);
-    expect(screen.queryByRole("button", { name: "See all" })).toBeNull();
-    Object.defineProperty(window, "innerWidth", {
-      configurable: true,
-      value: originalWidth,
-    });
+    await screen.findByRole("heading", { name: "New & notable 5 plugins" });
+    expect(cardOrder()).toEqual(
+      [...entries]
+        .reverse()
+        .map((entry) => `Open ${entry.displayName} details`),
+    );
+    expect(screen.queryByText("Security")).toBeNull();
+    expect(screen.queryByTestId("plugin-browse-shelves")).toBeNull();
+  });
+
+  it("keeps a shelf address and title when filters match no plugins", async () => {
+    renderBrowse(
+      { entries: [MEMORY_ENTRY, SECURITY_ENTRY], collections: [] },
+      "/plugins?shelf=category%3Amemory-and-context&category=security",
+    );
+    await screen.findByRole("heading", { name: "Memory & Context 1 plugin" });
+    expect(cardOrder()).toHaveLength(0);
+    expect(
+      screen.getByText("No plugins match these category filters."),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("link", { name: "Browse plugins" }));
+    expect(screen.getByTestId("location-search").textContent).toBe(
+      "?category=security",
+    );
+  });
+
+  it("offers Browse when a shelf address does not exist", async () => {
+    renderBrowse(
+      { entries: [MEMORY_ENTRY], collections: [] },
+      "/plugins?shelf=collection%3Amissing",
+    );
+    await screen.findByText("Shelf not found.");
+    expect(
+      screen.getByRole("link", { name: "Browse plugins" }).getAttribute("href"),
+    ).toBe("/plugins");
   });
 
   it("uses the shared error state and retries catalog searches", async () => {
