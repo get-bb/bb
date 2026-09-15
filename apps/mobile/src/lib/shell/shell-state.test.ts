@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { SessionState } from "../session/session-scheduler";
 import {
+  resolveShellLoadPath,
   resolveShellScreenState,
   shouldReloadForSession,
   type ShellLoadPhase,
@@ -132,6 +133,35 @@ describe("resolveShellScreenState", () => {
         load: { kind: "loading" },
       }).kind,
     ).toBe("loading");
+  });
+});
+
+describe("resolveShellLoadPath", () => {
+  it("reloads the page where the user is, not where it was first opened", () => {
+    expect(
+      resolveShellLoadPath({
+        visitedPath: "/projects/p1/threads/thr_new",
+        requestedPath: "/projects/p1/threads/thr_notified",
+      }),
+    ).toBe("/projects/p1/threads/thr_new");
+  });
+
+  it("opens a requested thread before the page reports where it is", () => {
+    expect(
+      resolveShellLoadPath({
+        visitedPath: null,
+        requestedPath: "/projects/p1/threads/thr_notified",
+      }),
+    ).toBe("/projects/p1/threads/thr_notified");
+  });
+
+  it("opens the new-thread page on a cold start", () => {
+    expect(
+      resolveShellLoadPath({ visitedPath: null, requestedPath: undefined }),
+    ).toBe("/");
+    expect(resolveShellLoadPath({ visitedPath: null, requestedPath: "" })).toBe(
+      "/",
+    );
   });
 });
 

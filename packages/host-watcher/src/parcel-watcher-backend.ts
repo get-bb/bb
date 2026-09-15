@@ -24,14 +24,54 @@ export interface ParcelWatcherBackend {
       events: ParcelWatcherEventBatch,
     ) => unknown,
     opts?: ParcelWatcherSubscribeOptions,
+    signal?: AbortSignal,
   ): Promise<ParcelAsyncSubscription>;
 }
 
 function createInProcessBackend(): ParcelWatcherBackend {
   return {
-    async subscribe(dir, callback, opts) {
+    async subscribe(dir, callback, opts, signal) {
+      if (signal?.aborted) {
+        throw new Error("Parcel watcher subscription was cancelled");
+      }
       const { default: parcelWatcher } = await import("@parcel/watcher");
-      return parcelWatcher.subscribe(dir, callback, opts);
+      if (signal?.aborted) {
+        throw new Error("Parcel watcher subscription was cancelled");
+      }
+      const pending = parcelWatcher.subscribe(dir, callback, opts);
+      if (!signal) {
+        return pending;
+      }
+      return new Promise<ParcelAsyncSubscription>((resolve, reject) => {
+        let cancelled = false;
+        const handleAbort = () => {
+          if (cancelled) {
+            return;
+          }
+          cancelled = true;
+          reject(new Error("Parcel watcher subscription was cancelled"));
+        };
+        signal.addEventListener("abort", handleAbort, { once: true });
+        if (signal.aborted) {
+          handleAbort();
+        }
+        void pending.then(
+          (subscription) => {
+            signal.removeEventListener("abort", handleAbort);
+            if (cancelled) {
+              void subscription.unsubscribe().catch(() => {});
+              return;
+            }
+            resolve(subscription);
+          },
+          (error: unknown) => {
+            signal.removeEventListener("abort", handleAbort);
+            if (!cancelled) {
+              reject(error);
+            }
+          },
+        );
+      });
     },
   };
 }

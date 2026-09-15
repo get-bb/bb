@@ -22,7 +22,7 @@ const reports = new WeakMap<
   >
 >();
 
-function registerEnvironmentProgressReport(
+export function registerEnvironmentProgressReport(
   deps: Pick<WorkSessionDeps, "db">,
   args: {
     hostId: string;

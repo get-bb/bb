@@ -1,3 +1,6 @@
+import { createCloneProgressReporter } from "./clone-progress.js";
+import type { PluginEnvironmentProviderProgress } from "@get-bb/plugin-sdk/environment-provider";
+import { registerEnvironmentProgressReport } from "../environments/environment-hooks.js";
 import { resolveHostEnvironment } from "../hosts/host-environment.js";
 import {
   createProjectSource,
@@ -71,6 +74,7 @@ export async function cloneProjectSourceOnHost(
     hostId: string;
     remoteUrl: string | null;
     targetPath?: string;
+    report?: PluginEnvironmentProviderProgress;
   },
 ) {
   if (!args.remoteUrl) {
@@ -80,31 +84,50 @@ export async function cloneProjectSourceOnHost(
       "A remoteUrl is required because this project has no git remote anchor",
     );
   }
-  const operationId = `project-clone-${randomUUID()}`;
-  const resolved = await runLiveHostCommand(deps, {
+  const contributedEnv = await resolveHostEnvironment(deps, {
     hostId: args.hostId,
-    timeoutMs: 20 * 60 * 1000,
-    command: {
-      type: "project.clone",
-      operationId,
-      contributedEnv: await resolveHostEnvironment(deps, {
-        hostId: args.hostId,
-        projectId: args.projectId,
-      }),
-      remoteUrl: args.remoteUrl,
-      projectSlug: args.projectName,
-      ...(args.targetPath !== undefined ? { targetPath: args.targetPath } : {}),
-    },
-  });
-  return registerProjectSourceOnHost(deps, {
     projectId: args.projectId,
-    hostId: args.hostId,
-    ...resolved,
-    ownsPath: true,
   });
+  const progress =
+    args.report === undefined ? null : createCloneProgressReporter(args.report);
+  const operationId = `project-clone-${randomUUID()}`;
+  const unregister =
+    progress === null
+      ? undefined
+      : registerEnvironmentProgressReport(deps, {
+          hostId: args.hostId,
+          operationId,
+          report: progress.report,
+        });
+  try {
+    const resolved = await runLiveHostCommand(deps, {
+      hostId: args.hostId,
+      timeoutMs: 20 * 60 * 1000,
+      command: {
+        type: "project.clone",
+        operationId,
+        contributedEnv,
+        remoteUrl: args.remoteUrl,
+        projectSlug: args.projectName,
+        ...(args.targetPath !== undefined
+          ? { targetPath: args.targetPath }
+          : {}),
+      },
+    });
+    return registerProjectSourceOnHost(deps, {
+      projectId: args.projectId,
+      hostId: args.hostId,
+      ...resolved,
+      ownsPath: true,
+    });
+  } finally {
+    unregister?.();
+    progress?.dispose();
+  }
 }
 
 interface EnsureProjectSourceArgs {
+  report?: PluginEnvironmentProviderProgress;
   projectId: string;
   projectName: string;
   hostId: string;

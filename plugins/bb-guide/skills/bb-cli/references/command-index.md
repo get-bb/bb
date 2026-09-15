@@ -84,6 +84,7 @@ This index lists every command path that the core CLI registers. Read the task-s
 - `bb machine remove`
 - `bb machine suspend`
 - `bb machine resume`
+- `bb machine reconcile`
 - `bb machine retry-cleanup`
 - `bb machine retry-update`
 - `bb machine provider-cli`

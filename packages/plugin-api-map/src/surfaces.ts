@@ -850,6 +850,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
 
           "Request suspend/resume through the host SDK; calls return the updated host when the tracked operation starts, core coordinates drain, starting thread launches, provisioning environments, and project checkout setup reject suspend with machine_busy, and plugins own idle policy",
           "Read maintenance state and lifecycle failures from each host's lifecycle phase and message",
+          "Call hosts.experimental_reconcile from plugin-owned maintenance to enforce core’s suspended state through the provider; active and transitional states are unchanged, the call returns after acceptance; poll host status for completion, and core does not poll. Suspend and resume must be idempotent: preserve stopped resources and reuse running compute. Request new pauses with experimental_suspend",
           "Await suspend.checkpoint(resource) to persist opaque resource state before termination; schedule vendor maintenance in the plugin using bb.background.schedule and bb.sdk.hosts.experimental_suspend",
           "Optionally declare suspend and resume together; plugins own idle timing and core coordinates transitions",
           "Return an opaque JSON resource that core persists and passes back to lifecycle operations; never include credentials",
@@ -862,6 +863,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "HostsArea.experimental_getEnrollmentCommand",
           "HostsArea.experimental_listProviders",
           "HostsArea.experimental_suspend",
+          "HostsArea.experimental_reconcile",
           "HostsArea.experimental_resume",
           "HostsArea.experimental_retryCleanup",
           "PluginMachines.getResource",

@@ -13,7 +13,7 @@ import {
   buildPromptInputs,
   parsePermissionMode,
   PERMISSION_MODE_HELP,
-  uploadClientImageInputs,
+  uploadClientAttachmentInputs,
 } from "./helpers.js";
 import {
   buildSpawnEnvironment,
@@ -121,13 +121,13 @@ export function registerForkCommand(
     )
     .option(
       "--file <path>",
-      "Pass a host-readable absolute or uploaded attachment file path (repeatable)",
+      "Upload an absolute path or file: URL from this CLI machine or pass an uploaded attachment path (repeatable)",
       collectOption,
       [],
     )
     .option(
       "--image <path>",
-      "Upload an absolute path from this CLI machine or pass an uploaded attachment path (repeatable)",
+      "Upload an absolute path or file: URL from this CLI machine or pass an uploaded attachment path (repeatable)",
       collectOption,
       [],
     )
@@ -160,7 +160,7 @@ export function registerForkCommand(
             const input =
               requestedInput === undefined
                 ? undefined
-                : await uploadClientImageInputs({
+                : await uploadClientAttachmentInputs({
                     input: requestedInput,
                     resolveProjectId: async () =>
                       (

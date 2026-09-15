@@ -687,6 +687,12 @@ export async function resolveProviderOperationContext(
       statusMessage: "Setting up project on machine",
     });
     checkout = await ensureProjectSourceOnHost(deps, {
+      report: {
+        step: (step) =>
+          reportMachineProgress(deps, thread.id, { step, log: "" }),
+        log: (log) =>
+          reportMachineProgress(deps, thread.id, { step: null, log }),
+      },
       projectId: project.id,
       projectName: project.name,
       hostId: host.id,

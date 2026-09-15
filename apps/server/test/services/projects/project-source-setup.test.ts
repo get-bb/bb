@@ -1,5 +1,6 @@
+import { reportEnvironmentHookProgress } from "../../../src/services/environments/environment-hooks.js";
 import { getProjectSourceByHost, projectSourceOwnsPath } from "@bb/db";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ensureProjectSourceOnHost } from "../../../src/services/projects/project-source-setup.js";
 import {
   listQueuedCommands,
@@ -31,9 +32,16 @@ describe("automatic project source setup", () => {
           hostId: fresh.host.id,
           remoteUrl,
         };
+        const logs = [vi.fn(), vi.fn()];
         const setup = Promise.allSettled([
-          ensureProjectSourceOnHost(harness.deps, args),
-          ensureProjectSourceOnHost(harness.deps, args),
+          ensureProjectSourceOnHost(harness.deps, {
+            ...args,
+            report: { log: logs[0]!, step: vi.fn() },
+          }),
+          ensureProjectSourceOnHost(harness.deps, {
+            ...args,
+            report: { log: logs[1]!, step: vi.fn() },
+          }),
         ]);
         const defaultPath = await waitForQueuedCommand(
           harness,
@@ -63,10 +71,36 @@ describe("automatic project source setup", () => {
           );
           expect(listQueuedCommands(harness, "project.clone")).toHaveLength(1);
           expect(clone.command).toMatchObject({ remoteUrl, targetPath });
+          if (clone.command.type !== "project.clone")
+            throw new Error("Expected clone");
+          const progress = {
+            type: "environment.hook.progress" as const,
+            operationId: clone.command.operationId,
+            entry: {
+              type: "output" as const,
+              text: "Receiving objects: 42%",
+              status: null,
+            },
+          };
+          reportEnvironmentHookProgress(
+            harness.deps,
+            original.host.id,
+            progress,
+          );
+          for (const log of logs) expect(log).not.toHaveBeenCalled();
+          reportEnvironmentHookProgress(harness.deps, fresh.host.id, progress);
+          expect(logs[0]).toHaveBeenCalledExactlyOnceWith(
+            "Receiving objects: 42%\n",
+          );
+          expect(logs[1]).not.toHaveBeenCalled();
           await reportQueuedCommandSuccess(harness, clone, {
             path: targetPath,
             gitRemoteUrl: remoteUrl,
           });
+          await setup;
+          reportEnvironmentHookProgress(harness.deps, fresh.host.id, progress);
+          expect(logs[0]).toHaveBeenCalledTimes(1);
+          expect(logs[1]).not.toHaveBeenCalled();
         } else {
           const inspect = await waitForQueuedCommand(
             harness,
@@ -145,10 +179,12 @@ it("does not register a checkout or dispatch a turn after private repository aut
     const { project } = seedProjectWithSource(harness.deps, {
       hostId: source.host.id,
     });
+    const log = vi.fn();
     const result = ensureProjectSourceOnHost(harness.deps, {
       projectId: project.id,
       projectName: project.name,
       hostId: target.host.id,
+      report: { log, step: vi.fn() },
       remoteUrl,
     }).then(
       () => "unexpected success",
@@ -175,6 +211,14 @@ it("does not register a checkout or dispatch a turn after private repository aut
       errorMessage: "Repository access denied",
     });
     expect(await result).toBe("checkout failed");
+    if (clone.command.type !== "project.clone")
+      throw new Error("Expected clone");
+    reportEnvironmentHookProgress(harness.deps, target.host.id, {
+      type: "environment.hook.progress",
+      operationId: clone.command.operationId,
+      entry: { type: "output", text: "late output", status: null },
+    });
+    expect(log).not.toHaveBeenCalled();
     expect(
       getProjectSourceByHost(harness.db, project.id, target.host.id),
     ).toBeNull();

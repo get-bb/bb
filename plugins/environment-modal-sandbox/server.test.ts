@@ -1,3 +1,5 @@
+import { modalAllocations } from "./allocations.js";
+import { sweepModalAllocations } from "./allocation-sweep.js";
 import type { BbPluginApi, JsonValue } from "@get-bb/plugin-sdk";
 import type {
   PluginMachineProviderCreateContext,
@@ -1172,7 +1174,7 @@ describe("plugin-owned idle timing", () => {
         sequence: 10,
       });
       expect(test.machineResource).toHaveBeenCalledWith(HOST_ID);
-      expect(test.harness.sdk.callsTo("hosts.list")).toHaveLength(1);
+      expect(test.harness.sdk.callsTo("hosts.list")).toHaveLength(2);
       vi.setSystemTime(10 * 60_000);
       await test.harness.emitThreadEvent("experimental_thread.events", {
         thread: makeThreadResponse({
@@ -1191,7 +1193,7 @@ describe("plugin-owned idle timing", () => {
       });
       expect(lookup).toHaveBeenCalledTimes(2);
       expect(getHost).toHaveBeenCalledWith({ hostId: HOST_ID });
-      expect(test.harness.sdk.callsTo("hosts.list")).toHaveLength(1);
+      expect(test.harness.sdk.callsTo("hosts.list")).toHaveLength(2);
       expect(test.harness.sdk.callsTo("threads.events.list")).toHaveLength(0);
       vi.setSystemTime(20 * 60_000);
       await test.harness.emitThreadEvent("experimental_thread.events", {
@@ -1270,3 +1272,268 @@ describe("plugin-owned idle timing", () => {
     }
   });
 });
+
+describe("Modal allocation tracking", () => {
+  it("tracks creates and resumes and removes confirmed terminated allocations", async () => {
+    const h = await setup();
+    const created = await h.provider.create(createContext());
+    if (created.status !== "created")
+      throw new Error("Expected created machine");
+    expect(await h.bb.storage.kv.list("allocations/")).toEqual([
+      "allocations/sandbox/sandbox-1",
+    ]);
+    const context = {
+      hostId: HOST_ID,
+      resource: created.resource,
+      report,
+      signal: AbortSignal.timeout(10_000),
+      checkpoint: vi.fn(async () => {}),
+    };
+    const paused = await h.provider.suspend!(context);
+    expect(await h.bb.storage.kv.list("allocations/")).toEqual([]);
+    const pausedAgain = await h.provider.suspend!({
+      ...context,
+      resource: paused.resource,
+    });
+    expect(pausedAgain.resource).toEqual(paused.resource);
+    const resumed = await h.provider.resume!({
+      ...context,
+      resource: paused.resource,
+    });
+    expect(await h.bb.storage.kv.list("allocations/")).toEqual([
+      "allocations/sandbox/sandbox-2",
+    ]);
+    const resumedAgain = await h.provider.resume!({
+      ...context,
+      resource: resumed.resource,
+    });
+    expect(resumedAgain.resource).toEqual(resumed.resource);
+    expect(h.backend.states).toHaveLength(2);
+    await h.provider.remove({ ...context, resource: resumed.resource });
+    expect(await h.bb.storage.kv.list("allocations/")).toEqual([]);
+  });
+
+  it("reconciles tracked running compute only for suspended owners and retains failed observations", async () => {
+    const h = await setup();
+    const created = await h.provider.create(createContext());
+    if (created.status !== "created")
+      throw new Error("Expected created machine");
+    h.machineResource.mockResolvedValue(created.resource);
+    const owner = {
+      ...host("disconnected"),
+      machineProviderId: PROVIDER_ID,
+      lifecycle: {
+        ...host("disconnected").lifecycle,
+        phase: "suspended" as const,
+      },
+    };
+    const reconcile = vi.fn(async () => owner);
+    h.harness.sdk.stub("hosts.list", () => [owner]);
+    h.harness.sdk.stub("hosts.experimental_reconcile", reconcile);
+    const allocations = modalAllocations(h.bb, Date.now);
+    await sweepModalAllocations(
+      h.bb,
+      allocations,
+      h.backend.backend,
+      Date.now(),
+    );
+    expect(reconcile).toHaveBeenCalledExactlyOnceWith({ hostId: HOST_ID });
+    Object.assign(owner.lifecycle, { phase: "active" });
+    await sweepModalAllocations(
+      h.bb,
+      allocations,
+      h.backend.backend,
+      Date.now(),
+    );
+    expect(reconcile).toHaveBeenCalledTimes(1);
+    const lookup = vi
+      .spyOn(h.backend.backend, "fromId")
+      .mockRejectedValueOnce(new Error("Modal unavailable"));
+    await sweepModalAllocations(
+      h.bb,
+      allocations,
+      h.backend.backend,
+      Date.now(),
+    );
+    expect(await allocations.keys()).toHaveLength(1);
+    lookup.mockRestore();
+    h.backend.states[0]!.terminated = true;
+    await sweepModalAllocations(
+      h.bb,
+      allocations,
+      h.backend.backend,
+      Date.now(),
+    );
+    expect(await allocations.keys()).toEqual([]);
+  });
+
+  it("runs allocation reconciliation even when idle pausing is disabled", async () => {
+    const h = await setup();
+    const created = await h.provider.create(createContext());
+    if (created.status !== "created")
+      throw new Error("Expected created machine");
+    h.machineResource.mockResolvedValue(created.resource);
+    const owner = {
+      ...host("disconnected"),
+      machineProviderId: PROVIDER_ID,
+      lifecycle: {
+        ...host("disconnected").lifecycle,
+        phase: "suspended" as const,
+      },
+    };
+    const reconcile = vi.fn(async () => owner);
+    h.harness.sdk.stub("hosts.list", () => [owner]);
+    h.harness.sdk.stub("hosts.experimental_reconcile", reconcile);
+    await h.harness.setSettings({ idleMinutes: 0 });
+    await h.harness.runSchedule("pause-idle-machines");
+    expect(reconcile).toHaveBeenCalledExactlyOnceWith({ hostId: HOST_ID });
+    expect(h.harness.sdk.callsTo("hosts.experimental_suspend")).toHaveLength(0);
+  });
+
+  it("continues sweeping other allocations when one lookup fails", async () => {
+    const h = await setup();
+    await h.provider.create(createContext("first"));
+    await h.provider.create(createContext("second"));
+    h.backend.states[1]!.terminated = true;
+    const original = h.backend.backend.fromId;
+    vi.spyOn(h.backend.backend, "fromId").mockImplementation(async (id) => {
+      if (id === "sandbox-1") throw new Error("lookup unavailable");
+      return original(id);
+    });
+    const allocations = modalAllocations(h.bb, Date.now);
+    await sweepModalAllocations(
+      h.bb,
+      allocations,
+      h.backend.backend,
+      Date.now(),
+    );
+    expect(await allocations.keys()).toEqual(["allocations/sandbox/sandbox-1"]);
+  });
+
+  it("rediscovers allocation after create loses its response and prunes it after termination", async () => {
+    const h = await setup();
+    const original = h.backend.backend.create;
+    vi.spyOn(h.backend.backend, "create").mockImplementationOnce(
+      async (request) => {
+        await original(request);
+        throw new Error("lost allocation response");
+      },
+    );
+    const client = modalAllocations(h.bb, Date.now).wrap(h.backend.backend);
+    await expect(
+      client.create({
+        appName: "bb-sandboxes",
+        name: "lost-response",
+        image: { type: "image", imageId: "im-test" },
+        timeoutMs: 60_000,
+        cpu: null,
+        memoryMiB: null,
+        tags: { bbMachineKey: "lost-response" },
+      }),
+    ).rejects.toThrow("lost allocation response");
+    expect(await h.bb.storage.kv.list("allocations/pending/")).toHaveLength(1);
+    const restarted = modalAllocations(h.bb, Date.now);
+    await sweepModalAllocations(h.bb, restarted, h.backend.backend, Date.now());
+    expect(await restarted.keys()).toEqual(["allocations/sandbox/sandbox-1"]);
+    h.backend.states[0]!.terminated = true;
+    await sweepModalAllocations(h.bb, restarted, h.backend.backend, Date.now());
+    expect(await restarted.keys()).toEqual([]);
+  });
+
+  it("does not inspect another BB's untracked allocation or prune entries against another account", async () => {
+    const h = await setup();
+    const created = await h.provider.create(createContext());
+    if (created.status !== "created")
+      throw new Error("Expected created machine");
+    await h.backend.backend.create({
+      appName: "bb-sandboxes",
+      name: "other-bb",
+      image: { type: "image", imageId: "im-test" },
+      timeoutMs: 60_000,
+      cpu: null,
+      memoryMiB: null,
+      tags: { bbMachineKey: "other-bb" },
+    });
+    const allocations = modalAllocations(h.bb, Date.now);
+    const lookup = vi.spyOn(h.backend.backend, "fromId");
+    await sweepModalAllocations(
+      h.bb,
+      allocations,
+      h.backend.backend,
+      Date.now(),
+    );
+    expect(lookup).toHaveBeenCalledExactlyOnceWith("sandbox-1");
+    lookup.mockClear();
+    await sweepModalAllocations(
+      h.bb,
+      allocations,
+      {
+        ...h.backend.backend,
+        accountIdentity: async () => "different-account",
+      },
+      Date.now(),
+    );
+    expect(lookup).not.toHaveBeenCalled();
+    expect(await allocations.keys()).toHaveLength(1);
+  });
+
+  it("retains pending creates until their lifetime expires and never treats a lookup error as absence", async () => {
+    const h = await setup();
+    const allocations = modalAllocations(h.bb, () => 0);
+    const create = vi
+      .spyOn(h.backend.backend, "create")
+      .mockRejectedValue(new Error("allocation failed"));
+    const client = allocations.wrap(h.backend.backend);
+    await expect(
+      client.create({
+        appName: "bb-sandboxes",
+        name: "pending",
+        image: { type: "image", imageId: "im-test" },
+        timeoutMs: 60_000,
+        cpu: null,
+        memoryMiB: null,
+        tags: { bbMachineKey: "pending" },
+      }),
+    ).rejects.toThrow();
+    await sweepModalAllocations(h.bb, allocations, h.backend.backend, 59_999);
+    expect(await allocations.keys()).toHaveLength(1);
+    vi.spyOn(h.backend.backend, "fromName").mockRejectedValueOnce(
+      new Error("lookup failed"),
+    );
+    await sweepModalAllocations(h.bb, allocations, h.backend.backend, 60_001);
+    expect(await allocations.keys()).toHaveLength(1);
+    await sweepModalAllocations(h.bb, allocations, h.backend.backend, 60_001);
+    expect(await allocations.keys()).toEqual([]);
+    create.mockRestore();
+  });
+});
+
+it.each(["lookup", "delete"] as const)(
+  "keeps successful termination successful when tracking %s fails",
+  async (failure) => {
+    const h = await setup();
+    const tracker = modalAllocations(h.bb, Date.now);
+    const client = tracker.wrap(h.backend.backend);
+    const created = await h.provider.create(createContext());
+    if (created.status !== "created")
+      throw new Error("Expected created machine");
+    const sandbox = await client.fromId("sandbox-1");
+    if (sandbox === null) throw new Error("Expected sandbox");
+    const spy =
+      failure === "lookup"
+        ? vi
+            .spyOn(h.backend.backend, "fromId")
+            .mockRejectedValueOnce(new Error("lookup unavailable"))
+        : vi
+            .spyOn(h.bb.storage.kv, "delete")
+            .mockRejectedValueOnce(new Error("storage unavailable"));
+    await expect(sandbox.terminate()).resolves.toBeUndefined();
+    expect(h.backend.states[0]?.terminated).toBe(true);
+    expect(await h.bb.storage.kv.list("allocations/")).toEqual([
+      "allocations/sandbox/sandbox-1",
+    ]);
+    spy.mockRestore();
+    await h.harness.runSchedule("pause-idle-machines");
+    expect(await h.bb.storage.kv.list("allocations/")).toEqual([]);
+  },
+);

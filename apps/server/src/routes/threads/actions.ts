@@ -37,7 +37,10 @@ import {
 } from "../../services/plugins/plugin-thread-events.js";
 import { toThreadQueuedMessage } from "../../services/threads/thread-queued-messages.js";
 import { retryFailedTurn } from "../../services/threads/turn-retry.js";
-import { requirePublicThread } from "../../services/lib/entity-lookup.js";
+import {
+  requireConnectedHostSession,
+  requirePublicThread,
+} from "../../services/lib/entity-lookup.js";
 import { parseSafeRelativeRoutePath } from "../relative-route-path.js";
 import { validatePromptAttachmentReferences } from "../../services/projects/attachments.js";
 import {
@@ -433,6 +436,7 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
     const environment = await requireThreadCommandEnvironment(deps, {
       thread,
     });
+    requireConnectedHostSession(deps, environment.hostId);
     const execution = await buildExecutionOptions(
       deps,
       {},

@@ -71,6 +71,17 @@ import {
   stripThreadContextEnv,
 } from "@bb/config/runtime";
 import { z } from "zod";
+import {
+  bold,
+  cyan,
+  dim,
+  green,
+  red,
+  yellow,
+  log,
+  beginStep,
+  endStep,
+} from "./launcher-output.js";
 
 const HOST_AUTH_FILE_NAME = "auth.json";
 const HOST_ID_FILE_NAME = "host-id";
@@ -586,46 +597,6 @@ interface AssertConfiguredServerBindHostArgs {
 
 interface ResolveHostDaemonCommandResult {
   kind: "join" | "start";
-}
-
-function color(code: number, value: string): string {
-  return `\x1b[${code}m${value}\x1b[0m`;
-}
-
-function bold(value: string): string {
-  return color(1, value);
-}
-
-function cyan(value: string): string {
-  return color(36, value);
-}
-
-function dim(value: string): string {
-  return color(2, value);
-}
-
-function green(value: string): string {
-  return color(32, value);
-}
-
-function red(value: string): string {
-  return color(31, value);
-}
-
-function yellow(value: string): string {
-  return color(33, value);
-}
-
-function log(icon: string, message: string): void {
-  process.stdout.write(`  ${icon}  ${message}\n`);
-}
-
-function beginStep(message: string): void {
-  process.stdout.write(`\x1b[2K  ${dim("○")}  ${message}\r`);
-}
-
-function endStep(icon: string, message: string): void {
-  process.stdout.write(`\x1b[2K  ${icon}  ${message}\n`);
 }
 
 function formatReadyOutputRow(label: string, value: string): string {
