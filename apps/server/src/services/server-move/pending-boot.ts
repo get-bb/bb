@@ -1,11 +1,13 @@
 import type { Dirent } from "node:fs";
 import { readdir, readFile, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { eq } from "drizzle-orm";
 import {
   countAppliedMigrations,
   getAppSettings,
   getHost,
   getPluginKvValue,
+  hostDaemonSessions,
   rerootServerOwnedPluginPaths,
   setAppSettings,
   swapServerHostRoles,
@@ -77,9 +79,23 @@ export interface ApplyServerImportAtBootArgs {
   now: number;
 }
 
+export interface ImportedDaemonSession {
+  hostId: string;
+  id: string;
+}
+
 export interface ServerImportBootResult {
+  importedDaemonSessions: ImportedDaemonSession[];
   manualImportPending: boolean;
   pendingMove: PendingServerMove | null;
+}
+
+function listActiveDaemonSessions(db: DbConnection): ImportedDaemonSession[] {
+  return db
+    .select({ hostId: hostDaemonSessions.hostId, id: hostDaemonSessions.id })
+    .from(hostDaemonSessions)
+    .where(eq(hostDaemonSessions.status, "active"))
+    .all();
 }
 
 export type ManualServerImportCompletion =
@@ -345,11 +361,16 @@ export async function applyServerImportAtBoot(
 ): Promise<ServerImportBootResult> {
   const marker = await readServerImportFile(args.dataDir);
   if (marker === null) {
-    return { manualImportPending: false, pendingMove: null };
+    return {
+      importedDaemonSessions: [],
+      manualImportPending: false,
+      pendingMove: null,
+    };
   }
   const targetHostId =
     marker.targetHostId ??
     readPrimaryHostIdFromDataDir({ dataDir: args.dataDir });
+  let importedDaemonSessions: ImportedDaemonSession[] = [];
   if (marker.fixupsAppliedAt === null) {
     const result = await applyServerImportFixups({
       dataDir: args.dataDir,
@@ -365,12 +386,19 @@ export async function applyServerImportAtBoot(
             targetHostId,
           })
         : null;
+    importedDaemonSessions = listActiveDaemonSessions(args.db);
     await writeServerImportFile(args.dataDir, {
       ...marker,
       fixupsAppliedAt: args.now,
     });
     args.logger.info(
-      { hostRoles, kind: marker.kind, moveId: marker.moveId, result },
+      {
+        hostRoles,
+        importedDaemonSessions: importedDaemonSessions.length,
+        kind: marker.kind,
+        moveId: marker.moveId,
+        result,
+      },
       "Applied imported server data fixups",
     );
   }
@@ -380,7 +408,11 @@ export async function applyServerImportAtBoot(
         {},
         "Imported server data is waiting for this machine to enroll before it swaps machine roles",
       );
-      return { manualImportPending: true, pendingMove: null };
+      return {
+        importedDaemonSessions,
+        manualImportPending: true,
+        pendingMove: null,
+      };
     }
     await finishManualImport({
       dataDir: args.dataDir,
@@ -390,12 +422,17 @@ export async function applyServerImportAtBoot(
       now: args.now,
       targetHostId,
     });
-    return { manualImportPending: false, pendingMove: null };
+    return {
+      importedDaemonSessions,
+      manualImportPending: false,
+      pendingMove: null,
+    };
   }
   if (marker.moveId === null) {
     throw new Error(`${SERVER_IMPORT_FILE_NAME} for a move has no moveId`);
   }
   return {
+    importedDaemonSessions,
     manualImportPending: false,
     pendingMove: {
       moveId: marker.moveId,

@@ -157,6 +157,7 @@ describe("imported server boot", () => {
       });
 
       expect(boot).toEqual({
+        importedDaemonSessions: [],
         manualImportPending: false,
         pendingMove: {
           moveId: "move-1",
@@ -268,7 +269,11 @@ describe("imported server boot", () => {
           logger: testLogger,
           now: 1,
         }),
-      ).toEqual({ manualImportPending: false, pendingMove: null });
+      ).toEqual({
+        importedDaemonSessions: [],
+        manualImportPending: false,
+        pendingMove: null,
+      });
 
       expect(existsSync(join(dataDir, SERVER_IMPORT_FILE_NAME))).toBe(false);
       expect(rootDirOf(db, "tasks")).toBe(`${dataDir}/plugins/npm/tasks`);
@@ -292,7 +297,11 @@ describe("imported server boot", () => {
           logger: testLogger,
           now: 1_000,
         }),
-      ).toEqual({ manualImportPending: true, pendingMove: null });
+      ).toEqual({
+        importedDaemonSessions: [],
+        manualImportPending: true,
+        pendingMove: null,
+      });
       expect(await readServerImportFile(dataDir)).toMatchObject({
         kind: "manual",
         fixupsAppliedAt: 1_000,
@@ -309,7 +318,11 @@ describe("imported server boot", () => {
           logger: testLogger,
           now: 2_000,
         }),
-      ).toEqual({ manualImportPending: false, pendingMove: null });
+      ).toEqual({
+        importedDaemonSessions: [],
+        manualImportPending: false,
+        pendingMove: null,
+      });
 
       expect(existsSync(join(dataDir, SERVER_IMPORT_FILE_NAME))).toBe(false);
       expect(getHost(db, "host-old")?.machineProviderId).toBe("manual");
@@ -469,7 +482,11 @@ describe("imported server boot", () => {
           logger: testLogger,
           now: 1,
         }),
-      ).toEqual({ manualImportPending: false, pendingMove: null });
+      ).toEqual({
+        importedDaemonSessions: [],
+        manualImportPending: false,
+        pendingMove: null,
+      });
       expect(rootDirOf(db, "tasks")).toBe(
         `${SOURCE_DATA_DIR}/plugins/npm/tasks`,
       );
