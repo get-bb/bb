@@ -93,6 +93,11 @@
       "types": "./src/managed-json-file.ts",
       "default": "./src/managed-json-file.ts"
     },
+    "./file-lock": {
+      "source": "./src/file-lock.ts",
+      "types": "./src/file-lock.ts",
+      "default": "./src/file-lock.ts"
+    },
     "./client-config": {
       "source": "./src/client-config.ts",
       "types": "./src/client-config.ts",
@@ -136,12 +141,11 @@
   },
   "dependencies": {
     "@bb/domain": "workspace:*",
-    "better-sqlite3": "13.0.3",
+    "fs-native-extensions": "1.5.0",
     "zod": "4.3.6"
   },
   "devDependencies": {
     "@bb/tsconfig": "workspace:*",
-    "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.0.0",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "typescript-7": "npm:typescript@^7.0.2"

@@ -1,6 +1,6 @@
 const fs = require("node:fs/promises");
 const { syncBuiltinESMExports } = require("node:module");
-const Database = require("better-sqlite3");
+const nativeLocks = require("fs-native-extensions");
 const target = process.env.BB_TEST_TARGET;
 const mutationRead = target.endsWith("client.json") ? 1 : 2;
 let reads = 0;
@@ -61,16 +61,13 @@ fs.rename = async function (from, to) {
   return result;
 };
 
-const exec = Database.prototype.exec;
-Database.prototype.exec = function (sql) {
-  try {
-    return exec.call(this, sql);
-  } catch (error) {
-    if (error.code === "SQLITE_BUSY" && !blocked) {
-      blocked = true;
-      notify("blocked");
-    }
-    throw error;
+const tryLock = nativeLocks.tryLock;
+nativeLocks.tryLock = function (...args) {
+  const acquired = tryLock.call(this, ...args);
+  if (!acquired && !blocked) {
+    blocked = true;
+    notify("blocked");
   }
+  return acquired;
 };
 syncBuiltinESMExports();
