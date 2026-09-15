@@ -84,6 +84,7 @@ This index lists every command path that the core CLI registers. Read the task-s
 - `bb machine remove`
 - `bb machine suspend`
 - `bb machine resume`
+- `bb machine reconcile`
 - `bb machine retry-cleanup`
 - `bb machine retry-update`
 - `bb machine provider-cli`
@@ -304,5 +305,3 @@ Machine environment: `bb machine env list`, `bb machine env set NAME`
 (value from stdin), and `bb machine env unset NAME`; all accept `--json`.
 
 Standalone `bb machine create` machines remain until explicitly removed.
-
-- `bb machine reconcile <id-or-name> [--json]`: reconcile provider compute with core’s recorded suspended state; active machines are unchanged.
