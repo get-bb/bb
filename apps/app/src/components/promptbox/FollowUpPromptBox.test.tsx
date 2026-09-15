@@ -83,6 +83,7 @@ vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
   DEFAULT_COMPOSER_SCOPE: { kind: "new-thread", projectId: null },
   PromptBoxInternal: ({
     footerStart,
+    modeHeader,
     compact,
     onSubmit,
     onEscape,
@@ -96,6 +97,7 @@ vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
     voice,
   }: {
     footerStart?: ReactNode;
+    modeHeader?: ReactNode;
     compact?: {
       isCompact: boolean;
       placeholder?: string;
@@ -126,6 +128,7 @@ vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
         suppressPluginComposerCustomizations ? "true" : "false"
       }
     >
+      {modeHeader}
       {footerStart}
       <input
         aria-label="Follow-up prompt"
@@ -698,6 +701,45 @@ describe("FollowUpPromptBox", () => {
     expect(props.composer?.onSubmit).toHaveBeenCalledOnce();
     expect(mocks.scrollToBottom).toHaveBeenCalledOnce();
   });
+
+  it.each([false, true])(
+    "keeps exit handoff available without replacing the editor (compact viewport: %s)",
+    (isCompactViewport) => {
+      mocks.isCompactViewport = isCompactViewport;
+      const props = createFollowUpPromptBoxProps({ kind: "ready" });
+      const handoff = {
+        sourceProviderId: "codex",
+        active: false,
+        onStart: vi.fn(),
+        onExit: vi.fn(),
+        onSelect: vi.fn(),
+      };
+      props.execution.handoff = handoff;
+      const { rerender } = render(<FollowUpPromptBox {...props} />);
+      const editor = screen.getByLabelText("Follow-up prompt");
+      expect(screen.queryByRole("button", { name: "Exit handoff" })).toBeNull();
+
+      rerender(
+        <FollowUpPromptBox
+          {...props}
+          execution={{
+            ...props.execution,
+            handoff: { ...handoff, active: true },
+          }}
+        />,
+      );
+      expect(screen.getByLabelText("Follow-up prompt")).toBe(editor);
+      expect(screen.getByText("Handoff to new thread")).not.toBeNull();
+      const exit = screen.getByRole("button", { name: "Exit handoff" });
+      expect(exit.textContent).toBe("");
+      fireEvent.click(exit);
+      expect(handoff.onExit).toHaveBeenCalledOnce();
+
+      rerender(<FollowUpPromptBox {...props} />);
+      expect(screen.queryByRole("button", { name: "Exit handoff" })).toBeNull();
+      expect(screen.getByLabelText("Follow-up prompt")).toBe(editor);
+    },
+  );
 
   it("forwards the composer's host Escape action", () => {
     const props = createFollowUpPromptBoxProps({ kind: "ready" });

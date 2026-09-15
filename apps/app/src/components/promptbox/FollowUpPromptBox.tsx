@@ -1,4 +1,5 @@
-import type { IconName } from "@bb/shared-ui/icon";
+import { Icon, type IconName } from "@bb/shared-ui/icon";
+import { Button } from "@bb/shared-ui/button";
 import type { FollowUpSubmitMode } from "@bb/client-core";
 import {
   memo,
@@ -758,6 +759,29 @@ function FollowUpPromptBoxWithComposer({
         compact={compactConfig}
         editorLayout="thread"
         onCollapse={isCompactViewport ? undefined : collapseWidePromptBox}
+        modeHeader={
+          execution.handoff?.active ? (
+            <div className="flex min-h-7 items-center gap-1.5 text-xs text-subtle-foreground">
+              <Icon
+                name="MessageSquarePlus"
+                className="size-3.5 shrink-0"
+                aria-hidden
+              />
+              <span>Handoff to new thread</span>
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                className="ml-auto size-6 shrink-0 text-subtle-foreground"
+                onClick={execution.handoff.onExit}
+                disabled={executionControlsDisabled}
+                aria-label="Exit handoff"
+              >
+                <Icon name="X" className="size-3" aria-hidden />
+              </Button>
+            </div>
+          ) : null
+        }
         footerStart={footerStart}
       />
       {!isPromptBoxCompact ? (

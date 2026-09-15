@@ -96,27 +96,6 @@ describe("ExecutionControls", () => {
     expect(trigger.textContent).not.toContain("Failed to load models");
   });
 
-  it("offers exit handoff while the model picker is closed", () => {
-    const onExit = vi.fn();
-    renderExecutionControls({
-      ...makeExecutionControlsProps(),
-      handoff: {
-        sourceProviderId: "codex",
-        active: true,
-        onStart: vi.fn(),
-        onExit,
-        onSelect: vi.fn(),
-      },
-    });
-    expect(
-      screen
-        .getByRole("button", { name: "Provider, model and reasoning" })
-        .getAttribute("aria-expanded"),
-    ).toBe("false");
-    fireEvent.click(screen.getByRole("button", { name: "Exit handoff" }));
-    expect(onExit).toHaveBeenCalledOnce();
-  });
-
   it("maps disabled fast mode to the explicit default service tier", () => {
     const onServiceTierChange = vi.fn();
     renderExecutionControls({
