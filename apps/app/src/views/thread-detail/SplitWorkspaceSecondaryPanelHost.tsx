@@ -70,7 +70,8 @@ export function SplitWorkspaceSecondaryPanelHost({
   const shortcut = useAppCommandShortcut("panel.toggle");
 
   const [isPanelVisible, setIsPanelVisible] = useState<boolean | null>(null);
-  const isOpen = isPanelVisible ?? model?.isOpen ?? false;
+  const isDisabled = model?.isDisabled === true;
+  const isOpen = !isDisabled && (isPanelVisible ?? model?.isOpen ?? false);
   const lastTargetRef = useRef<{
     paneId: string;
     contentKey: string;
@@ -78,7 +79,7 @@ export function SplitWorkspaceSecondaryPanelHost({
   } | null>(null);
 
   useLayoutEffect(() => {
-    if (model === null) {
+    if (model === null || isDisabled) {
       lastTargetRef.current = null;
       return;
     }
@@ -103,7 +104,7 @@ export function SplitWorkspaceSecondaryPanelHost({
       return;
     }
     if (model.isOpen !== isPanelVisible) model.onToggle();
-  }, [focusedPaneId, isPanelVisible, model]);
+  }, [focusedPaneId, isDisabled, isPanelVisible, model]);
 
   useEffect(() => {
     const group = panelGroupRef.current;
@@ -134,6 +135,7 @@ export function SplitWorkspaceSecondaryPanelHost({
   ]);
 
   const toggleWindowPanel = () => {
+    if (isDisabled) return;
     if (model !== null) {
       model.onToggle();
       return;
@@ -141,6 +143,7 @@ export function SplitWorkspaceSecondaryPanelHost({
     setIsPanelVisible((current) => !(current ?? false));
   };
   useAppCommandHandler("panel.toggle", () => {
+    if (isDisabled) return true;
     if (model !== null) return false;
     toggleWindowPanel();
     return true;
@@ -176,7 +179,8 @@ export function SplitWorkspaceSecondaryPanelHost({
 
   const toggleLabel = isOpen ? "Hide right panel" : "Show right panel";
   const toggleIconName = RIGHT_PANEL_TOGGLE_ICON_NAME;
-  const showsCornerToggle = !isPaneMaximized && !(isOpen && model !== null);
+  const showsCornerToggle =
+    !isDisabled && !isPaneMaximized && !(isOpen && model !== null);
   const pinsCornerToggle = showsCornerToggle && !isOpen;
   const hostLayout = useMemo<SecondaryPanelHostLayout>(
     () => ({ isOpen, isSuppressed: isPaneMaximized, pinsCornerToggle }),
@@ -189,33 +193,35 @@ export function SplitWorkspaceSecondaryPanelHost({
         className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden"
         style={getPanelCollapseTransitionStyle(model?.transitionsReady ?? true)}
       >
-        <div
-          data-testid="split-workspace-panel-toggle"
-          className={cn(
-            "absolute right-4 top-2.5 z-40",
-            !showsCornerToggle && "hidden",
-            MACOS_APP_REGION_NO_DRAG_CLASS,
-          )}
-        >
-          <AppCommandShortcutHint
-            shortcut={shortcut}
-            className="absolute right-0 top-full mt-1"
-          />
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className={HEADER_ICON_BUTTON_CLASS}
-            aria-label={
-              shortcut ? `${toggleLabel} (${shortcut.label})` : toggleLabel
-            }
-            aria-keyshortcuts={shortcut?.ariaKeyshortcuts}
-            aria-expanded={isOpen}
-            onClick={toggleWindowPanel}
+        {!isDisabled && (
+          <div
+            data-testid="split-workspace-panel-toggle"
+            className={cn(
+              "absolute right-4 top-2.5 z-40",
+              !showsCornerToggle && "hidden",
+              MACOS_APP_REGION_NO_DRAG_CLASS,
+            )}
           >
-            <Icon name={toggleIconName} />
-          </Button>
-        </div>
+            <AppCommandShortcutHint
+              shortcut={shortcut}
+              className="absolute right-0 top-full mt-1"
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className={HEADER_ICON_BUTTON_CLASS}
+              aria-label={
+                shortcut ? `${toggleLabel} (${shortcut.label})` : toggleLabel
+              }
+              aria-keyshortcuts={shortcut?.ariaKeyshortcuts}
+              aria-expanded={isOpen}
+              onClick={toggleWindowPanel}
+            >
+              <Icon name={toggleIconName} />
+            </Button>
+          </div>
+        )}
         <PanelGroup
           ref={panelGroupRef}
           data-split-resize-grid-root=""
@@ -297,7 +303,7 @@ export function SplitWorkspaceSecondaryPanelHost({
                 </div>
               </Panel>
             </>
-          ) : (
+          ) : isDisabled ? null : (
             <PluginComposerHostProvider
               key={focusedPaneId}
               value={model.composerHost}

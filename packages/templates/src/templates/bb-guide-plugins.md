@@ -644,7 +644,10 @@ form; no props in V1, optional host-rendered title),
 navPanel (own sidebar entry + /plugins/<id>/<path>/* route; the remainder
 arrives as the component's subPath prop for panel-internal deep links; the
 host always renders the shared plugin title bar and the component owns a
-zero-padding full-bleed body, including its scrolling; optional
+zero-padding full-bleed body, including its scrolling;
+experimental_rightPanel: false removes the entire right panel and toggle,
+including Browser, Terminal, and fixed tabs (requires SDK 0.4.96 or newer;
+omitted or true keeps the panel, and saved panel state is retained); optional
 experimental_sidebarAccessory mounts a presentational live-value component at
 the trailing edge of the sidebar row on wide viewports, bounded to one short
 line, replaced visually by the host options button on hover/focus, and omitted

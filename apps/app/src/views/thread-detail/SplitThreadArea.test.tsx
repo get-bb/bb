@@ -53,6 +53,7 @@ const threadStore = vi.hoisted(
     new Map<string, { archivedAt: number | null; deletedAt: number | null }>(),
 );
 const viewportState = vi.hoisted(() => ({ compact: false }));
+const pluginPanelState = vi.hoisted(() => ({ disabled: false }));
 const sidebarState = vi.hoisted(() => ({ showing: true }));
 const panelFullScreenState = vi.hoisted(() => ({
   isMainCollapsed: false,
@@ -230,6 +231,7 @@ vi.mock("@/components/plugin/PluginPanelRightPanelHost", () => ({
       () => ({
         composerHost: null,
         contentKey: `plugin-panel:${pluginId}:${panelPath}`,
+        isDisabled: pluginPanelState.disabled,
         isMainCollapsed: false,
         isOpen: isPanelOpen,
         panel: (
@@ -631,6 +633,7 @@ function renderSplitArea(options: {
 
 beforeEach(() => {
   viewportState.compact = false;
+  pluginPanelState.disabled = false;
   sidebarState.showing = true;
   panelFullScreenState.isMainCollapsed = false;
   panelGroupLayoutState.layout = [100, 0];
@@ -1540,6 +1543,40 @@ describe("SplitThreadArea", () => {
     expect(
       screen.queryByTestId("split-workspace-empty-panel-state"),
     ).toBeNull();
+  });
+
+  it("removes the panel and toggle for an opted-out plugin and restores the thread panel", async () => {
+    pluginPanelState.disabled = true;
+    const layout = pluginSplitLayout();
+    layout.focusedPaneId = "pane-1";
+    renderSplitArea({
+      path: threadPath("thr-a"),
+      layout,
+      routeAwareContent: true,
+    });
+
+    await screen.findByTestId("hosted-panel-thr-a");
+    const pluginPane = document.querySelector('[data-split-pane-id="pane-2"]');
+    if (!(pluginPane instanceof HTMLElement)) {
+      throw new Error("Expected plugin split pane");
+    }
+    fireEvent.pointerDown(pluginPane);
+    await waitFor(() =>
+      expect(screen.queryByTestId("split-workspace-panel-toggle")).toBeNull(),
+    );
+    expect(screen.queryByTestId("hosted-plugin-app-panel")).toBeNull();
+    expect(screen.queryByTestId("split-workspace-empty-panel-state")).toBeNull();
+    act(() => {
+      expect(commandHandlers.get("panel.toggle")?.()).toBe(true);
+    });
+    expect(screen.queryByTestId("split-workspace-panel-toggle")).toBeNull();
+
+    fireEvent.pointerDown(screen.getByTestId("pane-thr-a"));
+    await screen.findByTestId("hosted-panel-thr-a");
+    expect(
+      screen.getByTestId("split-workspace-panel-toggle")
+        .querySelector("button")?.getAttribute("aria-expanded"),
+    ).toBe("true");
   });
 
   it("keeps the right-panel resize target above a bounded pane header", async () => {

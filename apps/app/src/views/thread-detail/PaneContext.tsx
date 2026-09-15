@@ -38,6 +38,7 @@ export interface PaneSecondaryPanelViewModel {
   contentKey: string;
   isMainCollapsed: boolean;
   isOpen: boolean;
+  isDisabled?: boolean;
   panel: ReactNode;
   onToggle: () => void;
   transitionsReady: boolean;

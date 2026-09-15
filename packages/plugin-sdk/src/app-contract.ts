@@ -554,8 +554,16 @@ export interface PluginNavPanelRegistration {
   path: string;
   component: ComponentType<PluginNavPanelProps>;
   /**
+   * Set false to remove this page's host-owned right panel, including its
+   * toggle, Browser, Terminal, and fixed tabs. Defaults to true. Saved panel
+   * state is retained if the page enables the panel again.
+   *
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_rightPanel?: boolean;
+  /**
    * Ordered, non-closable tabs shown in this page's host-owned right panel.
-   * BB owns selection and persistence and always includes its native Browser
+   * BB owns selection and persistence and includes its native Browser
    * and Terminal tools beside them. One tab is active in each visible split
    * pane, so multiple fixed-tab components can be mounted concurrently. A
    * component mounts only while its tab is active in a visible pane and the

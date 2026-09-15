@@ -873,6 +873,44 @@ describe("loadPluginApp", () => {
     );
   });
 
+  it.each([undefined, true, false])(
+    "normalizes the nav panel right-panel option (%s)",
+    async (experimental_rightPanel) => {
+      const captured = await loadPluginApp(
+        definePluginApp((builder) => {
+          builder.slots.navPanel({
+            id: "tasks",
+            title: "Tasks",
+            icon: "ListTodo",
+            path: "tasks",
+            component: Panel,
+            experimental_rightPanel,
+          });
+        }),
+      );
+      expect(captured.navPanels[0]?.experimental_rightPanel).toBe(
+        experimental_rightPanel ?? true,
+      );
+    },
+  );
+
+  it("rejects malformed nav panel right-panel options", async () => {
+    await expect(
+      loadPluginApp(
+        definePluginApp((builder) => {
+          builder.slots.navPanel({
+            id: "tasks",
+            title: "Tasks",
+            icon: "ListTodo",
+            path: "tasks",
+            component: Panel,
+            experimental_rightPanel: "false" as never,
+          });
+        }),
+      ),
+    ).rejects.toThrow('"experimental_rightPanel" must be a boolean');
+  });
+
   it("captures a nav panel experimental sidebar accessory", async () => {
     function SidebarAccessory() {
       return <span>12</span>;

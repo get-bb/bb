@@ -1,5 +1,18 @@
 # APIs To Audit
 
+## `PluginNavPanelRegistration.experimental_rightPanel`
+
+Optional boolean on `app.slots.navPanel`. Defaults to true. False removes the
+page's host-owned right panel and toggle, including Browser, Terminal, and any
+declared fixed tabs, in standalone and split panes. The page does not register
+panel navigation or keyboard handlers that open the suppressed panel. Saved
+panel state remains available if the plugin enables the panel again.
+
+Before stabilization, verify focus transitions between opted-out pages and
+threads, compact layouts, persisted open tabs, and re-enabling a page's panel.
+Requires SDK 0.4.96. Older hosts reject this registration member; plugins must
+wait for a host release that supports it before using it.
+
 ## `app.commands.register`
 
 `app.commands.register` requires SDK 0.4.91; `defaultShortcut` and keyboard

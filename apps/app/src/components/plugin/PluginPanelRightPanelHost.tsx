@@ -85,7 +85,11 @@ import {
   normalizeExperimentalFileOpenOptions,
   toFilePreviewLineRange,
 } from "@/lib/live-file-navigation";
-import { useOptionalPaneContext } from "@/views/thread-detail/PaneContext";
+import {
+  useOptionalPaneContext,
+  usePaneSecondaryPanelRegistration,
+  type PaneSecondaryPanelViewModel,
+} from "@/views/thread-detail/PaneContext";
 import {
   resolveTerminalHost,
   TerminalHostSelector,
@@ -212,21 +216,70 @@ function terminalScope(target: TerminalCreateTarget | null) {
   };
 }
 
-export function PluginPanelRightPanelHost({
-  children,
-  panelPath,
-  pluginId,
-  subPath,
-  flushPageInsets = false,
-  paneId,
-}: {
+interface PluginPanelRightPanelHostProps {
   children: ReactNode;
   panelPath: string;
   pluginId: string;
   subPath: string;
   flushPageInsets?: boolean;
   paneId?: string;
-}) {
+}
+
+const DISABLED_PANEL_MODEL: PaneSecondaryPanelViewModel = {
+  composerHost: null,
+  contentKey: "plugin-page-without-right-panel",
+  isMainCollapsed: false,
+  isOpen: false,
+  isDisabled: true,
+  panel: null,
+  onToggle: () => {},
+  transitionsReady: true,
+};
+
+function PluginPageWithoutRightPanel({
+  children,
+  flushPageInsets,
+}: PluginPanelRightPanelHostProps) {
+  const pane = useOptionalPaneContext();
+  usePaneSecondaryPanelRegistration(
+    pane?.secondaryPanelHost ?? null,
+    DISABLED_PANEL_MODEL,
+  );
+  useAppCommandHandler("panel.toggle", () => pane?.isFocused ?? true);
+  return (
+    <div
+      className={`flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden ${
+        flushPageInsets
+          ? "-m-4 h-[calc(100%+2rem)] md:-m-5 md:h-[calc(100%+2.5rem)]"
+          : "h-full"
+      }`}
+    >
+      {children}
+    </div>
+  );
+}
+
+export function PluginPanelRightPanelHost(props: PluginPanelRightPanelHostProps) {
+  const { navPanels } = usePluginSlots();
+  const panel = navPanels.find(
+    (candidate) =>
+      candidate.pluginId === props.pluginId && candidate.path === props.panelPath,
+  );
+  return panel?.experimental_rightPanel === false ? (
+    <PluginPageWithoutRightPanel {...props} />
+  ) : (
+    <EnabledPluginPanelRightPanelHost {...props} />
+  );
+}
+
+function EnabledPluginPanelRightPanelHost({
+  children,
+  panelPath,
+  pluginId,
+  subPath,
+  flushPageInsets = false,
+  paneId,
+}: PluginPanelRightPanelHostProps) {
   const { navPanels } = usePluginSlots();
   const panel =
     navPanels.find(

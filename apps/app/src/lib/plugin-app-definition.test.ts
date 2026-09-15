@@ -555,6 +555,7 @@ describe("collectPluginAppRegistrations", () => {
     expect(registrations.navPanels).toEqual([
       {
         id: "board",
+        experimental_rightPanel: true,
         title: "Board",
         icon: "columns",
         path: "board",
