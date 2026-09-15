@@ -120,7 +120,7 @@ import {
   serverMoveFreezeMiddleware,
   serverMoveWriteFreezeMiddleware,
 } from "./services/server-move/freeze.js";
-import { isServerMoveFrozen } from "./services/server-move/freeze-state.js";
+import { isServerMoveSnapshotFenced } from "./services/server-move/freeze-state.js";
 import {
   createManualServerImportCompletion,
   type PendingServerMove,
@@ -716,7 +716,8 @@ export function createApp(
     isFrozen: () => pendingServerMove !== null || serverMove.isFrozen(),
   };
   const daemonWriteFreezeState = {
-    isFrozen: () => pendingServerMove !== null || isServerMoveFrozen(deps.db),
+    isFrozen: () =>
+      pendingServerMove !== null || isServerMoveSnapshotFenced(deps.db),
   };
   app.use("/api/v1/*", serverMoveFreezeMiddleware(serverMoveFreezeState));
   for (const path of ["/internal/hosts/enroll", "/internal/hosts/enroll-key"]) {

@@ -44,7 +44,7 @@ import {
 } from "../lib/lifecycle-api-errors.js";
 import { requireWorkspaceCommandTarget } from "../environments/workspace-command-target.js";
 import {
-  isServerMoveFrozen,
+  isServerMoveSnapshotFenced,
   serverMovingError,
 } from "../server-move/freeze-state.js";
 import {
@@ -741,9 +741,9 @@ export class TerminalSessionLifecycle {
       opened = await pendingOpen;
     } catch (error) {
       const code = error instanceof ApiError ? error.body.code : null;
-      const frozen = isServerMoveFrozen(this.options.db);
+      const fenced = isServerMoveSnapshotFenced(this.options.db);
       if (code === "terminal_open_timeout" || code === "server_moving") {
-        if (!frozen) {
+        if (!fenced) {
           const exited = updateTerminalById(
             this.options.db,
             startingSession.id,
@@ -762,7 +762,7 @@ export class TerminalSessionLifecycle {
           terminalId: startingSession.id,
           reason: "open-timeout",
         });
-      } else if (!frozen && code !== "host_disconnected") {
+      } else if (!fenced && code !== "host_disconnected") {
         const exited = updateTerminalById(this.options.db, startingSession.id, {
           closeReason: "process-exit",
           exitCode: null,

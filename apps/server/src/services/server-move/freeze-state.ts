@@ -17,6 +17,23 @@ export function isServerMoveFrozen(db: DbConnection): boolean {
   return frozenDatabases.has(db);
 }
 
+const snapshotFencedDatabases = new WeakSet<DbConnection>();
+
+export function setServerMoveSnapshotFence(
+  db: DbConnection,
+  fenced: boolean,
+): void {
+  if (fenced) {
+    snapshotFencedDatabases.add(db);
+    return;
+  }
+  snapshotFencedDatabases.delete(db);
+}
+
+export function isServerMoveSnapshotFenced(db: DbConnection): boolean {
+  return snapshotFencedDatabases.has(db);
+}
+
 export function serverMovingError(): ApiError {
   return new ApiError(
     503,

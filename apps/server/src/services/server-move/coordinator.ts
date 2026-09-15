@@ -30,7 +30,10 @@ import type {
   FullBbAppArtifact,
   FullBbAppArtifactService,
 } from "./full-artifact.js";
-import { setServerMoveFrozen } from "./freeze-state.js";
+import {
+  setServerMoveFrozen,
+  setServerMoveSnapshotFence,
+} from "./freeze-state.js";
 import type { ServerMoveModeResolution } from "./mode.js";
 import {
   listServerMovedTargets,
@@ -433,6 +436,7 @@ export function createServerMoveCoordinator(
     await environment.plugins.suspendAllButConnect();
     assertNotCancelled(move);
     setStep(move, "export", "running", "Exporting server data");
+    setServerMoveSnapshotFence(deps.db, true);
     const archive = await environment.exportArchive({
       sourceServerHostId: move.sourceServerHost.id,
       workDir: move.workDir,
@@ -810,6 +814,7 @@ export function createServerMoveCoordinator(
     move.status.cancellable = false;
     move.status.finishedAt = environment.now();
     move.frozen = false;
+    setServerMoveSnapshotFence(deps.db, false);
     notify();
     if (!cancelled) {
       deps.logger.warn(
