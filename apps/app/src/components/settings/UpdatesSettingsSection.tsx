@@ -1404,10 +1404,7 @@ export function UpdatesSettingsSection({
                   inventory.machines.length > 1 &&
                   machine.host.id === localDaemonHostId
                 }
-                showServerBadge={
-                  inventory.machines.length > 1 &&
-                  machine.host.id === serverPrimaryHostId
-                }
+                showServerBadge={machine.host.id === serverPrimaryHostId}
               >
                 {ownsApp ? (
                   <BbAppUpdateRows

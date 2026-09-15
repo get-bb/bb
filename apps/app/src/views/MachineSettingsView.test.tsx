@@ -391,7 +391,7 @@ describe("MachineSettingsView", () => {
     expect(remove.className).toContain("bg-destructive");
     expect(remove.parentElement?.className).not.toContain("justify-end");
     expect(screen.queryByText("This machine")).toBeNull();
-    expect(screen.queryByText("Server")).toBeNull();
+    expect(screen.getByText("Server")).toBeDefined();
     expect(
       screen.getByText(
         "The server machine can't be removed. Move the server to another machine first.",
@@ -460,7 +460,7 @@ describe("MachineSettingsView", () => {
     expect(screen.queryByText("This machine")).toBeNull();
   });
 
-  it("does not count disposable sandboxes toward the server badge", async () => {
+  it("badges a lone server machine but does not count sandboxes toward the client-local badge", async () => {
     hostDaemon.localDaemonHostId = HOST_ID;
     vi.mocked(sdk.system.config).mockResolvedValue({
       ...systemConfig(),
@@ -482,7 +482,7 @@ describe("MachineSettingsView", () => {
     await screen.findByText(
       "The server machine can't be removed. Move the server to another machine first.",
     );
-    expect(screen.queryByText("Server")).toBeNull();
+    expect(screen.getByText("Server")).toBeDefined();
     expect(screen.queryByText("This machine")).toBeNull();
   });
 

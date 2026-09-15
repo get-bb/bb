@@ -332,6 +332,39 @@ describe("MachinesSettingsSection", () => {
     ).toBeNull();
   });
 
+  it("badges a lone server machine without marking it as this machine", async () => {
+    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
+    vi.mocked(sdk.hosts.list).mockResolvedValue([primaryHost, sandboxHost]);
+    stubSidebarBootstrapFetch();
+
+    renderSection();
+
+    await screen.findByText("MacBook Pro");
+    expect(screen.getByText("server")).toBeDefined();
+    expect(screen.queryByText("this machine")).toBeNull();
+  });
+
+  it("keeps the server badge off a lone machine when the server machine is unknown", async () => {
+    vi.mocked(sdk.system.config).mockResolvedValue({
+      ...systemConfig(),
+      primaryHostId: null,
+      primaryHostPlatform: null,
+    });
+    vi.mocked(sdk.hosts.list).mockResolvedValue([primaryHost]);
+    stubSidebarBootstrapFetch();
+
+    renderSection();
+
+    await screen.findByText("MacBook Pro");
+    expect(screen.queryByText("server")).toBeNull();
+    await openHostMenu("MacBook Pro");
+    expect(
+      screen
+        .getByRole("menuitem", { name: "Remove machine" })
+        .getAttribute("aria-disabled"),
+    ).toBeNull();
+  });
+
   it("shows protocol versions when a machine needs an update", async () => {
     vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
     vi.mocked(sdk.hosts.list).mockResolvedValue([

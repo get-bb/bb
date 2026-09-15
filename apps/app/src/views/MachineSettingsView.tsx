@@ -287,11 +287,11 @@ export function MachineSettingsView() {
   const primaryHostId = systemConfig.data?.primaryHostId ?? null;
   const serverMoveEnabled = systemConfig.data?.experiments.serverMove ?? false;
   const isPrimary = host !== null && host.id === primaryHostId;
-  const showMachineIdentityBadges =
+  const showThisMachineBadge =
     (hosts?.filter((candidate) => candidate.type === "persistent").length ??
       0) > 1;
   const isThisMachine =
-    showMachineIdentityBadges && host !== null && host.id === localDaemonHostId;
+    showThisMachineBadge && host !== null && host.id === localDaemonHostId;
   const machineProvider =
     host?.machineProviderId === null || host?.machineProviderId === undefined
       ? null
@@ -390,7 +390,7 @@ export function MachineSettingsView() {
           now={now}
           isPrimary={isPrimary}
           isThisMachine={isThisMachine}
-          showServerBadge={showMachineIdentityBadges && isPrimary}
+          showServerBadge={isPrimary}
           lifecycleNotice={lifecycleNotice}
           lifecycleActionPending={
             suspendHost.isPending ||

@@ -327,7 +327,7 @@ export function MachinesSettingsSection() {
     showAllMachines && sandboxHosts !== undefined
       ? [...(persistentHosts ?? []), ...sandboxHosts]
       : (persistentHosts ?? []);
-  const showMachineIdentityBadges = (persistentHosts?.length ?? 0) > 1;
+  const showThisMachineBadge = (persistentHosts?.length ?? 0) > 1;
   const hasMachineRows =
     persistentHosts !== undefined && persistentHosts.length > 0;
   const machineProviderById = useMemo(
@@ -344,12 +344,8 @@ export function MachinesSettingsSection() {
           key={host.id}
           host={host}
           isPrimary={host.id === serverPrimaryHostId}
-          isThisMachine={
-            showMachineIdentityBadges && host.id === localDaemonHostId
-          }
-          showServerBadge={
-            showMachineIdentityBadges && host.id === serverPrimaryHostId
-          }
+          isThisMachine={showThisMachineBadge && host.id === localDaemonHostId}
+          showServerBadge={host.id === serverPrimaryHostId}
           platformLabel={
             host.id === localDaemonHostId && localDaemonPlatform !== null
               ? PLATFORM_LABELS[localDaemonPlatform]

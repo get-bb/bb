@@ -1040,6 +1040,37 @@ The canonical release summary.
     expect(localHeading.textContent).not.toContain("Server");
   });
 
+  it("badges a lone server machine without marking it as this machine", async () => {
+    useDesktopUpdateInfoMock.mockReturnValue({
+      desktopApi: null,
+      desktopInfo: null,
+      isDesktop: false,
+    });
+    const primary = makeHost({ id: "host_primary", name: "workstation" });
+    hostDaemon.localDaemonHostId = primary.id;
+    useUpdateInventoryMock.mockReturnValue(
+      makeInventory({
+        machines: [
+          makeMachine({
+            host: primary,
+            issues: [makeUpdateIssue({ provider: "codex" })],
+            isPrimary: true,
+          }),
+        ],
+      }),
+    );
+
+    renderSection();
+
+    const primaryHeading = screen.getByRole("heading", {
+      name: /workstation/u,
+    });
+    await waitFor(() => {
+      expect(primaryHeading.textContent).toContain("Server");
+    });
+    expect(primaryHeading.textContent).not.toContain("This machine");
+  });
+
   it("lists Cursor updates with the other provider CLIs", async () => {
     useDesktopUpdateInfoMock.mockReturnValue({
       desktopApi: null,
