@@ -1,4 +1,14 @@
-import { and, asc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  ne,
+  or,
+  sql,
+} from "drizzle-orm";
 import type {
   DiscoveredWorkspaceProperties,
   EnvironmentChangeKind,
@@ -152,6 +162,22 @@ export function findForeignManagedEnvironmentAtHostPath(
       )
       .get() ?? null
   );
+}
+
+export function listProjectEnvironmentsWithPaths(
+  db: DbConnection,
+  projectId: string,
+) {
+  return db
+    .select()
+    .from(environments)
+    .where(
+      and(
+        eq(environments.projectId, projectId),
+        isNotNull(environments.path),
+      ),
+    )
+    .all();
 }
 
 export interface ListEnvironmentsFilters {

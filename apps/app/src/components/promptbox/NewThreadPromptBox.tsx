@@ -55,10 +55,11 @@ import {
   type ProjectSelectorCreateProjectConfig,
   type ProjectSelectorOption,
 } from "@/components/pickers/ProjectSelector";
-import {
-  ReuseEnvironmentPicker,
-  type ReuseThreadOption,
-} from "@/components/pickers/ReuseEnvironmentPicker";
+import type {
+  ReuseThreadOption,
+  ReuseDiscoveryFailure,
+} from "@/components/pickers/reuse-environment/reuse-options";
+import { ReuseEnvironmentPicker } from "@/components/pickers/ReuseEnvironmentPicker";
 import {
   selectHosts,
   selectPrimaryHost,
@@ -87,12 +88,17 @@ export interface NewThreadEnvironmentConfig {
   multiMachinePickerEnabled?: boolean;
   onSelectProvider?: EnvironmentPickerUIProps["onSelectProvider"];
   onSelectHost?: EnvironmentPickerUIProps["onSelectHost"];
+  reuseDisabled?: boolean;
+  onSelectReuse?: () => void;
 }
 
 export interface NewThreadWorktreeConfig {
   options: readonly ReuseThreadOption[];
+  failures: readonly ReuseDiscoveryFailure[];
   value: string | null;
-  onChange: (environmentId: string) => void;
+  onChange: (value: string) => void;
+  onRetry?: () => void;
+  loading?: boolean;
   disabled?: boolean;
 }
 
@@ -398,7 +404,9 @@ export function EnvironmentSlot({
           (provider) => provider.id === parsedEnvironment.environmentProviderId,
         )
       : undefined;
-  const showReuseEnvironmentPicker = parsedEnvironment?.type === "reuse";
+  const showReuseEnvironmentPicker =
+    parsedEnvironment?.type === "reuse" ||
+    parsedEnvironment?.type === "worktree-path";
   const [environmentPickerOpen, setEnvironmentPickerOpen] = useState(false);
   const showEnvironmentPicker =
     !projectless ||
@@ -434,6 +442,8 @@ export function EnvironmentSlot({
         multiMachinePickerEnabled={environment.multiMachinePickerEnabled}
         onSelectProvider={environment.onSelectProvider}
         onSelectHost={environment.onSelectHost}
+        reuseDisabled={environment.reuseDisabled}
+        onSelectReuse={environment.onSelectReuse}
         className="shrink-0"
         muted
       />
@@ -441,8 +451,11 @@ export function EnvironmentSlot({
         <ReuseEnvironmentPicker
           muted
           options={worktree.options}
+          failures={worktree.failures}
           value={worktree.value}
           onChange={worktree.onChange}
+          onRetry={worktree.onRetry}
+          loading={worktree.loading}
           disabled={worktree.disabled}
         />
       ) : null}

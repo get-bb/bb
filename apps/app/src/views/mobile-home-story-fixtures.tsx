@@ -119,6 +119,7 @@ const storyEnvironment: NewThreadEnvironmentConfig = {
 
 const storyWorktree: NewThreadWorktreeConfig = {
   options: STORY_WORKTREE_OPTIONS,
+  failures: [],
   value: null,
   onChange: noop,
 };

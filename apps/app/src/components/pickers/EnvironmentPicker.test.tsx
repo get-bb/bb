@@ -128,6 +128,31 @@ function renderPicker(ui: ReactElement) {
 }
 
 describe("EnvironmentPickerUI", () => {
+  it("labels worktree creation without changing the selected provider", () => {
+    const provider = {
+      ...branchProvider,
+      id: "git-worktree",
+      displayName: "Worktree",
+    };
+    const onSelectProvider = vi.fn();
+    renderPicker(
+      <EnvironmentPickerUI
+        value="provider:git-worktree"
+        sources={sources}
+        host={host}
+        isLocal
+        providers={[provider]}
+        onSelectProvider={onSelectProvider}
+        defaultOpen
+      />,
+    );
+    fireEvent.click(screen.getByRole("option", { name: "New worktree" }));
+    expect(onSelectProvider).toHaveBeenCalledWith(provider, host.id);
+    expect(
+      screen.getByRole("button", { name: "Environment" }).textContent,
+    ).toContain("New worktree");
+  });
+
   it("does not expose an ephemeral host through the single-machine fallback", () => {
     const ephemeralHost: Host = {
       ...host,
@@ -217,6 +242,52 @@ describe("EnvironmentPickerUI", () => {
       );
     },
   );
+
+  it("offers an existing-worktree row that enters reuse mode and disables when nothing exists", () => {
+    const onSelectReuse = vi.fn();
+    const { unmount } = renderPicker(
+      <EnvironmentPickerUI
+        value="provider:project-checkout"
+        sources={sources}
+        host={host}
+        isLocal
+        providers={[checkoutProvider]}
+        selectedProviderHostId={host.id}
+        onSelectProvider={vi.fn()}
+        onSelectReuse={onSelectReuse}
+        modal={false}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Environment" }), {
+      button: 0,
+    });
+    fireEvent.click(screen.getByRole("option", { name: /Existing worktree/u }));
+    expect(onSelectReuse).toHaveBeenCalledTimes(1);
+    unmount();
+
+    renderPicker(
+      <EnvironmentPickerUI
+        value="path:host_1:%2Fworktrees%2Fspike"
+        sources={sources}
+        host={host}
+        isLocal
+        providers={[checkoutProvider]}
+        selectedProviderHostId={host.id}
+        onSelectProvider={vi.fn()}
+        onSelectReuse={onSelectReuse}
+        reuseDisabled
+        modal={false}
+      />,
+    );
+    const trigger = screen.getByRole("button", { name: "Environment" });
+    expect(trigger.textContent).toContain("Reuse");
+    fireEvent.click(trigger, { button: 0 });
+    const reuseRow = screen.getByRole("option", {
+      name: /Existing worktree/u,
+    });
+    expect(reuseRow.getAttribute("aria-disabled")).toBe("true");
+    expect(reuseRow.textContent).toContain("No existing worktrees found.");
+  });
 
   it("bounds arbitrary provider labels without changing selection", () => {
     const verboseProvider = {

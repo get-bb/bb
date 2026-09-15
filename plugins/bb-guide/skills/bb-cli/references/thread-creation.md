@@ -135,6 +135,14 @@ worktree` only; a provider takes its branch through `--environment-inputs`.
 download <project-id> <attachment-path> --client-file <path>` writes existing
   attachment bytes on the CLI machine. There is no project-attachment list or
   per-file remove API.
+- `bb project worktrees <project-id>` discovers registered Git worktrees across
+  configured project sources and merges them with reusable BB environments.
+  Partial discovery returns successful rows alongside per-machine failures.
+  Start a thread in a discovered user-managed worktree with
+  `bb thread spawn --environment-provider project-checkout --machine <id>
+--environment-inputs '{"path":"<worktree-path>"}'`; BB never removes that
+  worktree or its branch. Rows with an `environmentId` are reused through
+  `--environment <id>` instead.
 - `bb project history|reorder` exposes project prompt recall and sidebar order.
 - Use `bb project show|update|delete` for one project. Use `bb project source
 update|delete` for one source. Use `bb project branches` for branch data.

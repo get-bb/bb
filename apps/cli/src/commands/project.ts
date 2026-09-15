@@ -1,3 +1,4 @@
+import { printProjectWorktrees } from "./project-worktrees.js";
 import { readFile, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
 import { Command } from "commander";
@@ -31,6 +32,10 @@ interface ProjectCreateCommandOptions {
 }
 
 interface ProjectShowCommandOptions {
+  json?: boolean;
+}
+
+interface ProjectWorktreesCommandOptions {
   json?: boolean;
 }
 
@@ -517,6 +522,23 @@ export function registerProjectCommands(
         const found = await sdk.projects.get({ projectId: id });
         if (outputJson(opts, found)) return;
         printProject(found);
+      }),
+    );
+
+  project
+    .command("worktrees <id>")
+    .description("List git worktrees discovered for a project")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (id: string, opts: ProjectWorktreesCommandOptions) => {
+        const sdk = createCliBbSdk(getUrl());
+        const result = await sdk.projects.worktrees({ projectId: id });
+        if (outputJson(opts, result)) return;
+        const hosts = await sdk.hosts.list();
+        printProjectWorktrees(
+          result,
+          new Map(hosts.map((host) => [host.id, host.name])),
+        );
       }),
     );
 

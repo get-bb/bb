@@ -161,6 +161,7 @@ import type {
   SkillFilesResponse,
   UpdateSkillRequest,
   ProjectWithThreadsResponse,
+  ProjectWorktreesResponse,
   PromptHistoryQuery,
   PromptHistoryResponse,
   ReorderPinnedThreadRequest,
@@ -559,6 +560,12 @@ export const publicApiRoutes = {
         projectBranchesQuerySchema,
       ),
       response: jsonResponse<ProjectBranchesResponse>(),
+    }),
+    worktrees: defineRoute({
+      path: "/projects/:id/worktrees",
+      method: "get",
+      request: noRequest<PathProjectId>(),
+      response: jsonResponse<ProjectWorktreesResponse>(),
     }),
     uploadAttachment: defineRoute({
       path: "/projects/:id/attachments",

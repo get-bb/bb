@@ -1,3 +1,4 @@
+import { PROJECT_CHECKOUT_ENVIRONMENT_PROVIDER_ID } from "@bb/client-core";
 import type { EnvironmentMachineSelection, JsonValue } from "@bb/domain";
 import type {
   CreateThreadRequest,
@@ -40,6 +41,19 @@ export function resolveRootComposeThreadEnvironment(
       environmentProviderId: provider.id,
       ...(machine === null ? {} : { machine }),
       inputs,
+    };
+  }
+
+  if (parsed.type === "worktree-path") {
+    const checkoutProvider = args.environmentProviders?.find(
+      (candidate) => candidate.id === PROJECT_CHECKOUT_ENVIRONMENT_PROVIDER_ID,
+    );
+    if (checkoutProvider === undefined) return null;
+    return {
+      type: "provider",
+      environmentProviderId: checkoutProvider.id,
+      machine: { type: "existing", hostId: parsed.hostId },
+      inputs: { path: parsed.canonicalPath },
     };
   }
 

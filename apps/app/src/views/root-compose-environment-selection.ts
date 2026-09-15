@@ -1,7 +1,6 @@
 import {
   findLocalPathProjectSourceForHost,
   type ProjectSource,
-  type ThreadListEntry,
 } from "@bb/domain";
 import type { SystemEnvironmentProvider } from "@bb/server-contract";
 import {
@@ -11,9 +10,9 @@ import {
 import {
   encodeProviderValue,
   parseEnvironmentValue,
+  REUSE_VALUE_WITHOUT_ENVIRONMENT,
 } from "@/components/pickers/environment-picker-value";
-import type { ReuseThreadOption } from "@/components/pickers/ReuseEnvironmentPicker";
-import { getThreadDisplayTitle } from "@/lib/thread-title";
+import type { ReuseThreadOption } from "@/components/pickers/reuse-environment/reuse-options";
 
 interface ResolveRootComposeEffectiveEnvironmentValueArgs {
   environmentSelectionValue: string;
@@ -24,6 +23,7 @@ interface ResolveRootComposeEffectiveEnvironmentValueArgs {
   projectSources: readonly ProjectSource[];
   reuseThreadOptions: readonly ReuseThreadOption[];
   reuseThreadOptionsLoading: boolean;
+  hasReuseDiscoveryFailures: boolean;
 }
 
 interface ResolveProjectlessEnvironmentValueArgs {
@@ -54,70 +54,6 @@ export function resolveHostEnvironmentProvider({
     candidates[0] ??
     (currentProvider?.machineProviderId === null ? currentProvider : null)
   );
-}
-
-export function buildReuseThreadOptions(
-  threads: readonly ThreadListEntry[],
-  hostNameById: ReadonlyMap<string, string> | null = null,
-): ReuseThreadOption[] {
-  const threadsByEnvironmentId = new Map<string, ThreadListEntry[]>();
-  const branchByEnvironmentId = new Map<string, string | null>();
-  const nameByEnvironmentId = new Map<string, string | null>();
-  const pathByEnvironmentId = new Map<string, string | null>();
-  const providerIdByEnvironmentId = new Map<string, string | null>();
-  const hostIdByEnvironmentId = new Map<string, string | null>();
-  for (const thread of threads) {
-    if (thread.environmentId === null) continue;
-    let bucket = threadsByEnvironmentId.get(thread.environmentId);
-    if (!bucket) {
-      bucket = [];
-      threadsByEnvironmentId.set(thread.environmentId, bucket);
-      branchByEnvironmentId.set(
-        thread.environmentId,
-        thread.environmentBranchName,
-      );
-      nameByEnvironmentId.set(thread.environmentId, thread.environmentName);
-      pathByEnvironmentId.set(thread.environmentId, thread.environmentPath);
-      providerIdByEnvironmentId.set(
-        thread.environmentId,
-        thread.environmentProviderId,
-      );
-      hostIdByEnvironmentId.set(thread.environmentId, thread.environmentHostId);
-    }
-    bucket.push(thread);
-  }
-  const options: ReuseThreadOption[] = [];
-  for (const [environmentId, bucket] of threadsByEnvironmentId) {
-    bucket.sort(
-      (left, right) => right.latestAttentionAt - left.latestAttentionAt,
-    );
-    const hostId = hostIdByEnvironmentId.get(environmentId) ?? null;
-    options.push({
-      environmentId,
-      branchName: branchByEnvironmentId.get(environmentId) ?? null,
-      name: nameByEnvironmentId.get(environmentId) ?? null,
-      path: pathByEnvironmentId.get(environmentId) ?? null,
-      environmentProviderId:
-        providerIdByEnvironmentId.get(environmentId) ?? null,
-      hostName:
-        hostNameById !== null && hostId !== null
-          ? (hostNameById.get(hostId) ?? null)
-          : null,
-      threads: bucket.map((thread) => ({
-        id: thread.id,
-        title: getThreadDisplayTitle(thread),
-      })),
-    });
-  }
-  options.sort((left, right) => {
-    const leftLabel = left.name ?? left.branchName;
-    const rightLabel = right.name ?? right.branchName;
-    if (leftLabel && rightLabel) {
-      return leftLabel.localeCompare(rightLabel);
-    }
-    return left.environmentId.localeCompare(right.environmentId);
-  });
-  return options;
 }
 
 export function resolveProjectlessDefaultEnvironmentProvider(
@@ -181,6 +117,7 @@ export function resolveRootComposeEffectiveEnvironmentValue({
   projectSources,
   reuseThreadOptions,
   reuseThreadOptionsLoading,
+  hasReuseDiscoveryFailures,
 }: ResolveRootComposeEffectiveEnvironmentValueArgs): string {
   const parsedSelection = parseEnvironmentValue(environmentSelectionValue);
 
@@ -216,23 +153,36 @@ export function resolveRootComposeEffectiveEnvironmentValue({
     providerRegistered(PROJECT_CHECKOUT_ENVIRONMENT_PROVIDER_ID)
       ? encodeProviderValue(PROJECT_CHECKOUT_ENVIRONMENT_PROVIDER_ID)
       : "";
+  const reuseListed = (): boolean =>
+    reuseThreadOptions.some(
+      (option) =>
+        option.value !== null && option.value === environmentSelectionValue,
+    );
 
   if (parsedSelection?.type === "reuse") {
     if (parsedSelection.environmentId === null) {
-      return reuseThreadOptionsLoading || reuseThreadOptions.length > 0
+      return reuseThreadOptionsLoading ||
+        reuseThreadOptions.length > 0 ||
+        hasReuseDiscoveryFailures
         ? environmentSelectionValue
         : fallbackValue;
     }
-
-    if (reuseThreadOptionsLoading) {
+    if (reuseThreadOptionsLoading || reuseListed()) {
       return environmentSelectionValue;
     }
+    return REUSE_VALUE_WITHOUT_ENVIRONMENT;
+  }
 
-    return reuseThreadOptions.some(
-      (option) => option.environmentId === parsedSelection.environmentId,
-    )
+  if (parsedSelection?.type === "worktree-path") {
+    if (
+      !providerRegistered(PROJECT_CHECKOUT_ENVIRONMENT_PROVIDER_ID) ||
+      !knownHostIds.has(parsedSelection.hostId)
+    ) {
+      return fallbackValue;
+    }
+    return reuseThreadOptionsLoading || reuseListed()
       ? environmentSelectionValue
-      : fallbackValue;
+      : REUSE_VALUE_WITHOUT_ENVIRONMENT;
   }
 
   if (

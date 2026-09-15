@@ -214,6 +214,33 @@ describe("newThreadEnvironmentArgsToSeed round trip", () => {
     });
   });
 
+  it("seeds a checkout path without a branch as a discovered-worktree selection", () => {
+    expect(
+      newThreadEnvironmentArgsToSeed({
+        type: "provider",
+        environmentProviderId: "project-checkout",
+        machine: { type: "existing", hostId: "host_1" },
+        inputs: { path: "/somewhere/else" },
+      }),
+    ).toEqual({
+      selectionValue: `path:host_1:${encodeURIComponent("/somewhere/else")}`,
+      providerMachine: null,
+      providerHostId: "host_1",
+      providerInputs: null,
+    });
+  });
+
+  it("keeps a checkout path with a branch on the provider selection", () => {
+    expect(
+      newThreadEnvironmentArgsToSeed({
+        type: "provider",
+        environmentProviderId: "project-checkout",
+        machine: { type: "existing", hostId: "host_1" },
+        inputs: { path: "/somewhere/else", branch: { kind: "existing", name: "main" } },
+      }),
+    ).toMatchObject({ selectionValue: "provider:project-checkout" });
+  });
+
   it("rewrites a personal workspace into its provider on its host", () => {
     expect(
       roundTrip({

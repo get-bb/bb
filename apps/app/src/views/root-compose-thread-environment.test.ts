@@ -128,6 +128,42 @@ describe("resolveRootComposeThreadEnvironment", () => {
     });
   });
 
+  it("attaches a discovered worktree through the project checkout provider at its path", () => {
+    const checkout = {
+      ...environmentProviders[1],
+      id: "project-checkout",
+      inputs: {
+        type: "object",
+        properties: { path: { type: "string" }, branch: { type: "object" } },
+      },
+    };
+    const canonicalPath = "/Users/dev/worktrees/spike branch:odd";
+    expect(
+      resolveRootComposeThreadEnvironment({
+        environmentValue: `path:${encodeURIComponent("host_123")}:${encodeURIComponent(canonicalPath)}`,
+        projectId,
+        environmentProviders: [...environmentProviders, checkout],
+        providerHostId: "host_other",
+        providerInputs: { branch: { kind: "named", name: "stale" } },
+      }),
+    ).toEqual({
+      type: "provider",
+      environmentProviderId: "project-checkout",
+      machine: { type: "existing", hostId: "host_123" },
+      inputs: { path: canonicalPath },
+    });
+  });
+
+  it("resolves nothing for a discovered worktree until the checkout provider is registered", () => {
+    expect(
+      resolveRootComposeThreadEnvironment({
+        environmentValue: "path:host_123:%2Fworktrees%2Fspike",
+        projectId,
+        environmentProviders,
+      }),
+    ).toBeNull();
+  });
+
   it("resolves a reuse value to its environment and nothing before one is picked", () => {
     expect(
       resolveRootComposeThreadEnvironment({

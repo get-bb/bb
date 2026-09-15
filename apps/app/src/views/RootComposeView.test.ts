@@ -10,7 +10,7 @@ import type {
   TerminalSession,
 } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
-import type { ReuseThreadOption } from "@/components/pickers/ReuseEnvironmentPicker";
+import type { ReuseThreadOption } from "@/components/pickers/reuse-environment/reuse-options";
 import {
   mergeMissingPromptDraftAttachments,
   resolveNewThreadProjectDefaultsState,
@@ -39,7 +39,6 @@ import {
 } from "@/test/fixtures/projects";
 import { makeTerminalSession as makeTerminalSessionFixture } from "@/test/fixtures/terminal-sessions";
 import {
-  buildReuseThreadOptions,
   resolveHostEnvironmentProvider,
   resolveRootComposeEffectiveEnvironmentValue,
 } from "./root-compose-environment-selection";
@@ -380,12 +379,39 @@ function makeProjectlessProvider(
 
 function makeReuseThreadOption(environmentId: string): ReuseThreadOption {
   return {
+    value: `reuse:${environmentId}`,
     environmentId,
     branchName: "feature",
     name: null,
     path: null,
     environmentProviderId: "git-worktree",
+    hostId: "host_1",
+    hostName: null,
+    worktree: null,
     threads: [{ id: "thr_1", title: "Thread" }],
+  };
+}
+
+function makeDiscoveredWorktreeOption(
+  hostId: string,
+  canonicalPath: string,
+): ReuseThreadOption {
+  return {
+    value: `path:${encodeURIComponent(hostId)}:${encodeURIComponent(canonicalPath)}`,
+    environmentId: null,
+    branchName: "feature",
+    name: null,
+    path: canonicalPath,
+    environmentProviderId: null,
+    hostId,
+    hostName: null,
+    worktree: {
+      detachedHeadSha: null,
+      lock: null,
+      unavailableReason: null,
+      userManaged: true,
+    },
+    threads: [],
   };
 }
 
@@ -836,6 +862,7 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
         projectSources: [makeProjectSource("host_1")],
         reuseThreadOptions: [],
         reuseThreadOptionsLoading: false,
+        hasReuseDiscoveryFailures: false,
       }),
     ).toBe("provider:project-checkout");
   });
@@ -851,6 +878,7 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
         projectSources: [makeProjectSource("host_2")],
         reuseThreadOptions: [],
         reuseThreadOptionsLoading: false,
+        hasReuseDiscoveryFailures: false,
       }),
     ).toBe("");
   });
@@ -865,6 +893,7 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
         projectSources: [makeProjectSource("host_1")],
         reuseThreadOptions: [],
         reuseThreadOptionsLoading: false,
+        hasReuseDiscoveryFailures: false,
       }),
     ).toBe("");
   });
@@ -878,6 +907,7 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
       projectSources: [makeProjectSource("host_1")],
       reuseThreadOptions: [],
       reuseThreadOptionsLoading: false,
+      hasReuseDiscoveryFailures: false,
     };
     expect(
       resolveRootComposeEffectiveEnvironmentValue({
@@ -904,6 +934,7 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
         projectSources: [makeProjectSource("host_1")],
         reuseThreadOptions: [makeReuseThreadOption("env_current")],
         reuseThreadOptionsLoading: false,
+        hasReuseDiscoveryFailures: false,
       }),
     ).toBe("reuse:env_current");
 
@@ -917,8 +948,92 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
         projectSources: [makeProjectSource("host_1")],
         reuseThreadOptions: [makeReuseThreadOption("env_current")],
         reuseThreadOptionsLoading: false,
+        hasReuseDiscoveryFailures: false,
+      }),
+    ).toBe("reuse");
+  });
+
+  it("keeps a discovered worktree selection while it stays listed or loads", () => {
+    const option = makeDiscoveredWorktreeOption("host_1", "/worktrees/manual");
+    const value = option.value;
+    if (value === null) throw new Error("expected selectable option");
+    const args = {
+      knownHostIds: new Set(["host_1"]),
+      environmentSelectionValue: value,
+      environmentProviders: [checkoutProvider],
+      isProjectless: false,
+      primaryHostId: "host_1",
+      projectSources: [makeProjectSource("host_1")],
+      hasReuseDiscoveryFailures: false,
+    };
+    expect(
+      resolveRootComposeEffectiveEnvironmentValue({
+        ...args,
+        reuseThreadOptions: [option],
+        reuseThreadOptionsLoading: false,
+      }),
+    ).toBe(value);
+    expect(
+      resolveRootComposeEffectiveEnvironmentValue({
+        ...args,
+        reuseThreadOptions: [],
+        reuseThreadOptionsLoading: true,
+      }),
+    ).toBe(value);
+  });
+
+  it("clears a discovered selection that disappeared instead of retargeting", () => {
+    const option = makeDiscoveredWorktreeOption("host_1", "/worktrees/manual");
+    const value = option.value;
+    if (value === null) throw new Error("expected selectable option");
+    expect(
+      resolveRootComposeEffectiveEnvironmentValue({
+        knownHostIds: new Set(["host_1"]),
+        environmentSelectionValue: value,
+        environmentProviders: [checkoutProvider],
+        isProjectless: false,
+        primaryHostId: "host_1",
+        projectSources: [makeProjectSource("host_1")],
+        reuseThreadOptions: [makeReuseThreadOption("env_other")],
+        reuseThreadOptionsLoading: false,
+        hasReuseDiscoveryFailures: false,
+      }),
+    ).toBe("reuse");
+  });
+
+  it("drops a discovered selection whose machine or checkout provider is gone", () => {
+    const option = makeDiscoveredWorktreeOption("host_gone", "/worktrees/manual");
+    const value = option.value;
+    if (value === null) throw new Error("expected selectable option");
+    expect(
+      resolveRootComposeEffectiveEnvironmentValue({
+        knownHostIds: new Set(["host_1"]),
+        environmentSelectionValue: value,
+        environmentProviders: [checkoutProvider],
+        isProjectless: false,
+        primaryHostId: "host_1",
+        projectSources: [makeProjectSource("host_1")],
+        reuseThreadOptions: [option],
+        reuseThreadOptionsLoading: false,
+        hasReuseDiscoveryFailures: false,
       }),
     ).toBe("provider:project-checkout");
+  });
+
+  it("keeps bare reuse mode open when a machine's discovery failed", () => {
+    expect(
+      resolveRootComposeEffectiveEnvironmentValue({
+        knownHostIds: new Set(["host_1"]),
+        environmentSelectionValue: "reuse",
+        environmentProviders: [checkoutProvider],
+        isProjectless: false,
+        primaryHostId: "host_1",
+        projectSources: [makeProjectSource("host_1")],
+        reuseThreadOptions: [],
+        reuseThreadOptionsLoading: false,
+        hasReuseDiscoveryFailures: true,
+      }),
+    ).toBe("reuse");
   });
 
   it("holds a specific reuse selection while project worktrees load", () => {
@@ -932,6 +1047,7 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
         projectSources: [makeProjectSource("host_1")],
         reuseThreadOptions: [],
         reuseThreadOptionsLoading: true,
+        hasReuseDiscoveryFailures: false,
       }),
     ).toBe("reuse:env_pending");
   });
@@ -949,6 +1065,7 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
         projectSources: [],
         reuseThreadOptions: [makeReuseThreadOption("env_personal")],
         reuseThreadOptionsLoading: false,
+        hasReuseDiscoveryFailures: false,
       }),
     ).toBe("reuse:env_personal");
   });
@@ -966,6 +1083,7 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
         projectSources: [],
         reuseThreadOptions: [makeReuseThreadOption("env_personal")],
         reuseThreadOptionsLoading: false,
+        hasReuseDiscoveryFailures: false,
       }),
     ).toBe("provider:personal-workspace");
   });
@@ -984,6 +1102,7 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
         projectSources: [],
         reuseThreadOptions: [],
         reuseThreadOptionsLoading: false,
+        hasReuseDiscoveryFailures: false,
       }),
     ).toBe("provider:personal-workspace");
   });
@@ -1002,6 +1121,7 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
         projectSources: [],
         reuseThreadOptions: [],
         reuseThreadOptionsLoading: false,
+        hasReuseDiscoveryFailures: false,
       }),
     ).toBe("provider:personal-workspace");
   });
@@ -1016,6 +1136,7 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
         projectSources: [],
         reuseThreadOptions: [],
         reuseThreadOptionsLoading: false,
+        hasReuseDiscoveryFailures: false,
       }),
     ).toBe("");
   });
@@ -1141,19 +1262,4 @@ describe("canCreateRootComposeTerminal", () => {
       }),
     ).toBe(false);
   });
-});
-
-it("offers a core-owned directory attachment for reuse", () => {
-  const thread = makeThreadListEntry({
-    environmentId: "env_attachment",
-    environmentProviderId: null,
-    environmentPath: "/tmp/attached",
-  });
-  expect(buildReuseThreadOptions([thread])).toEqual([
-    expect.objectContaining({
-      environmentId: "env_attachment",
-      environmentProviderId: null,
-      path: "/tmp/attached",
-    }),
-  ]);
 });

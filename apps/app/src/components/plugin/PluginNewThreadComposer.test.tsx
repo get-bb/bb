@@ -62,6 +62,7 @@ const mocks = vi.hoisted(() => ({
   copyAttachments: vi.fn(),
   uploadAttachment: vi.fn(),
   projectThreads: [] as ThreadListEntry[],
+  projectWorktrees: [] as unknown[],
   sidebarNavigationSettled: true,
   sidebarNavigationReplayed: false,
   extraProjects: [] as Array<Record<string, unknown>>,
@@ -345,6 +346,12 @@ vi.mock("@/hooks/queries/project-queries", () => ({
       selectedBranch: null,
       defaultWorktreeBaseBranch: null,
     },
+    isLoading: false,
+    isFetching: false,
+    refetch: vi.fn(),
+  }),
+  useProjectWorktrees: () => ({
+    data: { worktrees: mocks.projectWorktrees, failures: [] },
     isLoading: false,
     isFetching: false,
     refetch: vi.fn(),
@@ -648,6 +655,7 @@ describe("PluginNewThreadComposer seeding", () => {
     mocks.copyAttachments.mockReset();
     mocks.uploadAttachment.mockReset();
     mocks.projectThreads = [];
+    mocks.projectWorktrees = [];
     mocks.sidebarNavigationSettled = true;
     mocks.sidebarNavigationReplayed = false;
     mocks.extraProjects = [];
@@ -1213,6 +1221,22 @@ describe("PluginNewThreadComposer seeding", () => {
         environmentProviderId: "git-worktree",
       }),
     ];
+    mocks.projectWorktrees = [
+      {
+        hostId: "host_1",
+        path: "/worktrees/source",
+        checkout: { kind: "branch", branchName: "feature/source" },
+        lock: null,
+        availability: {
+          kind: "selectable",
+          canonicalPath: "/worktrees/source",
+        },
+        ownership: "bb-managed",
+        environmentId: "env-source",
+        environmentName: "source",
+        environmentProviderId: "git-worktree",
+      },
+    ];
     const submitted: NewThreadRequest[] = [];
     render(
       <Provider>
@@ -1378,6 +1402,22 @@ describe("PluginNewThreadComposer seeding", () => {
         queuedWork: "none",
         environmentProviderId: "git-worktree",
       }),
+    ];
+    mocks.projectWorktrees = [
+      {
+        hostId: "host_1",
+        path: "/worktrees/source",
+        checkout: { kind: "branch", branchName: "feature/source" },
+        lock: null,
+        availability: {
+          kind: "selectable",
+          canonicalPath: "/worktrees/source",
+        },
+        ownership: "bb-managed",
+        environmentId: "env-source",
+        environmentName: "source",
+        environmentProviderId: "git-worktree",
+      },
     ];
     rerender(element());
 

@@ -1,3 +1,4 @@
+import { GIT_WORKTREE_ENVIRONMENT_PROVIDER_ID } from "@bb/client-core";
 import { EnvironmentProviderIcon } from "@/components/plugin/EnvironmentProviderIcon";
 import { useMemo, useRef, useState } from "react";
 import type { Host, ProjectSource } from "@bb/domain";
@@ -46,6 +47,12 @@ import { MachineIcon } from "@/components/machines/MachineLabel";
 import { searchMachineHosts } from "./machine-picker-search";
 import { useResetPickerScroll } from "./useResetPickerScroll";
 
+function providerCreationLabel(provider: SystemEnvironmentProvider): string {
+  return provider.id === GIT_WORKTREE_ENVIRONMENT_PROVIDER_ID
+    ? "New worktree"
+    : provider.displayName;
+}
+
 interface SelectedEnvironment {
   modeLabel: string;
   compactModeLabel: string;
@@ -91,7 +98,11 @@ export interface EnvironmentPickerUIProps {
     hostId: string | null,
   ) => void;
   onSelectHost?: (hostId: string) => void;
+  reuseDisabled?: boolean;
+  onSelectReuse?: () => void;
 }
+
+export const REUSE_DISABLED_REASON = "No existing worktrees found.";
 
 export const PROVIDER_INPUTS_CONTROL_MISSING_REASON =
   "Needs its plugin's control";
@@ -186,6 +197,8 @@ export function EnvironmentPickerUI({
   multiMachinePickerEnabled = false,
   onSelectProvider,
   onSelectHost,
+  reuseDisabled = false,
+  onSelectReuse,
 }: EnvironmentPickerUIProps) {
   const [uncontrolledOpen, setUncontrolledOpen] = useState(
     defaultOpen ?? false,
@@ -266,9 +279,9 @@ export function EnvironmentPickerUI({
         !selectedProvider.machineProviderId && selectedMachineName !== null;
       return {
         modeLabel: showsHost
-          ? `${selectedMachineName} · ${selectedProvider.displayName}`
-          : selectedProvider.displayName,
-        compactModeLabel: selectedProvider.displayName,
+          ? `${selectedMachineName} · ${providerCreationLabel(selectedProvider)}`
+          : providerCreationLabel(selectedProvider),
+        compactModeLabel: providerCreationLabel(selectedProvider),
         icon: pluginIconName(selectedProvider.icon),
       };
     }
@@ -281,7 +294,7 @@ export function EnvironmentPickerUI({
         icon: "AlertTriangle" as const,
       };
     }
-    if (parsed?.type === "reuse") {
+    if (parsed?.type === "reuse" || parsed?.type === "worktree-path") {
       return {
         modeLabel: "Reuse",
         compactModeLabel: "Reuse",
@@ -517,6 +530,30 @@ export function EnvironmentPickerUI({
                   />
                 </>
               )}
+              {!projectless && onSelectReuse ? (
+                <>
+                  <CommandSeparator className="mx-0 shrink-0" />
+                  <CommandGroup className="shrink-0">
+                    <EnvironmentMenuItem
+                      value="reuse"
+                      label="Existing worktree"
+                      description={
+                        reuseDisabled ? REUSE_DISABLED_REASON : undefined
+                      }
+                      icon={REUSE_ENVIRONMENT_ICON_NAME}
+                      selected={
+                        parsed?.type === "reuse" ||
+                        parsed?.type === "worktree-path"
+                      }
+                      disabled={reuseDisabled}
+                      onSelect={() => {
+                        onSelectReuse();
+                        handleOpenChange(false);
+                      }}
+                    />
+                  </CommandGroup>
+                </>
+              ) : null}
             </CommandList>
           </Command>
         )}
@@ -554,7 +591,7 @@ function HostlessEnvironmentOptions({
           <EnvironmentMenuItem
             key={provider.id}
             value={`provider:any:${provider.id}`}
-            label={provider.displayName}
+            label={providerCreationLabel(provider)}
             description={providerDescription(
               provider,
               inputsControlProviderIds,
@@ -617,7 +654,7 @@ function EnvironmentOptionsSection({
             <EnvironmentMenuItem
               key={provider.id}
               value={`provider:${hostId}:${provider.id}`}
-              label={provider.displayName}
+              label={providerCreationLabel(provider)}
               description={providerDescription(
                 provider,
                 inputsControlProviderIds,
@@ -783,7 +820,7 @@ function MachineContextualEnvironmentOptions({
                 <EnvironmentMenuItem
                   key={provider.id}
                   value={`provider:any:${provider.id}`}
-                  label={provider.displayName}
+                  label={providerCreationLabel(provider)}
                   description={providerDescription(
                     provider,
                     inputsControlProviderIds,
@@ -967,7 +1004,7 @@ function MachineSection({
               <EnvironmentMenuItem
                 key={provider.id}
                 value={`provider:${host.id}:${provider.id}`}
-                label={provider.displayName}
+                label={providerCreationLabel(provider)}
                 description={
                   connected
                     ? providerDescription(provider, inputsControlProviderIds)

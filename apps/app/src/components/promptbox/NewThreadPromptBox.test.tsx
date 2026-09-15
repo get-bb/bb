@@ -298,19 +298,24 @@ describe("EnvironmentSlot", () => {
     };
   }
 
-  function makeWorktree(value: string | null = null) {
+  function makeWorktree(environmentId: string | null = null) {
     return {
       options: [
         {
+          value: "reuse:env_personal",
           environmentId: "env_personal",
           branchName: null,
           name: "Scratch space",
           path: null,
           environmentProviderId: "personal-workspace",
+          hostId: host.id,
+          hostName: null,
+          worktree: null,
           threads: [{ id: "thr_1", title: "Earlier personal thread" }],
         },
       ],
-      value,
+      failures: [],
+      value: environmentId === null ? null : `reuse:${environmentId}`,
       onChange: vi.fn(),
       disabled: false,
     };

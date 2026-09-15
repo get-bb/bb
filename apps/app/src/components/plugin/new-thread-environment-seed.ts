@@ -12,6 +12,7 @@ import type {
 import {
   encodeReuseValue,
   encodeProviderValue,
+  encodeWorktreePathValue,
 } from "@/components/pickers/environment-picker-value";
 
 interface NewThreadEnvironmentSeed {
@@ -55,6 +56,32 @@ function workspaceAsProviderSugar(
   }
 }
 
+function discoveredWorktreeSeed(
+  environment: ProviderEnvironmentArgs,
+): NewThreadEnvironmentSeed | null {
+  if (
+    environment.environmentProviderId !==
+      PROJECT_CHECKOUT_ENVIRONMENT_PROVIDER_ID ||
+    environment.machine?.type !== "existing"
+  ) {
+    return null;
+  }
+  const inputs = environment.inputs;
+  if (inputs === null || typeof inputs !== "object" || Array.isArray(inputs)) {
+    return null;
+  }
+  const path = inputs.path;
+  if (typeof path !== "string" || path.length === 0 || "branch" in inputs) {
+    return null;
+  }
+  return {
+    selectionValue: encodeWorktreePathValue(environment.machine.hostId, path),
+    providerMachine: null,
+    providerHostId: environment.machine.hostId,
+    providerInputs: null,
+  };
+}
+
 export function newThreadEnvironmentArgsToSeed(
   environment: CreateThreadEnvironmentArgs,
 ): NewThreadEnvironmentSeed | null {
@@ -62,6 +89,10 @@ export function newThreadEnvironmentArgsToSeed(
     return null;
   }
   if (environment.type === "provider") {
+    const worktreeSeed = discoveredWorktreeSeed(environment);
+    if (worktreeSeed !== null) {
+      return worktreeSeed;
+    }
     return {
       selectionValue: encodeProviderValue(environment.environmentProviderId),
       providerMachine: environment.machine ?? null,

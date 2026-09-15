@@ -1,3 +1,4 @@
+import { useReuseEnvironmentOptions } from "@/components/pickers/reuse-environment/useReuseEnvironmentOptions";
 import { ProviderRequirementBanner } from "./banner/ProviderRequirementBanner";
 import { Button } from "@bb/shared-ui/button";
 import {
@@ -37,10 +38,11 @@ import type {
 } from "@bb/server-contract";
 import type { ProjectSelectorCreateProjectConfig } from "@/components/pickers/ProjectSelector";
 import {
-  encodeReuseValue,
   encodeProviderValue,
   parseEnvironmentValue,
+  REUSE_VALUE_WITHOUT_ENVIRONMENT,
 } from "@/components/pickers/environment-picker-value";
+import type { ReuseThreadOption } from "@/components/pickers/reuse-environment/reuse-options";
 import { providerInputsControlRequired } from "@/components/pickers/environment-provider-inputs";
 import { useMachineProviderInputs } from "@/components/pickers/machine-provider-inputs";
 import { formatModelLoadErrorText } from "@/components/pickers/model-load-error-message";
@@ -100,7 +102,6 @@ import {
 } from "@/lib/route-paths";
 import { sdk } from "@/lib/sdk";
 import {
-  buildReuseThreadOptions,
   resolveHostEnvironmentProvider,
   resolveRootComposeEffectiveEnvironmentValue,
 } from "@/views/root-compose-environment-selection";
@@ -388,7 +389,7 @@ function useDraftPreservingOptionChange<T>(
 
 function resolvePanelThreadId(
   environmentId: string | null,
-  reuseThreadOptions: ReturnType<typeof buildReuseThreadOptions>,
+  reuseThreadOptions: readonly ReuseThreadOption[],
 ): string | null {
   if (environmentId === null) return null;
   return (
@@ -478,12 +479,6 @@ export function NewThreadComposer({
       ),
     [availableHosts],
   );
-  const worktreeHostNameById = useMemo(() => {
-    const hosts = availableHosts;
-    return hosts.length <= 1
-      ? null
-      : new Map(hosts.map((host) => [host.id, host.name]));
-  }, [availableHosts]);
   const projectThreads = useMemo(() => {
     const navigation = sidebarNavigationQuery.data;
     if (!navigation) return undefined;
@@ -491,12 +486,19 @@ export function NewThreadComposer({
     return navigation.projects.find((project) => project.id === projectId)
       ?.threads;
   }, [isProjectless, projectId, sidebarNavigationQuery.data]);
-  const reuseThreadOptionsLoading =
-    projectThreads === undefined && !sidebarNavigationSettled;
-  const reuseThreadOptions = useMemo(
-    () => buildReuseThreadOptions(projectThreads ?? [], worktreeHostNameById),
-    [projectThreads, worktreeHostNameById],
-  );
+  const {
+    options: reuseThreadOptions,
+    failures: reuseDiscoveryFailures,
+    loading: reuseThreadOptionsLoading,
+    hasFailures: hasReuseDiscoveryFailures,
+    disabled: reuseDisabled,
+    retry: handleWorktreeRetry,
+  } = useReuseEnvironmentOptions({
+    projectId: isProjectless ? undefined : projectId,
+    threads: projectThreads,
+    navigationSettled: sidebarNavigationSettled,
+    hosts: availableHosts,
+  });
 
   const { providers: registeredEnvironmentProviders } =
     useSystemEnvironmentProviders();
@@ -657,6 +659,7 @@ export function NewThreadComposer({
         projectSources,
         reuseThreadOptions,
         reuseThreadOptionsLoading,
+        hasReuseDiscoveryFailures,
       });
       const providerSelection = resolveProviderSelection(effectiveValue);
       if (providerSelection !== null) {
@@ -665,6 +668,9 @@ export function NewThreadComposer({
           : { hostId: providerSelection.machine.hostId };
       }
       const parsed = parseEnvironmentValue(effectiveValue);
+      if (parsed?.type === "worktree-path") {
+        return { hostId: parsed.hostId };
+      }
       return parsed?.type === "reuse" && parsed.environmentId !== null
         ? { environmentId: parsed.environmentId }
         : {};
@@ -675,6 +681,7 @@ export function NewThreadComposer({
       knownHostIds,
       primaryHostId,
       projectSources,
+      hasReuseDiscoveryFailures,
       resolveProviderSelection,
       reuseThreadOptions,
       reuseThreadOptionsLoading,
@@ -835,10 +842,12 @@ export function NewThreadComposer({
         projectSources,
         reuseThreadOptions,
         reuseThreadOptionsLoading,
+        hasReuseDiscoveryFailures,
       }),
     [
       environmentSelectionValue,
       environmentProviders,
+      hasReuseDiscoveryFailures,
       isProjectless,
       knownHostIds,
       primaryHostId,
@@ -1272,8 +1281,16 @@ export function NewThreadComposer({
     parsedEnvironment?.type === "reuse"
       ? parsedEnvironment.environmentId
       : null;
+  const selectedReuseValue =
+    reuseEnvironmentId !== null || parsedEnvironment?.type === "worktree-path"
+      ? effectiveEnvironmentValue
+      : null;
   const projectHostId =
-    reuseEnvironmentId !== null ? null : (providerHostId ?? primaryHostId);
+    reuseEnvironmentId !== null
+      ? null
+      : parsedEnvironment?.type === "worktree-path"
+        ? parsedEnvironment.hostId
+        : (providerHostId ?? primaryHostId);
   const panelThreadId = resolvePanelThreadId(
     reuseEnvironmentId,
     reuseThreadOptions,
@@ -1561,11 +1578,14 @@ export function NewThreadComposer({
     snapshotDraftBeforeOptionChange,
   );
   const handleWorktreeChange = useCallback(
-    (environmentId: string) => {
-      changeEnvironment(encodeReuseValue(environmentId));
+    (value: string) => {
+      changeEnvironment(value);
     },
     [changeEnvironment],
   );
+  const handleSelectReuse = useCallback(() => {
+    changeEnvironment(REUSE_VALUE_WITHOUT_ENVIRONMENT);
+  }, [changeEnvironment]);
 
   const renderPromptBox = useCallback(
     (options: NewThreadComposerPromptOptions) => {
@@ -1636,14 +1656,19 @@ export function NewThreadComposer({
               inputsControlProviderIds,
               onSelectProvider: handleSelectProvider,
               onSelectHost: handleSelectHost,
+              reuseDisabled,
+              onSelectReuse: handleSelectReuse,
               ...(!isProjectless && options.onRequestMachineSetup
                 ? { onRequestMachineSetup: options.onRequestMachineSetup }
                 : {}),
             },
             worktree: {
               options: reuseThreadOptions,
-              value: reuseEnvironmentId,
+              failures: reuseDiscoveryFailures,
+              value: selectedReuseValue,
               onChange: handleWorktreeChange,
+              onRetry: handleWorktreeRetry,
+              loading: reuseThreadOptionsLoading,
               disabled: locks.environment,
             },
             permission: {
@@ -1789,8 +1814,13 @@ export function NewThreadComposer({
       providerOptions,
       reasoningLevel,
       reasoningOptions,
-      reuseEnvironmentId,
+      reuseDisabled,
+      handleSelectReuse,
+      handleWorktreeRetry,
+      reuseDiscoveryFailures,
       reuseThreadOptions,
+      reuseThreadOptionsLoading,
+      selectedReuseValue,
       selectedModel,
       selectedProviderId,
       serviceTier,

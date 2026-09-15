@@ -214,6 +214,53 @@ export type ProjectBranchesResponse = z.infer<
   typeof projectBranchesResponseSchema
 >;
 
+export const projectWorktreeCheckoutSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("branch"), branchName: z.string().min(1) }),
+  z.object({ kind: z.literal("detached"), headSha: z.string().min(1) }),
+]);
+export type ProjectWorktreeCheckout = z.infer<
+  typeof projectWorktreeCheckoutSchema
+>;
+
+export const projectWorktreeSchema = z.object({
+  hostId: z.string().min(1),
+  path: z.string().min(1),
+  checkout: projectWorktreeCheckoutSchema,
+  lock: z.object({ reason: z.string().nullable() }).nullable(),
+  availability: z.discriminatedUnion("kind", [
+    z.object({
+      kind: z.literal("selectable"),
+      canonicalPath: z.string().min(1),
+    }),
+    z.object({
+      kind: z.literal("unavailable"),
+      reason: z.enum(["missing", "prunable"]),
+    }),
+  ]),
+  ownership: z.enum(["bb-managed", "user-managed"]),
+  environmentId: z.string().nullable(),
+  environmentName: z.string().nullable(),
+  environmentProviderId: z.string().nullable(),
+});
+export type ProjectWorktree = z.infer<typeof projectWorktreeSchema>;
+
+export const projectWorktreeFailureSchema = z.object({
+  hostId: z.string().min(1),
+  code: z.enum(["host_offline", "discovery_failed"]),
+  message: z.string().min(1),
+});
+export type ProjectWorktreeFailure = z.infer<
+  typeof projectWorktreeFailureSchema
+>;
+
+export const projectWorktreesResponseSchema = z.object({
+  worktrees: z.array(projectWorktreeSchema),
+  failures: z.array(projectWorktreeFailureSchema),
+});
+export type ProjectWorktreesResponse = z.infer<
+  typeof projectWorktreesResponseSchema
+>;
+
 export const projectAttachmentContentQuerySchema = z.object({
   path: z.string().min(1),
 });

@@ -200,7 +200,7 @@ export function sanitizeStoredEnvironmentValue(stored: string): string {
   if (!stored) return "";
   const migrated = migrateLegacyStoredEnvironmentValue(stored);
   const parsed = parseEnvironmentValue(migrated);
-  if (parsed?.type === "reuse") return "";
+  if (parsed?.type === "reuse" || parsed?.type === "worktree-path") return "";
   return migrated;
 }
 
@@ -871,7 +871,7 @@ export function useThreadCreationOptions(
     (value: string) => {
       if (scope === "new-thread") {
         const parsed = parseEnvironmentValue(value);
-        if (parsed?.type === "reuse") {
+        if (parsed?.type === "reuse" || parsed?.type === "worktree-path") {
           setRootComposeReuseValue(value);
           return;
         }

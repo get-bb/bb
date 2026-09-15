@@ -29,7 +29,7 @@ import { getProviderIconInfo } from "../src/lib/provider-icon";
 import type { PickerOption } from "../src/components/pickers/OptionPicker";
 import type { ModelPickerOption } from "../src/components/pickers/model-picker-option";
 import type { ProjectSelectorOption } from "../src/components/pickers/ProjectSelector";
-import type { ReuseThreadOption } from "../src/components/pickers/ReuseEnvironmentPicker";
+import type { ReuseThreadOption } from "../src/components/pickers/reuse-environment/reuse-options";
 import type { ExecutionControlsProps } from "../src/components/promptbox/ExecutionControls";
 import {
   INERT_TYPEAHEAD_COMMAND_CONFIG,
@@ -302,23 +302,53 @@ export const STORY_BRANCH_OPTIONS: readonly string[] = [
 
 export const STORY_WORKTREE_OPTIONS: readonly ReuseThreadOption[] = [
   {
+    value: "reuse:env_review_flow",
     environmentId: "env_review_flow",
     branchName: "bb/review-flow-thr_4hge9xn14m",
     name: null,
-    path: null,
+    path: "/Users/dev/bb-worktrees/review-flow",
     environmentProviderId: "git-worktree",
+    hostId: HOST_IDS.local,
+    hostName: null,
+    worktree: {
+      detachedHeadSha: null,
+      lock: null,
+      unavailableReason: null,
+      userManaged: false,
+    },
     threads: [
       { id: "thr_review", title: "Review flow cleanup" },
       { id: "thr_tests", title: "Backfill promptbox tests" },
     ],
   },
   {
+    value: "reuse:env_timeline",
     environmentId: "env_timeline",
     branchName: "bb/timeline-pagination-thr_qfk8ksbxkk",
     name: "Timeline workspace",
     path: null,
     environmentProviderId: "git-worktree",
+    hostId: HOST_IDS.local,
+    hostName: null,
+    worktree: null,
     threads: [{ id: "thr_timeline", title: "Timeline pagination" }],
+  },
+  {
+    value: "path:host_local:%2FUsers%2Fdev%2Fworktrees%2Fspike",
+    environmentId: null,
+    branchName: "spike/manual-worktree",
+    name: null,
+    path: "/Users/dev/worktrees/spike",
+    environmentProviderId: null,
+    hostId: HOST_IDS.local,
+    hostName: null,
+    worktree: {
+      detachedHeadSha: null,
+      lock: null,
+      unavailableReason: null,
+      userManaged: true,
+    },
+    threads: [],
   },
 ];
 
