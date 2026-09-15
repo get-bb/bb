@@ -25,7 +25,7 @@ import {
   installImportedServerFiles,
   discardImportBackups,
   readServerImportFile,
-  readServerImportJournalFile,
+  readServerImportJournalStatus,
   removeServerConnectHoldFile,
   removeServerImportJournalFile,
   rollBackServerImport,
@@ -299,22 +299,23 @@ export async function importServerArchive(
 ): Promise<ServerImportResult | null> {
   const { archivePath, dataDir } = args;
   await assertArchiveFile(archivePath);
-  const interruptedImport = await readServerImportJournalFile(dataDir);
-  if (interruptedImport === null) {
+  const interruptedImport =
+    (await readServerImportJournalStatus(dataDir)).kind === "interrupted";
+  if (!interruptedImport) {
     await assertNoServerDatabase(dataDir);
   }
   await assertNoRunningBb(dataDir);
   await assertServerArchiveFormat(archivePath);
   if (
     !(await args.confirm(
-      interruptedImport === null
-        ? `Import the bb server from ${archivePath} into ${dataDir}?`
-        : `Roll back the interrupted import in ${dataDir}, then import the bb server from ${archivePath}?`,
+      interruptedImport
+        ? `Roll back the interrupted import in ${dataDir}, then import the bb server from ${archivePath}?`
+        : `Import the bb server from ${archivePath} into ${dataDir}?`,
     ))
   ) {
     return null;
   }
-  if (interruptedImport !== null) {
+  if (interruptedImport) {
     await rollBackInterruptedImport(dataDir);
     await assertNoServerDatabase(dataDir);
   }
@@ -381,7 +382,7 @@ export async function importServerArchive(
       sourceDataDir: manifest.sourceDataDir,
       sourceServerHostId: manifest.sourceServerHostId,
       importedEntries: installed.importedEntries,
-      rolledBackInterruptedImport: interruptedImport !== null,
+      rolledBackInterruptedImport: interruptedImport,
     };
   } finally {
     await rm(stagingDir, { force: true, recursive: true });

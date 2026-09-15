@@ -14,13 +14,16 @@ import {
   extractServerArchive,
   installImportedServerFiles,
   listServerOwnedEntries,
+  readServerImportFile,
   readServerImportJournalFile,
   rollBackServerImport,
   SERVER_IMPORT_BACKUP_DIR_NAME,
   SERVER_IMPORT_JOURNAL_FILE_NAME,
   ServerArchiveError,
   type ServerArchiveManifest,
+  type ServerImportFile,
   writeServerArchive,
+  writeServerImportFile,
 } from "../src/index.js";
 
 const tempDirs: string[] = [];
@@ -126,6 +129,22 @@ async function stageImport(): Promise<{
   return { stagingDir, manifest };
 }
 
+function manualImportMarker(importedEntries: string[]): ServerImportFile {
+  return {
+    version: 1,
+    kind: "manual",
+    moveId: null,
+    activationToken: null,
+    sourceDataDir: "/home/old/.bb",
+    sourceServerHostId: "host-old",
+    targetHostId: null,
+    serverUrl: null,
+    importedEntries,
+    createdAt: 1,
+    fixupsAppliedAt: null,
+  };
+}
+
 async function createTargetDataDir(): Promise<string> {
   const dataDir = await makeTempDir();
   await writeDataFile(dataDir, "host-id", "host-target");
@@ -190,6 +209,78 @@ describe("server import journal", () => {
     expect(await readDataFile(dataDir, "skills/review/SKILL.md")).toBe(
       "target skill",
     );
+  });
+
+  it("keeps an import that server-import.json recorded and removes only the leftover journal", async () => {
+    const { stagingDir, manifest } = await stageImport();
+    const dataDir = await createTargetDataDir();
+    const installed = await installImportedServerFiles({
+      stagingDir,
+      dataDir,
+      manifest,
+      localServerUrl: null,
+    });
+    await writeServerImportFile(
+      dataDir,
+      manualImportMarker(installed.importedEntries),
+    );
+
+    expect(await rollBackServerImport(dataDir)).toBeNull();
+
+    expect(await readServerImportJournalFile(dataDir)).toBeNull();
+    expect(await readDataFile(dataDir, "bb.db")).toBe("server database");
+    expect(await readDataFile(dataDir, "auth-secret")).toBe("secret");
+    expect(await readDataFile(dataDir, "skills/review/SKILL.md")).toBe(
+      "imported skill",
+    );
+    expect(await readServerImportFile(dataDir)).toEqual(
+      manualImportMarker(PLANNED_ENTRIES),
+    );
+  });
+
+  it("rolls back an install whose server-import.json doesn't record every journaled entry", async () => {
+    const { stagingDir, manifest } = await stageImport();
+    const dataDir = await createTargetDataDir();
+    const installed = await installImportedServerFiles({
+      stagingDir,
+      dataDir,
+      manifest,
+      localServerUrl: null,
+    });
+    await writeServerImportFile(
+      dataDir,
+      manualImportMarker(
+        installed.importedEntries.filter((entry) => entry !== "bb.db"),
+      ),
+    );
+
+    expect((await rollBackServerImport(dataDir))?.entries).toEqual(
+      PLANNED_ENTRIES,
+    );
+
+    expect(await readdir(dataDir)).not.toContain("bb.db");
+    expect(await readDataFile(dataDir, "skills/review/SKILL.md")).toBe(
+      "target skill",
+    );
+  });
+
+  it("drops a stale server-import.json before journaling, so it never records the new install", async () => {
+    const { stagingDir, manifest } = await stageImport();
+    const dataDir = await createTargetDataDir();
+    await writeServerImportFile(dataDir, manualImportMarker(PLANNED_ENTRIES));
+
+    await installImportedServerFiles({
+      stagingDir,
+      dataDir,
+      manifest,
+      localServerUrl: null,
+    });
+
+    expect(await readServerImportFile(dataDir)).toBeNull();
+    expect((await rollBackServerImport(dataDir))?.entries).toEqual(
+      PLANNED_ENTRIES,
+    );
+    expect(await readdir(dataDir)).not.toContain("bb.db");
   });
 
   it("rolls back an install interrupted partway without touching entries it never reached", async () => {

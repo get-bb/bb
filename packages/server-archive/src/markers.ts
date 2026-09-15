@@ -161,6 +161,28 @@ export async function removeServerImportJournalFile(
   await rm(join(dataDir, SERVER_IMPORT_JOURNAL_FILE_NAME), { force: true });
 }
 
+export type ServerImportJournalStatus =
+  | { kind: "none" }
+  | { kind: "committed"; journal: ServerImportJournalFile }
+  | { kind: "interrupted"; journal: ServerImportJournalFile };
+
+export async function readServerImportJournalStatus(
+  dataDir: string,
+): Promise<ServerImportJournalStatus> {
+  const journal = await readServerImportJournalFile(dataDir);
+  if (journal === null) {
+    return { kind: "none" };
+  }
+  const marker = await readServerImportFile(dataDir);
+  if (marker === null) {
+    return { kind: "interrupted", journal };
+  }
+  const recorded = new Set(marker.importedEntries);
+  return journal.entries.every((entry) => recorded.has(entry))
+    ? { kind: "committed", journal }
+    : { kind: "interrupted", journal };
+}
+
 export function readLastServerMoveFile(
   dataDir: string,
 ): Promise<LastServerMoveFile | null> {

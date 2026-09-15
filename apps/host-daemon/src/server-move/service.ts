@@ -20,7 +20,7 @@ import {
   extractServerArchive,
   installImportedServerFiles,
   readServerImportFile,
-  readServerImportJournalFile,
+  readServerImportJournalStatus,
   readServerMovedFile,
   removeImportedServerFiles,
   removeServerImportJournalFile,
@@ -349,9 +349,11 @@ export class ServerMoveService {
     const standaloneDataDir = join(homeDir, STANDALONE_DATA_DIR_NAME);
     const incomingMoveIds = await listIncomingMoveIds(dataDir);
     const staleMoves = await this.listStaleMoves();
-    const interruptedImport = await readServerImportJournalFile(dataDir).catch(
+    const journalStatus = await readServerImportJournalStatus(dataDir).catch(
       () => null,
     );
+    const interruptedImport =
+      journalStatus?.kind === "interrupted" ? journalStatus.journal : null;
     const staleImport =
       interruptedImport?.entries.includes(SERVER_DATABASE_FILE_NAME) === true ||
       staleMoves.some(

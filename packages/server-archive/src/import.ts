@@ -24,8 +24,9 @@ import {
   type ServerArchiveManifest,
 } from "./manifest.js";
 import {
-  readServerImportJournalFile,
+  readServerImportJournalStatus,
   removeServerImportJournalFile,
+  SERVER_IMPORT_FILE_NAME,
   SERVER_IMPORT_JOURNAL_FILE_NAME,
   type ServerImportJournalFile,
   writeServerImportJournalFile,
@@ -390,6 +391,7 @@ export async function installImportedServerFiles(
       relativePath !== MANAGED_ENV_PATH &&
       relativePath !== SERVER_DATABASE_PATH,
   );
+  await rm(join(dataDir, SERVER_IMPORT_FILE_NAME), { force: true });
   await journalPlannedEntries(dataDir, [
     ...stagedEntries,
     ...(writesManagedConfig ? [MANAGED_CONFIG_PATH] : []),
@@ -543,10 +545,15 @@ export async function rollBackServerImport(
   dataDir: string,
 ): Promise<ServerImportJournalFile | null> {
   const root = resolve(dataDir);
-  const journal = await readServerImportJournalFile(root);
-  if (journal === null) {
+  const status = await readServerImportJournalStatus(root);
+  if (status.kind === "none") {
     return null;
   }
+  if (status.kind === "committed") {
+    await removeServerImportJournalFile(root);
+    return null;
+  }
+  const { journal } = status;
   const backupDir = join(root, SERVER_IMPORT_BACKUP_DIR_NAME);
   const preexistingEntries = new Set(journal.preexistingEntries);
   for (const relativePath of journal.entries) {

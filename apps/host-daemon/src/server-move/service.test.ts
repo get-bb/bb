@@ -4,6 +4,8 @@ import {
   readServerConnectHoldFile,
   readServerImportFile,
   readServerMovedFile,
+  writeServerConnectHoldFile,
+  writeServerImportFile,
   writeServerMovedFile,
 } from "@bb/server-archive";
 import { describe, expect, it } from "vitest";
@@ -567,6 +569,70 @@ describe("ServerMoveService own data dir guards", () => {
     expect(await exists(join(dataDir, "server-import-journal.json"))).toBe(
       false,
     );
+  });
+
+  it("keeps a finished manual import whose journal outlived its marker and refuses the move", async () => {
+    const fixture = await createFixture();
+    const { dataDir } = fixture;
+    const importedEntries = ["attachments/project/a.txt", "bb.db"];
+    await writeFileWithDirs(join(dataDir, "bb.db"), "imported database");
+    await writeFileWithDirs(
+      join(dataDir, "attachments", "project", "a.txt"),
+      "imported attachment",
+    );
+    await writeFileWithDirs(
+      join(dataDir, "server-import-journal.json"),
+      JSON.stringify({
+        version: 1,
+        entries: importedEntries,
+        preexistingEntries: [],
+      }),
+    );
+    await writeServerImportFile(dataDir, {
+      version: 1,
+      kind: "manual",
+      moveId: null,
+      activationToken: null,
+      sourceDataDir: "/Users/me/.bb",
+      sourceServerHostId: "host-source",
+      targetHostId: null,
+      serverUrl: null,
+      importedEntries,
+      createdAt: 1,
+      fixupsAppliedAt: null,
+    });
+    await writeServerConnectHoldFile(dataDir, {
+      version: 1,
+      reason: "manual-import",
+      createdAt: 1,
+    });
+
+    const inspected = await fixture.service.inspect({
+      type: "server_move.inspect",
+      paths: [],
+      port: 38_886,
+    });
+    expect(inspected.dataDirHasServerData).toBe(true);
+
+    await expect(
+      fixture.service.prepare(await prepareCommand(fixture)),
+    ).rejects.toMatchObject({ code: "server_move_archive_server_data_exists" });
+
+    expect(await readFile(join(dataDir, "bb.db"), "utf8")).toBe(
+      "imported database",
+    );
+    expect(
+      await readFile(join(dataDir, "attachments", "project", "a.txt"), "utf8"),
+    ).toBe("imported attachment");
+    expect(await readServerImportFile(dataDir)).toMatchObject({
+      kind: "manual",
+      importedEntries,
+    });
+    expect(await readServerConnectHoldFile(dataDir)).not.toBeNull();
+    expect(await exists(join(dataDir, "server-import-journal.json"))).toBe(
+      false,
+    );
+    expect(fixture.launches).toEqual([]);
   });
 
   it("hides ~/.bb when it is this daemon's data dir and refuses to archive it", async () => {

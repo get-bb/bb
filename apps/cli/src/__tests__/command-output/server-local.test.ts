@@ -31,6 +31,7 @@ import {
   type ServerMovedFile,
   writeServerArchive,
   writeServerConnectHoldFile,
+  writeServerImportFile,
   writeServerMovedFile,
 } from "@bb/server-archive";
 import {
@@ -541,6 +542,65 @@ describe("bb server import", () => {
     expect(collectLogPayloads(vi.mocked(console.log))[0]).toBe(
       `Rolled back an interrupted import in ${dataDir}.`,
     );
+  });
+
+  it("refuses to import over a finished import whose journal was left behind", async () => {
+    const dataDir = join(await makeDataDirParent(), "bb-data");
+    const importedEntries = ["attachments/thr_1/image.png", "bb.db"];
+    await writeDataFile(dataDir, "bb.db", "imported database");
+    await writeDataFile(dataDir, "attachments/thr_1/image.png", "imported png");
+    await writeDataFile(
+      dataDir,
+      "server-import-journal.json",
+      JSON.stringify({
+        version: 1,
+        entries: importedEntries,
+        preexistingEntries: [],
+      }),
+    );
+    await writeServerImportFile(dataDir, {
+      version: 1,
+      kind: "manual",
+      moveId: null,
+      activationToken: null,
+      sourceDataDir: "/home/old/.bb",
+      sourceServerHostId: "host-old-server",
+      targetHostId: null,
+      serverUrl: null,
+      importedEntries,
+      createdAt: 1_700_000_000_000,
+      fixupsAppliedAt: null,
+    });
+    await writeServerConnectHoldFile(dataDir, {
+      version: 1,
+      reason: "manual-import",
+      createdAt: 1_700_000_000_000,
+    });
+
+    await expect(
+      runCommand(
+        ["server", "import", plainArchive, "--data-dir", dataDir, "--yes"],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+
+    expect(collectLogPayloads(vi.mocked(console.error))[0]).toBe(
+      `Error: ${dataDir} already has a bb server database (bb.db). Import into a data directory without a server, such as --data-dir ~/.bb-imported.`,
+    );
+    expect(await readFile(join(dataDir, "bb.db"), "utf8")).toBe(
+      "imported database",
+    );
+    expect(
+      await readFile(
+        join(dataDir, "attachments", "thr_1", "image.png"),
+        "utf8",
+      ),
+    ).toBe("imported png");
+    expect(await readServerImportFile(dataDir)).toMatchObject({
+      kind: "manual",
+      importedEntries,
+    });
+    expect(await readServerConnectHoldFile(dataDir)).not.toBeNull();
   });
 
   it("removes the pre-import config backups once the import is marked", async () => {
