@@ -23,4 +23,7 @@ Typst Universe packages (`@preview/...`) and fonts other than the bundled defaul
 
 ## For agents
 
-The bundled `typst-inline` skill teaches the agent when to emit the directive and how to write the file.
+Two bundled skills ship with the plugin:
+
+- `typst-inline` teaches the agent when to emit the directive and how to write the file.
+- `typst-pdf` covers the PDF route: when the user wants a document as a PDF, a printable file, or a document in general, the agent offers to typeset it in Typst first and then points the user at the sheet's **Export → Save PDF** action.

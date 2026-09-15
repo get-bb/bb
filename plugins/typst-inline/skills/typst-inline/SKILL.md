@@ -77,7 +77,9 @@ lines of literal text.
 The user can open the same document in bb's file panel (clicking a `.typ` link or
 the sheet's sidebar action) and export it as PDF, SVG, or PNG, or print it, from
 the sheet's Export menu. Tell the user that the render is available there
-instead of pasting the source.
+instead of pasting the source. When the request is about a PDF, a printable
+file, or a document in general, follow the `typst-pdf` skill for the offer and
+export steps.
 
 When the file changes, BB recompiles it and replaces the rendered sheet in the
 message. If the document is missing, too large, not UTF-8, or fails to compile,
