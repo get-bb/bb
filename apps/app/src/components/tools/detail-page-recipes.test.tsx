@@ -24,6 +24,7 @@ import type {
 import {
   AutomationDetailView as AutomationDetailViewBase,
   AgentAutomationDefinition,
+  ScriptAutomationDefinition,
 } from "bb-plugin-automations/detail-view";
 
 vi.mock("@get-bb/plugin-sdk/app", async (importOriginal) => ({
@@ -1212,6 +1213,7 @@ describe("Automation detail recipe", () => {
     expect(screen.getByRole("heading", { name: "Script" })).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "Script file" })).toBeNull();
     expect(container.textContent).toContain("2 env vars");
+    expect(container.textContent).toContain("Project source");
     expect(container.textContent).not.toContain("/private/reports");
     expect(container.textContent).not.toContain("secret-token");
 
@@ -1250,6 +1252,34 @@ describe("Automation detail recipe", () => {
       "bg-surface-recessed/55",
     );
   });
+
+  it.each([
+    [{ type: "legacy" } as const, "Legacy plugin storage"],
+    [{ type: "project" } as const, "Project source"],
+    [
+      { type: "path", path: "/srv/automation-work" } as const,
+      "/srv/automation-work",
+    ],
+  ])(
+    "shows the selected script working directory",
+    (workingDirectory, label) => {
+      const { container } = render(
+        <ScriptAutomationDefinition
+          execution={{
+            mode: "script",
+            script: "pwd\n",
+            workingDirectory,
+            timeoutMs: 60_000,
+          }}
+        />,
+      );
+
+      expect(container.textContent).toContain(label);
+      expect(
+        container.querySelector(`[aria-label="Working directory: ${label}"]`),
+      ).not.toBeNull();
+    },
+  );
 
   it("uses the shared shimmer treatment while runs are loading", async () => {
     const { container } = render(

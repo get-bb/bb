@@ -65,6 +65,7 @@ export default async function plugin(bb: BbPluginApi) {
           await sweepDueAutomations(bb, db, {
             pluginDataDir,
             serverUrl: resolveServerUrl(),
+            serverHostId: bb.server.experimental_hostId,
           });
         } catch (error) {
           bb.log.error(`Automation sweep failed: ${errorMessage(error)}`);

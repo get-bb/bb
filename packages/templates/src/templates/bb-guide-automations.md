@@ -48,11 +48,12 @@ apply until you run `update <automationId> --script-file <path>` again;
 print the stored copy path on the `Script:` line (`execution.storedScriptPath`
 with `--json`).
 
-Scripts run on the bb server host. New scripts default to its project source;
-existing scripts without a saved policy retain the legacy plugin-storage
-directory. `--working-directory` selects `legacy`, `project`, or an absolute
-server-host path. A missing selected directory fails the run. A failed process
-reports the exit code and first non-empty stderr line in the `Detail` column.
+Scripts run on the bb server host. New standard-project scripts use its project
+source when one exists; Personal and projects without one use legacy plugin
+storage. Existing scripts without a saved policy also retain legacy storage.
+`--working-directory` selects `legacy`, `project`, or an absolute server-host
+path. A missing selected directory fails the run. A failed process reports the
+exit code and sanitized first non-empty stderr line in the `Detail` column.
 
 `update` can combine name, schedule, and execution changes. A complete agent
 replacement supplies `--prompt`, `--provider`, and `--model`; a script

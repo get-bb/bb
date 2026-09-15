@@ -980,7 +980,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Read recorded context usage with sdk.threads.context({ threadId }); usage is null when unavailable, and its snapshot is present only when the latest measurement includes a breakdown",
           "Reach the same operations the [bb CLI](cli) and the bb UI use",
           "Have the threads it creates attributed back to the plugin",
-          "Read the server's loopback URL, public app URL, and data directory when it needs server facts",
+          "Read the server's host identity, loopback URL, public app URL, and data directory when it needs server facts",
         ],
         apiSymbols: ["BbPluginApi", "PluginServerApi"],
         firstParty: [

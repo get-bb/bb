@@ -11,4 +11,4 @@ Schedule work once or on a repeat, and let bb run it while you do something else
 
 Agents get the `automations` skill and the `bb automation` command: `create`, `list`, `show`, `update`, `pause`, `resume`, `run`, `runs`, and `delete`. All commands accept `--json`. Threads that an automation starts cannot create automations.
 
-Scripts run on the machine that hosts the bb server. New scripts default to that host's project source; existing scripts retain the legacy plugin-storage directory until changed. A script can instead select an absolute server-host path. Agent runs use the providers you already have installed.
+Scripts run on the machine that hosts the bb server. New standard-project scripts use that host's project source when available; Personal and projects without one use legacy plugin storage. Existing scripts retain legacy storage until changed. A script can instead select an absolute server-host path, and the detail view shows the effective policy. Agent runs use the providers you already have installed.

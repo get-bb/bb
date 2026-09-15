@@ -686,6 +686,12 @@ export function ScriptAutomationDefinition({
 }: {
   execution: Extract<AutomationExecution, { mode: "script" }>;
 }) {
+  const workingDirectoryLabel =
+    execution.workingDirectory.type === "legacy"
+      ? "Legacy plugin storage"
+      : execution.workingDirectory.type === "project"
+        ? "Project source"
+        : formatHomePathForDisplay(execution.workingDirectory.path);
   return (
     <ResourceDetailPanel
       surface="flat"
@@ -706,6 +712,14 @@ export function ScriptAutomationDefinition({
         <span className="inline-flex items-center gap-1.5">
           <Icon name="Clock" className="size-3.5" aria-hidden />
           {Math.round(execution.timeoutMs / 1000)}s timeout
+        </span>
+        <span
+          className="inline-flex min-w-0 items-center gap-1.5"
+          aria-label={`Working directory: ${workingDirectoryLabel}`}
+          title={workingDirectoryLabel}
+        >
+          <Icon name="Folder" className="size-3.5 shrink-0" aria-hidden />
+          <span className="max-w-64 truncate">{workingDirectoryLabel}</span>
         </span>
         {execution.env ? (
           <AutomationEnvironmentVariables environment={execution.env} />

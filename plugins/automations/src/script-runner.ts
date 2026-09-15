@@ -1,7 +1,7 @@
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { constants } from "node:fs";
 import { delimiter, dirname, isAbsolute, join } from "node:path";
-import { promisify } from "node:util";
+import { promisify, stripVTControlCharacters } from "node:util";
 import { access, mkdir, stat } from "node:fs/promises";
 import {
   AUTOMATION_SCRIPT_TIMEOUT_MAX_MS,
@@ -138,7 +138,9 @@ interface ScriptRunOutcome {
 
 function firstStderrLine(stderr: string): string | null {
   for (const line of stderr.split(/\r?\n/u)) {
-    const trimmed = line.trim();
+    const trimmed = stripVTControlCharacters(line)
+      .replace(/\p{Cc}/gu, " ")
+      .trim();
     if (trimmed.length === 0) continue;
     return trimmed.length > SCRIPT_FAILURE_DETAIL_MAX_CHARS
       ? `${trimmed.slice(0, SCRIPT_FAILURE_DETAIL_MAX_CHARS - 1)}…`
