@@ -4,6 +4,7 @@ import { access } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import semverCompare from "semver/functions/compare.js";
+import semverValid from "semver/functions/valid.js";
 import { z } from "zod";
 import type {
   ProviderInstallationCommand,
@@ -59,9 +60,10 @@ export async function commandOutput(
 }
 
 export function versionFrom(value: string | null): string | null {
-  return (
-    value?.match(/\bv?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)\b/u)?.[1] ?? null
-  );
+  const candidate = value?.match(/\bv?(\d+\.\d+\.\d+[0-9A-Za-z.+-]*)/u)?.[1];
+  return candidate !== undefined && semverValid(candidate) !== null
+    ? candidate
+    : null;
 }
 
 export async function readCliVersion(command: string): Promise<string | null> {
@@ -71,10 +73,7 @@ export async function readCliVersion(command: string): Promise<string | null> {
     });
     probe.child.stdin?.end();
     const { stdout, stderr } = await probe;
-    return (
-      `${stdout}\n${stderr}`.match(/\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?/u)?.[0] ??
-      null
-    );
+    return versionFrom(`${stdout}\n${stderr}`);
   } catch {
     return null;
   }

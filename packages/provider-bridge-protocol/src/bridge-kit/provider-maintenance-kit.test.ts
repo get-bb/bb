@@ -91,6 +91,45 @@ describe("provider maintenance kit", () => {
     expect(versionFrom(null)).toBeNull();
   });
 
+  it.each([
+    "1.2.3-2026.01.15",
+    "0.5.0-01",
+    "1.2.3-beta..1",
+    "1.2.3-beta.",
+    "1.2.3-",
+    "1.2.3+",
+    "1.2.3+build..1",
+    "1.2.3.4",
+    "01.2.3",
+  ])("returns null for invalid CLI version %s", (version) => {
+    expect(versionFrom(`codex ${version}`)).toBeNull();
+  });
+
+  it("preserves valid prereleases and build metadata", () => {
+    const version = versionFrom("codex 1.2.3-beta.10+2026.01.15");
+    expect(version).toBe("1.2.3-beta.10+2026.01.15");
+    expect(compareVersions(version!, "1.2.3-beta.9")).toBeGreaterThan(0);
+  });
+
+  it.skipIf(process.platform === "win32").each([
+    ["1.2.3-2026.01.15", ""],
+    ["0.5.0-01", " >&2"],
+    ["1.2.3-beta..1", ""],
+  ])("returns null when --version reports %s", async (version, redirect) => {
+    const dir = await mkdtemp(path.join(tmpdir(), "bb-cli-invalid-version-"));
+    try {
+      const executable = path.join(dir, "invalid-version-cli");
+      await writeFile(
+        executable,
+        `#!/bin/sh\necho "codex ${version}"${redirect}\n`,
+      );
+      await chmod(executable, 0o755);
+      expect(await readCliVersion(executable)).toBeNull();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it("quotes only the arguments a shell would mangle", () => {
     expect(
       formatCommand("npm", ["install", "-g", "@openai/codex@latest"]),
