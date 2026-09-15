@@ -1400,6 +1400,9 @@ importers:
       '@bb/tsconfig':
         specifier: workspace:*
         version: link:../tsconfig
+      '@types/better-sqlite3':
+        specifier: ^7.6.12
+        version: 7.6.13
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.10

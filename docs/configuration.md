@@ -24,6 +24,13 @@ npx bb-app env list
 npx bb-app env unset OPENAI_API_KEY
 ```
 
+Concurrent launcher updates preserve unrelated keys in each managed JSON file.
+A command waiting more than five seconds for another writer fails without
+changing the JSON; retry after the other command finishes. Keep the generated
+`.config.json.lock`, `.env.json.lock`, and `.client.json.lock` files in place.
+Finish concurrent commands before editing JSON directly; older launchers do
+not participate in this coordination.
+
 ## Repository worktree hooks
 
 Commit `.bb-env-setup.sh` when a managed worktree needs repository setup.
