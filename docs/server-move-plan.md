@@ -70,6 +70,9 @@ Not moved: logs, caches (`install-cache/`, `plugin-host-artifacts/`,
    - free disk space in the target's data directory for the export, its
      unpacked copy, and the bb update, with headroom (a blocker when it is
      short, a warning when it is tight);
+   - free disk space in the server's own data directory for the export work
+     files (database snapshots, the archive, and the bb update package), with
+     the same headroom, blocker, and warning;
    - a target that runs a newer bb than the server, which blocks the move until
      the server is updated;
    - the server's custom models, ACP agents, and shared skill roots, which

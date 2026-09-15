@@ -97,6 +97,7 @@ export interface ServerMoveEnvironment {
   fullArtifact: FullBbAppArtifactService;
   now(): number;
   plugins: ServerMovePluginControl;
+  readServerDiskFreeBytes(): Promise<number | null>;
   resolveMode(): Promise<ServerMoveModeResolution>;
   resolveServerHostGrant(
     hostId: string,
@@ -328,6 +329,7 @@ export function createServerMoveCoordinator(
     deps,
     fullArtifact: environment.fullArtifact,
     inspectTimeoutMs: timings.inspectTimeoutMs,
+    readServerDiskFreeBytes: () => environment.readServerDiskFreeBytes(),
     resolveMode: () => environment.resolveMode(),
     serverTimeZone: environment.serverTimeZone,
     targetServerPort: () => environment.targetServerPort(),

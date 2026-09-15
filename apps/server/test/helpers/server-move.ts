@@ -203,6 +203,7 @@ export function createTestServerMoveEnvironment(
         events.push("plugins:suspend");
       },
     },
+    readServerDiskFreeBytes: async () => null,
     resolveMode: async () => ({ mode: "direct" }),
     resolveServerHostGrant: async () => {
       throw new Error("Direct moves don't resolve a server access grant");

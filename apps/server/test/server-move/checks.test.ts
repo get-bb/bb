@@ -65,6 +65,7 @@ function checkEnvironment(
     deps: harness.deps,
     fullArtifact: environment.fullArtifact,
     inspectTimeoutMs: 2_000,
+    readServerDiskFreeBytes: environment.readServerDiskFreeBytes,
     resolveMode: async (): Promise<ServerMoveModeResolution> => ({
       mode: "direct",
     }),
@@ -572,6 +573,66 @@ describe("server move checks", () => {
           },
         ],
       });
+    }));
+
+  it("blocks a move when this server machine has no room to export and warns when space is tight", () =>
+    withTestHarness(async (harness) => {
+      seedHost(harness.deps, { id: OLD, name: "Laptop" });
+      seedPrimaryHost(harness.deps, OLD);
+      seedHost(harness.deps, { id: NEW, name: "Desktop" });
+      registerInspectingDaemon(
+        harness,
+        NEW,
+        inspectResult({ bbAppVersion: "0.0.0-alpha.1" }),
+      );
+      const dataDir = harness.config.dataDir;
+      let serverDiskFreeBytes: number | null = 4 * GIB;
+      const serverDiskItems = async () => {
+        const result = await runServerMoveCheck(
+          checkEnvironment(harness, {
+            fullArtifact: availableArtifact(5 * GIB),
+            readServerDiskFreeBytes: async () => serverDiskFreeBytes,
+          }),
+          { moveInProgress: false, request: request() },
+        );
+        return {
+          canMove: result.response.canMove,
+          items: result.response.items.filter((item) =>
+            item.id.startsWith("source-disk-space"),
+          ),
+        };
+      };
+
+      expect(await serverDiskItems()).toEqual({
+        canMove: false,
+        items: [
+          {
+            id: "source-disk-space",
+            severity: "blocker",
+            title: "Laptop doesn't have room to export the server data",
+            detail: `The export needs about 6.0 GB free in ${dataDir}, but only 4.0 GB is available. Free up space on Laptop, then check again.`,
+          },
+        ],
+      });
+
+      serverDiskFreeBytes = 8 * GIB;
+      expect(await serverDiskItems()).toEqual({
+        canMove: true,
+        items: [
+          {
+            id: "source-disk-space-tight",
+            severity: "warning",
+            title: "Space is tight on Laptop",
+            detail: `The export needs about 6.0 GB of the 8.0 GB free in ${dataDir}, which leaves little room for the running server while it exports.`,
+          },
+        ],
+      });
+
+      serverDiskFreeBytes = 100 * GIB;
+      expect(await serverDiskItems()).toEqual({ canMove: true, items: [] });
+
+      serverDiskFreeBytes = null;
+      expect(await serverDiskItems()).toEqual({ canMove: true, items: [] });
     }));
 
   it("blocks when the target can't be inspected", () =>

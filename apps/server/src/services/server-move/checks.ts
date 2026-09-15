@@ -63,6 +63,7 @@ export interface ServerMoveCheckEnvironment {
   deps: AppDeps;
   fullArtifact: FullBbAppArtifactService;
   inspectTimeoutMs: number;
+  readServerDiskFreeBytes(): Promise<number | null>;
   resolveMode(): Promise<ServerMoveModeResolution>;
   serverTimeZone: string | null;
   targetServerPort(): number;
@@ -179,6 +180,29 @@ function inventorySizeBytes(inventory: ServerOwnedInventory): number {
   return total;
 }
 
+function inventoryDatabaseSizeBytes(inventory: ServerOwnedInventory): number {
+  let total = 0;
+  for (const entry of inventory.entries) {
+    for (const file of entry.files) {
+      if (file.sqliteDatabase) {
+        total += file.sizeBytes;
+      }
+    }
+  }
+  return total;
+}
+
+function requiredExportDiskBytes(
+  inventory: ServerOwnedInventory,
+  artifactSizeBytes: number,
+): number {
+  const base =
+    inventoryDatabaseSizeBytes(inventory) +
+    inventorySizeBytes(inventory) +
+    artifactSizeBytes;
+  return base + Math.max(GIB, Math.ceil(base * DISK_HEADROOM_RATIO));
+}
+
 function requiredMoveDiskBytes(args: {
   artifactSizeBytes: number;
   serverDataSizeBytes: number;
@@ -243,6 +267,41 @@ function appendDiskSpaceItems(args: {
       severity: "warning",
       title: `Space is tight on ${args.targetName}`,
       detail: `The move needs about ${formatBytes(required)} of the ${formatBytes(free)} free in ${args.inspect.dataDir}, which leaves little room for the server to grow.`,
+    });
+  }
+}
+
+function appendServerDiskSpaceItems(args: {
+  artifactSizeBytes: number;
+  dataDir: string;
+  freeBytes: number | null;
+  inventory: ServerOwnedInventory;
+  items: ServerMoveCheckItem[];
+  serverName: string;
+}): void {
+  const free = args.freeBytes;
+  if (free === null) {
+    return;
+  }
+  const required = requiredExportDiskBytes(
+    args.inventory,
+    args.artifactSizeBytes,
+  );
+  if (free < required) {
+    args.items.push({
+      id: "source-disk-space",
+      severity: "blocker",
+      title: `${args.serverName} doesn't have room to export the server data`,
+      detail: `The export needs about ${formatBytes(required)} free in ${args.dataDir}, but only ${formatBytes(free)} is available. Free up space on ${args.serverName}, then check again.`,
+    });
+    return;
+  }
+  if (free < required * TIGHT_DISK_SPACE_RATIO) {
+    args.items.push({
+      id: "source-disk-space-tight",
+      severity: "warning",
+      title: `Space is tight on ${args.serverName}`,
+      detail: `The export needs about ${formatBytes(required)} of the ${formatBytes(free)} free in ${args.dataDir}, which leaves little room for the running server while it exports.`,
     });
   }
 }
@@ -742,6 +801,7 @@ export async function runServerMoveCheck(
   }
   items.push(...targetBlockers);
   let inspect: ServerMoveInspectResult | null = null;
+  let artifactSizeBytes = 0;
   if (targetBlockers.length === 0) {
     const pathPlugins = listPathInstalledPluginSources(deps.db).filter(
       (plugin) => !isUnderDirectory(plugin.sourcePath, deps.config.dataDir),
@@ -769,8 +829,9 @@ export async function runServerMoveCheck(
     if (inspect !== null) {
       const lastMove = await readLastServerMoveFile(deps.config.dataDir);
       const targetVersion = await checkTargetVersion(environment, inspect);
+      artifactSizeBytes = targetArtifactSizeBytes(targetVersion);
       appendTargetInspectItems({
-        artifactSizeBytes: targetArtifactSizeBytes(targetVersion),
+        artifactSizeBytes,
         environment,
         envPaths,
         inspect,
@@ -795,6 +856,16 @@ export async function runServerMoveCheck(
         targetVersion,
       });
     }
+  }
+  if (liveSourceServerHost !== null) {
+    appendServerDiskSpaceItems({
+      artifactSizeBytes,
+      dataDir: deps.config.dataDir,
+      freeBytes: await environment.readServerDiskFreeBytes(),
+      inventory,
+      items,
+      serverName: liveSourceServerHost.name,
+    });
   }
   appendServerStateItems({
     environment,

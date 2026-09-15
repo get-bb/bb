@@ -1,3 +1,4 @@
+import { statfs } from "node:fs/promises";
 import type { ServerBindHost } from "@bb/config/server";
 import type {
   AppDeps,
@@ -45,6 +46,16 @@ export interface CreateDefaultServerMoveEnvironmentArgs {
   pluginService: PluginService;
   retireProcess(): void;
   serverEntryUrl: string;
+}
+
+export async function readDiskFreeBytes(path: string): Promise<number | null> {
+  try {
+    const stats = await statfs(path);
+    const free = Number(stats.bavail) * Number(stats.bsize);
+    return Number.isSafeInteger(free) && free >= 0 ? free : null;
+  } catch {
+    return null;
+  }
 }
 
 export function allowsLoopbackServerMoveUrl(env: NodeJS.ProcessEnv): boolean {
@@ -128,6 +139,7 @@ export function createDefaultServerMoveEnvironment(
         });
       },
     },
+    readServerDiskFreeBytes: () => readDiskFreeBytes(deps.config.dataDir),
     resolveMode: () => resolveServerMoveMode(deps, pluginService),
     resolveServerHostGrant: async (hostId, signal) => {
       const grant = await serverAccess.resolve(deps, {
