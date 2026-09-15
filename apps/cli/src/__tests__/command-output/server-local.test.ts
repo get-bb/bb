@@ -526,6 +526,7 @@ describe("bb server import", () => {
       "config.json",
       "host-id",
       "plugins",
+      "server-connect-hold.json",
       "server-import.json",
     ]);
     expect(
