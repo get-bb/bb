@@ -76,7 +76,7 @@ export {
   listNonDeletedChildThreads,
   listThreadEnvironmentAssignmentsOnHost,
   listUnarchivedAssignedChildThreads,
-  listUnarchivedHiddenSourceThreads,
+  listNonDeletedHiddenSourceThreads,
   listRunningThreads,
   listThreadsWithPendingInteractionState,
   listThreadsWithPendingInteractionStateForProjects,

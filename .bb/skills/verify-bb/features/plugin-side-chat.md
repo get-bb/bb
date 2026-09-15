@@ -26,6 +26,7 @@ SKILL.md. Inspect nested `--help` before selecting flags and IDs.
 | Conversation | Send a harmless follow-up, navigate away/back, and reopen the side chat. | The side-chat conversation persists independently of the main composer. |
 | Send back | Send a side-chat result back to the main thread and inspect its queue. | One intended message enters the parent’s delivery path with correct context; it is not silently sent to another thread. |
 | Cleanup policy | Use dated empty/used test side chats in the dedicated cleanup fixture and exercise the hourly cleanup schedule through an isolated scheduler harness. | Only eligible old empty chats are archived; used chats and recent empty ones remain. |
+| Source deletion | Directly delete a disposable source with a used side chat, queued input, a running fork, nested hidden forks, and a visible fork. Exercise stop failure/reconnect and fork creation racing deletion in the isolated server harness. | Hidden fork trees are archived before source links disappear; queued work stays blocked and stops retry on reconnect. Visible forks and ordinary children retain their existing behavior. |
 
 ## Evidence and cleanup
 

@@ -585,7 +585,7 @@ export interface CountNonDeletedAssignedChildThreadsArgs {
   parentThreadId: string;
 }
 
-export interface ListUnarchivedHiddenSourceThreadsArgs {
+export interface ListNonDeletedHiddenSourceThreadsArgs {
   sourceThreadId: string;
 }
 
@@ -1407,13 +1407,13 @@ export function listUnarchivedAssignedChildThreads(
   );
 }
 
-export function listUnarchivedHiddenSourceThreads(
+export function listNonDeletedHiddenSourceThreads(
   db: ThreadWriteConnection,
-  args: ListUnarchivedHiddenSourceThreadsArgs,
+  args: ListNonDeletedHiddenSourceThreadsArgs,
 ): ThreadRow[] {
   return listThreadsWhere(
     db,
-    liveThreads(
+    nonDeletedThreads(
       eq(threads.sourceThreadId, args.sourceThreadId),
       eq(threads.visibility, "hidden"),
     ),

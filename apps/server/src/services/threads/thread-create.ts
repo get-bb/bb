@@ -376,6 +376,12 @@ async function createPendingThreadAndAttemptFirstDispatch(
       : getEnvironment(deps.db, args.environmentId);
   if (environment !== null)
     assertEnvironmentPathAvailable(deps, { ...environment, threadId: null });
+  if (args.request.sourceThreadId) {
+    requireLiveSourceThread(deps, {
+      projectId: args.request.projectId,
+      sourceThreadId: args.request.sourceThreadId,
+    });
+  }
   const thread = createThreadRecord(deps, {
     request: args.request,
     environmentId: args.environmentId,

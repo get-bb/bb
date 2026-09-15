@@ -1,4 +1,4 @@
-import { getThread } from "@bb/db";
+import { getThread, threads } from "@bb/db";
 import type { EnvironmentRow } from "@bb/db";
 import {
   encodeClientTurnRequestIdNumber,
@@ -8,6 +8,7 @@ import {
   type Thread,
 } from "@bb/domain";
 import { groupHostDaemonEvents } from "@bb/host-daemon-contract";
+import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import {
   hasLiveThreadStartInFlight,
@@ -380,40 +381,57 @@ describe("live thread start handoff", () => {
     });
   });
 
-  it("does not reactivate an archived thread when a late thread start succeeds", async () => {
-    await withTestHarness(async (harness) => {
-      const fixture = await startLiveThreadStartRpc({
-        harness,
-        requestIdValue: 5,
-      });
+  it.each(["archive", "delete-source"])(
+    "does not reactivate a thread after %s when a late thread start succeeds",
+    async (action) => {
+      await withTestHarness(async (harness) => {
+        const fixture = await startLiveThreadStartRpc({
+          harness,
+          requestIdValue: 5,
+        });
 
-      const response = await harness.app.request(
-        `/api/v1/threads/${fixture.thread.id}/archive-all`,
-        { method: "POST" },
-      );
-      expect(response.status).toBe(200);
-      const stopCommand = await waitForQueuedCommand(
-        harness,
-        ({ command }) =>
-          command.type === "thread.stop" &&
-          command.threadId === fixture.thread.id,
-      );
-      await reportQueuedCommandSuccess(harness, stopCommand, {
-        providerCheckpointId: null,
-      });
-      expect(getThread(harness.db, fixture.thread.id)).toMatchObject({
-        archivedAt: expect.any(Number),
-        status: "idle",
-      });
+        const source = seedThread(harness.deps, {
+          projectId: fixture.thread.projectId,
+        });
+        harness.db
+          .update(threads)
+          .set({ sourceThreadId: source.id, visibility: "hidden" })
+          .where(eq(threads.id, fixture.thread.id))
+          .run();
+        const response = await harness.app.request(
+          action === "archive"
+            ? `/api/v1/threads/${fixture.thread.id}/archive-all`
+            : `/api/v1/threads/${source.id}`,
+          {
+            method: action === "archive" ? "POST" : "DELETE",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ childThreadsConfirmed: true }),
+          },
+        );
+        expect(response.status).toBe(200);
+        const stopCommand = await waitForQueuedCommand(
+          harness,
+          ({ command }) =>
+            command.type === "thread.stop" &&
+            command.threadId === fixture.thread.id,
+        );
+        await reportQueuedCommandSuccess(harness, stopCommand, {
+          providerCheckpointId: null,
+        });
+        expect(getThread(harness.db, fixture.thread.id)).toMatchObject({
+          archivedAt: expect.any(Number),
+          status: "idle",
+        });
 
-      await reportQueuedCommandSuccess(harness, fixture.startCommand, {
-        providerThreadId: "provider-archived-late-start",
-      });
+        await reportQueuedCommandSuccess(harness, fixture.startCommand, {
+          providerThreadId: "provider-archived-late-start",
+        });
 
-      expect(getThread(harness.db, fixture.thread.id)).toMatchObject({
-        archivedAt: expect.any(Number),
-        status: "idle",
+        expect(getThread(harness.db, fixture.thread.id)).toMatchObject({
+          archivedAt: expect.any(Number),
+          status: "idle",
+        });
       });
-    });
-  });
+    },
+  );
 });

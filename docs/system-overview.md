@@ -25,6 +25,31 @@ The core entities and how they relate:
 
 ## Contracts and boundaries
 
+### Thread deletion
+
+The thread DELETE route, SDK `threads.delete`, and `bb thread delete` archive
+hidden source-derived fork trees before marking the source deleted or requesting
+its storage removal. This is core ownership policy, including side chats with
+user messages or queued work. Traversal follows hidden `sourceThreadId` forks
+and their `parentThreadId` descendants, including archived intermediaries.
+Visible source-derived forks remain independent. Ordinary children directly
+assigned to the deleted source retain the existing confirmation and deletion
+behavior; deleting their parent does not archive them.
+
+Archival is persisted before source deletion, blocks queued dispatch, and
+requests runtime stops. A synchronous cleanup failure leaves the source and its
+links available for retry. Daemon reconnect reconciliation retries stops for
+archived workers still reported running, even after the source has been
+physically removed. Fork creation revalidates the source after asynchronous
+setup, immediately before inserting the new thread.
+
+Existing source-less hidden forks cannot be assigned to a deleted source from
+`originPluginId` alone. Side-chat retained-fork keys contain no source mapping.
+Recovery requires separate trustworthy evidence; deletion does not infer
+ownership from titles, timestamps, or shared environments.
+
+### Transport contracts
+
 Two contract packages define the boundaries between components:
 
 **`@bb/server-contract`**: the HTTP + WebSocket API between clients (app, CLI) and the server. Route schemas, request/response types, WebSocket notification types.

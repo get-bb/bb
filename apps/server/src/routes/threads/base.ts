@@ -50,6 +50,7 @@ import { dispatchThreadRenameCommand } from "../../services/threads/thread-comma
 import { requestThreadStorageDeletion } from "../../services/threads/thread-lifecycle.js";
 import { createThreadFromRequest } from "../../services/threads/thread-create.js";
 import { createThreadForkFromRequest } from "../../services/threads/thread-fork.js";
+import { archiveHiddenSourceThreadsBeforeDeletion } from "../../services/threads/thread-archive.js";
 import { requireChildThreadsConfirmation } from "../../services/threads/child-thread-confirmation.js";
 import {
   toThreadListEntryResponses,
@@ -468,6 +469,7 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
       deps,
       thread,
     });
+    archiveHiddenSourceThreadsBeforeDeletion(deps, thread.id);
     const deletedThread = markThreadDeleted(deps.db, deps.hub, {
       threadId: thread.id,
     });
