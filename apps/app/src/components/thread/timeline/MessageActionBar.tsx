@@ -11,7 +11,10 @@ import { flushSync } from "react-dom";
 import * as PopoverPrimitive from "@radix-ui/react-popover";
 import { CopyButton } from "../../ui/copy-button.js";
 import { Icon } from "@bb/shared-ui/icon";
-import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
+import {
+  HOVER_NONE_QUERY,
+  useMediaQuery,
+} from "@bb/shared-ui/hooks/use-media-query";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { preventOverlayTriggerSelection } from "@bb/shared-ui/overlay-trigger";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
@@ -266,6 +269,7 @@ function MobileMessageOverflowPopover({
               onClick={() => {
                 if (action.kind === "copy") {
                   void copyToClipboardWithToast(action.copyText ?? "", {
+                    imageUrl: action.copyImageUrl,
                     successMessage: null,
                     errorMessage: "Failed to copy",
                   }).then((didCopy) => {
@@ -296,10 +300,11 @@ const ACTION_BUTTON_CLASS =
 const HOVER_REVEAL_CLASS =
   "opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100";
 const MOBILE_INLINE_ACTION_CLASS =
-  "max-md:pointer-coarse:size-7 max-md:pointer-coarse:opacity-100 max-md:pointer-coarse:disabled:opacity-40 max-md:pointer-coarse:[&_[data-icon-root]]:size-4";
-const MOBILE_OVERFLOW_ACTION_CLASS = "max-md:pointer-coarse:hidden";
+  "pointer-coarse:size-7 pointer-coarse:opacity-100 pointer-coarse:disabled:opacity-40 pointer-coarse:[&_[data-icon-root]]:size-4 [@media(hover:none)]:size-7 [@media(hover:none)]:opacity-100 [@media(hover:none)]:disabled:opacity-40 [@media(hover:none)]:[&_[data-icon-root]]:size-4";
+const MOBILE_OVERFLOW_ACTION_CLASS =
+  "pointer-coarse:hidden [@media(hover:none)]:hidden";
 const MOBILE_OVERFLOW_TRIGGER_CLASS =
-  "hidden size-7 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:text-foreground data-[state=open]:bg-state-active data-[state=open]:text-foreground max-md:pointer-coarse:inline-flex max-md:pointer-coarse:[&_[data-icon-root]]:size-4";
+  "hidden size-7 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:text-foreground data-[state=open]:bg-state-active data-[state=open]:text-foreground pointer-coarse:inline-flex pointer-coarse:[&_[data-icon-root]]:size-4 [@media(hover:none)]:inline-flex [@media(hover:none)]:[&_[data-icon-root]]:size-4";
 const ACTION_TOOLTIP_SIDE = "bottom";
 const MENU_CONTENT_WIDTH_CLASS = "max-w-[min(16rem,calc(100vw-1rem))]";
 const MOBILE_OVERFLOW_CONTENT_CLASS =
@@ -396,15 +401,15 @@ export function MessageActionBar({
   disabled,
   pluginActions = [],
 }: MessageActionBarProps) {
-  const isCompactViewport = useIsCompactViewport();
   const isPointerCoarse = usePointerCoarse();
+  const cannotHover = useMediaQuery(HOVER_NONE_QUERY);
   const hasCopy = messageText.length > 0 || copyImageUrl !== undefined;
   const hasAddToChat =
     (hasCopy || addToChatAttachments.length > 0) && onAddToChat !== undefined;
   const [collisionBoundary, setCollisionBoundary] = useState<
     HTMLElement | undefined
   >();
-  const useMobileOverflowPopover = isCompactViewport && isPointerCoarse;
+  const useMobileOverflowPopover = isPointerCoarse || cannotHover;
   const { measureRef, width: availableWidth } = useMeasuredWidth({
     enabled: !(useMobileOverflowPopover && mobileActionDisplay === "overflow"),
   });
@@ -637,7 +642,7 @@ export function MessageActionBar({
     <TooltipProvider delayDuration={300}>
       <div
         ref={desktopSlotRef}
-        className={cn(slotClass, "h-5 max-md:pointer-coarse:h-7")}
+        className={cn(slotClass, "h-5 pointer-coarse:h-7")}
       >
         <div className={rowClass}>
           {actions.slice(0, layout.inlineCount).map((action) => (
