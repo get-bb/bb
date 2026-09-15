@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, open, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -38,6 +38,22 @@ import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 const OLD = "host-old";
 const NEW = "host-new";
 const DIRECT_URL = "https://desktop.example.test";
+const GIB = 1024 ** 3;
+
+function availableArtifact(
+  sizeBytes: number,
+): ServerMoveCheckEnvironment["fullArtifact"] {
+  return {
+    availability: async () => ({
+      available: true,
+      unpackedSizeBytes: sizeBytes,
+      version: "0.0.0-test",
+    }),
+    build: async () => {
+      throw new Error("checks never build the artifact");
+    },
+  };
+}
 
 function checkEnvironment(
   harness: TestAppHarness,
@@ -366,6 +382,7 @@ describe("server move checks", () => {
         "blocker:server-entry-unavailable",
         "blocker:target-has-server-data",
         "blocker:unsupported-platform",
+        "info:managed-config-replaced",
         "warning:codex-login",
         "warning:docs-vaults",
         "warning:existing-target-server-data",
@@ -398,27 +415,34 @@ describe("server move checks", () => {
       registerInspectingDaemon(
         harness,
         NEW,
-        inspectResult({ bbAppVersion: "0.0.1" }),
+        inspectResult({ bbAppVersion: "0.0.0-alpha.1" }),
       );
 
       const withArtifact = await runServerMoveCheck(
-        checkEnvironment(harness, {
-          fullArtifact: {
-            availability: async () => ({
-              available: true,
-              version: "0.0.0-test",
-            }),
-            build: async () => {
-              throw new Error("checks never build the artifact");
-            },
-          },
-        }),
+        checkEnvironment(harness, { fullArtifact: availableArtifact(1_024) }),
         { moveInProgress: false, request: request() },
       );
       expect(withArtifact.response.canMove).toBe(true);
       expect(itemIds(withArtifact.response.items)).toEqual([
+        "info:managed-config-replaced",
         "info:target-update",
       ]);
+      const byId = new Map(
+        withArtifact.response.items.map((item) => [item.id, item]),
+      );
+      expect(byId.get("target-update")).toEqual({
+        id: "target-update",
+        severity: "info",
+        title: "bb 0.0.0-test will be installed on Desktop",
+        detail: "The update stays on Desktop even if the move is cancelled.",
+      });
+      expect(byId.get("managed-config-replaced")).toEqual({
+        id: "managed-config-replaced",
+        severity: "info",
+        title:
+          "This server's custom models, ACP agents, and shared skill roots replace Desktop's own",
+        detail: null,
+      });
 
       const withoutArtifact = await runServerMoveCheck(
         checkEnvironment(harness),
@@ -426,7 +450,128 @@ describe("server move checks", () => {
       );
       expect(itemIds(withoutArtifact.response.items)).toEqual([
         "blocker:target-version",
+        "info:managed-config-replaced",
       ]);
+    }));
+
+  it("blocks a target that runs a newer bb than this server", () =>
+    withTestHarness(async (harness) => {
+      seedHost(harness.deps, { id: OLD, name: "Laptop" });
+      seedPrimaryHost(harness.deps, OLD);
+      seedHost(harness.deps, { id: NEW, name: "Desktop" });
+      registerInspectingDaemon(
+        harness,
+        NEW,
+        inspectResult({ bbAppVersion: "0.0.1" }),
+      );
+
+      const result = await runServerMoveCheck(
+        checkEnvironment(harness, { fullArtifact: availableArtifact(1_024) }),
+        { moveInProgress: false, request: request() },
+      );
+
+      expect(result.response.canMove).toBe(false);
+      expect(itemIds(result.response.items)).toEqual([
+        "blocker:target-newer-version",
+        "info:managed-config-replaced",
+      ]);
+      expect(
+        result.response.items.find(
+          (item) => item.id === "target-newer-version",
+        ),
+      ).toEqual({
+        id: "target-newer-version",
+        severity: "blocker",
+        title: "Desktop runs a newer bb than this server",
+        detail:
+          "Desktop runs bb 0.0.1 and this server runs bb 0.0.0-test. Update the server to bb 0.0.1 first, then check again.",
+      });
+    }));
+
+  it("blocks a target without room for the move and warns when space is tight", () =>
+    withTestHarness(async (harness) => {
+      seedHost(harness.deps, { id: OLD, name: "Laptop" });
+      seedPrimaryHost(harness.deps, OLD);
+      seedHost(harness.deps, { id: NEW, name: "Desktop" });
+      const attachmentDir = join(
+        harness.config.dataDir,
+        "attachments",
+        "thr_1",
+      );
+      await mkdir(attachmentDir, { recursive: true });
+      const video = await open(join(attachmentDir, "video.mp4"), "w");
+      try {
+        await video.truncate(20 * GIB);
+      } finally {
+        await video.close();
+      }
+      let inspect = inspectResult({ diskFreeBytes: 30 * GIB });
+      registerFakeDaemon(harness, {
+        events: [],
+        hostId: NEW,
+        handle: () => ({ ok: true, result: inspect }),
+      });
+      const diskItems = async () => {
+        const result = await runServerMoveCheck(
+          checkEnvironment(harness, {
+            fullArtifact: availableArtifact(5 * GIB),
+          }),
+          { moveInProgress: false, request: request() },
+        );
+        return {
+          canMove: result.response.canMove,
+          items: result.response.items.filter((item) =>
+            item.id.startsWith("target-disk-space"),
+          ),
+        };
+      };
+
+      expect(await diskItems()).toEqual({
+        canMove: false,
+        items: [
+          {
+            id: "target-disk-space",
+            severity: "blocker",
+            title: "Desktop doesn't have room for the server data",
+            detail:
+              "The move needs about 44 GB free in /home/me/.bb-machines/laptop, but only 30 GB is available. Free up space on Desktop, then check again.",
+          },
+        ],
+      });
+
+      inspect = inspectResult({ diskFreeBytes: 50 * GIB });
+      expect(await diskItems()).toEqual({
+        canMove: true,
+        items: [
+          {
+            id: "target-disk-space-tight",
+            severity: "warning",
+            title: "Space is tight on Desktop",
+            detail:
+              "The move needs about 44 GB of the 50 GB free in /home/me/.bb-machines/laptop, which leaves little room for the server to grow.",
+          },
+        ],
+      });
+
+      inspect = inspectResult({ diskFreeBytes: 100 * GIB });
+      expect(await diskItems()).toEqual({ canMove: true, items: [] });
+
+      inspect = inspectResult({ diskFreeBytes: null });
+      expect(await diskItems()).toEqual({ canMove: true, items: [] });
+
+      inspect = inspectResult({
+        bbAppVersion: "0.0.0-alpha.1",
+        diskFreeBytes: 50 * GIB,
+      });
+      expect(await diskItems()).toMatchObject({
+        canMove: false,
+        items: [
+          {
+            id: "target-disk-space",
+            detail: expect.stringContaining("about 55 GB free"),
+          },
+        ],
+      });
     }));
 
   it("blocks when the target can't be inspected", () =>
@@ -504,6 +649,7 @@ describe("server move checks", () => {
         });
         expect(itemIds(direct.response.items)).toEqual([
           "info:app-url-rewrite",
+          "info:managed-config-replaced",
           "warning:env-paths-missing",
           "warning:external-url-address",
           "warning:skipped-server-files",
@@ -557,6 +703,7 @@ describe("server move checks", () => {
         );
         expect(itemIds(connect.response.items)).toEqual([
           "info:connect-address",
+          "info:managed-config-replaced",
           "warning:env-paths-missing",
           "warning:skipped-server-files",
         ]);
@@ -591,6 +738,7 @@ describe("server move checks", () => {
       });
       expect(itemIds(connect.response.items)).toEqual([
         "info:connect-address",
+        "info:managed-config-replaced",
         "warning:offline-machines",
       ]);
       expect(

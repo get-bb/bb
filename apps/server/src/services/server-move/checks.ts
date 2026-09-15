@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+import semver from "semver";
 import { isLoopbackHostname } from "@bb/config/loopback";
 import {
   getHost,
@@ -12,6 +13,7 @@ import type { ServerMoveInspectResult } from "@bb/host-daemon-contract";
 import {
   listServerOwnedEntries,
   readLastServerMoveFile,
+  type ServerOwnedInventory,
 } from "@bb/server-archive";
 import type {
   ServerMoveCheckItem,
@@ -22,7 +24,10 @@ import type { AppDeps } from "../../types.js";
 import { callHostOnlineRpc } from "../hosts/online-rpc.js";
 import { readPrimaryHostIdFromDataDir } from "../hosts/primary-host.js";
 import { machineServerUrl } from "../machines/server-access.js";
-import type { FullBbAppArtifactService } from "./full-artifact.js";
+import type {
+  FullBbAppArtifactAvailability,
+  FullBbAppArtifactService,
+} from "./full-artifact.js";
 import {
   isLoopbackUrl,
   listEnvPathValues,
@@ -42,8 +47,16 @@ const SUPPORTED_TARGET_PLATFORMS: ReadonlySet<string> = new Set([
 ]);
 const MAX_INSPECT_PATHS = 200;
 const MAX_LISTED_PATHS = 10;
+const GIB = 1024 ** 3;
+const DISK_HEADROOM_RATIO = 0.1;
+const TIGHT_DISK_SPACE_RATIO = 1.5;
 
 type HostRow = NonNullable<ReturnType<typeof getHost>>;
+
+type TargetVersionCheck =
+  | { kind: "current" }
+  | { kind: "newer" }
+  | { kind: "update"; availability: FullBbAppArtifactAvailability };
 
 export interface ServerMoveCheckEnvironment {
   allowLoopbackServerUrl: boolean;
@@ -142,6 +155,98 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+  const units = ["KB", "MB", "GB", "TB"];
+  let value = bytes / 1024;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[unit]}`;
+}
+
+function inventorySizeBytes(inventory: ServerOwnedInventory): number {
+  let total = 0;
+  for (const entry of inventory.entries) {
+    for (const file of entry.files) {
+      total += file.sizeBytes;
+    }
+  }
+  return total;
+}
+
+function requiredMoveDiskBytes(args: {
+  artifactSizeBytes: number;
+  serverDataSizeBytes: number;
+}): number {
+  const base = 2 * args.serverDataSizeBytes + 2 * args.artifactSizeBytes;
+  return base + Math.max(GIB, Math.ceil(base * DISK_HEADROOM_RATIO));
+}
+
+async function checkTargetVersion(
+  environment: ServerMoveCheckEnvironment,
+  inspect: ServerMoveInspectResult,
+): Promise<TargetVersionCheck> {
+  const appVersion = environment.deps.config.appVersion;
+  const targetVersion = semver.valid(inspect.bbAppVersion);
+  const serverVersion = semver.valid(appVersion);
+  if (
+    targetVersion !== null &&
+    serverVersion !== null &&
+    semver.gt(targetVersion, serverVersion)
+  ) {
+    return { kind: "newer" };
+  }
+  if (inspect.serverEntryAvailable && inspect.bbAppVersion === appVersion) {
+    return { kind: "current" };
+  }
+  return {
+    kind: "update",
+    availability: await environment.fullArtifact.availability(),
+  };
+}
+
+function targetArtifactSizeBytes(targetVersion: TargetVersionCheck): number {
+  return targetVersion.kind === "update" && targetVersion.availability.available
+    ? targetVersion.availability.unpackedSizeBytes
+    : 0;
+}
+
+function appendDiskSpaceItems(args: {
+  artifactSizeBytes: number;
+  inspect: ServerMoveInspectResult;
+  items: ServerMoveCheckItem[];
+  serverDataSizeBytes: number;
+  targetName: string;
+}): void {
+  const free = args.inspect.diskFreeBytes;
+  if (free === null) {
+    return;
+  }
+  const required = requiredMoveDiskBytes(args);
+  if (free < required) {
+    args.items.push({
+      id: "target-disk-space",
+      severity: "blocker",
+      title: `${args.targetName} doesn't have room for the server data`,
+      detail: `The move needs about ${formatBytes(required)} free in ${args.inspect.dataDir}, but only ${formatBytes(free)} is available. Free up space on ${args.targetName}, then check again.`,
+    });
+    return;
+  }
+  if (free < required * TIGHT_DISK_SPACE_RATIO) {
+    args.items.push({
+      id: "target-disk-space-tight",
+      severity: "warning",
+      title: `Space is tight on ${args.targetName}`,
+      detail: `The move needs about ${formatBytes(required)} of the ${formatBytes(free)} free in ${args.inspect.dataDir}, which leaves little room for the server to grow.`,
+    });
+  }
+}
+
 async function inspectHost(
   environment: ServerMoveCheckEnvironment,
   hostId: string,
@@ -180,11 +285,13 @@ async function inspectSourceServerHost(
 }
 
 function appendTargetInspectItems(args: {
+  artifactSizeBytes: number;
   environment: ServerMoveCheckEnvironment;
   inspect: ServerMoveInspectResult;
   items: ServerMoveCheckItem[];
   envPaths: readonly EnvPathValue[];
   pathPlugins: readonly { id: string; sourcePath: string }[];
+  serverDataSizeBytes: number;
   sourceInspect: ServerMoveInspectResult | null;
   targetHasOldServerCopy: boolean;
   targetName: string;
@@ -223,6 +330,13 @@ function appendTargetInspectItems(args: {
       detail: "Stop whatever uses that port on the machine, then check again.",
     });
   }
+  appendDiskSpaceItems({
+    artifactSizeBytes: args.artifactSizeBytes,
+    inspect,
+    items,
+    serverDataSizeBytes: args.serverDataSizeBytes,
+    targetName,
+  });
   if (inspect.existingServerData !== null) {
     items.push({
       id: "existing-target-server-data",
@@ -294,28 +408,41 @@ function appendTargetInspectItems(args: {
       detail: `Schedules follow the server machine's time zone: ${environment.serverTimeZone} here, ${inspect.timeZone} on ${targetName}.`,
     });
   }
+  items.push({
+    id: "managed-config-replaced",
+    severity: "info",
+    title: `This server's custom models, ACP agents, and shared skill roots replace ${targetName}'s own`,
+    detail: null,
+  });
 }
 
-async function appendVersionItems(args: {
-  environment: ServerMoveCheckEnvironment;
+function appendVersionItems(args: {
+  appVersion: string;
   inspect: ServerMoveInspectResult;
   items: ServerMoveCheckItem[];
   targetName: string;
-}): Promise<void> {
-  const appVersion = args.environment.deps.config.appVersion;
-  const needsUpdate =
-    !args.inspect.serverEntryAvailable ||
-    args.inspect.bbAppVersion !== appVersion;
-  if (!needsUpdate) {
+  targetVersion: TargetVersionCheck;
+}): void {
+  const { appVersion, targetVersion } = args;
+  if (targetVersion.kind === "current") {
     return;
   }
-  const availability = await args.environment.fullArtifact.availability();
+  if (targetVersion.kind === "newer") {
+    args.items.push({
+      id: "target-newer-version",
+      severity: "blocker",
+      title: `${args.targetName} runs a newer bb than this server`,
+      detail: `${args.targetName} runs bb ${args.inspect.bbAppVersion} and this server runs bb ${appVersion}. Update the server to bb ${args.inspect.bbAppVersion} first, then check again.`,
+    });
+    return;
+  }
+  const availability = targetVersion.availability;
   if (availability.available) {
     args.items.push({
       id: "target-update",
       severity: "info",
       title: `bb ${availability.version} will be installed on ${args.targetName}`,
-      detail: null,
+      detail: `The update stays on ${args.targetName} even if the move is cancelled.`,
     });
     return;
   }
@@ -429,11 +556,11 @@ function appendTransportItems(args: {
   });
 }
 
-async function appendSkippedServerFileItems(args: {
-  deps: AppDeps;
+function appendSkippedServerFileItems(args: {
+  inventory: ServerOwnedInventory;
   items: ServerMoveCheckItem[];
-}): Promise<void> {
-  const inventory = await listServerOwnedEntries(args.deps.config.dataDir);
+}): void {
+  const { inventory } = args;
   if (inventory.skippedPaths.length === 0) {
     return;
   }
@@ -579,6 +706,7 @@ export async function runServerMoveCheck(
   }
   const targetName = targetHost.name;
   const managed = await readServerManagedFiles(deps.config.dataDir);
+  const inventory = await listServerOwnedEntries(deps.config.dataDir);
   const targetBlockers: ServerMoveCheckItem[] = [];
   if (targetHost.type === "ephemeral") {
     targetBlockers.push({
@@ -640,12 +768,15 @@ export async function runServerMoveCheck(
     }
     if (inspect !== null) {
       const lastMove = await readLastServerMoveFile(deps.config.dataDir);
+      const targetVersion = await checkTargetVersion(environment, inspect);
       appendTargetInspectItems({
+        artifactSizeBytes: targetArtifactSizeBytes(targetVersion),
         environment,
         envPaths,
         inspect,
         items,
         pathPlugins,
+        serverDataSizeBytes: inventorySizeBytes(inventory),
         sourceInspect: await inspectSourceServerHost(
           environment,
           liveSourceServerHost,
@@ -656,7 +787,13 @@ export async function runServerMoveCheck(
           lastMove.oldCopyDeletedAt === null,
         targetName,
       });
-      await appendVersionItems({ environment, inspect, items, targetName });
+      appendVersionItems({
+        appVersion: deps.config.appVersion,
+        inspect,
+        items,
+        targetName,
+        targetVersion,
+      });
     }
   }
   appendServerStateItems({
@@ -667,7 +804,7 @@ export async function runServerMoveCheck(
     targetHostId: targetHost.id,
   });
   appendTransportItems({ deps, items, mode, targetHost });
-  await appendSkippedServerFileItems({ deps, items });
+  appendSkippedServerFileItems({ inventory, items });
   appendManagedAddressItems({ deps, items, managed, mode, serverUrl });
   return {
     mode,

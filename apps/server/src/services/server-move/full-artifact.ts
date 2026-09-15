@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { mkdir, rename, stat } from "node:fs/promises";
+import { mkdir, readdir, rename, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { promisify } from "node:util";
@@ -17,6 +17,9 @@ const REQUIRED_PACKAGE_PATHS = [
   "server/dist",
   "app/dist",
 ] as const;
+const PACKAGE_SIZE_SKIPPED_DIRECTORIES: ReadonlySet<string> = new Set([
+  "node_modules",
+]);
 
 export interface FullBbAppArtifact {
   path: string;
@@ -26,7 +29,7 @@ export interface FullBbAppArtifact {
 }
 
 export type FullBbAppArtifactAvailability =
-  | { available: true; version: string }
+  | { available: true; unpackedSizeBytes: number; version: string }
   | { available: false; reason: string };
 
 export interface FullBbAppArtifactService {
@@ -67,11 +70,41 @@ async function sha256File(path: string): Promise<string> {
   return hash.digest("hex");
 }
 
+async function packageSizeBytes(root: string): Promise<number> {
+  let total = 0;
+  for (const entry of await readdir(root, { withFileTypes: true })) {
+    const path = join(root, entry.name);
+    if (entry.isDirectory()) {
+      if (!PACKAGE_SIZE_SKIPPED_DIRECTORIES.has(entry.name)) {
+        total += await packageSizeBytes(path);
+      }
+      continue;
+    }
+    if (entry.isFile()) {
+      total += (await stat(path)).size;
+    }
+  }
+  return total;
+}
+
 export function createFullBbAppArtifactService(
   args: CreateFullBbAppArtifactServiceArgs,
 ): FullBbAppArtifactService {
   const cacheDir = join(args.dataDir, "install-cache");
   let artifactPromise: Promise<FullBbAppArtifact> | undefined;
+  let packageSize:
+    | { root: string; version: string; sizeBytes: number }
+    | undefined;
+
+  async function packagedSizeBytes(
+    root: string,
+    version: string,
+  ): Promise<number> {
+    if (packageSize?.root !== root || packageSize.version !== version) {
+      packageSize = { root, version, sizeBytes: await packageSizeBytes(root) };
+    }
+    return packageSize.sizeBytes;
+  }
 
   async function resolvePackagedRoot(): Promise<
     | { available: true; root: string; version: string }
@@ -142,9 +175,17 @@ export function createFullBbAppArtifactService(
   return {
     async availability() {
       const resolved = await resolvePackagedRoot();
-      return resolved.available
-        ? { available: true, version: resolved.version }
-        : resolved;
+      if (!resolved.available) {
+        return resolved;
+      }
+      return {
+        available: true,
+        unpackedSizeBytes: await packagedSizeBytes(
+          resolved.root,
+          resolved.version,
+        ),
+        version: resolved.version,
+      };
     },
     build() {
       artifactPromise ??= buildArtifact().catch((error: unknown) => {

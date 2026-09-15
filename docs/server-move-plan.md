@@ -66,12 +66,20 @@ Not moved: logs, caches (`install-cache/`, `plugin-host-artifacts/`,
    - `gh` and Codex logins and local tools the server uses that the target lacks;
    - a timezone difference that shifts core plugin schedules;
    - existing bb server data on the target, which is archived to
-     `~/.bb.before-move-<date>` after confirmation and never merged.
+     `~/.bb.before-move-<date>` after confirmation and never merged;
+   - free disk space in the target's data directory for the export, its
+     unpacked copy, and the bb update, with headroom (a blocker when it is
+     short, a warning when it is tight);
+   - a target that runs a newer bb than the server, which blocks the move until
+     the server is updated;
+   - the server's custom models, ACP agents, and shared skill roots, which
+     replace the target's own.
 2. **Confirm** once, in the app or CLI that starts the move. The target does not
    confirm; the server can already run commands on any enrolled machine.
    "Stop all and move" interrupts running turns and pauses schedules.
 3. **Align versions:** install the server's exact bb version on the target
-   through the existing machine update artifact.
+   through the existing machine update artifact. The update stays on the
+   target even if the move is cancelled.
 4. **Freeze and copy:** the old server stops accepting writes and streams an
    encrypted export over the target's existing daemon connection.
 5. **Start:** the target imports the export, installs a background service that

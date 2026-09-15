@@ -41,6 +41,7 @@ describe("server move downloads", () => {
             fullArtifact: {
               availability: async () => ({
                 available: true,
+                unpackedSizeBytes: artifactBytes.byteLength,
                 version: harness.config.appVersion,
               }),
               build: async () => ({
@@ -73,7 +74,7 @@ describe("server move downloads", () => {
               case "server_move.inspect":
                 return {
                   ok: true,
-                  result: inspectResult({ bbAppVersion: "0.0.1" }),
+                  result: inspectResult({ bbAppVersion: "0.0.0-alpha.1" }),
                 };
               case "server_move.prepare":
                 received.prepare = request.command;
