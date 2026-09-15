@@ -3015,3 +3015,13 @@ same-id isolation and legacy override fallback,
 asset-vs-glyph precedence, cross-plugin overrides, reload/error/recursion behavior,
 accessibility and theme rendering on desktop and mobile. Keep metadata fetching
 and plugin branding separate from provider artwork resolution.
+
+## `HostsArea.experimental_reconcile`
+
+Explicitly reconcile a provider-managed machine with core’s recorded state.
+For suspended machines, coordinate the existing provider suspension operation
+and wait for completion. Active and transitional states are left unchanged;
+the plugin uses `experimental_suspend` to request a new pause. Core schedules
+no provider polling. Validate concurrent resume/removal, failure reporting,
+long-running caller behavior, and the scope of supported states before
+stabilizing this API. Exposed as `bb machine reconcile`.

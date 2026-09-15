@@ -668,6 +668,7 @@ async function suspendMachine(
   deps: Deps,
   hostId: string,
   coordinateMaintenance = false,
+  reconcile = false,
 ): Promise<void> {
   const daemonShutdownTimeoutMs = 30_000;
   const removing = perDbRegistry(removeOperations, deps.db).get(hostId);
@@ -691,10 +692,12 @@ async function suspendMachine(
     return;
   }
   const row = getHost(deps.db, hostId);
+  if (reconcile && row?.phase !== "suspended") return;
   if (
     row === null ||
     row.machineProviderId === null ||
     (row.phase !== "active" &&
+      !(reconcile && row.phase === "suspended") &&
       row.phase !== "suspending" &&
       !(row.phase === "removing" && row.suspendedAt === null))
   ) {
@@ -873,6 +876,16 @@ export function startMachineSuspension(deps: Deps, hostId: string): void {
       "Requested machine suspension will retry in the lifecycle sweep",
     );
   });
+}
+
+export async function reconcileMachine(
+  deps: Deps,
+  hostId: string,
+): Promise<void> {
+  const row = requireSuspendableMachine(deps, hostId);
+  if (row.phase !== "suspended") return;
+  assertMachineProvisioningComplete(deps, hostId);
+  await suspendMachine(deps, hostId, true, true);
 }
 
 export async function waitForMachineMaintenance(

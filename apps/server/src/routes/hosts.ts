@@ -40,6 +40,7 @@ import {
   requestMachineRemoval,
   startMachineResume,
   startMachineSuspension,
+  reconcileMachine,
   retryMachineCleanup,
   sweepProviderMachine,
 } from "../services/machines/provider-orchestration.js";
@@ -206,6 +207,13 @@ export function registerHostRoutes(
     }
     deps.hub.requestHostProtocolUpdateRetry(hostId);
     return context.json({ ok: true as const });
+  });
+
+  post(routes.reconcile, async (context) => {
+    assertHostManagementAllowed(context);
+    const hostId = context.req.param("id");
+    await reconcileMachine(deps, hostId);
+    return context.json(requireNonDestroyedHostWithStatus(deps, hostId));
   });
 
   post(routes.suspend, (context) => {

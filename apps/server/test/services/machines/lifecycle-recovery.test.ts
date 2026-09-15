@@ -16,6 +16,7 @@ import { validatePluginEnvironmentProviderDeclaration } from "@get-bb/plugin-sdk
 import {
   requestMachineRemoval,
   requestMachineSuspension,
+  reconcileMachine,
   resumeMachine,
   sweepProviderMachine,
 } from "../../../src/services/machines/provider-orchestration.js";
@@ -354,4 +355,69 @@ it("removes a suspended machine when its last thread is archived with an offline
     await sweepProviderMachine(harness.deps, target.host.id);
     expect(getHost(harness.db, target.host.id)?.phase).toBe("destroyed");
     expect(remove).toHaveBeenCalledOnce();
+  }));
+
+it("reconciles on request using core's current state and serializes a concurrent resume", async () =>
+  withTestHarness(async (harness) => {
+    const { host, session } = seedHostSession(harness.deps, {
+      id: "plugin-reconcile",
+    });
+    harness.hub.unregisterDaemon(session.id);
+    let finish!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const suspend = vi.fn(async () => {
+      await pending;
+      return { resource: { id: "saved" } };
+    });
+    const resume = vi.fn(async () => ({ resource: { id: "running" } }));
+    installMachineProvider({ suspend, resume });
+    updateHost(harness.db, harness.hub, host.id, {
+      machineProviderId: "test-machine",
+      phase: "active",
+      resource: { id: "running" },
+    });
+    await reconcileMachine(harness.deps, host.id);
+    expect(suspend).not.toHaveBeenCalled();
+    expect(resume).not.toHaveBeenCalled();
+    updateHost(harness.db, harness.hub, host.id, {
+      phase: "suspended",
+      suspendedAt: 1,
+    });
+    await sweepProviderMachine(harness.deps, host.id);
+    expect(suspend).not.toHaveBeenCalled();
+    const reconciling = reconcileMachine(harness.deps, host.id);
+    await expect.poll(() => suspend.mock.calls.length).toBe(1);
+    const waking = resumeMachine(harness.deps, host.id);
+    expect(resume).not.toHaveBeenCalled();
+    finish();
+    await reconciling;
+    await waking;
+    expect(resume).toHaveBeenCalledOnce();
+    expect(getHost(harness.db, host.id)?.phase).toBe("active");
+    await reconcileMachine(harness.deps, host.id);
+    expect(suspend).toHaveBeenCalledOnce();
+  }));
+
+it("exposes reconciliation through the host API without changing active intent", async () =>
+  withTestHarness(async (harness) => {
+    const { host } = seedHostSession(harness.deps, { id: "reconcile-api" });
+    const suspend = vi.fn(async () => ({ resource: { id: "saved" } }));
+    installMachineProvider({
+      suspend,
+      resume: async ({ resource }) => ({ resource }),
+    });
+    updateHost(harness.db, harness.hub, host.id, {
+      machineProviderId: "test-machine",
+      phase: "active",
+      resource: { id: "running" },
+    });
+    const response = await harness.app.request(
+      `/api/v1/hosts/${host.id}/reconcile`,
+      { method: "POST" },
+    );
+    expect(response.status).toBe(200);
+    expect(suspend).not.toHaveBeenCalled();
+    expect(getHost(harness.db, host.id)?.phase).toBe("active");
   }));

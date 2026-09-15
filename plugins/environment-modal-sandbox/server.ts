@@ -1,3 +1,5 @@
+import { modalAllocations } from "./allocations.js";
+import { sweepModalAllocations } from "./allocation-sweep.js";
 import { debugSandbox } from "./debug-sandbox.js";
 import { imageDefinition } from "./image-definition.js";
 import { registerRpcAndCli } from "./account.js";
@@ -11,6 +13,7 @@ import {
 import { modalLaunchOptions } from "./launch-options.js";
 import { createModalSandboxBackend } from "./providers/modal/backend.js";
 import { registerSandboxBackend } from "./providers/register.js";
+import { SANDBOX_LIFETIME_MS } from "./configuration.js";
 import { errorMessage } from "./error-message.js";
 
 function hasErrorCode(error: unknown, code: string): boolean {
@@ -40,8 +43,10 @@ export function createModalSandboxPlugin(
       return resolveSettings(await settings.get());
     }
 
+    const allocations = modalAllocations(bb, deps.now);
     const backend = createModalSandboxBackend({
-      clientFactory: deps.clientFactory,
+      clientFactory: (credentials) =>
+        allocations.wrap(deps.clientFactory(credentials)),
       currentSettings,
       launchOptions,
       now: deps.now,
@@ -112,7 +117,10 @@ export function createModalSandboxPlugin(
     });
     bb.background.schedule("pause-idle-machines", "* * * * *", async () => {
       const resolved = await currentSettings();
-      if (!resolved.ok || resolved.settings.idleMs === null) return;
+      if (!resolved.ok) return;
+      const { client } = await backend.debugContext();
+      await sweepModalAllocations(bb, allocations, client, deps.now());
+      if (resolved.settings.idleMs === null) return;
       const hosts = await bb.sdk.hosts.list();
       for (const host of hosts) {
         if (
@@ -120,15 +128,15 @@ export function createModalSandboxPlugin(
           host.lifecycle.phase !== "active"
         )
           continue;
-        const stored = await bb.storage.kv.get<unknown>(idleKey(host.id));
-        const lastActivity =
-          stored === undefined ? null : z.number().finite().parse(stored);
-        if (lastActivity === null) {
-          await bumpIdle(host.id);
-          continue;
-        }
-        if (deps.now() < lastActivity + resolved.settings.idleMs) continue;
         try {
+          const stored = await bb.storage.kv.get<unknown>(idleKey(host.id));
+          const lastActivity =
+            stored === undefined ? null : z.number().finite().parse(stored);
+          if (lastActivity === null) {
+            await bumpIdle(host.id);
+            continue;
+          }
+          if (deps.now() < lastActivity + resolved.settings.idleMs) continue;
           await bb.sdk.hosts.experimental_suspend({ hostId: host.id });
         } catch (error) {
           if (hasErrorCode(error, "machine_busy")) continue;
@@ -153,6 +161,27 @@ export function createModalSandboxPlugin(
       now: deps.now,
       onConnected: bumpIdle,
     });
+
+    for (const host of await bb.sdk.hosts.list()) {
+      if (host.machineProviderId !== backend.definition.id) continue;
+      try {
+        const stored = await bb.experimental_machines.getResource(host.id);
+        if (stored === null) continue;
+        const resource = backend.parseResource(stored);
+        if (resource.sandboxId !== null)
+          await allocations.remember({
+            accountIdentity: resource.accountIdentity,
+            appName: resource.appName,
+            name: resource.key,
+            sandboxId: resource.sandboxId,
+            expiresAt: deps.now() + SANDBOX_LIFETIME_MS,
+          });
+      } catch (error) {
+        bb.log.warn(
+          `Modal allocation import failed for ${host.id}: ${errorMessage(error)}`,
+        );
+      }
+    }
 
     const loaded = await currentSettings();
     if (!loaded.ok) bb.status.needsConfiguration(loaded.message);
