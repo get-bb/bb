@@ -2367,6 +2367,9 @@ importers:
       '@bb/process-utils':
         specifier: workspace:*
         version: link:../process-utils
+      semver:
+        specifier: ^7.7.4
+        version: 7.8.5
       zod:
         specifier: 4.3.6
         version: 4.3.6
@@ -2377,6 +2380,9 @@ importers:
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.10
+      '@types/semver':
+        specifier: ^7.7.1
+        version: 7.7.1
       typescript:
         specifier: npm:@typescript/typescript6@^6.0.2
         version: '@typescript/typescript6@6.0.2'
@@ -2706,6 +2712,9 @@ importers:
       handlebars:
         specifier: ^4.7.8
         version: 4.7.8
+      semver:
+        specifier: ^7.7.4
+        version: 7.8.5
     devDependencies:
       '@bb/tsconfig':
         specifier: workspace:*
@@ -2713,6 +2722,9 @@ importers:
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.10
+      '@types/semver':
+        specifier: ^7.7.1
+        version: 7.7.1
       typescript:
         specifier: npm:@typescript/typescript6@^6.0.2
         version: '@typescript/typescript6@6.0.2'
