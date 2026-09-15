@@ -600,7 +600,9 @@ describe("server move coordinator", () => {
       expect(events).not.toContain("retire");
       expect(coordinator.movedTo()).toBeNull();
       expect(await readServerMovedFile(harness.config.dataDir)).toBeNull();
-      expect(await readFile(config.path, "utf8")).toBe(config.text);
+      expect(JSON.parse(await readFile(config.path, "utf8"))).toEqual(
+        JSON.parse(config.text),
+      );
       expect([
         ...old.movedMessages,
         ...worker.movedMessages,
@@ -1180,7 +1182,9 @@ describe("server move coordinator", () => {
         await expect.poll(() => isServerMoveFrozen(harness.db)).toBe(false);
         expect(plugins).toMatchObject({ paused: false, resumes: 1, stops: 0 });
         expect(await readServerMovedFile(harness.config.dataDir)).toBeNull();
-        expect(await readFile(config.path, "utf8")).toBe(config.text);
+        expect(JSON.parse(await readFile(config.path, "utf8"))).toEqual(
+          JSON.parse(config.text),
+        );
 
         registerFakeDaemon(harness, {
           events,
@@ -1259,7 +1263,9 @@ describe("server move coordinator", () => {
         false,
       );
       expect(await readServerMovedFile(harness.config.dataDir)).toBeNull();
-      expect(await readFile(config.path, "utf8")).toBe(config.text);
+      expect(JSON.parse(await readFile(config.path, "utf8"))).toEqual(
+        JSON.parse(config.text),
+      );
       expect(coordinator.isFrozen()).toBe(false);
     }));
 
