@@ -195,8 +195,6 @@
     required when stdin is not a terminal, where it otherwise prints the plan
     and exits non-zero having changed nothing. Run `npm install` afterwards.
     The vendored layout keeps working, so nothing migrates unless you ask.
-    Floor comparisons use the minimum version of the complete SemVer range,
-    including prereleases; invalid ranges are preserved for manual correction.
     Re-running on a migrated plugin is a no-op. Needs no server.
   - `bb plugin dev [path]` — watch loop for an installed plugin (default:
     cwd): on every change it rebuilds the frontend bundle (when `bb.app` is
