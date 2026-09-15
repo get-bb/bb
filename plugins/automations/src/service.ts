@@ -61,14 +61,14 @@ import {
   errorMessage,
   executeAgentRun,
   executeScriptRun,
-  type ScriptRunApi,
+  projectPathForHost,
 } from "./run.js";
 
 type ServiceApi = Pick<BbPluginApi, "realtime" | "log"> & {
+  server: Pick<BbPluginApi["server"], "experimental_hostId">;
   sdk: {
     projects: Pick<BbPluginApi["sdk"]["projects"], "get" | "list">;
     providers: Pick<BbPluginApi["sdk"]["providers"], "list">;
-    system: ScriptRunApi["sdk"]["system"];
     threads: Pick<BbPluginApi["sdk"]["threads"], "get" | "send" | "spawn">;
   };
 };
@@ -148,6 +148,7 @@ type ResolvedStoredExecution = {
 };
 
 const PROJECT_WORKING_DIRECTORY = { type: "project" } as const;
+const LEGACY_WORKING_DIRECTORY = { type: "legacy" } as const;
 
 function validateScriptWorkingDirectory(
   workingDirectory: AutomationScriptWorkingDirectory,
@@ -456,7 +457,13 @@ async function projectNameById(
   }
 }
 
-const projectAvailableSchema = z.object({ id: z.string() }).passthrough();
+const projectAvailableSchema = z
+  .object({
+    id: z.string(),
+    kind: z.enum(["standard", "personal"]),
+    sources: z.array(z.unknown()),
+  })
+  .passthrough();
 const projectSummarySchema = z
   .object({
     id: z.string(),
@@ -469,14 +476,30 @@ const projectSummaryListSchema = z.array(projectSummarySchema);
 async function requireProjectAvailable(
   bb: Pick<ServiceApi, "sdk">,
   projectId: string,
-): Promise<void> {
+): Promise<z.infer<typeof projectAvailableSchema>> {
   try {
-    projectAvailableSchema.parse(await bb.sdk.projects.get({ projectId }));
+    return projectAvailableSchema.parse(
+      await bb.sdk.projects.get({ projectId }),
+    );
   } catch (error) {
     throw new Error(
       `Project ${projectId} is not available: ${errorMessage(error)}`,
     );
   }
+}
+
+function defaultScriptWorkingDirectory(
+  project: z.infer<typeof projectAvailableSchema>,
+  serverHostId: string | null,
+): AutomationScriptWorkingDirectory {
+  if (
+    project.kind === "personal" ||
+    serverHostId === null ||
+    projectPathForHost(project, serverHostId) === null
+  ) {
+    return LEGACY_WORKING_DIRECTORY;
+  }
+  return PROJECT_WORKING_DIRECTORY;
 }
 
 export function createAutomationService(args: {
@@ -520,7 +543,7 @@ export function createAutomationService(args: {
     },
 
     async create(payload) {
-      await requireProjectAvailable(bb, payload.projectId);
+      const project = await requireProjectAvailable(bb, payload.projectId);
       const now = Date.now();
       validateTrigger(payload.trigger, now);
       assertNotRecursiveCreation(db, payload.createdByThreadId);
@@ -537,7 +560,10 @@ export function createAutomationService(args: {
         pluginDataDir,
         automationId,
         execution: payload.execution,
-        defaultWorkingDirectory: PROJECT_WORKING_DIRECTORY,
+        defaultWorkingDirectory: defaultScriptWorkingDirectory(
+          project,
+          bb.server.experimental_hostId,
+        ),
       });
       let created: AutomationRow;
       try {
@@ -571,7 +597,7 @@ export function createAutomationService(args: {
     },
 
     async update(input) {
-      await requireProjectAvailable(bb, input.projectId);
+      const project = await requireProjectAvailable(bb, input.projectId);
       const current = requireProjectAutomation(db, input);
       const currentAutomation = decodeAutomationRow(current).automation;
       if (
@@ -621,7 +647,10 @@ export function createAutomationService(args: {
           defaultWorkingDirectory:
             currentExecution.mode === "script"
               ? currentExecution.workingDirectory
-              : PROJECT_WORKING_DIRECTORY,
+              : defaultScriptWorkingDirectory(
+                  project,
+                  bb.server.experimental_hostId,
+                ),
         });
         patch.execution = stored.execution;
         stagedScriptFile = stored.writtenScriptFile;
@@ -799,6 +828,7 @@ export function createAutomationService(args: {
                 execution,
                 onFailure: closeFailedRun,
                 serverUrl,
+                serverHostId: bb.server.experimental_hostId,
               });
             }
           } catch (error) {

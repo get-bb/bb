@@ -36,7 +36,27 @@ const rpcMethods = [
 ].sort();
 
 function project(projectId = PROJECT_ID) {
-  return { id: projectId, name: "Test Project", deletedAt: null };
+  return {
+    id: projectId,
+    kind: "standard" as const,
+    name: "Test Project",
+    gitRemoteUrl: null,
+    createdAt: 1,
+    updatedAt: 1,
+    deletedAt: null,
+    sources: [
+      {
+        id: `psrc_${projectId}`,
+        projectId,
+        type: "local_path" as const,
+        hostId: "host_fake",
+        path: "/test/project",
+        isDefault: true,
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ],
+  };
 }
 
 async function bootAutomationsPlugin(

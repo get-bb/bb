@@ -12,7 +12,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import Database from "better-sqlite3";
 import type { PluginCliRegistration } from "@get-bb/plugin-sdk";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   claimAutomationScheduledRun,
   closeAutomationRun,
@@ -44,7 +44,11 @@ import {
   mapScriptResultToRun,
   scriptPathEnv,
 } from "./script-runner.js";
-import { executeScriptRun, reconcileRunningAutomationRuns } from "./run.js";
+import {
+  createScriptWorkingDirectoryResolver,
+  executeScriptRun,
+  reconcileRunningAutomationRuns,
+} from "./run.js";
 import { sweepDueAutomations } from "./sweep.js";
 import { createAutomationService } from "./service.js";
 import { registerAutomationCli } from "./cli.js";
@@ -163,21 +167,37 @@ function legacyAutomationRow(
 
 function createAutomationServiceBb() {
   return {
+    server: { experimental_hostId: "host_server" },
     sdk: {
       projects: {
-        get: async ({ projectId }: { projectId: string }) => ({
-          id: projectId,
-          kind: "standard" as const,
-          name: "Test Project",
-          gitRemoteUrl: null,
-          createdAt: 1,
-          updatedAt: 1,
-          sources: [],
-        }),
+        get: async ({ projectId }: { projectId: string }) => {
+          const personal = projectId === "proj_personal";
+          const remoteOnly = projectId === "proj_remote";
+          const sources = personal
+            ? []
+            : [
+                {
+                  id: `psrc_${projectId}`,
+                  projectId,
+                  type: "local_path" as const,
+                  hostId: remoteOnly ? "host_remote" : "host_server",
+                  path: remoteOnly ? "/remote/project" : "/server/project",
+                  isDefault: true,
+                  createdAt: 1,
+                  updatedAt: 1,
+                },
+              ];
+          return {
+            id: projectId,
+            kind: personal ? ("personal" as const) : ("standard" as const),
+            name: personal ? "Personal" : "Test Project",
+            gitRemoteUrl: null,
+            createdAt: 1,
+            updatedAt: 1,
+            sources,
+          };
+        },
         list: async () => [],
-      },
-      system: {
-        config: async () => ({ primaryHostId: "host_primary" }),
       },
       providers: {
         list: async () =>
@@ -871,6 +891,7 @@ describe("automation data access", () => {
     await sweepDueAutomations(bb, db, {
       pluginDataDir: "/tmp",
       serverUrl: "http://127.0.0.1:38886",
+      serverHostId: "host_server",
       now: 1000,
     });
 
@@ -1011,7 +1032,7 @@ describe("automation data access", () => {
 });
 
 describe("automation service", () => {
-  it("defaults new scripts to the project and preserves legacy on replacement", async () => {
+  it("chooses runnable defaults for new scripts and preserves legacy on replacement", async () => {
     const db = createTestDb();
     const pluginDataDir = await mkdtemp(join(tmpdir(), "bb-auto-service-"));
     const service = createAutomationService({
@@ -1035,6 +1056,38 @@ describe("automation service", () => {
       });
       expect(created.execution).toMatchObject({
         workingDirectory: { type: "project" },
+      });
+
+      const personal = await service.create({
+        projectId: "proj_personal",
+        name: "Personal script",
+        enabled: true,
+        trigger: oneShotTrigger(),
+        execution: {
+          mode: "script",
+          script: "pwd\n",
+          timeoutMs: 120_000,
+        },
+        origin: "human",
+      });
+      expect(personal.execution).toMatchObject({
+        workingDirectory: { type: "legacy" },
+      });
+
+      const remoteOnly = await service.create({
+        projectId: "proj_remote",
+        name: "Remote-only project script",
+        enabled: true,
+        trigger: oneShotTrigger(),
+        execution: {
+          mode: "script",
+          script: "pwd\n",
+          timeoutMs: 120_000,
+        },
+        origin: "human",
+      });
+      expect(remoteOnly.execution).toMatchObject({
+        workingDirectory: { type: "legacy" },
       });
 
       const legacyId = "auto_existing_legacy";
@@ -1071,6 +1124,42 @@ describe("automation service", () => {
       });
       expect(replaced.execution).toMatchObject({
         workingDirectory: { type: "legacy" },
+      });
+    } finally {
+      await rm(pluginDataDir, { recursive: true, force: true });
+    }
+  });
+
+  it("reads the server host identity after a co-located daemon initializes", async () => {
+    const db = createTestDb();
+    const pluginDataDir = await mkdtemp(join(tmpdir(), "bb-auto-service-"));
+    const bb = createAutomationServiceBb();
+    let serverHostId: string | null = null;
+    Object.defineProperty(bb.server, "experimental_hostId", {
+      get: () => serverHostId,
+    });
+    const service = createAutomationService({
+      bb,
+      db,
+      pluginDataDir,
+      serverUrl: "http://127.0.0.1:38886",
+    });
+    serverHostId = "host_server";
+    try {
+      const created = await service.create({
+        projectId: "proj_test",
+        name: "Post-startup script",
+        enabled: true,
+        trigger: oneShotTrigger(),
+        execution: {
+          mode: "script",
+          script: "pwd\n",
+          timeoutMs: 120_000,
+        },
+        origin: "human",
+      });
+      expect(created.execution).toMatchObject({
+        workingDirectory: { type: "project" },
       });
     } finally {
       await rm(pluginDataDir, { recursive: true, force: true });
@@ -1127,15 +1216,13 @@ describe("automation service", () => {
   it("validates project availability before creating an automation", async () => {
     const db = createTestDb();
     const bb = {
+      server: { experimental_hostId: null },
       sdk: {
         projects: {
           get: async () => {
             throw new Error("Project not found");
           },
           list: async () => [],
-        },
-        system: {
-          config: async () => ({ primaryHostId: "host_primary" }),
         },
         providers: {
           list: async () => [],
@@ -1739,6 +1826,64 @@ describe("automation CLI --script-file", () => {
       await t.cleanup();
     }
   });
+
+  it("rejects a valueless working-directory flag on create and replacement", async () => {
+    const t = await setup();
+    try {
+      const rejectedCreate = await t.cli.run(
+        [
+          "create",
+          "--project",
+          "proj_test",
+          "--name",
+          "missing-cwd",
+          "--in",
+          "30m",
+          "--script",
+          "echo hi",
+          "--working-directory",
+        ],
+        {},
+      );
+      expect(rejectedCreate.exitCode).toBe(1);
+      expect(rejectedCreate.stderr).toContain(
+        "Missing required option --working-directory <value>.",
+      );
+
+      const created = await t.cli.run(
+        [
+          "create",
+          "--project",
+          "proj_test",
+          "--name",
+          "valid",
+          "--in",
+          "30m",
+          "--script",
+          "echo hi",
+        ],
+        {},
+      );
+      const rejectedReplacement = await t.cli.run(
+        [
+          "update",
+          idFrom(created.stdout),
+          "--project",
+          "proj_test",
+          "--script",
+          "echo next",
+          "--working-directory",
+        ],
+        {},
+      );
+      expect(rejectedReplacement.exitCode).toBe(1);
+      expect(rejectedReplacement.stderr).toContain(
+        "Missing required option --working-directory <value>.",
+      );
+    } finally {
+      await t.cleanup();
+    }
+  });
 });
 
 describe("bb CLI injection for script runs", () => {
@@ -1886,7 +2031,7 @@ describe("script project context", () => {
   async function runScriptAutomation(args: {
     script: string;
     sources: ReturnType<typeof projectSource>[];
-    primaryHostId?: string | null;
+    serverHostId?: string | null;
     workingDirectory:
       | { type: "legacy" }
       | { type: "project" }
@@ -1935,14 +2080,6 @@ describe("script project context", () => {
             sources: args.sources,
           }),
         },
-        system: {
-          config: async () => ({
-            primaryHostId:
-              args.primaryHostId === undefined
-                ? "host_primary"
-                : args.primaryHostId,
-          }),
-        },
       },
       realtime: { publish: () => undefined },
       log: {
@@ -1967,6 +2104,8 @@ describe("script project context", () => {
           });
         },
         serverUrl: "http://127.0.0.1:38886",
+        serverHostId:
+          args.serverHostId === undefined ? "host_server" : args.serverHostId,
       });
       const [closed] = listAutomationRuns(db, {
         automationId: automation.id,
@@ -1982,7 +2121,7 @@ describe("script project context", () => {
     }
   }
 
-  it("runs in the project source on the server host", async () => {
+  it("runs in the actual server-host source instead of a remote primary source", async () => {
     const serverProjectDir = await mkdtemp(join(tmpdir(), "bb-auto-server-"));
     const remoteProjectDir = await mkdtemp(join(tmpdir(), "bb-auto-remote-"));
     await mkdir(join(serverProjectDir, "bin"));
@@ -1996,12 +2135,12 @@ describe("script project context", () => {
         workingDirectory: { type: "project" },
         sources: [
           projectSource({
-            hostId: "host_remote",
+            hostId: "host_primary",
             path: remoteProjectDir,
             isDefault: true,
           }),
           projectSource({
-            hostId: "host_primary",
+            hostId: "host_server",
             path: serverProjectDir,
             isDefault: false,
           }),
@@ -2028,7 +2167,7 @@ describe("script project context", () => {
         workingDirectory: { type: "legacy" },
         sources: [
           projectSource({
-            hostId: "host_primary",
+            hostId: "host_server",
             path: serverProjectDir,
             isDefault: true,
           }),
@@ -2065,13 +2204,51 @@ describe("script project context", () => {
     }
   });
 
+  it("fails project policy when the server has no co-located host", async () => {
+    const result = await runScriptAutomation({
+      script: "pwd -P\n",
+      workingDirectory: { type: "project" },
+      serverHostId: null,
+      sources: [],
+    });
+    expect(result.closed).toMatchObject({
+      status: "failed",
+      error: "Project proj_test has no source on the bb server host",
+    });
+  });
+
+  it("reuses one project lookup within a dispatch context", async () => {
+    const get = vi.fn(async () => ({
+      id: "proj_test",
+      sources: [
+        projectSource({
+          hostId: "host_server",
+          path: "/server/project",
+          isDefault: true,
+        }),
+      ],
+    }));
+    const resolveWorkingDirectory = createScriptWorkingDirectoryResolver(
+      { sdk: { projects: { get } } },
+      "host_server",
+    );
+
+    await expect(
+      Promise.all([
+        resolveWorkingDirectory("proj_test", { type: "project" }),
+        resolveWorkingDirectory("proj_test", { type: "project" }),
+      ]),
+    ).resolves.toEqual(["/server/project", "/server/project"]);
+    expect(get).toHaveBeenCalledTimes(1);
+  });
+
   it("fails when the project source is not a directory", async () => {
     const result = await runScriptAutomation({
       script: "pwd -P\n",
       workingDirectory: { type: "project" },
       sources: [
         projectSource({
-          hostId: "host_primary",
+          hostId: "host_server",
           path: join(tmpdir(), "bb-auto-missing-project-source"),
           isDefault: true,
         }),
@@ -2162,6 +2339,15 @@ describe("script wake gate", () => {
     expect(mapScriptResultToRun(result).error).toBe(
       `Script exited with code 1: ${"x".repeat(199)}…`,
     );
+  });
+
+  it("removes terminal control sequences from stderr failure details", () => {
+    const stderr = "\u001b]52;c;SGVsbG8=\u0007\u001b[31mdanger\u001b[0m\n";
+    const result = { exitCode: 1, output: stderr, stderr, timedOut: false };
+    expect(mapScriptResultToRun(result).error).toBe(
+      "Script exited with code 1: danger",
+    );
+    expect(result.output).toBe(stderr);
   });
 });
 

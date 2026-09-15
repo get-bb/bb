@@ -496,9 +496,9 @@ async function buildExecution(
   const explicitInterpreter = parseScriptInterpreter(flag(args, "interpreter"));
   const timeoutMs = parseTimeoutMs(flag(args, "timeout"));
   const env = parseScriptEnv(flag(args, "env-json"));
-  const workingDirectory = parseScriptWorkingDirectory(
-    flag(args, "working-directory"),
-  );
+  const workingDirectory = args.flags.has("working-directory")
+    ? parseScriptWorkingDirectory(requireFlag(args, "working-directory"))
+    : undefined;
   const scriptSource = await loadScriptFileSource(bb, args, ctx);
   const content = scriptSource ? scriptSource.content : script;
   if (!content) throw new Error("Missing script content.");
@@ -867,10 +867,12 @@ bb automation run <automationId> --project <id> [--idempotency-key <key>]
 bb automation runs <automationId> --project <id> [--limit <count>] [--output <runId>]
 bb automation delete <automationId> --project <id> --yes
 
-Scripts run on the bb server host. New scripts default to the project source
-on that host. Existing scripts without a saved policy use legacy plugin
-storage. Select legacy, project, or an absolute server-host path with
---working-directory. An unavailable selected directory fails the run.
+Scripts run on the bb server host. New standard-project scripts use the
+project source on that host when one exists; Personal and projects without a
+server-host source use legacy plugin storage. Existing scripts without a saved
+policy also use legacy storage. Select legacy, project, or an absolute
+server-host path with --working-directory. An unavailable selected directory
+fails the run.
 `;
 }
 
