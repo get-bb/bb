@@ -4,17 +4,14 @@ import {
   formatBbAppConfigPath,
   parseBbAppManagedConfig,
 } from "@bb/config/bb-app-managed-config";
+import { mutateManagedJsonFile } from "@bb/config/managed-json-file";
 import type { ServerMoveMode } from "@bb/domain";
 import {
   SERVER_MOVED_FILE_NAME,
   writeServerMovedFile,
   type ServerMovedFile,
 } from "@bb/server-archive";
-import {
-  parseManagedConfigObject,
-  readOptionalText,
-  writeTextAtomically,
-} from "./managed-files.js";
+import { parseManagedConfigObject, readOptionalText } from "./managed-files.js";
 
 const OLD_SERVER_KEPT_ENTRIES: ReadonlySet<string> = new Set([
   "config.json",
@@ -52,32 +49,45 @@ export async function writeOldServerDaemonConfig(
   args: WriteOldServerDaemonConfigArgs,
 ): Promise<OldServerDaemonConfigBackup> {
   const path = formatBbAppConfigPath(args.dataDir);
-  const originalText = await readOptionalText(path);
-  const {
-    machineCredential: _machineCredential,
-    serverHeaders: _serverHeaders,
-    ...current
-  } = parseManagedConfigObject(path, originalText);
-  const next: Record<string, unknown> = {
-    ...current,
-    serverUrl: args.serverUrl,
-    ...(Object.keys(args.headers).length > 0
-      ? { serverHeaders: args.headers }
-      : {}),
-  };
-  parseBbAppManagedConfig(next);
-  await writeTextAtomically(path, `${JSON.stringify(next, null, 2)}\n`);
-  return { originalText, path };
+  const backup: OldServerDaemonConfigBackup = { originalText: null, path };
+  await mutateManagedJsonFile({
+    path,
+    read: async () => {
+      backup.originalText = await readOptionalText(path);
+      return parseManagedConfigObject(path, backup.originalText);
+    },
+    mutate: ({
+      machineCredential: _machineCredential,
+      serverHeaders: _serverHeaders,
+      ...current
+    }) => {
+      const next: Record<string, unknown> = {
+        ...current,
+        serverUrl: args.serverUrl,
+        ...(Object.keys(args.headers).length > 0
+          ? { serverHeaders: args.headers }
+          : {}),
+      };
+      parseBbAppManagedConfig(next);
+      return next;
+    },
+  });
+  return backup;
 }
 
 export async function restoreOldServerDaemonConfig(
   backup: OldServerDaemonConfigBackup,
 ): Promise<void> {
-  if (backup.originalText === null) {
+  const originalText = backup.originalText;
+  if (originalText === null) {
     await rm(backup.path, { force: true });
     return;
   }
-  await writeTextAtomically(backup.path, backup.originalText);
+  await mutateManagedJsonFile({
+    path: backup.path,
+    read: async () => ({}),
+    mutate: () => parseManagedConfigObject(backup.path, originalText),
+  });
 }
 
 export function listOldCopyEntries(

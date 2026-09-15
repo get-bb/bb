@@ -7,6 +7,7 @@ import {
   formatBbAppEnvPath,
   parseBbAppManagedConfig,
 } from "@bb/config/bb-app-managed-config";
+import { mutateManagedJsonFile } from "@bb/config/managed-json-file";
 import { getAppSettings, type DbConnection } from "@bb/db";
 import { z } from "zod";
 
@@ -168,6 +169,10 @@ export function oldServerAddress(
   );
 }
 
+function originMatches(value: string | null, origin: string): boolean {
+  return parseHttpUrl(value)?.origin === origin;
+}
+
 export async function rewriteManagedAddresses(args: {
   dataDir: string;
   fromOrigin: string;
@@ -175,34 +180,54 @@ export async function rewriteManagedAddresses(args: {
 }): Promise<ManagedAddressKey[]> {
   const rewritten: ManagedAddressKey[] = [];
   const configPath = formatBbAppConfigPath(args.dataDir);
-  const configText = await readOptionalText(configPath);
-  if (configText !== null) {
-    const config = parseManagedConfigObject(configPath, configText);
-    const appUrl = parseHttpUrl(configAppUrl(config));
-    if (appUrl !== null && appUrl.origin === args.fromOrigin) {
-      const values = managedObjectSchema.parse(config.config);
-      const next = { ...config, config: { ...values, BB_APP_URL: args.toUrl } };
-      parseBbAppManagedConfig(next);
-      await writeTextAtomically(
-        configPath,
-        `${JSON.stringify(next, null, 2)}\n`,
-      );
-      rewritten.push("BB_APP_URL");
-    }
+  const readConfig = async () =>
+    parseManagedConfigObject(configPath, await readOptionalText(configPath));
+  if (originMatches(configAppUrl(await readConfig()), args.fromOrigin)) {
+    await mutateManagedJsonFile({
+      path: configPath,
+      read: readConfig,
+      mutate: (config) => {
+        if (!originMatches(configAppUrl(config), args.fromOrigin)) {
+          return config;
+        }
+        const next = {
+          ...config,
+          config: {
+            ...managedObjectSchema.parse(config.config),
+            BB_APP_URL: args.toUrl,
+          },
+        };
+        parseBbAppManagedConfig(next);
+        rewritten.push("BB_APP_URL");
+        return next;
+      },
+    });
   }
   const envPath = formatBbAppEnvPath(args.dataDir);
-  const envText = await readOptionalText(envPath);
-  if (envText !== null) {
-    const envFile = bbAppManagedEnvFileSchema.parse(JSON.parse(envText));
-    const externalUrl = parseHttpUrl(envFile.env?.BB_EXTERNAL_URL ?? null);
-    if (externalUrl !== null && externalUrl.origin === args.fromOrigin) {
-      const next = {
-        ...envFile,
-        env: { ...envFile.env, BB_EXTERNAL_URL: args.toUrl },
-      };
-      await writeTextAtomically(envPath, `${JSON.stringify(next, null, 2)}\n`);
-      rewritten.push("BB_EXTERNAL_URL");
-    }
+  const readEnvFile = async () => {
+    const text = await readOptionalText(envPath);
+    return bbAppManagedEnvFileSchema.parse(
+      text === null ? {} : JSON.parse(text),
+    );
+  };
+  const envFile = await readEnvFile();
+  if (originMatches(envFile.env?.BB_EXTERNAL_URL ?? null, args.fromOrigin)) {
+    await mutateManagedJsonFile({
+      path: envPath,
+      read: readEnvFile,
+      mutate: (current) => {
+        if (
+          !originMatches(current.env?.BB_EXTERNAL_URL ?? null, args.fromOrigin)
+        ) {
+          return current;
+        }
+        rewritten.push("BB_EXTERNAL_URL");
+        return {
+          ...current,
+          env: { ...current.env, BB_EXTERNAL_URL: args.toUrl },
+        };
+      },
+    });
   }
   return rewritten;
 }

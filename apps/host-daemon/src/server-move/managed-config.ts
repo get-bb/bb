@@ -3,7 +3,8 @@ import {
   formatBbAppConfigPath,
   parseBbAppManagedConfig,
 } from "@bb/config/bb-app-managed-config";
-import { isFileNotFoundError, writeFileAtomically } from "./fs.js";
+import { mutateManagedJsonFile } from "@bb/config/managed-json-file";
+import { isFileNotFoundError } from "./fs.js";
 
 const MACHINE_CONNECTION_KEYS = [
   "serverUrl",
@@ -53,12 +54,14 @@ async function updateManagedConfig(
   update: (current: Record<string, unknown>) => Record<string, unknown>,
 ): Promise<void> {
   const path = formatBbAppConfigPath(dataDir);
-  const next = update(await readManagedConfigObject(path));
-  parseBbAppManagedConfig(next);
-  await writeFileAtomically({
+  await mutateManagedJsonFile({
     path,
-    content: `${JSON.stringify(next, null, 2)}\n`,
-    mode: 0o600,
+    read: () => readManagedConfigObject(path),
+    mutate: (current) => {
+      const next = update(current);
+      parseBbAppManagedConfig(next);
+      return next;
+    },
   });
 }
 

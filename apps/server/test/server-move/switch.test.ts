@@ -26,7 +26,7 @@ afterEach(async () => {
 });
 
 describe("old server daemon config", () => {
-  it("points the old machine's daemon at the new server and restores the original bytes", async () => {
+  it("points the old machine's daemon at the new server and restores the original config", async () => {
     const dataDir = await makeDataDir();
     const path = join(dataDir, "config.json");
     const original = `${JSON.stringify(
@@ -58,7 +58,10 @@ describe("old server daemon config", () => {
     expect((await stat(path)).mode & 0o777).toBe(0o600);
 
     await restoreOldServerDaemonConfig(backup);
-    expect(await readFile(path, "utf8")).toBe(original);
+    expect(JSON.parse(await readFile(path, "utf8"))).toEqual(
+      JSON.parse(original),
+    );
+    expect((await stat(path)).mode & 0o777).toBe(0o600);
   });
 
   it("omits empty headers and removes a config it created", async () => {
