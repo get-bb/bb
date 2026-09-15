@@ -369,12 +369,17 @@ export function createAcpAgentConnection(
   };
 }
 
+export type AcpClientFsAccess = {
+  readTextFile: boolean;
+  writeTextFile: boolean;
+};
+
 function acpClientCapabilities(
   parameterizedModelPicker: boolean,
-  fsAccess: boolean,
+  fs: AcpClientFsAccess,
 ) {
   return {
-    fs: { readTextFile: fsAccess, writeTextFile: fsAccess },
+    fs,
     terminal: false,
     ...(parameterizedModelPicker === true
       ? { _meta: { parameterizedModelPicker: true } }
@@ -382,27 +387,27 @@ function acpClientCapabilities(
   };
 }
 
-export function acpFsAccessForAgentCommand(command: string): boolean {
+export function acpFsAccessForAgentCommand(command: string): AcpClientFsAccess {
   const name = basename(command).toLowerCase();
-  return !(name === "grok" || name === "grok.exe" || /^grok-\d/.test(name));
+  if (name === "grok" || name === "grok.exe" || /^grok-\d/.test(name)) {
+    return { readTextFile: false, writeTextFile: true };
+  }
+  return { readTextFile: true, writeTextFile: true };
 }
 
 export function requestAcpInitialize(
   connection: AcpAgentConnection,
   {
     parameterizedModelPicker,
-    fsAccess,
-  }: { parameterizedModelPicker: boolean; fsAccess: boolean },
+    fs,
+  }: { parameterizedModelPicker: boolean; fs: AcpClientFsAccess },
 ) {
   return connection.request({
     method: "initialize",
     params: {
       protocolVersion: ACP_PROTOCOL_VERSION,
       clientInfo: { name: "bb", version: "1.0.0" },
-      clientCapabilities: acpClientCapabilities(
-        parameterizedModelPicker,
-        fsAccess,
-      ),
+      clientCapabilities: acpClientCapabilities(parameterizedModelPicker, fs),
     },
     resultSchema: acpInitializeResultSchema,
   });

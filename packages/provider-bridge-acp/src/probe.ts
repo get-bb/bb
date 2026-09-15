@@ -69,7 +69,7 @@ export async function probeAcpAgent(
     const result = await Promise.race([
       requestAcpInitialize(connected, {
         parameterizedModelPicker: false,
-        fsAccess: true,
+        fs: { readTextFile: true, writeTextFile: true },
       }),
       timeout,
     ]);

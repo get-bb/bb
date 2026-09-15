@@ -796,7 +796,7 @@ async function loadSessionDiscoveredModels(
       (async () => {
         const initializeResult = await requestAcpInitialize(connection, {
           parameterizedModelPicker,
-          fsAccess: false,
+          fs: { readTextFile: false, writeTextFile: false },
         });
         await authenticateAcpAgent({
           connection,
@@ -1697,7 +1697,7 @@ async function startAgentSession(
   try {
     const initializeResult = await requestAcpInitialize(connection, {
       parameterizedModelPicker: params.parameterizedModelPicker,
-      fsAccess: acpFsAccessForAgentCommand(params.agent.command),
+      fs: acpFsAccessForAgentCommand(params.agent.command),
     });
     await authenticateAcpAgent({
       connection,

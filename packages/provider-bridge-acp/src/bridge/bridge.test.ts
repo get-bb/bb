@@ -1561,7 +1561,7 @@ describe("acp bridge", () => {
     expect(agentMessageTexts()).toContain("echo:hello there");
   });
 
-  it("does not offer Grok client text-file IO", async () => {
+  it("withholds Grok text-file reads and still advertises writes", async () => {
     const grokCommand = join(workspaceDir, "grok");
     symlinkSync(process.execPath, grokCommand);
     const requestLog = join(workspaceDir, "grok-init-requests.jsonl");
@@ -1574,7 +1574,7 @@ describe("acp bridge", () => {
     );
     expect(initialize?.params).toMatchObject({
       clientCapabilities: {
-        fs: { readTextFile: false, writeTextFile: false },
+        fs: { readTextFile: false, writeTextFile: true },
       },
     });
   });

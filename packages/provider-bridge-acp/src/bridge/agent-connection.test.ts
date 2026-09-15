@@ -42,17 +42,21 @@ async function stopConnection(
 }
 
 describe("acpFsAccessForAgentCommand", () => {
-  it("withholds client file IO from Grok so native image reads stay on disk", () => {
-    expect(acpFsAccessForAgentCommand("grok")).toBe(false);
-    expect(acpFsAccessForAgentCommand("/Users/me/.grok/bin/grok")).toBe(false);
-    expect(acpFsAccessForAgentCommand("grok.exe")).toBe(false);
-    expect(acpFsAccessForAgentCommand("grok-0.2.121")).toBe(false);
+  it("withholds text-file reads from Grok and still advertises writes", () => {
+    const withheldRead = { readTextFile: false, writeTextFile: true };
+    expect(acpFsAccessForAgentCommand("grok")).toEqual(withheldRead);
+    expect(acpFsAccessForAgentCommand("/Users/me/.grok/bin/grok")).toEqual(
+      withheldRead,
+    );
+    expect(acpFsAccessForAgentCommand("grok.exe")).toEqual(withheldRead);
+    expect(acpFsAccessForAgentCommand("grok-0.2.121")).toEqual(withheldRead);
   });
 
   it("keeps client file IO for other ACP agents", () => {
-    expect(acpFsAccessForAgentCommand("opencode")).toBe(true);
-    expect(acpFsAccessForAgentCommand("hermes")).toBe(true);
-    expect(acpFsAccessForAgentCommand("cursor-agent")).toBe(true);
+    const delegated = { readTextFile: true, writeTextFile: true };
+    expect(acpFsAccessForAgentCommand("opencode")).toEqual(delegated);
+    expect(acpFsAccessForAgentCommand("hermes")).toEqual(delegated);
+    expect(acpFsAccessForAgentCommand("cursor-agent")).toEqual(delegated);
   });
 });
 
