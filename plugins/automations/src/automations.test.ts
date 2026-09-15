@@ -1857,6 +1857,15 @@ describe("script process containment", () => {
 });
 
 describe("script project context", () => {
+  function withoutMissingBbCliWarning(
+    output: string | null | undefined,
+  ): string | null | undefined {
+    return output?.replace(
+      /^\[bb\] warning: could not locate the bb CLI, so `bb` is not on PATH for this script\.\n/u,
+      "",
+    );
+  }
+
   function projectSource(args: {
     hostId: string;
     path: string;
@@ -2002,7 +2011,7 @@ describe("script project context", () => {
         status: "succeeded",
         exitCode: 0,
       });
-      expect(result.closed?.output).toBe(
+      expect(withoutMissingBbCliWarning(result.closed?.output)).toBe(
         `${await realpath(serverProjectDir)}\nproject-relative file found\n`,
       );
     } finally {
@@ -2025,7 +2034,9 @@ describe("script project context", () => {
           }),
         ],
       });
-      expect(result.closed?.output).toBe(`${result.scriptsDir}\n`);
+      expect(withoutMissingBbCliWarning(result.closed?.output)).toBe(
+        `${result.scriptsDir}\n`,
+      );
     } finally {
       await rm(serverProjectDir, { recursive: true, force: true });
     }
@@ -2084,8 +2095,10 @@ describe("script project context", () => {
       expect(result.closed).toMatchObject({
         status: "succeeded",
         exitCode: 0,
-        output: `${await realpath(selectedDir)}\nselected directory\n`,
       });
+      expect(withoutMissingBbCliWarning(result.closed?.output)).toBe(
+        `${await realpath(selectedDir)}\nselected directory\n`,
+      );
     } finally {
       await rm(selectedDir, { recursive: true, force: true });
     }
@@ -2102,8 +2115,10 @@ describe("script project context", () => {
       status: "failed",
       exitCode: 2,
       error: "Script exited with code 2: missing project file",
-      output: "stdout kept\n\n  missing project file  \nlater detail\n",
     });
+    expect(withoutMissingBbCliWarning(result.closed?.output)).toBe(
+      "stdout kept\n\n  missing project file  \nlater detail\n",
+    );
   });
 });
 
