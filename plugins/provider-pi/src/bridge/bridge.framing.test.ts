@@ -43,12 +43,15 @@ it("carries U+2028/U+2029 through stdout events, RPC responses, and both channel
       },
     ],
   });
-  expect(start.result).toMatchObject({ providerThreadId: threadId });
+  const providerThreadId = String(
+    (start.result as { providerThreadId?: unknown }).providerThreadId,
+  );
+  expect(providerThreadId).toMatch(/^pi_/u);
 
   const text = `alpha${LINE_SEPARATOR}beta${PARAGRAPH_SEPARATOR}gamma`;
   await harness.request(2, "turn/start", {
     threadId,
-    providerThreadId: threadId,
+    providerThreadId,
     clientRequestId: "creq_ab23456789",
     input: [{ type: "text", text, mentions: [] }],
     options: FULL_PERMISSION_OPTIONS,
@@ -79,7 +82,7 @@ it("carries U+2028/U+2029 through stdout events, RPC responses, and both channel
       method: "turn/start",
       params: {
         threadId,
-        providerThreadId: threadId,
+        providerThreadId,
         clientRequestId: "creq_cd23456789",
         input: [
           {

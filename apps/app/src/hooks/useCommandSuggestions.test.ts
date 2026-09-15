@@ -1,10 +1,7 @@
+import { filterCommandSuggestions } from "@bb/client-core";
 import { describe, expect, it } from "vitest";
 import { AUTOMATION_PROMPT_ACTION } from "@/components/promptbox/PromptBoxActionsMenu";
-import {
-  commandSuggestionMatchesQuery,
-  filterCommandSuggestions,
-  promptActionCommandSuggestions,
-} from "./useCommandSuggestions";
+import { promptActionCommandSuggestions } from "./useCommandSuggestions";
 
 const promptActions = [
   { kind: "skills", text: "/" },
@@ -76,7 +73,7 @@ describe("promptActionCommandSuggestions", () => {
   });
 });
 
-describe("commandSuggestionMatchesQuery", () => {
+describe("filterCommandSuggestions", () => {
   const pluginSkill = {
     kind: "command",
     name: "review",
@@ -88,9 +85,13 @@ describe("commandSuggestionMatchesQuery", () => {
   } as const;
 
   it("filters the cached catalog locally by name and description", () => {
-    expect(commandSuggestionMatchesQuery(pluginSkill, "rev")).toBe(true);
-    expect(commandSuggestionMatchesQuery(pluginSkill, "pull")).toBe(true);
-    expect(commandSuggestionMatchesQuery(pluginSkill, "deploy")).toBe(false);
+    expect(filterCommandSuggestions([pluginSkill], "rev")).toEqual([
+      pluginSkill,
+    ]);
+    expect(filterCommandSuggestions([pluginSkill], "pull")).toEqual([
+      pluginSkill,
+    ]);
+    expect(filterCommandSuggestions([pluginSkill], "deploy")).toEqual([]);
   });
 
   it("filters without taking ownership of suggestion ordering", () => {

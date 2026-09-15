@@ -1,3 +1,4 @@
+import { fuzzyMatchText } from "@bb/fuzzy-match";
 import {
   providerCommandSection,
   providerCommandSectionRank,
@@ -81,6 +82,35 @@ export function toProviderCommandSuggestion(
   };
 }
 
+function matchingCommandNames(
+  suggestions: readonly ProviderCommandSuggestion[],
+  query: string,
+): Set<ProviderCommandSuggestion> {
+  return new Set(
+    fuzzyMatchText({
+      items: suggestions,
+      query,
+      getText: (suggestion) => suggestion.name,
+      limit: suggestions.length,
+    }).map((match) => match.item),
+  );
+}
+
+export function filterCommandSuggestions(
+  suggestions: readonly ProviderCommandSuggestion[],
+  query: string,
+): ProviderCommandSuggestion[] {
+  const normalizedQuery = query.trim().toLowerCase();
+  const nameMatches = matchingCommandNames(suggestions, normalizedQuery);
+  return suggestions.filter(
+    (suggestion) =>
+      nameMatches.has(suggestion) ||
+      [suggestion.description ?? "", suggestion.argumentHint ?? ""].some(
+        (text) => text.toLowerCase().includes(normalizedQuery),
+      ),
+  );
+}
+
 function compareCommandSuggestionSections(
   left: ProviderCommandSuggestion,
   right: ProviderCommandSuggestion,
@@ -102,6 +132,7 @@ function commandSuggestionSearchNames(
 function commandSuggestionMatchRank(
   suggestion: ProviderCommandSuggestion,
   normalizedQuery: string,
+  nameMatches: ReadonlySet<ProviderCommandSuggestion>,
 ): number {
   const canonicalName = suggestion.name.toLowerCase();
   if (canonicalName === normalizedQuery) {
@@ -111,17 +142,24 @@ function commandSuggestionMatchRank(
   if (names.includes(normalizedQuery)) {
     return 1;
   }
-  return names.some((name) => name.startsWith(normalizedQuery)) ? 2 : 3;
+  if (names.some((name) => name.startsWith(normalizedQuery))) {
+    return 2;
+  }
+  if (names.some((name) => name.includes(normalizedQuery))) {
+    return 3;
+  }
+  return nameMatches.has(suggestion) ? 4 : 5;
 }
 
 function compareCommandSuggestions(
   left: ProviderCommandSuggestion,
   right: ProviderCommandSuggestion,
   normalizedQuery: string,
+  nameMatches: ReadonlySet<ProviderCommandSuggestion>,
 ): number {
   const byMatch =
-    commandSuggestionMatchRank(left, normalizedQuery) -
-    commandSuggestionMatchRank(right, normalizedQuery);
+    commandSuggestionMatchRank(left, normalizedQuery, nameMatches) -
+    commandSuggestionMatchRank(right, normalizedQuery, nameMatches);
   return byMatch !== 0
     ? byMatch
     : compareCommandSuggestionSections(left, right);
@@ -132,8 +170,9 @@ export function orderCommandSuggestions(
   query: string,
 ): ProviderCommandSuggestion[] {
   const normalizedQuery = query.trim().toLowerCase();
+  const nameMatches = matchingCommandNames(suggestions, normalizedQuery);
   const ranked = [...suggestions].sort((left, right) =>
-    compareCommandSuggestions(left, right, normalizedQuery),
+    compareCommandSuggestions(left, right, normalizedQuery, nameMatches),
   );
 
   const bySection = new Map<
