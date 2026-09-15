@@ -76,8 +76,8 @@ function defineUiPreference<Schema extends z.ZodTypeAny>(
 export const uiPreferenceDefinitions = {
   "sidebar.organizationMode": defineUiPreference(
     sidebarOrganizationModeSchema,
-    "project",
-    "How the sidebar groups threads: by project, chronologically, or by machine.",
+    "chronological",
+    "How the sidebar groups threads: by project, Custom (chronological), or by machine. Defaults to Custom when unset.",
   ),
   "sidebar.chronologicalSort": defineUiPreference(
     sidebarChronologicalSortSchema,

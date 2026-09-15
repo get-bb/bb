@@ -18,6 +18,8 @@ every window and client sees the same value.
   orders, the collapsed-id lists, `sidebar.pluginPanelOrder`,
   `sidebar.visiblePluginPanels`, `sidebar.navigationProvider`,
   `sidebar.threadListProvider`).
+- `sidebar.organizationMode` defaults to Custom (`chronological`) when unset;
+  existing server and legacy browser choices are preserved.
 - `bb settings ui list [--json]` prints every key with its value, revision,
   and description; `bb settings ui get <key> [--json]` prints one.
 - `bb settings ui set <key> <value> [--json]` takes a plain string for enum

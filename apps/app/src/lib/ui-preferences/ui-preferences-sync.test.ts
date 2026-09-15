@@ -128,10 +128,7 @@ describe("ui preferences sync", () => {
   });
 
   it("uploads a legacy browser value once when the server has no revision yet", async () => {
-    window.localStorage.setItem(
-      "bb.sidebar.organizationMode",
-      '"chronological"',
-    );
+    window.localStorage.setItem("bb.sidebar.organizationMode", '"project"');
     const { modeAtom, queryClient, store } = createHarness();
     startUiPreferencesSync({ queryClient, store });
     const response = serverResponse();
@@ -142,14 +139,14 @@ describe("ui preferences sync", () => {
     expect(mocks.set).toHaveBeenCalledWith({
       expectedRevision: 0,
       key: "sidebar.organizationMode",
-      value: "chronological",
+      value: "project",
     });
     expect(
       getCachedUiPreferences(queryClient)?.preferences[
         "sidebar.organizationMode"
       ],
-    ).toEqual({ revision: 1, value: "chronological" });
-    expect(store.get(modeAtom)).toBe("chronological");
+    ).toEqual({ revision: 1, value: "project" });
+    expect(store.get(modeAtom)).toBe("project");
     expect(
       window.localStorage.getItem("bb.sidebar.organizationMode"),
     ).toBeNull();
@@ -160,7 +157,10 @@ describe("ui preferences sync", () => {
   });
 
   it("does not upload a legacy value that equals the default", async () => {
-    window.localStorage.setItem("bb.sidebar.organizationMode", '"project"');
+    window.localStorage.setItem(
+      "bb.sidebar.organizationMode",
+      '"chronological"',
+    );
     const { queryClient, store } = createHarness();
     startUiPreferencesSync({ queryClient, store });
     reconcileUiPreferences(serverResponse());
@@ -418,10 +418,7 @@ describe("ui preferences sync", () => {
   });
 
   it("never retries a migration against a newer revision", async () => {
-    window.localStorage.setItem(
-      "bb.sidebar.organizationMode",
-      '"chronological"',
-    );
+    window.localStorage.setItem("bb.sidebar.organizationMode", '"project"');
     const { modeAtom, queryClient, store } = createHarness();
     startUiPreferencesSync({ queryClient, store });
     const response = serverResponse();
@@ -438,7 +435,7 @@ describe("ui preferences sync", () => {
     expect(mocks.set).toHaveBeenCalledWith({
       expectedRevision: 0,
       key: "sidebar.organizationMode",
-      value: "chronological",
+      value: "project",
     });
     expect(store.get(modeAtom)).toBe("machine");
   });
