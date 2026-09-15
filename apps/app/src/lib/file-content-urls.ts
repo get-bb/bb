@@ -21,12 +21,11 @@ export function buildProjectFileContentUrl(
   projectId: string,
   path: string,
   routing: { environmentId?: string; hostId?: string } = {},
-  disposition?: "attachment",
 ): string {
   return toRelativeUrl(
     apiClient.projects[":id"].files.content.$url({
       param: { id: projectId },
-      query: { disposition, path, ...routing },
+      query: { path, ...routing },
     }),
   );
 }
@@ -34,12 +33,11 @@ export function buildProjectFileContentUrl(
 export function buildThreadStorageContentUrl(
   threadId: string,
   path: string,
-  disposition?: "attachment",
 ): string {
   return toRelativeUrl(
     apiClient.threads[":id"]["thread-storage"].content.$url({
       param: { id: threadId },
-      query: { disposition, path },
+      query: { path },
     }),
   );
 }
@@ -58,12 +56,11 @@ export function buildThreadStorageRawContentUrl(
 export function buildThreadHostFileContentUrl(
   threadId: string,
   path: string,
-  disposition?: "attachment",
 ): string {
   return toRelativeUrl(
     apiClient.threads[":id"]["host-files"].content.$url({
       param: { id: threadId },
-      query: { disposition, path },
+      query: { path },
     }),
   );
 }

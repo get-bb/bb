@@ -50,27 +50,18 @@ function buildFileDownloadUrl({
         : projectHostId === null
           ? {}
           : { hostId: projectHostId },
-      "attachment",
     );
   }
 
   if (request.kind === "host-file-preview") {
     if (request.hostId !== undefined || !threadId) return null;
-    return buildThreadHostFileContentUrl(
-      threadId,
-      request.tab.path,
-      "attachment",
-    );
+    return buildThreadHostFileContentUrl(threadId, request.tab.path);
   }
 
   if (request.kind === "thread-storage-file-preview") {
     const storageThreadId = request.threadId ?? threadId;
     return storageThreadId
-      ? buildThreadStorageContentUrl(
-          storageThreadId,
-          request.tab.path,
-          "attachment",
-        )
+      ? buildThreadStorageContentUrl(storageThreadId, request.tab.path)
       : null;
   }
 

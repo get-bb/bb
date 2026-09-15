@@ -1438,6 +1438,7 @@ describe("useThreadFileTabs file opener diversion", () => {
 
   it("downloads workspace, host, and thread-storage files without opening tabs", async () => {
     const downloadUrls: string[] = [];
+    const downloadNames: string[] = [];
     const fetchMock = vi.fn((_input: RequestInfo | URL) =>
       Promise.resolve(new Response("%PDF", { status: 200 })),
     );
@@ -1452,6 +1453,7 @@ describe("useThreadFileTabs file opener diversion", () => {
       .spyOn(HTMLAnchorElement.prototype, "click")
       .mockImplementation(function (this: HTMLAnchorElement) {
         downloadUrls.push(this.href);
+        downloadNames.push(this.download);
       });
     const { result } = renderThreadHook(() =>
       useThreadFileTabs({
@@ -1503,11 +1505,12 @@ describe("useThreadFileTabs file opener diversion", () => {
         return `${parsed.pathname}?${parsed.searchParams.toString()}`;
       }),
     ).toEqual([
-      "/api/v1/projects/proj_download/files/content?disposition=attachment&path=reports%2Fworkspace.pdf&environmentId=env_download",
-      "/api/v1/threads/thr_download/host-files/content?disposition=attachment&path=%2Ftmp%2Fhost.pdf",
-      "/api/v1/threads/thr_download/thread-storage/content?disposition=attachment&path=reports%2Fstorage.pdf",
+      "/api/v1/projects/proj_download/files/content?path=reports%2Fworkspace.pdf&environmentId=env_download",
+      "/api/v1/threads/thr_download/host-files/content?path=%2Ftmp%2Fhost.pdf",
+      "/api/v1/threads/thr_download/thread-storage/content?path=reports%2Fstorage.pdf",
     ]);
     await waitFor(() => expect(downloadUrls).toHaveLength(3));
+    expect(downloadNames).toEqual(["workspace.pdf", "host.pdf", "storage.pdf"]);
     expect(downloadUrls).toEqual([
       "blob:download",
       "blob:download",
