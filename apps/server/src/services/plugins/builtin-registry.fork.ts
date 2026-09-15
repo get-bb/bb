@@ -6,6 +6,11 @@ export interface ForkBuiltinPluginDefinition {
 
 export const FORK_BUILTIN_PLUGINS: readonly ForkBuiltinPluginDefinition[] = [
   {
+    name: "change-log",
+    pluginId: "change-log",
+    defaultEnabled: false,
+  },
+  {
     name: "git-graph",
     pluginId: "git-graph",
     defaultEnabled: true,
