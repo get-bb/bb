@@ -2,6 +2,9 @@
 
 ## Coordinating Work
 
+Do not message or coordinate other BB threads unless the user explicitly asks you
+to. Sharing a project or workspace is not permission.
+
 - Use one clear owner per task.
 - Spawn independent tasks separately when parallel work is useful.
 - Let threads work after spawning. Do not poll with shell sleeps, repeated log

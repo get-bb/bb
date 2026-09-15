@@ -55,6 +55,12 @@ describe("@bb/templates", () => {
 
     expect(rendered).toContain("You are working inside bb");
     expect(rendered).toContain("agentic IDE");
+    expect(rendered).toContain(
+      "Do not message or coordinate other BB threads unless the user explicitly asks you to.",
+    );
+    expect(rendered).toContain(
+      "Sharing a project or workspace is not permission.",
+    );
     expect(rendered).toContain("Reference a BB thread as `@thread:thr_abc123`");
     expect(rendered).toContain("Do not construct thread URLs manually");
     expect(rendered).not.toContain(
