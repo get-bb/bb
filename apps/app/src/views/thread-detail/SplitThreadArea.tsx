@@ -1131,7 +1131,7 @@ function NonThreadPaneContent({
               }
               className={cn(
                 "relative flex min-w-0 flex-1 items-center",
-                isBoundedPane && "-mx-2 -my-1 rounded-md px-2 py-1",
+                isBoundedPane && "-my-1 -ml-2 rounded-md px-2 py-1",
                 isBoundedPane && isFocused && CONTEXT_SELECTION_SURFACE_CLASS,
                 beginPaneDrag &&
                   cn(
