@@ -1402,6 +1402,8 @@ describe("delta assembler unified usage dialect", () => {
     totalTokens: 50,
     inputTokens: 30,
     cachedInputTokens: 5,
+    cacheReadInputTokens: 3,
+    cacheWriteInputTokens: 2,
     outputTokens: 15,
     reasoningOutputTokens: 0,
   };

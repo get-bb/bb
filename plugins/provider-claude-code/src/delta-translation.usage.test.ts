@@ -7,6 +7,38 @@ import {
 } from "./delta-test-harness.js";
 
 describe("claude usage and fixture translation (delta path)", () => {
+  it.each([
+    [{}, {}],
+    [{ cache_read_input_tokens: 0 }, { cacheReadInputTokens: 0 }],
+    [{ cache_creation_input_tokens: 0 }, { cacheWriteInputTokens: 0 }],
+    [{ cache_read_input_tokens: 31 }, { cacheReadInputTokens: 31 }],
+    [{ cache_creation_input_tokens: 9 }, { cacheWriteInputTokens: 9 }],
+  ])(
+    "preserves independently omitted Claude cache counts %j",
+    (counts, expected) => {
+      const harness = createClaudeDeltaHarness();
+      harness.translate(loadFixture("assistant-text.json"));
+      const fixture = loadFixture("result-success.json");
+      const events = harness.translate({
+        ...fixture,
+        usage: { input_tokens: 80, output_tokens: 20, ...counts },
+      });
+      const event = events.find(
+        (event) => event.type === "thread/tokenUsage/updated",
+      );
+      expect(event).toBeDefined();
+      expect(event?.tokenUsage.last).toMatchObject(expected);
+      expect(
+        Object.keys(event?.tokenUsage.last ?? {})
+          .filter(
+            (key) =>
+              key === "cacheReadInputTokens" || key === "cacheWriteInputTokens",
+          )
+          .sort(),
+      ).toEqual(Object.keys(expected).sort());
+    },
+  );
+
   it("fixture: assistant-text produces turn/started + item/completed agentMessage", () => {
     const harness = createClaudeDeltaHarness();
     const events = harness.translate(loadFixture("assistant-text.json"));
@@ -465,12 +497,16 @@ describe("claude usage and fixture translation (delta path)", () => {
       inputTokens: 8420,
       outputTokens: 1253,
       cachedInputTokens: 7012,
+      cacheReadInputTokens: 6500,
+      cacheWriteInputTokens: 512,
     });
     expect(secondTokenUsage?.tokenUsage.total).toMatchObject({
       totalTokens: 33370,
       inputTokens: 16840,
       outputTokens: 2506,
       cachedInputTokens: 14024,
+      cacheReadInputTokens: 13000,
+      cacheWriteInputTokens: 1024,
     });
     expect(secondTokenUsage?.tokenUsage.last).toEqual(
       firstTokenUsage?.tokenUsage.last,

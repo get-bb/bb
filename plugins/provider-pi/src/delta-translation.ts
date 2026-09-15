@@ -74,8 +74,8 @@ const piAssistantUsageSchema = z
   .object({
     input: z.number().optional(),
     output: z.number().optional(),
-    cacheRead: z.number().optional(),
-    cacheWrite: z.number().optional(),
+    cacheRead: z.number().nonnegative().optional(),
+    cacheWrite: z.number().nonnegative().optional(),
     totalTokens: z.number().optional(),
   })
   .passthrough();
@@ -981,6 +981,12 @@ function toAssistantUsageBreakdown(
         : inputTokens + outputTokens + cachedInputTokens,
     inputTokens,
     cachedInputTokens,
+    ...(typedUsage.cacheRead === undefined
+      ? {}
+      : { cacheReadInputTokens: typedUsage.cacheRead }),
+    ...(typedUsage.cacheWrite === undefined
+      ? {}
+      : { cacheWriteInputTokens: typedUsage.cacheWrite }),
     outputTokens,
     reasoningOutputTokens: 0,
   };

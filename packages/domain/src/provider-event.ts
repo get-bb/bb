@@ -290,6 +290,8 @@ export const threadEventTokenUsageBreakdownSchema = z.object({
   totalTokens: z.number(),
   inputTokens: z.number(),
   cachedInputTokens: z.number(),
+  cacheReadInputTokens: z.number().nonnegative().optional(),
+  cacheWriteInputTokens: z.number().nonnegative().optional(),
   outputTokens: z.number(),
   reasoningOutputTokens: z.number(),
 });

@@ -1569,6 +1569,43 @@ describe("pi delta translation equivalence", () => {
     expect(events).toEqual([]);
   });
 
+  it.each([
+    [{}, {}],
+    [{ cacheRead: 0 }, { cacheReadInputTokens: 0 }],
+    [{ cacheWrite: 0 }, { cacheWriteInputTokens: 0 }],
+    [{ cacheRead: 31 }, { cacheReadInputTokens: 31 }],
+    [{ cacheWrite: 9 }, { cacheWriteInputTokens: 9 }],
+  ])(
+    "preserves independently omitted Pi cache counts %j",
+    (counts, expected) => {
+      const harness = createHarness();
+      harness.translate(loadFixture("agent-start.json"));
+      const events = harness.translate({
+        type: "agent_end",
+        messages: [
+          {
+            role: "assistant",
+            content: [],
+            usage: { input: 80, output: 20, ...counts },
+          },
+        ],
+      });
+      const event = events.find(
+        (event) => event.type === "thread/tokenUsage/updated",
+      );
+      expect(event).toBeDefined();
+      expect(event?.tokenUsage.last).toMatchObject(expected);
+      expect(
+        Object.keys(event?.tokenUsage.last ?? {})
+          .filter(
+            (key) =>
+              key === "cacheReadInputTokens" || key === "cacheWriteInputTokens",
+          )
+          .sort(),
+      ).toEqual(Object.keys(expected).sort());
+    },
+  );
+
   it("accumulates Pi token usage across turns", () => {
     const harness = createHarness({
       resolveModelContextWindow: () => 123_456,
@@ -1601,6 +1638,8 @@ describe("pi delta translation equivalence", () => {
       totalTokens: 7736,
       inputTokens: 4200,
       cachedInputTokens: 3380,
+      cacheReadInputTokens: 3100,
+      cacheWriteInputTokens: 280,
       outputTokens: 156,
     });
     expect(firstTokenUsage?.tokenUsage.modelContextWindow).toBe(123_456);
@@ -1608,6 +1647,8 @@ describe("pi delta translation equivalence", () => {
       totalTokens: 15472,
       inputTokens: 8400,
       cachedInputTokens: 6760,
+      cacheReadInputTokens: 6200,
+      cacheWriteInputTokens: 560,
       outputTokens: 312,
     });
     expect(secondTokenUsage?.tokenUsage.last).toEqual(

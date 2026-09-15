@@ -1660,6 +1660,40 @@ describe("codex delta and usage translation", () => {
     ]);
   });
 
+  it.each([undefined, 0, 9])(
+    "preserves older Codex usage and reported writes %s",
+    (writes) => {
+      const harness = createHarness();
+      const usage = {
+        totalTokens: 100,
+        inputTokens: 80,
+        cachedInputTokens: 31,
+        outputTokens: 20,
+        reasoningOutputTokens: 5,
+        ...(writes === undefined ? {} : { cacheWriteInputTokens: writes }),
+      };
+      const events = harness.translate({
+        method: "thread/tokenUsage/updated",
+        params: {
+          threadId: "t1",
+          turnId: "turn-1",
+          tokenUsage: { total: usage, last: usage, modelContextWindow: null },
+        },
+      });
+      const event = events.find(
+        (event) => event.type === "thread/tokenUsage/updated",
+      );
+      expect(event?.tokenUsage.last).toEqual({
+        ...usage,
+        cacheReadInputTokens: 31,
+      });
+      expect(event?.tokenUsage.total).toEqual({
+        ...usage,
+        cacheReadInputTokens: 31,
+      });
+    },
+  );
+
   it("fans thread/tokenUsage/updated out to both usage events exactly", () => {
     const harness = createHarness();
     const events = harness.translate(
@@ -1671,7 +1705,7 @@ describe("codex delta and usage translation", () => {
             totalTokens: 100,
             inputTokens: 60,
             cachedInputTokens: 10,
-            cacheWriteInputTokens: 0,
+            cacheWriteInputTokens: 7,
             outputTokens: 30,
             reasoningOutputTokens: 0,
           },
@@ -1679,7 +1713,7 @@ describe("codex delta and usage translation", () => {
             totalTokens: 50,
             inputTokens: 30,
             cachedInputTokens: 5,
-            cacheWriteInputTokens: 0,
+            cacheWriteInputTokens: 3,
             outputTokens: 15,
             reasoningOutputTokens: 0,
           },
@@ -1692,7 +1726,15 @@ describe("codex delta and usage translation", () => {
         type: "thread/tokenUsage/updated",
         scope: turnScope(harness.turnId("turn-1")),
         tokenUsage: expect.objectContaining({
-          total: expect.objectContaining({ totalTokens: 100 }),
+          total: expect.objectContaining({
+            totalTokens: 100,
+            cacheReadInputTokens: 10,
+            cacheWriteInputTokens: 7,
+          }),
+          last: expect.objectContaining({
+            cacheReadInputTokens: 5,
+            cacheWriteInputTokens: 3,
+          }),
           modelContextWindow: 128000,
         }),
       }),

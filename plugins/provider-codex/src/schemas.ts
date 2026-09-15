@@ -558,7 +558,8 @@ const codexTokenUsageBreakdownSchema = z
   .object({
     totalTokens: z.number(),
     inputTokens: z.number(),
-    cachedInputTokens: z.number(),
+    cachedInputTokens: z.number().nonnegative(),
+    cacheWriteInputTokens: z.number().nonnegative().optional(),
     outputTokens: z.number(),
     reasoningOutputTokens: z.number(),
   })
