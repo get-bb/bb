@@ -165,7 +165,7 @@ export function MachineRowContent({
           data-machine-row
           className="group group/machine -mx-2 flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md px-2 py-2 transition-colors hover:bg-state-hover focus-within:bg-state-hover"
           onClick={(event) => {
-            if (targetsResourceAction(event.target)) return;
+            if (targetsResourceAction(event)) return;
             navigate(detailPath);
           }}
         >

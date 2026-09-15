@@ -571,6 +571,21 @@ describe("MachinesSettingsSection", () => {
     expect(screen.getByTestId("location").textContent).toBe("/");
   });
 
+  it("stays on the machines list when a row menu item is selected", async () => {
+    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
+    vi.mocked(sdk.hosts.list).mockResolvedValue([primaryHost, offlineHost]);
+    stubSidebarBootstrapFetch();
+
+    renderSection();
+
+    await screen.findByText("dev-vm");
+    await openHostMenu("dev-vm");
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Rename" }));
+
+    expect(await screen.findByLabelText("Machine name")).toBeDefined();
+    expect(screen.getByTestId("location").textContent).toBe("/");
+  });
+
   it("renames a machine through the row menu", async () => {
     vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
     vi.mocked(sdk.hosts.list).mockResolvedValue([primaryHost, offlineHost]);
@@ -805,6 +820,7 @@ describe("MachinesSettingsSection", () => {
     expect(
       await screen.findByRole("heading", { name: "Move the server to desk" }),
     ).toBeDefined();
+    expect(screen.getByTestId("location").textContent).toBe("/");
     await waitFor(() => {
       expect(vi.mocked(sdk.experimental_server.checkMove)).toHaveBeenCalledWith(
         { targetHostId: "host_desk", serverUrl: null },
