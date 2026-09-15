@@ -435,7 +435,7 @@ async function showAboutDialog(): Promise<void> {
       ? await dialog.showMessageBox(messageBoxOptions)
       : await dialog.showMessageBox(parentWindow, messageBoxOptions);
   if (result.response === copyButtonId) {
-    clipboard.writeText(messageBoxOptions.detail);
+    await clipboard.writeText(messageBoxOptions.detail);
   }
 }
 
@@ -1363,7 +1363,7 @@ function installLogViewerIpcHandlers(): void {
   ipcMain.handle(
     LOG_VIEWER_COPY_CHANNEL,
     (_event, request: LogViewerCopyRequest) => {
-      clipboard.writeText(logViewerCopyRequestSchema.parse(request).text);
+      return clipboard.writeText(logViewerCopyRequestSchema.parse(request).text);
     },
   );
   ipcMain.handle(LOG_VIEWER_OPEN_LOGS_FOLDER_CHANNEL, () =>

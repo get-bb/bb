@@ -119,6 +119,7 @@ function assertHostActiveForRead(
   if (
     isCleanupRpc(deps, args) ||
     args.command.type === "thread.stop" ||
+    args.command.type === "thread.storage.delete" ||
     args.command.type === "environment.hook.cancel" ||
     args.command.type === "plugin.host.cancel" ||
     args.command.type === "plugin.host.dispose"

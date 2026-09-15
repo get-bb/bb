@@ -4,17 +4,21 @@ import { describe, expect, it, vi } from "vitest";
 import { decodeBase64Bytes } from "@/lib/base64-bytes";
 import {
   buildTerminalThemeFromCssColors,
+  applyTerminalFontFamily,
   captureTerminalContextMenuState,
   encodeTerminalInputChunks,
+  forceTerminalFontMeasurement,
   focusTerminalFromTouchRelease,
   forwardTerminalData,
   loadOptionalTerminalWebglAddon,
   loadTerminalWebglRenderer,
+  observeTerminalFontLoading,
   shouldFocusTerminalAfterAsyncMount,
   startTerminalTouchFocusGesture,
   TERMINAL_ALLOW_PROPOSED_API,
   TERMINAL_FONT_FAMILY,
   TERMINAL_UNICODE_VERSION,
+  resolveTerminalFontFamily,
   writeTerminalOutput,
   updateTerminalTouchFocusGesture,
 } from "./ThreadTerminalView";
@@ -356,6 +360,137 @@ describe("buildTerminalThemeFromCssColors", () => {
 
     expect(theme.background).toBe("--sidebar");
     expect(theme.cursorAccent).toBe("--sidebar");
+  });
+});
+
+describe("terminal font family", () => {
+  it("uses the theme terminal font family when it is set", () => {
+    expect(
+      resolveTerminalFontFamily((name) =>
+        name === "--font-terminal" ? '"Berkeley Mono", monospace' : undefined,
+      ),
+    ).toBe('"Berkeley Mono", monospace');
+  });
+
+  it("keeps the default stack when the theme does not set a font family", () => {
+    expect(resolveTerminalFontFamily(() => undefined)).toBe(
+      TERMINAL_FONT_FAMILY,
+    );
+  });
+
+  it("keeps the default stack when the theme font family is blank", () => {
+    expect(resolveTerminalFontFamily(() => "  ")).toBe(TERMINAL_FONT_FAMILY);
+  });
+
+  it("updates the xterm font family and schedules a refit only when it changes", () => {
+    const terminal = { options: { fontFamily: "Old Font" } } as Parameters<
+      typeof applyTerminalFontFamily
+    >[0];
+    const scheduleFit = vi.fn();
+
+    expect(
+      applyTerminalFontFamily(terminal, '"New Font", monospace', scheduleFit),
+    ).toBe(true);
+    expect(terminal.options.fontFamily).toBe('"New Font", monospace');
+    expect(scheduleFit).toHaveBeenCalledOnce();
+
+    scheduleFit.mockClear();
+    expect(
+      applyTerminalFontFamily(terminal, '"New Font", monospace', scheduleFit),
+    ).toBe(false);
+    expect(scheduleFit).not.toHaveBeenCalled();
+  });
+
+  it("remeasures and clears cached glyphs before refreshing after a font loads", () => {
+    const fontFamily = '"New Font", monospace';
+    let currentFontFamily = fontFamily;
+    const fontFamilyChanges: string[] = [];
+    const refresh = vi.fn();
+    const clearTextureAtlas = vi.fn();
+    const terminal = {
+      options: {
+        get fontFamily() {
+          return currentFontFamily;
+        },
+        set fontFamily(value: string) {
+          fontFamilyChanges.push(value);
+          currentFontFamily = value;
+        },
+      },
+      refresh,
+      clearTextureAtlas,
+      rows: 24,
+    } as Parameters<typeof forceTerminalFontMeasurement>[0];
+
+    forceTerminalFontMeasurement(terminal);
+
+    expect(fontFamilyChanges).toEqual([`${fontFamily} `, fontFamily]);
+    expect(clearTextureAtlas).toHaveBeenCalledOnce();
+    expect(clearTextureAtlas).toHaveBeenCalledBefore(refresh);
+    expect(refresh).toHaveBeenCalledWith(0, 23);
+    expect(terminal.options.fontFamily).toBe(fontFamily);
+  });
+});
+
+function createTerminalFontSet() {
+  const events = new EventTarget();
+  let finishLoading = () => {};
+  const ready = new Promise<FontFaceSet>((resolve) => {
+    finishLoading = () => resolve(fontSet as FontFaceSet);
+  });
+  const fontSet = Object.assign(events, { ready });
+  return { fontSet, finishLoading };
+}
+
+describe("terminal font loading", () => {
+  it("refreshes fonts imported after the initial ready promise resolves", async () => {
+    const { fontSet, finishLoading } = createTerminalFontSet();
+    finishLoading();
+    await fontSet.ready;
+    const refresh = vi.fn();
+    const dispose = observeTerminalFontLoading(fontSet, refresh);
+    await fontSet.ready;
+    expect(refresh).toHaveBeenCalledOnce();
+
+    fontSet.dispatchEvent(new Event("loadingdone"));
+    expect(refresh).toHaveBeenCalledTimes(2);
+
+    fontSet.dispatchEvent(new Event("loadingdone"));
+    expect(refresh).toHaveBeenCalledTimes(3);
+    dispose();
+  });
+
+  it("ignores a pending ready callback after the terminal is disposed", async () => {
+    const { fontSet, finishLoading } = createTerminalFontSet();
+    const refresh = vi.fn();
+    const dispose = observeTerminalFontLoading(fontSet, refresh);
+
+    dispose();
+    finishLoading();
+    await fontSet.ready;
+    fontSet.dispatchEvent(new Event("loadingdone"));
+
+    expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it("removes the font listener when the terminal is disposed", async () => {
+    const { fontSet, finishLoading } = createTerminalFontSet();
+    const removeEventListener = vi.spyOn(fontSet, "removeEventListener");
+    const refresh = vi.fn();
+    const dispose = observeTerminalFontLoading(fontSet, refresh);
+    finishLoading();
+    await fontSet.ready;
+    refresh.mockClear();
+
+    dispose();
+    fontSet.dispatchEvent(new Event("loadingdone"));
+
+    expect(refresh).not.toHaveBeenCalled();
+    expect(removeEventListener).toHaveBeenCalledWith(
+      "loadingdone",
+      expect.any(Function),
+    );
+    removeEventListener.mockRestore();
   });
 });
 

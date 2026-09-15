@@ -65,6 +65,12 @@ interface MergeLoadedTimelineWithLatestArgs {
   surfaceKey: string;
 }
 
+interface MergeAdvancedSnapshotTimelineRowsArgs {
+  current: LoadedTimelineState;
+  latestRows: readonly TimelineRow[];
+  latestTimeline: ThreadTimelineResponse;
+}
+
 interface RecoverLoadedTimelineAfterStaleCursorArgs {
   current: LoadedTimelineState;
   latestTimeline: ThreadTimelineResponse;
@@ -168,46 +174,67 @@ function areTimelineRowReferencesEqual({
   return left.every((row, index) => row === right[index]);
 }
 
+function joinOlderTimelineRowChildren(
+  older: TimelineRow,
+  loaded: TimelineRow,
+): TimelineRow {
+  if (
+    older.kind === "turn" &&
+    loaded.kind === "turn" &&
+    older.children !== null &&
+    loaded.children !== null
+  ) {
+    return {
+      ...loaded,
+      children: prependOlderTimelineRows({
+        olderRows: older.children,
+        loadedRows: loaded.children,
+      }),
+    };
+  }
+  if (
+    older.kind === "work" &&
+    older.workKind === "delegation" &&
+    loaded.kind === "work" &&
+    loaded.workKind === "delegation"
+  ) {
+    return {
+      ...loaded,
+      childRows: prependOlderTimelineRows({
+        olderRows: older.childRows,
+        loadedRows: loaded.childRows,
+      }),
+    };
+  }
+  return loaded;
+}
+
 export function prependOlderTimelineRows({
   loadedRows,
   olderRows,
 }: PrependOlderTimelineRowsArgs): TimelineRow[] {
-  const loadedById = new Map(loadedRows.map((row) => [row.id, row]));
-  const uniqueOlderRows: TimelineRow[] = [];
-  appendTimelineRowsPreservingOrder(uniqueOlderRows, olderRows);
-  const rows: TimelineRow[] = uniqueOlderRows.map((row) => {
-    const loaded = loadedById.get(row.id);
-    if (
-      row.kind === "turn" &&
-      loaded?.kind === "turn" &&
-      row.children !== null &&
-      loaded.children !== null
-    ) {
-      return {
-        ...loaded,
-        children: prependOlderTimelineRows({
-          olderRows: row.children,
-          loadedRows: loaded.children,
-        }),
-      };
+  const uniqueLoadedRows: TimelineRow[] = [];
+  appendTimelineRowsPreservingOrder(uniqueLoadedRows, loadedRows);
+  const loadedIds = new Set(uniqueLoadedRows.map((row) => row.id));
+  const olderById = new Map<string, TimelineRow>();
+  const rows: TimelineRow[] = [];
+  for (const row of olderRows) {
+    if (olderById.has(row.id)) {
+      continue;
     }
-    if (
-      row.kind === "work" &&
-      row.workKind === "delegation" &&
-      loaded?.kind === "work" &&
-      loaded.workKind === "delegation"
-    ) {
-      return {
-        ...loaded,
-        childRows: prependOlderTimelineRows({
-          olderRows: row.childRows,
-          loadedRows: loaded.childRows,
-        }),
-      };
+    olderById.set(row.id, row);
+    if (!loadedIds.has(row.id)) {
+      rows.push(row);
     }
-    return loaded ?? row;
-  });
-  appendTimelineRowsPreservingOrder(rows, loadedRows);
+  }
+  for (const loaded of uniqueLoadedRows) {
+    const older = olderById.get(loaded.id);
+    rows.push(
+      older === undefined
+        ? loaded
+        : joinOlderTimelineRowChildren(older, loaded),
+    );
+  }
   return rows;
 }
 
@@ -314,7 +341,60 @@ function mergeLoadedTimelineOlderCursor(
   if (current === null || latest === null) {
     return null;
   }
-  return latest.anchorSeq <= current.anchorSeq ? latest : current;
+  return latest.anchorSeq < current.anchorSeq ? latest : current;
+}
+
+function mergeAdvancedSnapshotTimelineRows({
+  current,
+  latestRows,
+  latestTimeline,
+}: MergeAdvancedSnapshotTimelineRowsArgs): MergeLatestTimelineRowsResult {
+  const latestWindowStartSequence = timelineWindowStartSequence(latestTimeline);
+  const { olderRowsSourceSeqEnd } = latestTimeline.timelinePage;
+  if (
+    olderRowsSourceSeqEnd === undefined ||
+    (olderRowsSourceSeqEnd !== null &&
+      olderRowsSourceSeqEnd > (current.latestWindowEndSequence ?? 0))
+  ) {
+    return { canMerge: false, rows: [...latestRows] };
+  }
+  if (latestTimeline.timelinePage.olderCursor === null) {
+    return mergeLatestTimelineRows({
+      latestRows,
+      latestWindowStartSequence,
+      loadedRows: current.rows,
+    });
+  }
+  const loadedRows = current.rows.filter(
+    (row) => !isOptimisticTimelineRowId(row.id),
+  );
+  const latestRowIds = new Set(latestRows.map((row) => row.id));
+  const firstCoveredIndex = loadedRows.findIndex((row) =>
+    latestRowIds.has(row.id),
+  );
+  if (firstCoveredIndex === -1) {
+    return latestWindowStartSequence > (current.latestWindowEndSequence ?? 0)
+      ? { canMerge: true, rows: [...loadedRows, ...latestRows] }
+      : { canMerge: false, rows: [...latestRows] };
+  }
+  const coveredMerge = mergeLatestTimelineRows({
+    latestRows,
+    latestWindowStartSequence: 0,
+    loadedRows: loadedRows.slice(firstCoveredIndex),
+  });
+  if (!coveredMerge.canMerge) {
+    return coveredMerge;
+  }
+  const rows = [
+    ...loadedRows.slice(0, firstCoveredIndex),
+    ...coveredMerge.rows,
+  ];
+  return {
+    canMerge: true,
+    rows: areTimelineRowReferencesEqual({ left: current.rows, right: rows })
+      ? current.rows
+      : rows,
+  };
 }
 
 function loadedTimelineStateFromLatest(
@@ -336,37 +416,49 @@ export function mergeLoadedTimelineWithLatest({
   latestTimeline,
   surfaceKey,
 }: MergeLoadedTimelineWithLatestArgs): LoadedTimelineState {
+  const latestHistorySnapshot = latestTimeline.timelinePage.historySnapshot;
   if (
     current.surfaceKey !== surfaceKey ||
-    current.historySnapshot !== latestTimeline.timelinePage.historySnapshot ||
+    (current.historySnapshot === undefined) !==
+      (latestHistorySnapshot === undefined) ||
     !timelineWindowsAreContiguous(current, latestTimeline)
   ) {
     return loadedTimelineStateFromLatest(latestTimeline, surfaceKey);
   }
 
   const currentRowsById = new Map(current.rows.map((row) => [row.id, row]));
-  const latestMerge = mergeLatestTimelineRows({
-    latestRows:
-      current.historySnapshot === undefined
-        ? latestTimeline.rows
-        : latestTimeline.rows.map((row) => {
-            const loaded = currentRowsById.get(row.id);
-            return loaded === undefined
-              ? row
-              : prependOlderTimelineRows({
-                  olderRows: [loaded],
-                  loadedRows: [row],
-                })[0]!;
-          }),
-    latestWindowStartSequence: timelineWindowStartSequence(latestTimeline),
-    loadedRows: current.rows,
-  });
+  const latestRows =
+    current.historySnapshot === undefined
+      ? latestTimeline.rows
+      : latestTimeline.rows.map((row) => {
+          const loaded = currentRowsById.get(row.id);
+          return loaded === undefined
+            ? row
+            : prependOlderTimelineRows({
+                olderRows: [loaded],
+                loadedRows: [row],
+              })[0]!;
+        });
+  const latestMerge =
+    current.historySnapshot === latestHistorySnapshot
+      ? mergeLatestTimelineRows({
+          latestRows,
+          latestWindowStartSequence:
+            timelineWindowStartSequence(latestTimeline),
+          loadedRows: current.rows,
+        })
+      : mergeAdvancedSnapshotTimelineRows({
+          current,
+          latestRows,
+          latestTimeline,
+        });
   if (!latestMerge.canMerge) {
     return loadedTimelineStateFromLatest(latestTimeline, surfaceKey);
   }
 
   return {
     ...current,
+    historySnapshot: latestHistorySnapshot,
     latestWindowEndSequence: latestTimeline.maxSeq,
     olderCursor: mergeLoadedTimelineOlderCursor(
       current.olderCursor,

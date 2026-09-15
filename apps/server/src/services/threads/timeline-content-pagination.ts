@@ -1,6 +1,7 @@
 import type { TimelineRow } from "@bb/server-contract";
 
 export interface TimelineContentPage {
+  olderRowsSourceSeqEnd: number | null;
   rows: TimelineRow[];
   start: number;
   end: number;
@@ -59,15 +60,31 @@ export function paginateTimelineContents(
     start -= 1;
   }
   let index = 0;
+  let olderRowsSourceSeqEnd: number | null = null;
+  const recordOlderRow = (row: TimelineRow): void => {
+    olderRowsSourceSeqEnd = Math.max(
+      olderRowsSourceSeqEnd ?? 0,
+      row.sourceSeqEnd,
+    );
+  };
   const select = (items: readonly TimelineRow[]): TimelineRow[] =>
     items.flatMap((row) => {
       const nested = children(row);
       if (nested === null) {
         const position = index++;
+        if (position < start) recordOlderRow(row);
         return position >= start && position < end ? [row] : [];
       }
       const selected = select(nested);
+      if (selected.length === 0 && index <= start) recordOlderRow(row);
       return selected.length === 0 ? [] : [withChildren(row, selected)];
     });
-  return { rows: select(rows), start, end, total: costs.length };
+  const selectedRows = select(rows);
+  return {
+    olderRowsSourceSeqEnd,
+    rows: selectedRows,
+    start,
+    end,
+    total: costs.length,
+  };
 }

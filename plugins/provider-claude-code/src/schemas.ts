@@ -73,8 +73,8 @@ export const sdkUsageSchema = z
   .object({
     input_tokens: z.number().optional(),
     output_tokens: z.number().optional(),
-    cache_read_input_tokens: z.number().optional(),
-    cache_creation_input_tokens: z.number().optional(),
+    cache_read_input_tokens: z.number().nonnegative().optional(),
+    cache_creation_input_tokens: z.number().nonnegative().optional(),
   })
   .passthrough();
 export type ClaudeSdkUsage = z.infer<typeof sdkUsageSchema>;

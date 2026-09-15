@@ -1,4 +1,8 @@
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
+import * as fixtures from "../helpers/command-output-fixtures.js";
 import {
   setupCommandOutputTestEnvironment,
   runCommand,
@@ -231,35 +235,75 @@ describe("bb thread tell command output", () => {
     });
   });
 
-  it("bb thread tell forwards host-readable paths without reading them on the CLI machine", async () => {
-    const post = vi.fn(async () => ({ ok: true }));
-    stubServerApi({ "v1.threads.:id.send.$post": post });
+  it("bb thread tell uploads absolute client image paths to the target project", async () => {
+    const clientDir = await mkdtemp(join(tmpdir(), "bb-cli-thread-image-"));
+    try {
+      const imagePath = join(clientDir, "screenshot.png");
+      const bytes = new Uint8Array([137, 80, 78, 71]);
+      await writeFile(imagePath, bytes);
+      const get = vi.fn(async () =>
+        fixtures.makeThread({
+          id: "thread-attachments",
+          projectId: "proj-target",
+          providerId: "codex",
+        }),
+      );
+      const post = vi.fn(async () => ({ ok: true }));
+      stubServerApi({
+        "v1.threads.:id.$get": get,
+        "v1.threads.:id.send.$post": post,
+      });
+      vi.mocked(globalThis.fetch).mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            type: "localImage",
+            path: "screenshot-uploaded.png",
+            name: "screenshot.png",
+            mimeType: "image/png",
+            sizeBytes: bytes.byteLength,
+          }),
+          { headers: { "content-type": "application/json" } },
+        ),
+      );
 
-    await runCommand(
-      [
-        "thread",
-        "tell",
-        "thread-attachments",
-        "review these",
-        "--file",
-        "/tmp/report.pdf",
-        "--image",
-        "/tmp/screenshot.png",
-      ],
-      register,
-    );
-
-    expect(post).toHaveBeenCalledWith({
-      param: { id: "thread-attachments" },
-      json: {
-        input: [
-          { type: "text", text: "review these", mentions: [] },
-          { type: "localFile", path: "/tmp/report.pdf" },
-          { type: "localImage", path: "/tmp/screenshot.png" },
+      await runCommand(
+        [
+          "thread",
+          "tell",
+          "thread-attachments",
+          "review these",
+          "--file",
+          "/tmp/report.pdf",
+          "--image",
+          imagePath,
         ],
-        mode: "steer-if-active",
-      },
-    });
+        register,
+      );
+
+      expect(get).toHaveBeenCalledWith({
+        param: { id: "thread-attachments" },
+      });
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        "http://server/api/v1/projects/proj-target/attachments",
+        expect.objectContaining({
+          body: expect.any(FormData),
+          method: "POST",
+        }),
+      );
+      expect(post).toHaveBeenCalledWith({
+        param: { id: "thread-attachments" },
+        json: {
+          input: [
+            { type: "text", text: "review these", mentions: [] },
+            { type: "localFile", path: "/tmp/report.pdf" },
+            { type: "localImage", path: "screenshot-uploaded.png" },
+          ],
+          mode: "steer-if-active",
+        },
+      });
+    } finally {
+      await rm(clientDir, { force: true, recursive: true });
+    }
   });
 
   it("bb thread tell includes sender thread metadata when run inside another thread", async () => {

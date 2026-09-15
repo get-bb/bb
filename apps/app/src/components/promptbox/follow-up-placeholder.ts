@@ -10,7 +10,7 @@ export function getFollowUpPromptPlaceholder(
     case "starting":
       return "Starting thread...";
     case "stopping":
-      return "Stopping thread...";
+      return "Queue a message to run after the stop";
     case "waiting-for-host":
       return "Host disconnected";
     case "host-reconnecting":
@@ -35,7 +35,7 @@ export function getCompactFollowUpPromptPlaceholder(
     case "starting":
       return "Starting...";
     case "stopping":
-      return "Stopping...";
+      return "Queue for after the stop";
     case "waiting-for-host":
       return "Host disconnected";
     case "host-reconnecting":

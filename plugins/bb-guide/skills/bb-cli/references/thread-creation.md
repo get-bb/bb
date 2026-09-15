@@ -30,10 +30,18 @@ worktree` only; a provider takes its branch through `--environment-inputs`.
 - Spawn also accepts `--title`, `--origin-kind`, `--source-thread`,
   `--source-seq-end`, `--agent-context-seed`, and `--json`.
 - Add repeatable `--file <path>` / `--image <path>` flags for structured prompt
-  attachments, and `--section <id>` to add the new thread to a section. These
-  flags pass host-readable absolute paths (or relative server-upload tokens)
-  through to the runtime; they do not read files on the CLI machine.
+  attachments, and `--section <id>` to add the new thread to a section.
+  `--image` uploads absolute paths from the CLI machine before sending and
+  passes relative server-upload tokens through unchanged. `--file` keeps its
+  existing host-readable absolute-path behavior.
 - Spawn creates a root thread unless you pass `--parent-thread`.
+- Handoff can target any model, including one from the source provider. In
+  the follow-up picker, choose **Handoff to new thread**; **Exit handoff** in
+  the picker or composer restores the source execution settings and retains
+  draft edits without the automatic source reference. Closing the picker
+  keeps handoff active. Use `bb thread spawn --provider PROVIDER --model MODEL
+--environment ENV_ID --prompt 'Continue from @thread:THREAD_ID ...'` for the
+  same thread creation through the CLI, or `threads.spawn` through the SDK.
 - Use `bb thread fork <source-thread-id>` to clone a provider session. The
   fork inherits the source conversation in its timeline. It creates an idle
   fork in the source environment by default; add `--prompt`, select an existing
@@ -119,12 +127,14 @@ worktree` only; a provider takes its branch through `--environment-inputs`.
   different hosts. It reads locally and sends multipart bytes through the
   configured `BB_SERVER_URL` (and its enrolled-machine authentication proxy),
   returning the stable server attachment DTO. Optional `--filename` and
-  `--mime-type` override inferred metadata. Pass the returned relative `path`
-  to thread `--file` or `--image`; image MIME types are capped at 10MB and
-  other files at 25MB, and image/heic or image/heif uploads are rejected
-  (convert them to JPEG or PNG first). `bb project attachment download <project-id>
-<attachment-path> --client-file <path>` writes existing attachment bytes on
-  the CLI machine. There is no project-attachment list or per-file remove API.
+  `--mime-type` override inferred metadata. Thread `--image` performs this
+  upload automatically for absolute paths; use the explicit command for
+  `--file` or when a reusable attachment token is needed. Image MIME types are
+  capped at 10MB and other files at 25MB, and image/heic or image/heif uploads
+  are rejected (convert them to JPEG or PNG first). `bb project attachment
+download <project-id> <attachment-path> --client-file <path>` writes existing
+  attachment bytes on the CLI machine. There is no project-attachment list or
+  per-file remove API.
 - `bb project history|reorder` exposes project prompt recall and sidebar order.
 - Use `bb project show|update|delete` for one project. Use `bb project source
 update|delete` for one source. Use `bb project branches` for branch data.

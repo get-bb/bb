@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import {
   access,
   chmod,
+  cp,
   mkdir,
   mkdtemp,
   readFile,
@@ -173,7 +174,10 @@ type RunConfigScript = (
 type ReadResolvedConfig = (
   overrides: EnvironmentOverrides,
 ) => Promise<ReadResolvedConfigResult>;
-type RunNativePrepScript = (appOutDir: string) => Promise<ScriptRunResult>;
+type RunNativePrepScript = (
+  appOutDir: string,
+  args?: string[],
+) => Promise<ScriptRunResult>;
 
 const createScriptEnvironment: CreateScriptEnvironment = (overrides) => {
   const env = { ...process.env };
@@ -223,10 +227,13 @@ const runConfigScript: RunConfigScript = async (overrides) => {
   };
 };
 
-const runNativePrepScript: RunNativePrepScript = async (appOutDir) => {
+const runNativePrepScript: RunNativePrepScript = async (
+  appOutDir,
+  args = [],
+) => {
   const child = spawn(
     process.execPath,
-    ["scripts/prepare-native-modules.cjs", appOutDir],
+    ["scripts/prepare-native-modules.cjs", appOutDir, ...args],
     {
       cwd: desktopPackageRoot,
     },
@@ -317,7 +324,7 @@ describe("electron-builder signing config", () => {
   it("passes the standalone platform through to better-sqlite3 prebuild-install", () => {
     const { options } = nativeModulesScript.parseStandaloneArguments([
       "/tmp/linux-unpacked",
-      "--electron-version=41.7.0",
+      "--electron-version=44.3.0",
       "--arch=x64",
       "--platform=linux",
     ]);
@@ -334,7 +341,7 @@ describe("electron-builder signing config", () => {
       }),
     ).toEqual([
       "--runtime=electron",
-      "--target=41.7.0",
+      "--target=44.3.0",
       "--arch=x64",
       "--platform=linux",
     ]);
@@ -344,12 +351,12 @@ describe("electron-builder signing config", () => {
     expect(
       nativeModulesScript.resolveBetterSqlite3PrebuildArguments({
         arch: "arm64",
-        electronVersion: "41.7.0",
+        electronVersion: "44.3.0",
         platform: "darwin",
       }),
     ).toEqual([
       "--runtime=electron",
-      "--target=41.7.0",
+      "--target=44.3.0",
       "--arch=arm64",
       "--platform=darwin",
     ]);
@@ -459,6 +466,46 @@ describe("electron-builder signing config", () => {
       await rm(appOutDir, { force: true, recursive: true });
     }
   });
+
+  it("validates bundled N-API SQLite without using the legacy prebuild installer", async () => {
+    const appOutDir = await mkdtemp(resolve(tmpdir(), "bb-desktop-napi-"));
+    const nodeModules = resolve(appOutDir, "node_modules");
+    const requireFromRuntime = createRequire(
+      resolve(desktopPackageRoot, "../../packages/bb-app/package.json"),
+    );
+    try {
+      const ptyLib = resolve(nodeModules, "node-pty/lib");
+      await mkdir(ptyLib, { recursive: true });
+      await writeFile(
+        resolve(ptyLib, "unixTerminal.js"),
+        "helperPath = helperPath.replace('app.asar', 'app.asar.unpacked');",
+      );
+      await cp(
+        dirname(requireFromRuntime.resolve("better-sqlite3/package.json")),
+        resolve(nodeModules, "better-sqlite3"),
+        { recursive: true },
+      );
+      const result = await runNativePrepScript(appOutDir, [
+        "--electron-version=44.3.0",
+      ]);
+      expect(result.stderr).toBe("");
+      expect(result.exitCode).toBe(0);
+      const binaryPath = resolve(
+        nodeModules,
+        "better-sqlite3/prebuilds",
+        `${process.platform}-${process.arch}.node`,
+      );
+      await writeFile(binaryPath, "invalid native binary");
+      const invalidResult = await runNativePrepScript(appOutDir, [
+        "--electron-version=44.3.0",
+      ]);
+      expect(invalidResult.exitCode).not.toBe(0);
+      expect(invalidResult.stderr).toContain(binaryPath);
+      expect(invalidResult.stderr).not.toContain("prebuild-install");
+    } finally {
+      await rm(appOutDir, { recursive: true, force: true });
+    }
+  }, 60_000);
 
   it("points mac signing entitlements at checked-in plist files", async () => {
     const configText = await readFile(

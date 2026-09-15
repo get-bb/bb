@@ -734,7 +734,6 @@ The server used to listen on every network interface, which exposed its unauthen
 - The mobile PWA shell tracks the iOS keyboard, and mobile voice recording controls work again.
 - bb connect relays DELETE request bodies.
 - First-run onboarding is behind an experiment while it settles.
-- New `pnpm dev:status` command for source development.
 
 ### Thanks
 

@@ -23,6 +23,8 @@ export interface SplitDragConfig {
   fallback?: SplitDragFallbackTarget;
   targetBoundary?: HTMLElement;
   cancelSidebarReorderOnEngage?: boolean;
+  fadeSourceOnEngage?: boolean;
+  renderGhost?: boolean;
 }
 
 interface ResolvedTarget {
@@ -52,11 +54,14 @@ export function beginSplitDrag(config: SplitDragConfig): void {
         }),
       );
     }
-    ghostEl = createGhost(config.ghostLabel);
+    ghostEl = config.renderGhost === false ? null : createGhost(config.ghostLabel);
     overlayEl = createOverlay();
-    document.body.append(ghostEl, overlayEl);
+    if (ghostEl) {
+      document.body.append(ghostEl);
+    }
+    document.body.append(overlayEl);
     document.body.style.cursor = "grabbing";
-    if (config.sourceEl) {
+    if (config.sourceEl && config.fadeSourceOnEngage !== false) {
       config.sourceEl.style.opacity = "0.45";
     }
     config.onEngage?.();
@@ -136,7 +141,7 @@ export function beginSplitDrag(config: SplitDragConfig): void {
     ghostEl?.remove();
     overlayEl?.remove();
     document.body.style.cursor = "";
-    if (config.sourceEl) {
+    if (config.sourceEl && config.fadeSourceOnEngage !== false) {
       config.sourceEl.style.opacity = "";
     }
   };
@@ -199,6 +204,7 @@ function paneElementAt(clientX: number, clientY: number): HTMLElement | null {
 function createGhost(label: string): HTMLElement {
   const ghost = document.createElement("div");
   ghost.textContent = label;
+  ghost.dataset.splitDragGhost = "";
   Object.assign(ghost.style, {
     position: "fixed",
     zIndex: "100",

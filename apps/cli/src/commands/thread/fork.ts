@@ -13,6 +13,7 @@ import {
   buildPromptInputs,
   parsePermissionMode,
   PERMISSION_MODE_HELP,
+  uploadClientImageInputs,
 } from "./helpers.js";
 import {
   buildSpawnEnvironment,
@@ -126,7 +127,7 @@ export function registerForkCommand(
     )
     .option(
       "--image <path>",
-      "Pass a host-readable absolute or uploaded attachment image path (repeatable)",
+      "Upload an absolute path from this CLI machine or pass an uploaded attachment path (repeatable)",
       collectOption,
       [],
     )
@@ -141,7 +142,7 @@ export function registerForkCommand(
           if (!sourceThreadId) {
             throw new Error("Source thread ID is required.");
           }
-          const input = buildForkInput(opts);
+          const requestedInput = buildForkInput(opts);
           const sourceSeqEnd = parseSourceSeqEnd(opts.sourceSeqEnd);
           const permissionMode = parsePermissionMode(opts.permissionMode);
           const visibility =
@@ -156,6 +157,19 @@ export function registerForkCommand(
           let environment: EnvironmentArgs | undefined;
           try {
             const sdk = createCliBbSdk(getUrl());
+            const input =
+              requestedInput === undefined
+                ? undefined
+                : await uploadClientImageInputs({
+                    input: requestedInput,
+                    resolveProjectId: async () =>
+                      (
+                        await sdk.threads.get({
+                          threadId: sourceThreadId,
+                        })
+                      ).projectId,
+                    sdk,
+                  });
             const needsHostId =
               Boolean(opts.newEnvironment) ||
               (environmentValue !== undefined &&

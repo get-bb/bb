@@ -121,6 +121,21 @@ const SortablePinnedRootItem = memo(function SortablePinnedRootItem({
     disabled,
     displace,
   });
+  const hasProjectedDestination =
+    props.sectionDnd != null &&
+    (props.sectionDnd.dragOverParentKey !== null ||
+      props.sectionDnd.nestTarget?.state === "valid" ||
+      props.sectionDnd.reorderTarget !== null);
+  const sortableStyle: CSSProperties =
+    props.sectionDnd?.activeThread?.id === getPinnedRootNodeId(node)
+      ? {
+          ...style,
+          opacity: 0,
+          pointerEvents: "none",
+          position: hasProjectedDestination ? "absolute" : style.position,
+          width: hasProjectedDestination ? "100%" : undefined,
+        }
+      : style;
 
   return (
     <PinnedRootItem
@@ -128,7 +143,7 @@ const SortablePinnedRootItem = memo(function SortablePinnedRootItem({
       node={node}
       dragBindings={dragBindings}
       sortableRef={setNodeRef}
-      sortableStyle={style}
+      sortableStyle={sortableStyle}
     />
   );
 });
@@ -212,7 +227,10 @@ export const PinnedThreadTree = memo(function PinnedThreadTree({
           {chronologicalRootNodes.map((node) => (
             <Fragment key={getPinnedRootNodeId(node)}>
               {previewBeforeKey === `thread:${getPinnedRootNodeId(node)}` ? (
-                <DropPreviewRow depth={0} />
+                <DropPreviewRow
+                  depth={0}
+                  thread={chronologicalDnd.activeThread}
+                />
               ) : null}
               <SortablePinnedRootItem
                 node={node}
@@ -229,7 +247,12 @@ export const PinnedThreadTree = memo(function PinnedThreadTree({
             </Fragment>
           ))}
         </SortableContext>
-        <DropPreviewRow depth={0} visible={showDropPreview} />
+        <DropPreviewRow
+          animate={chronologicalDnd.activeThread !== null}
+          depth={0}
+          visible={showDropPreview}
+          thread={chronologicalDnd.activeThread}
+        />
       </div>
     );
   }

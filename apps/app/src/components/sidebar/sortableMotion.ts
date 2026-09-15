@@ -2,7 +2,6 @@ import { useMemo, type CSSProperties } from "react";
 import type {
   DraggableAttributes,
   DraggableSyntheticListeners,
-  DropAnimation,
 } from "@dnd-kit/core";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -12,11 +11,7 @@ const SIDEBAR_SORTABLE_TRANSITION = {
   easing: "cubic-bezier(0.2, 0, 0, 1)",
 };
 
-export const SIDEBAR_DRAG_OVERLAY_DROP_ANIMATION: DropAnimation = {
-  duration: 180,
-  easing: "cubic-bezier(0.2, 0, 0, 1)",
-  sideEffects: null,
-};
+export const SIDEBAR_DRAG_OVERLAY_DROP_ANIMATION = null;
 
 export interface SidebarSortableDragBindings {
   attributes: DraggableAttributes;

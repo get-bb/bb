@@ -53,7 +53,7 @@
         {
           "path": "apps/app/src/components/commands/CommandPalette.test.tsx",
           "anchors": [
-            "lists a plugin's commandPaletteAction and runs it",
+            "lists a plugin's registered command and runs it",
             "expect(testState.calls).toEqual([\"plugin-ran\"])",
             "expect(screen.queryByRole(\"combobox\")).toBeNull()"
           ]

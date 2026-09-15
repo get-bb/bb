@@ -4,20 +4,25 @@ export const DEFAULT_ACCOUNT_POOL_CONFIG = {
   anthropicUpstreamBaseUrl: "https://api.anthropic.com",
   codexUpstreamBaseUrl: "https://chatgpt.com/backend-api/codex",
   switchThreshold: 0.98,
+  parentMode: "proxy" as const,
 };
 
-const httpUrlSchema = z
-  .string()
-  .url()
-  .refine((value) => {
+const httpUrlSchema = z.string().refine((value) => {
+  try {
     const protocol = new URL(value).protocol;
     return protocol === "http:" || protocol === "https:";
-  }, "Must be an HTTP or HTTPS URL.");
+  } catch {
+    return false;
+  }
+}, "Must be an HTTP or HTTPS URL.");
 
 const switchThresholdSchema = z
   .number()
   .positive("Must be greater than 0.")
   .max(1, "Must be at most 1.");
+
+export const parentModeSchema = z.enum(["proxy", "isolate"]);
+export type ParentMode = z.infer<typeof parentModeSchema>;
 
 export const accountPoolConfigSchema = z
   .object({
@@ -30,6 +35,9 @@ export const accountPoolConfigSchema = z
     switchThreshold: switchThresholdSchema.default(
       DEFAULT_ACCOUNT_POOL_CONFIG.switchThreshold,
     ),
+    parentMode: parentModeSchema.default(
+      DEFAULT_ACCOUNT_POOL_CONFIG.parentMode,
+    ),
   })
   .strict();
 
@@ -40,8 +48,20 @@ export const accountPoolConfigSetInputSchema = z
     anthropicUpstreamBaseUrl: httpUrlSchema.optional(),
     codexUpstreamBaseUrl: httpUrlSchema.optional(),
     switchThreshold: switchThresholdSchema.optional(),
+    parentMode: parentModeSchema.optional(),
   })
   .strict();
+
+export const poolAvailabilitySchema = z
+  .object({ claude: z.boolean(), codex: z.boolean() })
+  .strict();
+
+export type PoolAvailability = z.infer<typeof poolAvailabilitySchema>;
+
+export const UNAVAILABLE_POOL: PoolAvailability = {
+  claude: false,
+  codex: false,
+};
 
 export type AccountPoolConfigSetInput = z.infer<
   typeof accountPoolConfigSetInputSchema
@@ -221,6 +241,14 @@ export const statusSchema = z
     hosts: z.array(hubTokenSummarySchema),
     accounts: z.array(accountSummarySchema),
     routing: z.object({ claude: z.boolean(), codex: z.boolean() }).strict(),
+    parent: z
+      .object({
+        baseUrl: z.string(),
+        mode: parentModeSchema,
+        availability: poolAvailabilitySchema,
+      })
+      .strict()
+      .nullable(),
   })
   .strict();
 

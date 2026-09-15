@@ -1,3 +1,9 @@
+import {
+  usageMeasurementSchema,
+  usageResourceListSchema,
+  usageListMethod,
+  usageFetchMethod,
+} from "./usage-contract.js";
 import fs from "node:fs/promises";
 import http, { type IncomingMessage, type ServerResponse } from "node:http";
 import path from "node:path";
@@ -346,6 +352,7 @@ describe("Account Pool config schema", () => {
       anthropicUpstreamBaseUrl: "https://api.anthropic.com",
       codexUpstreamBaseUrl: "https://chatgpt.com/backend-api/codex",
       switchThreshold: 0.98,
+      parentMode: "proxy",
     });
     expect(
       accountPoolConfigSetInputSchema.safeParse({
@@ -410,6 +417,7 @@ describe("Account Pool plugin", () => {
       anthropicUpstreamBaseUrl: "http://127.0.0.1:9000",
       codexUpstreamBaseUrl: "https://chatgpt.com/backend-api/codex",
       switchThreshold: 0.75,
+      parentMode: "proxy",
     });
     expect(
       accountPoolConfigSchema.parse(await host.bb.storage.kv.get("config")),
@@ -497,6 +505,7 @@ describe("Account Pool plugin", () => {
     }> = [];
     const modelRequests: string[] = [];
     let responseNumber = 0;
+    let planType: unknown = "pro";
     const futureToken = `header.${Buffer.from(JSON.stringify({ exp: Math.floor(Date.now() / 1_000) + 3_600 })).toString("base64url")}.signature`;
     const upstream = await startUpstream(async (request, response) => {
       const body = (await readRequestBody(request)).toString("utf8");
@@ -522,7 +531,7 @@ describe("Account Pool plugin", () => {
         response.writeHead(200, { "content-type": "application/json" });
         response.end(
           JSON.stringify({
-            plan_type: "pro",
+            plan_type: planType,
             rate_limit: {
               allowed: true,
               limit_reached: false,
@@ -668,6 +677,34 @@ describe("Account Pool plugin", () => {
     expect(accountTable.stdout).toContain("codex");
     expect(accountTable.stdout).toContain("7d=48% 2100-01-01T02:00:00.000Z");
     expect(accountTable.stdout).not.toContain("5h=");
+    const codexAccount = statusSchema
+      .parse(await host.harness.behavior.callRpc("status.get", null))
+      .accounts.find((account) => account.provider === "codex")!;
+    expect(codexAccount.subscriptionType).toBe("pro");
+    for (const [reportedPlan, expectedPlan] of [
+      ["pro", "pro"],
+      ["plus", "plus"],
+      [undefined, "plus"],
+      [null, "plus"],
+      [123, "plus"],
+      ["", "plus"],
+    ]) {
+      planType = reportedPlan;
+      expect(
+        await host.harness.behavior.callRpc("provider-usage.v1.getResource", {
+          resourceId: codexAccount.id,
+          refresh: true,
+        }),
+      ).toMatchObject({
+        usage: {
+          status: "ok",
+          plan: { id: expectedPlan, multiplier: null },
+          planLabel: expectedPlan === "pro" ? "Pro" : "Plus",
+          windows: [expect.objectContaining({ usedPercent: 48 })],
+        },
+      });
+    }
+
     const routed = await resolveCodexToken(host);
     expect(routed.baseUrl).toBe("/api/v1/plugins/account-pool/http/v1");
     await expect(
@@ -1527,6 +1564,16 @@ describe("Account Pool plugin", () => {
         value: "true",
         reason:
           "Claude Code turns tool search off behind a custom base URL; the hub forwards tool_reference blocks",
+      },
+      {
+        name: "BB_ACCOUNT_POOL_PARENT_URL",
+        value: { serverPath: "/api/v1/plugins/account-pool/http" },
+        reason: "Account Pooler hub for nested bb servers on this machine",
+      },
+      {
+        name: "BB_ACCOUNT_POOL_PARENT_TOKEN",
+        value: fixture.key,
+        reason: "Account Pooler hub token for this machine",
       },
     ]);
     await expect(
@@ -5811,4 +5858,305 @@ it("drains a streamed response before disposing the owned transport", async () =
     await reader.cancel().catch(() => undefined);
     await disposing;
   }
+});
+
+it("publishes pooled usage without a display plugin and does not invent unobserved utilization", async () => {
+  const upstream = await startUpstream((_request, response) => {
+    response.end();
+  });
+  cleanups.push(upstream.close);
+  const fixture = await createFixture({ upstreamUrl: upstream.url });
+  const inventory = usageResourceListSchema.parse(
+    await fixture.host.harness.behavior.callRpc(usageListMethod, {}),
+  );
+  expect(inventory.label).toBe("Account Pooler");
+  expect(inventory.resources).toEqual([
+    expect.objectContaining({
+      id: fixture.account.id,
+      providerId: "claude-code",
+      scope: { kind: "shared" },
+    }),
+  ]);
+  const result = usageMeasurementSchema.parse(
+    await fixture.host.harness.behavior.callRpc(usageFetchMethod, {
+      resourceId: fixture.account.id,
+      refresh: false,
+    }),
+  );
+  expect(result).toMatchObject({
+    observedAt: null,
+    usage: {
+      status: "error",
+      message: "Usage has not been observed for this account.",
+    },
+  });
+  expect(
+    fixture.host.harness.registrations.experimental_publishedRpcMethods.map(
+      (entry) => entry.method,
+    ),
+  ).toEqual([usageListMethod, usageFetchMethod]);
+});
+
+it("publishes an empty shared usage group before any accounts or settings are configured", async () => {
+  const dataDir = await mkdtemp(path.join(tmpdir(), "bb-empty-usage-pool-"));
+  const host = createFakePluginHost({
+    pluginId: "account-pool",
+    dataDir,
+    sdk: sdkStubs(),
+  });
+  const fetch = vi.fn(async () => {
+    throw new Error("An empty pool must not contact an upstream");
+  });
+  try {
+    await createAccountPoolPlugin({ fetch })(host.bb);
+    expect(
+      host.harness.registrations.experimental_publishedRpcMethods.map(
+        (entry) => entry.method,
+      ),
+    ).toContain(usageListMethod);
+    await expect(
+      host.harness.behavior.callRpc(usageListMethod, {}),
+    ).resolves.toEqual({ label: "Account Pooler", resources: [] });
+    await expect(
+      host.harness.behavior.callRpc(usageFetchMethod, {
+        resourceId: "removed",
+        refresh: false,
+      }),
+    ).rejects.toThrow("no longer exists");
+    expect(fetch).not.toHaveBeenCalled();
+  } finally {
+    await host.harness.lifecycle.dispose();
+    await fs.rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+describe("Account Pool nested proxy", () => {
+  const PARENT_TOKEN = "vqMIj4xUiI3PyvKS2SllSKHsOfxLF_sAZwzNAAvV9TQ";
+
+  interface ParentRecord {
+    url: string;
+    token: string | null;
+    authorization: string | null;
+    body: string;
+  }
+
+  async function startParent(args: {
+    availability?: { claude: boolean; codex: boolean };
+    availabilityStatus?: number;
+  }): Promise<{ upstream: Upstream; records: ParentRecord[] }> {
+    const records: ParentRecord[] = [];
+    const upstream = await startUpstream(async (request, response) => {
+      const body = await readRequestBody(request);
+      records.push({
+        url: request.url ?? "",
+        token:
+          (request.headers["x-bb-account-pool-token"] as string | undefined) ??
+          null,
+        authorization: request.headers.authorization ?? null,
+        body: body.toString("utf8"),
+      });
+      if ((request.url ?? "").startsWith("/availability")) {
+        const status = args.availabilityStatus ?? 200;
+        response.writeHead(status, { "content-type": "application/json" });
+        response.end(
+          JSON.stringify(args.availability ?? { claude: true, codex: true }),
+        );
+        return;
+      }
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ ok: true }));
+    });
+    return { upstream, records };
+  }
+
+  async function createChild(args: {
+    parentUrl: string | null;
+    parentMode?: "proxy" | "isolate";
+  }): Promise<ReturnType<typeof createFakePluginHost>> {
+    const dataDir = await mkdtemp(
+      path.join(tmpdir(), "bb-account-pool-child-"),
+    );
+    const host = createFakePluginHost({
+      pluginId: "account-pool",
+      dataDir,
+      sdk: sdkStubs(),
+    });
+    if (args.parentMode !== undefined) {
+      await host.bb.storage.kv.set("config", { parentMode: args.parentMode });
+    }
+    await createAccountPoolPlugin({
+      usageUrl: "data:application/json,{}",
+      availabilityTtlMs: 0,
+      env:
+        args.parentUrl === null
+          ? {}
+          : {
+              BB_ACCOUNT_POOL_PARENT_URL: args.parentUrl,
+              BB_ACCOUNT_POOL_PARENT_TOKEN: PARENT_TOKEN,
+            },
+    })(host.bb);
+    host.harness.behavior.runService("hub");
+    cleanups.push(async () => {
+      await host.harness.lifecycle.dispose();
+      await fs.rm(dataDir, { recursive: true, force: true });
+    });
+    return host;
+  }
+
+  const PROVIDER_ENV = {
+    claude: ["ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN"],
+    codex: ["CODEX_OPENAI_BASE_URL", "CODEX_POOL_AUTH_TOKEN"],
+  } as const;
+
+  function envNames(entries: Array<{ name: string }>): string[] {
+    return entries.map((entry) => entry.name);
+  }
+
+  const neutralised = (provider: "claude" | "codex") =>
+    PROVIDER_ENV[provider].map((name) => ({
+      name,
+      value: "",
+      reason:
+        "Account Pooler is isolated from the parent bb server's pool on this instance",
+    }));
+
+  it.each([
+    {
+      label: "the instance is set to isolate",
+      provider: "claude" as const,
+      parentMode: "isolate" as const,
+      availability: undefined,
+      stopParent: false,
+    },
+    {
+      label: "the parent cannot serve the provider",
+      provider: "codex" as const,
+      parentMode: undefined,
+      availability: { claude: true, codex: false },
+      stopParent: false,
+    },
+    {
+      label: "the parent is unreachable",
+      provider: "claude" as const,
+      parentMode: undefined,
+      availability: undefined,
+      stopParent: true,
+    },
+  ])("neutralises inherited routing when $label", async (args) => {
+    const parent = await startParent(
+      args.availability === undefined
+        ? {}
+        : { availability: args.availability },
+    );
+    if (args.stopParent) await parent.upstream.close();
+    else cleanups.push(parent.upstream.close);
+    const host = await createChild({
+      parentUrl: parent.upstream.url,
+      ...(args.parentMode === undefined ? {} : { parentMode: args.parentMode }),
+    });
+    await expect(
+      host.harness.behavior.resolveProviderEnv(
+        args.provider === "claude" ? "claude-code" : "codex",
+        {
+          threadId: "thread-one",
+          projectId: "project-one",
+          hostId: "host-one",
+        },
+      ),
+    ).resolves.toEqual(neutralised(args.provider));
+  });
+
+  it("contributes self-pointing routing and the marker while proxying", async () => {
+    const parent = await startParent({});
+    cleanups.push(parent.upstream.close);
+    const host = await createChild({ parentUrl: parent.upstream.url });
+    const entries = await host.harness.behavior.resolveProviderEnv(
+      "claude-code",
+      { threadId: "thread-one", projectId: "project-one", hostId: "host-one" },
+    );
+    expect(envNames(entries)).toEqual([
+      "ANTHROPIC_BASE_URL",
+      "ANTHROPIC_AUTH_TOKEN",
+      "ENABLE_TOOL_SEARCH",
+      "BB_ACCOUNT_POOL_PARENT_URL",
+      "BB_ACCOUNT_POOL_PARENT_TOKEN",
+    ]);
+    expect(
+      entries.find((entry) => entry.name === "ANTHROPIC_BASE_URL")?.value,
+    ).toEqual({ serverPath: "/api/v1/plugins/account-pool/http" });
+    expect(
+      entries.find((entry) => entry.name === "ANTHROPIC_AUTH_TOKEN")?.value,
+    ).not.toBe(PARENT_TOKEN);
+  });
+
+  it("forwards pooled traffic to the parent with the parent token", async () => {
+    const parent = await startParent({});
+    cleanups.push(parent.upstream.close);
+    const host = await createChild({ parentUrl: parent.upstream.url });
+    const entries = await host.harness.behavior.resolveProviderEnv(
+      "claude-code",
+      { threadId: "thread-one", projectId: "project-one", hostId: "host-one" },
+    );
+    const childToken = entries.find(
+      (entry) => entry.name === "ANTHROPIC_AUTH_TOKEN",
+    )?.value;
+    const response = await host.harness.behavior.fetchHttp(
+      "POST",
+      "/v1/messages",
+      {
+        headers: { authorization: `Bearer ${String(childToken)}` },
+        body: JSON.stringify({ model: "claude-opus-4", messages: [] }),
+      },
+    );
+    expect(response.status).toBe(200);
+    await response.text();
+    const forwarded = parent.records.filter(
+      (record) => record.url === "/v1/messages",
+    );
+    expect(forwarded).toHaveLength(1);
+    expect(forwarded[0]?.token).toBe(PARENT_TOKEN);
+    expect(forwarded[0]?.authorization).toBeNull();
+    expect(JSON.parse(forwarded[0]?.body ?? "{}")).toEqual({
+      model: "claude-opus-4",
+      messages: [],
+    });
+  });
+
+  it("rejects pooled traffic that does not present the child's own token", async () => {
+    const parent = await startParent({});
+    cleanups.push(parent.upstream.close);
+    const host = await createChild({ parentUrl: parent.upstream.url });
+    const response = await host.harness.behavior.fetchHttp(
+      "POST",
+      "/v1/messages",
+      { headers: { authorization: `Bearer ${PARENT_TOKEN}` }, body: "{}" },
+    );
+    expect(response.status).toBe(401);
+    expect(
+      parent.records.filter((record) => record.url === "/v1/messages"),
+    ).toHaveLength(0);
+  });
+
+  it("serves availability only to hub token holders", async () => {
+    const upstream = await startUpstream(async (request, response) => {
+      await readRequestBody(request);
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end("{}");
+    });
+    cleanups.push(upstream.close);
+    const fixture = await createFixture({ upstreamUrl: upstream.url });
+    const denied = await fixture.host.harness.behavior.fetchHttp(
+      "GET",
+      "/availability",
+      {},
+    );
+    expect(denied.status).toBe(401);
+    const allowed = await fixture.host.harness.behavior.fetchHttp(
+      "GET",
+      "/availability",
+      { headers: { "x-bb-account-pool-token": fixture.key } },
+    );
+    expect(allowed.status).toBe(200);
+    expect(await allowed.json()).toEqual({ claude: true, codex: false });
+  });
 });

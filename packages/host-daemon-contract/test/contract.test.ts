@@ -511,6 +511,7 @@ const SETTLED_RESPONSE_RESULT_FIXTURES: SettledResponseResultFixtures = {
     appliedAs: "new-turn",
   },
   "thread.stop": { providerCheckpointId: null },
+  "thread.storage.delete": { providerCheckpointId: null },
   "thread.goal.clear": { cleared: true },
   "thread.plan.cancel": { cancelled: true },
   "thread.rename": {},
@@ -737,6 +738,45 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
   "hostDaemonCommandSchema.resumeContext.disallowedTools":
     "turn.submit resume context may omit provider-specific built-in tool removals for providers that do not need them.",
 };
+
+describe("cache usage wire compatibility", () => {
+  it.each([
+    {},
+    { cacheReadInputTokens: 31, cacheWriteInputTokens: 9 },
+    { cacheWriteInputTokens: 0 },
+  ])("preserves legacy and reported cache fields %j", (counts) => {
+    const usage = {
+      totalTokens: 140,
+      inputTokens: 80,
+      cachedInputTokens: 40,
+      outputTokens: 20,
+      reasoningOutputTokens: 0,
+      ...counts,
+    };
+    const batch = {
+      sessionId: "session-usage",
+      eventGroups: [
+        {
+          threadId: "thread-usage",
+          events: [
+            {
+              type: "thread/tokenUsage/updated",
+              threadId: "thread-usage",
+              providerThreadId: "provider-usage",
+              scope: turnScope("turn-usage"),
+              tokenUsage: {
+                total: usage,
+                last: usage,
+                modelContextWindow: null,
+              },
+            },
+          ],
+        },
+      ],
+    };
+    expect(hostDaemonEventBatchRequestSchema.parse(batch)).toEqual(batch);
+  });
+});
 
 describe("host-daemon local schemas", () => {
   it("parses workspace open target routes", () => {
@@ -1003,7 +1043,7 @@ const CONTRIBUTED_ENV = [
 
 describe("host-daemon command schemas", () => {
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(208);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(210);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 

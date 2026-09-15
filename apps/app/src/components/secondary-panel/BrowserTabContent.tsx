@@ -7,6 +7,7 @@ import {
   useState,
   type FormEvent,
   type RefObject,
+  type ReactNode,
 } from "react";
 import type {
   BbDesktopBrowserApi,
@@ -36,6 +37,7 @@ import { useBrowserHistory } from "@/lib/browser-history";
 import { BROWSER_VIEW_BOUNDS_SYNC_EVENT } from "@/lib/browser-view-bounds-sync";
 import { useIsBrowserDimmingModalOpen } from "@/hooks/useBrowserDimmingModal";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
+import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import {
   BrowserChromeIconButton,
   BrowserFindBar,
@@ -54,6 +56,7 @@ import {
 } from "@/components/commands/AppCommandProvider";
 import type { AppShortcutPresentation } from "@/lib/app-keybindings";
 import { isLocalOnlyUrl } from "@/lib/loopback-hostname";
+import { PluginBrowserToolbarActions } from "@/components/plugin/PluginBrowserToolbarActions";
 
 interface BrowserTabContentProps {
   tabId: string;
@@ -91,6 +94,7 @@ interface BrowserChromeProps {
   onOpenExternal: () => void;
   locationShortcut: AppShortcutPresentation | null;
   reloadShortcut: AppShortcutPresentation | null;
+  pluginActions: ReactNode;
 }
 
 interface BrowserViewBoundsFromElementArgs {
@@ -189,6 +193,7 @@ function BrowserChrome({
   onOpenExternal,
   locationShortcut,
   reloadShortcut,
+  pluginActions,
 }: BrowserChromeProps) {
   const isLoading = state?.isLoading ?? false;
   const security = getBrowserUrlSecurity(currentUrl);
@@ -282,6 +287,7 @@ function BrowserChrome({
             />
           </div>
         </form>
+        {pluginActions}
         <BrowserChromeIconButton
           icon="ExternalLink"
           label="Open in external browser"
@@ -400,6 +406,7 @@ export function BrowserTabContent({
   const addressInputRef = useRef<HTMLInputElement>(null);
   const findInputRef = useRef<HTMLInputElement>(null);
   const isPointerCoarse = usePointerCoarse();
+  const isCompactViewport = useIsCompactViewport();
   const {
     entries: recent,
     recordVisit,
@@ -872,6 +879,14 @@ export function BrowserTabContent({
         onOpenExternal={handleOpenExternal}
         locationShortcut={locationShortcut}
         reloadShortcut={reloadShortcut}
+        pluginActions={
+          <PluginBrowserToolbarActions
+            threadId={threadId}
+            tabId={tabId}
+            url={currentUrl}
+            isCompactViewport={isCompactViewport}
+          />
+        }
       />
       {control !== null ? (
         <div

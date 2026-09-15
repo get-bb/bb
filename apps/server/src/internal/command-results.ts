@@ -16,6 +16,7 @@ import {
 import {
   settleThreadPlanCancelCommandResult,
   settleThreadStartCommandResult,
+  settleThreadStorageDeleteCommandResult,
   settleThreadStopCommandResult,
   settleTurnSubmitCommandResult,
 } from "../services/threads/thread-lifecycle.js";
@@ -54,6 +55,7 @@ const commandResultSideEffectHandlers: CommandResultSideEffectHandlers = {
   },
   "thread.start": settleThreadStartCommandResult,
   "thread.stop": settleThreadStopCommandResult,
+  "thread.storage.delete": settleThreadStorageDeleteCommandResult,
   "thread.plan.cancel": settleThreadPlanCancelCommandResult,
   "turn.submit": settleTurnSubmitCommandResult,
   "workspace.commit": ({ deps, command, report }) => {

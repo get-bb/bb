@@ -3,6 +3,7 @@ import { useEffect, useMemo } from "react";
 import type { PromptMentionCommandTrigger } from "@bb/domain";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import {
+  filterCommandSuggestions,
   toProviderCommandSuggestion,
   type ProviderCommandSuggestion,
 } from "@bb/client-core";
@@ -44,34 +45,6 @@ interface CommandSuggestionPromptAction {
   };
 }
 
-export function commandSuggestionMatchesQuery(
-  suggestion: ProviderCommandSuggestion,
-  query: string,
-): boolean {
-  if (query.length === 0) {
-    return true;
-  }
-
-  return [
-    suggestion.name,
-    suggestion.description ?? "",
-    suggestion.argumentHint ?? "",
-  ]
-    .join(" ")
-    .toLowerCase()
-    .includes(query);
-}
-
-export function filterCommandSuggestions(
-  suggestions: readonly ProviderCommandSuggestion[],
-  query: string,
-): ProviderCommandSuggestion[] {
-  const normalizedQuery = query.toLowerCase();
-  return suggestions.filter((suggestion) =>
-    commandSuggestionMatchesQuery(suggestion, normalizedQuery),
-  );
-}
-
 export function promptActionCommandSuggestions({
   promptActions,
   query,
@@ -85,8 +58,8 @@ export function promptActionCommandSuggestions({
     return [];
   }
 
-  return (promptActions ?? [])
-    .flatMap((action): ProviderCommandSuggestion[] => {
+  return filterCommandSuggestions(
+    (promptActions ?? []).flatMap((action): ProviderCommandSuggestion[] => {
       if (!action.command || action.command.trigger !== trigger) {
         return [];
       }
@@ -100,8 +73,9 @@ export function promptActionCommandSuggestions({
           argumentHint: null,
         },
       ];
-    })
-    .filter((suggestion) => commandSuggestionMatchesQuery(suggestion, query));
+    }),
+    query,
+  );
 }
 
 function mergeCommandSuggestions(

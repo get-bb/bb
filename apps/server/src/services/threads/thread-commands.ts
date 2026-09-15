@@ -598,3 +598,14 @@ export function buildThreadStopCommand(
     threadId: args.threadId,
   };
 }
+
+export function buildThreadStorageDeleteCommand(args: {
+  environmentId: string;
+  threadId: string;
+}): Extract<HostDaemonCommand, { type: "thread.storage.delete" }> {
+  return {
+    type: "thread.storage.delete",
+    environmentId: args.environmentId,
+    threadId: args.threadId,
+  };
+}

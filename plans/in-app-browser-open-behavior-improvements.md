@@ -116,7 +116,7 @@ Validation:
 
 Scope:
 
-- Use `scripts/bb-dev-app current` to launch the desktop dev app.
+- Use `pnpm dev` and `pnpm exec turbo run dev --filter=@bb/desktop` in separate terminals to launch the desktop dev app.
 - Open a thread with:
   - assistant markdown containing `https://example.com`
   - command output containing `https://example.com`
@@ -138,7 +138,7 @@ Validation:
 
 - `pnpm exec turbo run test --filter=@bb/desktop`
 - `pnpm exec turbo run typecheck --filter=@bb/desktop`
-- Manual desktop smoke test through `scripts/bb-dev-app current`
+- Manual desktop smoke test through `pnpm dev` and `pnpm exec turbo run dev --filter=@bb/desktop` in separate terminals
 
 ## Open Questions
 

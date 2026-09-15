@@ -137,6 +137,7 @@ function reconcileUiPreference<Key extends UiPreferenceKey>(
   const state = getSyncState(key);
   if (state.pending !== null || state.inFlight !== null) return;
   const entry = response.preferences[key];
+  if (entry === undefined) return;
   if (entry.revision === 0 && !state.migrationAttempted) {
     state.migrationAttempted = true;
     const legacy = readLegacyLocalUiPreference(key);
@@ -202,7 +203,7 @@ function recordServerEntry<Key extends UiPreferenceKey>(
   const cached = getCachedUiPreferences(queryClient);
   if (
     cached === undefined ||
-    cached.preferences[key].revision >= entry.revision
+    (cached.preferences[key]?.revision ?? -1) >= entry.revision
   ) {
     return;
   }
@@ -218,6 +219,7 @@ async function writeUiPreference<Key extends UiPreferenceKey>(
 ): Promise<void> {
   let base = (await readCurrentUiPreferences(queryClient)).preferences[key];
   for (let attempt = 1; attempt <= MAX_WRITE_ATTEMPTS; attempt++) {
+    if (base === undefined) return;
     const applicable =
       base.revision === 0
         ? operations

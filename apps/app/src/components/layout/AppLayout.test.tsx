@@ -30,6 +30,16 @@ import { AppLayout } from "./AppLayout";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { setCompactSecondaryPanelPresentation } from "@/components/ui/secondary-panel-shelf-visibility";
 
+const useThreadDetailBootstrapMock = vi.hoisted(() =>
+  vi.fn(
+    (): {
+      data?: { projectId: string };
+      isError: boolean;
+      isSuccess: boolean;
+    } => ({ isError: false, isSuccess: false }),
+  ),
+);
+
 const SIDEBAR_WIDTH_STORAGE_KEY = "bb.sidebar.width";
 const APP_ROUTE = "/projects/proj_one/threads/thr_one?message=12#event-12";
 const SETTINGS_ROUTE = "/settings/providers/codex?tab=models#preferred";
@@ -158,7 +168,7 @@ vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
 vi.mock("@/hooks/queries/thread-queries", () => ({
   didThreadDetailBootstrapRefreshAfterMount: () => true,
   useThread: () => ({ data: undefined }),
-  useThreadDetailBootstrap: () => ({ isError: false, isSuccess: false }),
+  useThreadDetailBootstrap: useThreadDetailBootstrapMock,
   useThreadPendingInteractions: () => ({ data: undefined }),
   getLatestPendingInteraction: () => null,
 }));
@@ -207,6 +217,11 @@ function renderLayout(initialPath = "/", children: ReactNode = null) {
 
 beforeEach(() => {
   window.localStorage.clear();
+  useThreadDetailBootstrapMock.mockReset();
+  useThreadDetailBootstrapMock.mockReturnValue({
+    isError: false,
+    isSuccess: false,
+  });
 });
 
 afterEach(() => {
@@ -216,6 +231,43 @@ afterEach(() => {
   setCompactSecondaryPanelPresentation("closed");
   vi.restoreAllMocks();
   window.localStorage.clear();
+});
+
+describe("canonical thread routes", () => {
+  it.each([
+    [
+      "/threads/thr_one?message=12#event-12",
+      "/projects/proj_actual/threads/thr_one?message=12#event-12",
+    ],
+    [
+      "/projects/proj_wrong/threads/thr_one?panel=files#diff",
+      "/projects/proj_actual/threads/thr_one?panel=files#diff",
+    ],
+  ])("redirects %s to the thread's project route", async (route, expected) => {
+    useThreadDetailBootstrapMock.mockReturnValue({
+      data: { projectId: "proj_actual" },
+      isError: false,
+      isSuccess: true,
+    });
+
+    renderLayout(route);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("location").textContent).toBe(expected),
+    );
+  });
+
+  it("keeps an already canonical thread route", () => {
+    useThreadDetailBootstrapMock.mockReturnValue({
+      data: { projectId: "proj_one" },
+      isError: false,
+      isSuccess: true,
+    });
+
+    renderLayout(APP_ROUTE);
+
+    expect(screen.getByTestId("location").textContent).toBe(APP_ROUTE);
+  });
 });
 
 describe("mobile workspace sidebar access", () => {

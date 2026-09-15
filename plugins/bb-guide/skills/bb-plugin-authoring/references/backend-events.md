@@ -129,7 +129,8 @@ bb.experimental_hooks.on("message.dispatch", (ctx) => {
   // ctx.input.blocks + ctx.input.text,
   // ctx.requestedExecution, ctx.executionSources, ctx.origin /
   // ctx.originPluginId / ctx.startedOnBehalfOf / ctx.parentThreadId,
-  // ctx.queuedMessage (the queued row on a re-attempt, else null).
+  // ctx.queuedMessage (the queued row on a re-attempt, else null),
+  // ctx.experimental_submission (plugin-owned composer data, else null).
   if (isBlocked(ctx.input.text)) return { action: "reject", message: "…" };
   if (atCapacity()) return { action: "wait", reason: "4 of 4 running" };
   return { action: "proceed" };
@@ -142,6 +143,12 @@ The context is `MessageDispatchHookContext` (`ctx.attempt` is
 is `PluginDispatchExecutionSources`); the return value is
 `MessageDispatchHookDecision`. `PluginHooks`, `PluginHookSignatures` and
 `PluginHookHandler` type the registry itself.
+
+The hook pass runs before scheduling, thread, workspace, host, and interaction
+waits. Plugin policy therefore sees each submission before operational state
+can defer it. `experimental_submission` is present only on the initial
+composer submission; a plugin that waits can recognize later attempts through
+`ctx.queuedMessage.waitingOn.pluginId`.
 
 Decisions are `proceed`, `wait` (`reason`, optional `sendAt` epoch ms, which
 becomes the row's `sendAt` so core's due sweep re-attempts then) and `reject`

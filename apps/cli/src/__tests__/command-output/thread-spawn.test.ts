@@ -1,3 +1,6 @@
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import * as domain from "@bb/domain";
 import {
@@ -53,40 +56,67 @@ describe("bb thread spawn command output", () => {
     expect(resolveLocalHostIdMock).not.toHaveBeenCalled();
   });
 
-  it("bb thread spawn forwards host-readable paths without reading them on the CLI machine", async () => {
-    const thread: domain.Thread = fixtures.makeThread({
-      id: "thread-attachments",
-      projectId: "proj-1",
-      providerId: "codex",
-    });
-    const post = vi.fn(async () => thread);
-    stubServerApi({ "v1.threads.$post": post });
+  it("bb thread spawn uploads absolute client image paths before creating the thread", async () => {
+    const clientDir = await mkdtemp(join(tmpdir(), "bb-cli-thread-image-"));
+    try {
+      const imagePath = join(clientDir, "screenshot.png");
+      const bytes = new Uint8Array([137, 80, 78, 71]);
+      await writeFile(imagePath, bytes);
+      const thread: domain.Thread = fixtures.makeThread({
+        id: "thread-attachments",
+        projectId: "proj-1",
+        providerId: "codex",
+      });
+      const post = vi.fn(async () => thread);
+      stubServerApi({ "v1.threads.$post": post });
+      vi.mocked(globalThis.fetch).mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            type: "localImage",
+            path: "screenshot-uploaded.png",
+            name: "screenshot.png",
+            mimeType: "image/png",
+            sizeBytes: bytes.byteLength,
+          }),
+          { headers: { "content-type": "application/json" } },
+        ),
+      );
 
-    await runCommand(
-      [
-        "thread",
-        "spawn",
-        "--project",
-        "proj-1",
-        "--prompt",
-        "review these",
-        "--file",
-        "/tmp/report.pdf",
-        "--image",
-        "/tmp/screenshot.png",
-      ],
-      register,
-    );
-
-    expect(post).toHaveBeenCalledWith({
-      json: expect.objectContaining({
-        input: [
-          { type: "text", text: "review these", mentions: [] },
-          { type: "localFile", path: "/tmp/report.pdf" },
-          { type: "localImage", path: "/tmp/screenshot.png" },
+      await runCommand(
+        [
+          "thread",
+          "spawn",
+          "--project",
+          "proj-1",
+          "--prompt",
+          "review these",
+          "--file",
+          "/tmp/report.pdf",
+          "--image",
+          imagePath,
         ],
-      }),
-    });
+        register,
+      );
+
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        "http://server/api/v1/projects/proj-1/attachments",
+        expect.objectContaining({
+          body: expect.any(FormData),
+          method: "POST",
+        }),
+      );
+      expect(post).toHaveBeenCalledWith({
+        json: expect.objectContaining({
+          input: [
+            { type: "text", text: "review these", mentions: [] },
+            { type: "localFile", path: "/tmp/report.pdf" },
+            { type: "localImage", path: "screenshot-uploaded.png" },
+          ],
+        }),
+      });
+    } finally {
+      await rm(clientDir, { force: true, recursive: true });
+    }
   });
 
   it("bb thread spawn --plan opens the thread with the composer's /plan command mention", async () => {

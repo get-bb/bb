@@ -13,12 +13,25 @@ bb.ui.registerMentionProvider({
   },
   resolve(itemId) {
     // once per unique item AT SEND TIME
-    return { context: "# ENG-42…" }; // attached as agent-only context; throwing BLOCKS the send
+    return {
+      context: "# ENG-42…",
+      experimental_images: [
+        {
+          type: "localImage",
+          path: "/absolute/path/capture.jpg",
+          context: "Selected element",
+        },
+      ],
+    }; // attached as agent-only context; throwing BLOCKS the send
   },
 });
 ```
 
 Mention items render under `label` in the menu for each registered trigger.
+`experimental_images` may add bounded agent-only `image` URL or `localImage`
+path inputs, each with optional `context`. Treat remote and page-derived image
+content as untrusted evidence. Invalid images block the send rather than being
+silently dropped.
 All handlers run server-side. Frontend thread-header actions use
 `app.slots.threadHeader`.
 There is deliberately no plugin slash-command surface: the composer's `/`

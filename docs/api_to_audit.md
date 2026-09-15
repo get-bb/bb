@@ -1,5 +1,38 @@
 # APIs To Audit
 
+## `app.commands.register`
+
+`app.commands.register` requires SDK 0.4.91; `defaultShortcut` and keyboard
+bindings require SDK 0.4.92.
+
+Registers frontend commands with `{ id, title, defaultShortcut?, isAvailable?, run }`. The command
+palette consumes the same registrations as the deprecated
+`app.slots.commandPaletteAction` alias. Both paths share validation and a
+per-plugin ID namespace. The public name follows the explicitly requested API
+spelling without an experimental prefix. Existing context and registration
+type names remain deprecated aliases of `PluginCommandContext` and
+`PluginCommandRegistration`.
+
+Audit command identity, availability outside the palette, shortcut conflicts,
+and saved binding lifecycle before stabilizing the keyboard shortcut contract.
+`defaultShortcut` uses a key and optional boolean modifiers, normalized when
+registered. The palette and keyboard path share availability and invocation.
+Every command is rebindable under `plugin:<plugin-id>/<command-id>` through
+Keyboard Settings or the existing keyboard settings SDK/CLI. Overrides persist
+while plugins are inactive; inactive commands never handle keyboard events.
+Conflicting plugin defaults are suppressed without load-order arbitration;
+manual reassignment asks to replace the current binding or cancel. Audit
+cross-platform conflicts and plugin lifecycle before extending the context
+model or default binding policy.
+
+## Discoverable RPC
+
+`bb.rpc.register` accepts optional `experimental_discoverable` and `experimental_description` options. Method definitions accept `experimental_description`. Discoverable registration exports wire schemas through Standard JSON Schema; validation-only schemas remain usable without publication. Descriptions are published separately and absent descriptions become null. Discovery advertises methods without changing RPC authorization or dispatch.
+
+`bb.sdk.plugins.experimental_discoverRpc({ pluginId?, method? })` lists published methods from loaded plugins. Methods disappear on unload; callers handle the race between discovery and invocation. The SDK RPC caller accepts an optional abort signal. The fake host exposes `experimental_publishedRpcMethods` on its registration inspection surface.
+
+Before stabilization, audit schema export fidelity (especially refinements and transforms), descriptor size and reference limits, lifecycle races, and cross-plugin copied-schema compatibility. Verify `bb plugin rpc list|inspect` is sufficient to implement a consumer without a shared contract package. Method names carry optional versions; there is no negotiation.
+
 ## `bb.http.experimental_websocket`
 
 **What it does.** Registers an exact-path WebSocket upgrade in the plugin's
@@ -2533,47 +2566,61 @@ deliberately: it mounts once, and a crash there should disable it everywhere.
 Confirm that split before stabilizing, and decide whether other multi-mount
 slots need the same treatment.
 
-## `useComposer().experimental_submit` (`@get-bb/plugin-sdk/app`)
+## `app.slots.experimental_browserToolbarAction` (`@get-bb/plugin-sdk/app`)
+
+**What it does.** Renders a plugin component beside the address bar in each
+open Browser tab. The component receives the owning `threadId`, active `tabId`,
+current `url`, and compact-viewport hint. Each tab mount has its own crash
+boundary.
+
+**Audit before stabilizing.** Confirm the toolbar can hold multiple plugin
+controls without crowding the address field, whether ordering needs a user
+preference, and whether plugins need browser instance or environment identity
+instead of resolving it server-side from the thread and tab ids.
+
+## `PluginMentionProviderRegistration.resolve().experimental_images` (`@get-bb/plugin-sdk`)
+
+**What it does.** Lets a mention provider resolve a picked composer mention to
+agent-only image inputs alongside its agent-only text context. Each image may
+include a short agent-only text input immediately before it. The host validates
+the same image paths and URLs used by ordinary prompt inputs before dispatch.
+
+**Audit before stabilizing.** Confirm images are the only binary input mention
+providers need, the 50-image boundary is appropriate, and local image access
+should remain governed by the thread dispatch validator rather than an earlier
+plugin-specific check.
+
+## `useComposer().experimental_submit` and dispatch `experimental_submission`
 
 **What it does.** Runs the composer's own submit pipeline with the draft that
-is on screen, queueing the result until `sendAt` instead of dispatching it.
-In a thread composer that is a queued row waiting on the clock; in the
-new-thread composer the thread is created `pending` and its first message is
-the queued row, so nothing provisions until the row comes due. The point is
-that everything the user selected travels with the
-submission — attachments, @-mentions, and for a create the provider, model,
-reasoning level, service tier, permission mode and environment — none of
-which is reachable from a plugin backend, so a
-plugin-issued `threads.send`/`threads.spawn` would silently schedule a
-different message from the one being composed. Backed host-side by an optional
-`submit` on the internal `PluginComposerHost`, supplied by the thread
-composer (`ThreadDetailPromptArea`) and the new-thread composer
-(`NewThreadComposer`) and omitted everywhere else. Rejects with a
-user-presentable message when the composer refuses; request failures reject
-too, after the host has restored the draft. Sole consumer:
-`plugins/scheduled-send`.
+is on screen, preserving attachments, @-mentions, and the execution and
+environment choices visible in a new-thread composer. `sendAt` schedules the
+submission. `experimental_data` carries opaque JSON to every message dispatch
+hook on the initial attempt in an `experimental_submission` envelope containing
+the calling plugin's id. Core validates JSON but does not persist or interpret
+it. Hooks run before operational core waits; a plugin-authored wait persists
+its owner through the queued row's existing `waitingOn` value. Backed host-side
+by an optional `submit` on the internal
+`PluginComposerHost`, supplied by the thread and new-thread composers. Rejects
+with a user-presentable message when the composer cannot submit and restores
+the draft after request failure. Consumers: `plugins/scheduled-send` and
+`plugins/drafts`.
 
 **Audit before stabilizing.**
 
-1. **Options is a one-field object with no "submit now" arm.** `sendAt` is
-   required, so the method can only schedule. That is deliberate — an
-   unconditional "send the user's draft" capability is a much larger surface
-   than scheduling needs — but confirm the shape before a second option
-   (`mode`, `senderThreadId`, a queue hint) has to be added, because adding one
-   makes `sendAt` optional and re-opens the "submit now" question.
+1. **Programmatic send authority.** `experimental_data` permits an immediate
+   submission without `sendAt`. Confirm which composer customizations should
+   receive that authority before stabilization.
 2. **Two of four scopes are unsupported.** A queued-message editor and a side
    chat have no `submit`, and the route-draft fallback (a plugin surface
    mounted outside any composer) has none either. All three reject with the
-   same "cannot schedule a submission" message, so a plugin cannot tell
+   same "cannot submit programmatically" message, so a plugin cannot tell
    "unsupported here" from "no composer mounted". Decide whether
    `ComposerView` should advertise submit capability so a `+` menu row can
    disable itself instead of failing on click.
-3. **Double error reporting on the create path.** A failed scheduled _send_
-   is reported only through the rejection (`useSendThreadMessage` sets
-   `showErrorToast: false`). A failed scheduled _create_ is also toasted by
-   the create mutation's default error handling, so the user sees the reason
-   twice — once in the plugin's picker and once in a toast. Decide whether the
-   host should suppress its toast for programmatic submissions.
+3. **Data visibility.** Every dispatch hook sees the envelope and its owner id,
+   not only the plugin that submitted it. Confirm that dispatch hooks remain
+   the right trust boundary for plugin-owned submission data.
 4. **Freshness of `sendAt`.** The host rejects a non-future `sendAt` at
    call time and the server accepts any non-negative timestamp, dispatching a
    past one inline at once. The only guard against a time that goes stale
@@ -2584,13 +2631,11 @@ too, after the host has restored the draft. Sole consumer:
    a plugin cannot address the queued row it just created (to edit or delete
    it) without listing the thread's queue. Confirm whether the queued message
    id belongs in the result.
-6. **`NewThreadRequest.sendAt`.** The same field is now visible to plugins
-   hosting `experimental_NewThreadComposer`: a scheduled submission there
-   reaches the plugin's `onSubmit` carrying `sendAt`, which the plugin must
-   forward to `threads.spawn`. A plugin that reconstructs the spawn request
-   field-by-field instead of forwarding it will drop the schedule silently.
-   Confirm that forwarding expectation is documented well enough, or make the
-   composer refuse to schedule when it is plugin-hosted.
+6. **Plugin-hosted new-thread composers.** `sendAt` reaches a hosting plugin's
+   `onSubmit` and must be forwarded. The opaque submission envelope is currently
+   a core-host detail and is not part of `NewThreadRequest`, so another plugin's
+   `experimental_data` can be lost in that surface. Decide whether to expose a
+   forwardable experimental field or reject data-bearing submissions there.
 
 ## Desktop browser control
 
@@ -2911,7 +2956,6 @@ returns a credential only while that host is creating.
 Before stabilizing, verify creation cancellation through host removal,
 same-host restoration, serialized removal, plugin callers and UI/CLI parity.
 
-
 ## `app.experimental_icons.register` and `experimental_Icon`
 
 Plugins register inline React artwork during app setup with `{ name, component }`.
@@ -2947,7 +2991,6 @@ components. The existing built-in icon list and artwork remain fixed; new
 plugin app icons use this registration API. The manifest API is unchanged,
 and individual plugins can still declare their own branding SVG assets using
 the existing manifest fields.
-
 
 ## `experimental_ProviderIcon`
 

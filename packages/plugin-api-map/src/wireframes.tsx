@@ -78,6 +78,7 @@ export const APP_SHELL_MARKS = [
   "thread-list",
   "sidebar-footer",
   "thread-header",
+  "browser-toolbar",
   "timeline-renderers",
   "message-directives",
   "message-actions",
@@ -675,6 +676,7 @@ export const ANATOMY_RENDERER_KEYS = {
 };
 
 export type AppShellRightPanelTab =
+  | "browser-toolbar"
   | "thread-panel"
   | "file-opener"
   | "code-renderers";
@@ -686,6 +688,13 @@ function RightPanelTabLaneBadges({
 }) {
   return (
     <>
+      <MeasuredBadge
+        id="browser-toolbar"
+        label="Plugin controls beside the Browser address bar"
+        anchor='[data-guide-region="browser-toolbar"]'
+        at="lane"
+        onActivate={() => onTabSelect("browser-toolbar")}
+      />
       <MeasuredBadge
         id="code-renderers"
         label="Plugin code and diff renderers on bb's Diff tab"
@@ -930,10 +939,11 @@ export function CommandPaletteWireframe() {
 export function AppShellWireframe() {
   const { expandedId } = useSurfaceMap();
   const [rightPanelTab, setRightPanelTab] =
-    useState<AppShellRightPanelTab>("thread-panel");
+    useState<AppShellRightPanelTab>("browser-toolbar");
 
   useEffect(() => {
     if (
+      expandedId === "browser-toolbar" ||
       expandedId === "thread-panel" ||
       expandedId === "file-opener" ||
       expandedId === "code-renderers"
@@ -1249,6 +1259,17 @@ export function AppShellRightPanel({
           data-guide-fixture="right-panel-content-tabs"
           className="flex min-w-0 items-center gap-1.5"
         >
+          <button
+            type="button"
+            data-guide-tab="browser-toolbar"
+            className={cn(
+              tabClass("browser-toolbar"),
+              "gap-1.5 whitespace-nowrap px-2 text-foreground",
+            )}
+            onClick={() => onTabSelect("browser-toolbar")}
+          >
+            Browser
+          </button>
           <Mark
             id="thread-panel"
             label="A plugin tab in the thread side panel"
@@ -1285,7 +1306,29 @@ export function AppShellRightPanel({
         <MiniIcon icon={SidebarRightIcon} className="size-3.5" />
       </div>
       <div data-guide-tab-body={activeTab} className="min-h-0 flex-1 p-4">
-        {activeTab === "thread-panel" ? (
+        {activeTab === "browser-toolbar" ? (
+          <div data-guide-fixture="browser-toolbar" className="space-y-4">
+            <div className="flex items-center gap-2 border-b border-border-hairline pb-3">
+              <MiniIcon icon={ArrowLeft01Icon} className="size-3.5" />
+              <div className="min-w-0 flex-1 truncate rounded-md bg-surface-recessed px-2 py-1.5 text-subtle-foreground">
+                https://example.com
+              </div>
+              <Mark
+                id="browser-toolbar"
+                label="Plugin controls beside the Browser address bar"
+                className="flex size-7 items-center justify-center"
+                showChip={false}
+              >
+                <PluginGlyph className="size-3.5" />
+              </Mark>
+            </div>
+            <div className="space-y-3 rounded-md border border-border-hairline bg-background p-4">
+              <span className="block h-2 w-2/5 rounded-sm bg-foreground/50" />
+              <span className="block h-2 w-4/5 rounded-sm bg-muted/60" />
+              <span className="block h-2 w-3/5 rounded-sm bg-muted/60" />
+            </div>
+          </div>
+        ) : activeTab === "thread-panel" ? (
           <div data-guide-fixture="thread-panel" className="space-y-2">
             <div className="flex items-center gap-1.5 text-foreground">
               <PluginGlyph className="size-3.5" />

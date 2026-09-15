@@ -47,6 +47,7 @@ function Chevron({ className }: ChevronProps) {
       strokeLinejoin="round"
       className={cn("lucide lucide-chevron-right", className)}
       aria-hidden="true"
+      data-icon-root=""
     >
       <path d="M6 4l4 4-4 4" />
     </svg>

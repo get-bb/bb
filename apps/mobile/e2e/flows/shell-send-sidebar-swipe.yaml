@@ -17,7 +17,7 @@ env:
     visible: ".*follow-up.*"
     timeout: 60000
 - startRecording:
-    path: "../../../../e2e-artifacts/maestro/shell-send-sidebar-swipe/sidebar-send-repro"
+    path: "sidebar-send-repro"
     label: "Sidebar swipe before and after Send"
 - takeScreenshot: sidebar-before-baseline-swipe
 - swipe:

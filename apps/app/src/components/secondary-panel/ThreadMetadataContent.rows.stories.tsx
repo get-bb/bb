@@ -32,9 +32,14 @@ export default {
 
 const noop = () => {};
 
-const remoteEnvironmentDisplayHost: EnvironmentDisplayHostContext = {
+const ambiguousEnvironmentDisplayHost: EnvironmentDisplayHostContext = {
+  locality: "local",
+  identity: { name: "Build Mac mini", connected: true },
+};
+
+const offlineEnvironmentDisplayHost: EnvironmentDisplayHostContext = {
   locality: "remote",
-  identity: null,
+  identity: { name: "Build Mac mini", connected: false },
 };
 
 const DIRTY_WORKING_TREE: Omit<WorkspaceWorkingTree, "state"> = {
@@ -194,23 +199,30 @@ export function Environment() {
           />
         </RowStage>
       </StoryRow>
-      <StoryRow label="direct">
+      <StoryRow label="named">
         <RowStage>
           <EnvironmentRow
             thread={makeThread()}
-            environment={makeEnvironment({
-            })}
+            environment={makeEnvironment({ name: "Linked review tree" })}
             environmentDisplayHost={localEnvironmentDisplayHost}
           />
         </RowStage>
       </StoryRow>
-      <StoryRow label="remote direct">
+      <StoryRow label="ambiguous host">
         <RowStage>
           <EnvironmentRow
             thread={makeThread()}
-            environment={makeEnvironment({
-            })}
-            environmentDisplayHost={remoteEnvironmentDisplayHost}
+            environment={makeEnvironment()}
+            environmentDisplayHost={ambiguousEnvironmentDisplayHost}
+          />
+        </RowStage>
+      </StoryRow>
+      <StoryRow label="ambiguous host offline">
+        <RowStage>
+          <EnvironmentRow
+            thread={makeThread()}
+            environment={makeEnvironment()}
+            environmentDisplayHost={offlineEnvironmentDisplayHost}
           />
         </RowStage>
       </StoryRow>

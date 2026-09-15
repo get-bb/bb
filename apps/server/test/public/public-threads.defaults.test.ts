@@ -482,7 +482,7 @@ describe("public thread default routes", () => {
     });
   });
 
-  it("returns an actionable error when the default model catalog cannot be loaded", async () => {
+  it("returns an actionable error when an explicitly requested provider's model catalog cannot be loaded", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps);
       registerProviderHostRpcResponder(harness, {
@@ -511,6 +511,7 @@ describe("public thread default routes", () => {
         body: JSON.stringify({
           origin: "cli",
           projectId: project.id,
+          providerId: "codex",
           input: [{ type: "text", text: "Create without defaults" }],
           environment: {
             type: "reuse",
@@ -533,6 +534,70 @@ describe("public thread default routes", () => {
       ).toHaveLength(0);
     });
   });
+
+  it.each(["failed", "empty"])(
+    "falls back to another available provider when the product default's model catalog is %s",
+    async (catalogState) => {
+      await withTestHarness(async (harness) => {
+        const { host, session } = seedHostSession(harness.deps);
+        registerProviderHostRpcResponder(harness, {
+          hostId: host.id,
+          sessionId: session.id,
+          restoreCommandCaptureAfterResponse: true,
+          modelsByProviderId:
+            catalogState === "empty"
+              ? { codex: { models: [], selectedOnlyModels: [] } }
+              : {},
+          modelErrorsByProviderId:
+            catalogState === "failed"
+              ? {
+                  codex: {
+                    errorCode: "command_failed",
+                    errorMessage: "Codex model discovery failed",
+                  },
+                }
+              : {},
+        });
+        const { project } = seedProjectWithSource(harness.deps, {
+          hostId: host.id,
+          path: "/tmp/thread-defaults-catalog-fallback",
+        });
+        const environment = seedEnvironment(harness.deps, {
+          hostId: host.id,
+          projectId: project.id,
+          path: "/tmp/thread-defaults-catalog-fallback",
+        });
+
+        const response = await harness.app.request("/api/v1/threads", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            origin: "cli",
+            projectId: project.id,
+            input: [{ type: "text", text: "Create without defaults" }],
+            environment: {
+              type: "reuse",
+              environmentId: environment.id,
+            },
+          }),
+        });
+
+        expect(response.status).toBe(201);
+        const createdThread = threadSchema.parse(await readJson(response));
+        expect(createdThread.providerId).toBe("claude-code");
+        const queuedStart = await waitForQueuedCommand(
+          harness,
+          ({ command }) =>
+            command.type === "thread.start" &&
+            command.threadId === createdThread.id,
+        );
+        expect(queuedStart.command).toMatchObject({
+          providerId: "claude-code",
+          options: { model: "test-provider-default" },
+        });
+      });
+    },
+  );
 
   it("rejects thread creation without an origin at the public API boundary", async () => {
     await withTestHarness(async (harness) => {

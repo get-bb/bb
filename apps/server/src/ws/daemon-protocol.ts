@@ -25,6 +25,7 @@ import { requestQueuedMessageDispatch } from "../services/threads/queued-message
 import { runEventLoopWorkSync } from "../services/system/event-loop-work.js";
 import { parseSocketMessage } from "./decode-payload.js";
 import type { PluginService } from "../services/plugins/plugin-service.js";
+import { resumeEnvironmentProvisioningForHost } from "../services/environments/environment-engine.js";
 
 interface DaemonSocket {
   close(code?: number, reason?: string): void;
@@ -95,6 +96,18 @@ export function onDaemonSocketOpen(
   requestQueuedMessageDispatch(deps, {
     hostId: args.hostId,
     kind: "host-connected",
+  });
+  void resumeEnvironmentProvisioningForHost(deps, {
+    hostId: args.hostId,
+  }).catch((error) => {
+    deps.logger.warn(
+      {
+        err: error,
+        hostId: args.hostId,
+        sessionId: args.sessionId,
+      },
+      "Environment provisioning reconnect resume failed",
+    );
   });
 }
 

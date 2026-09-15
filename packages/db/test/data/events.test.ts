@@ -6,6 +6,7 @@ import {
   LOCAL_WORKFLOW_TASK_TYPE,
   THREAD_CONTEXT_CLEAR_OPERATION,
   encodeClientTurnRequestIdNumber,
+  parseStoredThreadEvent,
   threadScope,
   turnScope,
   type PromptInput,
@@ -301,6 +302,61 @@ function createContextWindowUsageData(
 }
 
 describe("events", () => {
+  it("preserves reported cache counts through daemon append and stored event decoding", () => {
+    const { db, thread } = setup();
+    const scope = turnScope("turn-cache-test");
+    db.transaction((tx) =>
+      appendDaemonEventsInTransaction(tx, [
+        {
+          threadId: thread.id,
+          type: "turn/started",
+          ...daemonThreadEventFields,
+          scope,
+          providerThreadId: "provider-cache-test",
+          data: JSON.stringify({ providerThreadId: "provider-cache-test" }),
+        },
+      ]),
+    );
+    const legacy = {
+      totalTokens: 140,
+      inputTokens: 80,
+      cachedInputTokens: 40,
+      outputTokens: 20,
+      reasoningOutputTokens: 0,
+    };
+    const variants = [
+      legacy,
+      { ...legacy, cacheReadInputTokens: 31, cacheWriteInputTokens: 9 },
+      { ...legacy, cacheWriteInputTokens: 0 },
+    ];
+    for (const last of variants) {
+      db.transaction((tx) =>
+        appendDaemonEventsInTransaction(tx, [
+          {
+            threadId: thread.id,
+            type: "thread/tokenUsage/updated",
+            ...daemonThreadEventFields,
+            scope,
+            providerThreadId: "provider-cache-test",
+            data: JSON.stringify({
+              tokenUsage: { total: last, last, modelContextWindow: null },
+            }),
+          },
+        ]),
+      );
+    }
+    const rows = listEvents(db, { threadId: thread.id, afterSequence: 1 });
+    expect(rows).toHaveLength(variants.length);
+    rows.forEach((row, index) => {
+      expect(
+        parseStoredThreadEvent({ ...row, scope, data: JSON.parse(row.data) }),
+      ).toMatchObject({
+        tokenUsage: { total: variants[index], last: variants[index] },
+      });
+    });
+    db.$client.close();
+  });
+
   it("inserts events and returns count", () => {
     const { db, thread } = setup();
 

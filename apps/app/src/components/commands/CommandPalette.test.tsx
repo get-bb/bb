@@ -14,6 +14,7 @@ import {
   type AppCommandId,
   type AppDefaultKeybinding,
   type AppKeybinding,
+  type AppKeybindingOverrides,
 } from "@bb/domain";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { AppCommandProvider, useAppCommandHandler } from "./AppCommandProvider";
@@ -23,6 +24,7 @@ import {
 } from "@/lib/plugin-slots";
 import { CommandPalette } from "./CommandPalette";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
+import { collectPluginAppRegistrations } from "@get-bb/plugin-sdk/internal/plugin-app-collector";
 
 const PALETTE_SHORTCUT = {
   key: "p",
@@ -80,6 +82,7 @@ function defaults(...commands: AppCommandId[]): AppDefaultKeybinding[] {
 }
 
 const testState = vi.hoisted(() => ({
+  overrides: [] as AppKeybindingOverrides,
   calls: [] as string[],
   filesAvailable: false,
   plugins: [] as Array<{
@@ -98,6 +101,7 @@ vi.mock("@/hooks/queries/system-queries", () => ({
         ...defaultAppSettings,
         showKeyboardHints: false,
       },
+      keybindingOverrides: testState.overrides,
       keybindings: [PALETTE_BINDING, THREAD_SEARCH_BINDING, THREAD_NEW_BINDING],
       defaultKeybindings: [
         PALETTE_BINDING,
@@ -245,6 +249,7 @@ const selectedOption = () =>
     .find((option) => option.getAttribute("aria-selected") === "true");
 
 afterEach(() => {
+  testState.overrides = [];
   cleanup();
   removePluginSlotRegistrations("linear");
   removePluginSlotRegistrations("automations");
@@ -263,7 +268,7 @@ describe("CommandPalette", () => {
     expect((searchField() as HTMLInputElement).value).toBe(">");
     const titles = optionTitles();
     expect(titles?.[0]).toContain("New thread");
-    expect(titles).toHaveLength(19);
+    expect(titles).toHaveLength(18);
   });
 
   it("filters as the user types and keeps the selection on a live row", async () => {
@@ -488,31 +493,93 @@ describe("CommandPalette", () => {
     scrollIntoView.mockRestore();
   });
 
-  it("lists a plugin's commandPaletteAction and runs it", async () => {
-    setPluginSlotRegistrations(
-      "linear",
-      makePluginRegistrationSet({
-        commandPaletteActions: [
-          {
-            id: "open-issue",
-            title: "Linear: open issue",
-            run: () => {
-              testState.calls.push("plugin-ran");
-            },
+  it.each(["commands", "legacy"])(
+    "lists a plugin's registered command and runs it",
+    async (entryPoint) => {
+      setPluginSlotRegistrations(
+        "linear",
+        collectPluginAppRegistrations({
+          __bbPluginApp: true,
+          setup(app) {
+            const registration = {
+              id: "open-issue",
+              title: "Linear: open issue",
+              run: () => {
+                testState.calls.push("plugin-ran");
+              },
+            };
+            if (entryPoint === "commands") app.commands.register(registration);
+            else app.slots.commandPaletteAction(registration);
           },
-        ],
-      }),
-    );
+        }),
+      );
+      renderPalette();
+      openPalette();
+      await waitFor(() => expect(searchField()).toBeTruthy());
+
+      fireEvent.change(searchField(), { target: { value: ">linear" } });
+      await waitFor(() => expect(optionTitles()).toHaveLength(1));
+      expect(optionTitles()?.[0]).toContain("Linear: open issue");
+      fireEvent.keyDown(searchField(), { key: "Enter" });
+
+      await waitFor(() => expect(testState.calls).toEqual(["plugin-ran"]));
+    },
+  );
+
+  it("dispatches defaults and overrides, respects availability, and unregisters disabled commands", async () => {
+    let available = true;
+    const run = vi.fn();
+    const registrations = collectPluginAppRegistrations({
+      __bbPluginApp: true,
+      setup(app) {
+        app.commands.register({
+          id: "open-issue",
+          title: "Linear: open issue",
+          defaultShortcut: { key: "i", mod: true, shift: true },
+          isAvailable: () => available,
+          run,
+        });
+      },
+    });
+    setPluginSlotRegistrations("linear", registrations);
+    const view = renderPalette();
+    fireEvent.keyDown(window, { key: "i", ctrlKey: true, shiftKey: true });
+    expect(run).toHaveBeenCalledTimes(1);
+    available = false;
+    fireEvent.keyDown(window, { key: "i", ctrlKey: true, shiftKey: true });
+    expect(run).toHaveBeenCalledTimes(1);
+    available = true;
+    testState.overrides = [
+      {
+        command: "plugin:linear/open-issue",
+        shortcut: {
+          key: "u",
+          mod: true,
+          meta: false,
+          control: false,
+          alt: false,
+          shift: true,
+        },
+      },
+    ];
+    view.unmount();
     renderPalette();
+    fireEvent.keyDown(window, { key: "i", ctrlKey: true, shiftKey: true });
+    expect(run).toHaveBeenCalledTimes(1);
+    fireEvent.keyDown(window, { key: "u", ctrlKey: true, shiftKey: true });
+    expect(run).toHaveBeenCalledTimes(2);
     openPalette();
     await waitFor(() => expect(searchField()).toBeTruthy());
-
     fireEvent.change(searchField(), { target: { value: ">linear" } });
-    await waitFor(() => expect(optionTitles()).toHaveLength(1));
-    expect(optionTitles()?.[0]).toContain("Linear: open issue");
-    fireEvent.keyDown(searchField(), { key: "Enter" });
-
-    await waitFor(() => expect(testState.calls).toEqual(["plugin-ran"]));
+    expect(screen.getByRole("option").textContent).toContain(
+      "Ctrl + Shift + U",
+    );
+    fireEvent.keyDown(searchField(), { key: "Escape" });
+    removePluginSlotRegistrations("linear");
+    await waitFor(() => expect(screen.queryByRole("listbox")).toBeNull());
+    fireEvent.keyDown(window, { key: "u", ctrlKey: true, shiftKey: true });
+    expect(run).toHaveBeenCalledTimes(2);
+    testState.overrides = [];
   });
 
   it("says so when nothing matches", async () => {

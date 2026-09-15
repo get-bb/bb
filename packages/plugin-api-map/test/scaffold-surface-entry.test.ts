@@ -101,9 +101,9 @@ describe("surface-entry scaffold", () => {
       "--source",
       "apps/app/src/components/commands/CommandPalette.tsx",
       "--api-symbol",
-      "PluginCommandPaletteActionRegistration",
+      "PluginCommandRegistration",
       "--api-symbol",
-      "PluginCommandPaletteActionContext",
+      "PluginCommandContext",
       "--transient",
       "--outcome",
     ]);
@@ -111,7 +111,7 @@ describe("surface-entry scaffold", () => {
       "--outcome",
       "--transient",
       "--api-symbol",
-      "PluginCommandPaletteActionContext",
+      "PluginCommandContext",
       "--source",
       "apps/app/src/components/commands/CommandPalette.tsx",
       "--source",
@@ -123,11 +123,11 @@ describe("surface-entry scaffold", () => {
       "--id",
       "command-palette-actions",
       "--api-symbol",
-      "PluginCommandPaletteActionRegistration",
+      "PluginCommandRegistration",
       "--source",
       "apps/app/src/lib/command-palette/palette-plugin-actions.ts",
       "--api-symbol",
-      "PluginCommandPaletteActionRegistration",
+      "PluginCommandRegistration",
       "--source",
       "apps/app/src/lib/command-palette/palette-plugin-actions.ts",
     ]);
@@ -138,10 +138,7 @@ describe("surface-entry scaffold", () => {
     expect(buildSurfaceEntryScaffold(first)).toMatchObject({
       surface: {
         id: "command-palette-actions",
-        apiSymbols: [
-          "PluginCommandPaletteActionContext",
-          "PluginCommandPaletteActionRegistration",
-        ],
+        apiSymbols: ["PluginCommandContext", "PluginCommandRegistration"],
       },
       fixture: {
         groupId: "command-palette",

@@ -185,7 +185,10 @@ export interface ServerClient {
     expectedByteLength: number;
   }): Promise<Uint8Array>;
   postEvents(events: HostDaemonEventEnvelope[]): Promise<EventPostResult>;
-  callTool(request: ToolCallRequest): Promise<HostDaemonToolCallResponse>;
+  callTool(
+    request: ToolCallRequest,
+    signal?: AbortSignal,
+  ): Promise<HostDaemonToolCallResponse>;
   registerInteractiveRequest(
     request: PendingInteractionCreate,
   ): Promise<HostDaemonInteractiveRequestResponse>;
@@ -555,6 +558,7 @@ export function createServerClient(
 
     async callTool(
       request: ToolCallRequest,
+      signal?: AbortSignal,
     ): Promise<HostDaemonToolCallResponse> {
       const payload: HostDaemonToolCallRequest = {
         threadId: request.threadId,
@@ -568,6 +572,7 @@ export function createServerClient(
         sessionId: requireSessionId(),
       };
       const response = await fetchFn(buildInternalUrl("/session/tool-call"), {
+        signal,
         method: "POST",
         headers: headers(),
         body: JSON.stringify(payload),

@@ -75,6 +75,7 @@ function setup(secondarySize = 50) {
           data-panel-resize-snap-handle=""
           data-testid="divider"
           hitAreaMargins={{ coarse: 0, fine: 0 }}
+          tabIndex={-1}
         >
           <span ref={hitTargetRef} />
         </PanelResizeHandle>
@@ -159,7 +160,7 @@ describe("usePanelResizeSnap", () => {
     h.expectLayout(leading, 100 - leading);
   });
 
-  it.each([false, true])("preserves a keyboard layout after a pointer update: %s", (moveFirst) => {
+  it.each([false, true])("preserves a newer external layout after a pointer update: %s", (moveFirst) => {
     const h = setup();
     h.down();
     if (moveFirst) {
@@ -171,18 +172,6 @@ describe("usePanelResizeSnap", () => {
     h.release();
     advanceFrame();
     h.expectLayout(60, 40);
-  });
-
-  it("applies queued pointer input before a newer keyboard resize", () => {
-    const h = setup();
-    h.down();
-    h.move(450);
-    h.move(440);
-    fireEvent.keyDown(h.divider, { key: "ArrowRight" });
-    h.expectLayout(52.5, 47.5);
-    advanceFrame();
-    h.release();
-    h.expectLayout(52.5, 47.5);
   });
 
   it.each(["pointerup", "pointercancel", "mouseup", "blur", "buttons", "lostpointercapture"]) ("flushes the last position before %s cleanup", (end) => {
@@ -231,6 +220,14 @@ describe("usePanelResizeSnap", () => {
       document.body.removeEventListener("pointermove", rawMove, true);
       document.body.removeEventListener("pointerdown", rawDown, true);
     }
+  });
+
+  it("keeps the pointer-only divider out of focus", () => {
+    const h = setup();
+    h.down();
+    expect(h.divider.tabIndex).toBe(-1);
+    expect(document.activeElement).not.toBe(h.divider);
+    h.release();
   });
 
   it("drops queued updates when the owner unmounts", () => {

@@ -74,8 +74,8 @@ const piAssistantUsageSchema = z
   .object({
     input: z.number().optional(),
     output: z.number().optional(),
-    cacheRead: z.number().optional(),
-    cacheWrite: z.number().optional(),
+    cacheRead: z.number().nonnegative().optional().catch(undefined),
+    cacheWrite: z.number().nonnegative().optional().catch(undefined),
     totalTokens: z.number().optional(),
   })
   .passthrough();
@@ -274,7 +274,10 @@ function classifyPiToolUse(
       changes: [
         {
           path,
-          kind: parsed.data.oldText === undefined ? "add" : "update",
+          kind:
+            toolName === "edit" || parsed.data.oldText !== undefined
+              ? "update"
+              : "add",
           ...(parsed.data.oldText === undefined
             ? {}
             : { oldText: parsed.data.oldText }),
@@ -1036,6 +1039,12 @@ function toAssistantUsageBreakdown(
         : inputTokens + outputTokens + cachedInputTokens,
     inputTokens,
     cachedInputTokens,
+    ...(typedUsage.cacheRead === undefined
+      ? {}
+      : { cacheReadInputTokens: typedUsage.cacheRead }),
+    ...(typedUsage.cacheWrite === undefined
+      ? {}
+      : { cacheWriteInputTokens: typedUsage.cacheWrite }),
     outputTokens,
     reasoningOutputTokens: 0,
   };

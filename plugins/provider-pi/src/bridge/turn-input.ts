@@ -6,7 +6,7 @@ import {
 import type { ImageContent } from "@earendil-works/pi-ai";
 
 interface ExtractedPiPromptInput {
-  text?: string;
+  text: string;
   images: ImageContent[];
 }
 
@@ -19,7 +19,7 @@ interface SelectedPiSkill {
 
 export function extractPiPromptInput(
   input: PromptInput[],
-): ExtractedPiPromptInput {
+): ExtractedPiPromptInput | null {
   const chunks: string[] = [];
   const images: ImageContent[] = [];
   const skills: SelectedPiSkill[] = [];
@@ -72,5 +72,7 @@ export function extractPiPromptInput(
       };
     }
   }
-  return { text: chunks.length > 0 ? chunks.join("\n") : undefined, images };
+  const text = chunks.length > 0 ? chunks.join("\n") : null;
+  if (!text && images.length === 0) return null;
+  return { text: text ?? "", images };
 }

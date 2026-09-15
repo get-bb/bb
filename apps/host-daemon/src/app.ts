@@ -524,12 +524,13 @@ export async function createHostDaemonApp(
         watchError: error.message,
       });
     },
-    onToolCall: async (request) => {
+    onToolCall: async (request, signal) => {
       try {
         await flushThreadEvents();
+        signal?.throwIfAborted();
         return await runSessionRequest({
           source: "callTool",
-          request: () => serverClient.callTool(request),
+          request: () => serverClient.callTool(request, signal),
         });
       } catch (error) {
         options.logger.error(

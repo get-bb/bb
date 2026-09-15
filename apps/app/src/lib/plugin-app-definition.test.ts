@@ -133,6 +133,37 @@ describe("collectPluginAppRegistrations — experimental_threadHeaderAction", ()
   });
 });
 
+describe("collectPluginAppRegistrations — experimental_browserToolbarAction", () => {
+  it("collects a browser toolbar action", () => {
+    const definition = definePluginApp((app) => {
+      app.slots.experimental_browserToolbarAction({
+        id: "annotate",
+        title: "Annotate",
+        component: Component,
+      });
+    });
+    expect(
+      collectPluginAppRegistrations(definition).browserToolbarActions,
+    ).toEqual([{ id: "annotate", title: "Annotate", component: Component }]);
+  });
+
+  it("rejects duplicate browser toolbar action ids", () => {
+    const definition = definePluginApp((app) => {
+      app.slots.experimental_browserToolbarAction({
+        id: "annotate",
+        title: "One",
+        component: Component,
+      });
+      app.slots.experimental_browserToolbarAction({
+        id: "annotate",
+        title: "Two",
+        component: Component,
+      });
+    });
+    expect(() => collectPluginAppRegistrations(definition)).toThrow(/annotate/);
+  });
+});
+
 describe("collectPluginAppRegistrations — experimental_threadList", () => {
   it("collects a thread list with its optional fields", () => {
     const definition = definePluginApp((app) => {

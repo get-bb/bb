@@ -17,6 +17,7 @@ import remarkGfm from "remark-gfm";
 import { useSenderThreadMetadataById } from "@/hooks/useSenderThreadMetadataById";
 import { useSecondTick } from "@/hooks/useSecondTick";
 import { usePluginDisplayName } from "@/lib/plugin-logos";
+import { PluginIcon } from "@/components/plugin/PluginIcon";
 import {
   describeQueuedMessageWait,
   formatQueuedMessageCountdown,
@@ -711,9 +712,16 @@ function QueuedMessageWaitLine({
         failed ? "text-destructive-text" : "text-subtle-foreground",
       )}
     >
-      {icon === null ? null : (
+      {icon !== null ? (
         <Icon name={icon} className="size-3 shrink-0" aria-hidden />
-      )}
+      ) : queuedMessage.waitingOn?.kind === "plugin" ? (
+        <PluginIcon
+          pluginId={queuedMessage.waitingOn.pluginId}
+          icon={null}
+          fallbackIcon={null}
+          className="size-3"
+        />
+      ) : null}
       <span className="min-w-0 truncate">{label}</span>
       {countdown === null ? null : (
         <span className="shrink-0 tabular-nums">· {countdown}</span>
@@ -933,7 +941,7 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
                   "pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 items-center gap-0.5 rounded-md opacity-0 transition-opacity duration-[120ms] ease-out md:flex",
                   mobileActionsExpanded
                     ? "flex max-md:pointer-events-auto max-md:opacity-100"
-                    : "hidden",
+                    : "max-md:hidden",
                   "group-hover/dispatch-row:pointer-events-auto group-hover/dispatch-row:opacity-100",
                   "group-focus-within/dispatch-row:pointer-events-auto group-focus-within/dispatch-row:opacity-100",
                 )}

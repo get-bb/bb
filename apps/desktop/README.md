@@ -6,14 +6,8 @@ lifecycle.
 
 ## Development
 
-From the repo root, the full source dev loop is:
-
-```bash
-pnpm dev:desktop
-```
-
-That starts the source dev server and the Electron shell through
-`scripts/bb-dev-app`. To run only the desktop package task directly:
+From the repo root, run `pnpm dev` in one terminal for the source server and
+live UI updates. In a second terminal, start the Electron shell:
 
 ```bash
 pnpm exec turbo run dev --filter=@bb/desktop
@@ -22,7 +16,7 @@ pnpm exec turbo run dev --filter=@bb/desktop
 The dev script builds `bb-app`, compiles the Electron main/preload files, and
 opens Electron directly. By default it uses the same checkout-scoped
 `~/.bb-dev/<checkout-instance>` data directory and deterministic high ports as
-the main repo dev launcher; it prints the resolved data dir, server URL, and
+`pnpm dev`; it prints the resolved data dir, server URL, and
 Electron user-data dir at startup. It intentionally overwrites inherited
 `BB_DATA_DIR`, `BB_SERVER_PORT`, `BB_SERVER_URL`, and `BB_HOST_DAEMON_PORT` so a
 desktop dev run launched from an existing bb session still targets the current
@@ -52,10 +46,11 @@ Node runtime:
 pnpm exec turbo run start --filter=@bb/desktop
 ```
 
-Electron is pinned to `41.7.0`, the highest stable line verified to rebuild the
-packaged native modules with the current dependency set. Electron 42.2.0 was
-tested, but `better-sqlite3@12.10.0` does not compile against Electron ABI 146.
-Revisit the pin when `better-sqlite3` ships support or prebuilds for that ABI.
+Electron is pinned to `44.3.0`. macOS builds require macOS 13 (Ventura) or
+newer. The bundled `bb-app` runtime uses `better-sqlite3@13.0.3`, whose N-API
+binaries work with Electron without an ABI-specific rebuild. The packaging
+hook opens an in-memory database with Electron before accepting the packaged
+SQLite module; older ABI-specific modules still use the prebuild fallback.
 
 ## Validation
 

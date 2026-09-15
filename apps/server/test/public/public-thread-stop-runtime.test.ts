@@ -6,7 +6,7 @@ import {
 } from "@bb/db";
 import { turnScope } from "@bb/domain";
 import { groupHostDaemonEvents } from "@bb/host-daemon-contract";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   listQueuedCommands,
   listQueuedThreadCommands,
@@ -283,6 +283,195 @@ describe("thread runtime stop", () => {
       );
       expect(acceptedStart.status).toBe(200);
       expect(isThreadQueueAutoSendPaused(harness.db, thread.id)).toBe(false);
+    });
+  });
+
+  it("accepts Send now while the stop is still in flight and dispatches when it lands", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedThreadFixture(harness, {
+        thread: { status: "active", visibility: "hidden" },
+      });
+      const queueResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/queued-messages`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            input: [{ type: "text", text: "Run this next" }],
+            model: "gpt-5",
+            permissionMode: "full",
+            reasoningLevel: "medium",
+            serviceTier: "default",
+          }),
+        },
+      );
+      expect(queueResponse.status, await queueResponse.clone().text()).toBe(
+        201,
+      );
+      const queuedMessage = listQueuedThreadMessages(harness.db, thread.id)[0]!;
+
+      const stopResponsePromise = harness.app.request(
+        `/api/v1/threads/${thread.id}/stop`,
+        { method: "POST" },
+      );
+      const stop = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.stop" && command.threadId === thread.id,
+      );
+      expect(getThread(harness.db, thread.id)?.status).toBe("stopping");
+
+      const sendResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/queued-messages/${queuedMessage.id}/send`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ mode: "auto" }),
+        },
+      );
+      expect(sendResponse.status, await sendResponse.clone().text()).toBe(200);
+      await expect(readJson(sendResponse)).resolves.toMatchObject({
+        delivery: "queued",
+        queuedMessage: { waitingOn: { kind: "stopping" } },
+      });
+      expect(
+        listQueuedThreadCommands(harness, "turn.submit", thread.id),
+      ).toEqual([]);
+
+      await reportQueuedCommandSuccess(harness, stop, {
+        providerCheckpointId: null,
+      });
+      expect((await stopResponsePromise).status).toBe(200);
+
+      await vi.waitFor(() => {
+        expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);
+      });
+      expect(getThread(harness.db, thread.id)?.status).toBe("active");
+    });
+  });
+
+  it("keeps rows the user did not ask for behind the manual-stop pause when one is sent now", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedThreadFixture(harness, {
+        thread: { status: "active", visibility: "hidden" },
+      });
+      for (const text of ["Run this next", "But not this one"]) {
+        const queueResponse = await harness.app.request(
+          `/api/v1/threads/${thread.id}/queued-messages`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              input: [{ type: "text", text }],
+              model: "gpt-5",
+              permissionMode: "full",
+              reasoningLevel: "medium",
+              serviceTier: "default",
+            }),
+          },
+        );
+        expect(queueResponse.status, await queueResponse.clone().text()).toBe(
+          201,
+        );
+      }
+      const [sentNow, heldBack] = listQueuedThreadMessages(
+        harness.db,
+        thread.id,
+      );
+
+      const stopResponsePromise = harness.app.request(
+        `/api/v1/threads/${thread.id}/stop`,
+        { method: "POST" },
+      );
+      const stop = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.stop" && command.threadId === thread.id,
+      );
+      const sendResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/queued-messages/${sentNow!.id}/send`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ mode: "auto" }),
+        },
+      );
+      expect(sendResponse.status).toBe(200);
+      await reportQueuedCommandSuccess(harness, stop, {
+        providerCheckpointId: null,
+      });
+      expect((await stopResponsePromise).status).toBe(200);
+
+      await vi.waitFor(() => {
+        expect(
+          listQueuedThreadMessages(harness.db, thread.id).map((row) => row.id),
+        ).toEqual([heldBack!.id]);
+      });
+      expect(getThread(harness.db, thread.id)?.status).toBe("active");
+      expect(isThreadQueueAutoSendPaused(harness.db, thread.id)).toBe(true);
+    });
+  });
+
+  it("keeps the queue editable while a stop is in flight", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedThreadFixture(harness, {
+        thread: { status: "active", visibility: "hidden" },
+      });
+      const stopResponsePromise = harness.app.request(
+        `/api/v1/threads/${thread.id}/stop`,
+        { method: "POST" },
+      );
+      const stop = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.stop" && command.threadId === thread.id,
+      );
+      expect(getThread(harness.db, thread.id)?.status).toBe("stopping");
+
+      const queueResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/queued-messages`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            input: [{ type: "text", text: "Composed during the stop" }],
+            model: "gpt-5",
+            permissionMode: "full",
+            reasoningLevel: "medium",
+            serviceTier: "default",
+          }),
+        },
+      );
+      expect(queueResponse.status, await queueResponse.clone().text()).toBe(
+        201,
+      );
+      const queuedMessage = listQueuedThreadMessages(harness.db, thread.id)[0]!;
+      expect(JSON.parse(queuedMessage.waitingOn!)).toEqual({
+        kind: "stopping",
+      });
+
+      const editResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/queued-messages/${queuedMessage.id}`,
+        {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            input: [{ type: "text", text: "Edited during the stop" }],
+            expectedUpdatedAt: queuedMessage.updatedAt,
+          }),
+        },
+      );
+      expect(editResponse.status, await editResponse.clone().text()).toBe(200);
+
+      await reportQueuedCommandSuccess(harness, stop, {
+        providerCheckpointId: null,
+      });
+      expect((await stopResponsePromise).status).toBe(200);
+
+      await vi.waitFor(() => {
+        expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);
+      });
+      expect(getThread(harness.db, thread.id)?.status).toBe("active");
     });
   });
 

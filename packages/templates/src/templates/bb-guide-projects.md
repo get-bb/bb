@@ -63,8 +63,10 @@ Attachments:
     --client-file <path>                  Destination on this CLI machine
 
   Uploads use multipart bytes and return a server-managed attachment DTO. Pass
-  its relative `path` to thread --file/--image input. Those thread flags never
-  read a client path: absolute values remain paths for the execution host.
+  its relative `path` to thread --file/--image input. Thread --image uploads an
+  absolute path from the CLI machine automatically; relative values remain
+  existing server attachment paths. Thread --file absolute values remain paths
+  for the execution host.
   image/* uploads are limited to 10MB; other files are limited to 25MB.
   image/heic and image/heif uploads are rejected because no renderer or
   provider can decode them; convert them to JPEG or PNG first.

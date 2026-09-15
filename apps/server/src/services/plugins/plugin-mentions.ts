@@ -50,6 +50,22 @@ export async function resolvePluginMentionContextInputs(
       mentions: [],
       visibility: "agent-only",
     });
+    for (const image of result.images) {
+      if (image.context?.trim()) {
+        contextInputs.push({
+          type: "text",
+          text: image.context,
+          mentions: [],
+          visibility: "agent-only",
+        });
+      }
+      contextInputs.push({
+        ...(image.type === "image"
+          ? { type: "image" as const, url: image.url }
+          : { type: "localImage" as const, path: image.path }),
+        visibility: "agent-only",
+      });
+    }
   }
   return contextInputs;
 }

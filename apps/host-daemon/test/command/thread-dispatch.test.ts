@@ -1342,6 +1342,79 @@ describe("thread command dispatch", () => {
     expect(harness.runtimeState.stoppedThreadId).toBeUndefined();
   });
 
+  it("stops the runtime and deletes only the requested thread storage", async () => {
+    const threadStorageRootPath = await makeTempDir(
+      "bb-thread-storage-delete-",
+    );
+    const storagePath = path.join(threadStorageRootPath, "thread-delete");
+    const siblingPath = path.join(threadStorageRootPath, "thread-sibling");
+    await fs.mkdir(storagePath);
+    await fs.mkdir(siblingPath);
+    await fs.writeFile(path.join(storagePath, "artifact.txt"), "delete me");
+    await fs.writeFile(path.join(siblingPath, "artifact.txt"), "keep me");
+    const harness = createHarness();
+
+    await dispatchCommand(
+      {
+        bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
+        type: "thread.start",
+        environmentId: "env-1",
+        threadId: "thread-delete",
+        workspaceContext: { workspacePath: "/tmp/env-1" },
+        projectId: "project-1",
+        providerId: "fake",
+        requestId: nextClientRequestId(),
+        input: [textPromptInput("work until deleted")],
+        options: {
+          model: "gpt-5",
+          serviceTier: "default",
+          reasoningLevel: "medium",
+          providerOptions: {},
+          permissionMode: "full",
+          permissionScope: "full",
+          approvalReviewer: null,
+          permissionEscalation: null,
+        },
+        instructions: "Be a helpful coding agent.",
+        dynamicTools: [],
+        contributedEnv: [],
+        injectedSkillSources: [],
+        instructionMode: "append",
+      },
+      harness.dispatchOptions({ threadStorageRootPath }),
+    );
+
+    await expect(
+      dispatchCommand(
+        {
+          type: "thread.storage.delete",
+          environmentId: "env-1",
+          threadId: "thread-delete",
+        },
+        harness.dispatchOptions({ threadStorageRootPath }),
+      ),
+    ).resolves.toEqual({ providerCheckpointId: null });
+    await expect(fs.stat(storagePath)).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+    await expect(
+      fs.readFile(path.join(siblingPath, "artifact.txt"), "utf8"),
+    ).resolves.toBe("keep me");
+    expect(harness.runtimeState.stoppedThreadId).toBe("thread-delete");
+    expect(harness.runtime.hasThread("thread-delete")).toBe(false);
+
+    await expect(
+      dispatchCommand(
+        {
+          type: "thread.storage.delete",
+          environmentId: "env-1",
+          threadId: "thread-delete",
+        },
+        harness.dispatchOptions({ threadStorageRootPath }),
+      ),
+    ).resolves.toEqual({ providerCheckpointId: null });
+  });
+
   it("creates the environment runtime for archive commands when needed", async () => {
     const harness = createHarness({ workspacePath: "/tmp/recreated-env" });
 

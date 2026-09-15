@@ -505,8 +505,8 @@
       "recipes": [
         "features/developer-fixtures.md"
       ],
-      "sourceFiles": 4,
-      "sourceDigest": "ad38eca739422530fb2c1e826192357b2f177dbd2d4368a5c584b3c0560a5e43",
+      "sourceFiles": 3,
+      "sourceDigest": "193dd0a30669936ada47ac885460696682274cf8329d062e4dd58a34df722ba2",
       "declarations": []
     },
     "domain-contracts": {

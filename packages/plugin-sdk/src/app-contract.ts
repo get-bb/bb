@@ -232,6 +232,17 @@ export interface PluginThreadHeaderActionProps {
   isCompactViewport: boolean;
 }
 
+export interface ExperimentalPluginBrowserToolbarActionProps {
+  /** Thread that owns the Browser tab. */
+  threadId: string;
+  /** Browser tab currently rendering the action. */
+  tabId: string;
+  /** Current top-level URL shown in the address bar. */
+  url: string;
+  /** True when the Browser chrome needs compact controls. */
+  isCompactViewport: boolean;
+}
+
 /**
  * Where a file being opened by a `fileOpener` lives. `path` semantics follow
  * the source: workspace paths are relative to the environment's worktree,
@@ -1050,6 +1061,15 @@ export interface PluginThreadHeaderActionRegistration {
   component: ComponentType<PluginThreadHeaderActionProps>;
 }
 
+export interface ExperimentalPluginBrowserToolbarActionRegistration {
+  /** Unique within the plugin; letters, digits, `-`, `_`. */
+  id: string;
+  /** Accessible name for the host-wrapped control group. */
+  title: string;
+  /** Component rendered beside the Browser address bar. */
+  component: ComponentType<ExperimentalPluginBrowserToolbarActionProps>;
+}
+
 /** One pane's place in the split layout, as fractions of the split area. */
 export interface PluginSidebarSplitPane {
   paneId: string;
@@ -1267,8 +1287,8 @@ export interface PluginMessageActionRegistration {
   run(context: PluginMessageActionContext): void | Promise<void>;
 }
 
-/** Context handed to a `commandPaletteAction`'s `isAvailable` and `run`. */
-export interface PluginCommandPaletteActionContext {
+/** Current context for palette and keyboard command invocations. */
+export interface PluginCommandContext {
   /** The thread in view, or null on a surface without one. */
   threadId: string | null;
   projectId: string | null;
@@ -1285,27 +1305,53 @@ export interface PluginCommandPaletteActionContext {
   openPanel(options: PluginTargetedPanelActionOpenOptions): boolean;
 }
 
+/** A default keyboard shortcut. Omitted modifiers are false. */
+export interface PluginCommandShortcut {
+  key: string;
+  /** Command on macOS, Control elsewhere. */
+  mod?: boolean;
+  meta?: boolean;
+  control?: boolean;
+  alt?: boolean;
+  shift?: boolean;
+}
+
 /**
- * A row in bb's quick palette (Mod+Shift+P), listed under the plugin's name
+ * A command registered with `app.commands.register`, listed in bb's quick
+ * palette (Mod+Shift+P) under the plugin's name
  * beside bb's own commands. Host-rendered: the plugin supplies a title and
  * `run`, and the host owns matching, ordering, and recency.
  */
-export interface PluginCommandPaletteActionRegistration {
+export interface PluginCommandRegistration {
+  /** Initial keyboard binding. Users can rebind every command, including ones without a default. Conflicting defaults remain unbound. */
+  defaultShortcut?: PluginCommandShortcut;
   /** Unique within the plugin; letters, digits, `-`, `_`. */
   id: string;
   /** The row's label, e.g. "Linear: open issue for this thread". */
   title: string;
   /**
    * Hide the row when it cannot do anything — typically when it needs a thread
-   * and there is none. Called while the palette is open; keep it cheap and
-   * synchronous. Omitted means always listed.
+   * and there is none. Called before palette listing and keyboard invocation;
+   * keep it cheap and synchronous. Omitted means always listed.
    */
-  isAvailable?(context: PluginCommandPaletteActionContext): boolean;
+  isAvailable?(context: PluginCommandContext): boolean;
   /**
-   * Runs after the palette closes and focus is restored. Errors (sync or
-   * async) are contained and logged; they never break the palette.
+   * Runs on keyboard invocation, or after the palette closes and focus is
+   * restored. Errors (sync or async) are contained and logged; they never break the palette.
    */
-  run(context: PluginCommandPaletteActionContext): void | Promise<void>;
+  run(context: PluginCommandContext): void | Promise<void>;
+}
+
+/** @deprecated Use PluginCommandContext. */
+export type PluginCommandPaletteActionContext = PluginCommandContext;
+
+/** @deprecated Use PluginCommandRegistration. */
+export type PluginCommandPaletteActionRegistration = PluginCommandRegistration;
+
+/** Registers commands for bb's command palette. */
+export interface PluginAppCommands {
+  /** Register a command. IDs are unique within this plugin, including legacy slot registrations. */
+  register(registration: PluginCommandRegistration): void;
 }
 
 /**
@@ -1541,6 +1587,10 @@ export interface PluginAppSlots {
   experimental_threadHeaderAction(
     registration: PluginThreadHeaderActionRegistration,
   ): void;
+  /** Render a component beside each Browser tab's address bar. */
+  experimental_browserToolbarAction(
+    registration: ExperimentalPluginBrowserToolbarActionRegistration,
+  ): void;
   fileOpener(registration: PluginFileOpenerRegistration): void;
   /**
    * Replace BB's source-code renderer (see
@@ -1559,12 +1609,10 @@ export interface PluginAppSlots {
   messageDirective(registration: PluginMessageDirectiveRegistration): void;
   messageAction(registration: PluginMessageActionRegistration): void;
   /**
-   * Add a row to the quick palette (see
-   * {@link PluginCommandPaletteActionRegistration}).
+   * @deprecated Use `app.commands.register` with the same registration.
+   * Both entry points share the same command registry and ID namespace.
    */
-  commandPaletteAction(
-    registration: PluginCommandPaletteActionRegistration,
-  ): void;
+  commandPaletteAction(registration: PluginCommandRegistration): void;
   /**
    * Draw one agent, environment, or machine provider's icon with an inline
    * React component instead of its masked logo asset (see
@@ -1711,6 +1759,7 @@ export interface ExperimentalAppIcons {
 
 export interface PluginAppBuilder {
   experimental_icons: ExperimentalAppIcons;
+  commands: PluginAppCommands;
   slots: PluginAppSlots;
   composer: PluginAppComposer;
   contentScripts: PluginAppContentScripts;
@@ -1932,7 +1981,7 @@ export interface PluginComposerApi {
   focus(): void;
   /**
    * Submit this composer's draft through the composer's OWN submit pipeline,
-   * queued until `sendAt` instead of dispatched now.
+   * optionally scheduling it or attaching plugin-owned dispatch data.
    *
    * This is a real submission, not a plugin-issued send: the host builds the
    * request exactly as pressing Enter would, so the draft's attachments and
@@ -1942,12 +1991,11 @@ export interface PluginComposerApi {
    * tuple itself, which is why sending from the backend instead would silently
    * run the message with different settings than the ones in front of the user.
    *
-   * In a thread composer the message is queued as a row instead of being
-   * sent or queued for the next idle moment. In the new-thread composer the
-   * thread is created `pending` and its first message becomes the queued row.
-   * Either way the resulting row is core's: the queued card above the
-   * composer, the countdown, Send now and Delete all work with no further
-   * plugin involvement.
+   * `sendAt` queues the submission until that time. `experimental_data` is
+   * opaque JSON delivered to dispatch hooks together with the calling plugin's
+   * id on this initial attempt. Hooks run before operational core waits. If a
+   * hook queues the message, its existing plugin wait identifies the owner on
+   * later attempts; core does not persist or interpret the opaque data.
    *
    * Resolves once the host has accepted the submission and cleared the draft.
    * Rejects when the composer refused to submit — a scope with no submit
@@ -1967,18 +2015,13 @@ export interface PluginComposerApi {
 /**
  * What `experimental_submit` does differently from pressing Enter.
  *
- * There is deliberately no zero-argument overload and no "submit now" arm: a
- * plugin that wants a draft sent immediately is asking for the affordance the
- * user already has, and handing plugins an unconditional "send this draft"
- * button is a much larger surface than scheduling needs.
+ * `experimental_data` is opaque JSON delivered to dispatch hooks. The runtime
+ * associates it with the calling plugin automatically for the initial
+ * dispatch attempt.
  */
-export interface ExperimentalComposerSubmitOptions {
-  /**
-   * Epoch ms the submission should dispatch at. Must be in the future; the
-   * host does not second-guess how far ahead it is.
-   */
-  sendAt: number;
-}
+export type ExperimentalComposerSubmitOptions =
+  | { sendAt: number; experimental_data?: JsonValue }
+  | { experimental_data: JsonValue; sendAt?: never };
 
 // ---------------------------------------------------------------------------
 // ThreadChat — the host-owned chat component.

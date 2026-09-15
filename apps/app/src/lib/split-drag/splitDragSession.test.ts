@@ -126,6 +126,27 @@ describe("beginSplitDrag — sidebar gesture arbitration and fallback", () => {
     expect(onEnd).toHaveBeenCalledWith({ dropped: true });
   });
 
+  it("can leave the active reorder feedback in place during a split drag", () => {
+    const sourceEl = document.createElement("div");
+    document.body.append(sourceEl);
+    const config = baseConfig({
+      cancelSidebarReorderOnEngage: false,
+      fadeSourceOnEngage: false,
+      renderGhost: false,
+      sourceEl,
+    });
+    beginSplitDrag(config);
+
+    fireWindowPointer("pointermove", 900, 400);
+
+    expect(escapeKeydowns).toBe(0);
+    expect(sourceEl.style.opacity).toBe("");
+    expect(document.querySelector("[data-split-drag-ghost]")).toBeNull();
+
+    fireWindowPointer("pointercancel", 900, 400);
+    sourceEl.remove();
+  });
+
   it("a vertical in-sidebar drag never engages: reorder is untouched, no drop", () => {
     const config = baseConfig();
     beginSplitDrag(config);

@@ -21,7 +21,7 @@ interface ThreadEnvironmentSummaryProps {
   environmentLabel?: string;
   environmentCompactLabel?: string;
   environmentIcon?: IconName;
-  environmentTypeLabel?: string;
+  environmentProviderName?: string;
   environmentHost?: MachineLabelHost;
   environmentMachineProvider?: MachineProviderPresentation | null;
   environmentCheckout?: WorkspaceCheckoutDisplay;
@@ -33,7 +33,7 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
   environmentLabel,
   environmentCompactLabel,
   environmentIcon,
-  environmentTypeLabel,
+  environmentProviderName,
   environmentHost,
   environmentMachineProvider,
   environmentCheckout,
@@ -59,7 +59,6 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
           compactValue={projectName}
           leading={<Icon name="Folder" className="size-4 shrink-0" />}
           className="h-6 min-w-0 max-w-[10rem] shrink"
-          tooltip={`Project: ${projectName}`}
         />
       ) : null}
       {environmentHost ? (
@@ -71,19 +70,21 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
         />
       ) : environmentLabel ? (
         <div className="inline-flex h-6 w-fit max-w-full min-w-0 shrink items-center justify-start gap-1.5 px-1 text-xs leading-tight text-muted-foreground">
-          {environmentIcon && environmentTypeLabel ? (
+          {environmentIcon &&
+          environmentProviderName &&
+          environmentProviderName !== environmentLabel ? (
             <Tooltip>
               <TooltipTrigger asChild>
                 <span
                   role="img"
                   tabIndex={0}
-                  aria-label={`Environment type: ${environmentTypeLabel}`}
+                  aria-label={environmentProviderName}
                   className="inline-flex size-4 shrink-0 items-center justify-center rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                 >
                   <Icon name={environmentIcon} className="size-4" />
                 </span>
               </TooltipTrigger>
-              <TooltipContent>{environmentTypeLabel}</TooltipContent>
+              <TooltipContent>{environmentProviderName}</TooltipContent>
             </Tooltip>
           ) : environmentIcon ? (
             <Icon
@@ -99,7 +100,6 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
             value={environmentLabel}
             compactValue={environmentCompactLabel}
             className="h-6 min-w-0 shrink px-0"
-            tooltip={environmentLabel}
           />
         </div>
       ) : null}

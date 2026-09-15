@@ -73,7 +73,13 @@ function Resolve-PristineUpstreamFiles {
 }
 
 Invoke-Git fetch $Upstream
-Invoke-Git merge "${Upstream}/${Branch}"
+
+# bb-fork(windows): exit code 1 means merge conflicts, which this script is
+# bb-fork(windows): built to auto-resolve; only harder failures should stop here.
+& git merge "${Upstream}/${Branch}"
+if ($LASTEXITCODE -gt 1) {
+  throw "git merge ${Upstream}/${Branch} failed with exit code $LASTEXITCODE"
+}
 
 Resolve-Lockfile
 Resolve-PristineUpstreamFiles

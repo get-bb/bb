@@ -18,6 +18,7 @@ import {
   getDatabaseCompactionStats,
   getDatabaseFreelistStats,
   getDatabaseMaintenanceActivity,
+  getEnvironment,
   isDatabaseMaintenanceIdle,
   listDeferredLegacyTables,
   migrateNextCompletedEventItemOutput,
@@ -45,6 +46,7 @@ import {
 import {
   finalizeStoppedThread,
   hasLiveThreadStartInFlight,
+  requestThreadStorageDeletion,
 } from "../threads/thread-lifecycle.js";
 import { advanceThreadProvisioning } from "../threads/thread-provisioning.js";
 import {
@@ -317,13 +319,24 @@ async function runThreadProvisioningOrphanCleanupSweep(
       );
     }
   }
-  const deletedUnattachedThreads = deps.db
-    .select({ id: threads.id })
+  const deletedThreads = deps.db
+    .select({
+      environmentId: threads.environmentId,
+      id: threads.id,
+      storageDeletedAt: threads.storageDeletedAt,
+    })
     .from(threads)
-    .where(and(isNotNull(threads.deletedAt), isNull(threads.environmentId)))
+    .where(isNotNull(threads.deletedAt))
     .all();
-  for (const thread of deletedUnattachedThreads) {
-    finalizeStoppedThread(deps, { threadId: thread.id });
+  for (const thread of deletedThreads) {
+    if (thread.storageDeletedAt !== null) {
+      finalizeStoppedThread(deps, { threadId: thread.id });
+      continue;
+    }
+    const environment = thread.environmentId
+      ? getEnvironment(deps.db, thread.environmentId)
+      : null;
+    requestThreadStorageDeletion(deps, thread, environment);
   }
 }
 

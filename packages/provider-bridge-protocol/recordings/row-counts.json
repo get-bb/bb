@@ -66,31 +66,31 @@
     "grammarDrops": 0
   },
   "claude-code/approval-allow": {
-    "events": 12,
+    "events": 14,
     "rows": 2,
     "unhandled": 0,
     "grammarDrops": 0
   },
   "claude-code/approval-deny": {
-    "events": 13,
+    "events": 15,
     "rows": 2,
     "unhandled": 0,
     "grammarDrops": 0
   },
   "claude-code/auth-failure": {
-    "events": 8,
+    "events": 9,
     "rows": 2,
     "unhandled": 0,
     "grammarDrops": 0
   },
   "claude-code/compaction": {
-    "events": 61,
+    "events": 77,
     "rows": 3,
     "unhandled": 2,
     "grammarDrops": 0
   },
   "claude-code/fork": {
-    "events": 10,
+    "events": 11,
     "rows": 1,
     "unhandled": 0,
     "grammarDrops": 0
@@ -102,49 +102,49 @@
     "grammarDrops": 0
   },
   "claude-code/plan-mode": {
-    "events": 42,
+    "events": 54,
     "rows": 2,
     "unhandled": 0,
     "grammarDrops": 0
   },
   "claude-code/resume": {
-    "events": 20,
-    "rows": 2,
-    "unhandled": 0,
-    "grammarDrops": 0
-  },
-  "claude-code/steer": {
-    "events": 61,
-    "rows": 3,
-    "unhandled": 2,
-    "grammarDrops": 0
-  },
-  "claude-code/stop-interrupt": {
-    "events": 55,
-    "rows": 2,
-    "unhandled": 0,
-    "grammarDrops": 0
-  },
-  "claude-code/subagent": {
     "events": 22,
     "rows": 2,
     "unhandled": 0,
     "grammarDrops": 0
   },
+  "claude-code/steer": {
+    "events": 77,
+    "rows": 3,
+    "unhandled": 2,
+    "grammarDrops": 0
+  },
+  "claude-code/stop-interrupt": {
+    "events": 56,
+    "rows": 2,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
+  "claude-code/subagent": {
+    "events": 25,
+    "rows": 2,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
   "claude-code/turn-tools": {
-    "events": 14,
+    "events": 17,
     "rows": 2,
     "unhandled": 0,
     "grammarDrops": 0
   },
   "claude-code/user-question": {
-    "events": 13,
+    "events": 15,
     "rows": 1,
     "unhandled": 0,
     "grammarDrops": 0
   },
   "claude-code/web-search": {
-    "events": 15,
+    "events": 18,
     "rows": 2,
     "unhandled": 0,
     "grammarDrops": 0

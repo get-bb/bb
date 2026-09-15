@@ -7,6 +7,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
@@ -553,7 +554,7 @@ async function handleRequest(
       await handleThreadConstruction(
         request.id,
         request.params.threadId,
-        request.params.threadId,
+        `pi_${randomUUID()}`,
         toPiSessionParams(request.params),
       );
       break;
@@ -1112,13 +1113,14 @@ async function handleTurnStart(
     sendResult(id, { threadId: params.threadId });
     return;
   }
-  const { text, images } = extractPiPromptInput(params.input);
-  if (!text && images.length === 0) {
+  const input = extractPiPromptInput(params.input);
+  if (input === null) {
     sendError(id, BRIDGE_JSON_RPC_ERRORS.INVALID_PARAMS, "Missing input text");
     return;
   }
+  const { text, images } = input;
   try {
-    await startPiPrompt(threadSession, params.threadId, text ?? "", images);
+    await startPiPrompt(threadSession, params.threadId, text, images);
     recordAcceptedTurnInput(params);
     sendResult(id, { threadId: params.threadId });
   } catch (error) {
@@ -1139,18 +1141,19 @@ async function handleTurnSteer(
     sendError(id, -32000, "No active pi session");
     return;
   }
-  const { text, images } = extractPiPromptInput(params.input);
-  if (!text && images.length === 0) {
+  const input = extractPiPromptInput(params.input);
+  if (input === null) {
     sendError(id, BRIDGE_JSON_RPC_ERRORS.INVALID_PARAMS, "Missing input text");
     return;
   }
+  const { text, images } = input;
   if (threadSession.session.getIsCompacting()) {
     sendError(id, -32000, "Cannot steer while context compaction is active");
     return;
   }
   try {
     await threadSession.session.steer(
-      text ?? "",
+      text,
       images.length > 0 ? images : undefined,
     );
     sendThreadDeltas(params.threadId, [

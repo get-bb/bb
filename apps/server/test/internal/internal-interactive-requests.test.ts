@@ -976,7 +976,12 @@ describe("internal interactive request lifecycle", () => {
         listPendingInteractionsByThread(harness.db, {
           threadId: thread.id,
         }).map(toPendingInteraction),
-      ).toEqual([]);
+      ).toEqual([
+        expect.objectContaining({
+          status: "interrupted",
+          statusReason: "thread-deleted",
+        }),
+      ]);
     });
   });
 

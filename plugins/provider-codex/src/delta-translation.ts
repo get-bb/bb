@@ -1230,6 +1230,12 @@ export function translateCodexEventToDeltas(
             totalTokens: tokenUsage.total.totalTokens,
             inputTokens: tokenUsage.total.inputTokens,
             cachedInputTokens: tokenUsage.total.cachedInputTokens,
+            cacheReadInputTokens: tokenUsage.total.cachedInputTokens,
+            ...(tokenUsage.total.cacheWriteInputTokens === undefined
+              ? {}
+              : {
+                  cacheWriteInputTokens: tokenUsage.total.cacheWriteInputTokens,
+                }),
             outputTokens: tokenUsage.total.outputTokens,
             reasoningOutputTokens: tokenUsage.total.reasoningOutputTokens,
           },
@@ -1237,6 +1243,12 @@ export function translateCodexEventToDeltas(
             totalTokens: tokenUsage.last.totalTokens,
             inputTokens: tokenUsage.last.inputTokens,
             cachedInputTokens: tokenUsage.last.cachedInputTokens,
+            cacheReadInputTokens: tokenUsage.last.cachedInputTokens,
+            ...(tokenUsage.last.cacheWriteInputTokens === undefined
+              ? {}
+              : {
+                  cacheWriteInputTokens: tokenUsage.last.cacheWriteInputTokens,
+                }),
             outputTokens: tokenUsage.last.outputTokens,
             reasoningOutputTokens: tokenUsage.last.reasoningOutputTokens,
           },

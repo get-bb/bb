@@ -28,8 +28,8 @@ import {
 import { getFixedPanelTabsStateStorageKey } from "@/lib/fixed-panel-tabs-state";
 
 const TABS: readonly SidebarSplitTabDescriptor[] = [
-  { id: "tab-a", label: "A" },
-  { id: "tab-b", label: "B" },
+  { id: "tab-a", label: "A", restoresPlacementAfterRemoval: true },
+  { id: "tab-b", label: "B", restoresPlacementAfterRemoval: true },
 ];
 const PANEL_STATE_ID = "sidebar-split-container-test";
 let nextPaneInstance = 0;
@@ -321,7 +321,11 @@ describe("SidebarSplitContainer", () => {
       const tabs = terminalOpen
         ? [
             TABS[0] as SidebarSplitTabDescriptor,
-            { id: "terminal-a", label: "Terminal" },
+            {
+              id: "terminal-a",
+              label: "Terminal",
+              restoresPlacementAfterRemoval: true,
+            },
           ]
         : TABS;
       return (
@@ -362,6 +366,72 @@ describe("SidebarSplitContainer", () => {
       ).toEqual(["tab-a", "terminal-a"]),
     );
     expect(document.querySelectorAll("[data-split-pane-id]")).toHaveLength(2);
+  });
+
+  it("appends a transient launcher instead of restoring its removed position", async () => {
+    const launcher: SidebarSplitTabDescriptor = {
+      id: "new-tab",
+      label: "New tab",
+      restoresPlacementAfterRemoval: false,
+    };
+    const file: SidebarSplitTabDescriptor = {
+      id: "file-a",
+      label: "File A",
+      restoresPlacementAfterRemoval: true,
+    };
+
+    function Harness() {
+      const [phase, setPhase] = useState<"launcher" | "file" | "both">(
+        "launcher",
+      );
+      const tabs =
+        phase === "launcher"
+          ? [launcher]
+          : phase === "file"
+            ? [file]
+            : [file, launcher];
+      return (
+        <>
+          <button type="button" onClick={() => setPhase("file")}>
+            Select file
+          </button>
+          <button type="button" onClick={() => setPhase("both")}>
+            Open new tab
+          </button>
+          <SidebarSplitContainer
+            activeTabId={phase === "file" ? file.id : launcher.id}
+            isFullScreen={false}
+            onActivateTab={vi.fn()}
+            onGlobalTabReorder={vi.fn()}
+            onToggleFullScreen={vi.fn()}
+            panelStateId={PANEL_STATE_ID}
+            renderPane={({ group }) => (
+              <div data-testid="tab-order">{group.tabIds.join(",")}</div>
+            )}
+            tabs={tabs}
+          />
+        </>
+      );
+    }
+
+    render(
+      <SidebarProvider>
+        <TooltipProvider>
+          <Harness />
+        </TooltipProvider>
+      </SidebarProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Select file" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("tab-order").textContent).toBe("file-a"),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open new tab" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("tab-order").textContent).toBe(
+        "file-a,new-tab",
+      ),
+    );
   });
 
   it.each([
@@ -408,7 +478,10 @@ describe("SidebarSplitContainer", () => {
   it.each(["left", "right", "top", "bottom"] as const)(
     "splits the active tab from an unfocused multi-tab pane to the %s",
     (side) => {
-      const tabs = [...TABS, { id: "tab-c", label: "C" }];
+      const tabs = [
+        ...TABS,
+        { id: "tab-c", label: "C", restoresPlacementAfterRemoval: true },
+      ];
       const initial = createSidebarSplitState(
         tabs.map((tab) => tab.id),
         "tab-a",

@@ -1178,6 +1178,31 @@ describe("pi delta translation equivalence", () => {
     );
   });
 
+  it("tool_execution_start with edit batch args marks the change as an update", () => {
+    const harness = createHarness();
+    harness.translate(loadFixture("agent-start.json"));
+
+    const events = harness.translate({
+      type: "tool_execution_start",
+      toolCallId: "tool-edit-batch",
+      toolName: "edit",
+      args: {
+        path: "src/app.ts",
+        edits: [{ oldText: "before", newText: "after" }],
+      },
+    } as AgentSessionEvent);
+
+    const started = events.find(
+      (event): event is Extract<ThreadEvent, { type: "item/started" }> =>
+        event.type === "item/started",
+    );
+    expect(started?.item).toMatchObject({
+      type: "fileChange",
+      status: "pending",
+      changes: [{ path: "src/app.ts", kind: "update" }],
+    });
+  });
+
   it("tool_execution_start with content-only write args marks the change as an add", () => {
     const harness = createHarness();
     harness.translate(loadFixture("agent-start.json"));
@@ -1618,6 +1643,126 @@ describe("pi delta translation equivalence", () => {
     expect(events).toEqual([]);
   });
 
+  it.each([
+    [{}, {}],
+    [{ cacheRead: 0 }, { cacheReadInputTokens: 0 }],
+    [{ cacheWrite: 0 }, { cacheWriteInputTokens: 0 }],
+    [{ cacheRead: 31 }, { cacheReadInputTokens: 31 }],
+    [{ cacheWrite: 9 }, { cacheWriteInputTokens: 9 }],
+  ])(
+    "preserves independently omitted Pi cache counts %j",
+    (counts, expected) => {
+      const harness = createHarness();
+      harness.translate(loadFixture("agent-start.json"));
+      const events = harness.translate({
+        type: "agent_end",
+        messages: [
+          {
+            role: "assistant",
+            content: [],
+            usage: { input: 80, output: 20, ...counts },
+          },
+        ],
+      });
+      const event = events.find(
+        (event) => event.type === "thread/tokenUsage/updated",
+      );
+      expect(event).toBeDefined();
+      expect(event?.tokenUsage.last).toMatchObject(expected);
+      expect(
+        Object.keys(event?.tokenUsage.last ?? {})
+          .filter(
+            (key) =>
+              key === "cacheReadInputTokens" || key === "cacheWriteInputTokens",
+          )
+          .sort(),
+      ).toEqual(Object.keys(expected).sort());
+    },
+  );
+
+  it.each(["cacheRead", "cacheWrite"])(
+    "invalid %s cannot discard Pi completion or valid usage",
+    (field) => {
+      for (const invalid of [-1, null, "invalid", Infinity, NaN]) {
+        const harness = createHarness();
+        harness.translate(loadFixture("agent-start.json"));
+        const events = harness.translate({
+          type: "agent_end",
+          providerCheckpointId: "checkpoint-cache",
+          messages: [
+            {
+              role: "assistant",
+              content: [{ type: "text", text: "Finished" }],
+              usage: {
+                input: 80,
+                output: 20,
+                cacheRead: 31,
+                cacheWrite: 9,
+                [field]: invalid,
+              },
+            },
+          ],
+        });
+        expect(events).toContainEqual(
+          expect.objectContaining({
+            type: "item/completed",
+            item: expect.objectContaining({ text: "Finished" }),
+          }),
+        );
+        expect(events).toContainEqual(
+          expect.objectContaining({
+            type: "turn/completed",
+            providerCheckpointId: "checkpoint-cache",
+          }),
+        );
+        expect(harness.openTurnId()).toBe("");
+        const event = events.find(
+          (event) => event.type === "thread/tokenUsage/updated",
+        );
+        const validCounts =
+          field === "cacheRead"
+            ? { cacheWriteInputTokens: 9 }
+            : { cacheReadInputTokens: 31 };
+        expect(event?.tokenUsage.last).toEqual({
+          totalTokens: field === "cacheRead" ? 109 : 131,
+          inputTokens: 80,
+          outputTokens: 20,
+          cachedInputTokens: field === "cacheRead" ? 9 : 31,
+          reasoningOutputTokens: 0,
+          ...validCounts,
+        });
+      }
+    },
+  );
+
+  it("invalid cache counts in earlier messages cannot discard Pi error settlement", () => {
+    const harness = createHarness();
+    harness.translate(loadFixture("agent-start.json"));
+    const events = harness.translate({
+      type: "agent_end",
+      messages: [
+        { role: "assistant", content: [], usage: { cacheRead: -1 } },
+        {
+          role: "assistant",
+          content: [],
+          stopReason: "error",
+          errorMessage: "Provider failed",
+          usage: { cacheWrite: -1 },
+        },
+      ],
+    });
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "provider/error",
+        detail: "Provider failed",
+      }),
+    );
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: "turn/completed", status: "failed" }),
+    );
+    expect(harness.openTurnId()).toBe("");
+  });
+
   it("accumulates Pi token usage across turns", () => {
     const harness = createHarness({
       resolveModelContextWindow: () => 123_456,
@@ -1650,6 +1795,8 @@ describe("pi delta translation equivalence", () => {
       totalTokens: 7736,
       inputTokens: 4200,
       cachedInputTokens: 3380,
+      cacheReadInputTokens: 3100,
+      cacheWriteInputTokens: 280,
       outputTokens: 156,
     });
     expect(firstTokenUsage?.tokenUsage.modelContextWindow).toBe(123_456);
@@ -1657,6 +1804,8 @@ describe("pi delta translation equivalence", () => {
       totalTokens: 15472,
       inputTokens: 8400,
       cachedInputTokens: 6760,
+      cacheReadInputTokens: 6200,
+      cacheWriteInputTokens: 560,
       outputTokens: 312,
     });
     expect(secondTokenUsage?.tokenUsage.last).toEqual(

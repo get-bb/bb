@@ -52,7 +52,7 @@ function threadStartTurnRequest(
 
 function installTelemetryCaptureSpy(harness: TestAppHarness) {
   const capture = vi.fn<TelemetryService["capture"]>();
-  harness.deps.telemetry = { capture };
+  harness.deps.telemetry = { ...harness.deps.telemetry, capture };
   return capture;
 }
 

@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import path from "node:path";
 import type { AgentRuntimeBridgeLaunch } from "@bb/agent-runtime";
 import { flattenPromptInputGroups } from "@bb/domain";
 import type { HostDaemonCommandResult } from "@bb/host-daemon-contract";
@@ -45,6 +46,18 @@ interface StageThreadCommandInputArgs {
 interface StagedThreadCommandInput {
   cleanup: () => Promise<void>;
   input: TurnSubmitCommand["input"];
+}
+
+export async function deleteThreadStorage(
+  command: CommandOf<"thread.storage.delete">,
+  options: CommandDispatchOptions,
+): Promise<void> {
+  const storagePath = requireContainedPath(
+    options.threadStorageRootPath,
+    path.join(options.threadStorageRootPath, command.threadId),
+    "Thread storage path escapes the storage root",
+  );
+  await fs.rm(storagePath, { recursive: true, force: true });
 }
 
 type ThreadStartRuntimeCommand =

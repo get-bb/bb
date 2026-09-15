@@ -7,7 +7,7 @@ description: Verify BB user journeys in an isolated source dev app using dev-bro
 
 Run from the repository root. Start with [the feature map](features/README.md)
 and select the affected journeys. Read `docs/debugging-and-qa.md` for the
-existing launcher's contract. The launch below targets the source web app and
+source development workflow. The launch below targets the source web app and
 local host daemon. Desktop, native mobile, and hosted services have additional
 setup in their feature files. A pass on one platform does not verify another.
 
@@ -68,15 +68,14 @@ node --version
 npm install -g dev-browser@next
 dev-browser --version
 dev-browser --help
-scripts/bb-dev-app status
 ```
 
 If Chrome is missing, run `dev-browser install`. The browser CLI accepts
 Puppeteer scripts on stdin and keeps named pages between calls.
 
-Choose an unused checkout. The launcher assigns ports and a data directory
-from the checkout path. Read its status before starting: `current` restarts
-processes on those ports, so do not use it on someone else's instance.
+Choose an unused checkout. `pnpm dev` assigns ports and a data directory
+from the checkout path. Resolve them before starting and confirm the ports
+are free.
 Use a fresh store, never an imported store or the user's production database.
 
 For a new run, create a unique evidence directory and a nonempty fresh dev
@@ -88,7 +87,14 @@ or adopt the existing data.
 ```bash
 export BB_VERIFY_RUN="$(mktemp -d /tmp/bb-verification-XXXXXX)"
 export BB_VERIFY_BROWSER="verify-bb-$(basename "$BB_VERIFY_RUN")"
-scripts/bb-dev-app status > "$BB_VERIFY_RUN/before-launch.txt"
+node --conditions=source --import tsx --input-type=module > "$BB_VERIFY_RUN/before-launch.txt" <<'JS'
+import { resolveCurrentDevInstanceConfig } from './packages/config/src/runtime.ts';
+const config = resolveCurrentDevInstanceConfig(process.cwd());
+console.log(`App: http://127.0.0.1:${config.ports.appPort}`);
+console.log(`Server: ${config.serverUrl}`);
+console.log(`Host daemon: http://127.0.0.1:${config.ports.hostDaemonPort}`);
+console.log(`Data dir: ${config.dataDir}`);
+JS
 command -v lsof >/dev/null || exit 1
 for BB_VERIFY_PORT in $(sed -nE 's/^(App|Server|Host daemon): http:\/\/[^:]+:([0-9]+)$/\2/p' "$BB_VERIFY_RUN/before-launch.txt"); do
   if lsof -nP -iTCP:"$BB_VERIFY_PORT" -sTCP:LISTEN; then
@@ -101,18 +107,18 @@ test -n "$BB_VERIFY_DATA_DIR" && test -n "$BB_VERIFY_APP_URL" || exit 1
 mkdir "$BB_VERIFY_DATA_DIR" || exit 1
 printf '%s\n' "$BB_VERIFY_RUN" > "$BB_VERIFY_DATA_DIR/verify-bb-owner"
 git rev-parse HEAD > "$BB_VERIFY_RUN/source-commit.txt"
-scripts/bb-dev-app current > "$BB_VERIFY_RUN/launch.log" 2>&1
+pnpm dev > "$BB_VERIFY_RUN/launch.log" 2>&1
 ```
 
-All three ports must be unoccupied before `current`, which stops listeners
-before it starts the app. A stopped screen session alone is insufficient;
-checkout-derived ports can collide. Run under the same OS user that owns
+All three ports must be unoccupied before starting; checkout-derived ports
+can collide. Run under the same OS user that owns
 the dev processes so listener inspection is complete.
 
 Run slow startup through the agent's background process facility, inspect the
-log, and provide progress while it builds. Startup must finish successfully
-before driving. If it fails, inspect the error and clean up that attempt.
-The launcher runs install, native-module checks, and Turbo builds itself.
+log, and provide progress while it builds. Keep the process session handle
+for cleanup and wait for server and daemon health before driving. If it fails, inspect the error and clean up that attempt.
+`pnpm dev` runs native-module checks and starts development tasks through
+Turbo. Install dependencies with `pnpm install` first if they are missing.
 
 Record the variables above in your run notes so later shell calls retain the
 same targets. Never rely on variables surviving separate agent shell calls.
@@ -128,9 +134,10 @@ use an isolated checkout and keep the serving checkout's data/ports stable.
 ## Doctor
 
 ```bash
-scripts/bb-dev-app status
-eval "$(scripts/bb-dev-app env)"
-unset BB_CLI BB_CLI_REEXEC
+export BB_SERVER_URL="$(sed -n 's/^Server: //p' "$BB_VERIFY_RUN/before-launch.txt")"
+export BB_HOST_DAEMON_PORT="$(sed -nE 's/^Host daemon: http:\/\/[^:]+:([0-9]+)$/\1/p' "$BB_VERIFY_RUN/before-launch.txt")"
+unset BB_THREAD_ID BB_ENVIRONMENT_ID BB_THREAD_STORAGE BB_PROJECT_ID BB_CLI BB_CLI_REEXEC
+pnpm exec turbo run build --filter=@bb/cli
 curl -fsS "$BB_SERVER_URL/health"
 curl -fsS "http://127.0.0.1:$BB_HOST_DAEMON_PORT/health"
 curl -fsS "$BB_SERVER_URL/api/v1/hosts"
@@ -139,17 +146,14 @@ node apps/cli/dist/index.js project list --json
 
 The server health returns `{"ok":true}` (possibly with `launchId`); daemon
 health returns `ok`. Require the intended host to be `connected`. Inspect
-`lsof -nP -iTCP:<port> -sTCP:LISTEN` for each port reported by status, then
+`lsof -nP -iTCP:<port> -sTCP:LISTEN` for each port recorded in preflight, then
 check its PID's command and working directory with `ps` and `lsof -p <pid>`.
 A responding port alone does not establish instance ownership. Record the
 current source commit and whether the tree is dirty with the launch evidence.
 
-`scripts/bb-dev-app env` deliberately clears the parent thread context,
-including `BB_THREAD_STORAGE`. Save the evidence location before evaluating
-it. It targets the dev server and daemon. In that isolated shell, unset both
-`BB_CLI` and `BB_CLI_REEXEC`, then use `node apps/cli/dist/index.js` for CLI
-checks. The launcher builds this entry point through Turbo. If a separate build
-is needed, run `pnpm exec turbo run build --filter=@bb/cli` first.
+The doctor shell clears inherited thread context and CLI overrides and sets
+explicit dev endpoints from preflight. Use `node apps/cli/dist/index.js` for
+CLI checks after the Turbo build above.
 
 The source entry point otherwise reexecutes an inherited `BB_CLI`, silently
 using the installed client against the dev server. During maintenance,
@@ -159,7 +163,7 @@ the bytes. Check the returned content and revision, not only the exit code.
 Keep these environment changes inside the test shell or wrapper; use bare
 `bb` outside it for coordination with the parent BB thread.
 
-Commands such as workflows require thread context. After evaluating the dev
+Commands such as workflows require thread context. After configuring the dev
 environment, set `BB_THREAD_ID`, `BB_PROJECT_ID`, and `BB_ENVIRONMENT_ID` only
 from synthetic entities created in that instance. Never restore the parent's
 production context. A wrapper that changes directory must invoke the built
@@ -218,13 +222,13 @@ into this skill.
 
 Restore settings through the UI and leave synthetic threads idle. Capture
 logs and evidence before stopping. Verify the ownership marker and inspect
-the checkout's listeners again before invoking the launcher stop command.
+the checkout's listeners again before stopping the owned process session.
+Send Ctrl-C to the `pnpm dev` session saved at launch and wait for it to exit.
+Stop any separately started desktop task through its own session too.
 
 ```bash
 test "$(cat "$BB_VERIFY_DATA_DIR/verify-bb-owner")" = "$BB_VERIFY_RUN" || exit 1
 dev-browser stop "$BB_VERIFY_BROWSER"
-scripts/bb-dev-app stop
-scripts/bb-dev-app status > "$BB_VERIFY_RUN/after-stop.txt"
 test -s "$BB_VERIFY_RUN/source-commit.txt"
 ```
 

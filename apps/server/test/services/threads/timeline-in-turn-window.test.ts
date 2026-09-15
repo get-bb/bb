@@ -2053,7 +2053,10 @@ describe("turn details for an item that finishes in a later turn", () => {
       unfinishedLatest.timelinePage.olderCursor!,
     ).response;
     const beforeThought = unfinishedOlder.rows.find(
-      (row) => row.kind === "system" && row.title.startsWith("Thought for"),
+      (row) =>
+        row.kind === "system" &&
+        row.systemKind === "operation" &&
+        row.operationKind === "reasoning",
     );
     expect(beforeThought).toMatchObject({ detail: "Checking" });
 
@@ -2077,7 +2080,10 @@ describe("turn details for an item that finishes in a later turn", () => {
     expect(latest.rows.some((row) => row.kind === "system")).toBe(false);
     const after = collectTurnDetailsAndChildren(db, thread).get(turnId);
     const thoughts = after?.details.filter(
-      (row) => row.kind === "system" && row.title.startsWith("Thought for"),
+      (row) =>
+        row.kind === "system" &&
+        row.systemKind === "operation" &&
+        row.operationKind === "reasoning",
     );
     expect(thoughts).toEqual([
       expect.objectContaining({

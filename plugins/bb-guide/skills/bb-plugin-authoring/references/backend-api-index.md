@@ -130,8 +130,12 @@ Read the installed declarations for exact current signatures.
 - `PluginCodeThemeData`
 - `PluginCodeThemeState`
 - `PluginCodeThemeTokenRule`
-- `PluginCommandPaletteActionContext`
-- `PluginCommandPaletteActionRegistration`
+- `PluginAppCommands`
+- `PluginCommandContext`
+- `PluginCommandPaletteActionContext` (deprecated alias)
+- `PluginCommandShortcut`
+- `PluginCommandRegistration`
+- `PluginCommandPaletteActionRegistration` (deprecated alias)
 - `PluginComposerApi`
 - `PluginComposerMention`
 - `PluginComposerScope`
@@ -160,6 +164,7 @@ Read the installed declarations for exact current signatures.
 - `PluginKvStorage`
 - `PluginLogger`
 - `PluginMentionItem`
+- `ExperimentalPluginMentionImage`
 - `PluginMentionProviderRegistration`
 - `PluginMentionSearchContext`
 - `PluginMentionTrigger`

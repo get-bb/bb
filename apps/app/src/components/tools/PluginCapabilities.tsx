@@ -288,6 +288,12 @@ function pluginAppSurfaceItems(
       "thread-header",
       "Adds an action to thread headers.",
     ),
+    ...namedSlotItems(
+      pluginId,
+      slots.browserToolbarActions,
+      "browser-toolbar",
+      "Adds an action to Browser tab toolbars.",
+    ),
     ...slots.composerCustomizations
       .filter((slot) => slot.pluginId === pluginId)
       .flatMap((slot) => [

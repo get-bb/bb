@@ -20,6 +20,67 @@ import {
 } from "@bb/provider-bridge-protocol/bridge-kit";
 import { shouldAutoDenyInteractiveRequest } from "@bb/provider-bridge-protocol/bridge-kit";
 
+export class RuntimeToolCalls {
+  private readonly pending = new Map<
+    string,
+    Map<
+      string | number,
+      {
+        controller: AbortController;
+        threadId: string;
+        turnId: string;
+      }
+    >
+  >();
+
+  start(scope: string, request: ToolCallRequest): AbortController | null {
+    let calls = this.pending.get(scope);
+    if (!calls) {
+      calls = new Map();
+      this.pending.set(scope, calls);
+    }
+    if (calls.has(request.requestId)) return null;
+    const controller = new AbortController();
+    calls.set(request.requestId, {
+      controller,
+      threadId: request.threadId,
+      turnId: request.turnId,
+    });
+    return controller;
+  }
+
+  finish(
+    scope: string,
+    requestId: string | number,
+    controller: AbortController,
+  ): void {
+    const calls = this.pending.get(scope);
+    if (calls?.get(requestId)?.controller !== controller) return;
+    calls.delete(requestId);
+    if (calls?.size === 0) this.pending.delete(scope);
+  }
+
+  cancel(scope: string, requestId: string | number): void {
+    const call = this.pending.get(scope)?.get(requestId);
+    if (!call) return;
+    this.finish(scope, requestId, call.controller);
+    call.controller.abort();
+  }
+
+  cancelThread(threadId: string, turnId?: string): void {
+    for (const [scope, calls] of this.pending) {
+      for (const [requestId, call] of calls) {
+        if (
+          call.threadId === threadId &&
+          (turnId === undefined || call.turnId === turnId)
+        ) {
+          this.cancel(scope, requestId);
+        }
+      }
+    }
+  }
+}
+
 export type RuntimeProviderRequestKind = "interactive request" | "tool call";
 
 interface RuntimeProviderRequestProcess {
@@ -49,6 +110,7 @@ interface HandleRuntimeProviderRequestArgs extends RuntimeProviderRequestArgs {
   ) => AgentRuntimeExecutionOptions | undefined;
   onInteractiveRequest: AgentRuntimeOptions["onInteractiveRequest"];
   onToolCall: AgentRuntimeOptions["onToolCall"];
+  toolCalls: RuntimeToolCalls;
   resolveThreadId: (
     args: ResolveRuntimeProviderRequestThreadIdArgs,
   ) => string | null;
@@ -145,9 +207,16 @@ function handleToolCallProviderRequest(
       ? { arguments: toolCallReq.arguments }
       : {}),
   };
-  void args
-    .onToolCall(scopedToolCallReq)
+  const scope = args.providerProcess.interactiveRequestScope;
+  const controller = args.toolCalls.start(scope, scopedToolCallReq);
+  if (!controller) return true;
+  void Promise.resolve()
+    .then(() => {
+      controller.signal.throwIfAborted();
+      return args.onToolCall(scopedToolCallReq, controller.signal);
+    })
     .then((response) => {
+      if (controller.signal.aborted) return;
       sendJsonRpcResult({
         child: args.providerProcess.child,
         id: args.parsedId,
@@ -155,12 +224,16 @@ function handleToolCallProviderRequest(
       });
     })
     .catch((err) => {
+      if (controller.signal.aborted) return;
       sendJsonRpcError({
         child: args.providerProcess.child,
         id: args.parsedId,
         message: err instanceof Error ? err.message : String(err),
       });
-    });
+    })
+    .finally(() =>
+      args.toolCalls.finish(scope, scopedToolCallReq.requestId, controller),
+    );
   return true;
 }
 

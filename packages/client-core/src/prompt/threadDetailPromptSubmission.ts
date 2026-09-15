@@ -127,6 +127,7 @@ export function shouldQueueFollowUpMessage(
     displayStatus === "host-reconnecting" ||
     displayStatus === "provisioning" ||
     displayStatus === "starting" ||
+    displayStatus === "stopping" ||
     displayStatus === "waiting-for-host"
   );
 }
@@ -140,7 +141,7 @@ export function buildFollowUpSubmitMode({
   runtimeDisplayStatus,
 }: BuildFollowUpSubmitModeArgs): FollowUpSubmitMode {
   if (isStopRequested) {
-    return { kind: "blocked", reason: "stopping" };
+    return { kind: "queue-while-stopping" };
   }
   if (isPendingInteractionsInitialLoading) {
     return { kind: "blocked", reason: "loading-pending-interactions" };
@@ -189,14 +190,21 @@ export function canSubmitFollowUpShortcut({
   runtimeDisplayStatus,
   submitModeKind,
 }: CanSubmitFollowUpShortcutArgs): boolean {
-  return (
+  if (isFollowUpSubmitting || isQueueMutationPending) {
+    return false;
+  }
+  const canSteerActiveWork =
     (runtimeDisplayStatus === "active" ||
       runtimeDisplayStatus === "provisioning" ||
       runtimeDisplayStatus === "starting") &&
-    submitModeKind === "queue" &&
-    !isFollowUpSubmitting &&
-    !isQueueMutationPending &&
-    (queuedMessageCount > 0 || hasPromptDraftInput)
+    submitModeKind === "queue";
+  if (hasPromptDraftInput) {
+    return canSteerActiveWork;
+  }
+  return (
+    queuedMessageCount > 0 &&
+    (canSteerActiveWork ||
+      (runtimeDisplayStatus === "idle" && submitModeKind === "ready"))
   );
 }
 

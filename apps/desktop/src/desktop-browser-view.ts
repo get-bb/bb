@@ -160,6 +160,7 @@ interface NativeTabRef extends NativeTabScope {
 }
 
 interface BrowserViewEntry {
+  webContents: WebContents;
   view: WebContentsView;
   hostWindow: DesktopBrowserHostWindow;
   threadId: string;
@@ -354,7 +355,7 @@ function buildBrowserState(
   tabId: string,
   entry: BrowserViewEntry,
 ): BbDesktopBrowserState {
-  const webContents = entry.view.webContents;
+  const webContents = entry.webContents;
   const url = webContents.getURL();
   const rawTitle = webContents.getTitle();
   const title = rawTitle.length > 0 && rawTitle !== url ? rawTitle : null;
@@ -403,7 +404,7 @@ export function createDesktopBrowserViewManager(
     entry: BrowserViewEntry,
     hostWindow: DesktopBrowserHostWindow,
   ): void {
-    if (entry.view.webContents.isDestroyed()) {
+    if (entry.webContents.isDestroyed()) {
       return;
     }
     entry.view.setVisible(
@@ -446,7 +447,7 @@ export function createDesktopBrowserViewManager(
     }
     entry.rendererRecoveryTimer = setTimeout(() => {
       entry.rendererRecoveryTimer = null;
-      const webContents = entry.view.webContents;
+      const webContents = entry.webContents;
       if (
         webContents.isDestroyed() ||
         entry.rendererRecoveryState !== "pending" ||
@@ -470,7 +471,7 @@ export function createDesktopBrowserViewManager(
     const hideCap = setTimeout(() => {
       applyEntryVisibility(entry, hostWindow);
     }, RESIZE_SNAPSHOT_HIDE_CAP_MS);
-    entry.view.webContents
+    entry.webContents
       .capturePage()
       .then((image) => {
         if (!isHostResizing(hostWindow) || image.isEmpty()) {
@@ -521,7 +522,7 @@ export function createDesktopBrowserViewManager(
     tabId: string,
   ): void {
     const entry = entries.get(browserViewKey(hostWindow, tabId));
-    if (!entry || entry.view.webContents.isDestroyed()) {
+    if (!entry || entry.webContents.isDestroyed()) {
       return;
     }
     send(
@@ -601,10 +602,10 @@ export function createDesktopBrowserViewManager(
     tabId: string,
     entry: BrowserViewEntry,
   ): void {
-    const webContents = entry.view.webContents;
+    const webContents = entry.webContents;
+    const key = browserViewKey(hostWindow, tabId);
 
     webContents.on("destroyed", () => {
-      const key = browserViewKey(hostWindow, tabId);
       if (entries.get(key) === entry) {
         destroyEntry(hostWindow, key);
       }
@@ -792,6 +793,7 @@ export function createDesktopBrowserViewManager(
     });
     const entry: BrowserViewEntry = {
       view,
+      webContents: view.webContents,
       hostWindow: args.hostWindow,
       threadId: args.threadId,
       generation: randomUUID(),
@@ -818,14 +820,14 @@ export function createDesktopBrowserViewManager(
     if (url.length === 0) {
       return;
     }
-    if (entry.view.webContents.getURL() === url) {
+    if (entry.webContents.getURL() === url) {
       return;
     }
     if (!isAllowedBrowserUrl(url)) {
       return;
     }
     entry.lastErrorText = null;
-    entry.view.webContents.loadURL(url).catch(() => {});
+    entry.webContents.loadURL(url).catch(() => {});
   }
 
   function disposeEntry(key: string, entry: BrowserViewEntry): void {
@@ -835,8 +837,8 @@ export function createDesktopBrowserViewManager(
       if (!popupWindow.isDestroyed()) popupWindow.destroy();
     }
     entry.popupWindows.clear();
-    if (!entry.view.webContents.isDestroyed()) {
-      entry.view.webContents.close();
+    if (!entry.webContents.isDestroyed()) {
+      entry.webContents.close();
     }
     notifyAutomationTabs();
   }
@@ -860,7 +862,7 @@ export function createDesktopBrowserViewManager(
     fn: (entry: BrowserViewEntry) => void,
   ): void {
     const entry = entries.get(browserViewKey(args.hostWindow, args.tabId));
-    if (!entry || entry.view.webContents.isDestroyed()) {
+    if (!entry || entry.webContents.isDestroyed()) {
       return;
     }
     fn(entry);
@@ -872,7 +874,7 @@ export function createDesktopBrowserViewManager(
       entry === undefined ||
       entry.threadId !== ref.threadId ||
       entry.generation !== ref.generation ||
-      entry.view.webContents.isDestroyed()
+      entry.webContents.isDestroyed()
     ) {
       throw new Error("Native browser tab is unavailable or has been replaced");
     }
@@ -908,7 +910,7 @@ export function createDesktopBrowserViewManager(
 
   function focusEntryWithoutNotifying(entry: BrowserViewEntry): void {
     entry.suppressNextFocusNotification = true;
-    entry.view.webContents.focus();
+    entry.webContents.focus();
     setTimeout(() => {
       entry.suppressNextFocusNotification = false;
     }, 0);
@@ -931,7 +933,7 @@ export function createDesktopBrowserViewManager(
         request.visible &&
         !wasVisible &&
         !hasOtherVisibleEntry(hostWindow, request.tabId) &&
-        !entry.view.webContents.isDestroyed()
+        !entry.webContents.isDestroyed()
       ) {
         focusEntryWithoutNotifying(entry);
       }
@@ -969,7 +971,7 @@ export function createDesktopBrowserViewManager(
         if (
           key.startsWith(prefix) &&
           (threadId === null || entry.threadId === threadId) &&
-          !entry.view.webContents.isDestroyed()
+          !entry.webContents.isDestroyed()
         ) {
           tabs.push(nativeTab(key.slice(prefix.length), entry));
         }
@@ -998,7 +1000,7 @@ export function createDesktopBrowserViewManager(
       ) {
         throw new Error("Invalid browser capture dimensions or quality");
       }
-      const image = await captureDesktopBrowserPage(entry.view.webContents);
+      const image = await captureDesktopBrowserPage(entry.webContents);
       requireNativeEntry(request);
       if (image.isEmpty()) throw new Error("Native browser capture is empty");
       const size = image.getSize();
@@ -1026,11 +1028,11 @@ export function createDesktopBrowserViewManager(
         if (
           key.startsWith(prefix) &&
           entry.threadId === threadId &&
-          !entry.view.webContents.isDestroyed()
+          !entry.webContents.isDestroyed()
         ) {
           tabs.push({
             tabId: key.slice(prefix.length),
-            webContents: entry.view.webContents,
+            webContents: entry.webContents,
           });
         }
       }
@@ -1066,7 +1068,7 @@ export function createDesktopBrowserViewManager(
         request.visible &&
         !wasVisible &&
         !hasOtherVisibleEntry(hostWindow, request.tabId) &&
-        !entry.view.webContents.isDestroyed()
+        !entry.webContents.isDestroyed()
       ) {
         focusEntryWithoutNotifying(entry);
       }
@@ -1091,32 +1093,32 @@ export function createDesktopBrowserViewManager(
     },
     goBack({ hostWindow, tabId }) {
       withEntry({ hostWindow, tabId }, (entry) => {
-        if (entry.view.webContents.navigationHistory.canGoBack()) {
+        if (entry.webContents.navigationHistory.canGoBack()) {
           resetEntryRendererRecovery(entry);
           applyEntryVisibility(entry, hostWindow);
-          entry.view.webContents.navigationHistory.goBack();
+          entry.webContents.navigationHistory.goBack();
         }
       });
     },
     goForward({ hostWindow, tabId }) {
       withEntry({ hostWindow, tabId }, (entry) => {
-        if (entry.view.webContents.navigationHistory.canGoForward()) {
+        if (entry.webContents.navigationHistory.canGoForward()) {
           resetEntryRendererRecovery(entry);
           applyEntryVisibility(entry, hostWindow);
-          entry.view.webContents.navigationHistory.goForward();
+          entry.webContents.navigationHistory.goForward();
         }
       });
     },
     reload({ hostWindow, tabId }) {
       withEntry({ hostWindow, tabId }, (entry) => {
         resetEntryRendererRecovery(entry);
-        entry.view.webContents.reload();
+        entry.webContents.reload();
         applyEntryVisibility(entry, hostWindow);
       });
     },
     stop({ hostWindow, tabId }) {
       withEntry({ hostWindow, tabId }, (entry) => {
-        entry.view.webContents.stop();
+        entry.webContents.stop();
       });
     },
     setBounds({ hostWindow, request }) {
@@ -1126,7 +1128,7 @@ export function createDesktopBrowserViewManager(
     },
     findInPage({ hostWindow, request }) {
       withEntry({ hostWindow, tabId: request.tabId }, (entry) => {
-        entry.activeFindRequestId = entry.view.webContents.findInPage(
+        entry.activeFindRequestId = entry.webContents.findInPage(
           request.text,
           {
             forward: request.forward,
@@ -1138,7 +1140,7 @@ export function createDesktopBrowserViewManager(
     stopFindInPage({ hostWindow, request }) {
       withEntry({ hostWindow, tabId: request.tabId }, (entry) => {
         entry.activeFindRequestId = null;
-        entry.view.webContents.stopFindInPage(request.action);
+        entry.webContents.stopFindInPage(request.action);
       });
     },
     setVisible({ hostWindow, request }) {
@@ -1154,7 +1156,7 @@ export function createDesktopBrowserViewManager(
       resizingHostIds.add(hostWindow.webContents.id);
       const prefix = `${hostWindow.webContents.id}:`;
       for (const [key, entry] of entries.entries()) {
-        if (!key.startsWith(prefix) || entry.view.webContents.isDestroyed()) {
+        if (!key.startsWith(prefix) || entry.webContents.isDestroyed()) {
           continue;
         }
         if (entry.visible) {
@@ -1169,7 +1171,7 @@ export function createDesktopBrowserViewManager(
       resizingHostIds.delete(hostWindow.webContents.id);
       const prefix = `${hostWindow.webContents.id}:`;
       for (const [key, entry] of entries.entries()) {
-        if (!key.startsWith(prefix) || entry.view.webContents.isDestroyed()) {
+        if (!key.startsWith(prefix) || entry.webContents.isDestroyed()) {
           continue;
         }
         if (entry.visible) {
@@ -1186,7 +1188,7 @@ export function createDesktopBrowserViewManager(
       resizingHostIds.delete(hostWindow.webContents.id);
       const prefix = `${hostWindow.webContents.id}:`;
       for (const [key, entry] of entries.entries()) {
-        if (!key.startsWith(prefix) || entry.view.webContents.isDestroyed()) {
+        if (!key.startsWith(prefix) || entry.webContents.isDestroyed()) {
           continue;
         }
         entry.visible = false;

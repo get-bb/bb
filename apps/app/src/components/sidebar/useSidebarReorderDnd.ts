@@ -80,6 +80,8 @@ export function useSidebarReorderDnd({
   onDragOver,
   onDragCancel,
   collisionDetection,
+  axis,
+  measuring,
 }: UseSidebarReorderDndArgs): UseReorderDndResult {
   const handleDragStart = useCallback(
     (event: DragStartEvent) => {
@@ -114,5 +116,7 @@ export function useSidebarReorderDnd({
     onDragCancel: handleDragCancel,
     collisionDetection,
     touchSensor: SidebarTouchSensor,
+    axis,
+    measuring,
   });
 }

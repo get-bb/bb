@@ -125,6 +125,9 @@ export const createThreadRequestSchema = z
      * created and creation runs exactly as it did before the queue existed.
      */
     sendAt: z.number().int().nonnegative().optional(),
+    pluginSubmission: z
+      .object({ pluginId: pluginIdSchema, data: jsonValueSchema })
+      .optional(),
   })
   .superRefine((value, ctx) => {
     if (value.origin === "plugin" && value.originPluginId === undefined) {
@@ -237,7 +240,7 @@ export const forkThreadRequestSchema = z
   });
 export type ForkThreadRequest = z.infer<typeof forkThreadRequestSchema>;
 
-const sendMessageRequestBaseSchema = z.object({
+const sendMessageRequestFieldsSchema = z.object({
   input: z.array(promptInputSchema).min(1),
   model: z.string().optional(),
   serviceTier: serviceTierSchema.optional(),
@@ -246,6 +249,9 @@ const sendMessageRequestBaseSchema = z.object({
   executionInputSources: existingThreadExecutionInputSourcesSchema.optional(),
   mode: sendMessageModeSchema,
   senderThreadId: z.string().min(1).optional(),
+  pluginSubmission: z
+    .object({ pluginId: pluginIdSchema, data: jsonValueSchema })
+    .optional(),
   /**
    * Epoch ms at which this message should dispatch. Present ⇒ nothing is sent
    * now; the message is queued as a row waiting on the clock, and the due
@@ -254,7 +260,7 @@ const sendMessageRequestBaseSchema = z.object({
   sendAt: z.number().int().nonnegative().optional(),
 });
 
-export const sendMessageRequestSchema = sendMessageRequestBaseSchema;
+export const sendMessageRequestSchema = sendMessageRequestFieldsSchema;
 export type SendMessageRequest = z.infer<typeof sendMessageRequestSchema>;
 
 /**
@@ -286,8 +292,8 @@ export type SendMessageResponse = z.infer<typeof sendMessageResponseSchema>;
 
 // `sendAt` is deliberately dropped: an edit rewrites a message that has
 // already been dispatched, so there is nothing left to schedule.
-export const editMessageRequestSchema = sendMessageRequestBaseSchema
-  .omit({ mode: true, sendAt: true })
+export const editMessageRequestSchema = sendMessageRequestFieldsSchema
+  .omit({ mode: true, sendAt: true, pluginSubmission: true })
   .extend({
     operationId: z.string().min(1),
     expectedRequestSequence: z.number().int().nonnegative().optional(),
@@ -880,6 +886,7 @@ export const timelinePageMetadataSchema = z
     hasOlderRows: z.boolean(),
     olderCursor: timelinePaginationCursorSchema.nullable(),
     historySnapshot: z.string().optional(),
+    olderRowsSourceSeqEnd: z.number().int().nonnegative().nullable().optional(),
     contentPage: z
       .object({
         anchorSeq: z.number().int().positive(),

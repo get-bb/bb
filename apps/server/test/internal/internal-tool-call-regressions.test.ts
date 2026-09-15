@@ -1,6 +1,8 @@
+import { setPluginAgentContributions } from "../../src/services/plugins/plugin-agent-contributions.js";
+import type { PluginAgentToolRecord } from "../../src/services/plugins/plugin-api.js";
 import { eq } from "drizzle-orm";
 import { events } from "@bb/db";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { internalAuthHeaders } from "../helpers/commands.js";
 import { readJson } from "../helpers/json.js";
 import {
@@ -59,5 +61,100 @@ describe("internal tool-call regressions", () => {
           .all(),
       ).toHaveLength(0);
     });
+  });
+});
+
+it("interrupts a waiting interaction when the tool response body is cancelled and rejects late answers", async () => {
+  await withTestHarness(async (harness) => {
+    const { host, session } = seedHostSession(harness.deps, {
+      id: "host-cancel-tool",
+    });
+    const { project } = seedProjectWithSource(harness.deps, {
+      hostId: host.id,
+    });
+    const environment = seedEnvironment(harness.deps, {
+      hostId: host.id,
+      projectId: project.id,
+    });
+    const thread = seedThread(harness.deps, {
+      projectId: project.id,
+      environmentId: environment.id,
+    });
+    const record: PluginAgentToolRecord = {
+      name: "wait_for_user",
+      description: "Wait",
+      presentation: null,
+      instructions: null,
+      inputSchema: {},
+      parse: (input) => ({ ok: true, value: input }),
+      execute: () => "unused",
+    };
+    setPluginAgentContributions({
+      listSkillRootContributions: () => [],
+      listAgentTools: () => [],
+      listInstructionContributions: () => [],
+      findAgentTool: (name) =>
+        name === record.name ? { pluginId: "fixture", record } : undefined,
+      resolveMention: async () => ({ ok: false, error: "unused" }),
+      invokeAgentTool: async ({ ctx }) => {
+        const result =
+          await harness.deps.pendingInteractions.requestPluginInteraction({
+            pluginId: "fixture",
+            rendererId: "question",
+            threadId: ctx.threadId,
+            title: "Question",
+            payload: {},
+            timeoutMs: 10_000,
+            signal: ctx.signal,
+          });
+        return { success: result.outcome === "submitted", contentItems: [] };
+      },
+    });
+    try {
+      const response = await harness.app.request(
+        "/internal/session/tool-call",
+        {
+          method: "POST",
+          headers: internalAuthHeaders(harness),
+          body: JSON.stringify({
+            sessionId: session.id,
+            threadId: thread.id,
+            providerThreadId: "provider-thread",
+            turnId: "turn",
+            callId: "call",
+            tool: record.name,
+          }),
+        },
+      );
+      const [interaction] =
+        harness.deps.pendingInteractions.listPendingThreadInteractions(
+          thread.id,
+        );
+      expect(interaction).toBeDefined();
+      await response.body?.cancel();
+      await vi.waitFor(() =>
+        expect(
+          harness.deps.pendingInteractions.getThreadInteraction({
+            threadId: thread.id,
+            interactionId: interaction!.id,
+          }),
+        ).toMatchObject({
+          status: "interrupted",
+          statusReason: "request-aborted",
+        }),
+      );
+      const late = await harness.app.request(
+        `/api/v1/threads/${thread.id}/interactions/${interaction!.id}/respond`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ value: "late answer" }),
+        },
+      );
+      expect(late.status).toBe(409);
+    } finally {
+      harness.deps.pendingInteractions.interruptPluginInteractions("fixture");
+      setPluginAgentContributions(undefined);
+    }
   });
 });

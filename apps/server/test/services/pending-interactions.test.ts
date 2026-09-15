@@ -2079,3 +2079,37 @@ describe("pending interaction lifecycle", () => {
     });
   });
 });
+
+it("rejects a late answer when an abort callback settled the waiter but failed to update storage", async () => {
+  await withTestHarness(async (harness) => {
+    const thread = seedPluginInteractionThread(harness.deps, "orphan");
+    const controller = new AbortController();
+    const pending = requestPluginInteraction(harness.deps, {
+      threadId: thread.id,
+      signal: controller.signal,
+    });
+    const [interaction] =
+      harness.deps.pendingInteractions.listPendingThreadInteractions(thread.id);
+    const cancel = vi
+      .spyOn(harness.deps.pendingInteractions, "cancelPluginInteraction")
+      .mockImplementationOnce(() => {
+        throw new Error("storage temporarily unavailable");
+      });
+    controller.abort();
+    await expect(pending).resolves.toMatchObject({ outcome: "cancelled" });
+    cancel.mockRestore();
+    expect(() =>
+      harness.deps.pendingInteractions.respondToPluginInteraction({
+        threadId: thread.id,
+        interactionId: interaction!.id,
+        value: "lost answer",
+      }),
+    ).toThrow();
+    expect(
+      harness.deps.pendingInteractions.getThreadInteraction({
+        threadId: thread.id,
+        interactionId: interaction!.id,
+      }),
+    ).toMatchObject({ status: "interrupted", resolution: null });
+  });
+});

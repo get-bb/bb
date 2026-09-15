@@ -577,6 +577,14 @@ export class PendingInteractionLifecycle {
       throw new ApiError(400, "invalid_request", "Plugin interaction expected");
     }
     if (current.status !== "pending") throw buildResolveConflictError(current);
+    if (!this.pluginWaiters.has(current.id)) {
+      const interrupted = this.cancelPluginInteraction({
+        interactionId: current.id,
+        threadId: current.threadId,
+        reason: "request-aborted",
+      });
+      throw buildResolveConflictError(interrupted);
+    }
     const updated = setPendingInteractionResolved(this.deps.db, {
       id: current.id,
       resolution: JSON.stringify({ kind: "plugin_submitted" }),

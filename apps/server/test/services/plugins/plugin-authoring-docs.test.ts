@@ -34,6 +34,7 @@ import {
   type ExperimentalSidebarNavigationProps,
   type PluginSourceCodeRendererProps,
   type PluginThreadHeaderActionProps,
+  type ExperimentalPluginBrowserToolbarActionProps,
   type PluginThreadListProps,
   type PluginSidebarFooterActionRegistration,
   type PluginThreadEventPayloads,
@@ -264,6 +265,7 @@ type SlotPropsByName = {
   experimental_sidebarNavigation: ExperimentalSidebarNavigationProps;
   experimental_threadList: PluginThreadListProps;
   experimental_threadHeaderAction: PluginThreadHeaderActionProps;
+  experimental_browserToolbarAction: ExperimentalPluginBrowserToolbarActionProps;
   fileOpener: PluginFileOpenerProps;
   experimental_sourceCodeRenderer: PluginSourceCodeRendererProps;
   experimental_diffRenderer: PluginDiffRendererProps;
@@ -281,6 +283,7 @@ const _assertAllSlotsListed: MissingSlot extends never ? true : never = true;
 void _assertAllSlotsListed;
 
 const APP_BUILDER_FIELDS = [
+  "commands",
   "experimental_icons",
   "slots",
   "composer",
@@ -355,6 +358,12 @@ const FRONTEND_SLOT_PROP_FIELDS = {
   experimental_threadHeaderAction: [
     "threadId",
     "projectId",
+    "isCompactViewport",
+  ],
+  experimental_browserToolbarAction: [
+    "threadId",
+    "tabId",
+    "url",
     "isCompactViewport",
   ],
   fileOpener: [
@@ -468,6 +477,7 @@ const _assertAllMessageActionRegistrationFieldsListed: MissingMessageActionRegis
 void _assertAllMessageActionRegistrationFieldsListed;
 
 const COMMAND_PALETTE_ACTION_REGISTRATION_FIELDS = [
+  "defaultShortcut",
   "id",
   "title",
   "isAvailable",

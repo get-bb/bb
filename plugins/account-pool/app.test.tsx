@@ -97,6 +97,7 @@ function status(accounts: AccountSummary[] = [account()]): PoolStatus {
     ],
     accounts,
     routing: { claude: true, codex: true },
+    parent: null,
   };
 }
 
@@ -105,6 +106,7 @@ function config(overrides: Partial<AccountPoolConfig> = {}): AccountPoolConfig {
     anthropicUpstreamBaseUrl: "https://api.anthropic.com",
     codexUpstreamBaseUrl: "https://chatgpt.com/backend-api/codex",
     switchThreshold: 0.98,
+    parentMode: "proxy",
     ...overrides,
   };
 }
@@ -126,6 +128,85 @@ function render(
     },
   );
 }
+
+describe("Account Pool parent banner", () => {
+  const PARENT_URL = "http://127.0.0.1:25231/api/v1/plugins/account-pool/http";
+
+  function renderWithParent(parent: PoolStatus["parent"]) {
+    return renderSlot(
+      app.settingsSections[0]!,
+      {},
+      {
+        rpc: {
+          "status.get": () => ({ ...status(), parent }),
+          "config.get": () => config(),
+        },
+        openUrl: () => true,
+      },
+    );
+  }
+
+  it("says nothing about a parent when this server has none", async () => {
+    const slot = renderWithParent(null);
+    expect(await slot.findByText("person@example.com")).toBeTruthy();
+    expect(slot.queryByText(/Account Pooler available/i)).toBeNull();
+  });
+
+  it("invites pooling through the parent while isolated, without leaking the api path", async () => {
+    const slot = renderWithParent({
+      baseUrl: PARENT_URL,
+      mode: "isolate",
+      availability: { claude: true, codex: true },
+    });
+    expect(
+      await slot.findByText("Parent Account Pooler available"),
+    ).toBeTruthy();
+    expect(
+      slot.getByText(/started from a thread on 127\.0\.0\.1:25231/),
+    ).toBeTruthy();
+    expect(slot.queryByText(/api\/v1\/plugins/)).toBeNull();
+  });
+
+  it("names both providers and says local accounts go unused while proxying", async () => {
+    const slot = renderWithParent({
+      baseUrl: PARENT_URL,
+      mode: "proxy",
+      availability: { claude: true, codex: true },
+    });
+    expect(
+      await slot.findByText("Using the parent Account Pooler"),
+    ).toBeTruthy();
+    expect(
+      slot.getByText(
+        /Claude and Codex requests are sent to the pool on 127\.0\.0\.1:25231\. Accounts on this server are not used/,
+      ),
+    ).toBeTruthy();
+  });
+
+  it("calls out a provider the parent cannot serve", async () => {
+    const slot = renderWithParent({
+      baseUrl: PARENT_URL,
+      mode: "proxy",
+      availability: { claude: true, codex: false },
+    });
+    expect(
+      await slot.findByText(
+        /Claude requests are sent to the pool on .*Codex has no accounts there, so those requests fall back/,
+      ),
+    ).toBeTruthy();
+  });
+
+  it("says nothing is routed when the parent has no accounts at all", async () => {
+    const slot = renderWithParent({
+      baseUrl: PARENT_URL,
+      mode: "proxy",
+      availability: { claude: false, codex: false },
+    });
+    expect(
+      await slot.findByText(/has no accounts available right now/),
+    ).toBeTruthy();
+  });
+});
 
 describe("Account Pool settings", () => {
   it("renders cached accounts as refreshing until live status arrives, then caches it", async () => {

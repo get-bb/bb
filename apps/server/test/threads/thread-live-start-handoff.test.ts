@@ -212,21 +212,25 @@ describe("live thread start handoff", () => {
         );
 
         expect(response.status).toBe(200);
-        const stopCommand = await waitForQueuedCommand(
+        const storageDeleteCommand = await waitForQueuedCommand(
           harness,
           ({ command }) =>
-            command.type === "thread.stop" &&
+            command.type === "thread.storage.delete" &&
             command.threadId === fixture.thread.id,
         );
-        expect(stopCommand.command).toMatchObject({
-          type: "thread.stop",
+        expect(storageDeleteCommand.command).toMatchObject({
+          type: "thread.storage.delete",
           environmentId: fixture.environment.id,
           threadId: fixture.thread.id,
         });
-        expect(getThread(harness.db, fixture.thread.id)).toBeNull();
-        await reportQueuedCommandSuccess(harness, stopCommand, {
+        expect(getThread(harness.db, fixture.thread.id)).toMatchObject({
+          deletedAt: expect.any(Number),
+          storageDeletedAt: null,
+        });
+        await reportQueuedCommandSuccess(harness, storageDeleteCommand, {
           providerCheckpointId: null,
         });
+        expect(getThread(harness.db, fixture.thread.id)).toBeNull();
       } finally {
         await failLiveStartRpc({
           harness,

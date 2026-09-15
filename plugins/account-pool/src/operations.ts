@@ -46,6 +46,9 @@ export class PoolOperations {
     private readonly onAccountEnabled: (
       accountId: string,
     ) => Promise<void> = async () => {},
+    private readonly parentStatus: () => Promise<
+      PoolStatus["parent"]
+    > = async () => null,
   ) {}
 
   async add(input: AccountAddInput): Promise<Account> {
@@ -234,6 +237,7 @@ export class PoolOperations {
             : (hostNames.get(account.lastUsedHostId) ?? null),
       })),
       routing: { claude, codex },
+      parent: await this.parentStatus(),
     };
   }
 

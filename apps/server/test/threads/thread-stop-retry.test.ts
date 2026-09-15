@@ -1,11 +1,12 @@
 import { setTimeout as sleep } from "node:timers/promises";
-import { getThread, listEvents } from "@bb/db";
+import { getThread, listEvents, markThreadDeleted } from "@bb/db";
 import type { EnvironmentRow } from "@bb/db";
 import type { Thread } from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import {
   finalizeStoppedThread,
   hasLiveThreadStopInFlight,
+  requestThreadStorageDeletion,
   requestThreadStopForCurrentState,
 } from "../../src/services/threads/thread-lifecycle.js";
 import {
@@ -75,6 +76,67 @@ async function waitForStopRpcIdle(args: WaitForStopRpcIdleArgs): Promise<void> {
 }
 
 describe("thread stop dispatch", () => {
+  it("keeps a deleted thread tombstone until storage deletion succeeds", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedActiveThreadStopFixture({
+        harness,
+        value: 5,
+      });
+      markThreadDeleted(harness.db, harness.hub, { threadId: thread.id });
+
+      requestThreadStorageDeletion(harness.deps, thread, environment);
+      const failedDelete = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.storage.delete" &&
+          command.threadId === thread.id,
+      );
+      expect(getThread(harness.db, thread.id)).toMatchObject({
+        deletedAt: expect.any(Number),
+        storageDeletedAt: null,
+      });
+
+      await reportQueuedCommandError(harness, failedDelete, {
+        errorCode: "test_storage_delete_failure",
+        errorMessage: "Test storage delete failure",
+      });
+      await sleep(10);
+      expect(getThread(harness.db, thread.id)).toMatchObject({
+        storageDeletedAt: null,
+      });
+
+      requestThreadStorageDeletion(harness.deps, thread, environment);
+      const successfulDelete = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.storage.delete" &&
+          command.threadId === thread.id,
+      );
+      await reportQueuedCommandSuccess(harness, successfulDelete, {
+        providerCheckpointId: null,
+      });
+
+      expect(getThread(harness.db, thread.id)).toBeNull();
+    });
+  });
+
+  it("keeps attached storage pending when its environment is unavailable", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedActiveThreadStopFixture({ harness, value: 6 });
+      markThreadDeleted(harness.db, harness.hub, { threadId: thread.id });
+
+      requestThreadStorageDeletion(harness.deps, thread, null);
+
+      expect(getThread(harness.db, thread.id)).toMatchObject({
+        deletedAt: expect.any(Number),
+        storageDeletedAt: null,
+      });
+      expect(
+        listQueuedThreadCommands(harness, "thread.storage.delete", thread.id),
+      ).toHaveLength(0);
+    });
+  });
+
   it("does not re-dispatch the stop after a live stop RPC failure", async () => {
     await withTestHarness(async (harness) => {
       const { environment, thread } = seedActiveThreadStopFixture({

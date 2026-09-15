@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { mergeConfig, type ViteUserConfig } from "vitest/config";
 import { BaseSequencer, type TestSpecification } from "vitest/node";
 
@@ -340,6 +341,9 @@ export function defineWorkspaceTestConfig(
         conditions: ["source"],
       },
       test: {
+        globalSetup: [
+          fileURLToPath(new URL("./vitest.global-tmpdir.ts", import.meta.url)),
+        ],
         sequence: { sequencer: SharedWorkerSequencer },
         coverage: {
           provider: "v8",

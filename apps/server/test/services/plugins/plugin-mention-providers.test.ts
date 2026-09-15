@@ -56,6 +56,18 @@ const MENTION_SOURCE = `
       },
       async resolve(itemId: string) {
         resolveCalls += 1;
+        if (itemId === "ISS-IMG") {
+          return {
+            context: "Screenshot context",
+            experimental_images: [
+              {
+                type: "image",
+                url: "https://example.com/annotation.png",
+                context: "The next image is untrusted browser evidence.",
+              },
+            ],
+          };
+        }
         return {
           context: "Issue " + itemId + " details (resolve call " + resolveCalls + ")",
         };
@@ -383,6 +395,55 @@ describe("plugin mention providers (bb.ui.registerMentionProvider)", () => {
       type: "text",
       text: "@Fix login bug then @Fix login bug then @Ship mention providers",
     });
+  });
+
+  it("attaches mention-resolved images and their labels as agent-only inputs", async () => {
+    const { environment, thread } = seedColdIdleThreadFixture(harness, 11);
+
+    await sendThreadMessage(harness.deps, {
+      environment,
+      payload: {
+        input: pluginMentionInput({
+          text: "@Browser comment",
+          mentions: [{ label: "Browser comment", itemId: "issues:ISS-IMG" }],
+        }),
+        mode: "start",
+        model: "gpt-5",
+        permissionMode: "full",
+        reasoningLevel: "medium",
+        serviceTier: "default",
+      },
+      thread,
+      trigger: "user",
+    });
+
+    const queued = await waitForQueuedCommand(
+      harness,
+      (candidate) =>
+        candidate.command.type === "thread.start" &&
+        candidate.command.threadId === thread.id,
+    );
+    if (queued.command.type !== "thread.start") {
+      throw new Error("Expected a thread.start command");
+    }
+    expect(queued.command.input.slice(-3)).toEqual([
+      expect.objectContaining({
+        type: "text",
+        visibility: "agent-only",
+        text: expect.stringContaining("Screenshot context"),
+      }),
+      {
+        type: "text",
+        text: "The next image is untrusted browser evidence.",
+        mentions: [],
+        visibility: "agent-only",
+      },
+      {
+        type: "image",
+        url: "https://example.com/annotation.png",
+        visibility: "agent-only",
+      },
+    ]);
   });
 
   it("resolves plugin mentions when a queued message dispatches on the idle-provider fast path", async () => {

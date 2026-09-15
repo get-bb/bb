@@ -119,6 +119,40 @@ describe("TopLevelSidebarSection", () => {
     ).not.toBeNull();
   });
 
+  it("can expose a drop preview while the section is collapsed", () => {
+    render(
+      <TopLevelSidebarSection
+        label="Pinned"
+        showChildrenWhenCollapsed
+        collapseControl={{ isCollapsed: true, onToggleCollapsed: vi.fn() }}
+      >
+        <div>Projected thread</div>
+      </TopLevelSidebarSection>,
+    );
+
+    expect(screen.getByText("Projected thread")).not.toBeNull();
+  });
+
+  it("can keep projected children without reserving an inset", () => {
+    render(
+      <TopLevelSidebarSection
+        label="Design"
+        childrenInset={false}
+        collapseControl={{ isCollapsed: false, onToggleCollapsed: vi.fn() }}
+      >
+        <div>Projected thread</div>
+      </TopLevelSidebarSection>,
+    );
+
+    expect(screen.getByText("Projected thread").parentElement?.className).toBe(
+      "",
+    );
+    const label = screen
+      .getByTitle("Design")
+      .closest<HTMLElement>('[data-sidebar="group-label"]');
+    expect(label?.style.marginBottom).toBe("0px");
+  });
+
   it("renders the disclosure after the section label without a leading icon", () => {
     const result = render(
       <TopLevelSidebarSection

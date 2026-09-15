@@ -11,8 +11,6 @@
 
 **How the PWA finds the server:** `window.location.origin` (`apps/app/src/lib/api-server.ts:4-8`), WS direct to server port in dev via `__BB_DEV_WS_BROWSER_HOST_PORT__` (`vite.dev.config.ts:19-22`, `apps/app/src/lib/dev-websocket-url.ts`); daemon client hardcodes `http://127.0.0.1:<hostDaemonPort>` (`apps/app/src/lib/api-host-daemon.ts:24-27`) with port from `/api/v1/system/config.hostDaemonPort` (`packages/server-contract/src/api/system.ts:215-217`, also `serverUrl`, `primaryHostId`). QA uses `GET /api/v1/system/config` as readiness probe (`tests/qa/src/shared.ts:501-508`).
 
-**Launcher `scripts/bb-dev-app`**: derives same ports in bash (`:157-200`, note it prints `BB_SERVER_URL=http://localhost:<port>` at `:189` whereas config uses 127.0.0.1), runs `pnpm dev` in `screen` and waits for "Host daemon started" (`:360-369`), `env` prints `BB_SERVER_URL/BB_HOST_DAEMON_PORT/BB_PROJECT_ID=proj_personal` (`:427-437`), `stop` kills port listeners (`:238-265`). `ensure_dependencies` always installs Electron (`:330-338`) — heavy for CI.
-
 **Prod-like:** `pnpm start` (`scripts/start-bb.mjs`), `npx bb-app --data-dir --server-port --host-daemon-port --server-bind-host` (`packages/bb-app/src/launcher.ts:737-758,2638`).
 
 ## 2. Existing e2e/test patterns and seeding
@@ -49,7 +47,6 @@ Maestro (YAML flows via `maestro test`, works against Expo dev-client/release bu
 - apps/app/src/lib/dev-websocket-url.ts
 - apps/app/src/lib/api-host-daemon.ts
 - packages/server-contract/src/api/system.ts
-- scripts/bb-dev-app
 - docs/debugging-and-qa.md
 - docs/configuration.md
 - docs/multiple-devices.md
@@ -89,7 +86,6 @@ Maestro (YAML flows via `maestro test`, works against Expo dev-client/release bu
 - @bb/test-helpers: **not-reusable** — node:fs/promises in setup-markers.ts:1; it is a Node test utility, fine for Node-side e2e seeding scripts only.
 - tests/integration harness (tests/integration/helpers/harness.ts): **headless-logic-only** — Node-only (Hono node-server, in-process daemon, fs/tmpdir). Reusable as the backend launcher for mobile e2e, not inside the app; binds 127.0.0.1:0 (harness.ts:371-383) so a fixed port/bind host must be parameterized.
 - tests/qa standalone scripts (tests/qa/src/standalone/*): **headless-logic-only** — Node child_process/ps/lsof based; spawns built dist of server/daemon; usable as an e2e backend with real providers, requires `pnpm build` first.
-- scripts/bb-dev-app: **headless-logic-only** — Bash + GNU screen + lsof; macOS/Linux dev only; ensure_dependencies installs Electron unconditionally (bb-dev-app:330-338).
 - apps/app vitest setup (apps/app/src/test/setup.ts, vitest.config.ts): **not-reusable** — jsdom/window/document polyfills; irrelevant to RN test runner (jest-expo or vitest with react-native preset would be separate).
 
 ## Risks
@@ -98,19 +94,18 @@ Maestro (YAML flows via `maestro test`, works against Expo dev-client/release bu
 - Server API is unauthenticated; reaching it from a physical phone requires BB_SERVER_BIND_HOST=0.0.0.0 (security warning at start-server.ts:212-216) or Tailscale/bb connect; e2e scripts must not leave a 0.0.0.0 listener running.
 - Origin guard on /api/v1 and /ws (server.ts:450-461,496-505): RN fetch sends no Origin (passes), RN WebSocket sends an Origin derived from the URL — passes only because same-target-origin/same-hostname+known-port is allowed; verify empirically on iOS and Android emulator (10.0.2.2) before relying on it.
 - No existing server+daemon-only dev command: run-dev.ts hardcodes --filter=@bb/app; e2e must either accept Vite starting or add a new script/flag.
-- Dev ports are hash-derived per checkout path (runtime.ts:137-146); any e2e config that hardcodes ports will break across worktrees; derive via `scripts/bb-dev-app env` or resolveCurrentDevInstanceConfig.
+- Dev ports are hash-derived per checkout path (runtime.ts:137-146); any e2e config that hardcodes ports will break across worktrees; derive via resolveCurrentDevInstanceConfig.
 - CI: only ubuntu Blacksmith runners run tests; iOS simulator e2e needs blacksmith-6vcpu-macos-15 (no Turbo cache there); Android emulator on Linux needs KVM support (unverified for Blacksmith).
 - Root `.nvmrc` (22.12.0) disagrees with `engines` (>=22.19.0); Expo CLI/EAS Node requirement should be checked against 22.x.
 - React version skew: apps/app uses react ^19.0.0 while Expo SDK pins exact react/react-native; @bb/shared-ui peer-deps react ^19 — isolated linking allows separate copies but shared UI packages consumed by both apps could double-install React.
 - Only apps/app has a lint script and eslint devDeps; forgetting to add them to apps/mobile means CI lint silently skips it.
-- bb-dev-app installs Electron even for non-desktop launches (bb-dev-app:330-338) — slow/fragile in CI; prefer `pnpm dev` or the QA standalone scripts.
 - Fake provider adapter is only wired in-process (tests/integration harness); the standalone daemon (apps/host-daemon/dist) has no env switch for fake providers, so a deterministic e2e backend requires writing a harness-based launcher.
 
 ## Open questions
 - Should apps/mobile use jest-expo (Expo default) or vitest with a react-native preset? Root vitest.config.ts auto-discovers only dirs with vitest.config.ts; turbo `test` runs whatever `test` script exists.
 - Does the RN WebSocket Origin header (`http://127.0.0.1:<port>` / `http://10.0.2.2:<port>`) actually pass browserRequestProblem on both platforms? Needs an empirical check.
 - Which Expo SDK / RN version, and does its Metro default (unstable_enablePackageExports) suffice, or must apps/mobile ship a metro.config.js with a `.js`→`.ts` resolveRequest and `source` condition?
-- Should a `pnpm dev:backend` (server+daemon only, optionally 0.0.0.0) script be added to packages/scripts for simulator/device e2e, and should `bb-dev-app env` print 127.0.0.1 instead of localhost?
+- Should a `pnpm dev:backend` (server+daemon only, optionally 0.0.0.0) script be added to packages/scripts for simulator/device e2e?
 - Where should the deterministic e2e backend live (apps/mobile/e2e vs tests/mobile-e2e workspace package) and should it reuse tests/integration/helpers/harness.ts directly (it imports apps/server/src via relative paths) or a copied/parameterized variant with fixed port + bind host?
 - CI budget: run Maestro iOS e2e on blacksmith-6vcpu-macos-15 per PR, or nightly/label-gated? Is Android emulator (KVM) available on Blacksmith Linux runners?
 - How does the mobile app receive its server URL for e2e (EXPO_PUBLIC_BB_SERVER_URL at build time vs deep link/QR at runtime), and should the server URL entry screen accept bb connect getbb.app URLs and Tailscale HTTPS origins?

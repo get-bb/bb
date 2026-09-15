@@ -23,7 +23,20 @@ afterEach(async () => {
   await harness.teardown();
 });
 
-function turnStart(threadId: string, text: string): void {
+async function startThread(threadId: string): Promise<string> {
+  const started = await harness.startThread(threadId);
+  const providerThreadId = String(
+    (started.result as { providerThreadId?: unknown }).providerThreadId,
+  );
+  expect(providerThreadId).toMatch(/^pi_[0-9a-f-]{36}$/u);
+  return providerThreadId;
+}
+
+function turnStart(
+  threadId: string,
+  providerThreadId: string,
+  text: string,
+): void {
   handleLine(
     JSON.stringify({
       jsonrpc: "2.0",
@@ -31,7 +44,7 @@ function turnStart(threadId: string, text: string): void {
       method: "turn/start",
       params: {
         threadId,
-        providerThreadId: threadId,
+        providerThreadId,
         clientRequestId: "creq_ui23456789",
         input: [{ type: "text", text, mentions: [] }],
         options: FULL_PERMISSION_OPTIONS,
@@ -90,9 +103,10 @@ async function extensionUiReplyOf(threadId: string): Promise<string> {
 
 it("forwards a select dialog to the runtime and returns the chosen option to pi", async () => {
   const threadId = "thr_ui_select";
-  await harness.startThread(threadId);
+  const providerThreadId = await startThread(threadId);
   turnStart(
     threadId,
+    providerThreadId,
     '/ui {"method":"select","title":"Allow access?","options":["Allow once","Deny"]}',
   );
   const interaction = await waitForInteractionRequest(threadId);
@@ -114,9 +128,10 @@ it("forwards a select dialog to the runtime and returns the chosen option to pi"
 
 it("maps a boolean answer to confirmed for a confirm dialog", async () => {
   const threadId = "thr_ui_confirm";
-  await harness.startThread(threadId);
+  const providerThreadId = await startThread(threadId);
   turnStart(
     threadId,
+    providerThreadId,
     '/ui {"method":"confirm","title":"Run command?","message":"This modifies files."}',
   );
   const interaction = await waitForInteractionRequest(threadId);
@@ -132,9 +147,10 @@ it.each([42, "not-an-option"])(
   "answers an invalid select value %j as cancelled",
   async (value) => {
     const threadId = "thr_ui_badvalue";
-    await harness.startThread(threadId);
+    const providerThreadId = await startThread(threadId);
     turnStart(
       threadId,
+      providerThreadId,
       '/ui {"method":"select","title":"Pick","options":["A","B"]}',
     );
     const interaction = await waitForInteractionRequest(threadId);
@@ -146,8 +162,12 @@ it.each([42, "not-an-option"])(
 
 it("answers an interaction error as cancelled", async () => {
   const threadId = "thr_ui_error";
-  await harness.startThread(threadId);
-  turnStart(threadId, '/ui {"method":"input","title":"Enter a value"}');
+  const providerThreadId = await startThread(threadId);
+  turnStart(
+    threadId,
+    providerThreadId,
+    '/ui {"method":"input","title":"Enter a value"}',
+  );
   const interaction = await waitForInteractionRequest(threadId);
   handleLine(
     JSON.stringify({
@@ -163,15 +183,16 @@ it("cancels a pending dialog when the thread is stopped mid-prompt", async () =>
   const threadId = "thr_ui_stop";
   const uiLogPath = join(harness.workspaceDir, "ui.log");
   vi.stubEnv("FAKE_PI_UI_LOG", uiLogPath);
-  await harness.startThread(threadId);
+  const providerThreadId = await startThread(threadId);
   turnStart(
     threadId,
+    providerThreadId,
     '/ui {"method":"select","title":"Pick","options":["A","B"]}',
   );
   const interaction = await waitForInteractionRequest(threadId);
   const stopResponse = await harness.request((nextId += 1), "thread/stop", {
     threadId,
-    providerThreadId: threadId,
+    providerThreadId,
     intent: "interrupt",
     activeTurnId: null,
   });
@@ -186,8 +207,12 @@ it("cancels a pending dialog when the thread is stopped mid-prompt", async () =>
 
 it("answers an invalid dialog request cancelled instead of forwarding it", async () => {
   const threadId = "thr_ui_invalid";
-  await harness.startThread(threadId);
-  turnStart(threadId, '/ui {"method":"select","title":"Pick"}');
+  const providerThreadId = await startThread(threadId);
+  turnStart(
+    threadId,
+    providerThreadId,
+    '/ui {"method":"select","title":"Pick"}',
+  );
   await harness.waitForTurnBoundary(threadId);
   expect(
     harness.messages.some(
@@ -200,8 +225,12 @@ it("answers an invalid dialog request cancelled instead of forwarding it", async
 
 it("drops fire-and-forget extension ui requests without a runtime round trip", async () => {
   const threadId = "thr_ui_notify";
-  await harness.startThread(threadId);
-  turnStart(threadId, '/ui {"method":"notify","title":"Ignored"}');
+  const providerThreadId = await startThread(threadId);
+  turnStart(
+    threadId,
+    providerThreadId,
+    '/ui {"method":"notify","title":"Ignored"}',
+  );
   await harness.waitForTurnBoundary(threadId);
   expect(
     harness.messages.some(

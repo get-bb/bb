@@ -56,6 +56,8 @@ interface TopLevelSidebarSectionCollapseControl {
 export interface TopLevelSidebarSectionProps {
   label: string;
   children: ReactNode;
+  childrenInset?: boolean;
+  showChildrenWhenCollapsed?: boolean;
   sectionId?: string;
   stickyHeader?: boolean;
   status?: ReactNode;
@@ -76,6 +78,8 @@ export interface TopLevelSidebarSectionProps {
 export function TopLevelSidebarSection({
   label,
   children,
+  childrenInset = true,
+  showChildrenWhenCollapsed = false,
   sectionId,
   stickyHeader = true,
   status,
@@ -174,6 +178,7 @@ export function TopLevelSidebarSection({
       <SidebarStickyTier
         ref={dragBindings?.setActivatorNodeRef}
         tier="label"
+        style={childrenInset ? undefined : { marginBottom: 0 }}
         className={cn(
           SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
           CHROME_SECTION_LABEL_CLASS,
@@ -258,8 +263,9 @@ export function TopLevelSidebarSection({
           </span>
         ) : null}
       </SidebarStickyTier>
-      {collapseControl?.isCollapsed || children == null ? null : (
-        <div className="mt-1">{children}</div>
+      {(collapseControl?.isCollapsed && !showChildrenWhenCollapsed) ||
+      children == null ? null : (
+        <div className={childrenInset ? "mt-1" : undefined}>{children}</div>
       )}
     </SidebarStickyGroup>
   );

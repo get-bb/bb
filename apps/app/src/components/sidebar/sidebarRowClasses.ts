@@ -64,7 +64,7 @@ export const SIDEBAR_ROW_OPEN_IN_SPLIT_STATE_CLASS =
 
 export const SIDEBAR_FOOTER_ACTION_CLASS = cn(
   COARSE_POINTER_CHILD_ICON_BUTTON_CLASS,
-  "text-muted-foreground hover:text-sidebar-foreground [&>svg]:opacity-80",
+  "text-muted-foreground hover:text-sidebar-foreground [&>[data-icon-root]]:opacity-80",
 );
 
 export const SIDEBAR_MORE_ACTION_TRIGGER_CLASS =

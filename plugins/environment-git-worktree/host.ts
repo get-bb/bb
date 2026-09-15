@@ -4,6 +4,7 @@ import { createHostProgress } from "bb-environment-provider-host/progress";
 import { worktreeHostContract, worktreeHostSignals } from "./contract.js";
 import { resolveWorktreeBaseBranch } from "./host/base-branch.js";
 import {
+  resolveWorktreeChildPath,
   resolveWorktreesRoot,
   resolveWorktreeAttemptRoot,
   resolveWorktreeTargetPath,
@@ -24,10 +25,10 @@ async function worktreePathsForPathKey(args: {
     return entries
       .filter((entry) => entry.isDirectory())
       .map((entry) =>
-        resolveWorktreeTargetPath({
+        resolveWorktreeChildPath({
           dataDir: args.dataDir,
           pathKey: args.pathKey,
-          sourcePath: entry.name,
+          childName: entry.name,
         }),
       );
   } catch (error) {

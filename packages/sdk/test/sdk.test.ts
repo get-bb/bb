@@ -1341,6 +1341,10 @@ describe("@bb/sdk", () => {
       input: [{ type: "text", text: "Accept edits", mentions: [] }],
       mode: "start",
       permissionMode: "accept-edits",
+      pluginSubmission: {
+        pluginId: "example-plugin",
+        data: { action: "hold" },
+      },
     });
     await sdk.threads.queuedMessages.create({
       threadId: "thr_auto",
@@ -1352,7 +1356,13 @@ describe("@bb/sdk", () => {
       queue.requests.map((request) => JSON.parse(request.bodyText ?? "{}")),
     ).toEqual([
       expect.objectContaining({ permissionMode: "auto" }),
-      expect.objectContaining({ permissionMode: "accept-edits" }),
+      expect.objectContaining({
+        permissionMode: "accept-edits",
+        pluginSubmission: {
+          pluginId: "example-plugin",
+          data: { action: "hold" },
+        },
+      }),
       expect.objectContaining({ permissionMode: "full" }),
     ]);
   });

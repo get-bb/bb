@@ -45,6 +45,7 @@ import type {
   PluginKvStorage,
   PluginLogger,
   PluginMentionItem,
+  PluginMentionProviderRegistration,
   PluginMentionSearchContext,
   PluginMentionTrigger,
   PluginMachines,
@@ -82,6 +83,7 @@ import {
   normalizeMentionProviderRegistration,
   normalizeRealtimePayload,
   normalizeRpcRegistration,
+  publishRpcMethod,
   normalizeWebSocketRouteRegistration,
   pluginCliCollisionWarning,
   registerSettingDescriptors,
@@ -182,6 +184,7 @@ export interface PluginWebSocketRouteRecord {
 }
 
 export interface PluginRpcHandler {
+  publication: ReturnType<typeof publishRpcMethod>;
   inputSchema: StandardSchemaV1;
   outputSchema: StandardSchemaV1;
   handler: (input: unknown) => unknown;
@@ -209,9 +212,7 @@ interface PluginMentionProviderRecord {
   search: (
     ctx: PluginMentionSearchContext,
   ) => PluginMentionItem[] | Promise<PluginMentionItem[]>;
-  resolve: (
-    itemId: string,
-  ) => { context: string } | Promise<{ context: string }>;
+  resolve: PluginMentionProviderRegistration["resolve"];
 }
 
 export interface PluginBackgroundServiceRecord {
@@ -778,12 +779,13 @@ export function createPluginApi(options: {
   };
 
   const rpc: PluginRpc = {
-    register(contract, handlers) {
+    register(contract, handlers, options) {
       assertLive();
       for (const [name, record] of normalizeRpcRegistration(
         contract,
         handlers,
         rpcHandlers,
+        options,
       )) {
         rpcHandlers.set(name, record);
       }

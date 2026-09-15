@@ -18,6 +18,7 @@ import type {
   ThreadDelta,
 } from "@bb/provider-bridge-protocol";
 import {
+  PROVIDER_TOOL_CALL_CANCELLED_METHOD,
   BridgeRecoveryError,
   bridgeRequestEnvelopeSchema,
   createBridgeIo,
@@ -181,6 +182,7 @@ interface AcpThreadSession {
   stopping: boolean;
   turnSettled: Promise<void> | undefined;
   pendingPermissions: Set<PendingAcpPermission>;
+  pendingToolCalls: Set<AbortController>;
   cursorMcpApproval: CursorMcpApproval | undefined;
   deferStartEmit: AcpDeferredStartEmitter | undefined;
 }
@@ -231,11 +233,20 @@ function sendNotification(
 function sendRuntimeRequest(
   method: string,
   params: Record<string, unknown>,
+  signal?: AbortSignal,
 ): Promise<unknown> {
+  signal?.throwIfAborted();
   runtimeRequestIdCounter += 1;
   const requestId = runtimeRequestIdCounter;
+  let abort: () => void;
   const responsePromise = new Promise<unknown>(
     (resolveResponse, rejectResponse) => {
+      abort = () => {
+        pendingRuntimeRequests.delete(requestId);
+        sendNotification(PROVIDER_TOOL_CALL_CANCELLED_METHOD, { requestId });
+        rejectResponse(new Error("ACP dynamic tool call cancelled"));
+      };
+      signal?.addEventListener("abort", abort, { once: true });
       pendingRuntimeRequests.set(requestId, (response) => {
         if ("error" in response) {
           rejectResponse(
@@ -253,7 +264,9 @@ function sendRuntimeRequest(
     method,
     params,
   });
-  return responsePromise;
+  return responsePromise.finally(() =>
+    signal?.removeEventListener("abort", abort),
+  );
 }
 
 let configuredSkillRoots: AcpSkillRoot[] | null = null;
@@ -286,6 +299,7 @@ function emitForSession(
 }
 
 function emitSessionError(session: AcpThreadSession, message: string): void {
+  for (const controller of session.pendingToolCalls) controller.abort();
   if (session.activePromptKind !== null) {
     emitForSession(session, "error", {
       threadId: session.bbThreadId,
@@ -314,12 +328,15 @@ function resolveBridgeProcessEnvForMcpServer(): AcpMcpServerConfig["env"] {
   return [{ name: "ELECTRON_RUN_AS_NODE", value: electronRunAsNode }];
 }
 
-async function forwardDynamicToolCall(args: {
-  arguments: Record<string, unknown>;
-  callId: string;
-  threadId: string;
-  tool: string;
-}): Promise<
+async function forwardDynamicToolCall(
+  args: {
+    arguments: Record<string, unknown>;
+    callId: string;
+    threadId: string;
+    tool: string;
+  },
+  signal: AbortSignal,
+): Promise<
   | {
       ok: true;
       content: string;
@@ -334,22 +351,30 @@ async function forwardDynamicToolCall(args: {
     return { ok: false, error: "No active ACP session for dynamic tool call." };
   }
 
+  const controller = new AbortController();
+  session.pendingToolCalls.add(controller);
   session.translator.noteInjectedToolCall(session.bbThreadId, args.tool);
   try {
-    const result = await sendRuntimeRequest("item/tool/call", {
-      providerThreadId: session.providerThreadId,
-      threadId: session.bbThreadId,
-      turnId: null,
-      callId: args.callId,
-      tool: args.tool,
-      arguments: args.arguments,
-    });
+    const result = await sendRuntimeRequest(
+      "item/tool/call",
+      {
+        providerThreadId: session.providerThreadId,
+        threadId: session.bbThreadId,
+        turnId: null,
+        callId: args.callId,
+        tool: args.tool,
+        arguments: args.arguments,
+      },
+      AbortSignal.any([signal, controller.signal]),
+    );
     return { ok: true, ...decodeToolCallResponsePayload(result) };
   } catch (error) {
     return {
       ok: false,
       error: error instanceof Error ? error.message : String(error),
     };
+  } finally {
+    session.pendingToolCalls.delete(controller);
   }
 }
 
@@ -357,15 +382,20 @@ function handleDynamicToolBridgeSocket(
   bridge: AcpDynamicToolBridge,
   socket: Socket,
 ): void {
+  const controller = new AbortController();
+  socket.once("close", () => controller.abort());
+  let handled = false;
   let buffer = "";
   socket.setEncoding("utf8");
   socket.on("error", () => {});
   socket.on("data", (chunk) => {
+    if (handled) return;
     buffer += chunk;
     const newlineIndex = buffer.indexOf("\n");
     if (newlineIndex === -1) {
       return;
     }
+    handled = true;
     const line = buffer.slice(0, newlineIndex);
     let parsed: unknown;
     try {
@@ -388,9 +418,12 @@ function handleDynamicToolBridgeSocket(
       socket.end(`${JSON.stringify({ ok: true, content: "" })}\n`);
       return;
     }
-    void forwardDynamicToolCall(request.data).then((response) => {
-      socket.end(`${JSON.stringify(response)}\n`);
-    });
+    void forwardDynamicToolCall(request.data, controller.signal).then(
+      (response) => {
+        if (controller.signal.aborted) return;
+        socket.end(`${JSON.stringify(response)}\n`);
+      },
+    );
   });
 }
 
@@ -1533,6 +1566,7 @@ function liveSessionForThread(
 }
 
 function removeSession(session: AcpThreadSession): void {
+  for (const controller of session.pendingToolCalls) controller.abort();
   if (sessionsByBbThreadId.get(session.bbThreadId) === session) {
     sessionsByBbThreadId.delete(session.bbThreadId);
   }
@@ -1688,6 +1722,7 @@ async function startAgentSession(
     stopping: false,
     turnSettled: undefined,
     pendingPermissions: new Set(),
+    pendingToolCalls: new Set(),
     cursorMcpApproval: undefined,
     deferStartEmit: emitStartNotification,
   };
@@ -1976,6 +2011,7 @@ function finishTurn(
   if (session.activePromptKind !== "turn") {
     return;
   }
+  for (const controller of session.pendingToolCalls) controller.abort();
   session.activePromptKind = null;
   dropQueuedTurnInputs(session, "ACP turn ended before the steer was sent");
   session.promptRequestPending = false;

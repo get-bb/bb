@@ -2131,6 +2131,62 @@ describe("DesktopBrowserViewManager", () => {
     expect(snapshots).toHaveLength(4);
   });
 
+  it.each(["visibility", "destroyed", "detach"] as const)(
+    "tolerates a missing guest during %s",
+    (operation) => {
+      const { manager, hostWindow, view } = createRendererRecoveryFixture(94);
+      const guest = view.webContents;
+      if (operation !== "destroyed") guest.destroyed = true;
+      Object.defineProperty(view, "webContents", { get: () => undefined });
+      expect(() => {
+        if (operation === "visibility") {
+          manager.setVisible({
+            hostWindow,
+            request: { tabId: "browser:a", visible: false },
+          });
+        } else if (operation === "destroyed") {
+          guest.close();
+        } else {
+          manager.detach({ hostWindow, tabId: "browser:a" });
+        }
+      }).not.toThrow();
+      manager.destroyAll();
+    },
+  );
+
+  it.each(["guest", "releaseWindow", "destroyAll"] as const)(
+    "cleans up through %s after the host is destroyed",
+    (operation) => {
+      const { manager, hostWindow, view } = createRendererRecoveryFixture(91);
+      const onTabsChanged = vi.fn();
+      manager.subscribeAutomationTabs(onTabsChanged);
+      hostWindow.destroyed = true;
+      hostWindow.webContents.destroyed = true;
+      Object.defineProperty(hostWindow.webContents, "id", {
+        get: () => {
+          throw new TypeError("Object has been destroyed");
+        },
+      });
+
+      expect(() => {
+        if (operation === "guest") view.webContents.close();
+        if (operation === "releaseWindow") manager.releaseWindow(91);
+        if (operation === "destroyAll") manager.destroyAll();
+      }).not.toThrow();
+      expect(
+        manager.getAutomationTabs({
+          hostWebContentsId: 91,
+          threadId: "thread-1",
+        }),
+      ).toEqual([]);
+      expect(view.webContents.isDestroyed()).toBe(true);
+      expect(onTabsChanged).toHaveBeenCalledTimes(1);
+      expect(hostWindow.contentView.removedViews).toEqual([]);
+      manager.destroyAll();
+      expect(onTabsChanged).toHaveBeenCalledTimes(1);
+    },
+  );
+
   it.each(["detach", "releaseWindow", "destroyAll", "destroyed"] as const)(
     "notifies once after removing a native target through %s",
     (operation) => {

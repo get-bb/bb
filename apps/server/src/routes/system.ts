@@ -265,18 +265,18 @@ export function registerSystemRoutes(
       "showDiagnosticEvents" in settings
         ? settings.showDiagnosticEvents
         : undefined;
-    setAppSettings(
-      deps.db,
-      appSettingsSchema.parse({
-        ...settings,
-        showDiagnosticEvents:
-          diagnosticValue === undefined ||
-          (showUnhandledProviderEvents !== undefined &&
-            diagnosticValue === current.showDiagnosticEvents)
-            ? showUnhandledProviderEvents
-            : diagnosticValue,
-      }),
-    );
+    const updatedSettings = appSettingsSchema.parse({
+      ...settings,
+      telemetryEnabled: settings.telemetryEnabled ?? current.telemetryEnabled,
+      showDiagnosticEvents:
+        diagnosticValue === undefined ||
+        (showUnhandledProviderEvents !== undefined &&
+          diagnosticValue === current.showDiagnosticEvents)
+          ? showUnhandledProviderEvents
+          : diagnosticValue,
+    });
+    setAppSettings(deps.db, updatedSettings);
+    deps.telemetry.setEnabled(updatedSettings.telemetryEnabled);
     deps.hub.notifySystem(["config-changed"]);
     return context.json(compatibleGeneralSettings());
   });

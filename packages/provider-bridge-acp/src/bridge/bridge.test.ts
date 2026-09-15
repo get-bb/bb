@@ -502,6 +502,7 @@ function callDynamicToolBridge(args: {
   token: string;
   tool: string;
   toolArguments: Record<string, unknown>;
+  signal?: AbortSignal;
 }): Promise<unknown> {
   return new Promise((resolveCall, rejectCall) => {
     const socket = createConnection({ host: args.host, port: args.port });
@@ -514,6 +515,14 @@ function callDynamicToolBridge(args: {
       settled = true;
       rejectCall(error);
     };
+    const abort = () => {
+      socket.destroy();
+      rejectOnce(new Error("Cancelled by fixture"));
+    };
+    args.signal?.addEventListener("abort", abort, { once: true });
+    socket.once("close", () =>
+      args.signal?.removeEventListener("abort", abort),
+    );
     socket.setEncoding("utf8");
     socket.on("connect", () => {
       socket.write(
@@ -1811,6 +1820,114 @@ describe("acp bridge", () => {
       ok: true,
     });
   });
+
+  it.each(["socket-close", "provider-exit", "turn-end"])(
+    "cancels the runtime tool request after %s",
+    async (kind) => {
+      const { providerThreadId } = await startThread({
+        dynamicTools: [
+          {
+            name: "update_environment_directory",
+            description: "Move this thread to another environment directory.",
+            inputSchema: {
+              type: "object",
+              properties: { path: { type: "string" } },
+              required: ["path"],
+            },
+          },
+        ],
+      });
+
+      const turnId = sendTurnRequest("turn/start", providerThreadId, {
+        input: [{ type: "text", text: "echo-mcp-server-config", mentions: [] }],
+      });
+      await waitForResponse(turnId);
+      await waitForTurnCompleted();
+
+      const configPrefix = "mcp-server-config:";
+      const configText = agentMessageTexts().find((text) =>
+        text.startsWith(configPrefix),
+      );
+      if (!configText) {
+        throw new Error("Fake ACP agent did not report MCP server config");
+      }
+      const [mcpServerConfig] = JSON.parse(
+        configText.slice(configPrefix.length),
+      ) as { env: { name: string; value: string }[]; name: string }[];
+      if (!mcpServerConfig) {
+        throw new Error("Fake ACP agent reported no MCP server config");
+      }
+      expect(mcpServerConfig?.name).toBe(ACP_BRIDGE_MCP_SERVER_NAME);
+      const env = new Map(
+        mcpServerConfig.env.map(({ name, value }) => [name, value]),
+      );
+      const host = env.get("BB_ACP_DYNAMIC_TOOL_HOST");
+      const port = Number(env.get("BB_ACP_DYNAMIC_TOOL_PORT"));
+      const threadId = env.get("BB_ACP_DYNAMIC_TOOL_THREAD_ID");
+      const token = env.get("BB_ACP_DYNAMIC_TOOL_TOKEN");
+      if (!host || !Number.isInteger(port) || !threadId || !token) {
+        throw new Error("MCP server config is missing dynamic tool bridge env");
+      }
+
+      const controller = new AbortController();
+      const bridgeCall = callDynamicToolBridge({
+        callId: "cancelled-tool-call",
+        host,
+        port,
+        threadId,
+        token,
+        tool: "update_environment_directory",
+        toolArguments: {},
+        signal: controller.signal,
+      }).catch((error) => error);
+      const forwarded = await waitFor(
+        () =>
+          output.messages.find(
+            (message) =>
+              message.method === "item/tool/call" && message.id !== undefined,
+          ),
+        "forwarded request",
+      );
+      if (kind === "socket-close") {
+        controller.abort();
+        expect(await bridgeCall).toBeInstanceOf(Error);
+      } else {
+        sendTurnRequest("turn/start", providerThreadId, {
+          input: [
+            {
+              type: "text",
+              text: kind === "provider-exit" ? "die" : "done",
+              mentions: [],
+            },
+          ],
+        });
+        await expect(bridgeCall).resolves.toMatchObject({
+          ok: false,
+          error: "ACP dynamic tool call cancelled",
+        });
+      }
+      const cancellation = await waitFor(
+        () =>
+          output.messages.find(
+            (message) => message.method === "notifications/cancelled",
+          ),
+        "runtime cancellation",
+      );
+      expect(cancellation.params).toEqual({ requestId: forwarded.id });
+      handleLine(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: forwarded.id,
+          result: { success: true, contentItems: [] },
+        }),
+      );
+      expect(
+        output.messages.filter(
+          (message) => message.method === "notifications/cancelled",
+        ),
+      ).toHaveLength(1);
+    },
+  );
 
   it("keeps the dynamic-tool TCP server alive after a client reset on initialize", async () => {
     const { bbThreadId, providerThreadId } = await startThread({

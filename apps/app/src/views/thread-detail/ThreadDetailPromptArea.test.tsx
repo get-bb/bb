@@ -122,9 +122,11 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", async () => {
         onAttachFiles: (files: File[]) => void | Promise<void>;
       };
       composer: {
+        canModifierSubmit: boolean;
         message: string;
         onChangeMessage: (message: string, mentions: []) => void;
         onEscape?: () => void;
+        onModifierSubmit: () => void;
         onSubmit: () => void;
         submitLabel?: string;
         submitIcon?: string;
@@ -142,6 +144,9 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", async () => {
           onChange?: (value: string) => void;
         };
         handoff?: {
+          active: boolean;
+          onStart: () => void;
+          onExit: () => void;
           onSelect: (selection: {
             providerId: string;
             model: string;
@@ -292,6 +297,11 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", async () => {
             <button type="button" onClick={composer.onSubmit}>
               Submit composer
             </button>
+            {composer.canModifierSubmit ? (
+              <button type="button" onClick={composer.onModifierSubmit}>
+                Modifier submit
+              </button>
+            ) : null}
             {composer.onEscape ? (
               <button type="button" onClick={composer.onEscape}>
                 Escape composer
@@ -326,18 +336,40 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", async () => {
           </>
         ) : null}
         {execution.handoff ? (
-          <button
-            type="button"
-            onClick={() =>
-              execution.handoff?.onSelect({
-                providerId: "claude-code",
-                model: "claude-opus-5",
-                reasoningLevel: "medium",
-              })
-            }
-          >
-            Complete handoff flow
-          </button>
+          <>
+            {execution.handoff.active ? (
+              <button type="button" onClick={execution.handoff.onExit}>
+                Exit handoff
+              </button>
+            ) : null}
+            <button type="button" onClick={execution.handoff.onStart}>
+              Start handoff
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                execution.handoff?.onSelect({
+                  providerId: "codex",
+                  model: "gpt-5-mini",
+                  reasoningLevel: "medium",
+                })
+              }
+            >
+              Same provider handoff
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                execution.handoff?.onSelect({
+                  providerId: "claude-code",
+                  model: "claude-opus-5",
+                  reasoningLevel: "medium",
+                })
+              }
+            >
+              Complete handoff flow
+            </button>
+          </>
         ) : null}
       </div>
     ),
@@ -551,6 +583,7 @@ vi.mock("@/hooks/useThreadCreationOptions", async () => {
       const [selectedProviderId, setSelectedProviderId] = useState(
         options.initialProviderId,
       );
+      const [explicitModel, setExplicitModel] = useState<string | null>(null);
       const isClaude = selectedProviderId === "claude-code";
       return {
         activeModel: null,
@@ -571,7 +604,7 @@ vi.mock("@/hooks/useThreadCreationOptions", async () => {
         ],
         reasoningLevel: "medium",
         reasoningOptions: [],
-        selectedModel: isClaude ? "claude-opus-5" : "gpt-5",
+        selectedModel: explicitModel ?? (isClaude ? "claude-opus-5" : "gpt-5"),
         selectedProviderComposerActions: [],
         selectedProviderDisplayName: isClaude ? "Claude Code" : "Codex",
         selectedProviderId,
@@ -579,10 +612,21 @@ vi.mock("@/hooks/useThreadCreationOptions", async () => {
         serviceTierSupportByProvider: {},
         setPermissionMode: vi.fn(),
         setReasoningLevel: vi.fn(),
-        setProviderModelReasoning: ({ providerId }: { providerId: string }) =>
-          setSelectedProviderId(providerId),
-        setSelectedModel: vi.fn(),
-        setSelectedProviderId,
+        setProviderModelReasoning: ({
+          providerId,
+          model,
+        }: {
+          providerId: string;
+          model: string;
+        }) => {
+          setSelectedProviderId(providerId);
+          setExplicitModel(model);
+        },
+        setSelectedModel: setExplicitModel,
+        setSelectedProviderId: (providerId: string) => {
+          setSelectedProviderId(providerId);
+          setExplicitModel(null);
+        },
         setServiceTier: vi.fn(),
         supportsPermissionModeSelection: true,
         supportsServiceTier: false,
@@ -904,6 +948,39 @@ describe("environment follow-up summary", () => {
 });
 
 describe("ThreadDetailPromptArea", () => {
+  it("preserves plugin submission data through a follow-up composer", async () => {
+    mocks.defaultExecutionOptions = {
+      model: "gpt-5",
+      permissionMode: "auto",
+      reasoningLevel: "medium",
+      serviceTier: "default",
+      source: "client/turn/requested",
+    };
+    mocks.promptDraft.text = "Keep this follow-up queued";
+    renderPromptArea();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Capture plugin host" }),
+    );
+    const pluginSubmission = {
+      pluginId: "drafts",
+      data: { kind: "draft" } as const,
+    };
+
+    await act(async () => {
+      await mocks.pluginComposerHost?.submit?.(
+        { experimental_data: pluginSubmission.data },
+        pluginSubmission,
+      );
+    });
+
+    expect(mocks.sendMessageMutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "thr_1",
+        pluginSubmission,
+      }),
+    );
+  });
+
   it("shows queued work while its message details are loading", () => {
     mocks.queuedMessages = undefined;
 
@@ -1069,6 +1146,31 @@ describe("ThreadDetailPromptArea", () => {
     const composer = screen.getByTestId("composer-boundary");
     expect(stack.lastElementChild).toBe(queue);
     expect(stack.nextElementSibling).toBe(composer);
+  });
+
+  it("sends the next queued message with the modifier shortcut after a stopped thread becomes idle", async () => {
+    mocks.queuedMessages = [makeQueuedMessage()];
+
+    renderPromptArea({
+      thread: makeThread({
+        runtime: {
+          displayStatus: "idle",
+          hostReconnectGraceExpiresAt: null,
+        },
+        status: "idle",
+      }),
+    });
+
+    expect(screen.getByTestId("submit-mode").textContent).toBe("ready:");
+    fireEvent.click(screen.getByRole("button", { name: "Modifier submit" }));
+
+    await waitFor(() => {
+      expect(mocks.sendQueuedMessageMutateAsync).toHaveBeenCalledWith({
+        id: "thr_1",
+        mode: "steer",
+        queuedMessageId: "qmsg_1",
+      });
+    });
   });
 
   it("steers a queued row once a provisioning thread is ready", async () => {
@@ -1874,6 +1976,48 @@ describe("ThreadDetailPromptArea", () => {
     expect(screen.getByText("Model fallback")).toBeTruthy();
   });
 
+  it("creates a new thread with a model from the same provider", async () => {
+    mocks.promptDraft.text = "Keep going";
+    mocks.createThreadMutateAsync.mockResolvedValue({
+      id: "thr_new",
+      projectId: "proj_1",
+    });
+    renderPromptArea();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Same provider handoff" }),
+    );
+    expect(screen.getByTestId("submit-label").textContent).toBe("New thread");
+    expect(screen.getByTestId("command-suggestions").textContent).toBe(
+      "codex:new-thread",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Submit composer" }));
+    await waitFor(() =>
+      expect(mocks.createThreadMutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({ providerId: "codex", model: "gpt-5-mini" }),
+      ),
+    );
+    expect(mocks.sendMessageMutateAsync).not.toHaveBeenCalled();
+    expect(mocks.createQueuedMessageMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it("exits a same-provider handoff and preserves draft edits", () => {
+    mocks.promptDraft.text = "Keep going";
+    renderPromptArea();
+    fireEvent.click(screen.getByRole("button", { name: "Start handoff" }));
+    expect(screen.getByTestId("submit-label").textContent).toBe("New thread");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Same provider handoff" }),
+    );
+    mocks.promptDraft.text += " with tests";
+    fireEvent.click(screen.getByRole("button", { name: "Exit handoff" }));
+    expect(mocks.promptDraft.getCurrent().text).toBe("Keep going with tests");
+    expect(screen.getByTestId("selected-model").textContent).toBe("gpt-5");
+    expect(screen.getByTestId("submit-label").textContent).toBe("");
+    expect(screen.getByTestId("command-suggestions").textContent).toBe(
+      "codex:thread",
+    );
+  });
+
   it.each(["Switch provider", "Complete handoff flow"])(
     "%s prepares a handoff and restores the draft on return",
     (entryAction) => {
@@ -1901,9 +2045,7 @@ describe("ThreadDetailPromptArea", () => {
         }),
       );
 
-      fireEvent.click(
-        screen.getByRole("button", { name: "Switch provider back" }),
-      );
+      fireEvent.click(screen.getByRole("button", { name: "Exit handoff" }));
 
       expect(mocks.promptDraft.setDraft).toHaveBeenLastCalledWith({
         attachments: [],
@@ -1944,9 +2086,7 @@ describe("ThreadDetailPromptArea", () => {
         }),
       ),
     );
-    fireEvent.click(
-      screen.getByRole("button", { name: "Switch provider back" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Exit handoff" }));
     expect(screen.getByTestId("active-permission-mode").textContent).toBe(
       "plan",
     );
@@ -1989,7 +2129,10 @@ describe("ThreadDetailPromptArea", () => {
           screen.getByRole("button", { name: "Capture plugin host" }),
         );
         await act(async () => {
-          await mocks.pluginComposerHost?.submit?.({ sendAt: 1234567890 });
+          await mocks.pluginComposerHost?.submit?.(
+            { sendAt: 1234567890 },
+            undefined,
+          );
         });
       } else {
         fireEvent.click(

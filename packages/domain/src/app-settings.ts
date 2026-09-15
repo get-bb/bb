@@ -20,6 +20,7 @@ export const appSettingsSchema = z
     providerOrder: z.array(z.string().min(1)),
     defaultProviderId: z.string().min(1).nullable(),
     streamerMode: z.boolean(),
+    telemetryEnabled: z.boolean(),
     managedBranchPrefix: managedBranchPrefixSchema,
     machineServerUrl: z
       .string()
@@ -46,6 +47,7 @@ export const defaultAppSettings: AppSettings = {
   providerOrder: [],
   defaultProviderId: null,
   streamerMode: false,
+  telemetryEnabled: true,
   managedBranchPrefix: DEFAULT_MANAGED_BRANCH_PREFIX,
   machineServerUrl: null,
   defaultMachineAccess: null,
@@ -54,9 +56,11 @@ export const defaultAppSettings: AppSettings = {
 
 export const appSettingsUpdateSchema = z.union([
   appSettingsSchema.extend({
+    telemetryEnabled: z.boolean().optional(),
     showUnhandledProviderEvents: z.boolean().optional(),
   }),
   appSettingsSchema.omit({ showDiagnosticEvents: true }).extend({
+    telemetryEnabled: z.boolean().optional(),
     showUnhandledProviderEvents: z.boolean(),
   }),
 ]);

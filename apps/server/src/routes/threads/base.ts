@@ -47,10 +47,7 @@ import {
 } from "../../services/lib/entity-lookup.js";
 import { listRunningThreadsWithIntendedHosts } from "../../services/threads/dispatch-attempt.js";
 import { dispatchThreadRenameCommand } from "../../services/threads/thread-commands.js";
-import {
-  finalizeStoppedThread,
-  requestActiveRuntimeThreadStopIfNeeded,
-} from "../../services/threads/thread-lifecycle.js";
+import { requestThreadStorageDeletion } from "../../services/threads/thread-lifecycle.js";
 import { createThreadFromRequest } from "../../services/threads/thread-create.js";
 import { createThreadForkFromRequest } from "../../services/threads/thread-fork.js";
 import { requireChildThreadsConfirmation } from "../../services/threads/child-thread-confirmation.js";
@@ -478,17 +475,12 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     cancelAbandonedProviderCreations(deps, thread.id);
     deps.terminalSessions.closeDeletedThreadTerminals({ threadId: thread.id });
     if (thread.environmentId === null) {
-      finalizeStoppedThread(deps, {
-        threadId: thread.id,
-      });
+      requestThreadStorageDeletion(deps, thread, null);
       return context.json({ ok: true });
     }
 
     const environment = requireEnvironment(deps.db, thread.environmentId);
-    requestActiveRuntimeThreadStopIfNeeded(deps, thread, environment);
-    finalizeStoppedThread(deps, {
-      threadId: thread.id,
-    });
+    requestThreadStorageDeletion(deps, thread, environment);
     return context.json({ ok: true });
   });
 }

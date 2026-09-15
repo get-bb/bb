@@ -299,8 +299,8 @@ export interface PluginThreadEventPayloads {
   /**
    * Fired after a dispatch attempt is queued as a row — by a `message.dispatch`
    * hook's `wait` decision, by a `sendAt` in the future, or by a core wait (the
-   * thread is busy, its turn is still starting, provisioning, or awaiting an
-   * interaction).
+   * thread is busy, its turn is still starting, provisioning, stopping, or
+   * awaiting an interaction).
    *
    * Every listener sees every queued row, not just the ones it is holding: an
    * observer that only wants its own filters on
@@ -643,6 +643,16 @@ export interface MessageDispatchHookContext {
    * double-count.
    */
   queuedMessage: ThreadQueuedMessage | null;
+  /**
+   * Opaque JSON supplied by a plugin through the composer's
+   * `experimental_submit`, paired with that plugin's id. Null for ordinary
+   * submissions and queued re-attempts. Core does not persist or interpret
+   * the data.
+   */
+  experimental_submission: {
+    pluginId: string;
+    data: JsonValue;
+  } | null;
   /** How the dispatch was requested; null for internal/core-driven sends. */
   origin: ThreadCreateOrigin | null;
   originPluginId: string | null;
@@ -824,6 +834,10 @@ export interface PluginRpc {
   register<Contract extends PluginRpcContract>(
     contract: Contract,
     handlers: PluginRpcHandlers<Contract>,
+    options?: {
+      experimental_discoverable?: boolean;
+      experimental_description?: string;
+    },
   ): void;
 }
 
@@ -1658,6 +1672,11 @@ export interface PluginMentionItem {
   icon?: string;
 }
 
+/** Agent-only image context resolved with a plugin mention. */
+export type ExperimentalPluginMentionImage =
+  | { type: "image"; url: string; context?: string }
+  | { type: "localImage"; path: string; context?: string };
+
 export interface PluginMentionProviderRegistration {
   /** Unique within this plugin: [a-zA-Z0-9_-]+ (no ":" — the host composes
    * wire item ids as "<providerId>:<itemId>"). */
@@ -1684,7 +1703,15 @@ export interface PluginMentionProviderRegistration {
    * message as an agent-visible (user-hidden) prompt input. Throwing blocks
    * the send with a visible error.
    */
-  resolve(itemId: string): { context: string } | Promise<{ context: string }>;
+  resolve(itemId: string):
+    | {
+        context: string;
+        experimental_images?: readonly ExperimentalPluginMentionImage[];
+      }
+    | Promise<{
+        context: string;
+        experimental_images?: readonly ExperimentalPluginMentionImage[];
+      }>;
 }
 
 export interface PluginUi {

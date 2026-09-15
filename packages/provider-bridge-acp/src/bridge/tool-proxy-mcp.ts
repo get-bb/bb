@@ -1,6 +1,10 @@
 import { dynamicToolSchema } from "@bb/domain";
 import type { DynamicTool } from "@bb/domain";
-import { buildBridgeToolCallContent as experimental_buildBridgeToolCallContent } from "@bb/provider-bridge-protocol/bridge-kit";
+import {
+  buildBridgeToolCallContent as experimental_buildBridgeToolCallContent,
+  providerToolCallCancellationSchema,
+  PROVIDER_TOOL_CALL_CANCELLED_METHOD,
+} from "@bb/provider-bridge-protocol/bridge-kit";
 import { createConnection } from "node:net";
 import { createInterface } from "node:readline";
 import { z } from "zod";
@@ -82,11 +86,12 @@ const bridgeToolCallResponseSchema = z.union([
 ]);
 type BridgeToolCallResponse = z.infer<typeof bridgeToolCallResponseSchema>;
 
-interface JsonRpcMessage {
-  id?: string | number;
-  method?: string;
-  params?: unknown;
-}
+const jsonRpcMessageSchema = z.object({
+  id: z.union([z.string(), z.number().int()]).optional(),
+  method: z.string().optional(),
+  params: z.unknown().optional(),
+});
+type JsonRpcMessage = z.infer<typeof jsonRpcMessageSchema>;
 
 interface McpServerEnvironment {
   host: string;
@@ -168,9 +173,17 @@ function mcpToolCallId(toolName: string): string {
 function callBridge(
   env: McpServerEnvironment,
   request: BridgeRequestPayload,
+  signal?: AbortSignal,
 ): Promise<BridgeToolCallResponse> {
   return new Promise((resolve, reject) => {
     const socket = createConnection({ host: env.host, port: env.port });
+    const abort = () => {
+      socket.destroy();
+      reject(new Error("ACP dynamic tool call cancelled"));
+    };
+    signal?.addEventListener("abort", abort, { once: true });
+    socket.once("close", () => signal?.removeEventListener("abort", abort));
+    if (signal?.aborted) abort();
     let buffer = "";
     socket.setEncoding("utf8");
     socket.on("connect", () => {
@@ -234,7 +247,15 @@ function startProgressHeartbeat(args: {
 async function handleRequest(
   env: McpServerEnvironment,
   message: JsonRpcMessage,
+  pending: Map<string | number, AbortController>,
 ): Promise<void> {
+  if (message.method === PROVIDER_TOOL_CALL_CANCELLED_METHOD) {
+    const cancellation = providerToolCallCancellationSchema.safeParse(
+      message.params,
+    );
+    if (cancellation.success) pending.get(cancellation.data.requestId)?.abort();
+    return;
+  }
   if (message.id === undefined || message.method === undefined) {
     return;
   }
@@ -272,6 +293,7 @@ async function handleRequest(
       return;
 
     case "tools/call": {
+      if (pending.has(message.id)) return;
       const params = objectParams(message.params);
       const name = typeof params.name === "string" ? params.name : "";
       const tool = env.tools.find((candidate) => candidate.name === name);
@@ -286,6 +308,8 @@ async function handleRequest(
         !Array.isArray(rawArguments)
           ? (rawArguments as Record<string, unknown>)
           : {};
+      const controller = new AbortController();
+      pending.set(message.id, controller);
       const progressToken = readProgressToken(message.params);
       const stopHeartbeat =
         progressToken === null
@@ -294,14 +318,21 @@ async function handleRequest(
               intervalMs: env.progressIntervalMs,
               progressToken,
             });
+      controller.signal.addEventListener("abort", stopHeartbeat, {
+        once: true,
+      });
       try {
-        const result = await callBridge(env, {
-          kind: "toolCall",
-          arguments: toolArguments,
-          callId: mcpToolCallId(tool.name),
-          tool: tool.name,
-        });
-        stopHeartbeat();
+        const result = await callBridge(
+          env,
+          {
+            kind: "toolCall",
+            arguments: toolArguments,
+            callId: mcpToolCallId(tool.name),
+            tool: tool.name,
+          },
+          controller.signal,
+        );
+        if (controller.signal.aborted) return;
         if (!result.ok) {
           writeResult(message.id, {
             content: [{ type: "text", text: result.error }],
@@ -314,7 +345,7 @@ async function handleRequest(
           ...(result.isError ? { isError: true } : {}),
         });
       } catch (error) {
-        stopHeartbeat();
+        if (controller.signal.aborted) return;
         writeResult(message.id, {
           content: [
             {
@@ -324,6 +355,10 @@ async function handleRequest(
           ],
           isError: true,
         });
+      } finally {
+        stopHeartbeat();
+        controller.signal.removeEventListener("abort", stopHeartbeat);
+        pending.delete(message.id);
       }
       return;
     }
@@ -339,7 +374,11 @@ async function handleRequest(
 
 export function runAcpDynamicToolMcpServer(): void {
   const env = readEnvironment();
+  const pending = new Map<string | number, AbortController>();
   const rl = createInterface({ input: process.stdin, terminal: false });
+  rl.on("close", () => {
+    for (const controller of pending.values()) controller.abort();
+  });
   rl.on("line", (line) => {
     const trimmed = line.trim();
     if (!trimmed) {
@@ -347,10 +386,10 @@ export function runAcpDynamicToolMcpServer(): void {
     }
     let message: JsonRpcMessage;
     try {
-      message = JSON.parse(trimmed) as JsonRpcMessage;
+      message = jsonRpcMessageSchema.parse(JSON.parse(trimmed));
     } catch {
       return;
     }
-    void handleRequest(env, message);
+    void handleRequest(env, message, pending);
   });
 }

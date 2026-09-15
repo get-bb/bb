@@ -27,6 +27,12 @@ import {
  *   carries no payload of its own.
  * - `thread-busy` — the thread is running a turn and the message asked to
  *   wait for idle rather than steer.
+ * - `stopping` — the user asked the thread to stop and the stop has not
+ *   landed yet. Distinct from `thread-busy` because the manual-stop queue
+ *   pause deliberately holds back the rows that were merely waiting for the
+ *   turn to end, while a row carrying this wait is one the user asked for
+ *   AFTER requesting the stop — by sending it, queueing it, or pressing Send
+ *   now — and so dispatches as soon as the thread reaches idle.
  * - `provisioning` — the thread's workspace is being (re)provisioned. Only
  *   follow-ups and steers wait on this: a thread's first message rides the
  *   cold-start command instead.
@@ -48,6 +54,7 @@ import {
 export const queuedMessageWaitingOnKindValues = [
   "time",
   "thread-busy",
+  "stopping",
   "turn-starting",
   "provisioning",
   "host-offline",
@@ -81,6 +88,7 @@ export const queuedMessageWaitReasonSchema = z
 export const queuedMessageWaitingOnSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("time") }),
   z.object({ kind: z.literal("thread-busy") }),
+  z.object({ kind: z.literal("stopping") }),
   z.object({ kind: z.literal("turn-starting") }),
   z.object({ kind: z.literal("provisioning") }),
   z.object({

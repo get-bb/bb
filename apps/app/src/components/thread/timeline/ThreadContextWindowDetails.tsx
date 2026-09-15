@@ -117,6 +117,7 @@ function CategoryRow({
         stroke="currentColor"
         strokeWidth="1"
         aria-hidden="true"
+        data-icon-root=""
         className={cn(
           "size-3 shrink-0 text-muted-foreground transition-transform duration-200 ease-out motion-reduce:transition-none",
           expanded && "rotate-90",

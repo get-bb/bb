@@ -199,9 +199,23 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
   const isLoading = listQuery.isFetching && listQuery.data === undefined;
   const selectedPlugin =
     plugins.find((plugin) => plugin.id === pluginId) ?? null;
+  const selectedCatalogEntryId = selectedPlugin?.catalogEntryId ?? null;
+  const selectedCatalogMarketplaceName =
+    selectedPlugin?.catalogMarketplaceName ?? null;
   const selectedCatalogEntry =
-    catalogQuery.data?.entries.find((entry) => entry.pluginId === pluginId) ??
-    null;
+    selectedPlugin === null
+      ? (catalogQuery.data?.entries.find(
+          (entry) => entry.pluginId === pluginId,
+        ) ?? null)
+      : selectedCatalogEntryId === null ||
+          selectedCatalogMarketplaceName === null
+        ? null
+        : (catalogQuery.data?.entries.find(
+            (entry) =>
+              entry.pluginId === selectedPlugin.id &&
+              entry.entryId === selectedCatalogEntryId &&
+              entry.marketplace === selectedCatalogMarketplaceName,
+          ) ?? null);
   useResourceRouteLabel(
     selectedPlugin?.name ??
       selectedPlugin?.id ??

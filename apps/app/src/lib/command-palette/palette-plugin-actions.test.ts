@@ -7,6 +7,7 @@ function slot(
   overrides: Partial<PluginCommandPaletteActionSlot> & { id: string },
 ): PluginCommandPaletteActionSlot {
   return {
+    defaultShortcut: null,
     pluginId: "linear",
     generation: 1,
     title: `Title ${overrides.id}`,

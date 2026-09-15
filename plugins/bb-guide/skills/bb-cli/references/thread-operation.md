@@ -94,7 +94,8 @@ hostId, providerId, projectId, parentThreadId, groupBy })`.
 - Use `bb thread search <query> [--limit <1-50>]` for sidebar search. Use
   `history`, `read|unread`, and `section` for organization and recall. The
   `bb thread queue` group contains the queued-message operations. Queue updates
-  use the listed version and accept repeatable `--file` and `--image` options.
+  use the listed version and accept repeatable `--file` and `--image` options;
+  absolute image paths are uploaded from the CLI machine before the update.
 - Use `bb thread show <thread-id>` for status, parent, environment, pull request
   status, and result.
 - Use `bb thread show <thread-id> --git-diff` to review file changes.
@@ -117,6 +118,9 @@ For review or fix pipelines, get the environment ID from
 
 ## Opening Threads And Files In The App
 
+- Reference a BB thread in chat as `@thread:thr_abc123`, substituting its
+  actual ID. BB renders the mention with the correct project-aware link; do not
+  construct `/threads/...` or `/projects/.../threads/...` URLs manually.
 - Use `bb thread open <path>` inside a BB thread to open a Markdown, HTML, or
   other workspace file for the user in the BB IDE's thread panel.
 - Use `bb thread open <thread-id> --split right|down|left|top|replace` to open

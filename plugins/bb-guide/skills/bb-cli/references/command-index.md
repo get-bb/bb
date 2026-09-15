@@ -237,6 +237,10 @@ configures the machine with optional configured `preset` and `image` names;
 - `bb plugin build`
 - `bb plugin dev`
 - `bb plugin reload`
+- `bb plugin rpc`
+- `bb plugin rpc list`
+- `bb plugin rpc inspect`
+- `bb plugin rpc call`
 - `bb plugin enable`
 - `bb plugin disable`
 - `bb plugin config`

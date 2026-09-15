@@ -52,6 +52,7 @@ import {
 
 export const TERMINAL_FONT_FAMILY =
   '"JetBrainsMono Nerd Font Mono", "MesloLGS NF", "Symbols Nerd Font Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace';
+const TERMINAL_FONT_CSS_VARIABLE = "--font-terminal";
 export const TERMINAL_UNICODE_VERSION = "11";
 export const TERMINAL_ALLOW_PROPOSED_API = true;
 const TERMINAL_TOUCH_FOCUS_MAX_DURATION_MS = 700;
@@ -247,10 +248,17 @@ function readResolvedCssColor(
   return getComputedStyle(probe).color;
 }
 
-type TerminalCssColorReader = (name: string) => string | undefined;
+type TerminalCssVariableReader = (name: string) => string | undefined;
+
+export function resolveTerminalFontFamily(
+  get: TerminalCssVariableReader,
+): string {
+  const value = get(TERMINAL_FONT_CSS_VARIABLE)?.trim();
+  return value || TERMINAL_FONT_FAMILY;
+}
 
 export function buildTerminalThemeFromCssColors(
-  get: TerminalCssColorReader,
+  get: TerminalCssVariableReader,
 ): ITheme {
   return {
     background: get("--sidebar"),
@@ -290,6 +298,62 @@ function buildTerminalTheme(): ITheme {
   const theme = buildTerminalThemeFromCssColors(get);
   probe.remove();
   return theme;
+}
+
+function readTerminalFontFamily(): string {
+  if (typeof document === "undefined") {
+    return TERMINAL_FONT_FAMILY;
+  }
+  return resolveTerminalFontFamily((name) =>
+    getComputedStyle(document.documentElement).getPropertyValue(name),
+  );
+}
+
+export function applyTerminalFontFamily(
+  terminal: Pick<XTermTerminal, "options">,
+  fontFamily: string,
+  scheduleFit: TerminalFitScheduler,
+): boolean {
+  if (terminal.options.fontFamily === fontFamily) {
+    return false;
+  }
+  terminal.options.fontFamily = fontFamily;
+  scheduleFit();
+  return true;
+}
+
+export function forceTerminalFontMeasurement(
+  terminal: Pick<
+    XTermTerminal,
+    "options" | "clearTextureAtlas" | "refresh" | "rows"
+  >,
+): void {
+  const fontFamily = terminal.options.fontFamily;
+  terminal.options.fontFamily = `${fontFamily} `;
+  terminal.options.fontFamily = fontFamily;
+  terminal.clearTextureAtlas();
+  terminal.refresh(0, terminal.rows - 1);
+}
+
+export function observeTerminalFontLoading(
+  fontSet: Pick<
+    FontFaceSet,
+    "ready" | "addEventListener" | "removeEventListener"
+  >,
+  onFontsLoaded: () => void,
+): () => void {
+  let disposed = false;
+  const refresh = () => {
+    if (!disposed) {
+      onFontsLoaded();
+    }
+  };
+  fontSet.addEventListener("loadingdone", refresh);
+  void fontSet.ready.then(refresh);
+  return () => {
+    disposed = true;
+    fontSet.removeEventListener("loadingdone", refresh);
+  };
 }
 
 interface ThreadTerminalViewProps {
@@ -822,6 +886,7 @@ export function ThreadTerminalView({
     let selectionAnimationFrame: number | null = null;
     let resizeObserver: ResizeObserver | null = null;
     let selectionChangeDisposable: { dispose: () => void } | null = null;
+    let stopObservingFonts: (() => void) | null = null;
 
     async function mountTerminal(
       containerElement: HTMLDivElement,
@@ -859,7 +924,7 @@ export function ThreadTerminalView({
         allowProposedApi: TERMINAL_ALLOW_PROPOSED_API,
         convertEol: true,
         cursorBlink: true,
-        fontFamily: TERMINAL_FONT_FAMILY,
+        fontFamily: readTerminalFontFamily(),
         fontSize: 12,
         linkHandler: osc8LinkHandler,
         scrollback: 10_000,
@@ -920,6 +985,16 @@ export function ThreadTerminalView({
         });
       };
       fitTerminal();
+      const fontSet = document.fonts;
+      if (fontSet !== undefined) {
+        stopObservingFonts = observeTerminalFontLoading(fontSet, () => {
+          if (terminal === null) {
+            return;
+          }
+          forceTerminalFontMeasurement(terminal);
+          scheduleFit();
+        });
+      }
       scheduleFitRef.current = scheduleFit;
       const currentActiveElement = document.activeElement;
       if (
@@ -1053,6 +1128,7 @@ export function ThreadTerminalView({
 
     return () => {
       disposed = true;
+      stopObservingFonts?.();
       if (resizeAnimationFrame !== null) {
         window.cancelAnimationFrame(resizeAnimationFrame);
       }
@@ -1103,6 +1179,9 @@ export function ThreadTerminalView({
     if (!terminal) {
       return;
     }
+    applyTerminalFontFamily(terminal, readTerminalFontFamily(), () =>
+      scheduleFitRef.current?.(),
+    );
     terminal.options.theme = buildTerminalTheme();
   }, [preferredTheme, appThemeEpoch]);
 

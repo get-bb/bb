@@ -5,7 +5,10 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ThreadEvent, ToolCallResponse } from "@bb/domain";
 import { createProviderForId } from "./provider-registry.js";
-import { handleRuntimeProviderRequest } from "./runtime-provider-requests.js";
+import {
+  handleRuntimeProviderRequest,
+  RuntimeToolCalls,
+} from "./runtime-provider-requests.js";
 import {
   parseJsonRpcLine,
   type JsonRpcMessage,
@@ -50,6 +53,50 @@ describe("createAgentRuntime tool calls", () => {
 
   afterEach(() => {
     rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("aborts a pending tool handler when the thread is stopped", async () => {
+    const events: ThreadEvent[] = [];
+    let signal: AbortSignal | undefined;
+    let finish!: (result: ToolCallResponse) => void;
+    const runtime = createScriptedEchoRuntime({
+      runtime: {
+        workspacePath: tmpDir,
+        onEvent: (event) => events.push(event),
+        onToolCall: (_request, abortSignal) => {
+          signal = abortSignal;
+          return new Promise((resolve) => {
+            finish = resolve;
+          });
+        },
+      },
+    });
+    try {
+      await runtime.startThread({
+        environmentId: "env-1",
+        threadId: "t1",
+        projectId: "p1",
+        providerId: "fake",
+        options: fullRuntimeOptions,
+      });
+      await runtime.runTurn({
+        clientRequestId: "creq_222222223z",
+        threadId: "t1",
+        input: [promptTextInput({ text: "call_tool:question" })],
+        options: fullRuntimeOptions,
+      });
+      await vi.waitFor(() => expect(finish).toBeDefined());
+      expect(signal?.aborted).toBe(false);
+      await runtime.stopThread({ threadId: "t1" });
+      expect(signal?.aborted).toBe(true);
+      finish({
+        success: true,
+        contentItems: [{ type: "inputText", text: "late answer" }],
+      });
+    } finally {
+      finish?.({ success: false, contentItems: [] });
+      await runtime.shutdown();
+    }
   });
 
   it("routes provider-scoped tool calls through onToolCall and sends response back", async () => {
@@ -199,6 +246,7 @@ describe("createAgentRuntime tool calls", () => {
 
     try {
       handleRuntimeProviderRequest({
+        toolCalls: new RuntimeToolCalls(),
         getActiveTurnId: () => null,
         getThreadExecutionOptions: () => undefined,
         onInteractiveRequest: async () => ({
@@ -262,6 +310,7 @@ describe("createAgentRuntime tool calls", () => {
 
     try {
       handleRuntimeProviderRequest({
+        toolCalls: new RuntimeToolCalls(),
         getActiveTurnId: () => "turn-1",
         getThreadExecutionOptions: () => undefined,
         onInteractiveRequest: async () => ({

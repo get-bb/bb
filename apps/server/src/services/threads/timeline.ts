@@ -1501,6 +1501,7 @@ function buildThreadTimelineInternal(
         paginatedTimeline.contentCursor,
       ),
       historySnapshot: timelineSnapshotKey(snapshot),
+      olderRowsSourceSeqEnd: paginatedTimeline.olderRowsSourceSeqEnd,
       contentPage: paginatedTimeline.contentPage,
     },
   };

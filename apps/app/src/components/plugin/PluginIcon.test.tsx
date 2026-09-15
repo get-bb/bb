@@ -81,6 +81,13 @@ it("uses Zap compactly when a logo-only plugin has no contribution hint", () => 
   expect(view.container.querySelector("img")).toBeNull();
 });
 
+it("can omit the fallback when plugin branding is unavailable", () => {
+  const view = render(
+    <PluginIcon pluginId="unavailable" icon={null} fallbackIcon={null} />,
+  );
+  expect(view.container.querySelector("[data-icon]")).toBeNull();
+});
+
 it("uses a plugin-owned compact SVG before named icon hints", () => {
   const compactIconUrl = "/api/v1/plugins/omega/assets/icon?h=abc";
   setPluginLogoUrls(
@@ -131,7 +138,5 @@ it("resolves every named branding.icon the shipped plugins declare", async () =>
   }
 
   expect(declared.length).toBeGreaterThan(0);
-  expect(declared.filter(([, icon]) => !isBuiltinIconName(icon))).toEqual(
-    [],
-  );
+  expect(declared.filter(([, icon]) => !isBuiltinIconName(icon))).toEqual([]);
 });

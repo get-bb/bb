@@ -21,6 +21,7 @@ import {
 } from "../helpers/commands.js";
 import { seedHostSession, seedProjectWithSource } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
+import { ApiError } from "../../src/errors.js";
 
 describe("live host command logging", () => {
   it("logs expected live command failures without calling warning handlers", async () => {
@@ -74,6 +75,42 @@ describe("live host command logging", () => {
       expect(onError).not.toHaveBeenCalled();
       expect(logger.warn).not.toHaveBeenCalled();
     });
+  });
+});
+
+it("preserves provisioning when the host transport disappears", async () => {
+  await withTestHarness(async (harness) => {
+    const { host } = seedHostSession(harness.deps);
+    const { project } = seedProjectWithSource(harness.deps, {
+      hostId: host.id,
+    });
+    const environment = createEnvironment(harness.db, harness.hub, {
+      projectId: project.id,
+      hostId: host.id,
+      providerOwnsPath: false,
+    });
+    const command = buildEnvironmentProvisionCommand({
+      environmentId: environment.id,
+      hostId: host.id,
+      initiator: null,
+      path: "/tmp/preserve-disconnected-setup",
+      setupScriptTimeoutMs: null,
+    });
+    vi.spyOn(harness.hub, "requestHostOnlineRpc").mockRejectedValue(
+      new ApiError(502, "host_unavailable", "Host is not connected"),
+    );
+
+    await expect(
+      runLiveHostCommand(harness.deps, {
+        command,
+        hostId: host.id,
+        preserveOnHostUnavailable: true,
+        timeoutMs: 1000,
+      }),
+    ).rejects.toThrow("Host is not connected");
+    expect(getEnvironment(harness.db, environment.id)?.status).toBe(
+      "provisioning",
+    );
   });
 });
 

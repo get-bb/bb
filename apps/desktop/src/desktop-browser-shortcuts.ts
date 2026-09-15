@@ -1,4 +1,5 @@
 import {
+  appCommandIdSchema,
   matchesAppShortcut,
   type AppCommandId,
   type AppKeybindings,
@@ -20,7 +21,8 @@ export function resolveDesktopBrowserAppCommand({
     const binding = keybindings[index];
     if (!binding || !binding.when.all.includes("browserFocus")) continue;
     if (matchesAppShortcut(input, binding.shortcut, isMac)) {
-      return binding.command;
+      const command = appCommandIdSchema.safeParse(binding.command);
+      if (command.success) return command.data;
     }
   }
   return null;

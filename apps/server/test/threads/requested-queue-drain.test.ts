@@ -255,13 +255,11 @@ describe("the requested queue drain", () => {
         payload: { input: textInput("plugin-held lead"), mode: "auto" },
         thread,
       });
-      await acceptThreadSendRequest(harness.deps, {
-        payload: {
-          input: textInput("scheduled tail"),
-          mode: "auto",
-          sendAt: Date.now() + 1_000,
-        },
-        thread,
+      seedQueuedMessage(harness.deps, {
+        threadId: thread.id,
+        content: textInput("scheduled tail"),
+        waitingOn: { kind: "time" },
+        sendAt: Date.now() + 1_000,
       });
       const queued = listQueuedThreadMessages(harness.db, thread.id);
       setQueuedThreadMessageGroupBoundary({

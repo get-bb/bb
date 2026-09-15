@@ -914,7 +914,7 @@ describe("core environment orchestration", () => {
           .toBe("error");
         expect(
           getPreparingEnvironment(harness.db, second.id)?.statusMessage,
-        ).toContain("another thread is using this workspace");
+        ).toContain("Workspace is being prepared by another thread");
         expect(switched).toEqual(["release"]);
         expect(fixture.row()).toMatchObject({
           hostId: fixture.host.id,
@@ -1838,4 +1838,93 @@ it("claims a Windows absolute workspace path", async () =>
     await fixture.settled();
     expect(fixture.row().path).toBe("C:/Users/tester/project");
     expect(["provisioning", "ready"]).toContain(fixture.row().status);
+  }));
+
+it("serializes concurrent branchless checkout attaches until the first thread is bound", async () =>
+  withTestHarness(async (harness) => {
+    const fake = createFakePluginHost({
+      pluginId: "environment-project-checkout",
+      experimental_callHostRpc: (call) => {
+        if (call.method !== "attach") throw new Error("Unexpected host call");
+        return { status: "attached", path: "/tmp/project", branchName: "main" };
+      },
+    });
+    try {
+      const module = z
+        .object({
+          default: z.custom<(bb: BbPluginApi) => Promise<void>>(
+            (value) => typeof value === "function",
+          ),
+        })
+        .parse(
+          await import(
+            new URL(
+              "../../../../../plugins/environment-project-checkout/server.ts",
+              import.meta.url,
+            ).href
+          ),
+        );
+      await module.default(fake.bb);
+      const provider =
+        fake.harness.registrations.environmentProviders.get("project-checkout");
+      if (!provider) throw new Error("Missing checkout provider");
+      let claimAttempts = 0;
+      let competingClaim = () => {};
+      const competing = new Promise<void>((resolve) => {
+        competingClaim = resolve;
+      });
+      const fixture = setup(harness, {
+        id: provider.id,
+        create: (context) =>
+          provider.create({
+            ...context,
+            experimental_claimPath: async (path) => {
+              const claimed = await context.experimental_claimPath(path);
+              if (++claimAttempts === 2) competingClaim();
+              return claimed;
+            },
+          }),
+        remove: provider.remove,
+        requires: { projectCheckout: true },
+      });
+      fixture.context.projectCheckout = {
+        path: "/tmp/project",
+        experimental_ownsPath: false,
+      };
+      fixture.context.inputs = {};
+      const existing = createEnvironment(harness.db, harness.hub, {
+        projectId: fixture.context.project.id,
+        hostId: fixture.host.id,
+        path: "/tmp/project",
+        status: "ready",
+        providerOwnsPath: false,
+      });
+      fixture.ask();
+      await fixture.settled();
+      expect(fixture.row().id).toBe(existing.id);
+      expect(fixture.row().claimPath).toBe("/tmp/project");
+      const competitor = seedThread(harness.deps, {
+        projectId: fixture.context.project.id,
+        status: "starting",
+      });
+      prepareProviderEnvironment(harness.deps, fixture.record, {
+        ...fixture.context,
+        thread: toThreadResponseFromThread(harness.deps, {
+          thread: competitor,
+        }),
+      });
+      await competing;
+      fixture.attach();
+      await expect
+        .poll(() => {
+          const row = getPreparingEnvironment(harness.db, competitor.id);
+          return { status: row?.status, message: row?.statusMessage };
+        })
+        .toMatchObject({ status: "ready" });
+      const second = getPreparingEnvironment(harness.db, competitor.id);
+      expect(second?.id).toBe(existing.id);
+      markProviderEnvironmentAttached(harness.db, competitor.id, existing.id);
+    } finally {
+      await fake.harness.lifecycle.dispose();
+    }
   }));

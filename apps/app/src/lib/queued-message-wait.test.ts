@@ -47,6 +47,9 @@ describe("describeQueuedMessageWait", () => {
   });
 
   it("names each core wait a reader cannot otherwise explain", () => {
+    expect(describeWait({ kind: "stopping" })).toBe(
+      "Sending when the thread stops",
+    );
     expect(describeWait({ kind: "turn-starting" })).toBe(
       "Waiting for turn to start",
     );
@@ -158,9 +161,7 @@ describe("queuedMessageWaitIcon", () => {
     expect(icon({ kind: "provisioning" })).toBe("Folder");
     expect(icon({ kind: "host-offline", hostName: "M4" })).toBe("CloudOff");
     expect(icon({ kind: "interaction" })).toBe("CircleQuestion");
-    expect(icon({ kind: "plugin", pluginId: "p", reason: "r" })).toBe(
-      "Limitation",
-    );
+    expect(icon({ kind: "plugin", pluginId: "p", reason: "r" })).toBeNull();
     expect(icon({ kind: "thread-busy" })).toBeNull();
     expect(icon(null)).toBeNull();
     expect(icon({ kind: "time" }, "Host is not connected")).toBe("AlertCircle");
@@ -210,6 +211,7 @@ describe("isQueuedMessageSendNowAllowed", () => {
       }),
     ).toBe(true);
     expect(isQueuedMessageSendNowAllowed({ kind: "thread-busy" })).toBe(true);
+    expect(isQueuedMessageSendNowAllowed({ kind: "stopping" })).toBe(false);
     expect(isQueuedMessageSendNowAllowed({ kind: "turn-starting" })).toBe(
       false,
     );

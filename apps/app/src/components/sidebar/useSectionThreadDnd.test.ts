@@ -10,6 +10,7 @@ import {
   collectSectionThreadDndLookup,
   NEST_BAND_ARMED_FRACTION,
   NEST_BAND_FRACTION,
+  NEST_CANCEL_OFFSET_PX,
   PINNED_THREAD_PARENT_KEY,
   resolvePinnedReorderPlacement,
   resolveSectionThreadDropDecision,
@@ -548,9 +549,14 @@ describe("thread row nest collisions", () => {
   const rowCollision = { id: rowId("parent-a") };
   const groupCollision = { id: "parent-a" };
   const droppableRects = new Map([[rowId("parent-a"), rect]]);
-  const resolve = (y: number, band: number | null) =>
+  const resolve = (
+    y: number,
+    band: number | null,
+    draggedLeft: number | null = null,
+  ) =>
     resolveThreadRowNestCollisions({
       collisions: [rowCollision, groupCollision],
+      draggedLeft,
       droppableRects,
       pointerCoordinates: { x: 20, y },
       getBandFraction: () => band,
@@ -571,6 +577,78 @@ describe("thread row nest collisions", () => {
       rowCollision,
       groupCollision,
     ]);
+  });
+
+  it("still requires a dwell after moving to the right", () => {
+    const candidates: unknown[] = [];
+    const collisions = resolveThreadRowNestCollisions({
+      collisions: [rowCollision, groupCollision],
+      draggedLeft: 48,
+      droppableRects,
+      pointerCoordinates: { x: 20, y: 114 },
+      getBandFraction: () => NEST_BAND_FRACTION,
+      holdNestCandidate: (threadId) => {
+        candidates.push(threadId);
+        return false;
+      },
+    });
+
+    expect(collisions).toEqual([groupCollision]);
+    expect(candidates).toEqual(["parent-a"]);
+  });
+
+  it("retains an armed parent through its projected child row", () => {
+    const resolveRetained = (
+      y: number,
+      draggedLeft: number,
+      retainedRect?: typeof rect,
+    ) =>
+      resolveThreadRowNestCollisions({
+        collisions: [groupCollision],
+        draggedLeft,
+        droppableRects,
+        pointerCoordinates: { x: 20, y },
+        getBandFraction: () => NEST_BAND_ARMED_FRACTION,
+        retainedRect,
+        retainedThreadId: "parent-a",
+      });
+
+    expect(resolveRetained(140, 48)).toEqual([rowCollision, groupCollision]);
+    expect(resolveRetained(140, -NEST_CANCEL_OFFSET_PX)).toEqual([
+      groupCollision,
+    ]);
+    expect(resolveRetained(157, 48)).toEqual([groupCollision]);
+    expect(
+      resolveRetained(170, 48, {
+        ...rect,
+        top: 158,
+        bottom: 186,
+      }),
+    ).toEqual([rowCollision, groupCollision]);
+  });
+
+  it("uses the initial row position after a source subtree collapses", () => {
+    const shiftedRect = {
+      ...rect,
+      top: 42,
+      bottom: 70,
+    };
+    expect(
+      resolveThreadRowNestCollisions({
+        collisions: [rowCollision, groupCollision],
+        draggedLeft: 48,
+        droppableRects: new Map([[rowId("parent-a"), shiftedRect]]),
+        fallbackRowRects: new Map([["parent-a", rect]]),
+        pointerCoordinates: { x: 20, y: 114 },
+        getBandFraction: () => NEST_BAND_FRACTION,
+      }),
+    ).toEqual([rowCollision, groupCollision]);
+  });
+
+  it("cancels parenting after moving twelve pixels left", () => {
+    expect(
+      resolve(114, NEST_BAND_ARMED_FRACTION, -NEST_CANCEL_OFFSET_PX),
+    ).toEqual([groupCollision]);
   });
 
   it("reports where the pointer sits on the row", () => {

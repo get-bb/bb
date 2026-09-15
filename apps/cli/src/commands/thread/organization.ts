@@ -21,7 +21,7 @@ import {
   outputJson,
   requireThreadIdOrSelf,
 } from "../helpers.js";
-import { buildPromptInputs } from "./helpers.js";
+import { buildPromptInputs, uploadClientImageInputs } from "./helpers.js";
 
 interface JsonOptions {
   json?: boolean;
@@ -373,7 +373,7 @@ export function registerOrganizationCommands(
     )
     .option(
       "--image <path>",
-      "Pass a host-readable absolute or uploaded attachment image path (repeatable)",
+      "Upload an absolute path from this CLI machine or pass an uploaded attachment path (repeatable)",
       collectOption,
       [],
     )
@@ -386,8 +386,8 @@ export function registerOrganizationCommands(
           message: string,
           opts: QueueUpdateOptions,
         ) => {
-          const queuedMessages =
-            createCliBbSdk(getUrl()).threads.queuedMessages;
+          const sdk = createCliBbSdk(getUrl());
+          const queuedMessages = sdk.threads.queuedMessages;
           const existing = (await queuedMessages.list({ threadId })).find(
             (queuedMessage) => queuedMessage.id === messageId,
           );
@@ -396,15 +396,21 @@ export function registerOrganizationCommands(
               `Queued message ${messageId} not found on thread ${threadId}.`,
             );
           }
-          const result = await queuedMessages.update({
-            threadId,
-            queuedMessageId: messageId,
-            expectedUpdatedAt: existing.updatedAt,
+          const input = await uploadClientImageInputs({
             input: buildPromptInputs({
               message,
               files: opts.file,
               images: opts.image,
             }),
+            resolveProjectId: async () =>
+              (await sdk.threads.get({ threadId })).projectId,
+            sdk,
+          });
+          const result = await queuedMessages.update({
+            threadId,
+            queuedMessageId: messageId,
+            expectedUpdatedAt: existing.updatedAt,
+            input,
           });
           if (outputJson(opts, result)) return;
           console.log(`Queued message ${messageId} updated`);

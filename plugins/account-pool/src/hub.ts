@@ -35,6 +35,7 @@ import type {
   PoolAffinityStore,
   QuotaStore,
 } from "./store.js";
+import { parentRequestHeaders, type ParentPool } from "./parent-pool.js";
 
 const ROUTE = "/api/v1/plugins/account-pool/http";
 const DEFAULT_REFRESH_URL = "https://platform.claude.com/v1/oauth/token";
@@ -72,6 +73,7 @@ interface HubOptions {
   fetch: typeof fetch;
   now: () => number;
   drainTimeoutMs: number;
+  getParentRoute: () => ParentPool | null;
   onAccountsChanged: () => void;
   onUpstreamError: (provider: PoolProvider, error: unknown) => void;
 }
@@ -170,7 +172,11 @@ export class AccountPoolHub {
     return this.adapter(provider).importAccount();
   }
 
-  async handle(request: Request, provider: PoolProvider): Promise<Response> {
+  async handle(
+    request: Request,
+    provider: PoolProvider,
+    routePath: string,
+  ): Promise<Response> {
     const adapter = this.adapter(provider);
     const hostId = await this.authenticate(request);
     if (hostId === null) {
@@ -181,12 +187,85 @@ export class AccountPoolHub {
         503,
         "Account Pooler is not accepting requests.",
       );
+    const parent = this.options.getParentRoute();
+    if (parent !== null) {
+      return this.forwardToParent(request, adapter, routePath, parent);
+    }
     return this.forward(
       request,
       new Uint8Array(await request.arrayBuffer()),
       adapter,
       hostId,
     );
+  }
+
+  private trackRequest(
+    request: Request,
+    onRelease?: () => void,
+  ): { controller: AbortController; release: () => void } {
+    const controller = new AbortController();
+    const abortFromRequest = () => controller.abort(request.signal.reason);
+    this.activeControllers.add(controller);
+    if (request.signal.aborted) abortFromRequest();
+    else
+      request.signal.addEventListener("abort", abortFromRequest, {
+        once: true,
+      });
+    let released = false;
+    return {
+      controller,
+      release: () => {
+        if (released) return;
+        released = true;
+        request.signal.removeEventListener("abort", abortFromRequest);
+        this.activeControllers.delete(controller);
+        onRelease?.();
+      },
+    };
+  }
+
+  private async forwardToParent(
+    request: Request,
+    adapter: ProviderAdapter,
+    routePath: string,
+    parent: ParentPool,
+  ): Promise<Response> {
+    const { controller, release } = this.trackRequest(request);
+    try {
+      const search = new URL(request.url).search;
+      const body =
+        request.method === "GET" || request.method === "HEAD"
+          ? undefined
+          : await request.arrayBuffer();
+      const response = await this.options
+        .fetch(`${parent.baseUrl}${routePath}${search}`, {
+          method: request.method,
+          headers: parentRequestHeaders(request.headers, parent.token),
+          ...(body === undefined ? {} : { body }),
+          signal: controller.signal,
+        })
+        .catch((cause: unknown) => {
+          if (!controller.signal.aborted)
+            this.options.onUpstreamError(adapter.provider, cause);
+          throw new UpstreamConnectionError("Parent pool unreachable.", {
+            cause,
+          });
+        });
+      return this.clientResponse({ response, controller, release });
+    } catch (error) {
+      release();
+      if (request.signal.aborted)
+        return adapter.errorResponse(
+          499,
+          "Account Pooler request was canceled.",
+        );
+      if (error instanceof UpstreamConnectionError)
+        return adapter.errorResponse(
+          502,
+          "Account Pooler could not reach the parent pool.",
+        );
+      throw error;
+    }
   }
 
   async refreshUsage(accountId?: string, force = false): Promise<void> {
@@ -256,7 +335,7 @@ export class AccountPoolHub {
     }
   }
 
-  async status(): Promise<Omit<PoolStatus, "routing">> {
+  async status(): Promise<Omit<PoolStatus, "routing" | "parent">> {
     const settings = this.options.getSettings();
     const now = this.options.now();
     const accounts = (await this.options.accounts.list()).sort(
@@ -959,23 +1038,10 @@ export class AccountPoolHub {
     secret: AccountSecret,
     adapter: ProviderAdapter,
   ): Promise<UpstreamResult> {
-    const controller = new AbortController();
-    const abortFromRequest = () => controller.abort(request.signal.reason);
-    this.activeControllers.add(controller);
     this.increment(account.id);
-    if (request.signal.aborted) abortFromRequest();
-    else
-      request.signal.addEventListener("abort", abortFromRequest, {
-        once: true,
-      });
-    let released = false;
-    const release = () => {
-      if (released) return;
-      released = true;
-      request.signal.removeEventListener("abort", abortFromRequest);
-      this.activeControllers.delete(controller);
-      this.decrement(account.id);
-    };
+    const { controller, release } = this.trackRequest(request, () =>
+      this.decrement(account.id),
+    );
     try {
       const upstreamBody = new ArrayBuffer(body.byteLength);
       new Uint8Array(upstreamBody).set(body);
@@ -1158,6 +1224,7 @@ export function createHub(options: {
   profileUrl?: string;
   drainTimeoutMs?: number;
   maxAffinityBindings?: number;
+  getParentRoute?: () => ParentPool | null;
   onAccountsChanged?: () => void;
   onUpstreamError?: (provider: PoolProvider, error: unknown) => void;
 }): AccountPoolHub {
@@ -1191,6 +1258,7 @@ export function createHub(options: {
     fetch: options.fetch ?? fetch,
     now: options.now ?? Date.now,
     drainTimeoutMs: options.drainTimeoutMs ?? 60_000,
+    getParentRoute: options.getParentRoute ?? (() => null),
     onAccountsChanged: options.onAccountsChanged ?? (() => {}),
     onUpstreamError: options.onUpstreamError ?? (() => {}),
   });

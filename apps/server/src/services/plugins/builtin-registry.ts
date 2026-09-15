@@ -23,6 +23,15 @@ interface ResolveBuiltinPluginRootPathArgs {
 
 export const BUILTIN_PLUGINS_DIRECTORY_NAME = "builtin-plugins";
 
+const ACCOUNT_POOL_PARENT_URL_ENV = "BB_ACCOUNT_POOL_PARENT_URL";
+
+export function accountPoolDefaultEnabled(
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  const value = env[ACCOUNT_POOL_PARENT_URL_ENV];
+  return typeof value === "string" && value.length > 0;
+}
+
 const REPO_PLUGINS_DIRECTORY_NAME = "plugins";
 
 export const BUILTIN_PLUGINS = [
@@ -34,7 +43,7 @@ export const BUILTIN_PLUGINS = [
   {
     name: "account-pool",
     pluginId: "account-pool",
-    defaultEnabled: false,
+    defaultEnabled: accountPoolDefaultEnabled(),
   },
   {
     name: "ask-user-question",
@@ -109,7 +118,7 @@ export const BUILTIN_PLUGINS = [
   {
     name: "provider-usage",
     pluginId: "provider-usage",
-    defaultEnabled: false,
+    defaultEnabled: true,
   },
   {
     name: "provider-acp",
@@ -139,6 +148,11 @@ export const BUILTIN_PLUGINS = [
   {
     name: "secrets",
     pluginId: "secrets",
+    defaultEnabled: true,
+  },
+  {
+    name: "drafts",
+    pluginId: "drafts",
     defaultEnabled: true,
   },
   {

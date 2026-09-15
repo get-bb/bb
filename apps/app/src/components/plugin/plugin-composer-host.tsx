@@ -10,7 +10,12 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react";
-import type { ComposerView, PluginComposerScope } from "@get-bb/plugin-sdk";
+import type {
+  ComposerView,
+  ExperimentalComposerSubmitOptions,
+  JsonValue,
+  PluginComposerScope,
+} from "@get-bb/plugin-sdk";
 import { isComposerDraftEmpty } from "@get-bb/plugin-sdk/internal/composer-view";
 import type { PromptDraftState } from "@bb/client-core";
 
@@ -21,7 +26,10 @@ export interface PluginComposerHost {
   subscribeDraft(listener: () => void): () => void;
   setDraft(next: PromptDraftState): void;
   focus(): void;
-  submit?(options: { sendAt: number }): Promise<void>;
+  submit?(
+    options: ExperimentalComposerSubmitOptions,
+    pluginSubmission: { pluginId: string; data: JsonValue } | undefined,
+  ): Promise<void>;
 }
 
 export function composerScopeIdentity(scope: PluginComposerScope): string {

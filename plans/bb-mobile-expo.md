@@ -880,7 +880,7 @@ green per PR.
   `delay:<ms>`, `call_tool:<n>`, `ask_user`, new `approve:<kind>`) on the iOS
   Simulator (`127.0.0.1`) and Android emulator (`10.0.2.2` / `adb reverse`).
   Deterministic seeds; e2e reset entry; screenshots kept as artifacts.
-- **Live QA**: `scripts/bb-dev-app current` + the dev-client on the simulator
+- **Live QA**: `pnpm dev` + the dev-client on the simulator
   against real providers; physical iPhone via a Tailscale Serve URL, a
   temporary `BB_SERVER_BIND_HOST=0.0.0.0` LAN URL, or `bb connect expose
 <server-port>` from this thread.

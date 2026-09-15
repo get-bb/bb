@@ -122,16 +122,15 @@ It keeps the normal checkout-specific dev data directory and host-daemon port.
 There is no Vite dev server or hot reload in this mode; rerun the command after
 source changes. As with `pnpm dev`, worktree starts do not send telemetry.
 
-To run that same source dev server with the Electron desktop shell:
+For the Electron desktop shell, keep `pnpm dev` running and start the desktop
+package in a second terminal:
 
 ```bash
-pnpm dev:desktop
+pnpm exec turbo run dev --filter=@bb/desktop
 ```
 
-This uses `scripts/bb-dev-app current --desktop`, which stops stale launcher
-sessions, checks dependencies and native modules, starts the source dev server,
-then opens the desktop shell against that dev app. The launcher prints the web
-URL but does not open a browser unless you pass `--open`.
+The desktop shell connects to this checkout's running dev app. Stop each command
+with Ctrl-C in its terminal.
 
 To use the dev app from another machine over Tailscale, run `pnpm dev`, note the
 printed app port, and publish the loopback Vite listener:

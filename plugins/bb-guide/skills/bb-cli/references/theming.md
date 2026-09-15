@@ -90,6 +90,8 @@ Set tokens in this order:
    also set `--ansi-bg-fg-0` … `--ansi-bg-fg-15` — the readable text color
    (usually black or white) drawn on top of each ANSI color when used as a
    background.
+6. **Terminal font (optional): `--font-terminal`.** This controls the
+   integrated terminal's xterm renderer independently of `--font-mono`.
 
 ## Token reference
 
@@ -165,15 +167,16 @@ fixed literals — override only if needed.
 
 ## Changing fonts
 
-Three font tokens, overridden the same way as colors. Fonts are mode-independent,
+Four font tokens, overridden the same way as colors. Fonts are mode-independent,
 so set them in the `:root, .light` block only. Always end the stack with a
 generic family (`sans-serif` / `monospace` / `serif`) as a fallback.
 
-| token          | drives                                                           |
-| -------------- | ---------------------------------------------------------------- |
-| `--font-sans`  | the entire app UI / body text (`body` uses it)                   |
-| `--font-mono`  | code blocks, diffs, file paths and previews, terminal-style text |
-| `--font-serif` | serif prose (rarely used in the UI)                              |
+| token                    | drives                                                           |
+| ------------------------ | ---------------------------------------------------------------- |
+| `--font-sans`            | the entire app UI / body text (`body` uses it)                   |
+| `--font-mono`            | code blocks, diffs, file paths and previews, terminal-style text |
+| `--font-serif`           | serif prose (rarely used in the UI)                              |
+| `--font-terminal`        | the integrated terminal's renderer font family                  |
 
 The browser must be able to load the family. Three ways:
 
@@ -185,6 +188,7 @@ The browser must be able to load the family. Three ways:
    .light {
      --font-sans: "Helvetica Neue", system-ui, sans-serif;
      --font-mono: "SF Mono", Menlo, monospace;
+     --font-terminal: "Berkeley Mono", monospace;
    }
    ```
 2. **A web font via `@import`** — the `@import` must be the VERY FIRST statement

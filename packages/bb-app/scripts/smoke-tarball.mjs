@@ -13,6 +13,7 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createManagedProcessStop } from "./managed-process.mjs";
 
 const HTTP_WAIT_TIMEOUT_MS = 60_000;
 const HTTP_WAIT_INTERVAL_MS = 250;
@@ -60,6 +61,7 @@ const tempRoot = await mkdtemp(join(tmpdir(), "bb-app-tarball-"));
 const smokeProcessEnv = {
   BB_TELEMETRY: "false",
 };
+const stopManagedProcess = createManagedProcessStop(PROCESS_STOP_TIMEOUT_MS);
 
 function formatElapsed(startedAt) {
   return `${((performance.now() - startedAt) / 1000).toFixed(1)}s`;
@@ -347,42 +349,6 @@ async function waitForHostPluginWorker({ dataDir, pluginId, processRef }) {
   throw new Error(
     `Timed out waiting for host plugin ${pluginId} on ${processRef.label}\n${formatProcessOutput(processRef.output)}\n${logPath}:\n${daemonOutput}`,
   );
-}
-
-async function stopManagedProcess(processRef) {
-  if (processRef.detached) {
-    try {
-      process.kill(-processRef.childProcess.pid, "SIGINT");
-    } catch (error) {
-      if (
-        !(error instanceof Error && "code" in error && error.code === "ESRCH")
-      ) {
-        throw error;
-      }
-    }
-  }
-
-  if (
-    processRef.childProcess.exitCode !== null ||
-    processRef.childProcess.signalCode !== null
-  ) {
-    return;
-  }
-  if (!processRef.detached) {
-    processRef.childProcess.kill("SIGINT");
-  }
-  const stopped = await Promise.race([
-    waitForProcessExit(processRef.childProcess).then(() => true),
-    delay(PROCESS_STOP_TIMEOUT_MS).then(() => false),
-  ]);
-  if (!stopped) {
-    if (processRef.detached) {
-      process.kill(-processRef.childProcess.pid, "SIGTERM");
-    } else {
-      processRef.childProcess.kill("SIGTERM");
-    }
-    await waitForProcessExit(processRef.childProcess);
-  }
 }
 
 function createInstalledBinInvocation(binDir, bin, args) {

@@ -152,6 +152,22 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         experimental: true,
       },
       {
+        id: "browser-toolbar",
+        title: "Browser toolbar controls",
+        summary:
+          "Adds a plugin control to the toolbar of each open Browser tab. With this, a plugin can:",
+        bullets: [
+          "Act on the Browser tab currently in front of the user",
+          "Receive the owning thread id, tab id, and current URL",
+          "Render beside the Browser address bar and native controls",
+        ],
+        apiSymbols: [
+          "ExperimentalPluginBrowserToolbarActionRegistration",
+          "ExperimentalPluginBrowserToolbarActionProps",
+        ],
+        experimental: true,
+      },
+      {
         id: "timeline-renderers",
         title: "Timeline entry content",
         summary:
@@ -297,15 +313,22 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         id: "command-palette-actions",
         title: "Command palette actions",
         summary:
-          "Adds a row under Plugins in bb's quick command palette. With this, a plugin can:",
+          "Registers a command with app.commands.register and adds a row under Plugins in bb's quick command palette. With this, a plugin can:",
         bullets: [
           "Supply the row's label and run behavior; bb owns matching, ordering, and recency",
+          "Offer a defaultShortcut with key and optional mod, meta, control, alt, and shift modifiers; mod means Command on macOS and Control elsewhere",
+          "Let users bind or rebind every command in Keyboard Settings; conflicts offer Replace binding or Cancel, and conflicting plugin defaults stay unbound",
+          "Keep saved bindings across reloads and disable/re-enable using plugin:<plugin-id>/<command-id>; palette and keyboard invocation share availability and error handling",
+          "Migrate slots.commandPaletteAction to commands.register with the same fields; the old method remains a deprecated alias",
           "Read the current thread and project, and hide the row when it is unavailable",
           "Open one of the plugin's own thread side-panel tabs when a thread is on screen",
         ],
         apiSymbols: [
-          "PluginCommandPaletteActionRegistration",
-          "PluginCommandPaletteActionContext",
+          "PluginAppBuilder.commands",
+          "PluginAppCommands",
+          "PluginCommandRegistration",
+          "PluginCommandContext",
+          "PluginCommandShortcut",
         ],
       },
     ],
@@ -383,12 +406,13 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Run a callback when someone picks the row",
           "Read and rewrite the draft prompt from that callback",
           "Send the draft at a time the person picks, through the prompt box's own send — so a scheduled message keeps its attachments, its @-mentions, and on the new-thread screen the agent and environment chosen on screen",
+          "Submit the draft with plugin-owned JSON that its dispatch hook can interpret and use to queue the message",
         ],
         apiSymbols: [
           "ComposerPlusMenuItem",
           "ExperimentalComposerSubmitOptions",
         ],
-        firstParty: ["Send later"],
+        firstParty: ["Drafts", "Send later"],
       },
       {
         id: "provider-picker",
@@ -659,11 +683,14 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Connects the plugin's own UI, its server code, and outside services. With this, a plugin can:",
         bullets: [
           "Call its server from its UI over RPC, with arguments and results checked against a schema",
+          "Publish RPC methods with experimental_discoverable and registration/method experimental_description; other plugins discover implementations and copy their published JSON Schemas using bb plugin rpc inspect",
           "Serve exact-path HTTP and WebSocket routes other systems can call, webhooks included",
           "Push messages to every open bb window, so the UI does not have to poll",
         ],
         apiSymbols: [
           "PluginRpc",
+          "PluginRpcMethodContract",
+          "PluginsArea.experimental_discoverRpc",
           "PluginHttp",
           "PluginRealtime",
           "ExperimentalPluginWebSocket",
@@ -722,6 +749,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Let a dispatch proceed, queue it with a user-visible reason, or refuse it outright",
           "See the thread, project, machine, prompt and resolved execution tuple before the turn runs",
+          "Read plugin-owned JSON attached by experimental_submit, including on queued re-attempts",
           "Hold work until a moment it names, then ask core to re-decide every queued message when its condition changes",
         ],
         apiSymbols: [
@@ -731,7 +759,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginDispatchEnvironmentIntent",
           "MessageDispatchHookDecision",
         ],
-        firstParty: ["Concurrency limit"],
+        firstParty: ["Concurrency limit", "Drafts"],
         experimental: true,
       },
       {

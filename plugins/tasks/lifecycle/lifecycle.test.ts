@@ -63,6 +63,18 @@ function trackedThreadFixture(
 }
 
 describe("task thread lifecycle", () => {
+  it("reconciles each non-terminal task thread once during startup", async () => {
+    const fixture = trackedThreadFixture("working", "active");
+
+    await registerLifecycle(fixture.bb, fixture.store);
+
+    expect(fixture.harness.sdk.callsTo("threads.get")).toEqual([
+      [{ threadId: "thr_worker" }],
+    ]);
+
+    await fixture.harness.dispose();
+  });
+
   it("moves a working thread to completed, comments, and publishes", async () => {
     const fixture = trackedThreadFixture("working", "active");
     await registerLifecycle(fixture.bb, fixture.store);
@@ -149,7 +161,6 @@ describe("task thread lifecycle", () => {
 
     expect(fixture.harness.sdk.callsTo("threads.get")).toEqual([
       [{ threadId: "thr_worker" }],
-      [{ threadId: "thr_worker" }],
     ]);
     expect(
       fixture.store.tasks.getTaskThread(fixture.taskThreadId)?.liveStatus,
@@ -216,7 +227,7 @@ describe("task thread lifecycle", () => {
       "message.cancelled": 0,
       "thread.unarchived": 0,
     });
-    expect(host.harness.sdk.callsTo("threads.get")).toHaveLength(2);
+    expect(host.harness.sdk.callsTo("threads.get")).toHaveLength(1);
     expect(store.tasks.getTaskThread(tracked.id)?.liveStatus).toBe("starting");
 
     await host.harness.dispose();
@@ -237,7 +248,7 @@ describe("task thread lifecycle", () => {
     expect(
       fixture.store.tasks.getTaskThread(fixture.taskThreadId)?.liveStatus,
     ).toBe("working");
-    expect(fixture.harness.sdk.callsTo("threads.get")).toHaveLength(2);
+    expect(fixture.harness.sdk.callsTo("threads.get")).toHaveLength(1);
     expect(fixture.harness.sdk.callsTo("subscribe")).toEqual([]);
 
     await fixture.harness.dispose();
@@ -254,7 +265,7 @@ describe("task thread lifecycle", () => {
             reads += 1;
             return makeThreadResponse({
               id: "thr_safety_net",
-              status: reads <= 2 ? "starting" : "active",
+              status: reads === 1 ? "starting" : "active",
             });
           },
         },

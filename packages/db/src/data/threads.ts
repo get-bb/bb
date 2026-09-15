@@ -1795,7 +1795,7 @@ export function setThreadExecutionOverride(
 
 export interface SetThreadStartupContextInput {
   threadId: string;
-    startupContext: string | null;
+  startupContext: string | null;
 }
 
 export function setThreadStartupContext(
@@ -1866,6 +1866,20 @@ export function markThreadDeleted(
   }
 
   return updated ?? null;
+}
+
+export function markThreadStorageDeleted(
+  db: ThreadWriteConnection,
+  args: { threadId: string; deletedAt?: number },
+) {
+  return (
+    db
+      .update(threads)
+      .set({ storageDeletedAt: args.deletedAt ?? Date.now() })
+      .where(eq(threads.id, args.threadId))
+      .returning()
+      .get() ?? null
+  );
 }
 
 export function archiveThread(

@@ -68,6 +68,7 @@ type SidebarSplitResizeCursor = "col-resize" | "row-resize";
 export interface SidebarSplitTabDescriptor {
   id: string;
   label: string;
+  restoresPlacementAfterRemoval: boolean;
 }
 
 export interface SidebarSplitPaneRenderArgs {
@@ -143,7 +144,7 @@ export function SidebarSplitContainer({
     value: initialStorageValue,
   });
   const previousActiveTabId = useRef(activeTabId);
-  const previousAvailableTabIds = useRef(availableTabIds);
+  const previousTabs = useRef(tabs);
   const removedTabPlacements = useRef(new Map<string, SidebarTabPlacement>());
   const previousFullScreen = useRef(isFullScreen);
   const dimsInactiveSplits = useAtomValue(dimInactiveSplitsAtom);
@@ -160,18 +161,23 @@ export function SidebarSplitContainer({
 
   useEffect(() => {
     const previousExternalActiveTabId = previousActiveTabId.current;
-    const previousAvailable = previousAvailableTabIds.current;
+    const previousAvailableTabs = previousTabs.current;
+    const previousAvailable = previousAvailableTabs.map((tab) => tab.id);
     const shouldFollowExternalSelection =
       previousExternalActiveTabId !== activeTabId;
     previousActiveTabId.current = activeTabId;
-    previousAvailableTabIds.current = availableTabIds;
+    previousTabs.current = tabs;
     const current = stateRef.current;
     const availableTabIdSet = new Set(availableTabIds);
-    for (const tabId of previousAvailable) {
-      if (availableTabIdSet.has(tabId)) continue;
-      const placement = getSidebarTabPlacement(current, tabId);
+    for (const tab of previousAvailableTabs) {
+      if (availableTabIdSet.has(tab.id)) continue;
+      if (!tab.restoresPlacementAfterRemoval) {
+        removedTabPlacements.current.delete(tab.id);
+        continue;
+      }
+      const placement = getSidebarTabPlacement(current, tab.id);
       if (placement !== null) {
-        removedTabPlacements.current.set(tabId, placement);
+        removedTabPlacements.current.set(tab.id, placement);
       }
     }
     const withActiveTabReplacement =
@@ -185,12 +191,16 @@ export function SidebarSplitContainer({
       activeTabId,
     );
     const previousAvailableTabIdSet = new Set(previousAvailable);
-    for (const tabId of availableTabIds) {
-      if (previousAvailableTabIdSet.has(tabId)) continue;
-      const placement = removedTabPlacements.current.get(tabId);
+    for (const tab of tabs) {
+      if (previousAvailableTabIdSet.has(tab.id)) continue;
+      if (!tab.restoresPlacementAfterRemoval) {
+        removedTabPlacements.current.delete(tab.id);
+        continue;
+      }
+      const placement = removedTabPlacements.current.get(tab.id);
       if (placement === undefined) continue;
-      reconciled = restoreSidebarTabPlacement(reconciled, tabId, placement);
-      removedTabPlacements.current.delete(tabId);
+      reconciled = restoreSidebarTabPlacement(reconciled, tab.id, placement);
+      removedTabPlacements.current.delete(tab.id);
     }
     const activePane = shouldFollowExternalSelection
       ? listPanes(reconciled.layout.root).find((pane) =>
@@ -207,7 +217,7 @@ export function SidebarSplitContainer({
       stateRef.current = next;
       setState(next);
     }
-  }, [activeTabId, availableTabIds]);
+  }, [activeTabId, availableTabIds, tabs]);
 
   useEffect(() => {
     withLocalStorage(

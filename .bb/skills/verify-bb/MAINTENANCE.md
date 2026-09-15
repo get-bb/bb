@@ -62,8 +62,8 @@ reproduction and remain unconfirmed in the ledger.
   against the source server. Key checks were repeated; unrepeated portions
   retain that qualification. Direct Node also preserves literal newline
   arguments that the pnpm script wrapper changed into backslash-plus-n bytes.
-- Restore only synthetic project/thread/environment context after the launcher
-  environment helper clears it. Scaffold in a fixture directory using an
+- Restore only synthetic project/thread/environment context after clearing inherited
+  context in the test shell. Scaffold in a fixture directory using an
   absolute source CLI path. Rich-composer newlines require Shift+Enter.
 - Separate profiles share server-directed client controls. Serialize `thread
   open` and pane actions, then reset every browser to its own fixture route.

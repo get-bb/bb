@@ -496,7 +496,7 @@ export default definePluginApp((app) => {
   });
 
   for (const command of EDITOR_COMMANDS) {
-    app.slots.commandPaletteAction({
+    app.commands.register({
       id: command.id,
       title: command.title,
       isAvailable: () => isCommandAvailable(command),

@@ -10,6 +10,7 @@ import {
 } from "@bb/db";
 import type { EnvironmentStatus, TerminalSessionCloseReason } from "@bb/domain";
 import {
+  hostDaemonOnlineRpcResponseMessageSchema,
   hostDaemonServerWsMessageSchema,
   type HostDaemonServerWsMessage,
 } from "@bb/host-daemon-contract";
@@ -1542,6 +1543,28 @@ describe("public terminal routes", () => {
       terminalId: stored.id,
       reason: "thread-deleted",
     });
+    const storageDeleteRequest = await waitForDaemonMessage(fixture.socket, 1);
+    expect(storageDeleteRequest).toMatchObject({
+      type: "host-rpc.request",
+      command: {
+        type: "thread.storage.delete",
+        threadId: fixture.thread.id,
+      },
+    });
+    if (storageDeleteRequest.type !== "host-rpc.request") {
+      throw new Error("Expected thread storage deletion request");
+    }
+    fixture.harness.hub.recordHostOnlineRpcResponse({
+      message: hostDaemonOnlineRpcResponseMessageSchema.parse({
+        type: "host-rpc.response",
+        requestId: storageDeleteRequest.requestId,
+        commandType: "thread.storage.delete",
+        ok: true,
+        result: { providerCheckpointId: null },
+      }),
+      sessionId: fixture.session.id,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(
       listTerminalSessionsByThread(fixture.harness.db, fixture.thread.id),
     ).toEqual([]);

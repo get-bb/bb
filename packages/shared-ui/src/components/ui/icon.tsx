@@ -28,6 +28,7 @@ import {
   Delete02Icon,
   Download01Icon,
   Edit02Icon,
+  FilterHorizontalIcon,
   FolderAddIcon,
   FolderExportIcon,
   FolderGitTwoIcon,
@@ -50,6 +51,7 @@ import {
   ToolboxIcon,
   ToolCaseIcon,
   UserAdd01Icon,
+  UnavailableIcon,
   WorkflowCircle03Icon,
   ZapIcon,
 } from "@hugeicons/core-free-icons";
@@ -128,6 +130,7 @@ const CORE_ICON_MAP = {
   Copy: Copy01Icon,
   Download: Download01Icon,
   Edit: Edit02Icon,
+  FilterHorizontal: FilterHorizontalIcon,
   Folder: FolderIcon,
   FolderExport: FolderExportIcon,
   FolderGit: FolderGitTwoIcon,
@@ -154,6 +157,7 @@ const CORE_ICON_MAP = {
   Toolbox: ToolboxIcon,
   ToolCase: ToolCaseIcon,
   Trash2: Delete02Icon,
+  Unavailable: UnavailableIcon,
   UserRoundPlus: UserAdd01Icon,
   Workflow: WorkflowCircle03Icon,
   X: Cancel01Icon,
@@ -260,6 +264,7 @@ export function Icon({ name, fallback = "Zap", ...props }: IconProps) {
             aria-label={props["aria-label"]}
             role={props["aria-label"] ? "img" : undefined}
             data-icon={resolved}
+            data-icon-root=""
           >
             <CustomIcon className="size-full" />
           </span>
@@ -292,6 +297,7 @@ function BuiltinIcon({
         aria-hidden={ariaHidden}
         aria-label={ariaLabel}
         data-icon={name}
+        data-icon-root=""
       />
     );
   }
@@ -332,6 +338,7 @@ function ExtendedIcon({
       aria-hidden={ariaHidden}
       aria-label={ariaLabel}
       data-icon={name}
+      data-icon-root=""
       data-icon-pending={icon === undefined ? "" : undefined}
     />
   );

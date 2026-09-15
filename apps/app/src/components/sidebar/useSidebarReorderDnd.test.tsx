@@ -27,6 +27,14 @@ afterEach(() => {
 });
 
 describe("useSidebarReorderDnd", () => {
+  it("allows callers to opt into unrestricted pointer movement", () => {
+    const { result } = renderHook(() =>
+      useSidebarReorderDnd({ axis: "free", onDragEnd: vi.fn() }),
+    );
+
+    expect(result.current.dndContextProps.modifiers).toEqual([]);
+  });
+
   it("marks the document as dragging until end, cancel, or unmount", () => {
     const onDragEnd = vi.fn();
     const { result, unmount } = renderHook(() =>
