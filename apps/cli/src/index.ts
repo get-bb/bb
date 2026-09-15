@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { Command } from "commander";
+import { Command, Help } from "commander";
 import { maybeReexecViaBbCli } from "./bb-cli-reexec.js";
 import {
   CORE_COMMAND_GROUPS,
@@ -17,6 +17,12 @@ const program = new Command();
 program
   .name("bb")
   .description("BB CLI - manage your AI coding agents")
+  .configureHelp({
+    optionDescription(option) {
+      const description = Help.prototype.optionDescription.call(this, option);
+      return option.mandatory ? `(required) ${description}` : description;
+    },
+  })
   .enablePositionalOptions()
   .version(resolveBbCliVersion());
 
