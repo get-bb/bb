@@ -20,8 +20,11 @@ import {
   extractServerArchive,
   installImportedServerFiles,
   readServerImportFile,
+  readServerImportJournalFile,
   readServerMovedFile,
   removeImportedServerFiles,
+  removeServerImportJournalFile,
+  rollBackServerImport,
   SERVER_IMPORT_BACKUP_DIR_NAME,
   SERVER_IMPORT_FILE_NAME,
   SERVER_MOVED_FILE_NAME,
@@ -345,10 +348,15 @@ export class ServerMoveService {
     const standaloneDataDir = join(homeDir, STANDALONE_DATA_DIR_NAME);
     const incomingMoveIds = await listIncomingMoveIds(dataDir);
     const staleMoves = await this.listStaleMoves();
-    const staleImport = staleMoves.some(
-      (state) =>
-        state.importedEntries?.includes(SERVER_DATABASE_FILE_NAME) === true,
+    const interruptedImport = await readServerImportJournalFile(dataDir).catch(
+      () => null,
     );
+    const staleImport =
+      interruptedImport?.entries.includes(SERVER_DATABASE_FILE_NAME) === true ||
+      staleMoves.some(
+        (state) =>
+          state.importedEntries?.includes(SERVER_DATABASE_FILE_NAME) === true,
+      );
     const stalePendingPort = staleMoves.some(
       (state) =>
         state.pendingServer !== null && state.serverPort === command.port,
@@ -396,6 +404,7 @@ export class ServerMoveService {
     ]);
     const orphanedImportBackup =
       importBackupPresent &&
+      interruptedImport === null &&
       incomingMoveIds.length === 0 &&
       this.inFlightPrepares.size === 0;
     return {
@@ -1201,6 +1210,13 @@ export class ServerMoveService {
       );
       await this.cleanupMove(state);
     }
+    const interruptedImport = await rollBackServerImport(this.options.dataDir);
+    if (interruptedImport !== null) {
+      this.options.logger.warn(
+        { entries: interruptedImport.entries.length },
+        "Rolled back an interrupted server import before preparing a new move",
+      );
+    }
   }
 
   private async readPreparedResult(
@@ -1315,6 +1331,7 @@ export class ServerMoveService {
         localServerUrl,
       });
       await updateState({ importedEntries: installed.importedEntries });
+      await removeServerImportJournalFile(dataDir);
       await restoreMachineConnectionConfig({
         dataDir,
         backupConfigPath: join(
@@ -1546,7 +1563,9 @@ export class ServerMoveService {
   private async cleanupMove(state: IncomingMoveState): Promise<void> {
     const { dataDir } = this.options;
     await this.stopPendingServer(state);
-    if (state.importedEntries !== null) {
+    if (state.importedEntries === null) {
+      await rollBackServerImport(dataDir);
+    } else {
       await removeImportedServerFiles({
         dataDir,
         importedEntries: state.importedEntries,

@@ -7,6 +7,7 @@ import {
   writeServerMovedFile,
 } from "@bb/server-archive";
 import { describe, expect, it } from "vitest";
+import { writeIncomingMoveState } from "./move-state.js";
 import { isProcessGroupAlive } from "./pending-server.js";
 import {
   ACTIVATION_TOKEN,
@@ -451,6 +452,121 @@ describe("ServerMoveService own data dir guards", () => {
       "{}",
     );
     expect((await inspect()).dataDirHasServerData).toBe(false);
+  });
+
+  it("rolls back an import that crashed before the move recorded it, so the next prepare succeeds", async () => {
+    const fixture = await createFixture();
+    const { dataDir } = fixture;
+    const originalConfig = {
+      config: { BB_LOG_LEVEL: "debug" },
+      serverUrl: "https://bb.example.test",
+      machineCredential: "bbcm_target",
+    };
+    await writeFileWithDirs(join(dataDir, "bb.db"), "crashed import database");
+    await writeFileWithDirs(
+      join(dataDir, "attachments", "crashed", "a.txt"),
+      "crashed attachment",
+    );
+    await writeFileWithDirs(
+      join(dataDir, "config.json"),
+      JSON.stringify({
+        config: { BB_LOG_LEVEL: "info" },
+        serverUrl: "http://127.0.0.1:39999",
+      }),
+    );
+    await writeFileWithDirs(
+      join(dataDir, "server-import-backup", "config.json"),
+      JSON.stringify(originalConfig),
+    );
+    await writeFileWithDirs(
+      join(dataDir, "server-import-journal.json"),
+      JSON.stringify({
+        version: 1,
+        entries: ["attachments/crashed/a.txt", "config.json", "bb.db"],
+        preexistingEntries: ["config.json"],
+      }),
+    );
+    await writeIncomingMoveState(dataDir, {
+      version: 1,
+      moveId: "move-crashed",
+      activationToken: ACTIVATION_TOKEN,
+      serverPort: 39_999,
+      bindHost: null,
+      importedEntries: null,
+      archivedServerData: null,
+      pendingServer: null,
+      preparedAt: null,
+      activation: null,
+    });
+
+    const inspected = await fixture.service.inspect({
+      type: "server_move.inspect",
+      paths: [],
+      port: 38_886,
+    });
+    expect(inspected.dataDirHasServerData).toBe(false);
+
+    await expect(
+      fixture.service.prepare(await prepareCommand(fixture)),
+    ).resolves.toMatchObject({ pid: expect.any(Number) });
+
+    expect(await readdir(join(dataDir, "server-move-incoming"))).toEqual([
+      MOVE_ID,
+    ]);
+    expect(await exists(join(dataDir, "attachments", "crashed"))).toBe(false);
+    expect(await exists(join(dataDir, "server-import-journal.json"))).toBe(
+      false,
+    );
+    expect(await readFile(join(dataDir, "bb.db"), "utf8")).toBe(
+      "sqlite database bytes",
+    );
+    expect(
+      await readJson(join(dataDir, "server-import-backup", "config.json")),
+    ).toEqual(originalConfig);
+    expect(await readJson(join(dataDir, "config.json"))).toEqual({
+      config: { BB_LOG_LEVEL: "info" },
+      serverUrl: "https://bb.example.test",
+      machineCredential: "bbcm_target",
+    });
+  });
+
+  it("rolls back a crashed manual import in this data directory so it doesn't block a move", async () => {
+    const fixture = await createFixture();
+    const { dataDir } = fixture;
+    await writeFileWithDirs(join(dataDir, "bb.db"), "half-imported database");
+    await writeFileWithDirs(
+      join(dataDir, "attachments", "project", "a.txt"),
+      "half-imported attachment",
+    );
+    await writeFileWithDirs(
+      join(dataDir, "server-import-journal.json"),
+      JSON.stringify({
+        version: 1,
+        entries: ["attachments/project/a.txt", "bb.db"],
+        preexistingEntries: [],
+      }),
+    );
+
+    const inspected = await fixture.service.inspect({
+      type: "server_move.inspect",
+      paths: [],
+      port: 38_886,
+    });
+    expect(inspected.dataDirHasServerData).toBe(false);
+
+    await expect(
+      fixture.service.prepare(await prepareCommand(fixture)),
+    ).resolves.toMatchObject({ pid: expect.any(Number) });
+
+    expect(await readFile(join(dataDir, "bb.db"), "utf8")).toBe(
+      "sqlite database bytes",
+    );
+    expect(
+      await readFile(join(dataDir, "attachments", "project", "a.txt"), "utf8"),
+    ).toBe("attachment");
+    expect(await exists(join(dataDir, "server-import-journal.json"))).toBe(
+      false,
+    );
   });
 
   it("hides ~/.bb when it is this daemon's data dir and refuses to archive it", async () => {

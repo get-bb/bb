@@ -196,11 +196,16 @@ All refuse requests authenticated by a machine credential.
   `bb-app host-daemon` to `bb-app start --data-dir <dir>`, or a detached
   `bb-app start` when there is no service manager. The `host-id` file in that
   directory makes it the server machine.
-- **Markers:** `server-import.json` on the target while the imported server is
+- **Markers:** `server-import-journal.json` while an import installs files,
+  `server-import.json` on the target while the imported server is
   pending (no plugins, sweeps, telemetry, or daemon sessions), `server-moved.json`
   on the old computer after the switch, `last-server-move.json` on the new
   server, and `server-connect-hold.json` after a manual import until
-  `bb server allow-connect`.
+  `bb server allow-connect`. The journal lists the entries the import will
+  install and which of them already existed. When an import is interrupted, the
+  next prepare on that machine or the next `bb server import` into that directory
+  rolls it back from the journal: it restores `server-import-backup/` and removes
+  the imported files it created.
 - **Before export:** running turns stop, plugin schedules pause, and every plugin
   except bb connect is suspended so nothing writes after the snapshot. SQLite
   databases are copied with the online backup API.

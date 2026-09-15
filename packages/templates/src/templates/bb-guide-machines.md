@@ -221,7 +221,9 @@ prints `path`, `sizeBytes`, `sha256`, and that `warning`.
 `bb server import` works offline: it refuses a data directory that has `bb.db`
 or a running bb, refuses an export made by a newer bb or by a server with the
 `serverMove` experiment off, asks you to re-export an archive encrypted by an
-older bb, and applies path fixups when the imported server first starts. Stop the original server before starting the imported one; two servers
+older bb, and applies path fixups when the imported server first starts. If an
+import was interrupted, rerunning `bb server import` rolls it back first from
+`server-import-journal.json`, and a server move to that machine does the same. Stop the original server before starting the imported one; two servers
 holding the same bb connect credential take each other's tunnel.
 
 An imported server starts with bb connect off (`server-connect-hold.json`) and

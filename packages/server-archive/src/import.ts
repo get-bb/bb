@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import {
   copyFile,
   mkdir,
@@ -25,6 +26,13 @@ import {
   SERVER_ARCHIVE_FILES_DIR_NAME,
   type ServerArchiveManifest,
 } from "./manifest.js";
+import {
+  readServerImportJournalFile,
+  removeServerImportJournalFile,
+  SERVER_IMPORT_JOURNAL_FILE_NAME,
+  type ServerImportJournalFile,
+  writeServerImportJournalFile,
+} from "./markers.js";
 import { resolveRelativePath } from "./relative-path.js";
 import { isServerOwnedPath } from "./server-owned-paths.js";
 
@@ -152,6 +160,7 @@ async function assertNoServerData(dataDir: string): Promise<void> {
   for (const relativePath of [
     ...SERVER_DATABASE_PATHS,
     SERVER_IMPORT_BACKUP_DIR_NAME,
+    SERVER_IMPORT_JOURNAL_FILE_NAME,
   ]) {
     const path = join(dataDir, relativePath);
     if ((await lstatOrNull(path)) !== null) {
@@ -210,6 +219,23 @@ async function assertInstallableDestination(
   }
 }
 
+async function copyFileAtomically(
+  sourcePath: string,
+  destinationPath: string,
+): Promise<void> {
+  const tempPath = join(
+    dirname(destinationPath),
+    `.${basename(destinationPath)}.${randomBytes(6).toString("hex")}.tmp`,
+  );
+  try {
+    await copyFile(sourcePath, tempPath);
+    await rename(tempPath, destinationPath);
+  } catch (error) {
+    await rm(tempPath, { force: true });
+    throw error;
+  }
+}
+
 async function backUpExistingFile(
   dataDir: string,
   relativePath: string,
@@ -228,7 +254,7 @@ async function backUpExistingFile(
   if (mode === "move") {
     await rename(destination, backupPath);
   } else {
-    await copyFile(destination, backupPath);
+    await copyFileAtomically(destination, backupPath);
   }
   result.backups.push(relativePath);
 }
@@ -266,6 +292,25 @@ function assertServerOwnedPaths(paths: readonly string[], label: string): void {
       );
     }
   }
+}
+
+async function journalPlannedEntries(
+  dataDir: string,
+  entries: readonly string[],
+): Promise<void> {
+  const preexistingEntries: string[] = [];
+  for (const relativePath of entries) {
+    if (
+      (await lstatOrNull(resolveRelativePath(dataDir, relativePath))) !== null
+    ) {
+      preexistingEntries.push(relativePath);
+    }
+  }
+  await writeServerImportJournalFile(dataDir, {
+    version: 1,
+    entries: [...entries],
+    preexistingEntries,
+  });
 }
 
 export async function installImportedServerFiles(
@@ -340,19 +385,25 @@ export async function installImportedServerFiles(
           )) ?? {},
         );
 
+  const stagedEntries = [...manifestPaths].filter(
+    (relativePath) =>
+      relativePath !== MANAGED_CONFIG_PATH &&
+      relativePath !== MANAGED_ENV_PATH &&
+      relativePath !== SERVER_DATABASE_PATH,
+  );
+  await journalPlannedEntries(dataDir, [
+    ...stagedEntries,
+    ...(mergedConfig === null ? [] : [MANAGED_CONFIG_PATH]),
+    ...(mergedEnv === null ? [] : [MANAGED_ENV_PATH]),
+    ...(manifestPaths.has(SERVER_DATABASE_PATH) ? [SERVER_DATABASE_PATH] : []),
+  ]);
   const result: InstallImportedServerFilesResult = {
     importedEntries: [],
     backups: [],
   };
   try {
-    for (const relativePath of manifestPaths) {
-      if (
-        relativePath !== MANAGED_CONFIG_PATH &&
-        relativePath !== MANAGED_ENV_PATH &&
-        relativePath !== SERVER_DATABASE_PATH
-      ) {
-        await installStagedFile(dataDir, filesDir, relativePath, result);
-      }
+    for (const relativePath of stagedEntries) {
+      await installStagedFile(dataDir, filesDir, relativePath, result);
     }
     if (mergedConfig !== null) {
       await writeManagedFile(
@@ -369,10 +420,7 @@ export async function installImportedServerFiles(
       await installStagedFile(dataDir, filesDir, SERVER_DATABASE_PATH, result);
     }
   } catch (error) {
-    await removeImportedServerFiles({
-      dataDir,
-      importedEntries: result.importedEntries,
-    });
+    await rollBackServerImport(dataDir);
     throw error;
   }
   return result;
@@ -441,19 +489,26 @@ async function removeEmptyParentDirectories(
   }
 }
 
+async function removeImportedEntry(
+  dataDir: string,
+  relativePath: string,
+): Promise<void> {
+  const path = resolveRelativePath(dataDir, relativePath);
+  await rm(path, { force: true, recursive: true });
+  if (relativePath.endsWith(".db")) {
+    for (const suffix of SQLITE_SIDECAR_SUFFIXES) {
+      await rm(`${path}${suffix}`, { force: true });
+    }
+  }
+}
+
 export async function removeImportedServerFiles(
   args: RemoveImportedServerFilesArgs,
 ): Promise<void> {
   const dataDir = resolve(args.dataDir);
   assertServerOwnedPaths(args.importedEntries, "Imported entry");
   for (const entry of args.importedEntries) {
-    const path = resolveRelativePath(dataDir, entry);
-    await rm(path, { force: true, recursive: true });
-    if (entry.endsWith(".db")) {
-      for (const suffix of SQLITE_SIDECAR_SUFFIXES) {
-        await rm(`${path}${suffix}`, { force: true });
-      }
-    }
+    await removeImportedEntry(dataDir, entry);
   }
   const backupDir = join(dataDir, SERVER_IMPORT_BACKUP_DIR_NAME);
   for (const backup of await listBackupFiles(backupDir, null)) {
@@ -463,6 +518,36 @@ export async function removeImportedServerFiles(
   }
   await rm(backupDir, { force: true, recursive: true });
   await removeEmptyParentDirectories(dataDir, args.importedEntries);
+  await removeServerImportJournalFile(dataDir);
+}
+
+export async function rollBackServerImport(
+  dataDir: string,
+): Promise<ServerImportJournalFile | null> {
+  const root = resolve(dataDir);
+  const journal = await readServerImportJournalFile(root);
+  if (journal === null) {
+    return null;
+  }
+  const backupDir = join(root, SERVER_IMPORT_BACKUP_DIR_NAME);
+  const preexistingEntries = new Set(journal.preexistingEntries);
+  for (const relativePath of journal.entries) {
+    const backupPath = resolveRelativePath(backupDir, relativePath);
+    const backedUp = (await lstatOrNull(backupPath)) !== null;
+    if (!backedUp && preexistingEntries.has(relativePath)) {
+      continue;
+    }
+    await removeImportedEntry(root, relativePath);
+    if (backedUp) {
+      const destination = resolveRelativePath(root, relativePath);
+      await mkdir(dirname(destination), { recursive: true });
+      await rename(backupPath, destination);
+    }
+  }
+  await rm(backupDir, { force: true, recursive: true });
+  await removeEmptyParentDirectories(root, journal.entries);
+  await removeServerImportJournalFile(root);
+  return journal;
 }
 
 export async function discardImportBackups(dataDir: string): Promise<void> {

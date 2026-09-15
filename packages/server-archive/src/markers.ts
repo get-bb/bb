@@ -1,4 +1,4 @@
-import { unlink } from "node:fs/promises";
+import { rm, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { lastServerMoveSchema, serverMoveModeSchema } from "@bb/domain";
 import { z } from "zod";
@@ -8,6 +8,7 @@ import { isServerOwnedPath } from "./server-owned-paths.js";
 
 export const SERVER_MOVED_FILE_NAME = "server-moved.json";
 export const SERVER_IMPORT_FILE_NAME = "server-import.json";
+export const SERVER_IMPORT_JOURNAL_FILE_NAME = "server-import-journal.json";
 export const LAST_SERVER_MOVE_FILE_NAME = "last-server-move.json";
 export const SERVER_CONNECT_HOLD_FILE_NAME = "server-connect-hold.json";
 
@@ -72,6 +73,17 @@ export const serverImportFileSchema = z
   });
 export type ServerImportFile = z.infer<typeof serverImportFileSchema>;
 
+export const serverImportJournalFileSchema = z
+  .object({
+    version: z.literal(1),
+    entries: z.array(serverOwnedPathSchema),
+    preexistingEntries: z.array(serverOwnedPathSchema),
+  })
+  .strict();
+export type ServerImportJournalFile = z.infer<
+  typeof serverImportJournalFileSchema
+>;
+
 export const lastServerMoveFileSchema = lastServerMoveSchema
   .extend({ version: z.literal(1) })
   .strict();
@@ -122,6 +134,31 @@ export async function writeServerImportFile(
     join(dataDir, SERVER_IMPORT_FILE_NAME),
     serverImportFileSchema.parse(file),
   );
+}
+
+export function readServerImportJournalFile(
+  dataDir: string,
+): Promise<ServerImportJournalFile | null> {
+  return readJsonFile(
+    join(dataDir, SERVER_IMPORT_JOURNAL_FILE_NAME),
+    serverImportJournalFileSchema,
+  );
+}
+
+export async function writeServerImportJournalFile(
+  dataDir: string,
+  file: ServerImportJournalFile,
+): Promise<void> {
+  await writeJsonFileAtomically(
+    join(dataDir, SERVER_IMPORT_JOURNAL_FILE_NAME),
+    serverImportJournalFileSchema.parse(file),
+  );
+}
+
+export async function removeServerImportJournalFile(
+  dataDir: string,
+): Promise<void> {
+  await rm(join(dataDir, SERVER_IMPORT_JOURNAL_FILE_NAME), { force: true });
 }
 
 export function readLastServerMoveFile(

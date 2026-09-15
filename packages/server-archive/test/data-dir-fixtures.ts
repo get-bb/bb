@@ -41,6 +41,7 @@ export const HOST_OWNED_FIXTURE_PATHS: readonly string[] = [
   "daemon.lock",
   "server-moved.json",
   "server-import.json",
+  "server-import-journal.json",
   "last-server-move.json",
   "server-import-backup/config.json",
   "unknown-top-level/file",

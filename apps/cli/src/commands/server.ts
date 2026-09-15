@@ -365,6 +365,9 @@ export function registerServerCommands(
         });
         if (result === null) return;
         if (outputJson(opts, result)) return;
+        if (result.rolledBackInterruptedImport) {
+          console.log(`Rolled back an interrupted import in ${dataDir}.`);
+        }
         console.log(
           `Imported the bb server into ${dataDir} (${String(result.importedEntries.length)} files from ${result.sourceDataDir}, exported by bb ${result.bbVersion}).`,
         );

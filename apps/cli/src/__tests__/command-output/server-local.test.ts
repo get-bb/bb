@@ -479,6 +479,68 @@ describe("bb server import", () => {
     expect(await readdir(parent)).toEqual([]);
   });
 
+  it("rolls back an interrupted import before importing again", async () => {
+    const dataDir = join(await makeDataDirParent(), "bb-data");
+    await writeDataFile(dataDir, "host-id", "host-desktop");
+    await writeDataFile(
+      dataDir,
+      "config.json",
+      JSON.stringify({
+        config: { BB_APP_URL: "https://desktop.ts.net", BB_LOG_LEVEL: "trace" },
+      }),
+    );
+    await writeDataFile(
+      dataDir,
+      "server-import-backup/config.json",
+      JSON.stringify({ config: { BB_APP_URL: "https://desktop.ts.net" } }),
+    );
+    await writeDataFile(dataDir, "bb.db", "interrupted import database");
+    await writeDataFile(
+      dataDir,
+      "skills/interrupted/SKILL.md",
+      "interrupted skill",
+    );
+    await writeDataFile(
+      dataDir,
+      "server-import-journal.json",
+      JSON.stringify({
+        version: 1,
+        entries: ["skills/interrupted/SKILL.md", "config.json", "bb.db"],
+        preexistingEntries: ["config.json"],
+      }),
+    );
+
+    await runCommand(
+      ["server", "import", plainArchive, "--data-dir", dataDir, "--yes"],
+      register,
+    );
+
+    expect(await readFile(join(dataDir, "bb.db"), "utf8")).toBe(
+      "sqlite database",
+    );
+    expect((await readdir(dataDir)).sort()).toEqual([
+      "attachments",
+      "auth-secret",
+      "bb.db",
+      "config.json",
+      "host-id",
+      "plugins",
+      "server-import.json",
+    ]);
+    expect(
+      JSON.parse(await readFile(join(dataDir, "config.json"), "utf8")),
+    ).toEqual({
+      config: { BB_APP_URL: "https://desktop.ts.net", BB_LOG_LEVEL: "debug" },
+    });
+    expect(await readServerImportFile(dataDir)).toMatchObject({
+      kind: "manual",
+      importedEntries: expect.arrayContaining(["bb.db", "config.json"]),
+    });
+    expect(collectLogPayloads(vi.mocked(console.log))[0]).toBe(
+      `Rolled back an interrupted import in ${dataDir}.`,
+    );
+  });
+
   it("removes the pre-import config backups once the import is marked", async () => {
     const dataDir = join(await makeDataDirParent(), "bb-data");
     await writeDataFile(

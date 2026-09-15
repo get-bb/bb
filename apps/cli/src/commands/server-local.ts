@@ -24,8 +24,12 @@ import {
   extractServerArchive,
   installImportedServerFiles,
   discardImportBackups,
-  removeImportedServerFiles,
+  readServerImportFile,
+  readServerImportJournalFile,
   removeServerConnectHoldFile,
+  removeServerImportJournalFile,
+  rollBackServerImport,
+  SERVER_IMPORT_FILE_NAME,
   SERVER_MOVED_FILE_NAME,
   ServerArchiveError,
   type ServerMovedFile,
@@ -197,6 +201,7 @@ export interface ServerImportResult {
   sourceDataDir: string;
   sourceServerHostId: string | null;
   importedEntries: string[];
+  rolledBackInterruptedImport: boolean;
 }
 
 export interface DeleteOldServerCopyResult {
@@ -280,20 +285,38 @@ function describeUnsafeImport(archivePath: string, error: unknown): unknown {
   return error;
 }
 
+async function rollBackInterruptedImport(dataDir: string): Promise<void> {
+  await rollBackServerImport(dataDir);
+  await removeServerConnectHoldFile(dataDir);
+  const marker = await readServerImportFile(dataDir);
+  if (marker?.kind === "manual") {
+    await rm(join(dataDir, SERVER_IMPORT_FILE_NAME), { force: true });
+  }
+}
+
 export async function importServerArchive(
   args: ServerImportArgs,
 ): Promise<ServerImportResult | null> {
   const { archivePath, dataDir } = args;
   await assertArchiveFile(archivePath);
-  await assertNoServerDatabase(dataDir);
+  const interruptedImport = await readServerImportJournalFile(dataDir);
+  if (interruptedImport === null) {
+    await assertNoServerDatabase(dataDir);
+  }
   await assertNoRunningBb(dataDir);
   await assertServerArchiveFormat(archivePath);
   if (
     !(await args.confirm(
-      `Import the bb server from ${archivePath} into ${dataDir}?`,
+      interruptedImport === null
+        ? `Import the bb server from ${archivePath} into ${dataDir}?`
+        : `Roll back the interrupted import in ${dataDir}, then import the bb server from ${archivePath}?`,
     ))
   ) {
     return null;
+  }
+  if (interruptedImport !== null) {
+    await rollBackInterruptedImport(dataDir);
+    await assertNoServerDatabase(dataDir);
   }
   const parentDir = dirname(dataDir);
   await mkdir(parentDir, { recursive: true });
@@ -346,12 +369,10 @@ export async function importServerArchive(
       });
     } catch (error) {
       await removeServerConnectHoldFile(dataDir);
-      await removeImportedServerFiles({
-        dataDir,
-        importedEntries: installed.importedEntries,
-      });
+      await rollBackServerImport(dataDir);
       throw error;
     }
+    await removeServerImportJournalFile(dataDir);
     await discardImportBackups(dataDir);
     return {
       dataDir,
@@ -360,6 +381,7 @@ export async function importServerArchive(
       sourceDataDir: manifest.sourceDataDir,
       sourceServerHostId: manifest.sourceServerHostId,
       importedEntries: installed.importedEntries,
+      rolledBackInterruptedImport: interruptedImport !== null,
     };
   } finally {
     await rm(stagingDir, { force: true, recursive: true });
