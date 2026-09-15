@@ -239,6 +239,27 @@ All refuse requests authenticated by a machine credential.
   holding the same data, so the CLI asks before abandoning and the app shows
   the warning before its Abandon button. `bb server unlock` stays the exit when
   the old copy has stopped.
+- **Durable move state:** the old server writes `server-move-run.json` to its
+  data directory on every step transition, persists the `config.json` backup
+  and activation time before it asks the target to activate, and records when
+  activation is confirmed. The file is not server-owned, so no export includes
+  it. At boot, before the app starts, the server reconciles it:
+  - no matching `server-moved.json`: the move is abandoned. The work directory
+    is removed, `config.json` is restored from the backup, the target is
+    aborted once its daemon connects, and the move is published as failed at
+    the step it reached;
+  - locked and never confirmed: the move comes back as `recovery_required`;
+  - locked and confirmed: the server republishes `completed`, skips plugin
+    startup, and retires again;
+  - confirmed but unlocked with `bb server unlock`: the run is forgotten.
+
+  The `bb-app` launcher refuses to start a server from a locked data directory,
+  so the locked branches apply only when the server starts some other way. If
+  the old server crashes while recovery is required, the launcher enters moved
+  mode and `bb server unlock` is the exit.
+- **Retrying a start:** `startMove` for the same target returns the move
+  already underway, including one still passing its checks; a different target
+  still gets 409 `server_move_in_progress`.
 - **The old computer:** the `bb-app` launcher sees the lock, runs the daemon
   against the new address, and answers the old port with 410 `server_moved`
   (HTML requests redirect in direct mode). Moving the server back releases that

@@ -117,6 +117,7 @@ import {
 } from "./services/server-move/coordinator.js";
 import { createDefaultServerMoveEnvironment } from "./services/server-move/environment.js";
 import { readServerMoveHealth } from "./services/server-move/health.js";
+import type { RestoredServerMoveRun } from "./services/server-move/reconcile.js";
 import {
   serverMoveFreezeMiddleware,
   serverMoveWriteFreezeMiddleware,
@@ -167,6 +168,7 @@ export interface ServerMoveAppOptions {
   bindHost: ServerBindHost | null;
   manualImportPending: boolean;
   pending: PendingServerMove | null;
+  restoredRun: RestoredServerMoveRun | null;
   retireProcess(): void;
 }
 
@@ -458,6 +460,7 @@ export function createApp(
     bindHost: null,
     manualImportPending: false,
     pending: null,
+    restoredRun: null,
     retireProcess: () => {
       deps.logger.warn(
         {},
@@ -713,6 +716,9 @@ export function createApp(
       serverEntryUrl: import.meta.url,
     }),
   );
+  if (serverMoveOptions.restoredRun !== null) {
+    serverMove.restore(serverMoveOptions.restoredRun);
+  }
   const serverMoveFreezeState = {
     isFrozen: () => pendingServerMove !== null || serverMove.isFrozen(),
   };

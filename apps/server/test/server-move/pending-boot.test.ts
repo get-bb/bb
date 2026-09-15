@@ -618,6 +618,7 @@ describe("manual import completion", () => {
           bindHost: null,
           manualImportPending: true,
           pending: null,
+          restoredRun: null,
           retireProcess() {},
         },
       }).app;
@@ -659,6 +660,7 @@ describe("pending server mode", () => {
             sourceServerHostId: "host-old",
             targetHostId: "host-new",
           },
+          restoredRun: null,
           retireProcess() {},
         },
       }).app;
@@ -767,6 +769,7 @@ describe("pending server mode", () => {
             sourceServerHostId: "host-old",
             targetHostId: "host-new",
           },
+          restoredRun: null,
           retireProcess() {},
         },
       }).app;

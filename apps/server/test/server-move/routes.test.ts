@@ -318,13 +318,27 @@ describe("server move routes", () => {
       expect(await readJson(cancel)).toMatchObject({
         code: "server_move_not_cancellable",
       });
-      const restart = await postJson(harness, `${API}/server/move`, {
+      const retry = await postJson(harness, `${API}/server/move`, {
         targetHostId: NEW,
         serverUrl: DIRECT_URL,
         stopRunningWork: true,
         archiveExistingTargetServerData: false,
       });
-      expect(restart.status).toBe(409);
+      expect(retry.status).toBe(200);
+      expect(await readJson(retry)).toMatchObject({
+        moveId: started.moveId,
+        state: "completed",
+      });
+      const otherTarget = await postJson(harness, `${API}/server/move`, {
+        targetHostId: WORKER,
+        serverUrl: DIRECT_URL,
+        stopRunningWork: true,
+        archiveExistingTargetServerData: false,
+      });
+      expect(otherTarget.status).toBe(409);
+      expect(await readJson(otherTarget)).toMatchObject({
+        code: "server_move_in_progress",
+      });
       const moved = await readServerMovedFile(harness.config.dataDir);
       expect(moved).toMatchObject({
         moveId: started.moveId,

@@ -7,12 +7,19 @@ import {
   type HostDaemonRpcCommand,
 } from "@bb/host-daemon-contract";
 import { openSession, upsertHost } from "@bb/db";
-import { readServerMovedFile } from "@bb/server-archive";
+import {
+  listServerOwnedEntries,
+  readServerMovedFile,
+} from "@bb/server-archive";
 import type { ServerMoveStatus } from "@bb/server-contract";
 import { createDeferredPromise } from "@bb/test-helpers";
 import { describe, expect, it, vi } from "vitest";
 import { createServerMoveCoordinator } from "../../src/services/server-move/coordinator.js";
 import { isServerMoveFrozen } from "../../src/services/server-move/freeze-state.js";
+import {
+  readServerMoveRunFile,
+  SERVER_MOVE_RUN_FILE_NAME,
+} from "../../src/services/server-move/run-state.js";
 import { onDaemonSocketMessage } from "../../src/ws/daemon-protocol.js";
 import {
   createTestServerMoveEnvironment,
@@ -396,10 +403,146 @@ describe("server move coordinator", () => {
           ),
         )
         .toBe(false);
-      await expect(coordinator.start(START_DIRECT)).rejects.toMatchObject({
+      await expect(coordinator.start(START_DIRECT)).resolves.toMatchObject({
+        moveId: started.moveId,
+        state: "completed",
+      });
+      await expect(
+        coordinator.start({ ...START_DIRECT, targetHostId: WORKER }),
+      ).rejects.toMatchObject({
         status: 409,
         body: { code: "server_move_in_progress" },
       });
+    }));
+
+  it("persists the run on each step transition in a file the export leaves out", () =>
+    withTestHarness(async (harness) => {
+      seedTopology(harness);
+      const config = await writeConfig(harness, {
+        config: { BB_LOG_LEVEL: "info" },
+      });
+      const { environment, events } = createTestServerMoveEnvironment(harness);
+      const coordinator = createServerMoveCoordinator(environment);
+      const prepareReply = createDeferredPromise<FakeDaemonReply>();
+      const activateReply = createDeferredPromise<FakeDaemonReply>();
+      registerFakeDaemon(harness, { events, hostId: OLD, handle: probeReply });
+      registerFakeDaemon(harness, {
+        events,
+        hostId: WORKER,
+        handle: probeReply,
+      });
+      registerFakeDaemon(harness, {
+        events,
+        hostId: NEW,
+        handle: (request) => {
+          switch (request.command.type) {
+            case "server_move.prepare":
+              return prepareReply.promise;
+            case "server_move.activate":
+              return activateReply.promise;
+            default:
+              return targetReply(request);
+          }
+        },
+      });
+      const dataDir = harness.config.dataDir;
+
+      const started = await coordinator.start(START_DIRECT);
+      await expect
+        .poll(() => events.includes(`${NEW}:server_move.prepare`))
+        .toBe(true);
+      await expect
+        .poll(
+          async () => (await readServerMoveRunFile(dataDir))?.status.steps[2],
+        )
+        .toMatchObject({ id: "export", status: "done" });
+
+      expect(await readServerMoveRunFile(dataDir)).toMatchObject({
+        version: 1,
+        status: { moveId: started.moveId, state: "preparing" },
+        sourceServerHost: { id: OLD, name: "Laptop" },
+        grant: { serverUrl: DIRECT_URL, headers: {} },
+        workDir: join(dataDir, "server-move", started.moveId),
+        configBackup: null,
+        movedAt: null,
+        activationRequestedAt: null,
+        activationConfirmedAt: null,
+      });
+      expect(
+        (await listServerOwnedEntries(dataDir)).entries.map(
+          (entry) => entry.path,
+        ),
+      ).not.toContain(SERVER_MOVE_RUN_FILE_NAME);
+
+      prepareReply.resolve(
+        ok({ localServerUrl: "http://127.0.0.1:39101", pid: 4242 }),
+      );
+      await expect
+        .poll(() => events.includes(`${NEW}:server_move.activate`))
+        .toBe(true);
+      expect(await readServerMoveRunFile(dataDir)).toMatchObject({
+        status: { state: "switching" },
+        configBackup: { path: config.path, originalText: config.text },
+        movedAt: expect.any(Number),
+        activationRequestedAt: expect.any(Number),
+        activationConfirmedAt: null,
+      });
+
+      activateReply.resolve(ok({ ok: true }));
+      await expect.poll(() => events.includes("retire")).toBe(true);
+      await expect
+        .poll(async () => (await readServerMoveRunFile(dataDir))?.status.state)
+        .toBe("completed");
+      expect(
+        (await readServerMoveRunFile(dataDir))?.activationConfirmedAt,
+      ).toEqual(expect.any(Number));
+    }));
+
+  it("returns the move underway for a retry to the same target and refuses a different target", () =>
+    withTestHarness(async (harness) => {
+      seedTopology(harness);
+      const { environment, events } = createTestServerMoveEnvironment(harness);
+      const coordinator = createServerMoveCoordinator(environment);
+      const prepareReply = createDeferredPromise<FakeDaemonReply>();
+      registerFakeDaemon(harness, { events, hostId: OLD, handle: probeReply });
+      registerFakeDaemon(harness, {
+        events,
+        hostId: WORKER,
+        handle: probeReply,
+      });
+      registerFakeDaemon(harness, {
+        events,
+        hostId: NEW,
+        handle: (request) =>
+          request.command.type === "server_move.prepare"
+            ? prepareReply.promise
+            : targetReply(request),
+      });
+
+      const [first, second] = await Promise.all([
+        coordinator.start(START_DIRECT),
+        coordinator.start(START_DIRECT),
+      ]);
+      expect(second.moveId).toBe(first.moveId);
+      await expect
+        .poll(() => events.includes(`${NEW}:server_move.prepare`))
+        .toBe(true);
+      await expect(coordinator.start(START_DIRECT)).resolves.toMatchObject({
+        moveId: first.moveId,
+        state: "preparing",
+      });
+      await expect(
+        coordinator.start({ ...START_DIRECT, targetHostId: WORKER }),
+      ).rejects.toMatchObject({
+        status: 409,
+        body: { code: "server_move_in_progress" },
+      });
+      expect(countEvents(events, "stop-work")).toBe(1);
+
+      prepareReply.resolve(
+        ok({ localServerUrl: "http://127.0.0.1:39101", pid: 4242 }),
+      );
+      await expect.poll(() => events.includes("retire")).toBe(true);
     }));
 
   it("moves a bb connect server with the old server's own grant and no address probe", () =>
@@ -613,6 +756,11 @@ describe("server move coordinator", () => {
           existsSync(
             join(harness.config.dataDir, "server-move", status?.moveId ?? ""),
           ),
+        )
+        .toBe(false);
+      await expect
+        .poll(() =>
+          existsSync(join(harness.config.dataDir, SERVER_MOVE_RUN_FILE_NAME)),
         )
         .toBe(false);
     }),

@@ -39,6 +39,7 @@ import {
 } from "./services/server-move/pending-boot.js";
 import { readConnectHold } from "./services/server-move/connect-hold.js";
 import { isServerMoveFrozen } from "./services/server-move/freeze-state.js";
+import { reconcileServerMoveRunAtBoot } from "./services/server-move/reconcile.js";
 import {
   retireServerProcess as retireProcessWithDeadline,
   SERVER_RETIRE_FORCE_EXIT_MS,
@@ -80,6 +81,14 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
       logger,
     });
   }
+  const serverMoveRun =
+    pendingServerMove === null
+      ? await reconcileServerMoveRunAtBoot({
+          dataDir: serverConfig.BB_DATA_DIR,
+          logger,
+          now: Date.now(),
+        })
+      : null;
   const hub = new NotificationHub();
   const watchInterests = new WatchInterestCoordinator({ db, hub });
   const sharedPorts = new HostSharedPortCoordinator({ db, hub });
@@ -190,6 +199,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     injectWebSocket,
     pluginCatalogService,
     pluginService,
+    serverMove,
   } = createApp(
     {
       appVersion,
@@ -217,6 +227,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
         bindHost: serverConfig.BB_SERVER_BIND_HOST,
         manualImportPending: serverImport.manualImportPending,
         pending: pendingServerMove,
+        restoredRun: serverMoveRun,
         retireProcess: retireServerProcess,
       },
       staticDir,
@@ -278,19 +289,28 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
   let sweepInterval: ReturnType<typeof setInterval> | null = null;
   if (pendingServerMove === null) {
     telemetry.capture({ name: "app_started" });
-    const connectHold = await readConnectHold({
-      dataDir: serverConfig.BB_DATA_DIR,
-      logger,
-    });
-    void pluginService
-      .start({ hold: connectHold })
-      .catch((error: unknown) => {
-        logger.error({ err: error }, "Plugin startup failed");
-      })
-      .finally(() => {
-        providerRegistry.markRegistrationsSettled();
-        pluginService.startPeriodicUpdateChecks();
+    if (serverMoveRun?.kind === "completed") {
+      logger.info(
+        { moveId: serverMoveRun.run.status.moveId },
+        "This server already moved before it restarted; retiring without starting plugins",
+      );
+      providerRegistry.markRegistrationsSettled();
+    } else {
+      const connectHold = await readConnectHold({
+        dataDir: serverConfig.BB_DATA_DIR,
+        logger,
       });
+      void pluginService
+        .start({ hold: connectHold })
+        .catch((error: unknown) => {
+          logger.error({ err: error }, "Plugin startup failed");
+        })
+        .finally(() => {
+          providerRegistry.markRegistrationsSettled();
+          pluginService.startPeriodicUpdateChecks();
+          void serverMove.handlePluginsStarted();
+        });
+    }
     pluginCatalogService.startPeriodicRefresh();
     sweepInterval = setInterval(() => {
       if (!isServerMoveFrozen(db)) {
@@ -311,6 +331,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
       return shutdownPromise;
     }
     shutdownPromise = (async () => {
+      serverMove.dispose();
       providerModelCatalogPrewarm?.stop();
       eventLoopStallMonitor.stop();
       if (sweepInterval !== null) {

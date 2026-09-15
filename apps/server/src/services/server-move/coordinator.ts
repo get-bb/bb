@@ -36,6 +36,12 @@ import {
   setServerMoveSnapshotFence,
 } from "./freeze-state.js";
 import type { ServerMoveModeResolution } from "./mode.js";
+import type { RestoredServerMoveRun } from "./reconcile.js";
+import {
+  removeServerMoveRunFile,
+  writeServerMoveRunFile,
+  type ServerMoveRunFile,
+} from "./run-state.js";
 import {
   listServerMovedTargets,
   lockOldServerDataDir,
@@ -128,12 +134,14 @@ export interface ServerMoveCoordinator {
   check(request: ServerMoveCheckRequest): Promise<ServerMoveCheckResponse>;
   dispose(): void;
   getStatus(): ServerMoveStatus | null;
+  handlePluginsStarted(): Promise<void>;
   handleProgress(hostId: string, message: ServerMoveProgressMessage): void;
   isFrozen(): boolean;
   movedTo(): ServerMovedErrorDetails | null;
   resolveDownload(
     args: ResolveServerMoveDownloadArgs,
   ): ServerMoveDownloadLookup;
+  restore(restored: RestoredServerMoveRun): void;
   start(request: ServerMoveStartRequest): Promise<ServerMoveStatus>;
 }
 
@@ -144,6 +152,7 @@ interface MoveHost {
 
 interface MoveRun {
   abort: AbortController;
+  activationConfirmedAt: number | null;
   activationRequestedAt: number | null;
   activationToken: string;
   archive: ServerArchiveExport | null;
@@ -160,6 +169,11 @@ interface MoveRun {
   sourceServerHost: MoveHost;
   status: ServerMoveStatus;
   workDir: string;
+}
+
+interface PendingStart {
+  promise: Promise<ServerMoveStatus>;
+  targetHostId: string;
 }
 
 type ActivationOutcome =
@@ -284,6 +298,29 @@ function inProgressError(): ApiError {
   );
 }
 
+function moveFromRunFile(run: ServerMoveRunFile): MoveRun {
+  return {
+    abort: new AbortController(),
+    activationConfirmedAt: run.activationConfirmedAt,
+    activationRequestedAt: run.activationRequestedAt,
+    activationToken: run.activationToken,
+    archive: null,
+    archiveExistingTargetServerData: run.archiveExistingTargetServerData,
+    bbApp: null,
+    configBackup: run.configBackup,
+    connectHandle: run.connectHandle,
+    finished: true,
+    frozen: false,
+    grant: run.grant,
+    movedAt: run.movedAt,
+    pluginsSuspended: false,
+    recovery: null,
+    sourceServerHost: { ...run.sourceServerHost },
+    status: structuredClone(run.status),
+    workDir: run.workDir,
+  };
+}
+
 export function createServerMoveCoordinator(
   environment: ServerMoveEnvironment,
 ): ServerMoveCoordinator {
@@ -298,10 +335,66 @@ export function createServerMoveCoordinator(
     targetServerPort: () => environment.targetServerPort(),
   };
   let current: MoveRun | null = null;
-  let starting = false;
+  let pendingStart: PendingStart | null = null;
+  let runFileWork: Promise<void> = Promise.resolve();
 
   function notify(): void {
     deps.hub.notifySystem(["server-move-changed"]);
+  }
+
+  function runFileFor(move: MoveRun): ServerMoveRunFile {
+    return {
+      version: 1,
+      status: structuredClone(move.status),
+      activationToken: move.activationToken,
+      archiveExistingTargetServerData: move.archiveExistingTargetServerData,
+      sourceServerHost: { ...move.sourceServerHost },
+      connectHandle: move.connectHandle,
+      workDir: move.workDir,
+      grant:
+        move.grant === null
+          ? null
+          : {
+              serverUrl: move.grant.serverUrl,
+              headers: { ...move.grant.headers },
+            },
+      configBackup:
+        move.configBackup === null ? null : { ...move.configBackup },
+      movedAt: move.movedAt,
+      activationRequestedAt: move.activationRequestedAt,
+      activationConfirmedAt: move.activationConfirmedAt,
+    };
+  }
+
+  function queueRunFileWork(
+    move: MoveRun,
+    work: () => Promise<void>,
+  ): Promise<void> {
+    const next = runFileWork.then(async () => {
+      if (current === move) {
+        await work();
+      }
+    });
+    runFileWork = next.catch((error: unknown) => {
+      deps.logger.error(
+        { err: error, moveId: move.status.moveId },
+        "Server move could not update server-move-run.json",
+      );
+    });
+    return next;
+  }
+
+  function persistRun(move: MoveRun): Promise<void> {
+    const snapshot = runFileFor(move);
+    return queueRunFileWork(move, () =>
+      writeServerMoveRunFile(deps.config.dataDir, snapshot),
+    );
+  }
+
+  function forgetRun(move: MoveRun): Promise<void> {
+    return queueRunFileWork(move, () =>
+      removeServerMoveRunFile(deps.config.dataDir),
+    );
   }
 
   function isBlocking(move: MoveRun | null): boolean {
@@ -323,9 +416,13 @@ export function createServerMoveCoordinator(
     message: string | null,
   ): void {
     const step = findStep(move, id);
+    const transitioned = step.status !== status;
     step.status = status;
     step.message = message;
     notify();
+    if (transitioned) {
+      void persistRun(move).catch(() => undefined);
+    }
   }
 
   function assertNotCancelled(move: MoveRun): void {
@@ -407,6 +504,7 @@ export function createServerMoveCoordinator(
     setServerMoveFrozen(deps.db, true);
     environment.plugins.setSchedulesPaused(true);
     setStep(move, "stop-work", "running", "Stopping running turns");
+    await persistRun(move);
     await untilCancelled(
       move,
       environment.stopRunningWork({
@@ -799,18 +897,22 @@ export function createServerMoveCoordinator(
         headers: grant.headers,
         serverUrl: grant.serverUrl,
       });
+      move.movedAt = movedAt;
+      move.activationRequestedAt = environment.now();
+      await persistRun(move);
     } catch (error) {
       await rollbackSwitchFiles(move.configBackup);
       throw error;
     }
-    move.activationRequestedAt = environment.now();
-    const activation = await activateTarget(move, move.activationRequestedAt);
+    const activation = await activateTarget(
+      move,
+      requireValue(move.activationRequestedAt, "its activation time"),
+    );
     if (activation.outcome === "refused") {
       await rollbackSwitchFiles(move.configBackup);
       throw new Error(activation.message);
     }
     move.finished = true;
-    move.movedAt = movedAt;
     if (activation.outcome === "unconfirmed") {
       enterRecovery(move, grant, activation.message);
       return;
@@ -822,20 +924,21 @@ export function createServerMoveCoordinator(
     move: MoveRun,
     grant: ServerMoveGrant,
   ): Promise<void> {
+    move.activationConfirmedAt = environment.now();
     move.status.state = "switching";
     move.status.cancellable = false;
     notify();
+    await persistRun(move).catch(() => undefined);
     await stopPlugins(move);
     sendServerMoved(move, grant);
     move.status.state = "completed";
     move.status.error = null;
     move.status.finishedAt = environment.now();
-    setStep(
-      move,
-      "switch",
-      "done",
-      `The server now runs on ${move.status.targetHostName}`,
-    );
+    const step = findStep(move, "switch");
+    step.status = "done";
+    step.message = `The server now runs on ${move.status.targetHostName}`;
+    notify();
+    await persistRun(move).catch(() => undefined);
     setTimeout(() => {
       environment.retireProcess();
     }, timings.retireDelayMs);
@@ -857,14 +960,19 @@ export function createServerMoveCoordinator(
     move.status.state = "recovery_required";
     move.status.cancellable = true;
     move.status.error = { step: "switch", message };
-    const recovery = new AbortController();
-    move.recovery = recovery;
     setStep(
       move,
       "switch",
       "running",
       `Waiting for ${move.status.targetHostName} to confirm it took over`,
     );
+    void persistRun(move).catch(() => undefined);
+    startRecovery(move, grant);
+  }
+
+  function startRecovery(move: MoveRun, grant: ServerMoveGrant): void {
+    const recovery = new AbortController();
+    move.recovery = recovery;
     void runRecovery(move, grant, recovery.signal).catch((error: unknown) => {
       deps.logger.error(
         { err: error, moveId: move.status.moveId },
@@ -1003,6 +1111,7 @@ export function createServerMoveCoordinator(
       { moveId: move.status.moveId, targetHostId: move.status.targetHostId },
       "Server move abandoned before the target confirmed activation",
     );
+    void persistRun(move).catch(() => undefined);
     void finishAbandon(move);
     return structuredClone(move.status);
   }
@@ -1010,6 +1119,7 @@ export function createServerMoveCoordinator(
   async function finishAbandon(move: MoveRun): Promise<void> {
     await rollbackSwitchFiles(move.configBackup);
     await Promise.all([resumeFrozenWork(move), abortTargetWhenReachable(move)]);
+    await forgetRun(move).catch(() => undefined);
   }
 
   async function abortTargetWhenReachable(move: MoveRun): Promise<void> {
@@ -1091,6 +1201,7 @@ export function createServerMoveCoordinator(
       );
     }
     await Promise.all([resumeFrozenWork(move), sendAbort(move)]);
+    await forgetRun(move).catch(() => undefined);
   }
 
   async function resumeFrozenWork(move: MoveRun): Promise<void> {
@@ -1166,7 +1277,7 @@ export function createServerMoveCoordinator(
 
     async check(request) {
       const result = await runServerMoveCheck(checkEnvironment, {
-        moveInProgress: starting || isBlocking(current),
+        moveInProgress: pendingStart !== null || isBlocking(current),
         request,
       });
       return result.response;
@@ -1193,6 +1304,7 @@ export function createServerMoveCoordinator(
       if (!PREPARE_PROGRESS_STEPS.has(message.step)) {
         return;
       }
+      let finishedEarlierStep = false;
       for (const step of move.status.steps) {
         if (
           step.id !== message.step &&
@@ -1200,9 +1312,30 @@ export function createServerMoveCoordinator(
           step.status === "running"
         ) {
           step.status = "done";
+          finishedEarlierStep = true;
         }
       }
       setStep(move, message.step, "running", message.message);
+      if (finishedEarlierStep) {
+        void persistRun(move).catch(() => undefined);
+      }
+    },
+
+    async handlePluginsStarted() {
+      const move = current;
+      if (
+        move === null ||
+        move.status.state !== "recovery_required" ||
+        move.pluginsSuspended
+      ) {
+        return;
+      }
+      await suspendPlugins(move).catch((error: unknown) => {
+        deps.logger.warn(
+          { err: error, moveId: move.status.moveId },
+          "Server move could not pause plugins after a restart",
+        );
+      });
     },
 
     isFrozen() {
@@ -1251,98 +1384,147 @@ export function createServerMoveCoordinator(
       };
     },
 
-    async start(request) {
-      if (starting || isBlocking(current)) {
-        throw inProgressError();
+    start(request) {
+      const existing = current;
+      if (existing !== null && isBlocking(existing)) {
+        if (existing.status.targetHostId === request.targetHostId) {
+          return Promise.resolve(structuredClone(existing.status));
+        }
+        return Promise.reject(inProgressError());
       }
-      starting = true;
-      try {
-        const check = await runServerMoveCheck(checkEnvironment, {
-          moveInProgress: false,
-          request,
-        });
-        const blockers: ServerMoveCheckItem[] = check.response.items.filter(
-          (item) => item.severity === "blocker",
-        );
-        const existingData = check.response.existingTargetServerData;
-        if (
-          blockers.length === 0 &&
-          existingData !== null &&
-          !request.archiveExistingTargetServerData
-        ) {
-          blockers.push({
-            id: "archive-existing-data-required",
-            severity: "blocker",
-            title: `Confirm archiving the existing bb data on ${check.response.targetHostName}`,
-            detail: existingData.path,
+      if (pendingStart !== null) {
+        if (pendingStart.targetHostId === request.targetHostId) {
+          return pendingStart.promise;
+        }
+        return Promise.reject(inProgressError());
+      }
+      const promise = (async (): Promise<ServerMoveStatus> => {
+        try {
+          const check = await runServerMoveCheck(checkEnvironment, {
+            moveInProgress: false,
+            request,
           });
-        }
-        if (blockers.length > 0) {
-          throw new ApiError(
-            400,
-            "server_move_blocked",
-            blockers[0]?.title ?? "The server can't move to this machine",
-            { details: { items: blockers } },
+          const blockers: ServerMoveCheckItem[] = check.response.items.filter(
+            (item) => item.severity === "blocker",
           );
+          const existingData = check.response.existingTargetServerData;
+          if (
+            blockers.length === 0 &&
+            existingData !== null &&
+            !request.archiveExistingTargetServerData
+          ) {
+            blockers.push({
+              id: "archive-existing-data-required",
+              severity: "blocker",
+              title: `Confirm archiving the existing bb data on ${check.response.targetHostName}`,
+              detail: existingData.path,
+            });
+          }
+          if (blockers.length > 0) {
+            throw new ApiError(
+              400,
+              "server_move_blocked",
+              blockers[0]?.title ?? "The server can't move to this machine",
+              { details: { items: blockers } },
+            );
+          }
+          const { mode, serverUrl, sourceServerHost, targetHost } = check;
+          if (
+            sourceServerHost === null ||
+            targetHost === null ||
+            serverUrl === null ||
+            mode.mode === "unavailable"
+          ) {
+            throw new Error(
+              "Server move check passed without a server machine, target, and address",
+            );
+          }
+          const moveId = randomUUID();
+          const move: MoveRun = {
+            abort: new AbortController(),
+            activationConfirmedAt: null,
+            activationRequestedAt: null,
+            activationToken: randomBytes(32).toString("base64url"),
+            archive: null,
+            archiveExistingTargetServerData:
+              request.archiveExistingTargetServerData,
+            bbApp: null,
+            configBackup: null,
+            connectHandle: mode.mode === "connect" ? mode.connectHandle : null,
+            finished: false,
+            frozen: false,
+            grant: null,
+            movedAt: null,
+            pluginsSuspended: false,
+            recovery: null,
+            sourceServerHost: {
+              id: sourceServerHost.id,
+              name: sourceServerHost.name,
+            },
+            status: {
+              moveId,
+              state: "preparing",
+              mode: mode.mode,
+              targetHostId: targetHost.id,
+              targetHostName: targetHost.name,
+              serverUrl,
+              destinationStatusUrl:
+                mode.mode === "direct"
+                  ? serverMoveDestinationStatusUrl(serverUrl)
+                  : null,
+              startedAt: environment.now(),
+              finishedAt: null,
+              error: null,
+              steps: createSteps(),
+              cancellable: true,
+            },
+            workDir: join(
+              deps.config.dataDir,
+              SERVER_MOVE_WORK_DIR_NAME,
+              moveId,
+            ),
+          };
+          current = move;
+          notify();
+          void run(move);
+          return structuredClone(move.status);
+        } finally {
+          pendingStart = null;
         }
-        const { mode, serverUrl, sourceServerHost, targetHost } = check;
-        if (
-          sourceServerHost === null ||
-          targetHost === null ||
-          serverUrl === null ||
-          mode.mode === "unavailable"
-        ) {
-          throw new Error(
-            "Server move check passed without a server machine, target, and address",
-          );
-        }
-        const moveId = randomUUID();
-        const move: MoveRun = {
-          abort: new AbortController(),
-          activationRequestedAt: null,
-          activationToken: randomBytes(32).toString("base64url"),
-          archive: null,
-          archiveExistingTargetServerData:
-            request.archiveExistingTargetServerData,
-          bbApp: null,
-          configBackup: null,
-          connectHandle: mode.mode === "connect" ? mode.connectHandle : null,
-          finished: false,
-          frozen: false,
-          grant: null,
-          movedAt: null,
-          pluginsSuspended: false,
-          recovery: null,
-          sourceServerHost: {
-            id: sourceServerHost.id,
-            name: sourceServerHost.name,
-          },
-          status: {
-            moveId,
-            state: "preparing",
-            mode: mode.mode,
-            targetHostId: targetHost.id,
-            targetHostName: targetHost.name,
-            serverUrl,
-            destinationStatusUrl:
-              mode.mode === "direct"
-                ? serverMoveDestinationStatusUrl(serverUrl)
-                : null,
-            startedAt: environment.now(),
-            finishedAt: null,
-            error: null,
-            steps: createSteps(),
-            cancellable: true,
-          },
-          workDir: join(deps.config.dataDir, SERVER_MOVE_WORK_DIR_NAME, moveId),
-        };
-        current = move;
-        notify();
-        void run(move);
-        return structuredClone(move.status);
-      } finally {
-        starting = false;
+      })();
+      pendingStart = { promise, targetHostId: request.targetHostId };
+      return promise;
+    },
+
+    restore(restored) {
+      if (current !== null) {
+        throw new Error("A server move is already loaded");
       }
+      const move = moveFromRunFile(restored.run);
+      current = move;
+      notify();
+      if (restored.kind === "ended") {
+        void abortTargetWhenReachable(move).finally(() =>
+          forgetRun(move).catch(() => undefined),
+        );
+        return;
+      }
+      move.frozen = true;
+      setServerMoveFrozen(deps.db, true);
+      setServerMoveSnapshotFence(deps.db, true);
+      environment.plugins.setSchedulesPaused(true);
+      if (restored.kind === "completed") {
+        move.movedAt = restored.movedAt;
+        setTimeout(() => {
+          environment.retireProcess();
+        }, timings.retireDelayMs);
+        return;
+      }
+      void persistRun(move).catch(() => undefined);
+      startRecovery(
+        move,
+        move.grant ?? { serverUrl: move.status.serverUrl, headers: {} },
+      );
     },
   };
 }
