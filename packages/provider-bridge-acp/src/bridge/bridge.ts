@@ -110,6 +110,7 @@ import {
 } from "../wire.js";
 import {
   AcpAgentResponseError,
+  acpFsAccessForAgentCommand,
   createAcpAgentConnection,
   requestAcpInitialize,
   type AcpAgentConnection,
@@ -1696,7 +1697,7 @@ async function startAgentSession(
   try {
     const initializeResult = await requestAcpInitialize(connection, {
       parameterizedModelPicker: params.parameterizedModelPicker,
-      fsAccess: true,
+      fsAccess: acpFsAccessForAgentCommand(params.agent.command),
     });
     await authenticateAcpAgent({
       connection,

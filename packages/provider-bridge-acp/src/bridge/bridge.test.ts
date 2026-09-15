@@ -1561,6 +1561,24 @@ describe("acp bridge", () => {
     expect(agentMessageTexts()).toContain("echo:hello there");
   });
 
+  it("does not offer Grok client text-file IO", async () => {
+    const grokCommand = join(workspaceDir, "grok");
+    symlinkSync(process.execPath, grokCommand);
+    const requestLog = join(workspaceDir, "grok-init-requests.jsonl");
+    await startThread({
+      agent: { command: grokCommand, args: [FAKE_AGENT_PATH] },
+      envVars: { FAKE_ACP_REQUEST_LOG: requestLog },
+    });
+    const initialize = loggedAcpRequests(requestLog).find(
+      (request) => request.method === "initialize",
+    );
+    expect(initialize?.params).toMatchObject({
+      clientCapabilities: {
+        fs: { readTextFile: false, writeTextFile: false },
+      },
+    });
+  });
+
   it("rebuilds the agent with environment from a later turn", async () => {
     const envVars = { FAKE_ACP_LOAD_SESSION: "1", FAKE_ACP_PROMPT_ERROR: "1" };
     const { providerThreadId } = await startThread({ envVars });

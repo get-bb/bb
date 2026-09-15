@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
+import { basename } from "node:path";
 import { createInterface } from "node:readline";
 import { experimental_recordProviderChildIo } from "@bb/provider-bridge-protocol/bridge-kit";
 import type { z } from "zod";
@@ -379,6 +380,11 @@ function acpClientCapabilities(
       ? { _meta: { parameterizedModelPicker: true } }
       : {}),
   };
+}
+
+export function acpFsAccessForAgentCommand(command: string): boolean {
+  const name = basename(command).toLowerCase();
+  return !(name === "grok" || name === "grok.exe" || /^grok-\d/.test(name));
 }
 
 export function requestAcpInitialize(

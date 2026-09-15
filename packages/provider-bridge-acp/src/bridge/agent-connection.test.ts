@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
   AcpAgentExitedError,
+  acpFsAccessForAgentCommand,
   createAcpAgentConnection,
   formatAgentError,
   type AcpAgentConnection,
@@ -39,6 +40,21 @@ async function stopConnection(
   }
   await exit;
 }
+
+describe("acpFsAccessForAgentCommand", () => {
+  it("withholds client file IO from Grok so native image reads stay on disk", () => {
+    expect(acpFsAccessForAgentCommand("grok")).toBe(false);
+    expect(acpFsAccessForAgentCommand("/Users/me/.grok/bin/grok")).toBe(false);
+    expect(acpFsAccessForAgentCommand("grok.exe")).toBe(false);
+    expect(acpFsAccessForAgentCommand("grok-0.2.121")).toBe(false);
+  });
+
+  it("keeps client file IO for other ACP agents", () => {
+    expect(acpFsAccessForAgentCommand("opencode")).toBe(true);
+    expect(acpFsAccessForAgentCommand("hermes")).toBe(true);
+    expect(acpFsAccessForAgentCommand("cursor-agent")).toBe(true);
+  });
+});
 
 describe("formatAgentError", () => {
   it("appends error.data.details to the generic JSON-RPC message", () => {
