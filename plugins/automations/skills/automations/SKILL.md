@@ -18,7 +18,7 @@ Personal supports automations with `--project proj_personal`. Use `bb project li
 
 Choosing a mode:
 
-Use `script` when the output is fully determined by code: watchdogs, threshold alerts, health checks, heartbeats, and API pollers with a fixed output shape. Scripts run on the bb server, with cwd inside the plugin data directory's `scripts/` area. Script automations do not have an environment field and do not accept environment flags.
+Use `script` when the output is fully determined by code: watchdogs, threshold alerts, health checks, heartbeats, and API pollers with a fixed output shape. Scripts run on the bb server. New standard-project scripts use the server-host project source when one exists; Personal and projects without one use legacy plugin storage. Existing scripts without a saved policy also retain legacy storage. Use `--working-directory legacy|project|<absolute-server-path>` to select the policy. Script automations do not have an environment field and do not accept environment flags.
 
 Design the script to print nothing when there is nothing to report: an exit-0 run with empty stdout/stderr, or a last non-empty line of `{"wakeAgent": false}`, is recorded as a skipped silent tick. Any other output is captured; non-zero exit or timeout is recorded as a failed run.
 

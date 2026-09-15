@@ -19,6 +19,33 @@ The create and update commands print the exact refresh command. The create,
 update, and show commands print the stored path on the `Script:` line. JSON
 output returns it as `execution.storedScriptPath`.
 
+## Working directory
+
+Every script stores `execution.workingDirectory` as one of these policies:
+
+- `{"type":"legacy"}` uses `<data dir>/plugins/automations/scripts/`.
+- `{"type":"project"}` uses the project's source on the bb server host.
+- `{"type":"path","path":"/absolute/path"}` uses that directory on the bb
+  server host.
+
+New standard-project scripts default to `project` when that project has a
+source on the server's co-located host. Personal scripts and projects without
+such a source default to `legacy`. Automations stored before this field existed
+also decode as `legacy`, so an upgrade does not silently change their relative
+paths. Replacing an existing script preserves its current policy unless the
+update includes `--working-directory`; changing an agent automation to script
+uses the same source-aware default.
+
+Use `--working-directory legacy|project|<absolute-server-path>` on create or
+update. A `project` policy fails if the project has no source on the server
+host. An explicit path must be absolute and an existing directory. The run
+fails instead of silently using another directory when either selection is
+unavailable.
+
+A failed run's summary includes its exit code and a terminal-control-stripped
+first non-empty stderr line. The complete captured stdout and stderr remain
+available unchanged in run output.
+
 ## Variables and CLI lookup
 
 The plugin injects these variables:

@@ -14,6 +14,7 @@ import type {
   AutomationResponse,
   AutomationRunResponse,
   AutomationScriptInterpreter,
+  AutomationScriptWorkingDirectory,
   CreateAutomationInput,
   PermissionMode,
   ReasoningLevel,
@@ -177,6 +178,17 @@ function parseServiceTier(value: string): ServiceTier | null {
   const parsed = serviceTierSchema.safeParse(value);
   if (parsed.success) return parsed.data;
   throw new Error("Invalid --service-tier. Expected default, fast, or none.");
+}
+
+function parseScriptWorkingDirectory(
+  value: string | undefined,
+): AutomationScriptWorkingDirectory | undefined {
+  if (value === undefined) return undefined;
+  if (value === "legacy" || value === "project") return { type: value };
+  if (isAbsolute(value)) return { type: "path", path: value };
+  throw new Error(
+    "Invalid --working-directory. Expected legacy, project, or an absolute path on the bb server host.",
+  );
 }
 
 function validateAgentTargetOptions(args: ParsedArgs): void {
@@ -415,10 +427,11 @@ async function buildExecution(
     hasAgent &&
     (args.flags.has("interpreter") ||
       args.flags.has("timeout") ||
-      args.flags.has("env-json"))
+      args.flags.has("env-json") ||
+      args.flags.has("working-directory"))
   ) {
     throw new Error(
-      "Agent automations do not accept --interpreter, --timeout, or --env-json.",
+      "Agent automations do not accept --interpreter, --timeout, --env-json, or --working-directory.",
     );
   }
   if (!hasAgent && !hasScript) {
@@ -483,6 +496,9 @@ async function buildExecution(
   const explicitInterpreter = parseScriptInterpreter(flag(args, "interpreter"));
   const timeoutMs = parseTimeoutMs(flag(args, "timeout"));
   const env = parseScriptEnv(flag(args, "env-json"));
+  const workingDirectory = args.flags.has("working-directory")
+    ? parseScriptWorkingDirectory(requireFlag(args, "working-directory"))
+    : undefined;
   const scriptSource = await loadScriptFileSource(bb, args, ctx);
   const content = scriptSource ? scriptSource.content : script;
   if (!content) throw new Error("Missing script content.");
@@ -495,6 +511,7 @@ async function buildExecution(
       script: content,
       ...(scriptSource ? { scriptFile: scriptSource.path } : {}),
       ...(interpreter ? { interpreter } : {}),
+      ...(workingDirectory ? { workingDirectory } : {}),
       timeoutMs: timeoutMs ?? AUTOMATION_SCRIPT_TIMEOUT_DEFAULT_MS,
       ...(env ? { env } : {}),
     },
@@ -603,14 +620,33 @@ async function buildUpdateRequest(
       request.agent = agentUpdate;
     }
   }
+  if (request.agent !== undefined && args.flags.has("working-directory")) {
+    throw new Error(
+      "Cannot combine agent execution flags with --working-directory.",
+    );
+  }
+  if (
+    request.execution === undefined &&
+    request.agent === undefined &&
+    args.flags.has("working-directory")
+  ) {
+    const workingDirectory = parseScriptWorkingDirectory(
+      requireFlag(args, "working-directory"),
+    );
+    if (workingDirectory === undefined) {
+      throw new Error("Missing required option --working-directory <value>.");
+    }
+    request.script = { workingDirectory };
+  }
   if (
     request.name === undefined &&
     request.trigger === undefined &&
     request.execution === undefined &&
-    request.agent === undefined
+    request.agent === undefined &&
+    request.script === undefined
   ) {
     throw new Error(
-      "No changes requested. Provide --name, schedule flags, a complete agent/script execution, or partial agent update flags.",
+      "No changes requested. Provide --name, schedule flags, a complete agent/script execution, or partial agent/script update flags.",
     );
   }
   return { request, ...(scriptSource ? { scriptSource } : {}) };
@@ -654,6 +690,17 @@ function printAutomation(
   ) {
     lines.push(`  Script:    ${automation.execution.storedScriptPath}`);
   }
+  if (automation.execution.mode === "script") {
+    const workingDirectory = automation.execution.workingDirectory;
+    const displayedWorkingDirectory =
+      automation.execution.resolvedWorkingDirectory === null
+        ? "unavailable"
+        : (automation.execution.resolvedWorkingDirectory ??
+          (workingDirectory.type === "path"
+            ? workingDirectory.path
+            : workingDirectory.type));
+    lines.push(`  Working dir: ${displayedWorkingDirectory}`);
+  }
   if (automation.execution.mode === "agent") {
     lines.push(
       `  Provider:  ${automation.execution.providerId}`,
@@ -693,6 +740,13 @@ function refreshScriptFileCommand(
   if (automation.execution.interpreter !== undefined) {
     argv.push("--interpreter", automation.execution.interpreter);
   }
+  const workingDirectory = automation.execution.workingDirectory;
+  argv.push(
+    "--working-directory",
+    workingDirectory.type === "path"
+      ? workingDirectory.path
+      : workingDirectory.type,
+  );
   argv.push("--timeout", String(automation.execution.timeoutMs));
   if (automation.execution.env !== undefined) {
     argv.push("--env-json", JSON.stringify(automation.execution.env));
@@ -805,7 +859,7 @@ function helpText(): string {
   return `Automation commands
 
 bb automation list --project <id>
-bb automation create --project <id> --name <name> (--cron <expr> --timezone <tz> | --at <datetime> | --in <duration>) (--prompt <text> --provider <id> --model <model> [--reasoning <level>] [--service-tier default|fast] | --script <inline> | --script-file <path> [--host <name-or-id>])
+bb automation create --project <id> --name <name> (--cron <expr> --timezone <tz> | --at <datetime> | --in <duration>) (--prompt <text> --provider <id> --model <model> [--reasoning <level>] [--service-tier default|fast] | (--script <inline> | --script-file <path> [--host <name-or-id>]) [--working-directory legacy|project|<absolute-path>])
 bb automation show <automationId> --project <id>
 bb automation update <automationId> --project <id> [--name <name>] [schedule flags] [complete agent/script execution flags | --provider <id> --model <model> --reasoning <level> --service-tier default|fast|none]
 bb automation pause <automationId> --project <id>
@@ -813,6 +867,13 @@ bb automation resume <automationId> --project <id>
 bb automation run <automationId> --project <id> [--idempotency-key <key>]
 bb automation runs <automationId> --project <id> [--limit <count>] [--output <runId>]
 bb automation delete <automationId> --project <id> --yes
+
+Scripts run on the bb server host. New standard-project scripts use the
+project source on that host when one exists; Personal and projects without a
+server-host source use legacy plugin storage. Existing scripts without a saved
+policy also use legacy storage. Select legacy, project, or an absolute
+server-host path with --working-directory. An unavailable selected directory
+fails the run.
 `;
 }
 

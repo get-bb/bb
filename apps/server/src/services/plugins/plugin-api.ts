@@ -5,6 +5,7 @@ import {
 } from "@get-bb/plugin-sdk/internal/host-policy";
 import { createMachineBootstrapApi } from "../machines/bootstrap.js";
 import type { MachineEnrollments } from "../machines/enrollments.js";
+import { readPrimaryHostIdFromDataDir } from "../hosts/primary-host.js";
 import { listServerAccessProviders } from "./plugin-server-access-registry.js";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
@@ -956,6 +957,10 @@ export function createPluginApi(options: {
   };
 
   const server: PluginServerApi = {
+    get experimental_hostId(): string | null {
+      assertLive();
+      return readPrimaryHostIdFromDataDir({ dataDir });
+    },
     get experimental_appUrl(): string | null {
       assertLive();
       return getAppUrl();

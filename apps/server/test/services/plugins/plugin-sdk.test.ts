@@ -349,6 +349,20 @@ describe("plugin bb.sdk bind gate", () => {
     expect(api.server.experimental_appUrl).toBeNull();
   });
 
+  it("serves only the co-located server host identity", async () => {
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-server-host-id",
+      serverSource: `export default function plugin() {}`,
+    });
+    await service.installPath(rootDir);
+    const api = requireApi(service, "server-host-id");
+
+    expect(api.server.experimental_hostId).toBeNull();
+    await mkdir(join(workDir, "data"), { recursive: true });
+    await writeFile(join(workDir, "data", "host-id"), "host_server\n");
+    expect(api.server.experimental_hostId).toBe("host_server");
+  });
+
   it("marks a plugin error when its factory touches bb.sdk at load time", async () => {
     const rootDir = await writePlugin(workDir, {
       name: "bb-plugin-eager",

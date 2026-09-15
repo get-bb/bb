@@ -140,6 +140,10 @@ or `null` when `BB_APP_URL` is empty. It is not bind-gated.
 `bb.server.experimental_dataDir` gives the exact server data directory for a
 migration from BB-managed files. Do not write plugin state there. Use
 `bb.storage` for plugin-owned state.
+`bb.server.experimental_hostId` gives the enrolled host ID for the machine
+running the server process, or `null` when no co-located host daemon identity
+exists. It is distinct from `bb.sdk.system.config().primaryHostId`, which may
+identify an enrolled remote machine.
 
 ### bb.hosts
 

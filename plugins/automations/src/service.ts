@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import {
@@ -31,11 +31,13 @@ import {
   automationsOverviewResponseSchema,
   type AgentExecutionUpdate,
   type AutomationExecution,
+  type AutomationExecutionRequest,
   type AutomationReadProblem,
   type AutomationReadResult,
   type AutomationRunListResponse,
   type AutomationRunRpcResponse,
   type AutomationResponse,
+  type AutomationScriptWorkingDirectory,
   type AutomationsOverviewResponse,
   type ResolvedCreateAutomationInput,
   type ResolvedAutomationRunsInput,
@@ -55,9 +57,15 @@ import {
   readAutomationScript,
   writeInlineAutomationScript,
 } from "./script-files.js";
-import { errorMessage, executeAgentRun, executeScriptRun } from "./run.js";
+import {
+  errorMessage,
+  executeAgentRun,
+  executeScriptRun,
+  projectPathForHost,
+} from "./run.js";
 
 type ServiceApi = Pick<BbPluginApi, "realtime" | "log"> & {
+  server: Pick<BbPluginApi["server"], "experimental_hostId">;
   sdk: {
     projects: Pick<BbPluginApi["sdk"]["projects"], "get" | "list">;
     providers: Pick<BbPluginApi["sdk"]["providers"], "list">;
@@ -139,28 +147,48 @@ type ResolvedStoredExecution = {
   writtenScriptFile?: string;
 };
 
+const PROJECT_WORKING_DIRECTORY = { type: "project" } as const;
+const LEGACY_WORKING_DIRECTORY = { type: "legacy" } as const;
+
+function validateScriptWorkingDirectory(
+  workingDirectory: AutomationScriptWorkingDirectory,
+): void {
+  if (workingDirectory.type === "path" && !isAbsolute(workingDirectory.path)) {
+    throw new Error(
+      "A script working directory must be legacy, project, or an absolute path on the bb server host",
+    );
+  }
+}
+
 async function resolveStoredExecution(args: {
   pluginDataDir: string;
   automationId: string;
-  execution: AutomationExecution;
+  execution: AutomationExecutionRequest;
+  defaultWorkingDirectory: AutomationScriptWorkingDirectory;
 }): Promise<ResolvedStoredExecution> {
   if (args.execution.mode !== "script") {
     return { execution: args.execution };
   }
-  if (args.execution.script !== undefined) {
+  const execution = {
+    ...args.execution,
+    workingDirectory:
+      args.execution.workingDirectory ?? args.defaultWorkingDirectory,
+  };
+  validateScriptWorkingDirectory(execution.workingDirectory);
+  if (execution.script !== undefined) {
     const scriptFile = await writeInlineAutomationScript({
       dataDir: args.pluginDataDir,
       automationId: args.automationId,
-      content: args.execution.script,
-      scriptFile: args.execution.scriptFile,
+      content: execution.script,
+      scriptFile: execution.scriptFile,
     });
-    const { script: _script, ...rest } = args.execution;
+    const { script: _script, ...rest } = execution;
     return {
       execution: { ...rest, scriptFile },
       writtenScriptFile: scriptFile,
     };
   }
-  return { execution: args.execution };
+  return { execution };
 }
 
 async function discardUncommittedScript(args: {
@@ -272,6 +300,7 @@ function toStoredAutomationReadResult(
 }
 
 async function toEditableAutomationResponse(args: {
+  bb: Pick<ServiceApi, "log" | "sdk" | "server">;
   pluginDataDir: string;
   automation: AutomationResponse;
 }): Promise<AutomationResponse> {
@@ -283,10 +312,37 @@ async function toEditableAutomationResponse(args: {
     return automation;
   }
   const { scriptFile, ...execution } = automation.execution;
+  let resolvedWorkingDirectory: string | null;
+  if (execution.workingDirectory.type === "legacy") {
+    resolvedWorkingDirectory = automationScriptDir(
+      args.pluginDataDir,
+      automation.id,
+    );
+  } else if (execution.workingDirectory.type === "path") {
+    resolvedWorkingDirectory = execution.workingDirectory.path;
+  } else {
+    const serverHostId = args.bb.server.experimental_hostId;
+    if (serverHostId === null) {
+      resolvedWorkingDirectory = null;
+    } else {
+      try {
+        resolvedWorkingDirectory = projectPathForHost(
+          await args.bb.sdk.projects.get({ projectId: automation.projectId }),
+          serverHostId,
+        );
+      } catch (error) {
+        args.bb.log.warn(
+          `Failed to resolve working directory for automation ${automation.id}: ${errorMessage(error)}`,
+        );
+        resolvedWorkingDirectory = null;
+      }
+    }
+  }
   return {
     ...automation,
     execution: {
       ...execution,
+      resolvedWorkingDirectory,
       script: await readAutomationScript({
         dataDir: args.pluginDataDir,
         automationId: automation.id,
@@ -297,7 +353,7 @@ async function toEditableAutomationResponse(args: {
 }
 
 async function toEditableAutomationReadResult(args: {
-  bb: Pick<ServiceApi, "log">;
+  bb: Pick<ServiceApi, "log" | "sdk" | "server">;
   pluginDataDir: string;
   row: AutomationRow;
 }): Promise<AutomationReadResult> {
@@ -308,6 +364,7 @@ async function toEditableAutomationReadResult(args: {
   );
   if ("problem" in automation) return automation;
   return toEditableAutomationResponse({
+    bb: args.bb,
     pluginDataDir: args.pluginDataDir,
     automation,
   });
@@ -429,7 +486,13 @@ async function projectNameById(
   }
 }
 
-const projectAvailableSchema = z.object({ id: z.string() }).passthrough();
+const projectAvailableSchema = z
+  .object({
+    id: z.string(),
+    kind: z.enum(["standard", "personal"]),
+    sources: z.array(z.unknown()),
+  })
+  .passthrough();
 const projectSummarySchema = z
   .object({
     id: z.string(),
@@ -442,14 +505,30 @@ const projectSummaryListSchema = z.array(projectSummarySchema);
 async function requireProjectAvailable(
   bb: Pick<ServiceApi, "sdk">,
   projectId: string,
-): Promise<void> {
+): Promise<z.infer<typeof projectAvailableSchema>> {
   try {
-    projectAvailableSchema.parse(await bb.sdk.projects.get({ projectId }));
+    return projectAvailableSchema.parse(
+      await bb.sdk.projects.get({ projectId }),
+    );
   } catch (error) {
     throw new Error(
       `Project ${projectId} is not available: ${errorMessage(error)}`,
     );
   }
+}
+
+function defaultScriptWorkingDirectory(
+  project: z.infer<typeof projectAvailableSchema>,
+  serverHostId: string | null,
+): AutomationScriptWorkingDirectory {
+  if (
+    project.kind === "personal" ||
+    serverHostId === null ||
+    projectPathForHost(project, serverHostId) === null
+  ) {
+    return LEGACY_WORKING_DIRECTORY;
+  }
+  return PROJECT_WORKING_DIRECTORY;
 }
 
 export function createAutomationService(args: {
@@ -493,7 +572,7 @@ export function createAutomationService(args: {
     },
 
     async create(payload) {
-      await requireProjectAvailable(bb, payload.projectId);
+      const project = await requireProjectAvailable(bb, payload.projectId);
       const now = Date.now();
       validateTrigger(payload.trigger, now);
       assertNotRecursiveCreation(db, payload.createdByThreadId);
@@ -510,6 +589,10 @@ export function createAutomationService(args: {
         pluginDataDir,
         automationId,
         execution: payload.execution,
+        defaultWorkingDirectory: defaultScriptWorkingDirectory(
+          project,
+          bb.server.experimental_hostId,
+        ),
       });
       let created: AutomationRow;
       try {
@@ -543,7 +626,7 @@ export function createAutomationService(args: {
     },
 
     async update(input) {
-      await requireProjectAvailable(bb, input.projectId);
+      const project = await requireProjectAvailable(bb, input.projectId);
       const current = requireProjectAutomation(db, input);
       const currentAutomation = decodeAutomationRow(current).automation;
       if (
@@ -556,8 +639,14 @@ export function createAutomationService(args: {
           currentAutomation.problem,
         );
       }
-      if (input.execution !== undefined && input.agent !== undefined) {
-        throw new Error("execution and agent updates cannot be combined");
+      if (
+        [input.execution, input.agent, input.script].filter(
+          (entry) => entry !== undefined,
+        ).length > 1
+      ) {
+        throw new Error(
+          "execution, agent, and script updates cannot be combined",
+        );
       }
       const now = Date.now();
       const currentExecution = currentAutomation.execution;
@@ -584,6 +673,13 @@ export function createAutomationService(args: {
           pluginDataDir,
           automationId: current.id,
           execution: input.execution,
+          defaultWorkingDirectory:
+            currentExecution.mode === "script"
+              ? currentExecution.workingDirectory
+              : defaultScriptWorkingDirectory(
+                  project,
+                  bb.server.experimental_hostId,
+                ),
         });
         patch.execution = stored.execution;
         stagedScriptFile = stored.writtenScriptFile;
@@ -606,6 +702,18 @@ export function createAutomationService(args: {
           );
         }
         patch.execution = updatedExecution;
+      }
+      if (input.script !== undefined) {
+        if (currentExecution.mode !== "script") {
+          throw new Error(
+            "Script execution options can only update script automations",
+          );
+        }
+        validateScriptWorkingDirectory(input.script.workingDirectory);
+        patch.execution = {
+          ...currentExecution,
+          workingDirectory: input.script.workingDirectory,
+        };
       }
       if (
         "problem" in currentAutomation &&
@@ -749,6 +857,7 @@ export function createAutomationService(args: {
                 execution,
                 onFailure: closeFailedRun,
                 serverUrl,
+                serverHostId: bb.server.experimental_hostId,
               });
             }
           } catch (error) {

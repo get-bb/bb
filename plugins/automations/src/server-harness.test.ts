@@ -36,7 +36,27 @@ const rpcMethods = [
 ].sort();
 
 function project(projectId = PROJECT_ID) {
-  return { id: projectId, name: "Test Project", deletedAt: null };
+  return {
+    id: projectId,
+    kind: "standard" as const,
+    name: "Test Project",
+    gitRemoteUrl: null,
+    createdAt: 1,
+    updatedAt: 1,
+    deletedAt: null,
+    sources: [
+      {
+        id: `psrc_${projectId}`,
+        projectId,
+        type: "local_path" as const,
+        hostId: "host_fake",
+        path: "/test/project",
+        isDefault: true,
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ],
+  };
 }
 
 async function bootAutomationsPlugin(
@@ -320,6 +340,7 @@ describe("automations server plugin harness", () => {
     expect(editable.execution).toMatchObject({
       mode: "script",
       script: "echo ok",
+      resolvedWorkingDirectory: "/test/project",
     });
     expect(editable.execution).not.toHaveProperty("scriptFile");
 
@@ -386,6 +407,7 @@ describe("automations server plugin harness", () => {
         new RegExp(`/scripts/${created.id}/script\\.sh$`),
       ),
       interpreter: "bash",
+      workingDirectory: { type: "project" },
       timeoutMs: 12_000,
       env: { CHANNEL: "qa" },
     });
@@ -402,6 +424,8 @@ describe("automations server plugin harness", () => {
         new RegExp(`/scripts/${created.id}/script\\.sh$`),
       ),
       interpreter: "bash",
+      workingDirectory: { type: "project" },
+      resolvedWorkingDirectory: "/test/project",
       timeoutMs: 12_000,
       env: { CHANNEL: "qa" },
     });
