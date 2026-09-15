@@ -727,14 +727,15 @@ describe("ServerMoveService.inspect and probe", () => {
     });
   });
 
-  it("requires the new address to answer for this move", async () => {
+  it("requires the new address to answer for this move and reports its state", async () => {
     const fixture = await createFixture();
+    const health = { state: "pending" };
     const { url } = await listen((_request, response) => {
       response.setHeader("content-type", "application/json");
       response.end(
         JSON.stringify({
           ok: true,
-          serverMove: { state: "pending", moveId: MOVE_ID },
+          serverMove: { state: health.state, moveId: MOVE_ID },
         }),
       );
     });
@@ -746,7 +747,15 @@ describe("ServerMoveService.inspect and probe", () => {
         url,
         moveId: MOVE_ID,
       }),
-    ).resolves.toEqual({ reachable: true, message: null });
+    ).resolves.toEqual({ reachable: true, message: null, state: "pending" });
+    health.state = "ready";
+    await expect(
+      fixture.service.probe({
+        type: "server_move.probe",
+        url,
+        moveId: MOVE_ID,
+      }),
+    ).resolves.toEqual({ reachable: true, message: null, state: "ready" });
     await expect(
       fixture.service.probe({
         type: "server_move.probe",
@@ -756,6 +765,7 @@ describe("ServerMoveService.inspect and probe", () => {
     ).resolves.toEqual({
       reachable: false,
       message: `${url} answered for a different server move`,
+      state: null,
     });
     const unreachable = await fixture.service.probe({
       type: "server_move.probe",
@@ -763,6 +773,7 @@ describe("ServerMoveService.inspect and probe", () => {
       moveId: MOVE_ID,
     });
     expect(unreachable.reachable).toBe(false);
+    expect(unreachable.state).toBeNull();
     expect(unreachable.message).toContain(
       `Could not reach http://127.0.0.1:${closedPort}`,
     );

@@ -116,6 +116,7 @@ import {
   type ServerMoveCoordinator,
 } from "./services/server-move/coordinator.js";
 import { createDefaultServerMoveEnvironment } from "./services/server-move/environment.js";
+import { readServerMoveHealth } from "./services/server-move/health.js";
 import {
   serverMoveFreezeMiddleware,
   serverMoveWriteFreezeMiddleware,
@@ -481,6 +482,9 @@ export function createApp(
     "*",
     cors({
       origin: (origin, context) => {
+        if (context.req.path === "/health") {
+          return "*";
+        }
         const allowedCorsOrigins = allowedAppOrigins(deps);
         const requestOrigin = new URL(context.req.url).origin;
         if (origin === requestOrigin || allowedCorsOrigins.has(origin)) {
@@ -501,22 +505,19 @@ export function createApp(
     });
   });
   app.onError((error) => errorToResponse(error, deps.logger));
-  app.get("/health", (context) =>
-    context.json({
+  app.get("/health", async (context) => {
+    const serverMove = await readServerMoveHealth({
+      dataDir: deps.config.dataDir,
+      pending: pendingServerMove,
+    });
+    return context.json({
       ok: true,
       ...(deps.config.launchId === undefined
         ? {}
         : { launchId: deps.config.launchId }),
-      ...(pendingServerMove === null
-        ? {}
-        : {
-            serverMove: {
-              state: "pending" as const,
-              moveId: pendingServerMove.moveId,
-            },
-          }),
-    }),
-  );
+      ...(serverMove === null ? {} : { serverMove }),
+    });
+  });
   app.get("/install.sh", async (context) => {
     const script = await readFile(INSTALL_MACHINE_SCRIPT_PATH, "utf8");
     const credential = context.req.header("X-BB-Enrollment");

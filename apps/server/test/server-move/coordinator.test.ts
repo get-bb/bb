@@ -80,7 +80,7 @@ function probeReply(
   request: HostDaemonOnlineRpcRequestMessage,
 ): FakeDaemonReply {
   if (request.command.type === "server_move.probe") {
-    return ok({ reachable: true, message: null });
+    return ok({ reachable: true, message: null, state: "pending" });
   }
   if (request.command.type === "server_move.inspect") {
     return ok(inspectResult());
@@ -203,6 +203,7 @@ describe("server move coordinator", () => {
         targetHostId: NEW,
         targetHostName: "Desktop",
         serverUrl: DIRECT_URL,
+        destinationStatusUrl: `${DIRECT_URL}/health`,
         finishedAt: null,
         error: null,
         cancellable: true,
@@ -418,6 +419,7 @@ describe("server move coordinator", () => {
       expect(started).toMatchObject({
         mode: "connect",
         serverUrl: CONNECT_URL,
+        destinationStatusUrl: null,
       });
       await expect.poll(() => events.includes("retire")).toBe(true);
 
@@ -499,7 +501,7 @@ describe("server move coordinator", () => {
       configure: () => targetReply,
       workerProbe: (request: HostDaemonOnlineRpcRequestMessage) =>
         request.command.type === "server_move.probe"
-          ? ok({ reachable: false, message: "connection refused" })
+          ? ok({ reachable: false, message: "connection refused", state: null })
           : probeReply(request),
       pluginSuspends: 1,
     },

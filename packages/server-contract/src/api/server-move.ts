@@ -40,6 +40,7 @@ export const serverMoveStatusSchema = z
     targetHostId: z.string().min(1),
     targetHostName: z.string().min(1),
     serverUrl: z.string().min(1),
+    destinationStatusUrl: z.string().min(1).nullable(),
     startedAt: z.number().int().nonnegative(),
     finishedAt: z.number().int().nonnegative().nullable(),
     error: z

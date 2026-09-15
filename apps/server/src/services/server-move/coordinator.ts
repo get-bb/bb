@@ -196,6 +196,10 @@ export function serverMoveBbAppDownloadPath(moveId: string): string {
   return `/internal/server-move/${encodeURIComponent(moveId)}/bb-app.tgz`;
 }
 
+export function serverMoveDestinationStatusUrl(serverUrl: string): string {
+  return `${serverUrl.replace(/\/+$/u, "")}/health`;
+}
+
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -1091,6 +1095,10 @@ export function createServerMoveCoordinator(
             targetHostId: targetHost.id,
             targetHostName: targetHost.name,
             serverUrl,
+            destinationStatusUrl:
+              mode.mode === "direct"
+                ? serverMoveDestinationStatusUrl(serverUrl)
+                : null,
             startedAt: environment.now(),
             finishedAt: null,
             error: null,

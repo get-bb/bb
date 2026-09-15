@@ -168,6 +168,7 @@ function preparingMove(): ServerMoveStatus {
     targetHostId: "host_desk",
     targetHostName: "desk",
     serverUrl: "https://sawyer.getbb.app",
+    destinationStatusUrl: null,
     startedAt: NOW,
     finishedAt: null,
     error: null,

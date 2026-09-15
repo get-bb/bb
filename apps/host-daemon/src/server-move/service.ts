@@ -103,6 +103,7 @@ import {
   createPendingServerEnv,
   isProcessGroupAlive,
   readPendingServerMoveId,
+  readServerMoveHealth,
   SERVER_MOVE_START_FAILED,
   stopProcessGroup,
   waitForPendingServer,
@@ -434,26 +435,28 @@ export class ServerMoveService {
     command: CommandOf<"server_move.probe">,
   ): Promise<HostDaemonOnlineRpcResult<"server_move.probe">> {
     try {
-      const moveId = await readPendingServerMoveId({
+      const health = await readServerMoveHealth({
         fetchFn: this.options.fetchFn,
         serverUrl: command.url,
         signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
         timeoutMs: PROBE_TIMEOUT_MS,
       });
-      if (moveId === command.moveId) {
-        return { reachable: true, message: null };
+      if (health?.moveId === command.moveId) {
+        return { reachable: true, message: null, state: health.state };
       }
       return {
         reachable: false,
         message:
-          moveId === null
+          health === null
             ? `${command.url} answered, but it is not the new bb server`
             : `${command.url} answered for a different server move`,
+        state: null,
       };
     } catch (error) {
       return {
         reachable: false,
         message: `Could not reach ${command.url}: ${errorMessage(error)}`,
+        state: null,
       };
     }
   }

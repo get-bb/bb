@@ -93,6 +93,7 @@ function moveStatus(
     targetHostId: desktop.id,
     targetHostName: desktop.name,
     serverUrl: "https://me.getbb.app",
+    destinationStatusUrl: null,
     startedAt: 1_700_000_000_000,
     finishedAt: null,
     error: null,

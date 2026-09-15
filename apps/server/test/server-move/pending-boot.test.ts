@@ -755,4 +755,61 @@ describe("pending server mode", () => {
         );
       }
     }));
+
+  it("reports pending, activating, and ready on /health and lets any origin read only that route", () =>
+    withTestHarness(async (harness) => {
+      const pendingApp = createApp(harness.deps, {
+        serverMove: {
+          bindHost: null,
+          manualImportPending: false,
+          pending: {
+            moveId: "move-1",
+            sourceServerHostId: "host-old",
+            targetHostId: "host-new",
+          },
+          retireProcess() {},
+        },
+      }).app;
+      const foreignOrigin = { origin: "https://desk.example.test" };
+
+      expect(await readJson(await pendingApp.request("/health"))).toEqual({
+        ok: true,
+        serverMove: { moveId: "move-1", state: "pending" },
+      });
+      await writeLastServerMoveFile(harness.config.dataDir, {
+        version: 1,
+        moveId: "move-1",
+        fromHostId: "host-old",
+        fromHostName: "Laptop",
+        toHostId: "host-new",
+        toHostName: "Desktop",
+        completedAt: 2,
+        oldCopyDeletedAt: null,
+      });
+      expect(await readJson(await pendingApp.request("/health"))).toEqual({
+        ok: true,
+        serverMove: { moveId: "move-1", state: "activating" },
+      });
+
+      const ready = await harness.app.request("/health", {
+        headers: foreignOrigin,
+      });
+      expect(await readJson(ready)).toEqual({
+        ok: true,
+        serverMove: { moveId: "move-1", state: "ready" },
+      });
+      expect(ready.headers.get("access-control-allow-origin")).toBe("*");
+      const api = await harness.app.request("/api/v1/hosts", {
+        headers: foreignOrigin,
+      });
+      expect(api.headers.get("access-control-allow-origin")).toBeNull();
+
+      await writeFile(
+        join(harness.config.dataDir, "last-server-move.json"),
+        "{not json",
+      );
+      expect(await readJson(await harness.app.request("/health"))).toEqual({
+        ok: true,
+      });
+    }));
 });

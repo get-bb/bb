@@ -1,5 +1,9 @@
 import { dirname } from "node:path";
 import { delimiter } from "node:path";
+import {
+  serverHealthResponseSchema,
+  type ServerMoveHealth,
+} from "@bb/host-daemon-contract";
 import { sanitizeInheritedChildProcessEnv } from "@bb/process-utils";
 import { z } from "zod";
 import type { FetchFn } from "../server-client.js";
@@ -10,15 +14,6 @@ export const SERVER_MOVE_START_FAILED = "server_move_start_failed";
 
 const HEALTH_REQUEST_TIMEOUT_MS = 2_000;
 const PROCESS_POLL_INTERVAL_MS = 100;
-
-const pendingHealthSchema = z.object({
-  serverMove: z
-    .object({
-      state: z.string(),
-      moveId: z.string(),
-    })
-    .optional(),
-});
 
 const pendingVerificationSchema = z.object({
   moveId: z.string(),
@@ -162,13 +157,17 @@ function baseUrl(url: string): string {
   return url.replace(/\/+$/u, "");
 }
 
-export async function readPendingServerMoveId(args: {
+interface ReadServerMoveHealthArgs {
   fetchFn: FetchFn;
   serverUrl: string;
   signal: AbortSignal;
   timeoutMs: number;
-}): Promise<string | null> {
-  const health = pendingHealthSchema.parse(
+}
+
+export async function readServerMoveHealth(
+  args: ReadServerMoveHealthArgs,
+): Promise<ServerMoveHealth | null> {
+  const health = serverHealthResponseSchema.parse(
     await fetchJson({
       fetchFn: args.fetchFn,
       url: `${baseUrl(args.serverUrl)}/health`,
@@ -176,7 +175,13 @@ export async function readPendingServerMoveId(args: {
       timeoutMs: args.timeoutMs,
     }),
   );
-  return health.serverMove?.moveId ?? null;
+  return health.serverMove ?? null;
+}
+
+export async function readPendingServerMoveId(
+  args: ReadServerMoveHealthArgs,
+): Promise<string | null> {
+  return (await readServerMoveHealth(args))?.moveId ?? null;
 }
 
 export async function waitForPendingServer(

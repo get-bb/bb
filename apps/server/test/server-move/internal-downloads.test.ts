@@ -63,7 +63,10 @@ describe("server move downloads", () => {
           hostId: "host-old",
           handle: (request) =>
             request.command.type === "server_move.probe"
-              ? { ok: true, result: { reachable: true, message: null } }
+              ? {
+                  ok: true,
+                  result: { reachable: true, message: null, state: "pending" },
+                }
               : { ok: true, result: inspectResult() },
         });
         registerFakeDaemon(harness, {
