@@ -15,13 +15,10 @@ import {
   bbAppManagedEnvFileSchema,
   parseBbAppManagedConfig,
 } from "@bb/config/bb-app-managed-config";
+import { mutateManagedJsonFile } from "@bb/config/managed-json-file";
 import { hasErrorCode, ServerArchiveError } from "./errors.js";
 import { lstatOrNull, moveFile } from "./fs-utils.js";
-import {
-  parseJsonText,
-  readJsonFileText,
-  writeJsonFileAtomically,
-} from "./json-file.js";
+import { parseJsonText, readJsonFileText } from "./json-file.js";
 import {
   SERVER_ARCHIVE_FILES_DIR_NAME,
   type ServerArchiveManifest,
@@ -129,6 +126,10 @@ function parseImportedManagedConfig(value: unknown): ImportedManagedConfig {
     }
   }
   return config;
+}
+
+function parseManagedEnvFile(value: unknown): BbAppManagedEnvFile {
+  return bbAppManagedEnvFileSchema.parse(value);
 }
 
 async function readManagedJsonFile<T>(
@@ -267,15 +268,28 @@ async function installStagedFile(
   result.importedEntries.push(relativePath);
 }
 
-async function writeManagedFile(
-  dataDir: string,
-  relativePath: string,
-  value: unknown,
-  result: InstallImportedServerFilesResult,
-): Promise<void> {
-  await backUpExistingFile(dataDir, relativePath, "copy", result);
-  await writeJsonFileAtomically(join(dataDir, relativePath), value);
-  result.importedEntries.push(relativePath);
+async function writeManagedFile<T extends object>(args: {
+  dataDir: string;
+  relativePath: string;
+  readExisting: (path: string) => Promise<T>;
+  merge: (existing: T) => T;
+  result: InstallImportedServerFilesResult;
+}): Promise<void> {
+  const path = join(args.dataDir, args.relativePath);
+  await mutateManagedJsonFile({
+    path,
+    read: async () => {
+      await backUpExistingFile(
+        args.dataDir,
+        args.relativePath,
+        "copy",
+        args.result,
+      );
+      return args.readExisting(path);
+    },
+    mutate: args.merge,
+  });
+  args.result.importedEntries.push(args.relativePath);
 }
 
 function assertServerOwnedPaths(paths: readonly string[], label: string): void {
@@ -351,34 +365,24 @@ export async function installImportedServerFiles(
     parseImportedManagedConfig,
     "existing",
   );
-  const mergedConfig =
-    importedConfig === null &&
-    existingConfig === null &&
-    args.localServerUrl === null
-      ? null
-      : mergeImportedManagedConfig({
-          importedConfig: importedConfig ?? {},
-          existingConfig: existingConfig ?? {},
-          localServerUrl: args.localServerUrl,
-        });
+  const writesManagedConfig =
+    importedConfig !== null ||
+    existingConfig !== null ||
+    args.localServerUrl !== null;
   const importedEnv = manifestPaths.has(MANAGED_ENV_PATH)
     ? await readManagedJsonFile(
         resolveRelativePath(filesDir, MANAGED_ENV_PATH),
-        (value) => bbAppManagedEnvFileSchema.parse(value),
+        parseManagedEnvFile,
         "imported",
       )
     : null;
-  const mergedEnv =
-    importedEnv === null
-      ? null
-      : mergeImportedManagedEnv(
-          importedEnv,
-          (await readManagedJsonFile(
-            join(dataDir, MANAGED_ENV_PATH),
-            (value) => bbAppManagedEnvFileSchema.parse(value),
-            "existing",
-          )) ?? {},
-        );
+  if (importedEnv !== null) {
+    await readManagedJsonFile(
+      join(dataDir, MANAGED_ENV_PATH),
+      parseManagedEnvFile,
+      "existing",
+    );
+  }
 
   const stagedEntries = [...manifestPaths].filter(
     (relativePath) =>
@@ -388,8 +392,8 @@ export async function installImportedServerFiles(
   );
   await journalPlannedEntries(dataDir, [
     ...stagedEntries,
-    ...(mergedConfig === null ? [] : [MANAGED_CONFIG_PATH]),
-    ...(mergedEnv === null ? [] : [MANAGED_ENV_PATH]),
+    ...(writesManagedConfig ? [MANAGED_CONFIG_PATH] : []),
+    ...(importedEnv === null ? [] : [MANAGED_ENV_PATH]),
     ...(manifestPaths.has(SERVER_DATABASE_PATH) ? [SERVER_DATABASE_PATH] : []),
   ]);
   const result: InstallImportedServerFilesResult = {
@@ -400,16 +404,35 @@ export async function installImportedServerFiles(
     for (const relativePath of stagedEntries) {
       await installStagedFile(dataDir, filesDir, relativePath, result);
     }
-    if (mergedConfig !== null) {
-      await writeManagedFile(
+    if (writesManagedConfig) {
+      await writeManagedFile({
         dataDir,
-        MANAGED_CONFIG_PATH,
-        mergedConfig,
+        relativePath: MANAGED_CONFIG_PATH,
+        readExisting: async (path) =>
+          (await readManagedJsonFile(
+            path,
+            parseImportedManagedConfig,
+            "existing",
+          )) ?? {},
+        merge: (existing) =>
+          mergeImportedManagedConfig({
+            importedConfig: importedConfig ?? {},
+            existingConfig: existing,
+            localServerUrl: args.localServerUrl,
+          }),
         result,
-      );
+      });
     }
-    if (mergedEnv !== null) {
-      await writeManagedFile(dataDir, MANAGED_ENV_PATH, mergedEnv, result);
+    if (importedEnv !== null) {
+      await writeManagedFile({
+        dataDir,
+        relativePath: MANAGED_ENV_PATH,
+        readExisting: async (path) =>
+          (await readManagedJsonFile(path, parseManagedEnvFile, "existing")) ??
+          {},
+        merge: (existing) => mergeImportedManagedEnv(importedEnv, existing),
+        result,
+      });
     }
     if (manifestPaths.has(SERVER_DATABASE_PATH)) {
       await installStagedFile(dataDir, filesDir, SERVER_DATABASE_PATH, result);

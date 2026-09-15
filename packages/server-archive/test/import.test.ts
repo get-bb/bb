@@ -305,6 +305,8 @@ describe("installImportedServerFiles and removeImportedServerFiles", () => {
     });
 
     expect((await readdir(dataDir)).sort()).toEqual([
+      ".config.json.lock",
+      ".env.json.lock",
       "auth.json",
       "config.json",
       "env.json",

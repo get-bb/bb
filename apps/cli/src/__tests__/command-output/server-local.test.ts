@@ -519,6 +519,7 @@ describe("bb server import", () => {
       "sqlite database",
     );
     expect((await readdir(dataDir)).sort()).toEqual([
+      ".config.json.lock",
       "attachments",
       "auth-secret",
       "bb.db",

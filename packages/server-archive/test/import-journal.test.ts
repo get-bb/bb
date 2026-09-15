@@ -180,7 +180,11 @@ describe("server import journal", () => {
     const rolledBack = await rollBackServerImport(dataDir);
 
     expect(rolledBack?.entries).toEqual(PLANNED_ENTRIES);
-    expect((await readdir(dataDir)).sort()).toEqual(TARGET_ENTRIES);
+    expect((await readdir(dataDir)).sort()).toEqual([
+      ".config.json.lock",
+      ".env.json.lock",
+      ...TARGET_ENTRIES,
+    ]);
     expect(await readDataFile(dataDir, "config.json")).toBe(originalConfig);
     expect(await readDataFile(dataDir, "env.json")).toBe(originalEnv);
     expect(await readDataFile(dataDir, "skills/review/SKILL.md")).toBe(
