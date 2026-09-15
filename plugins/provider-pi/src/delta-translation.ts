@@ -188,12 +188,20 @@ const piToolExecutionUpdateEventSchema = z
   })
   .passthrough();
 
+const piFileEditEditSchema = z
+  .object({
+    oldText: z.string().optional(),
+    newText: z.string().optional(),
+  })
+  .passthrough();
+
 const piFileEditArgsSchema = z
   .object({
     path: z.string().optional(),
     oldText: z.string().optional(),
     newText: z.string().optional(),
     content: z.string().optional(),
+    edits: z.array(piFileEditEditSchema).optional(),
   })
   .passthrough();
 
@@ -244,12 +252,28 @@ function classifyPiToolUse(
     if (!parsed.data.path) {
       return { type: "tool", tool: toolName, args: parsed.data };
     }
+    const path = parsed.data.path;
+    const edits = parsed.data.edits;
+    if (edits !== undefined) {
+      const first = edits[0];
+      return {
+        type: "fileChange",
+        changes: [
+          {
+            path,
+            kind: "update",
+            ...(first?.oldText === undefined ? {} : { oldText: first.oldText }),
+            ...(first?.newText === undefined ? {} : { newText: first.newText }),
+          },
+        ],
+      };
+    }
     const newText = parsed.data.newText ?? parsed.data.content;
     return {
       type: "fileChange",
       changes: [
         {
-          path: parsed.data.path,
+          path,
           kind: parsed.data.oldText === undefined ? "add" : "update",
           ...(parsed.data.oldText === undefined
             ? {}
@@ -268,6 +292,38 @@ function classifyPiToolResultFallback(toolName: string): DeltaItemShape {
     return { type: "fileChange", changes: [] };
   }
   return { type: "tool", tool: toolName };
+}
+
+const piToolResultDetailsSchema = z
+  .object({
+    details: z
+      .object({ patch: z.string().optional() })
+      .passthrough()
+      .optional(),
+  })
+  .passthrough();
+
+function extractPiFileChangePatch(result: unknown): string | undefined {
+  const parsed = piToolResultDetailsSchema.safeParse(result);
+  if (!parsed.success) return undefined;
+  const patch = parsed.data.details?.patch;
+  if (patch === undefined) return undefined;
+  return patch.trim().length > 0 ? patch : undefined;
+}
+
+function applyPiFileChangeResult(
+  shape: DeltaItemShape,
+  result: unknown,
+): DeltaItemShape {
+  if (shape.type !== "fileChange" || shape.changes.length === 0) {
+    return shape;
+  }
+  const patch = extractPiFileChangePatch(result);
+  if (patch === undefined) return shape;
+  return {
+    ...shape,
+    changes: shape.changes.map((change) => ({ ...change, diff: patch })),
+  };
 }
 
 interface PiModelContextWindowLookup {
@@ -826,9 +882,11 @@ export function createPiDeltaTranslator(
           ? extractPiCommandExecutionOutput(piEvent.data.result)
           : undefined;
         const shapeKey = toolShapeKey(context, piEvent.data.toolCallId);
-        const terminalShape =
+        const terminalShape = applyPiFileChangeResult(
           startedToolShapes.get(shapeKey) ??
-          classifyPiToolResultFallback(piEvent.data.toolName);
+            classifyPiToolResultFallback(piEvent.data.toolName),
+          piEvent.data.result,
+        );
         startedToolShapes.delete(shapeKey);
         return [
           {

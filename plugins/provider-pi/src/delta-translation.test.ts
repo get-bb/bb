@@ -1104,6 +1104,80 @@ describe("pi delta translation equivalence", () => {
     );
   });
 
+  it("tool_execution_start with an edits array emits one update fileChange", () => {
+    const harness = createHarness();
+    harness.translate(loadFixture("agent-start.json"));
+
+    const events = harness.translate({
+      type: "tool_execution_start",
+      toolCallId: "tool-edit-array-1",
+      toolName: "edit",
+      args: {
+        path: "src/app.ts",
+        edits: [
+          { oldText: "const a = 1;\n", newText: "const a = 2;\n" },
+          { oldText: "const b = 1;\n", newText: "const b = 2;\n" },
+        ],
+      },
+    } as AgentSessionEvent);
+
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "item/started",
+        item: expect.objectContaining({
+          type: "fileChange",
+          status: "pending",
+          changes: [
+            expect.objectContaining({
+              path: "src/app.ts",
+              kind: "update",
+            }),
+          ],
+        }),
+      }),
+    );
+  });
+
+  it("tool_execution_end replaces the edit diff with the tool result patch", () => {
+    const harness = createHarness();
+    harness.translate(loadFixture("agent-start.json"));
+    harness.translate({
+      type: "tool_execution_start",
+      toolCallId: "tool-edit-result-1",
+      toolName: "edit",
+      args: {
+        path: "src/app.ts",
+        edits: [{ oldText: "const a = 1;\n", newText: "const a = 2;\n" }],
+      },
+    } as AgentSessionEvent);
+
+    const patch =
+      "--- a/src/app.ts\n+++ b/src/app.ts\n@@ -1 +1 @@\n-const a = 1;\n+const a = 2;\n";
+    const events = harness.translate({
+      type: "tool_execution_end",
+      toolCallId: "tool-edit-result-1",
+      toolName: "edit",
+      isError: false,
+      result: {
+        content: [{ type: "text", text: "Successfully replaced 1 block(s)" }],
+        details: { patch, firstChangedLine: 1 },
+      },
+    } as AgentSessionEvent);
+
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "item/completed",
+        item: expect.objectContaining({
+          type: "fileChange",
+          status: "completed",
+          changes: [
+            expect.objectContaining({ path: "src/app.ts", diff: patch }),
+          ],
+        }),
+      }),
+    );
+  });
+
   it("tool_execution_start with content-only write args marks the change as an add", () => {
     const harness = createHarness();
     harness.translate(loadFixture("agent-start.json"));
