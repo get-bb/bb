@@ -502,7 +502,7 @@ describe("useThreadTimelineController", () => {
           maxSeq: 11,
           timelinePage: {
             historySnapshot: "snapshot-11",
-            olderGroupsSourceSeqEnd: null,
+            olderRowsSourceSeqEnd: null,
             hasOlderRows: true,
             olderCursor: { anchorId: "cursor-11", anchorSeq: 10 },
           },
@@ -542,7 +542,7 @@ describe("useThreadTimelineController", () => {
           maxSeq: 12,
           timelinePage: {
             historySnapshot: "snapshot-12",
-            olderGroupsSourceSeqEnd: null,
+            olderRowsSourceSeqEnd: null,
             hasOlderRows: true,
             olderCursor: { anchorId: "cursor-12", anchorSeq: 10 },
           },

@@ -37,7 +37,7 @@ interface PaginatedTimelineRowsResult {
   };
   hasOlderRows: boolean;
   olderCursor: TimelinePaginationCursor | null;
-  olderGroupsSourceSeqEnd: number | null;
+  olderRowsSourceSeqEnd: number | null;
   returnedSegmentCount: number;
   rows: TimelineRow[];
 }
@@ -131,13 +131,21 @@ export function paginateTimelineRows(
     rows,
     contextBoundarySeq,
   );
-  const olderGroupsSourceSeqEnd = logicalSegments
-    .filter((segment) => segment.cursor.anchorSeq < args.ownedSequenceStart)
-    .flatMap((segment) => segment.rows)
-    .reduce<number | null>(
-      (sourceSeqEnd, row) => Math.max(sourceSeqEnd ?? 0, row.sourceSeqEnd),
-      null,
-    );
+  const returnedSegments = new Set<TimelineLogicalSegment>();
+  const olderRowsSourceSeqEnd = (
+    omittedContentSourceSeqEnd: number | null,
+  ): number | null =>
+    logicalSegments
+      .filter(
+        (segment) =>
+          !returnedSegments.has(segment) &&
+          segment.cursor.anchorSeq < args.ownedSequenceEnd,
+      )
+      .flatMap((segment) => segment.rows)
+      .reduce<number | null>(
+        (sourceSeqEnd, row) => Math.max(sourceSeqEnd ?? 0, row.sourceSeqEnd),
+        omittedContentSourceSeqEnd,
+      );
   const segments = logicalSegments.filter(
     (segment) =>
       segment.cursor.anchorSeq >= args.ownedSequenceStart &&
@@ -149,7 +157,7 @@ export function paginateTimelineRows(
       hasOlderRows:
         knownHasOlderSegments ?? segments.length > selectedSegments.length,
       olderCursor: null,
-      olderGroupsSourceSeqEnd,
+      olderRowsSourceSeqEnd: olderRowsSourceSeqEnd(null),
       returnedSegmentCount: 0,
       rows: [],
     };
@@ -167,6 +175,7 @@ export function paginateTimelineRows(
       remainingBytes,
     );
     resultRows.unshift(...contents.rows);
+    returnedSegments.add(segment);
     returnedSegmentCount += 1;
     remainingLeaves -= contents.end - contents.start;
     remainingBytes -= Buffer.byteLength(JSON.stringify(contents.rows));
@@ -180,7 +189,9 @@ export function paginateTimelineRows(
         returnedSegmentCount,
         hasOlderRows,
         olderCursor: hasOlderRows ? segment.cursor : null,
-        olderGroupsSourceSeqEnd,
+        olderRowsSourceSeqEnd: olderRowsSourceSeqEnd(
+          contents.olderRowsSourceSeqEnd,
+        ),
         contentCursor:
           contents.start > 0
             ? {
@@ -206,6 +217,6 @@ export function paginateTimelineRows(
     returnedSegmentCount,
     hasOlderRows,
     olderCursor: hasOlderRows ? selectedSegments[0]!.cursor : null,
-    olderGroupsSourceSeqEnd,
+    olderRowsSourceSeqEnd: olderRowsSourceSeqEnd(null),
   };
 }

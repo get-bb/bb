@@ -635,7 +635,9 @@ describe("timeline event budget", () => {
       expect(live.timelinePage.historySnapshot).not.toBe(
         latest.timelinePage.historySnapshot,
       );
-      expect(live.timelinePage.olderGroupsSourceSeqEnd).toBeNull();
+      expect(live.timelinePage.olderRowsSourceSeqEnd).toBeLessThanOrEqual(
+        latest.maxSeq,
+      );
       expect(
         mergeLoadedTimelineWithLatest({
           current,
@@ -657,136 +659,140 @@ describe("timeline event budget", () => {
     }
   });
 
-  it("signals a rebuild when a late completion changes an older group", async () => {
-    const harness = await createTestAppHarness({
-      featureFlags: { ...defaultFeatureFlags, timelineWindowEventBudget: 5 },
-    });
-    try {
-      const { db, thread } = setup(harness.db);
-      type EventInput = Parameters<typeof insertEvents>[2][number];
-      const events: EventInput[] = [];
-      const push = (event: Omit<EventInput, "sequence">): void => {
-        events.push({ ...event, sequence: events.length + 1 });
-      };
-      const command = (
-        status: "pending" | "completed",
-      ): Omit<EventInput, "sequence"> => ({
-        threadId: thread.id,
-        type: status === "pending" ? "item/started" : "item/completed",
-        scope: turnScope("turn-1"),
-        providerThreadId,
-        itemId: "call-1",
-        itemKind: "commandExecution",
-        parentToolCallId: null,
-        data: JSON.stringify({
-          item: {
-            type: "commandExecution",
-            id: "call-1",
-            command: "npm run dev",
-            cwd: "/tmp/test",
-            status,
-            approvalStatus: null,
-            ...(status === "completed"
-              ? { exitCode: 0, aggregatedOutput: "dev server exited" }
-              : {}),
-          },
-        }),
+  it.each([
+    { changedRows: "an older group", turns: [1, 2] },
+    { changedRows: "the omitted start of the newest group", turns: [1] },
+  ])(
+    "signals a rebuild when a late completion changes $changedRows",
+    async ({ turns }) => {
+      const harness = await createTestAppHarness({
+        featureFlags: { ...defaultFeatureFlags, timelineWindowEventBudget: 5 },
       });
-      for (const turn of [1, 2]) {
-        const turnId = `turn-${turn}`;
-        push({
+      try {
+        const { db, thread } = setup(harness.db);
+        type EventInput = Parameters<typeof insertEvents>[2][number];
+        const events: EventInput[] = [];
+        const push = (event: Omit<EventInput, "sequence">): void => {
+          events.push({ ...event, sequence: events.length + 1 });
+        };
+        const command = (
+          status: "pending" | "completed",
+        ): Omit<EventInput, "sequence"> => ({
           threadId: thread.id,
-          type: "client/turn/requested",
-          scope: threadScope(),
-          itemId: null,
-          itemKind: null,
+          type: status === "pending" ? "item/started" : "item/completed",
+          scope: turnScope("turn-1"),
+          providerThreadId,
+          itemId: "call-1",
+          itemKind: "commandExecution",
           parentToolCallId: null,
           data: JSON.stringify({
-            direction: "outbound",
-            source: "tell",
-            initiator: "user",
-            request: { method: "turn/start", params: {} },
-            requestId: requestId(turn),
-            senderThreadId: null,
-            input: [
-              { type: "text", text: `User message ${turn}`, mentions: [] },
-            ],
-            target:
-              turn === 1 ? { kind: "thread-start" } : { kind: "new-turn" },
-            execution,
+            item: {
+              type: "commandExecution",
+              id: "call-1",
+              command: "npm run dev",
+              cwd: "/tmp/test",
+              status,
+              approvalStatus: null,
+              ...(status === "completed"
+                ? { exitCode: 0, aggregatedOutput: "dev server exited" }
+                : {}),
+            },
           }),
         });
-        for (const type of ["turn/started", "turn/input/accepted"] as const) {
+        for (const turn of turns) {
+          const turnId = `turn-${turn}`;
           push({
             threadId: thread.id,
-            type,
-            scope: turnScope(turnId),
-            providerThreadId,
+            type: "client/turn/requested",
+            scope: threadScope(),
             itemId: null,
             itemKind: null,
             parentToolCallId: null,
-            data: JSON.stringify(
-              type === "turn/started"
-                ? {}
-                : { clientRequestId: requestId(turn) },
-            ),
-          });
-        }
-        if (turn === 1) push(command("pending"));
-        for (let item = 0; item < 10; item += 1) {
-          push({
-            threadId: thread.id,
-            type: "item/completed",
-            scope: turnScope(turnId),
-            providerThreadId,
-            itemId: `${turnId}-item-${item}`,
-            itemKind: "agentMessage",
-            parentToolCallId: null,
             data: JSON.stringify({
-              item: {
-                type: "agentMessage",
-                id: `${turnId}-item-${item}`,
-                text: `Turn ${turn} item ${item}`,
-              },
+              direction: "outbound",
+              source: "tell",
+              initiator: "user",
+              request: { method: "turn/start", params: {} },
+              requestId: requestId(turn),
+              senderThreadId: null,
+              input: [
+                { type: "text", text: `User message ${turn}`, mentions: [] },
+              ],
+              target:
+                turn === 1 ? { kind: "thread-start" } : { kind: "new-turn" },
+              execution,
             }),
           });
+          for (const type of ["turn/started", "turn/input/accepted"] as const) {
+            push({
+              threadId: thread.id,
+              type,
+              scope: turnScope(turnId),
+              providerThreadId,
+              itemId: null,
+              itemKind: null,
+              parentToolCallId: null,
+              data: JSON.stringify(
+                type === "turn/started"
+                  ? {}
+                  : { clientRequestId: requestId(turn) },
+              ),
+            });
+          }
+          if (turn === 1) push(command("pending"));
+          for (let item = 0; item < 10; item += 1) {
+            push({
+              threadId: thread.id,
+              type: "item/completed",
+              scope: turnScope(turnId),
+              providerThreadId,
+              itemId: `${turnId}-item-${item}`,
+              itemKind: "agentMessage",
+              parentToolCallId: null,
+              data: JSON.stringify({
+                item: {
+                  type: "agentMessage",
+                  id: `${turnId}-item-${item}`,
+                  text: `Turn ${turn} item ${item}`,
+                },
+              }),
+            });
+          }
         }
-      }
-      insertEvents(db, noopNotifier, events);
-      const read = async (query: string) => {
-        const response = await harness.app.request(
-          `/api/v1/threads/${thread.id}/timeline?segmentLimit=1&${query}`,
-        );
-        expect(response.status).toBe(200);
-        return threadTimelineResponseSchema.parse(await response.json());
-      };
-      const latest = await read("");
-      let rows = latest.rows;
-      let cursor: TimelinePaginationCursor | null =
-        latest.timelinePage.olderCursor;
-      while (cursor) {
-        const older = await read(
-          new URLSearchParams({
-            beforeAnchorSeq: String(cursor.anchorSeq),
-            beforeAnchorId: cursor.anchorId,
-          }).toString(),
-        );
-        rows = prependOlderTimelineRows({
-          olderRows: older.rows,
-          loadedRows: rows,
-        });
-        cursor = older.timelinePage.olderCursor;
-      }
-      expect(rows.length).toBeGreaterThan(latest.rows.length);
-      insertEvents(db, noopNotifier, [
-        { ...command("completed"), sequence: latest.maxSeq + 1 },
-      ]);
+        insertEvents(db, noopNotifier, events);
+        const read = async (query: string) => {
+          const response = await harness.app.request(
+            `/api/v1/threads/${thread.id}/timeline?segmentLimit=1&${query}`,
+          );
+          expect(response.status).toBe(200);
+          return threadTimelineResponseSchema.parse(await response.json());
+        };
+        const latest = await read("");
+        let rows = latest.rows;
+        let cursor: TimelinePaginationCursor | null =
+          latest.timelinePage.olderCursor;
+        while (cursor) {
+          const older = await read(
+            new URLSearchParams({
+              beforeAnchorSeq: String(cursor.anchorSeq),
+              beforeAnchorId: cursor.anchorId,
+            }).toString(),
+          );
+          rows = prependOlderTimelineRows({
+            olderRows: older.rows,
+            loadedRows: rows,
+          });
+          cursor = older.timelinePage.olderCursor;
+        }
+        expect(rows.length).toBeGreaterThan(latest.rows.length);
+        insertEvents(db, noopNotifier, [
+          { ...command("completed"), sequence: latest.maxSeq + 1 },
+        ]);
 
-      const live = await read("");
+        const live = await read("");
 
-      expect(live.timelinePage.olderGroupsSourceSeqEnd).toBe(latest.maxSeq + 1);
-      expect(
-        mergeLoadedTimelineWithLatest({
+        expect(live.timelinePage.olderRowsSourceSeqEnd).toBe(latest.maxSeq + 1);
+        const merged = mergeLoadedTimelineWithLatest({
           current: buildLoadedTimelineState({
             latestWindowEndSequence: latest.maxSeq,
             latestRows: rows,
@@ -796,12 +802,38 @@ describe("timeline event budget", () => {
           }),
           latestTimeline: live,
           surfaceKey: thread.id,
-        }).rows,
-      ).toEqual(live.rows);
-    } finally {
-      await harness.cleanup();
-    }
-  });
+        });
+        expect(merged.rows).toEqual(live.rows);
+        let reloadedRows = merged.rows;
+        let reloadCursor = merged.olderCursor;
+        while (reloadCursor) {
+          const older = await read(
+            new URLSearchParams({
+              beforeAnchorSeq: String(reloadCursor.anchorSeq),
+              beforeAnchorId: reloadCursor.anchorId,
+            }).toString(),
+          );
+          reloadedRows = prependOlderTimelineRows({
+            olderRows: older.rows,
+            loadedRows: reloadedRows,
+          });
+          reloadCursor = older.timelinePage.olderCursor;
+        }
+        expect(reloadedRows).toEqual(
+          buildThreadTimelineWithProfile(db, thread, {
+            includeDiagnosticOperations: false,
+            includeNestedRows: false,
+            maxInlineOutputChars: 32_000,
+            maxSeq: 0,
+            eventBudget: LARGE_BUDGET,
+            page: { kind: "latest", segmentLimit: 100 },
+          }).response.rows,
+        );
+      } finally {
+        await harness.cleanup();
+      }
+    },
+  );
 
   it("preserves canonical content under a tiny response byte budget", () => {
     const { db, thread } = setup();

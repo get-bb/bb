@@ -113,7 +113,7 @@ describe("paginateTimelineRows", () => {
     });
 
     expect(page.rows.map((row) => row.id)).toEqual(rows.map((row) => row.id));
-    expect(page.olderGroupsSourceSeqEnd).toBeNull();
+    expect(page.olderRowsSourceSeqEnd).toBeNull();
     expect(page.returnedSegmentCount).toBe(2);
     expect(page.olderCursor).toEqual({
       anchorId: "thread-1:user-seed:13",
@@ -150,7 +150,64 @@ describe("paginateTimelineRows", () => {
     });
 
     expect(page.rows.map((row) => row.id)).toEqual(["thread-1:user-seed:20"]);
-    expect(page.olderGroupsSourceSeqEnd).toBe(31);
+    expect(page.olderRowsSourceSeqEnd).toBe(31);
+  });
+
+  it("reports rows a content cut omitted from the oldest returned group", () => {
+    const steer = (
+      id: string,
+      seq: number,
+      sourceSeqEnd: number,
+    ): TimelineRow => ({
+      ...userRow({ id, seq, text: id }),
+      sourceSeqEnd,
+      turnRequest: { isGrouped: false, kind: "steer", status: "accepted" },
+    });
+
+    const page = paginateTimelineRows({
+      contextBoundarySeq: null,
+      knownHasOlderSegments: null,
+      maxLeaves: 2,
+      maxBytes: 1_000_000,
+      ownedSequenceStart: 1,
+      ownedSequenceEnd: 31,
+      page: { kind: "latest", segmentLimit: 20 },
+      rows: [
+        userRow({ id: "thread-1:user-seed:1", seq: 1, text: "prompt" }),
+        steer("thread-1:running-item", 2, 30),
+        steer("thread-1:item-3", 3, 3),
+        steer("thread-1:item-4", 4, 4),
+      ],
+    });
+
+    expect(page.rows.map((row) => row.id)).toEqual([
+      "thread-1:item-3",
+      "thread-1:item-4",
+    ]);
+    expect(page.contentPage).toMatchObject({ start: 2, total: 4 });
+    expect(page.olderRowsSourceSeqEnd).toBe(30);
+  });
+
+  it("reports owned groups a budget cut left out of the page", () => {
+    const page = paginateTimelineRows({
+      contextBoundarySeq: null,
+      knownHasOlderSegments: null,
+      maxLeaves: 1,
+      maxBytes: 1_000_000,
+      ownedSequenceStart: 1,
+      ownedSequenceEnd: 21,
+      page: { kind: "latest", segmentLimit: 20 },
+      rows: [
+        {
+          ...userRow({ id: "thread-1:user-seed:1", seq: 1, text: "older" }),
+          sourceSeqEnd: 25,
+        },
+        userRow({ id: "thread-1:user-seed:20", seq: 20, text: "latest" }),
+      ],
+    });
+
+    expect(page.rows.map((row) => row.id)).toEqual(["thread-1:user-seed:20"]);
+    expect(page.olderRowsSourceSeqEnd).toBe(25);
   });
 
   it("keeps rows recorded before the first message as their own group", () => {

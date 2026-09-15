@@ -7,13 +7,17 @@ row IDs or sequence cuts. Keep display options unchanged throughout the walk.
 
 `timelinePage.historySnapshot` identifies the history tip, grouping version,
 and display surface. A walk excludes subsequent appends. Earlier events can
-change grouping even after a turn completed. `timelinePage.olderGroupsSourceSeqEnd`
-is the greatest `sourceSeqEnd` among rows the snapshot projected for
-conversation groups older than the page, or `null` when it projected none.
-When a new latest snapshot's window reaches the loaded tip and this value does
-not exceed it, `mergeLoadedTimelineWithLatest` keeps loaded older pages and
-replaces the rows the latest page covers, so streaming does not unload history.
-Otherwise a later event changed an older group, and loaded rows are replaced.
+change grouping even after a turn completed. `timelinePage.olderRowsSourceSeqEnd`
+is the greatest `sourceSeqEnd` among rows the snapshot projected before the
+page's returned rows but did not return: older conversation groups, and the
+leaves a content cut omitted from the page's oldest group. It is `null` when the
+snapshot projected no such rows. When a new latest snapshot's window reaches
+the loaded tip and this value does not exceed it, `mergeLoadedTimelineWithLatest`
+keeps loaded older pages and replaces the rows the latest page covers, so
+streaming does not unload history. Otherwise a later event changed a row the
+page omitted, and loaded rows are replaced. A row that keeps changing while
+omitted, such as a long-running item before a content cut, therefore replaces
+loaded rows on each refresh.
 Discard older responses whose request cursor is no longer the loaded
 `olderCursor`. A group's cursor is its message row even when rows recorded after
 the request display before it. A legacy cursor or incompatible

@@ -350,11 +350,11 @@ function mergeAdvancedSnapshotTimelineRows({
   latestTimeline,
 }: MergeAdvancedSnapshotTimelineRowsArgs): MergeLatestTimelineRowsResult {
   const latestWindowStartSequence = timelineWindowStartSequence(latestTimeline);
-  const { olderGroupsSourceSeqEnd } = latestTimeline.timelinePage;
+  const { olderRowsSourceSeqEnd } = latestTimeline.timelinePage;
   if (
-    olderGroupsSourceSeqEnd === undefined ||
-    (olderGroupsSourceSeqEnd !== null &&
-      olderGroupsSourceSeqEnd > (current.latestWindowEndSequence ?? 0))
+    olderRowsSourceSeqEnd === undefined ||
+    (olderRowsSourceSeqEnd !== null &&
+      olderRowsSourceSeqEnd > (current.latestWindowEndSequence ?? 0))
   ) {
     return { canMerge: false, rows: [...latestRows] };
   }

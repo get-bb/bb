@@ -679,7 +679,7 @@ describe("snapshot content pagination", () => {
       12,
     );
     latestTimeline.timelinePage.historySnapshot = "snapshot-2";
-    latestTimeline.timelinePage.olderGroupsSourceSeqEnd = null;
+    latestTimeline.timelinePage.olderRowsSourceSeqEnd = null;
 
     const next = mergeLoadedTimelineWithLatest({
       current,
@@ -714,7 +714,7 @@ describe("snapshot content pagination", () => {
       11,
     );
     latestTimeline.timelinePage.historySnapshot = "snapshot-2";
-    latestTimeline.timelinePage.olderGroupsSourceSeqEnd = null;
+    latestTimeline.timelinePage.olderRowsSourceSeqEnd = null;
 
     const next = mergeLoadedTimelineWithLatest({
       current,
@@ -745,7 +745,7 @@ describe("snapshot content pagination", () => {
       14,
     );
     latestTimeline.timelinePage.historySnapshot = "snapshot-2";
-    latestTimeline.timelinePage.olderGroupsSourceSeqEnd = null;
+    latestTimeline.timelinePage.olderRowsSourceSeqEnd = null;
     latestTimeline.timelinePage.contentPage = {
       anchorSeq: 10,
       start: 2,
@@ -784,7 +784,7 @@ describe("snapshot content pagination", () => {
       24,
     );
     latestTimeline.timelinePage.historySnapshot = "snapshot-2";
-    latestTimeline.timelinePage.olderGroupsSourceSeqEnd = null;
+    latestTimeline.timelinePage.olderRowsSourceSeqEnd = null;
 
     const next = mergeLoadedTimelineWithLatest({
       current,
@@ -819,7 +819,7 @@ describe("snapshot content pagination", () => {
       24,
     );
     latestTimeline.timelinePage.historySnapshot = "snapshot-2";
-    latestTimeline.timelinePage.olderGroupsSourceSeqEnd = null;
+    latestTimeline.timelinePage.olderRowsSourceSeqEnd = null;
 
     const next = mergeLoadedTimelineWithLatest({
       current,
@@ -844,7 +844,7 @@ describe("snapshot content pagination", () => {
     const latestCursor = timelineCursor({ id: "latest-cursor", sequence: 10 });
     const latestTimeline = makeTimelineResponse([latestUser], latestCursor, 12);
     latestTimeline.timelinePage.historySnapshot = "snapshot-2";
-    latestTimeline.timelinePage.olderGroupsSourceSeqEnd = 12;
+    latestTimeline.timelinePage.olderRowsSourceSeqEnd = 12;
 
     const next = mergeLoadedTimelineWithLatest({
       current,
