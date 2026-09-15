@@ -34,6 +34,7 @@ const allEventTypes: readonly ThreadLifecycleEventType[] = [
   "run.preparing",
   "run.started",
   "run.succeeded",
+  "run.reconciled",
   "run.failed",
   "stop.requested",
   "stop.settled",
@@ -100,6 +101,7 @@ describe("THREAD_LIFECYCLE table", () => {
         "stop.settled": "idle",
       },
       error: {
+        "run.reconciled": "idle",
         "run.preparing": "starting",
         "run.started": "active",
       },
@@ -111,6 +113,7 @@ describe("THREAD_LIFECYCLE table", () => {
       "run.preparing": { notArchived: true, notDeleted: true },
       "run.started": { notArchived: true, notDeleted: true },
       "run.succeeded": {},
+      "run.reconciled": { notArchived: true, notDeleted: true },
       "run.failed": { notDeleted: true },
       "stop.requested": {},
       "stop.settled": {},

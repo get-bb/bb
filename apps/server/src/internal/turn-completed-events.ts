@@ -1,6 +1,21 @@
-import { getThread, hasRootStoredTurnStarted } from "@bb/db";
+import {
+  deleteQueuedThreadMessage,
+  findLastRootStoredTurnStarted,
+  getLastStoredTurnRequestEvent,
+  getLatestStoredThreadEventOfTypes,
+  getStoredTurnRequestEventForTurn,
+  getThread,
+  hasRootStoredTurnStarted,
+  queuedThreadMessages,
+} from "@bb/db";
+import { and, eq } from "drizzle-orm";
+import { emitPluginMessageCancelled } from "../services/plugins/plugin-thread-events.js";
+import { parseStoredTurnRequestEvent } from "../services/threads/thread-events.js";
+import { toThreadQueuedMessage } from "../services/threads/thread-queued-messages.js";
 import {
   requireThreadEventScopeTurnId,
+  systemThreadInterruptedEventDataSchema,
+  systemErrorEventDataSchema,
   type ThreadEvent,
   type ThreadLifecycleEvent,
   type ThreadStatus,
@@ -30,6 +45,49 @@ function lifecycleEventForTurnCompletion(
   return { type: "run.succeeded" };
 }
 
+function isCompletedHostInterruption(
+  deps: Pick<AppDeps, "db">,
+  threadId: string,
+  turnId: string,
+  requestSequence: number,
+): boolean {
+  const interruption = getLatestStoredThreadEventOfTypes(deps.db, {
+    threadId,
+    afterSequence: requestSequence,
+    types: [
+      "system/thread/interrupted",
+      "system/error",
+      "provider/error",
+      "client/turn/rejected",
+      "client/turn/requested",
+      "turn/started",
+    ],
+  });
+  if (interruption?.type !== "system/thread/interrupted") return false;
+  const error = getLatestStoredThreadEventOfTypes(deps.db, {
+    threadId,
+    afterSequence: requestSequence,
+    types: ["system/error"],
+  });
+  if (
+    !error ||
+    error.turnId !== turnId ||
+    error.sequence >= interruption.sequence
+  )
+    return false;
+  try {
+    return (
+      systemThreadInterruptedEventDataSchema.parse(
+        JSON.parse(interruption.data),
+      ).reason === "host-daemon-restarted" &&
+      systemErrorEventDataSchema.parse(JSON.parse(error.data)).code ===
+        "thread_command_failed"
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function applyTurnCompletedEvent(
   deps: Pick<AppDeps, "db" | "hub" | "logger" | "providerRegistry">,
   payload: Extract<ThreadEvent, { type: "turn/completed" }>,
@@ -51,8 +109,67 @@ export function applyTurnCompletedEvent(
     return { isRootTurnCompletion, nextStatus: null, thread };
   }
 
+  const latestTurn = findLastRootStoredTurnStarted(deps.db, {
+    threadId: payload.threadId,
+  });
+  const acceptedRequest = getStoredTurnRequestEventForTurn(deps.db, {
+    threadId: payload.threadId,
+    turnId,
+  });
+  const latestRequest = getLastStoredTurnRequestEvent(
+    deps.db,
+    payload.threadId,
+  );
+  const completedRequest =
+    payload.status === "completed" &&
+    acceptedRequest &&
+    acceptedRequest.sequence === latestRequest?.sequence
+      ? parseStoredTurnRequestEvent(acceptedRequest)
+      : null;
+  if (completedRequest) {
+    const obsoleteRetries = deps.db
+      .select()
+      .from(queuedThreadMessages)
+      .where(
+        and(
+          eq(queuedThreadMessages.threadId, payload.threadId),
+          eq(queuedThreadMessages.payloadKind, "retry"),
+          eq(
+            queuedThreadMessages.retryOfTurnRequestId,
+            completedRequest.retryOfRequestId ?? completedRequest.requestId,
+          ),
+        ),
+      )
+      .all();
+    for (const retry of obsoleteRetries) {
+      if (deleteQueuedThreadMessage(deps.db, deps.hub, retry.id)) {
+        emitPluginMessageCancelled(toThreadQueuedMessage(retry));
+      }
+    }
+  }
+
+  if (
+    latestTurn?.turnId !== turnId ||
+    (latestRequest &&
+      latestRequest.sequence >
+        (acceptedRequest?.sequence ?? latestTurn.sequence))
+  ) {
+    return { isRootTurnCompletion, nextStatus: null, thread };
+  }
+  const recovered =
+    thread.status === "error" &&
+    completedRequest &&
+    acceptedRequest &&
+    isCompletedHostInterruption(
+      deps,
+      payload.threadId,
+      turnId,
+      acceptedRequest.sequence,
+    );
   const outcome = applyLoggedThreadLifecycleEvent(deps, {
-    event: lifecycleEventForTurnCompletion(payload.status),
+    event: recovered
+      ? { type: "run.reconciled" }
+      : lifecycleEventForTurnCompletion(payload.status),
     threadId: payload.threadId,
   });
   const nextStatus = outcome.applied ? outcome.thread.status : null;
