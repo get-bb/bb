@@ -16,7 +16,8 @@ interface UseCommandSuggestionsArgs {
   projectId: string | undefined;
   providerId: string | undefined;
   commandScope: "new-thread" | "thread";
-  skillsTrigger: PromptMentionCommandTrigger | null;
+  skillsTriggers: readonly PromptMentionCommandTrigger[];
+  activeTrigger: PromptMentionCommandTrigger | null;
   promptActions?: readonly CommandSuggestionPromptAction[];
   environmentId: string | null;
   hostId?: string | null;
@@ -27,7 +28,7 @@ interface UseCommandSuggestionsArgs {
 const COMMAND_CATALOG_PREFETCH_STALE_TIME_MS = 30_000;
 
 interface UseCommandSuggestionsResult {
-  trigger: PromptMentionCommandTrigger | null;
+  triggers: readonly PromptMentionCommandTrigger[];
   suggestions: ProviderCommandSuggestion[];
   isLoading: boolean;
   isError: boolean;
@@ -100,11 +101,12 @@ function mergeCommandSuggestions(
 export function useCommandSuggestions(
   args: UseCommandSuggestionsArgs,
 ): UseCommandSuggestionsResult {
-  const trigger = args.skillsTrigger;
+  const trigger = args.activeTrigger;
   const isActive =
     args.projectId !== undefined &&
     args.providerId !== undefined &&
     trigger !== null &&
+    args.skillsTriggers.includes(trigger) &&
     args.query !== null;
 
   const trimmedQuery = args.query?.trim() ?? "";
@@ -136,7 +138,7 @@ export function useCommandSuggestions(
     isPointerCoarse &&
     args.projectId !== undefined &&
     args.providerId !== undefined &&
-    trigger !== null;
+    args.skillsTriggers.length > 0;
   const prefetchProjectId = args.projectId;
   const prefetchProviderId = args.providerId;
   const prefetchEnvironmentId = args.environmentId;
@@ -171,12 +173,13 @@ export function useCommandSuggestions(
     const discoveredSuggestions = filterCommandSuggestions(
       (commandsQuery.data?.commands ?? [])
         .map(toProviderCommandSuggestion)
-        .filter(
-          (suggestion) =>
-            args.commandScope === "thread" ||
-            suggestion.source !== "command" ||
-            suggestion.origin !== "builtin" ||
-            suggestion.name !== "compact",
+          .filter(
+            (suggestion) =>
+              (trigger !== "$" || suggestion.source === "skill") &&
+              (args.commandScope === "thread" ||
+                suggestion.source !== "command" ||
+                suggestion.origin !== "builtin" ||
+                suggestion.name !== "compact"),
         ),
       trimmedQuery,
     );
@@ -187,6 +190,7 @@ export function useCommandSuggestions(
   }, [
     commandsQuery.data?.commands,
     args.commandScope,
+    trigger,
     isActive,
     promptActionSuggestions,
     trimmedQuery,
@@ -200,7 +204,7 @@ export function useCommandSuggestions(
   const isError = isActive && commandsQuery.isError;
 
   return {
-    trigger,
+    triggers: args.skillsTriggers,
     suggestions,
     isLoading,
     isError,

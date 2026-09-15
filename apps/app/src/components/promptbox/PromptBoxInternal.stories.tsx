@@ -765,7 +765,7 @@ function WithLiveSkillsRow() {
       typeahead={makeTypeahead(
         {},
         {
-          trigger: "/",
+          triggers: ["/"],
           suggestions,
           isLoading: false,
           isError: false,
