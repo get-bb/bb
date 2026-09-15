@@ -30,6 +30,7 @@ export const SERVER_MOVE_TIMINGS: ServerMoveTimings = {
   activateRetryDelayMs: 1_000,
   activateRetryWindowMs: 60_000,
   inspectTimeoutMs: 30_000,
+  pluginShutdownTimeoutMs: 30_000,
   prepareTimeoutMs: 30 * 60_000,
   probeTimeoutMs: 30_000,
   retireDelayMs: 2_000,

@@ -21,6 +21,7 @@ import type {
 import { ApiError } from "../../errors.js";
 import type { AppDeps } from "../../types.js";
 import { callHostOnlineRpc } from "../hosts/online-rpc.js";
+import { settledWithin } from "../plugins/plugin-time-box.js";
 import {
   runServerMoveCheck,
   type ServerMoveCheckEnvironment,
@@ -64,6 +65,7 @@ export interface ServerMoveTimings {
   activateRetryDelayMs: number;
   activateRetryWindowMs: number;
   inspectTimeoutMs: number;
+  pluginShutdownTimeoutMs: number;
   prepareTimeoutMs: number;
   probeTimeoutMs: number;
   retireDelayMs: number;
@@ -341,6 +343,51 @@ export function createServerMoveCoordinator(
     });
   }
 
+  async function settlePluginWork(
+    move: MoveRun,
+    operation: "suspension" | "shutdown",
+    work: Promise<void>,
+  ): Promise<void> {
+    const outcome = work.then(
+      () => null,
+      (error: unknown) => ({ error }),
+    );
+    if (!(await settledWithin(outcome, timings.pluginShutdownTimeoutMs))) {
+      deps.logger.warn(
+        {
+          moveId: move.status.moveId,
+          timeoutMs: timings.pluginShutdownTimeoutMs,
+        },
+        `Server move plugin ${operation} did not finish in time; continuing`,
+      );
+      return;
+    }
+    const failure = await outcome;
+    if (failure !== null) {
+      throw failure.error;
+    }
+  }
+
+  async function suspendPlugins(move: MoveRun): Promise<void> {
+    move.pluginsSuspended = true;
+    await settlePluginWork(
+      move,
+      "suspension",
+      environment.plugins.suspendAllButConnect(),
+    );
+  }
+
+  async function stopPlugins(move: MoveRun): Promise<void> {
+    await settlePluginWork(move, "shutdown", environment.plugins.stop()).catch(
+      (error: unknown) => {
+        deps.logger.warn(
+          { err: error, moveId: move.status.moveId },
+          "Server move plugin shutdown failed",
+        );
+      },
+    );
+  }
+
   async function runStopWork(move: MoveRun): Promise<void> {
     move.frozen = true;
     setServerMoveFrozen(deps.db, true);
@@ -363,6 +410,10 @@ export function createServerMoveCoordinator(
             ),
           )
         : { serverUrl: move.status.serverUrl, headers: {} };
+    assertNotCancelled(move);
+    setStep(move, "stop-work", "running", "Pausing plugins");
+    await suspendPlugins(move);
+    assertNotCancelled(move);
     setStep(
       move,
       "stop-work",
@@ -431,10 +482,6 @@ export function createServerMoveCoordinator(
   }
 
   async function runExport(move: MoveRun): Promise<void> {
-    setStep(move, "export", "running", "Pausing plugins");
-    move.pluginsSuspended = true;
-    await environment.plugins.suspendAllButConnect();
-    assertNotCancelled(move);
     setStep(move, "export", "running", "Exporting server data");
     setServerMoveSnapshotFence(deps.db, true);
     const archive = await environment.exportArchive({
@@ -760,9 +807,7 @@ export function createServerMoveCoordinator(
         "Server move target did not confirm activation; continuing the switch",
       );
     }
-    await environment.plugins.stop().catch((error: unknown) => {
-      deps.logger.warn({ err: error }, "Server move plugin shutdown failed");
-    });
+    await stopPlugins(move);
     sendServerMoved(move, grant);
     move.status.state = "completed";
     move.status.finishedAt = environment.now();

@@ -58,9 +58,7 @@ describe("old server daemon config", () => {
     expect((await stat(path)).mode & 0o777).toBe(0o600);
 
     await restoreOldServerDaemonConfig(backup);
-    expect(JSON.parse(await readFile(path, "utf8"))).toEqual(
-      JSON.parse(original),
-    );
+    expect(await readFile(path, "utf8")).toBe(original);
     expect((await stat(path)).mode & 0o777).toBe(0o600);
   });
 

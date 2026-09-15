@@ -276,8 +276,8 @@ describe("server move coordinator", () => {
         `${OLD}:server_move.inspect`,
         "schedules:paused",
         "stop-work",
-        `${NEW}:server_move.inspect`,
         "plugins:suspend",
+        `${NEW}:server_move.inspect`,
         "export",
         `${NEW}:server_move.prepare`,
         `${NEW}:server_move.activate`,
@@ -427,8 +427,8 @@ describe("server move coordinator", () => {
         "schedules:paused",
         "stop-work",
         `grant:${OLD}`,
-        `${NEW}:server_move.inspect`,
         "plugins:suspend",
+        `${NEW}:server_move.inspect`,
         "export",
         `${NEW}:server_move.prepare`,
         `${NEW}:server_move.activate`,
@@ -477,7 +477,7 @@ describe("server move coordinator", () => {
           return targetReply(request);
         },
       workerProbe: probeReply,
-      pluginSuspends: 0,
+      pluginSuspends: 1,
     },
     {
       name: "prepare on the target",
@@ -588,6 +588,60 @@ describe("server move coordinator", () => {
         )
         .toBe(false);
     }),
+  );
+
+  it.each([
+    { hung: "suspendAllButConnect" as const, warning: "suspension" },
+    { hung: "stop" as const, warning: "shutdown" },
+  ])(
+    "keeps moving when plugin $warning outlives its time box",
+    ({ hung, warning }) =>
+      withTestHarness(async (harness) => {
+        seedTopology(harness);
+        const base = createTestServerMoveEnvironment(harness, {
+          timings: { ...TEST_SERVER_MOVE_TIMINGS, pluginShutdownTimeoutMs: 50 },
+        });
+        const { events } = base;
+        const never = createDeferredPromise<void>();
+        const coordinator = createServerMoveCoordinator({
+          ...base.environment,
+          plugins: {
+            ...base.environment.plugins,
+            [hung]: async () => {
+              events.push(`plugins:${hung}:hung`);
+              await never.promise;
+            },
+          },
+        });
+        const warn = vi.spyOn(harness.deps.logger, "warn");
+        registerFakeDaemon(harness, {
+          events,
+          hostId: OLD,
+          handle: probeReply,
+        });
+        registerFakeDaemon(harness, {
+          events,
+          hostId: WORKER,
+          handle: probeReply,
+        });
+        registerFakeDaemon(harness, {
+          events,
+          hostId: NEW,
+          handle: targetReply,
+        });
+
+        await coordinator.start(START_DIRECT);
+        await expect.poll(() => events.includes("retire")).toBe(true);
+
+        expect(coordinator.getStatus()?.state).toBe("completed");
+        expect(events).toContain(`plugins:${hung}:hung`);
+        expect(events).toContain(`server.moved:${OLD}`);
+        expect(warn).toHaveBeenCalledWith(
+          expect.objectContaining({ timeoutMs: 50 }),
+          `Server move plugin ${warning} did not finish in time; continuing`,
+        );
+        never.resolve();
+      }),
   );
 
   it("maps daemon error codes into the failed step's message", () =>

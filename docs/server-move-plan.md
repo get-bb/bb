@@ -206,8 +206,12 @@ All refuse requests authenticated by a machine credential.
   next prepare on that machine or the next `bb server import` into that directory
   rolls it back from the journal: it restores `server-import-backup/` and removes
   the imported files it created.
-- **Before export:** running turns stop, plugin schedules pause, and every plugin
-  except bb connect is suspended so nothing writes after the snapshot. SQLite
+- **At the freeze:** running turns stop, plugin schedules pause, and every
+  plugin except bb connect is suspended before the target is updated, so
+  nothing writes during the update or after the snapshot. Suspending and the
+  later plugin shutdown are each time-boxed at 30 seconds; on expiry the move
+  logs a warning and continues, and retirement's forced exit covers a hung
+  tunnel. A failed or cancelled move resumes the suspended plugins. SQLite
   databases are copied with the online backup API.
 - **Switch order:** write the lock and the old computer's `config.json`, send
   `server_move.activate` while the tunnel is still up (retrying while the

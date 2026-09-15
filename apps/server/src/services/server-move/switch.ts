@@ -1,9 +1,10 @@
 import { rm } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import {
   formatBbAppConfigPath,
   parseBbAppManagedConfig,
 } from "@bb/config/bb-app-managed-config";
+import { withFileLock } from "@bb/config/file-lock";
 import { mutateManagedJsonFile } from "@bb/config/managed-json-file";
 import type { ServerMoveMode } from "@bb/domain";
 import {
@@ -11,8 +12,13 @@ import {
   writeServerMovedFile,
   type ServerMovedFile,
 } from "@bb/server-archive";
-import { parseManagedConfigObject, readOptionalText } from "./managed-files.js";
+import {
+  parseManagedConfigObject,
+  readOptionalText,
+  writeTextAtomically,
+} from "./managed-files.js";
 
+const CONFIG_LOCK_TIMEOUT_MS = 5_000;
 const OLD_SERVER_KEPT_ENTRIES: ReadonlySet<string> = new Set([
   "config.json",
   "env.json",
@@ -79,14 +85,17 @@ export async function restoreOldServerDaemonConfig(
   backup: OldServerDaemonConfigBackup,
 ): Promise<void> {
   const originalText = backup.originalText;
-  if (originalText === null) {
-    await rm(backup.path, { force: true });
-    return;
-  }
-  await mutateManagedJsonFile({
-    path: backup.path,
-    read: async () => ({}),
-    mutate: () => parseManagedConfigObject(backup.path, originalText),
+  await withFileLock({
+    path: join(dirname(backup.path), `.${basename(backup.path)}.lock`),
+    timeoutMs: CONFIG_LOCK_TIMEOUT_MS,
+    work: async () => {
+      if (originalText === null) {
+        await rm(backup.path, { force: true });
+        return;
+      }
+      parseManagedConfigObject(backup.path, originalText);
+      await writeTextAtomically(backup.path, originalText);
+    },
   });
 }
 
