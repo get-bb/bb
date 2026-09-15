@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import { getSessionById, getThread, listEvents } from "@bb/db";
 import { threadScope, turnScope } from "@bb/domain";
 import {
@@ -167,5 +169,19 @@ describe("daemon sessions in an imported server snapshot", () => {
       });
       expect(nextBoot.importedDaemonSessions).toEqual([]);
     });
+  });
+
+  it("closes the imported sessions in runServer after the app exists and before the listener starts", async () => {
+    const source = await readFile(
+      fileURLToPath(new URL("../../src/start-server.ts", import.meta.url)),
+      "utf8",
+    );
+    const disconnect = source.indexOf("disconnectImportedDaemonSessions(");
+
+    expect(disconnect).toBeGreaterThan(source.indexOf("createApp("));
+    expect(disconnect).toBeLessThan(source.indexOf("startHttpListener({"));
+    expect(source.slice(disconnect)).toContain(
+      "sessions: serverImport.importedDaemonSessions",
+    );
   });
 });
