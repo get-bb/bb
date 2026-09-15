@@ -232,6 +232,40 @@ export interface PluginThreadHeaderActionProps {
   isCompactViewport: boolean;
 }
 
+/** JavaScript world a Browser page expression runs in. */
+export type ExperimentalPluginBrowserPageWorld = "isolated" | "main";
+
+export interface ExperimentalPluginBrowserPageEvaluateOptions {
+  /**
+   * `isolated` (default) runs in a BB-owned world that shares the page DOM but
+   * not page globals, and binds `bb.postMessage(data)`. `main` runs beside the
+   * page's own scripts, where `bb` is `null`.
+   */
+  world?: ExperimentalPluginBrowserPageWorld;
+}
+
+/**
+ * Script access to the top-level document of one Browser tab. Independent of
+ * CDP control leases: it never attaches a debugger or shows a control banner.
+ */
+export interface ExperimentalPluginBrowserPage {
+  /**
+   * Evaluate a JavaScript expression and resolve its JSON-serialized value.
+   * Promises are awaited and `undefined` resolves to `null`. The expression
+   * can reference `bb`. Rejects when the tab is gone or the expression throws.
+   * Anything the expression installs is lost when the document navigates.
+   */
+  evaluate(
+    expression: string,
+    options?: ExperimentalPluginBrowserPageEvaluateOptions,
+  ): Promise<JsonValue>;
+  /**
+   * Subscribe to values this plugin's isolated-world scripts in this tab send
+   * with `bb.postMessage(data)`. Returns the unsubscribe function.
+   */
+  onMessage(listener: (data: JsonValue) => void): () => void;
+}
+
 export interface ExperimentalPluginBrowserToolbarActionProps {
   /** Thread that owns the Browser tab. */
   threadId: string;
@@ -241,6 +275,8 @@ export interface ExperimentalPluginBrowserToolbarActionProps {
   url: string;
   /** True when the Browser chrome needs compact controls. */
   isCompactViewport: boolean;
+  /** Script access to this tab's page; `null` outside the desktop app. */
+  experimental_page: ExperimentalPluginBrowserPage | null;
 }
 
 /**

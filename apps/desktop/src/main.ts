@@ -1363,7 +1363,9 @@ function installLogViewerIpcHandlers(): void {
   ipcMain.handle(
     LOG_VIEWER_COPY_CHANNEL,
     (_event, request: LogViewerCopyRequest) => {
-      return clipboard.writeText(logViewerCopyRequestSchema.parse(request).text);
+      return clipboard.writeText(
+        logViewerCopyRequestSchema.parse(request).text,
+      );
     },
   );
   ipcMain.handle(LOG_VIEWER_OPEN_LOGS_FOLDER_CHANNEL, () =>
@@ -2061,6 +2063,11 @@ async function runDesktopApp(): Promise<void> {
     "log-viewer-preload.cjs",
   );
   const preloadPath = join(paths.appPath, "dist", "preload.cjs");
+  const browserPagePreloadPath = join(
+    paths.appPath,
+    "dist",
+    "browser-page-preload.cjs",
+  );
   const resolvedExistingServerDialogPreloadPath = join(
     paths.appPath,
     "dist",
@@ -2093,6 +2100,10 @@ async function runDesktopApp(): Promise<void> {
     path: resolvedLogViewerPreloadPath,
   });
   assertPathExists({ label: "preload script", path: preloadPath });
+  assertPathExists({
+    label: "browser page preload script",
+    path: browserPagePreloadPath,
+  });
   assertPathExists({
     label: "server URL dialog preload script",
     path: resolvedServerUrlDialogPreloadPath,
@@ -2204,6 +2215,7 @@ async function runDesktopApp(): Promise<void> {
   });
   registerDesktopUpdateIpc();
   desktopBrowserViewManager = createDesktopBrowserViewManager({
+    pagePreloadPath: browserPagePreloadPath,
     dispatchAppCommand({ command, hostWebContentsId }) {
       const browserWindow = BrowserWindow.getAllWindows().find(
         (candidate) => candidate.webContents.id === hostWebContentsId,

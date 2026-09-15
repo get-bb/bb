@@ -1,0 +1,44 @@
+{
+  "name": "bb-plugin-agent-annotations",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Annotate elements in a Browser tab and add them to the prompt as structured agent context.",
+  "engines": {
+    "bb": ">=0.0"
+  },
+  "bb": {
+    "name": "Agent Annotations",
+    "description": "Select elements in a Browser tab, comment on them, and add them to the prompt.",
+    "branding": {
+      "icon": "MessageSquarePlus"
+    },
+    "server": "./server.ts",
+    "app": "./app.tsx"
+  },
+  "keywords": [
+    "bb-plugin"
+  ],
+  "scripts": {
+    "test": "vitest run --config vitest.config.ts",
+    "typecheck": "tsc --noEmit",
+    "prepare:bundled": "bb-plugin-build prepare-bundled"
+  },
+  "dependencies": {
+    "@bb/shared-ui": "workspace:*",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@bb/plugin-build": "workspace:*",
+    "@get-bb/plugin-sdk": "workspace:*",
+    "@testing-library/react": "^16.3.2",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "jsdom": "^29.0.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "typescript-7": "npm:typescript@^7.0.2",
+    "vitest": "^4.1.1"
+  }
+}

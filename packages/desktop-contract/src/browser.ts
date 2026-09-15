@@ -254,6 +254,51 @@ export type BbDesktopBrowserFindResult = z.infer<
   typeof bbDesktopBrowserFindResultSchema
 >;
 
+export const BB_DESKTOP_BROWSER_MAX_PAGE_EXPRESSION_LENGTH = 4_000_000;
+export const BB_DESKTOP_BROWSER_MAX_PAGE_CHANNEL_LENGTH = 256;
+
+export const bbDesktopBrowserPageWorldSchema = z.enum(["main", "isolated"]);
+export type BbDesktopBrowserPageWorld = z.infer<
+  typeof bbDesktopBrowserPageWorldSchema
+>;
+
+export const bbDesktopBrowserEvaluateRequestSchema = z
+  .object({
+    tabId: z.string().min(1),
+    expression: z
+      .string()
+      .min(1)
+      .max(BB_DESKTOP_BROWSER_MAX_PAGE_EXPRESSION_LENGTH),
+    world: bbDesktopBrowserPageWorldSchema,
+    channel: z.string().min(1).max(BB_DESKTOP_BROWSER_MAX_PAGE_CHANNEL_LENGTH),
+  })
+  .strict();
+export type BbDesktopBrowserEvaluateRequest = z.infer<
+  typeof bbDesktopBrowserEvaluateRequestSchema
+>;
+
+export const bbDesktopBrowserEvaluateResultSchema = z.discriminatedUnion("ok", [
+  z.object({ ok: z.literal(true), value: z.json() }).strict(),
+  z.object({ ok: z.literal(false), error: z.string() }).strict(),
+]);
+export type BbDesktopBrowserEvaluateResult = z.infer<
+  typeof bbDesktopBrowserEvaluateResultSchema
+>;
+
+export const bbDesktopBrowserPageMessageSchema = z
+  .object({
+    tabId: z.string().min(1),
+    channel: z.string().min(1).max(BB_DESKTOP_BROWSER_MAX_PAGE_CHANNEL_LENGTH),
+    data: z.json(),
+  })
+  .strict();
+export type BbDesktopBrowserPageMessage = z.infer<
+  typeof bbDesktopBrowserPageMessageSchema
+>;
+export type BbDesktopBrowserPageMessageHandler = (
+  message: BbDesktopBrowserPageMessage,
+) => void;
+
 export type BbDesktopBrowserStateHandler = (
   state: BbDesktopBrowserState,
 ) => void;
@@ -325,5 +370,11 @@ export interface BbDesktopBrowserApi {
   stopFindInPage?(request: BbDesktopBrowserStopFindInPageRequest): void;
   onFindResult?(
     listener: BbDesktopBrowserFindResultHandler,
+  ): BbDesktopBrowserUnsubscribe;
+  evaluate?(
+    request: BbDesktopBrowserEvaluateRequest,
+  ): Promise<BbDesktopBrowserEvaluateResult>;
+  onPageMessage?(
+    listener: BbDesktopBrowserPageMessageHandler,
   ): BbDesktopBrowserUnsubscribe;
 }

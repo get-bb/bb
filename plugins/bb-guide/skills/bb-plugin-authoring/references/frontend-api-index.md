@@ -81,6 +81,9 @@ Read the installed SDK declarations for the exact current signatures.
 - `PluginThreadListProps`
 - `PluginThreadHeaderActionProps`
 - `ExperimentalPluginBrowserToolbarActionProps`
+- `ExperimentalPluginBrowserPage`
+- `ExperimentalPluginBrowserPageEvaluateOptions`
+- `ExperimentalPluginBrowserPageWorld`
 - `PluginFileOpenerSource`
 - `PluginFileOpenerProps`
 - `CodeOverflowMode`
