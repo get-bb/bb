@@ -117,9 +117,10 @@ import {
 } from "./services/server-move/coordinator.js";
 import { createDefaultServerMoveEnvironment } from "./services/server-move/environment.js";
 import {
-  serverMoveEnrollmentFreezeMiddleware,
   serverMoveFreezeMiddleware,
+  serverMoveWriteFreezeMiddleware,
 } from "./services/server-move/freeze.js";
+import { isServerMoveFrozen } from "./services/server-move/freeze-state.js";
 import {
   createManualServerImportCompletion,
   type PendingServerMove,
@@ -714,9 +715,20 @@ export function createApp(
   const serverMoveFreezeState = {
     isFrozen: () => pendingServerMove !== null || serverMove.isFrozen(),
   };
+  const daemonWriteFreezeState = {
+    isFrozen: () => pendingServerMove !== null || isServerMoveFrozen(deps.db),
+  };
   app.use("/api/v1/*", serverMoveFreezeMiddleware(serverMoveFreezeState));
   for (const path of ["/internal/hosts/enroll", "/internal/hosts/enroll-key"]) {
-    app.use(path, serverMoveEnrollmentFreezeMiddleware(serverMoveFreezeState));
+    app.use(path, serverMoveWriteFreezeMiddleware(serverMoveFreezeState));
+  }
+  for (const path of [
+    "/internal/session/events",
+    "/internal/session/tool-call",
+    "/internal/session/interactive-request",
+    "/internal/session/interactive-request/interrupt",
+  ]) {
+    app.use(path, serverMoveWriteFreezeMiddleware(daemonWriteFreezeState));
   }
   const publicApi = new Hono();
   publicApi.use("*", async (context, next) => {

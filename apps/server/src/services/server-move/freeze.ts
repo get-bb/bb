@@ -29,7 +29,7 @@ export function serverMoveFreezeMiddleware(
   };
 }
 
-export function serverMoveEnrollmentFreezeMiddleware(
+export function serverMoveWriteFreezeMiddleware(
   state: ServerMoveFreezeState,
 ): MiddlewareHandler {
   return async (_context, next) => {

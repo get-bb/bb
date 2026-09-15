@@ -69,6 +69,13 @@ export function resumeServerMoveDeferredWork(
   deps: LoggedPendingInteractionWorkSessionDeps,
 ): void {
   for (const hostId of deps.hub.listConnectedHostIds()) {
+    const daemonSessionId = deps.hub.getDaemonSessionIdForHost(hostId);
+    if (daemonSessionId !== null) {
+      deps.terminalSessions.expireDisconnectedHostTerminals({
+        daemonSessionId,
+        hostId,
+      });
+    }
     requestQueuedMessageDispatch(deps, { hostId, kind: "host-connected" });
     void resumeEnvironmentProvisioningForHost(deps, { hostId }).catch(
       (error: unknown) => {
