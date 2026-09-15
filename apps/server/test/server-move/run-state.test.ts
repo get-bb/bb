@@ -12,7 +12,10 @@ import type {
 } from "@bb/server-contract";
 import { afterEach, describe, expect, it } from "vitest";
 import { createServerMoveCoordinator } from "../../src/services/server-move/coordinator.js";
-import { isServerMoveFrozen } from "../../src/services/server-move/freeze-state.js";
+import {
+  isServerMoveFrozen,
+  isServerMoveSnapshotFenced,
+} from "../../src/services/server-move/freeze-state.js";
 import {
   reconcileServerMoveRunAtBoot,
   type RestoredServerMoveRun,
@@ -309,6 +312,7 @@ describe("server move boot reconciliation", () => {
         });
         expect(coordinator.isFrozen()).toBe(true);
         expect(isServerMoveFrozen(harness.db)).toBe(true);
+        expect(isServerMoveSnapshotFenced(harness.db)).toBe(true);
         expect(coordinator.movedTo()).toBeNull();
         expect(plugins.paused).toBe(true);
         await coordinator.handlePluginsStarted();
@@ -366,6 +370,7 @@ describe("server move boot reconciliation", () => {
           movedAt: 5_000,
         });
         expect(coordinator.isFrozen()).toBe(true);
+        expect(isServerMoveSnapshotFenced(harness.db)).toBe(true);
         await expect.poll(() => events.includes("retire")).toBe(true);
       } finally {
         coordinator.dispose();

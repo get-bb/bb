@@ -15,7 +15,10 @@ import type { ServerMoveStatus } from "@bb/server-contract";
 import { createDeferredPromise } from "@bb/test-helpers";
 import { describe, expect, it, vi } from "vitest";
 import { createServerMoveCoordinator } from "../../src/services/server-move/coordinator.js";
-import { isServerMoveFrozen } from "../../src/services/server-move/freeze-state.js";
+import {
+  isServerMoveFrozen,
+  isServerMoveSnapshotFenced,
+} from "../../src/services/server-move/freeze-state.js";
 import {
   readServerMoveRunFile,
   SERVER_MOVE_RUN_FILE_NAME,
@@ -1315,6 +1318,7 @@ describe("server move coordinator", () => {
         await expect
           .poll(() => coordinator.getStatus()?.state)
           .toBe("recovery_required");
+        expect(isServerMoveSnapshotFenced(harness.db)).toBe(true);
 
         const cancelled = coordinator.cancel();
 
@@ -1329,6 +1333,7 @@ describe("server move coordinator", () => {
         });
         expect(coordinator.isFrozen()).toBe(false);
         expect(isServerMoveFrozen(harness.db)).toBe(false);
+        expect(isServerMoveSnapshotFenced(harness.db)).toBe(false);
         await expect.poll(() => plugins.paused).toBe(false);
         expect(plugins).toMatchObject({ resumes: 1, stops: 0 });
         expect(await readServerMovedFile(harness.config.dataDir)).toBeNull();
