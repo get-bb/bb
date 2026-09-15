@@ -7,6 +7,7 @@ import {
   canMoveServerHere,
   movedServerUrlFromError,
   resolveServerMoveOverlay,
+  serverMoveDestinationProbeUrl,
   serverMoveDestinationUrl,
   serverMoveOverlayPollIntervalMs,
 } from "./server-move";
@@ -36,23 +37,23 @@ function move(overrides: Partial<ServerMoveStatus> = {}): ServerMoveStatus {
 }
 
 describe("serverMoveDestinationUrl", () => {
-  it("keeps a base path and drops duplicate slashes", () => {
-    expect(serverMoveDestinationUrl("https://example.com/bb/", LOCATION)).toBe(
-      "https://example.com/bb/threads/thr_1?a=1#x",
-    );
-    expect(serverMoveDestinationUrl("http://10.0.0.5:38886", LOCATION)).toBe(
-      "http://10.0.0.5:38886/threads/thr_1?a=1#x",
-    );
+  it("keeps a base path, drops duplicate slashes, and carries the move id", () => {
+    expect(
+      serverMoveDestinationUrl("https://example.com/bb/", LOCATION, "move_1"),
+    ).toBe("https://example.com/bb/threads/thr_1?a=1&bbServerMove=move_1#x");
+    expect(
+      serverMoveDestinationUrl("http://10.0.0.5:38886", LOCATION, "move_1"),
+    ).toBe("http://10.0.0.5:38886/threads/thr_1?a=1&bbServerMove=move_1#x");
   });
 
   it("replaces any query or fragment on the server address with the current ones", () => {
     expect(
-      serverMoveDestinationUrl("https://example.com/?stale=1#old", {
-        pathname: "/",
-        search: "",
-        hash: "",
-      }),
-    ).toBe("https://example.com/");
+      serverMoveDestinationUrl(
+        "https://example.com/?stale=1#old",
+        { pathname: "/", search: "?bbServerMove=move_0", hash: "" },
+        "move_1",
+      ),
+    ).toBe("https://example.com/?bbServerMove=move_1");
   });
 });
 
@@ -213,9 +214,120 @@ describe("resolveServerMoveOverlay", () => {
         error: null,
         followed,
         dismissedMoveId: null,
+        destination: null,
+        arrivalMoveId: null,
         location: LOCATION,
       })?.kind,
     ).toBe("arrived");
+  });
+
+  it("announces an arrival on the new origin from the move id in the address", () => {
+    const lastMove = {
+      moveId: "move_1",
+      fromHostId: "host_laptop",
+      fromHostName: "laptop",
+      toHostId: "host_desk",
+      toHostName: "desk",
+      completedAt: 2,
+      oldCopyDeletedAt: null,
+    };
+    const args = {
+      response: { move: null, lastMove },
+      error: null,
+      followed: null,
+      dismissedMoveId: null,
+      destination: null,
+      location: LOCATION,
+    };
+    expect(
+      resolveServerMoveOverlay({ ...args, arrivalMoveId: "move_1" }),
+    ).toEqual({ kind: "arrived", lastMove });
+    expect(
+      resolveServerMoveOverlay({ ...args, arrivalMoveId: "move_0" }),
+    ).toBeNull();
+    expect(
+      resolveServerMoveOverlay({ ...args, arrivalMoveId: null }),
+    ).toBeNull();
+  });
+
+  it("waits for a direct move's destination to report ready before redirecting once the old server stops answering", () => {
+    const switching = move({
+      state: "switching",
+      mode: "direct",
+      serverUrl: "https://desk.example.com",
+      destinationStatusUrl: "https://desk.example.com/health",
+      cancellable: false,
+    });
+    const args = {
+      response: { move: switching, lastMove: null },
+      error: new TypeError("Failed to fetch"),
+      followed: switching,
+      dismissedMoveId: null,
+      arrivalMoveId: null,
+      location: LOCATION,
+    };
+
+    expect(resolveServerMoveOverlay({ ...args, destination: null })).toEqual({
+      kind: "waiting",
+      move: switching,
+      destinationState: null,
+    });
+    expect(
+      resolveServerMoveOverlay({
+        ...args,
+        destination: { moveId: "move_1", state: "activating" },
+      }),
+    ).toEqual({
+      kind: "waiting",
+      move: switching,
+      destinationState: "activating",
+    });
+    expect(
+      resolveServerMoveOverlay({
+        ...args,
+        destination: { moveId: "move_0", state: "ready" },
+      })?.kind,
+    ).toBe("waiting");
+    expect(
+      resolveServerMoveOverlay({
+        ...args,
+        destination: { moveId: "move_1", state: "ready" },
+      }),
+    ).toEqual({
+      kind: "redirecting",
+      move: switching,
+      destination:
+        "https://desk.example.com/threads/thr_1?a=1&bbServerMove=move_1#x",
+    });
+    expect(
+      resolveServerMoveOverlay({ ...args, error: null, destination: null })
+        ?.kind,
+    ).toBe("progress");
+    expect(
+      serverMoveOverlayPollIntervalMs({
+        content: { kind: "waiting", move: switching, destinationState: null },
+        realtimeConnected: false,
+        intervalMs: 500,
+      }),
+    ).toBe(500);
+    expect(
+      serverMoveDestinationProbeUrl({ move: switching, error: args.error }),
+    ).toBe("https://desk.example.com/health");
+    expect(
+      serverMoveDestinationProbeUrl({ move: switching, error: null }),
+    ).toBe(null);
+    expect(
+      serverMoveDestinationProbeUrl({
+        move: { ...switching, state: "completed" },
+        error: null,
+      }),
+    ).toBe("https://desk.example.com/health");
+    expect(
+      serverMoveDestinationProbeUrl({
+        move: { ...switching, destinationStatusUrl: null, state: "completed" },
+        error: args.error,
+      }),
+    ).toBeNull();
   });
 
   it("follows a new move even after an earlier failure was dismissed", () => {
@@ -227,6 +339,8 @@ describe("resolveServerMoveOverlay", () => {
         error: null,
         followed: dismissed,
         dismissedMoveId: "move_0",
+        destination: null,
+        arrivalMoveId: null,
         location: LOCATION,
       }),
     ).toEqual({ kind: "progress", move: next });
@@ -242,6 +356,8 @@ describe("resolveServerMoveOverlay", () => {
       error: null,
       followed: null,
       dismissedMoveId: null,
+      destination: null,
+      arrivalMoveId: null,
       location: LOCATION,
     });
     expect(content).toEqual({ kind: "recovery", move: recovering });

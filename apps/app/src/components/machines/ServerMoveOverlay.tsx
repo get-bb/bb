@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
+import type { ServerMoveHealth } from "@bb/host-daemon-contract";
 import type {
   ServerMoveStatus,
   ServerMoveStep,
@@ -19,13 +20,16 @@ import {
 import { useServerConnectionState } from "@/hooks/useServerConnectionState";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import {
+  SERVER_MOVE_ARRIVAL_PARAM,
   SERVER_MOVE_POLL_INTERVAL_MS,
   nextFollowedServerMove,
   resolveServerMoveOverlay,
+  serverMoveDestinationProbeUrl,
   serverMoveOverlayPollIntervalMs,
   serverMoveStepLabel,
   type ServerMoveOverlayContent,
 } from "./server-move";
+import { fetchServerMoveDestinationHealth } from "./server-move-destination";
 
 type VisibleServerMoveOverlayContent = Exclude<
   ServerMoveOverlayContent,
@@ -67,6 +71,46 @@ function assignWindowLocation(url: string): void {
   window.location.assign(url);
 }
 
+interface DestinationHealthReading {
+  health: ServerMoveHealth | null;
+  url: string;
+}
+
+function useServerMoveDestinationHealth(
+  url: string | null,
+  intervalMs: number,
+): ServerMoveHealth | null {
+  const [reading, setReading] = useState<DestinationHealthReading | null>(null);
+  useEffect(() => {
+    if (url === null) {
+      return;
+    }
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const poll = async (): Promise<void> => {
+      const health = await fetchServerMoveDestinationHealth(
+        url,
+        controller.signal,
+      );
+      if (controller.signal.aborted) {
+        return;
+      }
+      setReading({ health, url });
+      timer = setTimeout(() => {
+        void poll();
+      }, intervalMs);
+    };
+    void poll();
+    return () => {
+      controller.abort();
+      if (timer !== undefined) {
+        clearTimeout(timer);
+      }
+    };
+  }, [intervalMs, url]);
+  return reading !== null && reading.url === url ? reading.health : null;
+}
+
 export interface ServerMoveOverlayProps {
   navigateTo?: (url: string) => void;
   pollIntervalMs?: number;
@@ -78,6 +122,7 @@ export function ServerMoveOverlay({
 }: ServerMoveOverlayProps) {
   const queryClient = useQueryClient();
   const location = useLocation();
+  const navigate = useNavigate();
   const connectionState = useServerConnectionState();
   const status = useServerMoveStatus();
   const cancelMove = useCancelServerMove();
@@ -92,11 +137,21 @@ export function ServerMoveOverlay({
     setFollowed(nextFollowed);
   }
 
+  const arrivalMoveId = new URLSearchParams(location.search).get(
+    SERVER_MOVE_ARRIVAL_PARAM,
+  );
+  const destinationHealth = useServerMoveDestinationHealth(
+    serverMoveDestinationProbeUrl({ move: nextFollowed, error: status.error }),
+    pollIntervalMs,
+  );
+
   const content = resolveServerMoveOverlay({
     response: status.data,
     error: status.error,
     followed: nextFollowed,
     dismissedMoveId,
+    destination: destinationHealth,
+    arrivalMoveId,
     location: {
       pathname: location.pathname,
       search: location.search,
@@ -124,7 +179,7 @@ export function ServerMoveOverlay({
   }, [destination, navigateTo]);
 
   const arrivedMoveId =
-    content?.kind === "arrived" ? content.move.moveId : null;
+    content?.kind === "arrived" ? content.lastMove.moveId : null;
   const arrivedHostName =
     content?.kind === "arrived" ? content.lastMove.toHostName : null;
   const announcedMoveId = useRef<string | null>(null);
@@ -140,6 +195,31 @@ export function ServerMoveOverlay({
     appToast.success(`Server moved to ${arrivedHostName}`);
     invalidateQueriesAfterServerMove({ queryClient });
   }, [arrivedHostName, arrivedMoveId, queryClient]);
+
+  const statusLoaded = status.data !== undefined;
+  useEffect(() => {
+    if (arrivalMoveId === null || !statusLoaded) {
+      return;
+    }
+    const params = new URLSearchParams(location.search);
+    params.delete(SERVER_MOVE_ARRIVAL_PARAM);
+    const search = params.toString();
+    navigate(
+      {
+        pathname: location.pathname,
+        search: search.length === 0 ? "" : `?${search}`,
+        hash: location.hash,
+      },
+      { replace: true },
+    );
+  }, [
+    arrivalMoveId,
+    location.hash,
+    location.pathname,
+    location.search,
+    navigate,
+    statusLoaded,
+  ]);
 
   if (content === null || content.kind === "arrived") {
     return null;
@@ -319,7 +399,7 @@ function ServerMoveOverlayActions({
       </div>
     );
   }
-  if (content.kind === "reconnecting") {
+  if (content.kind === "reconnecting" || content.kind === "waiting") {
     return null;
   }
   return (
@@ -392,6 +472,8 @@ function overlayTitle(content: VisibleServerMoveOverlayContent): string {
       return `Moving server to ${name}`;
     case "recovery":
       return `Couldn't confirm the switch to ${name}`;
+    case "waiting":
+      return `Starting the server on ${name}…`;
     case "redirecting":
       return `Server moved to ${name}`;
     case "reconnecting":
@@ -417,6 +499,10 @@ function overlayDescription(content: VisibleServerMoveOverlayContent): string {
         : `bb is copying the server to ${name}. Every app shows this screen until the move finishes.`;
     case "recovery":
       return `${name} didn't confirm that it took over, so this server stays up but read-only. bb keeps checking and finishes the move as soon as ${name} answers.`;
+    case "waiting":
+      return content.destinationState === "activating"
+        ? `${name} is switching over to the new server. This page opens it as soon as it's ready.`
+        : `The server on ${name} is starting. This page opens ${content.move.serverUrl} as soon as it answers.`;
     case "redirecting":
       return `Opening the server at ${content.move.serverUrl}…`;
     case "reconnecting":

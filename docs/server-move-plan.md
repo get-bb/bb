@@ -257,6 +257,18 @@ All refuse requests authenticated by a machine credential.
   so the locked branches apply only when the server starts some other way. If
   the old server crashes while recovery is required, the launcher enters moved
   mode and `bb server unlock` is the exit.
+- **Progress while the old server is down:** every server's `/health` answers
+  any origin, and a new server reports `serverMove: { moveId, state }` there:
+  `pending` while it waits for activation, `activating` once the target
+  recorded the move but the import marker is still present, and `ready` after
+  it restarted as the activated server. In direct mode the move status carries
+  `destinationStatusUrl` (`<serverUrl>/health`), and it is null for bb connect.
+  When the old server stops answering during `switching` or `completed`, the
+  app polls that URL, shows "Starting the server on <machine>", and opens the
+  new address only once the destination reports `ready` for this move. The
+  redirect carries `bbServerMove=<moveId>`, so the new origin shows the arrival
+  toast and then drops the parameter. bb connect keeps the same URL, so the app
+  waits for that address to answer with the finished move instead.
 - **Retrying a start:** `startMove` for the same target returns the move
   already underway, including one still passing its checks; a different target
   still gets 409 `server_move_in_progress`.

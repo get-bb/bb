@@ -19,13 +19,18 @@ import type {
   ServerMoveStep,
   ServerMoveStepStatus,
 } from "@bb/server-contract";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { appToast } from "@/components/ui/app-toast";
 import { serverMoveStatusQueryKey } from "@/hooks/queries/query-keys";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { ServerMoveOverlay } from "./ServerMoveOverlay";
+import { fetchServerMoveDestinationHealth } from "./server-move-destination";
+
+vi.mock("./server-move-destination", () => ({
+  fetchServerMoveDestinationHealth: vi.fn(async () => null),
+}));
 
 vi.mock("@/lib/sdk", () => ({
   sdk: {
@@ -104,12 +109,20 @@ function lastMove(overrides: Partial<LastServerMove> = {}): LastServerMove {
   };
 }
 
+function LocationDisplay() {
+  const location = useLocation();
+  return (
+    <output data-testid="location">{`${location.pathname}${location.search}${location.hash}`}</output>
+  );
+}
+
 function renderOverlay(path = "/") {
   const navigateTo = vi.fn();
   const { queryClient, wrapper } = createQueryClientTestHarness();
   render(
     <MemoryRouter initialEntries={[path]}>
       <ServerMoveOverlay navigateTo={navigateTo} pollIntervalMs={20} />
+      <LocationDisplay />
     </MemoryRouter>,
     { wrapper },
   );
@@ -340,27 +353,48 @@ describe("ServerMoveOverlay", () => {
     expect(within(overlay).queryByRole("button")).toBeNull();
   });
 
-  it("sends a direct-address move to the new server at the current path", async () => {
-    vi.mocked(sdk.experimental_server.moveStatus).mockResolvedValue({
-      move: move({
-        state: "completed",
-        mode: "direct",
-        serverUrl: "https://desk.example.com/",
-        cancellable: false,
-        finishedAt: 2_000,
-        steps: ALL_DONE,
-      }),
-      lastMove: null,
-    });
+  it("waits for a direct-address move's new server to be ready, then opens it at the current path", async () => {
+    vi.mocked(sdk.experimental_server.moveStatus)
+      .mockResolvedValueOnce({
+        move: move({
+          state: "completed",
+          mode: "direct",
+          serverUrl: "https://desk.example.com/",
+          destinationStatusUrl: "https://desk.example.com/health",
+          cancellable: false,
+          finishedAt: 2_000,
+          steps: ALL_DONE,
+        }),
+        lastMove: null,
+      })
+      .mockRejectedValue(new TypeError("Failed to fetch"));
+    vi.mocked(fetchServerMoveDestinationHealth)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ moveId: "move_1", state: "pending" })
+      .mockResolvedValue({ moveId: "move_1", state: "ready" });
     const { navigateTo } = renderOverlay(
       "/projects/proj_1/threads/thr_1?panel=diff#turn-3",
     );
 
+    const waiting = await screen.findByRole("dialog", {
+      name: "Starting the server on desk…",
+    });
+    expect(navigateTo).not.toHaveBeenCalled();
+    expect(
+      within(waiting).queryByRole("link", { name: "Open the new address" }),
+    ).toBeNull();
     const destination =
-      "https://desk.example.com/projects/proj_1/threads/thr_1?panel=diff#turn-3";
+      "https://desk.example.com/projects/proj_1/threads/thr_1?panel=diff&bbServerMove=move_1#turn-3";
     await waitFor(() => {
       expect(navigateTo).toHaveBeenCalledWith(destination);
     });
+    expect(
+      vi.mocked(fetchServerMoveDestinationHealth).mock.calls.length,
+    ).toBeGreaterThanOrEqual(3);
+    expect(vi.mocked(fetchServerMoveDestinationHealth)).toHaveBeenCalledWith(
+      "https://desk.example.com/health",
+      expect.any(AbortSignal),
+    );
     const overlay = screen.getByRole("dialog", {
       name: "Server moved to desk",
     });
@@ -524,8 +558,29 @@ describe("ServerMoveOverlay", () => {
 
     await waitFor(() => {
       expect(navigateTo).toHaveBeenCalledWith(
-        "https://desk.tailnet.example/settings/machines?tab=all",
+        "https://desk.tailnet.example/settings/machines?tab=all&bbServerMove=move_1",
       );
     });
+  });
+
+  it("announces the arrival on the new origin and drops the move id from the address", async () => {
+    vi.mocked(sdk.experimental_server.moveStatus).mockResolvedValue({
+      move: null,
+      lastMove: lastMove(),
+    });
+    renderOverlay("/threads/thr_1?panel=diff&bbServerMove=move_1#turn-3");
+
+    await waitFor(() => {
+      expect(vi.mocked(appToast.success)).toHaveBeenCalledWith(
+        "Server moved to desk",
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("location").textContent).toBe(
+        "/threads/thr_1?panel=diff#turn-3",
+      );
+    });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(vi.mocked(appToast.success)).toHaveBeenCalledTimes(1);
   });
 });

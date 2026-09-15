@@ -223,6 +223,18 @@ export function Finished() {
         <Overlay content={{ kind: "reconnecting", move: completedConnect }} />
       </StoryRow>
       <StoryRow
+        label="direct address, waiting"
+        hint="the old server stopped answering; the app follows the new server's /health and opens it only once it reports ready"
+      >
+        <Overlay
+          content={{
+            kind: "waiting",
+            move: completedDirect,
+            destinationState: "pending",
+          }}
+        />
+      </StoryRow>
+      <StoryRow
         label="direct address, redirecting"
         hint="the app opens the new address at the current path; the link is the fallback if navigation is blocked"
       >
