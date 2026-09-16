@@ -544,7 +544,7 @@ function SortablePanelTab({
     secondaryPanelTabsToClose(tabs, tabId, "right").length > 0;
 
   return (
-    <ContextMenu>
+    <ContextMenu modal={false}>
       <ContextMenuTrigger asChild disabled={contextMenuDisabled}>
         <div
           ref={setTabRef}

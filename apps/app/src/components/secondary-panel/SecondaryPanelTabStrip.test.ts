@@ -304,6 +304,16 @@ describe("secondary panel tab close menu", () => {
     expect(closeIds("missing", "others")).toEqual([]);
   });
 
+  it("keeps the app accessible while the tab menu is open", () => {
+    renderCloseMenuStrip(makeCloseMenuTabs());
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: "file-2.ts" }));
+
+    expect(screen.getByRole("menuitem", { name: "Close tab" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "file-1.ts" })).toBeTruthy();
+    expect(document.body.style.pointerEvents).not.toBe("none");
+  });
+
   it("closes the right-clicked tab", () => {
     const tabs = makeCloseMenuTabs();
     renderCloseMenuStrip(tabs);
