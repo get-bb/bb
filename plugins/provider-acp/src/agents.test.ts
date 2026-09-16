@@ -241,6 +241,16 @@ describe("acpProviderDeclaration", () => {
     expect(byId.get("acp-grok")?.experimental_bridgeOptions).toMatchObject({
       acpDialect: "grok",
     });
+    expect(byId.get("acp-grok")?.maintenance).toEqual({
+      health: true,
+      usage: true,
+      installation: false,
+    });
+    expect(byId.get("acp-cursor")?.maintenance).toEqual({
+      health: true,
+      usage: true,
+      installation: true,
+    });
     expect(byId.get("acp-opencode")?.experimental_bridgeOptions).toMatchObject({
       acpDialect: "opencode",
     });

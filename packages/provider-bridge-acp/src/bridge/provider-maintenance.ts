@@ -28,6 +28,8 @@ const CURSOR_DASHBOARD_URL =
 const CURSOR_KEYCHAIN_ACCOUNT = "cursor-user";
 const CURSOR_ACCESS_TOKEN_SERVICE = "cursor-access-token";
 const CURSOR_INSTALL_SCRIPT_URL = "https://cursor.com/install";
+const GROK_CHAT_PROXY_URL = "https://cli-chat-proxy.grok.com/v1";
+const GROK_INSTALL_SCRIPT_URL = "https://x.ai/cli/install.sh";
 
 function cursorAuthFilePath(): string {
   if (process.platform === "win32") {
@@ -396,6 +398,224 @@ export const CURSOR_ACP_MAINTENANCE: AcpMaintenanceDialect = {
   readUsage: readCursorUsage,
 };
 
+const grokAuthEntrySchema = z
+  .object({
+    key: z.string().min(1).optional(),
+    email: z.string().optional(),
+  })
+  .passthrough();
+
+const grokAmountSchema = z
+  .object({
+    val: z.number(),
+  })
+  .passthrough();
+
+const grokPeriodSchema = z
+  .object({
+    type: z.string().optional(),
+    end: z.string().optional(),
+  })
+  .passthrough();
+
+const grokBillingConfigSchema = z
+  .object({
+    creditUsagePercent: z.number(),
+    currentPeriod: grokPeriodSchema.nullish(),
+    billingPeriodEnd: z.string().nullish(),
+    onDemandCap: grokAmountSchema.nullish(),
+    onDemandUsed: grokAmountSchema.nullish(),
+  })
+  .passthrough();
+
+const grokUserSchema = z
+  .object({
+    email: z.string().email().nullish(),
+    subscriptionTier: z.string().min(1).nullish(),
+  })
+  .passthrough();
+
+function grokHomeDir(): string {
+  return process.env.GROK_HOME ?? path.join(os.homedir(), ".grok");
+}
+
+function grokAuthFilePath(): string {
+  return path.join(grokHomeDir(), "auth.json");
+}
+
+function grokEmail(value: string | undefined): string | null {
+  if (value === undefined) return null;
+  const parsed = z.string().email().safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
+
+async function readGrokCredentials(): Promise<{
+  accessToken: string;
+  email: string | null;
+} | null> {
+  try {
+    const parsed = z
+      .record(z.string(), grokAuthEntrySchema)
+      .safeParse(JSON.parse(await fs.readFile(grokAuthFilePath(), "utf8")));
+    if (!parsed.success) return null;
+    for (const entry of Object.values(parsed.data)) {
+      if (entry.key !== undefined) {
+        return { accessToken: entry.key, email: grokEmail(entry.email) };
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function grokPeriodLabel(type: string | undefined): string {
+  switch (type) {
+    case "USAGE_PERIOD_TYPE_WEEKLY":
+      return "Weekly";
+    case "USAGE_PERIOD_TYPE_MONTHLY":
+      return "Monthly";
+    case "USAGE_PERIOD_TYPE_DAILY":
+      return "Daily";
+    default:
+      return "Plan usage";
+  }
+}
+
+function grokTimestamp(value: string | undefined): string | null {
+  if (value === undefined || value.length === 0) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function grokBillingConfig(raw: unknown): unknown {
+  const parsed = z
+    .object({ config: z.unknown().optional() })
+    .passthrough()
+    .safeParse(raw);
+  if (!parsed.success) return raw;
+  return parsed.data.config ?? raw;
+}
+
+function normalizeGrokUsage(
+  rawBilling: unknown,
+  rawUser: unknown,
+  accountEmail: string | null = null,
+): ProviderUsage {
+  const billing = grokBillingConfigSchema.safeParse(
+    grokBillingConfig(rawBilling),
+  );
+  if (!billing.success) {
+    return {
+      status: "error",
+      message: "Grok usage response was malformed.",
+      planLabel: null,
+      accountEmail,
+    };
+  }
+  const user = grokUserSchema.safeParse(rawUser);
+  const planLabel = user.success ? (user.data.subscriptionTier ?? null) : null;
+  const email =
+    user.success && user.data.email !== undefined && user.data.email !== null
+      ? user.data.email
+      : accountEmail;
+  const periodEnd =
+    billing.data.currentPeriod?.end ??
+    billing.data.billingPeriodEnd ??
+    undefined;
+  const resetsAt = grokTimestamp(periodEnd);
+  const windows: ProviderUsageWindow[] = [
+    {
+      label: grokPeriodLabel(billing.data.currentPeriod?.type),
+      usedPercent: clampPercent(billing.data.creditUsagePercent),
+      resetsAt,
+    },
+  ];
+  const cap = billing.data.onDemandCap?.val;
+  const used = billing.data.onDemandUsed?.val ?? 0;
+  if (cap !== undefined && cap > 0) {
+    windows.push({
+      label: "On-demand spend",
+      usedPercent: clampPercent((used / cap) * 100),
+      resetsAt,
+    });
+  }
+  return {
+    status: "ok",
+    accountEmail: email,
+    planLabel,
+    windows,
+  };
+}
+
+function fetchGrok(path: string, accessToken: string): Promise<Response> {
+  return fetch(`${GROK_CHAT_PROXY_URL}${path}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      Accept: "application/json",
+      "User-Agent": "xai-grok-cli",
+      "x-xai-token-auth": "xai-grok-cli",
+    },
+    signal: AbortSignal.timeout(USAGE_FETCH_TIMEOUT_MS),
+  });
+}
+
+export const GROK_ACP_MAINTENANCE: AcpMaintenanceDialect = {
+  loginCommand: "grok login",
+  installer: () => downloadedInstallerCommand(GROK_INSTALL_SCRIPT_URL),
+  readAccount: async () => {
+    const credentials = await readGrokCredentials();
+    return credentials === null ? null : { email: credentials.email };
+  },
+  readUsage: readGrokUsage,
+};
+
+async function readGrokUsage(): Promise<ProviderUsageResult> {
+  const credentials = await readGrokCredentials();
+  if (!credentials) {
+    return { supported: true, usage: { status: "unauthenticated" } };
+  }
+  try {
+    const [billingResponse, userResponse] = await Promise.all([
+      fetchGrok("/billing?format=credits", credentials.accessToken),
+      fetchGrok("/user?include=subscription", credentials.accessToken),
+    ]);
+    if (billingResponse.status === 401 || billingResponse.status === 403) {
+      return { supported: true, usage: { status: "expired" } };
+    }
+    if (!billingResponse.ok) {
+      return {
+        supported: true,
+        usage: {
+          status: "error",
+          message: `Grok usage request failed (HTTP ${billingResponse.status}).`,
+          planLabel: null,
+          accountEmail: credentials.email,
+        },
+      };
+    }
+    return {
+      supported: true,
+      usage: normalizeGrokUsage(
+        await billingResponse.json(),
+        userResponse.ok ? await userResponse.json() : {},
+        credentials.email,
+      ),
+    };
+  } catch (error) {
+    return {
+      supported: true,
+      usage: {
+        status: "error",
+        message: error instanceof Error ? error.message : String(error),
+        planLabel: null,
+        accountEmail: credentials.email,
+      },
+    };
+  }
+}
+
 async function readCursorUsage(): Promise<ProviderUsageResult> {
   const accessToken = await readAccessToken();
   if (!accessToken) {
@@ -444,4 +664,5 @@ async function readCursorUsage(): Promise<ProviderUsageResult> {
 export const __testing = {
   buildProviderInstallationRun: buildAcpProviderInstallationRun,
   normalizeUsage,
+  normalizeGrokUsage,
 };

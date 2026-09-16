@@ -9,7 +9,8 @@ Known agents can be discovered automatically when their CLI is installed on the
 host: `opencode`, `omp`, `grok`, and `hermes` appear as `acp-opencode`, `acp-omp`,
 `acp-grok`, and `acp-hermes-agent`. Inspect the target host's catalog with
 `bb provider list` and `bb provider models <provider-id>` using its environment
-or machine selector.
+or machine selector. Cursor and Grok Build report account usage through
+`bb settings usage` when their CLIs are signed in.
 
 Cursor project skills come from `.cursor/skills`, which can link to
 `.agents/skills`. BB lists these linked skills as read-only under `cursor-project`.

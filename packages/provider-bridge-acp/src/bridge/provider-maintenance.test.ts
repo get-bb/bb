@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { CURSOR_ACP_MAINTENANCE, __testing } from "./provider-maintenance.js";
+import {
+  CURSOR_ACP_MAINTENANCE,
+  GROK_ACP_MAINTENANCE,
+  __testing,
+} from "./provider-maintenance.js";
 
 function cursorMissingInstallationStatus() {
   return {
@@ -52,6 +56,82 @@ describe("ACP provider maintenance", () => {
           usedPercent: 25,
           resetsAt: "2026-01-01T00:00:00.000Z",
           cost: { usedUsdCents: 1250, limitUsdCents: 5000 },
+        },
+      ],
+    });
+  });
+
+  it("normalizes Grok weekly credits and on-demand spend without reading daemon state", () => {
+    expect(
+      __testing.normalizeGrokUsage(
+        {
+          config: {
+            currentPeriod: {
+              type: "USAGE_PERIOD_TYPE_WEEKLY",
+              end: "2026-09-16T14:39:40.999842+00:00",
+            },
+            creditUsagePercent: 7.4,
+            onDemandCap: { val: 5000 },
+            onDemandUsed: { val: 1250 },
+            billingPeriodEnd: "2026-09-16T14:39:40.999842+00:00",
+          },
+        },
+        { email: "grok@example.com", subscriptionTier: "SuperGrokPro" },
+        "fallback@example.com",
+      ),
+    ).toEqual({
+      status: "ok",
+      accountEmail: "grok@example.com",
+      planLabel: "SuperGrokPro",
+      windows: [
+        {
+          label: "Weekly",
+          usedPercent: 7,
+          resetsAt: "2026-09-16T14:39:40.999Z",
+        },
+        {
+          label: "On-demand spend",
+          usedPercent: 25,
+          resetsAt: "2026-09-16T14:39:40.999Z",
+        },
+      ],
+    });
+  });
+
+  it("signs Grok usage in with grok login", () => {
+    expect(GROK_ACP_MAINTENANCE.loginCommand).toBe("grok login");
+  });
+
+  it("treats a Grok billing payload without credits as malformed", () => {
+    expect(__testing.normalizeGrokUsage({}, {}, null)).toEqual({
+      status: "error",
+      message: "Grok usage response was malformed.",
+      planLabel: null,
+      accountEmail: null,
+    });
+  });
+
+  it("omits Grok on-demand spend when the cap is disabled", () => {
+    expect(
+      __testing.normalizeGrokUsage(
+        {
+          creditUsagePercent: 41,
+          currentPeriod: { type: "USAGE_PERIOD_TYPE_MONTHLY" },
+          onDemandCap: { val: 0 },
+          onDemandUsed: { val: 0 },
+        },
+        {},
+        "grok@example.com",
+      ),
+    ).toEqual({
+      status: "ok",
+      accountEmail: "grok@example.com",
+      planLabel: null,
+      windows: [
+        {
+          label: "Monthly",
+          usedPercent: 41,
+          resetsAt: null,
         },
       ],
     });

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { GROK_ACP_MAINTENANCE } from "./bridge/provider-maintenance.js";
 import {
   CURSOR_ACP_DIALECT,
   GENERIC_ACP_DIALECT,
@@ -20,6 +21,10 @@ describe("resolveAcpDialect", () => {
     expect(resolveAcpDialect({ dialectId: "opencode", command: "node" })).toBe(
       OPENCODE_ACP_DIALECT,
     );
+  });
+
+  it("attaches Grok usage maintenance to the grok dialect", () => {
+    expect(GROK_ACP_DIALECT.maintenance).toBe(GROK_ACP_MAINTENANCE);
   });
 
   it("falls back to the launch executable's base name", () => {

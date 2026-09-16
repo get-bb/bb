@@ -3,6 +3,7 @@ import { basename } from "node:path";
 import { z } from "zod";
 import {
   CURSOR_ACP_MAINTENANCE,
+  GROK_ACP_MAINTENANCE,
   type AcpMaintenanceDialect,
 } from "./bridge/provider-maintenance.js";
 import { delegationPresentation } from "./presentation.js";
@@ -124,6 +125,7 @@ export const GROK_ACP_DIALECT: AcpDialect = {
   id: "grok",
   toolIdentity: grokToolIdentity,
   classifyToolCall: grokClassifyToolCall,
+  maintenance: GROK_ACP_MAINTENANCE,
 };
 
 const CURSOR_TASK_TOOL = "task";
