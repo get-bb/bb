@@ -89,6 +89,15 @@ describe("sidebar header controls", () => {
       );
       expect(control?.classList.contains("hover:text-foreground")).toBe(false);
     }
+    expect(primary.classList.contains("max-md:pointer-coarse:w-8")).toBe(true);
+    expect(
+      primary.nextElementSibling?.classList.contains(
+        "max-md:pointer-coarse:w-9",
+      ),
+    ).toBe(true);
+    expect(
+      primary.parentElement?.classList.contains("max-md:pointer-coarse:gap-0"),
+    ).toBe(true);
     fireEvent.click(primary);
     expect(newThread).toHaveBeenCalledOnce();
     await openMenu();
