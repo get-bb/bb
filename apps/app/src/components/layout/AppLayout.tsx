@@ -49,7 +49,10 @@ import { useRouteState } from "@/hooks/useRouteState";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { APP_OVERLAY_LAYER } from "@/components/ui/app-overlay-layers";
-import { usePanelShelfState } from "@/components/ui/secondary-panel-shelf-visibility";
+import {
+  COMPACT_SHELF_HIDDEN_FIXED_CHROME_CLASS,
+  usePanelShelfState,
+} from "@/components/ui/secondary-panel-shelf-visibility";
 import { ProjectPathDialog } from "@/components/dialogs/ProjectPathDialog";
 import { ProjectActionsMenu } from "@/components/project/ProjectActionsMenu";
 import { ProjectActionsProvider } from "@/components/project/ProjectActionsProvider";
@@ -220,7 +223,8 @@ function SidebarTriggerOverlay({
         data-panel-shelf={panelShelfState}
         style={{ zIndex: APP_OVERLAY_LAYER.sidebarTrigger }}
         className={cn(
-          "fixed top-0 data-[panel-shelf=shelf]:invisible",
+          "fixed top-0",
+          COMPACT_SHELF_HIDDEN_FIXED_CHROME_CLASS,
           CHROME_ROW_CLASS,
           reserveMacosTrafficLights
             ? MACOS_TRAFFIC_LIGHT_RESERVE_OFFSET_CLASS
@@ -253,7 +257,8 @@ function SidebarTriggerOverlay({
           : APP_OVERLAY_LAYER.sidebarTrigger,
       }}
       className={cn(
-        "fixed top-[env(safe-area-inset-top)] left-[env(safe-area-inset-left)] data-[panel-shelf=shelf]:invisible",
+        "fixed top-[env(safe-area-inset-top)] left-[env(safe-area-inset-left)]",
+        COMPACT_SHELF_HIDDEN_FIXED_CHROME_CLASS,
         CHROME_ROW_CLASS,
         BROWSER_SIDEBAR_TRIGGER_INSET_CLASS,
       )}

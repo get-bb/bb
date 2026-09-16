@@ -19,6 +19,7 @@ import {
 } from "@/lib/bb-desktop";
 import { useDesktopWindowState } from "@/hooks/useDesktopWindowState";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { COMPACT_SHELF_HIDDEN_PAGE_HEADER_ACTIONS_CLASS } from "@/components/ui/secondary-panel-shelf-visibility";
 
 export const HEADER_ICON_BUTTON_CLASS = COARSE_POINTER_HEADER_ICON_BUTTON_CLASS;
 
@@ -29,8 +30,7 @@ export const HEADER_SEAM_CLASS = "border-b border-border-seam-vertical/60";
 
 export const APP_PAGE_HEADER_SURFACE_CLASS = "bg-surface-scrim";
 
-export const COMPACT_SHELF_HIDDEN_PAGE_HEADER_ACTIONS_CLASS =
-  "group-data-[panel-shelf=open]/page-inset:invisible group-data-[panel-shelf=shelf]/page-inset:invisible";
+export { COMPACT_SHELF_HIDDEN_PAGE_HEADER_ACTIONS_CLASS };
 
 interface AppPageHeaderProps {
   center?: ReactNode;
