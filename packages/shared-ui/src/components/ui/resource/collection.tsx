@@ -233,14 +233,8 @@ export function ResourceSourceShelf({
             {label}
           </ResourceSectionTitle>
         </div>
-        {browseAction &&
-        (description === undefined || hideDescriptionOnMobile) ? (
-          <div
-            className={cn(
-              "ml-auto shrink-0 text-xs text-muted-foreground",
-              description !== undefined && "sm:hidden",
-            )}
-          >
+        {browseAction ? (
+          <div className="ml-auto shrink-0 text-xs text-muted-foreground">
             {browseAction}
           </div>
         ) : null}
@@ -255,11 +249,6 @@ export function ResourceSourceShelf({
           <p className="min-w-0 max-w-2xl text-xs leading-relaxed text-muted-foreground">
             {description}
           </p>
-          {browseAction ? (
-            <div className="ml-auto shrink-0 text-xs text-muted-foreground">
-              {browseAction}
-            </div>
-          ) : null}
         </div>
       )}
       <div className="px-[var(--resource-source-shelf-inset)]">{children}</div>

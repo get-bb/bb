@@ -401,9 +401,17 @@ describe("BrowsePluginsTab", () => {
       screen.getByRole("heading", { name: "Memory & Context 8 plugins" }),
     ).toBeTruthy();
     expect(screen.queryByTestId("plugin-browse-shelves")).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /^Filter plugins by category:/ }),
+    ).toBeNull();
     fireEvent.click(screen.getByRole("link", { name: "Browse plugins" }));
     expect(await screen.findByTestId("plugin-browse-shelves")).toBeTruthy();
     expect(cardOrder()).toHaveLength(6);
+    expect(
+      screen.getByRole("button", {
+        name: "Filter plugins by category: All categories",
+      }),
+    ).toBeTruthy();
     expect(screen.getByTestId("location-search").textContent).toBe("");
   });
 
@@ -439,16 +447,13 @@ describe("BrowsePluginsTab", () => {
     expect(screen.queryByTestId("plugin-browse-shelves")).toBeNull();
   });
 
-  it("keeps a shelf address and title when filters match no plugins", async () => {
+  it("scopes a category page to its category and restores Browse filters on return", async () => {
     renderBrowse(
       { entries: [MEMORY_ENTRY, SECURITY_ENTRY], collections: [] },
       "/plugins?shelf=category%3Amemory-and-context&category=security",
     );
     await screen.findByRole("heading", { name: "Memory & Context 1 plugin" });
-    expect(cardOrder()).toHaveLength(0);
-    expect(
-      screen.getByText("No plugins match these category filters."),
-    ).toBeTruthy();
+    expect(cardOrder()).toEqual(["Open Memory details"]);
     fireEvent.click(screen.getByRole("link", { name: "Browse plugins" }));
     expect(screen.getByTestId("location-search").textContent).toBe(
       "?category=security",
