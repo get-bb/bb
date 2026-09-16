@@ -1,3 +1,4 @@
+import { createThreadRequestSchema } from "@bb/server-contract";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
@@ -25,6 +26,36 @@ describe("bb thread spawn command output", () => {
   function captureCommanderErrors() {
     return vi.spyOn(process.stderr, "write").mockImplementation(() => true);
   }
+
+  it("rejects explicitly empty lifecycle ownership instead of creating an independent thread", async () => {
+    const post = vi.fn(async ({ json }: { json: unknown }) => {
+      createThreadRequestSchema.parse(json);
+      return fixtures.makeThread({
+        id: "unexpected-independent-thread",
+        projectId: "proj-1",
+        providerId: "codex",
+      });
+    });
+    stubServerApi({ "v1.threads.$post": post });
+    await expect(
+      runCommand(
+        [
+          "thread",
+          "spawn",
+          "--project",
+          "proj-1",
+          "--prompt",
+          "hello",
+          "--lifecycle-owner-thread",
+          "",
+        ],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+    expect(post).toHaveBeenCalledWith({
+      json: expect.objectContaining({ lifecycleOwnerThreadId: "" }),
+    });
+  });
 
   it("bb thread spawn sends project-default when the user relies on project defaults", async () => {
     vi.stubEnv("BB_PROJECT_ID", "proj-1");

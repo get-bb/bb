@@ -990,6 +990,7 @@ describe("server-contract canonical schemas", () => {
     ).toMatchObject([
       {
         id: "thr_123",
+        lifecycleOwnerThreadId: null,
         hasPendingInteraction: true,
         environmentHostId: "host_123",
         environmentName: null,

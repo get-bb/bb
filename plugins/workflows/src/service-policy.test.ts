@@ -1289,6 +1289,77 @@ describe("workflow service policy integration", () => {
     });
   });
 
+  it.each([1, 2])(
+    "retries a transient origin lookup before execution check %s",
+    async (failingCheck) => {
+      const test = setup();
+      harnesses.push(test.harness);
+      const run = await test.start(source('return await agent("work");'));
+      let checks = 0;
+      test.harness.sdk.stub("threads.get", async ({ threadId }) => {
+        if (threadId === "origin") {
+          checks++;
+          if (checks === failingCheck)
+            throw Object.assign(new Error("connection reset"), {
+              code: "ECONNRESET",
+            });
+        }
+        return { id: threadId, archivedAt: null, status: "active" } as never;
+      });
+      const controller = new AbortController();
+      const worker = test.service.runWorker(controller.signal);
+      try {
+        await eventually(() => expect(test.childCount()).toBe(1));
+        expect(getRunRequired(test.db, run.id).status).toBe("running");
+        test.service.onThreadIdle("child-1", "done");
+        await eventually(() =>
+          expect(getRunRequired(test.db, run.id).status).toBe("succeeded"),
+        );
+      } finally {
+        controller.abort();
+        await worker;
+      }
+    },
+  );
+
+  it("amortizes discovery and does not poll origins of backed-off notifications", async () => {
+    const test = setup();
+    harnesses.push(test.harness);
+    const run = await test.start(source('return "done";'));
+    test.db
+      .prepare(
+        "UPDATE workflow_runs SET status = 'succeeded', notification_next_attempt_at = ? WHERE id = ?",
+      )
+      .run(Date.now() + 60_000, run.id);
+    test.harness.sdk.stub(
+      "threads.list",
+      async () => [{ id: "legacy-worker" }] as never,
+    );
+    test.harness.sdk.stub("threads.getPluginMetadata", async () => ({}));
+    const originCallsBefore = test.harness.sdk.callsTo("threads.get").length;
+    const controller = new AbortController();
+    const worker = test.service.runWorker(controller.signal);
+    try {
+      await eventually(() =>
+        expect(
+          test.harness.sdk.callsTo("threads.getPluginMetadata"),
+        ).toHaveLength(1),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 2_200));
+      expect(test.harness.sdk.callsTo("threads.list")).toHaveLength(1);
+      expect(
+        test.harness.sdk.callsTo("threads.getPluginMetadata"),
+      ).toHaveLength(1);
+      expect(test.harness.sdk.callsTo("threads.get")).toHaveLength(
+        originCallsBefore,
+      );
+      expect(getRunRequired(test.db, run.id).notificationSent).toBe(false);
+    } finally {
+      controller.abort();
+      await worker;
+    }
+  });
+
   it("keeps cleanup pending after stop fails and completes it after restart", async () => {
     const test = setup();
     harnesses.push(test.harness);

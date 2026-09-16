@@ -471,7 +471,7 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     });
     const dependents = listLifecycleThreadTree(deps.db, thread.id);
     markThreadDeleted(deps.db, deps.hub, { threadId: thread.id });
-    for (const dependent of dependents.reverse()) {
+    for (const dependent of dependents) {
       const deleted = getThread(deps.db, dependent.id);
       if (!deleted) continue;
       emitPluginThreadDeleted(deleted);

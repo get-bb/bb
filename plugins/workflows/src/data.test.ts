@@ -1,8 +1,11 @@
 import Database from "better-sqlite3";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   attachCallThread,
   retiredWorkers,
+  recordWorkerCleanup,
+  workerOrigins,
+  ownWorker,
   cancelRun,
   countCallsForRun,
   createRun,
@@ -30,7 +33,10 @@ describe("workflow durable data", () => {
     db.exec(migrations.join("\n"));
   });
 
-  afterEach(() => db.close());
+  afterEach(() => {
+    db.close();
+    vi.restoreAllMocks();
+  });
 
   function sweepExpired(now: number, limit: number): number {
     return deleteTerminalRuns(
@@ -71,11 +77,40 @@ describe("workflow durable data", () => {
     permissionMode: "full",
   } as const;
 
+  it("persists failed cleanup deadlines and caps retry delays", () => {
+    ownWorker(db, "worker", "missing-run", "missing-call", "origin");
+    const clock = vi.spyOn(Date, "now").mockReturnValue(10_000);
+    expect(retiredWorkers(db, 10_000)).toHaveLength(1);
+    recordWorkerCleanup(db, "worker", false);
+    expect(retiredWorkers(db, 10_999)).toEqual([]);
+    expect(workerOrigins(db, 10_999)).toEqual([]);
+    expect(retiredWorkers(db, 11_000)).toHaveLength(1);
+    clock.mockReturnValue(11_000);
+    recordWorkerCleanup(db, "worker", false);
+    expect(retiredWorkers(db, 12_999)).toEqual([]);
+    expect(retiredWorkers(db, 13_000)).toHaveLength(1);
+    for (let attempt = 0; attempt < 20; attempt++)
+      recordWorkerCleanup(db, "worker", false);
+    expect(retiredWorkers(db, 70_999)).toEqual([]);
+    expect(retiredWorkers(db, 71_000)).toHaveLength(1);
+    recordWorkerCleanup(db, "worker", true);
+    expect(retiredWorkers(db, 1_000_000)).toEqual([]);
+  });
+
+  it("monitors active origins but leaves backed-off completed notifications alone", () => {
+    const run = newRun();
+    expect(workerOrigins(db, 1_000)).toEqual([run.originThreadId]);
+    db.prepare(
+      "UPDATE workflow_runs SET status = 'succeeded', notification_next_attempt_at = 999999 WHERE id = ?",
+    ).run(run.id);
+    expect(workerOrigins(db, 1_000)).toEqual([]);
+  });
+
   it("backfills worker ownership from the pre-upgrade call pointers", () => {
     db.close();
     db = new Database(":memory:");
     db.pragma("foreign_keys = ON");
-    db.exec(migrations.slice(0, -1).join("\n"));
+    db.exec(migrations.slice(0, -2).join("\n"));
     const run = newRun();
     markRunning(run.id);
     const call = startCall(db, {
@@ -95,7 +130,7 @@ describe("workflow durable data", () => {
     db.prepare(
       `UPDATE workflow_calls SET child_thread_id = 'legacy-worker', status = 'failed' WHERE id = ?`,
     ).run(call.id);
-    db.exec(migrations.at(-1)!);
+    db.exec(migrations.slice(-2).join("\n"));
     expect(retiredWorkers(db, Date.now())).toEqual([
       { threadId: "legacy-worker", callId: call.id },
     ]);

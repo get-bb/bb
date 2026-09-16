@@ -270,6 +270,13 @@ export interface CreateThreadInput {
   visibility?: ThreadVisibility;
 }
 
+export class InvalidLifecycleOwnerError extends Error {
+  constructor() {
+    super("lifecycleOwnerThreadId must reference a live thread");
+    this.name = "InvalidLifecycleOwnerError";
+  }
+}
+
 export function createThread(
   db: DbConnection,
   notifier: DbNotifier,
@@ -282,9 +289,21 @@ export function createThread(
   const thread = db.transaction(
     (tx) => {
       if (input.lifecycleOwnerThreadId) {
-        const owner = getThread(tx, input.lifecycleOwnerThreadId);
-        if (!owner || owner.archivedAt !== null || owner.deletedAt !== null) {
-          throw new Error("lifecycleOwnerThreadId must reference a live thread");
+        const owner = tx
+          .select({ id: threads.id })
+          .from(threads)
+          .innerJoin(projects, eq(projects.id, threads.projectId))
+          .where(
+            and(
+              eq(threads.id, input.lifecycleOwnerThreadId),
+              isNull(threads.archivedAt),
+              isNull(threads.deletedAt),
+              isNull(projects.deletedAt),
+            ),
+          )
+          .get();
+        if (!owner) {
+          throw new InvalidLifecycleOwnerError();
         }
       }
       const createdThread = tx
@@ -843,7 +862,7 @@ function normalizeThreadSearchHighlightText(text: string): {
   const originalStarts: number[] = [];
   const originalEnds: number[] = [];
 
-  for (let index = 0; index < text.length; ) {
+  for (let index = 0; index < text.length;) {
     const codePoint = text.codePointAt(index);
     if (codePoint === undefined) {
       break;
@@ -1892,7 +1911,12 @@ export function markThreadDeleted(
       deletedAt: args.deletedAt ?? Date.now(),
       updatedAt: Date.now(),
     })
-    .where(inArray(threads.id, lifecycleTree(args.threadId)))
+    .where(
+      and(
+        inArray(threads.id, lifecycleTree(args.threadId)),
+        isNull(threads.deletedAt),
+      ),
+    )
     .returning()
     .all();
   for (const thread of updated) {
@@ -1901,7 +1925,10 @@ export function markThreadDeleted(
     });
     notifier.notifyProject(thread.projectId, ["threads-changed"]);
   }
-  return updated.find((thread) => thread.id === args.threadId) ?? null;
+  return (
+    updated.find((thread) => thread.id === args.threadId) ??
+    getThread(db, args.threadId)
+  );
 }
 
 export function markThreadStorageDeleted(
@@ -1927,7 +1954,13 @@ export function archiveThread(
   const updated = db
     .update(threads)
     .set({ archivedAt: now, updatedAt: now })
-    .where(inArray(threads.id, lifecycleTree(id)))
+    .where(
+      and(
+        inArray(threads.id, lifecycleTree(id)),
+        isNull(threads.archivedAt),
+        isNull(threads.deletedAt),
+      ),
+    )
     .returning()
     .all();
   for (const thread of updated) {
@@ -1935,7 +1968,8 @@ export function archiveThread(
       projectId: thread.projectId,
     });
   }
-  return updated.find((thread) => thread.id === id) ?? null;
+  const root = updated.find((thread) => thread.id === id) ?? getThread(db, id);
+  return root?.deletedAt === null ? root : null;
 }
 
 export function unarchiveThread(

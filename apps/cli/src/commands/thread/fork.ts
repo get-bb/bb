@@ -208,7 +208,7 @@ export function registerForkCommand(
             }
             thread = await sdk.threads.fork({
               sourceThreadId,
-              ...(opts.lifecycleOwnerThread
+              ...(opts.lifecycleOwnerThread !== undefined
                 ? { lifecycleOwnerThreadId: opts.lifecycleOwnerThread }
                 : {}),
               origin: "cli",

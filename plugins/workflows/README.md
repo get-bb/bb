@@ -254,7 +254,12 @@ notifications in addition to the workflow's own notification.
 
 Maintenance stops and archives finished, replaced, cancelled, and unattached
 workers independently of workflow history retention. Cleanup retries after
-stop/archive failures and server restarts. Pending worker cleanup survives
+stop/archive failures and server restarts, with persisted exponential delays
+from one second up to one minute. Recovery discovery scans every 30 seconds
+(one page per second during a scan), and checks outstanding spawn attempts
+promptly. Completed notification retries do not cause extra origin polling.
+Transient origin lookups retry within the run timeout instead of failing the
+run immediately. Pending worker cleanup survives
 expiry of the run's history. Archiving or deleting an origin cancels its
 outstanding runs and retires all owned attempts; retained history remains
 available until its usual expiry. Missed origin events are reconciled from

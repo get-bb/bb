@@ -228,6 +228,7 @@ export const migrations = [
      SELECT calls.child_thread_id, calls.run_id, calls.id, runs.origin_thread_id
      FROM workflow_calls calls JOIN workflow_runs runs ON runs.id = calls.run_id
      WHERE calls.child_thread_id IS NOT NULL;`,
+  `ALTER TABLE workflow_workers ADD COLUMN cleanup_attempts INTEGER NOT NULL DEFAULT 0;`,
 ];
 
 export function createRun(
@@ -897,12 +898,12 @@ export function ownWorker(
     VALUES (?, ?, ?, ?)`).run(threadId, runId, callId, originThreadId);
 }
 
-export function workerOrigins(db: Db): string[] {
+export function workerOrigins(db: Db, now: number): string[] {
   return (
     db
-      .prepare(`SELECT origin_thread_id AS id FROM workflow_runs WHERE status IN ('queued', 'running') OR notification_sent = 0
-    UNION SELECT origin_thread_id AS id FROM workflow_workers WHERE archived_at IS NULL`)
-      .all() as Array<{ id: string }>
+      .prepare(`SELECT origin_thread_id AS id FROM workflow_runs WHERE status IN ('queued', 'running')
+    UNION SELECT origin_thread_id AS id FROM workflow_workers WHERE archived_at IS NULL AND next_cleanup_at <= ?`)
+      .all(now) as Array<{ id: string }>
   ).map((row) => row.id);
 }
 
@@ -928,8 +929,10 @@ export function recordWorkerCleanup(
   archived: boolean,
 ): void {
   db.prepare(
-    `UPDATE workflow_workers SET archived_at = ?, next_cleanup_at = ? WHERE thread_id = ?`,
-  ).run(archived ? Date.now() : null, Date.now() + 1000, threadId);
+    `UPDATE workflow_workers SET archived_at = ?,
+      next_cleanup_at = ? + min(60000, 1000 << min(cleanup_attempts, 6)),
+      cleanup_attempts = cleanup_attempts + 1 WHERE thread_id = ?`,
+  ).run(archived ? Date.now() : null, Date.now(), threadId);
   db.prepare(`DELETE FROM workflow_workers WHERE archived_at IS NOT NULL
     AND NOT EXISTS (SELECT 1 FROM workflow_runs WHERE id = workflow_workers.run_id)`).run();
 }

@@ -423,6 +423,7 @@ export function createWorkflowService(
 
   const spawningCalls = new Set<string>();
   let discoveryOffset = 0;
+  let nextDiscoveryAt = 0;
 
   async function onOriginUnavailable(threadId: string): Promise<void> {
     const stops = listActiveRunsForOriginThread(db, threadId).map((run) =>
@@ -442,8 +443,25 @@ export function createWorkflowService(
     }
   }
 
+  async function waitForOrigin(
+    threadId: string,
+    signal: AbortSignal,
+  ): Promise<boolean> {
+    let delay = 1_000;
+    while (true) {
+      throwIfCancelled(signal);
+      try {
+        return await originUnavailable(threadId);
+      } catch (error) {
+        if (!isRetryableProviderFailure(error)) throw error;
+        await sleep(delay, signal);
+        delay = Math.min(delay * 2, 30_000);
+      }
+    }
+  }
+
   async function reconcileOrigins(): Promise<void> {
-    for (const threadId of workerOrigins(db)) {
+    for (const threadId of workerOrigins(db, Date.now())) {
       try {
         if (await originUnavailable(threadId))
           await onOriginUnavailable(threadId);
@@ -463,6 +481,8 @@ export function createWorkflowService(
   });
 
   async function discoverWorkers(): Promise<void> {
+    if (Date.now() < nextDiscoveryAt && spawningCalls.size === 0) return;
+    nextDiscoveryAt = Date.now() + 30_000;
     const threads = await bb.sdk.threads.list({
       originPluginId: bb.pluginId,
       includeHidden: true,
@@ -494,6 +514,7 @@ export function createWorkflowService(
     }
     discoveryOffset =
       threads.length < 100 ? 0 : discoveryOffset + threads.length;
+    if (discoveryOffset !== 0) nextDiscoveryAt = Date.now() + 1_000;
   }
 
   async function cleanupWorkers(): Promise<void> {
@@ -893,7 +914,7 @@ export function createWorkflowService(
     while (true) {
       try {
         throwIfCancelled(signal);
-        if (await originUnavailable(run.originThreadId)) {
+        if (await waitForOrigin(run.originThreadId, signal)) {
           await onOriginUnavailable(run.originThreadId);
           throw new Error("Workflow origin is archived or deleted");
         }
@@ -1444,7 +1465,7 @@ export function createWorkflowService(
       },
     };
     try {
-      if (await originUnavailable(run.originThreadId)) {
+      if (await waitForOrigin(run.originThreadId, signal)) {
         await onOriginUnavailable(run.originThreadId);
         return;
       }

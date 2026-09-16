@@ -568,7 +568,7 @@ export function registerSpawnCommand(
             startedOnBehalfOf: null,
             originKind: opts.originKind ?? null,
             ...(parentThreadId ? { parentThreadId } : {}),
-            ...(opts.lifecycleOwnerThread
+            ...(opts.lifecycleOwnerThread !== undefined
               ? { lifecycleOwnerThreadId: opts.lifecycleOwnerThread }
               : {}),
             ...(opts.section ? { sectionId: opts.section } : {}),

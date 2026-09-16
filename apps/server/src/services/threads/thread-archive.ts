@@ -9,7 +9,6 @@ import {
 import {
   listLiveThreadsInEnvironment,
   listLifecycleThreadDependents,
-  listLifecycleThreadTree,
   archiveThread,
   getEnvironment,
   listNonDeletedChildThreads,
@@ -131,30 +130,11 @@ export function archiveEnvironmentThreads(
   const roots = listLiveThreadsInEnvironment(deps.db, {
     environmentId: args.environment.id,
   });
-  const threads = new Map(
-    roots
-      .flatMap((root) => listLifecycleThreadTree(deps.db, root.id))
-      .map((thread) => [thread.id, thread]),
+  return archiveThreadTrees(deps, roots, (thread) =>
+    thread.environmentId === null
+      ? null
+      : getEnvironment(deps.db, thread.environmentId),
   );
-  for (const root of roots) archiveThread(deps.db, deps.hub, root.id);
-  const archivedThreadIds: string[] = [];
-  for (const thread of threads.values()) {
-    const environment =
-      thread.environmentId === null
-        ? null
-        : getEnvironment(deps.db, thread.environmentId);
-    if (thread.archivedAt !== null) {
-      requestThreadStopForCurrentState(deps, thread, environment);
-      continue;
-    }
-    const result = archiveThreadWithLifecycleEffects(deps, {
-      environment,
-      thread,
-    });
-    if (result) archivedThreadIds.push(result.id);
-  }
-
-  return archivedThreadIds;
 }
 
 export function archiveThreadAndChildren(
@@ -182,7 +162,7 @@ function archiveThreadTrees(
 ): string[] {
   type ArchiveCandidate = Pick<
     Thread,
-    "id" | "environmentId" | "status" | "archivedAt"
+    "id" | "environmentId" | "status" | "archivedAt" | "deletedAt"
   >;
   const pending: { thread: ArchiveCandidate; expanded: boolean }[] = [...roots]
     .reverse()
@@ -222,6 +202,7 @@ function archiveThreadTrees(
   const archivedThreadIds: string[] = [];
 
   for (const thread of threads) {
+    if (thread.deletedAt !== null) continue;
     if (thread.archivedAt !== null) {
       requestThreadStopForCurrentState(
         deps,

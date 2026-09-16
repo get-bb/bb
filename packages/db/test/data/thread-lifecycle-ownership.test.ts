@@ -88,23 +88,22 @@ describe("lifecycle ownership", () => {
     expect(getThread(db, dependent.id)?.deletedAt).toEqual(expect.any(Number));
   });
 
-  it("prevents reassignment, cycles, self-ownership and detachment even via SQL", () => {
+  it("preserves earlier archive/delete timestamps and skips deleted rows during archive", () => {
     const { db, spawn } = setup();
     const owner = spawn();
-    const child = spawn(owner.id);
-    for (const [id, lifecycleOwnerThreadId] of [
-      [owner.id, child.id],
-      [owner.id, owner.id],
-      [child.id, null],
-    ]) {
-      expect(() =>
-        db
-          .update(threads)
-          .set({ lifecycleOwnerThreadId })
-          .where(eq(threads.id, id!))
-          .run(),
-      ).toThrow(/immutable/);
-    }
+    const archived = spawn(owner.id);
+    const deleted = spawn(owner.id);
+    db.update(threads)
+      .set({ archivedAt: 100, updatedAt: 100 })
+      .where(eq(threads.id, archived.id))
+      .run();
+    markThreadDeleted(db, hub, { threadId: deleted.id, deletedAt: 200 });
+    archiveThread(db, hub, owner.id);
+    expect(getThread(db, archived.id)?.archivedAt).toBe(100);
+    expect(getThread(db, deleted.id)?.archivedAt).toBeNull();
+    markThreadDeleted(db, hub, { threadId: owner.id, deletedAt: 300 });
+    expect(getThread(db, deleted.id)?.deletedAt).toBe(200);
+    expect(getThread(db, archived.id)?.deletedAt).toBe(300);
   });
 });
 
@@ -151,8 +150,6 @@ it("leaves existing helpers unowned and preserves their state during migration",
   );
   const before = db.$client.prepare("SELECT * FROM threads ORDER BY id").all();
   db.$client.exec(`
-    DROP TRIGGER threads_lifecycle_owner_immutable;
-    DROP TRIGGER threads_lifecycle_owner_insert;
     DROP INDEX threads_lifecycle_owner_idx;
     ALTER TABLE threads DROP COLUMN lifecycle_owner_thread_id;
   `);

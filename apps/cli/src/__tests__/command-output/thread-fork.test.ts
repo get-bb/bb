@@ -1,3 +1,4 @@
+import { forkThreadRequestSchema } from "@bb/server-contract";
 import { describe, expect, it, vi } from "vitest";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import {
@@ -16,6 +17,27 @@ describe("bb thread fork command output", () => {
 
   const register: CommandRegistrar = (program) =>
     registerThreadCommands(program, () => "http://server");
+
+  it("rejects explicitly empty lifecycle ownership instead of creating an independent thread", async () => {
+    const post = vi.fn(async ({ json }: { json: unknown }) => {
+      forkThreadRequestSchema.parse(json);
+      return fixtures.makeThread({
+        id: "unexpected-independent-thread",
+        projectId: "proj-1",
+        providerId: "codex",
+      });
+    });
+    stubServerApi({ "v1.threads.fork.$post": post });
+    await expect(
+      runCommand(
+        ["thread", "fork", "thread-source", "--lifecycle-owner-thread", ""],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+    expect(post).toHaveBeenCalledWith({
+      json: expect.objectContaining({ lifecycleOwnerThreadId: "" }),
+    });
+  });
 
   it("creates an idle source-environment fork by default", async () => {
     const thread = fixtures.makeThread({

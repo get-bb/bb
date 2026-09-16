@@ -46,7 +46,8 @@ continues to stop only the requested turn/runtime.
 
 Ownership cannot be updated or cleared. Assigning only at creation to an existing
 live thread prevents cycles, self-ownership and reassignment during deletion. The
-server revalidates immediately before insertion, with a database insert guard.
+server validates the owner and inserts the dependent in one immediate database
+transaction. Ownership cannot be changed through the update API.
 Deletion and archival persist before cleanup effects. Ordinary sidebar children
 and visible forks keep their existing policies unless ownership is explicit.
 
