@@ -1,4 +1,5 @@
 import { acquireProjectAttachmentOwnership } from "./project-attachments.js";
+import { projectAttachmentPaths } from "@bb/domain";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import {
   PROMPT_HISTORY_ENTRY_LIMIT,
@@ -53,7 +54,11 @@ export function createPromptHistoryEntry(
 ): StoredPromptHistoryEntryRow {
   return db.transaction(
     (tx) => {
-      acquireProjectAttachmentOwnership(tx, input.threadId, input.input);
+      acquireProjectAttachmentOwnership(
+        tx,
+        input.threadId,
+        projectAttachmentPaths(input.input),
+      );
       const createdAt = input.createdAt ?? Date.now();
       return tx
         .insert(promptHistoryEntries)

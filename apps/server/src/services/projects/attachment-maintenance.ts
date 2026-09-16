@@ -18,7 +18,7 @@ import {
   inventoryAttachmentReference,
   walkProjectAttachmentFiles,
   deleteInventoriedAttachmentFiles,
-  inventoryPromptAttachmentReferences,
+  inventoryAttachmentReferences,
 } from "./attachments.js";
 
 type MaintenanceDeps = Pick<AppDeps, "db" | "config" | "logger">;
@@ -92,13 +92,13 @@ export async function runProjectAttachmentBackfill(
         updateAttachmentBackfill(deps.db, state);
       } else if (state.phase !== "done") {
         const step = readAttachmentBackfillInput(deps.db, state);
-        if (step.input.length > 0)
-          await inventoryPromptAttachmentReferences({
-            db: deps.db,
-            dataDir: deps.config.dataDir,
+        if (step.paths.length > 0)
+          await inventoryAttachmentReferences(
+            deps.db,
+            deps.config.dataDir,
             projectId,
-            input: step.input,
-          });
+            step.paths,
+          );
         deps.db.transaction(
           (tx) => {
             if (
@@ -112,7 +112,7 @@ export async function runProjectAttachmentBackfill(
               acquireProjectAttachmentOwnership(
                 tx,
                 step.threadId,
-                step.input,
+                step.paths,
                 "best-effort",
               );
             updateAttachmentBackfill(tx, step.next);

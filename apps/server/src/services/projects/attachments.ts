@@ -13,7 +13,6 @@ import {
 import {
   canonicalProjectAttachmentPath,
   pathLooksRuntimeReadable,
-  projectAttachmentPaths,
 } from "@bb/domain";
 // oxlint-disable-next-line no-restricted-imports
 import {
@@ -196,16 +195,14 @@ export async function inventoryAttachmentReference(
   });
 }
 
-export async function inventoryPromptAttachmentReferences(
-  args: ValidatePromptAttachmentReferencesArgs,
+export async function inventoryAttachmentReferences(
+  db: DbConnection,
+  dataDir: string,
+  projectId: string,
+  paths: readonly string[],
 ): Promise<void> {
-  for (const storedPath of projectAttachmentPaths(args.input, "best-effort")) {
-    await inventoryAttachmentReference(
-      args.db,
-      args.dataDir,
-      args.projectId,
-      storedPath,
-    );
+  for (const storedPath of paths) {
+    await inventoryAttachmentReference(db, dataDir, projectId, storedPath);
   }
 }
 

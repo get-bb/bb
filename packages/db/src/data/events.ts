@@ -1,6 +1,6 @@
 import { acquireProjectAttachmentOwnership } from "./project-attachments.js";
 import {
-  parseAttachmentEventInput,
+  storedAttachmentPaths,
   type ProjectAttachmentOwnershipMode,
 } from "@bb/domain";
 import {
@@ -449,7 +449,7 @@ function insertStoredEventRow(
     acquireProjectAttachmentOwnership(
       db,
       args.threadId,
-      parseAttachmentEventInput(args.data),
+      storedAttachmentPaths(args.data),
       args.attachmentOwnership,
     );
   }

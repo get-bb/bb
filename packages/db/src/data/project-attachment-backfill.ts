@@ -1,10 +1,5 @@
-import type { AnySQLiteColumn } from "drizzle-orm/sqlite-core";
 import { and, asc, eq, gt, gte, isNull, lt, ne, or, sql } from "drizzle-orm";
-import {
-  parseAttachmentEventInput,
-  promptInputSchema,
-  type PromptInput,
-} from "@bb/domain";
+import { storedAttachmentPaths } from "@bb/domain";
 import type { DbConnection, DbQueryConnection } from "../connection.js";
 import {
   events,
@@ -22,8 +17,6 @@ const emptyCursor = {
   inputId: "",
   inputSequence: 0,
 };
-const MAX_INPUT_BYTES = 4 * 1024 * 1024;
-
 export function startAttachmentBackfillPhase(
   state: AttachmentBackfill,
   phase: AttachmentBackfill["phase"],
@@ -104,7 +97,7 @@ export function updateAttachmentBackfill(
 export function readAttachmentBackfillInput(
   db: DbConnection,
   state: AttachmentBackfill,
-): { input: PromptInput[]; next: AttachmentBackfill; threadId: string | null } {
+): { paths: string[]; next: AttachmentBackfill; threadId: string | null } {
   const thread = db
     .select({ id: threads.id })
     .from(threads)
@@ -121,7 +114,7 @@ export function readAttachmentBackfillInput(
     .get();
   if (!thread)
     return {
-      input: [],
+      paths: [],
       threadId: null,
       next: startAttachmentBackfillPhase(state, "done", ""),
     };
@@ -129,7 +122,7 @@ export function readAttachmentBackfillInput(
     state = startAttachmentBackfillPhase(state, "events", thread.id);
   if (state.phase === "events") {
     const row = db
-      .select({ data: boundedInput(events.data), sequence: events.sequence })
+      .select({ data: events.data, sequence: events.sequence })
       .from(events)
       .where(
         and(
@@ -141,16 +134,14 @@ export function readAttachmentBackfillInput(
       .orderBy(asc(events.sequence))
       .limit(1)
       .get();
-    if (row) {
-      checkInputSize(row.data);
+    if (row)
       return {
-        input: parseAttachmentEventInput(row.data),
+        paths: storedAttachmentPaths(row.data),
         threadId: thread.id,
         next: { ...state, inputCursor: row.sequence },
       };
-    }
     return {
-      input: [],
+      paths: [],
       threadId: thread.id,
       next: startAttachmentBackfillPhase(state, "queue"),
     };
@@ -158,7 +149,7 @@ export function readAttachmentBackfillInput(
   if (state.phase === "queue") {
     const row = db
       .select({
-        data: boundedInput(queuedThreadMessages.content),
+        data: queuedThreadMessages.content,
         createdAt: queuedThreadMessages.createdAt,
         id: queuedThreadMessages.id,
       })
@@ -177,12 +168,12 @@ export function readAttachmentBackfillInput(
       .get();
     if (row)
       return {
-        input: parseInput(row.data),
+        paths: storedAttachmentPaths(row.data),
         threadId: thread.id,
         next: { ...state, inputCursor: row.createdAt, inputId: row.id },
       };
     return {
-      input: [],
+      paths: [],
       threadId: thread.id,
       next: startAttachmentBackfillPhase(state, "history-thread"),
     };
@@ -190,7 +181,7 @@ export function readAttachmentBackfillInput(
   const scope = state.phase === "history-thread" ? "thread" : "project";
   const row = db
     .select({
-      data: boundedInput(promptHistoryEntries.input),
+      data: promptHistoryEntries.input,
       createdAt: promptHistoryEntries.createdAt,
       sequence: promptHistoryEntries.requestSequence,
       id: promptHistoryEntries.id,
@@ -212,7 +203,7 @@ export function readAttachmentBackfillInput(
     .get();
   if (row)
     return {
-      input: parseInput(row.data),
+      paths: storedAttachmentPaths(row.data),
       threadId: thread.id,
       next: {
         ...state,
@@ -223,7 +214,7 @@ export function readAttachmentBackfillInput(
     };
   if (scope === "thread")
     return {
-      input: [],
+      paths: [],
       threadId: thread.id,
       next: startAttachmentBackfillPhase(state, "history-project"),
     };
@@ -237,7 +228,7 @@ export function readAttachmentBackfillInput(
     .limit(1)
     .get();
   return {
-    input: [],
+    paths: [],
     threadId: null,
     next: startAttachmentBackfillPhase(
       state,
@@ -245,22 +236,4 @@ export function readAttachmentBackfillInput(
       nextThread?.id ?? "",
     ),
   };
-}
-
-function checkInputSize(data: string | null): asserts data is string {
-  if (data === null)
-    throw new Error(
-      "Attachment backfill input exceeds the 4 MiB batch limit; project cleanup remains disabled",
-    );
-}
-
-function parseInput(data: string | null): PromptInput[] {
-  checkInputSize(data);
-  return promptInputSchema.array().parse(JSON.parse(data));
-}
-
-function boundedInput(column: AnySQLiteColumn) {
-  return sql<
-    string | null
-  >`CASE WHEN length(CAST(${column} AS BLOB)) <= ${MAX_INPUT_BYTES} THEN ${column} END`;
 }

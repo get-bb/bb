@@ -1,5 +1,4 @@
-import { promptInputSchema, type PromptInput } from "./shared-types.js";
-import { z } from "zod";
+import { type PromptInput } from "./shared-types.js";
 
 export class ProjectAttachmentError extends Error {}
 
@@ -39,19 +38,24 @@ export function canonicalProjectAttachmentPath(path: string): string {
 
 export type ProjectAttachmentOwnershipMode = "required" | "best-effort";
 
+function resolvableAttachmentPath(path: string): string[] {
+  if (pathLooksRuntimeReadable(path)) return [];
+  try {
+    return [canonicalProjectAttachmentPath(path)];
+  } catch (error) {
+    if (error instanceof ProjectAttachmentError) return [];
+    throw error;
+  }
+}
+
 function referencedAttachmentPath(
   item: PromptInput,
   mode: ProjectAttachmentOwnershipMode,
 ): string[] {
   if (item.type !== "localImage" && item.type !== "localFile") return [];
+  if (mode === "best-effort") return resolvableAttachmentPath(item.path);
   if (pathLooksRuntimeReadable(item.path)) return [];
-  if (mode === "required") return [canonicalProjectAttachmentPath(item.path)];
-  try {
-    return [canonicalProjectAttachmentPath(item.path)];
-  } catch (error) {
-    if (error instanceof ProjectAttachmentError) return [];
-    throw error;
-  }
+  return [canonicalProjectAttachmentPath(item.path)];
 }
 
 export function projectAttachmentPaths(
@@ -63,12 +67,32 @@ export function projectAttachmentPaths(
   ];
 }
 
-const attachmentEventInputSchema = z.object({
-  input: z.array(promptInputSchema),
-  inputGroups: z.array(z.array(promptInputSchema)).optional(),
-});
+function attachmentPathFromItem(item: unknown): string[] {
+  if (typeof item !== "object" || item === null) return [];
+  const reference = item as { type?: unknown; path?: unknown };
+  if (reference.type !== "localFile" && reference.type !== "localImage")
+    return [];
+  if (typeof reference.path !== "string") return [];
+  return resolvableAttachmentPath(reference.path);
+}
 
-export function parseAttachmentEventInput(data: string): PromptInput[] {
-  const parsed = attachmentEventInputSchema.parse(JSON.parse(data));
-  return [...parsed.input, ...(parsed.inputGroups?.flat() ?? [])];
+function storedInputItems(parsed: unknown): unknown[] {
+  if (Array.isArray(parsed)) return parsed;
+  if (typeof parsed !== "object" || parsed === null) return [];
+  const stored = parsed as { input?: unknown; inputGroups?: unknown };
+  const items = Array.isArray(stored.input) ? [...stored.input] : [];
+  if (Array.isArray(stored.inputGroups))
+    for (const group of stored.inputGroups)
+      if (Array.isArray(group)) items.push(...group);
+  return items;
+}
+
+export function storedAttachmentPaths(data: string): string[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(data);
+  } catch {
+    return [];
+  }
+  return [...new Set(storedInputItems(parsed).flatMap(attachmentPathFromItem))];
 }

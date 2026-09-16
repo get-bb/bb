@@ -2,9 +2,7 @@ import { randomUUID } from "node:crypto";
 import { and, asc, eq, isNull, lt, notExists, sql } from "drizzle-orm";
 import {
   ProjectAttachmentError,
-  projectAttachmentPaths,
   type ProjectAttachmentOwnershipMode,
-  type PromptInput,
 } from "@bb/domain";
 import type { DbConnection, DbQueryConnection } from "../connection.js";
 import {
@@ -61,10 +59,9 @@ export function recordProjectAttachment(
 export function acquireProjectAttachmentOwnership(
   db: DbQueryConnection,
   threadId: string,
-  input: readonly PromptInput[],
+  paths: readonly string[],
   mode: ProjectAttachmentOwnershipMode = "required",
 ): void {
-  const paths = projectAttachmentPaths(input, mode);
   if (paths.length === 0) return;
   db.transaction(
     (tx) => {

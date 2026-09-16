@@ -23,6 +23,7 @@ import {
 import {
   encodeClientTurnRequestIdNumber,
   canonicalProjectAttachmentPath,
+  projectAttachmentPaths,
   threadScope,
   type PromptInput,
 } from "@bb/domain";
@@ -116,7 +117,11 @@ describe("project attachment accounting", () => {
         content: input(b.path),
       });
       expect(result.kind).toBe("updated");
-      acquireProjectAttachmentOwnership(h.db, thread.id, input(`./${b.path}`));
+      acquireProjectAttachmentOwnership(
+        h.db,
+        thread.id,
+        projectAttachmentPaths(input(`./${b.path}`)),
+      );
       expect(h.db.select().from(projectAttachmentThreads).all()).toHaveLength(
         2,
       );
@@ -227,7 +232,11 @@ describe("project attachment accounting", () => {
       );
       await completeBackfill(h, project.id);
       ageUploads(h, project.id);
-      acquireProjectAttachmentOwnership(h.db, thread.id, input(survivor.path));
+      acquireProjectAttachmentOwnership(
+        h.db,
+        thread.id,
+        projectAttachmentPaths(input(survivor.path)),
+      );
       const claimed = claimProjectAttachments(h.db, project.id, Date.now());
       expect(claimed.map((row) => row.storedPath)).toEqual([doomed.path]);
       expect(() =>
@@ -430,7 +439,7 @@ describe("project attachment accounting", () => {
     });
   });
 
-  it("blocks reclamation on malformed legacy input and preserves young unowned uploads", async () => {
+  it("ignores unreadable legacy input and preserves young unowned uploads", async () => {
     await withTestHarness(async (h) => {
       const { project, thread } = seedThreadFixture(h);
       const file = await upload(h, project.id);
@@ -446,24 +455,10 @@ describe("project attachment accounting", () => {
           createdAt: 1,
         })
         .run();
-      for (let count = 0; count < 10; count += 1)
-        await runProjectAttachmentBackfill(h.deps);
-      const state = ensureProjectAttachmentBackfill(h.db, project.id);
-      expect(state.error).not.toBeNull();
-      expect((await pruneProjectAttachments(h.deps, project.id)).status).toBe(
-        "backfill-pending",
-      );
-      h.db
-        .update(events)
-        .set({ data: JSON.stringify({ input: [] }) })
-        .where(eq(events.id, "bad-legacy"))
-        .run();
-      h.db
-        .update(projectAttachmentBackfills)
-        .set({ error: null })
-        .where(eq(projectAttachmentBackfills.projectId, project.id))
-        .run();
       await completeBackfill(h, project.id);
+      expect(
+        ensureProjectAttachmentBackfill(h.db, project.id).error,
+      ).toBeNull();
       expect(
         (await pruneProjectAttachments(h.deps, project.id)).reclaimedCount,
       ).toBe(0);
@@ -483,13 +478,17 @@ describe("project attachment accounting", () => {
       acquireProjectAttachmentOwnership(
         h.db,
         thread.id,
-        input(`folder/../${file.path}`),
+        projectAttachmentPaths(input(`folder/../${file.path}`)),
       );
-      acquireProjectAttachmentOwnership(h.db, thread.id, [
-        ...input("/tmp/local.txt"),
-        ...input("C:\\tmp\\local.txt"),
-        ...input("https://example.test/file"),
-      ]);
+      acquireProjectAttachmentOwnership(
+        h.db,
+        thread.id,
+        projectAttachmentPaths([
+          ...input("/tmp/local.txt"),
+          ...input("C:\\tmp\\local.txt"),
+          ...input("https://example.test/file"),
+        ]),
+      );
       expect(h.db.select().from(projectAttachmentThreads).all()).toHaveLength(
         1,
       );
@@ -497,7 +496,7 @@ describe("project attachment accounting", () => {
         acquireProjectAttachmentOwnership(
           h.db,
           thread.id,
-          input("../outside.txt"),
+          projectAttachmentPaths(input("../outside.txt")),
         ),
       ).toThrow("escapes");
       const other = seedThreadFixture(h);
@@ -505,12 +504,12 @@ describe("project attachment accounting", () => {
         acquireProjectAttachmentOwnership(
           h.db,
           other.thread.id,
-          input(file.path),
+          projectAttachmentPaths(input(file.path)),
         ),
       ).toThrow("not uploaded");
     });
   });
-  it("reclaims interrupted upload staging and bounds oversized legacy payload reads", async () => {
+  it("reclaims interrupted upload staging and reads oversized legacy payloads", async () => {
     await withTestHarness(async (h) => {
       const { project, thread } = seedThreadFixture(h);
       const file = await upload(h, project.id);
@@ -565,19 +564,10 @@ describe("project attachment accounting", () => {
         })
         .where(eq(projectAttachmentBackfills.projectId, project.id))
         .run();
-      for (
-        let count = 0;
-        count < 10 &&
-        ensureProjectAttachmentBackfill(h.db, project.id).error === null;
-        count += 1
-      )
-        await runProjectAttachmentBackfill(h.deps);
-      expect(ensureProjectAttachmentBackfill(h.db, project.id).error).toContain(
-        "4 MiB",
-      );
-      expect((await pruneProjectAttachments(h.deps, project.id)).status).toBe(
-        "backfill-pending",
-      );
+      await completeBackfill(h, project.id);
+      expect(
+        ensureProjectAttachmentBackfill(h.db, project.id).error,
+      ).toBeNull();
     });
   });
 

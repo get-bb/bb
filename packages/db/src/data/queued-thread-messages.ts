@@ -19,7 +19,10 @@ import {
   sql,
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/sqlite-core";
-import { QUEUED_MESSAGE_PLUGIN_WAIT_HOLDER_PREFIX } from "@bb/domain";
+import {
+  QUEUED_MESSAGE_PLUGIN_WAIT_HOLDER_PREFIX,
+  projectAttachmentPaths,
+} from "@bb/domain";
 import type {
   PermissionMode,
   PromptInput,
@@ -585,7 +588,11 @@ export function createQueuedThreadMessageInTransaction(
   input: CreateQueuedThreadMessageInput,
 ) {
   const now = Date.now();
-  acquireProjectAttachmentOwnership(tx, input.threadId, input.content);
+  acquireProjectAttachmentOwnership(
+    tx,
+    input.threadId,
+    projectAttachmentPaths(input.content),
+  );
   const id = createQueuedThreadMessageId();
   const lastQueuedMessage = getLastQueuedThreadMessage(tx, input.threadId);
   const sortKey = lastQueuedMessage
@@ -659,7 +666,11 @@ export function updateQueuedThreadMessage(
         return { kind: "stale" };
       }
 
-      acquireProjectAttachmentOwnership(tx, input.threadId, input.content);
+      acquireProjectAttachmentOwnership(
+        tx,
+        input.threadId,
+        projectAttachmentPaths(input.content),
+      );
       const queuedMessage = tx
         .update(queuedThreadMessages)
         .set({
