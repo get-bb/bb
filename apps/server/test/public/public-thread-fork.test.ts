@@ -4,6 +4,9 @@ import {
   getEnvironment,
   getThread,
   listEvents,
+  listProjectAttachments,
+  projectAttachments,
+  threads,
   setQueuedThreadMessageGroupBoundary,
 } from "@bb/db";
 import {
@@ -20,8 +23,10 @@ import {
   threadResponseSchema,
   threadTimelineResponseSchema,
 } from "@bb/server-contract";
+import { eq } from "drizzle-orm";
 import { createDeferredPromise } from "@bb/test-helpers";
 import { describe, expect, it, vi } from "vitest";
+import { storeAttachment } from "../../src/services/projects/attachments.js";
 import * as placement from "../../src/services/threads/thread-environment-placement.js";
 import { appendClientTurnEventInTransaction } from "../../src/services/threads/thread-events.js";
 import { sendQueuedMessage } from "../../src/services/threads/queued-messages.js";
@@ -1223,6 +1228,48 @@ async function waitForForkStart(harness: TestAppHarness, forkId: string) {
 }
 
 describe("fork branch point and inherited history", () => {
+  it("acquires legacy attachments from imported history before backfill", async () => {
+    await withTestHarness(async (harness) => {
+      const { sourceThread } = seedConversationForkSource(harness);
+      const attachment = await storeAttachment(
+        harness.db,
+        harness.config.dataDir,
+        sourceThread.projectId,
+        new File(["legacy fork attachment"], "legacy.txt"),
+      );
+      harness.db.$client
+        .prepare(
+          "UPDATE events SET data = json_set(data, '$.input[#]', json(?)) WHERE thread_id = ? AND type = 'client/turn/requested'",
+        )
+        .run(
+          JSON.stringify({ type: "localFile", path: attachment.path }),
+          sourceThread.id,
+        );
+      harness.db
+        .delete(projectAttachments)
+        .where(eq(projectAttachments.projectId, sourceThread.projectId))
+        .run();
+
+      const response = await postFork(harness, {
+        sourceThreadId: sourceThread.id,
+        sourceSeqEnd: 5,
+      });
+      expect(response.status).toBe(201);
+      const fork = threadResponseSchema.parse(await readJson(response));
+      await waitForForkStart(harness, fork.id);
+      harness.db.delete(threads).where(eq(threads.id, sourceThread.id)).run();
+      const inventory = listProjectAttachments(
+        harness.db,
+        fork.projectId,
+        "",
+        100,
+      );
+      expect(inventory.items).toMatchObject([
+        { path: attachment.path, ownerCount: 1 },
+      ]);
+    });
+  });
+
   it("clones through the anchor turn's checkpoint and inherits its conversation", async () => {
     await withTestHarness(async (harness) => {
       const { sourceThread } = seedConversationForkSource(harness);

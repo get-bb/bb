@@ -24,6 +24,14 @@ const emptyCursor = {
 };
 const MAX_INPUT_BYTES = 4 * 1024 * 1024;
 
+export function startAttachmentBackfillPhase(
+  state: AttachmentBackfill,
+  phase: AttachmentBackfill["phase"],
+  threadCursor = state.threadCursor,
+): AttachmentBackfill {
+  return { ...state, ...emptyCursor, phase, threadCursor };
+}
+
 export function ensureProjectAttachmentBackfill(
   db: DbConnection,
   projectId: string,
@@ -115,15 +123,10 @@ export function readAttachmentBackfillInput(
     return {
       input: [],
       threadId: null,
-      next: { ...state, phase: "done", ...emptyCursor },
+      next: startAttachmentBackfillPhase(state, "done", ""),
     };
   if (thread.id !== state.threadCursor)
-    state = {
-      ...state,
-      ...emptyCursor,
-      threadCursor: thread.id,
-      phase: "events",
-    };
+    state = startAttachmentBackfillPhase(state, "events", thread.id);
   if (state.phase === "events") {
     const row = db
       .select({ data: boundedInput(events.data), sequence: events.sequence })
@@ -149,13 +152,7 @@ export function readAttachmentBackfillInput(
     return {
       input: [],
       threadId: thread.id,
-      next: {
-        ...state,
-        phase: "queue",
-        inputCursor: 0,
-        inputId: "",
-        inputSequence: 0,
-      },
+      next: startAttachmentBackfillPhase(state, "queue"),
     };
   }
   if (state.phase === "queue") {
@@ -187,13 +184,7 @@ export function readAttachmentBackfillInput(
     return {
       input: [],
       threadId: thread.id,
-      next: {
-        ...state,
-        phase: "history-thread",
-        inputCursor: 0,
-        inputId: "",
-        inputSequence: 0,
-      },
+      next: startAttachmentBackfillPhase(state, "history-thread"),
     };
   }
   const scope = state.phase === "history-thread" ? "thread" : "project";
@@ -234,13 +225,7 @@ export function readAttachmentBackfillInput(
     return {
       input: [],
       threadId: thread.id,
-      next: {
-        ...state,
-        phase: "history-project",
-        inputCursor: 0,
-        inputId: "",
-        inputSequence: 0,
-      },
+      next: startAttachmentBackfillPhase(state, "history-project"),
     };
   const nextThread = db
     .select({ id: threads.id })
@@ -254,12 +239,11 @@ export function readAttachmentBackfillInput(
   return {
     input: [],
     threadId: null,
-    next: {
-      ...state,
-      ...emptyCursor,
-      phase: nextThread ? "events" : "done",
-      threadCursor: nextThread?.id ?? "",
-    },
+    next: startAttachmentBackfillPhase(
+      state,
+      nextThread ? "events" : "done",
+      nextThread?.id ?? "",
+    ),
   };
 }
 

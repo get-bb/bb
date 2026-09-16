@@ -8,6 +8,7 @@ import {
   projectAttachmentBackfills,
   projectAttachments,
   readAttachmentBackfillInput,
+  startAttachmentBackfillPhase,
   threads,
   updateAttachmentBackfill,
   type DbConnection,
@@ -21,24 +22,43 @@ import {
 } from "./attachments.js";
 
 type MaintenanceDeps = Pick<AppDeps, "db" | "config" | "logger">;
-const inventoryWalkers = new WeakMap<
+interface AttachmentMaintenanceState {
+  inventoryWalkers: Map<string, AsyncGenerator<string>>;
+  backfillRunning: boolean;
+  runningPrunes: Set<string>;
+  pruneCursor: string;
+}
+
+const maintenanceStates = new WeakMap<
   DbConnection,
-  Map<string, AsyncGenerator<string>>
+  AttachmentMaintenanceState
 >();
-const runningBackfills = new WeakSet<DbConnection>();
-const runningPrunes = new WeakMap<DbConnection, Set<string>>();
-const pruneCursors = new WeakMap<DbConnection, string>();
+
+function getMaintenanceState(db: DbConnection): AttachmentMaintenanceState {
+  let state = maintenanceStates.get(db);
+  if (!state) {
+    state = {
+      inventoryWalkers: new Map(),
+      backfillRunning: false,
+      runningPrunes: new Set(),
+      pruneCursor: "",
+    };
+    maintenanceStates.set(db, state);
+  }
+  return state;
+}
 
 export async function runProjectAttachmentBackfill(
   deps: MaintenanceDeps,
   now = Date.now(),
 ): Promise<void> {
-  if (runningBackfills.has(deps.db)) return;
-  runningBackfills.add(deps.db);
+  const maintenance = getMaintenanceState(deps.db);
+  if (maintenance.backfillRunning) return;
+  maintenance.backfillRunning = true;
   let projectId: string | null = null;
   try {
     projectId =
-      inventoryWalkers.get(deps.db)?.keys().next().value ??
+      maintenance.inventoryWalkers.keys().next().value ??
       nextProjectAttachmentBackfill(deps.db, now);
     if (projectId === null) return;
     let state = ensureProjectAttachmentBackfill(deps.db, projectId);
@@ -51,11 +71,7 @@ export async function runProjectAttachmentBackfill(
       count += 1
     ) {
       if (state.phase === "files") {
-        let walkers = inventoryWalkers.get(deps.db);
-        if (!walkers) {
-          walkers = new Map();
-          inventoryWalkers.set(deps.db, walkers);
-        }
+        const walkers = maintenance.inventoryWalkers;
         let walker = walkers.get(projectId);
         if (!walker) {
           walker = walkProjectAttachmentFiles(deps.config.dataDir, projectId);
@@ -64,7 +80,7 @@ export async function runProjectAttachmentBackfill(
         const entry = await walker.next();
         if (entry.done) {
           walkers.delete(projectId);
-          state = { ...state, phase: "events" };
+          state = startAttachmentBackfillPhase(state, "events");
         } else if (!getProjectAttachment(deps.db, projectId, entry.value)) {
           await ensureAttachmentReferenceExists(
             deps.db,
@@ -104,8 +120,8 @@ export async function runProjectAttachmentBackfill(
     }
   } catch (error) {
     if (projectId !== null) {
-      const walker = inventoryWalkers.get(deps.db)?.get(projectId);
-      inventoryWalkers.get(deps.db)?.delete(projectId);
+      const walker = maintenance.inventoryWalkers.get(projectId);
+      maintenance.inventoryWalkers.delete(projectId);
       await walker?.return(undefined);
       deps.db
         .update(projectAttachmentBackfills)
@@ -121,7 +137,7 @@ export async function runProjectAttachmentBackfill(
       "Attachment backfill paused; cleanup remains disabled",
     );
   } finally {
-    runningBackfills.delete(deps.db);
+    maintenance.backfillRunning = false;
   }
 }
 
@@ -131,11 +147,7 @@ export async function pruneProjectAttachments(
   now = Date.now(),
 ) {
   const state = ensureProjectAttachmentBackfill(deps.db, projectId);
-  let running = runningPrunes.get(deps.db);
-  if (!running) {
-    running = new Set();
-    runningPrunes.set(deps.db, running);
-  }
+  const running = getMaintenanceState(deps.db).runningPrunes;
   if (running.has(projectId))
     return {
       status: "busy" as const,
@@ -198,19 +210,19 @@ export async function runProjectAttachmentPrune(
   deps: MaintenanceDeps,
   now: number,
 ): Promise<void> {
-  const cursor = pruneCursors.get(deps.db) ?? "";
+  const maintenance = getMaintenanceState(deps.db);
   const row = deps.db
     .select({ id: projectAttachmentBackfills.projectId })
     .from(projectAttachmentBackfills)
     .where(
       and(
         eq(projectAttachmentBackfills.phase, "done"),
-        gt(projectAttachmentBackfills.projectId, cursor),
+        gt(projectAttachmentBackfills.projectId, maintenance.pruneCursor),
       ),
     )
     .orderBy(asc(projectAttachmentBackfills.projectId))
     .limit(1)
     .get();
-  pruneCursors.set(deps.db, row?.id ?? "");
+  maintenance.pruneCursor = row?.id ?? "";
   if (row) await pruneProjectAttachments(deps, row.id, now);
 }

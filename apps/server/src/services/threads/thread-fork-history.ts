@@ -1,8 +1,8 @@
-import { copyProjectAttachmentOwnership, getThread } from "@bb/db";
 import { parseAttachmentEventInput } from "@bb/domain";
 import { validatePromptAttachmentReferences } from "../projects/attachments.js";
 import {
   copyStoredThreadEventsInTransaction,
+  getThread,
   findLastCompletedRootStoredTurn,
   findLastRootStoredTurnStarted,
   listStoredEventRows,
@@ -274,7 +274,6 @@ export async function copyForkSourceHistory(
   }
   deps.db.transaction(
     (tx) => {
-      copyProjectAttachmentOwnership(tx, args.sourceThreadId, args.fork.id);
       copyStoredThreadEventsInTransaction(tx, {
         rows,
         targetEnvironmentId: args.fork.environmentId,
