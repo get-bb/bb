@@ -362,6 +362,39 @@ describe("project attachment accounting", () => {
     });
   });
 
+  it("completes backfill when legacy input references bytes that are gone", async () => {
+    await withTestHarness(async (h) => {
+      const { project, thread } = seedThreadFixture(h);
+      const orphan = await upload(h, project.id, "orphan.txt");
+      h.db
+        .insert(events)
+        .values({
+          id: "vanished-legacy",
+          threadId: thread.id,
+          sequence: 1,
+          scopeKind: "thread",
+          type: "client/turn/requested",
+          data: JSON.stringify({ input: input("vanished.txt") }),
+          createdAt: 1,
+        })
+        .run();
+      await completeBackfill(h, project.id);
+      expect(
+        ensureProjectAttachmentBackfill(h.db, project.id).error,
+      ).toBeNull();
+      expect(
+        getProjectAttachment(h.db, project.id, "vanished.txt"),
+      ).toBeUndefined();
+      ageUploads(h, project.id);
+      const pruned = await pruneProjectAttachments(h.deps, project.id);
+      expect(pruned.status).toBe("complete");
+      expect(pruned.reclaimedCount).toBe(1);
+      expect(
+        getProjectAttachment(h.db, project.id, orphan.path),
+      ).toBeUndefined();
+    });
+  });
+
   it("blocks reclamation on malformed legacy input and preserves young unowned uploads", async () => {
     await withTestHarness(async (h) => {
       const { project, thread } = seedThreadFixture(h);

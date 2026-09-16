@@ -170,6 +170,45 @@ export async function ensureAttachmentReferenceExists(
   }
 }
 
+export async function inventoryAttachmentReference(
+  db: DbConnection,
+  dataDir: string,
+  projectId: string,
+  attachmentPath: string,
+): Promise<void> {
+  const storedPath = canonicalProjectAttachmentPath(attachmentPath);
+  if (getProjectAttachment(db, projectId, storedPath)) return;
+  const resolved = resolveAttachmentPath(
+    projectAttachmentDir(dataDir, projectId),
+    storedPath,
+  );
+  const fileStat = await stat(resolved).catch(() => null);
+  if (!fileStat || !fileStat.isFile()) return;
+  recordProjectAttachment(db, {
+    projectId,
+    storedPath,
+    originalName: basename(storedPath),
+    mimeType: mimeTypes.lookup(storedPath) || null,
+    sizeBytes: fileStat.size,
+    createdAt: Math.floor(fileStat.mtimeMs),
+    readyAt: Date.now(),
+  });
+}
+
+export async function inventoryPromptAttachmentReferences(
+  args: ValidatePromptAttachmentReferencesArgs,
+): Promise<void> {
+  for (const input of args.input) {
+    if (!shouldValidateProjectAttachmentReference(input)) continue;
+    await inventoryAttachmentReference(
+      args.db,
+      args.dataDir,
+      args.projectId,
+      input.path,
+    );
+  }
+}
+
 export async function validatePromptAttachmentReferences(
   args: ValidatePromptAttachmentReferencesArgs,
 ): Promise<void> {

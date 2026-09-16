@@ -15,10 +15,10 @@ import {
 } from "@bb/db";
 import type { AppDeps } from "../../types.js";
 import {
-  ensureAttachmentReferenceExists,
+  inventoryAttachmentReference,
   walkProjectAttachmentFiles,
   deleteInventoriedAttachmentFiles,
-  validatePromptAttachmentReferences,
+  inventoryPromptAttachmentReferences,
 } from "./attachments.js";
 
 type MaintenanceDeps = Pick<AppDeps, "db" | "config" | "logger">;
@@ -82,7 +82,7 @@ export async function runProjectAttachmentBackfill(
           walkers.delete(projectId);
           state = startAttachmentBackfillPhase(state, "events");
         } else if (!getProjectAttachment(deps.db, projectId, entry.value)) {
-          await ensureAttachmentReferenceExists(
+          await inventoryAttachmentReference(
             deps.db,
             deps.config.dataDir,
             projectId,
@@ -93,7 +93,7 @@ export async function runProjectAttachmentBackfill(
       } else if (state.phase !== "done") {
         const step = readAttachmentBackfillInput(deps.db, state);
         if (step.input.length > 0)
-          await validatePromptAttachmentReferences({
+          await inventoryPromptAttachmentReferences({
             db: deps.db,
             dataDir: deps.config.dataDir,
             projectId,
@@ -109,7 +109,12 @@ export async function runProjectAttachmentBackfill(
                 .where(eq(threads.id, step.threadId))
                 .get()
             )
-              acquireProjectAttachmentOwnership(tx, step.threadId, step.input);
+              acquireProjectAttachmentOwnership(
+                tx,
+                step.threadId,
+                step.input,
+                "best-effort",
+              );
             updateAttachmentBackfill(tx, step.next);
           },
           { behavior: "immediate" },
