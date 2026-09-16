@@ -116,8 +116,8 @@ function makeDeps(initial: PluginFrontendCandidate[] = []): TestReconcileDeps {
     fetchCandidates: vi.fn(
       async (): Promise<PluginFrontendCandidate[]> => initial,
     ),
-    importModule: vi.fn(
-      async (_url: string): Promise<unknown> => pluginModule("hello"),
+    importModule: vi.fn(async (_url: string): Promise<unknown> =>
+      pluginModule("hello"),
     ),
     applyCss: vi.fn(),
     retainCss: vi.fn(() => vi.fn()),
@@ -544,6 +544,27 @@ describe("reconcilePluginFrontends", () => {
     });
     expect(deps.removeRegistrations).not.toHaveBeenCalled();
     expect(state.appliedHashes.has("hello")).toBe(false);
+  });
+
+  it("uses a fresh module URL when retrying a failed unchanged bundle", async () => {
+    const state = createPluginFrontendReconcileState();
+    const deps = makeDeps([candidate("hello", "v1")]);
+    deps.importModule.mockRejectedValueOnce(new Error("blocked by client"));
+
+    await reconcilePluginFrontends(state, deps);
+    await reconcilePluginFrontends(state, deps);
+    await reconcilePluginFrontends(state, deps);
+
+    expect(deps.importModule).toHaveBeenCalledTimes(2);
+    expect(deps.importModule).toHaveBeenNthCalledWith(
+      1,
+      "/api/v1/plugins/hello/assets/app.js?h=v1",
+    );
+    expect(deps.importModule).toHaveBeenNthCalledWith(
+      2,
+      "/api/v1/plugins/hello/assets/app.js?h=v1&bb_retry=1",
+    );
+    expect(state.records.get("hello")?.status).toBe("loaded");
   });
 
   it("mounts once, skips repeated reconciliation, and disposes exactly once on reload and removal", async () => {

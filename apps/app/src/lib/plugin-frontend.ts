@@ -322,9 +322,14 @@ async function runWithConcurrencyLimit<T>(
   await Promise.all(lanes);
 }
 
+function appendPluginImportRetry(url: string, retryCount: number): string {
+  return `${url}${url.includes("?") ? "&" : "?"}bb_retry=${retryCount}`;
+}
+
 interface PluginFrontendReconcileState {
   records: Map<string, PluginFrontendRecord>;
   appliedHashes: Map<string, string>;
+  failedImportAttempts: Map<string, { hash: string; count: number }>;
   activeGenerations: Map<string, ActivePluginFrontendGeneration>;
   generationByPluginId: Map<string, number>;
   pendingControllers: Map<string, AbortController>;
@@ -337,6 +342,7 @@ export function createPluginFrontendReconcileState(): PluginFrontendReconcileSta
   return {
     records: new Map(),
     appliedHashes: new Map(),
+    failedImportAttempts: new Map(),
     activeGenerations: new Map(),
     generationByPluginId: new Map(),
     pendingControllers: new Map(),
@@ -657,14 +663,36 @@ async function reconcileCandidates(
         return;
       }
       deps.resetCrashedSlots(pluginId);
-      const loaded = await loadPluginFrontends([candidate], {
-        importModule: deps.importModule,
-        injectCss: () => {},
-        warn: deps.warn,
-      });
+      const previousAttempt = state.failedImportAttempts.get(pluginId);
+      const retryCount =
+        previous?.status === "failed" &&
+        previousAttempt?.hash === candidate.bundle.hash
+          ? previousAttempt.count + 1
+          : 0;
+      const importUrl =
+        retryCount === 0
+          ? candidate.bundle.jsUrl
+          : appendPluginImportRetry(candidate.bundle.jsUrl, retryCount);
+      const loaded = await loadPluginFrontends(
+        [
+          {
+            ...candidate,
+            bundle: { ...candidate.bundle, jsUrl: importUrl },
+          },
+        ],
+        {
+          importModule: deps.importModule,
+          injectCss: () => {},
+          warn: deps.warn,
+        },
+      );
       const record = loaded.get(pluginId);
       if (record === undefined) return;
       if (record.status === "failed") {
+        state.failedImportAttempts.set(pluginId, {
+          hash: candidate.bundle.hash,
+          count: retryCount,
+        });
         await deactivateCommittedGeneration(pluginId, state, deps);
         state.records.set(pluginId, record);
         publishDiagnostic(state, deps, {
@@ -679,6 +707,7 @@ async function reconcileCandidates(
         });
         return;
       }
+      state.failedImportAttempts.delete(pluginId);
       if (record.status === "needs-update") {
         await deactivateCommittedGeneration(pluginId, state, deps);
         state.records.set(pluginId, record);
@@ -833,6 +862,7 @@ export async function disposePluginFrontends(
   }
   state.records.clear();
   state.appliedHashes.clear();
+  state.failedImportAttempts.clear();
   state.activeGenerations.clear();
   state.diagnostics.clear();
   deps.diagnosticsChanged?.();
