@@ -37,21 +37,40 @@ vi.mock("@/components/plugin/PluginNavSidebarItems", () => ({
   ResourceNavSidebarItem: () => <div />,
   PluginNavSidebarItems: ({
     builtInEntries = [],
+    excludedRowKeys = [],
   }: {
     builtInEntries?: Array<{
       id: string;
+      pluginId: string;
       title: string;
       onActivate: MouseEventHandler<HTMLButtonElement>;
     }>;
-  }) => (
-    <div>
-      {builtInEntries.map((entry) => (
-        <button key={entry.id} type="button" onClick={entry.onActivate}>
-          {entry.title}
+    excludedRowKeys?: readonly string[];
+  }) => {
+    const [isMoreOpen, setIsMoreOpen] = useState(false);
+    return (
+      <div>
+        {builtInEntries
+          .filter(
+            (entry) =>
+              !excludedRowKeys.includes(`${entry.pluginId}/${entry.id}`),
+          )
+          .map((entry) => (
+            <button key={entry.id} type="button" onClick={entry.onActivate}>
+              {entry.title}
+            </button>
+          ))}
+        <button
+          type="button"
+          aria-expanded={isMoreOpen}
+          onClick={() => setIsMoreOpen((isOpen) => !isOpen)}
+        >
+          More sidebar navigation
         </button>
-      ))}
-    </div>
-  ),
+        {isMoreOpen ? <div role="menu">More destinations</div> : null}
+      </div>
+    );
+  },
 }));
 vi.mock("./usePaneContentSplitDrag", () => ({
   usePaneContentSplitActions: () => ({
@@ -98,6 +117,21 @@ function Replacement({
   );
 }
 
+function NativeSplitReplacement({
+  experimental_NavigationItems: NavigationItems,
+  experimental_NewThread: NewThread,
+}: ExperimentalSidebarNavigationProps) {
+  if (!NewThread || !NavigationItems) {
+    throw new Error("native navigation subgroups unavailable");
+  }
+  return (
+    <div data-testid="native-split-navigation">
+      <NewThread />
+      <NavigationItems />
+    </div>
+  );
+}
+
 function LocationProbe() {
   return <output data-testid="pathname">{useLocation().pathname}</output>;
 }
@@ -123,6 +157,28 @@ function Harness({ onOwnerMount }: { onOwnerMount: () => void }) {
   );
 }
 
+function RerenderingNativeSplitHarness({
+  onSearchThreads,
+}: {
+  onSearchThreads: (revision: number) => void;
+}) {
+  const [revision, setRevision] = useState(0);
+  return (
+    <>
+      <button type="button" onClick={() => setRevision((value) => value + 1)}>
+        Update navigation props
+      </button>
+      <SidebarNavigationRegion
+        splitEnabled
+        newThreadSplit={{ openInSplit: mocks.openNewThreadInSplit }}
+        onNavigate={vi.fn()}
+        onNewChat={vi.fn()}
+        onSearchThreads={() => onSearchThreads(revision)}
+      />
+    </>
+  );
+}
+
 function renderHarness(
   onOwnerMount = vi.fn(),
   initialEntries: string[] = ["/"],
@@ -132,6 +188,20 @@ function renderHarness(
       <MemoryRouter initialEntries={initialEntries}>
         <SidebarProvider>
           <Harness onOwnerMount={onOwnerMount} />
+        </SidebarProvider>
+      </MemoryRouter>
+    </Provider>,
+  );
+}
+
+function renderRerenderingNativeSplitHarness(
+  onSearchThreads: (revision: number) => void,
+) {
+  return render(
+    <Provider store={createStore()}>
+      <MemoryRouter>
+        <SidebarProvider>
+          <RerenderingNativeSplitHarness onSearchThreads={onSearchThreads} />
         </SidebarProvider>
       </MemoryRouter>
     </Provider>,
@@ -156,6 +226,21 @@ function registerFixture() {
           id: "navbar",
           title: "Garden Navbar",
           component: Replacement,
+        },
+      ],
+    }),
+  );
+}
+
+function registerNativeSplitFixture() {
+  setPluginSlotRegistrations(
+    "garden",
+    registrationSet({
+      experimentalSidebarNavigations: [
+        {
+          id: "navbar",
+          title: "Garden Navbar",
+          component: NativeSplitReplacement,
         },
       ],
     }),
@@ -199,6 +284,47 @@ describe("SidebarNavigationRegion", () => {
     expect(screen.getByTestId("replacement-navigation")).toBeDefined();
   });
 
+  it("provides native New thread separately from the remaining navigation", () => {
+    registerNativeSplitFixture();
+    renderHarness();
+
+    expect(screen.getByTestId("native-split-navigation")).toBeDefined();
+    expect(screen.getAllByRole("button", { name: "New thread" })).toHaveLength(
+      1,
+    );
+    expect(
+      screen.getByRole("button", { name: "Search threads" }),
+    ).toBeDefined();
+    expect(screen.getByRole("button", { name: "Plugins" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Skills" })).toBeDefined();
+  });
+
+  it("keeps the native More menu mounted while host props update", () => {
+    registerNativeSplitFixture();
+    const onSearchThreads = vi.fn();
+    renderRerenderingNativeSplitHarness(onSearchThreads);
+
+    const more = screen.getByRole("button", {
+      name: "More sidebar navigation",
+    });
+    fireEvent.click(more);
+    more.focus();
+    expect(more.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByRole("menu").textContent).toBe("More destinations");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Update navigation props" }),
+    );
+    expect(
+      screen.getByRole("button", { name: "More sidebar navigation" }),
+    ).toBe(more);
+    expect(more.getAttribute("aria-expanded")).toBe("true");
+    expect(document.activeElement).toBe(more);
+
+    fireEvent.click(screen.getByRole("button", { name: "Search threads" }));
+    expect(onSearchThreads).toHaveBeenCalledWith(1);
+  });
+
   it("navigates to a current plugin destination through the host", () => {
     registerFixture();
     renderHarness();
@@ -226,9 +352,7 @@ describe("SidebarNavigationRegion", () => {
     ).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Plugins" }));
-    expect(screen.getByTestId("pathname").textContent).toBe(
-      "/plugins",
-    );
+    expect(screen.getByTestId("pathname").textContent).toBe("/plugins");
     expect(
       screen
         .getByRole("button", { name: "Plugins" })
@@ -236,9 +360,7 @@ describe("SidebarNavigationRegion", () => {
     ).toBe("page");
 
     fireEvent.click(screen.getByRole("button", { name: "Skills" }));
-    expect(screen.getByTestId("pathname").textContent).toBe(
-      "/skills",
-    );
+    expect(screen.getByTestId("pathname").textContent).toBe("/skills");
   });
 
   it("delegates and falls back after a crash without owner remounts", () => {

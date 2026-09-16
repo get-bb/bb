@@ -1,4 +1,6 @@
 import {
+  createContext,
+  useContext,
   useCallback,
   useLayoutEffect,
   useMemo,
@@ -23,6 +25,8 @@ import { usePluginSlots } from "@/lib/plugin-slots";
 import { getPluginPanelRoutePath } from "@/lib/route-paths";
 import {
   BuiltInSidebarNavigation,
+  BuiltInSidebarNavigationItems,
+  BuiltInSidebarNewThread,
   type BuiltInSidebarNavigationProps,
 } from "./BuiltInSidebarNavigation";
 import {
@@ -36,6 +40,32 @@ import { usePaneContentSplitActions } from "./usePaneContentSplitDrag";
 
 const SIDEBAR_NAVIGATION_SLOT_KIND = "sidebarNavigation";
 const NEW_THREAD_CONTENT = { kind: "new-thread" } as const;
+const SidebarNavigationHostContext =
+  createContext<BuiltInSidebarNavigationProps | null>(null);
+
+function useSidebarNavigationHostProps() {
+  const props = useContext(SidebarNavigationHostContext);
+  if (props === null) {
+    throw new Error("Sidebar navigation host renderers require their host");
+  }
+  return props;
+}
+
+function HostNewThread() {
+  const props = useSidebarNavigationHostProps();
+  return (
+    <BuiltInSidebarNewThread
+      splitEnabled={props.splitEnabled}
+      newThreadSplit={props.newThreadSplit}
+      onNewChat={props.onNewChat}
+    />
+  );
+}
+
+function HostNavigationItems() {
+  const props = useSidebarNavigationHostProps();
+  return <BuiltInSidebarNavigationItems {...props} includeNewThread={false} />;
+}
 
 function contentForAction(
   action: ExperimentalSidebarNavigationAction,
@@ -238,31 +268,35 @@ export function SidebarNavigationRegion(props: BuiltInSidebarNavigationProps) {
         props.compactCustomizeMode && "flex min-h-0 flex-1 flex-col",
       )}
     >
-      <PluginReplacementSlot
-        replacement={replacement}
-        original={original}
-        slotKind={SIDEBAR_NAVIGATION_SLOT_KIND}
-        onCrash={(pluginId) => {
-          appToast.error("Sidebar navigation plugin crashed", {
-            description: `${title} (${pluginId}) stopped working, so bb's own navigation is back.`,
-          });
-        }}
-      >
-        {(slot, Original) => {
-          const identity = `${slot.pluginId}/${slot.id}/${slot.generation}`;
-          return (
-            <slot.component
-              items={items}
-              activeItemId={activeItemId}
-              isCompactViewport={isCompactViewport}
-              experimental_activate={(itemId, options) =>
-                handleActivate(identity, itemId, options)
-              }
-              experimental_Original={Original}
-            />
-          );
-        }}
-      </PluginReplacementSlot>
+      <SidebarNavigationHostContext.Provider value={props}>
+        <PluginReplacementSlot
+          replacement={replacement}
+          original={original}
+          slotKind={SIDEBAR_NAVIGATION_SLOT_KIND}
+          onCrash={(pluginId) => {
+            appToast.error("Sidebar navigation plugin crashed", {
+              description: `${title} (${pluginId}) stopped working, so bb's own navigation is back.`,
+            });
+          }}
+        >
+          {(slot, Original) => {
+            const identity = `${slot.pluginId}/${slot.id}/${slot.generation}`;
+            return (
+              <slot.component
+                items={items}
+                activeItemId={activeItemId}
+                isCompactViewport={isCompactViewport}
+                experimental_activate={(itemId, options) =>
+                  handleActivate(identity, itemId, options)
+                }
+                experimental_NewThread={HostNewThread}
+                experimental_NavigationItems={HostNavigationItems}
+                experimental_Original={Original}
+              />
+            );
+          }}
+        </PluginReplacementSlot>
+      </SidebarNavigationHostContext.Provider>
     </nav>
   );
 }

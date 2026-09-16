@@ -2162,8 +2162,11 @@ renders in the same footer row.
 **What it does.** Replaces the bounded sidebar navigation controls for New
 thread, Search threads, Plugins, Skills, and plugin panel destinations. The
 plugin receives semantic items, split-drag bindings, and one host activation callback.
-BB retains the drawer, thread list, footer, resize handle, and hidden-body
-shortcut policy.
+When `experimental_NewThread` and `experimental_NavigationItems` are available,
+it can render the host-bound New-thread control separately from the host-bound
+remaining navigation. The latter retains BB's saved destination order and
+visibility, badges, accessories, shortcuts, and More menu. BB retains the
+drawer, thread list, footer, resize handle, and hidden-body shortcut policy.
 
 Search activation opens the quick palette. The removed inline sidebar search
 field, query state, combobox, and result list do not form part of this API.
@@ -2187,6 +2190,9 @@ the bounded controls and leaves the retained sidebar regions mounted.
    navigation replacements exist.
 7. **Accessibility.** Validate labels, `aria-current`, shortcut metadata,
    disabled state, and focus order in third-party markup.
+8. **Native subgroups.** Confirm a replacement can conditionally omit
+   `experimental_NavigationItems` while retaining `experimental_NewThread`,
+   without changing native destination preferences or rendering duplicate rows.
 
 ## `app.slots.experimental_threadList` (`@get-bb/plugin-sdk/app`)
 
@@ -2901,7 +2907,6 @@ returns a credential only while that host is creating.
 Before stabilizing, verify creation cancellation through host removal,
 same-host restoration, serialized removal, plugin callers and UI/CLI parity.
 
-
 ## `app.experimental_icons.register` and `experimental_Icon`
 
 Plugins register inline React artwork during app setup with `{ name, component }`.
@@ -2937,7 +2942,6 @@ components. The existing built-in icon list and artwork remain fixed; new
 plugin app icons use this registration API. The manifest API is unchanged,
 and individual plugins can still declare their own branding SVG assets using
 the existing manifest fields.
-
 
 ## `experimental_ProviderIcon`
 

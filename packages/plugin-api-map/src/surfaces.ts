@@ -52,6 +52,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Arrange New thread, Search, Plugins, Skills, and plugin destinations",
           "Activate each destination through bb, including split placement for supported items",
+          "Render host-bound New thread separately from the remaining native navigation, including its saved order, visibility, badges, accessories, shortcuts, and More menu",
           "Render bb's original controls when the plugin wants to delegate",
           "Leave the thread list, footer, drawer, and resize handle under bb's control",
         ],

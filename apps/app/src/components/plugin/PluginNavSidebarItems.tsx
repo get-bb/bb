@@ -143,6 +143,7 @@ function isPluginSidebarNavRow(row: SidebarNavRow): row is PluginSidebarNavRow {
 export function PluginNavSidebarItems(props: {
   builtInEntries?: readonly BuiltInSidebarNavEntry[];
   compactCustomizeMode?: boolean;
+  excludedRowKeys?: readonly string[];
   leadingOrderKeys?: readonly string[];
   onCompactCustomizeModeChange?: (isCustomizing: boolean) => void;
   onNavigate?: () => void;
@@ -176,6 +177,7 @@ export function PluginNavSidebarItems(props: {
   if (rows.length === 0) return null;
   return (
     <PluginNavSidebarItemList
+      excludedRowKeys={props.excludedRowKeys}
       rows={rows}
       leadingOrderKeys={leadingOrderKeys}
       splitEnabled={props.splitEnabled ?? false}
@@ -194,6 +196,7 @@ export function PluginNavSidebarItems(props: {
 
 function PluginNavSidebarItemList({
   compactCustomizeMode,
+  excludedRowKeys,
   leadingOrderKeys,
   onCompactCustomizeModeChange,
   onNavigate,
@@ -201,6 +204,7 @@ function PluginNavSidebarItemList({
   splitEnabled = false,
 }: {
   compactCustomizeMode?: boolean;
+  excludedRowKeys?: readonly string[];
   leadingOrderKeys: readonly string[];
   onCompactCustomizeModeChange?: (isCustomizing: boolean) => void;
   onNavigate?: () => void;
@@ -298,15 +302,40 @@ function PluginNavSidebarItemList({
       }),
     [newLeadingKeys, newVisibleKeys, rows, seededPreferences],
   );
+  const excludedRowKeySet = useMemo(
+    () => new Set(excludedRowKeys),
+    [excludedRowKeys],
+  );
+  const displayedOrdered = useMemo(
+    () =>
+      ordered.filter(
+        (row) => !excludedRowKeySet.has(getPluginNavPanelKey(row)),
+      ),
+    [excludedRowKeySet, ordered],
+  );
+  const displayedVisible = useMemo(
+    () =>
+      visible.filter(
+        (row) => !excludedRowKeySet.has(getPluginNavPanelKey(row)),
+      ),
+    [excludedRowKeySet, visible],
+  );
+  const displayedVisibleKeys = useMemo(
+    () => displayedVisible.map(getPluginNavPanelKey),
+    [displayedVisible],
+  );
+  const displayedOrderedKeys = useMemo(
+    () => displayedOrdered.map(getPluginNavPanelKey),
+    [displayedOrdered],
+  );
   const hidden = useMemo(
     () =>
-      ordered.filter((row) => !visibleKeys.includes(getPluginNavPanelKey(row))),
-    [ordered, visibleKeys],
-  );
-
-  const orderedKeys = useMemo(
-    () => ordered.map(getPluginNavPanelKey),
-    [ordered],
+      ordered.filter(
+        (row) =>
+          !excludedRowKeySet.has(getPluginNavPanelKey(row)) &&
+          !visibleKeys.includes(getPluginNavPanelKey(row)),
+      ),
+    [excludedRowKeySet, ordered, visibleKeys],
   );
 
   const persistPreferences = useCallback(
@@ -352,11 +381,16 @@ function PluginNavSidebarItemList({
         activeId: event.active.id,
         overId: event.over.id,
         order: normalizedOrder,
-        visibleIds: visibleKeys,
+        visibleIds: displayedVisibleKeys,
       });
       if (nextOrder) persistPreferences(nextOrder, normalizedVisibleKeys);
     },
-    [normalizedOrder, normalizedVisibleKeys, persistPreferences, visibleKeys],
+    [
+      displayedVisibleKeys,
+      normalizedOrder,
+      normalizedVisibleKeys,
+      persistPreferences,
+    ],
   );
   const { dndContextProps, onClickCapture } = useSidebarReorderDnd({
     onDragEnd: handleDragEnd,
@@ -368,7 +402,7 @@ function PluginNavSidebarItemList({
         activeId: activeKey,
         overId: overKey,
         order: normalizedOrder,
-        visibleIds: orderedKeys,
+        visibleIds: displayedOrderedKeys,
       });
       if (!nextOrder) return;
       persistPreferences(nextOrder, normalizedVisibleKeys ?? visibleKeys);
@@ -376,13 +410,13 @@ function PluginNavSidebarItemList({
     [
       normalizedOrder,
       normalizedVisibleKeys,
-      orderedKeys,
+      displayedOrderedKeys,
       persistPreferences,
       visibleKeys,
     ],
   );
 
-  const reorderDisabled = ordered.length < 2;
+  const reorderDisabled = displayedOrdered.length < 2;
   const openCustomize = useCallback(
     () => setIsCustomizeOpen(true),
     [setIsCustomizeOpen],
@@ -448,8 +482,8 @@ function PluginNavSidebarItemList({
       >
         <SidebarNavigationInlineCustomizeMode
           variant={isCompactViewport ? "compact" : "card"}
-          rows={ordered}
-          visibleKeys={visibleKeys}
+          rows={displayedOrdered}
+          visibleKeys={displayedVisibleKeys}
           onActivate={handleActivate}
           onDone={() => {
             restoreCustomizeTriggerFocusRef.current = true;
@@ -472,10 +506,10 @@ function PluginNavSidebarItemList({
     >
       <DndContext {...dndContextProps}>
         <SortableContext
-          items={visibleKeys}
+          items={displayedVisibleKeys}
           strategy={verticalListSortingStrategy}
         >
-          {visible.map((row) =>
+          {displayedVisible.map((row) =>
             isPluginSidebarNavRow(row) ? (
               <SortableSidebarNavRow
                 key={getPluginNavPanelKey(row)}

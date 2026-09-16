@@ -12,7 +12,10 @@ import {
   ProjectListNewThreadAction,
   ProjectListSearchThreadsAction,
 } from "./ProjectList";
-import { DEFAULT_BUILT_IN_SIDEBAR_NAVIGATION_ORDER } from "@/components/plugin/pluginNavSidebarOrder";
+import {
+  BUILT_IN_SIDEBAR_NAVIGATION_KEYS,
+  DEFAULT_BUILT_IN_SIDEBAR_NAVIGATION_ORDER,
+} from "@/components/plugin/pluginNavSidebarOrder";
 import { getPluginsRoutePath, getSkillsRoutePath } from "@/lib/route-paths";
 
 export type BuiltInSidebarNavigationProps = ComponentProps<
@@ -27,7 +30,25 @@ export type BuiltInSidebarNavigationProps = ComponentProps<
     | "splitEnabled"
   >;
 
-export function BuiltInSidebarNavigation({
+export function BuiltInSidebarNewThread({
+  newThreadSplit,
+  onNewChat,
+  splitEnabled,
+}: Pick<
+  BuiltInSidebarNavigationProps,
+  "newThreadSplit" | "onNewChat" | "splitEnabled"
+>) {
+  return (
+    <ProjectListNewThreadAction
+      splitEnabled={splitEnabled}
+      newThreadSplit={newThreadSplit}
+      onNewChat={onNewChat}
+    />
+  );
+}
+
+export function BuiltInSidebarNavigationItems({
+  includeNewThread = true,
   compactCustomizeMode,
   newThreadSplit,
   onCompactCustomizeModeChange,
@@ -35,7 +56,7 @@ export function BuiltInSidebarNavigation({
   onNewChat,
   onSearchThreads,
   splitEnabled,
-}: BuiltInSidebarNavigationProps) {
+}: BuiltInSidebarNavigationProps & { includeNewThread?: boolean }) {
   const navigate = useNavigate();
   const commandRunner = useAppCommandRunner();
   const pluginsRoutePath = getPluginsRoutePath();
@@ -48,7 +69,7 @@ export function BuiltInSidebarNavigation({
       title: "New thread",
       icon: <Icon name="MessageSquarePlus" aria-hidden="true" />,
       content: (
-        <ProjectListNewThreadAction
+        <BuiltInSidebarNewThread
           splitEnabled={splitEnabled}
           newThreadSplit={newThreadSplit}
           onNewChat={onNewChat}
@@ -119,20 +140,33 @@ export function BuiltInSidebarNavigation({
   ];
 
   return (
+    <PluginNavSidebarItems
+      builtInEntries={builtInEntries}
+      compactCustomizeMode={compactCustomizeMode}
+      excludedRowKeys={
+        includeNewThread
+          ? undefined
+          : [BUILT_IN_SIDEBAR_NAVIGATION_KEYS.newThread]
+      }
+      leadingOrderKeys={DEFAULT_BUILT_IN_SIDEBAR_NAVIGATION_ORDER}
+      onCompactCustomizeModeChange={onCompactCustomizeModeChange}
+      onNavigate={onNavigate}
+      splitEnabled={splitEnabled}
+    />
+  );
+}
+
+export function BuiltInSidebarNavigation({
+  ...props
+}: BuiltInSidebarNavigationProps) {
+  return (
     <div
       className="contents"
       data-testid="built-in-sidebar-navigation"
       data-sidebar-navigation-unified="true"
     >
       <div className="contents" data-testid="app-sidebar-primary-actions">
-        <PluginNavSidebarItems
-          builtInEntries={builtInEntries}
-          compactCustomizeMode={compactCustomizeMode}
-          leadingOrderKeys={DEFAULT_BUILT_IN_SIDEBAR_NAVIGATION_ORDER}
-          onCompactCustomizeModeChange={onCompactCustomizeModeChange}
-          onNavigate={onNavigate}
-          splitEnabled={splitEnabled}
-        />
+        <BuiltInSidebarNavigationItems {...props} />
       </div>
     </div>
   );

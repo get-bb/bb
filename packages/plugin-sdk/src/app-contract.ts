@@ -175,6 +175,18 @@ export interface ExperimentalSidebarNavigationProps {
     itemId: string,
     options: ExperimentalSidebarNavigationActivationOptions,
   ): void;
+  /**
+   * BB's native New-thread control, bound to this sidebar instance. Render it
+   * with `experimental_NavigationItems` when a replacement needs to keep New
+   * thread visible while conditionally omitting the remaining navigation.
+   */
+  experimental_NewThread?: ComponentType;
+  /**
+   * BB's native navigation after New thread, bound to this sidebar instance.
+   * It retains saved destination order and visibility, badges, accessories,
+   * shortcuts, and the More menu. It intentionally excludes New thread.
+   */
+  experimental_NavigationItems?: ComponentType;
   experimental_Original: ComponentType;
 }
 

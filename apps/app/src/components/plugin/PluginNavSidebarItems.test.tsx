@@ -15,6 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { SidebarProvider } from "@/components/ui/sidebar.js";
+import { BuiltInSidebarNavigationItems } from "@/components/sidebar/BuiltInSidebarNavigation";
 import { SIDEBAR_CONTROL_STATE_CLASS } from "@/components/sidebar/sidebarRowClasses";
 import { useSidebarReorderDnd } from "@/components/sidebar/useSidebarReorderDnd";
 import {
@@ -143,6 +144,9 @@ function registerPanel(
 
 interface RenderSidebarItemsOptions {
   builtInEntries?: readonly BuiltInSidebarNavEntry[];
+  excludedRowKeys?: readonly string[];
+  includeNewThread?: boolean;
+  useBuiltInNavigationItems?: boolean;
   storedOrder?: string[];
   storedVisibleKeys?: string[] | null;
   compactViewport?: boolean;
@@ -173,11 +177,20 @@ function PluginNavSidebarItemsHarness({
     : {};
 
   return (
-    <PluginNavSidebarItems
-      builtInEntries={options.builtInEntries}
-      splitEnabled={options.splitEnabled}
-      {...compactControlProps}
-    />
+    <>
+      {options.useBuiltInNavigationItems ? (
+        <BuiltInSidebarNavigationItems
+          includeNewThread={options.includeNewThread}
+        />
+      ) : (
+        <PluginNavSidebarItems
+          builtInEntries={options.builtInEntries}
+          excludedRowKeys={options.excludedRowKeys}
+          splitEnabled={options.splitEnabled}
+          {...compactControlProps}
+        />
+      )}
+    </>
   );
 }
 
@@ -329,6 +342,71 @@ afterEach(() => {
 });
 
 describe("PluginNavSidebarItems", () => {
+  it("preserves excluded rows when destination preferences materialize", async () => {
+    const { store } = renderSidebarItems({
+      builtInEntries: [
+        builtInEntry("new-thread", "New thread"),
+        builtInEntry("extensions", "Plugins"),
+        builtInEntry("skills", "Skills"),
+      ],
+      excludedRowKeys: ["__bb__/new-thread"],
+      storedOrder: ["__bb__/new-thread", "__bb__/extensions", "__bb__/skills"],
+      storedVisibleKeys: null,
+    });
+
+    expect(visibleRowKeys()).toEqual(["__bb__/extensions", "__bb__/skills"]);
+
+    reorderSidebar("__bb__/extensions", "__bb__/skills");
+    expect(store.get(pluginNavPanelOrderAtom)).toEqual([
+      "__bb__/new-thread",
+      "__bb__/skills",
+      "__bb__/extensions",
+    ]);
+    expect(store.get(pluginNavVisiblePanelKeysAtom)).toBeNull();
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: "Plugins" }));
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Hide from sidebar" }),
+    );
+    expect(store.get(pluginNavVisiblePanelKeysAtom)).toEqual([
+      "__bb__/new-thread",
+      "__bb__/skills",
+    ]);
+  });
+
+  it("keeps New thread preferences while the native remainder is rendered", async () => {
+    const { store } = renderSidebarItems({
+      includeNewThread: false,
+      storedOrder: ["__bb__/extensions", "__bb__/new-thread", "__bb__/skills"],
+      storedVisibleKeys: null,
+      useBuiltInNavigationItems: true,
+    });
+
+    expect(visibleRowKeys()).toEqual(["__bb__/extensions", "__bb__/skills"]);
+
+    reorderSidebar("__bb__/extensions", "__bb__/skills");
+    const order = store.get(pluginNavPanelOrderAtom);
+    expect(order.indexOf("__bb__/skills")).toBeLessThan(
+      order.indexOf("__bb__/new-thread"),
+    );
+    expect(order.indexOf("__bb__/new-thread")).toBeLessThan(
+      order.indexOf("__bb__/extensions"),
+    );
+
+    fireEvent.contextMenu(
+      screen
+        .getByTestId("plugin-nav-sidebar-items")
+        .querySelector('[data-sidebar-navigation-item="__bb__/extensions"]')!,
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Hide from sidebar" }),
+    );
+    expect(store.get(pluginNavVisiblePanelKeysAtom)).toEqual([
+      "__bb__/skills",
+      "__bb__/new-thread",
+    ]);
+  });
+
   it("keeps built-in actions visible without placeholders during startup", () => {
     resetPluginFrontendBootStateForTest();
     renderSidebarItems({
