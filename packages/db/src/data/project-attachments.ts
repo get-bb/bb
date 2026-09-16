@@ -3,6 +3,7 @@ import { and, asc, eq, isNull, lt, notExists, sql } from "drizzle-orm";
 import {
   ProjectAttachmentError,
   projectAttachmentPaths,
+  type ProjectAttachmentOwnershipMode,
   type PromptInput,
 } from "@bb/domain";
 import type { DbConnection, DbQueryConnection } from "../connection.js";
@@ -56,7 +57,6 @@ export function recordProjectAttachment(
   return row;
 }
 
-export type ProjectAttachmentOwnershipMode = "required" | "best-effort";
 
 export function acquireProjectAttachmentOwnership(
   db: DbQueryConnection,
@@ -64,7 +64,7 @@ export function acquireProjectAttachmentOwnership(
   input: readonly PromptInput[],
   mode: ProjectAttachmentOwnershipMode = "required",
 ): void {
-  const paths = projectAttachmentPaths(input);
+  const paths = projectAttachmentPaths(input, mode);
   if (paths.length === 0) return;
   db.transaction(
     (tx) => {

@@ -395,6 +395,41 @@ describe("project attachment accounting", () => {
     });
   });
 
+  it("completes backfill when legacy input references an unresolvable path", async () => {
+    await withTestHarness(async (h) => {
+      const { project, thread } = seedThreadFixture(h);
+      const orphan = await upload(h, project.id, "orphan.txt");
+      h.db
+        .insert(events)
+        .values({
+          id: "traversal-legacy",
+          threadId: thread.id,
+          sequence: 1,
+          scopeKind: "thread",
+          type: "client/turn/requested",
+          data: JSON.stringify({ input: input("../escape.txt") }),
+          createdAt: 1,
+        })
+        .run();
+      await completeBackfill(h, project.id);
+      ageUploads(h, project.id);
+      expect(
+        (await pruneProjectAttachments(h.deps, project.id)).reclaimedCount,
+      ).toBe(1);
+      expect(
+        getProjectAttachment(h.db, project.id, orphan.path),
+      ).toBeUndefined();
+      await expect(
+        validatePromptAttachmentReferences({
+          db: h.db,
+          dataDir: h.config.dataDir,
+          projectId: project.id,
+          input: input("../escape.txt"),
+        }),
+      ).rejects.toThrow("escapes project directory");
+    });
+  });
+
   it("blocks reclamation on malformed legacy input and preserves young unowned uploads", async () => {
     await withTestHarness(async (h) => {
       const { project, thread } = seedThreadFixture(h);

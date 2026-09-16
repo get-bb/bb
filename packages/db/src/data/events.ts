@@ -1,8 +1,8 @@
+import { acquireProjectAttachmentOwnership } from "./project-attachments.js";
 import {
-  acquireProjectAttachmentOwnership,
+  parseAttachmentEventInput,
   type ProjectAttachmentOwnershipMode,
-} from "./project-attachments.js";
-import { parseAttachmentEventInput } from "@bb/domain";
+} from "@bb/domain";
 import {
   and,
   desc,

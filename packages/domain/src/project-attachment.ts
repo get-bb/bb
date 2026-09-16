@@ -37,18 +37,29 @@ export function canonicalProjectAttachmentPath(path: string): string {
   return parts.join("/");
 }
 
+export type ProjectAttachmentOwnershipMode = "required" | "best-effort";
+
+function referencedAttachmentPath(
+  item: PromptInput,
+  mode: ProjectAttachmentOwnershipMode,
+): string[] {
+  if (item.type !== "localImage" && item.type !== "localFile") return [];
+  if (pathLooksRuntimeReadable(item.path)) return [];
+  if (mode === "required") return [canonicalProjectAttachmentPath(item.path)];
+  try {
+    return [canonicalProjectAttachmentPath(item.path)];
+  } catch (error) {
+    if (error instanceof ProjectAttachmentError) return [];
+    throw error;
+  }
+}
+
 export function projectAttachmentPaths(
   input: readonly PromptInput[],
+  mode: ProjectAttachmentOwnershipMode = "required",
 ): string[] {
   return [
-    ...new Set(
-      input.flatMap((item) =>
-        (item.type === "localImage" || item.type === "localFile") &&
-        !pathLooksRuntimeReadable(item.path)
-          ? [canonicalProjectAttachmentPath(item.path)]
-          : [],
-      ),
-    ),
+    ...new Set(input.flatMap((item) => referencedAttachmentPath(item, mode))),
   ];
 }
 
