@@ -149,6 +149,12 @@
     background-color: var(--surface-selected);
   }
 
+  @media (pointer: coarse) {
+    [data-promptbox-editor-content] .ProseMirror[contenteditable] {
+      font-size: max(16px, 1em);
+    }
+  }
+
   /*
    * Mention-pill surface. PROMPT_MENTION_PILL_CLASS owns layout, radius, and
    * border width; this paints the theme-specific face, border, and soft shadow.

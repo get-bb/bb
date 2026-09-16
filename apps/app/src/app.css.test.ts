@@ -24,6 +24,14 @@ describe("app.css compact prompt controls", () => {
   });
 });
 
+describe("app.css touch prompt editor", () => {
+  it("keeps the editor above the iOS focus-zoom threshold at every width", () => {
+    expect(css).toMatch(
+      /@media \(pointer: coarse\) \{\s*\[data-promptbox-editor-content\]\s*\.ProseMirror\[contenteditable\] \{\s*font-size: max\(16px, 1em\);\s*\}\s*\}/,
+    );
+  });
+});
+
 describe("app.css sidebar drag cursor", () => {
   it("scopes the grabbing cursor to the sidebar panel on fine pointers only", () => {
     expect(css).not.toMatch(/body\[data-sidebar-dragging="true"\]\s*\*/);
