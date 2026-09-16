@@ -154,3 +154,57 @@ Production records were not migrated or cleaned. No push, merge or deployment.
 
 The parent handoff includes the exact implementation commit and full changed-file
 list for review.
+
+## Real Codex verification (2026-09-15)
+
+The production-style `pnpm start:worktree` launcher was exercised with a fresh,
+owned development database, source-built CLI, one local daemon, and real Codex
+`gpt-5.6-luna` turns with `low` reasoning. Every validation CLI invocation cleared
+inherited BB server, daemon, thread, project, environment and CLI context and
+explicitly targeted ports 20713/28713. Workflow calls supplied only synthetic
+origin context. No production thread or machine data was changed.
+
+Real commands wrote a heartbeat with their OS PID for at most 60 seconds. Checks
+waited for an active command before applying lifecycle operations and verified
+process disappearance, thread state, ownership links and storage deletion.
+
+- Cross-project owner archive stopped and archived active workers. Unarchiving
+  the owner left them archived.
+- Independent dependent archive and delete stopped the command and preserved
+  the live owner. Cross-project owner deletion removed dependents and storage.
+- Owning-project deletion removed an active dependent in a different project;
+  deleting the dependent's project preserved its external owner.
+- Workflow completion archived the worker promptly (about 0.6 seconds after run
+  completion) and delivered the completion notification. Origin archive during
+  a real worker command cancelled the run, stopped the process and abandoned the
+  notification. Origin deletion removed both terminal and cancelled workers.
+- The Side Chat plugin forked a real Codex session with explicit source ownership.
+  Deleting its source during an active command stopped the command and removed
+  the fork and storage.
+- Removing write permission from the isolated thread-storage parent forced a
+  real deletion failure. Both tombstones and the ownership FK remained while
+  the command stopped. Restoring permissions allowed retry. A second failure
+  retained the same state through full server/daemon shutdown; restarting after
+  restoring permissions finished cleanup and removed both rows and storage.
+
+The first live archive exposed a provider shutdown defect: BB's immediate SIGTERM
+of Codex left a detached command alive, reparented to PID 1, even after the worker
+reported idle. The Codex connection now closes stdin first, allowing orderly
+native shutdown; the existing four-second SIGKILL fallback remains. The affected
+live archive/delete checks passed after this change. New regressions cover
+shutdown cleanup and a provider that ignores EOF. Turbo provider tests and
+upstream dependencies passed: 292 tests across 29 files, plus typecheck (7 tasks).
+No daemon wire change or Stop ownership-cascade policy change was needed.
+
+Limits: one host and unmanaged fixture directories were used; this does not
+verify remote-host outages, managed worktree/machine retirement, forced provider
+crashes, browser/iOS UI, or real workflow replacement attempts. Those lifecycle
+retry/replacement paths retain the earlier regression coverage. One prompt sent
+while a side-chat fork was provisioning remained queued after provisioning; it
+was explicitly dispatched with the isolated CLI before the active deletion test.
+The unrelated verification-inventory `browser` CLI drift remains. These live
+checks demonstrate normal Codex shutdown, not containment of arbitrary detached
+processes when the provider crashes or ignores EOF.
+
+Detailed evidence, command transcripts, before/after snapshots and launcher logs:
+`/Users/michael/.bb/thread-storage/thr_dpzkbp4itd/real-agent-verification/`.

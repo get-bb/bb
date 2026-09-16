@@ -44,6 +44,73 @@ function childRequestLine(): string {
 }
 
 describe("codex app-server connection", () => {
+  it("allows stdin shutdown cleanup before terminating the provider", async () => {
+    const ready = deferred<void>();
+    const exited = deferred<CodexAppServerExitInfo>();
+    const connection = createCodexAppServerConnection({
+      command: process.execPath,
+      args: [
+        "-e",
+        [
+          "process.stdin.resume();",
+          'process.stdin.on("end", () => {',
+          'setTimeout(() => { process.stderr.write("cleanup finished"); process.exit(0); }, 100);',
+          "});",
+          'process.stdout.write(JSON.stringify({method: "ready"}) + "\\n");',
+        ].join(""),
+      ],
+      cwd: process.cwd(),
+      env: process.env,
+      recordThreadId: null,
+      onNotification: () => ready.resolve(),
+      onRequest: () => undefined,
+      onExit: exited.resolve,
+    });
+    try {
+      await ready.promise;
+      await connection.kill();
+      await expect(exited.promise).resolves.toMatchObject({
+        code: 0,
+        signal: null,
+        stderrTail: "cleanup finished",
+      });
+    } finally {
+      await connection.kill();
+    }
+  });
+
+  it("forces termination when a provider ignores stdin shutdown", async () => {
+    const ready = deferred<void>();
+    const exited = deferred<CodexAppServerExitInfo>();
+    const connection = createCodexAppServerConnection({
+      command: process.execPath,
+      args: [
+        "-e",
+        [
+          "process.stdin.resume();",
+          "setInterval(() => {}, 1000);",
+          'process.stdout.write(JSON.stringify({method: "ready"}) + "\\n");',
+        ].join(""),
+      ],
+      cwd: process.cwd(),
+      env: process.env,
+      recordThreadId: null,
+      onNotification: () => ready.resolve(),
+      onRequest: () => undefined,
+      onExit: exited.resolve,
+    });
+    try {
+      await ready.promise;
+      await connection.kill();
+      await expect(exited.promise).resolves.toMatchObject({
+        code: null,
+        signal: "SIGKILL",
+      });
+    } finally {
+      await connection.kill();
+    }
+  }, 10_000);
+
   it("preserves final output and exit details while stdio drains", async () => {
     const exited = deferred<CodexAppServerExitInfo>();
     const lateResponseLine = `${JSON.stringify({
