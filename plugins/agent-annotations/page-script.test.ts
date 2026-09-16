@@ -69,9 +69,8 @@ describe("agent annotations page script", () => {
     expect(pageClick).not.toHaveBeenCalled();
 
     const root = shadowRoot();
-    expect(root.querySelector(".editor-title")?.textContent).toBe(
-      'button#pay.btn.primary "Pay now"',
-    );
+    expect(root.querySelector(".target-tag")?.textContent).toBe("button");
+    expect(root.querySelector(".target-text")?.textContent).toBe("Pay now");
     const save = requireElement(root.querySelector<HTMLButtonElement>(".save"));
     expect(save.disabled).toBe(true);
     const textarea = requireElement(root.querySelector("textarea"));
