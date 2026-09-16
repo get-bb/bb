@@ -38,7 +38,11 @@ equivalent. For a read-only thread-storage artifact, write the document to
   opaque-origin iframe and cannot access the bb page, cookies, or storage.
   Markdown uses BB's renderer with raw HTML disabled.
 - Users can export the preview: save the source (HTML or Markdown), convert to
-  Word (.docx), or print (with "Save as PDF" in the dialog). Charts the page
+  Word (.docx), or print (with "Save as PDF" in the dialog). For a real,
+  selectable-text PDF from a Markdown document, use the fork plugin
+  `typst-md` and its `::typst-md{file="…md"}` directive instead.
+  <!-- bb-fork(windows): route Markdown PDF delivery to the fork-owned typst-md plugin. -->
+  Charts the page
   draws at runtime (canvas or inline SVG) are rasterized and embedded in the
   Word and print output; keep charts on screen and give them a moment to finish
   animating so the snapshot is complete.

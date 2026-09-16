@@ -1,0 +1,53 @@
+{
+  "name": "bb-plugin-typst-md",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Typeset Markdown documents through Typst inline in messages and export them as PDF, SVG, or PNG.",
+  "engines": {
+    "bb": ">=0.0"
+  },
+  "bb": {
+    "name": "Typst Markdown",
+    "description": "Typeset Markdown documents through Typst inline in messages and export them as PDF, SVG, or PNG.",
+    "branding": {
+      "icon": "TextWrap"
+    },
+    "server": "./server.ts",
+    "app": "./app.tsx",
+    "skills": [
+      "skills"
+    ]
+  },
+  "keywords": [
+    "bb-plugin"
+  ],
+  "scripts": {
+    "test": "vitest run --config vitest.config.ts",
+    "typecheck": "tsc --noEmit",
+    "prepare:bundled": "bb-plugin-build prepare-bundled"
+  },
+  "dependencies": {
+    "@bb/shared-ui": "workspace:*",
+    "@myriaddreamin/typst-ts-renderer": "^0.7.0",
+    "@myriaddreamin/typst-ts-web-compiler": "^0.7.0",
+    "@myriaddreamin/typst.ts": "^0.7.0",
+    "marked": "18.0.5",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@bb/plugin-build": "workspace:*",
+    "@get-bb/plugin-sdk": "workspace:*",
+    "@testing-library/react": "^16.3.2",
+    "@types/jsdom": "^30.0.0",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "jsdom": "^29.0.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "sonner": "^1.7.4",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "typescript-7": "npm:typescript@^7.0.2",
+    "vitest": "^4.1.1"
+  }
+}

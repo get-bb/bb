@@ -185,7 +185,10 @@
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/apps/server/src/services/plugins/builtin-registry.ts",
-        "$TURBO_ROOT$/apps/server/src/services/plugin-catalog/bundled-marketplace-paths.ts"
+        "$TURBO_ROOT$/apps/server/src/services/plugin-catalog/bundled-marketplace-paths.ts",
+        // bb-fork(windows): fork plugin registration invalidates the bundled copy too.
+        "$TURBO_ROOT$/apps/server/src/services/plugins/builtin-registry.fork.ts",
+        "$TURBO_ROOT$/plugins/bb-fork.json"
       ],
       "outputs": ["dist/**"]
     },
@@ -866,6 +869,10 @@
     },
     // bb-fork(windows): the fork-bundled Typst inline artifact plugin.
     "bb-plugin-typst-inline#typecheck": {
+      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
+    },
+    // bb-fork(windows): the fork-bundled Markdown-as-Typst plugin.
+    "bb-plugin-typst-md#typecheck": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
     },
     "bb-plugin-plugin-api-docs#typecheck": {

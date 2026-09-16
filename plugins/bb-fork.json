@@ -18,5 +18,9 @@
   "typst-inline": {
     "category": "thread-content",
     "screenshots": []
+  },
+  "typst-md": {
+    "category": "thread-content",
+    "screenshots": []
   }
 }

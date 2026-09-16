@@ -30,4 +30,10 @@ export const FORK_BUILTIN_PLUGINS: readonly ForkBuiltinPluginDefinition[] = [
     pluginId: "typst-inline",
     defaultEnabled: true,
   },
+  // bb-fork(windows): the fork-bundled Markdown-as-Typst plugin.
+  {
+    name: "typst-md",
+    pluginId: "typst-md",
+    defaultEnabled: true,
+  },
 ];
