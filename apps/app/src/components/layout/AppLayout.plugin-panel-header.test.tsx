@@ -231,4 +231,31 @@ describe("AppLayout plugin panel header", () => {
     act(() => setCompactSecondaryPanelPresentation("closed"));
     expect(screen.getByTestId("app-sidebar-trigger-overlay")).not.toBeNull();
   });
+
+  it("hides the fixed left trigger only while the compact right panel shelf is showing", () => {
+    viewportState.compact = true;
+    renderPluginPanelRoute();
+
+    const trigger = screen.getByTestId("app-sidebar-trigger-overlay");
+    expect(trigger.className).toContain("data-[panel-shelf=shelf]:invisible");
+    expect(trigger.dataset.panelShelf).toBe("closed");
+
+    act(() => setCompactSecondaryPanelPresentation("shelf"));
+    expect(trigger.dataset.panelShelf).toBe("shelf");
+
+    act(() => setCompactSecondaryPanelPresentation("full"));
+    expect(trigger.dataset.panelShelf).toBe("full");
+
+    act(() => setCompactSecondaryPanelPresentation("closed"));
+    expect(trigger.dataset.panelShelf).toBe("closed");
+  });
+
+  it("keeps the fixed left trigger visible on wide viewports while a panel shelf is showing", () => {
+    renderPluginPanelRoute();
+
+    act(() => setCompactSecondaryPanelPresentation("shelf"));
+    expect(
+      screen.getByTestId("app-sidebar-trigger-overlay").dataset.panelShelf,
+    ).toBeUndefined();
+  });
 });
