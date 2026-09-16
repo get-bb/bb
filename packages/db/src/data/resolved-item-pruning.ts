@@ -52,12 +52,13 @@ export function pruneResolvedItemCandidates(
     candidates: readonly ResolvedItemPruningCandidate[];
     kind: "deltas" | "background";
     probe: ResolvedItemPruningProbe;
+    limit?: number;
   },
 ) {
   const rows = args.candidates;
   const probe = args.probe;
   const discarded: string[] = [];
-  let remaining = 500;
+  let remaining = args.limit ?? 500;
   let sequence = 0;
   let processed = 0;
   const reset = () => Object.assign(probe, emptyResolvedItemPruningProbe());
@@ -175,7 +176,7 @@ export function pruneResolvedItemCandidates(
 
 export function advanceLiveEventPruning(
   db: DbQueryConnection,
-  args: { threadId: string; kind: "deltas" | "background" },
+  args: { threadId: string; kind: "deltas" | "background"; limit?: number },
 ) {
   const key = and(
     eq(threadPruningCursors.scope, args.threadId),
@@ -200,11 +201,30 @@ export function advanceLiveEventPruning(
       .returning()
       .get();
   }
+  const types =
+    args.kind === "background"
+      ? ["item/backgroundTask/progress"]
+      : Object.keys(deltaKinds);
   const candidates = db.all<ResolvedItemPruningCandidate>(sql`
-    SELECT id, sequence, type, turn_id AS turnId, item_id AS itemId, parent_tool_call_id AS parentToolCallId
-    FROM events INDEXED BY events_thread_sequence_idx
-    WHERE thread_id = ${args.threadId} AND sequence > ${cursor.sequence} AND sequence <= ${cursor.upperSequence}
-    ORDER BY sequence LIMIT 500
+    WITH candidate_ids AS MATERIALIZED (
+      SELECT id, sequence FROM (${sql.join(
+        types.map(
+          (type) => sql`
+        SELECT id, sequence FROM (
+          SELECT id, sequence FROM events INDEXED BY events_thread_type_sequence_idx
+          WHERE thread_id = ${args.threadId} AND type = ${type}
+            AND sequence > ${cursor.sequence} AND sequence <= ${cursor.upperSequence}
+          ORDER BY sequence LIMIT ${args.limit ?? 500}
+        )`,
+        ),
+        sql` UNION ALL `,
+      )})
+      ORDER BY sequence LIMIT ${args.limit ?? 500}
+    )
+    SELECT events.id, events.sequence, events.type, events.turn_id AS turnId,
+      events.item_id AS itemId, events.parent_tool_call_id AS parentToolCallId
+    FROM candidate_ids JOIN events ON events.id = candidate_ids.id
+    ORDER BY events.sequence
   `);
   const result = pruneResolvedItemCandidates(db, {
     ...args,
@@ -214,7 +234,8 @@ export function advanceLiveEventPruning(
   if (result.sequence > 0) cursor.sequence = result.sequence;
   const complete =
     result.complete &&
-    (candidates.length < 500 || cursor.sequence >= cursor.upperSequence);
+    (candidates.length < (args.limit ?? 500) ||
+      cursor.sequence >= cursor.upperSequence);
   cursor.updatedAt = Date.now();
   if (complete) {
     db.delete(threadPruningCursors).where(key).run();

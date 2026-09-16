@@ -2,13 +2,7 @@ import { performance } from "node:perf_hooks";
 import {
   getThread,
   getThreadEventRewriteGeneration,
-  pruneRateLimitSnapshots,
-  getLatestThreadSequence,
-  pruneBackgroundTaskProgressEvents,
-  pruneContextWindowUsageEvents,
-  pruneResolvedItemDeltas,
-  pruneTokenUsageEvents,
-  pruneThreadEventsBeforeSequence,
+  advanceThreadPruning,
 } from "@bb/db";
 import type { ThreadEventType } from "@bb/domain";
 import { roundDurationMs } from "@bb/process-utils";
@@ -23,10 +17,8 @@ interface PruneThreadEventHistoryArgs {
 
 interface ThreadEventPruningResult {
   latestSequence: number;
-  removedUsageAndDiffEvents: number;
-  removedRateLimitSnapshots: number;
-  removedBackgroundTaskProgressEvents: number;
-  removedResolvedItemDeltas: number;
+  policy: string;
+  scanned: number;
   totalRemoved: number;
 }
 
@@ -38,25 +30,6 @@ interface MaybePruneActiveThreadEventHistoryArgs {
 interface ActiveThreadPruneState {
   lastPrunedAt: number;
   lastPrunedSequence: number;
-}
-
-type ThreadEventPruningStep =
-  | "prune_rate_limits"
-  | "get_latest_thread_sequence"
-  | "prune_background_task_progress"
-  | "prune_context_window_usage"
-  | "prune_turn_diffs"
-  | "prune_resolved_item_deltas"
-  | "prune_token_usage";
-
-class ThreadEventPruningStepError extends Error {
-  readonly step: ThreadEventPruningStep;
-
-  constructor(step: ThreadEventPruningStep, cause: ErrorOptions["cause"]) {
-    super(`Thread event pruning step failed: ${step}`, { cause });
-    this.name = "ThreadEventPruningStepError";
-    this.step = step;
-  }
 }
 
 const ACTIVE_THREAD_EVENT_PRUNE_MIN_SEQUENCE_DELTA = 250;
@@ -75,10 +48,6 @@ const ACTIVE_PRUNE_TRIGGER_THREAD_EVENT_TYPES: readonly ThreadEventType[] = [
   "item/backgroundTask/progress",
 ] as const;
 
-const DIFF_THREAD_EVENT_TYPES: readonly ThreadEventType[] = [
-  "turn/diff/updated",
-] as const;
-
 const activePruneTriggerThreadEventTypeSet = new Set<ThreadEventType>(
   ACTIVE_PRUNE_TRIGGER_THREAD_EVENT_TYPES,
 );
@@ -86,26 +55,6 @@ const activeThreadPruneStateByThreadId = new Map<
   string,
   ActiveThreadPruneState
 >();
-
-function getThreadEventPruningFailureStep(
-  error: ErrorOptions["cause"],
-): ThreadEventPruningStep | "unknown" {
-  if (error instanceof ThreadEventPruningStepError) {
-    return error.step;
-  }
-  return "unknown";
-}
-
-function runThreadEventPruningStep<TValue>(
-  step: ThreadEventPruningStep,
-  work: () => TValue,
-): TValue {
-  try {
-    return work();
-  } catch (error) {
-    throw new ThreadEventPruningStepError(step, error);
-  }
-}
 
 export function isActivePruneTriggerThreadEventType(
   eventType: ThreadEventType,
@@ -117,66 +66,12 @@ export function pruneThreadEventHistory(
   deps: Pick<AppDeps, "db">,
   args: PruneThreadEventHistoryArgs,
 ): ThreadEventPruningResult {
-  const latestSequence = runThreadEventPruningStep(
-    "get_latest_thread_sequence",
-    () =>
-      getLatestThreadSequence(deps.db, {
-        threadId: args.threadId,
-      }),
-  );
-  const removedRateLimitSnapshots = runThreadEventPruningStep(
-    "prune_rate_limits",
-    () =>
-      pruneRateLimitSnapshots(deps.db, {
-        threadId: args.threadId,
-        afterSequence: 0,
-        throughSequence: latestSequence,
-      }),
-  );
-  const removedUsageAndDiffEvents =
-    runThreadEventPruningStep("prune_context_window_usage", () =>
-      pruneContextWindowUsageEvents(deps.db, {
-        threadId: args.threadId,
-      }),
-    ) +
-    runThreadEventPruningStep("prune_token_usage", () =>
-      pruneTokenUsageEvents(deps.db, {
-        threadId: args.threadId,
-      }),
-    ) +
-    runThreadEventPruningStep("prune_turn_diffs", () =>
-      pruneThreadEventsBeforeSequence(deps.db, {
-        threadId: args.threadId,
-        sequenceCutoff: latestSequence,
-        types: DIFF_THREAD_EVENT_TYPES,
-      }),
-    );
-  const removedResolvedItemDeltas = runThreadEventPruningStep(
-    "prune_resolved_item_deltas",
-    () =>
-      pruneResolvedItemDeltas(deps.db, {
-        threadId: args.threadId,
-      }),
-  );
-  const removedBackgroundTaskProgressEvents = runThreadEventPruningStep(
-    "prune_background_task_progress",
-    () =>
-      pruneBackgroundTaskProgressEvents(deps.db, {
-        threadId: args.threadId,
-      }),
-  );
-
+  const result = advanceThreadPruning(deps.db, { threadId: args.threadId });
   return {
-    latestSequence,
-    removedUsageAndDiffEvents,
-    removedRateLimitSnapshots,
-    removedBackgroundTaskProgressEvents,
-    removedResolvedItemDeltas,
-    totalRemoved:
-      removedRateLimitSnapshots +
-      removedUsageAndDiffEvents +
-      removedBackgroundTaskProgressEvents +
-      removedResolvedItemDeltas,
+    latestSequence: result.cursor.upperSequence,
+    policy: result.policy,
+    scanned: result.scanned,
+    totalRemoved: result.removed,
   };
 }
 
@@ -208,7 +103,6 @@ export function pruneThreadEventHistoryBestEffort(
       {
         durationMs: roundDurationMs(performance.now() - startedAt),
         mode: args.mode,
-        step: getThreadEventPruningFailureStep(error),
         threadId: args.threadId,
         err: error,
       },

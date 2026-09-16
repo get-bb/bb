@@ -5,13 +5,18 @@ import { bumpThreadEventRewriteGeneration } from "./event-rewrite-generation.js"
 
 export function pruneRateLimitSnapshotWindow(
   db: DbQueryConnection,
-  args: { threadId: string; afterSequence: number; throughSequence: number },
+  args: {
+    threadId: string;
+    afterSequence: number;
+    throughSequence: number;
+    limit?: number;
+  },
 ) {
   const rows = db.all<{ id: string; sequence: number }>(sql`
     SELECT id, sequence FROM events INDEXED BY events_thread_type_sequence_idx
     WHERE thread_id = ${args.threadId} AND type = 'provider/rateLimits/updated'
       AND sequence > ${args.afterSequence} AND sequence <= ${args.throughSequence}
-    ORDER BY sequence LIMIT 64
+    ORDER BY sequence LIMIT ${args.limit ?? 64}
   `);
   const removed =
     rows.length === 0
@@ -29,7 +34,7 @@ export function pruneRateLimitSnapshotWindow(
   return {
     removed,
     scanned: rows.length,
-    complete: rows.length < 64,
+    complete: rows.length < (args.limit ?? 64),
     nextSequence: rows.at(-1)?.sequence ?? args.afterSequence,
   };
 }

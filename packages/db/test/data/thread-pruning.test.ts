@@ -9,7 +9,10 @@ import { noopNotifier } from "../../src/notifier.js";
 import { upsertHost } from "../../src/data/hosts.js";
 import { createProject } from "../../src/data/projects.js";
 import { createThread } from "../../src/data/threads.js";
-import { advanceThreadPruning } from "../../src/data/thread-pruning.js";
+import {
+  advanceThreadPruning,
+  getNextThreadPruningPolicy,
+} from "../../src/data/thread-pruning.js";
 import type { ThreadPruningPolicy } from "../../src/data/thread-pruning.js";
 import {
   appendDaemonEventsInTransaction,
@@ -82,6 +85,117 @@ function sequences(f: Fixture) {
 }
 
 describe("thread pruning", () => {
+  it("rotates scoped live policies durably and drains active usage without global idle cleanup", () => {
+    let f = setup();
+    try {
+      f.db
+        .update(threads)
+        .set({ status: "active" })
+        .where(eq(threads.id, f.thread.id))
+        .run();
+      for (let i = 1; i <= 200; i++) {
+        seed(f, i, {
+          type: "thread/contextWindowUsage/updated",
+          data: JSON.stringify({
+            contextWindowUsage: {
+              usedTokens: i,
+              modelContextWindow: i === 1 ? 200000 : null,
+            },
+          }),
+        });
+      }
+      seed(f, 201, { type: "turn/completed" });
+      const policies = [];
+      for (let i = 0; i < 160; i++) {
+        const policy = getNextThreadPruningPolicy(f.db, new Set(), f.thread.id);
+        if (policy === null) throw new Error("Missing policy");
+        policies.push(policy);
+        const result = advanceThreadPruning(f.db, { threadId: f.thread.id });
+        expect(result.scanned).toBeLessThanOrEqual(32);
+        expect(result.removed).toBeLessThanOrEqual(32);
+        if (i === 6) {
+          const saved = f.db.$client.serialize();
+          f.db.$client.close();
+          f = { ...f, db: createConnection(saved) };
+        }
+      }
+      expect(policies.slice(0, 8)).toEqual([
+        "rate-limits",
+        "usage",
+        "turn-diffs",
+        "resolved-items",
+        "rate-limits",
+        "usage",
+        "turn-diffs",
+        "resolved-items",
+      ]);
+      expect(sequences(f)).toEqual([1, 200, 201]);
+      expect(
+        f.db
+          .select()
+          .from(threadPruningCursors)
+          .all()
+          .every((row) => row.scope === f.thread.id),
+      ).toBe(true);
+    } finally {
+      f.db.$client.close();
+    }
+  });
+
+  it("reaches resolved deltas beyond unrelated history in one scoped advance", () => {
+    const f = setup();
+    try {
+      f.db.transaction(() => {
+        for (let i = 1; i <= 2000; i++)
+          seed(f, i, { type: "provider/warning" });
+        seed(f, 2001, { type: "item/agentMessage/delta", itemId: "message" });
+        seed(f, 2002, { type: "item/agentMessage/delta", itemId: "message" });
+        seed(f, 2003, {
+          type: "item/completed",
+          itemKind: "agentMessage",
+          itemId: "message",
+        });
+      });
+      for (let i = 0; i < 3; i++)
+        advanceThreadPruning(f.db, { threadId: f.thread.id });
+      const result = advanceThreadPruning(f.db, { threadId: f.thread.id });
+      expect(result.policy).toBe("resolved-items");
+      expect(result.scanned).toBe(2);
+      expect(result.removed).toBe(1);
+      expect(sequences(f)).toContain(2001);
+      expect(sequences(f)).not.toContain(2002);
+      expect(sequences(f)).toContain(2003);
+    } finally {
+      f.db.$client.close();
+    }
+  });
+
+  it("rolls back scoped live progress and deletion and restores the busy timeout", () => {
+    const f = setup();
+    try {
+      seed(f, 1);
+      seed(f, 2);
+      f.db.run(
+        sql`CREATE TRIGGER fail_live_advance BEFORE UPDATE ON thread_pruning_cursors BEGIN SELECT RAISE(ABORT, 'live advance failed'); END`,
+      );
+      const generation = getThreadEventRewriteGeneration(f.thread.id);
+      expect(() =>
+        advanceThreadPruning(f.db, { threadId: f.thread.id }),
+      ).toThrow("live advance failed");
+      expect(f.db.$client.pragma("busy_timeout", { simple: true })).toBe(5000);
+      expect(sequences(f)).toEqual([1, 2]);
+      expect(f.db.select().from(threadPruningCursors).all()).toEqual([]);
+      expect(getThreadEventRewriteGeneration(f.thread.id)).toBe(generation);
+      f.db.run(sql`DROP TRIGGER fail_live_advance`);
+      expect(
+        advanceThreadPruning(f.db, { threadId: f.thread.id }).removed,
+      ).toBe(1);
+      expect(getThreadEventRewriteGeneration(f.thread.id)).toBe(generation + 1);
+    } finally {
+      f.db.$client.close();
+    }
+  });
+
   it("isolates live progress by thread and preserves global progress on thread deletion", () => {
     const f = setup();
     try {
@@ -94,7 +208,8 @@ describe("thread pruning", () => {
       };
       for (const fixture of [f, other]) {
         fixture.db.transaction(() => {
-          for (let i = 1; i <= 600; i++) seed(fixture, i);
+          for (let i = 1; i <= 600; i++)
+            seed(fixture, i, { type: "item/agentMessage/delta" });
         });
         pruneResolvedItemDeltas(f.db, { threadId: fixture.thread.id });
       }
@@ -364,6 +479,10 @@ describe("thread pruning", () => {
       writer = createConnection(path);
       advanceThreadPruning(f.db, "rate-limits");
       writer.$client.exec("BEGIN IMMEDIATE");
+      expect(() =>
+        advanceThreadPruning(f.db, { threadId: f.thread.id }),
+      ).toThrow("database is locked");
+      expect(f.db.$client.pragma("busy_timeout", { simple: true })).toBe(5000);
       expect(() => advanceThreadPruning(f.db, "rate-limits")).toThrow(
         "database is locked",
       );

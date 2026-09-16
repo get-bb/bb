@@ -28,10 +28,12 @@ const VERSION_BY_POLICY: Record<ThreadPruningPolicy, number> = {
   "resolved-items": 1,
 };
 const BATCH_SIZE = 500;
+const LIVE_BATCH_SIZE = 32;
 
 export function getNextThreadPruningPolicy(
   db: DbConnection,
   excluded: ReadonlySet<string>,
+  scope = "",
 ): ThreadPruningPolicy | null {
   const rows = db
     .select({
@@ -41,7 +43,7 @@ export function getNextThreadPruningPolicy(
     .from(threadPruningCursors)
     .where(
       and(
-        eq(threadPruningCursors.scope, ""),
+        eq(threadPruningCursors.scope, scope),
         inArray(threadPruningCursors.policy, [...THREAD_PRUNING_POLICIES]),
       ),
     )
@@ -57,7 +59,10 @@ export function getNextThreadPruningPolicy(
 function advanceThreadPruningTransaction(
   db: DbConnection,
   policy: ThreadPruningPolicy,
+  threadScope?: string,
 ) {
+  const scope = threadScope ?? "";
+  const batchSize = threadScope === undefined ? BATCH_SIZE : LIVE_BATCH_SIZE;
   const result = db.transaction(
     (tx) => {
       const latestAdvance = tx
@@ -65,7 +70,7 @@ function advanceThreadPruningTransaction(
         .from(threadPruningCursors)
         .where(
           and(
-            eq(threadPruningCursors.scope, ""),
+            eq(threadPruningCursors.scope, scope),
             inArray(threadPruningCursors.policy, [...THREAD_PRUNING_POLICIES]),
           ),
         )
@@ -75,7 +80,13 @@ function advanceThreadPruningTransaction(
         ...latestAdvance.map((row) => row.updatedAt + 1),
       );
       tx.insert(threadPruningCursors)
-        .values({ policy, version: VERSION_BY_POLICY[policy], updatedAt: now })
+        .values({
+          policy,
+          scope,
+          threadId: threadScope ?? null,
+          version: VERSION_BY_POLICY[policy],
+          updatedAt: now,
+        })
         .onConflictDoNothing()
         .run();
       let cursor = tx
@@ -84,7 +95,7 @@ function advanceThreadPruningTransaction(
         .where(
           and(
             eq(threadPruningCursors.policy, policy),
-            eq(threadPruningCursors.scope, ""),
+            eq(threadPruningCursors.scope, scope),
           ),
         )
         .get();
@@ -92,8 +103,8 @@ function advanceThreadPruningTransaction(
       if (cursor.version !== VERSION_BY_POLICY[policy]) {
         cursor = {
           policy,
-          scope: "",
-          threadId: null,
+          scope,
+          threadId: threadScope ?? null,
           version: VERSION_BY_POLICY[policy],
           lastThreadId: "",
           currentThreadId: null,
@@ -119,7 +130,11 @@ function advanceThreadPruningTransaction(
         const next = tx
           .select({ id: threads.id })
           .from(threads)
-          .where(gt(threads.id, cursor.lastThreadId))
+          .where(
+            threadScope === undefined
+              ? gt(threads.id, cursor.lastThreadId)
+              : eq(threads.id, threadScope),
+          )
           .orderBy(threads.id)
           .limit(1)
           .get();
@@ -151,6 +166,7 @@ function advanceThreadPruningTransaction(
             threadId,
             afterSequence: cursor.sequence,
             throughSequence: cursor.upperSequence,
+            limit: threadScope === undefined ? 64 : LIVE_BATCH_SIZE,
           });
           scanned = batch.scanned;
           removed = batch.removed;
@@ -161,6 +177,7 @@ function advanceThreadPruningTransaction(
           const batch = advanceLiveEventPruning(tx, {
             threadId,
             kind: cursor.step === 0 ? "deltas" : "background",
+            limit: batchSize,
           });
           scanned = batch.scanned;
           removed = batch.removed;
@@ -179,7 +196,7 @@ function advanceThreadPruningTransaction(
             SELECT id, sequence FROM events INDEXED BY events_thread_type_sequence_idx
             WHERE thread_id = ${threadId} AND type = ${type}
               AND sequence > ${cursor.sequence} AND sequence <= ${cursor.upperSequence}
-            ORDER BY sequence LIMIT ${BATCH_SIZE}
+            ORDER BY sequence LIMIT ${batchSize}
           `);
           scanned = rows.length;
           const last = rows.at(-1);
@@ -194,7 +211,7 @@ function advanceThreadPruningTransaction(
             const relevantIds = rows.map((row) => row.id);
             const bytesQuery = sql`SELECT COALESCE(SUM(length(CAST(data AS BLOB))), 0) AS bytes FROM events WHERE ${inArray(events.id, relevantIds)} AND ${events.type} = ${type}`;
             const before =
-              relevantIds.length === 0
+              threadScope !== undefined || relevantIds.length === 0
                 ? 0
                 : (tx.get<{ bytes: number }>(bytesQuery)?.bytes ?? 0);
             if (policy === "turn-diffs") {
@@ -258,14 +275,14 @@ function advanceThreadPruningTransaction(
                   throw new Error("Invalid usage pruning step");
               }
             }
-            if (removed > 0) {
+            if (removed > 0 && threadScope === undefined) {
               const after = tx.get<{ bytes: number }>(bytesQuery)?.bytes ?? 0;
               removedBytes = before - after;
             }
             cursor.sequence = throughSequence;
           }
           if (
-            rows.length < BATCH_SIZE ||
+            rows.length < batchSize ||
             cursor.sequence >= cursor.upperSequence
           ) {
             if (policy === "usage" && cursor.step < 3) {
@@ -293,7 +310,7 @@ function advanceThreadPruningTransaction(
         .where(
           and(
             eq(threadPruningCursors.policy, policy),
-            eq(threadPruningCursors.scope, ""),
+            eq(threadPruningCursors.scope, scope),
           ),
         )
         .run();
@@ -316,14 +333,21 @@ function advanceThreadPruningTransaction(
 
 export function advanceThreadPruning(
   db: DbConnection,
-  policy: ThreadPruningPolicy,
+  target: ThreadPruningPolicy | { threadId: string },
 ) {
   const timeout: unknown = db.$client.pragma("busy_timeout", { simple: true });
   if (typeof timeout !== "number")
     throw new Error("Invalid SQLite busy timeout");
   db.$client.pragma("busy_timeout = 0");
   try {
-    return advanceThreadPruningTransaction(db, policy);
+    const threadScope =
+      typeof target === "string" ? undefined : target.threadId;
+    const policy =
+      typeof target === "string"
+        ? target
+        : getNextThreadPruningPolicy(db, new Set(), target.threadId);
+    if (policy === null) throw new Error("Missing live pruning policy");
+    return advanceThreadPruningTransaction(db, policy, threadScope);
   } finally {
     db.$client.pragma(`busy_timeout = ${timeout}`);
   }

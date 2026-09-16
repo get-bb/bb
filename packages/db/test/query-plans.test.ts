@@ -1465,6 +1465,16 @@ describe("slow query index plans", () => {
     const statements = captureStatements(db, () => {
       expect(pruneResolvedItemDeltas(db, { threadId: thread.id })).toBe(1);
     });
+    const discovery = statements.find((statement) =>
+      statement.sql.includes("WITH candidate_ids AS MATERIALIZED"),
+    );
+    if (!discovery) throw new Error("Missing typed delta candidate discovery");
+    const discoveryPlan = queryPlanDetails({ db, ...discovery });
+    expect(
+      discoveryPlan.match(/USING INDEX events_thread_type_sequence_idx/gu),
+    ).toHaveLength(4);
+    expect(discoveryPlan).toContain("USING INDEX sqlite_autoindex_events_1");
+    expect(discoveryPlan).not.toContain("events_thread_sequence_idx");
     const supportQueries = statements.filter((statement) =>
       statement.sql.includes(
         "FROM events INDEXED BY events_thread_turn_type_item_sequence_idx",
