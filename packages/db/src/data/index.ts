@@ -78,6 +78,7 @@ export {
   listThreadEnvironmentAssignmentsOnHost,
   listUnarchivedAssignedChildThreads,
   listNonDeletedHiddenSourceThreads,
+  lifecycleThreadTreeIdsForProject,
   listLifecycleThreadTree,
   listLifecycleThreadDependents,
   listRunningThreads,

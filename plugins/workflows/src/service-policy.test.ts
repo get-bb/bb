@@ -1360,6 +1360,36 @@ describe("workflow service policy integration", () => {
     }
   });
 
+  it("amortizes origin reconciliation across maintenance ticks", async () => {
+    const test = setup();
+    harnesses.push(test.harness);
+    const run = await test.start(source(`return await agent("work");`));
+    const originGets = () =>
+      test.harness.sdk.callsTo("threads.get").filter((args) => {
+        const first = args[0];
+        return (
+          typeof first === "object" &&
+          first !== null &&
+          "threadId" in first &&
+          first.threadId === "origin"
+        );
+      }).length;
+    const controller = new AbortController();
+    const worker = test.service.runWorker(controller.signal);
+    try {
+      await eventually(() =>
+        expect(getCall(test.db, run.id, 0)?.childThreadId).toBe("child-1"),
+      );
+      const before = originGets();
+      await new Promise((resolve) => setTimeout(resolve, 2_200));
+      expect(getRunRequired(test.db, run.id).status).toBe("running");
+      expect(originGets() - before).toBeLessThanOrEqual(1);
+    } finally {
+      controller.abort();
+      await worker;
+    }
+  });
+
   it("keeps cleanup pending after stop fails and completes it after restart", async () => {
     const test = setup();
     harnesses.push(test.harness);

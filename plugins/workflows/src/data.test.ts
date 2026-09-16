@@ -139,6 +139,50 @@ describe("workflow durable data", () => {
     ).toEqual({ run_id: run.id, origin_thread_id: run.originThreadId });
   });
 
+  it("staggers backfilled cleanup deadlines into one batch per maintenance tick", () => {
+    db.close();
+    db = new Database(":memory:");
+    db.pragma("foreign_keys = ON");
+    db.exec(migrations.slice(0, -2).join("\n"));
+    const run = newRun();
+    const insertCall = db.prepare(
+      `INSERT INTO workflow_calls(id, run_id, call_index, cache_key, prompt,
+         options_json, resolved_provider, resolved_model, resolved_reasoning_level,
+         resolved_permission_mode, status, child_thread_id, created_at)
+       VALUES (?, ?, ?, 'key', 'work', '{}', 'codex', 'gpt-test', 'medium', 'full',
+         'failed', ?, 0)`,
+    );
+    for (let index = 0; index < 250; index++)
+      insertCall.run(
+        `call-${String(index).padStart(3, "0")}`,
+        run.id,
+        index,
+        `worker-${String(index).padStart(3, "0")}`,
+      );
+    const migratedAt = Date.now();
+    db.exec(migrations.slice(-2).join("\n"));
+
+    const buckets = db
+      .prepare(
+        `SELECT next_cleanup_at AS at, COUNT(*) AS size FROM workflow_workers
+         GROUP BY next_cleanup_at ORDER BY at`,
+      )
+      .all() as Array<{ at: number; size: number }>;
+    expect(buckets.map((bucket) => bucket.size)).toEqual([100, 100, 50]);
+    expect(buckets.map((bucket) => bucket.at - buckets[0].at)).toEqual([
+      0, 1_000, 2_000,
+    ]);
+    expect(buckets[0].at).toBeGreaterThan(migratedAt - 2_000);
+    expect(buckets[0].at).toBeLessThanOrEqual(Date.now());
+
+    expect(retiredWorkers(db, buckets[0].at)).toHaveLength(100);
+    expect(retiredWorkers(db, buckets[0].at + 999)).toHaveLength(100);
+    expect(retiredWorkers(db, buckets[2].at)).toHaveLength(100);
+    expect(retiredWorkers(db, buckets[0].at).at(0)?.threadId).toBe(
+      "worker-000",
+    );
+  });
+
   it("retains unattached workers when attachment loses a cancellation race", () => {
     const run = newRun();
     markRunning(run.id);

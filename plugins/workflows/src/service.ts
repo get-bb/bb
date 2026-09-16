@@ -105,6 +105,7 @@ const NOTIFICATION_RETRY_BASE_MS = 1_000;
 const NOTIFICATION_RETRY_MAX_MS = 60 * 60 * 1_000;
 const PROVIDER_RETRY_DELAYS_MS = [1_000, 4_000] as const;
 const RETENTION_SWEEP_RUNS = 20;
+const RECOVERY_SCAN_INTERVAL_MS = 30_000;
 
 function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -424,6 +425,7 @@ export function createWorkflowService(
   const spawningCalls = new Set<string>();
   let discoveryOffset = 0;
   let nextDiscoveryAt = 0;
+  let nextOriginReconcileAt = 0;
 
   async function onOriginUnavailable(threadId: string): Promise<void> {
     const stops = listActiveRunsForOriginThread(db, threadId).map((run) =>
@@ -461,6 +463,8 @@ export function createWorkflowService(
   }
 
   async function reconcileOrigins(): Promise<void> {
+    if (Date.now() < nextOriginReconcileAt) return;
+    nextOriginReconcileAt = Date.now() + RECOVERY_SCAN_INTERVAL_MS;
     for (const threadId of workerOrigins(db, Date.now())) {
       try {
         if (await originUnavailable(threadId))
@@ -482,7 +486,7 @@ export function createWorkflowService(
 
   async function discoverWorkers(): Promise<void> {
     if (Date.now() < nextDiscoveryAt && spawningCalls.size === 0) return;
-    nextDiscoveryAt = Date.now() + 30_000;
+    nextDiscoveryAt = Date.now() + RECOVERY_SCAN_INTERVAL_MS;
     const threads = await bb.sdk.threads.list({
       originPluginId: bb.pluginId,
       includeHidden: true,

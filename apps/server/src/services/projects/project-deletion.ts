@@ -3,11 +3,12 @@ import {
   sweepProviderEnvironment,
 } from "../environments/environment-engine.js";
 import { cancelAbandonedProviderCreations } from "../threads/thread-environment-providers.js";
-import { eq, isNotNull, inArray, sql } from "drizzle-orm";
+import { eq, isNotNull, inArray } from "drizzle-orm";
 import {
   deleteProject,
   getProject,
   getEnvironment,
+  lifecycleThreadTreeIdsForProject,
   listEnvironments,
   markProjectDeleted,
   markThreadDeleted,
@@ -60,13 +61,7 @@ function listProjectDeletionThreads(
     })
     .from(threads)
     .where(
-      inArray(
-        threads.id,
-        sql`(WITH RECURSIVE owned(id) AS (
-      SELECT id FROM threads WHERE project_id = ${args.projectId}
-      UNION SELECT t.id FROM threads t JOIN owned ON t.lifecycle_owner_thread_id = owned.id
-    ) SELECT id FROM owned)`,
-      ),
+      inArray(threads.id, lifecycleThreadTreeIdsForProject(args.projectId)),
     )
     .all();
 }

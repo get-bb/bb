@@ -224,8 +224,10 @@ export const migrations = [
      next_cleanup_at INTEGER NOT NULL DEFAULT 0
    );
    CREATE INDEX workflow_workers_cleanup_idx ON workflow_workers(archived_at, next_cleanup_at);
-   INSERT INTO workflow_workers(thread_id, run_id, call_id, origin_thread_id)
-     SELECT calls.child_thread_id, calls.run_id, calls.id, runs.origin_thread_id
+   INSERT INTO workflow_workers(thread_id, run_id, call_id, origin_thread_id, next_cleanup_at)
+     SELECT calls.child_thread_id, calls.run_id, calls.id, runs.origin_thread_id,
+       CAST(strftime('%s', 'now') AS INTEGER) * 1000
+         + (ROW_NUMBER() OVER (ORDER BY calls.id) - 1) / 100 * 1000
      FROM workflow_calls calls JOIN workflow_runs runs ON runs.id = calls.run_id
      WHERE calls.child_thread_id IS NOT NULL;`,
   `ALTER TABLE workflow_workers ADD COLUMN cleanup_attempts INTEGER NOT NULL DEFAULT 0;`,
@@ -847,7 +849,6 @@ const EXPIRED_TERMINAL_RUN_IDS_SQL = `WITH RECURSIVE retained(id, resumed_from_r
 
 export interface ExpiredTerminalRuns {
   runIds: string[];
-  childThreadIds: string[];
 }
 
 export function listExpiredTerminalRuns(
@@ -860,17 +861,7 @@ export function listExpiredTerminalRuns(
       id: string;
     }>
   ).map((row) => row.id);
-  if (runIds.length === 0) return { runIds: [], childThreadIds: [] };
-  const placeholders = runIds.map(() => "?").join(", ");
-  const childThreadIds = (
-    db
-      .prepare(
-        `SELECT DISTINCT child_thread_id AS childThreadId FROM workflow_calls
-         WHERE run_id IN (${placeholders}) AND child_thread_id IS NOT NULL`,
-      )
-      .all(...runIds) as Array<{ childThreadId: string }>
-  ).map((row) => row.childThreadId);
-  return { runIds, childThreadIds };
+  return { runIds };
 }
 
 export function deleteTerminalRuns(db: Db, runIds: readonly string[]): number {

@@ -1875,10 +1875,20 @@ export function deleteThread(
   return true;
 }
 
-function lifecycleTree(id: string): SQL {
+function lifecycleThreadTreeIds(seed: SQL): SQL {
   return sql`(WITH RECURSIVE owned(id) AS (
-    SELECT ${id} UNION SELECT t.id FROM threads t JOIN owned ON t.lifecycle_owner_thread_id = owned.id
+    ${seed} UNION SELECT t.id FROM threads t JOIN owned ON t.lifecycle_owner_thread_id = owned.id
   ) SELECT id FROM owned)`;
+}
+
+function lifecycleThreadTreeIdsForThread(threadId: string): SQL {
+  return lifecycleThreadTreeIds(sql`SELECT ${threadId}`);
+}
+
+export function lifecycleThreadTreeIdsForProject(projectId: string): SQL {
+  return lifecycleThreadTreeIds(
+    sql`SELECT id FROM threads WHERE project_id = ${projectId}`,
+  );
 }
 
 export function listLifecycleThreadDependents(
@@ -1896,7 +1906,7 @@ export function listLifecycleThreadTree(db: DbQueryConnection, id: string) {
   return db
     .select()
     .from(threads)
-    .where(inArray(threads.id, lifecycleTree(id)))
+    .where(inArray(threads.id, lifecycleThreadTreeIdsForThread(id)))
     .all();
 }
 
@@ -1913,7 +1923,7 @@ export function markThreadDeleted(
     })
     .where(
       and(
-        inArray(threads.id, lifecycleTree(args.threadId)),
+        inArray(threads.id, lifecycleThreadTreeIdsForThread(args.threadId)),
         isNull(threads.deletedAt),
       ),
     )
@@ -1956,7 +1966,7 @@ export function archiveThread(
     .set({ archivedAt: now, updatedAt: now })
     .where(
       and(
-        inArray(threads.id, lifecycleTree(id)),
+        inArray(threads.id, lifecycleThreadTreeIdsForThread(id)),
         isNull(threads.archivedAt),
         isNull(threads.deletedAt),
       ),
