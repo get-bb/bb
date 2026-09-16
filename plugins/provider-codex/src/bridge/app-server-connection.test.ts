@@ -79,7 +79,7 @@ describe("codex app-server connection", () => {
     }
   });
 
-  it("forces termination when a provider ignores stdin shutdown", async () => {
+  it("forces termination when a provider ignores stdin shutdown and SIGTERM", async () => {
     const ready = deferred<void>();
     const exited = deferred<CodexAppServerExitInfo>();
     const connection = createCodexAppServerConnection({
@@ -88,6 +88,7 @@ describe("codex app-server connection", () => {
         "-e",
         [
           "process.stdin.resume();",
+          'process.on("SIGTERM", () => {});',
           "setInterval(() => {}, 1000);",
           'process.stdout.write(JSON.stringify({method: "ready"}) + "\\n");',
         ].join(""),
@@ -110,6 +111,82 @@ describe("codex app-server connection", () => {
       await connection.kill();
     }
   }, 10_000);
+
+  it("ignores late approval replies and rejects new requests during graceful shutdown", async () => {
+    const ready = deferred<() => void>();
+    const exited = deferred<CodexAppServerExitInfo>();
+    const connection = createCodexAppServerConnection({
+      command: process.execPath,
+      args: [
+        "-e",
+        [
+          "process.stdin.resume();",
+          'process.stdin.on("end", () => setTimeout(() => process.exit(0), 150));',
+          `process.stdout.write(${JSON.stringify(childRequestLine())});`,
+        ].join(""),
+      ],
+      cwd: process.cwd(),
+      env: process.env,
+      recordThreadId: null,
+      onNotification: () => undefined,
+      onRequest: (_method, _params, responder) =>
+        ready.resolve(() => responder.result({ decision: "accept" })),
+      onExit: exited.resolve,
+    });
+    try {
+      const reply = await ready.promise;
+      const stopped = connection.kill();
+      reply();
+      await expect(
+        connection.request({
+          method: "thread/start",
+          resultSchema: z.unknown(),
+        }),
+      ).rejects.toThrow(/not running/);
+      await stopped;
+      await expect(exited.promise).resolves.toMatchObject({
+        code: 0,
+        signal: null,
+        stderrTail: "",
+      });
+    } finally {
+      await connection.kill();
+    }
+  });
+
+  it("offers SIGTERM cleanup when a provider does not exit on EOF", async () => {
+    const ready = deferred<void>();
+    const exited = deferred<CodexAppServerExitInfo>();
+    const connection = createCodexAppServerConnection({
+      command: process.execPath,
+      args: [
+        "-e",
+        [
+          "process.stdin.resume();",
+          "setInterval(() => {}, 1000);",
+          'process.on("SIGTERM", () => { process.stderr.write("terminated cleanly"); process.exit(0); });',
+          'process.stdout.write(JSON.stringify({method: "ready"}) + "\\n");',
+        ].join(""),
+      ],
+      cwd: process.cwd(),
+      env: process.env,
+      recordThreadId: null,
+      onNotification: () => ready.resolve(),
+      onRequest: () => undefined,
+      onExit: exited.resolve,
+    });
+    try {
+      await ready.promise;
+      await connection.kill();
+      await expect(exited.promise).resolves.toMatchObject({
+        code: 0,
+        signal: null,
+        stderrTail: "terminated cleanly",
+      });
+    } finally {
+      await connection.kill();
+    }
+  });
 
   it("preserves final output and exit details while stdio drains", async () => {
     const exited = deferred<CodexAppServerExitInfo>();
