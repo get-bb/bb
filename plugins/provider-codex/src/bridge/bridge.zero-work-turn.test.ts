@@ -203,7 +203,7 @@ it("settles a response-proved turn as failed when codex dies before turn/started
     providerThreadId,
     input: [{ type: "text", text: "/respond-then-exit", mentions: [] }],
     clientRequestId: "creq_dies234567",
-    options: { ...sessionOptions },
+    options: { ...FULL_ACCESS_SESSION_OPTIONS },
   });
   await harness.waitForResponse(2);
 
@@ -238,7 +238,7 @@ it("settles a turn the turn/start response reports as already completed", async 
     providerThreadId,
     input: [{ type: "text", text: "/respond-completed", mentions: [] }],
     clientRequestId: "creq_instdn2345",
-    options: { ...sessionOptions },
+    options: { ...FULL_ACCESS_SESSION_OPTIONS },
   });
   await harness.waitForResponse(2);
 
@@ -274,7 +274,7 @@ it("acknowledges a dispatch codex steers into the already-running turn", async (
     providerThreadId,
     input: [{ type: "text", text: "/wait-for-interrupt", mentions: [] }],
     clientRequestId: "creq_first23456",
-    options: { ...sessionOptions },
+    options: { ...FULL_ACCESS_SESSION_OPTIONS },
   });
   await harness.waitForResponse(2);
   await waitForEvents((events) =>
@@ -286,7 +286,7 @@ it("acknowledges a dispatch codex steers into the already-running turn", async (
     providerThreadId,
     input: [{ type: "text", text: "/steer-into-active", mentions: [] }],
     clientRequestId: "creq_steer23456",
-    options: { ...sessionOptions },
+    options: { ...FULL_ACCESS_SESSION_OPTIONS },
   });
   await harness.waitForResponse(3);
   const events = await waitForEvents(
@@ -335,7 +335,7 @@ it("does not resurrect a response-opened turn settled before its turn/started ar
     providerThreadId,
     input: [{ type: "text", text: "/interrupt-before-start", mentions: [] }],
     clientRequestId: "creq_prestart23",
-    options: { ...sessionOptions },
+    options: { ...FULL_ACCESS_SESSION_OPTIONS },
   });
   await harness.waitForResponse(2);
   await waitForEvents((events) =>
@@ -380,7 +380,7 @@ it("interrupts a response-opened turn once codex reports it started", async () =
     providerThreadId,
     input: [{ type: "text", text: "/late-start-interruptible", mentions: [] }],
     clientRequestId: "creq_ntrptate23",
-    options: { ...sessionOptions },
+    options: { ...FULL_ACCESS_SESSION_OPTIONS },
   });
   await harness.waitForResponse(2);
   await waitForEvents((events) =>
@@ -416,7 +416,7 @@ async function compactAndWaitForCompletion(
     providerThreadId,
     input: createStandaloneBuiltinCompactCommandInput(),
     clientRequestId,
-    options: { ...sessionOptions },
+    options: { ...FULL_ACCESS_SESSION_OPTIONS },
   });
   const response = await harness.waitForResponse(2);
   expect(response.error).toBeUndefined();
@@ -490,10 +490,7 @@ it.each([
       scriptPath,
       JSON.stringify({ requestLogPath, interruptError: error }),
     );
-    vi.stubEnv(
-      "BB_CODEX_BRIDGE_APP_SERVER_ARGS",
-      JSON.stringify([fakeAppServerPath, scriptPath]),
-    );
+    stubFakeCodexAppServer(scriptPath);
     const providerThreadId = await startSession();
     harness.sendRequest(2, "turn/start", {
       threadId: THREAD_ID,
@@ -502,7 +499,7 @@ it.each([
         { type: "text", text: "/late-start-interruptible", mentions: [] },
       ],
       clientRequestId: "creq_nretry2345",
-      options: { ...sessionOptions },
+      options: { ...FULL_ACCESS_SESSION_OPTIONS },
     });
     expect((await harness.waitForResponse(2)).error).toBeUndefined();
     await waitForEvents((events) =>
@@ -605,10 +602,7 @@ it.each([
         ...script,
       }),
     );
-    vi.stubEnv(
-      "BB_CODEX_BRIDGE_APP_SERVER_ARGS",
-      JSON.stringify([fakeAppServerPath, scriptPath]),
-    );
+    stubFakeCodexAppServer(scriptPath);
     const providerThreadId = await startSession();
     harness.sendRequest(2, "turn/start", {
       threadId: THREAD_ID,
@@ -617,7 +611,7 @@ it.each([
         { type: "text", text: "/late-start-interruptible", mentions: [] },
       ],
       clientRequestId: "creq_bnded23456",
-      options: { ...sessionOptions },
+      options: { ...FULL_ACCESS_SESSION_OPTIONS },
     });
     expect((await harness.waitForResponse(2)).error).toBeUndefined();
     await waitForEvents((events) =>
