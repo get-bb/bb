@@ -129,10 +129,10 @@ import {
 import {
   SIDEBAR_PROJECT_GROUP_LINE_CLASS,
   SIDEBAR_ROW_BASE_CLASS,
-  SIDEBAR_SECTION_DROP_TARGET_CLASS,
   getSidebarThreadGroupLineLeft,
   getSidebarThreadRowPaddingLeft,
 } from "./sidebarRowClasses";
+import { SectionDropTargetOverlay } from "./useSectionDropTargetActive";
 import {
   SIDEBAR_DRAG_OVERLAY_DROP_ANIMATION,
   useSidebarSortable,
@@ -1432,11 +1432,9 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
       ref={sortableRef}
       style={sortableStyle}
       data-sidebar-section-id={section.id}
-      className={cn(
-        "space-y-0.5 rounded-md transition-colors",
-        isThreadDropTarget && SIDEBAR_SECTION_DROP_TARGET_CLASS,
-      )}
+      className="relative space-y-0.5 rounded-md transition-colors"
     >
+      {isThreadDropTarget ? <SectionDropTargetOverlay /> : null}
       <SidebarSectionRow
         name={section.name}
         label={section.name}

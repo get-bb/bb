@@ -1290,7 +1290,8 @@ export function useSectionThreadDnd({
     dndContextProps,
     itemIdsByParentKey: lookup.itemIdsByParentKey,
     onClickCapture,
-    dragOverParentKey: dropDecisionLanded ? null : dragOverParentKey,
+    dragOverParentKey:
+      dropDecisionLanded || reorderTarget !== null ? null : dragOverParentKey,
     nestTarget: dropDecisionLanded ? null : rowDrop,
     reorderTarget: dropDecisionLanded ? null : reorderTarget,
     pinnedItemIds,

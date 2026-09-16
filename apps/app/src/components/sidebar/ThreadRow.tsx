@@ -157,10 +157,15 @@ interface ThreadRowContainerArgs {
 }
 
 const NEST_TARGET_STATE_CLASS: Record<SidebarNestTargetState, string> = {
-  valid:
-    "bg-sidebar-accent text-sidebar-accent-foreground ring-1 ring-inset ring-sidebar-ring",
-  blocked: "ring-1 ring-inset ring-destructive/60",
-  unchanged: "ring-1 ring-inset ring-sidebar-border",
+  valid: "bg-sidebar-accent text-sidebar-accent-foreground",
+  blocked: "opacity-60",
+  unchanged: "",
+};
+
+const NEST_UNDERLINE_STATE_CLASS: Record<SidebarNestTargetState, string> = {
+  valid: "bg-sidebar-ring",
+  blocked: "bg-destructive/70",
+  unchanged: "bg-sidebar-border",
 };
 
 const REORDER_PLACEMENT_CLASS: Record<SidebarReorderPlacement, string> = {
@@ -636,10 +641,22 @@ function ThreadRowComponent({
       SIDEBAR_ROW_OPEN_IN_SPLIT_STATE_CLASS,
     !showActive && "has-[[data-state=open]]:bg-sidebar-accent",
     rowDragBindings && !rowDragBindings.disabled && "select-none",
-    nestTargetState && NEST_TARGET_STATE_CLASS[nestTargetState],
-    reorderPlacement && REORDER_PLACEMENT_CLASS[reorderPlacement],
+    nestTargetState
+      ? NEST_TARGET_STATE_CLASS[nestTargetState]
+      : reorderPlacement && REORDER_PLACEMENT_CLASS[reorderPlacement],
   );
   const rowStyle = getThreadRowStyle(options.depth);
+  const nestUnderline = nestTargetState ? (
+    <span
+      aria-hidden="true"
+      data-sidebar-nest-underline=""
+      style={{ left: getSidebarThreadRowPaddingLeft(options.depth + 1) }}
+      className={cn(
+        "pointer-events-none absolute bottom-0 right-1 h-0.5 rounded-full",
+        NEST_UNDERLINE_STATE_CLASS[nestTargetState],
+      )}
+    />
+  ) : null;
   const isActionsOpen = isDropdownActionsOpen || isContextActionsOpen;
   const handleRowClickCapture = useCallback<ThreadRowClickCaptureHandler>(
     (event) => {
@@ -816,7 +833,12 @@ function ThreadRowComponent({
   );
 
   const row = renderThreadRowContainer({
-    children: rowContent,
+    children: (
+      <>
+        {rowContent}
+        {nestUnderline}
+      </>
+    ),
     className: rowClassName,
     containerRef,
     dragBindings: rowDragBindings,

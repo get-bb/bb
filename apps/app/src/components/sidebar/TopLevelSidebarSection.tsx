@@ -27,10 +27,11 @@ import {
   SIDEBAR_STANDARD_ROW_PADDING_CLASS,
   SIDEBAR_CONTROL_STATE_CLASS,
   SIDEBAR_GROUP_TEXT_CLASS,
-  SIDEBAR_SECTION_DROP_TARGET_CLASS,
-  SIDEBAR_SECTION_DROP_TARGET_SURFACE_CLASS,
 } from "./sidebarRowClasses";
-import { useSectionDropTargetActive } from "./useSectionDropTargetActive";
+import {
+  SectionDropTargetOverlay,
+  useSectionDropTargetActive,
+} from "./useSectionDropTargetActive";
 import type { SidebarSortableDragBindings } from "./sortableMotion";
 import {
   NO_COLLAPSED_CHILD_ACTIVITY,
@@ -173,12 +174,12 @@ export function TopLevelSidebarSection({
       data-sidebar-section-id={sectionId}
       data-sidebar-drop-target={isThreadDropTarget ? "true" : undefined}
       className={cn(
-        "group/sidebar-section min-w-0 rounded-md transition-colors",
+        "group/sidebar-section relative min-w-0 rounded-md transition-colors",
         isDropTargetActive && "bg-sidebar-accent/60",
-        isThreadDropTarget && SIDEBAR_SECTION_DROP_TARGET_CLASS,
       )}
       onClickCapture={handleClickCapture}
     >
+      {isThreadDropTarget ? <SectionDropTargetOverlay /> : null}
       <SidebarStickyTier
         ref={dragBindings?.setActivatorNodeRef}
         tier="label"
@@ -188,7 +189,6 @@ export function TopLevelSidebarSection({
           SIDEBAR_GROUP_TEXT_CLASS,
           SIDEBAR_STANDARD_ROW_PADDING_CLASS,
           "rounded-md pr-0 transition-colors",
-          isThreadDropTarget && SIDEBAR_SECTION_DROP_TARGET_SURFACE_CLASS,
           !stickyHeader && "relative top-auto",
           dragBindings && !dragBindings.disabled && "select-none",
         )}
