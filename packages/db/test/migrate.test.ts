@@ -841,7 +841,6 @@ function rewindEnvironmentRowFactsMigration(db: DbConnection): void {
 }
 
 function rewindMachineProvidersMigration(db: DbConnection): void {
-  db.$client.exec("DROP TABLE IF EXISTS thread_event_bookmarks");
   db.$client.exec("DROP TABLE IF EXISTS thread_pruning_cursors");
   db.$client.exec("DROP TABLE IF EXISTS thread_pruning_rate_limit_keepers");
   db.$client.exec("DROP TABLE IF EXISTS thread_plugin_metadata");

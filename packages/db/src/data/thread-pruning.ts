@@ -1,13 +1,13 @@
 import {
+  advanceLiveEventPruning,
   emptyArchivePruningProbe,
   pruneArchiveCandidates,
 } from "./archive-pruning-probes.js";
 import type { ThreadEventType } from "@bb/domain";
 import { pruneRateLimitSnapshotWindow } from "./rate-limit-pruning.js";
-import { eq, gt, inArray, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, sql } from "drizzle-orm";
 import type { DbConnection, DbQueryConnection } from "../connection.js";
 import { events, threadPruningCursors, threads } from "../schema.js";
-import { preserveEventBookmark } from "./event-bookmarks.js";
 import { bumpThreadEventRewriteGeneration } from "./event-rewrite-generation.js";
 import {
   getHighWaterMarks,
@@ -20,12 +20,14 @@ export const THREAD_PRUNING_POLICIES = [
   "rate-limits",
   "archive",
   "turn-diffs",
+  "resolved-items",
 ] as const;
 export type ThreadPruningPolicy = (typeof THREAD_PRUNING_POLICIES)[number];
 const VERSION_BY_POLICY: Record<ThreadPruningPolicy, number> = {
   "rate-limits": 1,
   archive: 1,
   "turn-diffs": 1,
+  "resolved-items": 1,
 };
 const BATCH_SIZE = 500;
 
@@ -39,7 +41,12 @@ export function getNextThreadPruningPolicy(
       updatedAt: threadPruningCursors.updatedAt,
     })
     .from(threadPruningCursors)
-    .where(inArray(threadPruningCursors.policy, [...THREAD_PRUNING_POLICIES]))
+    .where(
+      and(
+        eq(threadPruningCursors.scope, ""),
+        inArray(threadPruningCursors.policy, [...THREAD_PRUNING_POLICIES]),
+      ),
+    )
     .all();
   const updated = new Map(rows.map((row) => [row.policy, row.updatedAt]));
   return (
@@ -65,7 +72,10 @@ function advanceThreadPruningTransaction(
         .select({ updatedAt: threadPruningCursors.updatedAt })
         .from(threadPruningCursors)
         .where(
-          inArray(threadPruningCursors.policy, [...THREAD_PRUNING_POLICIES]),
+          and(
+            eq(threadPruningCursors.scope, ""),
+            inArray(threadPruningCursors.policy, [...THREAD_PRUNING_POLICIES]),
+          ),
         )
         .all();
       const now = Math.max(
@@ -79,12 +89,19 @@ function advanceThreadPruningTransaction(
       let cursor = tx
         .select()
         .from(threadPruningCursors)
-        .where(eq(threadPruningCursors.policy, policy))
+        .where(
+          and(
+            eq(threadPruningCursors.policy, policy),
+            eq(threadPruningCursors.scope, ""),
+          ),
+        )
         .get();
       if (!cursor) throw new Error("Missing thread pruning cursor");
       if (cursor.version !== VERSION_BY_POLICY[policy]) {
         cursor = {
           policy,
+          scope: "",
+          threadId: null,
           version: VERSION_BY_POLICY[policy],
           lastThreadId: "",
           currentThreadId: null,
@@ -106,6 +123,9 @@ function advanceThreadPruningTransaction(
         | "missing-thread" = "advanced";
       let removed = 0;
       let scanned = 0;
+      let scannedBytes = 0;
+      let scanMs = 0;
+      let deleteMs = 0;
       let removedBytes = 0;
       let bookkeepingRemoved = 0;
       if (cursor.currentThreadId === null) {
@@ -166,10 +186,24 @@ function advanceThreadPruningTransaction(
               durable: true,
             });
             scanned = batch.scanned;
+            scannedBytes = batch.scannedBytes;
+            scanMs = batch.scanMs;
+            deleteMs = batch.deleteMs;
             removed = batch.removed;
             removedBytes = batch.removedBytes;
             cursor.sequence = batch.nextSequence;
-            if (scanned < BATCH_SIZE) cursor.step = 2;
+            if (batch.complete) cursor.step = 2;
+          }
+        } else if (policy === "resolved-items") {
+          const batch = advanceLiveEventPruning(tx, {
+            threadId,
+            kind: cursor.step === 0 ? "deltas" : "background",
+          });
+          scanned = batch.scanned;
+          removed = batch.removed;
+          if (batch.complete) {
+            if (cursor.step === 0) cursor.step = 1;
+            else action = "thread-complete";
           }
         } else {
           const types: readonly ThreadEventType[] =
@@ -196,10 +230,9 @@ function advanceThreadPruningTransaction(
               | "itemId"
               | "parentToolCallId"
               | "sequence"
-              | "providerThreadId"
             >
           >(sql`
-            SELECT id, type, turn_id AS turnId, item_id AS itemId, parent_tool_call_id AS parentToolCallId, sequence, provider_thread_id AS providerThreadId
+            SELECT id, type, turn_id AS turnId, item_id AS itemId, parent_tool_call_id AS parentToolCallId, sequence
             FROM events INDEXED BY ${sql.raw(types.length === 1 ? "events_thread_type_sequence_idx" : "events_thread_sequence_idx")}
             WHERE thread_id = ${threadId} AND sequence > ${cursor.sequence} AND sequence <= ${cursor.upperSequence}
               ${types.length === 1 ? sql`AND type = ${types[0]!}` : sql``}
@@ -225,14 +258,15 @@ function advanceThreadPruningTransaction(
                 ? 0
                 : (tx.get<{ bytes: number }>(bytesQuery)?.bytes ?? 0);
             if (policy === "turn-diffs") {
-              for (const row of rows)
-                preserveEventBookmark(tx, { threadId, ...row });
               removed = tx
                 .delete(events)
                 .where(
-                  inArray(
-                    events.id,
-                    rows.map((row) => row.id),
+                  and(
+                    inArray(
+                      events.id,
+                      rows.map((row) => row.id),
+                    ),
+                    sql`${events.sequence} < (SELECT sequence FROM events WHERE thread_id = ${threadId} ORDER BY sequence DESC LIMIT 1)`,
                   ),
                 )
                 .run().changes;
@@ -309,20 +343,6 @@ function advanceThreadPruningTransaction(
               }
             }
             if (removed > 0) {
-              preserveEventBookmark(tx, {
-                threadId,
-                sequence: cursor.upperSequence,
-                providerThreadId: null,
-              });
-              const provider = [...rows]
-                .reverse()
-                .find((row) => row.providerThreadId !== null);
-              if (provider)
-                preserveEventBookmark(tx, {
-                  threadId,
-                  sequence: provider.sequence,
-                  providerThreadId: provider.providerThreadId,
-                });
               const after = tx.get<{ bytes: number }>(bytesQuery)?.bytes ?? 0;
               removedBytes = before - after;
             }
@@ -355,13 +375,21 @@ function advanceThreadPruningTransaction(
       cursor.updatedAt = now;
       tx.update(threadPruningCursors)
         .set(cursor)
-        .where(eq(threadPruningCursors.policy, policy))
+        .where(
+          and(
+            eq(threadPruningCursors.policy, policy),
+            eq(threadPruningCursors.scope, ""),
+          ),
+        )
         .run();
       return {
         policy,
         action,
         threadId,
         scanned,
+        scannedBytes,
+        scanMs,
+        deleteMs,
         removed,
         removedBytes,
         bookkeepingRemoved,

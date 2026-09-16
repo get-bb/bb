@@ -1,13 +1,18 @@
 # Event history pruning
 
-The server runs `thread-event-pruning` hourly, independently of vacuum and output
-retention. It checks `isDatabaseMaintenanceIdle` before every transaction, yields
-between advances, and stops after 64 advances or 50 ms elapsed. The elapsed budget
-is checked between synchronous advances; it cannot interrupt a SQLite statement.
-Maintenance uses a zero busy timeout and restores the connection's normal timeout
-in `finally`, so a competing writer causes a retry on a later sweep.
+The server makes `thread-event-pruning` eligible on every ten-second tick, after
+queued-message dispatch and other lifecycle work, independently of hourly vacuum.
+It checks `isDatabaseMaintenanceIdle` before every transaction, yields between
+advances, and starts no further advances after 64 advances or 50 ms elapsed.
+A busy skip is retried on the next tick, rather than consuming an hourly slot.
+The elapsed budget is checked between synchronous advances; it cannot interrupt a
+SQLite statement or commit and is not a maximum pause guarantee. Maintenance uses
+a zero busy timeout and restores the connection's normal timeout in `finally`, so
+lock contention causes a retry on a later tick.
 
-Each policy has an independent versioned `thread_pruning_cursors` row. Traversal
+Each policy and scope has an independent versioned `thread_pruning_cursors` row.
+An empty scope tracks the database-wide sweep; a thread ID tracks live delta or
+background cleanup for that thread. Thread-scoped rows cascade on thread deletion. Traversal
 uses thread primary keys and existing event sequence indexes. A visit captures an
 upper sequence, persists its current thread, policy step and scan position, and
 commits mutations and progress together. A completed traversal resets its thread
@@ -17,7 +22,11 @@ batch retains its previous cursor. A missing thread advances safely.
 
 ## Policies
 
-- **Rate limits:** walk at most 500 snapshots in descending sequence order. Keep
+- **Rate limits:** walk at most 64 snapshots in descending sequence order. Fetch
+  candidate IDs first and inspect payloads individually, stopping before the next
+  row after 1 MiB of payloads or 8 ms of scan/witness work. Always allow one row so
+  oversized payloads cannot stall progress. A single row, deletion, or commit may
+  exceed those limits. Keep
   the newest snapshot for each valid, nonempty string provider identity. Invalid
   JSON and missing/non-string/empty identities remain untouched. The temporary
   `thread_pruning_rate_limit_keepers` table stores provider-to-event witnesses for
@@ -34,9 +43,17 @@ batch retains its previous cursor. A missing thread advances safely.
   Resume incomplete scope lookups on later visits and revalidate completion
   witnesses before using them.
   Live active/idle/archive helpers also bound candidate discovery and mutations.
-- **Turn diffs:** consume incoming `turn/diff/updated` snapshots without storing
-  their payloads, and delete every historical snapshot, including the last per
-  turn. `fileChange` items are separate and remain available to edit cards.
+- **Turn diffs:** skip incoming daemon `turn/diff/updated` snapshots before
+  allocating a sequence, using the existing ingestion skip behavior. Delete
+  historical snapshots except when a snapshot is the thread's latest stored row.
+  Once a newer event exists, the next traversal can remove that snapshot.
+  `fileChange` items are separate and remain available to edit cards.
+- **Resolved items:** scan deltas and background-task progress for every thread,
+  including unarchived threads. Share the live cleanup's per-thread/per-kind
+  `thread_pruning_cursors` rows. Candidate position and unfinished support
+  probes commit with deletions, advance even when candidates survive, and restart
+  at the beginning after each finite captured window. Late completions are revisited
+  in subsequent cycles. Rows cascade away when their thread is deleted.
 
 No indexes or columns are added to `events`. Rate-limit witness lookups use the
 bookkeeping primary key and the existing event primary key, avoiding correlated
@@ -47,26 +64,74 @@ an advance exceed the elapsed sweep budget.
 
 ## Allocation, readers and notifications
 
-`thread_event_bookmarks` preserves each affected thread's allocation high-water
-mark and latest observed provider-thread attribution separately from event JSON.
-Both ingestion and historical deletion maintain it transactionally. Sequence and
-provider-recovery readers consult it; suffix truncation adjusts it within the
-requested truncation interval. Accepted daemon snapshots still consume their
-sequence positions, so the daemon contract and acknowledgment behavior are intact.
-Raw event history/export intentionally contains fewer rows and sequence gaps.
+Sequence allocation and provider recovery continue to read the events table.
+Pruning preserves the current latest row, checked within each deletion transaction,
+so a paused scan cannot delete the new tail after history truncation. The scan's
+captured upper sequence only bounds traversal; it does not allocate positions.
+Daemon diffs receive no sequence and no entry in `acceptedEvents`, just like other
+skipped inputs. A successful batch response still drains the daemon's delivery
+queue, including when every input was skipped. No daemon protocol change is needed.
+
+Provider diffs are stamped with the runtime's registered provider identity; they
+do not establish it. Session creation/resume emits `provider.env-resolved`, and
+identity notifications emit `thread/identity`. These and turn lifecycle events
+remain stored. Provider recovery uses the latest non-null attribution after the
+last completed context clear, without a separate bookmark or special keeper table.
+Historical pruning creates sequence gaps; skipped incoming diffs do not.
 
 Every committed deletion batch increments the thread's in-process rewrite
 version. The scheduler sends `history-rewritten` immediately after each successful
 batch, so a later failure cannot suppress earlier notifications. Live best-effort
 pruning also notifies after partial success. Progress logs contain policy, cursor,
 cycle, scanned/deleted rows, deleted JSON bytes, bookkeeping cleanup and elapsed
-time, without event payloads. Busy skips and failures remain distinguishable.
+time, without event payloads. Rate cleanup also reports scanned payload bytes,
+scan/witness time and deletion time. Each advance reports its total duration,
+including commit; sweeps report their maximum advance duration. Advances and live
+pruning calls taking at least 50 ms emit warnings. Busy skips and failures remain
+distinguishable. `removedBytes` covers the rate/archive/diff policies; resolved-item
+cleanup currently reports row counts only.
 
 Completed-output thresholds, sidecars, expiry, migration cursor and scheduling are
 unchanged. This phase does not introduce lifecycle/delta compaction, virtual
 readers, command text deletion, user-facing configuration, or vacuum/repacking.
 
-## Verification measurements
+## Current verification
+
+Regression tests exercise retained first-delta prefixes, late completions,
+unfinished probes across restart, rollback of cursor updates, background cleanup
+of unarchived threads, oversized rate snapshots, next-tick retry after a busy skip,
+continued work on subsequent ticks, and reporting a budget-overrunning advance.
+
+A same-host warm in-memory comparison used identical seeded data and the production
+transaction functions. These are diagnostic samples, not latency guarantees:
+
+| Fixture                                    | Before max advance | After max advance | Before total | After total | Advances before/after |
+| ------------------------------------------ | -----------------: | ----------------: | -----------: | ----------: | --------------------: |
+| 2,000 distinct providers, 512-byte padding |           16.20 ms |           4.07 ms |     59.08 ms |    93.23 ms |               12 / 39 |
+| 600 duplicate snapshots, 256 KiB padding   |           15.30 ms |           1.51 ms |     19.44 ms |    90.29 ms |               6 / 154 |
+
+Both versions retained all 2,000 distinct providers and removed 599 duplicates.
+Smaller transactions reduce these measured pauses at the cost of more total work.
+This does not reproduce or explain the separately reported 456 ms batch: that run
+was not a controlled comparison, and cold storage/commit latency was not measured
+here. The new warnings and per-stage timing expose such overruns for investigation.
+
+For scheduling scale, 30,665 advances at 64 per ten-second tick would require 480
+invocations, roughly 80 minutes of uninterrupted idle eligibility, versus roughly
+20 days at the previous hourly cadence. This is not a current full-copy forecast:
+smaller rate batches, the new all-thread pass, elapsed limits and busy ticks change
+the actual advance count and completion time. The private full copy has not been
+remeasured with this implementation.
+
+## Historical verification measurements
+
+The measurements below describe the earlier implementation that consumed incoming
+sequence positions without storing diffs and deleted even the latest historical
+diff. They are historical performance evidence, not validation of the current
+latest-row preservation policy; exact deletion totals and timings have not been
+remeasured on that private baseline. Current automated coverage checks skipped and
+mixed daemon batches, retained file changes, provider identity/context clearing,
+latest-row retention, and resumption after truncation against migrated databases.
 
 A sanitized private baseline clone contained 2,378,105 events in 2,326 threads.
 The production pruning functions removed 263,181 rate-limit rows (84,386,948 JSON

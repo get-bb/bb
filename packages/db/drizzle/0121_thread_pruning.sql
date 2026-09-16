@@ -1,13 +1,7 @@
-CREATE TABLE `thread_event_bookmarks` (
-	`thread_id` text PRIMARY KEY NOT NULL,
-	`sequence` integer NOT NULL,
-	`provider_sequence` integer NOT NULL,
-	`provider_thread_id` text,
-	FOREIGN KEY (`thread_id`) REFERENCES `threads`(`id`) ON UPDATE no action ON DELETE cascade
-);
---> statement-breakpoint
 CREATE TABLE `thread_pruning_cursors` (
-	`policy` text PRIMARY KEY NOT NULL,
+	`policy` text NOT NULL,
+	`scope` text DEFAULT '' NOT NULL,
+	`thread_id` text,
 	`version` integer NOT NULL,
 	`last_thread_id` text DEFAULT '' NOT NULL,
 	`current_thread_id` text,
@@ -21,9 +15,13 @@ CREATE TABLE `thread_pruning_cursors` (
 	`probe_phase` integer DEFAULT 0 NOT NULL,
 	`probe_sequence` integer DEFAULT 0 NOT NULL,
 	`probe_witness_id` text,
-	`updated_at` integer NOT NULL
+	`updated_at` integer NOT NULL,
+	PRIMARY KEY(`policy`, `scope`),
+	FOREIGN KEY (`thread_id`) REFERENCES `threads`(`id`) ON UPDATE no action ON DELETE cascade,
+	CONSTRAINT "thread_pruning_cursors_scope_check" CHECK("thread_pruning_cursors"."scope" = coalesce("thread_pruning_cursors"."thread_id", ''))
 );
 --> statement-breakpoint
+CREATE INDEX `thread_pruning_cursors_thread_idx` ON `thread_pruning_cursors` (`thread_id`);--> statement-breakpoint
 CREATE TABLE `thread_pruning_rate_limit_keepers` (
 	`provider_id` text PRIMARY KEY NOT NULL,
 	`event_id` text NOT NULL

@@ -1003,6 +1003,7 @@ describe("slow query index plans", () => {
         thread.id,
         "thread/contextWindowUsage/updated",
         sequenceCutoff,
+        thread.id,
         2,
         1,
       ],

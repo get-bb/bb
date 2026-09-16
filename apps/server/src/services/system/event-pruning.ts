@@ -65,7 +65,7 @@ const IDLE_THREAD_EVENT_KEEP_RECENT = 300;
 const ARCHIVED_THREAD_EVENT_KEEP_RECENT = 120;
 const ACTIVE_THREAD_EVENT_PRUNE_MIN_SEQUENCE_DELTA = 250;
 const ACTIVE_THREAD_EVENT_PRUNE_MIN_INTERVAL_MS = 30_000;
-const SLOW_THREAD_EVENT_PRUNE_LOG_THRESHOLD_MS = 1_000;
+const SLOW_THREAD_EVENT_PRUNE_LOG_THRESHOLD_MS = 50;
 
 const AGE_PRUNABLE_THREAD_EVENT_TYPES: readonly ThreadEventType[] = [
   "thread/contextWindowUsage/updated",
@@ -206,7 +206,7 @@ export function pruneThreadEventHistoryBestEffort(
 
     const durationMs = performance.now() - startedAt;
     if (durationMs >= SLOW_THREAD_EVENT_PRUNE_LOG_THRESHOLD_MS) {
-      deps.logger.debug(
+      deps.logger.warn(
         {
           durationMs: roundDurationMs(durationMs),
           latestSequence: result.latestSequence,

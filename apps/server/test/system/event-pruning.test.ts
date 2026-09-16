@@ -577,6 +577,11 @@ describe("thread event pruning", () => {
       });
 
       expect(response.status).toBe(200);
+      for (let i = 0; i < 4; i++)
+        pruneThreadEventHistory(harness.deps, {
+          threadId: thread.id,
+          mode: "active",
+        });
       expect(
         listEventSequencesForType(harness, {
           threadId: thread.id,

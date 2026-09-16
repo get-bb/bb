@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "88b3c482-3528-46b0-97e1-34457aa03fba",
+  "id": "1acd3da4-4bf8-4d4a-adca-f23ebf9b342a",
   "prevId": "9e929359-ef83-4092-a7f9-edf93437e28b",
   "tables": {
     "app_settings": {
@@ -3749,58 +3749,6 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "thread_event_bookmarks": {
-      "name": "thread_event_bookmarks",
-      "columns": {
-        "thread_id": {
-          "name": "thread_id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "sequence": {
-          "name": "sequence",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "provider_sequence": {
-          "name": "provider_sequence",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "provider_thread_id": {
-          "name": "provider_thread_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "thread_event_bookmarks_thread_id_threads_id_fk": {
-          "name": "thread_event_bookmarks_thread_id_threads_id_fk",
-          "tableFrom": "thread_event_bookmarks",
-          "tableTo": "threads",
-          "columnsFrom": [
-            "thread_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
     "thread_plugin_metadata": {
       "name": "thread_plugin_metadata",
       "columns": {
@@ -3860,8 +3808,23 @@
         "policy": {
           "name": "policy",
           "type": "text",
-          "primaryKey": true,
+          "primaryKey": false,
           "notNull": true,
+          "autoincrement": false
+        },
+        "scope": {
+          "name": "scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "''"
+        },
+        "thread_id": {
+          "name": "thread_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
           "autoincrement": false
         },
         "version": {
@@ -3972,11 +3935,46 @@
           "autoincrement": false
         }
       },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
+      "indexes": {
+        "thread_pruning_cursors_thread_idx": {
+          "name": "thread_pruning_cursors_thread_idx",
+          "columns": [
+            "thread_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "thread_pruning_cursors_thread_id_threads_id_fk": {
+          "name": "thread_pruning_cursors_thread_id_threads_id_fk",
+          "tableFrom": "thread_pruning_cursors",
+          "tableTo": "threads",
+          "columnsFrom": [
+            "thread_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "thread_pruning_cursors_policy_scope_pk": {
+          "columns": [
+            "policy",
+            "scope"
+          ],
+          "name": "thread_pruning_cursors_policy_scope_pk"
+        }
+      },
       "uniqueConstraints": {},
-      "checkConstraints": {}
+      "checkConstraints": {
+        "thread_pruning_cursors_scope_check": {
+          "name": "thread_pruning_cursors_scope_check",
+          "value": "\"thread_pruning_cursors\".\"scope\" = coalesce(\"thread_pruning_cursors\".\"thread_id\", '')"
+        }
+      }
     },
     "thread_pruning_rate_limit_keepers": {
       "name": "thread_pruning_rate_limit_keepers",

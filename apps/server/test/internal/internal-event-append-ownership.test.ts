@@ -83,7 +83,7 @@ function setupEventRoute(args: SeedEventRouteArgs = {}) {
 }
 
 describe("internal event append ownership", () => {
-  it("accepts turn snapshots without storing them while retaining edits, sequence allocation and provider recovery", async () => {
+  it("skips diffs using the existing batch response while retaining edits and provider identity", async () => {
     const { harness, session, thread } = await setupEventRoute();
     try {
       seedTurnStarted(harness.deps, {
@@ -96,6 +96,15 @@ describe("internal event append ownership", () => {
         harness,
         sessionId: session.id,
         events: [
+          {
+            threadId: thread.id,
+            event: {
+              type: "thread/identity",
+              threadId: thread.id,
+              providerThreadId,
+              scope: threadScope(),
+            },
+          },
           {
             threadId: thread.id,
             event: {
@@ -131,6 +140,15 @@ describe("internal event append ownership", () => {
           {
             threadId: thread.id,
             event: {
+              type: "thread/identity",
+              threadId: thread.id,
+              providerThreadId: "provider-latest",
+              scope: threadScope(),
+            },
+          },
+          {
+            threadId: thread.id,
+            event: {
               type: "turn/diff/updated",
               threadId: thread.id,
               providerThreadId: "provider-latest",
@@ -147,6 +165,30 @@ describe("internal event append ownership", () => {
       expect(accepted.acceptedEvents.map((event) => event.sequence)).toEqual([
         2, 3, 4,
       ]);
+      expect(accepted.acceptedEvents.map((event) => event.eventIndex)).toEqual([
+        0, 2, 3,
+      ]);
+      const skipped = await postEventBatch({
+        harness,
+        sessionId: session.id,
+        events: [
+          {
+            threadId: thread.id,
+            event: {
+              type: "turn/diff/updated",
+              threadId: thread.id,
+              providerThreadId: "provider-latest",
+              scope: turnScope("turn-diff"),
+              diff: "skip the entire batch",
+            },
+          },
+        ],
+      });
+      expect(skipped.status).toBe(200);
+      expect(
+        hostDaemonEventBatchResponseSchema.parse(await skipped.json())
+          .acceptedEvents,
+      ).toEqual([]);
       const stored = listEvents(harness.db, { threadId: thread.id });
       expect(stored.some((event) => event.type === "turn/diff/updated")).toBe(
         false,

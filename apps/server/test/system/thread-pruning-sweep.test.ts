@@ -101,7 +101,13 @@ describe("thread pruning sweep", () => {
       harness.db.run(sql`DROP TRIGGER fail_next_prune`);
       notify.mockRestore();
       for (let i = 0; i < 3; i++) await runThreadPruningSweep(harness.deps);
-      expect(harness.db.select().from(events).all()).toEqual([]);
+      expect(
+        harness.db
+          .select()
+          .from(events)
+          .all()
+          .map((row) => row.sequence),
+      ).toEqual([1200]);
     });
   });
 
@@ -131,6 +137,39 @@ describe("thread pruning sweep", () => {
     });
   });
 
+  it("reports an advance that overruns the elapsed budget and then yields", async () => {
+    await withTestHarness(async (harness) => {
+      seed(harness, 1200);
+      const now = vi
+        .spyOn(performance, "now")
+        .mockReturnValueOnce(0)
+        .mockReturnValueOnce(0)
+        .mockReturnValueOnce(0)
+        .mockReturnValue(75);
+      const warn = vi.spyOn(harness.deps.logger, "warn");
+      const debug = vi.spyOn(harness.deps.logger, "debug");
+      try {
+        await runThreadPruningSweep(harness.deps);
+        expect(warn).toHaveBeenCalledWith(
+          expect.objectContaining({ advanceElapsedMs: 75 }),
+          "Slow thread pruning advance",
+        );
+        expect(debug).toHaveBeenCalledWith(
+          expect.objectContaining({
+            advances: 1,
+            maxAdvanceMs: 75,
+            reason: "budget",
+          }),
+          "Thread pruning sweep finished",
+        );
+      } finally {
+        now.mockRestore();
+        warn.mockRestore();
+        debug.mockRestore();
+      }
+    });
+  });
+
   it("rotates durable policy progress and honors the advance budget", async () => {
     await withTestHarness(async (harness) => {
       const first = seed(harness, 0);
@@ -143,7 +182,7 @@ describe("thread pruning sweep", () => {
       );
       expect(steps.length).toBeLessThanOrEqual(64);
       expect(harness.db.select().from(threadPruningCursors).all()).toHaveLength(
-        3,
+        4,
       );
       const before = getNextThreadPruningPolicy(harness.db, new Set());
       expect(before).not.toBeNull();

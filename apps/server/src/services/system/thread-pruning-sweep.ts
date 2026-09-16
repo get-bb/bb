@@ -17,6 +17,7 @@ export async function runThreadPruningSweep(
   let removed = 0;
   let scanned = 0;
   let removedBytes = 0;
+  let maxAdvanceMs = 0;
   let reason = "budget";
   try {
     while (
@@ -35,14 +36,25 @@ export async function runThreadPruningSweep(
       }
       const policy = getNextThreadPruningPolicy(deps.db, completed);
       if (policy === null) break;
+      const advanceStartedAt = performance.now();
       const result = advanceThreadPruning(deps.db, policy);
+      const advanceElapsedMs = performance.now() - advanceStartedAt;
+      maxAdvanceMs = Math.max(maxAdvanceMs, advanceElapsedMs);
+      if (advanceElapsedMs >= 50)
+        deps.logger.warn(
+          { ...result, advanceElapsedMs },
+          "Slow thread pruning advance",
+        );
       advances += 1;
       scanned += result.scanned;
       removed += result.removed;
       removedBytes += result.removedBytes;
       if (result.removed > 0 && result.threadId !== null)
         deps.hub.notifyThread(result.threadId, ["history-rewritten"]);
-      deps.logger.debug({ ...result }, "Thread pruning policy advanced");
+      deps.logger.debug(
+        { ...result, advanceElapsedMs },
+        "Thread pruning policy advanced",
+      );
       if (result.action === "cycle-complete") completed.add(policy);
       await new Promise<void>((resolve) => setImmediate(resolve));
     }
@@ -58,6 +70,7 @@ export async function runThreadPruningSweep(
         removed,
         scanned,
         removedBytes,
+        maxAdvanceMs,
         reason,
         elapsedMs: performance.now() - startedAt,
       },

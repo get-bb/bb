@@ -478,12 +478,6 @@ async function runDestroyedEnvironmentPruneSweep(
 
 const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
   {
-    cadenceMs: DATABASE_MAINTENANCE_CHECK_INTERVAL_MS,
-    category: "retention",
-    name: "thread-event-pruning",
-    run: runThreadPruningSweep,
-  },
-  {
     cadenceMs: 0,
     category: "durable-intent-retry",
     name: "environment-provider-lifecycle",
@@ -575,6 +569,12 @@ const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
     category: "scheduler",
     name: "plugin-schedule",
     run: (deps, now) => deps.pluginSchedules.sweepDueSchedules(now),
+  },
+  {
+    cadenceMs: 0,
+    category: "retention",
+    name: "thread-event-pruning",
+    run: runThreadPruningSweep,
   },
   {
     cadenceMs: DATABASE_MAINTENANCE_CHECK_INTERVAL_MS,
