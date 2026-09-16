@@ -57,6 +57,47 @@ describe("bb thread spawn command output", () => {
     expect(resolveLocalHostIdMock).not.toHaveBeenCalled();
   });
 
+  it("bb thread spawn passes explicit lifecycle ownership independently of parent selection", async () => {
+    vi.stubEnv("BB_PROJECT_ID", "proj-1");
+    const thread: domain.Thread = fixtures.makeThread({
+      id: "thread-1",
+      projectId: "proj-1",
+      providerId: "codex",
+      status: "starting",
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    const post = vi.fn(async () => thread);
+    stubServerApi({ "v1.threads.$post": post });
+
+    await runCommand(
+      [
+        "thread",
+        "spawn",
+        "--project",
+        "proj-1",
+        "--prompt",
+        "hello",
+        "--lifecycle-owner-thread",
+        "owner-other-project",
+      ],
+      register,
+    );
+
+    expect(post).toHaveBeenCalledWith({
+      json: {
+        lifecycleOwnerThreadId: "owner-other-project",
+        origin: "cli",
+        startedOnBehalfOf: null,
+        originKind: null,
+        projectId: "proj-1",
+        input: [{ type: "text", text: "hello", mentions: [] }],
+        environment: { type: "project-default" },
+      },
+    });
+    expect(resolveLocalHostIdMock).not.toHaveBeenCalled();
+  });
+
   it.each([
     ["image", "localImage", "screenshot.png", "image/png", false],
     ["file", "localFile", "report.pdf", "application/pdf", false],

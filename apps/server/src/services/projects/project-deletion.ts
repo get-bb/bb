@@ -3,7 +3,7 @@ import {
   sweepProviderEnvironment,
 } from "../environments/environment-engine.js";
 import { cancelAbandonedProviderCreations } from "../threads/thread-environment-providers.js";
-import { eq, isNotNull } from "drizzle-orm";
+import { eq, isNotNull, inArray, sql } from "drizzle-orm";
 import {
   deleteProject,
   getProject,
@@ -59,7 +59,15 @@ function listProjectDeletionThreads(
       status: threads.status,
     })
     .from(threads)
-    .where(eq(threads.projectId, args.projectId))
+    .where(
+      inArray(
+        threads.id,
+        sql`(WITH RECURSIVE owned(id) AS (
+      SELECT id FROM threads WHERE project_id = ${args.projectId}
+      UNION SELECT t.id FROM threads t JOIN owned ON t.lifecycle_owner_thread_id = owned.id
+    ) SELECT id FROM owned)`,
+      ),
+    )
     .all();
 }
 
@@ -126,7 +134,8 @@ export function beginProjectDeletion(
   const { projectThreads } = tombstoneProjectThreadsForDeletion(deps, args);
   for (const thread of projectThreads) {
     const environment = thread.environmentId
-      ? (environmentsById.get(thread.environmentId) ?? null)
+      ? (environmentsById.get(thread.environmentId) ??
+        getEnvironment(deps.db, thread.environmentId))
       : null;
     requestThreadStorageDeletion(deps, thread, environment);
   }
@@ -172,7 +181,8 @@ export async function advanceProjectDeletion(
   });
   for (const thread of projectThreads) {
     const environment = thread.environmentId
-      ? (environmentsById.get(thread.environmentId) ?? null)
+      ? (environmentsById.get(thread.environmentId) ??
+        getEnvironment(deps.db, thread.environmentId))
       : null;
 
     if (thread.deletedAt === null) {

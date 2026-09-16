@@ -25,6 +25,42 @@ The core entities and how they relate:
 
 ## Contracts and boundaries
 
+### Thread lifecycle ownership
+
+`lifecycleOwnerThreadId` is an immutable, optional creation relationship independent
+of sidebar `parentThreadId`, fork `sourceThreadId`, visibility and attribution.
+Spawn and fork accept a live owner across projects, hosts and environments. Independent threads omit the field. Side chats assign their source;
+every workflow worker attempt assigns its origin, including replacements.
+
+Owner archival recursively archives dependents and stops execution while retaining
+history under normal archive retention. Owner deletion recursively marks dependents
+for deletion in one database statement. The owner row and ownership foreign keys
+remain until every dependent finishes storage cleanup. The existing daemon command
+stops execution before removing storage; periodic sweeps and reconnect reconciliation
+retry failures. Cleanup uses each dependent's own host. Unarchiving an owner does
+not restore its dependents; restore them explicitly, owner first. Dependents can
+archive/delete independently without archiving/deleting the owner. Deleting an
+owning project also deletes cross-project dependents, while deleting only a
+dependent project leaves its external owner intact. Explicit Stop
+continues to stop only the requested turn/runtime.
+
+Ownership cannot be updated or cleared. Assigning only at creation to an existing
+live thread prevents cycles, self-ownership and reassignment during deletion. The
+server revalidates immediately before insertion, with a database insert guard.
+Deletion and archival persist before cleanup effects. Ordinary sidebar children
+and visible forks keep their existing policies unless ownership is explicit.
+
+Migration 0121 backfills only hidden side-chat forks with explicit plugin attribution
+and workflow workers with structured `workflowWorker`, `runId`, `callId`, and
+`originThreadId` metadata. The owner must exist, belong to the same project and be
+strictly older. Ambiguous records, equal timestamps, missing sources and title-based
+matches remain unowned. Original `client/turn/requested` prompts may support manual
+historical investigation but are never parsed automatically for ownership. The
+migration also propagates existing owner tombstones/archive state. No live records
+are changed by developing or testing this branch.
+
+### Transport contracts
+
 Two contract packages define the boundaries between components:
 
 **`@bb/server-contract`**: the HTTP + WebSocket API between clients (app, CLI) and the server. Route schemas, request/response types, WebSocket notification types.

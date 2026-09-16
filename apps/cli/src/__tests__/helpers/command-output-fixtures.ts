@@ -113,6 +113,7 @@ export function makeThread(overrides: MakeThreadArgs): Thread {
     sectionId: null,
     environmentId: null,
     parentThreadId: null,
+    lifecycleOwnerThreadId: null,
     sourceThreadId: null,
     originKind: null,
     originPluginId: null,

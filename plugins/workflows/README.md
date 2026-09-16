@@ -242,3 +242,32 @@ Resume requires a terminal prior run from the same project and environment
 workspace. Another origin thread may resume it only when that thread uses the
 same environment. Successful writer calls are cached just like read-only calls;
 their effects are not copied into another workspace.
+
+## Worker lifecycle and upgrades
+
+Each worker attempt has durable workflow ownership, including attempts replaced
+by provider retries. New workers also carry ownership metadata in their core
+thread record so maintenance can recover a successful creation whose response
+was lost. Workers stay hidden and reuse the origin environment without a core
+parent-thread relationship; this avoids core child routing and completion
+notifications in addition to the workflow's own notification.
+
+Maintenance stops and archives finished, replaced, cancelled, and unattached
+workers independently of workflow history retention. Cleanup retries after
+stop/archive failures and server restarts. Pending worker cleanup survives
+expiry of the run's history. Archiving or deleting an origin cancels its
+outstanding runs and retires all owned attempts; retained history remains
+available until its usual expiry. Missed origin events are reconciled from
+current thread state. A worker being spawned when cancellation occurs is
+recorded and retired when it returns or is rediscovered.
+
+Notifications to archived or deleted origins are settled as abandoned. Other
+send failures remain retryable, including unrelated HTTP 409 conflicts.
+
+The upgrade backfills workers still referenced by `workflow_calls`. Older
+replaced or unattached workers whose IDs were already lost have no ownership
+metadata and cannot be safely attributed automatically. Recovering those
+requires a separate evidence-based audit of historical records; this migration
+does not guess ownership from titles or modify those threads. Discovery and
+cleanup require a running plugin and available thread APIs; unavailable hosts
+leave durable cleanup pending.

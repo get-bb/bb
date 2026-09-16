@@ -155,7 +155,7 @@ export function createCodexAppServerConnection(
       }
     }, KILL_ESCALATION_MS);
     escalation.unref?.();
-    child.kill("SIGTERM");
+    child.stdin?.end();
     return exitPromise;
   }
 

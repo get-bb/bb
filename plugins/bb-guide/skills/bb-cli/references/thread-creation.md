@@ -234,3 +234,13 @@ Resuming a machine restores its provider state without rerunning environment set
 Personal file access: `bb project paths|files|content proj_personal` requires
 an explicit `--environment <id>` belonging to Personal. Personal has no default
 project source; the selected environment must be ready.
+
+## Lifecycle ownership
+
+Use `--lifecycle-owner-thread <id>` on spawn or fork only when the new thread
+should archive or delete with that owner. SDK spawn/fork use
+`lifecycleOwnerThreadId`. Responses return null for independent threads. The
+owner must be live; other projects, environments and hosts are allowed.
+Ownership is immutable. Stop does not cascade. Archive retains history; delete
+waits for dependent storage cleanup with durable retries. Unarchive the owner
+before explicitly unarchiving dependents.

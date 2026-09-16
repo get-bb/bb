@@ -89,6 +89,7 @@ describe("createSideChat rpc", () => {
 
     expect(result).toEqual({ threadId: "thr_fork" });
     expect(fork).toHaveBeenCalledWith({
+      lifecycleOwnerThreadId: "thr_src",
       sourceThreadId: "thr_src",
       sourceSeqEnd: 42,
       visibility: "hidden",
@@ -187,6 +188,7 @@ describe("createSideChat rpc", () => {
     });
 
     expect(fork).toHaveBeenCalledWith({
+      lifecycleOwnerThreadId: "thr_src",
       sourceThreadId: "thr_src",
       visibility: "hidden",
       origin: "plugin",

@@ -33,6 +33,7 @@ interface ThreadForkCommandOptions {
   prompt?: string;
   sourceSeqEnd?: string;
   title?: string;
+  lifecycleOwnerThread?: string;
   visibility?: string;
 }
 
@@ -95,6 +96,10 @@ export function registerForkCommand(
   parent
     .command("fork <source-thread-id>")
     .description("Fork a thread at its tip or a source event sequence")
+    .option(
+      "--lifecycle-owner-thread <id>",
+      "Archive/delete this thread with its lifecycle owner",
+    )
     .option("--prompt <prompt>", "Optional first prompt; omit for an idle fork")
     .option("--title <title>", "Thread title")
     .option(
@@ -203,6 +208,9 @@ export function registerForkCommand(
             }
             thread = await sdk.threads.fork({
               sourceThreadId,
+              ...(opts.lifecycleOwnerThread
+                ? { lifecycleOwnerThreadId: opts.lifecycleOwnerThread }
+                : {}),
               origin: "cli",
               ...(environment === undefined ? {} : { environment }),
               ...(input === undefined ? {} : { input }),

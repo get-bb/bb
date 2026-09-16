@@ -418,3 +418,12 @@ starting a provider request. Use `--self` for the current thread and `--json` fo
 breakdown after turns and compaction when its SDK supports context inspection.
 A later aggregate-only measurement replaces any older breakdown. Other providers
 continue to expose their available totals.
+
+Lifecycle ownership:
+  spawn and fork accept --lifecycle-owner-thread <id>. SDK arguments use
+  lifecycleOwnerThreadId, also returned in thread responses (null if independent).
+  The owner must be live; projects, hosts and environments may differ.
+  Ownership is immutable. Archive recursively archives/stops dependents; delete
+  recursively deletes them after runtime/storage cleanup. Failed cleanup retries
+  durably. Unarchive the owner before explicitly restoring a dependent. Stop does
+  not cascade. Sidebar parents and ordinary forks retain their existing policies.

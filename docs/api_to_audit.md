@@ -3030,3 +3030,13 @@ the plugin uses `experimental_suspend` to request a new pause. Core schedules
 no provider polling. Validate concurrent resume/removal, failure reporting,
 long-running caller behavior, and the scope of supported states before
 stabilizing this API. Exposed as `bb machine reconcile`.
+
+## Lifecycle ownership on thread creation
+
+`bb.sdk.threads.spawn` and `bb.sdk.threads.fork` accept `lifecycleOwnerThreadId`;
+thread responses expose its nullable value. This adds data fields to existing
+SDK methods, not a new `BbPluginApi` property, app export or slot method, so no
+new unprefixed public API member is introduced. Audit before stabilization:
+immutable cross-project ownership, cross-host cleanup, archive/delete retries,
+creation races, and conservative historical backfill. The Plugin Guide SDK card
+describes the public behavior.
