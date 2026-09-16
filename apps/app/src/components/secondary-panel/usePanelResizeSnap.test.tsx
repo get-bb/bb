@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { createRef, useRef } from "react";
 import {
   Panel,
@@ -17,7 +23,9 @@ vi.mock("react-resizable-panels", async () => {
   const { dirname, join } = await import("node:path");
   const require = createRequire(import.meta.url);
   const root = dirname(require.resolve("react-resizable-panels/package.json"));
-  return require(join(root, "dist/react-resizable-panels.browser.development.cjs.js"));
+  return require(
+    join(root, "dist/react-resizable-panels.browser.development.cjs.js"),
+  );
 });
 
 const frames = new Map<number, FrameRequestCallback>();
@@ -70,7 +78,12 @@ function setup(secondarySize = 50) {
         data-split-resize-grid-root=""
         data-testid="grid"
       >
-        <Panel id="leading" minSize={30} defaultSize={100 - secondarySize} data-testid="previous" />
+        <Panel
+          id="leading"
+          minSize={30}
+          defaultSize={100 - secondarySize}
+          data-testid="previous"
+        />
         <PanelResizeHandle
           data-panel-resize-snap-handle=""
           data-testid="divider"
@@ -79,7 +92,14 @@ function setup(secondarySize = 50) {
         >
           <span ref={hitTargetRef} />
         </PanelResizeHandle>
-        <Panel ref={panel} id="trailing" minSize={24} maxSize={70} defaultSize={secondarySize} data-testid="next" />
+        <Panel
+          ref={panel}
+          id="trailing"
+          minSize={24}
+          maxSize={70}
+          defaultSize={secondarySize}
+          data-testid="next"
+        />
       </PanelGroup>
     );
   }
@@ -94,21 +114,29 @@ function setup(secondarySize = 50) {
   const next = screen.getByTestId("next");
   const grid = screen.getByTestId("grid");
   grid.getBoundingClientRect = () => rect(100, 800);
-  previous.getBoundingClientRect = () => rect(100, (group.current?.getLayout()[0] ?? 0) * 8);
-  divider.getBoundingClientRect = () => rect(previous.getBoundingClientRect().right, 0);
-  next.getBoundingClientRect = () => rect(divider.getBoundingClientRect().right, (group.current?.getLayout()[1] ?? 0) * 8);
-  const down = () => fireEvent.pointerDown(divider, {
-    clientX: divider.getBoundingClientRect().left,
-    clientY: 100,
-    button: 0,
-    buttons: 1,
-    pointerId: 40,
-  });
-  const move = (clientX: number, buttons = 1) => fireEvent.pointerMove(document.body, {
-    buttons,
-    clientX,
-    pointerId: 40,
-  });
+  previous.getBoundingClientRect = () =>
+    rect(100, (group.current?.getLayout()[0] ?? 0) * 8);
+  divider.getBoundingClientRect = () =>
+    rect(previous.getBoundingClientRect().right, 0);
+  next.getBoundingClientRect = () =>
+    rect(
+      divider.getBoundingClientRect().right,
+      (group.current?.getLayout()[1] ?? 0) * 8,
+    );
+  const down = () =>
+    fireEvent.pointerDown(divider, {
+      clientX: divider.getBoundingClientRect().left,
+      clientY: 100,
+      button: 0,
+      buttons: 1,
+      pointerId: 40,
+    });
+  const move = (clientX: number, buttons = 1) =>
+    fireEvent.pointerMove(document.body, {
+      buttons,
+      clientX,
+      pointerId: 40,
+    });
   const release = () => fireEvent.pointerUp(window, { pointerId: 40 });
   const expectLayout = (leading: number, trailing: number) => {
     const layout = group.current?.getLayout();
@@ -117,7 +145,18 @@ function setup(secondarySize = 50) {
     expect(Number(previous.style.flexGrow)).toBeCloseTo(leading, 0);
     expect(Number(next.style.flexGrow)).toBeCloseTo(trailing, 0);
   };
-  return { divider, down, expectLayout, grid, group, move, onDragging, onResize, release, unmount };
+  return {
+    divider,
+    down,
+    expectLayout,
+    grid,
+    group,
+    move,
+    onDragging,
+    onResize,
+    release,
+    unmount,
+  };
 }
 
 describe("usePanelResizeSnap", () => {
@@ -147,53 +186,77 @@ describe("usePanelResizeSnap", () => {
   it.each([
     { secondary: 70, outside: 100, inside: 420, leading: 40 },
     { secondary: 24, outside: 1000, inside: 628, leading: 66 },
-  ])("keeps the $secondary% limit and follows the pointer back inside", ({ secondary, outside, inside, leading }) => {
-    const h = setup(secondary);
-    h.down();
-    h.move(outside);
-    advanceFrame();
-    h.expectLayout(100 - secondary, secondary);
-    h.move(inside);
-    advanceFrame();
-    h.expectLayout(leading, 100 - leading);
-    h.release();
-    h.expectLayout(leading, 100 - leading);
-  });
-
-  it.each([false, true])("preserves a newer external layout after a pointer update: %s", (moveFirst) => {
-    const h = setup();
-    h.down();
-    if (moveFirst) {
-      h.move(450);
-      h.move(440);
+  ])(
+    "keeps the $secondary% limit and follows the pointer back inside",
+    ({ secondary, outside, inside, leading }) => {
+      const h = setup(secondary);
+      h.down();
+      h.move(outside);
       advanceFrame();
-    }
-    act(() => h.group.current?.setLayout([60, 40]));
-    h.release();
-    advanceFrame();
-    h.expectLayout(60, 40);
-  });
+      h.expectLayout(100 - secondary, secondary);
+      h.move(inside);
+      advanceFrame();
+      h.expectLayout(leading, 100 - leading);
+      h.release();
+      h.expectLayout(leading, 100 - leading);
+    },
+  );
 
-  it.each(["pointerup", "pointercancel", "mouseup", "blur", "buttons", "lostpointercapture"]) ("flushes the last position before %s cleanup", (end) => {
+  it.each([false, true])(
+    "preserves a newer external layout after a pointer update: %s",
+    (moveFirst) => {
+      const h = setup();
+      h.down();
+      if (moveFirst) {
+        h.move(450);
+        h.move(440);
+        advanceFrame();
+      }
+      act(() => h.group.current?.setLayout([60, 40]));
+      h.release();
+      advanceFrame();
+      h.expectLayout(60, 40);
+    },
+  );
+
+  it.each([
+    "pointerup",
+    "pointercancel",
+    "mouseup",
+    "blur",
+    "buttons",
+    "lostpointercapture",
+  ])("flushes the last position before %s cleanup", (end) => {
     const h = setup();
     h.grid.style.setProperty("--panel-collapse-duration", "220ms");
     h.down();
     h.move(450);
     h.move(440);
     h.onResize.mockImplementation(() => {
-      expect(h.grid.style.getPropertyValue("--panel-collapse-duration")).toBe("0ms");
+      expect(h.grid.style.getPropertyValue("--panel-collapse-duration")).toBe(
+        "0ms",
+      );
     });
     if (end === "buttons") h.move(440, 0);
-    else if (end === "lostpointercapture") fireEvent(h.divider, new PointerEvent("lostpointercapture", { pointerId: 40 }));
+    else if (end === "lostpointercapture")
+      fireEvent(
+        h.divider,
+        new PointerEvent("lostpointercapture", { pointerId: 40 }),
+      );
     else if (end === "blur") fireEvent.blur(window);
     else if (end === "mouseup") fireEvent.mouseUp(window);
-    else if (end === "pointercancel") fireEvent.pointerCancel(window, { pointerId: 40 });
+    else if (end === "pointercancel")
+      fireEvent.pointerCancel(window, { pointerId: 40 });
     else h.release();
     h.expectLayout(42.5, 57.5);
     expect(h.onResize).toHaveBeenCalledExactlyOnceWith(0.425);
     expect(h.onDragging.mock.calls).toEqual([[true], [false]]);
-    expect(h.onResize.mock.invocationCallOrder[0]).toBeLessThan(h.onDragging.mock.invocationCallOrder[1]);
-    expect(h.grid.style.getPropertyValue("--panel-collapse-duration")).toBe("220ms");
+    expect(h.onResize.mock.invocationCallOrder[0]).toBeLessThan(
+      h.onDragging.mock.invocationCallOrder[1],
+    );
+    expect(h.grid.style.getPropertyValue("--panel-collapse-duration")).toBe(
+      "220ms",
+    );
     advanceFrame();
     expect(h.onResize).toHaveBeenCalledOnce();
   });
@@ -210,7 +273,9 @@ describe("usePanelResizeSnap", () => {
       h.move(440);
       expect(rawMove).not.toHaveBeenCalled();
       expect(rawDown).not.toHaveBeenCalled();
-      expect(h.divider.getAttribute("data-resize-handle-state")).not.toBe("drag");
+      expect(h.divider.getAttribute("data-resize-handle-state")).not.toBe(
+        "drag",
+      );
       advanceFrame();
       h.expectLayout(42.5, 57.5);
       h.release();
@@ -246,7 +311,9 @@ describe("usePanelResizeSnap", () => {
     h.move(560);
     advanceFrame();
     h.expectLayout(50, 50);
-    expect(document.querySelector("[data-split-resize-snap-guide]")).not.toBeNull();
+    expect(
+      document.querySelector("[data-split-resize-snap-guide]"),
+    ).not.toBeNull();
     h.release();
     expect(document.querySelector("[data-split-resize-snap-guide]")).toBeNull();
   });

@@ -84,7 +84,9 @@
   },
   "devDependencies": {
     "@bb/config": "workspace:*",
+    "@bb/host-daemon-contract": "workspace:*",
     "@bb/sdk": "workspace:*",
+    "@bb/server-archive": "workspace:*",
     "@bb/tsconfig": "workspace:*",
     "@types/node": "^22.0.0",
     "rimraf": "^6.1.0",

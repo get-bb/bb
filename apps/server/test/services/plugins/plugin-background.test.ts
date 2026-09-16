@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   claimPluginScheduledRun,
   createConnection,
+  getInstalledPlugin,
   listPluginSchedules,
   migrate,
   pluginSchedules,
@@ -130,6 +131,59 @@ describe("plugin background services", () => {
     const reloaded = service.list().find((p) => p.id === "connector");
     expect(reloaded?.status).toBe("running");
     expect(reloaded?.services).toEqual([{ name: "conn", state: "running" }]);
+  });
+
+  it("suspends every plugin but the kept ones without disabling them, then resumes them", async () => {
+    globals.__suspendStarts = {};
+    globals.__suspendAborts = {};
+    for (const name of ["bb-plugin-suspended", "bb-plugin-kept"]) {
+      const rootDir = await writePlugin(workDir, {
+        name,
+        serverSource: `
+          export default function plugin(bb: any) {
+            const g = globalThis as any;
+            bb.background.service("tick", {
+              start(signal: any) {
+                g.__suspendStarts[${JSON.stringify(name)}] =
+                  (g.__suspendStarts[${JSON.stringify(name)}] ?? 0) + 1;
+                return new Promise<void>((resolve) => {
+                  signal.addEventListener("abort", () => {
+                    g.__suspendAborts[${JSON.stringify(name)}] =
+                      (g.__suspendAborts[${JSON.stringify(name)}] ?? 0) + 1;
+                    resolve();
+                  });
+                });
+              },
+            });
+          }
+        `,
+      });
+      await service.installPath(rootDir);
+    }
+
+    const suspended = await service.suspendPlugins({
+      keep: (plugin) => plugin.id === "kept",
+    });
+
+    expect(suspended).toEqual(["suspended"]);
+    expect(service.isPluginLoaded("suspended")).toBe(false);
+    expect(service.isPluginLoaded("kept")).toBe(true);
+    expect(globals.__suspendAborts).toEqual({ "bb-plugin-suspended": 1 });
+    expect(getInstalledPlugin(db, "suspended")?.enabled).toBe(true);
+    expect(
+      service.list().find((plugin) => plugin.id === "suspended"),
+    ).toMatchObject({
+      status: "disabled",
+      statusDetail: "Paused while the server moves to another machine",
+    });
+
+    expect(await service.resumeSuspendedPlugins()).toEqual(["suspended"]);
+    expect(service.isPluginLoaded("suspended")).toBe(true);
+    expect(globals.__suspendStarts).toEqual({
+      "bb-plugin-suspended": 2,
+      "bb-plugin-kept": 1,
+    });
+    expect(await service.resumeSuspendedPlugins()).toEqual([]);
   });
 
   it("rejects new interactions while a plugin is disposing", async () => {
@@ -563,6 +617,19 @@ describe("plugin schedules", () => {
     expect(row?.lastStatus).toBe("ok");
     expect(row?.lastRunAt).toBe(now);
     expect(row?.lastError).toBeNull();
+  });
+
+  it("leaves due schedules unclaimed while schedules are paused", async () => {
+    await installTicker();
+    const past = Date.now() - 60_000;
+    setNextRunAt(db, "ticker", "tick", past);
+    service.setSchedulesPaused(true);
+    await service.sweepDueSchedules(Date.now());
+    expect(globals.__tickRuns).toBe(0);
+    expect(listPluginSchedules(db, "ticker")[0]?.nextRunAt).toBe(past);
+    service.setSchedulesPaused(false);
+    await service.sweepDueSchedules(Date.now());
+    expect(globals.__tickRuns).toBe(1);
   });
 
   it("claims with CAS: parallel sweeps run the fn exactly once", async () => {

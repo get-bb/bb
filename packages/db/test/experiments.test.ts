@@ -39,6 +39,7 @@ describe("experiments", () => {
         "futureExperiment",
         "mobileApp",
         "multiMachinePicker",
+        "serverMove",
         "sidebarProgressiveDisclosure",
         "timelineWindowing",
       ]);

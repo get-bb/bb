@@ -12,6 +12,7 @@ import {
   isRawThreadId,
   RAW_THREAD_ID_PATTERN_SOURCE,
   type PromptMentionResource,
+  type PromptTextMention,
   type ThreadListEntry,
 } from "@bb/domain";
 import { QueryClientContext } from "@tanstack/react-query";
@@ -635,6 +636,28 @@ function threadTitleTextSegments(
     });
   }
   return segments;
+}
+
+export function resolveSerializedPromptMentions(
+  text: string,
+  resources: ThreadTitleMentionResources,
+): PromptTextMention[] {
+  const mentions: PromptTextMention[] = [];
+  let cursor = 0;
+  for (const segment of threadTitleTextSegments(text, resources)) {
+    const token = segment.serializedText ?? segment.text;
+    const end = cursor + token.length;
+    if (/^@(?:thread|project|section):/u.test(token)) {
+      const resource =
+        segment.resource ??
+        (segment.unresolvedThreadId === null
+          ? null
+          : unresolvedThreadMentionResource(segment.unresolvedThreadId));
+      if (resource !== null) mentions.push({ start: cursor, end, resource });
+    }
+    cursor = end;
+  }
+  return mentions;
 }
 
 export function resolveThreadTitleDisplayText(

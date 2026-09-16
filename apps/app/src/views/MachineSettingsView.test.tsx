@@ -6,8 +6,8 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
-import type { Host } from "@bb/domain";
 import { makeHost as makeHostFixture } from "@bb/test-helpers/domain-fixtures";
 import type { SystemConfigResponse } from "@bb/server-contract";
 import type {
@@ -16,6 +16,7 @@ import type {
   ProviderCliStatusResponse,
 } from "@bb/host-daemon-contract";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { defaultExperiments, type Host, type LastServerMove } from "@bb/domain";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
@@ -25,8 +26,14 @@ import { MachineSettingsView } from "./MachineSettingsView";
 
 vi.mock("@/lib/sdk", () => ({
   sdk: {
+    experimental_server: {
+      checkMove: vi.fn(),
+      moveStatus: vi.fn(),
+      startMove: vi.fn(),
+    },
     hosts: {
       delete: vi.fn(),
+      experimental_deleteOldServerCopy: vi.fn(),
       list: vi.fn(),
       experimental_listProviders: vi.fn(),
       providerCliStatus: vi.fn(),
@@ -74,6 +81,7 @@ function systemConfig(): SystemConfigResponse {
   return makeSystemConfig({
     primaryHostId: "host_primary",
     primaryHostPlatform: "darwin",
+    experiments: { ...defaultExperiments, serverMove: true },
   });
 }
 
@@ -148,9 +156,34 @@ function stubSupportingFetches(): void {
   );
 }
 
+function lastMove(overrides: Partial<LastServerMove> = {}): LastServerMove {
+  return {
+    moveId: "move_1",
+    fromHostId: HOST_ID,
+    fromHostName: "dev-vm",
+    toHostId: "host_primary",
+    toHostName: "workstation",
+    completedAt: Date.now() - 3_600_000,
+    oldCopyDeletedAt: null,
+    ...overrides,
+  };
+}
+
+async function openMachineMenu(): Promise<void> {
+  fireEvent.pointerDown(
+    await screen.findByRole("button", { name: "dev-vm actions" }),
+    { button: 0 },
+  );
+  await screen.findByRole("menuitem", { name: "Rename" });
+}
+
 beforeEach(() => {
   hostDaemon.localDaemonHostId = null;
   hostDaemon.platform = null;
+  vi.mocked(sdk.experimental_server.moveStatus).mockResolvedValue({
+    move: null,
+    lastMove: null,
+  });
 });
 
 afterEach(() => {
@@ -341,7 +374,7 @@ describe("MachineSettingsView", () => {
     });
   });
 
-  it("refuses to remove the primary machine", async () => {
+  it("refuses to remove the server machine", async () => {
     vi.mocked(sdk.system.config).mockResolvedValue({
       ...systemConfig(),
       primaryHostId: HOST_ID,
@@ -358,9 +391,11 @@ describe("MachineSettingsView", () => {
     expect(remove.className).toContain("bg-destructive");
     expect(remove.parentElement?.className).not.toContain("justify-end");
     expect(screen.queryByText("This machine")).toBeNull();
-    expect(screen.queryByText("Primary")).toBeNull();
+    expect(screen.getByText("Server")).toBeDefined();
     expect(
-      screen.getByText("bb's primary machine can't be removed."),
+      screen.getByText(
+        "The server machine can't be removed. Move the server to another machine first.",
+      ),
     ).toBeDefined();
   });
 
@@ -409,7 +444,7 @@ describe("MachineSettingsView", () => {
     renderView();
 
     expect(await screen.findByText("This machine")).toBeDefined();
-    expect(screen.queryByText("Primary")).toBeNull();
+    expect(screen.queryByText("Server")).toBeNull();
     expect(screen.getByText(/Linux/u)).toBeDefined();
   });
 
@@ -423,6 +458,246 @@ describe("MachineSettingsView", () => {
 
     await screen.findByRole("heading", { name: /dev-vm/u });
     expect(screen.queryByText("This machine")).toBeNull();
+  });
+
+  it("badges a lone server machine but does not count sandboxes toward the client-local badge", async () => {
+    hostDaemon.localDaemonHostId = HOST_ID;
+    vi.mocked(sdk.system.config).mockResolvedValue({
+      ...systemConfig(),
+      primaryHostId: HOST_ID,
+    });
+    vi.mocked(sdk.hosts.list).mockResolvedValue([
+      host(),
+      host({
+        id: "host_sandbox",
+        name: "Modal sandbox 3f9a",
+        type: "ephemeral",
+        machineProviderId: "modal-sandbox",
+      }),
+    ]);
+    stubSupportingFetches();
+
+    renderView();
+
+    await screen.findByText(
+      "The server machine can't be removed. Move the server to another machine first.",
+    );
+    expect(screen.getByText("Server")).toBeDefined();
+    expect(screen.queryByText("This machine")).toBeNull();
+  });
+
+  it("badges the server machine when several persistent machines exist", async () => {
+    vi.mocked(sdk.system.config).mockResolvedValue({
+      ...systemConfig(),
+      primaryHostId: HOST_ID,
+    });
+    vi.mocked(sdk.hosts.list).mockResolvedValue([
+      host(),
+      host({ id: "host_laptop", name: "laptop" }),
+    ]);
+    stubSupportingFetches();
+
+    renderView();
+
+    expect(await screen.findByText("Server")).toBeDefined();
+  });
+
+  it("offers Move server here in the title menu of an eligible machine", async () => {
+    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
+    vi.mocked(sdk.hosts.list).mockResolvedValue([host()]);
+    vi.mocked(sdk.experimental_server.checkMove).mockResolvedValue({
+      targetHostId: HOST_ID,
+      targetHostName: "dev-vm",
+      mode: "connect",
+      serverUrl: null,
+      requiresServerUrl: false,
+      targetDataDir: "/home/sawyer/.bb-machines/workstation",
+      existingTargetServerData: null,
+      items: [],
+      canMove: true,
+    });
+    stubSupportingFetches();
+
+    renderView();
+
+    await waitFor(() => {
+      expect(vi.mocked(sdk.experimental_server.moveStatus)).toHaveBeenCalled();
+    });
+    await openMachineMenu();
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Move server here" }),
+    );
+
+    expect(
+      await screen.findByRole("heading", { name: "Move the server to dev-vm" }),
+    ).toBeDefined();
+    await waitFor(() => {
+      expect(vi.mocked(sdk.experimental_server.checkMove)).toHaveBeenCalledWith(
+        { targetHostId: HOST_ID, serverUrl: null },
+      );
+    });
+  });
+
+  it("does not offer Move server here on the server machine or an offline machine", async () => {
+    vi.mocked(sdk.system.config).mockResolvedValue({
+      ...systemConfig(),
+      primaryHostId: HOST_ID,
+    });
+    vi.mocked(sdk.hosts.list).mockResolvedValue([host()]);
+    stubSupportingFetches();
+
+    renderView();
+
+    await openMachineMenu();
+    expect(
+      screen.queryByRole("menuitem", { name: "Move server here" }),
+    ).toBeNull();
+    cleanup();
+
+    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
+    vi.mocked(sdk.hosts.list).mockResolvedValue([
+      host({ status: "disconnected", lastSeenAt: Date.now() - 60_000 }),
+    ]);
+
+    renderView();
+
+    await openMachineMenu();
+    expect(
+      screen.queryByRole("menuitem", { name: "Move server here" }),
+    ).toBeNull();
+  });
+
+  it("deletes the locked old server copy on the machine the server moved from", async () => {
+    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
+    vi.mocked(sdk.hosts.list).mockResolvedValue([host()]);
+    vi.mocked(sdk.experimental_server.moveStatus)
+      .mockResolvedValueOnce({ move: null, lastMove: lastMove() })
+      .mockResolvedValue({
+        move: null,
+        lastMove: lastMove({ oldCopyDeletedAt: Date.now() }),
+      });
+    vi.mocked(sdk.hosts.experimental_deleteOldServerCopy).mockResolvedValue({
+      deleted: true,
+    });
+    stubSupportingFetches();
+
+    renderView();
+
+    expect(
+      await screen.findByRole("heading", { name: "Old server copy" }),
+    ).toBeDefined();
+    expect(
+      screen.getByText(
+        /The server moved from dev-vm to workstation\. The old server data is still on dev-vm/u,
+      ),
+    ).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Delete old copy" }));
+    const confirm = await screen.findByRole("dialog", {
+      name: "Delete the old server copy?",
+    });
+    expect(
+      vi.mocked(sdk.hosts.experimental_deleteOldServerCopy),
+    ).not.toHaveBeenCalled();
+    fireEvent.click(
+      within(confirm).getByRole("button", { name: "Delete old copy" }),
+    );
+
+    await waitFor(() => {
+      expect(
+        vi.mocked(sdk.hosts.experimental_deleteOldServerCopy),
+      ).toHaveBeenCalledWith({ hostId: HOST_ID });
+    });
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("heading", { name: "Old server copy" }),
+      ).toBeNull();
+    });
+  });
+
+  it("hides Move server here and the old server copy while the serverMove experiment is off", async () => {
+    vi.mocked(sdk.system.config).mockResolvedValue({
+      ...systemConfig(),
+      experiments: defaultExperiments,
+    });
+    vi.mocked(sdk.hosts.list).mockResolvedValue([host()]);
+    vi.mocked(sdk.experimental_server.moveStatus).mockResolvedValue({
+      move: null,
+      lastMove: lastMove(),
+    });
+    stubSupportingFetches();
+
+    renderView();
+
+    await screen.findByRole("heading", { name: "Machine information" });
+    await waitFor(() => {
+      expect(vi.mocked(sdk.experimental_server.moveStatus)).toHaveBeenCalled();
+    });
+    expect(
+      screen.queryByRole("heading", { name: "Old server copy" }),
+    ).toBeNull();
+    await openMachineMenu();
+    expect(
+      screen.queryByRole("menuitem", { name: "Move server here" }),
+    ).toBeNull();
+  });
+
+  it("shows the old server copy only on the machine the server left, until it is deleted", async () => {
+    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
+    vi.mocked(sdk.hosts.list).mockResolvedValue([host()]);
+    vi.mocked(sdk.experimental_server.moveStatus).mockResolvedValue({
+      move: null,
+      lastMove: lastMove({ fromHostId: "host_laptop", fromHostName: "laptop" }),
+    });
+    stubSupportingFetches();
+
+    const first = renderView();
+
+    await screen.findByRole("heading", { name: "Machine information" });
+    await waitFor(() => {
+      expect(vi.mocked(sdk.experimental_server.moveStatus)).toHaveBeenCalled();
+    });
+    expect(
+      screen.queryByRole("heading", { name: "Old server copy" }),
+    ).toBeNull();
+    first.unmount();
+
+    vi.mocked(sdk.experimental_server.moveStatus).mockResolvedValue({
+      move: null,
+      lastMove: lastMove({ oldCopyDeletedAt: Date.now() }),
+    });
+    vi.mocked(sdk.experimental_server.moveStatus).mockClear();
+
+    renderView();
+
+    await screen.findByRole("heading", { name: "Machine information" });
+    await waitFor(() => {
+      expect(vi.mocked(sdk.experimental_server.moveStatus)).toHaveBeenCalled();
+    });
+    expect(
+      screen.queryByRole("heading", { name: "Old server copy" }),
+    ).toBeNull();
+  });
+
+  it("disables deleting the old server copy while that machine is offline", async () => {
+    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
+    vi.mocked(sdk.hosts.list).mockResolvedValue([
+      host({ status: "disconnected", lastSeenAt: Date.now() - 60_000 }),
+    ]);
+    vi.mocked(sdk.experimental_server.moveStatus).mockResolvedValue({
+      move: null,
+      lastMove: lastMove(),
+    });
+    stubSupportingFetches();
+
+    renderView();
+
+    const deleteButton = await screen.findByRole("button", {
+      name: "Delete old copy",
+    });
+    expect(deleteButton.hasAttribute("disabled")).toBe(true);
+    expect(
+      screen.getByText(/dev-vm has to be online to delete it\.$/u),
+    ).toBeDefined();
   });
 
   it("explains a machine that is no longer paired", async () => {

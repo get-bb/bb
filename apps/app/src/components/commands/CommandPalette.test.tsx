@@ -23,6 +23,7 @@ import {
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
 import { CommandPalette } from "./CommandPalette";
+import { SETTINGS_NAV_SECTIONS } from "@/components/settings/settings-sections";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 import { collectPluginAppRegistrations } from "@get-bb/plugin-sdk/internal/plugin-app-collector";
 
@@ -268,7 +269,7 @@ describe("CommandPalette", () => {
     expect((searchField() as HTMLInputElement).value).toBe(">");
     const titles = optionTitles();
     expect(titles?.[0]).toContain("New thread");
-    expect(titles).toHaveLength(18);
+    expect(titles).toHaveLength(SETTINGS_NAV_SECTIONS.length + 4);
   });
 
   it("filters as the user types and keeps the selection on a live row", async () => {

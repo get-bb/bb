@@ -31,6 +31,10 @@ import {
   createUserQuestionPayload,
 } from "../helpers/pending-interactions.js";
 import { withTestHarness } from "../helpers/test-app.js";
+import {
+  SERVER_MOVE_FROZEN_RETRY_MS,
+  setServerMoveFrozen,
+} from "../../src/services/server-move/freeze-state.js";
 
 function registerPendingInteraction(
   deps: Pick<AppDeps, "db" | "hub">,
@@ -117,6 +121,39 @@ describe("pending interaction lifecycle", () => {
       } finally {
         controller.abort();
         emit.mockRestore();
+      }
+    });
+  });
+
+  it("holds a plugin interaction timeout while the server is moving", async () => {
+    await withTestHarness(async (harness) => {
+      const thread = seedPluginInteractionThread(
+        harness.deps,
+        "frozen-timeout",
+      );
+      const listPending = () =>
+        harness.deps.pendingInteractions.listPendingThreadInteractions(
+          thread.id,
+        );
+      vi.useFakeTimers();
+      try {
+        const pending = requestPluginInteraction(harness.deps, {
+          threadId: thread.id,
+        });
+        setServerMoveFrozen(harness.db, true);
+        await vi.advanceTimersByTimeAsync(10_000 + SERVER_MOVE_FROZEN_RETRY_MS);
+        expect(listPending()).toMatchObject([{ status: "pending" }]);
+
+        setServerMoveFrozen(harness.db, false);
+        await vi.advanceTimersByTimeAsync(SERVER_MOVE_FROZEN_RETRY_MS);
+        await expect(pending).resolves.toEqual({
+          outcome: "cancelled",
+          reason: "timeout",
+        });
+        expect(listPending()).toEqual([]);
+      } finally {
+        setServerMoveFrozen(harness.db, false);
+        vi.useRealTimers();
       }
     });
   });

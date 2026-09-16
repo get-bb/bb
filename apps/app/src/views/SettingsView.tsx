@@ -1037,6 +1037,11 @@ const EXPERIMENT_DEFINITIONS: Record<
     description:
       "Use searchable, target-first environment and machine pickers when many machines are available.",
   },
+  serverMove: {
+    label: "Server move",
+    description:
+      "Move the bb server to another machine from Settings → Machines, and export or import server data with bb server.",
+  },
   sidebarProgressiveDisclosure: {
     label: "Sidebar progressive disclosure",
     description:
@@ -1218,22 +1223,10 @@ export function SettingsView() {
       <>
         <MachinesSettingsSection />
         <MachineAccessSettings />
-        <details
-          id="advanced-machine-settings"
-          open={location.hash === "#advanced-machine-settings" || undefined}
-          className="group space-y-6"
-        >
-          <summary className="flex w-fit cursor-pointer list-none items-center gap-1.5 text-sm font-medium text-subtle-foreground [&::-webkit-details-marker]:hidden">
-            Advanced settings
-            <Icon
-              name="ChevronRight"
-              className="size-3.5 transition-transform group-open:rotate-90"
-            />
-          </summary>
-          <MachineEnvironmentSettings />
-        </details>
       </>
     );
+  } else if (activeSection === "environment-variables") {
+    content = <MachineEnvironmentSettings />;
   } else if (activeSection === "updates") {
     content = (
       <UpdatesSettingsSection

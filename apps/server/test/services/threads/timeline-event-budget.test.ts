@@ -76,7 +76,11 @@ it.each([
       itemId: null,
       itemKind: null,
       parentToolCallId: null,
-      data: JSON.stringify({ requestId: requestId(1), initiator: "user" }),
+      data: JSON.stringify({
+        requestId: requestId(1),
+        initiator: "user",
+        input: [],
+      }),
     });
     insertEvents(
       db,

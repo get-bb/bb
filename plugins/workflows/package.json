@@ -5,7 +5,8 @@
   "type": "module",
   "description": "Run durable, provider-independent agent workflows.",
   "engines": {
-    "bb": ">=0.0"
+    "bb": ">=0.0",
+    "bbPluginSdk": ">=0.4.98"
   },
   "bb": {
     "name": "Workflows",

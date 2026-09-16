@@ -69,7 +69,7 @@ const MANY_TAB_PATHS: string[] = [
   "README.md",
   "apps/server/src/services/providers/provider-registry.ts",
   "an-unusually-long-component-filename-that-must-truncate.tsx",
-]
+];
 
 function StoryFileContent({ path }: { path: string }) {
   return (

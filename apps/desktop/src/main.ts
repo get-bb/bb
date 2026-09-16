@@ -16,6 +16,7 @@ import {
   shell,
   type Event,
   type IpcMainInvokeEvent,
+  type MessageBoxOptions,
   type WebContents,
 } from "electron";
 import { autoUpdater } from "electron-updater";
@@ -71,6 +72,29 @@ import {
   type ServerProbeResult,
 } from "./server-probe.js";
 import { loadRemoteServerPage } from "./remote-server-load.js";
+import {
+  applyServerMove,
+  createServerMovedWatcher,
+  createServerMoveNoticeStore,
+  ensureServerMovedRuntime,
+  hasLiveBbAppLauncher,
+  probeLocalServerMove,
+  readServerMovedConnectCredential,
+  readServerMovedLock,
+  SERVER_MOVE_COMMIT_INTERVAL_MS,
+  SERVER_MOVE_COMMIT_TIMEOUT_MS,
+  SERVER_MOVE_DESTINATION_INTERVAL_MS,
+  SERVER_MOVE_DESTINATION_TIMEOUT_MS,
+  SERVER_MOVE_NOTICE_FILE_NAME,
+  SERVER_MOVED_POLL_INTERVAL_MS,
+  SERVER_MOVED_WATCH_DEBOUNCE_MS,
+  waitForCommittedServerMove,
+  waitForServerMoveDestination,
+  type DesktopServerMove,
+  type ServerMovedNotice,
+  type ServerMovedWatcher,
+  type ServerMoveNoticeStore,
+} from "./server-moved.js";
 import {
   BUILTIN_SERVER_NAME,
   createServerTargetStore,
@@ -248,6 +272,11 @@ interface StartOwnedRuntimeArgs {
   userDataPath: string;
 }
 
+interface OwnedRuntime {
+  bbProcess: BbAppProcess;
+  runtime: DesktopRuntime;
+}
+
 interface SendLogViewerSnapshotArgs {
   browserWindow: BrowserWindow;
   lines: LogViewerLine[];
@@ -344,6 +373,10 @@ let connectServerSyncSkipReason: ConnectServerSyncSkipReason | null = null;
 let builtinServerUrl: string = DEFAULT_BB_SERVER_URL;
 let desktopBridgePath: string | null = null;
 let desktopUserDataPath: string | null = null;
+let builtinDataDir: string | null = null;
+let serverMoveNoticeStore: ServerMoveNoticeStore | null = null;
+let localServerMove: DesktopServerMove | null = null;
+let serverMovedWatcher: ServerMovedWatcher | null = null;
 let serverUrlDialogPreloadPath: string | null = null;
 let existingServerDialogPreloadPath: string | null = null;
 
@@ -1015,6 +1048,9 @@ function registerApplicationWindow(browserWindow: DesktopBrowserWindow): void {
 }
 
 async function ensureBuiltinRuntimeAttached(): Promise<boolean> {
+  if (localServerMove !== null) {
+    return false;
+  }
   if (currentRuntime !== null) {
     return true;
   }
@@ -1086,6 +1122,16 @@ async function authenticateConnectTarget(
       }
     );
   }
+  const movedCredential = await readLocalServerMoveCredential(remoteServerUrl);
+  if (movedCredential !== null) {
+    return installConnectDesktopSession({
+      cookieStore,
+      mintCookie: createCredentialCookieSource({
+        credential: movedCredential,
+      }),
+      remoteServerUrl,
+    });
+  }
   const localRuntimeReady = await ensureBuiltinRuntimeAttached();
   if (!localRuntimeReady || currentRuntime === null) {
     return (
@@ -1113,6 +1159,208 @@ async function authenticateConnectTarget(
 async function clearCachedConnectCredential(): Promise<void> {
   cachedConnectCredential = null;
   await connectCredentialCache?.clear();
+}
+
+async function readLocalServerMoveCredential(
+  remoteServerUrl: string,
+): Promise<ConnectCredential | null> {
+  if (localServerMove === null || builtinDataDir === null) {
+    return null;
+  }
+  return readServerMovedConnectCredential({
+    dataDir: builtinDataDir,
+    logWarning: (message) => {
+      desktopLogger.warn(message);
+    },
+    move: localServerMove,
+    remoteServerUrl,
+  });
+}
+
+function showServerMovedNotice(notice: ServerMovedNotice): void {
+  const options: MessageBoxOptions = {
+    buttons: ["OK"],
+    detail: notice.detail,
+    message: notice.message,
+    type: "info",
+  };
+  const parentWindow = getFocusedApplicationWindow();
+  const shown =
+    parentWindow === null
+      ? dialog.showMessageBox(options)
+      : dialog.showMessageBox(parentWindow, options);
+  shown.catch((error: unknown) => {
+    desktopLogger.warn(
+      `[desktop] could not show the server move notice: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  });
+}
+
+async function activateLocalServerMove(move: DesktopServerMove): Promise<void> {
+  if (
+    serverTargetStore === null ||
+    serverMoveNoticeStore === null ||
+    desktopBridgePath === null ||
+    desktopUserDataPath === null
+  ) {
+    return;
+  }
+  const bridgePath = desktopBridgePath;
+  const userDataPath = desktopUserDataPath;
+  localServerMove = move;
+  stopServerMovedWatcher();
+  desktopLogger.info(
+    `[desktop] this computer's bb server moved to ${move.toHostName}; the app now opens that server and runs this computer as a regular machine`,
+  );
+  await applyServerMove({
+    move,
+    noticeStore: serverMoveNoticeStore,
+    showNotice: showServerMovedNotice,
+    targetStore: serverTargetStore,
+  });
+  await ensureServerMovedRuntime({
+    hasLocalRuntime: () => currentRuntime !== null,
+    async isLocalAddressFree() {
+      const probe = await probeBbServer({
+        serverUrl: builtinServerUrl,
+        timeoutMs: ATTACH_PROBE_TIMEOUT_MS,
+      });
+      return probe.kind === "unavailable";
+    },
+    localServerUrl: builtinServerUrl,
+    logInfo: (message) => {
+      desktopLogger.info(message);
+    },
+    async startLocalRuntime() {
+      await spawnOwnedRuntime({
+        bridgePath,
+        serverUrl: builtinServerUrl,
+        userDataPath,
+      });
+    },
+  });
+  refreshApplicationMenu();
+}
+
+async function confirmLocalServerMove(
+  move: DesktopServerMove,
+  timeoutMs: number,
+  isCancelled: () => boolean,
+): Promise<boolean> {
+  const dataDir = builtinDataDir;
+  if (dataDir === null) {
+    return false;
+  }
+  const result = await waitForCommittedServerMove({
+    dataDir,
+    async hasLiveLocalLauncher() {
+      return (
+        currentRuntime?.ownership === "spawned" ||
+        (await hasLiveBbAppLauncher({ dataDir }))
+      );
+    },
+    intervalMs: SERVER_MOVE_COMMIT_INTERVAL_MS,
+    isCancelled: () => quitting || isCancelled(),
+    logWarning: (message) => {
+      desktopLogger.warn(message);
+    },
+    move,
+    probeLocalServer: () =>
+      probeLocalServerMove({
+        serverUrl: builtinServerUrl,
+        timeoutMs: ATTACH_PROBE_TIMEOUT_MS,
+      }),
+    timeoutMs,
+  });
+  if (result === "withdrawn") {
+    desktopLogger.info(
+      `[desktop] server move ${move.moveId} was withdrawn before it finished; staying on ${BUILTIN_SERVER_NAME}`,
+    );
+  } else if (result === "timed-out" && timeoutMs > 0) {
+    desktopLogger.warn(
+      `[desktop] server move ${move.moveId} is locked, but ${builtinServerUrl} did not report server_moved within ${timeoutMs}ms; staying on ${BUILTIN_SERVER_NAME}`,
+    );
+  }
+  return result === "committed";
+}
+
+async function activateLocalServerMoveIfLocked(): Promise<void> {
+  if (builtinDataDir === null) {
+    return;
+  }
+  const move = await readServerMovedLock({
+    dataDir: builtinDataDir,
+    logWarning: (message) => {
+      desktopLogger.warn(message);
+    },
+  });
+  if (move === null || !(await confirmLocalServerMove(move, 0, () => false))) {
+    localServerMove = null;
+    return;
+  }
+  await activateLocalServerMove(move);
+}
+
+function startServerMovedWatcher(): void {
+  if (
+    serverMovedWatcher !== null ||
+    localServerMove !== null ||
+    builtinDataDir === null
+  ) {
+    return;
+  }
+  serverMovedWatcher = createServerMovedWatcher({
+    confirmMove: (move, isCancelled) =>
+      confirmLocalServerMove(move, SERVER_MOVE_COMMIT_TIMEOUT_MS, isCancelled),
+    dataDir: builtinDataDir,
+    debounceMs: SERVER_MOVED_WATCH_DEBOUNCE_MS,
+    logWarning: (message) => {
+      desktopLogger.warn(message);
+    },
+    onMove(move) {
+      void handleWatchedServerMove(move);
+    },
+    pollIntervalMs: SERVER_MOVED_POLL_INTERVAL_MS,
+  });
+  serverMovedWatcher.start();
+}
+
+function stopServerMovedWatcher(): void {
+  serverMovedWatcher?.stop();
+  serverMovedWatcher = null;
+}
+
+async function handleWatchedServerMove(move: DesktopServerMove): Promise<void> {
+  if (
+    localServerMove !== null ||
+    serverTargetStore?.getTarget().kind !== "builtin"
+  ) {
+    stopServerMovedWatcher();
+    return;
+  }
+  try {
+    await activateLocalServerMove(move);
+  } catch (error) {
+    desktopLogger.warn(
+      `[desktop] could not switch to the moved bb server: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    return;
+  }
+  const generation = serverTargetGeneration;
+  if (move.target.kind === "custom") {
+    await waitForServerMoveDestination({
+      fetchImpl: (input, init) => net.fetch(input, init),
+      intervalMs: SERVER_MOVE_DESTINATION_INTERVAL_MS,
+      isCancelled: () => quitting || serverTargetGeneration !== generation,
+      serverUrl: move.target.url,
+      timeoutMs: SERVER_MOVE_DESTINATION_TIMEOUT_MS,
+    });
+  }
+  if (quitting || serverTargetGeneration !== generation) {
+    return;
+  }
+  await applyServerTarget();
+  connectServerSync?.syncNow().catch(() => {});
 }
 
 function ensureDesktopMachineEnrolled(): void {
@@ -1175,13 +1423,20 @@ async function applyServerTarget(): Promise<void> {
   if (serverTargetStore === null) {
     return;
   }
-  const target = serverTargetStore.getTarget();
   connectSessionRenewal?.stop();
   serverTargetGeneration += 1;
   const generation = serverTargetGeneration;
   const isCurrent = (): boolean => serverTargetGeneration === generation;
+  if (serverTargetStore.getTarget().kind === "builtin") {
+    await activateLocalServerMoveIfLocked();
+    if (!isCurrent()) {
+      return;
+    }
+  }
+  const target = serverTargetStore.getTarget();
 
   if (target.kind === "builtin") {
+    startServerMovedWatcher();
     const attached = await ensureBuiltinRuntimeAttached();
     if (!isCurrent()) {
       return;
@@ -1206,6 +1461,7 @@ async function applyServerTarget(): Promise<void> {
       }),
     );
   } else if (target.kind === "connect") {
+    stopServerMovedWatcher();
     const result = await authenticateConnectTarget(
       target.server.url,
       isCurrent,
@@ -1240,6 +1496,7 @@ async function applyServerTarget(): Promise<void> {
       connectSessionRenewal?.stop();
     }
   } else {
+    stopServerMovedWatcher();
     await loadRemoteServerTarget(target.url, isCurrent);
     if (!isCurrent()) {
       return;
@@ -1562,6 +1819,7 @@ function handleBeforeQuit(event: Event): void {
 }
 
 async function finishQuit(): Promise<void> {
+  stopServerMovedWatcher();
   desktopBrowserBrokerClient?.stop();
   desktopBrowserBroker?.dispose();
   stopSystemConfigSync();
@@ -1702,9 +1960,9 @@ function registerDesktopBrowserWindowLifecycle({
   });
 }
 
-async function startOwnedRuntime(
+async function spawnOwnedRuntime(
   args: StartOwnedRuntimeArgs,
-): Promise<DesktopRuntime | null> {
+): Promise<OwnedRuntime> {
   const bbProcess = startBbAppProcess({
     bridgePath: args.bridgePath,
     cwd: homedir(),
@@ -1740,6 +1998,12 @@ async function startOwnedRuntime(
       return;
     }
     setCurrentRuntime(null);
+    if (localServerMove !== null) {
+      desktopLogger.warn(
+        `[desktop] the Electron-owned bb-app process that runs this computer as a machine stopped with ${formatExitResult(exit)}`,
+      );
+      return;
+    }
     void loadStartupError({
       details: `The Electron-owned bb-app process stopped with ${formatExitResult(
         exit,
@@ -1749,6 +2013,13 @@ async function startOwnedRuntime(
       title: "bb stopped",
     });
   });
+  return { bbProcess, runtime };
+}
+
+async function startOwnedRuntime(
+  args: StartOwnedRuntimeArgs,
+): Promise<DesktopRuntime | null> {
+  const { bbProcess, runtime } = await spawnOwnedRuntime(args);
 
   const raceResult = await Promise.race<StartupRaceResult>([
     waitForCompatibleServer({
@@ -2127,6 +2398,14 @@ async function runDesktopApp(): Promise<void> {
     storagePath: join(userDataPath, SERVER_TARGET_FILE_NAME),
   });
   await serverTargetStore.load();
+  const dataDir = resolveDataDirFromEnv({
+    env: process.env,
+    homeDir: homedir(),
+  });
+  builtinDataDir = dataDir;
+  serverMoveNoticeStore = createServerMoveNoticeStore({
+    storagePath: join(userDataPath, SERVER_MOVE_NOTICE_FILE_NAME),
+  });
   connectCredentialCache = createConnectCredentialCache({
     encryption: safeStorage,
     userDataPath,
@@ -2134,7 +2413,8 @@ async function runDesktopApp(): Promise<void> {
   cachedConnectCredential = await connectCredentialCache.read();
   connectServerSync = createConnectServerSync({
     getCredential: () => cachedConnectCredential,
-    getLocalServerUrl: () => currentRuntime?.serverUrl ?? null,
+    getLocalServerUrl: () =>
+      localServerMove === null ? (currentRuntime?.serverUrl ?? null) : null,
     onUnauthorized() {
       void clearCachedConnectCredential();
     },
@@ -2332,7 +2612,7 @@ async function runDesktopApp(): Promise<void> {
   );
   desktopBrowserBrokerClient = createDesktopBrowserBrokerClient({
     broker: desktopBrowserBroker,
-    dataDir: resolveDataDirFromEnv({ env: process.env, homeDir: homedir() }),
+    dataDir,
     homeDir: homedir(),
     getServerUrl() {
       const target = serverTargetStore?.getTarget();
@@ -2397,7 +2677,9 @@ async function runDesktopApp(): Promise<void> {
   for (const browserWindow of restoredWindows) {
     registerApplicationWindow(browserWindow);
   }
+  await activateLocalServerMoveIfLocked();
   if (serverTargetStore.getTarget().kind === "builtin") {
+    startServerMovedWatcher();
     await initializeRuntime({ bridgePath, serverUrl, userDataPath });
   } else {
     await applyServerTarget();

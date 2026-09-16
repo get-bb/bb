@@ -22,7 +22,7 @@ A project maps to a code repository. All threads belong to a project.
 
   An explicit machine/host selector accepts an exact ID or unambiguous name and
   binds --root to that machine. Omitting the selector preserves the existing
-  local CLI machine fallback (normally the primary machine).
+  local CLI machine fallback (normally the server machine).
 
   bb project show <id>                    Show project details
     Accepts proj_personal to inspect Personal.
@@ -47,7 +47,7 @@ Discovery:
   The machine/host and environment selectors are mutually exclusive. An
   environment selects its owning machine and workspace; otherwise an explicit
   machine selects that machine's project source. Omitting both intentionally
-  falls back to the primary machine's project source.
+  falls back to the server machine's project source.
 
   Personal file access (`paths`, `files`, `content`) requires an explicit
   --environment <id> belonging to Personal. Personal has no default project

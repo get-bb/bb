@@ -299,6 +299,19 @@ add-root-cert`). Env: `BB_MOBILE_E2E_GATE_PORT` (42998),
   `BB_MOBILE_E2E_SESSION_TTL_MS`, `BB_MOBILE_E2E_STUB_LOG=1` (one line per
   gate request).
 
+## Server moves
+
+- After `bb server move`, the old computer answers its old address with
+  `410 {code:"server_moved", details:{serverUrl, toHostName}}`.
+  `createMobileFetch` reads that body from `response.clone()` and validates
+  `details.serverUrl` with the Direct URL rules. The registry passes the
+  address with the profile ID to `createServerMovedProfileHandler`
+  (`src/lib/profiles/server-moved.ts`). A direct profile gets the new
+  `serverUrl`: the connector rebuilds the client, the WebView reloads, and
+  a toast says "Server moved to <toHostName>". Connect profiles ignore the
+  response because their URL stays the same. Concurrent 410 responses update
+  the profile once.
+
 ## Push notifications and deep links (Phase 5)
 
 - Registration: `PushNotificationsHost` (mounted once in `app/_layout.tsx`)

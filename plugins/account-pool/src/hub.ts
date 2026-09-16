@@ -36,7 +36,6 @@ import type {
   QuotaStore,
 } from "./store.js";
 import { parentRequestHeaders, type ParentPool } from "./parent-pool.js";
-import { CacheMissMonitor, type CacheMissObserver } from "./cache-miss.js";
 
 const ROUTE = "/api/v1/plugins/account-pool/http";
 const DEFAULT_REFRESH_URL = "https://platform.claude.com/v1/oauth/token";
@@ -77,7 +76,6 @@ interface HubOptions {
   getParentRoute: () => ParentPool | null;
   onAccountsChanged: () => void;
   onUpstreamError: (provider: PoolProvider, error: unknown) => void;
-  cacheMisses: CacheMissMonitor;
 }
 
 interface SelectedAccount {
@@ -198,7 +196,6 @@ export class AccountPoolHub {
       new Uint8Array(await request.arrayBuffer()),
       adapter,
       hostId,
-      routePath,
     );
   }
 
@@ -254,7 +251,7 @@ export class AccountPoolHub {
             cause,
           });
         });
-      return this.clientResponse({ response, controller, release }, null);
+      return this.clientResponse({ response, controller, release });
     } catch (error) {
       release();
       if (request.signal.aborted)
@@ -369,7 +366,6 @@ export class AccountPoolHub {
     body: Uint8Array,
     adapter: ProviderAdapter,
     hostId: string,
-    routePath: string,
   ): Promise<Response> {
     const signal = AbortSignal.any([request.signal, this.stopped.signal]);
     const attempted = new Set<string>();
@@ -395,16 +391,6 @@ export class AccountPoolHub {
       affinityKey === null || parsed.parentAffinityId === null
         ? null
         : JSON.stringify([adapter.provider, hostId, parsed.parentAffinityId]);
-    const cacheMiss = this.options.cacheMisses.begin({
-      provider: adapter.provider,
-      routePath,
-      body,
-      headers: request.headers,
-      hostId,
-      affinityId: parsed.affinityId,
-      affinityKey,
-      parentAffinityKey,
-    });
     try {
       while (attempted.size < candidateIds.size) {
         signal.throwIfAborted();
@@ -493,7 +479,6 @@ export class AccountPoolHub {
         while (true) {
           signal.throwIfAborted();
           let upstream: UpstreamResult;
-          const attemptStartedAt = this.options.now();
           try {
             upstream = await this.fetchUpstream(
               request,
@@ -636,16 +621,7 @@ export class AccountPoolHub {
             break;
           }
           if (response.ok) selected.accept();
-          return this.clientResponse(
-            upstream,
-            response.ok
-              ? (cacheMiss?.observe(
-                  selected.account,
-                  response,
-                  attemptStartedAt,
-                ) ?? null)
-              : null,
-          );
+          return this.clientResponse(upstream);
         }
       }
       signal.throwIfAborted();
@@ -1094,10 +1070,7 @@ export class AccountPoolHub {
     }
   }
 
-  private clientResponse(
-    upstream: UpstreamResult,
-    observer: CacheMissObserver | null,
-  ): Response {
+  private clientResponse(upstream: UpstreamResult): Response {
     const headers = new Headers();
     for (const [name, value] of upstream.response.headers) {
       if (!DROPPED_RESPONSE_HEADERS.has(name.toLowerCase()))
@@ -1105,7 +1078,6 @@ export class AccountPoolHub {
     }
     if (upstream.response.body === null) {
       upstream.release();
-      observer?.abort();
       return new Response(null, {
         status: upstream.response.status,
         statusText: upstream.response.statusText,
@@ -1126,14 +1098,9 @@ export class AccountPoolHub {
           if (chunk.done) {
             upstream.release();
             controller.close();
-            if (observer !== null) setImmediate(() => observer.end());
-          } else {
-            controller.enqueue(chunk.value);
-            observer?.chunk(chunk.value);
-          }
+          } else controller.enqueue(chunk.value);
         } catch (error) {
           upstream.release();
-          observer?.abort();
           if (!eventStream) {
             controller.error(
               error instanceof Error ? error : new Error(String(error)),
@@ -1149,7 +1116,6 @@ export class AccountPoolHub {
         }
       },
       async cancel() {
-        observer?.abort();
         upstream.controller.abort();
         await reader.cancel().catch(() => undefined);
         upstream.release();
@@ -1261,9 +1227,7 @@ export function createHub(options: {
   getParentRoute?: () => ParentPool | null;
   onAccountsChanged?: () => void;
   onUpstreamError?: (provider: PoolProvider, error: unknown) => void;
-  cacheMisses?: CacheMissMonitor;
 }): AccountPoolHub {
-  const now = options.now ?? Date.now;
   const adapters: ReadonlyMap<PoolProvider, ProviderAdapter> = new Map([
     [
       "claude",
@@ -1292,18 +1256,11 @@ export function createHub(options: {
     getSettings: options.getSettings,
     adapters,
     fetch: options.fetch ?? fetch,
-    now,
+    now: options.now ?? Date.now,
     drainTimeoutMs: options.drainTimeoutMs ?? 60_000,
     getParentRoute: options.getParentRoute ?? (() => null),
     onAccountsChanged: options.onAccountsChanged ?? (() => {}),
     onUpstreamError: options.onUpstreamError ?? (() => {}),
-    cacheMisses:
-      options.cacheMisses ??
-      new CacheMissMonitor({
-        now,
-        settings: options.getSettings,
-        onReport: () => {},
-      }),
   });
 }
 

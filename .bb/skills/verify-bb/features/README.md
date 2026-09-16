@@ -54,7 +54,7 @@ were excluded. See the [audit](../MAINTENANCE.md) and
 
 | Feature group | Recipes | Verification status |
 | --- | --- | --- |
-| [Account pooling](plugin-account-pool.md) | 8 | 7 partial/blocked, 1 not run |
+| [Account pooling](plugin-account-pool.md) | 7 | 7 partial/blocked |
 | [Fallback question cards](plugin-ask-user-question.md) | 5 | 3 passed, 1 failed, 1 partial/blocked |
 | [Scheduled agent and script automations](plugin-automations.md) | 8 | 8 passed |
 | [Agent concurrency limits](plugin-concurrency-limit.md) | 5 | 4 passed, 1 partial/blocked |

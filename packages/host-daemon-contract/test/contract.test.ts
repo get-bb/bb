@@ -497,6 +497,29 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       mergeable: "MERGEABLE",
     },
   },
+  "server_move.inspect": {
+    dataDir: "/home/me/.bb-machines/bb.example.com",
+    platform: "linux",
+    timeZone: "America/Los_Angeles",
+    bbAppVersion: "0.0.5",
+    serverEntryAvailable: false,
+    serviceManager: "systemd-user",
+    existingServerData: null,
+    dataDirHasServerData: false,
+    portAvailable: true,
+    ghAuthenticated: null,
+    codexCredentialsPresent: false,
+    pathsExist: { "/home/me/plugins/local": false },
+    diskFreeBytes: 1_000_000,
+  },
+  "server_move.probe": { reachable: true, message: null, state: "ready" },
+  "server_move.prepare": {
+    localServerUrl: "http://127.0.0.1:38886",
+    pid: 4242,
+  },
+  "server_move.activate": { ok: true },
+  "server_move.abort": { ok: true },
+  "server_move.delete_old_copy": { deleted: true },
 };
 
 const SETTLED_RESPONSE_RESULT_FIXTURES: SettledResponseResultFixtures = {
@@ -1043,7 +1066,7 @@ const CONTRIBUTED_ENV = [
 
 describe("host-daemon command schemas", () => {
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(209);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(211);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 

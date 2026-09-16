@@ -37,6 +37,10 @@ import {
 } from "./managed-plugin-artifacts.js";
 import { MARKETPLACE_FETCH_TIMEOUT_MS } from "../plugin-catalog/marketplace-http.js";
 import {
+  SERVER_MOVE_FROZEN_RETRY_MS,
+  isServerMoveFrozen,
+} from "../server-move/freeze-state.js";
+import {
   pluginUpdateCheckEntrySchema,
   type PluginSourceDetail,
   type PluginUpdateCheckEntry,
@@ -385,6 +389,13 @@ export function createPluginUpdates(
 
   async function runPeriodicCheck(): Promise<void> {
     if (periodicChecksStopped) return;
+    if (isServerMoveFrozen(deps.db)) {
+      cancelPeriodicCheck = scheduleUpdateCheck(
+        SERVER_MOVE_FROZEN_RETRY_MS,
+        runPeriodicCheck,
+      );
+      return;
+    }
     try {
       await updates.checkForUpdates();
     } catch (error: unknown) {

@@ -1057,7 +1057,7 @@ describe.sequential("watchWorkspaceStatus", () => {
     }
   });
 
-  it("waits for late workspace subscription unsubscribe when stopped during startup", async () => {
+  it("settles stop and cleans up a late workspace subscription", async () => {
     const repoPath = await initRepo();
     const rootPaths: string[] = [];
     const subscriptionDeferred =
@@ -1086,8 +1086,8 @@ describe.sequential("watchWorkspaceStatus", () => {
     const stopPromise = stopWatching().then(() => {
       stopResolved = true;
     });
-    await Promise.resolve();
-    expect(stopResolved).toBe(false);
+    await stopPromise;
+    expect(stopResolved).toBe(true);
 
     subscriptionDeferred.resolve({ unsubscribe });
     await waitForCallCount(
@@ -1095,13 +1095,10 @@ describe.sequential("watchWorkspaceStatus", () => {
       1,
       WATCH_TEST_TIMEOUT_MS,
     );
-    expect(stopResolved).toBe(false);
 
     unsubscribeDeferred.resolve(undefined);
-    await stopPromise;
 
     expect(unsubscribe).toHaveBeenCalledTimes(1);
-    expect(stopResolved).toBe(true);
   });
 
   it("ignores shared common-dir index updates for detached worktree environments", async () => {

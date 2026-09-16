@@ -10,11 +10,7 @@ import {
 } from "@testing-library/react";
 import { defaultAppSettings } from "@bb/domain";
 import { Popover, PopoverContent, PopoverTrigger } from "@bb/shared-ui/popover";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@bb/shared-ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { createPortal } from "react-dom";
 import {
   resetPluginSlotStoreForTest,
@@ -67,8 +63,7 @@ vi.mock("./AppLayoutSidebar", async () => {
 vi.mock("@/hooks/queries/system-queries", () => ({
   useSystemConfig: () => ({
     data: {
-      experiments: {
-      },
+      experiments: {},
       generalSettings: defaultAppSettings,
       keybindings: [
         {
@@ -551,17 +546,23 @@ describe("AppLayout plugin overlay contexts", () => {
       );
 
       expect(screen.getByRole("button", { name: "Page action" })).toBeDefined();
-      const overlayHost = document.querySelector("[data-bb-plugin-app-overlays]");
+      const overlayHost = document.querySelector(
+        "[data-bb-plugin-app-overlays]",
+      );
       expect(overlayHost).not.toBeNull();
       expect(overlayHost?.parentElement).toBe(getRoot().parentElement);
       expect(getRoot().contains(overlayHost)).toBe(false);
       expect(errors).not.toHaveBeenCalled();
-      expect(screen.getByRole("button", { name: "Overlay action" })).toBeDefined();
+      expect(
+        screen.getByRole("button", { name: "Overlay action" }),
+      ).toBeDefined();
       expect((await screen.findByRole("tooltip")).textContent).toBe(
         "Overlay tooltip",
       );
       fireEvent.click(screen.getByRole("link", { name: SETTINGS_ROUTE }));
-      expect(screen.getByRole("button", { name: "Overlay action" })).toBeDefined();
+      expect(
+        screen.getByRole("button", { name: "Overlay action" }),
+      ).toBeDefined();
       expect(screen.getByRole("tooltip").textContent).toBe("Overlay tooltip");
       expect(errors).not.toHaveBeenCalled();
       expect(warnings).not.toHaveBeenCalled();

@@ -49,6 +49,7 @@ export * from "./reasoning-efforts.js";
 export * from "./reasoning-level.js";
 export * from "./retry.js";
 export * from "./setup-script.js";
+export * from "./server-move.js";
 export * from "./shared-types.js";
 export * from "./stored-thread-event.js";
 export * from "./terminal.js";
@@ -65,3 +66,5 @@ export * from "./thread-timeline-model-fallback.js";
 export * from "./thread-timeline-pending-todos.js";
 export * from "./thread-visibility.js";
 export * from "./thread.js";
+
+export * from "./project-attachment.js";

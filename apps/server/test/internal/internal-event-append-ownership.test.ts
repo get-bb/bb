@@ -2,6 +2,8 @@ import { eq } from "drizzle-orm";
 import {
   events,
   getThread,
+  getHighWaterMarks,
+  getLastStoredProviderThreadId,
   listEvents,
   listQueuedThreadMessages,
 } from "@bb/db";
@@ -81,6 +83,128 @@ function setupEventRoute(args: SeedEventRouteArgs = {}) {
 }
 
 describe("internal event append ownership", () => {
+  it("skips diffs using the existing batch response while retaining edits and provider identity", async () => {
+    const { harness, session, thread } = await setupEventRoute();
+    try {
+      seedTurnStarted(harness.deps, {
+        threadId: thread.id,
+        turnId: "turn-diff",
+        sequence: 1,
+      });
+      const providerThreadId = "provider-diff";
+      const response = await postEventBatch({
+        harness,
+        sessionId: session.id,
+        events: [
+          {
+            threadId: thread.id,
+            event: {
+              type: "thread/identity",
+              threadId: thread.id,
+              providerThreadId,
+              scope: threadScope(),
+            },
+          },
+          {
+            threadId: thread.id,
+            event: {
+              type: "turn/diff/updated",
+              threadId: thread.id,
+              providerThreadId,
+              scope: turnScope("turn-diff"),
+              diff: "discard this snapshot",
+            },
+          },
+          {
+            threadId: thread.id,
+            event: {
+              type: "item/completed",
+              threadId: thread.id,
+              providerThreadId,
+              scope: turnScope("turn-diff"),
+              item: {
+                id: "edit-diff",
+                type: "fileChange",
+                status: "completed",
+                approvalStatus: null,
+                changes: [
+                  {
+                    path: "example.ts",
+                    kind: "update",
+                    diff: "+const value = 2;",
+                  },
+                ],
+              },
+            },
+          },
+          {
+            threadId: thread.id,
+            event: {
+              type: "thread/identity",
+              threadId: thread.id,
+              providerThreadId: "provider-latest",
+              scope: threadScope(),
+            },
+          },
+          {
+            threadId: thread.id,
+            event: {
+              type: "turn/diff/updated",
+              threadId: thread.id,
+              providerThreadId: "provider-latest",
+              scope: turnScope("turn-diff"),
+              diff: "discard the final snapshot too",
+            },
+          },
+        ],
+      });
+      expect(response.status).toBe(200);
+      const accepted = hostDaemonEventBatchResponseSchema.parse(
+        await response.json(),
+      );
+      expect(accepted.acceptedEvents.map((event) => event.sequence)).toEqual([
+        2, 3, 4,
+      ]);
+      expect(accepted.acceptedEvents.map((event) => event.eventIndex)).toEqual([
+        0, 2, 3,
+      ]);
+      const skipped = await postEventBatch({
+        harness,
+        sessionId: session.id,
+        events: [
+          {
+            threadId: thread.id,
+            event: {
+              type: "turn/diff/updated",
+              threadId: thread.id,
+              providerThreadId: "provider-latest",
+              scope: turnScope("turn-diff"),
+              diff: "skip the entire batch",
+            },
+          },
+        ],
+      });
+      expect(skipped.status).toBe(200);
+      expect(
+        hostDaemonEventBatchResponseSchema.parse(await skipped.json())
+          .acceptedEvents,
+      ).toEqual([]);
+      const stored = listEvents(harness.db, { threadId: thread.id });
+      expect(stored.some((event) => event.type === "turn/diff/updated")).toBe(
+        false,
+      );
+      expect(
+        stored.find((event) => event.type === "item/completed")?.sequence,
+      ).toBe(3);
+      expect(getHighWaterMarks(harness.db, [thread.id])[thread.id]).toBe(4);
+      expect(getLastStoredProviderThreadId(harness.db, thread.id)).toBe(
+        "provider-latest",
+      );
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
   it("keeps late provisioning output terminal after setup has failed", async () => {
     const { environment, harness, session, thread } = await setupEventRoute();
     try {

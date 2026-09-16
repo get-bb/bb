@@ -1428,7 +1428,7 @@ describe("Docs nav panel", () => {
     );
 
     await slot.findByText("Roadmap");
-    expect(slot.queryByText("Primary host")).toBeNull();
+    expect(slot.queryByText("Server machine")).toBeNull();
     const vault = slot.getByRole("combobox", { name: "Vault" });
     expect(vault.closest("aside")).toBeNull();
     expect(slot.queryByPlaceholderText("Search this vault")).toBeNull();

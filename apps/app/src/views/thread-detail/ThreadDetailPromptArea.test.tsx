@@ -561,7 +561,7 @@ vi.mock("@/hooks/useCommandSuggestions", () => ({
     isLoadingMore: false,
     loadMore: vi.fn(),
     suggestions: [{ name: `${providerId}:${commandScope}` }],
-    trigger: null,
+    triggers: [],
   }),
 }));
 

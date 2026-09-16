@@ -1,3 +1,12 @@
+import {
+  projectMachineEnvironmentView,
+  replaceMachineEnvironment,
+} from "../services/machines/environment-settings.js";
+import {
+  setMachineEnvironmentVariable,
+  deleteMachineEnvironmentVariable,
+} from "../services/machines/environment-storage.js";
+import { getGateAuthKind } from "../request-context.js";
 import path from "node:path";
 import {
   countProjectSources,
@@ -319,10 +328,87 @@ async function inspectProjectGitRemoteBestEffort(
 }
 
 export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
-  const { get, post, patch, del } = typedRoutes<PublicApiSchema>(app, {
+  const { get, post, put, patch, del } = typedRoutes<PublicApiSchema>(app, {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
   });
   const routes = publicApiRoutes.projects;
+  del(routes.deleteMachineEnvironmentVariable, async (context, payload) => {
+    if (getGateAuthKind(context) === "machine")
+      throw new ApiError(
+        403,
+        "forbidden",
+        "Machine credentials cannot change project environment settings",
+      );
+    const project = requirePublicProject(deps.db, context.req.param("id"));
+    await deleteMachineEnvironmentVariable(deps.db, payload.name, project.id);
+    deps.hub.notifySystem(["config-changed"]);
+    return context.json(
+      await projectMachineEnvironmentView(
+        deps.db,
+        deps.config.dataDir,
+        project.id,
+      ),
+    );
+  });
+
+  post(routes.setMachineEnvironmentVariable, async (context, payload) => {
+    if (getGateAuthKind(context) === "machine")
+      throw new ApiError(
+        403,
+        "forbidden",
+        "Machine credentials cannot change project environment settings",
+      );
+    const project = requirePublicProject(deps.db, context.req.param("id"));
+    await setMachineEnvironmentVariable(
+      deps.db,
+      deps.config.dataDir,
+      payload,
+      project.id,
+    );
+    deps.hub.notifySystem(["config-changed"]);
+    return context.json(
+      await projectMachineEnvironmentView(
+        deps.db,
+        deps.config.dataDir,
+        project.id,
+      ),
+    );
+  });
+
+  put(routes.replaceMachineEnvironment, async (context, payload) => {
+    if (getGateAuthKind(context) === "machine")
+      throw new ApiError(
+        403,
+        "forbidden",
+        "Machine credentials cannot change project environment settings",
+      );
+    const project = requirePublicProject(deps.db, context.req.param("id"));
+    await replaceMachineEnvironment(
+      deps.db,
+      deps.config.dataDir,
+      payload,
+      project.id,
+    );
+    deps.hub.notifySystem(["config-changed"]);
+    return context.json(
+      await projectMachineEnvironmentView(
+        deps.db,
+        deps.config.dataDir,
+        project.id,
+      ),
+    );
+  });
+
+  get(routes.machineEnvironment, async (context) => {
+    const project = requirePublicProject(deps.db, context.req.param("id"));
+    return context.json(
+      await projectMachineEnvironmentView(
+        deps.db,
+        deps.config.dataDir,
+        project.id,
+      ),
+    );
+  });
 
   get(routes.list, (context, query) => {
     const includes = parseProjectListIncludes(query);
@@ -859,7 +945,12 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
       );
     }
     return context.json(
-      await storeAttachment(deps.config.dataDir, context.req.param("id"), file),
+      await storeAttachment(
+        deps.db,
+        deps.config.dataDir,
+        context.req.param("id"),
+        file,
+      ),
       201,
     );
   });
@@ -869,6 +960,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     requirePublicProject(deps.db, targetProjectId);
     requirePublicProject(deps.db, payload.sourceProjectId);
     await copyProjectAttachments(
+      deps.db,
       deps.config.dataDir,
       payload.sourceProjectId,
       targetProjectId,

@@ -64,6 +64,7 @@ describe("buildPluginProviderRegistration", () => {
       },
       composerActions: [
         { kind: "skills", trigger: "/" },
+        { kind: "skills", trigger: "$" },
         {
           kind: "plan",
           command: { trigger: "/", name: "plan", trailingText: " " },
@@ -293,6 +294,7 @@ describe("buildPluginProviderRegistration", () => {
     expect(registration.info.icon).toBeUndefined();
     expect(registration.info.composerActions).toStrictEqual([
       { kind: "skills", trigger: "/" },
+      { kind: "skills", trigger: "$" },
     ]);
     expect(registration.info.serviceTiers).toBeUndefined();
   });

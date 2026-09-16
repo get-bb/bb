@@ -51,8 +51,8 @@ import {
   listOpenBackgroundTaskItemRowsForHost,
   listThreadTurnInterruptionEventStates,
   pruneBackgroundTaskProgressEvents,
-  pruneContextWindowUsageEventsBeforeSequence,
-  pruneTokenUsageEventsBeforeSequence,
+  pruneContextWindowUsageEvents,
+  pruneTokenUsageEvents,
   pruneResolvedItemDeltas,
   pruneThreadEventsBeforeSequence,
   listLatestOpenBackgroundTaskStateRowsForThread,
@@ -1167,8 +1167,9 @@ describe("events", () => {
       { behavior: "immediate" },
     );
 
-    expect(listEvents(db, { threadId: thread.id }).map((event) => event.type))
-      .toEqual(["turn/started", "turn/input/accepted", "system/error"]);
+    expect(
+      listEvents(db, { threadId: thread.id }).map((event) => event.type),
+    ).toEqual(["turn/started", "turn/input/accepted", "system/error"]);
   });
 
   it("indexes daemon-appended messages without parsing deltas or tool outputs", () => {
@@ -3361,7 +3362,7 @@ describe("events", () => {
     ).toEqual([4, 5]);
   });
 
-  it("prunes token-usage rows before a sequence cutoff but keeps the latest totals row and latest context row", () => {
+  it("keeps only the latest root token-usage snapshot", () => {
     const { db, thread } = setup();
 
     insertEvents(db, noopNotifier, [
@@ -3407,15 +3408,14 @@ describe("events", () => {
       },
     ]);
 
-    const removed = pruneTokenUsageEventsBeforeSequence(db, {
+    const removed = pruneTokenUsageEvents(db, {
       threadId: thread.id,
-      sequenceCutoff: 4,
     });
 
-    expect(removed).toBe(2);
+    expect(removed).toBe(3);
     expect(
       listEvents(db, { threadId: thread.id }).map((event) => event.sequence),
-    ).toEqual([1, 4]);
+    ).toEqual([4]);
   });
 
   it("preserves root token usage instead of a newer nested-turn report while pruning", () => {
@@ -3460,20 +3460,26 @@ describe("events", () => {
           modelContextWindow: 200_000,
         }),
       },
+      {
+        threadId: thread.id,
+        sequence: 5,
+        type: "turn/completed",
+        ...createTurnEventFields({ turnId: "turn-subagent" }),
+        data: "{}",
+      },
     ]);
 
-    const removed = pruneTokenUsageEventsBeforeSequence(db, {
+    const removed = pruneTokenUsageEvents(db, {
       threadId: thread.id,
-      sequenceCutoff: 4,
     });
 
-    expect(removed).toBe(1);
+    expect(removed).toBe(2);
     expect(
       listEvents(db, { threadId: thread.id }).map((event) => event.sequence),
-    ).toEqual([1, 2, 3]);
+    ).toEqual([2, 3, 5]);
   });
 
-  it("prunes context-window rows before a sequence cutoff but keeps the latest usage row and latest context row", () => {
+  it("prunes context-window rows but keeps the latest usage row and latest context row", () => {
     const { db, thread } = setup();
 
     insertEvents(db, noopNotifier, [
@@ -3519,9 +3525,8 @@ describe("events", () => {
       },
     ]);
 
-    const removed = pruneContextWindowUsageEventsBeforeSequence(db, {
+    const removed = pruneContextWindowUsageEvents(db, {
       threadId: thread.id,
-      sequenceCutoff: 4,
     });
 
     expect(removed).toBe(2);
@@ -3627,8 +3632,12 @@ describe("events", () => {
       },
     ]);
 
-    expect(pruneResolvedItemDeltas(db, { threadId: thread.id })).toBe(500);
-    expect(pruneResolvedItemDeltas(db, { threadId: thread.id })).toBe(1);
+    let removed = pruneResolvedItemDeltas(db, { threadId: thread.id });
+    expect(removed).toBeGreaterThan(0);
+    expect(removed).toBeLessThanOrEqual(500);
+    for (let i = 0; i < 4; i++)
+      removed += pruneResolvedItemDeltas(db, { threadId: thread.id });
+    expect(removed).toBe(501);
     expect(
       listEvents(db, { threadId: thread.id }).map((event) => event.sequence),
     ).toEqual([1, 503]);
@@ -5180,7 +5189,7 @@ describe("events", () => {
         sequence: 2,
         type: "client/turn/requested",
         ...threadEventFields,
-        data: "{}",
+        data: JSON.stringify({ input: [] }),
       },
       {
         threadId: thread2.id,
@@ -5331,13 +5340,15 @@ describe("timeline read-boundary output truncation", () => {
         ...args,
         maxDataBytes: (rowBytes.get(3) ?? 0) - 1,
       }),
-    ).toEqual(expect.objectContaining({
-      eventDataBytes: rowBytes.get(3),
-      hasOlderRows: true,
-      kind: "single-event-too-large",
-      sequenceStart: 3,
-      turnId: null,
-    }));
+    ).toEqual(
+      expect.objectContaining({
+        eventDataBytes: rowBytes.get(3),
+        hasOlderRows: true,
+        kind: "single-event-too-large",
+        sequenceStart: 3,
+        turnId: null,
+      }),
+    );
   });
 
   it("stops the byte-budget scan before reading older oversized payloads", () => {
@@ -5355,7 +5366,9 @@ describe("timeline read-boundary output truncation", () => {
       })),
     );
     db.$client
-      .prepare("UPDATE events SET data = ? WHERE thread_id = ? AND sequence = 1")
+      .prepare(
+        "UPDATE events SET data = ? WHERE thread_id = ? AND sequence = 1",
+      )
       .run(`{"item":{"resultText":"${"x".repeat(1_100)}`, thread.id);
 
     expect(

@@ -1,3 +1,4 @@
+import { createThreadRequestSchema } from "@bb/server-contract";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
@@ -26,6 +27,36 @@ describe("bb thread spawn command output", () => {
     return vi.spyOn(process.stderr, "write").mockImplementation(() => true);
   }
 
+  it("rejects explicitly empty lifecycle ownership instead of creating an independent thread", async () => {
+    const post = vi.fn(async ({ json }: { json: unknown }) => {
+      createThreadRequestSchema.parse(json);
+      return fixtures.makeThread({
+        id: "unexpected-independent-thread",
+        projectId: "proj-1",
+        providerId: "codex",
+      });
+    });
+    stubServerApi({ "v1.threads.$post": post });
+    await expect(
+      runCommand(
+        [
+          "thread",
+          "spawn",
+          "--project",
+          "proj-1",
+          "--prompt",
+          "hello",
+          "--lifecycle-owner-thread",
+          "",
+        ],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+    expect(post).toHaveBeenCalledWith({
+      json: expect.objectContaining({ lifecycleOwnerThreadId: "" }),
+    });
+  });
+
   it("bb thread spawn sends project-default when the user relies on project defaults", async () => {
     vi.stubEnv("BB_PROJECT_ID", "proj-1");
     const thread: domain.Thread = fixtures.makeThread({
@@ -46,6 +77,47 @@ describe("bb thread spawn command output", () => {
 
     expect(post).toHaveBeenCalledWith({
       json: {
+        origin: "cli",
+        startedOnBehalfOf: null,
+        originKind: null,
+        projectId: "proj-1",
+        input: [{ type: "text", text: "hello", mentions: [] }],
+        environment: { type: "project-default" },
+      },
+    });
+    expect(resolveLocalHostIdMock).not.toHaveBeenCalled();
+  });
+
+  it("bb thread spawn passes explicit lifecycle ownership independently of parent selection", async () => {
+    vi.stubEnv("BB_PROJECT_ID", "proj-1");
+    const thread: domain.Thread = fixtures.makeThread({
+      id: "thread-1",
+      projectId: "proj-1",
+      providerId: "codex",
+      status: "starting",
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    const post = vi.fn(async () => thread);
+    stubServerApi({ "v1.threads.$post": post });
+
+    await runCommand(
+      [
+        "thread",
+        "spawn",
+        "--project",
+        "proj-1",
+        "--prompt",
+        "hello",
+        "--lifecycle-owner-thread",
+        "owner-other-project",
+      ],
+      register,
+    );
+
+    expect(post).toHaveBeenCalledWith({
+      json: {
+        lifecycleOwnerThreadId: "owner-other-project",
         origin: "cli",
         startedOnBehalfOf: null,
         originKind: null,

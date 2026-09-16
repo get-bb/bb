@@ -158,6 +158,13 @@ every window and client sees the same value.
 - It keeps stable timeline wrappers while mounting only rows near the active
   main or nested detail scrollport.
 
+## Server move
+
+- The `serverMove` experiment defaults to false.
+- Enable it with `bb settings experiment serverMove true`.
+- It shows Move server here in Settings → Machines and lets the server run
+  `bb server move`, `bb server export`, and old server copy deletion.
+
 ## Multi-machine picker
 
 - The `multiMachinePicker` experiment defaults to false.
