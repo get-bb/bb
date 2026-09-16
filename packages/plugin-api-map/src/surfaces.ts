@@ -75,8 +75,9 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Render any React you write across that whole area",
           "Get its own URL, so the page can be linked to and bb's back and forward buttons work",
           "Register tabs in the panel to the right of its page, beside bb's own Browser and Terminal tabs",
+          "Align a contextual heading with the main title bar using the pane-scoped experimental_contextualHeaderTarget passed to headerContent; portal a width-matched header and retain an in-body fallback on older hosts",
         ],
-        apiSymbols: ["PluginNavPanelRegistration"],
+        apiSymbols: ["PluginNavPanelRegistration", "PluginNavPanelProps"],
         firstParty: ["Automations", "Docs", "GitHub", "Tasks"],
       },
       {

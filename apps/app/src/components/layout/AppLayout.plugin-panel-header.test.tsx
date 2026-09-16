@@ -62,6 +62,7 @@ vi.mock("@/components/plugin/PluginPanelHeader", () => ({
     <span data-testid="plugin-panel-header-center">{chrome.title}</span>
   ),
   PluginPanelHeaderActions: () => null,
+  PluginPanelContextualHeader: () => null,
 }));
 
 vi.mock("@/components/project/ProjectActionsProvider", () => ({

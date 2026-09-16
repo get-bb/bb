@@ -90,6 +90,7 @@ import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@bb/shared-ui/chrome
 import { usePluginNavPanelChrome } from "@/lib/plugin-nav-panel-chrome";
 import {
   PluginPanelHeaderActions,
+  PluginPanelContextualHeader,
   PluginPanelHeaderCenter,
 } from "@/components/plugin/PluginPanelHeader";
 import { getAdjacentPaneId } from "./splitPaneCommands";
@@ -1002,6 +1003,11 @@ function StandalonePaneContent({
         <div className="flex h-full min-h-0 flex-col">
           <AppPageHeader
             center={<PluginPanelHeaderCenter chrome={panelChrome} />}
+            contextualHeader={
+              panel ? (
+                <PluginPanelContextualHeader panel={panel} paneId={paneId} />
+              ) : undefined
+            }
             actions={
               panel ? (
                 <PluginPanelHeaderActions
@@ -1166,6 +1172,9 @@ function NonThreadPaneContent({
             </div>
           }
           actions={actions}
+          contextualHeader={
+            panel ? <PluginPanelContextualHeader panel={panel} /> : undefined
+          }
         />
       ) : null}
       <div

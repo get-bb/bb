@@ -69,6 +69,16 @@ export interface PluginNavPanelProps {
    * back/forward then walks panel-internal history.
    */
   subPath: string;
+  /**
+   * Portal target for an optional contextual header beside the main title bar.
+   * Supplied only to navPanel.headerContent, scoped to the current pane. Render
+   * a bounded-width element here with createPortal; match the contextual body
+   * width and include its divider. Empty targets consume no space. The host
+   * owns row placement and preserves native controls. Absent on older hosts;
+   * retain an in-body header fallback. Do not cache targets across mounts.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_contextualHeaderTarget?: HTMLElement;
 }
 
 /**

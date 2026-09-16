@@ -43,6 +43,7 @@ import { writeLastKnownPluginNavPanelChrome } from "@/lib/plugin-nav-panel-chrom
 import { PluginPanelView } from "@/views/PluginPanelView";
 import {
   PluginPanelHeaderActions,
+  PluginPanelContextualHeader,
   PluginPanelHeaderCenter,
 } from "./PluginPanelHeader";
 import { resetAllCrashedPluginSlotsForTest } from "./PluginSlotMount";
@@ -1710,6 +1711,38 @@ describe("plugin panel shared title bar and full-bleed body", () => {
     expect(
       document.head.querySelector('link[data-bb-plugin-css="demo"]'),
     ).toBeNull();
+  });
+
+  it("isolates contextual header targets by pane and clears them on unmount", () => {
+    function Accessory({
+      experimental_contextualHeaderTarget,
+    }: import("@get-bb/plugin-sdk").PluginNavPanelProps) {
+      return (
+        <span data-testid="context-target">
+          {experimental_contextualHeaderTarget?.getAttribute(
+            "data-plugin-contextual-header",
+          ) ?? "none"}
+        </span>
+      );
+    }
+    const panel = panelSlot({ headerContent: Accessory });
+    const target = render(
+      <PluginPanelContextualHeader panel={panel} paneId="pane-a" />,
+    );
+    const consumers = render(
+      <>
+        <PluginPanelHeaderActions panel={panel} paneId="pane-a" subPath="" />
+        <PluginPanelHeaderActions panel={panel} paneId="pane-b" subPath="" />
+      </>,
+    );
+    expect(
+      screen.getAllByTestId("context-target").map((node) => node.textContent),
+    ).toEqual(["plugin-panel:demo:board:pane-a", "none"]);
+    target.unmount();
+    expect(
+      screen.getAllByTestId("context-target").map((node) => node.textContent),
+    ).toEqual(["none", "none"]);
+    consumers.unmount();
   });
 
   it("keys the right-panel toggle target to its owning pane", () => {

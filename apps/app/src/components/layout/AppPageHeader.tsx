@@ -35,6 +35,7 @@ export const COMPACT_SHELF_HIDDEN_PAGE_HEADER_ACTIONS_CLASS =
 interface AppPageHeaderProps {
   center?: ReactNode;
   actions?: ReactNode;
+  contextualHeader?: ReactNode;
   className?: string;
   headerRef?: Ref<HTMLElement>;
   isWindowDragRegion?: boolean;
@@ -44,6 +45,7 @@ interface AppPageHeaderProps {
 export function AppPageHeader({
   center,
   actions,
+  contextualHeader,
   className,
   headerRef,
   isWindowDragRegion = true,
@@ -67,7 +69,8 @@ export function AppPageHeader({
         CHROME_ROW_HEIGHT_CLASS,
         HEADER_SEAM_CLASS,
         APP_PAGE_HEADER_SURFACE_CLASS,
-        "relative shrink-0 select-none px-4",
+        "relative shrink-0 select-none",
+        contextualHeader ? "flex items-stretch" : "px-4",
         usesDesktopChrome && isWindowDragRegion && MACOS_WINDOW_DRAG_CLASS,
         className,
       )}
@@ -77,6 +80,7 @@ export function AppPageHeader({
         className={cn(
           CHROME_ROW_CLASS,
           "relative z-10 gap-1 md:gap-2",
+          contextualHeader && "min-w-0 flex-1 px-4",
           usesDesktopChrome && MACOS_CHROME_CONTROL_AXIS_CLASS,
           "transition-[padding] duration-200 ease-linear",
           shouldReserveSidebarTrigger &&
@@ -107,6 +111,7 @@ export function AppPageHeader({
           </div>
         ) : null}
       </div>
+      {contextualHeader}
     </header>
   );
 }

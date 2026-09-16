@@ -1,7 +1,13 @@
-import { Component, type ReactNode } from "react";
+import {
+  Component,
+  useCallback,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
 import type { PluginNavPanelChrome } from "@/lib/plugin-nav-panel-chrome";
 import type { PluginNavPanelSlot } from "@/lib/plugin-slots";
 import { usePluginCss } from "@/lib/plugin-css";
+import { MACOS_WINDOW_NO_DRAG_CLASS } from "@/lib/bb-desktop";
 import { PluginIcon } from "./PluginIcon";
 import { PluginContext } from "./plugin-context";
 import { useOptionalPaneContext } from "@/views/thread-detail/PaneContext";
@@ -62,6 +68,11 @@ export function PluginPanelHeaderActions({
     paneId: paneId ?? paneContext?.paneId,
     pluginId: panel.pluginId,
   });
+  const contextualTarget = useSyncExternalStore(
+    subscribeContextualHeaders,
+    () => contextualHeaders.get(panelStateId),
+    () => undefined,
+  );
   return (
     <div className="flex shrink-0 items-center gap-2">
       {HeaderContent === undefined ? null : (
@@ -75,12 +86,65 @@ export function PluginPanelHeaderActions({
               data-bb-plugin={panel.pluginId}
               className="flex shrink-0 items-center gap-2"
             >
-              <HeaderContent subPath={subPath} />
+              <HeaderContent
+                subPath={subPath}
+                experimental_contextualHeaderTarget={contextualTarget}
+              />
             </div>
           </PluginContext.Provider>
         </HeaderContentBoundary>
       )}
       <div data-plugin-right-panel-toggle-portal={panelStateId} />
     </div>
+  );
+}
+
+const contextualHeaders = new Map<string, HTMLDivElement>();
+const contextualListeners = new Set<() => void>();
+const subscribeContextualHeaders = (listener: () => void) => {
+  contextualListeners.add(listener);
+  return () => {
+    contextualListeners.delete(listener);
+  };
+};
+const notifyContextualHeaders = () =>
+  contextualListeners.forEach((listener) => listener());
+
+export function PluginPanelContextualHeader({
+  panel,
+  paneId,
+}: {
+  panel: PluginNavPanelSlot;
+  paneId?: string;
+}) {
+  const paneContext = useOptionalPaneContext();
+  const key = getPluginPagePanelStateId({
+    panelPath: panel.path,
+    paneId: paneId ?? paneContext?.paneId,
+    pluginId: panel.pluginId,
+  });
+  const register = useCallback(
+    (element: HTMLDivElement | null) => {
+      if (!element) return;
+      contextualHeaders.set(key, element);
+      notifyContextualHeaders();
+      return () => {
+        if (contextualHeaders.get(key) === element)
+          contextualHeaders.delete(key);
+        notifyContextualHeaders();
+      };
+    },
+    [key],
+  );
+  usePluginCss(panel.headerContent === undefined ? null : panel.pluginId);
+  return (
+    <div
+      ref={register}
+      data-bb-plugin-root=""
+      data-bb-plugin={panel.pluginId}
+      data-plugin-contextual-header={key}
+      className={`flex min-w-0 shrink-0 items-stretch ${MACOS_WINDOW_NO_DRAG_CLASS}`}
+      style={{ maxWidth: "100%" }}
+    />
   );
 }

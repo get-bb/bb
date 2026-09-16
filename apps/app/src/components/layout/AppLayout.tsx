@@ -53,6 +53,7 @@ import { ProjectActionsMenu } from "@/components/project/ProjectActionsMenu";
 import { ProjectActionsProvider } from "@/components/project/ProjectActionsProvider";
 import {
   PluginPanelHeaderActions,
+  PluginPanelContextualHeader,
   PluginPanelHeaderCenter,
 } from "@/components/plugin/PluginPanelHeader";
 import { PluginAppOverlays } from "@/components/plugin/PluginAppOverlays";
@@ -348,7 +349,17 @@ function AppHeader({
     </>
   ) : null;
 
-  return <AppPageHeader center={center} actions={actions} />;
+  return (
+    <AppPageHeader
+      center={center}
+      actions={actions}
+      contextualHeader={
+        pluginPanel ? (
+          <PluginPanelContextualHeader panel={pluginPanel} />
+        ) : undefined
+      }
+    />
+  );
 }
 
 interface AppLayoutProps {

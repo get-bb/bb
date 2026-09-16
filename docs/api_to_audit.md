@@ -3018,3 +3018,16 @@ same-id isolation and legacy override fallback,
 asset-vs-glyph precedence, cross-plugin overrides, reload/error/recursion behavior,
 accessibility and theme rendering on desktop and mobile. Keep metadata fetching
 and plugin branding separate from provider artwork resolution.
+
+## PluginNavPanelProps.experimental_contextualHeaderTarget
+
+Optional HTMLElement supplied only to navPanel.headerContent. A React portal into
+this pane-scoped target occupies a trailing region of the native header, beside
+main identity/actions. The plugin supplies the contextual body-matched width,
+divider, heading/actions, and compact-layout behavior; an empty target consumes
+no width. The host preserves native controls and drag behavior. Plugins retain
+in-body headers when the target is absent. The target is mounted/unmounted with
+its pane and must not be cached across navigation or reloads.
+
+Stabilization requires desktop/compact and split-pane visual checks, keyboard focus
+restoration, crash/unmount cleanup, and at least two consumers validating sizing.
