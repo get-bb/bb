@@ -17,9 +17,14 @@ import {
   ChronologicalSectionThreadSections,
   ProjectRow,
   SectionThreadDragOverlay,
+  ThreadTreeNodeRow,
   type ProjectThreadListState,
 } from "./ProjectRow";
-import { buildSidebarEntitySectionId } from "@bb/client-core";
+import type { SectionThreadDndState } from "./useSectionThreadDnd";
+import {
+  buildPinnedSidebarState,
+  buildSidebarEntitySectionId,
+} from "@bb/client-core";
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 import { makeProjectResponse } from "@/test/fixtures/projects";
 
@@ -92,6 +97,65 @@ function makeThread(overrides: Partial<ThreadListEntry> = {}): ThreadListEntry {
   });
 }
 
+function renderPinnedParentWithChild({
+  isCollapsed,
+}: {
+  isCollapsed: boolean;
+}) {
+  const parent = makeThread({
+    id: "thr_parent",
+    title: "Parent",
+    titleFallback: "Parent",
+    pinnedAt: 1,
+  });
+  const child = makeThread({
+    id: "thr_child",
+    title: "Child",
+    titleFallback: "Child",
+    parentThreadId: "thr_parent",
+  });
+  const node = buildPinnedSidebarState({ threads: [parent, child] })
+    .rootNodes[0];
+  const sectionDnd: SectionThreadDndState = {
+    activeThread: makeThread({ id: "thr_dragged" }),
+    consumeClickSuppression: () => false,
+    dndContextProps: {},
+    dragOverParentKey: null,
+    itemIdsByParentKey: new Map(),
+    nestTarget: null,
+    onClickCapture: () => undefined,
+    pinnedItemIds: [],
+    pinnedReorderPending: false,
+    reorderTarget: { threadId: "thr_parent", placement: "after" },
+  };
+  const { container } = render(
+    <TooltipProvider>
+      <Provider store={createStore()}>
+        <QueryClientProvider client={new QueryClient()}>
+          <MemoryRouter>
+            <ThreadTreeNodeRow
+              projectId="proj_test"
+              node={node}
+              depthOffset={0}
+              isEnvGrouped={false}
+              collapsedThreadIds={
+                isCollapsed ? new Set(["thr_parent"]) : new Set()
+              }
+              collapsedEnvironmentIds={new Set()}
+              variant="section"
+              onToggleThreadCollapsed={vi.fn()}
+              onToggleEnvironmentCollapsed={vi.fn()}
+              sectionDnd={sectionDnd}
+              sortableRef={() => undefined}
+            />
+          </MemoryRouter>
+        </QueryClientProvider>
+      </Provider>
+    </TooltipProvider>,
+  );
+  return container;
+}
+
 function renderProjectRow(
   onToggleProjectCollapsed = vi.fn(),
   threadListState: ProjectThreadListState = { status: "ready", threads: [] },
@@ -137,6 +201,31 @@ function expectCollapsedActivityAtSidebarEdge(label: string) {
 }
 
 describe("ProjectRow interactions", () => {
+  it("anchors a pinned insert line below the subtree, not between parent and child", () => {
+    const container = renderPinnedParentWithChild({ isCollapsed: false });
+
+    expect(screen.getByText("Child")).not.toBeNull();
+    expect(
+      container.querySelector("[data-sidebar-reorder-placement]"),
+    ).toBeNull();
+    const group = container.querySelector<HTMLElement>(
+      "[data-sidebar-sticky-group]",
+    );
+    expect(group?.className).toContain("after:-bottom-px");
+    expect(group?.contains(screen.getByText("Child"))).toBe(true);
+  });
+
+  it("anchors a pinned insert line on the row when the subtree is collapsed", () => {
+    const container = renderPinnedParentWithChild({ isCollapsed: true });
+
+    expect(screen.queryByText("Child")).toBeNull();
+    expect(
+      container
+        .querySelector("[data-sidebar-reorder-placement]")
+        ?.getAttribute("data-sidebar-reorder-placement"),
+    ).toBe("after");
+  });
+
   it("renders the dragged copy as a compact opaque chip", () => {
     render(<SectionThreadDragOverlay thread={makeThread()} />);
 

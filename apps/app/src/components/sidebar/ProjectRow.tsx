@@ -96,6 +96,7 @@ import { appToast } from "@/components/ui/app-toast";
 import { useRouteNavigate } from "@/components/ui/app-route-anchor";
 import {
   CollapsedThreadStatusGlyph,
+  REORDER_PLACEMENT_CLASS,
   ThreadRow,
   type ThreadRowOptions,
 } from "./ThreadRow";
@@ -1498,16 +1499,24 @@ export const ThreadTreeNodeRow = memo(function ThreadTreeNodeRow({
     sectionDnd?.reorderTarget?.threadId === node.thread.id
       ? sectionDnd.reorderTarget.placement
       : null;
+  const showChildren = !isCollapsed && hasChildren;
+  const afterSubtree = showChildren && reorderPlacement === "after";
   const nestDrop = useMemo<ThreadRowNestDrop | undefined>(
     () =>
       nestDropEnabled
         ? {
             setNodeRef: rowNodeRef,
             state: nestTargetState,
-            reorderPlacement,
+            reorderPlacement: afterSubtree ? null : reorderPlacement,
           }
         : undefined,
-    [nestDropEnabled, nestTargetState, reorderPlacement, rowNodeRef],
+    [
+      afterSubtree,
+      nestDropEnabled,
+      nestTargetState,
+      reorderPlacement,
+      rowNodeRef,
+    ],
   );
   const parentRowDepth = getThreadRowDepth({
     depthOffset,
@@ -1547,7 +1556,6 @@ export const ThreadTreeNodeRow = memo(function ThreadTreeNodeRow({
       variant,
     ],
   );
-  const showChildren = !isCollapsed && hasChildren;
   const rowProjectId = node.thread.projectId;
   const crossProjectId = rowProjectId !== projectId ? rowProjectId : null;
   const hasComposerDraft = usePromptDraftHasInput({
@@ -1579,7 +1587,13 @@ export const ThreadTreeNodeRow = memo(function ThreadTreeNodeRow({
   }
 
   return (
-    <SidebarStickyGroup style={sortableStyle} className="space-y-0.5">
+    <SidebarStickyGroup
+      style={sortableStyle}
+      className={cn(
+        "relative space-y-0.5",
+        afterSubtree && REORDER_PLACEMENT_CLASS.after,
+      )}
+    >
       {row}
       {showChildren ? (
         <div className="relative space-y-px">

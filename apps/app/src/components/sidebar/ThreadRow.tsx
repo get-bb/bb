@@ -168,7 +168,7 @@ const NEST_UNDERLINE_STATE_CLASS: Record<SidebarNestTargetState, string> = {
   unchanged: "bg-sidebar-border",
 };
 
-const REORDER_PLACEMENT_CLASS: Record<SidebarReorderPlacement, string> = {
+export const REORDER_PLACEMENT_CLASS: Record<SidebarReorderPlacement, string> = {
   before:
     "before:pointer-events-none before:absolute before:inset-x-1 before:-top-px before:h-0.5 before:rounded-full before:bg-sidebar-ring before:content-['']",
   after:
