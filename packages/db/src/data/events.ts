@@ -3506,6 +3506,11 @@ type StoredProviderThreadClaim =
 
 export type StoredProviderSession =
   | { kind: "none" }
+  | {
+      kind: "invalid";
+      providerThreadId: string | null;
+      claimantThreadIds: string[];
+    }
   | { kind: "owned"; providerThreadId: string }
   | {
       kind: "foreign";
@@ -3623,7 +3628,9 @@ function readNewestStoredProviderThreadIdentity(
     excludedProviderThreadIds: readonly string[];
     threadId: string;
   },
-): (StoredProviderThreadIdentityScope & { providerThreadId: string }) | null {
+):
+  | (StoredProviderThreadIdentityScope & { providerThreadId: string | null })
+  | null {
   const row = db
     .select({
       hostId: environments.hostId,
@@ -3637,7 +3644,6 @@ function readNewestStoredProviderThreadIdentity(
       and(
         eq(events.threadId, args.threadId),
         eq(events.type, "thread/identity"),
-        isNotNull(events.providerThreadId),
         sql`${events.sequence} > COALESCE((
           SELECT MAX(context_clear.sequence)
           FROM events AS context_clear
@@ -3648,15 +3654,18 @@ function readNewestStoredProviderThreadIdentity(
         ), 0)`,
         args.excludedProviderThreadIds.length === 0
           ? undefined
-          : notInArray(events.providerThreadId, [
-              ...args.excludedProviderThreadIds,
-            ]),
+          : or(
+              isNull(events.providerThreadId),
+              notInArray(events.providerThreadId, [
+                ...args.excludedProviderThreadIds,
+              ]),
+            ),
       ),
     )
     .orderBy(desc(events.sequence))
     .limit(1)
     .get();
-  if (row === undefined || row.providerThreadId === null) {
+  if (row === undefined) {
     return null;
   }
   return {
@@ -3682,6 +3691,9 @@ function resolveThreadProviderSession(
       return firstForeign ?? { kind: "none" };
     }
     const { providerThreadId } = identity;
+    if (providerThreadId === null || providerThreadId.length === 0) {
+      return { kind: "invalid", providerThreadId, claimantThreadIds: [] };
+    }
     visited.push(providerThreadId);
     const claim = readStoredProviderThreadClaim(db, identity, providerThreadId);
     switch (classifyClaim(claim, threadId)) {

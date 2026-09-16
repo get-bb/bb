@@ -890,14 +890,17 @@ export function requireDispatchableProviderThreadId(
       return null;
     case "owned":
       return session.providerThreadId;
+    case "invalid":
     case "ambiguous":
     case "foreign":
       throw new ApiError(
         409,
         "provider_session_unavailable",
-        session.kind === "ambiguous"
-          ? "Another thread claimed this thread's provider session in the same millisecond, so bb will not guess whose it is. Clear context (/clear or bb thread clear) for a new session; history is kept."
-          : "This thread's only provider session belongs to another thread, so bb will not resume it. Clear context (/clear or bb thread clear) for a new session; history is kept.",
+        session.kind === "invalid"
+          ? "This thread has a stored identity without a valid provider session, so bb will not replace it silently. Clear context (/clear or bb thread clear) for a new session; history is kept."
+          : session.kind === "ambiguous"
+            ? "Another thread claimed this thread's provider session in the same millisecond, so bb will not guess whose it is. Clear context (/clear or bb thread clear) for a new session; history is kept."
+            : "This thread's only provider session belongs to another thread, so bb will not resume it. Clear context (/clear or bb thread clear) for a new session; history is kept.",
         {
           details: {
             reason: session.kind,

@@ -1,5 +1,5 @@
 import { listEvents, listQueuedThreadMessages } from "@bb/db";
-import { turnScope, type PromptInput } from "@bb/domain";
+import { threadScope, turnScope, type PromptInput } from "@bb/domain";
 import { describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../src/errors.js";
 import { runQueuedMessageDispatch } from "../../src/services/threads/queued-message-dispatch.js";
@@ -247,6 +247,45 @@ describe("provider session ownership on dispatch", () => {
       ).toHaveLength(0);
     });
   });
+
+  it.each([null, ""])(
+    "refuses an invalid persisted identity %s without starting a replacement session",
+    async (providerThreadId) => {
+      await withTestHarness(async (harness) => {
+        const { environment, first: thread } = seedThreads(harness);
+        seedStoredEvent(harness.deps, {
+          threadId: thread.id,
+          environmentId: environment.id,
+          providerThreadId,
+          type: "thread/identity",
+          scope: threadScope(),
+          sequence: 1,
+          data: {},
+        });
+        const before = listEvents(harness.db, { threadId: thread.id });
+        await expect(
+          sendUserMessage(harness, { environment, thread }),
+        ).rejects.toMatchObject({
+          status: 409,
+          body: {
+            code: "provider_session_unavailable",
+            details: {
+              reason: "invalid",
+              providerThreadId,
+              claimantThreadIds: [],
+            },
+          },
+        });
+        expect(
+          listQueuedThreadCommands(harness, "thread.start", thread.id),
+        ).toHaveLength(0);
+        expect(
+          listQueuedThreadCommands(harness, "turn.submit", thread.id),
+        ).toHaveLength(0);
+        expect(listEvents(harness.db, { threadId: thread.id })).toEqual(before);
+      });
+    },
+  );
 
   it("refuses to resume a thread whose only session another thread claimed first, and starts fresh after /clear", async () => {
     await withTestHarness(async (harness) => {

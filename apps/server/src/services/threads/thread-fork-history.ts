@@ -177,6 +177,11 @@ export function resolveThreadForkPoint(
   if (sourceSession.kind === "none") {
     return null;
   }
+  if (sourceSession.kind === "invalid") {
+    forkPointUnavailable(
+      "Cannot fork: the source thread has a stored identity without a valid provider session",
+    );
+  }
   if (sourceSession.kind === "ambiguous") {
     forkPointUnavailable(
       "Cannot fork: another thread announced the source thread's provider session at the same moment, so bb cannot tell whose it is",

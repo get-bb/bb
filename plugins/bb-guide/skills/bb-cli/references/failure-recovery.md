@@ -33,7 +33,8 @@ sendAt?, reason? })`.
 - A send that fails with `provider_session_unavailable` means the thread's
   recorded provider session belongs to another thread (`details.reason:
 "foreign"`) or was announced by another thread in the same millisecond
-  (`"ambiguous"`). bb refuses to resume it rather than write into another
+  (`"ambiguous"`), or its identity handle is missing or empty (`"invalid"`).
+  bb refuses to resume it or silently replace its context rather than write into another
   conversation. `bb thread clear <id>` starts a new provider session on the
   next send and keeps the thread's history.
 - Message edits refuse to erase an ownership claim also recorded by another

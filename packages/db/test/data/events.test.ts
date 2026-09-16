@@ -5701,6 +5701,39 @@ describe("stored provider thread identity ownership", () => {
     return [first, second];
   }
 
+  it.each([null, ""])(
+    "refuses an invalid persisted identity handle %s instead of treating it as a fresh thread",
+    (providerThreadId) => {
+      const { db, threadIds } = setupThreads();
+      const [threadId] = requireThreadIds(threadIds);
+      announceIdentity(db, {
+        threadId,
+        providerThreadId: "valid-earlier",
+        createdAt: 100,
+      });
+      insertEvents(db, noopNotifier, [
+        {
+          threadId,
+          sequence: 2,
+          createdAt: 101,
+          scope: threadScope(),
+          providerThreadId,
+          type: "thread/identity",
+          ...emptyItemFields,
+          data: "{}",
+        },
+      ]);
+      expect(getStoredProviderSession(db, threadId)).toEqual({
+        kind: "invalid",
+        providerThreadId,
+        claimantThreadIds: [],
+      });
+      clearContext(db, threadId);
+      expect(getStoredProviderSession(db, threadId)).toEqual({ kind: "none" });
+      db.$client.close();
+    },
+  );
+
   it("ignores provider ids stamped on ordinary events", () => {
     const { db, threadIds } = setupThreads();
     const [first, second] = requireThreadIds(threadIds);
