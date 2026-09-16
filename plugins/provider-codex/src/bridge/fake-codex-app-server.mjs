@@ -138,7 +138,20 @@ function runScriptedTurn(threadId) {
 
 // argv, not an env var: the bridge builds its child's environment from an
 // allowlist, so an env var set by a test never reaches this process.
-const scriptPath = process.argv[2];
+function scriptPathFromArgs(args) {
+  for (let index = 0; index < args.length; index += 1) {
+    const argument = args[index];
+    if (argument === "-c" || argument === "--config") {
+      index += 1;
+      continue;
+    }
+    if (argument.startsWith("-")) continue;
+    return argument;
+  }
+  return undefined;
+}
+
+const scriptPath = scriptPathFromArgs(process.argv.slice(2));
 const script = scriptPath ? JSON.parse(readFileSync(scriptPath, "utf8")) : null;
 const scriptedTurns = script?.turns ?? null;
 const requestLogPath = script?.requestLogPath ?? null;
