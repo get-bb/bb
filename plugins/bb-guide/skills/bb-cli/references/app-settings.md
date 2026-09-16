@@ -176,10 +176,11 @@ every window and client sees the same value.
 
 - The `sidebarProgressiveDisclosure` experiment defaults to false.
 - Enable it with `bb settings experiment sidebarProgressiveDisclosure true`.
-- In **By project** and **By machine**, it shows the first five groups in the
-  current sort order, keeps attention groups visible, and reveals ten more per
-  **Show more** click. Revealed groups stay visible through activity and
-  sort-order changes. **Manually** is unchanged.
+- In **By project**, it keeps attention groups visible, shows the five root
+  trees with the most recently finished descendant, and reveals ten more per
+  **Show more** click. **Show less** returns to the initial set. Parent and
+  child rows stay together, and revealed groups stay visible through activity
+  and sort-order changes. Other organization modes are unchanged.
 
 ## Timeline windowing
 

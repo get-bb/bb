@@ -157,11 +157,12 @@ BB releases restorable provider sessions after 30 idle minutes. The daemon
 checks for these sessions every five minutes. Active turns, commands, agents,
 workflows, and monitors keep their sessions loaded.
 
-The default-off `sidebarProgressiveDisclosure` experiment shows the first five
-groups in the current sort order in **By project** and **By machine**, keeps
-attention groups visible, and reveals ten more per **Show more** click. Revealed
-groups stay visible through activity and sort-order changes.
-**Manually** is unchanged. Enable it with `bb settings experiment
+The default-off `sidebarProgressiveDisclosure` experiment keeps attention
+groups visible in **By project**, shows the five root trees with the most
+recently finished descendant, and reveals ten more per **Show more** click.
+**Show less** returns to the initial set. Parent and child rows stay together,
+and revealed groups remain visible through activity and sort-order changes.
+Other organization modes are unchanged. Enable it with `bb settings experiment
 sidebarProgressiveDisclosure true`.
 
 The default-off `serverMove` experiment enables Move server here in Settings →
