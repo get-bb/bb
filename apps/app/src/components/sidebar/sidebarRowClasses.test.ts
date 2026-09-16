@@ -7,9 +7,7 @@ import {
 } from "./sidebarRowClasses";
 
 describe("sidebar control buttons", () => {
-  it("scales the icon with the coarse-pointer touch target", () => {
-    // Must be a `[&_svg]` rule: a size class on the icon itself loses to the
-    // Button base `[&_svg]:size-4` descendant rule.
+  it("sizes the icon through a descendant rule that beats the Button base [&_svg]:size-4", () => {
     expect(SIDEBAR_CONTROL_BUTTON_CLASS).toContain(
       "max-md:pointer-coarse:[&_svg]:size-5",
     );
