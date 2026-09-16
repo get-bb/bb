@@ -5,6 +5,7 @@ import { createBbSdk } from "@bb/sdk/core";
 import { createHttpTransport } from "@bb/sdk/node";
 import { describe, expect, it, vi } from "vitest";
 import { withTestHarness } from "../helpers/test-app.js";
+import { seedPrimaryHost } from "../helpers/seed.js";
 import { resolveHostEnvironment } from "../../src/services/hosts/host-environment.js";
 import * as gitCredentials from "../../src/services/machines/git-credentials.js";
 
@@ -72,12 +73,27 @@ describe("machine environment settings", () => {
           JSON.stringify(harness.db.select().from(environmentVariables).all()),
         ).not.toContain("test-region");
         expect(JSON.stringify(result)).not.toContain("test-region");
-        expect(
-          await resolveHostEnvironment(harness.deps, {
-            hostId: "local",
-            projectId: null,
+        upsertHost(harness.db, harness.hub, { id: "local", name: "Local" });
+        seedPrimaryHost(harness.deps, "local");
+        const localEnvironment = await resolveHostEnvironment(harness.deps, {
+          hostId: "local",
+          projectId: null,
+        });
+        expect(localEnvironment).toContainEqual(
+          expect.objectContaining({
+            name: "DEPLOY_REGION",
+            value: "test-region",
           }),
-        ).toEqual([]);
+        );
+        expect(localEnvironment).toContainEqual(
+          expect.objectContaining({
+            name: "GH_TOKEN",
+            value: "user-private-token",
+          }),
+        );
+        expect(
+          localEnvironment.some((entry) => entry.value === "builtin-token"),
+        ).toBe(false);
         upsertHost(harness.db, harness.hub, {
           id: "machine",
           name: "Machine",
@@ -153,6 +169,8 @@ it("isolates projects on a shared machine and restores global values after remov
     updateHost(harness.db, harness.hub, "shared", {
       machineProviderId: "manual",
     });
+    upsertHost(harness.db, harness.hub, { id: "local", name: "Local" });
+    seedPrimaryHost(harness.deps, "local");
     await sdk.system.setMachineEnvironmentVariable({
       name: "REGION",
       value: "global-region",
@@ -221,6 +239,12 @@ it("isolates projects on a shared machine and restores global values after remov
         hostId: "local",
         projectId: "project-b",
       }),
-    ).toEqual([]);
+    ).toContainEqual(
+      expect.objectContaining({
+        name: "REGION",
+        value: "",
+        source: { core: "project-environment" },
+      }),
+    );
   });
 });

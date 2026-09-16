@@ -121,7 +121,7 @@ all server requests. Do not print these headers; they can contain access tokens.
 
 Use `--project <id>` on `bb machine env list|set|unset` for project overrides;
 omit it for global settings. Project overrides follow the project across
-machines and worktrees, excluding the primary/local host. Empty strings override;
+machines and worktrees, including the primary host. Empty strings override;
 unset restores inheritance. List masks all values and includes inherited global
 rows for project scope. Set and unset update a single variable atomically.
 
@@ -144,14 +144,16 @@ output is forwarded as-is, so commands and providers can print contributed
 values. `bb machine env unset NAME --json` removes an override. All values are
 encrypted in the database and omitted from settings responses.
 
-These settings apply globally to enrolled machines, excluding local hosts. The
-server synchronizes them into the daemon environment on connection and settings
-changes, so background commands and new child processes inherit them. Removing
-an override restores the original daemon value. User values override built-ins;
-agent-provider entries override host values. Environment synchronization does
-not restart cached provider runtimes; they retain their launch environment until
-recreated. Reopen existing terminals after a change. The server gh login provides GitHub Git/gh authentication and commit
-identity by default; a user GH_TOKEN replaces it. See Settings → Machines →
+These settings apply globally to every connected machine, including the primary
+host. The server synchronizes them into the daemon environment on connection and
+settings changes, so background commands and new child processes inherit them.
+Removing an override restores the original daemon value. User values override
+built-ins; agent-provider entries override host values. Environment synchronization
+does not restart cached provider runtimes; they retain their launch environment until
+recreated. Reopen existing terminals after a change. The server gh login provides
+GitHub Git/gh authentication and commit identity to non-primary hosts by default;
+the primary host uses its local Git authentication. A user GH_TOKEN replaces it.
+See Settings → Machines →
 Machine environment, and `bb machine env list` for builtInGit readiness.
 
 Plugin host calls start immediately using the current environment while any calls

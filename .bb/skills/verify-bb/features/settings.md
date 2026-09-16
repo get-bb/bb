@@ -50,7 +50,8 @@ recipe. External writes require a disposable test target and task authorization.
 
 ## Project machine environment verification
 
-In isolated data, create two projects and one eligible non-primary machine.
+In isolated data, create two projects and use the primary host plus one connected
+secondary host.
 Set a global variable through `bb machine env set NAME` using stdin. Open
 Settings → Environment variables and switch its scope control from All projects
 to one project. Confirm inherited rows are masked and read-only, use a
@@ -58,15 +59,17 @@ row's Override action, and confirm the override replaces that inherited row in
 place rather than appending a new row. Save it, open that project's settings,
 and confirm the same saved state there. Remove the override, save, and confirm the
 inherited row returns. Repeat with an empty string, CLI `--project <id>`, and
-SDK project methods. On a shared machine, confirm each project's new terminals,
+SDK project methods. On both hosts, confirm global variables apply and each
+project's new terminals,
 agent turns, source/setup/teardown processes, and project-scoped host RPC
 receive only their own overrides; changing/removing overrides refreshes
 subsequent launches. Open the scope picker at compact width, confirm the app
 root is never inert or aria-hidden and content appears after drawer animation
 begins, and repeat in iOS Simulator Safari. Existing terminals retain old
-values. Settings reads and provider environment diagnostics must not expose
-saved values. This recipe does not verify a platform or launch path unless that
-subcheck actually runs.
+values. Confirm automatic GitHub credentials are forwarded to the secondary
+host but not round-tripped to the primary host. Settings reads and provider
+environment diagnostics must not expose saved values. This recipe does not
+verify a platform or launch path unless that subcheck actually runs.
 
 Import a .env value whose name matches an inherited variable and confirm it
 replaces that row in place. Verify quoted backslashes, multiline values, and

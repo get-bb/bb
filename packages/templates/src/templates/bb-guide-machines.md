@@ -352,7 +352,7 @@ original `BB_DATA_DIR` if explicitly configured, to remove its installation.
 
 Use `--project <id>` on `bb machine env list|set|unset` for project overrides;
 omit it for global settings. Project overrides follow the project across
-machines and worktrees, excluding the primary/local host. Empty strings override;
+machines and worktrees, including the primary host. Empty strings override;
 unset restores inheritance. List masks all values and includes inherited global
 rows for project scope. Set and unset update a single variable atomically.
 
@@ -378,7 +378,7 @@ Settings → Environment variables edits variables inline. Add, remove,
 then Save variables; Discard changes leaves saved values
 untouched. Saved secrets can be replaced but never revealed. The automatic
 GH_TOKEN row shows server login health; a custom GH_TOKEN overrides it. User variables
-override built-in values for all enrolled machine hosts, excluding local hosts.
+override built-in values on every connected host, including the primary host.
 Agent-provider variables win over these host values for agent turns. The server synchronizes these values into the daemon environment at connection
 and whenever settings change. Background commands and newly launched processes
 inherit them, including git and gh operations. Removing an override restores the
@@ -393,7 +393,9 @@ effect on the next call after all active calls finish. Continuous overlapping
 calls can keep the previous values until the worker becomes idle.
 
 The server's gh login provides GitHub credentials, a Git environment-only HTTPS
-helper and SSH rewrites, and commit identity. The built-in row reports logged in,
+helper and SSH rewrites, and commit identity to non-primary hosts. The primary
+host uses its local Git authentication unless a user supplies an explicit global
+or project GH_TOKEN. The built-in row reports logged in,
 not logged in, or overridden. No credentials are installed in images or global
 Git config. SDK: system.machineEnvironment() and
 system.replaceMachineEnvironment({ variables }). Replacement is atomic; pass
@@ -407,7 +409,7 @@ new continuation turn after restore; interrupted turns are never reported succes
 
 Resuming a machine restores its provider state without rerunning environment setup.
 
-Automatic machine GitHub credentials are enabled by default. Use
+Automatic GitHub credential forwarding to non-primary hosts is enabled by default. Use
 `bb settings general machineGitCredentialsEnabled false` to stop forwarding the
 server gh credentials to machines; `true` enables them again. In Settings →
 Environment variables, the automatic GH_TOKEN switch controls the same setting.

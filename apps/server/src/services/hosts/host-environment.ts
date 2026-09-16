@@ -15,16 +15,16 @@ export async function resolveHostEnvironment(
   context: HostEnvironmentContext,
 ): Promise<HostDaemonContributedEnvEntry[]> {
   const host = getHost(deps.db, context.hostId);
-  if (!host || host.machineProviderId === null || host.destroyedAt !== null)
-    return [];
-  if (
-    readPrimaryHostIdFromDataDir({ dataDir: deps.config.dataDir }) ===
-    context.hostId
-  )
-    return [];
-  const builtIn = getAppSettings(deps.db).machineGitCredentialsEnabled
-    ? await resolveGitCredentials()
-    : [];
+  if (!host || host.destroyedAt !== null) return [];
+  const primaryHostId = readPrimaryHostIdFromDataDir({
+    dataDir: deps.config.dataDir,
+  });
+  const builtIn =
+    primaryHostId !== null &&
+    primaryHostId !== context.hostId &&
+    getAppSettings(deps.db).machineGitCredentialsEnabled
+      ? await resolveGitCredentials()
+      : [];
   const [global, project] = await Promise.all([
     resolveUserMachineEnvironment(deps.db, deps.config.dataDir),
     context.projectId === null

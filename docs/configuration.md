@@ -1389,15 +1389,15 @@ teardown hooks. Ordinary setup uses `environment.attach`; explicit hooks use
 the daemon applies them to the hook child process. Hook progress and errors are
 forwarded as-is, so contributed values printed by the child remain visible.
 Machine selection and precedence stay in the server
-resolver, which returns no contributions for the local host.
+resolver.
 
 Settings → Environment variables is the machine environment editor. Its scope
 control sits under the section header and switches between All projects and a
 single project. Project settings →
 Advanced settings exposes the same editor for that project, where inherited
 global variables are listed read-only with an Override action. Project variables
-follow the project across eligible machines and worktrees. Primary/local hosts
-remain excluded. Values are encrypted in one `environment_variables` table;
+follow the project across machines and worktrees, including the primary host.
+Values are encrypted in one `environment_variables` table;
 `project_id IS NULL` denotes global scope. Database migration preserves existing
 ciphertext from `app_settings_values`. New ciphertext authenticates both scope
 and name; legacy global ciphertext remains readable. The server keeps the key
@@ -1411,11 +1411,11 @@ Agent-provider contributions retain precedence over these values. Empty strings
 are explicit overrides. Deleting a project override restores the inherited value.
 Project deletion removes its variables when its database row is removed.
 
-Global values synchronize into enrolled daemons before work, on reconnect, and
-when settings change. Project values are resolved by the server and passed only
-to project operations core runs: agent turns/resume, source clones,
-setup/teardown hooks, and new terminals. They never modify the daemon's global
-environment. Existing terminals and commands retain
+Global values synchronize into every host daemon, including the primary host,
+before work, on reconnect, and when settings change. Project values are resolved
+by the server and passed only to project operations core runs: agent turns/resume,
+source clones, setup/teardown hooks, and new terminals. They never modify the
+daemon's global environment. Existing terminals and commands retain
 their launch environment. Agent turns receive fresh values on the next turn;
 providers reconstruct sessions where needed to apply changed or removed values.
 
@@ -1427,12 +1427,15 @@ not to git commands an environment provider plugin runs on the machine, which
 use the global value. Project-scoped contributions require daemon protocol 211;
 older daemons update before the server accepts their session.
 
-The built-in GitHub row uses `gh auth token --hostname github.com` and `gh api
---hostname github.com user` on the server host. It supplies `GH_TOKEN`, Git's
+For non-primary hosts, the built-in GitHub row uses `gh auth token --hostname
+github.com` and `gh api --hostname github.com user` on the server host. It
+supplies `GH_TOKEN`, Git's
 `GIT_CONFIG_*` environment entries for an HTTPS credential helper and SSH URL
 rewrites for github.com, and author/committer identity. The helper expands
 `GH_TOKEN` when Git calls it; no helper file, global Git config, or credential
-store is installed. Private email uses `<id>+<login>@users.noreply.github.com`.
+store is installed. The primary host continues using its local Git authentication
+unless an explicit global or project `GH_TOKEN` overrides it. Private email uses
+`<id>+<login>@users.noreply.github.com`.
 A user `GH_TOKEN` overrides the built-in token, and the row shows overridden.
 Tokens obtained from gh are never persisted by the server. Image construction
 and Modal filesystem snapshot settings do not receive these contributions.
@@ -1452,7 +1455,7 @@ are rejected. Project reads return `variables` and `inheritedVariables`, with
 `value: null` and `secret: true` for every row. `builtInGit` reports effective
 GitHub credential readiness.
 
-Automatic machine GitHub credentials are enabled by default. Use
+Automatic GitHub credential forwarding to non-primary hosts is enabled by default. Use
 `bb settings general machineGitCredentialsEnabled false` to stop forwarding the
 server gh credentials to machines; `true` enables them again. In Settings →
 Environment variables, the automatic GH_TOKEN switch controls the same setting.

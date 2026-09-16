@@ -268,7 +268,7 @@ export function MachineEnvironmentSettingsContent({
   return (
     <SettingsSection
       title="Environment variables"
-      description="Sent to machines created by a machine provider, not to your local machine. Configure them globally or per project."
+      description="Global variables are available to BB-managed processes on every connected machine. Project variables override them for work in that project."
       bodyClassName="space-y-8"
     >
       <div className="space-y-5">
@@ -514,10 +514,12 @@ export function MachineEnvironmentAutomaticRow({
             "GitHub is not logged in. Run gh auth login on the server, or add your own GH_TOKEN."
           ) : git?.status === "logged in" ? (
             <>
-              Generated using <code>gh auth token --hostname github.com</code>.
+              Forwarded to other machines using{" "}
+              <code>gh auth token --hostname github.com</code>. The primary
+              machine uses its local Git authentication.
             </>
           ) : git?.status === "disabled" ? (
-            "Disabled — no automatic GitHub credentials are sent to machines."
+            "Disabled — no automatic GitHub credentials are sent to other machines."
           ) : git?.status === "overridden" ? (
             "The server’s GitHub login will be used after saving."
           ) : (
