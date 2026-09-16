@@ -15,6 +15,7 @@ import { noopNotifier } from "../../src/notifier.js";
 import type { DbNotifier } from "../../src/notifier.js";
 import {
   appendDaemonEventsInTransaction,
+  wouldRemoveSharedProviderSessionClaim,
   appendStoredThreadEvent,
   appendStoredThreadEventInTransaction,
   appendStoredThreadEventsInTransaction,
@@ -6033,6 +6034,35 @@ describe("stored provider thread identity ownership", () => {
     });
     clearContext(db, other);
     expect(getStoredProviderSession(db, other)).toEqual({ kind: "none" });
+    db.$client.close();
+  });
+
+  it("detects edits that would erase the original shared ownership claim", () => {
+    const { db, threadIds } = setupThreads();
+    const [owner, contaminated] = requireThreadIds(threadIds);
+    announceIdentity(db, {
+      createdAt: 1_787_775_164_121,
+      providerThreadId: "session-shared",
+      threadId: owner,
+    });
+    announceIdentity(db, {
+      createdAt: 1_787_775_164_240,
+      providerThreadId: "session-shared",
+      threadId: contaminated,
+    });
+    expect(getStoredProviderSession(db, contaminated).kind).toBe("foreign");
+
+    expect(wouldRemoveSharedProviderSessionClaim(db, {
+      cutoffSequence: 1,
+      oldMaxSequence: 1,
+      threadId: owner,
+    })).toBe(true);
+
+    expect(getStoredProviderSession(db, contaminated)).toEqual({
+      kind: "foreign",
+      providerThreadId: "session-shared",
+      claimantThreadIds: [owner],
+    });
     db.$client.close();
   });
 

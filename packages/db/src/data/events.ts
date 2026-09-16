@@ -3733,6 +3733,71 @@ export function getLastStoredProviderThreadId(
   return session.kind === "owned" ? session.providerThreadId : null;
 }
 
+export function wouldRemoveSharedProviderSessionClaim(
+  db: DbQueryConnection,
+  args: DeleteThreadEventSuffixArgs,
+): boolean {
+  const [scope] = listStoredProviderThreadIdentityScopes(db, [args.threadId]);
+  if (scope === undefined) return false;
+  const removedClaims = db
+    .select({
+      providerThreadId: events.providerThreadId,
+      createdAt: sql<number>`min(${events.createdAt})`,
+    })
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        eq(events.type, "thread/identity"),
+        isNotNull(events.providerThreadId),
+        gte(events.sequence, args.cutoffSequence),
+        lte(events.sequence, args.oldMaxSequence),
+      ),
+    )
+    .groupBy(events.providerThreadId)
+    .all();
+  for (const removed of removedClaims) {
+    if (removed.providerThreadId === null) continue;
+    const claim = readStoredProviderThreadClaim(db, scope, removed.providerThreadId);
+    if (classifyClaim(claim, args.threadId) === "foreign") continue;
+    const retained = db
+      .select({ id: events.id })
+      .from(events)
+      .where(
+        and(
+          eq(events.threadId, args.threadId),
+          eq(events.type, "thread/identity"),
+          eq(events.providerThreadId, removed.providerThreadId),
+          lte(events.createdAt, removed.createdAt),
+          or(lt(events.sequence, args.cutoffSequence), gt(events.sequence, args.oldMaxSequence)),
+        ),
+      )
+      .limit(1)
+      .get();
+    if (retained !== undefined) continue;
+    const other = db
+      .select({ id: events.id })
+      .from(events)
+      .innerJoin(threads, eq(threads.id, events.threadId))
+      .leftJoin(environments, eq(environments.id, threads.environmentId))
+      .where(
+        and(
+          eq(events.type, "thread/identity"),
+          eq(events.providerThreadId, removed.providerThreadId),
+          sql`${events.threadId} != ${args.threadId}`,
+          eq(threads.providerId, scope.providerId),
+          scope.hostId === null
+            ? undefined
+            : or(isNull(environments.hostId), eq(environments.hostId, scope.hostId)),
+        ),
+      )
+      .limit(1)
+      .get();
+    if (other !== undefined) return true;
+  }
+  return false;
+}
+
 export function classifyStoredProviderThreadClaim(
   db: DbQueryConnection,
   args: ClassifyStoredProviderThreadClaimArgs,

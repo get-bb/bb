@@ -9,6 +9,7 @@ import {
   hasQueuedThreadMessages,
   hasRootStoredTurnStarted,
   classifyStoredProviderThreadClaim,
+  wouldRemoveSharedProviderSessionClaim,
   listActiveBackgroundTaskCountsByThreadIds,
   type DbQueryConnection,
 } from "@bb/db";
@@ -303,10 +304,20 @@ function resolveEditableTurnCandidate(
   if (precedingTurnId !== null && precedingProviderCheckpoint === null) {
     conflict("This earlier provider turn has no editable history checkpoint");
   }
+  const oldMaxSequence = getHighWaterMarks(db, [thread.id])[thread.id] ?? 0;
+  if (wouldRemoveSharedProviderSessionClaim(db, {
+    cutoffSequence: requestRow.sequence,
+    oldMaxSequence,
+    threadId: thread.id,
+  })) {
+    conflict(
+      "Editing this message would erase provider session ownership shared with another thread. Clear context (/clear or bb thread clear) for a new session; history is kept.",
+    );
+  }
   return {
     leadingAgentOnlyInput: getLeadingAgentOnlyInput(request.input),
     currentTurnId: accepted.turnId,
-    oldMaxSequence: getHighWaterMarks(db, [thread.id])[thread.id] ?? 0,
+    oldMaxSequence,
     precedingProviderCheckpoint,
     requestSequence: requestRow.sequence,
     sourceProviderThreadId:

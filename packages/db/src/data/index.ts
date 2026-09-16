@@ -275,6 +275,7 @@ export {
   hasRootStoredTurnStarted,
   hasStoredTurnStarted,
   classifyStoredProviderThreadClaim,
+  wouldRemoveSharedProviderSessionClaim,
   getLastStoredProviderThreadId,
   getStoredProviderSession,
   resolveStoredProviderSessions,
