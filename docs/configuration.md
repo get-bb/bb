@@ -994,11 +994,12 @@ checks for these sessions every five minutes. Active turns, commands, agents,
 workflows, and monitors keep their sessions loaded.
 
 The `sidebarProgressiveDisclosure` experiment is off by default. In **By
-project** and **By machine**, it shows the first five groups in the current sort
-order, keeps attention groups visible, and reveals ten more per **Show more**
-click. Revealed groups stay visible through activity and sort-order changes.
-**Manually** is unchanged. Toggle it with `bb settings experiment
-sidebarProgressiveDisclosure <true|false>`.
+project**, it keeps attention groups visible, shows the five root trees with the
+most recently finished descendant, and reveals ten more per **Show more**
+click. **Show less** returns to the initial set. Parent and child rows stay
+together, and revealed groups remain visible through activity and sort-order
+changes. Other organization modes are unchanged. Toggle it with
+`bb settings experiment sidebarProgressiveDisclosure <true|false>`.
 
 The `timelineWindowing` experiment is off by default. When enabled, long
 timelines and large expanded timeline details retain stable height-preserving
