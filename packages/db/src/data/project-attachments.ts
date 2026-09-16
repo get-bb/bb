@@ -56,10 +56,13 @@ export function recordProjectAttachment(
   return row;
 }
 
+export type ProjectAttachmentOwnershipMode = "required" | "best-effort";
+
 export function acquireProjectAttachmentOwnership(
   db: DbQueryConnection,
   threadId: string,
   input: readonly PromptInput[],
+  mode: ProjectAttachmentOwnershipMode = "required",
 ): void {
   const paths = projectAttachmentPaths(input);
   if (paths.length === 0) return;
@@ -77,8 +80,10 @@ export function acquireProjectAttachmentOwnership(
           !attachment ||
           attachment.readyAt === null ||
           attachment.deletionClaimedAt !== null
-        )
+        ) {
+          if (mode === "best-effort") continue;
           throw attachmentUnavailable(path);
+        }
         tx.insert(projectAttachmentThreads)
           .values({ attachmentId: attachment.id, threadId })
           .onConflictDoNothing()

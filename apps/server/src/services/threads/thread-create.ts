@@ -394,7 +394,7 @@ async function createPendingThreadAndAttemptFirstDispatch(
       args.fork.historyEndSequence !== null &&
       args.request.visibility === "visible"
     ) {
-      await copyForkSourceHistory(deps, {
+      copyForkSourceHistory(deps, {
         fork: thread,
         historyEndSequence: args.fork.historyEndSequence,
         sourceThreadId: args.fork.sourceThreadId,
