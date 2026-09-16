@@ -13,7 +13,11 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppLayout } from "./AppLayout";
 import { APP_OVERLAY_LAYER } from "@/components/ui/app-overlay-layers";
-import { setCompactSecondaryPanelPresentation } from "@/components/ui/secondary-panel-shelf-visibility";
+
+import {
+  COMPACT_SHELF_HIDDEN_FIXED_CHROME_CLASS,
+  setCompactSecondaryPanelPresentation,
+} from "@/components/ui/secondary-panel-shelf-visibility";
 
 const viewportState = vi.hoisted(() => ({ compact: false }));
 
@@ -183,6 +187,13 @@ function renderPluginPanelRoute(): void {
   );
 }
 
+function isHiddenByCompactShelf(element: HTMLElement): boolean {
+  return (
+    element.classList.contains(COMPACT_SHELF_HIDDEN_FIXED_CHROME_CLASS) &&
+    element.dataset.panelShelf === "shelf"
+  );
+}
+
 describe("AppLayout plugin panel header", () => {
   beforeEach(() => {
     viewportState.compact = false;
@@ -231,30 +242,15 @@ describe("AppLayout plugin panel header", () => {
     );
     act(() => setCompactSecondaryPanelPresentation("shelf"));
     expect(screen.getByTestId("app-sidebar-trigger-overlay")).toBe(trigger);
+    expect(isHiddenByCompactShelf(trigger)).toBe(true);
 
     act(() => setCompactSecondaryPanelPresentation("full"));
     expect(screen.getByTestId("app-sidebar-trigger-overlay")).toBe(trigger);
+    expect(isHiddenByCompactShelf(trigger)).toBe(false);
 
     act(() => setCompactSecondaryPanelPresentation("closed"));
     expect(screen.getByTestId("app-sidebar-trigger-overlay")).not.toBeNull();
-  });
-
-  it("hides the fixed left trigger only while the compact right panel shelf is showing", () => {
-    viewportState.compact = true;
-    renderPluginPanelRoute();
-
-    const trigger = screen.getByTestId("app-sidebar-trigger-overlay");
-    expect(trigger.className).toContain("data-[panel-shelf=shelf]:invisible");
-    expect(trigger.dataset.panelShelf).toBe("closed");
-
-    act(() => setCompactSecondaryPanelPresentation("shelf"));
-    expect(trigger.dataset.panelShelf).toBe("shelf");
-
-    act(() => setCompactSecondaryPanelPresentation("full"));
-    expect(trigger.dataset.panelShelf).toBe("full");
-
-    act(() => setCompactSecondaryPanelPresentation("closed"));
-    expect(trigger.dataset.panelShelf).toBe("closed");
+    expect(isHiddenByCompactShelf(trigger)).toBe(false);
   });
 
   it("keeps the fixed left trigger visible while the compact sidebar drawer is open", async () => {
