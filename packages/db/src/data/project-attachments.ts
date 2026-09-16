@@ -1,15 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { and, asc, eq, gt, isNull, lt, notExists, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, lt, notExists, sql } from "drizzle-orm";
 import {
   ProjectAttachmentError,
   projectAttachmentPaths,
   type PromptInput,
 } from "@bb/domain";
-import type {
-  DbConnection,
-  DbQueryConnection,
-  DbTransaction,
-} from "../connection.js";
+import type { DbConnection, DbQueryConnection } from "../connection.js";
 import {
   projectAttachments,
   projectAttachmentThreads,
@@ -114,74 +110,6 @@ export function copyProjectAttachmentOwnership(
     );
   db.run(sql`INSERT OR IGNORE INTO project_attachment_threads (attachment_id, thread_id)
     SELECT attachment_id, ${targetThreadId} FROM project_attachment_threads WHERE thread_id = ${sourceThreadId}`);
-}
-
-export function backfillProjectAttachmentOwnership(
-  tx: DbTransaction,
-  threadId: string,
-  input: readonly PromptInput[],
-): void {
-  const paths = projectAttachmentPaths(input);
-  if (paths.length === 0) return;
-  acquireProjectAttachmentOwnership(tx, threadId, input);
-  tx.run(sql`WITH RECURSIVE inheritors(id, project_id) AS (
-    SELECT id, project_id FROM threads WHERE id = ${threadId}
-    UNION
-    SELECT child.id, child.project_id FROM threads child INDEXED BY threads_source_origin_idx
-    JOIN inheritors parent ON child.source_thread_id = parent.id
-    WHERE child.origin_kind = 'fork' AND child.project_id = parent.project_id
-  )
-  INSERT OR IGNORE INTO project_attachment_threads (attachment_id, thread_id)
-  SELECT attachment.id, inheritors.id FROM inheritors
-  CROSS JOIN project_attachments attachment INDEXED BY project_attachments_project_path_idx
-  WHERE attachment.project_id = inheritors.project_id AND attachment.stored_path IN (${sql.join(
-    paths.map((path) => sql`${path}`),
-    sql`, `,
-  )})`);
-}
-
-export function listProjectAttachments(
-  db: DbQueryConnection,
-  projectId: string,
-  after: string,
-  limit: number,
-) {
-  const rows = db
-    .select({
-      id: projectAttachments.id,
-      path: projectAttachments.storedPath,
-      originalName: projectAttachments.originalName,
-      mimeType: projectAttachments.mimeType,
-      sizeBytes: projectAttachments.sizeBytes,
-      createdAt: projectAttachments.createdAt,
-      readyAt: projectAttachments.readyAt,
-      deletionClaimedAt: projectAttachments.deletionClaimedAt,
-      ownerCount: sql<number>`(SELECT count(*) FROM project_attachment_threads WHERE attachment_id = ${projectAttachments.id})`,
-    })
-    .from(projectAttachments)
-    .where(
-      and(
-        eq(projectAttachments.projectId, projectId),
-        gt(projectAttachments.storedPath, after),
-      ),
-    )
-    .orderBy(asc(projectAttachments.storedPath))
-    .limit(limit + 1)
-    .all();
-  const items = rows.slice(0, limit);
-  const backfill = db
-    .select()
-    .from(projectAttachmentBackfills)
-    .where(eq(projectAttachmentBackfills.projectId, projectId))
-    .get();
-  return {
-    items,
-    nextCursor: rows.length > limit ? (items.at(-1)?.path ?? null) : null,
-    backfill: {
-      phase: backfill?.phase ?? "files",
-      error: backfill?.error ?? null,
-    },
-  };
 }
 
 export function claimProjectAttachments(

@@ -11,7 +11,6 @@ import {
   events,
   getProjectAttachment,
   insertEvents,
-  listProjectAttachments,
   PROJECT_ATTACHMENT_GRACE_MS,
   projectAttachmentBackfills,
   projectAttachments,
@@ -153,9 +152,7 @@ describe("project attachment accounting", () => {
       expect(
         (await pruneProjectAttachments(h.deps, project.id)).reclaimedCount,
       ).toBe(2);
-      expect(
-        listProjectAttachments(h.db, project.id, "", 100).items,
-      ).toHaveLength(0);
+      expect(h.db.select().from(projectAttachments).all()).toHaveLength(0);
     });
   });
 
@@ -355,60 +352,13 @@ describe("project attachment accounting", () => {
         (await pruneProjectAttachments(h.deps, project.id)).reclaimedCount,
       ).toBe(1);
       expect(
-        listProjectAttachments(h.db, project.id, "", 100)
-          .items.map((row) => row.path)
+        h.db
+          .select({ path: projectAttachments.storedPath })
+          .from(projectAttachments)
+          .all()
+          .map((row) => row.path)
           .sort(),
       ).toEqual(paths.slice(0, 4).sort());
-    });
-  });
-
-  it("preserves legacy attachments inherited by forks without copied history", async () => {
-    await withTestHarness(async (h) => {
-      const { project, thread } = seedThreadFixture(h);
-      const fork = seedThread(h.deps, {
-        projectId: project.id,
-        sourceThreadId: thread.id,
-        originKind: "fork",
-        visibility: "hidden",
-      });
-      const nestedFork = seedThread(h.deps, {
-        projectId: project.id,
-        sourceThreadId: fork.id,
-        originKind: "fork",
-        visibility: "hidden",
-      });
-      const dir = join(h.config.dataDir, "attachments", project.id);
-      await mkdir(dir, { recursive: true });
-      await writeFile(join(dir, "legacy-fork.txt"), "retained");
-      h.db
-        .insert(events)
-        .values({
-          id: "legacy-fork-event",
-          threadId: thread.id,
-          sequence: 1,
-          scopeKind: "thread",
-          type: "client/turn/requested",
-          data: JSON.stringify({ input: input("legacy-fork.txt") }),
-          createdAt: 1,
-        })
-        .run();
-      await completeBackfill(h, project.id);
-      h.db.delete(threads).where(eq(threads.id, thread.id)).run();
-      h.db.delete(threads).where(eq(threads.id, fork.id)).run();
-      ageUploads(h, project.id);
-      expect(
-        (await pruneProjectAttachments(h.deps, project.id)).reclaimedCount,
-      ).toBe(0);
-      expect(h.db.select().from(projectAttachmentThreads).all()).toEqual([
-        {
-          attachmentId: getProjectAttachment(
-            h.db,
-            project.id,
-            "legacy-fork.txt",
-          )!.id,
-          threadId: nestedFork.id,
-        },
-      ]);
     });
   });
 

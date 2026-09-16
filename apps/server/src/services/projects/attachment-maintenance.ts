@@ -1,6 +1,6 @@
 import { and, asc, eq, gt, isNotNull } from "drizzle-orm";
 import {
-  backfillProjectAttachmentOwnership,
+  acquireProjectAttachmentOwnership,
   claimProjectAttachments,
   ensureProjectAttachmentBackfill,
   getProjectAttachment,
@@ -109,7 +109,7 @@ export async function runProjectAttachmentBackfill(
                 .where(eq(threads.id, step.threadId))
                 .get()
             )
-              backfillProjectAttachmentOwnership(tx, step.threadId, step.input);
+              acquireProjectAttachmentOwnership(tx, step.threadId, step.input);
             updateAttachmentBackfill(tx, step.next);
           },
           { behavior: "immediate" },
