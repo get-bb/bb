@@ -99,6 +99,13 @@ const piAssistantMessageSchema = piConversationMessageSchema.extend({
   content: z.array(piMessageContentBlockSchema),
 });
 
+const piAssistantMessageEndEventSchema = z
+  .object({
+    type: z.literal("message_end"),
+    message: piAssistantMessageSchema,
+  })
+  .passthrough();
+
 const piCustomMessageBoundaryEventSchema = z
   .object({
     type: z.enum(["message_end", "message_start"]),
@@ -352,9 +359,11 @@ export function createPiDeltaTranslator(
     string,
     ThreadEventTokenUsageBreakdown
   >();
+  const threadsWithMessageUsage = new Set<string>();
 
   function resetThread(threadId: string): void {
     cumulativeTokensByThreadId.delete(threadId);
+    threadsWithMessageUsage.delete(threadId);
     clearThreadToolShapes({ threadId });
   }
 
@@ -557,10 +566,35 @@ export function createPiDeltaTranslator(
 
     switch (eventType.data.type) {
       case "agent_start":
+        threadsWithMessageUsage.delete(context?.threadId ?? "");
         return [{ kind: "turn.open" }];
 
       case "message_end":
       case "message_start": {
+        const assistantEvent = piAssistantMessageEndEventSchema.safeParse(event);
+        if (assistantEvent.success) {
+          const usage = toAssistantUsageBreakdown(assistantEvent.data.message);
+          if (!usage) {
+            return [];
+          }
+          const threadKey = context?.threadId ?? "";
+          const total = addTokenUsage(
+            cumulativeTokensByThreadId.get(threadKey) ?? ZERO_TOKEN_USAGE,
+            usage,
+          );
+          cumulativeTokensByThreadId.set(threadKey, total);
+          threadsWithMessageUsage.add(threadKey);
+          return [
+            {
+              kind: "usage",
+              total,
+              last: usage,
+              modelContextWindow: resolveModelContextWindow(
+                assistantEvent.data.message,
+              ),
+            },
+          ];
+        }
         const piEvent = piCustomMessageBoundaryEventSchema.safeParse(event);
         if (!piEvent.success) {
           return [];
@@ -701,9 +735,11 @@ export function createPiDeltaTranslator(
             });
           }
         }
-        const usage = toAssistantUsageBreakdown(lastAssistant);
+        const threadKey = context?.threadId ?? "";
+        const usage = threadsWithMessageUsage.delete(threadKey)
+          ? undefined
+          : toAssistantUsageBreakdown(lastAssistant);
         if (usage) {
-          const threadKey = context?.threadId ?? "";
           const total = addTokenUsage(
             cumulativeTokensByThreadId.get(threadKey) ?? ZERO_TOKEN_USAGE,
             usage,

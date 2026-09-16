@@ -1689,6 +1689,58 @@ describe("pi delta translation equivalence", () => {
     expect(harness.openTurnId()).toBe("");
   });
 
+  it("emits and accumulates usage for every Pi assistant message", () => {
+    const harness = createHarness({
+      resolveModelContextWindow: () => 123_456,
+    });
+    harness.translate(loadFixture("agent-start.json"));
+
+    const firstMessage = {
+      role: "assistant" as const,
+      content: [],
+      usage: { input: 80, output: 20, cacheRead: 31 },
+    };
+    const secondMessage = {
+      role: "assistant" as const,
+      content: [],
+      usage: { input: 120, output: 30, cacheRead: 50 },
+    };
+    const firstEvents = harness.translate({
+      type: "message_end",
+      message: firstMessage,
+    });
+    const secondEvents = harness.translate({
+      type: "message_end",
+      message: secondMessage,
+    });
+    const endEvents = harness.translate({
+      type: "agent_end",
+      messages: [firstMessage, secondMessage],
+    });
+
+    const firstUsage = firstEvents.find(
+      (event) => event.type === "thread/tokenUsage/updated",
+    );
+    const secondUsage = secondEvents.find(
+      (event) => event.type === "thread/tokenUsage/updated",
+    );
+    expect(firstUsage?.tokenUsage.last).toMatchObject({
+      totalTokens: 131,
+      inputTokens: 80,
+      cachedInputTokens: 31,
+      outputTokens: 20,
+    });
+    expect(secondUsage?.tokenUsage.total).toMatchObject({
+      totalTokens: 331,
+      inputTokens: 200,
+      cachedInputTokens: 81,
+      outputTokens: 50,
+    });
+    expect(
+      endEvents.filter((event) => event.type === "thread/tokenUsage/updated"),
+    ).toEqual([]);
+  });
+
   it("accumulates Pi token usage across turns", () => {
     const harness = createHarness({
       resolveModelContextWindow: () => 123_456,
