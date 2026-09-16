@@ -2300,10 +2300,10 @@ options.
    registered services (a picker needs per-service model lists, which the
    contract does not carry yet).
 2. **Payload cap.** A plugin-served transcription travels as base64 inside one
-   host RPC call (8 MiB JSON cap → 5 MB audio), a regression from the 25 MB
-   the server-direct path accepts for long recordings (owner decision: keep
-   for now). The alternative is a host pull: the server stores the audio
-   under a short-lived token and the call carries the token, so the host
+   host RPC call (32 MiB JSON input cap → 20 MB audio), below the 25 MB
+   the server-direct path accepts for long recordings. The daemon retains
+   its existing 32 MiB aggregate active-input budget. The alternative is a host
+   pull: the server stores the audio under a short-lived token and the call carries the token, so the host
    worker fetches the bytes over the internal route instead of receiving
    them inline; decide whether that or a streamed path replaces the cap.
 3. **Failure vocabulary.** Confirm the six codes are enough for core's policy

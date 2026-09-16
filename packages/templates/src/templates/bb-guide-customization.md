@@ -246,7 +246,10 @@ Host files and voice transcription
 
 Voice transcription uses the `BB_TRANSCRIPTION` model, which defaults to
 `codex/gpt-transcribe`. Override it with
-`bb-app config set BB_TRANSCRIPTION <provider/model>`.
+`bb-app config set BB_TRANSCRIPTION <provider/model>`. Plugin-served audio
+uploads accept up to 20 MB; direct OpenAI uploads accept up to 25 MB. These
+limits apply to the app, SDK, and CLI. If transcription fails in the app,
+the error toast offers a download of the original recording until dismissed.
 
 `bb file` supports `--host` for remote machines and `--root` on mutating
 commands to confine access beneath an absolute directory. `bb file list` and
