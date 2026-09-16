@@ -44,6 +44,7 @@ import { collapsedThreadIdsAtom } from "@/components/sidebar/sidebarCollapsedAto
 export const MOBILE_RECENT_ROW_HEIGHT_PX = 60;
 export const MOBILE_RECENT_LABEL_HEIGHT_PX = 24;
 
+const RECENT_THREAD_LIMIT = 15;
 const MOBILE_RECENT_ROW_HEIGHT_CLASS = "h-15";
 
 type ThreadListEntryComparator = (
@@ -219,7 +220,7 @@ export function getMobileRecentThreads({
     ),
     rows,
   });
-  return rows;
+  return rows.slice(0, RECENT_THREAD_LIMIT);
 }
 
 function MobileRecentThreadRow({
