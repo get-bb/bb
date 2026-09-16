@@ -1,3 +1,4 @@
+import { runThreadPruningSweep } from "./thread-pruning-sweep.js";
 import { sweepProviderLifecycles } from "../environments/environment-engine.js";
 import { and, eq, isNull, isNotNull, inArray } from "drizzle-orm";
 import { sweepMachineLifecycles } from "../machines/provider-orchestration.js";
@@ -476,6 +477,12 @@ async function runDestroyedEnvironmentPruneSweep(
 }
 
 const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
+  {
+    cadenceMs: DATABASE_MAINTENANCE_CHECK_INTERVAL_MS,
+    category: "retention",
+    name: "thread-event-pruning",
+    run: runThreadPruningSweep,
+  },
   {
     cadenceMs: 0,
     category: "durable-intent-retry",

@@ -1,4 +1,10 @@
 import {
+  emptyArchivePruningProbe,
+  pruneArchiveCandidates,
+  type ArchivePruningCandidate,
+} from "./archive-pruning-probes.js";
+import { preserveEventBookmark } from "./event-bookmarks.js";
+import {
   and,
   desc,
   eq,
@@ -72,7 +78,6 @@ import {
 const STORED_EVENT_SEQUENCE_LOOKUP_CHUNK_SIZE = 250;
 const SQLITE_MAX_VARIABLE_NUMBER = 32_766;
 const CLIENT_TURN_REQUEST_KEY_BATCH_SIZE = 995;
-const RESOLVED_ITEM_DELTA_PRUNE_BATCH_SIZE = 500;
 const ITEM_EVENT_TYPES = threadEventTypeValues.filter((type) =>
   type.startsWith("item/"),
 );
@@ -201,10 +206,7 @@ interface ItemLifecycleLookupKey {
 }
 
 interface LatestItemLifecycleRow extends ItemLifecycleLookupKey {
-  type:
-    | "item/started"
-    | "item/completed"
-    | "item/backgroundTask/completed";
+  type: "item/started" | "item/completed" | "item/backgroundTask/completed";
 }
 
 const TERMINAL_ITEM_EVENT_TYPES = [
@@ -334,6 +336,11 @@ export function deleteThreadEventSuffixInTransaction(
   db: DbTransaction,
   args: DeleteThreadEventSuffixArgs,
 ): DeleteThreadEventSuffixResult {
+  db.run(sql`UPDATE thread_event_bookmarks SET
+    sequence = CASE WHEN sequence BETWEEN ${args.cutoffSequence} AND ${args.oldMaxSequence} THEN ${args.cutoffSequence - 1} ELSE sequence END,
+    provider_thread_id = CASE WHEN provider_sequence BETWEEN ${args.cutoffSequence} AND ${args.oldMaxSequence} THEN NULL ELSE provider_thread_id END,
+    provider_sequence = CASE WHEN provider_sequence BETWEEN ${args.cutoffSequence} AND ${args.oldMaxSequence} THEN 0 ELSE provider_sequence END
+    WHERE thread_id = ${args.threadId}`);
   db.delete(promptHistoryEntries)
     .where(
       and(
@@ -411,6 +418,10 @@ function insertStoredEventRow(
   args: InsertStoredEventRowArgs,
 ): InsertStoredEventRowResult {
   const id = createEventId();
+  if (args.type === "turn/diff/updated") {
+    preserveEventBookmark(db, args);
+    return { id, inserted: true };
+  }
   const prepared = prepareCompletedEventOutputData({
     createdAt: args.createdAt,
     data: args.data,
@@ -1057,10 +1068,9 @@ export function getHighWaterMarks(
               sql`, `,
             )}
           )
-          SELECT thread_id AS threadId, (
-            SELECT sequence FROM events
-            WHERE events.thread_id = requested.thread_id
-            ORDER BY sequence DESC LIMIT 1
+          SELECT thread_id AS threadId, MAX(
+            COALESCE((SELECT sequence FROM events WHERE thread_id = requested.thread_id ORDER BY sequence DESC LIMIT 1), 0),
+            COALESCE((SELECT sequence FROM thread_event_bookmarks WHERE thread_id = requested.thread_id), 0)
           ) AS maxSeq
           FROM requested
         `),
@@ -1068,7 +1078,7 @@ export function getHighWaterMarks(
       variableCountPerValue: 1,
     });
     for (const row of rows) {
-      if (row.maxSeq != null) {
+      if (row.maxSeq != null && row.maxSeq > 0) {
         result[row.threadId] = row.maxSeq;
       }
     }
@@ -1082,12 +1092,23 @@ export function getHighWaterMarks(
       .groupBy(events.threadId)
       .all();
     for (const row of rows) {
-      if (row.maxSeq != null) {
+      if (row.maxSeq != null && row.maxSeq > 0) {
         result[row.threadId] = row.maxSeq;
       }
     }
   }
 
+  if (!threadIds || threadIds.length === 0) {
+    for (const row of db.all<{ threadId: string; sequence: number }>(
+      sql`SELECT thread_id AS threadId, sequence FROM thread_event_bookmarks`,
+    )) {
+      if (row.sequence > 0)
+        result[row.threadId] = Math.max(
+          result[row.threadId] ?? 0,
+          row.sequence,
+        );
+    }
+  }
   return result;
 }
 
@@ -1321,27 +1342,71 @@ export interface GetLatestThreadSequenceArgs {
   threadId: string;
 }
 
-export interface PruneThreadEventsBeforeSequenceArgs {
+interface PruningWindow {
+  candidateIds?: readonly string[];
+  usageKeepers?: { latestRootSequence: number; latestContextSequence: number };
+  afterSequence?: number;
+  throughSequence?: number;
+}
+
+function pruningCandidates(
+  args: PruningWindow & { threadId: string },
+  types: readonly ThreadEventType[],
+): SQL {
+  if (args.candidateIds !== undefined) {
+    if (args.candidateIds.length > 500)
+      throw new Error("Pruning candidate limit exceeded");
+    return args.candidateIds.length === 0
+      ? sql`SELECT id FROM events WHERE 0`
+      : sql`SELECT id FROM events INDEXED BY sqlite_autoindex_events_1 WHERE ${inArray(events.id, [...args.candidateIds])} AND thread_id = ${args.threadId}
+          AND sequence > ${args.afterSequence ?? 0} AND sequence <= ${args.throughSequence ?? Number.MAX_SAFE_INTEGER}`;
+  }
+  if (args.afterSequence !== undefined || args.throughSequence !== undefined) {
+    return sql`SELECT id FROM events WHERE thread_id = ${args.threadId}
+      AND sequence > ${args.afterSequence ?? 0} AND sequence <= ${args.throughSequence ?? Number.MAX_SAFE_INTEGER}
+      ORDER BY sequence LIMIT 500`;
+  }
+  const limit = Math.floor(500 / types.length);
+  return sql.join(
+    types.map(
+      (type) => sql`SELECT id FROM (
+    SELECT id FROM events WHERE thread_id = ${args.threadId} AND type = ${type} ORDER BY sequence LIMIT ${limit}
+  )`,
+    ),
+    sql` UNION ALL `,
+  );
+}
+
+function archivePruningCandidates(
+  db: DbQueryConnection,
+  args: PruningWindow & { threadId: string },
+  types: readonly ThreadEventType[],
+): ArchivePruningCandidate[] {
+  return db.all<ArchivePruningCandidate>(sql`SELECT id, sequence, type, turn_id AS turnId, item_id AS itemId, parent_tool_call_id AS parentToolCallId
+    FROM events WHERE id IN (${pruningCandidates(args, types)}) ORDER BY sequence`);
+}
+
+export interface PruneThreadEventsBeforeSequenceArgs extends PruningWindow {
   sequenceCutoff: number;
   threadId: string;
   types: readonly ThreadEventType[];
 }
 
-export interface PruneContextWindowUsageEventsBeforeSequenceArgs {
+export interface PruneContextWindowUsageEventsBeforeSequenceArgs extends PruningWindow {
   sequenceCutoff: number;
   threadId: string;
 }
 
-export interface PruneTokenUsageEventsBeforeSequenceArgs {
+export interface PruneTokenUsageEventsBeforeSequenceArgs extends PruningWindow {
   sequenceCutoff: number;
   threadId: string;
 }
 
-export interface PruneResolvedItemDeltasArgs {
+export interface PruneResolvedItemDeltasArgs extends PruningWindow {
   threadId: string;
 }
 
-export interface PruneBackgroundTaskProgressEventsArgs {
+export interface PruneBackgroundTaskProgressEventsArgs extends PruningWindow {
   threadId: string;
 }
 
@@ -2023,7 +2088,7 @@ export function getLatestStoredRateLimitsEventForProvider(
         and(
           eq(events.threadId, args.threadId),
           eq(events.type, "provider/rateLimits/updated"),
-          sql`json_extract(${events.data}, '$.rateLimits.providerId') = ${args.providerId}`,
+          sql`CASE WHEN json_valid(${events.data}) THEN json_extract(${events.data}, '$.rateLimits.providerId') END = ${args.providerId}`,
         ),
       )
       .orderBy(desc(events.sequence))
@@ -3300,15 +3365,7 @@ export function getLatestThreadSequence(
   db: DbConnection,
   args: GetLatestThreadSequenceArgs,
 ): number {
-  const row = db
-    .select({
-      maxSequence: max(events.sequence),
-    })
-    .from(events)
-    .where(eq(events.threadId, args.threadId))
-    .get();
-
-  return row?.maxSequence ?? 0;
+  return getHighWaterMarks(db, [args.threadId])[args.threadId] ?? 0;
 }
 
 export function getActiveStoredTurnId(
@@ -3377,29 +3434,18 @@ export function getLastStoredProviderThreadId(
   db: DbQueryConnection,
   threadId: string,
 ): string | null {
-  const latestProviderRow = db
-    .select({ providerThreadId: events.providerThreadId })
-    .from(events)
-    .where(
-      sql`${events.threadId} = ${threadId}
-        AND ${events.providerThreadId} IS NOT NULL
-        AND ${events.sequence} > COALESCE((
-          SELECT MAX(context_clear.sequence)
-          FROM events AS context_clear
-          WHERE context_clear.thread_id = ${threadId}
-            AND context_clear.type = 'system/operation'
-            AND json_extract(context_clear.data, '$.operation') = ${THREAD_CONTEXT_CLEAR_OPERATION}
-            AND json_extract(context_clear.data, '$.status') = 'completed'
-        ), 0)`,
-    )
-    .orderBy(sql`${events.sequence} DESC`)
-    .limit(1)
-    .get();
-  if (!latestProviderRow?.providerThreadId) {
-    return null;
-  }
-
-  return latestProviderRow.providerThreadId;
+  const row = db.get<{ providerThreadId: string | null }>(sql`
+    SELECT provider_thread_id AS providerThreadId FROM (
+      SELECT provider_thread_id, sequence FROM events WHERE thread_id = ${threadId} AND provider_thread_id IS NOT NULL
+      UNION ALL
+      SELECT provider_thread_id, provider_sequence AS sequence FROM thread_event_bookmarks WHERE thread_id = ${threadId} AND provider_thread_id IS NOT NULL
+    ) WHERE sequence > COALESCE((
+      SELECT MAX(sequence) FROM events WHERE thread_id = ${threadId} AND type = 'system/operation'
+      AND json_extract(data, '$.operation') = ${THREAD_CONTEXT_CLEAR_OPERATION}
+      AND json_extract(data, '$.status') = 'completed'
+    ), 0) ORDER BY sequence DESC LIMIT 1
+  `);
+  return row?.providerThreadId || null;
 }
 
 export function listThreadTurnInterruptionEventStates(
@@ -3462,41 +3508,11 @@ export function listThreadTurnInterruptionEventStates(
     }
   }
 
-  const latestProviderRows = db
-    .select({
-      providerThreadId: events.providerThreadId,
-      threadId: events.threadId,
-    })
-    .from(events)
-    .where(
-      and(
-        inArray(events.threadId, threadIds),
-        isNotNull(events.providerThreadId),
-        sql`${events.sequence} = (
-          SELECT MAX(latest.sequence)
-          FROM events AS latest
-          WHERE latest.thread_id = ${events.threadId}
-            AND latest.provider_thread_id IS NOT NULL
-            AND latest.sequence > COALESCE((
-              SELECT MAX(context_clear.sequence)
-              FROM events AS context_clear
-              WHERE context_clear.thread_id = ${events.threadId}
-                AND context_clear.type = 'system/operation'
-                AND json_extract(context_clear.data, '$.operation') = ${THREAD_CONTEXT_CLEAR_OPERATION}
-                AND json_extract(context_clear.data, '$.status') = 'completed'
-            ), 0)
-        )`,
-      ),
-    )
-    .all();
-  for (const row of latestProviderRows) {
-    if (row.providerThreadId === null) {
-      continue;
-    }
-    const state = statesByThreadId.get(row.threadId);
-    if (state) {
-      state.latestProviderThreadId = row.providerThreadId;
-    }
+  for (const state of statesByThreadId.values()) {
+    state.latestProviderThreadId = getLastStoredProviderThreadId(
+      db,
+      state.threadId,
+    );
   }
 
   return threadIds.flatMap((threadId) => {
@@ -3561,8 +3577,8 @@ export function getLastStoredTurnRequestEvent(
   );
 }
 
-export function pruneThreadEventsBeforeSequence(
-  db: DbConnection,
+export function pruneThreadEventsBeforeSequenceInTransaction(
+  db: DbQueryConnection,
   args: PruneThreadEventsBeforeSequenceArgs,
 ): number {
   if (args.sequenceCutoff <= 0 || args.types.length === 0) {
@@ -3574,21 +3590,19 @@ export function pruneThreadEventsBeforeSequence(
     .where(
       and(
         eq(events.threadId, args.threadId),
+        sql`${events.id} IN (${pruningCandidates(args, args.types)})`,
         lte(events.sequence, args.sequenceCutoff),
         inArray(events.type, [...args.types]),
       ),
     )
     .run();
 
-  if (result.changes > 0) {
-    bumpThreadEventRewriteGeneration(args.threadId);
-  }
   return result.changes;
 }
 
 function pruneLatestRowsForContextWindowUsageBeforeSequence(
-  db: DbConnection,
-  args: {
+  db: DbQueryConnection,
+  args: PruningWindow & {
     contextWindowJsonPath: string;
     eventType:
       | "thread/contextWindowUsage/updated"
@@ -3597,156 +3611,90 @@ function pruneLatestRowsForContextWindowUsageBeforeSequence(
     threadId: string;
   },
 ): number {
-  if (args.sequenceCutoff <= 0) {
-    return 0;
+  if (args.sequenceCutoff <= 0) return 0;
+  let keepers = args.usageKeepers;
+  if (!keepers) {
+    const rows = db.all<{
+      sequence: number;
+      hasContext: number;
+      isRoot: number;
+    }>(sql`
+      WITH recent AS MATERIALIZED (
+        SELECT sequence, turn_id, data FROM events WHERE thread_id = ${args.threadId} AND type = ${args.eventType}
+        ORDER BY sequence DESC LIMIT 500
+      ) SELECT sequence, CASE WHEN json_valid(data) THEN json_extract(data, ${args.contextWindowJsonPath}) IS NOT NULL ELSE 0 END AS hasContext,
+      NOT EXISTS (
+        SELECT 1 FROM events nested WHERE nested.thread_id = ${args.threadId} AND nested.turn_id = recent.turn_id
+          AND nested.type = 'turn/started' AND nested.parent_tool_call_id IS NOT NULL
+      ) AS isRoot FROM recent ORDER BY sequence DESC
+    `);
+    const root = rows.find((row) => row.isRoot !== 0);
+    const context = rows.find(
+      (row) => row.isRoot !== 0 && row.hasContext !== 0,
+    );
+    if (rows.length === 500 && (!root || !context)) return 0;
+    keepers = {
+      latestRootSequence: root?.sequence ?? 0,
+      latestContextSequence: context?.sequence ?? 0,
+    };
   }
-
-  const result = db.run(
-    sql`WITH root_usage AS (
-          SELECT usage.id, usage.sequence, usage.data
-          FROM events AS usage
-          WHERE usage.thread_id = ${args.threadId}
-            AND usage.type = ${args.eventType}
-            AND NOT EXISTS (
-              SELECT 1
-              FROM events AS nested_turn_started
-              WHERE nested_turn_started.thread_id = usage.thread_id
-                AND nested_turn_started.turn_id = usage.turn_id
-                AND nested_turn_started.type = 'turn/started'
-                AND nested_turn_started.parent_tool_call_id IS NOT NULL
-            )
+  if (args.usageKeepers !== undefined) {
+    const sequences = [
+      ...new Set([keepers.latestRootSequence, keepers.latestContextSequence]),
+    ].filter((sequence) => sequence > 0);
+    for (const sequence of sequences) {
+      if (
+        !db.get(
+          sql`SELECT 1 FROM events WHERE thread_id = ${args.threadId} AND type = ${args.eventType} AND sequence = ${sequence}`,
         )
-        DELETE FROM events
-        WHERE ${events.threadId} = ${args.threadId}
-          AND ${events.type} = ${args.eventType}
-          AND ${events.sequence} <= ${args.sequenceCutoff}
-          AND ${events.id} NOT IN (
-            SELECT root_usage.id
-            FROM root_usage
-            ORDER BY root_usage.sequence DESC
-            LIMIT 1
-          )
-          AND ${events.id} NOT IN (
-            SELECT root_usage.id
-            FROM root_usage
-            WHERE json_extract(root_usage.data, ${args.contextWindowJsonPath}) IS NOT NULL
-            ORDER BY root_usage.sequence DESC
-            LIMIT 1
-          )`,
-  );
-
-  if (result.changes > 0) {
-    bumpThreadEventRewriteGeneration(args.threadId);
+      )
+        return 0;
+    }
   }
-  return result.changes;
+  return db.run(sql`DELETE FROM events
+    WHERE id IN (${pruningCandidates(args, [args.eventType])}) AND thread_id = ${args.threadId}
+      AND type = ${args.eventType} AND sequence <= ${args.sequenceCutoff}
+      AND sequence NOT IN (${keepers.latestRootSequence}, ${keepers.latestContextSequence})`)
+    .changes;
 }
 
-export function pruneContextWindowUsageEventsBeforeSequence(
-  db: DbConnection,
+export function pruneContextWindowUsageEventsBeforeSequenceInTransaction(
+  db: DbQueryConnection,
   args: PruneContextWindowUsageEventsBeforeSequenceArgs,
 ): number {
   return pruneLatestRowsForContextWindowUsageBeforeSequence(db, {
-    threadId: args.threadId,
-    sequenceCutoff: args.sequenceCutoff,
+    ...args,
     eventType: "thread/contextWindowUsage/updated",
     contextWindowJsonPath: "$.contextWindowUsage.modelContextWindow",
   });
 }
 
-export function pruneTokenUsageEventsBeforeSequence(
-  db: DbConnection,
+export function pruneTokenUsageEventsBeforeSequenceInTransaction(
+  db: DbQueryConnection,
   args: PruneTokenUsageEventsBeforeSequenceArgs,
 ): number {
   return pruneLatestRowsForContextWindowUsageBeforeSequence(db, {
-    threadId: args.threadId,
-    sequenceCutoff: args.sequenceCutoff,
+    ...args,
     eventType: "thread/tokenUsage/updated",
     contextWindowJsonPath: "$.tokenUsage.modelContextWindow",
   });
 }
 
-export function pruneResolvedItemDeltas(
-  db: DbConnection,
+export function pruneResolvedItemDeltasInTransaction(
+  db: DbQueryConnection,
   args: PruneResolvedItemDeltasArgs,
 ): number {
-  type PrunableResolvedDeltaEventType = Extract<
-    ThreadEventType,
-    | "item/agentMessage/delta"
-    | "item/commandExecution/outputDelta"
-    | "item/reasoning/summaryTextDelta"
-    | "item/reasoning/textDelta"
-  >;
-  type PrunableResolvedDeltaCompletionItemKind = Extract<
-    ThreadEventItemType,
-    "agentMessage" | "commandExecution" | "reasoning"
-  >;
-
-  const prunableDeltaMatches = {
-    "item/agentMessage/delta": "agentMessage",
-    "item/commandExecution/outputDelta": "commandExecution",
-    "item/reasoning/summaryTextDelta": "reasoning",
-    "item/reasoning/textDelta": "reasoning",
-  } satisfies Record<
-    PrunableResolvedDeltaEventType,
-    PrunableResolvedDeltaCompletionItemKind
-  >;
-  const itemCompletedType = "item/completed" satisfies ThreadEventType;
-
-  const result = db.run(
-    sql`DELETE FROM events
-        WHERE rowid IN (
-          SELECT candidate.rowid
-          FROM events candidate
-          WHERE candidate.thread_id = ${args.threadId}
-          AND candidate.type IN (
-            ${"item/agentMessage/delta" satisfies PrunableResolvedDeltaEventType},
-            ${"item/commandExecution/outputDelta" satisfies PrunableResolvedDeltaEventType},
-            ${"item/reasoning/summaryTextDelta" satisfies PrunableResolvedDeltaEventType},
-            ${"item/reasoning/textDelta" satisfies PrunableResolvedDeltaEventType}
-          )
-          AND candidate.item_id IS NOT NULL
-          AND candidate.turn_id IS NOT NULL
-          AND EXISTS (
-            SELECT 1
-            FROM events completed
-            WHERE completed.thread_id = candidate.thread_id
-              AND completed.turn_id = candidate.turn_id
-              AND completed.type = ${itemCompletedType}
-              AND completed.item_kind = CASE
-                WHEN candidate.type = ${"item/agentMessage/delta" satisfies PrunableResolvedDeltaEventType}
-                  THEN ${prunableDeltaMatches["item/agentMessage/delta"]}
-                WHEN candidate.type = ${"item/commandExecution/outputDelta" satisfies PrunableResolvedDeltaEventType}
-                  THEN ${prunableDeltaMatches["item/commandExecution/outputDelta"]}
-                WHEN candidate.type = ${"item/reasoning/summaryTextDelta" satisfies PrunableResolvedDeltaEventType}
-                  THEN ${prunableDeltaMatches["item/reasoning/summaryTextDelta"]}
-                WHEN candidate.type = ${"item/reasoning/textDelta" satisfies PrunableResolvedDeltaEventType}
-                  THEN ${prunableDeltaMatches["item/reasoning/textDelta"]}
-              END
-              AND completed.item_id = candidate.item_id
-              AND (
-                candidate.type <> ${"item/commandExecution/outputDelta" satisfies PrunableResolvedDeltaEventType}
-                OR json_type(completed.data, '$.item.aggregatedOutput') IS NOT NULL
-              )
-              AND completed.parent_tool_call_id IS candidate.parent_tool_call_id
-          )
-          AND EXISTS (
-            SELECT 1
-            FROM events earlier_delta
-            WHERE earlier_delta.thread_id = candidate.thread_id
-              AND earlier_delta.turn_id = candidate.turn_id
-              AND earlier_delta.type = candidate.type
-              AND earlier_delta.item_id = candidate.item_id
-              AND earlier_delta.parent_tool_call_id IS candidate.parent_tool_call_id
-              AND earlier_delta.sequence < candidate.sequence
-          )
-          LIMIT ${RESOLVED_ITEM_DELTA_PRUNE_BATCH_SIZE}
-        )`,
-  );
-
-  if (result.changes > 0) {
-    bumpThreadEventRewriteGeneration(args.threadId);
-  }
-  return result.changes;
+  return pruneArchiveCandidates(db, {
+    threadId: args.threadId,
+    candidates: archivePruningCandidates(db, args, [
+      "item/agentMessage/delta",
+      "item/commandExecution/outputDelta",
+      "item/reasoning/summaryTextDelta",
+      "item/reasoning/textDelta",
+    ]),
+    kind: "deltas",
+    probe: emptyArchivePruningProbe(),
+  }).removed;
 }
 
 export function listOpenBackgroundTaskItemRowsForHost(
@@ -3862,42 +3810,108 @@ export function listOpenBackgroundTaskItemRowsForThread(
   );
 }
 
+export function pruneBackgroundTaskProgressEventsInTransaction(
+  db: DbQueryConnection,
+  args: PruneBackgroundTaskProgressEventsArgs,
+): number {
+  return pruneArchiveCandidates(db, {
+    threadId: args.threadId,
+    candidates: archivePruningCandidates(db, args, [
+      "item/backgroundTask/progress",
+    ]),
+    kind: "background",
+    probe: emptyArchivePruningProbe(),
+  }).removed;
+}
+
+function runPruningBatch(
+  db: DbConnection,
+  args: PruningWindow & { threadId: string },
+  types: readonly ThreadEventType[],
+  work: (tx: DbTransaction) => number,
+): number {
+  const removed = db.transaction(
+    (tx) => {
+      const sequence =
+        getHighWaterMarks(tx, [args.threadId])[args.threadId] ?? 0;
+      const provider = tx.get<{
+        sequence: number;
+        providerThreadId: string;
+      }>(sql`
+      SELECT sequence, provider_thread_id AS providerThreadId FROM events
+      WHERE id IN (${pruningCandidates(args, types)}) AND provider_thread_id IS NOT NULL
+      ORDER BY sequence DESC LIMIT 1
+    `);
+      const count = work(tx);
+      if (count > 0) {
+        preserveEventBookmark(tx, {
+          threadId: args.threadId,
+          sequence,
+          providerThreadId: null,
+        });
+        if (provider)
+          preserveEventBookmark(tx, { threadId: args.threadId, ...provider });
+      }
+      return count;
+    },
+    { behavior: "immediate" },
+  );
+  if (removed > 0) bumpThreadEventRewriteGeneration(args.threadId);
+  return removed;
+}
+
+export function pruneThreadEventsBeforeSequence(
+  db: DbConnection,
+  args: PruneThreadEventsBeforeSequenceArgs,
+): number {
+  return runPruningBatch(db, args, args.types, (tx) =>
+    pruneThreadEventsBeforeSequenceInTransaction(tx, args),
+  );
+}
+
+export function pruneContextWindowUsageEventsBeforeSequence(
+  db: DbConnection,
+  args: PruneContextWindowUsageEventsBeforeSequenceArgs,
+): number {
+  return runPruningBatch(
+    db,
+    args,
+    ["thread/contextWindowUsage/updated"],
+    (tx) => pruneContextWindowUsageEventsBeforeSequenceInTransaction(tx, args),
+  );
+}
+
+export function pruneTokenUsageEventsBeforeSequence(
+  db: DbConnection,
+  args: PruneTokenUsageEventsBeforeSequenceArgs,
+): number {
+  return runPruningBatch(db, args, ["thread/tokenUsage/updated"], (tx) =>
+    pruneTokenUsageEventsBeforeSequenceInTransaction(tx, args),
+  );
+}
+
+export function pruneResolvedItemDeltas(
+  db: DbConnection,
+  args: PruneResolvedItemDeltasArgs,
+): number {
+  return runPruningBatch(
+    db,
+    args,
+    [
+      "item/agentMessage/delta",
+      "item/commandExecution/outputDelta",
+      "item/reasoning/summaryTextDelta",
+      "item/reasoning/textDelta",
+    ],
+    (tx) => pruneResolvedItemDeltasInTransaction(tx, args),
+  );
+}
+
 export function pruneBackgroundTaskProgressEvents(
   db: DbConnection,
   args: PruneBackgroundTaskProgressEventsArgs,
 ): number {
-  const progressType =
-    "item/backgroundTask/progress" satisfies ThreadEventType;
-  const completedType =
-    "item/backgroundTask/completed" satisfies ThreadEventType;
-
-  const result = db.run(
-    sql`DELETE FROM events
-        WHERE ${events.threadId} = ${args.threadId}
-          AND ${events.type} = ${progressType}
-          AND ${events.itemId} IS NOT NULL
-          AND (
-            EXISTS (
-              SELECT 1
-              FROM events completed
-              WHERE completed.thread_id = ${events.threadId}
-                AND completed.type = ${completedType}
-                AND completed.item_id = ${events.itemId}
-            )
-            OR ${events.id} NOT IN (
-              SELECT latest.id
-              FROM events latest
-              WHERE latest.thread_id = ${events.threadId}
-                AND latest.type = ${progressType}
-                AND latest.item_id = ${events.itemId}
-              ORDER BY latest.sequence DESC
-              LIMIT 1
-            )
-          )`,
+  return runPruningBatch(db, args, ["item/backgroundTask/progress"], (tx) =>
+    pruneBackgroundTaskProgressEventsInTransaction(tx, args),
   );
-
-  if (result.changes > 0) {
-    bumpThreadEventRewriteGeneration(args.threadId);
-  }
-  return result.changes;
 }

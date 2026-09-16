@@ -826,6 +826,43 @@ export const retainedEventOutputs = sqliteTable(
   ],
 );
 
+export const threadPruningCursors = sqliteTable("thread_pruning_cursors", {
+  policy: text("policy").primaryKey(),
+  version: integer("version").notNull(),
+  lastThreadId: text("last_thread_id").notNull().default(""),
+  currentThreadId: text("current_thread_id"),
+  step: integer("step").notNull().default(0),
+  sequence: integer("sequence").notNull().default(0),
+  upperSequence: integer("upper_sequence").notNull().default(0),
+  cycle: integer("cycle").notNull().default(0),
+  latestRootSequence: integer("latest_root_sequence").notNull().default(0),
+  latestContextSequence: integer("latest_context_sequence")
+    .notNull()
+    .default(0),
+  probeEventId: text("probe_event_id"),
+  probePhase: integer("probe_phase").notNull().default(0),
+  probeSequence: integer("probe_sequence").notNull().default(0),
+  probeWitnessId: text("probe_witness_id"),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+export const threadPruningRateLimitKeepers = sqliteTable(
+  "thread_pruning_rate_limit_keepers",
+  {
+    providerId: text("provider_id").primaryKey(),
+    eventId: text("event_id").notNull(),
+  },
+);
+
+export const threadEventBookmarks = sqliteTable("thread_event_bookmarks", {
+  threadId: text("thread_id")
+    .primaryKey()
+    .references(() => threads.id, { onDelete: "cascade" }),
+  sequence: integer("sequence").notNull(),
+  providerSequence: integer("provider_sequence").notNull(),
+  providerThreadId: text("provider_thread_id"),
+});
+
 export const maintenanceScanCursors = sqliteTable(
   "maintenance_scan_cursors",
   {

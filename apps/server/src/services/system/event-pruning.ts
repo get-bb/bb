@@ -1,6 +1,8 @@
 import { performance } from "node:perf_hooks";
 import {
   getThread,
+  getThreadEventRewriteGeneration,
+  pruneRateLimitSnapshots,
   getLatestThreadSequence,
   pruneBackgroundTaskProgressEvents,
   pruneContextWindowUsageEventsBeforeSequence,
@@ -22,6 +24,7 @@ interface PruneThreadEventHistoryArgs {
 interface ThreadEventPruningResult {
   latestSequence: number;
   removedAgePrunableEvents: number;
+  removedRateLimitSnapshots: number;
   removedBackgroundTaskProgressEvents: number;
   removedResolvedItemDeltas: number;
   sequenceCutoff: number;
@@ -39,6 +42,7 @@ interface ActiveThreadPruneState {
 }
 
 type ThreadEventPruningStep =
+  | "prune_rate_limits"
   | "get_latest_thread_sequence"
   | "prune_background_task_progress"
   | "prune_context_window_usage"
@@ -71,6 +75,7 @@ const AGE_PRUNABLE_THREAD_EVENT_TYPES: readonly ThreadEventType[] = [
 
 const ACTIVE_PRUNE_TRIGGER_THREAD_EVENT_TYPES: readonly ThreadEventType[] = [
   ...AGE_PRUNABLE_THREAD_EVENT_TYPES,
+  "provider/rateLimits/updated",
   "item/backgroundTask/progress",
 ] as const;
 
@@ -131,6 +136,15 @@ export function pruneThreadEventHistory(
   );
   const keepRecent = KEEP_RECENT_BY_MODE[args.mode];
   const sequenceCutoff = Math.max(0, latestSequence - keepRecent);
+  const removedRateLimitSnapshots = runThreadEventPruningStep(
+    "prune_rate_limits",
+    () =>
+      pruneRateLimitSnapshots(deps.db, {
+        threadId: args.threadId,
+        afterSequence: Math.max(0, latestSequence - 500),
+        throughSequence: latestSequence,
+      }),
+  );
   const removedAgePrunableEvents =
     runThreadEventPruningStep("prune_context_window_usage", () =>
       pruneContextWindowUsageEventsBeforeSequence(deps.db, {
@@ -169,10 +183,12 @@ export function pruneThreadEventHistory(
   return {
     latestSequence,
     removedAgePrunableEvents,
+    removedRateLimitSnapshots,
     removedBackgroundTaskProgressEvents,
     removedResolvedItemDeltas,
     sequenceCutoff,
     totalRemoved:
+      removedRateLimitSnapshots +
       removedAgePrunableEvents +
       removedBackgroundTaskProgressEvents +
       removedResolvedItemDeltas,
@@ -180,12 +196,14 @@ export function pruneThreadEventHistory(
 }
 
 export function pruneThreadEventHistoryBestEffort(
-  deps: Pick<AppDeps, "db" | "logger">,
+  deps: Pick<AppDeps, "db" | "logger" | "hub">,
   args: PruneThreadEventHistoryArgs,
 ): ThreadEventPruningResult | null {
   const startedAt = performance.now();
+  const generation = getThreadEventRewriteGeneration(args.threadId);
   try {
     const result = pruneThreadEventHistory(deps, args);
+
     const durationMs = performance.now() - startedAt;
     if (durationMs >= SLOW_THREAD_EVENT_PRUNE_LOG_THRESHOLD_MS) {
       deps.logger.debug(
@@ -212,11 +230,15 @@ export function pruneThreadEventHistoryBestEffort(
       "Failed to prune thread event history",
     );
     return null;
+  } finally {
+    if (getThreadEventRewriteGeneration(args.threadId) !== generation) {
+      deps.hub.notifyThread(args.threadId, ["history-rewritten"]);
+    }
   }
 }
 
 export function maybePruneActiveThreadEventHistory(
-  deps: Pick<AppDeps, "db" | "logger">,
+  deps: Pick<AppDeps, "db" | "logger" | "hub">,
   args: MaybePruneActiveThreadEventHistoryArgs,
 ): ThreadEventPruningResult | null {
   const thread = getThread(deps.db, args.threadId);

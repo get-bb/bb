@@ -3627,8 +3627,10 @@ describe("events", () => {
       },
     ]);
 
-    expect(pruneResolvedItemDeltas(db, { threadId: thread.id })).toBe(500);
-    expect(pruneResolvedItemDeltas(db, { threadId: thread.id })).toBe(1);
+    expect(pruneResolvedItemDeltas(db, { threadId: thread.id })).toBe(124);
+    let removed = 124;
+    for (let i = 0; i < 4; i++) removed += pruneResolvedItemDeltas(db, { threadId: thread.id });
+    expect(removed).toBe(501);
     expect(
       listEvents(db, { threadId: thread.id }).map((event) => event.sequence),
     ).toEqual([1, 503]);

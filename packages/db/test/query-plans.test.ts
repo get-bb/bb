@@ -1,3 +1,4 @@
+import { advanceThreadPruning } from "../src/data/thread-pruning.js";
 import { findEnvironmentPathClaim } from "../src/data/environments.js";
 import { describe, expect, it } from "vitest";
 import { threadScope, turnScope } from "@bb/domain";
@@ -989,8 +990,7 @@ describe("slow query index plans", () => {
       logger,
       predicate: (fields) =>
         fields.operation === "run" &&
-        fields.sql.includes("DELETE FROM events") &&
-        fields.sql.includes("root_usage"),
+        fields.sql.startsWith("DELETE FROM events"),
     });
     assertEmittedQueryPlanUsesIndex({
       db,
@@ -999,10 +999,12 @@ describe("slow query index plans", () => {
       params: [
         thread.id,
         "thread/contextWindowUsage/updated",
+        500,
         thread.id,
         "thread/contextWindowUsage/updated",
         sequenceCutoff,
-        "$.contextWindowUsage.modelContextWindow",
+        2,
+        1,
       ],
     });
 
@@ -1398,7 +1400,26 @@ describe("slow query index plans", () => {
     db.$client.close();
   });
 
-  it("uses materialized parent ids and the consolidated index for delta pruning", () => {
+  it("pins maintenance discovery to the typed sequence index", () => {
+    const { db } = setup();
+    const statements = captureStatements(db, () => {
+      advanceThreadPruning(db, "turn-diffs");
+    });
+    const discovery = statements.find((statement) =>
+      statement.sql.includes(
+        "FROM events INDEXED BY events_thread_type_sequence_idx",
+      ),
+    );
+    expect(discovery).toBeDefined();
+    if (!discovery) throw new Error("Missing maintenance discovery query");
+    expect(queryPlanDetails({ db, ...discovery })).toContain(
+      "USING INDEX events_thread_type_sequence_idx",
+    );
+    expect(discovery.sql).toContain("LIMIT ?");
+    db.$client.close();
+  });
+
+  it("bounds delta support probes with the consolidated scope index", () => {
     const { db, logger, thread } = setup();
     const turnId = "turn_resolved_delta_query_plan";
     const itemId = "call_resolved_delta_query_plan";
@@ -1443,14 +1464,29 @@ describe("slow query index plans", () => {
     ]);
     logger.clear();
 
-    expect(pruneResolvedItemDeltas(db, { threadId: thread.id })).toBe(1);
+    const statements = captureStatements(db, () => {
+      expect(pruneResolvedItemDeltas(db, { threadId: thread.id })).toBe(1);
+    });
+    const supportQueries = statements.filter((statement) =>
+      statement.sql.includes(
+        "FROM events INDEXED BY events_thread_turn_type_item_sequence_idx",
+      ),
+    );
+    expect(supportQueries.length).toBeGreaterThan(0);
+    for (const statement of supportQueries) {
+      expect(queryPlanDetails({ db, ...statement })).toContain(
+        "USING INDEX events_thread_turn_type_item_sequence_idx",
+      );
+      expect(statement.sql).toContain("LIMIT ?");
+    }
     const pruneQuery = findOnlyDebugLog({
       logger,
       predicate: (fields) =>
         fields.operation === "run" &&
         fields.sql.startsWith("DELETE FROM events"),
     });
-    expect(pruneQuery.fields.sql).toContain("parent_tool_call_id IS");
+    expect(pruneQuery.fields.sql).toContain("WHERE id IN");
+    expect(pruneQuery.fields.bindingArgumentCount).toBeLessThanOrEqual(500);
     expect(pruneQuery.fields.sql).not.toContain("json_extract");
 
     const completedLookupPlan = queryPlanDetails({
