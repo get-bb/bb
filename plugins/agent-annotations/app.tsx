@@ -70,6 +70,7 @@ export function AnnotateAction({
   const composer = useComposer();
   const rpc = useRpc<typeof agentAnnotationsRpcContract>();
   const composerRef = useRef(composer);
+  const pendingSaves = useRef(Promise.resolve());
   composerRef.current = composer;
   const [state, setState] = useState<PageState>(INACTIVE_STATE);
   const [error, setError] = useState<string | null>(null);
@@ -108,11 +109,24 @@ export function AnnotateAction({
         setState({ active: parsed.data.active, count: parsed.data.count });
         return;
       }
-      addToPrompt(parsed.data.annotation).catch((cause: unknown) => {
-        setError(errorMessage(cause));
-      });
+      const message = parsed.data;
+      pendingSaves.current = pendingSaves.current
+        .then(async () => {
+          if (message.type === "annotation-update") {
+            await rpc.call("update", {
+              id: message.id,
+              comment: message.comment,
+            });
+          } else {
+            await addToPrompt(message.annotation);
+          }
+          setError(null);
+        })
+        .catch((cause: unknown) => {
+          setError(errorMessage(cause));
+        });
     });
-  }, [addToPrompt, page]);
+  }, [addToPrompt, page, rpc]);
 
   useEffect(() => {
     if (page === null) {

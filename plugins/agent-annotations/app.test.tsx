@@ -89,7 +89,12 @@ describe("AnnotateAction", () => {
         isCompactViewport: false,
         experimental_page: fake.page,
       },
-      { rpc: { save: () => ({ id: "ann_saved" }) } },
+      {
+        rpc: {
+          save: () => ({ id: "ann_saved" }),
+          update: () => ({ id: pageAnnotation.id }),
+        },
+      },
     );
 
     fireEvent.click(slot.getByRole("button", { name: "Annotate elements" }));
@@ -114,7 +119,7 @@ describe("AnnotateAction", () => {
         {
           provider: "annotation",
           id: "ann_saved",
-          label: "1. button: Make this green",
+          label: '1. button#pay "Pay now"',
         },
       ]);
     });
@@ -133,6 +138,21 @@ describe("AnnotateAction", () => {
       expect.stringContaining("__reactFiber$"),
       { world: "main" },
     );
+
+    act(() => {
+      fake.emit({
+        type: "annotation-update",
+        id: pageAnnotation.id,
+        comment: "Make this blue",
+      });
+    });
+    await waitFor(() => {
+      expect(slot.inspection.rpcCalls.at(-1)).toEqual({
+        method: "update",
+        input: { id: pageAnnotation.id, comment: "Make this blue" },
+      });
+    });
+    expect(slot.inspection.composer.mentions).toHaveLength(1);
 
     act(() => {
       fake.emit({ type: "state", active: false, count: 1 });

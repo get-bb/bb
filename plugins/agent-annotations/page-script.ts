@@ -17,6 +17,8 @@ interface AnnotationController {
 
 interface PinnedAnnotation {
   id: string;
+  number: number;
+  comment: string;
   element: Element;
   pin: HTMLElement;
   outline: HTMLElement;
@@ -90,7 +92,8 @@ function installAgentAnnotations(
     .hover { display: none; pointer-events: none; border: 1.5px solid var(--bb-primary); border-radius: 4px; background: color-mix(in oklab, var(--bb-primary) 10%, transparent); }
     .outline { pointer-events: none; border: 1.5px dashed color-mix(in oklab, var(--bb-primary) 70%, transparent); border-radius: 4px; }
     .label { display: none; pointer-events: none; max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 2px 6px; border-radius: 6px; background: var(--bb-primary); color: var(--bb-primary-foreground); font: 500 11px/16px var(--bb-font-mono, ui-monospace, monospace); }
-    .pin { pointer-events: auto; width: 20px; height: 20px; margin: -10px 0 0 -10px; border-radius: 999px; background: var(--bb-primary); color: var(--bb-primary-foreground); font: 600 11px/20px var(--bb-font-sans, system-ui, sans-serif); text-align: center; box-shadow: 0 0 0 2px var(--bb-canvas), 0 1px 4px rgb(0 0 0 / 0.3); cursor: default; }
+    .pin { pointer-events: auto; width: 20px; height: 20px; margin: -10px 0 0 -10px; border-radius: 999px; background: var(--bb-primary); color: var(--bb-primary-foreground); font: 600 11px/20px var(--bb-font-sans, system-ui, sans-serif); text-align: center; box-shadow: 0 0 0 2px var(--bb-canvas), 0 1px 4px rgb(0 0 0 / 0.3); cursor: pointer; padding: 0; border: 0; }
+    .pin:focus-visible { outline: 2px solid var(--bb-ring); outline-offset: 2px; }
     .editor { pointer-events: auto; width: 320px; padding: 10px; border: 1px solid var(--bb-border); border-radius: calc(var(--bb-radius, 0.5rem) + 4px); background: var(--bb-popover); color: var(--bb-popover-foreground); box-shadow: 0 12px 32px rgb(0 0 0 / 0.22); font: 400 13px/20px var(--bb-font-sans, system-ui, sans-serif); }
     .editor-title { margin-bottom: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--bb-muted-foreground); font: 500 11px/16px var(--bb-font-mono, ui-monospace, monospace); }
     textarea { box-sizing: border-box; display: block; width: 100%; min-height: 72px; resize: vertical; margin: 0; padding: 6px 8px; border: 1px solid var(--bb-border); border-radius: calc(var(--bb-radius, 0.5rem) - 2px); background: transparent; color: inherit; font: inherit; outline: none; }
@@ -324,16 +327,29 @@ function installAgentAnnotations(
     if (trimmed.length === 0) {
       return;
     }
-    const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+    const id = Array.from(crypto.getRandomValues(new Uint8Array(16)), (value) =>
+      value.toString(16).padStart(2, "0"),
+    ).join("");
     element.setAttribute(`${attributePrefix}${id}`, "");
     const number = nextNumber;
     nextNumber += 1;
-    const pin = part("div", "pin");
+    const pin = part("button", "pin");
+    pin.setAttribute("type", "button");
+    pin.setAttribute("aria-label", `Edit annotation ${number}`);
     pin.textContent = String(number);
     pin.title = trimmed;
     const outline = part("div", "outline");
     root.append(outline, pin);
-    annotations.push({ id, element, pin, outline });
+    const annotation = {
+      id,
+      number,
+      comment: trimmed.slice(0, 4000),
+      element,
+      pin,
+      outline,
+    };
+    annotations.push(annotation);
+    pin.addEventListener("click", () => openEditor(element, annotation));
     closeEditor();
     showHover(null);
     reposition();
@@ -353,7 +369,22 @@ function installAgentAnnotations(
     post({ type: "state", ...state() });
   }
 
-  function openEditor(element: Element): void {
+  function update(annotation: PinnedAnnotation, comment: string): void {
+    const trimmed = comment.trim().slice(0, 4000);
+    if (trimmed.length === 0) {
+      return;
+    }
+    annotation.comment = trimmed;
+    annotation.pin.title = trimmed;
+    closeEditor();
+    showHover(null);
+    post({ type: "annotation-update", id: annotation.id, comment: trimmed });
+  }
+
+  function openEditor(
+    element: Element,
+    annotation: PinnedAnnotation | null = null,
+  ): void {
     closeEditor();
     showHover(element);
     const rect = element.getBoundingClientRect();
@@ -363,16 +394,21 @@ function installAgentAnnotations(
     const textarea = document.createElement("textarea");
     textarea.placeholder = "What should change?";
     textarea.rows = 3;
+    textarea.maxLength = 4000;
+    textarea.value = annotation?.comment ?? "";
+    textarea.setAttribute("aria-label", "Annotation comment");
+    const submit = () =>
+      annotation === null
+        ? commit(element, textarea.value)
+        : update(annotation, textarea.value);
     const actions = part("div", "actions");
     const hint = part("span", "hint");
-    hint.textContent = /Mac/.test(navigator.platform)
-      ? "⌘↵ to add"
-      : "Ctrl+↵ to add";
+    hint.textContent = `${/Mac/.test(navigator.platform) ? "⌘↵" : "Ctrl+↵"} to ${annotation === null ? "add" : "save"}`;
     const cancel = part("button", "cancel");
     cancel.textContent = "Cancel";
     const save = part("button", "save");
-    save.textContent = "Add to prompt";
-    save.toggleAttribute("disabled", true);
+    save.textContent = annotation === null ? "Add to prompt" : "Save changes";
+    save.toggleAttribute("disabled", textarea.value.trim().length === 0);
     actions.append(hint, cancel, save);
     panel.append(title, textarea, actions);
     root.append(panel);
@@ -391,11 +427,11 @@ function installAgentAnnotations(
         closeEditor();
       } else if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
         event.preventDefault();
-        commit(element, textarea.value);
+        submit();
       }
     });
     cancel.addEventListener("click", () => closeEditor());
-    save.addEventListener("click", () => commit(element, textarea.value));
+    save.addEventListener("click", submit);
     textarea.focus();
   }
 
@@ -480,6 +516,8 @@ function installAgentAnnotations(
   }
 
   function clear(): AnnotationPageState {
+    closeEditor();
+    showHover(null);
     for (const annotation of annotations) {
       annotation.element.removeAttribute(`${attributePrefix}${annotation.id}`);
       annotation.pin.remove();

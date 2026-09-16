@@ -1,15 +1,19 @@
-import { randomUUID } from "node:crypto";
 import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import {
   ANNOTATION_MENTION_PROVIDER_ID,
   annotationRecordSchema,
+  annotationUpdateSchema,
   formatAnnotationContext,
 } from "./annotations.js";
 
 const STORAGE_PREFIX = "annotation:";
 
 export const agentAnnotationsRpcContract = defineRpcContract({
+  update: {
+    input: annotationUpdateSchema,
+    output: z.object({ id: z.string() }).strict(),
+  },
   save: {
     input: annotationRecordSchema,
     output: z.object({ id: z.string() }).strict(),
@@ -18,8 +22,15 @@ export const agentAnnotationsRpcContract = defineRpcContract({
 
 export default async function plugin(bb: BbPluginApi) {
   bb.rpc.register(agentAnnotationsRpcContract, {
+    async update({ id, comment }) {
+      const record = annotationRecordSchema.parse(
+        await bb.storage.kv.get(`${STORAGE_PREFIX}${id}`),
+      );
+      await bb.storage.kv.set(`${STORAGE_PREFIX}${id}`, { ...record, comment });
+      return { id };
+    },
     async save(annotation) {
-      const id = randomUUID();
+      const id = annotation.id;
       await bb.storage.kv.set(`${STORAGE_PREFIX}${id}`, annotation);
       return { id };
     },

@@ -52,7 +52,17 @@ export const pageStateSchema = z
   .strict();
 export type PageState = z.infer<typeof pageStateSchema>;
 
+export const annotationUpdateSchema = z
+  .object({
+    id: z.string().min(1).max(64),
+    comment: z.string().trim().min(1).max(4000),
+  })
+  .strict();
+
 export const pageMessageSchema = z.discriminatedUnion("type", [
+  annotationUpdateSchema
+    .extend({ type: z.literal("annotation-update") })
+    .strict(),
   pageStateSchema.extend({ type: z.literal("state") }).strict(),
   z
     .object({
@@ -73,10 +83,7 @@ export const annotationRecordSchema = pageAnnotationSchema
 export type AnnotationRecord = z.infer<typeof annotationRecordSchema>;
 
 export function annotationMentionLabel(annotation: PageAnnotation): string {
-  const comment = annotation.comment.replace(/\s+/g, " ").trim();
-  const shortComment =
-    comment.length > 40 ? `${comment.slice(0, 39).trimEnd()}…` : comment;
-  return `${annotation.number}. ${annotation.element.tagName}: ${shortComment}`;
+  return `${annotation.number}. ${annotation.element.name}`;
 }
 
 function formatComponent(component: ReactComponent): string {

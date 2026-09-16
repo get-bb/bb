@@ -29,10 +29,8 @@ const record: AnnotationRecord = {
 };
 
 describe("annotation formatting", () => {
-  it("labels mentions with the element and a shortened comment", () => {
-    expect(annotationMentionLabel(record)).toBe(
-      "2. button: The pay button should be green and say…",
-    );
+  it("labels mentions with a stable element description", () => {
+    expect(annotationMentionLabel(record)).toBe('2. button#pay.btn "Pay now"');
   });
 
   it("formats agent context with the comment, locator hints, and styles", () => {

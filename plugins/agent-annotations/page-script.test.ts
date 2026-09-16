@@ -110,6 +110,54 @@ describe("agent annotations page script", () => {
     expect(root.querySelector(".editor")).toBeNull();
   });
 
+  it("edits an existing pin while inactive, preserves its identity, and cancels changes", () => {
+    const messages: unknown[] = [];
+    const bridge: Bridge = { postMessage: (data) => messages.push(data) };
+    evaluate(buildActivateExpression({}), bridge);
+    button.click();
+    const root = shadowRoot();
+    const input = requireElement(root.querySelector("textarea"));
+    input.value = "Original";
+    input.dispatchEvent(new Event("input"));
+    requireElement(root.querySelector<HTMLButtonElement>(".save")).click();
+    const created = pageMessageSchema.parse(messages[0]);
+    if (created.type !== "annotation") throw new Error("Expected annotation");
+    evaluate(buildControllerExpression("deactivate"), bridge);
+    const pin = requireElement(root.querySelector<HTMLButtonElement>(".pin"));
+    pin.click();
+    const edit = requireElement(root.querySelector("textarea"));
+    expect(edit.value).toBe("Original");
+    expect(root.querySelector(".save")?.textContent).toBe("Save changes");
+    edit.value = "   ";
+    edit.dispatchEvent(new Event("input"));
+    expect(root.querySelector<HTMLButtonElement>(".save")?.disabled).toBe(true);
+    edit.value = "Updated";
+    edit.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Enter", ctrlKey: true }),
+    );
+    expect(messages.at(-1)).toEqual({
+      type: "annotation-update",
+      id: created.annotation.id,
+      comment: "Updated",
+    });
+    expect(pin.title).toBe("Updated");
+    expect(root.querySelectorAll(".pin")).toHaveLength(1);
+    expect(evaluate(buildControllerExpression("state"), bridge)).toEqual({
+      active: false,
+      count: 1,
+    });
+    pin.click();
+    const cancelled = requireElement(root.querySelector("textarea"));
+    expect(cancelled.value).toBe("Updated");
+    cancelled.value = "Discard this";
+    cancelled.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    pin.click();
+    expect(root.querySelector("textarea")?.value).toBe("Updated");
+    evaluate(buildControllerExpression("clear"), bridge);
+    expect(root.querySelector(".editor")).toBeNull();
+    expect(root.querySelector(".pin")).toBeNull();
+  });
+
   it("turns off on Escape, releases page clicks, and reuses one overlay", () => {
     const messages: unknown[] = [];
     const bridge: Bridge = { postMessage: (data) => messages.push(data) };
