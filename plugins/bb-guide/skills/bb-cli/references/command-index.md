@@ -38,6 +38,8 @@ This index lists every command path that the core CLI registers. Read the task-s
 - `bb project attachment`
 - `bb project attachment upload`
 - `bb project attachment download`
+- `bb project attachment list`
+- `bb project attachment prune`
 - `bb project list`
 - `bb project history`
 - `bb project reorder`

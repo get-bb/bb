@@ -5,7 +5,11 @@ import {
   projectAttachmentPaths,
   type PromptInput,
 } from "@bb/domain";
-import type { DbConnection, DbQueryConnection } from "../connection.js";
+import type {
+  DbConnection,
+  DbQueryConnection,
+  DbTransaction,
+} from "../connection.js";
 import {
   projectAttachments,
   projectAttachmentThreads,
@@ -110,6 +114,30 @@ export function copyProjectAttachmentOwnership(
     );
   db.run(sql`INSERT OR IGNORE INTO project_attachment_threads (attachment_id, thread_id)
     SELECT attachment_id, ${targetThreadId} FROM project_attachment_threads WHERE thread_id = ${sourceThreadId}`);
+}
+
+export function backfillProjectAttachmentOwnership(
+  tx: DbTransaction,
+  threadId: string,
+  input: readonly PromptInput[],
+): void {
+  const paths = projectAttachmentPaths(input);
+  if (paths.length === 0) return;
+  acquireProjectAttachmentOwnership(tx, threadId, input);
+  tx.run(sql`WITH RECURSIVE inheritors(id, project_id) AS (
+    SELECT id, project_id FROM threads WHERE id = ${threadId}
+    UNION
+    SELECT child.id, child.project_id FROM threads child INDEXED BY threads_source_origin_idx
+    JOIN inheritors parent ON child.source_thread_id = parent.id
+    WHERE child.origin_kind = 'fork' AND child.project_id = parent.project_id
+  )
+  INSERT OR IGNORE INTO project_attachment_threads (attachment_id, thread_id)
+  SELECT attachment.id, inheritors.id FROM inheritors
+  CROSS JOIN project_attachments attachment INDEXED BY project_attachments_project_path_idx
+  WHERE attachment.project_id = inheritors.project_id AND attachment.stored_path IN (${sql.join(
+    paths.map((path) => sql`${path}`),
+    sql`, `,
+  )})`);
 }
 
 export function listProjectAttachments(

@@ -1,6 +1,6 @@
 import { and, asc, eq, gt, isNotNull } from "drizzle-orm";
 import {
-  acquireProjectAttachmentOwnership,
+  backfillProjectAttachmentOwnership,
   claimProjectAttachments,
   ensureProjectAttachmentBackfill,
   getProjectAttachment,
@@ -35,10 +35,11 @@ export async function runProjectAttachmentBackfill(
 ): Promise<void> {
   if (runningBackfills.has(deps.db)) return;
   runningBackfills.add(deps.db);
-  const projectId =
-    inventoryWalkers.get(deps.db)?.keys().next().value ??
-    nextProjectAttachmentBackfill(deps.db, now);
+  let projectId: string | null = null;
   try {
+    projectId =
+      inventoryWalkers.get(deps.db)?.keys().next().value ??
+      nextProjectAttachmentBackfill(deps.db, now);
     if (projectId === null) return;
     let state = ensureProjectAttachmentBackfill(deps.db, projectId);
     state = { ...state, attemptedAt: now, error: null };
@@ -92,7 +93,7 @@ export async function runProjectAttachmentBackfill(
                 .where(eq(threads.id, step.threadId))
                 .get()
             )
-              acquireProjectAttachmentOwnership(tx, step.threadId, step.input);
+              backfillProjectAttachmentOwnership(tx, step.threadId, step.input);
             updateAttachmentBackfill(tx, step.next);
           },
           { behavior: "immediate" },
