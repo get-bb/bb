@@ -127,7 +127,7 @@ describe("agent annotations page script", () => {
     pin.click();
     const edit = requireElement(root.querySelector("textarea"));
     expect(edit.value).toBe("Original");
-    expect(root.querySelector(".save")?.textContent).toBe("Save changes");
+    expect(root.querySelector(".save")?.textContent).toBe("Save");
     edit.value = "   ";
     edit.dispatchEvent(new Event("input"));
     expect(root.querySelector<HTMLButtonElement>(".save")?.disabled).toBe(true);

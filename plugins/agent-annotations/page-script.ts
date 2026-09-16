@@ -94,15 +94,16 @@ function installAgentAnnotations(
     .label { display: none; pointer-events: none; max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 2px 6px; border-radius: 6px; background: var(--bb-primary); color: var(--bb-primary-foreground); font: 500 11px/16px var(--bb-font-mono, ui-monospace, monospace); }
     .pin { pointer-events: auto; width: 20px; height: 20px; margin: -10px 0 0 -10px; border-radius: 999px; background: var(--bb-primary); color: var(--bb-primary-foreground); font: 600 11px/20px var(--bb-font-sans, system-ui, sans-serif); text-align: center; box-shadow: 0 0 0 2px var(--bb-canvas), 0 1px 4px rgb(0 0 0 / 0.3); cursor: pointer; padding: 0; border: 0; }
     .pin:focus-visible { outline: 2px solid var(--bb-ring); outline-offset: 2px; }
-    .editor { pointer-events: auto; width: 320px; padding: 10px; border: 1px solid var(--bb-border); border-radius: calc(var(--bb-radius, 0.5rem) + 4px); background: var(--bb-popover); color: var(--bb-popover-foreground); box-shadow: 0 12px 32px rgb(0 0 0 / 0.22); font: 400 13px/20px var(--bb-font-sans, system-ui, sans-serif); }
+    .editor { pointer-events: auto; width: 320px; max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); overflow-y: auto; padding: 12px; border: 1px solid var(--bb-border); border-radius: calc(var(--bb-radius, 0.5rem) + 4px); background: var(--bb-popover); color: var(--bb-popover-foreground); box-shadow: 0 12px 32px rgb(0 0 0 / 0.22); font: 400 13px/20px var(--bb-font-sans, system-ui, sans-serif); }
     .editor-title { margin-bottom: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--bb-muted-foreground); font: 500 11px/16px var(--bb-font-mono, ui-monospace, monospace); }
     textarea { box-sizing: border-box; display: block; width: 100%; min-height: 72px; resize: vertical; margin: 0; padding: 6px 8px; border: 1px solid var(--bb-border); border-radius: calc(var(--bb-radius, 0.5rem) - 2px); background: transparent; color: inherit; font: inherit; outline: none; }
     textarea:focus { border-color: var(--bb-ring); }
     .actions { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
-    .hint { margin-right: auto; color: var(--bb-muted-foreground); font-size: 11px; }
-    button { height: 28px; padding: 0 10px; border: 1px solid transparent; border-radius: calc(var(--bb-radius, 0.5rem) - 2px); font: 500 12px/16px var(--bb-font-sans, system-ui, sans-serif); cursor: pointer; }
-    .cancel { background: transparent; color: inherit; }
-    .cancel:hover { background: var(--bb-state-hover); }
+    .hint { display: block; margin-top: 8px; text-align: right; white-space: nowrap; color: var(--bb-muted-foreground); font-size: 11px; }
+    button { flex-shrink: 0; white-space: nowrap; height: 32px; padding: 0 10px; border: 1px solid transparent; border-radius: calc(var(--bb-radius, 0.5rem) - 2px); font: 500 12px/16px var(--bb-font-sans, system-ui, sans-serif); cursor: pointer; }
+    .cancel { margin-left: auto; background: transparent; color: inherit; }
+    .delete { background: transparent; color: var(--bb-muted-foreground); }
+    .delete:hover, .cancel:hover { background: var(--bb-state-hover); }
     .save { background: var(--bb-primary); color: var(--bb-primary-foreground); }
     .save:disabled { opacity: 0.5; cursor: default; }
   `;
@@ -421,22 +422,26 @@ function installAgentAnnotations(
     const cancel = part("button", "cancel");
     cancel.textContent = "Cancel";
     const save = part("button", "save");
-    save.textContent = annotation === null ? "Add to prompt" : "Save changes";
+    save.textContent = annotation === null ? "Add to prompt" : "Save";
     save.toggleAttribute("disabled", textarea.value.trim().length === 0);
     if (annotation !== null) {
-      const deleteButton = part("button", "cancel");
+      const deleteButton = part("button", "delete");
       deleteButton.textContent = "Delete";
       deleteButton.addEventListener("click", () => remove(annotation));
       actions.append(deleteButton);
     }
-    actions.append(hint, cancel, save);
-    panel.append(title, textarea, actions);
+    actions.append(cancel, save);
+    panel.append(title, textarea, actions, hint);
     root.append(panel);
     editor = panel;
-    const width = 320;
+    const panelRect = panel.getBoundingClientRect();
     const below = rect.bottom + 8;
-    panel.style.left = `${Math.max(8, Math.min(rect.left, innerWidth - width - 8))}px`;
-    panel.style.top = `${below + 160 < innerHeight ? below : Math.max(8, rect.top - 168)}px`;
+    const preferredTop =
+      below + panelRect.height <= innerHeight - 8
+        ? below
+        : rect.top - panelRect.height - 8;
+    panel.style.left = `${Math.max(8, Math.min(rect.left, innerWidth - panelRect.width - 8))}px`;
+    panel.style.top = `${Math.max(8, Math.min(preferredTop, innerHeight - panelRect.height - 8))}px`;
     textarea.addEventListener("input", () => {
       save.toggleAttribute("disabled", textarea.value.trim().length === 0);
     });
