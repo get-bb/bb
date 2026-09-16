@@ -7,6 +7,7 @@ import {
   type PromptInput,
   type Thread,
   type ThreadQueuedMessage,
+  type ThreadTurnInitiator,
 } from "@bb/domain";
 import type {
   ExecutionInputFieldSource,
@@ -94,6 +95,8 @@ export interface MessageDispatchHookPassRequest {
   requestedExecution: PluginDispatchExecution;
   executionSources: PluginDispatchExecutionSources;
   attempt: DispatchAttemptKind;
+  initiator: ThreadTurnInitiator;
+  senderThreadId: string | null;
   origin: ThreadCreateOrigin | null;
   originPluginId: string | null;
   startedOnBehalfOf: StartedOnBehalfOf | null;
@@ -296,6 +299,8 @@ function buildHookContext(
   return {
     thread: request.threadResponse,
     attempt: request.attempt,
+    initiator: request.initiator,
+    senderThreadId: request.senderThreadId,
     project: request.project,
     environment,
     host:

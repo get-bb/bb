@@ -301,8 +301,9 @@ identically for all of them. The handler receives a typed context (project,
 environment/host, `environmentIntent` as a
 `PluginDispatchEnvironmentIntent | null`, prompt blocks plus a plain-text view,
 the resolved execution tuple with per-field provenance, origin/parent
-provenance, the target thread, whether the attempt would `start-turn` or
-`join-turn`, and the queued row when the attempt is a re-attempt) and answers
+provenance, the message's author as `initiator` plus `senderThreadId`, the
+target thread, whether the attempt would `start-turn` or `join-turn`, and the
+queued row when the attempt is a re-attempt) and answers
 `proceed`, `wait` (queue the message as a row with a reason and an optional
 `sendAt`), or `reject` (a synchronous 409 carrying the plugin's message). A
 handler cannot rewrite the dispatch it is deciding about: there is no amendment

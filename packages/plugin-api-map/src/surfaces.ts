@@ -760,6 +760,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Let a dispatch proceed, queue it with a user-visible reason, or refuse it outright",
           "See the thread, project, machine, prompt and resolved execution tuple before the turn runs",
+          "Tell a message a user typed from one thread sending another, by initiator and senderThreadId, identically on a first attempt and every re-attempt",
           "Read plugin-owned JSON attached by experimental_submit, including on queued re-attempts",
           "Hold work until a moment it names, then ask core to re-decide every queued message when its condition changes",
         ],

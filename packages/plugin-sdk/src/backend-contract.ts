@@ -16,6 +16,7 @@ import type {
   ReasoningLevel,
   ServiceTier,
   ThreadQueuedMessage,
+  ThreadTurnInitiator,
   WorkspaceProvisionType,
 } from "@bb/domain";
 import type { ProviderFork } from "@bb/domain/provider-fork";
@@ -633,6 +634,20 @@ export interface MessageDispatchHookContext {
   /** Whether this attempt starts a turn or joins a running one. */
   attempt: PluginDispatchAttemptKind;
   /**
+   * Who authored the message being decided about: `user` typed it, `agent`
+   * means another thread sent it, `system` means core did (a retry of a failed
+   * turn). The same pair the dispatched turn will be recorded with, and the
+   * same pair `queuedMessage` carries — so a policy that tells a human's
+   * message from cross-thread traffic reads the same answer on a first attempt
+   * and on every re-attempt of it.
+   */
+  initiator: ThreadTurnInitiator;
+  /**
+   * The thread that sent this message, when one did. Null for a message a user
+   * typed and for a core-driven retry.
+   */
+  senderThreadId: string | null;
+  /**
    * The queued row this attempt is re-trying, or null when the attempt is
    * inline and no row has ever existed for it.
    *
@@ -656,6 +671,13 @@ export interface MessageDispatchHookContext {
   /** How the dispatch was requested; null for internal/core-driven sends. */
   origin: ThreadCreateOrigin | null;
   originPluginId: string | null;
+  /**
+   * Why the THREAD was started, when another thread asked for it — not who
+   * sent this message. Non-null only for a thread whose creation named a
+   * sender, and null on every follow-up, steer, drain and retry, because none
+   * of those starts a thread. Read `initiator`/`senderThreadId` for the
+   * message at hand.
+   */
   startedOnBehalfOf: StartedOnBehalfOf | null;
   parentThreadId: string | null;
 }

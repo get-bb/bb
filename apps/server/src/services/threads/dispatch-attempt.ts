@@ -85,6 +85,7 @@ import {
   sendThreadMessage,
   type SendThreadMessageTransactionPreflight,
 } from "./thread-send.js";
+import { resolveDispatchAuthor } from "./thread-runtime-config.js";
 import type { TurnRequestRetryMarker } from "./thread-events.js";
 import { restoreInterruptedThreadStartupRequest } from "./thread-provisioning.js";
 
@@ -332,6 +333,11 @@ async function runDispatchAttempt(
           startedOnBehalfOf: args.startedOnBehalfOf,
           titleProvided: interruptedStartupRequest.titleProvided,
         };
+  const author = resolveDispatchAuthor({
+    retrying: args.retryOf !== undefined,
+    senderThreadId,
+    startedOnBehalfOf: args.startedOnBehalfOf,
+  });
   const claimed = args.source.kind === "drain" ? args.source.claimed : null;
   const sendNow = args.source.kind === "drain" && args.source.sendNow;
   const respectManualStopPause =
@@ -521,6 +527,8 @@ async function runDispatchAttempt(
         payload.executionInputSources ?? {},
       ),
       attempt,
+      initiator: author.initiator,
+      senderThreadId: author.senderThreadId,
       origin: args.origin,
       originPluginId: args.originPluginId,
       startedOnBehalfOf: args.startedOnBehalfOf,

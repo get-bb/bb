@@ -129,6 +129,7 @@ bb.experimental_hooks.on("message.dispatch", (ctx) => {
   // ctx.input.blocks + ctx.input.text,
   // ctx.requestedExecution, ctx.executionSources, ctx.origin /
   // ctx.originPluginId / ctx.startedOnBehalfOf / ctx.parentThreadId,
+  // ctx.initiator ("user" | "agent" | "system") + ctx.senderThreadId,
   // ctx.queuedMessage (the queued row on a re-attempt, else null),
   // ctx.experimental_submission (plugin-owned composer data, else null).
   if (isBlocked(ctx.input.text)) return { action: "reject", message: "…" };
@@ -136,6 +137,14 @@ bb.experimental_hooks.on("message.dispatch", (ctx) => {
   return { action: "proceed" };
 });
 ```
+
+`ctx.initiator` and `ctx.senderThreadId` are who authored the message: `user`
+typed it, `agent` means another thread sent it (and names which), `system`
+means core did (a retry). They are the pair the dispatched turn is recorded
+with and the pair `ctx.queuedMessage` carries, so they do not change between a
+first attempt and its re-attempts — which is what makes them safe to key a
+policy on. `ctx.startedOnBehalfOf` answers a different question, why the
+THREAD was started, and is null on every follow-up, steer, drain and retry.
 
 The context is `MessageDispatchHookContext` (`ctx.attempt` is
 `PluginDispatchAttemptKind`, `ctx.input` is `PluginDispatchInput`,

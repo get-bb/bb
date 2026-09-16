@@ -46,7 +46,10 @@ import {
   dispatchTurnDuringReprovision,
   requireReadyThreadEnvironment,
 } from "./thread-turn-dispatch.js";
-import { resolvePermissionEscalation } from "./thread-runtime-config.js";
+import {
+  resolveDispatchAuthor,
+  resolvePermissionEscalation,
+} from "./thread-runtime-config.js";
 import {
   buildThreadStatusChangeMetadata,
   resolveThreadRuntimeState,
@@ -542,8 +545,11 @@ async function sendThreadMessageWithoutContextClear(
   // `system` whatever the original was: nobody asked for it a second time, and
   // counting it as a user message would inflate every "messages sent" figure by
   // however many times the provider happened to be rate limited.
-  const initiator: ThreadTurnInitiator =
-    args.retryOf !== undefined ? "system" : senderThreadId ? "agent" : "user";
+  const { initiator } = resolveDispatchAuthor({
+    retrying: args.retryOf !== undefined,
+    senderThreadId,
+    startedOnBehalfOf: null,
+  });
   const shouldCaptureUserMessageSent =
     args.trigger === "user" && initiator === "user" && input.length > 0;
   const expectedSteerTurnId =

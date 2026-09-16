@@ -15,6 +15,7 @@ import type {
   HostDaemonContributedEnvEntry,
   HostDaemonInjectedSkillSource,
 } from "@bb/host-daemon-contract";
+import type { StartedOnBehalfOf } from "@bb/server-contract";
 import { ApiError } from "../../errors.js";
 import type { LoggedWorkSessionDeps } from "../../types.js";
 import { throwEnvironmentNotReady } from "../lib/lifecycle-api-errors.js";
@@ -61,6 +62,17 @@ interface ResolvePermissionEscalationArgs {
   initiator: ThreadTurnInitiator;
 }
 
+export interface ResolveDispatchAuthorArgs {
+  retrying: boolean;
+  senderThreadId: string | null;
+  startedOnBehalfOf: StartedOnBehalfOf | null;
+}
+
+export interface DispatchAuthor {
+  initiator: ThreadTurnInitiator;
+  senderThreadId: string | null;
+}
+
 export interface ResolvedThreadRuntimeCommandConfig {
   contributedEnv: HostDaemonContributedEnvEntry[];
   dynamicTools: DynamicTool[];
@@ -104,6 +116,24 @@ function resolveDynamicTools(
       pluginId: contribution.pluginId,
     })),
   ];
+}
+
+export function resolveDispatchAuthor(
+  args: ResolveDispatchAuthorArgs,
+): DispatchAuthor {
+  if (args.retrying) {
+    return { initiator: "system", senderThreadId: null };
+  }
+  if (args.senderThreadId !== null) {
+    return { initiator: "agent", senderThreadId: args.senderThreadId };
+  }
+  if (args.startedOnBehalfOf !== null) {
+    return {
+      initiator: args.startedOnBehalfOf.initiator,
+      senderThreadId: args.startedOnBehalfOf.senderThreadId,
+    };
+  }
+  return { initiator: "user", senderThreadId: null };
 }
 
 export function resolvePermissionEscalation(

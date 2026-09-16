@@ -217,6 +217,8 @@ export function makeMessageDispatchHookContext(
       permissionMode: null,
     },
     attempt: "start-turn",
+    initiator: "user",
+    senderThreadId: null,
     queuedMessage: null,
     experimental_submission: null,
     origin: null,

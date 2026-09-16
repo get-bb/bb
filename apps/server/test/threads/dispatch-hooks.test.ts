@@ -24,6 +24,7 @@ import { attemptDispatch } from "../../src/services/threads/dispatch-attempt.js"
 import { runQueuedMessageDispatch } from "../../src/services/threads/queued-message-dispatch.js";
 import { createThreadFromRequest } from "../../src/services/threads/thread-create.js";
 import { applyLoggedThreadLifecycleEvent } from "../../src/services/threads/lifecycle-outcome.js";
+import { createClientTurnRequestId } from "../../src/services/threads/thread-events.js";
 import { toThreadQueuedMessage } from "../../src/services/threads/thread-queued-messages.js";
 import { textInput } from "../helpers/prompt-input.js";
 import {
@@ -658,6 +659,135 @@ describe("dispatch hooks and the no-hook path", () => {
       expect(error.status).toBe(409);
       expect(error.body.code).toBe("dispatch_rejected");
       expect(attempts).toEqual(["join-turn"]);
+    });
+  });
+});
+
+describe("message.dispatch hook message author", () => {
+  function recordAuthors() {
+    const seen: { initiator: string; senderThreadId: string | null }[] = [];
+    const registry = emptyRegistry();
+    registry["message.dispatch"].push({
+      pluginId: "limiter",
+      handler: (context) => {
+        seen.push({
+          initiator: context.initiator,
+          senderThreadId: context.senderThreadId,
+        });
+        return { action: "wait", reason: "held" } as const;
+      },
+    });
+    installHooks(registry);
+    return seen;
+  }
+
+  it("reads a message a user typed as user with no sender", async () => {
+    await withTestHarness(async (harness) => {
+      const seen = recordAuthors();
+      const { thread } = seedRunnableThread(harness, {
+        hostId: "host-author-user",
+        status: "idle",
+      });
+
+      await acceptThreadSendRequest(harness.deps, {
+        payload: { input: textInput("typed by hand"), mode: "auto" },
+        thread,
+      });
+
+      expect(seen).toEqual([{ initiator: "user", senderThreadId: null }]);
+    });
+  });
+
+  it("names the sending thread for a message another thread sent", async () => {
+    await withTestHarness(async (harness) => {
+      const seen = recordAuthors();
+      const { environment, project, thread } = seedRunnableThread(harness, {
+        hostId: "host-author-agent",
+        status: "idle",
+      });
+      const sender = seedThread(harness.deps, {
+        environmentId: environment.id,
+        projectId: project.id,
+        status: "active",
+      });
+
+      await acceptThreadSendRequest(harness.deps, {
+        payload: {
+          input: textInput("sent by an agent"),
+          mode: "auto",
+          senderThreadId: sender.id,
+        },
+        thread,
+      });
+
+      expect(seen).toEqual([
+        { initiator: "agent", senderThreadId: sender.id },
+      ]);
+    });
+  });
+
+  it("reads a retry of a failed turn as system", async () => {
+    await withTestHarness(async (harness) => {
+      const seen = recordAuthors();
+      const { thread } = seedRunnableThread(harness, {
+        hostId: "host-author-retry",
+        status: "idle",
+      });
+      const originalRequestId = createClientTurnRequestId();
+
+      await attemptDispatch(harness.deps, {
+        thread,
+        payload: { input: textInput("retried work"), mode: "auto" },
+        source: { kind: "inline" },
+        queuePayload: {
+          kind: "retry",
+          retryOfTurnRequestId: originalRequestId,
+          attempt: 2,
+          reason: "Rate limited",
+        },
+        pluginSubmission: null,
+        retryOf: { requestId: originalRequestId, attempt: 2 },
+        origin: null,
+        originPluginId: null,
+        startedOnBehalfOf: null,
+        trigger: "user",
+      });
+
+      expect(seen).toEqual([{ initiator: "system", senderThreadId: null }]);
+    });
+  });
+
+  it("reports the same author on a drained re-attempt as on the first", async () => {
+    await withTestHarness(async (harness) => {
+      const seen = recordAuthors();
+      const { environment, project, thread } = seedRunnableThread(harness, {
+        hostId: "host-author-drain",
+        status: "idle",
+      });
+      const sender = seedThread(harness.deps, {
+        environmentId: environment.id,
+        projectId: project.id,
+        status: "active",
+      });
+
+      await acceptThreadSendRequest(harness.deps, {
+        payload: {
+          input: textInput("sent by an agent"),
+          mode: "auto",
+          senderThreadId: sender.id,
+        },
+        thread,
+      });
+      onlyQueuedRow(harness, thread.id);
+
+      await runQueuedMessageDispatch(harness.deps, { kind: "plugin-recheck" });
+
+      // The re-attempt is the same logical dispatch, so a policy keyed on the
+      // sender must not see it change identity between passes.
+      expect(seen).toEqual([
+        { initiator: "agent", senderThreadId: sender.id },
+        { initiator: "agent", senderThreadId: sender.id },
+      ]);
     });
   });
 });
