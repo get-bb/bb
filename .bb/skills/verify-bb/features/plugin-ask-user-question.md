@@ -23,10 +23,11 @@ SKILL.md. Inspect nested `--help` before selecting flags and IDs.
 | Feature | Drive | Observable success |
 | --- | --- | --- |
 | Fallback tool availability | Ask the agent to request a preference and inspect its actual tool call. | Fallback tool appears only where required; a native provider keeps its native question flow. |
-| Single and multiple selection | Ask for single-choice and multi-select questions, select answers, and submit. | Returned selection matches the card and arrives once in the waiting turn. |
+| Single and multiple selection | Ask for single-choice and multi-select questions, select answers, and submit. | Selection matches the card and reaches the agent once, as a message: it steers a running turn and starts a new one when the turn already ended. |
 | Other and previews | Enter a freeform Other response and inspect an option with a multiline preview. | Typed response and selected preview belong to the correct question; keyboard input remains usable. |
 | Multiple questions and bounds | Request a multi-question card; exercise schema boundaries from src/server.ts and malformed tool input. | Valid grouped answers retain their question IDs; invalid counts/options fail at the boundary. |
-| Dismissal and timeout | Dismiss one question and leave another to its documented timeout; navigate away/back with a third pending. | Resolution allows the agent to continue under the specified empty-answer policy; no duplicate pending card remains. |
+| Dismissal and timeout | Dismiss one question while its turn still runs and another after the turn ended; leave a third to its documented timeout; navigate away/back with a fourth pending. | A running turn is told to carry on; a finished turn is not woken; no duplicate pending card remains. |
+| Answer outlives the turn | Let the agent finish its turn with the card still open, then answer. | Card stays open across turn completion, and answering starts a new turn carrying the answer. |
 
 ## Evidence and cleanup
 

@@ -78,6 +78,7 @@ import type {
   PluginHttpHandler,
   PluginHosts,
   PluginSharedPortTunnelIdentity,
+  PluginInteractionCancelReason,
   PluginInteractionRequest,
   PluginInteractionResult,
   PluginKvStorage,
@@ -361,7 +362,12 @@ export interface FakePluginBehaviorDrivers {
     payload: unknown,
   ): Promise<void>;
   submitInteraction(id: string, value: JsonValue): void;
-  cancelInteraction(id: string): void;
+  /**
+   * Settle a pending interaction the way the host does when it is taken away.
+   * `reason` defaults to "user", the dismissal a person performs; the others
+   * stand for the host settling a card nobody acted on.
+   */
+  cancelInteraction(id: string, reason?: PluginInteractionCancelReason): void;
   /**
    * Apply a settings update the way the host's settings save does:
    * validate against the declared descriptors (`null` unsets), store, and
@@ -1722,12 +1728,12 @@ function createFakePluginHostInternal(
       pendingInteractions.delete(id);
       pending.resolve({ outcome: "submitted", value });
     },
-    cancelInteraction(id) {
+    cancelInteraction(id, reason = "user") {
       const pending = pendingInteractions.get(id);
       if (!pending) throw new Error(`no pending interaction "${id}"`);
       clearTimeout(pending.timer);
       pendingInteractions.delete(id);
-      pending.resolve({ outcome: "cancelled", reason: "user" });
+      pending.resolve({ outcome: "cancelled", reason });
     },
 
     async setSettings(values) {
