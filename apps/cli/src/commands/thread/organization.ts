@@ -21,7 +21,7 @@ import {
   outputJson,
   requireThreadIdOrSelf,
 } from "../helpers.js";
-import { buildPromptInputs, uploadClientImageInputs } from "./helpers.js";
+import { buildPromptInputs, uploadClientAttachmentInputs } from "./helpers.js";
 
 interface JsonOptions {
   json?: boolean;
@@ -367,13 +367,13 @@ export function registerOrganizationCommands(
     .description("Update a queued message in place")
     .option(
       "--file <path>",
-      "Pass a host-readable absolute or uploaded attachment file path (repeatable)",
+      "Upload an absolute path or file: URL from this CLI machine or pass an uploaded attachment path (repeatable)",
       collectOption,
       [],
     )
     .option(
       "--image <path>",
-      "Upload an absolute path from this CLI machine or pass an uploaded attachment path (repeatable)",
+      "Upload an absolute path or file: URL from this CLI machine or pass an uploaded attachment path (repeatable)",
       collectOption,
       [],
     )
@@ -396,7 +396,7 @@ export function registerOrganizationCommands(
               `Queued message ${messageId} not found on thread ${threadId}.`,
             );
           }
-          const input = await uploadClientImageInputs({
+          const input = await uploadClientAttachmentInputs({
             input: buildPromptInputs({
               message,
               files: opts.file,

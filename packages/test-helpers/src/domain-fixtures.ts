@@ -95,6 +95,7 @@ export function makeProviderInfo(
     available: true,
     maintenance: { health: false, usage: false, installation: false },
     composerActions: [],
+    completedTurnDisplay: "collapse",
     capabilities: {
       supportsThreadArchive: true,
       supportsThreadRename: true,

@@ -668,6 +668,7 @@ async function suspendMachine(
   deps: Deps,
   hostId: string,
   coordinateMaintenance = false,
+  reconcile = false,
 ): Promise<void> {
   const daemonShutdownTimeoutMs = 30_000;
   const removing = perDbRegistry(removeOperations, deps.db).get(hostId);
@@ -691,10 +692,12 @@ async function suspendMachine(
     return;
   }
   const row = getHost(deps.db, hostId);
+  if (reconcile && row?.phase !== "suspended") return;
   if (
     row === null ||
     row.machineProviderId === null ||
     (row.phase !== "active" &&
+      !(reconcile && row.phase === "suspended") &&
       row.phase !== "suspending" &&
       !(row.phase === "removing" && row.suspendedAt === null))
   ) {
@@ -871,6 +874,34 @@ export function startMachineSuspension(deps: Deps, hostId: string): void {
     deps.logger.warn(
       { hostId, error: errorMessage(error) },
       "Requested machine suspension will retry in the lifecycle sweep",
+    );
+  });
+}
+
+export async function reconcileMachine(
+  deps: Deps,
+  hostId: string,
+): Promise<void> {
+  const row = requireSuspendableMachine(deps, hostId);
+  if (row.phase !== "suspended") return;
+  if (
+    perDbRegistry(resumeOperations, deps.db).has(hostId) ||
+    perDbRegistry(removeOperations, deps.db).has(hostId) ||
+    perDbRegistry(suspendOperations, deps.db).has(hostId)
+  )
+    return;
+  assertMachineProvisioningComplete(deps, hostId);
+  await suspendMachine(deps, hostId, true, true);
+}
+
+export function startMachineReconciliation(deps: Deps, hostId: string): void {
+  const row = requireSuspendableMachine(deps, hostId);
+  if (row.phase !== "suspended") return;
+  assertMachineProvisioningComplete(deps, hostId);
+  void reconcileMachine(deps, hostId).catch((error: unknown) => {
+    deps.logger.warn(
+      { hostId, error: errorMessage(error) },
+      "Requested machine reconciliation failed",
     );
   });
 }

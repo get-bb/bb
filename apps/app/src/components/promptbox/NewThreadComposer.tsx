@@ -1,3 +1,4 @@
+import { useInitialPromptDraft } from "./mentions/initial-prompt-draft";
 import { ProviderRequirementBanner } from "./banner/ProviderRequirementBanner";
 import { Button } from "@bb/shared-ui/button";
 import {
@@ -875,7 +876,7 @@ export function NewThreadComposer({
           (provider) =>
             provider.id === selectedEnvironmentProvider?.id &&
             provider.availability?.status !== "unavailable",
-          ) ?? false
+        ) ?? false
     );
   const handleSelectProvider = useCallback(
     (provider: SystemEnvironmentProvider, hostId: string | null) => {
@@ -1162,18 +1163,15 @@ export function NewThreadComposer({
     ],
   );
 
+  const initialPromptDraft = useInitialPromptDraft(seed?.initialPrompt ?? null);
   const seedInitialPrompt = promptDraft.restoreIfEmpty;
   const focusPromptBox = useCallback(() => {
     setLocalPromptBoxFocusRequest((current) => (current ?? 0) + 1);
   }, []);
   useEffect(() => {
-    if (!seed?.initialPrompt) return;
-    seedInitialPrompt({
-      text: seed.initialPrompt,
-      mentions: [],
-      attachments: [],
-    });
-  }, [seed?.initialPrompt, seedInitialPrompt]);
+    if (!initialPromptDraft?.text) return;
+    seedInitialPrompt(initialPromptDraft);
+  }, [initialPromptDraft, seedInitialPrompt]);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isCopyingAttachments, setIsCopyingAttachments] = useState(false);

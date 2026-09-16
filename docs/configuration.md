@@ -1,5 +1,9 @@
 # Configuration
 
+Launcher status output is plain when stdout is redirected, including in CI.
+Set `FORCE_COLOR=1` to request color or `NO_COLOR=1` to disable it; `NO_COLOR`
+takes precedence. In-place progress updates require a stdout TTY.
+
 The packaged `npx bb-app` flow stores persistent package settings under
 `~/.bb/config.json`, provider environment values under `~/.bb/env.json`, and
 client SSH target mappings under `~/.bb/client.json`.
@@ -263,6 +267,21 @@ provider new threads use when neither the caller nor the project chose one
 (`null` means the first available provider in picker order). Set them with
 `bb settings general providerOrder '["claude-code","codex"]'` and
 `bb settings general defaultProviderId claude-code` (or `null`).
+
+The "Collapse finished turns" switches in Settings → Providers choose, per
+provider, how a finished turn appears in the thread timeline. Collapsed, the
+turn's work folds into one "Worked for" row and the final answer stays
+visible. Flat, every step of the finished turn stays visible, as it was while
+the turn ran. Each provider declares its default (`completedTurnDisplay` on
+its registration): Claude Code defaults to flat, and every other first-party
+provider defaults to collapsed. Your choice is stored in
+`providerCompletedTurnDisplay`, a map of provider id to `collapse` or `flat`;
+a provider without an entry uses its default. The display applies to existing
+threads as well as new ones, and to the conversation outline and
+`bb thread log`. Set it with
+`bb settings completed-turns <provider-id> <collapse|flat|default>`, where
+`default` removes your entry, and list every provider's current display with
+`bb settings completed-turns`.
 
 Each provider's own options live on its plugin: Codex memory and native
 subagents under the Codex provider plugin, and Claude Code memory, native
@@ -672,6 +691,9 @@ client wrote first, so a stale window cannot silently clobber a newer value.
 | `sidebar.navigationProvider`      | Plugin key, `__automatic__`, or `__builtin__`       |
 | `sidebar.threadListProvider`      | Plugin key, `__automatic__`, or `__builtin__`       |
 
+Custom (`chronological`) is the default for `sidebar.organizationMode` when no
+value is saved. Existing server and legacy browser choices are preserved.
+
 Read and write them with:
 
 ```sh
@@ -855,6 +877,36 @@ bb pool config set codexUpstreamBaseUrl http://127.0.0.1:9001
 Upgrading from an Account Pooler build that stored these values through
 `bb.settings` resets the threshold and both QA-only upstream overrides to
 their defaults. Those old values are not migrated.
+
+Two more plugin-owned values control cache miss debugging. `cacheMissDebug`
+defaults to `false`. When it is `true`, the hub pairs each successful pooled
+Claude `/v1/messages` or Codex `/v1/responses` request that carries a provider
+session id with the earlier request from that session. It records a report
+when the missed cached tokens reach `cacheMissMinTokens`, a positive integer
+that defaults to `10000`. Missed tokens are the tokens the earlier request left
+cached minus the tokens this request read from cache. Claude requests with no
+`cache_control` breakpoint are not tracked. Idle gaps run between the times the
+hub sent the two requests upstream, so rate-limit waits and failed failover
+attempts do not count, and are measured against a 5 minute Claude cache
+lifetime (1 hour with a 1h breakpoint) or a 30 minute Codex lifetime. The hub
+parses a request after the first response chunk is forwarded and analyzes it
+after the client receives the end of the response, so debugging adds no
+parsing before forwarding. Each report names the likely causes and the first
+divergent prompt segment, with short excerpts. Reports stay in server memory
+only. Turning debugging off discards prompt snapshots, and log lines carry ids,
+token counts, and cause kinds but no prompt text. A nested server in `proxy`
+mode does not analyze forwarded traffic, so enable it on the parent. The
+`cacheMiss.list` and `cacheMiss.clear` plugin RPCs expose the same reports.
+With `--json`, `bb pool cache-miss list` prints `cacheMissDebug` and
+`forwardsToParent` next to `reports`, so a script can tell an empty list from
+disabled reporting or a server that leaves analysis to its parent:
+
+```sh
+bb pool config set cacheMissDebug true
+bb pool config set cacheMissMinTokens 10000
+bb pool cache-miss list [--json]
+bb pool cache-miss clear
+```
 
 ## bb connect
 

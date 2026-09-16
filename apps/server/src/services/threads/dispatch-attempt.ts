@@ -577,27 +577,44 @@ async function runDispatchAttempt(
   }
 
   const environment = await requireThreadCommandEnvironment(deps, { thread });
-  await sendThreadMessage(deps, {
-    environment,
-    payload: resolvedPayload,
-    thread,
-    trigger: args.trigger,
-    ...(args.retryOf !== undefined ? { retryOf: args.retryOf } : {}),
-    ...(claimed === null
-      ? {}
-      : {
-          beforeAppendInTransaction: consumeClaimedRows(
+  try {
+    await sendThreadMessage(deps, {
+      environment,
+      payload: resolvedPayload,
+      thread,
+      trigger: args.trigger,
+      ...(args.retryOf !== undefined ? { retryOf: args.retryOf } : {}),
+      beforeAppendInTransaction: ({ tx }) => {
+        if (getThread(tx, thread.id)?.status !== thread.status) {
+          throw new DispatchThreadStatusChangedError();
+        }
+        if (claimed !== null) {
+          consumeClaimedRows(
             claimed,
             thread.id,
             respectManualStopPause,
-          ),
-        }),
-  });
+          )({ tx });
+        }
+      },
+    });
+  } catch (error) {
+    if (!(error instanceof DispatchThreadStatusChangedError)) {
+      throw error;
+    }
+    return reattemptDispatchForThreadChange(
+      deps,
+      args,
+      getThread(deps.db, thread.id),
+      reattempted,
+    );
+  }
   if (claimed !== null) {
     settleQueueRowDispatched({ row: claimed[0]! });
   }
   return { kind: "dispatched" };
 }
+
+class DispatchThreadStatusChangedError extends Error {}
 
 function reattemptDispatchForThreadChange(
   deps: LoggedPendingInteractionWorkSessionDeps,

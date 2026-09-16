@@ -121,6 +121,7 @@ branches bb creates after the change.
   bb settings show
   bb settings ai-services
   bb settings general <key> <value>
+  bb settings completed-turns [provider-id] [collapse|flat|default]
   bb settings experiment <key> <value>
   bb settings usage [--machine <id-or-name>]
   bb settings version [--force]
@@ -134,6 +135,14 @@ settings (`BB_INFERENCE`, `BB_INFERENCE_FALLBACK`, `BB_TRANSCRIPTION`, set with
 `bb settings general` accepts any key from `generalSettings` in
 `bb settings show`. Boolean preferences take `true`, `false`, `on`, or `off`,
 and `null` clears a preference that can be unset.
+
+`bb settings completed-turns` lists how each provider shows a finished turn:
+`collapse` folds the turn's work into one "Worked for" row and keeps the final
+answer visible, and `flat` keeps every step visible. Each provider has a
+default (Claude Code is `flat`, the other first-party providers `collapse`).
+`bb settings completed-turns <provider-id> <collapse|flat>` overrides it for
+that provider, and `default` removes the override. Settings → Providers has
+the same per-provider switch.
 
 The default-off `changelogPreview` experiment shows the latest release notes
 as a compact, dismissible card on Settings → Updates.
@@ -263,6 +272,9 @@ description. `set` takes plain strings for enum and provider keys and JSON for
 lists and `null`; it reads the current revision, writes with it, and retries
 once on a conflict. `reset` writes the default. The SDK offers
 `sdk.system.uiPreferences.list()`, `.set()`, and `.reset()`.
+
+Custom (`chronological`) is the default for `sidebar.organizationMode` when no
+value is saved. Existing server and legacy browser choices are preserved.
 
 Every thread-list header's actions menu offers New project, New section,
 Organize, and Sort by. Organize selects By project, By machine, or Custom;

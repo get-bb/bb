@@ -141,3 +141,8 @@ reported; this is not billing/invoice data. Suspension requires idle live thread
 and no open terminals; empty machines can use an opted-in provider idle policy.
 
 `bb thread context` reads recorded context usage without sending a model request. A breakdown is optional; absent usage is returned as `null`.
+
+`bb machine reconcile <id-or-name> [--json]` asks core to enforce its recorded
+suspended state through the provider and waits for completion. It leaves active
+machines and in-progress lifecycle operations alone. Use `machine suspend` to
+request a new pause. Core does not schedule reconciliation polling.

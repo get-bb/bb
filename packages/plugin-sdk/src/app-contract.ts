@@ -2351,7 +2351,13 @@ export interface NewThreadComposerProps {
    *   the original `default` submission would have created from.
    */
   defaultEnvironment?: CreateThreadEnvironmentArgs;
-  /** Seeds the draft, only while the draft is still empty. */
+  /**
+   * Seeds the draft, only while the draft is still empty. Serialized
+   * `@thread:<id>`, `@project:<id>`, and `@section:<id>` tokens become mention
+   * pills with host-resolved titles/names. Missing projects/sections use their
+   * IDs; unavailable generated thread IDs use "Unavailable thread" ("Thread"
+   * if lookup fails). Other unknown thread IDs use the ID as their label.
+   */
   initialPrompt?: string;
   placeholder?: string;
   /**
@@ -2487,7 +2493,8 @@ export interface BbNavigate {
   ): void;
   /**
    * Navigate to the root compose surface (the new-thread screen). Pass
-   * `initialPrompt` to seed the composer draft and `focusPrompt` to focus the
+   * `initialPrompt` to seed the composer draft (serialized thread, project,
+   * and section mention tokens become pills) and `focusPrompt` to focus the
    * composer on arrival — the pairing behind "Create via chat" style entry
    * points that drop the user into chat with a prefilled prompt.
    */

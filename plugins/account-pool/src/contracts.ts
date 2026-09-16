@@ -5,6 +5,8 @@ export const DEFAULT_ACCOUNT_POOL_CONFIG = {
   codexUpstreamBaseUrl: "https://chatgpt.com/backend-api/codex",
   switchThreshold: 0.98,
   parentMode: "proxy" as const,
+  cacheMissDebug: false,
+  cacheMissMinTokens: 10_000,
 };
 
 const httpUrlSchema = z.string().refine((value) => {
@@ -20,6 +22,11 @@ const switchThresholdSchema = z
   .number()
   .positive("Must be greater than 0.")
   .max(1, "Must be at most 1.");
+
+const cacheMissMinTokensSchema = z
+  .number()
+  .int("Must be a whole number.")
+  .positive("Must be greater than 0.");
 
 export const parentModeSchema = z.enum(["proxy", "isolate"]);
 export type ParentMode = z.infer<typeof parentModeSchema>;
@@ -38,6 +45,12 @@ export const accountPoolConfigSchema = z
     parentMode: parentModeSchema.default(
       DEFAULT_ACCOUNT_POOL_CONFIG.parentMode,
     ),
+    cacheMissDebug: z
+      .boolean()
+      .default(DEFAULT_ACCOUNT_POOL_CONFIG.cacheMissDebug),
+    cacheMissMinTokens: cacheMissMinTokensSchema.default(
+      DEFAULT_ACCOUNT_POOL_CONFIG.cacheMissMinTokens,
+    ),
   })
   .strict();
 
@@ -49,6 +62,8 @@ export const accountPoolConfigSetInputSchema = z
     codexUpstreamBaseUrl: httpUrlSchema.optional(),
     switchThreshold: switchThresholdSchema.optional(),
     parentMode: parentModeSchema.optional(),
+    cacheMissDebug: z.boolean().optional(),
+    cacheMissMinTokens: cacheMissMinTokensSchema.optional(),
   })
   .strict();
 
@@ -344,3 +359,87 @@ export const tokenRotateInputSchema = z
 export const bypassInputSchema = z
   .object({ threadId: z.string().min(1), bypassed: z.boolean() })
   .strict();
+
+export const cacheMissCauseKindSchema = z.enum([
+  "account-switch",
+  "model-change",
+  "idle-gap",
+  "concurrent-request",
+  "parameter-change",
+  "compaction",
+  "prompt-change",
+  "lookback-window",
+  "unexplained",
+]);
+
+export const cacheMissCauseSchema = z
+  .object({ kind: cacheMissCauseKindSchema, message: z.string().min(1) })
+  .strict();
+
+export type CacheMissCause = z.infer<typeof cacheMissCauseSchema>;
+
+export const cacheMissDivergenceSchema = z
+  .object({
+    level: z.enum(["tools", "system", "messages", "instructions", "input"]),
+    path: z.string().min(1),
+    label: z.string().nullable(),
+    change: z.enum(["modified", "inserted", "removed"]),
+    offset: z.number().int().nonnegative().nullable(),
+    before: z.string().nullable(),
+    after: z.string().nullable(),
+    keyOrderOnly: z.boolean(),
+    sharedSegments: z.number().int().nonnegative(),
+    previousSegments: z.number().int().nonnegative(),
+    currentSegments: z.number().int().nonnegative(),
+  })
+  .strict();
+
+export type CacheMissDivergence = z.infer<typeof cacheMissDivergenceSchema>;
+
+export const cacheMissUsageSchema = z
+  .object({
+    promptTokens: z.number().int().nonnegative(),
+    cacheReadTokens: z.number().int().nonnegative(),
+    cacheWriteTokens: z.number().int().nonnegative().nullable(),
+  })
+  .strict();
+
+export type CacheMissUsage = z.infer<typeof cacheMissUsageSchema>;
+
+export const cacheMissReportSchema = z
+  .object({
+    id: z.string().uuid(),
+    observedAt: z.number().int().nonnegative(),
+    provider: providerSchema,
+    model: z.string().nullable(),
+    sessionId: z.string().min(1),
+    hostId: z.string().min(1),
+    hostName: z.string().min(1).nullable(),
+    accountId: z.string().uuid(),
+    accountLabel: z.string().min(1),
+    previous: z
+      .object({
+        observedAt: z.number().int().nonnegative(),
+        accountId: z.string().uuid(),
+        accountLabel: z.string().min(1),
+        model: z.string().nullable(),
+        usage: cacheMissUsageSchema,
+      })
+      .strict(),
+    usage: cacheMissUsageSchema,
+    expectedCachedTokens: z.number().int().nonnegative(),
+    missedTokens: z.number().int().positive(),
+    causes: z.array(cacheMissCauseSchema).min(1),
+    divergence: cacheMissDivergenceSchema.nullable(),
+  })
+  .strict();
+
+export type CacheMissReport = z.infer<typeof cacheMissReportSchema>;
+
+export const cacheMissReportListSchema = z.array(cacheMissReportSchema);
+
+export interface CacheMissController {
+  list: () => Promise<CacheMissReport[]>;
+  clear: () => Promise<number>;
+  forwardsToParent: () => boolean;
+}

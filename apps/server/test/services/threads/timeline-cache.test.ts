@@ -24,6 +24,7 @@ function makeResponse(rowCount: number): ThreadTimelineResponse {
       status: null,
     })),
     contextBoundarySeq: null,
+    completedTurnDisplay: "collapse",
     activePromptMode: null,
     activeThinking: null,
     activeWorkflows: [],
@@ -56,6 +57,7 @@ const baseKeyArgs: ThreadTimelineCacheKeyArgs = {
   includeNestedRows: false,
   summaryOnly: false,
   includeDiagnosticOperations: false,
+  completedTurnDisplay: "collapse",
 };
 
 describe("createThreadTimelineCache", () => {
@@ -133,6 +135,7 @@ describe("buildThreadTimelineCacheKey", () => {
       { ...baseKeyArgs, includeNestedRows: true },
       { ...baseKeyArgs, summaryOnly: true },
       { ...baseKeyArgs, includeDiagnosticOperations: true },
+      { ...baseKeyArgs, completedTurnDisplay: "flat" },
       {
         ...baseKeyArgs,
         page: {

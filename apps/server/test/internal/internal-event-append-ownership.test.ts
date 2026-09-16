@@ -167,6 +167,7 @@ describe("internal event append ownership", () => {
       expect(response.status).toBe(200);
       expect(
         buildThreadTimelineWithProfile(harness.db, thread, {
+          completedTurnDisplay: "collapse",
           eventBudget: 1_000_000,
           includeDiagnosticOperations: true,
           maxInlineOutputChars: null,
@@ -1095,6 +1096,7 @@ describe("interaction lifecycle records from the daemon", () => {
           .map((row) => row.sequence),
       );
       const questionRows = buildThreadTimelineWithProfile(harness.db, thread, {
+        completedTurnDisplay: "collapse",
         eventBudget: 1_000_000,
         includeDiagnosticOperations: true,
         maxInlineOutputChars: null,

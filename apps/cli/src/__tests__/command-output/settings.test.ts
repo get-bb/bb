@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { defaultAppSettings, defaultExperiments } from "@bb/domain";
 import {
+  collectLogPayloads,
   runCommand,
   setupCommandOutputTestEnvironment,
   stubServerApi,
@@ -48,6 +49,150 @@ describe("bb settings commands", () => {
       register,
     );
     expect(put).toHaveBeenLastCalledWith({ json: [other] });
+  });
+
+  const completedTurnProviders = [
+    {
+      id: "claude-code",
+      displayName: "Claude Code",
+      completedTurnDisplay: "flat",
+    },
+    { id: "codex", displayName: "Codex", completedTurnDisplay: "collapse" },
+  ];
+
+  it("lists each provider's finished turn display and where it comes from", async () => {
+    stubServerApi({
+      "v1.system.config.$get": vi.fn(async () => ({
+        generalSettings: {
+          ...defaultAppSettings,
+          providerCompletedTurnDisplay: { codex: "flat" },
+        },
+        experiments: defaultExperiments,
+      })),
+      "v1.system.providers.$get": vi.fn(async () => completedTurnProviders),
+    });
+
+    await runCommand(["settings", "completed-turns", "--json"], register);
+
+    expect(
+      collectLogPayloads(vi.mocked(console.log)).map((payload) =>
+        JSON.parse(payload),
+      ),
+    ).toEqual([
+      [
+        {
+          providerId: "claude-code",
+          displayName: "Claude Code",
+          completedTurnDisplay: "flat",
+          providerDefault: "flat",
+          source: "provider-default",
+        },
+        {
+          providerId: "codex",
+          displayName: "Codex",
+          completedTurnDisplay: "flat",
+          providerDefault: "collapse",
+          source: "setting",
+        },
+      ],
+    ]);
+  });
+
+  it("stores a per-provider override and keeps the other overrides", async () => {
+    const put = vi.fn(async ({ json }) => json);
+    stubServerApi({
+      "v1.system.config.$get": vi.fn(async () => ({
+        generalSettings: {
+          ...defaultAppSettings,
+          providerCompletedTurnDisplay: { codex: "flat" },
+        },
+        experiments: defaultExperiments,
+      })),
+      "v1.system.providers.$get": vi.fn(async () => completedTurnProviders),
+      "v1.settings.general.$put": put,
+    });
+
+    await runCommand(
+      ["settings", "completed-turns", "claude-code", "collapse"],
+      register,
+    );
+
+    expect(put).toHaveBeenCalledWith({
+      json: {
+        ...defaultAppSettings,
+        providerCompletedTurnDisplay: {
+          codex: "flat",
+          "claude-code": "collapse",
+        },
+      },
+    });
+    expect(console.log).toHaveBeenCalledWith(
+      "claude-code finished turns: collapse (setting)",
+    );
+  });
+
+  it("removes the override when set back to default", async () => {
+    const put = vi.fn(async ({ json }) => json);
+    stubServerApi({
+      "v1.system.config.$get": vi.fn(async () => ({
+        generalSettings: {
+          ...defaultAppSettings,
+          providerCompletedTurnDisplay: {
+            codex: "flat",
+            "claude-code": "collapse",
+          },
+        },
+        experiments: defaultExperiments,
+      })),
+      "v1.system.providers.$get": vi.fn(async () => completedTurnProviders),
+      "v1.settings.general.$put": put,
+    });
+
+    await runCommand(
+      ["settings", "completed-turns", "claude-code", "default"],
+      register,
+    );
+
+    expect(put).toHaveBeenCalledWith({
+      json: {
+        ...defaultAppSettings,
+        providerCompletedTurnDisplay: { codex: "flat" },
+      },
+    });
+    expect(console.log).toHaveBeenCalledWith(
+      "claude-code finished turns: flat (provider default)",
+    );
+  });
+
+  it("rejects an unknown provider or display without writing settings", async () => {
+    const put = vi.fn(async ({ json }) => json);
+    stubServerApi({
+      "v1.system.config.$get": vi.fn(async () => ({
+        generalSettings: defaultAppSettings,
+        experiments: defaultExperiments,
+      })),
+      "v1.system.providers.$get": vi.fn(async () => completedTurnProviders),
+      "v1.settings.general.$put": put,
+    });
+
+    await expect(
+      runCommand(["settings", "completed-turns", "cursor", "flat"], register),
+    ).rejects.toThrow("process.exit:1");
+    expect(console.error).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "Unknown provider 'cursor'. Known providers: claude-code, codex.",
+      ),
+    );
+
+    await expect(
+      runCommand(["settings", "completed-turns", "codex", "open"], register),
+    ).rejects.toThrow("process.exit:1");
+    expect(console.error).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "Invalid finished turn display 'open'. Use collapse, flat, or default.",
+      ),
+    );
+    expect(put).not.toHaveBeenCalled();
   });
 
   it("updates one general setting while preserving the full contract", async () => {

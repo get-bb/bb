@@ -131,6 +131,13 @@ user reorders them and picks a default in Settings → Providers
 (`bb settings general providerOrder '["my-agent","codex"]'` and
 `bb settings general defaultProviderId my-agent`).
 
+`completedTurnDisplay` sets how the timeline shows your provider's finished
+turns by default: `"collapse"` (the default) folds the work into one "Worked
+for" row and keeps the final answer visible, and `"flat"` keeps every row
+visible. Pick `"flat"` when your agent narrates its work in text the user
+should keep reading after the turn ends. The user can override it per
+provider (`bb settings completed-turns my-agent collapse`).
+
 `experimental_bridgeOptions` must be a plain JSON object no larger than 64
 KiB. It is validated and frozen at registration, then carried on every bridge
 request as provider-scoped static options. Use it for immutable launch facts

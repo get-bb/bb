@@ -250,6 +250,7 @@ describe("thread event pruning", () => {
         threadId: thread.id,
       });
       const timeline = buildThreadTimelineWithProfile(harness.db, thread, {
+        completedTurnDisplay: "collapse",
         eventBudget: 1_000_000,
         includeDiagnosticOperations: true,
         maxInlineOutputChars: null,

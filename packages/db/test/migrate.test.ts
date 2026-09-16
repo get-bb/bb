@@ -1939,6 +1939,7 @@ describe("migrate", () => {
         showDiagnosticEvents: true,
         providerOrder: [],
         defaultProviderId: null,
+        providerCompletedTurnDisplay: {},
         machineServerUrl: null,
         defaultMachineAccess: null,
         machineGitCredentialsEnabled: true,

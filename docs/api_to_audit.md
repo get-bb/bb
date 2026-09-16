@@ -1077,15 +1077,15 @@ answers when its provider is a user-installed CLI. The probes:
 itself when given absolute and executable, else the first `which`/`where`
 hit, null when absent; 5 s), `experimental_readCliVersion` (`<command>
 --version` with stdin closed, so CLIs that start a stdio server on unknown
-flags exit instead of hitting the timeout; the first `x.y.z[-pre]` on stdout
-or stderr; 5 s),
+flags exit instead of hitting the timeout; the first version token on stdout
+or stderr, or null if it is invalid SemVer; 5 s),
 `experimental_commandOutput` (any command's trimmed stdout+stderr or null on
 failure; 15 s), `experimental_versionFrom` (the first version token in a
-banner), `experimental_npmLatestVersion` (`npm view <package> version`) and
+banner, or null if it is invalid SemVer), `experimental_npmLatestVersion` (`npm view <package> version`) and
 `experimental_probeNpmGlobalPackage` (`npm prefix -g` as the global bin
 directory plus `npm list -g <package>` as the installed version). The
-decisions: `experimental_compareVersions` (numeric core, then a prerelease
-below its release), `experimental_npmGlobalInstallSource` (`npmGlobal` when
+decisions: `experimental_compareVersions` (SemVer precedence, ignoring build
+metadata; throws `TypeError` for invalid inputs), `experimental_npmGlobalInstallSource` (`npmGlobal` when
 the executable sits inside npm's global bin, `external` otherwise,
 `notInstalled` when absent) and `experimental_installationVerification` (an
 install verifies by existence; an update by reaching the latest version the
@@ -1107,9 +1107,12 @@ dist-tag and `doctor` parsing) beside them.
    self-diagnostics; a bridge whose CLI is slow to start (a JVM, a first-run
    download) cannot lengthen them. Decide whether the budgets become
    arguments before the signatures are a promise.
-2. **`compareVersions` is semver-shaped, not semver.** Build metadata and
-   four-part versions read as `0.0.0`; prereleases compare by locale string.
-   Decide whether a real semver parser is owed.
+2. **`compareVersions` uses `semver` precedence.** Numeric prerelease
+   identifiers compare numerically, text identifiers use ASCII order, and
+   build metadata does not affect precedence. Invalid inputs throw
+   `TypeError`. The comparison subpath is bundled into the SDK and plugins;
+   no consumer dependency is required. Confirm the throwing contract before
+   stabilization.
 3. **The npm helpers assume a global install.** `probeNpmGlobalPackage` and
    `npmGlobalInstallSource` model one layout (npm's global prefix); pnpm,
    volta and corepack shims read as `external`. Decide whether the source
@@ -3015,3 +3018,15 @@ same-id isolation and legacy override fallback,
 asset-vs-glyph precedence, cross-plugin overrides, reload/error/recursion behavior,
 accessibility and theme rendering on desktop and mobile. Keep metadata fetching
 and plugin branding separate from provider artwork resolution.
+
+## `HostsArea.experimental_reconcile`
+
+Explicitly reconcile a provider-managed machine with core’s recorded state.
+For suspended machines, coordinate the existing provider suspension operation
+and return HTTP 202 after starting it; callers can poll host status for completion.
+Provider suspend and resume implementations must be idempotent.
+Active and transitional states are left unchanged;
+the plugin uses `experimental_suspend` to request a new pause. Core schedules
+no provider polling. Validate concurrent resume/removal, failure reporting,
+long-running caller behavior, and the scope of supported states before
+stabilizing this API. Exposed as `bb machine reconcile`.

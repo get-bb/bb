@@ -94,9 +94,11 @@ export interface PluginMachineProviderDefinition<
     report: PluginMachineProviderProgress;
     signal: AbortSignal;
   }): Promise<PluginMachineProviderRemoveResult>;
+  /** Idempotent: preserve saved state when compute is already stopped; save and stop any remaining compute, including during reconciliation of a suspended machine. */
   suspend?(
     context: PluginMachineProviderResourceLifecycleContext,
   ): Promise<PluginMachineProviderResourceResult>;
+  /** Idempotent: reuse existing running compute instead of allocating a duplicate. */
   resume?(
     context: PluginMachineProviderResourceLifecycleContext,
   ): Promise<PluginMachineProviderResourceResult>;

@@ -123,6 +123,7 @@ export interface HostsArea {
   experimental_retryCleanup(args: HostActionArgs): Promise<HostActionResult>;
   retryUpdate(args: HostRetryUpdateArgs): Promise<HostRetryUpdateResult>;
   experimental_suspend(args: HostActionArgs): Promise<Host>;
+  experimental_reconcile(args: HostActionArgs): Promise<Host>;
   update(args: HostUpdateArgs): Promise<HostUpdateResult>;
 }
 
@@ -306,6 +307,13 @@ export function createHostsArea(args: CreateSdkAreaArgs): HostsArea {
     async retryUpdate(input) {
       return transport.readJson(
         transport.api.v1.hosts[":id"]["retry-update"].$post({
+          param: { id: input.hostId },
+        }),
+      );
+    },
+    async experimental_reconcile(input) {
+      return transport.readJson(
+        transport.api.v1.hosts[":id"].reconcile.$post({
           param: { id: input.hostId },
         }),
       );

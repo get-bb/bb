@@ -60,6 +60,7 @@ bb machine show <id-or-name> Show machine details
 bb machine join-code Create a machine pairing code
 bb machine rename <id-or-name> <name> Rename a machine
 bb machine retry-update <id-or-name> Retry a pending daemon update now
+bb machine reconcile <id-or-name> Reconcile compute with core’s recorded state
 bb machine suspend <id-or-name> Suspend a provider-managed machine
 bb machine resume <id-or-name> Resume a machine (already active is a no-op)
 bb machine retry-cleanup <id-or-name> Retry failed teardown now
@@ -92,6 +93,13 @@ remove <host-id>` to cancel and clean up. The SDK provides
 `hosts.experimental_create`; pass `wait: false` to receive the creating host and
 poll it with `hosts.get`. Aborting a caller signal never cancels the server operation. A connected daemon does not
 yet imply an agent-ready checkout and authenticated provider.
+
+`bb machine reconcile` / `hosts.experimental_reconcile` is an explicit request,
+not a core timer. For a machine core records as suspended, it runs the provider’s
+save-and-stop operation. The API returns HTTP 202 immediately; the CLI polls
+machine status until completion. Active machines and lifecycle
+operations already in progress are left alone. Plugins request suspension
+separately when their idle policy decides an active machine should pause.
 
 Suspend and resume are available only when the machine provider implements
 both operations. Retry cleanup is accepted only for a retiring machine whose

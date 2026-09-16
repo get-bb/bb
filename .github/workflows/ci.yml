@@ -36,6 +36,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Check source files for literal NUL bytes
+        run: node scripts/check-source-nul.mjs
+
       - name: Setup workspace
         uses: ./.github/actions/setup-workspace
         with:

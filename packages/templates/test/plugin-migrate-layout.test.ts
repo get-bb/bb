@@ -168,6 +168,41 @@ describe("migratePluginToPackageLayout", () => {
     }
   });
 
+  it.each([
+    [">=0.4.3-beta.9", "0.4.3-beta.10", true],
+    [">=0.4.3-rc.10", "0.4.3-rc.2", false],
+    [">=0.4.3-beta.10", "0.4.3", true],
+    [">=0.4.3+build.1", "0.4.3+build.2", false],
+    [">=0.2", SDK_VERSION, true],
+    ["^0.2.0", SDK_VERSION, true],
+    [">=9.0.0 || >=0.2.0", SDK_VERSION, true],
+    ["garbage 0.2.0", SDK_VERSION, false],
+    [">=0.2.0 trailing", SDK_VERSION, false],
+    [">=0.2.0-beta..1", SDK_VERSION, false],
+  ])(
+    "evaluates the complete SDK range %s against %s",
+    async (range, sdkVersion, raises) => {
+      await writeVendoredPlugin(rootDir, {
+        manifest: {
+          name: "bb-plugin-range",
+          engines: { bbPluginSdk: range },
+          bb: { server: "./server.ts" },
+        },
+      });
+      const result = await migratePluginToPackageLayout({
+        rootDir,
+        sdkVersion,
+      });
+      expect(result.enginesFloor).toEqual(
+        raises ? { from: range, to: `>=${sdkVersion}` } : null,
+      );
+      const manifest = await readJson(join(rootDir, "package.json"));
+      expect(manifest.engines).toEqual({
+        bbPluginSdk: raises ? `>=${sdkVersion}` : range,
+      });
+    },
+  );
+
   it("is a no-op the second time", async () => {
     await writeVendoredPlugin(rootDir);
     await migratePluginToPackageLayout({ rootDir, sdkVersion: SDK_VERSION });

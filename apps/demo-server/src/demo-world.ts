@@ -413,6 +413,7 @@ export class DemoWorld {
     return {
       rows,
       contextBoundarySeq: null,
+      completedTurnDisplay: "flat",
       maxSeq: seq,
       activePromptMode: null,
       activeThinking: null,

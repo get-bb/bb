@@ -7,6 +7,7 @@ Keep a Claude Code or Codex thread running when one account hits its limit. The 
 - Drag handles set the account order within each provider in settings (keyboard: Space to pick up, arrow keys to move, Space to drop, Escape to cancel), with the same operation available through `bb pool account reorder <claude|codex> <id>...`.
 - Live limit windows per account and model family in the plugin's settings page, and the same numbers from `bb pool status`.
 - A routing switch per provider and a bypass per thread, so one thread can go straight to its own credentials.
+- Opt-in cache miss reports, analyzed after each response ends, that name the likely cause of a large miss and the first changed prompt segment.
 
 ## How it works
 
@@ -33,4 +34,4 @@ This plugin is experimental. Routing behavior, stored data, and the CLI can chan
 
 ## For agents
 
-`bb pool account add|list|remove|enable|disable|priority|reorder`, `bb pool status`, `bb pool routing <claude|codex> [--off]`, `bb pool config`, `bb pool config set`, `bb pool parent [proxy|isolate]`, `bb pool token rotate`, and `bb pool bypass <thread-id>`. `list` and `status` take `--json`.
+`bb pool account add|list|remove|enable|disable|priority|reorder`, `bb pool status`, `bb pool routing <claude|codex> [--off]`, `bb pool config`, `bb pool config set`, `bb pool cache-miss list|clear`, `bb pool parent [proxy|isolate]`, `bb pool token rotate`, and `bb pool bypass <thread-id>`. `list` and `status` take `--json`.

@@ -31,9 +31,9 @@ worktree` only; a provider takes its branch through `--environment-inputs`.
   `--source-seq-end`, `--agent-context-seed`, and `--json`.
 - Add repeatable `--file <path>` / `--image <path>` flags for structured prompt
   attachments, and `--section <id>` to add the new thread to a section.
-  `--image` uploads absolute paths from the CLI machine before sending and
-  passes relative server-upload tokens through unchanged. `--file` keeps its
-  existing host-readable absolute-path behavior.
+  Both flags upload absolute paths and `file:` URLs from the CLI machine
+  before sending and pass relative server-upload tokens through unchanged.
+  Use an absolute path (for example, `--file "$PWD/report.pdf"`) for local files.
 - Spawn creates a root thread unless you pass `--parent-thread`.
 - Handoff can target any model, including one from the source provider. In
   the follow-up picker, choose **Handoff to new thread**; **Exit handoff** in
@@ -127,9 +127,9 @@ worktree` only; a provider takes its branch through `--environment-inputs`.
   different hosts. It reads locally and sends multipart bytes through the
   configured `BB_SERVER_URL` (and its enrolled-machine authentication proxy),
   returning the stable server attachment DTO. Optional `--filename` and
-  `--mime-type` override inferred metadata. Thread `--image` performs this
-  upload automatically for absolute paths; use the explicit command for
-  `--file` or when a reusable attachment token is needed. Image MIME types are
+  `--mime-type` override inferred metadata. Thread `--file` and `--image` perform this
+  upload automatically for absolute paths and `file:` URLs; use the explicit
+  command when a reusable attachment token is needed. Image MIME types are
   capped at 10MB and other files at 25MB, and image/heic or image/heif uploads
   are rejected (convert them to JPEG or PNG first). `bb project attachment
 download <project-id> <attachment-path> --client-file <path>` writes existing

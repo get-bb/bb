@@ -171,6 +171,7 @@ export function buildRouteTimelinePage(
     args.db,
     args.thread,
     {
+      completedTurnDisplay: "collapse",
       eventBudget:
         args.eventBudget ?? defaultFeatureFlags.timelineWindowEventBudget,
       includeDiagnosticOperations: args.includeDiagnosticOperations ?? true,

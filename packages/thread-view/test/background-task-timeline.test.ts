@@ -36,6 +36,7 @@ function buildTimeline(
     contextWindowEvents: [],
     events,
     options: {
+      completedTurnDisplay: "collapse",
       includeNestedRows: options.includeNestedRows ?? true,
       includeDiagnosticOperations: false,
       isLatestPage: true,

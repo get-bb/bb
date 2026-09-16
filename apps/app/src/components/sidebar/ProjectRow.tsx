@@ -164,7 +164,7 @@ import {
 } from "./BuiltInSidebarSection";
 import { SectionThreadDndProvider } from "./SectionThreadDndContext";
 import {
-  SIDEBAR_THREAD_DRAG_OVERLAY_MODIFIERS,
+  useSidebarThreadDragOverlayModifiers,
   SIDEBAR_THREAD_DRAG_CHIP_CLASS,
   SIDEBAR_THREAD_DRAG_CHIP_STYLE,
 } from "./sidebarThreadDragChip";
@@ -1341,11 +1341,12 @@ export function SectionThreadDragOverlayPortal({
 }: {
   activeThread: ThreadListEntry | null;
 }) {
+  const modifiers = useSidebarThreadDragOverlayModifiers();
   return createPortal(
     <DragOverlay
       className="cursor-grabbing"
       dropAnimation={activeThread ? SIDEBAR_DRAG_OVERLAY_DROP_ANIMATION : null}
-      modifiers={SIDEBAR_THREAD_DRAG_OVERLAY_MODIFIERS}
+      modifiers={modifiers}
     >
       {activeThread ? <SectionThreadDragOverlay thread={activeThread} /> : null}
     </DragOverlay>,

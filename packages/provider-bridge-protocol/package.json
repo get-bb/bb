@@ -48,11 +48,13 @@
   "dependencies": {
     "@bb/domain": "workspace:*",
     "@bb/process-utils": "workspace:*",
+    "semver": "^7.7.4",
     "zod": "^4.3.6"
   },
   "devDependencies": {
     "@bb/tsconfig": "workspace:*",
     "@types/node": "^22.0.0",
+    "@types/semver": "^7.7.1",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "typescript-7": "npm:typescript@^7.0.2"
   }

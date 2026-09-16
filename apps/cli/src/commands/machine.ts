@@ -446,6 +446,31 @@ export function registerMachineCommands(
     );
 
   machine
+    .command("reconcile <id-or-name>")
+    .description("Reconcile provider compute with the machine's recorded state")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (target: string, opts: MachineListCommandOptions) => {
+        const sdk = createCliBbSdk(getUrl());
+        const hostId = await resolveMachineHostId({
+          serverUrl: getUrl(),
+          target,
+        });
+        const requested = await sdk.hosts.experimental_reconcile({ hostId });
+        const result =
+          requested.lifecycle.phase === "suspending"
+            ? await waitForMachineLifecycle({
+                host: requested,
+                targetPhase: "suspended",
+                getHost: () => sdk.hosts.get({ hostId }),
+              })
+            : requested;
+        if (!outputJson(opts, result))
+          console.log(`Machine ${hostId}: ${result.lifecycle.phase}`);
+      }),
+    );
+
+  machine
     .command("suspend <id-or-name>")
     .description("Suspend a provider-managed execution machine")
     .option("--json", "Print machine-readable JSON output")

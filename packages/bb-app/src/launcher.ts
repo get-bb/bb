@@ -4,14 +4,8 @@ import { randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { spawnLoggedProcess } from "./logged-process.js";
-import {
-  access,
-  mkdir,
-  readFile,
-  rename,
-  unlink,
-  writeFile,
-} from "node:fs/promises";
+import { mutateManagedJsonFile } from "@bb/config/managed-json-file";
+import { access, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -77,6 +71,17 @@ import {
   stripThreadContextEnv,
 } from "@bb/config/runtime";
 import { z } from "zod";
+import {
+  bold,
+  cyan,
+  dim,
+  green,
+  red,
+  yellow,
+  log,
+  beginStep,
+  endStep,
+} from "./launcher-output.js";
 
 const HOST_AUTH_FILE_NAME = "auth.json";
 const HOST_ID_FILE_NAME = "host-id";
@@ -510,33 +515,11 @@ interface WriteManagedConfigArgs {
   dataDir: string;
 }
 
-interface WriteManagedConfigFileArgs {
-  config: ManagedConfigForWrite;
-  dataDir: string;
-}
-
-interface WriteManagedEnvFileArgs {
-  config: ManagedEnvFile;
-  dataDir: string;
-}
-
-interface WriteClientConfigFileArgs {
-  config: ClientConfig;
-  dataDir: string;
-}
-
 interface ReadJsonConfigFileArgs<T> {
   label: string;
   missing: T;
   parse: (value: unknown) => T;
   path: string;
-}
-
-interface WriteJsonFileAtomicallyArgs {
-  dataDir: string;
-  path: string;
-  tempName: string;
-  value: ClientConfig | ManagedConfigForWrite | ManagedEnvFile;
 }
 
 interface ResolveServerUrlArgs {
@@ -614,46 +597,6 @@ interface AssertConfiguredServerBindHostArgs {
 
 interface ResolveHostDaemonCommandResult {
   kind: "join" | "start";
-}
-
-function color(code: number, value: string): string {
-  return `\x1b[${code}m${value}\x1b[0m`;
-}
-
-function bold(value: string): string {
-  return color(1, value);
-}
-
-function cyan(value: string): string {
-  return color(36, value);
-}
-
-function dim(value: string): string {
-  return color(2, value);
-}
-
-function green(value: string): string {
-  return color(32, value);
-}
-
-function red(value: string): string {
-  return color(31, value);
-}
-
-function yellow(value: string): string {
-  return color(33, value);
-}
-
-function log(icon: string, message: string): void {
-  process.stdout.write(`  ${icon}  ${message}\n`);
-}
-
-function beginStep(message: string): void {
-  process.stdout.write(`\x1b[2K  ${dim("○")}  ${message}\r`);
-}
-
-function endStep(icon: string, message: string): void {
-  process.stdout.write(`\x1b[2K  ${icon}  ${message}\n`);
 }
 
 function formatReadyOutputRow(label: string, value: string): string {
@@ -1116,36 +1059,40 @@ function pruneManagedEnvFile(config: ManagedEnvFile): ManagedEnvFile {
   return nextConfig;
 }
 
-async function writeJsonFileAtomically(
-  args: WriteJsonFileAtomicallyArgs,
+async function mutateManagedConfig(
+  dataDir: string,
+  mutate: (current: ManagedConfigForWrite) => ManagedConfigForWrite,
 ): Promise<void> {
-  await mkdir(args.dataDir, { recursive: true });
-  const tempPath = join(
-    args.dataDir,
-    `${args.tempName}.${process.pid}.${randomUUID()}.tmp`,
-  );
-
-  try {
-    await writeFile(tempPath, `${JSON.stringify(args.value, null, 2)}\n`, {
-      encoding: "utf8",
-      mode: 0o600,
-    });
-    await rename(tempPath, args.path);
-  } catch (error) {
-    await unlink(tempPath).catch(() => undefined);
-    throw error;
-  }
+  await mutateManagedJsonFile({
+    path: formatBbAppConfigPath(dataDir),
+    read: () => readManagedConfigForWrite({ dataDir }),
+    mutate: (current) => {
+      const next = mutate(current);
+      validateManagedConfigForWrite(next);
+      return pruneManagedConfig(next);
+    },
+  });
 }
 
-async function writeManagedConfigFile(
-  args: WriteManagedConfigFileArgs,
+async function mutateManagedEnv(
+  dataDir: string,
+  mutate: (current: ManagedEnvFile) => ManagedEnvFile,
 ): Promise<void> {
-  validateManagedConfigForWrite(args.config);
-  await writeJsonFileAtomically({
-    dataDir: args.dataDir,
-    path: formatBbAppConfigPath(args.dataDir),
-    tempName: ".config.json",
-    value: pruneManagedConfig(args.config),
+  await mutateManagedJsonFile({
+    path: formatBbAppEnvPath(dataDir),
+    read: () => readManagedEnvFile({ dataDir }),
+    mutate: (current) => pruneManagedEnvFile(mutate(current)),
+  });
+}
+
+async function mutateClientConfig(
+  dataDir: string,
+  mutate: (current: ClientConfig) => ClientConfig,
+): Promise<void> {
+  await mutateManagedJsonFile({
+    path: formatClientConfigPath(dataDir),
+    read: () => readClientConfig({ dataDir }),
+    mutate,
   });
 }
 
@@ -1175,43 +1122,10 @@ function validateManagedConfigForWrite(config: ManagedConfigForWrite): void {
 }
 
 async function writeManagedConfig(args: WriteManagedConfigArgs): Promise<void> {
-  const existingConfig = await readManagedConfigForWrite({
-    dataDir: args.dataDir,
-  });
-  await writeManagedConfigFile({
-    config: mergeManagedConfig(existingConfig, args.config),
-    dataDir: args.dataDir,
-  });
-}
-
-async function writeManagedEnv(args: WriteManagedEnvFileArgs): Promise<void> {
-  const existingConfig = await readManagedEnvFile({ dataDir: args.dataDir });
-  await writeManagedEnvFile({
-    config: mergeManagedEnvFile(existingConfig, args.config),
-    dataDir: args.dataDir,
-  });
-}
-
-async function writeManagedEnvFile(
-  args: WriteManagedEnvFileArgs,
-): Promise<void> {
-  await writeJsonFileAtomically({
-    dataDir: args.dataDir,
-    path: formatBbAppEnvPath(args.dataDir),
-    tempName: ".env.json",
-    value: pruneManagedEnvFile(args.config),
-  });
-}
-
-async function writeClientConfigFile(
-  args: WriteClientConfigFileArgs,
-): Promise<void> {
-  await writeJsonFileAtomically({
-    dataDir: args.dataDir,
-    path: formatClientConfigPath(args.dataDir),
-    tempName: ".client.json",
-    value: args.config,
-  });
+  validateManagedConfigForWrite(args.config);
+  await mutateManagedConfig(args.dataDir, (current) =>
+    mergeManagedConfig(current, args.config),
+  );
 }
 
 const BB_APP_VERSION_DEV_FALLBACK = "0.0.0-dev";
@@ -1842,13 +1756,9 @@ async function runConfigCommand(args: RunConfigCommandArgs): Promise<void> {
       throw new Error("Usage: bb-app config unset <key>");
     }
     const key = resolveManagedConfigKey(commandArgs[1]);
-    const currentConfig = await readManagedConfigForWrite({
-      dataDir: args.dataDir,
-    });
-    await writeManagedConfigFile({
-      config: unsetManagedConfigKey(currentConfig, key),
-      dataDir: args.dataDir,
-    });
+    await mutateManagedConfig(args.dataDir, (current) =>
+      unsetManagedConfigKey(current, key),
+    );
     process.stdout.write(
       `Unset ${key} in ${formatBbAppConfigPath(args.dataDir)}\n`,
     );
@@ -1894,11 +1804,9 @@ async function runEnvCommand(args: RunEnvCommandArgs): Promise<void> {
       throw new Error("Usage: bb-app env unset <key>");
     }
     const key = resolveManagedEnvKey(commandArgs[1]);
-    const currentConfig = await readManagedEnvFile({ dataDir: args.dataDir });
-    await writeManagedEnvFile({
-      config: unsetManagedEnvKey(currentConfig, key),
-      dataDir: args.dataDir,
-    });
+    await mutateManagedEnv(args.dataDir, (current) =>
+      unsetManagedEnvKey(current, key),
+    );
     process.stdout.write(
       `Unset ${key} in ${formatBbAppEnvPath(args.dataDir)}\n`,
     );
@@ -1917,10 +1825,10 @@ async function runEnvCommand(args: RunEnvCommandArgs): Promise<void> {
   if (key === "BB_SERVER_BIND_HOST") {
     parseServerBindHost(value);
   }
-  await writeManagedEnv({
-    config: createManagedEnvPatch(key, value),
-    dataDir: args.dataDir,
-  });
+  const patch = createManagedEnvPatch(key, value);
+  await mutateManagedEnv(args.dataDir, (current) =>
+    mergeManagedEnvFile(current, patch),
+  );
   process.stdout.write(`Set ${key} in ${formatBbAppEnvPath(args.dataDir)}\n`);
   await refreshRunningServerConfigAfterWrite(args.serverUrl, "env", key);
 }
@@ -1970,16 +1878,9 @@ async function runClientCommand(args: RunClientCommandArgs): Promise<void> {
       ...(args.hostId !== undefined ? { requestedHostId: args.hostId } : {}),
       serverOrigin,
     });
-    const nextConfig = setClientSshTarget(
-      await readClientConfig({ dataDir: args.dataDir }),
-      serverOrigin,
-      hostId,
-      sshAuthority,
+    await mutateClientConfig(args.dataDir, (current) =>
+      setClientSshTarget(current, serverOrigin, hostId, sshAuthority),
     );
-    await writeClientConfigFile({
-      config: nextConfig,
-      dataDir: args.dataDir,
-    });
     process.stdout.write(
       `Set client SSH target in ${formatClientConfigPath(args.dataDir)}\n`,
     );
@@ -1992,14 +1893,9 @@ async function runClientCommand(args: RunClientCommandArgs): Promise<void> {
         "Usage: bb-app client ssh-target remove <server-origin> [--host-id <id>]",
       );
     }
-    await writeClientConfigFile({
-      config: removeClientSshTarget(
-        await readClientConfig({ dataDir: args.dataDir }),
-        commandArgs[2],
-        args.hostId,
-      ),
-      dataDir: args.dataDir,
-    });
+    await mutateClientConfig(args.dataDir, (current) =>
+      removeClientSshTarget(current, commandArgs[2], args.hostId),
+    );
     process.stdout.write(
       `Removed client SSH target from ${formatClientConfigPath(args.dataDir)}\n`,
     );

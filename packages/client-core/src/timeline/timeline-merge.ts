@@ -77,6 +77,24 @@ interface RecoverLoadedTimelineAfterStaleCursorArgs {
   surfaceKey: string;
 }
 
+export function resolveLoadedTimelineSurfaceKey(
+  baseSurfaceKey: string,
+  latestTimeline:
+    | Pick<
+        ThreadTimelineResponse,
+        "completedTurnDisplay" | "contextBoundarySeq"
+      >
+    | undefined,
+): string {
+  if (latestTimeline === undefined) {
+    return baseSurfaceKey;
+  }
+  const displaySurfaceKey = `${baseSurfaceKey}:completed-turns:${latestTimeline.completedTurnDisplay}`;
+  return latestTimeline.contextBoundarySeq === null
+    ? displaySurfaceKey
+    : `${displaySurfaceKey}:context-boundary:${latestTimeline.contextBoundarySeq}`;
+}
+
 export function buildLoadedTimelineState({
   historySnapshot,
   latestWindowEndSequence,
