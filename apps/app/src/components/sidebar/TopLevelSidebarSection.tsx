@@ -186,12 +186,21 @@ export function TopLevelSidebarSection({
           SIDEBAR_STANDARD_ROW_PADDING_CLASS,
           "rounded-md pr-0 transition-colors",
           !stickyHeader && "relative top-auto",
-          dragBindings && !dragBindings.disabled && "select-none",
+          dragBindings &&
+            !dragBindings.disabled &&
+            "cursor-grab select-none active:cursor-grabbing",
         )}
         {...dragBindings?.attributes}
         {...(dragBindings?.listeners ?? {})}
       >
         <span className="relative z-10 flex min-w-0 flex-1 items-center gap-1 text-left">
+          {dragBindings && !dragBindings.disabled ? (
+            <Icon
+              name="DragDropVertical"
+              className="size-3 shrink-0 text-subtle-foreground opacity-0 transition-opacity group-hover/sidebar-section:opacity-70 group-focus-within/sidebar-section:opacity-70 max-md:opacity-70"
+              aria-hidden="true"
+            />
+          ) : null}
           <span className="min-w-0 truncate" title={label}>
             {label}
           </span>

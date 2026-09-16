@@ -8,6 +8,8 @@ import {
   screen,
 } from "@testing-library/react";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
+import { DndContext } from "@dnd-kit/core";
+import { SortableContext } from "@dnd-kit/sortable";
 import { createStore, Provider } from "jotai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { NO_COLLAPSED_CHILD_ACTIVITY } from "@bb/client-core";
@@ -19,6 +21,7 @@ import {
 } from "@/lib/plugin-thread-row-status";
 import { TopLevelSidebarSection } from "./TopLevelSidebarSection";
 import { SidebarControlButton } from "./SidebarRowControls";
+import { SortableSidebarSection } from "./BuiltInSidebarSection";
 
 afterEach(() => {
   cleanup();
@@ -73,6 +76,29 @@ describe("SidebarControlButton", () => {
 });
 
 describe("TopLevelSidebarSection", () => {
+  it("shows a drag affordance when the section can be reordered", () => {
+    const result = render(
+      <DndContext>
+        <SortableContext items={["project:design"]}>
+          <SortableSidebarSection
+            id="project:design"
+            disabled={false}
+            label="Design"
+          >
+            <div>Design thread</div>
+          </SortableSidebarSection>
+        </SortableContext>
+      </DndContext>,
+    );
+
+    expect(
+      result.container.querySelector('[data-icon="DragDropVertical"]'),
+    ).not.toBeNull();
+    expect(
+      screen.getByTitle("Design").parentElement?.parentElement?.className,
+    ).toContain("cursor-grab");
+  });
+
   it("exposes stable identity only for persisted sections", () => {
     const result = render(
       <>
