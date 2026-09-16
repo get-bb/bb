@@ -5600,9 +5600,7 @@ describe("timeline read-boundary output truncation", () => {
 });
 
 describe("stored provider thread identity ownership", () => {
-  function setupThreads(
-    args: { providerIds?: readonly string[] } = {},
-  ) {
+  function setupThreads(args: { providerIds?: readonly string[] } = {}) {
     const db = createMigratedConnection();
     const host = upsertHost(db, noopNotifier, {
       name: "identity-host",
@@ -5888,9 +5886,9 @@ describe("stored provider thread identity ownership", () => {
       }),
     ).toBe("owned");
     expect(
-      listThreadTurnInterruptionEventStates(db, { threadIds: [early, late] }).map(
-        (state) => state.latestProviderThreadId,
-      ),
+      listThreadTurnInterruptionEventStates(db, {
+        threadIds: [early, late],
+      }).map((state) => state.latestProviderThreadId),
     ).toEqual([null, null]);
     db.$client.close();
   });
@@ -5923,10 +5921,7 @@ describe("stored provider thread identity ownership", () => {
       resolveStoredProviderSessions(db, { threadIds: [first, second] }),
     ).toEqual(
       new Map([
-        [
-          first,
-          { kind: "owned", providerThreadId: "01a04a44-7dd6-session-a" },
-        ],
+        [first, { kind: "owned", providerThreadId: "01a04a44-7dd6-session-a" }],
         [
           second,
           { kind: "owned", providerThreadId: "01a04a44-80e8-session-b" },
@@ -6052,17 +6047,102 @@ describe("stored provider thread identity ownership", () => {
     });
     expect(getStoredProviderSession(db, contaminated).kind).toBe("foreign");
 
-    expect(wouldRemoveSharedProviderSessionClaim(db, {
-      cutoffSequence: 1,
-      oldMaxSequence: 1,
-      threadId: owner,
-    })).toBe(true);
+    expect(
+      wouldRemoveSharedProviderSessionClaim(db, {
+        cutoffSequence: 1,
+        oldMaxSequence: 1,
+        threadId: owner,
+      }),
+    ).toBe(true);
 
     expect(getStoredProviderSession(db, contaminated)).toEqual({
       kind: "foreign",
       providerThreadId: "session-shared",
       claimantThreadIds: [owner],
     });
+    db.$client.close();
+  });
+
+  it.each([
+    "same-host",
+    "other-host",
+    "other-provider",
+    "unknown-host",
+  ] as const)("checks shared claim removal within the %s scope", (kind) => {
+    const { db, environment, project, threadIds } = setupThreads();
+    const [owner] = requireThreadIds(threadIds);
+    const host = upsertHost(db, noopNotifier, {
+      name: "claim-other-host",
+      type: "persistent",
+    });
+    const otherEnvironment = createEnvironment(db, noopNotifier, {
+      projectId: project.id,
+      hostId: host.id,
+      path: "/tmp/claim-other-host",
+      status: "ready",
+      providerOwnsPath: false,
+    });
+    const other = createThread(db, noopNotifier, {
+      projectId: project.id,
+      ...(kind === "unknown-host"
+        ? {}
+        : {
+            environmentId:
+              kind === "other-host" ? otherEnvironment.id : environment.id,
+          }),
+      providerId: kind === "other-provider" ? "claude-code" : "codex",
+    });
+    for (const threadId of [owner, other.id]) {
+      announceIdentity(db, {
+        threadId,
+        createdAt: 100,
+        providerThreadId: "shared",
+      });
+    }
+    expect(
+      wouldRemoveSharedProviderSessionClaim(db, {
+        threadId: owner,
+        cutoffSequence: 1,
+        oldMaxSequence: 1,
+      }),
+    ).toBe(kind === "same-host" || kind === "unknown-host");
+    db.$client.close();
+  });
+
+  it("allows removing later duplicate or foreign claims while retaining the original evidence", () => {
+    const { db, threadIds } = setupThreads();
+    const [owner, other] = requireThreadIds(threadIds);
+    for (const [threadId, createdAt] of [
+      [owner, 100],
+      [owner, 101],
+      [other, 102],
+    ] as const) {
+      announceIdentity(db, { threadId, createdAt, providerThreadId: "shared" });
+    }
+    expect(
+      wouldRemoveSharedProviderSessionClaim(db, {
+        threadId: owner,
+        cutoffSequence: 2,
+        oldMaxSequence: 2,
+      }),
+    ).toBe(false);
+    expect(
+      wouldRemoveSharedProviderSessionClaim(db, {
+        threadId: other,
+        cutoffSequence: 1,
+        oldMaxSequence: 1,
+      }),
+    ).toBe(false);
+    clearContext(db, owner);
+    expect(getStoredProviderSession(db, owner)).toEqual({ kind: "none" });
+    expect(getStoredProviderSession(db, other).kind).toBe("foreign");
+    expect(
+      wouldRemoveSharedProviderSessionClaim(db, {
+        threadId: owner,
+        cutoffSequence: 1,
+        oldMaxSequence: 2,
+      }),
+    ).toBe(true);
     db.$client.close();
   });
 

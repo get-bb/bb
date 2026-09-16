@@ -138,6 +138,9 @@ Editing a sent message:
   replaces the selected turn and every later turn while retaining workspace
   changes. From an agent thread, the command carries `BB_THREAD_ID` so the
   replacement runs under agent permission policy.
+  An edit is refused if removing its history would erase ownership evidence
+  shared with another thread. Use bb thread clear <id> to start a new session
+  while keeping the history and its ownership evidence.
 
 Listing:
 

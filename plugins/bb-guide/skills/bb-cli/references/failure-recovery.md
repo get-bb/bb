@@ -32,10 +32,16 @@ sendAt?, reason? })`.
   workspace, durable event history, and sticky execution settings.
 - A send that fails with `provider_session_unavailable` means the thread's
   recorded provider session belongs to another thread (`details.reason:
-  "foreign"`) or was announced by another thread in the same millisecond
+"foreign"`) or was announced by another thread in the same millisecond
   (`"ambiguous"`). bb refuses to resume it rather than write into another
   conversation. `bb thread clear <id>` starts a new provider session on the
   next send and keeps the thread's history.
+- Message edits refuse to erase an ownership claim also recorded by another
+  thread when doing so could transfer or resolve that shared claim. This check
+  runs before preparing the edit and again before rewriting history. Use
+  `bb thread clear <id>` to start fresh while retaining the ownership evidence.
+  Ownership still depends on retained records; purging all records of the
+  original owner removes that protection.
 - Use `bb thread cancel-plan <id>` to exit an active Plan turn without
   optimistically clearing its banner. Use `bb thread clear-goal <id>` to clear
   a thread's durable active Goal when supported by its provider. Both wait for provider confirmation.

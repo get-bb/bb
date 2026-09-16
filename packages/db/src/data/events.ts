@@ -3758,7 +3758,11 @@ export function wouldRemoveSharedProviderSessionClaim(
     .all();
   for (const removed of removedClaims) {
     if (removed.providerThreadId === null) continue;
-    const claim = readStoredProviderThreadClaim(db, scope, removed.providerThreadId);
+    const claim = readStoredProviderThreadClaim(
+      db,
+      scope,
+      removed.providerThreadId,
+    );
     if (classifyClaim(claim, args.threadId) === "foreign") continue;
     const retained = db
       .select({ id: events.id })
@@ -3769,7 +3773,10 @@ export function wouldRemoveSharedProviderSessionClaim(
           eq(events.type, "thread/identity"),
           eq(events.providerThreadId, removed.providerThreadId),
           lte(events.createdAt, removed.createdAt),
-          or(lt(events.sequence, args.cutoffSequence), gt(events.sequence, args.oldMaxSequence)),
+          or(
+            lt(events.sequence, args.cutoffSequence),
+            gt(events.sequence, args.oldMaxSequence),
+          ),
         ),
       )
       .limit(1)
@@ -3788,7 +3795,10 @@ export function wouldRemoveSharedProviderSessionClaim(
           eq(threads.providerId, scope.providerId),
           scope.hostId === null
             ? undefined
-            : or(isNull(environments.hostId), eq(environments.hostId, scope.hostId)),
+            : or(
+                isNull(environments.hostId),
+                eq(environments.hostId, scope.hostId),
+              ),
         ),
       )
       .limit(1)
