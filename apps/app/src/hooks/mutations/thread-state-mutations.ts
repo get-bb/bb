@@ -346,6 +346,21 @@ export function useUnarchiveThread() {
   });
 }
 
+export function useRestoreThreadEnvironment() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    meta: {
+      errorMessage: "Failed to restore workspace.",
+    },
+    mutationFn: ({ id }: ThreadMutationRequest): Promise<ThreadResponse> =>
+      sdk.threads.restoreEnvironment({ threadId: id }),
+    onSuccess: (thread) => {
+      applyThreadUpdateResult({ queryClient, thread });
+    },
+  });
+}
+
 export function useDeleteThread() {
   const queryClient = useQueryClient();
 

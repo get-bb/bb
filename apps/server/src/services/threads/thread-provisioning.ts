@@ -47,7 +47,10 @@ import {
   saveThreadProvisionContext,
   readThreadProvisionContext,
 } from "./thread-startup-store.js";
-import { applyLoggedThreadLifecycleEvent } from "./lifecycle-outcome.js";
+import {
+  applyLoggedThreadLifecycleEvent,
+  applyLoggedThreadLifecycleEventInTransaction,
+} from "./lifecycle-outcome.js";
 import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
 import { recordAcceptedPromptHistoryEntry } from "../prompt-history.js";
 
@@ -72,6 +75,16 @@ interface RequestThreadTargetReprovisionArgs {
   senderThreadId: string | null;
   systemMessageKind?: SystemMessageKind;
   systemMessageSubject?: SystemMessageSubject | null;
+  provider: {
+    environmentProviderId: string;
+    selection: EnvironmentProviderSelection;
+  };
+  thread: Thread;
+}
+
+interface RequestThreadEnvironmentRestoreArgs {
+  environment: EnvironmentRow;
+  execution: ResolvedThreadExecutionOptions;
   provider: {
     environmentProviderId: string;
     selection: EnvironmentProviderSelection;
@@ -270,6 +283,56 @@ export function requestThreadProvision(
     });
     return context;
   });
+}
+
+/**
+ * Start provisioning a replacement workspace for a thread whose own was
+ * destroyed, without asking the agent to do anything once it exists.
+ *
+ * The reprovision that rides on a message (see `dispatchTurnDuringReprovision`)
+ * is the same machinery with a turn attached to the end of it. This one is the
+ * user asking only for their files back: no `client/turn/requested` event, no
+ * prompt-history entry, and `seedWithoutRun` settles the thread to `idle` once
+ * the workspace is ready instead of starting a run in it.
+ */
+export function requestThreadEnvironmentRestore(
+  deps: Pick<AppDeps, "db" | "hub" | "logger">,
+  args: RequestThreadEnvironmentRestoreArgs,
+): ThreadProvisionContext | null {
+  return deps.db.transaction(
+    (tx) => {
+      const prepared = applyLoggedThreadLifecycleEventInTransaction(
+        { db: tx, logger: deps.logger },
+        { event: { type: "run.preparing" }, threadId: args.thread.id },
+      );
+      if (!prepared.applied) {
+        return null;
+      }
+      const context = createThreadStartup({
+        clientRequestId: createClientTurnRequestId(),
+        environmentIntent: {
+          type: "provider",
+          environmentProviderId: args.provider.environmentProviderId,
+          machine: { type: "existing", hostId: args.environment.hostId },
+          inputs: args.provider.selection.inputs,
+          selectionResolved: true,
+        },
+        execution: args.execution,
+        fork: null,
+        input: [],
+        seedWithoutRun: true,
+        titleProvided: true,
+      });
+      saveThreadProvisionContext({
+        replace: true,
+        db: tx,
+        threadId: args.thread.id,
+        context,
+      });
+      return context;
+    },
+    { behavior: "immediate" },
+  );
 }
 
 export function requestThreadTargetReprovision(

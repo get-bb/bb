@@ -692,6 +692,7 @@ function liftThreadListPlaceholder(
   return {
     ...thread,
     activeBackgroundAgentCount: thread.activity.activeBackgroundAgentCount,
+    canRestoreEnvironment: false,
     canSpawnChild: false,
     queuedMessageCount: 0,
   };

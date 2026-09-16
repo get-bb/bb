@@ -430,6 +430,18 @@ Lifecycle:
   bb thread unarchive [id]                 Unarchive a thread
     --self                                 Unarchive current thread
 
+  bb thread restore-environment [id]       Rebuild a destroyed workspace on its branch
+    --self                                 Restore current thread
+
+  Archiving a thread retires its environment, and a managed workspace is removed
+  from disk once the provider's grace window passes. Committed work survives on
+  the branch: `restore-environment` builds a new workspace from that branch and
+  attaches it, leaving the conversation where it was. It starts no turn — the
+  thread settles back to idle with a live workspace. Unarchive the thread first;
+  the command is refused while the thread is archived, while its workspace is
+  still there, and when the environment provider or its machine is gone.
+  Uncommitted changes in the removed workspace are not recoverable.
+
   bb thread delete <id>                    Delete permanently
     --yes                                  Skip confirmation
 

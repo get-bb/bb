@@ -57,6 +57,11 @@ interface ThreadUnarchiveCommandOptions {
   json?: boolean;
 }
 
+interface ThreadRestoreEnvironmentCommandOptions {
+  self?: boolean;
+  json?: boolean;
+}
+
 interface ThreadPinCommandOptions {
   self?: boolean;
   json?: boolean;
@@ -312,6 +317,38 @@ export function registerActionsCommands(
           await sdk.threads.unarchive({ threadId });
           if (outputJson(opts, { ok: true, threadId })) return;
           console.log(`Thread ${threadId} unarchived`);
+        },
+      ),
+    );
+
+  parent
+    .command("restore-environment [id]")
+    .description(
+      "Rebuild the workspace of a thread whose environment was destroyed, on the branch it held",
+    )
+    .option("--self", "Target the current thread (from BB_THREAD_ID)")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(
+        async (
+          id: string | undefined,
+          opts: ThreadRestoreEnvironmentCommandOptions,
+        ) => {
+          const threadId = requireThreadIdOrSelf(id, opts);
+          const sdk = createCliBbSdk(getUrl());
+          let thread;
+          try {
+            thread = await sdk.threads.restoreEnvironment({ threadId });
+          } catch (err: unknown) {
+            throw prependErrorContext(
+              `Failed to restore the workspace for thread ${threadId}`,
+              err,
+            );
+          }
+          if (outputJson(opts, thread)) return;
+          console.log(
+            `Thread ${threadId} is restoring its workspace (status: ${thread.status})`,
+          );
         },
       ),
     );

@@ -37,6 +37,7 @@ import type { ProviderRegistryService } from "../providers/provider-registry.js"
 import { listQueuedThreadMessageCountsByThreadIds } from "@bb/db";
 import { resolveEnvironmentWorkspaceDisplayKind } from "../environments/environment-response.js";
 import { canThreadSpawnChild } from "./thread-parent.js";
+import { canRestoreThreadEnvironment } from "./thread-environment-restore.js";
 import { toThreadEventWithMeta } from "./timeline.js";
 
 type ThreadRuntimeDisplayHub = Pick<
@@ -355,6 +356,9 @@ export function toThreadResponseFromThread(
       listActiveBackgroundTaskCountsByThreadIds(deps.db, {
         threadIds: [args.thread.id],
       })[0]?.activeBackgroundAgentCount ?? 0,
+    canRestoreEnvironment: canRestoreThreadEnvironment(deps, {
+      thread: args.thread,
+    }),
     canSpawnChild: canThreadSpawnChild(deps, { thread: args.thread }),
     queuedMessageCount:
       listQueuedThreadMessageCountsByThreadIds(deps.db, {
