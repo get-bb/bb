@@ -678,6 +678,27 @@ describe("mobile recent thread rows", () => {
 });
 
 describe("RootComposeMobileRecents", () => {
+  it("remains visible in the desktop compose layout", () => {
+    const { container } = render(
+      <TestProviders>
+        <RootComposeMobileRecents
+          highlightedThreadId={null}
+          projectNamesById={new Map()}
+          providersById={new Map()}
+          showCreatingRow={false}
+          threads={[makeThread()]}
+        />
+      </TestProviders>,
+    );
+
+    const section = container.querySelector(
+      "[data-root-compose-mobile-recents]",
+    );
+    expect(section).not.toBeNull();
+    expect(section?.className).not.toContain("md:hidden");
+    expect(section?.className).toContain("md:mt-4");
+  });
+
   it("shows concurrent Plan activity before the runtime spinner", () => {
     render(
       <TestProviders>

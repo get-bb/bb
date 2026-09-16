@@ -445,7 +445,7 @@ export function RootComposeMobileRecents({
     <section
       data-root-compose-mobile-recents=""
       aria-labelledby="root-compose-mobile-recents"
-      className="md:hidden"
+      className="md:mt-4"
     >
       <div className="sticky top-0 z-10 mb-1 bg-background px-2">
         <h2
