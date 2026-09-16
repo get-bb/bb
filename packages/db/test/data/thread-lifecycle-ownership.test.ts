@@ -108,7 +108,7 @@ describe("lifecycle ownership", () => {
   });
 });
 
-it("backfills only explicit historical evidence and propagates owner state", () => {
+it("leaves existing helpers unowned and preserves their state during migration", () => {
   const { db, spawn, project } = setup();
   const owner = spawn();
   const side = createThread(db, hub, {
@@ -149,24 +149,22 @@ it("backfills only explicit historical evidence and propagates owner state", () 
     new URL("../../drizzle/0121_fluffy_major_mapleleaf.sql", import.meta.url),
     "utf8",
   );
-  db.$client.exec("DROP TRIGGER threads_lifecycle_owner_immutable");
-  for (const statement of migration.split("--> statement-breakpoint")) {
-    if (
-      statement.trimStart().startsWith("UPDATE") ||
-      statement.trimStart().startsWith("WITH RECURSIVE")
-    )
-      db.$client.exec(statement);
-  }
-  for (const child of [side, worker])
+  const before = db.$client.prepare("SELECT * FROM threads ORDER BY id").all();
+  db.$client.exec(`
+    DROP TRIGGER threads_lifecycle_owner_immutable;
+    DROP TRIGGER threads_lifecycle_owner_insert;
+    DROP INDEX threads_lifecycle_owner_idx;
+    ALTER TABLE threads DROP COLUMN lifecycle_owner_thread_id;
+  `);
+  db.$client.exec(migration);
+  expect(db.$client.prepare("SELECT * FROM threads ORDER BY id").all()).toEqual(
+    before,
+  );
+  for (const child of [side, worker, unknown])
     expect(getThread(db, child.id)).toMatchObject({
-      lifecycleOwnerThreadId: owner.id,
-      deletedAt: expect.any(Number),
-      archivedAt: expect.any(Number),
+      lifecycleOwnerThreadId: null,
+      deletedAt: null,
+      archivedAt: null,
     });
-  expect(getThread(db, unknown.id)).toMatchObject({
-    lifecycleOwnerThreadId: null,
-    deletedAt: null,
-    archivedAt: null,
-  });
   expect(db.$client.pragma("foreign_key_check")).toEqual([]);
 });

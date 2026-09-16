@@ -3038,5 +3038,5 @@ thread responses expose its nullable value. This adds data fields to existing
 SDK methods, not a new `BbPluginApi` property, app export or slot method, so no
 new unprefixed public API member is introduced. Audit before stabilization:
 immutable cross-project ownership, cross-host cleanup, archive/delete retries,
-creation races, and conservative historical backfill. The Plugin Guide SDK card
+creation races, and preservation of existing unowned threads. The Plugin Guide SDK card
 describes the public behavior.

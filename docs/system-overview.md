@@ -50,14 +50,9 @@ server revalidates immediately before insertion, with a database insert guard.
 Deletion and archival persist before cleanup effects. Ordinary sidebar children
 and visible forks keep their existing policies unless ownership is explicit.
 
-Migration 0121 backfills only hidden side-chat forks with explicit plugin attribution
-and workflow workers with structured `workflowWorker`, `runId`, `callId`, and
-`originThreadId` metadata. The owner must exist, belong to the same project and be
-strictly older. Ambiguous records, equal timestamps, missing sources and title-based
-matches remain unowned. Original `client/turn/requested` prompts may support manual
-historical investigation but are never parsed automatically for ownership. The
-migration also propagates existing owner tombstones/archive state. No live records
-are changed by developing or testing this branch.
+Migration 0121 adds the ownership schema without assigning owners to existing
+threads or changing their archive/delete state. New side chats and workflow
+worker attempts explicitly assign ownership when created.
 
 ### Transport contracts
 

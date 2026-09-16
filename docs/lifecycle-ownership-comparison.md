@@ -74,16 +74,11 @@ than removing its row directly. An unavailable dependent host can delay physical
 owner/project deletion; durable logical deletion is already visible to clients.
 No daemon payload changed, so no protocol version bump is required.
 
-Backfill is intentionally narrower than new admission: only explicitly attributed
-hidden side-chat forks and structured workflow worker metadata are eligible. The
-historical owner must exist in the same project and have a strictly earlier
-creation timestamp. This extra historical filter is evidence conservatism, not a
-cross-project ownership policy. Existing archived/deleted owner state is propagated.
-Equal timestamps, missing owners, unattributed hidden forks, title matches and
-older workers without structured metadata remain unowned. The plugin's separate
-`workflow_workers` database is not joined by a core migration. Original
-`client/turn/requested` prompts can support a separately reviewed historical
-investigation; no automatic prompt parsing or production recovery runs here.
+Migration 0121 changes only the schema. Existing threads keep null lifecycle
+ownership, including attributed side chats and workflow workers. It does not infer
+ownership or propagate existing archive/delete state. New side chats and workflow
+attempts receive explicit ownership when created. The plugin's separate durable
+worker tracking and recovery remain independent of this core relationship.
 
 ## Comparison with retainsEnvironment
 
@@ -92,7 +87,7 @@ investigation; no automatic prompt parsing or production recovery runs here.
 | Owned side chat/worker outlives archived/deleted origin                    | Reliable cascading releases it, while deletion also removes dependent history.             | A borrower need not retain its workspace, but the flag alone does not express dependent deletion.                         |
 | Terminal/replaced worker while origin stays live                           | Workflow plugin must promptly archive it; durable all-attempt cleanup remains necessary.   | Borrower retention can avoid keeping the workspace, but terminal worker/history policy still needs cleanup.               |
 | Hidden independent background thread                                       | Continues normal retention until its own lifecycle ends.                                   | Can explicitly choose retention independently of visibility.                                                              |
-| Old orphan with no trustworthy ownership evidence                          | Remains independent; no safe owner can be inferred.                                        | A separate conservative retention migration may change lifetime responsibility, without recovering the lost relationship. |
+| Existing thread without explicit lifecycle ownership                       | Remains independent; no safe owner can be inferred.                                        | A separate conservative retention migration may change lifetime responsibility, without recovering the lost relationship. |
 | Dependent in another environment/project                                   | Retains its environment while live, then follows its owner's archive/delete.               | Can express a live borrower that does not retain its own environment.                                                     |
 | Owner remains live but user wants workspace retired underneath a dependent | Ownership alone does not express this.                                                     | Explicit non-retention plus safe execution drain addresses this distinct policy.                                          |
 | Stop/cleanup failure or disconnected daemon                                | Retry and retain durable cleanup state; existing runtime/environment safety still applies. | Non-retention still requires reliable execution drain before teardown.                                                    |
@@ -116,7 +111,7 @@ All builds, typechecks and tests used Turbo. Successful checks:
   environment/machine orchestration. A subsequent focused fork run adds explicit
   owned/unowned response coverage (28 fork tests; 156 distinct server cases total).
 - DB: 79 lifecycle/migration tests, including restrictive FK deletion, immutable
-  ownership, cross-project cascading, unarchive ordering and conservative backfill.
+  ownership, cross-project cascading, unarchive ordering and preservation of existing unowned threads.
 - CLI: 48 spawn/fork tests. Side-chat: 25 tests. Workflows: 233 tests, including
   retry/recovery/all-attempt cleanup; worker spawn assertions require the origin owner.
 - Fresh isolated `pnpm dev` server and connected daemon, with the built source CLI:
