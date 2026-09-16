@@ -59,6 +59,7 @@ export {
 
 export {
   createThread,
+  InvalidLifecycleOwnerError,
   countLiveThreadsInEnvironment,
   countThreads,
   countNonDeletedAssignedChildThreads,
@@ -76,7 +77,10 @@ export {
   listNonDeletedChildThreads,
   listThreadEnvironmentAssignmentsOnHost,
   listUnarchivedAssignedChildThreads,
-  listUnarchivedHiddenSourceThreads,
+  listNonDeletedHiddenSourceThreads,
+  lifecycleThreadTreeIdsForProject,
+  listLifecycleThreadTree,
+  listLifecycleThreadDependents,
   listRunningThreads,
   listThreadsWithPendingInteractionState,
   listThreadsWithPendingInteractionStateForProjects,
@@ -472,6 +476,20 @@ export {
   shouldRunIncrementalVacuum,
 } from "./maintenance.js";
 export * from "./machines.js";
-export { advanceThreadPruning, getNextThreadPruningPolicy, THREAD_PRUNING_POLICIES } from "./thread-pruning.js";
+export {
+  advanceThreadPruning,
+  getNextThreadPruningPolicy,
+  THREAD_PRUNING_POLICIES,
+} from "./thread-pruning.js";
 export type { ThreadPruningPolicy } from "./thread-pruning.js";
 export { pruneRateLimitSnapshots } from "./rate-limit-pruning.js";
+export {
+  listPathInstalledPluginSources,
+  rerootServerOwnedPluginPaths,
+  swapServerHostRoles,
+  type PathInstalledPluginSource,
+  type RerootServerOwnedPathsArgs,
+  type RerootServerOwnedPathsResult,
+  type SwapServerHostRolesArgs,
+  type SwapServerHostRolesResult,
+} from "./server-move.js";

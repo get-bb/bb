@@ -49,7 +49,7 @@ interface OptionalServerFieldGroup {
   reason: string;
 }
 
-const OPTIONAL_SERVER_FIELD_GROUP_LIMIT = 30;
+const OPTIONAL_SERVER_FIELD_GROUP_LIMIT = 31;
 
 const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
   {
@@ -105,6 +105,14 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
     reason:
       "Thread creation may omit visibility for backward compatibility; the server fills visible at the creation boundary.",
     fields: ["createThreadRequestSchema.visibility"],
+  },
+  {
+    reason:
+      "Lifecycle ownership is explicitly assigned at creation; omission creates an independent thread.",
+    fields: [
+      "createThreadRequestSchema.lifecycleOwnerThreadId",
+      "forkThreadRequestSchema.lifecycleOwnerThreadId",
+    ],
   },
   {
     reason:
@@ -945,6 +953,7 @@ describe("server-contract canonical schemas", () => {
           status: "idle",
           parentThreadId: null,
           sourceThreadId: null,
+          lifecycleOwnerThreadId: null,
           originKind: null,
           originPluginId: null,
           visibility: "visible",
@@ -981,6 +990,7 @@ describe("server-contract canonical schemas", () => {
     ).toMatchObject([
       {
         id: "thr_123",
+        lifecycleOwnerThreadId: null,
         hasPendingInteraction: true,
         environmentHostId: "host_123",
         environmentName: null,

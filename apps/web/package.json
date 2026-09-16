@@ -22,6 +22,7 @@
     "@tanstack/react-router": "^1.170.15",
     "@tanstack/react-start": "^1.168.25",
     "better-auth": "^1.6.23",
+    "cf-workers-og": "^3.0.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "drizzle-orm": "^0.38.0",

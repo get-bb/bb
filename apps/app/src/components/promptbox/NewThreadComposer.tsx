@@ -1303,7 +1303,10 @@ export function NewThreadComposer({
     },
     [navigate, projectId],
   );
-  const [commandQuery, setCommandQuery] = useState<string | null>(null);
+  const [commandState, setCommandState] = useState<{
+    query: string | null;
+    trigger: import("@bb/domain").PromptMentionCommandTrigger | null;
+  }>({ query: null, trigger: null });
   const [hasComposerFocused, setHasComposerFocused] = useState(false);
   const handleEditorFocus = useCallback(() => {
     setHasComposerFocused(true);
@@ -1320,11 +1323,12 @@ export function NewThreadComposer({
     projectId,
     providerId: selectedProviderId,
     commandScope: "new-thread",
-    skillsTrigger: providerPromptActions.skillsTrigger,
+    skillsTriggers: providerPromptActions.skillsTriggers,
+    activeTrigger: commandState.trigger,
     promptActions,
     environmentId: reuseEnvironmentId,
     hostId: projectHostId,
-    query: commandQuery,
+    query: commandState.query,
     composerFocused: hasComposerFocused,
   });
   const promptHistoryEnabled = usePromptHistoryEnabled();
@@ -1602,14 +1606,15 @@ export function NewThreadComposer({
                 options.resolveMentionLink ?? defaultMentionLinkResolver,
             },
             command: {
-              trigger: commandSuggestions.trigger,
+              triggers: commandSuggestions.triggers,
               suggestions: commandSuggestions.suggestions,
               isLoading: commandSuggestions.isLoading,
               isError: commandSuggestions.isError,
               hasMore: commandSuggestions.hasMore,
               isLoadingMore: commandSuggestions.isLoadingMore,
               loadMore: commandSuggestions.loadMore,
-              onQueryChange: setCommandQuery,
+              onQueryChange: (query, trigger) =>
+                setCommandState({ query, trigger }),
               onEditorFocus: handleEditorFocus,
             },
           }}

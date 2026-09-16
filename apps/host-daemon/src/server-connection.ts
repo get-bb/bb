@@ -352,6 +352,38 @@ export class ServerConnection {
     } catch (error) {
       if (
         error instanceof ServerResponseError &&
+        error.serverMoved !== null &&
+        this.options.onServerMoved !== undefined
+      ) {
+        const moved = error.serverMoved;
+        this.options.logger.info(
+          { serverUrl: moved.serverUrl, toHostName: moved.toHostName },
+          "The bb server moved; switching this daemon to the new address",
+        );
+        const switched = await this.options
+          .onServerMoved({
+            source: "session-open",
+            serverUrl: moved.serverUrl,
+            headers: moved.headers ?? null,
+            toHostName: moved.toHostName,
+            movedAt: moved.movedAt,
+          })
+          .then(
+            () => true,
+            (handlerError: unknown) => {
+              this.options.logger.error(
+                { ...runtimeErrorLogFields(handlerError) },
+                "Failed to switch this daemon to the moved bb server",
+              );
+              return false;
+            },
+          );
+        if (switched) {
+          throw error;
+        }
+      }
+      if (
+        error instanceof ServerResponseError &&
         error.code === "protocol_version_mismatch"
       ) {
         this.protocolMismatchObserved = true;
@@ -593,6 +625,23 @@ export class ServerConnection {
           );
         },
       );
+      return;
+    }
+
+    if (message.data.type === "server.moved") {
+      const move = message.data;
+      void Promise.resolve(
+        this.options.onServerMoved?.({
+          serverUrl: move.serverUrl,
+          headers: move.headers,
+          source: "message",
+        }),
+      ).catch((error) => {
+        this.options.logger.error(
+          { ...runtimeErrorLogFields(error), serverUrl: move.serverUrl },
+          "Failed to switch this daemon to the moved bb server",
+        );
+      });
       return;
     }
 

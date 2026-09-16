@@ -1037,6 +1037,152 @@ describe("plugin service", () => {
     expect(enabled?.status).toBe("running");
   });
 
+  it("holds a plugin at start without running its factory or starting its services", async () => {
+    const globals = globalThis as Record<string, unknown>;
+    const heldRoot = await writePlugin(workDir, {
+      name: "bb-plugin-held-tunnel",
+      serverSource: `export default function plugin(bb: any) {
+        const g = globalThis as any;
+        g.__heldFactoryRuns = (g.__heldFactoryRuns ?? 0) + 1;
+        bb.background.service("tunnel", {
+          start(signal: any) {
+            g.__heldServiceStarts = (g.__heldServiceStarts ?? 0) + 1;
+            return new Promise<void>((resolve) => {
+              signal.addEventListener("abort", () => resolve());
+            });
+          },
+        });
+      }`,
+    });
+    const otherRoot = await writePlugin(workDir, {
+      name: "bb-plugin-unheld",
+      serverSource: `export default function plugin() {}`,
+    });
+    const held = await service.installPath(heldRoot);
+    await service.installPath(otherRoot);
+    await service.stop();
+    globals.__heldFactoryRuns = 0;
+    globals.__heldServiceStarts = 0;
+    service = createTelemetryTrackedService([]);
+
+    try {
+      await service.start({
+        hold: {
+          source: held.source,
+          detail: "Held for this test.",
+          isActive: async () => true,
+        },
+      });
+
+      expect(service.isPluginLoaded("held-tunnel")).toBe(false);
+      expect(
+        service.list().find((entry) => entry.id === "held-tunnel"),
+      ).toMatchObject({
+        enabled: true,
+        status: "disabled",
+        statusDetail: "Held for this test.",
+      });
+      expect(globals.__heldFactoryRuns).toBe(0);
+      expect(globals.__heldServiceStarts).toBe(0);
+      expect(service.isPluginLoaded("unheld")).toBe(true);
+    } finally {
+      delete globals.__heldFactoryRuns;
+      delete globals.__heldServiceStarts;
+    }
+  });
+
+  describe("while a plugin is held", () => {
+    const HELD_DETAIL = "Held for this test.";
+    const globals = globalThis as Record<string, unknown>;
+    let holdActive = true;
+
+    beforeEach(async () => {
+      holdActive = true;
+      globals.__heldLoads = 0;
+      const heldRoot = await writePlugin(workDir, {
+        name: "bb-plugin-held-copy",
+        serverSource: `export default function plugin() {
+          const g = globalThis as any;
+          g.__heldLoads = (g.__heldLoads ?? 0) + 1;
+        }`,
+      });
+      const otherRoot = await writePlugin(workDir, {
+        name: "bb-plugin-free-copy",
+        serverSource: `export default function plugin() {}`,
+      });
+      const held = await service.installPath(heldRoot);
+      await service.installPath(otherRoot);
+      await service.stop();
+      globals.__heldLoads = 0;
+      service = createTelemetryTrackedService([]);
+      await service.start({
+        hold: {
+          source: held.source,
+          detail: HELD_DETAIL,
+          isActive: async () => holdActive,
+        },
+      });
+    });
+
+    afterEach(() => {
+      delete globals.__heldLoads;
+    });
+
+    function expectHeld(): void {
+      expect(service.isPluginLoaded("held-copy")).toBe(false);
+      expect(
+        service.list().find((entry) => entry.id === "held-copy"),
+      ).toMatchObject({
+        enabled: true,
+        status: "disabled",
+        statusDetail: HELD_DETAIL,
+      });
+      expect(globals.__heldLoads).toBe(0);
+    }
+
+    it("keeps it unloaded when it is enabled, even when it is already enabled", async () => {
+      expect(await service.setEnabled("held-copy", true)).toMatchObject({
+        status: "disabled",
+        statusDetail: HELD_DETAIL,
+      });
+      expectHeld();
+
+      await service.setEnabled("held-copy", false);
+      expect(await service.setEnabled("held-copy", true)).toMatchObject({
+        status: "disabled",
+        statusDetail: HELD_DETAIL,
+      });
+      expectHeld();
+    });
+
+    it("keeps it unloaded on a reload of every plugin or of that plugin alone", async () => {
+      expect(await service.reload()).toMatchObject({ ok: true });
+      expectHeld();
+      expect(service.isPluginLoaded("free-copy")).toBe(true);
+
+      expect(await service.reload("held-copy")).toMatchObject({ ok: true });
+      expectHeld();
+    });
+
+    it("keeps it unloaded when its settings are updated", async () => {
+      expect(await service.updateSettings("held-copy", {})).toBeUndefined();
+      expectHeld();
+    });
+
+    it("loads it on enable or reload once the hold is released, without a restart", async () => {
+      holdActive = false;
+
+      expect(await service.setEnabled("held-copy", true)).toMatchObject({
+        status: "running",
+      });
+      expect(service.isPluginLoaded("held-copy")).toBe(true);
+      expect(globals.__heldLoads).toBe(1);
+
+      expect(await service.reload("held-copy")).toMatchObject({ ok: true });
+      expect(globals.__heldLoads).toBe(2);
+    });
+  });
+
   it("enables a disabled path plugin when it is reinstalled", async () => {
     const rootDir = await writePlugin(workDir, {
       name: "bb-plugin-reinstalled",

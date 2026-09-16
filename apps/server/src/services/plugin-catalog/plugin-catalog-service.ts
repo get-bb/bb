@@ -42,6 +42,10 @@ import {
 } from "../plugins/manifest.js";
 import type { PluginService } from "../plugins/plugin-service.js";
 import {
+  SERVER_MOVE_FROZEN_RETRY_MS,
+  isServerMoveFrozen,
+} from "../server-move/freeze-state.js";
+import {
   evaluateCompatibility,
   listGitSemverTags,
   resolveGitRef,
@@ -705,6 +709,10 @@ export function createPluginCatalogService(deps: {
             MARKETPLACE_REFRESH_INTERVAL_MS -
               Math.max(0, Date.now() - lastAttempt),
           );
+    schedulePeriodicRefresh(delay);
+  }
+
+  function schedulePeriodicRefresh(delay: number): void {
     const timer = setTimeout(runPeriodicRefresh, delay);
     timer.unref();
     cancelPeriodic = () => clearTimeout(timer);
@@ -713,6 +721,10 @@ export function createPluginCatalogService(deps: {
   function runPeriodicRefresh(): void {
     if (periodicStopped) return;
     cancelPeriodic = null;
+    if (isServerMoveFrozen(deps.db)) {
+      schedulePeriodicRefresh(SERVER_MOVE_FROZEN_RETRY_MS);
+      return;
+    }
     void refreshMarketplaces()
       .then((results) => {
         for (const result of results) {

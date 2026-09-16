@@ -1247,7 +1247,10 @@ function requestThreadStop(
   args: RequestThreadStopArgs,
 ): void {
   if (!markThreadStopRequested(deps, args)) {
-    return;
+    const thread = getThread(deps.db, args.threadId);
+    if (!thread || thread.archivedAt === null) {
+      return;
+    }
   }
   if (!inFlightThreadRpcGuard.claim(args.threadId, "thread.stop")) {
     return;
@@ -1553,25 +1556,6 @@ async function runAwaitedThreadStopCommand(
     } finally {
       inFlightThreadRpcGuard.release(args.threadId, "thread.stop");
     }
-  });
-}
-
-export function requestActiveRuntimeThreadStopIfNeeded(
-  deps: CommandResultSideEffectsDeps,
-  thread: Pick<Thread, "id" | "status">,
-  environment: {
-    hostId: string;
-    id: string;
-  },
-): void {
-  if (thread.status !== "active" && !hasLiveThreadStartInFlight(thread.id)) {
-    return;
-  }
-  requestThreadStop(deps, {
-    environmentId: environment.id,
-    hostId: environment.hostId,
-    interruptionReason: "manual-stop",
-    threadId: thread.id,
   });
 }
 
@@ -1898,7 +1882,19 @@ export async function reconcileDaemonReportedThreads(
           "starting",
           "stopping",
         ]),
-        or(isNotNull(threads.deletedAt), eq(threads.status, "stopping")),
+        or(
+          isNotNull(threads.deletedAt),
+          eq(threads.status, "stopping"),
+          and(
+            isNotNull(threads.archivedAt),
+            or(
+              inArray(threads.status, ["active", "starting"]),
+              args.activeThreadIds.length > 0
+                ? inArray(threads.id, [...args.activeThreadIds])
+                : undefined,
+            ),
+          ),
+        ),
       ),
     )
     .all();
@@ -1936,6 +1932,7 @@ export async function reconcileDaemonReportedThreads(
           eq(environments.hostId, args.hostId),
           eq(threads.status, "error"),
           isNull(threads.deletedAt),
+          isNull(threads.archivedAt),
           inArray(threads.id, [...args.activeThreadIds]),
         ),
       )
@@ -1987,6 +1984,7 @@ export async function reconcileDaemonReportedThreads(
         eq(environments.hostId, args.hostId),
         inArray(threads.status, ["starting", "idle"]),
         isNull(threads.deletedAt),
+        isNull(threads.archivedAt),
         inArray(threads.id, [...args.activeThreadIds]),
       ),
     )

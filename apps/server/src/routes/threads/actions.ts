@@ -552,7 +552,13 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
   post(routes.unarchive, (context) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     const providerThreadId = getLastProviderThreadId(deps, thread.id);
-    unarchiveThread(deps.db, deps.hub, thread.id);
+    if (!unarchiveThread(deps.db, deps.hub, thread.id)) {
+      throw new ApiError(
+        409,
+        "invalid_request",
+        "Lifecycle owner must be unarchived first",
+      );
+    }
     const unarchivedThread = getThread(deps.db, thread.id);
     if (unarchivedThread !== null) {
       if (unarchivedThread.environmentId !== null)

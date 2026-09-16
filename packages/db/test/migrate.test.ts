@@ -737,6 +737,19 @@ function dropMarketplaceStatsColumn(db: DbConnection): void {
  * 0108's, so the replay recreates the table before 0110 drops it again.
  */
 function rewindEnvironmentProvisioningMigration(db: DbConnection): void {
+  db.$client.exec("DROP TRIGGER IF EXISTS threads_lifecycle_owner_insert");
+  db.$client.exec("DROP TRIGGER IF EXISTS threads_lifecycle_owner_immutable");
+  db.$client.exec("DROP INDEX IF EXISTS threads_lifecycle_owner_idx");
+  if (
+    db.$client
+      .prepare<[], TableInfoRow>("PRAGMA table_info(threads)")
+      .all()
+      .some((column) => column.name === "lifecycle_owner_thread_id")
+  ) {
+    db.$client.exec(
+      "ALTER TABLE threads DROP COLUMN lifecycle_owner_thread_id",
+    );
+  }
   const columns = db.$client
     .prepare<[], TableInfoRow>("PRAGMA table_info(environments)")
     .all();

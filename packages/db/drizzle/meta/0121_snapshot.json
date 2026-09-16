@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "1acd3da4-4bf8-4d4a-adca-f23ebf9b342a",
+  "id": "b397e64e-ad43-4c17-a389-538af608fb6e",
   "prevId": "9e929359-ef83-4092-a7f9-edf93437e28b",
   "tables": {
     "app_settings": {
@@ -3802,204 +3802,6 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "thread_pruning_cursors": {
-      "name": "thread_pruning_cursors",
-      "columns": {
-        "policy": {
-          "name": "policy",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "scope": {
-          "name": "scope",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "''"
-        },
-        "thread_id": {
-          "name": "thread_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "version": {
-          "name": "version",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "last_thread_id": {
-          "name": "last_thread_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "''"
-        },
-        "current_thread_id": {
-          "name": "current_thread_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "step": {
-          "name": "step",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
-        "sequence": {
-          "name": "sequence",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
-        "upper_sequence": {
-          "name": "upper_sequence",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
-        "cycle": {
-          "name": "cycle",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
-        "latest_root_sequence": {
-          "name": "latest_root_sequence",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
-        "latest_context_sequence": {
-          "name": "latest_context_sequence",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
-        "probe_event_id": {
-          "name": "probe_event_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "probe_phase": {
-          "name": "probe_phase",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
-        "probe_sequence": {
-          "name": "probe_sequence",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
-        "probe_witness_id": {
-          "name": "probe_witness_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "thread_pruning_cursors_thread_idx": {
-          "name": "thread_pruning_cursors_thread_idx",
-          "columns": [
-            "thread_id"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {
-        "thread_pruning_cursors_thread_id_threads_id_fk": {
-          "name": "thread_pruning_cursors_thread_id_threads_id_fk",
-          "tableFrom": "thread_pruning_cursors",
-          "tableTo": "threads",
-          "columnsFrom": [
-            "thread_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "thread_pruning_cursors_policy_scope_pk": {
-          "columns": [
-            "policy",
-            "scope"
-          ],
-          "name": "thread_pruning_cursors_policy_scope_pk"
-        }
-      },
-      "uniqueConstraints": {},
-      "checkConstraints": {
-        "thread_pruning_cursors_scope_check": {
-          "name": "thread_pruning_cursors_scope_check",
-          "value": "\"thread_pruning_cursors\".\"scope\" = coalesce(\"thread_pruning_cursors\".\"thread_id\", '')"
-        }
-      }
-    },
-    "thread_pruning_rate_limit_keepers": {
-      "name": "thread_pruning_rate_limit_keepers",
-      "columns": {
-        "provider_id": {
-          "name": "provider_id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "event_id": {
-          "name": "event_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
     "thread_search_segments": {
       "name": "thread_search_segments",
       "columns": {
@@ -4284,6 +4086,13 @@
           "notNull": false,
           "autoincrement": false
         },
+        "lifecycle_owner_thread_id": {
+          "name": "lifecycle_owner_thread_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "source_thread_id": {
           "name": "source_thread_id",
           "type": "text",
@@ -4414,6 +4223,13 @@
           ],
           "isUnique": false
         },
+        "threads_lifecycle_owner_idx": {
+          "name": "threads_lifecycle_owner_idx",
+          "columns": [
+            "lifecycle_owner_thread_id"
+          ],
+          "isUnique": false
+        },
         "threads_parent_idx": {
           "name": "threads_parent_idx",
           "columns": [
@@ -4524,6 +4340,19 @@
             "id"
           ],
           "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "threads_lifecycle_owner_thread_id_threads_id_fk": {
+          "name": "threads_lifecycle_owner_thread_id_threads_id_fk",
+          "tableFrom": "threads",
+          "tableTo": "threads",
+          "columnsFrom": [
+            "lifecycle_owner_thread_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
           "onUpdate": "no action"
         },
         "threads_source_thread_id_threads_id_fk": {

@@ -97,6 +97,23 @@ use `--environment-provider modal-sandbox` alone. `--machine-inputs <json>`
 configures the machine with optional configured `preset` and `image` names;
 `--environment-inputs <json>` configures the workspace. Neither carries secrets.
 
+## server
+
+- `bb server`
+- `bb server move`
+- `bb server move status`
+- `bb server move cancel`
+- `bb server export`
+- `bb server import`
+- `bb server unlock`
+- `bb server allow-connect`
+- `bb server delete-old-copy`
+
+`move`, `move status`, `move cancel`, and `export` call the running server.
+`import`, `unlock`, `allow-connect`, and `delete-old-copy` act on a local data
+directory (`--data-dir`, else `BB_DATA_DIR`, else `~/.bb`) and never call a
+server.
+
 ## updates
 
 - `bb updates`

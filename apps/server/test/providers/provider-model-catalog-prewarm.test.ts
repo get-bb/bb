@@ -27,6 +27,7 @@ import {
 import { registerFirstPartyProviders } from "../helpers/provider-registry.js";
 import { seedHost, seedSession } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
+import { setServerMoveFrozen } from "../../src/services/server-move/freeze-state.js";
 
 const BASE_NOW = 1_800_000_000_000;
 const HOUR = 60 * 60_000;
@@ -552,6 +553,35 @@ describe("provider model catalog prewarm", () => {
 
       expect(responder.commands).toHaveLength(commandCount);
       expect(responder.listRequests()).toHaveLength(2);
+    });
+  });
+
+  it("skips passes while the server is moving and warms the host once released", async () => {
+    await withTestHarness(async (harness) => {
+      installCatalogStore(harness, { clock: { now: BASE_NOW } });
+      const logLines = captureLogLines(harness);
+      const host = seedDaemonHost(harness, "host-prewarm-frozen");
+
+      setServerMoveFrozen(harness.db, true);
+      try {
+        await withPrewarm(harness, async () => {
+          const responder = registerResponder(harness, host);
+          harness.hub.notifyHost(host.hostId, ["host-connected"]);
+          harness.hub.notifySystem(["provider-registrations-changed"]);
+          await settleTimers(50);
+          expect(responder.commands).toEqual([]);
+          expect(logLines(PASS_FINISHED)).toEqual([]);
+
+          setServerMoveFrozen(harness.db, false);
+          harness.hub.notifyHost(host.hostId, ["host-connected"]);
+          await waitForPasses(logLines, 1);
+          expect(responder.listedProviderIds()).toEqual(
+            [...ALWAYS_VISIBLE_PROVIDER_IDS].sort(),
+          );
+        });
+      } finally {
+        setServerMoveFrozen(harness.db, false);
+      }
     });
   });
 });

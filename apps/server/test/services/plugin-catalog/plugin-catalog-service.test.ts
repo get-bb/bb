@@ -10,10 +10,17 @@ import {
   upsertInstalledPlugin,
   type DbConnection,
 } from "@bb/db";
-import { ROOT_PLUGIN_SOURCE_SELECTION } from "@bb/server-contract";
+import {
+  CURATED_PLUGIN_MARKETPLACE_NAME,
+  ROOT_PLUGIN_SOURCE_SELECTION,
+} from "@bb/server-contract";
 import { PLUGIN_CATALOG_CATEGORIES } from "@bb/domain";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createPluginCatalogService } from "../../../src/services/plugin-catalog/plugin-catalog-service.js";
+import {
+  SERVER_MOVE_FROZEN_RETRY_MS,
+  setServerMoveFrozen,
+} from "../../../src/services/server-move/freeze-state.js";
 import { refreshCuratedMarketplace } from "../../helpers/plugin-catalog.js";
 import type { MarketplaceFetch } from "../../../src/services/plugin-catalog/marketplace-http.js";
 import {
@@ -1370,5 +1377,36 @@ describe("plugin catalog service", () => {
         "npm:bb-plugin-widgets@^1.0.0 (registry https://npm.acme.test)",
       );
     });
+  });
+
+  it("defers the periodic marketplace refresh while the server is moving", async () => {
+    const fetched: string[] = [];
+    const catalog = service({
+      fetch: async (url) => {
+        fetched.push(String(url));
+        return new Response(null, { status: 503 });
+      },
+    });
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    setServerMoveFrozen(db, true);
+    try {
+      catalog.startPeriodicRefresh();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(fetched).toEqual([]);
+      expect(
+        getPluginMarketplace(db, CURATED_PLUGIN_MARKETPLACE_NAME)
+          ?.lastAttemptedRefreshAt,
+      ).toBeNull();
+
+      setServerMoveFrozen(db, false);
+      await vi.advanceTimersByTimeAsync(SERVER_MOVE_FROZEN_RETRY_MS);
+      await vi.waitFor(() => {
+        expect(fetched).not.toEqual([]);
+      });
+    } finally {
+      catalog.stopPeriodicRefresh();
+      setServerMoveFrozen(db, false);
+      vi.useRealTimers();
+    }
   });
 });

@@ -14,6 +14,13 @@ host is a machine, including existing machines enrolled with the built-in
 `manual` provider (Manual machine setup). Add machines under Settings → Machines
 or from the composer machine picker.
 
+One machine runs the bb server. It stores threads, the database, and settings,
+and every other machine and app connects to it. Settings → Machines badges it
+`server` once there are several persistent machines, and `bb machine list` shows
+`server` in its Role column. Keep the server machine on: while it is asleep or
+off, nothing can reach bb and running threads may stop. The server machine
+cannot be removed.
+
 The server listens on loopback by default. Remote execution machines need
 a server access provider: paired bb Connect, or a configured direct URL reachable
 from the target, such as a private Tailscale Serve URL. A configured URL alone
@@ -41,8 +48,8 @@ directly under the selected data directory in `logs/server-stdio.log` and
 console output and startup errors; rotating application logs remain separate.
 Use `tail -F` to follow them without coupling service logging to the terminal.
 
-bb machine list List persistent machines with ID,
-type, connection status, and
+bb machine list List persistent machines with role,
+ID, type, connection status, and
 relative last-seen time
 --all Include disposable provider
 sandboxes
@@ -52,7 +59,6 @@ bb machine providers List installed machine providers
 bb machine create --provider <id> Create a standalone machine
 --key <idempotency-key> Reuse this creation on retries
 --inputs <JSON> Non-secret provider inputs
---project <id-or-name> Optional project context
 --json Print the created machine as JSON
 bb machine enroll --bootstrap-file <path>
 --bootstrap-env <NAME> Alternative private bundle source
@@ -156,7 +162,7 @@ when the provider declares them ephemeral.
 
 For project creation and sources, `--root`/`--path` refers to a path on the
 selected connected machine. Omit the selector to keep the existing local CLI
-machine fallback (normally the primary machine). Pass `--clone` to source add
+machine fallback (normally the server machine). Pass `--clone` to source add
 instead of `--path` to clone the project's Git remote there; `--remote-url` and
 `--target-path` optionally override the clone inputs.
 
@@ -178,6 +184,87 @@ Use `bb tailscale devices`, `bb tailscale status`, and `bb tailscale configure
 <port>` to discover devices and validate a dedicated existing HTTPS Serve
 mapping. Choose Tailscale explicitly; it is not selected by default.
 The plugin skill documents SSH prerequisites and safe endpoint cleanup.
+
+## Move the server
+
+Moving the server is experimental and off by default. Turn on the `serverMove`
+experiment in Settings → Experiments or with
+`bb settings experiment serverMove true`; until then Settings → Machines hides
+Move server here, and `bb server move`, `bb server export`, and deleting an old
+server copy from the server are refused.
+
+A move copies the server's data (database, settings, plugin data, attachments)
+to another persistent machine, points every machine and app at it, and keeps the
+old computer running as a regular machine. Worktrees, thread storage, and
+checkouts stay on the machines that own them.
+
+  bb server move --to <id-or-name>        Stop all work and move the server
+    --check                               Print the checklist and stop
+    --address <url>                       New server address (direct setups)
+    --archive-existing-data               Move bb server data on the target aside
+    --yes                                 Skip the confirmation
+    --json                                Print the final move status
+  bb server move status                   Show the steps, or the last move
+  bb server move cancel                   Cancel before the switch starts
+    --yes                                 Abandon a move that needs recovery without asking
+  bb server export --out <file>           Export a running server
+  bb server import <file>                 Install an export on this computer
+    --data-dir <dir>                      Target data directory
+  bb server unlock                        Let this computer's old copy start again
+    --force                               Skip the new-server health check
+  bb server allow-connect                 Turn bb connect on for an imported copy
+  bb server delete-old-copy               Delete the old copy a move left here
+
+When the target never confirms that it took over, the move waits in
+`recovery_required`: the old server stays up and read-only, and bb finishes the
+move on its own once the target answers. `bb server move` and
+`bb server move status` exit 2 in that state and name the exits:
+`bb server move cancel` abandons the move and keeps the server here (it asks
+first, since abandoning while the target took over leaves two servers; `--yes`
+skips the question), and `bb server unlock` recovers an old copy that stopped.
+
+`--check` exits nonzero while a blocker remains. With bb connect, machines and
+apps keep the same URL. A direct-address server needs `--address`: the URL every
+machine and app will use to reach the new server. Existing bb server data on the
+target is archived to `<dir>.before-move-<date>` only with
+`--archive-existing-data`; it is never merged. The move follows the steps until
+the new server takes over; SIGINT stops following while the move continues.
+Failure or cancellation before the switch leaves the server where it was.
+
+`bb server export` streams a gzip archive to a 0600 file and keeps it only when
+it matches the SHA-256 digest the server sent. The archive is not encrypted and
+holds the server's credentials and plugin secrets, so keep it private; `--json`
+prints `path`, `sizeBytes`, `sha256`, and that `warning`.
+`bb server import` works offline: it refuses a data directory that has `bb.db`
+or a running bb, refuses an export made by a newer bb or by a server with the
+`serverMove` experiment off, asks you to re-export an archive encrypted by an
+older bb, and applies path fixups when the imported server first starts. If an
+import was interrupted, rerunning `bb server import` rolls it back first from
+`server-import-journal.json` (`--json` reports `rolledBackInterruptedImport:
+true`), and a server move to that machine does the same;
+until then bb refuses to start a server on that directory. Stop the original
+server before starting the imported one; two servers holding the same bb
+connect credential take each other's tunnel.
+
+An imported server starts with bb connect off (`server-connect-hold.json`).
+`bb server allow-connect [--data-dir <dir>] [--yes] [--json]` removes the hold
+once the original server is stopped (`--json` prints `dataDir` and
+`connectHoldRemoved`); bb connect starts the next time that server starts.
+
+After a move, the old computer's data directory keeps `server-moved.json`, so
+bb there refuses to start the old server and runs as a regular machine.
+`bb server delete-old-copy` deletes the server files left behind and keeps that
+lock. `bb server unlock` removes the lock as a last resort: everything since
+the move is lost on that copy, and the new server must be stopped first. It
+refuses while the new server still answers (`<serverUrl>/health`, or
+`/api/v1/system/version` with this computer's machine grant for bb connect)
+unless `--force` is passed, and bb on that computer starts the old server within a few
+seconds. It also
+removes `serverUrl`, `serverHeaders`, `machineCredential`, and
+`connectMachineId` from that directory's `config.json`. Both
+default to `BB_DATA_DIR` or `~/.bb` and accept `--data-dir <dir>`; neither
+calls a server. The SDK equivalents are `sdk.experimental_server.checkMove`,
+`startMove`, `moveStatus`, `cancelMove`, and `export`.
 
 ## Local daemon lifecycle
 

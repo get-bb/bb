@@ -13,6 +13,7 @@ import {
   hostsQueryKey,
   pluginListQueryKey,
   pluginMarketplacesQueryKey,
+  serverMoveStatusQueryKey,
   sidebarNavigationQueryKey,
   systemConfigQueryKey,
   systemProvidersQueryKey,
@@ -250,6 +251,7 @@ export function SettingsUpdatesStory() {
       <MachineUpdatesSection
         machine={settingsUpdateMachine}
         isThisMachine={false}
+        showServerBadge={false}
       >
         <BbAppUpdateRows
           systemVersion={systemVersion}
@@ -298,6 +300,10 @@ function createSettingsStoryQueryClient() {
     remoteProviderStatus,
   );
   queryClient.setQueryData(pluginListQueryKey(true), []);
+  queryClient.setQueryData(serverMoveStatusQueryKey(), {
+    move: null,
+    lastMove: null,
+  });
   queryClient.setQueryData(systemMachineProvidersQueryKey(), [
     MANUAL_MACHINE_PROVIDER,
     MODAL_MACHINE_PROVIDER,

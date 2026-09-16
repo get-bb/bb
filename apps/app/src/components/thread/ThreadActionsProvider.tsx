@@ -326,7 +326,9 @@ export function ThreadActionsProvider({
             cancel: {
               label: "Undo",
               onClick: () => {
-                for (const threadId of response.archivedThreadIds) {
+                for (const threadId of [
+                  ...response.archivedThreadIds,
+                ].reverse()) {
                   unarchiveMutate({ id: threadId });
                 }
               },

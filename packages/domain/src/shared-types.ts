@@ -84,7 +84,7 @@ const promptMentionPathEntryKindSchema = z.enum(
   promptMentionPathEntryKindValues,
 );
 
-export const promptMentionCommandTriggerValues = ["/"] as const;
+export const promptMentionCommandTriggerValues = ["/", "$"] as const;
 export const promptMentionCommandTriggerSchema = z.enum(
   promptMentionCommandTriggerValues,
 );

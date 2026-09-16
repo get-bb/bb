@@ -83,12 +83,10 @@ describe("permission modes", () => {
 });
 
 describe("prompt mention command triggers", () => {
-  it("accepts slash as the only command trigger", () => {
-    expect(promptMentionCommandTriggerValues).toEqual(["/"]);
+  it("accepts slash and explicit skill command triggers", () => {
+    expect(promptMentionCommandTriggerValues).toEqual(["/", "$"]);
     expect(promptMentionCommandTriggerSchema.safeParse("/").success).toBe(true);
-    expect(promptMentionCommandTriggerSchema.safeParse("$").success).toBe(
-      false,
-    );
+    expect(promptMentionCommandTriggerSchema.safeParse("$").success).toBe(true);
   });
 
   it("accepts built-in command mention resources", () => {
@@ -140,7 +138,7 @@ describe("prompt mention command triggers", () => {
     });
   });
 
-  it("rejects legacy dollar command mention resources", () => {
+  it("accepts explicit skill command mention resources", () => {
     expect(
       promptMentionResourceSchema.safeParse({
         kind: "command",
@@ -151,7 +149,7 @@ describe("prompt mention command triggers", () => {
         label: "review",
         argumentHint: null,
       }).success,
-    ).toBe(false);
+    ).toBe(true);
   });
 });
 
