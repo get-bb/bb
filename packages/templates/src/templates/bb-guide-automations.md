@@ -37,7 +37,7 @@ Script execution:
 --script <inline> | --script-file <path> [--host <name-or-id>]
 [--interpreter <bash|sh|node|python3>]
 [--timeout <milliseconds>] [--env-json '{"KEY":"value"}']
-[--working-directory <legacy|project|absolute-server-path>]
+[--working-directory <automation-storage|project|absolute-server-path>]
 
 `--script-file` reads the file relative to your current directory from the
 thread's environment host, or from the server host outside a thread. Pass
@@ -49,9 +49,10 @@ print the stored copy path on the `Script:` line (`execution.storedScriptPath`
 with `--json`).
 
 Scripts run on the bb server host. New standard-project scripts use its project
-source when one exists; Personal and projects without one use legacy plugin
-storage. Existing scripts without a saved policy also retain legacy storage.
-`--working-directory` selects `legacy`, `project`, or an absolute server-host
+source when one exists; Personal and projects without one run in the plugin's
+shared script storage directory. Existing scripts without a saved policy also
+run there. `--working-directory` selects `automation-storage`, `project`, or an
+absolute server-host
 path. A missing selected directory fails the run. A failed process reports the
 exit code and sanitized first non-empty stderr line in the `Detail` column.
 

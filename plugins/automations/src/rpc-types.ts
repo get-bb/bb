@@ -122,7 +122,7 @@ export type AutomationScriptInterpreter = z.infer<
 export const automationScriptWorkingDirectorySchema = z.discriminatedUnion(
   "type",
   [
-    z.object({ type: z.literal("legacy") }).strict(),
+    z.object({ type: z.literal("automation-storage") }).strict(),
     z.object({ type: z.literal("project") }).strict(),
     z
       .object({
@@ -205,7 +205,7 @@ const storedAutomationScriptExecutionSchema = z
   .strict()
   .transform((execution) => ({
     ...execution,
-    workingDirectory: execution.workingDirectory ?? { type: "legacy" as const },
+    workingDirectory: execution.workingDirectory ?? { type: "automation-storage" as const },
   }));
 
 const automationScriptExecutionRequestSchema = z

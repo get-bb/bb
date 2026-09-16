@@ -1257,7 +1257,7 @@ describe("Automation detail recipe", () => {
 
   it.each([
     [
-      { type: "legacy" } as const,
+      { type: "automation-storage" } as const,
       "/var/lib/bb/plugins/automations/scripts/auto_1",
       "/var/lib/bb/plugins/automations/scripts/auto_1",
     ],

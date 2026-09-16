@@ -293,7 +293,7 @@ export function createScriptWorkingDirectoryResolver(
     projectId: string,
     workingDirectory: AutomationScriptWorkingDirectory,
   ): Promise<string | null> => {
-    if (workingDirectory.type === "legacy") return null;
+    if (workingDirectory.type === "automation-storage") return null;
     if (workingDirectory.type === "path") return workingDirectory.path;
     if (serverHostId === null) {
       throw new Error(

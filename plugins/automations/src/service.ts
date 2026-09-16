@@ -55,6 +55,7 @@ import {
   deleteAutomationScriptDir,
   deleteAutomationScriptFile,
   readAutomationScript,
+  scriptsRoot,
   writeInlineAutomationScript,
 } from "./script-files.js";
 import {
@@ -148,14 +149,16 @@ type ResolvedStoredExecution = {
 };
 
 const PROJECT_WORKING_DIRECTORY = { type: "project" } as const;
-const LEGACY_WORKING_DIRECTORY = { type: "legacy" } as const;
+const AUTOMATION_STORAGE_WORKING_DIRECTORY = {
+  type: "automation-storage",
+} as const;
 
 function validateScriptWorkingDirectory(
   workingDirectory: AutomationScriptWorkingDirectory,
 ): void {
   if (workingDirectory.type === "path" && !isAbsolute(workingDirectory.path)) {
     throw new Error(
-      "A script working directory must be legacy, project, or an absolute path on the bb server host",
+      "A script working directory must be automation-storage, project, or an absolute path on the bb server host",
     );
   }
 }
@@ -313,11 +316,8 @@ async function toEditableAutomationResponse(args: {
   }
   const { scriptFile, ...execution } = automation.execution;
   let resolvedWorkingDirectory: string | null;
-  if (execution.workingDirectory.type === "legacy") {
-    resolvedWorkingDirectory = automationScriptDir(
-      args.pluginDataDir,
-      automation.id,
-    );
+  if (execution.workingDirectory.type === "automation-storage") {
+    resolvedWorkingDirectory = scriptsRoot(args.pluginDataDir);
   } else if (execution.workingDirectory.type === "path") {
     resolvedWorkingDirectory = execution.workingDirectory.path;
   } else {
@@ -526,7 +526,7 @@ function defaultScriptWorkingDirectory(
     serverHostId === null ||
     projectPathForHost(project, serverHostId) === null
   ) {
-    return LEGACY_WORKING_DIRECTORY;
+    return AUTOMATION_STORAGE_WORKING_DIRECTORY;
   }
   return PROJECT_WORKING_DIRECTORY;
 }

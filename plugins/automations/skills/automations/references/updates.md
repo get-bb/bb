@@ -44,7 +44,7 @@ replacing the stored script:
 
 ```bash
 bb automation update <automationId> --project <id> \
-  --working-directory legacy|project|<absolute-server-path>
+  --working-directory automation-storage|project|<absolute-server-path>
 ```
 
 A complete script replacement preserves the current policy when the flag is

@@ -184,10 +184,10 @@ function parseScriptWorkingDirectory(
   value: string | undefined,
 ): AutomationScriptWorkingDirectory | undefined {
   if (value === undefined) return undefined;
-  if (value === "legacy" || value === "project") return { type: value };
+  if (value === "automation-storage" || value === "project") return { type: value };
   if (isAbsolute(value)) return { type: "path", path: value };
   throw new Error(
-    "Invalid --working-directory. Expected legacy, project, or an absolute path on the bb server host.",
+    "Invalid --working-directory. Expected automation-storage, project, or an absolute path on the bb server host.",
   );
 }
 
@@ -859,7 +859,7 @@ function helpText(): string {
   return `Automation commands
 
 bb automation list --project <id>
-bb automation create --project <id> --name <name> (--cron <expr> --timezone <tz> | --at <datetime> | --in <duration>) (--prompt <text> --provider <id> --model <model> [--reasoning <level>] [--service-tier default|fast] | (--script <inline> | --script-file <path> [--host <name-or-id>]) [--working-directory legacy|project|<absolute-path>])
+bb automation create --project <id> --name <name> (--cron <expr> --timezone <tz> | --at <datetime> | --in <duration>) (--prompt <text> --provider <id> --model <model> [--reasoning <level>] [--service-tier default|fast] | (--script <inline> | --script-file <path> [--host <name-or-id>]) [--working-directory automation-storage|project|<absolute-path>])
 bb automation show <automationId> --project <id>
 bb automation update <automationId> --project <id> [--name <name>] [schedule flags] [complete agent/script execution flags | --provider <id> --model <model> --reasoning <level> --service-tier default|fast|none]
 bb automation pause <automationId> --project <id>
@@ -870,10 +870,10 @@ bb automation delete <automationId> --project <id> --yes
 
 Scripts run on the bb server host. New standard-project scripts use the
 project source on that host when one exists; Personal and projects without a
-server-host source use legacy plugin storage. Existing scripts without a saved
-policy also use legacy storage. Select legacy, project, or an absolute
-server-host path with --working-directory. An unavailable selected directory
-fails the run.
+server-host source run in the plugin's shared script storage directory.
+Existing scripts without a saved policy also run there. Select
+automation-storage, project, or an absolute server-host path with
+--working-directory. An unavailable selected directory fails the run.
 `;
 }
 

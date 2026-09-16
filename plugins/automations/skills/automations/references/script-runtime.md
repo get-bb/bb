@@ -23,20 +23,26 @@ output returns it as `execution.storedScriptPath`.
 
 Every script stores `execution.workingDirectory` as one of these policies:
 
-- `{"type":"legacy"}` uses `<data dir>/plugins/automations/scripts/`.
+- `{"type":"automation-storage"}` uses the plugin's shared script storage
+  directory
+  `<data dir>/plugins/automations/scripts/`. Every automation on this policy
+  shares it; each automation's stored script lives in a subdirectory of it,
+  not in the working directory itself.
 - `{"type":"project"}` uses the project's source on the bb server host.
 - `{"type":"path","path":"/absolute/path"}` uses that directory on the bb
   server host.
 
 New standard-project scripts default to `project` when that project has a
 source on the server's co-located host. Personal scripts and projects without
-such a source default to `legacy`. Automations stored before this field existed
-also decode as `legacy`, so an upgrade does not silently change their relative
+such a source default to `automation-storage`. Automations stored before this
+field existed also decode as `automation-storage`, so an upgrade does not
+silently change their relative
 paths. Replacing an existing script preserves its current policy unless the
 update includes `--working-directory`; changing an agent automation to script
 uses the same source-aware default.
 
-Use `--working-directory legacy|project|<absolute-server-path>` on create or
+Use `--working-directory automation-storage|project|<absolute-server-path>` on
+create or
 update. A `project` policy fails if the project has no source on the server
 host. An explicit path must be absolute and an existing directory. The run
 fails instead of silently using another directory when either selection is
