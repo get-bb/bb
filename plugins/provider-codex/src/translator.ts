@@ -38,8 +38,13 @@ import type { JsonValue } from "./generated/codex-app-server/schema/serde_json/J
 import { subAgentPresentation } from "./presentation.js";
 
 const codexTurnLifecyclePeekSchema = z
-  .object({ turn: z.object({ id: z.string() }).passthrough() })
+  .object({
+    threadId: z.string(),
+    turn: z.object({ id: z.string() }).passthrough(),
+  })
   .passthrough();
+
+const MAX_RESPONSE_HANDLED_TURNS_PER_THREAD = 256;
 
 const CODEX_SHELL_TOOL_NAMES = new Set(["exec_command", "Bash", "bash"]);
 const CODEX_DELEGATION_TOOL_NAMES = new Set(["spawnAgent", "resumeAgent"]);
@@ -382,8 +387,10 @@ export function createCodexEventTranslator(
     string,
     ClientTurnRequestId[]
   >();
-  const responseOpenedTurnIds = new Set<string>();
-  const responseSettledTurnIds = new Set<string>();
+  const responseHandledTurnsByThreadId = new Map<
+    string,
+    Map<string, { started: boolean; completed: boolean }>
+  >();
   const pendingWorkspaceWriteGitWritableRootsByThreadId = new Map<
     string,
     string[]
@@ -562,6 +569,7 @@ export function createCodexEventTranslator(
     providerThreadId: string;
   }): ThreadDelta[] {
     rawCommandOutputStateByProviderThreadId.delete(providerThreadId);
+    responseHandledTurnsByThreadId.delete(providerThreadId);
     return clearCodexDelegationParentState(providerThreadId);
   }
 
@@ -696,8 +704,8 @@ export function createCodexEventTranslator(
       method: "turn/started",
       params: { threadId: providerThreadId, turn },
     });
-    responseOpenedTurnIds.add(turn.id);
     if (turn.status === "inProgress") {
+      recordResponseHandledTurn(providerThreadId, turn.id, false);
       return startedDeltas;
     }
     const settledDeltas = translateEvent({
@@ -705,24 +713,57 @@ export function createCodexEventTranslator(
       method: "turn/completed",
       params: { threadId: providerThreadId, turn },
     });
-    responseSettledTurnIds.add(turn.id);
+    recordResponseHandledTurn(providerThreadId, turn.id, true);
     return [...startedDeltas, ...settledDeltas];
+  }
+
+  function recordResponseHandledTurn(
+    providerThreadId: string,
+    turnId: string,
+    completed: boolean,
+  ): void {
+    const turns =
+      responseHandledTurnsByThreadId.get(providerThreadId) ??
+      new Map<string, { started: boolean; completed: boolean }>();
+    turns.set(turnId, { started: true, completed });
+    if (turns.size > MAX_RESPONSE_HANDLED_TURNS_PER_THREAD) {
+      const oldest = turns.keys().next().value;
+      if (oldest !== undefined) {
+        turns.delete(oldest);
+      }
+    }
+    responseHandledTurnsByThreadId.set(providerThreadId, turns);
   }
 
   function consumeResponseHandledTurnLifecycle(
     event: ProviderRuntimeEvent,
   ): boolean {
-    const consumedBy =
+    const boundary =
       event.method === "turn/started"
-        ? responseOpenedTurnIds
+        ? "started"
         : event.method === "turn/completed"
-          ? responseSettledTurnIds
+          ? "completed"
           : null;
-    if (consumedBy === null) {
+    if (boundary === null) {
       return false;
     }
     const parsed = codexTurnLifecyclePeekSchema.safeParse(event.params);
-    return parsed.success && consumedBy.delete(parsed.data.turn.id);
+    if (!parsed.success) {
+      return false;
+    }
+    const turns = responseHandledTurnsByThreadId.get(parsed.data.threadId);
+    const turn = turns?.get(parsed.data.turn.id);
+    if (!turn?.[boundary]) {
+      return false;
+    }
+    turn[boundary] = false;
+    if (!turn.started && !turn.completed) {
+      turns?.delete(parsed.data.turn.id);
+      if (turns?.size === 0) {
+        responseHandledTurnsByThreadId.delete(parsed.data.threadId);
+      }
+    }
+    return true;
   }
 
   function shiftNativeTurnStartClientRequestId(

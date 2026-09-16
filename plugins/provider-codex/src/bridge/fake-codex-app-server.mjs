@@ -37,6 +37,7 @@ let threadCounter = 0;
 let turnCounter = 0;
 const openTurnIdsByThreadId = new Map();
 const pendingStartTurnIdsByThreadId = new Map();
+let interruptAttempts = 0;
 const processInstanceId = `${process.pid}-${Date.now()}-${Math.random()}`;
 
 function send(message) {
@@ -117,8 +118,17 @@ function runCompaction(threadId) {
     return;
   }
   setTimeout(() => {
-    if (COMPACTION_MODE === "idle-without-turn") {
-      notify("thread/status/changed", { threadId, status: { type: "idle" } });
+    if (
+      COMPACTION_MODE === "idle-without-turn" ||
+      COMPACTION_MODE === "error-without-turn"
+    ) {
+      notify("thread/status/changed", {
+        threadId,
+        status: {
+          type:
+            COMPACTION_MODE === "error-without-turn" ? "systemError" : "idle",
+        },
+      });
       return;
     }
     turnCounter += 1;
@@ -525,6 +535,7 @@ async function handleRequest(message) {
         const turnId = `turn-fx-${turnCounter}`;
         lateStartTurnIdsByThreadId.set(params.threadId, turnId);
         respond(id, { turn: { id: turnId, status: "inProgress" } });
+        if (script?.neverStart) return;
         setTimeout(() => {
           lateStartTurnIdsByThreadId.delete(params.threadId);
           openTurnIdsByThreadId.set(params.threadId, turnId);
@@ -583,6 +594,33 @@ async function handleRequest(message) {
       respond(id, {});
       return;
     case "turn/interrupt": {
+      interruptAttempts += 1;
+      if (
+        script?.interruptError &&
+        interruptAttempts <= (script.interruptErrorCount ?? 1)
+      ) {
+        if (script.startBeforeInterruptError) {
+          const turnId = lateStartTurnIdsByThreadId.get(params.threadId);
+          lateStartTurnIdsByThreadId.delete(params.threadId);
+          openTurnIdsByThreadId.set(params.threadId, turnId);
+          notify("turn/started", {
+            threadId: params.threadId,
+            turn: { id: turnId, status: "inProgress" },
+          });
+        }
+        if (script.settleBeforeInterruptError) {
+          notify("turn/completed", {
+            threadId: params.threadId,
+            turn: { id: params.turnId, status: "completed" },
+          });
+        }
+        respondError(
+          id,
+          script.interruptError.code,
+          script.interruptError.message,
+        );
+        return;
+      }
       if (lateStartTurnIdsByThreadId.has(params.threadId)) {
         respondError(id, -32600, "no active turn to interrupt");
         return;
@@ -651,6 +689,22 @@ async function handleRequest(message) {
       respond(id, {});
       return;
     case "thread/compact/start":
+      if (
+        COMPACTION_MODE === "idle-before-response" ||
+        COMPACTION_MODE === "error-before-response"
+      ) {
+        notify("thread/status/changed", {
+          threadId: params.threadId,
+          status: {
+            type:
+              COMPACTION_MODE === "idle-before-response"
+                ? "idle"
+                : "systemError",
+          },
+        });
+        setTimeout(() => respond(id, {}), 30);
+        return;
+      }
       respond(id, {});
       runCompaction(params.threadId);
       return;

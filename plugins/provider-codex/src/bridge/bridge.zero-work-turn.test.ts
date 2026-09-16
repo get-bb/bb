@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -477,3 +477,175 @@ it("fails a compaction when the app-server exits before its turn starts", async 
     events.filter((event) => event.type === "turn/input/accepted"),
   ).toEqual([expect.objectContaining({ clientRequestId: "creq_cmpktext23" })]);
 }, 30_000);
+
+it.each([
+  { code: -32603, message: "interrupt storage failure" },
+  { code: -32603, message: "no active turn to interrupt" },
+])(
+  "does not retry an unrelated interrupt rejection $code $message",
+  async (error) => {
+    const requestLogPath = join(workspaceDir, "requests.jsonl");
+    const scriptPath = join(workspaceDir, "script.json");
+    writeFileSync(
+      scriptPath,
+      JSON.stringify({ requestLogPath, interruptError: error }),
+    );
+    vi.stubEnv(
+      "BB_CODEX_BRIDGE_APP_SERVER_ARGS",
+      JSON.stringify([fakeAppServerPath, scriptPath]),
+    );
+    const providerThreadId = await startSession();
+    harness.sendRequest(2, "turn/start", {
+      threadId: THREAD_ID,
+      providerThreadId,
+      input: [
+        { type: "text", text: "/late-start-interruptible", mentions: [] },
+      ],
+      clientRequestId: "creq_nretry2345",
+      options: { ...sessionOptions },
+    });
+    expect((await harness.waitForResponse(2)).error).toBeUndefined();
+    await waitForEvents((events) =>
+      events.some((event) => event.type === "turn/started"),
+    );
+    harness.sendRequest(3, "thread/stop", {
+      threadId: THREAD_ID,
+      providerThreadId,
+      intent: "interrupt",
+      activeTurnId: "turn-fx-1",
+    });
+    const stopped = await harness.waitForResponse(3);
+    expect(stopped.error).toMatchObject({ message: error.message });
+    expect(
+      readFileSync(requestLogPath, "utf8")
+        .split("\n")
+        .filter((line) => line.includes('"method":"turn/interrupt"')),
+    ).toHaveLength(1);
+    expect(
+      threadEvents().filter((event) => event.type === "turn/completed"),
+    ).toHaveLength(0);
+  },
+);
+
+it.each([
+  "idle-before-response",
+  "error-before-response",
+  "error-without-turn",
+])(
+  "settles compaction on %s",
+  async (mode) => {
+    vi.stubEnv("FAKE_CODEX_COMPACTION_MODE", mode);
+    const events = await compactAndWaitForCompletion("creq_cmpkrace23");
+    expect(
+      events.filter((event) => event.type === "turn/started"),
+    ).toHaveLength(1);
+    expect(events.filter((event) => event.type === "turn/completed")).toEqual([
+      expect.objectContaining({
+        status: mode.startsWith("idle") ? "completed" : "failed",
+      }),
+    ]);
+    expect(
+      events.filter((event) => event.type === "turn/input/accepted"),
+    ).toEqual([
+      expect.objectContaining({ clientRequestId: "creq_cmpkrace23" }),
+    ]);
+  },
+  30_000,
+);
+
+it.each([
+  {
+    name: "native activation before stop",
+    delay: 450,
+    script: {},
+    attempts: 1,
+    succeeds: false,
+  },
+  {
+    name: "native activation before rejection",
+    delay: 0,
+    script: { startBeforeInterruptError: true },
+    attempts: 2,
+    succeeds: true,
+  },
+  {
+    name: "second rejection",
+    delay: 0,
+    script: { interruptErrorCount: 2 },
+    attempts: 2,
+    succeeds: false,
+  },
+  {
+    name: "completion before rejection",
+    delay: 0,
+    script: { settleBeforeInterruptError: true },
+    attempts: 1,
+    succeeds: true,
+  },
+  {
+    name: "activation timeout",
+    delay: 0,
+    script: { neverStart: true },
+    attempts: 1,
+    succeeds: false,
+  },
+])(
+  "bounds interrupt retry for $name",
+  async ({ delay, script, attempts, succeeds }) => {
+    const requestLogPath = join(workspaceDir, "requests.jsonl");
+    const scriptPath = join(workspaceDir, "script.json");
+    writeFileSync(
+      scriptPath,
+      JSON.stringify({
+        requestLogPath,
+        interruptError: {
+          code: -32600,
+          message: "no active turn to interrupt",
+        },
+        ...script,
+      }),
+    );
+    vi.stubEnv(
+      "BB_CODEX_BRIDGE_APP_SERVER_ARGS",
+      JSON.stringify([fakeAppServerPath, scriptPath]),
+    );
+    const providerThreadId = await startSession();
+    harness.sendRequest(2, "turn/start", {
+      threadId: THREAD_ID,
+      providerThreadId,
+      input: [
+        { type: "text", text: "/late-start-interruptible", mentions: [] },
+      ],
+      clientRequestId: "creq_bnded23456",
+      options: { ...sessionOptions },
+    });
+    expect((await harness.waitForResponse(2)).error).toBeUndefined();
+    await waitForEvents((events) =>
+      events.some((event) => event.type === "turn/started"),
+    );
+    if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
+    harness.sendRequest(3, "thread/stop", {
+      threadId: THREAD_ID,
+      providerThreadId,
+      intent: "interrupt",
+      activeTurnId: "turn-fx-1",
+    });
+    const stopped = await harness.waitForResponse(3);
+    if (succeeds) {
+      expect(stopped.error).toBeUndefined();
+    } else {
+      expect(stopped.error).toMatchObject({
+        message: "no active turn to interrupt",
+      });
+      expect(
+        threadEvents().filter((event) => event.type === "turn/completed"),
+      ).toHaveLength(0);
+    }
+    expect(
+      readFileSync(requestLogPath, "utf8")
+        .split("\n")
+        .filter((line) => line.includes('"method":"turn/interrupt"')),
+    ).toHaveLength(attempts);
+  },
+  20_000,
+);

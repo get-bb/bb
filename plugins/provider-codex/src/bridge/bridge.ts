@@ -80,6 +80,7 @@ import {
 import {
   createCodexAppServerConnection,
   CodexAppServerExitedError,
+  CodexAppServerRpcError,
   type CodexAppServerConnection,
   type CodexAppServerExitInfo,
   type CodexAppServerRequestResponder,
@@ -415,7 +416,10 @@ interface ResponseOpenedTurn {
 }
 
 const codexTurnNotificationPeekSchema = z
-  .object({ turn: z.object({ id: z.string() }).passthrough() })
+  .object({
+    threadId: z.string(),
+    turn: z.object({ id: z.string() }).passthrough(),
+  })
   .passthrough();
 
 interface UnopenedDispatch {
@@ -569,6 +573,12 @@ function sendThreadDeltas(
   }
   const outDeltas: ThreadDelta[] = [];
   for (const delta of deltas) {
+    if (delta.kind === "input.accepted") {
+      session.unopenedCompactionDispatches =
+        session.unopenedCompactionDispatches.filter(
+          (dispatch) => dispatch.clientRequestId !== delta.clientRequestId,
+        );
+    }
     if (delta.kind === "turn.open") {
       session.awaitingReplayedUsage = false;
       if (delta.providerTurnId !== undefined) {
@@ -665,7 +675,7 @@ function handleChildNotification(
   }
   if (method === "turn/started") {
     const parsed = codexTurnNotificationPeekSchema.safeParse(params);
-    if (parsed.success) {
+    if (parsed.success && parsed.data.threadId === session.codexThreadId) {
       markResponseOpenedTurnNativelyStarted(session, parsed.data.turn.id);
     }
   }
@@ -1453,7 +1463,6 @@ function settleAcceptedDispatch(args: {
 }): void {
   const { clientRequestId, prepared, session, result } = args;
   if (args.compaction) {
-    awaitCompactionTurn({ clientRequestId, prepared, session });
     return;
   }
   const parsed = codexTurnStartResultSchema.safeParse(result);
@@ -1691,6 +1700,11 @@ async function handleTurnStart(
   try {
     let result: unknown;
     if (compaction) {
+      awaitCompactionTurn({
+        clientRequestId: params.clientRequestId,
+        prepared,
+        session,
+      });
       result = await connection.request({
         method: "thread/compact/start",
         params: { threadId: codexThreadId },
@@ -1729,6 +1743,10 @@ async function handleTurnStart(
       result,
     });
   } catch (error) {
+    session.unopenedCompactionDispatches =
+      session.unopenedCompactionDispatches.filter(
+        (dispatch) => dispatch.clientRequestId !== params.clientRequestId,
+      );
     prepared?.rollback();
     sendError(
       id,
@@ -1813,7 +1831,11 @@ async function handleThreadStop(
     params.activeTurnId,
   );
   if (interruptFailure !== null) {
-    sendError(id, BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR, interruptFailure);
+    sendError(
+      id,
+      BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR,
+      interruptFailure.message,
+    );
     return;
   }
   const settled = await waitForCodexTurnSettlement(
@@ -1844,7 +1866,7 @@ async function requestCodexTurnInterrupt(
   session: CodexBridgeSession,
   codexThreadId: string,
   codexTurnId: string,
-): Promise<string | null> {
+): Promise<Error | null> {
   const connection = session.connection;
   if (connection === null || connection.exited) {
     return null;
@@ -1858,7 +1880,7 @@ async function requestCodexTurnInterrupt(
     });
     return null;
   } catch (error) {
-    return error instanceof Error ? error.message : String(error);
+    return error instanceof Error ? error : new Error(String(error));
   }
 }
 
@@ -1866,22 +1888,37 @@ async function interruptCodexTurn(
   session: CodexBridgeSession,
   codexThreadId: string,
   codexTurnId: string,
-): Promise<string | null> {
+): Promise<Error | null> {
+  const responseOpened = session.responseOpenedTurns.get(codexTurnId);
+  const awaitingNativeStart =
+    responseOpened !== undefined && !responseOpened.nativeStarted;
   const failure = await requestCodexTurnInterrupt(
     session,
     codexThreadId,
     codexTurnId,
   );
-  if (failure === null || !session.responseOpenedTurns.has(codexTurnId)) {
+  if (
+    failure === null ||
+    !awaitingNativeStart ||
+    !(failure instanceof CodexAppServerRpcError) ||
+    failure.code !== -32600 ||
+    failure.message !== "no active turn to interrupt"
+  ) {
     return failure;
+  }
+  if (!session.openCodexTurnIds.has(codexTurnId)) {
+    return null;
   }
   const started = await waitForNativeTurnStart(
     session,
     codexTurnId,
     INTERRUPT_SETTLEMENT_TIMEOUT_MS,
   );
-  if (!started) {
+  if (!session.openCodexTurnIds.has(codexTurnId)) {
     return null;
+  }
+  if (!started) {
+    return failure;
   }
   return requestCodexTurnInterrupt(session, codexThreadId, codexTurnId);
 }
