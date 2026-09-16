@@ -173,13 +173,13 @@ export function useCommandSuggestions(
     const discoveredSuggestions = filterCommandSuggestions(
       (commandsQuery.data?.commands ?? [])
         .map(toProviderCommandSuggestion)
-          .filter(
-            (suggestion) =>
-              (trigger !== "$" || suggestion.source === "skill") &&
-              (args.commandScope === "thread" ||
-                suggestion.source !== "command" ||
-                suggestion.origin !== "builtin" ||
-                suggestion.name !== "compact"),
+        .filter(
+          (suggestion) =>
+            (trigger !== "$" || suggestion.source === "skill") &&
+            (args.commandScope === "thread" ||
+              suggestion.source !== "command" ||
+              suggestion.origin !== "builtin" ||
+              suggestion.name !== "compact"),
         ),
       trimmedQuery,
     );

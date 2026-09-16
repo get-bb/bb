@@ -143,9 +143,9 @@ describe("useCommandSuggestions catalog prefetch", () => {
     );
 
     await waitFor(() => {
-      expect(result.current.suggestions.map((suggestion) => suggestion.name)).toEqual([
-        "writing-for-agents",
-      ]);
+      expect(
+        result.current.suggestions.map((suggestion) => suggestion.name),
+      ).toEqual(["writing-for-agents"]);
     });
   });
 });
