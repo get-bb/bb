@@ -1,4 +1,8 @@
 import { runThreadPruningSweep } from "./thread-pruning-sweep.js";
+import {
+  runProjectAttachmentBackfill,
+  runProjectAttachmentPrune,
+} from "../projects/attachment-maintenance.js";
 import { sweepProviderLifecycles } from "../environments/environment-engine.js";
 import { and, eq, isNull, isNotNull, inArray } from "drizzle-orm";
 import { sweepMachineLifecycles } from "../machines/provider-orchestration.js";
@@ -604,6 +608,18 @@ const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
     category: "maintenance",
     name: "database-maintenance",
     run: runDatabaseMaintenanceSweep,
+  },
+  {
+    cadenceMs: 0,
+    category: "maintenance",
+    name: "project-attachment-backfill",
+    run: runProjectAttachmentBackfill,
+  },
+  {
+    cadenceMs: 60_000,
+    category: "retention",
+    name: "project-attachment-orphan-prune",
+    run: runProjectAttachmentPrune,
   },
 ];
 

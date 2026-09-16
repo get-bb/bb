@@ -5,6 +5,11 @@ import {
   pruneResolvedItemCandidates,
   type ResolvedItemPruningCandidate,
 } from "./resolved-item-pruning.js";
+import { acquireProjectAttachmentOwnership } from "./project-attachments.js";
+import {
+  storedAttachmentPaths,
+  type ProjectAttachmentOwnershipMode,
+} from "@bb/domain";
 import {
   and,
   desc,
@@ -394,6 +399,7 @@ export interface ThreadTurnInterruptionEventState {
 }
 
 interface InsertStoredEventRowArgs {
+  attachmentOwnership: ProjectAttachmentOwnershipMode;
   conflict: "error" | "ignore";
   createdAt: number;
   data: string;
@@ -447,6 +453,14 @@ function insertStoredEventRow(
   if (result.changes === 0) {
     return { id, inserted: false };
   }
+  if (args.type === "client/turn/requested") {
+    acquireProjectAttachmentOwnership(
+      db,
+      args.threadId,
+      storedAttachmentPaths(args.data),
+      args.attachmentOwnership,
+    );
+  }
   if (prepared.retainedOutput !== null) {
     insertPreparedRetainedEventOutput(db, {
       eventId: id,
@@ -480,6 +494,7 @@ export function insertEvents(
         const createdAt = input.createdAt ?? Date.now();
         const turnId = getThreadEventScopeTurnId(input.scope) ?? null;
         const insertResult = insertStoredEventRow(tx, {
+          attachmentOwnership: "required",
           conflict: "ignore",
           createdAt,
           data: input.data,
@@ -834,6 +849,7 @@ export function appendDaemonEventsInTransaction(
       throw new Error(`Missing event sequence for thread: ${input.threadId}`);
     }
     insertStoredEventRow(db, {
+      attachmentOwnership: "required",
       conflict: "error",
       createdAt: now,
       data: input.data,
@@ -901,6 +917,7 @@ export function copyStoredThreadEventsInTransaction(
   const now = Date.now();
   for (const row of args.rows) {
     const insertResult = insertStoredEventRow(db, {
+      attachmentOwnership: "best-effort",
       conflict: "error",
       createdAt: row.createdAt,
       data: row.data,
@@ -1002,6 +1019,7 @@ export function appendStoredThreadEventsInTransaction(
     const turnId = getThreadEventScopeTurnId(args.scope) ?? null;
 
     insertStoredEventRow(db, {
+      attachmentOwnership: "required",
       conflict: "error",
       createdAt: now,
       data: JSON.stringify(args.data),

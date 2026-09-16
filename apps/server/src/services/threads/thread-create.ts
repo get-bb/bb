@@ -628,6 +628,7 @@ export async function createThreadFromRequest(
     }
   }
   await validatePromptAttachmentReferences({
+    db: deps.db,
     dataDir: deps.config.dataDir,
     input: requestInput.input,
     projectId: requestInput.projectId,

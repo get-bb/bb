@@ -1,9 +1,13 @@
+import { rm } from "node:fs/promises";
+import { join } from "node:path";
 import {
   createProjectSource,
   ensurePersonalProject,
   getEnvironment,
   getThread,
   listEvents,
+  projectAttachmentThreads,
+  threads,
   setQueuedThreadMessageGroupBoundary,
 } from "@bb/db";
 import {
@@ -20,8 +24,10 @@ import {
   threadResponseSchema,
   threadTimelineResponseSchema,
 } from "@bb/server-contract";
+import { eq } from "drizzle-orm";
 import { createDeferredPromise } from "@bb/test-helpers";
 import { describe, expect, it, vi } from "vitest";
+import { storeAttachment } from "../../src/services/projects/attachments.js";
 import * as placement from "../../src/services/threads/thread-environment-placement.js";
 import { appendClientTurnEventInTransaction } from "../../src/services/threads/thread-events.js";
 import { sendQueuedMessage } from "../../src/services/threads/queued-messages.js";
@@ -1223,6 +1229,93 @@ async function waitForForkStart(harness: TestAppHarness, forkId: string) {
 }
 
 describe("fork branch point and inherited history", () => {
+  function referenceAttachmentInHistory(
+    harness: TestAppHarness,
+    threadId: string,
+    path: string,
+  ) {
+    harness.db.$client
+      .prepare(
+        "UPDATE events SET data = json_set(data, '$.input[#]', json(?)) WHERE thread_id = ? AND type = 'client/turn/requested'",
+      )
+      .run(JSON.stringify({ type: "localFile", path }), threadId);
+  }
+
+  function forkAttachmentInputPaths(harness: TestAppHarness, forkId: string) {
+    return listEvents(harness.db, { threadId: forkId })
+      .filter((event) => event.type === "client/turn/requested")
+      .flatMap((event) =>
+        turnRequestEventDataSchema
+          .parse(JSON.parse(event.data))
+          .input.flatMap((entry) =>
+            entry.type === "localFile" ? [entry.path] : [],
+          ),
+      );
+  }
+
+  it("takes ownership of attachments referenced by imported history", async () => {
+    await withTestHarness(async (harness) => {
+      const { sourceThread } = seedConversationForkSource(harness);
+      const attachment = await storeAttachment(
+        harness.db,
+        harness.config.dataDir,
+        sourceThread.projectId,
+        new File(["legacy fork attachment"], "legacy.txt"),
+      );
+      referenceAttachmentInHistory(harness, sourceThread.id, attachment.path);
+
+      const response = await postFork(harness, {
+        sourceThreadId: sourceThread.id,
+        sourceSeqEnd: 5,
+      });
+      expect(response.status).toBe(201);
+      const fork = threadResponseSchema.parse(await readJson(response));
+      await waitForForkStart(harness, fork.id);
+      harness.db.delete(threads).where(eq(threads.id, sourceThread.id)).run();
+      expect(
+        harness.db
+          .select({ threadId: projectAttachmentThreads.threadId })
+          .from(projectAttachmentThreads)
+          .all(),
+      ).toEqual([{ threadId: fork.id }]);
+      expect(forkAttachmentInputPaths(harness, fork.id)).toContain(
+        attachment.path,
+      );
+    });
+  });
+
+  it("forks history whose attachment bytes are gone from disk", async () => {
+    await withTestHarness(async (harness) => {
+      const { sourceThread } = seedConversationForkSource(harness);
+      const attachment = await storeAttachment(
+        harness.db,
+        harness.config.dataDir,
+        sourceThread.projectId,
+        new File(["deleted fork attachment"], "deleted.txt"),
+      );
+      referenceAttachmentInHistory(harness, sourceThread.id, attachment.path);
+      await rm(
+        join(
+          harness.config.dataDir,
+          "attachments",
+          sourceThread.projectId,
+          attachment.path,
+        ),
+      );
+
+      const response = await postFork(harness, {
+        sourceThreadId: sourceThread.id,
+        sourceSeqEnd: 5,
+      });
+      expect(response.status).toBe(201);
+      const fork = threadResponseSchema.parse(await readJson(response));
+      await waitForForkStart(harness, fork.id);
+      expect(forkAttachmentInputPaths(harness, fork.id)).toContain(
+        attachment.path,
+      );
+    });
+  });
+
   it("clones through the anchor turn's checkpoint and inherits its conversation", async () => {
     await withTestHarness(async (harness) => {
       const { sourceThread } = seedConversationForkSource(harness);

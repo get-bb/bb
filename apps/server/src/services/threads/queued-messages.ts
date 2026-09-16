@@ -216,6 +216,7 @@ export async function createQueuedMessageForThread(
   const { payload, thread } = args;
   ensureThreadQueueIsWritable(thread);
   await validatePromptAttachmentReferences({
+    db: deps.db,
     dataDir: deps.config.dataDir,
     input: payload.input,
     projectId: thread.projectId,

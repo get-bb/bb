@@ -859,7 +859,12 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
       );
     }
     return context.json(
-      await storeAttachment(deps.config.dataDir, context.req.param("id"), file),
+      await storeAttachment(
+        deps.db,
+        deps.config.dataDir,
+        context.req.param("id"),
+        file,
+      ),
       201,
     );
   });
@@ -869,6 +874,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     requirePublicProject(deps.db, targetProjectId);
     requirePublicProject(deps.db, payload.sourceProjectId);
     await copyProjectAttachments(
+      deps.db,
       deps.config.dataDir,
       payload.sourceProjectId,
       targetProjectId,

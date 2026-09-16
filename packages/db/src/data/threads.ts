@@ -1,3 +1,4 @@
+import { copyProjectAttachmentOwnership } from "./project-attachments.js";
 import {
   and,
   asc,
@@ -333,6 +334,16 @@ export function createThread(
         })
         .returning()
         .get();
+      if (
+        createdThread.originKind === "fork" &&
+        createdThread.sourceThreadId !== null
+      ) {
+        copyProjectAttachmentOwnership(
+          tx,
+          createdThread.sourceThreadId,
+          createdThread.id,
+        );
+      }
       upsertThreadTitleSearchSegments(tx, {
         threadId: createdThread.id,
         title: createdThread.title,
