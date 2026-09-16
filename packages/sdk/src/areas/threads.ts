@@ -601,7 +601,9 @@ export interface ThreadsArea {
    * Stop the thread's work and release its loaded runtime. An explicit stop
    * wins over running work: a turn the machine still runs while the thread
    * looks idle or failed, or a turn that starts while the stop is delivered,
-   * is interrupted, and the call resolves after that turn has settled.
+   * is interrupted. The call waits for the interrupt attempt; if the machine
+   * cannot confirm it, the thread remains stopping. Inspect its status before
+   * treating the stop as confirmed.
    */
   stop(args: ThreadActionArgs): Promise<ThreadStopResult>;
   tabs: ThreadTabsArea;

@@ -22,7 +22,10 @@ sendAt?, reason? })`.
   thread, treat that as intentional unless they ask you to continue.
 - Use `bb thread stop <id>` when a thread is stuck or no longer needed.
 - `bb thread stop <id>` also releases an idle or stuck agent runtime. The
-  command is idempotent and preserves thread history.
+  command is idempotent and preserves thread history. An explicit stop also
+  interrupts a turn the machine retains while the server sees idle or failed,
+  including a turn that starts during the stop. If interruption fails, the
+  thread remains stopping; inspect its status before treating Stop as confirmed.
 - Use `bb thread compact <id>` to send the built-in `/compact` command to an idle or errored thread. Completion or failure appears in the timeline. Provider support varies; consult its skill and reported capabilities.
 - Use `bb thread clear <id>` on an idle or failed thread to reset its active
   timeline and model context in place while keeping the same BB thread,

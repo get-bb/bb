@@ -402,7 +402,9 @@ Lifecycle:
   pending interaction of that thread untouched. An explicit stop wins over work
   that is still running: when the machine still runs a turn for a thread the app
   shows as idle or failed, or a turn starts while the stop is being delivered,
-  the stop interrupts that turn and returns only after it has settled.
+  the stop interrupts that turn and waits for the attempt. If the interrupt
+  fails, the thread remains stopping; check `bb thread show <id> --json` before
+  treating the stop as confirmed.
 
   bb thread unarchive [id]                 Unarchive a thread
     --self                                 Unarchive current thread
