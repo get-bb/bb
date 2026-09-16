@@ -1,6 +1,12 @@
 import { type HostDaemonRpcCommand } from "@bb/host-daemon-contract";
 
 const hostCommandWakePolicy = {
+  "server_move.abort": "never",
+  "server_move.activate": "never",
+  "server_move.delete_old_copy": "never",
+  "server_move.inspect": "never",
+  "server_move.prepare": "never",
+  "server_move.probe": "never",
   "thread.rewind.discard": "never",
   "thread.rewind.prepare": "work",
   "thread.start": "work",

@@ -14,7 +14,7 @@ provider, and directive are all Docs.
 
 - **Vaults on connected hosts:** each vault is a named `{ hostId, rootPath }`
   pair. A new installation starts with a Personal vault at `~/Notes` on the
-  primary host. Manage local and remote vaults from the Docs panel.
+  server machine. Manage local and remote vaults from the Docs panel.
 - **Nested folders:** the resizable right sidebar recursively displays folders,
   Markdown documents, and HTML pages. It can be collapsed, and search stays
   hidden until requested.
@@ -147,7 +147,7 @@ bb docs push ./docs-work --delete
   a clean destination; the CLI never guesses or repairs identity metadata.
 - **Workspace host:** agent invocations resolve the workspace host from the
   current thread environment. Standalone multi-host callers can pass
-  `--workspace-host <id>`; omission intentionally targets the primary host.
+  `--workspace-host <id>`; omission intentionally targets the server machine.
 
 Human output is concise and `--json` returns a stable structured result on
 both success and failure. Exit codes are 0 success/no-op, 1 validation or

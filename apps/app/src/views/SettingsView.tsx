@@ -1037,6 +1037,11 @@ const EXPERIMENT_DEFINITIONS: Record<
     description:
       "Use searchable, target-first environment and machine pickers when many machines are available.",
   },
+  serverMove: {
+    label: "Server move",
+    description:
+      "Move the bb server to another machine from Settings → Machines, and export or import server data with bb server.",
+  },
   sidebarProgressiveDisclosure: {
     label: "Sidebar progressive disclosure",
     description:

@@ -373,6 +373,16 @@ import {
   updateProjectSourceRequestSchema,
   updateThreadRequestSchema,
 } from "./api-types.js";
+import {
+  serverMoveCheckRequestSchema,
+  serverMoveStartRequestSchema,
+  type DeleteOldServerCopyResponse,
+  type ServerMoveCheckRequest,
+  type ServerMoveCheckResponse,
+  type ServerMoveStartRequest,
+  type ServerMoveStatus,
+  type ServerMoveStatusResponse,
+} from "./api/server-move.js";
 import type { ApiError } from "./errors.js";
 
 type PathProjectSourceId = { param: { id: string; sourceId: string } };
@@ -885,6 +895,48 @@ export const publicApiRoutes = {
         hostProviderCliInstallRequestSchema,
       ),
       response: textResponse<HostProviderCliInstallEvent>(),
+    }),
+    deleteOldServerCopy: defineRoute({
+      path: "/hosts/:id/old-server-copy",
+      method: "delete",
+      request: noRequest<PathId>(),
+      response: jsonResponse<DeleteOldServerCopyResponse>(),
+    }),
+  },
+  server: {
+    checkMove: defineRoute({
+      path: "/server/move/check",
+      method: "post",
+      request: jsonRequest<EmptyInput, ServerMoveCheckRequest>(
+        serverMoveCheckRequestSchema,
+      ),
+      response: jsonResponse<ServerMoveCheckResponse>(),
+    }),
+    startMove: defineRoute({
+      path: "/server/move",
+      method: "post",
+      request: jsonRequest<EmptyInput, ServerMoveStartRequest>(
+        serverMoveStartRequestSchema,
+      ),
+      response: jsonResponse<ServerMoveStatus>(),
+    }),
+    moveStatus: defineRoute({
+      path: "/server/move",
+      method: "get",
+      request: noRequest(),
+      response: jsonResponse<ServerMoveStatusResponse>(),
+    }),
+    cancelMove: defineRoute({
+      path: "/server/move/cancel",
+      method: "post",
+      request: noRequest(),
+      response: jsonResponse<ServerMoveStatus>(),
+    }),
+    export: defineRoute({
+      path: "/server/export",
+      method: "post",
+      request: noRequest(),
+      response: binaryResponse<Uint8Array>(),
     }),
   },
 

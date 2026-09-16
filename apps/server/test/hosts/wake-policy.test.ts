@@ -1,6 +1,9 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { getHost, updateHost } from "@bb/db";
-import type { HostDaemonCommand } from "@bb/host-daemon-contract";
+import type {
+  HostDaemonCommand,
+  HostDaemonRpcCommand,
+} from "@bb/host-daemon-contract";
 import {
   callHostOnlineRpc,
   callHostOnlineRpcForWork,
@@ -107,4 +110,43 @@ it("only wakes a workspace preflight when its caller explicitly requests work", 
       { existence: { "/tmp/work": true } },
     );
     expect(resume).toHaveBeenCalledOnce();
+  }));
+
+it("does not wake a suspended machine for migration RPCs", async () =>
+  withTestHarness(async (harness) => {
+    const { host } = seedHostSession(harness.deps, { id: "migration-policy" });
+    const resume = vi.fn(async () => ({ resource: { id: "restored" } }));
+    installMachineProvider({
+      resume,
+      suspend: async () => ({ resource: { id: "saved" } }),
+    });
+    updateHost(harness.db, harness.hub, host.id, {
+      machineProviderId: "test-machine",
+      phase: "suspended",
+      resource: { id: "saved" },
+      suspendedAt: 1,
+    });
+    const commands: HostDaemonRpcCommand[] = [
+      { type: "server_move.inspect", paths: [], port: 38886 },
+      {
+        type: "server_move.probe",
+        url: "https://test.example.com",
+        moveId: "move-policy",
+      },
+      { type: "server_move.abort", moveId: "move-policy" },
+      { type: "server_move.delete_old_copy" },
+    ];
+    const request = vi.spyOn(harness.hub, "requestHostOnlineRpc");
+    for (const command of commands) {
+      await expect(
+        callHostOnlineRpcForWork(harness.deps, {
+          hostId: host.id,
+          command,
+          timeoutMs: 100,
+        }),
+      ).rejects.toMatchObject({ body: { code: "host_unavailable" } });
+    }
+    expect(resume).not.toHaveBeenCalled();
+    expect(request).not.toHaveBeenCalled();
+    expect(getHost(harness.db, host.id)?.phase).toBe("suspended");
   }));

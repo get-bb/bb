@@ -30,7 +30,7 @@ can run
 `bb modal image show > Dockerfile`, edit the file, then run `bb modal image set
 --file ./Dockerfile`. `bb modal image reset` restores the bundled default.
 Append `--json` for structured output. File paths resolve from the CLI directory
-on the current thread's host, or the server primary host without thread context.
+on the current thread's host, or the server machine without thread context.
 Typed RPCs `image.definition`, `image.set({dockerfile})`, and `image.reset`
 return `{dockerfile, customized}` through `sdk.plugins.callRpc`.
 

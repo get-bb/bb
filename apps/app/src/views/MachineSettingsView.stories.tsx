@@ -55,13 +55,15 @@ function Row({
         now={now}
         isPrimary={false}
         isThisMachine={false}
-        showPrimaryBadge={false}
+        showServerBadge={false}
         lifecycleNotice={null}
         lifecycleActionPending={false}
         onSuspend={noop}
         onResume={noop}
         onRetryCleanup={noop}
         onRename={noop}
+        canMoveServerHere={false}
+        onMoveServerHere={noop}
         {...overrides}
       />
     </div>
@@ -86,7 +88,7 @@ export function Header() {
           platformLabel="macOS"
           isPrimary
           isThisMachine
-          showPrimaryBadge
+          showServerBadge
         />
       </StoryRow>
       <StoryRow

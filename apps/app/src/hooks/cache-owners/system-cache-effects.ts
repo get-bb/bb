@@ -31,6 +31,7 @@ import {
   hostPathExistenceQueryKeyPrefix,
   hostsQueryKey,
   projectsQueryKey,
+  serverMoveStatusQueryKey,
   sidebarNavigationQueryKey,
   systemConfigQueryKey,
   threadPromptHistoryQueryKeyPrefix,
@@ -202,5 +203,6 @@ function getServerReconnectInvalidationQueryKeys(): QueryKey[] {
     hostPathExistenceQueryKeyPrefix(),
     allSystemProvidersQueryKeyPrefix(),
     allSystemExecutionOptionsQueryKeyPrefix(),
+    serverMoveStatusQueryKey(),
   ];
 }

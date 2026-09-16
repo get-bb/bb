@@ -2955,6 +2955,40 @@ returns a credential only while that host is creating.
 Before stabilizing, verify creation cancellation through host removal,
 same-host restoration, serialized removal, plugin callers and UI/CLI parity.
 
+## Moving the server (`bb.sdk.experimental_server`, `hosts.experimental_deleteOldServerCopy`)
+
+`experimental_server.checkMove({ targetHostId, serverUrl })` returns the pre-move
+checklist (`ServerMoveCheckResponse`): blockers, warnings, whether a new server
+address is required, and any standalone bb data on the target that must be
+archived. `startMove({ targetHostId, serverUrl, stopRunningWork: true,
+archiveExistingTargetServerData })` freezes the server, stops running work,
+copies server-owned data to the target, starts the new server there, switches
+machines over, and retires this server process. `moveStatus()` returns the
+active move and the last completed move (`lastMove`). A move whose activation
+was never confirmed reports `recovery_required`: this server stays up and
+frozen until the target confirms (activation retry or `<serverUrl>/health`
+reporting ready). In direct mode the status carries `destinationStatusUrl`, the
+new server's CORS-readable `/health`, so a client can follow the destination
+after this server retires; it is null for bb connect. `cancelMove()` works
+until the switch starts, and in `recovery_required` it abandons the move and
+rolls the switch back. `export({ signal })` streams an unencrypted gzip server
+archive and returns its `fileName`, `body`, and the `sha256` digest the server
+sent. `hosts.experimental_deleteOldServerCopy({
+hostId })` deletes the locked old server data on that machine. All refuse
+requests authenticated by a machine credential. `checkMove`, `startMove`,
+`export`, and old-copy deletion also require the default-off `serverMove`
+experiment and otherwise fail with 403 `server_move_experiment_disabled`. The CLI equivalents are
+`bb server move|export|import|unlock|allow-connect|delete-old-copy`.
+
+Before stabilization, audit: authorization for plugin backends (`bb.sdk` runs
+with owner access, so a plugin can export every secret or move the server);
+the switch ordering against the bb connect tunnel and daemons that miss
+`server.moved`; archive size limits and streaming memory use; cancellation
+and failure recovery at every step, including a server restart mid-move;
+behavior when the target runs a provider-managed machine; and whether
+`startMove` should return immediately or expose progress through a durable
+operation id instead of the in-memory status.
+
 ## `app.experimental_icons.register` and `experimental_Icon`
 
 Plugins register inline React artwork during app setup with `{ name, component }`.

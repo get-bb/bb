@@ -31,7 +31,7 @@ BB_HOST_DAEMON_PORT only for an intentional non-default target.
 - Read references/configuration.md for settings, agent instructions, skills,
   remote clients, and environment setup scripts.
 - Read references/thread-creation.md before you spawn or fork threads, create
-  projects, select machines, or create environments.
+  projects, select machines, move the server, or create environments.
 - Read references/thread-operation.md for messages, queues, interactions,
   panes, terminals, inspection, and long-running commands.
 - Read references/failure-recovery.md when a thread fails, stops, or needs plan
@@ -74,6 +74,13 @@ BB_HOST_DAEMON_PORT only for an intentional non-default target.
 - Use `bb machine enroll` for a private core-prepared bundle. Local lifecycle is
   handled by `install-machine.sh --start|--stop|--uninstall --host-id <id>`;
   see references/thread-creation.md for ownership checks.
+- Move the bb server to another machine with
+  `bb server move --to <machine> --check`, then the same command without
+  `--check`; it stops all running work. `bb server export --out <file>` backs
+  up a running server. `bb server import`, `unlock`, `allow-connect`, and
+  `delete-old-copy` act on this computer's data directory without calling a
+  server. An imported server keeps its connect tunnel off until
+  `bb server allow-connect`.
 - Use `bb machine suspend|resume <id-or-name>` only for providers that expose
   suspend and resume. Resume waits for pending suspension and is a no-op
   when already active. Use `bb machine retry-cleanup <id-or-name>` to retry a

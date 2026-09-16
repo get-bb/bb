@@ -77,8 +77,8 @@ worktree` only; a provider takes its branch through `--environment-inputs`.
   launchd/systemd restart the daemon. Auto-update never downgrades. To bypass a
   transient backoff, use `bb machine retry-update <id-or-name>`. Remove
   `--auto-update` from the service definition and reload it to opt out.
-- Run `bb machine list` to see machine names, IDs, type, connection status, and
-  last seen time (`--json` returns the raw host list). It shows persistent
+- Run `bb machine list` to see machine names, the server role, IDs, type,
+  connection status, and last seen time (`--json` returns the raw host list). It shows persistent
   machines; pass `--all` to include the disposable sandboxes environment
   providers create per thread. Use `--machine <id-or-name>`
   (alias `--host`) on `bb thread spawn` to run in a personal or unmanaged
@@ -115,7 +115,7 @@ worktree` only; a provider takes its branch through `--environment-inputs`.
 - `bb project paths|files|content|commands` accept `--machine <id-or-name>`
   (`--host` alias) or `--environment <id>`, but not both. An environment uses
   its owning machine and workspace; an explicit machine uses that machine's
-  project source; omitting both intentionally uses the primary machine source.
+  project source; omitting both intentionally uses the server machine's source.
   `bb project content --json` returns UTF-8 text or base64 binary content with
   an explicit `contentEncoding`.
   Project/environment file and path searches honor Git ignore rules, retaining
@@ -167,7 +167,7 @@ environment pull-request show <id>`. Diff commands require an explicit target
   and `bb provider models <provider-id>`. Both accept `--machine <id-or-name>`
   (alias `--host`) or `--environment <id>` to inspect the machine where work
   will run; the selectors cannot be combined. With neither selector they
-  intentionally inspect the primary machine. Model lists answer from the
+  intentionally inspect the server machine. Model lists answer from the
   machine's last stored list while a background refresh runs, so a list can be
   hours old. A provider whose refresh keeps failing or timing out keeps
   answering from its last stored list.
@@ -208,6 +208,65 @@ installation. Optional `--server-url` and `--data-dir` assert its identity and
 installation location; BB_DATA_DIR is also an assertion, never permission to
 remove another installation. Uninstall checks ownership before stopping its
 service, releasing its port reservation and deleting its private files.
+
+### Moving the server
+
+Moving the server needs the default-off `serverMove` experiment:
+`bb settings experiment serverMove true`. Without it the server refuses
+`bb server move`, `bb server export`, and old-copy deletion with
+`server_move_experiment_disabled`.
+
+Run `bb server move --to <machine> --check` first. It prints blockers,
+warnings, and notes and exits nonzero while the move is blocked. A
+direct-address server also needs `--address <url>`: the URL every machine and
+app will use to reach the new server. When the target already has bb server
+data, pass `--archive-existing-data` to move it aside; it is never merged.
+Without `--check`, the command confirms (pass `--yes` in a non-interactive
+shell), stops all running work, and follows the steps. It exits 0 once the
+server has moved, 1 when the move fails or is cancelled, and 2 when the target
+never confirmed the switch; `--json` prints the final status. SIGINT stops
+following while the move continues. `bb server move status` shows the steps or
+the last move and also exits 2 while a move needs recovery.
+`bb server move cancel` cancels before the switch starts. While a move needs
+recovery (`recovery_required`: the old server stays up read-only and keeps
+retrying activation and checking `<serverUrl>/health`), cancel abandons it,
+rolling back the lock and `config.json` and keeping the server here; it warns
+and asks first because a target that already took over would leave two
+servers, and `--yes` skips the question.
+
+`bb server export --out <file>` writes a gzip archive of a running server with
+file mode 0600 and keeps it only when it matches the SHA-256 digest the server
+sent. The archive is not encrypted and holds the server's credentials and
+plugin secrets; the command warns about that, and `--json` prints `path`,
+`sizeBytes`, `sha256`, and `warning`.
+`bb server import <file> [--data-dir <dir>]` installs an export into a local
+data directory without calling a server. It refuses when that directory has a
+`bb.db` or bb is running from it, refuses an export made by a newer bb or by a
+server with the `serverMove` experiment off, and asks you to re-export an
+archive encrypted by an older bb. A rerun rolls back an interrupted import from
+`server-import-journal.json` before importing again (`--json` reports
+`rolledBackInterruptedImport: true`), and bb refuses to start a
+server on an interrupted import until then. Stop the original server before
+you start the imported one: both hold the same connect credential and would
+take each other's tunnel.
+
+An import also writes `server-connect-hold.json`, so the imported server starts
+without its connect tunnel. After the original server is stopped,
+`bb server allow-connect [--data-dir <dir>] [--yes] [--json]` removes the hold
+(`--json` prints `dataDir` and `connectHoldRemoved`); the tunnel starts the next
+time that server starts.
+
+The old computer's data directory keeps a `server-moved.json` lock, so bb runs
+there as a regular machine. `bb server delete-old-copy` deletes the server files
+the move left behind and keeps the lock. `bb server unlock` removes the lock so
+the old copy can start again; everything since the move is lost there, and the
+new server must be stopped first. It probes `<serverUrl>/health` (connect
+mode: `/api/v1/system/version` with the machine grant in `config.json`) and
+refuses while the new server answers, unless you pass `--force`; bb on that computer
+then starts the old server within a few seconds. Unlock also removes the new server's
+`serverUrl`, `serverHeaders`, `machineCredential`, and `connectMachineId` from
+that directory's `config.json`. These two commands also act on the local data
+directory only.
 
 ### Private machine enrollment
 

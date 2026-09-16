@@ -48,7 +48,7 @@ resolve the invoking host (`ctx.threadId` → `bb.sdk.threads.get` →
 `environmentId` → `bb.sdk.environments.get(...).hostId`, with an explicit
 `--machine`-style flag as the no-thread escape hatch) and do all such file I/O
 through `bb.sdk.files` with that `hostId`. An omitted SDK `hostId` targets the
-primary host, which can be an enrolled remote machine. Reference
+server machine (`primaryHostId`), which can be an enrolled remote machine. Reference
 implementations: the docs plugin's pull/push sync and the
 tasks plugin's attachment commands. `node:fs` remains correct for genuinely
 server-local data such as files under the plugin's own data directory.
