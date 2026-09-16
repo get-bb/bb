@@ -1,12 +1,5 @@
 import { type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { atom, useAtom, useAtomValue, useStore } from "jotai";
 import { atomWithStorage } from "jotai/utils";
@@ -25,6 +18,7 @@ import {
   SidebarInset,
   SidebarProvider,
   SidebarTrigger,
+  useSidebar,
 } from "@/components/ui/sidebar.js";
 import {
   ThreadTitleMentionResourcesProvider,
@@ -55,10 +49,7 @@ import { useRouteState } from "@/hooks/useRouteState";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { APP_OVERLAY_LAYER } from "@/components/ui/app-overlay-layers";
-import {
-  getCompactSecondaryPanelPresentation,
-  subscribeCompactSecondaryPanelShelfShowing,
-} from "@/components/ui/secondary-panel-shelf-visibility";
+import { usePanelShelfState } from "@/components/ui/secondary-panel-shelf-visibility";
 import { ProjectPathDialog } from "@/components/dialogs/ProjectPathDialog";
 import { ProjectActionsMenu } from "@/components/project/ProjectActionsMenu";
 import { ProjectActionsProvider } from "@/components/project/ProjectActionsProvider";
@@ -210,14 +201,11 @@ function SidebarTriggerOverlay({
   usesDesktopChrome,
 }: SidebarTriggerOverlayProps) {
   const isCompactViewport = useIsCompactViewport();
-  const secondaryPanelPresentation = useSyncExternalStore(
-    subscribeCompactSecondaryPanelShelfShowing,
-    getCompactSecondaryPanelPresentation,
-    () => "closed" as const,
-  );
-  const panelShelfState = isCompactViewport
-    ? secondaryPanelPresentation
-    : undefined;
+  const { openMobile } = useSidebar();
+  const panelShelfState = usePanelShelfState({
+    isCompactViewport,
+    isSidebarDrawerOpen: openMobile,
+  });
   const shortcut = useAppCommandShortcut("sidebar.toggle");
   const triggerProps = {
     "aria-label": shortcut

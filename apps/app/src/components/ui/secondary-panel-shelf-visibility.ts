@@ -1,3 +1,5 @@
+import { useSyncExternalStore } from "react";
+
 export type CompactSecondaryPanelPresentation = "closed" | "shelf" | "full";
 
 let compactSecondaryPanelPresentation: CompactSecondaryPanelPresentation =
@@ -27,4 +29,19 @@ export function subscribeCompactSecondaryPanelShelfShowing(
   return () => {
     listeners.delete(listener);
   };
+}
+
+export function usePanelShelfState({
+  isCompactViewport,
+  isSidebarDrawerOpen,
+}: {
+  isCompactViewport: boolean;
+  isSidebarDrawerOpen: boolean;
+}): CompactSecondaryPanelPresentation | undefined {
+  const presentation = useSyncExternalStore(
+    subscribeCompactSecondaryPanelShelfShowing,
+    getCompactSecondaryPanelPresentation,
+    () => "closed" as const,
+  );
+  return isCompactViewport && !isSidebarDrawerOpen ? presentation : undefined;
 }

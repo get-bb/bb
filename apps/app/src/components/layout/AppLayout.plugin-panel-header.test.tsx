@@ -1,6 +1,13 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -248,6 +255,19 @@ describe("AppLayout plugin panel header", () => {
 
     act(() => setCompactSecondaryPanelPresentation("closed"));
     expect(trigger.dataset.panelShelf).toBe("closed");
+  });
+
+  it("keeps the fixed left trigger visible while the compact sidebar drawer is open", async () => {
+    viewportState.compact = true;
+    renderPluginPanelRoute();
+
+    const trigger = screen.getByTestId("app-sidebar-trigger-overlay");
+    act(() => setCompactSecondaryPanelPresentation("shelf"));
+    expect(trigger.dataset.panelShelf).toBe("shelf");
+
+    fireEvent.click(screen.getByRole("button", { name: /^Toggle sidebar/ }));
+
+    await waitFor(() => expect(trigger.dataset.panelShelf).toBeUndefined());
   });
 
   it("keeps the fixed left trigger visible on wide viewports while a panel shelf is showing", () => {
