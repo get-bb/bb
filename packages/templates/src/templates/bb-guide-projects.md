@@ -62,24 +62,6 @@ Attachments:
   bb project attachment download <id> <attachment-path>
     --client-file <path>                  Destination on this CLI machine
 
-  bb project attachment list <id> [--after <path>] [--limit <1–200>] [--json]
-                                           List inventory, owner counts, and backfill status
-  bb project attachment prune <id> [--json]
-                                           Reclaim one eligible batch (at most 32 files)
-
-  List defaults to 100 entries and returns nextCursor for the next page. SDK:
-  projects.attachments.list({ projectId, after, limit }) and
-  projects.attachments.prune({ projectId }). Prune reports complete, busy, or
-  backfill-pending; complete means this batch finished, not that all garbage is gone.
-  Both automatic and manual cleanup retain files owned by any thread until its
-  hard deletion. Queue cancellation, edits, rewind, and pruning keep ownership;
-  forks inherit it. Unowned uploads expire after seven days, including unsent
-  browser drafts; upload again if a draft attachment has expired. Cleanup waits
-  for background legacy backfill, which is reported by list; an error keeps it
-  disabled for that project. Backfill retries errors after a minute; malformed,
-  missing-file, or over-4-MiB input records need repair before cleanup can proceed.
-  No grace override or eager composer deletion exists.
-
   Uploads use multipart bytes and return a server-managed attachment DTO. Pass
   its relative `path` to thread --file/--image input. Thread --file and --image
   upload absolute paths and file: URLs from the CLI machine automatically;

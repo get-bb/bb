@@ -246,63 +246,7 @@ export function registerProjectCommands(
     .description("Manage project sources");
   const attachment = project
     .command("attachment")
-    .description("Manage server-managed project attachments");
-
-  attachment
-    .command("list <id>")
-    .description(
-      "List an attachment inventory page, ownership counts, and backfill status",
-    )
-    .option("--after <path>", "Continue after this stored path")
-    .option("--limit <count>", "Page size, 1–200", "100")
-    .option("--json", "Print inventory and pagination metadata")
-    .action(
-      action(
-        async (
-          id: string,
-          opts: { after?: string; limit: string; json?: boolean },
-        ) => {
-          const limit = Number(opts.limit);
-          if (!Number.isInteger(limit) || limit < 1 || limit > 200)
-            throw new Error("--limit must be between 1 and 200");
-          const result = await createCliBbSdk(
-            getUrl(),
-          ).projects.attachments.list({
-            projectId: id,
-            after: opts.after,
-            limit,
-          });
-          if (outputJson(opts, result)) return;
-          console.log(
-            `Backfill: ${result.backfill.phase}${result.backfill.error ? ` (${result.backfill.error})` : ""}`,
-          );
-          for (const item of result.items)
-            console.log(
-              `${item.path}  ${item.sizeBytes} bytes  ${item.ownerCount} owners  ${item.deletionClaimedAt !== null ? "deleting" : item.readyAt === null ? "pending" : "ready"}`,
-            );
-          if (result.nextCursor)
-            console.log(`Next page: --after ${result.nextCursor}`);
-        },
-      ),
-    );
-
-  attachment
-    .command("prune <id>")
-    .description(
-      "Reclaim one batch of unowned attachments older than seven days",
-    )
-    .option("--json", "Print reclaimed counts and cleanup status")
-    .action(
-      action(async (id: string, opts: { json?: boolean }) => {
-        const result = await createCliBbSdk(
-          getUrl(),
-        ).projects.attachments.prune({ projectId: id });
-        if (outputJson(opts, result)) return;
-        console.log(
-          `${result.status}: reclaimed ${result.reclaimedCount} files (${result.reclaimedBytes} bytes), ${result.failedCount} failures`,
-        );
-      }),
-    );
+    .description("Upload and download server-managed project attachments");
 
   attachment
     .command("upload <id>")

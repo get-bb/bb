@@ -1,8 +1,4 @@
 import type {
-  ProjectAttachmentListResponse,
-  ProjectAttachmentPruneResponse,
-} from "@bb/server-contract";
-import type {
   CommandListResponse,
   CopyProjectAttachmentsRequest,
   CreateProjectRequest,
@@ -193,16 +189,7 @@ export interface ProjectSourcesArea {
   update(args: ProjectSourceUpdateArgs): Promise<ProjectSourceUpdateResult>;
 }
 
-export interface ProjectAttachmentListArgs {
-  projectId: string;
-  after?: string;
-  limit?: number;
-  signal?: AbortSignal;
-}
-
 export interface ProjectAttachmentsArea {
-  list(args: ProjectAttachmentListArgs): Promise<ProjectAttachmentListResponse>;
-  prune(args: { projectId: string }): Promise<ProjectAttachmentPruneResponse>;
   copy(args: ProjectAttachmentCopyArgs): Promise<void>;
   read(args: ProjectAttachmentReadArgs): Promise<ProjectAttachmentReadResult>;
   upload(
@@ -342,29 +329,6 @@ function encodeBase64(bytes: Uint8Array): string {
 export function createProjectsArea(args: CreateSdkAreaArgs): ProjectsArea {
   const { transport } = args;
   const attachments: ProjectAttachmentsArea = {
-    async list(input) {
-      return transport.readJson(
-        transport.api.v1.projects[":id"].attachments.$get(
-          {
-            param: { id: input.projectId },
-            query: {
-              ...(input.after === undefined ? {} : { after: input.after }),
-              ...(input.limit === undefined
-                ? {}
-                : { limit: String(input.limit) }),
-            },
-          },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-    },
-    async prune(input) {
-      return transport.readJson(
-        transport.api.v1.projects[":id"].attachments.prune.$post({
-          param: { id: input.projectId },
-        }),
-      );
-    },
     async copy(input) {
       const { projectId, ...json } = input;
       await transport.readVoid(

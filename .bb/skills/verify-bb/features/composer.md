@@ -56,14 +56,17 @@ recipe. External writes require a disposable test target and task authorization.
 
 ## Attachment accounting verification
 
-In a disposable project, upload a file through Prompt actions → Attach files,
-schedule the prompt, and inspect `bb project attachment list PROJECT --json`.
-The uploaded file should have one owner. Cancel the queued message: ownership
-must remain. Age only these synthetic inventory rows beyond seven days in the
-isolated QA database; `bb project attachment prune PROJECT --json` must preserve
-the owned file. Delete the synthetic thread, then prune again: the file and
-inventory row should disappear. A separate unowned upload should be collected
-once aged. Test SDK list pagination and prune against the same instance.
-Backfill errors reported by list disable cleanup; never use a real user's store
-for aging or deleting fixtures. This recipe verifies storage ownership without
-requiring an actual provider turn.
+There is no attachment inventory or cleanup command; accounting is server-internal
+and only observable in the isolated QA database (`project_attachments`,
+`project_attachment_threads`, `project_attachment_backfills`) plus the
+`project-attachment-backfill` and `project-attachment-orphan-prune` sweep logs.
+In a disposable project, upload a file through Prompt actions → Attach files and
+schedule the prompt: the upload gets a ready `project_attachments` row and one
+`project_attachment_threads` owner. Cancel the queued message and confirm the
+ownership row survives. Wait for the backfill phase to reach `done`, then age only
+these synthetic rows past the seven-day grace by setting `created_at` backwards and
+let the 60s orphan-prune sweep run: the owned file and row stay, a separate unowned
+upload disappears from the table and from `attachments/<project>/` on disk. Hard-delete
+the synthetic thread and let the sweep run again; that file and row should then be gone
+too. Never age or delete rows in a real user's store. This recipe verifies storage
+ownership without requiring an actual provider turn.

@@ -1,5 +1,3 @@
-import { listProjectAttachments } from "@bb/db";
-import { pruneProjectAttachments } from "../services/projects/attachment-maintenance.js";
 import path from "node:path";
 import {
   countProjectSources,
@@ -834,25 +832,6 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
       await readProjectBranches(context.req.param("id"), query, "background"),
     ),
   );
-
-  get(routes.listAttachments, (context, query) => {
-    const projectId = context.req.param("id");
-    requirePublicProject(deps.db, projectId);
-    return context.json(
-      listProjectAttachments(
-        deps.db,
-        projectId,
-        query.after ?? "",
-        Number(query.limit ?? 100),
-      ),
-    );
-  });
-
-  post(routes.pruneAttachments, async (context) => {
-    const projectId = context.req.param("id");
-    requirePublicProject(deps.db, projectId);
-    return context.json(await pruneProjectAttachments(deps, projectId));
-  });
 
   post(routes.uploadAttachment, async (context) => {
     requirePublicProject(deps.db, context.req.param("id"));

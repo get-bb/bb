@@ -337,12 +337,7 @@ type ExpectedProjectsKey =
   | "update";
 
 type ExpectedProjectSourcesKey = "add" | "delete" | "update";
-type ExpectedProjectAttachmentsKey =
-  | "copy"
-  | "read"
-  | "upload"
-  | "list"
-  | "prune";
+type ExpectedProjectAttachmentsKey = "copy" | "read" | "upload";
 
 type ExpectedProvidersKey = "list" | "models";
 

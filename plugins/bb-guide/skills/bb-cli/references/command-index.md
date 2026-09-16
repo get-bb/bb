@@ -38,8 +38,6 @@ This index lists every command path that the core CLI registers. Read the task-s
 - `bb project attachment`
 - `bb project attachment upload`
 - `bb project attachment download`
-- `bb project attachment list`
-- `bb project attachment prune`
 - `bb project list`
 - `bb project history`
 - `bb project reorder`
@@ -324,15 +322,3 @@ Machine environment: `bb machine env list`, `bb machine env set NAME`
 (value from stdin), and `bb machine env unset NAME`; all accept `--json`.
 
 Standalone `bb machine create` machines remain until explicitly removed.
-
-## Project attachment storage
-
-`bb project attachment list <id> [--after <path>] [--limit <1–200>] [--json]`
-shows inventory, ownership counts, pagination, and background backfill status.
-`bb project attachment prune <id> [--json]` processes at most 32 eligible files;
-repeat for more batches. It reports `backfill-pending` until legacy ownership
-is inventoried and `busy` if another prune is running. Thread-owned files stay
-until every owning thread is hard-deleted. Unowned uploads expire after seven
-days; browser-only draft attachments can expire and require re-upload. Queue
-edits/cancellation and event pruning do not release ownership. `bb guide projects`
-documents upload/download and matching SDK methods.
