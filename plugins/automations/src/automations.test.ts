@@ -167,8 +167,12 @@ function legacyAutomationRow(
 
 function createAutomationServiceBb() {
   return {
-    server: { experimental_hostId: "host_server" },
     sdk: {
+      system: {
+        config: async (): Promise<{ primaryHostId: string | null }> => ({
+          primaryHostId: "host_server",
+        }),
+      },
       projects: {
         get: async ({ projectId }: { projectId: string }) => {
           const personal = projectId === "proj_personal";
@@ -1148,9 +1152,7 @@ describe("automation service", () => {
     const pluginDataDir = await mkdtemp(join(tmpdir(), "bb-auto-service-"));
     const bb = createAutomationServiceBb();
     let serverHostId: string | null = null;
-    Object.defineProperty(bb.server, "experimental_hostId", {
-      get: () => serverHostId,
-    });
+    bb.sdk.system.config = async () => ({ primaryHostId: serverHostId });
     const service = createAutomationService({
       bb,
       db,
@@ -1252,8 +1254,8 @@ describe("automation service", () => {
   it("validates project availability before creating an automation", async () => {
     const db = createTestDb();
     const bb = {
-      server: { experimental_hostId: null },
       sdk: {
+        system: { config: async () => ({ primaryHostId: null }) },
         projects: {
           get: async () => {
             throw new Error("Project not found");
@@ -2161,12 +2163,16 @@ describe("script project context", () => {
       const service = createAutomationService({
         bb: {
           ...bb,
-          server: {
-            experimental_hostId:
-              args.serverHostId === undefined ? "host_server" : args.serverHostId,
-          },
           sdk: {
             ...bb.sdk,
+            system: {
+              config: async () => ({
+                primaryHostId:
+                  args.serverHostId === undefined
+                    ? "host_server"
+                    : args.serverHostId,
+              }),
+            },
             projects: { ...bb.sdk.projects, list: async () => [] },
             providers: { list: async () => [] as never },
           },

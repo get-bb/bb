@@ -12,6 +12,7 @@ async function createHost(
   const host = createFakePluginHost({
     pluginId: "automations",
     sdk: {
+      system: { config: async () => ({ primaryHostId: "host_fake" }) },
       projects: {
         async get({ projectId }) {
           return {

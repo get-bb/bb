@@ -70,6 +70,7 @@ async function bootAutomationsPlugin(
   const host = createFakePluginHost({
     pluginId: "automations",
     sdk: {
+      system: { config: async () => ({ primaryHostId: "host_fake" }) },
       projects: {
         async get({ projectId }) {
           if (projectId === PROJECT_ID) return project(projectId);

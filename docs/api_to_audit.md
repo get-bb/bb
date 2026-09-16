@@ -1019,21 +1019,6 @@ should get named, read-only accessors for the bb-managed files it may read —
 a path invites writes into bb's directory, which `bb.storage` exists to
 prevent.
 
-## `bb.server.experimental_hostId`
-
-**What it does.** Returns the enrolled host ID persisted by a host daemon that
-shares the server's data directory, or `null` when the server has no co-located
-host identity. Neither this accessor nor `bb.sdk.system.config().primaryHostId`
-falls back to an enrolled remote machine. The Automations plugin uses it to match a
-server-local project source before passing its path to server-local filesystem
-and process APIs.
-
-**Audit before stabilizing.** Decide whether the stable API should expose a
-host ID, a richer server-execution location, or a resolver that returns a
-server-local project path without exposing host identity. Confirm semantics for
-standalone hosted servers with no co-located daemon and for a replaced local
-daemon identity.
-
 ## `bb.server.experimental_appUrl`
 
 **What it does.** This value gives plugins the operator-configured public app

@@ -506,7 +506,6 @@ export interface CreateFakePluginHostOptions {
    * "/tmp/bb-fake-data-dir".
    */
   dataDir?: string;
-  serverHostId?: string | null;
   /**
    * Pre-seeded stored settings values (as if saved before this load) —
    * including secret ones, which the fake keeps in memory instead of
@@ -1084,13 +1083,7 @@ function createFakePluginHostInternal(
   const appUrl = options.appUrl ?? null;
   const loopbackBaseUrl = options.loopbackBaseUrl ?? "http://127.0.0.1:38886";
   const dataDir = options.dataDir ?? "/tmp/bb-fake-data-dir";
-  const serverHostId =
-    options.serverHostId === undefined ? "host_fake" : options.serverHostId;
   const server: PluginServerApi = {
-    get experimental_hostId(): string | null {
-      assertLive();
-      return serverHostId;
-    },
     get experimental_appUrl(): string | null {
       assertLive();
       return appUrl;

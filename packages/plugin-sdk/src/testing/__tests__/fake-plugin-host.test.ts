@@ -103,18 +103,6 @@ describe("server", () => {
     );
     expect(unset.bb.server.experimental_appUrl).toBeNull();
   });
-
-  it("serves the configured server host identity", () => {
-    const configured = createFakePluginHost({
-      serverHostId: "host_server",
-    });
-    const absent = createFakePluginHost({ serverHostId: null });
-    const defaulted = createFakePluginHost();
-
-    expect(configured.bb.server.experimental_hostId).toBe("host_server");
-    expect(absent.bb.server.experimental_hostId).toBeNull();
-    expect(defaulted.bb.server.experimental_hostId).toBe("host_fake");
-  });
 });
 
 describe("ui.requestInput", () => {

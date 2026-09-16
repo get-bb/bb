@@ -66,8 +66,8 @@ import {
 } from "./run.js";
 
 type ServiceApi = Pick<BbPluginApi, "realtime" | "log"> & {
-  server: Pick<BbPluginApi["server"], "experimental_hostId">;
   sdk: {
+    system: { config(): Promise<{ primaryHostId: string | null }> };
     projects: Pick<BbPluginApi["sdk"]["projects"], "get" | "list">;
     providers: Pick<BbPluginApi["sdk"]["providers"], "list">;
     threads: Pick<BbPluginApi["sdk"]["threads"], "get" | "send" | "spawn">;
@@ -303,7 +303,7 @@ function toStoredAutomationReadResult(
 }
 
 async function toEditableAutomationResponse(args: {
-  bb: Pick<ServiceApi, "log" | "sdk" | "server">;
+  bb: Pick<ServiceApi, "log" | "sdk">;
   pluginDataDir: string;
   automation: AutomationResponse;
 }): Promise<AutomationResponse> {
@@ -321,21 +321,22 @@ async function toEditableAutomationResponse(args: {
   } else if (execution.workingDirectory.type === "path") {
     resolvedWorkingDirectory = execution.workingDirectory.path;
   } else {
-    const serverHostId = args.bb.server.experimental_hostId;
-    if (serverHostId === null) {
+    try {
+      const serverHostId = (await args.bb.sdk.system.config()).primaryHostId;
+      resolvedWorkingDirectory =
+        serverHostId === null
+          ? null
+          : projectPathForHost(
+              await args.bb.sdk.projects.get({
+                projectId: automation.projectId,
+              }),
+              serverHostId,
+            );
+    } catch (error) {
+      args.bb.log.warn(
+        `Failed to resolve working directory for automation ${automation.id}: ${errorMessage(error)}`,
+      );
       resolvedWorkingDirectory = null;
-    } else {
-      try {
-        resolvedWorkingDirectory = projectPathForHost(
-          await args.bb.sdk.projects.get({ projectId: automation.projectId }),
-          serverHostId,
-        );
-      } catch (error) {
-        args.bb.log.warn(
-          `Failed to resolve working directory for automation ${automation.id}: ${errorMessage(error)}`,
-        );
-        resolvedWorkingDirectory = null;
-      }
     }
   }
   return {
@@ -353,7 +354,7 @@ async function toEditableAutomationResponse(args: {
 }
 
 async function toEditableAutomationReadResult(args: {
-  bb: Pick<ServiceApi, "log" | "sdk" | "server">;
+  bb: Pick<ServiceApi, "log" | "sdk">;
   pluginDataDir: string;
   row: AutomationRow;
 }): Promise<AutomationReadResult> {
@@ -589,10 +590,14 @@ export function createAutomationService(args: {
         pluginDataDir,
         automationId,
         execution: payload.execution,
-        defaultWorkingDirectory: defaultScriptWorkingDirectory(
-          project,
-          bb.server.experimental_hostId,
-        ),
+        defaultWorkingDirectory:
+          payload.execution.mode === "script" &&
+          payload.execution.workingDirectory === undefined
+            ? defaultScriptWorkingDirectory(
+                project,
+                (await bb.sdk.system.config()).primaryHostId,
+              )
+            : AUTOMATION_STORAGE_WORKING_DIRECTORY,
       });
       let created: AutomationRow;
       try {
@@ -676,10 +681,13 @@ export function createAutomationService(args: {
           defaultWorkingDirectory:
             currentExecution.mode === "script"
               ? currentExecution.workingDirectory
-              : defaultScriptWorkingDirectory(
-                  project,
-                  bb.server.experimental_hostId,
-                ),
+              : input.execution.mode === "script" &&
+                  input.execution.workingDirectory === undefined
+                ? defaultScriptWorkingDirectory(
+                    project,
+                    (await bb.sdk.system.config()).primaryHostId,
+                  )
+                : AUTOMATION_STORAGE_WORKING_DIRECTORY,
         });
         patch.execution = stored.execution;
         stagedScriptFile = stored.writtenScriptFile;
@@ -857,7 +865,7 @@ export function createAutomationService(args: {
                 execution,
                 onFailure: closeFailedRun,
                 serverUrl,
-                serverHostId: bb.server.experimental_hostId,
+                serverHostId: (await bb.sdk.system.config()).primaryHostId,
               });
             }
           } catch (error) {
