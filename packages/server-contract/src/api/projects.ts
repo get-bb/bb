@@ -471,3 +471,57 @@ export const copyProjectAttachmentsRequestSchema = z
 export type CopyProjectAttachmentsRequest = z.infer<
   typeof copyProjectAttachmentsRequestSchema
 >;
+
+export const projectAttachmentListQuerySchema = z.object({
+  after: z.string().optional(),
+  limit: z
+    .string()
+    .regex(/^\d+$/)
+    .refine(
+      (value) => Number(value) >= 1 && Number(value) <= 200,
+      "limit must be between 1 and 200",
+    )
+    .optional(),
+});
+export type ProjectAttachmentListQuery = z.infer<
+  typeof projectAttachmentListQuerySchema
+>;
+export const projectAttachmentListResponseSchema = z.object({
+  items: z.array(
+    z.object({
+      id: z.string(),
+      path: z.string(),
+      originalName: z.string(),
+      mimeType: z.string().nullable(),
+      sizeBytes: z.number(),
+      createdAt: z.number(),
+      readyAt: z.number().nullable(),
+      deletionClaimedAt: z.number().nullable(),
+      ownerCount: z.number(),
+    }),
+  ),
+  nextCursor: z.string().nullable(),
+  backfill: z.object({
+    phase: z.enum([
+      "files",
+      "events",
+      "queue",
+      "history-thread",
+      "history-project",
+      "done",
+    ]),
+    error: z.string().nullable(),
+  }),
+});
+export type ProjectAttachmentListResponse = z.infer<
+  typeof projectAttachmentListResponseSchema
+>;
+export const projectAttachmentPruneResponseSchema = z.object({
+  status: z.enum(["busy", "backfill-pending", "complete"]),
+  reclaimedCount: z.number(),
+  reclaimedBytes: z.number(),
+  failedCount: z.number(),
+});
+export type ProjectAttachmentPruneResponse = z.infer<
+  typeof projectAttachmentPruneResponseSchema
+>;

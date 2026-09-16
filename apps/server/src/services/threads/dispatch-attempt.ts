@@ -303,6 +303,7 @@ async function runDispatchAttempt(
     // Reject what can never deliver while the sender is still listening; a
     // drain has nobody to tell, and its rows were validated when they were queued.
     await validatePromptAttachmentReferences({
+      db: deps.db,
       dataDir: deps.config.dataDir,
       input: payload.input,
       projectId: thread.projectId,

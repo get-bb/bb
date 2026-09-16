@@ -1,3 +1,13 @@
+import { eq } from "drizzle-orm";
+import {
+  projectAttachments,
+  projectAttachmentBackfills,
+  PROJECT_ATTACHMENT_GRACE_MS,
+} from "@bb/db";
+import {
+  projectAttachmentListResponseSchema,
+  projectAttachmentPruneResponseSchema,
+} from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
 import { uploadedPromptAttachmentSchema } from "@bb/server-contract";
 import { readJson } from "../helpers/json.js";
@@ -223,6 +233,68 @@ describe("public project attachments", () => {
       await expect(readJson(foreignRead)).resolves.toEqual({
         code: "invalid_request",
         message: "Attachment not found",
+      });
+    });
+  });
+  it("paginates inventory and gates manual cleanup until backfill completes", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, { id: "host-inventory" });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      for (const name of ["a.txt", "b.txt"])
+        expect(
+          (await upload(harness.app, project.id, new File([name], name)))
+            .status,
+        ).toBe(201);
+      const base = `/api/v1/projects/${project.id}/attachments`;
+      const first = projectAttachmentListResponseSchema.parse(
+        await readJson(await harness.app.request(`${base}?limit=1`)),
+      );
+      expect(first.items).toHaveLength(1);
+      expect(first.items[0]?.ownerCount).toBe(0);
+      expect(first.nextCursor).toBe(first.items[0]?.path);
+      const second = projectAttachmentListResponseSchema.parse(
+        await readJson(
+          await harness.app.request(
+            `${base}?limit=1&after=${encodeURIComponent(first.nextCursor ?? "")}`,
+          ),
+        ),
+      );
+      expect(second.items).toHaveLength(1);
+      expect(second.items[0]?.id).not.toBe(first.items[0]?.id);
+      expect(second.nextCursor).toBeNull();
+      expect((await harness.app.request(`${base}?limit=201`)).status).toBe(400);
+      expect(
+        (await harness.app.request("/api/v1/projects/missing/attachments"))
+          .status,
+      ).toBe(404);
+      const pending = projectAttachmentPruneResponseSchema.parse(
+        await readJson(
+          await harness.app.request(`${base}/prune`, { method: "POST" }),
+        ),
+      );
+      expect(pending.status).toBe("backfill-pending");
+      harness.db
+        .update(projectAttachmentBackfills)
+        .set({ phase: "done" })
+        .where(eq(projectAttachmentBackfills.projectId, project.id))
+        .run();
+      harness.db
+        .update(projectAttachments)
+        .set({ createdAt: Date.now() - PROJECT_ATTACHMENT_GRACE_MS - 1000 })
+        .where(eq(projectAttachments.projectId, project.id))
+        .run();
+      const pruned = projectAttachmentPruneResponseSchema.parse(
+        await readJson(
+          await harness.app.request(`${base}/prune`, { method: "POST" }),
+        ),
+      );
+      expect(pruned).toMatchObject({
+        status: "complete",
+        reclaimedCount: 2,
+        reclaimedBytes: 10,
+        failedCount: 0,
       });
     });
   });

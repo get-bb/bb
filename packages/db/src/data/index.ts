@@ -486,3 +486,7 @@ export {
   type SwapServerHostRolesArgs,
   type SwapServerHostRolesResult,
 } from "./server-move.js";
+
+export * from "./project-attachments.js";
+
+export * from "./project-attachment-backfill.js";

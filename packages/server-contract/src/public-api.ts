@@ -1,3 +1,9 @@
+import {
+  projectAttachmentListQuerySchema,
+  type ProjectAttachmentListQuery,
+  type ProjectAttachmentListResponse,
+  type ProjectAttachmentPruneResponse,
+} from "./api/projects.js";
 import { type MachineEnvironmentList } from "./api/machine-environment.js";
 import {
   machineEnvironmentReplaceSchema,
@@ -569,6 +575,20 @@ export const publicApiRoutes = {
         projectBranchesQuerySchema,
       ),
       response: jsonResponse<ProjectBranchesResponse>(),
+    }),
+    listAttachments: defineRoute({
+      path: "/projects/:id/attachments",
+      method: "get",
+      request: queryRequest<PathProjectId, ProjectAttachmentListQuery>(
+        projectAttachmentListQuerySchema,
+      ),
+      response: jsonResponse<ProjectAttachmentListResponse>(),
+    }),
+    pruneAttachments: defineRoute({
+      path: "/projects/:id/attachments/prune",
+      method: "post",
+      request: noRequest<PathProjectId>(),
+      response: jsonResponse<ProjectAttachmentPruneResponse>(),
     }),
     uploadAttachment: defineRoute({
       path: "/projects/:id/attachments",

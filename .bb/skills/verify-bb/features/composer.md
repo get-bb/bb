@@ -53,3 +53,17 @@ recipe. External writes require a disposable test target and task authorization.
 - Use a distinct workspace filename with no same-named prior attachment for the send-time-content test. Verify the provider tool path as well as response text so an older attachment choice cannot be mistaken for stale workspace resolution. Source: `apps/app/src/hooks/pathMentionSuggestions.ts:15`.
 - For synthetic project fixtures use skill list --project <id> --environment <id>; environment alone defaults project to personal and can return Environment not found. project commands also requires --provider <id>. Source: `apps/cli/src/commands/skill.ts:173`.
 - For headless clipboard setup grant clipboard-read, clipboard-write and clipboard-sanitized-write, then write to clipboard and use real Ctrl+V. Distinguish whole-message Add to chat from selected-text quote coverage. Source: `apps/app/src/components/promptbox/PromptBoxInternal.tsx:1690`.
+
+## Attachment accounting verification
+
+In a disposable project, upload a file through Prompt actions → Attach files,
+schedule the prompt, and inspect `bb project attachment list PROJECT --json`.
+The uploaded file should have one owner. Cancel the queued message: ownership
+must remain. Age only these synthetic inventory rows beyond seven days in the
+isolated QA database; `bb project attachment prune PROJECT --json` must preserve
+the owned file. Delete the synthetic thread, then prune again: the file and
+inventory row should disappear. A separate unowned upload should be collected
+once aged. Test SDK list pagination and prune against the same instance.
+Backfill errors reported by list disable cleanup; never use a real user's store
+for aging or deleting fixtures. This recipe verifies storage ownership without
+requiring an actual provider turn.

@@ -1,3 +1,6 @@
+import { copyProjectAttachmentOwnership, getThread } from "@bb/db";
+import { parseAttachmentEventInput } from "@bb/domain";
+import { validatePromptAttachmentReferences } from "../projects/attachments.js";
 import {
   copyStoredThreadEventsInTransaction,
   findLastCompletedRootStoredTurn,
@@ -245,28 +248,39 @@ function selectInheritedForkEventRows(
   });
 }
 
-export function copyForkSourceHistory(
-  deps: Pick<AppDeps, "db" | "hub">,
+export async function copyForkSourceHistory(
+  deps: Pick<AppDeps, "db" | "hub" | "config">,
   args: {
     fork: Pick<Thread, "environmentId" | "id">;
     historyEndSequence: number;
     sourceThreadId: string;
   },
-): void {
+): Promise<void> {
   const rows = selectInheritedForkEventRows(deps, {
     historyEndSequence: args.historyEndSequence,
     sourceThreadId: args.sourceThreadId,
   }).map((row) => ({ ...row, providerThreadId: null }));
-  if (rows.length === 0) {
-    return;
+  const source = getThread(deps.db, args.sourceThreadId);
+  if (!source)
+    throw new ApiError(404, "invalid_request", "Fork source thread not found");
+  for (const row of rows) {
+    if (row.type === "client/turn/requested")
+      await validatePromptAttachmentReferences({
+        db: deps.db,
+        dataDir: deps.config.dataDir,
+        projectId: source.projectId,
+        input: parseAttachmentEventInput(row.data),
+      });
   }
   deps.db.transaction(
-    (tx) =>
+    (tx) => {
+      copyProjectAttachmentOwnership(tx, args.sourceThreadId, args.fork.id);
       copyStoredThreadEventsInTransaction(tx, {
         rows,
         targetEnvironmentId: args.fork.environmentId,
         targetThreadId: args.fork.id,
-      }),
+      });
+    },
     { behavior: "immediate" },
   );
   deps.hub.notifyThread(args.fork.id, ["events-appended"], {

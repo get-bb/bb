@@ -979,6 +979,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Create threads, send messages to them, and manage projects",
           "Spawn or fork with lifecycleOwnerThreadId to archive/delete a dependent with a live owner across projects; ownership is immutable, independent of sidebar parents and supports different hosts/environments. Thread responses return the owner or null. Unarchive owner first; Stop does not cascade",
+          "List project attachment inventory with sdk.projects.attachments.list({ projectId, after, limit }) and reclaim one eligible batch with sdk.projects.attachments.prune({ projectId }); cleanup waits for backfill and retains thread-owned files until thread hard deletion",
           "List machines and suspend, resume, or remove provider-managed machines",
           "Read recorded context usage with sdk.threads.context({ threadId }); usage is null when unavailable, and its snapshot is present only when the latest measurement includes a breakdown",
           "Reach the same operations the [bb CLI](cli) and the bb UI use",

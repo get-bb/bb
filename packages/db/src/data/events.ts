@@ -1,3 +1,5 @@
+import { acquireProjectAttachmentOwnership } from "./project-attachments.js";
+import { parseAttachmentEventInput } from "@bb/domain";
 import {
   and,
   desc,
@@ -438,6 +440,13 @@ function insertStoredEventRow(
     )`);
   if (result.changes === 0) {
     return { id, inserted: false };
+  }
+  if (args.type === "client/turn/requested") {
+    acquireProjectAttachmentOwnership(
+      db,
+      args.threadId,
+      parseAttachmentEventInput(args.data),
+    );
   }
   if (prepared.retainedOutput !== null) {
     insertPreparedRetainedEventOutput(db, {

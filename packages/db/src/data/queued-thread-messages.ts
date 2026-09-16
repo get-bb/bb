@@ -1,3 +1,4 @@
+import { acquireProjectAttachmentOwnership } from "./project-attachments.js";
 import {
   and,
   asc,
@@ -584,6 +585,7 @@ export function createQueuedThreadMessageInTransaction(
   input: CreateQueuedThreadMessageInput,
 ) {
   const now = Date.now();
+  acquireProjectAttachmentOwnership(tx, input.threadId, input.content);
   const id = createQueuedThreadMessageId();
   const lastQueuedMessage = getLastQueuedThreadMessage(tx, input.threadId);
   const sortKey = lastQueuedMessage
@@ -657,6 +659,7 @@ export function updateQueuedThreadMessage(
         return { kind: "stale" };
       }
 
+      acquireProjectAttachmentOwnership(tx, input.threadId, input.content);
       const queuedMessage = tx
         .update(queuedThreadMessages)
         .set({

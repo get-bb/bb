@@ -5180,7 +5180,7 @@ describe("events", () => {
         sequence: 2,
         type: "client/turn/requested",
         ...threadEventFields,
-        data: "{}",
+        data: JSON.stringify({ input: [] }),
       },
       {
         threadId: thread2.id,
