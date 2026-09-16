@@ -18,7 +18,7 @@ import {
   getHighWaterMarks,
   deleteThreadEventSuffixInTransaction,
   getLastStoredProviderThreadId,
-  getLatestStoredRateLimitsEventForProvider,
+  getLatestStoredRateLimitsEvent,
   listThreadTurnInterruptionEventStates,
 } from "../../src/data/events.js";
 import { getThreadEventRewriteGeneration } from "../../src/data/event-rewrite-generation.js";
@@ -121,14 +121,14 @@ describe("thread pruning", () => {
     }
   });
 
-  it("keeps the latest provider snapshots and malformed identities across restart and late arrivals", () => {
+  it("keeps only the latest thread snapshot across restart and late arrivals", () => {
     let f = setup();
     try {
       f.db.transaction(() => {
         for (let i = 1; i <= 1100; i++)
           seed(f, i, {
             data: JSON.stringify({
-              rateLimits: { providerId: i % 2 ? "codex" : "claude" },
+              rateLimits: { providerId: "codex" },
             }),
           });
         for (const [i, data] of [
@@ -148,13 +148,12 @@ describe("thread pruning", () => {
       f.db.$client.close();
       f = { ...f, db: createConnection(saved) };
       cycle(f, "rate-limits");
-      expect(sequences(f)).toEqual([1099, 1100, 1101, 1102, 1103, 1104, 1105]);
+      expect(sequences(f)).toEqual([1105]);
       cycle(f, "rate-limits");
-      expect(sequences(f)).toEqual([1100, 1101, 1102, 1103, 1104, 1105]);
+      expect(sequences(f)).toEqual([1105]);
       expect(
-        getLatestStoredRateLimitsEventForProvider(f.db, {
+        getLatestStoredRateLimitsEvent(f.db, {
           threadId: f.thread.id,
-          providerId: "codex",
         })?.sequence,
       ).toBe(1105);
       expect(cycle(f, "rate-limits").reduce((n, r) => n + r.removed, 0)).toBe(
@@ -303,7 +302,7 @@ describe("thread pruning", () => {
     }
   });
 
-  it("limits rate-limit payload work and resumes oversized rows without losing progress", () => {
+  it("prunes oversized snapshots without parsing their payloads", () => {
     const f = setup();
     try {
       const data = JSON.stringify({
@@ -312,11 +311,9 @@ describe("thread pruning", () => {
       });
       seed(f, 1, { data });
       seed(f, 2, { data });
-      advanceThreadPruning(f.db, "rate-limits");
       const first = advanceThreadPruning(f.db, "rate-limits");
-      expect(first.scanned).toBe(1);
-      expect(first.scannedBytes).toBeGreaterThan(1024 * 1024);
-      expect(first.removed).toBe(0);
+      expect(first.scanned).toBe(2);
+      expect(first.removed).toBe(1);
       cycle(f, "rate-limits");
       expect(sequences(f)).toEqual([2]);
     } finally {
@@ -328,8 +325,11 @@ describe("thread pruning", () => {
     const f = setup();
     try {
       seed(f, 1);
+      f.db
+        .insert(threadPruningCursors)
+        .values({ policy: "rate-limits", version: 1, updatedAt: 1 })
+        .run();
       seed(f, 2);
-      advanceThreadPruning(f.db, "rate-limits");
       const before = f.db.select().from(threadPruningCursors).all();
       const generation = getThreadEventRewriteGeneration(f.thread.id);
       f.db.run(
@@ -349,7 +349,7 @@ describe("thread pruning", () => {
     }
   });
 
-  it("resumes after a competing writer and revalidates a deleted rate-limit witness", () => {
+  it("resumes after a competing writer and preserves the current latest snapshot after truncation", () => {
     let f = setup();
     const directory = mkdtempSync(join(tmpdir(), "bb-pruning-concurrent-"));
     const path = join(directory, "fixture.db");
@@ -370,15 +370,14 @@ describe("thread pruning", () => {
       expect(f.db.$client.pragma("busy_timeout", { simple: true })).toBe(5000);
       writer.$client.exec("ROLLBACK");
       const batch = advanceThreadPruning(f.db, "rate-limits");
-      const nextSurvivor = batch.cursor.sequence - 1;
-      expect(batch.removed).toBeLessThanOrEqual(63);
+      const nextSurvivor = 599;
+      expect(batch.removed).toBeLessThanOrEqual(64);
       writer.delete(events).where(eq(events.sequence, 600)).run();
       cycle(f, "rate-limits");
       expect(sequences(f)).toEqual([nextSurvivor]);
       expect(
-        getLatestStoredRateLimitsEventForProvider(f.db, {
+        getLatestStoredRateLimitsEvent(f.db, {
           threadId: f.thread.id,
-          providerId: "codex",
         })?.sequence,
       ).toBe(nextSurvivor);
     } finally {
@@ -605,50 +604,97 @@ describe("thread pruning", () => {
           data: '{"item":{}}',
         });
       });
-      cycle(f, "archive");
+      cycle(f, "resolved-items");
       expect(sequences(f)).toEqual([1, 1201, 1202, 1203, 1204, 1205, 1206]);
     } finally {
       f.db.$client.close();
     }
   });
 
-  it("rechecks archive status between batches and revisits newly archived and late rows", () => {
+  it("rechecks archive status and the latest-event safeguard between rate batches", () => {
     const f = setup();
     try {
-      f.db.transaction(() => {
-        for (let i = 1; i <= 1100; i++)
-          seed(f, i, { type: "turn/diff/updated", data: "{}" });
-      });
+      for (let i = 1; i <= 130; i++) seed(f, i);
+      seed(f, 131, { type: "turn/completed" });
       f.db
         .update(threads)
         .set({ archivedAt: 1 })
         .where(eq(threads.id, f.thread.id))
         .run();
-      let result;
-      do {
-        result = advanceThreadPruning(f.db, "archive");
-      } while (result.removed === 0);
-      expect(result.removed).toBe(500);
+      expect(advanceThreadPruning(f.db, "rate-limits").removed).toBe(64);
       f.db
         .update(threads)
         .set({ archivedAt: null })
         .where(eq(threads.id, f.thread.id))
         .run();
-      expect(advanceThreadPruning(f.db, "archive").action).toBe("unarchived");
-      expect(sequences(f)).toHaveLength(600);
-      cycle(f, "archive");
+      cycle(f, "rate-limits");
+      expect(sequences(f)).toEqual([130, 131]);
       f.db
         .update(threads)
         .set({ archivedAt: 2 })
         .where(eq(threads.id, f.thread.id))
         .run();
-      cycle(f, "archive");
-      expect(sequences(f)).toHaveLength(120);
-      expect(sequences(f)[0]).toBe(981);
+      f.db.delete(events).where(eq(events.sequence, 131)).run();
+      cycle(f, "rate-limits");
+      expect(sequences(f)).toEqual([130]);
+      seed(f, 131, { type: "turn/completed" });
+      cycle(f, "rate-limits");
+      expect(sequences(f)).toEqual([131]);
     } finally {
       f.db.$client.close();
     }
   });
+
+  it.each([null, 1])(
+    "keeps only root usage and capacity witnesses with archivedAt=%s",
+    (archivedAt) => {
+      const f = setup();
+      try {
+        f.db
+          .update(threads)
+          .set({ archivedAt })
+          .where(eq(threads.id, f.thread.id))
+          .run();
+        for (let sequence = 1; sequence <= 6; sequence++) {
+          seed(f, sequence, {
+            type: "thread/contextWindowUsage/updated",
+            data: JSON.stringify({
+              contextWindowUsage: {
+                usedTokens: sequence * 100,
+                modelContextWindow: sequence === 2 ? 200000 : null,
+              },
+            }),
+          });
+          seed(f, sequence + 6, {
+            type: "thread/tokenUsage/updated",
+            data: JSON.stringify({
+              tokenUsage: {
+                modelContextWindow: sequence === 1 ? 200000 : null,
+              },
+            }),
+          });
+        }
+        seed(f, 13, {
+          type: "turn/started",
+          turnId: "nested",
+          parentToolCallId: "parent",
+        });
+        seed(f, 14, {
+          type: "thread/contextWindowUsage/updated",
+          turnId: "nested",
+          data: '{"contextWindowUsage":{"modelContextWindow":1000}}',
+        });
+        seed(f, 15, { type: "thread/tokenUsage/updated", turnId: "nested" });
+        cycle(f, "usage");
+        expect(sequences(f)).toEqual([2, 6, 12, 13, 15]);
+        seed(f, 16, { type: "turn/completed" });
+        cycle(f, "usage");
+        expect(sequences(f)).toEqual([2, 6, 12, 13, 16]);
+      } finally {
+        f.db.$client.close();
+      }
+    },
+  );
 
   it("restarts usage keeper discovery after a keeper disappears during a visit", () => {
     const f = setup();
@@ -675,12 +721,12 @@ describe("thread pruning", () => {
           data: "{}",
         });
       });
-      advanceThreadPruning(f.db, "archive");
-      advanceThreadPruning(f.db, "archive");
+      advanceThreadPruning(f.db, "usage");
+      advanceThreadPruning(f.db, "usage");
       f.db.delete(events).where(eq(events.sequence, 600)).run();
-      expect(advanceThreadPruning(f.db, "archive").removed).toBe(0);
-      cycle(f, "archive");
-      cycle(f, "archive");
+      expect(advanceThreadPruning(f.db, "usage").removed).toBe(0);
+      cycle(f, "usage");
+      cycle(f, "usage");
       expect(sequences(f)).toEqual([1, 599, 1000]);
     } finally {
       f.db.$client.close();
@@ -704,8 +750,8 @@ describe("thread pruning", () => {
           });
       });
       for (let i = 0; i < 10; i++) {
-        const result = advanceThreadPruning(f.db, "archive");
-        if (result.cursor.step === 5 && result.cursor.sequence === 500) break;
+        const result = advanceThreadPruning(f.db, "resolved-items");
+        if (result.scanned > 0) break;
       }
       seed(f, 801, {
         type: "item/completed",
@@ -713,9 +759,9 @@ describe("thread pruning", () => {
         itemKind: "agentMessage",
         data: '{"item":{"text":"complete"}}',
       });
-      cycle(f, "archive");
-      expect(sequences(f)).toHaveLength(501);
-      cycle(f, "archive");
+      cycle(f, "resolved-items");
+      expect(sequences(f)).toContain(1);
+      cycle(f, "resolved-items");
       expect(sequences(f)).toEqual([1, 801]);
     } finally {
       f.db.$client.close();
@@ -759,10 +805,13 @@ describe("thread pruning", () => {
       });
       let pending = false;
       for (let i = 0; i < 30; i++) {
-        const result = advanceThreadPruning(f.db, "archive");
+        advanceThreadPruning(f.db, "resolved-items");
         if (
-          result.cursor.probeEventId !== null &&
-          result.cursor.probeSequence > 0
+          f.db
+            .select()
+            .from(threadPruningCursors)
+            .all()
+            .some((row) => row.probeEventId !== null && row.probeSequence > 0)
         ) {
           pending = true;
           break;
@@ -773,7 +822,7 @@ describe("thread pruning", () => {
       f.db.$client.close();
       f = { ...f, db: createConnection(saved) };
       expect(sequences(f)).toContain(2);
-      const results = cycle(f, "archive");
+      const results = cycle(f, "resolved-items");
       expect(results.reduce((sum, r) => sum + r.removed, 0)).toBe(1);
       expect(sequences(f)).toContain(1);
       expect(sequences(f)).not.toContain(2);

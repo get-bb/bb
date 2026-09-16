@@ -1,9 +1,10 @@
+import { isBeforeLatestThreadEvent } from "./event-pruning-guards.js";
 import {
   advanceLiveEventPruning,
-  emptyArchivePruningProbe,
-  pruneArchiveCandidates,
-  type ArchivePruningCandidate,
-} from "./archive-pruning-probes.js";
+  emptyResolvedItemPruningProbe,
+  pruneResolvedItemCandidates,
+  type ResolvedItemPruningCandidate,
+} from "./resolved-item-pruning.js";
 import {
   and,
   desc,
@@ -1366,12 +1367,12 @@ function pruningCandidates(
   );
 }
 
-function archivePruningCandidates(
+function resolvedItemPruningCandidates(
   db: DbQueryConnection,
   args: PruningWindow & { threadId: string },
   types: readonly ThreadEventType[],
-): ArchivePruningCandidate[] {
-  return db.all<ArchivePruningCandidate>(sql`SELECT id, sequence, type, turn_id AS turnId, item_id AS itemId, parent_tool_call_id AS parentToolCallId
+): ResolvedItemPruningCandidate[] {
+  return db.all<ResolvedItemPruningCandidate>(sql`SELECT id, sequence, type, turn_id AS turnId, item_id AS itemId, parent_tool_call_id AS parentToolCallId
     FROM events WHERE id IN (${pruningCandidates(args, types)}) ORDER BY sequence`);
 }
 
@@ -1381,13 +1382,11 @@ export interface PruneThreadEventsBeforeSequenceArgs extends PruningWindow {
   types: readonly ThreadEventType[];
 }
 
-export interface PruneContextWindowUsageEventsBeforeSequenceArgs extends PruningWindow {
-  sequenceCutoff: number;
+export interface PruneContextWindowUsageEventsArgs extends PruningWindow {
   threadId: string;
 }
 
-export interface PruneTokenUsageEventsBeforeSequenceArgs extends PruningWindow {
-  sequenceCutoff: number;
+export interface PruneTokenUsageEventsArgs extends PruningWindow {
   threadId: string;
 }
 
@@ -2063,16 +2062,9 @@ export function getLatestStoredThreadEventOfTypes(
   );
 }
 
-/**
- * The newest rate-limit snapshot this thread saw for one provider.
- *
- * Filtered on the provider inside the query: a thread's log can carry snapshots
- * from more than one provider id, and the caller wants its own thread's
- * provider rather than whatever reported last.
- */
-export function getLatestStoredRateLimitsEventForProvider(
+export function getLatestStoredRateLimitsEvent(
   db: DbQueryConnection,
-  args: { threadId: string; providerId: string },
+  args: { threadId: string },
 ): StoredThreadEventDataRow | null {
   return (
     db
@@ -2087,7 +2079,6 @@ export function getLatestStoredRateLimitsEventForProvider(
         and(
           eq(events.threadId, args.threadId),
           eq(events.type, "provider/rateLimits/updated"),
-          sql`CASE WHEN json_valid(${events.data}) THEN json_extract(${events.data}, '$.rateLimits.providerId') END = ${args.providerId}`,
         ),
       )
       .orderBy(desc(events.sequence))
@@ -3679,7 +3670,7 @@ export function pruneThreadEventsBeforeSequenceInTransaction(
         eq(events.threadId, args.threadId),
         sql`${events.id} IN (${pruningCandidates(args, args.types)})`,
         lte(events.sequence, args.sequenceCutoff),
-        sql`${events.sequence} < (SELECT sequence FROM events WHERE thread_id = ${args.threadId} ORDER BY sequence DESC LIMIT 1)`,
+        isBeforeLatestThreadEvent(args.threadId),
         inArray(events.type, [...args.types]),
       ),
     )
@@ -3688,18 +3679,16 @@ export function pruneThreadEventsBeforeSequenceInTransaction(
   return result.changes;
 }
 
-function pruneLatestRowsForContextWindowUsageBeforeSequence(
+function pruneUsageSnapshots(
   db: DbQueryConnection,
   args: PruningWindow & {
     contextWindowJsonPath: string;
     eventType:
       | "thread/contextWindowUsage/updated"
       | "thread/tokenUsage/updated";
-    sequenceCutoff: number;
     threadId: string;
   },
 ): number {
-  if (args.sequenceCutoff <= 0) return 0;
   let keepers = args.usageKeepers;
   if (!keepers) {
     const rows = db.all<{
@@ -3717,10 +3706,16 @@ function pruneLatestRowsForContextWindowUsageBeforeSequence(
       ) AS isRoot FROM recent ORDER BY sequence DESC
     `);
     const root = rows.find((row) => row.isRoot !== 0);
-    const context = rows.find(
-      (row) => row.isRoot !== 0 && row.hasContext !== 0,
-    );
-    if (rows.length === 500 && (!root || !context)) return 0;
+    const context =
+      args.eventType === "thread/contextWindowUsage/updated"
+        ? rows.find((row) => row.isRoot !== 0 && row.hasContext !== 0)
+        : undefined;
+    if (
+      rows.length === 500 &&
+      (!root ||
+        (args.eventType === "thread/contextWindowUsage/updated" && !context))
+    )
+      return 0;
     keepers = {
       latestRootSequence: root?.sequence ?? 0,
       latestContextSequence: context?.sequence ?? 0,
@@ -3741,28 +3736,28 @@ function pruneLatestRowsForContextWindowUsageBeforeSequence(
   }
   return db.run(sql`DELETE FROM events
     WHERE id IN (${pruningCandidates(args, [args.eventType])}) AND thread_id = ${args.threadId}
-      AND type = ${args.eventType} AND sequence <= ${args.sequenceCutoff}
-      AND sequence < (SELECT sequence FROM events WHERE thread_id = ${args.threadId} ORDER BY sequence DESC LIMIT 1)
+      AND type = ${args.eventType}
+      AND ${isBeforeLatestThreadEvent(args.threadId)}
       AND sequence NOT IN (${keepers.latestRootSequence}, ${keepers.latestContextSequence})`)
     .changes;
 }
 
-export function pruneContextWindowUsageEventsBeforeSequenceInTransaction(
+export function pruneContextWindowUsageEventsInTransaction(
   db: DbQueryConnection,
-  args: PruneContextWindowUsageEventsBeforeSequenceArgs,
+  args: PruneContextWindowUsageEventsArgs,
 ): number {
-  return pruneLatestRowsForContextWindowUsageBeforeSequence(db, {
+  return pruneUsageSnapshots(db, {
     ...args,
     eventType: "thread/contextWindowUsage/updated",
     contextWindowJsonPath: "$.contextWindowUsage.modelContextWindow",
   });
 }
 
-export function pruneTokenUsageEventsBeforeSequenceInTransaction(
+export function pruneTokenUsageEventsInTransaction(
   db: DbQueryConnection,
-  args: PruneTokenUsageEventsBeforeSequenceArgs,
+  args: PruneTokenUsageEventsArgs,
 ): number {
-  return pruneLatestRowsForContextWindowUsageBeforeSequence(db, {
+  return pruneUsageSnapshots(db, {
     ...args,
     eventType: "thread/tokenUsage/updated",
     contextWindowJsonPath: "$.tokenUsage.modelContextWindow",
@@ -3782,16 +3777,16 @@ export function pruneResolvedItemDeltasInTransaction(
       threadId: args.threadId,
       kind: "deltas",
     }).removed;
-  return pruneArchiveCandidates(db, {
+  return pruneResolvedItemCandidates(db, {
     threadId: args.threadId,
-    candidates: archivePruningCandidates(db, args, [
+    candidates: resolvedItemPruningCandidates(db, args, [
       "item/agentMessage/delta",
       "item/commandExecution/outputDelta",
       "item/reasoning/summaryTextDelta",
       "item/reasoning/textDelta",
     ]),
     kind: "deltas",
-    probe: emptyArchivePruningProbe(),
+    probe: emptyResolvedItemPruningProbe(),
   }).removed;
 }
 
@@ -3919,13 +3914,13 @@ export function pruneBackgroundTaskProgressEventsInTransaction(
       threadId: args.threadId,
       kind: "background",
     }).removed;
-  return pruneArchiveCandidates(db, {
+  return pruneResolvedItemCandidates(db, {
     threadId: args.threadId,
-    candidates: archivePruningCandidates(db, args, [
+    candidates: resolvedItemPruningCandidates(db, args, [
       "item/backgroundTask/progress",
     ]),
     kind: "background",
-    probe: emptyArchivePruningProbe(),
+    probe: emptyResolvedItemPruningProbe(),
   }).removed;
 }
 
@@ -3948,21 +3943,21 @@ export function pruneThreadEventsBeforeSequence(
   );
 }
 
-export function pruneContextWindowUsageEventsBeforeSequence(
+export function pruneContextWindowUsageEvents(
   db: DbConnection,
-  args: PruneContextWindowUsageEventsBeforeSequenceArgs,
+  args: PruneContextWindowUsageEventsArgs,
 ): number {
   return runPruningBatch(db, args, (tx) =>
-    pruneContextWindowUsageEventsBeforeSequenceInTransaction(tx, args),
+    pruneContextWindowUsageEventsInTransaction(tx, args),
   );
 }
 
-export function pruneTokenUsageEventsBeforeSequence(
+export function pruneTokenUsageEvents(
   db: DbConnection,
-  args: PruneTokenUsageEventsBeforeSequenceArgs,
+  args: PruneTokenUsageEventsArgs,
 ): number {
   return runPruningBatch(db, args, (tx) =>
-    pruneTokenUsageEventsBeforeSequenceInTransaction(tx, args),
+    pruneTokenUsageEventsInTransaction(tx, args),
   );
 }
 

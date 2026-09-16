@@ -30,7 +30,7 @@ import {
   listStoredEventRowsByParentToolCallIds,
   listStoredTurnCompletedKeys,
   listTodoSnapshotEventRowsForThread,
-  pruneContextWindowUsageEventsBeforeSequence,
+  pruneContextWindowUsageEvents,
   pruneResolvedItemDeltas,
 } from "../src/data/events.js";
 import {
@@ -928,7 +928,6 @@ describe("slow query index plans", () => {
 
   it("uses the thread/type/sequence index for emitted context-window prune SQL", () => {
     const { db, logger, thread } = setup();
-    const sequenceCutoff = 3;
     insertEvents(db, noopNotifier, [
       {
         data: JSON.stringify({
@@ -981,8 +980,7 @@ describe("slow query index plans", () => {
     }
     logger.clear();
 
-    pruneContextWindowUsageEventsBeforeSequence(db, {
-      sequenceCutoff,
+    pruneContextWindowUsageEvents(db, {
       threadId: thread.id,
     });
 
@@ -1002,7 +1000,6 @@ describe("slow query index plans", () => {
         500,
         thread.id,
         "thread/contextWindowUsage/updated",
-        sequenceCutoff,
         thread.id,
         2,
         1,

@@ -1,16 +1,17 @@
+import { isBeforeLatestThreadEvent } from "./event-pruning-guards.js";
 import { threadPruningCursors } from "../schema.js";
 import { and, eq, sql } from "drizzle-orm";
 import type { DbQueryConnection } from "../connection.js";
 import type { ThreadEventType } from "@bb/domain";
 
-export interface ArchivePruningProbe {
+export interface ResolvedItemPruningProbe {
   probeEventId: string | null;
   probePhase: number;
   probeSequence: number;
   probeWitnessId: string | null;
 }
 
-export interface ArchivePruningCandidate {
+export interface ResolvedItemPruningCandidate {
   id: string;
   sequence: number;
   type: ThreadEventType;
@@ -28,7 +29,7 @@ interface Support {
   hasOutput: number;
 }
 
-export function emptyArchivePruningProbe(): ArchivePruningProbe {
+export function emptyResolvedItemPruningProbe(): ResolvedItemPruningProbe {
   return {
     probeEventId: null,
     probePhase: 0,
@@ -44,13 +45,13 @@ const deltaKinds: Partial<Record<ThreadEventType, string>> = {
   "item/reasoning/textDelta": "reasoning",
 };
 
-export function pruneArchiveCandidates(
+export function pruneResolvedItemCandidates(
   db: DbQueryConnection,
   args: {
     threadId: string;
-    candidates: readonly ArchivePruningCandidate[];
+    candidates: readonly ResolvedItemPruningCandidate[];
     kind: "deltas" | "background";
-    probe: ArchivePruningProbe;
+    probe: ResolvedItemPruningProbe;
   },
 ) {
   const rows = args.candidates;
@@ -59,9 +60,9 @@ export function pruneArchiveCandidates(
   let remaining = 500;
   let sequence = 0;
   let processed = 0;
-  const reset = () => Object.assign(probe, emptyArchivePruningProbe());
+  const reset = () => Object.assign(probe, emptyResolvedItemPruningProbe());
   const readSupport = (
-    candidate: ArchivePruningCandidate,
+    candidate: ResolvedItemPruningCandidate,
     limit: number,
   ): Support[] => {
     if (args.kind === "background" && probe.probePhase === 0) {
@@ -151,7 +152,7 @@ export function pruneArchiveCandidates(
         } else finished = true;
       } else {
         const last = support.at(-1);
-        if (!last) throw new Error("Missing archive support cursor");
+        if (!last) throw new Error("Missing resolved-item support cursor");
         probe.probeSequence = last.sequence;
       }
     }
@@ -167,7 +168,7 @@ export function pruneArchiveCandidates(
           sql`DELETE FROM events WHERE id IN (${sql.join(
             discarded.map((id) => sql`${id}`),
             sql`, `,
-          )}) AND sequence < (SELECT sequence FROM events WHERE thread_id = ${args.threadId} ORDER BY sequence DESC LIMIT 1)`,
+          )}) AND ${isBeforeLatestThreadEvent(args.threadId)}`,
         ).changes;
   return { removed, sequence, complete: processed === rows.length };
 }
@@ -199,13 +200,13 @@ export function advanceLiveEventPruning(
       .returning()
       .get();
   }
-  const candidates = db.all<ArchivePruningCandidate>(sql`
+  const candidates = db.all<ResolvedItemPruningCandidate>(sql`
     SELECT id, sequence, type, turn_id AS turnId, item_id AS itemId, parent_tool_call_id AS parentToolCallId
     FROM events INDEXED BY events_thread_sequence_idx
     WHERE thread_id = ${args.threadId} AND sequence > ${cursor.sequence} AND sequence <= ${cursor.upperSequence}
     ORDER BY sequence LIMIT 500
   `);
-  const result = pruneArchiveCandidates(db, {
+  const result = pruneResolvedItemCandidates(db, {
     ...args,
     candidates,
     probe: cursor,

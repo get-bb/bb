@@ -866,14 +866,6 @@ export const threadPruningCursors = sqliteTable(
   ],
 );
 
-export const threadPruningRateLimitKeepers = sqliteTable(
-  "thread_pruning_rate_limit_keepers",
-  {
-    providerId: text("provider_id").primaryKey(),
-    eventId: text("event_id").notNull(),
-  },
-);
-
 export const maintenanceScanCursors = sqliteTable(
   "maintenance_scan_cursors",
   {

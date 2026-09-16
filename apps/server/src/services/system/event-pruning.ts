@@ -5,9 +5,9 @@ import {
   pruneRateLimitSnapshots,
   getLatestThreadSequence,
   pruneBackgroundTaskProgressEvents,
-  pruneContextWindowUsageEventsBeforeSequence,
+  pruneContextWindowUsageEvents,
   pruneResolvedItemDeltas,
-  pruneTokenUsageEventsBeforeSequence,
+  pruneTokenUsageEvents,
   pruneThreadEventsBeforeSequence,
 } from "@bb/db";
 import type { ThreadEventType } from "@bb/domain";
@@ -23,11 +23,10 @@ interface PruneThreadEventHistoryArgs {
 
 interface ThreadEventPruningResult {
   latestSequence: number;
-  removedAgePrunableEvents: number;
+  removedUsageAndDiffEvents: number;
   removedRateLimitSnapshots: number;
   removedBackgroundTaskProgressEvents: number;
   removedResolvedItemDeltas: number;
-  sequenceCutoff: number;
   totalRemoved: number;
 }
 
@@ -46,7 +45,7 @@ type ThreadEventPruningStep =
   | "get_latest_thread_sequence"
   | "prune_background_task_progress"
   | "prune_context_window_usage"
-  | "prune_generic_age_prunable_events"
+  | "prune_turn_diffs"
   | "prune_resolved_item_deltas"
   | "prune_token_usage";
 
@@ -60,34 +59,25 @@ class ThreadEventPruningStepError extends Error {
   }
 }
 
-const ACTIVE_THREAD_EVENT_KEEP_RECENT = 1_000;
-const IDLE_THREAD_EVENT_KEEP_RECENT = 300;
-const ARCHIVED_THREAD_EVENT_KEEP_RECENT = 120;
 const ACTIVE_THREAD_EVENT_PRUNE_MIN_SEQUENCE_DELTA = 250;
 const ACTIVE_THREAD_EVENT_PRUNE_MIN_INTERVAL_MS = 30_000;
 const SLOW_THREAD_EVENT_PRUNE_LOG_THRESHOLD_MS = 50;
 
-const AGE_PRUNABLE_THREAD_EVENT_TYPES: readonly ThreadEventType[] = [
+const SNAPSHOT_THREAD_EVENT_TYPES: readonly ThreadEventType[] = [
   "thread/contextWindowUsage/updated",
   "thread/tokenUsage/updated",
   "turn/diff/updated",
 ] as const;
 
 const ACTIVE_PRUNE_TRIGGER_THREAD_EVENT_TYPES: readonly ThreadEventType[] = [
-  ...AGE_PRUNABLE_THREAD_EVENT_TYPES,
+  ...SNAPSHOT_THREAD_EVENT_TYPES,
   "provider/rateLimits/updated",
   "item/backgroundTask/progress",
 ] as const;
 
-const GENERIC_AGE_PRUNABLE_THREAD_EVENT_TYPES: readonly ThreadEventType[] = [
+const DIFF_THREAD_EVENT_TYPES: readonly ThreadEventType[] = [
   "turn/diff/updated",
 ] as const;
-
-const KEEP_RECENT_BY_MODE: Record<ThreadEventPruningMode, number> = {
-  active: ACTIVE_THREAD_EVENT_KEEP_RECENT,
-  idle: IDLE_THREAD_EVENT_KEEP_RECENT,
-  archived: ARCHIVED_THREAD_EVENT_KEEP_RECENT,
-};
 
 const activePruneTriggerThreadEventTypeSet = new Set<ThreadEventType>(
   ACTIVE_PRUNE_TRIGGER_THREAD_EVENT_TYPES,
@@ -134,35 +124,31 @@ export function pruneThreadEventHistory(
         threadId: args.threadId,
       }),
   );
-  const keepRecent = KEEP_RECENT_BY_MODE[args.mode];
-  const sequenceCutoff = Math.max(0, latestSequence - keepRecent);
   const removedRateLimitSnapshots = runThreadEventPruningStep(
     "prune_rate_limits",
     () =>
       pruneRateLimitSnapshots(deps.db, {
         threadId: args.threadId,
-        afterSequence: Math.max(0, latestSequence - 500),
+        afterSequence: 0,
         throughSequence: latestSequence,
       }),
   );
-  const removedAgePrunableEvents =
+  const removedUsageAndDiffEvents =
     runThreadEventPruningStep("prune_context_window_usage", () =>
-      pruneContextWindowUsageEventsBeforeSequence(deps.db, {
+      pruneContextWindowUsageEvents(deps.db, {
         threadId: args.threadId,
-        sequenceCutoff,
       }),
     ) +
     runThreadEventPruningStep("prune_token_usage", () =>
-      pruneTokenUsageEventsBeforeSequence(deps.db, {
+      pruneTokenUsageEvents(deps.db, {
         threadId: args.threadId,
-        sequenceCutoff,
       }),
     ) +
-    runThreadEventPruningStep("prune_generic_age_prunable_events", () =>
+    runThreadEventPruningStep("prune_turn_diffs", () =>
       pruneThreadEventsBeforeSequence(deps.db, {
         threadId: args.threadId,
-        sequenceCutoff,
-        types: GENERIC_AGE_PRUNABLE_THREAD_EVENT_TYPES,
+        sequenceCutoff: latestSequence,
+        types: DIFF_THREAD_EVENT_TYPES,
       }),
     );
   const removedResolvedItemDeltas = runThreadEventPruningStep(
@@ -182,14 +168,13 @@ export function pruneThreadEventHistory(
 
   return {
     latestSequence,
-    removedAgePrunableEvents,
+    removedUsageAndDiffEvents,
     removedRateLimitSnapshots,
     removedBackgroundTaskProgressEvents,
     removedResolvedItemDeltas,
-    sequenceCutoff,
     totalRemoved:
       removedRateLimitSnapshots +
-      removedAgePrunableEvents +
+      removedUsageAndDiffEvents +
       removedBackgroundTaskProgressEvents +
       removedResolvedItemDeltas,
   };

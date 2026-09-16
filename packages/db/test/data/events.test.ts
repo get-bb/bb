@@ -51,8 +51,8 @@ import {
   listOpenBackgroundTaskItemRowsForHost,
   listThreadTurnInterruptionEventStates,
   pruneBackgroundTaskProgressEvents,
-  pruneContextWindowUsageEventsBeforeSequence,
-  pruneTokenUsageEventsBeforeSequence,
+  pruneContextWindowUsageEvents,
+  pruneTokenUsageEvents,
   pruneResolvedItemDeltas,
   pruneThreadEventsBeforeSequence,
   listLatestOpenBackgroundTaskStateRowsForThread,
@@ -3362,7 +3362,7 @@ describe("events", () => {
     ).toEqual([4, 5]);
   });
 
-  it("prunes token-usage rows before a sequence cutoff but keeps the latest totals row and latest context row", () => {
+  it("keeps only the latest root token-usage snapshot", () => {
     const { db, thread } = setup();
 
     insertEvents(db, noopNotifier, [
@@ -3408,15 +3408,14 @@ describe("events", () => {
       },
     ]);
 
-    const removed = pruneTokenUsageEventsBeforeSequence(db, {
+    const removed = pruneTokenUsageEvents(db, {
       threadId: thread.id,
-      sequenceCutoff: 4,
     });
 
-    expect(removed).toBe(2);
+    expect(removed).toBe(3);
     expect(
       listEvents(db, { threadId: thread.id }).map((event) => event.sequence),
-    ).toEqual([1, 4]);
+    ).toEqual([4]);
   });
 
   it("preserves root token usage instead of a newer nested-turn report while pruning", () => {
@@ -3470,18 +3469,17 @@ describe("events", () => {
       },
     ]);
 
-    const removed = pruneTokenUsageEventsBeforeSequence(db, {
+    const removed = pruneTokenUsageEvents(db, {
       threadId: thread.id,
-      sequenceCutoff: 4,
     });
 
-    expect(removed).toBe(1);
+    expect(removed).toBe(2);
     expect(
       listEvents(db, { threadId: thread.id }).map((event) => event.sequence),
-    ).toEqual([1, 2, 3, 5]);
+    ).toEqual([2, 3, 5]);
   });
 
-  it("prunes context-window rows before a sequence cutoff but keeps the latest usage row and latest context row", () => {
+  it("prunes context-window rows but keeps the latest usage row and latest context row", () => {
     const { db, thread } = setup();
 
     insertEvents(db, noopNotifier, [
@@ -3527,9 +3525,8 @@ describe("events", () => {
       },
     ]);
 
-    const removed = pruneContextWindowUsageEventsBeforeSequence(db, {
+    const removed = pruneContextWindowUsageEvents(db, {
       threadId: thread.id,
-      sequenceCutoff: 4,
     });
 
     expect(removed).toBe(2);

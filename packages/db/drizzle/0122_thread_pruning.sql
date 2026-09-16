@@ -21,8 +21,4 @@ CREATE TABLE `thread_pruning_cursors` (
 	CONSTRAINT "thread_pruning_cursors_scope_check" CHECK("thread_pruning_cursors"."scope" = coalesce("thread_pruning_cursors"."thread_id", ''))
 );
 --> statement-breakpoint
-CREATE INDEX `thread_pruning_cursors_thread_idx` ON `thread_pruning_cursors` (`thread_id`);--> statement-breakpoint
-CREATE TABLE `thread_pruning_rate_limit_keepers` (
-	`provider_id` text PRIMARY KEY NOT NULL,
-	`event_id` text NOT NULL
-);
+CREATE INDEX `thread_pruning_cursors_thread_idx` ON `thread_pruning_cursors` (`thread_id`);

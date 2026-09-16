@@ -193,17 +193,16 @@ describe("thread event pruning", () => {
 
       expect(result).toMatchObject({
         latestSequence: 309,
-        sequenceCutoff: 9,
-        removedAgePrunableEvents: 9,
+        removedUsageAndDiffEvents: 304,
         removedResolvedItemDeltas: 2,
-        totalRemoved: 11,
+        totalRemoved: 306,
       });
       expect(
         listEventSequencesForType(harness, {
           threadId: thread.id,
           type: "thread/tokenUsage/updated",
         }).at(0),
-      ).toBe(10);
+      ).toBe(305);
       expect(
         listEventSequencesForType(harness, {
           threadId: thread.id,
@@ -261,13 +260,13 @@ describe("thread event pruning", () => {
         },
       }).response;
 
-      expect(result.removedAgePrunableEvents).toBe(4);
+      expect(result.removedUsageAndDiffEvents).toBe(303);
       expect(
         listEventSequencesForType(harness, {
           threadId: thread.id,
           type: "thread/contextWindowUsage/updated",
-        }).slice(0, 3),
-      ).toEqual([1, 6, 7]);
+        }),
+      ).toEqual([1, 305]);
       expect(timeline.contextWindowUsage).toEqual({
         usedTokens: 305,
         modelContextWindow: 200_000,
@@ -339,7 +338,7 @@ describe("thread event pruning", () => {
           threadId: thread.id,
           type: "thread/tokenUsage/updated",
         }).at(0),
-      ).toBe(11);
+      ).toBe(305);
       expect(
         listEventSequencesForType(harness, {
           threadId: thread.id,
@@ -401,7 +400,7 @@ describe("thread event pruning", () => {
     });
   });
 
-  it("prunes thread history on archive with the archived retention window", async () => {
+  it("prunes thread history on archive using the same usage retention rule", async () => {
     await withTestHarness(async (harness) => {
       const host = seedHost(harness.deps);
       const { project } = seedProjectWithSource(harness.deps, {
@@ -442,7 +441,7 @@ describe("thread event pruning", () => {
           threadId: thread.id,
           type: "thread/tokenUsage/updated",
         }).at(0),
-      ).toBe(14);
+      ).toBe(130);
       expect(
         listEventSequencesForType(harness, {
           threadId: thread.id,
@@ -587,7 +586,7 @@ describe("thread event pruning", () => {
           threadId: thread.id,
           type: "thread/tokenUsage/updated",
         }).at(0),
-      ).toBe(8);
+      ).toBe(1007);
       expect(
         listEventSequencesForType(harness, {
           threadId: thread.id,

@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "bf43640f-17bd-4d82-94eb-b519d6fdf42a",
+  "id": "16708cd5-2a8d-44d3-912f-482c6c4462e2",
   "prevId": "b397e64e-ad43-4c17-a389-538af608fb6e",
   "tables": {
     "app_settings": {
@@ -3975,30 +3975,6 @@
           "value": "\"thread_pruning_cursors\".\"scope\" = coalesce(\"thread_pruning_cursors\".\"thread_id\", '')"
         }
       }
-    },
-    "thread_pruning_rate_limit_keepers": {
-      "name": "thread_pruning_rate_limit_keepers",
-      "columns": {
-        "provider_id": {
-          "name": "provider_id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "event_id": {
-          "name": "event_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
     },
     "thread_search_segments": {
       "name": "thread_search_segments",
