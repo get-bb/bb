@@ -45,9 +45,7 @@ bb pool account refresh <id>
 bb pool status [--json]
 bb pool routing <claude|codex> [--off]
 bb pool config
-bb pool config set <anthropicUpstreamBaseUrl|codexUpstreamBaseUrl|switchThreshold|parentMode|cacheMissDebug|cacheMissMinTokens> <value>
-bb pool cache-miss list [--json]
-bb pool cache-miss clear
+bb pool config set <anthropicUpstreamBaseUrl|codexUpstreamBaseUrl|switchThreshold> <value>
 bb pool token rotate --machine <id-or-name>
 bb pool bypass <thread-id> [--off]
 ```
@@ -85,24 +83,10 @@ the family buckets Anthropic reports, and JSON status exposes the same
 observations under `familyWeekly`. Selection skips an account only for a spent
 requested family while retaining it for other families. When Claude Code supplies an
 account UUID in `metadata.user_id`, the hub aligns it with the selected OAuth
-account. `bb pool config` prints the quota switch threshold, both upstream
-URLs, the parent mode, and the cache miss debugging values. Use
-`bb pool config set <key> <value>` to change one; the two URL values
+account. `bb pool config` prints the quota switch threshold and both upstream
+URLs. Use `bb pool config set <key> <value>` to change one; the two URL values
 are QA-only overrides. Upgrading from a build that stored these values through
 plugin settings resets the threshold and QA overrides to their defaults.
-`cacheMissDebug true` (default `false`) records large prompt cache misses on
-pooled Claude and Codex requests in server memory; `cacheMissMinTokens`
-(default `10000`) sets the smallest missed token count reported. Parsing runs
-after the first response chunk is forwarded, and analysis after the response
-ends. Claude requests without a `cache_control`
-breakpoint are not tracked, and Codex idle gaps are judged against a 30 minute
-cache lifetime.
-`bb pool cache-miss list` prints each miss's likely causes and first changed
-prompt segment; with `--json` it also prints `cacheMissDebug` and
-`forwardsToParent`, so an empty list can be told apart from reporting that is
-off or left to the parent. `bb pool cache-miss clear` removes the reports. Logs carry
-ids, token counts, and cause kinds but no prompt text. A nested server in proxy
-mode does not analyze forwarded traffic; enable it on the parent.
 
 Accounts run sequentially per provider: lower priority numbers first, with ties
 following the order accounts were added. New conversations use the current
