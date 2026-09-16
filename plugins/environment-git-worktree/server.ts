@@ -61,7 +61,12 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
             baseBranch: context.inputs.branch,
             branchMode: context.rebuild ? "reuse-existing" : "reset",
           },
-          { hostId, signal: context.signal, timeoutMs: CREATE_TIMEOUT_MS },
+          {
+            hostId,
+            experimental_projectId: context.project.id,
+            signal: context.signal,
+            timeoutMs: CREATE_TIMEOUT_MS,
+          },
         );
         if (result.status === "failed") {
           return {
@@ -105,6 +110,7 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
           },
           {
             hostId: context.hostId,
+            experimental_projectId: context.environment?.projectId,
             signal: context.signal,
             timeoutMs: REMOVE_TIMEOUT_MS,
           },

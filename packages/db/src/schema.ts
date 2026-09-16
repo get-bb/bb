@@ -188,6 +188,29 @@ export const systemExperiments = sqliteTable("system_experiments", {
   updatedAt: integer("updated_at").notNull(),
 });
 
+export const environmentVariables = sqliteTable(
+  "environment_variables",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    projectId: text("project_id").references(() => projects.id, {
+      onDelete: "cascade",
+    }),
+    name: text("name").notNull(),
+    ciphertext: text("ciphertext").notNull(),
+    encryptionVersion: integer("encryption_version").notNull(),
+    note: text("note"),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("environment_variables_global_name")
+      .on(table.name)
+      .where(sql`${table.projectId} IS NULL`),
+    uniqueIndex("environment_variables_project_name")
+      .on(table.projectId, table.name)
+      .where(sql`${table.projectId} IS NOT NULL`),
+  ],
+);
+
 export const appSettingsValues = sqliteTable("app_settings_values", {
   key: text("key").primaryKey(),
   value: text("value").notNull(),

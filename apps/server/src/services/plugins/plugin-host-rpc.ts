@@ -1,3 +1,4 @@
+import { requireProject } from "../lib/entity-lookup.js";
 import { resolveHostEnvironment } from "../hosts/host-environment.js";
 import { randomUUID } from "node:crypto";
 import { listPublicHosts } from "@bb/db";
@@ -62,6 +63,7 @@ export async function callPluginHostRpc(
   deps: WorkSessionDeps,
   args: {
     pluginId: string;
+    projectId: string | null;
     contract: PluginRpcContract;
     method: string;
     input: unknown;
@@ -71,6 +73,7 @@ export async function callPluginHostRpc(
     artifact: PluginHostArtifactSnapshot;
   },
 ): Promise<unknown> {
+  if (args.projectId !== null) requireProject(deps.db, args.projectId);
   const method = args.contract[args.method];
   if (method === undefined) {
     throw new Error(`unknown host rpc method "${args.method}"`);
@@ -89,7 +92,7 @@ export async function callPluginHostRpc(
       type: "plugin.host.call",
       contributedEnv: await resolveHostEnvironment(deps, {
         hostId: args.hostId,
-        projectId: null,
+        projectId: args.projectId,
       }),
       pluginId: args.pluginId,
       generation: args.artifact.generation,

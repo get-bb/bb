@@ -44,9 +44,7 @@ afterEach(cleanup);
 describe("plugin marketplace author links", () => {
   it("routes the detail author name to the author page", () => {
     render(
-      <MemoryRouter
-        initialEntries={["/plugins/Current?category=security"]}
-      >
+      <MemoryRouter initialEntries={["/plugins/Current?category=security"]}>
         <PluginMarketplaceHeaderMetadata entry={catalogEntry("Current")} />
       </MemoryRouter>,
     );

@@ -261,10 +261,7 @@ describe("theme.css Cadence text tokens", () => {
 
 describe("theme.css terminal font token", () => {
   it("provides the existing terminal font stack as the default", () => {
-    const fontFamily = variableValue(
-      modeBlock("light"),
-      "font-terminal",
-    );
+    const fontFamily = variableValue(modeBlock("light"), "font-terminal");
 
     expect(fontFamily).toContain('"JetBrainsMono Nerd Font Mono"');
     expect(fontFamily).toContain('"Courier New", monospace');

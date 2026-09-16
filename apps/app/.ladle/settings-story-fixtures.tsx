@@ -11,6 +11,7 @@ import type { ProviderCliStatusResponse } from "@bb/host-daemon-contract";
 import {
   hostProviderCliStatusQueryKey,
   hostsQueryKey,
+  machineEnvironmentQueryKey,
   pluginListQueryKey,
   pluginMarketplacesQueryKey,
   serverMoveStatusQueryKey,
@@ -53,6 +54,22 @@ import {
 import codexLogoUrl from "../../../plugins/provider-codex/icons/codex.svg";
 import claudeCodeLogoUrl from "../../../plugins/provider-claude-code/icons/claude-code.svg";
 import cursorLogoUrl from "../../../plugins/provider-acp/icons/cursor.svg";
+
+const STORY_GIT_HEALTH = {
+  status: "logged in" as const,
+  statusMessage: "gh is authenticated",
+};
+
+const STORY_GLOBAL_VARIABLES = [
+  { name: "ANTHROPIC_API_KEY", value: null, secret: true as const, note: null },
+  {
+    name: "DATABASE_URL",
+    value: null,
+    secret: true as const,
+    note: "Points at the staging replica, not production.",
+  },
+  { name: "SENTRY_DSN", value: null, secret: true as const, note: null },
+];
 
 const SETTINGS_STORY_NOW = Date.parse("2026-08-19T08:00:00.000Z");
 
@@ -291,6 +308,23 @@ function createSettingsStoryQueryClient() {
   queryClient.setQueryData(systemVersionQueryKey(), systemVersion);
   queryClient.setQueryData(sidebarNavigationQueryKey(), sidebarNavigation);
   queryClient.setQueryData(pluginMarketplacesQueryKey(), []);
+  queryClient.setQueryData(machineEnvironmentQueryKey(null), {
+    builtInGit: STORY_GIT_HEALTH,
+    variables: STORY_GLOBAL_VARIABLES,
+    inheritedVariables: [],
+  });
+  queryClient.setQueryData(machineEnvironmentQueryKey(PROJECT_IDS.bb), {
+    builtInGit: STORY_GIT_HEALTH,
+    variables: [
+      {
+        name: "DATABASE_URL",
+        value: null,
+        secret: true,
+        note: "Points at the bb sandbox.",
+      },
+    ],
+    inheritedVariables: STORY_GLOBAL_VARIABLES,
+  });
   queryClient.setQueryData(
     hostProviderCliStatusQueryKey(HOST_IDS.local),
     localProviderStatus,

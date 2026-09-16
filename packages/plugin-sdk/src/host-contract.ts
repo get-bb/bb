@@ -17,6 +17,8 @@ export type ExperimentalHostSignals = Readonly<
 >;
 
 export interface ExperimentalHostCallOptions {
+  /** Project whose machine environment overrides apply to this call. Omit for global variables only. */
+  readonly experimental_projectId?: string;
   readonly hostId: string;
   readonly signal?: AbortSignal;
   /**

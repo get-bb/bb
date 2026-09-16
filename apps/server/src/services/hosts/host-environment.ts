@@ -25,10 +25,17 @@ export async function resolveHostEnvironment(
   const builtIn = getAppSettings(deps.db).machineGitCredentialsEnabled
     ? await resolveGitCredentials()
     : [];
-  const user = await resolveUserMachineEnvironment(
-    deps.db,
-    deps.config.dataDir,
-  );
+  const [global, project] = await Promise.all([
+    resolveUserMachineEnvironment(deps.db, deps.config.dataDir),
+    context.projectId === null
+      ? []
+      : resolveUserMachineEnvironment(
+          deps.db,
+          deps.config.dataDir,
+          context.projectId,
+        ),
+  ]);
+  const user = mergeHostAndProviderEnvironment(global, project);
   if (!builtIn.length && user.some((entry) => entry.name === "GH_TOKEN"))
     builtIn.push(...githubGitConfiguration());
   return mergeHostAndProviderEnvironment(builtIn, user);

@@ -250,6 +250,53 @@ describe("PluginHostManager", () => {
     ).toEqual({ before: null, after: null, token: null });
   });
 
+  it("isolates overlapping project environments and retires every scoped worker", async () => {
+    const manager = await createManager({
+      shellEnv: () => ({ GATE_VALUE: "global" }),
+    });
+    const scoped = (value: string) =>
+      callCommand({
+        method: "environment",
+        input: { delay: 100 },
+        contributedEnv: [
+          {
+            name: "GATE_VALUE",
+            value,
+            reason: "Project override",
+            source: { core: "project-environment" },
+          },
+        ],
+      });
+    const a = scoped("project-a");
+    const b = scoped("project-b");
+    const results = await Promise.all([
+      manager.call(a),
+      manager.call(b),
+      manager.call(callCommand({ method: "environment", input: {} })),
+    ]);
+    expect(results.map((result) => result.output)).toEqual([
+      { before: "project-a", after: "project-a", token: null },
+      { before: "project-b", after: "project-b", token: null },
+      { before: "global", after: "global", token: null },
+    ]);
+    expect((await manager.call(scoped("updated"))).output).toMatchObject({
+      before: "updated",
+      after: "updated",
+    });
+    expect(
+      (await manager.call(callCommand({ method: "environment", input: {} })))
+        .output,
+    ).toMatchObject({ before: "global", after: "global" });
+    expect(
+      await manager.dispose({
+        type: "plugin.host.dispose",
+        pluginId: a.pluginId,
+        generation: a.generation,
+      }),
+    ).toEqual({ disposed: true });
+    await expect(manager.call(scoped("project-a"))).rejects.toThrow("retired");
+  });
+
   describe("environment reuse across active calls", () => {
     async function fixture() {
       const onSignal = vi.fn();

@@ -1,3 +1,4 @@
+import { ScopedMachineEnvironmentSettings } from "@/components/settings/MachineEnvironmentSettings";
 import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import "@bb/shared-ui/icon-extended";
@@ -515,6 +516,8 @@ export function ProjectDetailSettingsView() {
             </SettingsDetailRow>
           </SettingsRowList>
         </SettingsSection>
+
+        <ScopedMachineEnvironmentSettings projectId={project.id} />
 
         <SettingsSection
           title="Danger zone"

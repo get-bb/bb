@@ -430,10 +430,7 @@ function FileTabsShellInner({
   );
 
   return (
-    <PanelStage
-      width={stage}
-      height={stage === "shelf" ? "info" : "compact"}
-    >
+    <PanelStage width={stage} height={stage === "shelf" ? "info" : "compact"}>
       <ThreadSecondaryPanel
         activeTab={activeTab}
         canUseGitUi

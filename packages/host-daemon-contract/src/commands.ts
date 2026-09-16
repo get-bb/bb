@@ -198,7 +198,13 @@ export const hostDaemonContributedEnvEntrySchema = z
     source: z.union([
       z.object({ plugin: z.string().min(1) }).strict(),
       z
-        .object({ core: z.enum(["machine-git", "machine-environment"]) })
+        .object({
+          core: z.enum([
+            "machine-git",
+            "machine-environment",
+            "project-environment",
+          ]),
+        })
         .strict(),
     ]),
     reason: z.string(),

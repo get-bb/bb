@@ -11,14 +11,22 @@ export { replaceMachineEnvironment } from "./environment-storage.js";
 export async function resolveUserMachineEnvironment(
   db: DbConnection,
   dataDir: string,
+  projectId: string | null = null,
 ): Promise<HostDaemonContributedEnvEntry[]> {
-  const rows = readMachineEnvironment(db);
+  const rows = readMachineEnvironment(db, projectId);
   return Promise.all(
     rows.map(async (row) => ({
       name: row.name,
       value: await decryptMachineEnvironment(dataDir, row),
-      reason: row.note ?? "Machine environment setting",
-      source: { core: "machine-environment" },
+      reason:
+        row.note ??
+        (projectId === null
+          ? "Global machine environment setting"
+          : "Project machine environment setting"),
+      source: {
+        core:
+          projectId === null ? "machine-environment" : "project-environment",
+      },
     })),
   );
 }
@@ -58,5 +66,29 @@ export async function machineEnvironmentView(
           ? "Automatic GitHub credentials are disabled."
           : health.statusMessage,
     },
+  };
+}
+
+export async function projectMachineEnvironmentView(
+  db: DbConnection,
+  dataDir: string,
+  projectId: string,
+) {
+  const global = await machineEnvironmentView(db, dataDir);
+  const variables = readMachineEnvironment(db, projectId).map((row) => ({
+    name: row.name,
+    value: null,
+    secret: true as const,
+    note: row.note,
+  }));
+  return {
+    builtInGit: variables.some((row) => row.name === "GH_TOKEN")
+      ? {
+          status: "overridden" as const,
+          statusMessage: "Overridden by this project.",
+        }
+      : global.builtInGit,
+    variables,
+    inheritedVariables: global.variables,
   };
 }

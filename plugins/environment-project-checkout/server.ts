@@ -225,7 +225,12 @@ export default async function checkoutPlugin(bb: BbPluginApi): Promise<void> {
         const result = await host.call(
           "attach",
           { operationId, path, branch },
-          { hostId, signal: context.signal, timeoutMs: ATTACH_TIMEOUT_MS },
+          {
+            hostId,
+            experimental_projectId: context.project.id,
+            signal: context.signal,
+            timeoutMs: ATTACH_TIMEOUT_MS,
+          },
         );
         if (result.status === "failed") {
           return {

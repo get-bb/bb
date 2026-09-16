@@ -133,6 +133,7 @@ export interface PluginServiceDeps {
   onArtifactMaterialize?: (args: { path: string }) => void;
   callPluginHost?: (args: {
     pluginId: string;
+    projectId: string | null;
     contract: import("@get-bb/plugin-sdk").PluginRpcContract;
     method: string;
     input: unknown;

@@ -2415,7 +2415,9 @@ describe("PromptBoxInternal compact layout", () => {
         const voiceButton = screen.getByRole("button", {
           name: "Start voice input",
         });
-        expect(screen.getByRole("button", { name: "Submit (Enter)" })).toBeTruthy();
+        expect(
+          screen.getByRole("button", { name: "Submit (Enter)" }),
+        ).toBeTruthy();
         fireEvent.pointerDown(voiceButton, {
           button: 0,
           pointerType: "touch",

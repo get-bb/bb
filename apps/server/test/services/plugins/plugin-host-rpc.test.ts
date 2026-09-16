@@ -1,3 +1,5 @@
+import { projects, updateHost } from "@bb/db";
+import { setMachineEnvironmentVariable } from "../../../src/services/machines/environment-storage.js";
 import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
@@ -46,6 +48,7 @@ describe("callPluginHostRpc", () => {
       });
       const controller = new AbortController();
       const result = callPluginHostRpc(harness.deps, {
+        projectId: null,
         pluginId: "environment-test",
         contract,
         method: "create",
@@ -80,5 +83,55 @@ describe("callPluginHostRpc", () => {
       await expect(result).rejects.toMatchObject({ name: "AbortError" });
       expect(settled).toBe(true);
     });
+  });
+});
+
+it("resolves project scope for a host call without changing host-wide settings", async () => {
+  await withTestHarness(async (harness) => {
+    const { host, session } = seedHostSession(harness.deps);
+    updateHost(harness.db, harness.hub, host.id, {
+      machineProviderId: "manual",
+    });
+    harness.db
+      .insert(projects)
+      .values({ id: "rpc-project", name: "RPC", createdAt: 1, updatedAt: 1 })
+      .run();
+    await setMachineEnvironmentVariable(
+      harness.db,
+      harness.config.dataDir,
+      { name: "REGION", value: "project-rpc", note: null },
+      "rpc-project",
+    );
+    const captured: unknown[] = [];
+    registerHostRpcResponder(harness, {
+      hostId: host.id,
+      sessionId: session.id,
+      handle: async (request) => {
+        if (request.command.type !== "plugin.host.call")
+          throw new Error("Unexpected command");
+        captured.push(request.command.contributedEnv);
+        return { ok: true, result: { output: { path: "/tmp/rpc" } } };
+      },
+    });
+    for (const projectId of ["rpc-project", null])
+      await callPluginHostRpc(harness.deps, {
+        projectId,
+        pluginId: "rpc-test",
+        hostId: host.id,
+        contract,
+        method: "create",
+        input: { id: "a" },
+        artifact: stubHostArtifact("rpc-test"),
+      });
+    expect(captured[0]).toContainEqual(
+      expect.objectContaining({
+        name: "REGION",
+        value: "project-rpc",
+        source: { core: "project-environment" },
+      }),
+    );
+    expect(captured[1]).not.toContainEqual(
+      expect.objectContaining({ name: "REGION" }),
+    );
   });
 });

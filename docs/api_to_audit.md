@@ -3053,6 +3053,10 @@ asset-vs-glyph precedence, cross-plugin overrides, reload/error/recursion behavi
 accessibility and theme rendering on desktop and mobile. Keep metadata fetching
 and plugin branding separate from provider artwork resolution.
 
+## Project environment scope for host calls
+
+`ExperimentalHostCallOptions.experimental_projectId` selects project machine environment overrides for one typed host RPC. Omission applies only global machine variables. The server validates the project and resolves values; the daemon applies them to the operation. Stabilization requires concurrent same-machine project isolation, invalid/deleted project behavior, worker reuse and child process inheritance coverage. `ExperimentalFakeHostRpcCall.experimental_projectId` records the selected scope in the test harness.
+
 ## `HostsArea.experimental_reconcile`
 
 Explicitly reconcile a provider-managed machine with core’s recorded state.
