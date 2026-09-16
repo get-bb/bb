@@ -33,6 +33,18 @@ function ancestorRoots(entries: readonly RootEntry[]) {
   return entries.map((entry) => ({ ...entryOf(entry), ancestors: true }));
 }
 
+/**
+ * omp's MCP client aborts every in-flight request after 30s unless
+ * `OMP_MCP_TIMEOUT_MS` says otherwise, and the ACP `mcpServers` payload has no
+ * per-server timeout field for BB to raise it. BB's dynamic tools reach omp
+ * through that MCP bridge, and the ones that block on a person
+ * (AskUserQuestion) legitimately stay open until the interaction itself times
+ * out — up to the 1 hour `ui.requestInput` ceiling. Keep omp's transport
+ * deadline above that ceiling so BB's interaction timeout is the authority and
+ * a question that waits more than 30s resolves instead of failing the turn.
+ */
+const OMP_MCP_TIMEOUT_MS = 65 * 60 * 1000;
+
 export const KNOWN_ACP_AGENTS: readonly AcpAgentDefinition[] = [
   {
     id: "acp-cursor",
@@ -124,7 +136,7 @@ export const KNOWN_ACP_AGENTS: readonly AcpAgentDefinition[] = [
       displayName: "omp",
       command: "omp",
       args: ["acp"],
-      env: {},
+      env: { OMP_MCP_TIMEOUT_MS: String(OMP_MCP_TIMEOUT_MS) },
       nativeSkillRoots: {
         user: plainRoots([
           ".agent/skills",
