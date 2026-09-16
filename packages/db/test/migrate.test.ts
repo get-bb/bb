@@ -1944,7 +1944,7 @@ describe("migrate", () => {
         defaultMachineAccess: null,
         machineGitCredentialsEnabled: true,
         streamerMode: false,
-        telemetryEnabled: true,
+        telemetryEnabled: false,
         managedBranchPrefix: "bb/",
       });
       expect(

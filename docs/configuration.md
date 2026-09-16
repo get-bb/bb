@@ -1517,8 +1517,11 @@ modes bypass the cache. The cache has no user configuration and can be removed
 while no builds are running. See [build performance](build-performance.md) for
 its identity, portability, and verification contract.
 
-Anonymous usage telemetry can be disabled in Settings → General → Privacy & diagnostics → Share anonymous usage data,
-or with `bb settings general telemetryEnabled false`. The saved server-wide preference
-takes effect immediately and persists across restarts. SDK callers can use
-`system.updateGeneralSettings` with `telemetryEnabled`. `BB_TELEMETRY=false`
-always disables telemetry, even when the saved preference is enabled.
+Anonymous usage telemetry is disabled by default in this fork: `BB_TELEMETRY`
+defaults to `false` and `BB_POSTHOG_API_KEY` defaults to empty, so no PostHog
+client is created. To opt in, set both `BB_TELEMETRY=true` and a
+`BB_POSTHOG_API_KEY`, then enable Settings → General → Privacy & diagnostics →
+Share anonymous usage data (or `bb settings general telemetryEnabled true`).
+SDK callers can use `system.updateGeneralSettings` with `telemetryEnabled`.
+`BB_TELEMETRY=false` always disables telemetry, even when the saved preference
+is enabled.

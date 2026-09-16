@@ -53,7 +53,7 @@ export const defaultAppSettings: AppSettings = {
   defaultProviderId: null,
   providerCompletedTurnDisplay: {},
   streamerMode: false,
-  telemetryEnabled: true,
+  telemetryEnabled: false,
   managedBranchPrefix: DEFAULT_MANAGED_BRANCH_PREFIX,
   machineServerUrl: null,
   defaultMachineAccess: null,

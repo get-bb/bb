@@ -147,7 +147,7 @@ it("preserves telemetry opt-out when older clients update other settings", async
     ).toBe(200);
     expect(getAppSettings(harness.db).telemetryEnabled).toBe(false);
     const { telemetryEnabled, ...legacy } = defaultAppSettings;
-    expect(telemetryEnabled).toBe(true);
+    expect(telemetryEnabled).toBe(false);
     expect((await put({ ...legacy, showKeyboardHints: false })).status).toBe(
       200,
     );

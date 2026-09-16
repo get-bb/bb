@@ -82,9 +82,11 @@ docs, start with
 
 ### Telemetry
 
-Production runs (the desktop app and `npx bb-app`) send anonymous usage
-telemetry (app starts, thread creation counts, user message counts, and plugin
-installs) to help us understand adoption. Identification is a random per-install
+Telemetry is off by default in this checkout: `BB_TELEMETRY` defaults to
+`false` and no PostHog key is bundled, so production runs send nothing. When
+opted in (`BB_TELEMETRY=true` plus `BB_POSTHOG_API_KEY`), production runs send
+anonymous usage telemetry (app starts, thread creation counts, user message
+counts, and plugin installs) to help us understand adoption. Identification is a random per-install
 id stored in your data dir — no user, host, project, workspace, or message
 content is ever attached. Plugin install events name only public plugins
 (bundled plugins and `bb-community` marketplace entries); installs from a local
