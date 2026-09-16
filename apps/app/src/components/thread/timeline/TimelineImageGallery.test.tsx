@@ -14,10 +14,7 @@ import type { ReactNode } from "react";
 import { afterEach, expect, it, vi } from "vitest";
 import { sdk } from "@/lib/sdk";
 import { MarkdownPreview } from "@/components/ui/markdown-preview";
-import {
-  conversationRow,
-  turnRow,
-} from "@/test/fixtures/thread-timeline-rows";
+import { conversationRow, turnRow } from "@/test/fixtures/thread-timeline-rows";
 import { ThreadTimelineRows } from "./ThreadTimelineRows";
 import { TimelineImageGallery } from "./TimelineImageGallery";
 
@@ -76,7 +73,9 @@ it("stops at each end of the loaded page without fetching older history, preserv
   );
   fireEvent.click(screen.getByRole("img", { name: "Table" }));
   expect(screen.getByRole("status").textContent).toBe("3 / 3");
-  expect(screen.getByRole("button", { name: "Next image" }).hasAttribute("disabled")).toBe(true);
+  expect(
+    screen.getByRole("button", { name: "Next image" }).hasAttribute("disabled"),
+  ).toBe(true);
   fireEvent.click(screen.getByRole("button", { name: "Next image" }));
   fireEvent.keyDown(window, { key: "ArrowRight" });
   expect(lightboxImage().getAttribute("alt")).toBe("Table");
@@ -84,7 +83,11 @@ it("stops at each end of the loaded page without fetching older history, preserv
   expect(lightboxImage().getAttribute("alt")).toBe("Inline");
   fireEvent.keyDown(window, { key: "ArrowLeft" });
   expect(lightboxImage().getAttribute("alt")).toBe("Earlier");
-  expect(screen.getByRole("button", { name: "Previous image" }).hasAttribute("disabled")).toBe(true);
+  expect(
+    screen
+      .getByRole("button", { name: "Previous image" })
+      .hasAttribute("disabled"),
+  ).toBe(true);
   fireEvent.click(screen.getByRole("button", { name: "Previous image" }));
   fireEvent.keyDown(window, { key: "ArrowLeft" });
   expect(lightboxImage().getAttribute("alt")).toBe("Earlier");
@@ -162,31 +165,35 @@ it("preserves occurrence identity as streaming images settle into cached blocks"
   expect(lightboxImage().getAttribute("alt")).toBe("A");
 });
 
-it(
-  "preserves identical inline and footnote occurrences when normalized streaming content settles",
-  async () => {
-    const text = "---\ntitle: Images\n---\n\n$$ x\n y $$\n\nSee[^n].\n\n[^n]: ![Same](https://example.com/same.png)\n\n![Same](https://example.com/same.png)\n";
-    const timeline = (status: "active" | "idle") => (
-      <ThreadTimelineRows
-        threadId="thread-1"
-        threadRuntimeDisplayStatus={status}
-        workspaceRootPath={undefined}
-        timelineRows={[conversationRow({ id: "streaming", text })]}
-      />
-    );
-    const { rerender } = renderTimeline(timeline("active"));
-    fireEvent.click(screen.getAllByRole("img", { name: "Same" })[1]!);
-    expect(screen.getByRole("status").textContent).toBe("2 / 2");
-    rerender(timeline("idle"));
-    await waitFor(() => {
-      expect(screen.getByRole("status").textContent).toBe("1 / 2");
-    });
-    expect(screen.getByRole("button", { name: "Previous image" }).hasAttribute("disabled")).toBe(true);
-    fireEvent.click(screen.getByRole("button", { name: "Next image" }));
-    expect(screen.getByRole("status").textContent).toBe("2 / 2");
-    expect(screen.getByRole("button", { name: "Next image" }).hasAttribute("disabled")).toBe(true);
-  },
-);
+it("preserves identical inline and footnote occurrences when normalized streaming content settles", async () => {
+  const text =
+    "---\ntitle: Images\n---\n\n$$ x\n y $$\n\nSee[^n].\n\n[^n]: ![Same](https://example.com/same.png)\n\n![Same](https://example.com/same.png)\n";
+  const timeline = (status: "active" | "idle") => (
+    <ThreadTimelineRows
+      threadId="thread-1"
+      threadRuntimeDisplayStatus={status}
+      workspaceRootPath={undefined}
+      timelineRows={[conversationRow({ id: "streaming", text })]}
+    />
+  );
+  const { rerender } = renderTimeline(timeline("active"));
+  fireEvent.click(screen.getAllByRole("img", { name: "Same" })[1]!);
+  expect(screen.getByRole("status").textContent).toBe("2 / 2");
+  rerender(timeline("idle"));
+  await waitFor(() => {
+    expect(screen.getByRole("status").textContent).toBe("1 / 2");
+  });
+  expect(
+    screen
+      .getByRole("button", { name: "Previous image" })
+      .hasAttribute("disabled"),
+  ).toBe(true);
+  fireEvent.click(screen.getByRole("button", { name: "Next image" }));
+  expect(screen.getByRole("status").textContent).toBe("2 / 2");
+  expect(
+    screen.getByRole("button", { name: "Next image" }).hasAttribute("disabled"),
+  ).toBe(true);
+});
 
 it("includes lazy turn details only while expanded, including during the collapse transition", async () => {
   vi.spyOn(sdk.threads, "timelineTurnSummaryDetails").mockResolvedValue({
@@ -300,10 +307,14 @@ it("retains only the displayed image after hiding and removing its source", asyn
   const { rerender } = render(galleryContent({}));
   fireEvent.click(screen.getByRole("img", { name: "Selected" }));
   rerender(galleryContent({ hidden: true }));
-  await waitFor(() => expect(screen.getByRole("status").textContent).toBe("1 / 2"));
+  await waitFor(() =>
+    expect(screen.getByRole("status").textContent).toBe("1 / 2"),
+  );
   expect(lightboxImage().getAttribute("alt")).toBe("Selected");
   rerender(galleryContent({ hidden: true, removed: true }));
-  expect(lightboxImage().getAttribute("src")).toBe("https://example.com/selected.png");
+  expect(lightboxImage().getAttribute("src")).toBe(
+    "https://example.com/selected.png",
+  );
   fireEvent.click(screen.getByRole("button", { name: "Next image" }));
   expect(lightboxImage().getAttribute("alt")).toBe("Later");
   expect(screen.queryByRole("button", { name: "Previous image" })).toBeNull();
@@ -319,9 +330,19 @@ it("keeps the selected image source until close even when no eligible images rem
     </TimelineImageGallery>,
   );
   fireEvent.click(screen.getByRole("img", { name: "Selected" }));
-  rerender(<TimelineImageGallery><div hidden><MarkdownPreview content="![Changed](https://example.com/changed.png)" /></div></TimelineImageGallery>);
-  await waitFor(() => expect(lightboxImage().getAttribute("alt")).toBe("Selected"));
-  expect(lightboxImage().getAttribute("src")).toBe("https://example.com/selected.png");
+  rerender(
+    <TimelineImageGallery>
+      <div hidden>
+        <MarkdownPreview content="![Changed](https://example.com/changed.png)" />
+      </div>
+    </TimelineImageGallery>,
+  );
+  await waitFor(() =>
+    expect(lightboxImage().getAttribute("alt")).toBe("Selected"),
+  );
+  expect(lightboxImage().getAttribute("src")).toBe(
+    "https://example.com/selected.png",
+  );
   expect(screen.queryByRole("button", { name: "Next image" })).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Close image preview" }));
   expect(screen.queryByRole("dialog")).toBeNull();
@@ -341,20 +362,32 @@ it("excludes clipped user-message images until expanded", () => {
   vi.stubGlobal("ResizeObserver", undefined);
   vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(500);
   vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(200);
-  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
-    if (this instanceof HTMLImageElement && this.alt === "Clipped") {
-      return new DOMRect(0, 300, 100, 100);
-    }
-    return new DOMRect(0, 0, 200, 200);
-  });
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+    function (this: HTMLElement) {
+      if (this instanceof HTMLImageElement && this.alt === "Clipped") {
+        return new DOMRect(0, 300, 100, 100);
+      }
+      return new DOMRect(0, 0, 200, 200);
+    },
+  );
   renderTimeline(
     <ThreadTimelineRows
       threadId="thread-1"
       threadRuntimeDisplayStatus="idle"
       workspaceRootPath={undefined}
       timelineRows={[
-        conversationRow({ id: "user", role: "user", initiator: "user", text: `${"A line\n\n".repeat(20)}![Clipped](https://example.com/clipped.png)`, sourceSeqStart: 1 }),
-        conversationRow({ id: "assistant", text: "![Visible](https://example.com/visible.png)", sourceSeqStart: 2 }),
+        conversationRow({
+          id: "user",
+          role: "user",
+          initiator: "user",
+          text: `${"A line\n\n".repeat(20)}![Clipped](https://example.com/clipped.png)`,
+          sourceSeqStart: 1,
+        }),
+        conversationRow({
+          id: "assistant",
+          text: "![Visible](https://example.com/visible.png)",
+          sourceSeqStart: 2,
+        }),
       ]}
     />,
   );

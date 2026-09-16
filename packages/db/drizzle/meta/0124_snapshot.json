@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "caf39693-8172-4536-8c99-7ff36b0b9e25",
-  "prevId": "400e2766-2c16-45b2-bd9b-694329a06a0b",
+  "id": "fc9edbbc-45a5-4b15-81b4-9cbfe8a78e61",
+  "prevId": "caf39693-8172-4536-8c99-7ff36b0b9e25",
   "tables": {
     "app_settings": {
       "name": "app_settings",
@@ -4158,6 +4158,180 @@
       },
       "uniqueConstraints": {},
       "checkConstraints": {}
+    },
+    "thread_pruning_cursors": {
+      "name": "thread_pruning_cursors",
+      "columns": {
+        "policy": {
+          "name": "policy",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "scope": {
+          "name": "scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "''"
+        },
+        "thread_id": {
+          "name": "thread_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "last_thread_id": {
+          "name": "last_thread_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "''"
+        },
+        "current_thread_id": {
+          "name": "current_thread_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "step": {
+          "name": "step",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "sequence": {
+          "name": "sequence",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "upper_sequence": {
+          "name": "upper_sequence",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "cycle": {
+          "name": "cycle",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "latest_root_sequence": {
+          "name": "latest_root_sequence",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "latest_context_sequence": {
+          "name": "latest_context_sequence",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "probe_event_id": {
+          "name": "probe_event_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "probe_phase": {
+          "name": "probe_phase",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "probe_sequence": {
+          "name": "probe_sequence",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "probe_witness_id": {
+          "name": "probe_witness_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "thread_pruning_cursors_thread_idx": {
+          "name": "thread_pruning_cursors_thread_idx",
+          "columns": [
+            "thread_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "thread_pruning_cursors_thread_id_threads_id_fk": {
+          "name": "thread_pruning_cursors_thread_id_threads_id_fk",
+          "tableFrom": "thread_pruning_cursors",
+          "tableTo": "threads",
+          "columnsFrom": [
+            "thread_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "thread_pruning_cursors_policy_scope_pk": {
+          "columns": [
+            "policy",
+            "scope"
+          ],
+          "name": "thread_pruning_cursors_policy_scope_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "thread_pruning_cursors_scope_check": {
+          "name": "thread_pruning_cursors_scope_check",
+          "value": "\"thread_pruning_cursors\".\"scope\" = coalesce(\"thread_pruning_cursors\".\"thread_id\", '')"
+        }
+      }
     },
     "thread_search_segments": {
       "name": "thread_search_segments",

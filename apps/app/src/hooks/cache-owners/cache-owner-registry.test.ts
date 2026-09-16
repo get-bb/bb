@@ -140,6 +140,7 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
   ],
   "hooks/cache-owners/realtime-cache-registry.ts": [
     "allHostQueryKeyPrefix",
+    "allMachineEnvironmentQueryKeyPrefix",
     "allPluginCatalogSearchQueryKeyPrefix",
     "allPluginContributionsQueryKeyPrefix",
     "allPluginListQueryKeyPrefix",
@@ -186,6 +187,7 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "allEnvironmentQueryKeyPrefix",
     "allEnvironmentWorkStatusQueryKeyPrefix",
     "allHostQueryKeyPrefix",
+    "allMachineEnvironmentQueryKeyPrefix",
     "allProjectPathsQueryKeyPrefix",
     "allSystemExecutionOptionsQueryKeyPrefix",
     "allSystemMachineProvidersQueryKeyPrefix",

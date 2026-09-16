@@ -2519,12 +2519,18 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
       canUseGitUi={canUseGitUi}
       contextWindowUsage={contextWindowUsage}
       environmentCheckout={threadCheckoutDisplay}
-      environmentCompactLabel={composerEnvironmentChrome?.environmentCompactLabel}
+      environmentCompactLabel={
+        composerEnvironmentChrome?.environmentCompactLabel
+      }
       environmentHost={composerEnvironmentChrome?.environmentHost}
       environmentIcon={composerEnvironmentChrome?.environmentIcon}
       environmentLabel={composerEnvironmentChrome?.environmentLabel}
-      environmentMachineProvider={composerEnvironmentChrome?.environmentMachineProvider}
-      environmentProviderName={composerEnvironmentChrome?.environmentProviderName}
+      environmentMachineProvider={
+        composerEnvironmentChrome?.environmentMachineProvider
+      }
+      environmentProviderName={
+        composerEnvironmentChrome?.environmentProviderName
+      }
       environmentGoneStatus={threadEnvironmentGoneStatus}
       environmentHostId={environment?.hostId}
       isEnvironmentActionPending={requestEnvironmentAction.isPending}

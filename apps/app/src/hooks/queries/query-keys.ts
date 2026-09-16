@@ -459,6 +459,10 @@ type AllSystemMachineProvidersQueryKeyPrefix = readonly [
 ];
 type MachineEnvironmentQueryKey = readonly [
   typeof MACHINE_ENVIRONMENT_QUERY_KEY,
+  string | null,
+];
+type AllMachineEnvironmentQueryKeyPrefix = readonly [
+  typeof MACHINE_ENVIRONMENT_QUERY_KEY,
 ];
 type SystemConfigQueryKey = readonly [typeof SYSTEM_CONFIG_QUERY_KEY];
 type UiPreferencesQueryKey = readonly [typeof UI_PREFERENCES_QUERY_KEY];
@@ -1098,7 +1102,13 @@ export function allSystemMachineProvidersQueryKeyPrefix(): AllSystemMachineProvi
   return [SYSTEM_MACHINE_PROVIDERS_QUERY_KEY];
 }
 
-export function machineEnvironmentQueryKey(): MachineEnvironmentQueryKey {
+export function machineEnvironmentQueryKey(
+  projectId: string | null,
+): MachineEnvironmentQueryKey {
+  return [MACHINE_ENVIRONMENT_QUERY_KEY, projectId];
+}
+
+export function allMachineEnvironmentQueryKeyPrefix(): AllMachineEnvironmentQueryKeyPrefix {
   return [MACHINE_ENVIRONMENT_QUERY_KEY];
 }
 

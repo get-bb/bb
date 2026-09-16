@@ -14,7 +14,7 @@ import { expect, it, vi } from "vitest";
 import { resolveHostEnvironment } from "./host-environment.js";
 import { replaceMachineEnvironment } from "../machines/environment-settings.js";
 
-it("gives backfilled manual machines user and gh environment without enrollment while excluding the local daemon", async () => {
+it("gives every host user environment while forwarding automatic gh credentials only to non-primary hosts", async () => {
   const db = createConnection(":memory:");
   const dataDir = await mkdtemp(join(tmpdir(), "bb-backfilled-env-"));
   try {
@@ -70,7 +70,24 @@ if [ "$1" = auth ]; then printf 'test-gh-secret\\n'; else printf '{"login":"octo
         hostId: "local-daemon",
         projectId: null,
       }),
-    ).toEqual([]);
+    ).toEqual([
+      expect.objectContaining({
+        name: "MACHINE_VALUE",
+        value: "configured",
+      }),
+    ]);
+    upsertHost(db, noopNotifier, { id: "providerless", name: "Providerless" });
+    expect(
+      await resolveHostEnvironment(deps, {
+        hostId: "providerless",
+        projectId: null,
+      }),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "MACHINE_VALUE", value: "configured" }),
+        expect.objectContaining({ name: "GH_TOKEN", value: "test-gh-secret" }),
+      ]),
+    );
     setAppSettings(db, {
       ...defaultAppSettings,
       machineGitCredentialsEnabled: false,
@@ -93,6 +110,16 @@ if [ "$1" = auth ]; then printf 'test-gh-secret\\n'; else printf '{"login":"octo
     });
     expect(overridden.find((row) => row.name === "GH_TOKEN")?.value).toBe(
       "custom-token",
+    );
+    const localOverride = await resolveHostEnvironment(deps, {
+      hostId: "local-daemon",
+      projectId: null,
+    });
+    expect(localOverride.find((row) => row.name === "GH_TOKEN")?.value).toBe(
+      "custom-token",
+    );
+    expect(localOverride).toContainEqual(
+      expect.objectContaining({ name: "GIT_CONFIG_COUNT" }),
     );
   } finally {
     vi.unstubAllEnvs();

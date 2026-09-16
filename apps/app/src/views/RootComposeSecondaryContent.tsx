@@ -153,9 +153,8 @@ export function RootComposeSecondaryContent({
         compactPresentation={getCompactPanelPresentation(
           threadSecondaryPanelProps.activeTab?.kind,
           threadSecondaryPanelProps.fixedTabs[0]?.tab.kind ??
-            threadSecondaryPanelProps.tabs.find(
-              (tab) => tab.isHidden !== true,
-            )?.tab.kind,
+            threadSecondaryPanelProps.tabs.find((tab) => tab.isHidden !== true)
+              ?.tab.kind,
         )}
         renderPanel={({
           presentation,

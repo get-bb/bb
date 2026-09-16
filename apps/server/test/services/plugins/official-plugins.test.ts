@@ -294,6 +294,34 @@ describe("store-installed official plugins", () => {
     ]);
   });
 
+  it("explicitly installs a missing included plugin with its builtin provenance", async () => {
+    service = createService({
+      db,
+      dataDir: join(workDir, "data"),
+      bundled: [officialEntry({ autoInstall: true, defaultEnabled: false })],
+    });
+    expect(service.list()).toEqual([]);
+
+    await expect(
+      service.installOfficialPlugin("fixture"),
+    ).resolves.toMatchObject({
+      id: "builtin-fixture",
+      source: "builtin:fixture",
+      provenance: "builtin",
+      enabled: true,
+      status: "running",
+    });
+    await service.start();
+    expect(service.list()).toMatchObject([
+      {
+        id: "builtin-fixture",
+        provenance: "builtin",
+        enabled: true,
+        status: "running",
+      },
+    ]);
+  });
+
   it("rejects unknown official plugin names", async () => {
     service = createService({
       db,
