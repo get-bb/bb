@@ -20,14 +20,14 @@ const alwaysReplaceable = () => true;
 const neverReplaceable = () => false;
 
 describe("desktop update support", () => {
-  it("enables both update paths on macOS", () => {
+  it("reports macOS updates without installing them", () => {
     expect(
       resolveDesktopUpdateSupport({
         canReplaceAppImage: neverReplaceable,
         env: {},
         platform: "macos",
       }),
-    ).toEqual({ autoUpdate: true, versionCheck: true });
+    ).toEqual({ autoUpdate: false, versionCheck: true });
   });
 
   it("installs updates on Linux only inside an AppImage", () => {

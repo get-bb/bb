@@ -85,7 +85,7 @@ export function resolveDesktopUpdateSupport(
   args: ResolveDesktopUpdateSupportArgs,
 ): DesktopUpdateSupport {
   if (args.platform === "macos") {
-    return { autoUpdate: true, versionCheck: true };
+    return { autoUpdate: false, versionCheck: true };
   }
 
   const appImagePath = args.env.APPIMAGE?.trim() ?? "";
