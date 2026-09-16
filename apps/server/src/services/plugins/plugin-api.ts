@@ -494,7 +494,6 @@ export function createPluginApi(options: {
     }[],
   ) => void;
   callPluginHost: (args: {
-    projectId: string | null;
     contract: PluginRpcContract;
     method: string;
     input: unknown;
@@ -1000,14 +999,7 @@ export function createPluginApi(options: {
           ) {
             throw new Error(`host rpc method "${method}" requires a host id`);
           }
-          if (
-            callOptions.experimental_projectId !== undefined &&
-            (typeof callOptions.experimental_projectId !== "string" ||
-              callOptions.experimental_projectId.length === 0)
-          )
-            throw new Error("Invalid host RPC project id");
           return callPluginHost({
-            projectId: callOptions.experimental_projectId ?? null,
             contract,
             method,
             input,

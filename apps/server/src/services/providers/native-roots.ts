@@ -160,7 +160,6 @@ async function callResolveNativeRoots(
   try {
     return providerResolvedNativeRootsSchema.parse(
       await callPluginHostRpc(deps, {
-        projectId: null,
         pluginId,
         contract: experimental_nativeRootsHostContract,
         method: "resolveNativeRoots",

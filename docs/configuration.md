@@ -1413,18 +1413,18 @@ Project deletion removes its variables when its database row is removed.
 
 Global values synchronize into enrolled daemons before work, on reconnect, and
 when settings change. Project values are resolved by the server and passed only
-to project operations: agent turns/resume, source clones, setup/teardown hooks,
-new terminals, and explicitly project-scoped plugin host calls. They never
-modify the daemon's global environment. Existing terminals and commands retain
+to project operations core runs: agent turns/resume, source clones,
+setup/teardown hooks, and new terminals. They never modify the daemon's global
+environment. Existing terminals and commands retain
 their launch environment. Agent turns receive fresh values on the next turn;
 providers reconstruct sessions where needed to apply changed or removed values.
 
-Plugin host calls select a project using `experimental_projectId` in call
-options. Calls without a project receive only global contributions. Workers
-with project contributions are separated by their resolved contribution values,
-so overlapping calls with different project values cannot share process state.
-Global-only workers retain their current environment until active calls finish.
-Project source diagnostics and worker isolation require daemon protocol 210;
+Plugin host calls receive global variables only; they cannot select a project.
+A plugin worker keeps its current environment while any of its calls are active,
+as before. This means a project override of a credential such as `GH_TOKEN`
+applies to the project's clone, setup script, terminals, and agent turns, but
+not to git commands an environment provider plugin runs on the machine, which
+use the global value. Project-scoped contributions require daemon protocol 210;
 older daemons update before the server accepts their session.
 
 The built-in GitHub row uses `gh auth token --hostname github.com` and `gh api

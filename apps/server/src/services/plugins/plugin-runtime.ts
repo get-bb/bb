@@ -1544,7 +1544,6 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
           options: { hostId: string; timeoutMs: number; signal?: AbortSignal },
         ): Promise<unknown> =>
           callPluginHost({
-            projectId: null,
             pluginId: row.id,
             contract: experimental_aiServicesHostContract,
             method,

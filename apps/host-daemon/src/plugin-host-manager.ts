@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { operationEnvironment } from "./operation-environment.js";
 import { fork, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -45,7 +44,6 @@ interface PendingCall {
 }
 
 interface WorkerState {
-  key: string;
   pluginId: string;
   generation: string;
   digest: string;
@@ -333,12 +331,7 @@ export class PluginHostManager {
     const callState = this.activeCalls.get(this.callKey(command));
     if (callState === undefined) return { cancelled: false };
     callState.cancelled = true;
-    const worker = [...this.workers.values()].find(
-      (entry) =>
-        entry.pluginId === command.pluginId &&
-        entry.generation === command.generation &&
-        entry.pending.has(command.callId),
-    );
+    const worker = this.workers.get(command.pluginId);
     if (
       worker !== undefined &&
       worker.generation === command.generation &&
@@ -358,15 +351,12 @@ export class PluginHostManager {
   ): Promise<{ disposed: boolean }> {
     return this.enqueueWorkerMutation(command.pluginId, async () => {
       this.retireGeneration(command.pluginId, command.generation);
-      const workers = [...this.workers.values()].filter(
-        (worker) =>
-          worker.pluginId === command.pluginId &&
-          worker.generation === command.generation,
-      );
-      await Promise.all(
-        workers.map((worker) => this.stopWorker(worker, "plugin disposed")),
-      );
-      return { disposed: workers.length > 0 };
+      const worker = this.workers.get(command.pluginId);
+      if (worker === undefined || worker.generation !== command.generation) {
+        return { disposed: false };
+      }
+      await this.stopWorker(worker, "plugin disposed");
+      return { disposed: true };
     });
   }
 
@@ -390,11 +380,11 @@ export class PluginHostManager {
       activeGenerations.map((entry) => [entry.pluginId, entry.generation]),
     );
     await Promise.all(
-      [...this.workers.values()].map((worker) =>
-        this.enqueueWorkerMutation(worker.pluginId, async () => {
-          const pluginId = worker.pluginId;
+      [...this.workers.keys()].map((pluginId) =>
+        this.enqueueWorkerMutation(pluginId, async () => {
+          const worker = this.workers.get(pluginId);
           if (
-            this.workers.get(worker.key) !== worker ||
+            worker === undefined ||
             activeByPlugin.get(pluginId) === worker.generation
           ) {
             return;
@@ -425,39 +415,28 @@ export class PluginHostManager {
         `host plugin ${command.pluginId} generation ${command.generation} is retired`,
       );
     }
-    const scoped = command.contributedEnv.some(
-      (entry) =>
-        "core" in entry.source && entry.source.core === "project-environment",
-    );
-    const key = scoped
-      ? `${command.pluginId}:${createHash("sha256")
-          .update(
-            JSON.stringify(
-              [...command.contributedEnv].sort((a, b) =>
-                a.name.localeCompare(b.name),
-              ),
-            ),
-          )
-          .digest("hex")}`
-      : command.pluginId;
-    for (const worker of this.workers.values()) {
-      if (worker.pluginId !== command.pluginId) continue;
-      if (
-        worker.generation === command.generation &&
-        worker.digest !== command.artifact.digest
-      )
-        throw new Error(
-          `host plugin ${command.pluginId} generation ${command.generation} changed artifact digest`,
-        );
-      if (worker.generation !== command.generation) {
-        this.retireGeneration(command.pluginId, worker.generation);
-        await this.stopWorker(worker, "host artifact generation replaced");
-      }
-    }
-    const current = this.workers.get(key);
-    if (current !== undefined && !current.disposing) {
+    const current = this.workers.get(command.pluginId);
+    if (
+      current !== undefined &&
+      current.generation === command.generation &&
+      current.digest === command.artifact.digest &&
+      !current.disposing
+    ) {
       this.cancelWorkerIdleTimer(current);
       return current;
+    }
+    if (
+      current !== undefined &&
+      current.generation === command.generation &&
+      current.digest !== command.artifact.digest
+    ) {
+      throw new Error(
+        `host plugin ${command.pluginId} generation ${command.generation} changed artifact digest`,
+      );
+    }
+    if (current !== undefined) {
+      this.retireGeneration(command.pluginId, current.generation);
+      await this.stopWorker(current, "host artifact generation replaced");
     }
 
     const artifactPath = await this.materializeArtifact(command);
@@ -514,7 +493,6 @@ export class PluginHostManager {
       rejectReady = reject;
     });
     const worker: WorkerState = {
-      key,
       pluginId: command.pluginId,
       generation: command.generation,
       digest: command.artifact.digest,
@@ -555,12 +533,12 @@ export class PluginHostManager {
       worker.rejectReady(new Error(reason));
       this.rejectPendingCalls(worker, reason);
       void this.stopAllWorkerWatches(worker);
-      if (this.workers.get(worker.key) === worker) {
-        this.workers.delete(worker.key);
+      if (this.workers.get(worker.pluginId) === worker) {
+        this.workers.delete(worker.pluginId);
       }
     };
 
-    this.workers.set(key, worker);
+    this.workers.set(command.pluginId, worker);
     const startTimer = setTimeout(() => {
       failWorker(`host plugin ${command.pluginId} startup timed out`);
       child.kill("SIGKILL");
@@ -640,7 +618,7 @@ export class PluginHostManager {
         typeof record.leaseId === "string" &&
         record.leaseId.length > 0
       ) {
-        if (!worker.disposing && this.workers.get(worker.key) === worker) {
+        if (!worker.disposing && this.workers.get(worker.pluginId) === worker) {
           worker.retainedLeaseIds.add(record.leaseId);
           this.cancelWorkerIdleTimer(worker);
         }
@@ -724,7 +702,7 @@ export class PluginHostManager {
       );
       return;
     }
-    if (worker.disposing || this.workers.get(worker.key) !== worker) {
+    if (worker.disposing || this.workers.get(worker.pluginId) !== worker) {
       this.sendWorkerWatchStartError(
         worker,
         watchId,
@@ -994,8 +972,8 @@ export class PluginHostManager {
     if (worker.disposing) return worker.closed;
     worker.disposing = true;
     this.cancelWorkerIdleTimer(worker);
-    if (this.workers.get(worker.key) === worker) {
-      this.workers.delete(worker.key);
+    if (this.workers.get(worker.pluginId) === worker) {
+      this.workers.delete(worker.pluginId);
     }
     await this.stopAllWorkerWatches(worker);
     sendToWorker(worker.child, { type: "dispose" });
@@ -1036,7 +1014,7 @@ export class PluginHostManager {
     if (
       worker.disposing ||
       this.shuttingDown ||
-      this.workers.get(worker.key) !== worker ||
+      this.workers.get(worker.pluginId) !== worker ||
       worker.activeCallCount > 0 ||
       worker.watches.size > 0 ||
       worker.retainedLeaseIds.size > 0 ||
@@ -1049,7 +1027,7 @@ export class PluginHostManager {
       void this.enqueueWorkerMutation(worker.pluginId, async () => {
         if (
           worker.disposing ||
-          this.workers.get(worker.key) !== worker ||
+          this.workers.get(worker.pluginId) !== worker ||
           worker.activeCallCount > 0 ||
           worker.watches.size > 0 ||
           worker.retainedLeaseIds.size > 0

@@ -214,7 +214,6 @@ it.each(["active", "suspended"] as const)(
           }),
           remove: async () => {
             await callPluginHostRpc(harness.deps, {
-              projectId: null,
               pluginId: "review-worktree-plugin",
               hostId: target.host.id,
               contract: {

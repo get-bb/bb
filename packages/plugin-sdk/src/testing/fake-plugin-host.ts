@@ -250,7 +250,6 @@ export interface FakeRealtimeSignal {
 }
 
 export interface ExperimentalFakeHostRpcCall {
-  readonly experimental_projectId?: string;
   method: string;
   input: unknown;
   hostId: string;
@@ -1225,16 +1224,7 @@ function createFakePluginHostInternal(
             ),
             throwRpcError,
           );
-          if (
-            callOptions.experimental_projectId !== undefined &&
-            (typeof callOptions.experimental_projectId !== "string" ||
-              callOptions.experimental_projectId.length === 0)
-          )
-            throw new Error("Invalid host RPC project id");
           const call: ExperimentalFakeHostRpcCall = {
-            ...(callOptions.experimental_projectId === undefined
-              ? {}
-              : { experimental_projectId: callOptions.experimental_projectId }),
             method: String(method),
             input: validatedInput,
             hostId: callOptions.hostId,
