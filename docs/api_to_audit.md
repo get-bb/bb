@@ -1023,8 +1023,8 @@ prevent.
 
 **What it does.** Returns the enrolled host ID persisted by a host daemon that
 shares the server's data directory, or `null` when the server has no co-located
-host identity. Unlike `bb.sdk.system.config().primaryHostId`, it never falls
-back to an enrolled remote machine. The Automations plugin uses it to match a
+host identity. Neither this accessor nor `bb.sdk.system.config().primaryHostId`
+falls back to an enrolled remote machine. The Automations plugin uses it to match a
 server-local project source before passing its path to server-local filesystem
 and process APIs.
 
