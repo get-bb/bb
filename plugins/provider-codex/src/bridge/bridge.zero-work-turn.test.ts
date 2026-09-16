@@ -643,3 +643,46 @@ it.each([
   },
   20_000,
 );
+
+it("binds delayed tool work to the accepted request on consecutive turns", async () => {
+  const scriptPath = join(workspaceDir, "script.json");
+  writeFileSync(scriptPath, JSON.stringify({ lateStartTool: true }));
+  stubFakeCodexAppServer(scriptPath);
+  const providerThreadId = await startSession();
+  const requests = ["creq_first23456", "creq_after23456"];
+  for (const [index, clientRequestId] of requests.entries()) {
+    harness.sendRequest(index + 2, "turn/start", {
+      threadId: THREAD_ID,
+      providerThreadId,
+      clientRequestId,
+      input: [{ type: "text", text: "/late-start", mentions: [] }],
+      options: { ...FULL_ACCESS_SESSION_OPTIONS },
+    });
+    expect((await harness.waitForResponse(index + 2)).error).toBeUndefined();
+    await waitForEvents(
+      (events) =>
+        events.filter((event) => event.type === "turn/completed").length ===
+        index + 1,
+    );
+  }
+  const events = threadEvents();
+  expect(events.filter((event) => event.type === "turn/started")).toHaveLength(
+    2,
+  );
+  const work = events.filter(
+    (event) =>
+      event.type === "item/started" && event.item.type === "commandExecution",
+  );
+  expect(work).toHaveLength(2);
+  for (const [index, item] of work.entries()) {
+    const accepted = events.find(
+      (event) =>
+        event.type === "turn/input/accepted" &&
+        event.clientRequestId === requests[index],
+    );
+    expect(accepted).toBeDefined();
+    if (accepted === undefined) throw new Error("Missing accepted input");
+    expect(accepted.scope).toEqual(item.scope);
+    expect(events.indexOf(accepted)).toBeLessThan(events.indexOf(item));
+  }
+});

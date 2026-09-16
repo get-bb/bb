@@ -171,6 +171,32 @@ function runScriptedTurn(threadId, presetTurnId) {
     threadId,
     turn: { id: turnId, status: "inProgress" },
   });
+  if (script?.lateStartTool && presetTurnId !== undefined) {
+    const item = {
+      type: "commandExecution",
+      id: `command-${turnId}`,
+      command: "echo verified",
+      cwd: "/tmp",
+      processId: null,
+      status: "inProgress",
+      commandActions: [],
+      aggregatedOutput: null,
+      exitCode: null,
+      durationMs: null,
+    };
+    notify("item/started", { threadId, turnId, item });
+    notify("item/completed", {
+      threadId,
+      turnId,
+      item: {
+        ...item,
+        status: "completed",
+        aggregatedOutput: "verified",
+        exitCode: 0,
+        durationMs: 1,
+      },
+    });
+  }
   // Delta-first: no item/started for the agent message. The bridge must
   // synthesize the opening event.
   notify("item/agentMessage/delta", { threadId, turnId, itemId, delta: text });
