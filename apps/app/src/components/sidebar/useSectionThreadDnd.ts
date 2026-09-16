@@ -5,8 +5,6 @@ import {
   useRef,
   useState,
   type MouseEventHandler,
-  type PointerEvent as ReactPointerEvent,
-  type PointerEventHandler,
 } from "react";
 import { useSetAtom } from "jotai";
 import {
@@ -52,7 +50,6 @@ import {
   type SidebarNestTargetState,
   type SidebarReorderPlacement,
 } from "./sidebarThreadRowDroppable";
-import type { SidebarDropPreviewPlacement } from "./sidebarDropPreviewPlacement";
 
 export const PINNED_THREAD_PARENT_KEY = "sidebar:pinned-threads";
 export const NEST_BAND_FRACTION = 0.5;
@@ -94,9 +91,7 @@ export interface SectionThreadDndState {
   dndContextProps: ReorderDndContextProps;
   itemIdsByParentKey: ReadonlyMap<string, readonly string[]>;
   onClickCapture: MouseEventHandler<HTMLElement>;
-  onPointerDownCapture: PointerEventHandler<HTMLElement>;
   dragOverParentKey: string | null;
-  dropPreview: SidebarDropPreviewPlacement | null;
   nestTarget: SectionThreadNestTarget | null;
   reorderTarget: SectionThreadReorderTarget | null;
   pinnedItemIds: readonly string[];
@@ -186,7 +181,6 @@ interface ResolveThreadRowNestCollisionsArgs {
   droppableRects: ReadonlyMap<UniqueIdentifier, ClientRect>;
   pointerCoordinates: { x: number; y: number } | null;
   getBandFraction: (threadId: string) => number | null;
-  fallbackRowRects?: ReadonlyMap<string, ClientRect>;
   retainedRect?: ClientRect | null;
   retainedThreadId?: string | null;
   onRowPointer?: (info: ThreadRowPointerInfo) => void;
@@ -337,7 +331,6 @@ export function resolveThreadRowNestCollisions({
   droppableRects,
   pointerCoordinates,
   getBandFraction,
-  fallbackRowRects,
   retainedRect = null,
   retainedThreadId = null,
   onRowPointer,
@@ -359,29 +352,6 @@ export function resolveThreadRowNestCollisions({
       rowCollision = collision;
       rowThreadId = threadId;
       rowRect = droppableRects.get(collision.id);
-    }
-  }
-  const pointerInsideCurrentRow =
-    pointerCoordinates !== null &&
-    rowRect !== undefined &&
-    pointerCoordinates.x >= rowRect.left &&
-    pointerCoordinates.x <= rowRect.right &&
-    pointerCoordinates.y >= rowRect.top &&
-    pointerCoordinates.y <= rowRect.bottom;
-  if (!pointerInsideCurrentRow && pointerCoordinates && fallbackRowRects) {
-    const { x, y } = pointerCoordinates;
-    for (const [threadId, rect] of fallbackRowRects) {
-      if (
-        x >= rect.left &&
-        x <= rect.right &&
-        y >= rect.top &&
-        y <= rect.bottom
-      ) {
-        rowCollision = { id: getSidebarThreadRowDroppableId(threadId) };
-        rowThreadId = threadId;
-        rowRect = rect;
-        break;
-      }
     }
   }
   const retaining = rowCollision === null && retainedThreadId !== null;
@@ -661,41 +631,6 @@ export function resolveSectionThreadSectionOverId(
   );
 }
 
-export class SectionThreadProjectionGate {
-  private inputGeneration = 0;
-  private appliedInputGeneration = -1;
-  private readonly visitedTargets = new Set<string | null>();
-
-  noteInput(): void {
-    this.inputGeneration += 1;
-  }
-
-  reset(): void {
-    this.inputGeneration = 0;
-    this.appliedInputGeneration = -1;
-    this.visitedTargets.clear();
-  }
-
-  allow(current: string | null, target: string | null): boolean {
-    if (this.appliedInputGeneration !== this.inputGeneration) {
-      this.appliedInputGeneration = this.inputGeneration;
-      this.visitedTargets.clear();
-      this.visitedTargets.add(current);
-    } else if (this.visitedTargets.has(target)) {
-      return false;
-    }
-    this.visitedTargets.add(target);
-    return true;
-  }
-}
-
-const PROJECTION_INPUT_EVENTS = [
-  "pointermove",
-  "touchmove",
-  "wheel",
-  "keydown",
-] as const;
-
 function getEventIds(event: DragOverEvent | DragEndEvent) {
   return {
     activeId: typeof event.active.id === "string" ? event.active.id : null,
@@ -855,7 +790,6 @@ export function useSectionThreadDnd({
   );
   const activeIdRef = useRef<string | null>(null);
   const armedNestThreadIdRef = useRef<string | null>(null);
-  const initialThreadRowRectsRef = useRef(new Map<string, ClientRect>());
   const latestRowCollisionRef = useRef<RetainedNestTarget | null>(null);
   const retainedNestTargetRef = useRef<RetainedNestTarget | null>(null);
   const coarsePointerRef = useRef(false);
@@ -958,22 +892,11 @@ export function useSectionThreadDnd({
       pinnedInsertRef.current = null;
       const reorderCollisions = reorderCollisionDetection(args);
       latestRowCollisionRef.current = null;
-      const initialThreadRowRects = initialThreadRowRectsRef.current;
-      if (initialThreadRowRects.size === 0) {
-        for (const [id, rect] of args.droppableRects) {
-          const threadId =
-            typeof id === "string"
-              ? parseSidebarThreadRowDroppableId(id)
-              : null;
-          if (threadId !== null) initialThreadRowRects.set(threadId, rect);
-        }
-      }
       const retainedNestTarget = retainedNestTargetRef.current;
       const collisions = resolveThreadRowNestCollisions({
         collisions: reorderCollisions,
         draggedLeft: args.collisionRect.left,
         droppableRects: args.droppableRects,
-        fallbackRowRects: initialThreadRowRects,
         pointerCoordinates: args.pointerCoordinates,
         getBandFraction: getNestBandFraction,
         retainedRect: retainedNestTarget?.rect,
@@ -1021,30 +944,6 @@ export function useSectionThreadDnd({
   const draggingThreadRef = useRef(false);
   const dwellTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dwellTargetKeyRef = useRef<string | null>(null);
-  const projectionGateRef = useRef(new SectionThreadProjectionGate());
-  const stopProjectionInputTrackingRef = useRef<(() => void) | null>(null);
-
-  const stopProjectionInputTracking = useCallback(() => {
-    stopProjectionInputTrackingRef.current?.();
-    stopProjectionInputTrackingRef.current = null;
-  }, []);
-  const startProjectionInputTracking = useCallback(() => {
-    stopProjectionInputTracking();
-    const gate = projectionGateRef.current;
-    gate.reset();
-    const noteInput = () => gate.noteInput();
-    for (const type of PROJECTION_INPUT_EVENTS) {
-      document.addEventListener(type, noteInput, {
-        capture: true,
-        passive: true,
-      });
-    }
-    stopProjectionInputTrackingRef.current = () => {
-      for (const type of PROJECTION_INPUT_EVENTS) {
-        document.removeEventListener(type, noteInput, { capture: true });
-      }
-    };
-  }, [stopProjectionInputTracking]);
 
   const clearDropDwell = useCallback(() => {
     if (dwellTimerRef.current !== null) clearTimeout(dwellTimerRef.current);
@@ -1060,7 +959,6 @@ export function useSectionThreadDnd({
     setReadyNestCandidate(null);
     clearNestCandidate();
     armedNestThreadIdRef.current = null;
-    initialThreadRowRectsRef.current.clear();
     latestRowCollisionRef.current = null;
     retainedNestTargetRef.current = null;
     activeIdRef.current = null;
@@ -1072,34 +970,8 @@ export function useSectionThreadDnd({
     () => () => {
       clearDropDwell();
       clearNestCandidate();
-      stopProjectionInputTracking();
     },
-    [clearDropDwell, clearNestCandidate, stopProjectionInputTracking],
-  );
-
-  const captureInitialThreadRowRects = useCallback(
-    (event: ReactPointerEvent<HTMLElement>) => {
-      const sidebar = event.currentTarget.closest<HTMLElement>(
-        '[data-sidebar="sidebar"]',
-      );
-      if (!sidebar) {
-        initialThreadRowRectsRef.current.clear();
-        return;
-      }
-      const initialThreadRowRects = new Map<string, ClientRect>();
-      for (const row of sidebar.querySelectorAll<HTMLElement>(
-        "[data-sidebar-thread-id]",
-      )) {
-        const threadId = row.dataset.sidebarThreadId;
-        if (!threadId) continue;
-        const rect = row.getBoundingClientRect();
-        if (rect.width > 0 && rect.height > 0) {
-          initialThreadRowRects.set(threadId, rect);
-        }
-      }
-      initialThreadRowRectsRef.current = initialThreadRowRects;
-    },
-    [],
+    [clearDropDwell, clearNestCandidate],
   );
 
   const handleDragStart = useCallback(
@@ -1121,14 +993,13 @@ export function useSectionThreadDnd({
       );
       clearDropDwell();
       clearNestCandidate();
-      startProjectionInputTracking();
       setActiveThread(thread);
       setDragOverParentKey(null);
       setRowDrop(null);
       setReorderTarget(null);
       setReadyNestCandidate(null);
     },
-    [clearDropDwell, clearNestCandidate, lookup, startProjectionInputTracking],
+    [clearDropDwell, clearNestCandidate, lookup],
   );
 
   const projectedNestParentId =
@@ -1171,11 +1042,6 @@ export function useSectionThreadDnd({
             : null;
       }
       if (targetKey === dwellTargetKeyRef.current) return;
-      if (
-        !projectionGateRef.current.allow(dwellTargetKeyRef.current, targetKey)
-      ) {
-        return;
-      }
 
       clearDropDwell();
       dwellTargetKeyRef.current = targetKey;
@@ -1263,7 +1129,6 @@ export function useSectionThreadDnd({
       draggingThreadRef.current = false;
       clearDropDwell();
       clearNestCandidate();
-      stopProjectionInputTracking();
       if (!enabled) {
         clearProjectedDrag();
         return;
@@ -1389,7 +1254,6 @@ export function useSectionThreadDnd({
       pinThread,
       projectedNestParentId,
       reorderTarget,
-      stopProjectionInputTracking,
       topLevelSectionIds,
       topLevelSectionOrder,
       updateThread,
@@ -1401,9 +1265,8 @@ export function useSectionThreadDnd({
   const handleDragCancel = useCallback(() => {
     draggingThreadRef.current = false;
     clearDropDwell();
-    stopProjectionInputTracking();
     clearProjectedDrag();
-  }, [clearDropDwell, clearProjectedDrag, stopProjectionInputTracking]);
+  }, [clearDropDwell, clearProjectedDrag]);
 
   const { consumeClickSuppression, dndContextProps, onClickCapture } =
     useSidebarReorderDnd({
@@ -1427,9 +1290,7 @@ export function useSectionThreadDnd({
     dndContextProps,
     itemIdsByParentKey: lookup.itemIdsByParentKey,
     onClickCapture,
-    onPointerDownCapture: captureInitialThreadRowRects,
     dragOverParentKey: dropDecisionLanded ? null : dragOverParentKey,
-    dropPreview: null,
     nestTarget: dropDecisionLanded ? null : rowDrop,
     reorderTarget: dropDecisionLanded ? null : reorderTarget,
     pinnedItemIds,

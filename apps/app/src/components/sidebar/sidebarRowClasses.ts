@@ -72,3 +72,7 @@ export const SIDEBAR_MORE_ACTION_TRIGGER_CLASS =
 
 export const SIDEBAR_PROJECT_GROUP_LINE_CLASS =
   "before:pointer-events-none before:absolute before:bottom-0 before:left-4 before:top-0 before:z-[45] before:w-px before:bg-border-hairline before:opacity-70 before:content-[''] max-md:pointer-coarse:before:left-5";
+
+export const SIDEBAR_SECTION_DROP_TARGET_SURFACE_CLASS = "bg-sidebar-accent/50";
+
+export const SIDEBAR_SECTION_DROP_TARGET_CLASS = `${SIDEBAR_SECTION_DROP_TARGET_SURFACE_CLASS} ring-1 ring-inset ring-sidebar-ring/70`;

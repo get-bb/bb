@@ -15,7 +15,6 @@ import { Provider, createStore } from "jotai";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   ChronologicalSectionThreadSections,
-  DropPreviewRow,
   ProjectRow,
   SectionThreadDragOverlay,
   type ProjectThreadListState,
@@ -138,17 +137,6 @@ function expectCollapsedActivityAtSidebarEdge(label: string) {
 }
 
 describe("ProjectRow interactions", () => {
-  it("renders the destination gap as a muted copy of the dragged row", () => {
-    render(<DropPreviewRow depth={0} thread={makeThread()} />);
-
-    const preview = document.querySelector(
-      '[data-sidebar-section-drop-preview="true"]',
-    );
-    expect(preview?.textContent).toBe("Test thread");
-    expect(preview?.className).toContain("opacity-50");
-    expect(preview?.className).not.toContain("border-dashed");
-  });
-
   it("renders the dragged copy as a compact opaque chip", () => {
     render(<SectionThreadDragOverlay thread={makeThread()} />);
 

@@ -19,6 +19,41 @@ import {
 } from "@/lib/plugin-thread-row-status";
 import { TopLevelSidebarSection } from "./TopLevelSidebarSection";
 import { SidebarControlButton } from "./SidebarRowControls";
+import { SectionThreadDndProvider } from "./SectionThreadDndContext";
+import type { SectionThreadDndState } from "./useSectionThreadDnd";
+import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
+
+function dndState(
+  dragOverParentKey: string | null,
+  activeThread: SectionThreadDndState["activeThread"],
+): SectionThreadDndState {
+  return {
+    activeThread,
+    dragOverParentKey,
+    consumeClickSuppression: () => false,
+    dndContextProps: {},
+    itemIdsByParentKey: new Map(),
+    onClickCapture: () => undefined,
+    nestTarget: null,
+    reorderTarget: null,
+    pinnedItemIds: [],
+    pinnedReorderPending: false,
+  };
+}
+
+function renderSectionWithDrag(state: SectionThreadDndState): boolean {
+  const { container } = render(
+    <SectionThreadDndProvider value={state}>
+      <TopLevelSidebarSection label="Design" dropParentKey="section:design">
+        <div>Thread</div>
+      </TopLevelSidebarSection>
+    </SectionThreadDndProvider>,
+  );
+  const highlighted =
+    container.querySelector("[data-sidebar-drop-target]") !== null;
+  cleanup();
+  return highlighted;
+}
 
 afterEach(() => {
   cleanup();
@@ -119,38 +154,17 @@ describe("TopLevelSidebarSection", () => {
     ).not.toBeNull();
   });
 
-  it("can expose a drop preview while the section is collapsed", () => {
-    render(
-      <TopLevelSidebarSection
-        label="Pinned"
-        showChildrenWhenCollapsed
-        collapseControl={{ isCollapsed: true, onToggleCollapsed: vi.fn() }}
-      >
-        <div>Projected thread</div>
-      </TopLevelSidebarSection>,
-    );
+  it("highlights the whole section only while it is the resolved drop parent", () => {
+    const dragged = makeThreadListEntry({ id: "dragged" });
 
-    expect(screen.getByText("Projected thread")).not.toBeNull();
-  });
-
-  it("can keep projected children without reserving an inset", () => {
-    render(
-      <TopLevelSidebarSection
-        label="Design"
-        childrenInset={false}
-        collapseControl={{ isCollapsed: false, onToggleCollapsed: vi.fn() }}
-      >
-        <div>Projected thread</div>
-      </TopLevelSidebarSection>,
+    expect(renderSectionWithDrag(dndState(null, dragged))).toBe(false);
+    expect(renderSectionWithDrag(dndState("section:other", dragged))).toBe(
+      false,
     );
-
-    expect(screen.getByText("Projected thread").parentElement?.className).toBe(
-      "",
+    expect(renderSectionWithDrag(dndState("section:design", dragged))).toBe(
+      true,
     );
-    const label = screen
-      .getByTitle("Design")
-      .closest<HTMLElement>('[data-sidebar="group-label"]');
-    expect(label?.style.marginBottom).toBe("0px");
+    expect(renderSectionWithDrag(dndState("section:design", null))).toBe(false);
   });
 
   it("renders the disclosure after the section label without a leading icon", () => {

@@ -9,7 +9,11 @@ import {
   type TopLevelSidebarSectionProps,
 } from "./TopLevelSidebarSection";
 import { useSidebarSortable } from "./sortableMotion";
-import type { CollapsedChildActivity } from "@bb/client-core";
+import {
+  CHRONOLOGICAL_CONTAINER_ID,
+  type CollapsedChildActivity,
+} from "@bb/client-core";
+import { PINNED_THREAD_PARENT_KEY } from "./useSectionThreadDnd";
 import type { ThreadSplitIndicatorTarget } from "./paneContentSplitIndicator";
 
 interface SortableSidebarSectionProps extends TopLevelSidebarSectionProps {
@@ -23,7 +27,6 @@ export interface BuiltInSidebarSectionOptions {
   actionsOpen?: boolean;
   collapsedThreads?: readonly ThreadSplitIndicatorTarget[];
   content: ReactNode;
-  isDropTargetActive?: boolean;
   label: string;
 }
 
@@ -34,6 +37,14 @@ interface BuiltInSidebarSectionProps extends BuiltInSidebarSectionOptions {
   isCollapsed: boolean;
   onToggleCollapsed: (id: CollapsibleSidebarSectionId) => void;
 }
+
+const BUILT_IN_SECTION_DROP_PARENT_KEY: Record<
+  CollapsibleSidebarSectionId,
+  string
+> = {
+  pinned: PINNED_THREAD_PARENT_KEY,
+  threads: CHRONOLOGICAL_CONTAINER_ID,
+};
 
 export type BuiltInSidebarSectionOptionsById = Record<
   CollapsibleSidebarSectionId,
@@ -79,7 +90,6 @@ function BuiltInSidebarSection({
   content,
   disabled,
   id,
-  isDropTargetActive,
   isCollapsed,
   label,
   onToggleCollapsed,
@@ -100,7 +110,7 @@ function BuiltInSidebarSection({
         onToggleCollapsed: () => onToggleCollapsed(id),
       }}
       consumeClickSuppression={consumeClickSuppression}
-      isDropTargetActive={isDropTargetActive}
+      dropParentKey={BUILT_IN_SECTION_DROP_PARENT_KEY[id]}
     >
       {content}
     </SortableSidebarSection>

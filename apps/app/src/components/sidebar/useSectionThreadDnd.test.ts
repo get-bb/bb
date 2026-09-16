@@ -627,24 +627,6 @@ describe("thread row nest collisions", () => {
     ).toEqual([rowCollision, groupCollision]);
   });
 
-  it("uses the initial row position after a source subtree collapses", () => {
-    const shiftedRect = {
-      ...rect,
-      top: 42,
-      bottom: 70,
-    };
-    expect(
-      resolveThreadRowNestCollisions({
-        collisions: [rowCollision, groupCollision],
-        draggedLeft: 48,
-        droppableRects: new Map([[rowId("parent-a"), shiftedRect]]),
-        fallbackRowRects: new Map([["parent-a", rect]]),
-        pointerCoordinates: { x: 20, y: 114 },
-        getBandFraction: () => NEST_BAND_FRACTION,
-      }),
-    ).toEqual([rowCollision, groupCollision]);
-  });
-
   it("cancels parenting after moving twelve pixels left", () => {
     expect(
       resolve(114, NEST_BAND_ARMED_FRACTION, -NEST_CANCEL_OFFSET_PX),
