@@ -1424,7 +1424,7 @@ A plugin worker keeps its current environment while any of its calls are active,
 as before. This means a project override of a credential such as `GH_TOKEN`
 applies to the project's clone, setup script, terminals, and agent turns, but
 not to git commands an environment provider plugin runs on the machine, which
-use the global value. Project-scoped contributions require daemon protocol 210;
+use the global value. Project-scoped contributions require daemon protocol 211;
 older daemons update before the server accepts their session.
 
 The built-in GitHub row uses `gh auth token --hostname github.com` and `gh api
