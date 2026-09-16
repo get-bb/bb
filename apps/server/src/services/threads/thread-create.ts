@@ -63,6 +63,7 @@ import {
   type ThreadCreateServiceRequestInput,
   type ThreadCreateServiceRequest,
 } from "./thread-create-request.js";
+import { resolveDispatchAuthor } from "./thread-runtime-config.js";
 import { deriveTitleFallback } from "./title-generation.js";
 import type { ThreadProvisionEnvironmentIntent } from "./thread-startup-store.js";
 import { resolveSystemProviderModels } from "../system/execution-options.js";
@@ -789,10 +790,12 @@ export async function createThreadFromRequest(
       provider: request.providerId,
     },
   });
-  if (
-    (request.startedOnBehalfOf?.initiator ?? "user") === "user" &&
-    request.input.length > 0
-  ) {
+  const { initiator } = resolveDispatchAuthor({
+    retrying: false,
+    senderThreadId: null,
+    startedOnBehalfOf: request.startedOnBehalfOf,
+  });
+  if (initiator === "user" && request.input.length > 0) {
     captureUserMessageSentTelemetry(deps, {
       isChildThread: parentThread !== null,
       messageSource: "thread_create",

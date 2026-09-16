@@ -39,7 +39,10 @@ import {
   buildExecutionOptions,
   buildThreadStartCommand,
 } from "./thread-commands.js";
-import { resolvePermissionEscalation } from "./thread-runtime-config.js";
+import {
+  resolveDispatchAuthor,
+  resolvePermissionEscalation,
+} from "./thread-runtime-config.js";
 import { requireReadyThreadEnvironment } from "./thread-turn-dispatch.js";
 import { ensureHostSessionReadyForWork } from "../hosts/host-lifecycle.js";
 import {
@@ -456,7 +459,11 @@ export async function editThreadMessage(
     senderThreadId: args.payload.senderThreadId,
     targetThread: initialThread,
   });
-  const initiator = senderThreadId === null ? "user" : "agent";
+  const { initiator } = resolveDispatchAuthor({
+    retrying: false,
+    senderThreadId,
+    startedOnBehalfOf: null,
+  });
 
   const initialTarget = resolveEditableTurn(
     deps.db,
