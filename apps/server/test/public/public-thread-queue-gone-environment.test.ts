@@ -70,7 +70,7 @@ describe("queued message into a thread whose environment is gone (#1789)", () =>
         });
         const environment = seedEnvironment(harness.deps, {
           hostId: host.id,
-              projectId: project.id,
+          projectId: project.id,
           path: null,
           status,
           isGitRepo: false,
@@ -204,7 +204,7 @@ describe("queued message into a thread whose environment is gone (#1789)", () =>
       });
       const environment = seedEnvironment(harness.deps, {
         hostId: host.id,
-          projectId: project.id,
+        projectId: project.id,
         status: "ready",
         isGitRepo: false,
       });
