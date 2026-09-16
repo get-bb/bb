@@ -112,7 +112,12 @@ export function AnnotateAction({
       const message = parsed.data;
       pendingSaves.current = pendingSaves.current
         .then(async () => {
-          if (message.type === "annotation-update") {
+          if (message.type === "annotation-delete") {
+            composerRef.current.experimental_removeMention({
+              provider: ANNOTATION_MENTION_PROVIDER_ID,
+              id: message.id,
+            });
+          } else if (message.type === "annotation-update") {
             await rpc.call("update", {
               id: message.id,
               comment: message.comment,
@@ -144,6 +149,21 @@ export function AnnotateAction({
         .catch(() => undefined);
     },
     [page],
+  );
+
+  useEffect(
+    () =>
+      composer.experimental_onSubmitted(() => {
+        pendingSaves.current = pendingSaves.current
+          .then(async () => {
+            if (page !== null)
+              applyState(
+                await page.evaluate(buildControllerExpression("clear")),
+              );
+          })
+          .catch((cause: unknown) => setError(errorMessage(cause)));
+      }),
+    [composer.experimental_onSubmitted, page, applyState],
   );
 
   const toggle = useCallback(() => {

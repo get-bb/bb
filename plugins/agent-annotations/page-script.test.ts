@@ -158,6 +158,35 @@ describe("agent annotations page script", () => {
     expect(root.querySelector(".pin")).toBeNull();
   });
 
+  it("deletes a pin and its element marker without leaving an editor", () => {
+    const messages: unknown[] = [];
+    const bridge: Bridge = { postMessage: (data) => messages.push(data) };
+    evaluate(buildActivateExpression({}), bridge);
+    button.click();
+    const root = shadowRoot();
+    const input = requireElement(root.querySelector("textarea"));
+    input.value = "Delete me";
+    input.dispatchEvent(new Event("input"));
+    requireElement(root.querySelector<HTMLButtonElement>(".save")).click();
+    const created = pageMessageSchema.parse(messages[0]);
+    if (created.type !== "annotation") throw new Error("Expected annotation");
+    requireElement(root.querySelector<HTMLButtonElement>(".pin")).click();
+    const remove = Array.from(root.querySelectorAll("button")).find(
+      (node) => node.textContent === "Delete",
+    );
+    if (!remove) throw new Error("Expected delete action");
+    remove.click();
+    expect(messages.slice(-2)).toEqual([
+      { type: "annotation-delete", id: created.annotation.id },
+      { type: "state", active: true, count: 0 },
+    ]);
+    expect(
+      button.hasAttribute(`data-bb-annotation-${created.annotation.id}`),
+    ).toBe(false);
+    expect(root.querySelector(".pin")).toBeNull();
+    expect(root.querySelector(".editor")).toBeNull();
+  });
+
   it("turns off on Escape, releases page clicks, and reuses one overlay", () => {
     const messages: unknown[] = [];
     const bridge: Bridge = { postMessage: (data) => messages.push(data) };

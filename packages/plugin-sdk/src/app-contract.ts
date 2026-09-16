@@ -2013,6 +2013,10 @@ export interface PluginComposerApi {
    * content should be fetched fresh when the message is sent.
    */
   insertMention(mention: PluginComposerMention): void;
+  /** Remove this plugin's matching mention pills and their text from the current draft. */
+  experimental_removeMention(mention: { provider: string; id: string }): void;
+  /** Subscribe to successful local submissions in this composer scope, including accepted queued messages. Failed sends and draft clearing do not notify. Dispose on unmount. */
+  experimental_onSubmitted(listener: () => void): () => void;
   /** Focus the composer caret at the end of the draft. */
   focus(): void;
   /**

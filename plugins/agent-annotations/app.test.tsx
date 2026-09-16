@@ -9,6 +9,7 @@ import type {
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 
 const app = await loadPluginApp(() => import("./app"));
+const { useComposer } = await import("@get-bb/plugin-sdk/app");
 
 afterEach(cleanup);
 
@@ -163,6 +164,65 @@ describe("AnnotateAction", () => {
         .getAttribute("aria-pressed"),
     ).toBe("false");
     expect(slot.getByTestId("agent-annotations-count").textContent).toBe("1");
+  });
+
+  it("removes deleted mentions and clears page annotations on submission, not draft clearing", async () => {
+    const fake = createFakePage();
+    const action = registration();
+    const AnnotateAction = action.component;
+    const slot = renderSlot(
+      {
+        ...action,
+        component: (props) => {
+          const composer = useComposer();
+          return (
+            <>
+              <AnnotateAction {...props} />
+              <button
+                onClick={() => {
+                  void composer.experimental_submit({
+                    experimental_data: null,
+                  });
+                }}
+              >
+                Submit test
+              </button>
+            </>
+          );
+        },
+      },
+      {
+        threadId: "thr_1",
+        tabId: "browser:1",
+        url: "http://localhost/",
+        isCompactViewport: false,
+        experimental_page: fake.page,
+      },
+      { rpc: { save: () => ({ id: pageAnnotation.id }) } },
+    );
+    act(() => fake.emit({ type: "annotation", annotation: pageAnnotation }));
+    await waitFor(() =>
+      expect(slot.inspection.composer.mentions).toHaveLength(1),
+    );
+    act(() => fake.emit({ type: "annotation-delete", id: pageAnnotation.id }));
+    await waitFor(() =>
+      expect(slot.inspection.composer.mentions).toHaveLength(0),
+    );
+    await slot.behavior.setComposerText("");
+    expect(
+      fake.evaluate.mock.calls.some(([expression]) =>
+        expression.includes(".clear()"),
+      ),
+    ).toBe(false);
+    await slot.behavior.setComposerText("Send this");
+    fireEvent.click(slot.getByRole("button", { name: "Submit test" }));
+    await waitFor(() =>
+      expect(
+        fake.evaluate.mock.calls.some(([expression]) =>
+          expression.includes(".clear()"),
+        ),
+      ).toBe(true),
+    );
   });
 
   it("ignores malformed page messages", async () => {

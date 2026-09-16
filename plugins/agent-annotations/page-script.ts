@@ -369,6 +369,20 @@ function installAgentAnnotations(
     post({ type: "state", ...state() });
   }
 
+  function remove(annotation: PinnedAnnotation): void {
+    const index = annotations.indexOf(annotation);
+    if (index < 0) return;
+    annotation.element.removeAttribute(`${attributePrefix}${annotation.id}`);
+    annotation.pin.remove();
+    annotation.outline.remove();
+    annotations.splice(index, 1);
+    closeEditor();
+    showHover(null);
+    syncLoop();
+    post({ type: "annotation-delete", id: annotation.id });
+    post({ type: "state", ...state() });
+  }
+
   function update(annotation: PinnedAnnotation, comment: string): void {
     const trimmed = comment.trim().slice(0, 4000);
     if (trimmed.length === 0) {
@@ -409,6 +423,12 @@ function installAgentAnnotations(
     const save = part("button", "save");
     save.textContent = annotation === null ? "Add to prompt" : "Save changes";
     save.toggleAttribute("disabled", textarea.value.trim().length === 0);
+    if (annotation !== null) {
+      const deleteButton = part("button", "cancel");
+      deleteButton.textContent = "Delete";
+      deleteButton.addEventListener("click", () => remove(annotation));
+      actions.append(deleteButton);
+    }
     actions.append(hint, cancel, save);
     panel.append(title, textarea, actions);
     root.append(panel);

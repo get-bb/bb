@@ -384,8 +384,15 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Change only how those ranges look; the text the agent receives is untouched",
           "Re-run its matcher on every keystroke",
           "Observe the draft prompt and its @-mentions as they change, read-only",
+          "Remove a plugin-owned mention from the draft, including its visible text",
+          "Respond after a local message is successfully sent or queued; failed sends do not notify",
         ],
-        apiSymbols: ["ComposerRichTextSpec", "ComposerStructuredDraft"],
+        apiSymbols: [
+          "ComposerRichTextSpec",
+          "ComposerStructuredDraft",
+          "PluginComposerApi.experimental_removeMention",
+          "PluginComposerApi.experimental_onSubmitted",
+        ],
       },
       {
         id: "composer-state",

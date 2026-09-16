@@ -60,6 +60,12 @@ export const annotationUpdateSchema = z
   .strict();
 
 export const pageMessageSchema = z.discriminatedUnion("type", [
+  z
+    .object({
+      type: z.literal("annotation-delete"),
+      id: z.string().min(1).max(64),
+    })
+    .strict(),
   annotationUpdateSchema
     .extend({ type: z.literal("annotation-update") })
     .strict(),
