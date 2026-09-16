@@ -61,6 +61,24 @@ user does **not** need a `typst` binary, and you should not try to run one.
   from data you already have. `#read`/`#json` on repository files only works
   for files inside the same source directory tree.
 
+## Escaping text
+
+In ordinary text Typst reads `@`, `#`, `$`, `_`, `*`, `` ` ``, `~`, `<`, `>`,
+`[`, `]`, and `\` as markup. Escape a literal one with a backslash.
+
+`@` is the important trap: it starts a **reference** to a label, so an email
+written as plain text fails to compile:
+
+```text
+sale@anacrol.ru   // error: label `<anacrol.ru>` does not exist in the document
+sale\@anacrol.ru  // correct literal text
+#link("mailto:sale@anacrol.ru")[sale@anacrol.ru]  // correct clickable link
+```
+
+References still work where you mean them: label a figure with
+`#figure(...)<fig-plot>` and refer to it with `@fig-plot` in normal text, not
+inside a `#link`, a string, or a raw block.
+
 ## Keep it small
 
 The source file is capped at 5 MiB and must be UTF-8 text. A long report is

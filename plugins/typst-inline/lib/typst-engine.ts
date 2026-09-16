@@ -124,6 +124,9 @@ function enqueue<T>(task: () => Promise<T>): Promise<T> {
   return run;
 }
 
+const MISSING_LABEL_HINT =
+  ' If you meant an email address or a domain name, escape the @ as \\@ (for example sale\\@example.com) or write it as a link: #link("mailto:sale@example.com")[sale@example.com].';
+
 function describeDiagnostics(
   diagnostics: readonly string[] | undefined,
 ): string {
@@ -133,7 +136,13 @@ function describeDiagnostics(
   if (lines.length === 0) {
     return "Typst produced no document for this file.";
   }
-  return `Typst compile error: ${lines.join(" ")}`;
+  const detail = lines.join(" ");
+  const hint = lines.some((line) =>
+    line.includes("does not exist in the document"),
+  )
+    ? MISSING_LABEL_HINT
+    : "";
+  return `Typst compile error: ${detail}${hint}`;
 }
 
 async function loadDependencies(

@@ -9,6 +9,9 @@ import {
 
 const ENCODER = new TextEncoder();
 const FAILED_DIAGNOSTICS = ["/main.typ:2:2: error: unknown variable: nope"];
+const FAILED_LABEL_DIAGNOSTICS = [
+  "/main.typ:325:7: error: label `<anacrol.ru>` does not exist in the document",
+];
 
 interface CompilerHarness {
   accessModel: TypstFileAccessModel;
@@ -17,7 +20,10 @@ interface CompilerHarness {
   shadows: () => Map<string, Uint8Array>;
 }
 
-function createCompiler(graph: Record<string, string[]>): CompilerHarness {
+function createCompiler(
+  graph: Record<string, string[]>,
+  diagnostics: readonly string[] = FAILED_DIAGNOSTICS,
+): CompilerHarness {
   const accessModel = new TypstFileAccessModel();
   const shadows = new Map<string, Uint8Array>();
   let compileRounds = 0;
@@ -49,7 +55,7 @@ function createCompiler(graph: Record<string, string[]>): CompilerHarness {
       compileRounds += 1;
       return readReachable(options.mainFilePath, new Set())
         ? { result: new Uint8Array([1, 2, 3]) }
-        : { diagnostics: FAILED_DIAGNOSTICS };
+        : { diagnostics };
     }),
   } as unknown as TypstCompiler;
 
@@ -146,6 +152,21 @@ describe("renderDocumentWith", () => {
     ).rejects.toThrow(/unknown variable: nope/);
     expect(readDependency).not.toHaveBeenCalled();
     expect(engine.renderer.renderSvg).not.toHaveBeenCalled();
+  });
+
+  it("adds an escaping hint when a reference label is missing", async () => {
+    const harness = createCompiler({}, FAILED_LABEL_DIAGNOSTICS);
+
+    await expect(
+      renderDocumentWith({
+        engine: engineParts(harness),
+        request: {
+          mainPath: "/main.typ",
+          readDependency: vi.fn(async (path: string) => ENCODER.encode(path)),
+          source: "= Report",
+        },
+      }),
+    ).rejects.toThrow(/escape the @ as/);
   });
 
   it("stops loading dependencies at the file budget", async () => {

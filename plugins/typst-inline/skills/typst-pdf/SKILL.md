@@ -5,11 +5,18 @@ description: "Deliver a document as a PDF file by typesetting it in Typst first.
 
 # PDF documents through Typst
 
-BB has no Markdown-to-PDF converter. A real PDF comes from a Typst document:
-you write a `.typ` file, BB compiles it and shows it inline as a paper-like
-sheet, and the user saves the PDF from that sheet. **You cannot write the PDF
-file yourself** — the app compiles it when the user picks *Save PDF*. Never say
-that you saved or attached a PDF.
+A real PDF comes from a typeset document: BB compiles it in the app, shows it
+inline as a paper-like sheet, and the user saves the PDF from that sheet. Pick
+the directive by the source format:
+
+- **Markdown source** → emit `::typst-md{file="reports/report.md"}` (see the
+  `typst-md` skill). Use this when the document already exists as Markdown or
+  should stay Markdown in the workspace.
+- **Full typographic control** → write a `.typ` file and emit
+  `::typst{file="reports/report.typ"}` (this skill).
+
+**You cannot write the PDF file yourself** — the app compiles it when the user
+picks *Save PDF*. Never say that you saved or attached a PDF.
 
 ## When this applies
 
@@ -45,9 +52,11 @@ user explicitly wants Markdown, HTML, source code, or plain text.
 
 ## Build the document
 
-1. Write the `.typ` file with the file tools. Prefer a workspace path such as
-   `reports/<slug>.typ`. For a read-only artifact, write under
-   `$BB_THREAD_STORAGE` and use `source="thread-storage"`.
+1. Write the source file with the file tools. For Markdown, write the `.md`
+   file and emit `::typst-md{file="reports/<slug>.md"}`. For full control,
+   write a `.typ` file (prefer a workspace path such as `reports/<slug>.typ`).
+   For a read-only artifact, write under `$BB_THREAD_STORAGE` and use
+   `source="thread-storage"`.
 2. Emit the directive as its own block, never inside backticks or a code fence:
 
    ```text
@@ -67,6 +76,10 @@ user explicitly wants Markdown, HTML, source code, or plain text.
      the source itself is at most 5 MiB and must be UTF-8.
    - Use `#set page(paper: "a4", margin: 2cm)` when the default sheet is not
      right, and `#set page(numbering: "1 / 1")` for page numbers.
+   - Escape text-mode markup. `@` starts a reference, so an email must be
+     `sale\@example.com` or `#link("mailto:sale@example.com")[sale@example.com]`;
+     escape `#`, `$`, `_`, `*`, `` ` ``, `~`, `<`, `>`, `[`, `]`, and `\` when
+     they are literal text.
 4. Tell the user how to get the PDF: in the rendered sheet open the **Export**
    menu and choose **Save PDF**. The same menu saves SVG and PNG and prints one
    sheet per Typst page; a `.typ` file opened in the file panel has the same
