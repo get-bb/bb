@@ -1,4 +1,4 @@
-import { getThread, threads } from "@bb/db";
+import { getThread } from "@bb/db";
 import type { EnvironmentRow } from "@bb/db";
 import {
   encodeClientTurnRequestIdNumber,
@@ -8,7 +8,6 @@ import {
   type Thread,
 } from "@bb/domain";
 import { groupHostDaemonEvents } from "@bb/host-daemon-contract";
-import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import {
   hasLiveThreadStartInFlight,
@@ -50,6 +49,7 @@ interface LiveThreadStartRpcFixture {
   environment: EnvironmentRow;
   startCommand: QueuedCommand;
   thread: Thread;
+  owner: Thread;
 }
 
 interface FailLiveStartRpcArgs {
@@ -73,7 +73,9 @@ async function startLiveThreadStartRpc(
     path: `/tmp/live-start-handoff-${args.requestIdValue}`,
     status: "ready",
   });
+  const owner = seedThread(args.harness.deps, { projectId: project.id });
   const thread = seedThread(args.harness.deps, {
+    lifecycleOwnerThreadId: owner.id,
     projectId: project.id,
     environmentId: environment.id,
     status: "starting",
@@ -100,7 +102,7 @@ async function startLiveThreadStartRpc(
       command.type === "thread.start" && command.threadId === thread.id,
   );
   expect(hasLiveThreadStartInFlight(thread.id)).toBe(true);
-  return { environment, startCommand, thread };
+  return { environment, startCommand, thread, owner };
 }
 
 async function failLiveStartRpc(args: FailLiveStartRpcArgs): Promise<void> {
@@ -390,14 +392,7 @@ describe("live thread start handoff", () => {
           requestIdValue: 5,
         });
 
-        const source = seedThread(harness.deps, {
-          projectId: fixture.thread.projectId,
-        });
-        harness.db
-          .update(threads)
-          .set({ sourceThreadId: source.id, visibility: "hidden" })
-          .where(eq(threads.id, fixture.thread.id))
-          .run();
+        const source = fixture.owner;
         const response = await harness.app.request(
           action === "archive"
             ? `/api/v1/threads/${fixture.thread.id}/archive-all`
@@ -412,25 +407,36 @@ describe("live thread start handoff", () => {
         const stopCommand = await waitForQueuedCommand(
           harness,
           ({ command }) =>
-            command.type === "thread.stop" &&
+            command.type ===
+              (action === "archive"
+                ? "thread.stop"
+                : "thread.storage.delete") &&
             command.threadId === fixture.thread.id,
         );
         await reportQueuedCommandSuccess(harness, stopCommand, {
           providerCheckpointId: null,
         });
-        expect(getThread(harness.db, fixture.thread.id)).toMatchObject({
-          archivedAt: expect.any(Number),
-          status: "idle",
-        });
+        if (action === "archive") {
+          expect(getThread(harness.db, fixture.thread.id)).toMatchObject({
+            archivedAt: expect.any(Number),
+            status: "idle",
+          });
+        } else {
+          expect(getThread(harness.db, fixture.thread.id)).toBeNull();
+        }
 
         await reportQueuedCommandSuccess(harness, fixture.startCommand, {
           providerThreadId: "provider-archived-late-start",
         });
 
-        expect(getThread(harness.db, fixture.thread.id)).toMatchObject({
-          archivedAt: expect.any(Number),
-          status: "idle",
-        });
+        if (action === "archive") {
+          expect(getThread(harness.db, fixture.thread.id)).toMatchObject({
+            archivedAt: expect.any(Number),
+            status: "idle",
+          });
+        } else {
+          expect(getThread(harness.db, fixture.thread.id)).toBeNull();
+        }
       });
     },
   );

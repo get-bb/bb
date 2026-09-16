@@ -43,6 +43,42 @@ describe("bb thread fork command output", () => {
     );
   });
 
+  it("accepts a lifecycle owner independently of its fork source", async () => {
+    const thread = fixtures.makeThread({
+      id: "thread-fork-idle",
+      originKind: "fork",
+      projectId: "proj-1",
+      providerId: "codex",
+      sourceThreadId: "thread-source",
+      status: "starting",
+    });
+    const post = vi.fn(async () => thread);
+    stubServerApi({ "v1.threads.fork.$post": post });
+
+    await runCommand(
+      [
+        "thread",
+        "fork",
+        "thread-source",
+        "--lifecycle-owner-thread",
+        "owner-other-project",
+      ],
+      register,
+    );
+
+    expect(post).toHaveBeenCalledWith({
+      json: {
+        sourceThreadId: "thread-source",
+        lifecycleOwnerThreadId: "owner-other-project",
+        origin: "cli",
+        visibility: "visible",
+      },
+    });
+    expect(collectLogLines(vi.mocked(console.log))).toContain(
+      "Thread forked: thread-fork-idle",
+    );
+  });
+
   it("forwards input, seed, fork point, permissions, visibility, and environment", async () => {
     const thread = fixtures.makeThread({
       id: "thread-fork-input",

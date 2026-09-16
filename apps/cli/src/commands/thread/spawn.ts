@@ -53,6 +53,7 @@ interface ThreadSpawnCommandOptions {
   model?: string;
   reasoningLevel?: string;
   title?: string;
+  lifecycleOwnerThread?: string;
   serviceTier?: string;
   permissionMode?: string;
   plan?: boolean;
@@ -308,6 +309,10 @@ export function registerSpawnCommand(
       "Spawn a new thread; omitted execution flags use remembered project defaults, then the target provider catalog default",
     )
     .requiredOption("--prompt <prompt>", "Initial prompt for the thread")
+    .option(
+      "--lifecycle-owner-thread <id>",
+      "Archive/delete this thread with its lifecycle owner",
+    )
     .option("--json", "Print machine-readable JSON output")
     .requiredOption("--project <id>", "Project ID")
     .option(
@@ -563,6 +568,9 @@ export function registerSpawnCommand(
             startedOnBehalfOf: null,
             originKind: opts.originKind ?? null,
             ...(parentThreadId ? { parentThreadId } : {}),
+            ...(opts.lifecycleOwnerThread
+              ? { lifecycleOwnerThreadId: opts.lifecycleOwnerThread }
+              : {}),
             ...(opts.section ? { sectionId: opts.section } : {}),
             ...(opts.sourceThread ? { sourceThreadId: opts.sourceThread } : {}),
             ...(sourceSeqEnd !== undefined ? { sourceSeqEnd } : {}),

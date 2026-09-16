@@ -98,6 +98,16 @@ export function createThreadRecord(
     throw new ApiError(404, "section_not_found", "Section not found");
   }
 
+  if (args.request.lifecycleOwnerThreadId) {
+    const owner = getThread(deps.db, args.request.lifecycleOwnerThreadId);
+    if (!owner || owner.archivedAt !== null || owner.deletedAt !== null) {
+      throw new ApiError(
+        400,
+        "invalid_request",
+        "lifecycleOwnerThreadId must reference a live thread",
+      );
+    }
+  }
   try {
     const thread = createThread(deps.db, deps.hub, {
       projectId: args.request.projectId,
@@ -108,6 +118,7 @@ export function createThreadRecord(
       sectionId,
       parentThreadId: args.request.parentThreadId ?? null,
       sourceThreadId: args.request.sourceThreadId ?? null,
+      lifecycleOwnerThreadId: args.request.lifecycleOwnerThreadId ?? null,
       originKind: args.request.originKind,
       originPluginId: args.request.originPluginId ?? null,
       pluginMetadata: args.request.pluginMetadata,

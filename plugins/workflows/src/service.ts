@@ -900,6 +900,7 @@ export function createWorkflowService(
         throwIfCancelled(signal);
         spawningCalls.add(call.id);
         const child = await bb.sdk.threads.spawn({
+          lifecycleOwnerThreadId: run.originThreadId,
           pluginMetadata: {
             workflowWorker: 1,
             runId: run.id,

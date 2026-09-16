@@ -25,28 +25,39 @@ The core entities and how they relate:
 
 ## Contracts and boundaries
 
-### Thread deletion
+### Thread lifecycle ownership
 
-The thread DELETE route, SDK `threads.delete`, and `bb thread delete` archive
-hidden source-derived fork trees before marking the source deleted or requesting
-its storage removal. This is core ownership policy, including side chats with
-user messages or queued work. Traversal follows hidden `sourceThreadId` forks
-and their `parentThreadId` descendants, including archived intermediaries.
-Visible source-derived forks remain independent. Ordinary children directly
-assigned to the deleted source retain the existing confirmation and deletion
-behavior; deleting their parent does not archive them.
+`lifecycleOwnerThreadId` is an immutable, optional creation relationship independent
+of sidebar `parentThreadId`, fork `sourceThreadId`, visibility and attribution.
+Spawn and fork accept a live owner across projects, hosts and environments. Independent threads omit the field. Side chats assign their source;
+every workflow worker attempt assigns its origin, including replacements.
 
-Archival is persisted before source deletion, blocks queued dispatch, and
-requests runtime stops. A synchronous cleanup failure leaves the source and its
-links available for retry. Daemon reconnect reconciliation retries stops for
-archived workers still reported running, even after the source has been
-physically removed. Fork creation revalidates the source after asynchronous
-setup, immediately before inserting the new thread.
+Owner archival recursively archives dependents and stops execution while retaining
+history under normal archive retention. Owner deletion recursively marks dependents
+for deletion in one database statement. The owner row and ownership foreign keys
+remain until every dependent finishes storage cleanup. The existing daemon command
+stops execution before removing storage; periodic sweeps and reconnect reconciliation
+retry failures. Cleanup uses each dependent's own host. Unarchiving an owner does
+not restore its dependents; restore them explicitly, owner first. Dependents can
+archive/delete independently without archiving/deleting the owner. Deleting an
+owning project also deletes cross-project dependents, while deleting only a
+dependent project leaves its external owner intact. Explicit Stop
+continues to stop only the requested turn/runtime.
 
-Existing source-less hidden forks cannot be assigned to a deleted source from
-`originPluginId` alone. Side-chat retained-fork keys contain no source mapping.
-Recovery requires separate trustworthy evidence; deletion does not infer
-ownership from titles, timestamps, or shared environments.
+Ownership cannot be updated or cleared. Assigning only at creation to an existing
+live thread prevents cycles, self-ownership and reassignment during deletion. The
+server revalidates immediately before insertion, with a database insert guard.
+Deletion and archival persist before cleanup effects. Ordinary sidebar children
+and visible forks keep their existing policies unless ownership is explicit.
+
+Migration 0121 backfills only hidden side-chat forks with explicit plugin attribution
+and workflow workers with structured `workflowWorker`, `runId`, `callId`, and
+`originThreadId` metadata. The owner must exist, belong to the same project and be
+strictly older. Ambiguous records, equal timestamps, missing sources and title-based
+matches remain unowned. Original `client/turn/requested` prompts may support manual
+historical investigation but are never parsed automatically for ownership. The
+migration also propagates existing owner tombstones/archive state. No live records
+are changed by developing or testing this branch.
 
 ### Transport contracts
 

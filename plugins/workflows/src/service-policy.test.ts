@@ -120,7 +120,8 @@ function setup(
           serviceTier: "default",
           source: "default",
         }),
-        spawn: async () => {
+        spawn: async (args) => {
+          expect(args.lifecycleOwnerThreadId).toBe("origin");
           childCount += 1;
           const id = `child-${childCount}`;
           workers.set(id, { status: "active", output: null, deleted: false });
