@@ -343,6 +343,15 @@ now, or when the orphan sweep clears a wait whose plugin is no longer running.
 
 **Audit before stabilizing.**
 
+- **`startedOnBehalfOf` is emitted but untyped.** It left
+  `MessageDispatchHookContext` when `initiator`/`senderThreadId` arrived: it
+  described why a THREAD was started, never who sent the message being decided
+  about. Core still sets it on the context object so a handler built against an
+  older SDK keeps working. Drop the context field before stabilizing, and with
+  it the shim in `dispatch-hooks.ts`. The queued row's `requested_by_initiator`
+  and `requested_by_thread_id` are unaffected: they record the requester a
+  thread-start's author is resolved from, which is internal state rather than a
+  plugin-facing field.
 - **One hook is not a shape.** The registry, the map and the `on(hook, handler)`
   signature are all built for several hooks, and there is one. Confirm the
   second hook fits the shape before stabilizing it — or collapse the argument.

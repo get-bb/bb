@@ -6,13 +6,13 @@ import {
   type Project,
   type PromptInput,
   type Thread,
+  type StartedOnBehalfOf,
+  type ThreadCreateOrigin,
   type ThreadQueuedMessage,
   type ThreadTurnInitiator,
 } from "@bb/domain";
 import type {
   ExecutionInputFieldSource,
-  StartedOnBehalfOf,
-  ThreadCreateOrigin,
   ThreadResponse,
 } from "@bb/server-contract";
 import type {
@@ -282,6 +282,16 @@ export function dispatchInputText(input: readonly PromptInput[]): string {
 }
 
 /**
+ * Fields no longer in `MessageDispatchHookContext` that core still puts on the
+ * object, so a handler compiled against an older SDK keeps reading them.
+ * `startedOnBehalfOf` said why the THREAD was started, never who sent the
+ * message being decided about; `initiator` and `senderThreadId` answer that.
+ */
+interface DroppedFromContractStillEmitted {
+  startedOnBehalfOf: StartedOnBehalfOf | null;
+}
+
+/**
  * The context every handler in a pass sees.
  *
  * Built once and shared: with no amendments, nothing a handler returns can
@@ -296,7 +306,11 @@ function buildHookContext(
     deps,
     request.environmentId,
   );
+  const droppedFromContractStillEmitted: DroppedFromContractStillEmitted = {
+    startedOnBehalfOf: request.startedOnBehalfOf,
+  };
   return {
+    ...droppedFromContractStillEmitted,
     thread: request.threadResponse,
     attempt: request.attempt,
     initiator: request.initiator,
@@ -317,7 +331,6 @@ function buildHookContext(
     executionSources: { ...request.executionSources },
     origin: request.origin,
     originPluginId: request.originPluginId,
-    startedOnBehalfOf: request.startedOnBehalfOf,
     parentThreadId: request.parentThreadId,
     queuedMessage: request.queuedMessage,
     experimental_submission: request.pluginSubmission,

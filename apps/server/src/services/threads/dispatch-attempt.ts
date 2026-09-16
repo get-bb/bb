@@ -18,15 +18,13 @@ import {
   type QueuedMessagePayload,
   type QueuedMessageWaitingOn,
   type ResolvedThreadExecutionOptions,
+  startedOnBehalfOfSchema,
+  type StartedOnBehalfOf,
   type Thread,
+  type ThreadCreateOrigin,
   type ThreadQueuedMessage,
 } from "@bb/domain";
-import type {
-  SendMessageRequest,
-  StartedOnBehalfOf,
-  ThreadCreateOrigin,
-} from "@bb/server-contract";
-import { startedOnBehalfOfSchema } from "@bb/server-contract";
+import type { SendMessageRequest } from "@bb/server-contract";
 import type {
   MessageDispatchHookContext,
   PluginDispatchEnvironmentIntent,
@@ -354,6 +352,9 @@ async function runDispatchAttempt(
     input: payload.input,
     execution,
     senderThreadId,
+    origin: args.origin,
+    originPluginId: args.originPluginId,
+    requestedBy: args.startedOnBehalfOf,
     payload: args.queuePayload,
     systemNotice: null,
   };

@@ -19,6 +19,8 @@ import {
   reasoningLevelSchema,
   rawThreadIdSchema,
   serviceTierSchema,
+  startedOnBehalfOfSchema,
+  threadCreateOriginSchema,
   threadOriginKindSchema,
   threadListEntrySchema,
   threadQueuedMessageSchema,
@@ -57,9 +59,6 @@ export const sendMessageModeSchema = z.enum([
   "steer",
 ]);
 
-export const threadCreateOriginSchema = z.enum(["app", "cli", "sdk", "plugin"]);
-export type ThreadCreateOrigin = z.infer<typeof threadCreateOriginSchema>;
-
 export const executionInputFieldSourceSchema = callerExecutionInputSourceSchema;
 export type ExecutionInputFieldSource = CallerExecutionInputSource;
 
@@ -87,14 +86,6 @@ export const existingThreadExecutionInputSourcesSchema = z
 export type ExistingThreadExecutionInputSources = z.infer<
   typeof existingThreadExecutionInputSourcesSchema
 >;
-
-export const startedOnBehalfOfInitiatorSchema = z.enum(["agent", "system"]);
-
-export const startedOnBehalfOfSchema = z.object({
-  initiator: startedOnBehalfOfInitiatorSchema,
-  senderThreadId: z.string().min(1),
-});
-export type StartedOnBehalfOf = z.infer<typeof startedOnBehalfOfSchema>;
 
 export const createThreadRequestSchema = z
   .object({

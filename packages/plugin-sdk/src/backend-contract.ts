@@ -15,6 +15,7 @@ import type {
   ProviderRateLimitState,
   ReasoningLevel,
   ServiceTier,
+  ThreadCreateOrigin,
   ThreadQueuedMessage,
   ThreadTurnInitiator,
   WorkspaceProvisionType,
@@ -28,8 +29,6 @@ import type {
 } from "@bb/sdk";
 import type {
   ExecutionInputFieldSource,
-  StartedOnBehalfOf,
-  ThreadCreateOrigin,
   ThreadResponse,
   TerminalSession,
 } from "@bb/server-contract";
@@ -668,17 +667,13 @@ export interface MessageDispatchHookContext {
     pluginId: string;
     data: JsonValue;
   } | null;
-  /** How the dispatch was requested; null for internal/core-driven sends. */
+  /**
+   * How the dispatch was requested; null for internal/core-driven sends, which
+   * includes every follow-up, steer and retry. Persisted with the queued row,
+   * so a drained re-attempt reads what its first attempt read.
+   */
   origin: ThreadCreateOrigin | null;
   originPluginId: string | null;
-  /**
-   * Why the THREAD was started, when another thread asked for it — not who
-   * sent this message. Non-null only for a thread whose creation named a
-   * sender, and null on every follow-up, steer, drain and retry, because none
-   * of those starts a thread. Read `initiator`/`senderThreadId` for the
-   * message at hand.
-   */
-  startedOnBehalfOf: StartedOnBehalfOf | null;
   parentThreadId: string | null;
 }
 

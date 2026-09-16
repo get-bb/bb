@@ -128,7 +128,7 @@ bb.experimental_hooks.on("message.dispatch", (ctx) => {
   // ctx.project / ctx.environment / ctx.host / ctx.environmentIntent,
   // ctx.input.blocks + ctx.input.text,
   // ctx.requestedExecution, ctx.executionSources, ctx.origin /
-  // ctx.originPluginId / ctx.startedOnBehalfOf / ctx.parentThreadId,
+  // ctx.originPluginId / ctx.parentThreadId,
   // ctx.initiator ("user" | "agent" | "system") + ctx.senderThreadId,
   // ctx.queuedMessage (the queued row on a re-attempt, else null),
   // ctx.experimental_submission (plugin-owned composer data, else null).
@@ -143,8 +143,17 @@ typed it, `agent` means another thread sent it (and names which), `system`
 means core did (a retry). They are the pair the dispatched turn is recorded
 with and the pair `ctx.queuedMessage` carries, so they do not change between a
 first attempt and its re-attempts — which is what makes them safe to key a
-policy on. `ctx.startedOnBehalfOf` answers a different question, why the
-THREAD was started, and is null on every follow-up, steer, drain and retry.
+policy on.
+
+`ctx.origin` and `ctx.originPluginId` are just as stable: they are stored with
+the queued row, so a message queued by one handler and drained an hour later is
+decided on the surface that requested it, not on null.
+
+`ctx.startedOnBehalfOf` is no longer part of the context type. It answered a
+different question — why the THREAD was started — so it could not identify the
+sender of the message at hand. Core still sets it on the object for handlers
+built against an older SDK; new handlers read `ctx.initiator` and
+`ctx.senderThreadId`.
 
 The context is `MessageDispatchHookContext` (`ctx.attempt` is
 `PluginDispatchAttemptKind`, `ctx.input` is `PluginDispatchInput`,

@@ -223,7 +223,6 @@ export function makeMessageDispatchHookContext(
     experimental_submission: null,
     origin: null,
     originPluginId: null,
-    startedOnBehalfOf: null,
     parentThreadId: null,
     environmentIntent: null,
   };

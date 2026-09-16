@@ -15,7 +15,7 @@ import type {
   HostDaemonContributedEnvEntry,
   HostDaemonInjectedSkillSource,
 } from "@bb/host-daemon-contract";
-import type { StartedOnBehalfOf } from "@bb/server-contract";
+import type { StartedOnBehalfOf } from "@bb/domain";
 import { ApiError } from "../../errors.js";
 import type { LoggedWorkSessionDeps } from "../../types.js";
 import { throwEnvironmentNotReady } from "../lib/lifecycle-api-errors.js";

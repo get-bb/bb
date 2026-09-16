@@ -7,7 +7,11 @@ import {
 } from "@bb/db";
 import type { ThreadQueuedMessage } from "@bb/domain";
 import { createDeferredPromise } from "@bb/test-helpers";
-import type { PluginHookName } from "@get-bb/plugin-sdk";
+import type { StartedOnBehalfOf } from "@bb/domain";
+import type {
+  MessageDispatchHookContext,
+  PluginHookName,
+} from "@get-bb/plugin-sdk";
 import { afterEach, describe, expect, it } from "vitest";
 import { ApiError } from "../../src/errors.js";
 import {
@@ -786,6 +790,171 @@ describe("message.dispatch hook message author", () => {
       // sender must not see it change identity between passes.
       expect(seen).toEqual([
         { initiator: "agent", senderThreadId: sender.id },
+        { initiator: "agent", senderThreadId: sender.id },
+      ]);
+    });
+  });
+
+  it("reports the same author on a drained thread-start as on the first attempt", async () => {
+    await withTestHarness(async (harness) => {
+      const seen = recordAuthors();
+      const { environment, project } = seedDispatchFixture(
+        harness,
+        "host-author-spawn",
+      );
+      const source = seedThread(harness.deps, {
+        environmentId: environment.id,
+        projectId: project.id,
+      });
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: environment.id,
+        providerThreadId: "provider-author-spawn-source",
+        threadId: source.id,
+      });
+      seedTurnStarted(harness.deps, {
+        environmentId: environment.id,
+        threadId: source.id,
+        turnId: "turn-author-spawn-source",
+        providerThreadId: "provider-author-spawn-source",
+      });
+
+      const spawned = await createThreadFromRequest(harness.deps, {
+        environment: {
+          type: "host",
+          hostId: "host-author-spawn",
+          workspace: { type: "unmanaged", path: WORKSPACE_PATH },
+        },
+        input: textInput("spawned work"),
+        origin: "sdk",
+        originKind: "fork",
+        projectId: project.id,
+        providerId: "codex",
+        sourceThreadId: source.id,
+        startedOnBehalfOf: { initiator: "agent", senderThreadId: source.id },
+      });
+      onlyQueuedRow(harness, spawned.id);
+
+      await runQueuedMessageDispatch(harness.deps, { kind: "plugin-recheck" });
+
+      expect(seen).toEqual([
+        { initiator: "agent", senderThreadId: source.id },
+        { initiator: "agent", senderThreadId: source.id },
+      ]);
+    });
+  });
+
+  it("reports the same origin on a drained re-attempt as on the first", async () => {
+    await withTestHarness(async (harness) => {
+      const seen: { origin: string | null; originPluginId: string | null }[] =
+        [];
+      const registry = emptyRegistry();
+      registry["message.dispatch"].push({
+        pluginId: "limiter",
+        handler: (context) => {
+          seen.push({
+            origin: context.origin,
+            originPluginId: context.originPluginId,
+          });
+          return { action: "wait", reason: "held" } as const;
+        },
+      });
+      installHooks(registry);
+      const { host, project } = seedDispatchFixture(
+        harness,
+        "host-origin-drain",
+      );
+
+      const thread = await createThreadFromRequest(harness.deps, {
+        environment: {
+          type: "host",
+          hostId: host.id,
+          workspace: { type: "unmanaged", path: WORKSPACE_PATH },
+        },
+        input: textInput("queued by a plugin"),
+        origin: "plugin",
+        originPluginId: "drafts",
+        projectId: project.id,
+        providerId: "codex",
+        startedOnBehalfOf: null,
+      });
+      onlyQueuedRow(harness, thread.id);
+
+      await runQueuedMessageDispatch(harness.deps, { kind: "plugin-recheck" });
+
+      expect(seen).toEqual([
+        { origin: "plugin", originPluginId: "drafts" },
+        { origin: "plugin", originPluginId: "drafts" },
+      ]);
+    });
+  });
+
+  it("leaves a drained follow-up send with no origin", async () => {
+    await withTestHarness(async (harness) => {
+      const seen: (string | null)[] = [];
+      const registry = emptyRegistry();
+      registry["message.dispatch"].push({
+        pluginId: "limiter",
+        handler: (context) => {
+          seen.push(context.origin);
+          return { action: "wait", reason: "held" } as const;
+        },
+      });
+      installHooks(registry);
+      const { thread } = seedRunnableThread(harness, {
+        hostId: "host-origin-send",
+        status: "idle",
+      });
+
+      await acceptThreadSendRequest(harness.deps, {
+        payload: { input: textInput("a follow-up"), mode: "auto" },
+        thread,
+      });
+      onlyQueuedRow(harness, thread.id);
+
+      await runQueuedMessageDispatch(harness.deps, { kind: "plugin-recheck" });
+
+      expect(seen).toEqual([null, null]);
+    });
+  });
+
+  it("still emits startedOnBehalfOf for a handler built against an older SDK", async () => {
+    await withTestHarness(async (harness) => {
+      const seen: (StartedOnBehalfOf | null)[] = [];
+      const registry = emptyRegistry();
+      registry["message.dispatch"].push({
+        pluginId: "legacy",
+        handler: (context) => {
+          const olderContext = context as MessageDispatchHookContext & {
+            startedOnBehalfOf: StartedOnBehalfOf | null;
+          };
+          seen.push(olderContext.startedOnBehalfOf);
+          return { action: "wait", reason: "held" } as const;
+        },
+      });
+      installHooks(registry);
+      const { environment, project, thread } = seedRunnableThread(harness, {
+        hostId: "host-legacy-behalf",
+        status: "idle",
+      });
+      const sender = seedThread(harness.deps, {
+        environmentId: environment.id,
+        projectId: project.id,
+        status: "active",
+      });
+
+      await attemptDispatch(harness.deps, {
+        thread,
+        payload: { input: textInput("spawned work"), mode: "auto" },
+        source: { kind: "inline" },
+        queuePayload: { kind: "inline" },
+        pluginSubmission: null,
+        origin: "sdk",
+        originPluginId: null,
+        startedOnBehalfOf: { initiator: "agent", senderThreadId: sender.id },
+        trigger: "user",
+      });
+
+      expect(seen).toEqual([
         { initiator: "agent", senderThreadId: sender.id },
       ]);
     });

@@ -13,7 +13,7 @@ import {
   type ThreadTurnInitiator,
   type TurnRequestTarget,
 } from "@bb/domain";
-import type { StartedOnBehalfOf } from "@bb/server-contract";
+import type { StartedOnBehalfOf } from "@bb/domain";
 import type { AppDeps } from "../../types.js";
 import { requestQueuedMessageDispatch } from "./queued-message-dispatch.js";
 import {
