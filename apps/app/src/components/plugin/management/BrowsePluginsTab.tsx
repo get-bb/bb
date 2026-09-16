@@ -73,9 +73,10 @@ export function BrowsePluginsTab({
   const isCategoryShelf = shelfKey?.startsWith("category:") ?? false;
   const query = searchParams.get("query") ?? "";
   const creationViewActive = searchParams.get("view") === "create";
-  const selectedCategories = isCategoryShelf
-    ? []
-    : searchParams.getAll("category");
+  const selectedCategories = useMemo(
+    () => (isCategoryShelf ? [] : searchParams.getAll("category")),
+    [isCategoryShelf, searchParams],
+  );
   const requestedSort = pluginBrowseSort(searchParams.get("sort"));
   const sortDirection =
     pluginBrowseSortDirection(searchParams.get("direction")) ?? "desc";
