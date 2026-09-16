@@ -54,8 +54,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
-import { EmptyState } from "@bb/shared-ui/empty-state";
-import { Icon, type IconName } from "@bb/shared-ui/icon";
+import { Icon } from "@bb/shared-ui/icon";
+import { ThreadListEmptyState } from "@/components/thread/ThreadListEmptyState";
 import {
   SidebarMenuSkeleton,
   SidebarStickyGroup,
@@ -452,24 +452,10 @@ export function formatArchivedEnvironmentThreadsToastTitle({
   return `Archived ${getThreadDisplayTitle(archivedThread)}`;
 }
 
-function getProjectThreadTreeEmptyStateIcon(
-  variant: ProjectThreadTreeVariant,
-): IconName | undefined {
-  if (variant === "section") {
-    return "MessageSquare";
-  }
-
-  return undefined;
-}
-
 function getProjectThreadTreeEmptyStateClassName(
   variant: ProjectThreadTreeVariant,
 ): string {
   return cn("py-0.5", variant === "section" ? "px-2" : "pl-8 pr-2");
-}
-
-function getProjectThreadTreeEmptyStateMessageClassName(): string {
-  return "text-xs leading-4 text-subtle-foreground/60";
 }
 
 function getProjectThreadTreeGroupLineClassName(
@@ -2057,16 +2043,14 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
 
   if (rootItems.length === 0) {
     const emptyState = (
-      <EmptyState
+      <ThreadListEmptyState
         message={
           threadListState.status === "unavailable"
             ? "Threads unavailable"
-            : "No threads"
+            : undefined
         }
-        icon={getProjectThreadTreeEmptyStateIcon(variant)}
+        showIcon={variant === "section"}
         className={getProjectThreadTreeEmptyStateClassName(variant)}
-        iconClassName="size-3.5 text-subtle-foreground/50"
-        messageClassName={getProjectThreadTreeEmptyStateMessageClassName()}
       />
     );
 
@@ -2229,16 +2213,13 @@ export const ChronologicalSectionThreadSections = memo(
       renderedSectionDnd?.dragOverParentKey === CHRONOLOGICAL_CONTAINER_ID &&
       loosePreviewBeforeKey === null;
     const looseEmptyState = (
-      <EmptyState
+      <ThreadListEmptyState
         message={
           threadListState.status === "unavailable"
             ? "Threads unavailable"
-            : "No threads"
+            : undefined
         }
-        icon={getProjectThreadTreeEmptyStateIcon("section")}
         className={getProjectThreadTreeEmptyStateClassName("section")}
-        iconClassName="size-3.5 text-subtle-foreground/50"
-        messageClassName={getProjectThreadTreeEmptyStateMessageClassName()}
       />
     );
     const threadsListContent =
