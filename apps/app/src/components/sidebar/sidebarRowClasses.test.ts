@@ -7,9 +7,9 @@ import {
 } from "./sidebarRowClasses";
 
 describe("sidebar control buttons", () => {
-  it("sizes the icon through a descendant rule that beats the Button base [&_svg]:size-4", () => {
+  it("sizes the icon through a descendant rule that beats the Button base icon-root size", () => {
     expect(SIDEBAR_CONTROL_BUTTON_CLASS).toContain(
-      "max-md:pointer-coarse:[&_svg]:size-5",
+      "max-md:pointer-coarse:[&_[data-icon-root]]:size-5",
     );
   });
 });
