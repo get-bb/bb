@@ -686,3 +686,26 @@ it("binds delayed tool work to the accepted request on consecutive turns", async
     expect(events.indexOf(accepted)).toBeLessThan(events.indexOf(item));
   }
 });
+
+it("does not acknowledge a rejected compaction after an early idle status", async () => {
+  vi.stubEnv("FAKE_CODEX_COMPACTION_MODE", "idle-before-rejection");
+  const providerThreadId = await startSession();
+  harness.sendRequest(2, "turn/start", {
+    threadId: THREAD_ID,
+    providerThreadId,
+    input: createStandaloneBuiltinCompactCommandInput(),
+    clientRequestId: "creq_reject2345",
+    options: { ...FULL_ACCESS_SESSION_OPTIONS },
+  });
+  expect((await harness.waitForResponse(2)).error).toMatchObject({
+    message: "compaction rejected",
+  });
+  expect(
+    threadEvents().filter(
+      (event) =>
+        event.type === "turn/started" ||
+        event.type === "turn/input/accepted" ||
+        event.type === "turn/completed",
+    ),
+  ).toEqual([]);
+});

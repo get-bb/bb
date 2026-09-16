@@ -427,6 +427,11 @@ interface UnopenedDispatch {
   prepared: PreparedProviderCommandDispatch;
 }
 
+interface PendingCompactionDispatch extends UnopenedDispatch {
+  accepted: boolean;
+  outcome: UnopenedDispatchOutcome | null;
+}
+
 type UnopenedDispatchOutcome =
   | { status: "completed" }
   | { status: "failed"; error: { message: string } };
@@ -448,7 +453,7 @@ interface CodexBridgeSession {
   constructionSignature: string;
   openCodexTurnIds: Set<string>;
   responseOpenedTurns: Map<string, ResponseOpenedTurn>;
-  unopenedCompactionDispatches: UnopenedDispatch[];
+  unopenedCompactionDispatches: PendingCompactionDispatch[];
   turnSettledWaiters: Map<string, Array<() => void>>;
   awaitingReplayedUsage: boolean;
   identityAnnounced: boolean;
@@ -865,6 +870,7 @@ function handleChildExit(
   const unopenedCompactions = session.unopenedCompactionDispatches;
   session.unopenedCompactionDispatches = [];
   for (const dispatch of unopenedCompactions) {
+    if (!dispatch.accepted) continue;
     settleUnopenedDispatch(session, dispatch, {
       status: "failed",
       error: { message },
@@ -1463,6 +1469,15 @@ function settleAcceptedDispatch(args: {
 }): void {
   const { clientRequestId, prepared, session, result } = args;
   if (args.compaction) {
+    const dispatch = session.unopenedCompactionDispatches.find(
+      (pending) => pending.clientRequestId === clientRequestId,
+    );
+    if (dispatch !== undefined) {
+      dispatch.accepted = true;
+      if (dispatch.outcome !== null) {
+        settleUnopenedDispatch(session, dispatch, dispatch.outcome);
+      }
+    }
     return;
   }
   const parsed = codexTurnStartResultSchema.safeParse(result);
@@ -1625,7 +1640,12 @@ function awaitCompactionTurn(args: {
   if (!live) {
     return;
   }
-  live.unopenedCompactionDispatches.push({ clientRequestId, prepared });
+  live.unopenedCompactionDispatches.push({
+    clientRequestId,
+    prepared,
+    accepted: false,
+    outcome: null,
+  });
 }
 
 function settleCompactionDispatchesWhenCodexIsNotRunning(
@@ -1647,22 +1667,22 @@ function settleCompactionDispatchesWhenCodexIsNotRunning(
   if (status !== "idle" && status !== "systemError") {
     return;
   }
-  const dispatches = session.unopenedCompactionDispatches;
-  session.unopenedCompactionDispatches = [];
-  for (const dispatch of dispatches) {
-    settleUnopenedDispatch(
-      session,
-      dispatch,
-      status === "idle"
-        ? { status: "completed" }
-        : {
-            status: "failed",
-            error: {
-              message:
-                "codex reported a system error before the compaction turn started",
-            },
+  const outcome: UnopenedDispatchOutcome =
+    status === "idle"
+      ? { status: "completed" }
+      : {
+          status: "failed",
+          error: {
+            message:
+              "codex reported a system error before the compaction turn started",
           },
-    );
+        };
+  for (const dispatch of session.unopenedCompactionDispatches) {
+    if (dispatch.accepted) {
+      settleUnopenedDispatch(session, dispatch, outcome);
+    } else {
+      dispatch.outcome = outcome;
+    }
   }
 }
 

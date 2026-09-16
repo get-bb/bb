@@ -715,6 +715,14 @@ async function handleRequest(message) {
       respond(id, {});
       return;
     case "thread/compact/start":
+      if (COMPACTION_MODE === "idle-before-rejection") {
+        notify("thread/status/changed", {
+          threadId: params.threadId,
+          status: { type: "idle" },
+        });
+        setTimeout(() => respondError(id, -32600, "compaction rejected"), 30);
+        return;
+      }
       if (
         COMPACTION_MODE === "idle-before-response" ||
         COMPACTION_MODE === "error-before-response"
