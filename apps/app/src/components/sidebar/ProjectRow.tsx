@@ -105,7 +105,6 @@ import {
   buildSectionThreadList,
   buildProjectThreadGroups,
   CHRONOLOGICAL_CONTAINER_ID,
-  collectProjectThreadItemNavigationEntries,
   countProjectThreadItemRows,
   getProjectThreadItemDescendants,
   getSidebarDndItemId,
@@ -1105,13 +1104,12 @@ const EnvironmentThreadGroupRow = memo(function EnvironmentThreadGroupRow({
     () => nodes.map((node) => ({ kind: "thread", node })),
     [nodes],
   );
-  const { itemKeys, estimateRows, getNavigationEntries, alwaysMountedKeys } =
-    useWindowedThreadItems({
-      items: nodeItems,
-      collapsedThreadIds,
-      collapsedEnvironmentIds,
-      selectedThreadId,
-    });
+  const { itemKeys, estimateRows, alwaysMountedKeys } = useWindowedThreadItems({
+    items: nodeItems,
+    collapsedThreadIds,
+    collapsedEnvironmentIds,
+    selectedThreadId,
+  });
 
   return (
     <>
@@ -1140,7 +1138,6 @@ const EnvironmentThreadGroupRow = memo(function EnvironmentThreadGroupRow({
             <SidebarWindowedItems
               itemKeys={itemKeys}
               estimateRows={estimateRows}
-              getNavigationEntries={getNavigationEntries}
               alwaysMountedKeys={alwaysMountedKeys}
               renderItem={(index) => {
                 const node = nodes[index];
@@ -1435,13 +1432,12 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
     () => getProjectThreadItemDescendants(section.items),
     [section.items],
   );
-  const { itemKeys, estimateRows, getNavigationEntries, alwaysMountedKeys } =
-    useWindowedThreadItems({
-      items: section.items,
-      collapsedThreadIds,
-      collapsedEnvironmentIds,
-      selectedThreadId,
-    });
+  const { itemKeys, estimateRows, alwaysMountedKeys } = useWindowedThreadItems({
+    items: section.items,
+    collapsedThreadIds,
+    collapsedEnvironmentIds,
+    selectedThreadId,
+  });
 
   const childrenArea = showChildrenArea ? (
     <div
@@ -1458,7 +1454,6 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
           <SidebarWindowedItems
             itemKeys={itemKeys}
             estimateRows={estimateRows}
-            getNavigationEntries={getNavigationEntries}
             alwaysMountedKeys={alwaysMountedKeys}
             renderItem={(index) => {
               const item = section.items[index];
@@ -1699,13 +1694,12 @@ export const ThreadTreeNodeRow = memo(function ThreadTreeNodeRow({
     projectId: rowProjectId,
     threadId: node.thread.id,
   });
-  const { itemKeys, estimateRows, getNavigationEntries, alwaysMountedKeys } =
-    useWindowedThreadItems({
-      items: node.children,
-      collapsedThreadIds,
-      collapsedEnvironmentIds,
-      selectedThreadId,
-    });
+  const { itemKeys, estimateRows, alwaysMountedKeys } = useWindowedThreadItems({
+    items: node.children,
+    collapsedThreadIds,
+    collapsedEnvironmentIds,
+    selectedThreadId,
+  });
   const row = (
     <ThreadRow
       projectId={rowProjectId}
@@ -1732,7 +1726,6 @@ export const ThreadTreeNodeRow = memo(function ThreadTreeNodeRow({
             <SidebarWindowedItems
               itemKeys={itemKeys}
               estimateRows={estimateRows}
-              getNavigationEntries={getNavigationEntries}
               alwaysMountedKeys={alwaysMountedKeys}
               renderItem={(index) => {
                 const item = node.children[index];
@@ -1840,15 +1833,6 @@ function useWindowedThreadItems({
     },
     [items, rowCountContext],
   );
-  const getNavigationEntries = useCallback(
-    (index: number) => {
-      const item = items[index];
-      return item
-        ? collectProjectThreadItemNavigationEntries(item, rowCountContext)
-        : [];
-    },
-    [items, rowCountContext],
-  );
   const alwaysMountedKeys = useMemo(() => {
     if (!selectedThreadId) {
       return undefined;
@@ -1858,7 +1842,7 @@ function useWindowedThreadItems({
     );
     return activeItem ? new Set([getSidebarItemKey(activeItem)]) : undefined;
   }, [items, selectedThreadId]);
-  return { itemKeys, estimateRows, getNavigationEntries, alwaysMountedKeys };
+  return { itemKeys, estimateRows, alwaysMountedKeys };
 }
 
 function SectionThreadTreeItems({
@@ -1880,19 +1864,17 @@ function SectionThreadTreeItems({
   onRenameSection,
   onRemoveSection,
 }: SectionThreadTreeItemsProps) {
-  const { itemKeys, estimateRows, getNavigationEntries, alwaysMountedKeys } =
-    useWindowedThreadItems({
-      items,
-      collapsedThreadIds,
-      collapsedEnvironmentIds,
-      selectedThreadId,
-    });
+  const { itemKeys, estimateRows, alwaysMountedKeys } = useWindowedThreadItems({
+    items,
+    collapsedThreadIds,
+    collapsedEnvironmentIds,
+    selectedThreadId,
+  });
   const rows = (
     <SidebarWindowedItems
       itemKeys={itemKeys}
       focusItemKey={focusItemKey}
       estimateRows={estimateRows}
-      getNavigationEntries={getNavigationEntries}
       alwaysMountedKeys={alwaysMountedKeys}
       renderItem={(index) => {
         const item = items[index];

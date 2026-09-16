@@ -112,10 +112,10 @@ export const booleanLocalStorage = createLocalStorageSyncStorage<boolean>({
   serialize: (value) => String(value),
 });
 
-export function createJsonLocalStorage<T>(
+function createJsonCodec<T>(
   isValue?: StoredValueGuard<T>,
-): SyncStorage<T> {
-  return createLocalStorageSyncStorage<T>({
+): StoredValueCodec<T> {
+  return {
     parse: (storedValue, initialValue) => {
       if (storedValue === null) {
         return initialValue;
@@ -131,7 +131,35 @@ export function createJsonLocalStorage<T>(
       }
     },
     serialize: (value) => JSON.stringify(value),
-  });
+  };
+}
+
+export function createJsonLocalStorage<T>(
+  isValue?: StoredValueGuard<T>,
+): SyncStorage<T> {
+  return createLocalStorageSyncStorage<T>(createJsonCodec(isValue));
+}
+
+export function createJsonSessionStorage<T>(
+  isValue?: StoredValueGuard<T>,
+): SyncStorage<T> {
+  const codec = createJsonCodec(isValue);
+  return {
+    getItem: (key: string, initialValue: T) =>
+      codec.parse(
+        withSessionStorage((storage) => storage.getItem(key), null),
+        initialValue,
+      ),
+    setItem: (key: string, value: T) => {
+      withSessionStorage(
+        (storage) => storage.setItem(key, codec.serialize(value)),
+        undefined,
+      );
+    },
+    removeItem: (key: string) => {
+      withSessionStorage((storage) => storage.removeItem(key), undefined);
+    },
+  };
 }
 
 export function createBooleanPreferenceAtom(

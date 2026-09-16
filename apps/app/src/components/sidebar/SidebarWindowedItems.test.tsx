@@ -54,9 +54,6 @@ function renderList(container?: HTMLElement) {
     <SidebarWindowedItems
       itemKeys={["first", "second", "third"]}
       estimateRows={() => 1}
-      getNavigationEntries={(index) => [
-        { projectId: "proj_test", threadId: `thr_${index}` },
-      ]}
       renderItem={(index) => (
         <span data-testid={`real-item-${index}`}>Real item {index}</span>
       )}
@@ -147,9 +144,6 @@ describe("SidebarWindowedItems", () => {
     expect(
       document.querySelectorAll("[data-sidebar-windowed-item]"),
     ).toHaveLength(3);
-    expect(
-      document.querySelectorAll("[data-sidebar-windowed-nav]"),
-    ).toHaveLength(3);
   });
 
   it("windows rows when the scroll container ref is not attached yet (same-commit mount)", () => {
@@ -161,9 +155,6 @@ describe("SidebarWindowedItems", () => {
     expect(screen.queryByTestId("real-item-0")).toBeNull();
     expect(
       container.querySelectorAll("[data-sidebar-windowed-item]"),
-    ).toHaveLength(3);
-    expect(
-      container.querySelectorAll("[data-sidebar-windowed-nav]"),
     ).toHaveLength(3);
   });
 
@@ -181,9 +172,6 @@ describe("SidebarWindowedItems", () => {
         <SidebarWindowedItems
           itemKeys={["first", "second", "third"]}
           estimateRows={() => 1}
-          getNavigationEntries={(index) => [
-            { projectId: "proj_test", threadId: `thr_${index}` },
-          ]}
           renderItem={(index) => (
             <span data-testid={`real-item-${index}`}>Real item {index}</span>
           )}
@@ -198,9 +186,6 @@ describe("SidebarWindowedItems", () => {
       scroller?.querySelectorAll("[data-sidebar-windowed-item]"),
     ).toHaveLength(3);
     expect(screen.queryByTestId("real-item-0")).toBeNull();
-    expect(
-      document.querySelectorAll("[data-sidebar-windowed-nav]"),
-    ).toHaveLength(3);
   });
 
   it("realizes every row when no scroll container can be found", () => {
@@ -209,9 +194,6 @@ describe("SidebarWindowedItems", () => {
     renderList();
 
     expect(screen.getAllByTestId(/^real-item-/)).toHaveLength(3);
-    expect(
-      document.querySelectorAll("[data-sidebar-windowed-nav]"),
-    ).toHaveLength(0);
   });
 
   it("keeps promote-all for a zero-height container", () => {

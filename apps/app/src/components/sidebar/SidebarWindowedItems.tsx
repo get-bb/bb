@@ -12,11 +12,6 @@ import {
   SIDEBAR_CONTENT_SELECTOR,
   useSidebarContentElementRef,
 } from "@/components/ui/sidebar.js";
-import {
-  encodeSidebarWindowedNavigationEntries,
-  SIDEBAR_WINDOWED_NAV_ATTRIBUTE,
-  type SidebarWindowedNavigationEntry,
-} from "./sidebarThreadShortcuts";
 
 const WINDOW_VIEWPORT_MARGIN_PX = 240;
 const DEFAULT_ROW_HEIGHT_PX = 30;
@@ -31,9 +26,6 @@ interface SidebarWindowedItemsProps {
   focusItemKey?: string;
   estimateRows: (index: number) => number;
   alwaysMountedKeys?: ReadonlySet<string>;
-  getNavigationEntries?: (
-    index: number,
-  ) => readonly SidebarWindowedNavigationEntry[];
   renderItem: (index: number) => ReactNode;
 }
 
@@ -44,7 +36,6 @@ export function SidebarWindowedItems({
   focusItemKey,
   estimateRows,
   alwaysMountedKeys = EMPTY_KEY_SET,
-  getNavigationEntries,
   renderItem,
 }: SidebarWindowedItemsProps) {
   const scrollElementRef = useSidebarContentElementRef();
@@ -250,27 +241,18 @@ export function SidebarWindowedItems({
         const rows = Math.max(1, estimateRowsRef.current(index));
         rowsByKeyRef.current.set(key, rows);
         let placeholderHeight: number | undefined;
-        let navigationValue: string | undefined;
         if (!isRealized) {
           const measured = measuredHeightsRef.current.get(key);
           placeholderHeight =
             measured && measured.rows === rows
               ? measured.height
               : rows * rowHeightRef.current;
-          const entries = getNavigationEntries?.(index);
-          navigationValue =
-            entries && entries.length > 0
-              ? encodeSidebarWindowedNavigationEntries(entries)
-              : undefined;
         }
         return (
           <div
             key={key}
             ref={getWrapperRefCallback(key)}
             data-sidebar-windowed-item=""
-            {...(navigationValue !== undefined
-              ? { [SIDEBAR_WINDOWED_NAV_ATTRIBUTE]: navigationValue }
-              : undefined)}
             style={isRealized ? undefined : { height: placeholderHeight }}
           >
             {isRealized ? renderItem(index) : null}

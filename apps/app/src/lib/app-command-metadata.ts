@@ -55,13 +55,13 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
       ),
       command(
         "thread.previous",
-        "Previous thread",
-        "Open the previous visible sidebar thread.",
+        "Back to previous thread",
+        "Reopen the thread you had open before this one.",
       ),
       command(
         "thread.next",
-        "Next thread",
-        "Open the next visible sidebar thread.",
+        "Forward to next thread",
+        "Return to the thread you went back from.",
       ),
       ...THREAD_JUMP_APP_COMMAND_IDS.map((id, index) =>
         paletteHiddenCommand(

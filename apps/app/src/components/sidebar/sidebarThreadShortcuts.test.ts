@@ -1,10 +1,7 @@
 // @vitest-environment jsdom
 
 import { describe, expect, it } from "vitest";
-import {
-  getSidebarThreadNavigationTargets,
-  getSidebarThreadShortcutTargets,
-} from "./sidebarThreadShortcuts";
+import { getSidebarThreadShortcutTargets } from "./sidebarThreadShortcuts";
 
 function appendShortcutTarget(root: HTMLElement, threadId?: string) {
   const target = document.createElement("a");
@@ -36,36 +33,5 @@ describe("sidebar thread shortcuts", () => {
         threadId: `thr_${index + 1}`,
       })),
     );
-    expect(getSidebarThreadNavigationTargets(root)).toHaveLength(10);
-  });
-
-  it("includes windowed-out placeholder threads in navigation order", () => {
-    const root = document.createElement("aside");
-    appendShortcutTarget(root, "thr_a");
-    const placeholder = document.createElement("div");
-    placeholder.setAttribute(
-      "data-sidebar-windowed-nav",
-      "thr_b:proj_1 thr_c:proj_2",
-    );
-    root.append(placeholder);
-    appendShortcutTarget(root, "thr_d");
-
-    const navigation = getSidebarThreadNavigationTargets(root);
-    expect(
-      navigation.map(({ threadId, projectId, element }) => ({
-        threadId,
-        projectId,
-        mounted: element !== null,
-      })),
-    ).toEqual([
-      { threadId: "thr_a", projectId: null, mounted: true },
-      { threadId: "thr_b", projectId: "proj_1", mounted: false },
-      { threadId: "thr_c", projectId: "proj_2", mounted: false },
-      { threadId: "thr_d", projectId: null, mounted: true },
-    ]);
-
-    expect(
-      getSidebarThreadShortcutTargets(root).map((target) => target.threadId),
-    ).toEqual(["thr_a", "thr_d"]);
   });
 });

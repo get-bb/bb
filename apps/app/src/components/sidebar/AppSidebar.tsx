@@ -24,25 +24,22 @@ import { SidebarUpdatesBadge } from "./SidebarUpdatesBadge";
 import { SidebarResizeHandle, SidebarTopReserveRow } from "./SidebarChrome";
 import { SIDEBAR_FOOTER_ACTION_CLASS } from "./sidebarRowClasses";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
-import { getRootComposeRoutePath, getThreadRoutePath } from "@/lib/route-paths";
+import { getRootComposeRoutePath } from "@/lib/route-paths";
 import { usePaneContentSplitDrag } from "./usePaneContentSplitDrag";
 import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
 import {
   EMPTY_SIDEBAR_THREAD_SHORTCUT_KEYS,
-  getSidebarThreadNavigationTargets,
   getSidebarThreadShortcutTargets,
   SidebarThreadShortcutKeysContext,
   type SidebarThreadShortcutPresentation,
   type SidebarThreadShortcutTarget,
 } from "./sidebarThreadShortcuts";
 import {
-  useAppCommandHandler,
   useAppCommandShortcut,
   useAppCommandShortcuts,
   useIsAppCommandModifierHeld,
   useIndexedAppCommandHandlers,
 } from "@/components/commands/AppCommandProvider";
-import { useRouteState } from "@/hooks/useRouteState";
 import { SidebarNavigationRegion } from "./SidebarNavigationRegion";
 
 const NEW_THREAD_PANE_CONTENT = { kind: "new-thread" } as const;
@@ -64,7 +61,6 @@ export function AppSidebar({
 }: AppSidebarProps) {
   const quickCreateProject = useQuickCreateProjectController();
   const threadListReplacement = useThreadListReplacement();
-  const { threadId: activeThreadId } = useRouteState();
   const navigate = useNavigate();
   const newThreadSplit = usePaneContentSplitDrag({
     content: NEW_THREAD_PANE_CONTENT,
@@ -121,42 +117,10 @@ export function AppSidebar({
     const target =
       targets[index] ??
       getSidebarThreadShortcutTargets(sidebarRef.current)[index];
-    if (!target?.element) return false;
+    if (!target) return false;
     target.element.click();
     return true;
   }, []);
-
-  const activateAdjacentThread = useCallback(
-    (offset: -1 | 1): boolean => {
-      const targets = getSidebarThreadNavigationTargets(sidebarRef.current);
-      if (targets.length === 0) return false;
-      const activeIndex = targets.findIndex(
-        (target) => target.threadId === activeThreadId,
-      );
-      const nextIndex =
-        activeIndex === -1
-          ? offset === 1
-            ? 0
-            : targets.length - 1
-          : (activeIndex + offset + targets.length) % targets.length;
-      const target = targets[nextIndex];
-      if (!target) return false;
-      if (target.element) {
-        target.element.click();
-        return true;
-      }
-      if (!target.projectId) return false;
-      closeOnMobile();
-      void navigate(
-        getThreadRoutePath({
-          projectId: target.projectId,
-          threadId: target.threadId,
-        }),
-      );
-      return true;
-    },
-    [activeThreadId, closeOnMobile, navigate],
-  );
 
   const isHiddenHostedBody = mobileHosted?.hidden === true;
   const isCompactCustomizeModeActive =
@@ -174,12 +138,6 @@ export function AppSidebar({
   useIndexedAppCommandHandlers(
     THREAD_JUMP_APP_COMMAND_IDS,
     activateVisibleThreadShortcut,
-  );
-  useAppCommandHandler("thread.previous", () =>
-    isHiddenHostedBody ? false : activateAdjacentThread(-1),
-  );
-  useAppCommandHandler("thread.next", () =>
-    isHiddenHostedBody ? false : activateAdjacentThread(1),
   );
 
   useEffect(() => {

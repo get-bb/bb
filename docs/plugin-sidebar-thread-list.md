@@ -486,9 +486,9 @@ bb's thread shortcuts already work by DOM query, not by React state.
 `[data-sidebar-thread-shortcut-target]` elements and reads
 `dataset.sidebarThreadId`.
 
-So a plugin gets bb's surface-specific numbered thread shortcuts,
-`thread.next`, and `thread.previous` by putting two attributes on each row's
-anchor:
+So a plugin gets bb's surface-specific numbered thread shortcuts by putting
+two attributes on each row's anchor. `thread.previous` and `thread.next` step
+through the window's history of opened threads and need nothing from the list:
 
 ```tsx
 <a
