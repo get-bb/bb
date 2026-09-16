@@ -229,23 +229,23 @@ describe("telemetry service", () => {
           body: JSON.stringify(settings),
         });
       telemetry.capture({ name: "app_started" });
-      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock).toHaveBeenCalledTimes(0);
       expect(
-        (await put({ ...defaultAppSettings, telemetryEnabled: false })).status,
+        (await put({ ...defaultAppSettings, telemetryEnabled: true })).status,
       ).toBe(200);
       telemetry.capture({ name: "app_started" });
       expect(fetchMock).toHaveBeenCalledTimes(1);
-      expect((await put({ telemetryEnabled: true })).status).toBe(400);
-      telemetry.capture({ name: "app_started" });
-      expect(fetchMock).toHaveBeenCalledTimes(1);
-      const { telemetryEnabled, ...legacy } = defaultAppSettings;
-      expect(telemetryEnabled).toBe(true);
-      expect((await put(legacy)).status).toBe(200);
-      telemetry.capture({ name: "app_started" });
-      expect(fetchMock).toHaveBeenCalledTimes(1);
-      expect((await put(defaultAppSettings)).status).toBe(200);
+      expect((await put({ telemetryEnabled: false })).status).toBe(400);
       telemetry.capture({ name: "app_started" });
       expect(fetchMock).toHaveBeenCalledTimes(2);
+      const { telemetryEnabled, ...legacy } = defaultAppSettings;
+      expect(telemetryEnabled).toBe(false);
+      expect((await put(legacy)).status).toBe(200);
+      telemetry.capture({ name: "app_started" });
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      expect((await put(defaultAppSettings)).status).toBe(200);
+      telemetry.capture({ name: "app_started" });
+      expect(fetchMock).toHaveBeenCalledTimes(3);
     });
   });
 

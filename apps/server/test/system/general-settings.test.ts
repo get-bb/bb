@@ -134,7 +134,7 @@ it("accepts old SDK payloads and round-trips edits through either setting name",
   });
 });
 
-it("preserves telemetry opt-out when older clients update other settings", async () => {
+it("preserves telemetry opt-in when older clients update other settings", async () => {
   await withTestHarness(async (harness) => {
     const put = (settings: object) =>
       harness.app.request("/api/v1/settings/general", {
@@ -143,9 +143,9 @@ it("preserves telemetry opt-out when older clients update other settings", async
         body: JSON.stringify(settings),
       });
     expect(
-      (await put({ ...defaultAppSettings, telemetryEnabled: false })).status,
+      (await put({ ...defaultAppSettings, telemetryEnabled: true })).status,
     ).toBe(200);
-    expect(getAppSettings(harness.db).telemetryEnabled).toBe(false);
+    expect(getAppSettings(harness.db).telemetryEnabled).toBe(true);
     const { telemetryEnabled, ...legacy } = defaultAppSettings;
     expect(telemetryEnabled).toBe(false);
     expect((await put({ ...legacy, showKeyboardHints: false })).status).toBe(
@@ -154,7 +154,7 @@ it("preserves telemetry opt-out when older clients update other settings", async
     const config = systemConfigResponseSchema.parse(
       await readJson(await harness.app.request("/api/v1/system/config")),
     );
-    expect(config.generalSettings.telemetryEnabled).toBe(false);
+    expect(config.generalSettings.telemetryEnabled).toBe(true);
     expect(config.generalSettings.showKeyboardHints).toBe(false);
   });
 });
