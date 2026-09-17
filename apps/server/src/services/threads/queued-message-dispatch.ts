@@ -33,7 +33,7 @@ import {
 } from "./queued-messages.js";
 
 export interface QueueWaitPluginDirectory {
-  isPluginLoadedOrPending(pluginId: string): boolean;
+  isPluginExpectedToRun(pluginId: string): boolean;
 }
 
 export type QueuedMessageDispatchWake =
@@ -468,7 +468,7 @@ async function runOrphanedPluginWaitRecovery(
     const pluginId = row.waitHolder.slice(
       QUEUED_MESSAGE_PLUGIN_WAIT_HOLDER_PREFIX.length,
     );
-    if (plugins.isPluginLoadedOrPending(pluginId)) continue;
+    if (plugins.isPluginExpectedToRun(pluginId)) continue;
     deps.logger.info(
       { queuedMessageId: row.id, pluginId, threadId: row.threadId },
       "Clearing a queue wait: its holding plugin is not going to run",

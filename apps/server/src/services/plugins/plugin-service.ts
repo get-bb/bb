@@ -274,17 +274,20 @@ export interface PluginService {
   ): Promise<InstalledPlugin | undefined>;
   reload(id?: string): Promise<PluginReloadOutcome>;
   getApi(id: string): BbPluginApi | undefined;
-  /** Whether this plugin's runtime is live right now. */
-  isPluginLoaded(id: string): boolean;
   /**
-   * Whether a `plugin:<id>` wait still has an owner — the plugin is loaded, or
-   * it is installed, enabled and the loader has not reached it yet. Core clears
-   * a wait whose owner is gone rather than stranding the user's turn, and asks
-   * this instead of {@link isPluginLoaded} because nothing is loaded while the
-   * server boots: a plugin still queued behind `start()` has to count as
-   * present, or its holds are released seconds before it can restate them.
+   * Whether this server still means to run this plugin, which is what decides
+   * a `plugin:<id>` queue wait's fate: core clears a wait whose owner is gone
+   * rather than stranding the user's turn.
+   *
+   * Loaded is the obvious case and not the only one. A plugin the current load
+   * pass has not reached yet counts, because nothing is loaded while the server
+   * boots and holds released then are released seconds before their plugin
+   * could restate them. So does one paused for a server move, which resumes on
+   * rollback or on the target. Everything else — uninstalled, disabled, failed,
+   * incompatible, or never reached by a pass that has since ended — does not,
+   * and its waits clear.
    */
-  isPluginLoadedOrPending(id: string): boolean;
+  isPluginExpectedToRun(id: string): boolean;
   /**
    * On-disk asset backing GET /plugins/:id/assets/app.{js,css}: file path
    * plus the current content hash (the route compares ?h against it for
@@ -559,6 +562,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
   const HTTP_TOKEN_FILE = ".http-token";
   let schedulesPaused = false;
+  let loadPassActive = false;
   const suspendedPluginIds = new Set<string>();
 
   const {
@@ -1309,17 +1313,22 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
     async start(options) {
       setLoadHold(options?.hold ?? null);
-      await backfillNormalizedPluginRegistrations();
-      await withPluginOperationLock(REGISTRATION_MUTATION_KEY, async () => {
-        for (const artifact of listPendingGitPluginArtifacts(deps.db)) {
-          await withArtifactLock(artifact.path, () =>
-            recoverInterruptedGitPluginPromotion(artifact.path),
-          );
-        }
-        await recoverIncompletePluginRollbacks();
-      });
-      await reconcileBundled();
-      await loadAll();
+      loadPassActive = true;
+      try {
+        await backfillNormalizedPluginRegistrations();
+        await withPluginOperationLock(REGISTRATION_MUTATION_KEY, async () => {
+          for (const artifact of listPendingGitPluginArtifacts(deps.db)) {
+            await withArtifactLock(artifact.path, () =>
+              recoverInterruptedGitPluginPromotion(artifact.path),
+            );
+          }
+          await recoverIncompletePluginRollbacks();
+        });
+        await reconcileBundled();
+        await loadAll();
+      } finally {
+        loadPassActive = false;
+      }
       await withPluginOperationLock(REGISTRATION_MUTATION_KEY, runArtifactGc);
       if (deps.watchBuiltinPluginSources) {
         for (const bundled of bundledPlugins) {
@@ -1611,12 +1620,9 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       return loaded.get(id)?.handle.api;
     },
 
-    isPluginLoaded(id) {
-      return loaded.has(id);
-    },
-
-    isPluginLoadedOrPending(id) {
-      if (loaded.has(id)) return true;
+    isPluginExpectedToRun(id) {
+      if (loaded.has(id) || suspendedPluginIds.has(id)) return true;
+      if (!loadPassActive) return false;
       const row = getInstalledPlugin(deps.db, id);
       return row !== undefined && getStatus(row).status === "starting";
     },

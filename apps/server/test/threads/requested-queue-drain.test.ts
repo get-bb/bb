@@ -816,7 +816,7 @@ describe("queue recovery", () => {
       await runQueuedMessageDispatch(harness.deps, {
         kind: "orphaned-plugin-recovery",
         plugins: {
-          isPluginLoadedOrPending: (pluginId) => pluginId !== "missing",
+          isPluginExpectedToRun: (pluginId) => pluginId !== "missing",
         },
       });
 
