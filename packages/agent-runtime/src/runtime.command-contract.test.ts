@@ -837,4 +837,25 @@ describe("createAgentRuntime command contracts", () => {
 
     await runtime.shutdown();
   });
+  it("returns no thread commands when the bridge does not advertise them", async () => {
+    const { record, runtime } = createContractRuntime();
+
+    try {
+      await runtime.startThread({
+        environmentId: "env-1",
+        threadId: "t1",
+        projectId: "p1",
+        providerId: "fake",
+        options: fullRuntimeOptions,
+      });
+      await expect(runtime.listThreadCommands({ threadId: "t1" })).resolves.toEqual({
+        commands: [],
+      });
+      expect(
+        record.read().some((entry) => entry.method === "thread/commands"),
+      ).toBe(false);
+    } finally {
+      await runtime.shutdown();
+    }
+  });
 });

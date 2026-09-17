@@ -15,6 +15,7 @@ const hostCommandWakePolicy = {
   "thread.storage.delete": "never",
   "thread.goal.clear": "never",
   "thread.plan.cancel": "never",
+  "thread.commands": "never",
   "thread.rename": "never",
   "thread.archive": "never",
   "thread.unarchive": "never",

@@ -216,6 +216,7 @@ function createFakeRuntime(): AgentRuntime {
     stopThread: vi.fn(async () => ({ providerCheckpointId: null })),
     clearThreadGoal: vi.fn(async () => ({ cleared: true })),
     renameThread: vi.fn(async () => undefined),
+    listThreadCommands: vi.fn(async () => ({ commands: [] })),
     archiveThread: vi.fn(async () => undefined),
     unarchiveThread: vi.fn(async () => undefined),
     listModels: vi.fn(async () => ({ models: [], selectedOnlyModels: [] })),

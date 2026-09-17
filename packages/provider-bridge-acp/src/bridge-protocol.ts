@@ -94,7 +94,26 @@ export const acpBridgeCommandSchema = z.discriminatedUnion("method", [
     method: z.literal("skills/configure"),
     params: skillsConfigureParamsSchema,
   }),
+  z.object({
+    method: z.literal("thread/commands"),
+    params: canonicalThreadDiscardParamsSchema,
+  }),
 ]);
+
+export const acpThreadCommandsResultSchema = z
+  .object({
+    commands: z.array(
+      z.object({
+        name: z.string(),
+        description: z.string().nullable(),
+        argumentHint: z.string().nullable(),
+      }),
+    ),
+  })
+  .passthrough();
+export type AcpThreadCommandsResult = z.infer<
+  typeof acpThreadCommandsResultSchema
+>;
 
 export const acpBridgeCommandMethodValues = acpBridgeCommandSchema.options.map(
   (option) => option.shape.method.value,

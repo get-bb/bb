@@ -19,6 +19,7 @@ export const BRIDGE_REQUEST_METHODS = {
   threadFork: "thread/fork",
   threadStop: "thread/stop",
   threadDiscard: "thread/discard",
+  threadCommands: "thread/commands",
   threadNameSet: "thread/name/set",
   threadArchive: "thread/archive",
   threadUnarchive: "thread/unarchive",
@@ -84,6 +85,20 @@ export const threadArchiveParamsSchema = threadRefParams;
 export const threadUnarchiveParamsSchema = threadRefParams;
 export const threadGoalClearParamsSchema = threadRefParams;
 
+export const threadCommandsParamsSchema = threadRefParams;
+
+export const threadCommandSchema = z.object({
+  name: z.string(),
+  description: z.string().nullable(),
+  argumentHint: z.string().nullable(),
+});
+export type ThreadCommand = z.infer<typeof threadCommandSchema>;
+
+export const threadCommandsResultSchema = z
+  .object({
+    commands: z.array(threadCommandSchema),
+  })
+  .passthrough();
 export const threadNameSetParamsSchema = z
   .object({
     threadId: z.string().min(1),

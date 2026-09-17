@@ -559,10 +559,38 @@ async function handlePrompt(message) {
     notifyUpdate(
       messageChunk(`mcp-server-config:${JSON.stringify(currentMcpServers)}`),
     );
+  } else if (text.includes("advertise-commands-empty")) {
+    notifyUpdate({ sessionUpdate: "available_commands_update", availableCommands: [] });
+    notifyUpdate(messageChunk(`echo:${text}`));
+  } else if (text.includes("advertise-commands-malformed")) {
+    notifyUpdate({
+      sessionUpdate: "available_commands_update",
+      availableCommands: [
+        { name: "good", description: "Well formed" },
+        { description: "Missing name" },
+        { name: "" },
+        { name: "has space" },
+        42,
+        { name: "/slashy", description: "Leading slash", inputHint: "<target>" },
+      ],
+    });
+    notifyUpdate(messageChunk(`echo:${text}`));
+  } else if (text.includes("advertise-commands")) {
+    notifyUpdate({
+      sessionUpdate: "available_commands_update",
+      availableCommands: [
+        {
+          name: "ui-check",
+          description: "Run UI verification checks",
+          inputHint: "<fixture>",
+        },
+        { name: "jobs", description: "List background jobs" },
+      ],
+    });
+    notifyUpdate(messageChunk(`echo:${text}`));
   } else {
     notifyUpdate(messageChunk(`echo:${text}`));
   }
-
   if (activePromptId === message.id) {
     activePromptId = null;
     const stopReason =

@@ -65,6 +65,7 @@ export function useComposerTypeahead({
     activeTrigger: commandState.trigger,
     promptActions,
     environmentId,
+    threadId: commandScope === "thread" ? currentThreadId : null,
     query: commandState.query,
     composerFocused: hasComposerFocused,
   });

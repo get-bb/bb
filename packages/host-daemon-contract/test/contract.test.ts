@@ -299,6 +299,17 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       },
     ],
   },
+  "thread.commands": {
+    commands: [
+      {
+        name: "ui-check",
+        source: "command",
+        origin: "project",
+        description: "Run UI verification checks",
+        argumentHint: "<fixture>",
+      },
+    ],
+  },
   "host.list_skills": {
     skills: [
       {
@@ -1066,7 +1077,7 @@ const CONTRIBUTED_ENV = [
 
 describe("host-daemon command schemas", () => {
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(213);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(214);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 

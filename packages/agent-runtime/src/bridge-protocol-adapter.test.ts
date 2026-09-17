@@ -136,6 +136,24 @@ describe("handshake gating", () => {
       }),
     ).toMatchObject({ kind: "noop" });
   });
+  it("gates thread/commands on the handshake advertisement", () => {
+    const adapter = makeAdapter();
+    const command = {
+      type: "thread/commands",
+      threadId: "thr_1",
+      providerThreadId: "p_1",
+    } as const;
+    expect(adapter.buildCommandPlan(command)).toMatchObject({ kind: "noop" });
+
+    completeHandshake(adapter, { threadCommands: true });
+
+    expect(adapter.buildCommandPlan(command)).toEqual({
+      kind: "request",
+      method: "thread/commands",
+      params: { threadId: "thr_1", providerThreadId: "p_1" },
+    });
+  });
+
 
   it("moves approval policy ownership per the handshake", () => {
     const adapter = makeAdapter();

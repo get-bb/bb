@@ -91,6 +91,7 @@ import {
 } from "./provider-maintenance.js";
 import {
   type AcpConfigOption,
+  acpAvailableCommandsUpdateSchema,
   acpConfigStateResultSchema,
   acpPromptResultSchema,
   acpReadTextFileParamsSchema,
@@ -158,6 +159,43 @@ interface AcpPendingTurnInput {
   input: PromptInput[];
   requestId: AcpBridgeRequestId | null;
 }
+interface AcpAdvertisedCommand {
+  name: string;
+  description: string | null;
+  argumentHint: string | null;
+}
+
+const MAX_ACP_ADVERTISED_COMMANDS = 200;
+
+function normalizeAdvertisedCommands(update: unknown): AcpAdvertisedCommand[] | undefined {
+  const parsed = acpAvailableCommandsUpdateSchema.safeParse(update);
+  if (!parsed.success) {
+    return undefined;
+  }
+  const commands: AcpAdvertisedCommand[] = [];
+  for (const entry of parsed.data.availableCommands) {
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+      continue;
+    }
+    const record = entry as Record<string, unknown>;
+    if (typeof record["name"] !== "string") {
+      continue;
+    }
+    const name = record["name"].replace(/^\/+/, "");
+    if (name === "" || /[\s/]/.test(name)) {
+      continue;
+    }
+    const description =
+      typeof record["description"] === "string" ? record["description"] : null;
+    const argumentHint =
+      typeof record["inputHint"] === "string" ? record["inputHint"] : null;
+    commands.push({ name, description, argumentHint });
+    if (commands.length >= MAX_ACP_ADVERTISED_COMMANDS) {
+      break;
+    }
+  }
+  return commands;
+}
 
 interface AcpThreadSession {
   bbThreadId: string;
@@ -185,6 +223,7 @@ interface AcpThreadSession {
   pendingToolCalls: Set<AbortController>;
   cursorMcpApproval: CursorMcpApproval | undefined;
   deferStartEmit: AcpDeferredStartEmitter | undefined;
+  availableCommands: AcpAdvertisedCommand[];
 }
 
 type AcpDeferredStartEmitter = (
@@ -1725,6 +1764,7 @@ async function startAgentSession(
     pendingToolCalls: new Set(),
     cursorMcpApproval: undefined,
     deferStartEmit: emitStartNotification,
+    availableCommands: [],
   };
   sessionsByBbThreadId.set(bbThreadId, session);
 
@@ -2229,13 +2269,24 @@ function handleAgentNotification(
     threadId: session.bbThreadId,
     update: parsed.data.update,
   };
+  const storeAdvertisedCommands = (): void => {
+    if (parsed.data.update.sessionUpdate !== "available_commands_update") {
+      return;
+    }
+    const advertised = normalizeAdvertisedCommands(parsed.data.update);
+    if (advertised !== undefined) {
+      session.availableCommands = advertised;
+    }
+  };
   if (session.providerThreadId === "") {
+    storeAdvertisedCommands();
     session.deferStartEmit?.(ACP_UPDATE_METHOD, update, parsed.data.sessionId);
     return;
   }
   if (parsed.data.sessionId !== session.providerThreadId) {
     return;
   }
+  storeAdvertisedCommands();
   if (session.activePromptKind === "compaction") {
     const chunk = acpAgentMessageChunkUpdateSchema.safeParse(
       parsed.data.update,
@@ -2436,6 +2487,7 @@ async function handleRequest(
           threadArchive: false,
           threadRename: false,
           threadGoalClear: false,
+          threadCommands: true,
           fork: "tip",
           approvalEnforcedBy: "runtime",
           grammarVersions: [THREAD_DELTA_GRAMMAR_V3, THREAD_DELTA_GRAMMAR_V3],
@@ -2649,6 +2701,26 @@ async function handleRequest(
       sendResult(request.id, { ok: true });
       return;
 
+    case "thread/commands": {
+      const session = sessionsByBbThreadId.get(request.params.threadId);
+      if (
+        session === undefined ||
+        session.stopping ||
+        session.providerThreadId === "" ||
+        request.params.providerThreadId !== session.providerThreadId
+      ) {
+        sendResult(request.id, { commands: [] });
+        return;
+      }
+      sendResult(request.id, {
+        commands: session.availableCommands.map((command) => ({
+          name: command.name,
+          description: command.description,
+          argumentHint: command.argumentHint,
+        })),
+      });
+      return;
+    }
     case "skills/configure":
       configuredSkillRoots = request.params.roots.map((root) => ({
         id: root.id,

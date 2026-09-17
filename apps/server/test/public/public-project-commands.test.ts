@@ -23,6 +23,7 @@ import {
   seedHostSession,
   seedPrimaryHost,
   seedProjectWithSource,
+  seedThread,
 } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
 import type { PluginProviderDeclaration } from "@get-bb/plugin-sdk";
@@ -61,7 +62,9 @@ function resolvingProvider(id: string): {
 
 interface CommandRpcStub {
   commands: HostProviderCommand[];
+  threadCommands: HostProviderCommand[];
   requests: HostDaemonOnlineRpcRequestMessage[];
+  threadCommandsRequests: HostDaemonOnlineRpcRequestMessage[];
   skillRequests: HostDaemonOnlineRpcRequestMessage[];
   resolveRequests: HostDaemonOnlineRpcRequestMessage[];
 }
@@ -70,6 +73,7 @@ interface RegisterCommandRpcArgs {
   hostId: string;
   sessionId: string;
   commands: HostProviderCommand[];
+  threadCommands?: HostProviderCommand[];
   skills?: DiscoveredSkill[];
   resolved?: ExperimentalNativeRootsResolveAnswer;
   resolveDelayMs?: number;
@@ -81,7 +85,9 @@ function registerCommandRpc(
 ): CommandRpcStub {
   const stub: CommandRpcStub = {
     commands: args.commands,
+    threadCommands: args.threadCommands ?? [],
     requests: [],
+    threadCommandsRequests: [],
     skillRequests: [],
     resolveRequests: [],
   };
@@ -111,6 +117,10 @@ function registerCommandRpc(
       if (request.command.type === "host.list_commands") {
         stub.requests.push(request);
         return { ok: true, result: { commands: stub.commands } };
+      }
+      if (request.command.type === "thread.commands") {
+        stub.threadCommandsRequests.push(request);
+        return { ok: true, result: { commands: stub.threadCommands } };
       }
       if (request.command.type === "host.list_skills") {
         stub.skillRequests.push(request);
@@ -214,6 +224,61 @@ describe("public project command typeahead route", () => {
       },
     );
   });
+  it("merges live thread commands for the requesting thread", async () => {
+    await withTestHarness({}, async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-thread-commands",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/thread-commands",
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/thread-commands",
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        providerId: "pi",
+      });
+      const stub = registerCommandRpc(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        commands: [],
+        threadCommands: [
+          {
+            name: "ui-check",
+            source: "command",
+            origin: "project",
+            description: "Run UI verification checks",
+            argumentHint: "<fixture>",
+          },
+        ],
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/projects/${project.id}/commands?provider=pi&threadId=${thread.id}`,
+      );
+
+      expect(response.status).toBe(200);
+      const body = commandListResponseSchema.parse(await readJson(response));
+      expect(body.commands).toContainEqual({
+        name: "ui-check",
+        source: "command",
+        origin: "project",
+        description: "Run UI verification checks",
+        argumentHint: "<fixture>",
+      });
+      expect(stub.threadCommandsRequests[0]?.command).toEqual({
+        type: "thread.commands",
+        environmentId: environment.id,
+        threadId: thread.id,
+      });
+    });
+  });
+
 
   it("passes a provider's declared native skill roots to the target host", async () => {
     await withTestHarness(

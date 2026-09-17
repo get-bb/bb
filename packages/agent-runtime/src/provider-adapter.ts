@@ -109,6 +109,11 @@ export type AdapterCommand =
       providerThreadId: string;
     }
   | {
+      type: "thread/commands";
+      threadId: string;
+      providerThreadId: string;
+    }
+  | {
       type: "thread/goal/clear";
       threadId: string;
       providerThreadId: string;

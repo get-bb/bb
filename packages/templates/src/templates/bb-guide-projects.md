@@ -43,6 +43,7 @@ Discovery:
     --machine <id-or-name>                Target project source machine
     --host <id-or-name>                   Alias for --machine
     --environment <id>                    Target environment workspace
+    --thread <id>                       Include live thread commands
 
   The machine/host and environment selectors are mutually exclusive. An
   environment selects its owning machine and workspace; otherwise an explicit

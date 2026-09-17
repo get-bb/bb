@@ -39,6 +39,7 @@ import {
   type ProjectWithThreadsResponse,
   type PublicApiSchema,
 } from "@bb/server-contract";
+import type { HostProviderCommand } from "@bb/host-daemon-contract";
 import type { Hono } from "hono";
 import type { AppDeps } from "../types.js";
 import { COMMAND_TIMEOUT_MS } from "../constants.js";
@@ -50,9 +51,11 @@ import {
 } from "../services/projects/attachments.js";
 import {
   requireNonDestroyedHostWithStatus,
+  requireEnvironment,
   requireProject,
   requirePublicProject,
   requirePublicStandardProject,
+  requirePublicThread,
 } from "../services/lib/entity-lookup.js";
 import { PROMPT_HISTORY_ENTRY_LIMIT } from "@bb/domain";
 import { toThreadListEntryResponses } from "../services/threads/thread-runtime-display.js";
@@ -747,6 +750,34 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
       environmentId: query.environmentId,
       hostId: query.hostId,
     });
+    const listAdvertisedCommands = async (): Promise<HostProviderCommand[]> => {
+      if (query.threadId === undefined) {
+        return [];
+      }
+      try {
+        const thread = requirePublicThread(deps.db, query.threadId);
+        if (
+          thread.projectId !== projectId ||
+          thread.providerId !== query.provider ||
+          thread.environmentId === null
+        ) {
+          return [];
+        }
+        const environment = requireEnvironment(deps.db, thread.environmentId);
+        const result = await callHostRetryableOnlineRpc(deps, {
+          hostId: environment.hostId,
+          timeoutMs: COMMAND_TIMEOUT_MS,
+          command: {
+            type: "thread.commands",
+            environmentId: environment.id,
+            threadId: thread.id,
+          },
+        });
+        return result.commands;
+      } catch {
+        return [];
+      }
+    };
     const listProviderCommands = async () => {
       if (!providerHasNativeRootSurface(registration)) {
         return { commands: [] };
@@ -758,8 +789,10 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
         cwd: workspace.cwd,
       });
     };
-    const [result, projectSkillSources, sharedSkills] = await Promise.all([
-      listProviderCommands(),
+    const [result, advertisedCommands, projectSkillSources, sharedSkills] =
+      await Promise.all([
+        listProviderCommands(),
+        listAdvertisedCommands(),
       workspace.cwd === null
         ? Promise.resolve([])
         : resolveWorkspaceProjectSkills(deps, {
@@ -778,6 +811,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     return context.json(
       buildCommandListResponse({
         commands: result.commands,
+        advertisedCommands,
         includeBuiltinCompact: deps.providerRegistry.supportsManualCompaction(
           query.provider,
         ),

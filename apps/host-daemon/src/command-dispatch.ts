@@ -649,6 +649,27 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
   },
   "host.list_commands": listHostCommands,
   "host.list_skills": listHostSkills,
+  "thread.commands": async (command, options) => {
+    const owners = options.runtimeManager.listThreadOwnerEntries(
+      command.threadId,
+    );
+    const owner = owners[0];
+    if (!owner) {
+      return { commands: [] };
+    }
+    const result = await owner.runtime.listThreadCommands({
+      threadId: command.threadId,
+    });
+    return {
+      commands: result.commands.map((entry) => ({
+        name: entry.name,
+        source: "command" as const,
+        origin: "project" as const,
+        description: entry.description,
+        argumentHint: entry.argumentHint,
+      })),
+    };
+  },
   "host.delete_skill": deleteHostSkill,
   "host.write_skill": writeHostSkill,
   "host.install_global_skills": installGlobalSkills,

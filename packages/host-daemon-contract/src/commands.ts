@@ -379,6 +379,10 @@ const threadGoalClearCommandSchema = hostDaemonThreadTargetSchema
   })
   .strict();
 
+const threadCommandsCommandSchema = hostDaemonThreadTargetSchema.extend({
+  type: z.literal("thread.commands"),
+});
+
 const threadPlanCancelCommandSchema = hostDaemonThreadTargetSchema
   .extend({
     type: z.literal("thread.plan.cancel"),
@@ -1479,6 +1483,15 @@ export const hostDaemonCommandRegistry = {
     retryable: false,
     flushEventsBeforeResult: true,
     envLane: "read",
+  }),
+  "thread.commands": defineHostDaemonCommandDescriptor({
+    type: "thread.commands",
+    schema: threadCommandsCommandSchema,
+    resultSchema: commandListResultSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
   }),
   "thread.plan.cancel": defineHostDaemonCommandDescriptor({
     type: "thread.plan.cancel",

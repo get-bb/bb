@@ -27,6 +27,7 @@ export const bridgeCapabilitiesSchema = z
     threadArchive: z.boolean().default(false),
     threadRename: z.boolean().default(false),
     threadGoalClear: z.boolean().default(false),
+    threadCommands: z.boolean().default(false),
     fork: providerForkSchema.default("none"),
     approvalEnforcedBy: z.enum(["runtime", "provider"]).default("runtime"),
     grammarVersions: bridgeGrammarVersionsSchema.default([

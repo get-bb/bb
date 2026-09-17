@@ -173,6 +173,13 @@ function createRuntime(): FakeDispatchRuntime {
     }),
     clearThreadGoal: vi.fn(async () => ({ cleared: true })),
     renameThread: vi.fn(async () => undefined),
+    listThreadCommands: vi.fn(async (): Promise<{
+      commands: {
+        name: string;
+        description: string | null;
+        argumentHint: string | null;
+      }[];
+    }> => ({ commands: [] })),
     archiveThread: vi.fn(async () => undefined),
     unarchiveThread: vi.fn(async () => undefined),
     listModels: vi.fn(async () => ({
@@ -2462,5 +2469,92 @@ describe("dispatchCommand", () => {
       providerId: "pi",
       bridgeLaunch: dispatchTestRuntimeBridgeLaunch(options.dataDir),
     });
+  });
+  it("serves live thread commands from the owning runtime", async () => {
+    const dataDir = await makeTempDir("bb-command-dispatch-thread-commands-");
+    const runtime = createRuntime();
+    const manager = new RuntimeManager({
+      dataDir,
+      createRuntime: () => runtime,
+      provisionWorkspace: async () => createWorkspace(),
+    });
+    await manager.ensureEnvironment({
+      environmentId: "env-1",
+      workspacePath: WORKSPACE_PATH,
+    });
+    runtime.setIdle("thread-1");
+    vi.mocked(runtime.listThreadCommands).mockResolvedValueOnce({
+      commands: [
+        {
+          name: "ui-check",
+          description: "Run UI verification checks",
+          argumentHint: "<fixture>",
+        },
+      ],
+    });
+
+    const result = await dispatchOnlineRpcCommand(
+      { type: "thread.commands", environmentId: "env-1", threadId: "thread-1" },
+      {
+        dataDir,
+        logger: silentLogger,
+        eventSink: { emit: vi.fn(), flush: vi.fn(async () => undefined) },
+        fetchProjectAttachment: async () => {
+          throw new Error("Unexpected project attachment fetch");
+        },
+        fetchPluginHostArtifact: fetchDispatchTestArtifact,
+        ...unexpectedProviderMaintenance,
+        runtimeManager: manager,
+        threadStorageRootPath: "/tmp/bb-thread-storage",
+      },
+    );
+
+    expect(result).toEqual({
+      commands: [
+        {
+          name: "ui-check",
+          source: "command",
+          origin: "project",
+          description: "Run UI verification checks",
+          argumentHint: "<fixture>",
+        },
+      ],
+    });
+    expect(runtime.listThreadCommands).toHaveBeenCalledWith({
+      threadId: "thread-1",
+    });
+  });
+
+  it("returns no thread commands without an owning runtime", async () => {
+    const dataDir = await makeTempDir("bb-command-dispatch-thread-commands-");
+    const runtime = createRuntime();
+    const manager = new RuntimeManager({
+      dataDir,
+      createRuntime: () => runtime,
+      provisionWorkspace: async () => createWorkspace(),
+    });
+    await manager.ensureEnvironment({
+      environmentId: "env-1",
+      workspacePath: WORKSPACE_PATH,
+    });
+
+    const result = await dispatchOnlineRpcCommand(
+      { type: "thread.commands", environmentId: "env-1", threadId: "thread-1" },
+      {
+        dataDir,
+        logger: silentLogger,
+        eventSink: { emit: vi.fn(), flush: vi.fn(async () => undefined) },
+        fetchProjectAttachment: async () => {
+          throw new Error("Unexpected project attachment fetch");
+        },
+        fetchPluginHostArtifact: fetchDispatchTestArtifact,
+        ...unexpectedProviderMaintenance,
+        runtimeManager: manager,
+        threadStorageRootPath: "/tmp/bb-thread-storage",
+      },
+    );
+
+    expect(result).toEqual({ commands: [] });
+    expect(runtime.listThreadCommands).not.toHaveBeenCalled();
   });
 });

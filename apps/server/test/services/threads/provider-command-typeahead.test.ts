@@ -125,4 +125,48 @@ describe("buildCommandListResponse", () => {
       },
     ]);
   });
+  it("prefers live advertised commands over filesystem rows with the same name", () => {
+    const response = buildCommandListResponse({
+      commands: [
+        {
+          name: "ui-check",
+          source: "command",
+          origin: "project",
+          description: "Filesystem description",
+          argumentHint: null,
+        },
+      ],
+      advertisedCommands: [
+        {
+          name: "ui-check",
+          source: "command",
+          origin: "project",
+          description: "Live advertised description",
+          argumentHint: "<fixture>",
+        },
+        {
+          name: "jobs",
+          source: "command",
+          origin: "project",
+          description: "List background jobs",
+          argumentHint: null,
+        },
+      ],
+      includeBuiltinCompact: false,
+      skillCatalog: [],
+    });
+
+    expect(
+      response.commands.filter((command) => command.name === "ui-check"),
+    ).toEqual([
+      {
+        name: "ui-check",
+        source: "command",
+        origin: "project",
+        description: "Live advertised description",
+        argumentHint: "<fixture>",
+      },
+    ]);
+    expect(response.commands.map((command) => command.name)).toContain("jobs");
+  });
 });

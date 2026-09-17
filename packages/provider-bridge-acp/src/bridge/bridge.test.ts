@@ -1570,6 +1570,136 @@ describe("acp bridge", () => {
     expect(agentMessageTexts()).toContain("echo:hello there");
   });
 
+  it("serves advertised available_commands_update via thread/commands", async () => {
+    async function threadCommands(bbThreadId: string, providerThreadId: string) {
+      const id = sendRequest("thread/commands", {
+        threadId: bbThreadId,
+        providerThreadId,
+      });
+      return (await waitForResponse(id)).result as {
+        commands: unknown;
+      };
+    }
+
+    const { bbThreadId, providerThreadId } = await startThread();
+    expect(
+      (await threadCommands(bbThreadId, providerThreadId)).commands,
+    ).toEqual([]);
+
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      input: [{ type: "text", text: "advertise-commands", mentions: [] }],
+    });
+    await waitForResponse(turnId);
+    await waitForTurnCompleted();
+
+    expect(agentMessageTexts()).toContain("echo:advertise-commands");
+    expect(
+      (await threadCommands(bbThreadId, providerThreadId)).commands,
+    ).toEqual([
+      {
+        name: "ui-check",
+        description: "Run UI verification checks",
+        argumentHint: "<fixture>",
+      },
+      {
+        name: "jobs",
+        description: "List background jobs",
+        argumentHint: null,
+      },
+    ]);
+  }, 30_000);
+
+  it("scopes advertised commands per thread", async () => {
+    const first = await startThread();
+    const second = await startThread();
+
+    async function threadCommands(bbThreadId: string, providerThreadId: string) {
+      const id = sendRequest("thread/commands", {
+        threadId: bbThreadId,
+        providerThreadId,
+      });
+      return (await waitForResponse(id)).result as {
+        commands: unknown;
+      };
+    }
+
+    const turnId = sendTurnRequest("turn/start", first.providerThreadId, {
+      input: [{ type: "text", text: "advertise-commands", mentions: [] }],
+    });
+    await waitForResponse(turnId);
+    await waitForTurnCompleted();
+
+    expect(
+      (await threadCommands(first.bbThreadId, first.providerThreadId)).commands,
+    ).not.toEqual([]);
+    expect(
+      (await threadCommands(second.bbThreadId, second.providerThreadId))
+        .commands,
+    ).toEqual([]);
+    expect(
+      (await threadCommands("thread-unknown", "sess-unknown")).commands,
+    ).toEqual([]);
+  }, 30_000);
+
+  it("replaces advertised commands on an empty update", async () => {
+    const { bbThreadId, providerThreadId } = await startThread();
+
+    async function threadCommands() {
+      const id = sendRequest("thread/commands", {
+        threadId: bbThreadId,
+        providerThreadId,
+      });
+      return (await waitForResponse(id)).result as {
+        commands: unknown;
+      };
+    }
+
+    async function sendAdvertiseTurn(text: string): Promise<void> {
+      const turnId = sendTurnRequest("turn/start", providerThreadId, {
+        input: [{ type: "text", text, mentions: [] }],
+      });
+      await waitForResponse(turnId);
+      await waitFor(
+        () =>
+          agentMessageTexts().includes(`echo:${text}`) ? true : undefined,
+        `echo for ${text}`,
+      );
+      await waitForTurnCompleted();
+    }
+
+    await sendAdvertiseTurn("advertise-commands");
+    expect((await threadCommands()).commands).not.toEqual([]);
+
+    await sendAdvertiseTurn("advertise-commands-empty");
+    expect((await threadCommands()).commands).toEqual([]);
+  }, 30_000);
+
+  it("drops malformed advertised commands and keeps exact spellings", async () => {
+    const { bbThreadId, providerThreadId } = await startThread();
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      input: [
+        { type: "text", text: "advertise-commands-malformed", mentions: [] },
+      ],
+    });
+    await waitForResponse(turnId);
+    await waitForTurnCompleted();
+
+    const id = sendRequest("thread/commands", {
+      threadId: bbThreadId,
+      providerThreadId,
+    });
+    expect((await waitForResponse(id)).result).toEqual({
+      commands: [
+        { name: "good", description: "Well formed", argumentHint: null },
+        {
+          name: "slashy",
+          description: "Leading slash",
+          argumentHint: "<target>",
+        },
+      ],
+    });
+  }, 30_000);
+
   it("rebuilds the agent with environment from a later turn", async () => {
     const envVars = { FAKE_ACP_LOAD_SESSION: "1", FAKE_ACP_PROMPT_ERROR: "1" };
     const { providerThreadId } = await startThread({ envVars });

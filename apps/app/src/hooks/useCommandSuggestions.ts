@@ -21,6 +21,7 @@ interface UseCommandSuggestionsArgs {
   promptActions?: readonly CommandSuggestionPromptAction[];
   environmentId: string | null;
   hostId?: string | null;
+  threadId?: string | null;
   query: string | null;
   composerFocused?: boolean;
 }
@@ -128,6 +129,7 @@ export function useCommandSuggestions(
       providerId: args.providerId,
       environmentId: args.environmentId,
       hostId: args.hostId ?? null,
+      ...(args.threadId ? { threadId: args.threadId } : {}),
     },
     { enabled: isActive },
   );
@@ -143,6 +145,7 @@ export function useCommandSuggestions(
   const prefetchProviderId = args.providerId;
   const prefetchEnvironmentId = args.environmentId;
   const prefetchHostId = args.hostId ?? null;
+  const prefetchThreadId = args.threadId ?? null;
   useEffect(() => {
     if (!shouldPrefetchCatalog) {
       return;
@@ -153,6 +156,7 @@ export function useCommandSuggestions(
         providerId: prefetchProviderId,
         environmentId: prefetchEnvironmentId,
         hostId: prefetchHostId,
+        threadId: prefetchThreadId,
       }),
       retry: false,
       staleTime: COMMAND_CATALOG_PREFETCH_STALE_TIME_MS,
@@ -162,6 +166,7 @@ export function useCommandSuggestions(
     prefetchHostId,
     prefetchProjectId,
     prefetchProviderId,
+    prefetchThreadId,
     queryClient,
     shouldPrefetchCatalog,
   ]);

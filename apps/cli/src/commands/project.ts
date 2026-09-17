@@ -53,6 +53,7 @@ interface ProjectDiscoveryCommandOptions {
   limit?: string;
   provider?: string;
   query?: string;
+  thread?: string;
 }
 
 function addProjectWorkspaceRoutingOptions(command: Command): Command {
@@ -422,6 +423,7 @@ export function registerProjectCommands(
   addProjectWorkspaceRoutingOptions(project.command("commands <id>"))
     .description("List provider commands and skills available to a project")
     .requiredOption("--provider <id>", "Provider ID")
+    .option("--thread <id>", "Include live thread commands for a thread")
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (id: string, opts: ProjectDiscoveryCommandOptions) => {
@@ -430,6 +432,7 @@ export function registerProjectCommands(
           projectId: id,
           provider: opts.provider ?? "",
           ...(await resolveMachineEnvironmentRouting(opts, serverUrl)),
+          ...(opts.thread ? { threadId: opts.thread } : {}),
         });
         if (outputJson(opts, result)) return;
         console.log(JSON.stringify(result, null, 2));
