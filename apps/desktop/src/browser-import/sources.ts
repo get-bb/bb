@@ -94,7 +94,7 @@ export const BROWSER_IMPORT_SOURCES: readonly BrowserImportSourceDefinition[] =
     }),
     chromiumSource({
       id: "helium",
-      processNames: ["Helium", "helium"],
+      processNames: ["Helium"],
       macAppNames: ["Helium.app"],
       name: "Helium",
       keychainService: "Helium Storage Key",

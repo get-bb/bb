@@ -578,14 +578,14 @@ describe("browser cookie readers", () => {
     await mkdir(join(root, "Default"), { recursive: true });
     await mkdir(join(root, "Profile 1"), { recursive: true });
     const key = deriveChromiumKey("helium-test-secret", 1003);
-    createChromiumCookieDatabase(join(root, "Default", "Cookies"), 24, [
+    createChromiumCookieDatabase(join(root, "Profile 1", "Cookies"), 24, [
       {
         host: ".work.test",
         name: "session",
         encrypted: encryptChromium("v10", key, "work-session", ".work.test"),
       },
     ]);
-    createChromiumCookieDatabase(join(root, "Profile 1", "Cookies"), 24, [
+    createChromiumCookieDatabase(join(root, "Default", "Cookies"), 24, [
       { host: "personal.test", name: "session", value: "personal-session" },
     ]);
     await writeFile(
@@ -593,17 +593,15 @@ describe("browser cookie readers", () => {
       JSON.stringify({
         profile: {
           info_cache: {
-            Default: { name: "Work" },
-            "Profile 1": { name: "Personal" },
+            Default: { name: "Personal" },
+            "Profile 1": { name: "Work" },
           },
         },
       }),
     );
-    const run = vi.fn(
-      fakeSecretRunner({
-        "/usr/bin/security": { stdout: "helium-test-secret\n", exitCode: 0 },
-      }),
-    );
+    const run = fakeSecretRunner({
+      "/usr/bin/security": { stdout: "helium-test-secret\n", exitCode: 0 },
+    });
     const service = createBrowserImportService({
       context: { platform: "darwin", home: directory },
       runSecretCommand: run,
@@ -611,17 +609,16 @@ describe("browser cookie readers", () => {
     expect(
       (await service.listSources()).find((source) => source.id === "helium"),
     ).toMatchObject({
-      id: "helium",
       profiles: [
-        { directory: "Default", name: "Work", cookieCount: 1 },
-        { directory: "Profile 1", name: "Personal", cookieCount: 1 },
+        { directory: "Default", name: "Personal", cookieCount: 1 },
+        { directory: "Profile 1", name: "Work", cookieCount: 1 },
       ],
     });
     const set = vi.fn(async () => undefined);
     const flushStore = vi.fn(async () => undefined);
     expect(
       await service.importCookies(
-        { sourceId: "helium", sourceProfileDirectory: "Default" },
+        { sourceId: "helium", sourceProfileDirectory: "Profile 1" },
         { cookies: { set, flushStore } },
       ),
     ).toEqual({ ok: true, imported: 1, skipped: 0, skippedDomains: [] });
