@@ -717,8 +717,18 @@ describe("BB Official plugin detail routing", () => {
           await screen.findByRole("button", { name: "Close Automations" }),
         ).toBeTruthy();
         expect(
+          screen.queryByRole("button", { name: "Close GitHub" }),
+        ).toBeNull();
+        fireEvent.click(screen.getByRole("button", { name: "Previous tab" }));
+        expect(
+          await screen.findByRole("heading", { name: "GitHub", level: 1 }),
+        ).toBeTruthy();
+        expect(
           screen.getByRole("button", { name: "Close GitHub" }),
         ).toBeTruthy();
+        expect(
+          screen.queryByRole("button", { name: "Close Automations" }),
+        ).toBeNull();
         return;
       }
       expect(screen.getByRole("button", { name: "Close GitHub" })).toBeTruthy();
