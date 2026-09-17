@@ -34,6 +34,7 @@ import { parseOperationMessage } from "../src/parse-operation-message.js";
 import {
   createTimelineEventFactory,
   fromRows,
+  renderTimelineFixture,
 } from "./timeline-test-harness.js";
 
 interface ContextWindowUsageEventArgs {
@@ -1086,6 +1087,47 @@ describe("buildThreadTimelineFromEvents", () => {
       }),
     );
     expect(row).not.toHaveProperty("statusLabels");
+  });
+
+  it("hides a delivered tool result whose tool row is suppressed and shows one whose tool row is not", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const subject = (label: string, suppress: boolean) => ({
+      kind: "tool-call" as const,
+      toolName: "AskUserQuestion",
+      callId: `call-${label}`,
+      label,
+      suppress,
+    });
+    const fixture = renderTimelineFixture({
+      events: [
+        event.clientTurnRequested({ text: "start" }),
+        event.turnStarted({ turnId: "turn-1" }),
+        event.turnCompleted({ turnId: "turn-1" }),
+        event.clientTurnRequested({
+          initiator: "system",
+          systemMessageKind: "tool-result-delivered",
+          systemMessageSubject: subject("Asked a question", true),
+          text: "Your earlier AskUserQuestion tool call has finished.",
+        }),
+        event.clientTurnRequested({
+          initiator: "system",
+          systemMessageKind: "tool-result-delivered",
+          systemMessageSubject: subject("Ran a grill round", false),
+          text: "Your earlier grill_round tool call has finished.",
+        }),
+      ],
+      projectionOptions: {
+        threadStatus: "idle",
+        turnMessageDetail: "full",
+      },
+    });
+
+    const userRows = fixture.rows.filter(
+      (row) => row.kind === "conversation" && row.role === "user",
+    );
+    expect(
+      userRows.map((row) => row.kind === "conversation" && row.text),
+    ).toEqual(["start", "Your earlier grill_round tool call has finished."]);
   });
 
   it("extracts the exact active Plan turn id from the accepted input scope", () => {

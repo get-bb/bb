@@ -5,13 +5,15 @@ import { events } from "@bb/db";
 import { describe, expect, it, vi } from "vitest";
 import { internalAuthHeaders } from "../helpers/commands.js";
 import { readJson } from "../helpers/json.js";
+import { listQueuedThreadCommands } from "../helpers/commands.js";
 import {
   seedEnvironment,
   seedHostSession,
   seedProjectWithSource,
   seedThread,
+  seedThreadRuntimeState,
 } from "../helpers/seed.js";
-import { withTestHarness } from "../helpers/test-app.js";
+import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 
 describe("internal tool-call regressions", () => {
   it("rejects tool calls for threads owned by a different host", async () => {
@@ -64,97 +66,231 @@ describe("internal tool-call regressions", () => {
   });
 });
 
-it("interrupts a waiting interaction when the tool response body is cancelled and rejects late answers", async () => {
-  await withTestHarness(async (harness) => {
-    const { host, session } = seedHostSession(harness.deps, {
-      id: "host-cancel-tool",
-    });
-    const { project } = seedProjectWithSource(harness.deps, {
-      hostId: host.id,
-    });
-    const environment = seedEnvironment(harness.deps, {
-      hostId: host.id,
-      projectId: project.id,
-    });
-    const thread = seedThread(harness.deps, {
-      projectId: project.id,
-      environmentId: environment.id,
-    });
-    const record: PluginAgentToolRecord = {
-      name: "wait_for_user",
-      description: "Wait",
-      presentation: null,
-      instructions: null,
-      inputSchema: {},
-      parse: (input) => ({ ok: true, value: input }),
-      execute: () => "unused",
-    };
-    setPluginAgentContributions({
-      listSkillRootContributions: () => [],
-      listAgentTools: () => [],
-      listInstructionContributions: () => [],
-      findAgentTool: (name) =>
-        name === record.name ? { pluginId: "fixture", record } : undefined,
-      resolveMention: async () => ({ ok: false, error: "unused" }),
-      invokeAgentTool: async ({ ctx }) => {
-        const result =
-          await harness.deps.pendingInteractions.requestPluginInteraction({
-            pluginId: "fixture",
-            rendererId: "question",
-            threadId: ctx.threadId,
-            title: "Question",
-            payload: {},
-            timeoutMs: 10_000,
-            signal: ctx.signal,
-          });
-        return { success: result.outcome === "submitted", contentItems: [] };
-      },
-    });
-    try {
-      const response = await harness.app.request(
-        "/internal/session/tool-call",
-        {
-          method: "POST",
-          headers: internalAuthHeaders(harness),
-          body: JSON.stringify({
-            sessionId: session.id,
-            threadId: thread.id,
-            providerThreadId: "provider-thread",
-            turnId: "turn",
-            callId: "call",
-            tool: record.name,
-          }),
-        },
-      );
-      const [interaction] =
-        harness.deps.pendingInteractions.listPendingThreadInteractions(
-          thread.id,
+function seedIdleProviderThread(harness: TestAppHarness, value: number) {
+  const { host, session } = seedHostSession(harness.deps, {
+    id: `host-detached-tool-${value}`,
+  });
+  const { project } = seedProjectWithSource(harness.deps, {
+    hostId: host.id,
+    path: `/tmp/detached-tool-${value}`,
+  });
+  const environment = seedEnvironment(harness.deps, {
+    hostId: host.id,
+    projectId: project.id,
+    path: `/tmp/detached-tool-${value}`,
+    status: "ready",
+  });
+  const thread = seedThread(harness.deps, {
+    projectId: project.id,
+    environmentId: environment.id,
+    status: "idle",
+  });
+  seedThreadRuntimeState(harness.deps, {
+    environmentId: environment.id,
+    providerThreadId: `provider-detached-tool-${value}`,
+    threadId: thread.id,
+  });
+  return { session, thread };
+}
+
+function installWaitingTool(
+  harness: TestAppHarness,
+  record: PluginAgentToolRecord,
+  observe: (ctxSignal: AbortSignal) => void,
+) {
+  setPluginAgentContributions({
+    listSkillRootContributions: () => [],
+    listAgentTools: () => [],
+    listInstructionContributions: () => [],
+    findAgentTool: (name) =>
+      name === record.name ? { pluginId: "fixture", record } : undefined,
+    resolveMention: async () => ({ ok: false, error: "unused" }),
+    invokeAgentTool: async ({ ctx }) => {
+      observe(ctx.signal);
+      const result =
+        await harness.deps.pendingInteractions.requestPluginInteraction({
+          pluginId: "fixture",
+          rendererId: "question",
+          threadId: ctx.threadId,
+          title: "Question",
+          payload: {},
+          timeoutMs: 10_000,
+          signal: ctx.signal,
+        });
+      return result.outcome === "submitted"
+        ? {
+            success: true,
+            contentItems: [
+              { type: "inputText", text: `answered: ${String(result.value)}` },
+            ],
+          }
+        : {
+            success: false,
+            contentItems: [
+              { type: "inputText", text: `cancelled: ${result.reason}` },
+            ],
+          };
+    },
+  });
+}
+
+function turnRequestedEvents(harness: TestAppHarness, threadId: string) {
+  return harness.db
+    .select()
+    .from(events)
+    .where(eq(events.threadId, threadId))
+    .all()
+    .filter((row) => row.type === "client/turn/requested")
+    .map((row) => JSON.parse(row.data) as Record<string, unknown>);
+}
+
+describe("plugin tool calls that outlive their round trip", () => {
+  it("keeps the interaction open after the response body is cancelled and delivers the answer as a system message", async () => {
+    await withTestHarness(async (harness) => {
+      const { session, thread } = seedIdleProviderThread(harness, 1);
+      const record: PluginAgentToolRecord = {
+        name: "wait_for_user",
+        description: "Wait",
+        presentation: { label: { pending: "Asking", completed: "Asked" } },
+        instructions: null,
+        inputSchema: {},
+        parse: (input) => ({ ok: true, value: input }),
+        execute: () => "unused",
+      };
+      let toolSignal: AbortSignal | undefined;
+      installWaitingTool(harness, record, (signal) => {
+        toolSignal = signal;
+      });
+      try {
+        const response = await harness.app.request(
+          "/internal/session/tool-call",
+          {
+            method: "POST",
+            headers: internalAuthHeaders(harness),
+            body: JSON.stringify({
+              sessionId: session.id,
+              threadId: thread.id,
+              providerThreadId: "provider-thread",
+              turnId: "turn",
+              callId: "call-1",
+              tool: record.name,
+            }),
+          },
         );
-      expect(interaction).toBeDefined();
-      await response.body?.cancel();
-      await vi.waitFor(() =>
+        const [interaction] =
+          harness.deps.pendingInteractions.listPendingThreadInteractions(
+            thread.id,
+          );
+        expect(interaction).toBeDefined();
+        await response.body?.cancel();
+        await new Promise((resolve) => setTimeout(resolve, 10));
+
+        expect(toolSignal?.aborted).toBe(false);
         expect(
           harness.deps.pendingInteractions.getThreadInteraction({
             threadId: thread.id,
             interactionId: interaction!.id,
           }),
-        ).toMatchObject({
-          status: "interrupted",
-          statusReason: "request-aborted",
-        }),
-      );
-      const late = await harness.app.request(
-        `/api/v1/threads/${thread.id}/interactions/${interaction!.id}/respond`,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ value: "late answer" }),
-        },
-      );
-      expect(late.status).toBe(409);
-    } finally {
-      harness.deps.pendingInteractions.interruptPluginInteractions("fixture");
-      setPluginAgentContributions(undefined);
-    }
+        ).toMatchObject({ status: "pending" });
+
+        const late = await harness.app.request(
+          `/api/v1/threads/${thread.id}/interactions/${interaction!.id}/respond`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ value: "late answer" }),
+          },
+        );
+        expect(late.status).toBe(200);
+
+        await vi.waitFor(() => {
+          expect(
+            listQueuedThreadCommands(harness, "turn.submit", thread.id),
+          ).toHaveLength(1);
+        });
+        const [command] = listQueuedThreadCommands(
+          harness,
+          "turn.submit",
+          thread.id,
+        );
+        expect(command).toMatchObject({
+          input: [
+            expect.objectContaining({
+              type: "text",
+              text: expect.stringContaining("answered: late answer"),
+            }),
+          ],
+        });
+        const delivered = turnRequestedEvents(harness, thread.id).at(-1);
+        expect(delivered).toMatchObject({
+          initiator: "system",
+          systemMessageKind: "tool-result-delivered",
+          systemMessageSubject: {
+            kind: "tool-call",
+            toolName: "wait_for_user",
+            callId: "call-1",
+            label: "Asked",
+            suppress: false,
+          },
+          target: { kind: "new-turn" },
+        });
+      } finally {
+        harness.deps.pendingInteractions.interruptPluginInteractions("fixture");
+        setPluginAgentContributions(undefined);
+      }
+    });
+  });
+
+  it("does not wake an idle thread for a failed detached result", async () => {
+    await withTestHarness(async (harness) => {
+      const { session, thread } = seedIdleProviderThread(harness, 2);
+      const record: PluginAgentToolRecord = {
+        name: "wait_for_user",
+        description: "Wait",
+        presentation: null,
+        instructions: null,
+        inputSchema: {},
+        parse: (input) => ({ ok: true, value: input }),
+        execute: () => "unused",
+      };
+      installWaitingTool(harness, record, () => undefined);
+      try {
+        const response = await harness.app.request(
+          "/internal/session/tool-call",
+          {
+            method: "POST",
+            headers: internalAuthHeaders(harness),
+            body: JSON.stringify({
+              sessionId: session.id,
+              threadId: thread.id,
+              providerThreadId: "provider-thread",
+              turnId: "turn",
+              callId: "call-2",
+              tool: record.name,
+            }),
+          },
+        );
+        const [interaction] =
+          harness.deps.pendingInteractions.listPendingThreadInteractions(
+            thread.id,
+          );
+        await response.body?.cancel();
+        await new Promise((resolve) => setTimeout(resolve, 10));
+
+        harness.deps.pendingInteractions.cancelPluginInteraction({
+          interactionId: interaction!.id,
+          threadId: thread.id,
+          reason: "user",
+        });
+        await new Promise((resolve) => setTimeout(resolve, 20));
+
+        expect(
+          listQueuedThreadCommands(harness, "turn.submit", thread.id),
+        ).toHaveLength(0);
+        expect(turnRequestedEvents(harness, thread.id)).toHaveLength(1);
+      } finally {
+        setPluginAgentContributions(undefined);
+      }
+    });
   });
 });

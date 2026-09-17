@@ -38,6 +38,7 @@ import {
   readWorkspaceAgentInstructions,
 } from "./workspace-agent-instructions.js";
 import { resolveDeprecatedWorkspaceProvisionType } from "../environments/environment-response.js";
+import { PLUGIN_TOOL_CALL_LIFETIME_INSTRUCTIONS } from "../plugins/plugin-tool-calls.js";
 
 const UPDATE_ENVIRONMENT_DIRECTORY_INSTRUCTIONS =
   "If the user asks you to move this thread to another checkout, worktree, or directory, make sure the target directory exists, then call `update_environment_directory` with its absolute path. After it succeeds, stop work in the current turn; future turns will run in the updated environment.";
@@ -224,6 +225,9 @@ export async function resolveThreadRuntimeCommandConfig(
     (contribution) => contribution.tool,
   );
   const instructionSections: string[] = [];
+  if (conditionalConfiguration.tools.length > 0) {
+    instructionSections.push(PLUGIN_TOOL_CALL_LIFETIME_INSTRUCTIONS);
+  }
   for (const contribution of dynamicToolContributions) {
     if (!contribution.instructions) continue;
     if (contribution.pluginId === null) {

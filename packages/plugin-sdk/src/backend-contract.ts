@@ -1015,8 +1015,15 @@ export type PluginAgentToolResult =
 export interface PluginAgentToolContext {
   threadId: string;
   projectId: string;
-  /** The tool-call request's abort signal (aborts if the daemon round-trip
-   * is torn down mid-call). */
+  /**
+   * Aborts when the thread is stopped or deleted, or this plugin is disposed.
+   * It does NOT fire when the turn ends: a call that is still running when
+   * the provider stops waiting keeps running, and whatever it returns reaches
+   * the agent as a system message on that thread (a running turn is steered,
+   * an idle one is started; an `isError` result only steers). So a tool may
+   * await a person — `bb.ui.requestInput` with this signal — for as long as
+   * its own timeout allows.
+   */
   signal: AbortSignal;
 }
 

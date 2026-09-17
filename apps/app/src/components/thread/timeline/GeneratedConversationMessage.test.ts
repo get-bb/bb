@@ -101,6 +101,26 @@ describe("generatedConversationTitle — system source", () => {
     expect(title.segments[0]?.link).toBeUndefined();
   });
 
+  it("names the tool whose detached result arrived", () => {
+    const title = systemTitle({
+      systemMessageKind: "tool-result-delivered",
+      systemMessageSubject: {
+        kind: "tool-call",
+        toolName: "grill_round",
+        callId: "call-1",
+        label: "Ran a grill round",
+        suppress: false,
+      },
+    });
+
+    expect(title.plain).toBe("Ran a grill round result delivered");
+    expect(title.segments).toHaveLength(2);
+    expect(title.segments[0]?.text).toBe("Ran a grill round");
+    expect(title.segments[0]?.em).toBe(true);
+    expect(title.segments[0]?.link).toBeUndefined();
+    expect(title.segments[1]?.text).toBe("result delivered");
+  });
+
   it("falls back to the generic System Message title for unlabeled rows", () => {
     const title = systemTitle({
       systemMessageKind: "unlabeled",

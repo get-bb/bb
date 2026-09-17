@@ -32,6 +32,7 @@ import type {
   EventProjection,
   EventProjectionProvisioningTranscriptEntry,
   EventProjectionToolParsedIntent,
+  EventProjectionUserMessage,
 } from "./event-projection-types.js";
 import { assertNever } from "./assert-never.js";
 import {
@@ -490,6 +491,7 @@ function convertMessage(
 ): TimelineSourceRow[] {
   switch (message.kind) {
     case "user":
+      if (isSuppressedSystemMessage(message)) return [];
       return [
         {
           ...buildTimelineRowBase(message, options.rowIdPrefix),
@@ -810,6 +812,16 @@ function convertMessage(
   }
 }
 
+function isSuppressedSystemMessage(
+  message: EventProjectionUserMessage,
+): boolean {
+  return (
+    message.initiator === "system" &&
+    message.systemMessageSubject?.kind === "tool-call" &&
+    message.systemMessageSubject.suppress
+  );
+}
+
 function convertSteerMessage(
   message: EventProjectionMessage,
   rowIdPrefix: string,
@@ -927,9 +939,11 @@ function buildPendingSteerRowsFromEvents(
           decoded: event,
           meta: rejectedMeta,
           options,
-        }).map((rejectedSteer) =>
-          convertSteerMessage(rejectedSteer, ROOT_TIMELINE_ROW_ID_PREFIX),
-        ),
+        })
+          .filter((rejectedSteer) => !isSuppressedSystemMessage(rejectedSteer))
+          .map((rejectedSteer) =>
+            convertSteerMessage(rejectedSteer, ROOT_TIMELINE_ROW_ID_PREFIX),
+          ),
       );
       continue;
     }
@@ -943,9 +957,11 @@ function buildPendingSteerRowsFromEvents(
           decoded: event,
           meta: legacyRejectedMeta,
           options,
-        }).map((rejectedSteer) =>
-          convertSteerMessage(rejectedSteer, ROOT_TIMELINE_ROW_ID_PREFIX),
-        ),
+        })
+          .filter((rejectedSteer) => !isSuppressedSystemMessage(rejectedSteer))
+          .map((rejectedSteer) =>
+            convertSteerMessage(rejectedSteer, ROOT_TIMELINE_ROW_ID_PREFIX),
+          ),
       );
       continue;
     }
@@ -959,9 +975,11 @@ function buildPendingSteerRowsFromEvents(
       continue;
     }
     pendingSteerRows.push(
-      ...pendingSteers.map((pendingSteer) =>
-        convertSteerMessage(pendingSteer, ROOT_TIMELINE_ROW_ID_PREFIX),
-      ),
+      ...pendingSteers
+        .filter((pendingSteer) => !isSuppressedSystemMessage(pendingSteer))
+        .map((pendingSteer) =>
+          convertSteerMessage(pendingSteer, ROOT_TIMELINE_ROW_ID_PREFIX),
+        ),
     );
   }
 

@@ -64,6 +64,17 @@ invocation and are never persisted. Pair `rendererId` with a frontend
 `pendingInteraction` slot. Pass a CLI handler's `ctx.signal` so disconnecting
 the caller cancels the request.
 
+Awaiting it inside a native tool's `execute` is fine too, and needs no
+workaround: a tool call is not bound to its turn. If the person has not
+answered by the time the provider stops waiting (Codex's code mode moves on
+after about 30 seconds; every provider is answered with a "still running"
+stub after four minutes), the call keeps running and its eventual return
+value reaches the agent as a system message on the thread — a running turn
+is steered, an idle one is started, and an `isError` result only steers.
+The tool's `ctx.signal` fires only when the thread is stopped or deleted or
+the plugin is disposed, so passing it keeps the form honest without tying it
+to the turn.
+
 ### bb.agents — native tools and conditional session configuration
 
 To give agents standing knowledge (conventions, workflows), ship a
