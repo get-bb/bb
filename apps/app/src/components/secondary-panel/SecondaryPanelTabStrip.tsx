@@ -117,7 +117,6 @@ export function secondaryPanelTabsToClose(
 
 interface SortablePanelTabProps {
   isActive: boolean;
-  activeTabRef: RefObject<HTMLDivElement | null>;
   contextMenuDisabled: boolean;
   dragDisabled: boolean;
   noDragClass: string | null;
@@ -142,7 +141,6 @@ export function SecondaryPanelTabStrip({
   const stripRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
-  const activeTabRef = useRef<HTMLDivElement>(null);
   const leftScrollButtonRef = useRef<HTMLButtonElement>(null);
   const rightScrollButtonRef = useRef<HTMLButtonElement>(null);
   const [overflow, setOverflow] = useState<TabStripOverflowState>(
@@ -254,8 +252,8 @@ export function SecondaryPanelTabStrip({
     const activeTabElement =
       contentRef.current?.querySelector<HTMLElement>(
         'button[aria-pressed="true"]',
-      )?.parentElement ?? activeTabRef.current;
-    if (activeTabElement === null) {
+      )?.parentElement;
+    if (!activeTabElement) {
       return;
     }
     activeTabElement.scrollIntoView({ inline: "nearest", block: "nearest" });
@@ -406,7 +404,6 @@ export function SecondaryPanelTabStrip({
           {tabs.map((tab) => (
             <SortablePanelTab
               key={tab.tab.id}
-              activeTabRef={activeTabRef}
               contextMenuDisabled={isCompactViewport}
               dragDisabled={dragDisabled}
               isActive={tab.tab.id === activeTabId}
@@ -511,7 +508,6 @@ export function SecondaryPanelTabStrip({
 }
 
 function SortablePanelTab({
-  activeTabRef,
   contextMenuDisabled,
   dragDisabled,
   isActive,
@@ -528,15 +524,6 @@ function SortablePanelTab({
     });
   const { onPointerDown: sortablePointerDown, ...sortableListeners } =
     listeners ?? {};
-  const setTabRef = useCallback(
-    (element: HTMLDivElement | null) => {
-      setNodeRef(element);
-      if (isActive) {
-        activeTabRef.current = element;
-      }
-    },
-    [activeTabRef, isActive, setNodeRef],
-  );
   const style = useMemo<CSSProperties>(
     () => ({
       transform: CSS.Translate.toString(transform),
@@ -557,7 +544,7 @@ function SortablePanelTab({
     <ContextMenu modal={false}>
       <ContextMenuTrigger asChild disabled={contextMenuDisabled}>
         <div
-          ref={setTabRef}
+          ref={setNodeRef}
           style={style}
           className={cn(
             "max-w-[100cqw] shrink-0",
