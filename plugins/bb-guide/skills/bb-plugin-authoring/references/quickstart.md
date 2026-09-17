@@ -133,7 +133,14 @@ the current engine values and the entries for its generated surfaces.
   Reference an entry by its namespaced glyph `"<pluginId>/<name>"` — in a
   bridge's `presentation.icon`,
   in `bb.agents.registerTool`'s `presentation.icon`, or as a
-  `bb.providers.register` `icon`. BB serves each file hashed from
+  `bb.providers.register` `icon`. Those are the only sites that resolve a
+  declared glyph. App-surface icon fields (thread row statuses, sidebar footer
+  items, composer `+` rows, message actions, nav panels, panel tabs and
+  actions, mention rows) take a BB icon name instead, and the way to paint
+  plugin-owned artwork there is `app.experimental_icons.register()` — see
+  "Shared app and provider icons" in `references/frontend-components.md`. The
+  two vocabularies share the `"<pluginId>/<name>"` spelling but not the
+  registry. BB serves each file hashed from
   `/api/v1/plugins/<id>/assets/icons/<name>.svg`, lists them on the
   installed-plugin inventory as `icons`, and draws them as `currentColor`
   masks (web) or tinted SVG views (mobile), so ship monochrome shapes. A

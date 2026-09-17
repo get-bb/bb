@@ -568,7 +568,11 @@ export type ExperimentalPluginFixedTabReference<
 export type PluginFixedTabRegistration<Target extends JsonValue = never> =
   ExperimentalPluginFixedTabReference<Target> & {
     title: string;
-    /** Icon hint (BB icon name); unknown names fall back to a generic icon. */
+    /**
+     * BB icon name: a built-in name, or a name registered with
+     * `app.experimental_icons.register()`. Unknown names fall back to a
+     * generic icon.
+     */
     icon: string;
     component: ComponentType<PluginNavPanelProps>;
     /** `flush` lets the component own padding and scrolling. */
@@ -584,7 +588,11 @@ export interface PluginNavPanelRegistration {
   /** Unique within the plugin; letters, digits, `-`, `_`. */
   id: string;
   title: string;
-  /** Icon hint (BB icon name); unknown names fall back to a generic icon. */
+  /**
+   * BB icon name: a built-in name, or a name registered with
+   * `app.experimental_icons.register()`. Unknown names fall back to a generic
+   * icon.
+   */
   icon: string;
   /** URL segment under `/plugins/<pluginId>/`; letters, digits, `-`, `_`. */
   path: string;
@@ -671,8 +679,9 @@ export interface PluginThreadPanelActionRegistration {
   /** Label of the action row in the panel's new-tab launcher. */
   title: string;
   /**
-   * Icon hint (BB icon name) used when the plugin ships no logo; the
-   * launcher row and opened tabs prefer the plugin's logo.
+   * BB icon name — a built-in name, or a name registered with
+   * `app.experimental_icons.register()` — used when the plugin ships no logo;
+   * the launcher row and opened tabs prefer the plugin's logo.
    */
   icon?: string;
   /** Rendered inside every panel tab this action opens. */
@@ -713,7 +722,10 @@ export interface PluginNewThreadPanelActionRegistration {
   id: string;
   /** Label of the action row in the panel's new-tab launcher. */
   title: string;
-  /** Icon hint (BB icon name) used when the plugin ships no logo. */
+  /**
+   * BB icon name — a built-in name, or a name registered with
+   * `app.experimental_icons.register()` — used when the plugin ships no logo.
+   */
   icon?: string;
   /** Rendered inside every panel tab this action opens. */
   component: ComponentType<PluginNewThreadPanelProps>;
@@ -761,7 +773,11 @@ export interface PluginSidebarFooterActionRegistration {
   id: string;
   /** Tooltip and accessible label for the icon button. */
   title: string;
-  /** Icon hint (BB icon name); unknown names fall back to a generic icon. */
+  /**
+   * BB icon name: a built-in name, or a name registered with
+   * `app.experimental_icons.register()`. Unknown names fall back to a generic
+   * icon.
+   */
   icon: string;
   /**
    * Runs when the user activates the action (e.g. call `openSettings()`,
@@ -783,7 +799,11 @@ export interface ExperimentalSidebarFooterItemBase {
   id: string;
   /** Tooltip and accessible label for the host-rendered icon button. */
   label: string;
-  /** BB icon-name hint; unknown names fall back to a generic icon. */
+  /**
+   * BB icon name: a built-in name, or a name registered with
+   * `app.experimental_icons.register()`. Unknown names fall back to a generic
+   * icon.
+   */
   icon: string;
 }
 
@@ -1314,7 +1334,11 @@ export interface PluginMessageActionRegistration {
   id: string;
   /** Tooltip / menu label for the action. */
   title: string;
-  /** Icon hint (BB icon name); unknown names fall back to a generic icon. */
+  /**
+   * BB icon name: a built-in name, or a name registered with
+   * `app.experimental_icons.register()`. Unknown names fall back to a generic
+   * icon.
+   */
   icon?: string;
   /**
    * Runs when the user activates the action. Errors (sync or async) are
@@ -1776,6 +1800,22 @@ export interface ExperimentalProviderIconProps {
   "aria-label"?: string;
 }
 
+/**
+ * An app icon registered by a plugin. The registry is app-wide, so a
+ * registered name is a BB icon name everywhere one is accepted — not just in
+ * `experimental_Icon`. Every icon-name field in this file resolves a
+ * registered name before a built-in one, so a plugin paints its own artwork on
+ * host-rendered surfaces (thread row statuses, sidebar footer items, composer
+ * `+` rows, message actions, panel tabs and actions, mention rows) by
+ * registering artwork here and passing that name.
+ *
+ * This is a different vocabulary from the manifest's
+ * `bb.branding.experimental_icons`, whose namespaced `"<pluginId>/<name>"`
+ * glyphs are SVG files the server resolves, and which only tool presentations,
+ * provider declarations and bridge rows accept. A `name` here may be spelled
+ * with a `/`, but that does not make it reachable as a manifest glyph, and a
+ * manifest glyph is not reachable here unless the same name is also registered.
+ */
 export interface ExperimentalIconRegistration {
   /** Shared app name. Namespacing is recommended, but not required. */
   name: string;
@@ -1785,10 +1825,11 @@ export interface ExperimentalIconRegistration {
 
 export interface ExperimentalAppIcons {
   /**
-   * Add or override an app icon during setup. Returns nothing; the host
-   * replaces registrations on reload and removes them on unload. Duplicate
-   * names within a plugin reject setup. Between plugins, the first plugin id
-   * in lexical order wins, independent of bundle load order.
+   * Add or override an app icon during setup. A registered name shadows a
+   * built-in of the same name. Returns nothing; the host replaces
+   * registrations on reload and removes them on unload. Duplicate names within
+   * a plugin reject setup. Between plugins, the first plugin id in lexical
+   * order wins, independent of bundle load order.
    */
   register(registration: ExperimentalIconRegistration): void;
 }
@@ -1892,7 +1933,11 @@ export interface ComposerCustomization {
 export interface ComposerPlusMenuItem {
   id: string;
   label: string;
-  /** BB icon name; unknown names fall back to the generic plugin icon. */
+  /**
+   * BB icon name: a built-in name, or a name registered with
+   * `app.experimental_icons.register()`. Unknown names fall back to the
+   * generic plugin icon.
+   */
   icon?: string;
   /** Accessible description for the host-rendered row. */
   description?: string;
@@ -1941,7 +1986,13 @@ export interface PluginComposerTextEffect {
 
 /** Host-rendered status that temporarily replaces a thread's draft glyph. */
 export interface PluginComposerThreadRowStatus {
-  /** BB icon-name hint; unknown names fall back to the generic plugin icon. */
+  /**
+   * BB icon name: a built-in name, or a name registered with
+   * `app.experimental_icons.register()`. Unknown names fall back to the
+   * generic plugin icon. A plugin draws its own artwork here by
+   * registering it — the manifest's `bb.branding.experimental_icons` glyphs
+   * are a separate vocabulary this field does not resolve.
+   */
   icon: string;
   /** Accessible label for the status glyph. */
   label: string;
@@ -2078,7 +2129,11 @@ export interface ThreadChatMessageAction {
   id: string;
   /** Tooltip / menu label for the action. */
   title: string;
-  /** Icon hint (BB icon name); unknown names fall back to a generic icon. */
+  /**
+   * BB icon name: a built-in name, or a name registered with
+   * `app.experimental_icons.register()`. Unknown names fall back to a generic
+   * icon.
+   */
   icon?: string;
   /**
    * Message roles the action applies to. Omitted = both user and assistant
