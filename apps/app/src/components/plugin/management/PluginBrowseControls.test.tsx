@@ -232,7 +232,7 @@ function mockToolbarWidth(initial: number) {
   const callbacks = new Set<() => void>();
   const original = HTMLElement.prototype.getBoundingClientRect;
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
-    function () {
+    function (this: HTMLElement) {
       if (this.hasAttribute("data-resource-toolbar"))
         return new DOMRect(0, 0, width, 32);
       return original.call(this);
