@@ -1,7 +1,16 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { TabPill } from "@/components/ui/tab-pill";
+
+const MIN_TAB_WIDTH_PX = 144;
+const TAB_GAP_PX = 4;
 
 interface MobilePanelTab {
   id: string;
@@ -27,6 +36,9 @@ export function MobilePanelTabPager({
 }: MobilePanelTabPagerProps) {
   const touchStart = useRef<{ x: number; y: number } | null>(null);
   const suppressClickUntil = useRef(0);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const [visibleCount, setVisibleCount] = useState(1);
+  const [firstVisibleIndex, setFirstVisibleIndex] = useState(0);
   const activeTab = tabs.find((tab) => tab.id === activeTabId);
   const activeContentTabId = activeTab?.id ?? null;
   const [lastContentTabId, setLastContentTabId] = useState(activeContentTabId);
@@ -36,13 +48,45 @@ export function MobilePanelTabPager({
       (tab) => tab.id === (activeContentTabId ?? lastContentTabId),
     ),
   );
-  const displayedTab = tabs[displayedIndex];
+  const startIndex = Math.max(
+    0,
+    Math.min(
+      displayedIndex,
+      Math.max(firstVisibleIndex, displayedIndex - visibleCount + 1),
+      tabs.length - visibleCount,
+    ),
+  );
+  const displayedTabs = tabs.slice(startIndex, startIndex + visibleCount);
   const previousTab = tabs[displayedIndex - 1];
   const nextTab = tabs[displayedIndex + 1];
 
   useEffect(() => {
     if (activeContentTabId !== null) setLastContentTabId(activeContentTabId);
   }, [activeContentTabId]);
+
+  useEffect(() => {
+    setFirstVisibleIndex(startIndex);
+  }, [startIndex]);
+
+  useLayoutEffect(() => {
+    const viewport = viewportRef.current;
+    if (viewport === null) return;
+    const measure = () => {
+      setVisibleCount(
+        Math.max(
+          1,
+          Math.floor(
+            (viewport.clientWidth + TAB_GAP_PX) /
+              (MIN_TAB_WIDTH_PX + TAB_GAP_PX),
+          ),
+        ),
+      );
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(viewport);
+    return () => observer.disconnect();
+  }, []);
 
   return (
     <div
@@ -76,9 +120,14 @@ export function MobilePanelTabPager({
           <Icon name="ChevronLeft" />
         </Button>
         <div
+          ref={viewportRef}
           data-testid="mobile-panel-tab-viewport"
           data-no-secondary-panel-swipe
-          className="flex min-w-0 flex-1 touch-pan-y items-center justify-center overflow-hidden [&_[data-tab-pill-close]]:text-muted-foreground/70 [&_[data-tab-pill-close]_[data-icon-root]]:size-3.5"
+          className="grid min-w-0 flex-1 touch-pan-y items-center overflow-hidden [&>div]:w-full [&>div>button:first-child]:w-full [&_[data-tab-pill-close]]:text-muted-foreground/70 [&_[data-tab-pill-close]_[data-icon-root]]:size-3.5"
+          style={{
+            gap: TAB_GAP_PX,
+            gridTemplateColumns: `repeat(${visibleCount}, minmax(0, 1fr))`,
+          }}
           onTouchStartCapture={(event) => {
             suppressClickUntil.current = 0;
             const touch = event.touches[0];
@@ -108,8 +157,9 @@ export function MobilePanelTabPager({
             event.stopPropagation();
           }}
         >
-          {displayedTab && (
+          {displayedTabs.map((displayedTab) => (
             <TabPill
+              key={displayedTab.id}
               label={displayedTab.label}
               ariaLabel={displayedTab.ariaLabel}
               leadingVisual={displayedTab.leadingVisual}
@@ -127,7 +177,7 @@ export function MobilePanelTabPager({
                     }
               }
             />
-          )}
+          ))}
         </div>
         {newTabControl}
         <Button
