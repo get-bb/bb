@@ -2861,12 +2861,15 @@ function timelineSegmentAnchorConditions(threadId: string): SQL | undefined {
         sql`EXISTS (
           SELECT 1
           FROM json_each(${events.data}, '$.input') AS input_part
-          WHERE (
-            json_extract(input_part.value, '$.type') = 'text'
-            AND COALESCE(json_extract(input_part.value, '$.text'), '') <> ''
-          )
-          OR json_extract(input_part.value, '$.type')
-            IN ('image', 'localImage', 'localFile')
+          WHERE COALESCE(json_extract(input_part.value, '$.visibility'), '') <> 'agent-only'
+            AND (
+              (
+                json_extract(input_part.value, '$.type') = 'text'
+                AND COALESCE(json_extract(input_part.value, '$.text'), '') <> ''
+              )
+              OR json_extract(input_part.value, '$.type')
+                IN ('image', 'localImage', 'localFile')
+            )
         )`,
       ),
       and(

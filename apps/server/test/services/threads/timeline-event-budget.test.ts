@@ -1012,6 +1012,90 @@ describe("timeline event budget", () => {
     expect(budgeted.timelinePage.olderCursor).not.toBeNull();
   });
 
+  it("keeps the latest page visible when only newer input is agent-only", () => {
+    const { db, thread } = setup();
+    insertTurns(db, thread, 1, 1);
+    const clientRequestId = requestId(2);
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 5,
+        type: "client/turn/requested",
+        scope: threadScope(),
+        itemId: null,
+        itemKind: null,
+        parentToolCallId: null,
+        data: JSON.stringify({
+          direction: "outbound",
+          source: "tell",
+          initiator: "system",
+          request: { method: "turn/start", params: {} },
+          requestId: clientRequestId,
+          senderThreadId: null,
+          input: [
+            {
+              type: "text",
+              text: "Hidden workflow update",
+              visibility: "agent-only",
+            },
+          ],
+          target: { kind: "new-turn" },
+          execution,
+        }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 6,
+        type: "turn/input/accepted",
+        scope: turnScope("turn-1"),
+        providerThreadId,
+        itemId: null,
+        itemKind: null,
+        parentToolCallId: null,
+        data: JSON.stringify({ clientRequestId }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 7,
+        type: "item/completed",
+        scope: turnScope("turn-1"),
+        providerThreadId,
+        itemId: "workflow-response",
+        itemKind: "agentMessage",
+        parentToolCallId: null,
+        data: JSON.stringify({
+          item: {
+            type: "agentMessage",
+            id: "workflow-response",
+            text: "Visible response",
+          },
+        }),
+      },
+    ]);
+
+    const response = buildThreadTimelineWithProfile(db, thread, {
+      completedTurnDisplay: "collapse",
+      eventBudget: 2,
+      includeDiagnosticOperations: false,
+      includeNestedRows: true,
+      maxInlineOutputChars: null,
+      maxSeq: 0,
+      page: { kind: "latest", segmentLimit: 20 },
+    }).response;
+
+    expect(response.rows.length).toBeGreaterThan(0);
+    expect(
+      response.rows.some(
+        (row) =>
+          row.kind === "conversation" &&
+          row.role === "assistant" &&
+          row.text === "Visible response",
+      ),
+    ).toBe(true);
+    expect(response.timelinePage.hasOlderRows).toBe(false);
+    db.$client.close();
+  });
+
   it("still renders a single turn larger than the whole budget", () => {
     const { db, thread } = setup();
     insertTurns(db, thread, 3, [10, 400, 10]);
