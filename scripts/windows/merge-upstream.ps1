@@ -19,6 +19,15 @@ function Invoke-Git {
   }
 }
 
+function Remove-ConflictMarkers {
+  # Git leaves the fork's own marker comment in the "ours" block, so keep that
+  # side of each conflict; leaving the markers behind would stage broken files.
+  param([string]$Text)
+  $pattern = [regex]"(?s)<<<<<<< HEAD\r?\n(.*?)(\r?\n)=======\r?\n.*?>>>>>>> [^\r\n]*\r?\n?"
+  $keepOurs = [System.Text.RegularExpressions.MatchEvaluator] { param($match) $match.Groups[1].Value + $match.Groups[2].Value }
+  return $pattern.Replace($Text, $keepOurs)
+}
+
 function Set-ForkProtocolVersion {
   # The fork carries a wire delta (hostPlatformSchema gains "windows"), so the
   # protocol version is upstream's version + 1 after every merge.
@@ -38,7 +47,8 @@ function Set-ForkProtocolVersion {
   foreach ($path in @($protocolPath, $contractTestPath)) {
     if (-not (Test-Path $path)) { continue }
     $contents = Get-Content -Raw -LiteralPath $path
-    $updated = [regex]::Replace($contents, "HOST_DAEMON_PROTOCOL_VERSION = \d+", "HOST_DAEMON_PROTOCOL_VERSION = $resolved")
+    $updated = Remove-ConflictMarkers -Text $contents
+    $updated = [regex]::Replace($updated, "HOST_DAEMON_PROTOCOL_VERSION = \d+", "HOST_DAEMON_PROTOCOL_VERSION = $resolved")
     $updated = [regex]::Replace($updated, "HOST_DAEMON_PROTOCOL_VERSION\)\.toBe\(\d+\)", "HOST_DAEMON_PROTOCOL_VERSION).toBe($resolved)")
     if ($updated -ne $contents) {
       Set-Content -NoNewline -LiteralPath $path -Value $updated
@@ -76,9 +86,14 @@ Invoke-Git fetch $Upstream
 
 # bb-fork(windows): exit code 1 means merge conflicts, which this script is
 # bb-fork(windows): built to auto-resolve; only harder failures should stop here.
-& git merge "${Upstream}/${Branch}"
-if ($LASTEXITCODE -gt 1) {
-  throw "git merge ${Upstream}/${Branch} failed with exit code $LASTEXITCODE"
+if (Test-Path ".git/MERGE_HEAD") {
+  # Resuming a merge left unfinished by an earlier run; git merge would refuse.
+  Write-Host "Resuming the in-progress merge"
+} else {
+  & git merge "${Upstream}/${Branch}"
+  if ($LASTEXITCODE -gt 1) {
+    throw "git merge ${Upstream}/${Branch} failed with exit code $LASTEXITCODE"
+  }
 }
 
 Resolve-Lockfile
@@ -88,8 +103,9 @@ Set-ForkProtocolVersion
 $conflicts = & git diff --name-only --diff-filter=U
 if ($conflicts) {
   Write-Host ""
-  Write-Host "Unresolved conflicts remain; resolve them and rerun with:"
+  Write-Host "Unresolved conflicts remain; resolve them, then finish the merge with:"
   Write-Host "  git add <path>; git commit"
+  Write-Host "Do not rerun this script while a merge is in progress; rerun it on the next upstream update."
   $conflicts | ForEach-Object { Write-Host "  $_" }
   exit 1
 }
