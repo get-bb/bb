@@ -976,6 +976,9 @@ describe("CommandPalette", () => {
     const more = within(activeGroup).getByRole("option", {
       name: "Show more threads",
     });
+    expect(more.className).toContain("font-medium");
+    expect(more.className).not.toContain("text-subtle-foreground");
+    expect(more.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
     expect(input.getAttribute("aria-activedescendant")).toBe(more.id);
     fireEvent.keyDown(input, { key: "Enter" });
     expect(within(activeGroup).getAllByRole("option")).toHaveLength(8);

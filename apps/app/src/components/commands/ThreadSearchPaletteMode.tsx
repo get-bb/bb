@@ -305,7 +305,7 @@ export function ThreadSearchPaletteMode({
                     className={cn(
                       "cursor-pointer rounded-md px-2 py-1.5",
                       option.row === null
-                        ? "text-xs text-subtle-foreground"
+                        ? "flex items-center gap-1.5 text-sm font-medium text-foreground"
                         : "flex min-h-11 items-center gap-3 text-left text-sm",
                       index === activeIndex && "bg-state-hover text-foreground",
                     )}
@@ -313,7 +313,14 @@ export function ThreadSearchPaletteMode({
                     onClick={() => selectOption(option, index)}
                   >
                     {option.row === null ? (
-                      "Show more"
+                      <>
+                        Show more
+                        <Icon
+                          name="ChevronDown"
+                          className="size-3.5"
+                          aria-hidden
+                        />
+                      </>
                     ) : (
                       <ThreadSearchPaletteRow row={option.row} />
                     )}
