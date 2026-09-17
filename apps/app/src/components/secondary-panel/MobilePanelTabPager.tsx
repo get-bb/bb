@@ -77,6 +77,7 @@ export function MobilePanelTabPager({
         </Button>
         <div
           data-testid="mobile-panel-tab-viewport"
+          data-no-secondary-panel-swipe
           className="flex min-w-0 flex-1 touch-pan-y items-center justify-center overflow-hidden [&_[data-tab-pill-close]]:text-muted-foreground/70 [&_[data-tab-pill-close]_[data-icon-root]]:size-3.5"
           onTouchStartCapture={(event) => {
             suppressClickUntil.current = 0;
