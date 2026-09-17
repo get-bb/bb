@@ -609,7 +609,7 @@ describe("Theme Preview", () => {
     }
   });
 
-  it("keeps badges on one row and the component specimens evenly grouped", async () => {
+  it("wraps badges and keeps the component specimens evenly grouped", async () => {
     const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(1280);
     try {
       renderPreview({
@@ -619,8 +619,8 @@ describe("Theme Preview", () => {
       await waitFor(() => expect(document.querySelector("[data-tp-band=desktop]")).not.toBeNull());
 
       const badges = document.querySelector<HTMLElement>("[data-tp-badge-row]");
-      expect(badges?.style.flexWrap).toBe("nowrap");
-      expect(badges?.style.overflowX).toBe("auto");
+      expect(badges?.style.flexWrap).toBe("wrap");
+      expect(badges?.style.overflowX).toBe("");
 
       const components = document.querySelector<HTMLElement>("[data-tp-components]");
       expect(components?.style.gridTemplateColumns).toBe("repeat(2, minmax(0, 1fr))");
