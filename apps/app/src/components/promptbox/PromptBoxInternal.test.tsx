@@ -4036,6 +4036,40 @@ describe("PromptBoxInternal prompt actions", () => {
     expect(getPromptEditorElement().querySelector("blockquote")).not.toBeNull();
   });
 
+  it("keeps list markers attached to their item text when pasting mentioned list html", async () => {
+    const { changes, promptBoxRef } = renderPromptBox("");
+    const resource = {
+      kind: "thread" as const,
+      threadId: "thr_office",
+      label: "Agent office visualization",
+    };
+    const serializedText = serializedTextForPromptMentionResource(resource);
+    const pill = document.createElement("span");
+    for (const [name, value] of Object.entries(
+      promptMentionClipboardDataAttributes({ resource, serializedText }),
+    )) {
+      pill.setAttribute(name, value);
+    }
+    pill.textContent = resource.label;
+
+    await focusPromptEnd(promptBoxRef);
+    pasteClipboard({
+      html: `<p>Findings:</p><ul><li><p>Reproduced on ${pill.outerHTML} today</p></li><li><p>Second finding</p></li></ul>`,
+      plainText:
+        "Findings:\n\nReproduced on Agent office visualization today\nSecond finding",
+    });
+
+    await waitFor(() =>
+      expect(latestValue(changes)).toBe(
+        `Findings:\n- Reproduced on ${serializedText} today\n- Second finding`,
+      ),
+    );
+    const mention = latestChange(changes)?.mentions.at(0);
+    expect(latestValue(changes)?.slice(mention?.start, mention?.end)).toBe(
+      serializedText,
+    );
+  });
+
   it("keeps multiple pasted plugin references as distinct pills", async () => {
     const { changes, promptBoxRef } = renderPromptBox("");
     const reference = (id: string, label: string) => {
