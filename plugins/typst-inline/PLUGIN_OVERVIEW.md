@@ -1,12 +1,14 @@
-Typeset a Typst document and show it inline in the assistant message as a paper-like sheet. The agent writes a `.typ` file to the workspace or thread storage, and the plugin compiles and renders it in the conversation and in bb's file viewer. Documents export as PDF, SVG, or PNG, and print with Typst's own pagination.
+Typeset a Typst document and show it inline in the assistant message as a paper-like sheet. The agent writes a `.typ` file to the workspace or thread storage, and the plugin compiles and renders it in the conversation, in the thread side panel, and in bb's file viewer. Documents export as PDF, SVG, PNG, or Word, and print with Typst's own pagination.
 
 ## What you get
 
 - A white sheet with the rendered pages, scrollable in place. The agent can set a height from 120 to 1200 pixels; the default is 224.
+- A Source / Rendered toggle on the card, in the side panel, and in the file viewer to read the raw `.typ` source next to the typeset document.
+- Open in sidebar opens the same sheet and Export menu in the thread's side panel, so the sidebar view matches the inline card.
 - The plugin claims `.typ` files in bb's file opener, so a `.typ` file opened from a chat link, the file search, or the card's sidebar action shows the rendered document in the file panel instead of the source. Files outside a project or thread (host paths) keep bb's default text preview.
-- An Export menu on the inline card and in the file panel: save PDF, SVG, or PNG (one 2x file per page, rasterized in the browser), and print with page breaks per Typst page. A re-render action re-reads the dependencies and typesets the document again.
+- An Export menu on the inline card, in the side panel, and in the file panel: save PDF, SVG, PNG (one 2x file per page, rasterized in the browser), or Word (`.docx`, one rasterized page image per Word page), and print with page breaks per Typst page. A re-render action re-reads the dependencies and typesets the document again.
 - A clear inline error when the document is missing, too large, not UTF-8, or fails to compile, with a Try again action.
-- No Typst installation: the compiler and renderer are WebAssembly modules that load on first use, and the default Typst text fonts come from the Typst font assets CDN. PDF export compiles the document again in PDF mode; SVG and PNG reuse the cached rendering.
+- No Typst installation: the compiler and renderer are WebAssembly modules that load on first use, and the default Typst text fonts come from the Typst font assets CDN. PDF export compiles the document again in PDF mode; SVG, PNG, and Word reuse the cached rendering.
 
 ## How it works
 

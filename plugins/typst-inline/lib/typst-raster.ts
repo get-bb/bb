@@ -8,9 +8,16 @@ const ENCODE_TIMEOUT_MS = 30_000;
 const TEXT_SEMANTICS_TAGS: readonly string[] = ["foreignObject"];
 
 export async function rasterizeTypstPages(svg: string): Promise<Blob[]> {
+  return await rasterizeTypstPageList(splitTypstPages(svg), PNG_SCALE);
+}
+
+export async function rasterizeTypstPageList(
+  pages: readonly TypstPage[],
+  scale: number,
+): Promise<Blob[]> {
   const blobs: Blob[] = [];
-  for (const page of splitTypstPages(svg)) {
-    blobs.push(await rasterizePage(page));
+  for (const page of pages) {
+    blobs.push(await rasterizePage(page, scale));
   }
   return blobs;
 }
@@ -25,9 +32,9 @@ function withoutTextSemantics(page: TypstPage): string {
   return new XMLSerializer().serializeToString(root);
 }
 
-async function rasterizePage(page: TypstPage): Promise<Blob> {
-  const width = Math.max(1, Math.ceil(page.widthPt * PNG_SCALE));
-  const height = Math.max(1, Math.ceil(page.heightPt * PNG_SCALE));
+async function rasterizePage(page: TypstPage, scale: number): Promise<Blob> {
+  const width = Math.max(1, Math.ceil(page.widthPt * scale));
+  const height = Math.max(1, Math.ceil(page.heightPt * scale));
   const url = URL.createObjectURL(
     new Blob([withoutTextSemantics(page)], {
       type: "image/svg+xml;charset=utf-8",

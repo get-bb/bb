@@ -16,6 +16,7 @@ export type TypstDocumentState =
   | { status: "loading"; file: string }
   | {
       status: "ready";
+      content: string;
       document: TypstDocument;
       file: string;
       pages: readonly TypstPage[];
@@ -78,6 +79,7 @@ export function useTypstDocument(input: {
         if (cancelled) return;
         setState({
           status: "ready",
+          content: artifact.content,
           document,
           file: artifact.file,
           pages,
