@@ -685,8 +685,8 @@ export interface PluginThreadPanelActionRegistration {
   /** Label of the action row in the panel's new-tab launcher. */
   title: string;
   /**
-   * Used when the plugin ships no logo; the launcher row and opened tabs
-   * prefer the plugin's logo.
+   * Drawn only when the manifest declares no `bb.branding.icon`; the launcher
+   * row and opened tabs prefer that over this hint.
    */
   icon?: BbIconName;
   /** Rendered inside every panel tab this action opens. */
@@ -727,7 +727,7 @@ export interface PluginNewThreadPanelActionRegistration {
   id: string;
   /** Label of the action row in the panel's new-tab launcher. */
   title: string;
-  /** Used when the plugin ships no logo. */
+  /** Drawn only when the manifest declares no `bb.branding.icon`. */
   icon?: BbIconName;
   /** Rendered inside every panel tab this action opens. */
   component: ComponentType<PluginNewThreadPanelProps>;
@@ -775,7 +775,7 @@ export interface PluginSidebarFooterActionRegistration {
   id: string;
   /** Tooltip and accessible label for the icon button. */
   title: string;
-  /** Drawn only when the plugin ships no logo, which the button prefers. */
+  /** Drawn only when the manifest declares no `bb.branding.icon`. */
   icon: BbIconName;
   /**
    * Runs when the user activates the action (e.g. call `openSettings()`,
@@ -1910,7 +1910,7 @@ export interface ComposerCustomization {
 export interface ComposerPlusMenuItem {
   id: string;
   label: string;
-  /** Drawn only when the plugin ships no logo, which the row prefers. */
+  /** Drawn only when the manifest declares no `bb.branding.icon`. */
   icon?: BbIconName;
   /** Accessible description for the host-rendered row. */
   description?: string;
@@ -1961,7 +1961,7 @@ export interface PluginComposerTextEffect {
 export interface PluginComposerThreadRowStatus {
   /**
    * Always drawn as given: unlike the plugin-badged surfaces, this one has no
-   * preference for the plugin's own logo.
+   * preference for the plugin's own `bb.branding.icon`.
    */
   icon: BbIconName;
   /** Accessible label for the status glyph. */
