@@ -53,16 +53,25 @@ implementations: the docs plugin's pull/push sync and the
 tasks plugin's attachment commands. `node:fs` remains correct for genuinely
 server-local data such as files under the plugin's own data directory.
 
-### bb.ui.requestInput — replace the composer with a blocking plugin form
+### bb.ui.requestInput — ask the person something in the thread composer
 
 Use `bb.ui.requestInput({ threadId, rendererId, title, payload, timeoutMs? },
 { signal? })` when plugin backend code must wait for sensitive or structured
 user input. The promise resolves to `{ outcome: "submitted", value }` or
 `{ outcome: "cancelled", reason }`. Payloads and responses are JSON values
 capped at 64 KiB; response values are delivered only to the waiting plugin
-invocation and are never persisted. Pair `rendererId` with a frontend
-`pendingInteraction` slot. Pass a CLI handler's `ctx.signal` so disconnecting
-the caller cancels the request.
+invocation and are never persisted, so the timeline records only the form's
+title and whether it was submitted or cancelled. Pair `rendererId` with a
+frontend `pendingInteraction` slot. Pass a CLI handler's `ctx.signal` so
+disconnecting the caller cancels the request.
+
+For a multiple-choice question, pass `{ threadId, kind: "user_question",
+questions, timeoutMs? }` instead (`PluginUserQuestionInteractionRequest`).
+bb draws it with the same card a provider's native question uses, persists
+the questions and answers, shows the "Answered … — …" timeline row, and lets
+`bb thread interactions answer` answer it. The result's `value` is the typed
+answers record keyed by question id (`PluginUserQuestionInteractionResult`),
+and the plugin ships no form of its own.
 
 Awaiting it inside a native tool's `execute` is fine too, and needs no
 workaround: a tool call is not bound to its turn. If the person has not

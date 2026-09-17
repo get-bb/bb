@@ -43,6 +43,11 @@ vi.mock("@/hooks/mutations/thread-interaction-mutations", () => ({
     isPending: false,
     error: null,
   }),
+  useCancelThreadPendingInteraction: () => ({
+    mutate: vi.fn(),
+    isPending: false,
+    error: null,
+  }),
 }));
 
 vi.mock("@/lib/sdk", () => ({

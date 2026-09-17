@@ -159,8 +159,12 @@ Read the installed declarations for exact current signatures.
 - `PluginHttpAuthMode`
 - `PluginHttpHandler`
 - `PluginInteractionCancelReason`
+- `PluginFormInteractionRequest`
+- `PluginInteractionCancelled`
 - `PluginInteractionRequest`
 - `PluginInteractionResult`
+- `PluginUserQuestionInteractionRequest`
+- `PluginUserQuestionInteractionResult`
 - `PluginKvStorage`
 - `PluginLogger`
 - `PluginMentionItem`
