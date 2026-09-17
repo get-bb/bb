@@ -433,7 +433,7 @@ export async function queueParentSystemMessage(
     return false;
   }
   const hasPendingInteraction =
-    deps.pendingInteractions.hasPendingThreadInteraction(parentThread.id);
+    deps.pendingInteractions.hasTurnBoundPendingThreadInteraction(parentThread.id);
   if (!hasPendingInteraction) {
     try {
       return await deliverParentSystemMessage(deps, {

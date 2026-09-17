@@ -40,6 +40,7 @@ import {
   waitForQueuedCommand,
 } from "../helpers/commands.js";
 import { createMockHubSocket } from "../helpers/mock-hub-socket.js";
+import { createUserQuestionPayload } from "../helpers/pending-interactions.js";
 import { textInput } from "../helpers/prompt-input.js";
 import {
   seedEnvironment,
@@ -919,6 +920,58 @@ describe("startup queue waits", () => {
       ).toMatchObject({
         target: { mode: "auto", expectedTurnId: "turn-system-notice-ready" },
       });
+    });
+  });
+
+  it("sends to an idle thread while a plugin's question card is still open", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedProviderThreadFixture({
+        harness,
+        status: "idle",
+        value: 66,
+      });
+      const pending = harness.deps.pendingInteractions.requestPluginInteraction(
+        {
+          kind: "user_question",
+          pluginId: "ask-user-question",
+          threadId: thread.id,
+          questions: createUserQuestionPayload().questions,
+          timeoutMs: 10_000,
+        },
+      );
+      const [interaction] =
+        harness.deps.pendingInteractions.listPendingThreadInteractions(
+          thread.id,
+        );
+      expect(interaction).toMatchObject({ turnId: null, status: "pending" });
+
+      await expect(
+        acceptThreadSendRequest(harness.deps, {
+          payload: {
+            input: textInput("carry on without waiting for the card"),
+            mode: "auto",
+            model: "gpt-5",
+            permissionMode: "full",
+            reasoningLevel: "medium",
+            serviceTier: "default",
+          },
+          thread,
+        }),
+      ).resolves.toEqual({ ok: true, delivery: "sent" });
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);
+      expect(
+        harness.deps.pendingInteractions.getThreadInteraction({
+          threadId: thread.id,
+          interactionId: interaction!.id,
+        }),
+      ).toMatchObject({ status: "pending" });
+
+      harness.deps.pendingInteractions.cancelPluginInteraction({
+        threadId: thread.id,
+        interactionId: interaction!.id,
+        reason: "user",
+      });
+      await expect(pending).resolves.toMatchObject({ outcome: "cancelled" });
     });
   });
 
