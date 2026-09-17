@@ -15,20 +15,27 @@ export async function resolveHostEnvironment(
   context: HostEnvironmentContext,
 ): Promise<HostDaemonContributedEnvEntry[]> {
   const host = getHost(deps.db, context.hostId);
-  if (!host || host.machineProviderId === null || host.destroyedAt !== null)
-    return [];
-  if (
-    readPrimaryHostIdFromDataDir({ dataDir: deps.config.dataDir }) ===
-    context.hostId
-  )
-    return [];
-  const builtIn = getAppSettings(deps.db).machineGitCredentialsEnabled
-    ? await resolveGitCredentials()
-    : [];
-  const user = await resolveUserMachineEnvironment(
-    deps.db,
-    deps.config.dataDir,
-  );
+  if (!host || host.destroyedAt !== null) return [];
+  const primaryHostId = readPrimaryHostIdFromDataDir({
+    dataDir: deps.config.dataDir,
+  });
+  const builtIn =
+    primaryHostId !== null &&
+    primaryHostId !== context.hostId &&
+    getAppSettings(deps.db).machineGitCredentialsEnabled
+      ? await resolveGitCredentials()
+      : [];
+  const [global, project] = await Promise.all([
+    resolveUserMachineEnvironment(deps.db, deps.config.dataDir),
+    context.projectId === null
+      ? []
+      : resolveUserMachineEnvironment(
+          deps.db,
+          deps.config.dataDir,
+          context.projectId,
+        ),
+  ]);
+  const user = mergeHostAndProviderEnvironment(global, project);
   if (!builtIn.length && user.some((entry) => entry.name === "GH_TOKEN"))
     builtIn.push(...githubGitConfiguration());
   return mergeHostAndProviderEnvironment(builtIn, user);

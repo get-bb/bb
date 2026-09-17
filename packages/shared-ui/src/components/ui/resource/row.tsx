@@ -19,10 +19,15 @@ import {
 import { cn } from "../../../lib/utils";
 import { COARSE_POINTER_HOVER_REVEAL_VISIBLE_CLASS } from "../coarse-pointer-visibility";
 
-export function targetsResourceAction(target: EventTarget): boolean {
+export function targetsResourceAction(event: {
+  currentTarget: Element;
+  target: EventTarget;
+}): boolean {
+  const { currentTarget, target } = event;
   return (
     target instanceof Element &&
-    target.closest("a, button, [data-row-action]") !== null
+    (!currentTarget.contains(target) ||
+      target.closest("a, button, [data-row-action]") !== null)
   );
 }
 
@@ -229,7 +234,7 @@ export function ResourceRow({
         className,
       )}
       onClick={(event) => {
-        if (targetsResourceAction(event.target)) return;
+        if (targetsResourceAction(event)) return;
         onOpen();
       }}
     >

@@ -222,7 +222,7 @@ connect status and push with `&&`.
 Local file and empty-directory deletions are warnings unless `--delete` is
 explicit; a pulled folder root is retained, so pull its parent or the whole
 vault to remove that folder. Use `--workspace-host <id>` when a standalone
-CLI's working directory is on a non-primary host. Direct `write`, `mkdir`,
+CLI's working directory is not on the server machine. Direct `write`, `mkdir`,
 `move`, and `remove` remain only as deprecated compatibility commands.
 
 The Tasks plugin is an opt-in official plugin bundled with the app:

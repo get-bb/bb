@@ -6,7 +6,7 @@ description: "Read, edit, or save documents in BB Docs vaults, including documen
 # Docs
 
 Docs is the user's filesystem-first document library. Documents can live on
-the primary machine or another connected host, but the `bb docs` command
+the server machine or another connected host, but the `bb docs` command
 handles that routing through named vaults.
 
 ## Access documents

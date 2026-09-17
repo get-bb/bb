@@ -8,7 +8,10 @@ import {
 } from "./parcel-watcher-backend.js";
 import { pathExists } from "./path-exists.js";
 import { isRescanRequiredMessage } from "./watch-recovery.js";
-import { toWatchErrorMessage } from "./watch-error.js";
+import {
+  describeSubscribeFailure,
+  toWatchErrorMessage,
+} from "./watch-error.js";
 
 export type { ParcelWatcherEventBatch } from "./parcel-watcher-backend.js";
 
@@ -30,16 +33,17 @@ export class RootSubscription {
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private warned = false;
   private recoveryPending = false;
-  private readonly pendingStarts = new Set<Promise<void>>();
+  private readonly pendingStarts = new Map<Promise<void>, AbortController>();
   private readonly pendingStops = new Set<Promise<void>>();
 
   constructor(private readonly args: RootSubscriptionArgs) {}
 
   start(): void {
-    const pendingStart = this.startAsync().finally(() => {
+    const controller = new AbortController();
+    const pendingStart = this.startAsync(controller.signal).finally(() => {
       this.pendingStarts.delete(pendingStart);
     });
-    this.pendingStarts.add(pendingStart);
+    this.pendingStarts.set(pendingStart, controller);
   }
 
   async dispose(): Promise<void> {
@@ -48,12 +52,15 @@ export class RootSubscription {
       clearTimeout(this.retryTimer);
       this.retryTimer = null;
     }
+    for (const controller of this.pendingStarts.values()) {
+      controller.abort();
+    }
     if (this.subscription !== null) {
       const subscription = this.subscription;
       this.subscription = null;
       this.stopSubscription(subscription);
     }
-    await Promise.all([...this.pendingStarts]);
+    await Promise.all([...this.pendingStarts.keys()]);
     await this.awaitPendingStops();
   }
 
@@ -112,7 +119,7 @@ export class RootSubscription {
     this.scheduleRetry();
   }
 
-  private async startAsync(): Promise<void> {
+  private async startAsync(signal: AbortSignal): Promise<void> {
     if (this.disposed || this.subscription !== null) {
       return;
     }
@@ -154,6 +161,7 @@ export class RootSubscription {
           this.args.onEvents(events);
         },
         this.args.subscribeOptions,
+        signal,
       );
       if (this.disposed) {
         if (!terminalFailureObserved) {
@@ -181,7 +189,9 @@ export class RootSubscription {
       if (this.disposed) {
         return;
       }
-      this.reportWatchError(toWatchErrorMessage(error));
+      this.reportWatchError(
+        describeSubscribeFailure(toWatchErrorMessage(error)),
+      );
       this.scheduleRetry();
     }
   }

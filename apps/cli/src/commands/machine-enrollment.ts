@@ -13,6 +13,7 @@ import {
 import { homedir, hostname } from "node:os";
 import { join, resolve } from "node:path";
 import { createServer } from "node:net";
+import { mutateManagedJsonFile } from "@bb/config/managed-json-file";
 import { z } from "zod";
 
 const serverUrlSchema = z
@@ -209,11 +210,18 @@ export async function enrollMachine(
     throw new Error("Machine enrollment bootstrap has expired");
   const fetchFn = runtime.fetchFn ?? fetch;
   const signal = AbortSignal.timeout(60_000);
-  config = { ...config, serverUrl, serverHeaders: bootstrap.headers };
-  await atomicWrite(
-    join(dataDir, "config.json"),
-    `${JSON.stringify(config)}\n`,
-  );
+  const configPath = join(dataDir, "config.json");
+  config = await mutateManagedJsonFile({
+    path: configPath,
+    read: async () =>
+      configSchema.parse(JSON.parse((await readOptional(configPath)) ?? "{}")),
+    mutate: (current) => {
+      if (current.serverUrl && normalizeUrl(current.serverUrl) !== serverUrl) {
+        throw new Error("Refusing to overwrite a different machine identity");
+      }
+      return { ...current, serverUrl, serverHeaders: bootstrap.headers };
+    },
+  });
   await atomicWrite(join(dataDir, "host-id"), `${bootstrap.hostId}\n`);
   await prepareRuntime();
   let enrolled: z.infer<typeof authSchema>;

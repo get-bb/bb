@@ -1,6 +1,7 @@
+import { requestThreadStorageDeletion } from "./thread-lifecycle.js";
 import { assertEnvironmentPathAvailable } from "../environments/path-admission.js";
 import {
-  deleteThread,
+  markThreadDeleted,
   getEnvironment,
   getProjectSourceByHost,
   getThread,
@@ -376,6 +377,12 @@ async function createPendingThreadAndAttemptFirstDispatch(
       : getEnvironment(deps.db, args.environmentId);
   if (environment !== null)
     assertEnvironmentPathAvailable(deps, { ...environment, threadId: null });
+  if (args.request.sourceThreadId) {
+    requireLiveSourceThread(deps, {
+      projectId: args.request.projectId,
+      sourceThreadId: args.request.sourceThreadId,
+    });
+  }
   const thread = createThreadRecord(deps, {
     request: args.request,
     environmentId: args.environmentId,
@@ -453,7 +460,17 @@ async function createPendingThreadAndAttemptFirstDispatch(
       deletedAt: Date.now(),
       updatedAt: Date.now(),
     });
-    deleteThread(deps.db, deps.hub, thread.id);
+    const deleted = markThreadDeleted(deps.db, deps.hub, {
+      threadId: thread.id,
+    });
+    if (deleted)
+      requestThreadStorageDeletion(
+        deps,
+        deleted,
+        deleted.environmentId
+          ? getEnvironment(deps.db, deleted.environmentId)
+          : null,
+      );
     throw error;
   }
   rememberProjectExecutionDefaultsForCreate(deps, {
@@ -611,6 +628,7 @@ export async function createThreadFromRequest(
     }
   }
   await validatePromptAttachmentReferences({
+    db: deps.db,
     dataDir: deps.config.dataDir,
     input: requestInput.input,
     projectId: requestInput.projectId,

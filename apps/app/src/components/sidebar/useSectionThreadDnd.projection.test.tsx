@@ -26,13 +26,37 @@ import {
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 import { getSidebarThreadRowDroppableId } from "./sidebarThreadRowDroppable";
 
+let updateThreadDeferred: {
+  resolve: (value: unknown) => void;
+  reject: (reason: unknown) => void;
+} | null = null;
+
 vi.mock("@/lib/sdk", () => ({
   sdk: {
     threads: {
-      update: vi.fn(() => new Promise(() => {})),
+      update: vi.fn(
+        () =>
+          new Promise((resolve, reject) => {
+            updateThreadDeferred = { resolve, reject };
+          }),
+      ),
     },
   },
 }));
+
+function resolveUpdateThread(value: unknown): void {
+  updateThreadDeferred?.resolve(value);
+}
+
+function rejectUpdateThread(reason: unknown): void {
+  updateThreadDeferred?.reject(reason);
+}
+
+async function flushTasks(): Promise<void> {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+}
 
 function createThread(overrides: Partial<ThreadListEntry>): ThreadListEntry {
   return makeThreadListEntry({
@@ -110,6 +134,7 @@ function notePointerMove() {
 
 afterEach(() => {
   cleanup();
+  updateThreadDeferred = null;
 });
 
 describe("useSectionThreadDnd projection feedback loop (#1830)", () => {
@@ -268,6 +293,78 @@ describe("useSectionThreadDnd nest projection", () => {
       } as DragCancelEvent),
     );
     expect(result.current?.nestTarget).toBeNull();
+  });
+});
+
+describe("useSectionThreadDnd settled drop cleanup", () => {
+  const nestedRootItems = buildSectionThreadList(
+    [
+      createThread({ id: "dragged", sectionId: "b", parentThreadId: "in-b" }),
+      createThread({ id: "peer-a", sectionId: "a", createdAt: 2 }),
+      createThread({ id: "in-b", sectionId: "b", createdAt: 3 }),
+      createThread({ id: "loose", createdAt: 4 }),
+    ],
+    undefined,
+    SECTIONS,
+  );
+  const withoutDraggedRootItems = buildSectionThreadList(
+    [
+      createThread({ id: "peer-a", sectionId: "a", createdAt: 2 }),
+      createThread({ id: "in-b", sectionId: "b", createdAt: 3 }),
+      createThread({ id: "loose", createdAt: 4 }),
+    ],
+    undefined,
+    SECTIONS,
+  );
+
+  async function nestDraggedOntoInB(settle: () => void) {
+    const view = renderSectionThreadDnd();
+    const props = () => view.result.current!.dndContextProps;
+
+    act(() => props().onDragStart?.(dragStart("dragged")));
+    act(() =>
+      props().onDragOver?.(
+        dragOver("dragged", getSidebarThreadRowDroppableId("in-b")),
+      ),
+    );
+    expect(view.result.current?.nestTarget).toEqual({
+      threadId: "in-b",
+      state: "valid",
+    });
+
+    act(() =>
+      props().onDragEnd?.(
+        dragEnd("dragged", getSidebarThreadRowDroppableId("in-b")),
+      ),
+    );
+    await flushTasks();
+    expect(updateThreadDeferred).not.toBeNull();
+    settle();
+    await flushTasks();
+    return view;
+  }
+
+  it("does not resurrect the nest projection when the dropped row later leaves the tree", async () => {
+    const { result, rerender } = await nestDraggedOntoInB(() =>
+      resolveUpdateThread(createThread({ id: "dragged" })),
+    );
+
+    rerender({ rootItems: nestedRootItems });
+    expect(result.current?.nestTarget).toBeNull();
+    expect(result.current?.activeThread).toBeNull();
+
+    rerender({ rootItems: withoutDraggedRootItems });
+    expect(result.current?.nestTarget).toBeNull();
+    expect(result.current?.activeThread).toBeNull();
+  });
+
+  it("clears the nest projection when the drop mutation fails", async () => {
+    const { result } = await nestDraggedOntoInB(() =>
+      rejectUpdateThread(new Error("nope")),
+    );
+
+    expect(result.current?.nestTarget).toBeNull();
+    expect(result.current?.activeThread).toBeNull();
   });
 });
 

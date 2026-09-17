@@ -95,6 +95,7 @@ export function makeProviderInfo(
     available: true,
     maintenance: { health: false, usage: false, installation: false },
     composerActions: [],
+    completedTurnDisplay: "collapse",
     capabilities: {
       supportsThreadArchive: true,
       supportsThreadRename: true,
@@ -125,6 +126,7 @@ export function makeThread(overrides: Partial<Thread> = {}): Thread {
     sectionId: null,
     status: "idle",
     parentThreadId: null,
+    lifecycleOwnerThreadId: null,
     sourceThreadId: null,
     originKind: null,
     originPluginId: null,

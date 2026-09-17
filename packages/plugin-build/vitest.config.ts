@@ -8,7 +8,9 @@ export default defineWorkspaceTestConfig({
     silent: "passed-only",
     server: {
       deps: {
-        external: [/\.builtin-host-test-[^/]+\/dist\/host\.js/u],
+        external: [
+          /\.(?:builtin-host|host-build-bridge)-test-[^/]+\/dist\/host\.js/u,
+        ],
       },
     },
     projects: sharedWorkerProjects({

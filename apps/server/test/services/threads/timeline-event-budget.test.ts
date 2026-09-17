@@ -76,7 +76,11 @@ it.each([
       itemId: null,
       itemKind: null,
       parentToolCallId: null,
-      data: JSON.stringify({ requestId: requestId(1), initiator: "user" }),
+      data: JSON.stringify({
+        requestId: requestId(1),
+        initiator: "user",
+        input: [],
+      }),
     });
     insertEvents(
       db,
@@ -331,6 +335,7 @@ function walkAllFileChangeDiffs(
       db,
       thread,
       {
+        completedTurnDisplay: "collapse",
         eventBudget,
         includeDiagnosticOperations: false,
         includeNestedRows: true,
@@ -379,6 +384,7 @@ function walkAllPages(
       db,
       thread,
       {
+        completedTurnDisplay: "collapse",
         eventBudget,
         includeDiagnosticOperations: false,
         includeNestedRows: true,
@@ -423,6 +429,7 @@ describe("timeline event budget", () => {
       maxSeq: 0,
     } as const;
     const canonical = buildThreadTimelineWithProfile(db, thread, {
+      completedTurnDisplay: "collapse",
       ...options,
       eventBudget: LARGE_BUDGET,
       page: { kind: "latest", segmentLimit: 100 },
@@ -434,6 +441,7 @@ describe("timeline event budget", () => {
         db,
         thread,
         {
+          completedTurnDisplay: "collapse",
           ...options,
           eventBudget: 5,
           page: cursor
@@ -468,6 +476,7 @@ describe("timeline event budget", () => {
         return threadTimelineResponseSchema.parse(await response.json());
       };
       const expected = buildThreadTimelineWithProfile(db, thread, {
+        completedTurnDisplay: "collapse",
         includeDiagnosticOperations: false,
         includeNestedRows: true,
         maxInlineOutputChars: 32_000,
@@ -535,6 +544,7 @@ describe("timeline event budget", () => {
         }).rows,
       ).toEqual(
         buildThreadTimelineWithProfile(db, thread, {
+          completedTurnDisplay: "collapse",
           includeDiagnosticOperations: false,
           includeNestedRows: true,
           maxInlineOutputChars: 32_000,
@@ -646,6 +656,7 @@ describe("timeline event budget", () => {
         }).rows,
       ).toEqual(
         buildThreadTimelineWithProfile(db, thread, {
+          completedTurnDisplay: "collapse",
           includeDiagnosticOperations: false,
           includeNestedRows: true,
           maxInlineOutputChars: 32_000,
@@ -821,6 +832,7 @@ describe("timeline event budget", () => {
         }
         expect(reloadedRows).toEqual(
           buildThreadTimelineWithProfile(db, thread, {
+            completedTurnDisplay: "collapse",
             includeDiagnosticOperations: false,
             includeNestedRows: false,
             maxInlineOutputChars: 32_000,
@@ -847,6 +859,7 @@ describe("timeline event budget", () => {
         eventBudget: LARGE_BUDGET,
       } as const;
       const canonical = buildThreadTimelineWithProfile(db, thread, {
+        completedTurnDisplay: "collapse",
         ...options,
         page: { kind: "latest", segmentLimit: 100 },
       }).response;
@@ -858,6 +871,7 @@ describe("timeline event budget", () => {
           db,
           thread,
           {
+            completedTurnDisplay: "collapse",
             ...options,
             responseByteBudget: 512,
             page: cursor
@@ -891,6 +905,7 @@ describe("timeline event budget", () => {
         eventBudget: 1,
       } as const;
       const latest = buildThreadTimelineWithProfile(db, thread, {
+        completedTurnDisplay: "collapse",
         ...options,
         page: { kind: "latest", segmentLimit: 1 },
       }).response;
@@ -899,6 +914,7 @@ describe("timeline event budget", () => {
       try {
         expect(
           buildThreadTimelineWithProfile(copy, thread, {
+            completedTurnDisplay: "collapse",
             ...options,
             page: { kind: "older", beforeCursor, segmentLimit: 1 },
           }).response.timelinePage.historySnapshot,
@@ -929,6 +945,7 @@ describe("timeline event budget", () => {
         },
       ]);
       const continued = buildThreadTimelineWithProfile(db, thread, {
+        completedTurnDisplay: "collapse",
         ...options,
         page: { kind: "older", beforeCursor, segmentLimit: 1 },
       }).response;
@@ -941,6 +958,7 @@ describe("timeline event budget", () => {
       expect(
         () =>
           buildThreadTimelineWithProfile(db, thread, {
+            completedTurnDisplay: "collapse",
             ...options,
             page: { kind: "older", beforeCursor, segmentLimit: 1 },
           }).response,
@@ -968,6 +986,7 @@ describe("timeline event budget", () => {
     insertTurns(db, thread, 8, 40);
 
     const unbudgeted = buildThreadTimelineWithProfile(db, thread, {
+      completedTurnDisplay: "collapse",
       eventBudget: LARGE_BUDGET,
       includeDiagnosticOperations: false,
       includeNestedRows: true,
@@ -978,6 +997,7 @@ describe("timeline event budget", () => {
     expect(unbudgeted.timelinePage.hasOlderRows).toBe(false);
 
     const budgeted = buildThreadTimelineWithProfile(db, thread, {
+      completedTurnDisplay: "collapse",
       eventBudget: 100,
       includeDiagnosticOperations: false,
       includeNestedRows: true,
@@ -997,6 +1017,7 @@ describe("timeline event budget", () => {
     insertTurns(db, thread, 3, [10, 400, 10]);
 
     const budgeted = buildThreadTimelineWithProfile(db, thread, {
+      completedTurnDisplay: "collapse",
       eventBudget: 50,
       includeDiagnosticOperations: false,
       includeNestedRows: true,
@@ -1041,11 +1062,13 @@ describe("timeline event budget", () => {
     };
     expect(
       buildThreadTimelineWithProfile(db, thread, {
+        completedTurnDisplay: "collapse",
         ...options,
         eventBudget: 1_500,
       }).response,
     ).toEqual(
       buildThreadTimelineWithProfile(db, thread, {
+        completedTurnDisplay: "collapse",
         ...options,
         eventBudget: LARGE_BUDGET,
       }).response,
@@ -1057,6 +1080,7 @@ it("does not decode unrelated turn history for a one-group page", () => {
   const { db, thread } = setup();
   insertTurns(db, thread, 200, 3);
   const { response, profile } = buildThreadTimelineWithProfile(db, thread, {
+    completedTurnDisplay: "collapse",
     eventBudget: 1500,
     includeDiagnosticOperations: false,
     maxInlineOutputChars: 32000,
@@ -1084,6 +1108,7 @@ it("resolves acceptance after the next conversation boundary", () => {
     )
     .run(thread.id);
   const expected = buildThreadTimelineWithProfile(db, thread, {
+    completedTurnDisplay: "collapse",
     eventBudget: LARGE_BUDGET,
     includeDiagnosticOperations: false,
     maxInlineOutputChars: 32000,
@@ -1091,6 +1116,7 @@ it("resolves acceptance after the next conversation boundary", () => {
     page: { kind: "latest", segmentLimit: 100 },
   }).response;
   let page = buildThreadTimelineWithProfile(db, thread, {
+    completedTurnDisplay: "collapse",
     eventBudget: 5,
     includeDiagnosticOperations: false,
     maxInlineOutputChars: 32000,
@@ -1101,6 +1127,7 @@ it("resolves acceptance after the next conversation boundary", () => {
   for (let count = 0; page.timelinePage.olderCursor !== null; count++) {
     expect(count).toBeLessThan(20);
     page = buildThreadTimelineWithProfile(db, thread, {
+      completedTurnDisplay: "collapse",
       eventBudget: 5,
       includeDiagnosticOperations: false,
       maxInlineOutputChars: 32000,

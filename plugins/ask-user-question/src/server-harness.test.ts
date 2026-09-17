@@ -1,13 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import {
   createFakePluginHost,
   type FakePluginHost,
   makePluginAgentConfigurationContext,
 } from "@get-bb/plugin-sdk/testing";
 import plugin, { TOOL_NAME } from "./server.js";
-import { TOOL_INPUT_JSON_SCHEMA } from "./tool-definition.js";
+import { TOO_FEW_OPTIONS_MESSAGE } from "./tool-definition.js";
 import {
   ASK_USER_QUESTION_RENDERER_ID,
+  toolInputSchema,
   type InteractionPayload,
   type ToolResult,
 } from "./contracts.js";
@@ -68,7 +70,7 @@ describe("provider gating", () => {
   );
 
   it.each(["codex", "pi", "acp-cursor"])(
-    "registers the tool for %s with Claude's exact advertised schema",
+    "registers the tool for %s with the schema generated from its input parser",
     async (providerId) => {
       const host = createHost();
       const resolved = await host.harness.resolveAgentConfiguration(
@@ -77,21 +79,55 @@ describe("provider gating", () => {
       expect(resolved.tools).toHaveLength(1);
       const [tool] = resolved.tools;
       expect(tool?.name).toBe(TOOL_NAME);
-      expect(tool?.inputSchema).toEqual(TOOL_INPUT_JSON_SCHEMA);
+      expect(tool?.inputSchema).toEqual(
+        z.toJSONSchema(toolInputSchema, { io: "input" }),
+      );
     },
   );
 
-  it("advertises multiSelect as required even though execution defaults it", async () => {
+  it("advertises multiSelect as optional and defaults it during execution", async () => {
     const host = createHost();
     const resolved = await host.harness.resolveAgentConfiguration(
       configurationContext("codex"),
     );
-    const schema = resolved.tools[0]?.inputSchema as {
+    expect(resolved.tools[0]?.inputSchema).toMatchObject({
+      additionalProperties: false,
+      required: ["questions"],
       properties: {
-        questions: { items: { required: string[] } };
-      };
-    };
-    expect(schema.properties.questions.items.required).toContain("multiSelect");
+        questions: {
+          minItems: 1,
+          maxItems: 4,
+          items: {
+            additionalProperties: false,
+            required: ["question", "header", "options"],
+            properties: {
+              question: { minLength: 1, description: expect.any(String) },
+              header: { minLength: 1, description: expect.any(String) },
+              multiSelect: { type: "boolean", default: false },
+              options: {
+                minItems: 2,
+                maxItems: 4,
+                items: {
+                  additionalProperties: false,
+                  required: ["label", "description"],
+                  properties: {
+                    label: { minLength: 1, description: expect.any(String) },
+                    description: {
+                      minLength: 1,
+                      description: expect.any(String),
+                    },
+                    preview: {
+                      maxLength: 4096,
+                      description: expect.any(String),
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
 
     const answered = host.harness.callAgentTool(TOOL_NAME, {
       questions: [{ ...questions[0], multiSelect: undefined }],
@@ -103,11 +139,58 @@ describe("provider gating", () => {
     host.harness.submitInteraction(pending.id, {
       answers: { q0: { selected: ["q0o1"] } },
     });
-    await answered;
+    const result = JSON.parse(await resultText(await answered)) as ToolResult;
+    expect(result.questions[0]?.multiSelect).toBe(false);
   });
 });
 
 describe("asking a question", () => {
+  it.each([
+    ["root", { questions, extra: true }],
+    [
+      "question",
+      {
+        questions: questions.map((question) => ({ ...question, extra: true })),
+      },
+    ],
+    [
+      "option",
+      {
+        questions: questions.map((question) => ({
+          ...question,
+          options: question.options.map((option) => ({
+            ...option,
+            extra: true,
+          })),
+        })),
+      },
+    ],
+  ])("rejects unknown fields on the %s object", async (_level, input) => {
+    const host = createHost();
+    await expect(host.harness.callAgentTool(TOOL_NAME, input)).rejects.toThrow(
+      'Unrecognized key: "extra"',
+    );
+    expect(host.harness.pendingInteractions).toHaveLength(0);
+  });
+
+  it.each([0, 1])(
+    "rejects %i options with guidance to proceed before opening an interaction",
+    async (optionCount) => {
+      const host = createHost();
+      await expect(
+        host.harness.callAgentTool(TOOL_NAME, {
+          questions: [
+            {
+              ...questions[0],
+              options: questions[0]!.options.slice(0, optionCount),
+            },
+          ],
+        }),
+      ).rejects.toThrow(TOO_FEW_OPTIONS_MESSAGE);
+      expect(host.harness.pendingInteractions).toHaveLength(0);
+    },
+  );
+
   it("opens an interaction and returns the answer in Claude's result shape", async () => {
     const host = createHost();
     const call = host.harness.callAgentTool(TOOL_NAME, { questions });

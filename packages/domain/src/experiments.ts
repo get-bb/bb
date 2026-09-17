@@ -4,6 +4,7 @@ export const experimentKeys = [
   "changelogPreview",
   "mobileApp",
   "multiMachinePicker",
+  "serverMove",
   "sidebarProgressiveDisclosure",
   "timelineWindowing",
 ] as const;
@@ -17,6 +18,7 @@ export const defaultExperiments: Experiments = {
   changelogPreview: false,
   mobileApp: false,
   multiMachinePicker: false,
+  serverMove: false,
   sidebarProgressiveDisclosure: false,
   timelineWindowing: false,
 };

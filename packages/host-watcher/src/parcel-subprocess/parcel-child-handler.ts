@@ -4,7 +4,10 @@ import type {
   ParcelWatcherBackend,
   ParcelWatcherEventBatch,
 } from "../parcel-watcher-backend.js";
-import { isRescanRequiredMessage } from "../watch-recovery.js";
+import {
+  isRescanRequiredMessage,
+  leavesNativeWatchesBehind,
+} from "../watch-recovery.js";
 import { toWatchErrorMessage } from "../watch-error.js";
 import type {
   ChildToParentMessage,
@@ -91,10 +94,14 @@ export function createParcelChildHandler(args: {
       })
       .catch((error: unknown) => {
         cancelledBeforeReady.delete(message.id);
+        const errorMessage = toWatchErrorMessage(error);
         args.send({
           kind: "subscribe-failed",
           id: message.id,
-          message: toWatchErrorMessage(error),
+          message: errorMessage,
+          recovery: leavesNativeWatchesBehind(errorMessage)
+            ? "recycle-child"
+            : "retry-subscription",
         });
       });
   }

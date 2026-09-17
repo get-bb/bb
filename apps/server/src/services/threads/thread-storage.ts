@@ -2,7 +2,7 @@ import path from "node:path";
 import { getLatestSessionForHost } from "@bb/db";
 import { ApiError } from "../../errors.js";
 import type { WorkSessionDeps } from "../../types.js";
-import { ensureHostSessionReadyForWork } from "../hosts/host-lifecycle.js";
+import { requireConnectedHostSession } from "../lib/entity-lookup.js";
 
 interface RequireThreadStoragePathArgs {
   hostId: string;
@@ -29,8 +29,6 @@ export async function requireLiveThreadStoragePath(
   deps: WorkSessionDeps,
   args: RequireThreadStoragePathArgs,
 ): Promise<string> {
-  const session = await ensureHostSessionReadyForWork(deps, {
-    hostId: args.hostId,
-  });
+  const session = requireConnectedHostSession(deps, args.hostId);
   return path.join(session.dataDir, "thread-storage", args.threadId);
 }

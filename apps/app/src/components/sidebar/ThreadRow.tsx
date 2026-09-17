@@ -26,8 +26,6 @@ import { useThreadActions } from "@/components/thread/ThreadActionsProvider";
 import { useInlineThreadTitle } from "@/components/thread/InlineThreadTitle";
 import {
   COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
-  COARSE_POINTER_GLYPH_BOX_CLASS,
-  COARSE_POINTER_ICON_SIZE_CLASS,
   COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
   COARSE_POINTER_ROW_HEIGHT_CLASS,
 } from "@bb/shared-ui/coarse-pointer-sizing";
@@ -64,6 +62,8 @@ import {
   SIDEBAR_ROW_SELECTED_STATE_CLASS,
   SIDEBAR_CONTROL_BUTTON_CLASS,
   SIDEBAR_ROW_OPEN_IN_SPLIT_STATE_CLASS,
+  SIDEBAR_STATUS_GLYPH_BOX_CLASS,
+  SIDEBAR_STATUS_ICON_CLASS,
   SIDEBAR_SUCCESS_STATUS_COLOR_CLASS,
   SIDEBAR_SUCCESS_STATUS_DOT_CLASS,
   SIDEBAR_WORKING_STATUS_COLOR_CLASS,
@@ -199,7 +199,7 @@ function ThreadDraftIndicator({
       name="Edit"
       className={cn(
         "pointer-events-none shrink-0",
-        COARSE_POINTER_ICON_SIZE_CLASS,
+        SIDEBAR_STATUS_ICON_CLASS,
         isWorking
           ? ["animate-shine-icon", SIDEBAR_WORKING_STATUS_COLOR_CLASS]
           : "text-muted-foreground",
@@ -221,7 +221,7 @@ function PluginThreadRowStatusIndicator({
       <span
         className={cn(
           "inline-flex items-center justify-center motion-safe:animate-pulse",
-          COARSE_POINTER_ICON_SIZE_CLASS,
+          SIDEBAR_STATUS_ICON_CLASS,
           "text-success",
         )}
       >
@@ -229,7 +229,7 @@ function PluginThreadRowStatusIndicator({
           name={pluginIconName(status.icon)}
           className={cn(
             "pointer-events-none shrink-0 animate-shine-icon",
-            COARSE_POINTER_ICON_SIZE_CLASS,
+            SIDEBAR_STATUS_ICON_CLASS,
             "motion-safe:[animation-duration:1.5s]",
           )}
           aria-label={status.label}
@@ -243,7 +243,7 @@ function PluginThreadRowStatusIndicator({
       name={pluginIconName(status.icon)}
       className={cn(
         "pointer-events-none shrink-0",
-        COARSE_POINTER_ICON_SIZE_CLASS,
+        SIDEBAR_STATUS_ICON_CLASS,
         status.tone === "success"
           ? SIDEBAR_SUCCESS_STATUS_COLOR_CLASS
           : status.tone === "error"
@@ -341,7 +341,7 @@ export function ThreadStatusGlyph({
       return (
         <Icon
           name="CircleX"
-          className={cn("text-destructive", COARSE_POINTER_ICON_SIZE_CLASS)}
+          className={cn("text-destructive", SIDEBAR_STATUS_ICON_CLASS)}
           aria-label={getThreadListIndicatorLabel(kind) ?? undefined}
         />
       );
@@ -352,7 +352,7 @@ export function ThreadStatusGlyph({
           name={WAITING_ICONS[kind]}
           className={cn(
             "text-muted-foreground/75",
-            COARSE_POINTER_ICON_SIZE_CLASS,
+            SIDEBAR_STATUS_ICON_CLASS,
           )}
           aria-label={getThreadListIndicatorLabel(kind) ?? undefined}
         />
@@ -370,7 +370,7 @@ export function ThreadStatusGlyph({
           className={cn(
             "animate-shine-icon",
             SIDEBAR_WORKING_STATUS_COLOR_CLASS,
-            COARSE_POINTER_ICON_SIZE_CLASS,
+            SIDEBAR_STATUS_ICON_CLASS,
           )}
           aria-label={getThreadListIndicatorLabel(kind) ?? undefined}
         />
@@ -382,7 +382,7 @@ export function ThreadStatusGlyph({
           className={cn(
             "animate-spin",
             SIDEBAR_WORKING_STATUS_COLOR_CLASS,
-            COARSE_POINTER_ICON_SIZE_CLASS,
+            SIDEBAR_STATUS_ICON_CLASS,
           )}
           aria-label={getThreadListIndicatorLabel(kind) ?? undefined}
         />
@@ -485,7 +485,7 @@ function ThreadTrailingIndicator({
       data-sidebar-thread-trailing-indicator=""
       className={cn(
         SIDEBAR_ROW_GLYPH_SLOT_CLASS,
-        COARSE_POINTER_GLYPH_BOX_CLASS,
+        SIDEBAR_STATUS_GLYPH_BOX_CLASS,
       )}
     >
       {pluginStatusIsVisible && pluginStatus ? (
@@ -766,7 +766,7 @@ function ThreadRowComponent({
                     data-sidebar-thread-trailing-indicator=""
                     className={cn(
                       SIDEBAR_ROW_GLYPH_SLOT_CLASS,
-                      COARSE_POINTER_GLYPH_BOX_CLASS,
+                      SIDEBAR_STATUS_GLYPH_BOX_CLASS,
                     )}
                   >
                     <SplitPaneMiniMap

@@ -19,7 +19,10 @@ export function log(icon: string, msg: string): void {
 }
 
 export function endStep(icon: string, msg: string): void {
-  process.stdout.write(`\x1b[2K  ${icon}  ${msg}\n`);
+  if (process.stdout.isTTY) {
+    process.stdout.write("\x1b[2K");
+  }
+  log(icon, msg);
 }
 
 export async function confirmTypedWord(

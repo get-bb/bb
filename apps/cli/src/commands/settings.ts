@@ -3,6 +3,7 @@ import {
   keyboardCommandIdSchema,
   appShortcutSchema,
   appSettingsSchema,
+  completedTurnDisplaySchema,
   describeUiPreference,
   experimentKeySchema,
   experimentsSchema,
@@ -11,18 +12,29 @@ import {
   UI_PREFERENCE_KEYS,
   type AppSettings,
   type AppShortcut,
+  type CompletedTurnDisplay,
   type Experiments,
   type UiPreferenceKey,
   type UiPreferenceValue,
 } from "@bb/domain";
 import { BbHttpError } from "@bb/sdk";
+import type { SystemProviderInfo } from "@bb/server-contract";
 import { action } from "../action.js";
 import { createCliBbSdk } from "../client.js";
+import { columnWidths, printBorderlessTable } from "../table.js";
 import { outputJson } from "./helpers.js";
 import { resolveMachineHostId, resolveMachineTargetOption } from "./machine.js";
 
 interface JsonOptions {
   json?: boolean;
+}
+
+interface ProviderCompletedTurnDisplayEntry {
+  providerId: string;
+  displayName: string;
+  completedTurnDisplay: CompletedTurnDisplay;
+  providerDefault: CompletedTurnDisplay;
+  source: "setting" | "provider-default";
 }
 
 interface UsageOptions extends JsonOptions {
@@ -95,6 +107,82 @@ function updateGeneralSetting(
 
   throw new Error(
     `Invalid value '${value}' for '${settingKey.data}'. Booleans take true, false, on, or off, null clears a nullable setting, and structured values take JSON.`,
+  );
+}
+
+function describeProviderCompletedTurnDisplay(
+  settings: AppSettings,
+  provider: SystemProviderInfo,
+): ProviderCompletedTurnDisplayEntry {
+  const override = settings.providerCompletedTurnDisplay[provider.id];
+  return {
+    providerId: provider.id,
+    displayName: provider.displayName,
+    completedTurnDisplay: override ?? provider.completedTurnDisplay,
+    providerDefault: provider.completedTurnDisplay,
+    source: override === undefined ? "provider-default" : "setting",
+  };
+}
+
+function printCompletedTurnDisplayTable(
+  entries: readonly ProviderCompletedTurnDisplayEntry[],
+): void {
+  const rows = entries.map((entry) => [
+    entry.providerId,
+    entry.displayName,
+    entry.completedTurnDisplay,
+    entry.source === "setting" ? "setting" : "provider default",
+  ]);
+  printBorderlessTable(
+    {
+      head: ["ID", "Name", "Finished turns", "Source"],
+      colWidths: columnWidths(rows, [2, 4, 14, 6]),
+      trimTrailingWhitespace: true,
+    },
+    rows,
+  );
+}
+
+function parseCompletedTurnDisplayInput(
+  value: string,
+): CompletedTurnDisplay | null {
+  if (value === "default") return null;
+  const parsed = completedTurnDisplaySchema.safeParse(value);
+  if (!parsed.success) {
+    throw new Error(
+      `Invalid finished turn display '${value}'. Use collapse, flat, or default.`,
+    );
+  }
+  return parsed.data;
+}
+
+function updateProviderCompletedTurnDisplay(
+  settings: AppSettings,
+  providerId: string,
+  display: CompletedTurnDisplay | null,
+): AppSettings {
+  const remaining = Object.fromEntries(
+    Object.entries(settings.providerCompletedTurnDisplay).filter(
+      ([id]) => id !== providerId,
+    ),
+  );
+  return appSettingsSchema.strip().parse({
+    ...settings,
+    providerCompletedTurnDisplay:
+      display === null ? remaining : { ...remaining, [providerId]: display },
+  });
+}
+
+function requireKnownProvider(
+  providers: readonly SystemProviderInfo[],
+  providerId: string,
+): SystemProviderInfo {
+  const provider = providers.find((candidate) => candidate.id === providerId);
+  if (provider !== undefined) return provider;
+  throw new Error(
+    `Unknown provider '${providerId}'. Known providers: ${providers
+      .map((candidate) => candidate.id)
+      .join(", ")}.`,
   );
 }
 
@@ -211,6 +299,67 @@ export function registerSettingsCommands(
         if (outputJson(opts, result)) return;
         console.log(`${key} updated`);
       }),
+    );
+
+  settings
+    .command("completed-turns [providerId] [display]")
+    .description(
+      "Show or set whether each provider's finished turns collapse or stay flat (collapse, flat, or default)",
+    )
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(
+        async (
+          providerId: string | undefined,
+          display: string | undefined,
+          opts: JsonOptions,
+        ) => {
+          const sdk = createCliBbSdk(getUrl());
+          const [config, providers] = await Promise.all([
+            sdk.system.config(),
+            sdk.providers.list(),
+          ]);
+          if (providerId === undefined) {
+            const entries = providers.map((provider) =>
+              describeProviderCompletedTurnDisplay(
+                config.generalSettings,
+                provider,
+              ),
+            );
+            if (outputJson(opts, entries)) return;
+            if (entries.length === 0) {
+              console.log("No providers available");
+              return;
+            }
+            printCompletedTurnDisplayTable(entries);
+            return;
+          }
+          const provider = requireKnownProvider(providers, providerId);
+          if (display === undefined) {
+            const entry = describeProviderCompletedTurnDisplay(
+              config.generalSettings,
+              provider,
+            );
+            if (outputJson(opts, entry)) return;
+            printCompletedTurnDisplayTable([entry]);
+            return;
+          }
+          const updated = await sdk.system.updateGeneralSettings(
+            updateProviderCompletedTurnDisplay(
+              config.generalSettings,
+              provider.id,
+              parseCompletedTurnDisplayInput(display),
+            ),
+          );
+          const entry = describeProviderCompletedTurnDisplay(updated, provider);
+          if (outputJson(opts, entry)) return;
+          console.log(
+            `${provider.id} finished turns: ${entry.completedTurnDisplay} (${
+              entry.source === "setting" ? "setting" : "provider default"
+            })`,
+          );
+        },
+      ),
     );
 
   const ui = settings

@@ -29,7 +29,7 @@ import {
 import {
   parsePermissionMode,
   buildPromptInputs,
-  uploadClientImageInputs,
+  uploadClientAttachmentInputs,
   PERMISSION_MODE_HELP,
   PLAN_HELP,
   parseServiceTier,
@@ -53,6 +53,7 @@ interface ThreadSpawnCommandOptions {
   model?: string;
   reasoningLevel?: string;
   title?: string;
+  lifecycleOwnerThread?: string;
   serviceTier?: string;
   permissionMode?: string;
   plan?: boolean;
@@ -308,6 +309,10 @@ export function registerSpawnCommand(
       "Spawn a new thread; omitted execution flags use remembered project defaults, then the target provider catalog default",
     )
     .requiredOption("--prompt <prompt>", "Initial prompt for the thread")
+    .option(
+      "--lifecycle-owner-thread <id>",
+      "Archive/delete this thread with its lifecycle owner",
+    )
     .option("--json", "Print machine-readable JSON output")
     .requiredOption("--project <id>", "Project ID")
     .option(
@@ -352,13 +357,13 @@ export function registerSpawnCommand(
     .option("--plan", PLAN_HELP)
     .option(
       "--file <path>",
-      "Pass a host-readable absolute or uploaded attachment file path (repeatable)",
+      "Upload an absolute path or file: URL from this CLI machine or pass an uploaded attachment path (repeatable)",
       collectOption,
       [],
     )
     .option(
       "--image <path>",
-      "Upload an absolute path from this CLI machine or pass an uploaded attachment path (repeatable)",
+      "Upload an absolute path or file: URL from this CLI machine or pass an uploaded attachment path (repeatable)",
       collectOption,
       [],
     )
@@ -538,7 +543,7 @@ export function registerSpawnCommand(
         let thread: Thread;
         try {
           const sdk = createCliBbSdk(getUrl());
-          const input = await uploadClientImageInputs({
+          const input = await uploadClientAttachmentInputs({
             input: buildPromptInputs({
               message: opts.prompt,
               plan: opts.plan,
@@ -563,6 +568,9 @@ export function registerSpawnCommand(
             startedOnBehalfOf: null,
             originKind: opts.originKind ?? null,
             ...(parentThreadId ? { parentThreadId } : {}),
+            ...(opts.lifecycleOwnerThread !== undefined
+              ? { lifecycleOwnerThreadId: opts.lifecycleOwnerThread }
+              : {}),
             ...(opts.section ? { sectionId: opts.section } : {}),
             ...(opts.sourceThread ? { sourceThreadId: opts.sourceThread } : {}),
             ...(sourceSeqEnd !== undefined ? { sourceSeqEnd } : {}),

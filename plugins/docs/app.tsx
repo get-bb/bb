@@ -2114,7 +2114,7 @@ function NotesWorkspace({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="primary">Primary host</SelectItem>
+                    <SelectItem value="primary">Server machine</SelectItem>
                     {data.hosts.map((host) => (
                       <SelectItem key={host.id} value={host.id}>
                         {host.name} · {host.status}

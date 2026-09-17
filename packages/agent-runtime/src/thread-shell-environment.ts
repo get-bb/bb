@@ -33,7 +33,7 @@ export interface ResolvedThreadEnvironmentEntry {
   source:
     | "shell"
     | { plugin: string }
-    | { core: "machine-git" | "machine-environment" };
+    | { core: "machine-git" | "machine-environment" | "project-environment" };
   value: string | { masked: true };
   reason?: string;
 }
@@ -90,7 +90,7 @@ export function resolveThreadEnvironment(args: ResolveThreadEnvironmentArgs): {
     entries.push({
       name: contribution.name,
       source: contribution.source,
-      value,
+      value: "core" in contribution.source ? { masked: true } : value,
       reason: contribution.reason,
     });
   }

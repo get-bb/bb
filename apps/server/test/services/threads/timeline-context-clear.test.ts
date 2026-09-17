@@ -81,6 +81,7 @@ describe("timeline context-clear epochs", () => {
         maxSeq: 2,
       };
       const latest = buildThreadTimelineWithProfile(db, thread, {
+        completedTurnDisplay: "collapse",
         ...options,
         page: { kind: "latest", segmentLimit: 20 },
       }).response;
@@ -97,6 +98,7 @@ describe("timeline context-clear epochs", () => {
       expect(
         () =>
           buildThreadTimelineWithProfile(db, thread, {
+            completedTurnDisplay: "collapse",
             ...options,
             page: {
               kind: "older",
@@ -193,6 +195,7 @@ describe("timeline context-clear epochs", () => {
     ]);
 
     const timeline = buildThreadTimelineWithProfile(db, thread, {
+      completedTurnDisplay: "collapse",
       eventBudget: 1_000,
       includeNestedRows: true,
       includeDiagnosticOperations: false,
@@ -215,9 +218,10 @@ describe("timeline context-clear epochs", () => {
       olderCursor: null,
     });
     expect(
-      buildThreadConversationOutline(db, thread, { maxSeq: 6 }).items.map(
-        (item) => item.preview,
-      ),
+      buildThreadConversationOutline(db, thread, {
+        completedTurnDisplay: "collapse",
+        maxSeq: 6,
+      }).items.map((item) => item.preview),
     ).toEqual(["Newest response"]);
     expect(listEvents(db, { threadId: thread.id })).toHaveLength(6);
     db.$client.close();
@@ -302,6 +306,7 @@ describe("timeline context-clear epochs", () => {
     ]);
 
     let page = buildThreadTimelineWithProfile(db, thread, {
+      completedTurnDisplay: "collapse",
       eventBudget: 1_000,
       includeNestedRows: true,
       includeDiagnosticOperations: false,
@@ -320,6 +325,7 @@ describe("timeline context-clear epochs", () => {
       if (cursor === null) throw new Error("expected an older cursor");
       expect(cursor.anchorSeq).toBeGreaterThanOrEqual(2);
       page = buildThreadTimelineWithProfile(db, thread, {
+        completedTurnDisplay: "collapse",
         eventBudget: 1_000,
         includeNestedRows: true,
         includeDiagnosticOperations: false,

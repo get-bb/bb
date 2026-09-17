@@ -290,6 +290,7 @@ function buildPage(
   eventBudget = LARGE_BUDGET,
 ) {
   return buildThreadTimelineWithProfile(db, thread, {
+    completedTurnDisplay: "collapse",
     eventBudget,
     includeDiagnosticOperations: false,
     includeNestedRows: false,
@@ -380,7 +381,10 @@ describe("workflow progress snapshots across timeline pages", () => {
     expect(eventBudgeted.response.timelinePage.hasOlderRows).toBe(false);
     expect(eventBudgeted.response.rows).toEqual(latest.response.rows);
 
-    const outline = buildThreadConversationOutline(db, thread, { maxSeq: 0 });
+    const outline = buildThreadConversationOutline(db, thread, {
+      completedTurnDisplay: "collapse",
+      maxSeq: 0,
+    });
     expect(outline.items.map((item) => item.role)).toEqual([
       "user",
       "assistant",

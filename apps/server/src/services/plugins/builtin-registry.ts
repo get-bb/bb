@@ -161,6 +161,11 @@ export const BUILTIN_PLUGINS = [
     defaultEnabled: true,
   },
   {
+    name: "agent-annotations",
+    pluginId: "agent-annotations",
+    defaultEnabled: false,
+  },
+  {
     name: "concurrency-limit",
     pluginId: "concurrency-limit",
     defaultEnabled: true,

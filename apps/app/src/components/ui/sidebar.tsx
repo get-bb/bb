@@ -8,16 +8,9 @@ import { Button } from "@bb/shared-ui/button";
 import { COARSE_POINTER_HEADER_ICON_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import { Icon } from "@bb/shared-ui/icon";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@bb/shared-ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { setCompactSidebarDrawerShowing } from "./sidebar-mobile-drawer-visibility.js";
-import {
-  getCompactSecondaryPanelPresentation,
-  subscribeCompactSecondaryPanelShelfShowing,
-} from "./secondary-panel-shelf-visibility.js";
+import { usePanelShelfState } from "./secondary-panel-shelf-visibility.js";
 import {
   findTouchById,
   hasTextSelectionWithin,
@@ -1525,18 +1518,15 @@ const SidebarInset = React.forwardRef<
     }
   }, [clearSwipeSession, isCompactViewport, openMobile]);
 
-  const secondaryPanelPresentation = React.useSyncExternalStore(
-    subscribeCompactSecondaryPanelShelfShowing,
-    getCompactSecondaryPanelPresentation,
-    () => "closed" as const,
-  );
   const shelfState = isCompactViewport
     ? openMobile
       ? "open"
       : "closed"
     : undefined;
-  const panelShelfState =
-    isCompactViewport && !openMobile ? secondaryPanelPresentation : undefined;
+  const panelShelfState = usePanelShelfState({
+    isCompactViewport,
+    isSidebarDrawerOpen: openMobile,
+  });
 
   return (
     <main

@@ -184,6 +184,7 @@ Read the installed declarations for exact current signatures.
 - `PluginPendingInteractionRegistration`
 - `PluginPendingInteractionView`
 - `PluginProviderCapabilities`
+- `PluginProviderCompletedTurnDisplay`
 - `PluginProviderComposerAction`
 - `PluginProviderDeclaration`
 - `ExperimentalPluginProviderEnvContext`

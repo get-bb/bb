@@ -144,7 +144,11 @@ import {
 } from "./plugin-hook-registry.js";
 import type { PluginEnvironmentProviderBridge } from "./plugin-environment-provider-registry.js";
 import { createPluginRegistration } from "./plugin-registration.js";
-import { createPluginRuntime, forgetMutableRoot } from "./plugin-runtime.js";
+import {
+  createPluginRuntime,
+  forgetMutableRoot,
+  type PluginLoadHold,
+} from "./plugin-runtime.js";
 import { nextCronRunAt, raceTimeout } from "./plugin-time-box.js";
 import { createPluginUpdates } from "./plugin-updates.js";
 
@@ -189,6 +193,28 @@ export function dispatchPluginSourceWatchChange(
   handleChange(filename === null || filename.length === 0 ? "." : filename);
 }
 
+interface BuiltinPluginSourceWatcher {
+  close(): void;
+  on(event: "close", listener: () => void): unknown;
+  on(event: "error", listener: (error: Error) => void): unknown;
+}
+
+export function superviseBuiltinPluginSourceWatcher(args: {
+  watcher: BuiltinPluginSourceWatcher;
+  onClose: () => void;
+  onError: (error: Error) => void;
+}): void {
+  args.watcher.on("close", args.onClose);
+  args.watcher.on("error", (error) => {
+    args.onError(error);
+    args.watcher.close();
+  });
+}
+
+export interface PluginStartOptions {
+  hold: PluginLoadHold;
+}
+
 export interface PluginService {
   isBuiltin(id: string): boolean;
   events: PluginThreadEventEmitter;
@@ -202,7 +228,7 @@ export interface PluginService {
    * listener is up, before start(): bb.sdk throws until this runs.
    */
   bindSdk(args: { baseUrl: string }): void;
-  start(): Promise<void>;
+  start(options?: PluginStartOptions): Promise<void>;
   stop(): Promise<void>;
   handleUncaughtException(error: unknown): boolean;
   list(): InstalledPlugin[];
@@ -377,6 +403,11 @@ export interface PluginService {
     itemId: string;
   }): Promise<PluginMentionResolveResult>;
   readLogTail(id: string, tail: number): Promise<string[] | undefined>;
+  setSchedulesPaused(paused: boolean): void;
+  suspendPlugins(args: {
+    keep(plugin: InstalledPluginRow): boolean;
+  }): Promise<string[]>;
+  resumeSuspendedPlugins(): Promise<string[]>;
   sweepDueSchedules(now: number): Promise<void>;
 }
 
@@ -522,6 +553,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     });
 
   const HTTP_TOKEN_FILE = ".http-token";
+  let schedulesPaused = false;
+  const suspendedPluginIds = new Set<string>();
 
   const {
     REGISTRATION_MUTATION_KEY,
@@ -557,6 +590,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     loadOne,
     brandingAssets,
     setDevBuildProblem,
+    setLoadHold,
     setStatus,
     sourceKind,
     stabilizingPluginIds,
@@ -1268,7 +1302,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
     bindSdk: bindRuntimeSdk,
 
-    async start() {
+    async start(options) {
+      setLoadHold(options?.hold ?? null);
       await backfillNormalizedPluginRegistrations();
       await withPluginOperationLock(REGISTRATION_MUTATION_KEY, async () => {
         for (const artifact of listPendingGitPluginArtifacts(deps.db)) {
@@ -1359,7 +1394,14 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
               dispatchPluginSourceWatchChange(loop.handleChange, filename);
             },
           );
-          watcher.on("close", () => loop.dispose());
+          superviseBuiltinPluginSourceWatcher({
+            watcher,
+            onClose: () => loop.dispose(),
+            onError: (error) =>
+              logger.warn(
+                `plugin ${row.id}: source watcher failed; hot reload is off until the server restarts: ${error.message}`,
+              ),
+          });
           builtinSourceWatchers.push(watcher);
         }
       }
@@ -1400,9 +1442,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
     async installOfficialPlugin(name) {
       return withPluginOperationLock(REGISTRATION_MUTATION_KEY, async () => {
-        const bundled = bundledPlugins.find(
-          (plugin) => plugin.name === name && !plugin.autoInstall,
-        );
+        const bundled = bundledPlugins.find((plugin) => plugin.name === name);
         if (bundled === undefined) {
           throw new Error(`unknown official plugin "${name}"`);
         }
@@ -2300,8 +2340,63 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       return readPluginLogTail(deps.dataDir, id, tail);
     },
 
+    setSchedulesPaused(paused) {
+      schedulesPaused = paused;
+    },
+
+    async suspendPlugins(args) {
+      return withPluginOperationLock(REGISTRATION_MUTATION_KEY, async () => {
+        const suspended: string[] = [];
+        const rows = listInstalledPlugins(deps.db).sort((left, right) =>
+          left.id.localeCompare(right.id),
+        );
+        for (const row of rows) {
+          if (!loaded.has(row.id) || args.keep(row)) continue;
+          await withLifecycleLock(row.id, async () => {
+            await disposeOne(row.id);
+            setStatus(
+              row.id,
+              "disabled",
+              "Paused while the server moves to another machine",
+            );
+          });
+          suspendedPluginIds.add(row.id);
+          suspended.push(row.id);
+        }
+        if (suspended.length > 0) {
+          await syncCliSkill();
+          notifyPluginsChanged();
+        }
+        return suspended;
+      });
+    },
+
+    async resumeSuspendedPlugins() {
+      return withPluginOperationLock(REGISTRATION_MUTATION_KEY, async () => {
+        const ids = [...suspendedPluginIds].sort();
+        suspendedPluginIds.clear();
+        const resumed: string[] = [];
+        for (const id of ids) {
+          const row = getInstalledPlugin(deps.db, id);
+          if (row === undefined) continue;
+          const problem = await withLifecycleLock(id, () => loadOne(row));
+          if (problem !== null) {
+            logger.warn(
+              `plugin ${id} did not resume after a server move: ${problem}`,
+            );
+          }
+          resumed.push(id);
+        }
+        if (ids.length > 0) {
+          await syncCliSkill();
+          notifyPluginsChanged();
+        }
+        return resumed;
+      });
+    },
+
     async sweepDueSchedules(now) {
-      if (loaded.size === 0) return;
+      if (schedulesPaused || loaded.size === 0) return;
       const due = listDuePluginSchedules(deps.db, {
         now,
         limit: SCHEDULE_SWEEP_BATCH_SIZE,

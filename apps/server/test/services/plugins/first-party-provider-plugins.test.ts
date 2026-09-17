@@ -243,6 +243,7 @@ describe("first-party provider plugins", () => {
           };
         };
         const skills = { kind: "skills", trigger: "/" } as const;
+        const explicitSkills = { kind: "skills", trigger: "$" } as const;
         const plan = {
           kind: "plan",
           command: { trigger: "/", name: "plan", trailingText: " " },
@@ -268,7 +269,7 @@ describe("first-party provider plugins", () => {
             supportsSessionRewind: true,
             modelCatalogScope: "host",
           },
-          composerActions: [skills, plan, goal],
+          composerActions: [skills, explicitSkills, plan, goal],
         });
         expect(clientFields("claude-code")).toStrictEqual({
           id: "claude-code",
@@ -289,7 +290,7 @@ describe("first-party provider plugins", () => {
             supportsSessionRewind: true,
             modelCatalogScope: "host",
           },
-          composerActions: [skills, plan],
+          composerActions: [skills, explicitSkills, plan],
         });
         expect(clientFields("pi")).toStrictEqual({
           id: "pi",
@@ -307,7 +308,7 @@ describe("first-party provider plugins", () => {
             supportsSessionRewind: true,
             modelCatalogScope: "workspace",
           },
-          composerActions: [skills],
+          composerActions: [skills, explicitSkills],
         });
         expect(clientFields("acp-cursor")).toStrictEqual({
           id: "acp-cursor",
@@ -325,7 +326,7 @@ describe("first-party provider plugins", () => {
             supportsSessionRewind: false,
             modelCatalogScope: "host",
           },
-          composerActions: [skills],
+          composerActions: [skills, explicitSkills],
         });
 
         const claude = harness.deps.providerRegistry.get("claude-code");

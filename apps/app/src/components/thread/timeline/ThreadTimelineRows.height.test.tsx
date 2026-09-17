@@ -77,3 +77,32 @@ it("snap-syncs the timeline height when older rows are prepended", () => {
   expect(heightWrapper?.style.height).toBe("400px");
   expect(heightWrapper?.style.transitionDuration).toBe("0s");
 });
+
+it("snaps active timeline growth on fine-pointer browsers", () => {
+  vi.stubGlobal("ResizeObserver", ResizeObserverStub);
+  vi.stubGlobal("CSS", { supports: () => true });
+  const queryClient = new QueryClient();
+  const rows = [turnRow({ id: "active_turn", seq: 1, status: "pending" })];
+  const timeline = (active: boolean) => (
+    <MemoryRouter>
+      <QueryClientProvider client={queryClient}>
+        <ThreadTimelineRows
+          threadId="thr_main"
+          timelineRows={rows}
+          threadRuntimeDisplayStatus={active ? "active" : "idle"}
+          workspaceRootPath={undefined}
+        />
+      </QueryClientProvider>
+    </MemoryRouter>
+  );
+  const view = render(timeline(false));
+  const rowList = view.container.querySelector<HTMLElement>(
+    '[data-timeline-row-list="top-level"]',
+  );
+  const wrapper = rowList?.parentElement?.parentElement;
+  expect(wrapper?.style.transition).toContain("height 180ms");
+  view.rerender(timeline(true));
+  expect(wrapper?.style.transition).toContain("height 0ms");
+  view.rerender(timeline(false));
+  expect(wrapper?.style.transition).toContain("height 180ms");
+});

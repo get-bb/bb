@@ -454,6 +454,67 @@ describe("useThreadTimelineController", () => {
     },
   );
 
+  it("replaces loaded older rows when the finished turn display changes", async () => {
+    const olderRow = makeUserRow("thread-1:user-seed:1", 1);
+    const latestRow = makeUserRow("thread-1:user-seed:10", 10);
+    vi.mocked(sdk.threads.timeline)
+      .mockResolvedValueOnce(
+        makeTimelineResponse({
+          completedTurnDisplay: "flat",
+          rows: [latestRow],
+          maxSeq: 10,
+          timelinePage: {
+            historySnapshot: "snapshot-flat",
+            hasOlderRows: true,
+            olderCursor: { anchorId: "cursor-10", anchorSeq: 10 },
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        makeTimelineResponse({
+          completedTurnDisplay: "flat",
+          rows: [olderRow],
+          maxSeq: 10,
+          timelinePage: { kind: "older", historySnapshot: "snapshot-flat" },
+        }),
+      );
+
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    const { result } = renderHook(
+      () => useThreadTimelineController({ threadId: "thread-1" }),
+      { wrapper },
+    );
+    await waitFor(() => {
+      expect(result.current.hasOlderTimelineRows).toBe(true);
+    });
+    await act(async () => {
+      await result.current.loadOlderTimelineRows();
+    });
+    expect(rowIds(result.current)).toEqual([olderRow.id, latestRow.id]);
+
+    act(() => {
+      queryClient.setQueryData(
+        TIMELINE_QUERY_KEY,
+        makeTimelineResponse({
+          completedTurnDisplay: "collapse",
+          rows: [latestRow],
+          maxSeq: 10,
+          timelinePage: {
+            historySnapshot: "snapshot-collapse",
+            olderRowsSourceSeqEnd: 1,
+            hasOlderRows: true,
+            olderCursor: { anchorId: "cursor-10-collapse", anchorSeq: 10 },
+          },
+        }),
+      );
+    });
+
+    await waitFor(() => {
+      expect(rowIds(result.current)).toEqual([latestRow.id]);
+    });
+    expect(result.current.hasOlderTimelineRows).toBe(true);
+  });
+
   it("keeps older rows and applies an in-flight older page while realtime refreshes advance the snapshot", async () => {
     const olderRow = makeUserRow("thread-1:user-seed:1", 1);
     const latestRow = makeUserRow("thread-1:user-seed:10", 10);

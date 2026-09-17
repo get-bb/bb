@@ -106,7 +106,7 @@ Slot props contracts (versioned, additive-only):
   (when the desktop browser is available) and Terminal; it does not offer
   workspace file search because a generic plugin page has no implicit project,
   environment, or working directory. The Terminal row includes a compact
-  connected-machine selector, initially resolving the primary machine and then
+  connected-machine selector, initially resolving the server machine and then
   the first connected fallback. Changing the selector does not launch
   anything; activating Start terminal uses the selected machine. The selection
   is page-session UI state, not plugin storage.

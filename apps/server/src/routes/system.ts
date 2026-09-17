@@ -1,4 +1,8 @@
 import {
+  setMachineEnvironmentVariable,
+  deleteMachineEnvironmentVariable,
+} from "../services/machines/environment-storage.js";
+import {
   machineEnvironmentView,
   replaceMachineEnvironment,
 } from "../services/machines/environment-settings.js";
@@ -136,7 +140,7 @@ export function registerSystemRoutes(
   deps: ServerAppDeps,
   pluginService: PluginService,
 ): void {
-  const { get, post, put } = typedRoutes<PublicApiSchema>(app, {
+  const { get, post, put, del } = typedRoutes<PublicApiSchema>(app, {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
   });
   const routes = publicApiRoutes.system;
@@ -240,6 +244,41 @@ export function registerSystemRoutes(
       showUnhandledProviderEvents: settings.showDiagnosticEvents,
     };
   }
+  post(routes.setMachineEnvironmentVariable, async (context, payload) => {
+    if (getGateAuthKind(context) === "machine")
+      throw new ApiError(
+        403,
+        "forbidden",
+        "Machine credentials cannot change global environment settings",
+      );
+    await setMachineEnvironmentVariable(
+      deps.db,
+      deps.config.dataDir,
+      payload,
+      null,
+    );
+    deps.lifecycleDedupers.providerModelCatalogs.markAllStale();
+    deps.hub.notifySystem(["config-changed"]);
+    return context.json(
+      await machineEnvironmentView(deps.db, deps.config.dataDir),
+    );
+  });
+
+  del(routes.deleteMachineEnvironmentVariable, async (context, payload) => {
+    if (getGateAuthKind(context) === "machine")
+      throw new ApiError(
+        403,
+        "forbidden",
+        "Machine credentials cannot change global environment settings",
+      );
+    await deleteMachineEnvironmentVariable(deps.db, payload.name, null);
+    deps.lifecycleDedupers.providerModelCatalogs.markAllStale();
+    deps.hub.notifySystem(["config-changed"]);
+    return context.json(
+      await machineEnvironmentView(deps.db, deps.config.dataDir),
+    );
+  });
+
   get(routes.machineEnvironment, async (context) =>
     context.json(await machineEnvironmentView(deps.db, deps.config.dataDir)),
   );

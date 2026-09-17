@@ -303,6 +303,7 @@ async function runDispatchAttempt(
     // Reject what can never deliver while the sender is still listening; a
     // drain has nobody to tell, and its rows were validated when they were queued.
     await validatePromptAttachmentReferences({
+      db: deps.db,
       dataDir: deps.config.dataDir,
       input: payload.input,
       projectId: thread.projectId,
@@ -577,27 +578,44 @@ async function runDispatchAttempt(
   }
 
   const environment = await requireThreadCommandEnvironment(deps, { thread });
-  await sendThreadMessage(deps, {
-    environment,
-    payload: resolvedPayload,
-    thread,
-    trigger: args.trigger,
-    ...(args.retryOf !== undefined ? { retryOf: args.retryOf } : {}),
-    ...(claimed === null
-      ? {}
-      : {
-          beforeAppendInTransaction: consumeClaimedRows(
+  try {
+    await sendThreadMessage(deps, {
+      environment,
+      payload: resolvedPayload,
+      thread,
+      trigger: args.trigger,
+      ...(args.retryOf !== undefined ? { retryOf: args.retryOf } : {}),
+      beforeAppendInTransaction: ({ tx }) => {
+        if (getThread(tx, thread.id)?.status !== thread.status) {
+          throw new DispatchThreadStatusChangedError();
+        }
+        if (claimed !== null) {
+          consumeClaimedRows(
             claimed,
             thread.id,
             respectManualStopPause,
-          ),
-        }),
-  });
+          )({ tx });
+        }
+      },
+    });
+  } catch (error) {
+    if (!(error instanceof DispatchThreadStatusChangedError)) {
+      throw error;
+    }
+    return reattemptDispatchForThreadChange(
+      deps,
+      args,
+      getThread(deps.db, thread.id),
+      reattempted,
+    );
+  }
   if (claimed !== null) {
     settleQueueRowDispatched({ row: claimed[0]! });
   }
   return { kind: "dispatched" };
 }
+
+class DispatchThreadStatusChangedError extends Error {}
 
 function reattemptDispatchForThreadChange(
   deps: LoggedPendingInteractionWorkSessionDeps,

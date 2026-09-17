@@ -21,7 +21,10 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import type { TimelineWorkflowWorkRow } from "@bb/server-contract";
+import type {
+  ExistingThreadExecutionInputSources,
+  TimelineWorkflowWorkRow,
+} from "@bb/server-contract";
 import { createDeferredPromise } from "@bb/test-helpers";
 import {
   makeThreadQueuedMessage as makeThreadQueuedMessageFixture,
@@ -52,6 +55,7 @@ const mocks = vi.hoisted(() => ({
   createQueuedMessageMutateAsync: vi.fn(),
   createThreadMutateAsync: vi.fn(),
   defaultExecutionOptions: null as ResolvedThreadExecutionOptions | null,
+  executionInputSources: {} as ExistingThreadExecutionInputSources,
   deleteQueuedMessageMutateAsync: vi.fn(),
   navigate: vi.fn(),
   pluginComposerHost: null as PluginComposerHost | null,
@@ -75,6 +79,8 @@ const mocks = vi.hoisted(() => ({
   sendQueuedMessageMutateAsync: vi.fn(),
   setQueuedMessageGroupBoundaryMutateAsync: vi.fn(),
   stopThreadMutate: vi.fn(),
+  serviceTier: undefined as "default" | "fast" | undefined,
+  supportsServiceTier: false,
   toastError: vi.fn(),
   unarchiveThreadMutate: vi.fn(),
   uploadPromptAttachmentMutateAsync: vi.fn(),
@@ -555,7 +561,7 @@ vi.mock("@/hooks/useCommandSuggestions", () => ({
     isLoadingMore: false,
     loadMore: vi.fn(),
     suggestions: [{ name: `${providerId}:${commandScope}` }],
-    trigger: null,
+    triggers: [],
   }),
 }));
 
@@ -587,7 +593,7 @@ vi.mock("@/hooks/useThreadCreationOptions", async () => {
       const isClaude = selectedProviderId === "claude-code";
       return {
         activeModel: null,
-        executionInputSources: {},
+        executionInputSources: mocks.executionInputSources,
         executionOptionsRouting: { hostId: "host_1" },
         providers: [],
         hasMultipleProviders: true,
@@ -608,7 +614,7 @@ vi.mock("@/hooks/useThreadCreationOptions", async () => {
         selectedProviderComposerActions: [],
         selectedProviderDisplayName: isClaude ? "Claude Code" : "Codex",
         selectedProviderId,
-        serviceTier: undefined,
+        serviceTier: mocks.serviceTier,
         serviceTierSupportByProvider: {},
         setPermissionMode: vi.fn(),
         setReasoningLevel: vi.fn(),
@@ -629,7 +635,7 @@ vi.mock("@/hooks/useThreadCreationOptions", async () => {
         },
         setServiceTier: vi.fn(),
         supportsPermissionModeSelection: true,
-        supportsServiceTier: false,
+        supportsServiceTier: mocks.supportsServiceTier,
       };
     },
   };
@@ -894,6 +900,7 @@ beforeEach(() => {
     defaultOptions: { queries: { retry: false } },
   });
   mocks.defaultExecutionOptions = null;
+  mocks.executionInputSources = {};
   mocks.pluginComposerHost = null;
   mocks.promptDraft.text = "";
   mocks.promptDraft.mentions = [];
@@ -915,6 +922,8 @@ beforeEach(() => {
     },
   );
   mocks.queuedMessages = [];
+  mocks.serviceTier = undefined;
+  mocks.supportsServiceTier = false;
   mocks.updateQueuedMessageMutateAsync.mockResolvedValue(undefined);
   mocks.useThreadCreationOptions.mockClear();
   mocks.useThreadDefaultExecutionOptions.mockClear();
@@ -975,6 +984,7 @@ describe("ThreadDetailPromptArea", () => {
 
     expect(mocks.sendMessageMutateAsync).toHaveBeenCalledWith(
       expect.objectContaining({
+        executionInputSources: {},
         id: "thr_1",
         pluginSubmission,
       }),
@@ -1976,7 +1986,7 @@ describe("ThreadDetailPromptArea", () => {
     expect(screen.getByText("Model fallback")).toBeTruthy();
   });
 
-  it("creates a new thread with a model from the same provider", async () => {
+  it("creates a new thread with a changed model from the same provider", async () => {
     mocks.promptDraft.text = "Keep going";
     mocks.createThreadMutateAsync.mockResolvedValue({
       id: "thr_new",
@@ -1993,11 +2003,72 @@ describe("ThreadDetailPromptArea", () => {
     fireEvent.click(screen.getByRole("button", { name: "Submit composer" }));
     await waitFor(() =>
       expect(mocks.createThreadMutateAsync).toHaveBeenCalledWith(
-        expect.objectContaining({ providerId: "codex", model: "gpt-5-mini" }),
+        expect.objectContaining({
+          providerId: "codex",
+          model: "gpt-5-mini",
+          executionInputSources: {
+            providerId: "explicit",
+            model: "explicit",
+            reasoningLevel: "explicit",
+            permissionMode: "explicit",
+          },
+        }),
       ),
     );
     expect(mocks.sendMessageMutateAsync).not.toHaveBeenCalled();
     expect(mocks.createQueuedMessageMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it("creates a same-provider handoff with unchanged execution marked explicit", async () => {
+    mocks.promptDraft.text = "Keep going";
+    mocks.createThreadMutateAsync.mockResolvedValue({
+      id: "thr_new",
+      projectId: "proj_1",
+    });
+    renderPromptArea();
+    fireEvent.click(screen.getByRole("button", { name: "Start handoff" }));
+    fireEvent.click(screen.getByRole("button", { name: "Submit composer" }));
+
+    await waitFor(() =>
+      expect(mocks.createThreadMutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          providerId: "codex",
+          model: "gpt-5",
+          executionInputSources: {
+            providerId: "explicit",
+            model: "explicit",
+            reasoningLevel: "explicit",
+            permissionMode: "explicit",
+          },
+        }),
+      ),
+    );
+    expect(mocks.sendMessageMutateAsync).not.toHaveBeenCalled();
+    expect(mocks.createQueuedMessageMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it("marks a supported handoff service tier explicit", async () => {
+    mocks.promptDraft.text = "Keep going";
+    mocks.serviceTier = "fast";
+    mocks.supportsServiceTier = true;
+    mocks.createThreadMutateAsync.mockResolvedValue({
+      id: "thr_new",
+      projectId: "proj_1",
+    });
+    renderPromptArea();
+    fireEvent.click(screen.getByRole("button", { name: "Start handoff" }));
+    fireEvent.click(screen.getByRole("button", { name: "Submit composer" }));
+
+    await waitFor(() =>
+      expect(mocks.createThreadMutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          serviceTier: "fast",
+          executionInputSources: expect.objectContaining({
+            serviceTier: "explicit",
+          }),
+        }),
+      ),
+    );
   });
 
   it("exits a same-provider handoff and preserves draft edits", () => {
@@ -2196,6 +2267,12 @@ describe("ThreadDetailPromptArea", () => {
         model: "claude-opus-5",
         projectId: "proj_source",
         providerId: "claude-code",
+        executionInputSources: {
+          providerId: "explicit",
+          model: "explicit",
+          reasoningLevel: "explicit",
+          permissionMode: "explicit",
+        },
       }),
     );
     expect(mocks.sendMessageMutateAsync).not.toHaveBeenCalled();

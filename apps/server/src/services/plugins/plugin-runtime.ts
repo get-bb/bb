@@ -290,6 +290,12 @@ interface PluginRuntimeContext {
   settingsChanged?: () => void;
 }
 
+export interface PluginLoadHold {
+  source: string;
+  detail: string;
+  isActive(): Promise<boolean>;
+}
+
 export function createPluginRuntime(context: PluginRuntimeContext) {
   const { deps } = context;
   const settingsChanged = context.settingsChanged ?? (() => {});
@@ -347,6 +353,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   const handlerStats = new Map<string, PluginHandlerStats>();
   let boundSdk: BbSdk | undefined;
   let boundLoopbackBaseUrl: string | undefined;
+  let loadHold: PluginLoadHold | null = null;
 
   function publishStatus(
     id: string,
@@ -1316,7 +1323,27 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     handle.invalidate();
   }
 
+  function setLoadHold(hold: PluginLoadHold | null): void {
+    loadHold = hold;
+  }
+
+  async function heldDetail(row: InstalledPluginRow): Promise<string | null> {
+    const hold = loadHold;
+    if (hold === null || !row.enabled || row.source !== hold.source) {
+      return null;
+    }
+    return (await hold.isActive()) ? hold.detail : null;
+  }
+
   async function loadOne(row: InstalledPluginRow): Promise<string | null> {
+    const held = await heldDetail(row);
+    if (held !== null) {
+      await disposeOne(row.id);
+      await populateIdentity(row);
+      setStatus(row.id, "disabled", held);
+      logger.warn(`plugin ${row.id} not loaded (held): ${held}`);
+      return null;
+    }
     if (row.enabled && !loaded.has(row.id)) setStatus(row.id, "starting");
     await populateIdentity(row);
     if (!row.enabled) {
@@ -1844,6 +1871,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     loadOne,
     brandingAssets,
     setDevBuildProblem,
+    setLoadHold,
     setStatus,
     sourceKind,
     stabilizingPluginIds,

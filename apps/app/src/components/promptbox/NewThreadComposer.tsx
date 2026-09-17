@@ -1,3 +1,4 @@
+import { useInitialPromptDraft } from "./mentions/initial-prompt-draft";
 import { ProviderRequirementBanner } from "./banner/ProviderRequirementBanner";
 import { Button } from "@bb/shared-ui/button";
 import {
@@ -875,7 +876,7 @@ export function NewThreadComposer({
           (provider) =>
             provider.id === selectedEnvironmentProvider?.id &&
             provider.availability?.status !== "unavailable",
-          ) ?? false
+        ) ?? false
     );
   const handleSelectProvider = useCallback(
     (provider: SystemEnvironmentProvider, hostId: string | null) => {
@@ -1162,18 +1163,15 @@ export function NewThreadComposer({
     ],
   );
 
+  const initialPromptDraft = useInitialPromptDraft(seed?.initialPrompt ?? null);
   const seedInitialPrompt = promptDraft.restoreIfEmpty;
   const focusPromptBox = useCallback(() => {
     setLocalPromptBoxFocusRequest((current) => (current ?? 0) + 1);
   }, []);
   useEffect(() => {
-    if (!seed?.initialPrompt) return;
-    seedInitialPrompt({
-      text: seed.initialPrompt,
-      mentions: [],
-      attachments: [],
-    });
-  }, [seed?.initialPrompt, seedInitialPrompt]);
+    if (!initialPromptDraft?.text) return;
+    seedInitialPrompt(initialPromptDraft);
+  }, [initialPromptDraft, seedInitialPrompt]);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isCopyingAttachments, setIsCopyingAttachments] = useState(false);
@@ -1305,7 +1303,10 @@ export function NewThreadComposer({
     },
     [navigate, projectId],
   );
-  const [commandQuery, setCommandQuery] = useState<string | null>(null);
+  const [commandState, setCommandState] = useState<{
+    query: string | null;
+    trigger: import("@bb/domain").PromptMentionCommandTrigger | null;
+  }>({ query: null, trigger: null });
   const [hasComposerFocused, setHasComposerFocused] = useState(false);
   const handleEditorFocus = useCallback(() => {
     setHasComposerFocused(true);
@@ -1322,11 +1323,12 @@ export function NewThreadComposer({
     projectId,
     providerId: selectedProviderId,
     commandScope: "new-thread",
-    skillsTrigger: providerPromptActions.skillsTrigger,
+    skillsTriggers: providerPromptActions.skillsTriggers,
+    activeTrigger: commandState.trigger,
     promptActions,
     environmentId: reuseEnvironmentId,
     hostId: projectHostId,
-    query: commandQuery,
+    query: commandState.query,
     composerFocused: hasComposerFocused,
   });
   const promptHistoryEnabled = usePromptHistoryEnabled();
@@ -1604,14 +1606,15 @@ export function NewThreadComposer({
                 options.resolveMentionLink ?? defaultMentionLinkResolver,
             },
             command: {
-              trigger: commandSuggestions.trigger,
+              triggers: commandSuggestions.triggers,
               suggestions: commandSuggestions.suggestions,
               isLoading: commandSuggestions.isLoading,
               isError: commandSuggestions.isError,
               hasMore: commandSuggestions.hasMore,
               isLoadingMore: commandSuggestions.isLoadingMore,
               loadMore: commandSuggestions.loadMore,
-              onQueryChange: setCommandQuery,
+              onQueryChange: (query, trigger) =>
+                setCommandState({ query, trigger }),
               onEditorFocus: handleEditorFocus,
             },
           }}

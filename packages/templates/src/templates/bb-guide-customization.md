@@ -121,6 +121,7 @@ branches bb creates after the change.
   bb settings show
   bb settings ai-services
   bb settings general <key> <value>
+  bb settings completed-turns [provider-id] [collapse|flat|default]
   bb settings experiment <key> <value>
   bb settings usage [--machine <id-or-name>]
   bb settings version [--force]
@@ -134,6 +135,14 @@ settings (`BB_INFERENCE`, `BB_INFERENCE_FALLBACK`, `BB_TRANSCRIPTION`, set with
 `bb settings general` accepts any key from `generalSettings` in
 `bb settings show`. Boolean preferences take `true`, `false`, `on`, or `off`,
 and `null` clears a preference that can be unset.
+
+`bb settings completed-turns` lists how each provider shows a finished turn:
+`collapse` folds the turn's work into one "Worked for" row and keeps the final
+answer visible, and `flat` keeps every step visible. Each provider has a
+default (Claude Code is `flat`, the other first-party providers `collapse`).
+`bb settings completed-turns <provider-id> <collapse|flat>` overrides it for
+that provider, and `default` removes the override. Settings → Providers has
+the same per-provider switch.
 
 The default-off `changelogPreview` experiment shows the latest release notes
 as a compact, dismissible card on Settings → Updates.
@@ -154,6 +163,10 @@ attention groups visible, and reveals ten more per **Show more** click. Revealed
 groups stay visible through activity and sort-order changes.
 **Manually** is unchanged. Enable it with `bb settings experiment
 sidebarProgressiveDisclosure true`.
+
+The default-off `serverMove` experiment enables Move server here in Settings →
+Machines and the server-backed `bb server move` and `bb server export`
+commands. Enable it with `bb settings experiment serverMove true`.
 
 The default-off `timelineWindowing` experiment mounts only nearby rows in long
 timelines and large expanded timeline details. Enable it with
@@ -233,7 +246,10 @@ Host files and voice transcription
 
 Voice transcription uses the `BB_TRANSCRIPTION` model, which defaults to
 `codex/gpt-transcribe`. Override it with
-`bb-app config set BB_TRANSCRIPTION <provider/model>`.
+`bb-app config set BB_TRANSCRIPTION <provider/model>`. Plugin-served audio
+uploads accept up to 20 MB; direct OpenAI uploads accept up to 25 MB. These
+limits apply to the app, SDK, and CLI. If transcription fails in the app,
+the error toast offers a download of the original recording until dismissed.
 
 `bb file` supports `--host` for remote machines and `--root` on mutating
 commands to confine access beneath an absolute directory. `bb file list` and
@@ -263,6 +279,9 @@ description. `set` takes plain strings for enum and provider keys and JSON for
 lists and `null`; it reads the current revision, writes with it, and retries
 once on a conflict. `reset` writes the default. The SDK offers
 `sdk.system.uiPreferences.list()`, `.set()`, and `.reset()`.
+
+Custom (`chronological`) is the default for `sidebar.organizationMode` when no
+value is saved. Existing server and legacy browser choices are preserved.
 
 Every thread-list header's actions menu offers New project, New section,
 Organize, and Sort by. Organize selects By project, By machine, or Custom;

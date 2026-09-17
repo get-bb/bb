@@ -67,6 +67,7 @@ export function makeTimelineResponse(
   return {
     rows,
     contextBoundarySeq: null,
+    completedTurnDisplay: "collapse",
     activePromptMode: null,
     activeThinking: null,
     activeWorkflows: [],
@@ -112,6 +113,7 @@ export function makeThread(overrides: MakeThreadArgs): Thread {
     sectionId: null,
     environmentId: null,
     parentThreadId: null,
+    lifecycleOwnerThreadId: null,
     sourceThreadId: null,
     originKind: null,
     originPluginId: null,

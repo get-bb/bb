@@ -1,10 +1,11 @@
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
-import { appSettingsValues, upsertHost, updateHost } from "@bb/db";
+import { projects, environmentVariables, upsertHost, updateHost } from "@bb/db";
 import { createBbSdk } from "@bb/sdk/core";
 import { createHttpTransport } from "@bb/sdk/node";
 import { describe, expect, it, vi } from "vitest";
 import { withTestHarness } from "../helpers/test-app.js";
+import { seedPrimaryHost } from "../helpers/seed.js";
 import { resolveHostEnvironment } from "../../src/services/hosts/host-environment.js";
 import * as gitCredentials from "../../src/services/machines/git-credentials.js";
 
@@ -55,7 +56,7 @@ describe("machine environment settings", () => {
           JSON.stringify(await sdk.system.machineEnvironment()),
         ).not.toContain("user-private-token");
         expect(
-          JSON.stringify(harness.db.select().from(appSettingsValues).all()),
+          JSON.stringify(harness.db.select().from(environmentVariables).all()),
         ).not.toContain("user-private-token");
         const path = join(
           harness.config.dataDir,
@@ -69,15 +70,30 @@ describe("machine environment settings", () => {
             .mode & 0o777,
         ).toBe(0o600);
         expect(
-          JSON.stringify(harness.db.select().from(appSettingsValues).all()),
+          JSON.stringify(harness.db.select().from(environmentVariables).all()),
         ).not.toContain("test-region");
         expect(JSON.stringify(result)).not.toContain("test-region");
-        expect(
-          await resolveHostEnvironment(harness.deps, {
-            hostId: "local",
-            projectId: null,
+        upsertHost(harness.db, harness.hub, { id: "local", name: "Local" });
+        seedPrimaryHost(harness.deps, "local");
+        const localEnvironment = await resolveHostEnvironment(harness.deps, {
+          hostId: "local",
+          projectId: null,
+        });
+        expect(localEnvironment).toContainEqual(
+          expect.objectContaining({
+            name: "DEPLOY_REGION",
+            value: "test-region",
           }),
-        ).toEqual([]);
+        );
+        expect(localEnvironment).toContainEqual(
+          expect.objectContaining({
+            name: "GH_TOKEN",
+            value: "user-private-token",
+          }),
+        );
+        expect(
+          localEnvironment.some((entry) => entry.value === "builtin-token"),
+        ).toBe(false);
         upsertHost(harness.db, harness.hub, {
           id: "machine",
           name: "Machine",
@@ -125,5 +141,110 @@ describe("machine environment settings", () => {
     } finally {
       resolver.mockRestore();
     }
+  });
+});
+
+it("isolates projects on a shared machine and restores global values after removal", async () => {
+  await withTestHarness(async (harness) => {
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://localhost",
+        runtime: "node",
+        fetch: async (input, init) =>
+          harness.app.fetch(new Request(input, init)),
+      }),
+    });
+    harness.db
+      .insert(projects)
+      .values(
+        ["project-a", "project-b"].map((id) => ({
+          id,
+          name: id,
+          createdAt: 1,
+          updatedAt: 1,
+        })),
+      )
+      .run();
+    upsertHost(harness.db, harness.hub, { id: "shared", name: "Shared" });
+    updateHost(harness.db, harness.hub, "shared", {
+      machineProviderId: "manual",
+    });
+    upsertHost(harness.db, harness.hub, { id: "local", name: "Local" });
+    seedPrimaryHost(harness.deps, "local");
+    await sdk.system.setMachineEnvironmentVariable({
+      name: "REGION",
+      value: "global-region",
+      note: null,
+    });
+    await sdk.projects.setMachineEnvironmentVariable({
+      projectId: "project-a",
+      name: "REGION",
+      value: "region-a",
+      note: null,
+    });
+    await sdk.projects.setMachineEnvironmentVariable({
+      projectId: "project-b",
+      name: "REGION",
+      value: "",
+      note: null,
+    });
+    const view = await sdk.projects.machineEnvironment({
+      projectId: "project-a",
+    });
+    expect(view.variables).toEqual([
+      { name: "REGION", value: null, secret: true, note: null },
+    ]);
+    expect(view.inheritedVariables).toEqual(view.variables);
+    expect(JSON.stringify(view)).not.toContain("region-a");
+    const resolve = async (projectId: string | null) =>
+      (
+        await resolveHostEnvironment(harness.deps, {
+          hostId: "shared",
+          projectId,
+        })
+      ).find((row) => row.name === "REGION");
+    expect(await resolve("project-a")).toMatchObject({
+      value: "region-a",
+      source: { core: "project-environment" },
+    });
+    expect(await resolve("project-b")).toMatchObject({ value: "" });
+    expect(await resolve(null)).toMatchObject({ value: "global-region" });
+    await sdk.projects.deleteMachineEnvironmentVariable({
+      projectId: "project-a",
+      name: "REGION",
+    });
+    expect(await resolve("project-a")).toMatchObject({
+      value: "global-region",
+      source: { core: "machine-environment" },
+    });
+    expect(await resolve("project-b")).toMatchObject({ value: "" });
+    await expect(
+      sdk.projects.setMachineEnvironmentVariable({
+        projectId: "missing",
+        name: "TOKEN",
+        value: "secret",
+        note: null,
+      }),
+    ).rejects.toThrow();
+    await expect(
+      sdk.projects.setMachineEnvironmentVariable({
+        projectId: "project-a",
+        name: "INVALID=NAME",
+        value: "secret",
+        note: null,
+      }),
+    ).rejects.toThrow();
+    expect(
+      await resolveHostEnvironment(harness.deps, {
+        hostId: "local",
+        projectId: "project-b",
+      }),
+    ).toContainEqual(
+      expect.objectContaining({
+        name: "REGION",
+        value: "",
+        source: { core: "project-environment" },
+      }),
+    );
   });
 });

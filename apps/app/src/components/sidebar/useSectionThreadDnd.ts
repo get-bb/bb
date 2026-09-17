@@ -1233,18 +1233,24 @@ export function useSectionThreadDnd({
   );
 
   const commitNest = useCallback(
-    (decision: Extract<SectionThreadDropDecision, { kind: "nest" }>) => {
+    (
+      decision: Extract<SectionThreadDropDecision, { kind: "nest" }>,
+      onSettled: () => void,
+    ) => {
       const applyNest = () =>
-        updateThread.mutate({
-          id: decision.activeId,
-          parentThreadId: decision.parentThreadId,
-          sectionId: decision.sectionId,
-        });
+        updateThread.mutate(
+          {
+            id: decision.activeId,
+            parentThreadId: decision.parentThreadId,
+            sectionId: decision.sectionId,
+          },
+          { onSettled },
+        );
       if (decision.unpin) {
         unpinThread
           .mutateAsync({ id: decision.activeId })
           .then(applyNest)
-          .catch(() => undefined);
+          .catch(onSettled);
       } else {
         applyNest();
       }
@@ -1296,20 +1302,26 @@ export function useSectionThreadDnd({
       }
       switch (decision.kind) {
         case "move":
-          updateThread.mutate({
-            id: decision.activeId,
-            sectionId: decision.sectionId,
-          });
+          updateThread.mutate(
+            {
+              id: decision.activeId,
+              sectionId: decision.sectionId,
+            },
+            { onSettled: clearProjectedDrag },
+          );
           break;
         case "detach":
-          updateThread.mutate({
-            id: decision.activeId,
-            parentThreadId: null,
-            sectionId: decision.sectionId,
-          });
+          updateThread.mutate(
+            {
+              id: decision.activeId,
+              parentThreadId: null,
+              sectionId: decision.sectionId,
+            },
+            { onSettled: clearProjectedDrag },
+          );
           break;
         case "nest":
-          commitNest(decision);
+          commitNest(decision, clearProjectedDrag);
           break;
         case "pin": {
           const insertRequest = reorderTarget
@@ -1327,20 +1339,29 @@ export function useSectionThreadDnd({
             updateThread
               .mutateAsync({ id: decision.activeId, parentThreadId: null })
               .then(pin)
-              .catch(() => undefined);
+              .catch(() => undefined)
+              .finally(clearProjectedDrag);
           } else {
-            pin().catch(() => undefined);
+            pin()
+              .catch(() => undefined)
+              .finally(clearProjectedDrag);
           }
           break;
         }
         case "unpin":
           if (decision.move) {
-            unpinAndMoveThread.mutate({
-              id: decision.activeId,
-              sectionId: decision.sectionId,
-            });
+            unpinAndMoveThread.mutate(
+              {
+                id: decision.activeId,
+                sectionId: decision.sectionId,
+              },
+              { onSettled: clearProjectedDrag },
+            );
           } else {
-            unpinThread.mutate({ id: decision.activeId });
+            unpinThread.mutate(
+              { id: decision.activeId },
+              { onSettled: clearProjectedDrag },
+            );
           }
           break;
         case "reorder-pinned":
