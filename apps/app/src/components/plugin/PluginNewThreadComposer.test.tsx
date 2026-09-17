@@ -450,7 +450,7 @@ function ForkSeedSurface({ composer }: { composer: NewThreadComposerState }) {
   useEffect(() => {
     seedEnvironmentSelectionValue(encodeReuseValue("env-source"));
   }, [seedEnvironmentSelectionValue]);
-  return composer.renderPromptBox({});
+  return composer.renderPromptBox({ mentionMenuPlacement: "bottom" });
 }
 
 function LocationProbe() {
@@ -701,7 +701,9 @@ describe("PluginNewThreadComposer seeding", () => {
             selectionScope="new-thread"
             onSubmit={() => undefined}
           >
-            {(composer) => composer.renderPromptBox({})}
+            {(composer) =>
+              composer.renderPromptBox({ mentionMenuPlacement: "bottom" })
+            }
           </NewThreadComposer>
         </MemoryRouter>
       </Provider>

@@ -139,7 +139,7 @@ interface NewThreadPromptBoxUIProps {
   typeahead: TypeaheadConfig;
   attachments: AttachmentsConfig;
   promptActions?: readonly PromptBoxAction[];
-  mentionMenuPlacement?: MentionMenuPlacement;
+  mentionMenuPlacement: MentionMenuPlacement;
 
   modeConfig: NewThreadModeConfig;
 
@@ -268,7 +268,7 @@ const DefaultNewThreadComposer = memo(function DefaultNewThreadComposer({
   typeahead,
   attachments,
   promptActions,
-  mentionMenuPlacement = "bottom",
+  mentionMenuPlacement,
   modeConfig,
   project,
   execution,
