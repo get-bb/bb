@@ -270,21 +270,20 @@ export function PluginsOverview({
             changeSearchParams={changeSearchParams}
             action={installedActions}
             additionalControls={
-              <>
-                <ResourceMultiSelectMenu
-                  label="Source"
-                  icon="FolderGit"
-                  compact
-                  options={sourceFilterOptions}
-                  selectedValues={activeSourceFilters}
-                  onChange={(values) =>
-                    changeSearchParams((next) => {
-                      next.delete("source");
-                      for (const value of values) next.append("source", value);
-                    })
-                  }
-                />
-              </>
+              <ResourceMultiSelectMenu
+                label="Source"
+                icon="Layers"
+                compact
+                clearInFooter
+                options={sourceFilterOptions}
+                selectedValues={activeSourceFilters}
+                onChange={(values) =>
+                  changeSearchParams((next) => {
+                    next.delete("source");
+                    for (const value of values) next.append("source", value);
+                  })
+                }
+              />
             }
           />
         }
