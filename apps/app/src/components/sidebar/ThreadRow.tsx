@@ -325,7 +325,7 @@ export function ThreadStatusGlyph({
   size = "default",
 }: ThreadStatusGlyphProps) {
   const iconSizeClass =
-    size === "compact" ? "size-4" : SIDEBAR_STATUS_ICON_CLASS;
+    size === "compact" ? "size-3.5" : SIDEBAR_STATUS_ICON_CLASS;
   const kind = resolveThreadListIndicator({
     hasPendingInteraction,
     hasUnsubmittedDraft,

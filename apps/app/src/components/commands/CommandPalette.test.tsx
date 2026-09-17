@@ -894,7 +894,7 @@ describe("CommandPalette", () => {
     expect(
       within(rows[1]).getByRole("img", { name: "Archived thread" }),
     ).toBeTruthy();
-    expect(rows[1].querySelector('[data-icon="Archive"]')).not.toBeNull();
+    expectClasses(rows[1].querySelector('[data-icon="Archive"]'), "size-3.5");
     expect(
       rows[1].querySelector("[data-palette-thread-metadata]")?.textContent,
     ).toBe("Palette project · just now");
@@ -1013,10 +1013,10 @@ describe("CommandPalette", () => {
         expectText(separator, "·");
         expect(separator?.getAttribute("aria-hidden")).toBe("true");
         expect(separator?.nextElementSibling).toBe(status);
-        expectClasses(status, "size-4", "shrink-0", "cursor-default");
+        expectClasses(status, "size-3.5", "shrink-0", "cursor-default");
         expectClasses(
           status.querySelector(`[data-icon="${icon}"]`),
-          icon === "Edit" ? "size-3.5" : "size-4",
+          "size-3.5",
         );
         expect(status.hasAttribute("tabindex")).toBe(false);
         expect(status.closest('button, [role="button"]')).toBeNull();

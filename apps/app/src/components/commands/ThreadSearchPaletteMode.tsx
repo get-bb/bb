@@ -393,12 +393,12 @@ function ThreadSearchPaletteStatus({ row }: { row: PaletteThreadSearchRow }) {
           <span
             role="img"
             aria-label={label}
-            className="inline-flex size-4 shrink-0 cursor-default items-center justify-center text-subtle-foreground"
+            className="inline-flex size-3.5 shrink-0 cursor-default items-center justify-center text-subtle-foreground"
             data-palette-thread-status
           >
             <span aria-hidden="true" className="inline-flex items-center">
               {archived ? (
-                <Icon name="Archive" className="size-4" />
+                <Icon name="Archive" className="size-3.5" />
               ) : (
                 <ThreadStatusGlyph {...state} size="compact" />
               )}
