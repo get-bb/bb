@@ -113,7 +113,7 @@ function PluginApiMapPage({ subPath }: { subPath: string }) {
   return (
     <div
       data-guide-stage-viewport
-      className="h-full min-h-0 w-full flex-1 overflow-y-auto px-6 pb-6 pt-5 [container-type:size] [--guide-stage-gap:3cqh] lg:pb-0 lg:pt-4"
+      className="h-full min-h-0 w-full flex-1 overflow-y-auto px-3 pb-6 pt-5 sm:px-6 [container-type:size] [--guide-stage-gap:3cqh] lg:pb-0 lg:pt-4"
     >
       <ProductMap
         pluginPageHref={pluginPageHref}

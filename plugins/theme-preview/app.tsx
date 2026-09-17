@@ -591,7 +591,7 @@ function FrameView({ view, composition, themeName, mode }: { view: View; composi
       return (
         <>
           {sidebar ? <Sidebar selected /> : null}
-          <Thread narrow={narrow} showToc />
+          <Thread narrow={narrow} showToc={!narrow} />
           {infoPanel ? <InfoPanel /> : null}
         </>
       );
@@ -1187,7 +1187,7 @@ function OverlaySpecimens() {
   );
 }
 
-function ComponentsSection() {
+function ComponentsSection({ stacked = false }: { stacked?: boolean }) {
   const [search, setSearch] = useState("");
   const [notify, setNotify] = useState(true);
   const [compact, setCompact] = useState(false);
@@ -1198,7 +1198,7 @@ function ComponentsSection() {
   const toggleControls: CSSProperties = { display: "flex", flexDirection: "column", gap: 8 };
   const compactLabel: CSSProperties = { ...TEXT_LABEL, minWidth: 0, fontSize: 11.5, lineHeight: "16px" };
   return (
-    <div data-tp-components="" style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", columnGap: 16, rowGap: 16, alignItems: "start" }}>
+    <div data-tp-components="" style={{ display: "grid", gridTemplateColumns: stacked ? "minmax(0, 1fr)" : "repeat(2, minmax(0, 1fr))", columnGap: 16, rowGap: 16, alignItems: "start" }}>
       <div data-tp-block="buttons" style={compactBlock(true)}>
         <h3 data-tp-role="category" style={{ ...TEXT_CATEGORY, marginBottom: 8 }}>Buttons</h3>
         <div data-tp-button-grid="" style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 6 }}>
@@ -1212,7 +1212,7 @@ function ComponentsSection() {
       </div>
       <div data-tp-block="badges" style={compactBlock(true)}>
         <h3 data-tp-role="category" style={{ ...TEXT_CATEGORY, marginBottom: 8 }}>Badges</h3>
-        <div data-tp-badge-row="" style={{ display: "flex", flexWrap: "nowrap", gap: 4, alignItems: "center", overflowX: "auto" }}>
+        <div data-tp-badge-row="" style={{ display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center" }}>
           <Badge tone="success"><Dot color={v("success")} size={6} /> Running</Badge><Badge tone="warning">Attention</Badge>
           <Badge tone="destructive">Failed</Badge><Badge tone="merged">Merged</Badge><Badge tone="outline">branch</Badge>
         </div>
@@ -1639,6 +1639,7 @@ function PreviewPage({ subPath }: { subPath: string }) {
   const radii = useResolvedRadii(revision);
   const mobile = layout.band === "mobile";
   const railWidth = SURFACE_RAIL_WIDTH;
+  const showRail = layout.band === "desktop";
   const contentInset = contentInsetForWidth(layout.width);
   const displayThemeId = pendingSelection?.themeId ?? catalog.activeThemeId;
   const displayThemeName = catalog.themes.find((theme) => theme.id === displayThemeId)?.name ?? "Current theme";
@@ -1647,7 +1648,7 @@ function PreviewPage({ subPath }: { subPath: string }) {
     <div ref={rootRef} data-tp-root data-tp-band={layout.band} style={{ height: "100%", overflowY: "auto", overflowX: "hidden", background: v("canvas", v("background")), color: v("foreground"), fontFamily: SANS, letterSpacing: v("tracking-normal", "0em") }}>
       <div ref={headerRef} style={{ position: "sticky", top: 0, zIndex: 20, borderBottom: `1px solid ${v("border-seam", v("border"))}`, background: v("canvas", v("background")) }}>
         <div data-tp-header-inner="" style={{ width: "100%", maxWidth: STUDIO_MAX_WIDTH, margin: "0 auto", boxSizing: "border-box", display: "flex", alignItems: "center", flexWrap: "wrap", rowGap: space(2), gap: space(2), padding: `${space(3)} ${contentInset}px` }}>
-          <Tabs value={view} onValueChange={(next) => navigate.toPluginPanel("preview", { subPath: next })}>
+          <Tabs className={cn("min-w-0", mobile && "w-full")} value={view} onValueChange={(next) => navigate.toPluginPanel("preview", { subPath: next })}>
             <TabsList data-tp-view-control="" aria-label="Preview view" className={cn(mobile && "w-full")}>
               {VIEWS.map((item) => (
                 <TabsTrigger key={item} value={item} className={cn("cursor-pointer", mobile && "flex-1")}>
@@ -1656,7 +1657,7 @@ function PreviewPage({ subPath }: { subPath: string }) {
               ))}
             </TabsList>
           </Tabs>
-          <div style={{ flex: 1 }} />
+          {mobile ? null : <div style={{ flex: 1 }} />}
           {error ? <span style={{ fontSize: 12, color: v("destructive-text", v("destructive")) }}>{error}</span> : null}
           <div style={{ flex: mobile ? "1 1 100%" : "0 1 auto", minWidth: 0, display: "flex", alignItems: "flex-start", justifyContent: "flex-end", gap: space(1) }}>
             <ThemePicker
@@ -1673,17 +1674,12 @@ function PreviewPage({ subPath }: { subPath: string }) {
         </div>
       </div>
 
-      {/* Layout system, level 2: the plugin window. One stage zone (mock +
-          at-a-glance rail on wider bands), then flow sections in taxonomy
-          order, all on the same max-width spine. On the mobile band the rail
-          content becomes the first flow section so nothing is lost, only
-          restacked. */}
       <div style={{ borderBottom: `1px solid ${v("border-seam", v("border"))}` }}>
         <div
           data-tp-layout={layout.band}
           style={{
             width: "100%", maxWidth: STUDIO_MAX_WIDTH, margin: "0 auto", minHeight: 0, display: "grid",
-            gridTemplateColumns: mobile ? "minmax(0, 1fr)" : `minmax(0, 1fr) ${railWidth}px`,
+            gridTemplateColumns: showRail ? `minmax(0, 1fr) ${railWidth}px` : "minmax(0, 1fr)",
             alignItems: "start",
           }}
         >
@@ -1695,7 +1691,7 @@ function PreviewPage({ subPath }: { subPath: string }) {
               <Frame view={view} themeName={displayThemeName} mode={mode} />
             </div>
           </div>
-          {mobile ? null : (
+          {showRail ? (
             <div
               data-tp-section="rail"
               style={{
@@ -1706,11 +1702,11 @@ function PreviewPage({ subPath }: { subPath: string }) {
             >
               <StageRail />
             </div>
-          )}
+          ) : null}
         </div>
       </div>
 
-      {(mobile
+      {(!showRail
         ? (["overlays", "components", "stylesheet"] as const)
         : (["stylesheet"] as const)
       ).map((area) => (
@@ -1718,7 +1714,7 @@ function PreviewPage({ subPath }: { subPath: string }) {
           <AreaHeading area={area} />
           <div style={{ marginTop: space(3) }}>
             {area === "overlays" ? <OverlaySpecimens />
-              : area === "components" ? <ComponentsSection />
+              : area === "components" ? <ComponentsSection stacked={mobile} />
               : <StyleSheetSection computed={computed} radii={radii} />}
           </div>
         </section>

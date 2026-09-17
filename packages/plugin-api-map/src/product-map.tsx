@@ -234,7 +234,7 @@ function SpatialFixture({
       const cardFootprint = flowCard
         ? Math.max(probeReserve, cardReserveRef.current)
         : 0;
-      const availableHeight = viewport
+      const availableHeight = viewport && frame.clientWidth >= 640
         ? viewport.clientHeight -
           (frame.getBoundingClientRect().top -
             viewport.getBoundingClientRect().top +
@@ -298,12 +298,12 @@ function SpatialFixture({
       ref={frameRef}
       data-guide-responsive-strategy="scale-together"
       data-guide-scale={geometry.scale.toFixed(4)}
-      className="w-full overflow-x-clip transition-[height] duration-300 ease-out"
+      className="w-full overflow-x-clip"
       style={scaled ? { height: geometry.height ?? undefined } : undefined}
     >
       <div
         ref={fixtureRef}
-        className="mx-auto w-full origin-top transition-transform duration-300 ease-out"
+        className="mx-auto w-full origin-top"
         style={
           {
             minWidth: band?.min,
@@ -438,7 +438,7 @@ function PanButton({
       disabled={disabled}
       aria-label={`${direction === "previous" ? "Previous" : "Next"} surface`}
       className={cn(
-        "inline-flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground",
+        "inline-flex size-10 @2xl/guide:size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground",
         FOCUS_RING_CLASS,
       )}
     >
@@ -544,6 +544,7 @@ export function ProductMap({
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.target instanceof HTMLSelectElement) return;
     if (event.key === "ArrowRight") {
       event.preventDefault();
       show(index + 1);
@@ -591,7 +592,7 @@ export function ProductMap({
       const target = event.target;
       if (!(target instanceof Element)) return;
       if (target.closest('[role="dialog"]')) return;
-      if (target.closest('a[href^="#surface-"]')) return;
+      if (target.closest('a[href^="#surface-"], [data-guide-annotation-picker]')) return;
       card.close();
     };
     scope.addEventListener("pointerdown", onPointerDown);
@@ -601,7 +602,7 @@ export function ProductMap({
 
   return (
     <SurfaceMapContext.Provider value={mapState}>
-      <div ref={containerRef} className="relative">
+      <div ref={containerRef} className="@container/guide relative">
         <div data-map-column className="mx-auto w-full max-w-[100rem]">
           <section
             aria-roledescription="carousel"
@@ -646,7 +647,7 @@ export function ProductMap({
                         onClick={() => show(slideIndex)}
                         aria-current={slideIndex === index ? "true" : undefined}
                         className={cn(
-                          "cursor-pointer whitespace-nowrap rounded-md px-2.5 py-1 text-xs transition-colors",
+                          "cursor-pointer whitespace-nowrap rounded-md px-2.5 py-2.5 text-sm @2xl/guide:py-1 @2xl/guide:text-xs transition-colors",
                           FOCUS_RING_CLASS,
                           slideIndex === index
                             ? "bg-surface-selected text-foreground"
@@ -701,6 +702,28 @@ export function ProductMap({
                 ))}
               </div>
             </div>
+
+            {slides[index].id !== "headless" ? (
+              <label data-guide-annotation-picker className="mt-3 flex flex-col gap-1.5 text-sm text-muted-foreground @2xl/guide:hidden">
+                Annotation
+                <select
+                  aria-label="Explore an annotation"
+                  value={card.openId ?? ""}
+                  onChange={(event) => {
+                    if (event.target.value) card.open(event.target.value);
+                    else card.close();
+                  }}
+                  className={`h-11 w-full min-w-0 rounded-md border border-border bg-background px-3 text-sm text-foreground ${FOCUS_RING_CLASS}`}
+                >
+                  <option value="">Choose an annotation…</option>
+                  {slides[index].surfaces.map((surface) => (
+                    <option key={surface.id} value={surface.id}>
+                      {SURFACE_NUMBERS.get(surface.id)}. {surface.title}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
 
             {cardNode ? (
               <div
