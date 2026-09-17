@@ -468,9 +468,9 @@ describe("mobile recents hierarchy interaction", () => {
   it("de-emphasizes the leading tile on child rows only", () => {
     renderTree();
 
-    const parentTile = screen.getByRole("button", {
-      name: "Hide threads under Rework folder model",
-    });
+    const parentTile = screen.getByRole("link", {
+      name: /Open Rework folder model/,
+    }).firstElementChild;
     const childRow = screen.getByRole("link", {
       name: /Open Audit folder query paths/,
     });
@@ -491,8 +491,7 @@ describe("mobile recents hierarchy interaction", () => {
     }
 
     for (const tile of [parentTile, childTile]) {
-      expect(tile.className).toContain("h-7");
-      expect(tile.className).toContain("w-11");
+      expect(tile.className).toContain("size-7");
       expect(tile.className).toContain("border");
     }
   });
@@ -502,8 +501,7 @@ describe("mobile recents hierarchy interaction", () => {
 
     const rows = screen.getAllByRole("listitem");
     for (const row of rows) {
-      const tile =
-        row.querySelector("button") ?? row.querySelector("a")?.firstElementChild;
+      const tile = row.querySelector("a")?.firstElementChild;
       if (!(tile instanceof HTMLElement)) {
         throw new Error("Expected a leading tile");
       }

@@ -331,7 +331,7 @@ function MobileRecentThreadRow({
               : `Hide threads under ${threadTitle}`
           }
           className={cn(
-            "relative z-10 flex h-7 w-11 shrink-0 cursor-pointer items-center justify-center gap-1 rounded-md border border-border-seam bg-surface-raised outline-none ring-sidebar-ring before:absolute before:inset-x-0 before:-inset-y-2 focus-visible:ring-2",
+            "relative z-10 -ml-4 -mr-2.5 flex h-7 w-4 shrink-0 cursor-pointer items-center justify-end rounded-md outline-none ring-sidebar-ring before:absolute before:-left-2 before:right-0 before:-inset-y-2 focus-visible:ring-2",
             SIDEBAR_CONTROL_STATE_CLASS,
             depth > 0 && "opacity-60",
           )}
@@ -349,7 +349,6 @@ function MobileRecentThreadRow({
             )}
             aria-hidden="true"
           />
-          {providerMark}
         </button>
       ) : null}
       <RouteAnchor
@@ -370,17 +369,14 @@ function MobileRecentThreadRow({
           MOBILE_RECENT_ROW_HEIGHT_CLASS,
         )}
       >
-        {!hasChildren ? (
-          <span
-            className={cn(
-              "flex h-7 w-11 shrink-0 items-center justify-center gap-1 rounded-md border border-border-seam bg-surface-raised",
-              depth > 0 && "opacity-60",
-            )}
-          >
-            <span className="size-3 shrink-0" aria-hidden="true" />
-            {providerMark}
-          </span>
-        ) : null}
+        <span
+          className={cn(
+            "flex size-7 shrink-0 items-center justify-center rounded-md border border-border-seam bg-surface-raised",
+            depth > 0 && "opacity-60",
+          )}
+        >
+          {providerMark}
+        </span>
         <span className="min-w-0 flex-1 space-y-0.5">
           <span className="flex min-w-0 items-center gap-1.5">
             <span
