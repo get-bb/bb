@@ -126,6 +126,22 @@ describe("theme.css neutral ramp", () => {
     expect(rule).toContain("linear-gradient(var(--sidebar), var(--sidebar))");
   });
 
+  it("caps the scrollport strip above pinned sidebar rows", () => {
+    const rule = css
+      .replace(/\s+/g, " ")
+      .match(/\[data-sidebar-sticky-stack\]::before \{([^}]*)\}/)?.[1];
+
+    expect(rule).toContain("position: sticky");
+    expect(rule).toContain("top: 0");
+    expect(rule).toContain("background-color: var(--sidebar)");
+    expect(rule).toContain(
+      "height: var(--bb-sidebar-sticky-stack-padding-top)",
+    );
+    expect(rule).toContain(
+      "margin-top: calc(-1 * var(--bb-sidebar-sticky-stack-padding-top))",
+    );
+  });
+
   it("collapses the label slot when a section header is not sticky", () => {
     const compact = css.replace(/\s+/g, " ");
     const declarations = (selector: string): string | undefined =>

@@ -181,6 +181,21 @@
       var(--bb-sidebar-sticky-stack-padding);
   }
 
+  /* The stack's top padding is inside the scrollport, so rows stay visible as
+     they scroll through it. A sticky label hides that strip behind its own top
+     shield; a pinned row with no label above it has nothing to hide it, so the
+     stack caps the strip for every tier. */
+  [data-sidebar-sticky-stack]::before {
+    content: "";
+    position: sticky;
+    top: 0;
+    z-index: 70;
+    display: block;
+    height: var(--bb-sidebar-sticky-stack-padding-top);
+    margin-top: calc(-1 * var(--bb-sidebar-sticky-stack-padding-top));
+    background-color: var(--sidebar);
+  }
+
   [data-sidebar-sticky-stack][data-sidebar-sticky-density="compact-actions"] {
     --bb-sidebar-sticky-stack-padding-top: 0.5rem;
   }
