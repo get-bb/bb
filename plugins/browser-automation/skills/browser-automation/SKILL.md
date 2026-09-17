@@ -65,6 +65,17 @@ image bytes into the conversation. Read or copy captures before closing the
 session: cleanup removes its temporary directory. Remove local copies when
 finished.
 
+A local headless `open` returns a `previewDirective`, for example
+`::browser-preview{session="<session-id>"}`. Copy it into your next message
+exactly once as a standalone line, before you continue working. Do not wrap it
+in backticks or a code fence, and do not invent or edit the session ID. BB
+renders it as a live view of that browser in the chat, which the user can
+expand, so they can watch while you work. Desktop
+sessions return no directive; that browser is already visible in the side
+panel. `bb browser-automation preview <session-id> --json` reports the live
+frame's `url`, `title`, size, and `sequence` without image bytes; it is not a
+substitute for `screenshot` when you need to see the page.
+
 `pages` lists persistent pages. Runs serialize within a session. Scripts are
 trusted JavaScript with Puppeteer-style DevBrowser APIs, not a sandbox.
 `--script-file` requires `--script-host <host-id>` naming the source host explicitly. Browser file
