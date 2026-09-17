@@ -447,7 +447,7 @@ export interface PromptBoxHandle {
 
 export type { PromptBoxAction } from "./PromptBoxActionsMenu";
 
-type MentionMenuPlacement = "top" | "bottom";
+export type MentionMenuPlacement = "top" | "bottom";
 
 interface PromptBoxInternalProps {
   id?: string;

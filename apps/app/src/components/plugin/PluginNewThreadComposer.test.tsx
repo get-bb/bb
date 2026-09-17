@@ -708,6 +708,28 @@ describe("PluginNewThreadComposer seeding", () => {
     );
   }
 
+  it("forwards a requested mention menu placement to the prompt box", () => {
+    render(
+      <Provider>
+        <MemoryRouter>
+          <NewThreadComposer
+            projectId="proj_1"
+            onProjectChange={() => undefined}
+            draftStorage={{ kind: "new-thread" }}
+            selectionScope="new-thread"
+            onSubmit={() => undefined}
+          >
+            {(composer) =>
+              composer.renderPromptBox({ mentionMenuPlacement: "top" })
+            }
+          </NewThreadComposer>
+        </MemoryRouter>
+      </Provider>,
+    );
+
+    expect(latestPromptBoxProps().mentionMenuPlacement).toBe("top");
+  });
+
   it("restores the environment type and machine after reload and project switching", async () => {
     const first = render(newThreadElement("proj_1"));
     await act(async () => {
