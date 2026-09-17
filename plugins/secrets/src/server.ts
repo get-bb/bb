@@ -130,6 +130,13 @@ function resolveHostPath(cwd: string, candidate: string): string {
     : path.win32.resolve(cwd, candidate);
 }
 
+const ROW_LABEL_MAX_LENGTH = 80;
+const ROW_TITLE_MAX_LENGTH = 160;
+
+function clampToLength(text: string, max: number): string {
+  return text.length <= max ? text : `${text.slice(0, max - 1)}\u2026`;
+}
+
 function httpStatus(error: unknown): number | null {
   if (typeof error !== "object" || error === null || !("status" in error))
     return null;
@@ -195,8 +202,14 @@ async function runRequest(
       },
       presentation: {
         label: {
-          pending: `Requesting ${parsed.names.join(", ")}`,
-          completed: `Requested ${parsed.names.join(", ")}`,
+          pending: clampToLength(
+            `Requesting ${parsed.names.join(", ")}`,
+            ROW_LABEL_MAX_LENGTH,
+          ),
+          completed: clampToLength(
+            `Requested ${parsed.names.join(", ")}`,
+            ROW_LABEL_MAX_LENGTH,
+          ),
         },
       },
       describeSubmission: (value) => {
@@ -205,8 +218,13 @@ async function runRequest(
           ? Object.keys(response.data.values).sort()
           : [];
         return {
-          title: `Provided ${names.join(", ")} for ${destinationPath}`,
-          detail: names.map((name) => `- ${name}`).join("\n"),
+          title: clampToLength(
+            `Provided ${names.join(", ")}`,
+            ROW_TITLE_MAX_LENGTH,
+          ),
+          detail: [destinationPath, ...names.map((name) => `- ${name}`)].join(
+            "\n",
+          ),
         };
       },
     },

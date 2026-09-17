@@ -161,6 +161,51 @@ describe("secrets plugin server", () => {
     expect(pending.payload).toMatchObject({
       destination: { kind: "dotenv", path: destinationPath },
     });
+    expect(
+      pending.describeSubmission?.({ values: { API_KEY: "s3cret" } }),
+    ).toEqual({
+      title: "Provided API_KEY",
+      detail: `${destinationPath}\n- API_KEY`,
+    });
+    host.harness.cancelInteraction(pending.id);
+    await command;
+  });
+
+  it("keeps the row label within its cap for many long secret names", async () => {
+    const names = Array.from(
+      { length: 12 },
+      (_unused, index) => `A_VERY_LONG_SECRET_NAME_NUMBER_${index}`,
+    );
+    const host = createFakePluginHost({
+      pluginId: "secrets",
+      sdk: {
+        threads: {
+          async get() {
+            return { host: { id: "host-test" } };
+          },
+        },
+        files: {
+          async read() {
+            return { content: "", contentEncoding: "utf8", sha256: "before" };
+          },
+        },
+      },
+    });
+    plugin(host.bb as unknown as Parameters<typeof plugin>[0]);
+
+    const command = host.harness.runCli(
+      ["request", ...names, "--write-env", ".env"],
+      { threadId: "thr-test", cwd: "/workspace" },
+    );
+    await vi.waitFor(() =>
+      expect(host.harness.pendingInteractions).toHaveLength(1),
+    );
+
+    const pending = host.harness.pendingInteractions[0]!;
+    expect(pending.presentation?.label?.pending.length).toBeLessThanOrEqual(80);
+    expect(pending.presentation?.label?.completed.length).toBeLessThanOrEqual(
+      80,
+    );
     host.harness.cancelInteraction(pending.id);
     await command;
   });
