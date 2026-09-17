@@ -932,6 +932,122 @@ describe("CommandPalette", () => {
     );
   });
 
+  it("caps mixed matches, expands sections independently, and resets on query changes", async () => {
+    const active = Array.from({ length: 8 }, (_, index) =>
+      makeThread(`active-${index}`),
+    );
+    const archived = Array.from({ length: 8 }, (_, index) =>
+      makeThread(`archived-${index}`, { archivedAt: Date.now() }),
+    );
+    modeState.activeRecents = active;
+    modeState.searchResponse = {
+      active: {
+        total: 8,
+        results: active.map((thread) => ({ thread, matches: [] })),
+      },
+      archived: {
+        total: 8,
+        results: archived.map((thread) => ({ thread, matches: [] })),
+      },
+    };
+    renderPalette();
+    openThreadSearch();
+    const input = await screen.findByRole("combobox", {
+      name: "Search threads",
+    });
+    expect(screen.getAllByRole("option")).toHaveLength(8);
+    expect(screen.queryByText("Show more")).toBeNull();
+    fireEvent.change(input, { target: { value: "match" } });
+    const activeGroup = screen.getByRole("group", { name: "Threads" });
+    const archivedGroup = screen.getByRole("group", { name: "Archived" });
+    expect(
+      within(activeGroup)
+        .getAllByRole("option")
+        .map((row) => row.textContent),
+    ).toEqual([
+      expect.stringContaining("Title active-0"),
+      expect.stringContaining("Title active-1"),
+      expect.stringContaining("Title active-2"),
+      "Show more",
+    ]);
+    expect(within(archivedGroup).getAllByRole("option")).toHaveLength(4);
+    for (let index = 0; index < 3; index++)
+      fireEvent.keyDown(input, { key: "ArrowDown" });
+    const more = within(activeGroup).getByRole("option", {
+      name: "Show more threads",
+    });
+    expect(input.getAttribute("aria-activedescendant")).toBe(more.id);
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(within(activeGroup).getAllByRole("option")).toHaveLength(8);
+    expect(within(archivedGroup).getAllByRole("option")).toHaveLength(4);
+    expect(input.getAttribute("aria-activedescendant")).toBe(
+      within(activeGroup).getAllByRole("option")[3].id,
+    );
+    expect(
+      within(activeGroup)
+        .getAllByRole("option")[3]
+        .getAttribute("aria-selected"),
+    ).toBe("true");
+    expect(document.activeElement).toBe(input);
+    expect(routeNavigateMock).not.toHaveBeenCalled();
+    fireEvent.change(input, { target: { value: "changed" } });
+    expect(within(activeGroup).getAllByRole("option")).toHaveLength(4);
+    fireEvent.click(
+      within(archivedGroup).getByRole("option", {
+        name: "Show more archived threads",
+      }),
+    );
+    expect(within(activeGroup).getAllByRole("option")).toHaveLength(4);
+    expect(within(archivedGroup).getAllByRole("option")).toHaveLength(8);
+    expect(input.getAttribute("aria-activedescendant")).toBe(
+      within(archivedGroup).getAllByRole("option")[3].id,
+    );
+    fireEvent.change(input, { target: { value: "" } });
+    expect(screen.getByRole("group", { name: "Recent" })).toBeTruthy();
+    expect(screen.getAllByRole("option")).toHaveLength(8);
+    expect(screen.queryByText("Show more")).toBeNull();
+  });
+
+  it.each(["active", "archived"] as const)(
+    "shows six %s-only matches and opens a revealed result",
+    async (lifecycle) => {
+      const threads = Array.from({ length: 7 }, (_, index) =>
+        makeThread(`${lifecycle}-${index}`, {
+          archivedAt: lifecycle === "archived" ? Date.now() : null,
+        }),
+      );
+      modeState.searchResponse = {
+        active: { total: 0, results: [] },
+        archived: { total: 0, results: [] },
+        [lifecycle]: {
+          total: 7,
+          results: threads.map((thread) => ({ thread, matches: [] })),
+        },
+      };
+      renderPalette();
+      openThreadSearch();
+      const input = await screen.findByRole("combobox", {
+        name: "Search threads",
+      });
+      fireEvent.change(input, { target: { value: "match" } });
+      expect(screen.getAllByRole("group")).toHaveLength(1);
+      const rows = screen.getAllByRole("option");
+      expect(rows).toHaveLength(7);
+      expect(rows[5].textContent).toContain(`Title ${lifecycle}-5`);
+      expect(rows[6].textContent).toBe("Show more");
+      fireEvent.keyDown(input, { key: "End" });
+      fireEvent.keyDown(input, { key: "Enter" });
+      expect(screen.queryByText("Show more")).toBeNull();
+      expect(screen.getAllByRole("option")).toHaveLength(7);
+      expect(screen.getAllByRole("option")[6].textContent).toContain(
+        `Title ${lifecycle}-6`,
+      );
+      fireEvent.keyDown(input, { key: "Enter" });
+      await waitFor(() => expect(routeNavigateMock).toHaveBeenCalled());
+      expect(routeNavigateMock.mock.calls[0][0]).toContain(`${lifecycle}-6`);
+    },
+  );
+
   it("keeps active and archived search results and restores active recents on clear", async () => {
     modeState.activeRecents = [makeThread("recent-active")];
     modeState.searchResponse = {

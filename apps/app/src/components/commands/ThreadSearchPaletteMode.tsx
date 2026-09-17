@@ -34,11 +34,20 @@ import {
 import { getThreadRoutePath } from "@/lib/route-paths";
 import {
   buildPaletteThreadSearchRows,
+  type PaletteThreadLifecycle,
   type PaletteThreadSearchRow,
 } from "@/lib/command-palette/palette-thread-search";
 import { windowPaletteThreadSearchText } from "@/lib/command-palette/palette-thread-search-window";
 import type { PaletteModeViewProps } from "@/lib/command-palette/palette-mode";
 import { PaletteShell } from "./PaletteShell";
+
+type ThreadSearchOption =
+  | {
+      kind: "thread";
+      lifecycle: PaletteThreadLifecycle;
+      row: PaletteThreadSearchRow;
+    }
+  | { kind: "more"; lifecycle: PaletteThreadLifecycle };
 
 export function ThreadSearchPaletteMode({
   onExit,
@@ -52,6 +61,9 @@ export function ThreadSearchPaletteMode({
   const navigate = useRouteNavigate();
   const [query, setQuery] = useState("");
   const [highlightedIndex, setHighlightedIndex] = useState(0);
+  const [expandedGroups, setExpandedGroups] = useState<
+    PaletteThreadLifecycle[]
+  >([]);
   const [now] = useState(() => Date.now());
   const navigation = useSidebarNavigation();
   const threadSearch = useThreadSearch({ active: true, query });
@@ -96,10 +108,31 @@ export function ThreadSearchPaletteMode({
       threadSearch.data,
     ],
   );
+  const options = useMemo(() => {
+    const lifecycles = ["active", "archived"] as const;
+    const limit = lifecycles.every((lifecycle) =>
+      result.rows.some((row) => row.lifecycle === lifecycle),
+    )
+      ? 3
+      : 6;
+    return lifecycles.flatMap((lifecycle) => {
+      const rows = result.rows.filter((row) => row.lifecycle === lifecycle);
+      const visible =
+        result.isRecent || expandedGroups.includes(lifecycle)
+          ? rows
+          : rows.slice(0, limit);
+      const groupOptions: ThreadSearchOption[] = visible.map((row) => ({
+        kind: "thread",
+        lifecycle,
+        row,
+      }));
+      if (visible.length < rows.length)
+        groupOptions.push({ kind: "more", lifecycle });
+      return groupOptions;
+    });
+  }, [expandedGroups, result]);
   const activeIndex =
-    result.rows.length === 0
-      ? -1
-      : Math.min(highlightedIndex, result.rows.length - 1);
+    options.length === 0 ? -1 : Math.min(highlightedIndex, options.length - 1);
   const isRecentLoading = result.isRecent && navigation.isLoading;
   const hasLoadError = result.isRecent
     ? navigation.isError
@@ -118,7 +151,7 @@ export function ThreadSearchPaletteMode({
     listRef.current
       ?.querySelector('[aria-selected="true"]')
       ?.scrollIntoView({ block: "nearest" });
-  }, [activeIndex]);
+  }, [activeIndex, options]);
 
   const openRow = useCallback(
     (row: PaletteThreadSearchRow) => {
@@ -142,6 +175,20 @@ export function ThreadSearchPaletteMode({
     [navigate, runAfterClose],
   );
 
+  const selectOption = useCallback(
+    (option: ThreadSearchOption, index: number) => {
+      if (option.kind === "thread") {
+        openRow(option.row);
+        return;
+      }
+      scrollOnNextHighlightRef.current = true;
+      setExpandedGroups((current) => [...current, option.lifecycle]);
+      setHighlightedIndex(index);
+      inputRef.current?.focus();
+    },
+    [openRow],
+  );
+
   const handleInputKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLInputElement>) => {
       if (event.nativeEvent.isComposing) return;
@@ -157,32 +204,32 @@ export function ThreadSearchPaletteMode({
         onExit();
         return;
       }
-      if (result.rows.length === 0) return;
+      if (options.length === 0) return;
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         event.preventDefault();
         scrollOnNextHighlightRef.current = true;
         setHighlightedIndex((current) => {
           if (event.key === "ArrowDown") {
-            return current + 1 >= result.rows.length ? 0 : current + 1;
+            return current + 1 >= options.length ? 0 : current + 1;
           }
-          return current <= 0 ? result.rows.length - 1 : current - 1;
+          return current <= 0 ? options.length - 1 : current - 1;
         });
         return;
       }
       if (event.key === "Home" || event.key === "End") {
         event.preventDefault();
         scrollOnNextHighlightRef.current = true;
-        setHighlightedIndex(event.key === "Home" ? 0 : result.rows.length - 1);
+        setHighlightedIndex(event.key === "Home" ? 0 : options.length - 1);
         return;
       }
       if (event.key === "Enter") {
-        const row = result.rows[activeIndex];
-        if (row === undefined) return;
+        const option = options[activeIndex];
+        if (option === undefined) return;
         event.preventDefault();
-        openRow(row);
+        selectOption(option, activeIndex);
       }
     },
-    [activeIndex, onExit, openRow, query.length, result.rows],
+    [activeIndex, onExit, options, query.length, selectOption],
   );
 
   const isLoading =
@@ -223,6 +270,7 @@ export function ThreadSearchPaletteMode({
       onInputChange={(value) => {
         setQuery(value);
         setHighlightedIndex(0);
+        setExpandedGroups([]);
         if (listRef.current !== null) listRef.current.scrollTop = 0;
       }}
       onInputKeyDown={handleInputKeyDown}
@@ -247,17 +295,38 @@ export function ThreadSearchPaletteMode({
                     ? "Archived"
                     : "Threads"}
               </div>
-              {result.rows.map((row, index) =>
-                row.lifecycle === lifecycle ? (
+              {options.map((option, index) =>
+                option.lifecycle !== lifecycle ? null : option.kind ===
+                  "thread" ? (
                   <ThreadSearchPaletteRow
-                    key={`${row.id}:${row.primaryText}`}
+                    key={`${option.row.id}:${option.row.primaryText}`}
                     id={`${optionIdPrefix}-${index}`}
                     isActive={index === activeIndex}
-                    row={row}
+                    row={option.row}
                     onActivate={() => setHighlightedIndex(index)}
-                    onSelect={() => openRow(row)}
+                    onSelect={() => selectOption(option, index)}
                   />
-                ) : null,
+                ) : (
+                  <div
+                    key={`more:${lifecycle}`}
+                    id={`${optionIdPrefix}-${index}`}
+                    role="option"
+                    aria-selected={index === activeIndex}
+                    aria-label={
+                      lifecycle === "archived"
+                        ? "Show more archived threads"
+                        : "Show more threads"
+                    }
+                    className={cn(
+                      "cursor-pointer rounded-md px-2 py-1.5 text-xs text-subtle-foreground",
+                      index === activeIndex && "bg-state-hover text-foreground",
+                    )}
+                    onPointerMove={() => setHighlightedIndex(index)}
+                    onClick={() => selectOption(option, index)}
+                  >
+                    Show more
+                  </div>
+                ),
               )}
             </div>
           );
