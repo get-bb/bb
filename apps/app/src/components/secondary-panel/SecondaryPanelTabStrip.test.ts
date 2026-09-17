@@ -324,13 +324,20 @@ describe("secondary panel tab strip", () => {
     ).toBe(true);
     expect(rightButton?.classList.contains("hover:bg-state-hover")).toBe(false);
 
-    const scrollBy = vi.fn();
-    Object.defineProperty(viewport!, "scrollBy", {
-      configurable: true,
-      value: scrollBy,
-    });
+    const nextTab = content!.querySelector<HTMLElement>(
+      "[data-secondary-panel-tab]",
+    )!;
+    vi.spyOn(nextTab, "getBoundingClientRect").mockReturnValue(
+      DOMRect.fromRect({ x: 144, width: 100 }),
+    );
+    const revealNext = vi.spyOn(nextTab, "scrollIntoView");
     fireEvent.click(rightButton!);
-    expect(scrollBy).toHaveBeenCalledWith({ left: 140, behavior: "smooth" });
+    expect(revealNext).toHaveBeenCalledWith({
+      inline: "start",
+      block: "nearest",
+      behavior: "smooth",
+    });
+    vi.mocked(nextTab.getBoundingClientRect).mockRestore();
 
     rightButton?.focus();
     expect(document.activeElement).toBe(rightButton);

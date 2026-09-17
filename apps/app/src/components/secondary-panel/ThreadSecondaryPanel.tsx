@@ -1111,7 +1111,7 @@ function PinnedIconTab({
           data-testid={label === "Info" ? "thread-info-tab" : undefined}
           data-secondary-panel-tab
           className={cn(
-            "shrink-0 [&_button]:size-8 max-md:pointer-coarse:[&_button]:size-9",
+            "shrink-0 snap-start [&_button]:size-8 max-md:pointer-coarse:[&_button]:size-9",
             usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
           )}
           onPointerDown={onPointerDown}

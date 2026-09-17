@@ -53,8 +53,6 @@ import type {
 
 import { PANEL_TAB_CONTROL_CLASS } from "./panelChromeClasses";
 
-const CHEVRON_SCROLL_STEP_PX = 140;
-
 const TAB_STRIP_SCROLL_BUTTON_CLASS = `${PANEL_TAB_CONTROL_CLASS} rounded-md`;
 
 const EDGE_EPSILON_PX = 1;
@@ -184,7 +182,9 @@ export function SecondaryPanelTabStrip({
       const visible =
         rect.left >= bounds.left - EDGE_EPSILON_PX &&
         rect.right <= bounds.right + EDGE_EPSILON_PX;
-      tab.style.visibility = visible ? "" : "hidden";
+      const pill = tab.firstElementChild;
+      if (pill instanceof HTMLElement)
+        pill.style.visibility = visible ? "" : "hidden";
       tab.inert = !visible;
     }
     const canScrollLeft = isScrollable && scrollLeft > EDGE_EPSILON_PX;
@@ -353,8 +353,28 @@ export function SecondaryPanelTabStrip({
   }, []);
 
   const scrollByStep = useCallback((direction: -1 | 1) => {
-    viewportRef.current?.scrollBy({
-      left: direction * CHEVRON_SCROLL_STEP_PX,
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const left = viewport.getBoundingClientRect().left;
+    const tabs = Array.from(
+      contentRef.current?.querySelectorAll<HTMLElement>(
+        "[data-secondary-panel-tab]",
+      ) ?? [],
+    );
+    const target =
+      direction > 0
+        ? tabs.find(
+            (tab) => tab.getBoundingClientRect().left > left + EDGE_EPSILON_PX,
+          )
+        : tabs
+            .reverse()
+            .find(
+              (tab) =>
+                tab.getBoundingClientRect().left < left - EDGE_EPSILON_PX,
+            );
+    target?.scrollIntoView({
+      inline: "start",
+      block: "nearest",
       behavior: "smooth",
     });
   }, []);
@@ -496,7 +516,7 @@ export function SecondaryPanelTabStrip({
           ref={viewportRef}
           onClickCapture={handleClickCapture}
           className={cn(
-            "no-scrollbar min-w-0 overflow-x-auto overflow-y-hidden",
+            "no-scrollbar min-w-0 snap-x snap-mandatory overflow-x-auto overflow-y-hidden",
             usesDesktopChrome && MACOS_APP_REGION_NO_DRAG_CLASS,
           )}
         >
@@ -562,7 +582,7 @@ function SortablePanelTab({
           data-secondary-panel-tab
           style={style}
           className={cn(
-            "max-w-[min(144px,100cqw)] shrink-0",
+            "max-w-[min(144px,100cqw)] shrink-0 snap-start",
             !dragDisabled && "cursor-grab active:cursor-grabbing",
             isDragging && "opacity-40",
             noDragClass,
