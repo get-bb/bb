@@ -93,7 +93,7 @@ export function ResourceToolbar({
         className={cn(
           "relative",
           compact
-            ? "min-w-0 max-w-64 flex-[1_1_16rem]"
+            ? "min-w-0 flex-1"
             : "w-full min-w-0 sm:w-auto sm:flex-1",
         )}
       >
