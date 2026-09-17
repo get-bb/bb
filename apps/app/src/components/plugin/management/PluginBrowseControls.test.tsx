@@ -69,6 +69,9 @@ describe("PluginBrowseCategoryFilter", () => {
     }
     render(<Harness />);
     openMenu("All categories");
+    expect(
+      screen.getByRole("button", { name: "Clear filter" }).hasAttribute("disabled"),
+    ).toBe(true);
     fireEvent.click(screen.getByRole("option", { name: /Security/u }));
     fireEvent.click(screen.getByRole("option", { name: /Tasks & Workflows/u }));
 
@@ -83,6 +86,9 @@ describe("PluginBrowseCategoryFilter", () => {
       }),
     ).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Clear filter" }));
+    expect(
+      screen.getByRole("button", { name: "Clear filter" }).hasAttribute("disabled"),
+    ).toBe(true);
     expect(
       screen.getByRole("button", {
         name: "Filter plugins by category: All categories",

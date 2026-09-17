@@ -412,17 +412,16 @@ export function PluginBrowseCategoryFilter({
             />
           ) : null}
         </div>
-        {value.length > 0 ? (
-          <div className="mt-0.5 border-t border-border-seam pt-0.5">
-            <button
-              type="button"
-              onClick={clearSelection}
-              className="flex w-full items-center rounded-sm px-2 py-1 text-left text-xs text-muted-foreground outline-none hover:bg-state-hover hover:text-foreground focus-visible:bg-state-hover focus-visible:text-foreground"
-            >
-              Clear filter
-            </button>
-          </div>
-        ) : null}
+        <div className="mt-0.5 border-t border-border-seam pt-0.5">
+          <button
+            type="button"
+            disabled={value.length === 0}
+            onClick={clearSelection}
+            className="flex w-full items-center rounded-sm px-2 py-1 text-left text-xs text-muted-foreground outline-none hover:bg-state-hover hover:text-foreground focus-visible:bg-state-hover focus-visible:text-foreground disabled:pointer-events-none disabled:opacity-50"
+          >
+            Clear filter
+          </button>
+        </div>
       </PopoverContent>
     </Popover>
   );

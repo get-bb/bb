@@ -142,6 +142,9 @@ function installFetch(plugins: readonly unknown[] = [AUTOMATIONS_PLUGIN]) {
       if (url.pathname === "/api/v1/plugins") {
         return responseJson({ plugins });
       }
+      if (url.pathname === "/api/v1/plugins/updates/check") {
+        return responseJson({ results: [] });
+      }
       if (url.pathname === "/api/v1/plugin-catalog") {
         return responseJson({
           catalog: {
@@ -198,6 +201,85 @@ afterEach(() => {
 });
 
 describe("PluginsOverview", () => {
+  it("checks updates on entering Installed, without rechecking on filters or focus", async () => {
+    installFetch();
+    const requestCount = (path: string) =>
+      vi.mocked(fetch).mock.calls.filter(([input]) =>
+        String(input).endsWith(path),
+      ).length;
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter initialEntries={["/plugins"]}>
+        <QueryClientWrapper>
+          <PluginsOverview />
+          <SwitchViewButton view="browse" />
+          <SwitchViewButton view="installed" />
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+    await screen.findByRole("textbox", { name: "Search plugins" });
+    expect(requestCount("/plugins/updates/check")).toBe(0);
+    fireEvent.click(screen.getByRole("button", { name: "switch-to-installed" }));
+    await screen.findByTestId("plugin-row-automations");
+    await waitFor(() => {
+      expect(requestCount("/plugins/updates/check")).toBe(1);
+      expect(requestCount("/api/v1/plugins")).toBeGreaterThan(1);
+    });
+    fireEvent.change(
+      screen.getByRole("textbox", { name: "Search installed plugins" }),
+      { target: { value: "Automations" } },
+    );
+    await act(async () => {
+      focusManager.setFocused(false);
+      focusManager.setFocused(true);
+    });
+    expect(requestCount("/plugins/updates/check")).toBe(1);
+    fireEvent.click(screen.getByRole("button", { name: "switch-to-browse" }));
+    fireEvent.click(screen.getByRole("button", { name: "switch-to-installed" }));
+    await waitFor(() =>
+      expect(requestCount("/plugins/updates/check")).toBe(2),
+    );
+  });
+
+  it("clears only Source while retaining search, category, and sort", async () => {
+    installFetch();
+    function LocationSearch() {
+      return <span data-testid="location-search">{useLocation().search}</span>;
+    }
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter
+        initialEntries={[
+          "/plugins?view=installed&source=publisher%3ABB%20Official&query=Automations&category=tasks-and-workflows&sort=name&direction=desc",
+        ]}
+      >
+        <QueryClientWrapper>
+          <PluginsOverview />
+          <LocationSearch />
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+    fireEvent.pointerDown(
+      await screen.findByRole("button", { name: "Source: 1 selected" }),
+    );
+    fireEvent.click(screen.getByRole("menuitem", { name: "Clear filter" }));
+    const params = new URLSearchParams(
+      screen.getByTestId("location-search").textContent ?? "",
+    );
+    expect([...params]).toEqual([
+      ["view", "installed"],
+      ["query", "Automations"],
+      ["category", "tasks-and-workflows"],
+      ["sort", "name"],
+      ["direction", "desc"],
+    ]);
+    expect(
+      screen
+        .getByRole("menuitem", { name: "Clear filter" })
+        .getAttribute("aria-disabled"),
+    ).toBe("true");
+  });
+
   it("opens on Browse and renders it before Installed", async () => {
     installFetch();
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
@@ -663,7 +745,11 @@ describe("PluginsOverview", () => {
       "plugin-row-inactive-local",
       "plugin-row-inactive-official",
     ]);
-    expect(screen.queryByRole("menuitem", { name: "Clear sort" })).toBeNull();
+    expect(
+      screen
+        .getByRole("menuitem", { name: "Clear sort" })
+        .getAttribute("aria-disabled"),
+    ).toBe("true");
   });
 
   it("filters Installed by catalog and local categories and clears the selection", async () => {

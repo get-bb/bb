@@ -190,6 +190,7 @@ export function ResourceMultiSelectMenu({
   options,
   onChange,
   compact = false,
+  clearInFooter = false,
 }: {
   label: string;
   icon: IconName;
@@ -197,6 +198,7 @@ export function ResourceMultiSelectMenu({
   options: readonly ResourceOption[];
   onChange: (values: string[]) => void;
   compact?: boolean;
+  clearInFooter?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const selected = new Set(selectedValues);
@@ -250,6 +252,24 @@ export function ResourceMultiSelectMenu({
             <ResourceOptionContent option={option} compact={compact} />
           </DropdownMenuCheckboxItem>
         ))}
+        {clearInFooter ? (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              disabled={selectedValues.length === 0}
+              onSelect={(event) => {
+                event.preventDefault();
+                onChange([]);
+              }}
+              className={cn(
+                "text-xs text-muted-foreground",
+                compact && "md:px-1.5 md:py-1",
+              )}
+            >
+              Clear filter
+            </DropdownMenuItem>
+          </>
+        ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -455,10 +475,11 @@ export function ResourceSortMenu({
             </DropdownMenuItem>
           );
         })}
-        {clearInFooter && onClear !== undefined && value !== null ? (
+        {clearInFooter && onClear !== undefined ? (
           <>
             <DropdownMenuSeparator />
             <DropdownMenuItem
+              disabled={value === null}
               onSelect={(event) => {
                 event.preventDefault();
                 onClear();
