@@ -1,5 +1,12 @@
-import { Fragment, useState, type ReactNode } from "react";
-import { Button } from "../button";
+import {
+  Fragment,
+  forwardRef,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { Button, type ButtonProps } from "../button";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -26,6 +33,7 @@ export function ResourceToolbar({
   searchLabel,
   onSearchChange,
   controls,
+  overflowControls,
   action,
   compact = false,
 }: {
@@ -34,11 +42,48 @@ export function ResourceToolbar({
   searchLabel?: string;
   onSearchChange: (value: string) => void;
   controls?: ReactNode;
+  overflowControls?: ReactNode;
   action?: ReactNode;
   compact?: boolean;
 }) {
+  const toolbarRef = useRef<HTMLDivElement>(null);
+  const controlsRef = useRef<HTMLDivElement>(null);
+  const [overflow, setOverflow] = useState(false);
+  const restoreControlFocus = useRef(false);
+  const overflowRef = useRef(false);
+  const hasOverflowControls = Boolean(overflowControls);
+
+  useLayoutEffect(() => {
+    const toolbar = toolbarRef.current;
+    if (!toolbar || !compact || !hasOverflowControls) return;
+    const measure = () => {
+      const width = toolbar.getBoundingClientRect().width;
+      if (width === 0) return;
+      const next = width < 384;
+      if (overflowRef.current === next) return;
+      restoreControlFocus.current = Boolean(
+        controlsRef.current?.contains(document.activeElement) ||
+        controlsRef.current?.querySelector('[data-state="open"]'),
+      );
+      overflowRef.current = next;
+      setOverflow(next);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(toolbar);
+    return () => observer.disconnect();
+  }, [compact, hasOverflowControls]);
+
+  useLayoutEffect(() => {
+    if (!restoreControlFocus.current) return;
+    controlsRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    restoreControlFocus.current = false;
+  }, [overflow]);
+
   return (
     <div
+      ref={toolbarRef}
+      data-resource-toolbar
       className={cn(
         "flex items-center gap-2",
         compact ? "@container/resource-toolbar flex-nowrap" : "flex-wrap",
@@ -47,7 +92,9 @@ export function ResourceToolbar({
       <div
         className={cn(
           "relative",
-          compact ? "min-w-12 flex-1" : "w-full min-w-0 sm:w-auto sm:flex-1",
+          compact
+            ? "min-w-0 max-w-64 flex-[1_1_16rem]"
+            : "w-full min-w-0 sm:w-auto sm:flex-1",
         )}
       >
         <Icon
@@ -64,7 +111,15 @@ export function ResourceToolbar({
         />
       </div>
       {controls ? (
-        <div className="flex shrink-0 items-center gap-1.5">{controls}</div>
+        <div
+          ref={controlsRef}
+          className={cn(
+            "flex shrink-0 items-center",
+            compact ? "gap-2" : "gap-1.5",
+          )}
+        >
+          {overflow && overflowControls ? overflowControls : controls}
+        </div>
       ) : null}
       {action ? (
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
@@ -129,42 +184,61 @@ const RESOURCE_MENU_TRIGGER_ENGAGED_CLASS =
 
 const RESOURCE_MENU_TRIGGER_RESTING_CLASS = "border border-input bg-background";
 
-function ResourceMenuTrigger({
-  label,
-  icon,
-  active = false,
-  open = false,
-  tooltip = label,
-}: {
-  label: string;
-  icon: IconName;
-  active?: boolean;
-  open?: boolean;
-  tooltip?: ReactNode;
-}) {
+export const ResourceControlButton = forwardRef<
+  HTMLButtonElement,
+  ButtonProps & {
+    label: string;
+    icon: IconName;
+    active?: boolean;
+    open?: boolean;
+    tooltip?: ReactNode;
+  }
+>(function ResourceControlButton(
+  {
+    label,
+    icon,
+    active = false,
+    open = false,
+    tooltip = label,
+    className,
+    ...props
+  },
+  ref,
+) {
   return (
     <TooltipProvider delayDuration={250}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <DropdownMenuTrigger asChild>
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              className={cn(
-                "size-8 shrink-0 rounded-md p-0 text-muted-foreground",
-                RESOURCE_MENU_TRIGGER_RESTING_CLASS,
-                (open || active) && RESOURCE_MENU_TRIGGER_ENGAGED_CLASS,
-              )}
-              aria-label={label}
-            >
-              <Icon name={icon} className="size-4" aria-hidden />
-            </Button>
-          </DropdownMenuTrigger>
+          <Button
+            {...props}
+            ref={ref}
+            type="button"
+            variant="outline"
+            size="icon"
+            className={cn(
+              "size-8 shrink-0 rounded-md p-0 text-muted-foreground",
+              RESOURCE_MENU_TRIGGER_RESTING_CLASS,
+              (open || active) && RESOURCE_MENU_TRIGGER_ENGAGED_CLASS,
+              className,
+            )}
+            aria-label={label}
+          >
+            <Icon name={icon} className="size-4" aria-hidden />
+          </Button>
         </TooltipTrigger>
         <TooltipContent side="bottom">{tooltip}</TooltipContent>
       </Tooltip>
     </TooltipProvider>
+  );
+});
+
+function ResourceMenuTrigger(
+  props: React.ComponentProps<typeof ResourceControlButton>,
+) {
+  return (
+    <DropdownMenuTrigger asChild>
+      <ResourceControlButton {...props} />
+    </DropdownMenuTrigger>
   );
 }
 
@@ -181,6 +255,70 @@ function nextSelectedValues(
     next.delete(option.id);
   }
   return [...next];
+}
+
+export function ResourceMultiSelectMenuItems({
+  label,
+  selectedValues,
+  options,
+  onChange,
+  compact = false,
+  clearInFooter = false,
+}: {
+  label: string;
+  selectedValues: readonly string[];
+  options: readonly ResourceOption[];
+  onChange: (values: string[]) => void;
+  compact?: boolean;
+  clearInFooter?: boolean;
+}) {
+  const selected = new Set(selectedValues);
+  function updateValue(option: ResourceOption, checked: boolean) {
+    const next = nextSelectedValues(option, checked, selectedValues);
+    if (next !== null) onChange(next);
+  }
+  return (
+    <>
+      <DropdownMenuLabel
+        className={cn(
+          "text-xs font-normal text-subtle-foreground",
+          compact && "md:px-1.5 md:py-1",
+        )}
+      >
+        {label}
+      </DropdownMenuLabel>
+      {options.map((option) => (
+        <DropdownMenuCheckboxItem
+          key={option.id}
+          checked={selected.has(option.id)}
+          disabled={option.disabled}
+          className={cn(compact && "md:py-1 md:pl-1.5 md:pr-7")}
+          onSelect={(event) => event.preventDefault()}
+          onCheckedChange={(checked) => updateValue(option, checked === true)}
+        >
+          <ResourceOptionContent option={option} compact={compact} />
+        </DropdownMenuCheckboxItem>
+      ))}
+      {clearInFooter ? (
+        <>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            disabled={selectedValues.length === 0}
+            onSelect={(event) => {
+              event.preventDefault();
+              onChange([]);
+            }}
+            className={cn(
+              "text-xs text-muted-foreground",
+              compact && "md:px-1.5 md:py-1",
+            )}
+          >
+            Clear filter
+          </DropdownMenuItem>
+        </>
+      ) : null}
+    </>
+  );
 }
 
 export function ResourceMultiSelectMenu({
@@ -212,12 +350,6 @@ export function ResourceMultiSelectMenu({
       : `${label}: ${activeSelectedCount} selected`;
   const triggerTooltip = `${label}: ${selectionSummary}`;
 
-  function updateValue(option: ResourceOption, checked: boolean) {
-    const next = nextSelectedValues(option, checked, selectedValues);
-    if (next === null) return;
-    onChange(next);
-  }
-
   return (
     <DropdownMenu onOpenChange={setOpen}>
       <ResourceMenuTrigger
@@ -232,44 +364,14 @@ export function ResourceMultiSelectMenu({
         mobileTitle={label}
         className={cn(compact ? "w-max max-w-64 md:p-0.5" : "min-w-44")}
       >
-        <DropdownMenuLabel
-          className={cn(
-            "text-xs font-normal text-subtle-foreground",
-            compact && "md:px-1.5 md:py-1",
-          )}
-        >
-          {label}
-        </DropdownMenuLabel>
-        {options.map((option) => (
-          <DropdownMenuCheckboxItem
-            key={option.id}
-            checked={selected.has(option.id)}
-            disabled={option.disabled}
-            className={cn(compact && "md:py-1 md:pl-1.5 md:pr-7")}
-            onSelect={(event) => event.preventDefault()}
-            onCheckedChange={(checked) => updateValue(option, checked === true)}
-          >
-            <ResourceOptionContent option={option} compact={compact} />
-          </DropdownMenuCheckboxItem>
-        ))}
-        {clearInFooter ? (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              disabled={selectedValues.length === 0}
-              onSelect={(event) => {
-                event.preventDefault();
-                onChange([]);
-              }}
-              className={cn(
-                "text-xs text-muted-foreground",
-                compact && "md:px-1.5 md:py-1",
-              )}
-            >
-              Clear filter
-            </DropdownMenuItem>
-          </>
-        ) : null}
+        <ResourceMultiSelectMenuItems
+          label={label}
+          selectedValues={selectedValues}
+          options={options}
+          onChange={onChange}
+          compact={compact}
+          clearInFooter={clearInFooter}
+        />
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -328,7 +430,6 @@ export function ResourceFilterMenu({
         {renderedGroups.map(({ group, selected }, groupIndex) => (
           <Fragment key={group.id}>
             {groupIndex > 0 ? <DropdownMenuSeparator /> : null}
-            {}
             <DropdownMenuGroup aria-label={group.label}>
               <DropdownMenuLabel
                 className={cn(
@@ -366,6 +467,115 @@ export function ResourceFilterMenu({
   );
 }
 
+export function ResourceSortMenuItems({
+  value,
+  direction,
+  options,
+  onChange,
+  onClear,
+  placeholderLabel = "Sort",
+  compact = false,
+  clearInFooter = false,
+}: {
+  value: string | null;
+  direction: "asc" | "desc";
+  options: readonly ResourceOption[];
+  onChange: (value: string) => void;
+  onClear?: () => void;
+  placeholderLabel?: string;
+  compact?: boolean;
+  clearInFooter?: boolean;
+}) {
+  return (
+    <>
+      <DropdownMenuLabel
+        className={cn(
+          "text-xs font-normal text-subtle-foreground",
+          compact && "md:px-1.5 md:py-1",
+        )}
+      >
+        Sort by
+      </DropdownMenuLabel>
+      {onClear === undefined || clearInFooter ? null : (
+        <DropdownMenuItem
+          role="menuitemradio"
+          aria-checked={value === null}
+          onSelect={(event) => {
+            event.preventDefault();
+            onClear();
+          }}
+          className={cn(
+            "flex items-center justify-between gap-3",
+            compact && "md:gap-2 md:px-1.5 md:py-1",
+          )}
+        >
+          {placeholderLabel}
+          <Icon
+            name="Check"
+            aria-hidden
+            className={cn(
+              "size-4 text-subtle-foreground",
+              value === null ? "opacity-100" : "opacity-0",
+            )}
+          />
+        </DropdownMenuItem>
+      )}
+      {options.map((option) => {
+        const selected = option.id === value;
+        return (
+          <DropdownMenuItem
+            key={option.id}
+            disabled={option.disabled}
+            role="menuitemradio"
+            aria-checked={selected}
+            onSelect={(event) => {
+              event.preventDefault();
+              if (option.disabled) return;
+              onChange(option.id);
+            }}
+            className={cn(
+              "flex items-center justify-between gap-3",
+              compact && "md:gap-2 md:px-1.5 md:py-1",
+            )}
+          >
+            <ResourceOptionContent option={option} compact={compact} />
+            <Icon
+              name={direction === "asc" ? "ArrowUp" : "ArrowDown"}
+              aria-hidden
+              className={cn(
+                "size-4 text-subtle-foreground",
+                option.omitDirection === true
+                  ? "hidden"
+                  : selected
+                    ? "opacity-100"
+                    : "opacity-0",
+              )}
+            />
+          </DropdownMenuItem>
+        );
+      })}
+      {clearInFooter && onClear !== undefined ? (
+        <>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            disabled={value === null}
+            onSelect={(event) => {
+              event.preventDefault();
+              onClear();
+            }}
+            className={cn(
+              "text-xs text-muted-foreground",
+              compact && "md:px-1.5 md:py-1",
+            )}
+          >
+            Clear sort
+          </DropdownMenuItem>
+        </>
+      ) : null}
+    </>
+  );
+}
+
 export function ResourceSortMenu({
   value,
   direction,
@@ -397,7 +607,6 @@ export function ResourceSortMenu({
 
   return (
     <DropdownMenu onOpenChange={setOpen}>
-      {}
       <ResourceMenuTrigger
         label={sortStateLabel}
         icon="ArrowUpDown"
@@ -409,90 +618,16 @@ export function ResourceSortMenu({
         mobileTitle="Sort"
         className={cn("min-w-40", compact && "md:p-0.5")}
       >
-        <DropdownMenuLabel
-          className={cn(
-            "text-xs font-normal text-subtle-foreground",
-            compact && "md:px-1.5 md:py-1",
-          )}
-        >
-          Sort by
-        </DropdownMenuLabel>
-        {onClear === undefined || clearInFooter ? null : (
-          <DropdownMenuItem
-            role="menuitemradio"
-            aria-checked={value === null}
-            onSelect={(event) => {
-              event.preventDefault();
-              onClear();
-            }}
-            className={cn(
-              "flex items-center justify-between gap-3",
-              compact && "md:gap-2 md:px-1.5 md:py-1",
-            )}
-          >
-            {placeholderLabel}
-            <Icon
-              name="Check"
-              aria-hidden
-              className={cn(
-                "size-4 text-subtle-foreground",
-                value === null ? "opacity-100" : "opacity-0",
-              )}
-            />
-          </DropdownMenuItem>
-        )}
-        {options.map((option) => {
-          const selected = option.id === value;
-          return (
-            <DropdownMenuItem
-              key={option.id}
-              disabled={option.disabled}
-              role="menuitemradio"
-              aria-checked={selected}
-              onSelect={(event) => {
-                event.preventDefault();
-                if (option.disabled) return;
-                onChange(option.id);
-              }}
-              className={cn(
-                "flex items-center justify-between gap-3",
-                compact && "md:gap-2 md:px-1.5 md:py-1",
-              )}
-            >
-              <ResourceOptionContent option={option} compact={compact} />
-              <Icon
-                name={direction === "asc" ? "ArrowUp" : "ArrowDown"}
-                aria-hidden
-                className={cn(
-                  "size-4 text-subtle-foreground",
-                  option.omitDirection === true
-                    ? "hidden"
-                    : selected
-                      ? "opacity-100"
-                      : "opacity-0",
-                )}
-              />
-            </DropdownMenuItem>
-          );
-        })}
-        {clearInFooter && onClear !== undefined ? (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              disabled={value === null}
-              onSelect={(event) => {
-                event.preventDefault();
-                onClear();
-              }}
-              className={cn(
-                "text-xs text-muted-foreground",
-                compact && "md:px-1.5 md:py-1",
-              )}
-            >
-              Clear sort
-            </DropdownMenuItem>
-          </>
-        ) : null}
+        <ResourceSortMenuItems
+          value={value}
+          direction={direction}
+          options={options}
+          onChange={onChange}
+          onClear={onClear}
+          placeholderLabel={placeholderLabel}
+          compact={compact}
+          clearInFooter={clearInFooter}
+        />
       </DropdownMenuContent>
     </DropdownMenu>
   );
