@@ -1071,7 +1071,7 @@ export interface PluginRowLabels {
   completed: string;
 }
 
-/** @deprecated Renamed to `PluginRowLabels` in SDK 0.4.101. */
+/** @deprecated Renamed to `PluginRowLabels` in SDK 0.4.102. */
 export type PluginAgentToolLabels = PluginRowLabels;
 
 /**
@@ -1099,7 +1099,7 @@ export interface PluginRowPresentation {
   tint?: { light: string; dark: string };
 }
 
-/** @deprecated Renamed to `PluginRowPresentation` in SDK 0.4.101. */
+/** @deprecated Renamed to `PluginRowPresentation` in SDK 0.4.102. */
 export type PluginAgentToolPresentation = PluginRowPresentation;
 
 export interface PluginAgentToolRegistrationBase {

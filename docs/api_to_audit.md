@@ -125,7 +125,7 @@ values and their sixteen `ExperimentalProvider*` types dropped the prefix
 the wire are unchanged); on `@get-bb/plugin-sdk` the tool type
 `PluginAgentToolExperimentalStatusLabels` is `PluginAgentToolLabels`, the
 type of `presentation.label` (itself renamed to `PluginRowLabels` in SDK
-0.4.101).
+0.4.102).
 
 ## One-release compatibility windows (removal target: bb 0.42)
 
@@ -142,7 +142,7 @@ type of `presentation.label` (itself renamed to `PluginRowLabels` in SDK
   are present and stay experimental; neither carries an alias.
 - `@get-bb/plugin-sdk` keeps the type aliases `PluginAgentToolPresentation`
   and `PluginAgentToolLabels` for plugins compiled against an SDK before
-  0.4.101. Both now describe any plugin-owned timeline row, not only a tool
+  0.4.102. Both now describe any plugin-owned timeline row, not only a tool
   call, so they are `PluginRowPresentation` and `PluginRowLabels`; the
   aliases are type-only and cost nothing at runtime.
 - The deleted `bb.agents.experimental_registerProvider` throws with the
