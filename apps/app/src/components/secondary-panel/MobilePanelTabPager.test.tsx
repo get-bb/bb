@@ -1,12 +1,19 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MobilePanelTabPager } from "./MobilePanelTabPager";
 
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 function createTabs() {
@@ -21,7 +28,7 @@ function createTabs() {
 }
 
 describe("MobilePanelTabPager", () => {
-  it("shows only the selected tab and selects adjacent tabs from the arrows", () => {
+  it("keeps the selected tab in a narrow viewport and selects adjacent tabs from the arrows", () => {
     const tabs = createTabs();
     const { rerender } = render(
       <MobilePanelTabPager
@@ -58,6 +65,54 @@ describe("MobilePanelTabPager", () => {
     expect(
       screen.getByRole("button", { name: "Next tab" }).hasAttribute("disabled"),
     ).toBe(true);
+  });
+
+  it("reveals a selectable neighbor only when the remaining width is usable", () => {
+    let resize = () => {};
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(callback: () => void) {
+          resize = callback;
+        }
+        observe() {}
+        disconnect() {}
+      },
+    );
+    let viewportWidth = 240;
+    let selectedWidth = 80;
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(
+      () => viewportWidth,
+    );
+    vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockImplementation(
+      () => selectedWidth,
+    );
+    const tabs = createTabs();
+    render(
+      <MobilePanelTabPager
+        activeTabId="Info"
+        tabs={tabs}
+        newTabControl={null}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "README.md" }));
+    expect(tabs[1].onSelect).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("button", { name: "package.json" })).toBeNull();
+
+    selectedWidth = 180;
+    act(() => resize());
+    expect(screen.queryByRole("button", { name: "README.md" })).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Info" }).getAttribute("aria-pressed"),
+    ).toBe("true");
+
+    viewportWidth = 320;
+    act(() => resize());
+    expect(
+      screen
+        .getByRole("button", { name: "README.md" })
+        .getAttribute("aria-pressed"),
+    ).toBe("false");
   });
 
   it("advances once for a horizontal swipe and suppresses the resulting close click", () => {

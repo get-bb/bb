@@ -1,4 +1,4 @@
-import { useRef, type ReactNode } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { TabPill } from "@/components/ui/tab-pill";
@@ -25,10 +25,28 @@ export function MobilePanelTabPager({
 }: MobilePanelTabPagerProps) {
   const touchStart = useRef<{ x: number; y: number } | null>(null);
   const suppressClickUntil = useRef(0);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const activeTabRef = useRef<HTMLDivElement>(null);
+  const [showNextTab, setShowNextTab] = useState(false);
   const activeIndex = tabs.findIndex((tab) => tab.id === activeTabId);
   const activeTab = tabs[activeIndex];
   const previousTab = tabs[activeIndex - 1];
   const nextTab = activeIndex < 0 ? undefined : tabs[activeIndex + 1];
+
+  useLayoutEffect(() => {
+    const viewport = viewportRef.current;
+    const selected = activeTabRef.current;
+    if (!viewport || !selected) return;
+    const measure = () => {
+      const gap = parseFloat(getComputedStyle(viewport).columnGap) || 0;
+      setShowNextTab(viewport.clientWidth - selected.offsetWidth - gap >= 96);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(viewport);
+    observer.observe(selected);
+    return () => observer.disconnect();
+  }, [activeTab?.id]);
 
   return (
     <div
@@ -46,7 +64,9 @@ export function MobilePanelTabPager({
         <Icon name="ChevronLeft" />
       </Button>
       <div
-        className="min-w-0 flex-1 touch-pan-y overflow-hidden [&>div]:w-full [&>div>button:first-child]:w-full [&_[data-tab-pill-close]]:text-muted-foreground/70 [&_[data-tab-pill-close]_[data-icon-root]]:size-3.5"
+        ref={viewportRef}
+        data-testid="mobile-panel-tab-viewport"
+        className="flex min-w-0 flex-1 touch-pan-y items-center gap-1 overflow-hidden [&_[data-tab-pill-close]]:text-muted-foreground/70 [&_[data-tab-pill-close]_[data-icon-root]]:size-3.5"
         onTouchStartCapture={(event) => {
           suppressClickUntil.current = 0;
           const touch = event.touches[0];
@@ -76,26 +96,40 @@ export function MobilePanelTabPager({
           event.stopPropagation();
         }}
       >
-        {activeTab ? (
-          <TabPill
-            label={activeTab.label}
-            ariaLabel={activeTab.ariaLabel}
-            leadingVisual={activeTab.leadingVisual}
-            title={activeTab.label}
-            isActive
-            onSelect={activeTab.onSelect}
-            labelMaxWidthClass="max-w-full"
-            enlargeCloseTargetOnCoarsePointer
-            closeAction={
-              activeTab.onClose === null
-                ? null
-                : {
-                    onClose: activeTab.onClose,
-                    closeLabel: `Close ${activeTab.label}`,
+        {activeTab
+          ? [activeTab, ...(showNextTab && nextTab ? [nextTab] : [])].map(
+              (tab) => (
+                <div
+                  key={tab.id}
+                  ref={tab === activeTab ? activeTabRef : undefined}
+                  className={
+                    tab === activeTab
+                      ? "flex min-w-0 max-w-full shrink-0"
+                      : "flex min-w-0 flex-1"
                   }
-            }
-          />
-        ) : null}
+                >
+                  <TabPill
+                    label={tab.label}
+                    ariaLabel={tab.ariaLabel}
+                    leadingVisual={tab.leadingVisual}
+                    title={tab.label}
+                    isActive={tab === activeTab}
+                    onSelect={tab.onSelect}
+                    labelMaxWidthClass="max-w-full"
+                    enlargeCloseTargetOnCoarsePointer
+                    closeAction={
+                      tab.onClose === null
+                        ? null
+                        : {
+                            onClose: tab.onClose,
+                            closeLabel: `Close ${tab.label}`,
+                          }
+                    }
+                  />
+                </div>
+              ),
+            )
+          : null}
       </div>
       {newTabControl}
       <Button
