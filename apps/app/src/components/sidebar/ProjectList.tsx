@@ -1148,7 +1148,6 @@ export function MachineModeSections({
   threads,
   threadsSection,
 }: MachineModeSectionsProps) {
-  const progressiveDisclosureEnabled = useSidebarProgressiveDisclosureEnabled();
   const { data: hosts } = useHosts();
   const [collapsedMachineKeyList, setCollapsedMachineKeyList] = useAtom(
     sidebarCollapsedMachinesAtom,
@@ -1278,7 +1277,7 @@ export function MachineModeSections({
           dndParentKey={CHRONOLOGICAL_CONTAINER_ID}
           rootItems={allThreadItems}
           threadListState={allThreadsListState}
-          progressiveDisclosureEnabled={progressiveDisclosureEnabled}
+          progressiveDisclosureEnabled={false}
           compareThreads={compareThreads}
           variant="section"
           selectedThreadId={selectedThreadId}
@@ -1328,7 +1327,7 @@ export function MachineModeSections({
               dndParentKey={sectionId}
               rootItems={machineItemsBySectionId.get(sectionId)}
               threadListState={section.threadListState}
-              progressiveDisclosureEnabled={progressiveDisclosureEnabled}
+              progressiveDisclosureEnabled={false}
               compareThreads={compareThreads}
               variant="section"
               selectedThreadId={selectedThreadId}

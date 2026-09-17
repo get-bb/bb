@@ -17,6 +17,7 @@ import {
   useAtomValue,
 } from "jotai";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { MemoryRouter } from "react-router-dom";
 import type { ThreadListEntry } from "@bb/domain";
 import { ActiveSidebarModeSections, MachineModeSections } from "./ProjectList";
 import { buildMachineThreadGroups } from "@bb/client-core";
@@ -33,8 +34,14 @@ import {
 } from "./sidebarCollapsedAtoms";
 import { useSidebarModeSectionOrder } from "./useSidebarModeSectionOrder";
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
+import { TooltipProvider } from "@bb/shared-ui/tooltip";
 
 const mockUseHosts = vi.hoisted(() => vi.fn(() => ({ data: [] })));
+const mockUseSystemConfig = vi.hoisted(() =>
+  vi.fn(() => ({
+    data: { experiments: { sidebarProgressiveDisclosure: true } },
+  })),
+);
 
 vi.mock("@/hooks/queries/host-queries", () => ({
   useHosts: mockUseHosts,
@@ -42,7 +49,19 @@ vi.mock("@/hooks/queries/host-queries", () => ({
 }));
 
 vi.mock("@/hooks/queries/system-queries", () => ({
-  useSystemConfig: () => ({ data: undefined }),
+  useSystemConfig: mockUseSystemConfig,
+}));
+
+vi.mock("@/components/thread/ThreadActionsProvider", () => ({
+  useThreadActions: () => ({
+    renameThread: vi.fn(),
+    requestRename: vi.fn(),
+    requestDelete: vi.fn(),
+    archiveThreadAndChildren: vi.fn(),
+    unarchiveThread: vi.fn(),
+    togglePin: vi.fn(),
+    toggleRead: vi.fn(),
+  }),
 }));
 
 const queryClient = new QueryClient();
@@ -156,30 +175,34 @@ function MachineModeProbe({ threads = [] }: { threads?: ThreadListEntry[] }) {
   };
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <MachineModeSections
-        threads={threads}
-        draftThreadIds={new Set()}
-        effectivePinnedThreadIds={new Set()}
-        status="ready"
-        showPinnedSection={false}
-        pinnedSection={{ label: "Pinned", content: null }}
-        pinnedReorderPending={false}
-        pinnedRootNodes={[]}
-        pinnedThreads={[]}
-        onReorderPinnedThread={vi.fn()}
-        threadsSection={{ label: "Threads" }}
-        collapsedSectionIds={collapsedSectionIdSet}
-        collapsedThreadIds={new Set()}
-        collapsedEnvironmentIds={new Set()}
-        compareThreads={() => 0}
-        renderSectionDisplayOptions={() => null}
-        isSectionDisplayOptionsOpen={() => false}
-        onToggleCollapsed={handleToggleCollapsed}
-        onToggleThreadCollapsed={vi.fn()}
-        onToggleEnvironmentCollapsed={vi.fn()}
-      />
-    </QueryClientProvider>
+    <TooltipProvider>
+      <MemoryRouter>
+        <QueryClientProvider client={queryClient}>
+          <MachineModeSections
+            threads={threads}
+            draftThreadIds={new Set()}
+            effectivePinnedThreadIds={new Set()}
+            status="ready"
+            showPinnedSection={false}
+            pinnedSection={{ label: "Pinned", content: null }}
+            pinnedReorderPending={false}
+            pinnedRootNodes={[]}
+            pinnedThreads={[]}
+            onReorderPinnedThread={vi.fn()}
+            threadsSection={{ label: "Threads" }}
+            collapsedSectionIds={collapsedSectionIdSet}
+            collapsedThreadIds={new Set()}
+            collapsedEnvironmentIds={new Set()}
+            compareThreads={() => 0}
+            renderSectionDisplayOptions={() => null}
+            isSectionDisplayOptionsOpen={() => false}
+            onToggleCollapsed={handleToggleCollapsed}
+            onToggleThreadCollapsed={vi.fn()}
+            onToggleEnvironmentCollapsed={vi.fn()}
+          />
+        </QueryClientProvider>
+      </MemoryRouter>
+    </TooltipProvider>
   );
 }
 
@@ -292,5 +315,42 @@ describe("sidebar organization mode sections", () => {
     expect(screen.queryByText("Machine activity")).toBeNull();
     expect(screen.getByLabelText("Plan mode active")).not.toBeNull();
     expect(screen.queryByLabelText("Thread working")).toBeNull();
+  });
+
+  it("does not progressively disclose threads in By machine", () => {
+    const store = createStore();
+    store.set(sidebarMachineSectionOrderAtom, ["machine:no-machine"]);
+    const threads = Array.from({ length: 7 }, (_, index) =>
+      makeThread({
+        id: `machine-thread-${index}`,
+        title: `Machine thread ${index}`,
+        titleFallback: `Machine thread ${index}`,
+        status: "idle",
+        hasPendingInteraction: false,
+        lastReadAt: 10,
+        latestAttentionAt: index,
+        runtime: {
+          displayStatus: "idle",
+          hostReconnectGraceExpiresAt: null,
+        },
+        activity: {
+          activeWorkflowCount: 0,
+          activeBackgroundAgentCount: 0,
+          activeBackgroundCommandCount: 0,
+          activePlanModeCount: 0,
+          activeGoalCount: 0,
+        },
+      }),
+    );
+
+    render(
+      <JotaiProvider store={store}>
+        <MachineModeProbe threads={threads} />
+      </JotaiProvider>,
+    );
+
+    expect(screen.getByText("Machine thread 6")).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Show more" })).toBeNull();
+    expect(mockUseSystemConfig).not.toHaveBeenCalled();
   });
 });

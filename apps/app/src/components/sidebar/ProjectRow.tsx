@@ -1974,6 +1974,34 @@ function isAttentionProjectThreadItem(
   );
 }
 
+function getProjectThreadItemFinishedAt(item: ProjectThreadItem): number {
+  let finishedAt = Number.NEGATIVE_INFINITY;
+  for (const thread of getProjectThreadItemDescendants([item])) {
+    if (thread.status !== "idle" && thread.status !== "error") continue;
+    finishedAt = Math.max(finishedAt, thread.latestAttentionAt);
+  }
+  return finishedAt;
+}
+
+function rankDisclosureItems(
+  items: readonly ProjectThreadItem[],
+): ProjectThreadItem[] {
+  const inputIndex = new Map(
+    items.map((item, index) => [getSidebarItemKey(item), index]),
+  );
+  return [...items].sort((left, right) => {
+    const leftFinishedAt = getProjectThreadItemFinishedAt(left);
+    const rightFinishedAt = getProjectThreadItemFinishedAt(right);
+    if (leftFinishedAt !== rightFinishedAt) {
+      return leftFinishedAt > rightFinishedAt ? -1 : 1;
+    }
+    return (
+      (inputIndex.get(getSidebarItemKey(left)) ?? 0) -
+      (inputIndex.get(getSidebarItemKey(right)) ?? 0)
+    );
+  });
+}
+
 export const ProjectThreadTree = memo(function ProjectThreadTree({
   projectId,
   dndParentKey,
@@ -2014,27 +2042,47 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
       buildProjectThreadGroups(projectThreads, compareThreads, draftThreadIds),
     [compareThreads, draftThreadIds, projectThreads, providedRootItems],
   );
+  const disclosureItems = useMemo(
+    () =>
+      rankDisclosureItems(
+        allRootItems.filter(
+          (item) => !isAttentionProjectThreadItem(item, selectedThreadId),
+        ),
+      ),
+    [allRootItems, selectedThreadId],
+  );
+  const initialDisclosureItemKeys = useMemo(
+    () =>
+      new Set(
+        disclosureItems
+          .slice(0, THREAD_ITEMS_INITIAL_LIMIT)
+          .map(getSidebarItemKey),
+      ),
+    [disclosureItems],
+  );
   const rootItems = useMemo(() => {
     if (!progressiveDisclosureEnabled) {
       return allRootItems;
     }
     return allRootItems.filter(
-      (item, index) =>
-        index < THREAD_ITEMS_INITIAL_LIMIT ||
+      (item) =>
+        initialDisclosureItemKeys.has(getSidebarItemKey(item)) ||
         revealedItemKeys.has(getSidebarItemKey(item)) ||
         isAttentionProjectThreadItem(item, selectedThreadId),
     );
   }, [
     allRootItems,
+    initialDisclosureItemKeys,
     selectedThreadId,
     revealedItemKeys,
     progressiveDisclosureEnabled,
   ]);
   const visibleItemKeys = new Set(rootItems.map(getSidebarItemKey));
-  const hiddenItems = allRootItems.filter(
+  const hiddenItems = disclosureItems.filter(
     (item) => !visibleItemKeys.has(getSidebarItemKey(item)),
   );
   const hasMoreItems = hiddenItems.length > 0;
+  const hasRevealedItems = revealedItemKeys.size > 0;
   const handleShowMore: MouseEventHandler<HTMLButtonElement> = (event) => {
     const nextItems = hiddenItems.slice(0, THREAD_ITEMS_EXPAND_SIZE);
     setRevealedItemKeys(
@@ -2049,6 +2097,10 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
         ? getSidebarItemKey(nextItems[0])
         : undefined,
     );
+  };
+  const handleShowLess = () => {
+    setRevealedItemKeys(new Set());
+    setFocusItemKey(undefined);
   };
 
   if (threadListState.status === "loading") {
@@ -2110,19 +2162,34 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
           })}
         />
       ) : null}
-      {hasMoreItems ? (
-        <button
-          type="button"
-          onClick={handleShowMore}
-          className={THREAD_DISCLOSURE_CONTROL_CLASS}
+      {hasMoreItems || hasRevealedItems ? (
+        <div
+          className="flex gap-3"
           style={{
             marginLeft: getSidebarThreadRowPaddingLeft(
               getProjectThreadTreeRootDepthOffset(variant),
             ),
           }}
         >
-          Show more
-        </button>
+          {hasMoreItems ? (
+            <button
+              type="button"
+              onClick={handleShowMore}
+              className={THREAD_DISCLOSURE_CONTROL_CLASS}
+            >
+              Show more
+            </button>
+          ) : null}
+          {hasRevealedItems ? (
+            <button
+              type="button"
+              onClick={handleShowLess}
+              className={THREAD_DISCLOSURE_CONTROL_CLASS}
+            >
+              Show less
+            </button>
+          ) : null}
+        </div>
       ) : null}
     </>
   );
