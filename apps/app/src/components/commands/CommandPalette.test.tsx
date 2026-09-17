@@ -1240,7 +1240,7 @@ describe("CommandPalette", () => {
     expect(testState.calls).toEqual([]);
   });
 
-  it("suppresses app chords while open and releases them on close", async () => {
+  it("keeps app shortcuts working after a shortcut closes the palette", async () => {
     renderPalette();
     const pressThreadNew = () =>
       fireEvent.keyDown(document.activeElement ?? window, {
@@ -1253,13 +1253,12 @@ describe("CommandPalette", () => {
     openPalette();
     await waitFor(() => expect(searchField()).toBeTruthy());
     pressThreadNew();
-    expect(testState.calls).toEqual([]);
-
-    fireEvent.keyDown(searchField(), { key: "Escape" });
-    await waitFor(() => expect(screen.queryByRole("combobox")).toBeNull());
-    screen.getByTestId("origin").focus();
-    pressThreadNew();
     await waitFor(() => expect(testState.calls).toEqual(["thread.new"]));
+    await waitFor(() => expect(screen.queryByRole("combobox")).toBeNull());
+    pressThreadNew();
+    await waitFor(() =>
+      expect(testState.calls).toEqual(["thread.new", "thread.new"]),
+    );
   });
 
   it("scrolls the highlighted row into view when arrowing, but not on hover", async () => {
@@ -1381,7 +1380,7 @@ describe("CommandPalette", () => {
     });
     await waitFor(() => expect(run).toHaveBeenCalledTimes(3));
     await waitFor(() => expect(screen.queryByRole("listbox")).toBeNull());
-    removePluginSlotRegistrations("linear");
+    act(() => removePluginSlotRegistrations("linear"));
     fireEvent.keyDown(window, { key: "u", ctrlKey: true, shiftKey: true });
     expect(run).toHaveBeenCalledTimes(3);
     testState.overrides = [];
