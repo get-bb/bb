@@ -245,8 +245,9 @@ function mockToolbarWidth(initial: number) {
       constructor(callback: () => void) {
         this.callback = callback;
       }
-      observe() {
-        callbacks.add(this.callback);
+      observe(target: Element) {
+        if (target.hasAttribute("data-resource-toolbar"))
+          callbacks.add(this.callback);
       }
       unobserve() {}
       disconnect() {
@@ -275,7 +276,10 @@ describe("PluginCollectionToolbar", () => {
     ({ labels, ...props }) => {
       mockToolbarWidth(320);
       render(<ToolbarHarness {...props} />);
-      fireEvent.click(screen.getByRole("button", { name: "Plugin controls" }));
+      fireEvent.keyDown(
+        screen.getByRole("button", { name: "Plugin controls" }),
+        { key: "Enter" },
+      );
       expect(
         screen
           .getAllByRole("menuitem")
@@ -288,7 +292,9 @@ describe("PluginCollectionToolbar", () => {
   it("shares sort, category search, and source clearing in overflow without resetting other values", async () => {
     mockToolbarWidth(320);
     render(<ToolbarHarness installed />);
-    fireEvent.click(screen.getByRole("button", { name: "Plugin controls" }));
+    fireEvent.keyDown(screen.getByRole("button", { name: "Plugin controls" }), {
+      key: "Enter",
+    });
     fireEvent.click(screen.getByRole("menuitem", { name: /^Sort by/u }));
     const sort = screen.getByRole("menuitemradio", { name: "Plugin name" });
     await waitFor(() => expect(document.activeElement).toBe(sort));

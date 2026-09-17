@@ -344,12 +344,6 @@ export function ResourceMultiSelectMenu({
       : `${label}: ${activeSelectedCount} selected`;
   const triggerTooltip = `${label}: ${selectionSummary}`;
 
-  function updateValue(option: ResourceOption, checked: boolean) {
-    const next = nextSelectedValues(option, checked, selectedValues);
-    if (next === null) return;
-    onChange(next);
-  }
-
   return (
     <DropdownMenu onOpenChange={setOpen}>
       <ResourceMenuTrigger
