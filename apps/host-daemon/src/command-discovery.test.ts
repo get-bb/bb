@@ -525,6 +525,50 @@ describe("discoverProviderCommands over declared roots", () => {
     expect(byName(commands, "linked-file")).toBeUndefined();
   });
 
+  it("follows project-origin symlinked skills whose target stays inside the workspace", async () => {
+    const fixture = await makeWorkspaceFixture();
+    const canonicalRoot = path.join(fixture.cwd, ".agents", "skills");
+    await writeFileEnsuringDir(
+      path.join(canonicalRoot, "nerd", "SKILL.md"),
+      skillFile("nerd", "Deep engineering mode"),
+    );
+    await writeFileEnsuringDir(
+      path.join(canonicalRoot, "poteto", "SKILL.md"),
+      skillFile("poteto", "Full pstack workflow"),
+    );
+
+    const skillsRoot = path.join(fixture.cwd, ".agent", "skills");
+    await mkdir(skillsRoot, { recursive: true });
+    await symlink(
+      path.join("..", "..", ".agents", "skills", "nerd"),
+      path.join(skillsRoot, "nerd"),
+      "dir",
+    );
+    const linkedFileSkillRoot = path.join(skillsRoot, "poteto");
+    await mkdir(linkedFileSkillRoot, { recursive: true });
+    await symlink(
+      path.join(canonicalRoot, "poteto", "SKILL.md"),
+      path.join(linkedFileSkillRoot, "SKILL.md"),
+    );
+
+    const commands = await discover(fixture, fixture.cwd);
+
+    expect(byName(commands, "nerd")).toEqual({
+      name: "nerd",
+      source: "skill",
+      origin: "project",
+      description: "Deep engineering mode",
+      argumentHint: null,
+    });
+    expect(byName(commands, "poteto")).toEqual({
+      name: "poteto",
+      source: "skill",
+      origin: "project",
+      description: "Full pstack workflow",
+      argumentHint: null,
+    });
+  });
+
   it("follows user-origin symlinked skill directories and skill files", async () => {
     const fixture = await makeWorkspaceFixture();
     const skillsRoot = path.join(fixture.homeDir, ".agent", "skills");

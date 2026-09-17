@@ -107,7 +107,10 @@ directory in every ancestor of the workspace up to the repository root,
 names the marker file whose presence makes bb skip a directory as a vendor
 plugin rather than a skill; a symlink out of a project root is followed
 within the workspace for a plain root and within the repository root for a
-root that walks ancestors or that the plugin resolved) and
+root that walks ancestors or that the plugin resolved; a symlinked skill
+directory or `SKILL.md` inside a project root is followed under the same
+boundary, so a checked-in catalog of links is discovered while a link out of
+the repository stays hidden) and
 `experimental_resolvesNativeRoots` (the plugin's `bb.host`
 entry answers `resolveNativeRoots({ providerId, cwd })` with the roots only
 that host and workspace know: a moved config directory, installed vendor

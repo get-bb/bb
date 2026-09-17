@@ -162,8 +162,31 @@ async function parseFrontmatter(filePath: string): Promise<ParsedFrontmatter> {
   };
 }
 
-function canFollowSkillSymlink(root: CommandScanRoot): boolean {
-  return root.origin === "user" && root.source === "skill";
+async function canFollowSkillSymlink(
+  root: CommandScanRoot,
+  linkPath: string,
+): Promise<boolean> {
+  if (root.source !== "skill") {
+    return false;
+  }
+  if (root.origin === "user") {
+    return true;
+  }
+  // A project link may only point inside the workspace it belongs to, so a
+  // checked-in catalog of links (`.claude/skills/x -> ../../.agents/skills/x`)
+  // is discovered while a link to a file outside the repository stays hidden.
+  if (!("boundaryPath" in root) || root.boundaryPath === undefined) {
+    return false;
+  }
+  const [resolvedTarget, resolvedBoundary] = await Promise.all([
+    fs.realpath(linkPath).catch(() => null),
+    fs.realpath(root.boundaryPath).catch(() => null),
+  ]);
+  return (
+    resolvedTarget !== null &&
+    resolvedBoundary !== null &&
+    isPathWithinDirectory(resolvedBoundary, resolvedTarget)
+  );
 }
 
 async function isSkillDirectory(
@@ -172,7 +195,10 @@ async function isSkillDirectory(
   if (args.entry.isDirectory()) {
     return true;
   }
-  if (!args.entry.isSymbolicLink() || !canFollowSkillSymlink(args.root)) {
+  if (
+    !args.entry.isSymbolicLink() ||
+    !(await canFollowSkillSymlink(args.root, args.entryPath))
+  ) {
     return false;
   }
   try {
@@ -192,7 +218,10 @@ async function statSkillFile(
     if (stat.isFile()) {
       return { linked: false };
     }
-    if (!stat.isSymbolicLink() || !canFollowSkillSymlink(root)) {
+    if (
+      !stat.isSymbolicLink() ||
+      !(await canFollowSkillSymlink(root, filePath))
+    ) {
       return null;
     }
     const targetStat = await fs.stat(filePath);
