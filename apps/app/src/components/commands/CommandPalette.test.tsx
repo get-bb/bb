@@ -853,8 +853,11 @@ describe("CommandPalette", () => {
     }
   });
 
-  it("preserves title highlights and distinguishes archived matches in the status slot", async () => {
-    const active = makeThread("active", { title: "Matching active thread" });
+  it("preserves title highlights and shows archived status after the metadata", async () => {
+    const active = makeThread("active", {
+      title: "Matching active thread",
+      lastReadAt: Date.now(),
+    });
     const archived = makeThread("archived", { archivedAt: Date.now() });
     modeState.searchResponse = {
       active: {
@@ -898,7 +901,10 @@ describe("CommandPalette", () => {
     expect(within(results).queryByText("Recent")).toBeNull();
     expect(
       results.querySelectorAll("[data-palette-thread-status]"),
-    ).toHaveLength(2);
+    ).toHaveLength(1);
+    expect(
+      rows[1].querySelector("[data-palette-thread-metadata]")?.nextElementSibling,
+    ).toBe(within(rows[1]).getByRole("img", { name: "Archived thread" }));
   });
 
   it("keeps active and archived search results and restores active recents on clear", async () => {
@@ -947,7 +953,7 @@ describe("CommandPalette", () => {
   });
 
   it.each(["", "match"])(
-    "shows live thread status beside project metadata for query '%s'",
+    "shows only meaningful status after left-aligned metadata for query '%s'",
     async (query) => {
       const threads = [
         makeThread("idle", { lastReadAt: Date.now() }),
@@ -980,8 +986,15 @@ describe("CommandPalette", () => {
       await waitFor(() =>
         expect(within(results).getAllByRole("option")).toHaveLength(4),
       );
+      const idleRow = within(results).getByRole("option", {
+        name: /Title idle/,
+      });
+      expect(within(idleRow).queryByRole("img")).toBeNull();
+      expect(idleRow.querySelector("[data-palette-thread-status]")).toBeNull();
+      expect(
+        idleRow.querySelector("[data-palette-thread-details]")?.children,
+      ).toHaveLength(1);
       for (const [title, label, icon] of [
-        ["Title idle", "Active thread", "MessageSquare"],
         ["Title working", "Thread working", "Loading"],
         ["Title draft", "Thread has unsubmitted draft", "Edit"],
         ["Title waiting", "Thread needs user input", "CircleQuestion"],
@@ -991,12 +1004,14 @@ describe("CommandPalette", () => {
         });
         const status = within(row).getByRole("img", { name: label });
         const details = row.querySelector("[data-palette-thread-details]");
-        expect(details?.firstElementChild).toBe(status);
-        expect(
-          details?.querySelector("[data-palette-thread-metadata]"),
-        ).not.toBeNull();
+        const metadata = details?.querySelector("[data-palette-thread-metadata]");
+        expect(details?.firstElementChild).toBe(metadata);
+        expect(metadata?.nextElementSibling).toBe(status);
         expectClasses(status, "size-4", "shrink-0");
-        expect(status.querySelector(`[data-icon="${icon}"]`)).not.toBeNull();
+        expectClasses(
+          status.querySelector(`[data-icon="${icon}"]`),
+          icon === "Edit" ? "size-3.5" : "size-4",
+        );
         expect(status.hasAttribute("tabindex")).toBe(false);
         expect(row.querySelector('[data-icon="Folder"]')).toBeNull();
         expect(

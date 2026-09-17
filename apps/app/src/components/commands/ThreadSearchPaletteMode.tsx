@@ -336,7 +336,6 @@ function ThreadSearchPaletteRow({
           className="flex min-h-4 items-center gap-1.5"
           data-palette-thread-details
         >
-          <ThreadSearchPaletteStatus row={row} />
           {metadata.length === 0 ? null : (
             <span
               className="min-w-0 truncate text-xs leading-4 text-subtle-foreground"
@@ -346,6 +345,7 @@ function ThreadSearchPaletteRow({
               {metadata}
             </span>
           )}
+          <ThreadSearchPaletteStatus row={row} />
         </span>
       </span>
     </div>
@@ -375,9 +375,10 @@ function ThreadSearchPaletteStatus({ row }: { row: PaletteThreadSearchRow }) {
   };
   const kind = resolveThreadListIndicator(state);
   const archived = row.lifecycle === "archived";
+  if (!archived && kind === "none") return null;
   const label = archived
     ? "Archived thread"
-    : (getThreadListIndicatorLabel(kind) ?? "Active thread");
+    : (getThreadListIndicatorLabel(kind) ?? undefined);
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -388,13 +389,10 @@ function ThreadSearchPaletteStatus({ row }: { row: PaletteThreadSearchRow }) {
           data-palette-thread-status
         >
           <span aria-hidden="true" className="inline-flex items-center">
-            {archived || kind === "none" ? (
-              <Icon
-                name={archived ? "Archive" : "MessageSquare"}
-                className="size-4"
-              />
+            {archived ? (
+              <Icon name="Archive" className="size-4" />
             ) : (
-              <ThreadStatusGlyph {...state} />
+              <ThreadStatusGlyph {...state} size="compact" />
             )}
           </span>
         </span>
