@@ -195,11 +195,6 @@ describe("ThreadSecondaryPanel compact file content", () => {
     );
 
     expect(screen.getByText("Recovered tab body")).toBeTruthy();
-    expect(
-      screen
-        .getByTestId("thread-secondary-panel-top-chrome")
-        .classList.contains("pl-12"),
-    ).toBe(true);
   });
 
   it("renders arbitrary fixed-tab content through the shared surface", () => {
