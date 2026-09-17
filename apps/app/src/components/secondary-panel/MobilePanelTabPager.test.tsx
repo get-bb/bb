@@ -115,12 +115,10 @@ describe("MobilePanelTabPager", () => {
       />
     );
     const { rerender, unmount } = render(panel("package.json"));
-    for (const tab of tabs.slice(0, 3)) {
+    for (const tab of tabs.slice(1, 4)) {
       expect(screen.getByRole("button", { name: tab.label })).toBeDefined();
     }
-    expect(
-      screen.queryByRole("button", { name: "MobilePanelTabPager.tsx" }),
-    ).toBeNull();
+    expect(screen.queryByRole("button", { name: "README.md" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Next tab" }));
     expect(tabs[2].onSelect).toHaveBeenCalledOnce();
     expect(tabs[4].onSelect).not.toHaveBeenCalled();
