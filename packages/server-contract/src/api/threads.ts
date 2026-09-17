@@ -869,7 +869,7 @@ export type ThreadSearchQuery = z.infer<typeof threadSearchQuerySchema>;
 
 export const timelinePaginationCursorSchema = z
   .object({
-    anchorSeq: z.number().int().positive(),
+    anchorSeq: z.number().int().nonnegative(),
     anchorId: z.string().min(1),
   })
   .strict();
@@ -888,7 +888,7 @@ export const timelinePageMetadataSchema = z
     olderRowsSourceSeqEnd: z.number().int().nonnegative().nullable().optional(),
     contentPage: z
       .object({
-        anchorSeq: z.number().int().positive(),
+        anchorSeq: z.number().int().nonnegative(),
         start: z.number().int().nonnegative(),
         end: z.number().int().nonnegative(),
         total: z.number().int().nonnegative(),
@@ -901,7 +901,7 @@ export const threadTimelineQuerySchema = z
   .object({
     includeNestedRows: z.enum(["true", "false"]),
     segmentLimit: z.string().regex(/^\d+$/),
-    beforeAnchorSeq: z.string().regex(/^[1-9]\d*$/),
+    beforeAnchorSeq: z.string().regex(/^(0|[1-9]\d*)$/),
     beforeAnchorId: z.string().min(1),
     summaryOnly: z.enum(["true", "false"]),
     afterSequence: z.string().regex(/^\d+$/),

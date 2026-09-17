@@ -1828,19 +1828,35 @@ describe("server-contract clients", () => {
     ).toThrow();
   });
 
-  it("rejects zero timeline pagination cursor sequences", () => {
-    expect(() =>
+  it("accepts the history epoch and rejects invalid timeline cursor sequences", () => {
+    expect(
       contract.timelinePaginationCursorSchema.parse({
         anchorSeq: 0,
-        anchorId: "row-1",
+        anchorId: "timeline-window:0",
       }),
-    ).toThrow();
-    expect(() =>
+    ).toEqual({ anchorSeq: 0, anchorId: "timeline-window:0" });
+    expect(
       contract.threadTimelineQuerySchema.parse({
         beforeAnchorSeq: "0",
-        beforeAnchorId: "row-1",
+        beforeAnchorId: "timeline-window:0",
       }),
-    ).toThrow();
+    ).toMatchObject({ beforeAnchorSeq: "0" });
+    for (const anchorSeq of [-1, 0.5]) {
+      expect(() =>
+        contract.timelinePaginationCursorSchema.parse({
+          anchorSeq,
+          anchorId: "timeline-window:0",
+        }),
+      ).toThrow();
+    }
+    for (const beforeAnchorSeq of ["-1", "0.5", "00", "01"]) {
+      expect(() =>
+        contract.threadTimelineQuerySchema.parse({
+          beforeAnchorSeq,
+          beforeAnchorId: "timeline-window:0",
+        }),
+      ).toThrow();
+    }
   });
 
   it("requires parent change timeline system rows to carry status", () => {

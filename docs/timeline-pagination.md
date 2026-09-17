@@ -25,7 +25,9 @@ requests do not count as visible segments. The response takes up to
 older segments, their raw sequence range belongs to the next page.
 
 The cursor records the exact window start, even when no visible row starts
-there. Older pages visit contiguous windows with decreasing cursors, so a
+there. A window start of zero represents the history epoch and is valid in both
+response metadata and the next request; a content continuation can remain at
+that window start while advancing through the oldest group. Older pages visit contiguous windows with decreasing cursors, so a
 request and its acceptance can fall on different pages without losing their
 rendered row. Empty windows still advance the cursor. Each build skips up to
 eight empty windows looking for visible content; if more remain, it returns an
