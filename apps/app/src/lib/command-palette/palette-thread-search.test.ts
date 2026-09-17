@@ -1,4 +1,4 @@
-import type { ThreadListEntry } from "@bb/domain";
+import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
 import type { ThreadSearchResponse } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
 import { buildPaletteThreadSearchRows } from "./palette-thread-search";
@@ -94,9 +94,9 @@ describe("buildPaletteThreadSearchRows", () => {
       "archived",
     ]);
     expect(result.rows.map((row) => row.thread)).toEqual([active, archived]);
-    expect(result.rows.map((row) => row.metadataText)).toEqual([
-      "Palette project · just now",
-      "Palette project · just now",
+    expect(result.rows.map((row) => row.projectName)).toEqual([
+      "Palette project",
+      "Palette project",
     ]);
     expect(result.rows.map((row) => row.threadId)).toEqual([
       "active",
@@ -130,7 +130,9 @@ describe("buildPaletteThreadSearchRows", () => {
 
     expect(result.rows[0]).toMatchObject({
       primaryText: "the matching message",
-      metadataText: "Original title · Palette project · just now",
+      secondaryTitle: "Original title",
+      projectName: "Palette project",
+      relativeTime: "just now",
       messageSeq: 42,
       highlightRanges: [{ start: 4, end: 12 }],
     });
@@ -167,6 +169,16 @@ describe("buildPaletteThreadSearchRows", () => {
         },
       }).rows,
     ).toEqual([]);
+  });
+  it("omits project metadata for personal or unresolved projects", () => {
+    const result = build({
+      query: "",
+      recentThreads: [
+        makeThread("personal", { projectId: PERSONAL_PROJECT_ID }),
+        makeThread("unresolved", { projectId: "unknown-project" }),
+      ],
+    });
+    expect(result.rows.map((row) => row.projectName)).toEqual([null, null]);
   });
   it("orders active recents by update time across projects without prioritizing pinned threads", () => {
     const older = makeThread("older", { updatedAt: NOW - 100, pinnedAt: NOW });

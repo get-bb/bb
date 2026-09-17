@@ -846,7 +846,7 @@ describe("CommandPalette", () => {
       }),
     ).toBeTruthy();
     expect(rows[0].querySelector('[data-icon="Edit"]')).not.toBeNull();
-    expect(results.querySelector('[data-icon="Folder"]')).toBeNull();
+    expect(results.querySelectorAll('[data-icon="Folder"]')).toHaveLength(2);
     expectClasses(results, "p-1");
     expectClasses(within(results).getByText("Recent"), "px-2", "py-1");
     for (const row of rows) {
@@ -1039,7 +1039,9 @@ describe("CommandPalette", () => {
             .querySelector(".animate-shine-icon")
             ?.closest('[aria-hidden="true"]') ?? null,
         ).toBeNull();
-        expect(row.querySelector('[data-icon="Folder"]')).toBeNull();
+        const projectIcon = metadata?.querySelector('[data-icon="Folder"]');
+        expectClasses(projectIcon, "size-3.5");
+        expect(projectIcon?.getAttribute("aria-hidden")).toBe("true");
         expect(
           row.querySelector("[data-palette-thread-metadata]")?.textContent,
         ).toContain("Palette project");
@@ -1118,6 +1120,14 @@ describe("CommandPalette", () => {
     expect(screen.getByRole("option").querySelector("mark")?.textContent).toBe(
       "matching",
     );
+    const metadata = screen
+      .getByRole("option")
+      .querySelector("[data-palette-thread-metadata]");
+    const projectIcon = metadata?.querySelector('[data-icon="Folder"]');
+    expect(projectIcon?.previousSibling?.textContent).toBe(
+      "Title archived-message · ",
+    );
+    expect(projectIcon?.nextSibling?.textContent).toBe("Palette project · ");
     fireEvent.keyDown(input, { key: "Enter" });
 
     const state = {

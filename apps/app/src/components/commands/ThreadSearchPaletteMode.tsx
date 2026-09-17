@@ -9,6 +9,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
 } from "react";
+import { Icon } from "@bb/shared-ui/icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
@@ -301,7 +302,9 @@ function ThreadSearchPaletteRow({
     }
   }, [matchKey, row.highlightRanges.length, shouldWindowMatch]);
 
-  const metadata = row.metadataText;
+  const metadata = [row.secondaryTitle, row.projectName, row.relativeTime]
+    .filter(Boolean)
+    .join(" · ");
   return (
     <div
       id={id}
@@ -334,7 +337,18 @@ function ThreadSearchPaletteRow({
               data-palette-thread-metadata
               title={metadata}
             >
-              {metadata}
+              {row.secondaryTitle === null ? null : `${row.secondaryTitle} · `}
+              {row.projectName === null ? null : (
+                <>
+                  <Icon
+                    name="Folder"
+                    className="mr-1 inline-block size-3.5 align-text-bottom"
+                    aria-hidden
+                  />
+                  {`${row.projectName} · `}
+                </>
+              )}
+              {row.relativeTime}
             </span>
           )}
           <ThreadSearchPaletteStatus row={row} />
