@@ -142,6 +142,8 @@ export function SecondaryPanelTabStrip({
     INITIAL_OVERFLOW_STATE,
   );
   const maxScrollLeftRef = useRef(0);
+  const measuredWidthRef = useRef(0);
+  const resizeRevealFrameRef = useRef<number | null>(null);
   const hasOverflowRef = useRef(false);
   const scrollFrameRef = useRef<number | null>(null);
   const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
@@ -204,6 +206,24 @@ export function SecondaryPanelTabStrip({
     if (strip === null || viewport === null || content === null) {
       return;
     }
+    if (measuredWidthRef.current !== strip.clientWidth) {
+      measuredWidthRef.current = strip.clientWidth;
+      const reveal = () =>
+        content
+          .querySelector<HTMLElement>('button[aria-pressed="true"]')
+          ?.parentElement?.scrollIntoView({
+            inline: "nearest",
+            block: "nearest",
+          });
+      reveal();
+      if (resizeRevealFrameRef.current !== null)
+        window.cancelAnimationFrame(resizeRevealFrameRef.current);
+      resizeRevealFrameRef.current = window.requestAnimationFrame(() => {
+        resizeRevealFrameRef.current = null;
+        reveal();
+        applyEdgeFlags();
+      });
+    }
     const hasOverflow =
       content.scrollWidth > strip.clientWidth + EDGE_EPSILON_PX;
     hasOverflowRef.current = hasOverflow;
@@ -239,6 +259,10 @@ export function SecondaryPanelTabStrip({
     return () => {
       viewport.removeEventListener("scroll", handleScroll);
       resizeObserver.disconnect();
+      if (resizeRevealFrameRef.current !== null) {
+        window.cancelAnimationFrame(resizeRevealFrameRef.current);
+        resizeRevealFrameRef.current = null;
+      }
       if (scrollFrameRef.current !== null) {
         window.cancelAnimationFrame(scrollFrameRef.current);
         scrollFrameRef.current = null;

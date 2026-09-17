@@ -206,6 +206,21 @@ describe("secondary panel tab strip", () => {
     expect(screen.getByRole("button", { name: "file-1.ts" })).toBeDefined();
     expect(tabs[1].inert).toBe(false);
     expect(tabs[0].inert).toBe(true);
+    const selected = tabs[0].querySelector(
+      'button[aria-pressed="true"]',
+    )!.parentElement!;
+    const reveal = vi
+      .spyOn(selected, "scrollIntoView")
+      .mockImplementation(() => {
+        viewport.scrollLeft = 0;
+      });
+    Object.defineProperty(strip, "clientWidth", {
+      configurable: true,
+      value: 200,
+    });
+    act(() => measure());
+    expect(reveal).toHaveBeenCalledOnce();
+    expect(tabs[0].inert).toBe(false);
   });
 
   it("observes the intrinsic tab row so async title changes refresh overflow", () => {
