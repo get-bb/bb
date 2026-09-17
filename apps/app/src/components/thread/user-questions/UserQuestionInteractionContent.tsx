@@ -10,11 +10,6 @@ import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import { useStickyFooterAvailableHeight } from "./useStickyFooterAvailableHeight.js";
 
 interface UserQuestionAnswerFormProps {
-  /**
-   * What Cancel does. A provider's question blocks its turn, so backing out
-   * stops the turn; a plugin's question has no turn to stop, so backing out
-   * cancels only the interaction.
-   */
   dismissal: "cancel" | "stop-turn";
   interactionId: string;
   isResolving: boolean;

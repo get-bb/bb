@@ -1774,6 +1774,39 @@ const testsQuestion = {
   ],
 };
 
+describe("buildTimelineRowTitle form rows", () => {
+  const formRow = (
+    lifecycle: "pending" | "submitted" | "cancelled",
+  ): Extract<TimelineViewWorkRow, { workKind: "form" }> => ({
+    ...baseRow("form-1"),
+    kind: "work",
+    workKind: "form",
+    status: lifecycle === "pending" ? "pending" : "completed",
+    interactionId: "pi-form",
+    pluginId: "secrets",
+    title: "Add secrets to .env",
+    lifecycle,
+    statusReason: null,
+  });
+
+  it("names the form while it waits and once it is submitted", () => {
+    expect(
+      buildTimelineRowTitle(formRow("pending"), DEFAULT_OPTIONS).plain,
+    ).toBe("Waiting for Add secrets to .env");
+    expect(
+      buildTimelineRowTitle(formRow("submitted"), DEFAULT_OPTIONS).plain,
+    ).toBe("Submitted Add secrets to .env");
+    const cancelled = buildTimelineRowTitle(
+      formRow("cancelled"),
+      DEFAULT_OPTIONS,
+    );
+    expect(cancelled.plain).toBe("Asked for Add secrets to .env (interrupted)");
+    expect(cancelled.decorations).toEqual([
+      expect.objectContaining({ kind: "status", status: "interrupted" }),
+    ]);
+  });
+});
+
 describe("buildTimelineRowTitle question rows", () => {
   it("shows the prompt for a single pending question", () => {
     const title = buildTimelineRowTitle(

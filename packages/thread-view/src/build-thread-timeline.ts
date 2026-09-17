@@ -764,6 +764,20 @@ function convertMessage(
           statusReason: message.statusReason,
         },
       ];
+    case "plugin-form-lifecycle":
+      return [
+        {
+          ...buildTimelineRowBase(message, options.rowIdPrefix),
+          kind: "work",
+          workKind: "form",
+          status: message.status,
+          interactionId: message.interactionId,
+          lifecycle: message.lifecycle,
+          pluginId: message.pluginId,
+          title: message.title,
+          statusReason: message.statusReason,
+        },
+      ];
     case "operation": {
       const parentChange = parentChangeForMessage(message);
       const operationKind = operationKindForMessage(message, parentChange);

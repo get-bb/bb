@@ -2351,7 +2351,7 @@ describe("buildThreadTimelineFromEvents", () => {
     expect(collectSystemRows(rows)[0]).not.toHaveProperty("parentChange");
   });
 
-  it("contributes no row for an interaction that shows elsewhere (a command approval, a plugin request)", () => {
+  it("contributes no row for a command approval, which shows on its item, and a title-only row for a plugin request", () => {
     const rows = buildTimelineRows([
       {
         event: {
@@ -2405,7 +2405,15 @@ describe("buildThreadTimelineFromEvents", () => {
         meta: { id: "event-2", seq: 2, createdAt: 2 },
       },
     ]);
-    expect(rows.filter((row) => row.kind === "work")).toEqual([]);
+    expect(rows.filter((row) => row.kind === "work")).toEqual([
+      expect.objectContaining({
+        workKind: "form",
+        interactionId: "pint-plugin",
+        pluginId: "secrets",
+        title: "Add secrets",
+        lifecycle: "submitted",
+      }),
+    ]);
     expect(collectSystemRows(rows)).toEqual([]);
   });
 
@@ -2689,6 +2697,65 @@ describe("buildThreadTimelineFromEvents", () => {
       ]);
     },
   );
+
+  it("projects a plugin form to a title-and-outcome row without its data", () => {
+    const formEvent = (
+      seq: number,
+      status: "pending" | "resolved" | "interrupted",
+      statusReason: string | null = null,
+    ): ThreadEventWithMeta => ({
+      event: {
+        type: "system/interaction/lifecycle",
+        threadId: "thread-1",
+        scope: threadScope(),
+        interaction: {
+          id: "pi-form",
+          status,
+          statusReason,
+          origin: {
+            kind: "plugin",
+            pluginId: "secrets",
+            rendererId: "secret-request",
+          },
+          payload: { kind: "plugin", title: "Add secrets to .env" },
+          resolution:
+            status === "resolved" ? { kind: "plugin_submitted" } : null,
+        },
+      },
+      meta: { id: `event-${seq}`, seq, createdAt: seq },
+    });
+    const collectFormRows = (rows: readonly TimelineRow[]) =>
+      rows.filter((row) => row.kind === "work" && row.workKind === "form");
+
+    expect(
+      collectFormRows(
+        buildTimelineRows([formEvent(1, "pending"), formEvent(2, "resolved")]),
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        workKind: "form",
+        interactionId: "pi-form",
+        pluginId: "secrets",
+        title: "Add secrets to .env",
+        lifecycle: "submitted",
+        status: "completed",
+      }),
+    ]);
+    expect(
+      collectFormRows(
+        buildTimelineRows([
+          formEvent(1, "pending"),
+          formEvent(2, "interrupted", "user"),
+        ]),
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        lifecycle: "cancelled",
+        status: "interrupted",
+        statusReason: "user",
+      }),
+    ]);
+  });
 
   it("projects a plugin's question to the same row as a provider's, outside any turn", () => {
     const answers = { "question-1": { selected: ["production"] } };
