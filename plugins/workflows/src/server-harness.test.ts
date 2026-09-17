@@ -88,6 +88,35 @@ describe("workflows plugin", () => {
     ).toMatchObject({ ok: true });
   });
 
+  it("registers typed freeform JSON parameter schemas (no typeless top-level nodes)", async () => {
+    // Strict provider validators (Azure OpenAI, Kimi K2) reject tool parameter
+    // nodes that carry only description/default and no `type` with
+    // "could not understand the instance". The args/value freeform JSON params
+    // must emit a concrete type (here anyOf of typed JSON branches).
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "workflows",
+      agentSkillIds: ["workflows"],
+    });
+    hosts.push(harness);
+    await plugin(bb);
+
+    for (const name of ["bb_workflow_run", "bb_workflow_result"] as const) {
+      const tool = harness.registrations.agentTools.find((t) => t.name === name)!;
+      const schema = tool.inputSchema as {
+        properties?: Record<string, { type?: string; anyOf?: unknown[]; $ref?: string }>;
+      };
+      const param = name === "bb_workflow_run" ? "args" : "value";
+      const node = schema.properties?.[param];
+      expect(node, `${name}.${param} schema node`).toBeDefined();
+      // A typeless node (only description/default) is what strict validators reject.
+      expect(node!.$ref, `${name}.${param} must not be a bare $ref`).toBeUndefined();
+      expect(
+        node!.type || node!.anyOf,
+        `${name}.${param} must declare a concrete type or anyOf`,
+      ).toBeDefined();
+    }
+  });
+
   it(
     "runs a structured workflow asynchronously and notifies its origin",
     async () => {

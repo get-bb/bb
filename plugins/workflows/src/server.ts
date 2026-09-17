@@ -41,7 +41,21 @@ const sourceInputFields = {
     )
     .optional(),
 } as const;
-const freeformJson = z.unknown();
+// Any JSON value, but expressed as a non-recursive union of the JSON
+// scalar/container types so the emitted JSON Schema gives every branch a
+// concrete `type`. A bare `z.unknown()` serialises to a typeless node
+// (`{ description, default }` with no `type`), which strict provider validators
+// (e.g. Azure OpenAI, Kimi K2) reject with "could not understand the instance".
+// Stay non-recursive (no `$ref`/`$defs`) so providers that reject recursive
+// schemas still accept it. This accepts exactly what `toJsonValue` validates.
+const freeformJson = z.union([
+  z.string(),
+  z.number(),
+  z.boolean(),
+  z.null(),
+  z.array(z.unknown()),
+  z.record(z.string(), z.unknown()),
+]);
 
 const runInputSchema = z
   .object({
