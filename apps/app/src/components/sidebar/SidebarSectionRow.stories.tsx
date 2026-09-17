@@ -198,6 +198,7 @@ function draggingOverSection(): SectionThreadDndState {
     consumeClickSuppression: () => false,
     dndContextProps: {},
     dragOverParentKey: DRAG_INTO_PARENT_KEY,
+    unchangedParentKey: null,
     itemIdsByParentKey: new Map(),
     nestTarget: null,
     onClickCapture: noop,

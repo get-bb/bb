@@ -142,13 +142,17 @@ describe("section thread drop targets", () => {
     });
   });
 
-  it("rejects same-parent and non-thread moves", () => {
+  it("reports the thread's own section as unchanged and ignores non-thread moves", () => {
     const lookup = createLookup();
     const sectionAKey = lookup.sectionParentKeyBySectionId.get("section:a");
 
     expect(
       resolveSectionThreadDropDecision(lookup, "in-a", sectionAKey ?? null),
-    ).toBeNull();
+    ).toEqual({
+      kind: "unchanged",
+      activeId: "in-a",
+      toParentKey: sectionAKey,
+    });
     expect(
       resolveSectionThreadDropDecision(
         lookup,

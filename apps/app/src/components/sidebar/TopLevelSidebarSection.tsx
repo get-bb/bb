@@ -30,8 +30,8 @@ import {
 } from "./sidebarRowClasses";
 import {
   SectionDropTargetOverlay,
-  useSectionDropTargetActive,
-} from "./useSectionDropTargetActive";
+  useSectionDropTargetState,
+} from "./useSectionDropTargetState";
 import type { SidebarSortableDragBindings } from "./sortableMotion";
 import {
   NO_COLLAPSED_CHILD_ACTIVITY,
@@ -98,7 +98,7 @@ export function TopLevelSidebarSection({
   consumeClickSuppression,
   isDropTargetActive = false,
 }: TopLevelSidebarSectionProps) {
-  const isThreadDropTarget = useSectionDropTargetActive(dropParentKey);
+  const threadDropState = useSectionDropTargetState(dropParentKey);
   const collapsedSplitIndicator = useThreadGroupSplitIndicator(
     collapsedThreads,
     collapseControl?.isCollapsed === true,
@@ -172,14 +172,16 @@ export function TopLevelSidebarSection({
       ref={sectionRef}
       style={sectionStyle}
       data-sidebar-section-id={sectionId}
-      data-sidebar-drop-target={isThreadDropTarget ? "true" : undefined}
+      data-sidebar-drop-target={threadDropState ?? undefined}
       className={cn(
         "group/sidebar-section relative min-w-0 rounded-md transition-colors",
         isDropTargetActive && "bg-sidebar-accent/60",
       )}
       onClickCapture={handleClickCapture}
     >
-      {isThreadDropTarget ? <SectionDropTargetOverlay /> : null}
+      {threadDropState ? (
+        <SectionDropTargetOverlay state={threadDropState} />
+      ) : null}
       <SidebarStickyTier
         ref={dragBindings?.setActivatorNodeRef}
         tier="label"

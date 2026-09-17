@@ -26,10 +26,12 @@ import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 function dndState(
   dragOverParentKey: string | null,
   activeThread: SectionThreadDndState["activeThread"],
+  unchangedParentKey: string | null = null,
 ): SectionThreadDndState {
   return {
     activeThread,
     dragOverParentKey,
+    unchangedParentKey,
     consumeClickSuppression: () => false,
     dndContextProps: {},
     itemIdsByParentKey: new Map(),
@@ -41,7 +43,7 @@ function dndState(
   };
 }
 
-function renderSectionWithDrag(state: SectionThreadDndState): boolean {
+function renderSectionWithDrag(state: SectionThreadDndState): string | null {
   const { container } = render(
     <SectionThreadDndProvider value={state}>
       <TopLevelSidebarSection label="Design" dropParentKey="section:design">
@@ -49,10 +51,11 @@ function renderSectionWithDrag(state: SectionThreadDndState): boolean {
       </TopLevelSidebarSection>
     </SectionThreadDndProvider>,
   );
-  const highlighted =
-    container.querySelector("[data-sidebar-drop-target]") !== null;
+  const dropState = container
+    .querySelector("[data-sidebar-drop-target]")
+    ?.getAttribute("data-sidebar-drop-target");
   cleanup();
-  return highlighted;
+  return dropState ?? null;
 }
 
 afterEach(() => {
@@ -157,14 +160,26 @@ describe("TopLevelSidebarSection", () => {
   it("highlights the whole section only while it is the resolved drop parent", () => {
     const dragged = makeThreadListEntry({ id: "dragged" });
 
-    expect(renderSectionWithDrag(dndState(null, dragged))).toBe(false);
-    expect(renderSectionWithDrag(dndState("section:other", dragged))).toBe(
-      false,
-    );
+    expect(renderSectionWithDrag(dndState(null, dragged))).toBeNull();
+    expect(renderSectionWithDrag(dndState("section:other", dragged))).toBeNull();
     expect(renderSectionWithDrag(dndState("section:design", dragged))).toBe(
-      true,
+      "active",
     );
-    expect(renderSectionWithDrag(dndState("section:design", null))).toBe(false);
+    expect(renderSectionWithDrag(dndState("section:design", null))).toBeNull();
+  });
+
+  it("marks the section a dragged thread already sits in as unchanged", () => {
+    const dragged = makeThreadListEntry({ id: "dragged" });
+
+    expect(
+      renderSectionWithDrag(dndState(null, dragged, "section:design")),
+    ).toBe("unchanged");
+    expect(
+      renderSectionWithDrag(dndState(null, dragged, "section:other")),
+    ).toBeNull();
+    expect(
+      renderSectionWithDrag(dndState(null, null, "section:design")),
+    ).toBeNull();
   });
 
   it("renders the disclosure after the section label without a leading icon", () => {

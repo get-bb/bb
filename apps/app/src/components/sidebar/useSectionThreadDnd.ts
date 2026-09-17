@@ -92,6 +92,7 @@ export interface SectionThreadDndState {
   itemIdsByParentKey: ReadonlyMap<string, readonly string[]>;
   onClickCapture: MouseEventHandler<HTMLElement>;
   dragOverParentKey: string | null;
+  unchangedParentKey: string | null;
   nestTarget: SectionThreadNestTarget | null;
   reorderTarget: SectionThreadReorderTarget | null;
   pinnedItemIds: readonly string[];
@@ -161,7 +162,8 @@ export type SectionThreadDropDecision =
       activeId: string;
       overThreadId: string;
       reason: "own-subtree" | "already-child";
-    };
+    }
+  | { kind: "unchanged"; activeId: string; toParentKey: string };
 
 interface ThreadRowPointerInfo {
   threadId: string;
@@ -570,7 +572,7 @@ export function resolveSectionThreadDropDecision(
     ) {
       return { kind: "reorder-pinned", activeId, overId };
     }
-    return null;
+    return { kind: "unchanged", activeId, toParentKey };
   }
 
   if (!lookup.sectionIdByParentKey.has(toParentKey)) return null;
@@ -585,7 +587,7 @@ export function resolveSectionThreadDropDecision(
         toParentKey,
       };
     }
-    return null;
+    return { kind: "unchanged", activeId, toParentKey };
   }
   const sectionId = lookup.sectionIdByParentKey.get(toParentKey) ?? null;
   if (nested) return { kind: "detach", activeId, sectionId, toParentKey };
@@ -598,7 +600,9 @@ export function resolveSectionThreadDropDecision(
       toParentKey,
     };
   }
-  if (fromParentKey === toParentKey) return null;
+  if (fromParentKey === toParentKey) {
+    return { kind: "unchanged", activeId, toParentKey };
+  }
   return { kind: "move", activeId, sectionId, toParentKey };
 }
 
@@ -682,6 +686,12 @@ function resolveTargetParentKey(
   }
 }
 
+function resolveUnchangedParentKey(
+  decision: SectionThreadDropDecision | null,
+): string | null {
+  return decision?.kind === "unchanged" ? decision.toParentKey : null;
+}
+
 function resolveDwellExpansion({
   containerId,
   onExpandThread,
@@ -755,6 +765,7 @@ function hasDropDecisionLanded(
       );
     case "reorder-pinned":
     case "rejected":
+    case "unchanged":
       return true;
   }
 }
@@ -936,6 +947,9 @@ export function useSectionThreadDnd({
   const [dragOverParentKey, setDragOverParentKey] = useState<string | null>(
     null,
   );
+  const [unchangedParentKey, setUnchangedParentKey] = useState<string | null>(
+    null,
+  );
   const [rowDrop, setRowDrop] = useState<RowDropState | null>(null);
   const [reorderTarget, setReorderTarget] =
     useState<SectionThreadReorderTarget | null>(null);
@@ -953,6 +967,7 @@ export function useSectionThreadDnd({
   const clearDropState = useCallback(() => {
     setActiveThread(null);
     setDragOverParentKey(null);
+    setUnchangedParentKey(null);
     setRowDrop(null);
     setReorderTarget(null);
     setPendingDropDecision(null);
@@ -995,6 +1010,7 @@ export function useSectionThreadDnd({
       clearNestCandidate();
       setActiveThread(thread);
       setDragOverParentKey(null);
+      setUnchangedParentKey(null);
       setRowDrop(null);
       setReorderTarget(null);
       setReadyNestCandidate(null);
@@ -1020,6 +1036,7 @@ export function useSectionThreadDnd({
       );
       const nextRowDrop = resolveRowDropState(decision);
       const targetParentKey = resolveTargetParentKey(decision);
+      const nextUnchangedParentKey = resolveUnchangedParentKey(decision);
       const nextReorderTarget = resolvePinnedReorderTarget(
         lookup,
         activeId,
@@ -1030,7 +1047,9 @@ export function useSectionThreadDnd({
           ? getRowDropTargetKey(nextRowDrop)
           : nextReorderTarget !== null
             ? `reorder:${nextReorderTarget.threadId}:${nextReorderTarget.placement}`
-            : targetParentKey;
+            : nextUnchangedParentKey !== null
+              ? `unchanged:${nextUnchangedParentKey}`
+              : targetParentKey;
       const retainedNestTarget = retainedNestTargetRef.current;
       if (nextRowDrop?.state !== "valid") {
         retainedNestTargetRef.current = null;
@@ -1047,6 +1066,7 @@ export function useSectionThreadDnd({
       dwellTargetKeyRef.current = targetKey;
       armedNestThreadIdRef.current = nextRowDrop?.threadId ?? null;
       setDragOverParentKey(targetParentKey);
+      setUnchangedParentKey(nextUnchangedParentKey);
       setRowDrop(nextRowDrop);
       if (isPinnedRoot(activeId)) setReorderTarget(nextReorderTarget);
       const expand = resolveDwellExpansion({
@@ -1234,6 +1254,7 @@ export function useSectionThreadDnd({
           clearProjectedDrag();
           return;
         case "rejected":
+        case "unchanged":
           clearProjectedDrag();
           return;
       }
@@ -1292,6 +1313,8 @@ export function useSectionThreadDnd({
     onClickCapture,
     dragOverParentKey:
       dropDecisionLanded || reorderTarget !== null ? null : dragOverParentKey,
+    unchangedParentKey:
+      dropDecisionLanded || reorderTarget !== null ? null : unchangedParentKey,
     nestTarget: dropDecisionLanded ? null : rowDrop,
     reorderTarget: dropDecisionLanded ? null : reorderTarget,
     pinnedItemIds,

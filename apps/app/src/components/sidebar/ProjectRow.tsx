@@ -133,7 +133,10 @@ import {
   getSidebarThreadGroupLineLeft,
   getSidebarThreadRowPaddingLeft,
 } from "./sidebarRowClasses";
-import { SectionDropTargetOverlay } from "./useSectionDropTargetActive";
+import {
+  resolveSectionDropTargetState,
+  SectionDropTargetOverlay,
+} from "./useSectionDropTargetState";
 import {
   SIDEBAR_DRAG_OVERLAY_DROP_ANIMATION,
   useSidebarSortable,
@@ -1317,9 +1320,10 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
   const headerDepth = getThreadRowDepth({ depthOffset, nodeDepth: 0, variant });
   const stickyLevel =
     depthOffset < SIDEBAR_STICKY_PARENT_DEPTH_CAP ? depthOffset : undefined;
-  const isThreadDropTarget =
-    sectionDnd?.activeThread != null &&
-    sectionDnd.dragOverParentKey === sectionKey;
+  const threadDropState = resolveSectionDropTargetState(
+    sectionDnd ?? null,
+    sectionKey,
+  );
   const showChildren = !isCollapsed && section.items.length > 0;
   const sectionThreads = useMemo(
     () => getProjectThreadItemDescendants(section.items),
@@ -1435,7 +1439,9 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
       data-sidebar-section-id={section.id}
       className="relative space-y-0.5 rounded-md transition-colors"
     >
-      {isThreadDropTarget ? <SectionDropTargetOverlay /> : null}
+      {threadDropState ? (
+        <SectionDropTargetOverlay state={threadDropState} />
+      ) : null}
       <SidebarSectionRow
         name={section.name}
         label={section.name}

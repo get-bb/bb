@@ -121,6 +121,7 @@ function renderPinnedParentWithChild({
     consumeClickSuppression: () => false,
     dndContextProps: {},
     dragOverParentKey: null,
+    unchangedParentKey: null,
     itemIdsByParentKey: new Map(),
     nestTarget: null,
     onClickCapture: () => undefined,
