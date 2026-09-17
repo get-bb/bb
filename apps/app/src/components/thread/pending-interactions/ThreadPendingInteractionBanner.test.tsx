@@ -14,6 +14,10 @@ import {
   resetPluginLogoStoreForTest,
   setPluginLogoUrls,
 } from "@/lib/plugin-logos";
+import {
+  markPluginFrontendsSettled,
+  resetPluginFrontendBootStateForTest,
+} from "@/lib/plugin-frontend-boot-state";
 import { resetAllCrashedPluginSlotsForTest } from "../../plugin/PluginSlotMount";
 import { ThreadPendingInteractionBanner } from "./ThreadPendingInteractionBanner";
 import { makePluginRegistrationSet as registrationSet } from "@/test/fixtures/plugins";
@@ -184,6 +188,7 @@ afterEach(() => {
   resetPluginSlotStoreForTest();
   resetPluginLogoStoreForTest();
   resetAllCrashedPluginSlotsForTest();
+  resetPluginFrontendBootStateForTest();
   mocks.resolveMutateAsync.mockClear();
   mocks.stopMutateAsync.mockClear();
 });
@@ -334,10 +339,11 @@ describe("ThreadPendingInteractionBanner request family", () => {
     expect(screen.getByTestId("secret-form").textContent).toBe(
       'Add a token:{"fields":["TOKEN"]}',
     );
-    expect(screen.getByText(/The agent asks through/)).toBeTruthy();
+    expect(screen.getByText(/Asked by the agent through/)).toBeTruthy();
   });
 
   it("backs out of a provider's request by stopping the turn, never by cancelling", () => {
+    markPluginFrontendsSettled();
     renderBanner(providerPluginRequest);
     expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Stop turn" }));
