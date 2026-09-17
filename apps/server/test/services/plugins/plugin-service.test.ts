@@ -619,6 +619,71 @@ describe("plugin service", () => {
     expect(service.getApi("vanishing")).toBeDefined();
   });
 
+  it("treats an installed plugin the loader has not reached as a live wait holder", async () => {
+    const pendingRoot = await writePlugin(workDir, {
+      name: "bb-plugin-pending",
+      serverSource: `export default function plugin() {}`,
+    });
+    const brokenRoot = await writePlugin(workDir, {
+      name: "bb-plugin-broken",
+      serverSource: `export default function plugin() { throw new Error("nope"); }`,
+    });
+    for (const [id, rootDir] of [
+      ["pending", pendingRoot],
+      ["broken", brokenRoot],
+    ] as const) {
+      upsertInstalledPlugin(db, {
+        id,
+        source: `path:${rootDir}`,
+        provenance: { kind: "direct" },
+        sourceIntent: { kind: "path", canonicalPath: rootDir },
+        exactResolution: { kind: "path" },
+        updateState: {
+          lastCheckAt: null,
+          availableCompatibleVersion: null,
+          newestIncompatibleVersion: null,
+          statusDetail: null,
+        },
+        activeArtifactId: null,
+        rootDir,
+        version: "0.1.0",
+        enabled: true,
+      });
+    }
+
+    const booting = createPluginService({
+      aiServices: createAiServiceRegistry(),
+      telemetry: createNoopTelemetryService(),
+      db,
+      hub: {
+        getDaemonSessionIdForHost: () => null,
+        notifyPluginSignal: () => 0,
+        notifySystem: () => {},
+      },
+      logger,
+      dataDir: join(workDir, "data"),
+      appVersion: "0.9.0",
+      loadTimeoutMs: 2000,
+      bundledPlugins: [],
+    });
+    try {
+      expect(booting.isPluginLoaded("pending")).toBe(false);
+      expect(booting.isPluginLoadedOrPending("pending")).toBe(true);
+      expect(booting.isPluginLoadedOrPending("never-installed")).toBe(false);
+
+      await booting.start();
+
+      expect(booting.isPluginLoaded("pending")).toBe(true);
+      expect(booting.isPluginLoadedOrPending("pending")).toBe(true);
+      expect(booting.isPluginLoadedOrPending("broken")).toBe(false);
+
+      await booting.setEnabled("pending", false);
+      expect(booting.isPluginLoadedOrPending("pending")).toBe(false);
+    } finally {
+      await booting.stop();
+    }
+  });
+
   it("logs a warning when a host upgrade makes an installed plugin incompatible (#1915)", async () => {
     const lines: string[] = [];
     const push = (level: string) => (message: unknown) => {

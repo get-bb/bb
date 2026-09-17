@@ -274,12 +274,17 @@ export interface PluginService {
   ): Promise<InstalledPlugin | undefined>;
   reload(id?: string): Promise<PluginReloadOutcome>;
   getApi(id: string): BbPluginApi | undefined;
-  /**
-   * Whether this plugin's runtime is live right now. Core uses it to decide
-   * whether a `plugin:<id>` owner still exists — a queue wait whose owner is
-   * gone is cleared as `orphaned` rather than stranding the user's turn.
-   */
+  /** Whether this plugin's runtime is live right now. */
   isPluginLoaded(id: string): boolean;
+  /**
+   * Whether a `plugin:<id>` wait still has an owner — the plugin is loaded, or
+   * it is installed, enabled and the loader has not reached it yet. Core clears
+   * a wait whose owner is gone rather than stranding the user's turn, and asks
+   * this instead of {@link isPluginLoaded} because nothing is loaded while the
+   * server boots: a plugin still queued behind `start()` has to count as
+   * present, or its holds are released seconds before it can restate them.
+   */
+  isPluginLoadedOrPending(id: string): boolean;
   /**
    * On-disk asset backing GET /plugins/:id/assets/app.{js,css}: file path
    * plus the current content hash (the route compares ?h against it for
@@ -1608,6 +1613,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
     isPluginLoaded(id) {
       return loaded.has(id);
+    },
+
+    isPluginLoadedOrPending(id) {
+      if (loaded.has(id)) return true;
+      const row = getInstalledPlugin(deps.db, id);
+      return row !== undefined && getStatus(row).status === "starting";
     },
 
     getAppAsset(id, kind) {
