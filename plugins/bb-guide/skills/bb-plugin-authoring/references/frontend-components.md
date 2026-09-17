@@ -330,11 +330,6 @@ prefer the plugin's `bb.branding.icon` or compact asset when it ships one, so
 the name is their fallback; `experimental_setThreadRowStatus` always draws what
 it is given.
 
-Not the manifest's `bb.branding.experimental_icons` map: those namespaced
-glyphs resolve only in tool presentations, provider declarations and bridge
-rows, and fall back to `Zap` here. A `/` in a registered name is spelling, not
-a reference to that map.
-
 `experimental_Icon` accepts `name`, optional `fallback` (default `Zap`),
 `className`, `style`, `aria-label`, and `aria-hidden`. Registered artwork receives
 `className` for sizing and inherits color. Missing names try the fallback, then
