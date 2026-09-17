@@ -172,16 +172,24 @@ export function PluginCollectionToolbar({
         }
         controls={
           <>
-            <ResourceSortMenu {...sortProps} />
+            <ResourceSortMenu {...sortProps} showLabel />
             {showCategoryFilter ? (
               <PluginBrowseCategoryFilter {...categoryProps} />
             ) : null}
             {sourceProps ? (
-              <ResourceMultiSelectMenu {...sourceProps} icon="Layers" />
+              <ResourceMultiSelectMenu
+                {...sourceProps}
+                icon="Layers"
+                showLabel
+              />
             ) : null}
           </>
         }
-        overflowControls={<PluginControlsMenu pages={controls} />}
+        combinedControls={
+          controls.length > 1 ? (
+            <PluginControlsMenu pages={controls} />
+          ) : undefined
+        }
       />
     </div>
   );
@@ -343,6 +351,7 @@ export function PluginBrowseCategoryFilter(props: PluginCategoryFilterProps) {
       <PopoverTrigger asChild>
         <ResourceControlButton
           label={`Filter plugins by category: ${accessibleSelectionLabel}`}
+          text="Category"
           tooltip={`Category: ${accessibleSelectionLabel}`}
           icon="SlidersHorizontal"
           active={value.length > 0}
