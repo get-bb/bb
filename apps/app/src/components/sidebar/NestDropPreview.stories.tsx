@@ -274,7 +274,15 @@ function VariantControlMain() {
   );
 }
 
-function SelectedTarget({ underlineBottom }: { underlineBottom: number }) {
+function SelectedTarget({
+  underlineBottom,
+  underlineHeight = 2,
+  underlineRight = 4,
+}: {
+  underlineBottom: number;
+  underlineHeight?: number;
+  underlineRight?: number;
+}) {
   return (
     <div className="relative">
       <span
@@ -286,8 +294,13 @@ function SelectedTarget({ underlineBottom }: { underlineBottom: number }) {
       </div>
       <span
         aria-hidden="true"
-        className="pointer-events-none absolute right-1 z-20 h-0.5 rounded-full bg-sidebar-ring"
-        style={{ left: CHILD_INDENT_PX, bottom: underlineBottom }}
+        className="pointer-events-none absolute z-20 rounded-full bg-sidebar-ring"
+        style={{
+          left: CHILD_INDENT_PX,
+          right: underlineRight,
+          bottom: underlineBottom,
+          height: underlineHeight,
+        }}
       />
     </div>
   );
@@ -295,13 +308,21 @@ function SelectedTarget({ underlineBottom }: { underlineBottom: number }) {
 
 function VariantSelectedUnderline({
   underlineBottom,
+  underlineHeight,
+  underlineRight,
 }: {
   underlineBottom: number;
+  underlineHeight?: number;
+  underlineRight?: number;
 }) {
   return (
     <Stage>
       <Row entry={SIBLING_ABOVE} depth={PARENT_DEPTH} />
-      <SelectedTarget underlineBottom={underlineBottom} />
+      <SelectedTarget
+        underlineBottom={underlineBottom}
+        underlineHeight={underlineHeight}
+        underlineRight={underlineRight}
+      />
       <Row entry={EXISTING_CHILD} depth={CHILD_DEPTH} isCompact />
       <Row entry={SIBLING_BELOW} depth={PARENT_DEPTH} />
       <DraggedRow />
@@ -359,6 +380,26 @@ export function Variants() {
         hint="the underline sits 3px up so it reads as its own mark instead of merging with the ring's bottom edge"
       >
         <VariantSelectedUnderline underlineBottom={3} />
+      </StoryRow>
+      <StoryRow
+        label="H3 — flush below the ring"
+        hint="the rule hangs directly under the ring's bottom edge, so from the child indent rightwards the ring simply reads thicker"
+      >
+        <VariantSelectedUnderline
+          underlineBottom={-2}
+          underlineHeight={2}
+          underlineRight={2}
+        />
+      </StoryRow>
+      <StoryRow
+        label="H4 — flush, heavier"
+        hint="same idea at 3px, if the thickening needs to carry further"
+      >
+        <VariantSelectedUnderline
+          underlineBottom={-3}
+          underlineHeight={3}
+          underlineRight={2}
+        />
       </StoryRow>
       <StoryRow
         label="G — control (origin/main)"
