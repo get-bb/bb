@@ -250,7 +250,7 @@ function PluginControlsMenu({
               ? `Plugin controls: ${activeLabels.join(", ")}`
               : "Plugin controls"
           }
-          icon="MoreHorizontal"
+          icon="SlidersHorizontal"
           active={activeLabels.length > 0}
           open={open}
         />
