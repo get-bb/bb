@@ -111,7 +111,13 @@ export function ResourceToolbar({
         />
       </div>
       {controls ? (
-        <div ref={controlsRef} className="flex shrink-0 items-center gap-2">
+        <div
+          ref={controlsRef}
+          className={cn(
+            "flex shrink-0 items-center",
+            compact ? "gap-2" : "gap-1.5",
+          )}
+        >
           {overflow && overflowControls ? overflowControls : controls}
         </div>
       ) : null}
