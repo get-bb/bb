@@ -11,6 +11,7 @@ import {
 const state = vi.hoisted(() => ({
   keychain: "",
   file: "",
+  settings: "{}",
 }));
 
 vi.mock("node:child_process", () => ({
@@ -31,7 +32,9 @@ vi.mock("node:fs/promises", () => ({
       Promise.resolve(
         file.endsWith(".credentials.json")
           ? state.file
-          : JSON.stringify({ oauthAccount: { emailAddress: null } }),
+          : file.endsWith("settings.json")
+            ? state.settings
+            : JSON.stringify({ oauthAccount: { emailAddress: null } }),
       ),
   },
 }));
@@ -73,6 +76,10 @@ beforeEach(() => {
   });
   state.file = credentials;
   state.keychain = Buffer.from(credentials, "utf8").toString("hex");
+  state.settings = "{}";
+  delete process.env.CLAUDE_CODE_OAUTH_TOKEN;
+  delete process.env.CLAUDE_CODE_SUBSCRIPTION_TYPE;
+  delete process.env.CLAUDE_CODE_RATE_LIMIT_TIER;
   vi.stubGlobal(
     "fetch",
     vi.fn().mockResolvedValue({
@@ -101,6 +108,48 @@ describe("Claude Code credential loading", () => {
     expect(result).toEqual({
       supported: true,
       usage: expect.objectContaining({ status: "ok" }),
+    });
+  });
+
+  it("prefers Claude's configured long-lived token over an expired Keychain login", async () => {
+    state.keychain = JSON.stringify({
+      claudeAiOauth: {
+        accessToken: "expired-keychain-token",
+        expiresAt: 1,
+        subscriptionType: "pro",
+        rateLimitTier: "default_claude_max_5x",
+      },
+    });
+    state.settings = JSON.stringify({
+      env: {
+        CLAUDE_CODE_OAUTH_TOKEN: "one-year-token",
+        CLAUDE_CODE_SUBSCRIPTION_TYPE: "max",
+        CLAUDE_CODE_RATE_LIMIT_TIER: "default_claude_max_20x",
+      },
+    });
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ limits: [] }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await getClaudeProviderUsage();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: "Bearer one-year-token",
+        }),
+      }),
+    );
+    expect(result).toEqual({
+      supported: true,
+      usage: expect.objectContaining({
+        status: "ok",
+        planLabel: "Max (20x)",
+      }),
     });
   });
 

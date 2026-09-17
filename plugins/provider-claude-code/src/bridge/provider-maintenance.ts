@@ -44,6 +44,18 @@ type ClaudeCredentials = z.infer<
   typeof claudeCredentialsSchema
 >["claudeAiOauth"];
 
+const claudeSettingsSchema = z
+  .object({
+    env: z
+      .object({
+        CLAUDE_CODE_OAUTH_TOKEN: z.string().trim().min(1).optional(),
+        CLAUDE_CODE_SUBSCRIPTION_TYPE: z.string().trim().min(1).optional(),
+        CLAUDE_CODE_RATE_LIMIT_TIER: z.string().trim().min(1).optional(),
+      })
+      .nullish(),
+  })
+  .passthrough();
+
 const claudeAccountSchema = z.object({
   oauthAccount: z
     .object({
@@ -275,7 +287,46 @@ function parseCredentials(raw: string): ClaudeCredentials | null {
   return null;
 }
 
+function credentialsFromEnv(
+  env: Record<string, string | undefined>,
+): ClaudeCredentials | null {
+  const accessToken = env.CLAUDE_CODE_OAUTH_TOKEN?.trim();
+  if (!accessToken) return null;
+  return {
+    accessToken,
+    expiresAt: null,
+    subscriptionType: env.CLAUDE_CODE_SUBSCRIPTION_TYPE?.trim() || null,
+    rateLimitTier: env.CLAUDE_CODE_RATE_LIMIT_TIER?.trim() || null,
+  };
+}
+
+async function readSettingsCredentials(): Promise<ClaudeCredentials | null> {
+  try {
+    const parsed = claudeSettingsSchema.safeParse(
+      JSON.parse(
+        await fs.readFile(
+          path.join(os.homedir(), ".claude", "settings.json"),
+          "utf8",
+        ),
+      ),
+    );
+    return parsed.success && parsed.data.env
+      ? credentialsFromEnv(parsed.data.env)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 async function readCredentials(): Promise<ClaudeCredentials | null> {
+  // Match Claude Code's authentication precedence. A setup-token credential is
+  // commonly configured in settings.json under env and deliberately replaces
+  // the short-lived login credential in Keychain. Reading Keychain first makes
+  // usage checks expire even while every Claude session remains authenticated.
+  const configuredCredentials =
+    credentialsFromEnv(process.env) ?? (await readSettingsCredentials());
+  if (configuredCredentials !== null) return configuredCredentials;
+
   const keychainCredentials = await readKeychainCredentials();
   if (keychainCredentials !== null) {
     const parsed = parseCredentials(keychainCredentials);
