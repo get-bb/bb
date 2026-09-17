@@ -465,11 +465,15 @@ describe("mobile recents hierarchy interaction", () => {
     expect(store.get(collapsedThreadIdsAtom)).toEqual([]);
   });
 
-  it("de-emphasizes the provider tile on child rows only", () => {
+  it("de-emphasizes the leading tile on child rows only", () => {
     renderTree();
 
-    const [parentRow, childRow] = screen.getAllByRole("link");
-    const parentTile = parentRow?.firstElementChild;
+    const parentTile = screen.getByRole("button", {
+      name: "Hide threads under Rework folder model",
+    });
+    const childRow = screen.getByRole("link", {
+      name: /Open Audit folder query paths/,
+    });
     const childTile = childRow?.firstElementChild;
     if (
       !(parentTile instanceof HTMLElement) ||
@@ -487,19 +491,21 @@ describe("mobile recents hierarchy interaction", () => {
     }
 
     for (const tile of [parentTile, childTile]) {
-      expect(tile.className).toContain("size-7");
+      expect(tile.className).toContain("h-7");
+      expect(tile.className).toContain("w-11");
       expect(tile.className).toContain("border");
     }
   });
 
-  it("centers provider tiles against the title and metadata block", () => {
+  it("centers leading tiles against the title and metadata block", () => {
     renderTree();
 
-    const rows = screen.getAllByRole("link");
+    const rows = screen.getAllByRole("listitem");
     for (const row of rows) {
-      const tile = row.firstElementChild;
+      const tile =
+        row.querySelector("button") ?? row.querySelector("a")?.firstElementChild;
       if (!(tile instanceof HTMLElement)) {
-        throw new Error("Expected a leading provider tile");
+        throw new Error("Expected a leading tile");
       }
       expect(row.className).toContain("items-center");
       expect(tile.className).not.toContain("self-start");
