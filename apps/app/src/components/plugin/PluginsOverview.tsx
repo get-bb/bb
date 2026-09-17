@@ -25,10 +25,12 @@ import {
   type AddPluginInitial,
 } from "@/components/plugin/management/AddPluginDialog";
 import { BrowsePluginsTab } from "@/components/plugin/management/BrowsePluginsTab";
-import { CheckPluginUpdatesButton } from "@/components/plugin/management/CheckPluginUpdatesButton";
 import { InstalledPluginsTab } from "@/components/plugin/management/InstalledPluginsTab";
 import { PluginAuthorPage } from "@/components/plugin/management/PluginAuthorPage";
-import { usePluginCatalogSearch } from "@/hooks/queries/plugin-catalog-queries";
+import {
+  usePluginCatalogSearch,
+  usePluginUpdateCheck,
+} from "@/hooks/queries/plugin-catalog-queries";
 import { installedPluginCatalogEntry } from "./management/installed-plugin-catalog";
 import { PluginCollectionToolbar } from "./management/PluginBrowseControls";
 import {
@@ -66,6 +68,7 @@ export function PluginsOverview({
   );
   const activeMode =
     mode ?? (searchParams.get("view") === "installed" ? "installed" : "browse");
+  usePluginUpdateCheck(null, { enabled: activeMode === "installed" });
   const authorKey = searchParams.get("author");
   const catalogQuery = usePluginCatalogSearch("", {
     enabled: activeMode === "installed",
@@ -252,22 +255,20 @@ export function PluginsOverview({
             changeSearchParams={changeSearchParams}
             action={installedActions}
             additionalControls={
-              <>
-                <ResourceMultiSelectMenu
-                  label="Source"
-                  icon="FolderGit"
-                  compact
-                  options={sourceFilterOptions}
-                  selectedValues={activeSourceFilters}
-                  onChange={(values) =>
-                    changeSearchParams((next) => {
-                      next.delete("source");
-                      for (const value of values) next.append("source", value);
-                    })
-                  }
-                />
-                {plugins.length > 0 ? <CheckPluginUpdatesButton /> : null}
-              </>
+              <ResourceMultiSelectMenu
+                label="Source"
+                icon="Layers"
+                compact
+                clearInFooter
+                options={sourceFilterOptions}
+                selectedValues={activeSourceFilters}
+                onChange={(values) =>
+                  changeSearchParams((next) => {
+                    next.delete("source");
+                    for (const value of values) next.append("source", value);
+                  })
+                }
+              />
             }
           />
         }
