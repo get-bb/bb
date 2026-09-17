@@ -940,8 +940,8 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
                   PROMPT_STACK_ROW_ACTION_TAKEOVER_CLASS,
                   "pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 items-center gap-0.5 rounded-md opacity-0 transition-opacity duration-[120ms] ease-out md:flex",
                   mobileActionsExpanded
-                    ? "flex max-md:pointer-events-auto max-md:opacity-100"
-                    : "max-md:hidden",
+                    ? "flex max-md:pointer-events-auto max-md:opacity-100 pointer-coarse:pointer-events-auto pointer-coarse:opacity-100 [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100"
+                    : "max-md:hidden pointer-coarse:hidden [@media(hover:none)]:hidden",
                   "group-hover/dispatch-row:pointer-events-auto group-hover/dispatch-row:opacity-100",
                   "group-focus-within/dispatch-row:pointer-events-auto group-focus-within/dispatch-row:opacity-100",
                 )}
@@ -1031,7 +1031,9 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
                 "group-focus-within/dispatch-row:pointer-events-auto group-focus-within/dispatch-row:opacity-100",
                 "[@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100",
                 compact ? "size-7" : "size-8",
-                mobileActionsExpanded && "hidden",
+                mobileActionsExpanded
+                  ? "hidden"
+                  : "pointer-coarse:inline-flex pointer-coarse:pointer-events-auto pointer-coarse:opacity-100 [@media(hover:none)]:inline-flex",
               )}
               disabled={actionDisabled}
               aria-label={`Queued message ${index + 1} actions`}

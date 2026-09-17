@@ -10,7 +10,9 @@ import {
   within,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import * as clipboard from "@/lib/clipboard";
 import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
+import { HOVER_NONE_QUERY } from "@bb/shared-ui/hooks/use-media-query";
 import { POINTER_COARSE_QUERY } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import {
   computeMessageActionRowLayout,
@@ -69,6 +71,32 @@ function installControlledResizeObserver() {
 function mockMobileCoarsePointer() {
   vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
     matches: query === COMPACT_VIEWPORT_QUERY || query === POINTER_COARSE_QUERY,
+    media: query,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  }));
+}
+
+function mockWideCoarsePointer() {
+  vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
+    matches: query === POINTER_COARSE_QUERY,
+    media: query,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  }));
+}
+
+function mockWideNoHoverPointer() {
+  vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
+    matches: query === HOVER_NONE_QUERY,
     media: query,
     onchange: null,
     addListener: () => {},
@@ -314,6 +342,29 @@ describe("MessageActionBar", () => {
     expect(screen.getByRole("button", { name: "Copy message" })).toBeTruthy();
   });
 
+  it("passes image-only content to the tablet overflow copy action", async () => {
+    mockWideCoarsePointer();
+    const copy = vi
+      .spyOn(clipboard, "copyToClipboardWithToast")
+      .mockResolvedValue(true);
+    render(
+      <MessageActionBar
+        messageText=""
+        copyImageUrl="/attachments/screenshot.png"
+        alignment="end"
+        mobileActionDisplay="overflow"
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Message actions" }));
+    fireEvent.click(screen.getByRole("button", { name: "Copy message" }));
+    await waitFor(() =>
+      expect(copy).toHaveBeenCalledWith(
+        "",
+        expect.objectContaining({ imageUrl: "/attachments/screenshot.png" }),
+      ),
+    );
+  });
+
   it("omits the send-to-main action when no handler is supplied", () => {
     render(
       <MessageActionBar
@@ -441,6 +492,42 @@ describe("MessageActionBar", () => {
     ).toEqual(["Copy message", "Add to chat", "Fork into new thread"]);
     expect(
       screen.queryByRole("button", { name: "Message actions" }),
+    ).toBeNull();
+  });
+
+  it("uses the always-visible touch surface on wide coarse-pointer viewports", () => {
+    mockWideCoarsePointer();
+    render(
+      <MessageActionBar
+        messageText="The latest answer."
+        alignment="start"
+        mobileActionDisplay="inline"
+        onFork={vi.fn()}
+      />,
+    );
+
+    const fork = screen.getByRole("button", { name: "Fork into new thread" });
+    expect(fork.hasAttribute("data-state")).toBe(false);
+    expect(fork.classList).toContain("pointer-coarse:opacity-100");
+    expect(fork.classList).not.toContain("max-md:pointer-coarse:opacity-100");
+  });
+
+  it("uses the always-visible touch surface when the pointer cannot hover", () => {
+    mockWideNoHoverPointer();
+    render(
+      <MessageActionBar
+        messageText="The latest answer."
+        alignment="start"
+        mobileActionDisplay="overflow"
+        onFork={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "Message actions" }).classList,
+    ).toContain("[@media(hover:none)]:inline-flex");
+    expect(
+      screen.queryByRole("button", { name: "Fork into new thread" }),
     ).toBeNull();
   });
 
