@@ -120,28 +120,38 @@ function isDelegationMessage(
 
 function activeCommandMessage(
   state: ToolActivityProjectionState,
-): EventProjectionCommandMessage | null {
+): (Omit<EventProjectionCommandMessage, "output"> & { output: string }) | null {
   const { activeCell } = state.toolActivity;
-  return activeCell?.kind === "command" ? activeCell : null;
+  return activeCell?.kind === "command"
+    ? { ...activeCell, output: activeCell.output.read() }
+    : null;
 }
 
 function activeDelegationMessage(
   state: ToolActivityProjectionState,
-): EventProjectionDelegationMessage | null {
+):
+  | (Omit<EventProjectionDelegationMessage, "output"> & { output: string })
+  | null {
   const { activeCell } = state.toolActivity;
-  return activeCell?.kind === "delegation" ? activeCell : null;
+  return activeCell?.kind === "delegation"
+    ? { ...activeCell, output: activeCell.output.read() }
+    : null;
 }
 
 function commandMessages(
   state: ToolActivityProjectionState,
-): EventProjectionCommandMessage[] {
-  return state.messages.filter(isCommandMessage);
+): (Omit<EventProjectionCommandMessage, "output"> & { output: string })[] {
+  return state.messages
+    .filter(isCommandMessage)
+    .map((message) => ({ ...message, output: message.output.read() }));
 }
 
 function delegationMessages(
   state: ToolActivityProjectionState,
-): EventProjectionDelegationMessage[] {
-  return state.messages.filter(isDelegationMessage);
+): (Omit<EventProjectionDelegationMessage, "output"> & { output: string })[] {
+  return state.messages
+    .filter(isDelegationMessage)
+    .map((message) => ({ ...message, output: message.output.read() }));
 }
 
 function beginCommand(state: ToolActivityProjectionState): void {

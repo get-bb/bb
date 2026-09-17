@@ -15,7 +15,9 @@ sequence. The latest completed context clear is the history floor.
 
 A page owns an event window `[start, end)`. It returns projected rows whose
 `sourceSeqStart` falls inside that window, in display order. Context loaded
-outside the window helps render those rows but does not change ownership.
+outside the window helps render those rows but does not change ownership. Each
+response returns a row identity once, including when repeated lifecycle events
+produce the same projected row more than once.
 Visible user rows, including accepted steers, define conversation segments
 inside the window; the leading segment can be partial. Hidden and empty
 requests do not count as visible segments. The response takes up to
@@ -101,6 +103,27 @@ after grouping. At least one indivisible row is returned, even if it exceeds
 the target. Complete-group queries and grouping work can exceed those budgets.
 Profiles include context and ordering queries; endpoint timing also includes
 serialization, response parsing, and client merging in the corpus benchmark.
+
+The projector builds one structural row plan for both collapsed and expanded
+rendering. A summary's identity, source bounds, timestamps, count, and message
+membership are decided before its child rows are rendered. The detail endpoint
+selects that planned summary first and materializes only its children; unrelated
+summaries are not expanded to find a match. Collapsed rendering no longer needs
+a separate message-pruning policy that anticipates the grouping rules.
+
+Delegation bounds are computed from message metadata. Nested projection trees
+are created only when a visible delegation needs its children. Command, tool,
+and delegation output operations are recorded in order per call, and replayed
+when the output is rendered. This preserves partial lines, resets, interruptions,
+late output, and reused call IDs without reconstructing hidden output strings.
+Visible ongoing work and explicit `includeNestedRows=true` requests still
+materialize the contents they return.
+
+These are materialization savings, not a metadata-only database index. Selection
+still reads and decodes event payloads for the required context. Cold request
+cost remains dependent on that context; a large collapsed turn is not a
+constant-time lookup. Route-cache hits and unchanged deltas are separate cases
+and must be benchmarked separately from cold opens and appended updates.
 
 `GET /api/v1/threads/:id/timeline/turn-summary-details` and
 `sdk.threads.timelineTurnSummaryDetails` retain the existing `turnId`,

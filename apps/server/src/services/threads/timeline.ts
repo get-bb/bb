@@ -1422,7 +1422,6 @@ function buildThreadTimelineInternal(
           ...commonProjectionOptions,
           includeNestedRows,
           providerId: thread.providerId,
-          turnMessageDetail: includeNestedRows ? "full" : "summary",
         },
       }),
   );
@@ -1640,7 +1639,6 @@ export function buildThreadConversationOutline(
         providerId: thread.providerId,
         threadName: thread.title ?? thread.titleFallback ?? "",
         threadStatus: thread.status,
-        turnMessageDetail: "summary",
         workspaceRoot: resolveThreadWorkspaceRoot(db, thread),
       },
     });

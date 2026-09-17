@@ -16,11 +16,6 @@ import type {
 import { findLastTerminalTimelineMessage } from "./timeline-message-helpers.js";
 import { getProjectionSummaryCount } from "./apply-turn-message-detail.js";
 
-interface MessageTimingSource {
-  createdAt: number;
-  startedAt?: number;
-}
-
 interface ProjectionMessageBounds {
   createdAt: number;
   sourceSeqEnd: number;
@@ -92,117 +87,39 @@ function toolCallAsDelegationMessage(
     ...(model ? { model } : {}),
     childRef: null,
     background: false,
-    childProjection: {
+    getChildProjection: () => ({
       state: {
         activeThinking: null,
         activeWorkflows: [],
         activeBackgroundCommands: [],
       },
       entries: [],
-    },
+    }),
   };
 }
 
-function maybeStartedAt(
-  message: MessageTimingSource,
-  childBounds: ProjectionMessageBounds | null,
-): number | undefined {
-  if (childBounds) {
-    return Math.min(getMessageStartedAt(message), childBounds.startedAt);
-  }
-  return message.startedAt;
-}
-
-function toDelegationMessage(
-  message: EventProjectionDelegationMessage,
-  childProjection: EventProjection,
-): EventProjectionDelegationMessage {
-  const resolvedChildProjection = mergeChildProjections(
-    message.childProjection,
-    childProjection,
-  );
-  const childBounds = getProjectionMessageBounds(resolvedChildProjection);
-  const startedAt = maybeStartedAt(message, childBounds);
-  const delegation: EventProjectionDelegationMessage = {
-    ...message,
-    sourceSeqStart: childBounds
-      ? Math.min(message.sourceSeqStart, childBounds.sourceSeqStart)
-      : message.sourceSeqStart,
-    sourceSeqEnd: childBounds
-      ? Math.max(message.sourceSeqEnd, childBounds.sourceSeqEnd)
-      : message.sourceSeqEnd,
-    createdAt: childBounds
-      ? Math.max(message.createdAt, childBounds.createdAt)
-      : message.createdAt,
-    childProjection: resolvedChildProjection,
-  };
-  if (startedAt !== undefined) {
-    delegation.startedAt = startedAt;
-  }
-  if (message.parentToolCallId) {
-    delegation.parentToolCallId = message.parentToolCallId;
-  }
-  return delegation;
-}
-
-function mergeChildProjections(
-  existingProjection: EventProjection,
-  discoveredProjection: EventProjection,
-): EventProjection {
-  if (existingProjection.entries.length === 0) {
-    return discoveredProjection;
-  }
-  if (discoveredProjection.entries.length === 0) {
-    return existingProjection;
-  }
-
-  const existingMessageIds = new Set(
-    existingProjection.entries
-      .flatMap((entry) => getProjectionEntryMessages(entry))
-      .map((message) => message.id),
-  );
-  const discoveredEntries = discoveredProjection.entries.filter((entry) =>
-    getProjectionEntryMessages(entry).some(
-      (message) => !existingMessageIds.has(message.id),
-    ),
-  );
-
-  if (discoveredEntries.length === 0) {
-    return existingProjection;
-  }
-
+function messageBounds(
+  message: EventProjectionMessage,
+): ProjectionMessageBounds {
   return {
-    state: existingProjection.state,
-    entries: [...existingProjection.entries, ...discoveredEntries],
+    sourceSeqStart: message.sourceSeqStart,
+    sourceSeqEnd: message.sourceSeqEnd,
+    startedAt: getMessageStartedAt(message),
+    createdAt: message.createdAt,
   };
 }
 
-function getProjectionMessageBounds(
-  projection: EventProjection,
-): ProjectionMessageBounds | null {
-  let bounds: ProjectionMessageBounds | null = null;
-  for (const entry of projection.entries) {
-    for (const message of getProjectionEntryMessages(entry)) {
-      const startedAt = getMessageStartedAt(message);
-      bounds = bounds
-        ? {
-            sourceSeqStart: Math.min(
-              bounds.sourceSeqStart,
-              message.sourceSeqStart,
-            ),
-            sourceSeqEnd: Math.max(bounds.sourceSeqEnd, message.sourceSeqEnd),
-            startedAt: Math.min(bounds.startedAt, startedAt),
-            createdAt: Math.max(bounds.createdAt, message.createdAt),
-          }
-        : {
-            sourceSeqStart: message.sourceSeqStart,
-            sourceSeqEnd: message.sourceSeqEnd,
-            startedAt,
-            createdAt: message.createdAt,
-          };
-    }
-  }
-  return bounds;
+function includeBounds(
+  target: ProjectionMessageBounds,
+  source: ProjectionMessageBounds,
+): void {
+  target.sourceSeqStart = Math.min(
+    target.sourceSeqStart,
+    source.sourceSeqStart,
+  );
+  target.sourceSeqEnd = Math.max(target.sourceSeqEnd, source.sourceSeqEnd);
+  target.startedAt = Math.min(target.startedAt, source.startedAt);
+  target.createdAt = Math.max(target.createdAt, source.createdAt);
 }
 
 function buildSourceTurn(
@@ -267,6 +184,10 @@ function isSameTurnEntry(
 }
 
 class SemanticProjectionBuilder {
+  private readonly boundsByMessage = new Map<
+    EventProjectionMessage,
+    ProjectionMessageBounds
+  >();
   private readonly attachedMessageIds = new Set<string>();
   private readonly childrenByParentCallId = new Map<
     string,
@@ -393,17 +314,38 @@ class SemanticProjectionBuilder {
     };
   }
 
+  private boundsForMessage(
+    message: EventProjectionMessage,
+  ): ProjectionMessageBounds {
+    const cached = this.boundsByMessage.get(message);
+    if (cached) return cached;
+    const bounds = messageBounds(message);
+    this.boundsByMessage.set(message, bounds);
+    if (message.kind === "delegation") {
+      for (const child of this.childrenByParentCallId.get(message.callId) ??
+        []) {
+        includeBounds(bounds, this.boundsForMessage(child.message));
+      }
+    }
+    return bounds;
+  }
+
   private toSemanticMessage(
     message: EventProjectionMessage,
   ): EventProjectionMessage {
-    if (!isDelegationSourceMessage(message)) {
-      return message;
-    }
-
-    const childProjection = this.buildFlatChildProjection(
-      this.childrenByParentCallId.get(message.callId) ?? [],
-    );
-    return toDelegationMessage(message, childProjection);
+    if (!isDelegationSourceMessage(message)) return message;
+    const children = this.childrenByParentCallId.get(message.callId) ?? [];
+    const bounds = this.boundsForMessage(message);
+    let childProjection: EventProjection | undefined;
+    return {
+      ...message,
+      sourceSeqStart: bounds.sourceSeqStart,
+      sourceSeqEnd: bounds.sourceSeqEnd,
+      createdAt: bounds.createdAt,
+      ...(children.length > 0 ? { startedAt: bounds.startedAt } : {}),
+      getChildProjection: () =>
+        (childProjection ??= this.buildFlatChildProjection(children)),
+    };
   }
 }
 

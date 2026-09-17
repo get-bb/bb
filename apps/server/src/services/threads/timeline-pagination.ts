@@ -110,11 +110,15 @@ export function paginateTimelineRows(
   const segments = buildTimelineLogicalSegments(args);
   const selectedSegments = segments.slice(-page.segmentLimit);
   const returnedRows = new Map<string, TimelineRow>();
-  const collectRows = (): TimelineRow[] =>
-    rows.flatMap((row) => {
+  const collectRows = (): TimelineRow[] => {
+    const collected = new Set<string>();
+    return rows.flatMap((row) => {
       const returned = returnedRows.get(row.id);
-      return returned === undefined ? [] : [returned];
+      if (returned === undefined || collected.has(row.id)) return [];
+      collected.add(row.id);
+      return [returned];
     });
+  };
   const olderRowsSourceSeqEnd = (
     omittedContentSourceSeqEnd: number | null,
   ): number | null =>

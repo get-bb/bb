@@ -1,3 +1,4 @@
+import { ExecutionOutputQueue } from "../src/execution-output.js";
 import { turnScope } from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import { groupCompletedTurnMessages } from "../src/completed-turn-grouping.js";
@@ -49,7 +50,7 @@ function commandMessage(args: MessageBaseArgs): EventProjectionCommandMessage {
     cwd: "/repo",
     parsedIntents: [],
     source: null,
-    output: "",
+    output: new ExecutionOutputQueue().create(),
     exitCode: 0,
     completedAt: args.seq,
     approvalStatus: null,

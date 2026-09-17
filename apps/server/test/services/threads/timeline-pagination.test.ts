@@ -60,6 +60,23 @@ function assistantRow(seq: number): TimelineRow {
 }
 
 describe("paginateTimelineRows", () => {
+  it("returns each row identity once when projection repeats a row", () => {
+    const user = userRow({ id: "user", seq: 1, text: "Request" });
+    const assistant = assistantRow(2);
+    const page = paginateTimelineRows({
+      knownHasOlderSegments: false,
+      maxLeaves: 1_000,
+      maxBytes: 1_000_000,
+      ownedSequenceStart: 0,
+      ownedSequenceEnd: 3,
+      page: { kind: "latest", segmentLimit: 20 },
+      rows: [user, assistant, { ...assistant }],
+    });
+    expect(page.rows).toEqual([user, assistant]);
+    expect(page.olderCursor).toBeNull();
+    expect(page.hasOlderRows).toBe(false);
+  });
+
   it("keeps grouped user rows from one request in the same segment", () => {
     const rows: TimelineRow[] = [
       userRow({ id: "thread-1:user-seed:1", seq: 1, text: "older" }),
