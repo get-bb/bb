@@ -728,6 +728,12 @@ describe("CommandPalette", () => {
       const palette = screen.getByTestId("command-palette");
       expect(within(palette).queryByText("New thread")).toBeNull();
       expect(screen.queryByRole("option")).toBeNull();
+      const results = screen.getByRole("listbox", { name: "Threads" });
+      for (const heading of ["Recent", "Threads", "Archived"]) {
+        expect(
+          within(results).queryByText(heading, { exact: true }),
+        ).toBeNull();
+      }
       expect(searchField().hasAttribute("aria-activedescendant")).toBe(false);
       expect(palette.querySelector("[data-palette-footer]")).toBeNull();
       fireEvent.keyDown(searchField(), { key: "Enter" });
@@ -857,7 +863,7 @@ describe("CommandPalette", () => {
     }
   });
 
-  it("preserves title highlights and shows archived status after the metadata", async () => {
+  it("groups lifecycle with headings while preserving highlights and attention status", async () => {
     const active = makeThread("active", {
       title: "Matching active thread",
       lastReadAt: Date.now(),
@@ -896,9 +902,17 @@ describe("CommandPalette", () => {
     expectClasses(match, "bg-[var(--sidebar-search-match)]", "text-foreground");
     expectClasses(match?.parentElement, "text-foreground");
     expect(
-      within(rows[1]).getByRole("img", { name: "Archived thread" }),
+      within(rows[1]).getByRole("img", { name: "Unread thread succeeded" }),
     ).toBeTruthy();
-    expectClasses(rows[1].querySelector('[data-icon="Archive"]'), "size-3.5");
+    expect(results.querySelector('[data-icon="Archive"]')).toBeNull();
+    expectClasses(within(results).getByText("Threads"), "px-2", "py-1");
+    expectClasses(within(results).getByText("Archived"), "px-2", "py-1");
+    expect(rows[0].previousElementSibling).toBe(
+      within(results).getByText("Threads"),
+    );
+    expect(rows[1].previousElementSibling).toBe(
+      within(results).getByText("Archived"),
+    );
     expect(
       rows[1].querySelector("[data-palette-thread-metadata]")?.textContent,
     ).toBe("Palette project · just now");
@@ -908,7 +922,9 @@ describe("CommandPalette", () => {
     ).toHaveLength(1);
     expect(
       rows[1].querySelector("[data-palette-thread-details]")?.lastElementChild,
-    ).toBe(within(rows[1]).getByRole("img", { name: "Archived thread" }));
+    ).toBe(
+      within(rows[1]).getByRole("img", { name: "Unread thread succeeded" }),
+    );
   });
 
   it("keeps active and archived search results and restores active recents on clear", async () => {
@@ -940,12 +956,11 @@ describe("CommandPalette", () => {
     expect(rows).toHaveLength(2);
     expect(rows[0]?.textContent).toContain("Title active");
     expect(rows[1]?.textContent).toContain("Title archived");
-    expect(
-      within(rows[1]).getByRole("img", { name: "Archived thread" }),
-    ).toBeTruthy();
-
-    fireEvent.keyDown(input, { key: "End" });
+    fireEvent.keyDown(input, { key: "ArrowDown" });
     expect(rows[1]?.getAttribute("aria-selected")).toBe("true");
+    expect(input.getAttribute("aria-activedescendant")).toBe(rows[1].id);
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    expect(rows[0]?.getAttribute("aria-selected")).toBe("true");
     fireEvent.change(input, { target: { value: "" } });
     expect(within(results).getAllByRole("option")).toHaveLength(1);
     expect(within(results).getByRole("option").textContent).toContain(
@@ -954,6 +969,9 @@ describe("CommandPalette", () => {
     expect(
       within(results).getByRole("option").getAttribute("aria-selected"),
     ).toBe("true");
+    expect(within(results).getByText("Recent")).toBeTruthy();
+    expect(within(results).queryByText("Threads", { exact: true })).toBeNull();
+    expect(within(results).queryByText("Archived")).toBeNull();
   });
 
   it.each(["", "match"])(
@@ -1047,6 +1065,10 @@ describe("CommandPalette", () => {
         ).toContain("Palette project");
       }
       expect(within(results).queryByText("Recent") !== null).toBe(query === "");
+      expect(
+        within(results).queryByText("Threads", { exact: true }) !== null,
+      ).toBe(query !== "");
+      expect(within(results).queryByText("Archived")).toBeNull();
     },
   );
 
@@ -1117,6 +1139,10 @@ describe("CommandPalette", () => {
       name: "Search threads",
     });
     fireEvent.change(input, { target: { value: "matching" } });
+    const results = screen.getByRole("listbox", { name: "Threads" });
+    expect(within(results).getByText("Archived")).toBeTruthy();
+    expect(within(results).queryByText("Threads", { exact: true })).toBeNull();
+    expect(results.querySelector('[data-icon="Archive"]')).toBeNull();
     expect(screen.getByRole("option").querySelector("mark")?.textContent).toBe(
       "matching",
     );

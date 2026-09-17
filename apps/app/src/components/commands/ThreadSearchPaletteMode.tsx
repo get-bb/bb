@@ -1,4 +1,5 @@
 import {
+  Fragment,
   useCallback,
   useEffect,
   useId,
@@ -229,21 +230,27 @@ export function ThreadSearchPaletteMode({
       placeholder={presentation.placeholder}
       value={query}
     >
-      {result.isRecent && result.rows.length > 0 ? (
-        <div className={cn(CHROME_SECTION_LABEL_CLASS, "px-2 py-1")}>
-          Recent
-        </div>
-      ) : null}
       {emptyMessage === null ? (
         result.rows.map((row, index) => (
-          <ThreadSearchPaletteRow
-            key={`${row.id}:${row.primaryText}`}
-            id={`${optionIdPrefix}-${index}`}
-            isActive={index === activeIndex}
-            row={row}
-            onActivate={() => setHighlightedIndex(index)}
-            onSelect={() => openRow(row)}
-          />
+          <Fragment key={`${row.id}:${row.primaryText}`}>
+            {index === 0 ||
+            row.lifecycle !== result.rows[index - 1]?.lifecycle ? (
+              <div className={cn(CHROME_SECTION_LABEL_CLASS, "px-2 py-1")}>
+                {result.isRecent
+                  ? "Recent"
+                  : row.lifecycle === "archived"
+                    ? "Archived"
+                    : "Threads"}
+              </div>
+            ) : null}
+            <ThreadSearchPaletteRow
+              id={`${optionIdPrefix}-${index}`}
+              isActive={index === activeIndex}
+              row={row}
+              onActivate={() => setHighlightedIndex(index)}
+              onSelect={() => openRow(row)}
+            />
+          </Fragment>
         ))
       ) : showThreadListEmptyState ||
         (searchable && !isLoading && !hasLoadError) ? (
@@ -369,12 +376,7 @@ function ThreadSearchPaletteStatus({ row }: { row: PaletteThreadSearchRow }) {
     hasUnsubmittedDraft,
   );
   const pluginStatus = usePluginThreadRowStatus(row.threadId);
-  const archived = row.lifecycle === "archived";
-  const { accessibleLabel: label } = resolveThreadStatus(
-    state,
-    pluginStatus,
-    archived,
-  );
+  const { accessibleLabel: label } = resolveThreadStatus(state, pluginStatus);
   if (label === null) return null;
   return (
     <>
@@ -395,7 +397,6 @@ function ThreadSearchPaletteStatus({ row }: { row: PaletteThreadSearchRow }) {
           >
             <ThreadStatusGlyph
               {...state}
-              archived={archived}
               pluginStatus={pluginStatus}
               size="compact"
             />
