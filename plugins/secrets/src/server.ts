@@ -181,7 +181,7 @@ async function runRequest(
     {
       threadId: ctx.threadId,
       rendererId: SECRET_REQUEST_RENDERER_ID,
-      title: `Add secrets to ${destinationPath}`,
+      title: "Add secrets",
       payload: {
         purpose: parsed.purpose,
         destination: {

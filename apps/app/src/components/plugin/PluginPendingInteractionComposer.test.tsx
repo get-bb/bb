@@ -57,6 +57,26 @@ afterEach(() => {
 });
 
 describe("PluginPendingInteractionComposer", () => {
+  it("adds path break opportunities without changing the header label", () => {
+    const title = String.raw`Review /workspace/deep/path\.env.local`;
+    renderComposer(
+      <PluginPendingInteractionComposer
+        interaction={interaction}
+        request={{
+          pluginId: "secrets",
+          rendererId: "secret-request",
+          title,
+          data: interaction.payload.data,
+        }}
+        dismissal="cancel"
+      />,
+    );
+
+    const header = screen.getByRole("button", { name: title });
+    expect(header.textContent).toBe(title);
+    expect(header.querySelectorAll("wbr")).toHaveLength(4);
+  });
+
   it("preserves drafts and pauses keyboard listeners while collapsed", () => {
     const onShortcut = vi.fn();
     function QuestionRenderer() {
