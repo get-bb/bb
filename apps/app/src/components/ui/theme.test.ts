@@ -126,6 +126,27 @@ describe("theme.css neutral ramp", () => {
     expect(rule).toContain("linear-gradient(var(--sidebar), var(--sidebar))");
   });
 
+  it("collapses the label slot when a section header is not sticky", () => {
+    const compact = css.replace(/\s+/g, " ");
+    const declarations = (selector: string): string | undefined =>
+      compact.match(new RegExp(`${selector} \\{([^}]*)\\}`))?.[1];
+
+    expect(
+      declarations(
+        '\\[data-sidebar-sticky-stack\\] \\[data-sidebar-sticky-header="false"\\]',
+      ),
+    ).toContain(
+      "--bb-sidebar-sticky-project-top: var(--bb-sidebar-sticky-stack-padding-top)",
+    );
+    expect(
+      declarations(
+        "\\[data-sidebar-sticky-stack\\] \\[data-sidebar-sticky-section\\]",
+      ),
+    ).toContain(
+      "--bb-sidebar-sticky-parent-base-top: var(--bb-sidebar-sticky-project-top)",
+    );
+  });
+
   it("resolves the open-in-split thread tint to an opaque sidebar color", () => {
     const rule = css.match(
       /\.bb-sidebar-open-in-split-row\s*\{([^}]*)\}/s,

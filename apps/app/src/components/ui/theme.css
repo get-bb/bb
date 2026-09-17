@@ -382,6 +382,14 @@
     margin-top: var(--bb-sidebar-sticky-row-gap);
   }
 
+  /* A section header that scrolls with its contents (Pinned) pins no label, so
+     every tier below it moves up by the slot the label would have held. The
+     label slot is the origin both deeper offsets derive from, so collapsing it
+     here covers the project tier and every parent level at once. */
+  [data-sidebar-sticky-stack] [data-sidebar-sticky-header="false"] {
+    --bb-sidebar-sticky-project-top: var(--bb-sidebar-sticky-stack-padding-top);
+  }
+
   /* Section-variant trees (Pinned, projectless Threads) have no project tier:
      the hierarchy is label -> parents. Drop the parent base up one level so the
      first parent pins directly under the section label instead of reserving an
