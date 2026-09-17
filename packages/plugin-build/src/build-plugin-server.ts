@@ -89,6 +89,7 @@ export async function buildPluginServer(
       toolchain.esbuild
     )) as typeof import("esbuild");
     await esbuild.build({
+      absWorkingDir: rootDir,
       entryPoints: [serverEntry],
       outfile: stagedJsPath,
       bundle: true,

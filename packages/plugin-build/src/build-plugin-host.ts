@@ -353,6 +353,7 @@ export async function buildPluginHost(
     )) as typeof import("esbuild");
     const packageNameByDirectory = new Map<string, string | null>();
     await esbuild.build({
+      absWorkingDir: rootDir,
       entryPoints: [hostEntry],
       outfile: stagedJsPath,
       bundle: true,
