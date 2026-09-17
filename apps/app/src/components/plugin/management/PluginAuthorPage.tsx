@@ -171,7 +171,11 @@ export function PluginAuthorPage({
                     className="inline-flex items-center gap-1 rounded-sm text-xs text-subtle-foreground underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                   >
                     {author.url.startsWith("https://github.com/") ? (
-                      <Icon name="Github" className="size-3.5" aria-hidden />
+                      <Icon
+                        name="GithubLogo"
+                        className="size-4.5 shrink-0 fill-current [&_*]:stroke-0"
+                        aria-hidden
+                      />
                     ) : null}
                     {formatUrlLabel(author.url)}
                     <Icon name="ExternalLink" className="size-3" aria-hidden />
