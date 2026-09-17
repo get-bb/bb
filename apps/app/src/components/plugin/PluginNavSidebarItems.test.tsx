@@ -288,13 +288,17 @@ function moreTrigger(): HTMLElement {
 }
 
 async function openMoreMenu(): Promise<HTMLElement[]> {
-  fireEvent.pointerDown(moreTrigger(), { button: 0 });
-  await screen.findByRole("menuitem", { name: "Customize sidebar" });
-  return screen.getAllByRole("menuitem");
+  fireEvent.click(moreTrigger());
+  await screen.findByRole("button", { name: "Customize sidebar" });
+  return Array.from(
+    document.querySelectorAll<HTMLElement>(
+      '[data-sidebar-navigation-more-item], [data-testid="sidebar-navigation-customize-trigger"]',
+    ),
+  );
 }
 
 async function openCustomizeFromMore(): Promise<HTMLElement> {
-  fireEvent.click(screen.getByRole("menuitem", { name: "Customize sidebar" }));
+  fireEvent.click(screen.getByRole("button", { name: "Customize sidebar" }));
   return await screen.findByRole("list", { name: "Sidebar navigation" });
 }
 
@@ -524,11 +528,13 @@ describe("PluginNavSidebarItems", () => {
     );
     expect(fetchMock).not.toHaveBeenCalled();
     fireEvent.click(moreTrigger());
+    expect(await screen.findByRole("button", { name: "Docs" })).not.toBeNull();
     expect(
-      await screen.findByRole("menuitem", { name: "Docs" }),
-    ).not.toBeNull();
-    expect(
-      screen.getAllByRole("menuitem").map((item) => item.textContent?.trim()),
+      Array.from(
+        document.querySelectorAll(
+          '[data-sidebar-navigation-more-item], [data-testid="sidebar-navigation-customize-trigger"]',
+        ),
+      ).map((item) => item.textContent?.trim()),
     ).toEqual(["Docs", "Customize sidebar"]);
   });
 
@@ -872,7 +878,7 @@ describe("PluginNavSidebarItems", () => {
     expect(visibleRowKeys()).toEqual(["__bb__/new-thread"]);
     fireEvent.click(moreTrigger());
     fireEvent.click(
-      await screen.findByRole("menuitem", { name: "Customize sidebar" }),
+      await screen.findByRole("button", { name: "Customize sidebar" }),
     );
 
     expect(onCompactCustomizeModeChange).toHaveBeenCalledWith(true);
@@ -1114,13 +1120,13 @@ describe("PluginNavSidebarItems", () => {
     ]);
     expect(
       screen
-        .getByRole("menuitem", { name: "Customize sidebar" })
+        .getByRole("button", { name: "Customize sidebar" })
         .querySelectorAll(
           ':scope > [data-icon="FilterHorizontal"][data-icon-root]',
         ),
     ).toHaveLength(1);
 
-    fireEvent.click(screen.getByRole("menuitem", { name: "Search threads" }));
+    fireEvent.click(screen.getByRole("button", { name: "Search threads" }));
 
     expect(onSearch).toHaveBeenCalledOnce();
     expect(onSearch.mock.calls[0]?.[0]).toEqual({
@@ -1140,7 +1146,7 @@ describe("PluginNavSidebarItems", () => {
     });
 
     await openMoreMenu();
-    fireEvent.click(screen.getByRole("menuitem", { name: "Docs" }), {
+    fireEvent.click(screen.getByRole("button", { name: "Docs" }), {
       metaKey: true,
     });
 
@@ -1157,7 +1163,7 @@ describe("PluginNavSidebarItems", () => {
     ).not.toBeNull();
   });
 
-  it("opens a hidden plugin in a split from its own context menu", async () => {
+  it("opens a hidden plugin in a split from its explicit actions button", async () => {
     registerPanel("docs", "Docs");
     const { store } = renderSidebarItems({
       splitEnabled: true,
@@ -1166,7 +1172,12 @@ describe("PluginNavSidebarItems", () => {
     });
 
     await openMoreMenu();
-    fireEvent.contextMenu(screen.getByRole("menuitem", { name: "Docs" }));
+    fireEvent.contextMenu(screen.getByRole("button", { name: "Docs" }));
+    expect(screen.queryByRole("menu")).toBeNull();
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Docs options" }),
+      { button: 0 },
+    );
     const menu = await screen.findByRole("menu", { name: "Docs options" });
     expect(
       within(menu)
@@ -1191,7 +1202,11 @@ describe("PluginNavSidebarItems", () => {
       }),
     ).not.toBeNull();
     expect(store.get(pluginNavVisiblePanelKeysAtom)).toEqual([]);
-    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("list", { name: "More navigation" }),
+      ).toBeNull(),
+    );
   });
 
   it.each(["plugin", "built-in"])(
@@ -1210,7 +1225,10 @@ describe("PluginNavSidebarItems", () => {
       const key = kind === "plugin" ? "docs/main" : "__bb__/search-threads";
 
       await openMoreMenu();
-      fireEvent.contextMenu(screen.getByRole("menuitem", { name: title }));
+      fireEvent.pointerDown(
+        screen.getByRole("button", { name: `${title} options` }),
+        { button: 0 },
+      );
       const menu = await screen.findByRole("menu", {
         name: `${title} options`,
       });
@@ -1222,7 +1240,11 @@ describe("PluginNavSidebarItems", () => {
       expect(visibleRowKeys()).toEqual([key]);
       expect(onActivate).not.toHaveBeenCalled();
       expect(screen.getByTestId("location-path").textContent).toBe("/");
-      await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+      await waitFor(() =>
+        expect(
+          screen.queryByRole("list", { name: "More navigation" }),
+        ).toBeNull(),
+      );
     },
   );
 
@@ -1285,12 +1307,16 @@ describe("PluginNavSidebarItems", () => {
       "One",
       "Customize sidebar",
     ]);
-    fireEvent.click(screen.getByRole("menuitem", { name: "One" }));
+    fireEvent.click(screen.getByRole("button", { name: "One" }));
 
     expect(screen.getByTestId("location-path").textContent).toBe(
       getPluginPanelRoutePath({ pluginId: "plugin-0", path: "main" }),
     );
-    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("list", { name: "More navigation" }),
+      ).toBeNull(),
+    );
     expect(panelRowNames(labels)).toEqual(["Two", "Three", "Four"]);
   });
 
