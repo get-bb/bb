@@ -335,7 +335,7 @@ function MobileRecentThreadRow({
               ? `Show threads under ${threadTitle}`
               : `Hide threads under ${threadTitle}`
           }
-          className="group relative -ml-6 flex h-11 w-13 shrink-0 cursor-pointer items-center rounded-md pl-6 outline-none ring-sidebar-ring focus-visible:ring-2"
+          className="group relative -ml-6 flex h-11 w-13 shrink-0 cursor-pointer items-center rounded-md pl-6 outline-none"
           onClick={(event) => {
             event.preventDefault();
             event.stopPropagation();
