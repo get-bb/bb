@@ -521,6 +521,32 @@ describe("Theme Preview", () => {
     }
   });
 
+  it("opens and closes mobile shelves and resets them when the preview view changes", async () => {
+    const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(390);
+    try {
+      const mounted = renderPreview({ themeCatalog: () => DEFAULT_CATALOG, setTheme: () => DEFAULT_CATALOG });
+      await screen.findByRole("button", { name: "Show navigation preview" });
+      fireEvent.click(screen.getByRole("button", { name: "Show navigation preview" }));
+      expect(document.querySelector("[data-tp-mobile-navigation]")).not.toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "Close navigation preview" }));
+      expect(document.querySelector("[data-tp-mobile-navigation]")).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "Show right panel preview" }));
+      expect(screen.getByText("Pull request")).toBeDefined();
+      fireEvent.click(screen.getByRole("button", { name: "Return to conversation preview" }));
+      expect(document.querySelector("[data-tp-mobile-panel]")).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "Show navigation preview" }));
+      const Component = panel.component;
+      mounted.rerender(<Component subPath="new" />);
+      await waitFor(() => expect(document.querySelector("[data-tp-mobile-navigation]")).toBeNull());
+      expect(screen.getByText("Recent threads")).toBeDefined();
+      expect(screen.getByText("Ask anything…")).toBeDefined();
+      mounted.rerender(<Component subPath="split" />);
+      expect(screen.getByText(/On mobile, threads open one at a time/)).toBeDefined();
+    } finally {
+      width.mockRestore();
+    }
+  });
+
   it("keeps the style sheet passive while showing every visual system", async () => {
     renderPreview({
       themeCatalog: () => DEFAULT_CATALOG,

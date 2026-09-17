@@ -234,14 +234,15 @@ function SpatialFixture({
       const cardFootprint = flowCard
         ? Math.max(probeReserve, cardReserveRef.current)
         : 0;
-      const availableHeight = viewport && frame.clientWidth >= 640
-        ? viewport.clientHeight -
-          (frame.getBoundingClientRect().top -
-            viewport.getBoundingClientRect().top +
-            viewport.scrollTop) -
-          cardFootprint -
-          8
-        : undefined;
+      const availableHeight =
+        viewport && frame.clientWidth >= 640
+          ? viewport.clientHeight -
+            (frame.getBoundingClientRect().top -
+              viewport.getBoundingClientRect().top +
+              viewport.scrollTop) -
+            cardFootprint -
+            8
+          : undefined;
       const scale = spatialFixtureScale(
         frame.clientWidth,
         authoredWidth,
@@ -328,20 +329,26 @@ function SpatialFixture({
   );
 }
 
-function SlideContent({ group }: { group: SurfaceGroup }) {
+function SlideContent({
+  group,
+  mobile = false,
+}: {
+  group: SurfaceGroup;
+  mobile?: boolean;
+}) {
   switch (group.id) {
     case "app-shell":
-      return <AppShellWireframe />;
+      return <AppShellWireframe mobile={mobile} />;
     case "command-palette":
-      return <CommandPaletteWireframe />;
+      return <CommandPaletteWireframe mobile={mobile} />;
     case "composer":
-      return <RealComposerAnnotated />;
+      return <RealComposerAnnotated mobile={mobile} />;
     case "home":
-      return <ComposeScreenWireframe />;
+      return <ComposeScreenWireframe mobile={mobile} />;
     case "settings":
-      return <SettingsWireframe />;
+      return <SettingsWireframe mobile={mobile} />;
     case "extensions":
-      return <ExtensionsPluginPageWireframe />;
+      return <ExtensionsPluginPageWireframe mobile={mobile} />;
     case "headless":
       return <PlatformSlide group={group} />;
   }
@@ -380,7 +387,17 @@ function CardReserveProbe({ group }: { group: SurfaceGroup }) {
   );
 }
 
-function Slide({ group }: { group: SurfaceGroup }) {
+function Slide({ group, mobile }: { group: SurfaceGroup; mobile: boolean }) {
+  if (mobile && group.id !== "headless") {
+    return (
+      <div
+        data-guide-responsive-strategy="mobile"
+        className="mx-auto w-full max-w-[430px]"
+      >
+        <SlideContent group={group} mobile />
+      </div>
+    );
+  }
   if (fixtureResponsiveStrategy(group) === "reflow") {
     return (
       <div data-guide-responsive-strategy="reflow" className="w-full">
@@ -498,6 +515,28 @@ export function ProductMap({
   const pageButtonRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const card = useSurfaceCard();
   const [hoverId, setHoverId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [viewportMobile, setViewportMobile] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(max-width: 767px)").matches === true,
+  );
+  const [displayMode, setDisplayMode] = useState<"mobile" | "desktop" | null>(
+    null,
+  );
+  const mobile =
+    displayMode === null ? viewportMobile : displayMode === "mobile";
+  useEffect(() => {
+    const query = window.matchMedia?.("(max-width: 767px)");
+    if (!query) return;
+    const update = () => setViewportMobile(query.matches);
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
+  const selectSurface = (id: string) => {
+    setSelectedId(id);
+    card.open(id);
+  };
   const pageListEdges = useScrollEdges(pageListRef);
   const [index, setIndex] = useState(() =>
     Math.max(
@@ -527,6 +566,7 @@ export function ProductMap({
       return;
     }
     card.close();
+    setSelectedId(null);
     setHoverId(null);
     setIndex(next);
     onSlideChange?.(slides[next].id);
@@ -538,7 +578,7 @@ export function ProductMap({
     const target = slides.findIndex((slide) => slide.id === group.id);
     if (target === -1) return;
     if (target !== index) show(target);
-    card.open(id);
+    selectSurface(id);
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
@@ -556,15 +596,17 @@ export function ProductMap({
     () => ({
       activeId: hoverId,
       setActiveId: setHoverId,
-      expandedId: card.openId,
+      expandedId:
+        card.openId ??
+        (mobile ? (selectedId ?? slides[index].surfaces[0]?.id) : null),
       numberOf: (id: string) => SURFACE_NUMBERS.get(id) ?? null,
-      onSelect: card.open,
+      onSelect: selectSurface,
       pluginPageHref,
       currentGroupId: slides[index].id,
       onGoToSurface: goToSurface,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [hoverId, card.openId, pluginPageHref, index],
+    [hoverId, card.openId, pluginPageHref, index, selectedId, mobile],
   );
 
   const cardNode = openSurface ? (
@@ -589,7 +631,12 @@ export function ProductMap({
       const target = event.target;
       if (!(target instanceof Element)) return;
       if (target.closest('[role="dialog"]')) return;
-      if (target.closest('a[href^="#surface-"], [data-guide-annotation-picker]')) return;
+      if (
+        target.closest(
+          'a[href^="#surface-"], [data-guide-annotation-picker], [data-guide-display-mode]',
+        )
+      )
+        return;
       card.close();
     };
     scope.addEventListener("pointerdown", onPointerDown);
@@ -612,8 +659,34 @@ export function ProductMap({
                 <SlideTitle title={slides[index].title} />
               </h2>
               <p className="mt-1 max-w-2xl text-sm leading-relaxed text-subtle-foreground/75">
-                {slides[index].blurb}
+                {mobile && slides[index].id !== "headless"
+                  ? "Choose an annotation to see where it appears on mobile."
+                  : slides[index].blurb}
               </p>
+            </div>
+            <div
+              data-guide-display-mode
+              role="group"
+              aria-label="Preview layout"
+              className="mb-3 flex justify-center gap-1"
+            >
+              {(["mobile", "desktop"] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  aria-pressed={(mobile ? "mobile" : "desktop") === mode}
+                  onClick={() => setDisplayMode(mode)}
+                  className={cn(
+                    "min-h-10 cursor-pointer rounded-md px-3 text-sm",
+                    FOCUS_RING_CLASS,
+                    (mobile ? "mobile" : "desktop") === mode
+                      ? "bg-surface-selected text-foreground"
+                      : "text-muted-foreground hover:bg-state-hover",
+                  )}
+                >
+                  {mode === "mobile" ? "Mobile" : "Desktop"}
+                </button>
+              ))}
             </div>
             <div className="mx-auto flex w-fit max-w-full items-center gap-1">
               <PanButton
@@ -663,6 +736,33 @@ export function ProductMap({
                 onClick={() => show(index + 1)}
               />
             </div>
+            {slides[index].id !== "headless" ? (
+              <label
+                data-guide-annotation-picker
+                className={cn(
+                  "mt-3 flex flex-col gap-1.5 text-sm text-muted-foreground",
+                  !mobile && "@2xl/guide:hidden",
+                )}
+              >
+                Annotation
+                <select
+                  aria-label="Explore an annotation"
+                  value={card.openId ?? selectedId ?? ""}
+                  onChange={(event) => {
+                    if (event.target.value) selectSurface(event.target.value);
+                    else card.close();
+                  }}
+                  className={`h-11 w-full min-w-0 rounded-md border border-border bg-background px-3 text-sm text-foreground ${FOCUS_RING_CLASS}`}
+                >
+                  <option value="">Choose an annotation…</option>
+                  {slides[index].surfaces.map((surface) => (
+                    <option key={surface.id} value={surface.id}>
+                      {SURFACE_NUMBERS.get(surface.id)}. {surface.title}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
             <div
               className={cn(
                 "overflow-x-clip",
@@ -694,33 +794,11 @@ export function ProductMap({
                     }
                     className="min-w-0 w-full shrink-0 self-start px-1 pt-2"
                   >
-                    <Slide group={entry} />
+                    <Slide group={entry} mobile={mobile} />
                   </div>
                 ))}
               </div>
             </div>
-
-            {slides[index].id !== "headless" ? (
-              <label data-guide-annotation-picker className="mt-3 flex flex-col gap-1.5 text-sm text-muted-foreground @2xl/guide:hidden">
-                Annotation
-                <select
-                  aria-label="Explore an annotation"
-                  value={card.openId ?? ""}
-                  onChange={(event) => {
-                    if (event.target.value) card.open(event.target.value);
-                    else card.close();
-                  }}
-                  className={`h-11 w-full min-w-0 rounded-md border border-border bg-background px-3 text-sm text-foreground ${FOCUS_RING_CLASS}`}
-                >
-                  <option value="">Choose an annotation…</option>
-                  {slides[index].surfaces.map((surface) => (
-                    <option key={surface.id} value={surface.id}>
-                      {SURFACE_NUMBERS.get(surface.id)}. {surface.title}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : null}
 
             {cardNode ? (
               <div
