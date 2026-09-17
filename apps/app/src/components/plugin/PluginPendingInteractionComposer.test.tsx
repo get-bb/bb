@@ -103,7 +103,7 @@ describe("PluginPendingInteractionComposer", () => {
           title,
           data: interaction.payload.data,
         }}
-        dismissal="cancel"
+        origin="plugin"
       />,
     );
 
