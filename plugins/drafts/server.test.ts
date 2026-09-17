@@ -62,7 +62,7 @@ describe("draft dispatch gate", () => {
     ).toEqual({ action: "wait", reason: "Draft" });
   });
 
-  it("holds the group when a later message is a draft", () => {
+  it("preserves grouped delivery when only a later message is a draft", () => {
     const hook = setup();
     expect(
       hook(
@@ -80,6 +80,6 @@ describe("draft dispatch gate", () => {
           ],
         }),
       ),
-    ).toEqual({ action: "wait", reason: "Draft" });
+    ).toEqual({ action: "proceed" });
   });
 });
