@@ -9,6 +9,7 @@ import {
   AUTOMATION_SCRIPT_TIMEOUT_DEFAULT_MS,
   AUTOMATION_SCRIPT_TIMEOUT_MAX_MS,
   AUTOMATION_SCRIPT_WORKING_DIRECTORY_MAX_LENGTH,
+  isPrintableWorkingDirectoryPath,
   SCHEDULE_CRON_MAX_LENGTH,
   SCHEDULE_TIMEZONE_MAX_LENGTH,
 } from "./limits.js";
@@ -119,6 +120,8 @@ export const automationScriptInterpreterSchema = z.enum([
 export type AutomationScriptInterpreter = z.infer<
   typeof automationScriptInterpreterSchema
 >;
+export const WORKING_DIRECTORY_CONTROL_CHARACTER_MESSAGE =
+  "A script working directory path must not contain control characters";
 export const automationScriptWorkingDirectorySchema = z.discriminatedUnion(
   "type",
   [
@@ -130,7 +133,10 @@ export const automationScriptWorkingDirectorySchema = z.discriminatedUnion(
         path: z
           .string()
           .min(1)
-          .max(AUTOMATION_SCRIPT_WORKING_DIRECTORY_MAX_LENGTH),
+          .max(AUTOMATION_SCRIPT_WORKING_DIRECTORY_MAX_LENGTH)
+          .refine(isPrintableWorkingDirectoryPath, {
+            message: WORKING_DIRECTORY_CONTROL_CHARACTER_MESSAGE,
+          }),
       })
       .strict(),
   ],

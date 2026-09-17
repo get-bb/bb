@@ -1251,6 +1251,36 @@ describe("automation service", () => {
           },
         }),
       ).rejects.toThrow("absolute path on the bb server host");
+      await expect(
+        service.update({
+          projectId: "proj_test",
+          automationId: created.id,
+          script: {
+            workingDirectory: {
+              type: "path",
+              path: "/tmp/\u001b[31mred\u0007",
+            },
+          },
+        }),
+      ).rejects.toThrow("must not contain control characters");
+      await expect(
+        service.create({
+          projectId: "proj_test",
+          name: "Control characters",
+          enabled: true,
+          trigger: oneShotTrigger(),
+          execution: {
+            mode: "script",
+            script: "pwd\n",
+            timeoutMs: 120_000,
+            workingDirectory: {
+              type: "path",
+              path: "/tmp/\u001b[31mred\u0007",
+            },
+          },
+          origin: "human",
+        }),
+      ).rejects.toThrow("must not contain control characters");
     } finally {
       await rm(pluginDataDir, { recursive: true, force: true });
     }
@@ -2459,6 +2489,28 @@ describe("script wake gate", () => {
     const result = { exitCode: 1, output: stderr, stderr, timedOut: false };
     expect(mapScriptResultToRun(result).error).toBe(
       `Script exited with code 1: ${"x".repeat(199)}…`,
+    );
+  });
+
+  it("skips blank and carriage-return lines before the first stderr detail", () => {
+    const stderr = "\r\n   \r\n\r\nreal failure\r\nlater line\r\n";
+    const result = { exitCode: 1, output: stderr, stderr, timedOut: false };
+    expect(mapScriptResultToRun(result).error).toBe(
+      "Script exited with code 1: real failure",
+    );
+  });
+
+  it("omits the detail when stderr holds only line breaks", () => {
+    const stderr = "\n".repeat(200_000);
+    const result = { exitCode: 1, output: "", stderr, timedOut: false };
+    expect(mapScriptResultToRun(result).error).toBe("Script exited with code 1");
+  });
+
+  it("finds a trailing stderr detail after a large run of blank lines", () => {
+    const stderr = `${"\n".repeat(200_000)}last gasp`;
+    const result = { exitCode: 1, output: "", stderr, timedOut: false };
+    expect(mapScriptResultToRun(result).error).toBe(
+      "Script exited with code 1: last gasp",
     );
   });
 

@@ -137,14 +137,24 @@ interface ScriptRunOutcome {
 }
 
 function firstStderrLine(stderr: string): string | null {
-  for (const line of stderr.split(/\r?\n/u)) {
-    const trimmed = stripVTControlCharacters(line)
-      .replace(/\p{Cc}/gu, " ")
-      .trim();
-    if (trimmed.length === 0) continue;
-    return trimmed.length > SCRIPT_FAILURE_DETAIL_MAX_CHARS
-      ? `${trimmed.slice(0, SCRIPT_FAILURE_DETAIL_MAX_CHARS - 1)}…`
-      : trimmed;
+  let start = 0;
+  while (start < stderr.length) {
+    const newline = stderr.indexOf("\n", start);
+    const lineEnd = newline === -1 ? stderr.length : newline;
+    const trimmedEnd =
+      lineEnd > start && stderr[lineEnd - 1] === "\r" ? lineEnd - 1 : lineEnd;
+    if (trimmedEnd > start) {
+      const trimmed = stripVTControlCharacters(stderr.slice(start, trimmedEnd))
+        .replace(/\p{Cc}/gu, " ")
+        .trim();
+      if (trimmed.length > 0) {
+        return trimmed.length > SCRIPT_FAILURE_DETAIL_MAX_CHARS
+          ? `${trimmed.slice(0, SCRIPT_FAILURE_DETAIL_MAX_CHARS - 1)}…`
+          : trimmed;
+      }
+    }
+    if (newline === -1) break;
+    start = newline + 1;
   }
   return null;
 }

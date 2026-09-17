@@ -25,8 +25,10 @@ import {
   resolvePermissionMode,
 } from "./provider-permissions.js";
 import { publishAutomationChange } from "./realtime.js";
+import { isPrintableWorkingDirectoryPath } from "./limits.js";
 import {
   AUTOMATION_RUNS_LIMIT_MAX,
+  WORKING_DIRECTORY_CONTROL_CHARACTER_MESSAGE,
   automationRunListResponseSchema,
   automationsOverviewResponseSchema,
   type AgentExecutionUpdate,
@@ -158,10 +160,14 @@ const AUTOMATION_STORAGE_WORKING_DIRECTORY = {
 function validateScriptWorkingDirectory(
   workingDirectory: AutomationScriptWorkingDirectory,
 ): void {
-  if (workingDirectory.type === "path" && !isAbsolute(workingDirectory.path)) {
+  if (workingDirectory.type !== "path") return;
+  if (!isAbsolute(workingDirectory.path)) {
     throw new Error(
       "A script working directory must be automation-storage, project, or an absolute path on the bb server host",
     );
+  }
+  if (!isPrintableWorkingDirectoryPath(workingDirectory.path)) {
+    throw new Error(WORKING_DIRECTORY_CONTROL_CHARACTER_MESSAGE);
   }
 }
 
