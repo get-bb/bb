@@ -284,7 +284,12 @@ Custom (`chronological`) is the default for `sidebar.organizationMode` when no
 value is saved. Existing server and legacy browser choices are preserved.
 
 Every thread-list header's actions menu offers New project, New section,
-Organize, and Sort by. Organize selects By project, By machine, or Custom;
+Organize, and Sort by. Organize selects By project, By machine, or Custom, and
+its By environment toggle decides whether sibling threads sharing one worktree
+collapse into a single worktree row inside their section, in every organization
+mode. `sidebar.threadGrouping.environment` defaults to `auto`, which groups them
+everywhere except Custom: `bb settings ui set sidebar.threadGrouping.environment
+false` keeps every thread on its own row, and `true` groups them in every mode.
 Sort by selects a field, and selecting it again reverses its arrow/direction.
 `sidebar.sortDirection` accepts `ascending`, `descending`, or `default`.
 The default preserves each field's original order (newest first for dates,

@@ -124,6 +124,7 @@ import { SidebarSectionRow } from "./SidebarSectionRow";
 import { TopLevelSidebarSection } from "./TopLevelSidebarSection";
 import {
   sidebarCollapsedThreadSectionsAtom,
+  sidebarGroupThreadsByEnvironmentAtom,
   type CollapsibleSidebarSectionId,
   type SidebarSectionId,
 } from "./sidebarCollapsedAtoms";
@@ -2004,6 +2005,9 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
     sectionDnd?.dragOverParentKey === dndParentKey &&
     treePreviewBeforeKey === null;
   const draftThreadIds = usePromptDraftInputThreadIds(projectThreads);
+  const groupThreadsByEnvironment = useAtomValue(
+    sidebarGroupThreadsByEnvironmentAtom,
+  );
   const [revealedItemKeys, setRevealedItemKeys] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
@@ -2011,8 +2015,19 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
   const allRootItems = useMemo(
     () =>
       providedRootItems ??
-      buildProjectThreadGroups(projectThreads, compareThreads, draftThreadIds),
-    [compareThreads, draftThreadIds, projectThreads, providedRootItems],
+      buildProjectThreadGroups(
+        projectThreads,
+        compareThreads,
+        draftThreadIds,
+        groupThreadsByEnvironment,
+      ),
+    [
+      compareThreads,
+      draftThreadIds,
+      groupThreadsByEnvironment,
+      projectThreads,
+      providedRootItems,
+    ],
   );
   const rootItems = useMemo(() => {
     if (!progressiveDisclosureEnabled) {
@@ -2163,6 +2178,9 @@ export const ChronologicalSectionThreadSections = memo(
       [collapsedThreadIds, onToggleThreadCollapsed],
     );
     const draftThreadIds = usePromptDraftInputThreadIds(threads);
+    const groupThreadsByEnvironment = useAtomValue(
+      sidebarGroupThreadsByEnvironmentAtom,
+    );
     const rootItems = useMemo(
       () =>
         buildSectionThreadList(
@@ -2170,8 +2188,15 @@ export const ChronologicalSectionThreadSections = memo(
           compareThreads,
           sections,
           draftThreadIds,
+          groupThreadsByEnvironment,
         ),
-      [threads, compareThreads, sections, draftThreadIds],
+      [
+        threads,
+        compareThreads,
+        sections,
+        draftThreadIds,
+        groupThreadsByEnvironment,
+      ],
     );
     const persistedSectionItems = rootItems.filter(
       (item) => item.kind === "section",

@@ -116,6 +116,7 @@ import {
   collapsedProjectIdsAtom,
   collapsedSidebarSectionIdsAtom,
   sidebarChronologicalSortAtom,
+  sidebarGroupThreadsByEnvironmentAtom,
   sidebarSortDirectionAtom,
   sidebarCollapsedThreadSectionsAtom,
   sidebarCollapsedMachinesAtom,
@@ -630,11 +631,13 @@ function buildGroupSectionItem(
   threads: readonly ThreadListEntry[],
   compareThreads: ThreadComparator,
   draftThreadIds: ReadonlySet<string>,
+  groupThreadsByEnvironment: boolean,
 ): Extract<ProjectThreadItem, { kind: "section" }> {
   const items = buildProjectThreadGroups(
     threads,
     compareThreads,
     draftThreadIds,
+    groupThreadsByEnvironment,
   );
   return {
     kind: "section",
@@ -748,6 +751,9 @@ function ProjectModeSections({
   threadsSection,
 }: ProjectModeSectionsProps) {
   const progressiveDisclosureEnabled = useSidebarProgressiveDisclosureEnabled();
+  const groupThreadsByEnvironment = useAtomValue(
+    sidebarGroupThreadsByEnvironmentAtom,
+  );
   const [collapsedProjectIdList, setCollapsedProjectIdList] = useAtom(
     collapsedProjectIdsAtom,
   );
@@ -861,8 +867,18 @@ function ProjectModeSections({
   const reorderDisabled = order.length < 2;
   const personalItems = useMemo(
     () =>
-      buildProjectThreadGroups(personalThreads, compareThreads, draftThreadIds),
-    [compareThreads, draftThreadIds, personalThreads],
+      buildProjectThreadGroups(
+        personalThreads,
+        compareThreads,
+        draftThreadIds,
+        groupThreadsByEnvironment,
+      ),
+    [
+      compareThreads,
+      draftThreadIds,
+      groupThreadsByEnvironment,
+      personalThreads,
+    ],
   );
   const projectGroups = useMemo(
     () =>
@@ -876,9 +892,10 @@ function ProjectModeSections({
             : EMPTY_THREAD_LIST,
           compareThreads,
           draftThreadIds,
+          groupThreadsByEnvironment,
         ),
       ),
-    [compareThreads, draftThreadIds, projectRows],
+    [compareThreads, draftThreadIds, groupThreadsByEnvironment, projectRows],
   );
   const projectItemsByProjectId = useMemo(
     () =>
@@ -1149,6 +1166,9 @@ export function MachineModeSections({
   threadsSection,
 }: MachineModeSectionsProps) {
   const progressiveDisclosureEnabled = useSidebarProgressiveDisclosureEnabled();
+  const groupThreadsByEnvironment = useAtomValue(
+    sidebarGroupThreadsByEnvironmentAtom,
+  );
   const { data: hosts } = useHosts();
   const [collapsedMachineKeyList, setCollapsedMachineKeyList] = useAtom(
     sidebarCollapsedMachinesAtom,
@@ -1222,9 +1242,16 @@ export function MachineModeSections({
             nonPinnedThreads,
             compareThreads,
             draftThreadIds,
+            groupThreadsByEnvironment,
           )
         : [],
-    [compareThreads, draftThreadIds, machineSections.length, nonPinnedThreads],
+    [
+      compareThreads,
+      draftThreadIds,
+      groupThreadsByEnvironment,
+      machineSections.length,
+      nonPinnedThreads,
+    ],
   );
   const machineGroups = useMemo(
     () =>
@@ -1236,9 +1263,15 @@ export function MachineModeSections({
           section.threadListState.threads,
           compareThreads,
           draftThreadIds,
+          groupThreadsByEnvironment,
         ),
       ),
-    [compareThreads, draftThreadIds, machineSections],
+    [
+      compareThreads,
+      draftThreadIds,
+      groupThreadsByEnvironment,
+      machineSections,
+    ],
   );
   const machineItemsBySectionId = useMemo(
     () =>
