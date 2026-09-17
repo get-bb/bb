@@ -1277,17 +1277,23 @@ function mapQuestionTitle(row: TimelineQuestionViewWorkRow): TimelineTitle {
 }
 
 function mapFormTitle(row: TimelineFormViewWorkRow): TimelineTitle {
-  const subject = segment(row.title, { em: true, truncate: true });
+  const { presentation } = row;
   switch (row.lifecycle) {
     case "pending":
       return makeTitle({
-        segments: [segment("Waiting for", { shimmer: true }), subject],
+        segments: [segment(presentation.label.pending, { shimmer: true })],
       });
     case "submitted":
-      return makeTitle({ segments: [segment("Submitted"), subject] });
+      return makeTitle({
+        segments: [
+          segment(presentation.title ?? presentation.label.completed, {
+            truncate: true,
+          }),
+        ],
+      });
     case "cancelled":
       return makeTitle({
-        segments: [segment("Asked for", {}), subject],
+        segments: [segment(presentation.label.completed, { truncate: true })],
         decorations: [statusDecoration("interrupted", null)],
       });
     default:

@@ -78,11 +78,8 @@ import type {
   PluginHttpHandler,
   PluginHosts,
   PluginSharedPortTunnelIdentity,
-  PluginFormInteractionRequest,
   PluginInteractionRequest,
   PluginInteractionResult,
-  PluginUserQuestionInteractionRequest,
-  PluginUserQuestionInteractionResult,
   PluginKvStorage,
   PluginLogger,
   PluginMentionItem,
@@ -1156,34 +1153,24 @@ function createFakePluginHostInternal(
     }
   >();
   function requestInput(
-    request: PluginUserQuestionInteractionRequest,
-    requestOptions?: { signal?: AbortSignal },
-  ): Promise<PluginUserQuestionInteractionResult>;
-  function requestInput(
-    request: PluginFormInteractionRequest,
-    requestOptions?: { signal?: AbortSignal },
-  ): Promise<PluginInteractionResult>;
-  function requestInput(
-    request: PluginInteractionRequest,
-    requestOptions?: { signal?: AbortSignal },
-  ): Promise<PluginInteractionResult> {
+    request: Parameters<PluginUi["requestInput"]>[0],
+    requestOptions?: Parameters<PluginUi["requestInput"]>[1],
+  ) {
     assertLive();
     const normalized = normalizeInteractionRequest(request);
-    const normalizedRequest: PluginInteractionRequest =
-      normalized.kind === "user_question"
-        ? {
-            threadId: normalized.threadId,
-            kind: "user_question",
-            questions: normalized.questions,
-            timeoutMs: normalized.timeoutMs,
-          }
-        : {
-            threadId: normalized.threadId,
-            rendererId: normalized.rendererId,
-            title: normalized.title,
-            payload: normalized.payload,
-            timeoutMs: normalized.timeoutMs,
-          };
+    const normalizedRequest: PluginInteractionRequest = {
+      threadId: normalized.threadId,
+      rendererId: normalized.rendererId,
+      title: normalized.title,
+      payload: normalized.payload,
+      timeoutMs: normalized.timeoutMs,
+      ...(normalized.presentation === null
+        ? {}
+        : { presentation: normalized.presentation }),
+      ...(normalized.describe === null
+        ? {}
+        : { describe: normalized.describe }),
+    };
     const id = `fake-interaction-${nextInteractionId++}`;
     return new Promise<PluginInteractionResult>((resolve) => {
       const settleAborted = () => {

@@ -104,9 +104,7 @@ function timelineWorkRowRenderSignature(row: TimelineViewWorkRow): string {
     row.status,
     row.workKind,
     row.inClosedStep,
-    row.workKind === "approval" ||
-    row.workKind === "question" ||
-    row.workKind === "form"
+    row.workKind === "approval" || row.workKind === "question"
       ? null
       : presentationSignature(row.presentation),
   ];
@@ -282,6 +280,7 @@ function timelineWorkRowRenderSignature(row: TimelineViewWorkRow): string {
         row.lifecycle,
         row.title,
         row.statusReason,
+        JSON.stringify(row.payload),
       ]);
     case "question":
       return joinSignatureParts([

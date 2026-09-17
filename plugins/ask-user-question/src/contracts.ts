@@ -1,33 +1,21 @@
 import { z } from "zod";
-import type {
-  PluginUserQuestionInteractionRequest,
-  PluginUserQuestionInteractionResult,
-} from "@get-bb/plugin-sdk";
 import { TOO_FEW_OPTIONS_MESSAGE } from "./tool-definition.js";
+import {
+  MAX_OPTION_PREVIEW_LENGTH,
+  MAX_OPTIONS,
+  MAX_QUESTIONS,
+} from "@bb/plugin-interaction-contracts";
 
-export const MAX_QUESTIONS = 4;
-export const MAX_OPTIONS = 4;
-export const MAX_OPTION_PREVIEW_LENGTH = 4096;
-
-type HostQuestion = PluginUserQuestionInteractionRequest["questions"][number];
-
-export type InteractionQuestion = HostQuestion & {
-  shortLabel: string;
-  options: NonNullable<HostQuestion["options"]>;
-};
-
-export interface InteractionPayload {
-  questions: InteractionQuestion[];
-}
-
-export type InteractionAnswer = Extract<
-  PluginUserQuestionInteractionResult,
-  { outcome: "submitted" }
->["value"][string];
-
-export interface InteractionResponse {
-  answers: Record<string, InteractionAnswer>;
-}
+export {
+  ASK_USER_QUESTION_RENDERER_ID,
+  MAX_OPTION_PREVIEW_LENGTH,
+  interactionPayloadSchema,
+  interactionResponseSchema,
+  type InteractionAnswer,
+  type InteractionPayload,
+  type InteractionQuestion,
+  type InteractionResponse,
+} from "@bb/plugin-interaction-contracts";
 
 const nonBlank = (value: string) => value.trim().length > 0;
 

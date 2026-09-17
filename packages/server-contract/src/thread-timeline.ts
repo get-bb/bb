@@ -488,9 +488,12 @@ export const timelineFormWorkRowSchema = timelineWorkRowBaseSchema.extend({
   workKind: z.literal("form"),
   interactionId: z.string(),
   pluginId: z.string(),
+  rendererId: z.string(),
   title: z.string(),
   lifecycle: z.enum(timelineFormLifecycleValues),
   statusReason: z.string().nullable(),
+  presentation: timelineRowPresentationSchema,
+  payload: jsonValueSchema.nullable(),
 });
 export type TimelineFormWorkRow = z.infer<typeof timelineFormWorkRowSchema>;
 

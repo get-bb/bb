@@ -171,7 +171,6 @@ interface ProviderErrorEventArgs {
 
 interface UserQuestionLifecycleEventArgs {
   interactionId?: string;
-  origin?: "provider" | "plugin";
   questionPrompt?: string;
   resolution?: UserQuestionPendingInteractionResolution | null;
   seq: number;
@@ -674,7 +673,6 @@ function permissionGrantLifecycleEvent({
 
 function userQuestionLifecycleEvent({
   interactionId = "pi-user-question",
-  origin = "provider",
   questionPrompt,
   resolution = null,
   seq,
@@ -685,23 +683,16 @@ function userQuestionLifecycleEvent({
     event: {
       type: "system/interaction/lifecycle",
       threadId: "thread-1",
-      scope: origin === "plugin" ? threadScope() : turnScope("turn-1"),
+      scope: turnScope("turn-1"),
       interaction: {
         id: interactionId,
         status,
         statusReason,
-        origin:
-          origin === "plugin"
-            ? {
-                kind: "plugin",
-                pluginId: "ask-user-question",
-                rendererId: null,
-              }
-            : {
-                kind: "provider",
-                providerId: "claude-code",
-                providerRequestId: "request-user-question",
-              },
+        origin: {
+          kind: "provider",
+          providerId: "claude-code",
+          providerRequestId: "request-user-question",
+        },
         payload: {
           kind: "user_question",
           questions: [
@@ -2717,9 +2708,25 @@ describe("buildThreadTimelineFromEvents", () => {
             pluginId: "secrets",
             rendererId: "secret-request",
           },
-          payload: { kind: "plugin", title: "Add secrets to .env" },
+          payload: {
+            kind: "plugin",
+            title: "Add secrets to .env",
+            presentation: {
+              label: { pending: "Adding secrets", completed: "Added secrets" },
+              icon: { glyph: "Lock" },
+            },
+          },
           resolution:
-            status === "resolved" ? { kind: "plugin_submitted" } : null,
+            status === "resolved"
+              ? {
+                  kind: "plugin_submitted",
+                  description: {
+                    title: "Added API_KEY to .env",
+                    detail: "- API_KEY",
+                    payload: { names: ["API_KEY"] },
+                  },
+                }
+              : null,
         },
       },
       meta: { id: `event-${seq}`, seq, createdAt: seq },
@@ -2736,9 +2743,17 @@ describe("buildThreadTimelineFromEvents", () => {
         workKind: "form",
         interactionId: "pi-form",
         pluginId: "secrets",
+        rendererId: "secret-request",
         title: "Add secrets to .env",
         lifecycle: "submitted",
         status: "completed",
+        presentation: {
+          label: { pending: "Adding secrets", completed: "Added secrets" },
+          icon: { glyph: "Lock" },
+          title: "Added API_KEY to .env",
+          detail: "- API_KEY",
+        },
+        payload: { names: ["API_KEY"] },
       }),
     ]);
     expect(
@@ -2753,35 +2768,7 @@ describe("buildThreadTimelineFromEvents", () => {
         lifecycle: "cancelled",
         status: "interrupted",
         statusReason: "user",
-      }),
-    ]);
-  });
-
-  it("projects a plugin's question to the same row as a provider's, outside any turn", () => {
-    const answers = { "question-1": { selected: ["production"] } };
-    const rows = buildTimelineRows([
-      turnStartedEvent({ seq: 0 }),
-      turnCompletedEvent({ seq: 1 }),
-      userQuestionLifecycleEvent({
-        origin: "plugin",
-        seq: 2,
-        status: "pending",
-      }),
-      userQuestionLifecycleEvent({
-        origin: "plugin",
-        resolution: { kind: "user_answer", answers },
-        seq: 3,
-        status: "resolved",
-      }),
-    ]);
-
-    expect(collectQuestionRows(rows)).toEqual([
-      expect.objectContaining({
-        answers,
-        interactionId: "pi-user-question",
-        lifecycle: "answered",
-        status: "completed",
-        workKind: "question",
+        payload: null,
       }),
     ]);
   });

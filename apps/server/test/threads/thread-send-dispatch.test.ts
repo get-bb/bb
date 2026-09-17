@@ -40,7 +40,6 @@ import {
   waitForQueuedCommand,
 } from "../helpers/commands.js";
 import { createMockHubSocket } from "../helpers/mock-hub-socket.js";
-import { createUserQuestionPayload } from "../helpers/pending-interactions.js";
 import { textInput } from "../helpers/prompt-input.js";
 import {
   seedEnvironment,
@@ -932,10 +931,16 @@ describe("startup queue waits", () => {
       });
       const pending = harness.deps.pendingInteractions.requestPluginInteraction(
         {
-          kind: "user_question",
           pluginId: "ask-user-question",
           threadId: thread.id,
-          questions: createUserQuestionPayload().questions,
+          rendererId: "ask-user-question",
+          title: "Which database?",
+          payload: {},
+          presentation: {
+            label: { pending: "Asking a question", completed: "Asked" },
+            icon: { glyph: "MessageQuestion" },
+          },
+          describe: null,
           timeoutMs: 10_000,
         },
       );

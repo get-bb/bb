@@ -12,7 +12,6 @@ import {
 } from "@bb/core-ui";
 import { extractShellCommandFromString } from "@bb/thread-view";
 import {
-  isPluginOriginPendingInteraction,
   isPluginPendingInteraction,
   type ApprovalPendingInteractionPayload,
   type PendingInteraction,
@@ -331,11 +330,6 @@ function ThreadUserQuestionPendingInteractionBanner({
     >
       {() => (
         <UserQuestionAnswerForm
-          dismissal={
-            isPluginOriginPendingInteraction(interaction)
-              ? "cancel"
-              : "stop-turn"
-          }
           interactionId={interaction.id}
           isResolving={isResolving}
           questions={questions}

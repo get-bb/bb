@@ -7,7 +7,12 @@ import {
 } from "@get-bb/plugin-sdk/testing";
 import plugin, { TOOL_NAME } from "./server.js";
 import { TOO_FEW_OPTIONS_MESSAGE } from "./tool-definition.js";
-import { toolInputSchema, type ToolResult } from "./contracts.js";
+import {
+  ASK_USER_QUESTION_RENDERER_ID,
+  toolInputSchema,
+  type InteractionPayload,
+  type ToolResult,
+} from "./contracts.js";
 
 function createHost(): FakePluginHost {
   const host = createFakePluginHost({ pluginId: "ask-user-question" });
@@ -145,7 +150,9 @@ describe("provider gating", () => {
       expect(host.harness.pendingInteractions).toHaveLength(1),
     );
     const pending = host.harness.pendingInteractions[0]!;
-    host.harness.submitInteraction(pending.id, { q0: { selected: ["q0o1"] } });
+    host.harness.submitInteraction(pending.id, {
+      answers: { q0: { selected: ["q0o1"] } },
+    });
     const result = JSON.parse(await resultText(await answered)) as ToolResult;
     expect(result.questions[0]?.multiSelect).toBe(false);
   });
@@ -198,7 +205,7 @@ describe("asking a question", () => {
     },
   );
 
-  it("raises bb's own question kind and returns the answer in Claude's result shape", async () => {
+  it("opens an interaction and returns the answer in Claude's result shape", async () => {
     const host = createHost();
     const call = host.harness.callAgentTool(TOOL_NAME, { questions });
 
@@ -206,25 +213,39 @@ describe("asking a question", () => {
       expect(host.harness.pendingInteractions).toHaveLength(1),
     );
     const pending = host.harness.pendingInteractions[0]!;
-    if (!("kind" in pending)) throw new Error("expected a user question");
-    expect(pending.kind).toBe("user_question");
-    expect(pending.timeoutMs).toBe(30 * 60 * 1000);
-    expect(pending.questions[0]).toMatchObject({
+    expect(pending.rendererId).toBe(ASK_USER_QUESTION_RENDERER_ID);
+    expect(pending.title).toBe("Database");
+    const payload = pending.payload as InteractionPayload;
+    expect(payload.questions[0]).toMatchObject({
       id: "q0",
       prompt: "Which database should we use?",
       shortLabel: "Database",
       allowFreeText: true,
-      options: [
-        expect.objectContaining({
-          value: "q0o0",
-          preview: "CREATE TABLE users (id uuid primary key);",
-        }),
-        expect.objectContaining({ value: "q0o1" }),
-      ],
+    });
+
+    expect(pending.presentation).toEqual({
+      label: { pending: "Asking a question", completed: "Asked" },
+      icon: { glyph: "MessageQuestion" },
+    });
+    expect(
+      await pending.describe?.({
+        answers: { q0: { selected: ["q0o0"], freeText: "with pgbouncer" } },
+      }),
+    ).toMatchObject({
+      title:
+        "Answered Which database should we use? — Postgres (Recommended); with pgbouncer",
+      detail:
+        "- Which database should we use? — Postgres (Recommended); with pgbouncer",
+      payload: expect.objectContaining({
+        answers: {
+          "Which database should we use?":
+            "Postgres (Recommended); with pgbouncer",
+        },
+      }),
     });
 
     host.harness.submitInteraction(pending.id, {
-      q0: { selected: ["q0o0"], freeText: "with pgbouncer" },
+      answers: { q0: { selected: ["q0o0"], freeText: "with pgbouncer" } },
     });
 
     const parsed = JSON.parse(await resultText(await call)) as ToolResult;
@@ -257,7 +278,7 @@ describe("asking a question", () => {
       expect(host.harness.pendingInteractions).toHaveLength(1),
     );
     host.harness.submitInteraction(host.harness.pendingInteractions[0]!.id, {
-      q0: { selected: [] },
+      answers: { q0: { selected: [] } },
     });
 
     const result = await call;
@@ -267,9 +288,10 @@ describe("asking a question", () => {
 
   it("explains the collision when a second question races the first", async () => {
     const host = createFakePluginHost({ pluginId: "ask-user-question" });
-    vi.spyOn(host.bb.ui, "requestInput").mockRejectedValue(
-      new Error("Thread thr-test is already awaiting user interaction"),
-    );
+    host.bb.ui.requestInput = () =>
+      Promise.reject(
+        new Error("Thread thr-test is already awaiting user interaction"),
+      );
     plugin(host.bb as unknown as Parameters<typeof plugin>[0]);
 
     const result = await host.harness.callAgentTool(TOOL_NAME, { questions });

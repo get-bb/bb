@@ -774,8 +774,11 @@ function convertMessage(
           interactionId: message.interactionId,
           lifecycle: message.lifecycle,
           pluginId: message.pluginId,
+          rendererId: message.rendererId,
           title: message.title,
           statusReason: message.statusReason,
+          presentation: message.presentation,
+          payload: message.payload,
         },
       ];
     case "operation": {

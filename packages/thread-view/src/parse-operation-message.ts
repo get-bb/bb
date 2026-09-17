@@ -5,6 +5,7 @@ import type {
   SystemThreadProvisioningStatus,
   SystemThreadInterruptedReason,
   PluginInteractionLifecycle,
+  ThreadEventItemPresentation,
   UserQuestionInteractionLifecycle,
 } from "@bb/domain";
 import {
@@ -410,6 +411,26 @@ function pluginFormLifecycleStatus(
   }
 }
 
+function pluginFormPresentation(
+  interaction: PluginInteractionLifecycle,
+): ThreadEventItemPresentation {
+  const base = interaction.payload.presentation ?? {
+    label: {
+      pending: `Waiting for ${interaction.payload.title}`,
+      completed: `Submitted ${interaction.payload.title}`,
+    },
+    icon: { glyph: "Toolbox" },
+  };
+  const description = interaction.resolution?.description;
+  return {
+    ...base,
+    ...(description?.title === undefined ? {} : { title: description.title }),
+    ...(description?.detail === undefined
+      ? {}
+      : { detail: description.detail }),
+  };
+}
+
 function buildPluginFormLifecycleMessage(
   decoded: InteractionLifecycleEvent,
   interaction: PluginInteractionLifecycle,
@@ -429,8 +450,11 @@ function buildPluginFormLifecycleMessage(
     lifecycle,
     status: pluginFormLifecycleStatus(lifecycle),
     pluginId: interaction.origin.pluginId,
+    rendererId: interaction.origin.rendererId,
     title: interaction.payload.title,
     statusReason: interaction.statusReason,
+    presentation: pluginFormPresentation(interaction),
+    payload: interaction.resolution?.description?.payload ?? null,
   };
 }
 

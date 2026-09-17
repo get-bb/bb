@@ -217,11 +217,11 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         id: "pending-interaction",
         title: "In-thread forms",
         summary:
-          "Asks the person something in the thread composer and hands their answer back to the plugin, even after the agent's turn has ended. With this, a plugin can:",
+          "Pauses an agent mid-turn to ask the person a question, and hands their answer back to the agent. With this, a plugin can:",
         bullets: [
-          "Replace the prompt box with a form the plugin draws, or with bb's own multiple-choice question card",
+          "Replace the prompt box with a form the plugin draws, even after the agent's turn has ended",
           "Receive the submitted answer, or a cancellation and its reason",
-          "Leave a record in the thread timeline: the question and its answer for bb's card, the title and outcome for a plugin form",
+          "Leave a row in the thread timeline: the plugin names its header and describes what a submission shows, so the transcript keeps exactly what the plugin chooses",
         ],
         apiSymbols: ["PluginUi", "PluginPendingInteractionRegistration"],
         firstParty: ["Ask User Question", "Secrets"],

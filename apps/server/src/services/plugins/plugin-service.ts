@@ -12,8 +12,6 @@ import {
   deepFreezePluginMetadata,
   derivePluginId,
   formatPluginThemeId,
-  isNamespacedGlyph,
-  isPluginOwnedIconPath,
   parsePersistedPluginMetadata,
   type DeclaredCodeTheme,
   type JsonObject,
@@ -169,6 +167,7 @@ import type {
   PluginResolvedProviderEnvHealth,
 } from "./plugin-service-internal.js";
 import type { PluginMachineProviderBridge } from "./plugin-machine-provider-registry.js";
+import { fillPluginPresentation } from "./plugin-presentation.js";
 export type {
   PluginAgentToolContribution,
   PluginMentionResolveResult,
@@ -522,8 +521,6 @@ function normalizeMentionSearchItems(
   });
 }
 
-const GENERIC_AGENT_TOOL_GLYPH = "Toolbox";
-
 export function createPluginService(deps: PluginServiceDeps): PluginService {
   const logger = deps.logger;
   const bundledPlugins =
@@ -696,26 +693,14 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     pluginId: string,
     record: PluginAgentToolRecord,
   ): ThreadEventItemPresentation {
-    const declared = record.presentation;
-    const brandingIcon = loaded.get(pluginId)?.manifest.branding.icon;
-    const glyph =
-      declared?.icon?.glyph ??
-      (brandingIcon !== undefined &&
-      !isPluginOwnedIconPath(brandingIcon) &&
-      !isNamespacedGlyph(brandingIcon)
-        ? brandingIcon
-        : GENERIC_AGENT_TOOL_GLYPH);
-    return {
-      label: declared?.label ?? {
+    return fillPluginPresentation({
+      declared: record.presentation,
+      brandingIcon: loaded.get(pluginId)?.manifest.branding.icon,
+      label: {
         pending: `Running ${record.name}`,
         completed: `Ran ${record.name}`,
       },
-      icon: { glyph },
-      ...(declared?.suppress === undefined
-        ? {}
-        : { suppress: declared.suppress }),
-      ...(declared?.tint === undefined ? {} : { tint: declared.tint }),
-    };
+    });
   }
 
   function findLoadedTheme(

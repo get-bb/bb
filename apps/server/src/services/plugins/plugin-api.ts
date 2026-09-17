@@ -8,6 +8,7 @@ import { createMachineBootstrapApi } from "../machines/bootstrap.js";
 import type { MachineEnrollments } from "../machines/enrollments.js";
 import { listServerAccessProviders } from "./plugin-server-access-registry.js";
 import { detachActivePluginToolCallForPerson } from "./plugin-tool-calls.js";
+import { fillPluginPresentation } from "./plugin-presentation.js";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import Database from "better-sqlite3";
@@ -20,6 +21,7 @@ import {
   setPluginKvValue,
   type DbConnection,
 } from "@bb/db";
+import type { ThreadEventItemPresentation } from "@bb/domain";
 import type {
   BbPluginApi,
   PluginAgentConfiguration,
@@ -72,10 +74,6 @@ import type {
   PluginThreadEventHandler,
   PluginThreadEventName,
   PluginUi,
-  PluginFormInteractionRequest,
-  PluginInteractionRequest,
-  PluginUserQuestionInteractionRequest,
-  PluginUserQuestionInteractionResult,
   StandardSchemaV1,
   PluginRpcContract,
 } from "@get-bb/plugin-sdk";
@@ -478,8 +476,12 @@ export function createPluginApi(options: {
    * name. Empty when the manifest declares none.
    */
   declaredIconNames: ReadonlySet<string>;
+  brandingIcon: string | undefined;
   requestInteraction: (
-    args: NormalizedPluginInteractionRequest & { signal?: AbortSignal },
+    args: Omit<NormalizedPluginInteractionRequest, "presentation"> & {
+      presentation: ThreadEventItemPresentation;
+      signal?: AbortSignal;
+    },
   ) => Promise<PluginInteractionResult>;
   ensureSharedPortTunnel: PluginHosts["ensureSharedPortTunnel"];
   validateSharedPortDeclaration: (
@@ -532,6 +534,7 @@ export function createPluginApi(options: {
     reportAgentToolProblem,
     requestQueueDrain,
     declaredIconNames,
+    brandingIcon,
     requestInteraction,
     ensureSharedPortTunnel,
     validateSharedPortDeclaration,
@@ -616,21 +619,30 @@ export function createPluginApi(options: {
     error: (message) => emitLog("error", message),
   };
 
-  function requestInput(
-    request: PluginUserQuestionInteractionRequest,
-    requestOptions?: { signal?: AbortSignal },
-  ): Promise<PluginUserQuestionInteractionResult>;
-  function requestInput(
-    request: PluginFormInteractionRequest,
-    requestOptions?: { signal?: AbortSignal },
-  ): Promise<PluginInteractionResult>;
   async function requestInput(
-    request: PluginInteractionRequest,
-    requestOptions?: { signal?: AbortSignal },
-  ): Promise<PluginInteractionResult> {
+    request: Parameters<PluginUi["requestInput"]>[0],
+    requestOptions?: Parameters<PluginUi["requestInput"]>[1],
+  ) {
     assertLive();
+    const normalized = normalizeInteractionRequest(request);
+    const glyph = normalized.presentation?.icon?.glyph;
+    const iconProblem =
+      glyph === undefined
+        ? null
+        : undeclaredIconProblem(pluginId, declaredIconNames, glyph);
+    if (iconProblem !== null) {
+      throw new Error(`ui.requestInput presentation.icon ${iconProblem}`);
+    }
     const pending = requestInteraction({
-      ...normalizeInteractionRequest(request),
+      ...normalized,
+      presentation: fillPluginPresentation({
+        declared: normalized.presentation,
+        brandingIcon,
+        label: {
+          pending: `Waiting for ${normalized.title}`,
+          completed: `Submitted ${normalized.title}`,
+        },
+      }),
       signal: requestOptions?.signal,
     });
     detachActivePluginToolCallForPerson();

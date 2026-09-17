@@ -51,7 +51,6 @@ describe("secrets plugin server", () => {
       expect(host.harness.pendingInteractions).toHaveLength(1),
     );
     const pending = host.harness.pendingInteractions[0]!;
-    if (!("payload" in pending)) throw new Error("expected a plugin form");
     expect(pending.title).toBe("Add secrets");
     expect(pending.payload).toMatchObject({
       purpose: "Configure the app",
@@ -114,9 +113,7 @@ describe("secrets plugin server", () => {
       expect(host.harness.pendingInteractions).toHaveLength(1),
     );
 
-    const form = host.harness.pendingInteractions[0]!;
-    if (!("payload" in form)) throw new Error("expected a plugin form");
-    expect(form.payload).toMatchObject({
+    expect(host.harness.pendingInteractions[0]?.payload).toMatchObject({
       destination: { kind: "dotenv", path: "/var/plugin/.env" },
     });
     expect(host.harness.sdk.callsTo("files.read")[0]?.[0]).toEqual({

@@ -16,20 +16,10 @@ function interaction(
   };
   switch (payload.kind) {
     case "plugin":
-      if (
-        origin === undefined ||
-        origin.kind !== "plugin" ||
-        origin.rendererId === null
-      ) {
-        throw new Error("a plugin payload takes a plugin form origin");
+      if (origin === undefined || origin.kind !== "plugin") {
+        throw new Error("a plugin payload takes a plugin origin");
       }
-      return {
-        ...base,
-        turnId: null,
-        origin: { ...origin, rendererId: origin.rendererId },
-        payload,
-        resolution: null,
-      };
+      return { ...base, turnId: null, origin, payload, resolution: null };
     case "approval":
     case "user_question":
     default: {

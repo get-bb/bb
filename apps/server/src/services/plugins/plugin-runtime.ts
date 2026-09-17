@@ -1577,6 +1577,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         });
       },
       declaredIconNames: new Set(manifest.branding.icons.keys()),
+      brandingIcon: manifest.branding.icon,
       assertProviderRegistrable: (providerId) => {
         if (manifest.hostEntry !== undefined) {
           return;

@@ -78,6 +78,25 @@ export function assertInteractionPayloadFits(
   }
 }
 
+export function describeAnswers(
+  payload: InteractionPayload,
+  result: ToolResult,
+): { title: string; detail: string; payload: ToolResult } {
+  const entries = Object.entries(result.answers);
+  const [first] = payload.questions;
+  const title =
+    payload.questions.length === 1 && first && entries[0]
+      ? `Answered ${first.prompt} — ${entries[0][1]}`
+      : `Answered ${entries.length} of ${payload.questions.length} questions`;
+  const detail = payload.questions
+    .map((question) => {
+      const answer = result.answers[question.prompt];
+      return `- ${question.prompt} — ${answer ?? "no answer"}`;
+    })
+    .join("\n");
+  return { title, detail, payload: result };
+}
+
 export function buildInteractionTitle(payload: InteractionPayload): string {
   const [first] = payload.questions;
   if (payload.questions.length === 1 && first) return first.shortLabel;

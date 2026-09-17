@@ -21,8 +21,6 @@ import {
   normalizeProviderNativeRoots,
   providerNativeRootsInputSchema,
   providerNativeRootsSchema,
-  userQuestionPendingInteractionPayloadSchema,
-  type PendingInteractionUserQuestionQuestion,
   type ProviderNativeRoots,
 } from "@bb/domain";
 import { PLUGIN_CLI_OUTPUT_MAX_BYTES } from "../backend-contract.js";
@@ -2090,12 +2088,13 @@ function rejectStaleAgentToolFields(toolName: string, tool: object): void {
 export function parsePluginAgentToolPresentation(
   toolName: string,
   value: unknown,
+  subject = `tool "${toolName}"`,
 ): PluginAgentToolPresentation | null {
   if (value === undefined) {
     return null;
   }
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error(`tool "${toolName}" presentation must be an object`);
+    throw new Error(`${subject} presentation must be an object`);
   }
   const declared = value as Record<string, unknown>;
   const presentation: PluginAgentToolPresentation = {};
@@ -2108,7 +2107,7 @@ export function parsePluginAgentToolPresentation(
       typeof (label as { completed?: unknown }).completed !== "string"
     ) {
       throw new Error(
-        `tool "${toolName}" presentation.label must provide pending and completed strings`,
+        `${subject} presentation.label must provide pending and completed strings`,
       );
     }
     const { pending, completed } = label as {
@@ -2122,7 +2121,7 @@ export function parsePluginAgentToolPresentation(
       completed.length > PLUGIN_AGENT_STATUS_LABEL_MAX_CHARS
     ) {
       throw new Error(
-        `tool "${toolName}" presentation.label strings must be non-empty and at most ${PLUGIN_AGENT_STATUS_LABEL_MAX_CHARS} characters`,
+        `${subject} presentation.label strings must be non-empty and at most ${PLUGIN_AGENT_STATUS_LABEL_MAX_CHARS} characters`,
       );
     }
     presentation.label = { pending, completed };
@@ -2135,17 +2134,13 @@ export function parsePluginAgentToolPresentation(
       typeof (icon as { glyph?: unknown }).glyph !== "string" ||
       (icon as { glyph: string }).glyph.trim().length === 0
     ) {
-      throw new Error(
-        `tool "${toolName}" presentation.icon must be { glyph: string }`,
-      );
+      throw new Error(`${subject} presentation.icon must be { glyph: string }`);
     }
     presentation.icon = { glyph: (icon as { glyph: string }).glyph };
   }
   if (declared.suppress !== undefined) {
     if (typeof declared.suppress !== "boolean") {
-      throw new Error(
-        `tool "${toolName}" presentation.suppress must be a boolean`,
-      );
+      throw new Error(`${subject} presentation.suppress must be a boolean`);
     }
     presentation.suppress = declared.suppress;
   }
@@ -2158,7 +2153,7 @@ export function parsePluginAgentToolPresentation(
       typeof (tint as { dark?: unknown }).dark !== "string"
     ) {
       throw new Error(
-        `tool "${toolName}" presentation.tint must provide light and dark strings`,
+        `${subject} presentation.tint must provide light and dark strings`,
       );
     }
     presentation.tint = {
@@ -3291,32 +3286,14 @@ export function normalizeMentionProviderRegistration(
   };
 }
 
-export type NormalizedPluginInteractionRequest =
-  | {
-      kind: "form";
-      threadId: string;
-      rendererId: string;
-      title: string;
-      payload: JsonValue;
-      timeoutMs: number;
-    }
-  | {
-      kind: "user_question";
-      threadId: string;
-      questions: PendingInteractionUserQuestionQuestion[];
-      timeoutMs: number;
-    };
-
-function normalizeInteractionTimeout(timeoutMs: number | undefined): number {
-  const resolved = timeoutMs ?? 10 * 60 * 1000;
-  if (
-    !Number.isInteger(resolved) ||
-    resolved <= 0 ||
-    resolved > 60 * 60 * 1000
-  ) {
-    throw new Error("ui.requestInput timeoutMs must be between 1 and 3600000");
-  }
-  return resolved;
+export interface NormalizedPluginInteractionRequest {
+  threadId: string;
+  rendererId: string;
+  title: string;
+  payload: JsonValue;
+  timeoutMs: number;
+  presentation: PluginAgentToolPresentation | null;
+  describe: NonNullable<PluginInteractionRequest["describe"]> | null;
 }
 
 export function normalizeInteractionRequest(
@@ -3327,34 +3304,6 @@ export function normalizeInteractionRequest(
   }
   if (typeof request.threadId !== "string" || request.threadId.length === 0) {
     throw new Error("ui.requestInput threadId must be a non-empty string");
-  }
-  if ("kind" in request) {
-    if (request.kind !== "user_question") {
-      throw new Error('ui.requestInput kind must be "user_question"');
-    }
-    const parsed = userQuestionPendingInteractionPayloadSchema.safeParse({
-      kind: "user_question",
-      questions: request.questions,
-    });
-    if (!parsed.success) {
-      throw new Error(
-        `ui.requestInput questions are invalid: ${parsed.error.issues
-          .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
-          .join("; ")}`,
-      );
-    }
-    if (
-      Buffer.byteLength(JSON.stringify(parsed.data), "utf8") >
-      PLUGIN_INTERACTION_MAX_PAYLOAD_BYTES
-    ) {
-      throw new Error("ui.requestInput questions exceed 64 KiB");
-    }
-    return {
-      kind: "user_question",
-      threadId: request.threadId,
-      questions: parsed.data.questions,
-      timeoutMs: normalizeInteractionTimeout(request.timeoutMs),
-    };
   }
   if (
     typeof request.rendererId !== "string" ||
@@ -3389,13 +3338,32 @@ export function normalizeInteractionRequest(
     }
     throw new Error("ui.requestInput payload must be JSON-serializable");
   }
+  const timeoutMs = request.timeoutMs ?? 10 * 60 * 1000;
+  if (
+    !Number.isInteger(timeoutMs) ||
+    timeoutMs <= 0 ||
+    timeoutMs > 60 * 60 * 1000
+  ) {
+    throw new Error("ui.requestInput timeoutMs must be between 1 and 3600000");
+  }
+  if (
+    request.describe !== undefined &&
+    typeof request.describe !== "function"
+  ) {
+    throw new Error("ui.requestInput describe must be a function");
+  }
   return {
-    kind: "form",
     threadId: request.threadId,
     rendererId: request.rendererId,
     title: request.title.trim(),
     payload,
-    timeoutMs: normalizeInteractionTimeout(request.timeoutMs),
+    timeoutMs,
+    presentation: parsePluginAgentToolPresentation(
+      request.rendererId,
+      request.presentation,
+      `ui.requestInput form "${request.rendererId}"`,
+    ),
+    describe: request.describe ?? null,
   };
 }
 

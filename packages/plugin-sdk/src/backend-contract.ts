@@ -7,8 +7,6 @@ import type {
   Host,
   PermissionMode,
   PendingInteraction,
-  PendingInteractionUserAnswer,
-  PendingInteractionUserQuestionQuestion,
   Project,
   PromptInput,
   ProviderErrorInfo,
@@ -933,54 +931,51 @@ export type PluginInteractionCancelReason =
   | "server-restarted"
   | "timeout";
 
-export type PluginInteractionCancelled = {
-  outcome: "cancelled";
-  reason: PluginInteractionCancelReason;
-};
-
 export type PluginInteractionResult =
   | { outcome: "submitted"; value: JsonValue }
-  | PluginInteractionCancelled;
+  | { outcome: "cancelled"; reason: PluginInteractionCancelReason };
 
 /**
- * A form the plugin draws itself through its `pendingInteraction` slot. The
- * payload and the submitted value are opaque to bb: neither is persisted, so
- * the timeline records only the title and the outcome.
+ * What a submitted form leaves in the thread timeline, chosen by the plugin.
+ * bb never stores the form's payload or the submitted value; it stores only
+ * this description, so a plugin decides what the transcript keeps.
  */
-export interface PluginFormInteractionRequest {
+export interface PluginInteractionDescription {
+  /** Row title once submitted; defaults to the presentation's completed label. */
+  title?: string;
+  /** Short Markdown for the expanded row. */
+  detail?: string;
+  /**
+   * Persisted with the row and handed to this plugin's
+   * `experimental_timelineRenderer` registered for `"<pluginId>/<rendererId>"`.
+   * Omit anything the transcript must not keep.
+   */
+  payload?: JsonValue;
+}
+
+export interface PluginInteractionRequest {
   threadId: string;
   rendererId: string;
   title: string;
   payload: JsonValue;
   /** Defaults to ten minutes; capped at one hour. */
   timeoutMs?: number;
+  /**
+   * How the form reads as a timeline row while it waits and once it settles,
+   * in the same shape as a native tool's presentation. bb fills what is left
+   * out: "Waiting for <title>" / "Submitted <title>" and the plugin's glyph.
+   */
+  presentation?: PluginAgentToolPresentation;
+  /**
+   * Called once with the submitted value, before the waiting `requestInput`
+   * promise resolves; never for a cancellation, which bb titles itself. Its
+   * return is persisted on the row. A throw or a slow return leaves the row
+   * with its completed label and nothing more.
+   */
+  describe?(
+    value: JsonValue,
+  ): PluginInteractionDescription | Promise<PluginInteractionDescription>;
 }
-
-/**
- * A multiple-choice question bb draws with its own question card, the same
- * one a provider's native question uses. bb persists the questions and the
- * answers, so the thread timeline shows the question row with what the
- * person chose, and `bb thread interactions answer` can answer it.
- */
-export interface PluginUserQuestionInteractionRequest {
-  threadId: string;
-  kind: "user_question";
-  questions: readonly PendingInteractionUserQuestionQuestion[];
-  /** Defaults to ten minutes; capped at one hour. */
-  timeoutMs?: number;
-}
-
-export type PluginInteractionRequest =
-  | PluginFormInteractionRequest
-  | PluginUserQuestionInteractionRequest;
-
-export type PluginUserQuestionInteractionResult =
-  | {
-      outcome: "submitted";
-      /** Keyed by question id; a question the person skipped is absent. */
-      value: Record<string, PendingInteractionUserAnswer>;
-    }
-  | PluginInteractionCancelled;
 
 export interface PluginCliResult {
   exitCode: number;
@@ -1803,18 +1798,15 @@ export interface PluginMentionProviderRegistration {
 
 export interface PluginUi {
   /**
-   * Block until the person submits or cancels a form in the thread composer:
-   * a plugin-drawn form, or bb's own question card for a `user_question`
-   * request. Inside a native tool's `execute`, calling this answers the tool
-   * call at once with a waiting notice and the eventual return value reaches
-   * the agent as a message; see {@link PluginAgentToolContext.signal}.
+   * Block until the person submits or cancels this plugin's form in the
+   * thread composer. Inside a native tool's `execute`, calling this answers
+   * the tool call at once with a waiting notice and the eventual return value
+   * reaches the agent as a message; see {@link PluginAgentToolContext.signal}.
+   * The form leaves a timeline row described by `presentation` and
+   * `describe`.
    */
   requestInput(
-    request: PluginUserQuestionInteractionRequest,
-    options?: { signal?: AbortSignal },
-  ): Promise<PluginUserQuestionInteractionResult>;
-  requestInput(
-    request: PluginFormInteractionRequest,
+    request: PluginInteractionRequest,
     options?: { signal?: AbortSignal },
   ): Promise<PluginInteractionResult>;
   /**

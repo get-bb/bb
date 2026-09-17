@@ -16,7 +16,7 @@ SKILL.md. Inspect nested `--help` before selecting flags and IDs.
 
 - `plugins/ask-user-question/package.json`
 - `plugins/ask-user-question/src/server.ts`
-- `apps/app/src/components/thread/user-questions/UserQuestionInteractionContent.tsx` (bb's own question card, shared with native providers)
+- `plugins/ask-user-question/app.tsx`
 
 ## Feature recipes
 

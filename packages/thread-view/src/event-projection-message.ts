@@ -433,8 +433,11 @@ export interface EventProjectionPluginFormLifecycleMessage extends EventProjecti
     "pending" | "completed" | "error" | "interrupted"
   >;
   pluginId: string;
+  rendererId: string;
   title: string;
   statusReason: string | null;
+  presentation: ThreadEventItemPresentation;
+  payload: JsonValue | null;
 }
 
 export interface EventProjectionDelegationMessage

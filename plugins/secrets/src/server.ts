@@ -193,6 +193,22 @@ async function runRequest(
           description: parsed.descriptions.get(name) ?? null,
         })),
       },
+      presentation: {
+        label: {
+          pending: `Requesting ${parsed.names.join(", ")}`,
+          completed: `Requested ${parsed.names.join(", ")}`,
+        },
+      },
+      describe: (value) => {
+        const response = secretRequestResponseSchema.safeParse(value);
+        const names = response.success
+          ? Object.keys(response.data.values).sort()
+          : [];
+        return {
+          title: `Provided ${names.join(", ")} for ${destinationPath}`,
+          detail: names.map((name) => `- ${name}`).join("\n"),
+        };
+      },
     },
     { signal: ctx.signal },
   );

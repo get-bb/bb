@@ -1983,6 +1983,8 @@ bound in `apps/app/src/lib/plugin-sdk-app-impl.tsx`.
 
 **Kept experimental (2026-08-22).** zero consumers; every audit item is about the prop shape and none has a consumer to answer it — the first real renderer (a Codex extension-kind body, or the echo example) precedes stabilization.
 
+**2026-09-16.** A third row kind resolves to this renderer: the row a plugin form (`bb.ui.requestInput`) leaves in the timeline, registered as `"<pluginId>/<rendererId>"`. Its `payload` is whatever the form's `describe` returned, or `null`, and `completedAt` is `null`. Audit with the first consumer whether form rows and extension rows should share one `kind` grammar or be told apart on the row.
+
 **What it does.** Lets a provider plugin's frontend render the expanded body
 of the timeline rows it owns: `{ kind, component }`, where `kind` is one of
 the plugin's own extension item kinds (`"<pluginId>/<name>"`, as declared in

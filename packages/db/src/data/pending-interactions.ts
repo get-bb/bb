@@ -27,7 +27,7 @@ export type CreatePendingInteractionInput =
   | (CreatePendingInteractionInputBase & {
       originKind: "plugin";
       pluginId: string;
-      rendererId: string | null;
+      rendererId: string;
       turnId: string | null;
     });
 

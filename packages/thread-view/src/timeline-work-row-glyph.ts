@@ -65,11 +65,7 @@ export function activityIntentTitleGlyph(
 export function workRowPresentation(
   row: TimelineViewWorkRow,
 ): TimelineRowPresentation | undefined {
-  if (
-    row.workKind === "approval" ||
-    row.workKind === "question" ||
-    row.workKind === "form"
-  ) {
+  if (row.workKind === "approval" || row.workKind === "question") {
     return undefined;
   }
   return row.presentation;

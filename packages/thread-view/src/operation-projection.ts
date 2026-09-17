@@ -327,6 +327,8 @@ function mergePluginFormLifecycleMessage(
   existing.lifecycle = incoming.lifecycle;
   existing.title = incoming.title;
   existing.statusReason = incoming.statusReason;
+  existing.presentation = incoming.presentation;
+  existing.payload = incoming.payload;
 }
 
 function mergeUserQuestionLifecycleMessage(
