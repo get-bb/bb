@@ -16,6 +16,11 @@ import {
 } from "./PluginBrowseControls";
 import type { PluginBrowseCategoryOption } from "./plugin-browse-discovery";
 
+const viewport = vi.hoisted(() => ({ compact: false }));
+vi.mock("@bb/shared-ui/hooks/use-compact-viewport", () => ({
+  useIsCompactViewport: () => viewport.compact,
+}));
+
 const OPTIONS: PluginBrowseCategoryOption[] = [
   { id: "memory-and-context", label: "Memory & Context", count: 4 },
   { id: "security", label: "Security", count: 2 },
@@ -32,6 +37,7 @@ function openMenu(selectionLabel: string) {
 
 afterEach(() => {
   cleanup();
+  viewport.compact = false;
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -343,6 +349,27 @@ describe("PluginCollectionToolbar", () => {
     await waitFor(() =>
       expect(document.activeElement).toBe(
         screen.getByRole("button", { name: "Plugin controls" }),
+      ),
+    );
+  });
+
+  it("restores focus to the category entry in the compact drawer", async () => {
+    viewport.compact = true;
+    mockToolbarWidth(320);
+    render(<ToolbarHarness installed />);
+    fireEvent.click(screen.getByRole("button", { name: "Plugin controls" }));
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: /^Category/u }),
+    );
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByRole("combobox", { name: "Search plugin categories" }),
+      ),
+    );
+    fireEvent.click(screen.getByRole("menuitem", { name: "Back to controls" }));
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByRole("menuitem", { name: /^Category/u }),
       ),
     );
   });

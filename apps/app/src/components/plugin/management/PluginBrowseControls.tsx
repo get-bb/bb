@@ -224,6 +224,7 @@ function PluginControlsMenu({
           ?.querySelector<HTMLElement>(
             `[data-control-page="${returnPageRef.current}"]`,
           )
+          ?.closest<HTMLElement>('[role="menuitem"]')
           ?.focus();
       }
     });
@@ -279,14 +280,15 @@ function PluginControlsMenu({
           pages.map((control) => (
             <DropdownMenuItem
               key={control.id}
-              data-control-page={control.id}
               onSelect={(event) => {
                 event.preventDefault();
                 setPageId(control.id);
               }}
             >
               <Icon name={control.icon} className="size-4" />
-              <span className="flex-1">{control.label}</span>
+              <span data-control-page={control.id} className="flex-1">
+                {control.label}
+              </span>
               {control.active ? (
                 <span className="text-2xs text-muted-foreground">Active</span>
               ) : null}
