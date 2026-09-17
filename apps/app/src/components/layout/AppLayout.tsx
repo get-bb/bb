@@ -51,6 +51,7 @@ import {
   getCompactSecondaryPanelPresentation,
   subscribeCompactSecondaryPanelShelfShowing,
 } from "@/components/ui/secondary-panel-shelf-visibility";
+import { ProjectCreateDetailsDialog } from "@/components/dialogs/ProjectCreateDetailsDialog";
 import { ProjectPathDialog } from "@/components/dialogs/ProjectPathDialog";
 import { ProjectActionsMenu } from "@/components/project/ProjectActionsMenu";
 import { ProjectActionsProvider } from "@/components/project/ProjectActionsProvider";
@@ -820,6 +821,32 @@ export function AppLayout({ children }: AppLayoutProps) {
             hosts={quickCreateProject.hosts}
             onOpenChange={quickCreateProject.projectPathDialog.onOpenChange}
             onSubmit={quickCreateProject.submitProjectPath}
+          />
+          <ProjectCreateDetailsDialog
+            target={
+              quickCreateProject.createDetails?.target
+                ? {
+                    ...quickCreateProject.createDetails.target,
+                    hostName:
+                      (quickCreateProject.hosts ?? []).find(
+                        (host) =>
+                          host.id ===
+                          quickCreateProject.createDetails?.target?.hostId,
+                      )?.name ?? quickCreateProject.hostName,
+                  }
+                : null
+            }
+            pending={quickCreateProject.isCreating}
+            onOpenChange={
+              quickCreateProject.createDetails?.onOpenChange ?? (() => {})
+            }
+            onConfirm={
+              quickCreateProject.confirmCreateDetails ?? (() => {})
+            }
+            onBack={() => {
+              quickCreateProject.cancelCreateDetails?.();
+              quickCreateProject.openCreateDialog();
+            }}
           />
         </ThreadActionsProvider>
       </ThreadTitleMentionResourcesProvider>

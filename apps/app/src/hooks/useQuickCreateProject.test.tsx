@@ -4,6 +4,7 @@ import { act, cleanup, renderHook } from "@testing-library/react";
 import type { Host } from "@bb/domain";
 import { makeHost } from "@bb/test-helpers/domain-fixtures";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { LocalPathSubmitParams } from "./useLocalPathPicker";
 import { useQuickCreateProject } from "./useQuickCreateProject";
 
 const mocks = vi.hoisted(() => ({
@@ -17,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   openPathEntry: vi.fn(),
   openPicker: vi.fn(),
   setRootComposeProjectId: vi.fn(),
+  capturedSubmit: null as ((params: LocalPathSubmitParams) => void) | null,
 }));
 
 vi.mock("react-router-dom", () => ({
@@ -33,22 +35,27 @@ vi.mock("@/hooks/queries/host-queries", () => ({
 }));
 
 vi.mock("@/hooks/useLocalPathPicker", () => ({
-  useLocalPathPicker: () => ({
-    isAvailable: true,
-    hostId: "host_atum",
-    hostName: "atum",
-    openPathEntry: mocks.openPathEntry,
-    openPicker: mocks.openPicker,
-    platform: "linux",
-    projectPathDialog: {
-      isOpen: false,
-      onClose: mocks.onClose,
-      onOpen: mocks.onOpen,
-      onOpenChange: mocks.onOpenChange,
-      target: null,
-    },
-    submitProjectPath: vi.fn(),
-  }),
+  useLocalPathPicker: (options: {
+    submit: (params: LocalPathSubmitParams) => void;
+  }) => {
+    mocks.capturedSubmit = options.submit;
+    return {
+      isAvailable: true,
+      hostId: "host_atum",
+      hostName: "atum",
+      openPathEntry: mocks.openPathEntry,
+      openPicker: mocks.openPicker,
+      platform: "linux",
+      projectPathDialog: {
+        isOpen: false,
+        onClose: mocks.onClose,
+        onOpen: mocks.onOpen,
+        onOpenChange: mocks.onOpenChange,
+        target: null,
+      },
+      submitProjectPath: vi.fn(),
+    };
+  },
 }));
 
 vi.mock("@/lib/root-compose-selection", () => ({
@@ -67,9 +74,23 @@ function host(
   });
 }
 
+function stageCreate(path = "/home/deploy/repos/givecare") {
+  const closeDialog = vi.fn();
+  act(() => {
+    mocks.capturedSubmit?.({
+      path,
+      hostId: "host_atum",
+      target: { kind: "create" },
+      closeDialog,
+    });
+  });
+  return closeDialog;
+}
+
 beforeEach(() => {
   mocks.hosts = [host("host_atum", "atum")];
   mocks.isLoadingHosts = false;
+  mocks.capturedSubmit = null;
 });
 
 afterEach(() => {
@@ -94,5 +115,69 @@ describe("useQuickCreateProject", () => {
       "host_atum",
       "host_thoth",
     ]);
+  });
+
+  it("stages a picked folder into the details dialog instead of creating", () => {
+    const { result } = renderHook(() => useQuickCreateProject());
+    expect(mocks.capturedSubmit).not.toBeNull();
+
+    const closeDialog = stageCreate();
+
+    expect(closeDialog).toHaveBeenCalled();
+    expect(result.current.createDetails.target).toEqual({
+      path: "/home/deploy/repos/givecare",
+      hostId: "host_atum",
+      suggestedName: "givecare",
+    });
+    expect(mocks.mutate).not.toHaveBeenCalled();
+  });
+
+  it("stages an empty suggested name and lets the dialog block confirm", () => {
+    const { result } = renderHook(() => useQuickCreateProject());
+
+    stageCreate("/");
+
+    expect(result.current.createDetails.target).toEqual({
+      path: "/",
+      hostId: "host_atum",
+      suggestedName: "",
+    });
+  });
+
+  it("confirms with the edited name and navigates on success", () => {
+    const { result } = renderHook(() => useQuickCreateProject());
+
+    stageCreate();
+
+    act(() => result.current.confirmCreateDetails("  My Project  "));
+
+    expect(mocks.mutate).toHaveBeenCalledTimes(1);
+    expect(mocks.mutate.mock.calls[0][0]).toEqual({
+      name: "My Project",
+      source: {
+        type: "local_path",
+        hostId: "host_atum",
+        path: "/home/deploy/repos/givecare",
+      },
+    });
+
+    const onSuccess = mocks.mutate.mock.calls[0][1].onSuccess;
+    act(() => onSuccess({ id: "project_1" }));
+
+    expect(result.current.createDetails.target).toBeNull();
+    expect(mocks.setRootComposeProjectId).toHaveBeenCalledWith("project_1");
+    expect(mocks.navigate).toHaveBeenCalled();
+  });
+
+  it("cancels the staged details without creating", () => {
+    const { result } = renderHook(() => useQuickCreateProject());
+
+    stageCreate();
+    expect(result.current.createDetails.target).not.toBeNull();
+
+    act(() => result.current.cancelCreateDetails());
+
+    expect(result.current.createDetails.target).toBeNull();
+    expect(mocks.mutate).not.toHaveBeenCalled();
   });
 });

@@ -10,6 +10,7 @@ import { deriveProjectNameFromPath, type Host } from "@bb/domain";
 import type { HostPlatform } from "@bb/host-daemon-contract";
 import { useCreateProject } from "@/hooks/mutations/project-mutations";
 import { useHosts } from "@/hooks/queries/host-queries";
+import { useDialogState } from "@/hooks/useDialogState";
 import {
   useLocalPathPicker,
   type LocalPathSubmitParams,
@@ -30,6 +31,12 @@ interface QuickCreateProjectDialogState {
   target: ProjectPathDialogTarget | null;
 }
 
+export interface PendingProjectCreate {
+  path: string;
+  hostId: string;
+  suggestedName: string;
+}
+
 interface QuickCreateProjectController {
   isAvailable: boolean;
   isCreating: boolean;
@@ -40,6 +47,12 @@ interface QuickCreateProjectController {
   hosts: readonly Host[];
   projectPathDialog: QuickCreateProjectDialogState;
   submitProjectPath: ProjectPathDialogSubmitHandler;
+  createDetails: {
+    target: PendingProjectCreate | null;
+    onOpenChange: (open: boolean) => void;
+  };
+  confirmCreateDetails: (name: string) => void;
+  cancelCreateDetails: () => void;
 }
 
 const quickCreateProjectContext =
@@ -55,20 +68,36 @@ export function useQuickCreateProject(): QuickCreateProjectController {
   const setRootComposeProjectId = useSetRootComposeProjectId();
   const shouldReplaceRoute = location.pathname === APP_ROOT_ROUTE_PATH;
 
+  const createDetails = useDialogState<PendingProjectCreate>();
+
   const submit = useCallback(
     ({ path, hostId, target, closeDialog }: LocalPathSubmitParams) => {
       if (target.kind !== "create") return;
-      const name = deriveProjectNameFromPath(path).trim();
-      if (!name) return;
+      closeDialog();
+      createDetails.onOpen({
+        path,
+        hostId,
+        suggestedName: deriveProjectNameFromPath(path),
+      });
+    },
+    [createDetails],
+  );
+
+  const confirmCreateDetails = useCallback(
+    (name: string) => {
+      const staged = createDetails.target;
+      if (!staged) return;
+      const trimmedName = name.trim();
+      if (!trimmedName) return;
 
       mutate(
         {
-          name,
-          source: { type: "local_path", hostId, path },
+          name: trimmedName,
+          source: { type: "local_path", hostId: staged.hostId, path: staged.path },
         },
         {
           onSuccess: (project) => {
-            closeDialog();
+            createDetails.onClose();
             setRootComposeProjectId(project.id);
             void navigate(getRootComposeRoutePath(), {
               replace: shouldReplaceRoute,
@@ -77,8 +106,12 @@ export function useQuickCreateProject(): QuickCreateProjectController {
         },
       );
     },
-    [mutate, navigate, setRootComposeProjectId, shouldReplaceRoute],
+    [createDetails, mutate, navigate, setRootComposeProjectId, shouldReplaceRoute],
   );
+
+  const cancelCreateDetails = useCallback(() => {
+    createDetails.onClose();
+  }, [createDetails]);
 
   const controller = useLocalPathPicker({
     isPending,
@@ -100,8 +133,14 @@ export function useQuickCreateProject(): QuickCreateProjectController {
       hosts,
       projectPathDialog: controller.projectPathDialog,
       submitProjectPath: controller.submitProjectPath,
+      createDetails: {
+        target: createDetails.target,
+        onOpenChange: createDetails.onOpenChange,
+      },
+      confirmCreateDetails,
+      cancelCreateDetails,
     }),
-    [controller, hosts, isPending, openCreateDialog],
+    [controller, hosts, isPending, openCreateDialog, createDetails, confirmCreateDetails, cancelCreateDetails],
   );
 }
 
