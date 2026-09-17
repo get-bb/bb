@@ -5,6 +5,10 @@ import { events } from "@bb/db";
 import { describe, expect, it, vi } from "vitest";
 import { internalAuthHeaders } from "../helpers/commands.js";
 import { readJson } from "../helpers/json.js";
+import {
+  PLUGIN_TOOL_CALL_AWAITING_PERSON_RESULT_TEXT,
+  detachActivePluginToolCallForPerson,
+} from "../../src/services/plugins/plugin-tool-calls.js";
 import { listQueuedThreadCommands } from "../helpers/commands.js";
 import {
   seedEnvironment,
@@ -107,8 +111,8 @@ function installWaitingTool(
     resolveMention: async () => ({ ok: false, error: "unused" }),
     invokeAgentTool: async ({ ctx }) => {
       observe(ctx.signal);
-      const result =
-        await harness.deps.pendingInteractions.requestPluginInteraction({
+      const pending = harness.deps.pendingInteractions.requestPluginInteraction(
+        {
           kind: "form",
           pluginId: "fixture",
           rendererId: "question",
@@ -117,7 +121,10 @@ function installWaitingTool(
           payload: {},
           timeoutMs: 10_000,
           signal: ctx.signal,
-        });
+        },
+      );
+      detachActivePluginToolCallForPerson();
+      const result = await pending;
       return result.outcome === "submitted"
         ? {
             success: true,
@@ -146,7 +153,7 @@ function turnRequestedEvents(harness: TestAppHarness, threadId: string) {
 }
 
 describe("plugin tool calls that outlive their round trip", () => {
-  it("keeps the interaction open after the response body is cancelled and delivers the answer as a system message", async () => {
+  it("answers the round trip with a waiting notice, keeps the card open, and delivers the answer as a system message", async () => {
     await withTestHarness(async (harness) => {
       const { session, thread } = seedIdleProviderThread(harness, 1);
       const record: PluginAgentToolRecord = {
@@ -178,13 +185,20 @@ describe("plugin tool calls that outlive their round trip", () => {
             }),
           },
         );
+        await expect(response.json()).resolves.toEqual({
+          success: true,
+          contentItems: [
+            {
+              type: "inputText",
+              text: PLUGIN_TOOL_CALL_AWAITING_PERSON_RESULT_TEXT,
+            },
+          ],
+        });
         const [interaction] =
           harness.deps.pendingInteractions.listPendingThreadInteractions(
             thread.id,
           );
         expect(interaction).toBeDefined();
-        await response.body?.cancel();
-        await new Promise((resolve) => setTimeout(resolve, 10));
 
         expect(toolSignal?.aborted).toBe(false);
         expect(
@@ -271,12 +285,11 @@ describe("plugin tool calls that outlive their round trip", () => {
             }),
           },
         );
+        await response.json();
         const [interaction] =
           harness.deps.pendingInteractions.listPendingThreadInteractions(
             thread.id,
           );
-        await response.body?.cancel();
-        await new Promise((resolve) => setTimeout(resolve, 10));
 
         harness.deps.pendingInteractions.cancelPluginInteraction({
           interactionId: interaction!.id,

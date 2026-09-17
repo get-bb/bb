@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ToolCallResponse } from "@bb/domain";
 import {
+  PLUGIN_TOOL_CALL_AWAITING_PERSON_RESULT_TEXT,
   PLUGIN_TOOL_CALL_DETACHED_RESULT_TEXT,
   PluginToolCallRegistry,
+  detachActivePluginToolCallForPerson,
 } from "../../../src/services/plugins/plugin-tool-calls.js";
 import { testLogger } from "../../helpers/test-app.js";
 
@@ -115,6 +117,42 @@ describe("PluginToolCallRegistry", () => {
     expect(onDetachedResult).toHaveBeenCalledWith(
       textResponse("after the stub"),
     );
+  });
+
+  it("answers the round trip at once when the tool asks the person for input", async () => {
+    const registry = createRegistry();
+    const roundTrip = new AbortController();
+    const onDetachedResult = vi.fn(async () => undefined);
+    const result = deferred<ToolCallResponse>();
+
+    const response = registry.run({
+      pluginId: "fixture",
+      threadId: "thread",
+      callId: "call",
+      toolName: "ask",
+      roundTrip: roundTrip.signal,
+      invoke: async () => {
+        await Promise.resolve();
+        detachActivePluginToolCallForPerson();
+        return result.promise;
+      },
+      onDetachedResult,
+    });
+
+    await expect(response).resolves.toEqual(
+      textResponse(PLUGIN_TOOL_CALL_AWAITING_PERSON_RESULT_TEXT),
+    );
+    expect(registry.size).toBe(1);
+    result.resolve(textResponse("the person answered"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(onDetachedResult).toHaveBeenCalledWith(
+      textResponse("the person answered"),
+    );
+    expect(registry.size).toBe(0);
+  });
+
+  it("ignores a detach request made outside any tool call", () => {
+    expect(() => detachActivePluginToolCallForPerson()).not.toThrow();
   });
 
   it("drops a detached result once its thread was stopped", async () => {

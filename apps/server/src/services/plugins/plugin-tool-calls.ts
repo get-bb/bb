@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import type { ToolCallResponse } from "@bb/domain";
 import type { ServerLogger } from "../../types.js";
 
@@ -14,6 +15,9 @@ export const PLUGIN_TOOL_CALL_DETACH_AFTER_MS = 4 * 60_000;
 
 export const PLUGIN_TOOL_CALL_DETACHED_RESULT_TEXT =
   "This tool call is still running. Its result is not the result of this call: it arrives later as a separate message, either during this turn or as the next one. Do not call the tool again for the same purpose and do not guess its result. If nothing else can proceed without it, end your turn with one short line saying what you are waiting for.";
+
+export const PLUGIN_TOOL_CALL_AWAITING_PERSON_RESULT_TEXT =
+  "This tool call is now waiting on the person: what it asked for is in front of them in the thread. Their answer is not the result of this call: it arrives later as a separate message, either during this turn or as the next one. Do not call the tool again, do not guess the answer, and do not start work that depends on it. End your turn now with one short line saying what you are waiting for.";
 
 export const PLUGIN_TOOL_CALL_LIFETIME_INSTRUCTIONS =
   "Plugin tools can take longer than a turn. When a plugin tool call returns a notice that it is still running, or your turn ends before it returns, its result arrives later as a separate message that names the tool. Treat that message as the call's result and continue from it; do not repeat the call.";
@@ -35,6 +39,26 @@ interface TrackedPluginToolCall {
   callId: string;
   toolName: string;
   controller: AbortController;
+  detachWith(response: ToolCallResponse): void;
+}
+
+const activeCall = new AsyncLocalStorage<TrackedPluginToolCall>();
+
+function stubResponse(text: string): ToolCallResponse {
+  return { success: true, contentItems: [{ type: "inputText", text }] };
+}
+
+/**
+ * Called by the plugin API when a tool call asks the person for input. Core
+ * answers the round trip at once with a notice that the call is waiting on
+ * them, so the provider never has to hold a tool call open for a human, and
+ * the eventual result reaches the agent as a message. A no-op outside a
+ * plugin tool call, for instance from a CLI command.
+ */
+export function detachActivePluginToolCallForPerson(): void {
+  activeCall
+    .getStore()
+    ?.detachWith(stubResponse(PLUGIN_TOOL_CALL_AWAITING_PERSON_RESULT_TEXT));
 }
 
 function failedToolCallResponse(
@@ -64,12 +88,14 @@ export class PluginToolCallRegistry {
 
   run(args: RunPluginToolCallArgs): Promise<ToolCallResponse> {
     const controller = new AbortController();
+    let detachWith: (response: ToolCallResponse) => void = () => undefined;
     const tracked: TrackedPluginToolCall = {
       pluginId: args.pluginId,
       threadId: args.threadId,
       callId: args.callId,
       toolName: args.toolName,
       controller,
+      detachWith: (response) => detachWith(response),
     };
     this.calls.add(tracked);
 
@@ -82,15 +108,13 @@ export class PluginToolCallRegistry {
         clearTimeout(deadline);
         args.roundTrip.removeEventListener("abort", detach);
       };
-      const deadline = setTimeout(() => {
+      detachWith = (response) => {
         if (settled || detached) return;
         detach();
-        resolve({
-          success: true,
-          contentItems: [
-            { type: "inputText", text: PLUGIN_TOOL_CALL_DETACHED_RESULT_TEXT },
-          ],
-        });
+        resolve(response);
+      };
+      const deadline = setTimeout(() => {
+        detachWith(stubResponse(PLUGIN_TOOL_CALL_DETACHED_RESULT_TEXT));
       }, this.detachAfterMs);
       deadline.unref?.();
       args.roundTrip.addEventListener("abort", detach, { once: true });
@@ -131,7 +155,9 @@ export class PluginToolCallRegistry {
 
       let invocation: Promise<ToolCallResponse>;
       try {
-        invocation = args.invoke(controller.signal);
+        invocation = activeCall.run(tracked, () =>
+          args.invoke(controller.signal),
+        );
       } catch (error) {
         invocation = Promise.reject(error);
       }

@@ -1055,12 +1055,12 @@ export interface PluginAgentToolContext {
   projectId: string;
   /**
    * Aborts when the thread is stopped or deleted, or this plugin is disposed.
-   * It does NOT fire when the turn ends: a call that is still running when
-   * the provider stops waiting keeps running, and whatever it returns reaches
-   * the agent as a system message on that thread (a running turn is steered,
-   * an idle one is started; an `isError` result only steers). So a tool may
-   * await a person — `bb.ui.requestInput` with this signal — for as long as
-   * its own timeout allows.
+   * It does NOT fire when the turn ends. A tool that awaits a person through
+   * `bb.ui.requestInput` returns to the agent at once with a notice that it
+   * is waiting on them, keeps running, and whatever it eventually returns
+   * reaches the agent as a system message on that thread (a running turn is
+   * steered, an idle one is started; an `isError` result only steers). A
+   * call that is merely slow keeps its round trip until the transport cap.
    */
   signal: AbortSignal;
 }
@@ -1805,8 +1805,9 @@ export interface PluginUi {
   /**
    * Block until the person submits or cancels a form in the thread composer:
    * a plugin-drawn form, or bb's own question card for a `user_question`
-   * request. Inside a native tool's `execute` the call may outlive the turn;
-   * see {@link PluginAgentToolContext.signal}.
+   * request. Inside a native tool's `execute`, calling this answers the tool
+   * call at once with a waiting notice and the eventual return value reaches
+   * the agent as a message; see {@link PluginAgentToolContext.signal}.
    */
   requestInput(
     request: PluginUserQuestionInteractionRequest,

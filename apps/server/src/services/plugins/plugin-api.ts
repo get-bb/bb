@@ -7,6 +7,7 @@ import {
 import { createMachineBootstrapApi } from "../machines/bootstrap.js";
 import type { MachineEnrollments } from "../machines/enrollments.js";
 import { listServerAccessProviders } from "./plugin-server-access-registry.js";
+import { detachActivePluginToolCallForPerson } from "./plugin-tool-calls.js";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import Database from "better-sqlite3";
@@ -628,10 +629,12 @@ export function createPluginApi(options: {
     requestOptions?: { signal?: AbortSignal },
   ): Promise<PluginInteractionResult> {
     assertLive();
-    return requestInteraction({
+    const pending = requestInteraction({
       ...normalizeInteractionRequest(request),
       signal: requestOptions?.signal,
     });
+    detachActivePluginToolCallForPerson();
+    return pending;
   }
 
   const kv: PluginKvStorage = {
