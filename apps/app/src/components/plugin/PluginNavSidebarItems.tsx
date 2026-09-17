@@ -92,6 +92,7 @@ import {
 } from "./pluginNavSidebarOrder";
 import { haveSameOrder, reorderStoredOrder } from "@/lib/stored-order";
 import { openPluginDetailsInWorkspace } from "./plugin-detail-opener";
+import type { PaneContent } from "@/lib/split-layout";
 
 const MORE_TRIGGER_TEST_ID = "sidebar-navigation-more-trigger";
 
@@ -126,6 +127,7 @@ export interface BuiltInSidebarNavEntry {
   icon: ReactNode;
   content: ReactNode;
   disabled?: boolean;
+  splitContent?: PaneContent;
   onActivate: (event: SidebarNavActivationModifiers) => void;
 }
 
@@ -494,6 +496,8 @@ function PluginNavSidebarItemList({
           hiddenRows={hidden}
           onActivate={handleActivate}
           onCustomize={openCustomize}
+          onAddToSidebar={(key) => setPanelVisible(key, true)}
+          splitEnabled={splitEnabled}
         />
       ) : null}
     </div>
@@ -504,6 +508,8 @@ function SidebarNavigationMoreRow({
   hiddenRows,
   onActivate,
   onCustomize,
+  onAddToSidebar,
+  splitEnabled,
 }: {
   hiddenRows: readonly SidebarNavRow[];
   onActivate: (
@@ -511,18 +517,20 @@ function SidebarNavigationMoreRow({
     event: SidebarNavActivationModifiers,
   ) => void;
   onCustomize: () => void;
+  onAddToSidebar: (key: string) => void;
+  splitEnabled: boolean;
 }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const modifiersRef = useRef<SidebarNavActivationModifiers>({
-    metaKey: false,
-    ctrlKey: false,
-  });
 
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
         <div data-testid="sidebar-navigation-more-row">
-          <DropdownMenu open={isMenuOpen} onOpenChange={setIsMenuOpen}>
+          <DropdownMenu
+            modal={false}
+            open={isMenuOpen}
+            onOpenChange={setIsMenuOpen}
+          >
             <DropdownMenuTrigger asChild>
               <Button
                 type="button"
@@ -547,37 +555,18 @@ function SidebarNavigationMoreRow({
               mobileTitle="More"
             >
               {hiddenRows.map((row) => (
-                <DropdownMenuItem
+                <SidebarNavigationOverflowItem
                   key={getPluginNavPanelKey(row)}
-                  disabled={!isPluginSidebarNavRow(row) && row.disabled}
-                  data-sidebar-navigation-more-item={getPluginNavPanelKey(row)}
-                  onClick={(event) => {
-                    modifiersRef.current = {
-                      metaKey: event.metaKey,
-                      ctrlKey: event.ctrlKey,
-                    };
-                  }}
-                  onSelect={() => {
-                    const modifiers = modifiersRef.current;
-                    modifiersRef.current = { metaKey: false, ctrlKey: false };
-                    onActivate(row, modifiers);
-                  }}
-                >
-                  <span className="flex size-4 shrink-0 items-center justify-center">
-                    {isPluginSidebarNavRow(row) ? (
-                      <PluginIcon
-                        pluginId={row.chrome.pluginId}
-                        icon={row.chrome.icon}
-                      />
-                    ) : (
-                      row.icon
-                    )}
-                  </span>
-                  <span className="min-w-0 flex-1 truncate">{row.title}</span>
-                </DropdownMenuItem>
+                  row={row}
+                  onActivate={onActivate}
+                  onAddToSidebar={onAddToSidebar}
+                  onClose={() => setIsMenuOpen(false)}
+                  splitEnabled={splitEnabled}
+                />
               ))}
               <DropdownMenuSeparator />
               <DropdownMenuItem
+                className="cursor-pointer"
                 data-testid="sidebar-navigation-customize-trigger"
                 onSelect={onCustomize}
               >
@@ -590,6 +579,120 @@ function SidebarNavigationMoreRow({
       <ContextMenuContent aria-label="More sidebar navigation options">
         <ContextMenuItem onSelect={onCustomize}>
           <CustomizeMenuItemContent />
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
+  );
+}
+
+function SidebarNavigationOverflowItem({
+  row,
+  onActivate,
+  onAddToSidebar,
+  onClose,
+  splitEnabled,
+}: {
+  row: SidebarNavRow;
+  onActivate: (
+    row: SidebarNavRow,
+    event: SidebarNavActivationModifiers,
+  ) => void;
+  onAddToSidebar: (key: string) => void;
+  onClose: () => void;
+  splitEnabled: boolean;
+}) {
+  const splitActions = usePaneContentSplitActions();
+  const modifiersRef = useRef<SidebarNavActivationModifiers>({
+    metaKey: false,
+    ctrlKey: false,
+  });
+  const content: PaneContent | undefined = isPluginSidebarNavRow(row)
+    ? {
+        kind: "plugin-panel",
+        pluginId: row.chrome.pluginId,
+        panelPath: row.chrome.path,
+        subPath: "",
+      }
+    : row.splitContent;
+  const disabled = !isPluginSidebarNavRow(row) && row.disabled;
+  const canSplit =
+    splitEnabled &&
+    !splitActions.isCompact &&
+    content !== undefined &&
+    !disabled;
+
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger
+        asChild
+        onContextMenu={(event) => event.stopPropagation()}
+      >
+        <DropdownMenuItem
+          className="cursor-pointer"
+          disabled={disabled}
+          data-sidebar-navigation-more-item={getPluginNavPanelKey(row)}
+          onPointerDown={(event) => {
+            if (!canSplit || !content) return;
+            splitActions.beginDrag(event, {
+              content,
+              enabled: splitEnabled,
+              label: row.title,
+              onDragStart: onClose,
+            });
+          }}
+          onClick={(event) => {
+            modifiersRef.current = {
+              metaKey: event.metaKey,
+              ctrlKey: event.ctrlKey,
+            };
+          }}
+          onSelect={() => {
+            const modifiers = modifiersRef.current;
+            modifiersRef.current = { metaKey: false, ctrlKey: false };
+            onActivate(row, modifiers);
+          }}
+        >
+          <span className="flex size-4 shrink-0 items-center justify-center">
+            {isPluginSidebarNavRow(row) ? (
+              <PluginIcon
+                pluginId={row.chrome.pluginId}
+                icon={row.chrome.icon}
+              />
+            ) : (
+              row.icon
+            )}
+          </span>
+          <span className="min-w-0 flex-1 truncate">{row.title}</span>
+        </DropdownMenuItem>
+      </ContextMenuTrigger>
+      <ContextMenuContent aria-label={`${row.title} options`}>
+        {!splitActions.isCompact ? (
+          <ContextMenuItem
+            className="cursor-pointer"
+            disabled={!canSplit}
+            onSelect={() => {
+              if (!content) return;
+              onClose();
+              splitActions.openInSplit({
+                content,
+                enabled: splitEnabled,
+                label: row.title,
+              });
+            }}
+          >
+            <Icon name="Columns2" aria-hidden="true" />
+            Open in split
+          </ContextMenuItem>
+        ) : null}
+        <ContextMenuItem
+          className="cursor-pointer"
+          onSelect={() => {
+            onClose();
+            onAddToSidebar(getPluginNavPanelKey(row));
+          }}
+        >
+          <Icon name="Eye" aria-hidden="true" />
+          Add to sidebar
         </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>

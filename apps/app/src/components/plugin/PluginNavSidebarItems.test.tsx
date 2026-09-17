@@ -1157,6 +1157,75 @@ describe("PluginNavSidebarItems", () => {
     ).not.toBeNull();
   });
 
+  it("opens a hidden plugin in a split from its own context menu", async () => {
+    registerPanel("docs", "Docs");
+    const { store } = renderSidebarItems({
+      splitEnabled: true,
+      storedOrder: ["docs/main"],
+      storedVisibleKeys: [],
+    });
+
+    await openMoreMenu();
+    fireEvent.contextMenu(screen.getByRole("menuitem", { name: "Docs" }));
+    const menu = await screen.findByRole("menu", { name: "Docs options" });
+    expect(
+      within(menu)
+        .getAllByRole("menuitem")
+        .map((item) => item.textContent),
+    ).toEqual(["Open in split", "Add to sidebar"]);
+    expect(
+      screen.queryByRole("menu", { name: "More sidebar navigation options" }),
+    ).toBeNull();
+    fireEvent.click(
+      within(menu).getByRole("menuitem", { name: "Open in split" }),
+    );
+
+    const layout = store.get(splitLayoutAtom)!;
+    expect(countPanes(layout.root)).toBe(2);
+    expect(
+      findPaneByContent(layout.root, {
+        kind: "plugin-panel",
+        pluginId: "docs",
+        panelPath: "main",
+        subPath: "",
+      }),
+    ).not.toBeNull();
+    expect(store.get(pluginNavVisiblePanelKeysAtom)).toEqual([]);
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+  });
+
+  it.each(["plugin", "built-in"])(
+    "adds a hidden %s row to the sidebar without navigating",
+    async (kind) => {
+      registerPanel("docs", "Docs");
+      const onActivate = vi.fn();
+      const { store } = renderSidebarItems({
+        builtInEntries: [
+          builtInEntry("search-threads", "Search threads", onActivate),
+        ],
+        storedOrder: ["docs/main", "__bb__/search-threads"],
+        storedVisibleKeys: [],
+      });
+      const title = kind === "plugin" ? "Docs" : "Search threads";
+      const key = kind === "plugin" ? "docs/main" : "__bb__/search-threads";
+
+      await openMoreMenu();
+      fireEvent.contextMenu(screen.getByRole("menuitem", { name: title }));
+      const menu = await screen.findByRole("menu", {
+        name: `${title} options`,
+      });
+      fireEvent.click(
+        within(menu).getByRole("menuitem", { name: "Add to sidebar" }),
+      );
+
+      expect(store.get(pluginNavVisiblePanelKeysAtom)).toEqual([key]);
+      expect(visibleRowKeys()).toEqual([key]);
+      expect(onActivate).not.toHaveBeenCalled();
+      expect(screen.getByTestId("location-path").textContent).toBe("/");
+      await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    },
+  );
+
   it("keeps launch and visibility as distinct targets with a clear row hover state", async () => {
     const labels = ["One", "Two", "Three", "Four"];
     labels.forEach((label, index) => registerPanel(`plugin-${index}`, label));

@@ -72,6 +72,7 @@ interface PaneContentSplitOptions {
   enabled: boolean;
   label: string;
   onNavigate?: () => void;
+  onDragStart?: () => void;
 }
 
 export function usePaneContentSplitActions() {
@@ -96,7 +97,13 @@ export function usePaneContentSplitActions() {
   const onPointerDown = useCallback(
     (
       event: ReactPointerEvent<HTMLElement>,
-      { content, enabled, label, onNavigate }: PaneContentSplitOptions,
+      {
+        content,
+        enabled,
+        label,
+        onNavigate,
+        onDragStart,
+      }: PaneContentSplitOptions,
     ) => {
       if (!enabled || isCompact || event.button !== 0) return;
       beginSidebarPaneContentSplitDrag({
@@ -106,6 +113,7 @@ export function usePaneContentSplitActions() {
         content,
         label,
         onNavigate,
+        onDragStart,
       });
     },
     [isCompact, navigate, store],
@@ -127,6 +135,7 @@ interface BeginSidebarPaneContentSplitDragArgs {
   content: PaneContent;
   label: string;
   onNavigate?: () => void;
+  onDragStart?: () => void;
 }
 
 export function beginSidebarPaneContentSplitDrag({
@@ -136,6 +145,7 @@ export function beginSidebarPaneContentSplitDrag({
   content,
   label,
   onNavigate,
+  onDragStart,
 }: BeginSidebarPaneContentSplitDragArgs): void {
   const rowEl = event.currentTarget;
   const sidebarEl = rowEl.closest(SIDEBAR_SELECTOR);
@@ -149,6 +159,7 @@ export function beginSidebarPaneContentSplitDrag({
     sourceEl: rowEl,
     fadeSourceOnEngage: false,
     renderGhost: false,
+    onEngage: onDragStart,
     ...(fallback ? { fallback } : {}),
     shouldEngage: (x, y) =>
       shouldEngageSidebarSplitDrag({
