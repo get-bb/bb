@@ -93,6 +93,15 @@ export const BROWSER_IMPORT_SOURCES: readonly BrowserImportSourceDefinition[] =
       linuxSecretApplication: "chromium",
     }),
     chromiumSource({
+      id: "helium",
+      processNames: ["Helium", "helium"],
+      macAppNames: ["Helium.app"],
+      name: "Helium",
+      keychainService: "Helium Storage Key",
+      keychainAccount: "Helium",
+      macSegments: ["net.imput.helium"],
+    }),
+    chromiumSource({
       id: "edge",
       processNames: ["Microsoft Edge", "msedge"],
       macAppNames: ["Microsoft Edge.app"],
