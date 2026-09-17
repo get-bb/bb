@@ -655,6 +655,7 @@ function SidebarNavigationOverflowItem({
             enabled: splitEnabled,
             label: row.title,
             onDragStart: onClose,
+            dragActivation: "distance",
           });
         }}
         onClick={(event) => {

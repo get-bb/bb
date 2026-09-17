@@ -73,6 +73,7 @@ interface PaneContentSplitOptions {
   label: string;
   onNavigate?: () => void;
   onDragStart?: () => void;
+  dragActivation?: "sidebar" | "distance";
 }
 
 export function usePaneContentSplitActions() {
@@ -103,6 +104,7 @@ export function usePaneContentSplitActions() {
         label,
         onNavigate,
         onDragStart,
+        dragActivation,
       }: PaneContentSplitOptions,
     ) => {
       if (!enabled || isCompact || event.button !== 0) return;
@@ -114,6 +116,7 @@ export function usePaneContentSplitActions() {
         label,
         onNavigate,
         onDragStart,
+        dragActivation,
       });
     },
     [isCompact, navigate, store],
@@ -136,6 +139,7 @@ interface BeginSidebarPaneContentSplitDragArgs {
   label: string;
   onNavigate?: () => void;
   onDragStart?: () => void;
+  dragActivation?: "sidebar" | "distance";
 }
 
 export function beginSidebarPaneContentSplitDrag({
@@ -146,6 +150,7 @@ export function beginSidebarPaneContentSplitDrag({
   label,
   onNavigate,
   onDragStart,
+  dragActivation = "sidebar",
 }: BeginSidebarPaneContentSplitDragArgs): void {
   const rowEl = event.currentTarget;
   const sidebarEl = rowEl.closest(SIDEBAR_SELECTOR);
@@ -162,13 +167,15 @@ export function beginSidebarPaneContentSplitDrag({
     onEngage: onDragStart,
     ...(fallback ? { fallback } : {}),
     shouldEngage: (x, y) =>
-      shouldEngageSidebarSplitDrag({
-        startX,
-        startY,
-        x,
-        y,
-        sidebarRightEdge,
-      }),
+      dragActivation === "distance"
+        ? Math.hypot(x - startX, y - startY) > 12
+        : shouldEngageSidebarSplitDrag({
+            startX,
+            startY,
+            x,
+            y,
+            sidebarRightEdge,
+          }),
     decide: (_paneId, zone) => {
       const layout = store.get(splitLayoutAtom);
       if (layout === null) return null;

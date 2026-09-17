@@ -1209,6 +1209,100 @@ describe("PluginNavSidebarItems", () => {
     );
   });
 
+  it.each([
+    { direction: "left", x: 300, y: 115 },
+    { direction: "down", x: 600, y: 580 },
+  ])(
+    "drags a portaled overflow row directly $direction into a split",
+    async ({ x, y }) => {
+      registerPanel("docs", "Docs");
+      const { store } = renderSidebarItems({
+        splitEnabled: true,
+        storedOrder: ["docs/main"],
+        storedVisibleKeys: [],
+      });
+      const pane = document.createElement("main");
+      pane.setAttribute("data-split-pane-id", "pane-1");
+      document.body.append(pane);
+      vi.spyOn(pane, "getBoundingClientRect").mockReturnValue(
+        new DOMRect(256, 0, 900, 600),
+      );
+      const elementsFromPoint = Object.getOwnPropertyDescriptor(
+        document,
+        "elementsFromPoint",
+      );
+      Object.defineProperty(document, "elementsFromPoint", {
+        configurable: true,
+        value: () => [pane],
+      });
+
+      try {
+        await openMoreMenu();
+        const row = screen.getByRole("button", { name: "Docs" });
+        vi.spyOn(row, "getBoundingClientRect").mockReturnValue(
+          new DOMRect(400, 100, 240, 32),
+        );
+        expect(row.closest('[data-sidebar="sidebar"]')).toBeNull();
+        fireEvent(
+          row,
+          new MouseEvent("pointerdown", {
+            button: 0,
+            clientX: 600,
+            clientY: 115,
+            bubbles: true,
+          }),
+        );
+        fireEvent(
+          window,
+          new MouseEvent("pointermove", { clientX: 602, clientY: 117 }),
+        );
+        expect(
+          screen.getByRole("list", { name: "More navigation" }),
+        ).not.toBeNull();
+        fireEvent(
+          window,
+          new MouseEvent("pointermove", { clientX: x, clientY: y }),
+        );
+        await waitFor(() =>
+          expect(
+            screen.queryByRole("list", { name: "More navigation" }),
+          ).toBeNull(),
+        );
+        expect(screen.getByTestId("location-path").textContent).toBe("/");
+        fireEvent(
+          window,
+          new MouseEvent("pointerup", { clientX: x, clientY: y }),
+        );
+
+        const layout = store.get(splitLayoutAtom)!;
+        expect(countPanes(layout.root)).toBe(2);
+        expect(
+          findPaneByContent(layout.root, { kind: "new-thread" }),
+        ).not.toBeNull();
+        expect(
+          findPaneByContent(layout.root, {
+            kind: "plugin-panel",
+            pluginId: "docs",
+            panelPath: "main",
+            subPath: "",
+          }),
+        ).not.toBeNull();
+      } finally {
+        fireEvent(window, new MouseEvent("pointercancel"));
+        if (elementsFromPoint) {
+          Object.defineProperty(
+            document,
+            "elementsFromPoint",
+            elementsFromPoint,
+          );
+        } else {
+          Reflect.deleteProperty(document, "elementsFromPoint");
+        }
+        pane.remove();
+      }
+    },
+  );
+
   it.each(["plugin", "built-in"])(
     "adds a hidden %s row to the sidebar without navigating",
     async (kind) => {
