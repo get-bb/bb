@@ -312,7 +312,7 @@ function MobileRecentThreadRow({
       {hasChildren ? (
         <SidebarChildToggleChevron
           className={cn(
-            "-ml-4 -mr-1 flex h-7 w-4 justify-end transition-none before:absolute before:-left-2 before:right-0 before:-inset-y-2",
+            "-ml-4 -mr-1 flex h-7 w-4 justify-end pr-1 transition-none before:absolute before:-left-2 before:right-0 before:-inset-y-2",
             depth > 0 && "opacity-60",
           )}
           isCollapsed={isCollapsed}
