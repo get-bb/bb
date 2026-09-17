@@ -371,11 +371,6 @@ function MobileRecentThreadRow({
             <span className="min-w-0 truncate">{metadataText}</span>
           </span>
         </span>
-        {indicatorKind !== "none" ? (
-          <span className="flex size-6 shrink-0 items-center justify-center">
-            <ThreadStatusGlyph {...trailingIndicatorState} />
-          </span>
-        ) : null}
       </RouteAnchor>
       {hasChildren ? (
         <SidebarChildToggleChevron
@@ -385,6 +380,11 @@ function MobileRecentThreadRow({
           collapseLabel={`Hide threads under ${threadTitle}`}
           onToggle={() => onToggleCollapsed(thread.id)}
         />
+      ) : null}
+      {indicatorKind !== "none" ? (
+        <span className="flex size-6 shrink-0 items-center justify-center">
+          <ThreadStatusGlyph {...trailingIndicatorState} />
+        </span>
       ) : null}
     </li>
   );

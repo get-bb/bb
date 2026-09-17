@@ -672,7 +672,7 @@ describe("mobile recent thread rows", () => {
     expect(screen.queryByLabelText("Plan mode active")).toBeNull();
     expect(screen.queryByLabelText("Thread working")).toBeNull();
     expect(
-      screen.getByRole("link").querySelectorAll("span.size-6"),
+      screen.getByRole("listitem").querySelectorAll("span.size-6"),
     ).toHaveLength(0);
   });
 });
