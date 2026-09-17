@@ -712,7 +712,11 @@ const DroppableSectionItemRow = memo(function DroppableSectionItemRow({
       {...props}
       consumeClickSuppression={sectionDnd.consumeClickSuppression}
       dragBindings={isTopLevelSection ? sortable.dragBindings : undefined}
-      isDropTargetActive={isTopLevelSection ? sortable.isOver : false}
+      isDropTargetActive={
+        isTopLevelSection && sectionDnd.activeThread === null
+          ? sortable.isOver
+          : false
+      }
       sectionDnd={sectionDnd}
       sortableRef={
         isTopLevelSection ? sortable.setNodeRef : droppable.setNodeRef
