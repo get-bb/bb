@@ -465,15 +465,11 @@ describe("mobile recents hierarchy interaction", () => {
     expect(store.get(collapsedThreadIdsAtom)).toEqual([]);
   });
 
-  it("de-emphasizes the leading tile on child rows only", () => {
+  it("de-emphasizes the provider tile on child rows only", () => {
     renderTree();
 
-    const parentTile = screen.getByRole("link", {
-      name: /Open Rework folder model/,
-    }).firstElementChild;
-    const childRow = screen.getByRole("link", {
-      name: /Open Audit folder query paths/,
-    });
+    const [parentRow, childRow] = screen.getAllByRole("link");
+    const parentTile = parentRow?.firstElementChild;
     const childTile = childRow?.firstElementChild;
     if (
       !(parentTile instanceof HTMLElement) ||
@@ -496,14 +492,14 @@ describe("mobile recents hierarchy interaction", () => {
     }
   });
 
-  it("centers leading tiles against the title and metadata block", () => {
+  it("centers provider tiles against the title and metadata block", () => {
     renderTree();
 
-    const rows = screen.getAllByRole("listitem");
+    const rows = screen.getAllByRole("link");
     for (const row of rows) {
-      const tile = row.querySelector("a")?.firstElementChild;
+      const tile = row.firstElementChild;
       if (!(tile instanceof HTMLElement)) {
-        throw new Error("Expected a leading tile");
+        throw new Error("Expected a leading provider tile");
       }
       expect(row.className).toContain("items-center");
       expect(tile.className).not.toContain("self-start");
@@ -676,7 +672,7 @@ describe("mobile recent thread rows", () => {
     expect(screen.queryByLabelText("Plan mode active")).toBeNull();
     expect(screen.queryByLabelText("Thread working")).toBeNull();
     expect(
-      screen.getByRole("listitem").querySelectorAll("span.size-6"),
+      screen.getByRole("link").querySelectorAll("span.size-6"),
     ).toHaveLength(0);
   });
 });

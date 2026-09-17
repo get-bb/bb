@@ -3,11 +3,9 @@ import { useAtom } from "jotai";
 import type { ProviderInfo, ThreadListEntry } from "@bb/domain";
 import { RouteAnchor } from "@/components/ui/app-route-anchor";
 import { ThreadStatusGlyph } from "@/components/sidebar/ThreadRow";
-import {
-  getSidebarThreadRowPaddingLeft,
-  SIDEBAR_CONTROL_STATE_CLASS,
-  SIDEBAR_WORKING_STATUS_COLOR_CLASS,
-} from "@/components/sidebar/sidebarRowClasses";
+import { SidebarChildToggleChevron } from "@/components/sidebar/SidebarChildToggleChevron";
+import { getSidebarThreadRowPaddingLeft } from "@/components/sidebar/sidebarRowClasses";
+import { SIDEBAR_WORKING_STATUS_COLOR_CLASS } from "@/components/sidebar/sidebarRowClasses";
 import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import {
   COARSE_POINTER_ICON_SIZE_CLASS,
@@ -293,16 +291,6 @@ function MobileRecentThreadRow({
     provider,
   );
   const ProviderMark = providerIcon?.icon;
-  const providerMark =
-    ProviderMark === undefined ? null : provider === null ? (
-      <ProviderMark className="size-4" />
-    ) : (
-      <ProviderIconMark
-        provider={provider}
-        icon={ProviderMark}
-        className="size-4"
-      />
-    );
   return (
     <li
       onTouchStart={(event) => {
@@ -316,40 +304,22 @@ function MobileRecentThreadRow({
       }}
       style={{ paddingLeft: getSidebarThreadRowPaddingLeft(depth) }}
       className={cn(
-        "flex items-center gap-2.5 rounded-md pr-2",
+        "flex items-center gap-1 rounded-md pr-2",
         MOBILE_RECENT_ROW_HEIGHT_CLASS,
         highlighted && "bg-surface-selected",
       )}
     >
       {hasChildren ? (
-        <button
-          type="button"
-          aria-expanded={!isCollapsed}
-          aria-label={
-            isCollapsed
-              ? `Show threads under ${threadTitle}`
-              : `Hide threads under ${threadTitle}`
-          }
+        <SidebarChildToggleChevron
           className={cn(
-            "relative z-10 -ml-4 -mr-2.5 flex h-7 w-4 shrink-0 cursor-pointer items-center justify-end rounded-md outline-none ring-sidebar-ring before:absolute before:-left-2 before:right-0 before:-inset-y-2 focus-visible:ring-2",
-            SIDEBAR_CONTROL_STATE_CLASS,
+            "-ml-4 -mr-1 flex h-7 w-4 justify-end transition-none before:absolute before:-left-2 before:right-0 before:-inset-y-2",
             depth > 0 && "opacity-60",
           )}
-          onClick={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            onToggleCollapsed(thread.id);
-          }}
-        >
-          <Icon
-            name="ChevronRight"
-            className={cn(
-              "size-3 transition-transform duration-150",
-              !isCollapsed && "rotate-90",
-            )}
-            aria-hidden="true"
-          />
-        </button>
+          isCollapsed={isCollapsed}
+          expandLabel={`Show threads under ${threadTitle}`}
+          collapseLabel={`Hide threads under ${threadTitle}`}
+          onToggle={() => onToggleCollapsed(thread.id)}
+        />
       ) : null}
       <RouteAnchor
         href={getThreadRoutePath({
@@ -375,7 +345,15 @@ function MobileRecentThreadRow({
             depth > 0 && "opacity-60",
           )}
         >
-          {providerMark}
+          {ProviderMark === undefined ? null : provider === null ? (
+            <ProviderMark className="size-4" />
+          ) : (
+            <ProviderIconMark
+              provider={provider}
+              icon={ProviderMark}
+              className="size-4"
+            />
+          )}
         </span>
         <span className="min-w-0 flex-1 space-y-0.5">
           <span className="flex min-w-0 items-center gap-1.5">
