@@ -330,6 +330,40 @@ function VariantSelectedUnderline({
   );
 }
 
+function VariantSelectedCurvedUnderline({
+  underlineHeight,
+}: {
+  underlineHeight: number;
+}) {
+  return (
+    <Stage>
+      <Row entry={SIBLING_ABOVE} depth={PARENT_DEPTH} />
+      <div className="relative">
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 z-[5] rounded-md bg-sidebar-accent ring-1 ring-inset ring-sidebar-ring"
+        />
+        <div className="relative z-10">
+          <Row entry={TARGET} depth={PARENT_DEPTH} />
+        </div>
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 top-0 z-20 overflow-hidden rounded-b-lg"
+          style={{ bottom: -underlineHeight }}
+        >
+          <span
+            className="absolute right-0 bottom-0 bg-sidebar-ring"
+            style={{ left: CHILD_INDENT_PX, height: underlineHeight }}
+          />
+        </span>
+      </div>
+      <Row entry={EXISTING_CHILD} depth={CHILD_DEPTH} isCompact />
+      <Row entry={SIBLING_BELOW} depth={PARENT_DEPTH} />
+      <DraggedRow />
+    </Stage>
+  );
+}
+
 export function Variants() {
   return (
     <StoryCard labelWidth="260px">
@@ -390,6 +424,22 @@ export function Variants() {
           underlineHeight={2}
           underlineRight={2}
         />
+      </StoryRow>
+      <StoryRow
+        label="H3b — flush, stops at the curve"
+        hint="same rule, ended 6px early so it stops where the ring's bottom edge starts to turn instead of running past it"
+      >
+        <VariantSelectedUnderline
+          underlineBottom={-2}
+          underlineHeight={2}
+          underlineRight={6}
+        />
+      </StoryRow>
+      <StoryRow
+        label="H5 — flush, follows the curve"
+        hint="the rule is clipped to the row's rounded bottom, so the thickening turns the corner with the ring instead of ending in mid-air"
+      >
+        <VariantSelectedCurvedUnderline underlineHeight={2} />
       </StoryRow>
       <StoryRow
         label="H4 — flush, heavier"
