@@ -633,22 +633,26 @@ export interface MessageDispatchHookContext {
   /** Whether this attempt starts a turn or joins a running one. */
   attempt: PluginDispatchAttemptKind;
   /**
-   * Who authored the message being decided about: `user` typed it, `agent`
-   * means another thread sent it, `system` means core did (a retry of a failed
-   * turn). The same pair the dispatched turn will be recorded with, and the
-   * same pair `queuedMessage` carries — so a policy that tells a human's
-   * message from cross-thread traffic reads the same answer on a first attempt
-   * and on every re-attempt of it.
+   * The author category shared by this dispatch's messages: `user`, `agent`,
+   * or `system`. `mixed` means the queued messages have different categories.
+   * Different agents still share the `agent` category; read `queuedMessages`
+   * for each message's author. `mixed` is a hook summary, not a turn initiator.
    */
-  initiator: ThreadTurnInitiator;
+  initiator: ThreadTurnInitiator | "mixed";
   /**
-   * The thread that sent this message, when one did. Null for a message a user
-   * typed and for a core-driven retry.
+   * The thread that sent every message in this dispatch: a thread id, null
+   * when none of them has a sender, or the literal `"mixed"` when the rows
+   * disagree. A thread-start names its requesting thread; a message a human
+   * typed and a core-driven retry have no sender. Null therefore still means
+   * "nobody sent this" rather than "bb could not tell", so a handler may key
+   * a human-versus-agent policy on it; `queuedMessages` names each row's own
+   * sender. Thread ids are prefixed, so no id collides with `"mixed"`.
    */
-  senderThreadId: string | null;
+  senderThreadId: string | "mixed" | null;
   /**
-   * The queued row this attempt is re-trying, or null when the attempt is
-   * inline and no row has ever existed for it.
+   * All queued rows this attempt is re-trying, in dispatch order. Empty for
+   * an inline attempt. Each row retains its own content and author; `input`
+   * contains their combined input, and the hook decides for the whole group.
    *
    * This is how a hook tells a fresh send from a re-attempt of something it
    * already decided about — the replacement for the old
@@ -656,7 +660,7 @@ export interface MessageDispatchHookContext {
    * should treat the two identically; a hook that logs should not
    * double-count.
    */
-  queuedMessage: ThreadQueuedMessage | null;
+  queuedMessages: ThreadQueuedMessage[];
   /**
    * Opaque JSON supplied by a plugin through the composer's
    * `experimental_submit`, paired with that plugin's id. Null for ordinary
@@ -670,7 +674,8 @@ export interface MessageDispatchHookContext {
   /**
    * How the dispatch was requested; null for internal/core-driven sends, which
    * includes every follow-up, steer and retry. Persisted with the queued row,
-   * so a drained re-attempt reads what its first attempt read.
+   * so a drained re-attempt reads what its first attempt read. For a grouped
+   * dispatch, `origin` and `originPluginId` describe the first queued row.
    */
   origin: ThreadCreateOrigin | null;
   originPluginId: string | null;

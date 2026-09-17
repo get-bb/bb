@@ -101,8 +101,7 @@ export interface MessageDispatchHookPassRequest {
   originPluginId: string | null;
   startedOnBehalfOf: StartedOnBehalfOf | null;
   parentThreadId: string | null;
-  /** The queued row being re-attempted; null for an inline first attempt. */
-  queuedMessage: ThreadQueuedMessage | null;
+  queuedMessages: ThreadQueuedMessage[];
   pluginSubmission: MessageDispatchHookContext["experimental_submission"];
   continueAfterHooks?: () => Promise<void>;
 }
@@ -289,6 +288,36 @@ export function dispatchInputText(input: readonly PromptInput[]): string {
  */
 interface DroppedFromContractStillEmitted {
   startedOnBehalfOf: StartedOnBehalfOf | null;
+  queuedMessage: ThreadQueuedMessage | null;
+}
+
+/**
+ * The author a whole dispatch reports, which a group of queued rows may not
+ * agree on: the drain sends them as one turn and the hook decides once for all
+ * of them. `mixed` says the rows differ, so a handler that cares reads
+ * `queuedMessages` for each row's own author. An inline attempt has no rows and
+ * reports the author the dispatch was requested with.
+ */
+function summarizeDispatchAuthor(
+  request: MessageDispatchHookPassRequest,
+): Pick<MessageDispatchHookContext, "initiator" | "senderThreadId"> {
+  const [first, ...rest] = request.queuedMessages;
+  if (first === undefined) {
+    return {
+      initiator: request.initiator,
+      senderThreadId: request.senderThreadId,
+    };
+  }
+  return {
+    initiator: rest.every((message) => message.initiator === first.initiator)
+      ? first.initiator
+      : "mixed",
+    senderThreadId: rest.every(
+      (message) => message.senderThreadId === first.senderThreadId,
+    )
+      ? first.senderThreadId
+      : "mixed",
+  };
 }
 
 /**
@@ -308,13 +337,13 @@ function buildHookContext(
   );
   const droppedFromContractStillEmitted: DroppedFromContractStillEmitted = {
     startedOnBehalfOf: request.startedOnBehalfOf,
+    queuedMessage: request.queuedMessages[0] ?? null,
   };
   return {
     ...droppedFromContractStillEmitted,
+    ...summarizeDispatchAuthor(request),
     thread: request.threadResponse,
     attempt: request.attempt,
-    initiator: request.initiator,
-    senderThreadId: request.senderThreadId,
     project: request.project,
     environment,
     host:
@@ -332,7 +361,7 @@ function buildHookContext(
     origin: request.origin,
     originPluginId: request.originPluginId,
     parentThreadId: request.parentThreadId,
-    queuedMessage: request.queuedMessage,
+    queuedMessages: request.queuedMessages,
     experimental_submission: request.pluginSubmission,
   };
 }

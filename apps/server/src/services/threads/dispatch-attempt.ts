@@ -83,7 +83,7 @@ import {
   sendThreadMessage,
   type SendThreadMessageTransactionPreflight,
 } from "./thread-send.js";
-import { resolveDispatchAuthor } from "./thread-runtime-config.js";
+import { resolveDispatchAuthor } from "./dispatch-author.js";
 import type { TurnRequestRetryMarker } from "./thread-events.js";
 import { restoreInterruptedThreadStartupRequest } from "./thread-provisioning.js";
 
@@ -534,8 +534,7 @@ async function runDispatchAttempt(
       originPluginId: args.originPluginId,
       startedOnBehalfOf: args.startedOnBehalfOf,
       parentThreadId: thread.parentThreadId,
-      queuedMessage:
-        claimed?.[0] === undefined ? null : toThreadQueuedMessage(claimed[0]),
+      queuedMessages: claimed?.map(toThreadQueuedMessage) ?? [],
       pluginSubmission: args.pluginSubmission,
       continueAfterHooks: continueThroughCoreWaits,
     });

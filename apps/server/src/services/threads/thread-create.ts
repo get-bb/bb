@@ -63,7 +63,7 @@ import {
   type ThreadCreateServiceRequestInput,
   type ThreadCreateServiceRequest,
 } from "./thread-create-request.js";
-import { resolveDispatchAuthor } from "./thread-runtime-config.js";
+import { resolveDispatchAuthor } from "./dispatch-author.js";
 import { deriveTitleFallback } from "./title-generation.js";
 import type { ThreadProvisionEnvironmentIntent } from "./thread-startup-store.js";
 import { resolveSystemProviderModels } from "../system/execution-options.js";

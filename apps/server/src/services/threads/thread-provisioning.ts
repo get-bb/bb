@@ -26,10 +26,8 @@ import {
   hasLiveThreadStartInFlight,
   requestThreadStart,
 } from "./thread-lifecycle.js";
-import {
-  resolveDispatchAuthor,
-  resolvePermissionEscalation,
-} from "./thread-runtime-config.js";
+import { resolveDispatchAuthor } from "./dispatch-author.js";
+import { resolvePermissionEscalation } from "./thread-runtime-config.js";
 import {
   createThreadStartup,
   type ThreadForkDescriptor,

@@ -36,7 +36,7 @@ type MessageDispatchHookContextOverrides = Omit<
   | "input"
   | "requestedExecution"
   | "executionSources"
-  | "queuedMessage"
+  | "queuedMessages"
 > & {
   thread?: Partial<MessageDispatchHookContext["thread"]>;
   project?: Partial<MessageDispatchHookContext["project"]>;
@@ -49,9 +49,9 @@ type MessageDispatchHookContextOverrides = Omit<
     MessageDispatchHookContext["requestedExecution"]
   >;
   executionSources?: Partial<MessageDispatchHookContext["executionSources"]>;
-  queuedMessage?: Partial<
-    NonNullable<MessageDispatchHookContext["queuedMessage"]>
-  > | null;
+  queuedMessages?: Partial<
+    MessageDispatchHookContext["queuedMessages"][number]
+  >[];
 };
 
 /**
@@ -219,7 +219,7 @@ export function makeMessageDispatchHookContext(
     attempt: "start-turn",
     initiator: "user",
     senderThreadId: null,
-    queuedMessage: null,
+    queuedMessages: [],
     experimental_submission: null,
     origin: null,
     originPluginId: null,
@@ -291,15 +291,9 @@ export function makeMessageDispatchHookContext(
       ...context.executionSources,
       ...overrides.executionSources,
     },
-    queuedMessage:
-      overrides.queuedMessage === undefined
-        ? context.queuedMessage
-        : overrides.queuedMessage === null
-          ? null
-          : makeQueueEntry({
-              threadId: thread.id,
-              ...overrides.queuedMessage,
-            }),
+    queuedMessages: (overrides.queuedMessages ?? context.queuedMessages).map(
+      (message) => makeQueueEntry({ threadId: thread.id, ...message }),
+    ),
   };
 }
 

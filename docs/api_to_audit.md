@@ -301,9 +301,9 @@ identically for all of them. The handler receives a typed context (project,
 environment/host, `environmentIntent` as a
 `PluginDispatchEnvironmentIntent | null`, prompt blocks plus a plain-text view,
 the resolved execution tuple with per-field provenance, origin/parent
-provenance, the message's author as `initiator` plus `senderThreadId`, the
-target thread, whether the attempt would `start-turn` or `join-turn`, and the
-queued row when the attempt is a re-attempt) and answers
+provenance, the author summary as `initiator` plus `senderThreadId`, the
+target thread, whether the attempt would `start-turn` or `join-turn`, and all
+queued rows in `queuedMessages` when the attempt is a re-attempt) and answers
 `proceed`, `wait` (queue the message as a row with a reason and an optional
 `sendAt`), or `reject` (a synchronous 409 carrying the plugin's message). A
 handler cannot rewrite the dispatch it is deciding about: there is no amendment
@@ -343,6 +343,19 @@ now, or when the orphan sweep clears a wait whose plugin is no longer running.
 
 **Audit before stabilizing.**
 
+- **Grouped dispatch authors.** `queuedMessages` includes all claimed rows in
+  dispatch order, with each row's content and author; inline attempts use an
+  empty array. `initiator` summarizes their category, with hook-local `mixed`
+  when categories differ. `senderThreadId` is the shared sender ID, null when no message has a sender,
+  or `mixed` when they disagree.
+  Queue serialization resolves thread-start requesters and retries with the
+  same author rule as inline dispatches. Grouping and recorded turn initiators
+  are unchanged; `origin`/`originPluginId` still describe the first row. Before
+  stabilization, confirm whether plugins need per-row origin as well.
+- **`queuedMessage` is emitted but untyped.** The public context uses
+  `queuedMessages`; core still emits its first row or null under the old name
+  for previously built handlers. Remove that compatibility field and the
+  corresponding shim before stabilizing.
 - **`startedOnBehalfOf` is emitted but untyped.** It left
   `MessageDispatchHookContext` when `initiator`/`senderThreadId` arrived: it
   described why a THREAD was started, never who sent the message being decided

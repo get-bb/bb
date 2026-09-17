@@ -129,8 +129,8 @@ bb.experimental_hooks.on("message.dispatch", (ctx) => {
   // ctx.input.blocks + ctx.input.text,
   // ctx.requestedExecution, ctx.executionSources, ctx.origin /
   // ctx.originPluginId / ctx.parentThreadId,
-  // ctx.initiator ("user" | "agent" | "system") + ctx.senderThreadId,
-  // ctx.queuedMessage (the queued row on a re-attempt, else null),
+  // ctx.initiator ("user" | "agent" | "system" | "mixed") + ctx.senderThreadId,
+  // ctx.queuedMessages (all queued rows in dispatch order, else []),
   // ctx.experimental_submission (plugin-owned composer data, else null).
   if (isBlocked(ctx.input.text)) return { action: "reject", message: "…" };
   if (atCapacity()) return { action: "wait", reason: "4 of 4 running" };
@@ -138,16 +138,27 @@ bb.experimental_hooks.on("message.dispatch", (ctx) => {
 });
 ```
 
-`ctx.initiator` and `ctx.senderThreadId` are who authored the message: `user`
-typed it, `agent` means another thread sent it (and names which), `system`
-means core did (a retry). They are the pair the dispatched turn is recorded
-with and the pair `ctx.queuedMessage` carries, so they do not change between a
-first attempt and its re-attempts — which is what makes them safe to key a
-policy on.
+`ctx.queuedMessages` contains every queued row in the dispatch, in order, or
+an empty array for an inline attempt. Each row carries its own content,
+`initiator` and `senderThreadId`. `ctx.input` is the combined input; the hook
+returns one decision for the entire group, preserving send-together behavior.
 
-`ctx.origin` and `ctx.originPluginId` are just as stable: they are stored with
-the queued row, so a message queued by one handler and drained an hour later is
-decided on the surface that requested it, not on null.
+`ctx.initiator` summarizes the authors: `user`, `agent`, or `system` when all
+messages share that category, and `mixed` when categories differ. Two different
+agents still yield `agent`. `ctx.senderThreadId` is the sender ID shared by all
+messages, null when none of them has a sender, and `"mixed"` when they
+disagree — so null still means a human typed it rather than bb being unsure.
+Individual rows never report `mixed`, and recorded turns keep their existing
+initiator types.
+A queued thread-start preserves its requester's author; a retry is `system`
+with no sender.
+
+`ctx.origin` and `ctx.originPluginId` are stored with the queued row and remain
+stable across re-attempts. For grouped dispatches they describe the first row.
+
+`ctx.queuedMessage` has been replaced in the context type by `queuedMessages`.
+Core still emits the first row (or null) under the old name for handlers built
+against an older SDK; new handlers inspect the full array.
 
 `ctx.startedOnBehalfOf` is no longer part of the context type. It answered a
 different question — why the THREAD was started — so it could not identify the
@@ -166,7 +177,8 @@ The hook pass runs before scheduling, thread, workspace, host, and interaction
 waits. Plugin policy therefore sees each submission before operational state
 can defer it. `experimental_submission` is present only on the initial
 composer submission; a plugin that waits can recognize later attempts through
-`ctx.queuedMessage.waitingOn.pluginId`.
+`ctx.queuedMessages.some(message => message.waitingOn?.kind === "plugin" &&
+message.waitingOn.pluginId === bb.pluginId)`.
 
 Decisions are `proceed`, `wait` (`reason`, optional `sendAt` epoch ms, which
 becomes the row's `sendAt` so core's due sweep re-attempts then) and `reject`

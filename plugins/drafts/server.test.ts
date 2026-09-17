@@ -48,13 +48,36 @@ describe("draft dispatch gate", () => {
     expect(
       hook(
         makeMessageDispatchHookContext({
-          queuedMessage: makeQueueEntry({
-            waitingOn: {
-              kind: "plugin",
-              pluginId: "drafts",
-              reason: "Draft",
-            },
-          }),
+          queuedMessages: [
+            makeQueueEntry({
+              waitingOn: {
+                kind: "plugin",
+                pluginId: "drafts",
+                reason: "Draft",
+              },
+            }),
+          ],
+        }),
+      ),
+    ).toEqual({ action: "wait", reason: "Draft" });
+  });
+
+  it("holds the group when a later message is a draft", () => {
+    const hook = setup();
+    expect(
+      hook(
+        makeMessageDispatchHookContext({
+          queuedMessages: [
+            makeQueueEntry({ id: "first", waitingOn: null }),
+            makeQueueEntry({
+              id: "draft",
+              waitingOn: {
+                kind: "plugin",
+                pluginId: "drafts",
+                reason: "Draft",
+              },
+            }),
+          ],
         }),
       ),
     ).toEqual({ action: "wait", reason: "Draft" });

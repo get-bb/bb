@@ -39,10 +39,8 @@ import {
   buildExecutionOptions,
   buildThreadStartCommand,
 } from "./thread-commands.js";
-import {
-  resolveDispatchAuthor,
-  resolvePermissionEscalation,
-} from "./thread-runtime-config.js";
+import { resolveDispatchAuthor } from "./dispatch-author.js";
+import { resolvePermissionEscalation } from "./thread-runtime-config.js";
 import { requireReadyThreadEnvironment } from "./thread-turn-dispatch.js";
 import { ensureHostSessionReadyForWork } from "../hosts/host-lifecycle.js";
 import {

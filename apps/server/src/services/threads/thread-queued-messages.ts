@@ -15,6 +15,7 @@ import type {
 } from "@bb/domain";
 import { z } from "zod";
 import { ApiError } from "../../errors.js";
+import { resolveDispatchAuthor } from "./dispatch-author.js";
 
 interface StoredQueuedThreadMessageRow {
   claimedAt: number | null;
@@ -155,15 +156,18 @@ function toQueuedMessagePayload(
 export function toThreadQueuedMessage(
   row: StoredQueuedThreadMessageRow,
 ): ThreadQueuedMessage {
+  const author =
+    row.systemNotice !== null
+      ? { initiator: "system" as const, senderThreadId: null }
+      : resolveDispatchAuthor({
+          retrying: row.payloadKind === "retry",
+          senderThreadId: row.senderThreadId,
+          startedOnBehalfOf: storedQueuedThreadMessageRequestedBy(row),
+        });
   return threadQueuedMessageSchema.parse({
     id: row.id,
-    initiator:
-      row.systemNotice !== null
-        ? "system"
-        : row.senderThreadId !== null
-          ? "agent"
-          : "user",
-    senderThreadId: row.senderThreadId,
+    initiator: author.initiator,
+    senderThreadId: author.senderThreadId,
     threadId: row.threadId,
     content: parseStoredQueuedThreadMessageContent(row),
     model: row.model,

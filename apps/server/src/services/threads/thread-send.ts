@@ -46,10 +46,8 @@ import {
   dispatchTurnDuringReprovision,
   requireReadyThreadEnvironment,
 } from "./thread-turn-dispatch.js";
-import {
-  resolveDispatchAuthor,
-  resolvePermissionEscalation,
-} from "./thread-runtime-config.js";
+import { resolveDispatchAuthor } from "./dispatch-author.js";
+import { resolvePermissionEscalation } from "./thread-runtime-config.js";
 import {
   buildThreadStatusChangeMetadata,
   resolveThreadRuntimeState,
