@@ -13,6 +13,10 @@ export const SIDEBAR_ROW_BASE_CLASS =
 export const SIDEBAR_ROW_GLYPH_SLOT_CLASS =
   "inline-flex shrink-0 items-center justify-center text-subtle-foreground";
 
+export const SIDEBAR_STATUS_ICON_CLASS = "size-4";
+
+export const SIDEBAR_STATUS_GLYPH_BOX_CLASS = "h-4 w-4";
+
 export const SIDEBAR_UNREAD_DOT_CLASS = `rounded-full bg-foreground ${COARSE_POINTER_DOT_SIZE_CLASS}`;
 
 export const SIDEBAR_WORKING_STATUS_COLOR_CLASS = "text-muted-foreground/50";
