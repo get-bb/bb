@@ -9,6 +9,7 @@ import {
 import { useAppCommandRunner } from "@/components/commands/AppCommandProvider";
 import { Icon } from "@bb/shared-ui/icon";
 import { usePluginNavPanelChrome } from "@/lib/plugin-nav-panel-chrome";
+import { ProjectSwitcherMenu } from "./ProjectSwitcherMenu";
 import {
   ProjectListNewThreadAction,
   ProjectListSearchThreadsAction,
@@ -73,6 +74,15 @@ export function BuiltInSidebarNavigation({
         onSearchThreads?.();
         commandRunner.dispatch("thread.search", null);
       },
+    },
+    {
+      kind: "built-in",
+      pluginId: "__bb__",
+      id: "projects",
+      title: "Projects",
+      icon: <Icon name="Folder" aria-hidden="true" />,
+      content: <ProjectSwitcherMenu onNavigate={onNavigate} />,
+      onActivate: () => {},
     },
     ...(toolsRoutePath
       ? [
