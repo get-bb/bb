@@ -21,6 +21,7 @@ function createTabs() {
     id: label,
     label,
     ariaLabel: label,
+    iconOnly: label === "Info",
     leadingVisual: null,
     onSelect: vi.fn(),
     onClose: label === "Info" ? null : vi.fn(),
@@ -67,7 +68,7 @@ describe("MobilePanelTabPager", () => {
     ).toBe(true);
   });
 
-  it("reveals a selectable neighbor only when the remaining width is usable", () => {
+  it("fills space after compact tabs and hides neighbors that cannot fit a useful label", () => {
     let resize = () => {};
     vi.stubGlobal(
       "ResizeObserver",
@@ -79,15 +80,29 @@ describe("MobilePanelTabPager", () => {
         disconnect() {}
       },
     );
-    let viewportWidth = 240;
-    let selectedWidth = 80;
+    let viewportWidth = 160;
     vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(
       () => viewportWidth,
     );
+    const naturalWidths = new Map([
+      ["Info", 36],
+      ["Diff", 36],
+      ["README.md", 132],
+      ["package.json", 140],
+    ]);
     vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockImplementation(
-      () => selectedWidth,
+      function (this: HTMLElement) {
+        return naturalWidths.get(this.getAttribute("aria-label") ?? "") ?? 0;
+      },
     );
     const tabs = createTabs();
+    tabs.splice(1, 0, {
+      ...tabs[0],
+      id: "Diff",
+      label: "Diff",
+      ariaLabel: "Diff",
+      onSelect: vi.fn(),
+    });
     render(
       <MobilePanelTabPager
         activeTabId="Info"
@@ -95,13 +110,16 @@ describe("MobilePanelTabPager", () => {
         newTabControl={null}
       />,
     );
+    expect(screen.getByText("Info").className).toContain("sr-only");
+    expect(screen.getByText("Diff").className).toContain("sr-only");
     fireEvent.click(screen.getByRole("button", { name: "README.md" }));
-    expect(tabs[1].onSelect).toHaveBeenCalledOnce();
+    expect(tabs[2].onSelect).toHaveBeenCalledOnce();
     expect(screen.queryByRole("button", { name: "package.json" })).toBeNull();
 
-    selectedWidth = 180;
+    viewportWidth = 120;
     act(() => resize());
     expect(screen.queryByRole("button", { name: "README.md" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Diff" })).toBeDefined();
     expect(
       screen.getByRole("button", { name: "Info" }).getAttribute("aria-pressed"),
     ).toBe("true");
@@ -110,7 +128,7 @@ describe("MobilePanelTabPager", () => {
     act(() => resize());
     expect(
       screen
-        .getByRole("button", { name: "README.md" })
+        .getByRole("button", { name: "package.json" })
         .getAttribute("aria-pressed"),
     ).toBe("false");
   });

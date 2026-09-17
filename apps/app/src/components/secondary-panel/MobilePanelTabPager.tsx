@@ -7,6 +7,7 @@ interface MobilePanelTab {
   id: string;
   label: string;
   ariaLabel: string;
+  iconOnly: boolean;
   leadingVisual: ReactNode;
   onSelect: () => void;
   onClose: (() => void) | null;
@@ -26,27 +27,54 @@ export function MobilePanelTabPager({
   const touchStart = useRef<{ x: number; y: number } | null>(null);
   const suppressClickUntil = useRef(0);
   const viewportRef = useRef<HTMLDivElement>(null);
-  const activeTabRef = useRef<HTMLDivElement>(null);
-  const [showNextTab, setShowNextTab] = useState(false);
+  const [tabWidths, setTabWidths] = useState<readonly number[]>([]);
   const activeIndex = tabs.findIndex((tab) => tab.id === activeTabId);
   const activeTab = tabs[activeIndex];
   const previousTab = tabs[activeIndex - 1];
   const nextTab = activeIndex < 0 ? undefined : tabs[activeIndex + 1];
+  const remainingTabs = activeIndex < 0 ? [] : tabs.slice(activeIndex);
 
   useLayoutEffect(() => {
     const viewport = viewportRef.current;
-    const selected = activeTabRef.current;
-    if (!viewport || !selected) return;
+    if (!viewport) return;
     const measure = () => {
       const gap = parseFloat(getComputedStyle(viewport).columnGap) || 0;
-      setShowNextTab(viewport.clientWidth - selected.offsetWidth - gap >= 96);
+      let available = viewport.clientWidth;
+      const widths: number[] = [];
+      for (const child of viewport.children) {
+        const button = child.querySelector<HTMLButtonElement>(
+          "button[aria-pressed]",
+        );
+        if (!button) continue;
+        const label = button.querySelector(".truncate");
+        const naturalWidth =
+          button.offsetWidth +
+          (label ? Math.max(0, label.scrollWidth - label.clientWidth) : 0);
+        if (
+          widths.length > 0 &&
+          (available <= 0 || available < Math.min(naturalWidth, 80))
+        ) {
+          break;
+        }
+        const width = Math.min(naturalWidth, Math.max(0, available));
+        widths.push(width);
+        available -= width + gap;
+      }
+      setTabWidths((current) =>
+        current.length === widths.length &&
+        current.every((width, index) => width === widths[index])
+          ? current
+          : widths,
+      );
     };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(viewport);
-    observer.observe(selected);
+    for (const button of viewport.querySelectorAll("button[aria-pressed]")) {
+      observer.observe(button);
+    }
     return () => observer.disconnect();
-  }, [activeTab?.id]);
+  }, [activeTab?.id, tabs]);
 
   return (
     <div
@@ -66,7 +94,7 @@ export function MobilePanelTabPager({
       <div
         ref={viewportRef}
         data-testid="mobile-panel-tab-viewport"
-        className="flex min-w-0 flex-1 touch-pan-y items-center gap-1 overflow-hidden [&_[data-tab-pill-close]]:text-muted-foreground/70 [&_[data-tab-pill-close]_[data-icon-root]]:size-3.5"
+        className="relative flex min-w-0 flex-1 touch-pan-y items-center gap-1 overflow-hidden [&_[data-tab-pill-close]]:text-muted-foreground/70 [&_[data-tab-pill-close]_[data-icon-root]]:size-3.5"
         onTouchStartCapture={(event) => {
           suppressClickUntil.current = 0;
           const touch = event.touches[0];
@@ -96,40 +124,44 @@ export function MobilePanelTabPager({
           event.stopPropagation();
         }}
       >
-        {activeTab
-          ? [activeTab, ...(showNextTab && nextTab ? [nextTab] : [])].map(
-              (tab) => (
-                <div
-                  key={tab.id}
-                  ref={tab === activeTab ? activeTabRef : undefined}
-                  className={
-                    tab === activeTab
-                      ? "flex min-w-0 max-w-full shrink-0"
-                      : "flex min-w-0 flex-1"
-                  }
-                >
-                  <TabPill
-                    label={tab.label}
-                    ariaLabel={tab.ariaLabel}
-                    leadingVisual={tab.leadingVisual}
-                    title={tab.label}
-                    isActive={tab === activeTab}
-                    onSelect={tab.onSelect}
-                    labelMaxWidthClass="max-w-full"
-                    enlargeCloseTargetOnCoarsePointer
-                    closeAction={
-                      tab.onClose === null
-                        ? null
-                        : {
-                            onClose: tab.onClose,
-                            closeLabel: `Close ${tab.label}`,
-                          }
-                    }
-                  />
-                </div>
-              ),
-            )
-          : null}
+        {remainingTabs.map((tab, index) => {
+          const visible = index === 0 || index < tabWidths.length;
+          return (
+            <div
+              key={tab.id}
+              aria-hidden={!visible}
+              inert={!visible}
+              style={{
+                maxWidth: visible ? (tabWidths[index] ?? "100%") : undefined,
+              }}
+              className={
+                visible
+                  ? "flex min-w-0 shrink-0"
+                  : "pointer-events-none invisible absolute flex w-max shrink-0"
+              }
+            >
+              <TabPill
+                label={tab.label}
+                ariaLabel={tab.ariaLabel}
+                iconOnly={tab.iconOnly}
+                leadingVisual={tab.leadingVisual}
+                title={tab.label}
+                isActive={tab === activeTab}
+                onSelect={tab.onSelect}
+                labelMaxWidthClass="max-w-full"
+                enlargeCloseTargetOnCoarsePointer
+                closeAction={
+                  tab.onClose === null
+                    ? null
+                    : {
+                        onClose: tab.onClose,
+                        closeLabel: `Close ${tab.label}`,
+                      }
+                }
+              />
+            </div>
+          );
+        })}
       </div>
       {newTabControl}
       <Button
