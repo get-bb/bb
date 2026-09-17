@@ -464,6 +464,7 @@ function ThreadSecondaryPanelContent({
       className={cn(
         SECONDARY_PANEL_HIDE_ICON_BUTTON_CLASS,
         "relative",
+        renderAsDrawer && "max-md:pointer-coarse:w-7",
         usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
       )}
       onClick={onClose}
@@ -576,6 +577,7 @@ function ThreadSecondaryPanelContent({
         onOpenNewTab={onOpenNewTab}
         shortcut={newTabShortcut}
         usesDesktopChrome={usesDesktopChrome}
+        compact={renderAsDrawer}
       />
     ) : reserveNewTabButton ? (
       <div
@@ -583,6 +585,7 @@ function ThreadSecondaryPanelContent({
         data-new-tab-control-reserved=""
         className={cn(
           SECONDARY_PANEL_CHROME_ICON_BUTTON_CLASS,
+          renderAsDrawer && "max-md:pointer-coarse:w-7",
           usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
         )}
       />
@@ -733,7 +736,7 @@ function ThreadSecondaryPanelContent({
             className={cn(
               CHROME_ROW_CLASS,
               "min-w-0 justify-between gap-1 px-2",
-              renderAsDrawer && "pl-13",
+              renderAsDrawer && "gap-0 pl-12 pr-1",
               usesDesktopChrome && usesWindowChrome && MACOS_WINDOW_DRAG_CLASS,
               usesDesktopChrome &&
                 usesWindowChrome &&
@@ -743,6 +746,7 @@ function ThreadSecondaryPanelContent({
             <div
               className={cn(
                 "flex min-w-0 flex-1 items-center gap-1",
+                renderAsDrawer && "gap-0",
                 `transition-[padding] ${PANEL_COLLAPSE_TRANSITION_CLASS}`,
                 reserveLeadingChrome &&
                   collapsedPanelTrafficLightReserveClassName,
@@ -770,7 +774,10 @@ function ThreadSecondaryPanelContent({
             onRemoveSplit ||
             usesPaneArrangementControl ? (
               <div
-                className="flex min-w-0 shrink-0 items-center gap-1"
+                className={cn(
+                  "flex min-w-0 shrink-0 items-center gap-1",
+                  renderAsDrawer && "gap-0",
+                )}
                 onPointerDown={(event) => event.stopPropagation()}
               >
                 {usesPaneArrangementControl || showOuterControls
@@ -1085,6 +1092,7 @@ interface NewTabButtonProps {
   onOpenNewTab: () => void;
   shortcut: AppShortcutPresentation | null;
   usesDesktopChrome: boolean;
+  compact: boolean;
 }
 
 interface PinnedIconTabProps {
@@ -1144,6 +1152,7 @@ function NewTabButton({
   onOpenNewTab,
   shortcut,
   usesDesktopChrome,
+  compact,
 }: NewTabButtonProps) {
   return (
     <Button
@@ -1152,6 +1161,7 @@ function NewTabButton({
       size="sm"
       className={cn(
         SECONDARY_PANEL_CHROME_ICON_BUTTON_CLASS,
+        compact && "max-md:pointer-coarse:w-7",
         "text-muted-foreground/70 hover:text-foreground [&_[data-icon-root]]:size-3 max-md:pointer-coarse:[&_[data-icon-root]]:size-3.5",
         usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
       )}

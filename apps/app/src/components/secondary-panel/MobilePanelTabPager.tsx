@@ -78,13 +78,13 @@ export function MobilePanelTabPager({
 
   return (
     <div
-      className="flex min-w-0 flex-1 items-center gap-1"
+      className="flex min-w-0 flex-1 items-center"
       data-testid="mobile-panel-tab-pager"
     >
       <Button
         variant="ghost"
         size="icon"
-        className="size-9 shrink-0 text-muted-foreground/70 [&_[data-icon-root]]:size-3.5"
+        className="h-9 w-7 shrink-0 text-muted-foreground/70 [&_[data-icon-root]]:size-3.5"
         aria-label="Previous tab"
         disabled={previousTab === undefined}
         onClick={() => previousTab?.onSelect()}
@@ -167,7 +167,7 @@ export function MobilePanelTabPager({
       <Button
         variant="ghost"
         size="icon"
-        className="size-9 shrink-0 text-muted-foreground/70 [&_[data-icon-root]]:size-3.5"
+        className="h-9 w-7 shrink-0 text-muted-foreground/70 [&_[data-icon-root]]:size-3.5"
         aria-label="Next tab"
         disabled={nextTab === undefined}
         onClick={() => nextTab?.onSelect()}

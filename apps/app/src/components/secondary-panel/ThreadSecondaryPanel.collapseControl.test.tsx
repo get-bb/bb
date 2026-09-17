@@ -198,7 +198,7 @@ describe("ThreadSecondaryPanel compact file content", () => {
     expect(
       screen
         .getByTestId("thread-secondary-panel-top-chrome")
-        .classList.contains("pl-13"),
+        .classList.contains("pl-12"),
     ).toBe(true);
   });
 
@@ -710,7 +710,7 @@ describe("ThreadSecondaryPanel hide control glyph", () => {
     expect(
       screen
         .getByTestId("thread-secondary-panel-top-chrome")
-        .classList.contains("pl-13"),
+        .classList.contains("pl-12"),
     ).toBe(true);
   });
 
