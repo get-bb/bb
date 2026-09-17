@@ -1289,6 +1289,7 @@ describe("PluginNavSidebarItems", () => {
         ).not.toBeNull();
       } finally {
         fireEvent(window, new MouseEvent("pointercancel"));
+        fireEvent.click(window);
         if (elementsFromPoint) {
           Object.defineProperty(
             document,
