@@ -917,22 +917,17 @@ function ensureLatestTimelineOpenBackgroundTaskStateRows(
   return mergeStoredEventRowsById([...args.rows, ...stateRows]);
 }
 
-function ensureLatestTimelineHeadStateRows(
+function listLatestTimelineHeadStateRows(
   db: DbConnection,
-  args: TimelineWindowRowsArgs,
+  threadId: string,
 ): StoredEventRow[] {
-  const headStateRows = [
+  return mergeStoredEventRowsById([
     ...listLatestThreadStateEventRowsByThreadIds(db, {
-      threadIds: [args.threadId],
+      threadIds: [threadId],
       kind: LEGACY_CODEX_GOAL_EXTENSION_KIND,
     }),
-    ...listTodoSnapshotEventRowsForThread(db, { threadId: args.threadId }),
-  ];
-  if (headStateRows.length === 0) {
-    return [...args.rows];
-  }
-
-  return mergeStoredEventRowsById([...args.rows, ...headStateRows]);
+    ...listTodoSnapshotEventRowsForThread(db, { threadId }),
+  ]);
 }
 
 function selectStandardTimelineEventRows(
@@ -1074,12 +1069,9 @@ function selectStandardTimelineEventRows(
       beforeSequence: maxSeq + 1,
     }).filter((row) => row.sequence <= maxSeq);
     if (page.kind === "latest")
-      selectedRows = ensureLatestTimelineHeadStateRows(db, {
+      selectedRows = ensureLatestTimelineOpenBackgroundTaskStateRows(db, {
         threadId: thread.id,
-        rows: ensureLatestTimelineOpenBackgroundTaskStateRows(db, {
-          threadId: thread.id,
-          rows: selectedRows,
-        }),
+        rows: selectedRows,
       }).filter((row) => row.sequence <= maxSeq);
     return selectedRows;
   });
@@ -1171,6 +1163,15 @@ function selectStandardTimelineEventRows(
     hints,
     fetchedTurnIds: fetchedTurns,
     selection: {
+      headStateRows:
+        page.kind === "latest"
+          ? measureThreadTimelineStage(profile, "group-context-query", () =>
+              listLatestTimelineHeadStateRows(db, thread.id).filter(
+                (row) =>
+                  row.sequence <= maxSeq && !visibleSequences.has(row.sequence),
+              ),
+            )
+          : [],
       contextOnlyInterruptionSequences: new Set(
         interruptionRows
           .filter((row) => !visibleSequences.has(row.sequence))
@@ -1368,7 +1369,19 @@ function buildThreadTimelineInternal(
         withRowMeta(row, decodeStoredEventRowCached(db, row)),
       ),
   );
-  profile.decodedEventCount = decodedRawEvents.length;
+  const headStateEvents = measureThreadTimelineStage(
+    profile,
+    "event-json-decode",
+    () =>
+      eventSelection.headStateRows.map((row) =>
+        withRowMeta(row, decodeStoredEventRowCached(db, row)),
+      ),
+  );
+  profile.eventRowCount += eventSelection.headStateRows.length;
+  profile.eventDataBytes += byteLengthOfStoredEventRows(
+    eventSelection.headStateRows,
+  );
+  profile.decodedEventCount = decodedRawEvents.length + headStateEvents.length;
   const decodedEvents = measureThreadTimelineStage(
     profile,
     "summary-compaction",
@@ -1417,6 +1430,7 @@ function buildThreadTimelineInternal(
       buildThreadTimelineFromEvents({
         acceptedClientRequestContext,
         contextWindowEvents,
+        headStateEvents,
         events: decodedEvents,
         options: {
           ...commonProjectionOptions,

@@ -85,6 +85,7 @@ interface ThreadTimelineFromEventsOptions extends ThreadTimelineFromEventsBaseOp
 interface BuildThreadTimelineFromEventsArgs {
   acceptedClientRequestContext: AcceptedClientRequestContext;
   contextWindowEvents: ThreadEventWithMeta[];
+  headStateEvents?: ThreadEventWithMeta[];
   events: ThreadEventWithMeta[];
   options: ThreadTimelineFromEventsOptions;
 }
@@ -1119,6 +1120,9 @@ function buildTimelineRows(
 export function buildThreadTimelineFromEvents(
   args: BuildThreadTimelineFromEventsArgs,
 ): ThreadTimelineFromEventsResult {
+  const stateEvents = args.headStateEvents?.length
+    ? getOrderedThreadEvents([...args.events, ...args.headStateEvents])
+    : args.events;
   const projectionOptions = {
     acceptedClientRequestContext: args.acceptedClientRequestContext,
     includeDiagnosticOperations: args.options.includeDiagnosticOperations,
@@ -1168,7 +1172,7 @@ export function buildThreadTimelineFromEvents(
     ),
     goal: !args.options.isLatestPage
       ? null
-      : extractThreadTimelineGoal(args.events),
+      : extractThreadTimelineGoal(stateEvents),
     modelFallback: !args.options.isLatestPage
       ? null
       : extractThreadTimelineModelFallback(args.events),
@@ -1176,7 +1180,7 @@ export function buildThreadTimelineFromEvents(
       ? null
       : extractThreadTimelinePendingTodos(
           args.options.threadStatus,
-          args.events,
+          stateEvents,
         ),
     rows,
   };

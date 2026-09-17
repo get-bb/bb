@@ -32,6 +32,36 @@ function timeline(events: ThreadEventRow[], includeNestedRows: boolean) {
 }
 
 describe("timeline row planning", () => {
+  it("reads auxiliary plan state without projecting a historical turn", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const headStateEvents = fromRows([
+      event.planStepsCompleted({
+        seq: 2,
+        turnId: "historical-turn",
+        itemId: "old-plan",
+        steps: [{ step: "Finish the work", status: "active" }],
+      }),
+    ]);
+    const events = [
+      event.turnStarted({ seq: 100, turnId: "current-turn" }),
+      event.commandCompleted({ turnId: "current-turn", command: "echo done" }),
+      event.assistantCompleted({ turnId: "current-turn", text: "Done" }),
+      event.turnCompleted({ turnId: "current-turn" }),
+    ];
+    const current = timeline(events, false);
+    const withHeadState = buildThreadTimelineFromEvents({
+      acceptedClientRequestContext: EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT,
+      contextWindowEvents: [],
+      events: fromRows(events),
+      headStateEvents,
+      options: { ...options, threadStatus: "active", includeNestedRows: false },
+    });
+    expect(withHeadState.rows).toEqual(current.rows);
+    expect(withHeadState.pendingTodos?.items.map((item) => item.text)).toEqual([
+      "Finish the work",
+    ]);
+  });
+
   it("keeps collapsed summary metadata consistent with expanded output", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
     const events = [

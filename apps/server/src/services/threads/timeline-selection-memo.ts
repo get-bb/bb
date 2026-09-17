@@ -26,6 +26,7 @@ export interface TimelineEventRowSelection {
   paginationPage: ThreadTimelinePageRequest;
   responsePageKind: ThreadTimelinePageKind;
   rows: StoredEventRow[];
+  headStateRows: StoredEventRow[];
   strategy: ThreadTimelineEventSelectionStrategy;
 }
 
@@ -325,7 +326,9 @@ export function rememberLatestTimelineSelection(
   storeMemoEntry(memo, selectionMemoKey(args), {
     hints: result.hints,
     appendableTurnIds: result.fetchedTurnIds,
-    dataChars: dataCharsOfRows(result.selection.rows),
+    dataChars:
+      dataCharsOfRows(result.selection.rows) +
+      dataCharsOfRows(result.selection.headStateRows),
     dataVersion: lookup.dataVersion,
     epochSequenceStart: args.epochSequenceStart,
     generation: lookup.generation,

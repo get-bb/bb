@@ -106,6 +106,13 @@ the target. Complete-group queries and grouping work can exceed those budgets.
 Profiles include context and ordering queries; endpoint timing also includes
 serialization, response parsing, and client merging in the corpus benchmark.
 
+Latest plan/todo and goal snapshots are auxiliary head state. They are loaded
+separately from conversation context when they fall outside the selected rows.
+Their age does not widen the grouping range, and an auxiliary plan snapshot does
+not create a partial historical turn in the projection. State extraction still
+combines these snapshots with the selected events in sequence order. The client
+merge guard describes omitted conversation rows, not auxiliary head-state rows.
+
 The projector builds one structural row plan for both collapsed and expanded
 rendering. A summary's identity, source bounds, timestamps, count, and message
 membership are decided before its child rows are rendered. The detail endpoint
