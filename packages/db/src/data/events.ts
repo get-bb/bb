@@ -1470,8 +1470,12 @@ export function listStoredEventRows(
     type: ThreadEventType | undefined,
   ): StoredEventRow[] => {
     return db
-      .select(storedEventRowFields)
-      .from(events)
+      .select(storedEventRowSqlFields(null))
+      .from(
+        type === undefined
+          ? events
+          : sql`${events} INDEXED BY events_thread_type_sequence_idx`,
+      )
       .where(
         and(
           eq(events.threadId, args.threadId),
