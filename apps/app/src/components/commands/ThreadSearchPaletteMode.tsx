@@ -380,25 +380,34 @@ function ThreadSearchPaletteStatus({ row }: { row: PaletteThreadSearchRow }) {
     ? "Archived thread"
     : (getThreadListIndicatorLabel(kind) ?? undefined);
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span
-          role="img"
-          aria-label={label}
-          className="inline-flex size-4 shrink-0 items-center justify-center text-subtle-foreground"
-          data-palette-thread-status
-        >
-          <span aria-hidden="true" className="inline-flex items-center">
-            {archived ? (
-              <Icon name="Archive" className="size-4" />
-            ) : (
-              <ThreadStatusGlyph {...state} size="compact" />
-            )}
+    <>
+      <span
+        aria-hidden="true"
+        className="shrink-0 text-xs leading-4 text-subtle-foreground"
+        data-palette-thread-status-separator
+      >
+        ·
+      </span>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            role="img"
+            aria-label={label}
+            className="inline-flex size-4 shrink-0 cursor-default items-center justify-center text-subtle-foreground"
+            data-palette-thread-status
+          >
+            <span aria-hidden="true" className="inline-flex items-center">
+              {archived ? (
+                <Icon name="Archive" className="size-4" />
+              ) : (
+                <ThreadStatusGlyph {...state} size="compact" />
+              )}
+            </span>
           </span>
-        </span>
-      </TooltipTrigger>
-      <TooltipContent side="left">{label}</TooltipContent>
-    </Tooltip>
+        </TooltipTrigger>
+        <TooltipContent side="left">{label}</TooltipContent>
+      </Tooltip>
+    </>
   );
 }
 

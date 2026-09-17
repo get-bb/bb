@@ -903,7 +903,7 @@ describe("CommandPalette", () => {
       results.querySelectorAll("[data-palette-thread-status]"),
     ).toHaveLength(1);
     expect(
-      rows[1].querySelector("[data-palette-thread-metadata]")?.nextElementSibling,
+      rows[1].querySelector("[data-palette-thread-details]")?.lastElementChild,
     ).toBe(within(rows[1]).getByRole("img", { name: "Archived thread" }));
   });
 
@@ -1005,14 +1005,21 @@ describe("CommandPalette", () => {
         const status = within(row).getByRole("img", { name: label });
         const details = row.querySelector("[data-palette-thread-details]");
         const metadata = details?.querySelector("[data-palette-thread-metadata]");
+        const separator = details?.querySelector(
+          "[data-palette-thread-status-separator]",
+        );
         expect(details?.firstElementChild).toBe(metadata);
-        expect(metadata?.nextElementSibling).toBe(status);
-        expectClasses(status, "size-4", "shrink-0");
+        expect(metadata?.nextElementSibling).toBe(separator);
+        expectText(separator, "·");
+        expect(separator?.getAttribute("aria-hidden")).toBe("true");
+        expect(separator?.nextElementSibling).toBe(status);
+        expectClasses(status, "size-4", "shrink-0", "cursor-default");
         expectClasses(
           status.querySelector(`[data-icon="${icon}"]`),
           icon === "Edit" ? "size-3.5" : "size-4",
         );
         expect(status.hasAttribute("tabindex")).toBe(false);
+        expect(status.closest('button, [role="button"]')).toBeNull();
         expect(row.querySelector('[data-icon="Folder"]')).toBeNull();
         expect(
           row.querySelector("[data-palette-thread-metadata]")?.textContent,
