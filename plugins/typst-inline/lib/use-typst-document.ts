@@ -3,6 +3,7 @@ import { useRpc } from "@get-bb/plugin-sdk/app";
 import type { TypstArtifactSource, typstInlineRpcContract } from "../server.js";
 import { decodeBase64 } from "./base64.js";
 import { sourceKey } from "./artifact-source.js";
+import type { TypstPage } from "./typst-pages.js";
 import {
   loadTypstDocument,
   resetTypstDocument,
@@ -17,6 +18,7 @@ export type TypstDocumentState =
       status: "ready";
       document: TypstDocument;
       file: string;
+      pages: readonly TypstPage[];
       svg: string;
     }
   | { status: "error"; file: string; message: string };
@@ -72,8 +74,15 @@ export function useTypstDocument(input: {
         documentKeyRef.current = documentKey;
         const document = loadTypstDocument(documentKey, request);
         const svg = await document.svg;
+        const pages = await document.pages();
         if (cancelled) return;
-        setState({ status: "ready", document, file: artifact.file, svg });
+        setState({
+          status: "ready",
+          document,
+          file: artifact.file,
+          pages,
+          svg,
+        });
       } catch (error) {
         if (cancelled) return;
         setState({

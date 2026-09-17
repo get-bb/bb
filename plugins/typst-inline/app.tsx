@@ -187,7 +187,7 @@ function TypstDirective({
         </button>
       </div>
       <TypstSheet
-        svg={state.svg}
+        pages={state.pages}
         style={{ height: previewHeight ?? DEFAULT_HEIGHT_PX }}
         viewportClassName="overflow-auto bg-muted p-3"
       />
@@ -271,7 +271,7 @@ function TypstFileOpener({ path, source, Original }: PluginFileOpenerProps) {
         </button>
       </div>
       <TypstSheet
-        svg={state.svg}
+        pages={state.pages}
         viewportClassName="min-h-0 flex-1 overflow-auto bg-muted p-4"
       />
     </div>
