@@ -373,10 +373,11 @@ function MobileRecentThreadRow({
         {!hasChildren ? (
           <span
             className={cn(
-              "flex h-7 w-11 shrink-0 items-center justify-center rounded-md border border-border-seam bg-surface-raised",
+              "flex h-7 w-11 shrink-0 items-center justify-center gap-1 rounded-md border border-border-seam bg-surface-raised",
               depth > 0 && "opacity-60",
             )}
           >
+            <span className="size-3 shrink-0" aria-hidden="true" />
             {providerMark}
           </span>
         ) : null}
