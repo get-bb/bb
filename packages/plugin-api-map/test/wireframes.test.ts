@@ -103,9 +103,7 @@ describe("guide fixture boundaries", () => {
   it("scrolls only the one-line page list and clips off-stage fixture overflow", () => {
     const markup = renderToStaticMarkup(createElement(ProductMap));
 
-    expect(markup).toContain(
-      "overflow-x-clip transition-[height] duration-300 ease-out",
-    );
+    expect(markup).toContain("w-full overflow-x-clip");
     expect(markup).toContain("mx-auto flex w-fit max-w-full items-center");
     expect(markup).toContain("data-guide-page-list-scroll");
     expect(markup).toContain("min-w-0 overflow-x-auto");
