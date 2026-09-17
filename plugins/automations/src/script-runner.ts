@@ -297,7 +297,7 @@ export async function executeStoredScript(args: {
   timeoutMs: number;
   env?: Record<string, string>;
   serverUrl: string;
-  workingDir: string | null;
+  workingDir: string;
 }): Promise<ScriptRunResult> {
   const scriptPath = await resolveAutomationScriptPath({
     dataDir: args.pluginDataDir,
@@ -320,14 +320,13 @@ export async function executeStoredScript(args: {
   if (bbPath !== null) {
     scriptEnv.BB_CLI = bbPath;
   }
-  const scriptsDir = scriptsRoot(args.pluginDataDir);
-  await mkdir(scriptsDir, { recursive: true });
-  if (args.workingDir !== null && !(await isDirectory(args.workingDir))) {
+  await mkdir(scriptsRoot(args.pluginDataDir), { recursive: true });
+  if (!(await isDirectory(args.workingDir))) {
     throw new Error(
       `Script working directory is not an existing directory: ${args.workingDir}`,
     );
   }
-  const cwd = args.workingDir ?? scriptsDir;
+  const cwd = args.workingDir;
   const result = await executeWithProcessGroup({
     command: interpreter,
     scriptPath,

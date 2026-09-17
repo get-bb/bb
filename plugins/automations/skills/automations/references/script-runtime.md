@@ -48,6 +48,12 @@ host. An explicit path must be absolute and an existing directory. The run
 fails instead of silently using another directory when either selection is
 unavailable.
 
+The create, update, and show commands print the directory the script actually
+runs in on the `Working dir:` line, or `unavailable` when a `project` policy
+has no source on the server host. JSON output returns it as
+`execution.resolvedWorkingDirectory`, which is `null` when unavailable. The
+`list` result carries the stored policy only, without this resolution.
+
 A failed run's summary includes its exit code and a terminal-control-stripped
 first non-empty stderr line. The complete captured stdout and stderr remain
 available unchanged in run output.

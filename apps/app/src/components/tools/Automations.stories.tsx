@@ -546,6 +546,7 @@ export function DetailStates() {
             execution={{
               mode: "script",
               workingDirectory: { type: "project" },
+              resolvedWorkingDirectory: "/srv/projects/bb",
               script: 'echo "Preparing report"',
               interpreter: "bash",
               timeoutMs: 60000,

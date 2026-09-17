@@ -9,6 +9,7 @@ import type { AutomationService } from "./service.js";
 import type {
   AgentEnvironment,
   AgentExecutionUpdate,
+  AutomationDetailResponse,
   AutomationReadProblem,
   AutomationReadResult,
   AutomationResponse,
@@ -664,7 +665,7 @@ function formatAutomationTrigger(automation: AutomationResponse): string {
 }
 
 type PrintableAutomation =
-  | AutomationResponse
+  | AutomationDetailResponse
   | Extract<AutomationReadProblem, { problem: "missing-agent-prompt" }>;
 
 function printAutomation(
@@ -691,15 +692,9 @@ function printAutomation(
     lines.push(`  Script:    ${automation.execution.storedScriptPath}`);
   }
   if (automation.execution.mode === "script") {
-    const workingDirectory = automation.execution.workingDirectory;
-    const displayedWorkingDirectory =
-      automation.execution.resolvedWorkingDirectory === null
-        ? "unavailable"
-        : (automation.execution.resolvedWorkingDirectory ??
-          (workingDirectory.type === "path"
-            ? workingDirectory.path
-            : workingDirectory.type));
-    lines.push(`  Working dir: ${displayedWorkingDirectory}`);
+    lines.push(
+      `  Working dir: ${automation.execution.resolvedWorkingDirectory ?? "unavailable"}`,
+    );
   }
   if (automation.execution.mode === "agent") {
     lines.push(
@@ -722,7 +717,7 @@ function shellQuote(value: string): string {
 }
 
 function refreshScriptFileCommand(
-  automation: AutomationResponse,
+  automation: AutomationDetailResponse,
   source: ScriptFileSource,
 ): string {
   if (automation.execution.mode !== "script") return "";
@@ -755,7 +750,7 @@ function refreshScriptFileCommand(
 }
 
 function printScriptFileSnapshotNote(
-  automation: AutomationResponse,
+  automation: AutomationDetailResponse,
   source: ScriptFileSource | undefined,
 ): string {
   if (

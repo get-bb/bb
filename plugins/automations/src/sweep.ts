@@ -13,13 +13,16 @@ import {
 import { publishAutomationChange } from "./realtime.js";
 import { computeNextScheduledTime } from "./schedule-helpers.js";
 import {
-  createScriptWorkingDirectoryResolver,
   errorMessage,
   executeAgentRun,
   executeScriptRun,
   type AgentRunApi,
   type ScriptRunApi,
 } from "./run.js";
+import {
+  createScriptWorkingDirectoryResolver,
+  type ScriptWorkingDirectoryResolver,
+} from "./working-directory.js";
 
 const DUE_AUTOMATION_BATCH_SIZE = 100;
 export const SWEEP_INTERVAL_MS = 10_000;
@@ -57,10 +60,7 @@ async function processDueAutomation(
     now: number;
     agentHostsAvailable: boolean;
     serverUrl: string;
-    serverHostId: string | null;
-    resolveWorkingDirectory: ReturnType<
-      typeof createScriptWorkingDirectoryResolver
-    >;
+    resolveWorkingDirectory: ScriptWorkingDirectoryResolver;
   },
 ): Promise<void> {
   if (args.automation.nextRunAt === null) return;
@@ -118,7 +118,6 @@ async function processDueAutomation(
       execution,
       onFailure,
       serverUrl: args.serverUrl,
-      serverHostId: args.serverHostId,
       resolveWorkingDirectory: args.resolveWorkingDirectory,
     }).catch((error: unknown) => {
       bb.log.error(
@@ -158,10 +157,11 @@ export async function sweepDueAutomations(
   const now = args.now ?? Date.now();
   const due = listDueAutomations(db, { now, limit: DUE_AUTOMATION_BATCH_SIZE });
   const agentHostsAvailable = await hasConnectedHost(bb);
-  const resolveWorkingDirectory = createScriptWorkingDirectoryResolver(
-    bb,
-    args.serverHostId,
-  );
+  const resolveWorkingDirectory = createScriptWorkingDirectoryResolver({
+    sdk: bb.sdk,
+    pluginDataDir: args.pluginDataDir,
+    serverHostId: args.serverHostId,
+  });
   for (const automation of due) {
     try {
       await processDueAutomation(bb, db, {
@@ -170,7 +170,6 @@ export async function sweepDueAutomations(
         now,
         agentHostsAvailable,
         serverUrl: args.serverUrl,
-        serverHostId: args.serverHostId,
         resolveWorkingDirectory,
       });
     } catch (error) {

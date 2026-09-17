@@ -14,7 +14,7 @@ import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type { SkillSummary } from "@bb/server-contract";
 import type {
   AgentExecutionUpdate,
-  AutomationResponse,
+  AutomationDetailResponse,
   AutomationRunResponse,
 } from "bb-plugin-automations/rpc-types";
 import type {
@@ -753,7 +753,7 @@ describe("Skill detail recipe", () => {
   });
 });
 
-const AUTOMATION: AutomationResponse = {
+const AUTOMATION: AutomationDetailResponse = {
   id: "auto_1",
   projectId: "proj_personal",
   name: "Nightly digest",

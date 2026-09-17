@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode, UIEvent } from "react";
 import type {
   AgentEnvironment,
+  AutomationDetailResponse,
   AutomationExecution,
   AutomationResponse,
   AutomationRunResponse,
@@ -66,7 +67,7 @@ interface AutomationRunsViewState {
 }
 
 interface AutomationDetailViewProps {
-  automation: AutomationResponse;
+  automation: AutomationDetailResponse;
   projectLabel: string;
   runsState: AutomationRunsViewState;
   actionPending: boolean;
@@ -684,17 +685,18 @@ export function AgentAutomationDefinition({
 export function ScriptAutomationDefinition({
   execution,
 }: {
-  execution: Extract<AutomationResponse["execution"], { mode: "script" }>;
+  execution: Extract<
+    AutomationDetailResponse["execution"],
+    { mode: "script" }
+  >;
 }) {
+  const { resolvedWorkingDirectory } = execution;
   const workingDirectoryLabel =
-    execution.resolvedWorkingDirectory !== undefined &&
-    execution.resolvedWorkingDirectory !== null
-      ? formatHomePathForDisplay(execution.resolvedWorkingDirectory)
-      : execution.workingDirectory.type === "path"
-        ? formatHomePathForDisplay(execution.workingDirectory.path)
-        : "Working directory unavailable";
+    resolvedWorkingDirectory === null
+      ? "Working directory unavailable"
+      : formatHomePathForDisplay(resolvedWorkingDirectory);
   const workingDirectoryAriaLabel =
-    workingDirectoryLabel === "Working directory unavailable"
+    resolvedWorkingDirectory === null
       ? workingDirectoryLabel
       : `Working directory: ${workingDirectoryLabel}`;
   return (

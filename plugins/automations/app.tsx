@@ -11,8 +11,9 @@ import {
 import type { automationRpcContract } from "./src/rpc.js";
 import { toast } from "sonner";
 import type {
+  AutomationDetailReadResult,
+  AutomationDetailResponse,
   AutomationResponse,
-  AutomationReadResult,
   AgentExecutionUpdate,
   AutomationRunListResponse,
   AutomationRunResponse,
@@ -164,14 +165,14 @@ function useOverview(): {
 }
 
 function useAutomation(route: DetailRoute): {
-  automation: AutomationReadResult | null;
+  automation: AutomationDetailReadResult | null;
   error: string | null;
   refetch: () => void;
 } {
   const rpc = useRpc<typeof automationRpcContract>();
   const { projectId, automationId } = route;
   const [state, setState] = useState<{
-    automation: AutomationReadResult | null;
+    automation: AutomationDetailReadResult | null;
     error: string | null;
   }>({ automation: null, error: null });
   const requestRef = useRef(0);
@@ -592,7 +593,7 @@ function DetailView({
 
   const requiresPrompt =
     automation.execution.mode === "agent" && automation.execution.prompt === "";
-  const readableAutomation: AutomationResponse = automation;
+  const readableAutomation: AutomationDetailResponse = automation;
 
   const overviewEntry = overviewState.entries?.find(
     (entry) =>

@@ -7,7 +7,10 @@ import type {
   ExperimentalProviderIconProps,
   ExperimentalProviderModelPickerProps,
 } from "@get-bb/plugin-sdk/app";
-import type { AgentExecutionUpdate, AutomationResponse } from "./rpc-types.js";
+import type {
+  AgentExecutionUpdate,
+  AutomationDetailResponse,
+} from "./rpc-types.js";
 
 vi.mock("@get-bb/plugin-sdk/app", () => ({
   experimental_ProviderIcon: ({ provider }: ExperimentalProviderIconProps) => (
@@ -69,7 +72,7 @@ import { AutomationDetailView } from "../detail-view.js";
 
 afterEach(cleanup);
 
-const automation: AutomationResponse = {
+const automation: AutomationDetailResponse = {
   id: "auto_test",
   projectId: "proj_test",
   name: "Digest",

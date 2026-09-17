@@ -261,13 +261,19 @@ export type AutomationExecutionRequest = z.output<
   typeof automationExecutionRequestSchema
 >;
 
+const automationScriptResponseExecutionSchema = automationScriptExecutionSchema
+  .extend({ storedScriptPath: z.string().min(1).optional() })
+  .strict();
+
 const automationResponseExecutionSchema = z.discriminatedUnion("mode", [
   automationAgentExecutionSchema,
-  automationScriptExecutionSchema
-    .extend({
-      storedScriptPath: z.string().min(1).optional(),
-      resolvedWorkingDirectory: z.string().min(1).nullable().optional(),
-    })
+  automationScriptResponseExecutionSchema,
+]);
+
+const automationDetailExecutionSchema = z.discriminatedUnion("mode", [
+  automationAgentExecutionSchema,
+  automationScriptResponseExecutionSchema
+    .extend({ resolvedWorkingDirectory: z.string().min(1).nullable() })
     .strict(),
 ]);
 
@@ -339,6 +345,13 @@ export const automationResponseSchema = z
   .strict();
 export type AutomationResponse = z.infer<typeof automationResponseSchema>;
 
+export const automationDetailResponseSchema = automationResponseSchema.extend({
+  execution: automationDetailExecutionSchema,
+});
+export type AutomationDetailResponse = z.infer<
+  typeof automationDetailResponseSchema
+>;
+
 export const legacyEmptyPromptAutomationResponseSchema =
   automationResponseSchema.extend({
     execution: legacyEmptyPromptAgentExecutionSchema,
@@ -369,6 +382,13 @@ export const automationReadResultSchema = z.union([
   automationReadProblemSchema,
 ]);
 export type AutomationReadResult = z.infer<typeof automationReadResultSchema>;
+export const automationDetailReadResultSchema = z.union([
+  automationDetailResponseSchema,
+  automationReadProblemSchema,
+]);
+export type AutomationDetailReadResult = z.infer<
+  typeof automationDetailReadResultSchema
+>;
 
 export const automationRunResponseSchema = z
   .object({

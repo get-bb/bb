@@ -32,6 +32,8 @@ import {
   type AgentExecutionUpdate,
   type AutomationExecution,
   type AutomationExecutionRequest,
+  type AutomationDetailReadResult,
+  type AutomationDetailResponse,
   type AutomationReadProblem,
   type AutomationReadResult,
   type AutomationRunListResponse,
@@ -55,15 +57,13 @@ import {
   deleteAutomationScriptDir,
   deleteAutomationScriptFile,
   readAutomationScript,
-  scriptsRoot,
   writeInlineAutomationScript,
 } from "./script-files.js";
+import { errorMessage, executeAgentRun, executeScriptRun } from "./run.js";
 import {
-  errorMessage,
-  executeAgentRun,
-  executeScriptRun,
+  createScriptWorkingDirectoryResolver,
   projectPathForHost,
-} from "./run.js";
+} from "./working-directory.js";
 
 type ServiceApi = Pick<BbPluginApi, "realtime" | "log"> & {
   sdk: {
@@ -80,9 +80,11 @@ export interface AutomationService {
   get(input: {
     projectId: string;
     automationId: string;
-  }): Promise<AutomationReadResult>;
-  create(input: ResolvedCreateAutomationInput): Promise<AutomationResponse>;
-  update(input: UpdateAutomationInput): Promise<AutomationResponse>;
+  }): Promise<AutomationDetailReadResult>;
+  create(
+    input: ResolvedCreateAutomationInput,
+  ): Promise<AutomationDetailResponse>;
+  update(input: UpdateAutomationInput): Promise<AutomationDetailResponse>;
   delete(input: {
     projectId: string;
     automationId: string;
@@ -302,51 +304,67 @@ function toStoredAutomationReadResult(
   return decoded.automation;
 }
 
-async function toEditableAutomationResponse(args: {
+async function resolveWorkingDirectoryForDisplay(args: {
   bb: Pick<ServiceApi, "log" | "sdk">;
   pluginDataDir: string;
   automation: AutomationResponse;
-}): Promise<AutomationResponse> {
+  workingDirectory: AutomationScriptWorkingDirectory;
+}): Promise<string | null> {
+  try {
+    const resolve = createScriptWorkingDirectoryResolver({
+      sdk: args.bb.sdk,
+      pluginDataDir: args.pluginDataDir,
+      serverHostId: (await args.bb.sdk.system.config()).primaryHostId,
+    });
+    return await resolve(args.automation.projectId, args.workingDirectory);
+  } catch (error) {
+    args.bb.log.warn(
+      `Failed to resolve working directory for automation ${args.automation.id}: ${errorMessage(error)}`,
+    );
+    return null;
+  }
+}
+
+async function withResolvedWorkingDirectory(args: {
+  bb: Pick<ServiceApi, "log" | "sdk">;
+  pluginDataDir: string;
+  automation: AutomationResponse;
+}): Promise<AutomationDetailResponse> {
   const { automation } = args;
-  if (
-    automation.execution.mode !== "script" ||
-    automation.execution.scriptFile === undefined
-  ) {
-    return automation;
-  }
-  const { scriptFile, ...execution } = automation.execution;
-  let resolvedWorkingDirectory: string | null;
-  if (execution.workingDirectory.type === "automation-storage") {
-    resolvedWorkingDirectory = scriptsRoot(args.pluginDataDir);
-  } else if (execution.workingDirectory.type === "path") {
-    resolvedWorkingDirectory = execution.workingDirectory.path;
-  } else {
-    try {
-      const serverHostId = (await args.bb.sdk.system.config()).primaryHostId;
-      resolvedWorkingDirectory =
-        serverHostId === null
-          ? null
-          : projectPathForHost(
-              await args.bb.sdk.projects.get({
-                projectId: automation.projectId,
-              }),
-              serverHostId,
-            );
-    } catch (error) {
-      args.bb.log.warn(
-        `Failed to resolve working directory for automation ${automation.id}: ${errorMessage(error)}`,
-      );
-      resolvedWorkingDirectory = null;
-    }
-  }
+  const { execution } = automation;
+  if (execution.mode !== "script") return { ...automation, execution };
   return {
     ...automation,
     execution: {
       ...execution,
-      resolvedWorkingDirectory,
+      resolvedWorkingDirectory: await resolveWorkingDirectoryForDisplay({
+        bb: args.bb,
+        pluginDataDir: args.pluginDataDir,
+        automation,
+        workingDirectory: execution.workingDirectory,
+      }),
+    },
+  };
+}
+
+async function toEditableAutomationResponse(args: {
+  bb: Pick<ServiceApi, "log" | "sdk">;
+  pluginDataDir: string;
+  automation: AutomationResponse;
+}): Promise<AutomationDetailResponse> {
+  const detail = await withResolvedWorkingDirectory(args);
+  const { execution } = detail;
+  if (execution.mode !== "script" || execution.scriptFile === undefined) {
+    return detail;
+  }
+  const { scriptFile, ...rest } = execution;
+  return {
+    ...detail,
+    execution: {
+      ...rest,
       script: await readAutomationScript({
         dataDir: args.pluginDataDir,
-        automationId: automation.id,
+        automationId: detail.id,
         scriptFile,
       }),
     },
@@ -357,7 +375,7 @@ async function toEditableAutomationReadResult(args: {
   bb: Pick<ServiceApi, "log" | "sdk">;
   pluginDataDir: string;
   row: AutomationRow;
-}): Promise<AutomationReadResult> {
+}): Promise<AutomationDetailReadResult> {
   const automation = toStoredAutomationReadResult(
     args.bb,
     args.pluginDataDir,
@@ -627,7 +645,11 @@ export function createAutomationService(args: {
         throw error;
       }
       publishAutomationChange(bb, payload.projectId, "automations-changed");
-      return toStoredAutomationResponse(pluginDataDir, created);
+      return withResolvedWorkingDirectory({
+        bb,
+        pluginDataDir,
+        automation: toStoredAutomationResponse(pluginDataDir, created),
+      });
     },
 
     async update(input) {
@@ -770,7 +792,11 @@ export function createAutomationService(args: {
         });
       }
       publishAutomationChange(bb, input.projectId, "automations-changed");
-      return toStoredAutomationResponse(pluginDataDir, updated);
+      return withResolvedWorkingDirectory({
+        bb,
+        pluginDataDir,
+        automation: toStoredAutomationResponse(pluginDataDir, updated),
+      });
     },
 
     async delete(input) {
@@ -865,7 +891,11 @@ export function createAutomationService(args: {
                 execution,
                 onFailure: closeFailedRun,
                 serverUrl,
-                serverHostId: (await bb.sdk.system.config()).primaryHostId,
+                resolveWorkingDirectory: createScriptWorkingDirectoryResolver({
+                  sdk: bb.sdk,
+                  pluginDataDir,
+                  serverHostId: (await bb.sdk.system.config()).primaryHostId,
+                }),
               });
             }
           } catch (error) {

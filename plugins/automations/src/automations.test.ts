@@ -45,10 +45,10 @@ import {
   scriptPathEnv,
 } from "./script-runner.js";
 import {
-  createScriptWorkingDirectoryResolver,
   executeScriptRun,
   reconcileRunningAutomationRuns,
 } from "./run.js";
+import { createScriptWorkingDirectoryResolver } from "./working-directory.js";
 import { sweepDueAutomations } from "./sweep.js";
 import { createAutomationService } from "./service.js";
 import { registerAutomationCli } from "./cli.js";
@@ -1093,10 +1093,14 @@ describe("automation service", () => {
       expect(remoteOnly.execution).toMatchObject({
         workingDirectory: { type: "automation-storage" },
       });
-      await service.update({
-        projectId: "proj_remote",
-        automationId: remoteOnly.id,
-        script: { workingDirectory: { type: "project" } },
+      await expect(
+        service.update({
+          projectId: "proj_remote",
+          automationId: remoteOnly.id,
+          script: { workingDirectory: { type: "project" } },
+        }),
+      ).resolves.toMatchObject({
+        execution: { resolvedWorkingDirectory: null },
       });
       await expect(
         service.get({
@@ -1213,6 +1217,7 @@ describe("automation service", () => {
       expect(updated.execution).toMatchObject({
         mode: "script",
         workingDirectory: { type: "path", path: pluginDataDir },
+        resolvedWorkingDirectory: pluginDataDir,
       });
       await expect(
         service.get({
@@ -1645,7 +1650,7 @@ describe("automation CLI --script-file", () => {
       expect(created.stdout).toContain(
         `bb automation update ${automationId} --project proj_test --script-file ${sourcePath} --interpreter bash --working-directory project --timeout 120000`,
       );
-      expect(created.stdout).toContain("Working dir: project");
+      expect(created.stdout).toContain("Working dir: /server/project");
 
       const shown = await t.cli.run(
         ["show", automationId, "--project", "proj_test"],
@@ -2021,7 +2026,7 @@ describe("script process containment", () => {
         interpreter: "bash",
         timeoutMs: 1_000,
         serverUrl: "http://127.0.0.1:38886",
-        workingDir: null,
+        workingDir: scriptsRoot(pluginDataDir),
       });
       const childPidMatch = result.output.match(/^child_pid=(\d+)$/mu);
       const childPid = Number.parseInt(childPidMatch?.[1] ?? "", 10);
@@ -2153,8 +2158,12 @@ describe("script project context", () => {
           });
         },
         serverUrl: "http://127.0.0.1:38886",
-        serverHostId:
-          args.serverHostId === undefined ? "host_server" : args.serverHostId,
+        resolveWorkingDirectory: createScriptWorkingDirectoryResolver({
+          sdk: bb.sdk,
+          pluginDataDir,
+          serverHostId:
+            args.serverHostId === undefined ? "host_server" : args.serverHostId,
+        }),
       });
       const [closed] = listAutomationRuns(db, {
         automationId: automation.id,
@@ -2339,10 +2348,11 @@ describe("script project context", () => {
         }),
       ],
     }));
-    const resolveWorkingDirectory = createScriptWorkingDirectoryResolver(
-      { sdk: { projects: { get } } },
-      "host_server",
-    );
+    const resolveWorkingDirectory = createScriptWorkingDirectoryResolver({
+      sdk: { projects: { get } },
+      pluginDataDir: "/plugin-data",
+      serverHostId: "host_server",
+    });
 
     await expect(
       Promise.all([
