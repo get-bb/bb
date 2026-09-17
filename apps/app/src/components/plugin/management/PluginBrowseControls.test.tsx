@@ -1,10 +1,25 @@
 // @vitest-environment jsdom
 
 import { useState } from "react";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { PluginBrowseCategoryFilter } from "./PluginBrowseControls";
+import {
+  PluginBrowseCategoryFilter,
+  PluginCollectionToolbar,
+} from "./PluginBrowseControls";
 import type { PluginBrowseCategoryOption } from "./plugin-browse-discovery";
+
+const viewport = vi.hoisted(() => ({ compact: false }));
+vi.mock("@bb/shared-ui/hooks/use-compact-viewport", () => ({
+  useIsCompactViewport: () => viewport.compact,
+}));
 
 const OPTIONS: PluginBrowseCategoryOption[] = [
   { id: "memory-and-context", label: "Memory & Context", count: 4 },
@@ -22,7 +37,9 @@ function openMenu(selectionLabel: string) {
 
 afterEach(() => {
   cleanup();
+  viewport.compact = false;
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe("PluginBrowseCategoryFilter", () => {
@@ -70,7 +87,9 @@ describe("PluginBrowseCategoryFilter", () => {
     render(<Harness />);
     openMenu("All categories");
     expect(
-      screen.getByRole("button", { name: "Clear filter" }).hasAttribute("disabled"),
+      screen
+        .getByRole("button", { name: "Clear filter" })
+        .hasAttribute("disabled"),
     ).toBe(true);
     fireEvent.click(screen.getByRole("option", { name: /Security/u }));
     fireEvent.click(screen.getByRole("option", { name: /Tasks & Workflows/u }));
@@ -87,7 +106,9 @@ describe("PluginBrowseCategoryFilter", () => {
     ).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Clear filter" }));
     expect(
-      screen.getByRole("button", { name: "Clear filter" }).hasAttribute("disabled"),
+      screen
+        .getByRole("button", { name: "Clear filter" })
+        .hasAttribute("disabled"),
     ).toBe(true);
     expect(
       screen.getByRole("button", {
@@ -157,5 +178,225 @@ describe("PluginBrowseCategoryFilter", () => {
     fireEvent.keyDown(secondSearch, { key: "ArrowDown" });
     expect(secondList.contains(document.activeElement)).toBe(true);
     expect(firstList.contains(document.activeElement)).toBe(false);
+  });
+});
+
+function ToolbarHarness({
+  installed = false,
+  categoryShelf = false,
+}: {
+  installed?: boolean;
+  categoryShelf?: boolean;
+}) {
+  const [params, setParams] = useState(
+    new URLSearchParams(
+      "query=Memory&category=security&source=user&sort=name&direction=desc",
+    ),
+  );
+  const changeSearchParams = (change: (next: URLSearchParams) => void) => {
+    setParams((previous) => {
+      const next = new URLSearchParams(previous);
+      change(next);
+      return next;
+    });
+  };
+  return (
+    <>
+      <PluginCollectionToolbar
+        query={params.get("query") ?? ""}
+        selectedCategories={params.getAll("category")}
+        categoryOptions={OPTIONS}
+        showCategoryFilter={!categoryShelf}
+        sort={params.has("sort") ? "name" : null}
+        sortDirection={params.get("direction") === "desc" ? "desc" : "asc"}
+        installsKnown={false}
+        changeSearchParams={changeSearchParams}
+        sourceFilter={
+          installed
+            ? {
+                options: [
+                  { id: "user", label: "Local" },
+                  { id: "official", label: "BB Official" },
+                ],
+                selectedValues: params.getAll("source"),
+                onChange: (values) =>
+                  changeSearchParams((next) => {
+                    next.delete("source");
+                    values.forEach((value) => next.append("source", value));
+                  }),
+              }
+            : undefined
+        }
+      />
+      <output aria-label="Parameters">{params.toString()}</output>
+    </>
+  );
+}
+
+function mockToolbarWidth(initial: number) {
+  let width = initial;
+  const callbacks = new Set<() => void>();
+  const original = HTMLElement.prototype.getBoundingClientRect;
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+    function (this: HTMLElement) {
+      if (this.hasAttribute("data-resource-toolbar"))
+        return new DOMRect(0, 0, width, 32);
+      return original.call(this);
+    },
+  );
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      callback: () => void;
+      constructor(callback: () => void) {
+        this.callback = callback;
+      }
+      observe(target: Element) {
+        if (target.hasAttribute("data-resource-toolbar"))
+          callbacks.add(this.callback);
+      }
+      unobserve() {}
+      disconnect() {
+        callbacks.delete(this.callback);
+      }
+    },
+  );
+  return (next: number) =>
+    act(() => {
+      width = next;
+      callbacks.forEach((callback) => callback());
+    });
+}
+
+describe("PluginCollectionToolbar", () => {
+  it.each([
+    {
+      installed: true,
+      categoryShelf: false,
+      labels: ["Sort by", "Category", "Source"],
+    },
+    { installed: false, categoryShelf: false, labels: ["Sort by", "Category"] },
+    { installed: false, categoryShelf: true, labels: ["Sort by"] },
+  ])(
+    "preserves the allowed overflow controls for %j",
+    ({ labels, ...props }) => {
+      mockToolbarWidth(320);
+      render(<ToolbarHarness {...props} />);
+      fireEvent.keyDown(
+        screen.getByRole("button", { name: "Plugin controls" }),
+        { key: "Enter" },
+      );
+      expect(
+        screen
+          .getAllByRole("menuitem")
+          .map((item) => item.textContent?.replace("Active", "")),
+      ).toEqual(labels);
+      expect(screen.queryByRole("button", { name: /^Sort:/u })).toBeNull();
+    },
+  );
+
+  it("shares sort, category search, and source clearing in overflow without resetting other values", async () => {
+    mockToolbarWidth(320);
+    render(<ToolbarHarness installed />);
+    fireEvent.keyDown(screen.getByRole("button", { name: "Plugin controls" }), {
+      key: "Enter",
+    });
+    fireEvent.click(screen.getByRole("menuitem", { name: /^Sort by/u }));
+    const sort = screen.getByRole("menuitemradio", { name: "Plugin name" });
+    await waitFor(() => expect(document.activeElement).toBe(sort));
+    fireEvent.click(sort);
+    expect(screen.getByLabelText("Parameters").textContent).toContain(
+      "direction=asc",
+    );
+    expect(
+      screen
+        .getByRole("menuitemradio", { name: "Most installed" })
+        .getAttribute("aria-disabled"),
+    ).toBe("true");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Clear sort" }));
+    expect(screen.getByLabelText("Parameters").textContent).toBe(
+      "query=Memory&category=security&source=user",
+    );
+    fireEvent.click(screen.getByRole("menuitem", { name: "Back to controls" }));
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByRole("menuitem", { name: "Sort by" }),
+      ),
+    );
+    fireEvent.click(screen.getByRole("menuitem", { name: /^Category/u }));
+    const search = screen.getByRole("combobox", {
+      name: "Search plugin categories",
+    });
+    await waitFor(() => expect(document.activeElement).toBe(search));
+    fireEvent.change(search, { target: { value: "security" } });
+    fireEvent.keyDown(search, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(
+      screen.getByRole("option", { name: /Security/u }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Clear filter" }));
+    expect(screen.getByLabelText("Parameters").textContent).toBe(
+      "query=Memory&source=user",
+    );
+    fireEvent.click(screen.getByRole("menuitem", { name: "Back to controls" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /^Source/u }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Clear filter" }));
+    expect(screen.getByLabelText("Parameters").textContent).toBe(
+      "query=Memory",
+    );
+    fireEvent.keyDown(document.activeElement ?? document.body, {
+      key: "Escape",
+    });
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByRole("button", { name: "Plugin controls" }),
+      ),
+    );
+  });
+
+  it("restores focus to the category entry in the compact drawer", async () => {
+    viewport.compact = true;
+    mockToolbarWidth(320);
+    render(<ToolbarHarness installed />);
+    fireEvent.click(screen.getByRole("button", { name: "Plugin controls" }));
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: /^Category/u }),
+    );
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByRole("combobox", { name: "Search plugin categories" }),
+      ),
+    );
+    fireEvent.click(screen.getByRole("menuitem", { name: "Back to controls" }));
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByRole("menuitem", { name: /^Category/u }),
+      ),
+    );
+  });
+
+  it("moves focused controls into overflow and back without losing search or selection", () => {
+    const resize = mockToolbarWidth(600);
+    render(<ToolbarHarness installed />);
+    screen.getByRole("button", { name: /^Source:/u }).focus();
+    resize(320);
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "Plugin controls" }),
+    );
+    fireEvent.change(screen.getByRole("textbox", { name: "Search plugins" }), {
+      target: { value: "Notes" },
+    });
+    resize(600);
+    expect(
+      screen.queryByRole("button", { name: "Plugin controls" }),
+    ).toBeNull();
+    expect(screen.getByRole("button", { name: /^Source: 1/u })).toBeTruthy();
+    expect(
+      screen
+        .getByRole("textbox", { name: "Search plugins" })
+        .getAttribute("value"),
+    ).toBe("Notes");
+    expect(screen.getByLabelText("Parameters").textContent).toContain(
+      "category=security&source=user&sort=name&direction=desc",
+    );
   });
 });
