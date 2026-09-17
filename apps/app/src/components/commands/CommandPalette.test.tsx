@@ -729,6 +729,7 @@ describe("CommandPalette", () => {
       expect(within(palette).queryByText("New thread")).toBeNull();
       expect(screen.queryByRole("option")).toBeNull();
       const results = screen.getByRole("listbox", { name: "Threads" });
+      expect(within(results).queryAllByRole("group")).toHaveLength(0);
       for (const heading of ["Recent", "Threads", "Archived"]) {
         expect(
           within(results).queryByText(heading, { exact: true }),
@@ -907,12 +908,16 @@ describe("CommandPalette", () => {
     expect(results.querySelector('[data-icon="Archive"]')).toBeNull();
     expectClasses(within(results).getByText("Threads"), "px-2", "py-1");
     expectClasses(within(results).getByText("Archived"), "px-2", "py-1");
-    expect(rows[0].previousElementSibling).toBe(
-      within(results).getByText("Threads"),
-    );
-    expect(rows[1].previousElementSibling).toBe(
-      within(results).getByText("Archived"),
-    );
+    const groups = within(results).getAllByRole("group");
+    expect(groups).toHaveLength(2);
+    for (const [index, name] of ["Threads", "Archived"].entries()) {
+      const group = within(results).getByRole("group", { name });
+      expect(within(group).getAllByRole("option")).toEqual([rows[index]]);
+      const label = within(group).getByText(name);
+      expect(group.getAttribute("aria-labelledby")).toBe(label.id);
+      expect(group.hasAttribute("tabindex")).toBe(false);
+      expect(label.hasAttribute("tabindex")).toBe(false);
+    }
     expect(
       rows[1].querySelector("[data-palette-thread-metadata]")?.textContent,
     ).toBe("Palette project · just now");
@@ -959,6 +964,9 @@ describe("CommandPalette", () => {
     fireEvent.keyDown(input, { key: "ArrowDown" });
     expect(rows[1]?.getAttribute("aria-selected")).toBe("true");
     expect(input.getAttribute("aria-activedescendant")).toBe(rows[1].id);
+    expect(rows[1].closest('[role="group"]')).toBe(
+      within(results).getByRole("group", { name: "Archived" }),
+    );
     fireEvent.keyDown(input, { key: "ArrowDown" });
     expect(rows[0]?.getAttribute("aria-selected")).toBe("true");
     fireEvent.change(input, { target: { value: "" } });
@@ -970,6 +978,12 @@ describe("CommandPalette", () => {
       within(results).getByRole("option").getAttribute("aria-selected"),
     ).toBe("true");
     expect(within(results).getByText("Recent")).toBeTruthy();
+    expect(within(results).getAllByRole("group")).toHaveLength(1);
+    expect(
+      within(within(results).getByRole("group", { name: "Recent" })).getByRole(
+        "option",
+      ),
+    ).toBe(within(results).getByRole("option"));
     expect(within(results).queryByText("Threads", { exact: true })).toBeNull();
     expect(within(results).queryByText("Archived")).toBeNull();
   });
@@ -1141,6 +1155,12 @@ describe("CommandPalette", () => {
     fireEvent.change(input, { target: { value: "matching" } });
     const results = screen.getByRole("listbox", { name: "Threads" });
     expect(within(results).getByText("Archived")).toBeTruthy();
+    expect(within(results).getAllByRole("group")).toHaveLength(1);
+    expect(
+      within(
+        within(results).getByRole("group", { name: "Archived" }),
+      ).getByRole("option"),
+    ).toBe(screen.getByRole("option"));
     expect(within(results).queryByText("Threads", { exact: true })).toBeNull();
     expect(results.querySelector('[data-icon="Archive"]')).toBeNull();
     expect(screen.getByRole("option").querySelector("mark")?.textContent).toBe(

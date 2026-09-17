@@ -1,5 +1,4 @@
 import {
-  Fragment,
   useCallback,
   useEffect,
   useId,
@@ -231,27 +230,38 @@ export function ThreadSearchPaletteMode({
       value={query}
     >
       {emptyMessage === null ? (
-        result.rows.map((row, index) => (
-          <Fragment key={`${row.id}:${row.primaryText}`}>
-            {index === 0 ||
-            row.lifecycle !== result.rows[index - 1]?.lifecycle ? (
-              <div className={cn(CHROME_SECTION_LABEL_CLASS, "px-2 py-1")}>
+        (["active", "archived"] as const).map((lifecycle) => {
+          if (!result.rows.some((row) => row.lifecycle === lifecycle)) {
+            return null;
+          }
+          const labelId = `${optionIdPrefix}-${lifecycle}-label`;
+          return (
+            <div key={lifecycle} role="group" aria-labelledby={labelId}>
+              <div
+                id={labelId}
+                className={cn(CHROME_SECTION_LABEL_CLASS, "px-2 py-1")}
+              >
                 {result.isRecent
                   ? "Recent"
-                  : row.lifecycle === "archived"
+                  : lifecycle === "archived"
                     ? "Archived"
                     : "Threads"}
               </div>
-            ) : null}
-            <ThreadSearchPaletteRow
-              id={`${optionIdPrefix}-${index}`}
-              isActive={index === activeIndex}
-              row={row}
-              onActivate={() => setHighlightedIndex(index)}
-              onSelect={() => openRow(row)}
-            />
-          </Fragment>
-        ))
+              {result.rows.map((row, index) =>
+                row.lifecycle === lifecycle ? (
+                  <ThreadSearchPaletteRow
+                    key={`${row.id}:${row.primaryText}`}
+                    id={`${optionIdPrefix}-${index}`}
+                    isActive={index === activeIndex}
+                    row={row}
+                    onActivate={() => setHighlightedIndex(index)}
+                    onSelect={() => openRow(row)}
+                  />
+                ) : null,
+              )}
+            </div>
+          );
+        })
       ) : showThreadListEmptyState ||
         (searchable && !isLoading && !hasLoadError) ? (
         <ThreadListEmptyState
