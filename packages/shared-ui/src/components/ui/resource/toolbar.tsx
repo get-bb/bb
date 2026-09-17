@@ -33,7 +33,7 @@ export function ResourceToolbar({
   searchLabel,
   onSearchChange,
   controls,
-  overflowControls,
+  combinedControls,
   action,
   compact = false,
 }: {
@@ -42,58 +42,79 @@ export function ResourceToolbar({
   searchLabel?: string;
   onSearchChange: (value: string) => void;
   controls?: ReactNode;
-  overflowControls?: ReactNode;
+  combinedControls?: ReactNode;
   action?: ReactNode;
   compact?: boolean;
 }) {
   const toolbarRef = useRef<HTMLDivElement>(null);
   const controlsRef = useRef<HTMLDivElement>(null);
-  const [overflow, setOverflow] = useState(false);
+  const individualControlsRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLDivElement>(null);
+  const actionRef = useRef<HTMLDivElement>(null);
+  const [combined, setCombined] = useState(false);
   const restoreControlFocus = useRef(false);
-  const overflowRef = useRef(false);
-  const hasOverflowControls = Boolean(overflowControls);
+  const combinedRef = useRef(false);
+  const hasCombinedControls = Boolean(combinedControls);
+  const showCombined = compact && hasCombinedControls && combined;
 
   useLayoutEffect(() => {
     const toolbar = toolbarRef.current;
-    if (!toolbar || !compact || !hasOverflowControls) return;
+    const individualControls = individualControlsRef.current;
+    const search = searchRef.current;
+    if (!toolbar || !individualControls || !search || !compact) return;
     const measure = () => {
       const width = toolbar.getBoundingClientRect().width;
       if (width === 0) return;
-      const next = width < 384;
-      if (overflowRef.current === next) return;
+      const gap = Number.parseFloat(getComputedStyle(toolbar).columnGap) || 0;
+      const searchWidth = Number.parseFloat(getComputedStyle(search).flexBasis);
+      const actionWidth = actionRef.current?.getBoundingClientRect().width ?? 0;
+      const requiredWidth =
+        searchWidth +
+        individualControls.getBoundingClientRect().width +
+        actionWidth +
+        gap * (actionRef.current ? 2 : 1);
+      const next = hasCombinedControls && width < requiredWidth;
+      if (combinedRef.current === next) return;
       restoreControlFocus.current = Boolean(
         controlsRef.current?.contains(document.activeElement) ||
         controlsRef.current?.querySelector('[data-state="open"]'),
       );
-      overflowRef.current = next;
-      setOverflow(next);
+      combinedRef.current = next;
+      setCombined(next);
     };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(toolbar);
+    observer.observe(individualControls);
+    if (actionRef.current) observer.observe(actionRef.current);
     return () => observer.disconnect();
-  }, [compact, hasOverflowControls]);
+  }, [compact, hasCombinedControls, showCombined]);
 
   useLayoutEffect(() => {
     if (!restoreControlFocus.current) return;
-    controlsRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    controlsRef.current
+      ?.querySelector<HTMLButtonElement>(
+        showCombined ? "[data-resource-combined-controls] button" : "button",
+      )
+      ?.focus();
     restoreControlFocus.current = false;
-  }, [overflow]);
+  }, [showCombined]);
 
   return (
     <div
       ref={toolbarRef}
       data-resource-toolbar
       className={cn(
-        "flex items-center gap-2",
+        "flex w-full min-w-0 items-center gap-2",
         compact ? "@container/resource-toolbar flex-nowrap" : "flex-wrap",
       )}
     >
       <div
+        ref={searchRef}
         className={cn(
           "relative",
           compact
-            ? "min-w-0 flex-1"
+            ? "min-w-0 flex-1 basis-40"
             : "w-full min-w-0 sm:w-auto sm:flex-1",
         )}
       >
@@ -118,11 +139,39 @@ export function ResourceToolbar({
             compact ? "gap-2" : "gap-1.5",
           )}
         >
-          {overflow && overflowControls ? overflowControls : controls}
+          <div
+            className={
+              showCombined ? "absolute size-0 overflow-hidden" : undefined
+            }
+            aria-hidden={showCombined || undefined}
+            inert={showCombined || undefined}
+          >
+            <div
+              key={showCombined ? "measuring" : "visible"}
+              ref={individualControlsRef}
+              data-resource-individual-controls
+              className={cn(
+                "flex w-max items-center",
+                compact ? "gap-2" : "gap-1.5",
+              )}
+            >
+              {controls}
+            </div>
+          </div>
+          {showCombined ? (
+            <div data-resource-combined-controls>{combinedControls}</div>
+          ) : null}
         </div>
       ) : null}
       {action ? (
-        <div className="ml-auto flex shrink-0 items-center gap-1.5">
+        <div
+          ref={actionRef}
+          data-resource-toolbar-action
+          className={cn(
+            "flex shrink-0 items-center gap-1.5",
+            !compact && "ml-auto",
+          )}
+        >
           {action}
         </div>
       ) : null}
@@ -192,6 +241,7 @@ export const ResourceControlButton = forwardRef<
     active?: boolean;
     open?: boolean;
     tooltip?: ReactNode;
+    text?: string;
   }
 >(function ResourceControlButton(
   {
@@ -200,6 +250,7 @@ export const ResourceControlButton = forwardRef<
     active = false,
     open = false,
     tooltip = label,
+    text,
     className,
     ...props
   },
@@ -214,9 +265,10 @@ export const ResourceControlButton = forwardRef<
             ref={ref}
             type="button"
             variant="outline"
-            size="icon"
+            size={text ? "sm" : "icon"}
             className={cn(
-              "size-8 shrink-0 rounded-md p-0 text-muted-foreground",
+              "h-8 shrink-0 rounded-md text-muted-foreground",
+              text ? "gap-1.5 px-2.5 text-xs" : "size-8 p-0",
               RESOURCE_MENU_TRIGGER_RESTING_CLASS,
               (open || active) && RESOURCE_MENU_TRIGGER_ENGAGED_CLASS,
               className,
@@ -224,6 +276,7 @@ export const ResourceControlButton = forwardRef<
             aria-label={label}
           >
             <Icon name={icon} className="size-4" aria-hidden />
+            {text ? <span>{text}</span> : null}
           </Button>
         </TooltipTrigger>
         <TooltipContent side="bottom">{tooltip}</TooltipContent>
@@ -329,6 +382,7 @@ export function ResourceMultiSelectMenu({
   onChange,
   compact = false,
   clearInFooter = false,
+  showLabel = false,
 }: {
   label: string;
   icon: IconName;
@@ -337,6 +391,7 @@ export function ResourceMultiSelectMenu({
   onChange: (values: string[]) => void;
   compact?: boolean;
   clearInFooter?: boolean;
+  showLabel?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const selected = new Set(selectedValues);
@@ -354,6 +409,7 @@ export function ResourceMultiSelectMenu({
     <DropdownMenu onOpenChange={setOpen}>
       <ResourceMenuTrigger
         label={triggerLabel}
+        text={showLabel ? label : undefined}
         icon={icon}
         active={activeSelectedCount > 0}
         open={open}
@@ -585,6 +641,7 @@ export function ResourceSortMenu({
   placeholderLabel = "Sort",
   compact = false,
   clearInFooter = false,
+  showLabel = false,
 }: {
   value: string | null;
   direction: "asc" | "desc";
@@ -594,6 +651,7 @@ export function ResourceSortMenu({
   placeholderLabel?: string;
   compact?: boolean;
   clearInFooter?: boolean;
+  showLabel?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const selectedOption = options.find((option) => option.id === value);
@@ -609,6 +667,7 @@ export function ResourceSortMenu({
     <DropdownMenu onOpenChange={setOpen}>
       <ResourceMenuTrigger
         label={sortStateLabel}
+        text={showLabel ? "Sort by" : undefined}
         icon="ArrowUpDown"
         active={onClear !== undefined && value !== null}
         open={open}

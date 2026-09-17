@@ -37,6 +37,7 @@ function openMenu(selectionLabel: string) {
 
 afterEach(() => {
   cleanup();
+  document.getElementById("toolbar-test-layout")?.remove();
   viewport.compact = false;
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
@@ -184,9 +185,11 @@ describe("PluginBrowseCategoryFilter", () => {
 function ToolbarHarness({
   installed = false,
   categoryShelf = false,
+  createAction = false,
 }: {
   installed?: boolean;
   categoryShelf?: boolean;
+  createAction?: boolean;
 }) {
   const [params, setParams] = useState(
     new URLSearchParams(
@@ -203,6 +206,9 @@ function ToolbarHarness({
   return (
     <>
       <PluginCollectionToolbar
+        action={
+          createAction ? <button type="button">Create</button> : undefined
+        }
         query={params.get("query") ?? ""}
         selectedCategories={params.getAll("category")}
         categoryOptions={OPTIONS}
@@ -241,9 +247,25 @@ function mockToolbarWidth(initial: number) {
     function (this: HTMLElement) {
       if (this.hasAttribute("data-resource-toolbar"))
         return new DOMRect(0, 0, width, 32);
+      if (this.hasAttribute("data-resource-individual-controls"))
+        return new DOMRect(
+          0,
+          0,
+          this.querySelectorAll("button").length * 96,
+          32,
+        );
+      if (this.hasAttribute("data-resource-toolbar-action"))
+        return new DOMRect(0, 0, 120, 32);
       return original.call(this);
     },
   );
+  const style = document.createElement("style");
+  style.id = "toolbar-test-layout";
+  style.textContent = `
+    [data-resource-toolbar] { column-gap: 8px; }
+    [data-resource-toolbar] > div:first-child { flex-basis: 160px; }
+  `;
+  document.head.append(style);
   vi.stubGlobal(
     "ResizeObserver",
     class {
@@ -276,9 +298,8 @@ describe("PluginCollectionToolbar", () => {
       labels: ["Sort by", "Category", "Source"],
     },
     { installed: false, categoryShelf: false, labels: ["Sort by", "Category"] },
-    { installed: false, categoryShelf: true, labels: ["Sort by"] },
   ])(
-    "preserves the allowed overflow controls for %j",
+    "preserves the allowed combined controls for %j",
     ({ labels, ...props }) => {
       mockToolbarWidth(320);
       render(<ToolbarHarness {...props} />);
@@ -295,7 +316,44 @@ describe("PluginCollectionToolbar", () => {
     },
   );
 
-  it("shares sort, category search, and source clearing in overflow without resetting other values", async () => {
+  it("keeps a lone Sort control directly accessible at narrow widths", () => {
+    mockToolbarWidth(240);
+    render(<ToolbarHarness categoryShelf />);
+    expect(screen.getByRole("button", { name: /^Sort:/u }).textContent).toBe(
+      "Sort by",
+    );
+    expect(
+      screen.queryByRole("button", { name: "Plugin controls" }),
+    ).toBeNull();
+  });
+
+  it("uses the space required by each surface instead of a common viewport cutoff", () => {
+    const resize = mockToolbarWidth(400);
+    const { rerender } = render(<ToolbarHarness />);
+    expect(screen.getByRole("button", { name: /^Sort:/u }).textContent).toBe(
+      "Sort by",
+    );
+    expect(
+      screen.getByRole("button", { name: /^Filter plugins by category:/u })
+        .textContent,
+    ).toBe("Category");
+    rerender(<ToolbarHarness installed />);
+    resize(400);
+    expect(
+      screen.getByRole("button", { name: "Plugin controls" }),
+    ).toBeTruthy();
+  });
+
+  it("reserves space for the create action before expanding controls", () => {
+    mockToolbarWidth(500);
+    render(<ToolbarHarness installed createAction />);
+    expect(
+      screen.getByRole("button", { name: "Plugin controls" }),
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Create" })).toBeTruthy();
+  });
+
+  it("shares sort, category search, and source clearing in the combined menu without resetting other values", async () => {
     mockToolbarWidth(320);
     render(<ToolbarHarness installed />);
     fireEvent.keyDown(screen.getByRole("button", { name: "Plugin controls" }), {
@@ -374,7 +432,7 @@ describe("PluginCollectionToolbar", () => {
     );
   });
 
-  it("moves focused controls into overflow and back without losing search or selection", () => {
+  it("moves focused controls into the combined menu and back without losing search or selection", () => {
     const resize = mockToolbarWidth(600);
     render(<ToolbarHarness installed />);
     screen.getByRole("button", { name: /^Source:/u }).focus();
