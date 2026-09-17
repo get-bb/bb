@@ -341,7 +341,6 @@ function MobileRecentThreadRow({
             onToggleCollapsed(thread.id);
           }}
         >
-          {providerMark}
           <Icon
             name="ChevronRight"
             className={cn(
@@ -350,6 +349,7 @@ function MobileRecentThreadRow({
             )}
             aria-hidden="true"
           />
+          {providerMark}
         </button>
       ) : null}
       <RouteAnchor
