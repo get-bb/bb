@@ -76,6 +76,18 @@ it("defaults to mobile and keeps the selected annotation when switching layouts"
     expect(
       current()?.querySelector('[data-guide-mobile-scene="navigation"]'),
     ).not.toBeNull();
+    const composer = Array.from(
+      container.querySelectorAll<HTMLButtonElement>(
+        "[data-guide-page-list-scroll] button",
+      ),
+    ).find((button) => button.textContent === "The composer")!;
+    act(() => composer.click());
+    select("provider-picker");
+    const badges = container.querySelectorAll(
+      '[data-map-section="composer"] [data-guide-badge]',
+    );
+    expect(badges).toHaveLength(1);
+    expect(badges[0]?.getAttribute("data-guide-badge")).toBe("provider-picker");
   } finally {
     act(() => root.unmount());
     container.remove();
