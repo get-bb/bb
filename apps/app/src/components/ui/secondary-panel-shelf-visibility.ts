@@ -2,9 +2,6 @@ import { useSyncExternalStore } from "react";
 
 export type CompactSecondaryPanelPresentation = "closed" | "shelf" | "full";
 
-export const COMPACT_SHELF_HIDDEN_PAGE_HEADER_ACTIONS_CLASS =
-  "group-data-[panel-shelf=shelf]/page-inset:invisible";
-
 export const COMPACT_SHELF_HIDDEN_FIXED_CHROME_CLASS =
   "data-[panel-shelf=shelf]:invisible";
 
