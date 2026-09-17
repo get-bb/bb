@@ -597,26 +597,21 @@ function ThreadSecondaryPanelContent({
           activeTabId={
             activeSurfaceTabId ?? activeSurfaceFixedTab?.tab.id ?? null
           }
-          tabs={[
-            ...fixedSurfaceTabs.map((tab) => ({
-              id: tab.tab.id,
-              label: tab.label,
-              ariaLabel: tab.ariaLabel,
-              iconOnly: true,
-              leadingVisual: tab.leadingVisual,
-              onSelect: tab.onSelect,
-              onClose: null,
-            })),
-            ...visibleSurfaceTabs.map((tab) => ({
-              id: tab.tab.id,
-              label: tab.label,
-              ariaLabel: tab.label,
-              iconOnly: false,
-              leadingVisual: tab.leadingVisual,
-              onSelect: tab.onSelect,
-              onClose: tab.isPinned ? null : tab.onClose,
-            })),
-          ]}
+          fixedTabs={fixedSurfaceTabs.map((tab) => ({
+            id: tab.tab.id,
+            label: tab.label,
+            ariaLabel: tab.ariaLabel,
+            leadingVisual: tab.leadingVisual,
+            onSelect: tab.onSelect,
+          }))}
+          tabs={visibleSurfaceTabs.map((tab) => ({
+            id: tab.tab.id,
+            label: tab.label,
+            ariaLabel: tab.label,
+            leadingVisual: tab.leadingVisual,
+            onSelect: tab.onSelect,
+            onClose: tab.isPinned ? null : tab.onClose,
+          }))}
           newTabControl={newTabControl}
         />
       );
@@ -736,7 +731,7 @@ function ThreadSecondaryPanelContent({
             className={cn(
               CHROME_ROW_CLASS,
               "min-w-0 justify-between gap-1 px-2",
-              renderAsDrawer && "gap-0 pl-12 pr-1",
+              renderAsDrawer && "pl-12",
               usesDesktopChrome && usesWindowChrome && MACOS_WINDOW_DRAG_CLASS,
               usesDesktopChrome &&
                 usesWindowChrome &&

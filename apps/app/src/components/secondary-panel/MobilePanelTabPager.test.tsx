@@ -1,12 +1,6 @@
 // @vitest-environment jsdom
 
-import {
-  act,
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-} from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MobilePanelTabPager } from "./MobilePanelTabPager";
 
@@ -17,36 +11,49 @@ afterEach(() => {
 });
 
 function createTabs() {
-  return ["Info", "README.md", "package.json"].map((label) => ({
+  return ["README.md", "package.json", "AGENTS.md"].map((label) => ({
     id: label,
     label,
     ariaLabel: label,
-    iconOnly: label === "Info",
     leadingVisual: null,
     onSelect: vi.fn(),
-    onClose: label === "Info" ? null : vi.fn(),
+    onClose: vi.fn(),
+  }));
+}
+
+function createFixedTabs() {
+  return ["Info", "Diff"].map((label) => ({
+    id: label,
+    label,
+    ariaLabel: label,
+    leadingVisual: null,
+    onSelect: vi.fn(),
   }));
 }
 
 describe("MobilePanelTabPager", () => {
-  it("keeps the selected tab in a narrow viewport and selects adjacent tabs from the arrows", () => {
+  it("always shows the fixed buttons and exactly one content tab while navigating", () => {
     const tabs = createTabs();
     const { rerender } = render(
       <MobilePanelTabPager
-        activeTabId="README.md"
+        activeTabId="package.json"
+        fixedTabs={createFixedTabs()}
         tabs={tabs}
         newTabControl={<button>Add tab</button>}
       />,
     );
-    expect(screen.queryByRole("button", { name: "Info" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "package.json" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Info" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Diff" })).toBeDefined();
+    expect(screen.queryByRole("button", { name: "README.md" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "AGENTS.md" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Next tab" }));
     expect(tabs[2].onSelect).toHaveBeenCalledOnce();
     fireEvent.click(screen.getByRole("button", { name: "Previous tab" }));
     expect(tabs[0].onSelect).toHaveBeenCalledOnce();
     rerender(
       <MobilePanelTabPager
-        activeTabId="Info"
+        activeTabId="README.md"
+        fixedTabs={createFixedTabs()}
         tabs={tabs}
         newTabControl={null}
       />,
@@ -58,7 +65,8 @@ describe("MobilePanelTabPager", () => {
     ).toBe(true);
     rerender(
       <MobilePanelTabPager
-        activeTabId="package.json"
+        activeTabId="AGENTS.md"
+        fixedTabs={createFixedTabs()}
         tabs={tabs}
         newTabControl={null}
       />,
@@ -68,81 +76,83 @@ describe("MobilePanelTabPager", () => {
     ).toBe(true);
   });
 
-  it("fills space after compact tabs and hides neighbors that cannot fit a useful label", () => {
-    let resize = () => {};
-    vi.stubGlobal(
-      "ResizeObserver",
-      class {
-        constructor(callback: () => void) {
-          resize = callback;
-        }
-        observe() {}
-        disconnect() {}
-      },
-    );
-    let viewportWidth = 160;
-    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(
-      () => viewportWidth,
-    );
-    const naturalWidths = new Map([
-      ["Info", 36],
-      ["Diff", 36],
-      ["README.md", 132],
-      ["package.json", 140],
-    ]);
-    vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockImplementation(
-      function (this: HTMLElement) {
-        return naturalWidths.get(this.getAttribute("aria-label") ?? "") ?? 0;
-      },
-    );
+  it("keeps the last content tab available while Info or Diff is selected", () => {
     const tabs = createTabs();
-    tabs.splice(1, 0, {
-      ...tabs[0],
-      id: "Diff",
-      label: "Diff",
-      ariaLabel: "Diff",
-      onSelect: vi.fn(),
-    });
-    render(
+    const fixedTabs = createFixedTabs();
+    const { rerender } = render(
       <MobilePanelTabPager
-        activeTabId="Info"
+        activeTabId="package.json"
+        fixedTabs={fixedTabs}
         tabs={tabs}
         newTabControl={null}
       />,
     );
-    expect(screen.getByText("Info").className).toContain("sr-only");
-    expect(screen.getByText("Diff").className).toContain("sr-only");
-    fireEvent.click(screen.getByRole("button", { name: "README.md" }));
+    for (const fixedTab of fixedTabs) {
+      fireEvent.click(screen.getByRole("button", { name: fixedTab.label }));
+      expect(fixedTab.onSelect).toHaveBeenCalledOnce();
+      rerender(
+        <MobilePanelTabPager
+          activeTabId={fixedTab.id}
+          fixedTabs={fixedTabs}
+          tabs={tabs}
+          newTabControl={null}
+        />,
+      );
+      expect(screen.getByText(fixedTab.label).className).toContain("sr-only");
+      expect(
+        screen
+          .getByRole("button", { name: fixedTab.label })
+          .getAttribute("aria-pressed"),
+      ).toBe("true");
+      const contentTab = screen.getByRole("button", { name: "package.json" });
+      expect(contentTab.getAttribute("aria-pressed")).toBe("false");
+      fireEvent.click(contentTab);
+    }
+    expect(tabs[1].onSelect).toHaveBeenCalledTimes(2);
+    fireEvent.click(screen.getByRole("button", { name: "Next tab" }));
     expect(tabs[2].onSelect).toHaveBeenCalledOnce();
+    rerender(
+      <MobilePanelTabPager
+        activeTabId="Info"
+        fixedTabs={fixedTabs}
+        tabs={[tabs[0], tabs[2]]}
+        newTabControl={null}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "README.md" })).toBeDefined();
     expect(screen.queryByRole("button", { name: "package.json" })).toBeNull();
+  });
 
-    viewportWidth = 120;
-    act(() => resize());
-    expect(screen.queryByRole("button", { name: "README.md" })).toBeNull();
+  it("leaves fixed views and add available when there are no content tabs", () => {
+    render(
+      <MobilePanelTabPager
+        activeTabId="Info"
+        fixedTabs={createFixedTabs()}
+        tabs={[]}
+        newTabControl={<button>Add tab</button>}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Info" })).toBeDefined();
     expect(screen.getByRole("button", { name: "Diff" })).toBeDefined();
-    expect(
-      screen.getByRole("button", { name: "Info" }).getAttribute("aria-pressed"),
-    ).toBe("true");
-
-    viewportWidth = 320;
-    act(() => resize());
-    expect(
-      screen
-        .getByRole("button", { name: "package.json" })
-        .getAttribute("aria-pressed"),
-    ).toBe("false");
+    expect(screen.getByRole("button", { name: "Add tab" })).toBeDefined();
+    for (const name of ["Previous tab", "Next tab"]) {
+      expect(
+        screen.getByRole("button", { name }).hasAttribute("disabled"),
+      ).toBe(true);
+    }
   });
 
   it("advances once for a horizontal swipe and suppresses the resulting close click", () => {
     const tabs = createTabs();
     render(
       <MobilePanelTabPager
-        activeTabId="README.md"
+        activeTabId="package.json"
+        fixedTabs={createFixedTabs()}
         tabs={tabs}
         newTabControl={null}
       />,
     );
-    const close = screen.getByRole("button", { name: "Close README.md" });
+    const close = screen.getByRole("button", { name: "Close package.json" });
     fireEvent.touchStart(close, { touches: [{ clientX: 160, clientY: 20 }] });
     fireEvent.touchEnd(close, {
       changedTouches: [{ clientX: 80, clientY: 25 }],
@@ -171,12 +181,13 @@ describe("MobilePanelTabPager", () => {
     const tabs = createTabs();
     render(
       <MobilePanelTabPager
-        activeTabId="README.md"
+        activeTabId="package.json"
+        fixedTabs={createFixedTabs()}
         tabs={tabs}
         newTabControl={null}
       />,
     );
-    const tab = screen.getByRole("button", { name: "README.md" });
+    const tab = screen.getByRole("button", { name: "package.json" });
     for (const end of [
       { clientX: 140, clientY: 22 },
       { clientX: 120, clientY: 120 },
