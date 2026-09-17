@@ -698,7 +698,7 @@ describe("ThreadSecondaryPanel Diff eligibility", () => {
 });
 
 describe("ThreadSecondaryPanel hide control glyph", () => {
-  it("reserves the sidebar navigation control on the full-page compact panel", () => {
+  it("leaves only the trailing panel toggle on the full-page compact panel", () => {
     const view = renderPanel({
       isConversationCollapsed: false,
       onToggleConversationCollapse: noop,
@@ -711,7 +711,7 @@ describe("ThreadSecondaryPanel hide control glyph", () => {
       screen
         .getByTestId("thread-secondary-panel-top-chrome")
         .classList.contains("pl-12"),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("shows the side-panel glyph on a wide viewport", () => {
