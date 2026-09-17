@@ -171,16 +171,3 @@ export function buildToolResult(
     ...(Object.keys(annotations).length > 0 ? { annotations } : {}),
   };
 }
-
-export function buildAnswerMessage(result: ToolResult): string {
-  const lines = Object.entries(result.answers).map(
-    ([question, answer]) => `- ${question} — ${answer}`,
-  );
-  return [
-    "You asked, and the user answered:",
-    "",
-    ...lines,
-    "",
-    "Continue from these answers. Do not ask the same question again.",
-  ].join("\n");
-}

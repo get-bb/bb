@@ -3,20 +3,10 @@ import {
   ASK_USER_QUESTION_RENDERER_ID,
   interactionResponseSchema,
   toolInputSchema,
-  type InteractionPayload,
 } from "./contracts.js";
-import {
-  DISMISSED_MESSAGE,
-  NO_ANSWERS_MESSAGE,
-  QUESTION_POSTED_MESSAGE,
-  TOOL_DESCRIPTION,
-  UNREADABLE_ANSWER_MESSAGE,
-  buildTimeoutMessage,
-  buildUnavailableMessage,
-} from "./tool-definition.js";
+import { TOOL_DESCRIPTION, buildTimeoutMessage } from "./tool-definition.js";
 import {
   assertInteractionPayloadFits,
-  buildAnswerMessage,
   buildInteractionPayload,
   buildInteractionTitle,
   buildToolResult,
@@ -27,94 +17,11 @@ export const TOOL_NAME = "AskUserQuestion";
 
 const QUESTION_TIMEOUT_MS = 30 * 60 * 1000;
 
-type InteractionResult = Awaited<ReturnType<BbPluginApi["ui"]["requestInput"]>>;
-
 function errorResult(message: string): PluginAgentToolResult {
   return { content: [{ type: "text", text: message }], isError: true };
 }
 
-function describeError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-async function settledRejection(
-  pending: Promise<unknown>,
-): Promise<{ error: unknown } | null> {
-  let rejection: { error: unknown } | null = null;
-  pending.catch((error: unknown) => {
-    rejection = { error };
-  });
-  await new Promise<void>((resolve) => {
-    setTimeout(resolve, 0);
-  });
-  return rejection;
-}
-
 export default function plugin(bb: BbPluginApi) {
-  async function deliverAnswer(threadId: string, text: string): Promise<void> {
-    try {
-      await bb.sdk.threads.send({
-        threadId,
-        mode: "steer-if-active",
-        input: [{ type: "text", text, mentions: [] }],
-      });
-    } catch (error) {
-      bb.log.warn(
-        `Could not deliver a question answer to thread ${threadId}: ${describeError(error)}`,
-      );
-    }
-  }
-
-  async function reportNonAnswerToRunningTurn(
-    threadId: string,
-    text: string,
-  ): Promise<void> {
-    try {
-      const thread = await bb.sdk.threads.get({ threadId });
-      if (thread.status !== "active") return;
-      await bb.sdk.threads.send({
-        threadId,
-        mode: "steer",
-        input: [{ type: "text", text, mentions: [] }],
-      });
-    } catch (error) {
-      bb.log.warn(
-        `Could not tell thread ${threadId} its question went unanswered: ${describeError(error)}`,
-      );
-    }
-  }
-
-  async function deliverOutcome(args: {
-    askedAt: number;
-    payload: InteractionPayload;
-    result: InteractionResult;
-    threadId: string;
-  }): Promise<void> {
-    const { result, threadId } = args;
-    if (result.outcome === "cancelled") {
-      if (result.reason === "timeout") {
-        await reportNonAnswerToRunningTurn(
-          threadId,
-          buildTimeoutMessage(Date.now() - args.askedAt),
-        );
-      } else if (result.reason === "user") {
-        await reportNonAnswerToRunningTurn(threadId, DISMISSED_MESSAGE);
-      }
-      return;
-    }
-    const parsed = interactionResponseSchema.safeParse(result.value);
-    if (!parsed.success) {
-      await reportNonAnswerToRunningTurn(threadId, UNREADABLE_ANSWER_MESSAGE);
-      return;
-    }
-    const toolResult = buildToolResult(args.payload, parsed.data);
-    if (Object.keys(toolResult.answers).length === 0) {
-      await reportNonAnswerToRunningTurn(threadId, NO_ANSWERS_MESSAGE);
-      return;
-    }
-    await deliverAnswer(threadId, buildAnswerMessage(toolResult));
-  }
-
   bb.agents.registerTool({
     name: TOOL_NAME,
     description: TOOL_DESCRIPTION,
@@ -132,36 +39,51 @@ export default function plugin(bb: BbPluginApi) {
       try {
         assertInteractionPayloadFits(payload);
       } catch (error) {
-        return errorResult(describeError(error));
-      }
-
-      const askedAt = Date.now();
-      const threadId = ctx.threadId;
-      const pending = bb.ui.requestInput({
-        threadId,
-        rendererId: ASK_USER_QUESTION_RENDERER_ID,
-        title: buildInteractionTitle(payload),
-        payload,
-        timeoutMs: QUESTION_TIMEOUT_MS,
-      });
-
-      const rejection = await settledRejection(pending);
-      if (rejection !== null) {
         return errorResult(
-          buildUnavailableMessage(describeError(rejection.error)),
+          error instanceof Error ? error.message : String(error),
         );
       }
 
-      void pending.then(
-        (result) => deliverOutcome({ askedAt, payload, result, threadId }),
-        (error: unknown) =>
-          reportNonAnswerToRunningTurn(
-            threadId,
-            buildUnavailableMessage(describeError(error)),
-          ),
-      );
+      const askedAt = Date.now();
+      let result;
+      try {
+        result = await bb.ui.requestInput(
+          {
+            threadId: ctx.threadId,
+            rendererId: ASK_USER_QUESTION_RENDERER_ID,
+            title: buildInteractionTitle(payload),
+            payload,
+            timeoutMs: QUESTION_TIMEOUT_MS,
+          },
+          { signal: ctx.signal },
+        );
+      } catch (error) {
+        return errorResult(
+          `The question could not be shown (${error instanceof Error ? error.message : String(error)}). Only one prompt can await the user at a time — put all of your questions in a single AskUserQuestion call, or continue with your best judgement.`,
+        );
+      }
 
-      return QUESTION_POSTED_MESSAGE;
+      if (result.outcome === "cancelled") {
+        return errorResult(
+          result.reason === "timeout"
+            ? buildTimeoutMessage(Date.now() - askedAt)
+            : "The user dismissed the question without answering. Proceed with your best judgement, or ask again in your reply.",
+        );
+      }
+
+      const parsed = interactionResponseSchema.safeParse(result.value);
+      if (!parsed.success) {
+        return errorResult(
+          "The answer could not be read. Ask the question again in your reply instead.",
+        );
+      }
+      const toolResult = buildToolResult(payload, parsed.data);
+      if (Object.keys(toolResult.answers).length === 0) {
+        return errorResult(
+          "The user submitted no answers. Proceed with your best judgement, or ask again in your reply.",
+        );
+      }
+      return JSON.stringify(toolResult);
     },
   });
 
