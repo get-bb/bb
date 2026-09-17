@@ -388,17 +388,17 @@ describe("Theme Preview", () => {
     expect(dark.getAttribute("aria-pressed")).toBe("false");
   });
 
-  it("restacks the main areas on mobile with the read-only style sheet last", async () => {
-    const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(480);
+  it.each([390, 600, 1199])("restacks the main areas at %ipx with the read-only style sheet last", async (panelWidth) => {
+    const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(panelWidth);
     try {
       renderPreview({
         themeCatalog: () => DEFAULT_CATALOG,
         setTheme: () => DEFAULT_CATALOG,
       });
 
-      await waitFor(() => expect(document.querySelector("[data-tp-band=mobile]")).not.toBeNull());
+      await waitFor(() => expect(document.querySelector(`[data-tp-band=${panelWidth < 600 ? "mobile" : "narrow"}]`)).not.toBeNull());
       expect(screen.queryByRole("button", { name: /full style guide/i })).toBeNull();
-      // The compact interaction areas stay together before the style sheet.
+      expect(document.querySelector("[data-tp-section=rail]")).toBeNull();
       const areas = [...document.querySelectorAll("[data-tp-area]")].map((el) => el.getAttribute("data-tp-area"));
       expect(areas).toEqual(["mock", "overlays", "components", "stylesheet"]);
       expect(document.querySelector("[data-tp-style-readonly]")).not.toBeNull();

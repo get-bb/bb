@@ -111,7 +111,7 @@ export function SurfaceCard({
       ref={cardRef}
       role={probe ? undefined : "dialog"}
       aria-label={probe ? undefined : surface.title}
-      className="w-full rounded-lg border border-border bg-popover p-3.5 shadow-lg"
+      className="w-full rounded-lg border border-border bg-popover p-3.5 shadow-lg [overflow-wrap:anywhere]"
     >
       <div className="flex items-start gap-2">
         {number === null ? (
@@ -162,7 +162,7 @@ export function SurfaceCard({
                     disabled={!target}
                     aria-label={label}
                     title={label}
-                    className={`inline-flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground disabled:cursor-default disabled:opacity-35 disabled:hover:bg-transparent disabled:hover:text-muted-foreground ${FOCUS_RING_CLASS}`}
+                    className={`inline-flex size-9 @2xl/guide:size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground disabled:cursor-default disabled:opacity-35 disabled:hover:bg-transparent disabled:hover:text-muted-foreground ${FOCUS_RING_CLASS}`}
                   >
                     <HugeiconsIcon icon={arrowIcon} className="size-3.5" />
                   </button>
@@ -175,7 +175,7 @@ export function SurfaceCard({
             onClick={onDismiss}
             aria-label="Close"
             title="Close annotation"
-            className={`inline-flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground ${FOCUS_RING_CLASS}`}
+            className={`inline-flex size-9 @2xl/guide:size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground ${FOCUS_RING_CLASS}`}
           >
             <HugeiconsIcon icon={Cancel01Icon} className="size-3.5" />
           </button>
@@ -193,7 +193,7 @@ export function SurfaceCard({
 
       {(surface.firstParty && surface.firstParty.length > 0) ||
       onCopyForAgent ? (
-        <div className="mt-3 flex min-w-0 items-center gap-x-2 border-t border-border-hairline pt-2.5">
+        <div className="mt-3 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-2 border-t border-border-hairline pt-2.5">
           {surface.firstParty && surface.firstParty.length > 0 ? (
             <>
               <span className="shrink-0 rounded bg-surface-recessed px-2 py-0.5 text-xs font-normal text-subtle-foreground">
@@ -236,7 +236,7 @@ export function SurfaceCard({
               type="button"
               onClick={() => void copyForAgent()}
               disabled={copyState === "copying"}
-              className={`ml-auto inline-flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-md px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground disabled:cursor-wait disabled:opacity-60 ${FOCUS_RING_CLASS}`}
+              className={`ml-auto inline-flex h-9 @2xl/guide:h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-md px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground disabled:cursor-wait disabled:opacity-60 ${FOCUS_RING_CLASS}`}
             >
               <HugeiconsIcon
                 icon={copyState === "copied" ? Tick02Icon : Copy01Icon}
