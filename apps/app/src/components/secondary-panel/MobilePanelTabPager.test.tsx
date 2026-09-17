@@ -87,7 +87,27 @@ describe("MobilePanelTabPager", () => {
     let measure = () => {};
     const disconnect = vi.fn();
     vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(
-      () => width,
+      () => width + 108,
+    );
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+      function (this: HTMLElement) {
+        const label = this.querySelector("button[aria-pressed]")?.getAttribute(
+          "aria-label",
+        );
+        const widths: Record<string, number> = {
+          "README.md": 109,
+          "package.json": 114,
+          "AGENTS.md": 108,
+          "MobilePanelTabPager.tsx": 144,
+          "ThreadSecondaryPanel.tsx": 144,
+        };
+        return DOMRect.fromRect({
+          width: this.hasAttribute("data-panel-tab-measure")
+            ? widths[label ?? ""]
+            : 32,
+          height: 32,
+        });
+      },
     );
     vi.stubGlobal(
       "ResizeObserver",
@@ -149,8 +169,9 @@ describe("MobilePanelTabPager", () => {
     expect(
       screen.queryByRole("button", { name: "ThreadSecondaryPanel.tsx" }),
     ).toBeNull();
+    const disconnects = disconnect.mock.calls.length;
     unmount();
-    expect(disconnect).toHaveBeenCalledOnce();
+    expect(disconnect).toHaveBeenCalledTimes(disconnects + 1);
   });
 
   it("keeps the last content tab available while Info or Diff is selected", () => {

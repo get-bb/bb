@@ -8,8 +8,9 @@ import {
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { TabPill } from "@/components/ui/tab-pill";
+import { PANEL_TAB_CONTROL_CLASS } from "./panelChromeClasses";
 
-const MIN_TAB_WIDTH_PX = 144;
+const MAX_TAB_WIDTH_PX = 144;
 const TAB_GAP_PX = 4;
 
 interface MobilePanelTab {
@@ -36,9 +37,9 @@ export function MobilePanelTabPager({
 }: MobilePanelTabPagerProps) {
   const touchStart = useRef<{ x: number; y: number } | null>(null);
   const suppressClickUntil = useRef(0);
+  const navigationRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
-  const [visibleCount, setVisibleCount] = useState(1);
-  const [firstVisibleIndex, setFirstVisibleIndex] = useState(0);
+  const contentRef = useRef<HTMLDivElement>(null);
   const activeTab = tabs.find((tab) => tab.id === activeTabId);
   const activeContentTabId = activeTab?.id ?? null;
   const [lastContentTabId, setLastContentTabId] = useState(activeContentTabId);
@@ -48,15 +49,13 @@ export function MobilePanelTabPager({
       (tab) => tab.id === (activeContentTabId ?? lastContentTabId),
     ),
   );
-  const startIndex = Math.max(
-    0,
-    Math.min(
-      displayedIndex,
-      Math.max(firstVisibleIndex, displayedIndex - visibleCount + 1),
-      tabs.length - visibleCount,
-    ),
-  );
-  const displayedTabs = tabs.slice(startIndex, startIndex + visibleCount);
+  const [visible, setVisible] = useState({
+    start: displayedIndex,
+    end: displayedIndex + 1,
+    width: MAX_TAB_WIDTH_PX,
+    offset: 0,
+    available: MAX_TAB_WIDTH_PX,
+  });
   const previousTab = tabs[displayedIndex - 1];
   const nextTab = tabs[displayedIndex + 1];
 
@@ -64,36 +63,83 @@ export function MobilePanelTabPager({
     if (activeContentTabId !== null) setLastContentTabId(activeContentTabId);
   }, [activeContentTabId]);
 
-  useEffect(() => {
-    setFirstVisibleIndex(startIndex);
-  }, [startIndex]);
-
   useLayoutEffect(() => {
+    const navigation = navigationRef.current;
     const viewport = viewportRef.current;
-    if (viewport === null) return;
+    const content = contentRef.current;
+    if (!navigation || !viewport || !content) return;
     const measure = () => {
-      setVisibleCount(
-        Math.max(
-          1,
-          Math.floor(
-            (viewport.clientWidth + TAB_GAP_PX) /
-              (MIN_TAB_WIDTH_PX + TAB_GAP_PX),
-          ),
-        ),
+      if (navigation.clientWidth === 0) {
+        setVisible((previous) =>
+          previous.start === displayedIndex
+            ? previous
+            : {
+                ...previous,
+                start: displayedIndex,
+                end: displayedIndex + 1,
+              },
+        );
+        return;
+      }
+      const controls = Array.from(navigation.children).filter(
+        (child) => child !== viewport,
       );
+      const available = Math.max(
+        0,
+        navigation.clientWidth -
+          controls.reduce(
+            (width, child) => width + child.getBoundingClientRect().width,
+            0,
+          ) -
+          controls.length * TAB_GAP_PX,
+      );
+      const widths = Array.from(content.children, (child) =>
+        Math.min(available, child.getBoundingClientRect().width),
+      );
+      const offsets = [0];
+      for (const width of widths)
+        offsets.push(offsets[offsets.length - 1] + width + TAB_GAP_PX);
+      setVisible((previous) => {
+        let start = Math.min(previous.start, displayedIndex);
+        const total = (from: number, to: number) =>
+          to > from ? offsets[to] - offsets[from] - TAB_GAP_PX : 0;
+        while (
+          start < displayedIndex &&
+          total(start, displayedIndex + 1) > available
+        )
+          start++;
+        let end = Math.min(
+          widths.length,
+          Math.max(start + 1, displayedIndex + 1),
+        );
+        while (end < widths.length && total(start, end + 1) <= available) end++;
+        while (start > 0 && total(start - 1, end) <= available) start--;
+        const width = total(start, end);
+        const offset = offsets[start];
+        if (
+          previous.start === start &&
+          previous.end === end &&
+          previous.width === width &&
+          previous.offset === offset &&
+          previous.available === available
+        )
+          return previous;
+        return { start, end, width, offset, available };
+      });
     };
     measure();
     const observer = new ResizeObserver(measure);
-    observer.observe(viewport);
+    observer.observe(navigation);
+    observer.observe(content);
     return () => observer.disconnect();
-  }, []);
+  }, [displayedIndex, tabs]);
 
   return (
     <div
-      className="flex min-w-0 flex-1 items-center gap-1"
+      className="flex min-w-0 flex-1 items-center gap-2"
       data-testid="mobile-panel-tab-pager"
     >
-      <div className="flex shrink-0 items-center gap-0.5">
+      <div className="flex shrink-0 items-center gap-1 [&_button]:size-8 max-md:pointer-coarse:[&_button]:size-9">
         {fixedTabs.map((tab) => (
           <TabPill
             key={tab.id}
@@ -108,11 +154,14 @@ export function MobilePanelTabPager({
           />
         ))}
       </div>
-      <div className="flex min-w-0 flex-1 items-center gap-0.5">
+      <div
+        ref={navigationRef}
+        className="flex min-w-0 flex-1 items-center gap-1"
+      >
         <Button
           variant="ghost"
           size="icon"
-          className="h-9 w-7 shrink-0 text-muted-foreground/70 [&_[data-icon-root]]:size-3.5"
+          className={`${PANEL_TAB_CONTROL_CLASS} text-muted-foreground/70`}
           aria-label="Previous tab"
           disabled={previousTab === undefined}
           onClick={() => previousTab?.onSelect()}
@@ -123,10 +172,9 @@ export function MobilePanelTabPager({
           ref={viewportRef}
           data-testid="mobile-panel-tab-viewport"
           data-no-secondary-panel-swipe
-          className="grid min-w-0 flex-1 touch-pan-y items-center overflow-hidden [&>div]:w-full [&>div>button:first-child]:w-full [&_[data-tab-pill-close]]:text-muted-foreground/70 [&_[data-tab-pill-close]_[data-icon-root]]:size-3.5"
+          className="min-w-0 shrink-0 touch-pan-y overflow-hidden [&_[data-tab-pill-close]]:text-muted-foreground/70 [&_[data-tab-pill-close]_[data-icon-root]]:size-3.5"
           style={{
-            gap: TAB_GAP_PX,
-            gridTemplateColumns: `repeat(${visibleCount}, minmax(0, 1fr))`,
+            width: Math.min(visible.width, visible.available),
           }}
           onTouchStartCapture={(event) => {
             suppressClickUntil.current = 0;
@@ -157,33 +205,52 @@ export function MobilePanelTabPager({
             event.stopPropagation();
           }}
         >
-          {displayedTabs.map((displayedTab) => (
-            <TabPill
-              key={displayedTab.id}
-              label={displayedTab.label}
-              ariaLabel={displayedTab.ariaLabel}
-              leadingVisual={displayedTab.leadingVisual}
-              title={displayedTab.label}
-              isActive={displayedTab === activeTab}
-              onSelect={displayedTab.onSelect}
-              labelMaxWidthClass="max-w-full"
-              enlargeCloseTargetOnCoarsePointer
-              closeAction={
-                displayedTab.onClose === null
-                  ? null
-                  : {
-                      onClose: displayedTab.onClose,
-                      closeLabel: `Close ${displayedTab.label}`,
-                    }
-              }
-            />
-          ))}
+          <div
+            ref={contentRef}
+            className="flex w-max items-center gap-1"
+            style={{ transform: `translateX(-${visible.offset}px)` }}
+          >
+            {tabs.map((displayedTab, index) => (
+              <div
+                key={displayedTab.id}
+                data-panel-tab-measure
+                className="flex shrink-0"
+                style={{
+                  maxWidth: Math.min(MAX_TAB_WIDTH_PX, visible.available),
+                  visibility:
+                    index >= visible.start && index < visible.end
+                      ? undefined
+                      : "hidden",
+                }}
+                inert={index < visible.start || index >= visible.end}
+              >
+                <TabPill
+                  label={displayedTab.label}
+                  ariaLabel={displayedTab.ariaLabel}
+                  leadingVisual={displayedTab.leadingVisual}
+                  title={displayedTab.label}
+                  isActive={displayedTab === activeTab}
+                  onSelect={displayedTab.onSelect}
+                  labelMaxWidthClass="max-w-full"
+                  enlargeCloseTargetOnCoarsePointer
+                  closeAction={
+                    displayedTab.onClose === null
+                      ? null
+                      : {
+                          onClose: displayedTab.onClose,
+                          closeLabel: `Close ${displayedTab.label}`,
+                        }
+                  }
+                />
+              </div>
+            ))}
+          </div>
         </div>
         {newTabControl}
         <Button
           variant="ghost"
           size="icon"
-          className="h-9 w-7 shrink-0 text-muted-foreground/70 [&_[data-icon-root]]:size-3.5"
+          className={`${PANEL_TAB_CONTROL_CLASS} text-muted-foreground/70`}
           aria-label="Next tab"
           disabled={nextTab === undefined}
           onClick={() => nextTab?.onSelect()}

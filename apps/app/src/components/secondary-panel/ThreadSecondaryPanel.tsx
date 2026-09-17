@@ -19,12 +19,7 @@ import { Icon } from "@bb/shared-ui/icon";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Panel, PanelResizeHandle } from "react-resizable-panels";
 import { Button } from "@bb/shared-ui/button";
-import { HEADER_PANE_ACTION_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@bb/shared-ui/chrome-style-tokens";
-import {
-  COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
-  COARSE_POINTER_HEADER_ICON_BUTTON_CLASS,
-} from "@bb/shared-ui/coarse-pointer-sizing";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   PANEL_COLLAPSE_TRANSITION_CLASS,
@@ -33,6 +28,7 @@ import {
 } from "./panelTransitionTokens";
 import {
   PANEL_SCROLL_SLOT_CLASS,
+  PANEL_TAB_CONTROL_CLASS,
   SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS,
 } from "./panelChromeClasses";
 import {
@@ -116,8 +112,8 @@ export function isSecondaryPanelLayoutTransition(
 const SECONDARY_RESIZABLE_PANEL_STYLE: CSSProperties = {
   pointerEvents: "auto",
 };
-const SECONDARY_PANEL_CHROME_ICON_BUTTON_CLASS = `${COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS} shrink-0 ${CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS}`;
-const SECONDARY_PANEL_HIDE_ICON_BUTTON_CLASS = `${COARSE_POINTER_HEADER_ICON_BUTTON_CLASS} shrink-0 ${CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS}`;
+const SECONDARY_PANEL_CHROME_ICON_BUTTON_CLASS = `${PANEL_TAB_CONTROL_CLASS} shrink-0 ${CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS}`;
+const SECONDARY_PANEL_HIDE_ICON_BUTTON_CLASS = `${PANEL_TAB_CONTROL_CLASS} shrink-0 ${CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS}`;
 const EMPTY_DIFF_FILES: readonly DiffFileEntry[] = [];
 
 export function getSecondaryPanelChromeStackClassName(
@@ -464,7 +460,6 @@ function ThreadSecondaryPanelContent({
       className={cn(
         SECONDARY_PANEL_HIDE_ICON_BUTTON_CLASS,
         "relative",
-        renderAsDrawer && "max-md:pointer-coarse:w-7",
         usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
       )}
       onClick={onClose}
@@ -490,7 +485,7 @@ function ThreadSecondaryPanelContent({
         variant="ghost"
         size="icon"
         className={cn(
-          HEADER_PANE_ACTION_ICON_BUTTON_CLASS,
+          PANEL_TAB_CONTROL_CLASS,
           CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS,
           "shrink-0",
           usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
@@ -518,7 +513,7 @@ function ThreadSecondaryPanelContent({
       return (
         <PaneArrangementButton
           className={cn(
-            "shrink-0",
+            PANEL_TAB_CONTROL_CLASS,
             usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
           )}
           isFullScreen={isFullScreen ?? false}
@@ -536,7 +531,7 @@ function ThreadSecondaryPanelContent({
             variant="ghost"
             size="icon"
             className={cn(
-              HEADER_PANE_ACTION_ICON_BUTTON_CLASS,
+              PANEL_TAB_CONTROL_CLASS,
               CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS,
               "shrink-0",
               usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
@@ -577,7 +572,6 @@ function ThreadSecondaryPanelContent({
         onOpenNewTab={onOpenNewTab}
         shortcut={newTabShortcut}
         usesDesktopChrome={usesDesktopChrome}
-        compact={renderAsDrawer}
       />
     ) : reserveNewTabButton ? (
       <div
@@ -585,7 +579,6 @@ function ThreadSecondaryPanelContent({
         data-new-tab-control-reserved=""
         className={cn(
           SECONDARY_PANEL_CHROME_ICON_BUTTON_CLASS,
-          renderAsDrawer && "max-md:pointer-coarse:w-7",
           usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
         )}
       />
@@ -730,7 +723,7 @@ function ThreadSecondaryPanelContent({
             data-testid="thread-secondary-panel-top-chrome"
             className={cn(
               CHROME_ROW_CLASS,
-              "min-w-0 justify-between gap-1 px-2",
+              "min-w-0 justify-between gap-2 px-2",
               usesDesktopChrome && usesWindowChrome && MACOS_WINDOW_DRAG_CLASS,
               usesDesktopChrome &&
                 usesWindowChrome &&
@@ -1086,7 +1079,6 @@ interface NewTabButtonProps {
   onOpenNewTab: () => void;
   shortcut: AppShortcutPresentation | null;
   usesDesktopChrome: boolean;
-  compact: boolean;
 }
 
 interface PinnedIconTabProps {
@@ -1118,7 +1110,7 @@ function PinnedIconTab({
         <div
           data-testid={label === "Info" ? "thread-info-tab" : undefined}
           className={cn(
-            "shrink-0",
+            "shrink-0 [&_button]:size-8 max-md:pointer-coarse:[&_button]:size-9",
             usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
           )}
           onPointerDown={onPointerDown}
@@ -1146,7 +1138,6 @@ function NewTabButton({
   onOpenNewTab,
   shortcut,
   usesDesktopChrome,
-  compact,
 }: NewTabButtonProps) {
   return (
     <Button
@@ -1155,8 +1146,7 @@ function NewTabButton({
       size="sm"
       className={cn(
         SECONDARY_PANEL_CHROME_ICON_BUTTON_CLASS,
-        compact && "max-md:pointer-coarse:w-7",
-        "text-muted-foreground/70 hover:text-foreground [&_[data-icon-root]]:size-3 max-md:pointer-coarse:[&_[data-icon-root]]:size-3.5",
+        "text-muted-foreground/70 hover:text-foreground",
         usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
       )}
       onClick={onOpenNewTab}

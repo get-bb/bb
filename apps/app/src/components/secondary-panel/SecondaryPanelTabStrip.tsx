@@ -39,10 +39,6 @@ import {
   ContextMenuTrigger,
 } from "@bb/shared-ui/context-menu";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
-import {
-  OverflowFade,
-  type OverflowFadeTone,
-} from "@/components/ui/overflow-fade";
 import { TabPill } from "@/components/ui/tab-pill";
 import { useDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -55,14 +51,13 @@ import type {
   SecondaryPanelTabReorderHandler,
 } from "./secondaryPanelTab";
 
+import { PANEL_TAB_CONTROL_CLASS } from "./panelChromeClasses";
+
 const CHEVRON_SCROLL_STEP_PX = 140;
 
-const TAB_STRIP_SCROLL_BUTTON_CLASS =
-  "h-7 w-5 rounded-md p-0 [&_[data-icon-root]]:size-3 max-md:pointer-coarse:h-9 max-md:pointer-coarse:w-9 max-md:pointer-coarse:[&_[data-icon-root]]:size-3.5";
+const TAB_STRIP_SCROLL_BUTTON_CLASS = `${PANEL_TAB_CONTROL_CLASS} rounded-md`;
 
 const EDGE_EPSILON_PX = 1;
-
-export const SECONDARY_PANEL_TAB_STRIP_FADE_TONE: OverflowFadeTone = "sidebar";
 
 class InertTouchSensor extends TouchSensor {
   static override setup(): () => void {
@@ -179,6 +174,17 @@ export function SecondaryPanelTabStrip({
     const hasOverflow = hasOverflowRef.current;
     const isScrollable = hasOverflow && maxScrollLeft > EDGE_EPSILON_PX;
     const { scrollLeft } = viewport;
+    const bounds = viewport.getBoundingClientRect();
+    for (const tab of contentRef.current?.querySelectorAll<HTMLElement>(
+      "[data-secondary-panel-tab]",
+    ) ?? []) {
+      const rect = tab.getBoundingClientRect();
+      const visible =
+        rect.left >= bounds.left - EDGE_EPSILON_PX &&
+        rect.right <= bounds.right + EDGE_EPSILON_PX;
+      tab.style.visibility = visible ? "" : "hidden";
+      tab.inert = !visible;
+    }
     const canScrollLeft = isScrollable && scrollLeft > EDGE_EPSILON_PX;
     const canScrollRight =
       isScrollable && scrollLeft < maxScrollLeft - EDGE_EPSILON_PX;
@@ -249,15 +255,15 @@ export function SecondaryPanelTabStrip({
   }, [measureCapacity]);
 
   useLayoutEffect(() => {
-    const activeTabElement =
-      contentRef.current?.querySelector<HTMLElement>(
-        'button[aria-pressed="true"]',
-      )?.parentElement;
+    const activeTabElement = contentRef.current?.querySelector<HTMLElement>(
+      'button[aria-pressed="true"]',
+    )?.parentElement;
     if (!activeTabElement) {
       return;
     }
     activeTabElement.scrollIntoView({ inline: "nearest", block: "nearest" });
-  }, [activeTabId, overflow.hasOverflow]);
+    applyEdgeFlags();
+  }, [activeTabId, overflow.hasOverflow, applyEdgeFlags]);
 
   useLayoutEffect(() => {
     const focusedElement = document.activeElement;
@@ -462,22 +468,6 @@ export function SecondaryPanelTabStrip({
         data-secondary-panel-tab-scroll-region
         className="relative min-w-0 flex-1 [container-type:inline-size]"
       >
-        <OverflowFade
-          placement="left"
-          tone={SECONDARY_PANEL_TAB_STRIP_FADE_TONE}
-          className={cn(
-            "z-10",
-            overflow.canScrollLeft ? "opacity-100" : "opacity-0",
-          )}
-        />
-        <OverflowFade
-          placement="right"
-          tone={SECONDARY_PANEL_TAB_STRIP_FADE_TONE}
-          className={cn(
-            "z-10",
-            overflow.canScrollRight ? "opacity-100" : "opacity-0",
-          )}
-        />
         <div
           ref={viewportRef}
           onClickCapture={handleClickCapture}
@@ -545,9 +535,10 @@ function SortablePanelTab({
       <ContextMenuTrigger asChild disabled={contextMenuDisabled}>
         <div
           ref={setNodeRef}
+          data-secondary-panel-tab
           style={style}
           className={cn(
-            "max-w-[100cqw] shrink-0",
+            "max-w-[min(144px,100cqw)] shrink-0",
             !dragDisabled && "cursor-grab active:cursor-grabbing",
             isDragging && "opacity-40",
             noDragClass,
@@ -646,7 +637,7 @@ function PanelTab({
       title={title}
       isActive={isActive}
       onSelect={tab.onSelect}
-      labelMaxWidthClass="max-w-[160px]"
+      labelMaxWidthClass="max-w-full"
       enlargeCloseTargetOnCoarsePointer={
         tab.tab.kind === "workspace-file-preview" ||
         tab.tab.kind === "host-file-preview" ||

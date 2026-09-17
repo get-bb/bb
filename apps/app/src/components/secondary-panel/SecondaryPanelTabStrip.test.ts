@@ -12,7 +12,6 @@ import { afterEach, vi } from "vitest";
 import { describe, expect, it } from "vitest";
 import {
   SecondaryPanelTabStrip,
-  SECONDARY_PANEL_TAB_STRIP_FADE_TONE,
   secondaryPanelTabsToClose,
   type SecondaryPanelTabStripProps,
 } from "./SecondaryPanelTabStrip";
@@ -22,11 +21,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("secondary panel tab-strip edge fades", () => {
-  it("uses the themed edge fade", () => {
-    expect(SECONDARY_PANEL_TAB_STRIP_FADE_TONE).toBe("sidebar");
-  });
-
+describe("secondary panel tab strip", () => {
   it("keeps the desktop tab viewport outside the window drag region", () => {
     vi.stubGlobal(
       "ResizeObserver",
@@ -151,6 +146,68 @@ describe("secondary panel tab-strip edge fades", () => {
     ).toBe(false);
   });
 
+  it("hides clipped tabs from both display and interaction until they fit", () => {
+    let measure = () => {};
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(callback: () => void) {
+          measure = callback;
+        }
+        observe() {}
+        disconnect() {}
+      },
+    );
+    const { container } = render(
+      createElement(SecondaryPanelTabStrip, {
+        activeTabId: "tab-0",
+        tabs: makeCloseMenuTabs(),
+        onReorderTab: vi.fn(),
+        usesDesktopChrome: false,
+        isPanelOpen: true,
+      }),
+    );
+    const viewport = container.querySelector<HTMLElement>(".no-scrollbar")!;
+    const content = container.querySelector<HTMLElement>(
+      "[data-secondary-panel-tab-content]",
+    )!;
+    const strip = container.querySelector<HTMLElement>(
+      '[data-testid="secondary-panel-tab-strip"]',
+    )!;
+    Object.defineProperties(viewport, {
+      clientWidth: { configurable: true, value: 180 },
+      scrollWidth: { configurable: true, value: 452 },
+    });
+    Object.defineProperty(content, "scrollWidth", {
+      configurable: true,
+      value: 452,
+    });
+    Object.defineProperty(strip, "clientWidth", {
+      configurable: true,
+      value: 180,
+    });
+    vi.spyOn(viewport, "getBoundingClientRect").mockReturnValue(
+      DOMRect.fromRect({ width: 180 }),
+    );
+    const tabs = Array.from(
+      content.querySelectorAll<HTMLElement>("[data-secondary-panel-tab]"),
+    );
+    tabs.forEach((tab, index) => {
+      vi.spyOn(tab, "getBoundingClientRect").mockImplementation(() =>
+        DOMRect.fromRect({ x: index * 114 - viewport.scrollLeft, width: 110 }),
+      );
+    });
+    act(() => measure());
+    expect(screen.getByRole("button", { name: "file-0.ts" })).toBeDefined();
+    expect(screen.queryByRole("button", { name: "file-1.ts" })).toBeNull();
+    expect(tabs[1].inert).toBe(true);
+    viewport.scrollLeft = 114;
+    act(() => measure());
+    expect(screen.getByRole("button", { name: "file-1.ts" })).toBeDefined();
+    expect(tabs[1].inert).toBe(false);
+    expect(tabs[0].inert).toBe(true);
+  });
+
   it("observes the intrinsic tab row so async title changes refresh overflow", () => {
     const observed: Element[] = [];
     let resizeCallback: ResizeObserverCallback | undefined;
@@ -206,12 +263,6 @@ describe("secondary panel tab-strip edge fades", () => {
     expect(observed).toContain(viewport);
     expect(observed).toContain(content);
     expect(resizeCallback).toBeDefined();
-    expect(container.querySelectorAll("[data-overflow-fade]")).toHaveLength(2);
-    expect(
-      container
-        .querySelector("[data-overflow-fade='left']")
-        ?.classList.contains("w-6"),
-    ).toBe(true);
     const leftButton = container.querySelector<HTMLButtonElement>(
       '[aria-label="Scroll tabs left"]',
     );
@@ -221,8 +272,6 @@ describe("secondary panel tab-strip edge fades", () => {
     expect(leftButton?.classList.contains("w-0")).toBe(true);
     expect(rightButton?.classList.contains("w-0")).toBe(true);
 
-    const rightFade = container.querySelector("[data-overflow-fade='right']");
-    expect(rightFade?.classList.contains("opacity-0")).toBe(true);
     Object.defineProperties(viewport!, {
       clientWidth: { configurable: true, value: 120 },
       scrollWidth: { configurable: true, value: 240 },
@@ -239,7 +288,6 @@ describe("secondary panel tab-strip edge fades", () => {
     act(() => {
       resizeCallback?.([], {} as ResizeObserver);
     });
-    expect(rightFade?.classList.contains("opacity-100")).toBe(true);
 
     const scrollRegion = container.querySelector(
       "[data-secondary-panel-tab-scroll-region]",
@@ -250,7 +298,7 @@ describe("secondary panel tab-strip edge fades", () => {
     expect(leftButton?.classList.contains("absolute")).toBe(false);
     expect(rightButton?.classList.contains("absolute")).toBe(false);
     expect(leftButton?.classList.contains("w-0")).toBe(true);
-    expect(rightButton?.classList.contains("w-5")).toBe(true);
+    expect(rightButton?.classList.contains("size-8")).toBe(true);
     expect(leftButton?.classList.contains("opacity-0")).toBe(true);
     expect(leftButton?.tabIndex).toBe(-1);
     expect(rightButton?.classList.contains("opacity-100")).toBe(true);
@@ -275,7 +323,7 @@ describe("secondary panel tab-strip edge fades", () => {
     fireEvent.scroll(viewport!);
     act(() => animationFrameCallback?.(0));
     expect(rightButton?.classList.contains("w-0")).toBe(true);
-    expect(leftButton?.classList.contains("w-5")).toBe(true);
+    expect(leftButton?.classList.contains("size-8")).toBe(true);
     expect(rightButton?.getAttribute("aria-hidden")).toBe("true");
     expect(leftButton?.getAttribute("aria-hidden")).toBe("false");
     expect(document.activeElement).toBe(leftButton);
