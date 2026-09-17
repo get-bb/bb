@@ -12,12 +12,15 @@ import type {
   StartedOnBehalfOf,
   StartedOnBehalfOfInitiator,
   ThreadQueuedMessage,
+  ThreadCreateOrigin,
 } from "@bb/domain";
 import { z } from "zod";
 import { ApiError } from "../../errors.js";
 import { resolveDispatchAuthor } from "./dispatch-author.js";
 
 interface StoredQueuedThreadMessageRow {
+  origin: ThreadCreateOrigin | null;
+  originPluginId: string | null;
   claimedAt: number | null;
   content: string;
   createdAt: number;
@@ -166,6 +169,8 @@ export function toThreadQueuedMessage(
         });
   return threadQueuedMessageSchema.parse({
     id: row.id,
+    origin: row.origin,
+    originPluginId: row.originPluginId,
     initiator: author.initiator,
     senderThreadId: author.senderThreadId,
     threadId: row.threadId,

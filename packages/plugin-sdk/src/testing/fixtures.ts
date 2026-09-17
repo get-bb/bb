@@ -309,6 +309,8 @@ export function makeQueueEntry(
 ): QueueEntry {
   return {
     id: "queued_1",
+    origin: null,
+    originPluginId: null,
     initiator: "user",
     senderThreadId: null,
     threadId: "thread-1",

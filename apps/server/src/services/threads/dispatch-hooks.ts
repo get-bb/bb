@@ -298,17 +298,30 @@ interface DroppedFromContractStillEmitted {
  * `queuedMessages` for each row's own author. An inline attempt has no rows and
  * reports the author the dispatch was requested with.
  */
-function summarizeDispatchAuthor(
+function summarizeDispatchProvenance(
   request: MessageDispatchHookPassRequest,
-): Pick<MessageDispatchHookContext, "initiator" | "senderThreadId"> {
+): Pick<
+  MessageDispatchHookContext,
+  "initiator" | "senderThreadId" | "origin" | "originPluginId"
+> {
   const [first, ...rest] = request.queuedMessages;
   if (first === undefined) {
     return {
       initiator: request.initiator,
       senderThreadId: request.senderThreadId,
+      origin: request.origin,
+      originPluginId: request.originPluginId,
     };
   }
   return {
+    origin: rest.every((message) => message.origin === first.origin)
+      ? first.origin
+      : "mixed",
+    originPluginId: rest.every(
+      (message) => message.originPluginId === first.originPluginId,
+    )
+      ? first.originPluginId
+      : "mixed",
     initiator: rest.every((message) => message.initiator === first.initiator)
       ? first.initiator
       : "mixed",
@@ -341,7 +354,7 @@ function buildHookContext(
   };
   return {
     ...droppedFromContractStillEmitted,
-    ...summarizeDispatchAuthor(request),
+    ...summarizeDispatchProvenance(request),
     thread: request.threadResponse,
     attempt: request.attempt,
     project: request.project,
@@ -358,8 +371,6 @@ function buildHookContext(
     },
     requestedExecution: { ...request.requestedExecution },
     executionSources: { ...request.executionSources },
-    origin: request.origin,
-    originPluginId: request.originPluginId,
     parentThreadId: request.parentThreadId,
     queuedMessages: request.queuedMessages,
     experimental_submission: request.pluginSubmission,

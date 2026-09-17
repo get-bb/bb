@@ -1000,52 +1000,100 @@ describe("message.dispatch hook message author", () => {
 });
 
 describe("message.dispatch grouped authors", () => {
-  it.each([
-    {
-      name: "human messages",
-      authors: ["user", "user"],
-      sharedSender: false,
-      initiator: "user",
-      sender: "none",
-    },
-    {
-      name: "one agent",
-      authors: ["agent", "agent"],
-      sharedSender: true,
-      initiator: "agent",
-      sender: "shared",
-    },
-    {
-      name: "different agents",
-      authors: ["agent", "agent"],
-      sharedSender: false,
-      initiator: "agent",
-      sender: "mixed",
-    },
-    {
-      name: "agent then human",
-      authors: ["agent", "user"],
-      sharedSender: false,
-      initiator: "mixed",
-      sender: "mixed",
-    },
-    {
-      name: "human then agent",
-      authors: ["user", "agent"],
-      sharedSender: false,
-      initiator: "mixed",
-      sender: "mixed",
-    },
-    {
-      name: "agent and system requesters",
-      authors: ["agent", "system"],
-      sharedSender: true,
-      initiator: "mixed",
-      sender: "shared",
-    },
-  ] as const)(
-    "summarizes $name without splitting the group",
-    async ({ authors, sharedSender, initiator, sender }) => {
+  it.each(
+    (
+      [
+        {
+          name: "human messages",
+          authors: ["user", "user"],
+          sharedSender: false,
+          initiator: "user",
+          sender: "none",
+        },
+        {
+          name: "one agent",
+          authors: ["agent", "agent"],
+          sharedSender: true,
+          initiator: "agent",
+          sender: "shared",
+        },
+        {
+          name: "different agents",
+          authors: ["agent", "agent"],
+          sharedSender: false,
+          initiator: "agent",
+          sender: "mixed",
+        },
+        {
+          name: "agent then human",
+          authors: ["agent", "user"],
+          sharedSender: false,
+          initiator: "mixed",
+          sender: "mixed",
+        },
+        {
+          name: "human then agent",
+          authors: ["user", "agent"],
+          sharedSender: false,
+          initiator: "mixed",
+          sender: "mixed",
+        },
+        {
+          name: "agent and system requesters",
+          authors: ["agent", "system"],
+          sharedSender: true,
+          initiator: "mixed",
+          sender: "shared",
+        },
+      ] as const
+    ).flatMap((authorCase) =>
+      (
+        [
+          {
+            origins: [null, null],
+            pluginIds: [null, null],
+            origin: null,
+            originPluginId: null,
+          },
+          {
+            origins: ["plugin", "plugin"],
+            pluginIds: ["drafts", "drafts"],
+            origin: "plugin",
+            originPluginId: "drafts",
+          },
+          {
+            origins: ["plugin", "plugin"],
+            pluginIds: ["drafts", "automations"],
+            origin: "plugin",
+            originPluginId: "mixed",
+          },
+          {
+            origins: ["plugin", null],
+            pluginIds: ["drafts", null],
+            origin: "mixed",
+            originPluginId: "mixed",
+          },
+          {
+            origins: ["app", "cli"],
+            pluginIds: [null, null],
+            origin: "mixed",
+            originPluginId: null,
+          },
+        ] as const
+      ).map((originCase) => ({ ...authorCase, ...originCase })),
+    ),
+  )(
+    "summarizes $name with origins $origins and plugins $pluginIds without splitting the group",
+    async ({
+      authors,
+      sharedSender,
+      initiator,
+      sender,
+      origins,
+      pluginIds,
+      origin,
+      originPluginId,
+    }) => {
       await withTestHarness(async (harness) => {
         const { environment, project, thread } = seedRunnableThread(harness, {
           hostId: "host-grouped-authors",
@@ -1081,6 +1129,8 @@ describe("message.dispatch grouped authors", () => {
             threadId: thread.id,
             content: textInput(`message ${index + 1}`),
             senderThreadId: null,
+            origin: origins[index]!,
+            originPluginId: pluginIds[index]!,
             requestedBy:
               author === "user"
                 ? null
@@ -1119,8 +1169,12 @@ describe("message.dispatch grouped authors", () => {
         expect(seen[0]).toMatchObject({
           initiator,
           senderThreadId,
+          origin,
+          originPluginId,
           queuedMessages: rows.map((row, index) => ({
             id: row.id,
+            origin: origins[index],
+            originPluginId: pluginIds[index],
             content: textInput(`message ${index + 1}`),
             initiator: authors[index],
             senderThreadId:
@@ -1156,6 +1210,8 @@ describe("message.dispatch grouped authors", () => {
         expect(seen[1]).toMatchObject({
           initiator,
           senderThreadId,
+          origin,
+          originPluginId,
           queuedMessages: ids.map((id) => ({ id })),
         });
         expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);

@@ -344,14 +344,15 @@ now, or when the orphan sweep clears a wait whose plugin is no longer running.
 **Audit before stabilizing.**
 
 - **Grouped dispatch authors.** `queuedMessages` includes all claimed rows in
-  dispatch order, with each row's content and author; inline attempts use an
+  dispatch order, with each row's content, author, origin, and originPluginId; inline attempts use an
   empty array. `initiator` summarizes their category, with hook-local `mixed`
   when categories differ. `senderThreadId` is the shared sender ID, null when no message has a sender,
   or `mixed` when they disagree.
   Queue serialization resolves thread-start requesters and retries with the
   same author rule as inline dispatches. Grouping and recorded turn initiators
-  are unchanged; `origin`/`originPluginId` still describe the first row. Before
-  stabilization, confirm whether plugins need per-row origin as well.
+  are unchanged. `origin` and `originPluginId` each summarize their shared
+  value or `mixed` when rows disagree, including a value versus null. Before
+  stabilization, verify plugins handle mixed origins independently of authors.
 - **`queuedMessage` is emitted but untyped.** The public context uses
   `queuedMessages`; core still emits its first row or null under the old name
   for previously built handlers. Remove that compatibility field and the

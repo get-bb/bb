@@ -200,6 +200,8 @@ export function makeThreadQueuedMessage(
 ): ThreadQueuedMessage {
   return {
     id: "qmsg_test",
+    origin: null,
+    originPluginId: null,
     initiator: "user",
     senderThreadId: null,
     threadId: "thr_test",

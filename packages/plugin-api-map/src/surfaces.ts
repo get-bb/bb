@@ -760,9 +760,9 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Let a dispatch proceed, queue it with a user-visible reason, or refuse it outright",
           "See the thread, project, machine, prompt and resolved execution tuple before the turn runs",
-          "Read each queued message and its author in queuedMessages, with an empty array for inline attempts",
+          "Read each queued message, its author, origin, and originPluginId in queuedMessages, with an empty array for inline attempts",
           "Read the shared initiator category or mixed for a grouped dispatch, and the shared senderThreadId, null when nobody sent it, or mixed",
-          "Read the surface that requested a dispatch, origin and originPluginId, with the same answer after the message has sat in the queue",
+          "Read the shared origin and originPluginId, each independently mixed when grouped messages differ",
           "Read plugin-owned JSON attached by experimental_submit, including on queued re-attempts",
           "Hold work until a moment it names, then ask core to re-decide every queued message when its condition changes",
         ],

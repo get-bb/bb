@@ -651,7 +651,7 @@ export interface MessageDispatchHookContext {
   senderThreadId: string | "mixed" | null;
   /**
    * All queued rows this attempt is re-trying, in dispatch order. Empty for
-   * an inline attempt. Each row retains its own content and author; `input`
+   * an inline attempt. Each row retains its own content, author, and origin; `input`
    * contains their combined input, and the hook decides for the whole group.
    *
    * This is how a hook tells a fresh send from a re-attempt of something it
@@ -675,10 +675,11 @@ export interface MessageDispatchHookContext {
    * How the dispatch was requested; null for internal/core-driven sends, which
    * includes every follow-up, steer and retry. Persisted with the queued row,
    * so a drained re-attempt reads what its first attempt read. For a grouped
-   * dispatch, `origin` and `originPluginId` describe the first queued row.
+   * dispatch, each field is its shared value or `"mixed"` when rows differ,
+   * including a value versus null. Each queued row exposes its own origin.
    */
-  origin: ThreadCreateOrigin | null;
-  originPluginId: string | null;
+  origin: ThreadCreateOrigin | "mixed" | null;
+  originPluginId: string | "mixed" | null;
   parentThreadId: string | null;
 }
 
