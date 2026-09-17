@@ -41,13 +41,10 @@ import { windowPaletteThreadSearchText } from "@/lib/command-palette/palette-thr
 import type { PaletteModeViewProps } from "@/lib/command-palette/palette-mode";
 import { PaletteShell } from "./PaletteShell";
 
-type ThreadSearchOption =
-  | {
-      kind: "thread";
-      lifecycle: PaletteThreadLifecycle;
-      row: PaletteThreadSearchRow;
-    }
-  | { kind: "more"; lifecycle: PaletteThreadLifecycle };
+interface ThreadSearchOption {
+  lifecycle: PaletteThreadLifecycle;
+  row: PaletteThreadSearchRow | null;
+}
 
 export function ThreadSearchPaletteMode({
   onExit,
@@ -122,12 +119,11 @@ export function ThreadSearchPaletteMode({
           ? rows
           : rows.slice(0, limit);
       const groupOptions: ThreadSearchOption[] = visible.map((row) => ({
-        kind: "thread",
         lifecycle,
         row,
       }));
       if (visible.length < rows.length)
-        groupOptions.push({ kind: "more", lifecycle });
+        groupOptions.push({ row: null, lifecycle });
       return groupOptions;
     });
   }, [expandedGroups, result]);
@@ -153,8 +149,15 @@ export function ThreadSearchPaletteMode({
       ?.scrollIntoView({ block: "nearest" });
   }, [activeIndex, options]);
 
-  const openRow = useCallback(
-    (row: PaletteThreadSearchRow) => {
+  const selectOption = useCallback(
+    ({ row, lifecycle }: ThreadSearchOption, index: number) => {
+      if (row === null) {
+        scrollOnNextHighlightRef.current = true;
+        setExpandedGroups((current) => [...current, lifecycle]);
+        setHighlightedIndex(index);
+        inputRef.current?.focus();
+        return;
+      }
       runAfterClose(() => {
         const state =
           row.messageSeq === null
@@ -173,20 +176,6 @@ export function ThreadSearchPaletteMode({
       });
     },
     [navigate, runAfterClose],
-  );
-
-  const selectOption = useCallback(
-    (option: ThreadSearchOption, index: number) => {
-      if (option.kind === "thread") {
-        openRow(option.row);
-        return;
-      }
-      scrollOnNextHighlightRef.current = true;
-      setExpandedGroups((current) => [...current, option.lifecycle]);
-      setHighlightedIndex(index);
-      inputRef.current?.focus();
-    },
-    [openRow],
   );
 
   const handleInputKeyDown = useCallback(
@@ -296,35 +285,38 @@ export function ThreadSearchPaletteMode({
                     : "Threads"}
               </div>
               {options.map((option, index) =>
-                option.lifecycle !== lifecycle ? null : option.kind ===
-                  "thread" ? (
-                  <ThreadSearchPaletteRow
-                    key={`${option.row.id}:${option.row.primaryText}`}
-                    id={`${optionIdPrefix}-${index}`}
-                    isActive={index === activeIndex}
-                    row={option.row}
-                    onActivate={() => setHighlightedIndex(index)}
-                    onSelect={() => selectOption(option, index)}
-                  />
-                ) : (
+                option.lifecycle !== lifecycle ? null : (
                   <div
-                    key={`more:${lifecycle}`}
+                    key={
+                      option.row === null
+                        ? `more:${lifecycle}`
+                        : `${option.row.id}:${option.row.primaryText}`
+                    }
                     id={`${optionIdPrefix}-${index}`}
                     role="option"
                     aria-selected={index === activeIndex}
                     aria-label={
-                      lifecycle === "archived"
-                        ? "Show more archived threads"
-                        : "Show more threads"
+                      option.row !== null
+                        ? undefined
+                        : lifecycle === "archived"
+                          ? "Show more archived threads"
+                          : "Show more threads"
                     }
                     className={cn(
-                      "cursor-pointer rounded-md px-2 py-1.5 text-xs text-subtle-foreground",
+                      "cursor-pointer rounded-md px-2 py-1.5",
+                      option.row === null
+                        ? "text-xs text-subtle-foreground"
+                        : "flex min-h-11 items-center gap-3 text-left text-sm",
                       index === activeIndex && "bg-state-hover text-foreground",
                     )}
                     onPointerMove={() => setHighlightedIndex(index)}
                     onClick={() => selectOption(option, index)}
                   >
-                    Show more
+                    {option.row === null ? (
+                      "Show more"
+                    ) : (
+                      <ThreadSearchPaletteRow row={option.row} />
+                    )}
                   </div>
                 ),
               )}
@@ -346,19 +338,7 @@ export function ThreadSearchPaletteMode({
   );
 }
 
-function ThreadSearchPaletteRow({
-  id,
-  isActive,
-  onActivate,
-  onSelect,
-  row,
-}: {
-  id: string;
-  isActive: boolean;
-  onActivate: () => void;
-  onSelect: () => void;
-  row: PaletteThreadSearchRow;
-}) {
+function ThreadSearchPaletteRow({ row }: { row: PaletteThreadSearchRow }) {
   const primaryRef = useRef<HTMLSpanElement | null>(null);
   const matchKey = `${row.primaryText}\u0000${row.highlightRanges
     .map((range) => `${range.start}:${range.end}`)
@@ -392,55 +372,37 @@ function ThreadSearchPaletteRow({
     .filter(Boolean)
     .join(" · ");
   return (
-    <div
-      id={id}
-      role="option"
-      aria-selected={isActive}
-      className={cn(
-        "flex min-h-11 cursor-pointer items-center gap-3 rounded-md px-2 py-1.5 text-left text-sm",
-        isActive && "bg-state-hover text-foreground",
-      )}
-      onPointerMove={onActivate}
-      onClick={onSelect}
-    >
-      <span className="min-w-0 flex-1">
-        <span
-          ref={primaryRef}
-          className="block min-w-0 truncate text-foreground"
-        >
-          <HighlightedText
-            text={primary.text}
-            ranges={primary.highlightRanges}
-          />
-        </span>
-        <span
-          className="flex min-h-4 items-center gap-1.5"
-          data-palette-thread-details
-        >
-          {metadata.length === 0 ? null : (
-            <span
-              className="min-w-0 truncate text-xs leading-4 text-subtle-foreground"
-              data-palette-thread-metadata
-              title={metadata}
-            >
-              {row.secondaryTitle === null ? null : `${row.secondaryTitle} · `}
-              {row.projectName === null ? null : (
-                <>
-                  <Icon
-                    name="Folder"
-                    className="mr-1 inline-block size-3.5 align-text-bottom"
-                    aria-hidden
-                  />
-                  {`${row.projectName} · `}
-                </>
-              )}
-              {row.relativeTime}
-            </span>
-          )}
-          <ThreadSearchPaletteStatus row={row} />
-        </span>
+    <span className="min-w-0 flex-1">
+      <span ref={primaryRef} className="block min-w-0 truncate text-foreground">
+        <HighlightedText text={primary.text} ranges={primary.highlightRanges} />
       </span>
-    </div>
+      <span
+        className="flex min-h-4 items-center gap-1.5"
+        data-palette-thread-details
+      >
+        {metadata.length === 0 ? null : (
+          <span
+            className="min-w-0 truncate text-xs leading-4 text-subtle-foreground"
+            data-palette-thread-metadata
+            title={metadata}
+          >
+            {row.secondaryTitle === null ? null : `${row.secondaryTitle} · `}
+            {row.projectName === null ? null : (
+              <>
+                <Icon
+                  name="Folder"
+                  className="mr-1 inline-block size-3.5 align-text-bottom"
+                  aria-hidden
+                />
+                {`${row.projectName} · `}
+              </>
+            )}
+            {row.relativeTime}
+          </span>
+        )}
+        <ThreadSearchPaletteStatus row={row} />
+      </span>
+    </span>
   );
 }
 
