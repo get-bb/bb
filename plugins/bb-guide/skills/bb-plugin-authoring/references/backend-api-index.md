@@ -102,8 +102,8 @@ Read the installed declarations for exact current signatures.
 - `PluginAgentConfigurationContext`
 - `PluginAgentToolContentPart`
 - `PluginAgentToolContext`
-- `PluginAgentToolLabels`
-- `PluginAgentToolPresentation`
+- `PluginAgentToolLabels` (deprecated alias)
+- `PluginAgentToolPresentation` (deprecated alias)
 - `PluginAgentToolRegistrationBase`
 - `PluginAgentToolResult`
 - `PluginAgentToolSelection`
@@ -208,6 +208,8 @@ Read the installed declarations for exact current signatures.
 - `PluginProvidersState`
 - `PluginRealtime`
 - `PluginRealtimeConnectionState`
+- `PluginRowLabels`
+- `PluginRowPresentation`
 - `PluginRpc`
 - `PluginRpcCallArgs`
 - `PluginRpcClient`

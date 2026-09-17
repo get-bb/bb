@@ -965,14 +965,14 @@ export interface PluginInteractionRequest {
    * in the same shape as a native tool's presentation. bb fills what is left
    * out: "Waiting for <title>" / "Submitted <title>" and the plugin's glyph.
    */
-  presentation?: PluginAgentToolPresentation;
+  presentation?: PluginRowPresentation;
   /**
    * Called once with the submitted value, before the waiting `requestInput`
    * promise resolves; never for a cancellation, which bb titles itself. Its
    * return is persisted on the row. A throw or a slow return leaves the row
    * with its completed label and nothing more.
    */
-  describe?(
+  describeSubmission?(
     value: JsonValue,
   ): PluginInteractionDescription | Promise<PluginInteractionDescription>;
 }
@@ -1061,26 +1061,29 @@ export interface PluginAgentToolContext {
 }
 
 /**
- * The row title of a plugin tool call while it is pending and once it
+ * The title of a plugin-owned timeline row while it is pending and once it
  * settled. Each label is capped at 80 characters and rendered as plain text.
  */
-export interface PluginAgentToolLabels {
-  /** Label shown while the tool call is pending. */
+export interface PluginRowLabels {
+  /** Label shown while the row is pending. */
   pending: string;
-  /** Label shown after the tool call completes successfully. */
+  /** Label shown after the row completes successfully. */
   completed: string;
 }
 
+/** @deprecated Renamed to `PluginRowLabels` in SDK 0.4.101. */
+export type PluginAgentToolLabels = PluginRowLabels;
+
 /**
- * How calls to a native plugin tool read as a timeline row (grammar v3). Every
- * field is optional at registration: the server fills what the plugin leaves
- * out (a generic `Running <name>` / `Ran <name>` label; the plugin's branding
- * glyph, then `Toolbox`) and hands one complete presentation to the provider
- * bridge with the tool definition.
+ * How something a plugin owns reads as a timeline row (grammar v3): a native
+ * tool's calls, or the row a `bb.ui.requestInput` form leaves behind. Every
+ * field is optional: the server fills what the plugin leaves out (a generic
+ * label; the plugin's branding glyph, then `Toolbox`) and hands one complete
+ * presentation to whatever renders the row.
  */
-export interface PluginAgentToolPresentation {
-  /** Row title while the call is pending and once it settled. */
-  label?: PluginAgentToolLabels;
+export interface PluginRowPresentation {
+  /** Row title while the row is pending and once it settled. */
+  label?: PluginRowLabels;
   /**
    * A named host glyph (`{ glyph: "Workflow" }`), or one of this plugin's
    * own declared icons by its namespaced glyph (`{ glyph: "<pluginId>/<name>" }`,
@@ -1095,6 +1098,9 @@ export interface PluginAgentToolPresentation {
   /** Accent colour per theme; omitted rows use the neutral row tint. */
   tint?: { light: string; dark: string };
 }
+
+/** @deprecated Renamed to `PluginRowPresentation` in SDK 0.4.101. */
+export type PluginAgentToolPresentation = PluginRowPresentation;
 
 export interface PluginAgentToolRegistrationBase {
   /** Tool name shown to the model: [a-zA-Z0-9_-]+, unique across plugins,
@@ -1114,7 +1120,7 @@ export interface PluginAgentToolRegistrationBase {
    * plugin's branding glyph. Approval, error, and interruption states keep
    * BB's standard rendering. See docs/api_to_audit.md.
    */
-  presentation?: PluginAgentToolPresentation;
+  presentation?: PluginRowPresentation;
 }
 
 /** Stable, plain-data context resolved by the server for one agent session. */
@@ -1803,7 +1809,7 @@ export interface PluginUi {
    * the tool call at once with a waiting notice and the eventual return value
    * reaches the agent as a message; see {@link PluginAgentToolContext.signal}.
    * The form leaves a timeline row described by `presentation` and
-   * `describe`.
+   * `describeSubmission`.
    */
   requestInput(
     request: PluginInteractionRequest,

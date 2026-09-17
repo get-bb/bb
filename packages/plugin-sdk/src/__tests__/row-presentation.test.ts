@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
-  parsePluginAgentToolPresentation,
+  parsePluginRowPresentation,
   PLUGIN_AGENT_STATUS_LABEL_MAX_CHARS,
 } from "../internal/host-policy.js";
 
-describe("parsePluginAgentToolPresentation", () => {
+describe("parsePluginRowPresentation", () => {
   const maxLabel = "x".repeat(PLUGIN_AGENT_STATUS_LABEL_MAX_CHARS);
 
   it.each([
@@ -43,7 +43,7 @@ describe("parsePluginAgentToolPresentation", () => {
       },
     },
   ])("accepts $name", ({ value, expected }) => {
-    const parsed = parsePluginAgentToolPresentation("tool_x", value);
+    const parsed = parsePluginRowPresentation("tool_x", value);
     expect(parsed).toEqual(expected);
     if (value !== undefined) {
       expect(parsed).not.toBe(value);
@@ -117,7 +117,7 @@ describe("parsePluginAgentToolPresentation", () => {
         'tool "tool_x" presentation.tint must provide light and dark strings',
     },
   ])("rejects $name", ({ value, message }) => {
-    expect(() => parsePluginAgentToolPresentation("tool_x", value)).toThrow(
+    expect(() => parsePluginRowPresentation("tool_x", value)).toThrow(
       message,
     );
   });

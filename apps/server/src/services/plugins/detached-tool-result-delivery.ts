@@ -4,7 +4,7 @@ import type {
   SystemMessageSubject,
   ToolCallResponse,
 } from "@bb/domain";
-import type { PluginAgentToolPresentation } from "@get-bb/plugin-sdk";
+import type { PluginRowPresentation } from "@get-bb/plugin-sdk";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
 import { queueParentSystemMessage } from "../threads/parent-system-messages.js";
 
@@ -12,7 +12,7 @@ export interface DeliverDetachedToolResultArgs {
   threadId: string;
   toolName: string;
   callId: string;
-  presentation: PluginAgentToolPresentation | null;
+  presentation: PluginRowPresentation | null;
   response: ToolCallResponse;
 }
 
@@ -44,7 +44,7 @@ export function buildDetachedToolResultInput(args: {
 export function buildDetachedToolResultSubject(args: {
   toolName: string;
   callId: string;
-  presentation: PluginAgentToolPresentation | null;
+  presentation: PluginRowPresentation | null;
 }): SystemMessageSubject {
   return {
     kind: "tool-call",

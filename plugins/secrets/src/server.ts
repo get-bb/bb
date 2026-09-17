@@ -199,7 +199,7 @@ async function runRequest(
           completed: `Requested ${parsed.names.join(", ")}`,
         },
       },
-      describe: (value) => {
+      describeSubmission: (value) => {
         const response = secretRequestResponseSchema.safeParse(value);
         const names = response.success
           ? Object.keys(response.data.values).sort()

@@ -27,7 +27,7 @@ import type {
   PluginAgentConfiguration,
   PluginAgentConfigurationContext,
   PluginAgentToolContext,
-  PluginAgentToolPresentation,
+  PluginRowPresentation,
   PluginBbSdk,
   PluginAgentToolResult,
   PluginAgents,
@@ -196,7 +196,7 @@ export interface PluginRpcHandler {
 export interface PluginAgentToolRecord {
   name: string;
   description: string;
-  presentation: PluginAgentToolPresentation | null;
+  presentation: PluginRowPresentation | null;
   instructions: string | null;
   inputSchema: unknown;
   parse(
@@ -907,7 +907,7 @@ export function createPluginApi(options: {
       name: string;
       description: string;
       instructions?: string;
-      presentation?: PluginAgentToolPresentation;
+      presentation?: PluginRowPresentation;
       parameters: unknown;
       execute(
         params: never,

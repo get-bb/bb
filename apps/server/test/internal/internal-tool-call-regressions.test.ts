@@ -122,7 +122,7 @@ function installWaitingTool(
             label: { pending: "Asking", completed: "Asked" },
             icon: { glyph: "MessageQuestion" },
           },
-          describe: null,
+          describeSubmission: null,
           timeoutMs: 10_000,
           signal: ctx.signal,
         },

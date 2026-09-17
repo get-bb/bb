@@ -119,7 +119,7 @@ export type PluginInteractionResult =
   | { outcome: "cancelled"; reason: PluginInteractionCancelReason };
 
 type DescribePluginSubmission = NonNullable<
-  PluginInteractionRequest["describe"]
+  PluginInteractionRequest["describeSubmission"]
 >;
 
 interface RequestPluginInteractionArgs {
@@ -129,7 +129,7 @@ interface RequestPluginInteractionArgs {
   title: string;
   payload: JsonValue;
   presentation: ThreadEventItemPresentation;
-  describe: DescribePluginSubmission | null;
+  describeSubmission: DescribePluginSubmission | null;
   timeoutMs: number;
   signal?: AbortSignal;
 }
@@ -138,25 +138,25 @@ interface PluginInteractionWaiter {
   resolve: (result: PluginInteractionResult) => void;
   timer: ReturnType<typeof setTimeout>;
   removeAbortListener: () => void;
-  describe: DescribePluginSubmission | null;
+  describeSubmission: DescribePluginSubmission | null;
 }
 
 const DESCRIBE_SUBMISSION_TIMEOUT_MS = 2_000;
 
-async function describeSubmission(args: {
-  describe: DescribePluginSubmission | null;
+async function runDescribeSubmission(args: {
+  describeSubmission: DescribePluginSubmission | null;
   value: JsonValue;
   interactionId: string;
   logger: ServerLogger;
 }): Promise<PluginInteractionDescription | undefined> {
-  if (args.describe === null) return undefined;
+  if (args.describeSubmission === null) return undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     const described = await Promise.race([
-      Promise.resolve(args.describe(args.value)),
+      Promise.resolve(args.describeSubmission(args.value)),
       new Promise<never>((_resolve, reject) => {
         timer = setTimeout(
-          () => reject(new Error("describe timed out")),
+          () => reject(new Error("describeSubmission timed out")),
           DESCRIBE_SUBMISSION_TIMEOUT_MS,
         );
       }),
@@ -171,7 +171,7 @@ async function describeSubmission(args: {
   } catch (error) {
     args.logger.warn(
       { err: error, interactionId: args.interactionId },
-      "Plugin interaction describe failed; row keeps its completed label",
+      "Plugin interaction describeSubmission failed; row keeps its completed label",
     );
     return undefined;
   } finally {
@@ -580,7 +580,7 @@ export class PendingInteractionLifecycle {
         timer,
         removeAbortListener: () =>
           args.signal?.removeEventListener("abort", abort),
-        describe: args.describe,
+        describeSubmission: args.describeSubmission,
       });
       if (args.signal?.aborted) {
         abort();
@@ -656,8 +656,8 @@ export class PendingInteractionLifecycle {
       });
       throw buildResolveConflictError(interrupted);
     }
-    const description = await describeSubmission({
-      describe: waiter.describe,
+    const description = await runDescribeSubmission({
+      describeSubmission: waiter.describeSubmission,
       value: args.value,
       interactionId: current.id,
       logger: this.deps.logger,

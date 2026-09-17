@@ -228,7 +228,7 @@ describe("asking a question", () => {
       icon: { glyph: "MessageQuestion" },
     });
     expect(
-      await pending.describe?.({
+      await pending.describeSubmission?.({
         answers: { q0: { selected: ["q0o0"], freeText: "with pgbouncer" } },
       }),
     ).toMatchObject({

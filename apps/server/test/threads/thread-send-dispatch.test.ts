@@ -940,7 +940,7 @@ describe("startup queue waits", () => {
             label: { pending: "Asking a question", completed: "Asked" },
             icon: { glyph: "MessageQuestion" },
           },
-          describe: null,
+          describeSubmission: null,
           timeoutMs: 10_000,
         },
       );

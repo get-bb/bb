@@ -65,20 +65,22 @@ title and whether it was submitted or cancelled. Pair `rendererId` with a
 frontend `pendingInteraction` slot. Pass a CLI handler's `ctx.signal` so
 disconnecting the caller cancels the request.
 
-The form leaves a row in the thread timeline, and the plugin says what it
-shows. `presentation` is the row header, in the same shape as a native
-tool's (`label: { pending, completed }`, `icon: { glyph }`, `suppress`,
+Two optional fields describe the row the form leaves in the thread timeline;
+neither touches the form itself, which `rendererId` draws. `presentation` is
+the row header, a `PluginRowPresentation` — the same shape a native tool
+declares (`label: { pending, completed }`, `icon: { glyph }`, `suppress`,
 `tint`); bb fills what is left out with "Waiting for <title>" /
-"Submitted <title>" and the plugin's branding glyph. `describe(value)` is
-called once with the submitted value and returns a
-`PluginInteractionDescription`: an optional `title` that replaces the
-completed label, an optional Markdown `detail` for the expanded row, and an
-optional `payload` that is persisted and handed to the plugin's
+"Submitted <title>" and the plugin's branding glyph.
+`describeSubmission(value)` is called once with the submitted value and
+returns a `PluginInteractionDescription`: an optional `title` that replaces
+the completed label, an optional Markdown `detail` for the expanded row, and
+an optional `payload` that is persisted and handed to the plugin's
 `experimental_timelineRenderer` registered for `"<pluginId>/<rendererId>"`.
-Only what `describe` returns is stored, so a plugin decides what the
-transcript keeps: a secrets form returns the variable names and never the
-values. `describe` is not called for a cancellation; bb titles those rows
-itself. A throw or a slow return leaves the row with its completed label.
+Only what `describeSubmission` returns is stored, so a plugin decides what
+the transcript keeps: a secrets form returns the variable names and never the
+values. `describeSubmission` is not called for a cancellation; bb titles
+those rows itself. A throw or a slow return leaves the row with its completed
+label.
 
 Awaiting it inside a native tool's `execute` is fine too, and needs no
 workaround. The moment a tool asks the person for input, bb answers the tool

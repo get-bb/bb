@@ -87,7 +87,7 @@ function requestPluginInteraction(
       },
       icon: { glyph: "Toolbox" },
     },
-    describe: null,
+    describeSubmission: null,
     timeoutMs: 10_000,
     ...(args.signal ? { signal: args.signal } : {}),
   });
@@ -232,7 +232,7 @@ describe("pending interaction lifecycle", () => {
   it("persists what the plugin describes for a submitted form and nothing else", async () => {
     await withTestHarness(async (harness) => {
       const thread = seedPluginInteractionThread(harness.deps, "describe");
-      const describe = vi.fn((value: unknown) => ({
+      const describeSubmission = vi.fn((value: unknown) => ({
         title: "Added API_KEY to .env",
         detail: `- ${Object.keys((value as { values: object }).values).join(", ")}`,
         payload: { names: ["API_KEY"] },
@@ -248,7 +248,7 @@ describe("pending interaction lifecycle", () => {
             label: { pending: "Adding secrets", completed: "Added secrets" },
             icon: { glyph: "Lock" },
           },
-          describe,
+          describeSubmission,
           timeoutMs: 10_000,
         },
       );
@@ -267,7 +267,7 @@ describe("pending interaction lifecycle", () => {
           interactionId: interaction!.id,
           value: { values: { API_KEY: "sentinel-secret-value" } },
         });
-      expect(describe).toHaveBeenCalledExactlyOnceWith({
+      expect(describeSubmission).toHaveBeenCalledExactlyOnceWith({
         values: { API_KEY: "sentinel-secret-value" },
       });
       expect(resolved.resolution).toEqual({
@@ -311,7 +311,7 @@ describe("pending interaction lifecycle", () => {
             label: { pending: "Adding secrets", completed: "Added secrets" },
             icon: { glyph: "Lock" },
           },
-          describe: () => {
+          describeSubmission: () => {
             throw new Error("plugin bug");
           },
           timeoutMs: 10_000,

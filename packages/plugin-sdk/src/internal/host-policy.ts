@@ -26,7 +26,7 @@ import {
 import { PLUGIN_CLI_OUTPUT_MAX_BYTES } from "../backend-contract.js";
 import type {
   PluginAgentToolContext,
-  PluginAgentToolPresentation,
+  PluginRowPresentation,
   PluginAgentToolResult,
   PluginAiServiceDeclaration,
   PluginAiServiceKind,
@@ -2085,11 +2085,11 @@ function rejectStaleAgentToolFields(toolName: string, tool: object): void {
  * in a plugin unit test registers in bb, and one bb rejects is rejected
  * with the same message.
  */
-export function parsePluginAgentToolPresentation(
+export function parsePluginRowPresentation(
   toolName: string,
   value: unknown,
   subject = `tool "${toolName}"`,
-): PluginAgentToolPresentation | null {
+): PluginRowPresentation | null {
   if (value === undefined) {
     return null;
   }
@@ -2097,7 +2097,7 @@ export function parsePluginAgentToolPresentation(
     throw new Error(`${subject} presentation must be an object`);
   }
   const declared = value as Record<string, unknown>;
-  const presentation: PluginAgentToolPresentation = {};
+  const presentation: PluginRowPresentation = {};
   if (declared.label !== undefined) {
     const label = declared.label;
     if (
@@ -3120,7 +3120,7 @@ export function normalizeAgentToolRegistration(args: {
     name: string;
     description: string;
     instructions?: string;
-    presentation?: PluginAgentToolPresentation;
+    presentation?: PluginRowPresentation;
     parameters: unknown;
     execute(
       params: never,
@@ -3130,7 +3130,7 @@ export function normalizeAgentToolRegistration(args: {
 }): {
   name: string;
   description: string;
-  presentation: PluginAgentToolPresentation | null;
+  presentation: PluginRowPresentation | null;
   instructions: string | null;
   inputSchema: unknown;
   parse: AgentToolParse;
@@ -3169,7 +3169,7 @@ export function normalizeAgentToolRegistration(args: {
       `tool "${name}" instructions exceed the ${PLUGIN_AGENT_STATIC_INSTRUCTIONS_MAX_CHARS}-character limit`,
     );
   }
-  const presentation = parsePluginAgentToolPresentation(
+  const presentation = parsePluginRowPresentation(
     name,
     tool.presentation,
   );
@@ -3292,8 +3292,10 @@ export interface NormalizedPluginInteractionRequest {
   title: string;
   payload: JsonValue;
   timeoutMs: number;
-  presentation: PluginAgentToolPresentation | null;
-  describe: NonNullable<PluginInteractionRequest["describe"]> | null;
+  presentation: PluginRowPresentation | null;
+  describeSubmission: NonNullable<
+    PluginInteractionRequest["describeSubmission"]
+  > | null;
 }
 
 export function normalizeInteractionRequest(
@@ -3347,10 +3349,10 @@ export function normalizeInteractionRequest(
     throw new Error("ui.requestInput timeoutMs must be between 1 and 3600000");
   }
   if (
-    request.describe !== undefined &&
-    typeof request.describe !== "function"
+    request.describeSubmission !== undefined &&
+    typeof request.describeSubmission !== "function"
   ) {
-    throw new Error("ui.requestInput describe must be a function");
+    throw new Error("ui.requestInput describeSubmission must be a function");
   }
   return {
     threadId: request.threadId,
@@ -3358,12 +3360,12 @@ export function normalizeInteractionRequest(
     title: request.title.trim(),
     payload,
     timeoutMs,
-    presentation: parsePluginAgentToolPresentation(
+    presentation: parsePluginRowPresentation(
       request.rendererId,
       request.presentation,
       `ui.requestInput form "${request.rendererId}"`,
     ),
-    describe: request.describe ?? null,
+    describeSubmission: request.describeSubmission ?? null,
   };
 }
 

@@ -1,6 +1,6 @@
 import type { ThreadEventItemPresentation } from "@bb/domain";
 import { isNamespacedGlyph, isPluginOwnedIconPath } from "@bb/domain";
-import type { PluginAgentToolPresentation } from "@get-bb/plugin-sdk";
+import type { PluginRowPresentation } from "@get-bb/plugin-sdk";
 
 export const GENERIC_PLUGIN_GLYPH = "Toolbox";
 
@@ -11,7 +11,7 @@ export const GENERIC_PLUGIN_GLYPH = "Toolbox";
  * so both read the same way.
  */
 export function fillPluginPresentation(args: {
-  declared: PluginAgentToolPresentation | null;
+  declared: PluginRowPresentation | null;
   brandingIcon: string | undefined;
   label: { pending: string; completed: string };
 }): ThreadEventItemPresentation {

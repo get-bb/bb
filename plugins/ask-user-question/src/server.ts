@@ -59,7 +59,7 @@ export default function plugin(bb: BbPluginApi) {
               label: { pending: "Asking a question", completed: "Asked" },
               icon: { glyph: "MessageQuestion" },
             },
-            describe: (value) => {
+            describeSubmission: (value) => {
               const parsed = interactionResponseSchema.safeParse(value);
               if (!parsed.success) return {};
               return describeAnswers(
