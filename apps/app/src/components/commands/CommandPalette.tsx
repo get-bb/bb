@@ -6,12 +6,17 @@ import {
   useRef,
   useState,
 } from "react";
-import { pluginCommandId, pluginCommandIdSchema } from "@bb/domain";
+import {
+  pluginCommandId,
+  pluginCommandIdSchema,
+  type KeyboardCommandId,
+} from "@bb/domain";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { Dialog, DialogContent, DialogTitle } from "@bb/shared-ui/dialog";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
+import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import {
   useAppCommandHandler,
   useIndexedAppCommandHandlers,
@@ -82,6 +87,7 @@ export interface CommandPaletteProps {
 export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
   const navigate = useNavigate();
   const runner = useAppCommandRunner();
+  const isCompactViewport = useIsCompactViewport();
   const shortcuts = useAppCommandShortcuts(PALETTE_COMMAND_IDS);
   const listId = useId();
   const optionIdPrefix = useId();
@@ -186,13 +192,13 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
 
   const prepareOpen = useCallback(
     (target: EventTarget | null) => {
-      openTargetRef.current = target;
-      setActions(buildActions(target));
+      if (!open) openTargetRef.current = target;
+      setActions(buildActions(openTargetRef.current));
       setQuery("");
       setHighlightedIndex(0);
       loadInstalledPlugins();
     },
-    [buildActions, loadInstalledPlugins],
+    [buildActions, loadInstalledPlugins, open],
   );
 
   useAppCommandHandler("palette.open", (invocation) => {
@@ -221,6 +227,19 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
     () => [...actions, ...settingsActions, ...pluginPageActions],
     [actions, pluginPageActions, settingsActions],
   );
+  const shortcutActions = useMemo(() => {
+    const byId = new Map(availableActions.map((action) => [action.id, action]));
+    const byCommand = new Map<KeyboardCommandId, PaletteAction>();
+    for (const command of PALETTE_COMMAND_IDS) {
+      const action = byId.get(paletteActionIdForCommand(command));
+      if (action) byCommand.set(command, action);
+    }
+    for (const command of pluginCommandIds) {
+      const action = byId.get(command);
+      if (action) byCommand.set(command, action);
+    }
+    return byCommand;
+  }, [availableActions, pluginCommandIds]);
   const commandQuery = query.startsWith(">") ? query.slice(1) : query;
   const ranked = useMemo(
     () =>
@@ -356,6 +375,28 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
         aria-describedby={undefined}
         className="top-[12%] max-w-[640px] translate-y-0 gap-0 p-0 shadow-lg sm:rounded-xl"
         onAfterCloseAutoFocus={handleAfterCloseAutoFocus}
+        onKeyDownCapture={(event) => {
+          if (
+            !open ||
+            !(event.target instanceof Node) ||
+            !event.currentTarget.contains(event.target)
+          ) {
+            return;
+          }
+          const command = runner.getShortcutCommand(event.nativeEvent, [
+            "palette.open",
+            ...shortcutActions.keys(),
+          ]);
+          if (command === null) return;
+          event.preventDefault();
+          event.stopPropagation();
+          if (command === "palette.open") {
+            runner.dispatch(command, openTargetRef.current);
+            return;
+          }
+          const action = shortcutActions.get(command);
+          if (action) chooseAction(action);
+        }}
         onEscapeKeyDown={(event) => {
           if (activeMode !== undefined) {
             event.preventDefault();
@@ -415,6 +456,7 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
                           id={`${optionIdPrefix}-${visibleIndex}`}
                           isActive={visibleIndex === activeIndex}
                           isDrillIn={MODE_BY_ACTION_ID.has(entry.action.id)}
+                          showShortcut={!isCompactViewport}
                           onActivate={() => {
                             setHighlightedIndex(visibleIndex);
                           }}
@@ -433,6 +475,7 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
                   id={`${optionIdPrefix}-${index}`}
                   isActive={index === activeIndex}
                   isDrillIn={MODE_BY_ACTION_ID.has(entry.action.id)}
+                  showShortcut={!isCompactViewport}
                   onActivate={() => {
                     setHighlightedIndex(index);
                   }}
@@ -458,6 +501,7 @@ function PaletteRow({
   id,
   isActive,
   isDrillIn,
+  showShortcut,
   onActivate,
   onSelect,
 }: {
@@ -465,6 +509,7 @@ function PaletteRow({
   id: string;
   isActive: boolean;
   isDrillIn: boolean;
+  showShortcut: boolean;
   onActivate: () => void;
   onSelect: () => void;
 }) {
@@ -473,8 +518,8 @@ function PaletteRow({
       ? entry.action.group
       : null;
   const title = isDrillIn ? `${entry.action.title}…` : entry.action.title;
-  const hasTrailing =
-    metadataGroup !== null || entry.action.shortcut !== null || isDrillIn;
+  const shortcut = showShortcut ? entry.action.shortcut : null;
+  const hasTrailing = metadataGroup !== null || shortcut !== null || isDrillIn;
   return (
     <div
       id={id}
@@ -498,8 +543,8 @@ function PaletteRow({
               {metadataGroup}
             </span>
           )}
-          {entry.action.shortcut === null ? null : (
-            <AppCommandShortcutPill shortcut={entry.action.shortcut} />
+          {shortcut === null ? null : (
+            <AppCommandShortcutPill shortcut={shortcut} />
           )}
           {isDrillIn ? (
             <span className="sr-only">Opens a search view</span>

@@ -95,6 +95,7 @@ function defaults(...commands: AppCommandId[]): AppDefaultKeybinding[] {
 const testState = vi.hoisted(() => ({
   overrides: [] as AppKeybindingOverrides,
   calls: [] as string[],
+  targets: [] as (EventTarget | null)[],
   filesAvailable: false,
   showKeyboardHints: true,
   plugins: [] as Array<{
@@ -241,8 +242,9 @@ vi.mock("@/hooks/queries/thread-queries", async (importOriginal) => {
 });
 
 function Handler({ command }: { command: AppCommandId }) {
-  useAppCommandHandler(command, () => {
+  useAppCommandHandler(command, ({ target }) => {
     testState.calls.push(command);
+    testState.targets.push(target);
     return true;
   });
   return null;
@@ -370,6 +372,7 @@ afterEach(() => {
   removePluginSlotRegistrations("automations");
   resetPluginLogoStoreForTest();
   testState.calls.length = 0;
+  testState.targets.length = 0;
   testState.filesAvailable = false;
   testState.showKeyboardHints = true;
   testState.plugins.length = 0;
@@ -384,6 +387,99 @@ afterEach(() => {
 });
 
 describe("CommandPalette", () => {
+  it.each(["commands", "threads"])(
+    "runs an available shortcut from %s even with no matches, after closing and restoring focus",
+    async (mode) => {
+      renderPalette();
+      if (mode === "commands") openPalette();
+      else openThreadSearch();
+      await waitFor(() => expect(searchField()).toBeTruthy());
+      fireEvent.change(searchField(), { target: { value: "no-such-result" } });
+      expect(screen.queryAllByRole("option")).toHaveLength(0);
+
+      fireEvent.keyDown(searchField(), {
+        key: "o",
+        ctrlKey: true,
+        shiftKey: true,
+      });
+
+      await waitFor(() => expect(testState.calls).toEqual(["thread.new"]));
+      expect(screen.queryByRole("combobox")).toBeNull();
+      expect(testState.targets).toEqual([screen.getByTestId("origin")]);
+      expect(document.activeElement).toBe(screen.getByTestId("origin"));
+    },
+  );
+
+  it("switches modes by shortcut without losing the invocation target or intercepting editing, repeat, and composition events", async () => {
+    renderPalette();
+    openPalette();
+    await waitFor(() => expect(searchField()).toBeTruthy());
+    openThreadSearch();
+    await waitFor(() =>
+      expect(
+        screen.getByRole("combobox", { name: "Search threads" }),
+      ).toBeTruthy(),
+    );
+    openPalette();
+    await waitFor(() =>
+      expect(
+        screen.getByRole("combobox", { name: "Search commands" }),
+      ).toBeTruthy(),
+    );
+    expect(fireEvent.keyDown(searchField(), { key: "a", ctrlKey: true })).toBe(
+      true,
+    );
+    for (const ignored of [{ repeat: true }, { isComposing: true }]) {
+      fireEvent.keyDown(searchField(), {
+        key: "o",
+        ctrlKey: true,
+        shiftKey: true,
+        ...ignored,
+      });
+    }
+    expect(testState.calls).toEqual([]);
+    fireEvent.keyDown(searchField(), {
+      key: "o",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+    await waitFor(() => expect(testState.calls).toEqual(["thread.new"]));
+    expect(testState.targets).toEqual([screen.getByTestId("origin")]);
+  });
+
+  it.each([false, true])(
+    "shows shortcut keycaps only on desktop, including filtered plugin results (compact: %s)",
+    async (compact) => {
+      setPluginSlotRegistrations(
+        "linear",
+        collectPluginAppRegistrations({
+          __bbPluginApp: true,
+          setup(app) {
+            app.commands.register({
+              id: "open-issue",
+              title: "Linear: open issue",
+              defaultShortcut: { key: "i", mod: true, shift: true },
+              run: () => {},
+            });
+          },
+        }),
+      );
+      renderPalette({ compact });
+      openPalette();
+      await waitFor(() => expect(searchField()).toBeTruthy());
+      expect(commandList().querySelectorAll("kbd").length).toBe(
+        compact ? 0 : 3,
+      );
+      expect(
+        optionTitles().some((title) => title?.includes("New thread")),
+      ).toBe(true);
+      fireEvent.change(searchField(), { target: { value: "linear" } });
+      const row = screen.getByRole("option");
+      expect(row.textContent).toContain("Linear: open issue");
+      expect(row.querySelectorAll("kbd").length).toBe(compact ? 0 : 1);
+    },
+  );
+
   it("opens on its chord and lists the commands that apply", async () => {
     renderPalette();
     const event = openPalette();
@@ -1272,11 +1368,22 @@ describe("CommandPalette", () => {
     expect(screen.getByRole("option").textContent).toContain(
       "Ctrl + Shift + U",
     );
-    fireEvent.keyDown(searchField(), { key: "Escape" });
-    removePluginSlotRegistrations("linear");
-    await waitFor(() => expect(screen.queryByRole("listbox")).toBeNull());
-    fireEvent.keyDown(window, { key: "u", ctrlKey: true, shiftKey: true });
+    fireEvent.keyDown(searchField(), {
+      key: "i",
+      ctrlKey: true,
+      shiftKey: true,
+    });
     expect(run).toHaveBeenCalledTimes(2);
+    fireEvent.keyDown(searchField(), {
+      key: "u",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+    await waitFor(() => expect(run).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(screen.queryByRole("listbox")).toBeNull());
+    removePluginSlotRegistrations("linear");
+    fireEvent.keyDown(window, { key: "u", ctrlKey: true, shiftKey: true });
+    expect(run).toHaveBeenCalledTimes(3);
     testState.overrides = [];
   });
 
