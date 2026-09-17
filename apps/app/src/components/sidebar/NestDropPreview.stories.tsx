@@ -274,6 +274,41 @@ function VariantControlMain() {
   );
 }
 
+function SelectedTarget({ underlineBottom }: { underlineBottom: number }) {
+  return (
+    <div className="relative">
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 z-[5] rounded-md bg-sidebar-accent ring-1 ring-inset ring-sidebar-ring"
+      />
+      <div className="relative z-10">
+        <Row entry={TARGET} depth={PARENT_DEPTH} />
+      </div>
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute right-1 z-20 h-0.5 rounded-full bg-sidebar-ring"
+        style={{ left: CHILD_INDENT_PX, bottom: underlineBottom }}
+      />
+    </div>
+  );
+}
+
+function VariantSelectedUnderline({
+  underlineBottom,
+}: {
+  underlineBottom: number;
+}) {
+  return (
+    <Stage>
+      <Row entry={SIBLING_ABOVE} depth={PARENT_DEPTH} />
+      <SelectedTarget underlineBottom={underlineBottom} />
+      <Row entry={EXISTING_CHILD} depth={CHILD_DEPTH} isCompact />
+      <Row entry={SIBLING_BELOW} depth={PARENT_DEPTH} />
+      <DraggedRow />
+    </Stage>
+  );
+}
+
 export function Variants() {
   return (
     <StoryCard labelWidth="260px">
@@ -312,6 +347,18 @@ export function Variants() {
         hint="accent bar on the row's leading edge, no indent language at all"
       >
         <VariantCaretOnly />
+      </StoryRow>
+      <StoryRow
+        label="H — G's selection + A's underline"
+        hint="filled row with the ring back, and the underline from the child indent; source row stays dimmed in place"
+      >
+        <VariantSelectedUnderline underlineBottom={0} />
+      </StoryRow>
+      <StoryRow
+        label="H2 — same, underline lifted inside the ring"
+        hint="the underline sits 3px up so it reads as its own mark instead of merging with the ring's bottom edge"
+      >
+        <VariantSelectedUnderline underlineBottom={3} />
       </StoryRow>
       <StoryRow
         label="G — control (origin/main)"
