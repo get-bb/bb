@@ -114,6 +114,7 @@ const terminalQueryState = vi.hoisted(() => ({
 }));
 const fixedTabState = vi.hoisted(() => ({
   panelRegistered: true,
+  rightPanel: true,
   registrations: [] as TestFixedTabRegistration[],
   fileOpeners: [] as TestFileOpenerRegistration[],
   newThreadPanelActions: [] as TestNewThreadPanelActionRegistration[],
@@ -217,6 +218,7 @@ vi.mock("@/lib/plugin-slots", () => ({
             component: () => null,
             generation: 1,
             fixedTabs: fixedTabState.registrations,
+            experimental_rightPanel: fixedTabState.rightPanel,
           },
         ]
       : [],
@@ -687,6 +689,7 @@ describe("PluginPanelRightPanelHost", () => {
     threadTabsApi.update.mockReset();
     threadTabsApi.update.mockResolvedValue({ revision: 5, tabs: [] });
     fixedTabState.panelRegistered = true;
+    fixedTabState.rightPanel = true;
     fixedTabState.registrations = [];
     fixedTabState.fileOpeners = [];
     fixedTabState.newThreadPanelActions = [];
@@ -703,6 +706,19 @@ describe("PluginPanelRightPanelHost", () => {
   afterEach(() => {
     cleanup();
   });
+
+  it.each([true, false])(
+    "omits tools and the toggle when a panel opts out (compact %s)",
+    (compact) => {
+      viewportState.isCompactViewport = compact;
+      fixedTabState.rightPanel = false;
+      renderHost();
+      expect(
+        screen.queryByRole("button", { name: "Show right panel" }),
+      ).toBeNull();
+      expect(threadTabsApi.get).not.toHaveBeenCalled();
+    },
+  );
 
   it("shows the side-panel glyph on the trigger for a compact viewport", async () => {
     viewportState.isCompactViewport = true;
@@ -1204,6 +1220,7 @@ describe("PluginPanelRightPanelHost", () => {
     loading.unmount();
 
     fixedTabState.panelRegistered = true;
+    fixedTabState.rightPanel = true;
     renderHost("board", "", store);
 
     await waitFor(() =>

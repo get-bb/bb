@@ -50,6 +50,8 @@ export const experimental_Icon = runtime.experimental_Icon;
 export const experimental_ProviderIcon = runtime.experimental_ProviderIcon;
 export const definePluginApp = runtime.definePluginApp;
 export const ThreadChat = runtime.ThreadChat;
+export const experimental_SessionComposer =
+  runtime.experimental_SessionComposer;
 export const Markdown = runtime.Markdown;
 export const experimental_FileLink = runtime.experimental_FileLink;
 export const UrlLink = runtime.UrlLink;

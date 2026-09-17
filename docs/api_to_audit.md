@@ -3018,3 +3018,13 @@ same-id isolation and legacy override fallback,
 asset-vs-glyph precedence, cross-plugin overrides, reload/error/recursion behavior,
 accessibility and theme rendering on desktop and mobile. Keep metadata fetching
 and plugin branding separate from provider artwork resolution.
+
+## experimental_SessionComposer
+
+Host-owned shared prompt editor for plugin-owned sessions such as iTerm Claude sessions. Controlled text, command suggestions, opt-in local File attachments, native preview/removal, and bb voice transcription. onSubmit receives text/files; the plugin owns transport. Success clears the draft; failure retains it. No thread creation or execution controls. Key the component by session identity to isolate local attachment state. Files are in-memory and do not survive unmount; text persistence is the caller's responsibility. Default attachment bounds: 10 files, 20 MiB each.
+
+Stabilization: verify mobile keyboard/plus-menu/voice behavior, failed-send draft retention, per-session isolation, attachment lifecycle cleanup, and external-host delivery in a consumer plugin. Keep the test harness and Plugin Guide inventory aligned.
+
+## PluginNavPanelRegistration.experimental_rightPanel
+
+Opt out of the plugin page's host-owned right-panel tools and toggle with false. Omitted/true preserves existing behavior. Combining false with nonempty fixedTabs rejects registration. The tool host is not mounted, so no panel sessions or tool queries start. Stabilization: compact and desktop opt-out tests, registration validation, and navigation behavior for pages without a tool host.

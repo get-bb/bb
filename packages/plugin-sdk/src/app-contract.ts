@@ -545,6 +545,8 @@ export type PluginFixedTabDeclaration =
   | PluginFixedTabRegistration<JsonValue>;
 
 export interface PluginNavPanelRegistration {
+  /** False omits bb's right-panel tools and toggle. Defaults to true; incompatible with fixedTabs. */
+  experimental_rightPanel?: boolean;
   /** Unique within the plugin; letters, digits, `-`, `_`. */
   id: string;
   title: string;
@@ -2270,6 +2272,36 @@ export interface NewThreadRequest {
   sendAt?: number;
 }
 
+/** A command available to an already-running external session. */
+export interface ExperimentalSessionComposerCommand {
+  name: string;
+  description?: string;
+  argumentHint?: string;
+}
+
+/**
+ * bb's shared prompt editor for an existing, plugin-owned session. The plugin
+ * supplies commands and delivers text/files to the session; bb owns editing,
+ * the mobile plus menu, attachment previews, and voice transcription. No thread
+ * is created and no provider, model, project, or execution controls are shown.
+ */
+export interface ExperimentalSessionComposerProps {
+  value: string;
+  onChange(value: string): void;
+  /** Clears text and attachments only after success; rejected sends retain both. */
+  onSubmit(input: { text: string; files: readonly File[] }): Promise<void>;
+  commands?: readonly ExperimentalSessionComposerCommand[];
+  commandsLoading?: boolean;
+  commandsError?: boolean;
+  /** Omitting or setting false hides attachment controls. */
+  allowAttachments?: boolean;
+  disabled?: boolean;
+  placeholder?: string;
+  className?: string;
+  /** Defaults to 10 attachments, 20 MiB each. */
+  attachmentLimits?: { count: number; bytesPerFile: number };
+}
+
 /**
  * Props of the host-owned `experimental_NewThreadComposer` component — bb's
  * full new-thread compose surface (prompt editor with @-mentions and expand,
@@ -2644,6 +2676,8 @@ export interface PluginSdkApp {
    * docs/api_to_audit.md for what to audit before the prefix drops.
    */
   experimental_NewThreadComposer: ComponentType<NewThreadComposerProps>;
+  /** Shared composer for plugin-owned external sessions; see docs/api_to_audit.md. */
+  experimental_SessionComposer: ComponentType<ExperimentalSessionComposerProps>;
   /**
    * BB's controlled provider/model/reasoning picker. Provider changes emit
    * only after the new provider's verified defaults and capabilities resolve,

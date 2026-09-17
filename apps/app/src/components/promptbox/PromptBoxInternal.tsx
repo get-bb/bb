@@ -224,6 +224,7 @@ function shouldFinishVoiceCompletionTransitionImmediately(): boolean {
 }
 
 export interface PromptBoxSubmissionConfig {
+  hideEmpty?: boolean;
   isSubmitting?: boolean;
   disabled?: boolean;
   disabledReason?: string;
@@ -3378,7 +3379,7 @@ export function PromptBoxInternal({
                       >
                         <Icon name="Mic" className="size-4" />
                       </Button>
-                    ) : (
+                    ) : submission?.hideEmpty && !hasSubmittableInput ? null : (
                       <PromptSubmitButton
                         canSubmit={canSubmit}
                         icon={submitIcon}

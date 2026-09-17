@@ -70,6 +70,7 @@ import {
   type ExperimentalOpenFixedTabOptions,
   type ExperimentalPluginFixedTabReference,
   type NewThreadComposerProps,
+  type ExperimentalSessionComposerProps,
   type BranchPickerProps,
   type CheckoutState,
   type ExperimentalPermissionModePickerProps,
@@ -444,6 +445,51 @@ function TestFileLink({
         navigate.experimental_openFilePreview(options);
       }}
     />
+  );
+}
+
+function TestSessionComposer({
+  value,
+  onChange,
+  onSubmit,
+  disabled,
+  placeholder,
+  className,
+}: ExperimentalSessionComposerProps) {
+  const [error, setError] = useState("");
+  const [pending, setPending] = useState(false);
+  return (
+    <form
+      className={className}
+      data-testid="bb-session-composer"
+      onSubmit={async (event) => {
+        event.preventDefault();
+        if (disabled || pending || !value.trim()) return;
+        setPending(true);
+        try {
+          await onSubmit({ text: value, files: [] });
+          onChange("");
+          setError("");
+        } catch (cause) {
+          setError(String(cause));
+        } finally {
+          setPending(false);
+        }
+      }}
+    >
+      <textarea
+        value={value}
+        placeholder={placeholder}
+        disabled={disabled || pending}
+        onChange={(event) => onChange(event.target.value)}
+      />
+      {value.trim() && (
+        <button disabled={disabled || pending} type="submit">
+          Send
+        </button>
+      )}
+      {error && <p role="alert">{error}</p>}
+    </form>
   );
 }
 
@@ -880,6 +926,7 @@ const testPluginSdkApp = {
   ),
   UrlLink: TestUrlLink,
   experimental_NewThreadComposer: TestNewThreadComposer,
+  experimental_SessionComposer: TestSessionComposer,
   experimental_ProviderModelPicker: TestProviderModelPicker,
   experimental_PermissionModePicker: TestPermissionModePicker,
   experimental_BranchPicker: TestBranchPicker,

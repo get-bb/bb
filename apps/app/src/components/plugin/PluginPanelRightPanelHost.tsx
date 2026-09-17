@@ -212,7 +212,23 @@ function terminalScope(target: TerminalCreateTarget | null) {
   };
 }
 
-export function PluginPanelRightPanelHost({
+export function PluginPanelRightPanelHost(
+  props: Parameters<typeof EnabledPluginPanelRightPanelHost>[0],
+) {
+  const { navPanels } = usePluginSlots();
+  const panel = navPanels.find(
+    (candidate) =>
+      candidate.pluginId === props.pluginId &&
+      candidate.path === props.panelPath,
+  );
+  return panel?.experimental_rightPanel === false ? (
+    props.children
+  ) : (
+    <EnabledPluginPanelRightPanelHost {...props} />
+  );
+}
+
+function EnabledPluginPanelRightPanelHost({
   children,
   panelPath,
   pluginId,

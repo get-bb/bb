@@ -8,6 +8,7 @@ import {
   usePluginBranches,
   usePluginCheckoutState,
 } from "@/components/plugin/usePluginBranchPickerState";
+import { PluginSessionComposer } from "@/components/plugin/PluginSessionComposer";
 import { PluginNewThreadComposer } from "@/components/plugin/PluginNewThreadComposer";
 import { PluginProviderModelPicker } from "@/components/plugin/PluginProviderModelPicker";
 import { PluginPermissionModePicker } from "@/components/plugin/PluginPermissionModePicker";
@@ -61,6 +62,7 @@ export const pluginSdkAppImplementation = installDeprecatedAliases(
     useRpc,
     useSettings,
     ThreadChat: PluginThreadChat,
+    experimental_SessionComposer: PluginSessionComposer,
     Markdown: PluginMarkdown,
     experimental_FileLink: ExperimentalFileLink,
     UrlLink: PluginUrlLink,

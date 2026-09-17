@@ -838,6 +838,59 @@ describe("loadPluginApp", () => {
     ).rejects.toThrow('"mount" must be a function');
   });
 
+  it("preserves right-panel opt-out and rejects incompatible fixed tabs", async () => {
+    const captured = await loadPluginApp(
+      definePluginApp((builder) => {
+        builder.slots.navPanel({
+          id: "external",
+          title: "External",
+          icon: "Terminal",
+          path: "external",
+          component: Panel,
+          experimental_rightPanel: false,
+        });
+      }),
+    );
+    expect(captured.navPanels[0]?.experimental_rightPanel).toBe(false);
+    await expect(
+      loadPluginApp(
+        definePluginApp((builder) => {
+          builder.slots.navPanel({
+            id: "external",
+            title: "External",
+            icon: "Terminal",
+            path: "external",
+            component: Panel,
+            experimental_rightPanel: false,
+            fixedTabs: [
+              {
+                id: "tools",
+                panelId: "external",
+                title: "Tools",
+                icon: "Terminal",
+                component: Panel,
+              },
+            ],
+          });
+        }),
+      ),
+    ).rejects.toThrow('"fixedTabs" requires the right panel');
+    await expect(
+      loadPluginApp(
+        definePluginApp((builder) => {
+          builder.slots.navPanel({
+            id: "external",
+            title: "External",
+            icon: "Terminal",
+            path: "external",
+            component: Panel,
+            experimental_rightPanel: "false" as never,
+          });
+        }),
+      ),
+    ).rejects.toThrow('"experimental_rightPanel" must be a boolean');
+  });
+
   it("rejects registrations the host would reject, with the host's message", async () => {
     await expect(
       loadPluginApp(
