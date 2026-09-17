@@ -37,6 +37,7 @@ function openMenu(selectionLabel: string) {
 
 afterEach(() => {
   cleanup();
+  document.getElementById("toolbar-test-layout")?.remove();
   viewport.compact = false;
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
@@ -258,14 +259,13 @@ function mockToolbarWidth(initial: number) {
       return original.call(this);
     },
   );
-  const originalStyle = window.getComputedStyle;
-  vi.spyOn(window, "getComputedStyle").mockImplementation((element) => {
-    const style = originalStyle(element);
-    if (element.hasAttribute("data-resource-toolbar")) style.columnGap = "8px";
-    if (element.parentElement?.hasAttribute("data-resource-toolbar"))
-      style.flexBasis = "160px";
-    return style;
-  });
+  const style = document.createElement("style");
+  style.id = "toolbar-test-layout";
+  style.textContent = `
+    [data-resource-toolbar] { column-gap: 8px; }
+    [data-resource-toolbar] > div:first-child { flex-basis: 160px; }
+  `;
+  document.head.append(style);
   vi.stubGlobal(
     "ResizeObserver",
     class {
