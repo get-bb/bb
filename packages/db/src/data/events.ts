@@ -1770,7 +1770,7 @@ export function listStoredDelegatingItemRowsByItemIds(
 
 export function isTimelineCursorSequencePresent(
   db: DbConnection,
-  args: TimelineSegmentAnchorLookupArgs,
+  args: TimelineCursorSequenceLookupArgs,
 ): boolean {
   const row = db
     .select({ sequence: events.sequence })
@@ -2037,14 +2037,6 @@ export interface StoredThreadEventDataRow {
   type: ThreadEventType;
 }
 
-/**
- * The newest row of any of `types`, optionally restricted to what came after a
- * sequence.
- *
- * Assembling a turn's failure context means asking two questions of the log —
- * "how did the provider describe this failure" and "what rate-limit windows did
- * it last report" — and both are one indexed row, not a scan the caller filters.
- */
 export function getLatestStoredThreadEventOfTypes(
   db: DbQueryConnection,
   args: {
@@ -2829,238 +2821,30 @@ export function listStoredConversationOutlineEventRows(
   return rows.sort((left, right) => left.sequence - right.sequence);
 }
 
-export interface StandardTimelineSegmentAnchorRow {
+export interface TimelineWindowHint {
   sequence: number;
 }
 
-interface TimelineAnchorRequestRow {
-  expectedTurnId: string | null;
-  requestId: string | null;
-  sequence: number;
-}
-
-interface TimelineAnchorAcceptedRow {
-  clientRequestId: string | null;
-  sequence: number;
-  turnId: string | null;
-}
-
-interface TimelineAnchorRange {
-  beforeSequence?: number;
-  sequenceStart: number;
+export interface ListTimelineWindowHintsDescendingArgs {
   threadId: string;
-}
-
-function timelineAnchorRangeSql(
-  range: TimelineAnchorRange,
-  type: ThreadEventType,
-): SQL {
-  return sql`
-    FROM events INDEXED BY events_thread_type_sequence_idx
-    WHERE thread_id = ${range.threadId}
-      AND type = ${type}
-      AND sequence >= ${range.sequenceStart}
-      AND sequence < ${range.beforeSequence ?? Number.MAX_SAFE_INTEGER}
-  `;
-}
-
-function timelineAnchorOrderSql(descendingLimit: number | undefined): SQL {
-  return descendingLimit === undefined
-    ? sql`ORDER BY sequence`
-    : sql`ORDER BY sequence DESC LIMIT ${descendingLimit}`;
-}
-
-const nonEmptyTimelineRequestInputSql = sql`EXISTS (
-  SELECT 1
-  FROM json_each(events.data, '$.input') AS input_part
-  WHERE (
-    json_extract(input_part.value, '$.type') = 'text'
-    AND COALESCE(json_extract(input_part.value, '$.text'), '') <> ''
-  )
-  OR json_extract(input_part.value, '$.type')
-    IN ('image', 'localImage', 'localFile')
-)`;
-
-function listTimelineAnchorRequestRows(
-  db: DbConnection,
-  range: TimelineAnchorRange,
-  descendingLimit?: number,
-): TimelineAnchorRequestRow[] {
-  return db.all<TimelineAnchorRequestRow>(sql`
-    SELECT
-      json_extract(data, '$.target.expectedTurnId') AS expectedTurnId,
-      json_extract(data, '$.requestId') AS requestId,
-      sequence
-    ${timelineAnchorRangeSql(range, "client/turn/requested")}
-      AND ${nonEmptyTimelineRequestInputSql}
-    ${timelineAnchorOrderSql(descendingLimit)}
-  `);
-}
-
-function listTimelineAnchorRequestRowsByRequestIds(
-  db: DbConnection,
-  threadId: string,
-  requestIds: readonly string[],
-): TimelineAnchorRequestRow[] {
-  if (requestIds.length === 0) return [];
-  return db.all<TimelineAnchorRequestRow>(sql`
-    SELECT
-      json_extract(data, '$.target.expectedTurnId') AS expectedTurnId,
-      json_extract(data, '$.requestId') AS requestId,
-      sequence
-    FROM events INDEXED BY events_thread_type_sequence_idx
-    WHERE thread_id = ${threadId}
-      AND type = 'client/turn/requested'
-      AND json_extract(data, '$.requestId') IN ${requestIds}
-      AND ${nonEmptyTimelineRequestInputSql}
-  `);
-}
-
-function listTimelineAnchorAcceptedRows(
-  db: DbConnection,
-  range: TimelineAnchorRange,
-  descendingLimit?: number,
-  clientRequestIds?: readonly string[],
-): TimelineAnchorAcceptedRow[] {
-  return db.all<TimelineAnchorAcceptedRow>(sql`
-    SELECT
-      json_extract(data, '$.clientRequestId') AS clientRequestId,
-      sequence,
-      turn_id AS turnId
-    ${timelineAnchorRangeSql(range, "turn/input/accepted")}
-      ${
-        clientRequestIds === undefined
-          ? sql``
-          : sql`AND json_extract(data, '$.clientRequestId') IN ${clientRequestIds}`
-      }
-    ${timelineAnchorOrderSql(descendingLimit)}
-  `);
-}
-
-function listTimelineAnchorClearSequences(
-  db: DbConnection,
-  range: TimelineAnchorRange,
-  descendingLimit?: number,
-): number[] {
-  return db
-    .all<{ sequence: number }>(sql`
-    SELECT sequence
-    ${timelineAnchorRangeSql(range, "system/operation")}
-      AND json_extract(data, '$.operation') = ${THREAD_CONTEXT_CLEAR_OPERATION}
-      AND json_extract(data, '$.status') = 'completed'
-    ${timelineAnchorOrderSql(descendingLimit)}
-  `)
-    .map((row) => row.sequence);
-}
-
-function resolveTimelineSegmentAnchorSequences(
-  db: DbConnection,
-  range: TimelineAnchorRange,
-  requests: readonly TimelineAnchorRequestRow[],
-  acceptedRows: readonly TimelineAnchorAcceptedRow[],
-  clears: readonly number[],
-): number[] {
-  const acceptedByRequest = new Map<string, TimelineAnchorAcceptedRow>();
-  for (const accepted of [...acceptedRows].sort(
-    (left, right) => left.sequence - right.sequence,
-  )) {
-    if (
-      accepted.clientRequestId !== null &&
-      !acceptedByRequest.has(accepted.clientRequestId)
-    ) {
-      acceptedByRequest.set(accepted.clientRequestId, accepted);
-    }
-  }
-  const anchors = new Set<number>(clears);
-  const unresolvedSteers: TimelineAnchorRequestRow[] = [];
-  const fetchedRequestIds = new Set<string>();
-  for (const request of requests) {
-    if (request.requestId !== null) fetchedRequestIds.add(request.requestId);
-    if (request.expectedTurnId === null || request.requestId === null) {
-      anchors.add(request.sequence);
-      continue;
-    }
-    const accepted = acceptedByRequest.get(request.requestId);
-    if (accepted === undefined) {
-      unresolvedSteers.push(request);
-    } else if (accepted.turnId === request.expectedTurnId) {
-      anchors.add(accepted.sequence);
-    } else {
-      anchors.add(request.sequence);
-    }
-  }
-  if (unresolvedSteers.length > 0 && range.beforeSequence !== undefined) {
-    const laterAccepted = new Map<string, string | null>();
-    for (const accepted of listTimelineAnchorAcceptedRows(
-      db,
-      { sequenceStart: range.beforeSequence, threadId: range.threadId },
-      undefined,
-      unresolvedSteers.map((request) => request.requestId!),
-    )) {
-      if (
-        accepted.clientRequestId !== null &&
-        !laterAccepted.has(accepted.clientRequestId)
-      ) {
-        laterAccepted.set(accepted.clientRequestId, accepted.turnId);
-      }
-    }
-    for (const request of unresolvedSteers) {
-      if (laterAccepted.get(request.requestId!) !== request.expectedTurnId) {
-        anchors.add(request.sequence);
-      }
-    }
-  } else {
-    for (const request of unresolvedSteers) anchors.add(request.sequence);
-  }
-  const earlierRequestIds = [
-    ...new Set(
-      acceptedRows.flatMap((accepted) =>
-        accepted.clientRequestId === null ||
-        fetchedRequestIds.has(accepted.clientRequestId)
-          ? []
-          : [accepted.clientRequestId],
-      ),
-    ),
-  ];
-  for (const request of listTimelineAnchorRequestRowsByRequestIds(
-    db,
-    range.threadId,
-    earlierRequestIds,
-  )) {
-    const accepted =
-      request.requestId === null
-        ? undefined
-        : acceptedByRequest.get(request.requestId);
-    if (
-      accepted !== undefined &&
-      request.expectedTurnId !== null &&
-      accepted.turnId === request.expectedTurnId
-    ) {
-      anchors.add(accepted.sequence);
-    }
-  }
-  return [...anchors]
-    .filter(
-      (sequence) =>
-        sequence >= range.sequenceStart &&
-        (range.beforeSequence === undefined ||
-          sequence < range.beforeSequence),
-    )
-    .sort((left, right) => left - right);
-}
-
-export interface ListTimelineSegmentAnchorsDescendingArgs {
-  threadId: string;
-  beforeSequence?: number;
+  beforeSequence: number;
   limit: number;
   sequenceStart: number;
 }
 
-export interface ListTimelineSegmentAnchorSequencesArgs {
-  threadId: string;
-  beforeSequence: number;
-  sequenceStart: number;
-}
+const visibleTimelineRequestInputSql = sql`EXISTS (
+  SELECT 1
+  FROM json_each(events.data, '$.input') AS input_part
+  WHERE COALESCE(json_extract(input_part.value, '$.visibility'), '') <> 'agent-only'
+    AND (
+      (
+        json_extract(input_part.value, '$.type') = 'text'
+        AND COALESCE(json_extract(input_part.value, '$.text'), '') <> ''
+      )
+      OR json_extract(input_part.value, '$.type')
+        IN ('image', 'localImage', 'localFile')
+    )
+)`;
 
 export interface FindTimelineWindowBudgetFloorSequenceArgs {
   excludeDiagnosticEvents?: boolean;
@@ -3147,7 +2931,7 @@ export function listTimelineOrderingContext(
       expectedTurnId: sql<
         string | null
       >`json_extract(${events.data}, '$.target.expectedTurnId')`,
-      hasInput: sql<number>`CASE WHEN ${events.type} = 'client/turn/requested' AND ${nonEmptyTimelineRequestInputSql} THEN 1 ELSE 0 END`,
+      hasInput: sql<number>`CASE WHEN ${events.type} = 'client/turn/requested' AND ${visibleTimelineRequestInputSql} THEN 1 ELSE 0 END`,
     })
     .from(sql`${events} INDEXED BY events_thread_type_sequence_idx`)
     .where(
@@ -3246,7 +3030,7 @@ export function getFirstParentedTimelineBoundarySequence(
       ON ${events.sequence} > spans.start AND ${events.sequence} < spans.end
     WHERE ${events.type} = 'client/turn/requested'
       AND ${events.threadId} = ${args.threadId}
-      AND ${nonEmptyTimelineRequestInputSql}
+      AND ${visibleTimelineRequestInputSql}
       AND (
         COALESCE(json_extract(${events.data}, '$.target.kind'), 'new-turn')
           IN ('thread-start', 'new-turn')
@@ -3260,47 +3044,23 @@ export function getFirstParentedTimelineBoundarySequence(
   return result?.sequence ?? null;
 }
 
-export function listTimelineSegmentAnchorsDescending(
+export function listTimelineWindowHintsDescending(
   db: DbConnection,
-  args: ListTimelineSegmentAnchorsDescendingArgs,
-): StandardTimelineSegmentAnchorRow[] {
-  const range: TimelineAnchorRange = {
-    beforeSequence: args.beforeSequence,
-    sequenceStart: args.sequenceStart,
-    threadId: args.threadId,
-  };
-  const fetchLimit = args.limit + 8;
-  return resolveTimelineSegmentAnchorSequences(
-    db,
-    range,
-    listTimelineAnchorRequestRows(db, range, fetchLimit),
-    listTimelineAnchorAcceptedRows(db, range, fetchLimit),
-    listTimelineAnchorClearSequences(db, range, fetchLimit),
-  )
-    .reverse()
-    .slice(0, args.limit)
-    .map((sequence) => ({ sequence }));
+  args: ListTimelineWindowHintsDescendingArgs,
+): TimelineWindowHint[] {
+  return db.all<TimelineWindowHint>(sql`
+    SELECT sequence
+    FROM events INDEXED BY events_thread_type_sequence_idx
+    WHERE thread_id = ${args.threadId}
+      AND type = 'client/turn/requested'
+      AND sequence >= ${args.sequenceStart}
+      AND sequence < ${args.beforeSequence}
+    ORDER BY sequence DESC
+    LIMIT ${args.limit}
+  `);
 }
 
-export function listTimelineSegmentAnchorSequences(
-  db: DbConnection,
-  args: ListTimelineSegmentAnchorSequencesArgs,
-): number[] {
-  const range: TimelineAnchorRange = {
-    beforeSequence: args.beforeSequence,
-    sequenceStart: args.sequenceStart,
-    threadId: args.threadId,
-  };
-  return resolveTimelineSegmentAnchorSequences(
-    db,
-    range,
-    listTimelineAnchorRequestRows(db, range),
-    listTimelineAnchorAcceptedRows(db, range),
-    listTimelineAnchorClearSequences(db, range),
-  );
-}
-
-export interface TimelineSegmentAnchorLookupArgs {
+export interface TimelineCursorSequenceLookupArgs {
   threadId: string;
   sequence: number;
 }

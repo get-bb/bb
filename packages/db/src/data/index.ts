@@ -293,8 +293,7 @@ export {
   listContextWindowUsageRows,
   listEvents,
   listStoredConversationOutlineEventRows,
-  listTimelineSegmentAnchorsDescending,
-  listTimelineSegmentAnchorSequences,
+  listTimelineWindowHintsDescending,
   getFirstParentedTimelineBoundarySequence,
   hasTimelineGroupingContextRowsInRange,
   listStoredEventRowsInSequenceRange,
@@ -367,7 +366,7 @@ export type {
   ScopedItemRef,
   StoredEventRow,
   StoredThreadEventDataRow,
-  StandardTimelineSegmentAnchorRow,
+  TimelineWindowHint,
   ThreadClientTurnRequestKey,
   StoredTurnRequestEventRow,
 } from "./events.js";

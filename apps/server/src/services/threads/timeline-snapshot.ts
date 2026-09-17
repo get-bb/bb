@@ -6,7 +6,7 @@ import { ApiError } from "../../errors.js";
 import type { ThreadTimelinePageRequest } from "./timeline-pagination.js";
 
 const snapshotSchema = z.object({
-  version: z.literal(2),
+  version: z.literal(3),
   threadId: z.string(),
   maxSeq: z.number().int().nonnegative(),
   status: threadStatusSchema,
@@ -24,7 +24,7 @@ const cursorSchema = z.object({
   content: timelineContentCursorSchema.optional(),
 });
 export type TimelineSnapshot = z.infer<typeof snapshotSchema>;
-const PREFIX = "timeline-v2:";
+const PREFIX = "timeline-v3:";
 
 function decodeTimelineCursor(anchorId: string): z.infer<typeof cursorSchema> {
   return cursorSchema.parse(
@@ -44,7 +44,7 @@ export function resolveTimelineSnapshot(
   if (page.kind === "latest") {
     const maxSeq = getLatestThreadSequence(db, { threadId: thread.id });
     return {
-      version: 2,
+      version: 3,
       threadId: thread.id,
       maxSeq: Math.min(requestedMaxSeq ?? maxSeq, maxSeq),
       status: thread.status,

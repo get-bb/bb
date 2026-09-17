@@ -787,7 +787,7 @@ describe("in-turn timeline windows", () => {
     );
     expect(budgeted.response.timelinePage.hasOlderRows).toBe(true);
     expect(budgeted.response.timelinePage.olderCursor?.anchorId).toMatch(
-      /^timeline-v2:/,
+      /^timeline-v3:/,
     );
   });
 
@@ -867,6 +867,7 @@ describe("in-turn timeline windows", () => {
     for (;;) {
       const page = buildNestedPage(db, thread, LARGE_BUDGET, cursor);
       pages += 1;
+      expect(page.response.rows.length).toBeGreaterThan(0);
       collectCommandCallIds(page.response.rows, commandCallIds);
       for (const row of page.response.rows) {
         if (row.kind !== "turn") {
@@ -899,11 +900,11 @@ describe("in-turn timeline windows", () => {
       }
       cursor = page.response.timelinePage.olderCursor;
       expect(cursor).not.toBeNull();
-      expect(cursor?.anchorId).toMatch(/^timeline-v2:/);
+      expect(cursor?.anchorId).toMatch(/^timeline-v3:/);
       expect(pages).toBeLessThan(10);
     }
 
-    expect(pages).toBeGreaterThan(2);
+    expect(pages).toBeGreaterThan(1);
     expect(commandCallIds.size).toBe(BYTE_WINDOW_ITEM_COUNT);
     expect(expandedCommandCallIds.size).toBe(BYTE_WINDOW_ITEM_COUNT);
     expect(turnRowIds.size).toBe(1);
@@ -1014,6 +1015,7 @@ describe("in-turn timeline windows", () => {
     for (;;) {
       const page = buildNestedPage(db, thread, LARGE_BUDGET, cursor);
       pages += 1;
+      expect(page.response.rows.length).toBeGreaterThan(0);
       collectCommandCallIds(page.response.rows, commandCallIds);
       for (const row of page.response.rows) {
         if (row.kind !== "turn") {
@@ -1048,7 +1050,7 @@ describe("in-turn timeline windows", () => {
       expect(pages).toBeLessThan(10);
     }
 
-    expect(pages).toBeGreaterThan(2);
+    expect(pages).toBeGreaterThan(1);
     expect(commandCallIds.size).toBe(BYTE_WINDOW_ITEM_COUNT);
     expect(expandedCommandCallIds.size).toBe(BYTE_WINDOW_ITEM_COUNT);
   }, 15_000);
@@ -1327,7 +1329,7 @@ describe("in-turn timeline windows", () => {
       expect(pages).toBeLessThan(10);
     }
 
-    expect(pages).toBeGreaterThan(2);
+    expect(pages).toBeGreaterThan(1);
     expect(straddlingDetailRows).toHaveLength(1);
     expect(straddlingDetailRows[0]).toEqual(
       expect.objectContaining({
@@ -1373,7 +1375,7 @@ describe("in-turn timeline windows", () => {
   });
 });
 
-describe("timeline segment anchors", () => {
+describe("timeline window hints", () => {
   it("includes provisioning before the first visible user message", () => {
     const { db, thread } = setup();
     const fillerEvent = (sequence: number): EventInput => ({
@@ -1475,7 +1477,8 @@ describe("timeline segment anchors", () => {
     );
 
     const budgeted = buildPage(db, thread, 1_500, null).response;
-    expect(budgeted.timelinePage.olderCursor).toMatchObject({ anchorSeq: 3 });
+    expect(budgeted.timelinePage.olderCursor).toBeNull();
+    expect(budgeted.rows).toEqual(timeline.rows);
     expect(
       budgeted.rows.some(
         (row) =>
@@ -1483,7 +1486,7 @@ describe("timeline segment anchors", () => {
           row.systemKind === "operation" &&
           row.title === "Provisioned thread",
       ),
-    ).toBe(false);
+    ).toBe(true);
 
     insertEvents(db, noopNotifier, [fillerEvent(1_502), fillerEvent(1_503)]);
     const exactFloor = buildPage(db, thread, 1_500, null).response.timelinePage;
@@ -1613,9 +1616,7 @@ describe("timeline segment anchors", () => {
     try {
       seedTurns(db, thread, { completeLastTurn: true, itemsPerTurn: [1, 0] });
       db.$client.exec("UPDATE events SET sequence = sequence + 100000");
-      db.$client.exec(
-        "UPDATE events SET sequence = (sequence - 100000) * 10",
-      );
+      db.$client.exec("UPDATE events SET sequence = (sequence - 100000) * 10");
       const base = {
         threadId: thread.id,
         providerThreadId,
@@ -1648,7 +1649,11 @@ describe("timeline segment anchors", () => {
           itemId: "old-answer",
           itemKind: "agentMessage",
           data: JSON.stringify({
-            item: { type: "agentMessage", id: "old-answer", text: "First answer" },
+            item: {
+              type: "agentMessage",
+              id: "old-answer",
+              text: "First answer",
+            },
           }),
         },
         {
@@ -1917,7 +1922,7 @@ describe("background tasks across an in-turn window", () => {
 
     const budgeted = buildPage(db, thread, 100, null);
     expect(budgeted.response.timelinePage.olderCursor?.anchorId).toMatch(
-      /^timeline-v2:/,
+      /^timeline-v3:/,
     );
     expect(budgeted.profile.eventRowCount).toBeGreaterThan(600);
     expect(

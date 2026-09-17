@@ -75,7 +75,6 @@ describe("paginateTimelineRows", () => {
       ownedSequenceStart: 0,
       ownedSequenceEnd: 4,
       page: { kind: "latest", segmentLimit: 2 },
-      segmentAnchorSequences: [1, 2, 3],
       rows,
     });
 
@@ -120,7 +119,6 @@ describe("paginateTimelineRows", () => {
       ownedSequenceStart: 13,
       ownedSequenceEnd: 21,
       page: { kind: "latest", segmentLimit: 20 },
-      segmentAnchorSequences: [13, 20],
       rows,
     });
 
@@ -157,7 +155,6 @@ describe("paginateTimelineRows", () => {
       ownedSequenceStart: 20,
       ownedSequenceEnd: 32,
       page: { kind: "latest", segmentLimit: 20 },
-      segmentAnchorSequences: [20],
       rows: [olderUser, lateOlderRow, latestUser],
     });
 
@@ -166,14 +163,14 @@ describe("paginateTimelineRows", () => {
   });
 
   it("reports rows a content cut omitted from the oldest returned group", () => {
-    const steer = (
+    const output = (
       id: string,
       seq: number,
       sourceSeqEnd: number,
     ): TimelineRow => ({
-      ...userRow({ id, seq, text: id }),
+      ...assistantRow(seq),
+      id,
       sourceSeqEnd,
-      turnRequest: { isGrouped: false, kind: "steer", status: "accepted" },
     });
 
     const page = paginateTimelineRows({
@@ -183,12 +180,11 @@ describe("paginateTimelineRows", () => {
       ownedSequenceStart: 1,
       ownedSequenceEnd: 31,
       page: { kind: "latest", segmentLimit: 20 },
-      segmentAnchorSequences: [1],
       rows: [
         userRow({ id: "thread-1:user-seed:1", seq: 1, text: "prompt" }),
-        steer("thread-1:running-item", 2, 30),
-        steer("thread-1:item-3", 3, 3),
-        steer("thread-1:item-4", 4, 4),
+        output("thread-1:running-item", 2, 30),
+        output("thread-1:item-3", 3, 3),
+        output("thread-1:item-4", 4, 4),
       ],
     });
 
@@ -196,7 +192,11 @@ describe("paginateTimelineRows", () => {
       "thread-1:item-3",
       "thread-1:item-4",
     ]);
-    expect(page.contentPage).toMatchObject({ anchorSeq: 1, start: 2, total: 4 });
+    expect(page.contentPage).toMatchObject({
+      anchorSeq: 1,
+      start: 2,
+      total: 4,
+    });
     expect(page.olderRowsSourceSeqEnd).toBe(30);
     expect(page.olderCursor).toEqual({
       anchorId: "timeline-window:1",
@@ -213,7 +213,6 @@ describe("paginateTimelineRows", () => {
       ownedSequenceStart: 10,
       ownedSequenceEnd: 40,
       page: { kind: "latest", segmentLimit: 20 },
-      segmentAnchorSequences: [10, 20, 30],
       rows: [
         assistantRow(12),
         assistantRow(14),
@@ -223,10 +222,10 @@ describe("paginateTimelineRows", () => {
     });
 
     expect(page.rows.map((row) => row.id)).toEqual(["thread-1:assistant:35"]);
-    expect(page.contentCursor).toEqual({ beforeLeaf: 1, beforeSequence: 40 });
+    expect(page.contentCursor).toEqual({ beforeLeaf: 3, beforeSequence: 40 });
     expect(page.olderCursor).toEqual({
-      anchorId: "timeline-window:30",
-      anchorSeq: 30,
+      anchorId: "timeline-window:10",
+      anchorSeq: 10,
     });
     expect(page.olderRowsSourceSeqEnd).toBe(33);
   });
@@ -239,7 +238,6 @@ describe("paginateTimelineRows", () => {
       ownedSequenceStart: 1,
       ownedSequenceEnd: 21,
       page: { kind: "latest", segmentLimit: 20 },
-      segmentAnchorSequences: [1, 20],
       rows: [
         {
           ...userRow({ id: "thread-1:user-seed:1", seq: 1, text: "older" }),
@@ -282,7 +280,6 @@ describe("paginateTimelineRows", () => {
       ownedSequenceStart: 0,
       ownedSequenceEnd: 4,
       page: { kind: "latest", segmentLimit: 1 },
-      segmentAnchorSequences: [3],
       rows: [
         provisioning,
         userRow({ id: "thread-1:user-seed:3", seq: 3, text: "first" }),
@@ -302,7 +299,6 @@ describe("paginateTimelineRows", () => {
       ownedSequenceStart: 0,
       ownedSequenceEnd: 3,
       page: { kind: "older", beforeCursor: page.olderCursor!, segmentLimit: 1 },
-      segmentAnchorSequences: [],
       rows: [
         provisioning,
         userRow({ id: "thread-1:user-seed:3", seq: 3, text: "first" }),
@@ -323,7 +319,6 @@ describe("paginateTimelineRows", () => {
       ownedSequenceStart: 15,
       ownedSequenceEnd: 30,
       page: { kind: "latest", segmentLimit: 8 },
-      segmentAnchorSequences: [15],
       rows: [
         assistantRow(10),
         steerRow({ id: "thread-1:user-seed:20", seq: 20, text: "steer" }),
@@ -352,7 +347,6 @@ describe("paginateTimelineRows", () => {
       ownedSequenceStart: 12545,
       ownedSequenceEnd: 14416,
       page: { kind: "latest", segmentLimit: 20 },
-      segmentAnchorSequences: [12545, 13091],
       rows: [
         userRow({ id: "thread-1:user-seed:5198", seq: 5198, text: "context" }),
         steerRow({
@@ -361,7 +355,11 @@ describe("paginateTimelineRows", () => {
           text: "accepted steer",
         }),
         notice,
-        userRow({ id: "thread-1:user-seed:13091", seq: 13091, text: "new turn" }),
+        userRow({
+          id: "thread-1:user-seed:13091",
+          seq: 13091,
+          text: "new turn",
+        }),
       ],
     });
 
@@ -385,16 +383,15 @@ describe("paginateTimelineRows", () => {
       ownedSequenceStart: 1,
       ownedSequenceEnd: 30,
       page: { kind: "latest", segmentLimit: 1 },
-      segmentAnchorSequences: [20],
       rows: [
         userRow({ id: "thread-1:user-seed:1", seq: 1, text: "first" }),
-        assistantRow(20),
+        userRow({ id: "thread-1:user-seed:20", seq: 20, text: "second" }),
         assistantRow(21),
       ],
     });
 
     expect(page.rows.map((row) => row.id)).toEqual([
-      "thread-1:assistant:20",
+      "thread-1:user-seed:20",
       "thread-1:assistant:21",
     ]);
     expect(page.hasOlderRows).toBe(true);
@@ -412,7 +409,6 @@ describe("paginateTimelineRows", () => {
       ownedSequenceStart: 100,
       ownedSequenceEnd: 200,
       page: { kind: "latest", segmentLimit: 8 },
-      segmentAnchorSequences: [100],
       rows: [userRow({ id: "thread-1:user-seed:5", seq: 5, text: "old" })],
     });
 
@@ -431,7 +427,6 @@ describe("paginateTimelineRows", () => {
       ownedSequenceStart: 0,
       ownedSequenceEnd: 100,
       page: { kind: "older", beforeCursor: page.olderCursor!, segmentLimit: 8 },
-      segmentAnchorSequences: [],
       rows: [],
     });
     expect(last.hasOlderRows).toBe(false);

@@ -69,8 +69,7 @@ import {
   listStoredTurnInputAcceptedRowsByClientRequestIds,
   listStoredTurnRejectedRowsByClientRequestIds,
   listStoredTurnStartedRowsByTurnIdsUpToSequence,
-  listTimelineSegmentAnchorsDescending,
-  listTimelineSegmentAnchorSequences,
+  listTimelineWindowHintsDescending,
   scopedItemRefKey,
   upsertThreadConversationOutlineRecord,
 } from "@bb/db";
@@ -86,7 +85,7 @@ import { runEventLoopWorkSync } from "../system/event-loop-work.js";
 import { parseStoredEvent } from "./thread-data.js";
 import { decodeStoredEventRowCached } from "./stored-event-decode-cache.js";
 import {
-  countAffordableAnchors,
+  selectTimelineWindowStart,
   forgetLatestTimelineSelections,
   lookupLatestTimelineSelection,
   rememberLatestTimelineSelection,
@@ -167,6 +166,7 @@ interface BuildTimelineTurnSummaryDetailsOptions extends TimelineTurnSummarySele
 }
 
 export const THREAD_TIMELINE_DEFAULT_SEGMENT_LIMIT = 20;
+const MAX_EMPTY_TIMELINE_WINDOWS = 8;
 
 export const THREAD_TIMELINE_SEGMENT_LIMIT_MAX = 100;
 
@@ -953,7 +953,7 @@ function selectStandardTimelineEventRows(
   const beforeSequence =
     contentCursor?.beforeSequence ??
     (page.kind === "older" ? page.beforeCursor.anchorSeq : maxSeq + 1);
-  const anchors = listTimelineSegmentAnchorsDescending(db, {
+  const hints = listTimelineWindowHintsDescending(db, {
     threadId: thread.id,
     sequenceStart: epochSequenceStart,
     beforeSequence,
@@ -984,26 +984,25 @@ function selectStandardTimelineEventRows(
           excludeDiagnosticEvents,
         })
       : knownBudgetFloor.sequence;
-  const count = countAffordableAnchors(anchors, budgetFloor, page.segmentLimit);
-  const oldestAnchor = anchors[count - 1];
-  const hasPrefix =
-    budgetFloor !== undefined &&
-    oldestAnchor !== undefined &&
+  const sequenceStart =
+    contentCursor !== undefined && page.kind === "older"
+      ? page.beforeCursor.anchorSeq
+      : selectTimelineWindowStart(
+          hints,
+          budgetFloor,
+          page.segmentLimit,
+          epochSequenceStart,
+        );
+  const hasOlder =
+    sequenceStart > epochSequenceStart &&
     findTimelineWindowBudgetFloorSequence(db, {
       threadId: thread.id,
       sequenceStart: epochSequenceStart,
-      beforeSequence: oldestAnchor.sequence,
+      beforeSequence: sequenceStart,
       eventBudget: 0,
       excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
       excludeDiagnosticEvents,
     }) !== undefined;
-  const hasOlder = anchors.length > count || hasPrefix;
-  const sequenceStart =
-    contentCursor !== undefined && page.kind === "older"
-      ? page.beforeCursor.anchorSeq
-      : hasOlder
-        ? anchors[count - 1]!.sequence
-        : epochSequenceStart;
   const windowArgs = {
     threadId: thread.id,
     sequenceStart,
@@ -1169,9 +1168,7 @@ function selectStandardTimelineEventRows(
     [...contextRows, ...rows].map((row) => row.sequence),
   );
   return {
-    anchors,
-    budgetFloorDefined: budgetFloor !== undefined,
-    count,
+    hints,
     fetchedTurnIds: fetchedTurns,
     selection: {
       contextOnlyInterruptionSequences: new Set(
@@ -1182,18 +1179,7 @@ function selectStandardTimelineEventRows(
       orderingBoundarySequence: groupingContext.orderingBoundarySequence,
       ownedSequenceStart: sequenceStart,
       ownedSequenceEnd: beforeSequence,
-      segmentAnchorSequences: listTimelineSegmentAnchorSequences(db, {
-        threadId: thread.id,
-        sequenceStart,
-        beforeSequence,
-      }),
-      knownHasOlderSegments: (
-        contentCursor === undefined
-          ? hasOlder
-          : sequenceStart > epochSequenceStart
-      )
-        ? true
-        : null,
+      knownHasOlderSegments: hasOlder ? true : null,
       paginationPage:
         contentCursor === undefined ? page : { ...page, segmentLimit: 1 },
       responsePageKind: page.kind,
@@ -1208,9 +1194,7 @@ function selectStandardTimelineEventRows(
         ]),
       }),
       strategy:
-        sequenceStart === epochSequenceStart && page.kind === "latest"
-          ? "full"
-          : "standard-window",
+        !hasOlder && page.kind === "latest" ? "full" : "standard-window",
     },
   };
 }
@@ -1475,7 +1459,6 @@ function buildThreadTimelineInternal(
         knownHasOlderSegments: eventSelection.knownHasOlderSegments,
         page: eventSelection.paginationPage,
         rows: projectedTimelineRows,
-        segmentAnchorSequences: eventSelection.segmentAnchorSequences,
       }),
   );
   profile.responseRowCount = paginatedTimeline.rows.length;
@@ -1529,7 +1512,48 @@ export function buildThreadTimelineWithProfile(
   options: BuildThreadTimelineOptions,
 ): { profile: ThreadTimelineBuildProfile; response: ThreadTimelineResponse } {
   return runEventLoopWorkSync(`timeline-build ${thread.id}`, () =>
-    db.transaction(() => buildThreadTimelineInternal(db, thread, options)),
+    db.transaction(() => {
+      const result = buildThreadTimelineInternal(db, thread, options);
+      if (options.summaryOnly) return result;
+      for (
+        let skipped = 0;
+        skipped < MAX_EMPTY_TIMELINE_WINDOWS;
+        skipped += 1
+      ) {
+        const cursor = result.response.timelinePage.olderCursor;
+        if (result.response.rows.length > 0 || cursor === null) break;
+        const older = buildThreadTimelineInternal(db, thread, {
+          ...options,
+          page: {
+            kind: "older",
+            beforeCursor: cursor,
+            segmentLimit: options.page.segmentLimit,
+          },
+        });
+        result.response.rows = older.response.rows;
+        result.response.timelinePage = {
+          ...older.response.timelinePage,
+          kind: options.page.kind,
+        };
+        result.profile.eventRowCount += older.profile.eventRowCount;
+        result.profile.eventDataBytes += older.profile.eventDataBytes;
+        result.profile.decodedEventCount += older.profile.decodedEventCount;
+        result.profile.compactedEventCount += older.profile.compactedEventCount;
+        result.profile.contextWindowEventRowCount +=
+          older.profile.contextWindowEventRowCount;
+        result.profile.contextWindowEventDataBytes +=
+          older.profile.contextWindowEventDataBytes;
+        result.profile.projectedRowCount += older.profile.projectedRowCount;
+        result.profile.responseRowCount = older.profile.responseRowCount;
+        result.profile.returnedSegmentCount =
+          older.profile.returnedSegmentCount;
+        result.profile.stageTimings.push(...older.profile.stageTimings);
+        result.profile.totalDurationMs = roundDurationMs(
+          result.profile.totalDurationMs + older.profile.totalDurationMs,
+        );
+      }
+      return result;
+    }),
   );
 }
 

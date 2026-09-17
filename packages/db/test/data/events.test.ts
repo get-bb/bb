@@ -40,8 +40,7 @@ import {
   listEvents,
   listLatestThreadStateEventRowsByThreadIds,
   listStoredConversationOutlineEventRows,
-  listTimelineSegmentAnchorsDescending,
-  listTimelineSegmentAnchorSequences,
+  listTimelineWindowHintsDescending,
   listOpenTurnInputAcceptedRowsByThreadIds,
   listStoredClientTurnRequestIdsInRange,
   listStoredClientTurnRequestRowsByKeys,
@@ -1507,7 +1506,7 @@ describe("events", () => {
     ).toEqual([2, 5]);
   });
 
-  it("lists bounded timeline segment anchors for every nonempty request", () => {
+  it("lists bounded request-position hints without interpreting input", () => {
     const { db, thread } = setup();
 
     insertEvents(db, noopNotifier, [
@@ -1634,7 +1633,8 @@ describe("events", () => {
     ]);
 
     expect(
-      listTimelineSegmentAnchorsDescending(db, {
+      listTimelineWindowHintsDescending(db, {
+        beforeSequence: 100,
         limit: 10,
         sequenceStart: 0,
         threadId: thread.id,
@@ -1645,22 +1645,23 @@ describe("events", () => {
       { sequence: 9 },
       { sequence: 8 },
       { sequence: 7 },
+      { sequence: 6 },
       { sequence: 5 },
       { sequence: 4 },
       { sequence: 3 },
       { sequence: 2 },
-      { sequence: 1 },
     ]);
 
     expect(
-      listTimelineSegmentAnchorsDescending(db, {
+      listTimelineWindowHintsDescending(db, {
+        beforeSequence: 100,
         limit: 3,
         sequenceStart: 0,
         threadId: thread.id,
       }).map((row) => row.sequence),
     ).toEqual([11, 10, 9]);
     expect(
-      listTimelineSegmentAnchorsDescending(db, {
+      listTimelineWindowHintsDescending(db, {
         beforeSequence: 8,
         limit: 3,
         sequenceStart: 0,
@@ -1668,12 +1669,53 @@ describe("events", () => {
       }),
     ).toEqual([
       { sequence: 7 },
+      { sequence: 6 },
       { sequence: 5 },
-      { sequence: 4 },
     ]);
   });
 
-  it("anchors an accepted steer where its input entered the turn", () => {
+  it("keeps window-hint lookup bounded as request history grows", () => {
+    const { db, thread } = setup();
+    try {
+      const statement = db.$client.prepare(
+        "INSERT INTO events (id, thread_id, scope_kind, sequence, type, data, created_at) VALUES (?, ?, 'thread', ?, 'client/turn/requested', ?, 0)",
+      );
+      const payload = JSON.stringify({ input: [{ type: "text", text: "x".repeat(2_000) }] });
+      const seed = (start: number, end: number): void => {
+        db.$client.transaction(() => {
+          for (let sequence = start; sequence <= end; sequence += 1) {
+            statement.run(`request-${sequence}`, thread.id, sequence, sequence % 20 === 0 ? "{}" : payload);
+          }
+        })();
+      };
+      const sample = (beforeSequence: number): number => {
+        const times: number[] = [];
+        for (let sample = 0; sample < 10; sample += 1) {
+          const start = performance.now();
+          const hints = listTimelineWindowHintsDescending(db, {
+            threadId: thread.id,
+            sequenceStart: 0,
+            beforeSequence,
+            limit: 21,
+          });
+          times.push(performance.now() - start);
+          expect(hints).toHaveLength(21);
+          expect(hints[0]?.sequence).toBe(beforeSequence - 1);
+        }
+        return Math.min(...times);
+      };
+      seed(1, 1_000);
+      const small = sample(1_001);
+      seed(1_001, 30_000);
+      const large = sample(30_001);
+      expect(large).toBeLessThan(Math.max(2, small * 5));
+      expect(sample(501)).toBeLessThan(Math.max(2, small * 5));
+    } finally {
+      db.$client.close();
+    }
+  });
+
+  it("uses request positions as hints without resolving acceptance", () => {
     const { db, thread } = setup();
     const request = (
       sequence: number,
@@ -1728,33 +1770,37 @@ describe("events", () => {
     ]);
 
     expect(
-      listTimelineSegmentAnchorSequences(db, {
+      listTimelineWindowHintsDescending(db, {
+        limit: 100,
         beforeSequence: 100,
         sequenceStart: 0,
         threadId: thread.id,
       }),
-    ).toEqual([1, 5, 6, 9]);
+    ).toEqual([{ sequence: 9 }, { sequence: 6 }, { sequence: 2 }, { sequence: 1 }]);
     expect(
-      listTimelineSegmentAnchorsDescending(db, {
+      listTimelineWindowHintsDescending(db, {
+        beforeSequence: 100,
         limit: 10,
         sequenceStart: 0,
         threadId: thread.id,
       }).map((row) => row.sequence),
-    ).toEqual([9, 6, 5, 1]);
+    ).toEqual([9, 6, 2, 1]);
     expect(
-      listTimelineSegmentAnchorSequences(db, {
+      listTimelineWindowHintsDescending(db, {
+        limit: 100,
         beforeSequence: 5,
         sequenceStart: 0,
         threadId: thread.id,
       }),
-    ).toEqual([1]);
+    ).toEqual([{ sequence: 2 }, { sequence: 1 }]);
     expect(
-      listTimelineSegmentAnchorSequences(db, {
+      listTimelineWindowHintsDescending(db, {
+        limit: 100,
         beforeSequence: 100,
         sequenceStart: 5,
         threadId: thread.id,
       }),
-    ).toEqual([5, 6, 9]);
+    ).toEqual([{ sequence: 9 }, { sequence: 6 }]);
   });
 
   it.each<{

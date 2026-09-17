@@ -51,12 +51,9 @@ export interface PaginateTimelineRowsArgs {
   knownHasOlderSegments: boolean | null;
   page: ThreadTimelinePageRequest;
   rows: readonly TimelineRow[];
-  segmentAnchorSequences: readonly number[];
 }
 
-function timelineWindowCursor(
-  sequenceStart: number,
-): TimelinePaginationCursor {
+function timelineWindowCursor(sequenceStart: number): TimelinePaginationCursor {
   return {
     anchorSeq: sequenceStart,
     anchorId: `timeline-window:${sequenceStart}`,
@@ -69,14 +66,21 @@ function buildTimelineLogicalSegments(
   const { ownedSequenceStart, ownedSequenceEnd } = args;
   const bounds = [
     ownedSequenceStart,
-    ...args.segmentAnchorSequences.filter(
-      (sequence) =>
-        sequence > ownedSequenceStart && sequence < ownedSequenceEnd,
+    ...new Set(
+      args.rows.flatMap((row) =>
+        row.kind === "conversation" &&
+        row.role === "user" &&
+        row.sourceSeqStart > ownedSequenceStart &&
+        row.sourceSeqStart < ownedSequenceEnd
+          ? [row.sourceSeqStart]
+          : [],
+      ),
     ),
-  ];
-  const segments = bounds.map(
-    (sequenceStart): TimelineLogicalSegment => ({ rows: [], sequenceStart }),
-  );
+  ].sort((left, right) => left - right);
+  const segments = bounds.map((sequenceStart): TimelineLogicalSegment => ({
+    rows: [],
+    sequenceStart,
+  }));
   for (const row of args.rows) {
     if (
       row.sourceSeqStart < ownedSequenceStart ||
@@ -84,11 +88,19 @@ function buildTimelineLogicalSegments(
     ) {
       continue;
     }
-    let index = bounds.length - 1;
-    while (index > 0 && bounds[index]! > row.sourceSeqStart) index -= 1;
-    segments[index]!.rows.push(row);
+    let start = 0;
+    let end = bounds.length;
+    while (start + 1 < end) {
+      const middle = Math.floor((start + end) / 2);
+      if (bounds[middle]! <= row.sourceSeqStart) start = middle;
+      else end = middle;
+    }
+    segments[start]!.rows.push(row);
   }
-  return segments.filter((segment) => segment.rows.length > 0);
+  const populated = segments.filter((segment) => segment.rows.length > 0);
+  if (populated[0] !== undefined)
+    populated[0].sequenceStart = ownedSequenceStart;
+  return populated;
 }
 
 export function paginateTimelineRows(

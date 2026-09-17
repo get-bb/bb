@@ -5,29 +5,37 @@ groups. Copy both `timelinePage.olderCursor.anchorId` and `anchorSeq` to
 `beforeAnchorId` and `beforeAnchorSeq`. Cursors are opaque; do not construct
 row IDs or sequence cuts. Keep display options unchanged throughout the walk.
 
-Pagination boundaries are the sequences where user input enters the
-conversation: `client/turn/requested` events with text or an attachment, and
-completed context clears. A steer accepted into the turn it targeted is
-bounded at its `turn/input/accepted` sequence, which is where the timeline
-displays it and after the work that finished between the request and its
-acceptance; every other request, including pending, rejected, and steers the
-server routed to a different turn, is bounded at the request sequence. Empty
-requests are excluded because they produce no message row. The latest clear is
-the history floor. These boundaries control history retrieval, not visual
-message grouping.
+Conversation segments are a page-sizing preference, not a requirement on the
+window edges. The selector reads a bounded list of request sequences from the
+thread/type/sequence index. These are hints: it does not inspect request input,
+resolve acceptance, or require the hinted event to produce a visible row. It
+prefers hints within the event budget, or the nearest older hint for an
+oversized conversation. Without a request hint it can cut at an ordinary event
+sequence. The latest completed context clear is the history floor.
 
-A page owns the event window `[start, end)` the boundary query selected. It
-returns every projected row whose `sourceSeqStart` falls inside that window, in
-display order, and nothing projected from context loaded outside it. Rows are
-grouped for the segment limit by the boundary sequences inside the window, so
-grouping never depends on recognizing a rendered row. `olderCursor.anchorSeq`
-is the window start itself, which is always a boundary sequence or the history
-floor; the next older page owns `[previous start, start)`, so a walk visits
-contiguous windows with strictly decreasing cursors and cannot skip or repeat
-events. A content cut continues inside the same window bounds, which
-reconstructs the same group and keeps its leaf offsets meaningful. Older
-history is advertised only with a cursor, and only when the window start is
-above the history floor.
+A page owns an event window `[start, end)`. It returns projected rows whose
+`sourceSeqStart` falls inside that window, in display order. Context loaded
+outside the window helps render those rows but does not change ownership.
+Visible user rows, including accepted steers, define conversation segments
+inside the window; the leading segment can be partial. Hidden and empty
+requests do not count as visible segments. The response takes up to
+`segmentLimit` segments, subject to the leaf and byte budgets. When it omits
+older segments, their raw sequence range belongs to the next page.
+
+The cursor records the exact window start, even when no visible row starts
+there. Older pages visit contiguous windows with decreasing cursors, so a
+request and its acceptance can fall on different pages without losing their
+rendered row. Empty windows still advance the cursor. Each build skips up to
+eight empty windows looking for visible content; if more remain, it returns an
+empty page with a usable older cursor. Latest-page head state is retained while
+skipping. Context loading and complete-group reconstruction can exceed the
+initial event budget.
+
+Content cuts continue inside the same window bounds, reconstructing the same
+group so leaf offsets remain meaningful. The current cursor format is v3;
+previous versions return the existing 400 reload response because their group
+boundaries and leaf offsets can differ. Older history is only advertised with
+a cursor, including when an edge contains no visible rows.
 
 Display order is turn-by-turn until a user message lands inside another turn:
 after that message everything is ordered by source sequence. A turn spans from
@@ -57,8 +65,8 @@ cursor from one display returns HTTP 400 under the other, and
 client whose pages were loaded under another display replaces them from the
 latest page instead of mixing the two.
 Discard older responses whose request cursor is no longer the loaded
-`olderCursor`. A group's cursor is its message row even when rows recorded after
-the request display before it. A legacy cursor or incompatible
+`olderCursor`. Cursors identify sequence windows, not message rows. A legacy
+cursor or incompatible
 grouping version returns HTTP 400 `invalid_request` with a
 message that the cursor is no longer available. Reload latest to restart.
 The new response fields are optional in the wire schemas so updated clients
@@ -80,6 +88,13 @@ can contain only part of the group. Prepend older pages with
 delegation children recursively by ID while preserving order. Do not flatten
 responses by concatenation or replace an entire summary solely because its ID
 was already seen. `bb thread log --all --format verbose` uses this merge.
+
+Client merges retain summary objects when merging children leaves their row
+references unchanged. Rows already shared with the loaded state, including
+unchanged rows from a delta, bypass serialization for identity comparison.
+Distinct objects still require content comparison: a loaded summary can contain
+older children absent from the latest page. Child merging still deduplicates
+rows even when both pages contain the same summary object.
 
 The 4 MiB response target and event setting determine content-page boundaries
 after grouping. At least one indivisible row is returned, even if it exceeds
