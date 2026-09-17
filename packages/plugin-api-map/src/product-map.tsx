@@ -9,7 +9,12 @@ import {
   type ReactNode,
 } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { ArrowLeft01Icon, ArrowRight01Icon } from "@hugeicons/core-free-icons";
+import {
+  ArrowLeft01Icon,
+  ArrowRight01Icon,
+  ComputerIcon,
+  SmartPhone01Icon,
+} from "@hugeicons/core-free-icons";
 
 import { cn } from "./cn";
 import { SurfaceCard, useSurfaceCard } from "./surface-card";
@@ -665,76 +670,93 @@ export function ProductMap({
               </p>
             </div>
             <div
-              data-guide-display-mode
-              role="group"
-              aria-label="Preview layout"
-              className="mb-3 flex justify-center gap-1"
+              data-guide-navigation-toolbar
+              className="flex w-full items-center gap-2"
             >
-              {(["mobile", "desktop"] as const).map((mode) => (
-                <button
-                  key={mode}
-                  type="button"
-                  aria-pressed={(mobile ? "mobile" : "desktop") === mode}
-                  onClick={() => setDisplayMode(mode)}
+              <div className="flex min-w-0 flex-1 items-center justify-center gap-1">
+                <PanButton
+                  direction="previous"
+                  disabled={!carets.previous}
+                  onClick={() => show(index - 1)}
+                />
+                <div
+                  ref={pageListRef}
+                  data-guide-page-list-scroll
                   className={cn(
-                    "min-h-10 cursor-pointer rounded-md px-3 text-sm",
-                    FOCUS_RING_CLASS,
-                    (mobile ? "mobile" : "desktop") === mode
-                      ? "bg-surface-selected text-foreground"
-                      : "text-muted-foreground hover:bg-state-hover",
+                    "min-w-0 overflow-x-auto",
+                    SCROLLBAR_HIDDEN_CLASS,
+                  )}
+                  style={scrollEdgeFadeStyle(
+                    pageListEdges.canScrollLeft,
+                    pageListEdges.canScrollRight,
                   )}
                 >
-                  {mode === "mobile" ? "Mobile" : "Desktop"}
-                </button>
-              ))}
-            </div>
-            <div className="mx-auto flex w-fit max-w-full items-center gap-1">
-              <PanButton
-                direction="previous"
-                disabled={!carets.previous}
-                onClick={() => show(index - 1)}
-              />
-              <div
-                ref={pageListRef}
-                data-guide-page-list-scroll
-                className={cn(
-                  "min-w-0 overflow-x-auto",
-                  SCROLLBAR_HIDDEN_CLASS,
-                )}
-                style={scrollEdgeFadeStyle(
-                  pageListEdges.canScrollLeft,
-                  pageListEdges.canScrollRight,
-                )}
-              >
-                <ul className="flex w-max flex-nowrap items-center gap-1">
-                  {slides.map((entry, slideIndex) => (
-                    <li key={entry.id} className="shrink-0">
-                      <button
-                        ref={(element) => {
-                          pageButtonRefs.current[slideIndex] = element;
-                        }}
-                        type="button"
-                        onClick={() => show(slideIndex)}
-                        aria-current={slideIndex === index ? "true" : undefined}
-                        className={cn(
-                          "cursor-pointer whitespace-nowrap rounded-md px-2.5 py-2.5 text-sm @2xl/guide:py-1 @2xl/guide:text-xs transition-colors",
-                          FOCUS_RING_CLASS,
-                          slideIndex === index
-                            ? "bg-surface-selected text-foreground"
-                            : "text-subtle-foreground hover:bg-state-hover hover:text-foreground",
-                        )}
-                      >
-                        {entry.title}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
+                  <ul className="flex w-max flex-nowrap items-center gap-1">
+                    {slides.map((entry, slideIndex) => (
+                      <li key={entry.id} className="shrink-0">
+                        <button
+                          ref={(element) => {
+                            pageButtonRefs.current[slideIndex] = element;
+                          }}
+                          type="button"
+                          onClick={() => show(slideIndex)}
+                          aria-current={
+                            slideIndex === index ? "true" : undefined
+                          }
+                          className={cn(
+                            "cursor-pointer whitespace-nowrap rounded-md px-2.5 py-2.5 text-sm @2xl/guide:py-1 @2xl/guide:text-xs transition-colors",
+                            FOCUS_RING_CLASS,
+                            slideIndex === index
+                              ? "bg-surface-selected text-foreground"
+                              : "text-subtle-foreground hover:bg-state-hover hover:text-foreground",
+                          )}
+                        >
+                          {entry.title}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <PanButton
+                  direction="next"
+                  disabled={!carets.next}
+                  onClick={() => show(index + 1)}
+                />
               </div>
-              <PanButton
-                direction="next"
-                disabled={!carets.next}
-                onClick={() => show(index + 1)}
-              />
+              <div
+                data-guide-display-mode
+                role="group"
+                aria-label="Preview layout"
+                className="flex shrink-0 items-center gap-0.5 border-l border-border-hairline pl-2"
+              >
+                {(["mobile", "desktop"] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    aria-label={
+                      mode === "mobile" ? "Mobile layout" : "Desktop layout"
+                    }
+                    title={
+                      mode === "mobile" ? "Mobile layout" : "Desktop layout"
+                    }
+                    aria-pressed={(mobile ? "mobile" : "desktop") === mode}
+                    onClick={() => setDisplayMode(mode)}
+                    className={cn(
+                      "inline-flex size-10 @2xl/guide:size-8 cursor-pointer items-center justify-center rounded-md",
+                      FOCUS_RING_CLASS,
+                      (mobile ? "mobile" : "desktop") === mode
+                        ? "bg-surface-selected text-foreground"
+                        : "text-muted-foreground hover:bg-state-hover",
+                    )}
+                  >
+                    <HugeiconsIcon
+                      icon={mode === "mobile" ? SmartPhone01Icon : ComputerIcon}
+                      className="size-4"
+                      aria-hidden
+                    />
+                  </button>
+                ))}
+              </div>
             </div>
             {slides[index].id !== "headless" ? (
               <label
