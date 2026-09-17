@@ -1558,6 +1558,7 @@ export function RealComposerAnnotated({
 }: {
   mobile?: boolean;
 }) {
+  const { expandedId } = useSurfaceMap();
   const banners = useEngagement("composer-banners");
   const mention = useEngagement("mention-provider");
   return (
@@ -1567,36 +1568,46 @@ export function RealComposerAnnotated({
           data-guide-annotation-layer="composer-controls"
           className="pointer-events-none absolute inset-0 z-50"
         >
-          <MeasuredBadge
-            id="composer-banners"
-            label="Plugin composer banners, above the prompt box"
-            anchor='[data-guide-target="composer-banners"]'
-            at="end"
-          />
-          <MeasuredBadge
-            id="composer-state"
-            label="The draft prompt a plugin can read and lock"
-            anchor='[data-guide-target="composer-state"]'
-            at="start"
-          />
-          <MeasuredBadge
-            id="composer-plus-menu"
-            label="Plugin rows in the composer's + menu"
-            anchor='[data-guide-target="composer-plus-menu"]'
-            at="start"
-          />
-          <MeasuredBadge
-            id="provider-picker"
-            label="Your agent provider and its mark, in the model picker"
-            anchor='[data-guide-target="provider-picker"]'
-            at="above"
-          />
-          <MeasuredBadge
-            id="composer-actions"
-            label="Plugin composer actions, before voice and send"
-            anchor='[data-guide-target="composer-actions"]'
-            at="above"
-          />
+          {!mobile || expandedId === "composer-banners" ? (
+            <MeasuredBadge
+              id="composer-banners"
+              label="Plugin composer banners, above the prompt box"
+              anchor='[data-guide-target="composer-banners"]'
+              at="end"
+            />
+          ) : null}
+          {!mobile || expandedId === "composer-state" ? (
+            <MeasuredBadge
+              id="composer-state"
+              label="The draft prompt a plugin can read and lock"
+              anchor='[data-guide-target="composer-state"]'
+              at="start"
+            />
+          ) : null}
+          {!mobile || expandedId === "composer-plus-menu" ? (
+            <MeasuredBadge
+              id="composer-plus-menu"
+              label="Plugin rows in the composer's + menu"
+              anchor='[data-guide-target="composer-plus-menu"]'
+              at="start"
+            />
+          ) : null}
+          {!mobile || expandedId === "provider-picker" ? (
+            <MeasuredBadge
+              id="provider-picker"
+              label="Your agent provider and its mark, in the model picker"
+              anchor='[data-guide-target="provider-picker"]'
+              at={mobile ? "start" : "above"}
+            />
+          ) : null}
+          {!mobile || expandedId === "composer-actions" ? (
+            <MeasuredBadge
+              id="composer-actions"
+              label="Plugin composer actions, before voice and send"
+              anchor='[data-guide-target="composer-actions"]'
+              at={mobile ? "end" : "above"}
+            />
+          ) : null}
         </div>
         <WindowFrame>
           <div className="flex min-h-[506px] flex-col">
@@ -1666,6 +1677,7 @@ export function RealComposerAnnotated({
 }
 
 function StaticEmbeddedComposer({ mobile = false }: { mobile?: boolean }) {
+  const { expandedId } = useSurfaceMap();
   const draft = useEngagement("composer-state");
   const plus = useEngagement("composer-plus-menu");
   const picker = useEngagement("provider-picker");
@@ -1710,7 +1722,9 @@ function StaticEmbeddedComposer({ mobile = false }: { mobile?: boolean }) {
             label="Plugin mention results in the @ typeahead"
             className="flex h-5.5 items-center rounded-full border border-surface-selected-border bg-surface-selected px-1.5"
             chip="outside-above"
-            showChip={!plus.outlined}
+            showChip={
+              !plus.outlined && (!mobile || expandedId === "mention-provider")
+            }
           >
             <span aria-hidden>@release-notes</span>
           </RegionMark>
@@ -1723,7 +1737,9 @@ function StaticEmbeddedComposer({ mobile = false }: { mobile?: boolean }) {
             label="Plugin highlighting, painted over the draft prompt"
             className="flex h-5.5 items-center rounded bg-warning/25 px-1 ring-1 ring-warning/40"
             chip="outside-above"
-            showChip={!plus.outlined}
+            showChip={
+              !plus.outlined && (!mobile || expandedId === "composer-rich-text")
+            }
           >
             <span aria-hidden>TODO</span>
           </RegionMark>

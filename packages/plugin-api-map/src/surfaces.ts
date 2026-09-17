@@ -536,7 +536,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         id: "homepage-section",
         title: "Home-screen sections",
         summary:
-          "Adds a full-width section to the page bb opens on, below the prompt box. With this, a plugin can:",
+          "Adds a full-width section to bb's home page: below the composer on desktop, or in the scrollable content above it on mobile. With this, a plugin can:",
         bullets: [
           "Render its own component across the width of the content area",
           "Render before any thread exists, which suits shortcuts and pinned work",
