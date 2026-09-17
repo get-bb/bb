@@ -751,12 +751,12 @@ export function CommandPaletteWireframe({
                   <MiniIcon icon="PanelLeft" className="size-3.5" />
                 </div>
                 <div className="mt-5 flex items-center gap-2 rounded-md px-2 py-1.5 text-foreground">
-                  <MiniIcon icon="Plus" className="size-3.5" />
+                  <MiniIcon icon="MessageSquarePlus" className="size-3.5" />
                   New thread
                 </div>
                 <div className="flex items-center gap-2 rounded-md px-2 py-1.5">
                   <MiniIcon icon="Search" className="size-3.5" />
-                  Search
+                  Search threads
                 </div>
                 <div className="mt-3 px-2 text-2xs font-medium uppercase tracking-wide text-subtle-foreground">
                   Threads
@@ -1840,7 +1840,7 @@ export function ComposeScreenWireframe({
             >
               <div className="text-subtle-foreground">Actions</div>
               <div className="flex items-center gap-2 py-2">
-                <MiniIcon icon="Search" />
+                <MiniIcon icon="Globe" />
                 Open browser
               </div>
               <div className="flex items-center gap-2 py-2">

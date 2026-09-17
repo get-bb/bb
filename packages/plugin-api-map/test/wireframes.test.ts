@@ -104,7 +104,7 @@ describe("guide fixture boundaries", () => {
     const markup = renderToStaticMarkup(createElement(ProductMap));
 
     expect(markup).toContain("w-full overflow-x-clip");
-    expect(markup).toContain("mx-auto flex w-fit max-w-full items-center");
+    expect(markup).toContain("data-guide-navigation-toolbar");
     expect(markup).toContain("data-guide-page-list-scroll");
     expect(markup).toContain("min-w-0 overflow-x-auto");
     expect(markup).toContain("w-max flex-nowrap");
