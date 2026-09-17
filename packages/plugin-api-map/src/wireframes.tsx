@@ -1000,10 +1000,11 @@ export function AppShellWireframe({ mobile = false }: { mobile?: boolean }) {
     <div
       key={scene}
       data-guide-mobile-scene={mobile ? scene : undefined}
-      className={cn(
-        "relative w-full pb-0 pt-[26px]",
-        mobile ? "px-6" : "px-10",
-      )}
+      className={
+        mobile
+          ? "relative w-full px-6 pb-0 pt-[26px]"
+          : "relative w-full px-10 pb-0 pt-[26px]"
+      }
     >
       {scene === "desktop" || scene === "navigation" ? (
         <>
@@ -1128,10 +1129,11 @@ function AppShellWireframeBody({
         </span>
       )}
       <div
-        className={cn(
-          "flex items-stretch",
-          mobile ? "min-h-[500px]" : "min-h-[650px]",
-        )}
+        className={
+          mobile
+            ? "flex min-h-[500px] items-stretch"
+            : "flex min-h-[650px] items-stretch"
+        }
       >
         {mobile ? null : (
           <div className="flex w-[300px] shrink-0 flex-col border-r border-border-seam bg-sidebar text-sidebar-foreground">
@@ -1168,10 +1170,11 @@ function AppShellWireframeBody({
 
           <div
             data-guide-fixture="app-window-timeline"
-            className={cn(
-              "flex-1 space-y-7 overflow-hidden py-6",
-              mobile ? "px-4 text-sm leading-relaxed" : "min-h-[510px] px-5",
-            )}
+            className={
+              mobile
+                ? "flex-1 space-y-7 overflow-hidden px-4 py-6 text-sm leading-relaxed"
+                : "min-h-[510px] flex-1 space-y-7 overflow-hidden px-5 py-6"
+            }
           >
             <div className="flex justify-end">
               <span className="max-w-[70%] rounded-xl border border-border-seam bg-surface-recessed px-2.5 py-2 leading-snug text-foreground">
@@ -1376,7 +1379,10 @@ export function AppShellRightPanel({
     >
       <div
         data-guide-fixture="right-panel-tab-strip"
-        className="flex h-12 items-center gap-1.5 overflow-x-auto border-b border-border-hairline px-3"
+        className={cn(
+          "flex h-12 items-center gap-1.5 border-b border-border-hairline px-3",
+          compact && "overflow-x-auto",
+        )}
       >
         <span
           data-guide-fixture="right-panel-fixed-tabs"
@@ -1406,7 +1412,10 @@ export function AppShellRightPanel({
         </span>
         <span
           data-guide-fixture="right-panel-content-tabs"
-          className="flex shrink-0 items-center gap-1.5"
+          className={cn(
+            "flex items-center gap-1.5",
+            compact ? "shrink-0" : "min-w-0",
+          )}
         >
           {!compact || activeTab === "browser-toolbar" ? (
             <button
