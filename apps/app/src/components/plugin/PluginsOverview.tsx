@@ -13,7 +13,6 @@ import {
 import {
   ResourceCollectionViewport,
   ResourceListState,
-  ResourceMultiSelectMenu,
 } from "@bb/shared-ui/resource-list";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { CreateWithTemplatesButton } from "@/components/create-via-prompt-examples";
@@ -269,22 +268,15 @@ export function PluginsOverview({
             installsKnown={installsKnown}
             changeSearchParams={changeSearchParams}
             action={installedActions}
-            additionalControls={
-              <ResourceMultiSelectMenu
-                label="Source"
-                icon="Layers"
-                compact
-                clearInFooter
-                options={sourceFilterOptions}
-                selectedValues={activeSourceFilters}
-                onChange={(values) =>
-                  changeSearchParams((next) => {
-                    next.delete("source");
-                    for (const value of values) next.append("source", value);
-                  })
-                }
-              />
-            }
+            sourceFilter={{
+              options: sourceFilterOptions,
+              selectedValues: activeSourceFilters,
+              onChange: (values) =>
+                changeSearchParams((next) => {
+                  next.delete("source");
+                  for (const value of values) next.append("source", value);
+                }),
+            }}
           />
         }
       >
