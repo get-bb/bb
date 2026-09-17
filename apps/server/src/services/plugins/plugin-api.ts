@@ -2,6 +2,7 @@ import {
   environmentCompositionSchema,
   validateServerAccessProviderDeclaration,
   type NormalizedPluginEnvironmentComposition,
+  type NormalizedPluginInteractionRequest,
 } from "@get-bb/plugin-sdk/internal/host-policy";
 import { createMachineBootstrapApi } from "../machines/bootstrap.js";
 import type { MachineEnrollments } from "../machines/enrollments.js";
@@ -18,7 +19,6 @@ import {
   setPluginKvValue,
   type DbConnection,
 } from "@bb/db";
-import type { JsonValue } from "@bb/domain";
 import type {
   BbPluginApi,
   PluginAgentConfiguration,
@@ -71,6 +71,10 @@ import type {
   PluginThreadEventHandler,
   PluginThreadEventName,
   PluginUi,
+  PluginFormInteractionRequest,
+  PluginInteractionRequest,
+  PluginUserQuestionInteractionRequest,
+  PluginUserQuestionInteractionResult,
   StandardSchemaV1,
   PluginRpcContract,
 } from "@get-bb/plugin-sdk";
@@ -473,14 +477,9 @@ export function createPluginApi(options: {
    * name. Empty when the manifest declares none.
    */
   declaredIconNames: ReadonlySet<string>;
-  requestInteraction: (args: {
-    threadId: string;
-    rendererId: string;
-    title: string;
-    payload: JsonValue;
-    timeoutMs: number;
-    signal?: AbortSignal;
-  }) => Promise<PluginInteractionResult>;
+  requestInteraction: (
+    args: NormalizedPluginInteractionRequest & { signal?: AbortSignal },
+  ) => Promise<PluginInteractionResult>;
   ensureSharedPortTunnel: PluginHosts["ensureSharedPortTunnel"];
   validateSharedPortDeclaration: (
     hostId: string,
@@ -616,10 +615,18 @@ export function createPluginApi(options: {
     error: (message) => emitLog("error", message),
   };
 
+  function requestInput(
+    request: PluginUserQuestionInteractionRequest,
+    requestOptions?: { signal?: AbortSignal },
+  ): Promise<PluginUserQuestionInteractionResult>;
+  function requestInput(
+    request: PluginFormInteractionRequest,
+    requestOptions?: { signal?: AbortSignal },
+  ): Promise<PluginInteractionResult>;
   async function requestInput(
-    request: Parameters<PluginUi["requestInput"]>[0],
-    requestOptions?: Parameters<PluginUi["requestInput"]>[1],
-  ) {
+    request: PluginInteractionRequest,
+    requestOptions?: { signal?: AbortSignal },
+  ): Promise<PluginInteractionResult> {
     assertLive();
     return requestInteraction({
       ...normalizeInteractionRequest(request),

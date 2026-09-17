@@ -78,8 +78,11 @@ import type {
   PluginHttpHandler,
   PluginHosts,
   PluginSharedPortTunnelIdentity,
+  PluginFormInteractionRequest,
   PluginInteractionRequest,
   PluginInteractionResult,
+  PluginUserQuestionInteractionRequest,
+  PluginUserQuestionInteractionResult,
   PluginKvStorage,
   PluginLogger,
   PluginMentionItem,
@@ -1153,15 +1156,34 @@ function createFakePluginHostInternal(
     }
   >();
   function requestInput(
-    request: Parameters<PluginUi["requestInput"]>[0],
-    requestOptions?: Parameters<PluginUi["requestInput"]>[1],
-  ) {
+    request: PluginUserQuestionInteractionRequest,
+    requestOptions?: { signal?: AbortSignal },
+  ): Promise<PluginUserQuestionInteractionResult>;
+  function requestInput(
+    request: PluginFormInteractionRequest,
+    requestOptions?: { signal?: AbortSignal },
+  ): Promise<PluginInteractionResult>;
+  function requestInput(
+    request: PluginInteractionRequest,
+    requestOptions?: { signal?: AbortSignal },
+  ): Promise<PluginInteractionResult> {
     assertLive();
     const normalized = normalizeInteractionRequest(request);
-    const normalizedRequest: PluginInteractionRequest = {
-      ...request,
-      ...normalized,
-    };
+    const normalizedRequest: PluginInteractionRequest =
+      normalized.kind === "user_question"
+        ? {
+            threadId: normalized.threadId,
+            kind: "user_question",
+            questions: normalized.questions,
+            timeoutMs: normalized.timeoutMs,
+          }
+        : {
+            threadId: normalized.threadId,
+            rendererId: normalized.rendererId,
+            title: normalized.title,
+            payload: normalized.payload,
+            timeoutMs: normalized.timeoutMs,
+          };
     const id = `fake-interaction-${nextInteractionId++}`;
     return new Promise<PluginInteractionResult>((resolve) => {
       const settleAborted = () => {

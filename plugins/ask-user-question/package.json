@@ -13,8 +13,7 @@
     "branding": {
       "icon": "MessageQuestion"
     },
-    "server": "./src/server.ts",
-    "app": "./app.tsx"
+    "server": "./src/server.ts"
   },
   "keywords": [
     "bb-plugin"
@@ -25,19 +24,12 @@
     "prepare:bundled": "bb-plugin-build prepare-bundled"
   },
   "dependencies": {
-    "@bb/plugin-interaction-contracts": "workspace:*",
-    "@bb/shared-ui": "workspace:*",
     "zod": "^4.3.6"
   },
   "devDependencies": {
     "@bb/plugin-build": "workspace:*",
     "@get-bb/plugin-sdk": "workspace:*",
-    "@testing-library/react": "^16.3.2",
     "@types/node": "^22.0.0",
-    "@types/react": "^19.0.0",
-    "jsdom": "^29.0.1",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "vitest": "^4.1.1"
   }

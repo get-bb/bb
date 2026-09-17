@@ -203,6 +203,7 @@ export const USER_QUESTION_MAX_QUESTIONS = 4;
 export const USER_QUESTION_MAX_OPTIONS = 4;
 export const USER_QUESTION_MAX_SELECTED = 4;
 export const USER_QUESTION_MAX_FREE_TEXT_LENGTH = 4096;
+export const USER_QUESTION_MAX_OPTION_PREVIEW_LENGTH = 4096;
 
 const pendingInteractionUserQuestionIdSchema = z
   .string()
@@ -257,10 +258,22 @@ const pendingInteractionUserQuestionFreeTextSchema = z
     message: "User question free text cannot be blank",
   });
 
+const pendingInteractionUserQuestionOptionPreviewSchema = z
+  .string()
+  .min(1)
+  .max(
+    USER_QUESTION_MAX_OPTION_PREVIEW_LENGTH,
+    `User question option previews cannot exceed ${USER_QUESTION_MAX_OPTION_PREVIEW_LENGTH} characters`,
+  )
+  .refine((value) => value.trim().length > 0, {
+    message: "User question option previews cannot be blank",
+  });
+
 const pendingInteractionUserQuestionOptionSchema = z.object({
   value: pendingInteractionUserQuestionOptionValueSchema,
   label: pendingInteractionUserQuestionOptionLabelSchema,
   description: pendingInteractionUserQuestionOptionDescriptionSchema.optional(),
+  preview: pendingInteractionUserQuestionOptionPreviewSchema.optional(),
 });
 
 export const pendingInteractionUserQuestionQuestionSchema = z
@@ -544,8 +557,13 @@ const pendingInteractionProviderOriginSchema = z.object({
 const pendingInteractionPluginOriginSchema = z.object({
   kind: z.literal("plugin"),
   pluginId: z.string().min(1),
-  rendererId: z.string().min(1),
+  rendererId: z.string().min(1).nullable(),
 });
+
+const pendingInteractionPluginFormOriginSchema =
+  pendingInteractionPluginOriginSchema.extend({
+    rendererId: z.string().min(1),
+  });
 
 export const pendingInteractionCreateSchema = z.object({
   threadId: z.string().min(1),
@@ -587,14 +605,29 @@ export type ApprovalPendingInteraction = z.infer<
   typeof approvalPendingInteractionSchema
 >;
 
-const userQuestionPendingInteractionSchema =
+const providerUserQuestionPendingInteractionSchema =
   providerPendingInteractionBaseSchema.extend({
     payload: userQuestionPendingInteractionPayloadSchema,
     resolution: userQuestionPendingInteractionResolutionSchema.nullable(),
   });
-export type UserQuestionPendingInteraction = z.infer<
-  typeof userQuestionPendingInteractionSchema
+export type ProviderUserQuestionPendingInteraction = z.infer<
+  typeof providerUserQuestionPendingInteractionSchema
 >;
+
+const pluginUserQuestionPendingInteractionSchema =
+  pendingInteractionBaseSchema.extend({
+    turnId: z.string().min(1).nullable(),
+    origin: pendingInteractionPluginOriginSchema,
+    payload: userQuestionPendingInteractionPayloadSchema,
+    resolution: userQuestionPendingInteractionResolutionSchema.nullable(),
+  });
+export type PluginUserQuestionPendingInteraction = z.infer<
+  typeof pluginUserQuestionPendingInteractionSchema
+>;
+
+export type UserQuestionPendingInteraction =
+  | ProviderUserQuestionPendingInteraction
+  | PluginUserQuestionPendingInteraction;
 
 const pluginExtensionPendingInteractionSchema =
   providerPendingInteractionBaseSchema.extend({
@@ -607,7 +640,7 @@ export type PluginExtensionPendingInteraction = z.infer<
 
 const providerPendingInteractionSchema = z.union([
   approvalPendingInteractionSchema,
-  userQuestionPendingInteractionSchema,
+  providerUserQuestionPendingInteractionSchema,
   pluginExtensionPendingInteractionSchema,
 ]);
 export type ProviderPendingInteraction = z.infer<
@@ -616,7 +649,7 @@ export type ProviderPendingInteraction = z.infer<
 
 const pluginPendingInteractionSchema = pendingInteractionBaseSchema.extend({
   turnId: z.string().min(1).nullable(),
-  origin: pendingInteractionPluginOriginSchema,
+  origin: pendingInteractionPluginFormOriginSchema,
   payload: pluginPendingInteractionPayloadSchema,
   resolution: pluginPendingInteractionResolutionSchema.nullable(),
 });
@@ -627,15 +660,34 @@ export type PluginPendingInteraction = z.infer<
 export const pendingInteractionSchema = z.union([
   providerPendingInteractionSchema,
   pluginPendingInteractionSchema,
+  pluginUserQuestionPendingInteractionSchema,
 ]);
 export type PendingInteraction =
   | ProviderPendingInteraction
-  | PluginPendingInteraction;
+  | PluginPendingInteraction
+  | PluginUserQuestionPendingInteraction;
 
 export function isPluginPendingInteraction(
   interaction: PendingInteraction,
 ): interaction is PluginPendingInteraction {
   return interaction.payload.kind === "plugin";
+}
+
+export function isPluginOriginPendingInteraction(
+  interaction: PendingInteraction,
+): interaction is
+  | PluginPendingInteraction
+  | PluginUserQuestionPendingInteraction {
+  return interaction.origin?.kind === "plugin";
+}
+
+export function isPluginUserQuestionPendingInteraction(
+  interaction: PendingInteraction,
+): interaction is PluginUserQuestionPendingInteraction {
+  return (
+    interaction.payload.kind === "user_question" &&
+    interaction.origin?.kind === "plugin"
+  );
 }
 
 export function isApprovalPendingInteraction(
@@ -683,7 +735,10 @@ export type ApprovalInteractionLifecycle = z.infer<
 
 const userQuestionInteractionLifecycleSchema =
   interactionLifecycleRecordBaseSchema.extend({
-    origin: interactionLifecycleProviderOriginSchema,
+    origin: z.union([
+      interactionLifecycleProviderOriginSchema,
+      pendingInteractionPluginOriginSchema,
+    ]),
     payload: userQuestionPendingInteractionPayloadSchema,
     resolution: userQuestionPendingInteractionResolutionSchema.nullable(),
   });
@@ -693,10 +748,13 @@ export type UserQuestionInteractionLifecycle = z.infer<
 
 const pluginInteractionLifecycleSchema =
   interactionLifecycleRecordBaseSchema.extend({
-    origin: pendingInteractionPluginOriginSchema,
+    origin: pendingInteractionPluginFormOriginSchema,
     payload: pluginPendingInteractionPayloadSchema.omit({ data: true }),
     resolution: pluginPendingInteractionResolutionSchema.nullable(),
   });
+export type PluginInteractionLifecycle = z.infer<
+  typeof pluginInteractionLifecycleSchema
+>;
 
 const pluginExtensionInteractionLifecycleSchema =
   interactionLifecycleRecordBaseSchema.extend({
@@ -729,6 +787,12 @@ export function isUserQuestionInteractionLifecycle(
   return lifecycle.payload.kind === "user_question";
 }
 
+export function isPluginInteractionLifecycle(
+  lifecycle: InteractionLifecycle,
+): lifecycle is PluginInteractionLifecycle {
+  return lifecycle.payload.kind === "plugin";
+}
+
 export function toInteractionLifecycle(
   interaction: PendingInteraction,
 ): InteractionLifecycle {
@@ -742,6 +806,14 @@ export function toInteractionLifecycle(
       ...base,
       origin: interaction.origin,
       payload: { kind: "plugin", title: interaction.payload.title },
+      resolution: interaction.resolution,
+    };
+  }
+  if (isPluginUserQuestionPendingInteraction(interaction)) {
+    return {
+      ...base,
+      origin: interaction.origin,
+      payload: interaction.payload,
       resolution: interaction.resolution,
     };
   }

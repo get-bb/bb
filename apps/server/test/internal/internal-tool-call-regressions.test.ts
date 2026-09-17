@@ -109,6 +109,7 @@ function installWaitingTool(
       observe(ctx.signal);
       const result =
         await harness.deps.pendingInteractions.requestPluginInteraction({
+          kind: "form",
           pluginId: "fixture",
           rendererId: "question",
           threadId: ctx.threadId,

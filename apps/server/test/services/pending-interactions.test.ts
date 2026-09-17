@@ -30,6 +30,7 @@ import {
   createUserAnswerResolution,
   createUserQuestionPayload,
 } from "../helpers/pending-interactions.js";
+import { listQueuedThreadCommands } from "../helpers/commands.js";
 import { withTestHarness } from "../helpers/test-app.js";
 import {
   SERVER_MOVE_FROZEN_RETRY_MS,
@@ -75,6 +76,7 @@ function requestPluginInteraction(
   },
 ) {
   return deps.pendingInteractions.requestPluginInteraction({
+    kind: "form",
     pluginId: "secrets",
     threadId: args.threadId,
     rendererId: "secret-request",
@@ -217,6 +219,122 @@ describe("pending interaction lifecycle", () => {
       await expect(pending).resolves.toEqual({
         outcome: "submitted",
         value: { values: { API_KEY: "sentinel-secret-value" } },
+      });
+    });
+  });
+
+  it("raises a plugin question as bb's own kind and persists the answer that resolves it", async () => {
+    await withTestHarness(async (harness) => {
+      const thread = seedPluginInteractionThread(
+        harness.deps,
+        "plugin-question",
+      );
+      const pending = harness.deps.pendingInteractions.requestPluginInteraction(
+        {
+          kind: "user_question",
+          pluginId: "ask-user-question",
+          threadId: thread.id,
+          questions: createUserQuestionPayload().questions,
+          timeoutMs: 10_000,
+        },
+      );
+      const [interaction] =
+        harness.deps.pendingInteractions.listPendingThreadInteractions(
+          thread.id,
+        );
+      expect(interaction).toMatchObject({
+        origin: {
+          kind: "plugin",
+          pluginId: "ask-user-question",
+          rendererId: null,
+        },
+        payload: { kind: "user_question" },
+        status: "pending",
+        turnId: null,
+      });
+
+      expect(() =>
+        harness.deps.pendingInteractions.respondToInteraction({
+          threadId: thread.id,
+          interactionId: interaction!.id,
+          value: { anything: true },
+        }),
+      ).toThrow("Plugin interaction expected");
+
+      const resolution = createUserAnswerResolution({
+        selected: ["production"],
+        freeText: "Ship it",
+      });
+      const resolved =
+        harness.deps.pendingInteractions.resolvePendingInteraction({
+          threadId: thread.id,
+          interactionId: interaction!.id,
+          resolution,
+        });
+      expect(resolved).toMatchObject({ status: "resolved", resolution });
+      await expect(pending).resolves.toEqual({
+        outcome: "submitted",
+        value: resolution.answers,
+      });
+
+      const [stored] = harness.db
+        .select()
+        .from(pendingInteractionTable)
+        .where(eq(pendingInteractionTable.id, interaction!.id))
+        .all();
+      expect(JSON.parse(stored!.resolution!)).toEqual(resolution);
+      const lifecycle = harness.db
+        .select()
+        .from(eventTable)
+        .where(eq(eventTable.threadId, thread.id))
+        .all()
+        .filter((row) => row.type === "system/interaction/lifecycle")
+        .map((row) => JSON.parse(row.data) as { interaction: unknown });
+      expect(lifecycle.at(-1)?.interaction).toMatchObject({
+        origin: { kind: "plugin", pluginId: "ask-user-question" },
+        payload: { kind: "user_question" },
+        resolution,
+        status: "resolved",
+      });
+      expect(
+        listQueuedThreadCommands(harness, "interactive.resolve", thread.id),
+      ).toEqual([]);
+    });
+  });
+
+  it("cancels a plugin question the way it cancels a plugin form", async () => {
+    await withTestHarness(async (harness) => {
+      const thread = seedPluginInteractionThread(
+        harness.deps,
+        "plugin-question-cancel",
+      );
+      const pending = harness.deps.pendingInteractions.requestPluginInteraction(
+        {
+          kind: "user_question",
+          pluginId: "ask-user-question",
+          threadId: thread.id,
+          questions: createUserQuestionPayload().questions,
+          timeoutMs: 10_000,
+        },
+      );
+      const [interaction] =
+        harness.deps.pendingInteractions.listPendingThreadInteractions(
+          thread.id,
+        );
+
+      const cancelled =
+        harness.deps.pendingInteractions.cancelPluginInteraction({
+          threadId: thread.id,
+          interactionId: interaction!.id,
+          reason: "user",
+        });
+      expect(cancelled).toMatchObject({
+        status: "interrupted",
+        statusReason: "user",
+      });
+      await expect(pending).resolves.toEqual({
+        outcome: "cancelled",
+        reason: "user",
       });
     });
   });

@@ -37,3 +37,31 @@ export function useResolveThreadPendingInteraction() {
     },
   });
 }
+
+interface CancelThreadPendingInteractionMutationRequest {
+  threadId: string;
+  interactionId: string;
+}
+
+export function useCancelThreadPendingInteraction() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    meta: {
+      errorMessage: "Failed to cancel pending interaction.",
+      showErrorToast: false,
+    },
+    mutationFn: ({
+      threadId,
+      interactionId,
+    }: CancelThreadPendingInteractionMutationRequest): Promise<PendingInteraction> =>
+      sdk.threads.interactions.cancel({ interactionId, threadId }),
+    onSuccess: (interaction, variables) => {
+      invalidateThreadPendingInteractionResolutionQueries({
+        queryClient,
+        threadId: variables.threadId,
+      });
+      return interaction;
+    },
+  });
+}

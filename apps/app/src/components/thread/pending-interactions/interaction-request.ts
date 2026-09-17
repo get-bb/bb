@@ -53,7 +53,11 @@ export function classifyInteractionRequest(
       };
     case "plugin": {
       const origin = interaction.origin;
-      if (origin === undefined || origin.kind !== "plugin") {
+      if (
+        origin === undefined ||
+        origin.kind !== "plugin" ||
+        origin.rendererId === null
+      ) {
         throw new Error("a plugin pending interaction carries a plugin origin");
       }
       return {

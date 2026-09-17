@@ -1,14 +1,9 @@
 import type { BbPluginApi, PluginAgentToolResult } from "@get-bb/plugin-sdk";
-import {
-  ASK_USER_QUESTION_RENDERER_ID,
-  interactionResponseSchema,
-  toolInputSchema,
-} from "./contracts.js";
+import { toolInputSchema } from "./contracts.js";
 import { TOOL_DESCRIPTION, buildTimeoutMessage } from "./tool-definition.js";
 import {
   assertInteractionPayloadFits,
   buildInteractionPayload,
-  buildInteractionTitle,
   buildToolResult,
   validateToolInput,
 } from "./translate.js";
@@ -50,9 +45,8 @@ export default function plugin(bb: BbPluginApi) {
         result = await bb.ui.requestInput(
           {
             threadId: ctx.threadId,
-            rendererId: ASK_USER_QUESTION_RENDERER_ID,
-            title: buildInteractionTitle(payload),
-            payload,
+            kind: "user_question",
+            questions: payload.questions,
             timeoutMs: QUESTION_TIMEOUT_MS,
           },
           { signal: ctx.signal },
@@ -71,13 +65,7 @@ export default function plugin(bb: BbPluginApi) {
         );
       }
 
-      const parsed = interactionResponseSchema.safeParse(result.value);
-      if (!parsed.success) {
-        return errorResult(
-          "The answer could not be read. Ask the question again in your reply instead.",
-        );
-      }
-      const toolResult = buildToolResult(payload, parsed.data);
+      const toolResult = buildToolResult(payload, { answers: result.value });
       if (Object.keys(toolResult.answers).length === 0) {
         return errorResult(
           "The user submitted no answers. Proceed with your best judgement, or ask again in your reply.",

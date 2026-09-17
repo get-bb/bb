@@ -7,6 +7,8 @@ import type {
   Host,
   PermissionMode,
   PendingInteraction,
+  PendingInteractionUserAnswer,
+  PendingInteractionUserQuestionQuestion,
   Project,
   PromptInput,
   ProviderErrorInfo,
@@ -931,11 +933,21 @@ export type PluginInteractionCancelReason =
   | "server-restarted"
   | "timeout";
 
+export type PluginInteractionCancelled = {
+  outcome: "cancelled";
+  reason: PluginInteractionCancelReason;
+};
+
 export type PluginInteractionResult =
   | { outcome: "submitted"; value: JsonValue }
-  | { outcome: "cancelled"; reason: PluginInteractionCancelReason };
+  | PluginInteractionCancelled;
 
-export interface PluginInteractionRequest {
+/**
+ * A form the plugin draws itself through its `pendingInteraction` slot. The
+ * payload and the submitted value are opaque to bb: neither is persisted, so
+ * the timeline records only the title and the outcome.
+ */
+export interface PluginFormInteractionRequest {
   threadId: string;
   rendererId: string;
   title: string;
@@ -943,6 +955,32 @@ export interface PluginInteractionRequest {
   /** Defaults to ten minutes; capped at one hour. */
   timeoutMs?: number;
 }
+
+/**
+ * A multiple-choice question bb draws with its own question card, the same
+ * one a provider's native question uses. bb persists the questions and the
+ * answers, so the thread timeline shows the question row with what the
+ * person chose, and `bb thread interactions answer` can answer it.
+ */
+export interface PluginUserQuestionInteractionRequest {
+  threadId: string;
+  kind: "user_question";
+  questions: readonly PendingInteractionUserQuestionQuestion[];
+  /** Defaults to ten minutes; capped at one hour. */
+  timeoutMs?: number;
+}
+
+export type PluginInteractionRequest =
+  | PluginFormInteractionRequest
+  | PluginUserQuestionInteractionRequest;
+
+export type PluginUserQuestionInteractionResult =
+  | {
+      outcome: "submitted";
+      /** Keyed by question id; a question the person skipped is absent. */
+      value: Record<string, PendingInteractionUserAnswer>;
+    }
+  | PluginInteractionCancelled;
 
 export interface PluginCliResult {
   exitCode: number;
@@ -1764,9 +1802,18 @@ export interface PluginMentionProviderRegistration {
 }
 
 export interface PluginUi {
-  /** Block until the app submits or cancels a plugin-owned composer form. */
+  /**
+   * Block until the person submits or cancels a form in the thread composer:
+   * a plugin-drawn form, or bb's own question card for a `user_question`
+   * request. Inside a native tool's `execute` the call may outlive the turn;
+   * see {@link PluginAgentToolContext.signal}.
+   */
   requestInput(
-    request: PluginInteractionRequest,
+    request: PluginUserQuestionInteractionRequest,
+    options?: { signal?: AbortSignal },
+  ): Promise<PluginUserQuestionInteractionResult>;
+  requestInput(
+    request: PluginFormInteractionRequest,
     options?: { signal?: AbortSignal },
   ): Promise<PluginInteractionResult>;
   /**

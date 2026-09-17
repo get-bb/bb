@@ -21,6 +21,8 @@ import {
   normalizeProviderNativeRoots,
   providerNativeRootsInputSchema,
   providerNativeRootsSchema,
+  userQuestionPendingInteractionPayloadSchema,
+  type PendingInteractionUserQuestionQuestion,
   type ProviderNativeRoots,
 } from "@bb/domain";
 import { PLUGIN_CLI_OUTPUT_MAX_BYTES } from "../backend-contract.js";
@@ -2802,9 +2804,10 @@ export function runPluginStorageMigrations(
     database.exec("ALTER TABLE _bb_migrations ADD COLUMN statement_hash TEXT");
   }
   const rows = database
-    .prepare<[], { id: number; statement_hash: string | null }>(
-      "SELECT id, statement_hash FROM _bb_migrations ORDER BY id",
-    )
+    .prepare<
+      [],
+      { id: number; statement_hash: string | null }
+    >("SELECT id, statement_hash FROM _bb_migrations ORDER BY id")
     .all();
   const applied = new Map<number, string | null>();
   for (const row of rows) applied.set(row.id, row.statement_hash);
@@ -3288,20 +3291,70 @@ export function normalizeMentionProviderRegistration(
   };
 }
 
+export type NormalizedPluginInteractionRequest =
+  | {
+      kind: "form";
+      threadId: string;
+      rendererId: string;
+      title: string;
+      payload: JsonValue;
+      timeoutMs: number;
+    }
+  | {
+      kind: "user_question";
+      threadId: string;
+      questions: PendingInteractionUserQuestionQuestion[];
+      timeoutMs: number;
+    };
+
+function normalizeInteractionTimeout(timeoutMs: number | undefined): number {
+  const resolved = timeoutMs ?? 10 * 60 * 1000;
+  if (
+    !Number.isInteger(resolved) ||
+    resolved <= 0 ||
+    resolved > 60 * 60 * 1000
+  ) {
+    throw new Error("ui.requestInput timeoutMs must be between 1 and 3600000");
+  }
+  return resolved;
+}
+
 export function normalizeInteractionRequest(
   request: PluginInteractionRequest,
-): {
-  threadId: string;
-  rendererId: string;
-  title: string;
-  payload: JsonValue;
-  timeoutMs: number;
-} {
+): NormalizedPluginInteractionRequest {
   if (!request || typeof request !== "object") {
     throw new Error("ui.requestInput requires an options object");
   }
   if (typeof request.threadId !== "string" || request.threadId.length === 0) {
     throw new Error("ui.requestInput threadId must be a non-empty string");
+  }
+  if ("kind" in request) {
+    if (request.kind !== "user_question") {
+      throw new Error('ui.requestInput kind must be "user_question"');
+    }
+    const parsed = userQuestionPendingInteractionPayloadSchema.safeParse({
+      kind: "user_question",
+      questions: request.questions,
+    });
+    if (!parsed.success) {
+      throw new Error(
+        `ui.requestInput questions are invalid: ${parsed.error.issues
+          .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
+          .join("; ")}`,
+      );
+    }
+    if (
+      Buffer.byteLength(JSON.stringify(parsed.data), "utf8") >
+      PLUGIN_INTERACTION_MAX_PAYLOAD_BYTES
+    ) {
+      throw new Error("ui.requestInput questions exceed 64 KiB");
+    }
+    return {
+      kind: "user_question",
+      threadId: request.threadId,
+      questions: parsed.data.questions,
+      timeoutMs: normalizeInteractionTimeout(request.timeoutMs),
+    };
   }
   if (
     typeof request.rendererId !== "string" ||
@@ -3336,20 +3389,13 @@ export function normalizeInteractionRequest(
     }
     throw new Error("ui.requestInput payload must be JSON-serializable");
   }
-  const timeoutMs = request.timeoutMs ?? 10 * 60 * 1000;
-  if (
-    !Number.isInteger(timeoutMs) ||
-    timeoutMs <= 0 ||
-    timeoutMs > 60 * 60 * 1000
-  ) {
-    throw new Error("ui.requestInput timeoutMs must be between 1 and 3600000");
-  }
   return {
+    kind: "form",
     threadId: request.threadId,
     rendererId: request.rendererId,
     title: request.title.trim(),
     payload,
-    timeoutMs,
+    timeoutMs: normalizeInteractionTimeout(request.timeoutMs),
   };
 }
 
