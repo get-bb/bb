@@ -241,7 +241,9 @@ describe("SplitThreadArea archive pruning", () => {
 
     await waitFor(() => expect(screen.queryByTestId("pane-thr-b")).toBeNull());
     expect(screen.getByTestId("pane-thr-a")).toBeTruthy();
-    expect(screen.getByTestId("location").textContent).toBe("/threads/thr-a");
+    await waitFor(() =>
+      expect(screen.getByTestId("location").textContent).toBe("/threads/thr-a"),
+    );
   });
 
   it("restores the pane, focus, and URL when a deferred archive is rejected", async () => {
