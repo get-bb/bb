@@ -8,6 +8,7 @@ import { ResourceSortMenu, ResourceToolbar } from "@bb/shared-ui/resource-list";
 import { useScrollOverflowState } from "@/components/thread/timeline/useScrollOverflowState";
 import type {
   PluginBrowseSort,
+  PluginBrowseCategoryOption,
   PluginBrowseSortDirection,
 } from "./plugin-browse-discovery";
 
@@ -47,12 +48,6 @@ export function pluginBrowseSortOptions(hasInstallCounts: boolean) {
   }));
 }
 
-export interface PluginBrowseCategoryOption {
-  id: string;
-  label: string;
-  count: number;
-}
-
 export function PluginBrowseToolbar({
   query,
   selectedCategories,
@@ -73,7 +68,7 @@ export function PluginBrowseToolbar({
   changeSearchParams: (change: (next: URLSearchParams) => void) => void;
 }) {
   return (
-    <div className="mx-auto w-full max-w-3xl">
+    <div className="w-full">
       <ResourceToolbar
         searchValue={query}
         searchPlaceholder="Search plugins"

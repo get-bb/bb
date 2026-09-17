@@ -22,40 +22,10 @@ import {
   formatUrlLabel,
   PluginCategoryLabel,
 } from "./plugin-ui";
-import { PluginAuthorAvatar } from "./PluginAuthorAvatar";
-import { PluginAuthorLink } from "./PluginAuthorLink";
 import {
   entriesByMarketplaceAuthor,
-  pluginAuthorGithub,
   pluginMarketplaceAuthorKey,
 } from "./plugin-marketplace-author";
-
-export function PluginMarketplaceHeaderMetadata({
-  entry,
-}: {
-  entry: PluginCatalogSearchEntry;
-}) {
-  if (entry.author === null) return null;
-  const author = entry.author;
-  return (
-    <span className="inline-flex min-w-0 items-center gap-1.5">
-      <PluginAuthorAvatar
-        name={author.name}
-        github={pluginAuthorGithub(author)}
-        size="detail"
-      />
-      <span className="min-w-0">
-        By{" "}
-        <PluginAuthorLink
-          entry={entry}
-          className="rounded-sm underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-        >
-          {author.name}
-        </PluginAuthorLink>
-      </span>
-    </span>
-  );
-}
 
 export function PluginMarketplaceCategoryPill({
   entry,

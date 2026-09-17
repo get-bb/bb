@@ -65,11 +65,11 @@ function neutral(percent: number): string {
 }
 
 function accentTint(token: string, percent: number): string {
-  return `color-mix(in oklch, var(${token}) ${percent}%, var(--canvas))`;
+  return `color-mix(in oklab, var(${token}) ${percent}%, var(--canvas))`;
 }
 
 function accentInk(token: string, percent: number): string {
-  return `color-mix(in oklch, var(${token}) ${percent}%, var(--ink))`;
+  return `color-mix(in oklab, var(${token}) ${percent}%, var(--ink))`;
 }
 
 function pluginCatalogCategoryAccentToken(
@@ -91,9 +91,9 @@ export function pluginCatalogCategoryPillStyle(
         color: neutral(55),
       }
     : {
-        background: accentTint(accentToken, 16),
-        borderColor: accentTint(accentToken, 24),
-        color: accentInk(accentToken, 52),
+        background: accentTint(accentToken, 10),
+        borderColor: accentTint(accentToken, 18),
+        color: accentInk(accentToken, 50),
       };
 }
 
@@ -194,7 +194,7 @@ export function PluginCategoryLabel({
 }) {
   return (
     <span
-      className="shrink-0 truncate rounded border px-2 py-1 text-2xs leading-none"
+      className="max-w-full rounded border px-1.5 py-1 text-right text-2xs leading-snug"
       style={pluginCatalogCategoryPillStyle(categoryId)}
     >
       {label}
@@ -205,6 +205,7 @@ export function PluginCategoryLabel({
 export function CatalogEntryIconChip({
   entry,
   className,
+  compact = false,
 }: {
   entry: {
     displayName: string;
@@ -213,17 +214,26 @@ export function CatalogEntryIconChip({
     iconTinted: boolean;
   };
   className?: string;
+  compact?: boolean;
 }) {
   return (
     <ResourceIconFrame
-      className={cn("size-10 rounded-md border", className)}
+      className={cn(
+        compact ? "size-6 rounded border" : "size-10 rounded-md border",
+        className,
+      )}
       style={{
         background: neutral(5),
         borderColor: neutral(14),
         color: neutral(55),
       }}
     >
-      {() => <CatalogEntryIcon entry={entry} className="size-6" />}
+      {() => (
+        <CatalogEntryIcon
+          entry={entry}
+          className={compact ? "size-4" : "size-6"}
+        />
+      )}
     </ResourceIconFrame>
   );
 }

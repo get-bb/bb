@@ -14,6 +14,7 @@ import type {
   SystemMachineProvider,
 } from "@bb/server-contract";
 import type { ComposerView } from "@get-bb/plugin-sdk";
+import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import type { ComposerTextEffectSource } from "@/lib/composer-text-effects";
 import { ComposerBannersSlot } from "@/components/plugin/PluginComposerBanners";
 import { PROMPT_STACK_TRACK_CLASS } from "@/components/promptbox/banner/PromptStackCard";
@@ -270,6 +271,7 @@ const DefaultNewThreadComposer = memo(function DefaultNewThreadComposer({
   voice,
   onComposerLayoutChange,
 }: DefaultNewThreadComposerProps) {
+  const isCompactViewport = useIsCompactViewport();
   const isProjectlessPrompt = project?.value === null;
   const placeholder =
     placeholderOverride ?? getNewThreadPromptPlaceholder(isProjectlessPrompt);
@@ -311,7 +313,7 @@ const DefaultNewThreadComposer = memo(function DefaultNewThreadComposer({
         onComposerLayoutChange={onComposerLayoutChange}
         history={history}
         typeahead={typeahead}
-        mentionMenuPlacement="bottom"
+        mentionMenuPlacement={isCompactViewport ? "top" : "bottom"}
         attachments={attachments}
         promptActions={promptActions}
         voice={voice}

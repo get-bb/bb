@@ -181,6 +181,21 @@
       var(--bb-sidebar-sticky-stack-padding);
   }
 
+  /* The stack's top padding is inside the scrollport, so rows stay visible as
+     they scroll through it. A sticky label hides that strip behind its own top
+     shield; a pinned row with no label above it has nothing to hide it, so the
+     stack caps the strip for every tier. */
+  [data-sidebar-sticky-stack]::before {
+    content: "";
+    position: sticky;
+    top: 0;
+    z-index: 70;
+    display: block;
+    height: var(--bb-sidebar-sticky-stack-padding-top);
+    margin-top: calc(-1 * var(--bb-sidebar-sticky-stack-padding-top));
+    background-color: var(--sidebar);
+  }
+
   [data-sidebar-sticky-stack][data-sidebar-sticky-density="compact-actions"] {
     --bb-sidebar-sticky-stack-padding-top: 0.5rem;
   }
@@ -380,6 +395,14 @@
     > :not([hidden])
     ~ :not([hidden]) {
     margin-top: var(--bb-sidebar-sticky-row-gap);
+  }
+
+  /* A section header that scrolls with its contents (Pinned) pins no label, so
+     every tier below it moves up by the slot the label would have held. The
+     label slot is the origin both deeper offsets derive from, so collapsing it
+     here covers the project tier and every parent level at once. */
+  [data-sidebar-sticky-stack] [data-sidebar-sticky-header="false"] {
+    --bb-sidebar-sticky-project-top: var(--bb-sidebar-sticky-stack-padding-top);
   }
 
   /* Section-variant trees (Pinned, projectless Threads) have no project tier:

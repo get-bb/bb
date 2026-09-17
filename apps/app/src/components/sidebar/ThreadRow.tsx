@@ -688,7 +688,10 @@ function ThreadRowComponent({
       <span
         className={cn(
           "flex min-w-0 flex-1 items-center gap-1.5",
-          !shortcut && SIDEBAR_HOVER_ACTIONS_INSET_CLASS,
+          !shortcut &&
+            (parentOptions && hasChildren
+              ? "pr-7.5 max-md:pointer-coarse:pr-0"
+              : SIDEBAR_HOVER_ACTIONS_INSET_CLASS),
         )}
       >
         {isEditing ? (

@@ -152,29 +152,6 @@ afterEach(() => {
 });
 
 describe("PluginAuthorPage", () => {
-  it("aligns the author header with the toolbar and card grid", async () => {
-    renderPage("/plugins?author=12%3Abb-community%3Agithub%3Apatlee");
-
-    await screen.findByRole("heading", { name: /^Pat Lee/u });
-    const headerContainer = screen
-      .getByRole("link", { name: "Browse plugins" })
-      .closest(".max-w-3xl");
-    const toolbarContainer = screen
-      .getByRole("textbox", { name: "Search plugins" })
-      .closest(".max-w-3xl");
-    const gridContainer = screen
-      .getByRole("button", { name: "Open Alpha details" })
-      .closest(".max-w-3xl");
-    for (const container of [
-      headerContainer,
-      toolbarContainer,
-      gridContainer,
-    ]) {
-      expect(container?.classList.contains("mx-auto")).toBe(true);
-      expect(container?.classList.contains("w-full")).toBe(true);
-    }
-  });
-
   it.each([
     {
       rule: "frequency before length",

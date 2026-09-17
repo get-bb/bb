@@ -930,6 +930,40 @@ describe("ThreadRow", () => {
     );
   });
 
+  it.each([true, false])(
+    "reserves a stable action slot beside a parent disclosure (collapsed: %s)",
+    (isCollapsed) => {
+      const onToggleCollapsed = vi.fn();
+      renderThreadRow({
+        thread: createThread({
+          title: "Nested discussion with enough text to fill the sidebar width",
+        }),
+        options: {
+          kind: "parent",
+          depth: 1,
+          isCompact: false,
+          isCollapsed,
+          childCount: 1,
+          childActivity: NO_COLLAPSED_CHILD_ACTIVITY,
+          onToggleCollapsed,
+        },
+      });
+      const toggle = screen.getByRole("button", {
+        name: /(?:Expand|Collapse) Nested discussion/,
+      });
+      const titleContainer = toggle.parentElement;
+      expect(
+        titleContainer?.classList.contains("bb-sidebar-hover-actions-inset"),
+      ).toBe(false);
+      expect(titleContainer?.classList.contains("pr-7.5")).toBe(true);
+      expect(
+        titleContainer?.classList.contains("max-md:pointer-coarse:pr-0"),
+      ).toBe(true);
+      fireEvent.click(toggle);
+      expect(onToggleCollapsed).toHaveBeenCalledWith("thr_test");
+    },
+  );
+
   it("keeps the parent-thread disclosure caret visible on mobile", () => {
     renderThreadRow({
       thread: createThread({ title: "Parent thread" }),
