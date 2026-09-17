@@ -322,24 +322,18 @@ Registration returns `void`; reload replaces registrations and unload restores
 the next owner or built-in. A rejected setup preserves the previous generation.
 
 A registered name is a BB icon name everywhere one is accepted, not only in
-`experimental_Icon`. Every host surface that takes an icon-name string resolves
-a registered name before a built-in of the same name, so this is how a plugin
-paints its own artwork on host-rendered chrome: thread row statuses
-(`experimental_setThreadRowStatus`), sidebar footer items, composer `+` menu
-rows, message actions, nav panels, panel tabs and launcher actions, and mention
-rows. Surfaces drawn with the plugin badge (footer actions, plus-menu rows,
-panel actions, mention rows) still prefer the plugin's own `bb.branding.icon`
-or compact icon asset when it ships one, so a contribution's name is the
-fallback there; `experimental_setThreadRowStatus` has no such preference and
-always draws the name it is given.
+`experimental_Icon`: every host icon field resolves a registration before a
+built-in of the same name. That is how a plugin draws its own artwork on thread
+row statuses, sidebar footer items, composer `+` rows, message actions, nav
+panels, panel tabs and actions, and mention rows. The plugin-badged surfaces
+prefer the plugin's `bb.branding.icon` or compact asset when it ships one, so
+the name is their fallback; `experimental_setThreadRowStatus` always draws what
+it is given.
 
-This registry is separate from the manifest's `bb.branding.experimental_icons`
-declared-icon map. Those namespaced `"<pluginId>/<name>"` glyphs are SVG files
-the server resolves, and only tool presentations, provider declarations and
-bridge rows accept them; passing one to a surface listed above silently falls
-back to `Zap` unless the same name is also registered here. A registered name
-may itself contain a `/` — that is a spelling convention, not a link to the
-manifest map.
+Not the manifest's `bb.branding.experimental_icons` map: those namespaced
+glyphs resolve only in tool presentations, provider declarations and bridge
+rows, and fall back to `Zap` here. A `/` in a registered name is spelling, not
+a reference to that map.
 
 `experimental_Icon` accepts `name`, optional `fallback` (default `Zap`),
 `className`, `style`, `aria-label`, and `aria-hidden`. Registered artwork receives
