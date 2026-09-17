@@ -540,16 +540,18 @@ export interface ExperimentalAppOverlayRegistration {
 /**
  * A name the host resolves to a glyph, in this order: a name any plugin
  * registered with `app.experimental_icons.register()`, then a built-in BB icon
- * name (`"Zap"`). A registration therefore shadows a built-in of the same
- * name, and registering artwork is how a plugin paints its own mark on
- * host-rendered chrome. Names that resolve to neither fall back to the
- * surface's generic icon.
+ * name (`"Zap"`), then a namespaced `"<pluginId>/<name>"` glyph naming an
+ * entry of that plugin's manifest `bb.branding.experimental_icons` map. A
+ * registration therefore shadows a built-in, and either shadows a declared
+ * icon of the same name. Names that resolve to none of the three fall back to
+ * the surface's generic icon.
  *
- * This is not the manifest's `bb.branding.experimental_icons` vocabulary. A
- * namespaced `"<pluginId>/<name>"` glyph naming an entry of that map resolves
- * only in tool presentations, provider declarations and bridge rows, and
- * silently falls back here. A registered name may itself be spelled with a
- * `/`, but that is a convention, not a reference to the manifest map.
+ * Declared icons and registrations are one vocabulary here: the same name
+ * works in `experimental_Icon`, in every field below, and — for a declared
+ * icon — in the tool, provider and bridge-row declarations that accept one.
+ * Declared icons need no frontend bundle and survive the plugin being stopped;
+ * registrations can be any React component but live only while the plugin's
+ * app bundle is loaded.
  */
 type BbIconName = string;
 

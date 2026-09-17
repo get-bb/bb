@@ -322,13 +322,16 @@ Registration returns `void`; reload replaces registrations and unload restores
 the next owner or built-in. A rejected setup preserves the previous generation.
 
 A registered name is a BB icon name everywhere one is accepted, not only in
-`experimental_Icon`: every host icon field resolves a registration before a
-built-in of the same name. That is how a plugin draws its own artwork on thread
-row statuses, sidebar footer items, composer `+` rows, message actions, nav
-panels, panel tabs and actions, and mention rows. The plugin-badged surfaces
-prefer the plugin's `bb.branding.icon` or compact asset when it ships one, so
-the name is their fallback; `experimental_setThreadRowStatus` always draws what
-it is given.
+`experimental_Icon`. Every host icon field resolves a registration first, then
+a built-in, then a manifest-declared `"<pluginId>/<name>"` glyph — so a plugin
+draws its own artwork on thread row statuses, sidebar footer items, composer
+`+` rows, message actions, nav panels, panel tabs and actions, and mention rows
+by either route. Register when the artwork wants to be a component or to
+override a built-in; declare in the manifest when it should also work in tool
+and provider declarations, or without a frontend bundle. The plugin-badged
+surfaces prefer the plugin's `bb.branding.icon` or compact asset when it ships
+one, so the name is their fallback; `experimental_setThreadRowStatus` always
+draws what it is given.
 
 `experimental_Icon` accepts `name`, optional `fallback` (default `Zap`),
 `className`, `style`, `aria-label`, and `aria-hidden`. Registered artwork receives
