@@ -33,7 +33,10 @@ import {
   setPluginLogoUrls,
 } from "@/lib/plugin-logos";
 import { CommandPalette } from "./CommandPalette";
-import { SETTINGS_NAV_SECTIONS } from "@/components/settings/settings-sections";
+import {
+  resetPluginThreadRowStatusesForTest,
+  setPluginThreadRowStatus,
+} from "@/lib/plugin-thread-row-status";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 import { collectPluginAppRegistrations } from "@get-bb/plugin-sdk/internal/plugin-app-collector";
 
@@ -371,6 +374,7 @@ afterEach(() => {
   removePluginSlotRegistrations("linear");
   removePluginSlotRegistrations("automations");
   resetPluginLogoStoreForTest();
+  resetPluginThreadRowStatusesForTest();
   testState.calls.length = 0;
   testState.targets.length = 0;
   testState.filesAvailable = false;
@@ -966,6 +970,13 @@ describe("CommandPalette", () => {
         }),
         makeThread("draft", { lastReadAt: Date.now() }),
         makeThread("waiting", { hasPendingInteraction: true }),
+        makeThread("workflow", {
+          lastReadAt: Date.now(),
+          activity: {
+            ...makeThread("workflow").activity,
+            activeWorkflowCount: 1,
+          },
+        }),
       ];
       modeState.threadDraftIds.add("draft");
       modeState.activeRecents = threads;
@@ -984,7 +995,7 @@ describe("CommandPalette", () => {
       fireEvent.change(input, { target: { value: query } });
       const results = screen.getByRole("listbox", { name: "Threads" });
       await waitFor(() =>
-        expect(within(results).getAllByRole("option")).toHaveLength(4),
+        expect(within(results).getAllByRole("option")).toHaveLength(5),
       );
       const idleRow = within(results).getByRole("option", {
         name: /Title idle/,
@@ -998,13 +1009,16 @@ describe("CommandPalette", () => {
         ["Title working", "Thread working", "Loading"],
         ["Title draft", "Thread has unsubmitted draft", "Edit"],
         ["Title waiting", "Thread needs user input", "CircleQuestion"],
+        ["Title workflow", "Workflow running", "Workflow"],
       ]) {
         const row = within(results).getByRole("option", {
           name: new RegExp(title),
         });
         const status = within(row).getByRole("img", { name: label });
         const details = row.querySelector("[data-palette-thread-details]");
-        const metadata = details?.querySelector("[data-palette-thread-metadata]");
+        const metadata = details?.querySelector(
+          "[data-palette-thread-metadata]",
+        );
         const separator = details?.querySelector(
           "[data-palette-thread-status-separator]",
         );
@@ -1020,6 +1034,11 @@ describe("CommandPalette", () => {
         );
         expect(status.hasAttribute("tabindex")).toBe(false);
         expect(status.closest('button, [role="button"]')).toBeNull();
+        expect(
+          status
+            .querySelector(".animate-shine-icon")
+            ?.closest('[aria-hidden="true"]') ?? null,
+        ).toBeNull();
         expect(row.querySelector('[data-icon="Folder"]')).toBeNull();
         expect(
           row.querySelector("[data-palette-thread-metadata]")?.textContent,
@@ -1028,6 +1047,45 @@ describe("CommandPalette", () => {
       expect(within(results).queryByText("Recent") !== null).toBe(query === "");
     },
   );
+
+  it("uses live plugin status with the sidebar's attention priority", async () => {
+    modeState.activeRecents = [
+      makeThread("plugin", { lastReadAt: Date.now() }),
+      makeThread("waiting", { hasPendingInteraction: true }),
+    ];
+    const pluginStatus = {
+      icon: "Check",
+      label: "Checks passed",
+      tone: "success" as const,
+    };
+    setPluginThreadRowStatus("waiting", "checks", pluginStatus);
+    renderPalette();
+    openThreadSearch();
+    await screen.findByRole("combobox", { name: "Search threads" });
+    const row = screen.getByRole("option", { name: /Title plugin/ });
+    expect(within(row).queryByRole("img")).toBeNull();
+    act(() => setPluginThreadRowStatus("plugin", "checks", pluginStatus));
+    const status = within(row).getByRole("img", { name: "Checks passed" });
+    expectClasses(status.querySelector('[data-icon="Check"]'), "size-3.5");
+    expect(
+      within(screen.getByRole("option", { name: /Title waiting/ })).getByRole(
+        "img",
+        {
+          name: "Thread needs user input",
+        },
+      ),
+    ).toBeTruthy();
+    expect(
+      within(screen.getByRole("option", { name: /Title waiting/ })).queryByRole(
+        "img",
+        {
+          name: "Checks passed",
+        },
+      ),
+    ).toBeNull();
+    act(() => resetPluginThreadRowStatusesForTest());
+    expect(within(row).queryByRole("img")).toBeNull();
+  });
 
   it("opens an archived message match with its anchor", async () => {
     modeState.searchResponse = {

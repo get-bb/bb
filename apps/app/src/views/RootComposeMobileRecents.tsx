@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useAtom } from "jotai";
 import type { ProviderInfo, ThreadListEntry } from "@bb/domain";
 import { RouteAnchor } from "@/components/ui/app-route-anchor";
-import { ThreadStatusGlyph } from "@/components/sidebar/ThreadRow";
+import { ThreadStatusGlyph } from "@/components/thread/ThreadStatusGlyph";
 import { SidebarChildToggleChevron } from "@/components/sidebar/SidebarChildToggleChevron";
 import { getSidebarThreadRowPaddingLeft } from "@/components/sidebar/sidebarRowClasses";
 import { SIDEBAR_WORKING_STATUS_COLOR_CLASS } from "@/components/sidebar/sidebarRowClasses";

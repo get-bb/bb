@@ -13,7 +13,7 @@ import { useSetAtom } from "jotai";
 import type { ThreadListEntry } from "@bb/domain";
 import type { PluginComposerThreadRowStatus } from "@get-bb/plugin-sdk";
 import { getThreadConversationCollapsedAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
-import { Icon, type IconName } from "@bb/shared-ui/icon";
+import { Icon } from "@bb/shared-ui/icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { SidebarStickyTier } from "@/components/ui/sidebar.js";
 import { NavLink } from "react-router-dom";
@@ -36,19 +36,10 @@ import {
   SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
 } from "@/components/ui/sidebar-hover-actions.js";
 import {
-  hasActiveBackgroundAgentActivity,
-  hasActiveBackgroundCommandActivity,
-  hasActiveGoalActivity,
-  hasActivePlanModeActivity,
-  hasActiveWorkflowActivity,
-  isRuntimeBusyThread,
-  isUnreadDoneThread,
-  getThreadListIndicatorLabel,
   hasThreadListWorkingActivity,
+  threadListIndicatorStateForThread,
   NO_COLLAPSED_CHILD_ACTIVITY,
-  resolveThreadListIndicator,
   type CollapsedChildActivity,
-  type ThreadListIndicatorKind,
   type ThreadListIndicatorState,
 } from "@bb/client-core";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
@@ -63,10 +54,6 @@ import {
   SIDEBAR_CONTROL_BUTTON_CLASS,
   SIDEBAR_ROW_OPEN_IN_SPLIT_STATE_CLASS,
   SIDEBAR_STATUS_GLYPH_BOX_CLASS,
-  SIDEBAR_STATUS_ICON_CLASS,
-  SIDEBAR_SUCCESS_STATUS_COLOR_CLASS,
-  SIDEBAR_SUCCESS_STATUS_DOT_CLASS,
-  SIDEBAR_WORKING_STATUS_COLOR_CLASS,
   getSidebarThreadRowPaddingLeft,
 } from "./sidebarRowClasses";
 import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
@@ -88,7 +75,11 @@ import {
   useSidebarProjectName,
   useThreadTitleDisplayText,
 } from "@/components/thread/ThreadTitleMentions";
-import { pluginIconName } from "@/components/plugin/PluginIcon";
+import {
+  ThreadStatusGlyph,
+  resolveThreadStatus,
+  type ThreadStatusGlyphProps,
+} from "@/components/thread/ThreadStatusGlyph";
 import { usePluginThreadRowStatus } from "@/lib/plugin-thread-row-status";
 
 const SIDEBAR_TITLE_DOUBLE_CLICK_MS = 400;
@@ -170,92 +161,6 @@ const REORDER_PLACEMENT_CLASS: Record<SidebarReorderPlacement, string> = {
     "after:pointer-events-none after:absolute after:inset-x-1 after:-bottom-px after:h-0.5 after:rounded-full after:bg-sidebar-ring after:content-['']",
 };
 
-const WORKING_ACTIVITY_ICONS = {
-  workflow: "Workflow",
-  "background-agent": "UserRoundPlus",
-  "background-command": "Terminal",
-  "plan-mode": "ListTodo",
-  goal: "Target",
-} satisfies Partial<Record<ThreadListIndicatorKind, IconName>>;
-
-const WAITING_ICONS = {
-  "waiting-for-input": "CircleQuestion",
-  "queued-waiting": "Clock",
-} satisfies Partial<Record<ThreadListIndicatorKind, IconName>>;
-
-function ThreadDraftIndicator({
-  hideIdleLabel = false,
-  isWorking,
-  size,
-}: {
-  hideIdleLabel?: boolean;
-  isWorking: boolean;
-  size: "default" | "compact";
-}) {
-  const label = getThreadListIndicatorLabel(
-    isWorking ? "working-draft" : "draft",
-  );
-  return (
-    <Icon
-      name="Edit"
-      className={cn(
-        "pointer-events-none shrink-0",
-        size === "compact" ? "size-3.5" : SIDEBAR_STATUS_ICON_CLASS,
-        isWorking
-          ? ["animate-shine-icon", SIDEBAR_WORKING_STATUS_COLOR_CLASS]
-          : "text-muted-foreground",
-      )}
-      {...(!isWorking && hideIdleLabel
-        ? { "aria-hidden": true }
-        : { "aria-label": label ?? undefined })}
-    />
-  );
-}
-
-function PluginThreadRowStatusIndicator({
-  status,
-}: {
-  status: PluginComposerThreadRowStatus;
-}) {
-  if (status.tone === "running") {
-    return (
-      <span
-        className={cn(
-          "inline-flex items-center justify-center motion-safe:animate-pulse",
-          SIDEBAR_STATUS_ICON_CLASS,
-          "text-success",
-        )}
-      >
-        <Icon
-          name={pluginIconName(status.icon)}
-          className={cn(
-            "pointer-events-none shrink-0 animate-shine-icon",
-            SIDEBAR_STATUS_ICON_CLASS,
-            "motion-safe:[animation-duration:1.5s]",
-          )}
-          aria-label={status.label}
-        />
-      </span>
-    );
-  }
-
-  return (
-    <Icon
-      name={pluginIconName(status.icon)}
-      className={cn(
-        "pointer-events-none shrink-0",
-        SIDEBAR_STATUS_ICON_CLASS,
-        status.tone === "success"
-          ? SIDEBAR_SUCCESS_STATUS_COLOR_CLASS
-          : status.tone === "error"
-            ? "text-destructive"
-            : "text-muted-foreground",
-      )}
-      aria-label={status.label}
-    />
-  );
-}
-
 function getThreadRowStyle(depth: number): CSSProperties {
   return {
     paddingLeft: getSidebarThreadRowPaddingLeft(depth),
@@ -304,111 +209,6 @@ function renderThreadRowContainer({
   );
 }
 
-interface ThreadStatusGlyphProps extends ThreadListIndicatorState {
-  hideIdleDraftLabel?: boolean;
-  size?: "default" | "compact";
-}
-
-export function ThreadStatusGlyph({
-  hasPendingInteraction,
-  hasUnsubmittedDraft,
-  hasUnreadError,
-  hasUnreadSuccess,
-  hideIdleDraftLabel = false,
-  isBackgroundAgentActive,
-  isBackgroundCommandActive,
-  isGoalActive,
-  isPlanModeActive,
-  isRuntimeActive,
-  isWorkflowActive,
-  queuedWork,
-  size = "default",
-}: ThreadStatusGlyphProps) {
-  const iconSizeClass =
-    size === "compact" ? "size-3.5" : SIDEBAR_STATUS_ICON_CLASS;
-  const kind = resolveThreadListIndicator({
-    hasPendingInteraction,
-    hasUnsubmittedDraft,
-    hasUnreadError,
-    hasUnreadSuccess,
-    isBackgroundAgentActive,
-    isBackgroundCommandActive,
-    isGoalActive,
-    isPlanModeActive,
-    isRuntimeActive,
-    isWorkflowActive,
-    queuedWork,
-  });
-
-  switch (kind) {
-    case "unread-error":
-    case "queued-failed":
-      return (
-        <Icon
-          name="CircleX"
-          className={cn("text-destructive", iconSizeClass)}
-          aria-label={getThreadListIndicatorLabel(kind) ?? undefined}
-        />
-      );
-    case "waiting-for-input":
-    case "queued-waiting":
-      return (
-        <Icon
-          name={WAITING_ICONS[kind]}
-          className={cn("text-muted-foreground/75", iconSizeClass)}
-          aria-label={getThreadListIndicatorLabel(kind) ?? undefined}
-        />
-      );
-    case "working-draft":
-      return <ThreadDraftIndicator isWorking size={size} />;
-    case "workflow":
-    case "background-agent":
-    case "background-command":
-    case "plan-mode":
-    case "goal":
-      return (
-        <Icon
-          name={WORKING_ACTIVITY_ICONS[kind]}
-          className={cn(
-            "animate-shine-icon",
-            SIDEBAR_WORKING_STATUS_COLOR_CLASS,
-            iconSizeClass,
-          )}
-          aria-label={getThreadListIndicatorLabel(kind) ?? undefined}
-        />
-      );
-    case "runtime":
-      return (
-        <Icon
-          name="Loading"
-          className={cn(
-            "animate-spin",
-            SIDEBAR_WORKING_STATUS_COLOR_CLASS,
-            iconSizeClass,
-          )}
-          aria-label={getThreadListIndicatorLabel(kind) ?? undefined}
-        />
-      );
-    case "draft":
-      return (
-        <ThreadDraftIndicator
-          hideIdleLabel={hideIdleDraftLabel}
-          isWorking={false}
-          size={size}
-        />
-      );
-    case "unread-success":
-      return (
-        <span
-          className={SIDEBAR_SUCCESS_STATUS_DOT_CLASS}
-          aria-label={getThreadListIndicatorLabel(kind) ?? undefined}
-        />
-      );
-    case "none":
-      return null;
-  }
-}
-
 interface CollapsedThreadStatusGlyphProps {
   activity: CollapsedChildActivity;
   pluginStatus?: PluginComposerThreadRowStatus | null;
@@ -431,53 +231,20 @@ export function CollapsedThreadStatusGlyph({
     isRuntimeActive: activity.runtimeWorking,
     isWorkflowActive: activity.workflow,
   };
-  const { pluginStatusIsVisible } = resolveThreadTrailingIndicatorStatus(
-    statusProps,
-    pluginStatus,
-  );
-
-  if (pluginStatusIsVisible && pluginStatus) {
-    return <PluginThreadRowStatusIndicator status={pluginStatus} />;
-  }
-
-  return <ThreadStatusGlyph {...statusProps} />;
+  return <ThreadStatusGlyph {...statusProps} pluginStatus={pluginStatus} />;
 }
 type ThreadTrailingIndicatorProps = ThreadStatusGlyphProps & {
   pluginStatus: PluginComposerThreadRowStatus | null;
 };
 
-interface ThreadTrailingIndicatorResolution {
-  accessibleLabel: string | null;
-  indicatorKind: ReturnType<typeof resolveThreadListIndicator>;
-  pluginStatusIsVisible: boolean;
-}
-
-function resolveThreadTrailingIndicatorStatus(
-  statusProps: ThreadStatusGlyphProps,
-  pluginStatus: PluginComposerThreadRowStatus | null,
-): ThreadTrailingIndicatorResolution {
-  const indicatorKind = resolveThreadListIndicator(statusProps);
-  const pluginStatusIsVisible =
-    pluginStatus !== null &&
-    indicatorKind !== "runtime" &&
-    indicatorKind !== "unread-error" &&
-    indicatorKind !== "waiting-for-input";
-
-  return {
-    accessibleLabel: pluginStatusIsVisible
-      ? pluginStatus.label
-      : getThreadListIndicatorLabel(indicatorKind),
-    indicatorKind,
-    pluginStatusIsVisible,
-  };
-}
-
 function ThreadTrailingIndicator({
   pluginStatus,
   ...statusProps
 }: ThreadTrailingIndicatorProps) {
-  const { indicatorKind, pluginStatusIsVisible } =
-    resolveThreadTrailingIndicatorStatus(statusProps, pluginStatus);
+  const { indicatorKind, pluginStatusIsVisible } = resolveThreadStatus(
+    statusProps,
+    pluginStatus,
+  );
 
   if (indicatorKind === "none" && !pluginStatusIsVisible) {
     return null;
@@ -491,11 +258,7 @@ function ThreadTrailingIndicator({
         SIDEBAR_STATUS_GLYPH_BOX_CLASS,
       )}
     >
-      {pluginStatusIsVisible && pluginStatus ? (
-        <PluginThreadRowStatusIndicator status={pluginStatus} />
-      ) : (
-        <ThreadStatusGlyph {...statusProps} />
-      )}
+      <ThreadStatusGlyph {...statusProps} pluginStatus={pluginStatus} />
     </span>
   );
 }
@@ -518,17 +281,10 @@ function ThreadRowComponent({
   const shortcut = useSidebarThreadShortcut(thread.id);
   const pluginThreadRowStatus = usePluginThreadRowStatus(thread.id);
   const showActive = isActive;
-  const hasPendingInteraction = thread.hasPendingInteraction;
-  const threadRuntimeBusy = isRuntimeBusyThread(thread);
-  const threadWorkflowActive = hasActiveWorkflowActivity(thread);
-  const threadBackgroundAgentActive = hasActiveBackgroundAgentActivity(thread);
-  const threadBackgroundCommandActive =
-    hasActiveBackgroundCommandActivity(thread);
-  const threadPlanModeActive = hasActivePlanModeActivity(thread);
-  const threadGoalActive = hasActiveGoalActivity(thread);
-  const threadUnreadDone = isUnreadDoneThread(thread);
-  const threadUnreadError = threadUnreadDone && thread.status === "error";
-  const threadUnreadSuccess = threadUnreadDone && !threadUnreadError;
+  const threadStatus = threadListIndicatorStateForThread(
+    thread,
+    hasComposerDraft,
+  );
   const threadTitle = getThreadDisplayTitle(thread);
   const labelTitle = useThreadTitleDisplayText(threadTitle);
   const crossProjectName = useSidebarProjectName(crossProjectId);
@@ -578,30 +334,37 @@ function ThreadRowComponent({
   const hasHiddenChildren = isParentRow && isParentCollapsed && hasChildren;
   const trailingIndicatorState: ThreadListIndicatorState = {
     hasPendingInteraction:
-      hasPendingInteraction || (hasHiddenChildren && childActivity.pending),
+      threadStatus.hasPendingInteraction ||
+      (hasHiddenChildren && childActivity.pending),
     hasUnsubmittedDraft:
-      hasComposerDraft ||
+      threadStatus.hasUnsubmittedDraft ||
       (hasHiddenChildren && childActivity.hasUnsubmittedDraft),
     hasUnreadError:
-      threadUnreadError || (hasHiddenChildren && childActivity.unreadError),
+      threadStatus.hasUnreadError ||
+      (hasHiddenChildren && childActivity.unreadError),
     hasUnreadSuccess:
-      threadUnreadSuccess || (hasHiddenChildren && childActivity.unread),
+      threadStatus.hasUnreadSuccess ||
+      (hasHiddenChildren && childActivity.unread),
     isBackgroundAgentActive:
-      threadBackgroundAgentActive ||
+      threadStatus.isBackgroundAgentActive ||
       (hasHiddenChildren && childActivity.backgroundAgent),
     isBackgroundCommandActive:
-      threadBackgroundCommandActive ||
+      threadStatus.isBackgroundCommandActive ||
       (hasHiddenChildren && childActivity.backgroundCommand),
-    isGoalActive: threadGoalActive || (hasHiddenChildren && childActivity.goal),
-    queuedWork: thread.queuedWork,
+    isGoalActive:
+      threadStatus.isGoalActive || (hasHiddenChildren && childActivity.goal),
+    queuedWork: threadStatus.queuedWork,
     isPlanModeActive:
-      threadPlanModeActive || (hasHiddenChildren && childActivity.planMode),
+      threadStatus.isPlanModeActive ||
+      (hasHiddenChildren && childActivity.planMode),
     isRuntimeActive:
-      threadRuntimeBusy || (hasHiddenChildren && childActivity.runtimeWorking),
+      threadStatus.isRuntimeActive ||
+      (hasHiddenChildren && childActivity.runtimeWorking),
     isWorkflowActive:
-      threadWorkflowActive || (hasHiddenChildren && childActivity.workflow),
+      threadStatus.isWorkflowActive ||
+      (hasHiddenChildren && childActivity.workflow),
   };
-  const trailingIndicatorResolution = resolveThreadTrailingIndicatorStatus(
+  const trailingIndicatorResolution = resolveThreadStatus(
     trailingIndicatorState,
     pluginThreadRowStatus,
   );

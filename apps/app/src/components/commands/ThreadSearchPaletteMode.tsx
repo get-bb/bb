@@ -13,21 +13,14 @@ import { Icon } from "@bb/shared-ui/icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
-import {
-  getThreadListIndicatorLabel,
-  hasActiveBackgroundAgentActivity,
-  hasActiveBackgroundCommandActivity,
-  hasActiveGoalActivity,
-  hasActivePlanModeActivity,
-  hasActiveWorkflowActivity,
-  isRuntimeBusyThread,
-  isUnreadDoneThread,
-  resolveThreadListIndicator,
-  type ThreadListIndicatorState,
-} from "@bb/client-core";
+import { threadListIndicatorStateForThread } from "@bb/client-core";
 import type { ThreadSearchMatch } from "@bb/server-contract";
 import { usePromptDraftHasInput } from "@/hooks/usePromptDraftStorage";
-import { ThreadStatusGlyph } from "@/components/sidebar/ThreadRow";
+import {
+  ThreadStatusGlyph,
+  resolveThreadStatus,
+} from "@/components/thread/ThreadStatusGlyph";
+import { usePluginThreadRowStatus } from "@/lib/plugin-thread-row-status";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import {
   hasThreadSearchableQuery,
@@ -358,27 +351,18 @@ function ThreadSearchPaletteStatus({ row }: { row: PaletteThreadSearchRow }) {
     projectId: row.projectId,
     threadId: row.threadId,
   });
-  const thread = row.thread;
-  const unread = isUnreadDoneThread(thread);
-  const state: ThreadListIndicatorState = {
-    hasPendingInteraction: thread.hasPendingInteraction,
-    hasUnsubmittedDraft: hasUnsubmittedDraft,
-    hasUnreadError: unread && thread.status === "error",
-    hasUnreadSuccess: unread && thread.status !== "error",
-    isBackgroundAgentActive: hasActiveBackgroundAgentActivity(thread),
-    isBackgroundCommandActive: hasActiveBackgroundCommandActivity(thread),
-    isGoalActive: hasActiveGoalActivity(thread),
-    isPlanModeActive: hasActivePlanModeActivity(thread),
-    isRuntimeActive: isRuntimeBusyThread(thread),
-    isWorkflowActive: hasActiveWorkflowActivity(thread),
-    queuedWork: thread.queuedWork,
-  };
-  const kind = resolveThreadListIndicator(state);
+  const state = threadListIndicatorStateForThread(
+    row.thread,
+    hasUnsubmittedDraft,
+  );
+  const pluginStatus = usePluginThreadRowStatus(row.threadId);
   const archived = row.lifecycle === "archived";
-  if (!archived && kind === "none") return null;
-  const label = archived
-    ? "Archived thread"
-    : (getThreadListIndicatorLabel(kind) ?? undefined);
+  const { accessibleLabel: label } = resolveThreadStatus(
+    state,
+    pluginStatus,
+    archived,
+  );
+  if (label === null) return null;
   return (
     <>
       <span
@@ -396,13 +380,12 @@ function ThreadSearchPaletteStatus({ row }: { row: PaletteThreadSearchRow }) {
             className="inline-flex size-3.5 shrink-0 cursor-default items-center justify-center text-subtle-foreground"
             data-palette-thread-status
           >
-            <span aria-hidden="true" className="inline-flex items-center">
-              {archived ? (
-                <Icon name="Archive" className="size-3.5" />
-              ) : (
-                <ThreadStatusGlyph {...state} size="compact" />
-              )}
-            </span>
+            <ThreadStatusGlyph
+              {...state}
+              archived={archived}
+              pluginStatus={pluginStatus}
+              size="compact"
+            />
           </span>
         </TooltipTrigger>
         <TooltipContent side="left">{label}</TooltipContent>

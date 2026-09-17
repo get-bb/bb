@@ -21,7 +21,7 @@ import {
   COARSE_POINTER_TEXT_SM_CLASS,
 } from "@bb/shared-ui/coarse-pointer-sizing";
 import { useThreadTitleMentionResources } from "@/components/thread/ThreadTitleMentions";
-import { ThreadStatusGlyph } from "@/components/sidebar/ThreadRow";
+import { ThreadStatusGlyph } from "@/components/thread/ThreadStatusGlyph";
 import {
   hasThreadSearchableQuery,
   useThreadSearch,
