@@ -1,7 +1,6 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import type { ThreadEventRow } from "@bb/domain";
 import { EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT } from "../src/accepted-client-request-context.js";
-import { ExecutionOutput } from "../src/execution-output.js";
 import {
   buildThreadTimelineFromEvents,
   buildThreadTimelineTurnDetailsFromEvents,
@@ -32,11 +31,8 @@ function timeline(events: ThreadEventRow[], includeNestedRows: boolean) {
   });
 }
 
-afterEach(() => vi.restoreAllMocks());
-
-describe("timeline materialization", () => {
-  it("does not reconstruct hidden tool output as a completed turn grows", () => {
-    const read = vi.spyOn(ExecutionOutput.prototype, "read");
+describe("timeline row planning", () => {
+  it("keeps collapsed summary metadata consistent with expanded output", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
     const events = [
       event.turnStarted(),
@@ -52,13 +48,11 @@ describe("timeline materialization", () => {
       event.turnCompleted(),
     ];
     const collapsed = timeline(events, false);
-    expect(read).not.toHaveBeenCalled();
     expect(collapsed.rows.map((row) => row.kind)).toEqual([
       "turn",
       "conversation",
     ]);
     const expanded = timeline(events, true);
-    expect(read).toHaveBeenCalledTimes(1);
     expect(
       expanded.rows.map((row) =>
         row.kind === "turn" ? { ...row, children: null } : row,
@@ -70,7 +64,7 @@ describe("timeline materialization", () => {
     });
   });
 
-  it("expands exactly the planned summary without reconstructing other turns", () => {
+  it("expands exactly the planned summary from a projection with multiple turns", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
     const events = [
       event.turnStarted({ turnId: "parent" }),
@@ -117,13 +111,11 @@ describe("timeline materialization", () => {
       (row) => row.kind === "turn" && row.turnId === "parent",
     );
     if (expected?.kind !== "turn") throw new Error("Missing parent summary");
-    const read = vi.spyOn(ExecutionOutput.prototype, "read");
     expect(timeline(events, false).rows).toEqual(
       expanded.rows.map((row) =>
         row.kind === "turn" ? { ...row, children: null } : row,
       ),
     );
-    expect(read).not.toHaveBeenCalled();
     const details = buildThreadTimelineTurnDetailsFromEvents({
       events: fromRows(events),
       options: {
@@ -133,6 +125,5 @@ describe("timeline materialization", () => {
       },
     });
     expect(details).toEqual({ kind: "matched", rows: expected.children });
-    expect(read).toHaveBeenCalledTimes(2);
   });
 });

@@ -111,17 +111,13 @@ selects that planned summary first and materializes only its children; unrelated
 summaries are not expanded to find a match. Collapsed rendering no longer needs
 a separate message-pruning policy that anticipates the grouping rules.
 
-Delegation bounds are computed from message metadata. Nested projection trees
-are created only when a visible delegation needs its children. Command, tool,
-and delegation output operations are recorded in order per call, and replayed
-when the output is rendered. This preserves partial lines, resets, interruptions,
-late output, and reused call IDs without reconstructing hidden output strings.
-Visible ongoing work and explicit `includeNestedRows=true` requests still
-materialize the contents they return.
+Tool output and nested delegation projections are reconstructed while processing
+the loaded events, including for collapsed summaries. The shared row plan avoids
+rendering unrelated summaries' child rows when selecting an expansion, but it
+does not defer event processing or output reconstruction.
 
-These are materialization savings, not a metadata-only database index. Selection
-still reads and decodes event payloads for the required context. Cold request
-cost remains dependent on that context; a large collapsed turn is not a
+Selection still reads and decodes event payloads for the required context. Cold
+request cost remains dependent on that context; a large collapsed turn is not a
 constant-time lookup. Route-cache hits and unchanged deltas are separate cases
 and must be benchmarked separately from cold opens and appended updates.
 

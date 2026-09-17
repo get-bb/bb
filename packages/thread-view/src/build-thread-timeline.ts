@@ -526,7 +526,7 @@ function convertMessage(
           command: message.command,
           cwd: message.cwd,
           source: message.source,
-          output: message.output.read(),
+          output: message.output,
           exitCode: message.exitCode,
           completedAt: message.completedAt,
           approvalStatus: message.approvalStatus,
@@ -544,7 +544,7 @@ function convertMessage(
           callId: message.callId,
           toolName: message.toolName,
           toolArgs: message.toolArgs,
-          output: message.output.read(),
+          output: message.output,
           completedAt: message.completedAt,
           approvalStatus: message.approvalStatus,
           ...rowPresentation(message),
@@ -714,10 +714,10 @@ function convertMessage(
           background: message.background,
           subagentType: message.subagentType ?? null,
           description: message.description ?? null,
-          output: message.output.read(),
+          output: message.output,
           completedAt: message.completedAt,
           childRows: filterDelegationChildRows(
-            buildTimelineRows(message.getChildProjection(), {
+            buildTimelineRows(message.childProjection, {
               completedTurnDisplay: options.completedTurnDisplay,
               includeNestedRows: true,
               rowIdPrefix: `${base.id}:child:`,

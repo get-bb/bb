@@ -1,4 +1,3 @@
-import type { ExecutionOutput } from "./execution-output.js";
 import type {
   BackgroundTaskStatus,
   BackgroundTaskUsage,
@@ -151,7 +150,7 @@ export interface EventProjectionToolCallMessage
   toolName: string;
   toolArgs: JsonObject | null;
   callId: string;
-  output: ExecutionOutput;
+  output: string;
   completedAt: number | null;
   approvalStatus: EventProjectionApprovalLifecycleStatus | null;
   status: Extract<
@@ -168,7 +167,7 @@ export interface EventProjectionCommandMessage
   cwd: string | null;
   parsedIntents: EventProjectionToolParsedIntent[];
   source: string | null;
-  output: ExecutionOutput;
+  output: string;
   exitCode: number | null;
   completedAt: number | null;
   approvalStatus: EventProjectionApprovalLifecycleStatus | null;
@@ -428,13 +427,13 @@ export interface EventProjectionDelegationMessage
   callId: string;
   childRef: string | null;
   background: boolean;
-  output: ExecutionOutput;
+  output: string;
   completedAt: number | null;
   status: Extract<
     EventProjectionMessageStatus,
     "pending" | "completed" | "error" | "interrupted"
   >;
-  getChildProjection(): EventProjection;
+  childProjection: EventProjection;
 }
 
 export interface EventProjectionWorkflowMessage

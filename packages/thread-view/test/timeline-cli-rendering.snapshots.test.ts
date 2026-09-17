@@ -416,7 +416,7 @@ describe("timeline CLI rendering snapshots", () => {
     );
 
     expect(messageKinds(timeline.messages)).toEqual(["user", "command"]);
-    expect(commandMessage?.output.read()).toBe("collecting tests\n");
+    expect(commandMessage?.output).toBe("collecting tests\n");
     expect(timeline.text).toContain("Running pnpm test -- --runInBand");
     expect(timeline.text).toContain("$ pnpm test -- --runInBand");
     expect(timeline.text).toContain("collecting tests");
@@ -2405,8 +2405,7 @@ describe("timeline CLI rendering snapshots", () => {
     const expectedText = "Summary 1.\nBody.\nSummary 2.";
 
     expect(
-      renderActiveTimeline(streamingEvents).projection.state.activeThinking
-        ?.text,
+      renderActiveTimeline(streamingEvents).projection.state.activeThinking?.text,
     ).toBe(expectedText);
     const completedMessages = renderActiveTimeline(
       completedEvents.slice(0, -1),
@@ -2433,8 +2432,7 @@ describe("timeline CLI rendering snapshots", () => {
     const expectedText = "First paragraph.\n\nSecond paragraph.";
 
     expect(
-      renderActiveTimeline(streamingEvents).projection.state.activeThinking
-        ?.text,
+      renderActiveTimeline(streamingEvents).projection.state.activeThinking?.text,
     ).toBe(expectedText);
     expect(
       renderIdleTimeline([

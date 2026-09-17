@@ -1,4 +1,3 @@
-import { ExecutionOutput, ExecutionOutputQueue } from "./execution-output.js";
 import type {
   JsonObject,
   ThreadEventItemPresentation,
@@ -23,11 +22,13 @@ import {
 } from "./message-scope.js";
 import {
   appendVisibleTextBuffer,
+  createVisibleTextBuffer,
   flushVisibleTextBuffer,
   getVisibleTextBufferFullLength,
   getVisibleTextBufferFullText,
   getVisibleTextBufferText,
   setVisibleTextBuffer,
+  type VisibleTextBuffer,
 } from "./visible-text-buffer.js";
 import {
   findExecMessageInActiveCell,
@@ -66,9 +67,10 @@ interface RunningExecutionBase {
   sourceSeqEnd: number;
   createdAt: number;
   startedAt: number;
-  output: ExecutionOutput;
+  output: string;
   completedAt: number | null;
   status: ViewProviderExecutionMessage["status"];
+  outputBuffer: VisibleTextBuffer;
   presentation?: ThreadEventItemPresentation;
 }
 
@@ -79,8 +81,9 @@ interface PendingExecutionOutput {
   sourceSeqEnd: number;
   createdAt: number;
   startedAt: number;
-  output: ExecutionOutput;
+  output: string;
   status?: ViewProviderExecutionMessage["status"];
+  outputBuffer: VisibleTextBuffer;
 }
 
 type BufferedExecutionOutput = RunningExecCall | PendingExecutionOutput;
@@ -127,7 +130,6 @@ export interface ToolActivityProjectionState {
 }
 
 interface ToolActivityState {
-  outputQueuesByCallId: Map<string, ExecutionOutputQueue>;
   runningCallsById: Map<string, RunningExecCall>;
   pendingOutputsByCallId: Map<string, PendingExecutionOutput>;
   activeCell: ToolActivityCell | null;
@@ -140,7 +142,7 @@ interface ToolActivityState {
 interface MergeCallSummaryOptions {
   appendOutput?: boolean;
   replaceOutput?: boolean;
-  visibleOutput?: ExecutionOutput;
+  visibleOutput?: string;
 }
 
 interface InterruptPendingToolActivityArgs {
@@ -155,7 +157,6 @@ const DEFAULT_INTERRUPT_PENDING_TOOL_ACTIVITY_ARGS: InterruptPendingToolActivity
 
 export function createToolActivityState(): ToolActivityState {
   return {
-    outputQueuesByCallId: new Map(),
     runningCallsById: new Map(),
     pendingOutputsByCallId: new Map(),
     activeCell: null,
@@ -238,27 +239,32 @@ function isTerminalToolCallStatus(
   return status !== undefined && status !== "pending";
 }
 
-function createExecutionOutput(
-  state: ToolActivityProjectionState,
-  callId: string,
-): ExecutionOutput {
-  let queue = state.toolActivity.outputQueuesByCallId.get(callId);
-  if (!queue) {
-    queue = new ExecutionOutputQueue();
-    state.toolActivity.outputQueuesByCallId.set(callId, queue);
-  }
-  return queue.create();
+function syncBufferedExecutionOutput(target: BufferedExecutionOutput): void {
+  target.output = getVisibleTextBufferText(target.outputBuffer) ?? "";
 }
 
-function flushExecutionOutput(output: ExecutionOutput): void {
-  output.update((value) => {
-    flushVisibleTextBuffer(value.outputBuffer);
-    value.output = getVisibleTextBufferText(value.outputBuffer) ?? "";
-  });
+function syncRunningCallVisibleOutput(call: RunningExecCall): void {
+  call.output = getVisibleTextBufferText(call.outputBuffer) ?? "";
+}
+
+function setBufferedExecutionOutput(
+  target: BufferedExecutionOutput,
+  text: string,
+  flushTrailingPartial: boolean,
+): void {
+  setVisibleTextBuffer(target.outputBuffer, text, flushTrailingPartial);
+  syncBufferedExecutionOutput(target);
+}
+
+function setRunningCallOutput(
+  call: RunningExecCall,
+  text: string,
+  flushTrailingPartial: boolean,
+): void {
+  setBufferedExecutionOutput(call, text, flushTrailingPartial);
 }
 
 interface CreateRunningExecutionBaseArgs {
-  output: ExecutionOutput;
   incoming: ProviderExecutionUpdate;
   meta: EventMeta;
   scope: ThreadEventScope;
@@ -266,19 +272,18 @@ interface CreateRunningExecutionBaseArgs {
 }
 
 function createRunningExecutionBase({
-  output,
   incoming,
   meta,
   scope,
   threadId,
 }: CreateRunningExecutionBaseArgs): RunningExecutionBase {
-  const text = incoming.output;
-  const terminal = isTerminalToolCallStatus(incoming.status);
-  if (text && text.length > 0) {
-    output.update((value) => {
-      setVisibleTextBuffer(value.outputBuffer, text, terminal);
-      value.output = getVisibleTextBufferText(value.outputBuffer) ?? "";
-    });
+  const outputBuffer = createVisibleTextBuffer();
+  if (incoming.output && incoming.output.length > 0) {
+    setVisibleTextBuffer(
+      outputBuffer,
+      incoming.output,
+      isTerminalToolCallStatus(incoming.status),
+    );
   }
 
   return {
@@ -289,25 +294,24 @@ function createRunningExecutionBase({
       ? { parentToolCallId: incoming.parentToolCallId }
       : {}),
     ...(incoming.presentation ? { presentation: incoming.presentation } : {}),
-    output,
+    output: getVisibleTextBufferText(outputBuffer) ?? "",
     completedAt: incoming.completedAt ?? null,
     status: incoming.status ?? "pending",
     sourceSeqStart: meta.seq,
     sourceSeqEnd: meta.seq,
     createdAt: meta.createdAt,
     startedAt: meta.createdAt,
+    outputBuffer,
   };
 }
 
 function createRunningExecCall(
-  state: ToolActivityProjectionState,
   incoming: ProviderExecutionUpdate,
   meta: EventMeta,
   threadId: string,
   scope: ThreadEventScope,
 ): RunningExecCall {
   const base = createRunningExecutionBase({
-    output: createExecutionOutput(state, incoming.callId),
     incoming,
     meta,
     scope,
@@ -517,7 +521,6 @@ function mergeRunningExecutionMetadata(
 }
 
 function upsertRunningExecCall(
-  state: ToolActivityProjectionState,
   existing: RunningExecCall | undefined,
   incoming: ProviderExecutionUpdate,
   meta: EventMeta,
@@ -528,13 +531,7 @@ function upsertRunningExecCall(
     const scopeFields = turnId
       ? eventProjectionMessageTurnScopeFields(turnId)
       : eventProjectionMessageThreadScopeFields();
-    return createRunningExecCall(
-      state,
-      incoming,
-      meta,
-      threadId,
-      scopeFields.scope,
-    );
+    return createRunningExecCall(incoming, meta, threadId, scopeFields.scope);
   }
 
   mergeRunningExecutionMetadata(existing, incoming);
@@ -543,18 +540,18 @@ function upsertRunningExecCall(
     existing.parentToolCallId = incoming.parentToolCallId;
   }
 
-  const text = incoming.output;
-  const terminal = isTerminalToolCallStatus(incoming.status);
-  if (text && text.length > 0) {
-    existing.output.update((value) => {
-      if (
-        terminal ||
-        text.length >= getVisibleTextBufferFullLength(value.outputBuffer)
-      ) {
-        setVisibleTextBuffer(value.outputBuffer, text, terminal);
-        value.output = getVisibleTextBufferText(value.outputBuffer) ?? "";
-      }
-    });
+  if (incoming.output && incoming.output.length > 0) {
+    if (
+      isTerminalToolCallStatus(incoming.status) ||
+      incoming.output.length >=
+        getVisibleTextBufferFullLength(existing.outputBuffer)
+    ) {
+      setRunningCallOutput(
+        existing,
+        incoming.output,
+        isTerminalToolCallStatus(incoming.status),
+      );
+    }
   }
 
   existing.threadId = threadId;
@@ -566,27 +563,39 @@ function upsertRunningExecCall(
   return existing;
 }
 
+function appendExecOutputDelta(
+  target: BufferedExecutionOutput,
+  delta: string | undefined,
+): void {
+  if (!delta || delta.length === 0) return;
+  appendVisibleTextBuffer(target.outputBuffer, delta);
+  syncBufferedExecutionOutput(target);
+}
+
 function applyExecutionOutputUpdate(
   target: BufferedExecutionOutput,
   incoming: ExecutionOutputUpdate,
   appendOutput?: boolean,
   replaceOutput?: boolean,
 ): void {
-  const text = incoming.output;
-  const terminal = isTerminalToolCallStatus(incoming.status);
-  target.output.update((value) => {
-    if (appendOutput) {
-      if (!text) return;
-      appendVisibleTextBuffer(value.outputBuffer, text);
-    } else if (replaceOutput) {
-      setVisibleTextBuffer(value.outputBuffer, text, terminal);
-    } else if (
-      text.length >= getVisibleTextBufferFullLength(value.outputBuffer)
-    ) {
-      setVisibleTextBuffer(value.outputBuffer, text, true);
-    }
-    value.output = getVisibleTextBufferText(value.outputBuffer) ?? "";
-  });
+  if (appendOutput) {
+    appendExecOutputDelta(target, incoming.output);
+    return;
+  }
+  if (replaceOutput) {
+    setBufferedExecutionOutput(
+      target,
+      incoming.output,
+      isTerminalToolCallStatus(incoming.status),
+    );
+    return;
+  }
+  if (
+    incoming.output.length >=
+    getVisibleTextBufferFullLength(target.outputBuffer)
+  ) {
+    setBufferedExecutionOutput(target, incoming.output, true);
+  }
 }
 
 function upsertPendingExecutionOutput(
@@ -607,8 +616,9 @@ function upsertPendingExecutionOutput(
       sourceSeqEnd: meta.seq,
       createdAt: meta.createdAt,
       startedAt: meta.createdAt,
-      output: createExecutionOutput(state, incoming.callId),
+      output: "",
       status: incoming.status,
+      outputBuffer: createVisibleTextBuffer(),
     };
     state.toolActivity.pendingOutputsByCallId.set(incoming.callId, pending);
   }
@@ -632,7 +642,8 @@ function applyPendingExecutionOutput(
   }
 
   if (isTerminalToolCallStatus(call.status)) {
-    flushExecutionOutput(pending.output);
+    flushVisibleTextBuffer(pending.outputBuffer);
+    syncBufferedExecutionOutput(pending);
   }
   reconcilePendingExecutionOutput(call, pending);
   call.sourceSeqStart = Math.min(call.sourceSeqStart, pending.sourceSeqStart);
@@ -650,18 +661,24 @@ function reconcilePendingExecutionOutput(
   call: RunningExecCall,
   pending: PendingExecutionOutput,
 ): void {
-  const terminal = isTerminalToolCallStatus(call.status);
-  call.output.with(pending.output, (value, pendingValue) => {
-    const pendingText = getVisibleTextBufferFullText(pendingValue.outputBuffer);
-    if (pendingText.length === 0) return;
-    const callText = getVisibleTextBufferFullText(value.outputBuffer);
-    if (callText.includes(pendingText)) return;
-    const reconciledText = pendingText.includes(callText)
-      ? pendingText
-      : `${pendingText}${callText}`;
-    setVisibleTextBuffer(value.outputBuffer, reconciledText, terminal);
-    value.output = getVisibleTextBufferText(value.outputBuffer) ?? "";
-  });
+  const pendingText = getVisibleTextBufferFullText(pending.outputBuffer);
+  if (pendingText.length === 0) {
+    return;
+  }
+
+  const callText = getVisibleTextBufferFullText(call.outputBuffer);
+  if (callText.includes(pendingText)) {
+    return;
+  }
+
+  const reconciledText = pendingText.includes(callText)
+    ? pendingText
+    : `${pendingText}${callText}`;
+  setRunningCallOutput(
+    call,
+    reconciledText,
+    isTerminalToolCallStatus(call.status),
+  );
 }
 
 function shouldInterruptToolScope(
@@ -683,9 +700,9 @@ function interruptPendingToolCall(
   }
   call.status = "interrupted";
   call.completedAt = completedAt;
-  call.output.update((value) => {
-    if (!value.output) value.output = "Tool execution interrupted";
-  });
+  if (!call.output) {
+    call.output = "Tool execution interrupted";
+  }
 }
 
 function interruptPendingToolMessage(
@@ -733,16 +750,18 @@ function mergeExecutionOutput(
 ): void {
   const { appendOutput, replaceOutput, visibleOutput } = options;
   if (visibleOutput !== undefined) {
-    target.output.mergeText(visibleOutput, (value, text) => {
-      value.output = text;
-    });
-  } else if (incoming.output !== undefined) {
-    target.output.mergeText(incoming.output, (value, text) => {
-      if (text.length === 0) return;
-      if (appendOutput) value.output += text;
-      else if (replaceOutput || text.length >= value.output.length)
-        value.output = text;
-    });
+    target.output = visibleOutput;
+  } else if (appendOutput && incoming.output && incoming.output.length > 0) {
+    target.output = `${target.output}${incoming.output}`;
+  } else if (replaceOutput && incoming.output && incoming.output.length > 0) {
+    target.output = incoming.output;
+  } else if (
+    !appendOutput &&
+    incoming.output &&
+    incoming.output.length > 0 &&
+    incoming.output.length >= target.output.length
+  ) {
+    target.output = incoming.output;
   }
 }
 
@@ -779,6 +798,24 @@ function mergeExecutionSummary(
     mergeCallStatus(target.status, incoming.status) ?? target.status;
 }
 
+function syncProjectedCallOutput(
+  state: ToolActivityProjectionState,
+  call: RunningExecCall,
+): void {
+  const activeCall = findExecMessageInActiveCell(
+    state.toolActivity.activeCell,
+    call.callId,
+  );
+  if (activeCall) {
+    activeCall.output = call.output;
+  }
+
+  const historyMatch = findExecMessageInHistoryCells(state, call.callId);
+  if (historyMatch) {
+    historyMatch.call.output = call.output;
+  }
+}
+
 export function flushToolActivityBeforeNonToolMessage(
   state: ToolActivityProjectionState,
 ): void {
@@ -789,25 +826,11 @@ export function flushPendingToolActivityOutput(
   state: ToolActivityProjectionState,
 ): void {
   for (const call of state.toolActivity.runningCallsById.values()) {
-    const activeCall = findExecMessageInActiveCell(
-      state.toolActivity.activeCell,
-      call.callId,
-    );
-    const historyMatch = findExecMessageInHistoryCells(state, call.callId);
-    let flushed = false;
-    call.output.update((value) => {
-      flushed = flushVisibleTextBuffer(value.outputBuffer);
-      if (flushed)
-        value.output = getVisibleTextBufferText(value.outputBuffer) ?? "";
-    });
-    if (activeCall)
-      activeCall.output.with(call.output, (target, source) => {
-        if (flushed) target.output = source.output;
-      });
-    if (historyMatch)
-      historyMatch.call.output.with(call.output, (target, source) => {
-        if (flushed) target.output = source.output;
-      });
+    if (!flushVisibleTextBuffer(call.outputBuffer)) {
+      continue;
+    }
+    syncRunningCallVisibleOutput(call);
+    syncProjectedCallOutput(state, call);
   }
 }
 
@@ -821,7 +844,8 @@ export function interruptPendingToolActivity(
       continue;
     }
 
-    flushExecutionOutput(call.output);
+    flushVisibleTextBuffer(call.outputBuffer);
+    syncRunningCallVisibleOutput(call);
     interruptPendingToolCall(call, args.completedAt);
 
     const activeCall = findExecMessageInActiveCell(
@@ -892,7 +916,7 @@ function createExecMessage(
       : {}),
     ...(call.presentation ? { presentation: call.presentation } : {}),
     callId: call.callId,
-    output: call.output.copy(),
+    output: call.output,
     completedAt: call.completedAt,
     status: call.status,
   };
@@ -920,7 +944,7 @@ function createExecMessage(
       subagentType: call.subagentType,
       description: call.description,
       model: call.model,
-      getChildProjection: emptyEventProjection,
+      childProjection: emptyEventProjection(),
     };
   }
 
@@ -944,7 +968,6 @@ export function onExecBegin(
     incoming.callId,
   );
   const call = upsertRunningExecCall(
-    state,
     existingRunning,
     incoming,
     meta,
@@ -1073,7 +1096,6 @@ export function onExecEnd(
 ): void {
   const running = state.toolActivity.runningCallsById.get(incoming.callId);
   const merged = upsertRunningExecCall(
-    state,
     running,
     incoming,
     meta,
@@ -1082,7 +1104,8 @@ export function onExecEnd(
   );
   applyPendingExecutionOutput(state, merged);
   if (isTerminalToolCallStatus(merged.status)) {
-    flushExecutionOutput(merged.output);
+    flushVisibleTextBuffer(merged.outputBuffer);
+    syncRunningCallVisibleOutput(merged);
   }
   state.toolActivity.runningCallsById.delete(incoming.callId);
 

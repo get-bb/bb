@@ -496,7 +496,7 @@ function flattenEventProjectionMessageListDeep(
     if (message.kind === "delegation") {
       messages.push(
         ...flattenEventProjectionMessageListDeep(
-          flattenEventProjectionMessages(message.getChildProjection()),
+          flattenEventProjectionMessages(message.childProjection),
         ),
       );
     }
