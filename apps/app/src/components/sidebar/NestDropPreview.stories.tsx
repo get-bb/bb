@@ -246,6 +246,34 @@ function VariantCaretOnly() {
   );
 }
 
+function VariantControlMain() {
+  return (
+    <Stage>
+      <Row entry={SIBLING_ABOVE} depth={PARENT_DEPTH} />
+      <div className="relative">
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 z-[5] rounded-md bg-sidebar-accent ring-1 ring-inset ring-sidebar-ring"
+        />
+        <div className="relative z-10">
+          <Row entry={TARGET} depth={PARENT_DEPTH} />
+        </div>
+      </div>
+      <Row entry={EXISTING_CHILD} depth={CHILD_DEPTH} isCompact />
+      <div
+        className={cn(
+          SIDEBAR_ROW_BASE_CLASS,
+          "h-7 overflow-hidden text-sidebar-foreground opacity-50",
+        )}
+        style={{ paddingLeft: CHILD_INDENT_PX }}
+      >
+        <span className="min-w-0 flex-1 truncate">{DRAGGED.title}</span>
+      </div>
+      <Row entry={SIBLING_BELOW} depth={PARENT_DEPTH} />
+    </Stage>
+  );
+}
+
 export function Variants() {
   return (
     <StoryCard labelWidth="260px">
@@ -284,6 +312,12 @@ export function Variants() {
         hint="accent bar on the row's leading edge, no indent language at all"
       >
         <VariantCaretOnly />
+      </StoryRow>
+      <StoryRow
+        label="G — control (origin/main)"
+        hint="pre-branch behaviour: filled row with a ring, a ghost child carrying the dragged title at 50%, and the source row pulled out of flow entirely"
+      >
+        <VariantControlMain />
       </StoryRow>
     </StoryCard>
   );
