@@ -237,7 +237,7 @@ function MobileRecentThreadRow({
     hasChildren,
     isCollapsed,
   } = row;
-  const touchStartedBeyondLink = useRef(false);
+  const touchStartedBeforeLink = useRef(false);
   const { providers: environmentProviders } = useSystemEnvironmentProviders();
   const threadTitle = getThreadDisplayTitle(thread);
   const indicatorState: ThreadListIndicatorState =
@@ -296,18 +296,30 @@ function MobileRecentThreadRow({
       onTouchStart={(event) => {
         const touch = event.touches[0];
         const link = event.currentTarget.querySelector("a");
-        touchStartedBeyondLink.current =
+        touchStartedBeforeLink.current =
           hasChildren &&
           touch !== undefined &&
           link !== null &&
-          touch.clientX >= link.getBoundingClientRect().right;
+          touch.clientX < link.getBoundingClientRect().left;
       }}
+      style={{ paddingLeft: getSidebarThreadRowPaddingLeft(depth) }}
       className={cn(
         "flex items-center gap-1 rounded-md pr-2",
         MOBILE_RECENT_ROW_HEIGHT_CLASS,
         highlighted && "bg-surface-selected",
       )}
     >
+      {hasChildren ? (
+        <SidebarChildToggleChevron
+          className="size-11 [&_[data-icon-root]]:size-5"
+          isCollapsed={isCollapsed}
+          expandLabel={`Show threads under ${threadTitle}`}
+          collapseLabel={`Hide threads under ${threadTitle}`}
+          onToggle={() => onToggleCollapsed(thread.id)}
+        />
+      ) : (
+        <span className="size-11 shrink-0" aria-hidden="true" />
+      )}
       <RouteAnchor
         href={getThreadRoutePath({
           projectId: thread.projectId,
@@ -315,13 +327,12 @@ function MobileRecentThreadRow({
         })}
         aria-label={`Open ${threadTitle}${indicatorLabel ? ` — ${indicatorLabel}` : ""}`}
         onClick={(event) => {
-          const ignoreTouchClick = touchStartedBeyondLink.current;
-          touchStartedBeyondLink.current = false;
+          const ignoreTouchClick = touchStartedBeforeLink.current;
+          touchStartedBeforeLink.current = false;
           if (event.detail > 0 && ignoreTouchClick) {
             event.preventDefault();
           }
         }}
-        style={{ paddingLeft: getSidebarThreadRowPaddingLeft(depth) }}
         className={cn(
           "flex min-w-0 flex-1 items-center gap-2.5 rounded-md text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
           MOBILE_RECENT_ROW_HEIGHT_CLASS,
@@ -371,21 +382,12 @@ function MobileRecentThreadRow({
             <span className="min-w-0 truncate">{metadataText}</span>
           </span>
         </span>
+        {indicatorKind !== "none" ? (
+          <span className="flex size-6 shrink-0 items-center justify-center">
+            <ThreadStatusGlyph {...trailingIndicatorState} />
+          </span>
+        ) : null}
       </RouteAnchor>
-      {hasChildren ? (
-        <SidebarChildToggleChevron
-          className="size-11 [&_[data-icon-root]]:size-5"
-          isCollapsed={isCollapsed}
-          expandLabel={`Show threads under ${threadTitle}`}
-          collapseLabel={`Hide threads under ${threadTitle}`}
-          onToggle={() => onToggleCollapsed(thread.id)}
-        />
-      ) : null}
-      {indicatorKind !== "none" ? (
-        <span className="flex size-6 shrink-0 items-center justify-center">
-          <ThreadStatusGlyph {...trailingIndicatorState} />
-        </span>
-      ) : null}
     </li>
   );
 }

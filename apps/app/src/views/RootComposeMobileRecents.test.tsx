@@ -511,7 +511,7 @@ describe("mobile recents hierarchy interaction", () => {
     renderTree();
 
     expect(screen.getAllByRole("button")).toHaveLength(1);
-    const [parentRow, childRow] = screen.getAllByRole("link");
+    const [parentRow, childRow] = screen.getAllByRole("listitem");
     if (!parentRow || !childRow) {
       throw new Error("Expected a parent and a child row");
     }
