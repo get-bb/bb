@@ -538,6 +538,22 @@ export interface ExperimentalAppOverlayRegistration {
 }
 
 /**
+ * A name the host resolves to a glyph, in this order: a name any plugin
+ * registered with `app.experimental_icons.register()`, then a built-in BB icon
+ * name (`"Zap"`). A registration therefore shadows a built-in of the same
+ * name, and registering artwork is how a plugin paints its own mark on
+ * host-rendered chrome. Names that resolve to neither fall back to the
+ * surface's generic icon.
+ *
+ * This is not the manifest's `bb.branding.experimental_icons` vocabulary. A
+ * namespaced `"<pluginId>/<name>"` glyph naming an entry of that map resolves
+ * only in tool presentations, provider declarations and bridge rows, and
+ * silently falls back here. A registered name may itself be spelled with a
+ * `/`, but that is a convention, not a reference to the manifest map.
+ */
+type BbIconName = string;
+
+/**
  * Owner-defined validator for a fixed tab's transient target. The host first
  * verifies that the value is JSON-safe, then calls this validator before
  * selecting the tab or delivering the target.
@@ -568,12 +584,7 @@ export type ExperimentalPluginFixedTabReference<
 export type PluginFixedTabRegistration<Target extends JsonValue = never> =
   ExperimentalPluginFixedTabReference<Target> & {
     title: string;
-    /**
-     * BB icon name: a built-in name, or a name registered with
-     * `app.experimental_icons.register()`. Unknown names fall back to a
-     * generic icon.
-     */
-    icon: string;
+    icon: BbIconName;
     component: ComponentType<PluginNavPanelProps>;
     /** `flush` lets the component own padding and scrolling. */
     layout?: "padded" | "flush";
@@ -588,12 +599,7 @@ export interface PluginNavPanelRegistration {
   /** Unique within the plugin; letters, digits, `-`, `_`. */
   id: string;
   title: string;
-  /**
-   * BB icon name: a built-in name, or a name registered with
-   * `app.experimental_icons.register()`. Unknown names fall back to a generic
-   * icon.
-   */
-  icon: string;
+  icon: BbIconName;
   /** URL segment under `/plugins/<pluginId>/`; letters, digits, `-`, `_`. */
   path: string;
   component: ComponentType<PluginNavPanelProps>;
@@ -679,11 +685,10 @@ export interface PluginThreadPanelActionRegistration {
   /** Label of the action row in the panel's new-tab launcher. */
   title: string;
   /**
-   * BB icon name — a built-in name, or a name registered with
-   * `app.experimental_icons.register()` — used when the plugin ships no logo;
-   * the launcher row and opened tabs prefer the plugin's logo.
+   * Used when the plugin ships no logo; the launcher row and opened tabs
+   * prefer the plugin's logo.
    */
-  icon?: string;
+  icon?: BbIconName;
   /** Rendered inside every panel tab this action opens. */
   component: ComponentType<PluginThreadPanelProps>;
   /**
@@ -722,11 +727,8 @@ export interface PluginNewThreadPanelActionRegistration {
   id: string;
   /** Label of the action row in the panel's new-tab launcher. */
   title: string;
-  /**
-   * BB icon name — a built-in name, or a name registered with
-   * `app.experimental_icons.register()` — used when the plugin ships no logo.
-   */
-  icon?: string;
+  /** Used when the plugin ships no logo. */
+  icon?: BbIconName;
   /** Rendered inside every panel tab this action opens. */
   component: ComponentType<PluginNewThreadPanelProps>;
   /** Host framing; matches `threadPanelAction`. */
@@ -773,12 +775,8 @@ export interface PluginSidebarFooterActionRegistration {
   id: string;
   /** Tooltip and accessible label for the icon button. */
   title: string;
-  /**
-   * BB icon name: a built-in name, or a name registered with
-   * `app.experimental_icons.register()`. Unknown names fall back to a generic
-   * icon.
-   */
-  icon: string;
+  /** Drawn only when the plugin ships no logo, which the button prefers. */
+  icon: BbIconName;
   /**
    * Runs when the user activates the action (e.g. call `openSettings()`,
    * open a panel via other surfaces, toast). Errors (sync or async) are
@@ -799,12 +797,7 @@ export interface ExperimentalSidebarFooterItemBase {
   id: string;
   /** Tooltip and accessible label for the host-rendered icon button. */
   label: string;
-  /**
-   * BB icon name: a built-in name, or a name registered with
-   * `app.experimental_icons.register()`. Unknown names fall back to a generic
-   * icon.
-   */
-  icon: string;
+  icon: BbIconName;
 }
 
 /** A sidebar-footer item that runs a callback when activated. */
@@ -1334,12 +1327,7 @@ export interface PluginMessageActionRegistration {
   id: string;
   /** Tooltip / menu label for the action. */
   title: string;
-  /**
-   * BB icon name: a built-in name, or a name registered with
-   * `app.experimental_icons.register()`. Unknown names fall back to a generic
-   * icon.
-   */
-  icon?: string;
+  icon?: BbIconName;
   /**
    * Runs when the user activates the action. Errors (sync or async) are
    * contained and logged; they never break the timeline.
@@ -1801,20 +1789,9 @@ export interface ExperimentalProviderIconProps {
 }
 
 /**
- * An app icon registered by a plugin. The registry is app-wide, so a
- * registered name is a BB icon name everywhere one is accepted — not just in
- * `experimental_Icon`. Every icon-name field in this file resolves a
- * registered name before a built-in one, so a plugin paints its own artwork on
- * host-rendered surfaces (thread row statuses, sidebar footer items, composer
- * `+` rows, message actions, panel tabs and actions, mention rows) by
- * registering artwork here and passing that name.
- *
- * This is a different vocabulary from the manifest's
- * `bb.branding.experimental_icons`, whose namespaced `"<pluginId>/<name>"`
- * glyphs are SVG files the server resolves, and which only tool presentations,
- * provider declarations and bridge rows accept. A `name` here may be spelled
- * with a `/`, but that does not make it reachable as a manifest glyph, and a
- * manifest glyph is not reachable here unless the same name is also registered.
+ * An app icon registered by a plugin. The registry is app-wide: a registered
+ * name is usable wherever a `BbIconName` is — `experimental_Icon`, and every
+ * host-rendered surface that takes one — by this plugin or any other.
  */
 export interface ExperimentalIconRegistration {
   /** Shared app name. Namespacing is recommended, but not required. */
@@ -1933,12 +1910,8 @@ export interface ComposerCustomization {
 export interface ComposerPlusMenuItem {
   id: string;
   label: string;
-  /**
-   * BB icon name: a built-in name, or a name registered with
-   * `app.experimental_icons.register()`. Unknown names fall back to the
-   * generic plugin icon.
-   */
-  icon?: string;
+  /** Drawn only when the plugin ships no logo, which the row prefers. */
+  icon?: BbIconName;
   /** Accessible description for the host-rendered row. */
   description?: string;
   disabled?: boolean | ((view: ComposerView) => boolean);
@@ -1987,13 +1960,10 @@ export interface PluginComposerTextEffect {
 /** Host-rendered status that temporarily replaces a thread's draft glyph. */
 export interface PluginComposerThreadRowStatus {
   /**
-   * BB icon name: a built-in name, or a name registered with
-   * `app.experimental_icons.register()`. Unknown names fall back to the
-   * generic plugin icon. A plugin draws its own artwork here by
-   * registering it — the manifest's `bb.branding.experimental_icons` glyphs
-   * are a separate vocabulary this field does not resolve.
+   * Always drawn as given: unlike the plugin-badged surfaces, this one has no
+   * preference for the plugin's own logo.
    */
-  icon: string;
+  icon: BbIconName;
   /** Accessible label for the status glyph. */
   label: string;
   /**
@@ -2129,12 +2099,7 @@ export interface ThreadChatMessageAction {
   id: string;
   /** Tooltip / menu label for the action. */
   title: string;
-  /**
-   * BB icon name: a built-in name, or a name registered with
-   * `app.experimental_icons.register()`. Unknown names fall back to a generic
-   * icon.
-   */
-  icon?: string;
+  icon?: BbIconName;
   /**
    * Message roles the action applies to. Omitted = both user and assistant
    * messages.
