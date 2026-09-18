@@ -36,6 +36,7 @@ export function ResourceToolbar({
   combinedControls,
   action,
   compact = false,
+  expandSearchOnFocus = false,
 }: {
   searchValue: string;
   searchPlaceholder: string;
@@ -45,6 +46,7 @@ export function ResourceToolbar({
   combinedControls?: ReactNode;
   action?: ReactNode;
   compact?: boolean;
+  expandSearchOnFocus?: boolean;
 }) {
   const toolbarRef = useRef<HTMLDivElement>(null);
   const controlsRef = useRef<HTMLDivElement>(null);
@@ -52,6 +54,8 @@ export function ResourceToolbar({
   const searchRef = useRef<HTMLDivElement>(null);
   const actionRef = useRef<HTMLDivElement>(null);
   const [combined, setCombined] = useState(false);
+  const [searchCondensed, setSearchCondensed] = useState(false);
+  const [searchExpanded, setSearchExpanded] = useState(false);
   const restoreControlFocus = useRef(false);
   const combinedRef = useRef(false);
   const hasCombinedControls = Boolean(combinedControls);
@@ -74,6 +78,19 @@ export function ResourceToolbar({
         actionWidth +
         gap * (actionRef.current ? 2 : 1);
       const next = hasCombinedControls && width < requiredWidth;
+      const controlsWidth = next
+        ? (controlsRef.current
+            ?.querySelector("[data-resource-combined-controls]")
+            ?.getBoundingClientRect().width ?? 0)
+        : individualControls.getBoundingClientRect().width;
+      setSearchCondensed(
+        expandSearchOnFocus &&
+          width -
+            controlsWidth -
+            actionWidth -
+            gap * (actionRef.current ? 2 : 1) <
+            searchWidth,
+      );
       if (combinedRef.current === next) return;
       restoreControlFocus.current = Boolean(
         controlsRef.current?.contains(document.activeElement) ||
@@ -86,9 +103,10 @@ export function ResourceToolbar({
     const observer = new ResizeObserver(measure);
     observer.observe(toolbar);
     observer.observe(individualControls);
+    if (controlsRef.current) observer.observe(controlsRef.current);
     if (actionRef.current) observer.observe(actionRef.current);
     return () => observer.disconnect();
-  }, [compact, hasCombinedControls, showCombined]);
+  }, [compact, expandSearchOnFocus, hasCombinedControls, showCombined]);
 
   useLayoutEffect(() => {
     if (!restoreControlFocus.current) return;
@@ -104,6 +122,7 @@ export function ResourceToolbar({
     <div
       ref={toolbarRef}
       data-resource-toolbar
+      data-search-expanded={searchExpanded || undefined}
       className={cn(
         "flex w-full min-w-0 items-center gap-2",
         compact ? "@container/resource-toolbar flex-nowrap" : "flex-wrap",
@@ -126,17 +145,37 @@ export function ResourceToolbar({
         <Input
           value={searchValue}
           onChange={(event) => onSearchChange(event.target.value)}
-          placeholder={searchPlaceholder}
+          placeholder={
+            searchCondensed && !searchExpanded ? "Search" : searchPlaceholder
+          }
           aria-label={searchLabel ?? searchPlaceholder}
+          enterKeyHint={expandSearchOnFocus ? "search" : undefined}
+          onFocus={() => {
+            if (searchCondensed) setSearchExpanded(true);
+          }}
+          onBlur={() => setSearchExpanded(false)}
+          onKeyDown={(event) => {
+            if (
+              searchExpanded &&
+              !event.nativeEvent.isComposing &&
+              (event.key === "Enter" || event.key === "Escape")
+            ) {
+              event.preventDefault();
+              event.currentTarget.blur();
+            }
+          }}
           className="h-8 pl-8"
         />
       </div>
       {controls ? (
         <div
           ref={controlsRef}
+          inert={searchExpanded || undefined}
+          aria-hidden={searchExpanded || undefined}
           className={cn(
             "flex shrink-0 items-center",
             compact ? "gap-2" : "gap-1.5",
+            searchExpanded && "invisible absolute pointer-events-none",
           )}
         >
           <div
@@ -167,9 +206,12 @@ export function ResourceToolbar({
         <div
           ref={actionRef}
           data-resource-toolbar-action
+          inert={searchExpanded || undefined}
+          aria-hidden={searchExpanded || undefined}
           className={cn(
             "flex shrink-0 items-center gap-1.5",
             !compact && "ml-auto",
+            searchExpanded && "invisible absolute pointer-events-none",
           )}
         >
           {action}
@@ -237,11 +279,13 @@ export const ResourceControlButton = forwardRef<
   HTMLButtonElement,
   ButtonProps & {
     label: string;
-    icon: IconName;
+    icon?: IconName;
     active?: boolean;
     open?: boolean;
     tooltip?: ReactNode;
     text?: string;
+    count?: number;
+    trailingIcon?: IconName;
   }
 >(function ResourceControlButton(
   {
@@ -251,6 +295,8 @@ export const ResourceControlButton = forwardRef<
     open = false,
     tooltip = label,
     text,
+    count,
+    trailingIcon,
     className,
     ...props
   },
@@ -268,15 +314,26 @@ export const ResourceControlButton = forwardRef<
             size={text ? "sm" : "icon"}
             className={cn(
               "h-8 shrink-0 rounded-md text-muted-foreground",
-              text ? "gap-1.5 px-2.5 text-xs" : "size-8 p-0",
+              text ? "gap-2 px-2 text-xs" : "size-8 p-0",
               RESOURCE_MENU_TRIGGER_RESTING_CLASS,
               (open || active) && RESOURCE_MENU_TRIGGER_ENGAGED_CLASS,
               className,
             )}
             aria-label={label}
           >
-            <Icon name={icon} className="size-4" aria-hidden />
+            {icon ? <Icon name={icon} className="size-4" aria-hidden /> : null}
             {text ? <span>{text}</span> : null}
+            {count !== undefined && count > 0 ? (
+              <span
+                aria-hidden
+                className="rounded bg-surface-recessed px-1 text-2xs"
+              >
+                {count}
+              </span>
+            ) : null}
+            {trailingIcon ? (
+              <Icon name={trailingIcon} className="size-4" aria-hidden />
+            ) : null}
           </Button>
         </TooltipTrigger>
         <TooltipContent side="bottom">{tooltip}</TooltipContent>
@@ -410,7 +467,9 @@ export function ResourceMultiSelectMenu({
       <ResourceMenuTrigger
         label={triggerLabel}
         text={showLabel ? label : undefined}
-        icon={icon}
+        icon={showLabel ? undefined : icon}
+        trailingIcon={showLabel ? "ChevronDown" : undefined}
+        count={showLabel ? activeSelectedCount : undefined}
         active={activeSelectedCount > 0}
         open={open}
         tooltip={triggerTooltip}
@@ -550,7 +609,7 @@ export function ResourceSortMenuItems({
           compact && "md:px-1.5 md:py-1",
         )}
       >
-        Sort by
+        Sort
       </DropdownMenuLabel>
       {onClear === undefined || clearInFooter ? null : (
         <DropdownMenuItem
@@ -642,6 +701,7 @@ export function ResourceSortMenu({
   compact = false,
   clearInFooter = false,
   showLabel = false,
+  triggerIcon = "ArrowUpDown",
 }: {
   value: string | null;
   direction: "asc" | "desc";
@@ -652,6 +712,7 @@ export function ResourceSortMenu({
   compact?: boolean;
   clearInFooter?: boolean;
   showLabel?: boolean;
+  triggerIcon?: IconName;
 }) {
   const [open, setOpen] = useState(false);
   const selectedOption = options.find((option) => option.id === value);
@@ -667,8 +728,8 @@ export function ResourceSortMenu({
     <DropdownMenu onOpenChange={setOpen}>
       <ResourceMenuTrigger
         label={sortStateLabel}
-        text={showLabel ? "Sort by" : undefined}
-        icon="ArrowUpDown"
+        text={showLabel ? (selectedOption?.label ?? "Sort") : undefined}
+        icon={triggerIcon}
         active={onClear !== undefined && value !== null}
         open={open}
       />
@@ -733,20 +794,18 @@ export function ResourceCreateButton({
       aria-label={label}
       type="button"
       size="sm"
-      className={cn(
-        "rounded-r-none",
-        compactWhenNarrow && "@max-[36rem]/resource-toolbar:px-2",
-      )}
+      className={cn("rounded-r-none", compactWhenNarrow && "pl-2 pr-1")}
       onClick={() => onCreate()}
     >
-      <Icon name="MessageCirclePlus" className="size-4" aria-hidden />
-      <span
+      <Icon
+        name="MessageCirclePlus"
         className={cn(
+          "size-4",
           compactWhenNarrow && "@max-[36rem]/resource-toolbar:hidden",
         )}
-      >
-        {label}
-      </span>
+        aria-hidden
+      />
+      <span>{label}</span>
     </Button>
   );
   return (
@@ -767,7 +826,10 @@ export function ResourceCreateButton({
             type="button"
             size="sm"
             aria-label={`${label} options`}
-            className="rounded-l-none px-1.5"
+            className={cn(
+              "rounded-l-none px-1.5",
+              compactWhenNarrow && "pl-1 pr-2",
+            )}
           >
             <Icon name="ChevronDown" className="size-4" aria-hidden />
           </Button>
