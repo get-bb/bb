@@ -813,6 +813,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         name: registration.name,
         summary: registration.summary,
         commands: registration.commands.map((command) => ({ ...command })),
+        rendersHelp: registration.rendersHelp,
       });
     }
     return contributions.sort((a, b) => a.pluginId.localeCompare(b.pluginId));

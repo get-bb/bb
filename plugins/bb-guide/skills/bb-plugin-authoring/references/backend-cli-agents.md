@@ -28,6 +28,81 @@ bb.cli.register({
 });
 ```
 
+Prefer declaring the command instead of parsing `argv` by hand.
+`experimental_defineCli` builds the same registration from a spec and gives
+every command the behavior agents rely on: `--help` at every level with exit
+0, `unknown option '--x' (Did you mean --y?)`, every missing required option
+in one error, typed value errors, and with `--json` a
+`{"ok": false, "error": {"code", "message", "hint"}}` envelope on stdout while
+stderr keeps the readable text. Hand-written parsers have silently ignored
+unknown flags and lost user data.
+
+```ts
+import {
+  experimental_CliError,
+  experimental_cliCommand,
+  experimental_defineCli,
+} from "@get-bb/plugin-sdk";
+
+bb.cli.register(
+  experimental_defineCli({
+    name: "weather",
+    summary: "Weather lookups",
+    commands: {
+      today: experimental_cliCommand({
+        summary: "Today's weather",
+        positionals: [
+          { name: "city", description: "City name", required: true },
+        ],
+        options: {
+          units: {
+            type: "enum",
+            values: ["metric", "imperial"],
+            default: "metric",
+            aliases: ["unit"],
+            description: "Units for temperatures",
+          },
+          timeout: {
+            type: "duration",
+            defaultUnit: "s",
+            description: "How long to wait for the forecast service",
+          },
+          json: { type: "boolean", description: "Emit machine-readable JSON" },
+        },
+        async run(input, ctx) {
+          const forecast = await lookup(
+            input.positionals.city,
+            input.options.units,
+          );
+          if (forecast === null) {
+            throw new experimental_CliError(
+              `no forecast for ${input.positionals.city}`,
+              {
+                code: "forecast_not_found",
+                hint: "Run `bb weather cities` to list supported cities.",
+              },
+            );
+          }
+          return { exitCode: 0, stdout: forecast };
+        },
+      }),
+    },
+  }),
+);
+```
+
+Command keys are invocation paths, so `"account add"` declares
+`bb weather account add`. Put every spelling an agent might guess in an
+option's hidden `aliases`, state limits in each `description` because they
+show in `--help`, and express "exactly one of" and "X requires Y" with
+`constraints`. Keep a required ID strict, but when `ctx.projectId` or
+`ctx.threadId` holds the value, throw an `experimental_CliError` whose `hint`
+prints the exact flag to add. A registration built this way sets
+`experimental_rendersHelp`, so `bb weather today --help` reaches the plugin and
+prints its full option help; a hand-written `run` leaves that unset and the
+`bb` CLI answers `--help` from the `commands[].usage` line without calling
+the plugin.
+
 Agents discover plugin commands through the server-generated
 `plugin-commands` skill, which lists each command's `summary` and the
 `commands` usage lines — fill both in. Combined stdout and stderr must fit

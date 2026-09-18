@@ -106,6 +106,70 @@ receives `ExperimentalPluginProviderEnvContext` and returns
 6. Decide whether the context and entry types should stabilize with the method
    or remain experimental for a longer compatibility window.
 
+## `experimental_defineCli`, `experimental_cliCommand`, `experimental_CliError`
+
+**What it does.** Turns a declarative command spec into the
+`PluginCliRegistration` `bb.cli.register` already takes, so plugin CLIs stop
+hand-rolling argv parsing. `experimental_defineCli({ name, summary,
+description?, root?, commands, usageErrorExitCode? })` keys commands by their
+invocation path (`"add"`, `"account add"`) and generates the
+`PluginCliCommandInfo[]` metadata, whose `name` is the path joined with `-`
+and whose `usage` stays a single line. `experimental_cliCommand` declares one
+command — summary, description, aliases, `suggestFor`, positionals, options,
+`constraints`, `passthrough`, `unexpectedPositionalHint` — and infers `run`'s
+input from it, so `input.options.scope` is the declared enum union and a
+required option is never `undefined`. Option types are boolean, string,
+integer (min/max), enum, and duration (the core CLI's
+`^(\d+(?:\.\d+)?)(ms|s|m|h|d)?$` grammar, parsed to milliseconds, with
+`bareUnits` resolving a bare number by which declared range it lands in).
+Options carry hidden aliases, `short`, `split`, `placeholder`, `hidden` and
+`stdin` (which recognizes the `bb` CLI's `--<name>-stdin` rewrite). Supporting
+public types are `ExperimentalCliSpec`, `ExperimentalCliCommand`,
+`ExperimentalCliOption` and its five members, `ExperimentalCliPositional`,
+`ExperimentalCliConstraint`, `ExperimentalCliRunInput`,
+`ExperimentalCliOptionValues`, `ExperimentalCliPositionalValues`,
+`ExperimentalCliDurationUnit` and `ExperimentalCliErrorCode`.
+
+Uniform behavior: `--help`, `-h` and a leading `help` word exit 0 at any level
+without running a command; a bare invocation with no root command prints the
+top-level help with exit 1; unknown commands and options name the nearest
+declared spelling; every missing required option and argument is reported in
+one error; invalid values name the option, the value and the accepted range or
+values. `experimental_CliError({ code, hint, exitCode })` gives a command the
+same reporting for its own failures, and any other thrown error still reaches
+the host unchanged. With `--json` in the invocation, failures add
+`{"ok":false,"error":{"code","message","hint"?}}` on stdout while stderr keeps
+the human-readable text; parser codes are `unknown_command`, `unknown_option`,
+`missing_required`, `invalid_value` and `unexpected_argument`.
+
+`PluginCliRegistration.experimental_rendersHelp` tells the `bb` CLI that `run`
+answers `--help` and `-h` itself without executing a command.
+`experimental_defineCli` sets it. When it is absent or false the CLI keeps
+answering `bb <plugin> <subcommand> --help` from the `commands[].usage` line
+without calling the plugin, because a hand-written `run` may ignore the flag
+and act on the remaining arguments.
+
+**Audit before stabilizing.**
+
+1. Confirm the two-function shape (`defineCli` plus `cliCommand`) is worth the
+   typed `run` input, or whether a single call can infer it once TypeScript
+   resolves sibling-property inference.
+2. Decide whether nested paths deserve host support: `PluginCliCommandInfo.name`
+   must match `[a-z0-9-]+`. Registrations built here set
+   `PluginCliRegistration.experimental_rendersHelp`, so the `bb` CLI forwards
+   `--help` to the plugin at every depth; decide whether that flag stabilizes
+   as a registration field or becomes implied by the spec.
+3. Confirm the JSON envelope stays identical to the core CLI's as that lands,
+   including whether `hint` should fall back to the usage line.
+4. Confirm `constraints` covers the real groups (`exactly-one`, `at-most-one`,
+   `at-least-one`, `requires`) or needs value-conditional rules, which today
+   live in `run`.
+5. Decide whether context-derived defaults (thread host, linked project) belong
+   in the spec instead of `run`.
+6. Confirm `split`, `stdin` and `passthrough` are the right primitives after
+   more plugins migrate, and whether two-token options (`--describe NAME TEXT`)
+   need a declaration.
+
 Every public plugin API member ships with an `experimental_` prefix and an
 entry here (see [AGENTS.md](../AGENTS.md), "Plugin API"). Dropping the prefix
 is the deliberate stabilization step: audit the entry, rename project-wide,

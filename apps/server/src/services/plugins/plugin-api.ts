@@ -230,6 +230,7 @@ interface PluginCliRegistrationRecord {
   name: string;
   summary: string;
   commands: PluginCliCommandInfo[];
+  rendersHelp: boolean;
   run: (
     argv: string[],
     ctx: PluginCliContext,
