@@ -56,7 +56,10 @@ const USER_SHELL_ENV_TIMEOUT_MS = 3_000;
 const USER_SHELL_ENV_FORCE_KILL_AFTER_MS = 1_000;
 
 function getDefaultCliExecutablePath(): string {
-  return fileURLToPath(new URL("../../cli/bin/bb", import.meta.url));
+  // bb-fork(windows): the built CLI next to this tree is bb.cmd on Windows hosts.
+  return resolveBbExecutablePathInDirectory(
+    fileURLToPath(new URL("../../cli/bin", import.meta.url)),
+  );
 }
 
 function getDefaultCliRuntimePath(): string {
