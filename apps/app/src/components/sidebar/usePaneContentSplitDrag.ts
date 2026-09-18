@@ -1,3 +1,4 @@
+import { resolveThreadMentionDropTarget } from "@/lib/thread-mention-drop";
 import {
   useCallback,
   useMemo,
@@ -161,6 +162,14 @@ export function beginSidebarPaneContentSplitDrag({
   const fallback = singlePaneFallback(startLayout);
   beginSplitDrag({
     ghostLabel: label,
+    resolveAuxiliaryTarget:
+      content.kind === "thread"
+        ? (x, y) =>
+            resolveThreadMentionDropTarget(x, y, {
+              threadId: content.threadId,
+              label,
+            })
+        : undefined,
     sourceEl: rowEl,
     fadeSourceOnEngage: false,
     renderGhost: false,
