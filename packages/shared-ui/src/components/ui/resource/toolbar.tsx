@@ -490,7 +490,7 @@ export function ResourceMultiSelectMenu({
       <ResourceMenuTrigger
         label={triggerLabel}
         text={showLabel ? label : undefined}
-        icon={showLabel ? undefined : icon}
+        icon={icon}
         trailingIcon={showLabel ? "ChevronDown" : undefined}
         count={showLabel ? activeSelectedCount : undefined}
         active={activeSelectedCount > 0}
