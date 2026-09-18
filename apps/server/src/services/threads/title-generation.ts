@@ -1,6 +1,10 @@
 import { renderTemplate } from "@bb/templates";
 import { getThread, updateThread } from "@bb/db";
-import type { PromptInput } from "@bb/domain";
+import {
+  removeCommandMentionsFromPromptInput,
+  type PromptInput,
+  type PromptMentionCommandTrigger,
+} from "@bb/domain";
 import type { AppDeps, LoggedWorkSessionDeps } from "../../types.js";
 import { Type } from "@earendil-works/pi-ai";
 import {
@@ -10,6 +14,7 @@ import {
 } from "../ai/inference.js";
 
 const MIN_TITLE_GENERATION_WORDS = 5;
+const MAX_PROMPT_TEXT_LENGTH = 80;
 const MAX_GENERATED_TITLE_WORDS = 5;
 const MAX_BRANCH_SLUG_LENGTH = 48;
 
@@ -55,18 +60,74 @@ function cleanPromptText(input: PromptInput[]): string {
     .trim();
 }
 
+function clampPromptText(text: string): string {
+  return text.length <= MAX_PROMPT_TEXT_LENGTH
+    ? text
+    : `${text.slice(0, MAX_PROMPT_TEXT_LENGTH - 3)}...`;
+}
+
 export function deriveTitleFallback(input: PromptInput[]): string | null {
   const text = cleanPromptText(input);
   if (text.length === 0) {
     return null;
   }
-  return text.length <= 80 ? text : `${text.slice(0, 77)}...`;
+  return clampPromptText(text);
+}
+
+interface InvokedPromptCommand {
+  name: string;
+  trigger: PromptMentionCommandTrigger;
+}
+
+export function collectInvokedPromptCommands(
+  input: PromptInput[],
+): InvokedPromptCommand[] {
+  const seen = new Set<string>();
+  return input.flatMap((part) =>
+    part.type === "text"
+      ? part.mentions.flatMap((mention) => {
+          if (mention.resource.kind !== "command") {
+            return [];
+          }
+          const { name, trigger } = mention.resource;
+          const key = `${trigger}${name}`;
+          if (seen.has(key)) {
+            return [];
+          }
+          seen.add(key);
+          return [{ name, trigger }];
+        })
+      : [],
+  );
+}
+
+function promptTextWithoutCommands(
+  input: PromptInput[],
+  commands: InvokedPromptCommand[],
+): string {
+  return cleanPromptText(
+    commands.reduce<PromptInput[]>(
+      (remaining, command) =>
+        removeCommandMentionsFromPromptInput(remaining, command),
+      input,
+    ),
+  );
+}
+
+function formatInvokedCommands(commands: InvokedPromptCommand[]): string {
+  return commands
+    .map((command) => `${command.trigger}${command.name}`)
+    .join(", ");
 }
 
 export function shouldGenerateThreadTitle(input: PromptInput[]): boolean {
   const text = cleanPromptText(input);
   if (text.length === 0) {
     return false;
+  }
+
+  if (collectInvokedPromptCommands(input).length > 0) {
+    return true;
   }
 
   return text.split(/\s+/u).length >= MIN_TITLE_GENERATION_WORDS;
@@ -137,8 +198,13 @@ export async function generateThreadMetadataWithOutcome(
     return complete(null, "too-short");
   }
 
+  const commands = collectInvokedPromptCommands(args.input);
+  const body = promptTextWithoutCommands(args.input, commands);
   const prompt = renderTemplate("generateThreadMetadata", {
-    cleanedPrompt: fallback,
+    cleanedPrompt: body.length > 0 ? clampPromptText(body) : fallback,
+    ...(commands.length > 0
+      ? { invokedCommands: formatInvokedCommands(commands) }
+      : {}),
   });
   const maxAttempts = Math.max(1, args.timeoutMaxAttempts ?? 1);
 
