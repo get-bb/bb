@@ -23,9 +23,10 @@ import { useSidebarThreadReveal } from "./useSidebarThreadReveal";
 
 let navigation: SidebarBootstrapResponse | undefined;
 let preferencesReady = true;
+let isPlaceholderData = false;
 
 vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
-  useSidebarNavigation: () => ({ data: navigation }),
+  useSidebarNavigation: () => ({ data: navigation, isPlaceholderData }),
 }));
 
 vi.mock("@/lib/ui-preferences/UiPreferencesSync", () => ({
@@ -34,6 +35,7 @@ vi.mock("@/lib/ui-preferences/UiPreferencesSync", () => ({
 
 beforeEach(() => {
   preferencesReady = true;
+  isPlaceholderData = false;
 });
 
 afterEach(cleanup);
@@ -181,6 +183,30 @@ describe("useSidebarThreadReveal", () => {
     rerender();
     expect(store.get(sidebarCollapsedThreadSectionsAtom)).toEqual([
       "chronological::second",
+      "chronological::third",
+    ]);
+  });
+
+  it("waits for the full bootstrap before establishing the unread baseline", () => {
+    isPlaceholderData = true;
+    const { store, rerender } = setup([thread("first")]);
+    expect(store.get(sidebarCollapsedThreadSectionsAtom)).toContain(
+      "chronological::first",
+    );
+
+    isPlaceholderData = false;
+    setThreads([thread("first"), thread("second", { latestAttentionAt: 2 })]);
+    rerender();
+    expect(store.get(sidebarCollapsedThreadSectionsAtom)).toEqual([
+      "chronological::second",
+      "chronological::third",
+    ]);
+
+    setThreads([thread("first"), thread("second")]);
+    rerender();
+    setThreads([thread("first"), thread("second", { latestAttentionAt: 2 })]);
+    rerender();
+    expect(store.get(sidebarCollapsedThreadSectionsAtom)).toEqual([
       "chronological::third",
     ]);
   });

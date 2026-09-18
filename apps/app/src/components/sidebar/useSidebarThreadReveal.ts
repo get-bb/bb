@@ -90,7 +90,7 @@ export function getThreadSidebarExpansion({
 
 export function useSidebarThreadReveal(): void {
   const { threadId: selectedThreadId } = useRouteState();
-  const { data: navigation } = useSidebarNavigation();
+  const { data: navigation, isPlaceholderData } = useSidebarNavigation();
   const preferencesReady = useUiPreferencesReady();
   const organizationMode = useAtomValue(sidebarOrganizationModeAtom);
   const setCollapsedThreadIdList = useSetAtom(collapsedThreadIdsAtom);
@@ -124,7 +124,7 @@ export function useSidebarThreadReveal(): void {
       previousThreadId.current = selectedThreadId;
       pendingNavigation.current = selectedThreadId;
     }
-    if (!preferencesReady || !navigation) {
+    if (!preferencesReady || !navigation || isPlaceholderData) {
       return;
     }
     const revealIds = new Set<string>();
@@ -218,6 +218,7 @@ export function useSidebarThreadReveal(): void {
   }, [
     selectedThreadId,
     navigation,
+    isPlaceholderData,
     preferencesReady,
     organizationMode,
     threads,
