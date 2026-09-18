@@ -13,6 +13,7 @@ import { REGISTRY_SKILL_PROVENANCE_FILE_NAME } from "./registry-skill-provenance
 const SKILL_FILE_NAME = "SKILL.md";
 const SKILL_NAME_PATTERN = /^(?!.*--)[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/u;
 const SKILL_FRONTMATTER_DELIMITER = "---";
+const MAX_SKILL_ROOT_SCAN_DEPTH = 24;
 
 const skillFrontmatterSchema = z
   .object({
@@ -443,63 +444,61 @@ export function resolveProjectSkillSourceFromContent(
   };
 }
 
-function readSkillsRoot(
-  args: SkillRootScanArgs,
-): HostDaemonInjectedSkillSource[] {
-  let rootStat;
+function skillFileExists(candidatePath: string): boolean {
   try {
-    rootStat = fs.lstatSync(args.skillsRootPath);
+    fs.lstatSync(toSkillFilePath(candidatePath));
+    return true;
   } catch (error) {
     if (error instanceof Error && isFsErrorWithCode(error, "ENOENT")) {
-      return [];
+      return false;
     }
     throw error;
   }
+}
 
-  if (rootStat.isSymbolicLink()) {
-    args.logger.warn(
-      {
-        skillsRootPath: args.skillsRootPath,
-        sourceType: args.sourceType,
-      },
-      "Skipping symlinked injected skills root",
-    );
-    return [];
-  }
-  if (!rootStat.isDirectory()) {
-    args.logger.warn(
-      {
-        skillsRootPath: args.skillsRootPath,
-        sourceType: args.sourceType,
-      },
-      "Skipping non-directory injected skills root",
-    );
-    return [];
+function collectSkillsFromDirectory(
+  args: SkillRootScanArgs,
+  currentPath: string,
+  depth: number,
+  sources: HostDaemonInjectedSkillSource[],
+): void {
+  if (depth > MAX_SKILL_ROOT_SCAN_DEPTH) {
+    return;
   }
 
   const entries = fs
-    .readdirSync(args.skillsRootPath, {
+    .readdirSync(currentPath, {
       withFileTypes: true,
     })
     .sort(sortDirentsByName);
-  const sources: HostDaemonInjectedSkillSource[] = [];
 
   for (const entry of entries) {
-    const candidatePath = path.join(args.skillsRootPath, entry.name);
+    if (entry.name.startsWith(".")) {
+      continue;
+    }
+    const candidatePath = path.join(currentPath, entry.name);
     if (entry.isSymbolicLink()) {
-      logInvalidSkill({
-        ...args,
-        candidatePath,
-        reason: "Skill directory is a symlink",
-      });
+      if (depth === 0) {
+        logInvalidSkill({
+          ...args,
+          candidatePath,
+          reason: "Skill directory is a symlink",
+        });
+      }
       continue;
     }
     if (!entry.isDirectory()) {
-      logInvalidSkill({
-        ...args,
-        candidatePath,
-        reason: "Skill candidate is not a directory",
-      });
+      if (depth === 0) {
+        logInvalidSkill({
+          ...args,
+          candidatePath,
+          reason: "Skill candidate is not a directory",
+        });
+      }
+      continue;
+    }
+    if (!skillFileExists(candidatePath)) {
+      collectSkillsFromDirectory(args, candidatePath, depth + 1, sources);
       continue;
     }
     const source = readSkillCandidate({
@@ -513,7 +512,34 @@ function readSkillsRoot(
       sources.push(source);
     }
   }
+}
 
+function readSkillsRoot(
+  args: SkillRootScanArgs,
+): HostDaemonInjectedSkillSource[] {
+  let rootStat;
+  try {
+    rootStat = fs.statSync(args.skillsRootPath);
+  } catch (error) {
+    if (error instanceof Error && isFsErrorWithCode(error, "ENOENT")) {
+      return [];
+    }
+    throw error;
+  }
+
+  if (!rootStat.isDirectory()) {
+    args.logger.warn(
+      {
+        skillsRootPath: args.skillsRootPath,
+        sourceType: args.sourceType,
+      },
+      "Skipping non-directory injected skills root",
+    );
+    return [];
+  }
+
+  const sources: HostDaemonInjectedSkillSource[] = [];
+  collectSkillsFromDirectory(args, args.skillsRootPath, 0, sources);
   return sources;
 }
 
