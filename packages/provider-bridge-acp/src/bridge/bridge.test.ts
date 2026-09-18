@@ -5,6 +5,7 @@ import {
   readFileSync,
   rmSync,
   symlinkSync,
+  writeFileSync,
 } from "node:fs";
 import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
@@ -2275,30 +2276,36 @@ describe("acp bridge", () => {
     expect(agentMessageTexts()).toContain("permission:always");
   });
 
-  it("performs client fs writes inside the workspace and reports them", async () => {
-    const targetPath = join(workspaceDir, "agent-output.txt");
-    const { providerThreadId } = await startThread({
-      permissionMode: "accept-edits",
-      permissionEscalation: "ask",
-      envVars: { FAKE_ACP_WRITE_PATH: targetPath },
-    });
-    const turnId = sendTurnRequest("turn/start", providerThreadId, {
-      input: [{ type: "text", text: "write-file", mentions: [] }],
-    });
-    await waitForResponse(turnId);
-    await waitForTurnCompleted();
+  it.each(["add", "update"])(
+    "returns an object for client fs %s writes and reports them",
+    async (kind) => {
+      const targetPath = join(workspaceDir, "agent-output.txt");
+      if (kind === "update") {
+        writeFileSync(targetPath, "original content\n");
+      }
+      const { providerThreadId } = await startThread({
+        permissionMode: "accept-edits",
+        permissionEscalation: "ask",
+        envVars: { FAKE_ACP_WRITE_PATH: targetPath },
+      });
+      const turnId = sendTurnRequest("turn/start", providerThreadId, {
+        input: [{ type: "text", text: "write-file", mentions: [] }],
+      });
+      await waitForResponse(turnId);
+      await waitForTurnCompleted();
 
-    expect(agentMessageTexts()).toContain("write:ok");
-    expect(readFileSync(targetPath, "utf8")).toBe("hello from agent\n");
-    expect(
-      threadEventsOfType("item/completed").map((event) => event.item),
-    ).toContainEqual(
-      expect.objectContaining({
-        type: "fileChange",
-        changes: [expect.objectContaining({ path: targetPath, kind: "add" })],
-      }),
-    );
-  });
+      expect(agentMessageTexts()).toContain("write:ok");
+      expect(readFileSync(targetPath, "utf8")).toBe("hello from agent\n");
+      expect(
+        threadEventsOfType("item/completed").map((event) => event.item),
+      ).toContainEqual(
+        expect.objectContaining({
+          type: "fileChange",
+          changes: [expect.objectContaining({ path: targetPath, kind })],
+        }),
+      );
+    },
+  );
 
   it("denies client fs writes outside the workspace in accept-edits mode", async () => {
     const outsideDir = mkdtempSync(join(tmpdir(), "bb-acp-outside-"));
