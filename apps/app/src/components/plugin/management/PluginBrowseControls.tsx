@@ -1,7 +1,6 @@
 import {
   useCallback,
   useEffect,
-  useId,
   useRef,
   useState,
   type ReactNode,
@@ -14,7 +13,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
-import { Input } from "@bb/shared-ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@bb/shared-ui/popover";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
@@ -427,19 +425,8 @@ function PluginCategoryOptions({
   value,
   onChange,
 }: PluginCategoryFilterProps) {
-  const [search, setSearch] = useState("");
-  const [showKeyboardFocus, setShowKeyboardFocus] = useState(false);
   const [scrollbarScrolling, setScrollbarScrolling] = useState(false);
-  const listboxId = useId();
-  const inputRef = useRef<HTMLInputElement>(null);
-  const keyboardFocusRef = useRef(false);
   const selected = new Set(value);
-  const normalizedSearch = search.trim().toLocaleLowerCase();
-  const filteredOptions = options.filter((option) =>
-    `${option.label} ${option.id}`
-      .toLocaleLowerCase()
-      .includes(normalizedSearch),
-  );
   const [listElement, setListElement] = useState<HTMLDivElement | null>(null);
   const {
     scrollRef: listRef,
@@ -461,10 +448,10 @@ function PluginCategoryOptions({
 
   useEffect(() => {
     const animationFrame = requestAnimationFrame(() =>
-      inputRef.current?.focus(),
+      categoryOptionElements(listRef.current)[0]?.focus(),
     );
     return () => cancelAnimationFrame(animationFrame);
-  }, []);
+  }, [listRef]);
 
   useEffect(
     () => () => {
@@ -501,52 +488,8 @@ function PluginCategoryOptions({
 
   return (
     <>
-      <div className="relative mx-2.5 mt-1.5">
-        <Icon
-          name="Search"
-          className="pointer-events-none absolute left-2 top-1/2 size-3 -translate-y-1/2 text-muted-foreground"
-          aria-hidden
-        />
-        <Input
-          ref={inputRef}
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          placeholder="Search categories"
-          aria-label="Search plugin categories"
-          role="combobox"
-          aria-controls={listboxId}
-          aria-expanded={true}
-          aria-autocomplete="list"
-          className={cn(
-            "h-7 border-transparent bg-surface-recessed pl-7 pr-2 text-xs focus-visible:ring-0",
-            showKeyboardFocus && "ring-1 ring-ring",
-          )}
-          onFocus={() => setShowKeyboardFocus(keyboardFocusRef.current)}
-          onBlur={() => setShowKeyboardFocus(false)}
-          onPointerDown={() => {
-            keyboardFocusRef.current = false;
-            setShowKeyboardFocus(false);
-          }}
-          onKeyDown={(event) => {
-            keyboardFocusRef.current = true;
-            setShowKeyboardFocus(true);
-            if (event.key === "ArrowDown") {
-              event.preventDefault();
-              event.stopPropagation();
-              categoryOptionElements(listElement)[0]?.focus();
-            } else if (event.key === "ArrowUp") {
-              event.preventDefault();
-              event.stopPropagation();
-              categoryOptionElements(listElement).at(-1)?.focus();
-            } else if (event.key !== "Escape" && event.key !== "Tab") {
-              event.stopPropagation();
-            }
-          }}
-        />
-      </div>
-      <div className="relative isolate mt-1.5">
+      <div className="relative isolate">
         <div
-          id={listboxId}
           ref={attachList}
           data-scrollbar-scrolling={scrollbarScrolling ? "true" : undefined}
           role="listbox"
@@ -556,17 +499,15 @@ function PluginCategoryOptions({
           onScroll={revealScrollbarWhileScrolling}
         >
           <div ref={topSentinelRef} aria-hidden className="h-px w-full" />
-          {filteredOptions.length === 0 ? (
+          {options.length === 0 ? (
             <p
               className="px-2 py-6 text-center text-xs text-muted-foreground"
               role="status"
             >
-              {options.length === 0
-                ? "No categories are available."
-                : "No categories match your search."}
+              No categories are available.
             </p>
           ) : (
-            filteredOptions.map((option) => {
+            options.map((option) => {
               return (
                 <button
                   key={option.id}

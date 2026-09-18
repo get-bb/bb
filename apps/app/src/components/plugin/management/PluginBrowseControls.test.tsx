@@ -44,7 +44,7 @@ afterEach(() => {
 });
 
 describe("PluginBrowseCategoryFilter", () => {
-  it("shows searchable counts and checkboxes", () => {
+  it("shows category counts and checkboxes without search", () => {
     render(
       <PluginBrowseCategoryFilter
         options={OPTIONS}
@@ -64,14 +64,8 @@ describe("PluginBrowseCategoryFilter", () => {
         .querySelector("[data-category-option-checkbox]")
         ?.getAttribute("data-state"),
     ).toBe("disabled");
-    const search = screen.getByRole("combobox", {
-      name: "Search plugin categories",
-    });
-    fireEvent.change(search, { target: { value: "work" } });
-    expect(screen.getAllByRole("option")).toHaveLength(1);
-    expect(screen.getByRole("option").textContent).toContain(
-      "Tasks & Workflows",
-    );
+    expect(screen.queryByRole("combobox")).toBeNull();
+    expect(screen.queryByRole("textbox")).toBeNull();
   });
 
   it("keeps the menu open for multiple selections", () => {
@@ -118,7 +112,7 @@ describe("PluginBrowseCategoryFilter", () => {
     ).toBeTruthy();
   });
 
-  it("moves focus through options with the keyboard", () => {
+  it("moves focus through options with the keyboard", async () => {
     const onChange = vi.fn();
     render(
       <PluginBrowseCategoryFilter
@@ -128,18 +122,21 @@ describe("PluginBrowseCategoryFilter", () => {
       />,
     );
     openMenu("Tasks & Workflows");
-    const search = screen.getByRole("combobox", {
-      name: "Search plugin categories",
+    const firstOption = screen.getByRole("option", {
+      name: /Memory & Context/u,
     });
-    fireEvent.keyDown(search, { key: "ArrowDown" });
-    expect(document.activeElement?.textContent).toContain("Memory & Context");
+    await waitFor(() => expect(document.activeElement).toBe(firstOption));
+    fireEvent.keyDown(firstOption, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(
+      screen.getByRole("option", { name: /Security/u }),
+    );
     fireEvent.keyDown(document.activeElement as HTMLElement, { key: "End" });
     expect(document.activeElement?.textContent).toContain("Tasks & Workflows");
     fireEvent.click(document.activeElement as HTMLElement);
     expect(onChange).toHaveBeenCalledWith([]);
   });
 
-  it("keeps keyboard focus inside each filter instance", () => {
+  it("keeps keyboard focus inside each filter instance", async () => {
     render(
       <>
         <PluginBrowseCategoryFilter
@@ -158,25 +155,22 @@ describe("PluginBrowseCategoryFilter", () => {
       name: "Filter plugins by category: All categories",
     });
     fireEvent.click(triggers[0] as HTMLButtonElement);
-    const firstSearch = screen.getByRole("combobox", {
-      name: "Search plugin categories",
-    });
     const firstList = screen.getByRole("listbox", {
       name: "Plugin categories",
     });
-    expect(firstSearch.getAttribute("aria-controls")).toBe(firstList.id);
+    await waitFor(() =>
+      expect(firstList.contains(document.activeElement)).toBe(true),
+    );
     fireEvent.click(triggers[0] as HTMLButtonElement);
     fireEvent.click(triggers[1] as HTMLButtonElement);
-    const secondSearch = screen.getByRole("combobox", {
-      name: "Search plugin categories",
-    });
     const secondList = screen.getByRole("listbox", {
       name: "Plugin categories",
     });
-    expect(secondSearch.getAttribute("aria-controls")).toBe(secondList.id);
-    expect(firstList.id).not.toBe(secondList.id);
-
-    fireEvent.keyDown(secondSearch, { key: "ArrowDown" });
+    const firstOption = screen.getByRole("option", {
+      name: /Memory & Context/u,
+    });
+    await waitFor(() => expect(document.activeElement).toBe(firstOption));
+    fireEvent.keyDown(firstOption, { key: "ArrowDown" });
     expect(secondList.contains(document.activeElement)).toBe(true);
     expect(firstList.contains(document.activeElement)).toBe(false);
   });
@@ -474,7 +468,7 @@ describe("PluginCollectionToolbar", () => {
     expect(screen.getByRole("button", { name: "Create" })).toBeTruthy();
   });
 
-  it("shares sort, category search, and source clearing in the combined menu without resetting other values", async () => {
+  it("shares sort, category selection, and source clearing in the combined menu without resetting other values", async () => {
     mockToolbarWidth(320);
     render(<ToolbarHarness installed />);
     fireEvent.keyDown(screen.getByRole("button", { name: "Filter & sort" }), {
@@ -503,12 +497,12 @@ describe("PluginCollectionToolbar", () => {
       ),
     );
     fireEvent.click(screen.getByRole("menuitem", { name: /^Category/u }));
-    const search = screen.getByRole("combobox", {
-      name: "Search plugin categories",
+    expect(screen.queryByRole("combobox")).toBeNull();
+    const firstOption = screen.getByRole("option", {
+      name: /Memory & Context/u,
     });
-    await waitFor(() => expect(document.activeElement).toBe(search));
-    fireEvent.change(search, { target: { value: "security" } });
-    fireEvent.keyDown(search, { key: "ArrowDown" });
+    await waitFor(() => expect(document.activeElement).toBe(firstOption));
+    fireEvent.keyDown(firstOption, { key: "ArrowDown" });
     expect(document.activeElement).toBe(
       screen.getByRole("option", { name: /Security/u }),
     );
@@ -542,7 +536,7 @@ describe("PluginCollectionToolbar", () => {
     );
     await waitFor(() =>
       expect(document.activeElement).toBe(
-        screen.getByRole("combobox", { name: "Search plugin categories" }),
+        screen.getByRole("option", { name: /Memory & Context/u }),
       ),
     );
     fireEvent.click(screen.getByRole("menuitem", { name: "Back to controls" }));
