@@ -8,6 +8,7 @@ import {
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { TabPill } from "@/components/ui/tab-pill";
+import { MACOS_APP_REGION_NO_DRAG_CLASS } from "@/lib/bb-desktop";
 import { PANEL_TAB_CONTROL_CLASS } from "./panelChromeClasses";
 
 const MAX_TAB_WIDTH_PX = 144;
@@ -136,7 +137,7 @@ export function MobilePanelTabPager({
 
   return (
     <div
-      className="flex min-w-0 flex-1 items-center gap-2"
+      className={`flex min-w-0 flex-1 items-center gap-2 ${MACOS_APP_REGION_NO_DRAG_CLASS}`}
       data-testid="mobile-panel-tab-pager"
     >
       <div className="flex shrink-0 items-center gap-1 [&_button]:size-8 max-md:pointer-coarse:[&_button]:size-9">
