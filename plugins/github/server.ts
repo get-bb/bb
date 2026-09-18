@@ -1,9 +1,9 @@
 import { execFile } from "node:child_process";
 import {
   defineRpcContract,
-  experimental_CliError,
-  experimental_cliCommand,
-  experimental_defineCli,
+  PluginCliError,
+  cliCommand,
+  defineCli,
   type BbPluginApi,
   type PluginCliResult,
 } from "@get-bb/plugin-sdk";
@@ -395,7 +395,7 @@ export function parsePaginatedGhApi(raw: string): Record<string, unknown>[] {
 function requireRepoName(value: string | undefined): string | undefined {
   if (value === undefined) return undefined;
   if (!isRepoName(value)) {
-    throw new experimental_CliError(
+    throw new PluginCliError(
       `Invalid repository "${value}"; expected owner/repo.`,
       { code: "invalid_repository" },
     );
@@ -1621,8 +1621,8 @@ export default async function plugin(bb: BbPluginApi) {
     try {
       return await run();
     } catch (error) {
-      if (error instanceof experimental_CliError) throw error;
-      throw new experimental_CliError(errorMessage(error));
+      if (error instanceof PluginCliError) throw error;
+      throw new PluginCliError(errorMessage(error));
     }
   }
 
@@ -1642,7 +1642,7 @@ export default async function plugin(bb: BbPluginApi) {
   }
 
   function listCachedItemsCommand(kind: "issue" | "pr") {
-    return experimental_cliCommand({
+    return cliCommand({
       summary:
         kind === "pr"
           ? "List cached open pull requests"
@@ -1700,13 +1700,13 @@ export default async function plugin(bb: BbPluginApi) {
   }
 
   bb.cli.register(
-    experimental_defineCli({
+    defineCli({
       name: "github",
       summary: "Browse tracked GitHub repos, issues, and PRs",
       description:
         "Tracked repositories come from attached projects' GitHub remotes plus the extraRepos setting.",
       commands: {
-        repos: experimental_cliCommand({
+        repos: cliCommand({
           summary: "List tracked repositories",
           options: {
             json: {
@@ -1758,7 +1758,7 @@ export default async function plugin(bb: BbPluginApi) {
         }),
         issues: listCachedItemsCommand("issue"),
         prs: listCachedItemsCommand("pr"),
-        sync: experimental_cliCommand({
+        sync: cliCommand({
           summary: "Refresh the cache from GitHub now",
           options: {
             json: {

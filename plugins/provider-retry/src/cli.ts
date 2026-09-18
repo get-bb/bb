@@ -1,7 +1,7 @@
 import {
-  experimental_CliError,
-  experimental_cliCommand,
-  experimental_defineCli,
+  PluginCliError,
+  cliCommand,
+  defineCli,
   type BbPluginApi,
   type PluginCliContext,
   type PluginCliResult,
@@ -37,7 +37,7 @@ function requiredThreadId(
 ): string {
   const threadId = requested ?? context.threadId;
   if (threadId === undefined) {
-    throw new experimental_CliError(
+    throw new PluginCliError(
       `A thread id is required: bb provider-retry ${command} <thread-id>`,
       { code: "missing_thread_id", exitCode: 2 },
     );
@@ -53,7 +53,7 @@ async function act(
 ): Promise<PluginCliResult> {
   const queued = await findQueuedRetry(bb, threadId);
   if (queued === null) {
-    throw new experimental_CliError(
+    throw new PluginCliError(
       `No pending provider retry exists for ${threadId}.`,
       {
         code: "no_pending_retry",
@@ -90,14 +90,14 @@ async function act(
 
 export function registerProviderRetryCli(bb: BbPluginApi): void {
   bb.cli.register(
-    experimental_defineCli({
+    defineCli({
       name: "provider-retry",
       summary: "Manage pending automatic provider retries",
       description:
         "A pending retry is an ordinary durable queued row: cancel deletes it, retry sends it now instead of waiting for its window.",
       usageErrorExitCode: 2,
       commands: {
-        status: experimental_cliCommand({
+        status: cliCommand({
           summary: "Show pending automatic provider retries",
           positionals: [
             {
@@ -129,7 +129,7 @@ export function registerProviderRetryCli(bb: BbPluginApi): void {
             };
           },
         }),
-        cancel: experimental_cliCommand({
+        cancel: cliCommand({
           summary: "Cancel a pending automatic provider retry",
           positionals: [THREAD_ID_POSITIONAL],
           options: { json: JSON_OPTION },
@@ -145,7 +145,7 @@ export function registerProviderRetryCli(bb: BbPluginApi): void {
               "cancel",
             ),
         }),
-        retry: experimental_cliCommand({
+        retry: cliCommand({
           summary: "Send a pending provider retry now instead of waiting",
           positionals: [THREAD_ID_POSITIONAL],
           options: { json: JSON_OPTION },

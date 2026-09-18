@@ -1,8 +1,8 @@
 import { resolve } from "node:path";
 import {
-  experimental_CliError,
-  experimental_cliCommand,
-  experimental_defineCli,
+  PluginCliError,
+  cliCommand,
+  defineCli,
   type BbPluginApi,
   type PluginCliContext,
   type PluginCliResult,
@@ -95,7 +95,7 @@ interface PluginStatus {
 type TasksDomain = ReturnType<typeof registerHandlers>;
 type ListTasksInput = Parameters<TasksDomain["listTasks"]>[0];
 
-class CliError extends experimental_CliError {
+class CliError extends PluginCliError {
   constructor(
     message: string,
     options?: { code?: string; hint?: string; exitCode?: number },
@@ -105,7 +105,7 @@ class CliError extends experimental_CliError {
 }
 
 function friendlyError(error: unknown): string {
-  if (error instanceof experimental_CliError) return error.message;
+  if (error instanceof PluginCliError) return error.message;
   if (error instanceof z.ZodError) {
     const issue = error.issues[0];
     const path = issue?.path.length ? `${issue.path.join(".")}: ` : "";
@@ -132,7 +132,7 @@ async function guard(
       ? { exitCode: 0, stdout: result }
       : result;
   } catch (error) {
-    if (error instanceof experimental_CliError) throw error;
+    if (error instanceof PluginCliError) throw error;
     throw new CliError(friendlyError(error));
   }
 }
@@ -237,7 +237,7 @@ async function readTextOption(
     }
     return text;
   } catch (error) {
-    if (error instanceof experimental_CliError) throw error;
+    if (error instanceof PluginCliError) throw error;
     throw new CliError(`could not read ${file}: ${errorMessage(error)}`);
   }
 }
@@ -634,7 +634,7 @@ function groupCommand(
   subcommands: readonly (readonly [string, string])[],
 ) {
   const width = Math.max(...subcommands.map(([name]) => name.length));
-  return experimental_cliCommand({
+  return cliCommand({
     summary,
     hidden: true,
     description: [
@@ -669,14 +669,14 @@ export function registerTasksCli(
 ): void {
   const domain = registerHandlers(bb, store);
   bb.cli.register(
-    experimental_defineCli({
+    defineCli({
       name: "tasks",
       summary:
         "Create and manage task-tracker projects, tasks, labels, and comments",
       description:
         "Tasks are addressed by key (ABC-12) or ULID. --project takes a tracker project prefix or id, never a bb project id (proj_...).",
       commands: {
-        status: experimental_cliCommand({
+        status: cliCommand({
           summary: "Show the Tasks plugin name and version",
           description:
             "Plugin health only. To filter tasks by workflow status run bb tasks list --status <status>; to change one run bb tasks update <key-or-id> --status <status>.",
@@ -701,7 +701,7 @@ export function registerTasksCli(
             ["update", "Rename, recolor, refile, or relink a project"],
           ],
         ),
-        "project create": experimental_cliCommand({
+        "project create": cliCommand({
           summary: "Create a tracker project",
           options: {
             name: {
@@ -763,7 +763,7 @@ export function registerTasksCli(
             });
           },
         }),
-        "project list": experimental_cliCommand({
+        "project list": cliCommand({
           summary: "List tracker projects",
           options: { json: JSON_OPTION },
           run(input) {
@@ -780,7 +780,7 @@ export function registerTasksCli(
             });
           },
         }),
-        "project show": experimental_cliCommand({
+        "project show": cliCommand({
           summary: "Show one tracker project",
           positionals: [
             {
@@ -814,7 +814,7 @@ export function registerTasksCli(
             });
           },
         }),
-        "project update": experimental_cliCommand({
+        "project update": cliCommand({
           summary: "Rename, recolor, refile, or relink a tracker project",
           positionals: [
             {
@@ -943,7 +943,7 @@ export function registerTasksCli(
             ["delete", "Delete a folder, keeping its contents"],
           ],
         ),
-        "folder create": experimental_cliCommand({
+        "folder create": cliCommand({
           summary: "Create a project folder",
           options: {
             name: {
@@ -979,7 +979,7 @@ export function registerTasksCli(
             });
           },
         }),
-        "folder list": experimental_cliCommand({
+        "folder list": cliCommand({
           summary: "List project folders",
           options: { json: JSON_OPTION },
           run(input) {
@@ -1009,7 +1009,7 @@ export function registerTasksCli(
             });
           },
         }),
-        "folder update": experimental_cliCommand({
+        "folder update": cliCommand({
           summary: "Rename or move a project folder",
           positionals: [
             {
@@ -1082,7 +1082,7 @@ export function registerTasksCli(
             });
           },
         }),
-        "folder delete": experimental_cliCommand({
+        "folder delete": cliCommand({
           summary: "Delete a folder and unfile its contents",
           description:
             "Deleting a folder moves its projects and subfolders to the top level. No tasks are deleted.",
@@ -1131,7 +1131,7 @@ export function registerTasksCli(
           },
         }),
 
-        create: experimental_cliCommand({
+        create: cliCommand({
           summary: "Create a task",
           unexpectedPositionalHint:
             "the task title belongs in --title <title>.",
@@ -1313,7 +1313,7 @@ export function registerTasksCli(
           },
         }),
 
-        list: experimental_cliCommand({
+        list: cliCommand({
           summary: "List and filter tasks",
           options: {
             project: PROJECT_OPTION,
@@ -1480,7 +1480,7 @@ export function registerTasksCli(
           },
         }),
 
-        show: experimental_cliCommand({
+        show: cliCommand({
           summary: "Show full task details",
           aliases: ["get"],
           suggestFor: ["view", "read", "info", "detail", "details", "describe"],
@@ -1622,7 +1622,7 @@ export function registerTasksCli(
           },
         }),
 
-        update: experimental_cliCommand({
+        update: cliCommand({
           summary: "Update task fields and labels",
           positionals: [KEY_POSITIONAL],
           options: {
@@ -1787,7 +1787,7 @@ export function registerTasksCli(
           },
         }),
 
-        comment: experimental_cliCommand({
+        comment: cliCommand({
           summary: "Add a markdown comment to a task",
           positionals: [KEY_POSITIONAL],
           options: {
@@ -1874,7 +1874,7 @@ export function registerTasksCli(
           ["list", "List a project's labels"],
           ["delete", "Delete a label"],
         ]),
-        "label create": experimental_cliCommand({
+        "label create": cliCommand({
           summary: "Create a project label",
           options: {
             project: REQUIRED_PROJECT_OPTION,
@@ -1909,7 +1909,7 @@ export function registerTasksCli(
             });
           },
         }),
-        "label list": experimental_cliCommand({
+        "label list": cliCommand({
           summary: "List a project's labels",
           options: { project: REQUIRED_PROJECT_OPTION, json: JSON_OPTION },
           run(input, ctx) {
@@ -1930,7 +1930,7 @@ export function registerTasksCli(
             });
           },
         }),
-        "label delete": experimental_cliCommand({
+        "label delete": cliCommand({
           summary: "Delete a project label",
           positionals: [
             {
@@ -1975,7 +1975,7 @@ export function registerTasksCli(
             ["remove", "Remove an attachment"],
           ],
         ),
-        "attachment add": experimental_cliCommand({
+        "attachment add": cliCommand({
           summary: "Attach a file to a task or comment",
           description:
             "File paths are read from the invoking machine: the thread's machine inside an agent thread, otherwise the server's.",
@@ -2051,7 +2051,7 @@ export function registerTasksCli(
             });
           },
         }),
-        "attachment get": experimental_cliCommand({
+        "attachment get": cliCommand({
           summary: "Download an attachment to a path",
           description:
             "The file is written on the invoking machine: the thread's machine inside an agent thread, otherwise the server's.",
@@ -2098,7 +2098,7 @@ export function registerTasksCli(
             });
           },
         }),
-        "attachment list": experimental_cliCommand({
+        "attachment list": cliCommand({
           summary: "List a task's attachments",
           positionals: [KEY_POSITIONAL],
           options: { json: JSON_OPTION },
@@ -2135,7 +2135,7 @@ export function registerTasksCli(
             });
           },
         }),
-        "attachment remove": experimental_cliCommand({
+        "attachment remove": cliCommand({
           summary: "Remove an attachment",
           positionals: [
             {
@@ -2191,7 +2191,7 @@ export function registerTasksCli(
             ["delete", "Delete a preset"],
           ],
         ),
-        "preset list": experimental_cliCommand({
+        "preset list": cliCommand({
           summary: "List dispatch presets",
           options: { json: JSON_OPTION },
           run(input) {
@@ -2231,7 +2231,7 @@ export function registerTasksCli(
             });
           },
         }),
-        "preset show": experimental_cliCommand({
+        "preset show": cliCommand({
           summary: "Show one dispatch preset",
           positionals: [
             {
@@ -2266,7 +2266,7 @@ export function registerTasksCli(
             });
           },
         }),
-        "preset create": experimental_cliCommand({
+        "preset create": cliCommand({
           summary: "Create a dispatch preset",
           options: {
             name: {
@@ -2366,7 +2366,7 @@ export function registerTasksCli(
             });
           },
         }),
-        "preset update": experimental_cliCommand({
+        "preset update": cliCommand({
           summary: "Update a dispatch preset",
           positionals: [
             {
@@ -2481,7 +2481,7 @@ export function registerTasksCli(
             });
           },
         }),
-        "preset delete": experimental_cliCommand({
+        "preset delete": cliCommand({
           summary: "Delete a dispatch preset",
           positionals: [
             {
@@ -2511,7 +2511,7 @@ export function registerTasksCli(
           },
         }),
 
-        dispatch: experimental_cliCommand({
+        dispatch: cliCommand({
           summary: "Dispatch a task to a new agent thread",
           aliases: ["delegate"],
           suggestFor: ["start", "run", "spawn"],
@@ -2558,7 +2558,7 @@ export function registerTasksCli(
           },
         }),
 
-        attach: experimental_cliCommand({
+        attach: cliCommand({
           summary: "Attach an existing agent thread to a task",
           positionals: [KEY_POSITIONAL],
           options: {
@@ -2597,7 +2597,7 @@ export function registerTasksCli(
           },
         }),
 
-        detach: experimental_cliCommand({
+        detach: cliCommand({
           summary: "Detach an agent thread from a task",
           positionals: [KEY_POSITIONAL],
           options: {
@@ -2636,7 +2636,7 @@ export function registerTasksCli(
           },
         }),
 
-        threads: experimental_cliCommand({
+        threads: cliCommand({
           summary: "List agent threads attached to a task",
           positionals: [KEY_POSITIONAL],
           options: { json: JSON_OPTION },
@@ -2669,7 +2669,7 @@ export function registerTasksCli(
           },
         }),
 
-        "seed-demo": experimental_cliCommand({
+        "seed-demo": cliCommand({
           summary:
             "Create sample folders, projects, labels, tasks, and comments",
           options: {

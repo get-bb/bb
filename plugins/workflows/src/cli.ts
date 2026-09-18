@@ -1,7 +1,7 @@
 import {
-  experimental_CliError,
-  experimental_cliCommand,
-  experimental_defineCli,
+  PluginCliError,
+  cliCommand,
+  defineCli,
   type BbPluginApi,
   type PluginCliContext,
   type PluginCliResult,
@@ -45,8 +45,8 @@ async function guarded(
   try {
     return await run();
   } catch (error) {
-    if (error instanceof experimental_CliError) throw error;
-    throw new experimental_CliError(
+    if (error instanceof PluginCliError) throw error;
+    throw new PluginCliError(
       error instanceof Error ? error.message : String(error),
     );
   }
@@ -319,13 +319,13 @@ export function registerWorkflowCli(
   service: WorkflowService,
 ): void {
   bb.cli.register(
-    experimental_defineCli({
+    defineCli({
       name: "workflows",
       summary: "Run and inspect durable BB workflows",
       description:
         "Workflows run in the background: start one, then poll the compact status summary and read bounded JSONL history pages.",
       commands: {
-        run: experimental_cliCommand({
+        run: cliCommand({
           summary: "Start a workflow and return immediately",
           constraints: [SOURCE_CONSTRAINT],
           options: {
@@ -367,7 +367,7 @@ export function registerWorkflowCli(
             });
           },
         }),
-        validate: experimental_cliCommand({
+        validate: cliCommand({
           summary: "Validate workflow source and literal model selections",
           constraints: [SOURCE_CONSTRAINT],
           options: {
@@ -389,7 +389,7 @@ export function registerWorkflowCli(
             });
           },
         }),
-        status: experimental_cliCommand({
+        status: cliCommand({
           summary: "Show a compact workflow run summary",
           positionals: [RUN_ID_POSITIONAL],
           options: {
@@ -407,7 +407,7 @@ export function registerWorkflowCli(
             });
           },
         }),
-        history: experimental_cliCommand({
+        history: cliCommand({
           summary: "Read one JSONL page of workflow run and call history",
           positionals: [RUN_ID_POSITIONAL],
           options: {
@@ -463,7 +463,7 @@ export function registerWorkflowCli(
             });
           },
         }),
-        list: experimental_cliCommand({
+        list: cliCommand({
           summary: "List recent project workflow runs",
           options: {
             limit: {
@@ -486,7 +486,7 @@ export function registerWorkflowCli(
             });
           },
         }),
-        stop: experimental_cliCommand({
+        stop: cliCommand({
           summary: "Cancel a workflow run",
           positionals: [RUN_ID_POSITIONAL],
           options: {

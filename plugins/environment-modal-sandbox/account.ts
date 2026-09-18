@@ -8,9 +8,9 @@ import {
 } from "./debug-sandbox.js";
 import {
   defineRpcContract,
-  experimental_CliError,
-  experimental_cliCommand,
-  experimental_defineCli,
+  PluginCliError,
+  cliCommand,
+  defineCli,
   type BbPluginApi,
   type PluginCliContext,
   type PluginCliResult,
@@ -120,8 +120,8 @@ export function registerRpcAndCli(
     try {
       return await run();
     } catch (error) {
-      if (error instanceof experimental_CliError) throw error;
-      throw new experimental_CliError(errorMessage(error));
+      if (error instanceof PluginCliError) throw error;
+      throw new PluginCliError(errorMessage(error));
     }
   }
   const jsonOption = {
@@ -131,13 +131,13 @@ export function registerRpcAndCli(
     },
   } as const;
   bb.cli.register(
-    experimental_defineCli({
+    defineCli({
       name: "modal",
       summary: "Configure, build and debug Modal images",
       description:
         "Debug sandboxes are ephemeral: they run the saved image for 30 minutes and carry no machine secrets.",
       commands: {
-        "machine inspect": experimental_cliCommand({
+        "machine inspect": cliCommand({
           summary: "Inspect Modal compute and the last saved snapshot",
           positionals: [
             {
@@ -161,7 +161,7 @@ export function registerRpcAndCli(
             });
           },
         }),
-        "image build": experimental_cliCommand({
+        "image build": cliCommand({
           summary: "Build or reuse the saved image",
           options: jsonOption,
           run(input, context) {
@@ -176,7 +176,7 @@ export function registerRpcAndCli(
             });
           },
         }),
-        "sandbox run": experimental_cliCommand({
+        "sandbox run": cliCommand({
           summary: "Run the saved image in a 30-minute debug sandbox",
           options: jsonOption,
           run(input, context) {
@@ -192,7 +192,7 @@ export function registerRpcAndCli(
             });
           },
         }),
-        "sandbox exec": experimental_cliCommand({
+        "sandbox exec": cliCommand({
           summary: "Execute a command in a debug sandbox",
           description:
             "Everything after `--` is the command; it is never parsed as options.",
@@ -208,7 +208,7 @@ export function registerRpcAndCli(
           run(input, context) {
             return guarded(async () => {
               if (input.passthrough.length === 0) {
-                throw new experimental_CliError(
+                throw new PluginCliError(
                   "bb modal sandbox exec requires a command after --",
                   {
                     code: "missing_command",
@@ -233,7 +233,7 @@ export function registerRpcAndCli(
             });
           },
         }),
-        "sandbox stop": experimental_cliCommand({
+        "sandbox stop": cliCommand({
           summary: "Stop a debug sandbox",
           positionals: [
             {
@@ -259,7 +259,7 @@ export function registerRpcAndCli(
             });
           },
         }),
-        "image show": experimental_cliCommand({
+        "image show": cliCommand({
           summary: "Show the Dockerfile used for new machines",
           options: jsonOption,
           run(input) {
@@ -274,7 +274,7 @@ export function registerRpcAndCli(
             });
           },
         }),
-        "image set": experimental_cliCommand({
+        "image set": cliCommand({
           summary: "Save a Dockerfile for future machines",
           options: {
             file: {
@@ -301,7 +301,7 @@ export function registerRpcAndCli(
             });
           },
         }),
-        "image reset": experimental_cliCommand({
+        "image reset": cliCommand({
           summary: "Restore the bundled Dockerfile",
           options: jsonOption,
           run(input) {
@@ -316,7 +316,7 @@ export function registerRpcAndCli(
             });
           },
         }),
-        "account inspect": experimental_cliCommand({
+        "account inspect": cliCommand({
           summary: "Test the configured Modal account",
           options: jsonOption,
           run(input) {

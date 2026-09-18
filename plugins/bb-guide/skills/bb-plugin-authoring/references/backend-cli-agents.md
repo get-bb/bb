@@ -29,7 +29,7 @@ bb.cli.register({
 ```
 
 Prefer declaring the command instead of parsing `argv` by hand.
-`experimental_defineCli` builds the same registration from a spec and gives
+`defineCli` builds the same registration from a spec and gives
 every command the behavior agents rely on: `--help` at every level with exit
 0, `unknown option '--x' (Did you mean --y?)`, every missing required option
 in one error, typed value errors, and with `--json` a
@@ -38,18 +38,14 @@ stderr keeps the readable text. Hand-written parsers have silently ignored
 unknown flags and lost user data.
 
 ```ts
-import {
-  experimental_CliError,
-  experimental_cliCommand,
-  experimental_defineCli,
-} from "@get-bb/plugin-sdk";
+import { PluginCliError, cliCommand, defineCli } from "@get-bb/plugin-sdk";
 
 bb.cli.register(
-  experimental_defineCli({
+  defineCli({
     name: "weather",
     summary: "Weather lookups",
     commands: {
-      today: experimental_cliCommand({
+      today: cliCommand({
         summary: "Today's weather",
         positionals: [
           { name: "city", description: "City name", required: true },
@@ -75,7 +71,7 @@ bb.cli.register(
             input.options.units,
           );
           if (forecast === null) {
-            throw new experimental_CliError(
+            throw new PluginCliError(
               `no forecast for ${input.positionals.city}`,
               {
                 code: "forecast_not_found",
@@ -96,9 +92,9 @@ Command keys are invocation paths, so `"account add"` declares
 option's hidden `aliases`, state limits in each `description` because they
 show in `--help`, and express "exactly one of" and "X requires Y" with
 `constraints`. Keep a required ID strict, but when `ctx.projectId` or
-`ctx.threadId` holds the value, throw an `experimental_CliError` whose `hint`
+`ctx.threadId` holds the value, throw an `PluginCliError` whose `hint`
 prints the exact flag to add. A registration built this way sets
-`experimental_rendersHelp`, so `bb weather today --help` reaches the plugin and
+`rendersHelp`, so `bb weather today --help` reaches the plugin and
 prints its full option help; a hand-written `run` leaves that unset and the
 `bb` CLI answers `--help` from the `commands[].usage` line without calling
 the plugin.

@@ -4,9 +4,9 @@ import path from "node:path";
 import { isRecord, parseMarkdownDocument } from "./markdown-document.js";
 import {
   defineRpcContract,
-  experimental_CliError,
-  experimental_cliCommand,
-  experimental_defineCli,
+  PluginCliError,
+  cliCommand,
+  defineCli,
   type BbPluginApi,
   type PluginCliContext,
   type PluginCliResult,
@@ -21,7 +21,7 @@ const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
 const SYNC_STATE_FILE = ".bb-docs-state.json";
 const SYNC_STATE_VERSION = 1;
 
-class CliUsageError extends experimental_CliError {
+class CliUsageError extends PluginCliError {
   constructor(message: string) {
     super(message, { code: "usage_error", exitCode: 2 });
   }
@@ -2495,8 +2495,8 @@ export default async function plugin(
     try {
       return await work();
     } catch (error) {
-      if (error instanceof experimental_CliError) throw error;
-      throw new experimental_CliError(errorMessage(error), {
+      if (error instanceof PluginCliError) throw error;
+      throw new PluginCliError(errorMessage(error), {
         code: "operation_failed",
       });
     }
@@ -2553,13 +2553,13 @@ export default async function plugin(
   }
 
   bb.cli.register(
-    experimental_defineCli({
+    defineCli({
       name: "docs",
       summary: "Discover and safely sync Docs vaults",
       description: DOCS_DESCRIPTION,
       usageErrorExitCode: 2,
       commands: {
-        vaults: experimental_cliCommand({
+        vaults: cliCommand({
           summary: "List configured vaults",
           suggestFor: ["vault"],
           options: { json: JSON_OPTION },
@@ -2573,7 +2573,7 @@ export default async function plugin(
               ),
             })),
         }),
-        "vault-add": experimental_cliCommand({
+        "vault-add": cliCommand({
           summary: "Add a vault",
           suggestFor: ["add-vault", "vault-create"],
           positionals: [
@@ -2609,7 +2609,7 @@ export default async function plugin(
               ),
             })),
         }),
-        "vault-remove": experimental_cliCommand({
+        "vault-remove": cliCommand({
           summary: "Remove a vault configuration",
           suggestFor: ["remove-vault", "vault-delete"],
           positionals: [
@@ -2630,7 +2630,7 @@ export default async function plugin(
               ),
             })),
         }),
-        list: experimental_cliCommand({
+        list: cliCommand({
           summary: "List notes and folders",
           aliases: ["ls"],
           options: { vault: VAULT_OPTION, json: JSON_OPTION },
@@ -2644,7 +2644,7 @@ export default async function plugin(
               ),
             })),
         }),
-        read: experimental_cliCommand({
+        read: cliCommand({
           summary: "Read a file",
           aliases: ["cat"],
           positionals: [
@@ -2672,7 +2672,7 @@ export default async function plugin(
               };
             }),
         }),
-        pull: experimental_cliCommand({
+        pull: cliCommand({
           summary: "Pull one file, a folder subtree, or a whole vault",
           description:
             "Writes the scope into a workspace directory with a .bb-docs-state.json manifest. Edit the files with ordinary tools, then run bb docs status and bb docs push.",
@@ -2732,7 +2732,7 @@ export default async function plugin(
               };
             }),
         }),
-        status: experimental_cliCommand({
+        status: cliCommand({
           summary: "Show local edits, conflicts, and ignored deletions",
           description: DOCS_STATUS_DESCRIPTION,
           positionals: [
@@ -2770,7 +2770,7 @@ export default async function plugin(
               };
             }),
         }),
-        push: experimental_cliCommand({
+        push: cliCommand({
           summary: "Safely push local edits using optimistic concurrency",
           description:
             "Refuses to write when a vault file changed since the pull; resolve the conflict, then pull or push again.",
@@ -2821,7 +2821,7 @@ export default async function plugin(
               };
             }),
         }),
-        write: experimental_cliCommand({
+        write: cliCommand({
           summary: "Deprecated: write a UTF-8 file directly",
           description:
             "Use bb docs pull, edit the files, then bb docs push instead.",
@@ -2858,7 +2858,7 @@ export default async function plugin(
               stderr: DEPRECATED_MUTATION_WARNING,
             })),
         }),
-        mkdir: experimental_cliCommand({
+        mkdir: cliCommand({
           summary: "Deprecated: create a folder directly",
           description:
             "Use bb docs pull, create the directory locally, then bb docs push instead.",
@@ -2884,7 +2884,7 @@ export default async function plugin(
               stderr: DEPRECATED_MUTATION_WARNING,
             })),
         }),
-        move: experimental_cliCommand({
+        move: cliCommand({
           summary: "Deprecated: move a path directly",
           description:
             "Use bb docs pull, move the file locally, then bb docs push --delete instead.",
@@ -2916,7 +2916,7 @@ export default async function plugin(
               stderr: DEPRECATED_MUTATION_WARNING,
             })),
         }),
-        remove: experimental_cliCommand({
+        remove: cliCommand({
           summary: "Deprecated: remove a file or directory directly",
           description:
             "Use bb docs pull, delete the file locally, then bb docs push --delete instead.",

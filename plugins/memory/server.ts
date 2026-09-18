@@ -1,9 +1,9 @@
 import { randomBytes } from "node:crypto";
 import {
   defineRpcContract,
-  experimental_CliError,
-  experimental_cliCommand,
-  experimental_defineCli,
+  PluginCliError,
+  cliCommand,
+  defineCli,
   type BbPluginApi,
 } from "@get-bb/plugin-sdk";
 import { z } from "zod";
@@ -128,7 +128,7 @@ interface MemoryUpdate {
   writeReason: string;
 }
 
-class CliError extends experimental_CliError {}
+class CliError extends PluginCliError {}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -817,13 +817,13 @@ export default async function plugin(bb: BbPluginApi) {
   );
 
   bb.cli.register(
-    experimental_defineCli({
+    defineCli({
       name: "memory",
       summary: "Read and maintain durable global and project memories",
       description:
         "Memories are summaries first: search or list, then read one in full.\nProject scope holds repository facts; global scope holds durable user preferences.",
       commands: {
-        catalog: experimental_cliCommand({
+        catalog: cliCommand({
           summary: "List compact memory summaries",
           aliases: ["list"],
           options: {
@@ -863,7 +863,7 @@ export default async function plugin(bb: BbPluginApi) {
             };
           },
         }),
-        search: experimental_cliCommand({
+        search: cliCommand({
           summary: "Search memory summaries and details",
           positionals: [
             {
@@ -912,7 +912,7 @@ export default async function plugin(bb: BbPluginApi) {
             };
           },
         }),
-        get: experimental_cliCommand({
+        get: cliCommand({
           summary: "Read one complete memory",
           positionals: [
             {
@@ -953,7 +953,7 @@ export default async function plugin(bb: BbPluginApi) {
             };
           },
         }),
-        add: experimental_cliCommand({
+        add: cliCommand({
           summary: "Save a project or global memory",
           unexpectedPositionalHint:
             "memory text belongs in --details <TEXT>, not a bare argument",
@@ -1046,7 +1046,7 @@ export default async function plugin(bb: BbPluginApi) {
             };
           },
         }),
-        update: experimental_cliCommand({
+        update: cliCommand({
           summary: "Update a memory with version checking",
           positionals: [
             { name: "id", description: "Memory id", required: true },
@@ -1148,7 +1148,7 @@ export default async function plugin(bb: BbPluginApi) {
             };
           },
         }),
-        forget: experimental_cliCommand({
+        forget: cliCommand({
           summary: "Soft-delete a memory with version checking",
           positionals: [
             { name: "id", description: "Memory id", required: true },
@@ -1191,7 +1191,7 @@ export default async function plugin(bb: BbPluginApi) {
             };
           },
         }),
-        history: experimental_cliCommand({
+        history: cliCommand({
           summary: "Show a memory's version history",
           positionals: [
             { name: "id", description: "Memory id", required: true },

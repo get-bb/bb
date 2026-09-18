@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import {
-  experimental_CliError,
-  experimental_cliCommand,
-  experimental_defineCli,
+  PluginCliError,
+  cliCommand,
+  defineCli,
   type BbPluginApi,
 } from "@get-bb/plugin-sdk";
 import { z } from "zod";
@@ -187,13 +187,13 @@ export function createPushNotificationsPlugin(
     });
 
     bb.cli.register(
-      experimental_defineCli({
+      defineCli({
         name: "push-notifications",
         summary: "Manage mobile, web, and desktop notifications",
         description:
           "Mobile devices receive Expo push messages; web and desktop clients receive system notifications while they are open.",
         commands: {
-          test: experimental_cliCommand({
+          test: cliCommand({
             summary:
               "Send a test to connected web or desktop clients with permission",
             positionals: [
@@ -209,7 +209,7 @@ export function createPushNotificationsPlugin(
                 input.positionals.channel,
               );
               if (!channel.success) {
-                throw new experimental_CliError("Use web or desktop", {
+                throw new PluginCliError("Use web or desktop", {
                   code: "invalid_channel",
                   hint: "Mobile devices are tested from the phone itself; this command only reaches web and desktop clients.",
                 });
@@ -217,7 +217,7 @@ export function createPushNotificationsPlugin(
               try {
                 await sendTest(channel.data);
               } catch (error) {
-                throw new experimental_CliError(
+                throw new PluginCliError(
                   error instanceof Error ? error.message : String(error),
                   {
                     code: "channel_disabled",
@@ -233,7 +233,7 @@ export function createPushNotificationsPlugin(
               };
             },
           }),
-          list: experimental_cliCommand({
+          list: cliCommand({
             summary: "List registered push devices",
             options: { json: JSON_OPTION },
             async run(input) {
@@ -246,7 +246,7 @@ export function createPushNotificationsPlugin(
               };
             },
           }),
-          add: experimental_cliCommand({
+          add: cliCommand({
             summary: "Register or refresh an Expo push device",
             options: {
               token: {
@@ -279,7 +279,7 @@ export function createPushNotificationsPlugin(
                 deviceLabel: input.options.label,
               });
               if (!parsed.success) {
-                throw new experimental_CliError(
+                throw new PluginCliError(
                   parsed.error.issues.map((issue) => issue.message).join("; "),
                   { code: "invalid_device" },
                 );
@@ -293,7 +293,7 @@ export function createPushNotificationsPlugin(
               };
             },
           }),
-          remove: experimental_cliCommand({
+          remove: cliCommand({
             summary: "Remove a registered push device",
             positionals: [
               {
@@ -307,13 +307,10 @@ export function createPushNotificationsPlugin(
             async run(input) {
               const id = input.positionals.id;
               if (!(await subscriptions.remove(id))) {
-                throw new experimental_CliError(
-                  `Push subscription not found: ${id}`,
-                  {
-                    code: "subscription_not_found",
-                    hint: "Run `bb push-notifications list` for the registered ids.",
-                  },
-                );
+                throw new PluginCliError(`Push subscription not found: ${id}`, {
+                  code: "subscription_not_found",
+                  hint: "Run `bb push-notifications list` for the registered ids.",
+                });
               }
               return {
                 exitCode: 0,
@@ -323,7 +320,7 @@ export function createPushNotificationsPlugin(
               };
             },
           }),
-          status: experimental_cliCommand({
+          status: cliCommand({
             summary: "Show push delivery status",
             options: { json: JSON_OPTION },
             async run(input) {

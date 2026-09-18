@@ -1,7 +1,7 @@
 import {
-  experimental_CliError,
-  experimental_cliCommand,
-  experimental_defineCli,
+  PluginCliError,
+  cliCommand,
+  defineCli,
   type BbPluginApi,
   type PluginCliResult,
 } from "@get-bb/plugin-sdk";
@@ -221,7 +221,7 @@ function parseConfigUpdate(
   if (key === "parentMode") {
     return accountPoolConfigSetInputSchema.parse({ parentMode: value });
   }
-  throw new experimental_CliError(
+  throw new PluginCliError(
     "Config key must be anthropicUpstreamBaseUrl, codexUpstreamBaseUrl, switchThreshold, or parentMode.",
     { code: "invalid_value" },
   );
@@ -237,8 +237,8 @@ async function attempt(
   try {
     return await work();
   } catch (error) {
-    if (error instanceof experimental_CliError) throw error;
-    throw new experimental_CliError(
+    if (error instanceof PluginCliError) throw error;
+    throw new PluginCliError(
       error instanceof Error ? error.message : String(error),
       { code: "pool_command_failed" },
     );
@@ -253,13 +253,13 @@ export function registerPoolCli(
   config: AccountPoolConfigController,
 ): void {
   bb.cli.register(
-    experimental_defineCli({
+    defineCli({
       name: "pool",
       summary:
         "Manage Claude and Codex accounts and inspect the Account Pooler hub",
       description: DESCRIPTION,
       commands: {
-        "account add": experimental_cliCommand({
+        "account add": cliCommand({
           summary:
             "Sign in to Claude or Codex, import credentials, or add an Anthropic API key",
           description:
@@ -352,7 +352,7 @@ export function registerPoolCli(
               }
               const imported = input.options.import;
               if (!imported && provider !== "claude") {
-                throw new experimental_CliError(
+                throw new PluginCliError(
                   "Anthropic API keys require --provider claude.",
                   { code: "invalid_value" },
                 );
@@ -374,7 +374,7 @@ export function registerPoolCli(
               };
             }),
         }),
-        "account login-poll": experimental_cliCommand({
+        "account login-poll": cliCommand({
           summary: "Wait for a Codex device-code login to complete",
           description:
             "Blocks until the Codex authorization finishes, fails, or the invocation is cancelled.",
@@ -415,7 +415,7 @@ export function registerPoolCli(
                     };
                   }
                   if (result.status === "error") {
-                    throw new experimental_CliError(result.message, {
+                    throw new PluginCliError(result.message, {
                       code: "codex_login_failed",
                     });
                   }
@@ -428,7 +428,7 @@ export function registerPoolCli(
               }
             }),
         }),
-        "account login-complete": experimental_cliCommand({
+        "account login-complete": cliCommand({
           summary: "Complete a Claude browser login with its manual code",
           description:
             "Pipe the code the final login page shows:\n  printf '%s\\n' \"$CLAUDE_AUTH_CODE\" | bb pool account login-complete --session <id> --code-stdin",
@@ -460,7 +460,7 @@ export function registerPoolCli(
               };
             }),
         }),
-        "account list": experimental_cliCommand({
+        "account list": cliCommand({
           summary: "List pool accounts and observed quota",
           aliases: ["account ls"],
           suggestFor: ["accounts", "list", "ls"],
@@ -476,7 +476,7 @@ export function registerPoolCli(
               };
             }),
         }),
-        "account remove": experimental_cliCommand({
+        "account remove": cliCommand({
           summary: "Remove an account and its secret token file",
           aliases: ["account rm", "account delete"],
           positionals: [ACCOUNT_ID_POSITIONAL],
@@ -487,10 +487,9 @@ export function registerPoolCli(
                 id: input.positionals.id,
               });
               if (!(await operations.remove(id))) {
-                throw new experimental_CliError(
-                  `Account ${id} does not exist.`,
-                  { code: "account_not_found" },
-                );
+                throw new PluginCliError(`Account ${id} does not exist.`, {
+                  code: "account_not_found",
+                });
               }
               return {
                 exitCode: 0,
@@ -500,7 +499,7 @@ export function registerPoolCli(
               };
             }),
         }),
-        "account enable": experimental_cliCommand({
+        "account enable": cliCommand({
           summary: "Enable an account",
           positionals: [ACCOUNT_ID_POSITIONAL],
           options: { json: JSON_OPTION },
@@ -511,10 +510,9 @@ export function registerPoolCli(
               });
               const account = await operations.enable(id);
               if (account === null) {
-                throw new experimental_CliError(
-                  `Account ${id} does not exist.`,
-                  { code: "account_not_found" },
-                );
+                throw new PluginCliError(`Account ${id} does not exist.`, {
+                  code: "account_not_found",
+                });
               }
               return {
                 exitCode: 0,
@@ -524,7 +522,7 @@ export function registerPoolCli(
               };
             }),
         }),
-        "account disable": experimental_cliCommand({
+        "account disable": cliCommand({
           summary: "Disable an account",
           positionals: [ACCOUNT_ID_POSITIONAL],
           options: { json: JSON_OPTION },
@@ -535,10 +533,9 @@ export function registerPoolCli(
               });
               const account = await operations.disable(id);
               if (account === null) {
-                throw new experimental_CliError(
-                  `Account ${id} does not exist.`,
-                  { code: "account_not_found" },
-                );
+                throw new PluginCliError(`Account ${id} does not exist.`, {
+                  code: "account_not_found",
+                });
               }
               return {
                 exitCode: 0,
@@ -548,7 +545,7 @@ export function registerPoolCli(
               };
             }),
         }),
-        "account priority": experimental_cliCommand({
+        "account priority": cliCommand({
           summary: "Set an account's position in the failover priority order",
           positionals: [
             ACCOUNT_ID_POSITIONAL,
@@ -563,7 +560,7 @@ export function registerPoolCli(
             attempt(async () => {
               const raw = input.positionals.priority;
               if (!/^-?\d+$/.test(raw.trim())) {
-                throw new experimental_CliError(
+                throw new PluginCliError(
                   `invalid value '${raw}' for <priority>. Expected a whole number`,
                   { code: "invalid_value" },
                 );
@@ -577,7 +574,7 @@ export function registerPoolCli(
                 parsed.priority,
               );
               if (account === null) {
-                throw new experimental_CliError("Account not found.", {
+                throw new PluginCliError("Account not found.", {
                   code: "account_not_found",
                 });
               }
@@ -589,7 +586,7 @@ export function registerPoolCli(
               };
             }),
         }),
-        "account reorder": experimental_cliCommand({
+        "account reorder": cliCommand({
           summary: "Set the complete failover order for one provider",
           description:
             "List every account for the provider, including disabled ones, in the order they should be tried.",
@@ -626,7 +623,7 @@ export function registerPoolCli(
               };
             }),
         }),
-        "account refresh": experimental_cliCommand({
+        "account refresh": cliCommand({
           summary: "Refresh one account's observed usage",
           positionals: [ACCOUNT_ID_POSITIONAL],
           options: { json: JSON_OPTION },
@@ -637,7 +634,7 @@ export function registerPoolCli(
               });
               const account = await operations.refreshUsage(id);
               if (account === null) {
-                throw new experimental_CliError("Account not found.", {
+                throw new PluginCliError("Account not found.", {
                   code: "account_not_found",
                 });
               }
@@ -649,7 +646,7 @@ export function registerPoolCli(
               };
             }),
         }),
-        status: experimental_cliCommand({
+        status: cliCommand({
           summary: "Show hub, machine token, routing, and account status",
           suggestFor: ["info", "hub"],
           options: { json: JSON_OPTION },
@@ -672,7 +669,7 @@ export function registerPoolCli(
               };
             }),
         }),
-        routing: experimental_cliCommand({
+        routing: cliCommand({
           summary: "Enable or disable pooled routing for one provider",
           positionals: [
             {
@@ -708,7 +705,7 @@ export function registerPoolCli(
               };
             }),
         }),
-        config: experimental_cliCommand({
+        config: cliCommand({
           summary: "Show Account Pooler routing configuration",
           options: { json: JSON_OPTION },
           run: (input) =>
@@ -722,7 +719,7 @@ export function registerPoolCli(
               };
             }),
         }),
-        "config set": experimental_cliCommand({
+        "config set": cliCommand({
           summary: "Update one Account Pooler routing configuration value",
           positionals: [
             {
@@ -755,7 +752,7 @@ export function registerPoolCli(
               };
             }),
         }),
-        parent: experimental_cliCommand({
+        parent: cliCommand({
           summary:
             "Show or set how this instance uses a parent bb server's Account Pooler",
           positionals: [
@@ -788,7 +785,7 @@ export function registerPoolCli(
               };
             }),
         }),
-        "token rotate": experimental_cliCommand({
+        "token rotate": cliCommand({
           summary: "Rotate one machine's Account Pooler bearer token",
           description:
             "The previous token keeps working for ten minutes. Tokens are never printed.",
@@ -818,7 +815,7 @@ export function registerPoolCli(
               };
             }),
         }),
-        bypass: experimental_cliCommand({
+        bypass: cliCommand({
           summary: "Bypass Account Pooler routing for one thread",
           positionals: [
             {
@@ -839,7 +836,7 @@ export function registerPoolCli(
             attempt(async () => {
               const threadId = input.positionals["thread-id"];
               if (threadId === undefined) {
-                throw new experimental_CliError(
+                throw new PluginCliError(
                   "missing required arguments: <thread-id>",
                   {
                     code: "missing_required",

@@ -1,8 +1,8 @@
 import { isAbsolute, resolve } from "node:path";
 import {
-  experimental_CliError,
-  experimental_cliCommand,
-  experimental_defineCli,
+  PluginCliError,
+  cliCommand,
+  defineCli,
   type BbPluginApi,
   type PluginCliContext,
   type PluginCliResult,
@@ -248,8 +248,8 @@ type UpdateOptionValues = ExecutionOptionValues &
     name: string | undefined;
   };
 
-function cliError(message: string, code: string): experimental_CliError {
-  return new experimental_CliError(message, { code });
+function cliError(message: string, code: string): PluginCliError {
+  return new PluginCliError(message, { code });
 }
 
 async function attempt(
@@ -258,8 +258,8 @@ async function attempt(
   try {
     return await work();
   } catch (error) {
-    if (error instanceof experimental_CliError) throw error;
-    throw new experimental_CliError(
+    if (error instanceof PluginCliError) throw error;
+    throw new PluginCliError(
       error instanceof Error ? error.message : String(error),
       { code: "automation_failed" },
     );
@@ -276,7 +276,7 @@ function requireProjectId(
 ): string {
   if (value !== undefined && value !== "") return value;
   const known = ctx.projectId;
-  throw new experimental_CliError("missing required option --project", {
+  throw new PluginCliError("missing required option --project", {
     code: "missing_required",
     hint:
       known === undefined
@@ -1045,16 +1045,16 @@ export function registerAutomationCli(args: {
 }): void {
   const { bb, service } = args;
   bb.cli.register(
-    experimental_defineCli({
+    defineCli({
       name: "automation",
       summary: "Inspect and manage automations (scheduled agent/script runs)",
       description: DESCRIPTION,
-      root: experimental_cliCommand({
+      root: cliCommand({
         summary: "Show the automation commands",
         run: (input) => ({ exitCode: 0, stdout: input.help }),
       }),
       commands: {
-        list: experimental_cliCommand({
+        list: cliCommand({
           summary: "List automations for a project",
           options: { project: PROJECT_OPTION, json: JSON_OPTION },
           run: (input, ctx) =>
@@ -1072,7 +1072,7 @@ export function registerAutomationCli(args: {
               };
             }),
         }),
-        create: experimental_cliCommand({
+        create: cliCommand({
           summary: "Create an automation",
           description:
             "Pick exactly one schedule flag and one execution mode: agent (--prompt --provider --model) or script (--script or --script-file).",
@@ -1124,7 +1124,7 @@ export function registerAutomationCli(args: {
               };
             }),
         }),
-        show: experimental_cliCommand({
+        show: cliCommand({
           summary: "Show automation details",
           positionals: [AUTOMATION_ID_POSITIONAL],
           options: { project: PROJECT_OPTION, json: JSON_OPTION },
@@ -1144,7 +1144,7 @@ export function registerAutomationCli(args: {
               };
             }),
         }),
-        update: experimental_cliCommand({
+        update: cliCommand({
           summary: "Update automation configuration",
           description:
             "Replace the execution with a complete agent (--prompt --provider --model) or script (--script/--script-file), or patch an existing agent with any subset of its flags.",
@@ -1183,7 +1183,7 @@ export function registerAutomationCli(args: {
               };
             }),
         }),
-        pause: experimental_cliCommand({
+        pause: cliCommand({
           summary: "Pause an automation",
           positionals: [AUTOMATION_ID_POSITIONAL],
           options: { project: PROJECT_OPTION, json: JSON_OPTION },
@@ -1201,7 +1201,7 @@ export function registerAutomationCli(args: {
               };
             }),
         }),
-        resume: experimental_cliCommand({
+        resume: cliCommand({
           summary: "Resume an automation",
           positionals: [AUTOMATION_ID_POSITIONAL],
           options: { project: PROJECT_OPTION, json: JSON_OPTION },
@@ -1219,7 +1219,7 @@ export function registerAutomationCli(args: {
               };
             }),
         }),
-        run: experimental_cliCommand({
+        run: cliCommand({
           summary: "Run an automation now",
           positionals: [AUTOMATION_ID_POSITIONAL],
           options: {
@@ -1251,7 +1251,7 @@ export function registerAutomationCli(args: {
               };
             }),
         }),
-        runs: experimental_cliCommand({
+        runs: cliCommand({
           summary: "List automation runs",
           positionals: [AUTOMATION_ID_POSITIONAL],
           options: {
@@ -1306,7 +1306,7 @@ export function registerAutomationCli(args: {
               };
             }),
         }),
-        delete: experimental_cliCommand({
+        delete: cliCommand({
           summary: "Delete an automation",
           positionals: [AUTOMATION_ID_POSITIONAL],
           options: {

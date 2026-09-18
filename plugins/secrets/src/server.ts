@@ -1,8 +1,8 @@
 import path from "node:path";
 import {
-  experimental_CliError,
-  experimental_cliCommand,
-  experimental_defineCli,
+  PluginCliError,
+  cliCommand,
+  defineCli,
   type BbPluginApi,
   type PluginCliContext,
   type PluginCliResult,
@@ -51,7 +51,7 @@ const DESCRIBE_SPELLINGS = new Set([
 ]);
 
 function cliError(message: string, code: string, hint?: string): never {
-  throw new experimental_CliError(message, {
+  throw new PluginCliError(message, {
     code,
     ...(hint === undefined ? {} : { hint }),
   });
@@ -280,13 +280,13 @@ async function runRequest(
 }
 
 export default function plugin(bb: BbPluginApi) {
-  const cli = experimental_defineCli({
+  const cli = defineCli({
     name: "secret",
     summary: "Securely request credentials and write them to a dotenv file.",
     description:
       "Values are typed by the user into a secure form; they never reach the agent, argv, or logs.",
     commands: {
-      request: experimental_cliCommand({
+      request: cliCommand({
         summary: "Request one or more secrets in a secure user form.",
         description:
           "Batch every currently known variable into one request. Relative --write-env paths resolve from the CLI working directory; absolute paths may point anywhere on the thread's host.",
@@ -339,8 +339,8 @@ export default function plugin(bb: BbPluginApi) {
           try {
             return await runRequest(bb, parsed, ctx);
           } catch (error) {
-            if (error instanceof experimental_CliError) throw error;
-            throw new experimental_CliError(
+            if (error instanceof PluginCliError) throw error;
+            throw new PluginCliError(
               error instanceof Error ? error.message : String(error),
             );
           }

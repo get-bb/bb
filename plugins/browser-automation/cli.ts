@@ -1,7 +1,7 @@
 import {
-  experimental_CliError,
-  experimental_cliCommand,
-  experimental_defineCli,
+  PluginCliError,
+  cliCommand,
+  defineCli,
   type PluginCliContext,
   type PluginCliRegistration,
   type PluginCliResult,
@@ -63,13 +63,12 @@ function resolveThreadId(
 ): string {
   const threadId = option ?? ctx.threadId;
   if (threadId === undefined || threadId === "") {
-    throw new experimental_CliError(
-      "Run from a BB thread or pass --thread <id>",
-      { code: "thread_required" },
-    );
+    throw new PluginCliError("Run from a BB thread or pass --thread <id>", {
+      code: "thread_required",
+    });
   }
   if (ctx.threadId !== undefined && threadId !== ctx.threadId) {
-    throw new experimental_CliError(
+    throw new PluginCliError(
       "CLI calls from a thread cannot access another thread's browser session",
       { code: "cross_thread" },
     );
@@ -83,13 +82,13 @@ export function createBrowserAutomationCli(deps: {
     ctx: PluginCliContext,
   ): Promise<PluginCliResult>;
 }): PluginCliRegistration {
-  return experimental_defineCli({
+  return defineCli({
     name: "browser-automation",
     summary: "Persistent DevBrowser desktop and headless sessions",
     description:
       "Sessions belong to the thread that opened them and expire after 30 minutes idle.\nA stopped or expired session cannot be resumed; open a new one.",
     commands: {
-      open: experimental_cliCommand({
+      open: cliCommand({
         summary:
           "Open an isolated desktop or local headless session; --tab hands off an existing tab",
         options: {
@@ -133,7 +132,7 @@ export function createBrowserAutomationCli(deps: {
               input.options.desktop !== undefined ||
               input.options.tab !== undefined
             ) {
-              throw new experimental_CliError(
+              throw new PluginCliError(
                 "Local sessions require --headless and cannot select desktop tabs",
                 { code: "invalid_selection" },
               );
@@ -148,7 +147,7 @@ export function createBrowserAutomationCli(deps: {
           }
           const instanceId = input.options.desktop;
           if (instanceId === undefined || input.options.headless) {
-            throw new experimental_CliError(
+            throw new PluginCliError(
               "Desktop sessions require --desktop <instance-id> and cannot use --headless",
               { code: "invalid_selection" },
             );
@@ -172,7 +171,7 @@ export function createBrowserAutomationCli(deps: {
           );
         },
       }),
-      list: experimental_cliCommand({
+      list: cliCommand({
         summary: "List this thread's browser sessions",
         options: { thread: THREAD_OPTION, json: JSON_OPTION },
         run: (input, ctx) =>
@@ -184,7 +183,7 @@ export function createBrowserAutomationCli(deps: {
             ctx,
           ),
       }),
-      run: experimental_cliCommand({
+      run: cliCommand({
         summary: "Run a trusted DevBrowser script; runs serialize per session",
         description:
           "Scripts may return at most 4 screenshots per run, JPEG only, 500 KB combined;\nanything larger or in another format fails the run.",
@@ -252,7 +251,7 @@ export function createBrowserAutomationCli(deps: {
           );
         },
       }),
-      pages: experimental_cliCommand({
+      pages: cliCommand({
         summary: "Inspect persistent named pages",
         positionals: [SESSION_POSITIONAL],
         options: { thread: THREAD_OPTION, json: JSON_OPTION },
@@ -268,7 +267,7 @@ export function createBrowserAutomationCli(deps: {
             ctx,
           ),
       }),
-      screenshot: experimental_cliCommand({
+      screenshot: cliCommand({
         summary:
           "Save a bounded JPEG in session tmp; return its path and host ID",
         positionals: [SESSION_POSITIONAL],
@@ -295,7 +294,7 @@ export function createBrowserAutomationCli(deps: {
             ctx,
           ),
       }),
-      preview: experimental_cliCommand({
+      preview: cliCommand({
         summary:
           "Describe the live preview frame of a local headless session, without image bytes",
         positionals: [SESSION_POSITIONAL],
@@ -323,7 +322,7 @@ export function createBrowserAutomationCli(deps: {
             ctx,
           ),
       }),
-      stop: experimental_cliCommand({
+      stop: cliCommand({
         summary:
           "Cancel queued and running work and release control; open a new session to resume",
         positionals: [SESSION_POSITIONAL],
@@ -340,7 +339,7 @@ export function createBrowserAutomationCli(deps: {
             ctx,
           ),
       }),
-      close: experimental_cliCommand({
+      close: cliCommand({
         summary: "Dispose owned browsers and tabs, preserving handed-off tabs",
         positionals: [SESSION_POSITIONAL],
         options: { thread: THREAD_OPTION, json: JSON_OPTION },
@@ -360,21 +359,21 @@ export function createBrowserAutomationCli(deps: {
   });
 }
 
-export function browserCliFailure(error: unknown): experimental_CliError {
-  if (error instanceof experimental_CliError) return error;
+export function browserCliFailure(error: unknown): PluginCliError {
+  if (error instanceof PluginCliError) return error;
   const message =
     error instanceof Error ? error.message : "Browser command failed";
   if (/stopped or expired|does not belong to this thread/u.test(message)) {
-    return new experimental_CliError(message, {
+    return new PluginCliError(message, {
       code: "session_unavailable",
       hint: REOPEN_HINT,
     });
   }
   if (/screenshot|JPEG/iu.test(message)) {
-    return new experimental_CliError(message, {
+    return new PluginCliError(message, {
       code: "screenshot_limit",
       hint: "Return at most 4 JPEG screenshots per run, 500 KB combined.",
     });
   }
-  return new experimental_CliError(message, { code: "command_failed" });
+  return new PluginCliError(message, { code: "command_failed" });
 }

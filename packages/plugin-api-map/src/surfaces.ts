@@ -631,12 +631,12 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         apiSymbols: [
           "PluginCli",
           "PluginCliResult",
-          "experimental_defineCli",
-          "experimental_cliCommand",
-          "experimental_CliError",
-          "ExperimentalCliSpec",
-          "ExperimentalCliCommand",
-          "ExperimentalCliOption",
+          "defineCli",
+          "cliCommand",
+          "PluginCliError",
+          "PluginCliSpec",
+          "PluginCliCommand",
+          "PluginCliOption",
         ],
         firstParty: [
           "Automations",

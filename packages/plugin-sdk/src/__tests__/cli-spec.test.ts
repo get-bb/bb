@@ -1,10 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { PluginCliRegistration, PluginCliResult } from "../index.js";
-import {
-  experimental_CliError,
-  experimental_cliCommand,
-  experimental_defineCli,
-} from "../index.js";
+import { PluginCliError, cliCommand, defineCli } from "../index.js";
 
 function run(
   registration: PluginCliRegistration,
@@ -17,11 +13,11 @@ const ran = vi.fn();
 
 function memoryLikeCli(): PluginCliRegistration {
   ran.mockClear();
-  return experimental_defineCli({
+  return defineCli({
     name: "memory",
     summary: "Read and maintain durable memories",
     commands: {
-      catalog: experimental_cliCommand({
+      catalog: cliCommand({
         summary: "List compact memory summaries",
         aliases: ["list"],
         options: {
@@ -48,7 +44,7 @@ function memoryLikeCli(): PluginCliRegistration {
           };
         },
       }),
-      search: experimental_cliCommand({
+      search: cliCommand({
         summary: "Search memory summaries",
         positionals: [
           {
@@ -64,7 +60,7 @@ function memoryLikeCli(): PluginCliRegistration {
           return { exitCode: 0, stdout: input.positionals.query.join(" ") };
         },
       }),
-      add: experimental_cliCommand({
+      add: cliCommand({
         summary: "Save a project or global memory",
         unexpectedPositionalHint:
           "the memory text belongs in --details <TEXT>, not a bare argument",
@@ -122,7 +118,7 @@ function memoryLikeCli(): PluginCliRegistration {
   });
 }
 
-describe("experimental_defineCli help", () => {
+describe("defineCli help", () => {
   it("prints the command list at the top level and never runs a command", async () => {
     const cli = memoryLikeCli();
     for (const argv of [["--help"], ["-h"], ["help"]]) {
@@ -196,7 +192,7 @@ describe("experimental_defineCli help", () => {
   });
 });
 
-describe("experimental_defineCli errors", () => {
+describe("defineCli errors", () => {
   it("names an unknown command, suggests the nearest, and lists commands", async () => {
     const result = await run(memoryLikeCli(), ["catlog"]);
     expect(result.exitCode).toBe(1);
@@ -207,11 +203,11 @@ describe("experimental_defineCli errors", () => {
   });
 
   it("suggests a declared near-miss name that is not close by spelling", async () => {
-    const cli = experimental_defineCli({
+    const cli = defineCli({
       name: "connect",
       summary: "Remote access",
       commands: {
-        shares: experimental_cliCommand({
+        shares: cliCommand({
           summary: "List shared ports",
           suggestFor: ["list", "ls"],
           run: () => ({ exitCode: 0 }),
@@ -257,11 +253,11 @@ describe("experimental_defineCli errors", () => {
   });
 
   it("reports missing positionals together with missing options", async () => {
-    const cli = experimental_defineCli({
+    const cli = defineCli({
       name: "demo",
       summary: "demo",
       commands: {
-        move: experimental_cliCommand({
+        move: cliCommand({
           summary: "Move",
           positionals: [
             { name: "from", description: "Source", required: true },
@@ -344,13 +340,13 @@ describe("experimental_defineCli errors", () => {
   });
 });
 
-describe("experimental_defineCli parsing", () => {
+describe("defineCli parsing", () => {
   it("accepts --flag=value, --flag value, and negative numbers", async () => {
-    const cli = experimental_defineCli({
+    const cli = defineCli({
       name: "demo",
       summary: "demo",
       commands: {
-        set: experimental_cliCommand({
+        set: cliCommand({
           summary: "Set",
           options: {
             offset: {
@@ -379,11 +375,11 @@ describe("experimental_defineCli parsing", () => {
   });
 
   it("takes a value that starts with a dash, such as a Markdown bullet", async () => {
-    const cli = experimental_defineCli({
+    const cli = defineCli({
       name: "demo",
       summary: "demo",
       commands: {
-        say: experimental_cliCommand({
+        say: cliCommand({
           summary: "Say",
           options: {
             body: { type: "string", description: "Body" },
@@ -412,11 +408,11 @@ describe("experimental_defineCli parsing", () => {
 
   it("names the unknown word under a nested command and suggests its sibling", async () => {
     const leaf = (summary: string) =>
-      experimental_cliCommand({
+      cliCommand({
         summary,
         run: () => ({ exitCode: 0, stdout: summary }),
       });
-    const cli = experimental_defineCli({
+    const cli = defineCli({
       name: "pool",
       summary: "pool",
       commands: {
@@ -442,15 +438,15 @@ describe("experimental_defineCli parsing", () => {
   });
 
   it("marks its registration as rendering its own help", () => {
-    expect(memoryLikeCli().experimental_rendersHelp).toBe(true);
+    expect(memoryLikeCli().rendersHelp).toBe(true);
   });
 
   it("stops option parsing at -- and keeps the rest", async () => {
-    const cli = experimental_defineCli({
+    const cli = defineCli({
       name: "demo",
       summary: "demo",
       commands: {
-        exec: experimental_cliCommand({
+        exec: cliCommand({
           summary: "Exec",
           passthrough: true,
           positionals: [{ name: "id", description: "Id", required: true }],
@@ -462,7 +458,7 @@ describe("experimental_defineCli parsing", () => {
             };
           },
         }),
-        echo: experimental_cliCommand({
+        echo: cliCommand({
           summary: "Echo",
           positionals: [
             { name: "words", description: "Words", variadic: true },
@@ -519,11 +515,11 @@ describe("experimental_defineCli parsing", () => {
   });
 
   it("supports short options", async () => {
-    const cli = experimental_defineCli({
+    const cli = defineCli({
       name: "demo",
       summary: "demo",
       commands: {
-        show: experimental_cliCommand({
+        show: cliCommand({
           summary: "Show",
           options: {
             format: {
@@ -545,11 +541,11 @@ describe("experimental_defineCli parsing", () => {
   });
 
   it("resolves nested command paths and exposes them as metadata", async () => {
-    const cli = experimental_defineCli({
+    const cli = defineCli({
       name: "pool",
       summary: "Account pool",
       commands: {
-        "account add": experimental_cliCommand({
+        "account add": cliCommand({
           summary: "Add an account",
           options: {
             provider: {
@@ -566,7 +562,7 @@ describe("experimental_defineCli parsing", () => {
           },
           run: (input) => ({ exitCode: 0, stdout: input.options.provider }),
         }),
-        "account list": experimental_cliCommand({
+        "account list": cliCommand({
           summary: "List accounts",
           run: () => ({ exitCode: 0, stdout: "listed" }),
         }),
@@ -600,11 +596,11 @@ describe("experimental_defineCli parsing", () => {
 
   it("runs a root command when no command word is given", async () => {
     const pair = vi.fn();
-    const cli = experimental_defineCli({
+    const cli = defineCli({
       name: "connect",
       summary: "Remote access",
       description: "Pair from https://getbb.app",
-      root: experimental_cliCommand({
+      root: cliCommand({
         summary: "Pair this bb",
         options: {
           code: { type: "string", description: "Pairing code" },
@@ -619,7 +615,7 @@ describe("experimental_defineCli parsing", () => {
         },
       }),
       commands: {
-        status: experimental_cliCommand({
+        status: cliCommand({
           summary: "Show status",
           run: () => ({ exitCode: 0, stdout: "status" }),
         }),
@@ -642,12 +638,12 @@ describe("experimental_defineCli parsing", () => {
   });
 });
 
-describe("experimental_defineCli durations", () => {
-  const cli = experimental_defineCli({
+describe("defineCli durations", () => {
+  const cli = defineCli({
     name: "demo",
     summary: "demo",
     commands: {
-      wait: experimental_cliCommand({
+      wait: cliCommand({
         summary: "Wait",
         options: {
           timeout: {
@@ -726,12 +722,12 @@ describe("experimental_defineCli durations", () => {
   });
 });
 
-describe("experimental_defineCli constraints", () => {
-  const cli = experimental_defineCli({
+describe("defineCli constraints", () => {
+  const cli = defineCli({
     name: "demo",
     summary: "demo",
     commands: {
-      post: experimental_cliCommand({
+      post: cliCommand({
         summary: "Post",
         options: {
           body: { type: "string", description: "Body text" },
@@ -780,7 +776,7 @@ describe("experimental_defineCli constraints", () => {
   });
 });
 
-describe("experimental_defineCli json failures", () => {
+describe("defineCli json failures", () => {
   it("writes the envelope on stdout and keeps the text on stderr", async () => {
     const result = await run(memoryLikeCli(), [
       "add",
@@ -826,6 +822,15 @@ describe("experimental_defineCli json failures", () => {
     ]);
   });
 
+  it("reports a bare or incomplete invocation as missing_command, like the core CLI", async () => {
+    const bare = await run(memoryLikeCli(), ["--json"]);
+    expect(bare.exitCode).toBe(1);
+    expect(JSON.parse(bare.stdout ?? "")).toMatchObject({
+      ok: false,
+      error: { code: "missing_command", message: "missing command" },
+    });
+  });
+
   it("carries the suggestion as the hint", async () => {
     const result = await run(memoryLikeCli(), ["catlog", "--json"]);
     expect(JSON.parse(result.stdout ?? "")).toEqual({
@@ -846,13 +851,13 @@ describe("experimental_defineCli json failures", () => {
   });
 });
 
-describe("experimental_CliError", () => {
+describe("PluginCliError", () => {
   const failing = (error: unknown) =>
-    experimental_defineCli({
+    defineCli({
       name: "demo",
       summary: "demo",
       commands: {
-        go: experimental_cliCommand({
+        go: cliCommand({
           summary: "Go",
           options: { json: { type: "boolean", description: "JSON" } },
           run() {
@@ -864,7 +869,7 @@ describe("experimental_CliError", () => {
 
   it("reports a command failure in the shared envelope", async () => {
     const cli = failing(
-      new experimental_CliError("Session stopped or expired", {
+      new PluginCliError("Session stopped or expired", {
         code: "session_unavailable",
         hint: "Reopen with `bb demo open`",
         exitCode: 3,
@@ -891,7 +896,7 @@ describe("experimental_CliError", () => {
   });
 
   it("defaults to command_failed and exit 1", async () => {
-    const cli = failing(new experimental_CliError("nope"));
+    const cli = failing(new PluginCliError("nope"));
     const json = await run(cli, ["go", "--json"]);
     expect(json.exitCode).toBe(1);
     expect(JSON.parse(json.stdout ?? "")).toEqual({
@@ -906,7 +911,7 @@ describe("experimental_CliError", () => {
   });
 });
 
-describe("experimental_defineCli registration", () => {
+describe("defineCli registration", () => {
   it("keeps the registration shape the host validates", () => {
     const cli = memoryLikeCli();
     expect(cli.name).toBe("memory");
@@ -937,15 +942,15 @@ describe("experimental_defineCli registration", () => {
   });
 
   it("omits hidden commands from help and metadata but still runs them", async () => {
-    const cli = experimental_defineCli({
+    const cli = defineCli({
       name: "demo",
       summary: "demo",
       commands: {
-        visible: experimental_cliCommand({
+        visible: cliCommand({
           summary: "Visible",
           run: () => ({ exitCode: 0 }),
         }),
-        legacy: experimental_cliCommand({
+        legacy: cliCommand({
           summary: "Legacy",
           hidden: true,
           run: () => ({ exitCode: 0, stdout: "legacy" }),

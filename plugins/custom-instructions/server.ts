@@ -1,7 +1,7 @@
 import {
-  experimental_CliError,
-  experimental_cliCommand,
-  experimental_defineCli,
+  PluginCliError,
+  cliCommand,
+  defineCli,
   type BbPluginApi,
 } from "@get-bb/plugin-sdk";
 import { z } from "zod";
@@ -52,13 +52,13 @@ export default async function plugin(bb: BbPluginApi) {
   );
 
   bb.cli.register(
-    experimental_defineCli({
+    defineCli({
       name: "instructions",
       summary: "Read and update the custom instructions injected into agents",
       description:
         "The text is appended to the instructions bb already gives every agent on this host.",
       commands: {
-        get: experimental_cliCommand({
+        get: cliCommand({
           summary: "Print the current custom instructions",
           options: { json: JSON_OPTION },
           run: (input) => ({
@@ -68,7 +68,7 @@ export default async function plugin(bb: BbPluginApi) {
               : customInstructions,
           }),
         }),
-        set: experimental_cliCommand({
+        set: cliCommand({
           summary: "Replace the custom instructions",
           positionals: [
             {
@@ -84,7 +84,7 @@ export default async function plugin(bb: BbPluginApi) {
               input.positionals.text.join(" "),
             );
             if (!parsed.success) {
-              throw new experimental_CliError(
+              throw new PluginCliError(
                 parsed.error.issues[0]?.message ?? "invalid instructions",
                 { code: "invalid_instructions" },
               );
@@ -101,7 +101,7 @@ export default async function plugin(bb: BbPluginApi) {
             };
           },
         }),
-        clear: experimental_cliCommand({
+        clear: cliCommand({
           summary: "Clear the custom instructions",
           options: { json: JSON_OPTION },
           async run(input) {

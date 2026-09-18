@@ -6,20 +6,21 @@ import type {
 } from "./backend-contract.js";
 
 /** Duration suffixes, shared with the core `bb` CLI grammar. */
-export type ExperimentalCliDurationUnit = "ms" | "s" | "m" | "h" | "d";
+export type PluginCliDurationUnit = "ms" | "s" | "m" | "h" | "d";
 
 /**
  * Failure codes the parser itself emits in the `--json` error envelope.
- * A command raising `experimental_CliError` may use any snake_case code.
+ * A command raising `PluginCliError` may use any snake_case code.
  */
-export type ExperimentalCliErrorCode =
+export type PluginCliErrorCode =
   | "unknown_command"
+  | "missing_command"
   | "unknown_option"
   | "missing_required"
   | "invalid_value"
   | "unexpected_argument";
 
-interface ExperimentalCliOptionBase {
+interface PluginCliOptionBase {
   /** One line shown in `--help`; state the limits agents keep hitting. */
   description: string;
   /** Extra spellings accepted silently and mapped onto this option. */
@@ -39,11 +40,11 @@ interface ExperimentalCliOptionBase {
 }
 
 /** A valueless flag; absent means `false`. */
-export interface ExperimentalCliBooleanOption extends ExperimentalCliOptionBase {
+export interface PluginCliBooleanOption extends PluginCliOptionBase {
   type: "boolean";
 }
 
-export interface ExperimentalCliStringOption extends ExperimentalCliOptionBase {
+export interface PluginCliStringOption extends PluginCliOptionBase {
   type: "string";
   required?: boolean;
   repeatable?: boolean;
@@ -52,7 +53,7 @@ export interface ExperimentalCliStringOption extends ExperimentalCliOptionBase {
   default?: string;
 }
 
-export interface ExperimentalCliIntegerOption extends ExperimentalCliOptionBase {
+export interface PluginCliIntegerOption extends PluginCliOptionBase {
   type: "integer";
   min: number;
   max: number;
@@ -60,7 +61,7 @@ export interface ExperimentalCliIntegerOption extends ExperimentalCliOptionBase 
   default?: number;
 }
 
-export interface ExperimentalCliEnumOption extends ExperimentalCliOptionBase {
+export interface PluginCliEnumOption extends PluginCliOptionBase {
   type: "enum";
   values: readonly string[];
   required?: boolean;
@@ -71,10 +72,10 @@ export interface ExperimentalCliEnumOption extends ExperimentalCliOptionBase {
 }
 
 /** A duration parsed to milliseconds with the core CLI's grammar. */
-export interface ExperimentalCliDurationOption extends ExperimentalCliOptionBase {
+export interface PluginCliDurationOption extends PluginCliOptionBase {
   type: "duration";
   /** Unit assumed for a bare number when `bareUnits` is absent. */
-  defaultUnit: ExperimentalCliDurationUnit;
+  defaultUnit: PluginCliDurationUnit;
   /**
    * Units tried in order for a bare number, taking the first whose
    * milliseconds fall inside `min`/`max`. Declare it when two units are
@@ -82,7 +83,7 @@ export interface ExperimentalCliDurationOption extends ExperimentalCliOptionBase
    * `1500` milliseconds); a number matching neither is rejected with both
    * forms named.
    */
-  bareUnits?: readonly ExperimentalCliDurationUnit[];
+  bareUnits?: readonly PluginCliDurationUnit[];
   /** Inclusive bounds in milliseconds. */
   min?: number;
   max?: number;
@@ -91,14 +92,14 @@ export interface ExperimentalCliDurationOption extends ExperimentalCliOptionBase
   default?: number;
 }
 
-export type ExperimentalCliOption =
-  | ExperimentalCliBooleanOption
-  | ExperimentalCliStringOption
-  | ExperimentalCliIntegerOption
-  | ExperimentalCliEnumOption
-  | ExperimentalCliDurationOption;
+export type PluginCliOption =
+  | PluginCliBooleanOption
+  | PluginCliStringOption
+  | PluginCliIntegerOption
+  | PluginCliEnumOption
+  | PluginCliDurationOption;
 
-export interface ExperimentalCliPositional {
+export interface PluginCliPositional {
   name: string;
   description: string;
   required?: boolean;
@@ -109,16 +110,16 @@ export interface ExperimentalCliPositional {
 /**
  * Relationships between options that the parser enforces before `run`.
  * Rules that depend on a value (which options a `--backend` choice allows)
- * belong in `run`, raised as `experimental_CliError`.
+ * belong in `run`, raised as `PluginCliError`.
  */
-export type ExperimentalCliConstraint =
+export type PluginCliConstraint =
   | { kind: "exactly-one"; options: readonly string[] }
   | { kind: "at-most-one"; options: readonly string[] }
   | { kind: "at-least-one"; options: readonly string[] }
   | { kind: "requires"; option: string; needs: readonly string[] };
 
-type CliOptions = Record<string, ExperimentalCliOption>;
-type CliPositionals = readonly ExperimentalCliPositional[];
+type CliOptions = Record<string, PluginCliOption>;
+type CliPositionals = readonly PluginCliPositional[];
 
 type OptionValue<TOption> = TOption extends { type: "boolean" }
   ? boolean
@@ -139,14 +140,12 @@ type OptionResolved<TOption> = TOption extends { type: "boolean" }
         : OptionValue<TOption> | undefined;
 
 /** Validated option values, keyed by the spec's option names. */
-export type ExperimentalCliOptionValues<TOptions extends CliOptions> = {
+export type PluginCliOptionValues<TOptions extends CliOptions> = {
   [TName in keyof TOptions]: OptionResolved<TOptions[TName]>;
 };
 
 /** Validated positional values, keyed by the spec's positional names. */
-export type ExperimentalCliPositionalValues<
-  TPositionals extends CliPositionals,
-> = {
+export type PluginCliPositionalValues<TPositionals extends CliPositionals> = {
   [TEntry in TPositionals[number] as TEntry["name"]]: TEntry extends {
     variadic: true;
   }
@@ -157,12 +156,12 @@ export type ExperimentalCliPositionalValues<
 };
 
 /** What a command's `run` receives once every value has been validated. */
-export interface ExperimentalCliRunInput<
+export interface PluginCliRunInput<
   TOptions extends CliOptions = CliOptions,
   TPositionals extends CliPositionals = CliPositionals,
 > {
-  options: ExperimentalCliOptionValues<TOptions>;
-  positionals: ExperimentalCliPositionalValues<TPositionals>;
+  options: PluginCliOptionValues<TOptions>;
+  positionals: PluginCliPositionalValues<TPositionals>;
   /** Tokens after `--` when the command declares `passthrough`. */
   passthrough: string[];
   /** This command's rendered `--help` text. */
@@ -179,11 +178,11 @@ interface ErasedRunInput {
 }
 
 /**
- * One command as `experimental_defineCli` consumes it. Build it with
- * `experimental_cliCommand` so `run` receives typed values. The declaration
+ * One command as `defineCli` consumes it. Build it with
+ * `cliCommand` so `run` receives typed values. The declaration
  * is inert data: help and usage render from it without running the command.
  */
-export interface ExperimentalCliCommand {
+export interface PluginCliCommand {
   summary: string;
   description?: string;
   /** Extra invocation paths that run this command, hidden from help. */
@@ -193,7 +192,7 @@ export interface ExperimentalCliCommand {
   hidden?: boolean;
   options?: CliOptions;
   positionals?: CliPositionals;
-  constraints?: readonly ExperimentalCliConstraint[];
+  constraints?: readonly PluginCliConstraint[];
   /** Put tokens after `--` in `input.passthrough` instead of positionals. */
   passthrough?: boolean;
   /** Hint added when an unexpected bare token is passed. */
@@ -205,16 +204,16 @@ export interface ExperimentalCliCommand {
 }
 
 /** The declarative CLI a plugin hands to `bb.cli.register`. */
-export interface ExperimentalCliSpec {
+export interface PluginCliSpec {
   /** Top-level command name (`bb <name> …`): lowercase `[a-z0-9-]+`. */
   name: string;
   summary: string;
   /** Prose printed under the summary in top-level help. */
   description?: string;
   /** Runs when the invocation names no command (`bb connect --code …`). */
-  root?: ExperimentalCliCommand;
+  root?: PluginCliCommand;
   /** Commands keyed by invocation path (`"add"`, `"account add"`). */
-  commands: Record<string, ExperimentalCliCommand>;
+  commands: Record<string, PluginCliCommand>;
   /** Exit code for usage errors; defaults to 1. */
   usageErrorExitCode?: number;
 }
@@ -224,7 +223,7 @@ export interface ExperimentalCliSpec {
  * human text on stderr, plus the `{ ok: false, error }` envelope on stdout
  * when the invocation carries `--json`.
  */
-export class experimental_CliError extends Error {
+export class PluginCliError extends Error {
   readonly code: string;
   readonly hint: string | undefined;
   readonly exitCode: number;
@@ -246,7 +245,7 @@ export class experimental_CliError extends Error {
  * into `run`, so `input.options.scope` is the declared enum union and a
  * required option is never `undefined`.
  */
-export function experimental_cliCommand<
+export function cliCommand<
   const TOptions extends CliOptions = Record<string, never>,
   const TPositionals extends CliPositionals = readonly [],
 >(command: {
@@ -257,18 +256,18 @@ export function experimental_cliCommand<
   hidden?: boolean;
   options?: TOptions;
   positionals?: TPositionals;
-  constraints?: readonly ExperimentalCliConstraint[];
+  constraints?: readonly PluginCliConstraint[];
   passthrough?: boolean;
   unexpectedPositionalHint?: string;
   run(
-    input: ExperimentalCliRunInput<TOptions, TPositionals>,
+    input: PluginCliRunInput<TOptions, TPositionals>,
     ctx: PluginCliContext,
   ): PluginCliResult | Promise<PluginCliResult>;
-}): ExperimentalCliCommand {
+}): PluginCliCommand {
   return command;
 }
 
-const DURATION_UNIT_MS: Record<ExperimentalCliDurationUnit, number> = {
+const DURATION_UNIT_MS: Record<PluginCliDurationUnit, number> = {
   ms: 1,
   s: 1000,
   m: 60_000,
@@ -276,7 +275,7 @@ const DURATION_UNIT_MS: Record<ExperimentalCliDurationUnit, number> = {
   d: 86_400_000,
 };
 
-const DURATION_UNIT_LABEL: Record<ExperimentalCliDurationUnit, string> = {
+const DURATION_UNIT_LABEL: Record<PluginCliDurationUnit, string> = {
   ms: "milliseconds",
   s: "seconds",
   m: "minutes",
@@ -307,7 +306,7 @@ class UsageError extends Error {
 
 interface ResolvedCommand {
   path: string;
-  command: ExperimentalCliCommand;
+  command: PluginCliCommand;
   words: number;
 }
 
@@ -343,22 +342,22 @@ function nearest(input: string, candidates: readonly string[]): string | null {
   return best?.name ?? null;
 }
 
-function isRequired(option: ExperimentalCliOption): boolean {
+function isRequired(option: PluginCliOption): boolean {
   return option.type !== "boolean" && option.required === true;
 }
 
-function isRepeatable(option: ExperimentalCliOption): boolean {
+function isRepeatable(option: PluginCliOption): boolean {
   if (option.type === "string" || option.type === "enum") {
     return option.repeatable === true;
   }
   return false;
 }
 
-function defaultOf(option: ExperimentalCliOption): string | number | undefined {
+function defaultOf(option: PluginCliOption): string | number | undefined {
   return option.type === "boolean" ? undefined : option.default;
 }
 
-function optionPlaceholder(option: ExperimentalCliOption): string {
+function optionPlaceholder(option: PluginCliOption): string {
   if (option.placeholder !== undefined) return option.placeholder;
   switch (option.type) {
     case "boolean":
@@ -374,22 +373,22 @@ function optionPlaceholder(option: ExperimentalCliOption): string {
   }
 }
 
-function optionSignature(name: string, option: ExperimentalCliOption): string {
+function optionSignature(name: string, option: PluginCliOption): string {
   const placeholder = optionPlaceholder(option);
   return placeholder ? `--${name} <${placeholder}>` : `--${name}`;
 }
 
 function visibleOptions(
-  command: ExperimentalCliCommand,
-): Array<[string, ExperimentalCliOption]> {
+  command: PluginCliCommand,
+): Array<[string, PluginCliOption]> {
   return Object.entries(command.options ?? {}).filter(
     ([, option]) => option.hidden !== true,
   );
 }
 
 function visibleCommands(
-  spec: ExperimentalCliSpec,
-): Array<[string, ExperimentalCliCommand]> {
+  spec: PluginCliSpec,
+): Array<[string, PluginCliCommand]> {
   return Object.entries(spec.commands).filter(
     ([, command]) => command.hidden !== true,
   );
@@ -398,7 +397,7 @@ function visibleCommands(
 function usageLine(
   cliName: string,
   path: string,
-  command: ExperimentalCliCommand,
+  command: PluginCliCommand,
 ): string {
   const parts = [path ? `bb ${cliName} ${path}` : `bb ${cliName}`];
   for (const positional of command.positionals ?? []) {
@@ -430,7 +429,7 @@ function padColumns(rows: ReadonlyArray<readonly [string, string]>): string[] {
 
 function optionHelpRow(
   name: string,
-  option: ExperimentalCliOption,
+  option: PluginCliOption,
 ): [string, string] {
   const markers: string[] = [];
   if (isRequired(option)) markers.push("required");
@@ -442,9 +441,7 @@ function optionHelpRow(
   return [optionSignature(name, option), `${option.description}${suffix}`];
 }
 
-function constraintRows(
-  command: ExperimentalCliCommand,
-): Array<[string, string]> {
+function constraintRows(command: PluginCliCommand): Array<[string, string]> {
   return (command.constraints ?? []).map((constraint) => {
     if (constraint.kind === "requires") {
       return [
@@ -462,7 +459,7 @@ function constraintRows(
   });
 }
 
-function optionsSection(command: ExperimentalCliCommand): string[] {
+function optionsSection(command: PluginCliCommand): string[] {
   const options = visibleOptions(command);
   if (options.length === 0) return [];
   const rows: Array<[string, string]> = options.map(([name, option]) =>
@@ -472,7 +469,7 @@ function optionsSection(command: ExperimentalCliCommand): string[] {
   return ["", "Options:", ...padColumns(rows)];
 }
 
-function positionalsSection(command: ExperimentalCliCommand): string[] {
+function positionalsSection(command: PluginCliCommand): string[] {
   const positionals = command.positionals ?? [];
   if (positionals.length === 0) return [];
   return [
@@ -489,20 +486,20 @@ function positionalsSection(command: ExperimentalCliCommand): string[] {
   ];
 }
 
-function rulesSection(command: ExperimentalCliCommand): string[] {
+function rulesSection(command: PluginCliCommand): string[] {
   const rows = constraintRows(command);
   if (rows.length === 0) return [];
   return ["", "Rules:", ...padColumns(rows)];
 }
 
-function commandRows(spec: ExperimentalCliSpec): Array<[string, string]> {
+function commandRows(spec: PluginCliSpec): Array<[string, string]> {
   return visibleCommands(spec).map(([path, command]) => [
     `bb ${spec.name} ${path}`,
     command.summary,
   ]);
 }
 
-function renderTopLevelHelp(spec: ExperimentalCliSpec): string {
+function renderTopLevelHelp(spec: PluginCliSpec): string {
   const lines = [`bb ${spec.name} — ${spec.summary}`];
   if (spec.description !== undefined) lines.push("", spec.description);
   lines.push("", "Usage:");
@@ -521,7 +518,7 @@ function renderTopLevelHelp(spec: ExperimentalCliSpec): string {
 }
 
 function renderHelp(
-  spec: ExperimentalCliSpec,
+  spec: PluginCliSpec,
   resolved: ResolvedCommand | null,
 ): string {
   if (resolved === null) return renderTopLevelHelp(spec);
@@ -541,7 +538,7 @@ function renderHelp(
   return `${lines.join("\n")}\n`;
 }
 
-function commandListBlock(spec: ExperimentalCliSpec): string {
+function commandListBlock(spec: PluginCliSpec): string {
   return ["Commands:", ...padColumns(commandRows(spec))].join("\n");
 }
 
@@ -555,7 +552,7 @@ function leadingWords(argv: readonly string[]): string[] {
 }
 
 function resolveCommand(
-  spec: ExperimentalCliSpec,
+  spec: PluginCliSpec,
   words: readonly string[],
 ): ResolvedCommand | null {
   const candidates: Array<{ path: string; words: string[] }> = [];
@@ -584,7 +581,7 @@ function resolveCommand(
 }
 
 function unknownCommandError(
-  spec: ExperimentalCliSpec,
+  spec: PluginCliSpec,
   words: readonly string[],
 ): UsageError {
   const suggestions = new Map<string, string>();
@@ -619,7 +616,7 @@ function unknownCommandError(
   const attemptedWord = words[shared];
   if (attemptedWord === undefined) {
     return new UsageError({
-      code: "unknown_command",
+      code: "missing_command",
       message: `missing command after '${prefix.join(" ")}'`,
       hint: `Expected one of: ${siblings.join(", ")}`,
       detail: commandListBlock(spec),
@@ -651,9 +648,9 @@ interface ParsedTokens {
 }
 
 function usageFailure(
-  spec: ExperimentalCliSpec,
+  spec: PluginCliSpec,
   path: string,
-  command: ExperimentalCliCommand,
+  command: PluginCliCommand,
   failure: Omit<UsageFailure, "exitCode" | "usage">,
 ): UsageError {
   return new UsageError({
@@ -684,9 +681,9 @@ function namesDeclaredOption(
 }
 
 function tokenize(
-  spec: ExperimentalCliSpec,
+  spec: PluginCliSpec,
   path: string,
-  command: ExperimentalCliCommand,
+  command: PluginCliCommand,
   argv: readonly string[],
 ): ParsedTokens {
   const options = command.options ?? {};
@@ -791,7 +788,7 @@ function tokenize(
 
 function parseIntegerValue(
   name: string,
-  option: ExperimentalCliIntegerOption,
+  option: PluginCliIntegerOption,
   raw: string,
 ): number {
   const expected = `Expected an integer between ${option.min} and ${option.max}`;
@@ -805,7 +802,7 @@ function parseIntegerValue(
   return value;
 }
 
-function durationExpectation(option: ExperimentalCliDurationOption): string {
+function durationExpectation(option: PluginCliDurationOption): string {
   const forms = (option.bareUnits ?? [option.defaultUnit]).map((unit) => {
     const unitMs = DURATION_UNIT_MS[unit];
     const low =
@@ -820,7 +817,7 @@ function durationExpectation(option: ExperimentalCliDurationOption): string {
 
 function parseDurationValue(
   name: string,
-  option: ExperimentalCliDurationOption,
+  option: PluginCliDurationOption,
   raw: string,
 ): number {
   const invalid = () =>
@@ -836,7 +833,7 @@ function parseDurationValue(
     (option.max === undefined || value <= option.max);
   if (unit !== undefined) {
     const value = Math.round(
-      amount * DURATION_UNIT_MS[unit as ExperimentalCliDurationUnit],
+      amount * DURATION_UNIT_MS[unit as PluginCliDurationUnit],
     );
     if (!inRange(value)) throw invalid();
     return value;
@@ -850,7 +847,7 @@ function parseDurationValue(
 
 function parseOptionValue(
   name: string,
-  option: ExperimentalCliOption,
+  option: PluginCliOption,
   raw: string,
 ): string | number {
   switch (option.type) {
@@ -872,7 +869,7 @@ function parseOptionValue(
 }
 
 function splitValues(
-  option: ExperimentalCliOption,
+  option: PluginCliOption,
   values: readonly string[],
 ): string[] {
   const separator =
@@ -889,9 +886,9 @@ function splitValues(
 }
 
 function buildOptionValues(
-  spec: ExperimentalCliSpec,
+  spec: PluginCliSpec,
   path: string,
-  command: ExperimentalCliCommand,
+  command: PluginCliCommand,
   parsed: ParsedTokens,
 ): { values: Record<string, ErasedOptionValue>; missing: string[] } {
   const values: Record<string, ErasedOptionValue> = {};
@@ -927,9 +924,9 @@ function buildOptionValues(
 }
 
 function buildPositionalValues(
-  spec: ExperimentalCliSpec,
+  spec: PluginCliSpec,
   path: string,
-  command: ExperimentalCliCommand,
+  command: PluginCliCommand,
   parsed: ParsedTokens,
 ): {
   values: Record<string, string | string[] | undefined>;
@@ -966,7 +963,7 @@ function buildPositionalValues(
 }
 
 function isPresent(
-  command: ExperimentalCliCommand,
+  command: PluginCliCommand,
   parsed: ParsedTokens,
   name: string,
 ): boolean {
@@ -976,9 +973,9 @@ function isPresent(
 }
 
 function checkConstraints(
-  spec: ExperimentalCliSpec,
+  spec: PluginCliSpec,
   path: string,
-  command: ExperimentalCliCommand,
+  command: PluginCliCommand,
   parsed: ParsedTokens,
 ): void {
   for (const constraint of command.constraints ?? []) {
@@ -1075,9 +1072,7 @@ function failureResult(
  * carrying `--json` adds the `{ ok: false, error: { code, message, hint? } }`
  * envelope on stdout while stderr keeps the human-readable text.
  */
-export function experimental_defineCli(
-  spec: ExperimentalCliSpec,
-): PluginCliRegistration {
+export function defineCli(spec: PluginCliSpec): PluginCliRegistration {
   const commands: PluginCliCommandInfo[] = visibleCommands(spec).map(
     ([path, command]) => ({
       name: path.replaceAll(" ", "-"),
@@ -1090,7 +1085,7 @@ export function experimental_defineCli(
     name: spec.name,
     summary: spec.summary,
     commands,
-    experimental_rendersHelp: true,
+    rendersHelp: true,
     async run(argv, ctx): Promise<PluginCliResult> {
       const wantsJson = wantsJsonOutput(argv);
       const asked = argv[0] === "help" ? argv.slice(1) : argv;
@@ -1115,7 +1110,7 @@ export function experimental_defineCli(
               throw unknownCommandError(spec, words);
             }
             const failure: UsageFailure = {
-              code: "unknown_command",
+              code: "missing_command",
               message: "missing command",
               hint: `Run \`bb ${spec.name} --help\` for the command list.`,
               exitCode: spec.usageErrorExitCode ?? 1,
@@ -1170,7 +1165,7 @@ export function experimental_defineCli(
         if (error instanceof UsageError) {
           return failureResult(error.failure, wantsJson);
         }
-        if (error instanceof experimental_CliError) {
+        if (error instanceof PluginCliError) {
           return failureResult(
             {
               code: error.code,

@@ -185,27 +185,27 @@ const EXPECTED_HOST_ROOT_VALUE_EXPORTS = [
 ] as const;
 
 const EXPECTED_CLI_SPEC_ROOT_TYPE_EXPORTS = [
-  "ExperimentalCliBooleanOption",
-  "ExperimentalCliCommand",
-  "ExperimentalCliConstraint",
-  "ExperimentalCliDurationOption",
-  "ExperimentalCliDurationUnit",
-  "ExperimentalCliEnumOption",
-  "ExperimentalCliErrorCode",
-  "ExperimentalCliIntegerOption",
-  "ExperimentalCliOption",
-  "ExperimentalCliOptionValues",
-  "ExperimentalCliPositional",
-  "ExperimentalCliPositionalValues",
-  "ExperimentalCliRunInput",
-  "ExperimentalCliSpec",
-  "ExperimentalCliStringOption",
+  "PluginCliBooleanOption",
+  "PluginCliCommand",
+  "PluginCliConstraint",
+  "PluginCliDurationOption",
+  "PluginCliDurationUnit",
+  "PluginCliEnumOption",
+  "PluginCliErrorCode",
+  "PluginCliIntegerOption",
+  "PluginCliOption",
+  "PluginCliOptionValues",
+  "PluginCliPositional",
+  "PluginCliPositionalValues",
+  "PluginCliRunInput",
+  "PluginCliSpec",
+  "PluginCliStringOption",
 ] as const;
 
 const EXPECTED_CLI_SPEC_ROOT_VALUE_EXPORTS = [
-  "experimental_CliError",
-  "experimental_cliCommand",
-  "experimental_defineCli",
+  "PluginCliError",
+  "cliCommand",
+  "defineCli",
 ] as const;
 
 function namesFromMatches(source: string, pattern: RegExp): string[] {

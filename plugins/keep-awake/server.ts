@@ -1,8 +1,8 @@
 import {
   defineRpcContract,
-  experimental_CliError,
-  experimental_cliCommand,
-  experimental_defineCli,
+  PluginCliError,
+  cliCommand,
+  defineCli,
   type BbPluginApi,
 } from "@get-bb/plugin-sdk";
 import { z } from "zod";
@@ -150,13 +150,13 @@ export default async function keepAwakePlugin(bb: BbPluginApi): Promise<void> {
   }
 
   bb.cli.register(
-    experimental_defineCli({
+    defineCli({
       name: "keep-awake",
       summary: "Configure macOS idle-sleep prevention",
       description:
         "Keep Awake holds an idle-sleep assertion on every selected macOS host while bb runs.",
       commands: {
-        status: experimental_cliCommand({
+        status: cliCommand({
           summary: "Show whether Keep Awake is enabled and which hosts it uses",
           options: { json: JSON_OPTION },
           run: (input) => ({
@@ -170,17 +170,17 @@ export default async function keepAwakePlugin(bb: BbPluginApi): Promise<void> {
                 }`,
           }),
         }),
-        enable: experimental_cliCommand({
+        enable: cliCommand({
           summary: "Enable Keep Awake",
           options: { json: JSON_OPTION },
           run: (input) => setEnabled(true, input.options.json),
         }),
-        disable: experimental_cliCommand({
+        disable: cliCommand({
           summary: "Disable Keep Awake",
           options: { json: JSON_OPTION },
           run: (input) => setEnabled(false, input.options.json),
         }),
-        hosts: experimental_cliCommand({
+        hosts: cliCommand({
           summary: "Show or replace the Keep Awake host selection",
           positionals: [
             {
@@ -194,7 +194,7 @@ export default async function keepAwakePlugin(bb: BbPluginApi): Promise<void> {
             const requested = input.positionals["host-id"];
             if (requested[0] === "all") {
               if (requested.length !== 1) {
-                throw new experimental_CliError(
+                throw new PluginCliError(
                   '"all" cannot be combined with individual host ids',
                   {
                     code: "invalid_host_selection",
@@ -208,13 +208,13 @@ export default async function keepAwakePlugin(bb: BbPluginApi): Promise<void> {
               });
             } else if (requested.length > 0) {
               if (requested.length > MAX_SELECTED_HOSTS) {
-                throw new experimental_CliError(
+                throw new PluginCliError(
                   `Select at most ${MAX_SELECTED_HOSTS} hosts, or use "all"`,
                   { code: "invalid_host_selection" },
                 );
               }
               if (requested.some((hostId) => hostId.length === 0)) {
-                throw new experimental_CliError("Host ids cannot be empty", {
+                throw new PluginCliError("Host ids cannot be empty", {
                   code: "invalid_host_selection",
                 });
               }

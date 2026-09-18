@@ -1,7 +1,7 @@
 import {
-  experimental_CliError,
-  experimental_cliCommand,
-  experimental_defineCli,
+  PluginCliError,
+  cliCommand,
+  defineCli,
   type BbPluginApi,
   type PluginCliResult,
 } from "@get-bb/plugin-sdk";
@@ -61,8 +61,8 @@ function asJson(value: unknown): string {
   return `${JSON.stringify(value, null, 2)}\n`;
 }
 
-function notPairedError(): experimental_CliError {
-  return new experimental_CliError(
+function notPairedError(): PluginCliError {
+  return new PluginCliError(
     "this bb is not connected to getbb.app — run `bb connect` for how to pair",
     { code: "not_paired" },
   );
@@ -71,17 +71,17 @@ function notPairedError(): experimental_CliError {
 function machineCodeError(
   error: MachineCodeError,
   dashboardUrl: string,
-): experimental_CliError {
+): PluginCliError {
   switch (error.code) {
     case "not_paired":
       return notPairedError();
     case "machine_limit":
-      return new experimental_CliError(
+      return new PluginCliError(
         `this account has reached its connect machine limit — revoke a device you no longer use at ${dashboardUrl}, then try again`,
         { code: "machine_limit" },
       );
     case "network":
-      return new experimental_CliError(
+      return new PluginCliError(
         "could not reach the connect service to mint a machine code — check the connection and try again",
         { code: "network" },
       );
@@ -112,8 +112,8 @@ async function attempt(
   try {
     return await work();
   } catch (error) {
-    if (error instanceof experimental_CliError) throw error;
-    throw new experimental_CliError(
+    if (error instanceof PluginCliError) throw error;
+    throw new PluginCliError(
       error instanceof Error ? error.message : String(error),
       { code: "connect_failed" },
     );
@@ -128,12 +128,12 @@ export function registerConnectCli(args: {
 }): void {
   const { bb, tunnel, hostResolver, mobilePairing } = args;
   bb.cli.register(
-    experimental_defineCli({
+    defineCli({
       name: "connect",
       summary:
         "Expose this bb at https://<handle>.getbb.app (pair with --code/--server from the dashboard)",
       description: DESCRIPTION,
-      root: experimental_cliCommand({
+      root: cliCommand({
         summary: "Pair this bb with a getbb.app handle",
         options: {
           code: {
@@ -178,7 +178,7 @@ export function registerConnectCli(args: {
           }),
       }),
       commands: {
-        status: experimental_cliCommand({
+        status: cliCommand({
           summary: "Show remote-access status",
           options: { json: JSON_OPTION },
           run: (input) =>
@@ -192,7 +192,7 @@ export function registerConnectCli(args: {
               };
             }),
         }),
-        off: experimental_cliCommand({
+        off: cliCommand({
           summary: "Disconnect and forget the pairing",
           description:
             "Re-pairing needs a new code from the getbb.app dashboard.",
@@ -206,7 +206,7 @@ export function registerConnectCli(args: {
               };
             }),
         }),
-        expose: experimental_cliCommand({
+        expose: cliCommand({
           summary: "Share an HTTP port from an enrolled host",
           positionals: [
             {
@@ -233,7 +233,7 @@ export function registerConnectCli(args: {
               return { exitCode: 0, stdout: `${listing.url}\n` };
             }),
         }),
-        unexpose: experimental_cliCommand({
+        unexpose: cliCommand({
           summary: "Stop sharing an HTTP port from a host",
           positionals: [
             {
@@ -266,7 +266,7 @@ export function registerConnectCli(args: {
               };
             }),
         }),
-        shares: experimental_cliCommand({
+        shares: cliCommand({
           summary: "List shared ports and their public URLs",
           suggestFor: ["list", "ls", "ports"],
           options: { host: HOST_OPTION, json: JSON_OPTION },
@@ -293,7 +293,7 @@ export function registerConnectCli(args: {
               return { exitCode: 0, stdout: `${lines.join("\n")}\n` };
             }),
         }),
-        servers: experimental_cliCommand({
+        servers: cliCommand({
           summary: "List every bb server on this account",
           options: { json: JSON_OPTION },
           run: (input) =>
@@ -329,14 +329,14 @@ export function registerConnectCli(args: {
               return { exitCode: 0, stdout: `${lines.join("\n")}\n` };
             }),
         }),
-        "machine-code": experimental_cliCommand({
+        "machine-code": cliCommand({
           summary:
             'Mint a one-time code that enrolls the bb mobile app as a connect machine (needs the "Mobile app" experiment)',
           options: { json: JSON_OPTION },
           run: (input) =>
             attempt(async () => {
               if (!(await mobilePairing.enabled())) {
-                throw new experimental_CliError(
+                throw new PluginCliError(
                   'mobile pairing is off — turn on the "Mobile app" experiment in Settings → Experiments (or `bb settings experiment mobileApp true`), then run this again',
                   { code: "mobile_pairing_disabled" },
                 );

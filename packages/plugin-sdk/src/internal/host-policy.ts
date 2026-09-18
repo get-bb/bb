@@ -3103,7 +3103,7 @@ export function normalizeCliRegistration(
     name,
     summary: registration.summary,
     commands: validatedCommands,
-    rendersHelp: registration.experimental_rendersHelp === true,
+    rendersHelp: registration.rendersHelp === true,
     run: registration.run.bind(registration),
   };
 }

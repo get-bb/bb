@@ -1,8 +1,8 @@
 import {
   defineRpcContract,
-  experimental_CliError,
-  experimental_cliCommand,
-  experimental_defineCli,
+  PluginCliError,
+  cliCommand,
+  defineCli,
   type BbPluginApi,
   type MessageDispatchHookDecision,
   type PluginThreadEventName,
@@ -145,7 +145,7 @@ function parseLimitArgument(
   if (raw === automaticKeyword) return null;
   const value = parseLimitValue(raw);
   if (value === null) {
-    throw new experimental_CliError(
+    throw new PluginCliError(
       `Limit must be ${automaticKeyword} or a whole number from 0 to ${MAX_LIMIT_VALUE}`,
       { code: "invalid_limit" },
     );
@@ -258,21 +258,21 @@ export default async function concurrencyLimitPlugin(
     },
   });
 
-  function unknownHost(hostId: string): experimental_CliError {
-    return new experimental_CliError(`Unknown host: ${hostId}`, {
+  function unknownHost(hostId: string): PluginCliError {
+    return new PluginCliError(`Unknown host: ${hostId}`, {
       code: "unknown_host",
       hint: "Run `bb machine list` for the enrolled host ids.",
     });
   }
 
   bb.cli.register(
-    experimental_defineCli({
+    defineCli({
       name: "concurrency-limit",
       summary: "Configure global and per-host thread limits",
       description:
         "A limit holds new turns in line until a running thread goes idle. The automatic host limit is one thread per available processor.",
       commands: {
-        status: experimental_cliCommand({
+        status: cliCommand({
           summary: "Show effective concurrency limits",
           options: { json: JSON_OPTION },
           async run(input) {
@@ -289,7 +289,7 @@ export default async function concurrencyLimitPlugin(
             };
           },
         }),
-        global: experimental_cliCommand({
+        global: cliCommand({
           summary: "Show or set the overall limit",
           positionals: [
             {
@@ -316,7 +316,7 @@ export default async function concurrencyLimitPlugin(
             };
           },
         }),
-        host: experimental_cliCommand({
+        host: cliCommand({
           summary: "Show or set one host limit",
           positionals: [
             {
