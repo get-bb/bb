@@ -404,6 +404,7 @@ export function PluginBrowseCategoryFilter(props: PluginCategoryFilterProps) {
           label={`Filter plugins by category: ${accessibleSelectionLabel}`}
           text="Category"
           tooltip={`Category: ${accessibleSelectionLabel}`}
+          icon="SlidersHorizontal"
           count={value.length}
           trailingIcon="ChevronDown"
           active={value.length > 0}
