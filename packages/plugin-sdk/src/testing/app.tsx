@@ -64,6 +64,7 @@ import {
   type UrlLinkProps,
   type ExperimentalFileLinkProps,
   type ExperimentalFileOpenOptions,
+  type ExperimentalComposerSelection,
   type ExperimentalComposerSubmitOptions,
   type ExperimentalAppPanel,
   type ExperimentalFixedTabTargetState,
@@ -178,6 +179,14 @@ export interface ComposerLog {
    * draft — enough to assert what a picker scheduled and that it tidied up.
    */
   submits: ExperimentalComposerSubmitOptions[];
+  /**
+   * Every `experimental_setSelection` the harness composer accepted, in
+   * order. The harness has no pickers of its own, so it records the request
+   * and echoes it back as the settled selection, minus the fields the
+   * composer's scope has no picker for (a thread has no project or
+   * environment). Queued-message and side-chat scopes reject, as the app does.
+   */
+  selections: ExperimentalComposerSelection[];
 }
 
 interface TestComposerStore {
@@ -1593,6 +1602,7 @@ export function renderSlot<
     mentions: [],
     focusCount: 0,
     submits: [],
+    selections: [],
   };
   const composerOwnership = { active: true };
   const submissionListeners = new Set<() => void>();
@@ -1685,6 +1695,26 @@ export function renderSlot<
         composerLog.submits.push(options);
         commitComposerText("");
         for (const listener of submissionListeners) listener();
+      },
+      async experimental_setSelection(selection) {
+        if (!composerOwnership.active) {
+          throw new Error("This composer is no longer active.");
+        }
+        if (
+          composerScope.kind === "queued-message" ||
+          composerScope.kind === "side-chat"
+        ) {
+          throw new Error("This composer has no pickers to set.");
+        }
+        const {
+          projectId: _projectId,
+          environment: _environment,
+          ...rest
+        } = selection;
+        const accepted: ExperimentalComposerSelection =
+          composerScope.kind === "thread" ? rest : { ...selection };
+        composerLog.selections.push(accepted);
+        return accepted;
       },
     },
   };

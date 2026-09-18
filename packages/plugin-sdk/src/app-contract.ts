@@ -2067,6 +2067,85 @@ export interface PluginComposerApi {
   experimental_submit(
     options: ExperimentalComposerSubmitOptions,
   ): Promise<void>;
+  /**
+   * Set this composer's pickers as if each value had been picked by hand.
+   *
+   * Every field is optional. An omitted field is left alone. A field this
+   * composer has no picker for is ignored rather than rejected: a thread
+   * composer has no project or environment; a provider without service tiers
+   * has no tier; a fork draft locks its project, provider and environment.
+   * Values travel through the same paths the pickers use, so in the
+   * new-thread composer they become the remembered defaults for the next
+   * thread and are reported as the user's explicit choices, and in a thread
+   * composer a provider change starts the same handoff the picker starts:
+   * the handoff block is prepended to the draft and the next send creates a
+   * new thread. A same-provider model change in a thread does not start a
+   * handoff, exactly like the picker.
+   *
+   * In the new-thread composer the project is switched first and awaited
+   * (attachments are copied to the new project), then the environment and
+   * machine are applied to the new project, then provider, model, reasoning
+   * level, service tier and permission mode. A provider change reloads the
+   * model catalog before the model and reasoning level are applied to it.
+   * Because the project switch remounts plugin surfaces, the returned
+   * promise is owned by the composer and still resolves after the calling
+   * component has unmounted.
+   *
+   * Resolves with the composer's own selection once it has settled: the
+   * applied values have committed and the model catalog for the selected
+   * provider and machine has finished loading, so model, reasoning level and
+   * permission mode have reconciled against it. The catalog wait is bounded;
+   * if it has not finished after 15 seconds the promise resolves with the
+   * selection as it stands. The result carries only the fields this composer
+   * has, so a missing key means "no such picker here" and a value that
+   * differs from the one passed was reconciled (a reasoning level the model
+   * does not support, a permission mode above the machine's ceiling, a model
+   * the provider does not list). A provider the composer does not list is
+   * ignored together with the model and reasoning level meant for it, so the
+   * stored provider preference never names something the picker could not
+   * have chosen. `environment` is absent while the composer
+   * has no submittable environment; `providerId` and `model` are absent
+   * while nothing is selected; `serviceTier` is present only when the
+   * selected provider has tiers and one is chosen.
+   *
+   * Rejects, with a message safe to show to the user, in a composer with no
+   * pickers at all (a queued-message editor, a side chat, a plugin surface
+   * mounted outside any composer), when the calling surface is no longer
+   * active, and when a value is not a known reasoning level, service tier or
+   * permission mode.
+   *
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_setSelection(
+    selection: ExperimentalComposerSelection,
+  ): Promise<ExperimentalComposerSelection>;
+}
+
+/**
+ * Picker values for `experimental_setSelection`, and the shape it resolves
+ * with. Field names match `NewThreadRequest` and the `default*` props of
+ * `experimental_NewThreadComposer`, so one routed decision can feed the
+ * composer, the embedded composer and `bb.sdk.threads.spawn` alike.
+ */
+export interface ExperimentalComposerSelection {
+  /** New-thread composers only. BB's personal-project id means "Don't work in a project". */
+  projectId?: string;
+  /**
+   * New-thread composers only. `{ type: "project-default" }` and a `host`
+   * environment without a `hostId` seed nothing and are ignored. Provider
+   * `inputs` are not applied; the provider's own inputs control keeps its
+   * value, and the result reports what the composer would submit.
+   */
+  environment?: CreateThreadEnvironmentArgs;
+  /** A provider the composer does not list is ignored, and `model` and `reasoningLevel` with it. */
+  providerId?: string;
+  /** Applied only when the composer ends up on the requested provider (or none was requested). */
+  model?: string;
+  /** Applied only when the composer ends up on the requested provider (or none was requested). */
+  reasoningLevel?: ReasoningLevel;
+  /** Ignored by a provider with no service tiers. */
+  serviceTier?: ServiceTier;
+  permissionMode?: PermissionMode;
 }
 
 /**

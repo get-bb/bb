@@ -2693,6 +2693,63 @@ the draft after request failure. Consumers: `plugins/scheduled-send` and
    `experimental_data` can be lost in that surface. Decide whether to expose a
    forwardable experimental field or reject data-bearing submissions there.
 
+## `useComposer().experimental_setSelection`
+
+**What it does.** Sets a composer's pickers (provider, model, reasoning level,
+service tier, permission mode, and in a new-thread composer the project and
+environment) through the same handlers the pickers call, so a plugin-made
+choice is indistinguishable from a hand-made one: in the new-thread composer
+the values become the remembered defaults and are reported as explicit in
+`executionInputSources`; in a thread composer a provider change begins the
+handoff (snapshot for exit, handoff block prepended to the draft) and a
+same-provider model change does not, exactly like the picker. Omitted fields
+are left alone. Fields the composer has no picker for are ignored, not
+rejected: a thread composer drops `projectId` and `environment`, a provider
+without service tiers drops `serviceTier`, a fork draft keeps its locked
+project, provider and environment, and a provider the composer does not list
+is ignored together with the model and reasoning level meant for it. The new-thread host switches the project
+first and awaits it (attachment copy, and the composer remounts plugin
+surfaces), then applies the environment and machine with the new project's
+setters, then a provider change and a catalog reload, then model, reasoning,
+tier and permission mode each on its own commit. Resolves with the composer's
+own selection once the applied values have committed and the model catalog
+for the selected provider and machine has settled (data present and not a
+placeholder, or the query errored), bounded at 15 seconds after which the
+selection as it stands is returned. Backed by an optional `setSelection` on
+the internal `PluginComposerHost`, supplied by the thread and new-thread
+composers, including the plugin-embedded `experimental_NewThreadComposer`
+whose component-local selections leave the stored new-thread preferences
+untouched. The input type is `ExperimentalComposerSelection`; the hook
+validates it and rejects unknown reasoning levels, tiers and permission
+modes. The testing harness records accepted calls in `composer.selections`.
+
+**Audit before stabilizing.**
+
+1. **Provenance.** A value set by a plugin in the new-thread composer is
+   stored and reported exactly like a hand-picked one, so a routed thread is
+   indistinguishable from a chosen one in the user's preference history. A
+   plugin that needs to tell them apart tags its own threads through plugin
+   metadata. Decide whether `executionInputSources` should carry a plugin
+   source before a second consumer needs it.
+2. **Timeout shape.** The bounded catalog wait resolves with the unsettled
+   selection rather than rejecting. Confirm that is the right failure mode
+   for a plugin that shows the result to the user.
+3. **Provider inputs.** `environment.inputs` are not applied; the provider's
+   inputs control keeps its own value. Decide whether the seed path's inputs
+   handling should be reused here.
+4. **Guard semantics after a project switch.** The `isActive` guard stops a
+   stale surface from starting a call but a call already in flight survives
+   its own surface's unmount and resolves with the settled result. Confirm
+   that is the behavior plugins expect, and whether the promise should also
+   resolve early when the composer itself unmounts.
+5. **Model-only thread changes.** A model change in a thread without a
+   provider change sets the next turn's model in place, as the picker does.
+   Confirm plugins do not expect it to start a handoff.
+6. **Empty selections in the result.** `providerId` and `model` are omitted
+   while the composer has nothing selected and `environment` while nothing is
+   submittable, which overloads "missing" with "no picker here". Decide
+   whether the result should distinguish them.
+
 ## Desktop browser control
 
 `bb.sdk.experimental_desktopBrowsers` and the exported `ExperimentalDesktopBrowsersArea`, `ExperimentalDesktopBrowserScope`, `ExperimentalDesktopBrowserLease`, `ExperimentalDesktopBrowserCreateInput`, and `ExperimentalDesktopBrowserAcquireInput` expose explicit host/window/thread discovery, isolated tab creation, expiring control leases, scoped CDP connections, capture, reveal, close, release, disposable tab-state subscriptions, and cookie import from an installed browser through `listImportSources` and `importCookies` (`ExperimentalDesktopBrowserInstanceRequest`, `ExperimentalDesktopBrowserImportCookiesInput`, `ExperimentalDesktopBrowserImportSources`, `ExperimentalDesktopBrowserImportOutcome`). The matching core CLI is `bb browser`.
