@@ -441,7 +441,6 @@ export function EnvironmentSlot({
         onSelectProvider={environment.onSelectProvider}
         onSelectHost={environment.onSelectHost}
         onSelectReuse={environment.onSelectReuse}
-        reuseDisabled={worktree.options.length === 0}
         className="shrink-0"
         muted
       />

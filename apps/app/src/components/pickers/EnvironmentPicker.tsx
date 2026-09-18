@@ -92,7 +92,6 @@ export interface EnvironmentPickerUIProps {
   ) => void;
   onSelectHost?: (hostId: string) => void;
   onSelectReuse?: () => void;
-  reuseDisabled?: boolean;
 }
 
 export const PROVIDER_INPUTS_CONTROL_MISSING_REASON =
@@ -189,7 +188,6 @@ export function EnvironmentPickerUI({
   onSelectProvider,
   onSelectHost,
   onSelectReuse,
-  reuseDisabled = false,
 }: EnvironmentPickerUIProps) {
   const [uncontrolledOpen, setUncontrolledOpen] = useState(
     defaultOpen ?? false,
@@ -528,7 +526,6 @@ export function EnvironmentPickerUI({
               )}
               <ReuseEnvironmentOption
                 selected={parsed?.type === "reuse"}
-                disabled={reuseDisabled}
                 onSelect={onSelectReuse ? selectReuse : undefined}
               />
             </CommandList>
@@ -540,18 +537,14 @@ export function EnvironmentPickerUI({
 }
 
 const REUSE_ENVIRONMENT_OPTION_LABEL = "Reuse existing";
-export const REUSE_ENVIRONMENT_UNAVAILABLE_REASON =
-  "No environments to reuse yet";
 
 interface ReuseEnvironmentOptionProps {
   selected: boolean;
-  disabled: boolean;
   onSelect: (() => void) | undefined;
 }
 
 function ReuseEnvironmentOption({
   selected,
-  disabled,
   onSelect,
 }: ReuseEnvironmentOptionProps) {
   if (onSelect === undefined) return null;
@@ -563,12 +556,8 @@ function ReuseEnvironmentOption({
         <EnvironmentMenuItem
           value="reuse"
           label={REUSE_ENVIRONMENT_OPTION_LABEL}
-          description={
-            disabled ? REUSE_ENVIRONMENT_UNAVAILABLE_REASON : undefined
-          }
           icon={REUSE_ENVIRONMENT_ICON_NAME}
           selected={selected}
-          disabled={disabled}
           onSelect={onSelect}
         />
       </CommandGroup>
