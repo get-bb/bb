@@ -79,6 +79,7 @@ export interface SecondaryPanelTabStripProps {
   activeTabId: string | null;
   tabs: readonly SecondaryPanelRenderableTab[];
   leadingTabs?: ReactNode;
+  newTabControl?: ReactNode;
   onBeginTabDrag?: (
     tabId: string,
     event: ReactPointerEvent<HTMLElement>,
@@ -126,6 +127,7 @@ export function SecondaryPanelTabStrip({
   activeTabId,
   tabs,
   leadingTabs,
+  newTabControl,
   onBeginTabDrag,
   onReorderTab,
   usesDesktopChrome,
@@ -134,12 +136,14 @@ export function SecondaryPanelTabStrip({
   const stripRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const newTabControlRef = useRef<HTMLDivElement>(null);
   const leftScrollButtonRef = useRef<HTMLButtonElement>(null);
   const rightScrollButtonRef = useRef<HTMLButtonElement>(null);
   const [overflow, setOverflow] = useState<TabStripOverflowState>(
     INITIAL_OVERFLOW_STATE,
   );
   const [contentWidth, setContentWidth] = useState<number>();
+  const [hiddenSpace, setHiddenSpace] = useState({ left: 0, right: 0 });
   const maxScrollLeftRef = useRef(0);
   const measuredWidthRef = useRef(0);
   const resizeRevealFrameRef = useRef<number | null>(null);
@@ -176,6 +180,8 @@ export function SecondaryPanelTabStrip({
     const isScrollable = hasOverflow && maxScrollLeft > EDGE_EPSILON_PX;
     const { scrollLeft } = viewport;
     const bounds = viewport.getBoundingClientRect();
+    let firstVisibleLeft = bounds.right;
+    let lastVisibleRight = bounds.left;
     for (const tab of contentRef.current?.querySelectorAll<HTMLElement>(
       "[data-secondary-panel-tab]",
     ) ?? []) {
@@ -187,7 +193,24 @@ export function SecondaryPanelTabStrip({
       if (pill instanceof HTMLElement)
         pill.style.visibility = visible ? "" : "hidden";
       tab.inert = !visible;
+      if (visible) {
+        firstVisibleLeft = Math.min(firstVisibleLeft, rect.left);
+        lastVisibleRight = Math.max(lastVisibleRight, rect.right);
+      }
     }
+    const left =
+      lastVisibleRight > firstVisibleLeft
+        ? Math.max(0, firstVisibleLeft - bounds.left)
+        : 0;
+    const right =
+      lastVisibleRight > firstVisibleLeft
+        ? Math.max(0, bounds.right - lastVisibleRight)
+        : 0;
+    setHiddenSpace((previous) =>
+      previous.left === left && previous.right === right
+        ? previous
+        : { left, right },
+    );
     const canScrollLeft = isScrollable && scrollLeft > EDGE_EPSILON_PX;
     const canScrollRight =
       isScrollable && scrollLeft < maxScrollLeft - EDGE_EPSILON_PX;
@@ -227,7 +250,10 @@ export function SecondaryPanelTabStrip({
       });
     }
     const hasOverflow =
-      content.scrollWidth > strip.clientWidth + EDGE_EPSILON_PX;
+      content.scrollWidth >
+      strip.clientWidth -
+        (newTabControlRef.current?.getBoundingClientRect().width ?? 0) +
+        EDGE_EPSILON_PX;
     hasOverflowRef.current = hasOverflow;
     maxScrollLeftRef.current = hasOverflow
       ? Math.max(0, viewport.scrollWidth - viewport.clientWidth)
@@ -501,7 +527,6 @@ export function SecondaryPanelTabStrip({
     <div
       ref={stripRef}
       data-testid="secondary-panel-tab-strip"
-      style={{ maxWidth: contentWidth }}
       className="group relative flex min-w-0 flex-1 items-center [&_[data-tab-pill-close]]:text-muted-foreground/70 [&_[data-tab-pill-close]:hover]:text-foreground [&_[data-tab-pill-close]_[data-icon-root]]:size-3 max-md:pointer-coarse:[&_[data-tab-pill-close]_[data-icon-root]]:size-3.5"
     >
       <TabStripScrollButton
@@ -514,10 +539,15 @@ export function SecondaryPanelTabStrip({
       <div
         data-secondary-panel-tab-scroll-region
         className="relative min-w-0 flex-1 [container-type:inline-size]"
+        style={{ maxWidth: contentWidth }}
       >
         <div
           ref={viewportRef}
           onClickCapture={handleClickCapture}
+          style={{
+            clipPath: `inset(0 ${hiddenSpace.right}px 0 ${hiddenSpace.left}px)`,
+            transform: `translateX(-${hiddenSpace.left}px)`,
+          }}
           className={cn(
             "no-scrollbar min-w-0 snap-x snap-mandatory overflow-x-auto overflow-y-hidden",
             usesDesktopChrome && MACOS_APP_REGION_NO_DRAG_CLASS,
@@ -533,13 +563,25 @@ export function SecondaryPanelTabStrip({
           </div>
         </div>
       </div>
-      <TabStripScrollButton
-        buttonRef={rightScrollButtonRef}
-        direction="right"
-        canScroll={overflow.canScrollRight}
-        className={chevronNoDragClass}
-        onClick={() => scrollByStep(1)}
-      />
+      <div
+        className="flex shrink-0 items-center"
+        style={{
+          transform: `translateX(-${hiddenSpace.left + hiddenSpace.right}px)`,
+        }}
+      >
+        <TabStripScrollButton
+          buttonRef={rightScrollButtonRef}
+          direction="right"
+          canScroll={overflow.canScrollRight}
+          className={chevronNoDragClass}
+          onClick={() => scrollByStep(1)}
+        />
+        {newTabControl ? (
+          <div ref={newTabControlRef} className="flex shrink-0 pl-1">
+            {newTabControl}
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -655,6 +697,7 @@ function TabStripScrollButton({
         canScroll
           ? TAB_STRIP_SCROLL_BUTTON_CLASS
           : "h-7 w-0 overflow-hidden p-0 max-md:pointer-coarse:h-9",
+        canScroll && (direction === "left" ? "mr-1" : "ml-1"),
         "transition-opacity",
         canScroll
           ? "pointer-events-auto opacity-100"

@@ -201,11 +201,21 @@ describe("secondary panel tab strip", () => {
     expect(screen.getByRole("button", { name: "file-0.ts" })).toBeDefined();
     expect(screen.queryByRole("button", { name: "file-1.ts" })).toBeNull();
     expect(tabs[1].inert).toBe(true);
+    const trailingControls = screen.getByRole("button", {
+      name: "Scroll tabs right",
+    }).parentElement!;
+    expect(viewport.style.clipPath).toBe("inset(0 70px 0 0px)");
+    expect(trailingControls.style.transform).toBe("translateX(-70px)");
     viewport.scrollLeft = 114;
     act(() => measure());
     expect(screen.getByRole("button", { name: "file-1.ts" })).toBeDefined();
     expect(tabs[1].inert).toBe(false);
     expect(tabs[0].inert).toBe(true);
+    viewport.scrollLeft = 58;
+    act(() => measure());
+    expect(viewport.style.transform).toBe("translateX(-56px)");
+    expect(viewport.style.clipPath).toBe("inset(0 14px 0 56px)");
+    expect(trailingControls.style.transform).toBe("translateX(-70px)");
     const selected = tabs[0].querySelector(
       'button[aria-pressed="true"]',
     )!.parentElement!;
@@ -309,11 +319,13 @@ describe("secondary panel tab strip", () => {
     );
     expect(strip?.children[0]).toBe(leftButton);
     expect(strip?.children[1]).toBe(scrollRegion);
-    expect(strip?.children[2]).toBe(rightButton);
+    expect(strip?.children[2]).toBe(rightButton?.parentElement);
     expect(leftButton?.classList.contains("absolute")).toBe(false);
     expect(rightButton?.classList.contains("absolute")).toBe(false);
     expect(leftButton?.classList.contains("w-0")).toBe(true);
     expect(rightButton?.classList.contains("size-8")).toBe(true);
+    expect(leftButton?.classList.contains("mr-1")).toBe(false);
+    expect(rightButton?.classList.contains("ml-1")).toBe(true);
     expect(leftButton?.classList.contains("opacity-0")).toBe(true);
     expect(leftButton?.tabIndex).toBe(-1);
     expect(rightButton?.classList.contains("opacity-100")).toBe(true);

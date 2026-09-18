@@ -650,8 +650,8 @@ function ThreadSecondaryPanelContent({
           onReorderTab={onSurfaceTabReorder}
           usesDesktopChrome={usesDesktopChrome}
           isPanelOpen={isOpen}
+          newTabControl={newTabControl}
         />
-        {newTabControl}
       </>
     );
   };
