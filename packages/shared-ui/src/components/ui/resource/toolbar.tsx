@@ -66,9 +66,17 @@ export function ResourceToolbar({
     const individualControls = individualControlsRef.current;
     const search = searchRef.current;
     if (!toolbar || !individualControls || !search || !compact) return;
+    let previousWidth = 0;
     const measure = () => {
       const width = toolbar.getBoundingClientRect().width;
       if (width === 0) return;
+      const widthChanged = previousWidth !== width;
+      previousWidth = width;
+      if (
+        !widthChanged &&
+        controlsRef.current?.querySelector('[aria-haspopup][data-state="open"]')
+      )
+        return;
       const gap = Number.parseFloat(getComputedStyle(toolbar).columnGap) || 0;
       const searchWidth = Number.parseFloat(getComputedStyle(search).flexBasis);
       const actionWidth = actionRef.current?.getBoundingClientRect().width ?? 0;
@@ -105,7 +113,22 @@ export function ResourceToolbar({
     observer.observe(individualControls);
     if (controlsRef.current) observer.observe(controlsRef.current);
     if (actionRef.current) observer.observe(actionRef.current);
-    return () => observer.disconnect();
+    let frame = 0;
+    const menuObserver = new MutationObserver(() => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(measure);
+    });
+    if (controlsRef.current)
+      menuObserver.observe(controlsRef.current, {
+        attributes: true,
+        attributeFilter: ["data-state"],
+        subtree: true,
+      });
+    return () => {
+      observer.disconnect();
+      menuObserver.disconnect();
+      cancelAnimationFrame(frame);
+    };
   }, [compact, expandSearchOnFocus, hasCombinedControls, showCombined]);
 
   useLayoutEffect(() => {
