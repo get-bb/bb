@@ -929,18 +929,33 @@ describe("public terminal contracts", () => {
     ).toBe(false);
   });
 
-  it("requires output responses to signal truncation", () => {
+  it("requires output responses to signal truncation and terminal state", () => {
     expect(
       terminalOutputResponseSchema.safeParse({
         chunks: [],
         nextSeq: 12,
         truncated: false,
+        status: "exited",
+        exitCode: 1,
+        closeReason: "process-exit",
       }).success,
     ).toBe(true);
     expect(
       terminalOutputResponseSchema.safeParse({
         chunks: [],
         nextSeq: 12,
+        status: "running",
+        exitCode: null,
+        closeReason: null,
+      }).success,
+    ).toBe(false);
+    expect(
+      terminalOutputResponseSchema.safeParse({
+        chunks: [],
+        nextSeq: 12,
+        truncated: false,
+        exitCode: null,
+        closeReason: null,
       }).success,
     ).toBe(false);
   });
