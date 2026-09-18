@@ -997,6 +997,9 @@ function SectionModeSections({
   threads,
   threadsSection,
 }: SectionModeSectionsProps) {
+  const groupThreadsByEnvironment = useAtomValue(
+    sidebarGroupThreadsByEnvironmentAtom,
+  );
   const nonPinnedThreads = useMemo(
     () => threads.filter((thread) => !effectivePinnedThreadIds.has(thread.id)),
     [effectivePinnedThreadIds, threads],
@@ -1015,6 +1018,8 @@ function SectionModeSections({
       nonPinnedThreads,
       compareThreads,
       sections,
+      undefined,
+      groupThreadsByEnvironment,
     );
     const threadsBySection = new Map(
       groups.flatMap((item) =>
@@ -1037,7 +1042,7 @@ function SectionModeSections({
           ) ?? 0,
       )
       .map((section) => buildSidebarEntitySectionId("section", section.id));
-  }, [compareThreads, nonPinnedThreads, sections]);
+  }, [compareThreads, groupThreadsByEnvironment, nonPinnedThreads, sections]);
   const { onOrderChange, order } = useSidebarModeSectionOrder({
     mode: "chronological",
     entitySectionIds: threadSectionIds,
