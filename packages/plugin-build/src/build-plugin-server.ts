@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createPluginArtifactMeta } from "./plugin-artifact-meta.js";
-import { zodLocaleStubPlugin } from "./zod-locale-stub.js";
+import { zodLocaleStubPlugin } from "./zod-locale-stub.mjs";
 import { zodResolutionPlugin } from "./zod-resolution.js";
 import {
   isRecord,

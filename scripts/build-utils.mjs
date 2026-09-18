@@ -1,6 +1,7 @@
 import { chmod, cp, readdir, readFile, rename, rm } from "node:fs/promises";
 import path from "node:path";
 import { build } from "esbuild";
+import { zodLocaleStubPlugin } from "../packages/plugin-build/src/zod-locale-stub.mjs";
 
 const NODE_ESM_REQUIRE_BANNER = [
   'import { createRequire as __createRequire } from "node:module";',
@@ -204,6 +205,9 @@ export async function buildNodeEsmEntry({
     format: "esm",
     legalComments: "none",
     ...(split ? split.esbuild : { outfile }),
+    // Every Node entry here pays for zod's ~49 translated locale modules
+    // otherwise; see the plugin's own docs for why esbuild cannot shake them.
+    plugins: [zodLocaleStubPlugin()],
     platform: "node",
     sourcemap,
     target,

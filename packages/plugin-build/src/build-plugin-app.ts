@@ -38,7 +38,7 @@ import {
 import {
   ZOD_LOCALE_STUB_NAMESPACE,
   zodLocaleStubPlugin,
-} from "./zod-locale-stub.js";
+} from "./zod-locale-stub.mjs";
 
 export {
   RUNTIME_SLOT_BY_SPECIFIER,

@@ -47,9 +47,9 @@ it("names zod as the plugin's missing dependency when a host entry cannot resolv
   await writeFile(
     join(dir, "host.ts"),
     [
-      'import {',
-      '  experimental_defineHostEntry,',
-      '  experimental_nativeRootsHostContract,',
+      "import {",
+      "  experimental_defineHostEntry,",
+      "  experimental_nativeRootsHostContract,",
       '} from "@get-bb/plugin-sdk/host";',
       "export default experimental_defineHostEntry({",
       "  contract: experimental_nativeRootsHostContract,",
@@ -60,9 +60,11 @@ it("names zod as the plugin's missing dependency when a host entry cannot resolv
   );
   await installSdkWithoutZod(dir);
 
-  const built = buildPluginHost(dir, "0.0.0-test", await resolvePluginBuildToolchain(
-    join(process.cwd(), ".unused-toolchain"),
-  ));
+  const built = buildPluginHost(
+    dir,
+    "0.0.0-test",
+    await resolvePluginBuildToolchain(join(process.cwd(), ".unused-toolchain")),
+  );
 
   // esbuild's own text points at a file inside node_modules and recommends
   // marking zod external, which would emit a bundle the host worker cannot
