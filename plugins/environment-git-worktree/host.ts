@@ -9,7 +9,12 @@ import {
   resolveWorktreeAttemptRoot,
   resolveWorktreeTargetPath,
 } from "./host/paths.js";
-import { createWorktree, removeWorktree } from "./host/worktree.js";
+import {
+  createWorktree,
+  listAdoptableWorktrees,
+  removeWorktree,
+  resolveAdoptableWorktree,
+} from "./host/worktree.js";
 
 function completionPathForWorktree(worktreePath: string): string {
   return `${worktreePath}.completed`;
@@ -44,6 +49,27 @@ export function createWorktreeHostEntry() {
     contract: worktreeHostContract,
     experimental_signals: worktreeHostSignals,
     handlers: {
+      async listWorktrees(input, context) {
+        const worktrees = await listAdoptableWorktrees({
+          sourcePath: input.sourcePath,
+          managedRoot: resolveWorktreesRoot(context.experimental_paths.dataDir),
+        });
+        return {
+          worktrees: worktrees.map((entry) => ({
+            path: entry.path,
+            branch: entry.branch,
+            locked: entry.locked,
+            prunable: entry.prunable,
+          })),
+        };
+      },
+      async resolveExistingWorktree(input, context) {
+        return resolveAdoptableWorktree({
+          sourcePath: input.sourcePath,
+          path: input.path,
+          managedRoot: resolveWorktreesRoot(context.experimental_paths.dataDir),
+        });
+      },
       async create(input, context) {
         const targetPath = resolveWorktreeTargetPath({
           dataDir: context.experimental_paths.dataDir,

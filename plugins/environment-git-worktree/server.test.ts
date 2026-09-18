@@ -240,3 +240,124 @@ describe("worktree resource operations", () => {
     });
   });
 });
+
+describe("adopting an existing worktree", () => {
+  const EXISTING_PATH = "/code/bb-feature";
+
+  async function setupAdoption(
+    overrides: {
+      resolve?: unknown;
+      claim?: boolean;
+    } = {},
+  ) {
+    const fixture = await setup((call) => {
+      if (call.method === "resolveExistingWorktree") {
+        return (
+          overrides.resolve ?? {
+            status: "resolved",
+            path: EXISTING_PATH,
+            branch: "feature",
+          }
+        );
+      }
+      if (call.method === "remove") return { status: "removed" };
+      throw new Error(`unexpected host method ${call.method}`);
+    });
+    const claimed = vi.fn(async () => overrides.claim ?? true);
+    return {
+      ...fixture,
+      claimed,
+      context: {
+        ...fixture.context,
+        inputs: { kind: "existing" as const, path: EXISTING_PATH },
+        experimental_claimPath: claimed,
+      },
+    };
+  }
+
+  it("attaches the existing path without taking ownership of it", async () => {
+    const fixture = await setupAdoption();
+
+    expect(await fixture.provider.create(fixture.context)).toEqual({
+      status: "created",
+      path: EXISTING_PATH,
+      ownsPath: false,
+      resource: { adopted: true },
+    });
+    expect(fixture.claimed).toHaveBeenCalledWith(EXISTING_PATH);
+    expect(fixture.harness.experimental_hostRpcCalls).toHaveLength(1);
+    expect(fixture.harness.experimental_hostRpcCalls[0]?.method).toBe(
+      "resolveExistingWorktree",
+    );
+  });
+
+  it("refuses a path the host will not resolve", async () => {
+    const fixture = await setupAdoption({
+      resolve: { status: "failed", message: "not a worktree of this repo" },
+    });
+
+    expect(await fixture.provider.create(fixture.context)).toEqual({
+      status: "failed",
+      message: "not a worktree of this repo",
+    });
+    expect(fixture.claimed).not.toHaveBeenCalled();
+  });
+
+  it("refuses a path another environment already claimed", async () => {
+    const fixture = await setupAdoption({ claim: false });
+
+    const result = await fixture.provider.create(fixture.context);
+    expect(result.status).toBe("failed");
+    expect(result).toMatchObject({
+      message: expect.stringContaining("already in use"),
+    });
+  });
+
+  it("never asks the host to delete a directory it adopted", async () => {
+    const fixture = await setupAdoption();
+
+    expect(
+      await fixture.provider.remove({
+        environment: null,
+        hostId: HOST_ID,
+        path: EXISTING_PATH,
+        pathKey: THREAD_ID,
+        resource: { adopted: true },
+        attempt: 1,
+        report: fixture.report,
+        signal: fixture.signal,
+      }),
+    ).toEqual({ status: "removed" });
+    expect(fixture.harness.experimental_hostRpcCalls).toHaveLength(0);
+  });
+
+  it("still deletes a worktree it created", async () => {
+    const fixture = await setupAdoption();
+
+    await fixture.provider.remove({
+      environment: null,
+      hostId: HOST_ID,
+      path: WORKTREE_PATH,
+      pathKey: THREAD_ID,
+      resource: null,
+      attempt: 1,
+      report: fixture.report,
+      signal: fixture.signal,
+    });
+    expect(fixture.harness.experimental_hostRpcCalls[0]?.method).toBe("remove");
+  });
+
+  it("keeps parsing inputs persisted before adoption existed", () => {
+    expect(worktreeInputsSchema.parse({ branch: { kind: "default" } })).toEqual(
+      {
+        branch: { kind: "default" },
+      },
+    );
+    expect(
+      worktreeInputsSchema.parse({ branch: { kind: "named", name: "main" } }),
+    ).toEqual({ branch: { kind: "named", name: "main" } });
+    expect(
+      worktreeInputsSchema.parse({ kind: "existing", path: "/code/wt" }),
+    ).toEqual({ kind: "existing", path: "/code/wt" });
+  });
+});
