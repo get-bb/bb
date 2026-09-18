@@ -162,6 +162,7 @@ describe("PluginBrowseCategoryFilter", () => {
       expect(firstList.contains(document.activeElement)).toBe(true),
     );
     fireEvent.click(triggers[0] as HTMLButtonElement);
+    await waitFor(() => expect(document.activeElement).toBe(triggers[0]));
     fireEvent.click(triggers[1] as HTMLButtonElement);
     const secondList = screen.getByRole("listbox", {
       name: "Plugin categories",
