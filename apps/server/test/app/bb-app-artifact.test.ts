@@ -139,6 +139,34 @@ describe("bb-app artifact service (desktop packaging)", () => {
     ARTIFACT_LIFECYCLE_TIMEOUT_MS,
   );
 
+  it(
+    "packs with the bundled npm when the server has no npm on PATH",
+    async () => {
+      const test = await fixture("packaged");
+      const service = createBbAppArtifactService({
+        dataDir: join(test.root, "data"),
+        serverEntryUrl: pathToFileURL(test.serverEntry).href,
+      });
+
+      const originalPath = process.env.PATH;
+      process.env.PATH = "";
+      let artifact;
+      try {
+        artifact = await service.getArtifact();
+      } finally {
+        process.env.PATH = originalPath;
+      }
+
+      expect(artifact.size).toBeGreaterThan(0);
+      expect(
+        (await execFileAsync("tar", ["-tzf", artifact.path])).stdout.split(
+          "\n",
+        ),
+      ).toContain("package/host-daemon/dist/daemon-bundle.mjs");
+    },
+    ARTIFACT_LIFECYCLE_TIMEOUT_MS,
+  );
+
   it("rejects missing runtime files even when the README is absent", async () => {
     const test = await fixture("packaged");
     const runtimePath = join(
