@@ -375,7 +375,7 @@ function BrowserPreviewCard({
             frame={frame}
             status={status}
             title={title}
-            className="w-full max-w-md"
+            className="mx-auto w-full max-w-md"
           />
         </div>
       ) : null}

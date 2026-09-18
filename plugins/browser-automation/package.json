@@ -3,14 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Thread-owned DevBrowser desktop and local headless sessions.",
+  "description": "Let BB control the in-app browser and browsers on connected machines, with inline previews for headless sessions.",
   "engines": {
     "bb": ">=0.41",
     "bbPluginSdk": ">=0.4.48"
   },
   "bb": {
     "name": "Browser Automation",
-    "description": "Persistent browser scripts on desktop or enrolled hosts.",
+    "description": "Let BB control the in-app browser and browsers on connected machines, with inline previews for headless sessions.",
     "branding": {
       "icon": "Globe"
     },
