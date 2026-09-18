@@ -139,6 +139,7 @@ interface PluginInteractionWaiter {
   timer: ReturnType<typeof setTimeout>;
   removeAbortListener: () => void;
   describeSubmission: DescribePluginSubmission | null;
+  submitting: boolean;
 }
 
 const DESCRIBE_SUBMISSION_TIMEOUT_MS = 2_000;
@@ -581,6 +582,7 @@ export class PendingInteractionLifecycle {
         removeAbortListener: () =>
           args.signal?.removeEventListener("abort", abort),
         describeSubmission: args.describeSubmission,
+        submitting: false,
       });
       if (args.signal?.aborted) {
         abort();
@@ -656,6 +658,14 @@ export class PendingInteractionLifecycle {
       });
       throw buildResolveConflictError(interrupted);
     }
+    if (waiter.submitting) {
+      throw new ApiError(
+        409,
+        "invalid_request",
+        "Pending interaction is already being submitted",
+      );
+    }
+    waiter.submitting = true;
     const description = await runDescribeSubmission({
       describeSubmission: waiter.describeSubmission,
       value: args.value,

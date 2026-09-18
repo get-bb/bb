@@ -90,6 +90,25 @@ describe("PluginToolCallRegistry", () => {
     ).resolves.toBe("unsettled");
   });
 
+  it("delivers results separately when the round trip was already aborted", async () => {
+    const registry = createRegistry();
+    const onDetachedResult = vi.fn(async () => undefined);
+    void registry.run({
+      pluginId: "fixture",
+      threadId: "thread",
+      callId: "call",
+      toolName: "ask",
+      roundTrip: AbortSignal.abort(),
+      invoke: async () => textResponse("answer"),
+      onDetachedResult,
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(onDetachedResult).toHaveBeenCalledExactlyOnceWith(
+      textResponse("answer"),
+    );
+    expect(registry.size).toBe(0);
+  });
+
   it("answers the round trip with the still-running stub at the deadline and delivers later", async () => {
     const registry = createRegistry(500);
     const roundTrip = new AbortController();

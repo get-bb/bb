@@ -113,9 +113,9 @@ describe("generatedConversationTitle — system source", () => {
       },
     });
 
-    expect(title.plain).toBe("Ran a grill round result delivered");
+    expect(title.plain).toBe("grill_round result delivered");
     expect(title.segments).toHaveLength(2);
-    expect(title.segments[0]?.text).toBe("Ran a grill round");
+    expect(title.segments[0]?.text).toBe("grill_round");
     expect(title.segments[0]?.em).toBe(true);
     expect(title.segments[0]?.link).toBeUndefined();
     expect(title.segments[1]?.text).toBe("result delivered");

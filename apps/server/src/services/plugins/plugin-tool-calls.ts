@@ -14,13 +14,13 @@ import type { ServerLogger } from "../../types.js";
 export const PLUGIN_TOOL_CALL_DETACH_AFTER_MS = 4 * 60_000;
 
 export const PLUGIN_TOOL_CALL_DETACHED_RESULT_TEXT =
-  "This tool call is still running. Its result is not the result of this call: it arrives later as a separate message, either during this turn or as the next one. Do not call the tool again for the same purpose and do not guess its result. If nothing else can proceed without it, end your turn with one short line saying what you are waiting for.";
+  "This tool call is still running. This notice is not its result. A successful result will arrive as a separate message that names the tool, either later in this turn or at the start of a new one. Failures are reported only while a turn is active. Do not call the tool again for the same purpose and do not guess its result. If nothing else can proceed without it, end your turn with one short line saying what you are waiting for.";
 
 export const PLUGIN_TOOL_CALL_AWAITING_PERSON_RESULT_TEXT =
-  "This tool call is now waiting on the person: what it asked for is in front of them in the thread. Their answer is not the result of this call: it arrives later as a separate message, either during this turn or as the next one. Do not call the tool again, do not guess the answer, and do not start work that depends on it. End your turn now with one short line saying what you are waiting for.";
+  "The person now has this request in front of them in the thread. This notice is not their response. If they submit it successfully, the result will arrive as a separate message that names the tool, either later in this turn or at the start of a new one. Dismissals and failures are reported only while a turn is active. Do not call the tool again, do not guess the answer, and do not start work that depends on it. Continue any independent work. If you cannot proceed without the response, end your turn with one short line saying what you are waiting for.";
 
 export const PLUGIN_TOOL_CALL_LIFETIME_INSTRUCTIONS =
-  "Plugin tools can take longer than a turn. When a plugin tool call returns a notice that it is still running, or your turn ends before it returns, its result arrives later as a separate message that names the tool. Treat that message as the call's result and continue from it; do not repeat the call.";
+  "Some tools take longer than a turn. If a tool call returns a notice that it is still running or is waiting on the person, or your turn ends before it returns, a successful result arrives later as a separate message that names the tool. Treat that message as the call's result and continue from it; do not repeat the call. Failures, including dismissed or timed-out forms, are reported only while a turn is active; they do not start a new turn.";
 
 export interface RunPluginToolCallArgs {
   pluginId: string;
@@ -118,6 +118,7 @@ export class PluginToolCallRegistry {
       }, this.detachAfterMs);
       deadline.unref?.();
       args.roundTrip.addEventListener("abort", detach, { once: true });
+      if (args.roundTrip.aborted) detach();
 
       const settle = (response: ToolCallResponse) => {
         settled = true;

@@ -294,6 +294,62 @@ describe("pending interaction lifecycle", () => {
     });
   });
 
+  it("rejects a concurrent submission before describing it", async () => {
+    await withTestHarness(async (harness) => {
+      const thread = seedPluginInteractionThread(
+        harness.deps,
+        "concurrent-submit",
+      );
+      let finishDescription!: (value: { title: string }) => void;
+      const describeSubmission = vi.fn(
+        () =>
+          new Promise<{ title: string }>((resolve) => {
+            finishDescription = resolve;
+          }),
+      );
+      const pending = harness.deps.pendingInteractions.requestPluginInteraction(
+        {
+          pluginId: "secrets",
+          threadId: thread.id,
+          rendererId: "secret-request",
+          title: "Add secrets",
+          payload: {},
+          presentation: {
+            label: { pending: "Adding secrets", completed: "Added secrets" },
+            icon: { glyph: "Lock" },
+          },
+          describeSubmission,
+          timeoutMs: 10_000,
+        },
+      );
+      const [interaction] =
+        harness.deps.pendingInteractions.listPendingThreadInteractions(
+          thread.id,
+        );
+      const args = {
+        threadId: thread.id,
+        interactionId: interaction!.id,
+        value: "first",
+      };
+      const first =
+        harness.deps.pendingInteractions.respondToPluginInteraction(args);
+      const second =
+        harness.deps.pendingInteractions.respondToPluginInteraction({
+          ...args,
+          value: "second",
+        });
+      const rejection = expect(second).rejects.toMatchObject({ status: 409 });
+      finishDescription({ title: "Added secrets" });
+      await rejection;
+      await expect(first).resolves.toMatchObject({ status: "resolved" });
+      await expect(pending).resolves.toEqual({
+        outcome: "submitted",
+        value: "first",
+      });
+      expect(describeSubmission).toHaveBeenCalledExactlyOnceWith("first");
+    });
+  });
+
   it("keeps the completed label when describe throws", async () => {
     await withTestHarness(async (harness) => {
       const thread = seedPluginInteractionThread(
