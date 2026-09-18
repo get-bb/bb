@@ -248,7 +248,7 @@ function ToolbarHarness({
   );
 }
 
-function mockToolbarWidth(initial: number) {
+function mockToolbarWidth(initial: number, publishedWidth = 96) {
   let width = initial;
   const callbacks = new Set<() => void>();
   const original = HTMLElement.prototype.getBoundingClientRect;
@@ -260,7 +260,12 @@ function mockToolbarWidth(initial: number) {
         return new DOMRect(
           0,
           0,
-          this.querySelectorAll("button").length * 96,
+          [...this.querySelectorAll("button")].reduce(
+            (total, button) =>
+              total +
+              (button.textContent === "Published" ? publishedWidth : 96),
+            0,
+          ),
           32,
         );
       if (this.hasAttribute("data-resource-combined-controls"))
@@ -302,6 +307,31 @@ function mockToolbarWidth(initial: number) {
 }
 
 describe("PluginCollectionToolbar", () => {
+  it("keeps an open sort menu stable when its selected label grows, then combines after dismissal", async () => {
+    const resize = mockToolbarWidth(370, 128);
+    render(<ToolbarHarness />);
+    fireEvent.keyDown(screen.getByRole("button", { name: /^Sort:/u }), {
+      key: "Enter",
+    });
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Published" }));
+    resize(370);
+    expect(
+      screen.getByRole("menuitemradio", { name: "Published" }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Filter & sort" })).toBeNull();
+    fireEvent.keyDown(document.activeElement ?? document.body, {
+      key: "Escape",
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Filter & sort" }),
+      ).toBeTruthy(),
+    );
+    expect(screen.getByLabelText("Parameters").textContent).toContain(
+      "sort=recently-added&direction=desc",
+    );
+  });
+
   it.each([
     { label: "Name", value: "name", direction: "asc" },
     { label: "Published", value: "recently-added", direction: "desc" },
