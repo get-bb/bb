@@ -13,6 +13,22 @@ import { dispatchEnvironmentAndHost } from "./dispatch-hooks.js";
 type QueueDrainFailureDeps = Pick<AppDeps, "db" | "hub">;
 
 /**
+ * How long a failed row waits before each further automatic attempt.
+ *
+ * A dispatch fails against the server as it is in that instant, and the
+ * instant that breaks one is usually a restart: providers register over the
+ * course of plugin startup, and a boot slow enough to rebuild a bundle can
+ * leave them missing for a minute or two. The first two steps sit inside that
+ * window, the rest reach past anything a boot explains. Running off the end is
+ * what makes a failure terminal — five attempts across roughly an hour is long
+ * enough that what is still failing is not a passing condition, and the thread
+ * list has been showing the row as failed the whole time.
+ */
+export const QUEUED_MESSAGE_RETRY_DELAYS_MS: readonly number[] = [
+  15_000, 60_000, 300_000, 900_000, 1_800_000,
+];
+
+/**
  * What a failed dispatch says to the person whose message did not go.
  *
  * `ApiError` messages are already written for a caller, so they pass through.
@@ -39,7 +55,10 @@ export function describeDispatchFailure(error: unknown): string {
  * host-reconnect drain clears when the machine comes back. Any other failure
  * is recorded as the row's failure reason, leaving its existing wait alone —
  * the row is still waiting on whatever it was waiting on, and what went wrong
- * last time is a different fact from what it is waiting for.
+ * last time is a different fact from what it is waiting for — and spends one
+ * of the row's attempts, booking the next on
+ * {@link QUEUED_MESSAGE_RETRY_DELAYS_MS}. The row gives up only once that
+ * budget runs out.
  *
  * Only the drain calls this. An inline attempt has a caller still listening
  * and surfaces its error to them instead, which is why a queued row never
@@ -49,6 +68,7 @@ export function recordQueuedMessageDrainFailure(
   deps: QueueDrainFailureDeps,
   args: {
     error: unknown;
+    now: number;
     row: { id: string; threadId: string };
     thread: Thread;
   },
@@ -71,5 +91,7 @@ export function recordQueuedMessageDrainFailure(
     id: args.row.id,
     threadId: args.row.threadId,
     failureReason: describeDispatchFailure(args.error),
+    now: args.now,
+    retryDelaysMs: QUEUED_MESSAGE_RETRY_DELAYS_MS,
   });
 }

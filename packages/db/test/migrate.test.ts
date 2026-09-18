@@ -780,7 +780,20 @@ function rewindEnvironmentProvisioningMigration(db: DbConnection): void {
     );
 }
 
+function dropQueuedMessageAttemptColumns(db: DbConnection): void {
+  const columns = db.$client
+    .prepare<[], TableInfoRow>("PRAGMA table_info(queued_thread_messages)")
+    .all();
+  for (const name of ["failure_count", "next_attempt_at"]) {
+    if (!columns.some((column) => column.name === name)) continue;
+    db.$client
+      .prepare(`ALTER TABLE queued_thread_messages DROP COLUMN ${name}`)
+      .run();
+  }
+}
+
 function dropQueueReworkSchema(db: DbConnection): void {
+  dropQueuedMessageAttemptColumns(db);
   rewindEnvironmentProvisioningMigration(db);
   // Indexes first: SQLite refuses to drop a column an existing index names.
   for (const index of [
@@ -5708,6 +5721,7 @@ describe("environment providers migration", () => {
     db.$client.prepare("DROP TABLE retained_event_outputs").run();
     rewindEnvironmentRowFactsMigration(db);
     rewindEnvironmentProvidersMigration(db);
+    dropQueuedMessageAttemptColumns(db);
     db.$client
       .prepare<[number]>(
         "DELETE FROM __drizzle_migrations WHERE created_at >= ?",
@@ -6121,6 +6135,7 @@ describe("environment and thread startup ownership migration", () => {
       try {
         rewindMachineProvidersMigration(db);
         rewindEnvironmentProvisioningMigration(db);
+        dropQueuedMessageAttemptColumns(db);
         const legacySchema = readFileSync(
           resolve(
             dirname(fileURLToPath(import.meta.url)),
