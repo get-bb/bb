@@ -280,8 +280,13 @@ export function SecondaryPanelTabStrip({
     if (!activeTabElement) {
       return;
     }
-    activeTabElement.scrollIntoView({ inline: "nearest", block: "nearest" });
-    applyEdgeFlags();
+    const reveal = () => {
+      activeTabElement.scrollIntoView({ inline: "nearest", block: "nearest" });
+      applyEdgeFlags();
+    };
+    reveal();
+    const frame = window.requestAnimationFrame(reveal);
+    return () => window.cancelAnimationFrame(frame);
   }, [activeTabId, overflow.hasOverflow, applyEdgeFlags]);
 
   useLayoutEffect(() => {

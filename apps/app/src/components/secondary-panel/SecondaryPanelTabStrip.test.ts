@@ -49,7 +49,14 @@ describe("secondary panel tab strip", () => {
     ).not.toContain("app-region");
   });
 
-  it("reveals Info when switching back from a document tab", () => {
+  it("reveals selection again after overflow controls take their space", () => {
+    let nextFrame: FrameRequestCallback | undefined;
+    const requestFrame = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((callback) => {
+        nextFrame = callback;
+        return 1;
+      });
     vi.stubGlobal(
       "ResizeObserver",
       class {
@@ -79,11 +86,16 @@ describe("secondary panel tab strip", () => {
       const view = render(fixture("tab-0"));
       reveal.mockClear();
       view.rerender(fixture("info"));
-      expect(reveal.mock.instances.at(-1)).toBe(
-        screen.getByRole("button", { name: "Info" }).parentElement,
-      );
+      const selected = screen.getByRole("button", {
+        name: "Info",
+      }).parentElement;
+      expect(reveal.mock.instances.at(-1)).toBe(selected);
+      reveal.mockClear();
+      act(() => nextFrame?.(0));
+      expect(reveal.mock.instances).toEqual([selected]);
     } finally {
       reveal.mockRestore();
+      requestFrame.mockRestore();
     }
   });
 
