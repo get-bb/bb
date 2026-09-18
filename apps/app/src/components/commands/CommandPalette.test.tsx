@@ -1156,7 +1156,7 @@ describe("CommandPalette", () => {
     expect(more.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
     for (let index = 0; index < 3; index++)
       fireEvent.keyDown(input, { key: "ArrowDown" });
-    expectClasses(more, "bg-state-hover", "text-foreground");
+    expectClasses(more.parentElement, "bg-state-hover", "text-foreground");
     expect(input.getAttribute("aria-activedescendant")).toBe(more.id);
     fireEvent.keyDown(input, { key: "Enter" });
     expect(within(activeGroup).getAllByRole("option")).toHaveLength(8);

@@ -1,4 +1,6 @@
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useId,
@@ -52,8 +54,13 @@ import {
 } from "@/components/settings/plugin-settings-entries";
 import { useSettingsNavSections } from "@/components/settings/settings-nav";
 import { appQueryClient } from "@/lib/app-query-client";
-import { ThreadSearchPaletteMode } from "./ThreadSearchPaletteMode";
 import { PALETTE_SECTION_LABEL_CLASS, PaletteShell } from "./PaletteShell";
+
+const ThreadSearchPaletteMode = lazy(() =>
+  import("./ThreadSearchPaletteMode").then((module) => ({
+    default: module.ThreadSearchPaletteMode,
+  })),
+);
 
 const PALETTE_INPUT_LABEL = "Search commands";
 const PALETTE_INPUT_DESCRIPTION = "Use Escape to close the command palette.";
@@ -421,10 +428,7 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
                     aria-labelledby={labelId}
                     data-palette-bucket={group.bucket}
                   >
-                    <div
-                      id={labelId}
-                      className={PALETTE_SECTION_LABEL_CLASS}
-                    >
+                    <div id={labelId} className={PALETTE_SECTION_LABEL_CLASS}>
                       {group.bucket}
                     </div>
                     {group.entries.map((entry, index) => {
@@ -435,7 +439,9 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
                           entry={entry}
                           id={`${optionIdPrefix}-${visibleIndex}`}
                           isActive={visibleIndex === activeIndex}
-                          isDrillIn={entry.action.id === THREAD_SEARCH_ACTION_ID}
+                          isDrillIn={
+                            entry.action.id === THREAD_SEARCH_ACTION_ID
+                          }
                           showShortcut={!isCompactViewport}
                           onActivate={() => {
                             setHighlightedIndex(visibleIndex);
@@ -465,10 +471,21 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
             )}
           </PaletteShell>
         ) : (
-          <ThreadSearchPaletteMode
-            onExit={exitMode}
-            runAfterClose={runAfterClose}
-          />
+          <Suspense
+            fallback={
+              <p
+                role="status"
+                className="px-3 py-4 text-sm text-muted-foreground"
+              >
+                Loading threads
+              </p>
+            }
+          >
+            <ThreadSearchPaletteMode
+              onExit={exitMode}
+              runAfterClose={runAfterClose}
+            />
+          </Suspense>
         )}
       </DialogContent>
     </Dialog>
