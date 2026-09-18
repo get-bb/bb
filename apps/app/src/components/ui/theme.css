@@ -895,7 +895,7 @@
     touch-action: manipulation;
   }
 
-  .lucide {
+  .bb-icon-stroke {
     stroke-width: var(--icon-stroke-width);
   }
 }

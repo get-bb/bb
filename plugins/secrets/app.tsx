@@ -6,11 +6,9 @@ import {
 import { Button } from "@bb/shared-ui/button";
 import { Input } from "@bb/shared-ui/input";
 import { Label } from "@bb/shared-ui/label";
-import {
-  DashedLineCircleIcon,
-  ViewIcon,
-  ViewOffSlashIcon,
-} from "@hugeicons/core-free-icons";
+import DashedLineCircleIcon from "@hugeicons/core-free-icons/DashedLineCircleIcon";
+import ViewIcon from "@hugeicons/core-free-icons/ViewIcon";
+import ViewOffSlashIcon from "@hugeicons/core-free-icons/ViewOffSlashIcon";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   SECRET_REQUEST_RENDERER_ID,

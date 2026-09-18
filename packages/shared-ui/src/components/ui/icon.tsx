@@ -6,55 +6,53 @@ import {
   type ReactNode,
 } from "react";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
-import {
-  Alert02Icon,
-  AlertCircleIcon,
-  Archive03Icon,
-  ArrowDown01Icon,
-  ArrowLeft01Icon,
-  ArrowRight01Icon,
-  BotIcon,
-  BubbleChatAddIcon,
-  BubbleChatIcon,
-  Bug01Icon,
-  Cancel01Icon,
-  CancelCircleIcon,
-  CheckListIcon,
-  CheckmarkCircle02Icon,
-  CircleIcon,
-  ComputerTerminal01Icon,
-  Copy01Icon,
-  DashedLineCircleIcon,
-  Delete02Icon,
-  Download01Icon,
-  Edit02Icon,
-  FilterHorizontalIcon,
-  FolderAddIcon,
-  FolderExportIcon,
-  FolderGitTwoIcon,
-  Folder02Icon,
-  FolderIcon,
-  FolderSyncIcon,
-  FolderUnknownIcon,
-  HelpCircleIcon,
-  InformationCircleIcon,
-  Loading03Icon,
-  MessageQuestionIcon,
-  MoreHorizontalIcon,
-  Search01Icon,
-  Settings01Icon,
-  SidebarLeftIcon,
-  SlidersHorizontalIcon,
-  SourceCodeIcon,
-  Target02Icon,
-  Tick02Icon,
-  ToolboxIcon,
-  ToolCaseIcon,
-  UserAdd01Icon,
-  UnavailableIcon,
-  WorkflowCircle03Icon,
-  ZapIcon,
-} from "@hugeicons/core-free-icons";
+import Alert02Icon from "@hugeicons/core-free-icons/Alert02Icon";
+import AlertCircleIcon from "@hugeicons/core-free-icons/AlertCircleIcon";
+import Archive03Icon from "@hugeicons/core-free-icons/Archive03Icon";
+import ArrowDown01Icon from "@hugeicons/core-free-icons/ArrowDown01Icon";
+import ArrowLeft01Icon from "@hugeicons/core-free-icons/ArrowLeft01Icon";
+import ArrowRight01Icon from "@hugeicons/core-free-icons/ArrowRight01Icon";
+import BotIcon from "@hugeicons/core-free-icons/BotIcon";
+import BubbleChatAddIcon from "@hugeicons/core-free-icons/BubbleChatAddIcon";
+import BubbleChatIcon from "@hugeicons/core-free-icons/BubbleChatIcon";
+import Bug01Icon from "@hugeicons/core-free-icons/Bug01Icon";
+import Cancel01Icon from "@hugeicons/core-free-icons/Cancel01Icon";
+import CancelCircleIcon from "@hugeicons/core-free-icons/CancelCircleIcon";
+import CheckListIcon from "@hugeicons/core-free-icons/CheckListIcon";
+import CheckmarkCircle02Icon from "@hugeicons/core-free-icons/CheckmarkCircle02Icon";
+import CircleIcon from "@hugeicons/core-free-icons/CircleIcon";
+import ComputerTerminal01Icon from "@hugeicons/core-free-icons/ComputerTerminal01Icon";
+import Copy01Icon from "@hugeicons/core-free-icons/Copy01Icon";
+import DashedLineCircleIcon from "@hugeicons/core-free-icons/DashedLineCircleIcon";
+import Delete02Icon from "@hugeicons/core-free-icons/Delete02Icon";
+import Download01Icon from "@hugeicons/core-free-icons/Download01Icon";
+import Edit02Icon from "@hugeicons/core-free-icons/Edit02Icon";
+import FilterHorizontalIcon from "@hugeicons/core-free-icons/FilterHorizontalIcon";
+import FolderAddIcon from "@hugeicons/core-free-icons/FolderAddIcon";
+import FolderExportIcon from "@hugeicons/core-free-icons/FolderExportIcon";
+import FolderGitTwoIcon from "@hugeicons/core-free-icons/FolderGit2Icon";
+import Folder02Icon from "@hugeicons/core-free-icons/Folder02Icon";
+import FolderIcon from "@hugeicons/core-free-icons/Folder01Icon";
+import FolderSyncIcon from "@hugeicons/core-free-icons/FolderSyncIcon";
+import FolderUnknownIcon from "@hugeicons/core-free-icons/FolderUnknownIcon";
+import HelpCircleIcon from "@hugeicons/core-free-icons/HelpCircleIcon";
+import InformationCircleIcon from "@hugeicons/core-free-icons/InformationCircleIcon";
+import Loading03Icon from "@hugeicons/core-free-icons/Loading03Icon";
+import MessageQuestionIcon from "@hugeicons/core-free-icons/MessageQuestionIcon";
+import MoreHorizontalIcon from "@hugeicons/core-free-icons/MoreHorizontalIcon";
+import Search01Icon from "@hugeicons/core-free-icons/Search01Icon";
+import Settings01Icon from "@hugeicons/core-free-icons/Settings01Icon";
+import SidebarLeftIcon from "@hugeicons/core-free-icons/SidebarLeftIcon";
+import SlidersHorizontalIcon from "@hugeicons/core-free-icons/SlidersHorizontalIcon";
+import SourceCodeIcon from "@hugeicons/core-free-icons/SourceCodeIcon";
+import Target02Icon from "@hugeicons/core-free-icons/Target02Icon";
+import Tick02Icon from "@hugeicons/core-free-icons/Tick02Icon";
+import ToolboxIcon from "@hugeicons/core-free-icons/ToolboxIcon";
+import ToolCaseIcon from "@hugeicons/core-free-icons/ToolCaseIcon";
+import UserAdd01Icon from "@hugeicons/core-free-icons/UserAdd01Icon";
+import UnavailableIcon from "@hugeicons/core-free-icons/UnavailableIcon";
+import WorkflowCircle03Icon from "@hugeicons/core-free-icons/WorkflowCircle03Icon";
+import ZapIcon from "@hugeicons/core-free-icons/ZapIcon";
 import { useSyncExternalStore } from "react";
 import { cn } from "../../lib/utils";
 import {
