@@ -18,6 +18,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { Button } from "@bb/shared-ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@bb/shared-ui/popover";
 import { Checkbox } from "@bb/shared-ui/checkbox";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import {
@@ -92,8 +93,11 @@ import {
 } from "./pluginNavSidebarOrder";
 import { haveSameOrder, reorderStoredOrder } from "@/lib/stored-order";
 import { openPluginDetailsInWorkspace } from "./plugin-detail-opener";
+import type { PaneContent } from "@/lib/split-layout";
 
 const MORE_TRIGGER_TEST_ID = "sidebar-navigation-more-trigger";
+const OVERFLOW_ROW_BUTTON_CLASS =
+  "w-full justify-start gap-2 rounded-sm px-2 text-xs font-normal hover:bg-state-hover focus-visible:bg-state-hover";
 
 export interface SidebarNavActivationModifiers {
   metaKey: boolean;
@@ -126,6 +130,7 @@ export interface BuiltInSidebarNavEntry {
   icon: ReactNode;
   content: ReactNode;
   disabled?: boolean;
+  splitContent?: PaneContent;
   onActivate: (event: SidebarNavActivationModifiers) => void;
 }
 
@@ -494,6 +499,8 @@ function PluginNavSidebarItemList({
           hiddenRows={hidden}
           onActivate={handleActivate}
           onCustomize={openCustomize}
+          onAddToSidebar={(key) => setPanelVisible(key, true)}
+          splitEnabled={splitEnabled}
         />
       ) : null}
     </div>
@@ -504,6 +511,8 @@ function SidebarNavigationMoreRow({
   hiddenRows,
   onActivate,
   onCustomize,
+  onAddToSidebar,
+  splitEnabled,
 }: {
   hiddenRows: readonly SidebarNavRow[];
   onActivate: (
@@ -511,88 +520,227 @@ function SidebarNavigationMoreRow({
     event: SidebarNavActivationModifiers,
   ) => void;
   onCustomize: () => void;
+  onAddToSidebar: (key: string) => void;
+  splitEnabled: boolean;
 }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const modifiersRef = useRef<SidebarNavActivationModifiers>({
-    metaKey: false,
-    ctrlKey: false,
-  });
 
   return (
-    <ContextMenu>
-      <ContextMenuTrigger asChild>
-        <div data-testid="sidebar-navigation-more-row">
-          <DropdownMenu open={isMenuOpen} onOpenChange={setIsMenuOpen}>
-            <DropdownMenuTrigger asChild>
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                aria-label="More sidebar navigation"
-                className={cn(
-                  PROJECT_LIST_ACTION_BUTTON_CLASS,
-                  "w-full text-muted-foreground hover:text-sidebar-foreground focus-visible:text-sidebar-foreground data-[state=open]:text-sidebar-foreground",
-                  isMenuOpen && "bg-sidebar-accent",
-                )}
-                data-testid={MORE_TRIGGER_TEST_ID}
-              >
-                <Icon name="MoreHorizontal" aria-hidden="true" />
-                <span className="min-w-0 truncate text-left">More</span>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              side="right"
-              align="start"
-              sideOffset={8}
-              mobileTitle="More"
-            >
-              {hiddenRows.map((row) => (
-                <DropdownMenuItem
-                  key={getPluginNavPanelKey(row)}
-                  disabled={!isPluginSidebarNavRow(row) && row.disabled}
-                  data-sidebar-navigation-more-item={getPluginNavPanelKey(row)}
-                  onClick={(event) => {
-                    modifiersRef.current = {
-                      metaKey: event.metaKey,
-                      ctrlKey: event.ctrlKey,
-                    };
-                  }}
-                  onSelect={() => {
-                    const modifiers = modifiersRef.current;
-                    modifiersRef.current = { metaKey: false, ctrlKey: false };
-                    onActivate(row, modifiers);
-                  }}
+    <div data-testid="sidebar-navigation-more-row">
+      <Popover open={isMenuOpen} onOpenChange={setIsMenuOpen}>
+        <ContextMenu>
+          <ContextMenuTrigger asChild>
+            <div>
+              <PopoverTrigger asChild>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  aria-label="More sidebar navigation"
+                  className={cn(
+                    PROJECT_LIST_ACTION_BUTTON_CLASS,
+                    "w-full text-muted-foreground hover:text-sidebar-foreground focus-visible:text-sidebar-foreground data-[state=open]:text-sidebar-foreground",
+                    isMenuOpen && "bg-sidebar-accent",
+                  )}
+                  data-testid={MORE_TRIGGER_TEST_ID}
                 >
-                  <span className="flex size-4 shrink-0 items-center justify-center">
-                    {isPluginSidebarNavRow(row) ? (
-                      <PluginIcon
-                        pluginId={row.chrome.pluginId}
-                        icon={row.chrome.icon}
-                      />
-                    ) : (
-                      row.icon
-                    )}
-                  </span>
-                  <span className="min-w-0 flex-1 truncate">{row.title}</span>
-                </DropdownMenuItem>
-              ))}
-              <DropdownMenuSeparator />
+                  <Icon name="MoreHorizontal" aria-hidden="true" />
+                  <span className="min-w-0 truncate text-left">More</span>
+                </Button>
+              </PopoverTrigger>
+            </div>
+          </ContextMenuTrigger>
+          <ContextMenuContent aria-label="More sidebar navigation options">
+            <ContextMenuItem onSelect={onCustomize}>
+              <CustomizeMenuItemContent />
+            </ContextMenuItem>
+          </ContextMenuContent>
+        </ContextMenu>
+        <PopoverContent
+          side="right"
+          align="start"
+          sideOffset={8}
+          mobileTitle="More"
+          aria-label="More sidebar navigation"
+          className="w-56 p-1"
+        >
+          <div role="list" aria-label="More navigation">
+            {hiddenRows.map((row) => (
+              <SidebarNavigationOverflowItem
+                key={getPluginNavPanelKey(row)}
+                row={row}
+                onActivate={onActivate}
+                onAddToSidebar={onAddToSidebar}
+                onClose={() => setIsMenuOpen(false)}
+                splitEnabled={splitEnabled}
+              />
+            ))}
+          </div>
+          <div role="separator" className="-mx-1 my-1 h-px bg-border" />
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className={cn(
+              OVERFLOW_ROW_BUTTON_CLASS,
+              COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
+            )}
+            data-testid="sidebar-navigation-customize-trigger"
+            onClick={() => {
+              setIsMenuOpen(false);
+              onCustomize();
+            }}
+          >
+            <CustomizeMenuItemContent />
+          </Button>
+        </PopoverContent>
+      </Popover>
+    </div>
+  );
+}
+
+function SidebarNavigationOverflowItem({
+  row,
+  onActivate,
+  onAddToSidebar,
+  onClose,
+  splitEnabled,
+}: {
+  row: SidebarNavRow;
+  onActivate: (
+    row: SidebarNavRow,
+    event: SidebarNavActivationModifiers,
+  ) => void;
+  onAddToSidebar: (key: string) => void;
+  onClose: () => void;
+  splitEnabled: boolean;
+}) {
+  const splitActions = usePaneContentSplitActions();
+  const [isActionsOpen, setIsActionsOpen] = useState(false);
+  const content: PaneContent | undefined = isPluginSidebarNavRow(row)
+    ? {
+        kind: "plugin-panel",
+        pluginId: row.chrome.pluginId,
+        panelPath: row.chrome.path,
+        subPath: "",
+      }
+    : row.splitContent;
+  const disabled = !isPluginSidebarNavRow(row) && row.disabled;
+  const canSplit =
+    splitEnabled &&
+    !splitActions.isCompact &&
+    content !== undefined &&
+    !disabled;
+
+  return (
+    <div
+      role="listitem"
+      className={cn(SIDEBAR_HOVER_ACTIONS_ROW_CLASS, "relative")}
+    >
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className={cn(
+          OVERFLOW_ROW_BUTTON_CLASS,
+          COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
+          "pr-9 max-md:pointer-coarse:pr-11",
+        )}
+        disabled={disabled}
+        data-sidebar-navigation-more-item={getPluginNavPanelKey(row)}
+        onPointerDown={(event) => {
+          if (!canSplit || !content) return;
+          splitActions.beginDrag(event, {
+            content,
+            enabled: splitEnabled,
+            label: row.title,
+            onDragStart: onClose,
+            dragActivation: "distance",
+          });
+        }}
+        onClick={(event) => {
+          onClose();
+          onActivate(row, { metaKey: event.metaKey, ctrlKey: event.ctrlKey });
+        }}
+      >
+        <span className="flex size-4 shrink-0 items-center justify-center">
+          {isPluginSidebarNavRow(row) ? (
+            <PluginIcon pluginId={row.chrome.pluginId} icon={row.chrome.icon} />
+          ) : (
+            row.icon
+          )}
+        </span>
+        <span className="min-w-0 flex-1 truncate text-left">{row.title}</span>
+      </Button>
+      <div
+        data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
+        data-sidebar-hover-actions-mobile={
+          SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE
+        }
+        className={cn(
+          SIDEBAR_HOVER_ACTIONS_CLASS,
+          "absolute inset-y-0 right-0 flex items-center pointer-coarse:opacity-100 pointer-coarse:pointer-events-auto",
+        )}
+      >
+        <DropdownMenu
+          modal={false}
+          open={isActionsOpen}
+          onOpenChange={setIsActionsOpen}
+        >
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label={`${row.title} options`}
+              className={cn(
+                COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+                "rounded-sm p-0 hover:bg-state-hover",
+              )}
+            >
+              <Icon
+                name="MoreHorizontal"
+                className={COARSE_POINTER_ICON_SIZE_CLASS}
+              />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            side="right"
+            align="start"
+            aria-label={`${row.title} options`}
+          >
+            {!splitActions.isCompact ? (
               <DropdownMenuItem
-                data-testid="sidebar-navigation-customize-trigger"
-                onSelect={onCustomize}
+                className="cursor-pointer"
+                disabled={!canSplit}
+                onSelect={() => {
+                  if (!content) return;
+                  onClose();
+                  splitActions.openInSplit({
+                    content,
+                    enabled: splitEnabled,
+                    label: row.title,
+                  });
+                }}
               >
-                <CustomizeMenuItemContent />
+                <Icon name="Columns2" aria-hidden="true" />
+                Open in split
               </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </ContextMenuTrigger>
-      <ContextMenuContent aria-label="More sidebar navigation options">
-        <ContextMenuItem onSelect={onCustomize}>
-          <CustomizeMenuItemContent />
-        </ContextMenuItem>
-      </ContextMenuContent>
-    </ContextMenu>
+            ) : null}
+            <DropdownMenuItem
+              className="cursor-pointer"
+              onSelect={() => {
+                onClose();
+                onAddToSidebar(getPluginNavPanelKey(row));
+              }}
+            >
+              <Icon name="Eye" aria-hidden="true" />
+              Add to sidebar
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </div>
   );
 }
 

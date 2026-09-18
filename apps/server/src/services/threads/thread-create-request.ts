@@ -1,6 +1,8 @@
 import type {
   JsonObject,
   PromptInput,
+  StartedOnBehalfOf,
+  ThreadCreateOrigin,
   ThreadOriginKind,
   ThreadVisibility,
 } from "@bb/domain";
@@ -9,8 +11,6 @@ import type {
   CreateThreadRequest,
   EnvironmentArgs,
   ProviderEnvironmentArgs,
-  StartedOnBehalfOf,
-  ThreadCreateOrigin,
 } from "@bb/server-contract";
 
 export interface ThreadCreateServiceRequestInput {

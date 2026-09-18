@@ -36,6 +36,8 @@ import { createInterface } from "node:readline";
 let threadCounter = 0;
 let turnCounter = 0;
 const openTurnIdsByThreadId = new Map();
+const pendingStartTurnIdsByThreadId = new Map();
+let interruptAttempts = 0;
 const processInstanceId = `${process.pid}-${Date.now()}-${Math.random()}`;
 
 function send(message) {
@@ -57,15 +59,24 @@ function respondError(id, code, message) {
 /** The prompt the kit's turn/settles-without-activity scenario sends. */
 const ZERO_WORK_PROMPT_TEXT = "/clear";
 
-/**
- * A prompt answered BEFORE any turn notification, whose real turn then arrives
- * late. Codex normally emits `turn/started` ahead of its `turn/start`
- * response; this inverts that order so the bridge's zero-work settlement has
- * to lose the race to the real turn (fabricating a turn from a late signal is
- * the ACP bug 0c2f4cc9a).
- */
+const COMPACTION_TURN_DELAY_MS = Number(
+  process.env.FAKE_CODEX_COMPACTION_TURN_DELAY_MS ?? "20",
+);
+const COMPACTION_MODE = process.env.FAKE_CODEX_COMPACTION_MODE ?? "turn";
+
 const LATE_TURN_START_PROMPT_TEXT = "/late-start";
-const LATE_TURN_START_DELAY_MS = 60;
+
+const LATE_START_INTERRUPTIBLE_PROMPT_TEXT = "/late-start-interruptible";
+const lateStartTurnIdsByThreadId = new Map();
+const LATE_TURN_START_DELAY_MS = 350;
+
+const RESPOND_THEN_EXIT_PROMPT_TEXT = "/respond-then-exit";
+
+const RESPOND_COMPLETED_PROMPT_TEXT = "/respond-completed";
+
+const STEER_INTO_ACTIVE_PROMPT_TEXT = "/steer-into-active";
+
+const INTERRUPT_BEFORE_START_PROMPT_TEXT = "/interrupt-before-start";
 
 /** A prompt that stays open until the client sends turn/interrupt. */
 const INTERRUPTIBLE_PROMPT_TEXT = "/wait-for-interrupt";
@@ -101,9 +112,57 @@ const FIXED_TOKEN_USAGE = {
   modelContextWindow: 258400,
 };
 
-function runScriptedTurn(threadId) {
+function runCompaction(threadId) {
+  if (COMPACTION_MODE === "exit-before-turn") {
+    setTimeout(() => process.exit(1), 20);
+    return;
+  }
+  setTimeout(() => {
+    if (
+      COMPACTION_MODE === "idle-without-turn" ||
+      COMPACTION_MODE === "error-without-turn"
+    ) {
+      notify("thread/status/changed", {
+        threadId,
+        status: {
+          type:
+            COMPACTION_MODE === "error-without-turn" ? "systemError" : "idle",
+        },
+      });
+      return;
+    }
+    turnCounter += 1;
+    const turnId = `turn-fx-${turnCounter}`;
+    const itemId = `compaction-fx-${turnCounter}`;
+    notify("thread/status/changed", {
+      threadId,
+      status: { type: "active", activeFlags: [] },
+    });
+    notify("turn/started", {
+      threadId,
+      turn: { id: turnId, status: "inProgress" },
+    });
+    notify("item/started", {
+      threadId,
+      turnId,
+      item: { type: "contextCompaction", id: itemId },
+    });
+    notify("item/completed", {
+      threadId,
+      turnId,
+      item: { type: "contextCompaction", id: itemId },
+    });
+    notify("thread/status/changed", { threadId, status: { type: "idle" } });
+    notify("turn/completed", {
+      threadId,
+      turn: { id: turnId, status: "completed" },
+    });
+  }, COMPACTION_TURN_DELAY_MS);
+}
+
+function runScriptedTurn(threadId, presetTurnId) {
   turnCounter += 1;
-  const turnId = `turn-fx-${turnCounter}`;
+  const turnId = presetTurnId ?? `turn-fx-${turnCounter}`;
   const itemId = `item-fx-${turnCounter}`;
   const text = `hello from codex turn ${turnCounter}`;
   openTurnIdsByThreadId.set(threadId, turnId);
@@ -112,6 +171,32 @@ function runScriptedTurn(threadId) {
     threadId,
     turn: { id: turnId, status: "inProgress" },
   });
+  if (script?.lateStartTool && presetTurnId !== undefined) {
+    const item = {
+      type: "commandExecution",
+      id: `command-${turnId}`,
+      command: "echo verified",
+      cwd: "/tmp",
+      processId: null,
+      status: "inProgress",
+      commandActions: [],
+      aggregatedOutput: null,
+      exitCode: null,
+      durationMs: null,
+    };
+    notify("item/started", { threadId, turnId, item });
+    notify("item/completed", {
+      threadId,
+      turnId,
+      item: {
+        ...item,
+        status: "completed",
+        aggregatedOutput: "verified",
+        exitCode: 0,
+        durationMs: 1,
+      },
+    });
+  }
   // Delta-first: no item/started for the agent message. The bridge must
   // synthesize the opening event.
   notify("item/agentMessage/delta", { threadId, turnId, itemId, delta: text });
@@ -138,7 +223,20 @@ function runScriptedTurn(threadId) {
 
 // argv, not an env var: the bridge builds its child's environment from an
 // allowlist, so an env var set by a test never reaches this process.
-const scriptPath = process.argv[2];
+function scriptPathFromArgs(args) {
+  for (let index = 0; index < args.length; index += 1) {
+    const argument = args[index];
+    if (argument === "-c" || argument === "--config") {
+      index += 1;
+      continue;
+    }
+    if (argument.startsWith("-")) continue;
+    return argument;
+  }
+  return undefined;
+}
+
+const scriptPath = scriptPathFromArgs(process.argv.slice(2));
 const script = scriptPath ? JSON.parse(readFileSync(scriptPath, "utf8")) : null;
 const scriptedTurns = script?.turns ?? null;
 const requestLogPath = script?.requestLogPath ?? null;
@@ -447,11 +545,56 @@ async function handleRequest(message) {
         return;
       }
       if (firstInputText(params.input) === LATE_TURN_START_PROMPT_TEXT) {
-        respond(id, {});
+        turnCounter += 1;
+        const turnId = `turn-fx-${turnCounter}`;
+        respond(id, { turn: { id: turnId, status: "inProgress" } });
         setTimeout(
-          () => runScriptedTurn(params.threadId),
+          () => runScriptedTurn(params.threadId, turnId),
           LATE_TURN_START_DELAY_MS,
         );
+        return;
+      }
+      if (
+        firstInputText(params.input) === LATE_START_INTERRUPTIBLE_PROMPT_TEXT
+      ) {
+        turnCounter += 1;
+        const turnId = `turn-fx-${turnCounter}`;
+        lateStartTurnIdsByThreadId.set(params.threadId, turnId);
+        respond(id, { turn: { id: turnId, status: "inProgress" } });
+        if (script?.neverStart) return;
+        setTimeout(() => {
+          lateStartTurnIdsByThreadId.delete(params.threadId);
+          openTurnIdsByThreadId.set(params.threadId, turnId);
+          notify("turn/started", {
+            threadId: params.threadId,
+            turn: { id: turnId, status: "inProgress" },
+          });
+        }, LATE_TURN_START_DELAY_MS);
+        return;
+      }
+      if (firstInputText(params.input) === RESPOND_THEN_EXIT_PROMPT_TEXT) {
+        turnCounter += 1;
+        const turnId = `turn-fx-${turnCounter}`;
+        respond(id, { turn: { id: turnId, status: "inProgress" } });
+        setTimeout(() => process.exit(1), 20);
+        return;
+      }
+      if (firstInputText(params.input) === RESPOND_COMPLETED_PROMPT_TEXT) {
+        turnCounter += 1;
+        const turnId = `turn-fx-${turnCounter}`;
+        respond(id, { turn: { id: turnId, status: "completed" } });
+        return;
+      }
+      if (firstInputText(params.input) === STEER_INTO_ACTIVE_PROMPT_TEXT) {
+        const activeTurnId = openTurnIdsByThreadId.get(params.threadId);
+        respond(id, { turn: { id: activeTurnId, status: "inProgress" } });
+        return;
+      }
+      if (firstInputText(params.input) === INTERRUPT_BEFORE_START_PROMPT_TEXT) {
+        turnCounter += 1;
+        const turnId = `turn-fx-${turnCounter}`;
+        pendingStartTurnIdsByThreadId.set(params.threadId, turnId);
+        respond(id, { turn: { id: turnId, status: "inProgress" } });
         return;
       }
       if (firstInputText(params.input) === INTERRUPTIBLE_PROMPT_TEXT) {
@@ -477,6 +620,51 @@ async function handleRequest(message) {
       respond(id, {});
       return;
     case "turn/interrupt": {
+      interruptAttempts += 1;
+      if (
+        script?.interruptError &&
+        interruptAttempts <= (script.interruptErrorCount ?? 1)
+      ) {
+        if (script.startBeforeInterruptError) {
+          const turnId = lateStartTurnIdsByThreadId.get(params.threadId);
+          lateStartTurnIdsByThreadId.delete(params.threadId);
+          openTurnIdsByThreadId.set(params.threadId, turnId);
+          notify("turn/started", {
+            threadId: params.threadId,
+            turn: { id: turnId, status: "inProgress" },
+          });
+        }
+        if (script.settleBeforeInterruptError) {
+          notify("turn/completed", {
+            threadId: params.threadId,
+            turn: { id: params.turnId, status: "completed" },
+          });
+        }
+        respondError(
+          id,
+          script.interruptError.code,
+          script.interruptError.message,
+        );
+        return;
+      }
+      if (lateStartTurnIdsByThreadId.has(params.threadId)) {
+        respondError(id, -32600, "no active turn to interrupt");
+        return;
+      }
+      const pendingTurnId = pendingStartTurnIdsByThreadId.get(params.threadId);
+      if (pendingTurnId !== undefined) {
+        pendingStartTurnIdsByThreadId.delete(params.threadId);
+        notify("turn/completed", {
+          threadId: params.threadId,
+          turn: { id: pendingTurnId, status: "interrupted" },
+        });
+        notify("turn/started", {
+          threadId: params.threadId,
+          turn: { id: pendingTurnId, status: "inProgress" },
+        });
+        respond(id, {});
+        return;
+      }
       const openTurnId = openTurnIdsByThreadId.get(params.threadId);
       if (openTurnId !== undefined) {
         openTurnIdsByThreadId.delete(params.threadId);
@@ -527,6 +715,33 @@ async function handleRequest(message) {
       respond(id, {});
       return;
     case "thread/compact/start":
+      if (COMPACTION_MODE === "idle-before-rejection") {
+        notify("thread/status/changed", {
+          threadId: params.threadId,
+          status: { type: "idle" },
+        });
+        setTimeout(() => respondError(id, -32600, "compaction rejected"), 30);
+        return;
+      }
+      if (
+        COMPACTION_MODE === "idle-before-response" ||
+        COMPACTION_MODE === "error-before-response"
+      ) {
+        notify("thread/status/changed", {
+          threadId: params.threadId,
+          status: {
+            type:
+              COMPACTION_MODE === "idle-before-response"
+                ? "idle"
+                : "systemError",
+          },
+        });
+        setTimeout(() => respond(id, {}), 30);
+        return;
+      }
+      respond(id, {});
+      runCompaction(params.threadId);
+      return;
     case "thread/goal/clear":
       respond(id, {});
       return;

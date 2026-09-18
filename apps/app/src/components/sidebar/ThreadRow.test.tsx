@@ -39,10 +39,15 @@ import {
   EMPTY_SIDEBAR_THREAD_SHORTCUT_KEYS,
   SidebarThreadShortcutKeysContext,
 } from "./sidebarThreadShortcuts";
+import { collectPluginAppRegistrations } from "@get-bb/plugin-sdk/internal/plugin-app-collector";
 import {
   resetPluginThreadRowStatusesForTest,
   setPluginThreadRowStatus,
 } from "@/lib/plugin-thread-row-status";
+import {
+  removePluginSlotRegistrations,
+  setPluginSlotRegistrations,
+} from "@/lib/plugin-slots";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import { SPLIT_LAYOUT_STORAGE_KEY } from "@/lib/split-layout/persistence";
 import { NO_COLLAPSED_CHILD_ACTIVITY } from "@bb/client-core";
@@ -217,6 +222,7 @@ afterEach(() => {
   mocks.renameThread.mockReset();
   resetSidebarTitleDoubleClickForTest();
   resetPluginThreadRowStatusesForTest();
+  removePluginSlotRegistrations("icon-probe");
   expect(vi.isMockFunction(sdk.threads.resolveMentions)).toBe(false);
   window.localStorage.removeItem(SPLIT_LAYOUT_STORAGE_KEY);
   window.sessionStorage.removeItem(SPLIT_LAYOUT_STORAGE_KEY);
@@ -405,6 +411,47 @@ describe("ThreadRow", () => {
     ).not.toBeNull();
     expect(screen.queryByLabelText("Thread has unsubmitted draft")).toBeNull();
     expect(screen.queryByLabelText("Unread thread succeeded")).toBeNull();
+  });
+
+  it("draws a plugin's own registered artwork, and falls back for a name it never registered", () => {
+    function Beacon() {
+      return <svg data-plugin-mark="beacon" />;
+    }
+    setPluginSlotRegistrations(
+      "icon-probe",
+      collectPluginAppRegistrations({
+        __bbPluginApp: true,
+        setup(app) {
+          app.experimental_icons.register({
+            name: "icon-probe/beacon",
+            component: Beacon,
+          });
+        },
+      }),
+    );
+    setPluginThreadRowStatus("thr_test", "icon-probe", {
+      icon: "icon-probe/beacon",
+      label: "Registered artwork",
+    });
+    const { container } = renderThreadRow({
+      thread: createThread({ lastReadAt: 1, latestAttentionAt: 1 }),
+    });
+
+    expect(
+      container.querySelector('[data-plugin-mark="beacon"]'),
+    ).not.toBeNull();
+
+    act(() => {
+      setPluginThreadRowStatus("thr_test", "icon-probe", {
+        icon: "icon-probe/undeclared",
+        label: "Unregistered name",
+      });
+    });
+
+    expect(container.querySelector('[data-plugin-mark="beacon"]')).toBeNull();
+    expect(
+      screen.getByLabelText("Unregistered name").getAttribute("data-icon"),
+    ).toBe("Zap");
   });
 
   it("replaces the draft icon with a plugin status and restores it when cleared", () => {
@@ -929,6 +976,40 @@ describe("ThreadRow", () => {
       threadFailure.getAttribute("class"),
     );
   });
+
+  it.each([true, false])(
+    "reserves a stable action slot beside a parent disclosure (collapsed: %s)",
+    (isCollapsed) => {
+      const onToggleCollapsed = vi.fn();
+      renderThreadRow({
+        thread: createThread({
+          title: "Nested discussion with enough text to fill the sidebar width",
+        }),
+        options: {
+          kind: "parent",
+          depth: 1,
+          isCompact: false,
+          isCollapsed,
+          childCount: 1,
+          childActivity: NO_COLLAPSED_CHILD_ACTIVITY,
+          onToggleCollapsed,
+        },
+      });
+      const toggle = screen.getByRole("button", {
+        name: /(?:Expand|Collapse) Nested discussion/,
+      });
+      const titleContainer = toggle.parentElement;
+      expect(
+        titleContainer?.classList.contains("bb-sidebar-hover-actions-inset"),
+      ).toBe(false);
+      expect(titleContainer?.classList.contains("pr-7.5")).toBe(true);
+      expect(
+        titleContainer?.classList.contains("max-md:pointer-coarse:pr-0"),
+      ).toBe(true);
+      fireEvent.click(toggle);
+      expect(onToggleCollapsed).toHaveBeenCalledWith("thr_test");
+    },
+  );
 
   it("keeps the parent-thread disclosure caret visible on mobile", () => {
     renderThreadRow({

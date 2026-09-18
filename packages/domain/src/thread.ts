@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { threadCreateOriginSchema } from "./thread-create-origin.js";
 import { environmentWorkspaceDisplayKindSchema } from "./environment.js";
 import { gitCheckoutRefSchema } from "./git-checkout.js";
 import {
@@ -336,6 +337,8 @@ export type ThreadPullRequest = z.infer<typeof threadPullRequestSchema>;
 
 export const threadQueuedMessageSchema = z.object({
   id: z.string(),
+  origin: threadCreateOriginSchema.nullable(),
+  originPluginId: z.string().nullable(),
   initiator: z.enum(["user", "agent", "system"]),
   senderThreadId: z.string().nullable(),
   /**

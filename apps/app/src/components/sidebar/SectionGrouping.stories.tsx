@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
+import { createStore, Provider } from "jotai";
 import type { ThreadListEntry } from "@bb/domain";
 import {
   PROJECT_IDS,
@@ -17,6 +18,7 @@ import {
   compareStandardThreads,
   type SidebarSectionDefinition,
 } from "@bb/client-core";
+import { sidebarEnvironmentGroupingAtom } from "./sidebarCollapsedAtoms";
 
 export default {
   title: "sidebar/Section grouping",
@@ -110,6 +112,46 @@ const sectionThreads: ThreadListEntry[] = [
   }),
 ];
 
+const WORKTREE_SECTIONS: readonly SidebarSectionDefinition[] = [
+  { id: "sec_build", name: "Build" },
+];
+
+const worktreeSectionThreads: ThreadListEntry[] = [
+  makeThread({
+    id: "thr_wt_daemon",
+    title: "Daemon",
+    sectionId: "sec_build",
+    environmentId: "env_story_worktree",
+    environmentName: "Section build",
+    environmentBranchName: "bb/sidebar-sections",
+    environmentProviderId: "git-worktree",
+    environmentIsWorktree: true,
+    queuedWork: "none",
+    latestAttentionAt: 40,
+    createdAt: 40,
+  }),
+  makeThread({
+    id: "thr_wt_stories",
+    title: "Stories",
+    sectionId: "sec_build",
+    environmentId: "env_story_worktree",
+    environmentName: "Section build",
+    environmentBranchName: "bb/sidebar-sections",
+    environmentProviderId: "git-worktree",
+    environmentIsWorktree: true,
+    queuedWork: "none",
+    latestAttentionAt: 30,
+    createdAt: 30,
+  }),
+  makeThread({
+    id: "thr_wt_standalone",
+    title: "Standalone follow-up",
+    sectionId: "sec_build",
+    latestAttentionAt: 20,
+    createdAt: 20,
+  }),
+];
+
 function SidebarStage({ children }: { children: ReactNode }) {
   return (
     <ProjectActionsProvider>
@@ -162,6 +204,68 @@ export function ChronologicalSections() {
             }}
           />
         </SidebarStage>
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
+function WorktreeGroupingStage({
+  groupThreadsByEnvironment,
+}: {
+  groupThreadsByEnvironment: boolean;
+}) {
+  const [store] = useState(() => {
+    const seededStore = createStore();
+    seededStore.set(sidebarEnvironmentGroupingAtom, groupThreadsByEnvironment);
+    return seededStore;
+  });
+  return (
+    <Provider store={store}>
+      <SidebarStage>
+        <ChronologicalSectionThreadSections
+          threadListState={projectTree(worktreeSectionThreads)}
+          compareThreads={compareStandardThreads}
+          sections={WORKTREE_SECTIONS}
+          collapsedThreadIds={new Set()}
+          collapsedEnvironmentIds={new Set()}
+          onToggleThreadCollapsed={noop}
+          onToggleEnvironmentCollapsed={noop}
+          topLevelSectionOrder={[
+            ...WORKTREE_SECTIONS.map((section) =>
+              buildSidebarEntitySectionId("section", section.id),
+            ),
+            "threads",
+          ]}
+          onTopLevelSectionOrderChange={noop}
+          pinnedReorderPending={false}
+          pinnedThreads={[]}
+          onReorderPinnedThread={noop}
+          builtInSections={{
+            collapsedSectionIds: new Set(),
+            onToggleCollapsed: noop,
+            pinned: { label: "Pinned", content: null },
+            threads: { label: "Threads" },
+          }}
+        />
+      </SidebarStage>
+    </Provider>
+  );
+}
+
+export function WorktreeGrouping() {
+  return (
+    <StoryCard>
+      <StoryRow
+        label="grouped"
+        hint="sidebar.threadGrouping.environment true collapses shared-worktree siblings"
+      >
+        <WorktreeGroupingStage groupThreadsByEnvironment />
+      </StoryRow>
+      <StoryRow
+        label="flat"
+        hint="sidebar.threadGrouping.environment false keeps every thread on its own row"
+      >
+        <WorktreeGroupingStage groupThreadsByEnvironment={false} />
       </StoryRow>
     </StoryCard>
   );

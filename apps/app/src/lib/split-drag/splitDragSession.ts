@@ -54,7 +54,8 @@ export function beginSplitDrag(config: SplitDragConfig): void {
         }),
       );
     }
-    ghostEl = config.renderGhost === false ? null : createGhost(config.ghostLabel);
+    ghostEl =
+      config.renderGhost === false ? null : createGhost(config.ghostLabel);
     overlayEl = createOverlay();
     if (ghostEl) {
       document.body.append(ghostEl);

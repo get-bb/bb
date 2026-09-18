@@ -62,13 +62,20 @@ describe("built-in sidebar section renderer", () => {
       }
 
       const header = (label: string) =>
-        screen
-          .getByTitle(label)
-          .closest('[data-sidebar-sticky-tier="label"]');
+        screen.getByTitle(label).closest('[data-sidebar-sticky-tier="label"]');
+
+      const group = (label: string) =>
+        screen.getByTitle(label).closest("[data-sidebar-sticky-group]");
 
       expect(header("Pinned")?.classList.contains("relative")).toBe(true);
       expect(header("Pinned")?.classList.contains("top-auto")).toBe(true);
       expect(header("Threads")?.classList.contains("relative")).toBe(false);
+      expect(group("Pinned")?.getAttribute("data-sidebar-sticky-header")).toBe(
+        "false",
+      );
+      expect(group("Threads")?.hasAttribute("data-sidebar-sticky-header")).toBe(
+        false,
+      );
       expect(screen.queryByText("Pinned content") !== null).toBe(!collapsed);
     },
   );

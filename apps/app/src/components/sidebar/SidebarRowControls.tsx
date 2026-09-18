@@ -4,8 +4,10 @@ import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { COARSE_POINTER_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
-import { SIDEBAR_HOVER_ACTIONS_GAP_CLASS } from "@/components/ui/sidebar-hover-actions";
-import { SIDEBAR_CONTROL_BUTTON_CLASS } from "./sidebarRowClasses";
+import {
+  SIDEBAR_CONTROL_PAIR_GAP_CLASS,
+  SIDEBAR_CONTROL_PRIMARY_BUTTON_CLASS,
+} from "./sidebarRowClasses";
 
 export function SidebarRowControls({
   primaryAction,
@@ -19,7 +21,7 @@ export function SidebarRowControls({
       data-sidebar-row-controls=""
       className={cn(
         "inline-flex shrink-0 items-center",
-        SIDEBAR_HOVER_ACTIONS_GAP_CLASS,
+        SIDEBAR_CONTROL_PAIR_GAP_CLASS,
       )}
       onClick={(event) => event.stopPropagation()}
       onPointerDown={(event) => event.stopPropagation()}
@@ -50,7 +52,7 @@ export function SidebarControlButton({
           size="icon"
           aria-label={label}
           disabled={disabled}
-          className={SIDEBAR_CONTROL_BUTTON_CLASS}
+          className={SIDEBAR_CONTROL_PRIMARY_BUTTON_CLASS}
           onClick={(event) => {
             event.stopPropagation();
             if (event.detail > 0) event.currentTarget.blur();

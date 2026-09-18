@@ -15,6 +15,7 @@ import { noopNotifier } from "../../src/notifier.js";
 import type { DbNotifier } from "../../src/notifier.js";
 import {
   appendDaemonEventsInTransaction,
+  wouldRemoveSharedProviderSessionClaim,
   appendStoredThreadEvent,
   appendStoredThreadEventInTransaction,
   appendStoredThreadEventsInTransaction,
@@ -26,6 +27,9 @@ import {
   getFirstParentedTimelineBoundarySequence,
   getHighWaterMarks,
   getLastStoredProviderThreadId,
+  classifyStoredProviderThreadClaim,
+  getStoredProviderSession,
+  resolveStoredProviderSessions,
   getLatestCompletedThreadContextClearSequence,
   getLatestStoredConversationOutlineSequence,
   getLastStoredTurnRequestEvent,
@@ -36,7 +40,7 @@ import {
   listEvents,
   listLatestThreadStateEventRowsByThreadIds,
   listStoredConversationOutlineEventRows,
-  listTimelineSegmentAnchorsDescending,
+  listTimelineWindowHintsDescending,
   listOpenTurnInputAcceptedRowsByThreadIds,
   listStoredClientTurnRequestIdsInRange,
   listStoredClientTurnRequestRowsByKeys,
@@ -51,8 +55,8 @@ import {
   listOpenBackgroundTaskItemRowsForHost,
   listThreadTurnInterruptionEventStates,
   pruneBackgroundTaskProgressEvents,
-  pruneContextWindowUsageEventsBeforeSequence,
-  pruneTokenUsageEventsBeforeSequence,
+  pruneContextWindowUsageEvents,
+  pruneTokenUsageEvents,
   pruneResolvedItemDeltas,
   pruneThreadEventsBeforeSequence,
   listLatestOpenBackgroundTaskStateRowsForThread,
@@ -68,6 +72,7 @@ import type {
   InsertEventInput,
 } from "../../src/data/events.js";
 import { upsertHost } from "../../src/data/hosts.js";
+import type { DbConnection } from "../../src/connection.js";
 import { createMigratedConnection } from "../helpers/migrated-connection.js";
 
 function setup() {
@@ -1167,8 +1172,9 @@ describe("events", () => {
       { behavior: "immediate" },
     );
 
-    expect(listEvents(db, { threadId: thread.id }).map((event) => event.type))
-      .toEqual(["turn/started", "turn/input/accepted", "system/error"]);
+    expect(
+      listEvents(db, { threadId: thread.id }).map((event) => event.type),
+    ).toEqual(["turn/started", "turn/input/accepted", "system/error"]);
   });
 
   it("indexes daemon-appended messages without parsing deltas or tool outputs", () => {
@@ -1500,7 +1506,7 @@ describe("events", () => {
     ).toEqual([2, 5]);
   });
 
-  it("lists bounded timeline segment anchors with request shape rules", () => {
+  it("lists bounded request-position hints without interpreting input", () => {
     const { db, thread } = setup();
 
     insertEvents(db, noopNotifier, [
@@ -1627,41 +1633,174 @@ describe("events", () => {
     ]);
 
     expect(
-      listTimelineSegmentAnchorsDescending(db, {
-        limit: 8,
+      listTimelineWindowHintsDescending(db, {
+        beforeSequence: 100,
+        limit: 10,
         sequenceStart: 0,
         threadId: thread.id,
       }),
     ).toEqual([
-      { rowId: `${thread.id}:user-seed:11`, sequence: 11 },
-      { rowId: `${thread.id}:user-seed:10`, sequence: 10 },
-      { rowId: `${thread.id}:user-seed:9`, sequence: 9 },
-      { rowId: `${thread.id}:user-seed:8`, sequence: 8 },
-      { rowId: `${thread.id}:user-seed:7`, sequence: 7 },
-      { rowId: `${thread.id}:user-seed:4`, sequence: 4 },
-      { rowId: `${thread.id}:user-seed:2`, sequence: 2 },
-      { rowId: `${thread.id}:user-seed:1`, sequence: 1 },
+      { sequence: 11 },
+      { sequence: 10 },
+      { sequence: 9 },
+      { sequence: 8 },
+      { sequence: 7 },
+      { sequence: 6 },
+      { sequence: 5 },
+      { sequence: 4 },
+      { sequence: 3 },
+      { sequence: 2 },
     ]);
 
     expect(
-      listTimelineSegmentAnchorsDescending(db, {
+      listTimelineWindowHintsDescending(db, {
+        beforeSequence: 100,
         limit: 3,
         sequenceStart: 0,
         threadId: thread.id,
       }).map((row) => row.sequence),
     ).toEqual([11, 10, 9]);
     expect(
-      listTimelineSegmentAnchorsDescending(db, {
+      listTimelineWindowHintsDescending(db, {
         beforeSequence: 8,
         limit: 3,
         sequenceStart: 0,
         threadId: thread.id,
       }),
     ).toEqual([
-      { rowId: `${thread.id}:user-seed:7`, sequence: 7 },
-      { rowId: `${thread.id}:user-seed:4`, sequence: 4 },
-      { rowId: `${thread.id}:user-seed:2`, sequence: 2 },
+      { sequence: 7 },
+      { sequence: 6 },
+      { sequence: 5 },
     ]);
+  });
+
+  it("keeps window-hint lookup bounded as request history grows", () => {
+    const { db, thread } = setup();
+    try {
+      const statement = db.$client.prepare(
+        "INSERT INTO events (id, thread_id, scope_kind, sequence, type, data, created_at) VALUES (?, ?, 'thread', ?, 'client/turn/requested', ?, 0)",
+      );
+      const payload = JSON.stringify({ input: [{ type: "text", text: "x".repeat(2_000) }] });
+      const seed = (start: number, end: number): void => {
+        db.$client.transaction(() => {
+          for (let sequence = start; sequence <= end; sequence += 1) {
+            statement.run(`request-${sequence}`, thread.id, sequence, sequence % 20 === 0 ? "{}" : payload);
+          }
+        })();
+      };
+      const sample = (beforeSequence: number): number => {
+        const times: number[] = [];
+        for (let sample = 0; sample < 10; sample += 1) {
+          const start = performance.now();
+          const hints = listTimelineWindowHintsDescending(db, {
+            threadId: thread.id,
+            sequenceStart: 0,
+            beforeSequence,
+            limit: 21,
+          });
+          times.push(performance.now() - start);
+          expect(hints).toHaveLength(21);
+          expect(hints[0]?.sequence).toBe(beforeSequence - 1);
+        }
+        return Math.min(...times);
+      };
+      seed(1, 1_000);
+      const small = sample(1_001);
+      seed(1_001, 30_000);
+      const large = sample(30_001);
+      expect(large).toBeLessThan(Math.max(2, small * 5));
+      expect(sample(501)).toBeLessThan(Math.max(2, small * 5));
+    } finally {
+      db.$client.close();
+    }
+  });
+
+  it("uses request positions as hints without resolving acceptance", () => {
+    const { db, thread } = setup();
+    const request = (
+      sequence: number,
+      requestId: string,
+      expectedTurnId: string,
+    ): InsertEventInput => ({
+      threadId: thread.id,
+      sequence,
+      type: "client/turn/requested",
+      ...threadEventFields,
+      data: JSON.stringify({
+        initiator: "user",
+        requestId,
+        input: textInput(`steer ${sequence}`),
+        target: { kind: "steer", expectedTurnId },
+      }),
+    });
+    const accepted = (
+      sequence: number,
+      clientRequestId: string,
+      turnId: string,
+    ): InsertEventInput => ({
+      threadId: thread.id,
+      sequence,
+      type: "turn/input/accepted",
+      scope: turnScope(turnId),
+      providerThreadId: "provider-1",
+      itemId: null,
+      itemKind: null,
+      parentToolCallId: null,
+      data: JSON.stringify({ clientRequestId }),
+    });
+
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 1,
+        type: "client/turn/requested",
+        ...threadEventFields,
+        data: JSON.stringify({
+          initiator: "user",
+          requestId: "req-1",
+          input: textInput("first"),
+          target: { kind: "new-turn" },
+        }),
+      },
+      request(2, "req-2", "turn-1"),
+      accepted(5, "req-2", "turn-1"),
+      request(6, "req-6", "turn-1"),
+      accepted(8, "req-6", "turn-2"),
+      request(9, "req-9", "turn-1"),
+    ]);
+
+    expect(
+      listTimelineWindowHintsDescending(db, {
+        limit: 100,
+        beforeSequence: 100,
+        sequenceStart: 0,
+        threadId: thread.id,
+      }),
+    ).toEqual([{ sequence: 9 }, { sequence: 6 }, { sequence: 2 }, { sequence: 1 }]);
+    expect(
+      listTimelineWindowHintsDescending(db, {
+        beforeSequence: 100,
+        limit: 10,
+        sequenceStart: 0,
+        threadId: thread.id,
+      }).map((row) => row.sequence),
+    ).toEqual([9, 6, 2, 1]);
+    expect(
+      listTimelineWindowHintsDescending(db, {
+        limit: 100,
+        beforeSequence: 5,
+        sequenceStart: 0,
+        threadId: thread.id,
+      }),
+    ).toEqual([{ sequence: 2 }, { sequence: 1 }]);
+    expect(
+      listTimelineWindowHintsDescending(db, {
+        limit: 100,
+        beforeSequence: 100,
+        sequenceStart: 5,
+        threadId: thread.id,
+      }),
+    ).toEqual([{ sequence: 9 }, { sequence: 6 }]);
   });
 
   it.each<{
@@ -1671,6 +1810,19 @@ describe("events", () => {
     expected: number | null;
   }>([
     { name: "a user request inside a tool call span", expected: 3 },
+    {
+      name: "a steer inside a tool call span",
+      overrides: {
+        3: {
+          data: JSON.stringify({
+            initiator: "user",
+            input: textInput("steer message"),
+            target: { kind: "steer", expectedTurnId: "turn-a" },
+          }),
+        },
+      },
+      expected: null,
+    },
     {
       name: "a delegation span",
       overrides: { 2: { itemKind: "delegation" } },
@@ -2602,6 +2754,14 @@ describe("events", () => {
     expect(firstSequence).toBe(1);
     expect(secondSequence).toBe(2);
     expect(getActiveStoredTurnId(db, thread.id)).toBe("turn_1");
+    expect(getLastStoredProviderThreadId(db, thread.id)).toBeNull();
+    appendStoredThreadEvent(db, noopNotifier, {
+      threadId: thread.id,
+      scope: threadScope(),
+      providerThreadId: "provider_thr_1",
+      type: "thread/identity",
+      data: { providerThreadId: "provider_thr_1" },
+    });
     expect(getLastStoredProviderThreadId(db, thread.id)).toBe("provider_thr_1");
     expect(getLastStoredTurnRequestEvent(db, thread.id)).toMatchObject({
       threadId: thread.id,
@@ -3032,6 +3192,28 @@ describe("events", () => {
       {
         threadId: thread.id,
         sequence: 1,
+        scope: threadScope(),
+        providerThreadId: "provider_active",
+        type: "thread/identity",
+        itemId: null,
+        itemKind: null,
+        parentToolCallId: null,
+        data: JSON.stringify({ providerThreadId: "provider_active" }),
+      },
+      {
+        threadId: completedThread.id,
+        sequence: 1,
+        scope: threadScope(),
+        providerThreadId: "provider_done",
+        type: "thread/identity",
+        itemId: null,
+        itemKind: null,
+        parentToolCallId: null,
+        data: JSON.stringify({ providerThreadId: "provider_done" }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 2,
         scope: turnScope("turn_active"),
         providerThreadId: "provider_active",
         type: "turn/started",
@@ -3045,7 +3227,7 @@ describe("events", () => {
       },
       {
         threadId: completedThread.id,
-        sequence: 1,
+        sequence: 2,
         scope: turnScope("turn_done"),
         providerThreadId: "provider_done",
         type: "turn/started",
@@ -3059,7 +3241,7 @@ describe("events", () => {
       },
       {
         threadId: completedThread.id,
-        sequence: 2,
+        sequence: 3,
         scope: turnScope("turn_done"),
         providerThreadId: "provider_done",
         type: "turn/completed",
@@ -3128,6 +3310,17 @@ describe("events", () => {
       {
         threadId: thread.id,
         sequence: 1,
+        scope: threadScope(),
+        providerThreadId: "provider_thr_1",
+        type: "thread/identity",
+        itemId: null,
+        itemKind: null,
+        parentToolCallId: null,
+        data: JSON.stringify({ providerThreadId: "provider_thr_1" }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 2,
         scope: turnScope("root_turn"),
         providerThreadId: "provider_thr_1",
         type: "turn/started",
@@ -3141,7 +3334,7 @@ describe("events", () => {
       },
       {
         threadId: thread.id,
-        sequence: 2,
+        sequence: 3,
         scope: turnScope("child_turn"),
         providerThreadId: "provider_thr_1",
         type: "turn/started",
@@ -3361,7 +3554,7 @@ describe("events", () => {
     ).toEqual([4, 5]);
   });
 
-  it("prunes token-usage rows before a sequence cutoff but keeps the latest totals row and latest context row", () => {
+  it("keeps only the latest root token-usage snapshot", () => {
     const { db, thread } = setup();
 
     insertEvents(db, noopNotifier, [
@@ -3407,15 +3600,14 @@ describe("events", () => {
       },
     ]);
 
-    const removed = pruneTokenUsageEventsBeforeSequence(db, {
+    const removed = pruneTokenUsageEvents(db, {
       threadId: thread.id,
-      sequenceCutoff: 4,
     });
 
-    expect(removed).toBe(2);
+    expect(removed).toBe(3);
     expect(
       listEvents(db, { threadId: thread.id }).map((event) => event.sequence),
-    ).toEqual([1, 4]);
+    ).toEqual([4]);
   });
 
   it("preserves root token usage instead of a newer nested-turn report while pruning", () => {
@@ -3460,20 +3652,26 @@ describe("events", () => {
           modelContextWindow: 200_000,
         }),
       },
+      {
+        threadId: thread.id,
+        sequence: 5,
+        type: "turn/completed",
+        ...createTurnEventFields({ turnId: "turn-subagent" }),
+        data: "{}",
+      },
     ]);
 
-    const removed = pruneTokenUsageEventsBeforeSequence(db, {
+    const removed = pruneTokenUsageEvents(db, {
       threadId: thread.id,
-      sequenceCutoff: 4,
     });
 
-    expect(removed).toBe(1);
+    expect(removed).toBe(2);
     expect(
       listEvents(db, { threadId: thread.id }).map((event) => event.sequence),
-    ).toEqual([1, 2, 3]);
+    ).toEqual([2, 3, 5]);
   });
 
-  it("prunes context-window rows before a sequence cutoff but keeps the latest usage row and latest context row", () => {
+  it("prunes context-window rows but keeps the latest usage row and latest context row", () => {
     const { db, thread } = setup();
 
     insertEvents(db, noopNotifier, [
@@ -3519,9 +3717,8 @@ describe("events", () => {
       },
     ]);
 
-    const removed = pruneContextWindowUsageEventsBeforeSequence(db, {
+    const removed = pruneContextWindowUsageEvents(db, {
       threadId: thread.id,
-      sequenceCutoff: 4,
     });
 
     expect(removed).toBe(2);
@@ -3627,8 +3824,12 @@ describe("events", () => {
       },
     ]);
 
-    expect(pruneResolvedItemDeltas(db, { threadId: thread.id })).toBe(500);
-    expect(pruneResolvedItemDeltas(db, { threadId: thread.id })).toBe(1);
+    let removed = pruneResolvedItemDeltas(db, { threadId: thread.id });
+    expect(removed).toBeGreaterThan(0);
+    expect(removed).toBeLessThanOrEqual(500);
+    for (let i = 0; i < 4; i++)
+      removed += pruneResolvedItemDeltas(db, { threadId: thread.id });
+    expect(removed).toBe(501);
     expect(
       listEvents(db, { threadId: thread.id }).map((event) => event.sequence),
     ).toEqual([1, 503]);
@@ -5331,13 +5532,15 @@ describe("timeline read-boundary output truncation", () => {
         ...args,
         maxDataBytes: (rowBytes.get(3) ?? 0) - 1,
       }),
-    ).toEqual(expect.objectContaining({
-      eventDataBytes: rowBytes.get(3),
-      hasOlderRows: true,
-      kind: "single-event-too-large",
-      sequenceStart: 3,
-      turnId: null,
-    }));
+    ).toEqual(
+      expect.objectContaining({
+        eventDataBytes: rowBytes.get(3),
+        hasOlderRows: true,
+        kind: "single-event-too-large",
+        sequenceStart: 3,
+        turnId: null,
+      }),
+    );
   });
 
   it("stops the byte-budget scan before reading older oversized payloads", () => {
@@ -5355,7 +5558,9 @@ describe("timeline read-boundary output truncation", () => {
       })),
     );
     db.$client
-      .prepare("UPDATE events SET data = ? WHERE thread_id = ? AND sequence = 1")
+      .prepare(
+        "UPDATE events SET data = ? WHERE thread_id = ? AND sequence = 1",
+      )
       .run(`{"item":{"resultText":"${"x".repeat(1_100)}`, thread.id);
 
     expect(
@@ -5537,5 +5742,688 @@ describe("timeline read-boundary output truncation", () => {
       threadId: thread.id,
     });
     expect(rows.at(-1)?.data).toBe(stored.at(-1)?.data);
+  });
+});
+
+describe("stored provider thread identity ownership", () => {
+  function setupThreads(args: { providerIds?: readonly string[] } = {}) {
+    const db = createMigratedConnection();
+    const host = upsertHost(db, noopNotifier, {
+      name: "identity-host",
+      type: "persistent",
+    });
+    const { project } = createProject(db, noopNotifier, {
+      name: "identity-project",
+      source: { type: "local_path", hostId: host.id, path: "/tmp/identity" },
+    });
+    const environment = createEnvironment(db, noopNotifier, {
+      projectId: project.id,
+      hostId: host.id,
+      path: "/tmp/identity",
+      status: "ready",
+      providerOwnsPath: false,
+    });
+    const threadIds = (args.providerIds ?? ["codex", "codex"]).map(
+      (providerId) =>
+        createThread(db, noopNotifier, {
+          projectId: project.id,
+          environmentId: environment.id,
+          providerId,
+        }).id,
+    );
+    return { db, environment, host, project, threadIds };
+  }
+
+  function nextSequence(db: DbConnection, threadId: string): number {
+    return (getHighWaterMarks(db, [threadId])[threadId] ?? 0) + 1;
+  }
+
+  function announceIdentity(
+    db: DbConnection,
+    args: { createdAt: number; providerThreadId: string; threadId: string },
+  ): void {
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: args.threadId,
+        sequence: nextSequence(db, args.threadId),
+        createdAt: args.createdAt,
+        scope: threadScope(),
+        providerThreadId: args.providerThreadId,
+        type: "thread/identity",
+        ...emptyItemFields,
+        data: JSON.stringify({ providerThreadId: args.providerThreadId }),
+      },
+    ]);
+  }
+
+  function stampTurn(
+    db: DbConnection,
+    args: {
+      createdAt: number;
+      providerThreadId: string;
+      threadId: string;
+      turnId: string;
+    },
+  ): void {
+    for (const type of ["turn/started", "turn/completed"] as const) {
+      insertEvents(db, noopNotifier, [
+        {
+          threadId: args.threadId,
+          sequence: nextSequence(db, args.threadId),
+          createdAt: args.createdAt,
+          scope: turnScope(args.turnId),
+          providerThreadId: args.providerThreadId,
+          type,
+          ...emptyItemFields,
+          data: JSON.stringify(
+            type === "turn/completed"
+              ? { providerThreadId: args.providerThreadId, status: "completed" }
+              : { providerThreadId: args.providerThreadId },
+          ),
+        },
+      ]);
+    }
+  }
+
+  function clearContext(db: DbConnection, threadId: string): void {
+    appendStoredThreadEvent(db, noopNotifier, {
+      threadId,
+      scope: threadScope(),
+      type: "system/operation",
+      data: {
+        operation: THREAD_CONTEXT_CLEAR_OPERATION,
+        operationId: `evt_clear_${threadId}`,
+        status: "completed",
+        message: "Context cleared",
+      },
+    });
+  }
+
+  function requireThreadIds(threadIds: readonly string[]): [string, string] {
+    const [first, second] = threadIds;
+    if (first === undefined || second === undefined) {
+      throw new Error("Expected two threads");
+    }
+    return [first, second];
+  }
+
+  it.each([null, ""])(
+    "refuses an invalid persisted identity handle %s instead of treating it as a fresh thread",
+    (providerThreadId) => {
+      const { db, threadIds } = setupThreads();
+      const [threadId] = requireThreadIds(threadIds);
+      announceIdentity(db, {
+        threadId,
+        providerThreadId: "valid-earlier",
+        createdAt: 100,
+      });
+      insertEvents(db, noopNotifier, [
+        {
+          threadId,
+          sequence: 2,
+          createdAt: 101,
+          scope: threadScope(),
+          providerThreadId,
+          type: "thread/identity",
+          ...emptyItemFields,
+          data: "{}",
+        },
+      ]);
+      expect(getStoredProviderSession(db, threadId)).toEqual({
+        kind: "invalid",
+        providerThreadId,
+        claimantThreadIds: [],
+      });
+      clearContext(db, threadId);
+      expect(getStoredProviderSession(db, threadId)).toEqual({ kind: "none" });
+      db.$client.close();
+    },
+  );
+
+  it("ignores provider ids stamped on ordinary events", () => {
+    const { db, threadIds } = setupThreads();
+    const [first, second] = requireThreadIds(threadIds);
+    announceIdentity(db, {
+      createdAt: 1_787_775_164_121,
+      providerThreadId: "session-alpha",
+      threadId: first,
+    });
+    announceIdentity(db, {
+      createdAt: 1_787_775_164_240,
+      providerThreadId: "session-beta",
+      threadId: second,
+    });
+    stampTurn(db, {
+      createdAt: 1_787_775_656_758,
+      providerThreadId: "session-beta",
+      threadId: first,
+      turnId: "turn-contaminated",
+    });
+
+    expect(getStoredProviderSession(db, first)).toEqual({
+      kind: "owned",
+      providerThreadId: "session-alpha",
+    });
+    expect(getLastStoredProviderThreadId(db, second)).toBe("session-beta");
+    db.$client.close();
+  });
+
+  it("falls back to the thread's own session when a later identity names a session another thread claimed first", () => {
+    const { db, threadIds } = setupThreads();
+    const [owner, contaminated] = requireThreadIds(threadIds);
+    announceIdentity(db, {
+      createdAt: 1_787_776_927_220,
+      providerThreadId: "session-own",
+      threadId: contaminated,
+    });
+    announceIdentity(db, {
+      createdAt: 1_787_776_927_349,
+      providerThreadId: "session-shared",
+      threadId: owner,
+    });
+    stampTurn(db, {
+      createdAt: 1_787_777_231_409,
+      providerThreadId: "session-shared",
+      threadId: contaminated,
+      turnId: "turn-stamped-foreign",
+    });
+    announceIdentity(db, {
+      createdAt: 1_787_777_258_917,
+      providerThreadId: "session-shared",
+      threadId: contaminated,
+    });
+
+    expect(getStoredProviderSession(db, contaminated)).toEqual({
+      kind: "owned",
+      providerThreadId: "session-own",
+    });
+    expect(getStoredProviderSession(db, owner)).toEqual({
+      kind: "owned",
+      providerThreadId: "session-shared",
+    });
+    expect(
+      classifyStoredProviderThreadClaim(db, {
+        providerThreadId: "session-shared",
+        threadId: contaminated,
+      }),
+    ).toBe("foreign");
+    expect(
+      classifyStoredProviderThreadClaim(db, {
+        providerThreadId: "session-shared",
+        threadId: owner,
+      }),
+    ).toBe("owned");
+    expect(
+      classifyStoredProviderThreadClaim(db, {
+        providerThreadId: "session-never-announced",
+        threadId: contaminated,
+      }),
+    ).toBe("unannounced");
+    expect(
+      classifyStoredProviderThreadClaim(db, {
+        providerThreadId: "session-shared",
+        threadId: "thr_missing",
+      }),
+    ).toBe("foreign");
+    db.$client.close();
+  });
+
+  it("reports a thread whose only identity belongs to another thread as foreign", () => {
+    const { db, threadIds } = setupThreads();
+    const [owner, contaminated] = requireThreadIds(threadIds);
+    announceIdentity(db, {
+      createdAt: 1_787_952_405_288,
+      providerThreadId: "session-shared",
+      threadId: owner,
+    });
+    announceIdentity(db, {
+      createdAt: 1_787_952_405_428,
+      providerThreadId: "session-shared",
+      threadId: contaminated,
+    });
+
+    expect(getStoredProviderSession(db, contaminated)).toEqual({
+      kind: "foreign",
+      providerThreadId: "session-shared",
+      claimantThreadIds: [owner],
+    });
+    expect(getLastStoredProviderThreadId(db, contaminated)).toBeNull();
+    expect(getLastStoredProviderThreadId(db, owner)).toBe("session-shared");
+    db.$client.close();
+  });
+
+  it("treats claims tied in the same millisecond as ambiguous for both threads, as in archived pre-#3496 concurrent starts", () => {
+    const { db, threadIds } = setupThreads();
+    const [early, late] = requireThreadIds(threadIds);
+    const batchAt = 1_787_775_164_121;
+    announceIdentity(db, {
+      createdAt: batchAt,
+      providerThreadId: "01a03fb4-1bb9-session-a",
+      threadId: early,
+    });
+    announceIdentity(db, {
+      createdAt: batchAt,
+      providerThreadId: "01a03fb4-1c1a-session-b",
+      threadId: late,
+    });
+    announceIdentity(db, {
+      createdAt: batchAt,
+      providerThreadId: "01a03fb4-1bb9-session-a",
+      threadId: early,
+    });
+    announceIdentity(db, {
+      createdAt: batchAt,
+      providerThreadId: "01a03fb4-1bb9-session-a",
+      threadId: late,
+    });
+    for (const [threadId, providerThreadId] of [
+      [early, "01a03fb4-1c1a-session-b"],
+      [late, "01a03fb4-1bb9-session-a"],
+    ] as const) {
+      stampTurn(db, {
+        createdAt: 1_787_775_164_240,
+        providerThreadId,
+        threadId,
+        turnId: `turn-${threadId}`,
+      });
+    }
+
+    expect(
+      resolveStoredProviderSessions(db, { threadIds: [early, late] }),
+    ).toEqual(
+      new Map([
+        [
+          early,
+          {
+            kind: "ambiguous",
+            providerThreadId: "01a03fb4-1bb9-session-a",
+            claimantThreadIds: [late],
+          },
+        ],
+        [
+          late,
+          {
+            kind: "ambiguous",
+            providerThreadId: "01a03fb4-1bb9-session-a",
+            claimantThreadIds: [early],
+          },
+        ],
+      ]),
+    );
+    expect(getLastStoredProviderThreadId(db, early)).toBeNull();
+    expect(getLastStoredProviderThreadId(db, late)).toBeNull();
+    expect(
+      classifyStoredProviderThreadClaim(db, {
+        providerThreadId: "01a03fb4-1bb9-session-a",
+        threadId: early,
+      }),
+    ).toBe("ambiguous");
+    expect(
+      classifyStoredProviderThreadClaim(db, {
+        providerThreadId: "01a03fb4-1c1a-session-b",
+        threadId: late,
+      }),
+    ).toBe("owned");
+    expect(
+      listThreadTurnInterruptionEventStates(db, {
+        threadIds: [early, late],
+      }).map((state) => state.latestProviderThreadId),
+    ).toEqual([null, null]);
+    db.$client.close();
+  });
+
+  it("keeps a strictly earlier claim as the owner even when a later batch ties, as in archived pre-#3496 starts 140 ms apart", () => {
+    const { db, threadIds } = setupThreads();
+    const [first, second] = requireThreadIds(threadIds);
+    announceIdentity(db, {
+      createdAt: 1_787_952_405_288,
+      providerThreadId: "01a04a44-7dd6-session-a",
+      threadId: first,
+    });
+    announceIdentity(db, {
+      createdAt: 1_787_952_405_288,
+      providerThreadId: "01a04a44-80e8-session-b",
+      threadId: second,
+    });
+    announceIdentity(db, {
+      createdAt: 1_787_952_405_428,
+      providerThreadId: "01a04a44-7dd6-session-a",
+      threadId: first,
+    });
+    announceIdentity(db, {
+      createdAt: 1_787_952_405_428,
+      providerThreadId: "01a04a44-7dd6-session-a",
+      threadId: second,
+    });
+
+    expect(
+      resolveStoredProviderSessions(db, { threadIds: [first, second] }),
+    ).toEqual(
+      new Map([
+        [first, { kind: "owned", providerThreadId: "01a04a44-7dd6-session-a" }],
+        [
+          second,
+          { kind: "owned", providerThreadId: "01a04a44-80e8-session-b" },
+        ],
+      ]),
+    );
+    db.$client.close();
+  });
+
+  it("stops at an ambiguous newest identity instead of resuming an older session", () => {
+    const { db, threadIds } = setupThreads();
+    const [first, second] = requireThreadIds(threadIds);
+    announceIdentity(db, {
+      createdAt: 1_787_789_348_554,
+      providerThreadId: "session-own-earlier",
+      threadId: second,
+    });
+    announceIdentity(db, {
+      createdAt: 1_787_789_957_543,
+      providerThreadId: "session-tied",
+      threadId: first,
+    });
+    announceIdentity(db, {
+      createdAt: 1_787_789_957_543,
+      providerThreadId: "session-tied",
+      threadId: second,
+    });
+
+    expect(getStoredProviderSession(db, second)).toEqual({
+      kind: "ambiguous",
+      providerThreadId: "session-tied",
+      claimantThreadIds: [first],
+    });
+    db.$client.close();
+  });
+
+  it("lets a thread outside a tie treat the tied session as foreign", () => {
+    const { db, threadIds } = setupThreads({
+      providerIds: ["codex", "codex", "codex"],
+    });
+    const [first, second, third] = threadIds;
+    if (first === undefined || second === undefined || third === undefined) {
+      throw new Error("Expected three threads");
+    }
+    for (const threadId of [first, second]) {
+      announceIdentity(db, {
+        createdAt: 1_787_775_164_121,
+        providerThreadId: "session-tied",
+        threadId,
+      });
+    }
+    announceIdentity(db, {
+      createdAt: 1_787_775_100_000,
+      providerThreadId: "session-third-own",
+      threadId: third,
+    });
+    announceIdentity(db, {
+      createdAt: 1_787_775_200_000,
+      providerThreadId: "session-tied",
+      threadId: third,
+    });
+
+    expect(getStoredProviderSession(db, third)).toEqual({
+      kind: "owned",
+      providerThreadId: "session-third-own",
+    });
+    expect(
+      classifyStoredProviderThreadClaim(db, {
+        providerThreadId: "session-tied",
+        threadId: third,
+      }),
+    ).toBe("foreign");
+    db.$client.close();
+  });
+
+  it("resolves no session after a completed context clear while ownership of earlier sessions persists", () => {
+    const { db, threadIds } = setupThreads();
+    const [owner, other] = requireThreadIds(threadIds);
+    announceIdentity(db, {
+      createdAt: 1_787_775_164_121,
+      providerThreadId: "session-alpha",
+      threadId: owner,
+    });
+    announceIdentity(db, {
+      createdAt: 1_787_775_164_121,
+      providerThreadId: "session-alpha",
+      threadId: other,
+    });
+    clearContext(db, owner);
+
+    expect(getStoredProviderSession(db, owner)).toEqual({ kind: "none" });
+    expect(getStoredProviderSession(db, other)).toEqual({
+      kind: "ambiguous",
+      providerThreadId: "session-alpha",
+      claimantThreadIds: [owner],
+    });
+    announceIdentity(db, {
+      createdAt: 1_787_775_300_000,
+      providerThreadId: "session-gamma",
+      threadId: owner,
+    });
+    expect(getStoredProviderSession(db, owner)).toEqual({
+      kind: "owned",
+      providerThreadId: "session-gamma",
+    });
+    clearContext(db, other);
+    expect(getStoredProviderSession(db, other)).toEqual({ kind: "none" });
+    db.$client.close();
+  });
+
+  it("detects edits that would erase the original shared ownership claim", () => {
+    const { db, threadIds } = setupThreads();
+    const [owner, contaminated] = requireThreadIds(threadIds);
+    announceIdentity(db, {
+      createdAt: 1_787_775_164_121,
+      providerThreadId: "session-shared",
+      threadId: owner,
+    });
+    announceIdentity(db, {
+      createdAt: 1_787_775_164_240,
+      providerThreadId: "session-shared",
+      threadId: contaminated,
+    });
+    expect(getStoredProviderSession(db, contaminated).kind).toBe("foreign");
+
+    expect(
+      wouldRemoveSharedProviderSessionClaim(db, {
+        cutoffSequence: 1,
+        oldMaxSequence: 1,
+        threadId: owner,
+      }),
+    ).toBe(true);
+
+    expect(getStoredProviderSession(db, contaminated)).toEqual({
+      kind: "foreign",
+      providerThreadId: "session-shared",
+      claimantThreadIds: [owner],
+    });
+    db.$client.close();
+  });
+
+  it.each([
+    "same-host",
+    "other-host",
+    "other-provider",
+    "unknown-host",
+  ] as const)("checks shared claim removal within the %s scope", (kind) => {
+    const { db, environment, project, threadIds } = setupThreads();
+    const [owner] = requireThreadIds(threadIds);
+    const host = upsertHost(db, noopNotifier, {
+      name: "claim-other-host",
+      type: "persistent",
+    });
+    const otherEnvironment = createEnvironment(db, noopNotifier, {
+      projectId: project.id,
+      hostId: host.id,
+      path: "/tmp/claim-other-host",
+      status: "ready",
+      providerOwnsPath: false,
+    });
+    const other = createThread(db, noopNotifier, {
+      projectId: project.id,
+      ...(kind === "unknown-host"
+        ? {}
+        : {
+            environmentId:
+              kind === "other-host" ? otherEnvironment.id : environment.id,
+          }),
+      providerId: kind === "other-provider" ? "claude-code" : "codex",
+    });
+    for (const threadId of [owner, other.id]) {
+      announceIdentity(db, {
+        threadId,
+        createdAt: 100,
+        providerThreadId: "shared",
+      });
+    }
+    expect(
+      wouldRemoveSharedProviderSessionClaim(db, {
+        threadId: owner,
+        cutoffSequence: 1,
+        oldMaxSequence: 1,
+      }),
+    ).toBe(kind === "same-host" || kind === "unknown-host");
+    db.$client.close();
+  });
+
+  it("allows removing later duplicate or foreign claims while retaining the original evidence", () => {
+    const { db, threadIds } = setupThreads();
+    const [owner, other] = requireThreadIds(threadIds);
+    for (const [threadId, createdAt] of [
+      [owner, 100],
+      [owner, 101],
+      [other, 102],
+    ] as const) {
+      announceIdentity(db, { threadId, createdAt, providerThreadId: "shared" });
+    }
+    expect(
+      wouldRemoveSharedProviderSessionClaim(db, {
+        threadId: owner,
+        cutoffSequence: 2,
+        oldMaxSequence: 2,
+      }),
+    ).toBe(false);
+    expect(
+      wouldRemoveSharedProviderSessionClaim(db, {
+        threadId: other,
+        cutoffSequence: 1,
+        oldMaxSequence: 1,
+      }),
+    ).toBe(false);
+    clearContext(db, owner);
+    expect(getStoredProviderSession(db, owner)).toEqual({ kind: "none" });
+    expect(getStoredProviderSession(db, other).kind).toBe("foreign");
+    expect(
+      wouldRemoveSharedProviderSessionClaim(db, {
+        threadId: owner,
+        cutoffSequence: 1,
+        oldMaxSequence: 2,
+      }),
+    ).toBe(true);
+    db.$client.close();
+  });
+
+  it("scopes claims to threads of the same provider on the same host", () => {
+    const { db, host, project, threadIds } = setupThreads({
+      providerIds: ["codex", "claude-code"],
+    });
+    const [codexThread, claudeThread] = requireThreadIds(threadIds);
+    const otherHost = upsertHost(db, noopNotifier, {
+      name: "identity-other-host",
+      type: "persistent",
+    });
+    const otherEnvironment = createEnvironment(db, noopNotifier, {
+      projectId: project.id,
+      hostId: otherHost.id,
+      path: "/tmp/identity-other",
+      status: "ready",
+      providerOwnsPath: false,
+    });
+    const otherHostThread = createThread(db, noopNotifier, {
+      projectId: project.id,
+      environmentId: otherEnvironment.id,
+      providerId: "codex",
+    });
+    const detachedThread = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+    });
+    for (const threadId of [claudeThread, otherHostThread.id]) {
+      announceIdentity(db, {
+        createdAt: 1_787_775_100_000,
+        providerThreadId: "session-shared",
+        threadId,
+      });
+    }
+    announceIdentity(db, {
+      createdAt: 1_787_775_200_000,
+      providerThreadId: "session-shared",
+      threadId: codexThread,
+    });
+
+    expect(getLastStoredProviderThreadId(db, codexThread)).toBe(
+      "session-shared",
+    );
+    expect(getLastStoredProviderThreadId(db, claudeThread)).toBe(
+      "session-shared",
+    );
+    expect(getLastStoredProviderThreadId(db, otherHostThread.id)).toBe(
+      "session-shared",
+    );
+
+    announceIdentity(db, {
+      createdAt: 1_787_775_050_000,
+      providerThreadId: "session-shared",
+      threadId: detachedThread.id,
+    });
+    expect(getStoredProviderSession(db, detachedThread.id)).toEqual({
+      kind: "owned",
+      providerThreadId: "session-shared",
+    });
+    expect(getStoredProviderSession(db, codexThread)).toEqual({
+      kind: "foreign",
+      providerThreadId: "session-shared",
+      claimantThreadIds: [detachedThread.id],
+    });
+    expect(host.id).not.toBe(otherHost.id);
+    db.$client.close();
+  });
+
+  it("resolves a batch of threads and unknown ids", () => {
+    const { db, threadIds } = setupThreads();
+    const [first, second] = requireThreadIds(threadIds);
+    announceIdentity(db, {
+      createdAt: 1_787_775_164_121,
+      providerThreadId: "session-alpha",
+      threadId: first,
+    });
+    announceIdentity(db, {
+      createdAt: 1_787_775_164_240,
+      providerThreadId: "session-beta",
+      threadId: second,
+    });
+
+    expect(
+      resolveStoredProviderSessions(db, {
+        threadIds: [first, second, "thr_missing", first],
+      }),
+    ).toEqual(
+      new Map([
+        [first, { kind: "owned", providerThreadId: "session-alpha" }],
+        [second, { kind: "owned", providerThreadId: "session-beta" }],
+        ["thr_missing", { kind: "none" }],
+      ]),
+    );
+    expect(
+      listThreadTurnInterruptionEventStates(db, {
+        threadIds: [first, second],
+      }).map((state) => state.latestProviderThreadId),
+    ).toEqual(["session-alpha", "session-beta"]);
+    expect(resolveStoredProviderSessions(db, { threadIds: [] })).toEqual(
+      new Map(),
+    );
+    db.$client.close();
   });
 });

@@ -1,5 +1,8 @@
+import { Link } from "react-router-dom";
+import { OptionPicker } from "@/components/pickers/OptionPicker";
+import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { Icon } from "@bb/shared-ui/icon";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Switch } from "@bb/shared-ui/switch";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { useUpdateGeneralSettings } from "@/hooks/mutations/settings-mutations";
@@ -12,45 +15,102 @@ import {
 import { Button } from "@bb/shared-ui/button";
 import { Input } from "@bb/shared-ui/input";
 import { sdk } from "@/lib/sdk";
+import { SettingsSection } from "@/components/ui/settings-section";
+import { getSettingsSectionRoutePath } from "@/components/settings/settings-sections";
+import { MachineEnvironmentImportDialog } from "@/components/settings/MachineEnvironmentImportDialog";
+import type { ParsedEnvEntry } from "@/lib/parse-env-file";
 import {
-  SettingsBadge,
-  SettingsSection,
-} from "@/components/ui/settings-section";
-import { invalidateSystemConfig } from "@/hooks/cache-owners/system-cache-effects";
+  invalidateMachineEnvironment,
+  invalidateSystemConfig,
+} from "@/hooks/cache-owners/system-cache-effects";
 import { machineEnvironmentQueryKey } from "@/hooks/queries/query-keys";
+
+const GLOBAL_SCOPE = "global";
 
 type DraftRow = Omit<MachineEnvironmentVariable, "value"> & {
   id: string;
-  existing: boolean;
+  nameLocked: boolean;
   value: string | null;
 };
 
+type EnvironmentEntry =
+  | { kind: "inherited"; variable: MachineEnvironmentVariable }
+  | { kind: "row"; row: DraftRow; index: number; overridesGlobal: boolean };
+
 export function MachineEnvironmentSettings() {
+  const [scope, setScope] = useState(GLOBAL_SCOPE);
+  const projects = useSidebarNavigation().data?.projects ?? [];
+  const selected = projects.find((project) => project.id === scope) ?? null;
+  return (
+    <ScopedMachineEnvironmentSettings
+      key={selected?.id ?? GLOBAL_SCOPE}
+      projectId={selected?.id ?? null}
+      scopeControl={
+        <div className="flex min-w-0 flex-wrap items-center gap-1">
+          <span className="text-sm text-subtle-foreground">
+            Showing variables for
+          </span>
+          <OptionPicker
+            modal={false}
+            label="Scope"
+            className="text-sm"
+            value={selected?.id ?? GLOBAL_SCOPE}
+            onChange={setScope}
+            options={[
+              { value: GLOBAL_SCOPE, label: "All projects" },
+              ...projects.map((project) => ({
+                value: project.id,
+                label: project.name,
+              })),
+            ]}
+          />
+        </div>
+      }
+    />
+  );
+}
+
+export function ScopedMachineEnvironmentSettings({
+  projectId,
+  scopeControl,
+}: {
+  projectId: string | null;
+  scopeControl?: ReactNode;
+}) {
   const queryClient = useQueryClient();
   const settings = useSystemConfig().data?.generalSettings;
   const updateSettings = useUpdateGeneralSettings();
   const query = useQuery({
-    queryKey: machineEnvironmentQueryKey(),
-    queryFn: () => sdk.system.machineEnvironment(),
+    queryKey: machineEnvironmentQueryKey(projectId),
+    queryFn: async () =>
+      projectId === null
+        ? { ...(await sdk.system.machineEnvironment()), inheritedVariables: [] }
+        : sdk.projects.machineEnvironment({ projectId }),
   });
   const save = async (rows: readonly DraftRow[]) => {
-    await sdk.system.replaceMachineEnvironment({
+    const input = {
       variables: rows.map((row) => ({
         name: row.name,
         value: row.value,
         note: row.note,
       })),
-    });
+    };
+    if (projectId === null) await sdk.system.replaceMachineEnvironment(input);
+    else await sdk.projects.replaceMachineEnvironment({ ...input, projectId });
   };
   return (
     <MachineEnvironmentSettingsContent
+      key={projectId ?? GLOBAL_SCOPE}
+      projectScope={projectId !== null}
+      scopeControl={scopeControl}
+      inheritedVariables={query.data?.inheritedVariables ?? []}
       environment={query.data ?? null}
       loadFailed={query.isError}
       gitCredentialsEnabled={settings?.machineGitCredentialsEnabled ?? true}
       gitSwitchDisabled={!settings || updateSettings.isPending}
       onSave={save}
-      onSaved={async () => {
-        await query.refetch();
+      onSaved={() => {
+        invalidateMachineEnvironment({ queryClient });
         invalidateSystemConfig({ queryClient });
       }}
       onSaveFailed={() => void query.refetch()}
@@ -67,6 +127,9 @@ export function MachineEnvironmentSettings() {
 
 export function MachineEnvironmentSettingsContent({
   environment,
+  projectScope = false,
+  scopeControl,
+  inheritedVariables = [],
   loadFailed = false,
   gitCredentialsEnabled,
   gitSwitchDisabled = false,
@@ -76,6 +139,9 @@ export function MachineEnvironmentSettingsContent({
   onSetGitCredentials,
 }: {
   environment: MachineEnvironmentList | null;
+  projectScope?: boolean;
+  scopeControl?: ReactNode;
+  inheritedVariables?: readonly MachineEnvironmentVariable[];
   loadFailed?: boolean;
   gitCredentialsEnabled: boolean;
   gitSwitchDisabled?: boolean;
@@ -88,12 +154,13 @@ export function MachineEnvironmentSettingsContent({
   const [visible, setVisible] = useState<Set<string>>(new Set());
   const [touched, setTouched] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
   const rows =
     draft ??
     (environment?.variables ?? []).map((row) => ({
       ...row,
       id: row.name,
-      existing: true,
+      nameLocked: true,
     }));
   const issues = rows.map((row) => {
     if (rows.filter((other) => other.name === row.name).length > 1)
@@ -125,190 +192,160 @@ export function MachineEnvironmentSettingsContent({
     },
   });
   const disabled = environment === null || mutation.isPending;
+  const saved = environment?.variables ?? [];
+  const isDirty =
+    draft !== null &&
+    (draft.length !== saved.length ||
+      draft.some((row, index) => {
+        const base = saved[index];
+        return (
+          base === undefined ||
+          base.name !== row.name ||
+          base.note !== row.note ||
+          row.value !== null
+        );
+      }));
   const change = (id: string, patch: Partial<DraftRow>) => {
     setDraft(rows.map((row) => (row.id === id ? { ...row, ...patch } : row)));
     setError(null);
   };
-  const hasOverride = rows.some((row) => row.name === "GH_TOKEN");
+  const addRow = () =>
+    setDraft([
+      ...rows,
+      {
+        id: crypto.randomUUID(),
+        nameLocked: false,
+        name: "",
+        value: "",
+        secret: true,
+        note: null,
+      },
+    ]);
+  const importRows = (entries: readonly ParsedEnvEntry[]) => {
+    const next = [...rows];
+    for (const entry of entries) {
+      const index = next.findIndex((row) => row.name === entry.name);
+      const existing = index === -1 ? undefined : next[index];
+      if (existing) next[index] = { ...existing, value: entry.value };
+      else
+        next.push({
+          id: crypto.randomUUID(),
+          nameLocked: false,
+          name: entry.name,
+          value: entry.value,
+          secret: true,
+          note: null,
+        });
+    }
+    setDraft(next);
+    setError(null);
+  };
+  const override = (variable: MachineEnvironmentVariable) =>
+    setDraft([
+      ...rows,
+      { ...variable, id: variable.name, nameLocked: true, value: "" },
+    ]);
+  const inherited = projectScope ? inheritedVariables : [];
+  const inheritedNames = new Set(inherited.map((variable) => variable.name));
+  const entries: EnvironmentEntry[] = [];
+  for (const variable of inherited) {
+    const index = rows.findIndex((row) => row.name === variable.name);
+    const row = rows[index];
+    entries.push(
+      row
+        ? { kind: "row", row, index, overridesGlobal: true }
+        : { kind: "inherited", variable },
+    );
+  }
+  rows.forEach((row, index) => {
+    if (!inheritedNames.has(row.name))
+      entries.push({ kind: "row", row, index, overridesGlobal: false });
+  });
   const git = environment?.builtInGit;
-  const gitDisabled = !gitCredentialsEnabled;
-  const gitMissing = git?.status === "not logged in";
+  const gitOverridden =
+    rows.some((row) => row.name === "GH_TOKEN") ||
+    inheritedNames.has("GH_TOKEN");
   return (
     <SettingsSection
-      title="Machine environment"
-      description="Configuration for machines provisioned by plugins."
-      bodyClassName="space-y-3 rounded-none border-0 bg-transparent p-0"
-      action={
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={disabled}
-          onClick={() =>
-            setDraft([
-              ...rows,
-              {
-                id: crypto.randomUUID(),
-                existing: false,
-                name: "",
-                value: "",
-                secret: true,
-                note: null,
-              },
-            ])
-          }
-        >
-          Add variable
-        </Button>
-      }
+      title="Environment variables"
+      description="Global variables are available to BB-managed processes on every connected machine. Project variables override them for work in that project."
+      bodyClassName="space-y-8"
     >
       <div className="space-y-5">
-        {!hasOverride && (
-          <div className="space-y-2">
-            <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
-              <Input
-                className={`col-span-2 font-mono sm:col-span-1 ${gitDisabled ? "opacity-50" : ""}`}
-                aria-label="Automatic variable name"
-                value="GH_TOKEN"
-                readOnly
-              />
-              <Input
-                className={`font-mono ${gitDisabled ? "opacity-50" : ""}`}
-                aria-label="Automatic GH_TOKEN value"
-                value={git?.status === "logged in" ? "••••••••" : ""}
-                placeholder={
-                  git?.status === "disabled"
-                    ? "Disabled"
-                    : gitMissing
-                      ? "Not available"
-                      : "Checking…"
-                }
-                readOnly
-              />
-              <div className="flex size-8 items-center justify-center">
-                <Switch
-                  aria-label="Automatic GH_TOKEN"
-                  checked={gitCredentialsEnabled}
-                  disabled={gitSwitchDisabled}
-                  onCheckedChange={onSetGitCredentials}
-                />
-              </div>
-            </div>
-            <p
-              className={`flex min-w-0 items-center gap-1.5 text-xs ${gitDisabled ? "opacity-50" : ""}`}
-            >
-              <SettingsBadge>Automatic</SettingsBadge>
-              <span
-                role={gitMissing ? "alert" : "status"}
-                className={`min-w-0 truncate ${
-                  gitMissing
-                    ? "text-destructive-text"
-                    : "text-subtle-foreground"
-                }`}
-              >
-                {gitMissing ? (
-                  "GitHub is not logged in. Run gh auth login on the server, or add your own GH_TOKEN."
-                ) : git?.status === "logged in" ? (
-                  <>
-                    Generated using{" "}
-                    <code>gh auth token --hostname github.com</code>.
-                  </>
-                ) : git?.status === "disabled" ? (
-                  "Disabled — no automatic GitHub credentials are sent to machines."
-                ) : git?.status === "overridden" ? (
-                  "The server’s GitHub login will be used after saving."
-                ) : (
-                  "Checking the server’s GitHub login…"
-                )}
-              </span>
-            </p>
-          </div>
+        {scopeControl}
+        {environment === null && !loadFailed && (
+          <p className="text-xs text-subtle-foreground">Loading…</p>
         )}
-        {rows.map((row, index) => (
-          <div key={row.id} className="space-y-2">
-            <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
-              <Input
-                className="col-span-2 font-mono sm:col-span-1"
-                aria-label={`Variable name ${index + 1}`}
-                placeholder="KEY"
-                value={row.name}
+        {environment !== null && (
+          <MachineEnvironmentAutomaticRow
+            git={git}
+            enabled={gitCredentialsEnabled}
+            switchDisabled={gitSwitchDisabled}
+            projectScope={projectScope}
+            overridden={gitOverridden}
+            overrideDisabled={disabled || gitOverridden}
+            onSetEnabled={onSetGitCredentials}
+            onOverride={() =>
+              override({
+                name: "GH_TOKEN",
+                value: null,
+                secret: true,
+                note: null,
+              })
+            }
+          />
+        )}
+        {environment !== null &&
+          entries.map((entry) =>
+            entry.kind === "inherited" ? (
+              <MachineEnvironmentInheritedRow
+                key={`inherited:${entry.variable.name}`}
+                variable={entry.variable}
                 disabled={disabled}
-                readOnly={row.existing}
-                aria-invalid={touched.has(row.id) && issues[index] !== null}
-                onBlur={() =>
-                  setTouched((current) => new Set(current).add(row.id))
+                onOverride={() => override(entry.variable)}
+              />
+            ) : (
+              <MachineEnvironmentVariableRow
+                key={entry.row.id}
+                row={entry.row}
+                index={entry.index}
+                disabled={disabled}
+                error={
+                  touched.has(entry.row.id)
+                    ? (issues[entry.index] ?? null)
+                    : null
                 }
-                onChange={(event) =>
-                  change(row.id, {
-                    name: event.target.value,
+                revealed={visible.has(entry.row.id)}
+                caption={
+                  entry.overridesGlobal ? (
+                    <>
+                      <RowScope>Override</RowScope>
+                      {entry.row.note ??
+                        "Replaces the global value; remove it to inherit again."}
+                    </>
+                  ) : (
+                    entry.row.note
+                  )
+                }
+                onBlur={() =>
+                  setTouched((current) => new Set(current).add(entry.row.id))
+                }
+                onNameChange={(name) => change(entry.row.id, { name })}
+                onValueChange={(value) => change(entry.row.id, { value })}
+                onToggleReveal={() =>
+                  setVisible((current) => {
+                    const next = new Set(current);
+                    if (next.has(entry.row.id)) next.delete(entry.row.id);
+                    else next.add(entry.row.id);
+                    return next;
                   })
                 }
-              />
-              <div className="relative min-w-0">
-                <Input
-                  className="min-w-0 pr-9 font-mono"
-                  aria-label={`Value for ${row.name || `variable ${index + 1}`}`}
-                  type={visible.has(row.id) ? "text" : "password"}
-                  placeholder={
-                    row.value === null
-                      ? "Saved secret · enter to replace"
-                      : "VALUE"
-                  }
-                  value={row.value ?? ""}
-                  autoComplete="off"
-                  disabled={disabled}
-                  onChange={(event) =>
-                    change(row.id, { value: event.target.value })
-                  }
-                />
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="absolute inset-y-0 right-0 my-auto size-8 text-subtle-foreground"
-                  aria-label={`${visible.has(row.id) ? "Hide" : "Show"} ${row.name || "value"}`}
-                  disabled={disabled || row.value === null}
-                  onClick={() =>
-                    setVisible((current) => {
-                      const next = new Set(current);
-                      if (next.has(row.id)) next.delete(row.id);
-                      else next.add(row.id);
-                      return next;
-                    })
-                  }
-                >
-                  <Icon
-                    name={visible.has(row.id) ? "EyeOff" : "Eye"}
-                    className="size-4"
-                  />
-                </Button>
-              </div>
-              <Button
-                size="icon"
-                className="size-8 text-subtle-foreground hover:text-destructive-text"
-                variant="ghost"
-                aria-label={`Remove ${row.name || "variable"}`}
-                disabled={disabled}
-                onClick={() =>
-                  setDraft(rows.filter((entry) => entry.id !== row.id))
+                onRemove={() =>
+                  setDraft(rows.filter((other) => other.id !== entry.row.id))
                 }
-              >
-                <Icon name="X" className="size-4" />
-              </Button>
-            </div>
-            {row.name === "GH_TOKEN" && (
-              <p className="text-xs text-subtle-foreground">
-                Overrides the automatic token from the server’s GitHub login.
-              </p>
-            )}
-            {row.note && (
-              <p className="text-xs text-subtle-foreground">{row.note}</p>
-            )}
-            {touched.has(row.id) && issues[index] && (
-              <p role="alert" className="text-xs text-destructive-text">
-                {issues[index]}
-              </p>
-            )}
-          </div>
-        ))}
+              />
+            ),
+          )}
       </div>
       {loadFailed && (
         <p role="alert" className="text-xs text-destructive-text">
@@ -320,29 +357,313 @@ export function MachineEnvironmentSettingsContent({
           {error}
         </p>
       )}
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        {draft !== null && (
+      {environment !== null && (
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             size="sm"
-            variant="ghost"
-            disabled={mutation.isPending}
-            onClick={() => {
-              setDraft(null);
-              setError(null);
-              setVisible(new Set());
-            }}
+            variant="outline"
+            className="flex-1 sm:flex-none"
+            disabled={disabled}
+            onClick={addRow}
           >
-            Discard changes
+            Add variable
           </Button>
-        )}
-        <Button
-          size="sm"
-          disabled={disabled || draft === null || issues.some(Boolean)}
-          onClick={() => mutation.mutate()}
+          <Button
+            size="sm"
+            variant="outline"
+            className="flex-1 sm:flex-none"
+            disabled={disabled}
+            onClick={() => setImporting(true)}
+          >
+            Import from .env
+          </Button>
+          <div className="ml-auto flex w-full items-center justify-end gap-2 sm:w-auto">
+            {isDirty && (
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={mutation.isPending}
+                onClick={() => {
+                  setDraft(null);
+                  setError(null);
+                  setVisible(new Set());
+                }}
+              >
+                Discard changes
+              </Button>
+            )}
+            <Button
+              size="sm"
+              disabled={disabled || !isDirty || issues.some(Boolean)}
+              onClick={() => mutation.mutate()}
+            >
+              {mutation.isPending ? "Saving…" : "Save variables"}
+            </Button>
+          </div>
+        </div>
+      )}
+      <MachineEnvironmentImportDialog
+        open={importing}
+        onOpenChange={setImporting}
+        onImport={importRows}
+      />
+    </SettingsSection>
+  );
+}
+
+const ROW_GRID_CLASS_NAME =
+  "grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]";
+const ROW_CAPTION_CLASS_NAME = "text-xs leading-snug text-subtle-foreground";
+
+function GlobalSettingsLink() {
+  return (
+    <Link
+      to={getSettingsSectionRoutePath("environment-variables")}
+      className="rounded-sm underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+    >
+      global settings
+    </Link>
+  );
+}
+
+function RowScope({ children }: { children: string }) {
+  return (
+    <>
+      <span className="text-foreground">{children}</span>
+      {" · "}
+    </>
+  );
+}
+
+export function MachineEnvironmentAutomaticRow({
+  git,
+  enabled,
+  switchDisabled = false,
+  projectScope = false,
+  overridden = false,
+  overrideDisabled = false,
+  onSetEnabled,
+  onOverride,
+}: {
+  git: MachineEnvironmentList["builtInGit"] | undefined;
+  enabled: boolean;
+  switchDisabled?: boolean;
+  projectScope?: boolean;
+  overridden?: boolean;
+  overrideDisabled?: boolean;
+  onSetEnabled: (enabled: boolean) => void;
+  onOverride: () => void;
+}) {
+  const dimmed = !enabled || overridden;
+  const missing = git?.status === "not logged in";
+  return (
+    <div className="space-y-2">
+      <div className={ROW_GRID_CLASS_NAME}>
+        <Input
+          className={`col-span-2 font-mono sm:col-span-1 ${dimmed ? "opacity-50" : ""}`}
+          aria-label="Automatic variable name"
+          value="GH_TOKEN"
+          readOnly
+        />
+        <Input
+          className={`font-mono ${dimmed ? "opacity-50" : ""}`}
+          aria-label="Automatic GH_TOKEN value"
+          value={git?.status === "logged in" ? "••••••••" : ""}
+          placeholder={
+            git?.status === "disabled"
+              ? "Disabled"
+              : missing
+                ? "Not available"
+                : "Checking…"
+          }
+          readOnly
+        />
+        <div className="flex size-8 items-center justify-center">
+          {projectScope ? (
+            <Button
+              size="icon"
+              variant="ghost"
+              className="size-8 text-subtle-foreground"
+              aria-label="Override GH_TOKEN"
+              disabled={overrideDisabled}
+              onClick={onOverride}
+            >
+              <Icon name="Edit" className="size-4" />
+            </Button>
+          ) : (
+            <Switch
+              aria-label="Automatic GH_TOKEN"
+              checked={enabled}
+              disabled={switchDisabled}
+              onCheckedChange={onSetEnabled}
+            />
+          )}
+        </div>
+      </div>
+      <p className={`${ROW_CAPTION_CLASS_NAME} ${dimmed ? "opacity-50" : ""}`}>
+        <RowScope>Automatic</RowScope>
+        <span
+          role={missing && !overridden ? "alert" : "status"}
+          className={
+            missing && !overridden ? "text-destructive-text" : undefined
+          }
         >
-          {mutation.isPending ? "Saving…" : "Save variables"}
+          {overridden ? (
+            "Overridden by the GH_TOKEN variable below."
+          ) : missing ? (
+            "GitHub is not logged in. Run gh auth login on the server, or add your own GH_TOKEN."
+          ) : git?.status === "logged in" ? (
+            <>
+              Forwarded to other machines using{" "}
+              <code>gh auth token --hostname github.com</code>. The primary
+              machine uses its local Git authentication.
+            </>
+          ) : git?.status === "disabled" ? (
+            "Disabled — no automatic GitHub credentials are sent to other machines."
+          ) : git?.status === "overridden" ? (
+            "The server’s GitHub login will be used after saving."
+          ) : (
+            "Checking the server’s GitHub login…"
+          )}
+          {projectScope ? (
+            <>
+              {" Managed in "}
+              <GlobalSettingsLink />.
+            </>
+          ) : null}
+        </span>
+      </p>
+    </div>
+  );
+}
+
+export function MachineEnvironmentInheritedRow({
+  variable,
+  disabled = false,
+  onOverride,
+}: {
+  variable: MachineEnvironmentVariable;
+  disabled?: boolean;
+  onOverride: () => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <div className={ROW_GRID_CLASS_NAME}>
+        <Input
+          className="col-span-2 font-mono sm:col-span-1"
+          aria-label={`Global variable ${variable.name}`}
+          value={variable.name}
+          readOnly
+        />
+        <Input
+          className="font-mono"
+          aria-label={`Global value for ${variable.name}`}
+          value="••••••••"
+          readOnly
+        />
+        <Button
+          size="icon"
+          variant="ghost"
+          className="size-8 text-subtle-foreground"
+          aria-label={`Override ${variable.name}`}
+          disabled={disabled}
+          onClick={onOverride}
+        >
+          <Icon name="Edit" className="size-4" />
         </Button>
       </div>
-    </SettingsSection>
+      <p className={ROW_CAPTION_CLASS_NAME}>
+        <RowScope>Global</RowScope>
+        {variable.note ?? (
+          <>
+            Inherited from <GlobalSettingsLink />.
+          </>
+        )}
+      </p>
+    </div>
+  );
+}
+
+export function MachineEnvironmentVariableRow({
+  row,
+  index,
+  disabled = false,
+  error = null,
+  revealed = false,
+  caption = null,
+  onBlur,
+  onNameChange,
+  onValueChange,
+  onToggleReveal,
+  onRemove,
+}: {
+  row: DraftRow;
+  index: number;
+  disabled?: boolean;
+  error?: string | null;
+  revealed?: boolean;
+  caption?: ReactNode;
+  onBlur: () => void;
+  onNameChange: (name: string) => void;
+  onValueChange: (value: string) => void;
+  onToggleReveal: () => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <div className={ROW_GRID_CLASS_NAME}>
+        <Input
+          className="col-span-2 font-mono sm:col-span-1"
+          aria-label={`Variable name ${index + 1}`}
+          placeholder="KEY"
+          value={row.name}
+          disabled={disabled}
+          readOnly={row.nameLocked}
+          aria-invalid={error !== null}
+          onBlur={onBlur}
+          onChange={(event) => onNameChange(event.target.value)}
+        />
+        <div className="relative min-w-0">
+          <Input
+            className="min-w-0 pr-9 font-mono"
+            aria-label={`Value for ${row.name || `variable ${index + 1}`}`}
+            type={revealed ? "text" : "password"}
+            placeholder={
+              row.value === null ? "Saved secret · enter to replace" : "VALUE"
+            }
+            value={row.value ?? ""}
+            autoComplete="off"
+            disabled={disabled}
+            onChange={(event) => onValueChange(event.target.value)}
+          />
+          <Button
+            size="icon"
+            variant="ghost"
+            className="absolute inset-y-0 right-0 my-auto size-8 text-subtle-foreground"
+            aria-label={`${revealed ? "Hide" : "Show"} ${row.name || "value"}`}
+            disabled={disabled || row.value === null}
+            onClick={onToggleReveal}
+          >
+            <Icon name={revealed ? "EyeOff" : "Eye"} className="size-4" />
+          </Button>
+        </div>
+        <Button
+          size="icon"
+          className="size-8 text-subtle-foreground"
+          variant="ghost"
+          aria-label={`Remove ${row.name || "variable"}`}
+          disabled={disabled}
+          onClick={onRemove}
+        >
+          <Icon name="X" className="size-4" />
+        </Button>
+      </div>
+      {caption && <p className={ROW_CAPTION_CLASS_NAME}>{caption}</p>}
+      {error && (
+        <p role="alert" className="text-xs text-destructive-text">
+          {error}
+        </p>
+      )}
+    </div>
   );
 }

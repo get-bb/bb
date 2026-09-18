@@ -10,6 +10,11 @@ export const SETTINGS_NAV_SECTIONS = [
   { icon: "File", id: "files", label: "Files" },
   { icon: "FolderGit", id: "projects", label: "Projects" },
   { icon: "Laptop", id: "machines", label: "Machines" },
+  {
+    icon: "Lock",
+    id: "environment-variables",
+    label: "Environment variables",
+  },
   { icon: "PackageReceive", id: "updates", label: "Updates" },
   { icon: "ElectricPlugs", id: "plugins", label: "Installed plugins" },
   { icon: "Puzzle", id: "marketplaces", label: "Plugin marketplaces" },

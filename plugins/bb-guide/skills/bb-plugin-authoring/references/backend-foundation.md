@@ -140,6 +140,9 @@ or `null` when `BB_APP_URL` is empty. It is not bind-gated.
 `bb.server.experimental_dataDir` gives the exact server data directory for a
 migration from BB-managed files. Do not write plugin state there. Use
 `bb.storage` for plugin-owned state.
+`bb.sdk.system.config().primaryHostId` identifies the server's local enrolled
+host, or is `null` when its identity is not initialized or its host record is
+missing or destroyed. It never falls back to a remote machine.
 
 ### bb.hosts
 
@@ -267,7 +270,7 @@ Host limits protect the daemon:
 
 - A worker starts within 10 seconds and stops after five idle minutes.
 - One plugin can have 256 active calls and 32 MiB of active call input.
-- Each host RPC input and output can contain at most 8 MiB of JSON.
+- Each host RPC input can contain at most 32 MiB of JSON; output is limited to 8 MiB.
 - A call uses a 30-second default timeout and a five-second cancellation grace.
 - A worker can have 256 watches and 4,096 ignore entries per watch.
 - A watch path can contain 16 KiB; a watch batch can contain 1 MiB.

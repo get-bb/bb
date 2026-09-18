@@ -916,25 +916,46 @@ export function Overview() {
 export function EnvironmentSummary() {
   return (
     <StoryCard>
-      <StoryRow label="ready · one machine" hint="provider name; the machine is unambiguous so it stays hidden">
+      <StoryRow
+        label="ready · one machine"
+        hint="provider name; the machine is unambiguous so it stays hidden"
+      >
         {localEnvironmentSummary}
       </StoryRow>
-      <StoryRow label="ready · personal workspace" hint="no project chip, no branch; the provider names the environment">
+      <StoryRow
+        label="ready · personal workspace"
+        hint="no project chip, no branch; the provider names the environment"
+      >
         {personalEnvironmentSummary}
       </StoryRow>
-      <StoryRow label="ready · second machine" hint="machine name once more than one machine exists">
+      <StoryRow
+        label="ready · second machine"
+        hint="machine name once more than one machine exists"
+      >
         {multiMachineEnvironmentSummary}
       </StoryRow>
-      <StoryRow label="ready · worktree on a sandbox" hint="an ephemeral host is ambiguous, so it is named">
+      <StoryRow
+        label="ready · worktree on a sandbox"
+        hint="an ephemeral host is ambiguous, so it is named"
+      >
         {sandboxWorktreeEnvironmentSummary}
       </StoryRow>
-      <StoryRow label="ready · named environment" hint="a custom name wins over both machine and provider">
+      <StoryRow
+        label="ready · named environment"
+        hint="a custom name wins over both machine and provider"
+      >
         {namedLocalEnvironmentSummary}
       </StoryRow>
-      <StoryRow label="ready · detached worktree" hint="provider icon · detached commit checkout">
+      <StoryRow
+        label="ready · detached worktree"
+        hint="provider icon · detached commit checkout"
+      >
         {detachedWorktreeEnvironmentSummary}
       </StoryRow>
-      <StoryRow label="destroyed environment" hint="lifecycle label replaces the provider name">
+      <StoryRow
+        label="destroyed environment"
+        hint="lifecycle label replaces the provider name"
+      >
         {destroyedEnvironmentSummary}
       </StoryRow>
     </StoryCard>

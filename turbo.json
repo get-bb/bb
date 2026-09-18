@@ -491,11 +491,8 @@
         "$TURBO_ROOT$/changelog-parser.ts"
       ]
     },
-    // The packaged CLI (host-daemon/dist/bb) inlines the SDK declaration
-    // bundles for `bb plugin types` on vendored-layout plugins; see
-    // scripts/bundle-manifest.mjs and packages/templates/src/plugin-sdk-dts.ts.
     "@bb/host-daemon#build": {
-      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"],
+      "dependsOn": ["topo"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/package.json",
@@ -510,14 +507,8 @@
       ],
       "outputs": ["dist/**"]
     },
-    // `bb plugin types|build|dev` on a vendored-layout plugin reads
-    // packages/plugin-sdk/bundled-types at runtime (no workspace embed).
     "@bb/cli#test": {
-      "dependsOn": [
-        "//#ensure-native-modules",
-        "@get-bb/plugin-sdk#build:types",
-        "topo"
-      ],
+      "dependsOn": ["//#ensure-native-modules", "topo"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/plugins/bb-guide/skills/bb-cli/**",
@@ -592,7 +583,6 @@
         "UPDATE_TRANSCRIPT_EXPECTATIONS"
       ]
     },
-    // syncPluginTypes reads packages/plugin-sdk/bundled-types at runtime, and
     // plugin-scaffold-external packs @get-bb/plugin-sdk (prepack rebuilds its
     // dist), so the SDK build is a dependency.
     "@bb/templates#test": {
@@ -614,6 +604,7 @@
         "@bb/agent-runtime#generate:test-bridges",
         "//#ensure-native-modules",
         "@get-bb/plugin-sdk#build",
+        "@get-bb/plugin-sdk#build:types",
         "topo"
       ],
       "inputs": [
@@ -800,19 +791,17 @@
         "$TURBO_ROOT$/vitest.shared.ts"
       ]
     },
-    // bundled-types/*.d.ts: the package's published `types` surface, the
-    // in-repo plugins' typecheck surface, and what `bb plugin types` writes
-    // into vendored-layout plugins. ~20s (rollup-plugin-dts), so only real
-    // consumers depend on it. Generated modules are excluded from the hash:
-    // they are derived from sources already hashed here.
+    // bundled-types/*.d.ts: the package's published `types` surface and the
+    // in-repo plugins' typecheck surface. ~20s (rollup-plugin-dts), so only
+    // real consumers depend on it. Generated modules are excluded from the
+    // hash: they are derived from sources already hashed here.
     "@get-bb/plugin-sdk#build:types": {
       "dependsOn": ["topo"],
       "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/build-utils.mjs"],
       "outputs": ["bundled-types/**"]
     },
-    // `build` = runtime dist + types (prepack runs both outside turbo).
     "@get-bb/plugin-sdk#build": {
-      "dependsOn": ["topo", "@get-bb/plugin-sdk#build:types"],
+      "dependsOn": ["topo"],
       "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/build-utils.mjs"],
       "outputs": ["dist/**"]
     },
@@ -900,6 +889,9 @@
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
     },
     "bb-plugin-inline-vis#typecheck": {
+      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
+    },
+    "bb-plugin-agent-annotations#typecheck": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
     },
     "bb-plugin-push-notifications#typecheck": {

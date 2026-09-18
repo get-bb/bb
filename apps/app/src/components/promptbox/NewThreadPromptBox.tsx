@@ -35,6 +35,7 @@ import {
   PromptBoxInternal,
   type AttachmentsConfig,
   type HistoryConfig,
+  type MentionMenuPlacement,
   type PromptBoxAction,
   type PromptBoxHandle,
   type TypeaheadConfig,
@@ -138,6 +139,7 @@ interface NewThreadPromptBoxUIProps {
   typeahead: TypeaheadConfig;
   attachments: AttachmentsConfig;
   promptActions?: readonly PromptBoxAction[];
+  mentionMenuPlacement: MentionMenuPlacement;
 
   modeConfig: NewThreadModeConfig;
 
@@ -170,6 +172,7 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
   typeahead,
   attachments,
   promptActions,
+  mentionMenuPlacement,
   modeConfig,
   project,
   execution,
@@ -226,6 +229,7 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
           typeahead={typeahead}
           attachments={attachments}
           promptActions={promptActions}
+          mentionMenuPlacement={mentionMenuPlacement}
           modeConfig={modeConfig}
           project={project}
           execution={execution}
@@ -264,6 +268,7 @@ const DefaultNewThreadComposer = memo(function DefaultNewThreadComposer({
   typeahead,
   attachments,
   promptActions,
+  mentionMenuPlacement,
   modeConfig,
   project,
   execution,
@@ -311,7 +316,7 @@ const DefaultNewThreadComposer = memo(function DefaultNewThreadComposer({
         onComposerLayoutChange={onComposerLayoutChange}
         history={history}
         typeahead={typeahead}
-        mentionMenuPlacement="bottom"
+        mentionMenuPlacement={mentionMenuPlacement}
         attachments={attachments}
         promptActions={promptActions}
         voice={voice}

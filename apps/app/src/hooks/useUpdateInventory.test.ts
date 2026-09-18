@@ -63,8 +63,9 @@ describe("updateInventoryHosts", () => {
       machineProviderId: "persistent-cloud",
     });
     const manual = makeHost({ id: "host_manual" });
-    expect(updateInventoryHosts([modal, persistent, manual])).toEqual(
-      [persistent, manual],
-    );
+    expect(updateInventoryHosts([modal, persistent, manual])).toEqual([
+      persistent,
+      manual,
+    ]);
   });
 });

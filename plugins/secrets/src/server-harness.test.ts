@@ -51,6 +51,7 @@ describe("secrets plugin server", () => {
       expect(host.harness.pendingInteractions).toHaveLength(1),
     );
     const pending = host.harness.pendingInteractions[0]!;
+    expect(pending.title).toBe("Add secrets");
     expect(pending.payload).toMatchObject({
       purpose: "Configure the app",
       destination: {
@@ -120,6 +121,47 @@ describe("secrets plugin server", () => {
       path: "/var/plugin/.env",
     });
     host.harness.cancelInteraction(host.harness.pendingInteractions[0]!.id);
+    await command;
+  });
+
+  it("requests secrets from a working directory with a long absolute path", async () => {
+    const cwd = `/${"deep-directory/".repeat(20)}workspace`;
+    const destinationPath = `${cwd}/.env.local`;
+    const host = createFakePluginHost({
+      pluginId: "secrets",
+      sdk: {
+        threads: {
+          async get() {
+            return { host: { id: "host-test" } };
+          },
+        },
+        files: {
+          async read() {
+            return {
+              content: "",
+              contentEncoding: "utf8",
+              sha256: "before",
+            };
+          },
+        },
+      },
+    });
+    plugin(host.bb as unknown as Parameters<typeof plugin>[0]);
+
+    const command = host.harness.runCli(
+      ["request", "API_KEY", "--write-env", ".env.local"],
+      { threadId: "thr-test", cwd },
+    );
+    await vi.waitFor(() =>
+      expect(host.harness.pendingInteractions).toHaveLength(1),
+    );
+
+    const pending = host.harness.pendingInteractions[0]!;
+    expect(pending.title).toBe("Add secrets");
+    expect(pending.payload).toMatchObject({
+      destination: { kind: "dotenv", path: destinationPath },
+    });
+    host.harness.cancelInteraction(pending.id);
     await command;
   });
 

@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "noEmit": true,
+    "skipLibCheck": true,
+    "types": ["node"]
+  },
+  "include": [
+    "annotations.ts",
+    "annotations.test.ts",
+    "page-script.ts",
+    "page-script.test.ts",
+    "server.ts",
+    "server.test.ts",
+    "app.tsx",
+    "app.test.tsx",
+    "vitest.config.ts"
+  ]
+}

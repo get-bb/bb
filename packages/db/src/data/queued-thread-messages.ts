@@ -28,6 +28,8 @@ import type {
   PromptInput,
   QueuedMessagePayload,
   QueuedMessageSystemNotice,
+  StartedOnBehalfOf,
+  ThreadCreateOrigin,
   QueuedMessageWaitHolder,
   QueuedMessageWaitingOn,
   QueuedMessageWaitingOnKind,
@@ -55,6 +57,19 @@ export interface CreateQueuedThreadMessageInput {
   threadId: string;
   content: PromptInput[];
   senderThreadId?: string | null;
+  /**
+   * How the dispatch this row is queued from was requested, and the plugin
+   * that requested it, so a drained re-attempt carries the provenance its
+   * first attempt had. Both null for everything but a thread's first dispatch.
+   */
+  origin?: ThreadCreateOrigin | null;
+  originPluginId?: string | null;
+  /**
+   * The thread that asked for this dispatch, when one did. Distinct from
+   * `senderThreadId`, which is the sender of a message TO an existing thread:
+   * a thread-start has a requester and no message sender.
+   */
+  requestedBy?: StartedOnBehalfOf | null;
   model: string;
   reasoningLevel: string;
   permissionMode: PermissionMode;
@@ -605,6 +620,10 @@ export function createQueuedThreadMessageInTransaction(
       threadId: input.threadId,
       content: JSON.stringify(input.content),
       senderThreadId: input.senderThreadId ?? null,
+      origin: input.origin ?? null,
+      originPluginId: input.originPluginId ?? null,
+      requestedByInitiator: input.requestedBy?.initiator ?? null,
+      requestedByThreadId: input.requestedBy?.senderThreadId ?? null,
       model: input.model,
       reasoningLevel: input.reasoningLevel,
       permissionMode: input.permissionMode,

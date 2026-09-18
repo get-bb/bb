@@ -364,6 +364,7 @@ const FRONTEND_SLOT_PROP_FIELDS = {
     "threadId",
     "tabId",
     "url",
+    "experimental_page",
     "isCompactViewport",
   ],
   fileOpener: [

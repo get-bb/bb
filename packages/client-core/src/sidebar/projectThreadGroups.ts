@@ -338,11 +338,12 @@ export function buildProjectThreadGroups(
   allProjectThreads: readonly ThreadListEntry[],
   compareThreads: ThreadComparator = compareStandardThreads,
   draftThreadIds: ReadonlySet<string> = new Set(),
+  groupEnvironmentThreads = true,
 ): ProjectThreadItem[] {
   return buildThreadTreeItems(
     allProjectThreads,
     compareThreads,
-    true,
+    groupEnvironmentThreads,
     draftThreadIds,
   );
 }
@@ -419,11 +420,12 @@ export function buildChronologicalThreadList(
   allThreads: readonly ThreadListEntry[],
   compareThreads: ThreadComparator = compareStandardThreads,
   draftThreadIds: ReadonlySet<string> = new Set(),
+  groupEnvironmentThreads = false,
 ): ProjectThreadItem[] {
   return buildThreadTreeItems(
     allThreads,
     compareThreads,
-    false,
+    groupEnvironmentThreads,
     draftThreadIds,
   );
 }
@@ -433,9 +435,15 @@ export function buildSectionThreadList(
   compareThreads: ThreadComparator = compareStandardThreads,
   sections: readonly SidebarSectionDefinition[] = [],
   draftThreadIds: ReadonlySet<string> = new Set(),
+  groupEnvironmentThreads = false,
 ): ProjectThreadItem[] {
   return bucketIntoSections(
-    buildChronologicalThreadList(allThreads, compareThreads, draftThreadIds),
+    buildChronologicalThreadList(
+      allThreads,
+      compareThreads,
+      draftThreadIds,
+      groupEnvironmentThreads,
+    ),
     CHRONOLOGICAL_CONTAINER_ID,
     compareThreads,
     sections,

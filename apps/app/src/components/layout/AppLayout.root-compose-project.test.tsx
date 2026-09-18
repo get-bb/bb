@@ -13,10 +13,10 @@ const mockUseThreadDetailBootstrap = vi.hoisted(() => vi.fn());
 const commandHandlers = vi.hoisted(() => new Map<string, () => boolean>());
 
 vi.mock("@/components/commands/AppCommandProvider", () => ({
+  useIndexedAppCommandHandlers: () => {},
   useAppCommandHandler: (command: string, handler: () => boolean) => {
     commandHandlers.set(command, handler);
   },
-  useIndexedAppCommandHandlers: () => {},
   useAppCommandShortcut: () => null,
   useAppCommandShortcuts: () => new Map(),
   useAppCommandRunner: () => ({
@@ -31,6 +31,7 @@ vi.mock("@/components/sidebar/AppSidebar", () => ({
 }));
 
 vi.mock("@/hooks/queries/system-queries", () => ({
+  useUiPreferences: () => ({ data: undefined, isError: false }),
   useSystemConfig: () => ({
     data: {
       experiments: {

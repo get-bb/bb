@@ -13,7 +13,9 @@ export interface PaletteThreadSearchRow {
   lifecycle: PaletteThreadLifecycle;
   primaryText: string;
   highlightRanges: readonly ThreadSearchMatch["highlightRanges"][number][];
-  metadataText: string;
+  secondaryTitle: string | null;
+  projectName: string | null;
+  relativeTime: string;
   projectId: string;
   threadId: string;
   thread: ThreadListEntry;
@@ -49,10 +51,6 @@ function projectMetadata(
     : (projectNamesById.get(projectId) ?? null);
 }
 
-function metadataText(parts: readonly (string | null)[]): string {
-  return parts.filter((part): part is string => Boolean(part)).join(" · ");
-}
-
 function serverRow(
   thread: ThreadListEntry,
   matches: readonly ThreadSearchMatch[],
@@ -71,11 +69,9 @@ function serverRow(
     lifecycle,
     primaryText: primaryMatch?.text ?? title,
     highlightRanges: primaryMatch?.highlightRanges ?? [],
-    metadataText: metadataText([
-      snippetMatch === undefined ? null : title,
-      projectMetadata(thread.projectId, projectNamesById),
-      formatRelativeTime({ timestamp: thread.updatedAt, now }),
-    ]),
+    secondaryTitle: snippetMatch === undefined ? null : title,
+    projectName: projectMetadata(thread.projectId, projectNamesById),
+    relativeTime: formatRelativeTime({ timestamp: thread.updatedAt, now }),
     projectId: thread.projectId,
     threadId: thread.id,
     thread,

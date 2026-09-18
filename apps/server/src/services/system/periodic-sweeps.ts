@@ -1,3 +1,4 @@
+import { runThreadPruningSweep } from "./thread-pruning-sweep.js";
 import {
   runProjectAttachmentBackfill,
   runProjectAttachmentPrune,
@@ -595,6 +596,12 @@ const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
     category: "scheduler",
     name: "plugin-schedule",
     run: (deps, now) => deps.pluginSchedules.sweepDueSchedules(now),
+  },
+  {
+    cadenceMs: 0,
+    category: "retention",
+    name: "thread-event-pruning",
+    run: runThreadPruningSweep,
   },
   {
     cadenceMs: DATABASE_MAINTENANCE_CHECK_INTERVAL_MS,

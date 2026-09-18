@@ -1,5 +1,4 @@
 import { useState, type ComponentProps, type ReactNode } from "react";
-import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import { COARSE_POINTER_HEADER_ICON_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -44,6 +43,7 @@ type RootSecondaryPanelProps = Omit<
 interface RootComposeSecondaryContentProps {
   children: ReactNode;
   compactScrollContent: ReactNode;
+  isCompactHomeLayout: boolean;
   contentClassName?: string;
   isSecondaryPanelOpen: boolean;
   onToggleSecondaryPanel: () => void;
@@ -66,6 +66,7 @@ function DrawerPanelLoadingSkeleton() {
 export function RootComposeSecondaryContent({
   children,
   compactScrollContent,
+  isCompactHomeLayout,
   contentClassName,
   isSecondaryPanelOpen,
   onToggleSecondaryPanel,
@@ -79,9 +80,6 @@ export function RootComposeSecondaryContent({
   const rendersWindowDragStrip =
     usesDesktopChrome && paneContext?.isTopRow !== false;
   const { renderBrowserDeck, ...threadSecondaryPanelProps } = secondaryPanel;
-  const isCompactViewport = useIsCompactViewport();
-  const usesCompactHomeLayout =
-    isCompactViewport && compactScrollContent !== null;
 
   const mainContent = (
     <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden">
@@ -108,7 +106,7 @@ export function RootComposeSecondaryContent({
           ) : null}
         </div>
       ) : null}
-      {usesCompactHomeLayout ? (
+      {isCompactHomeLayout ? (
         <div
           className="@container/page flex min-h-0 flex-1 flex-col"
           style={PAGE_SHELL_CONTENT_STYLE}
@@ -153,9 +151,8 @@ export function RootComposeSecondaryContent({
         compactPresentation={getCompactPanelPresentation(
           threadSecondaryPanelProps.activeTab?.kind,
           threadSecondaryPanelProps.fixedTabs[0]?.tab.kind ??
-            threadSecondaryPanelProps.tabs.find(
-              (tab) => tab.isHidden !== true,
-            )?.tab.kind,
+            threadSecondaryPanelProps.tabs.find((tab) => tab.isHidden !== true)
+              ?.tab.kind,
         )}
         renderPanel={({
           presentation,

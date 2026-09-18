@@ -250,6 +250,19 @@ describe("PluginHostManager", () => {
     ).toEqual({ before: null, after: null, token: null });
   });
 
+  it("accepts a base64-encoded 20MB recording without daemon changes", async () => {
+    const manager = await createManager({ shellEnv: () => ({}) });
+    const result = await manager.call(
+      callCommand({
+        method: "environment",
+        input: {
+          audioBase64: Buffer.alloc(20 * 1024 * 1024).toString("base64"),
+        },
+      }),
+    );
+    expect(result.output).toEqual({ before: null, after: null, token: null });
+  });
+
   describe("environment reuse across active calls", () => {
     async function fixture() {
       const onSignal = vi.fn();

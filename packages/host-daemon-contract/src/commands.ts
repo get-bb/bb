@@ -198,7 +198,13 @@ export const hostDaemonContributedEnvEntrySchema = z
     source: z.union([
       z.object({ plugin: z.string().min(1) }).strict(),
       z
-        .object({ core: z.enum(["machine-git", "machine-environment"]) })
+        .object({
+          core: z.enum([
+            "machine-git",
+            "machine-environment",
+            "project-environment",
+          ]),
+        })
         .strict(),
     ]),
     reason: z.string(),
@@ -1210,9 +1216,12 @@ const threadStartResultSchema = z.object({
 const turnSubmitResultSchema = z.object({
   appliedAs: z.enum(["new-turn", "steer"]),
 });
+export const COMPETING_TURN_ERROR_CODE = "competing_turn" as const;
+
 const threadStopResultSchema = z
   .object({
     providerCheckpointId: z.string().min(1).nullable(),
+    activeTurnRetained: z.boolean().optional(),
   })
   .strict();
 const emptyCommandResultSchema = z.object({});
