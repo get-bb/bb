@@ -239,7 +239,7 @@ describe("thread creation on a path another project already uses", () => {
           providerId: "codex",
           startedOnBehalfOf: null,
         }),
-      ).rejects.toThrow("bb-managed workspace owned by another project");
+      ).rejects.toThrow("inside bb-managed storage");
 
       expect(
         listEnvironments(harness.deps.db, { projectId: project.id }),

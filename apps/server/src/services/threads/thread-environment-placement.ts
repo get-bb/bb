@@ -73,7 +73,7 @@ import {
 } from "../machines/provider-orchestration.js";
 import { ensureProjectSourceOnHost } from "../projects/project-source-setup.js";
 import { requireSourceForHost } from "./thread-create-helpers.js";
-import { foreignProviderOwnedPathRefusal } from "./workspace-path-claims.js";
+import { suppliedWorkspacePathRefusal } from "./workspace-path-claims.js";
 import { ensureHostSessionReadyForWork } from "../hosts/host-lifecycle.js";
 import {
   getNonDestroyedHostWithStatus,
@@ -548,7 +548,7 @@ export async function resolveThreadEnvironmentPlacement(
           hostId: resolvedEnvironment.hostId,
         })
       ).dataDir;
-      const refusal = foreignProviderOwnedPathRefusal(deps.db, {
+      const refusal = suppliedWorkspacePathRefusal(deps.db, {
         dataDir,
         hostId: resolvedEnvironment.hostId,
         path: resolvedEnvironment.unmanagedPath,

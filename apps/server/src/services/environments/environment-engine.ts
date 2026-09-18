@@ -9,7 +9,7 @@ import {
 } from "../threads/thread-environment-placement.js";
 import { withEnvironmentCleanupSlot } from "./cleanup-concurrency.js";
 import { ensureHostSessionReadyForWork } from "../hosts/host-lifecycle.js";
-import { foreignProviderOwnedPathRefusal } from "../threads/workspace-path-claims.js";
+import { foreignProjectOwnedPathRefusal } from "../threads/workspace-path-claims.js";
 import {
   cancelPendingEnvironmentHook,
   runEnvironmentHook,
@@ -376,13 +376,12 @@ async function runCreate(
     if (result.status === "created") {
       try {
         const producedPath = result.path.replace(/\/+$/u, "") || "/";
-        const { dataDir } = await ensureHostSessionReadyForWork(deps, {
+        await ensureHostSessionReadyForWork(deps, {
           hostId: context.host.id,
         });
         deps.db.transaction(
           () => {
-            const refusal = foreignProviderOwnedPathRefusal(deps.db, {
-              dataDir,
+            const refusal = foreignProjectOwnedPathRefusal(deps.db, {
               hostId: context.host.id,
               path: producedPath,
               projectId: context.project.id,
