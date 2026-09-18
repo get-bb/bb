@@ -146,7 +146,7 @@ describe("secondary panel tab strip", () => {
     ).toBe(false);
   });
 
-  it("hides clipped tabs from both display and interaction until they fit", () => {
+  it("keeps partially visible neighbors selectable and reveals selection on resize", () => {
     let measure = () => {};
     vi.stubGlobal(
       "ResizeObserver",
@@ -158,10 +158,11 @@ describe("secondary panel tab strip", () => {
         disconnect() {}
       },
     );
+    const tabModels = makeCloseMenuTabs();
     const { container } = render(
       createElement(SecondaryPanelTabStrip, {
         activeTabId: "tab-0",
-        tabs: makeCloseMenuTabs(),
+        tabs: tabModels,
         onReorderTab: vi.fn(),
         usesDesktopChrome: false,
         isPanelOpen: true,
@@ -199,23 +200,16 @@ describe("secondary panel tab strip", () => {
     });
     act(() => measure());
     expect(screen.getByRole("button", { name: "file-0.ts" })).toBeDefined();
-    expect(screen.queryByRole("button", { name: "file-1.ts" })).toBeNull();
-    expect(tabs[1].inert).toBe(true);
-    const trailingControls = screen.getByRole("button", {
-      name: "Scroll tabs right",
-    }).parentElement!;
-    expect(viewport.style.clipPath).toBe("inset(0 70px 0 0px)");
-    expect(trailingControls.style.transform).toBe("translateX(-70px)");
-    viewport.scrollLeft = 114;
-    act(() => measure());
-    expect(screen.getByRole("button", { name: "file-1.ts" })).toBeDefined();
-    expect(tabs[1].inert).toBe(false);
-    expect(tabs[0].inert).toBe(true);
+    const neighbor = screen.getByRole("button", { name: "file-1.ts" });
+    expect(tabs[1].inert).not.toBe(true);
+    fireEvent.click(neighbor);
+    expect(tabModels[1].onSelect).toHaveBeenCalledOnce();
     viewport.scrollLeft = 58;
     act(() => measure());
-    expect(viewport.style.transform).toBe("translateX(-56px)");
-    expect(viewport.style.clipPath).toBe("inset(0 14px 0 56px)");
-    expect(trailingControls.style.transform).toBe("translateX(-70px)");
+    expect(screen.getByRole("button", { name: "file-0.ts" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "file-1.ts" })).toBeDefined();
+    expect(tabs[0].inert).not.toBe(true);
+    expect(tabs[1].inert).not.toBe(true);
     const selected = tabs[0].querySelector(
       'button[aria-pressed="true"]',
     )!.parentElement!;
@@ -230,7 +224,7 @@ describe("secondary panel tab strip", () => {
     });
     act(() => measure());
     expect(reveal).toHaveBeenCalledOnce();
-    expect(tabs[0].inert).toBe(false);
+    expect(viewport.scrollLeft).toBe(0);
   });
 
   it("observes the intrinsic tab row so async title changes refresh overflow", () => {
