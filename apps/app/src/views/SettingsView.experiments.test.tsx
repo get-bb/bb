@@ -14,6 +14,7 @@ function renderSection(
       disabled={false}
       experiments={{
         changelogPreview: false,
+        legacyJitiPluginLoader: false,
         mobileApp: false,
         multiMachinePicker: false,
         serverMove: false,
@@ -31,6 +32,13 @@ describe("ExperimentsSettingsSection", () => {
     renderSection(onChange);
     fireEvent.click(screen.getByLabelText("Changelog preview"));
     expect(onChange).toHaveBeenCalledWith("changelogPreview", true);
+  });
+
+  it("reports legacy plugin loader changes", () => {
+    const onChange = vi.fn();
+    renderSection(onChange);
+    fireEvent.click(screen.getByLabelText("Legacy plugin loader (JITI)"));
+    expect(onChange).toHaveBeenCalledWith("legacyJitiPluginLoader", true);
   });
 
   it("reports mobile app changes", () => {

@@ -966,6 +966,11 @@ Experimental surfaces are changed in Settings → Experiments or with
 `bb settings experiment <key> <true|false>`. All experiments start off.
 The default-off `changelogPreview` experiment shows the latest release notes
 as a compact, dismissible card on Settings → Updates.
+The default-off `legacyJitiPluginLoader` experiment restores the previous JITI
+plugin server loader. Toggling it leaves running plugin instances unchanged;
+the selected loader applies on the next install, reload, enable, update, or
+server restart. Set it with `bb settings experiment legacyJitiPluginLoader
+<true|false>`.
 The `mobileApp` experiment turns on pairing for the bb mobile app: the
 **Add mobile device** card under Settings → Remote access and the
 `bb connect machine-code` command (see "Pairing the bb mobile app" above). It

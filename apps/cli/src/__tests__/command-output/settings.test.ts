@@ -330,6 +330,26 @@ describe("bb settings commands", () => {
     });
   });
 
+  it("enables the legacy JITI plugin loader experiment", async () => {
+    const updateExperiments = vi.fn(async ({ json }) => json);
+    stubServerApi({
+      "v1.system.config.$get": vi.fn(async () => ({
+        generalSettings: defaultAppSettings,
+        experiments: defaultExperiments,
+      })),
+      "v1.settings.experiments.$put": updateExperiments,
+    });
+
+    await runCommand(
+      ["settings", "experiment", "legacyJitiPluginLoader", "true"],
+      register,
+    );
+
+    expect(updateExperiments).toHaveBeenCalledWith({
+      json: { ...defaultExperiments, legacyJitiPluginLoader: true },
+    });
+  });
+
   it("enables the multi-machine picker experiment", async () => {
     const updateExperiments = vi.fn(async ({ json }) => json);
     stubServerApi({

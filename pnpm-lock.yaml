@@ -2054,6 +2054,9 @@ importers:
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../plugin-sdk
+      es-module-lexer:
+        specifier: ^2.0.0
+        version: 2.0.0
       npm:
         specifier: 11.16.0
         version: 11.16.0
