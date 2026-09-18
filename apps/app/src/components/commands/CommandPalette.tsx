@@ -174,21 +174,17 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
     ],
   );
 
-  const loadInstalledPlugins = useCallback(() => {
-    void appQueryClient
-      .fetchQuery(pluginListQueryOptions({ enabled: true }))
-      .then(setInstalledPlugins, () => {});
-  }, []);
-
   const prepareOpen = useCallback(
     (target: EventTarget | null) => {
       if (!open) openTargetRef.current = target;
       setActions(buildActions(openTargetRef.current));
       setQuery("");
       setHighlightedIndex(0);
-      loadInstalledPlugins();
+      void appQueryClient
+        .fetchQuery(pluginListQueryOptions({ enabled: true }))
+        .then(setInstalledPlugins, () => {});
     },
-    [buildActions, loadInstalledPlugins, open],
+    [buildActions, open],
   );
 
   useAppCommandHandler("palette.open", (invocation) => {
