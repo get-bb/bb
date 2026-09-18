@@ -6,47 +6,35 @@ describe("resolveDefaultWorktreeBaseBranch", () => {
     expect(
       resolveDefaultWorktreeBaseBranch({
         defaultBranch: "main",
-        defaultBranchRelation: null,
         originDefaultBranch: null,
       }),
     ).toBe("main");
   });
 
-  it("uses origin when local default is equal, behind, or missing", () => {
-    expect(
-      resolveDefaultWorktreeBaseBranch({
-        defaultBranch: "main",
-        defaultBranchRelation: "equal",
-        originDefaultBranch: "origin/main",
-      }),
-    ).toBe("origin/main");
-
-    expect(
-      resolveDefaultWorktreeBaseBranch({
-        defaultBranch: "main",
-        defaultBranchRelation: "local-behind",
-        originDefaultBranch: "origin/main",
-      }),
-    ).toBe("origin/main");
-
+  it("uses origin when the local default is missing", () => {
     expect(
       resolveDefaultWorktreeBaseBranch({
         defaultBranch: null,
-        defaultBranchRelation: null,
         originDefaultBranch: "origin/main",
       }),
     ).toBe("origin/main");
   });
 
-  it("keeps local when local default is ahead, diverged, or unknown", () => {
-    for (const relation of ["local-ahead", "diverged", "unknown"] as const) {
-      expect(
-        resolveDefaultWorktreeBaseBranch({
-          defaultBranch: "main",
-          defaultBranchRelation: relation,
-          originDefaultBranch: "origin/main",
-        }),
-      ).toBe("main");
+  it("uses origin regardless of the local default branch relation", () => {
+    for (const relation of [
+      "equal",
+      "local-behind",
+      "local-ahead",
+      "diverged",
+      "unknown",
+      null,
+    ] as const) {
+      const checkout = {
+        defaultBranch: "main",
+        defaultBranchRelation: relation,
+        originDefaultBranch: "origin/main",
+      };
+      expect(resolveDefaultWorktreeBaseBranch(checkout)).toBe("origin/main");
     }
   });
 });

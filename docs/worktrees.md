@@ -48,8 +48,13 @@ pnpm bb thread spawn \
   --prompt "..."
 ```
 
-Omit `--base-branch` for bb's smart default. Explicit values are exact:
-`main` is local and `origin/main` is remote.
+New worktrees default to the origin default branch (for example, `origin/dev` or
+`origin/main`), including when the local default branch is ahead or diverged.
+Creation fetches that remote branch before choosing the starting commit. If no
+origin default ref exists, the local default is used. An explicit branch choice
+in the picker, SDK inputs, or CLI `--base-branch` overrides this default.
+
+Explicit values are exact: `main` is local and `origin/main` is remote.
 
 ## Copy local files with `.worktreeinclude`
 

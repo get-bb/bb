@@ -114,6 +114,56 @@ afterEach(async () => {
 });
 
 describe("worktree host entry", () => {
+  it.each(["main", "dev"])(
+    "fetches origin/%s before creating a default worktree despite local divergence",
+    async (defaultBranch) => {
+      const { root, sourcePath, dataDir } = await createSourceRepository();
+      if (defaultBranch !== "main") {
+        await git(sourcePath, "branch", "-m", defaultBranch);
+      }
+      const originPath = join(root, "origin");
+      await git(root, "clone", sourcePath, originPath);
+      await git(sourcePath, "remote", "add", "origin", originPath);
+      await git(sourcePath, "fetch", "origin");
+      await git(sourcePath, "remote", "set-head", "origin", defaultBranch);
+      await writeFile(join(sourcePath, "local.txt"), "local only\n");
+      await git(sourcePath, "add", ".");
+      await git(sourcePath, "commit", "-m", "local only");
+      const localHead = (await git(sourcePath, "rev-parse", "HEAD")).trim();
+      await writeFile(join(originPath, "remote.txt"), "remote only\n");
+      await git(originPath, "add", ".");
+      await git(originPath, "commit", "-m", "remote only");
+      const remoteHead = (await git(originPath, "rev-parse", "HEAD")).trim();
+      const harness = createHarness(dataDir);
+      try {
+        const result = await harness.experimental_call(
+          "create",
+          createInput({
+            operationId: "remote-default",
+            sourcePath,
+            pathKey: "thr_remote",
+            branchName: "bb/remote-default",
+          }),
+        );
+        expect(result).toMatchObject({
+          status: "created",
+          baseBranch: `origin/${defaultBranch}`,
+        });
+        if (result.status !== "created") throw new Error(result.message);
+        expect((await git(result.path, "rev-parse", "HEAD")).trim()).toBe(
+          remoteHead,
+        );
+        expect((await git(sourcePath, "rev-parse", "HEAD")).trim()).toBe(
+          localHead,
+        );
+        expect(existsSync(join(result.path, "local.txt"))).toBe(false);
+        expect(existsSync(join(result.path, "remote.txt"))).toBe(true);
+      } finally {
+        await harness.experimental_dispose();
+      }
+    },
+  );
+
   it.each([
     ["spaces", "Repo With Space", "Repo-With-Space-7373994537587106"],
     ["CJK", "資料庫", "repo-1b2c8c90d27707c4"],
