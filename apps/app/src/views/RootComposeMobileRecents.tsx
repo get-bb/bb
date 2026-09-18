@@ -43,6 +43,7 @@ import { collapsedThreadIdsAtom } from "@/components/sidebar/sidebarCollapsedAto
 export const MOBILE_RECENT_ROW_HEIGHT_PX = 60;
 export const MOBILE_RECENT_LABEL_HEIGHT_PX = 24;
 
+const RECENT_THREAD_LIMIT = 15;
 const MOBILE_RECENT_ROW_HEIGHT_CLASS = "h-15";
 
 type ThreadListEntryComparator = (
@@ -218,7 +219,7 @@ export function getMobileRecentThreads({
     ),
     rows,
   });
-  return rows;
+  return rows.slice(0, RECENT_THREAD_LIMIT);
 }
 
 function MobileRecentThreadRow({
@@ -467,7 +468,7 @@ export function RootComposeMobileRecents({
     <section
       data-root-compose-mobile-recents=""
       aria-labelledby="root-compose-mobile-recents"
-      className="md:hidden"
+      className="md:mt-4"
     >
       <div className="sticky top-0 z-10 mb-1 bg-background px-2">
         <h2

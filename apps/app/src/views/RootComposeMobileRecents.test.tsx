@@ -115,8 +115,8 @@ afterEach(() => {
 const NONE: ReadonlySet<string> = new Set();
 
 describe("getMobileRecentThreads", () => {
-  it("returns every active thread newest-first instead of a capped window", () => {
-    const threads = Array.from({ length: 12 }, (_unused, index) =>
+  it("returns the 15 most recent active threads newest-first", () => {
+    const threads = Array.from({ length: 17 }, (_unused, index) =>
       makeThread({
         id: `thr_${index}`,
         latestAttentionAt: index,
@@ -130,8 +130,13 @@ describe("getMobileRecentThreads", () => {
       threads,
     });
 
-    expect(rows).toHaveLength(12);
+    expect(rows).toHaveLength(15);
     expect(rows.map((row) => row.thread.id)).toEqual([
+      "thr_16",
+      "thr_15",
+      "thr_14",
+      "thr_13",
+      "thr_12",
       "thr_11",
       "thr_10",
       "thr_9",
@@ -142,8 +147,6 @@ describe("getMobileRecentThreads", () => {
       "thr_4",
       "thr_3",
       "thr_2",
-      "thr_1",
-      "thr_0",
     ]);
     expect(rows.every((row) => row.depth === 0)).toBe(true);
   });
@@ -686,6 +689,27 @@ describe("mobile recent thread rows", () => {
 });
 
 describe("RootComposeMobileRecents", () => {
+  it("remains visible in the desktop compose layout", () => {
+    const { container } = render(
+      <TestProviders>
+        <RootComposeMobileRecents
+          highlightedThreadId={null}
+          projectNamesById={new Map()}
+          providersById={new Map()}
+          showCreatingRow={false}
+          threads={[makeThread()]}
+        />
+      </TestProviders>,
+    );
+
+    const section = container.querySelector(
+      "[data-root-compose-mobile-recents]",
+    );
+    expect(section).not.toBeNull();
+    expect(section?.className).not.toContain("md:hidden");
+    expect(section?.className).toContain("md:mt-4");
+  });
+
   it("shows concurrent Plan activity before the runtime spinner", () => {
     render(
       <TestProviders>
