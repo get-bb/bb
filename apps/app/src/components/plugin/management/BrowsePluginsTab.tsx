@@ -273,9 +273,23 @@ export function BrowsePluginsTab({
 
             {(searchQuery.isError || activeQuery.isError) &&
             entries.length > 0 ? (
-              <p className="text-xs text-warning-text" role="status">
-                The latest search failed. The page shows saved catalog results.
-              </p>
+              <div
+                className="flex items-center gap-3 text-xs text-warning-text"
+                role="status"
+              >
+                <p>Showing saved plugins. The latest request failed.</p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    void (
+                      activeQuery.isError ? activeQuery : searchQuery
+                    ).refetch()
+                  }
+                >
+                  Retry
+                </Button>
+              </div>
             ) : null}
             {activeQuery.isPending ||
             (shelfKey !== null &&

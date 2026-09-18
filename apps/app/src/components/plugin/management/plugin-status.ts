@@ -37,30 +37,34 @@ const PLUGIN_RUNTIME_STATUS_DEFINITIONS: Record<
   degraded: { icon: "AlertTriangle", label: "Degraded", tone: "warning" },
 };
 
+function configuredPathUnavailable(plugin: PluginListItem): boolean {
+  return /\bconfigured\b.*\b(directory|folder|path)\b/iu.test(
+    plugin.statusDetail ?? "",
+  );
+}
+
 function pluginRuntimeRecovery(plugin: PluginListItem): string {
   switch (plugin.status) {
     case "error":
-      if (plugin.source.startsWith("path:")) {
-        return "Fix the plugin, then reload it.";
-      }
-      if (plugin.provenance === "builtin") {
-        return "Reload the plugin. If it still fails, restart bb.";
-      }
-      return "Reload the plugin. If it still fails, remove it and install it again.";
+      if (configuredPathUnavailable(plugin))
+        return "Check the path, then reload.";
+      return plugin.source.startsWith("path:")
+        ? "Fix the plugin, then reload."
+        : "Try reloading it.";
     case "incompatible":
       return plugin.provenance === "builtin"
-        ? "Update bb to load a compatible bundled plugin."
-        : "Install a version compatible with this bb.";
+        ? "Update bb."
+        : "Install a compatible version.";
     case "missing":
+      if (plugin.source.startsWith("path:"))
+        return "Restore the folder, then reload.";
       return plugin.provenance === "builtin"
-        ? "Restart bb. If the files are still missing, reinstall bb."
-        : "Remove the plugin, then install it again from its source.";
+        ? "Update or reinstall bb."
+        : "Reinstall from its source.";
     case "needs-configuration":
-      return plugin.hasSettings
-        ? "Complete the Configuration section; bb reloads the plugin after you save."
-        : "Add the required configuration, then reload the plugin.";
+      return plugin.hasSettings ? "" : "Then reload.";
     case "degraded":
-      return "Wait a moment, then reload the plugin.";
+      return "Wait, then reload.";
     default:
       return "";
   }
@@ -69,17 +73,23 @@ function pluginRuntimeRecovery(plugin: PluginListItem): string {
 function pluginRuntimeCondition(plugin: PluginListItem): string {
   switch (plugin.status) {
     case "starting":
-      return "The plugin is starting. This can take a moment.";
+      return "The plugin is starting.";
     case "error":
-      return "The plugin couldn't start.";
+      return configuredPathUnavailable(plugin)
+        ? "Configured folder unavailable."
+        : "The plugin couldn't start.";
     case "incompatible":
-      return "This plugin version isn't compatible with your version of bb.";
+      return "This version is incompatible with bb.";
     case "missing":
-      return "The plugin's files are missing.";
-    case "needs-configuration":
-      return "Required settings are incomplete.";
+      return "Plugin files are missing.";
+    case "needs-configuration": {
+      const detail = plugin.statusDetail?.trim();
+      return detail && detail.length <= 60
+        ? detail
+        : "Complete the required settings.";
+    }
     case "degraded":
-      return "A background service is still stopping.";
+      return "A service is still stopping.";
     default:
       return "";
   }
