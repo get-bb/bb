@@ -69,6 +69,10 @@ export function maybeReexecViaBbCli(
   }
 
   const spawn = resolveBbCliSpawn(entryTarget, argv);
+  // bb-fork(windows): a POSIX-sh shim in BB_CLI has no Node-spawnable entry; keep this process.
+  if (spawn === null) {
+    return;
+  }
   const result = spawnSync(spawn.command, spawn.args, {
     env: childEnv,
     stdio: "inherit",
