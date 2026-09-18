@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { PromptInput } from "@bb/domain";
 import {
+  collectInvokedPromptCommands,
   deriveTitleFallback,
   sanitizeGeneratedTitle,
   shouldGenerateThreadTitle,
@@ -11,6 +12,29 @@ function textInput(text: string): PromptInput {
     type: "text",
     text,
     mentions: [],
+  };
+}
+
+function skillInput(name: string, rest = ""): PromptInput {
+  const command = `/${name}`;
+  return {
+    type: "text",
+    text: `${command}${rest}`,
+    mentions: [
+      {
+        start: 0,
+        end: command.length,
+        resource: {
+          kind: "command",
+          trigger: "/",
+          name,
+          source: "skill",
+          origin: "user",
+          label: name,
+          argumentHint: null,
+        },
+      },
+    ],
   };
 }
 
@@ -53,6 +77,33 @@ describe("thread title generation", () => {
 
   it("returns null for empty generated titles", () => {
     expect(sanitizeGeneratedTitle("   ")).toBeNull();
+  });
+
+  it("generates titles for invoked skills regardless of prompt length", () => {
+    expect(shouldGenerateThreadTitle([skillInput("sync-repo")])).toBe(true);
+    expect(
+      shouldGenerateThreadTitle([skillInput("sync-repo", " then deploy")]),
+    ).toBe(true);
+  });
+
+  it("keeps the raw command text as the fallback for invoked skills", () => {
+    expect(deriveTitleFallback([skillInput("sync-repo", " then deploy")])).toBe(
+      "/sync-repo then deploy",
+    );
+  });
+
+  it("collects each invoked command once, in prompt order", () => {
+    expect(
+      collectInvokedPromptCommands([
+        skillInput("sync-repo"),
+        textInput("then"),
+        skillInput("review-diff"),
+        skillInput("sync-repo"),
+      ]),
+    ).toEqual([
+      { name: "sync-repo", trigger: "/" },
+      { name: "review-diff", trigger: "/" },
+    ]);
   });
 
   it("keeps fallback derivation independent from title generation eligibility", () => {

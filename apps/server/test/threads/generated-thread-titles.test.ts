@@ -16,7 +16,7 @@ import {
   waitForQueuedCommandAfter,
 } from "../helpers/commands.js";
 import { readJson } from "../helpers/json.js";
-import { textInput } from "../helpers/prompt-input.js";
+import { skillInput, textInput } from "../helpers/prompt-input.js";
 import {
   seedEnvironment,
   seedHostSession,
@@ -924,6 +924,45 @@ describe("generated thread titles", () => {
     });
   });
 
+  it("titles a skill invocation from the task, not the command token", async () => {
+    mockThreadMetadata({ title: "Drop stale release branches" });
+    await withTestHarness(async (harness) => {
+      await expect(
+        generateThreadMetadataWithOutcome(harness.deps, {
+          input: skillInput("sync-repo", " and drop the stale release branches"),
+          threadId: "thr_skill_metadata",
+        }),
+      ).resolves.toMatchObject({
+        metadata: { title: "Drop stale release branches" },
+      });
+      const prompt = piAiMocks.complete.mock.calls[0]?.[1].messages[0].content;
+      expect(prompt).toContain("and drop the stale release branches");
+      expect(prompt).toContain(
+        "The prompt invokes these commands or skills: /sync-repo.",
+      );
+      expect(prompt).not.toContain("/sync-repo and drop");
+    });
+  });
+
+  it("titles a bare skill invocation from what the skill does", async () => {
+    mockThreadMetadata({ title: "Generate the weekly report" });
+    await withTestHarness(async (harness) => {
+      await expect(
+        generateThreadMetadataWithOutcome(harness.deps, {
+          input: skillInput("weekly-report"),
+          threadId: "thr_bare_skill_metadata",
+        }),
+      ).resolves.toMatchObject({
+        metadata: { title: "Generate the weekly report" },
+      });
+      expect(
+        piAiMocks.complete.mock.calls[0]?.[1].messages[0].content,
+      ).toContain(
+        "The prompt invokes these commands or skills: /weekly-report.",
+      );
+    });
+  });
+
   it("does not retry non-transient metadata inference failures", async () => {
     piAiMocks.getModel.mockReturnValue({ provider: "test" });
     piAiMocks.complete.mockRejectedValue(new Error("metadata failed"));
@@ -940,6 +979,9 @@ describe("generated thread titles", () => {
         reason: "failed",
       });
       expect(piAiMocks.complete).toHaveBeenCalledTimes(1);
+      expect(
+        piAiMocks.complete.mock.calls[0]?.[1].messages[0].content,
+      ).not.toContain("The prompt invokes these commands or skills");
     });
   });
 });
