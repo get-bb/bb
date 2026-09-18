@@ -407,7 +407,8 @@ export function EnvironmentPickerUI({
           isLoading ? undefined : showSearch ? searchInputRef : commandRef
         }
         className={cn(
-          "flex max-h-[min(var(--radix-popover-content-available-height),calc(100dvh-0.5rem))] w-80 flex-col overflow-hidden p-0 max-md:min-h-0 max-md:w-full max-md:flex-1",
+          "flex max-h-[min(var(--radix-popover-content-available-height),calc(100dvh-0.5rem))] flex-col overflow-hidden p-0 max-md:min-h-0 max-md:w-full max-md:flex-1",
+          showSearch ? "w-80" : "w-auto min-w-52 max-w-80",
           isLoading && "min-w-52",
         )}
       >
