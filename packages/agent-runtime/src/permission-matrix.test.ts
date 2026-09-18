@@ -1,4 +1,4 @@
-import { RuntimeToolCalls } from "./runtime-provider-requests.js";
+import { RuntimeRequestLifetimes } from "./runtime-provider-requests.js";
 import { spawn, type ChildProcess } from "node:child_process";
 import readline from "node:readline";
 import {
@@ -395,7 +395,7 @@ async function runCell(
   };
   const rawRequest = interactionRequest(requestId, payload);
   handleRuntimeProviderRequest({
-    toolCalls: new RuntimeToolCalls(),
+    requestLifetimes: new RuntimeRequestLifetimes(),
     getActiveTurnId: () => "turn-1",
     getThreadExecutionOptions: () => executionOptions,
     onInteractiveRequest,

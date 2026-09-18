@@ -197,7 +197,8 @@ interface HasThreadCommandFailureSystemErrorForTurnArgs {
   turnId: string;
 }
 
-interface HasThreadStopBeforeTurnStartedArgs {
+interface HasThreadStopForTurnArgs {
+  beforeTurnStartedOnly: boolean;
   threadId: string;
   turnId: string;
 }
@@ -384,15 +385,52 @@ async function applyEventEffects(
   for (const entry of events) {
     try {
       const event = entry.event;
+      if (
+        event.type === "item/completed" &&
+        event.item.type === "agentMessage" &&
+        event.item.asyncQuestion
+      ) {
+        const thread = getThread(deps.db, entry.threadId);
+        if (!thread || thread.deletedAt !== null) continue;
+        if (
+          hasThreadStopForTurn(deps, {
+            threadId: entry.threadId,
+            turnId: requireThreadEventScopeTurnId({
+              type: event.type,
+              scope: event.scope,
+            }),
+            beforeTurnStartedOnly: false,
+          })
+        )
+          continue;
+        const registered = deps.pendingInteractions.registerPendingInteraction({
+          interaction: {
+            threadId: entry.threadId,
+            turnId: null,
+            providerId: thread.providerId,
+            providerThreadId: event.providerThreadId,
+            providerRequestId: `message:${event.item.asyncQuestion.id}`,
+            payload: event.item.asyncQuestion.payload,
+          },
+        });
+        if (registered.outcome === "rejected") {
+          deps.logger.warn(
+            { threadId: entry.threadId, reason: registered.reason },
+            "Could not register async question",
+          );
+        }
+        continue;
+      }
       if (event.type === "turn/started") {
         const turnId = requireThreadEventScopeTurnId({
           type: event.type,
           scope: event.scope,
         });
         if (
-          hasThreadStopBeforeTurnStarted(deps, {
+          hasThreadStopForTurn(deps, {
             threadId: entry.threadId,
             turnId,
+            beforeTurnStartedOnly: true,
           })
         ) {
           continue;
@@ -421,9 +459,10 @@ async function applyEventEffects(
         });
         if (
           event.status !== "interrupted" &&
-          hasThreadStopBeforeTurnStarted(deps, {
+          hasThreadStopForTurn(deps, {
             threadId: entry.threadId,
             turnId,
+            beforeTurnStartedOnly: true,
           })
         ) {
           continue;
@@ -474,6 +513,7 @@ async function applyEventEffects(
         }
         deps.pendingInteractions.interruptPendingInteractionsForThreadIds({
           threadIds: [entry.threadId],
+          preserveAsyncQuestions: true,
           reason:
             "Provider process exited while awaiting user interaction; retry the thread to continue",
         });
@@ -595,9 +635,9 @@ function hasThreadCommandFailureSystemErrorForTurn(
   );
 }
 
-function hasThreadStopBeforeTurnStarted(
+function hasThreadStopForTurn(
   deps: Pick<AppDeps, "db">,
-  args: HasThreadStopBeforeTurnStartedArgs,
+  args: HasThreadStopForTurnArgs,
 ): boolean {
   const turnStarted = deps.db
     .select({ sequence: storedEvents.sequence })
@@ -639,7 +679,9 @@ function hasThreadStopBeforeTurnStarted(
           eq(storedEvents.threadId, args.threadId),
           eq(storedEvents.type, "system/thread/interrupted"),
           gt(storedEvents.sequence, lowerSequence),
-          lt(storedEvents.sequence, turnStarted.sequence),
+          args.beforeTurnStartedOnly
+            ? lt(storedEvents.sequence, turnStarted.sequence)
+            : sql`json_extract(${storedEvents.data}, '$.reason') = 'manual-stop' AND json_extract(${storedEvents.data}, '$.cause') IS NULL`,
         ),
       )
       .limit(1)

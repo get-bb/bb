@@ -60,6 +60,13 @@ function createAssistantTextMessage(
 export function projectAssistantAndReasoningEvent(
   args: ProjectAssistantAndReasoningEventArgs,
 ): boolean {
+  if (
+    (args.decoded.type === "item/started" ||
+      args.decoded.type === "item/completed") &&
+    args.decoded.item.type === "agentMessage" &&
+    args.decoded.item.asyncQuestion !== undefined
+  )
+    return true;
   const assistantIdentity = resolveBufferedTextIdentity({
     decoded: args.decoded,
     kind: "assistant",

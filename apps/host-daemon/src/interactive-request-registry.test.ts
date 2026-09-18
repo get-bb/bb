@@ -203,3 +203,41 @@ describe("InteractiveRequestRegistry", () => {
     await expect(pending).rejects.toThrow("Provider exited");
   });
 });
+
+describe("provider request cancellation", () => {
+  it.each([true, false])(
+    "closes the exact request when abort occurs before registration=%s",
+    async (beforeRegistration) => {
+      const registered =
+        createDeferredPromise<HostDaemonInteractiveRequestResponse>();
+      const cancelled: string[] = [];
+      const registry = new InteractiveRequestRegistry({
+        registerRequest: () => registered.promise,
+        onCancellation: (request) => cancelled.push(request.providerRequestId),
+      });
+      const request = createCommandApprovalRequest();
+      const controller = new AbortController();
+      const pending = registry.registerAndWait(request, controller.signal);
+      const rejected = expect(pending).rejects.toThrow(
+        "Provider request was closed",
+      );
+      if (beforeRegistration) controller.abort();
+      registered.resolve({
+        outcome: "created",
+        interactionId: "pint_cancelled",
+        status: "pending",
+      });
+      await Promise.resolve();
+      if (!beforeRegistration) controller.abort();
+      await rejected;
+      expect(cancelled).toEqual([request.providerRequestId]);
+      expect(() =>
+        registry.resolve({
+          ...request,
+          interactionId: "pint_cancelled",
+          resolution: createCommandApprovalResolution(),
+        }),
+      ).toThrow("no longer awaiting");
+    },
+  );
+});

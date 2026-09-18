@@ -762,7 +762,14 @@ export function createDeltaAssembler(
         );
       case "agentMessage":
         return withParentToolCallId(
-          { type: "agentMessage", id: bbItemId, text: shape.text },
+          {
+            type: "agentMessage",
+            id: bbItemId,
+            text: shape.text,
+            ...(shape.asyncQuestion
+              ? { asyncQuestion: shape.asyncQuestion }
+              : {}),
+          },
           parentToolCallId,
         );
       case "reasoning":
@@ -1161,7 +1168,14 @@ export function createDeltaAssembler(
       case "agentMessage":
         return withPresentation(
           withParentToolCallId(
-            { type: "agentMessage", id: open.bbItemId, text },
+            {
+              type: "agentMessage",
+              id: open.bbItemId,
+              text,
+              ...(open.item.asyncQuestion
+                ? { asyncQuestion: open.item.asyncQuestion }
+                : {}),
+            },
             open.item.parentToolCallId,
           ),
           open.item.presentation,

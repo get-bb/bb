@@ -773,8 +773,40 @@ function translateCodexItemShape(
     case "agentMessage":
       return {
         kind: "translated",
-        shape: { type: "agentMessage", text: parsedItem.text },
-        presentation: AGENT_MESSAGE_PRESENTATION,
+        shape: {
+          type: "agentMessage",
+          text: parsedItem.text,
+          ...(parsedItem.delivery === "async" && parsedItem.questions?.length
+            ? {
+                asyncQuestion: {
+                  id: parsedItem.id,
+                  payload: {
+                    kind: "user_question",
+                    questions: parsedItem.questions.map((question, index) => ({
+                      id: String(index),
+                      prompt: question.title,
+                      multiSelect: false,
+                      allowFreeText: true,
+                      ...(question.options
+                        ? {
+                            options: question.options.map((label) => ({
+                              value: label,
+                              label,
+                            })),
+                          }
+                        : {}),
+                    })),
+                  },
+                },
+              }
+            : {}),
+        },
+        presentation: {
+          ...AGENT_MESSAGE_PRESENTATION,
+          ...(parsedItem.delivery === "async" && parsedItem.questions?.length
+            ? { suppress: true }
+            : {}),
+        },
         status: "completed",
         approvalDenied: false,
       };

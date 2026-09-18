@@ -1047,11 +1047,12 @@ export function getLatestPendingInteraction(
   }
 
   const [firstInteraction, ...restInteractions] = interactions;
-  return restInteractions.reduce<PendingInteraction>(
-    (latest, interaction) =>
-      interaction.createdAt > latest.createdAt ? interaction : latest,
-    firstInteraction,
-  );
+  return restInteractions.reduce<PendingInteraction>((latest, interaction) => {
+    if ((latest.turnId === null) !== (interaction.turnId === null)) {
+      return interaction.turnId !== null ? interaction : latest;
+    }
+    return interaction.createdAt > latest.createdAt ? interaction : latest;
+  }, firstInteraction);
 }
 
 export function isPendingInteractionStateUnknown(

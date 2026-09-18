@@ -357,12 +357,22 @@ function withThreadId(value, threadId) {
 let outboundRequestCounter = 0;
 const pendingOutboundRequests = new Map();
 
-function requestFromClient(method, params) {
+function requestFromClient(method, params, resolveAfterMs) {
   outboundRequestCounter += 1;
   const id = `fx-req-${outboundRequestCounter}`;
   return new Promise((resolve) => {
     pendingOutboundRequests.set(id, resolve);
     send({ jsonrpc: "2.0", id, method, params });
+    if (resolveAfterMs !== undefined)
+      setTimeout(() => {
+        if (!pendingOutboundRequests.has(id)) return;
+        pendingOutboundRequests.delete(id);
+        notify("serverRequest/resolved", {
+          threadId: params.threadId,
+          requestId: id,
+        });
+        resolve(null);
+      }, resolveAfterMs);
   });
 }
 
@@ -392,7 +402,7 @@ async function runScriptFileTurn(threadId) {
   for (const entry of turn) {
     const params = withThreadId(entry.params ?? {}, threadId);
     if (entry.kind === "request") {
-      await requestFromClient(entry.method, params);
+      await requestFromClient(entry.method, params, entry.resolveAfterMs);
       continue;
     }
     if (entry.method === "turn/started") {
@@ -771,6 +781,8 @@ stdinLines.on("line", (line) => {
   }
   if (parsed.id !== undefined) {
     // A response to a request this process originated (an approval answer).
+    if (script?.responseLogPath)
+      appendFileSync(script.responseLogPath, `${JSON.stringify(parsed)}\n`);
     const resolve = pendingOutboundRequests.get(parsed.id);
     if (resolve) {
       pendingOutboundRequests.delete(parsed.id);

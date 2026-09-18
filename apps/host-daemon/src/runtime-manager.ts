@@ -186,6 +186,7 @@ export interface RuntimeManagerOptions {
   }) => void;
   onInteractiveRequest?: (
     request: PendingInteractionCreate,
+    signal?: AbortSignal,
   ) => Promise<PendingInteractionResolution>;
   onToolCall?: AgentRuntimeOptions["onToolCall"];
   onStderr?: AgentRuntimeOptions["onStderr"];

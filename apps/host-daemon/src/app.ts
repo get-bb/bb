@@ -141,6 +141,7 @@ export interface HostDaemonApp {
 }
 
 interface PendingInteractiveInterruptRequest {
+  providerRequestId?: string;
   providerId: string;
   reason: string;
   threadIds: readonly string[];
@@ -300,6 +301,7 @@ export async function createHostDaemonApp(
     return [
       request.providerId,
       request.reason,
+      request.providerRequestId ?? "",
       [...request.threadIds].sort().join(","),
     ].join("|");
   }
@@ -391,6 +393,13 @@ export async function createHostDaemonApp(
   });
 
   const interactiveRequestRegistry = new InteractiveRequestRegistry({
+    onCancellation: (request) =>
+      enqueueInteractiveInterrupt({
+        providerId: request.providerId,
+        providerRequestId: request.providerRequestId,
+        threadIds: [request.threadId],
+        reason: "Provider request was closed",
+      }),
     registerRequest: (request) =>
       runSessionRequest({
         source: "registerInteractiveRequest",
@@ -551,9 +560,12 @@ export async function createHostDaemonApp(
         throw error;
       }
     },
-    onInteractiveRequest: async (request) => {
+    onInteractiveRequest: async (request, signal) => {
       try {
-        return await interactiveRequestRegistry.registerAndWait(request);
+        return await interactiveRequestRegistry.registerAndWait(
+          request,
+          signal,
+        );
       } catch (error) {
         if (
           error instanceof InteractiveRequestRegistryError &&

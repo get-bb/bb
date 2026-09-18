@@ -22,6 +22,7 @@ interface InteractiveRequestRegistrationFailure {
 }
 
 interface InteractiveRequestRegistryOptions {
+  onCancellation?: (request: PendingInteractionCreate) => void;
   onRegistrationFailure?: (
     failure: InteractiveRequestRegistrationFailure,
   ) => void;
@@ -105,7 +106,9 @@ export class InteractiveRequestRegistry {
 
   async registerAndWait(
     request: PendingInteractionCreate,
+    signal?: AbortSignal,
   ): Promise<PendingInteractionResolution> {
+    signal?.throwIfAborted();
     const key = buildInteractiveRequestKey(request);
     const existing = this.pendingEntries.get(key);
     if (existing) {
@@ -122,11 +125,23 @@ export class InteractiveRequestRegistry {
         rejectEntry = reject;
       },
     );
+    const cancel = () => {
+      if (this.pendingEntries.get(key) !== entry) return;
+      this.pendingEntries.delete(key);
+      this.options.onCancellation?.(request);
+      entry.reject(new Error("Provider request was closed"));
+    };
     const entry: PendingInteractiveRequestEntry = {
       interactionId: null,
       promise,
-      reject: (error) => rejectEntry(error),
-      resolve: (resolution) => resolveEntry(resolution),
+      reject: (error) => {
+        signal?.removeEventListener("abort", cancel);
+        rejectEntry(error);
+      },
+      resolve: (resolution) => {
+        signal?.removeEventListener("abort", cancel);
+        resolveEntry(resolution);
+      },
       request,
     };
     this.pendingEntries.set(key, entry);
@@ -145,6 +160,10 @@ export class InteractiveRequestRegistry {
       }
 
       entry.interactionId = response.interactionId;
+      if (this.pendingEntries.get(key) === entry) {
+        signal?.addEventListener("abort", cancel, { once: true });
+        if (signal?.aborted) cancel();
+      }
       if (response.status !== "pending" && response.status !== "resolving") {
         this.pendingEntries.delete(key);
         entry.reject(

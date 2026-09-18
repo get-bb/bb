@@ -1,6 +1,6 @@
 import type {
   PendingInteraction,
-  ProviderPendingInteraction,
+  ApprovalPendingInteraction,
 } from "@bb/domain";
 import { ThreadPendingInteractionBanner } from "@/components/thread/pending-interactions/ThreadPendingInteractionBanner";
 import { ThreadPromptContextBanner } from "@/components/promptbox/banner/ThreadPromptContextBanner";
@@ -15,7 +15,7 @@ function PromptStage({ children }: { children: React.ReactNode }) {
 }
 
 function basePendingInteraction(): Omit<
-  ProviderPendingInteraction,
+  ApprovalPendingInteraction,
   "payload" | "resolution"
 > {
   return {

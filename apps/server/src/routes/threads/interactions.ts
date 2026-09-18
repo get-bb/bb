@@ -1,4 +1,8 @@
-import { PLUGIN_INTERACTION_MAX_PAYLOAD_BYTES } from "@bb/domain";
+import {
+  isUserQuestionPendingInteraction,
+  isUserQuestionPendingInteractionResolution,
+  PLUGIN_INTERACTION_MAX_PAYLOAD_BYTES,
+} from "@bb/domain";
 import {
   publicApiRoutes,
   typedRoutes,
@@ -7,6 +11,7 @@ import {
 import type { Hono } from "hono";
 import { z } from "zod";
 import type { AppDeps } from "../../types.js";
+import { resolveAsyncUserQuestion } from "../../services/interactions/async-user-questions.js";
 import { ApiError } from "../../errors.js";
 import { requirePublicThread } from "../../services/lib/entity-lookup.js";
 
@@ -55,14 +60,32 @@ export function registerThreadInteractionRoutes(
     );
   });
 
-  post(routes.resolveInteraction, (context, payload) => {
+  post(routes.resolveInteraction, async (context, payload) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
+    const interactionId = parsePendingInteractionId(
+      context.req.param("interactionId"),
+    );
+    const interaction = deps.pendingInteractions.getThreadInteraction({
+      threadId: thread.id,
+      interactionId,
+    });
+    if (
+      isUserQuestionPendingInteraction(interaction) &&
+      interaction.turnId === null &&
+      isUserQuestionPendingInteractionResolution(payload)
+    ) {
+      return context.json(
+        await resolveAsyncUserQuestion(deps, {
+          thread,
+          interaction,
+          resolution: payload,
+        }),
+      );
+    }
     return context.json(
       deps.pendingInteractions.resolvePendingInteraction({
         threadId: thread.id,
-        interactionId: parsePendingInteractionId(
-          context.req.param("interactionId"),
-        ),
+        interactionId,
         resolution: payload,
       }),
     );

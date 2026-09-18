@@ -1,3 +1,4 @@
+import { userQuestionPendingInteractionPayloadSchema } from "./pending-interactions.js";
 import { contextSnapshotSchema } from "./context-snapshot.js";
 import { z } from "zod";
 import {
@@ -388,6 +389,12 @@ export const threadEventItemSchema = z.discriminatedUnion("type", [
     type: z.literal("agentMessage"),
     id: z.string(),
     text: z.string(),
+    asyncQuestion: z
+      .object({
+        id: z.string().min(1),
+        payload: userQuestionPendingInteractionPayloadSchema,
+      })
+      .optional(),
     ...itemPresentationField,
     parentToolCallId: z.string().optional(),
   }),

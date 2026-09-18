@@ -217,6 +217,7 @@ export interface ServerClient {
     request: PendingInteractionCreate,
   ): Promise<HostDaemonInteractiveRequestResponse>;
   interruptInteractiveRequests(args: {
+    providerRequestId?: string;
     providerId: string;
     reason: string;
     threadIds: readonly string[];
@@ -669,6 +670,7 @@ export function createServerClient(
         providerId: args.providerId,
         threadIds: [...args.threadIds],
         reason: args.reason,
+        providerRequestId: args.providerRequestId ?? null,
       };
       const response = await fetchFn(
         buildInternalUrl("/session/interactive-request/interrupt"),

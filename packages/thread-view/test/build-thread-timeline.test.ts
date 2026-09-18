@@ -3333,3 +3333,47 @@ it("keeps a canonical disclosure ID when completed reasoning gains a delegation 
   });
   expect(completed?.id).not.toBe(live.activeThinking?.id);
 });
+
+it("renders an async native question once through its persisted interaction", () => {
+  const lifecycle = userQuestionLifecycleEvent({ seq: 3 });
+  if (
+    lifecycle.event.type !== "system/interaction/lifecycle" ||
+    lifecycle.event.interaction.payload.kind !== "user_question"
+  )
+    throw new Error("Question fixture expected");
+  const item = {
+    type: "agentMessage" as const,
+    id: "native-question",
+    text: "DUPLICATE_NATIVE_QUESTION_TEXT",
+    asyncQuestion: {
+      id: "native-call",
+      payload: lifecycle.event.interaction.payload,
+    },
+  };
+  const rows = buildTimelineRows([
+    turnStartedEvent({ seq: 0 }),
+    {
+      event: {
+        type: "item/started",
+        threadId: "thread-1",
+        providerThreadId: "native-thread",
+        scope: turnScope("turn-1"),
+        item,
+      },
+      meta: { id: "question-start", seq: 1, createdAt: 1 },
+    },
+    {
+      event: {
+        type: "item/completed",
+        threadId: "thread-1",
+        providerThreadId: "native-thread",
+        scope: turnScope("turn-1"),
+        item,
+      },
+      meta: { id: "question-end", seq: 2, createdAt: 2 },
+    },
+    { ...lifecycle, event: { ...lifecycle.event, scope: threadScope() } },
+  ]);
+  expect(collectQuestionRows(rows)).toHaveLength(1);
+  expect(JSON.stringify(rows)).not.toContain("DUPLICATE_NATIVE_QUESTION_TEXT");
+});

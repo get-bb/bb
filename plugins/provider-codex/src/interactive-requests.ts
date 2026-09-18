@@ -2,6 +2,8 @@ import {
   ProviderRequestDecodeError as ProviderRequestDecodeErrorValue,
   ProviderResponseEncodeError,
   type ApprovalInteractionOutcome,
+  type UserQuestionInteractionOutcome,
+  userQuestionInteractionOutcomeSchema,
   type DecodedInteractiveRequest,
   type ProviderInboundRequest,
   type PendingInteractionApprovalDecision,
@@ -15,6 +17,7 @@ import type { CommandExecutionRequestApprovalResponse } from "./generated/codex-
 import type { FileChangeRequestApprovalResponse } from "./generated/codex-app-server/schema/v2/FileChangeRequestApprovalResponse.js";
 import type { PermissionsRequestApprovalResponse } from "./generated/codex-app-server/schema/v2/PermissionsRequestApprovalResponse.js";
 import {
+  codexUserInputRequestSchema,
   codexCommandExecutionRequestApprovalParamsSchema,
   codexFileChangeRequestApprovalParamsSchema,
   codexPermissionsRequestApprovalParamsSchema,
@@ -87,6 +90,37 @@ export function decodeCodexInteractiveRequest(
   }
 
   switch (request.method) {
+    case "item/tool/requestUserInput": {
+      const parsed = codexUserInputRequestSchema.parse(request.params);
+      if (parsed.questions.some((question) => question.isSecret)) {
+        throw new ProviderRequestDecodeErrorValue(
+          "Secret questions require a secure credential input tool",
+        );
+      }
+      return {
+        requestId: request.id,
+        method: request.method,
+        providerThreadId: parsed.threadId,
+        turnId: parsed.turnId,
+        payload: userQuestionInteractionOutcomeSchema.shape.payload.parse({
+          kind: "user_question",
+          questions: parsed.questions.map((question) => ({
+            id: question.id,
+            prompt: question.question,
+            ...(question.header.trim() ? { shortLabel: question.header } : {}),
+            multiSelect: false,
+            allowFreeText: true,
+            options: question.options?.map((option) => ({
+              value: option.label,
+              label: option.label,
+              ...(option.description.trim()
+                ? { description: option.description }
+                : {}),
+            })),
+          })),
+        }),
+      };
+    }
     case "item/commandExecution/requestApproval": {
       const parsed = codexCommandExecutionRequestApprovalParamsSchema.safeParse(
         request.params,
@@ -422,4 +456,22 @@ function parseCodexAvailableDecisions(
     );
   }
   return uniqueDecisions;
+}
+
+export function buildCodexUserInputResponse(
+  args: UserQuestionInteractionOutcome,
+) {
+  return {
+    answers: Object.fromEntries(
+      Object.entries(args.resolution.answers).map(([id, answer]) => [
+        id,
+        {
+          answers: [
+            ...answer.selected,
+            ...(answer.freeText ? [answer.freeText] : []),
+          ],
+        },
+      ]),
+    ),
+  };
 }

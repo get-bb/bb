@@ -300,6 +300,7 @@ function interruptPendingInteractionsForHostThreads(
 ): void {
   deps.pendingInteractions.interruptPendingInteractionsForThreadIds({
     threadIds: listHostThreadIds(deps.db, { hostId: args.hostId }),
+    preserveAsyncQuestions: true,
     reason: args.reason,
   });
 }

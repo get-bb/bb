@@ -618,6 +618,7 @@ export type ApprovalPendingInteraction = z.infer<
 
 const userQuestionPendingInteractionSchema =
   providerPendingInteractionBaseSchema.extend({
+    turnId: z.string().min(1).nullable(),
     payload: userQuestionPendingInteractionPayloadSchema,
     resolution: userQuestionPendingInteractionResolutionSchema.nullable(),
   });

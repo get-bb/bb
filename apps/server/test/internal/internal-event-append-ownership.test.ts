@@ -1243,3 +1243,121 @@ describe("interaction lifecycle records from the daemon", () => {
     }
   });
 });
+
+it("persists native async questions once across event replay and never reopens a stopped question", async () => {
+  const { harness, session, thread } = await setupEventRoute();
+  try {
+    seedTurnStarted(harness.deps, {
+      threadId: thread.id,
+      turnId: "native-question-turn",
+      sequence: 1,
+    });
+    const questionEvent: HostDaemonEventEnvelope = {
+      threadId: thread.id,
+      event: {
+        type: "item/completed",
+        threadId: thread.id,
+        providerThreadId: "native-provider-thread",
+        scope: turnScope("native-question-turn"),
+        item: {
+          type: "agentMessage",
+          id: "assembled-question-1",
+          text: "Which target?",
+          asyncQuestion: {
+            id: "native-call-1",
+            payload: createUserQuestionPayload(),
+          },
+        },
+      },
+    };
+    const post = () =>
+      postEventBatch({
+        harness,
+        sessionId: session.id,
+        events: [questionEvent],
+      });
+    expect((await post()).status).toBe(200);
+    expect((await post()).status).toBe(200);
+    const pending =
+      harness.deps.pendingInteractions.listPendingThreadInteractions(thread.id);
+    expect(pending).toHaveLength(1);
+    expect(pending[0]).toMatchObject({
+      turnId: null,
+      providerRequestId: "message:native-call-1",
+      status: "pending",
+    });
+    harness.deps.pendingInteractions.interruptPendingInteractionsForThreadIds({
+      threadIds: [thread.id],
+      reason: "thread-stopped",
+    });
+    expect((await post()).status).toBe(200);
+    expect(
+      harness.deps.pendingInteractions.listPendingThreadInteractions(thread.id),
+    ).toEqual([]);
+    expect(
+      harness.deps.pendingInteractions.getThreadInteraction({
+        threadId: thread.id,
+        interactionId: pending[0]!.id,
+      }).status,
+    ).toBe("interrupted");
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+it.each([
+  { reason: "manual-stop", expected: 0 },
+  { reason: "host-daemon-restarted", expected: 1 },
+] as const)(
+  "handles late async questions after $reason",
+  async ({ reason, expected }) => {
+    const { harness, session, thread, environment } = await setupEventRoute();
+    try {
+      seedTurnStarted(harness.deps, {
+        threadId: thread.id,
+        turnId: "late-question-turn",
+        sequence: 1,
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        sequence: 2,
+        type: "system/thread/interrupted",
+        scope: threadScope(),
+        data: { reason },
+      });
+      const response = await postEventBatch({
+        harness,
+        sessionId: session.id,
+        events: [
+          {
+            threadId: thread.id,
+            event: {
+              type: "item/completed",
+              threadId: thread.id,
+              providerThreadId: "native-provider-thread",
+              scope: turnScope("late-question-turn"),
+              item: {
+                type: "agentMessage",
+                id: "late-question",
+                text: "Which target?",
+                asyncQuestion: {
+                  id: "late-native-call",
+                  payload: createUserQuestionPayload(),
+                },
+              },
+            },
+          },
+        ],
+      });
+      expect(response.status).toBe(200);
+      expect(
+        harness.deps.pendingInteractions.listPendingThreadInteractions(
+          thread.id,
+        ),
+      ).toHaveLength(expected);
+    } finally {
+      await harness.cleanup();
+    }
+  },
+);

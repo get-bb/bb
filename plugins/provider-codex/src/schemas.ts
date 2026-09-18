@@ -349,6 +349,15 @@ export const codexHandledThreadItemSchema = z.discriminatedUnion("type", [
       type: z.literal("agentMessage"),
       id: z.string(),
       text: z.string(),
+      delivery: z.enum(["sync", "async"]).nullish(),
+      questions: z
+        .array(
+          z.object({
+            title: z.string().min(1),
+            options: z.array(z.string().min(1)).nullish(),
+          }),
+        )
+        .nullish(),
     })
     .passthrough(),
   z
@@ -1045,3 +1054,26 @@ export function isHandledCodexMethod(
 ): method is HandledCodexMethod {
   return handledCodexMethodSet.has(method);
 }
+
+export const codexUserInputRequestSchema = z.object({
+  threadId: z.string().min(1),
+  turnId: z.string().min(1),
+  itemId: z.string().min(1),
+  isBlocking: z.boolean().optional(),
+  questions: z
+    .array(
+      z.object({
+        id: z.string().min(1),
+        header: z.string(),
+        question: z.string().min(1),
+        isOther: z.boolean().default(false),
+        isSecret: z.boolean().default(false),
+        options: z
+          .array(
+            z.object({ label: z.string().min(1), description: z.string() }),
+          )
+          .nullish(),
+      }),
+    )
+    .min(1),
+});

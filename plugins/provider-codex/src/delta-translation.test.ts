@@ -2735,3 +2735,62 @@ describe("codex ignored notifications", () => {
     expect(events).toEqual([]);
   });
 });
+
+describe("native async questions", () => {
+  it("retains structured questions through translation and assembly without ending the turn", () => {
+    const harness = createHarness();
+    const events = harness.translate({
+      jsonrpc: "2.0",
+      method: "item/completed",
+      params: {
+        threadId: "t1",
+        turnId: "turn-async",
+        item: {
+          type: "agentMessage",
+          id: "call-async",
+          text: "Which database?",
+          phase: "final_answer",
+          delivery: "async",
+          questions: [
+            { title: "Which database?", options: ["SQLite", "Postgres"] },
+            { title: "Any constraints?" },
+          ],
+        },
+      },
+    });
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "item/completed",
+        item: expect.objectContaining({
+          type: "agentMessage",
+          presentation: expect.objectContaining({ suppress: true }),
+          asyncQuestion: {
+            id: "call-async",
+            payload: {
+              kind: "user_question",
+              questions: [
+                {
+                  id: "0",
+                  prompt: "Which database?",
+                  multiSelect: false,
+                  allowFreeText: true,
+                  options: [
+                    { value: "SQLite", label: "SQLite" },
+                    { value: "Postgres", label: "Postgres" },
+                  ],
+                },
+                {
+                  id: "1",
+                  prompt: "Any constraints?",
+                  multiSelect: false,
+                  allowFreeText: true,
+                },
+              ],
+            },
+          },
+        }),
+      }),
+    );
+    expect(events.some((event) => event.type === "turn/completed")).toBe(false);
+  });
+});

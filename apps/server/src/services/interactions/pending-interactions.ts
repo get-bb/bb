@@ -26,6 +26,7 @@ import {
   parseExtensionKind,
   pluginInteractionDescriptionSchema,
   type JsonValue,
+  type UserQuestionPendingInteractionPayload,
   type PendingInteraction,
   type PluginInteractionDescription,
   type ThreadEventItemPresentation,
@@ -80,7 +81,12 @@ type RegisterPendingInteractionResult =
     };
 
 interface RegisterPendingInteractionArgs {
-  interaction: PendingInteractionCreate;
+  interaction:
+    | PendingInteractionCreate
+    | (Omit<PendingInteractionCreate, "turnId" | "payload"> & {
+        turnId: null;
+        payload: UserQuestionPendingInteractionPayload;
+      });
 }
 
 interface ResolvePendingInteractionArgs {
@@ -229,12 +235,14 @@ interface NotifyInteractionChangedArgs {
 }
 
 interface InterruptPendingInteractionsForThreadsLifecycleArgs {
+  providerRequestId?: string | null;
   providerId: string;
   reason: string;
   threadIds: readonly string[];
 }
 
 interface InterruptPendingInteractionsForThreadIdsLifecycleArgs {
+  preserveAsyncQuestions?: boolean;
   reason: string;
   threadIds: readonly string[];
 }
@@ -255,7 +263,7 @@ export interface PendingInteractionPluginDirectory {
 }
 
 function getUnsupportedPendingInteractionReason(
-  interaction: PendingInteractionCreate,
+  interaction: RegisterPendingInteractionArgs["interaction"],
   plugins: PendingInteractionPluginDirectory | null,
 ): string | null {
   if (isPluginExtensionInteractionRequestPayload(interaction.payload)) {
@@ -400,14 +408,12 @@ export class PendingInteractionLifecycle {
     return interaction;
   }
 
-  /**
-   * Whether a pending interaction holds this thread's turn. A provider's
-   * question or approval does: the provider is blocked on it, so nothing
-   * else can be sent until it settles. A plugin's card has no turn and never
-   * blocks a send; whatever answers it later steers or starts a turn.
-   */
   hasTurnBoundPendingThreadInteraction(threadId: string): boolean {
-    const active = getActivePendingInteractionForThread(this.deps.db, threadId);
+    const active = getActivePendingInteractionForThread(
+      this.deps.db,
+      threadId,
+      true,
+    );
     return active !== null && active.turnId !== null;
   }
 
@@ -469,8 +475,9 @@ export class PendingInteractionLifecycle {
       const pendingForThread = getActivePendingInteractionForThread(
         tx,
         interaction.threadId,
+        true,
       );
-      if (pendingForThread) {
+      if (interaction.turnId !== null && pendingForThread) {
         return {
           outcome: "rejected" as const,
           reason: `Thread ${interaction.threadId} is already awaiting user interaction`,
@@ -852,6 +859,7 @@ export class PendingInteractionLifecycle {
     return this.settleInterruptedRows(
       interruptPendingInteractionsForThreads(this.deps.db, {
         providerId: args.providerId,
+        providerRequestId: args.providerRequestId,
         threadIds: args.threadIds,
         statusReason: args.reason,
       }),
@@ -864,6 +872,7 @@ export class PendingInteractionLifecycle {
     return this.settleInterruptedRows(
       interruptPendingInteractionsForThreadIds(this.deps.db, {
         threadIds: args.threadIds,
+        preserveAsyncQuestions: args.preserveAsyncQuestions,
         statusReason: args.reason,
       }),
     );
@@ -877,6 +886,7 @@ export class PendingInteractionLifecycle {
       deps,
       interruptPendingInteractionsForThreadIds(deps.db, {
         threadIds: args.threadIds,
+        preserveAsyncQuestions: args.preserveAsyncQuestions,
         statusReason: args.reason,
       }),
     );
@@ -1005,7 +1015,11 @@ export class PendingInteractionLifecycle {
     appendPendingInteractionTimelineEvent(this.deps, interaction);
     notifyInteractionChanged({
       deps: this.deps,
-      hasPendingInteraction: false,
+      hasPendingInteraction:
+        getActivePendingInteractionForThread(
+          this.deps.db,
+          interaction.threadId,
+        ) !== null,
       threadId: interaction.threadId,
     });
     this.notifyInteractionSettled(interaction.threadId);
@@ -1018,7 +1032,9 @@ export class PendingInteractionLifecycle {
     appendPendingInteractionTimelineEventInTransaction(deps, interaction);
     notifyInteractionChanged({
       deps,
-      hasPendingInteraction: false,
+      hasPendingInteraction:
+        getActivePendingInteractionForThread(deps.db, interaction.threadId) !==
+        null,
       threadId: interaction.threadId,
     });
     this.notifyInteractionSettled(interaction.threadId);

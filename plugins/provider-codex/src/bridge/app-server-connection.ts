@@ -10,6 +10,8 @@ const KILL_ESCALATION_MS = 4_000;
 const CLOSED_STDIN_ERROR_CODES = new Set(["EPIPE", "ERR_STREAM_DESTROYED"]);
 
 export interface CodexAppServerRequestResponder {
+  requestId: string | number;
+  dismiss(): void;
   result(value: unknown): void;
   error(code: number, message: string): void;
 }
@@ -285,6 +287,10 @@ export function createCodexAppServerConnection(
       if (typeof id === "string" || typeof id === "number") {
         let settled = false;
         options.onRequest(message.method, message.params, {
+          requestId: id,
+          dismiss() {
+            settled = true;
+          },
           result(value) {
             if (settled || finalized) return;
             settled = true;

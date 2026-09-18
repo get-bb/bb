@@ -1086,6 +1086,7 @@ describe("createHostDaemonApp", () => {
       expect(payload).toEqual({
         sessionId: "session-app-test",
         providerId: "codex",
+        providerRequestId: null,
         threadIds: [request.threadId],
         reason: 'Provider "codex" exited while awaiting user interaction',
       });

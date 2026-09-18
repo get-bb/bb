@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import {
   isStandaloneBuiltinCompactCommand,
   approvalInteractionOutcomeSchema,
+  userQuestionInteractionOutcomeSchema,
   type DynamicTool,
   type PromptInput,
   type ThreadDelta,
@@ -54,6 +55,7 @@ import {
 } from "../extension-kinds.js";
 import {
   buildCodexInteractiveResponse,
+  buildCodexUserInputResponse,
   decodeCodexInteractiveRequest,
   extractCodexMacOsPermissionRequest,
   type CodexMacOsPermissionRequest,
@@ -249,6 +251,7 @@ let runtimeRequestIdCounter = 0;
 function sendRuntimeRequest(
   method: string,
   params: Record<string, unknown>,
+  onCreated?: (requestId: number) => void,
 ): Promise<unknown> {
   runtimeRequestIdCounter += 1;
   const requestId = runtimeRequestIdCounter;
@@ -265,6 +268,7 @@ function sendRuntimeRequest(
       });
     },
   );
+  onCreated?.(requestId);
   send({ jsonrpc: "2.0", id: requestId, method, params });
   return responsePromise;
 }
@@ -458,6 +462,10 @@ interface CodexBridgeSession {
   awaitingReplayedUsage: boolean;
   identityAnnounced: boolean;
   pendingPreIdentityDeltas: ThreadDelta[];
+  interactiveRequests: Map<
+    string | number,
+    { runtimeRequestId: number; responder: CodexAppServerRequestResponder }
+  >;
   rebuildBeforeNextTurnReason: string | null;
   closing: boolean;
   previousChildExit: Promise<void> | null;
@@ -669,6 +677,25 @@ function handleChildNotification(
   if (!session) {
     return;
   }
+  if (method === "serverRequest/resolved") {
+    const parsed = z
+      .object({
+        threadId: z.string(),
+        requestId: z.union([z.string(), z.number()]),
+      })
+      .safeParse(params);
+    if (parsed.success && parsed.data.threadId === session.codexThreadId) {
+      const request = session.interactiveRequests.get(parsed.data.requestId);
+      if (request) {
+        request.responder.dismiss();
+        session.interactiveRequests.delete(parsed.data.requestId);
+        sendNotification("notifications/cancelled", {
+          requestId: request.runtimeRequestId,
+        });
+      }
+    }
+    return;
+  }
   if (method === "thread/started") {
     const parsed = codexThreadStartedNotificationSchema.safeParse(params);
     if (parsed.success) {
@@ -781,7 +808,11 @@ function handleChildRequest(
 
   let decoded: DecodedInteractiveRequest | null;
   try {
-    decoded = decodeCodexInteractiveRequest({ id: 0, method, params });
+    decoded = decodeCodexInteractiveRequest({
+      id: responder.requestId,
+      method,
+      params,
+    });
   } catch (error) {
     responder.error(
       BRIDGE_JSON_RPC_ERRORS.INVALID_PARAMS,
@@ -798,14 +829,34 @@ function handleChildRequest(
   }
   const request = decoded;
 
-  void sendRuntimeRequest(BRIDGE_INBOUND_REQUEST_METHODS.interactionRequest, {
-    providerThreadId: session.codexThreadId ?? request.providerThreadId,
-    threadId: session.bbThreadId,
-    turnId: request.turnId,
-    payload: request.payload,
-    providerNativeIds: true,
-  })
+  void sendRuntimeRequest(
+    BRIDGE_INBOUND_REQUEST_METHODS.interactionRequest,
+    {
+      providerThreadId: session.codexThreadId ?? request.providerThreadId,
+      threadId: session.bbThreadId,
+      turnId: request.turnId,
+      payload: request.payload,
+      providerNativeIds: true,
+    },
+    (runtimeRequestId) => {
+      session.interactiveRequests.set(responder.requestId, {
+        runtimeRequestId,
+        responder,
+      });
+    },
+  )
     .then((result) => {
+      if (request.payload.kind === "user_question") {
+        responder.result(
+          buildCodexUserInputResponse(
+            userQuestionInteractionOutcomeSchema.parse({
+              payload: request.payload,
+              resolution: result,
+            }),
+          ),
+        );
+        return;
+      }
       const outcome = approvalInteractionOutcomeSchema.parse({
         payload: request.payload,
         resolution: result,
@@ -817,6 +868,13 @@ function handleChildRequest(
         BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR,
         error instanceof Error ? error.message : String(error),
       );
+    })
+    .finally(() => {
+      if (
+        session.interactiveRequests.get(responder.requestId)?.responder ===
+        responder
+      )
+        session.interactiveRequests.delete(responder.requestId);
     });
 }
 
@@ -1023,6 +1081,7 @@ async function constructThreadSession(
     awaitingReplayedUsage: args.request.kind !== "start",
     identityAnnounced: false,
     pendingPreIdentityDeltas: [],
+    interactiveRequests: new Map(),
     rebuildBeforeNextTurnReason: null,
     closing: false,
     previousChildExit: null,
@@ -1183,6 +1242,7 @@ function registerResumableSession(session: CodexBridgeSession): void {
     awaitingReplayedUsage: true,
     identityAnnounced: session.identityAnnounced,
     pendingPreIdentityDeltas: [],
+    interactiveRequests: new Map(),
     rebuildBeforeNextTurnReason: null,
     closing: false,
     previousChildExit: null,

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildCodexInteractiveResponse,
+  buildCodexUserInputResponse,
   decodeCodexInteractiveRequest,
   extractCodexMacOsPermissionRequest,
 } from "./interactive-requests.js";
@@ -580,5 +581,105 @@ describe("buildCodexInteractiveResponse", () => {
       },
       scope: "session",
     });
+  });
+});
+
+describe("native user questions", () => {
+  const params = {
+    threadId: "thread-native",
+    turnId: "turn-native",
+    itemId: "call-native",
+    isBlocking: false,
+    questions: [
+      {
+        id: "database",
+        header: "Database",
+        question: "Which database?",
+        isOther: true,
+        isSecret: false,
+        options: [
+          { label: "SQLite", description: "Local storage" },
+          { label: "Postgres", description: "" },
+        ],
+      },
+    ],
+  };
+
+  it.each([true, false])(
+    "keeps isBlocking=%s requests on their original turn",
+    (isBlocking) => {
+      const request = decodeCodexInteractiveRequest({
+        id: 42,
+        method: "item/tool/requestUserInput",
+        params: { ...params, isBlocking },
+      });
+      expect(request).toMatchObject({
+        requestId: 42,
+        turnId: "turn-native",
+        payload: {
+          kind: "user_question",
+          questions: [
+            {
+              id: "database",
+              multiSelect: false,
+              allowFreeText: true,
+              options: [
+                {
+                  value: "SQLite",
+                  label: "SQLite",
+                  description: "Local storage",
+                },
+                { value: "Postgres", label: "Postgres" },
+              ],
+            },
+          ],
+        },
+      });
+      expect(
+        buildCodexUserInputResponse({
+          payload: { kind: "user_question", questions: [] },
+          resolution: {
+            kind: "user_answer",
+            answers: {
+              database: { selected: ["SQLite"], freeText: "Keep it local" },
+            },
+          },
+        }),
+      ).toEqual({
+        answers: { database: { answers: ["SQLite", "Keep it local"] } },
+      });
+    },
+  );
+
+  it("accepts older requests without blocking metadata and free-text-only questions", () => {
+    expect(
+      decodeCodexInteractiveRequest({
+        id: "old",
+        method: "item/tool/requestUserInput",
+        params: {
+          threadId: "t",
+          turnId: "turn",
+          itemId: "i",
+          questions: [
+            { id: "q", header: "", question: "Details?", options: null },
+          ],
+        },
+      }),
+    ).toMatchObject({
+      payload: { questions: [{ id: "q", allowFreeText: true }] },
+    });
+  });
+
+  it("rejects secret questions before creating a persisted interaction", () => {
+    expect(() =>
+      decodeCodexInteractiveRequest({
+        id: 42,
+        method: "item/tool/requestUserInput",
+        params: {
+          ...params,
+          questions: [{ ...params.questions[0], isSecret: true }],
+        },
+      }),
+    ).toThrow("secure credential input");
   });
 });

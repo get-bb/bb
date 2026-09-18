@@ -1,5 +1,6 @@
 import {
   contextSnapshotSchema,
+  userQuestionPendingInteractionPayloadSchema,
   backgroundTaskStatusSchema,
   backgroundTaskUsageSchema,
   clientTurnRequestIdSchema,
@@ -135,7 +136,16 @@ export const deltaItemShapeSchema = z.discriminatedUnion("type", [
     durationMs: z.number().optional(),
   }),
   z.object({ type: z.literal("compaction") }),
-  z.object({ type: z.literal("agentMessage"), text: z.string() }),
+  z.object({
+    type: z.literal("agentMessage"),
+    text: z.string(),
+    asyncQuestion: z
+      .object({
+        id: z.string().min(1),
+        payload: userQuestionPendingInteractionPayloadSchema,
+      })
+      .optional(),
+  }),
   z.object({
     type: z.literal("reasoning"),
     summary: z.array(z.string()),

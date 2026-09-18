@@ -607,11 +607,11 @@ function configFor(options: CodexSessionOptions) {
 }
 
 describe("buildCodexConfig", () => {
-  it("disables provider user-input requests without overriding web search", () => {
+  it("enables native Default-mode questions without overriding web search", () => {
     const config = configFor(FULL_OPTIONS);
 
     expect(config).toMatchObject({
-      "features.default_mode_request_user_input": false,
+      "features.default_mode_request_user_input": true,
     });
     expect(JSON.stringify(config)).not.toContain("tools.web_search");
   });

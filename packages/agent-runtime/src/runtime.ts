@@ -38,7 +38,7 @@ import {
 } from "./execution-options.js";
 import {
   handleRuntimeProviderRequest,
-  RuntimeToolCalls,
+  RuntimeRequestLifetimes,
   type ResolveRuntimeProviderRequestThreadIdArgs,
   type RuntimeProviderRequestKind,
 } from "./runtime-provider-requests.js";
@@ -303,7 +303,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   const suppressedThreadEventIds = new Set<string>();
   const threadGoalState = new RuntimeThreadGoalState();
   const turnState = new RuntimeTurnState();
-  const toolCalls = new RuntimeToolCalls();
+  const requestLifetimes = new RuntimeRequestLifetimes();
   const backgroundWorkState = new RuntimeBackgroundWorkState();
   const threadEventGrammar = new ThreadEventGrammar();
   const bridgeNodeEnv = defaultBridgeNodeEnv();
@@ -328,7 +328,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       handleStdoutLine(args.line, args.providerProcess),
     onProcessExit: options.onProcessExit,
     onProviderThreadDetached: (threadId) => {
-      toolCalls.cancelThread(threadId);
+      requestLifetimes.cancelThread(threadId);
       threadIdentityRegistry.clearThread(threadId);
       clearThreadRuntimeConfig(threadId);
       turnState.clearThread(threadId);
@@ -1241,7 +1241,10 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
         normalizedEvent.type === "turn/completed" &&
         normalizedEvent.scope.kind === "turn"
       ) {
-        toolCalls.cancelThread(targetThreadId, normalizedEvent.scope.turnId);
+        requestLifetimes.cancelThread(
+          targetThreadId,
+          normalizedEvent.scope.turnId,
+        );
       }
       turnState.observe(normalizedEvent);
       backgroundWorkState.observe(normalizedEvent);
@@ -1257,7 +1260,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
         args.parsed.params,
       );
       if (cancellation.success) {
-        toolCalls.cancel(
+        requestLifetimes.cancel(
           args.proc.interactiveRequestScope,
           cancellation.data.requestId,
         );
@@ -1322,7 +1325,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
           threadRuntimeConfigs.get(threadId)?.options,
         onInteractiveRequest: options.onInteractiveRequest,
         onToolCall: options.onToolCall,
-        toolCalls,
+        requestLifetimes,
         parsedId: parsedLine.parsedId,
         parsedMethod: parsedLine.parsedMethod,
         providerProcess: proc,
@@ -2155,7 +2158,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     },
 
     async stopThread({ threadId }) {
-      toolCalls.cancelThread(threadId);
+      requestLifetimes.cancelThread(threadId);
       return runThreadOperation({
         threadId,
         work: async () => {

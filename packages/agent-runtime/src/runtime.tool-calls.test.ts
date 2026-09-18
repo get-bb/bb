@@ -7,7 +7,7 @@ import type { ThreadEvent, ToolCallResponse } from "@bb/domain";
 import { createProviderForId } from "./provider-registry.js";
 import {
   handleRuntimeProviderRequest,
-  RuntimeToolCalls,
+  RuntimeRequestLifetimes,
 } from "./runtime-provider-requests.js";
 import {
   parseJsonRpcLine,
@@ -246,7 +246,7 @@ describe("createAgentRuntime tool calls", () => {
 
     try {
       handleRuntimeProviderRequest({
-        toolCalls: new RuntimeToolCalls(),
+        requestLifetimes: new RuntimeRequestLifetimes(),
         getActiveTurnId: () => null,
         getThreadExecutionOptions: () => undefined,
         onInteractiveRequest: async () => ({
@@ -310,7 +310,7 @@ describe("createAgentRuntime tool calls", () => {
 
     try {
       handleRuntimeProviderRequest({
-        toolCalls: new RuntimeToolCalls(),
+        requestLifetimes: new RuntimeRequestLifetimes(),
         getActiveTurnId: () => "turn-1",
         getThreadExecutionOptions: () => undefined,
         onInteractiveRequest: async () => ({
