@@ -29,7 +29,12 @@ import { PluginAuthorPage } from "@/components/plugin/management/PluginAuthorPag
 import {
   usePluginCatalogSearch,
   usePluginUpdateCheck,
+  type PluginCatalogSearchEntry,
 } from "@/hooks/queries/plugin-catalog-queries";
+import {
+  usePluginRemoval,
+  PluginRemovalDialog,
+} from "./management/usePluginRemoval";
 import { installedPluginCatalogEntry } from "./management/installed-plugin-catalog";
 import { PluginCollectionToolbar } from "./management/PluginBrowseControls";
 import {
@@ -52,6 +57,7 @@ export function PluginsOverview({
   onOpenPlugin?: (pluginId: string, trigger: HTMLButtonElement) => void;
 } = {}) {
   const navigate = useNavigate();
+  const removal = usePluginRemoval();
   const {
     searchParams,
     query: installedQuery,
@@ -191,6 +197,14 @@ export function PluginsOverview({
     });
   };
 
+  const uninstallCatalogEntry = (entry: PluginCatalogSearchEntry) => {
+    const plugin = plugins.find(
+      (candidate) =>
+        installedPluginCatalogEntry(candidate, [entry]) !== undefined,
+    );
+    if (plugin !== undefined) removal.open(plugin);
+  };
+
   const installedActions = (
     <>
       <CreateWithTemplatesButton
@@ -224,6 +238,7 @@ export function PluginsOverview({
       authorKey === null ? (
         <BrowsePluginsTab
           onInstall={(initial) => setAddDialog({ open: true, initial })}
+          onUninstall={uninstallCatalogEntry}
           onOpenPlugin={openPlugin}
           onInstallFromSource={() =>
             setAddDialog({ open: true, initial: null })
@@ -233,6 +248,7 @@ export function PluginsOverview({
         <PluginAuthorPage
           authorKey={authorKey}
           onInstall={(initial) => setAddDialog({ open: true, initial })}
+          onUninstall={uninstallCatalogEntry}
           onOpenPlugin={openPlugin}
         />
       );
@@ -316,6 +332,7 @@ export function PluginsOverview({
           {content}
         </ResourceCollectionPage>
       )}
+      <PluginRemovalDialog removal={removal} />
       <AddPluginDialog
         open={addDialog.open}
         initial={addDialog.initial}

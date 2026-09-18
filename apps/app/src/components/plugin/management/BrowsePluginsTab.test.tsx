@@ -506,11 +506,12 @@ describe("BrowsePluginsTab", () => {
       collections: [],
     });
 
-    const installed = await screen.findByLabelText("Installed");
-    expect(installed.textContent).toContain("Installed");
-    expect(installed.querySelector('[data-icon="Check"]')).toBeTruthy();
-    expect(screen.getByLabelText("4,210 installs")).toBeTruthy();
-    expect(installed.tagName).toBe("SPAN");
+    const installed = await screen.findByRole("button", {
+      name: "Memory installed — 4,210 installs",
+    });
+    expect(installed.querySelector('[data-icon="Download"]')).toBeTruthy();
+    expect(installed.textContent).toContain("4.2K");
+    expect(installed.getAttribute("aria-disabled")).toBe("true");
     expect(
       screen.queryByRole("button", { name: /Install Memory/u }),
     ).toBeNull();
@@ -571,17 +572,19 @@ describe("BrowsePluginsTab", () => {
     });
     expect(install.textContent).toContain("4.2K");
     fireEvent.click(install);
-    expect(onInstall).toHaveBeenCalledWith({
-      entryId: "memory",
-      pluginId: "memory",
-      marketplace: "bb-official",
-      publisherLabel: "BB Official",
-      displayName: "Memory",
-      icon: "Brain",
-      iconUrl: null,
-      iconTinted: false,
-      source: "builtin:memory",
-    });
+    expect(onInstall).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entryId: "memory",
+        pluginId: "memory",
+        marketplace: "bb-official",
+        publisherLabel: "BB Official",
+        displayName: "Memory",
+        icon: "Brain",
+        iconUrl: null,
+        iconTinted: false,
+        source: "builtin:memory",
+      }),
+    );
     const open = screen.getByRole("button", {
       name: "Open Memory details",
     });

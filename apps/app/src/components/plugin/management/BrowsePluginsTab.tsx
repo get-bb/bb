@@ -1,3 +1,4 @@
+import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
 import { usePluginCollectionParams } from "./usePluginCollectionParams";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
@@ -42,10 +43,12 @@ const SHELF_ENTRY_LIMIT = 6;
 
 export function BrowsePluginsTab({
   onInstall,
+  onUninstall,
   onOpenPlugin,
   onInstallFromSource,
 }: {
   onInstall: (initial: AddPluginInitial) => void;
+  onUninstall?: (entry: PluginCatalogSearchEntry) => void;
   onOpenPlugin: (pluginId: string, trigger: HTMLButtonElement) => void;
   onInstallFromSource: () => void;
 }) {
@@ -310,6 +313,7 @@ export function BrowsePluginsTab({
                     key={shelf.key}
                     shelf={shelf}
                     onInstall={onInstall}
+                    onUninstall={onUninstall}
                     onOpenPlugin={onOpenPlugin}
                   />
                 ))}
@@ -319,6 +323,7 @@ export function BrowsePluginsTab({
                 entries={flatEntries}
                 showCategory={!isCategoryShelf}
                 onInstall={onInstall}
+                onUninstall={onUninstall}
                 onOpenPlugin={onOpenPlugin}
               />
             )}
@@ -332,10 +337,12 @@ export function BrowsePluginsTab({
 function BrowseShelf({
   shelf,
   onInstall,
+  onUninstall,
   onOpenPlugin,
 }: {
   shelf: PluginBrowseShelf;
   onInstall: (initial: AddPluginInitial) => void;
+  onUninstall?: (entry: PluginCatalogSearchEntry) => void;
   onOpenPlugin: (pluginId: string, trigger: HTMLButtonElement) => void;
 }) {
   const [searchParams] = useSearchParams();
@@ -397,6 +404,7 @@ function BrowseShelf({
               entry={entry}
               showCategory={false}
               onInstall={onInstall}
+              onUninstall={onUninstall}
               onOpenPlugin={onOpenPlugin}
             />
           ))}
