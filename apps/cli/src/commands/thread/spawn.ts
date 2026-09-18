@@ -9,8 +9,10 @@ import {
   type JsonValue,
 } from "@bb/domain";
 import type { CreateThreadEnvironmentArgs } from "@bb/server-contract";
-import { action } from "../../action.js";
+import { action, CliUsageError } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
+import { missingProjectHint } from "../../context-hints.js";
+import { requireTextInput, TEXT_FILE_HELP_SUFFIX } from "../../text-input.js";
 import {
   resolveExplicitIdFlag,
   resolveContextThreadId,
@@ -40,7 +42,8 @@ const PROVIDER_HELP =
   "Provider ID for the thread. Omit to use the project's remembered provider choice";
 
 interface ThreadSpawnCommandOptions {
-  prompt: string;
+  prompt?: string;
+  promptFile?: string;
   json?: boolean;
   project?: string;
   environment?: string;
@@ -305,10 +308,15 @@ export function registerSpawnCommand(
 ): void {
   parent
     .command("spawn")
+    .aliases(["create", "new"])
     .description(
       "Spawn a new thread; omitted execution flags use remembered project defaults, then the target provider catalog default",
     )
-    .requiredOption("--prompt <prompt>", "Initial prompt for the thread")
+    .option("--prompt <prompt>", "Initial prompt for the thread")
+    .option(
+      "--prompt-file <path>",
+      `Read the initial prompt from a file instead of --prompt; ${TEXT_FILE_HELP_SUFFIX}`,
+    )
     .option(
       "--lifecycle-owner-thread <id>",
       "Archive/delete this thread with its lifecycle owner",
@@ -389,12 +397,22 @@ export function registerSpawnCommand(
     )
     .action(
       action(async (opts: ThreadSpawnCommandOptions) => {
+        const prompt = await requireTextInput({
+          file: opts.promptFile,
+          fileLabel: "--prompt-file",
+          inline: opts.prompt,
+          inlineLabel: "--prompt <prompt>",
+        });
         const projectId = resolveExplicitIdFlag({
           flagName: "--project flag",
           value: opts.project,
         });
         if (!projectId) {
-          throw new Error("Missing required option --project <id>.");
+          throw new CliUsageError({
+            code: "missing_required",
+            hint: missingProjectHint(),
+            message: "Missing required option --project <id>.",
+          });
         }
         const environmentValue = resolveSpawnEnvironmentValue(opts.environment);
         if (
@@ -545,7 +563,7 @@ export function registerSpawnCommand(
           const sdk = createCliBbSdk(getUrl());
           const input = await uploadClientAttachmentInputs({
             input: buildPromptInputs({
-              message: opts.prompt,
+              message: prompt,
               plan: opts.plan,
               files: opts.file,
               images: opts.image,

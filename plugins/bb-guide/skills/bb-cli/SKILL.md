@@ -19,7 +19,29 @@ inspection.
 
 Run `bb --version` for the CLI version. Use `bb --help` or `bb help [command]`
 for help. Run bb guide for the system overview. Run bb guide <chapter> for one
-area. Use bb <group> --help for current flags and defaults.
+area. Use bb <group> --help for current flags and defaults, or
+`bb guide commands <group>` for every command in a group with its options on
+one page.
+
+## Errors and JSON
+
+- Read the whole error before you run `--help`. A failed invocation prints the
+  nearest command or option, the usage line, the valid options, and, for a
+  missing project, thread, machine, or environment, the exact flag to add with
+  the current ID filled in.
+- With `--json`, a failure prints
+  `{"ok": false, "error": {"code", "message", "hint"}}` on stdout and the
+  readable message on stderr, and exits non-zero. Parse stdout only; `2>&1`
+  mixes the message into the JSON.
+- Output shapes differ by command: `bb thread list --json` is a bare array,
+  `bb thread show --json` nests under `.thread`, `bb terminal list --json`
+  wraps in `.sessions`. `bb guide json` lists each shape, and the help of the
+  most-parsed commands ends with its JSON shape.
+- Pass long or multi-line text from a file: `bb thread tell <id>
+--message-file <path>`, `bb thread spawn --prompt-file <path>`, with `-` for
+  stdin. Inside double quotes the shell runs `backticks` and `$(...)` before
+  bb sees the text, which silently corrupts Markdown and can execute commands.
+- Timeouts take seconds or a duration with a unit (`90s`, `20m`, `4h`).
 
 A standalone CLI targets http://127.0.0.1:38886. Use BB_SERVER_URL and
 BB_HOST_DAEMON_PORT only for an intentional non-default target.

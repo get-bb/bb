@@ -15,6 +15,7 @@ import {
   findDisabledPluginForCommand,
   findPluginCliCommand,
   PLUGIN_CLI_HEADERS_TIMEOUT_MS,
+  pluginCommandLabel,
   runPluginCliCommand,
   type PluginCliContributionEntry,
 } from "../plugin-cli-proxy.js";
@@ -23,6 +24,30 @@ describe("reserved bb CLI command names", () => {
   it("matches the complete core command-group registry plus help", () => {
     expect([...RESERVED_BB_CLI_COMMANDS].sort()).toEqual(
       [...CORE_COMMAND_GROUPS.map((group) => group.name), "help"].sort(),
+    );
+  });
+});
+
+describe("pluginCommandLabel", () => {
+  const contribution: PluginCliContributionEntry = {
+    pluginId: "account-pool",
+    name: "pool",
+    summary: "Pool",
+    commands: [
+      { name: "account-add", summary: "Add", usage: "bb pool account add" },
+      { name: "status", summary: "Status", usage: "bb pool status" },
+    ],
+  };
+
+  it("names only declared command words, never argument values", () => {
+    expect(
+      pluginCommandLabel(contribution, ["account", "add", "--api-key", "sk-1"]),
+    ).toBe("pool account add");
+    expect(pluginCommandLabel(contribution, ["status", "--json"])).toBe(
+      "pool status",
+    );
+    expect(pluginCommandLabel(contribution, ["a secret sentence"])).toBe(
+      "pool",
     );
   });
 });

@@ -4,7 +4,7 @@ import { access, readFile, realpath } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { setTimeout as sleep } from "node:timers/promises";
-import { Command } from "commander";
+import { Command, Option } from "commander";
 import { z } from "zod";
 import { derivePluginId, jsonValueSchema } from "@bb/domain";
 import { pluginCliCall, RESERVED_BB_CLI_COMMANDS } from "@bb/domain/plugin-cli";
@@ -1784,10 +1784,12 @@ export function registerPluginCommands(
 
   plugin
     .command("remove <id>")
+    .alias("uninstall")
     .description(
       "Remove an installed plugin and delete its settings, secrets, and schedules (git:/npm: managed files are deleted; local path sources stay on disk). To move a local plugin to another directory, install the new path instead",
     )
     .option("--json", "Output JSON")
+    .addOption(new Option("--yes").hideHelp())
     .action(
       action(async (id: string, opts: JsonOutputOptions) => {
         const result = pluginMutationResponseSchema.parse(

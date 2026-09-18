@@ -11,6 +11,21 @@ export interface PluginCliContributionEntry {
   name: string;
   summary: string;
   commands: Array<{ name: string; summary: string; usage: string }>;
+  rendersHelp?: boolean;
+}
+
+export function pluginCommandLabel(
+  contribution: PluginCliContributionEntry,
+  argv: readonly string[],
+): string {
+  const declared = new Set(contribution.commands.map((entry) => entry.name));
+  for (let words = Math.min(3, argv.length); words > 0; words -= 1) {
+    const candidate = argv.slice(0, words);
+    if (declared.has(candidate.join("-"))) {
+      return [contribution.name, ...candidate].join(" ");
+    }
+  }
+  return contribution.name;
 }
 
 const CONTRIBUTIONS_TIMEOUT_MS = 2000;
