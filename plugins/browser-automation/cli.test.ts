@@ -43,4 +43,23 @@ describe("CLI boundaries", () => {
     expect(parsed.input.script).toBe("await browser.getPage('main')");
     expect(() => rpcContract.run.input.parse(parsed.input)).toThrow();
   });
+  it("parses preview sequence cursors and rejects invalid ones at the common boundary", () => {
+    expect(parseCli(["preview", id], "thread").input).toEqual({
+      threadId: "thread",
+      sessionId: id,
+      afterSequence: 0,
+    });
+    const parsed = parseCli(["preview", id, "--after", "12"], "thread");
+    expect(rpcContract.preview.input.parse(parsed.input).afterSequence).toBe(
+      12,
+    );
+    expect(() =>
+      rpcContract.preview.input.parse(
+        parseCli(["preview", id, "--after", "soon"], "thread").input,
+      ),
+    ).toThrow();
+    expect(() => parseCli(["preview", id, "--page", "main"], "thread")).toThrow(
+      "Unknown",
+    );
+  });
 });

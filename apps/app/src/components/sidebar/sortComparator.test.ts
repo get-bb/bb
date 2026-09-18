@@ -1,9 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
-import {
-  getSelectedThreadSidebarExpansion,
-  getSidebarThreadComparator,
-} from "./ProjectList";
+import { getSidebarThreadComparator } from "./ProjectList";
+import { getThreadSidebarExpansion } from "./useSidebarThreadReveal";
 import {
   CHRONOLOGICAL_CONTAINER_ID,
   type ProjectThreadNode,
@@ -338,36 +336,36 @@ describe("getSidebarThreadComparator", () => {
   });
 });
 
-describe("getSelectedThreadSidebarExpansion", () => {
+describe("getThreadSidebarExpansion", () => {
   it("expands the personal threads section in project mode", () => {
     expect(
-      getSelectedThreadSidebarExpansion({
+      getThreadSidebarExpansion({
         organizationMode: "project",
         isPinned: false,
         sidebarProjectId: PERSONAL_PROJECT_ID,
-        selectedThread: thread({ projectId: PERSONAL_PROJECT_ID }),
+        thread: thread({ projectId: PERSONAL_PROJECT_ID }),
       }),
     ).toEqual({ sidebarSectionId: "threads" });
   });
 
   it("expands the owning project in project mode", () => {
     expect(
-      getSelectedThreadSidebarExpansion({
+      getThreadSidebarExpansion({
         organizationMode: "project",
         isPinned: false,
         sidebarProjectId: "proj_app",
-        selectedThread: thread({ projectId: "proj_app" }),
+        thread: thread({ projectId: "proj_app" }),
       }),
     ).toEqual({ projectId: "proj_app" });
   });
 
   it("expands the root ancestor's project for a cross-project child in project mode", () => {
     expect(
-      getSelectedThreadSidebarExpansion({
+      getThreadSidebarExpansion({
         organizationMode: "project",
         isPinned: false,
         sidebarProjectId: "proj_app",
-        selectedThread: thread({
+        thread: thread({
           projectId: "proj_web",
           parentThreadId: "thr_parent",
         }),
@@ -377,22 +375,22 @@ describe("getSelectedThreadSidebarExpansion", () => {
 
   it("expands the threads section for unsectioned project threads in sections mode", () => {
     expect(
-      getSelectedThreadSidebarExpansion({
+      getThreadSidebarExpansion({
         organizationMode: "chronological",
         isPinned: false,
         sidebarProjectId: "proj_app",
-        selectedThread: thread({ sectionId: null, projectId: "proj_app" }),
+        thread: thread({ sectionId: null, projectId: "proj_app" }),
       }),
     ).toEqual({ sidebarSectionId: "threads" });
   });
 
   it("expands the containing section for sectioned threads in sections mode", () => {
     expect(
-      getSelectedThreadSidebarExpansion({
+      getThreadSidebarExpansion({
         organizationMode: "chronological",
         isPinned: false,
         sidebarProjectId: "proj_app",
-        selectedThread: thread({
+        thread: thread({
           sectionId: "sec_work",
           projectId: "proj_app",
         }),
@@ -404,33 +402,33 @@ describe("getSelectedThreadSidebarExpansion", () => {
 
   it("expands the owning machine group in machine mode", () => {
     expect(
-      getSelectedThreadSidebarExpansion({
+      getThreadSidebarExpansion({
         organizationMode: "machine",
         isPinned: false,
         sidebarProjectId: "proj_app",
-        selectedThread: thread({
+        thread: thread({
           projectId: "proj_app",
           environmentHostId: "host_a",
         }),
       }),
     ).toEqual({ machineKey: "host_a" });
     expect(
-      getSelectedThreadSidebarExpansion({
+      getThreadSidebarExpansion({
         organizationMode: "machine",
         isPinned: false,
         sidebarProjectId: "proj_app",
-        selectedThread: thread({ projectId: "proj_app" }),
+        thread: thread({ projectId: "proj_app" }),
       }),
     ).toEqual({ machineKey: "no-machine" });
   });
 
   it("expands the pinned section for pinned threads", () => {
     expect(
-      getSelectedThreadSidebarExpansion({
+      getThreadSidebarExpansion({
         organizationMode: "chronological",
         isPinned: true,
         sidebarProjectId: "proj_app",
-        selectedThread: thread({ sectionId: null, projectId: "proj_app" }),
+        thread: thread({ sectionId: null, projectId: "proj_app" }),
       }),
     ).toEqual({ sidebarSectionId: "pinned" });
   });

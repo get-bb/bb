@@ -4,6 +4,7 @@ import { useState } from "react";
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { Icon, preloadExtendedIcons } from "@bb/shared-ui/icon";
+import { setPluginAssetIcons } from "@bb/shared-ui/icon-registry";
 import { collectPluginAppRegistrations } from "@get-bb/plugin-sdk/internal/plugin-app-collector";
 import type { ExperimentalIconRegistration } from "@get-bb/plugin-sdk/app";
 import {
@@ -38,6 +39,7 @@ function registrations(...icons: ExperimentalIconRegistration[]) {
 
 afterEach(() => {
   cleanup();
+  setPluginAssetIcons(new Map());
   resetPluginSlotStoreForTest();
   vi.restoreAllMocks();
 });
@@ -220,4 +222,33 @@ it("remounts plugin artwork on a new generation even when the component function
   expect(view.container.querySelector("svg")?.getAttribute("data-mount")).toBe(
     "2",
   );
+});
+
+it("resolves a manifest-declared glyph, and lets an app registration of the same name win", () => {
+  setPluginAssetIcons(
+    new Map([["acme/declared", "/api/v1/plugins/acme/assets/icons/d.svg?h=1"]]),
+  );
+  const view = render(<Icon name="acme/declared" fallback="Check" />);
+  const asset = view.container.querySelector("[data-plugin-icon-asset]");
+  expect(asset?.getAttribute("data-icon")).toBe("acme/declared");
+  expect(view.container.querySelector('[data-icon="Check"]')).toBeNull();
+
+  act(() =>
+    setPluginSlotRegistrations(
+      "acme",
+      registrations({ name: "acme/declared", component: Mark }),
+    ),
+  );
+  expect(view.container.querySelector('[data-mark="one"]')).not.toBeNull();
+  expect(view.container.querySelector("[data-plugin-icon-asset]")).toBeNull();
+
+  act(() => removePluginSlotRegistrations("acme"));
+  expect(
+    view.container.querySelector("[data-plugin-icon-asset]"),
+  ).not.toBeNull();
+});
+
+it("falls back when a namespaced glyph is declared by no plugin", () => {
+  const view = render(<Icon name="acme/missing" fallback="Check" />);
+  expect(view.container.querySelector('[data-icon="Check"]')).not.toBeNull();
 });

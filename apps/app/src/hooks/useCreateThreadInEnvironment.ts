@@ -17,7 +17,7 @@ export function useCreateThreadInEnvironment({
   return useCallback(() => {
     setRootComposeProjectId(projectId);
     navigate(getRootComposeRoutePath(), {
-      state: { reuseEnvironmentId: environmentId },
+      state: { focusPrompt: true, reuseEnvironmentId: environmentId },
     });
   }, [environmentId, navigate, projectId, setRootComposeProjectId]);
 }

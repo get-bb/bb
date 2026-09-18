@@ -1939,10 +1939,13 @@ function RootComposeSurface({
     />
   );
 
+  const isCompactHomeLayout = isCompactViewport && !showEmptyWelcome;
+
   const promptBox = renderPromptBox({
     id: "root-compose-prompt",
     autoFocus: !isProviderCliVersionBlocked,
     allowSoftKeyboardAutoFocus: isCompactViewport,
+    mentionMenuPlacement: isCompactHomeLayout ? "top" : "bottom",
     banner: promptBanner,
     header: promptHeader,
     blockedReason: isProviderCliVersionBlocked
@@ -1990,6 +1993,7 @@ function RootComposeSurface({
                   ? ROOT_COMPOSE_EMPTY_WELCOME_CONTENT_CLASS
                   : ROOT_COMPOSE_SIDEBAR_ACTION_ALIGNED_TOP_PADDING_CLASS
               }
+              isCompactHomeLayout={isCompactHomeLayout}
               compactScrollContent={
                 showEmptyWelcome ? null : (
                   <RootComposeMobileRecents

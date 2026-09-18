@@ -20,6 +20,10 @@ import {
   type AppLayoutSidebarMode,
 } from "./AppLayoutSidebar";
 
+vi.mock("@/components/sidebar/useSidebarThreadReveal", () => ({
+  useSidebarThreadReveal: () => {},
+}));
+
 const mountCounts = vi.hoisted(() => ({ appSidebar: 0 }));
 
 vi.mock("@/components/sidebar/AppSidebar", async () => {

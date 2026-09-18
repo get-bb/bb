@@ -144,6 +144,7 @@ interface NewThreadComposerPromptOptions {
   createProject?: ProjectSelectorCreateProjectConfig;
   onRequestMachineSetup?: (host: Host) => void;
   locks?: NewThreadComposerLocks;
+  mentionMenuPlacement: NewThreadPromptBoxProps["mentionMenuPlacement"];
 }
 
 type PromptDraftController = ReturnType<typeof usePromptDraftStorage>;
@@ -1585,6 +1586,7 @@ export function NewThreadComposer({
           disabled={disabledReason !== null}
           disabledReason={disabledReason ?? undefined}
           placeholder={options.placeholder}
+          mentionMenuPlacement={options.mentionMenuPlacement}
           autoFocus={options.autoFocus}
           allowSoftKeyboardAutoFocus={options.allowSoftKeyboardAutoFocus}
           pluginComposerHost={options.pluginComposerHost ?? pluginComposerHost}

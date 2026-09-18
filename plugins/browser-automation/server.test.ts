@@ -1,5 +1,6 @@
 import {
   createFakePluginHost,
+  makePluginAgentConfigurationContext,
   makeThreadResponse,
 } from "@get-bb/plugin-sdk/testing";
 import { describe, expect, it, vi } from "vitest";
@@ -290,6 +291,158 @@ describe("server session ownership", () => {
       expect(
         h.harness.sdk.callsTo("experimental_desktopBrowsers.releaseControl"),
       ).toHaveLength(1);
+    } finally {
+      await h.harness.lifecycle.dispose();
+    }
+  });
+});
+describe("server live preview", () => {
+  const frame = {
+    sequence: 7,
+    mimeType: "image/jpeg" as const,
+    data: Buffer.from("jpeg-bytes").toString("base64"),
+    width: 1280,
+    height: 720,
+    url: "https://example.test/cart",
+    title: "Cart",
+  };
+  async function openLocal(
+    h: Awaited<ReturnType<typeof setup>>,
+    threadId = "thread-test",
+  ) {
+    return rpcContract.open.output.parse(
+      await h.harness.behavior.callRpc("open", {
+        threadId,
+        selection: { backend: "local", hostId: "local-host" },
+      }),
+    );
+  }
+  it("long-polls the browser host for headless frames only", async () => {
+    const h = await setup();
+    try {
+      const desktop = await h.open();
+      const local = await openLocal(h);
+      h.worker.mockImplementation(async ({ method }) =>
+        method === "preview" ? { frame } : null,
+      );
+      expect(
+        await h.harness.behavior.callRpc("preview", {
+          threadId: "thread-test",
+          sessionId: local.id,
+          afterSequence: 6,
+          size: "full",
+        }),
+      ).toEqual({ session: local, frame });
+      expect(h.worker).toHaveBeenCalledWith(
+        expect.objectContaining({
+          hostId: "local-host",
+          method: "preview",
+          input: {
+            sessionId: local.id,
+            afterSequence: 6,
+            waitMs: 5_000,
+            size: "full",
+          },
+        }),
+      );
+      expect(
+        await h.harness.behavior.callRpc("preview", {
+          threadId: "thread-test",
+          sessionId: desktop.id,
+        }),
+      ).toEqual({ session: desktop, frame: null });
+      await expect(
+        h.harness.behavior.callRpc("preview", {
+          threadId: "other",
+          sessionId: local.id,
+        }),
+      ).rejects.toThrow();
+      await h.harness.behavior.callRpc("close", {
+        threadId: "thread-test",
+        sessionId: local.id,
+      });
+      expect(
+        await h.harness.behavior.callRpc("preview", {
+          threadId: "thread-test",
+          sessionId: local.id,
+        }),
+      ).toMatchObject({ session: { state: "closed" }, frame: null });
+      expect(
+        h.worker.mock.calls.filter(([call]) => call.method === "preview"),
+      ).toHaveLength(1);
+    } finally {
+      await h.harness.lifecycle.dispose();
+    }
+  });
+  it("hands agents an inline preview directive for headless sessions only", async () => {
+    const h = await setup();
+    try {
+      const local = await h.harness.behavior.runCli(
+        [
+          "open",
+          "--backend",
+          "local",
+          "--headless",
+          "--machine",
+          "local-host",
+          "--json",
+        ],
+        { threadId: "thread-test" },
+      );
+      expect(local.exitCode).toBe(0);
+      const opened = JSON.parse(local.stdout);
+      expect(opened.previewDirective).toBe(
+        `::browser-preview{session="${opened.id}"}`,
+      );
+      const desktop = await h.harness.behavior.runCli(
+        [
+          "open",
+          "--backend",
+          "desktop",
+          "--machine",
+          "desktop-host",
+          "--desktop",
+          "desktop",
+          "--json",
+        ],
+        { threadId: "thread-test" },
+      );
+      expect(desktop.exitCode).toBe(0);
+      expect(JSON.parse(desktop.stdout)).not.toHaveProperty("previewDirective");
+      const agent = await h.harness.behavior.resolveAgentConfiguration(
+        makePluginAgentConfigurationContext(),
+      );
+      expect(agent.skills).toEqual(["browser-automation"]);
+      expect(agent.instructions).toMatch(/previewDirective.*exactly once/);
+    } finally {
+      await h.harness.lifecycle.dispose();
+    }
+  });
+  it("describes the live frame through the CLI without image bytes", async () => {
+    const h = await setup();
+    try {
+      const local = await openLocal(h);
+      h.worker.mockImplementation(async ({ method }) =>
+        method === "preview" ? { frame } : null,
+      );
+      const result = await h.harness.behavior.runCli(
+        ["preview", local.id, "--after", "6", "--json"],
+        { threadId: "thread-test" },
+      );
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).not.toContain(frame.data);
+      expect(JSON.parse(result.stdout)).toEqual({
+        session: local,
+        frame: {
+          sequence: 7,
+          mimeType: "image/jpeg",
+          width: 1280,
+          height: 720,
+          url: frame.url,
+          title: "Cart",
+          bytes: 10,
+        },
+      });
     } finally {
       await h.harness.lifecycle.dispose();
     }

@@ -81,6 +81,7 @@ import {
   type TimelineRowHorizontalPadding,
 } from "./TimelineRowHeader.js";
 import {
+  ExpandableTimelineTitle,
   TimelineTitleView,
   type TimelineTitleActionResolver,
   type TimelineTitleLinkResolver,
@@ -1488,6 +1489,8 @@ function TimelineRowView({
   if (!isRowExpandable(row) && pluginRendererSlot === null) {
     const staticLeadingIcon = leadingIconForRow(row);
     const staticLeadingIconStyle = leadingIconStyleForRow(row);
+    const TitleView =
+      row.kind === "system" ? ExpandableTimelineTitle : TimelineTitleView;
     return (
       <TimelineStaticRowHeader
         horizontalPadding={horizontalPadding}
@@ -1497,13 +1500,18 @@ function TimelineRowView({
           scopeActive,
         })}
       >
-        <span className="inline-flex min-w-0 max-w-full items-center gap-1.5">
+        <span
+          className={cn(
+            "inline-flex min-w-0 max-w-full gap-1.5",
+            row.kind === "system" ? "items-baseline" : "items-center",
+          )}
+        >
           <TimelineLeadingIcon
             icon={staticLeadingIcon}
             iconUrl={staticLeadingIconUrl}
             style={staticLeadingIconStyle}
           />
-          <TimelineTitleView
+          <TitleView
             title={titleState.title}
             onTitleAction={onTitleAction}
             resolveSegmentLinkHref={resolveSegmentLinkHref}
