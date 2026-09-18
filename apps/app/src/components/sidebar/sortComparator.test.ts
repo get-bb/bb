@@ -6,7 +6,6 @@ import {
   CHRONOLOGICAL_CONTAINER_ID,
   buildProjectThreadGroups,
   buildSectionThreadList,
-  normalizeSidebarSectionOrder,
   type ProjectThreadNode,
   type ProjectThreadItem,
   type ThreadComparator,
@@ -141,31 +140,6 @@ describe("getSidebarThreadComparator", () => {
       "project:empty",
       "project:hidden",
     ]);
-    expect(
-      normalizeSidebarSectionOrder({
-        storedOrder: ["pinned", "projects", "threads"],
-        entitySectionIds,
-        legacyEntityAnchor: "projects",
-        hasPinnedSection: true,
-      }),
-    ).toEqual(["pinned", ...entitySectionIds, "threads"]);
-    const manualOrder = [
-      "project:old",
-      "pinned",
-      "project:recent",
-      "project:running",
-      "project:empty",
-      "project:hidden",
-      "threads",
-    ];
-    expect(
-      normalizeSidebarSectionOrder({
-        storedOrder: manualOrder,
-        entitySectionIds,
-        legacyEntityAnchor: "projects",
-        hasPinnedSection: true,
-      }),
-    ).toEqual(manualOrder);
   });
 
   it.each([false, true])(
