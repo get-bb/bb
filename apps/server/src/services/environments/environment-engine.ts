@@ -374,6 +374,7 @@ async function runCreate(
             signal: signal,
           });
     if (result.status === "created") {
+      let adoptedExistingEnvironment = false;
       try {
         const producedPath = result.path.replace(/\/+$/u, "") || "/";
         await ensureHostSessionReadyForWork(deps, {
@@ -413,11 +414,13 @@ async function runCreate(
                 `Workspace ${producedPath} is owned by the "${existing.environmentProviderId}" environment provider (plugin "${existing.environmentProviderPluginId ?? "unknown"}").`,
               );
             }
+            const reservedId = provisioning.id;
             provisioning = bindEnvironmentPath(
               deps.db,
               provisioning,
               producedPath,
             );
+            adoptedExistingEnvironment = provisioning.id !== reservedId;
           },
           { behavior: "immediate" },
         );
@@ -444,7 +447,9 @@ async function runCreate(
         (row) => {
           row.hostId = context.host.id;
           row.path = produced.path;
-          row.providerOwnsPath = produced.ownsPath;
+          if (!adoptedExistingEnvironment) {
+            row.providerOwnsPath = produced.ownsPath;
+          }
           row.mergeBaseBranch = produced.mergeBaseBranch ?? null;
           row.resource = produced.resource ?? null;
         },

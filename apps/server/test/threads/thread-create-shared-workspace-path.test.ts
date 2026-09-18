@@ -301,3 +301,73 @@ describe("thread creation on a path another project already uses", () => {
     });
   });
 });
+
+describe("attaching to a path that already has an environment", () => {
+  const MANAGED_PATH = "/tmp/managed-worktree-repo";
+
+  it("keeps bb's ownership of a managed workspace a later thread attaches to", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-adopt-managed",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        name: "Adopting Project",
+      });
+      const managed = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: MANAGED_PATH,
+        providerOwnsPath: true,
+        environmentProviderId: DEFAULT_ENVIRONMENT_PROVIDER_ID.gitWorktree,
+        environmentProviderPluginId: "environment-git-worktree",
+      });
+      installFakeEnvironmentProvider({
+        id: DEFAULT_ENVIRONMENT_PROVIDER_ID.gitWorktree,
+        pluginId: "environment-git-worktree",
+        displayName: "Worktree",
+        requires: {
+          projectCheckout: true,
+          gitCheckout: false,
+          gitRemote: false,
+          projectless: false,
+        },
+        decide: (context) => ({
+          action: "ready",
+          environment: {
+            type: "host",
+            hostId: context.host?.id ?? host.id,
+            path: MANAGED_PATH,
+            ownsPath: false,
+          },
+        }),
+      });
+
+      const thread = await createThreadFromRequest(harness.deps, {
+        environment: {
+          type: "provider",
+          environmentProviderId: DEFAULT_ENVIRONMENT_PROVIDER_ID.gitWorktree,
+          machine: { type: "existing", hostId: host.id },
+          inputs: null,
+        },
+        input: textInput("Attach to the managed worktree"),
+        origin: "app",
+        projectId: project.id,
+        providerId: "codex",
+        startedOnBehalfOf: null,
+      });
+      await waitForQueuedCommand(
+        harness,
+        (queued) =>
+          queued.command.type === "thread.start" &&
+          queued.command.threadId === thread.id,
+      );
+
+      const attached = listEnvironments(harness.deps.db, {
+        projectId: project.id,
+      }).find((environment) => environment.path === MANAGED_PATH);
+      expect(attached?.id).toBe(managed.id);
+      expect(attached?.providerOwnsPath).toBe(true);
+    });
+  });
+});
