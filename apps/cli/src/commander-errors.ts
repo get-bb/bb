@@ -34,8 +34,27 @@ const ERROR_CODE_BY_COMMANDER_CODE: Readonly<Record<string, string>> = {
 export interface CommanderErrorSummary {
   code: string;
   hintLines: string[];
+  logToken: string | null;
   message: string;
   token: string | null;
+}
+
+const LOGGABLE_COMMAND_PATTERN = /^[a-z][a-z-]{0,30}$/;
+const LOGGABLE_FLAG_PATTERN = /^--?[a-z][a-z-]{0,40}$/;
+
+export function loggableToken(
+  commanderCode: string,
+  token: string | null,
+): string | null {
+  if (token === null) return null;
+  if (commanderCode === "commander.unknownCommand") {
+    return LOGGABLE_COMMAND_PATTERN.test(token) ? token : null;
+  }
+  if (commanderCode === "commander.unknownOption") {
+    const name = token.split("=")[0];
+    return LOGGABLE_FLAG_PATTERN.test(name) ? name : null;
+  }
+  return null;
 }
 
 function quotedToken(message: string): string | null {
@@ -157,6 +176,7 @@ export async function summarizeCommanderError(args: {
   return {
     code: ERROR_CODE_BY_COMMANDER_CODE[args.error.code] ?? "usage_error",
     hintLines,
+    logToken: loggableToken(args.error.code, token),
     message,
     token,
   };

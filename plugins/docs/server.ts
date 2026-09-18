@@ -2700,7 +2700,7 @@ export default async function plugin(
             },
             folder: {
               type: "boolean",
-              aliases: ["recursive", "dir"],
+              aliases: ["recursive"],
               description: "Treat the path as a folder subtree",
             },
             json: JSON_OPTION,

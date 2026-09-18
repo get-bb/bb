@@ -1,6 +1,6 @@
 import { Command, CommanderError } from "commander";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { summarizeCommanderError } from "../commander-errors.js";
+import { loggableToken, summarizeCommanderError } from "../commander-errors.js";
 
 function buildProgram(): Command {
   const program = new Command().name("bb");
@@ -146,5 +146,25 @@ describe("summarizeCommanderError", () => {
       "List this thread's terminal IDs with `bb terminal list --thread thr_abc`.",
       "Usage: bb terminal output [options] <terminalId>",
     ]);
+  });
+});
+
+describe("loggableToken", () => {
+  const cases: Array<[string, string | null, string | null]> = [
+    ["commander.unknownOption", "--api-token=SYNTHETIC_SECRET", "--api-token"],
+    ["commander.unknownOption", "--lines", "--lines"],
+    ["commander.unknownOption", "-x", "-x"],
+    ["commander.unknownOption", "--Bearer-abc123", null],
+    ["commander.unknownOption", "--key9", null],
+    ["commander.unknownCommand", "get", "get"],
+    ["commander.unknownCommand", "a secret message", null],
+    ["commander.unknownCommand", "sk-live-51H8", null],
+    ["commander.unknownCommand", "Hunter2", null],
+    ["commander.invalidArgument", "--limit <count>", null],
+    ["commander.missingArgument", "terminalId", null],
+    ["commander.unknownCommand", null, null],
+  ];
+  it.each(cases)("%s %j -> %j", (code, token, expected) => {
+    expect(loggableToken(code, token)).toBe(expected);
   });
 });

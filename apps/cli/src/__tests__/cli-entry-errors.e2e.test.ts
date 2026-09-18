@@ -242,6 +242,51 @@ describe.skipIf(process.platform === "win32")("bb entrypoint errors", () => {
     });
   }, 30_000);
 
+  it("still answers help for a soft alias when the server is down", async () => {
+    const result = await runCli(["hosts", "--help"], {
+      BB_SERVER_URL: "http://127.0.0.1:1",
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("Usage: bb machine");
+  }, 30_000);
+
+  it("prints the JSON envelope when the server is down", async () => {
+    const pluginCommand = await runCli(["memory", "catalog", "--json"], {
+      BB_SERVER_URL: "http://127.0.0.1:1",
+    });
+    expect(pluginCommand.exitCode).toBe(1);
+    expect(JSON.parse(pluginCommand.stdout)).toMatchObject({
+      ok: false,
+      error: { code: "server_unreachable" },
+    });
+
+    const aliased = await runCli(["hosts", "list", "--json"], {
+      BB_SERVER_URL: "http://127.0.0.1:1",
+    });
+    expect(aliased.exitCode).toBe(1);
+    expect(JSON.parse(aliased.stdout)).toMatchObject({ ok: false });
+  }, 60_000);
+
+  it("never records the inline value of an unknown option", async () => {
+    const result = await runCli(
+      ["thread", "list", "--api-token=SYNTHETIC_SECRET", "--json"],
+      { BB_CLI_ERROR_LOG: "1" },
+    );
+
+    expect(result.exitCode).toBe(1);
+    const logged = readFileSync(
+      join(dataDir, "logs", "cli-errors.jsonl"),
+      "utf8",
+    );
+    expect(logged).not.toContain("SYNTHETIC_SECRET");
+    expect(JSON.parse(logged.trim().split("\n").at(-1) ?? "{}")).toMatchObject({
+      code: "unknown_option",
+      command: "thread list",
+      token: "--api-token",
+    });
+  }, 30_000);
+
   it("records the failure without any argument values", async () => {
     const result = await runCli(
       ["thread", "tell", "thr_other", "a secret message", "--bogus-flag"],

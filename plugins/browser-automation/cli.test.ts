@@ -10,10 +10,15 @@ import { rpcContract } from "./contracts.js";
 const id = "1a12a3f1-12de-4fbb-a011-df0905678757";
 
 function cli() {
-  const execute = vi.fn(async (): Promise<PluginCliResult> => ({
-    exitCode: 0,
-    stdout: "{}",
-  }));
+  const execute = vi.fn(
+    async (
+      _request: BrowserCliRequest,
+      _ctx: PluginCliContext,
+    ): Promise<PluginCliResult> => ({
+      exitCode: 0,
+      stdout: "{}",
+    }),
+  );
   const registration = createBrowserAutomationCli({ execute });
   const invoke = (
     argv: string[],
@@ -22,10 +27,8 @@ function cli() {
   const requestFor = async (argv: string[], ctx?: PluginCliContext) => {
     const result = await invoke(argv, ctx);
     expect(result.exitCode, result.stderr).toBe(0);
-    const call = execute.mock.calls.at(-1) as unknown as [
-      BrowserCliRequest,
-      PluginCliContext,
-    ];
+    const call = execute.mock.calls.at(-1);
+    if (call === undefined) throw new Error("execute was not called");
     return call[0];
   };
   return { registration, execute, invoke, requestFor };

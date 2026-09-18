@@ -25,7 +25,7 @@ interface PluginCliOptionBase {
   description: string;
   /** Extra spellings accepted silently and mapped onto this option. */
   aliases?: readonly string[];
-  /** Single-character form, written without the second dash (`-f`). */
+  /** Single-character form: `"f"` (or `"-f"`) accepts `-f`. */
   short?: string;
   /** Kept out of `--help` and the generated usage line. */
   hidden?: boolean;
@@ -48,7 +48,11 @@ export interface PluginCliStringOption extends PluginCliOptionBase {
   type: "string";
   required?: boolean;
   repeatable?: boolean;
-  /** Split each value on this separator, so `--tag a,b` is two tags. */
+  /**
+   * Split each value on this separator, so `--tag a,b` is two tags. Only valid
+   * with `repeatable: true`; `defineCli` rejects it otherwise, because a
+   * single-valued option would silently drop every value after the first.
+   */
   split?: string;
   default?: string;
 }
@@ -538,6 +542,40 @@ function renderHelp(
   return `${lines.join("\n")}\n`;
 }
 
+function commandGroupRows(
+  spec: PluginCliSpec,
+  words: readonly string[],
+): Array<[string, string]> {
+  return visibleCommands(spec)
+    .filter(([path]) => {
+      const pathWords = path.split(" ");
+      return (
+        pathWords.length > words.length &&
+        words.every((word, index) => pathWords[index] === word)
+      );
+    })
+    .map(([path, command]) => [`bb ${spec.name} ${path}`, command.summary]);
+}
+
+function renderGroupHelp(
+  spec: PluginCliSpec,
+  words: readonly string[],
+  rows: Array<[string, string]>,
+): string {
+  const group = `bb ${spec.name} ${words.join(" ")}`;
+  return `${[
+    `${group} — commands`,
+    "",
+    "Usage:",
+    `  ${group} <command> [options]`,
+    "",
+    "Commands:",
+    ...padColumns(rows),
+    "",
+    `Run \`${group} <command> --help\` for a command's arguments and options.`,
+  ].join("\n")}\n`;
+}
+
 function commandListBlock(spec: PluginCliSpec): string {
   return ["Commands:", ...padColumns(commandRows(spec))].join("\n");
 }
@@ -692,7 +730,9 @@ function tokenize(
   for (const [name, option] of Object.entries(options)) {
     byName.set(name, name);
     for (const alias of option.aliases ?? []) byName.set(alias, name);
-    if (option.short !== undefined) byShort.set(option.short, name);
+    if (option.short !== undefined) {
+      byShort.set(normalizeShort(option.short), name);
+    }
   }
   const parsed: ParsedTokens = {
     values: new Map(),
@@ -711,7 +751,11 @@ function tokenize(
       else parsed.positionals.push(...rest);
       break;
     }
-    if (!token.startsWith("-") || token === "-") {
+    if (
+      !token.startsWith("-") ||
+      token === "-" ||
+      (NEGATIVE_NUMBER_PATTERN.test(token) && !byShort.has(token.slice(1)))
+    ) {
       parsed.positionals.push(token);
       continue;
     }
@@ -1046,7 +1090,62 @@ function renderErrorJson(failure: UsageFailure): string {
 function wantsJsonOutput(argv: readonly string[]): boolean {
   const terminator = argv.indexOf("--");
   const scanned = terminator === -1 ? argv : argv.slice(0, terminator);
-  return scanned.includes("--json");
+  return scanned.some((token) => token === "--json" || token === "--json=true");
+}
+
+const NEGATIVE_NUMBER_PATTERN = /^-\.?\d/;
+
+function normalizeShort(short: string): string {
+  return short.startsWith("-") ? short.slice(1) : short;
+}
+
+function assertValidSpec(spec: PluginCliSpec): void {
+  const entries: Array<[string, PluginCliCommand]> = Object.entries(
+    spec.commands,
+  );
+  if (spec.root !== undefined) entries.push(["", spec.root]);
+  for (const [path, command] of entries) {
+    const label = `bb ${[spec.name, path].filter((part) => part.length > 0).join(" ")}`;
+    const spellings = new Map<string, string>([
+      ["help", "the built-in --help"],
+    ]);
+    const shorts = new Map<string, string>([["h", "the built-in -h"]]);
+    for (const [name, option] of Object.entries(command.options ?? {})) {
+      for (const spelling of [name, ...(option.aliases ?? [])]) {
+        const owner = spellings.get(spelling);
+        if (owner !== undefined) {
+          throw new Error(
+            `${label}: --${spelling} is declared by both ${owner} and --${name}`,
+          );
+        }
+        spellings.set(spelling, `--${name}`);
+      }
+      if (option.short !== undefined) {
+        const short = normalizeShort(option.short);
+        if (short.length !== 1) {
+          throw new Error(
+            `${label}: short form ${JSON.stringify(option.short)} of --${name} must be one character`,
+          );
+        }
+        const owner = shorts.get(short);
+        if (owner !== undefined) {
+          throw new Error(
+            `${label}: -${short} is declared by both ${owner} and --${name}`,
+          );
+        }
+        shorts.set(short, `--${name}`);
+      }
+      if (
+        (option.type === "string" || option.type === "enum") &&
+        option.split !== undefined &&
+        option.repeatable !== true
+      ) {
+        throw new Error(
+          `${label}: --${name} declares split without repeatable: true, which would drop every value after the first`,
+        );
+      }
+    }
+  }
 }
 
 function failureResult(
@@ -1073,6 +1172,7 @@ function failureResult(
  * envelope on stdout while stderr keeps the human-readable text.
  */
 export function defineCli(spec: PluginCliSpec): PluginCliRegistration {
+  assertValidSpec(spec);
   const commands: PluginCliCommandInfo[] = visibleCommands(spec).map(
     ([path, command]) => ({
       name: path.replaceAll(" ", "-"),
@@ -1099,7 +1199,12 @@ export function defineCli(spec: PluginCliSpec): PluginCliRegistration {
         const resolved = resolveCommand(spec, words);
         if (helpRequested) {
           if (resolved === null && words.length > 0) {
-            throw unknownCommandError(spec, words);
+            const group = commandGroupRows(spec, words);
+            if (group.length === 0) throw unknownCommandError(spec, words);
+            return {
+              exitCode: 0,
+              stdout: renderGroupHelp(spec, words, group),
+            };
           }
           return { exitCode: 0, stdout: renderHelp(spec, resolved) };
         }

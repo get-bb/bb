@@ -5939,6 +5939,13 @@ describe("sequential pool recovery", () => {
       "sk-third",
       "sk-second",
     ]);
+    const negativePriority = await fixture.host.harness.behavior.runCli([
+      "account",
+      "priority",
+      second.id,
+      "-1",
+    ]);
+    expect(negativePriority.exitCode, negativePriority.stderr).toBe(0);
     const priority = await fixture.host.harness.behavior.runCli([
       "account",
       "priority",

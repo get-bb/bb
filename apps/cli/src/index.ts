@@ -48,17 +48,24 @@ function createCommandGroupDeps(
 async function tryPluginCommandProxy(
   candidate: string,
   getUrl: () => string,
+  isSoftAlias: boolean,
 ): Promise<void> {
   const proxy = await import("./plugin-cli-proxy.js");
   const result = await proxy.fetchPluginCliContributions(getUrl());
   if (result.outcome === "unreachable") {
-    console.error(
-      proxy.describeUnreachableServer(
-        getUrl(),
-        result.cause,
-        result.lastTimeoutMs,
-        result.attempts,
-      ),
+    if (isSoftAlias) return;
+    const message = proxy.describeUnreachableServer(
+      getUrl(),
+      result.cause,
+      result.lastTimeoutMs,
+      result.attempts,
+    );
+    console.error(message);
+    const { isJsonInvocation, writeCliErrorEnvelope } =
+      await import("./cli-error-output.js");
+    writeCliErrorEnvelope(
+      { code: "server_unreachable", hint: null, message },
+      isJsonInvocation(process.argv),
     );
     process.exit(1);
   }
@@ -148,7 +155,7 @@ async function exitForCommanderError(
     code: summary.code,
     command: null,
     exitCode: error.exitCode,
-    token: summary.token,
+    token: summary.logToken,
   });
   process.exit(error.exitCode);
 }
@@ -238,9 +245,13 @@ Quick start:
 
   const candidate = pluginProxyCandidate(firstArg, KNOWN_COMMAND_NAMES);
   if (candidate !== null) {
-    await tryPluginCommandProxy(candidate, deps.getUrl);
     const { TOP_LEVEL_SOFT_ALIASES } = await import("./command-resolution.js");
     const aliasTarget = TOP_LEVEL_SOFT_ALIASES[candidate];
+    await tryPluginCommandProxy(
+      candidate,
+      deps.getUrl,
+      aliasTarget !== undefined,
+    );
     if (aliasTarget !== undefined) process.argv[2] = aliasTarget;
   }
   await rejectHelpForUnknownSubcommand(deps.getUrl);

@@ -742,9 +742,11 @@ describe("Docs vault operations", () => {
         modifiedAtMs: 1,
       },
     });
-    await harness.runCli(["pull", "plan.md", "--into", "sync", "--json"], {
-      cwd: "/work",
-    });
+    const pulled = await harness.runCli(
+      ["pull", "plan.md", "--dir", "sync", "--json"],
+      { cwd: "/work" },
+    );
+    expect(pulled.exitCode).toBe(0);
     setUtf8("/work/sync/plan.md", "local edit");
     setUtf8("/vault/plan.md", "remote edit");
 

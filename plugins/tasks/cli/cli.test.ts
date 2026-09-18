@@ -2130,6 +2130,18 @@ describe("bb tasks CLI", () => {
     expect(groupHelp).toContain("bb tasks preset list");
     expect(groupHelp).toContain("bb tasks preset delete");
 
+    for (const group of [
+      "project",
+      "folder",
+      "label",
+      "attachment",
+      "preset",
+    ]) {
+      const help = await harness.runCli([group, "--help"]);
+      expect(help.exitCode, group).toBe(0);
+      expect(help.stdout, group).toContain(`bb tasks ${group} `);
+    }
+
     const bareGroup = await harness.runCli(["preset"]);
     expect(bareGroup.exitCode).toBe(1);
     expect(bareGroup.stdout).toContain("bb tasks preset show");

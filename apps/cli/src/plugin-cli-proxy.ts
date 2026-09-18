@@ -284,7 +284,9 @@ async function materializeStdinFlag(
   argv: readonly string[],
   input: PluginCliInputStream,
 ): Promise<string[]> {
-  const matches = argv.flatMap((flag, index) => {
+  const terminator = argv.indexOf("--");
+  const scanned = terminator === -1 ? argv : argv.slice(0, terminator);
+  const matches = scanned.flatMap((flag, index) => {
     const match = PLUGIN_CLI_STDIN_FLAG.exec(flag);
     const name = match?.[1];
     return name === undefined ? [] : [{ flag, index, name }];
@@ -294,7 +296,7 @@ async function materializeStdinFlag(
   const match = matches[0];
   if (match === undefined) return [...argv];
   const valueFlag = `--${match.name}`;
-  if (argv.includes(valueFlag)) {
+  if (scanned.includes(valueFlag)) {
     throw new Error(`Choose only one of ${match.flag} and ${valueFlag}.`);
   }
   if (input.isTTY === true) {

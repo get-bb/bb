@@ -779,10 +779,12 @@ async function waitForTerminal(args: {
       ...(nextSeq !== undefined ? { sinceSeq: nextSeq } : {}),
     });
     nextSeq = output.nextSeq;
-    seen = `${seen}${decodeChunks(output.chunks)}`.slice(
-      -TERMINAL_WAIT_MATCH_WINDOW_CHARS,
-    );
-    if (args.opts.contains !== undefined && seen.includes(args.opts.contains)) {
+    const searched = `${seen}${decodeChunks(output.chunks)}`;
+    seen = searched.slice(-TERMINAL_WAIT_MATCH_WINDOW_CHARS);
+    if (
+      args.opts.contains !== undefined &&
+      searched.includes(args.opts.contains)
+    ) {
       return {
         exitCode: output.exitCode,
         matched: args.opts.contains,
@@ -790,7 +792,7 @@ async function waitForTerminal(args: {
         terminalId: args.terminalId,
       };
     }
-    if (regex && regex.test(seen)) {
+    if (regex && regex.test(searched)) {
       return {
         exitCode: output.exitCode,
         matched: args.opts.regex ?? "",

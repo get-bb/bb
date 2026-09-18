@@ -498,6 +498,25 @@ describe("bb terminal command output", () => {
     expect(output.mock.calls[1]?.[0]).toMatchObject({ query: { sinceSeq: 4 } });
   });
 
+  it("finds a marker that is followed by more output than the retained window", async () => {
+    const output = vi.fn().mockResolvedValueOnce(
+      outputResponse({
+        nextSeq: 1,
+        text: `READY\n${"x".repeat(300_000)}`,
+      }),
+    );
+    stubServerApi({ "v1.terminals.:terminalId.output.$get": output });
+
+    await runCommand(
+      ["terminal", "wait", "term-1", "--from-start", "--contains", "READY"],
+      register,
+    );
+
+    expect(collectLogLines(vi.mocked(console.log))).toEqual([
+      "Terminal term-1 matched READY",
+    ]);
+  });
+
   it("stops waiting when the terminal exits first and shows its last output", async () => {
     const output = vi
       .fn()

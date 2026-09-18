@@ -749,6 +749,52 @@ describe("runPluginCliCommand", () => {
     expect(writes).toEqual([]);
   });
 
+  it("leaves a stdin-style flag after -- for the passed-through command", async () => {
+    const requests: string[][] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url, init: RequestInit | undefined) => {
+        const parsed = JSON.parse(String(init?.body)) as { argv: string[] };
+        requests.push(parsed.argv);
+        return new Response(JSON.stringify({ exitCode: 0 }), { status: 200 });
+      }),
+    );
+    const output = new Writable({
+      write(_chunk, _encoding, callback) {
+        callback();
+      },
+    });
+    let stdinRead = false;
+    const input = {
+      isTTY: false,
+      async *[Symbol.asyncIterator]() {
+        stdinRead = true;
+        yield Buffer.from("should-not-be-read\n");
+      },
+    };
+    const argv = [
+      "sandbox",
+      "exec",
+      "sb-1",
+      "--",
+      "docker",
+      "login",
+      "--password-stdin",
+    ];
+
+    await expect(
+      runPluginCliCommand(
+        "http://localhost",
+        "fixture",
+        argv,
+        { stdout: output, stderr: output },
+        input,
+      ),
+    ).resolves.toBe(0);
+    expect(requests).toEqual([argv]);
+    expect(stdinRead).toBe(false);
+  });
+
   it("outlives the global fetch headers timeout while a plugin command waits on a human", async () => {
     const RESPONSE_DELAY_MS = 1500;
     const server: Server = createServer((request, response) => {

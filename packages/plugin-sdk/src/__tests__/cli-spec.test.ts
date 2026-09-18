@@ -962,3 +962,126 @@ describe("defineCli registration", () => {
     expect((await run(cli, ["legacy"])).stdout).toBe("legacy");
   });
 });
+
+describe("defineCli review regressions", () => {
+  const leaf = (summary: string) =>
+    cliCommand({
+      summary,
+      run: () => ({ exitCode: 0, stdout: summary }),
+    });
+
+  it("passes a negative number through as a positional", async () => {
+    const cli = defineCli({
+      name: "pool",
+      summary: "pool",
+      commands: {
+        "account priority": cliCommand({
+          summary: "Set priority",
+          positionals: [
+            { name: "id", description: "Account id", required: true },
+            { name: "priority", description: "Priority", required: true },
+          ],
+          options: {
+            force: { type: "boolean", short: "-f", description: "Force" },
+          },
+          run: (input) => ({
+            exitCode: 0,
+            stdout: `${input.positionals.id}|${input.positionals.priority}|${input.options.force}`,
+          }),
+        }),
+      },
+    });
+
+    expect(
+      (await run(cli, ["account", "priority", "acct-1", "-1"])).stdout,
+    ).toBe("acct-1|-1|false");
+    expect(
+      (await run(cli, ["account", "priority", "acct-1", "-.5", "-f"])).stdout,
+    ).toBe("acct-1|-.5|true");
+  });
+
+  it("prints a command group's children for --help instead of failing", async () => {
+    const cli = defineCli({
+      name: "tasks",
+      summary: "tasks",
+      commands: {
+        "project list": leaf("List projects"),
+        "project create": leaf("Create a project"),
+        status: leaf("Status"),
+      },
+    });
+
+    const help = await run(cli, ["project", "--help"]);
+    expect(help.exitCode).toBe(0);
+    expect(help.stdout).toContain("bb tasks project list");
+    expect(help.stdout).toContain("bb tasks project create");
+    expect(help.stdout).not.toContain("bb tasks status");
+
+    const unknown = await run(cli, ["projcet", "--help"]);
+    expect(unknown.exitCode).toBe(1);
+    expect(unknown.stderr).toContain("unknown command 'projcet'");
+  });
+
+  it("refuses a spec whose split option would drop values", () => {
+    expect(() =>
+      defineCli({
+        name: "demo",
+        summary: "demo",
+        commands: {
+          add: cliCommand({
+            summary: "Add",
+            options: {
+              tag: { type: "string", split: ",", description: "Tag" },
+            },
+            run: () => ({ exitCode: 0 }),
+          }),
+        },
+      }),
+    ).toThrow("--tag declares split without repeatable: true");
+  });
+
+  it("refuses a spelling that two options claim", () => {
+    expect(() =>
+      defineCli({
+        name: "docs",
+        summary: "docs",
+        commands: {
+          pull: cliCommand({
+            summary: "Pull",
+            options: {
+              into: { type: "string", aliases: ["dir"], description: "Into" },
+              folder: {
+                type: "string",
+                aliases: ["dir"],
+                description: "Folder",
+              },
+            },
+            run: () => ({ exitCode: 0 }),
+          }),
+        },
+      }),
+    ).toThrow("bb docs pull: --dir is declared by both --into and --folder");
+  });
+
+  it("emits the JSON envelope for --json=true and not for --json=false", async () => {
+    const cli = defineCli({
+      name: "demo",
+      summary: "demo",
+      commands: {
+        show: cliCommand({
+          summary: "Show",
+          options: { json: { type: "boolean", description: "JSON" } },
+          run: () => ({ exitCode: 0 }),
+        }),
+      },
+    });
+
+    const asJson = await run(cli, ["show", "--json=true", "--bogus"]);
+    expect(JSON.parse(asJson.stdout ?? "")).toMatchObject({
+      ok: false,
+      error: { code: "unknown_option" },
+    });
+    const asText = await run(cli, ["show", "--json=false", "--bogus"]);
+    expect(asText.stdout ?? "").toBe("");
+  });
+});
