@@ -52,22 +52,13 @@ import {
 } from "@/components/settings/plugin-settings-entries";
 import { useSettingsNavSections } from "@/components/settings/settings-nav";
 import { appQueryClient } from "@/lib/app-query-client";
-import {
-  PALETTE_MODE_ENTRY_COMMANDS,
-  PALETTE_MODES,
-} from "@/lib/command-palette/palette-modes";
+import { ThreadSearchPaletteMode } from "./ThreadSearchPaletteMode";
 import { PALETTE_SECTION_LABEL_CLASS, PaletteShell } from "./PaletteShell";
 
 const PALETTE_INPUT_LABEL = "Search commands";
 const PALETTE_INPUT_DESCRIPTION = "Use Escape to close the command palette.";
 const PALETTE_PLACEHOLDER = "Search commands…";
-const MODE_ENTRY_HANDLER_PRIORITY = 100;
-const MODE_BY_ACTION_ID = new Map(
-  PALETTE_MODES.map((mode) => [
-    paletteActionIdForCommand(mode.entryCommand),
-    mode,
-  ]),
-);
+const THREAD_SEARCH_ACTION_ID = paletteActionIdForCommand("thread.search");
 
 function invocationTarget(invocation: {
   target: EventTarget | null;
@@ -95,7 +86,7 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
   const [query, setQuery] = useState("");
   const [actions, setActions] = useState<readonly PaletteAction[]>([]);
   const [highlightedIndex, setHighlightedIndex] = useState(0);
-  const [activeModeId, setActiveModeId] = useState<string | null>(null);
+  const [searchingThreads, setSearchingThreads] = useState(false);
   const [installedPlugins, setInstalledPlugins] = useState<
     readonly PluginSettingsCandidate[]
   >([]);
@@ -203,23 +194,21 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
   useAppCommandHandler("palette.open", (invocation) => {
     const target = invocationTarget(invocation);
     prepareOpen(target);
-    setActiveModeId(null);
+    setSearchingThreads(false);
     setOpen(true);
     return true;
   });
 
-  useIndexedAppCommandHandlers(
-    PALETTE_MODE_ENTRY_COMMANDS,
-    (index, invocation) => {
-      const mode = PALETTE_MODES[index];
-      if (mode === undefined) return false;
+  useAppCommandHandler(
+    "thread.search",
+    (invocation) => {
       const target = invocationTarget(invocation);
       prepareOpen(target);
-      setActiveModeId(mode.id);
+      setSearchingThreads(true);
       setOpen(true);
       return true;
     },
-    MODE_ENTRY_HANDLER_PRIORITY,
+    100,
   );
 
   const availableActions = useMemo<readonly PaletteAction[]>(
@@ -284,7 +273,7 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
 
   const chooseAction = useCallback((action: PaletteAction) => {
     setRecents((current) => recordPaletteRecent(current, action.id));
-    if (MODE_BY_ACTION_ID.has(action.id)) {
+    if (action.id === THREAD_SEARCH_ACTION_ID) {
       action.run();
       return;
     }
@@ -310,7 +299,7 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
   const handleOpenChange = useCallback((nextOpen: boolean) => {
     setOpen(nextOpen);
     if (!nextOpen) {
-      setActiveModeId(null);
+      setSearchingThreads(false);
       setQuery("");
       setHighlightedIndex(0);
     }
@@ -357,12 +346,8 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
     },
     [activeIndex, chooseAction, visibleEntries],
   );
-  const activeMode =
-    activeModeId === null
-      ? undefined
-      : PALETTE_MODES.find((mode) => mode.id === activeModeId);
   const exitMode = () => {
-    setActiveModeId(null);
+    setSearchingThreads(false);
     setQuery("");
     setHighlightedIndex(0);
   };
@@ -397,7 +382,7 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
           if (action) chooseAction(action);
         }}
         onEscapeKeyDown={(event) => {
-          if (activeMode !== undefined) {
+          if (searchingThreads) {
             event.preventDefault();
             exitMode();
           }
@@ -405,7 +390,7 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
         data-testid="command-palette"
       >
         <DialogTitle className="sr-only">Quick palette</DialogTitle>
-        {activeMode === undefined ? (
+        {!searchingThreads ? (
           <PaletteShell
             activeDescendantId={
               activeIndex === -1
@@ -454,7 +439,7 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
                           entry={entry}
                           id={`${optionIdPrefix}-${visibleIndex}`}
                           isActive={visibleIndex === activeIndex}
-                          isDrillIn={MODE_BY_ACTION_ID.has(entry.action.id)}
+                          isDrillIn={entry.action.id === THREAD_SEARCH_ACTION_ID}
                           showShortcut={!isCompactViewport}
                           onActivate={() => {
                             setHighlightedIndex(visibleIndex);
@@ -473,7 +458,7 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
                   entry={entry}
                   id={`${optionIdPrefix}-${index}`}
                   isActive={index === activeIndex}
-                  isDrillIn={MODE_BY_ACTION_ID.has(entry.action.id)}
+                  isDrillIn={entry.action.id === THREAD_SEARCH_ACTION_ID}
                   showShortcut={!isCompactViewport}
                   onActivate={() => {
                     setHighlightedIndex(index);
@@ -484,8 +469,7 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
             )}
           </PaletteShell>
         ) : (
-          <activeMode.View
-            presentation={activeMode}
+          <ThreadSearchPaletteMode
             onExit={exitMode}
             runAfterClose={runAfterClose}
           />

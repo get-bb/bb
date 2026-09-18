@@ -610,7 +610,7 @@ describe("CommandPalette", () => {
     expectClasses(searchThreadsRow, "bg-state-hover", "text-foreground");
   });
 
-  it("enters the registered thread mode from its existing command and pops one level per Escape", async () => {
+  it("enters thread mode from its existing command and pops one level per Escape", async () => {
     modeState.activeRecents = [makeThread("selected")];
     renderPalette();
     const event = openThreadSearch();
@@ -787,7 +787,7 @@ describe("CommandPalette", () => {
     await screen.findByRole("combobox", { name: "Search commands" });
   });
 
-  it("enters the same registered mode by running Search threads from the root", async () => {
+  it("enters thread mode by running Search threads from the root", async () => {
     renderPalette();
     openPalette();
     await waitFor(() => expect(searchField()).toBeTruthy());

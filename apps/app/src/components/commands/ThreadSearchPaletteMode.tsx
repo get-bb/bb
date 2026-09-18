@@ -37,7 +37,6 @@ import {
   type PaletteThreadSearchRow,
 } from "@/lib/command-palette/palette-thread-search";
 import { windowPaletteThreadSearchText } from "@/lib/command-palette/palette-thread-search-window";
-import type { PaletteModeViewProps } from "@/lib/command-palette/palette-mode";
 import { PALETTE_SECTION_LABEL_CLASS, PaletteShell } from "./PaletteShell";
 
 interface ThreadSearchOption {
@@ -47,9 +46,11 @@ interface ThreadSearchOption {
 
 export function ThreadSearchPaletteMode({
   onExit,
-  presentation,
   runAfterClose,
-}: PaletteModeViewProps) {
+}: {
+  onExit: () => void;
+  runAfterClose: (run: () => void) => void;
+}) {
   const listId = useId();
   const optionIdPrefix = useId();
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -244,14 +245,15 @@ export function ThreadSearchPaletteMode({
   return (
     <PaletteShell
       activeDescendantId={activeDescendantId}
-      inputDescription={presentation.inputDescription}
+      inputDescription="Use Escape to return to commands."
       inputLabel="Search threads"
       inputRef={inputRef}
       listId={listId}
       listLabel="Threads"
       listRef={listRef}
       modeChip={{
-        ...presentation.chip,
+        icon: "Search",
+        label: "Threads",
         clearLabel: "Return to commands",
         onClear: onExit,
       }}
@@ -262,7 +264,7 @@ export function ThreadSearchPaletteMode({
         if (listRef.current !== null) listRef.current.scrollTop = 0;
       }}
       onInputKeyDown={handleInputKeyDown}
-      placeholder={presentation.placeholder}
+      placeholder="Search title, project, or message…"
       value={query}
     >
       {emptyMessage === null ? (
