@@ -12,6 +12,7 @@ import { afterEach, vi } from "vitest";
 import { describe, expect, it } from "vitest";
 import {
   SecondaryPanelTabStrip,
+  SECONDARY_PANEL_TAB_STRIP_FADE_TONE,
   secondaryPanelTabsToClose,
   type SecondaryPanelTabStripProps,
 } from "./SecondaryPanelTabStrip";
@@ -21,7 +22,11 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("secondary panel tab strip", () => {
+describe("secondary panel tab-strip edge fades", () => {
+  it("uses the themed edge fade", () => {
+    expect(SECONDARY_PANEL_TAB_STRIP_FADE_TONE).toBe("sidebar");
+  });
+
   it("keeps the desktop tab viewport outside the window drag region", () => {
     vi.stubGlobal(
       "ResizeObserver",
@@ -47,56 +52,6 @@ describe("secondary panel tab strip", () => {
     expect(
       view.container.querySelector(".no-scrollbar")?.className,
     ).not.toContain("app-region");
-  });
-
-  it("reveals selection again after overflow controls take their space", () => {
-    let nextFrame: FrameRequestCallback | undefined;
-    const requestFrame = vi
-      .spyOn(window, "requestAnimationFrame")
-      .mockImplementation((callback) => {
-        nextFrame = callback;
-        return 1;
-      });
-    vi.stubGlobal(
-      "ResizeObserver",
-      class {
-        observe() {}
-        disconnect() {}
-      },
-    );
-    const reveal = vi.spyOn(Element.prototype, "scrollIntoView");
-    try {
-      const fixture = (activeTabId: string) =>
-        createElement(SecondaryPanelTabStrip, {
-          activeTabId,
-          tabs: makeCloseMenuTabs(),
-          leadingTabs: createElement(
-            "div",
-            null,
-            createElement(
-              "button",
-              { "aria-pressed": activeTabId === "info" },
-              "Info",
-            ),
-          ),
-          onReorderTab: vi.fn(),
-          usesDesktopChrome: false,
-          isPanelOpen: true,
-        });
-      const view = render(fixture("tab-0"));
-      reveal.mockClear();
-      view.rerender(fixture("info"));
-      const selected = screen.getByRole("button", {
-        name: "Info",
-      }).parentElement;
-      expect(reveal.mock.instances.at(-1)).toBe(selected);
-      reveal.mockClear();
-      act(() => nextFrame?.(0));
-      expect(reveal.mock.instances).toEqual([selected]);
-    } finally {
-      reveal.mockRestore();
-      requestFrame.mockRestore();
-    }
   });
 
   it("enlarges coarse-pointer close targets only for file previews", () => {
@@ -158,87 +113,6 @@ describe("secondary panel tab strip", () => {
     ).toBe(false);
   });
 
-  it("keeps partially visible neighbors selectable and reveals selection on resize", () => {
-    let measure = () => {};
-    vi.stubGlobal(
-      "ResizeObserver",
-      class {
-        constructor(callback: () => void) {
-          measure = callback;
-        }
-        observe() {}
-        disconnect() {}
-      },
-    );
-    const tabModels = makeCloseMenuTabs();
-    const { container } = render(
-      createElement(SecondaryPanelTabStrip, {
-        activeTabId: "tab-0",
-        tabs: tabModels,
-        onReorderTab: vi.fn(),
-        usesDesktopChrome: false,
-        isPanelOpen: true,
-      }),
-    );
-    const viewport = container.querySelector<HTMLElement>(".no-scrollbar")!;
-    const content = container.querySelector<HTMLElement>(
-      "[data-secondary-panel-tab-content]",
-    )!;
-    const strip = container.querySelector<HTMLElement>(
-      '[data-testid="secondary-panel-tab-strip"]',
-    )!;
-    Object.defineProperties(viewport, {
-      clientWidth: { configurable: true, value: 180 },
-      scrollWidth: { configurable: true, value: 452 },
-    });
-    Object.defineProperty(content, "scrollWidth", {
-      configurable: true,
-      value: 452,
-    });
-    Object.defineProperty(strip, "clientWidth", {
-      configurable: true,
-      value: 180,
-    });
-    vi.spyOn(viewport, "getBoundingClientRect").mockReturnValue(
-      DOMRect.fromRect({ width: 180 }),
-    );
-    const tabs = Array.from(
-      content.querySelectorAll<HTMLElement>("[data-secondary-panel-tab]"),
-    );
-    tabs.forEach((tab, index) => {
-      vi.spyOn(tab, "getBoundingClientRect").mockImplementation(() =>
-        DOMRect.fromRect({ x: index * 114 - viewport.scrollLeft, width: 110 }),
-      );
-    });
-    act(() => measure());
-    expect(screen.getByRole("button", { name: "file-0.ts" })).toBeDefined();
-    const neighbor = screen.getByRole("button", { name: "file-1.ts" });
-    expect(tabs[1].inert).not.toBe(true);
-    fireEvent.click(neighbor);
-    expect(tabModels[1].onSelect).toHaveBeenCalledOnce();
-    viewport.scrollLeft = 58;
-    act(() => measure());
-    expect(screen.getByRole("button", { name: "file-0.ts" })).toBeDefined();
-    expect(screen.getByRole("button", { name: "file-1.ts" })).toBeDefined();
-    expect(tabs[0].inert).not.toBe(true);
-    expect(tabs[1].inert).not.toBe(true);
-    const selected = tabs[0].querySelector(
-      'button[aria-pressed="true"]',
-    )!.parentElement!;
-    const reveal = vi
-      .spyOn(selected, "scrollIntoView")
-      .mockImplementation(() => {
-        viewport.scrollLeft = 0;
-      });
-    Object.defineProperty(strip, "clientWidth", {
-      configurable: true,
-      value: 200,
-    });
-    act(() => measure());
-    expect(reveal).toHaveBeenCalledOnce();
-    expect(viewport.scrollLeft).toBe(0);
-  });
-
   it("observes the intrinsic tab row so async title changes refresh overflow", () => {
     const observed: Element[] = [];
     let resizeCallback: ResizeObserverCallback | undefined;
@@ -294,6 +168,12 @@ describe("secondary panel tab strip", () => {
     expect(observed).toContain(viewport);
     expect(observed).toContain(content);
     expect(resizeCallback).toBeDefined();
+    expect(container.querySelectorAll("[data-overflow-fade]")).toHaveLength(2);
+    expect(
+      container
+        .querySelector("[data-overflow-fade='left']")
+        ?.classList.contains("w-6"),
+    ).toBe(true);
     const leftButton = container.querySelector<HTMLButtonElement>(
       '[aria-label="Scroll tabs left"]',
     );
@@ -303,6 +183,8 @@ describe("secondary panel tab strip", () => {
     expect(leftButton?.classList.contains("w-0")).toBe(true);
     expect(rightButton?.classList.contains("w-0")).toBe(true);
 
+    const rightFade = container.querySelector("[data-overflow-fade='right']");
+    expect(rightFade?.classList.contains("opacity-0")).toBe(true);
     Object.defineProperties(viewport!, {
       clientWidth: { configurable: true, value: 120 },
       scrollWidth: { configurable: true, value: 240 },
@@ -319,19 +201,18 @@ describe("secondary panel tab strip", () => {
     act(() => {
       resizeCallback?.([], {} as ResizeObserver);
     });
+    expect(rightFade?.classList.contains("opacity-100")).toBe(true);
 
     const scrollRegion = container.querySelector(
       "[data-secondary-panel-tab-scroll-region]",
     );
     expect(strip?.children[0]).toBe(leftButton);
     expect(strip?.children[1]).toBe(scrollRegion);
-    expect(strip?.children[2]).toBe(rightButton?.parentElement);
+    expect(strip?.children[2]).toBe(rightButton);
     expect(leftButton?.classList.contains("absolute")).toBe(false);
     expect(rightButton?.classList.contains("absolute")).toBe(false);
     expect(leftButton?.classList.contains("w-0")).toBe(true);
-    expect(rightButton?.classList.contains("size-8")).toBe(true);
-    expect(leftButton?.classList.contains("mr-1")).toBe(false);
-    expect(rightButton?.classList.contains("ml-1")).toBe(true);
+    expect(rightButton?.classList.contains("w-5")).toBe(true);
     expect(leftButton?.classList.contains("opacity-0")).toBe(true);
     expect(leftButton?.tabIndex).toBe(-1);
     expect(rightButton?.classList.contains("opacity-100")).toBe(true);
@@ -342,20 +223,13 @@ describe("secondary panel tab strip", () => {
     ).toBe(true);
     expect(rightButton?.classList.contains("hover:bg-state-hover")).toBe(false);
 
-    const nextTab = content!.querySelector<HTMLElement>(
-      "[data-secondary-panel-tab]",
-    )!;
-    vi.spyOn(nextTab, "getBoundingClientRect").mockReturnValue(
-      DOMRect.fromRect({ x: 144, width: 100 }),
-    );
-    const revealNext = vi.spyOn(nextTab, "scrollIntoView");
-    fireEvent.click(rightButton!);
-    expect(revealNext).toHaveBeenCalledWith({
-      inline: "start",
-      block: "nearest",
-      behavior: "smooth",
+    const scrollBy = vi.fn();
+    Object.defineProperty(viewport!, "scrollBy", {
+      configurable: true,
+      value: scrollBy,
     });
-    vi.mocked(nextTab.getBoundingClientRect).mockRestore();
+    fireEvent.click(rightButton!);
+    expect(scrollBy).toHaveBeenCalledWith({ left: 140, behavior: "smooth" });
 
     rightButton?.focus();
     expect(document.activeElement).toBe(rightButton);
@@ -363,7 +237,7 @@ describe("secondary panel tab strip", () => {
     fireEvent.scroll(viewport!);
     act(() => animationFrameCallback?.(0));
     expect(rightButton?.classList.contains("w-0")).toBe(true);
-    expect(leftButton?.classList.contains("size-8")).toBe(true);
+    expect(leftButton?.classList.contains("w-5")).toBe(true);
     expect(rightButton?.getAttribute("aria-hidden")).toBe("true");
     expect(leftButton?.getAttribute("aria-hidden")).toBe("false");
     expect(document.activeElement).toBe(leftButton);

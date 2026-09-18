@@ -19,7 +19,12 @@ import { Icon } from "@bb/shared-ui/icon";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Panel, PanelResizeHandle } from "react-resizable-panels";
 import { Button } from "@bb/shared-ui/button";
+import { HEADER_PANE_ACTION_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@bb/shared-ui/chrome-style-tokens";
+import {
+  COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
+  COARSE_POINTER_HEADER_ICON_BUTTON_CLASS,
+} from "@bb/shared-ui/coarse-pointer-sizing";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   PANEL_COLLAPSE_TRANSITION_CLASS,
@@ -112,8 +117,8 @@ export function isSecondaryPanelLayoutTransition(
 const SECONDARY_RESIZABLE_PANEL_STYLE: CSSProperties = {
   pointerEvents: "auto",
 };
-const SECONDARY_PANEL_CHROME_ICON_BUTTON_CLASS = `${PANEL_TAB_CONTROL_CLASS} shrink-0 ${CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS}`;
-const SECONDARY_PANEL_HIDE_ICON_BUTTON_CLASS = `${PANEL_TAB_CONTROL_CLASS} shrink-0 ${CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS}`;
+const SECONDARY_PANEL_CHROME_ICON_BUTTON_CLASS = `${COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS} shrink-0 ${CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS}`;
+const SECONDARY_PANEL_HIDE_ICON_BUTTON_CLASS = `${COARSE_POINTER_HEADER_ICON_BUTTON_CLASS} shrink-0 ${CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS}`;
 const EMPTY_DIFF_FILES: readonly DiffFileEntry[] = [];
 
 export function getSecondaryPanelChromeStackClassName(
@@ -458,7 +463,10 @@ function ThreadSecondaryPanelContent({
       variant="ghost"
       size="icon"
       className={cn(
-        SECONDARY_PANEL_HIDE_ICON_BUTTON_CLASS,
+        renderAsDrawer
+          ? PANEL_TAB_CONTROL_CLASS
+          : SECONDARY_PANEL_HIDE_ICON_BUTTON_CLASS,
+        CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS,
         "relative",
         usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
       )}
@@ -485,7 +493,9 @@ function ThreadSecondaryPanelContent({
         variant="ghost"
         size="icon"
         className={cn(
-          PANEL_TAB_CONTROL_CLASS,
+          renderAsDrawer
+            ? PANEL_TAB_CONTROL_CLASS
+            : HEADER_PANE_ACTION_ICON_BUTTON_CLASS,
           CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS,
           "shrink-0",
           usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
@@ -513,7 +523,7 @@ function ThreadSecondaryPanelContent({
       return (
         <PaneArrangementButton
           className={cn(
-            PANEL_TAB_CONTROL_CLASS,
+            renderAsDrawer ? PANEL_TAB_CONTROL_CLASS : "shrink-0",
             usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
           )}
           isFullScreen={isFullScreen ?? false}
@@ -531,7 +541,9 @@ function ThreadSecondaryPanelContent({
             variant="ghost"
             size="icon"
             className={cn(
-              PANEL_TAB_CONTROL_CLASS,
+              renderAsDrawer
+                ? PANEL_TAB_CONTROL_CLASS
+                : HEADER_PANE_ACTION_ICON_BUTTON_CLASS,
               CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS,
               "shrink-0",
               usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
@@ -572,13 +584,16 @@ function ThreadSecondaryPanelContent({
         onOpenNewTab={onOpenNewTab}
         shortcut={newTabShortcut}
         usesDesktopChrome={usesDesktopChrome}
+        compact={renderAsDrawer}
       />
     ) : reserveNewTabButton ? (
       <div
         aria-hidden
         data-new-tab-control-reserved=""
         className={cn(
-          SECONDARY_PANEL_CHROME_ICON_BUTTON_CLASS,
+          renderAsDrawer
+            ? PANEL_TAB_CONTROL_CLASS
+            : SECONDARY_PANEL_CHROME_ICON_BUTTON_CLASS,
           usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
         )}
       />
@@ -612,46 +627,46 @@ function ThreadSecondaryPanelContent({
 
     return (
       <>
-        <SecondaryPanelTabStrip
-          activeTabId={
-            activeSurfaceTabId ?? activeSurfaceFixedTab?.tab.id ?? null
-          }
-          tabs={visibleSurfaceTabs}
-          leadingTabs={fixedSurfaceTabs.map((fixedTab) => {
-            const shortcut =
-              fixedTab.tab.kind === "git-diff" ? diffShortcut : null;
-            return (
-              <PinnedIconTab
-                key={fixedTab.tab.id}
-                ariaLabel={
-                  shortcut
-                    ? `${fixedTab.ariaLabel} (${shortcut.label})`
-                    : fixedTab.ariaLabel
-                }
-                ariaKeyshortcuts={shortcut?.ariaKeyshortcuts}
-                isActive={
-                  activeSurfaceFixedTab?.tab.id === fixedTab.tab.id &&
-                  !hasActiveSurfaceTab
-                }
-                label={fixedTab.label}
-                leadingVisual={fixedTab.leadingVisual}
-                onClick={fixedTab.onSelect}
-                onPointerDown={
-                  onBeginTabDrag
-                    ? (event) => onBeginTabDrag(fixedTab.tab.id, event)
-                    : undefined
-                }
-                title={fixedTab.title}
-                usesDesktopChrome={usesDesktopChrome}
-              />
-            );
-          })}
-          onBeginTabDrag={onBeginTabDrag}
-          onReorderTab={onSurfaceTabReorder}
-          usesDesktopChrome={usesDesktopChrome}
-          isPanelOpen={isOpen}
-          newTabControl={newTabControl}
-        />
+        {fixedSurfaceTabs.map((fixedTab) => {
+          const shortcut =
+            fixedTab.tab.kind === "git-diff" ? diffShortcut : null;
+          return (
+            <PinnedIconTab
+              key={fixedTab.tab.id}
+              ariaLabel={
+                shortcut
+                  ? `${fixedTab.ariaLabel} (${shortcut.label})`
+                  : fixedTab.ariaLabel
+              }
+              ariaKeyshortcuts={shortcut?.ariaKeyshortcuts}
+              isActive={
+                activeSurfaceFixedTab?.tab.id === fixedTab.tab.id &&
+                !hasActiveSurfaceTab
+              }
+              label={fixedTab.label}
+              leadingVisual={fixedTab.leadingVisual}
+              onClick={fixedTab.onSelect}
+              onPointerDown={
+                onBeginTabDrag
+                  ? (event) => onBeginTabDrag(fixedTab.tab.id, event)
+                  : undefined
+              }
+              title={fixedTab.title}
+              usesDesktopChrome={usesDesktopChrome}
+            />
+          );
+        })}
+        {visibleSurfaceTabs.length > 0 ? (
+          <SecondaryPanelTabStrip
+            activeTabId={activeSurfaceTabId}
+            tabs={visibleSurfaceTabs}
+            onBeginTabDrag={onBeginTabDrag}
+            onReorderTab={onSurfaceTabReorder}
+            usesDesktopChrome={usesDesktopChrome}
+            isPanelOpen={isOpen}
+          />
+        ) : null}
+        {newTabControl}
       </>
     );
   };
@@ -723,7 +738,8 @@ function ThreadSecondaryPanelContent({
             data-testid="thread-secondary-panel-top-chrome"
             className={cn(
               CHROME_ROW_CLASS,
-              "min-w-0 justify-between gap-2 px-2",
+              "min-w-0 justify-between gap-2",
+              renderAsDrawer ? "px-2" : "px-4",
               usesDesktopChrome && usesWindowChrome && MACOS_WINDOW_DRAG_CLASS,
               usesDesktopChrome &&
                 usesWindowChrome &&
@@ -1075,6 +1091,7 @@ function ThreadSecondaryPanelContent({
 }
 
 interface NewTabButtonProps {
+  compact: boolean;
   ariaLabel: string;
   onOpenNewTab: () => void;
   shortcut: AppShortcutPresentation | null;
@@ -1109,9 +1126,8 @@ function PinnedIconTab({
       <TooltipTrigger asChild>
         <div
           data-testid={label === "Info" ? "thread-info-tab" : undefined}
-          data-secondary-panel-tab
           className={cn(
-            "shrink-0 snap-start [&_button]:size-8 max-md:pointer-coarse:[&_button]:size-9",
+            "shrink-0",
             usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
           )}
           onPointerDown={onPointerDown}
@@ -1135,6 +1151,7 @@ function PinnedIconTab({
 }
 
 function NewTabButton({
+  compact,
   ariaLabel,
   onOpenNewTab,
   shortcut,
@@ -1146,7 +1163,9 @@ function NewTabButton({
       variant="ghost"
       size="sm"
       className={cn(
-        SECONDARY_PANEL_CHROME_ICON_BUTTON_CLASS,
+        compact
+          ? PANEL_TAB_CONTROL_CLASS
+          : SECONDARY_PANEL_CHROME_ICON_BUTTON_CLASS,
         "text-muted-foreground/70 hover:text-foreground",
         usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
       )}

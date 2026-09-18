@@ -3,7 +3,6 @@ import {
   type MouseEventHandler,
   type PointerEvent as ReactPointerEvent,
   type RefObject,
-  type ReactNode,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -39,6 +38,10 @@ import {
   ContextMenuTrigger,
 } from "@bb/shared-ui/context-menu";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
+import {
+  OverflowFade,
+  type OverflowFadeTone,
+} from "@/components/ui/overflow-fade";
 import { TabPill } from "@/components/ui/tab-pill";
 import { useDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -51,11 +54,14 @@ import type {
   SecondaryPanelTabReorderHandler,
 } from "./secondaryPanelTab";
 
-import { PANEL_TAB_CONTROL_CLASS } from "./panelChromeClasses";
+const CHEVRON_SCROLL_STEP_PX = 140;
 
-const TAB_STRIP_SCROLL_BUTTON_CLASS = `${PANEL_TAB_CONTROL_CLASS} rounded-md`;
+const TAB_STRIP_SCROLL_BUTTON_CLASS =
+  "h-7 w-5 rounded-md p-0 [&_[data-icon-root]]:size-3.5 max-md:pointer-coarse:h-9 max-md:pointer-coarse:w-9 max-md:pointer-coarse:[&_[data-icon-root]]:size-5";
 
 const EDGE_EPSILON_PX = 1;
+
+export const SECONDARY_PANEL_TAB_STRIP_FADE_TONE: OverflowFadeTone = "sidebar";
 
 class InertTouchSensor extends TouchSensor {
   static override setup(): () => void {
@@ -78,8 +84,6 @@ const INITIAL_OVERFLOW_STATE: TabStripOverflowState = {
 export interface SecondaryPanelTabStripProps {
   activeTabId: string | null;
   tabs: readonly SecondaryPanelRenderableTab[];
-  leadingTabs?: ReactNode;
-  newTabControl?: ReactNode;
   onBeginTabDrag?: (
     tabId: string,
     event: ReactPointerEvent<HTMLElement>,
@@ -111,6 +115,7 @@ export function secondaryPanelTabsToClose(
 
 interface SortablePanelTabProps {
   isActive: boolean;
+  activeTabRef: RefObject<HTMLDivElement | null>;
   contextMenuDisabled: boolean;
   dragDisabled: boolean;
   noDragClass: string | null;
@@ -126,8 +131,6 @@ interface SortablePanelTabProps {
 export function SecondaryPanelTabStrip({
   activeTabId,
   tabs,
-  leadingTabs,
-  newTabControl,
   onBeginTabDrag,
   onReorderTab,
   usesDesktopChrome,
@@ -136,16 +139,13 @@ export function SecondaryPanelTabStrip({
   const stripRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
-  const newTabControlRef = useRef<HTMLDivElement>(null);
+  const activeTabRef = useRef<HTMLDivElement>(null);
   const leftScrollButtonRef = useRef<HTMLButtonElement>(null);
   const rightScrollButtonRef = useRef<HTMLButtonElement>(null);
   const [overflow, setOverflow] = useState<TabStripOverflowState>(
     INITIAL_OVERFLOW_STATE,
   );
-  const [contentWidth, setContentWidth] = useState<number>();
   const maxScrollLeftRef = useRef(0);
-  const measuredWidthRef = useRef(0);
-  const resizeRevealFrameRef = useRef<number | null>(null);
   const hasOverflowRef = useRef(false);
   const scrollFrameRef = useRef<number | null>(null);
   const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
@@ -197,30 +197,8 @@ export function SecondaryPanelTabStrip({
     if (strip === null || viewport === null || content === null) {
       return;
     }
-    setContentWidth(content.scrollWidth);
-    if (measuredWidthRef.current !== strip.clientWidth) {
-      measuredWidthRef.current = strip.clientWidth;
-      const reveal = () =>
-        content
-          .querySelector<HTMLElement>('button[aria-pressed="true"]')
-          ?.parentElement?.scrollIntoView({
-            inline: "nearest",
-            block: "nearest",
-          });
-      reveal();
-      if (resizeRevealFrameRef.current !== null)
-        window.cancelAnimationFrame(resizeRevealFrameRef.current);
-      resizeRevealFrameRef.current = window.requestAnimationFrame(() => {
-        resizeRevealFrameRef.current = null;
-        reveal();
-        applyEdgeFlags();
-      });
-    }
     const hasOverflow =
-      content.scrollWidth >
-      strip.clientWidth -
-        (newTabControlRef.current?.getBoundingClientRect().width ?? 0) +
-        EDGE_EPSILON_PX;
+      content.scrollWidth > strip.clientWidth + EDGE_EPSILON_PX;
     hasOverflowRef.current = hasOverflow;
     maxScrollLeftRef.current = hasOverflow
       ? Math.max(0, viewport.scrollWidth - viewport.clientWidth)
@@ -254,10 +232,6 @@ export function SecondaryPanelTabStrip({
     return () => {
       viewport.removeEventListener("scroll", handleScroll);
       resizeObserver.disconnect();
-      if (resizeRevealFrameRef.current !== null) {
-        window.cancelAnimationFrame(resizeRevealFrameRef.current);
-        resizeRevealFrameRef.current = null;
-      }
       if (scrollFrameRef.current !== null) {
         window.cancelAnimationFrame(scrollFrameRef.current);
         scrollFrameRef.current = null;
@@ -265,7 +239,7 @@ export function SecondaryPanelTabStrip({
     };
   }, [applyEdgeFlags, measureCapacity]);
 
-  useLayoutEffect(() => {
+  useEffect(() => {
     measureCapacity();
   }, [tabs, measureCapacity]);
 
@@ -274,27 +248,17 @@ export function SecondaryPanelTabStrip({
   }, [measureCapacity]);
 
   useLayoutEffect(() => {
-    const activeTabElement = contentRef.current?.querySelector<HTMLElement>(
-      'button[aria-pressed="true"]',
-    )?.parentElement;
-    if (!activeTabElement) {
+    const activeTabElement = activeTabRef.current;
+    if (activeTabElement === null) {
       return;
     }
-    const reveal = () => {
-      activeTabElement.scrollIntoView({ inline: "nearest", block: "nearest" });
-      applyEdgeFlags();
-    };
-    reveal();
-    const frame = window.requestAnimationFrame(reveal);
-    return () => window.cancelAnimationFrame(frame);
-  }, [activeTabId, overflow.hasOverflow, applyEdgeFlags]);
+    activeTabElement.scrollIntoView({ inline: "nearest", block: "nearest" });
+  }, [activeTabId, overflow.hasOverflow]);
 
   useLayoutEffect(() => {
     const focusedElement = document.activeElement;
     const activeTabButton =
-      contentRef.current?.querySelector<HTMLButtonElement>(
-        'button[aria-pressed="true"]',
-      ) ?? null;
+      activeTabRef.current?.querySelector<HTMLButtonElement>("button") ?? null;
     if (
       !overflow.canScrollLeft &&
       focusedElement === leftScrollButtonRef.current
@@ -353,28 +317,8 @@ export function SecondaryPanelTabStrip({
   }, []);
 
   const scrollByStep = useCallback((direction: -1 | 1) => {
-    const viewport = viewportRef.current;
-    if (!viewport) return;
-    const left = viewport.getBoundingClientRect().left;
-    const tabs = Array.from(
-      contentRef.current?.querySelectorAll<HTMLElement>(
-        "[data-secondary-panel-tab]",
-      ) ?? [],
-    );
-    const target =
-      direction > 0
-        ? tabs.find(
-            (tab) => tab.getBoundingClientRect().left > left + EDGE_EPSILON_PX,
-          )
-        : tabs
-            .reverse()
-            .find(
-              (tab) =>
-                tab.getBoundingClientRect().left < left - EDGE_EPSILON_PX,
-            );
-    target?.scrollIntoView({
-      inline: "start",
-      block: "nearest",
+    viewportRef.current?.scrollBy({
+      left: direction * CHEVRON_SCROLL_STEP_PX,
       behavior: "smooth",
     });
   }, []);
@@ -454,6 +398,7 @@ export function SecondaryPanelTabStrip({
           {tabs.map((tab) => (
             <SortablePanelTab
               key={tab.tab.id}
+              activeTabRef={activeTabRef}
               contextMenuDisabled={isCompactViewport}
               dragDisabled={dragDisabled}
               isActive={tab.tab.id === activeTabId}
@@ -499,7 +444,7 @@ export function SecondaryPanelTabStrip({
     <div
       ref={stripRef}
       data-testid="secondary-panel-tab-strip"
-      className="group relative flex min-w-0 flex-1 items-center [&_[data-tab-pill-close]]:text-muted-foreground/70 [&_[data-tab-pill-close]:hover]:text-foreground [&_[data-tab-pill-close]_[data-icon-root]]:size-3 max-md:pointer-coarse:[&_[data-tab-pill-close]_[data-icon-root]]:size-3.5"
+      className="group relative flex min-w-0 items-center [&_[data-tab-pill-close]]:text-muted-foreground/70 [&_[data-tab-pill-close]:hover]:text-foreground [&_[data-tab-pill-close]_[data-icon-root]]:size-3"
     >
       <TabStripScrollButton
         buttonRef={leftScrollButtonRef}
@@ -508,11 +453,23 @@ export function SecondaryPanelTabStrip({
         className={chevronNoDragClass}
         onClick={() => scrollByStep(-1)}
       />
-      <div
-        data-secondary-panel-tab-scroll-region
-        className="relative min-w-0 flex-1 [container-type:inline-size]"
-        style={{ maxWidth: contentWidth }}
-      >
+      <div data-secondary-panel-tab-scroll-region className="relative min-w-0">
+        <OverflowFade
+          placement="left"
+          tone={SECONDARY_PANEL_TAB_STRIP_FADE_TONE}
+          className={cn(
+            "z-10",
+            overflow.canScrollLeft ? "opacity-100" : "opacity-0",
+          )}
+        />
+        <OverflowFade
+          placement="right"
+          tone={SECONDARY_PANEL_TAB_STRIP_FADE_TONE}
+          className={cn(
+            "z-10",
+            overflow.canScrollRight ? "opacity-100" : "opacity-0",
+          )}
+        />
         <div
           ref={viewportRef}
           onClickCapture={handleClickCapture}
@@ -526,30 +483,23 @@ export function SecondaryPanelTabStrip({
             data-secondary-panel-tab-content
             className="flex w-max items-center gap-1"
           >
-            {leadingTabs}
             {dndTabs}
           </div>
         </div>
       </div>
-      <div className="flex shrink-0 items-center">
-        <TabStripScrollButton
-          buttonRef={rightScrollButtonRef}
-          direction="right"
-          canScroll={overflow.canScrollRight}
-          className={chevronNoDragClass}
-          onClick={() => scrollByStep(1)}
-        />
-        {newTabControl ? (
-          <div ref={newTabControlRef} className="flex shrink-0 pl-1">
-            {newTabControl}
-          </div>
-        ) : null}
-      </div>
+      <TabStripScrollButton
+        buttonRef={rightScrollButtonRef}
+        direction="right"
+        canScroll={overflow.canScrollRight}
+        className={chevronNoDragClass}
+        onClick={() => scrollByStep(1)}
+      />
     </div>
   );
 }
 
 function SortablePanelTab({
+  activeTabRef,
   contextMenuDisabled,
   dragDisabled,
   isActive,
@@ -566,6 +516,15 @@ function SortablePanelTab({
     });
   const { onPointerDown: sortablePointerDown, ...sortableListeners } =
     listeners ?? {};
+  const setTabRef = useCallback(
+    (element: HTMLDivElement | null) => {
+      setNodeRef(element);
+      if (isActive) {
+        activeTabRef.current = element;
+      }
+    },
+    [activeTabRef, isActive, setNodeRef],
+  );
   const style = useMemo<CSSProperties>(
     () => ({
       transform: CSS.Translate.toString(transform),
@@ -586,11 +545,10 @@ function SortablePanelTab({
     <ContextMenu modal={false}>
       <ContextMenuTrigger asChild disabled={contextMenuDisabled}>
         <div
-          ref={setNodeRef}
-          data-secondary-panel-tab
+          ref={setTabRef}
           style={style}
           className={cn(
-            "max-w-[min(144px,100cqw)] shrink-0",
+            "shrink-0",
             !dragDisabled && "cursor-grab active:cursor-grabbing",
             isDragging && "opacity-40",
             noDragClass,
@@ -660,7 +618,6 @@ function TabStripScrollButton({
         canScroll
           ? TAB_STRIP_SCROLL_BUTTON_CLASS
           : "h-7 w-0 overflow-hidden p-0 max-md:pointer-coarse:h-9",
-        canScroll && (direction === "left" ? "mr-1" : "ml-1"),
         "transition-opacity",
         canScroll
           ? "pointer-events-auto opacity-100"
@@ -690,7 +647,7 @@ function PanelTab({
       title={title}
       isActive={isActive}
       onSelect={tab.onSelect}
-      labelMaxWidthClass="max-w-full"
+      labelMaxWidthClass="max-w-[160px]"
       enlargeCloseTargetOnCoarsePointer={
         tab.tab.kind === "workspace-file-preview" ||
         tab.tab.kind === "host-file-preview" ||

@@ -96,6 +96,29 @@ describe("TabPill", () => {
     ).toBe(true);
   });
 
+  it("separates an enlarged coarse-pointer close target from the label", () => {
+    render(
+      <TabPill
+        label="rabbits.md"
+        title="rabbits.md"
+        isActive
+        onSelect={vi.fn()}
+        leadingVisual={<span aria-hidden>file</span>}
+        enlargeCloseTargetOnCoarsePointer
+        closeAction={{
+          closeLabel: "Close rabbits.md",
+          onClose: vi.fn(),
+        }}
+      />,
+    );
+
+    expect(
+      screen
+        .getByRole("button", { name: "rabbits.md" })
+        .classList.contains("max-md:pointer-coarse:pl-3.5"),
+    ).toBe(true);
+  });
+
   it("closes from the leading control without selecting the tab", () => {
     const onClose = vi.fn();
     const onSelect = vi.fn();
@@ -105,6 +128,7 @@ describe("TabPill", () => {
         title="rabbits.md"
         isActive
         onSelect={onSelect}
+        compact
         leadingVisual={<span aria-hidden>file</span>}
         enlargeCloseTargetOnCoarsePointer
         closeAction={{

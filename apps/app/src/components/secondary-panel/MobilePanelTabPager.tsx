@@ -142,6 +142,7 @@ export function MobilePanelTabPager({
       <div className="flex shrink-0 items-center gap-1 [&_button]:size-8 max-md:pointer-coarse:[&_button]:size-9">
         {fixedTabs.map((tab) => (
           <TabPill
+            compact
             key={tab.id}
             label={tab.label}
             ariaLabel={tab.ariaLabel}
@@ -225,6 +226,7 @@ export function MobilePanelTabPager({
                 inert={index < visible.start || index >= visible.end}
               >
                 <TabPill
+                  compact
                   label={displayedTab.label}
                   ariaLabel={displayedTab.ariaLabel}
                   leadingVisual={displayedTab.leadingVisual}
