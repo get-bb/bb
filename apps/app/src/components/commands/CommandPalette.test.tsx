@@ -21,7 +21,6 @@ import {
   type ThreadListEntry,
 } from "@bb/domain";
 import type { ThreadSearchResponse } from "@bb/server-contract";
-import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { AppCommandProvider, useAppCommandHandler } from "./AppCommandProvider";
 import {
@@ -517,10 +516,14 @@ describe("CommandPalette", () => {
       const header = within(groups[index] as HTMLElement).getByText(label, {
         selector: "div",
       });
-      for (const className of CHROME_SECTION_LABEL_CLASS.split(" ")) {
-        expect(header.classList.contains(className)).toBe(true);
-      }
-      expectClasses(header, "px-2", "py-1");
+      expectClasses(
+        header,
+        "px-2",
+        "py-1",
+        "text-xs",
+        "font-normal",
+        "text-muted-foreground",
+      );
       expectNoClasses(header, "bg-muted/30");
     }
     expectClasses(commandList(), "p-1");
@@ -971,14 +974,20 @@ describe("CommandPalette", () => {
       "Show more",
     ]);
     expect(within(archivedGroup).getAllByRole("option")).toHaveLength(4);
-    for (let index = 0; index < 3; index++)
-      fireEvent.keyDown(input, { key: "ArrowDown" });
     const more = within(activeGroup).getByRole("option", {
       name: "Show more threads",
     });
-    expect(more.className).toContain("font-medium");
-    expect(more.className).not.toContain("text-subtle-foreground");
+    expectClasses(more, "text-xs", "font-normal", "text-subtle-foreground");
+    expectClasses(
+      within(activeGroup).getByText("Threads", { selector: "div" }),
+      "text-xs",
+      "font-normal",
+      "text-muted-foreground",
+    );
     expect(more.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
+    for (let index = 0; index < 3; index++)
+      fireEvent.keyDown(input, { key: "ArrowDown" });
+    expectClasses(more, "bg-state-hover", "text-foreground");
     expect(input.getAttribute("aria-activedescendant")).toBe(more.id);
     fireEvent.keyDown(input, { key: "Enter" });
     expect(within(activeGroup).getAllByRole("option")).toHaveLength(8);

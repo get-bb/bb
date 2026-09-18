@@ -12,7 +12,6 @@ import {
 import { Icon } from "@bb/shared-ui/icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { threadListIndicatorStateForThread } from "@bb/client-core";
 import type { ThreadSearchMatch } from "@bb/server-contract";
 import { usePromptDraftHasInput } from "@/hooks/usePromptDraftStorage";
@@ -39,7 +38,7 @@ import {
 } from "@/lib/command-palette/palette-thread-search";
 import { windowPaletteThreadSearchText } from "@/lib/command-palette/palette-thread-search-window";
 import type { PaletteModeViewProps } from "@/lib/command-palette/palette-mode";
-import { PaletteShell } from "./PaletteShell";
+import { PALETTE_SECTION_LABEL_CLASS, PaletteShell } from "./PaletteShell";
 
 interface ThreadSearchOption {
   lifecycle: PaletteThreadLifecycle;
@@ -276,7 +275,7 @@ export function ThreadSearchPaletteMode({
             <div key={lifecycle} role="group" aria-labelledby={labelId}>
               <div
                 id={labelId}
-                className={cn(CHROME_SECTION_LABEL_CLASS, "px-2 py-1")}
+                className={PALETTE_SECTION_LABEL_CLASS}
               >
                 {result.isRecent
                   ? "Recent"
@@ -305,7 +304,7 @@ export function ThreadSearchPaletteMode({
                     className={cn(
                       "cursor-pointer rounded-md px-2 py-1.5",
                       option.row === null
-                        ? "flex items-center gap-1.5 text-sm font-medium text-foreground"
+                        ? "flex items-center gap-1.5 text-xs font-normal text-subtle-foreground"
                         : "flex min-h-11 items-center gap-3 text-left text-sm",
                       index === activeIndex && "bg-state-hover text-foreground",
                     )}

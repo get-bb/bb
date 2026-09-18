@@ -15,7 +15,6 @@ import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { Dialog, DialogContent, DialogTitle } from "@bb/shared-ui/dialog";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import {
   useAppCommandHandler,
@@ -57,7 +56,7 @@ import {
   PALETTE_MODE_ENTRY_COMMANDS,
   PALETTE_MODES,
 } from "@/lib/command-palette/palette-modes";
-import { PaletteShell } from "./PaletteShell";
+import { PALETTE_SECTION_LABEL_CLASS, PaletteShell } from "./PaletteShell";
 
 const PALETTE_INPUT_LABEL = "Search commands";
 const PALETTE_INPUT_DESCRIPTION = "Use Escape to close the command palette.";
@@ -443,7 +442,7 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
                   >
                     <div
                       id={labelId}
-                      className={cn(CHROME_SECTION_LABEL_CLASS, "px-2 py-1")}
+                      className={PALETTE_SECTION_LABEL_CLASS}
                     >
                       {group.bucket}
                     </div>
