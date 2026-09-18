@@ -320,9 +320,10 @@ export async function loadPluginAppBundle(
   const hasher = createHash("sha256").update(js);
   if (css !== null) hasher.update(css);
   hasher.update(metaRaw);
+  hasher.update(pluginId);
   const hash = hasher.digest("hex").slice(0, 16);
   const assetUrl = (file: string) =>
-    `/api/v1/plugins/${encodeURIComponent(pluginId)}/assets/${file}?h=${hash}`;
+    `/api/v1/plugin-app-assets/${hash}/${file}`;
   return {
     state: {
       hasApp: true,
