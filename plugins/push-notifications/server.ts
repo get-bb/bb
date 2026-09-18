@@ -1,13 +1,19 @@
 import { randomUUID } from "node:crypto";
-import type { BbPluginApi } from "@get-bb/plugin-sdk";
+import {
+  experimental_CliError,
+  experimental_cliCommand,
+  experimental_defineCli,
+  type BbPluginApi,
+} from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import {
   addPushSubscriptionInputSchema,
   CLIENT_NOTIFICATION_CHANNEL,
   clientChannelSchema,
   DEFAULT_EXPO_PUSH_URL,
+  DEVICE_LABEL_MAX_LENGTH,
+  EXPO_PUSH_TOKEN_MAX_LENGTH,
   pushNotificationsRpcContract,
-  type AddPushSubscriptionInput,
   type ClientNotification,
   type PushSubscriptionSummary,
 } from "./contract.js";
@@ -35,49 +41,10 @@ interface StatusView {
   lastSendOutcome: LastSendOutcome;
 }
 
-function parseAddArguments(
-  args: readonly string[],
-):
-  | { ok: true; value: AddPushSubscriptionInput }
-  | { ok: false; message: string } {
-  if (args.length !== 6) {
-    return {
-      ok: false,
-      message:
-        "Usage: bb push-notifications add --token <expo-push-token> --platform <ios|android> --label <device-label>",
-    };
-  }
-  const values = new Map<string, string>();
-  for (let index = 0; index < args.length; index += 2) {
-    const key = args[index];
-    const value = args[index + 1];
-    if (
-      key === undefined ||
-      value === undefined ||
-      !["--token", "--platform", "--label"].includes(key) ||
-      values.has(key)
-    ) {
-      return {
-        ok: false,
-        message:
-          "Usage: bb push-notifications add --token <expo-push-token> --platform <ios|android> --label <device-label>",
-      };
-    }
-    values.set(key, value);
-  }
-  const parsed = addPushSubscriptionInputSchema.safeParse({
-    expoPushToken: values.get("--token"),
-    platform: values.get("--platform"),
-    deviceLabel: values.get("--label"),
-  });
-  if (!parsed.success) {
-    return {
-      ok: false,
-      message: parsed.error.issues.map((issue) => issue.message).join("; "),
-    };
-  }
-  return { ok: true, value: parsed.data };
-}
+const JSON_OPTION = {
+  type: "boolean",
+  description: "Emit machine-readable JSON",
+} as const;
 
 function formatSubscriptions(
   subscriptions: readonly PushSubscriptionSummary[],
@@ -219,107 +186,159 @@ export function createPushNotificationsPlugin(
       },
     });
 
-    bb.cli.register({
-      name: "push-notifications",
-      summary: "Manage mobile, web, and desktop notifications",
-      commands: [
-        {
-          name: "test",
-          summary:
-            "Send a test to connected web or desktop clients with permission",
-          usage: "bb push-notifications test <web|desktop>",
+    bb.cli.register(
+      experimental_defineCli({
+        name: "push-notifications",
+        summary: "Manage mobile, web, and desktop notifications",
+        description:
+          "Mobile devices receive Expo push messages; web and desktop clients receive system notifications while they are open.",
+        commands: {
+          test: experimental_cliCommand({
+            summary:
+              "Send a test to connected web or desktop clients with permission",
+            positionals: [
+              {
+                name: "channel",
+                description: "Client type to notify: web or desktop",
+                required: true,
+              },
+            ],
+            options: { json: JSON_OPTION },
+            async run(input) {
+              const channel = clientChannelSchema.safeParse(
+                input.positionals.channel,
+              );
+              if (!channel.success) {
+                throw new experimental_CliError("Use web or desktop", {
+                  code: "invalid_channel",
+                  hint: "Mobile devices are tested from the phone itself; this command only reaches web and desktop clients.",
+                });
+              }
+              try {
+                await sendTest(channel.data);
+              } catch (error) {
+                throw new experimental_CliError(
+                  error instanceof Error ? error.message : String(error),
+                  {
+                    code: "channel_disabled",
+                    hint: `Turn it on with \`bb plugin config push-notifications set ${channel.data}Enabled true\`.`,
+                  },
+                );
+              }
+              return {
+                exitCode: 0,
+                stdout: input.options.json
+                  ? JSON.stringify({ ok: true, channel: channel.data })
+                  : `Test sent to connected ${channel.data} clients with notification permission`,
+              };
+            },
+          }),
+          list: experimental_cliCommand({
+            summary: "List registered push devices",
+            options: { json: JSON_OPTION },
+            async run(input) {
+              const rows = await subscriptions.listSummaries();
+              return {
+                exitCode: 0,
+                stdout: input.options.json
+                  ? JSON.stringify({ subscriptions: rows })
+                  : formatSubscriptions(rows),
+              };
+            },
+          }),
+          add: experimental_cliCommand({
+            summary: "Register or refresh an Expo push device",
+            options: {
+              token: {
+                type: "string",
+                required: true,
+                placeholder: "expo-push-token",
+                aliases: ["expo-token", "push-token", "expo-push-token"],
+                description: `Expo push token the device reported, at most ${EXPO_PUSH_TOKEN_MAX_LENGTH} characters`,
+              },
+              platform: {
+                type: "enum",
+                required: true,
+                values: ["ios", "android"],
+                aliases: ["os"],
+                description: "Device operating system",
+              },
+              label: {
+                type: "string",
+                required: true,
+                placeholder: "device-label",
+                aliases: ["device-label", "device", "name"],
+                description: `Name shown for the device, at most ${DEVICE_LABEL_MAX_LENGTH} characters`,
+              },
+              json: JSON_OPTION,
+            },
+            async run(input) {
+              const parsed = addPushSubscriptionInputSchema.safeParse({
+                expoPushToken: input.options.token,
+                platform: input.options.platform,
+                deviceLabel: input.options.label,
+              });
+              if (!parsed.success) {
+                throw new experimental_CliError(
+                  parsed.error.issues.map((issue) => issue.message).join("; "),
+                  { code: "invalid_device" },
+                );
+              }
+              const result = await subscriptions.add(parsed.data);
+              return {
+                exitCode: 0,
+                stdout: input.options.json
+                  ? JSON.stringify(result)
+                  : `${result.created ? "Registered" : "Refreshed"} push device ${result.id}`,
+              };
+            },
+          }),
+          remove: experimental_cliCommand({
+            summary: "Remove a registered push device",
+            positionals: [
+              {
+                name: "id",
+                description:
+                  "Subscription id, as `bb push-notifications list` prints it",
+                required: true,
+              },
+            ],
+            options: { json: JSON_OPTION },
+            async run(input) {
+              const id = input.positionals.id;
+              if (!(await subscriptions.remove(id))) {
+                throw new experimental_CliError(
+                  `Push subscription not found: ${id}`,
+                  {
+                    code: "subscription_not_found",
+                    hint: "Run `bb push-notifications list` for the registered ids.",
+                  },
+                );
+              }
+              return {
+                exitCode: 0,
+                stdout: input.options.json
+                  ? JSON.stringify({ id, removed: true })
+                  : `Removed push device ${id}`,
+              };
+            },
+          }),
+          status: experimental_cliCommand({
+            summary: "Show push delivery status",
+            options: { json: JSON_OPTION },
+            async run(input) {
+              const view = await status();
+              return {
+                exitCode: 0,
+                stdout: input.options.json
+                  ? JSON.stringify(view)
+                  : formatStatus(view),
+              };
+            },
+          }),
         },
-        {
-          name: "list",
-          summary: "List registered push devices",
-          usage: "bb push-notifications list [--json]",
-        },
-        {
-          name: "add",
-          summary: "Register or refresh an Expo push device",
-          usage:
-            "bb push-notifications add --token <expo-push-token> --platform <ios|android> --label <device-label>",
-        },
-        {
-          name: "remove",
-          summary: "Remove a registered push device",
-          usage: "bb push-notifications remove <id>",
-        },
-        {
-          name: "status",
-          summary: "Show push delivery status",
-          usage: "bb push-notifications status [--json]",
-        },
-      ],
-      async run(argv) {
-        const [command, ...args] = argv;
-        if (command === "test" && args.length === 1) {
-          const channel = clientChannelSchema.safeParse(args[0]);
-          if (!channel.success)
-            return { exitCode: 1, stderr: "Use web or desktop" };
-          try {
-            await sendTest(channel.data);
-            return {
-              exitCode: 0,
-              stdout: `Test sent to connected ${channel.data} clients with notification permission`,
-            };
-          } catch (error) {
-            return {
-              exitCode: 1,
-              stderr: error instanceof Error ? error.message : String(error),
-            };
-          }
-        }
-        if (
-          command === "list" &&
-          (args.length === 0 || (args.length === 1 && args[0] === "--json"))
-        ) {
-          const rows = await subscriptions.listSummaries();
-          return {
-            exitCode: 0,
-            stdout:
-              args[0] === "--json"
-                ? JSON.stringify({ subscriptions: rows })
-                : formatSubscriptions(rows),
-          };
-        }
-        if (command === "add") {
-          const parsed = parseAddArguments(args);
-          if (!parsed.ok) return { exitCode: 1, stderr: parsed.message };
-          const result = await subscriptions.add(parsed.value);
-          return {
-            exitCode: 0,
-            stdout: `${result.created ? "Registered" : "Refreshed"} push device ${result.id}`,
-          };
-        }
-        if (command === "remove" && args.length === 1) {
-          const id = args[0] ?? "";
-          if (!(await subscriptions.remove(id))) {
-            return {
-              exitCode: 1,
-              stderr: `Push subscription not found: ${id}`,
-            };
-          }
-          return { exitCode: 0, stdout: `Removed push device ${id}` };
-        }
-        if (
-          command === "status" &&
-          (args.length === 0 || (args.length === 1 && args[0] === "--json"))
-        ) {
-          const view = await status();
-          return {
-            exitCode: 0,
-            stdout:
-              args[0] === "--json" ? JSON.stringify(view) : formatStatus(view),
-          };
-        }
-        return {
-          exitCode: 1,
-          stderr:
-            "Usage: bb push-notifications <list|add|remove|status|test> [options]",
-        };
-      },
-    });
+      }),
+    );
 
     bb.events.on("interaction.pending", (payload) => {
       sender.onInteractionPending(payload);

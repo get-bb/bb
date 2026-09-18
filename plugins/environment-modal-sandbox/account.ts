@@ -8,8 +8,12 @@ import {
 } from "./debug-sandbox.js";
 import {
   defineRpcContract,
+  experimental_CliError,
+  experimental_cliCommand,
+  experimental_defineCli,
   type BbPluginApi,
   type PluginCliContext,
+  type PluginCliResult,
 } from "@get-bb/plugin-sdk";
 import path from "node:path";
 import { z } from "zod";
@@ -110,216 +114,224 @@ export function registerRpcAndCli(
       throw new Error("Dockerfile must be UTF-8 text");
     return dockerfileSchema.parse(result.content);
   }
-  const usage =
-    "Usage: bb modal machine inspect HOST_ID [--json] | bb modal account inspect [--json] | bb modal image show [--json] | bb modal image set --file PATH [--json] | bb modal image reset [--json] | bb modal image build [--json] | bb modal sandbox run [--json] | bb modal sandbox exec ID [--json] -- COMMAND... | bb modal sandbox stop ID [--json]";
-  type CliResult = {
-    exitCode: number;
-    stdout?: string;
-    stderr?: string;
-  };
-  type CliRoute = {
-    path: readonly string[];
-    arity: number;
-    separator?: boolean;
-    run: (
-      args: string[],
-      command: string[],
-      context: PluginCliContext,
-      json: boolean,
-    ) => Promise<CliResult>;
-  };
-  const routes = [
-    {
-      path: ["machine", "inspect"],
-      arity: 1,
-      async run(args, _command, _context, json) {
-        const result = await inspectMachine(
-          machineInput.parse({ hostId: args[0] }),
-        );
-        return {
-          exitCode: 0,
-          stdout: json ? JSON.stringify(result) : result.summary,
-        };
-      },
+  async function guarded(
+    run: () => Promise<PluginCliResult>,
+  ): Promise<PluginCliResult> {
+    try {
+      return await run();
+    } catch (error) {
+      if (error instanceof experimental_CliError) throw error;
+      throw new experimental_CliError(errorMessage(error));
+    }
+  }
+  const jsonOption = {
+    json: {
+      type: "boolean",
+      description: "Emit the raw result as JSON instead of readable text",
     },
-    {
-      path: ["account", "inspect"],
-      arity: 0,
-      async run(_args, _command, _context, json) {
-        const result = await inspect();
-        return {
-          exitCode: result.available ? 0 : 1,
-          stdout: json ? JSON.stringify(result) : result.message,
-        };
+  } as const;
+  bb.cli.register(
+    experimental_defineCli({
+      name: "modal",
+      summary: "Configure, build and debug Modal images",
+      description:
+        "Debug sandboxes are ephemeral: they run the saved image for 30 minutes and carry no machine secrets.",
+      commands: {
+        "machine inspect": experimental_cliCommand({
+          summary: "Inspect Modal compute and the last saved snapshot",
+          positionals: [
+            {
+              name: "host-id",
+              description: "BB host whose Modal machine is inspected",
+              required: true,
+            },
+          ],
+          options: jsonOption,
+          run(input) {
+            return guarded(async () => {
+              const result = await inspectMachine(
+                machineInput.parse({ hostId: input.positionals["host-id"] }),
+              );
+              return {
+                exitCode: 0,
+                stdout: input.options.json
+                  ? JSON.stringify(result)
+                  : result.summary,
+              };
+            });
+          },
+        }),
+        "image build": experimental_cliCommand({
+          summary: "Build or reuse the saved image",
+          options: jsonOption,
+          run(input, context) {
+            return guarded(async () => {
+              const result = await debug.build(context.signal);
+              return {
+                exitCode: 0,
+                stdout: input.options.json
+                  ? JSON.stringify(result)
+                  : `${result.logs}${result.imageId}`,
+              };
+            });
+          },
+        }),
+        "sandbox run": experimental_cliCommand({
+          summary: "Run the saved image in a 30-minute debug sandbox",
+          options: jsonOption,
+          run(input, context) {
+            return guarded(async () => {
+              const result = await debug.run(context.signal);
+              return {
+                exitCode: 0,
+                stdout: input.options.json
+                  ? JSON.stringify(result)
+                  : result.sandboxId,
+                stderr: input.options.json ? "" : result.logs,
+              };
+            });
+          },
+        }),
+        "sandbox exec": experimental_cliCommand({
+          summary: "Execute a command in a debug sandbox",
+          description:
+            "Everything after `--` is the command; it is never parsed as options.",
+          positionals: [
+            {
+              name: "sandbox-id",
+              description: "Debug sandbox started by bb modal sandbox run",
+              required: true,
+            },
+          ],
+          passthrough: true,
+          options: jsonOption,
+          run(input, context) {
+            return guarded(async () => {
+              if (input.passthrough.length === 0) {
+                throw new experimental_CliError(
+                  "bb modal sandbox exec requires a command after --",
+                  {
+                    code: "missing_command",
+                    hint: "Write bb modal sandbox exec <sandbox-id> -- bash -lc 'echo hi'.",
+                  },
+                );
+              }
+              const result = await debug.exec(
+                execInput.parse({
+                  sandboxId: input.positionals["sandbox-id"],
+                  command: input.passthrough,
+                }),
+                context.signal,
+              );
+              return {
+                exitCode: result.exitCode,
+                stdout: input.options.json
+                  ? JSON.stringify(result)
+                  : result.stdout,
+                stderr: input.options.json ? "" : result.stderr,
+              };
+            });
+          },
+        }),
+        "sandbox stop": experimental_cliCommand({
+          summary: "Stop a debug sandbox",
+          positionals: [
+            {
+              name: "sandbox-id",
+              description: "Debug sandbox started by bb modal sandbox run",
+              required: true,
+            },
+          ],
+          options: jsonOption,
+          run(input) {
+            return guarded(async () => {
+              const result = await debug.stop(
+                sandboxInput.parse({
+                  sandboxId: input.positionals["sandbox-id"],
+                }),
+              );
+              return {
+                exitCode: 0,
+                stdout: input.options.json
+                  ? JSON.stringify(result)
+                  : `Stopped ${result.sandboxId}`,
+              };
+            });
+          },
+        }),
+        "image show": experimental_cliCommand({
+          summary: "Show the Dockerfile used for new machines",
+          options: jsonOption,
+          run(input) {
+            return guarded(async () => {
+              const result = await image.get();
+              return {
+                exitCode: 0,
+                stdout: input.options.json
+                  ? JSON.stringify(result)
+                  : result.dockerfile,
+              };
+            });
+          },
+        }),
+        "image set": experimental_cliCommand({
+          summary: "Save a Dockerfile for future machines",
+          options: {
+            file: {
+              type: "string",
+              required: true,
+              placeholder: "PATH",
+              aliases: ["dockerfile", "path"],
+              description:
+                "Dockerfile to save; a relative path resolves from the CLI working directory on the thread's host",
+            },
+            ...jsonOption,
+          },
+          run(input, context) {
+            return guarded(async () => {
+              const result = await image.set(
+                await readDockerfile(input.options.file, context),
+              );
+              return {
+                exitCode: 0,
+                stdout: input.options.json
+                  ? JSON.stringify(result)
+                  : "Saved the Dockerfile for future machines.",
+              };
+            });
+          },
+        }),
+        "image reset": experimental_cliCommand({
+          summary: "Restore the bundled Dockerfile",
+          options: jsonOption,
+          run(input) {
+            return guarded(async () => {
+              const result = await image.reset();
+              return {
+                exitCode: 0,
+                stdout: input.options.json
+                  ? JSON.stringify(result)
+                  : "Restored the bundled Dockerfile for future machines.",
+              };
+            });
+          },
+        }),
+        "account inspect": experimental_cliCommand({
+          summary: "Test the configured Modal account",
+          options: jsonOption,
+          run(input) {
+            return guarded(async () => {
+              const result = await inspect();
+              return {
+                exitCode: result.available ? 0 : 1,
+                stdout: input.options.json
+                  ? JSON.stringify(result)
+                  : result.message,
+              };
+            });
+          },
+        }),
       },
-    },
-    {
-      path: ["image", "show"],
-      arity: 0,
-      async run(_args, _command, _context, json) {
-        const result = await image.get();
-        return {
-          exitCode: 0,
-          stdout: json ? JSON.stringify(result) : result.dockerfile,
-        };
-      },
-    },
-    {
-      path: ["image", "set", "--file"],
-      arity: 1,
-      async run(args, _command, context, json) {
-        const result = await image.set(await readDockerfile(args[0]!, context));
-        return {
-          exitCode: 0,
-          stdout: json
-            ? JSON.stringify(result)
-            : "Saved the Dockerfile for future machines.",
-        };
-      },
-    },
-    {
-      path: ["image", "reset"],
-      arity: 0,
-      async run(_args, _command, _context, json) {
-        const result = await image.reset();
-        return {
-          exitCode: 0,
-          stdout: json
-            ? JSON.stringify(result)
-            : "Restored the bundled Dockerfile for future machines.",
-        };
-      },
-    },
-    {
-      path: ["image", "build"],
-      arity: 0,
-      async run(_args, _command, context, json) {
-        const result = await debug.build(context.signal);
-        return {
-          exitCode: 0,
-          stdout: json
-            ? JSON.stringify(result)
-            : `${result.logs}${result.imageId}`,
-        };
-      },
-    },
-    {
-      path: ["sandbox", "run"],
-      arity: 0,
-      async run(_args, _command, context, json) {
-        const result = await debug.run(context.signal);
-        return {
-          exitCode: 0,
-          stdout: json ? JSON.stringify(result) : result.sandboxId,
-          stderr: json ? "" : result.logs,
-        };
-      },
-    },
-    {
-      path: ["sandbox", "exec"],
-      arity: 1,
-      separator: true,
-      async run(args, command, context, json) {
-        const result = await debug.exec(
-          execInput.parse({ sandboxId: args[0], command }),
-          context.signal,
-        );
-        return {
-          exitCode: result.exitCode,
-          stdout: json ? JSON.stringify(result) : result.stdout,
-          stderr: json ? "" : result.stderr,
-        };
-      },
-    },
-    {
-      path: ["sandbox", "stop"],
-      arity: 1,
-      async run(args, _command, _context, json) {
-        const result = await debug.stop(
-          sandboxInput.parse({ sandboxId: args[0] }),
-        );
-        return {
-          exitCode: 0,
-          stdout: json ? JSON.stringify(result) : `Stopped ${result.sandboxId}`,
-        };
-      },
-    },
-  ] satisfies readonly CliRoute[];
-  bb.cli.register({
-    name: "modal",
-    summary: "Configure, build and debug Modal images",
-    commands: [
-      {
-        name: "machine-inspect",
-        summary: "Inspect Modal compute and the last saved snapshot",
-        usage: "bb modal machine inspect HOST_ID [--json]",
-      },
-      {
-        name: "image-build",
-        summary: "Build or reuse the saved image",
-        usage: "bb modal image build [--json]",
-      },
-      {
-        name: "sandbox-run",
-        summary: "Run the saved image in a 30-minute debug sandbox",
-        usage: "bb modal sandbox run [--json]",
-      },
-      {
-        name: "sandbox-exec",
-        summary: "Execute a command in a debug sandbox",
-        usage: "bb modal sandbox exec ID [--json] -- COMMAND...",
-      },
-      {
-        name: "sandbox-stop",
-        summary: "Stop a debug sandbox",
-        usage: "bb modal sandbox stop ID [--json]",
-      },
-      {
-        name: "image-show",
-        summary: "Show the Dockerfile used for new machines",
-        usage: "bb modal image show [--json]",
-      },
-      {
-        name: "image-set",
-        summary: "Save a Dockerfile for future machines",
-        usage: "bb modal image set --file PATH [--json]",
-      },
-      {
-        name: "image-reset",
-        summary: "Restore the bundled Dockerfile",
-        usage: "bb modal image reset [--json]",
-      },
-      {
-        name: "account-inspect",
-        summary: "Test the configured Modal account",
-        usage: "bb modal account inspect [--json]",
-      },
-    ],
-    async run(argv, context) {
-      try {
-        const separator = argv.indexOf("--");
-        const flags = separator < 0 ? argv : argv.slice(0, separator);
-        const json = flags.at(-1) === "--json";
-        const args = json ? flags.slice(0, -1) : flags;
-        const route = routes.find(
-          (candidate) =>
-            candidate.path.every((part, index) => args[index] === part) &&
-            args.length === candidate.path.length + candidate.arity &&
-            (candidate.separator === true) === separator >= 0,
-        );
-        if (route === undefined) throw new Error(usage);
-        return route.run(
-          args.slice(route.path.length),
-          separator < 0 ? [] : argv.slice(separator + 1),
-          context,
-          json,
-        );
-      } catch (error) {
-        return {
-          exitCode: 1,
-          stderr: errorMessage(error),
-        };
-      }
-    },
-  });
+    }),
+  );
 }

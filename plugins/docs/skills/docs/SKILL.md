@@ -77,6 +77,12 @@ The direct `write`, `mkdir`, `move`, and `remove` commands are deprecated. Do
 not use them for agent edits; they remain temporarily available only for
 backward compatibility.
 
+Run `bb docs --help` for the command list and `bb docs <command> --help` for a
+command's arguments, options, and rules. Each command accepts only the options
+its help lists; an unknown command, unknown option, or stray argument exits 2
+before touching a vault, and with `--json` the failure also prints
+`{"ok":false,"error":{"code","message","hint"?}}` on stdout.
+
 Use Markdown for documents and plans. Use a self-contained `.html` file for a
 visual artifact or interactive report; relative assets can live beside it.
 Only write into Docs when the user asks to create, save, store, or update

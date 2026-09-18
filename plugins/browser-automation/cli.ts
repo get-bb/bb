@@ -1,170 +1,380 @@
-import { z } from "zod";
-import { rpcContract } from "./contracts.js";
+import {
+  experimental_CliError,
+  experimental_cliCommand,
+  experimental_defineCli,
+  type PluginCliContext,
+  type PluginCliRegistration,
+  type PluginCliResult,
+} from "@get-bb/plugin-sdk";
+import type { z } from "zod";
+import type { rpcContract } from "./contracts.js";
 
-export const commands = [
-  {
-    name: "open",
-    summary:
-      "Open an isolated desktop or local headless session; --tab explicitly hands off an existing tab",
-    usage:
-      "bb browser-automation open --backend desktop --machine <host-id> --desktop <instance-id> [--tab <tab-id>] [--thread <id>] [--json] | open --backend local --headless --machine <host-id> [--thread <id>] [--json]",
-  },
-  {
-    name: "list",
-    summary: "List this thread's browser sessions",
-    usage: "bb browser-automation list [--thread <id>] [--json]",
-  },
-  {
-    name: "run",
-    summary: "Run a trusted DevBrowser script; runs serialize per session",
-    usage:
-      "bb browser-automation run <session-id> (--script <code> | --script-file <path> --script-host <host-id>) [--timeout-ms <1000..120000>] [--thread <id>] [--json]",
-  },
-  {
-    name: "pages",
-    summary: "Inspect persistent named pages",
-    usage: "bb browser-automation pages <session-id> [--thread <id>] [--json]",
-  },
-  {
-    name: "screenshot",
-    summary: "Save a bounded JPEG in session tmp; return its path and host ID",
-    usage:
-      "bb browser-automation screenshot <session-id> [--page <name>] [--thread <id>] [--json]",
-  },
-  {
-    name: "preview",
-    summary:
-      "Describe the live preview frame of a local headless session, without image bytes",
-    usage:
-      "bb browser-automation preview <session-id> [--after <sequence>] [--thread <id>] [--json]",
-  },
-  {
-    name: "stop",
-    summary:
-      "Cancel queued and running work and release control; open a new session to resume",
-    usage: "bb browser-automation stop <session-id> [--thread <id>] [--json]",
-  },
-  {
-    name: "close",
-    summary: "Dispose owned browsers and tabs, preserving handed-off tabs",
-    usage: "bb browser-automation close <session-id> [--thread <id>] [--json]",
-  },
-];
-const methodSchema = z.enum([
-  "open",
-  "list",
-  "run",
-  "pages",
-  "screenshot",
-  "preview",
-  "stop",
-  "close",
-]);
+export type BrowserCliMethod =
+  | "open"
+  | "list"
+  | "run"
+  | "pages"
+  | "screenshot"
+  | "preview"
+  | "stop"
+  | "close";
 
-export function parseCli(argv: string[], contextThreadId?: string) {
-  const method = methodSchema.parse(argv[0]);
-  const flags = new Map<string, string>();
-  const positionals: string[] = [];
-  const allowed = new Set([
-    "--json",
-    "--thread",
-    ...(method === "open"
-      ? ["--backend", "--machine", "--desktop", "--tab", "--headless"]
-      : method === "run"
-        ? ["--script", "--script-file", "--script-host", "--timeout-ms"]
-        : method === "screenshot"
-          ? ["--page"]
-          : method === "preview"
-            ? ["--after"]
-            : []),
-  ]);
-  for (let index = 1; index < argv.length; index++) {
-    const arg = argv[index]!;
-    if (!arg.startsWith("--")) {
-      positionals.push(arg);
-      continue;
-    }
-    if (!allowed.has(arg) || flags.has(arg))
-      throw new Error(`Unknown or duplicate flag: ${arg}`);
-    if (arg === "--json" || arg === "--headless") flags.set(arg, "true");
-    else {
-      const value = argv[++index];
-      if (!value || value.startsWith("--"))
-        throw new Error(`Missing value for ${arg}`);
-      flags.set(arg, value);
-    }
-  }
-  const threadId = flags.get("--thread") ?? contextThreadId;
-  if (!threadId) throw new Error("Run from a BB thread or pass --thread <id>");
-  if (contextThreadId && threadId !== contextThreadId)
-    throw new Error(
-      "CLI calls from a thread cannot access another thread's browser session",
+export interface BrowserCliInput {
+  threadId: string;
+  sessionId?: string;
+  selection?: z.input<typeof rpcContract.open.input>["selection"];
+  script?: string;
+  timeoutMs?: number;
+  page?: string;
+  afterSequence?: number;
+}
+
+export interface BrowserCliRequest {
+  method: BrowserCliMethod;
+  input: BrowserCliInput;
+  scriptFile?: string;
+  scriptHost?: string;
+}
+
+const SESSION_POSITIONAL = {
+  name: "session-id",
+  description: "Session id returned by `bb browser-automation open`",
+  required: true,
+} as const;
+
+const THREAD_OPTION = {
+  type: "string",
+  placeholder: "id",
+  description:
+    "Thread that owns the session; defaults to the invoking thread and cannot name another",
+} as const;
+
+const JSON_OPTION = {
+  type: "boolean",
+  description: "Emit machine-readable JSON",
+} as const;
+
+const REOPEN_HINT =
+  "Open a new session with `bb browser-automation open --backend <desktop|local> --machine <host-id>`.";
+
+function resolveThreadId(
+  option: string | undefined,
+  ctx: PluginCliContext,
+): string {
+  const threadId = option ?? ctx.threadId;
+  if (threadId === undefined || threadId === "") {
+    throw new experimental_CliError(
+      "Run from a BB thread or pass --thread <id>",
+      { code: "thread_required" },
     );
-  const input: {
-    threadId: string;
-    sessionId?: string;
-    selection?: z.input<typeof rpcContract.open.input>["selection"];
-    script?: string;
-    timeoutMs?: number;
-    page?: string;
-    afterSequence?: number;
-  } = { threadId };
-  if (method === "open" || method === "list") {
-    if (positionals.length) throw new Error("Unexpected positional argument");
-  } else {
-    if (positionals.length !== 1) throw new Error("Expected one session ID");
-    input.sessionId = positionals[0];
   }
-  if (method === "open") {
-    const hostId = flags.get("--machine");
-    if (!hostId)
-      throw new Error("Select the browser host with --machine <host-id>");
-    const backend = flags.get("--backend");
-    if (backend === "local") {
-      if (
-        !flags.has("--headless") ||
-        flags.has("--desktop") ||
-        flags.has("--tab")
-      )
-        throw new Error(
-          "Local sessions require --headless and cannot select desktop tabs",
-        );
-      input.selection = { backend, hostId };
-    } else if (backend === "desktop") {
-      const instanceId = flags.get("--desktop");
-      if (!instanceId || flags.has("--headless"))
-        throw new Error(
-          "Desktop sessions require --desktop <instance-id> and cannot use --headless",
-        );
-      input.selection = {
-        backend,
-        hostId,
-        instanceId,
-        ...(flags.has("--tab") ? { tabId: flags.get("--tab") } : {}),
-      };
-    } else throw new Error("Select --backend desktop or --backend local");
+  if (ctx.threadId !== undefined && threadId !== ctx.threadId) {
+    throw new experimental_CliError(
+      "CLI calls from a thread cannot access another thread's browser session",
+      { code: "cross_thread" },
+    );
   }
-  if (method === "run") {
-    if (flags.has("--script") === flags.has("--script-file"))
-      throw new Error("Supply exactly one of --script or --script-file");
-    if (flags.has("--script-file") !== flags.has("--script-host"))
-      throw new Error(
-        "--script-file requires explicit --script-host <host-id>",
-      );
-    input.script = flags.get("--script");
-    input.timeoutMs = flags.has("--timeout-ms")
-      ? Number(flags.get("--timeout-ms"))
-      : 30_000;
+  return threadId;
+}
+
+export function createBrowserAutomationCli(deps: {
+  execute(
+    request: BrowserCliRequest,
+    ctx: PluginCliContext,
+  ): Promise<PluginCliResult>;
+}): PluginCliRegistration {
+  return experimental_defineCli({
+    name: "browser-automation",
+    summary: "Persistent DevBrowser desktop and headless sessions",
+    description:
+      "Sessions belong to the thread that opened them and expire after 30 minutes idle.\nA stopped or expired session cannot be resumed; open a new one.",
+    commands: {
+      open: experimental_cliCommand({
+        summary:
+          "Open an isolated desktop or local headless session; --tab hands off an existing tab",
+        options: {
+          backend: {
+            type: "enum",
+            values: ["desktop", "local"],
+            required: true,
+            description:
+              "desktop drives a connected browser instance; local runs headless on the host",
+          },
+          machine: {
+            type: "string",
+            required: true,
+            placeholder: "host-id",
+            description: "Host that runs the browser",
+          },
+          desktop: {
+            type: "string",
+            placeholder: "instance-id",
+            description: "Desktop instance to drive (desktop backend only)",
+          },
+          tab: {
+            type: "string",
+            placeholder: "tab-id",
+            description:
+              "Existing desktop tab to control instead of opening one (desktop backend only)",
+          },
+          headless: {
+            type: "boolean",
+            description: "Required by the local backend, rejected by desktop",
+          },
+          thread: THREAD_OPTION,
+          json: JSON_OPTION,
+        },
+        run(input, ctx) {
+          const threadId = resolveThreadId(input.options.thread, ctx);
+          const hostId = input.options.machine;
+          if (input.options.backend === "local") {
+            if (
+              !input.options.headless ||
+              input.options.desktop !== undefined ||
+              input.options.tab !== undefined
+            ) {
+              throw new experimental_CliError(
+                "Local sessions require --headless and cannot select desktop tabs",
+                { code: "invalid_selection" },
+              );
+            }
+            return deps.execute(
+              {
+                method: "open",
+                input: { threadId, selection: { backend: "local", hostId } },
+              },
+              ctx,
+            );
+          }
+          const instanceId = input.options.desktop;
+          if (instanceId === undefined || input.options.headless) {
+            throw new experimental_CliError(
+              "Desktop sessions require --desktop <instance-id> and cannot use --headless",
+              { code: "invalid_selection" },
+            );
+          }
+          return deps.execute(
+            {
+              method: "open",
+              input: {
+                threadId,
+                selection: {
+                  backend: "desktop",
+                  hostId,
+                  instanceId,
+                  ...(input.options.tab === undefined
+                    ? {}
+                    : { tabId: input.options.tab }),
+                },
+              },
+            },
+            ctx,
+          );
+        },
+      }),
+      list: experimental_cliCommand({
+        summary: "List this thread's browser sessions",
+        options: { thread: THREAD_OPTION, json: JSON_OPTION },
+        run: (input, ctx) =>
+          deps.execute(
+            {
+              method: "list",
+              input: { threadId: resolveThreadId(input.options.thread, ctx) },
+            },
+            ctx,
+          ),
+      }),
+      run: experimental_cliCommand({
+        summary: "Run a trusted DevBrowser script; runs serialize per session",
+        description:
+          "Scripts may return at most 4 screenshots per run, JPEG only, 500 KB combined;\nanything larger or in another format fails the run.",
+        positionals: [SESSION_POSITIONAL],
+        constraints: [
+          { kind: "exactly-one", options: ["script", "script-file"] },
+          { kind: "requires", option: "script-file", needs: ["script-host"] },
+          { kind: "requires", option: "script-host", needs: ["script-file"] },
+          { kind: "at-most-one", options: ["timeout", "timeout-ms"] },
+        ],
+        options: {
+          script: {
+            type: "string",
+            placeholder: "code",
+            description: "DevBrowser script source",
+          },
+          "script-file": {
+            type: "string",
+            placeholder: "path",
+            description: "File holding the script, read from --script-host",
+          },
+          "script-host": {
+            type: "string",
+            placeholder: "host-id",
+            description: "Host that holds --script-file",
+          },
+          "timeout-ms": {
+            type: "integer",
+            min: 1000,
+            max: 120_000,
+            default: 30_000,
+            description: "Run timeout in milliseconds",
+          },
+          timeout: {
+            type: "duration",
+            defaultUnit: "s",
+            bareUnits: ["s", "ms"],
+            min: 1000,
+            max: 120_000,
+            description:
+              "Run timeout as a duration (90s, 2m, 1500ms); a bare number is seconds (1-120) or milliseconds (1000-120000)",
+          },
+          thread: THREAD_OPTION,
+          json: JSON_OPTION,
+        },
+        run(input, ctx) {
+          const threadId = resolveThreadId(input.options.thread, ctx);
+          const scriptFile = input.options["script-file"];
+          const scriptHost = input.options["script-host"];
+          return deps.execute(
+            {
+              method: "run",
+              input: {
+                threadId,
+                sessionId: input.positionals["session-id"],
+                ...(input.options.script === undefined
+                  ? {}
+                  : { script: input.options.script }),
+                timeoutMs: input.options.timeout ?? input.options["timeout-ms"],
+              },
+              ...(scriptFile === undefined ? {} : { scriptFile }),
+              ...(scriptHost === undefined ? {} : { scriptHost }),
+            },
+            ctx,
+          );
+        },
+      }),
+      pages: experimental_cliCommand({
+        summary: "Inspect persistent named pages",
+        positionals: [SESSION_POSITIONAL],
+        options: { thread: THREAD_OPTION, json: JSON_OPTION },
+        run: (input, ctx) =>
+          deps.execute(
+            {
+              method: "pages",
+              input: {
+                threadId: resolveThreadId(input.options.thread, ctx),
+                sessionId: input.positionals["session-id"],
+              },
+            },
+            ctx,
+          ),
+      }),
+      screenshot: experimental_cliCommand({
+        summary:
+          "Save a bounded JPEG in session tmp; return its path and host ID",
+        positionals: [SESSION_POSITIONAL],
+        options: {
+          page: {
+            type: "string",
+            placeholder: "name",
+            default: "main",
+            description: "Named page to capture",
+          },
+          thread: THREAD_OPTION,
+          json: JSON_OPTION,
+        },
+        run: (input, ctx) =>
+          deps.execute(
+            {
+              method: "screenshot",
+              input: {
+                threadId: resolveThreadId(input.options.thread, ctx),
+                sessionId: input.positionals["session-id"],
+                page: input.options.page,
+              },
+            },
+            ctx,
+          ),
+      }),
+      preview: experimental_cliCommand({
+        summary:
+          "Describe the live preview frame of a local headless session, without image bytes",
+        positionals: [SESSION_POSITIONAL],
+        options: {
+          after: {
+            type: "integer",
+            min: 0,
+            max: Number.MAX_SAFE_INTEGER,
+            default: 0,
+            description: "Only report a frame newer than this sequence number",
+          },
+          thread: THREAD_OPTION,
+          json: JSON_OPTION,
+        },
+        run: (input, ctx) =>
+          deps.execute(
+            {
+              method: "preview",
+              input: {
+                threadId: resolveThreadId(input.options.thread, ctx),
+                sessionId: input.positionals["session-id"],
+                afterSequence: input.options.after,
+              },
+            },
+            ctx,
+          ),
+      }),
+      stop: experimental_cliCommand({
+        summary:
+          "Cancel queued and running work and release control; open a new session to resume",
+        positionals: [SESSION_POSITIONAL],
+        options: { thread: THREAD_OPTION, json: JSON_OPTION },
+        run: (input, ctx) =>
+          deps.execute(
+            {
+              method: "stop",
+              input: {
+                threadId: resolveThreadId(input.options.thread, ctx),
+                sessionId: input.positionals["session-id"],
+              },
+            },
+            ctx,
+          ),
+      }),
+      close: experimental_cliCommand({
+        summary: "Dispose owned browsers and tabs, preserving handed-off tabs",
+        positionals: [SESSION_POSITIONAL],
+        options: { thread: THREAD_OPTION, json: JSON_OPTION },
+        run: (input, ctx) =>
+          deps.execute(
+            {
+              method: "close",
+              input: {
+                threadId: resolveThreadId(input.options.thread, ctx),
+                sessionId: input.positionals["session-id"],
+              },
+            },
+            ctx,
+          ),
+      }),
+    },
+  });
+}
+
+export function browserCliFailure(error: unknown): experimental_CliError {
+  if (error instanceof experimental_CliError) return error;
+  const message =
+    error instanceof Error ? error.message : "Browser command failed";
+  if (/stopped or expired|does not belong to this thread/u.test(message)) {
+    return new experimental_CliError(message, {
+      code: "session_unavailable",
+      hint: REOPEN_HINT,
+    });
   }
-  if (method === "screenshot") input.page = flags.get("--page") ?? "main";
-  if (method === "preview")
-    input.afterSequence = flags.has("--after")
-      ? Number(flags.get("--after"))
-      : 0;
-  return {
-    method,
-    input,
-    scriptFile: flags.get("--script-file"),
-    scriptHost: flags.get("--script-host"),
-  };
+  if (/screenshot|JPEG/iu.test(message)) {
+    return new experimental_CliError(message, {
+      code: "screenshot_limit",
+      hint: "Return at most 4 JPEG screenshots per run, 500 KB combined.",
+    });
+  }
+  return new experimental_CliError(message, { code: "command_failed" });
 }

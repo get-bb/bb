@@ -1,10 +1,22 @@
-import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
+import {
+  defineRpcContract,
+  experimental_CliError,
+  experimental_cliCommand,
+  experimental_defineCli,
+  type BbPluginApi,
+} from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { keepAwakeHostContract } from "./contract.js";
 
 const RETRY_MIN_MS = 1_000;
 const RETRY_MAX_MS = 30_000;
 const CONFIGURATION_KEY = "configuration";
+const MAX_SELECTED_HOSTS = 256;
+
+const JSON_OPTION = {
+  type: "boolean",
+  description: "Emit machine-readable JSON",
+} as const;
 
 const hostSelectionSchema = z.discriminatedUnion("mode", [
   z.object({ mode: z.literal("all") }).strict(),
@@ -124,97 +136,106 @@ export default async function keepAwakePlugin(bb: BbPluginApi): Promise<void> {
     },
   });
 
-  bb.cli.register({
-    name: "keep-awake",
-    summary: "Configure macOS idle-sleep prevention",
-    commands: [
-      {
-        name: "status",
-        summary: "Show whether Keep Awake is enabled and which hosts it uses",
-        usage: "bb keep-awake status [--json]",
-      },
-      {
-        name: "enable",
-        summary: "Enable Keep Awake",
-        usage: "bb keep-awake enable [--json]",
-      },
-      {
-        name: "disable",
-        summary: "Disable Keep Awake",
-        usage: "bb keep-awake disable [--json]",
-      },
-      {
-        name: "hosts",
-        summary: "Show or replace the Keep Awake host selection",
-        usage: "bb keep-awake hosts [all|<host-id>...] [--json]",
-      },
-    ],
-    async run(argv) {
-      const json = argv.includes("--json");
-      const [command, ...args] = argv.filter((arg) => arg !== "--json");
-      if (command === "status" && args.length === 0) {
-        return {
-          exitCode: 0,
-          stdout: json
-            ? JSON.stringify(configuration)
-            : `${configuration.enabled ? "Enabled" : "Disabled"}\nHosts: ${
-                configuration.selection.mode === "all"
-                  ? "all"
-                  : configuration.selection.hostIds.join(", ")
-              }`,
-        };
-      }
-      if (
-        (command === "enable" || command === "disable") &&
-        args.length === 0
-      ) {
-        await saveConfiguration({
-          ...configuration,
-          enabled: command === "enable",
-        });
-        return {
-          exitCode: 0,
-          stdout: json
-            ? JSON.stringify(configuration)
-            : `Keep Awake ${configuration.enabled ? "enabled" : "disabled"}`,
-        };
-      }
-      if (command !== "hosts") {
-        return {
-          exitCode: 1,
-          stderr:
-            "Usage: bb keep-awake <status|enable|disable|hosts> [arguments] [--json]",
-        };
-      }
-      if (args.length > 0) {
-        if (args[0] === "all") {
-          if (args.length !== 1) {
+  async function setEnabled(
+    enabled: boolean,
+    json: boolean,
+  ): Promise<{ exitCode: number; stdout: string }> {
+    await saveConfiguration({ ...configuration, enabled });
+    return {
+      exitCode: 0,
+      stdout: json
+        ? JSON.stringify(configuration)
+        : `Keep Awake ${configuration.enabled ? "enabled" : "disabled"}`,
+    };
+  }
+
+  bb.cli.register(
+    experimental_defineCli({
+      name: "keep-awake",
+      summary: "Configure macOS idle-sleep prevention",
+      description:
+        "Keep Awake holds an idle-sleep assertion on every selected macOS host while bb runs.",
+      commands: {
+        status: experimental_cliCommand({
+          summary: "Show whether Keep Awake is enabled and which hosts it uses",
+          options: { json: JSON_OPTION },
+          run: (input) => ({
+            exitCode: 0,
+            stdout: input.options.json
+              ? JSON.stringify(configuration)
+              : `${configuration.enabled ? "Enabled" : "Disabled"}\nHosts: ${
+                  configuration.selection.mode === "all"
+                    ? "all"
+                    : configuration.selection.hostIds.join(", ")
+                }`,
+          }),
+        }),
+        enable: experimental_cliCommand({
+          summary: "Enable Keep Awake",
+          options: { json: JSON_OPTION },
+          run: (input) => setEnabled(true, input.options.json),
+        }),
+        disable: experimental_cliCommand({
+          summary: "Disable Keep Awake",
+          options: { json: JSON_OPTION },
+          run: (input) => setEnabled(false, input.options.json),
+        }),
+        hosts: experimental_cliCommand({
+          summary: "Show or replace the Keep Awake host selection",
+          positionals: [
+            {
+              name: "host-id",
+              description: `Host ids to keep awake, at most ${MAX_SELECTED_HOSTS}, or the single word "all"; omit every id to print the current selection`,
+              variadic: true,
+            },
+          ],
+          options: { json: JSON_OPTION },
+          async run(input) {
+            const requested = input.positionals["host-id"];
+            if (requested[0] === "all") {
+              if (requested.length !== 1) {
+                throw new experimental_CliError(
+                  '"all" cannot be combined with individual host ids',
+                  {
+                    code: "invalid_host_selection",
+                    hint: "Run `bb keep-awake hosts all`, or list only host ids.",
+                  },
+                );
+              }
+              await saveConfiguration({
+                ...configuration,
+                selection: { mode: "all" },
+              });
+            } else if (requested.length > 0) {
+              if (requested.length > MAX_SELECTED_HOSTS) {
+                throw new experimental_CliError(
+                  `Select at most ${MAX_SELECTED_HOSTS} hosts, or use "all"`,
+                  { code: "invalid_host_selection" },
+                );
+              }
+              if (requested.some((hostId) => hostId.length === 0)) {
+                throw new experimental_CliError("Host ids cannot be empty", {
+                  code: "invalid_host_selection",
+                });
+              }
+              await saveConfiguration({
+                ...configuration,
+                selection: { mode: "selected", hostIds: requested },
+              });
+            }
             return {
-              exitCode: 1,
-              stderr: '"all" cannot be combined with individual host ids',
+              exitCode: 0,
+              stdout: input.options.json
+                ? JSON.stringify(configuration.selection)
+                : configuration.selection.mode === "all"
+                  ? "All hosts"
+                  : configuration.selection.hostIds.join("\n"),
             };
-          }
-          await saveConfiguration({
-            ...configuration,
-            selection: { mode: "all" },
-          });
-        } else {
-          await saveConfiguration({
-            ...configuration,
-            selection: { mode: "selected", hostIds: args },
-          });
-        }
-      }
-      return {
-        exitCode: 0,
-        stdout: json
-          ? JSON.stringify(configuration.selection)
-          : configuration.selection.mode === "all"
-            ? "All hosts"
-            : configuration.selection.hostIds.join("\n"),
-      };
-    },
-  });
+          },
+        }),
+      },
+    }),
+  );
 
   host.experimental_onWorkerExit(({ hostId }) => {
     bb.log.warn(

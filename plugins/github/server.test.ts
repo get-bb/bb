@@ -7,7 +7,6 @@ import {
   githubRpcContract,
   parseExtraRepos,
   parsePaginatedGhApi,
-  validateGithubCliArgs,
 } from "./server";
 
 type GithubRpcHandlers = PluginRpcHandlers<typeof githubRpcContract>;
@@ -153,19 +152,6 @@ describe("GitHub RPC contract", () => {
       "bad/repo/shape",
       "acme",
     ]);
-  });
-
-  it("rejects CLI arguments that would otherwise broaden a repository query", () => {
-    expect(validateGithubCliArgs(["issues", "get-bb/bb"])).toBeNull();
-    expect(validateGithubCliArgs(["issues", "bad/repo/shape"])).toContain(
-      "expected owner/repo",
-    );
-    expect(validateGithubCliArgs(["prs", "get-bb/bb", "extra"])).toContain(
-      "Unexpected argument",
-    );
-    expect(validateGithubCliArgs(["repos", "--json"])).toContain(
-      "does not accept arguments",
-    );
   });
 
   it("infers parsed handler inputs and frontend results", () => {

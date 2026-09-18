@@ -4,8 +4,12 @@ import path from "node:path";
 import { isRecord, parseMarkdownDocument } from "./markdown-document.js";
 import {
   defineRpcContract,
+  experimental_CliError,
+  experimental_cliCommand,
+  experimental_defineCli,
   type BbPluginApi,
   type PluginCliContext,
+  type PluginCliResult,
   type PluginRpcHandlers,
 } from "@get-bb/plugin-sdk";
 import { z } from "zod";
@@ -17,15 +21,18 @@ const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
 const SYNC_STATE_FILE = ".bb-docs-state.json";
 const SYNC_STATE_VERSION = 1;
 
-class CliUsageError extends Error {}
+class CliUsageError extends experimental_CliError {
+  constructor(message: string) {
+    super(message, { code: "usage_error", exitCode: 2 });
+  }
+}
 
-const DOCS_CLI_USAGE =
-  "Usage: bb docs <vaults|vault-add|vault-remove|list|read|pull|status|push|write|mkdir|move|remove>";
-const DOCS_STATUS_USAGE =
-  "bb docs status [workspace-dir] [--delete] [--diff] [--workspace-host <id>] [--json]";
-const DOCS_STATUS_HELP = [
-  `Usage: ${DOCS_STATUS_USAGE}`,
-  "",
+const DOCS_DESCRIPTION = [
+  "Vaults hold the documents; every path is relative to its vault.",
+  "Pull a scope into a workspace directory, edit the files with normal tools, then run status and push.",
+].join("\n");
+
+const DOCS_STATUS_DESCRIPTION = [
   "Exit 0: no changes.",
   "Exit 1: the status operation failed.",
   "Exit 2: the command usage is not valid.",
@@ -35,40 +42,55 @@ const DOCS_STATUS_HELP = [
   "Exit 4 is a successful status result. Review the output, then run bb docs push separately.",
 ].join("\n");
 
-const CLI_OPTIONS_BY_COMMAND: Record<string, ReadonlySet<string>> = {
-  vaults: new Set(["--json"]),
-  "vault-add": new Set(["--json"]),
-  "vault-remove": new Set(["--json"]),
-  list: new Set(["--vault", "--json"]),
-  read: new Set(["--vault", "--json"]),
-  pull: new Set([
-    "--vault",
-    "--into",
-    "--workspace-host",
-    "--json",
-    "--all",
-    "--folder",
-  ]),
-  status: new Set([
-    "--vault",
-    "--workspace-host",
-    "--json",
-    "--delete",
-    "--diff",
-  ]),
-  push: new Set([
-    "--vault",
-    "--workspace-host",
-    "--json",
-    "--delete",
-    "--dry-run",
-    "--diff",
-  ]),
-  write: new Set(["--vault", "--content", "--json"]),
-  mkdir: new Set(["--vault", "--json"]),
-  move: new Set(["--vault", "--json"]),
-  remove: new Set(["--vault", "--recursive", "--json"]),
-};
+const DEPRECATED_MUTATION_WARNING =
+  "Deprecated: direct Docs mutations will be removed; use bb docs pull, edit local files, then bb docs push.";
+
+const DEPRECATED_DELETION_WARNING =
+  "Deprecated: direct Docs mutations will be removed; use bb docs pull, edit local files, then bb docs push --delete.";
+
+const VAULT_OPTION = {
+  type: "string",
+  placeholder: "id",
+  aliases: ["vault-id", "vaultId"],
+  description:
+    "Vault ID from `bb docs vaults`; defaults to the first configured vault",
+} as const;
+
+const WORKSPACE_HOST_OPTION = {
+  type: "string",
+  placeholder: "id",
+  aliases: ["host", "host-id"],
+  description:
+    "Host holding the workspace directory; defaults to the thread environment's host",
+} as const;
+
+const JSON_OPTION = {
+  type: "boolean",
+  description: "Emit machine-readable JSON",
+} as const;
+
+const DIFF_OPTION = {
+  type: "boolean",
+  description: "Include a unified diff for every changed file",
+} as const;
+
+const DELETE_OPTION = {
+  type: "boolean",
+  description:
+    "Also apply local file and empty-directory deletions to the vault",
+} as const;
+
+interface SyncCliArgs {
+  positionals: string[];
+  vaultId: string | undefined;
+  into: string | undefined;
+  workspaceHostId: string | undefined;
+  all: boolean;
+  folder: boolean;
+  delete: boolean;
+  dryRun: boolean;
+  diff: boolean;
+}
 
 interface VaultWatcher {
   close(): void;
@@ -640,110 +662,6 @@ function parseVaultRow(value: unknown): Vault {
     hostId: typeof row.host_id === "string" && row.host_id ? row.host_id : null,
     rootPath: requireString(row.root_path, "root_path"),
   };
-}
-
-function parseCli(argv: string[]): {
-  command: string;
-  positionals: string[];
-  vaultId?: string;
-  content?: string;
-  into?: string;
-  workspaceHostId?: string;
-  recursive: boolean;
-  json: boolean;
-  all: boolean;
-  folder: boolean;
-  delete: boolean;
-  dryRun: boolean;
-  diff: boolean;
-} {
-  const command = argv[0] ?? "help";
-  const allowedOptions = CLI_OPTIONS_BY_COMMAND[command];
-  const positionals: string[] = [];
-  let vaultId: string | undefined;
-  let content: string | undefined;
-  let recursive = false;
-  let json = false;
-  let all = false;
-  let folder = false;
-  let deleteFiles = false;
-  let dryRun = false;
-  let diff = false;
-  let into: string | undefined;
-  let workspaceHostId: string | undefined;
-  const nextValue = (flag: string, index: number): string => {
-    const value = argv[index + 1];
-    if (!value || value.startsWith("--")) {
-      throw new CliUsageError(`${flag} requires a value`);
-    }
-    return value;
-  };
-  for (let index = 1; index < argv.length; index += 1) {
-    const arg = argv[index]!;
-    if (arg.startsWith("--") && allowedOptions && !allowedOptions.has(arg)) {
-      throw new CliUsageError(`${arg} is not valid for bb docs ${command}`);
-    }
-    if (arg === "--vault") vaultId = nextValue(arg, index++);
-    else if (arg === "--content") content = nextValue(arg, index++);
-    else if (arg === "--into") into = nextValue(arg, index++);
-    else if (arg === "--workspace-host")
-      workspaceHostId = nextValue(arg, index++);
-    else if (arg === "--recursive") recursive = true;
-    else if (arg === "--json") json = true;
-    else if (arg === "--all") all = true;
-    else if (arg === "--folder") folder = true;
-    else if (arg === "--delete") deleteFiles = true;
-    else if (arg === "--dry-run") dryRun = true;
-    else if (arg === "--diff") diff = true;
-    else if (arg.startsWith("--"))
-      throw new CliUsageError(`Unknown option: ${arg}`);
-    else positionals.push(arg);
-  }
-  return {
-    command,
-    positionals,
-    vaultId,
-    content,
-    into,
-    workspaceHostId,
-    recursive,
-    json,
-    all,
-    folder,
-    delete: deleteFiles,
-    dryRun,
-    diff,
-  };
-}
-
-function validateCliPositionals(args: ReturnType<typeof parseCli>): void {
-  const expected: Record<string, { minimum: number; maximum: number }> = {
-    vaults: { minimum: 0, maximum: 0 },
-    "vault-add": { minimum: 2, maximum: 3 },
-    "vault-remove": { minimum: 1, maximum: 1 },
-    list: { minimum: 0, maximum: 0 },
-    read: { minimum: 1, maximum: 1 },
-    status: { minimum: 0, maximum: 1 },
-    push: { minimum: 0, maximum: 1 },
-    write: { minimum: 1, maximum: 1 },
-    mkdir: { minimum: 1, maximum: 1 },
-    move: { minimum: 2, maximum: 2 },
-    remove: { minimum: 1, maximum: 1 },
-  };
-  const range = expected[args.command];
-  if (!range) return;
-  if (
-    args.positionals.length < range.minimum ||
-    args.positionals.length > range.maximum
-  ) {
-    throw new CliUsageError(
-      `bb docs ${args.command} received ${args.positionals.length} positional argument(s); expected ${
-        range.minimum === range.maximum
-          ? range.minimum
-          : `${range.minimum}-${range.maximum}`
-      }`,
-    );
-  }
 }
 
 function waitForDelay(ms: number, signal: AbortSignal): Promise<void> {
@@ -1826,7 +1744,7 @@ export default async function plugin(
   }
 
   async function resolveWorkspaceHostId(
-    args: ReturnType<typeof parseCli>,
+    args: SyncCliArgs,
     context: PluginCliContext,
   ): Promise<string | undefined> {
     if (args.workspaceHostId) return args.workspaceHostId;
@@ -1952,7 +1870,7 @@ export default async function plugin(
     );
   }
 
-  function parsePullScope(args: ReturnType<typeof parseCli>): SyncScope {
+  function parsePullScope(args: SyncCliArgs): SyncScope {
     if (args.all && (args.folder || args.positionals.length > 0)) {
       throw new CliUsageError(
         "--all cannot be combined with a path or --folder",
@@ -2001,10 +1919,7 @@ export default async function plugin(
     ].join("\n");
   }
 
-  async function runPull(
-    args: ReturnType<typeof parseCli>,
-    context: PluginCliContext,
-  ) {
+  async function runPull(args: SyncCliArgs, context: PluginCliContext) {
     const scope = parsePullScope(args);
     const snapshot = await syncSnapshot(args.vaultId, scope);
     const cwd = context.cwd ?? process.cwd();
@@ -2200,7 +2115,7 @@ export default async function plugin(
   }
 
   async function runPushPlan(
-    args: ReturnType<typeof parseCli>,
+    args: SyncCliArgs,
     context: PluginCliContext,
     apply: boolean,
   ) {
@@ -2574,211 +2489,471 @@ export default async function plugin(
   );
   routeRpc("/sync/apply", docsRpcContract.syncApply.input, handlers.syncApply);
 
-  bb.cli.register({
-    name: "docs",
-    summary: "Discover and safely sync Docs vaults",
-    commands: [
-      {
-        name: "vaults",
-        summary: "List configured vaults",
-        usage: "bb docs vaults [--json]",
-      },
-      {
-        name: "vault-add",
-        summary: "Add a vault",
-        usage: "bb docs vault-add <name> <absolute-root> [host-id]",
-      },
-      {
-        name: "vault-remove",
-        summary: "Remove a vault configuration",
-        usage: "bb docs vault-remove <id>",
-      },
-      {
-        name: "list",
-        summary: "List notes and folders",
-        usage: "bb docs list [--vault <id>] [--json]",
-      },
-      {
-        name: "read",
-        summary: "Read a file",
-        usage: "bb docs read <path> [--vault <id>]",
-      },
-      {
-        name: "pull",
-        summary: "Pull one file, a folder subtree, or a whole vault",
-        usage:
-          "bb docs pull <path> [--folder] | --all [--vault <id>] [--into <dir>] [--workspace-host <id>] [--json]",
-      },
-      {
-        name: "status",
-        summary: "Show local edits, conflicts, and ignored deletions",
-        usage: DOCS_STATUS_USAGE,
-      },
-      {
-        name: "push",
-        summary: "Safely push local edits using optimistic concurrency",
-        usage:
-          "bb docs push [workspace-dir] [--delete] [--dry-run] [--diff] [--workspace-host <id>] [--json]",
-      },
-      {
-        name: "write",
-        summary: "Deprecated: write a UTF-8 file directly",
-        usage: "bb docs write <path> --content <text> [--vault <id>]",
-      },
-      {
-        name: "mkdir",
-        summary: "Deprecated: create a folder directly",
-        usage: "bb docs mkdir <path> [--vault <id>]",
-      },
-      {
-        name: "move",
-        summary: "Deprecated: move a path directly",
-        usage: "bb docs move <from> <to> [--vault <id>]",
-      },
-      {
-        name: "remove",
-        summary: "Deprecated: remove a file or directory directly",
-        usage: "bb docs remove <path> [--vault <id>] [--recursive]",
-      },
-    ],
-    async run(argv, context) {
-      const wantsJson = argv.includes("--json");
-      if (
-        argv.length === 0 ||
-        argv[0] === "help" ||
-        argv[0] === "--help" ||
-        argv[0] === "-h"
-      ) {
-        return { exitCode: 0, stdout: DOCS_CLI_USAGE };
-      }
-      if (
-        argv[0] === "status" &&
-        (argv[1] === "help" || argv[1] === "--help" || argv[1] === "-h")
-      ) {
-        return { exitCode: 0, stdout: DOCS_STATUS_HELP };
-      }
-      try {
-        const args = parseCli(argv);
-        validateCliPositionals(args);
-        let result: unknown;
-        let exitCode = 0;
-        let warning = "";
-        if (args.command === "vaults") result = listVaults();
-        else if (args.command === "vault-add")
-          result = await handlers.createVault({
-            name: args.positionals[0],
-            rootPath: args.positionals[1],
-            hostId: args.positionals[2],
-          });
-        else if (args.command === "vault-remove")
-          result = await handlers.removeVault({ vaultId: args.positionals[0] });
-        else if (args.command === "list")
-          result = await notebookData(args.vaultId);
-        else if (args.command === "read")
-          result = await readFile(args.vaultId, args.positionals[0]);
-        else if (args.command === "pull") {
-          result = await runPull(args, context);
-          if (isRecord(result) && result.outcome === "conflict") exitCode = 3;
-          else if (isRecord(result) && result.outcome === "partial")
-            exitCode = 1;
-        } else if (args.command === "status") {
-          result = await runPushPlan(args, context, false);
-          if (isRecord(result) && result.outcome === "conflict") exitCode = 3;
-          else if (
-            isRecord(result) &&
-            ((Array.isArray(result.writes) && result.writes.length > 0) ||
-              (Array.isArray(result.deletes) && result.deletes.length > 0) ||
-              (Array.isArray(result.directories) &&
-                result.directories.length > 0) ||
-              (Array.isArray(result.deleteDirectories) &&
-                result.deleteDirectories.length > 0) ||
-              (Array.isArray(result.warnings) && result.warnings.length > 0))
-          )
-            exitCode = 4;
-        } else if (args.command === "push") {
-          result = await runPushPlan(args, context, true);
-          if (
-            isRecord(result) &&
-            (result.outcome === "conflict" || result.outcome === "partial")
-          )
-            exitCode = result.outcome === "conflict" ? 3 : 1;
-        } else if (args.command === "write") {
-          if (args.content === undefined)
-            throw new CliUsageError("write requires --content <text>");
-          result = await writeFile({
-            vaultId: args.vaultId,
-            rawPath: args.positionals[0],
-            content: args.content,
-          });
-          warning =
-            "Deprecated: direct Docs mutations will be removed; use bb docs pull, edit local files, then bb docs push.";
-        } else if (args.command === "mkdir") {
-          result = await handlers.createFolder({
-            vaultId: args.vaultId,
-            path: args.positionals[0],
-          });
-          warning =
-            "Deprecated: direct Docs mutations will be removed; use bb docs pull, edit local files, then bb docs push.";
-        } else if (args.command === "move") {
-          result = await movePath(
-            args.vaultId,
-            args.positionals[0],
-            args.positionals[1],
-          );
-          warning =
-            "Deprecated: direct Docs mutations will be removed; use bb docs pull, edit local files, then bb docs push.";
-        } else if (args.command === "remove") {
-          result = await removePath(
-            args.vaultId,
-            args.positionals[0],
-            args.recursive,
-          );
-          warning =
-            "Deprecated: direct Docs mutations will be removed; use bb docs pull, edit local files, then bb docs push --delete.";
-        } else {
-          return {
-            exitCode: 2,
-            stderr: DOCS_CLI_USAGE,
-          };
-        }
-        const output =
-          args.command === "read" &&
-          !args.json &&
-          isRecord(result) &&
-          typeof result.content === "string"
-            ? result.content
-            : args.json
-              ? JSON.stringify(result, null, 2)
-              : formatSyncHumanOutput(args.command, result);
-        return {
-          exitCode,
-          stdout: output,
-          ...(warning ? { stderr: warning } : {}),
-        };
-      } catch (error) {
-        const message = errorMessage(error);
-        const usageError = error instanceof CliUsageError;
-        return {
-          exitCode: usageError ? 2 : 1,
-          ...(wantsJson
-            ? {
-                stdout: JSON.stringify(
-                  {
-                    outcome: "error",
-                    error: {
-                      code: usageError ? "usage_error" : "operation_failed",
-                      message,
-                    },
-                  },
-                  null,
-                  2,
+  async function attemptCli(
+    work: () => Promise<PluginCliResult>,
+  ): Promise<PluginCliResult> {
+    try {
+      return await work();
+    } catch (error) {
+      if (error instanceof experimental_CliError) throw error;
+      throw new experimental_CliError(errorMessage(error), {
+        code: "operation_failed",
+      });
+    }
+  }
+
+  function renderCliResult(
+    command: string,
+    result: unknown,
+    asJson: boolean,
+  ): string {
+    return asJson
+      ? JSON.stringify(result, null, 2)
+      : formatSyncHumanOutput(command, result);
+  }
+
+  function workspaceArgs(args: {
+    positionals: string[];
+    vaultId: string | undefined;
+    into: string | undefined;
+    workspaceHostId: string | undefined;
+    all?: boolean;
+    folder?: boolean;
+    delete?: boolean;
+    dryRun?: boolean;
+    diff?: boolean;
+  }): SyncCliArgs {
+    return {
+      positionals: args.positionals,
+      vaultId: args.vaultId,
+      into: args.into,
+      workspaceHostId: args.workspaceHostId,
+      all: args.all ?? false,
+      folder: args.folder ?? false,
+      delete: args.delete ?? false,
+      dryRun: args.dryRun ?? false,
+      diff: args.diff ?? false,
+    };
+  }
+
+  function statusExitCode(result: unknown): number {
+    if (!isRecord(result)) return 0;
+    if (result.outcome === "conflict") return 3;
+    const changed = [
+      "writes",
+      "deletes",
+      "directories",
+      "deleteDirectories",
+      "warnings",
+    ].some(
+      (key) =>
+        Array.isArray(result[key]) && (result[key] as unknown[]).length > 0,
+    );
+    return changed ? 4 : 0;
+  }
+
+  bb.cli.register(
+    experimental_defineCli({
+      name: "docs",
+      summary: "Discover and safely sync Docs vaults",
+      description: DOCS_DESCRIPTION,
+      usageErrorExitCode: 2,
+      commands: {
+        vaults: experimental_cliCommand({
+          summary: "List configured vaults",
+          suggestFor: ["vault"],
+          options: { json: JSON_OPTION },
+          run: (input) =>
+            attemptCli(async () => ({
+              exitCode: 0,
+              stdout: renderCliResult(
+                "vaults",
+                listVaults(),
+                input.options.json,
+              ),
+            })),
+        }),
+        "vault-add": experimental_cliCommand({
+          summary: "Add a vault",
+          suggestFor: ["add-vault", "vault-create"],
+          positionals: [
+            {
+              name: "name",
+              description: "Display name for the vault",
+              required: true,
+            },
+            {
+              name: "absolute-root",
+              description:
+                "Absolute directory on the host; it is created when missing",
+              required: true,
+            },
+            {
+              name: "host-id",
+              description:
+                "Connected host holding the directory; omit for this server",
+            },
+          ],
+          options: { json: JSON_OPTION },
+          run: (input) =>
+            attemptCli(async () => ({
+              exitCode: 0,
+              stdout: renderCliResult(
+                "vault-add",
+                await handlers.createVault({
+                  name: input.positionals.name,
+                  rootPath: input.positionals["absolute-root"],
+                  hostId: input.positionals["host-id"],
+                }),
+                input.options.json,
+              ),
+            })),
+        }),
+        "vault-remove": experimental_cliCommand({
+          summary: "Remove a vault configuration",
+          suggestFor: ["remove-vault", "vault-delete"],
+          positionals: [
+            {
+              name: "id",
+              description: "Vault ID from `bb docs vaults`",
+              required: true,
+            },
+          ],
+          options: { json: JSON_OPTION },
+          run: (input) =>
+            attemptCli(async () => ({
+              exitCode: 0,
+              stdout: renderCliResult(
+                "vault-remove",
+                await handlers.removeVault({ vaultId: input.positionals.id }),
+                input.options.json,
+              ),
+            })),
+        }),
+        list: experimental_cliCommand({
+          summary: "List notes and folders",
+          aliases: ["ls"],
+          options: { vault: VAULT_OPTION, json: JSON_OPTION },
+          run: (input) =>
+            attemptCli(async () => ({
+              exitCode: 0,
+              stdout: renderCliResult(
+                "list",
+                await notebookData(input.options.vault),
+                input.options.json,
+              ),
+            })),
+        }),
+        read: experimental_cliCommand({
+          summary: "Read a file",
+          aliases: ["cat"],
+          positionals: [
+            {
+              name: "path",
+              description: "Path relative to the vault root",
+              required: true,
+            },
+          ],
+          options: { vault: VAULT_OPTION, json: JSON_OPTION },
+          run: (input) =>
+            attemptCli(async () => {
+              const result = await readFile(
+                input.options.vault,
+                input.positionals.path,
+              );
+              return {
+                exitCode: 0,
+                stdout:
+                  !input.options.json &&
+                  isRecord(result) &&
+                  typeof result.content === "string"
+                    ? result.content
+                    : renderCliResult("read", result, input.options.json),
+              };
+            }),
+        }),
+        pull: experimental_cliCommand({
+          summary: "Pull one file, a folder subtree, or a whole vault",
+          description:
+            "Writes the scope into a workspace directory with a .bb-docs-state.json manifest. Edit the files with ordinary tools, then run bb docs status and bb docs push.",
+          suggestFor: ["fetch", "clone", "checkout"],
+          positionals: [
+            {
+              name: "path",
+              description:
+                "Vault file, or folder with --folder; omit only with --all",
+            },
+          ],
+          options: {
+            vault: VAULT_OPTION,
+            into: {
+              type: "string",
+              placeholder: "dir",
+              aliases: ["dir", "target"],
+              description:
+                "Workspace directory to pull into; defaults to docs-<vault-id> under the working directory",
+            },
+            "workspace-host": WORKSPACE_HOST_OPTION,
+            all: {
+              type: "boolean",
+              description: "Pull the whole vault instead of one path",
+            },
+            folder: {
+              type: "boolean",
+              aliases: ["recursive", "dir"],
+              description: "Treat the path as a folder subtree",
+            },
+            json: JSON_OPTION,
+          },
+          constraints: [{ kind: "at-most-one", options: ["all", "folder"] }],
+          run: (input, context) =>
+            attemptCli(async () => {
+              const path = input.positionals.path;
+              const result = await runPull(
+                workspaceArgs({
+                  positionals: path === undefined ? [] : [path],
+                  vaultId: input.options.vault,
+                  into: input.options.into,
+                  workspaceHostId: input.options["workspace-host"],
+                  all: input.options.all,
+                  folder: input.options.folder,
+                }),
+                context,
+              );
+              return {
+                exitCode: !isRecord(result)
+                  ? 0
+                  : result.outcome === "conflict"
+                    ? 3
+                    : result.outcome === "partial"
+                      ? 1
+                      : 0,
+                stdout: renderCliResult("pull", result, input.options.json),
+              };
+            }),
+        }),
+        status: experimental_cliCommand({
+          summary: "Show local edits, conflicts, and ignored deletions",
+          description: DOCS_STATUS_DESCRIPTION,
+          positionals: [
+            {
+              name: "workspace-dir",
+              description:
+                "Pulled workspace directory; defaults to --into or docs-<vault-id>",
+            },
+          ],
+          options: {
+            vault: VAULT_OPTION,
+            "workspace-host": WORKSPACE_HOST_OPTION,
+            delete: DELETE_OPTION,
+            diff: DIFF_OPTION,
+            json: JSON_OPTION,
+          },
+          run: (input, context) =>
+            attemptCli(async () => {
+              const directory = input.positionals["workspace-dir"];
+              const result = await runPushPlan(
+                workspaceArgs({
+                  positionals: directory === undefined ? [] : [directory],
+                  vaultId: input.options.vault,
+                  into: undefined,
+                  workspaceHostId: input.options["workspace-host"],
+                  delete: input.options.delete,
+                  diff: input.options.diff,
+                }),
+                context,
+                false,
+              );
+              return {
+                exitCode: statusExitCode(result),
+                stdout: renderCliResult("status", result, input.options.json),
+              };
+            }),
+        }),
+        push: experimental_cliCommand({
+          summary: "Safely push local edits using optimistic concurrency",
+          description:
+            "Refuses to write when a vault file changed since the pull; resolve the conflict, then pull or push again.",
+          positionals: [
+            {
+              name: "workspace-dir",
+              description:
+                "Pulled workspace directory; defaults to --into or docs-<vault-id>",
+            },
+          ],
+          options: {
+            vault: VAULT_OPTION,
+            "workspace-host": WORKSPACE_HOST_OPTION,
+            delete: DELETE_OPTION,
+            "dry-run": {
+              type: "boolean",
+              aliases: ["dryrun", "plan"],
+              description: "Plan the push without writing to the vault",
+            },
+            diff: DIFF_OPTION,
+            json: JSON_OPTION,
+          },
+          run: (input, context) =>
+            attemptCli(async () => {
+              const directory = input.positionals["workspace-dir"];
+              const result = await runPushPlan(
+                workspaceArgs({
+                  positionals: directory === undefined ? [] : [directory],
+                  vaultId: input.options.vault,
+                  into: undefined,
+                  workspaceHostId: input.options["workspace-host"],
+                  delete: input.options.delete,
+                  dryRun: input.options["dry-run"],
+                  diff: input.options.diff,
+                }),
+                context,
+                true,
+              );
+              return {
+                exitCode: !isRecord(result)
+                  ? 0
+                  : result.outcome === "conflict"
+                    ? 3
+                    : result.outcome === "partial"
+                      ? 1
+                      : 0,
+                stdout: renderCliResult("push", result, input.options.json),
+              };
+            }),
+        }),
+        write: experimental_cliCommand({
+          summary: "Deprecated: write a UTF-8 file directly",
+          description:
+            "Use bb docs pull, edit the files, then bb docs push instead.",
+          positionals: [
+            {
+              name: "path",
+              description: "Path relative to the vault root",
+              required: true,
+            },
+          ],
+          options: {
+            vault: VAULT_OPTION,
+            content: {
+              type: "string",
+              required: true,
+              placeholder: "text",
+              aliases: ["text", "body"],
+              description: "Complete UTF-8 file contents",
+            },
+            json: JSON_OPTION,
+          },
+          run: (input) =>
+            attemptCli(async () => ({
+              exitCode: 0,
+              stdout: renderCliResult(
+                "write",
+                await writeFile({
+                  vaultId: input.options.vault,
+                  rawPath: input.positionals.path,
+                  content: input.options.content,
+                }),
+                input.options.json,
+              ),
+              stderr: DEPRECATED_MUTATION_WARNING,
+            })),
+        }),
+        mkdir: experimental_cliCommand({
+          summary: "Deprecated: create a folder directly",
+          description:
+            "Use bb docs pull, create the directory locally, then bb docs push instead.",
+          positionals: [
+            {
+              name: "path",
+              description: "Folder path relative to the vault root",
+              required: true,
+            },
+          ],
+          options: { vault: VAULT_OPTION, json: JSON_OPTION },
+          run: (input) =>
+            attemptCli(async () => ({
+              exitCode: 0,
+              stdout: renderCliResult(
+                "mkdir",
+                await handlers.createFolder({
+                  vaultId: input.options.vault,
+                  path: input.positionals.path,
+                }),
+                input.options.json,
+              ),
+              stderr: DEPRECATED_MUTATION_WARNING,
+            })),
+        }),
+        move: experimental_cliCommand({
+          summary: "Deprecated: move a path directly",
+          description:
+            "Use bb docs pull, move the file locally, then bb docs push --delete instead.",
+          positionals: [
+            {
+              name: "from",
+              description: "Existing path relative to the vault root",
+              required: true,
+            },
+            {
+              name: "to",
+              description: "Destination path relative to the vault root",
+              required: true,
+            },
+          ],
+          options: { vault: VAULT_OPTION, json: JSON_OPTION },
+          run: (input) =>
+            attemptCli(async () => ({
+              exitCode: 0,
+              stdout: renderCliResult(
+                "move",
+                await movePath(
+                  input.options.vault,
+                  input.positionals.from,
+                  input.positionals.to,
                 ),
-              }
-            : { stderr: message }),
-        };
-      }
-    },
-  });
+                input.options.json,
+              ),
+              stderr: DEPRECATED_MUTATION_WARNING,
+            })),
+        }),
+        remove: experimental_cliCommand({
+          summary: "Deprecated: remove a file or directory directly",
+          description:
+            "Use bb docs pull, delete the file locally, then bb docs push --delete instead.",
+          aliases: ["rm"],
+          positionals: [
+            {
+              name: "path",
+              description: "Path relative to the vault root",
+              required: true,
+            },
+          ],
+          options: {
+            vault: VAULT_OPTION,
+            recursive: {
+              type: "boolean",
+              description: "Remove a directory and everything inside it",
+            },
+            json: JSON_OPTION,
+          },
+          run: (input) =>
+            attemptCli(async () => ({
+              exitCode: 0,
+              stdout: renderCliResult(
+                "remove",
+                await removePath(
+                  input.options.vault,
+                  input.positionals.path,
+                  input.options.recursive,
+                ),
+                input.options.json,
+              ),
+              stderr: DEPRECATED_DELETION_WARNING,
+            })),
+        }),
+      },
+    }),
+  );
 
   bb.ui.registerMentionProvider({
     id: "note",

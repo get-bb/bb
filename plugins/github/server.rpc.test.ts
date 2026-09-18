@@ -256,6 +256,88 @@ describe("github plugin RPC behavior", () => {
     ).toEqual([]);
   });
 
+  it("rejects malformed CLI invocations instead of broadening or ignoring them", async () => {
+    const { harness } = await loadPlugin();
+
+    await expect(
+      harness.runCli(["issues", "bad/repo/shape"]),
+    ).resolves.toMatchObject({
+      exitCode: 1,
+      stderr: 'Invalid repository "bad/repo/shape"; expected owner/repo.\n',
+    });
+    await expect(
+      harness.runCli(["prs", "acme/widgets", "extra"]),
+    ).resolves.toMatchObject({
+      exitCode: 1,
+      stderr: expect.stringContaining("unexpected argument 'extra'"),
+    });
+    await expect(harness.runCli(["repos", "--jsonn"])).resolves.toMatchObject({
+      exitCode: 1,
+      stderr: expect.stringContaining(
+        "unknown option '--jsonn' (Did you mean --json?)",
+      ),
+    });
+    await expect(harness.runCli(["issus"])).resolves.toMatchObject({
+      exitCode: 1,
+      stderr: expect.stringContaining(
+        "unknown command 'issus' (Did you mean issues?)",
+      ),
+    });
+
+    const failure = await harness.runCli([
+      "issues",
+      "bad/repo/shape",
+      "--json",
+    ]);
+    expect(failure.exitCode).toBe(1);
+    expect(JSON.parse(failure.stdout)).toEqual({
+      ok: false,
+      error: {
+        code: "invalid_repository",
+        message: 'Invalid repository "bad/repo/shape"; expected owner/repo.',
+      },
+    });
+
+    const help = await harness.runCli(["--help"]);
+    expect(help.exitCode).toBe(0);
+    expect(help.stdout).toContain("bb github issues");
+    expect(help.stdout).toContain("bb github sync");
+  });
+
+  it("reports repositories, cached rows, and sync counts as JSON", async () => {
+    const { harness } = await loadPlugin();
+
+    const repos = await harness.runCli(["repos", "--json"]);
+    expect(repos.exitCode).toBe(0);
+    expect(JSON.parse(repos.stdout)).toEqual({
+      ok: true,
+      repos: [{ repo: "acme/widgets", projectId: null }],
+      ignoredExtraRepos: [],
+    });
+
+    const sync = await harness.runCli(["sync", "--json"]);
+    expect(sync.exitCode).toBe(0);
+    expect(JSON.parse(sync.stdout)).toEqual({ ok: true, repos: 1, items: 2 });
+
+    const issues = await harness.runCli(["issues", "acme/widgets", "--json"]);
+    expect(issues.exitCode).toBe(0);
+    const payload = JSON.parse(issues.stdout);
+    expect(payload).toMatchObject({
+      ok: true,
+      items: [
+        {
+          repo: "acme/widgets",
+          number: 7,
+          kind: "issue",
+          state: "OPEN",
+          title: "Cache mutations",
+          labels: ["bug", "old"],
+        },
+      ],
+    });
+    expect(payload.items[0]).not.toHaveProperty("body");
+  });
+
   it("syncs, filters, mutates, and exposes the same cached issue across surfaces", async () => {
     const { harness } = await loadPlugin();
 

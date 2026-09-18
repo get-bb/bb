@@ -168,14 +168,46 @@ describe("secrets plugin server", () => {
   it.each([
     {
       argv: ["request", "API_KEY", "--purpose", "--write-env", ".env"],
-      message: "--purpose requires a non-empty description.",
+      message: "--purpose requires a value",
     },
     {
       argv: ["request", "API_KEY", "--describe", "--write-env", ".env"],
-      message: "--describe requires NAME and DESCRIPTION.",
+      message: "--describe requires a value",
+    },
+    {
+      argv: ["request", "API_KEY", "--describe", "API_KEY"],
+      message: "missing required options: --write-env",
+    },
+    {
+      argv: ["request", "--write-env", ".env"],
+      message: "missing required arguments: <name>",
+    },
+    {
+      argv: ["request", "API_KEY", "--write-env", ".env", "--wrote-env", "x"],
+      message: "unknown option '--wrote-env' (Did you mean --write-env?)",
+    },
+    {
+      argv: [
+        "request",
+        "API_KEY",
+        "--write-env",
+        ".env",
+        "--describe",
+        "OTHER=text",
+      ],
+      message: "--describe references unrequested variable OTHER.",
+    },
+    {
+      argv: ["request", "API_KEY", "API_KEY", "--write-env", ".env"],
+      message: "Variable names must be unique.",
+    },
+    {
+      argv: ["request", "1BAD", "--write-env", ".env"],
+      message:
+        "Variable name must start with a letter or underscore and contain only letters, digits, and underscores.",
     },
   ])(
-    "reports a usage error for missing option values",
+    "reports a usage error for malformed invocation $argv",
     async ({ argv, message }) => {
       const host = createFakePluginHost({ pluginId: "secrets" });
       plugin(host.bb as unknown as Parameters<typeof plugin>[0]);
@@ -185,7 +217,56 @@ describe("secrets plugin server", () => {
         cwd: "/workspace",
       });
 
-      expect(result).toMatchObject({ exitCode: 1, stderr: `${message}\n` });
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr.split("\n")[0]).toContain(message);
+      expect(host.harness.pendingInteractions).toEqual([]);
+    },
+  );
+
+  it("accepts --describe NAME=TEXT and reports failures as JSON with --json", async () => {
+    const host = createFakePluginHost({ pluginId: "secrets" });
+    plugin(host.bb as unknown as Parameters<typeof plugin>[0]);
+
+    const result = await host.harness.runCli(
+      [
+        "request",
+        "API_KEY",
+        "--write-env",
+        ".env",
+        "--describe",
+        "API_KEY=Primary API key",
+        "--json",
+      ],
+      { cwd: "/workspace" },
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(JSON.parse(result.stdout)).toEqual({
+      ok: false,
+      error: {
+        code: "missing_thread",
+        message: "bb secret request must run from a bb thread.",
+      },
+    });
+    expect(result.stderr).toBe(
+      "bb secret request must run from a bb thread.\n",
+    );
+    expect(host.harness.pendingInteractions).toEqual([]);
+  });
+
+  it.each([["--help"], ["request", "--help"], ["help"]])(
+    "documents %s without running the command",
+    async (...argv) => {
+      const host = createFakePluginHost({ pluginId: "secrets" });
+      plugin(host.bb as unknown as Parameters<typeof plugin>[0]);
+
+      const result = await host.harness.runCli(argv, {
+        threadId: "thr-test",
+        cwd: "/workspace",
+      });
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("bb secret request");
       expect(host.harness.pendingInteractions).toEqual([]);
     },
   );

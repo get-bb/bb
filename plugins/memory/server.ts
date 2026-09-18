@@ -1,8 +1,10 @@
 import { randomBytes } from "node:crypto";
 import {
   defineRpcContract,
+  experimental_CliError,
+  experimental_cliCommand,
+  experimental_defineCli,
   type BbPluginApi,
-  type PluginCliContext,
 } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { isMemoryKind, MEMORY_KINDS, type MemoryKind } from "./memory-kinds.js";
@@ -126,13 +128,7 @@ interface MemoryUpdate {
   writeReason: string;
 }
 
-interface ParsedArgv {
-  positionals: string[];
-  options: Map<string, string[]>;
-  flags: Set<string>;
-}
-
-class CliError extends Error {}
+class CliError extends experimental_CliError {}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -266,104 +262,17 @@ function validateTags(values: string[]): string[] {
   return tags;
 }
 
-function parseKind(value: string | undefined): MemoryKind {
-  const kind = value ?? "fact";
-  if (!isMemoryKind(kind)) {
-    throw new CliError(`kind must be one of: ${MEMORY_KINDS.join(", ")}`);
-  }
-  return kind;
-}
-
-function parseInteger(
-  label: string,
-  value: string | undefined,
-  options: { defaultValue?: number; min: number; max: number },
-): number {
-  if (value === undefined && options.defaultValue !== undefined) {
-    return options.defaultValue;
-  }
-  if (value === undefined || !/^-?\d+$/u.test(value)) {
-    throw new CliError(`${label} must be an integer`);
-  }
-  const parsed = Number(value);
-  if (parsed < options.min || parsed > options.max) {
-    throw new CliError(
-      `${label} must be between ${options.min} and ${options.max}`,
-    );
-  }
-  return parsed;
-}
-
-function parseBoolean(
-  label: string,
-  value: string | undefined,
-): boolean | undefined {
-  if (value === undefined) return undefined;
-  if (value === "true") return true;
-  if (value === "false") return false;
-  throw new CliError(`${label} must be true or false`);
-}
-
-function parseArgv(argv: string[]): ParsedArgv {
-  const positionals: string[] = [];
-  const options = new Map<string, string[]>();
-  const flags = new Set<string>();
-  for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index] ?? "";
-    if (!token.startsWith("--")) {
-      positionals.push(token);
-      continue;
-    }
-    const name = token.slice(2);
-    const next = argv[index + 1];
-    if (next === undefined || next.startsWith("--")) {
-      flags.add(name);
-      continue;
-    }
-    const values = options.get(name) ?? [];
-    values.push(next);
-    options.set(name, values);
-    index += 1;
-  }
-  return { positionals, options, flags };
-}
-
-function option(args: ParsedArgv, name: string): string | undefined {
-  const values = args.options.get(name);
-  return values?.[values.length - 1];
-}
-
-function requireOption(args: ParsedArgv, name: string): string {
-  const value = option(args, name);
-  if (value === undefined) throw new CliError(`missing required --${name}`);
-  return value;
-}
-
-function readScope(args: ParsedArgv): ReadScope {
-  const value = option(args, "scope") ?? "all";
-  if (value !== "global" && value !== "project" && value !== "all") {
-    throw new CliError("scope must be global, project, or all");
-  }
-  return value;
-}
-
 function writeScope(
-  args: ParsedArgv,
-  ctx: PluginCliContext,
-): {
-  scope: MemoryScope;
-  projectId: string | null;
-} {
-  const value = requireOption(args, "scope");
-  if (value === "global") return { scope: "global", projectId: null };
-  if (value !== "project")
-    throw new CliError("write scope must be project or global");
-  if (!ctx.projectId) {
+  scope: MemoryScope,
+  projectId: string | undefined,
+): { scope: MemoryScope; projectId: string | null } {
+  if (scope === "global") return { scope: "global", projectId: null };
+  if (projectId === undefined) {
     throw new CliError(
       "project-scoped memory requires a BB project context; run inside a project thread",
     );
   }
-  return { scope: "project", projectId: ctx.projectId };
+  return { scope: "project", projectId };
 }
 
 function scopeSql(
@@ -794,16 +703,9 @@ function renderCatalog(store: MemoryStore, projectId: string): string {
   return `${header}${finalLines.join("\n")}${footer}`;
 }
 
-const USAGE = [
-  "Usage:",
-  "  bb memory catalog [--scope all|project|global] [--limit N] [--json]",
-  "  bb memory search <query...> [--scope all|project|global] [--limit N] [--json]",
-  "  bb memory get <id-or-name> [--scope all|project|global] [--json]",
-  "  bb memory add --scope project|global --name NAME --summary TEXT --details TEXT --reason TEXT [--kind KIND] [--tag TAG]... [--importance 0-100] [--pinned] [--json]",
-  "  bb memory update <id> --expected-version N --reason TEXT [--summary TEXT] [--details TEXT] [--kind KIND] [--tag TAG]... [--importance 0-100] [--pinned true|false] [--json]",
-  "  bb memory forget <id> --expected-version N --reason TEXT [--json]",
-  "  bb memory history <id> [--limit N] [--json]",
-].join("\n");
+const SCOPE_DESCRIPTION = "Which memories to read";
+const READ_SCOPES = ["all", "project", "global"] as const;
+const MAX_EXPECTED_VERSION = Number.MAX_SAFE_INTEGER;
 
 function jsonOutput(value: unknown): string {
   return JSON.stringify(value, null, 2);
@@ -914,247 +816,418 @@ export default async function plugin(bb: BbPluginApi) {
     renderCatalog(store, projectId),
   );
 
-  bb.cli.register({
-    name: "memory",
-    summary: "Read and maintain durable global and project memories",
-    commands: [
-      {
-        name: "catalog",
-        summary: "List compact memory summaries",
-        usage:
-          "bb memory catalog [--scope all|project|global] [--limit N] [--json]",
-      },
-      {
-        name: "search",
-        summary: "Search memory summaries and details",
-        usage:
-          "bb memory search <query...> [--scope all|project|global] [--limit N] [--json]",
-      },
-      {
-        name: "get",
-        summary: "Read one complete memory",
-        usage:
-          "bb memory get <id-or-name> [--scope all|project|global] [--json]",
-      },
-      {
-        name: "add",
-        summary: "Save a project or global memory",
-        usage:
-          "bb memory add --scope project|global --name NAME --summary TEXT --details TEXT --reason TEXT [options]",
-      },
-      {
-        name: "update",
-        summary: "Update a memory with version checking",
-        usage:
-          "bb memory update <id> --expected-version N --reason TEXT [options]",
-      },
-      {
-        name: "forget",
-        summary: "Soft-delete a memory with version checking",
-        usage: "bb memory forget <id> --expected-version N --reason TEXT",
-      },
-      {
-        name: "history",
-        summary: "Show a memory's version history",
-        usage: "bb memory history <id> [--limit N] [--json]",
-      },
-    ],
-    async run(argv, ctx) {
-      const [command, ...rest] = argv;
-      if (command === undefined || command === "help" || command === "--help") {
-        return { exitCode: 0, stdout: USAGE };
-      }
-      try {
-        const args = parseArgv(rest);
-        const wantsJson = args.flags.has("json");
-        if (command === "catalog" || command === "list") {
-          const scope = readScope(args);
-          const limit = parseInteger("limit", option(args, "limit"), {
-            defaultValue: DEFAULT_RESULT_LIMIT,
-            min: 1,
-            max: MAX_RESULT_LIMIT,
-          });
-          const result = store.list(scope, ctx.projectId, limit);
-          return {
-            exitCode: 0,
-            stdout: wantsJson
-              ? jsonOutput({
-                  ok: true,
-                  scope,
-                  memories: result.memories.map(toMemorySummary),
-                  total: result.total,
-                })
-              : result.memories
-                  .map((memory) => displayMemory(memory, false))
-                  .join("\n") || "No memories.",
-          };
-        }
-        if (command === "search") {
-          const query = args.positionals.join(" ").trim();
-          if (!query) throw new CliError("search requires a query");
-          const scope = readScope(args);
-          const limit = parseInteger("limit", option(args, "limit"), {
-            defaultValue: DEFAULT_RESULT_LIMIT,
-            min: 1,
-            max: MAX_RESULT_LIMIT,
-          });
-          const memories = store.search(query, scope, ctx.projectId, limit);
-          return {
-            exitCode: 0,
-            stdout: wantsJson
-              ? jsonOutput({
-                  ok: true,
-                  query,
-                  scope,
-                  memories: memories.map(toMemorySummary),
-                })
-              : memories
-                  .map((memory) => displayMemory(memory, false))
-                  .join("\n") || "No matches.",
-          };
-        }
-        if (command === "get") {
-          const idOrName = args.positionals[0];
-          if (!idOrName) throw new CliError("get requires an id or name");
-          const memory = store.get(idOrName, readScope(args), ctx.projectId);
-          if (!memory)
-            throw new CliError(
-              `memory "${idOrName}" was not found in the current scope`,
+  bb.cli.register(
+    experimental_defineCli({
+      name: "memory",
+      summary: "Read and maintain durable global and project memories",
+      description:
+        "Memories are summaries first: search or list, then read one in full.\nProject scope holds repository facts; global scope holds durable user preferences.",
+      commands: {
+        catalog: experimental_cliCommand({
+          summary: "List compact memory summaries",
+          aliases: ["list"],
+          options: {
+            scope: {
+              type: "enum",
+              values: READ_SCOPES,
+              default: "all",
+              description: SCOPE_DESCRIPTION,
+            },
+            limit: {
+              type: "integer",
+              min: 1,
+              max: MAX_RESULT_LIMIT,
+              default: DEFAULT_RESULT_LIMIT,
+              description: "How many memories to list",
+            },
+            json: {
+              type: "boolean",
+              description: "Emit machine-readable JSON",
+            },
+          },
+          run(input, ctx) {
+            const { scope, limit } = input.options;
+            const result = store.list(scope, ctx.projectId, limit);
+            return {
+              exitCode: 0,
+              stdout: input.options.json
+                ? jsonOutput({
+                    ok: true,
+                    scope,
+                    memories: result.memories.map(toMemorySummary),
+                    total: result.total,
+                  })
+                : result.memories
+                    .map((memory) => displayMemory(memory, false))
+                    .join("\n") || "No memories.",
+            };
+          },
+        }),
+        search: experimental_cliCommand({
+          summary: "Search memory summaries and details",
+          positionals: [
+            {
+              name: "query",
+              description: "Words to match; every word is searched",
+              required: true,
+              variadic: true,
+            },
+          ],
+          options: {
+            scope: {
+              type: "enum",
+              values: READ_SCOPES,
+              default: "all",
+              description: SCOPE_DESCRIPTION,
+            },
+            limit: {
+              type: "integer",
+              min: 1,
+              max: MAX_RESULT_LIMIT,
+              default: DEFAULT_RESULT_LIMIT,
+              description: "How many matches to return",
+            },
+            json: {
+              type: "boolean",
+              description: "Emit machine-readable JSON",
+            },
+          },
+          run(input, ctx) {
+            const query = input.positionals.query.join(" ").trim();
+            if (!query) throw new CliError("search requires a query");
+            const { scope, limit } = input.options;
+            const memories = store.search(query, scope, ctx.projectId, limit);
+            return {
+              exitCode: 0,
+              stdout: input.options.json
+                ? jsonOutput({
+                    ok: true,
+                    query,
+                    scope,
+                    memories: memories.map(toMemorySummary),
+                  })
+                : memories
+                    .map((memory) => displayMemory(memory, false))
+                    .join("\n") || "No matches.",
+            };
+          },
+        }),
+        get: experimental_cliCommand({
+          summary: "Read one complete memory",
+          positionals: [
+            {
+              name: "id-or-name",
+              description: "Memory id or its unique name",
+              required: true,
+            },
+          ],
+          options: {
+            scope: {
+              type: "enum",
+              values: READ_SCOPES,
+              default: "all",
+              description: SCOPE_DESCRIPTION,
+            },
+            json: {
+              type: "boolean",
+              description: "Emit machine-readable JSON",
+            },
+          },
+          run(input, ctx) {
+            const idOrName = input.positionals["id-or-name"];
+            const memory = store.get(
+              idOrName,
+              input.options.scope,
+              ctx.projectId,
             );
-          return {
-            exitCode: 0,
-            stdout: wantsJson
-              ? jsonOutput({ ok: true, memory })
-              : displayMemory(memory, true),
-          };
-        }
-        if (command === "add") {
-          const scoped = writeScope(args, ctx);
-          const memory = store.add({
-            ...scoped,
-            name: requireOption(args, "name"),
-            summary: requireOption(args, "summary"),
-            details: requireOption(args, "details"),
-            kind: parseKind(option(args, "kind")),
-            tags: args.options.get("tag") ?? [],
-            importance: parseInteger("importance", option(args, "importance"), {
-              defaultValue: 50,
+            if (!memory) {
+              throw new CliError(
+                `memory "${idOrName}" was not found in the current scope`,
+              );
+            }
+            return {
+              exitCode: 0,
+              stdout: input.options.json
+                ? jsonOutput({ ok: true, memory })
+                : displayMemory(memory, true),
+            };
+          },
+        }),
+        add: experimental_cliCommand({
+          summary: "Save a project or global memory",
+          unexpectedPositionalHint:
+            "memory text belongs in --details <TEXT>, not a bare argument",
+          options: {
+            scope: {
+              type: "enum",
+              values: ["project", "global"],
+              required: true,
+              description:
+                "project for repository facts, global for user preferences",
+            },
+            name: {
+              type: "string",
+              required: true,
+              placeholder: "NAME",
+              aliases: ["title"],
+              description:
+                "Unique 1-80 character lowercase name (letters, digits, dots, underscores, hyphens)",
+            },
+            summary: {
+              type: "string",
+              required: true,
+              placeholder: "TEXT",
+              description: "One line retrieval summary, at most 400 characters",
+            },
+            details: {
+              type: "string",
+              required: true,
+              placeholder: "TEXT",
+              aliases: ["body", "text", "content"],
+              description: "Full memory text, at most 16000 characters",
+            },
+            reason: {
+              type: "string",
+              required: true,
+              placeholder: "TEXT",
+              description:
+                "Why this is worth remembering, at most 500 characters",
+            },
+            kind: {
+              type: "enum",
+              values: MEMORY_KINDS,
+              default: "fact",
+              aliases: ["type"],
+              description: "What kind of memory this is",
+            },
+            tag: {
+              type: "string",
+              repeatable: true,
+              split: ",",
+              placeholder: "TAG",
+              aliases: ["tags"],
+              description:
+                "Lowercase tag; repeat or pass a comma-separated list, at most 20",
+            },
+            importance: {
+              type: "integer",
               min: 0,
               max: 100,
-            }),
-            pinned: args.flags.has("pinned"),
-            sourceThreadId: ctx.threadId ?? null,
-            writeReason: requireOption(args, "reason"),
-          });
-          return {
-            exitCode: 0,
-            stdout: wantsJson
-              ? jsonOutput({ ok: true, memory })
-              : `Saved ${memory.id} v${memory.version} (${memory.scope}/${memory.name}).`,
-          };
-        }
-        if (command === "update") {
-          const id = args.positionals[0];
-          if (!id) throw new CliError("update requires a memory id");
-          const tags = args.options.has("tag")
-            ? args.options.get("tag")
-            : undefined;
-          const importance = args.options.has("importance")
-            ? parseInteger("importance", option(args, "importance"), {
-                min: 0,
-                max: 100,
-              })
-            : undefined;
-          const kind = args.options.has("kind")
-            ? parseKind(option(args, "kind"))
-            : undefined;
-          const pinned = parseBoolean("pinned", option(args, "pinned"));
-          if (
-            !args.options.has("summary") &&
-            !args.options.has("details") &&
-            kind === undefined &&
-            tags === undefined &&
-            importance === undefined &&
-            pinned === undefined
-          ) {
-            throw new CliError("update requires at least one field to change");
-          }
-          const memory = store.update(
-            id,
-            {
-              expectedVersion: parseInteger(
-                "expected-version",
-                requireOption(args, "expected-version"),
-                { min: 1, max: Number.MAX_SAFE_INTEGER },
-              ),
-              summary: option(args, "summary"),
-              details: option(args, "details"),
-              kind,
-              tags,
-              importance,
-              pinned,
-              sourceThreadId: ctx.threadId ?? null,
-              writeReason: requireOption(args, "reason"),
+              default: 50,
+              description: "Ranking weight for the injected catalog",
             },
-            ctx.projectId,
-          );
-          return {
-            exitCode: 0,
-            stdout: wantsJson
-              ? jsonOutput({ ok: true, memory })
-              : `Updated ${memory.id} to v${memory.version}.`,
-          };
-        }
-        if (command === "forget") {
-          const id = args.positionals[0];
-          if (!id) throw new CliError("forget requires a memory id");
-          const memory = store.forget(
-            id,
-            parseInteger(
-              "expected-version",
-              requireOption(args, "expected-version"),
+            pinned: {
+              type: "boolean",
+              description: "Keep this memory at the top of the catalog",
+            },
+            json: {
+              type: "boolean",
+              description: "Emit machine-readable JSON",
+            },
+          },
+          run(input, ctx) {
+            const memory = store.add({
+              ...writeScope(input.options.scope, ctx.projectId),
+              name: input.options.name,
+              summary: input.options.summary,
+              details: input.options.details,
+              kind: input.options.kind,
+              tags: input.options.tag,
+              importance: input.options.importance,
+              pinned: input.options.pinned,
+              sourceThreadId: ctx.threadId ?? null,
+              writeReason: input.options.reason,
+            });
+            return {
+              exitCode: 0,
+              stdout: input.options.json
+                ? jsonOutput({ ok: true, memory })
+                : `Saved ${memory.id} v${memory.version} (${memory.scope}/${memory.name}).`,
+            };
+          },
+        }),
+        update: experimental_cliCommand({
+          summary: "Update a memory with version checking",
+          positionals: [
+            { name: "id", description: "Memory id", required: true },
+          ],
+          constraints: [
+            {
+              kind: "at-least-one",
+              options: [
+                "summary",
+                "details",
+                "kind",
+                "tag",
+                "importance",
+                "pinned",
+              ],
+            },
+          ],
+          options: {
+            "expected-version": {
+              type: "integer",
+              min: 1,
+              max: MAX_EXPECTED_VERSION,
+              required: true,
+              description: "Version this update is based on",
+            },
+            reason: {
+              type: "string",
+              required: true,
+              placeholder: "TEXT",
+              description: "Why the memory changed, at most 500 characters",
+            },
+            summary: {
+              type: "string",
+              placeholder: "TEXT",
+              description: "Replacement summary, at most 400 characters",
+            },
+            details: {
+              type: "string",
+              placeholder: "TEXT",
+              aliases: ["body", "text", "content"],
+              description: "Replacement details, at most 16000 characters",
+            },
+            kind: {
+              type: "enum",
+              values: MEMORY_KINDS,
+              aliases: ["type"],
+              description: "Replacement kind",
+            },
+            tag: {
+              type: "string",
+              repeatable: true,
+              split: ",",
+              placeholder: "TAG",
+              aliases: ["tags"],
+              description:
+                "Replacement tags; repeat or pass a comma-separated list",
+            },
+            importance: {
+              type: "integer",
+              min: 0,
+              max: 100,
+              description: "Replacement ranking weight",
+            },
+            pinned: {
+              type: "enum",
+              values: ["true", "false"],
+              description: "Pin or unpin the memory",
+            },
+            json: {
+              type: "boolean",
+              description: "Emit machine-readable JSON",
+            },
+          },
+          run(input, ctx) {
+            const tags = input.options.tag;
+            const memory = store.update(
+              input.positionals.id,
               {
-                min: 1,
-                max: Number.MAX_SAFE_INTEGER,
+                expectedVersion: input.options["expected-version"],
+                summary: input.options.summary,
+                details: input.options.details,
+                kind: input.options.kind,
+                tags: tags.length > 0 ? tags : undefined,
+                importance: input.options.importance,
+                pinned:
+                  input.options.pinned === undefined
+                    ? undefined
+                    : input.options.pinned === "true",
+                sourceThreadId: ctx.threadId ?? null,
+                writeReason: input.options.reason,
               },
-            ),
-            requireOption(args, "reason"),
-            ctx.threadId ?? null,
-            ctx.projectId,
-          );
-          return {
-            exitCode: 0,
-            stdout: wantsJson
-              ? jsonOutput({
-                  ok: true,
-                  forgotten: { id: memory.id, version: memory.version },
-                })
-              : `Forgot ${memory.id} at v${memory.version}.`,
-          };
-        }
-        if (command === "history") {
-          const id = args.positionals[0];
-          if (!id) throw new CliError("history requires a memory id");
-          const limit = parseInteger("limit", option(args, "limit"), {
-            defaultValue: DEFAULT_RESULT_LIMIT,
-            min: 1,
-            max: MAX_RESULT_LIMIT,
-          });
-          const history = store.history(id, ctx.projectId, limit);
-          if (history.length === 0)
-            throw new CliError(`memory history for "${id}" was not found`);
-          return {
-            exitCode: 0,
-            stdout: wantsJson
-              ? jsonOutput({ ok: true, id, history })
-              : jsonOutput(history),
-          };
-        }
-        throw new CliError(`unknown subcommand "${command}"\n${USAGE}`);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        return { exitCode: 1, stderr: message };
-      }
-    },
-  });
+              ctx.projectId,
+            );
+            return {
+              exitCode: 0,
+              stdout: input.options.json
+                ? jsonOutput({ ok: true, memory })
+                : `Updated ${memory.id} to v${memory.version}.`,
+            };
+          },
+        }),
+        forget: experimental_cliCommand({
+          summary: "Soft-delete a memory with version checking",
+          positionals: [
+            { name: "id", description: "Memory id", required: true },
+          ],
+          options: {
+            "expected-version": {
+              type: "integer",
+              min: 1,
+              max: MAX_EXPECTED_VERSION,
+              required: true,
+              description: "Version this deletion is based on",
+            },
+            reason: {
+              type: "string",
+              required: true,
+              placeholder: "TEXT",
+              description: "Why the memory is gone, at most 500 characters",
+            },
+            json: {
+              type: "boolean",
+              description: "Emit machine-readable JSON",
+            },
+          },
+          run(input, ctx) {
+            const memory = store.forget(
+              input.positionals.id,
+              input.options["expected-version"],
+              input.options.reason,
+              ctx.threadId ?? null,
+              ctx.projectId,
+            );
+            return {
+              exitCode: 0,
+              stdout: input.options.json
+                ? jsonOutput({
+                    ok: true,
+                    forgotten: { id: memory.id, version: memory.version },
+                  })
+                : `Forgot ${memory.id} at v${memory.version}.`,
+            };
+          },
+        }),
+        history: experimental_cliCommand({
+          summary: "Show a memory's version history",
+          positionals: [
+            { name: "id", description: "Memory id", required: true },
+          ],
+          options: {
+            limit: {
+              type: "integer",
+              min: 1,
+              max: MAX_RESULT_LIMIT,
+              default: DEFAULT_RESULT_LIMIT,
+              description: "How many versions to show, newest first",
+            },
+            json: {
+              type: "boolean",
+              description: "Emit machine-readable JSON",
+            },
+          },
+          run(input, ctx) {
+            const id = input.positionals.id;
+            const history = store.history(
+              id,
+              ctx.projectId,
+              input.options.limit,
+            );
+            if (history.length === 0) {
+              throw new CliError(`memory history for "${id}" was not found`);
+            }
+            return {
+              exitCode: 0,
+              stdout: input.options.json
+                ? jsonOutput({ ok: true, id, history })
+                : jsonOutput(history),
+            };
+          },
+        }),
+      },
+    }),
+  );
 }

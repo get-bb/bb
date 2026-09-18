@@ -886,10 +886,13 @@ describe("Docs vault operations", () => {
     });
     expect(result.exitCode).toBe(1);
     expect(JSON.parse(result.stdout ?? "{}")).toMatchObject({
-      outcome: "error",
-      error: { code: "operation_failed" },
+      ok: false,
+      error: {
+        code: "operation_failed",
+        message: expect.stringContaining(".bb-docs-state.json is malformed"),
+      },
     });
-    expect(result.stderr).toBe("");
+    expect(result.stderr).toContain(".bb-docs-state.json is malformed");
   });
 
   it("supports whole-vault and single-file scopes and deprecates direct writes", async () => {
@@ -944,12 +947,15 @@ describe("Docs vault operations", () => {
 
     const help = await harness.runCli(["--help"]);
     expect(help).toMatchObject({ exitCode: 0 });
-    expect(help.stdout).toContain("pull|status|push");
+    expect(help.stdout).toContain("bb docs pull");
+    expect(help.stdout).toContain("bb docs status");
+    expect(help.stdout).toContain("bb docs push");
 
     const statusHelp = await harness.runCli(["status", "--help"]);
     expect(statusHelp).toMatchObject({ exitCode: 0 });
     expect(statusHelp.stdout).toContain("Exit 4: changes present");
     expect(statusHelp.stdout).toContain("run bb docs push separately");
+    expect(statusHelp.stdout).toContain("[<workspace-dir>]");
 
     const unsafePull = await harness.runCli(
       ["pull", "plan.md", "--into", "sync", "--dry-run", "--json"],
@@ -957,8 +963,13 @@ describe("Docs vault operations", () => {
     );
     expect(unsafePull.exitCode).toBe(2);
     expect(JSON.parse(unsafePull.stdout ?? "{}")).toMatchObject({
-      error: { code: "usage_error" },
+      ok: false,
+      error: {
+        code: "unknown_option",
+        message: "unknown option '--dry-run'",
+      },
     });
+    expect(unsafePull.stderr).toContain("unknown option '--dry-run'");
     expect(files.has("/work/sync/plan.md")).toBe(false);
 
     const unsafeRemove = await harness.runCli([
@@ -969,6 +980,47 @@ describe("Docs vault operations", () => {
     ]);
     expect(unsafeRemove.exitCode).toBe(2);
     expect(files.has("/vault/plan.md")).toBe(true);
+
+    const noCommand = await harness.runCli([]);
+    expect(noCommand.exitCode).toBe(2);
+    expect(noCommand.stdout).toContain("bb docs <command> [options]");
+
+    const unknownCommand = await harness.runCli(["pul", "plan.md"]);
+    expect(unknownCommand.exitCode).toBe(2);
+    expect(unknownCommand.stderr).toContain(
+      "unknown command 'pul' (Did you mean pull?)",
+    );
+
+    const strayArgument = await harness.runCli(["vaults", "personal"]);
+    expect(strayArgument.exitCode).toBe(2);
+    expect(strayArgument.stderr).toContain("unexpected argument 'personal'");
+
+    const missingOptions = await harness.runCli(["write", "plan.md"]);
+    expect(missingOptions.exitCode).toBe(2);
+    expect(missingOptions.stderr).toContain(
+      "missing required options: --content",
+    );
+
+    const missingArguments = await harness.runCli(["move"]);
+    expect(missingArguments.exitCode).toBe(2);
+    expect(missingArguments.stderr).toContain(
+      "missing required arguments: <from>, <to>",
+    );
+
+    const combined = await harness.runCli(
+      ["pull", "--all", "--folder", "--into", "sync"],
+      { cwd: "/work" },
+    );
+    expect(combined.exitCode).toBe(2);
+    expect(combined.stderr).toContain("--all and --folder cannot be combined");
+    expect(files.has("/work/sync/plan.md")).toBe(false);
+
+    for (const argv of [["push", "--help"], ["remove", "-h"], ["help"]]) {
+      const commandHelp = await harness.runCli(argv);
+      expect(commandHelp.exitCode).toBe(0);
+      expect(commandHelp.stderr).toBe("");
+      expect(commandHelp.stdout).toContain("Usage:");
+    }
   });
 
   it("keeps CLI removal non-recursive unless --recursive is passed", async () => {

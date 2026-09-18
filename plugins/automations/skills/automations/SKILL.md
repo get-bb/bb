@@ -51,3 +51,8 @@ bb automation delete <automationId> --project <id> --yes
 
 For partial updates, mode replacement, execution targets, or damaged records,
 read [references/updates.md](references/updates.md). Every command supports `--json`.
+
+`bb automation <command> --help` prints that command's exact arguments, options,
+accepted values, and rules. Unknown commands, unknown options, and stray
+arguments are rejected rather than ignored, and a failure under `--json` also
+prints a `{"ok":false,"error":{"code","message","hint"}}` envelope on stdout.

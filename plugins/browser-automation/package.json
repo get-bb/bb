@@ -6,7 +6,7 @@
   "description": "Let BB control the in-app browser and browsers on connected machines, with inline previews for headless sessions.",
   "engines": {
     "bb": ">=0.41",
-    "bbPluginSdk": ">=0.4.48"
+    "bbPluginSdk": ">=0.4.102"
   },
   "bb": {
     "name": "Browser Automation",
