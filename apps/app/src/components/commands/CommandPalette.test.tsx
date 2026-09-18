@@ -977,7 +977,8 @@ describe("CommandPalette", () => {
     const more = within(activeGroup).getByRole("option", {
       name: "Show more threads",
     });
-    expectClasses(more, "text-xs", "font-normal", "text-subtle-foreground");
+    expectClasses(more, "text-xs", "text-subtle-foreground");
+    expectNoClasses(more, "font-medium");
     expectClasses(
       within(activeGroup).getByText("Threads", { selector: "div" }),
       "text-xs",

@@ -302,10 +302,10 @@ export function ThreadSearchPaletteMode({
                           : "Show more threads"
                     }
                     className={cn(
-                      "cursor-pointer rounded-md px-2 py-1.5",
+                      "flex cursor-pointer items-center rounded-md px-2 py-1.5",
                       option.row === null
-                        ? "flex items-center gap-1.5 text-xs font-normal text-subtle-foreground"
-                        : "flex min-h-11 items-center gap-3 text-left text-sm",
+                        ? "gap-1.5 text-xs text-subtle-foreground"
+                        : "min-h-11 gap-3 text-left text-sm",
                       index === activeIndex && "bg-state-hover text-foreground",
                     )}
                     onPointerMove={() => setHighlightedIndex(index)}
