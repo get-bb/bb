@@ -66,7 +66,7 @@ interface BbAppPackageJson {
   version: string;
 }
 
-async function defaultCommandRunner(
+export async function defaultCommandRunner(
   command: string,
   args: readonly string[],
   cwd: string,
