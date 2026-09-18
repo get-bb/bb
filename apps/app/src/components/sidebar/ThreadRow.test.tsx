@@ -546,6 +546,25 @@ describe("ThreadRow", () => {
     expect(Array.from(errorIcon.classList)).not.toContain("animate-shine-icon");
   });
 
+  it("disables runtime glyph rotation when reduced motion is requested", () => {
+    renderThreadRow({
+      hasComposerDraft: false,
+      thread: createThread({
+        status: "active",
+        runtime: {
+          displayStatus: "active",
+          hostReconnectGraceExpiresAt: null,
+        },
+      }),
+    });
+
+    const runningIcon = screen.getByLabelText("Thread working");
+    expect(runningIcon.getAttribute("data-icon")).toBe("Loading");
+    expect(Array.from(runningIcon.classList)).toContain(
+      "motion-reduce:animate-none",
+    );
+  });
+
   it("keeps the runtime spinner ahead of a plugin status", () => {
     setPluginThreadRowStatus("thr_test", "composer-status-test", {
       icon: "AiContentGenerator01",
