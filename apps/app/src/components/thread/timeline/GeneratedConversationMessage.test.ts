@@ -113,12 +113,13 @@ describe("generatedConversationTitle — system source", () => {
       },
     });
 
-    expect(title.plain).toBe("grill_round result delivered");
-    expect(title.segments).toHaveLength(2);
-    expect(title.segments[0]?.text).toBe("grill_round");
-    expect(title.segments[0]?.em).toBe(true);
-    expect(title.segments[0]?.link).toBeUndefined();
-    expect(title.segments[1]?.text).toBe("result delivered");
+    expect(title.plain).toBe("Delivered grill_round result");
+    expect(title.segments).toHaveLength(3);
+    expect(title.segments[0]?.text).toBe("Delivered");
+    expect(title.segments[1]?.text).toBe("grill_round");
+    expect(title.segments[1]?.em).toBe(true);
+    expect(title.segments[1]?.link).toBeUndefined();
+    expect(title.segments[2]?.text).toBe("result");
   });
 
   it("falls back to the generic System Message title for unlabeled rows", () => {

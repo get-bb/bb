@@ -1,10 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ToolCallResponse } from "@bb/domain";
 import {
-  PLUGIN_TOOL_CALL_AWAITING_PERSON_RESULT_TEXT,
-  PLUGIN_TOOL_CALL_DETACHED_RESULT_TEXT,
+  PLUGIN_TOOL_CALL_AWAITING_USER_RESULT_TEXT,
   PluginToolCallRegistry,
-  detachActivePluginToolCallForPerson,
+  detachActivePluginToolCallForUserInput,
 } from "../../../src/services/plugins/plugin-tool-calls.js";
 import { testLogger } from "../../helpers/test-app.js";
 
@@ -30,8 +29,8 @@ describe("PluginToolCallRegistry", () => {
     vi.useRealTimers();
   });
 
-  function createRegistry(detachAfterMs = 1_000) {
-    return new PluginToolCallRegistry({ logger: testLogger, detachAfterMs });
+  function createRegistry() {
+    return new PluginToolCallRegistry({ logger: testLogger });
   }
 
   it("returns the tool result through the round trip when it settles in time", async () => {
@@ -56,7 +55,79 @@ describe("PluginToolCallRegistry", () => {
     expect(registry.size).toBe(0);
   });
 
-  it("keeps the call running after the round trip is cancelled and delivers the late result", async () => {
+  it("aborts an ordinary tool when its round trip is cancelled and never delivers its late result", async () => {
+    const registry = createRegistry();
+    const roundTrip = new AbortController();
+    const onDetachedResult = vi.fn(async () => undefined);
+    const result = deferred<ToolCallResponse>();
+    let toolSignal: AbortSignal | undefined;
+    const response = registry.run({
+      pluginId: "fixture",
+      threadId: "thread",
+      callId: "call",
+      toolName: "ordinary",
+      roundTrip: roundTrip.signal,
+      invoke: async (signal) => {
+        toolSignal = signal;
+        const value = await result.promise;
+        detachActivePluginToolCallForUserInput();
+        return value;
+      },
+      onDetachedResult,
+    });
+    roundTrip.abort("request-ended");
+    expect(toolSignal?.aborted).toBe(true);
+    expect(toolSignal?.reason).toBe("request-ended");
+    await expect(response).resolves.toMatchObject({ success: false });
+    result.resolve(textResponse("late answer"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(onDetachedResult).not.toHaveBeenCalled();
+    expect(registry.size).toBe(0);
+  });
+
+  it("does not invoke a tool whose round trip was already aborted", async () => {
+    const registry = createRegistry();
+    const invoke = vi.fn(async () => textResponse("answer"));
+    const onDetachedResult = vi.fn(async () => undefined);
+    const response = registry.run({
+      pluginId: "fixture",
+      threadId: "thread",
+      callId: "call",
+      toolName: "ordinary",
+      roundTrip: AbortSignal.abort(),
+      invoke,
+      onDetachedResult,
+    });
+    await expect(response).resolves.toMatchObject({ success: false });
+    expect(invoke).not.toHaveBeenCalled();
+    expect(onDetachedResult).not.toHaveBeenCalled();
+    expect(registry.size).toBe(0);
+  });
+
+  it("keeps a slow tool on its round trip beyond the former deadline", async () => {
+    const registry = createRegistry();
+    const onDetachedResult = vi.fn(async () => undefined);
+    const result = deferred<ToolCallResponse>();
+    const response = registry.run({
+      pluginId: "fixture",
+      threadId: "thread",
+      callId: "call",
+      toolName: "ordinary",
+      roundTrip: new AbortController().signal,
+      invoke: () => result.promise,
+      onDetachedResult,
+    });
+    const received = vi.fn();
+    void response.then(received);
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+    expect(received).not.toHaveBeenCalled();
+    result.resolve(textResponse("finished"));
+    await expect(response).resolves.toEqual(textResponse("finished"));
+    expect(onDetachedResult).not.toHaveBeenCalled();
+    expect(registry.size).toBe(0);
+  });
+
+  it("answers the round trip at once when the tool asks the user for input", async () => {
     const registry = createRegistry();
     const roundTrip = new AbortController();
     const onDetachedResult = vi.fn(async () => undefined);
@@ -69,109 +140,31 @@ describe("PluginToolCallRegistry", () => {
       callId: "call",
       toolName: "ask",
       roundTrip: roundTrip.signal,
-      invoke: (signal) => {
+      invoke: async (signal) => {
         toolSignal = signal;
+        await Promise.resolve();
+        detachActivePluginToolCallForUserInput();
         return result.promise;
       },
       onDetachedResult,
     });
-    roundTrip.abort();
-    await vi.advanceTimersByTimeAsync(0);
 
+    await expect(response).resolves.toEqual(
+      textResponse(PLUGIN_TOOL_CALL_AWAITING_USER_RESULT_TEXT),
+    );
+    roundTrip.abort();
     expect(toolSignal?.aborted).toBe(false);
     expect(registry.size).toBe(1);
-    result.resolve(textResponse("late answer"));
-    await vi.advanceTimersByTimeAsync(0);
-
-    expect(onDetachedResult).toHaveBeenCalledWith(textResponse("late answer"));
-    expect(registry.size).toBe(0);
-    await expect(
-      Promise.race([response, Promise.resolve("unsettled")]),
-    ).resolves.toBe("unsettled");
-  });
-
-  it("delivers results separately when the round trip was already aborted", async () => {
-    const registry = createRegistry();
-    const onDetachedResult = vi.fn(async () => undefined);
-    void registry.run({
-      pluginId: "fixture",
-      threadId: "thread",
-      callId: "call",
-      toolName: "ask",
-      roundTrip: AbortSignal.abort(),
-      invoke: async () => textResponse("answer"),
-      onDetachedResult,
-    });
-    await vi.advanceTimersByTimeAsync(0);
-    expect(onDetachedResult).toHaveBeenCalledExactlyOnceWith(
-      textResponse("answer"),
-    );
-    expect(registry.size).toBe(0);
-  });
-
-  it("answers the round trip with the still-running stub at the deadline and delivers later", async () => {
-    const registry = createRegistry(500);
-    const roundTrip = new AbortController();
-    const onDetachedResult = vi.fn(async () => undefined);
-    const result = deferred<ToolCallResponse>();
-
-    const response = registry.run({
-      pluginId: "fixture",
-      threadId: "thread",
-      callId: "call",
-      toolName: "ask",
-      roundTrip: roundTrip.signal,
-      invoke: () => result.promise,
-      onDetachedResult,
-    });
-    await vi.advanceTimersByTimeAsync(500);
-
-    await expect(response).resolves.toEqual(
-      textResponse(PLUGIN_TOOL_CALL_DETACHED_RESULT_TEXT),
-    );
-    expect(onDetachedResult).not.toHaveBeenCalled();
-
-    result.resolve(textResponse("after the stub"));
+    result.resolve(textResponse("the user answered"));
     await vi.advanceTimersByTimeAsync(0);
     expect(onDetachedResult).toHaveBeenCalledWith(
-      textResponse("after the stub"),
-    );
-  });
-
-  it("answers the round trip at once when the tool asks the person for input", async () => {
-    const registry = createRegistry();
-    const roundTrip = new AbortController();
-    const onDetachedResult = vi.fn(async () => undefined);
-    const result = deferred<ToolCallResponse>();
-
-    const response = registry.run({
-      pluginId: "fixture",
-      threadId: "thread",
-      callId: "call",
-      toolName: "ask",
-      roundTrip: roundTrip.signal,
-      invoke: async () => {
-        await Promise.resolve();
-        detachActivePluginToolCallForPerson();
-        return result.promise;
-      },
-      onDetachedResult,
-    });
-
-    await expect(response).resolves.toEqual(
-      textResponse(PLUGIN_TOOL_CALL_AWAITING_PERSON_RESULT_TEXT),
-    );
-    expect(registry.size).toBe(1);
-    result.resolve(textResponse("the person answered"));
-    await vi.advanceTimersByTimeAsync(0);
-    expect(onDetachedResult).toHaveBeenCalledWith(
-      textResponse("the person answered"),
+      textResponse("the user answered"),
     );
     expect(registry.size).toBe(0);
   });
 
   it("ignores a detach request made outside any tool call", () => {
-    expect(() => detachActivePluginToolCallForPerson()).not.toThrow();
+    expect(() => detachActivePluginToolCallForUserInput()).not.toThrow();
   });
 
   it("drops a detached result once its thread was stopped", async () => {
@@ -189,6 +182,7 @@ describe("PluginToolCallRegistry", () => {
       roundTrip: roundTrip.signal,
       invoke: (signal) => {
         toolSignal = signal;
+        detachActivePluginToolCallForUserInput();
         return result.promise;
       },
       onDetachedResult,

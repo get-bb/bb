@@ -7,7 +7,7 @@ import {
 import { createMachineBootstrapApi } from "../machines/bootstrap.js";
 import type { MachineEnrollments } from "../machines/enrollments.js";
 import { listServerAccessProviders } from "./plugin-server-access-registry.js";
-import { detachActivePluginToolCallForPerson } from "./plugin-tool-calls.js";
+import { detachActivePluginToolCallForUserInput } from "./plugin-tool-calls.js";
 import { fillPluginPresentation } from "./plugin-presentation.js";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
@@ -645,7 +645,9 @@ export function createPluginApi(options: {
       }),
       signal: requestOptions?.signal,
     });
-    detachActivePluginToolCallForPerson();
+    if (!requestOptions?.signal?.aborted) {
+      detachActivePluginToolCallForUserInput();
+    }
     return pending;
   }
 

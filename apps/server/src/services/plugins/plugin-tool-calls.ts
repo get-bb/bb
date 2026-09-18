@@ -2,32 +2,14 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import type { ToolCallResponse } from "@bb/domain";
 import type { ServerLogger } from "../../types.js";
 
-/**
- * How long a plugin tool call may hold its daemon round trip open before the
- * server answers with a stub and lets the call finish on its own.
- *
- * The daemon reaches the server with Node's global fetch, whose undici
- * defaults give up on an idle response after 300 seconds. Answering well
- * before that keeps the provider's tool result a deliberate message instead
- * of a transport error, on every provider.
- */
-export const PLUGIN_TOOL_CALL_DETACH_AFTER_MS = 4 * 60_000;
-
-export const PLUGIN_TOOL_CALL_DETACHED_RESULT_TEXT =
-  "This tool call is still running. This notice is not its result. A successful result will arrive as a separate message that names the tool, either later in this turn or at the start of a new one. Failures are reported only while a turn is active. Do not call the tool again for the same purpose and do not guess its result. If nothing else can proceed without it, end your turn with one short line saying what you are waiting for.";
-
-export const PLUGIN_TOOL_CALL_AWAITING_PERSON_RESULT_TEXT =
-  "The person now has this request in front of them in the thread. This notice is not their response. If they submit it successfully, the result will arrive as a separate message that names the tool, either later in this turn or at the start of a new one. Dismissals and failures are reported only while a turn is active. Do not call the tool again, do not guess the answer, and do not start work that depends on it. Continue any independent work. If you cannot proceed without the response, end your turn with one short line saying what you are waiting for.";
-
-export const PLUGIN_TOOL_CALL_LIFETIME_INSTRUCTIONS =
-  "Some tools take longer than a turn. If a tool call returns a notice that it is still running or is waiting on the person, or your turn ends before it returns, a successful result arrives later as a separate message that names the tool. Treat that message as the call's result and continue from it; do not repeat the call. Failures, including dismissed or timed-out forms, are reported only while a turn is active; they do not start a new turn.";
+export const PLUGIN_TOOL_CALL_AWAITING_USER_RESULT_TEXT =
+  "The request is shown to the user. A successful result will arrive separately. Do not ask again or assume an answer. Continue independent work; if blocked, briefly say what you are waiting for and end your turn.";
 
 export interface RunPluginToolCallArgs {
   pluginId: string;
   threadId: string;
   callId: string;
   toolName: string;
-  /** Aborts when the daemon stops reading the round trip. */
   roundTrip: AbortSignal;
   invoke(signal: AbortSignal): Promise<ToolCallResponse>;
   onDetachedResult(response: ToolCallResponse): Promise<void>;
@@ -48,17 +30,10 @@ function stubResponse(text: string): ToolCallResponse {
   return { success: true, contentItems: [{ type: "inputText", text }] };
 }
 
-/**
- * Called by the plugin API when a tool call asks the person for input. Core
- * answers the round trip at once with a notice that the call is waiting on
- * them, so the provider never has to hold a tool call open for a human, and
- * the eventual result reaches the agent as a message. A no-op outside a
- * plugin tool call, for instance from a CLI command.
- */
-export function detachActivePluginToolCallForPerson(): void {
+export function detachActivePluginToolCallForUserInput(): void {
   activeCall
     .getStore()
-    ?.detachWith(stubResponse(PLUGIN_TOOL_CALL_AWAITING_PERSON_RESULT_TEXT));
+    ?.detachWith(stubResponse(PLUGIN_TOOL_CALL_AWAITING_USER_RESULT_TEXT));
 }
 
 function failedToolCallResponse(
@@ -78,12 +53,10 @@ function failedToolCallResponse(
 
 export class PluginToolCallRegistry {
   private readonly calls = new Set<TrackedPluginToolCall>();
-  private readonly detachAfterMs: number;
   private readonly logger: ServerLogger;
 
-  constructor(args: { logger: ServerLogger; detachAfterMs?: number }) {
+  constructor(args: { logger: ServerLogger }) {
     this.logger = args.logger;
-    this.detachAfterMs = args.detachAfterMs ?? PLUGIN_TOOL_CALL_DETACH_AFTER_MS;
   }
 
   run(args: RunPluginToolCallArgs): Promise<ToolCallResponse> {
@@ -102,28 +75,21 @@ export class PluginToolCallRegistry {
     return new Promise<ToolCallResponse>((resolve) => {
       let detached = false;
       let settled = false;
-      const detach = () => {
-        if (settled || detached) return;
-        detached = true;
-        clearTimeout(deadline);
-        args.roundTrip.removeEventListener("abort", detach);
+      const abort = () => {
+        controller.abort(args.roundTrip.reason);
+        settle(failedToolCallResponse(args.toolName, args.roundTrip.reason));
       };
       detachWith = (response) => {
-        if (settled || detached) return;
-        detach();
+        if (settled || detached || controller.signal.aborted) return;
+        detached = true;
+        args.roundTrip.removeEventListener("abort", abort);
         resolve(response);
       };
-      const deadline = setTimeout(() => {
-        detachWith(stubResponse(PLUGIN_TOOL_CALL_DETACHED_RESULT_TEXT));
-      }, this.detachAfterMs);
-      deadline.unref?.();
-      args.roundTrip.addEventListener("abort", detach, { once: true });
-      if (args.roundTrip.aborted) detach();
 
       const settle = (response: ToolCallResponse) => {
+        if (settled) return;
         settled = true;
-        clearTimeout(deadline);
-        args.roundTrip.removeEventListener("abort", detach);
+        args.roundTrip.removeEventListener("abort", abort);
         this.calls.delete(tracked);
         if (!detached) {
           resolve(response);
@@ -153,6 +119,12 @@ export class PluginToolCallRegistry {
           );
         });
       };
+
+      args.roundTrip.addEventListener("abort", abort, { once: true });
+      if (args.roundTrip.aborted) {
+        abort();
+        return;
+      }
 
       let invocation: Promise<ToolCallResponse>;
       try {

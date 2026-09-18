@@ -6,8 +6,8 @@ import { describe, expect, it, vi } from "vitest";
 import { internalAuthHeaders } from "../helpers/commands.js";
 import { readJson } from "../helpers/json.js";
 import {
-  PLUGIN_TOOL_CALL_AWAITING_PERSON_RESULT_TEXT,
-  detachActivePluginToolCallForPerson,
+  PLUGIN_TOOL_CALL_AWAITING_USER_RESULT_TEXT,
+  detachActivePluginToolCallForUserInput,
 } from "../../src/services/plugins/plugin-tool-calls.js";
 import { listQueuedThreadCommands } from "../helpers/commands.js";
 import {
@@ -127,7 +127,7 @@ function installWaitingTool(
           signal: ctx.signal,
         },
       );
-      detachActivePluginToolCallForPerson();
+      detachActivePluginToolCallForUserInput();
       const result = await pending;
       return result.outcome === "submitted"
         ? {
@@ -157,6 +157,74 @@ function turnRequestedEvents(harness: TestAppHarness, threadId: string) {
 }
 
 describe("plugin tool calls that outlive their round trip", () => {
+  it("aborts an ordinary tool when the response stream is cancelled", async () => {
+    await withTestHarness(async (harness) => {
+      const { session, thread } = seedIdleProviderThread(harness, 3);
+      const record: PluginAgentToolRecord = {
+        name: "ordinary_tool",
+        description: "Work without a form",
+        presentation: null,
+        instructions: null,
+        inputSchema: {},
+        parse: (input) => ({ ok: true, value: input }),
+        execute: () => "unused",
+      };
+      let toolSignal: AbortSignal | undefined;
+      let finish!: () => void;
+      const finished = new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+      const initialRequests = turnRequestedEvents(harness, thread.id);
+      setPluginAgentContributions({
+        listSkillRootContributions: () => [],
+        listAgentTools: () => [],
+        listInstructionContributions: () => [],
+        findAgentTool: (name) =>
+          name === record.name ? { pluginId: "fixture", record } : undefined,
+        resolveMention: async () => ({ ok: false, error: "unused" }),
+        invokeAgentTool: async ({ ctx }) => {
+          toolSignal = ctx.signal;
+          await finished;
+          return {
+            success: true,
+            contentItems: [{ type: "inputText", text: "done" }],
+          };
+        },
+      });
+      try {
+        const response = await harness.app.request(
+          "/internal/session/tool-call",
+          {
+            method: "POST",
+            headers: internalAuthHeaders(harness),
+            body: JSON.stringify({
+              sessionId: session.id,
+              threadId: thread.id,
+              providerThreadId: "provider-thread",
+              turnId: "turn",
+              callId: "ordinary-call",
+              tool: record.name,
+            }),
+          },
+        );
+        expect(toolSignal?.aborted).toBe(false);
+        await response.body!.cancel();
+        expect(toolSignal?.aborted).toBe(true);
+        finish();
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        expect(
+          listQueuedThreadCommands(harness, "turn.submit", thread.id),
+        ).toHaveLength(0);
+        expect(turnRequestedEvents(harness, thread.id)).toEqual(
+          initialRequests,
+        );
+      } finally {
+        finish();
+        setPluginAgentContributions(undefined);
+      }
+    });
+  });
+
   it("answers the round trip with a waiting notice, keeps the card open, and delivers the answer as a system message", async () => {
     await withTestHarness(async (harness) => {
       const { session, thread } = seedIdleProviderThread(harness, 1);
@@ -194,7 +262,7 @@ describe("plugin tool calls that outlive their round trip", () => {
           contentItems: [
             {
               type: "inputText",
-              text: PLUGIN_TOOL_CALL_AWAITING_PERSON_RESULT_TEXT,
+              text: PLUGIN_TOOL_CALL_AWAITING_USER_RESULT_TEXT,
             },
           ],
         });

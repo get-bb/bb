@@ -83,7 +83,7 @@ those rows itself. A throw or a slow return leaves the row with its completed
 label.
 
 Awaiting it inside a native tool's `execute` is fine too, and needs no
-workaround. The moment a tool asks the person for input, bb answers the tool
+workaround. When a tool successfully opens a form, bb answers the tool
 call with a notice that it is waiting on them, so no provider has to hold a
 tool call open for a human. The tool keeps running, and its eventual return
 value reaches the agent as a system message on the thread — a running turn
@@ -91,10 +91,14 @@ is steered, an idle one is started, and an `isError` result only steers.
 The notice allows independent work to continue while the form is open, but
 asks the agent to wait before doing work that depends on the response.
 Dismissals, timeouts, and other failed results do not start a new turn.
-The tool's `ctx.signal` fires only when the thread is stopped or deleted or
-the plugin is disposed, so passing it keeps the form honest without tying it
-to the turn. A tool that is merely slow keeps its round trip for up to four
-minutes before the same "still running" hand-off applies.
+Before a form opens, the tool's `ctx.signal` aborts when its request is
+cancelled. Opening the form detaches the tool from that request for the rest
+of its execution, including processing the submitted answer. Thread stop,
+thread deletion, and plugin disposal still abort it. Pass `ctx.signal` to
+`requestInput` so those events also cancel the form. Ordinary tools remain
+request-bound regardless of how long they run; there is no automatic timed
+detachment. A rejected or already-cancelled form request does not detach
+the tool.
 
 ### bb.agents — native tools and conditional session configuration
 

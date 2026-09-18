@@ -240,8 +240,9 @@ function systemMessageTitleSegments(
     case "tool-result-delivered":
       return subject !== null && subject.kind === "tool-call"
         ? [
+            verbSegment("Delivered"),
             subjectSegment(subject.toolName, null),
-            verbSegment("result delivered"),
+            verbSegment("result"),
           ]
         : SYSTEM_MESSAGE_FALLBACK_SEGMENTS;
     case "unlabeled":
