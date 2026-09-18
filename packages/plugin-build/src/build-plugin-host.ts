@@ -486,6 +486,7 @@ export async function buildPluginHost(
       ],
       target: "node22",
       sourcemap: true,
+      sourcesContent: false,
       banner: { js: NODE_ESM_REQUIRE_BANNER },
       logLevel: "error",
     });

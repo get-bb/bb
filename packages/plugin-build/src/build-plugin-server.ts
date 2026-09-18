@@ -98,6 +98,7 @@ export async function buildPluginServer(
       platform: "node",
       target: "node22",
       sourcemap: true,
+      sourcesContent: false,
       banner: { js: NODE_ESM_REQUIRE_BANNER },
       external: PLUGIN_SERVER_EXTERNALS.filter(
         (specifier) => !PLUGIN_SDK_ROOT_FILTER.test(specifier),
