@@ -7,7 +7,6 @@ import {
 import { useComposedRefs } from "@radix-ui/react-compose-refs";
 import { Icon } from "@bb/shared-ui/icon";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
-import { cn } from "@bb/shared-ui/lib/utils";
 import { useScrollOverflowState } from "@/components/thread/timeline/useScrollOverflowState";
 import { TabPill } from "@/components/ui/tab-pill";
 
