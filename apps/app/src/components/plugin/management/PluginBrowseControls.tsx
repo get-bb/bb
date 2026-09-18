@@ -40,24 +40,49 @@ const PLUGIN_BROWSE_SORTS = [
 ] as const satisfies readonly PluginBrowseSort[];
 
 const PLUGIN_BROWSE_SORT_LABELS: Record<PluginBrowseSort, string> = {
-  name: "Plugin name",
-  "recently-added": "Recently added",
-  "most-installed": "Most installed",
+  name: "Name",
+  "recently-added": "Published",
+  "most-installed": "Installs",
 };
 
-const PLUGIN_BROWSE_SORT_ICONS: Record<PluginBrowseSort, IconName> = {
-  name: "Sort",
-  "recently-added": "Clock",
-  "most-installed": "Download",
+const PLUGIN_BROWSE_SORT_ICONS: Record<
+  PluginBrowseSort,
+  Record<PluginBrowseSortDirection, IconName>
+> = {
+  name: { asc: "SortingAZ02", desc: "SortingZA01" },
+  "recently-added": { asc: "ClockArrowUp", desc: "ClockArrowDown" },
+  "most-installed": { asc: "SortingOneNine", desc: "SortingNineOne" },
 };
 
-export function pluginBrowseSortOptions(hasInstallCounts: boolean) {
-  return PLUGIN_BROWSE_SORTS.map((sort) => ({
-    id: sort,
-    label: PLUGIN_BROWSE_SORT_LABELS[sort],
-    leading: <Icon name={PLUGIN_BROWSE_SORT_ICONS[sort]} className="size-4" />,
-    disabled: sort === "most-installed" && !hasInstallCounts,
-  }));
+const PLUGIN_BROWSE_SORT_DIRECTIONS: Record<
+  PluginBrowseSort,
+  Record<PluginBrowseSortDirection, string>
+> = {
+  name: { asc: "A–Z", desc: "Z–A" },
+  "recently-added": { asc: "Oldest first", desc: "Newest first" },
+  "most-installed": { asc: "Fewest first", desc: "Most first" },
+};
+
+export function pluginBrowseSortOptions(
+  hasInstallCounts: boolean,
+  selected: PluginBrowseSort | null = null,
+  direction: PluginBrowseSortDirection = "asc",
+) {
+  return PLUGIN_BROWSE_SORTS.map((sort) => {
+    const optionDirection =
+      sort === selected ? direction : sort === "name" ? "asc" : "desc";
+    return {
+      id: sort,
+      label: PLUGIN_BROWSE_SORT_LABELS[sort],
+      leading: (
+        <Icon
+          name={PLUGIN_BROWSE_SORT_ICONS[sort][optionDirection]}
+          className="size-4"
+        />
+      ),
+      disabled: sort === "most-installed" && !hasInstallCounts,
+    };
+  });
 }
 
 export function PluginCollectionToolbar({
@@ -97,7 +122,7 @@ export function PluginCollectionToolbar({
     compact: true,
     clearInFooter: true,
     placeholderLabel: "Default",
-    options: pluginBrowseSortOptions(installsKnown),
+    options: pluginBrowseSortOptions(installsKnown, sort, sortDirection),
     onChange: (value: string) =>
       changeSearchParams((next) => {
         if (value === sort) {
@@ -125,21 +150,22 @@ export function PluginCollectionToolbar({
   const sourceProps = sourceFilter
     ? { ...sourceFilter, label: "Source", compact: true, clearInFooter: true }
     : null;
+  const sortIcon =
+    sort === null
+      ? "ArrowUpDown"
+      : PLUGIN_BROWSE_SORT_ICONS[sort][sortDirection];
   const controls = [
-    {
-      id: "sort",
-      label: "Sort by",
-      icon: "ArrowUpDown",
-      active: sort !== null,
-      content: <ResourceSortMenuItems {...sortProps} />,
-    },
     ...(showCategoryFilter
       ? [
           {
             id: "category",
             label: "Category",
-            icon: "SlidersHorizontal",
             active: selectedCategories.length > 0,
+            summary:
+              categoryOptions
+                .filter((option) => selectedCategories.includes(option.id))
+                .map((option) => option.label)
+                .join(", ") || "All",
             content: <PluginCategoryOptions {...categoryProps} />,
           } satisfies PluginControlPage,
         ]
@@ -149,18 +175,36 @@ export function PluginCollectionToolbar({
           {
             id: "source",
             label: "Source",
-            icon: "Layers",
             active: sourceProps.selectedValues.length > 0,
+            summary:
+              sourceProps.options
+                .filter((option) =>
+                  sourceProps.selectedValues.includes(option.id),
+                )
+                .map((option) => option.label)
+                .join(", ") || "All",
             content: <ResourceMultiSelectMenuItems {...sourceProps} />,
           } satisfies PluginControlPage,
         ]
       : []),
+    {
+      id: "sort",
+      label: "Sort",
+      icon: sortIcon,
+      active: sort !== null,
+      summary:
+        sort === null
+          ? "Default"
+          : `${PLUGIN_BROWSE_SORT_LABELS[sort]} · ${PLUGIN_BROWSE_SORT_DIRECTIONS[sort][sortDirection]}`,
+      content: <ResourceSortMenuItems {...sortProps} />,
+    },
   ] satisfies PluginControlPage[];
 
   return (
     <div className={cn("w-full", className)}>
       <ResourceToolbar
         compact
+        expandSearchOnFocus
         action={action}
         searchValue={query}
         searchPlaceholder={searchPlaceholder}
@@ -172,7 +216,6 @@ export function PluginCollectionToolbar({
         }
         controls={
           <>
-            <ResourceSortMenu {...sortProps} showLabel />
             {showCategoryFilter ? (
               <PluginBrowseCategoryFilter {...categoryProps} />
             ) : null}
@@ -183,6 +226,7 @@ export function PluginCollectionToolbar({
                 showLabel
               />
             ) : null}
+            <ResourceSortMenu {...sortProps} showLabel triggerIcon={sortIcon} />
           </>
         }
         combinedControls={
@@ -198,8 +242,9 @@ export function PluginCollectionToolbar({
 type PluginControlPage = {
   id: string;
   label: string;
-  icon: IconName;
+  icon?: IconName;
   active: boolean;
+  summary: string;
   content: ReactNode;
 };
 
@@ -252,13 +297,14 @@ function PluginControlsMenu({
     >
       <DropdownMenuTrigger asChild>
         <ResourceControlButton
-          label="Plugin controls"
+          label="Filter & sort"
+          text="Filter & sort"
           tooltip={
             activeLabels.length
-              ? `Plugin controls: ${activeLabels.join(", ")}`
-              : "Plugin controls"
+              ? `Filter & sort: ${activeLabels.join(", ")}`
+              : "Filter & sort"
           }
-          icon="SlidersHorizontal"
+          icon="FilterHorizontal"
           active={activeLabels.length > 0}
           open={open}
         />
@@ -266,7 +312,7 @@ function PluginControlsMenu({
       <DropdownMenuContent
         ref={contentRef}
         align="end"
-        mobileTitle={page?.label ?? "Plugin controls"}
+        mobileTitle={page?.label ?? "Filter & sort"}
         className="w-72 md:p-0.5"
       >
         {page ? (
@@ -278,7 +324,7 @@ function PluginControlsMenu({
                 setPageId(null);
               }}
             >
-              <Icon name="ArrowLeft" className="size-4" />
+              <Icon name="ChevronLeft" className="size-4" />
               Back to controls
             </DropdownMenuItem>
             <DropdownMenuSeparator />
@@ -293,13 +339,18 @@ function PluginControlsMenu({
                 setPageId(control.id);
               }}
             >
-              <Icon name={control.icon} className="size-4" />
-              <span data-control-page={control.id} className="flex-1">
+              {control.icon ? (
+                <Icon name={control.icon} className="size-4" />
+              ) : null}
+              <span data-control-page={control.id} className="shrink-0">
                 {control.label}
               </span>
-              {control.active ? (
-                <span className="text-2xs text-muted-foreground">Active</span>
-              ) : null}
+              <span
+                className="min-w-0 flex-1 truncate text-right text-2xs text-muted-foreground"
+                title={control.summary}
+              >
+                {control.summary}
+              </span>
               <Icon name="ChevronRight" className="size-4" />
             </DropdownMenuItem>
           ))
@@ -353,7 +404,8 @@ export function PluginBrowseCategoryFilter(props: PluginCategoryFilterProps) {
           label={`Filter plugins by category: ${accessibleSelectionLabel}`}
           text="Category"
           tooltip={`Category: ${accessibleSelectionLabel}`}
-          icon="SlidersHorizontal"
+          count={value.length}
+          trailingIcon="ChevronDown"
           active={value.length > 0}
           open={open}
         />
