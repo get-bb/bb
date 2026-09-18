@@ -6,6 +6,7 @@
   "scripts": {
     "generate:pwa-icons": "node scripts/generate-pwa-icons.mjs",
     "generate:pwa-icons:check": "node scripts/generate-pwa-icons.mjs --check",
+    "generate:shine-sweep": "node scripts/generate-shine-sweep.mjs",
     "dev": "node scripts/generate-pwa-icons.mjs && vite --config vite.dev.config.ts --configLoader runner",
     "build": "node scripts/generate-pwa-icons.mjs && vite build --logLevel warn && node ../../scripts/precompress-app-dist.mjs dist",
     "preview": "vite preview",

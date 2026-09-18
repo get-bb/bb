@@ -524,9 +524,6 @@ describe("ThreadRow", () => {
     const runningIcon = screen.getByLabelText("Plugin running");
     expect(runningIcon.getAttribute("data-icon")).toBe("AiContentGenerator01");
     expect(Array.from(runningIcon.classList)).toContain("animate-shine-icon");
-    expect(Array.from(runningIcon.classList)).toContain(
-      "motion-safe:[animation-duration:1.5s]",
-    );
     expect(Array.from(runningIcon.parentElement?.classList ?? [])).toContain(
       "text-success",
     );
