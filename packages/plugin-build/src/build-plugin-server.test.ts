@@ -73,7 +73,8 @@ describe("plugin server build", () => {
     );
 
     const bundle = await readFile(jsPath, "utf8");
-    expect(bundle).toContain('from "@bb/plugin-sdk"');
+    // Minified output drops the space after `from`.
+    expect(bundle).toMatch(/from\s*"@bb\/plugin-sdk"/);
   });
 
   describe("SDK subpath imports", () => {
@@ -121,9 +122,10 @@ describe("plugin server build", () => {
       );
 
       const bundle = await readFile(jsPath, "utf8");
-      expect(bundle).toContain('from "@get-bb/plugin-sdk"');
+      expect(bundle).toMatch(/from\s*"@get-bb\/plugin-sdk"/);
       expect(bundle).not.toContain('"@get-bb/plugin-sdk/host"');
-      expect(bundle).toContain("resolveNativeRoots");
+      // A contract method name, which survives minification as a property key.
+      expect(bundle).toContain("resolveNativeRoots:");
     });
 
     it("names the missing SDK dependency when the plugin has no node_modules", async () => {

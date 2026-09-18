@@ -360,6 +360,8 @@ export async function buildPluginHost(
       bundle: true,
       format: "esm",
       platform: "node",
+      minify: true,
+      keepNames: true,
       plugins: [
         zodResolutionPlugin("host"),
         zodLocaleStubPlugin(),

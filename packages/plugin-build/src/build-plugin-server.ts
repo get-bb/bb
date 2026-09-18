@@ -102,6 +102,8 @@ export async function buildPluginServer(
       external: PLUGIN_SERVER_EXTERNALS.filter(
         (specifier) => !PLUGIN_SDK_ROOT_FILTER.test(specifier),
       ),
+      minify: true,
+      keepNames: true,
       plugins: [
         zodResolutionPlugin("server"),
         zodLocaleStubPlugin(),
