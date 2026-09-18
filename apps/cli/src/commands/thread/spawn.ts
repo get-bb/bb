@@ -312,7 +312,10 @@ export function registerSpawnCommand(
     .description(
       "Spawn a new thread; omitted execution flags use remembered project defaults, then the target provider catalog default",
     )
-    .option("--prompt <prompt>", "Initial prompt for the thread")
+    .option(
+      "--prompt <prompt>",
+      "Initial prompt for the thread (required unless --prompt-file is given)",
+    )
     .option(
       "--prompt-file <path>",
       `Read the initial prompt from a file instead of --prompt; ${TEXT_FILE_HELP_SUFFIX}`,
