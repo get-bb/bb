@@ -311,16 +311,15 @@ describe("PluginCollectionToolbar", () => {
     ({ label, value, direction }) => {
       mockToolbarWidth(800);
       render(<ToolbarHarness installed installsKnown />);
-      fireEvent.keyDown(screen.getByRole("button", { name: /^Sort:/u }), {
+      const trigger = screen.getByRole("button", { name: /^Sort:/u });
+      fireEvent.keyDown(trigger, {
         key: "Enter",
       });
       fireEvent.click(screen.getByRole("menuitemradio", { name: label }));
       expect(screen.getByLabelText("Parameters").textContent).toContain(
         `sort=${value}&direction=${direction}`,
       );
-      expect(screen.getByRole("button", { name: /^Sort:/u }).textContent).toBe(
-        label,
-      );
+      expect(trigger.textContent).toBe(label);
       expect(screen.getByLabelText("Parameters").textContent).toContain(
         "query=Memory&category=security&source=user",
       );
@@ -329,9 +328,7 @@ describe("PluginCollectionToolbar", () => {
         `direction=${direction === "asc" ? "desc" : "asc"}`,
       );
       fireEvent.click(screen.getByRole("menuitem", { name: "Clear sort" }));
-      expect(
-        screen.getByRole("button", { name: "Sort: Default" }).textContent,
-      ).toBe("Sort");
+      expect(trigger.textContent).toBe("Sort");
     },
   );
 
