@@ -7,6 +7,10 @@ export {
 } from "./resource/atoms";
 export { useResourceRouteLabel } from "./resource-route-label";
 export {
+  ResourceControlButton,
+  ResourceMultiSelectMenuItems,
+  ResourceSortMenuItems,
+  type ResourceOption,
   ResourceCreateButton,
   type ResourceCreateMenuAction,
   type ResourceCreateTemplateGroup,

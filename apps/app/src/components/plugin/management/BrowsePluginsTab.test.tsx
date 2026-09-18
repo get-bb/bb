@@ -218,7 +218,6 @@ describe("BrowsePluginsTab", () => {
     const trigger = await screen.findByRole("button", {
       name: "Filter plugins by category: Memory & Context, Security",
     });
-    expect(trigger.textContent).toContain("2 categories");
     fireEvent.click(trigger);
     fireEvent.click(
       await screen.findByRole("option", { name: /Tasks & Workflows/u }),
@@ -296,12 +295,12 @@ describe("BrowsePluginsTab", () => {
     });
 
     const sortTrigger = await screen.findByRole("button", {
-      name: "Sort: Featured",
+      name: "Sort: Default",
     });
     fireEvent.pointerDown(sortTrigger);
     expect(
       screen
-        .getByRole("menuitemradio", { name: "Most installed" })
+        .getByRole("menuitemradio", { name: "Installs" })
         .getAttribute("aria-disabled"),
     ).toBe("true");
   });
@@ -319,12 +318,10 @@ describe("BrowsePluginsTab", () => {
       "Open Tasks details",
     ]);
     const trigger = screen.getByRole("button", {
-      name: "Sort: Most installed, descending",
+      name: "Sort: Installs, descending",
     });
     fireEvent.pointerDown(trigger);
-    fireEvent.click(
-      screen.getByRole("menuitemradio", { name: "Most installed" }),
-    );
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Installs" }));
     expect(cardOrder()).toEqual([
       "Open Security details",
       "Open Memory details",
@@ -346,12 +343,10 @@ describe("BrowsePluginsTab", () => {
       "Open Security details",
     ]);
     const trigger = screen.getByRole("button", {
-      name: "Sort: Recently added, descending",
+      name: "Sort: Published, descending",
     });
     fireEvent.pointerDown(trigger);
-    fireEvent.click(
-      screen.getByRole("menuitemradio", { name: "Recently added" }),
-    );
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Published" }));
     expect(cardOrder()).toEqual([
       "Open Memory details",
       "Open Tasks details",
@@ -366,11 +361,11 @@ describe("BrowsePluginsTab", () => {
     );
 
     const trigger = await screen.findByRole("button", {
-      name: "Sort: Most installed, descending",
+      name: "Sort: Installs, descending",
     });
     expect(screen.queryByTestId("plugin-browse-shelves")).toBeNull();
     fireEvent.pointerDown(trigger);
-    fireEvent.click(screen.getByRole("menuitemradio", { name: "Featured" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Clear sort" }));
     expect(await screen.findByTestId("plugin-browse-shelves")).toBeTruthy();
     const params = new URLSearchParams(
       screen.getByTestId("location-search").textContent ?? "",

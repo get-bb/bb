@@ -1066,7 +1066,7 @@ describe("BB Official plugin detail routing", () => {
       await waitFor(() => {
         expect(screen.getByTestId("route-path").textContent).toBe("/plugins");
         expect(screen.getByTestId("route-search").textContent).toBe(
-          installed ? "?view=installed" : "",
+          installed ? "?view=installed&query=Local+GitHub" : "",
         );
         expect(document.activeElement).toBe(card);
         if (installed) expect(search).toHaveProperty("value", "Local GitHub");

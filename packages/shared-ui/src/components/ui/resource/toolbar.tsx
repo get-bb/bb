@@ -1,5 +1,12 @@
-import { Fragment, useState, type ReactNode } from "react";
-import { Button } from "../button";
+import {
+  Fragment,
+  forwardRef,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { Button, type ButtonProps } from "../button";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -26,18 +33,110 @@ export function ResourceToolbar({
   searchLabel,
   onSearchChange,
   controls,
+  combinedControls,
   action,
+  compact = false,
+  expandSearchOnFocus = false,
 }: {
   searchValue: string;
   searchPlaceholder: string;
   searchLabel?: string;
   onSearchChange: (value: string) => void;
   controls?: ReactNode;
+  combinedControls?: ReactNode;
   action?: ReactNode;
+  compact?: boolean;
+  expandSearchOnFocus?: boolean;
 }) {
+  const toolbarRef = useRef<HTMLDivElement>(null);
+  const controlsRef = useRef<HTMLDivElement>(null);
+  const individualControlsRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLDivElement>(null);
+  const actionRef = useRef<HTMLDivElement>(null);
+  const [combined, setCombined] = useState(false);
+  const [searchCondensed, setSearchCondensed] = useState(false);
+  const [searchExpanded, setSearchExpanded] = useState(false);
+  const restoreControlFocus = useRef(false);
+  const combinedRef = useRef(false);
+  const hasCombinedControls = Boolean(combinedControls);
+  const showCombined = compact && hasCombinedControls && combined;
+
+  useLayoutEffect(() => {
+    const toolbar = toolbarRef.current;
+    const individualControls = individualControlsRef.current;
+    const search = searchRef.current;
+    if (!toolbar || !individualControls || !search || !compact) return;
+    const measure = () => {
+      const width = toolbar.getBoundingClientRect().width;
+      if (width === 0) return;
+      const gap = Number.parseFloat(getComputedStyle(toolbar).columnGap) || 0;
+      const searchWidth = Number.parseFloat(getComputedStyle(search).flexBasis);
+      const actionWidth = actionRef.current?.getBoundingClientRect().width ?? 0;
+      const requiredWidth =
+        searchWidth +
+        individualControls.getBoundingClientRect().width +
+        actionWidth +
+        gap * (actionRef.current ? 2 : 1);
+      const next = hasCombinedControls && width < requiredWidth;
+      const controlsWidth = next
+        ? (controlsRef.current
+            ?.querySelector("[data-resource-combined-controls]")
+            ?.getBoundingClientRect().width ?? 0)
+        : individualControls.getBoundingClientRect().width;
+      setSearchCondensed(
+        expandSearchOnFocus &&
+          width -
+            controlsWidth -
+            actionWidth -
+            gap * (actionRef.current ? 2 : 1) <
+            searchWidth,
+      );
+      if (combinedRef.current === next) return;
+      restoreControlFocus.current = Boolean(
+        controlsRef.current?.contains(document.activeElement) ||
+        controlsRef.current?.querySelector('[data-state="open"]'),
+      );
+      combinedRef.current = next;
+      setCombined(next);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(toolbar);
+    observer.observe(individualControls);
+    if (controlsRef.current) observer.observe(controlsRef.current);
+    if (actionRef.current) observer.observe(actionRef.current);
+    return () => observer.disconnect();
+  }, [compact, expandSearchOnFocus, hasCombinedControls, showCombined]);
+
+  useLayoutEffect(() => {
+    if (!restoreControlFocus.current) return;
+    controlsRef.current
+      ?.querySelector<HTMLButtonElement>(
+        showCombined ? "[data-resource-combined-controls] button" : "button",
+      )
+      ?.focus();
+    restoreControlFocus.current = false;
+  }, [showCombined]);
+
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <div className="relative w-full min-w-0 sm:w-auto sm:flex-1">
+    <div
+      ref={toolbarRef}
+      data-resource-toolbar
+      data-search-expanded={searchExpanded || undefined}
+      className={cn(
+        "flex w-full min-w-0 items-center gap-2",
+        compact ? "@container/resource-toolbar flex-nowrap" : "flex-wrap",
+      )}
+    >
+      <div
+        ref={searchRef}
+        className={cn(
+          "relative",
+          compact
+            ? "min-w-0 flex-1 basis-40"
+            : "w-full min-w-0 sm:w-auto sm:flex-1",
+        )}
+      >
         <Icon
           name="Search"
           className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
@@ -46,16 +145,75 @@ export function ResourceToolbar({
         <Input
           value={searchValue}
           onChange={(event) => onSearchChange(event.target.value)}
-          placeholder={searchPlaceholder}
+          placeholder={
+            searchCondensed && !searchExpanded ? "Search" : searchPlaceholder
+          }
           aria-label={searchLabel ?? searchPlaceholder}
+          enterKeyHint={expandSearchOnFocus ? "search" : undefined}
+          onFocus={() => {
+            if (searchCondensed) setSearchExpanded(true);
+          }}
+          onBlur={() => setSearchExpanded(false)}
+          onKeyDown={(event) => {
+            if (
+              searchExpanded &&
+              !event.nativeEvent.isComposing &&
+              (event.key === "Enter" || event.key === "Escape")
+            ) {
+              event.preventDefault();
+              event.currentTarget.blur();
+            }
+          }}
           className="h-8 pl-8"
         />
       </div>
       {controls ? (
-        <div className="flex shrink-0 items-center gap-1.5">{controls}</div>
+        <div
+          ref={controlsRef}
+          inert={searchExpanded || undefined}
+          aria-hidden={searchExpanded || undefined}
+          className={cn(
+            "flex shrink-0 items-center",
+            compact ? "gap-2" : "gap-1.5",
+            searchExpanded && "invisible absolute pointer-events-none",
+          )}
+        >
+          <div
+            className={
+              showCombined ? "absolute size-0 overflow-hidden" : undefined
+            }
+            aria-hidden={showCombined || undefined}
+            inert={showCombined || undefined}
+          >
+            <div
+              key={showCombined ? "measuring" : "visible"}
+              ref={individualControlsRef}
+              data-resource-individual-controls
+              className={cn(
+                "flex w-max items-center",
+                compact ? "gap-2" : "gap-1.5",
+              )}
+            >
+              {controls}
+            </div>
+          </div>
+          {showCombined ? (
+            <div data-resource-combined-controls>{combinedControls}</div>
+          ) : null}
+        </div>
       ) : null}
       {action ? (
-        <div className="ml-auto flex shrink-0 items-center gap-1.5">
+        <div
+          ref={actionRef}
+          data-resource-toolbar-action
+          inert={searchExpanded || undefined}
+          aria-hidden={searchExpanded || undefined}
+          className={cn(
+            "flex shrink-0 items-center gap-1.5",
+            !compact && "ml-auto",
+            searchExpanded && "invisible absolute pointer-events-none",
+          )}
+        >
           {action}
         </div>
       ) : null}
@@ -117,42 +275,80 @@ const RESOURCE_MENU_TRIGGER_ENGAGED_CLASS =
 
 const RESOURCE_MENU_TRIGGER_RESTING_CLASS = "border border-input bg-background";
 
-function ResourceMenuTrigger({
-  label,
-  icon,
-  active = false,
-  open = false,
-  tooltip = label,
-}: {
-  label: string;
-  icon: IconName;
-  active?: boolean;
-  open?: boolean;
-  tooltip?: ReactNode;
-}) {
+export const ResourceControlButton = forwardRef<
+  HTMLButtonElement,
+  ButtonProps & {
+    label: string;
+    icon?: IconName;
+    active?: boolean;
+    open?: boolean;
+    tooltip?: ReactNode;
+    text?: string;
+    count?: number;
+    trailingIcon?: IconName;
+  }
+>(function ResourceControlButton(
+  {
+    label,
+    icon,
+    active = false,
+    open = false,
+    tooltip = label,
+    text,
+    count,
+    trailingIcon,
+    className,
+    ...props
+  },
+  ref,
+) {
   return (
     <TooltipProvider delayDuration={250}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <DropdownMenuTrigger asChild>
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              className={cn(
-                "size-8 shrink-0 rounded-md p-0 text-muted-foreground",
-                RESOURCE_MENU_TRIGGER_RESTING_CLASS,
-                (open || active) && RESOURCE_MENU_TRIGGER_ENGAGED_CLASS,
-              )}
-              aria-label={label}
-            >
-              <Icon name={icon} className="size-4" aria-hidden />
-            </Button>
-          </DropdownMenuTrigger>
+          <Button
+            {...props}
+            ref={ref}
+            type="button"
+            variant="outline"
+            size={text ? "sm" : "icon"}
+            className={cn(
+              "h-8 shrink-0 rounded-md text-muted-foreground",
+              text ? "gap-2 px-2 text-xs" : "size-8 p-0",
+              RESOURCE_MENU_TRIGGER_RESTING_CLASS,
+              (open || active) && RESOURCE_MENU_TRIGGER_ENGAGED_CLASS,
+              className,
+            )}
+            aria-label={label}
+          >
+            {icon ? <Icon name={icon} className="size-4" aria-hidden /> : null}
+            {text ? <span>{text}</span> : null}
+            {count !== undefined && count > 0 ? (
+              <span
+                aria-hidden
+                className="rounded bg-surface-recessed px-1 text-2xs"
+              >
+                {count}
+              </span>
+            ) : null}
+            {trailingIcon ? (
+              <Icon name={trailingIcon} className="size-4" aria-hidden />
+            ) : null}
+          </Button>
         </TooltipTrigger>
         <TooltipContent side="bottom">{tooltip}</TooltipContent>
       </Tooltip>
     </TooltipProvider>
+  );
+});
+
+function ResourceMenuTrigger(
+  props: React.ComponentProps<typeof ResourceControlButton>,
+) {
+  return (
+    <DropdownMenuTrigger asChild>
+      <ResourceControlButton {...props} />
+    </DropdownMenuTrigger>
   );
 }
 
@@ -171,6 +367,70 @@ function nextSelectedValues(
   return [...next];
 }
 
+export function ResourceMultiSelectMenuItems({
+  label,
+  selectedValues,
+  options,
+  onChange,
+  compact = false,
+  clearInFooter = false,
+}: {
+  label: string;
+  selectedValues: readonly string[];
+  options: readonly ResourceOption[];
+  onChange: (values: string[]) => void;
+  compact?: boolean;
+  clearInFooter?: boolean;
+}) {
+  const selected = new Set(selectedValues);
+  function updateValue(option: ResourceOption, checked: boolean) {
+    const next = nextSelectedValues(option, checked, selectedValues);
+    if (next !== null) onChange(next);
+  }
+  return (
+    <>
+      <DropdownMenuLabel
+        className={cn(
+          "text-xs font-normal text-subtle-foreground",
+          compact && "md:px-1.5 md:py-1",
+        )}
+      >
+        {label}
+      </DropdownMenuLabel>
+      {options.map((option) => (
+        <DropdownMenuCheckboxItem
+          key={option.id}
+          checked={selected.has(option.id)}
+          disabled={option.disabled}
+          className={cn(compact && "md:py-1 md:pl-1.5 md:pr-7")}
+          onSelect={(event) => event.preventDefault()}
+          onCheckedChange={(checked) => updateValue(option, checked === true)}
+        >
+          <ResourceOptionContent option={option} compact={compact} />
+        </DropdownMenuCheckboxItem>
+      ))}
+      {clearInFooter ? (
+        <>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            disabled={selectedValues.length === 0}
+            onSelect={(event) => {
+              event.preventDefault();
+              onChange([]);
+            }}
+            className={cn(
+              "text-xs text-muted-foreground",
+              compact && "md:px-1.5 md:py-1",
+            )}
+          >
+            Clear filter
+          </DropdownMenuItem>
+        </>
+      ) : null}
+    </>
+  );
+}
+
 export function ResourceMultiSelectMenu({
   label,
   icon,
@@ -178,6 +438,8 @@ export function ResourceMultiSelectMenu({
   options,
   onChange,
   compact = false,
+  clearInFooter = false,
+  showLabel = false,
 }: {
   label: string;
   icon: IconName;
@@ -185,6 +447,8 @@ export function ResourceMultiSelectMenu({
   options: readonly ResourceOption[];
   onChange: (values: string[]) => void;
   compact?: boolean;
+  clearInFooter?: boolean;
+  showLabel?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const selected = new Set(selectedValues);
@@ -198,17 +462,14 @@ export function ResourceMultiSelectMenu({
       : `${label}: ${activeSelectedCount} selected`;
   const triggerTooltip = `${label}: ${selectionSummary}`;
 
-  function updateValue(option: ResourceOption, checked: boolean) {
-    const next = nextSelectedValues(option, checked, selectedValues);
-    if (next === null) return;
-    onChange(next);
-  }
-
   return (
     <DropdownMenu onOpenChange={setOpen}>
       <ResourceMenuTrigger
         label={triggerLabel}
-        icon={icon}
+        text={showLabel ? label : undefined}
+        icon={showLabel ? undefined : icon}
+        trailingIcon={showLabel ? "ChevronDown" : undefined}
+        count={showLabel ? activeSelectedCount : undefined}
         active={activeSelectedCount > 0}
         open={open}
         tooltip={triggerTooltip}
@@ -218,26 +479,14 @@ export function ResourceMultiSelectMenu({
         mobileTitle={label}
         className={cn(compact ? "w-max max-w-64 md:p-0.5" : "min-w-44")}
       >
-        <DropdownMenuLabel
-          className={cn(
-            "text-xs font-normal text-subtle-foreground",
-            compact && "md:px-1.5 md:py-1",
-          )}
-        >
-          {label}
-        </DropdownMenuLabel>
-        {options.map((option) => (
-          <DropdownMenuCheckboxItem
-            key={option.id}
-            checked={selected.has(option.id)}
-            disabled={option.disabled}
-            className={cn(compact && "md:py-1 md:pl-1.5 md:pr-7")}
-            onSelect={(event) => event.preventDefault()}
-            onCheckedChange={(checked) => updateValue(option, checked === true)}
-          >
-            <ResourceOptionContent option={option} compact={compact} />
-          </DropdownMenuCheckboxItem>
-        ))}
+        <ResourceMultiSelectMenuItems
+          label={label}
+          selectedValues={selectedValues}
+          options={options}
+          onChange={onChange}
+          compact={compact}
+          clearInFooter={clearInFooter}
+        />
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -296,7 +545,6 @@ export function ResourceFilterMenu({
         {renderedGroups.map(({ group, selected }, groupIndex) => (
           <Fragment key={group.id}>
             {groupIndex > 0 ? <DropdownMenuSeparator /> : null}
-            {}
             <DropdownMenuGroup aria-label={group.label}>
               <DropdownMenuLabel
                 className={cn(
@@ -334,7 +582,7 @@ export function ResourceFilterMenu({
   );
 }
 
-export function ResourceSortMenu({
+export function ResourceSortMenuItems({
   value,
   direction,
   options,
@@ -342,6 +590,7 @@ export function ResourceSortMenu({
   onClear,
   placeholderLabel = "Sort",
   compact = false,
+  clearInFooter = false,
 }: {
   value: string | null;
   direction: "asc" | "desc";
@@ -350,6 +599,120 @@ export function ResourceSortMenu({
   onClear?: () => void;
   placeholderLabel?: string;
   compact?: boolean;
+  clearInFooter?: boolean;
+}) {
+  return (
+    <>
+      <DropdownMenuLabel
+        className={cn(
+          "text-xs font-normal text-subtle-foreground",
+          compact && "md:px-1.5 md:py-1",
+        )}
+      >
+        Sort
+      </DropdownMenuLabel>
+      {onClear === undefined || clearInFooter ? null : (
+        <DropdownMenuItem
+          role="menuitemradio"
+          aria-checked={value === null}
+          onSelect={(event) => {
+            event.preventDefault();
+            onClear();
+          }}
+          className={cn(
+            "flex items-center justify-between gap-3",
+            compact && "md:gap-2 md:px-1.5 md:py-1",
+          )}
+        >
+          {placeholderLabel}
+          <Icon
+            name="Check"
+            aria-hidden
+            className={cn(
+              "size-4 text-subtle-foreground",
+              value === null ? "opacity-100" : "opacity-0",
+            )}
+          />
+        </DropdownMenuItem>
+      )}
+      {options.map((option) => {
+        const selected = option.id === value;
+        return (
+          <DropdownMenuItem
+            key={option.id}
+            disabled={option.disabled}
+            role="menuitemradio"
+            aria-checked={selected}
+            onSelect={(event) => {
+              event.preventDefault();
+              if (option.disabled) return;
+              onChange(option.id);
+            }}
+            className={cn(
+              "flex items-center justify-between gap-3",
+              compact && "md:gap-2 md:px-1.5 md:py-1",
+            )}
+          >
+            <ResourceOptionContent option={option} compact={compact} />
+            <Icon
+              name={direction === "asc" ? "ArrowUp" : "ArrowDown"}
+              aria-hidden
+              className={cn(
+                "size-4 text-subtle-foreground",
+                option.omitDirection === true
+                  ? "hidden"
+                  : selected
+                    ? "opacity-100"
+                    : "opacity-0",
+              )}
+            />
+          </DropdownMenuItem>
+        );
+      })}
+      {clearInFooter && onClear !== undefined ? (
+        <>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            disabled={value === null}
+            onSelect={(event) => {
+              event.preventDefault();
+              onClear();
+            }}
+            className={cn(
+              "text-xs text-muted-foreground",
+              compact && "md:px-1.5 md:py-1",
+            )}
+          >
+            Clear sort
+          </DropdownMenuItem>
+        </>
+      ) : null}
+    </>
+  );
+}
+
+export function ResourceSortMenu({
+  value,
+  direction,
+  options,
+  onChange,
+  onClear,
+  placeholderLabel = "Sort",
+  compact = false,
+  clearInFooter = false,
+  showLabel = false,
+  triggerIcon = "ArrowUpDown",
+}: {
+  value: string | null;
+  direction: "asc" | "desc";
+  options: readonly ResourceOption[];
+  onChange: (value: string) => void;
+  onClear?: () => void;
+  placeholderLabel?: string;
+  compact?: boolean;
+  clearInFooter?: boolean;
+  showLabel?: boolean;
+  triggerIcon?: IconName;
 }) {
   const [open, setOpen] = useState(false);
   const selectedOption = options.find((option) => option.id === value);
@@ -363,10 +726,10 @@ export function ResourceSortMenu({
 
   return (
     <DropdownMenu onOpenChange={setOpen}>
-      {}
       <ResourceMenuTrigger
         label={sortStateLabel}
-        icon="ArrowUpDown"
+        text={showLabel ? (selectedOption?.label ?? "Sort") : undefined}
+        icon={triggerIcon}
         active={onClear !== undefined && value !== null}
         open={open}
       />
@@ -375,72 +738,16 @@ export function ResourceSortMenu({
         mobileTitle="Sort"
         className={cn("min-w-40", compact && "md:p-0.5")}
       >
-        <DropdownMenuLabel
-          className={cn(
-            "text-xs font-normal text-subtle-foreground",
-            compact && "md:px-1.5 md:py-1",
-          )}
-        >
-          Sort by
-        </DropdownMenuLabel>
-        {onClear === undefined ? null : (
-          <DropdownMenuItem
-            role="menuitemradio"
-            aria-checked={value === null}
-            onSelect={(event) => {
-              event.preventDefault();
-              onClear();
-            }}
-            className={cn(
-              "flex items-center justify-between gap-3",
-              compact && "md:gap-2 md:px-1.5 md:py-1",
-            )}
-          >
-            {placeholderLabel}
-            <Icon
-              name="Check"
-              aria-hidden
-              className={cn(
-                "size-4 text-subtle-foreground",
-                value === null ? "opacity-100" : "opacity-0",
-              )}
-            />
-          </DropdownMenuItem>
-        )}
-        {options.map((option) => {
-          const selected = option.id === value;
-          return (
-            <DropdownMenuItem
-              key={option.id}
-              disabled={option.disabled}
-              role="menuitemradio"
-              aria-checked={selected}
-              onSelect={(event) => {
-                event.preventDefault();
-                if (option.disabled) return;
-                onChange(option.id);
-              }}
-              className={cn(
-                "flex items-center justify-between gap-3",
-                compact && "md:gap-2 md:px-1.5 md:py-1",
-              )}
-            >
-              <ResourceOptionContent option={option} compact={compact} />
-              <Icon
-                name={direction === "asc" ? "ArrowUp" : "ArrowDown"}
-                aria-hidden
-                className={cn(
-                  "size-4 text-subtle-foreground",
-                  option.omitDirection === true
-                    ? "hidden"
-                    : selected
-                      ? "opacity-100"
-                      : "opacity-0",
-                )}
-              />
-            </DropdownMenuItem>
-          );
-        })}
+        <ResourceSortMenuItems
+          value={value}
+          direction={direction}
+          options={options}
+          onChange={onChange}
+          onClear={onClear}
+          placeholderLabel={placeholderLabel}
+          compact={compact}
+          clearInFooter={clearInFooter}
+        />
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -470,34 +777,59 @@ export function ResourceCreateButton({
   templateGroups,
   menuActions = [],
   onCreate,
+  compactWhenNarrow = false,
 }: {
   label: string;
   templates: readonly ResourceCreateTemplate[];
   templateGroups?: readonly ResourceCreateTemplateGroup[];
   menuActions?: readonly ResourceCreateMenuAction[];
   onCreate: (prompt?: string) => void;
+  compactWhenNarrow?: boolean;
 }) {
   const groups: readonly ResourceCreateTemplateGroup[] = templateGroups ?? [
     { label: "Examples", templates },
   ];
+  const createButton = (
+    <Button
+      aria-label={label}
+      type="button"
+      size="sm"
+      className={cn("rounded-r-none", compactWhenNarrow && "pl-2 pr-1")}
+      onClick={() => onCreate()}
+    >
+      <Icon
+        name="MessageCirclePlus"
+        className={cn(
+          "size-4",
+          compactWhenNarrow && "@max-[36rem]/resource-toolbar:hidden",
+        )}
+        aria-hidden
+      />
+      <span>{label}</span>
+    </Button>
+  );
   return (
     <div className="flex shrink-0 items-stretch">
-      <Button
-        type="button"
-        size="sm"
-        className="rounded-r-none"
-        onClick={() => onCreate()}
-      >
-        <Icon name="MessageCirclePlus" className="size-4" aria-hidden />
-        {label}
-      </Button>
+      {compactWhenNarrow ? (
+        <TooltipProvider delayDuration={250}>
+          <Tooltip>
+            <TooltipTrigger asChild>{createButton}</TooltipTrigger>
+            <TooltipContent>{label}</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      ) : (
+        createButton
+      )}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
             type="button"
             size="sm"
             aria-label={`${label} options`}
-            className="rounded-l-none px-1.5"
+            className={cn(
+              "rounded-l-none px-1.5",
+              compactWhenNarrow && "pl-1 pr-2",
+            )}
           >
             <Icon name="ChevronDown" className="size-4" aria-hidden />
           </Button>

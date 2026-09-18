@@ -1,3 +1,4 @@
+import { usePluginCollectionParams } from "./usePluginCollectionParams";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Button } from "@bb/shared-ui/button";
@@ -27,11 +28,7 @@ import { getPluginsRoutePath } from "@/lib/route-paths";
 import { usePluginCatalogSearch } from "@/hooks/queries/plugin-catalog-queries";
 import type { AddPluginInitial } from "./AddPluginDialog";
 import { PluginCatalogCard, PluginCatalogGrid } from "./PluginCatalogCard";
-import {
-  PluginBrowseToolbar,
-  pluginBrowseSort,
-  pluginBrowseSortDirection,
-} from "./PluginBrowseControls";
+import { PluginCollectionToolbar } from "./PluginBrowseControls";
 import {
   pluginBrowseShelves,
   pluginCategoryFilterId,
@@ -52,18 +49,17 @@ export function BrowsePluginsTab({
   onOpenPlugin: (pluginId: string, trigger: HTMLButtonElement) => void;
   onInstallFromSource: () => void;
 }) {
-  const [searchParams, setSearchParams] = useSearchParams();
+  const {
+    searchParams,
+    query,
+    requestedSort,
+    sortDirection,
+    selectedCategories,
+    changeSearchParams,
+  } = usePluginCollectionParams();
   const shelfKey = searchParams.get("shelf");
   const isCategoryShelf = shelfKey?.startsWith("category:") ?? false;
-  const query = searchParams.get("query") ?? "";
   const creationViewActive = searchParams.get("view") === "create";
-  const selectedCategories = useMemo(
-    () => (isCategoryShelf ? [] : searchParams.getAll("category")),
-    [isCategoryShelf, searchParams],
-  );
-  const requestedSort = pluginBrowseSort(searchParams.get("sort"));
-  const sortDirection =
-    pluginBrowseSortDirection(searchParams.get("direction")) ?? "desc";
   const [heroRequest, setHeroRequest] = useState<{
     nonce: number;
     seed?: string;
@@ -149,14 +145,6 @@ export function BrowsePluginsTab({
   browseParams.delete("shelf");
   const browseSearch = browseParams.toString();
 
-  const changeSearchParams = (
-    change: (next: URLSearchParams) => void,
-    replace = true,
-  ) => {
-    const next = new URLSearchParams(searchParams);
-    change(next);
-    setSearchParams(next, { replace });
-  };
   const openComposer = (seed?: string) =>
     setHeroRequest({
       nonce: nextComposerRequestNonce(),
@@ -269,7 +257,7 @@ export function BrowsePluginsTab({
           <BrowseArchetypeCards onCreate={openComposer} />
         ) : (
           <section className="space-y-6">
-            <PluginBrowseToolbar
+            <PluginCollectionToolbar
               query={query}
               selectedCategories={selectedCategories}
               categoryOptions={categoryOptions}
