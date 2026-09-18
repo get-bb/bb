@@ -11,6 +11,7 @@ import {
 } from "node:fs/promises";
 import { dirname, isAbsolute, join } from "node:path";
 import { createPluginArtifactMeta } from "./plugin-artifact-meta.js";
+import { zodLocaleStubPlugin } from "./zod-locale-stub.js";
 import { zodResolutionPlugin } from "./zod-resolution.js";
 import {
   isRecord,
@@ -361,6 +362,7 @@ export async function buildPluginHost(
       platform: "node",
       plugins: [
         zodResolutionPlugin("host"),
+        zodLocaleStubPlugin(),
         {
           name: "provide-public-host-sdk-runtime",
           setup(build) {

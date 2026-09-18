@@ -35,6 +35,10 @@ import {
   pluginScopeRoots,
   scopePluginUtilities,
 } from "./scope-plugin-utilities.js";
+import {
+  ZOD_LOCALE_STUB_NAMESPACE,
+  zodLocaleStubPlugin,
+} from "./zod-locale-stub.js";
 
 export {
   RUNTIME_SLOT_BY_SPECIFIER,
@@ -363,7 +367,11 @@ async function bundledInputPaths(
   const paths = new Set<string>();
   await Promise.all(
     Object.keys(metafile.inputs).map(async (input) => {
-      if (input.startsWith(`${SHIM_NAMESPACE}:`) || input.startsWith("(")) {
+      if (
+        input.startsWith(`${SHIM_NAMESPACE}:`) ||
+        input.startsWith(`${ZOD_LOCALE_STUB_NAMESPACE}:`) ||
+        input.startsWith("(")
+      ) {
         return;
       }
       paths.add(await realpath(resolve(absWorkingDir, input)));
@@ -425,7 +433,7 @@ export async function buildPluginApp(
         __BB_PLUGIN_ID__: JSON.stringify(pluginId),
       },
       logLevel: "error",
-      plugins: [runtimeShimPlugin()],
+      plugins: [zodLocaleStubPlugin(), runtimeShimPlugin()],
     });
 
     let authoredCss = "";
