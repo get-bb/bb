@@ -609,9 +609,17 @@ function FollowUpPromptBoxWithComposer({
     (executionReadOnly ?? false) || hasPendingInteraction;
   const footerStart = useMemo(
     () => (
-      <ExecutionControls {...execution} disabled={executionControlsDisabled} />
+      <>
+        <ExecutionControls
+          {...execution}
+          disabled={executionControlsDisabled}
+        />
+        {contextWindowUsage ? (
+          <ThreadContextWindowIndicator usage={contextWindowUsage} />
+        ) : null}
+      </>
     ),
-    [execution, executionControlsDisabled],
+    [contextWindowUsage, execution, executionControlsDisabled],
   );
   const { permissionDisplayOverride, permissionPickerDisabledByPlanMode } =
     usePromptModePermissionDisplay({
@@ -794,9 +802,6 @@ function FollowUpPromptBoxWithComposer({
           </div>
           <div className="flex shrink-0 items-center gap-2">
             {permissionControl}
-            {contextWindowUsage ? (
-              <ThreadContextWindowIndicator usage={contextWindowUsage} />
-            ) : null}
           </div>
         </div>
       ) : null}
