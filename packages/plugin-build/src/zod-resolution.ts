@@ -23,11 +23,22 @@ export function describeUnresolvedZod(args: {
  * the one fix that produces a bundle that cannot load — into a message naming
  * the plugin's missing dependency.
  */
-export function zodResolutionPlugin(entryKind: "host" | "server"): Plugin {
+export function zodResolutionPlugin(
+  entryKind: "host" | "server",
+  options: { hostProvidedBareZod?: boolean } = {},
+): Plugin {
   return {
     name: "bb-zod-resolution",
     setup(build) {
       build.onResolve({ filter: ZOD_FILTER }, async (args) => {
+        // Externalising zod is decided here rather than through esbuild's
+        // `external` option, which matches a bare package name against its
+        // subpaths too. The host runtime alias substitutes a prefix, so an
+        // externalised `zod/mini` would resolve to `.../zod-runtime.js/mini`.
+        // Subpaths stay bundled.
+        if (options.hostProvidedBareZod === true && args.path === "zod") {
+          return { path: args.path, external: true };
+        }
         if (args.pluginData === RESOLVED_MARK) return undefined;
         const resolved = await build.resolve(args.path, {
           importer: args.importer,
