@@ -234,7 +234,7 @@ export function ThreadStatusGlyph({
         <Icon
           name="Loading"
           className={cn(
-            "animate-spin",
+            "animate-spin motion-reduce:animate-none",
             SIDEBAR_WORKING_STATUS_COLOR_CLASS,
             iconSizeClass,
           )}
