@@ -15,8 +15,8 @@ import {
   type PluginFileOpenerProps,
   type PluginHomepageSectionProps,
   type PluginHttpAuthMode,
-  type PluginCommandPaletteActionContext,
-  type PluginCommandPaletteActionRegistration,
+  type PluginCommandContext,
+  type PluginCommandRegistration,
   type PluginMessageActionContext,
   type PluginMessageActionRegistration,
   type PluginMessageDirectiveProps,
@@ -271,7 +271,7 @@ type SlotPropsByName = {
   experimental_diffRenderer: PluginDiffRendererProps;
   messageDirective: PluginMessageDirectiveProps;
   messageAction: PluginMessageActionContext;
-  commandPaletteAction: PluginCommandPaletteActionContext;
+  commandPaletteAction: PluginCommandContext;
   experimental_providerIcon: PluginProviderIconRegistration;
   experimental_timelineRenderer: PluginTimelineRendererProps;
   experimental_environmentProviderInputs: PluginEnvironmentProviderInputsProps;
@@ -483,10 +483,10 @@ const COMMAND_PALETTE_ACTION_REGISTRATION_FIELDS = [
   "title",
   "isAvailable",
   "run",
-] as const satisfies readonly (keyof PluginCommandPaletteActionRegistration)[];
+] as const satisfies readonly (keyof PluginCommandRegistration)[];
 
 type MissingCommandPaletteActionRegistrationField = Exclude<
-  keyof PluginCommandPaletteActionRegistration,
+  keyof PluginCommandRegistration,
   (typeof COMMAND_PALETTE_ACTION_REGISTRATION_FIELDS)[number]
 >;
 const _assertAllCommandPaletteActionRegistrationFieldsListed: MissingCommandPaletteActionRegistrationField extends never

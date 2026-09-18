@@ -1350,7 +1350,7 @@ describe("agent tools", () => {
     });
     const recorded = harness.registrations.agentTools[0]?.presentation;
     expect(recorded).toEqual(
-      parsePluginRowPresentation("lookup_doc", declared),
+      parsePluginRowPresentation('tool "lookup_doc"', declared),
     );
     expect(recorded).toEqual({
       label: { pending: "Looking up a doc", completed: "Looked up a doc" },

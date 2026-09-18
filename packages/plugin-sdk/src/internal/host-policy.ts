@@ -2086,9 +2086,8 @@ function rejectStaleAgentToolFields(toolName: string, tool: object): void {
  * with the same message.
  */
 export function parsePluginRowPresentation(
-  toolName: string,
+  subject: string,
   value: unknown,
-  subject = `tool "${toolName}"`,
 ): PluginRowPresentation | null {
   if (value === undefined) {
     return null;
@@ -2799,10 +2798,9 @@ export function runPluginStorageMigrations(
     database.exec("ALTER TABLE _bb_migrations ADD COLUMN statement_hash TEXT");
   }
   const rows = database
-    .prepare<
-      [],
-      { id: number; statement_hash: string | null }
-    >("SELECT id, statement_hash FROM _bb_migrations ORDER BY id")
+    .prepare<[], { id: number; statement_hash: string | null }>(
+      "SELECT id, statement_hash FROM _bb_migrations ORDER BY id",
+    )
     .all();
   const applied = new Map<number, string | null>();
   for (const row of rows) applied.set(row.id, row.statement_hash);
@@ -3170,7 +3168,7 @@ export function normalizeAgentToolRegistration(args: {
     );
   }
   const presentation = parsePluginRowPresentation(
-    name,
+    `tool "${name}"`,
     tool.presentation,
   );
   if (presentation?.icon !== undefined) {
@@ -3361,9 +3359,8 @@ export function normalizeInteractionRequest(
     payload,
     timeoutMs,
     presentation: parsePluginRowPresentation(
-      request.rendererId,
-      request.presentation,
       `ui.requestInput form "${request.rendererId}"`,
+      request.presentation,
     ),
     describeSubmission: request.describeSubmission ?? null,
   };

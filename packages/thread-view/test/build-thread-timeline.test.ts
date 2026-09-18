@@ -1091,11 +1091,9 @@ describe("buildThreadTimelineFromEvents", () => {
 
   it("hides a delivered tool result whose tool row is suppressed and shows one whose tool row is not", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
-    const subject = (label: string, suppress: boolean) => ({
+    const subject = (toolName: string, suppress: boolean) => ({
       kind: "tool-call" as const,
-      toolName: "AskUserQuestion",
-      callId: `call-${label}`,
-      label,
+      toolName,
       suppress,
     });
     const fixture = renderTimelineFixture({
@@ -1106,13 +1104,13 @@ describe("buildThreadTimelineFromEvents", () => {
         event.clientTurnRequested({
           initiator: "system",
           systemMessageKind: "tool-result-delivered",
-          systemMessageSubject: subject("Asked a question", true),
+          systemMessageSubject: subject("AskUserQuestion", true),
           text: "Your earlier AskUserQuestion tool call has finished.",
         }),
         event.clientTurnRequested({
           initiator: "system",
           systemMessageKind: "tool-result-delivered",
-          systemMessageSubject: subject("Ran a grill round", false),
+          systemMessageSubject: subject("grill_round", false),
           text: "Your earlier grill_round tool call has finished.",
         }),
       ],

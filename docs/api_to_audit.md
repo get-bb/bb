@@ -9,9 +9,9 @@ Registers frontend commands with `{ id, title, defaultShortcut?, isAvailable?, r
 palette consumes the same registrations as the deprecated
 `app.slots.commandPaletteAction` alias. Both paths share validation and a
 per-plugin ID namespace. The public name follows the explicitly requested API
-spelling without an experimental prefix. Existing context and registration
-type names remain deprecated aliases of `PluginCommandContext` and
-`PluginCommandRegistration`.
+spelling without an experimental prefix. Types use `PluginCommandContext`
+and `PluginCommandRegistration`; the old runtime registration path remains
+compatible with compiled plugins.
 
 Audit command identity, availability outside the palette, shortcut conflicts,
 and saved binding lifecycle before stabilizing the keyboard shortcut contract.
@@ -123,9 +123,8 @@ values and their sixteen `ExperimentalProvider*` types dropped the prefix
 `ExperimentalProviderHealth` → `ProviderHealth`, …), as did the
 `BRIDGE_REQUEST_METHODS.experimentalProvider*` keys (the method strings on
 the wire are unchanged); on `@get-bb/plugin-sdk` the tool type
-`PluginAgentToolExperimentalStatusLabels` is `PluginAgentToolLabels`, the
-type of `presentation.label` (itself renamed to `PluginRowLabels` in SDK
-0.4.102).
+`PluginAgentToolExperimentalStatusLabels` became `PluginAgentToolLabels`,
+then `PluginRowLabels` in SDK 0.4.102, the type of `presentation.label`.
 
 ## One-release compatibility windows (removal target: bb 0.42)
 
@@ -140,11 +139,6 @@ type of `presentation.label` (itself renamed to `PluginRowLabels` in SDK
   warns. All go in bb 0.42. The two 0.4.14 `app` exports
   (`experimental_ProviderModelPicker`, `experimental_PermissionModePicker`)
   are present and stay experimental; neither carries an alias.
-- `@get-bb/plugin-sdk` keeps the type aliases `PluginAgentToolPresentation`
-  and `PluginAgentToolLabels` for plugins compiled against an SDK before
-  0.4.102. Both now describe any plugin-owned timeline row, not only a tool
-  call, so they are `PluginRowPresentation` and `PluginRowLabels`; the
-  aliases are type-only and cost nothing at runtime.
 - The deleted `bb.agents.experimental_registerProvider` throws with the
   removal named on first read (use `bb.providers.register`).
 - Removed outright from a published subpath, with no alias and no throwing
@@ -1989,7 +1983,10 @@ bound in `apps/app/src/lib/plugin-sdk-app-impl.tsx`.
 
 **Kept experimental (2026-08-22).** zero consumers; every audit item is about the prop shape and none has a consumer to answer it — the first real renderer (a Codex extension-kind body, or the echo example) precedes stabilization.
 
-**2026-09-16.** A third row kind resolves to this renderer: the row a plugin form (`bb.ui.requestInput`) leaves in the timeline, registered as `"<pluginId>/<rendererId>"`. Its `payload` is whatever the form's `describeSubmission` returned, or `null`, and `completedAt` is `null`. Audit with the first consumer whether form rows and extension rows should share one `kind` grammar or be told apart on the row.
+**Form rows (2026-09-16).** Register `"<pluginId>/<rendererId>"` to render a
+`requestInput` form's history. `payload` is `describeSubmission().payload`
+or `null`; `completedAt` is `null`. Before stabilization, decide whether form
+and extension rows need distinct `kind` values.
 
 **What it does.** Lets a provider plugin's frontend render the expanded body
 of the timeline rows it owns: `{ kind, component }`, where `kind` is one of

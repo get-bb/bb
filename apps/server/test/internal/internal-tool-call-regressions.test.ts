@@ -315,8 +315,6 @@ describe("plugin tool calls that outlive their round trip", () => {
           systemMessageSubject: {
             kind: "tool-call",
             toolName: "wait_for_user",
-            callId: "call-1",
-            label: "Asked",
             suppress: false,
           },
           target: { kind: "new-turn" },

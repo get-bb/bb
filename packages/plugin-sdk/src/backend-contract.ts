@@ -1071,9 +1071,6 @@ export interface PluginRowLabels {
   completed: string;
 }
 
-/** @deprecated Renamed to `PluginRowLabels` in SDK 0.4.102. */
-export type PluginAgentToolLabels = PluginRowLabels;
-
 /**
  * How something a plugin owns reads as a timeline row (grammar v3): a native
  * tool's calls, or the row a `bb.ui.requestInput` form leaves behind. Every
@@ -1098,9 +1095,6 @@ export interface PluginRowPresentation {
   /** Accent colour per theme; omitted rows use the neutral row tint. */
   tint?: { light: string; dark: string };
 }
-
-/** @deprecated Renamed to `PluginRowPresentation` in SDK 0.4.102. */
-export type PluginAgentToolPresentation = PluginRowPresentation;
 
 export interface PluginAgentToolRegistrationBase {
   /** Tool name shown to the model: [a-zA-Z0-9_-]+, unique across plugins,

@@ -107,8 +107,6 @@ describe("generatedConversationTitle — system source", () => {
       systemMessageSubject: {
         kind: "tool-call",
         toolName: "grill_round",
-        callId: "call-1",
-        label: "Ran a grill round",
         suppress: false,
       },
     });

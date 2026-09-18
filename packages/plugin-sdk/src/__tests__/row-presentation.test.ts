@@ -43,7 +43,7 @@ describe("parsePluginRowPresentation", () => {
       },
     },
   ])("accepts $name", ({ value, expected }) => {
-    const parsed = parsePluginRowPresentation("tool_x", value);
+    const parsed = parsePluginRowPresentation('tool "tool_x"', value);
     expect(parsed).toEqual(expected);
     if (value !== undefined) {
       expect(parsed).not.toBe(value);
@@ -117,7 +117,7 @@ describe("parsePluginRowPresentation", () => {
         'tool "tool_x" presentation.tint must provide light and dark strings',
     },
   ])("rejects $name", ({ value, message }) => {
-    expect(() => parsePluginRowPresentation("tool_x", value)).toThrow(
+    expect(() => parsePluginRowPresentation('tool "tool_x"', value)).toThrow(
       message,
     );
   });

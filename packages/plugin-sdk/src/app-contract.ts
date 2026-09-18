@@ -1392,12 +1392,6 @@ export interface PluginCommandRegistration {
   run(context: PluginCommandContext): void | Promise<void>;
 }
 
-/** @deprecated Use PluginCommandContext. */
-export type PluginCommandPaletteActionContext = PluginCommandContext;
-
-/** @deprecated Use PluginCommandRegistration. */
-export type PluginCommandPaletteActionRegistration = PluginCommandRegistration;
-
 /** Registers commands for bb's command palette. */
 export interface PluginAppCommands {
   /** Register a command. IDs are unique within this plugin, including legacy slot registrations. */

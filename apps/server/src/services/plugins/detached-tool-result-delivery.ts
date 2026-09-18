@@ -8,15 +8,14 @@ import type { PluginRowPresentation } from "@get-bb/plugin-sdk";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
 import { queueParentSystemMessage } from "../threads/parent-system-messages.js";
 
-export interface DeliverDetachedToolResultArgs {
+interface DeliverDetachedToolResultArgs {
   threadId: string;
   toolName: string;
-  callId: string;
   presentation: PluginRowPresentation | null;
   response: ToolCallResponse;
 }
 
-export function buildDetachedToolResultInput(args: {
+function buildDetachedToolResultInput(args: {
   toolName: string;
   response: ToolCallResponse;
 }): PromptInput[] {
@@ -41,39 +40,29 @@ export function buildDetachedToolResultInput(args: {
   ];
 }
 
-export function buildDetachedToolResultSubject(args: {
+function buildDetachedToolResultSubject(args: {
   toolName: string;
-  callId: string;
   presentation: PluginRowPresentation | null;
 }): SystemMessageSubject {
   return {
     kind: "tool-call",
     toolName: args.toolName,
-    callId: args.callId,
-    label: args.presentation?.label?.completed ?? `Ran ${args.toolName}`,
     suppress: args.presentation?.suppress ?? false,
   };
 }
 
-/**
- * Hands a plugin tool result to the agent after the tool call's round trip is
- * gone. A successful result steers a running turn or starts one on an idle
- * thread. A failed result only steers a running turn: a card the person
- * dismissed after the turn ended, or a tool that gave up, is not worth waking
- * the thread for.
- */
 export async function deliverDetachedToolResult(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: DeliverDetachedToolResultArgs,
-): Promise<boolean> {
+): Promise<void> {
   const thread = getThread(deps.db, args.threadId);
   if (!thread || thread.deletedAt !== null || thread.archivedAt !== null) {
-    return false;
+    return;
   }
   if (!args.response.success && thread.status !== "active") {
-    return false;
+    return;
   }
-  return queueParentSystemMessage(deps, {
+  await queueParentSystemMessage(deps, {
     input: buildDetachedToolResultInput({
       toolName: args.toolName,
       response: args.response,
@@ -82,7 +71,6 @@ export async function deliverDetachedToolResult(
     systemMessageKind: "tool-result-delivered",
     systemMessageSubject: buildDetachedToolResultSubject({
       toolName: args.toolName,
-      callId: args.callId,
       presentation: args.presentation,
     }),
   });
