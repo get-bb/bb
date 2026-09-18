@@ -91,6 +91,8 @@ export interface EnvironmentPickerUIProps {
     hostId: string | null,
   ) => void;
   onSelectHost?: (hostId: string) => void;
+  onSelectReuse?: () => void;
+  reuseDisabled?: boolean;
 }
 
 export const PROVIDER_INPUTS_CONTROL_MISSING_REASON =
@@ -186,6 +188,8 @@ export function EnvironmentPickerUI({
   multiMachinePickerEnabled = false,
   onSelectProvider,
   onSelectHost,
+  onSelectReuse,
+  reuseDisabled = false,
 }: EnvironmentPickerUIProps) {
   const [uncontrolledOpen, setUncontrolledOpen] = useState(
     defaultOpen ?? false,
@@ -318,6 +322,10 @@ export function EnvironmentPickerUI({
   };
   const requestMachineSetup = (machineHost: Host) => {
     onRequestMachineSetup?.(machineHost);
+    handleOpenChange(false);
+  };
+  const selectReuse = () => {
+    onSelectReuse?.();
     handleOpenChange(false);
   };
 
@@ -517,11 +525,53 @@ export function EnvironmentPickerUI({
                   />
                 </>
               )}
+              <ReuseEnvironmentOption
+                selected={parsed?.type === "reuse"}
+                disabled={reuseDisabled}
+                onSelect={onSelectReuse ? selectReuse : undefined}
+              />
             </CommandList>
           </Command>
         )}
       </PopoverContent>
     </Popover>
+  );
+}
+
+const REUSE_ENVIRONMENT_OPTION_LABEL = "Reuse existing";
+export const REUSE_ENVIRONMENT_UNAVAILABLE_REASON =
+  "No environments to reuse yet";
+
+interface ReuseEnvironmentOptionProps {
+  selected: boolean;
+  disabled: boolean;
+  onSelect: (() => void) | undefined;
+}
+
+function ReuseEnvironmentOption({
+  selected,
+  disabled,
+  onSelect,
+}: ReuseEnvironmentOptionProps) {
+  if (onSelect === undefined) return null;
+
+  return (
+    <>
+      <CommandSeparator className="mx-0 shrink-0" />
+      <CommandGroup className="shrink-0">
+        <EnvironmentMenuItem
+          value="reuse"
+          label={REUSE_ENVIRONMENT_OPTION_LABEL}
+          description={
+            disabled ? REUSE_ENVIRONMENT_UNAVAILABLE_REASON : undefined
+          }
+          icon={REUSE_ENVIRONMENT_ICON_NAME}
+          selected={selected}
+          disabled={disabled}
+          onSelect={onSelect}
+        />
+      </CommandGroup>
+    </>
   );
 }
 

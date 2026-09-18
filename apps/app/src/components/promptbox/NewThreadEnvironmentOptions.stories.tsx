@@ -68,6 +68,8 @@ function EnvironmentOptionsStrip({
           projectless={projectless}
           selectedProviderHostId={HOST_IDS.local}
           onSelectProvider={noop}
+          onSelectReuse={noop}
+          reuseDisabled={STORY_WORKTREE_OPTIONS.length === 0}
           muted
           modal={false}
           {...environment}
