@@ -520,11 +520,10 @@ async function handlePrompt(message) {
         path: process.env.FAKE_ACP_WRITE_PATH,
         content: "hello from agent\n",
       });
-      const validResponse =
-        typeof result === "object" && result !== null && !Array.isArray(result);
-      notifyUpdate(
-        messageChunk(validResponse ? "write:ok" : "write:invalid-response"),
-      );
+      if (!result || typeof result !== "object" || Array.isArray(result)) {
+        throw new Error("Invalid fs/write_text_file response");
+      }
+      notifyUpdate(messageChunk("write:ok"));
     } catch {
       notifyUpdate(messageChunk("write:denied"));
     }
