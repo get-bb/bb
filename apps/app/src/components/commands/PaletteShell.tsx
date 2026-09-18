@@ -7,15 +7,12 @@ import {
 import { useComposedRefs } from "@radix-ui/react-compose-refs";
 import { Icon } from "@bb/shared-ui/icon";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
-import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { useScrollOverflowState } from "@/components/thread/timeline/useScrollOverflowState";
 import { TabPill } from "@/components/ui/tab-pill";
 
-export const PALETTE_SECTION_LABEL_CLASS = cn(
-  CHROME_SECTION_LABEL_CLASS,
-  "px-2 py-1 text-muted-foreground",
-);
+export const PALETTE_SECTION_LABEL_CLASS =
+  "px-2 py-1 text-xs font-normal leading-5 text-subtle-foreground opacity-60";
 
 interface PaletteModeChipProps {
   clearLabel: string;

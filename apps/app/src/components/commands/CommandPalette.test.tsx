@@ -522,7 +522,8 @@ describe("CommandPalette", () => {
         "py-1",
         "text-xs",
         "font-normal",
-        "text-muted-foreground",
+        "text-subtle-foreground",
+        "opacity-60",
       );
       expectNoClasses(header, "bg-muted/30");
     }
@@ -974,6 +975,7 @@ describe("CommandPalette", () => {
       "Show more",
     ]);
     expect(within(archivedGroup).getAllByRole("option")).toHaveLength(4);
+    expectClasses(activeGroup, "not-last:mb-2");
     const more = within(activeGroup).getByRole("option", {
       name: "Show more threads",
     });
@@ -983,7 +985,8 @@ describe("CommandPalette", () => {
       within(activeGroup).getByText("Threads", { selector: "div" }),
       "text-xs",
       "font-normal",
-      "text-muted-foreground",
+      "text-subtle-foreground",
+      "opacity-60",
     );
     expect(more.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
     for (let index = 0; index < 3; index++)

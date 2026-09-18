@@ -272,7 +272,12 @@ export function ThreadSearchPaletteMode({
           }
           const labelId = `${optionIdPrefix}-${lifecycle}-label`;
           return (
-            <div key={lifecycle} role="group" aria-labelledby={labelId}>
+            <div
+              key={lifecycle}
+              role="group"
+              aria-labelledby={labelId}
+              className="not-last:mb-2"
+            >
               <div
                 id={labelId}
                 className={PALETTE_SECTION_LABEL_CLASS}
