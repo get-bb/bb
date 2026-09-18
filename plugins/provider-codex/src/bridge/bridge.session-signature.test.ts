@@ -111,13 +111,69 @@ it("keeps an auto-reviewed session when only escalation intent changes", async (
 function recordedRequests() {
   const schema = z.object({
     method: z.string(),
-    params: z.looseObject({ serviceTier: z.string().nullable().optional() }),
+    params: z.looseObject({
+      serviceTier: z.string().nullable().optional(),
+      collaborationMode: z
+        .object({
+          mode: z.enum(["default", "plan"]),
+          settings: z.object({
+            model: z.string(),
+            reasoning_effort: z.string().nullable(),
+            developer_instructions: z.string().nullable(),
+          }),
+        })
+        .optional(),
+    }),
   });
   return readFileSync(requestLogPath, "utf8")
     .trim()
     .split("\n")
     .map((line) => schema.parse(JSON.parse(line)));
 }
+
+it("forwards native Codex collaboration mode and resets it after plan turns", async () => {
+  const baseOptions = {
+    ...FULL_ACCESS_SESSION_OPTIONS,
+    model: "gpt-5.6-luna",
+    reasoningLevel: "xhigh",
+  } as const;
+  harness.sendRequest(1, "thread/start", {
+    threadId: THREAD_ID,
+    cwd: workspaceDir,
+    instructionMode: "append",
+    options: baseOptions,
+  });
+  const started = await harness.waitForResponse(1);
+  const { providerThreadId } = z
+    .object({ providerThreadId: z.string() })
+    .parse(started.result);
+
+  const requestIds = ["creq_23456789ab", "creq_23456789ac"] as const;
+  for (const [index, promptMode] of ["plan", undefined].entries()) {
+    const id = index + 2;
+    harness.sendRequest(id, "turn/start", {
+      threadId: THREAD_ID,
+      providerThreadId,
+      clientRequestId: requestIds[index],
+      input: [{ type: "text", text: "review the change", mentions: [] }],
+      options: { ...baseOptions, ...(promptMode ? { promptMode } : {}) },
+    });
+    expect((await harness.waitForResponse(id)).error).toBeUndefined();
+    expect(recordedRequests().at(-1)).toEqual({
+      method: "turn/start",
+      params: expect.objectContaining({
+        collaborationMode: {
+          mode: promptMode ?? "default",
+          settings: {
+            model: "gpt-5.6-luna",
+            reasoning_effort: "xhigh",
+            developer_instructions: null,
+          },
+        },
+      }),
+    });
+  }
+}, 30_000);
 
 it("clears Fast for the next turn without replacing the session", async () => {
   harness.sendRequest(1, "thread/start", {

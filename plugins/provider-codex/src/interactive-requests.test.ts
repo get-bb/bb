@@ -461,6 +461,90 @@ describe("decodeCodexInteractiveRequest", () => {
       },
     });
   });
+
+  it("maps native Codex user questions into BB interactions", () => {
+    expect(
+      decodeCodexInteractiveRequest({
+        id: 12,
+        method: "item/tool/requestUserInput",
+        params: {
+          threadId: "t1",
+          turnId: "turn-question",
+          itemId: "item-question",
+          questions: [
+            {
+              id: "scope",
+              header: "Scope",
+              question: "Which scope should I use?",
+              isOther: true,
+              isSecret: false,
+              options: [
+                { label: "Focused", description: "Change one surface." },
+                { label: "Broad", description: "Change every surface." },
+              ],
+            },
+          ],
+          isBlocking: true,
+          autoResolutionMs: null,
+        },
+      }),
+    ).toEqual({
+      requestId: 12,
+      method: "item/tool/requestUserInput",
+      providerThreadId: "t1",
+      turnId: "turn-question",
+      payload: {
+        kind: "user_question",
+        questions: [
+          {
+            id: "scope",
+            prompt: "Which scope should I use?",
+            shortLabel: "Scope",
+            multiSelect: false,
+            options: [
+              {
+                value: "scope:option-1",
+                label: "Focused",
+                description: "Change one surface.",
+              },
+              {
+                value: "scope:option-2",
+                label: "Broad",
+                description: "Change every surface.",
+              },
+            ],
+            allowFreeText: true,
+          },
+        ],
+      },
+    });
+  });
+
+  it("rejects native Codex secret questions", () => {
+    expect(() =>
+      decodeCodexInteractiveRequest({
+        id: 13,
+        method: "item/tool/requestUserInput",
+        params: {
+          threadId: "t1",
+          turnId: "turn-secret",
+          itemId: "item-secret",
+          questions: [
+            {
+              id: "secret",
+              header: "Secret",
+              question: "Enter a secret",
+              isOther: true,
+              isSecret: true,
+              options: null,
+            },
+          ],
+          isBlocking: true,
+          autoResolutionMs: null,
+        },
+      }),
+    ).toThrow("Codex secret questions cannot be rendered by BB");
+  });
 });
 
 describe("buildCodexInteractiveResponse", () => {
@@ -579,6 +663,52 @@ describe("buildCodexInteractiveResponse", () => {
         },
       },
       scope: "session",
+    });
+  });
+
+  it("maps BB user answers back to native Codex responses", () => {
+    expect(
+      buildCodexInteractiveResponse({
+        payload: {
+          kind: "user_question",
+          questions: [
+            {
+              id: "scope",
+              prompt: "Which scope should I use?",
+              shortLabel: "Scope",
+              multiSelect: false,
+              options: [
+                {
+                  value: "scope:option-1",
+                  label: "Focused",
+                  description: "Change one surface.",
+                },
+                {
+                  value: "scope:option-2",
+                  label: "Broad",
+                  description: "Change every surface.",
+                },
+              ],
+              allowFreeText: true,
+            },
+          ],
+        },
+        resolution: {
+          kind: "user_answer",
+          answers: {
+            scope: {
+              selected: ["scope:option-1"],
+              freeText: "Start with applicants.",
+            },
+          },
+        },
+      }),
+    ).toEqual({
+      answers: {
+        scope: {
+          answers: ["Focused", "user_note: Start with applicants."],
+        },
+      },
     });
   });
 });

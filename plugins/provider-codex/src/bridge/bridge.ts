@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import {
   isStandaloneBuiltinCompactCommand,
   approvalInteractionOutcomeSchema,
+  userQuestionInteractionOutcomeSchema,
   type DynamicTool,
   type PromptInput,
   type ThreadDelta,
@@ -63,6 +64,7 @@ import { macOsPermissionPresentation } from "../presentation.js";
 import { codexTurnSchema } from "../schemas.js";
 import {
   resolveCodexInstructionOverrides,
+  toCodexCollaborationMode,
   toCodexDynamicTools,
   toCodexPermissionSettings,
   toCodexServiceTier,
@@ -93,6 +95,11 @@ import {
 } from "./provider-maintenance.js";
 
 type BbThreadResumeParams = ThreadResumeParams & { excludeTurns: boolean };
+
+const codexInteractionOutcomeSchema = z.union([
+  approvalInteractionOutcomeSchema,
+  userQuestionInteractionOutcomeSchema,
+]);
 
 const codexBridgeCommandSchema = z.discriminatedUnion("method", [
   z.object({
@@ -806,7 +813,7 @@ function handleChildRequest(
     providerNativeIds: true,
   })
     .then((result) => {
-      const outcome = approvalInteractionOutcomeSchema.parse({
+      const outcome = codexInteractionOutcomeSchema.parse({
         payload: request.payload,
         resolution: result,
       });
@@ -1739,6 +1746,9 @@ async function handleTurnStart(
         ),
         options: decoded.sessionOptions,
       });
+      const collaborationMode = toCodexCollaborationMode(
+        decoded.sessionOptions,
+      );
       result = await connection.request({
         method: "turn/start",
         params: {
@@ -1749,6 +1759,7 @@ async function handleTurnStart(
           sandboxPolicy: permissionSettings.sandboxPolicy,
           model: decoded.sessionOptions.model ?? undefined,
           serviceTier: toCodexServiceTier(decoded.sessionOptions.serviceTier),
+          ...(collaborationMode ? { collaborationMode } : {}),
         },
         resultSchema: ignoredChildResultSchema,
         timeoutMs: CHILD_REQUEST_TIMEOUT_MS,

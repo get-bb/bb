@@ -323,6 +323,29 @@ export const codexPermissionsRequestApprovalParamsSchema = z.object({
   permissions: codexRequestPermissionsSchema,
 });
 
+const codexToolRequestUserInputOptionSchema = z.object({
+  label: z.string().min(1),
+  description: z.string().min(1),
+});
+
+const codexToolRequestUserInputQuestionSchema = z.object({
+  id: z.string().min(1),
+  header: z.string().min(1),
+  question: z.string().min(1),
+  isOther: z.boolean(),
+  isSecret: z.boolean(),
+  options: z.array(codexToolRequestUserInputOptionSchema).nullable(),
+});
+
+export const codexToolRequestUserInputParamsSchema = z.object({
+  threadId: z.string(),
+  turnId: z.string(),
+  itemId: z.string(),
+  questions: z.array(codexToolRequestUserInputQuestionSchema).min(1),
+  isBlocking: z.boolean(),
+  autoResolutionMs: z.number().nullable(),
+});
+
 const codexThreadItemEnvelopeSchema = z
   .object({
     type: z.string(),

@@ -1,7 +1,9 @@
 import {
   ProviderRequestDecodeError as ProviderRequestDecodeErrorValue,
   ProviderResponseEncodeError,
+  isApprovalInteractionOutcome,
   type ApprovalInteractionOutcome,
+  type UserQuestionInteractionOutcome,
   type DecodedInteractiveRequest,
   type ProviderInboundRequest,
   type PendingInteractionApprovalDecision,
@@ -18,6 +20,7 @@ import {
   codexCommandExecutionRequestApprovalParamsSchema,
   codexFileChangeRequestApprovalParamsSchema,
   codexPermissionsRequestApprovalParamsSchema,
+  codexToolRequestUserInputParamsSchema,
 } from "./schemas.js";
 import type {
   CodexAdditionalPermissions,
@@ -29,7 +32,12 @@ import type {
 type CodexInteractiveResponse =
   | CommandExecutionRequestApprovalResponse
   | FileChangeRequestApprovalResponse
-  | PermissionsRequestApprovalResponse;
+  | PermissionsRequestApprovalResponse
+  | CodexToolRequestUserInputResponse;
+
+interface CodexToolRequestUserInputResponse {
+  answers: Record<string, { answers: string[] }>;
+}
 
 function assertNever(value: never): never {
   throw new ProviderResponseEncodeError(`Unexpected value: ${String(value)}`);
@@ -198,14 +206,51 @@ export function decodeCodexInteractiveRequest(
         },
       };
     }
+    case "item/tool/requestUserInput": {
+      const parsed = codexToolRequestUserInputParamsSchema.safeParse(
+        request.params,
+      );
+      if (!parsed.success) {
+        return null;
+      }
+      if (parsed.data.questions.some((question) => question.isSecret)) {
+        throw new ProviderRequestDecodeErrorValue(
+          "Codex secret questions cannot be rendered by BB",
+        );
+      }
+      return {
+        requestId: request.id,
+        method: request.method,
+        providerThreadId: parsed.data.threadId,
+        turnId: parsed.data.turnId,
+        payload: {
+          kind: "user_question",
+          questions: parsed.data.questions.map((question) => ({
+            id: question.id,
+            prompt: question.question,
+            shortLabel: question.header,
+            multiSelect: false,
+            options: question.options?.map((option, optionIndex) => ({
+              value: `${question.id}:option-${optionIndex + 1}`,
+              label: option.label,
+              description: option.description,
+            })),
+            allowFreeText: question.isOther,
+          })),
+        },
+      };
+    }
     default:
       return null;
   }
 }
 
 export function buildCodexInteractiveResponse(
-  args: ApprovalInteractionOutcome,
+  args: ApprovalInteractionOutcome | UserQuestionInteractionOutcome,
 ): CodexInteractiveResponse {
+  if (!isApprovalInteractionOutcome(args)) {
+    return buildCodexUserQuestionResponse(args);
+  }
   switch (args.payload.subject.kind) {
     case "command": {
       const response: CommandExecutionRequestApprovalResponse = {
@@ -250,6 +295,41 @@ export function buildCodexInteractiveResponse(
     default:
       return assertNever(args.payload.subject);
   }
+}
+
+function buildCodexUserQuestionResponse(
+  outcome: UserQuestionInteractionOutcome,
+): CodexToolRequestUserInputResponse {
+  const answers: CodexToolRequestUserInputResponse["answers"] = {};
+  for (const question of outcome.payload.questions) {
+    const answer = outcome.resolution.answers[question.id];
+    if (!answer) {
+      throw new ProviderResponseEncodeError(
+        `Missing answer for Codex user question '${question.id}'`,
+      );
+    }
+    const values = answer.selected.map((selectedValue) => {
+      const option = question.options?.find(
+        (candidate) => candidate.value === selectedValue,
+      );
+      if (!option) {
+        throw new ProviderResponseEncodeError(
+          `Unknown selected option '${selectedValue}' for Codex user question '${question.id}'`,
+        );
+      }
+      return option.label;
+    });
+    if (answer.freeText) {
+      values.push(`user_note: ${answer.freeText}`);
+    }
+    if (values.length === 0) {
+      throw new ProviderResponseEncodeError(
+        `Answer for Codex user question '${question.id}' is empty`,
+      );
+    }
+    answers[question.id] = { answers: values };
+  }
+  return { answers };
 }
 
 const codexToPendingInteractionApprovalDecision = {

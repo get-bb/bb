@@ -10,6 +10,7 @@ import {
 import fs from "node:fs";
 import path from "node:path";
 import type { ReasoningEffort as CodexReasoningEffort } from "./generated/codex-app-server/schema/ReasoningEffort.js";
+import type { CollaborationMode } from "./generated/codex-app-server/schema/CollaborationMode.js";
 import type { JsonValue } from "./generated/codex-app-server/schema/serde_json/JsonValue.js";
 import type { SandboxPolicy } from "./generated/codex-app-server/schema/v2/SandboxPolicy.js";
 import type { DynamicToolSpec } from "./generated/codex-app-server/schema/v2/DynamicToolSpec.js";
@@ -22,6 +23,7 @@ import { mapBbReasoningLevelToCodex } from "./models.js";
 
 export type CodexSessionOptions = {
   model?: string;
+  promptMode?: "plan";
   serviceTier?: ServiceTier;
   reasoningLevel?: ReasoningLevel;
   memoryEnabled?: boolean;
@@ -558,6 +560,24 @@ export function toCodexReasoningEffort(
     );
   }
   return codexEffort;
+}
+
+export function toCodexCollaborationMode(
+  options: CodexSessionOptions,
+): CollaborationMode | undefined {
+  if (!options.model) {
+    return undefined;
+  }
+  return {
+    mode: options.promptMode === "plan" ? "plan" : "default",
+    settings: {
+      model: options.model,
+      reasoning_effort: options.reasoningLevel
+        ? toCodexReasoningEffort(options.reasoningLevel)
+        : null,
+      developer_instructions: null,
+    },
+  };
 }
 
 export function toCodexUserInput(input: PromptInput[]): CodexUserInput[] {

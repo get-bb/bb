@@ -1057,6 +1057,51 @@ describe("thread runtime config", () => {
         thread: piThread,
       });
       expect(piCommand.options.promptMode).toBeUndefined();
+
+      const proseThread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        providerId: "codex",
+      });
+      const proseCommand = await buildThreadStartCommand(harness.deps, {
+        environment,
+        execution: {
+          model: "gpt-5.6-luna",
+          permissionMode: "full",
+          reasoningLevel: "medium",
+          serviceTier: "default",
+          source: "client/turn/requested",
+        },
+        fork: null,
+        permissionEscalation: "ask",
+        input: [
+          {
+            type: "text",
+            text: "discuss /plan behavior",
+            mentions: [
+              {
+                start: 8,
+                end: 13,
+                resource: {
+                  kind: "command",
+                  trigger: "/",
+                  name: "plan",
+                  source: "command",
+                  origin: "user",
+                  label: "plan",
+                  argumentHint: null,
+                },
+              },
+            ],
+          },
+        ],
+        projectId: project.id,
+        providerId: "codex",
+        requestId: encodeClientTurnRequestIdNumber({ value: 3 }),
+        syncGeneratedTitle: false,
+        thread: proseThread,
+      });
+      expect(proseCommand.options.promptMode).toBeUndefined();
     });
   });
 

@@ -16,6 +16,7 @@ import {
   gitWritableRootsForWorkspace,
   resolveCodexInstructionOverrides,
   toCodexDynamicTools,
+  toCodexCollaborationMode,
   toCodexPermissionSettings,
   toCodexReasoningEffort,
   toCodexServiceTier,
@@ -715,6 +716,35 @@ describe("toCodexReasoningEffort", () => {
     expect(() => toCodexReasoningEffort("ultracode")).toThrow(
       "Codex does not support the ultracode reasoning level.",
     );
+  });
+});
+
+describe("toCodexCollaborationMode", () => {
+  it("maps BB plan mode to Codex's native plan mode", () => {
+    expect(
+      toCodexCollaborationMode({
+        ...WORKSPACE_ASK_OPTIONS,
+        model: "gpt-5.6-luna",
+        promptMode: "plan",
+        reasoningLevel: "xhigh",
+      }),
+    ).toEqual({
+      mode: "plan",
+      settings: {
+        model: "gpt-5.6-luna",
+        reasoning_effort: "xhigh",
+        developer_instructions: null,
+      },
+    });
+  });
+
+  it("explicitly exits sticky Codex plan mode on ordinary turns", () => {
+    expect(
+      toCodexCollaborationMode({
+        ...WORKSPACE_ASK_OPTIONS,
+        model: "gpt-5.6-luna",
+      }),
+    ).toMatchObject({ mode: "default" });
   });
 });
 

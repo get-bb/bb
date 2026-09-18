@@ -10,7 +10,7 @@ import {
   Thread,
   ClientTurnRequestId,
   EnvironmentStatus,
-  promptInputHasCommandMention,
+  promptInputStartsWithCommandMention,
 } from "@bb/domain";
 import {
   type HostDaemonCommand,
@@ -182,7 +182,7 @@ function resolvePromptMode(
 ): PromptMode | undefined {
   const planCommand = resolveProviderPlanCommand(registry, args.providerId);
   if (planCommand === null) return undefined;
-  return promptInputHasCommandMention(args.input, {
+  return promptInputStartsWithCommandMention(args.input, {
     trigger: planCommand.trigger,
     name: planCommand.name,
   })

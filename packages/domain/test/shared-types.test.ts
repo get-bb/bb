@@ -4,6 +4,7 @@ import {
   permissionModeInputSchema,
   permissionModeSchema,
   promptInputHasCommandMention,
+  promptInputStartsWithCommandMention,
   promptMentionCommandTriggerSchema,
   promptMentionCommandTriggerValues,
   promptMentionResourceSchema,
@@ -248,5 +249,42 @@ describe("prompt command input helpers", () => {
         { trigger: "/", name: "plan" },
       ),
     ).toEqual([{ type: "text", text: "", mentions: [] }]);
+  });
+
+  it("only treats a leading command mention as a prompt mode", () => {
+    const command = {
+      kind: "command" as const,
+      trigger: "/" as const,
+      name: "plan",
+      source: "command" as const,
+      origin: "user" as const,
+      label: "plan",
+      argumentHint: null,
+    };
+
+    expect(
+      promptInputStartsWithCommandMention(
+        [
+          {
+            type: "text",
+            text: "  /plan review the diff",
+            mentions: [{ start: 2, end: 7, resource: command }],
+          },
+        ],
+        { trigger: "/", name: "plan" },
+      ),
+    ).toBe(true);
+    expect(
+      promptInputStartsWithCommandMention(
+        [
+          {
+            type: "text",
+            text: "Can we discuss /plan first?",
+            mentions: [{ start: 15, end: 20, resource: command }],
+          },
+        ],
+        { trigger: "/", name: "plan" },
+      ),
+    ).toBe(false);
   });
 });

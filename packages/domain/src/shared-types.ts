@@ -353,6 +353,27 @@ export function promptInputHasCommandMention(
   );
 }
 
+export function promptInputStartsWithCommandMention(
+  input: readonly PromptInput[],
+  selector: PromptCommandSelector,
+): boolean {
+  for (const item of input) {
+    if (item.type !== "text") {
+      continue;
+    }
+    const firstNonWhitespace = item.text.search(/\S/u);
+    if (firstNonWhitespace === -1) {
+      continue;
+    }
+    return item.mentions.some(
+      (mention) =>
+        mention.start === firstNonWhitespace &&
+        isSelectedPromptCommandMention(mention, selector),
+    );
+  }
+  return false;
+}
+
 function commandRemovalRanges(
   input: TextPromptInput,
   selector: PromptCommandSelector,

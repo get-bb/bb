@@ -1,5 +1,5 @@
 import {
-  promptInputHasCommandMention,
+  promptInputStartsWithCommandMention,
   requireThreadEventScopeTurnId,
   removeCommandMentionsFromPromptInput,
   type ProviderComposerCommand,
@@ -109,7 +109,12 @@ export function extractThreadTimelineActivePlanTurn({
 
   let latestPlanTurn: ActiveTurnInput | null = null;
   for (const activeTurn of extractActiveTurnInputs(events)) {
-    if (!promptInputHasCommandMention(activeTurn.request.input, planCommand)) {
+    if (
+      !promptInputStartsWithCommandMention(
+        activeTurn.request.input,
+        planCommand,
+      )
+    ) {
       continue;
     }
     if (!latestPlanTurn || activeTurn.seq > latestPlanTurn.seq) {
