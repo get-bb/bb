@@ -300,7 +300,7 @@ describe("BrowsePluginsTab", () => {
     fireEvent.pointerDown(sortTrigger);
     expect(
       screen
-        .getByRole("menuitemradio", { name: "Most installed" })
+        .getByRole("menuitemradio", { name: "Installs" })
         .getAttribute("aria-disabled"),
     ).toBe("true");
   });
@@ -318,12 +318,10 @@ describe("BrowsePluginsTab", () => {
       "Open Tasks details",
     ]);
     const trigger = screen.getByRole("button", {
-      name: "Sort: Most installed, descending",
+      name: "Sort: Installs, descending",
     });
     fireEvent.pointerDown(trigger);
-    fireEvent.click(
-      screen.getByRole("menuitemradio", { name: "Most installed" }),
-    );
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Installs" }));
     expect(cardOrder()).toEqual([
       "Open Security details",
       "Open Memory details",
@@ -345,12 +343,10 @@ describe("BrowsePluginsTab", () => {
       "Open Security details",
     ]);
     const trigger = screen.getByRole("button", {
-      name: "Sort: Recently added, descending",
+      name: "Sort: Published, descending",
     });
     fireEvent.pointerDown(trigger);
-    fireEvent.click(
-      screen.getByRole("menuitemradio", { name: "Recently added" }),
-    );
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Published" }));
     expect(cardOrder()).toEqual([
       "Open Memory details",
       "Open Tasks details",
@@ -365,7 +361,7 @@ describe("BrowsePluginsTab", () => {
     );
 
     const trigger = await screen.findByRole("button", {
-      name: "Sort: Most installed, descending",
+      name: "Sort: Installs, descending",
     });
     expect(screen.queryByTestId("plugin-browse-shelves")).toBeNull();
     fireEvent.pointerDown(trigger);

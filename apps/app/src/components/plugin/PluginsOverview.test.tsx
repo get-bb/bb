@@ -204,9 +204,9 @@ describe("PluginsOverview", () => {
   it("checks updates on entering Installed, without rechecking on filters or focus", async () => {
     installFetch();
     const requestCount = (path: string) =>
-      vi.mocked(fetch).mock.calls.filter(([input]) =>
-        String(input).endsWith(path),
-      ).length;
+      vi
+        .mocked(fetch)
+        .mock.calls.filter(([input]) => String(input).endsWith(path)).length;
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     render(
       <MemoryRouter initialEntries={["/plugins"]}>
@@ -219,7 +219,9 @@ describe("PluginsOverview", () => {
     );
     await screen.findByRole("textbox", { name: "Search plugins" });
     expect(requestCount("/plugins/updates/check")).toBe(0);
-    fireEvent.click(screen.getByRole("button", { name: "switch-to-installed" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "switch-to-installed" }),
+    );
     await screen.findByTestId("plugin-row-automations");
     await waitFor(() => {
       expect(requestCount("/plugins/updates/check")).toBe(1);
@@ -235,10 +237,10 @@ describe("PluginsOverview", () => {
     });
     expect(requestCount("/plugins/updates/check")).toBe(1);
     fireEvent.click(screen.getByRole("button", { name: "switch-to-browse" }));
-    fireEvent.click(screen.getByRole("button", { name: "switch-to-installed" }));
-    await waitFor(() =>
-      expect(requestCount("/plugins/updates/check")).toBe(2),
+    fireEvent.click(
+      screen.getByRole("button", { name: "switch-to-installed" }),
     );
+    await waitFor(() => expect(requestCount("/plugins/updates/check")).toBe(2));
   });
 
   it("clears only Source while retaining search, category, and sort", async () => {
@@ -447,7 +449,7 @@ describe("PluginsOverview", () => {
     fireEvent.pointerDown(
       screen.getByRole("button", { name: "Sort: Default" }),
     );
-    fireEvent.click(screen.getByRole("menuitemradio", { name: "Plugin name" }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Name" }));
     fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.queryByText("Automations")).toBeNull();
     fireEvent.pointerDown(
@@ -710,18 +712,18 @@ describe("PluginsOverview", () => {
     const sortTrigger = screen.getByRole("button", { name: "Sort: Default" });
     fireEvent.pointerDown(sortTrigger);
     expect(
-      screen.getByRole("menuitemradio", { name: "Recently added" }),
+      screen.getByRole("menuitemradio", { name: "Published" }),
     ).toBeTruthy();
     expect(
       screen
-        .getByRole("menuitemradio", { name: "Most installed" })
+        .getByRole("menuitemradio", { name: "Installs" })
         .getAttribute("aria-disabled"),
     ).toBe("true");
     const rowIds = () =>
       [...document.querySelectorAll('[data-testid^="plugin-row-"]')].map(
         (row) => row.getAttribute("data-testid"),
       );
-    fireEvent.click(screen.getByRole("menuitemradio", { name: "Plugin name" }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Name" }));
     expect(rowIds()).toEqual([
       "plugin-row-enabled-local-alpha",
       "plugin-row-enabled-official-alpha",
@@ -729,7 +731,7 @@ describe("PluginsOverview", () => {
       "plugin-row-inactive-local",
       "plugin-row-inactive-official",
     ]);
-    fireEvent.click(screen.getByRole("menuitemradio", { name: "Plugin name" }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Name" }));
     expect(rowIds()).toEqual([
       "plugin-row-inactive-official",
       "plugin-row-inactive-local",
