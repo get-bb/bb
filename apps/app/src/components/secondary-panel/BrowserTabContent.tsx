@@ -680,9 +680,9 @@ export function BrowserTabContent({
       return;
     }
     return desktopBrowser.onFocus((focusedTabId) => {
-      if (focusedTabId === tabId) onNativeFocus();
+      if (focusedTabId === tabId && control === null) onNativeFocus();
     });
-  }, [desktopBrowser, onNativeFocus, tabId]);
+  }, [control, desktopBrowser, onNativeFocus, tabId]);
 
   useEffect(() => {
     if (!isViewVisible || !canHandleBrowserCommands) return;

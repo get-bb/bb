@@ -208,4 +208,28 @@ describe("BrowserTabContent persistent navigation", () => {
     act(() => harness.emitNativeFocus("browser:test"));
     expect(onNativeFocus).toHaveBeenCalledTimes(1);
   });
+
+  it("keeps controller focus from moving the logical pane", async () => {
+    const harness = createBrowserChromeHarness();
+    const onNativeFocus = vi.fn();
+    harness.api.getControl = async () => ({
+      tabId: "browser:test",
+      threadId: "thread-1",
+      control: {
+        leaseId: "lease-1",
+        controllerLabel: "Browser agent",
+        expiresAt: Date.now() + 60_000,
+      },
+    });
+    renderBrowserChrome(harness, "https://example.com/docs", {
+      canHandleBrowserCommands: true,
+      canShowNativeBrowserView: true,
+      onNativeFocus,
+    });
+
+    expectChromeVisible();
+    await screen.findByText("Browser agent is controlling this tab");
+    act(() => harness.emitNativeFocus("browser:test"));
+    expect(onNativeFocus).not.toHaveBeenCalled();
+  });
 });
