@@ -10,7 +10,7 @@ import { PaneContext, type PaneContextValue } from "./PaneContext";
 import { ThreadArchiveCommandHandler } from "./ThreadArchiveCommandHandler";
 
 const mocks = vi.hoisted(() => ({
-  archiveThreadAndChildren: vi.fn(),
+  requestArchive: vi.fn(),
 }));
 
 const testState = vi.hoisted(() => ({
@@ -33,7 +33,7 @@ const testState = vi.hoisted(() => ({
 
 vi.mock("@/components/thread/ThreadActionsProvider", () => ({
   useThreadActions: () => ({
-    archiveThreadAndChildren: mocks.archiveThreadAndChildren,
+    requestArchive: mocks.requestArchive,
   }),
 }));
 
@@ -131,12 +131,12 @@ describe("ThreadArchiveCommandHandler", () => {
     );
 
     pressArchiveShortcut();
-    expect(mocks.archiveThreadAndChildren.mock.calls).toEqual([[firstThread]]);
+    expect(mocks.requestArchive.mock.calls).toEqual([[firstThread]]);
 
-    mocks.archiveThreadAndChildren.mockClear();
+    mocks.requestArchive.mockClear();
     view.rerender(<SplitArchiveHandlers focusedThreadId={secondThread.id} />);
     pressArchiveShortcut();
-    expect(mocks.archiveThreadAndChildren.mock.calls).toEqual([[secondThread]]);
+    expect(mocks.requestArchive.mock.calls).toEqual([[secondThread]]);
   });
 
   it("does nothing when no pane is focused", () => {
@@ -144,7 +144,7 @@ describe("ThreadArchiveCommandHandler", () => {
 
     pressArchiveShortcut();
 
-    expect(mocks.archiveThreadAndChildren).not.toHaveBeenCalled();
+    expect(mocks.requestArchive).not.toHaveBeenCalled();
   });
 
   it("does nothing when the focused thread is archived", () => {
@@ -158,6 +158,6 @@ describe("ThreadArchiveCommandHandler", () => {
 
     pressArchiveShortcut();
 
-    expect(mocks.archiveThreadAndChildren).not.toHaveBeenCalled();
+    expect(mocks.requestArchive).not.toHaveBeenCalled();
   });
 });

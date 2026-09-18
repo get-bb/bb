@@ -180,7 +180,7 @@ function ThreadActionsMenuItems({
   surface,
 }: ThreadActionsMenuItemsProps) {
   const {
-    archiveThreadAndChildren,
+    requestArchive,
     requestRename,
     requestDelete,
     togglePin,
@@ -299,7 +299,9 @@ function ThreadActionsMenuItems({
             unarchiveThread(thread);
             return;
           }
-          archiveThreadAndChildren(thread);
+          window.setTimeout(() => {
+            requestArchive(thread);
+          }, 0);
         }}
       >
         {isArchived ? "Unarchive" : "Archive"}
@@ -343,7 +345,7 @@ export function ThreadArchiveQuickAction({
   thread: Thread;
   className?: string;
 }) {
-  const { archiveThreadAndChildren, unarchiveThread } = useThreadActions();
+  const { requestArchive, unarchiveThread } = useThreadActions();
   const isArchived = thread.archivedAt != null;
   const label = isArchived ? "Unarchive" : "Archive";
   return (
@@ -362,7 +364,7 @@ export function ThreadArchiveQuickAction({
               unarchiveThread(thread);
               return;
             }
-            archiveThreadAndChildren(thread);
+            requestArchive(thread);
           }}
         >
           <Icon
