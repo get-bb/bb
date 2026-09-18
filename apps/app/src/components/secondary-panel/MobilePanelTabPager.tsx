@@ -246,7 +246,6 @@ export function MobilePanelTabPager({
             ))}
           </div>
         </div>
-        {newTabControl}
         <Button
           variant="ghost"
           size="icon"
@@ -257,6 +256,7 @@ export function MobilePanelTabPager({
         >
           <Icon name="ChevronRight" />
         </Button>
+        {newTabControl}
       </div>
     </div>
   );

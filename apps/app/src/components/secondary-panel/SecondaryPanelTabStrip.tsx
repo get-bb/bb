@@ -139,6 +139,7 @@ export function SecondaryPanelTabStrip({
   const [overflow, setOverflow] = useState<TabStripOverflowState>(
     INITIAL_OVERFLOW_STATE,
   );
+  const [contentWidth, setContentWidth] = useState<number>();
   const maxScrollLeftRef = useRef(0);
   const measuredWidthRef = useRef(0);
   const resizeRevealFrameRef = useRef<number | null>(null);
@@ -206,6 +207,7 @@ export function SecondaryPanelTabStrip({
     if (strip === null || viewport === null || content === null) {
       return;
     }
+    setContentWidth(content.scrollWidth);
     if (measuredWidthRef.current !== strip.clientWidth) {
       measuredWidthRef.current = strip.clientWidth;
       const reveal = () =>
@@ -270,7 +272,7 @@ export function SecondaryPanelTabStrip({
     };
   }, [applyEdgeFlags, measureCapacity]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     measureCapacity();
   }, [tabs, measureCapacity]);
 
@@ -499,6 +501,7 @@ export function SecondaryPanelTabStrip({
     <div
       ref={stripRef}
       data-testid="secondary-panel-tab-strip"
+      style={{ maxWidth: contentWidth }}
       className="group relative flex min-w-0 flex-1 items-center [&_[data-tab-pill-close]]:text-muted-foreground/70 [&_[data-tab-pill-close]:hover]:text-foreground [&_[data-tab-pill-close]_[data-icon-root]]:size-3 max-md:pointer-coarse:[&_[data-tab-pill-close]_[data-icon-root]]:size-3.5"
     >
       <TabStripScrollButton
