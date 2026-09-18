@@ -11,6 +11,7 @@ import {
 } from "node:fs/promises";
 import { dirname, isAbsolute, join } from "node:path";
 import { createPluginArtifactMeta } from "./plugin-artifact-meta.js";
+import { zodResolutionPlugin } from "./zod-resolution.js";
 import {
   isRecord,
   resolveManifestEntryFile,
@@ -359,6 +360,7 @@ export async function buildPluginHost(
       format: "esm",
       platform: "node",
       plugins: [
+        zodResolutionPlugin("host"),
         {
           name: "provide-public-host-sdk-runtime",
           setup(build) {

@@ -21,24 +21,18 @@ const NODE_ESM_REQUIRE_BANNER = [
   "const __dirname = __pathDirname(__filename);",
 ].join("\n");
 
+// zod is a declared (optional) peer dependency, so every entry leaves it to
+// the consumer instead of inlining a copy. Inlining is never right here: a
+// plugin bundle that imports an SDK subpath already carries its own zod, so an
+// inlined copy is pure duplication — `dist/host.js` was 569 KB, 92% of it a
+// second zod with all 49 locale files, which every plugin host artifact then
+// shipped to every enrolled machine. Applying this to all entries rather than
+// an opt-in list is what stops a new export from quietly reintroducing it.
 const ZOD_EXTERNALS = ["zod", "zod/*"];
 
-const EXTERNALS = {
-  "./provider-bridge": ZOD_EXTERNALS,
-  "./ai-services": ZOD_EXTERNALS,
-  "./provider-bridge/testing": ZOD_EXTERNALS,
-  "./provider-bridge/acp": ZOD_EXTERNALS,
-  "./environment-provider": ZOD_EXTERNALS,
-  "./machine-provider": ZOD_EXTERNALS,
-  "./internal/host-policy": ZOD_EXTERNALS,
-  "./testing": [
-    "better-sqlite3",
-    "cron-parser",
-    "hono",
-    "hono/*",
-    "zod",
-    "zod/*",
-  ],
+/** Externals beyond zod, per package.json export subpath. */
+const EXTRA_EXTERNALS = {
+  "./testing": ["better-sqlite3", "cron-parser", "hono", "hono/*"],
   "./testing/app": [
     "@testing-library/react",
     "@testing-library/react/*",
@@ -57,7 +51,7 @@ const entries = [
   ...Object.entries(packageExports).map(([subpath, entry]) => ({
     source: entry.source.slice(2),
     output: entry.import.slice(2),
-    external: EXTERNALS[subpath] ?? [],
+    external: [...ZOD_EXTERNALS, ...(EXTRA_EXTERNALS[subpath] ?? [])],
   })),
   // The replay harness spawns two programs beside its own bundle: the
   // provider-bridge bootstrap that runs a bridge module the way the runtime

@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createPluginArtifactMeta } from "./plugin-artifact-meta.js";
+import { zodResolutionPlugin } from "./zod-resolution.js";
 import {
   isRecord,
   readPluginPackageJsonFile,
@@ -101,6 +102,7 @@ export async function buildPluginServer(
         (specifier) => !PLUGIN_SDK_ROOT_FILTER.test(specifier),
       ),
       plugins: [
+        zodResolutionPlugin("server"),
         {
           name: "bb-plugin-sdk-resolution",
           setup(build) {
