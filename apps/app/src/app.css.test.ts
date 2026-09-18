@@ -22,6 +22,15 @@ describe("app.css compact prompt controls", () => {
       ),
     ).toHaveLength(2);
   });
+
+  it("keeps the follow-up status visible when the compact container expands", () => {
+    expect(css).not.toMatch(
+      /\[data-follow-up-composer\]\s+\[data-follow-up-composer-footer\] \{/,
+    );
+    expect(css).toMatch(
+      /\[data-follow-up-composer\]:not\(\[data-follow-up-composer-expanded\]\)\s*\[data-follow-up-composer-footer\] \{/,
+    );
+  });
 });
 
 describe("app.css sidebar drag cursor", () => {
