@@ -150,6 +150,7 @@ import {
 } from "./BuiltInSidebarSection";
 import { ReorderableSidebarSectionOrderList } from "./ReorderableSidebarSectionOrderList";
 import { useSidebarModeSectionOrder } from "./useSidebarModeSectionOrder";
+import { useSidebarNavigationReveal } from "./useSidebarNavigationReveal";
 import { haveSameOrder } from "@/lib/stored-order";
 import {
   resolveThreadTitleDisplayText,
@@ -1679,91 +1680,84 @@ function ProjectListComponent({
     [pinnedSidebarState.rootNodes],
   );
   const hasPinnedSection = pinnedSidebarState.rootNodes.length > 0;
-  useEffect(() => {
-    if (!selectedThreadId) {
-      return;
-    }
-
-    const selectedThread = threadById.get(selectedThreadId);
-    if (!selectedThread) {
-      return;
-    }
-    if (selectedThread.visibility === "hidden") {
-      return;
-    }
-
-    const threadIdsToExpand = new Set<string>();
-    const environmentIdsToExpand = new Set<string>();
-    let currentThread: ThreadListEntry | undefined = selectedThread;
-    let remainingHops = threadById.size;
-    while (currentThread && remainingHops > 0) {
-      if (currentThread.environmentId !== null) {
-        environmentIdsToExpand.add(currentThread.environmentId);
+  useSidebarNavigationReveal(
+    uiPreferencesReady &&
+      (!selectedThreadId || threadById.has(selectedThreadId)),
+    () => {
+      if (!selectedThreadId) {
+        return;
       }
-      const parentThreadId = currentThread.parentThreadId;
-      if (parentThreadId === null) {
-        break;
-      }
-      const parentThread = threadById.get(parentThreadId);
-      if (!parentThread) {
-        break;
-      }
-      threadIdsToExpand.add(parentThread.id);
-      currentThread = parentThread;
-      remainingHops -= 1;
-    }
 
-    setCollapsedThreadIdList((current) =>
-      removeCollapsedIds(current, threadIdsToExpand),
-    );
-    setCollapsedEnvironmentIdList((current) =>
-      removeCollapsedIds(current, environmentIdsToExpand),
-    );
+      const selectedThread = threadById.get(selectedThreadId);
+      if (!selectedThread) {
+        return;
+      }
+      if (selectedThread.visibility === "hidden") {
+        return;
+      }
 
-    const isPinned =
-      pinnedSidebarState.effectivePinnedThreadIds.has(selectedThreadId);
-    const expansion = getSelectedThreadSidebarExpansion({
-      organizationMode,
-      isPinned,
-      selectedThread,
-      sidebarProjectId: resolveSidebarProjectId(selectedThread, threadById),
-    });
-    if (expansion.machineKey) {
-      const machineKey = expansion.machineKey;
-      setCollapsedMachineKeyList((current) =>
-        removeCollapsedIds(current, new Set([machineKey])),
+      const threadIdsToExpand = new Set<string>();
+      const environmentIdsToExpand = new Set<string>();
+      let currentThread: ThreadListEntry | undefined = selectedThread;
+      let remainingHops = threadById.size;
+      while (currentThread && remainingHops > 0) {
+        if (currentThread.environmentId !== null) {
+          environmentIdsToExpand.add(currentThread.environmentId);
+        }
+        const parentThreadId = currentThread.parentThreadId;
+        if (parentThreadId === null) {
+          break;
+        }
+        const parentThread = threadById.get(parentThreadId);
+        if (!parentThread) {
+          break;
+        }
+        threadIdsToExpand.add(parentThread.id);
+        currentThread = parentThread;
+        remainingHops -= 1;
+      }
+
+      setCollapsedThreadIdList((current) =>
+        removeCollapsedIds(current, threadIdsToExpand),
       );
-    }
-    if (expansion.sectionKey) {
-      const sectionKey = expansion.sectionKey;
-      setCollapsedSectionList((current) =>
-        removeCollapsedIds(current, new Set([sectionKey])),
+      setCollapsedEnvironmentIdList((current) =>
+        removeCollapsedIds(current, environmentIdsToExpand),
       );
-    }
-    if (expansion.projectId) {
-      const projectId = expansion.projectId;
-      setCollapsedProjectIdList((current) =>
-        removeCollapsedIds(current, new Set([projectId])),
-      );
-    }
-    if (expansion.sidebarSectionId) {
-      const sidebarSectionId = expansion.sidebarSectionId;
-      setCollapsedSidebarSectionIdList((current) =>
-        removeCollapsedIds(current, new Set([sidebarSectionId])),
-      );
-    }
-  }, [
-    organizationMode,
-    pinnedSidebarState.effectivePinnedThreadIds,
-    selectedThreadId,
-    setCollapsedEnvironmentIdList,
-    setCollapsedSectionList,
-    setCollapsedMachineKeyList,
-    setCollapsedProjectIdList,
-    setCollapsedSidebarSectionIdList,
-    setCollapsedThreadIdList,
-    threadById,
-  ]);
+
+      const isPinned =
+        pinnedSidebarState.effectivePinnedThreadIds.has(selectedThreadId);
+      const expansion = getSelectedThreadSidebarExpansion({
+        organizationMode,
+        isPinned,
+        selectedThread,
+        sidebarProjectId: resolveSidebarProjectId(selectedThread, threadById),
+      });
+      if (expansion.machineKey) {
+        const machineKey = expansion.machineKey;
+        setCollapsedMachineKeyList((current) =>
+          removeCollapsedIds(current, new Set([machineKey])),
+        );
+      }
+      if (expansion.sectionKey) {
+        const sectionKey = expansion.sectionKey;
+        setCollapsedSectionList((current) =>
+          removeCollapsedIds(current, new Set([sectionKey])),
+        );
+      }
+      if (expansion.projectId) {
+        const projectId = expansion.projectId;
+        setCollapsedProjectIdList((current) =>
+          removeCollapsedIds(current, new Set([projectId])),
+        );
+      }
+      if (expansion.sidebarSectionId) {
+        const sidebarSectionId = expansion.sidebarSectionId;
+        setCollapsedSidebarSectionIdList((current) =>
+          removeCollapsedIds(current, new Set([sidebarSectionId])),
+        );
+      }
+    },
+  );
   const toggleThreadCollapsed = useCallback<ToggleCollapsedId>(
     (threadId) => {
       setCollapsedThreadIdList((current) => {
