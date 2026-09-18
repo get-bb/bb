@@ -673,6 +673,7 @@ client wrote first, so a stale window cannot silently clobber a newer value.
 | Key                               | Value                                               |
 | --------------------------------- | --------------------------------------------------- |
 | `sidebar.organizationMode`        | `project`, `chronological`, or `machine`            |
+| `sidebar.threadGrouping.environment` | `auto`, `true`, or `false`                       |
 | `sidebar.chronologicalSort`       | `updated`, `created`, `alpha`, or `none`            |
 | `sidebar.sectionOrder`            | Section id list for **By project**                  |
 | `sidebar.manualSectionOrder`      | Section id list for **Manually**                    |
@@ -692,6 +693,18 @@ client wrote first, so a stale window cannot silently clobber a newer value.
 
 Custom (`chronological`) is the default for `sidebar.organizationMode` when no
 value is saved. Existing server and legacy browser choices are preserved.
+
+`sidebar.threadGrouping.environment` decides whether two or more sibling threads
+that share one worktree environment collapse into a single worktree row inside
+their section. `true` groups them and `false` keeps every thread on its own row,
+in every organization mode. The default, `auto`, groups them in **By project**
+and **By machine** and leaves them flat in **Custom**, which is how each mode
+behaved before the preference existed. The thread-list header's Organize menu
+exposes it under Groups as the By environment toggle, which writes `true` or
+`false` and so applies to every mode once you use it.
+
+Each `sidebar.threadGrouping.*` key toggles one grouping dimension
+independently, so a future dimension adds a key rather than changing this one.
 
 Read and write them with:
 
@@ -1326,7 +1339,12 @@ before you share them.
 Agents use `bb browser-automation` through its bundled skill. Screenshot results
 contain temporary JPEG paths and the browser host ID; remote captures can be
 fetched with `bb file read <path> --host <host-id> --json`. Read or copy images
-before closing the session, which deletes its temporary files.
+before closing the session, which deletes its temporary files. Opening a
+local headless session also returns a `previewDirective` that the agent pastes
+into its message; BB renders it inline as a live preview that expands into a
+lightbox. Desktop sessions return none, because
+that browser is already visible in the app. There is no setting for it;
+collapse the card to pause it.
 
 The Browser Automation plugin supports desktop attachment and headless Chrome on enrolled hosts. Cloud browsers are deferred. The plugin pins one exact `dev-browser` npm release (currently 1.0.0-rc.3) with per-platform binary digests in `plugins/browser-automation/runtime-pin.ts`; the pin, the verification steps, and the bump procedure are documented in `plugins/browser-automation/README.md`.
 

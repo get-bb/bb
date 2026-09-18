@@ -733,7 +733,6 @@ function buildContextWindowUsage(
       isLatestPage: true,
       threadStatus: "idle",
       threadName: "",
-      turnMessageDetail: "summary",
       workspaceRoot: null,
     },
   }).contextWindowUsage;
@@ -755,7 +754,6 @@ function buildTimelineRows(
       isLatestPage: true,
       threadStatus,
       threadName: "",
-      turnMessageDetail: "full",
       workspaceRoot,
     },
   }).rows;
@@ -779,7 +777,6 @@ function buildTimelineRowsWithAcceptedContext(
       isLatestPage: true,
       threadStatus: "idle",
       threadName: "",
-      turnMessageDetail: "full",
       workspaceRoot: null,
     },
   }).rows;
@@ -803,7 +800,6 @@ function buildTimelineRowsWithRejectedContext(
       isLatestPage: true,
       threadStatus: "idle",
       threadName: "",
-      turnMessageDetail: "full",
       workspaceRoot: null,
     },
   }).rows;
@@ -1184,7 +1180,6 @@ describe("buildThreadTimelineFromEvents", () => {
         providerId: "claude-code",
         threadStatus: "active",
         threadName: "",
-        turnMessageDetail: "full",
         workspaceRoot: null,
       },
     });
@@ -1221,7 +1216,6 @@ describe("buildThreadTimelineFromEvents", () => {
         providerId: "codex",
         threadStatus: "active",
         threadName: "",
-        turnMessageDetail: "full",
         workspaceRoot: null,
       },
     });
@@ -1257,7 +1251,6 @@ describe("buildThreadTimelineFromEvents", () => {
         providerId: "claude-code",
         threadStatus: "active",
         threadName: "",
-        turnMessageDetail: "full",
         workspaceRoot: null,
       },
     });
@@ -1291,7 +1284,6 @@ describe("buildThreadTimelineFromEvents", () => {
         providerId: "claude-code",
         threadStatus: "idle",
         threadName: "",
-        turnMessageDetail: "full",
         workspaceRoot: null,
       },
     });
@@ -1606,7 +1598,6 @@ describe("buildThreadTimelineFromEvents", () => {
         providerId: "claude-code",
         threadStatus: "idle",
         threadName: "",
-        turnMessageDetail: "full",
         workspaceRoot: null,
       },
     });
@@ -3182,7 +3173,6 @@ it("keeps a canonical disclosure ID when completed reasoning gains a delegation 
       isLatestPage: true,
       threadStatus: "active",
       threadName: "",
-      turnMessageDetail: "full",
       workspaceRoot: null,
     },
   });

@@ -175,6 +175,7 @@ const RICH_PASTE_BLOCK_TAGS = new Set([
   "THEAD",
   "TR",
 ]);
+const RICH_PASTE_LIST_MARKER = "- ";
 const RICH_PASTE_IGNORED_TAGS = new Set([
   "HEAD",
   "LINK",
@@ -447,7 +448,7 @@ export interface PromptBoxHandle {
 
 export type { PromptBoxAction } from "./PromptBoxActionsMenu";
 
-type MentionMenuPlacement = "top" | "bottom";
+export type MentionMenuPlacement = "top" | "bottom";
 
 interface PromptBoxInternalProps {
   id?: string;
@@ -706,7 +707,24 @@ function promptEditorValueFromRichHtml(html: string): ParsedRichClipboardValue {
   const document = new DOMParser().parseFromString(html, "text/html");
   let text = "";
   let hasMentions = false;
+  let listMarkerPending = false;
   const mentions: PromptTextMention[] = [];
+
+  const flushListMarker = () => {
+    if (!listMarkerPending) {
+      return;
+    }
+    listMarkerPending = false;
+    text += RICH_PASTE_LIST_MARKER;
+  };
+
+  const appendText = (appendedText: string) => {
+    if (appendedText.length === 0) {
+      return;
+    }
+    flushListMarker();
+    text += appendedText;
+  };
 
   const appendNewline = () => {
     text = text.replace(/[ \t]+$/u, "");
@@ -718,12 +736,15 @@ function promptEditorValueFromRichHtml(html: string): ParsedRichClipboardValue {
   const appendCollapsedText = (rawText: string) => {
     const collapsedText = rawText.replace(/\s+/gu, " ");
     if (collapsedText.trim().length === 0) {
+      if (listMarkerPending) {
+        return;
+      }
       if (text.length > 0 && !/[\s]$/u.test(text)) {
-        text += " ";
+        appendText(" ");
       }
       return;
     }
-    text += collapsedText;
+    appendText(collapsedText);
   };
 
   const appendClipboardMention = (element: Element): boolean => {
@@ -732,8 +753,9 @@ function promptEditorValueFromRichHtml(html: string): ParsedRichClipboardValue {
       return false;
     }
 
+    flushListMarker();
     const start = text.length;
-    text += payload.serializedText;
+    appendText(payload.serializedText);
     mentions.push({
       start,
       end: text.length,
@@ -753,7 +775,7 @@ function promptEditorValueFromRichHtml(html: string): ParsedRichClipboardValue {
     if (node.nodeType === Node.TEXT_NODE) {
       const rawText = node.textContent ?? "";
       if (preserveWhitespace) {
-        text += normalizePastedPlainText(rawText);
+        appendText(normalizePastedPlainText(rawText));
         return;
       }
       appendCollapsedText(rawText);
@@ -778,14 +800,15 @@ function promptEditorValueFromRichHtml(html: string): ParsedRichClipboardValue {
     }
     if (tagName === "PRE") {
       appendNewline();
-      text += normalizePastedPlainText(node.textContent ?? "");
+      appendText(normalizePastedPlainText(node.textContent ?? ""));
       appendNewline();
       return;
     }
     if (tagName === "LI") {
       appendNewline();
-      text += "- ";
+      listMarkerPending = true;
       visitChildren(node, preserveWhitespace);
+      listMarkerPending = false;
       appendNewline();
       return;
     }

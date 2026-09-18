@@ -79,15 +79,17 @@ describe("fixtures", () => {
   it("keeps queued messages on the dispatch context thread by default", () => {
     const inherited = makeMessageDispatchHookContext({
       thread: { id: "thread-target" },
-      queuedMessage: { id: "queued-target" },
+      queuedMessages: [{ id: "queued-target" }, { id: "queued-second" }],
     });
     const explicit = makeMessageDispatchHookContext({
       thread: { id: "thread-target" },
-      queuedMessage: { threadId: "thread-explicit" },
+      queuedMessages: [{ threadId: "thread-explicit" }],
     });
 
-    expect(inherited.queuedMessage?.threadId).toBe("thread-target");
-    expect(explicit.queuedMessage?.threadId).toBe("thread-explicit");
+    expect(inherited.queuedMessages.map((message) => message.threadId)).toEqual(
+      ["thread-target", "thread-target"],
+    );
+    expect(explicit.queuedMessages[0]?.threadId).toBe("thread-explicit");
   });
 });
 

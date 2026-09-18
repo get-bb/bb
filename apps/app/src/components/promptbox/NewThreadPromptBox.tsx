@@ -14,7 +14,6 @@ import type {
   SystemMachineProvider,
 } from "@bb/server-contract";
 import type { ComposerView } from "@get-bb/plugin-sdk";
-import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import type { ComposerTextEffectSource } from "@/lib/composer-text-effects";
 import { ComposerBannersSlot } from "@/components/plugin/PluginComposerBanners";
 import { PROMPT_STACK_TRACK_CLASS } from "@/components/promptbox/banner/PromptStackCard";
@@ -36,6 +35,7 @@ import {
   PromptBoxInternal,
   type AttachmentsConfig,
   type HistoryConfig,
+  type MentionMenuPlacement,
   type PromptBoxAction,
   type PromptBoxHandle,
   type TypeaheadConfig,
@@ -139,6 +139,7 @@ interface NewThreadPromptBoxUIProps {
   typeahead: TypeaheadConfig;
   attachments: AttachmentsConfig;
   promptActions?: readonly PromptBoxAction[];
+  mentionMenuPlacement: MentionMenuPlacement;
 
   modeConfig: NewThreadModeConfig;
 
@@ -171,6 +172,7 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
   typeahead,
   attachments,
   promptActions,
+  mentionMenuPlacement,
   modeConfig,
   project,
   execution,
@@ -227,6 +229,7 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
           typeahead={typeahead}
           attachments={attachments}
           promptActions={promptActions}
+          mentionMenuPlacement={mentionMenuPlacement}
           modeConfig={modeConfig}
           project={project}
           execution={execution}
@@ -265,13 +268,13 @@ const DefaultNewThreadComposer = memo(function DefaultNewThreadComposer({
   typeahead,
   attachments,
   promptActions,
+  mentionMenuPlacement,
   modeConfig,
   project,
   execution,
   voice,
   onComposerLayoutChange,
 }: DefaultNewThreadComposerProps) {
-  const isCompactViewport = useIsCompactViewport();
   const isProjectlessPrompt = project?.value === null;
   const placeholder =
     placeholderOverride ?? getNewThreadPromptPlaceholder(isProjectlessPrompt);
@@ -313,7 +316,7 @@ const DefaultNewThreadComposer = memo(function DefaultNewThreadComposer({
         onComposerLayoutChange={onComposerLayoutChange}
         history={history}
         typeahead={typeahead}
-        mentionMenuPlacement={isCompactViewport ? "top" : "bottom"}
+        mentionMenuPlacement={mentionMenuPlacement}
         attachments={attachments}
         promptActions={promptActions}
         voice={voice}

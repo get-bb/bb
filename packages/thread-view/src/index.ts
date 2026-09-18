@@ -67,3 +67,8 @@ export { compactThreadTimelineSummaryEvents } from "./summary-event-compaction.j
 export type { ThreadEventWithMeta } from "./group-event-projection-turns.js";
 
 export { extractThreadContextWindowUsage } from "./thread-context-window-usage.js";
+export {
+  isExternalUserBoundaryForTurn,
+  type ExternalUserBoundaryMessage,
+  type ExternalUserBoundaryTurnSpan,
+} from "./external-user-boundaries.js";

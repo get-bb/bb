@@ -60,7 +60,9 @@ import { cn } from "../../lib/utils";
 import {
   EXTENDED_ICON_NAMES,
   getAppIcon,
+  getPluginAssetIcon,
   subscribeAppIcons,
+  subscribePluginAssetIcons,
   type ExtendedIconName,
   getExtendedIcons,
   subscribeExtendedIcons,
@@ -238,9 +240,21 @@ export function Icon({ name, fallback = "Zap", ...props }: IconProps) {
     () => getAppIcon(fallback),
     () => getAppIcon(fallback),
   );
-  const requestedExists = custom !== undefined || isBuiltinIconName(name);
+  const asset = useSyncExternalStore(
+    subscribePluginAssetIcons,
+    () => getPluginAssetIcon(name),
+    () => getPluginAssetIcon(name),
+  );
+  const fallbackAsset = useSyncExternalStore(
+    subscribePluginAssetIcons,
+    () => getPluginAssetIcon(fallback),
+    () => getPluginAssetIcon(fallback),
+  );
+  const requestedExists =
+    custom !== undefined || isBuiltinIconName(name) || asset !== undefined;
   const resolved = requestedExists ? name : fallback;
   const definition = requestedExists ? custom : fallbackCustom;
+  const resolvedAsset = requestedExists ? asset : fallbackAsset;
   const CustomIcon = definition?.component;
   if (ancestors.includes(resolved)) {
     return (
@@ -272,10 +286,52 @@ export function Icon({ name, fallback = "Zap", ...props }: IconProps) {
       </IconAncestors.Provider>
     );
   }
+  if (CustomIcon === undefined && resolvedAsset !== undefined) {
+    return (
+      <PluginAssetIcon url={resolvedAsset} resolved={resolved} {...props} />
+    );
+  }
   return (
     <BuiltinIcon
       name={isBuiltinIconName(resolved) ? resolved : "Zap"}
       {...props}
+    />
+  );
+}
+
+function PluginAssetIcon({
+  url,
+  resolved,
+  className,
+  style,
+  "aria-hidden": ariaHidden,
+  "aria-label": ariaLabel,
+}: Omit<IconProps, "name" | "fallback"> & {
+  url: string;
+  resolved: string;
+}) {
+  const image = `url("${url.replace(/["\\]/gu, "\\$&")}")`;
+  return (
+    <span
+      className={cn("inline-block size-6 shrink-0", className)}
+      style={{
+        ...style,
+        backgroundColor: "currentColor",
+        maskImage: image,
+        maskPosition: "center",
+        maskRepeat: "no-repeat",
+        maskSize: "contain",
+        WebkitMaskImage: image,
+        WebkitMaskPosition: "center",
+        WebkitMaskRepeat: "no-repeat",
+        WebkitMaskSize: "contain",
+      }}
+      aria-hidden={ariaHidden}
+      aria-label={ariaLabel}
+      role={ariaLabel ? "img" : undefined}
+      data-icon={resolved}
+      data-icon-root=""
+      data-plugin-icon-asset={url}
     />
   );
 }

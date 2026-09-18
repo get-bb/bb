@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { buildThreadMentionSuggestions } from "./threadMentionSuggestions";
 
 interface ThreadFixtureOptions {
+  environmentId?: string | null;
   id: string;
   parentThreadId?: string | null;
   projectId?: string;
@@ -15,6 +16,7 @@ interface ThreadFixtureOptions {
 interface BuildSuggestionFixtureArgs {
   threads: readonly Thread[];
   query: string;
+  currentEnvironmentId?: string | null;
   currentProjectId?: string;
   currentThreadId?: string;
   limit?: number;
@@ -24,7 +26,8 @@ function makeThread(options: ThreadFixtureOptions): Thread {
   return makeThreadFixture({
     id: options.id,
     projectId: options.projectId ?? "proj-1",
-    environmentId: "env-1",
+    environmentId:
+      options.environmentId === undefined ? "env-1" : options.environmentId,
     providerId: "openai",
     title: options.title,
     titleFallback: options.titleFallback ?? null,
@@ -43,6 +46,7 @@ function getSuggestionThreadIds(
   return buildThreadMentionSuggestions({
     threads: args.threads,
     query: args.query,
+    currentEnvironmentId: args.currentEnvironmentId ?? null,
     currentProjectId: args.currentProjectId,
     currentThreadId: args.currentThreadId,
     projectNamesById: new Map([
@@ -253,6 +257,7 @@ describe("buildThreadMentionSuggestions", () => {
         }),
       ],
       query: "shared",
+      currentEnvironmentId: null,
       currentProjectId: "proj-1",
       projectNamesById: new Map([
         ["proj-1", "Core App"],
@@ -296,6 +301,7 @@ describe("buildThreadMentionSuggestions", () => {
         }),
       ],
       query: "shared",
+      currentEnvironmentId: null,
       projectNamesById: new Map([
         ["proj-1", "Core App"],
         ["proj-2", "Docs Site"],
@@ -338,6 +344,7 @@ describe("buildThreadMentionSuggestions", () => {
         }),
       ],
       query: "shared",
+      currentEnvironmentId: null,
       currentProjectId: "proj-1",
       projectNamesById: new Map([
         [PERSONAL_PROJECT_ID, "Personal"],
@@ -364,5 +371,130 @@ describe("buildThreadMentionSuggestions", () => {
         threadId: "thr_project",
       },
     ]);
+  });
+  it("labels parent, child, sibling and same-environment relations", () => {
+    const suggestions = buildThreadMentionSuggestions({
+      threads: [
+        makeThread({ id: "thr_current", parentThreadId: "thr_parent", title: "Shared current" }),
+        makeThread({ id: "thr_parent", title: "Shared parent" }),
+        makeThread({
+          id: "thr_child",
+          parentThreadId: "thr_current",
+          title: "Shared child",
+        }),
+        makeThread({
+          id: "thr_sibling",
+          parentThreadId: "thr_parent",
+          environmentId: "env-2",
+          title: "Shared sibling",
+        }),
+        makeThread({ id: "thr_roommate", title: "Shared roommate" }),
+        makeThread({
+          id: "thr_elsewhere",
+          environmentId: "env-2",
+          title: "Shared elsewhere",
+        }),
+      ],
+      query: "shared",
+      currentEnvironmentId: "env-1",
+      currentProjectId: "proj-1",
+      currentThreadId: "thr_current",
+      projectNamesById: new Map([["proj-1", "Core App"]]),
+      limit: 8,
+    });
+
+    expect(
+      new Map(
+        suggestions.map((suggestion) => [
+          suggestion.threadId,
+          suggestion.relation,
+        ]),
+      ),
+    ).toEqual(
+      new Map([
+        ["thr_parent", "parent"],
+        ["thr_child", "child"],
+        ["thr_sibling", "same-parent"],
+        ["thr_roommate", "same-environment"],
+        ["thr_elsewhere", null],
+      ]),
+    );
+  });
+
+  it("falls back to the current thread's environment when none is supplied", () => {
+    const suggestions = buildThreadMentionSuggestions({
+      threads: [
+        makeThread({
+          id: "thr_current",
+          environmentId: "env-9",
+          title: "Shared current",
+        }),
+        makeThread({
+          id: "thr_roommate",
+          environmentId: "env-9",
+          title: "Shared roommate",
+        }),
+      ],
+      query: "shared",
+      currentEnvironmentId: null,
+      currentProjectId: "proj-1",
+      currentThreadId: "thr_current",
+      projectNamesById: new Map([["proj-1", "Core App"]]),
+      limit: 8,
+    });
+
+    expect(suggestions.map((suggestion) => suggestion.relation)).toEqual([
+      "same-environment",
+    ]);
+  });
+
+  it("does not claim a same-environment relation for environmentless threads", () => {
+    const suggestions = buildThreadMentionSuggestions({
+      threads: [
+        makeThread({
+          id: "thr_current",
+          environmentId: null,
+          title: "Shared current",
+        }),
+        makeThread({
+          id: "thr_other",
+          environmentId: null,
+          title: "Shared other",
+        }),
+      ],
+      query: "shared",
+      currentEnvironmentId: null,
+      currentProjectId: "proj-1",
+      currentThreadId: "thr_current",
+      projectNamesById: new Map([["proj-1", "Core App"]]),
+      limit: 8,
+    });
+
+    expect(suggestions.map((suggestion) => suggestion.relation)).toEqual([null]);
+  });
+
+  it("keeps parent and child ahead of same-environment threads", () => {
+    expect(
+      getSuggestionThreadIds({
+        threads: [
+          makeThread({
+            id: "thr_current",
+            parentThreadId: "thr_parent",
+            title: "Shared current",
+          }),
+          makeThread({ id: "thr_roommate", title: "Shared roommate" }),
+          makeThread({ id: "thr_parent", title: "Shared parent" }),
+          makeThread({
+            id: "thr_child",
+            parentThreadId: "thr_current",
+            title: "Shared child",
+          }),
+        ],
+        query: "shared",
+        currentEnvironmentId: "env-1",
+        currentProjectId: "proj-1",
+        currentThreadId: "thr_current",
+      }),
+    ).toEqual(["thr_child", "thr_parent", "thr_roommate"]);
   });
 });

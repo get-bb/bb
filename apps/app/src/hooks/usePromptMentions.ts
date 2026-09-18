@@ -204,12 +204,14 @@ export function usePromptMentions(
       query: trimmedQuery,
       currentProjectId: projectId,
       currentThreadId,
+      currentEnvironmentId: options.environmentId,
       projectNamesById,
       limit: PROMPT_MENTION_SOURCE_LIMIT,
     });
   }, [
     currentThreadId,
     includeBuiltInSources,
+    options.environmentId,
     projectId,
     projectNamesById,
     threadsQuery.data,

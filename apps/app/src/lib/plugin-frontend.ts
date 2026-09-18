@@ -45,6 +45,7 @@ import {
   collectPluginAppRegistrations,
   isPluginAppDefinition,
 } from "./plugin-app-definition";
+import { setPluginAssetIcons } from "@bb/shared-ui/icon-registry";
 import { setPluginLogoUrls, type PluginLogoUrls } from "./plugin-logos";
 import { createGatedPierreDiffsReact } from "./plugin-pierre-diffs-react";
 import { getPluginPanelRoutePluginId } from "./route-paths";
@@ -255,6 +256,7 @@ export async function fetchFrontendCandidates(
       (error.status === 401 || error.status === 403)
     ) {
       setPluginLogoUrls(new Map());
+      setPluginAssetIcons(new Map());
       return [];
     }
     throw error;
@@ -264,7 +266,11 @@ export async function fetchFrontendCandidates(
   );
   const candidates: PluginFrontendCandidate[] = [];
   const logoUrls = new Map<string, PluginLogoUrls>();
+  const assetIcons = new Map<string, string>();
   for (const plugin of plugins) {
+    for (const [name, url] of Object.entries(plugin.icons)) {
+      assetIcons.set(`${plugin.id}/${name}`, url);
+    }
     logoUrls.set(plugin.id, {
       displayName: plugin.name,
       icon: plugin.icon,
@@ -285,6 +291,7 @@ export async function fetchFrontendCandidates(
     candidates.push({ pluginId: plugin.id, bundle });
   }
   setPluginLogoUrls(logoUrls);
+  setPluginAssetIcons(assetIcons);
   return candidates;
 }
 

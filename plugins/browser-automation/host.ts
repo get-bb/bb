@@ -231,6 +231,30 @@ export function createHostEntry(
           session.lastUsed = Date.now();
         }
       },
+      async preview(input, context) {
+        const session = sessions.get(input.sessionId);
+        if (!session)
+          throw new Error(
+            "Session stopped, expired, or worker restarted; open a new session",
+          );
+        const runtime = await session.runtime;
+        if (!runtime.preview)
+          throw new Error(
+            "Live preview is available only for local headless sessions",
+          );
+        return {
+          frame: await runtime.preview.next(
+            input.afterSequence,
+            input.waitMs,
+            AbortSignal.any([
+              context.signal,
+              context.lifecycle.signal,
+              session.abort.signal,
+            ]),
+            input.size,
+          ),
+        };
+      },
       async close({ sessionId }) {
         await close(sessionId);
         return null;

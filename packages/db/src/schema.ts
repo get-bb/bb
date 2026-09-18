@@ -11,6 +11,8 @@ import {
 import { sql } from "drizzle-orm";
 import type { AnySQLiteColumn } from "drizzle-orm/sqlite-core";
 import { threadStatusValues } from "@bb/domain/thread-status";
+import { startedOnBehalfOfInitiatorValues } from "@bb/domain/started-on-behalf-of";
+import { threadCreateOriginValues } from "@bb/domain/thread-create-origin";
 import { threadOriginKindValues } from "@bb/domain/thread-origin-kind";
 import { threadVisibilityValues } from "@bb/domain/thread-visibility";
 import type {
@@ -965,6 +967,22 @@ export const queuedThreadMessages = sqliteTable(
       .references(() => threads.id, { onDelete: "cascade" }),
     content: text("content").notNull(),
     senderThreadId: text("sender_thread_id"),
+    // How the dispatch this row was queued from was requested, and the plugin
+    // that requested it. On the row rather than read from the request, so a
+    // drained re-attempt decides on the same provenance its first attempt saw.
+    // Both NULL for a send, a retry, a system notice and every row written
+    // before these columns existed: only a thread's first dispatch has one.
+    origin: text("origin", { enum: threadCreateOriginValues }),
+    originPluginId: text("origin_plugin_id"),
+    // Set together: the thread that asked for the dispatch this row was queued
+    // from, and what it counts as. Distinct from `sender_thread_id`, which is
+    // the sender of a message to an existing thread and drives the agent
+    // message prefix — a thread-start has a requester and no message sender,
+    // so without these a drained first message reads as one the user typed.
+    requestedByInitiator: text("requested_by_initiator", {
+      enum: startedOnBehalfOfInitiatorValues,
+    }),
+    requestedByThreadId: text("requested_by_thread_id"),
     model: text("model").notNull(),
     reasoningLevel: text("reasoning_level").notNull(),
     permissionMode: text("permission_mode").$type<PermissionMode>().notNull(),

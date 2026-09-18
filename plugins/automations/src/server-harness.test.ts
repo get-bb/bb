@@ -11,6 +11,7 @@ import { createAutomationService } from "./service.js";
 import {
   automationListResponseSchema,
   automationsOverviewResponseSchema,
+  automationDetailResponseSchema,
   automationResponseSchema,
   automationRunListResponseSchema,
   automationRunRpcResponseSchema,
@@ -36,7 +37,27 @@ const rpcMethods = [
 ].sort();
 
 function project(projectId = PROJECT_ID) {
-  return { id: projectId, name: "Test Project", deletedAt: null };
+  return {
+    id: projectId,
+    kind: "standard" as const,
+    name: "Test Project",
+    gitRemoteUrl: null,
+    createdAt: 1,
+    updatedAt: 1,
+    deletedAt: null,
+    sources: [
+      {
+        id: `psrc_${projectId}`,
+        projectId,
+        type: "local_path" as const,
+        hostId: "host_fake",
+        path: "/test/project",
+        isDefault: true,
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ],
+  };
 }
 
 async function bootAutomationsPlugin(
@@ -50,6 +71,7 @@ async function bootAutomationsPlugin(
   const host = createFakePluginHost({
     pluginId: "automations",
     sdk: {
+      system: { config: async () => ({ primaryHostId: "host_fake" }) },
       projects: {
         async get({ projectId }) {
           if (projectId === PROJECT_ID) return project(projectId);
@@ -146,7 +168,7 @@ async function createAgentAutomation(
     targetThreadId?: string;
   } = {},
 ) {
-  return automationResponseSchema.parse(
+  return automationDetailResponseSchema.parse(
     await harness.callRpc("automations_create", {
       projectId: PROJECT_ID,
       name: options.name ?? "Agent automation",
@@ -217,7 +239,7 @@ describe("automations server plugin harness", () => {
       }),
     );
 
-    const found = automationResponseSchema.parse(
+    const found = automationDetailResponseSchema.parse(
       await harness.callRpc("automations_get", {
         projectId: PROJECT_ID,
         automationId: created.id,
@@ -286,7 +308,7 @@ describe("automations server plugin harness", () => {
       "--json",
     ]);
     expect(createdResult.exitCode).toBe(0);
-    const created = automationResponseSchema.parse(
+    const created = automationDetailResponseSchema.parse(
       JSON.parse(createdResult.stdout ?? ""),
     );
     expect(created).toMatchObject({
@@ -311,7 +333,7 @@ describe("automations server plugin harness", () => {
         await harness.callRpc("automations_list", { projectId: PROJECT_ID }),
       )[0]?.id,
     ).toBe(created.id);
-    const editable = automationResponseSchema.parse(
+    const editable = automationDetailResponseSchema.parse(
       await harness.callRpc("automations_get", {
         projectId: PROJECT_ID,
         automationId: created.id,
@@ -320,6 +342,7 @@ describe("automations server plugin harness", () => {
     expect(editable.execution).toMatchObject({
       mode: "script",
       script: "echo ok",
+      resolvedWorkingDirectory: "/test/project",
     });
     expect(editable.execution).not.toHaveProperty("scriptFile");
 
@@ -345,7 +368,7 @@ describe("automations server plugin harness", () => {
       "--json",
     ]);
     expect(agentUpdateResult.exitCode).toBe(0);
-    const agentUpdated = automationResponseSchema.parse(
+    const agentUpdated = automationDetailResponseSchema.parse(
       JSON.parse(agentUpdateResult.stdout ?? ""),
     );
     expect(agentUpdated.execution).toEqual({
@@ -376,7 +399,7 @@ describe("automations server plugin harness", () => {
       "--json",
     ]);
     expect(scriptUpdateResult.exitCode).toBe(0);
-    const scriptUpdated = automationResponseSchema.parse(
+    const scriptUpdated = automationDetailResponseSchema.parse(
       JSON.parse(scriptUpdateResult.stdout ?? ""),
     );
     expect(scriptUpdated.execution).toEqual({
@@ -386,10 +409,12 @@ describe("automations server plugin harness", () => {
         new RegExp(`/scripts/${created.id}/script\\.sh$`),
       ),
       interpreter: "bash",
+      workingDirectory: { type: "project" },
+      resolvedWorkingDirectory: "/test/project",
       timeoutMs: 12_000,
       env: { CHANNEL: "qa" },
     });
-    const updatedEditable = automationResponseSchema.parse(
+    const updatedEditable = automationDetailResponseSchema.parse(
       await harness.callRpc("automations_get", {
         projectId: PROJECT_ID,
         automationId: created.id,
@@ -402,6 +427,8 @@ describe("automations server plugin harness", () => {
         new RegExp(`/scripts/${created.id}/script\\.sh$`),
       ),
       interpreter: "bash",
+      workingDirectory: { type: "project" },
+      resolvedWorkingDirectory: "/test/project",
       timeoutMs: 12_000,
       env: { CHANNEL: "qa" },
     });
@@ -431,7 +458,7 @@ describe("automations server plugin harness", () => {
       "echo ok",
       "--json",
     ]);
-    const created = automationResponseSchema.parse(
+    const created = automationDetailResponseSchema.parse(
       JSON.parse(createdResult.stdout ?? ""),
     );
     if (
@@ -490,7 +517,7 @@ describe("automations server plugin harness", () => {
       ]);
 
       expect(result.exitCode).toBe(0);
-      const automation = automationResponseSchema.parse(
+      const automation = automationDetailResponseSchema.parse(
         JSON.parse(result.stdout ?? ""),
       );
       expect(automation.execution).toMatchObject({
@@ -549,7 +576,7 @@ describe("automations server plugin harness", () => {
       "--json",
     ]);
     expect(environmentUpdate.exitCode).toBe(0);
-    const environmentTargeted = automationResponseSchema.parse(
+    const environmentTargeted = automationDetailResponseSchema.parse(
       JSON.parse(environmentUpdate.stdout ?? ""),
     );
     expect(environmentTargeted).toMatchObject({
@@ -581,7 +608,7 @@ describe("automations server plugin harness", () => {
       "--json",
     ]);
     expect(threadTargetUpdate.exitCode).toBe(0);
-    const threadTargeted = automationResponseSchema.parse(
+    const threadTargeted = automationDetailResponseSchema.parse(
       JSON.parse(threadTargetUpdate.stdout ?? ""),
     );
     expect(threadTargeted.execution).toMatchObject({
@@ -606,7 +633,7 @@ describe("automations server plugin harness", () => {
       "--json",
     ]);
     expect(worktreeUpdate.exitCode).toBe(0);
-    const worktreeTargeted = automationResponseSchema.parse(
+    const worktreeTargeted = automationDetailResponseSchema.parse(
       JSON.parse(worktreeUpdate.stdout ?? ""),
     );
     expect(worktreeTargeted.execution).toMatchObject({
@@ -651,7 +678,7 @@ describe("automations server plugin harness", () => {
     ]);
     expect(update.exitCode).toBe(0);
     expect(
-      automationResponseSchema.parse(JSON.parse(update.stdout ?? "")).execution,
+      automationDetailResponseSchema.parse(JSON.parse(update.stdout ?? "")).execution,
     ).toMatchObject({ mode: "agent", prompt: longPrompt });
 
     const listed = automationListResponseSchema.parse(
@@ -671,10 +698,10 @@ describe("automations server plugin harness", () => {
     ]);
     expect(shown.exitCode).toBe(0);
     expect(
-      automationResponseSchema.parse(JSON.parse(shown.stdout ?? "")).execution,
+      automationDetailResponseSchema.parse(JSON.parse(shown.stdout ?? "")).execution,
     ).toMatchObject({ prompt: longPrompt });
 
-    const repaired = automationResponseSchema.parse(
+    const repaired = automationDetailResponseSchema.parse(
       await harness.callRpc("automations_update", {
         projectId: PROJECT_ID,
         automationId: created.id,
@@ -919,7 +946,7 @@ describe("automations server plugin harness", () => {
     ).rejects.toThrow();
 
     for (const automationId of [full.id, partial.id]) {
-      const unchanged = automationResponseSchema.parse(
+      const unchanged = automationDetailResponseSchema.parse(
         await harness.callRpc("automations_get", {
           projectId: PROJECT_ID,
           automationId,
@@ -973,7 +1000,7 @@ describe("automations server plugin harness", () => {
     const { harness } = await bootAutomationsPlugin();
     const created = await createAgentAutomation(harness);
 
-    const updated = automationResponseSchema.parse(
+    const updated = automationDetailResponseSchema.parse(
       await harness.callRpc("automations_update", {
         projectId: PROJECT_ID,
         automationId: created.id,
@@ -1054,7 +1081,7 @@ describe("automations server plugin harness", () => {
       "Permission mode auto is not supported by provider codex.",
     );
 
-    const unchanged = automationResponseSchema.parse(
+    const unchanged = automationDetailResponseSchema.parse(
       await harness.callRpc("automations_get", {
         projectId: PROJECT_ID,
         automationId: created.id,
@@ -1249,7 +1276,7 @@ describe("automations server plugin harness", () => {
       }),
     });
 
-    const disabled = automationResponseSchema.parse(
+    const disabled = automationDetailResponseSchema.parse(
       await harness.callRpc("automations_get", {
         projectId: PROJECT_ID,
         automationId: automation.id,

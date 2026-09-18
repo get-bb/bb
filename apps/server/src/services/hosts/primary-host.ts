@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { getHost, listPublicHosts, type DbConnection } from "@bb/db";
+import { getHost } from "@bb/db";
 import { HOST_ID_FILE_NAME } from "@bb/host-daemon-contract";
 import { ApiError } from "../../errors.js";
 import type { AppDeps } from "../../types.js";
@@ -50,32 +50,13 @@ export function isServerMachineHost(
   );
 }
 
-function resolveSinglePublicHostId(
-  db: DbConnection,
-  include: (host: ReturnType<typeof listPublicHosts>[number]) => boolean = () =>
-    true,
-): string | null {
-  const hosts = listPublicHosts(db).filter(include);
-  if (hosts.length !== 1) {
-    return null;
-  }
-  const host = hosts[0];
-  return host?.id ?? null;
-}
-
 export function resolvePrimaryHostId(deps: PrimaryHostDeps): string | null {
   const configured = readPrimaryHostIdFromDataDir({
     dataDir: deps.config.dataDir,
   });
   const configuredHost =
     configured === null ? null : getHost(deps.db, configured);
-  return (
-    (configuredHost?.destroyedAt === null ? configuredHost.id : null) ??
-    resolveSinglePublicHostId(deps.db, (host) =>
-      deps.hub.hasDaemonForHost(host.id),
-    ) ??
-    resolveSinglePublicHostId(deps.db)
-  );
+  return configuredHost?.destroyedAt === null ? configuredHost.id : null;
 }
 
 export function requirePrimaryHostId(deps: PrimaryHostDeps): string {

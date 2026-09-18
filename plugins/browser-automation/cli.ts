@@ -32,6 +32,13 @@ export const commands = [
       "bb browser-automation screenshot <session-id> [--page <name>] [--thread <id>] [--json]",
   },
   {
+    name: "preview",
+    summary:
+      "Describe the live preview frame of a local headless session, without image bytes",
+    usage:
+      "bb browser-automation preview <session-id> [--after <sequence>] [--thread <id>] [--json]",
+  },
+  {
     name: "stop",
     summary:
       "Cancel queued and running work and release control; open a new session to resume",
@@ -49,6 +56,7 @@ const methodSchema = z.enum([
   "run",
   "pages",
   "screenshot",
+  "preview",
   "stop",
   "close",
 ]);
@@ -66,7 +74,9 @@ export function parseCli(argv: string[], contextThreadId?: string) {
         ? ["--script", "--script-file", "--script-host", "--timeout-ms"]
         : method === "screenshot"
           ? ["--page"]
-          : []),
+          : method === "preview"
+            ? ["--after"]
+            : []),
   ]);
   for (let index = 1; index < argv.length; index++) {
     const arg = argv[index]!;
@@ -97,6 +107,7 @@ export function parseCli(argv: string[], contextThreadId?: string) {
     script?: string;
     timeoutMs?: number;
     page?: string;
+    afterSequence?: number;
   } = { threadId };
   if (method === "open" || method === "list") {
     if (positionals.length) throw new Error("Unexpected positional argument");
@@ -146,6 +157,10 @@ export function parseCli(argv: string[], contextThreadId?: string) {
       : 30_000;
   }
   if (method === "screenshot") input.page = flags.get("--page") ?? "main";
+  if (method === "preview")
+    input.afterSequence = flags.has("--after")
+      ? Number(flags.get("--after"))
+      : 0;
   return {
     method,
     input,
