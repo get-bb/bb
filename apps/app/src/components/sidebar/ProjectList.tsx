@@ -89,9 +89,6 @@ import {
   compareStandardThreads,
   createSidebarProjectIdResolver,
   isSidebarProjectThread,
-  NO_MACHINE_GROUP_KEY,
-  resolveSidebarProjectId,
-  sectionKeyForThreadSection,
   buildSidebarEntitySectionId,
   type ProjectThreadItem,
   type SidebarSectionDefinition,
@@ -118,7 +115,6 @@ import {
   sidebarChronologicalSortAtom,
   sidebarGroupThreadsByEnvironmentAtom,
   sidebarSortDirectionAtom,
-  sidebarCollapsedThreadSectionsAtom,
   sidebarCollapsedMachinesAtom,
   sidebarOrganizationModeAtom,
   type SidebarChronologicalSort,
@@ -150,7 +146,6 @@ import {
 } from "./BuiltInSidebarSection";
 import { ReorderableSidebarSectionOrderList } from "./ReorderableSidebarSectionOrderList";
 import { useSidebarModeSectionOrder } from "./useSidebarModeSectionOrder";
-import { useSidebarNavigationReveal } from "./useSidebarNavigationReveal";
 import { haveSameOrder } from "@/lib/stored-order";
 import {
   resolveThreadTitleDisplayText,
@@ -208,74 +203,11 @@ interface ToggleCollapsedIdListArgs {
   id: string;
 }
 
-interface SelectedThreadSidebarExpansionArgs {
-  organizationMode: SidebarOrganizationMode;
-  isPinned: boolean;
-  selectedThread: ThreadListEntry;
-  sidebarProjectId: string;
-}
-
-interface SelectedThreadSidebarExpansion {
-  sectionKey?: string;
-  machineKey?: string;
-  projectId?: string;
-  sidebarSectionId?: CollapsibleSidebarSectionId;
-}
-
 type ToggleCollapsedId = (id: string) => void;
 type ToggleCollapsedSidebarSectionId = (
   id: CollapsibleSidebarSectionId,
 ) => void;
 type OpenSidebarMenu = `displayOptions:${string}` | null;
-
-function removeCollapsedIds<T extends string>(
-  current: T[],
-  idsToRemove: ReadonlySet<string>,
-): T[] {
-  if (idsToRemove.size === 0) {
-    return current;
-  }
-  let removed = false;
-  const next = current.filter((id) => {
-    if (!idsToRemove.has(id)) {
-      return true;
-    }
-    removed = true;
-    return false;
-  });
-  return removed ? next : current;
-}
-
-export function getSelectedThreadSidebarExpansion({
-  organizationMode,
-  isPinned,
-  selectedThread,
-  sidebarProjectId,
-}: SelectedThreadSidebarExpansionArgs): SelectedThreadSidebarExpansion {
-  if (isPinned) {
-    return { sidebarSectionId: "pinned" };
-  }
-
-  if (organizationMode === "machine") {
-    return {
-      machineKey: selectedThread.environmentHostId ?? NO_MACHINE_GROUP_KEY,
-    };
-  }
-
-  if (organizationMode === "chronological") {
-    const sectionKey = sectionKeyForThreadSection(
-      CHRONOLOGICAL_CONTAINER_ID,
-      selectedThread.sectionId,
-    );
-    return sectionKey ? { sectionKey } : { sidebarSectionId: "threads" };
-  }
-
-  if (sidebarProjectId === PERSONAL_PROJECT_ID) {
-    return { sidebarSectionId: "threads" };
-  }
-
-  return { projectId: sidebarProjectId };
-}
 
 function isCollapsibleSidebarSectionId(
   value: string,
@@ -1406,13 +1338,6 @@ function ProjectListComponent({
   }, [sidebarNavigation]);
   const draftThreadIds = usePromptDraftInputThreadIds(threads);
   const titleMentionResources = useThreadTitleMentionResources();
-  const threadById = useMemo(() => {
-    const map = new Map<string, ThreadListEntry>();
-    for (const thread of threads) {
-      map.set(thread.id, thread);
-    }
-    return map;
-  }, [threads]);
   const uiPreferencesReady = useUiPreferencesReady();
   const projectsState = useConnectionAwareQueryState({
     hasResolvedData: projects !== undefined,
@@ -1583,14 +1508,12 @@ function ProjectListComponent({
     },
     [sectionRenameDialog],
   );
-  const setCollapsedProjectIdList = useSetAtom(collapsedProjectIdsAtom);
   const [collapsedThreadIdList, setCollapsedThreadIdList] = useAtom(
     collapsedThreadIdsAtom,
   );
   const [collapsedEnvironmentIdList, setCollapsedEnvironmentIdList] = useAtom(
     collapsedEnvironmentIdsAtom,
   );
-  const setCollapsedMachineKeyList = useSetAtom(sidebarCollapsedMachinesAtom);
   const [collapsedSidebarSectionIdList, setCollapsedSidebarSectionIdList] =
     useAtom(collapsedSidebarSectionIdsAtom);
   const [openSidebarMenu, setOpenSidebarMenu] = useState<OpenSidebarMenu>(null);
@@ -1623,9 +1546,6 @@ function ProjectListComponent({
     sidebarChronologicalSortAtom,
   );
   const sortDirection = useAtomValue(sidebarSortDirectionAtom);
-  const setCollapsedSectionList = useSetAtom(
-    sidebarCollapsedThreadSectionsAtom,
-  );
   const sidebarThreadComparator = useMemo<ThreadComparator>(
     () =>
       getSidebarThreadComparator(
@@ -1680,84 +1600,6 @@ function ProjectListComponent({
     [pinnedSidebarState.rootNodes],
   );
   const hasPinnedSection = pinnedSidebarState.rootNodes.length > 0;
-  useSidebarNavigationReveal(
-    uiPreferencesReady &&
-      (!selectedThreadId || threadById.has(selectedThreadId)),
-    () => {
-      if (!selectedThreadId) {
-        return;
-      }
-
-      const selectedThread = threadById.get(selectedThreadId);
-      if (!selectedThread) {
-        return;
-      }
-      if (selectedThread.visibility === "hidden") {
-        return;
-      }
-
-      const threadIdsToExpand = new Set<string>();
-      const environmentIdsToExpand = new Set<string>();
-      let currentThread: ThreadListEntry | undefined = selectedThread;
-      let remainingHops = threadById.size;
-      while (currentThread && remainingHops > 0) {
-        if (currentThread.environmentId !== null) {
-          environmentIdsToExpand.add(currentThread.environmentId);
-        }
-        const parentThreadId = currentThread.parentThreadId;
-        if (parentThreadId === null) {
-          break;
-        }
-        const parentThread = threadById.get(parentThreadId);
-        if (!parentThread) {
-          break;
-        }
-        threadIdsToExpand.add(parentThread.id);
-        currentThread = parentThread;
-        remainingHops -= 1;
-      }
-
-      setCollapsedThreadIdList((current) =>
-        removeCollapsedIds(current, threadIdsToExpand),
-      );
-      setCollapsedEnvironmentIdList((current) =>
-        removeCollapsedIds(current, environmentIdsToExpand),
-      );
-
-      const isPinned =
-        pinnedSidebarState.effectivePinnedThreadIds.has(selectedThreadId);
-      const expansion = getSelectedThreadSidebarExpansion({
-        organizationMode,
-        isPinned,
-        selectedThread,
-        sidebarProjectId: resolveSidebarProjectId(selectedThread, threadById),
-      });
-      if (expansion.machineKey) {
-        const machineKey = expansion.machineKey;
-        setCollapsedMachineKeyList((current) =>
-          removeCollapsedIds(current, new Set([machineKey])),
-        );
-      }
-      if (expansion.sectionKey) {
-        const sectionKey = expansion.sectionKey;
-        setCollapsedSectionList((current) =>
-          removeCollapsedIds(current, new Set([sectionKey])),
-        );
-      }
-      if (expansion.projectId) {
-        const projectId = expansion.projectId;
-        setCollapsedProjectIdList((current) =>
-          removeCollapsedIds(current, new Set([projectId])),
-        );
-      }
-      if (expansion.sidebarSectionId) {
-        const sidebarSectionId = expansion.sidebarSectionId;
-        setCollapsedSidebarSectionIdList((current) =>
-          removeCollapsedIds(current, new Set([sidebarSectionId])),
-        );
-      }
-    },
-  );
   const toggleThreadCollapsed = useCallback<ToggleCollapsedId>(
     (threadId) => {
       setCollapsedThreadIdList((current) => {
