@@ -461,19 +461,6 @@ function ThreadRowComponent({
               : SIDEBAR_HOVER_ACTIONS_INSET_CLASS),
         )}
       >
-        {isEditing ? (
-          <span className="relative z-10 min-w-0 flex-1 overflow-visible">
-            {editor}
-          </span>
-        ) : (
-          <span
-            className="bb-thread-title"
-            title={labelTitle}
-            onDoubleClick={startTitleEditing}
-          >
-            <ThreadTitleMentions title={threadTitle} />
-          </span>
-        )}
         {crossProjectLabel !== null ? (
           <Tooltip>
             <TooltipTrigger asChild>
@@ -494,6 +481,19 @@ function ThreadRowComponent({
             <TooltipContent side="top">{crossProjectLabel}</TooltipContent>
           </Tooltip>
         ) : null}
+        {isEditing ? (
+          <span className="relative z-10 min-w-0 flex-1 overflow-visible">
+            {editor}
+          </span>
+        ) : (
+          <span
+            className="bb-thread-title"
+            title={labelTitle}
+            onDoubleClick={startTitleEditing}
+          >
+            <ThreadTitleMentions title={threadTitle} />
+          </span>
+        )}
         {parentOptions && hasChildren ? (
           <SidebarChildToggleChevron
             isCollapsed={isParentCollapsed}
