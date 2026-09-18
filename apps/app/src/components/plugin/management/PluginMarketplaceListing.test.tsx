@@ -6,7 +6,10 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
-import { PluginMoreFromAuthorSection } from "./PluginMarketplaceListing";
+import {
+  PluginMarketplaceListingSections,
+  PluginMoreFromAuthorSection,
+} from "./PluginMarketplaceListing";
 
 function catalogEntry(pluginId: string): PluginCatalogSearchEntry {
   return {
@@ -41,6 +44,53 @@ function catalogEntry(pluginId: string): PluginCatalogSearchEntry {
 afterEach(cleanup);
 
 describe("plugin marketplace author links", () => {
+  it("preserves Overview and listing metadata as peers of About", () => {
+    const overview =
+      "## Requirements\n\nKeep the complete instructions.\n\n```sh\nbb secret request TOKEN\n```";
+    render(
+      <PluginMarketplaceListingSections
+        entry={{
+          ...catalogEntry("Secrets"),
+          description: "Securely request credentials.",
+          overview,
+          publishedAt: "2026-07-09T12:00:00Z",
+          categoryId: "security",
+          category: "Security & Privacy",
+        }}
+      />,
+    );
+    expect(
+      screen.getByRole("heading", { name: "About", level: 2 }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("heading", { name: "Overview", level: 2 }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("heading", { name: "Requirements", level: 3 }),
+    ).toBeTruthy();
+    expect(screen.getByText("bb secret request TOKEN")).toBeTruthy();
+    expect(screen.getByText("Listed").parentElement?.textContent).toContain(
+      "Jul 9, 2026",
+    );
+    expect(screen.queryByText("Last updated")).toBeNull();
+    expect(
+      screen.getByText("Marketplace").parentElement?.textContent,
+    ).toContain("BB Community");
+    const grid = screen.getByText("Marketplace").closest("dl");
+    expect(
+      Array.from(
+        grid?.querySelectorAll("dt") ?? [],
+        (label) => label.textContent,
+      ),
+    ).toEqual(["Marketplace", "Category", "Listed"]);
+  });
+
+  it("does not create an empty Overview for a description-only plugin", () => {
+    render(<PluginMarketplaceListingSections entry={catalogEntry("Local")} />);
+    expect(screen.getByRole("heading", { name: "About" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Overview" })).toBeNull();
+  });
+
   it("routes the detail author name to the author page", () => {
     render(
       <MemoryRouter initialEntries={["/plugins/Current?category=security"]}>
@@ -56,7 +106,7 @@ describe("plugin marketplace author links", () => {
     );
   });
 
-  it("excludes the current plugin and caps plain teaser rows at four", () => {
+  it("excludes the current plugin and caps related cards at four", () => {
     const current = catalogEntry("Current");
     const entries = [
       current,

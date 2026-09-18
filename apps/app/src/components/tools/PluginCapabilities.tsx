@@ -178,6 +178,7 @@ function namedSlotItems<
 function pluginAppSurfaceItems(
   plugin: PluginListItem,
   slots: PluginSlotSnapshot,
+  configurationPath?: string,
 ): PluginCapabilityItem[] {
   const pluginId = plugin.id;
   const settingsSections = slots.settingsSections.filter(
@@ -191,7 +192,7 @@ function pluginAppSurfaceItems(
             "settings",
             "Settings",
             "Opens this plugin's configuration.",
-            getPluginConfigurationRoutePath({ pluginId }),
+            configurationPath ?? getPluginConfigurationRoutePath({ pluginId }),
           ),
         ]
       : []),
@@ -360,13 +361,19 @@ function pluginAppSurfaceItems(
   ];
 }
 
-export function PluginIncludes({ plugin }: { plugin: PluginListItem }) {
+export function PluginIncludes({
+  plugin,
+  configurationPath,
+}: {
+  plugin: PluginListItem;
+  configurationPath?: string;
+}) {
   const slots = usePluginSlots();
   const queryClient = useQueryClient();
   const cachedSkills = queryClient.getQueryData<SkillListResponse>(
     projectSkillsQueryKey(PERSONAL_PROJECT_ID),
   );
-  const appItems = pluginAppSurfaceItems(plugin, slots);
+  const appItems = pluginAppSurfaceItems(plugin, slots, configurationPath);
 
   const skillDestination = (capabilityId: string): string => {
     const installedSkill = cachedSkills?.skills.find((skill) => {
@@ -500,11 +507,13 @@ function PluginRuntimeStatusAlert({
   runtimeStatus,
   onReload,
   reloadPending,
+  configurationPath,
 }: {
   plugin: PluginListItem;
   runtimeStatus: PluginRuntimeStatusPresentation;
   onReload: () => void;
   reloadPending: boolean;
+  configurationPath?: string;
 }) {
   const { settingsSections } = usePluginSlots();
   const hasSettingsPage =
@@ -541,7 +550,10 @@ function PluginRuntimeStatusAlert({
             {canOpenSettings ? (
               <Button asChild size="sm" className="h-7 gap-0.5 px-2.5 text-xs">
                 <Link
-                  to={getPluginConfigurationRoutePath({ pluginId: plugin.id })}
+                  to={
+                    configurationPath ??
+                    getPluginConfigurationRoutePath({ pluginId: plugin.id })
+                  }
                 >
                   Open settings
                   <Icon name="ChevronRight" className="size-3.5" aria-hidden />
@@ -577,9 +589,11 @@ function PluginRuntimeStatusAlert({
 export function PluginHealthBanner({
   plugin,
   runtimeStatus,
+  configurationPath,
 }: {
   plugin: PluginListItem;
   runtimeStatus: PluginRuntimeStatusPresentation | null;
+  configurationPath?: string;
 }) {
   const queryClient = useQueryClient();
   const reload = useMutation({
@@ -600,6 +614,7 @@ export function PluginHealthBanner({
       runtimeStatus={runtimeStatus}
       reloadPending={reload.isPending}
       onReload={() => reload.mutate()}
+      configurationPath={configurationPath}
     />
   );
 }

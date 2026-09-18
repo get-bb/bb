@@ -165,8 +165,8 @@ describe("Plugin detail recipe", () => {
     const { container } = renderPlugin(PLUGIN);
 
     expect(renderedRecipe(container)).toEqual([
-      ["overview", ""],
-      ["release", "Release"],
+      ["overview", "About"],
+      ["release", "Details"],
     ]);
   });
 
@@ -187,8 +187,8 @@ describe("Plugin detail recipe", () => {
     });
 
     expect(renderedRecipe(container)).toEqual([
-      ["overview", ""],
-      ["release", "Release"],
+      ["overview", "About"],
+      ["release", "Details"],
       ["activity", "Background services"],
       ["activity", "Scheduled jobs"],
     ]);
@@ -201,8 +201,8 @@ describe("Plugin detail recipe", () => {
     });
 
     expect(renderedRecipe(container)).toEqual([
-      ["overview", ""],
-      ["release", "Release"],
+      ["overview", "About"],
+      ["release", "Details"],
       ["activity", "Background services"],
     ]);
   });
@@ -435,10 +435,10 @@ describe("Plugin detail recipe", () => {
         href,
       );
     }
-    expect(renderedRecipe(container)).toContainEqual([
+    expect(screen.getByRole("button", { name: "Configure" })).toBeTruthy();
+    expect(renderedRecipe(container).map(([kind]) => kind)).not.toContain(
       "configuration",
-      "Configuration",
-    ]);
+    );
     expect(screen.getAllByRole("link", { name: "Settings" })).toHaveLength(1);
     expect(screen.queryByRole("link", { name: "Inspect issue" })).toBeNull();
     expect(screen.queryByRole("link", { name: "Sync status" })).toBeNull();
