@@ -91,7 +91,7 @@ export const uiPreferenceDefinitions = {
   "sidebar.chronologicalSort": defineUiPreference(
     sidebarChronologicalSortSchema,
     "updated",
-    "Sort order for the chronological sidebar organization.",
+    "Sidebar thread sort order. updated also ranks groups by their highest-ranked visible thread, preserving saved manual section order.",
   ),
   "sidebar.sortDirection": defineUiPreference(
     z.enum(["default", "ascending", "descending"]),

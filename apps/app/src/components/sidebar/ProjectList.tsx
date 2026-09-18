@@ -83,10 +83,12 @@ import {
 import type { ProjectThreadListState } from "./ProjectRow";
 import {
   buildMachineThreadGroups,
+  buildSectionThreadList,
   buildPinnedSidebarState,
   CHRONOLOGICAL_CONTAINER_ID,
   compareByCreatedAtDescending,
   compareStandardThreads,
+  compareThreadGroups,
   createSidebarProjectIdResolver,
   isSidebarProjectThread,
   buildSidebarEntitySectionId,
@@ -367,7 +369,7 @@ export function getSidebarThreadComparator(
     normalizedSort === "created"
       ? compareByCreatedAtDescending
       : compareStandardThreads;
-  return (left, right) => {
+  const comparator: ThreadComparator = (left, right) => {
     const comparison = base(left, right);
     if (
       normalizedSort === "updated" &&
@@ -377,6 +379,11 @@ export function getSidebarThreadComparator(
     }
     return multiplier * comparison;
   };
+  if (normalizedSort === "updated") {
+    comparator.compareGroups = (left, right) =>
+      compareThreadGroups(left, right, comparator);
+  }
+  return comparator;
 }
 
 function getSectionMutationErrorMessage(
@@ -772,10 +779,16 @@ function ProjectModeSections({
   );
   const projectSectionIds = useMemo(
     () =>
-      projectRows.map((row) =>
-        buildSidebarEntitySectionId("project", row.project.id),
-      ),
-    [projectRows],
+      [...projectRows]
+        .sort(
+          (left, right) =>
+            compareThreads.compareGroups?.(
+              threadsByProject.get(left.project.id) ?? EMPTY_THREAD_LIST,
+              threadsByProject.get(right.project.id) ?? EMPTY_THREAD_LIST,
+            ) ?? 0,
+        )
+        .map((row) => buildSidebarEntitySectionId("project", row.project.id)),
+    [compareThreads, projectRows, threadsByProject],
   );
   const projectRowsBySectionId = useMemo(() => {
     const rows = new Map<SidebarSectionId, ProjectListRowModel>();
@@ -992,13 +1005,39 @@ function SectionModeSections({
     status,
     threads: nonPinnedThreads,
   });
-  const threadSectionIds = useMemo(
-    () =>
-      sections.map((section) =>
+  const threadSectionIds = useMemo(() => {
+    if (!compareThreads.compareGroups) {
+      return sections.map((section) =>
         buildSidebarEntitySectionId("section", section.id),
+      );
+    }
+    const groups = buildSectionThreadList(
+      nonPinnedThreads,
+      compareThreads,
+      sections,
+    );
+    const threadsBySection = new Map(
+      groups.flatMap((item) =>
+        item.kind === "section"
+          ? [
+              [
+                item.group.id,
+                getProjectThreadItemDescendants(item.group.items),
+              ] as const,
+            ]
+          : [],
       ),
-    [sections],
-  );
+    );
+    return [...sections]
+      .sort(
+        (left, right) =>
+          compareThreads.compareGroups?.(
+            threadsBySection.get(left.id) ?? EMPTY_THREAD_LIST,
+            threadsBySection.get(right.id) ?? EMPTY_THREAD_LIST,
+          ) ?? 0,
+      )
+      .map((section) => buildSidebarEntitySectionId("section", section.id));
+  }, [compareThreads, nonPinnedThreads, sections]);
   const { onOrderChange, order } = useSidebarModeSectionOrder({
     mode: "chronological",
     entitySectionIds: threadSectionIds,
@@ -1146,10 +1185,16 @@ export function MachineModeSections({
   );
   const machineSectionIds = useMemo(
     () =>
-      machineSections.map((section) =>
-        buildSidebarEntitySectionId("machine", section.key),
-      ),
-    [machineSections],
+      [...machineSections]
+        .sort(
+          (left, right) =>
+            compareThreads.compareGroups?.(
+              left.threadListState.threads,
+              right.threadListState.threads,
+            ) ?? 0,
+        )
+        .map((section) => buildSidebarEntitySectionId("machine", section.key)),
+    [compareThreads, machineSections],
   );
   const machineSectionsById = useMemo(
     () =>

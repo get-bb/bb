@@ -725,6 +725,12 @@ expectedRevision })`, and `.reset({ key })` over `GET /preferences/ui`,
 `PUT /preferences/ui/:key`, and `DELETE /preferences/ui/:key`. Every write
 broadcasts a `ui-preferences-changed` system change to connected clients.
 
+With `sidebar.chronologicalSort` set to `updated`, groups inherit their
+highest-ranked visible thread; running work stays first and empty groups follow
+populated groups. Saved manual section order and pinned placement take
+precedence. Reset `sidebar.sectionOrder`, `sidebar.manualSectionOrder`, or
+`sidebar.machineSectionOrder` to restore automatic ordering in that mode.
+
 The sidebar waits for these values alongside the project list, so it never
 paints a default layout that then snaps to the saved one. The first client to
 reach a server that has never stored a key uploads the value it finds in the

@@ -13,6 +13,11 @@ every window and client sees the same value.
 
 ## Sidebar preferences
 
+- `sidebar.chronologicalSort=updated` extends thread recency through projects,
+  custom sections, machines, environments, and parent threads. Groups inherit
+  their highest-ranked visible thread. Saved manual section order and pinned
+  placement take precedence; reset the mode's section-order preference to
+  restore automatic ordering.
 - The server keeps a keyed, revisioned registry of sidebar layout preferences
   (`sidebar.organizationMode`, `sidebar.threadGrouping.environment`,
   `sidebar.chronologicalSort`, the section
