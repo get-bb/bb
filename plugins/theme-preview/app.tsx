@@ -223,11 +223,11 @@ function MockSidebarRow({ label, state = "rest", dot, icon, interactive = false 
   return <BbButton asChild size="sm" variant="ghost" className={cn(className, "pointer-events-none cursor-default")}><div data-tp-sidebar-row="" data-tp-sidebar-state={state}>{content}</div></BbButton>;
 }
 
-function Sidebar({ selected, split, hover }: { selected?: boolean; split?: boolean; hover?: boolean }) {
+function Sidebar({ selected, split, hover, mobile = false }: { selected?: boolean; split?: boolean; hover?: boolean; mobile?: boolean }) {
   return (
     <MockSidebarPanel>
       <div className="flex min-h-0 flex-1 flex-col px-2 py-2">
-        <div className="flex h-8 items-center px-2 text-sm font-semibold">bb-plugins</div>
+        {mobile ? null : <div className="flex h-8 items-center px-2 text-sm font-semibold">bb-plugins</div>}
         <MockSidebarRow label="New thread" />
         <MockSidebarLabel>Today</MockSidebarLabel>
         <MockSidebarRow label="Endless theme family — blacklight" state={selected ? "selected" : "rest"} dot="unread" />
@@ -275,7 +275,7 @@ function CodeBlock() {
   );
 }
 
-function Composer({ focused = false }: { focused?: boolean }) {
+function Composer({ focused = false, mobile = false, empty = false }: { focused?: boolean; mobile?: boolean; empty?: boolean }) {
   return (
     <div
       style={{
@@ -285,11 +285,12 @@ function Composer({ focused = false }: { focused?: boolean }) {
           : `inset 0 0 0 1px ${v("border")}`,
       }}
     >
-      <div style={{ fontSize: 13.5, color: v("muted-foreground"), minHeight: 20 }}>Ask for a follow-up.</div>
+      <div className={mobile ? "text-base" : "text-sm"} style={{ color: v("muted-foreground"), minHeight: mobile ? 48 : 20 }}>{empty ? "Ask anything…" : "Ask for a follow-up."}</div>
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        <span style={{ fontSize: 12, color: v("muted-foreground") }}>claude-fable-5</span>
+        {mobile ? <Icon name="Plus" className="size-5 shrink-0" /> : null}
+        <span className={mobile ? "text-sm" : "text-xs"} style={{ color: v("muted-foreground") }}>{mobile ? "Fable 5" : "claude-fable-5"}</span>
         <div style={{ flex: 1 }} />
-        <div style={{ width: 26, height: 26, borderRadius: 8, background: v("muted"), color: v("muted-foreground"), display: "grid", placeItems: "center", fontSize: 12 }}>↑</div>
+        <div style={{ width: mobile ? 36 : 26, height: mobile ? 36 : 26, borderRadius: 8, background: v("muted"), color: v("muted-foreground"), display: "grid", placeItems: "center", fontSize: 12 }}>↑</div>
       </div>
     </div>
   );
@@ -379,8 +380,8 @@ const NEW_THREAD_ACTIONS = [
   { icon: "Explore", title: "Learn what bb can do", description: "Get a tour of its capabilities" },
 ] as const;
 
-function Thread({ title = "Endless theme family — blacklight pass", active = true, narrow = false, brief = false, empty = false, showToc = false, story = "blacklight" }: { title?: string; active?: boolean; narrow?: boolean; brief?: boolean; empty?: boolean; showToc?: boolean; story?: "blacklight" | "specimen" }) {
-  const pad = narrow ? 20 : 30;
+function Thread({ title = "Endless theme family — blacklight pass", active = true, narrow = false, brief = false, empty = false, showToc = false, mobile = false, story = "blacklight" }: { title?: string; active?: boolean; narrow?: boolean; brief?: boolean; empty?: boolean; showToc?: boolean; mobile?: boolean; story?: "blacklight" | "specimen" }) {
+  const pad = mobile ? 16 : narrow ? 20 : 30;
   const canvasColor = v("canvas", v("background"));
   return (
     <div style={{ flex: 1, minWidth: 0, minHeight: 0, background: v("canvas", v("background")), color: v("foreground"), display: "flex", flexDirection: "column", fontFamily: SANS, position: "relative" }}>
@@ -401,11 +402,11 @@ function Thread({ title = "Endless theme family — blacklight pass", active = t
         </div>
       ) : (
         <>
-          <div style={{ height: 48, display: "flex", alignItems: "center", gap: 10, padding: `0 ${pad}px`, flex: "none", position: "relative" }}>
+          {mobile ? null : <div style={{ height: 48, display: "flex", alignItems: "center", gap: 10, padding: `0 ${pad}px`, flex: "none", position: "relative" }}>
             <span style={{ fontSize: 13.5, fontWeight: 600, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{title}</span>
             <Badge tone="success"><Dot color={v("success")} size={6} /> Running</Badge>
             {narrow ? null : <Badge tone="outline">bb/endless-theme-plugin</Badge>}
-          </div>
+          </div>}
           {showToc ? <ThreadTocFixture /> : null}
           {/* Anchored at the bottom like a scrolled thread: messages keep their
               natural size and the oldest clip off the top, never squash. The
@@ -461,14 +462,14 @@ function Thread({ title = "Endless theme family — blacklight pass", active = t
           </div>
           )}
           </div>
-          <div style={{ padding: `12px ${pad}px 18px`, flex: "none" }}><Composer focused={active} /></div>
+          <div style={{ padding: `12px ${pad}px 18px`, flex: "none" }}><Composer focused={active} mobile={mobile} /></div>
         </>
       )}
     </div>
   );
 }
 
-function InfoPanel() {
+function InfoPanel({ mobile = false }: { mobile?: boolean }) {
   const kv = (k: string, val: ReactNode) => (
     <div key={k} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, fontSize: 12.5, height: 28 }}>
       <span style={{ color: v("muted-foreground") }}>{k}</span>
@@ -478,11 +479,11 @@ function InfoPanel() {
   return (
     <MockSidebarPanel side="right" width={INFO_PANEL_WIDTH} scoped={false} dataAttribute="right">
       <div data-tp-thread-info="" className="flex min-h-0 flex-1 flex-col">
-        <div className="flex h-12 items-center gap-3 px-4 text-xs">
+        {mobile ? null : <div className="flex h-12 items-center gap-3 px-4 text-xs">
           {["Info", "Diff"].map((t, i) => (
             <span key={t} className={cn(i === 0 ? "font-semibold text-foreground" : "font-normal text-muted-foreground")}>{t}</span>
           ))}
-        </div>
+        </div>}
         <div className="flex flex-col gap-3.5 px-4 py-3.5">
           <div>
             {kv("Environment", "Worktree")}
@@ -590,7 +591,7 @@ function FrameView({ view, composition, themeName, mode }: { view: View; composi
       return (
         <>
           {sidebar ? <Sidebar selected /> : null}
-          <Thread narrow={narrow} showToc />
+          <Thread narrow={narrow} showToc={!narrow} />
           {infoPanel ? <InfoPanel /> : null}
         </>
       );
@@ -622,6 +623,57 @@ function FrameView({ view, composition, themeName, mode }: { view: View; composi
   }
 }
 
+function MobileFrame({ view, themeName, mode }: { view: View; themeName: string; mode: Mode }) {
+  const [surface, setSurface] = useState<"conversation" | "navigation" | "panel">("conversation");
+  const title = view === "settings" ? "Settings" : view === "new" ? "New thread" : "Endless theme family";
+  const navigation = surface === "navigation";
+  const panel = surface === "panel";
+  const headerButton = "size-9 shrink-0 p-0 [&_[data-icon-root]]:size-5";
+
+  useEffect(() => setSurface("conversation"), [view]);
+
+  return (
+    <div data-tp-mobile-scene={surface} className="relative flex min-h-0 w-full flex-1 overflow-hidden bg-background">
+      {navigation ? (
+        <div data-tp-mobile-navigation className="absolute inset-y-0 left-0 flex w-[76%] max-w-80 flex-col bg-sidebar [&>aside]:w-full!">
+          <div className="flex h-12 shrink-0 items-center justify-between px-3 text-sm text-sidebar-foreground">
+            <span className="font-semibold">bb-plugins</span>
+            <BbButton variant="ghost" className={headerButton} aria-label="Close navigation preview" onClick={() => setSurface("conversation")}><Icon name="PanelLeft" /></BbButton>
+          </div>
+          {view === "settings" ? <SettingsSidebarFixture /> : <Sidebar selected mobile />}
+        </div>
+      ) : null}
+      <div className="flex min-h-0 w-full shrink-0 flex-col bg-background" style={{ transform: navigation ? "translateX(min(76%, 320px))" : panel ? "translateX(max(-76%, -320px))" : undefined }}>
+        <div className="flex h-12 shrink-0 items-center gap-1 border-b border-border-seam bg-surface-scrim px-2 text-sm">
+          <BbButton variant="ghost" className={headerButton} aria-label="Show navigation preview" onClick={() => setSurface(navigation ? "conversation" : "navigation")}><Icon name="PanelLeft" /></BbButton>
+          <span className="min-w-0 flex-1 truncate">{title}</span>
+          <Icon name="MoreHorizontal" className="size-5 shrink-0" />
+          <BbButton variant="ghost" className={headerButton} aria-label="Show right panel preview" onClick={() => setSurface(panel ? "conversation" : "panel")}><Icon name="PanelRight" /></BbButton>
+        </div>
+        {view === "split" ? <p className="px-4 py-2 text-xs text-muted-foreground">On mobile, threads open one at a time. Widen the preview to see split panes.</p> : null}
+        {view === "settings" ? <SettingsPage narrow themeName={themeName} mode={mode} /> : view === "new" ? (
+          <div className="flex min-h-0 flex-1 flex-col justify-end gap-4 p-4">
+            <div className="text-xs text-subtle-foreground">Recent threads</div>
+            {["Endless theme family", "Specimen sheets", "Release checklist"].map((title) => <div key={title} className="flex items-center gap-3 rounded-md py-2 text-sm"><Icon name="MessageSquare" className="size-5 shrink-0" /><span className="truncate">{title}</span></div>)}
+            <Composer mobile empty />
+          </div>
+        ) : <Thread narrow mobile />}
+        {navigation || panel ? <button type="button" className="absolute inset-0 cursor-pointer bg-transparent" aria-label="Return to conversation preview" onClick={() => setSurface("conversation")} /> : null}
+      </div>
+      {panel ? (
+        <div data-tp-mobile-panel className="absolute inset-y-0 right-0 flex w-[76%] max-w-80 flex-col border-l border-border-seam bg-background">
+          <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border-seam px-2">
+            <Icon name="Info" className="size-5" /><Icon name="FileDiff" className="size-5" />
+            <span className="min-w-0 flex-1 truncate text-sm">Info</span>
+            <BbButton variant="ghost" className={headerButton} aria-label="Close right panel preview" onClick={() => setSurface("conversation")}><Icon name="PanelRight" /></BbButton>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto [&>aside]:w-full! [&>aside]:border-0 [&>aside]:bg-background"><InfoPanel mobile /></div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function Frame({ view, themeName, mode }: { view: View; themeName: string; mode: Mode }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const [width, setWidth] = useState(0);
@@ -640,11 +692,11 @@ function Frame({ view, themeName, mode }: { view: View; themeName: string; mode:
         <div
           data-tp-frame=""
           style={{
-            width: "100%", height: frameHeightForWidth(width), display: "flex", overflow: "hidden", borderRadius: 12, position: "relative", boxSizing: "border-box",
+            width: "100%", height: width < 768 ? Math.min(640, Math.max(500, Math.round(width * 1.65))) : frameHeightForWidth(width), display: "flex", overflow: "hidden", borderRadius: 12, position: "relative", boxSizing: "border-box",
             boxShadow: v("shadow-lg", "0 10px 30px rgba(0,0,0,.25)"), background: v("canvas", v("background")),
           }}
         >
-          <FrameView view={view} composition={frameCompositionForWidth(width)} themeName={themeName} mode={mode} />
+          {width < 768 ? <MobileFrame view={view} themeName={themeName} mode={mode} /> : <FrameView view={view} composition={frameCompositionForWidth(width)} themeName={themeName} mode={mode} />}
         </div>
       ) : null}
     </div>
@@ -1186,7 +1238,7 @@ function OverlaySpecimens() {
   );
 }
 
-function ComponentsSection() {
+function ComponentsSection({ stacked = false }: { stacked?: boolean }) {
   const [search, setSearch] = useState("");
   const [notify, setNotify] = useState(true);
   const [compact, setCompact] = useState(false);
@@ -1197,7 +1249,7 @@ function ComponentsSection() {
   const toggleControls: CSSProperties = { display: "flex", flexDirection: "column", gap: 8 };
   const compactLabel: CSSProperties = { ...TEXT_LABEL, minWidth: 0, fontSize: 11.5, lineHeight: "16px" };
   return (
-    <div data-tp-components="" style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", columnGap: 16, rowGap: 16, alignItems: "start" }}>
+    <div data-tp-components="" style={{ display: "grid", gridTemplateColumns: stacked ? "minmax(0, 1fr)" : "repeat(2, minmax(0, 1fr))", columnGap: 16, rowGap: 16, alignItems: "start" }}>
       <div data-tp-block="buttons" style={compactBlock(true)}>
         <h3 data-tp-role="category" style={{ ...TEXT_CATEGORY, marginBottom: 8 }}>Buttons</h3>
         <div data-tp-button-grid="" style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 6 }}>
@@ -1211,7 +1263,7 @@ function ComponentsSection() {
       </div>
       <div data-tp-block="badges" style={compactBlock(true)}>
         <h3 data-tp-role="category" style={{ ...TEXT_CATEGORY, marginBottom: 8 }}>Badges</h3>
-        <div data-tp-badge-row="" style={{ display: "flex", flexWrap: "nowrap", gap: 4, alignItems: "center", overflowX: "auto" }}>
+        <div data-tp-badge-row="" style={{ display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center" }}>
           <Badge tone="success"><Dot color={v("success")} size={6} /> Running</Badge><Badge tone="warning">Attention</Badge>
           <Badge tone="destructive">Failed</Badge><Badge tone="merged">Merged</Badge><Badge tone="outline">branch</Badge>
         </div>
@@ -1638,6 +1690,7 @@ function PreviewPage({ subPath }: { subPath: string }) {
   const radii = useResolvedRadii(revision);
   const mobile = layout.band === "mobile";
   const railWidth = SURFACE_RAIL_WIDTH;
+  const showRail = layout.band === "desktop";
   const contentInset = contentInsetForWidth(layout.width);
   const displayThemeId = pendingSelection?.themeId ?? catalog.activeThemeId;
   const displayThemeName = catalog.themes.find((theme) => theme.id === displayThemeId)?.name ?? "Current theme";
@@ -1646,7 +1699,7 @@ function PreviewPage({ subPath }: { subPath: string }) {
     <div ref={rootRef} data-tp-root data-tp-band={layout.band} style={{ height: "100%", overflowY: "auto", overflowX: "hidden", background: v("canvas", v("background")), color: v("foreground"), fontFamily: SANS, letterSpacing: v("tracking-normal", "0em") }}>
       <div ref={headerRef} style={{ position: "sticky", top: 0, zIndex: 20, borderBottom: `1px solid ${v("border-seam", v("border"))}`, background: v("canvas", v("background")) }}>
         <div data-tp-header-inner="" style={{ width: "100%", maxWidth: STUDIO_MAX_WIDTH, margin: "0 auto", boxSizing: "border-box", display: "flex", alignItems: "center", flexWrap: "wrap", rowGap: space(2), gap: space(2), padding: `${space(3)} ${contentInset}px` }}>
-          <Tabs value={view} onValueChange={(next) => navigate.toPluginPanel("preview", { subPath: next })}>
+          <Tabs className={cn("min-w-0", mobile && "w-full")} value={view} onValueChange={(next) => navigate.toPluginPanel("preview", { subPath: next })}>
             <TabsList data-tp-view-control="" aria-label="Preview view" className={cn(mobile && "w-full")}>
               {VIEWS.map((item) => (
                 <TabsTrigger key={item} value={item} className={cn("cursor-pointer", mobile && "flex-1")}>
@@ -1655,7 +1708,7 @@ function PreviewPage({ subPath }: { subPath: string }) {
               ))}
             </TabsList>
           </Tabs>
-          <div style={{ flex: 1 }} />
+          {mobile ? null : <div style={{ flex: 1 }} />}
           {error ? <span style={{ fontSize: 12, color: v("destructive-text", v("destructive")) }}>{error}</span> : null}
           <div style={{ flex: mobile ? "1 1 100%" : "0 1 auto", minWidth: 0, display: "flex", alignItems: "flex-start", justifyContent: "flex-end", gap: space(1) }}>
             <ThemePicker
@@ -1672,17 +1725,12 @@ function PreviewPage({ subPath }: { subPath: string }) {
         </div>
       </div>
 
-      {/* Layout system, level 2: the plugin window. One stage zone (mock +
-          at-a-glance rail on wider bands), then flow sections in taxonomy
-          order, all on the same max-width spine. On the mobile band the rail
-          content becomes the first flow section so nothing is lost, only
-          restacked. */}
       <div style={{ borderBottom: `1px solid ${v("border-seam", v("border"))}` }}>
         <div
           data-tp-layout={layout.band}
           style={{
             width: "100%", maxWidth: STUDIO_MAX_WIDTH, margin: "0 auto", minHeight: 0, display: "grid",
-            gridTemplateColumns: mobile ? "minmax(0, 1fr)" : `minmax(0, 1fr) ${railWidth}px`,
+            gridTemplateColumns: showRail ? `minmax(0, 1fr) ${railWidth}px` : "minmax(0, 1fr)",
             alignItems: "start",
           }}
         >
@@ -1694,7 +1742,7 @@ function PreviewPage({ subPath }: { subPath: string }) {
               <Frame view={view} themeName={displayThemeName} mode={mode} />
             </div>
           </div>
-          {mobile ? null : (
+          {showRail ? (
             <div
               data-tp-section="rail"
               style={{
@@ -1705,11 +1753,11 @@ function PreviewPage({ subPath }: { subPath: string }) {
             >
               <StageRail />
             </div>
-          )}
+          ) : null}
         </div>
       </div>
 
-      {(mobile
+      {(!showRail
         ? (["overlays", "components", "stylesheet"] as const)
         : (["stylesheet"] as const)
       ).map((area) => (
@@ -1717,7 +1765,7 @@ function PreviewPage({ subPath }: { subPath: string }) {
           <AreaHeading area={area} />
           <div style={{ marginTop: space(3) }}>
             {area === "overlays" ? <OverlaySpecimens />
-              : area === "components" ? <ComponentsSection />
+              : area === "components" ? <ComponentsSection stacked={mobile} />
               : <StyleSheetSection computed={computed} radii={radii} />}
           </div>
         </section>

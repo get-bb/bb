@@ -388,17 +388,17 @@ describe("Theme Preview", () => {
     expect(dark.getAttribute("aria-pressed")).toBe("false");
   });
 
-  it("restacks the main areas on mobile with the read-only style sheet last", async () => {
-    const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(480);
+  it.each([390, 600, 1199])("restacks the main areas at %ipx with the read-only style sheet last", async (panelWidth) => {
+    const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(panelWidth);
     try {
       renderPreview({
         themeCatalog: () => DEFAULT_CATALOG,
         setTheme: () => DEFAULT_CATALOG,
       });
 
-      await waitFor(() => expect(document.querySelector("[data-tp-band=mobile]")).not.toBeNull());
+      await waitFor(() => expect(document.querySelector(`[data-tp-band=${panelWidth < 600 ? "mobile" : "narrow"}]`)).not.toBeNull());
       expect(screen.queryByRole("button", { name: /full style guide/i })).toBeNull();
-      // The compact interaction areas stay together before the style sheet.
+      expect(document.querySelector("[data-tp-section=rail]")).toBeNull();
       const areas = [...document.querySelectorAll("[data-tp-area]")].map((el) => el.getAttribute("data-tp-area"));
       expect(areas).toEqual(["mock", "overlays", "components", "stylesheet"]);
       expect(document.querySelector("[data-tp-style-readonly]")).not.toBeNull();
@@ -521,6 +521,32 @@ describe("Theme Preview", () => {
     }
   });
 
+  it("opens and closes mobile shelves and resets them when the preview view changes", async () => {
+    const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(390);
+    try {
+      const mounted = renderPreview({ themeCatalog: () => DEFAULT_CATALOG, setTheme: () => DEFAULT_CATALOG });
+      await screen.findByRole("button", { name: "Show navigation preview" });
+      fireEvent.click(screen.getByRole("button", { name: "Show navigation preview" }));
+      expect(document.querySelector("[data-tp-mobile-navigation]")).not.toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "Close navigation preview" }));
+      expect(document.querySelector("[data-tp-mobile-navigation]")).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "Show right panel preview" }));
+      expect(screen.getByText("Pull request")).toBeDefined();
+      fireEvent.click(screen.getByRole("button", { name: "Return to conversation preview" }));
+      expect(document.querySelector("[data-tp-mobile-panel]")).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "Show navigation preview" }));
+      const Component = panel.component;
+      mounted.rerender(<Component subPath="new" />);
+      await waitFor(() => expect(document.querySelector("[data-tp-mobile-navigation]")).toBeNull());
+      expect(screen.getByText("Recent threads")).toBeDefined();
+      expect(screen.getByText("Ask anything…")).toBeDefined();
+      mounted.rerender(<Component subPath="split" />);
+      expect(screen.getByText(/On mobile, threads open one at a time/)).toBeDefined();
+    } finally {
+      width.mockRestore();
+    }
+  });
+
   it("keeps the style sheet passive while showing every visual system", async () => {
     renderPreview({
       themeCatalog: () => DEFAULT_CATALOG,
@@ -609,7 +635,7 @@ describe("Theme Preview", () => {
     }
   });
 
-  it("keeps badges on one row and the component specimens evenly grouped", async () => {
+  it("wraps badges and keeps the component specimens evenly grouped", async () => {
     const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(1280);
     try {
       renderPreview({
@@ -619,8 +645,8 @@ describe("Theme Preview", () => {
       await waitFor(() => expect(document.querySelector("[data-tp-band=desktop]")).not.toBeNull());
 
       const badges = document.querySelector<HTMLElement>("[data-tp-badge-row]");
-      expect(badges?.style.flexWrap).toBe("nowrap");
-      expect(badges?.style.overflowX).toBe("auto");
+      expect(badges?.style.flexWrap).toBe("wrap");
+      expect(badges?.style.overflowX).toBe("");
 
       const components = document.querySelector<HTMLElement>("[data-tp-components]");
       expect(components?.style.gridTemplateColumns).toBe("repeat(2, minmax(0, 1fr))");

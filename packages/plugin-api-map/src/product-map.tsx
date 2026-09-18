@@ -9,7 +9,12 @@ import {
   type ReactNode,
 } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { ArrowLeft01Icon, ArrowRight01Icon } from "@hugeicons/core-free-icons";
+import {
+  ArrowLeft01Icon,
+  ArrowRight01Icon,
+  ComputerIcon,
+  SmartPhone01Icon,
+} from "@hugeicons/core-free-icons";
 
 import { cn } from "./cn";
 import { SurfaceCard, useSurfaceCard } from "./surface-card";
@@ -234,14 +239,15 @@ function SpatialFixture({
       const cardFootprint = flowCard
         ? Math.max(probeReserve, cardReserveRef.current)
         : 0;
-      const availableHeight = viewport
-        ? viewport.clientHeight -
-          (frame.getBoundingClientRect().top -
-            viewport.getBoundingClientRect().top +
-            viewport.scrollTop) -
-          cardFootprint -
-          8
-        : undefined;
+      const availableHeight =
+        viewport && frame.clientWidth >= 640
+          ? viewport.clientHeight -
+            (frame.getBoundingClientRect().top -
+              viewport.getBoundingClientRect().top +
+              viewport.scrollTop) -
+            cardFootprint -
+            8
+          : undefined;
       const scale = spatialFixtureScale(
         frame.clientWidth,
         authoredWidth,
@@ -298,12 +304,12 @@ function SpatialFixture({
       ref={frameRef}
       data-guide-responsive-strategy="scale-together"
       data-guide-scale={geometry.scale.toFixed(4)}
-      className="w-full overflow-x-clip transition-[height] duration-300 ease-out"
+      className="w-full overflow-x-clip"
       style={scaled ? { height: geometry.height ?? undefined } : undefined}
     >
       <div
         ref={fixtureRef}
-        className="mx-auto w-full origin-top transition-transform duration-300 ease-out"
+        className="mx-auto w-full origin-top"
         style={
           {
             minWidth: band?.min,
@@ -328,20 +334,26 @@ function SpatialFixture({
   );
 }
 
-function SlideContent({ group }: { group: SurfaceGroup }) {
+function SlideContent({
+  group,
+  mobile = false,
+}: {
+  group: SurfaceGroup;
+  mobile?: boolean;
+}) {
   switch (group.id) {
     case "app-shell":
-      return <AppShellWireframe />;
+      return <AppShellWireframe mobile={mobile} />;
     case "command-palette":
-      return <CommandPaletteWireframe />;
+      return <CommandPaletteWireframe mobile={mobile} />;
     case "composer":
-      return <RealComposerAnnotated />;
+      return <RealComposerAnnotated mobile={mobile} />;
     case "home":
-      return <ComposeScreenWireframe />;
+      return <ComposeScreenWireframe mobile={mobile} />;
     case "settings":
-      return <SettingsWireframe />;
+      return <SettingsWireframe mobile={mobile} />;
     case "extensions":
-      return <ExtensionsPluginPageWireframe />;
+      return <ExtensionsPluginPageWireframe mobile={mobile} />;
     case "headless":
       return <PlatformSlide group={group} />;
   }
@@ -380,7 +392,17 @@ function CardReserveProbe({ group }: { group: SurfaceGroup }) {
   );
 }
 
-function Slide({ group }: { group: SurfaceGroup }) {
+function Slide({ group, mobile }: { group: SurfaceGroup; mobile: boolean }) {
+  if (mobile && group.id !== "headless") {
+    return (
+      <div
+        data-guide-responsive-strategy="mobile"
+        className="mx-auto w-full max-w-[430px]"
+      >
+        <SlideContent group={group} mobile />
+      </div>
+    );
+  }
   if (fixtureResponsiveStrategy(group) === "reflow") {
     return (
       <div data-guide-responsive-strategy="reflow" className="w-full">
@@ -438,7 +460,7 @@ function PanButton({
       disabled={disabled}
       aria-label={`${direction === "previous" ? "Previous" : "Next"} surface`}
       className={cn(
-        "inline-flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground",
+        "inline-flex size-10 @2xl/guide:size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground",
         FOCUS_RING_CLASS,
       )}
     >
@@ -498,6 +520,28 @@ export function ProductMap({
   const pageButtonRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const card = useSurfaceCard();
   const [hoverId, setHoverId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [viewportMobile, setViewportMobile] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(max-width: 767px)").matches === true,
+  );
+  const [displayMode, setDisplayMode] = useState<"mobile" | "desktop" | null>(
+    null,
+  );
+  const mobile =
+    displayMode === null ? viewportMobile : displayMode === "mobile";
+  useEffect(() => {
+    const query = window.matchMedia?.("(max-width: 767px)");
+    if (!query) return;
+    const update = () => setViewportMobile(query.matches);
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
+  const selectSurface = (id: string) => {
+    setSelectedId(id);
+    card.open(id);
+  };
   const pageListEdges = useScrollEdges(pageListRef);
   const [index, setIndex] = useState(() =>
     Math.max(
@@ -527,6 +571,7 @@ export function ProductMap({
       return;
     }
     card.close();
+    setSelectedId(null);
     setHoverId(null);
     setIndex(next);
     onSlideChange?.(slides[next].id);
@@ -538,10 +583,11 @@ export function ProductMap({
     const target = slides.findIndex((slide) => slide.id === group.id);
     if (target === -1) return;
     if (target !== index) show(target);
-    card.open(id);
+    selectSurface(id);
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.target instanceof HTMLSelectElement) return;
     if (event.key === "ArrowRight") {
       event.preventDefault();
       show(index + 1);
@@ -555,15 +601,17 @@ export function ProductMap({
     () => ({
       activeId: hoverId,
       setActiveId: setHoverId,
-      expandedId: card.openId,
+      expandedId:
+        card.openId ??
+        (mobile ? (selectedId ?? slides[index].surfaces[0]?.id) : null),
       numberOf: (id: string) => SURFACE_NUMBERS.get(id) ?? null,
-      onSelect: card.open,
+      onSelect: selectSurface,
       pluginPageHref,
       currentGroupId: slides[index].id,
       onGoToSurface: goToSurface,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [hoverId, card.openId, pluginPageHref, index],
+    [hoverId, card.openId, pluginPageHref, index, selectedId, mobile],
   );
 
   const cardNode = openSurface ? (
@@ -588,7 +636,12 @@ export function ProductMap({
       const target = event.target;
       if (!(target instanceof Element)) return;
       if (target.closest('[role="dialog"]')) return;
-      if (target.closest('a[href^="#surface-"]')) return;
+      if (
+        target.closest(
+          'a[href^="#surface-"], [data-guide-annotation-picker], [data-guide-display-mode]',
+        )
+      )
+        return;
       card.close();
     };
     scope.addEventListener("pointerdown", onPointerDown);
@@ -598,7 +651,7 @@ export function ProductMap({
 
   return (
     <SurfaceMapContext.Provider value={mapState}>
-      <div ref={containerRef} className="relative">
+      <div ref={containerRef} className="@container/guide relative">
         <div data-map-column className="mx-auto w-full max-w-[100rem]">
           <section
             aria-roledescription="carousel"
@@ -611,57 +664,127 @@ export function ProductMap({
                 <SlideTitle title={slides[index].title} />
               </h2>
               <p className="mt-1 max-w-2xl text-sm leading-relaxed text-subtle-foreground/75">
-                {slides[index].blurb}
+                {mobile && slides[index].id !== "headless"
+                  ? "Choose an annotation to see where it appears on mobile."
+                  : slides[index].blurb}
               </p>
             </div>
-            <div className="mx-auto flex w-fit max-w-full items-center gap-1">
-              <PanButton
-                direction="previous"
-                disabled={!carets.previous}
-                onClick={() => show(index - 1)}
-              />
+            <div
+              data-guide-navigation-toolbar
+              className="flex w-full items-center gap-2"
+            >
+              <div className="flex min-w-0 flex-1 items-center justify-center gap-1">
+                <PanButton
+                  direction="previous"
+                  disabled={!carets.previous}
+                  onClick={() => show(index - 1)}
+                />
+                <div
+                  ref={pageListRef}
+                  data-guide-page-list-scroll
+                  className={cn(
+                    "min-w-0 overflow-x-auto",
+                    SCROLLBAR_HIDDEN_CLASS,
+                  )}
+                  style={scrollEdgeFadeStyle(
+                    pageListEdges.canScrollLeft,
+                    pageListEdges.canScrollRight,
+                  )}
+                >
+                  <ul className="flex w-max flex-nowrap items-center gap-1">
+                    {slides.map((entry, slideIndex) => (
+                      <li key={entry.id} className="shrink-0">
+                        <button
+                          ref={(element) => {
+                            pageButtonRefs.current[slideIndex] = element;
+                          }}
+                          type="button"
+                          onClick={() => show(slideIndex)}
+                          aria-current={
+                            slideIndex === index ? "true" : undefined
+                          }
+                          className={cn(
+                            "cursor-pointer whitespace-nowrap rounded-md px-2.5 py-2.5 text-sm @2xl/guide:py-1 @2xl/guide:text-xs transition-colors",
+                            FOCUS_RING_CLASS,
+                            slideIndex === index
+                              ? "bg-surface-selected text-foreground"
+                              : "text-subtle-foreground hover:bg-state-hover hover:text-foreground",
+                          )}
+                        >
+                          {entry.title}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <PanButton
+                  direction="next"
+                  disabled={!carets.next}
+                  onClick={() => show(index + 1)}
+                />
+              </div>
               <div
-                ref={pageListRef}
-                data-guide-page-list-scroll
+                data-guide-display-mode
+                role="group"
+                aria-label="Preview layout"
+                className="flex shrink-0 items-center gap-0.5 border-l border-border-hairline pl-2"
+              >
+                {(["mobile", "desktop"] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    aria-label={
+                      mode === "mobile" ? "Mobile layout" : "Desktop layout"
+                    }
+                    title={
+                      mode === "mobile" ? "Mobile layout" : "Desktop layout"
+                    }
+                    aria-pressed={(mobile ? "mobile" : "desktop") === mode}
+                    onClick={() => setDisplayMode(mode)}
+                    className={cn(
+                      "inline-flex size-10 @2xl/guide:size-8 cursor-pointer items-center justify-center rounded-md",
+                      FOCUS_RING_CLASS,
+                      (mobile ? "mobile" : "desktop") === mode
+                        ? "bg-surface-selected text-foreground"
+                        : "text-muted-foreground hover:bg-state-hover",
+                    )}
+                  >
+                    <HugeiconsIcon
+                      icon={mode === "mobile" ? SmartPhone01Icon : ComputerIcon}
+                      className="size-4"
+                      aria-hidden
+                    />
+                  </button>
+                ))}
+              </div>
+            </div>
+            {slides[index].id !== "headless" ? (
+              <label
+                data-guide-annotation-picker
                 className={cn(
-                  "min-w-0 overflow-x-auto",
-                  SCROLLBAR_HIDDEN_CLASS,
-                )}
-                style={scrollEdgeFadeStyle(
-                  pageListEdges.canScrollLeft,
-                  pageListEdges.canScrollRight,
+                  "mt-3 flex flex-col gap-1.5 text-sm text-muted-foreground",
+                  !mobile && "@2xl/guide:hidden",
                 )}
               >
-                <ul className="flex w-max flex-nowrap items-center gap-1">
-                  {slides.map((entry, slideIndex) => (
-                    <li key={entry.id} className="shrink-0">
-                      <button
-                        ref={(element) => {
-                          pageButtonRefs.current[slideIndex] = element;
-                        }}
-                        type="button"
-                        onClick={() => show(slideIndex)}
-                        aria-current={slideIndex === index ? "true" : undefined}
-                        className={cn(
-                          "cursor-pointer whitespace-nowrap rounded-md px-2.5 py-1 text-xs transition-colors",
-                          FOCUS_RING_CLASS,
-                          slideIndex === index
-                            ? "bg-surface-selected text-foreground"
-                            : "text-subtle-foreground hover:bg-state-hover hover:text-foreground",
-                        )}
-                      >
-                        {entry.title}
-                      </button>
-                    </li>
+                Annotation
+                <select
+                  aria-label="Explore an annotation"
+                  value={card.openId ?? selectedId ?? ""}
+                  onChange={(event) => {
+                    if (event.target.value) selectSurface(event.target.value);
+                    else card.close();
+                  }}
+                  className={`h-11 w-full min-w-0 rounded-md border border-border bg-background px-3 text-sm text-foreground ${FOCUS_RING_CLASS}`}
+                >
+                  <option value="">Choose an annotation…</option>
+                  {slides[index].surfaces.map((surface) => (
+                    <option key={surface.id} value={surface.id}>
+                      {SURFACE_NUMBERS.get(surface.id)}. {surface.title}
+                    </option>
                   ))}
-                </ul>
-              </div>
-              <PanButton
-                direction="next"
-                disabled={!carets.next}
-                onClick={() => show(index + 1)}
-              />
-            </div>
+                </select>
+              </label>
+            ) : null}
             <div
               className={cn(
                 "overflow-x-clip",
@@ -693,7 +816,7 @@ export function ProductMap({
                     }
                     className="min-w-0 w-full shrink-0 self-start px-1 pt-2"
                   >
-                    <Slide group={entry} />
+                    <Slide group={entry} mobile={mobile} />
                   </div>
                 ))}
               </div>
