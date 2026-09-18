@@ -219,9 +219,7 @@ export function resolveRootComposeEffectiveEnvironmentValue({
 
   if (parsedSelection?.type === "reuse") {
     if (parsedSelection.environmentId === null) {
-      return reuseThreadOptionsLoading || reuseThreadOptions.length > 0
-        ? environmentSelectionValue
-        : fallbackValue;
+      return environmentSelectionValue;
     }
 
     if (reuseThreadOptionsLoading) {

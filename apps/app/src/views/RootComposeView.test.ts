@@ -921,6 +921,34 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
     ).toBe("provider:project-checkout");
   });
 
+  it("holds reuse mode before an environment is picked, including with nothing to reuse", () => {
+    expect(
+      resolveRootComposeEffectiveEnvironmentValue({
+        knownHostIds: new Set(["host_1"]),
+        environmentSelectionValue: "reuse",
+        environmentProviders: [checkoutProvider],
+        isProjectless: false,
+        primaryHostId: "host_1",
+        projectSources: [makeProjectSource("host_1")],
+        reuseThreadOptions: [],
+        reuseThreadOptionsLoading: false,
+      }),
+    ).toBe("reuse");
+
+    expect(
+      resolveRootComposeEffectiveEnvironmentValue({
+        knownHostIds: new Set(["host_1"]),
+        environmentSelectionValue: "reuse",
+        environmentProviders: [checkoutProvider],
+        isProjectless: false,
+        primaryHostId: "host_1",
+        projectSources: [makeProjectSource("host_1")],
+        reuseThreadOptions: [makeReuseThreadOption("env_current")],
+        reuseThreadOptionsLoading: false,
+      }),
+    ).toBe("reuse");
+  });
+
   it("holds a specific reuse selection while project worktrees load", () => {
     expect(
       resolveRootComposeEffectiveEnvironmentValue({

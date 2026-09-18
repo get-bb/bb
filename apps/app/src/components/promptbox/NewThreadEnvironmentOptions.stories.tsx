@@ -160,16 +160,6 @@ export function Overview() {
           <EnvironmentOptionsStrip environment={{ value: "reuse" }} />
         </StoryRow>
         <StoryRow
-          label="project · reuse unavailable"
-          hint="environment row disabled in menu"
-        >
-          <EnvironmentOptionsStrip
-            environment={{
-              value: `host:${HOST_IDS.local}:local`,
-            }}
-          />
-        </StoryRow>
-        <StoryRow
           label="no project · allowed"
           hint="no project selected — Personal workspace appears before the divider and Modal sandbox"
         >
