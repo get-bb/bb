@@ -116,7 +116,7 @@ describe("public ui preferences", () => {
     });
   });
 
-  it("defaults unset organization to Custom without persisting a choice", async () => {
+  it("defaults new installations to Custom without persisting a choice", async () => {
     await withTestHarness(async (harness) => {
       expect(await readJson(await listPreferences(harness))).toMatchObject({
         preferences: {
@@ -131,10 +131,52 @@ describe("public ui preferences", () => {
     });
   });
 
+  it("exposes an installation fallback at revision zero and accepts legacy choices", async () => {
+    await withTestHarness(async (harness) => {
+      harness.db.$client.exec(
+        `INSERT INTO ui_preference_defaults VALUES ('sidebar.organizationMode', '"project"')`,
+      );
+      expect(await readJson(await listPreferences(harness))).toMatchObject({
+        preferences: {
+          "sidebar.organizationMode": { revision: 0, value: "project" },
+        },
+      });
+      expect(
+        (
+          await putPreference(harness, "sidebar.organizationMode", {
+            expectedRevision: 0,
+            value: "machine",
+          })
+        ).status,
+      ).toBe(200);
+      expect(
+        (
+          await putPreference(harness, "sidebar.organizationMode", {
+            expectedRevision: 0,
+            value: "chronological",
+          })
+        ).status,
+      ).toBe(409);
+      expect(await readJson(await listPreferences(harness))).toMatchObject({
+        preferences: {
+          "sidebar.organizationMode": { revision: 1, value: "machine" },
+        },
+      });
+      expect(
+        await readJson(
+          await resetPreference(harness, "sidebar.organizationMode"),
+        ),
+      ).toMatchObject({ revision: 2, value: "project" });
+    });
+  });
+
   it.each(["project", "machine", "chronological"])(
-    "preserves saved %s organization",
+    "preserves saved %s organization over the installation fallback",
     async (value) => {
       await withTestHarness(async (harness) => {
+        harness.db.$client.exec(
+          `INSERT INTO ui_preference_defaults VALUES ('sidebar.organizationMode', '"project"')`,
+        );
         harness.db.$client
           .prepare(
             "INSERT INTO ui_preferences (key, value_json, revision, updated_at) VALUES (?, ?, 3, 1)",
