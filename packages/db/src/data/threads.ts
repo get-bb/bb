@@ -769,6 +769,9 @@ function buildPinnedThreadOrderBy() {
 }
 
 function buildListThreadsOrderBy(options: ListThreadsOptions) {
+  if (options.lifecycles !== undefined) {
+    return [desc(threads.updatedAt), desc(threads.id)];
+  }
   if (options.archived === true) {
     return [desc(threads.archivedAt), desc(threads.id)];
   }

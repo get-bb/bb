@@ -58,7 +58,7 @@ function setup() {
   function list(lifecycles: readonly ThreadLifecycle[]) {
     return listThreadsWithPendingInteractionState(db, { lifecycles }).map((row) => row.id);
   }
-  return { db, project, thread, draft, list };
+  return { db, host, project, thread, draft, list };
 }
 
 describe("derived thread lifecycle discovery", () => {
@@ -149,6 +149,51 @@ describe("derived thread lifecycle discovery", () => {
       });
       expect([all.active.total, all.draft?.total, all.archived.total]).toEqual([24, 2, 1]);
       expect(all.archived.results.map((result) => result.thread.id)).toEqual([archived.id]);
+    } finally {
+      db.$client.close();
+    }
+  });
+
+  it("bounds lifecycle lists by global recency without changing legacy project or archive ordering", () => {
+    const { db, host, project, draft } = setup();
+    try {
+      const { project: otherProject } = createProject(db, noopNotifier, {
+        name: "other-lifecycle-project",
+        source: { type: "local_path", hostId: host.id, path: "/tmp/other-lifecycle" },
+      });
+      const older = createThread(db, noopNotifier, {
+        projectId: project.id < otherProject.id ? project.id : otherProject.id,
+        providerId: "codex",
+        status: "pending",
+      });
+      const recent = createThread(db, noopNotifier, {
+        projectId: project.id < otherProject.id ? otherProject.id : project.id,
+        providerId: "codex",
+        status: "pending",
+      });
+      draft(older.id);
+      draft(recent.id);
+      db.update(threads).set({ createdAt: 20, updatedAt: 30, pinnedAt: 10 }).where(eq(threads.id, older.id)).run();
+      db.update(threads).set({ createdAt: 10, updatedAt: 40 }).where(eq(threads.id, recent.id)).run();
+
+      expect(listThreadsWithPendingInteractionState(db, {
+        lifecycles: ["draft"], limit: 1,
+      }).map((row) => row.id)).toEqual([recent.id]);
+      expect(listThreadsWithPendingInteractionState(db, {
+        lifecycles: ["draft"], limit: 1, offset: 1,
+      }).map((row) => row.id)).toEqual([older.id]);
+      expect(listThreadsWithPendingInteractionState(db, {
+        archived: false, limit: 1,
+      }).map((row) => row.id)).toEqual([older.id]);
+
+      db.update(threads).set({ archivedAt: 60 }).where(eq(threads.id, older.id)).run();
+      db.update(threads).set({ archivedAt: 50 }).where(eq(threads.id, recent.id)).run();
+      expect(listThreadsWithPendingInteractionState(db, {
+        lifecycles: ["archived"], archived: true, limit: 1,
+      }).map((row) => row.id)).toEqual([recent.id]);
+      expect(listThreadsWithPendingInteractionState(db, {
+        archived: true, limit: 1,
+      }).map((row) => row.id)).toEqual([older.id]);
     } finally {
       db.$client.close();
     }
