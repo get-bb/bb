@@ -406,7 +406,7 @@ describe("thread event pruning", () => {
         status: "completed",
       });
 
-      expect(result.isRootTurnCompletion).toBe(true);
+      expect(result.isCurrentRootTurnCompletion).toBe(true);
       expect(result.nextStatus).toBeNull();
       expect(getThread(harness.db, thread.id)?.status).toBe("idle");
     });
