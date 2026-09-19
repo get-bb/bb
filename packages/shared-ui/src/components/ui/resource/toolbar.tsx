@@ -385,7 +385,9 @@ export const ResourceControlButton = forwardRef<
             size={text ? "sm" : "icon"}
             className={cn(
               "h-8 shrink-0 rounded-md text-muted-foreground",
-              text ? "gap-2 px-2 text-xs" : "size-8 p-0",
+              text
+                ? "gap-2 px-2 text-xs @max-[19rem]/resource-toolbar:px-1 @max-[19rem]/resource-toolbar:text-2xs"
+                : "size-8 p-0",
               RESOURCE_MENU_TRIGGER_RESTING_CLASS,
               (open || active) && RESOURCE_MENU_TRIGGER_ENGAGED_CLASS,
               className,
@@ -894,7 +896,11 @@ export function ResourceCreateButton({
       aria-label={label}
       type="button"
       size="sm"
-      className={cn("rounded-r-none", compactWhenNarrow && "pl-2 pr-1")}
+      className={cn(
+        "rounded-r-none",
+        compactWhenNarrow &&
+          "pl-2 pr-1 @max-[19rem]/resource-toolbar:px-1 @max-[19rem]/resource-toolbar:text-2xs",
+      )}
       onClick={() => onCreate()}
     >
       <Icon
@@ -925,7 +931,8 @@ export function ResourceCreateButton({
             aria-label={`${label} options`}
             className={cn(
               "rounded-l-none px-1.5",
-              compactWhenNarrow && "pl-1 pr-2",
+              compactWhenNarrow &&
+                "pl-1 pr-2 @max-[19rem]/resource-toolbar:px-1",
             )}
           >
             <Icon name="ChevronDown" className="size-4" aria-hidden />
