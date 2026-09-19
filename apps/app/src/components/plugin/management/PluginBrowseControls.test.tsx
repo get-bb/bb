@@ -464,7 +464,7 @@ describe("PluginCollectionToolbar", () => {
     const search = screen.getByRole("textbox", { name: "Search plugins" });
     act(() => search.focus());
     fireEvent.change(search, { target: { value: "Notes" } });
-    const submit = screen.getByRole("button", { name: "Search", exact: true });
+    const submit = screen.getByRole("button", { name: "Search" });
     act(() => submit.focus());
     expect(document.activeElement).toBe(submit);
     expect(screen.queryByRole("button", { name: "Create" })).toBeNull();
@@ -475,14 +475,10 @@ describe("PluginCollectionToolbar", () => {
       "query=Notes&category=security&source=user&sort=name&direction=desc",
     );
     fireEvent.click(search);
-    expect(
-      screen.getByRole("button", { name: "Search", exact: true }),
-    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Search" })).toBeTruthy();
     fireEvent.keyDown(search, { key: "Escape" });
     expect(document.activeElement).toBe(search);
-    expect(
-      screen.queryByRole("button", { name: "Search", exact: true }),
-    ).toBeNull();
+    expect(screen.queryByRole("button", { name: "Search" })).toBeNull();
   });
 
   it("keeps wide search beside its controls when focused", () => {
