@@ -55,12 +55,12 @@ function removed(editor: Editor) {
 }
 
 describe("proposal decorations", () => {
-  it("shows character changes within rich text without serializing deleted content", () => {
+  it("shows word changes within rich text without serializing deleted content", () => {
     const { editor, clear } = fixture(
       "<p>A <strong>simple place</strong> for ideas.</p>",
       "<p>A <strong>calmer space</strong> for ideas.</p>",
     );
-    expect(removed(editor).length).toBeGreaterThan(0);
+    expect(removed(editor)).toBe("simple place");
     expect(
       editor.view.dom.querySelector("[data-proposal-removed] strong"),
     ).not.toBeNull();

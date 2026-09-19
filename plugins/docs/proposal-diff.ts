@@ -56,13 +56,13 @@ function tokens(node: ProseMirrorNode): Token[] {
     if (child.isText) {
       const marks = JSON.stringify(child.marks.map((mark) => mark.toJSON()));
       let position = offset;
-      for (const character of child.text ?? "") {
+      for (const word of child.text?.match(/\s+|\S+\s*/gu) ?? []) {
         result.push({
-          key: `${marks}:${character}`,
+          key: `${marks}:${word}`,
           from: position,
-          to: position + character.length,
+          to: position + word.length,
         });
-        position += character.length;
+        position += word.length;
       }
     } else
       result.push({
