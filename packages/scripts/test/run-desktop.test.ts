@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { resolveDevInstanceConfig } from "@bb/config/runtime";
 import {
@@ -63,6 +64,8 @@ describe("desktop launch environment", () => {
 
     expect(env).toMatchObject({
       BB_DATA_DIR: config.dataDir,
+      BB_DESKTOP_OPEN_DEVTOOLS: "0",
+      BB_DESKTOP_USER_DATA_DIR: join(config.dataDir, "desktop"),
       BB_HOST_DAEMON_PORT: String(config.ports.hostDaemonPort),
       BB_SERVER_PORT: String(config.ports.serverPort),
       BB_TELEMETRY: "false",
@@ -72,6 +75,27 @@ describe("desktop launch environment", () => {
     expect(env.BB_DATA_DIR).not.toBe("/Users/tester/.bb");
     expect(env.BB_SERVER_PORT).not.toBe("38886");
     expect(env.BB_DEV_APP_PORT).toBeUndefined();
+  });
+
+  it("keeps the worktree build off the installed Electron user data directory", () => {
+    const env = toDesktopLaunchProcessEnv({
+      baseEnv: {},
+      config,
+      mode: "worktree",
+    });
+
+    expect(env.BB_DESKTOP_USER_DATA_DIR?.startsWith(config.dataDir)).toBe(true);
+    expect(env.BB_DESKTOP_USER_DATA_DIR).not.toContain("Application Support");
+  });
+
+  it("lets an explicit devtools choice survive the worktree default", () => {
+    const env = toDesktopLaunchProcessEnv({
+      baseEnv: { BB_DESKTOP_OPEN_DEVTOOLS: "1" },
+      config,
+      mode: "worktree",
+    });
+
+    expect(env.BB_DESKTOP_OPEN_DEVTOOLS).toBe("1");
   });
 
   it("leaves the installed data directory and ports alone without --worktree", () => {
@@ -84,7 +108,9 @@ describe("desktop launch environment", () => {
     expect(env.BB_DATA_DIR).toBeUndefined();
     expect(env.BB_SERVER_PORT).toBeUndefined();
     expect(env.BB_HOST_DAEMON_PORT).toBeUndefined();
+    expect(env.BB_DESKTOP_USER_DATA_DIR).toBeUndefined();
     expect(env).toMatchObject({
+      BB_DESKTOP_OPEN_DEVTOOLS: "0",
       NODE_ENV: "production",
       OPENAI_API_KEY: "test-key",
     });

@@ -77,7 +77,11 @@ export function toDesktopLaunchProcessEnv(args: {
   mode: DesktopLaunchMode;
 }): NodeJS.ProcessEnv {
   if (args.mode === "prod") {
-    return { ...args.baseEnv, NODE_ENV: "production" };
+    return {
+      ...args.baseEnv,
+      BB_DESKTOP_OPEN_DEVTOOLS: args.baseEnv.BB_DESKTOP_OPEN_DEVTOOLS ?? "0",
+      NODE_ENV: "production",
+    };
   }
 
   const env = toDevProcessEnv({
@@ -85,6 +89,8 @@ export function toDesktopLaunchProcessEnv(args: {
     config: args.config,
   });
   delete env.BB_DEV_APP_PORT;
+  env.BB_DESKTOP_OPEN_DEVTOOLS = args.baseEnv.BB_DESKTOP_OPEN_DEVTOOLS ?? "0";
+  env.BB_DESKTOP_USER_DATA_DIR = join(args.config.dataDir, "desktop");
   env.BB_TELEMETRY = "false";
   env.NODE_ENV = "production";
   return env;
@@ -101,6 +107,7 @@ function formatConfig(
   return [
     `${prefix} Instance ${config.instanceId}`,
     `${prefix} Data dir ${config.dataDir}`,
+    `${prefix} Electron user data ${join(config.dataDir, "desktop")}`,
     `${prefix} Server ${config.serverUrl}`,
     `${prefix} Host daemon http://${LOOPBACK_HOST}:${config.ports.hostDaemonPort}`,
   ].join("\n");
