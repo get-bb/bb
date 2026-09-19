@@ -683,6 +683,7 @@ client wrote first, so a stale window cannot silently clobber a newer value.
 | `sidebar.organizationMode`        | `project`, `chronological`, or `machine`            |
 | `sidebar.threadGrouping.environment` | `auto`, `true`, or `false`                       |
 | `sidebar.chronologicalSort`       | `updated`, `created`, `alpha`, or `none`            |
+| `sidebar.sortGroupsByRecency`     | `true` or `false` (default)                          |
 | `sidebar.sectionOrder`            | Section id list for **By project**                  |
 | `sidebar.manualSectionOrder`      | Section id list for **Manually**                    |
 | `sidebar.machineSectionOrder`     | Section id list for **By machine**                  |
@@ -732,6 +733,18 @@ operations as `sdk.system.uiPreferences.list()`, `.set({ key, value,
 expectedRevision })`, and `.reset({ key })` over `GET /preferences/ui`,
 `PUT /preferences/ui/:key`, and `DELETE /preferences/ui/:key`. Every write
 broadcasts a `ui-preferences-changed` system change to connected clients.
+
+**Sort projects too** in the thread-list header's **Sort by → Updated at**
+submenu enables `sidebar.sortGroupsByRecency` (off by default). The label uses
+**sections** or **machines** instead when that organization mode is selected.
+Click Updated at to select it or reverse its direction; its caret opens the
+submenu without changing the sort. The option orders
+projects, custom sections, machines, environments, and parent threads by their
+highest-ranked visible thread. Running work stays first; empty groups follow
+populated groups. Pinned placement is preserved. Turning it off restores saved
+group order; dragging top-level groups saves that order and turns the option off.
+Created at and Alphabetical leave it inactive. Enable it through the CLI with
+`bb settings ui set sidebar.sortGroupsByRecency true`.
 
 The sidebar waits for these values alongside the project list, so it never
 paints a default layout that then snaps to the saved one. The first client to

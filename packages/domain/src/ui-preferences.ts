@@ -40,6 +40,7 @@ export const UI_PREFERENCE_KEYS = [
   "sidebar.threadGrouping.environment",
   "sidebar.chronologicalSort",
   "sidebar.sortDirection",
+  "sidebar.sortGroupsByRecency",
   "sidebar.sectionOrder",
   "sidebar.manualSectionOrder",
   "sidebar.machineSectionOrder",
@@ -91,12 +92,17 @@ export const uiPreferenceDefinitions = {
   "sidebar.chronologicalSort": defineUiPreference(
     sidebarChronologicalSortSchema,
     "updated",
-    "Sort order for the chronological sidebar organization.",
+    "Sidebar thread sort order. updated can also rank groups when sidebar.sortGroupsByRecency is enabled.",
   ),
   "sidebar.sortDirection": defineUiPreference(
     z.enum(["default", "ascending", "descending"]),
     "default",
     "Sidebar thread sort direction; default preserves the selected field's original direction.",
+  ),
+  "sidebar.sortGroupsByRecency": defineUiPreference(
+    z.boolean(),
+    false,
+    "Include groups in Updated at sorting. Off restores saved group order; dragging groups turns this off. Pinned placement is preserved.",
   ),
   "sidebar.sectionOrder": defineUiPreference(
     uiPreferenceStringListSchema,

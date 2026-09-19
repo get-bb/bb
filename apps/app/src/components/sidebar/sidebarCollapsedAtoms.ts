@@ -64,6 +64,18 @@ export const sidebarSortDirectionAtom = createSyncedPreferenceAtom(
   "sidebar.sortDirection",
 );
 
+export const sidebarSortGroupsByRecencyAtom = createSyncedPreferenceAtom(
+  "sidebar.sortGroupsByRecency",
+);
+
+export const sidebarIsGroupRecencySortActiveAtom = atom((get) => {
+  const sort = get(sidebarChronologicalSortAtom);
+  return (
+    get(sidebarSortGroupsByRecencyAtom) &&
+    (sort === "updated" || sort === "none")
+  );
+});
+
 export const sidebarCollapsedThreadSectionsAtom = createSyncedPreferenceAtom(
   "sidebar.collapsedThreadSections",
 );

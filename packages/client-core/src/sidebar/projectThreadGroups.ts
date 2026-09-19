@@ -62,6 +62,10 @@ export type ThreadComparator = ((
   right: ThreadListEntry,
 ) => number) & {
   compareItems?: ThreadItemComparator;
+  compareGroups?: (
+    left: readonly ThreadListEntry[],
+    right: readonly ThreadListEntry[],
+  ) => number;
 };
 
 type SidebarProjectThreadShape = Pick<
@@ -128,6 +132,24 @@ export function compareStandardThreads(
   return compareByLatestAttentionAtDescending(left, right);
 }
 
+export function compareThreadGroups(
+  left: readonly ThreadListEntry[],
+  right: readonly ThreadListEntry[],
+  compareThreads: ThreadComparator,
+): number {
+  const firstThread = (threads: readonly ThreadListEntry[]) =>
+    threads.reduce<ThreadListEntry | null>((first, thread) => {
+      if (!isSidebarProjectThread(thread)) return first;
+      return first === null || compareThreads(thread, first) < 0
+        ? thread
+        : first;
+    }, null);
+  const leftThread = firstThread(left);
+  const rightThread = firstThread(right);
+  if (leftThread && rightThread) return compareThreads(leftThread, rightThread);
+  return leftThread ? -1 : rightThread ? 1 : 0;
+}
+
 function representativeThread(item: ProjectThreadItem): ThreadListEntry {
   switch (item.kind) {
     case "thread":
@@ -144,6 +166,12 @@ function compareProjectThreadItems(
   right: ProjectThreadItem,
   compareThreads: ThreadComparator,
 ): number {
+  if (compareThreads.compareGroups) {
+    return compareThreads.compareGroups(
+      getProjectThreadItemDescendants([left]),
+      getProjectThreadItemDescendants([right]),
+    );
+  }
   return compareThreads(
     representativeThread(left),
     representativeThread(right),
@@ -213,7 +241,13 @@ function buildSortedItems(
   draftThreadIds: ReadonlySet<string>,
 ): ProjectThreadItem[] {
   if (!groupEnvironmentThreads) {
-    nodes.sort((left, right) => compareThreads(left.thread, right.thread));
+    nodes.sort((left, right) =>
+      compareProjectThreadItems(
+        buildThreadItem(left),
+        buildThreadItem(right),
+        compareThreads,
+      ),
+    );
     return nodes.map(buildThreadItem);
   }
 
@@ -483,7 +517,13 @@ function bucketEnvironmentThreadGroups(
     if (!hasAtLeastTwoThreadNodes(bucket)) continue;
     const environmentProviderId =
       providerIdByEnvironmentId.get(environmentId) ?? null;
-    bucket.sort((left, right) => compareThreads(left.thread, right.thread));
+    bucket.sort((left, right) =>
+      compareProjectThreadItems(
+        buildThreadItem(left),
+        buildThreadItem(right),
+        compareThreads,
+      ),
+    );
     groupedEnvironmentIds.add(environmentId);
     environmentThreadGroups.push(
       buildEnvironmentThreadGroup(
@@ -576,6 +616,9 @@ function compareSiblingItems(
   right: ProjectThreadItem,
   compareThreads: ThreadComparator,
 ): number {
+  if (compareThreads.compareGroups) {
+    return compareProjectThreadItems(left, right, compareThreads);
+  }
   if (compareThreads.compareItems) {
     return compareThreads.compareItems(left, right);
   }
