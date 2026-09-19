@@ -277,7 +277,7 @@ describe("BrowsePluginsTab", () => {
     ]);
   });
 
-  it("orders category options by the shelf category order", async () => {
+  it("orders category options by shelf order and omits missing categories", async () => {
     renderBrowse({
       entries: [
         TASKS_ENTRY,
@@ -317,7 +317,6 @@ describe("BrowsePluginsTab", () => {
       expect.stringContaining("Security"),
       expect.stringContaining("Tasks & Workflows"),
       expect.stringContaining("Unknown Category"),
-      expect.stringContaining("Uncategorized"),
     ]);
   });
 
