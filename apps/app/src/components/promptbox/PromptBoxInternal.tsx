@@ -236,6 +236,7 @@ export interface PromptBoxSubmissionConfig {
   isRunning?: boolean;
   onStop?: () => void;
   onModifierSubmit?: () => void;
+  swapSubmitActions?: boolean;
 }
 
 interface PromptSubmitButtonProps {
@@ -1198,7 +1199,7 @@ export function PromptBoxInternal({
   value,
   mentionRanges,
   onChange,
-  onSubmit,
+  onSubmit: onDefaultSubmit,
   onEscape,
   blurOnPointerSubmit = false,
   placeholder = "Ask anything. @ to mention files, folders, or sections",
@@ -1236,8 +1237,19 @@ export function PromptBoxInternal({
     title: submitTitle = "Submit (Enter)",
     isRunning = false,
     onStop,
-    onModifierSubmit,
+    onModifierSubmit: onDefaultModifierSubmit,
+    swapSubmitActions = false,
   } = submission;
+  const draftSubmitAction = { onSubmit: onDefaultSubmit, requiresInput: true };
+  const immediateSubmitAction = {
+    onSubmit: onDefaultModifierSubmit,
+    requiresInput: false,
+  };
+  const [primarySubmitAction, modifierSubmitAction] = swapSubmitActions
+    ? [immediateSubmitAction, draftSubmitAction]
+    : [draftSubmitAction, immediateSubmitAction];
+  const { onSubmit } = primarySubmitAction;
+  const { onSubmit: onModifierSubmit } = modifierSubmitAction;
   const {
     triggers: mentionTriggerChars = DEFAULT_TYPEAHEAD_MENTION_TRIGGERS,
     results: mentionResults,
@@ -2638,18 +2650,15 @@ export function PromptBoxInternal({
     ],
   );
 
-  const canSubmit =
-    hasSubmittableInput &&
+  const canSubmitAction = (action: typeof immediateSubmitAction) =>
+    action.onSubmit !== undefined &&
+    (!action.requiresInput || hasSubmittableInput) &&
     !isAttaching &&
     !isSubmitting &&
     !submitDisabled &&
     !showVoiceActionGroup;
-  const canModifierSubmit =
-    onModifierSubmit !== undefined &&
-    !isAttaching &&
-    !isSubmitting &&
-    !submitDisabled &&
-    !showVoiceActionGroup;
+  const canSubmit = canSubmitAction(primarySubmitAction);
+  const canModifierSubmit = canSubmitAction(modifierSubmitAction);
   const showStop = Boolean(
     isRunning && onStop && !canSubmit && !isAttaching && !showVoiceActionGroup,
   );
@@ -2737,7 +2746,7 @@ export function PromptBoxInternal({
     const shouldBlurAfterSubmit = blurAfterPointerSubmitRef.current;
     blurAfterPointerSubmitRef.current = false;
     if (!canSubmit) return;
-    onSubmit();
+    onSubmit?.();
     if (shouldBlurAfterSubmit) {
       blurPromptEditor(editorRef.current);
     }

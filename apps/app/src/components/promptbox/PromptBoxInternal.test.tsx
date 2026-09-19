@@ -1431,7 +1431,7 @@ describe("PromptBoxInternal submit shortcuts", () => {
             {...createPromptBoxProps({
               value,
               onSubmit,
-              submission: { onModifierSubmit, ...{ swapSubmitActions } },
+              submission: { onModifierSubmit, swapSubmitActions },
             })}
           />,
         );
@@ -1465,7 +1465,7 @@ describe("PromptBoxInternal submit shortcuts", () => {
               onSubmit,
               submission: {
                 onModifierSubmit,
-                ...{ swapSubmitActions },
+                swapSubmitActions,
                 [blockedState]: true,
               },
             })}
