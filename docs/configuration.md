@@ -734,8 +734,10 @@ expectedRevision })`, and `.reset({ key })` over `GET /preferences/ui`,
 `PUT /preferences/ui/:key`, and `DELETE /preferences/ui/:key`. Every write
 broadcasts a `ui-preferences-changed` system change to connected clients.
 
-**Groups by activity** in the thread-list header's **Sort by** menu enables
-`sidebar.sortGroupsByRecency` (off by default). With Updated at sorting, it orders
+**Sort projects too** in the thread-list header's **Sort by → Updated at**
+submenu enables `sidebar.sortGroupsByRecency` (off by default). The label uses
+**sections** or **machines** instead when that organization mode is selected.
+The submenu also offers **Newest first** and **Oldest first**. The option orders
 projects, custom sections, machines, environments, and parent threads by their
 highest-ranked visible thread. Running work stays first; empty groups follow
 populated groups. Pinned placement is preserved. Turning it off restores saved

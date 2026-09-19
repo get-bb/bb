@@ -224,56 +224,49 @@ describe("sidebar header controls", () => {
     expect(store.get(sidebarEnvironmentGroupingAtom)).toBe("auto");
   });
 
-  it("toggles sort direction without closing and resets direction for a different field", async () => {
+  it("selects Updated at direction in its submenu and preserves other sort fields", async () => {
     const { store } = setup();
     await openMenu();
     await openSubmenu("Sort by");
-    const updated = await screen.findByRole("menuitemradio", {
-      name: "Updated at, descending. Sort ascending",
+    await openSubmenu("Updated at, descending");
+    fireEvent.click(
+      await screen.findByRole("menuitemradio", { name: "Oldest first" }),
+    );
+    expect(store.get(sidebarSortDirectionAtom)).toBe("ascending");
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Newest first" }));
+    expect(store.get(sidebarSortDirectionAtom)).toBe("descending");
+    fireEvent.keyDown(screen.getByRole("menuitemradio", { name: "Newest first" }), {
+      key: "ArrowLeft",
     });
-    fireEvent.click(updated);
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Alphabetical" }));
+    expect(store.get(sidebarChronologicalSortAtom)).toBe("alpha");
     expect(store.get(sidebarSortDirectionAtom)).toBe("ascending");
     fireEvent.click(
       screen.getByRole("menuitemradio", {
-        name: "Updated at, ascending. Sort descending",
+        name: "Alphabetical, ascending. Sort descending",
       }),
     );
     expect(store.get(sidebarSortDirectionAtom)).toBe("descending");
-    fireEvent.click(
-      screen.getByRole("menuitemradio", { name: "Alphabetical" }),
-    );
-    expect(store.get(sidebarChronologicalSortAtom)).toBe("alpha");
-    expect(store.get(sidebarSortDirectionAtom)).toBe("ascending");
-    expect(
-      screen
-        .getByRole("menuitemradio", {
-          name: "Alphabetical, ascending. Sort descending",
-        })
-        .getAttribute("aria-checked"),
-    ).toBe("true");
   });
 
-  it("opts into group activity sorting only for Updated at", async () => {
-    const { store } = setup();
+  it.each([
+    ["project", "projects"],
+    ["machine", "machines"],
+    ["chronological", "sections"],
+  ] as const)("names the extra sorting scope in %s mode", async (mode, unit) => {
+    const { store } = setup("Pinned", false, mode);
     await openMenu();
     await openSubmenu("Sort by");
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Alphabetical" }));
+    await openSubmenu("Updated at");
     const toggle = await screen.findByRole("menuitemcheckbox", {
-      name: "Groups by activity",
+      name: `Sort ${unit} too`,
     });
     expect(toggle.getAttribute("aria-checked")).toBe("false");
     fireEvent.click(toggle);
+    expect(store.get(sidebarChronologicalSortAtom)).toBe("updated");
+    expect(store.get(sidebarSortDirectionAtom)).toBe("descending");
     expect(store.get(sidebarSortGroupsByRecencyAtom)).toBe(true);
-    expect(toggle.getAttribute("aria-checked")).toBe("true");
-
-    fireEvent.click(
-      screen.getByRole("menuitemradio", { name: "Alphabetical" }),
-    );
-    expect(toggle.getAttribute("aria-disabled")).toBe("true");
-    expect(toggle.getAttribute("aria-checked")).toBe("false");
-    expect(screen.getByText("Updated at only")).toBeTruthy();
-    expect(store.get(sidebarSortGroupsByRecencyAtom)).toBe(true);
-
-    fireEvent.click(screen.getByRole("menuitemradio", { name: "Updated at" }));
     expect(toggle.getAttribute("aria-checked")).toBe("true");
     fireEvent.click(toggle);
     expect(store.get(sidebarSortGroupsByRecencyAtom)).toBe(false);
@@ -285,18 +278,23 @@ describe("sidebar header controls", () => {
     fireEvent.click(screen.getByRole("button", { name: "Pinned actions" }));
     fireEvent.click(await screen.findByRole("menuitem", { name: "Sort by" }));
     fireEvent.click(
-      await screen.findByRole("menuitemradio", {
-        name: /Updated at\s*, descending\. Sort ascending/,
+      await screen.findByRole("menuitem", {
+        name: "Updated at, descending",
       }),
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitemradio", { name: "Oldest first" }),
     );
     expect(store.get(sidebarSortDirectionAtom)).toBe("ascending");
     expect(
       screen
-        .getByRole("menuitemradio", {
-          name: /Updated at\s*, ascending\. Sort descending/,
-        })
+        .getByRole("menuitemradio", { name: "Oldest first" })
         .getAttribute("aria-checked"),
     ).toBe("true");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Back" }));
+    expect(
+      screen.getByRole("menuitem", { name: "Updated at, ascending" }),
+    ).toBeTruthy();
     fireEvent.click(screen.getByRole("menuitem", { name: "Back" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Organize" }));
     fireEvent.click(screen.getByRole("menuitemradio", { name: "Custom" }));

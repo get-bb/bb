@@ -50,7 +50,15 @@ const SIDEBAR_SORT_OPTIONS = [
   { label: "Alphabetical", sort: "alpha", direction: "ascending" },
 ] as const;
 
-function SidebarViewItems({ page }: { page: "organize" | "sort" }) {
+type SidebarViewPage = "organize" | "sort" | "updated";
+
+function SidebarViewItems({
+  page,
+  onOpenUpdated,
+}: {
+  page: SidebarViewPage;
+  onOpenUpdated?: () => void;
+}) {
   const [organization, setOrganization] = useAtom(sidebarOrganizationModeAtom);
   const [sort, setSort] = useAtom(sidebarChronologicalSortAtom);
   const [savedDirection, setDirection] = useAtom(sidebarSortDirectionAtom);
@@ -104,6 +112,62 @@ function SidebarViewItems({ page }: { page: "organize" | "sort" }) {
       </>
     );
   }
+  if (page === "updated") {
+    const direction =
+      savedDirection === "default" ? "descending" : savedDirection;
+    const active = selectedSort === "updated" && sortGroupsByRecency;
+    const unit =
+      organization === "project"
+        ? "projects"
+        : organization === "machine"
+          ? "machines"
+          : "sections";
+    return (
+      <DropdownMenuGroup aria-label="Updated at">
+        {(
+          [
+            { label: "Newest first", direction: "descending" },
+            { label: "Oldest first", direction: "ascending" },
+          ] as const
+        ).map((option) => (
+          <DropdownMenuItem
+            key={option.direction}
+            role="menuitemradio"
+            aria-checked={
+              selectedSort === "updated" && direction === option.direction
+            }
+            onSelect={(event) => {
+              event.preventDefault();
+              setSort("updated");
+              setDirection(option.direction);
+            }}
+          >
+            {option.label}
+            <span className="ml-auto inline-flex size-4 shrink-0 items-center justify-center">
+              {selectedSort === "updated" && direction === option.direction && (
+                <Icon name="Check" className="size-4" />
+              )}
+            </span>
+          </DropdownMenuItem>
+        ))}
+        <DropdownMenuItem
+          role="menuitemcheckbox"
+          aria-checked={active}
+          onSelect={(event) => {
+            event.preventDefault();
+            setSort("updated");
+            if (selectedSort !== "updated") setDirection("descending");
+            setSortGroupsByRecency(!active);
+          }}
+        >
+          Sort {unit} too
+          <span className="ml-auto inline-flex size-4 shrink-0 items-center justify-center">
+            {active && <Icon name="Check" className="size-4" />}
+          </span>
+        </DropdownMenuItem>
+      </DropdownMenuGroup>
+    );
+  }
   return (
     <DropdownMenuGroup aria-label="Sort by">
       {SIDEBAR_SORT_OPTIONS.map((option) => {
@@ -115,6 +179,44 @@ function SidebarViewItems({ page }: { page: "organize" | "sort" }) {
             ? "descending"
             : "ascending"
           : option.direction;
+        if (option.sort === "updated") {
+          const label = selected ? `${option.label}, ${direction}` : option.label;
+          const contents = (
+            <>
+              {option.label}
+              {selected && (
+                <Icon
+                  name={direction === "ascending" ? "ArrowUp" : "ArrowDown"}
+                  className="ml-auto size-4"
+                />
+              )}
+            </>
+          );
+          return onOpenUpdated ? (
+            <DropdownMenuItem
+              key={option.sort}
+              aria-label={label}
+              onSelect={(event) => {
+                event.preventDefault();
+                onOpenUpdated();
+              }}
+            >
+              {contents}
+              <Icon name="ChevronRight" className="ml-auto" />
+            </DropdownMenuItem>
+          ) : (
+            <DropdownMenuSub key={option.sort}>
+              <DropdownMenuSubTrigger aria-label={label}>
+                {contents}
+              </DropdownMenuSubTrigger>
+              <DropdownMenuPortal>
+                <DropdownMenuSubContent>
+                  <SidebarViewItems page="updated" />
+                </DropdownMenuSubContent>
+              </DropdownMenuPortal>
+            </DropdownMenuSub>
+          );
+        }
         return (
           <DropdownMenuItem
             key={option.sort}
@@ -148,30 +250,6 @@ function SidebarViewItems({ page }: { page: "organize" | "sort" }) {
           </DropdownMenuItem>
         );
       })}
-      <DropdownMenuItem
-        role="menuitemcheckbox"
-        aria-label="Groups by activity"
-        aria-checked={selectedSort === "updated" && sortGroupsByRecency}
-        disabled={selectedSort !== "updated"}
-        onSelect={(event) => {
-          event.preventDefault();
-          setSortGroupsByRecency(!sortGroupsByRecency);
-        }}
-      >
-        <span>
-          Groups by activity
-          {selectedSort !== "updated" && (
-            <span className="block text-muted-foreground">
-              Updated at only
-            </span>
-          )}
-        </span>
-        <span className="ml-auto inline-flex size-4 shrink-0 items-center justify-center">
-          {selectedSort === "updated" && sortGroupsByRecency && (
-            <Icon name="Check" className="size-4" />
-          )}
-        </span>
-      </DropdownMenuItem>
     </DropdownMenuGroup>
   );
 }
@@ -193,7 +271,7 @@ export function SidebarHeaderControls({
 }) {
   const creation = useContext(HeaderCreationContext);
   const compact = useIsCompactViewport();
-  const [page, setPage] = useState<"organize" | "sort" | null>(null);
+  const [page, setPage] = useState<SidebarViewPage | null>(null);
   const changeOpen = (next: boolean) => {
     if (!next) setPage(null);
     onOpenChange?.(next);
@@ -233,7 +311,9 @@ export function SidebarHeaderControls({
               ? "Organize"
               : page === "sort"
                 ? "Sort by"
-                : `${label} actions`
+                : page === "updated"
+                  ? "Updated at"
+                  : `${label} actions`
           }
         >
           {compact && page ? (
@@ -241,14 +321,17 @@ export function SidebarHeaderControls({
               <DropdownMenuItem
                 onSelect={(event) => {
                   event.preventDefault();
-                  setPage(null);
+                  setPage(page === "updated" ? "sort" : null);
                 }}
               >
                 <Icon name="ChevronLeft" />
                 Back
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <SidebarViewItems page={page} />
+              <SidebarViewItems
+                page={page}
+                onOpenUpdated={() => setPage("updated")}
+              />
             </>
           ) : (
             <>

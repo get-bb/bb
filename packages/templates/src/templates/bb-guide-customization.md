@@ -290,11 +290,13 @@ collapse into a single worktree row inside their section, in every organization
 mode. `sidebar.threadGrouping.environment` defaults to `auto`, which groups them
 everywhere except Custom: `bb settings ui set sidebar.threadGrouping.environment
 false` keeps every thread on its own row, and `true` groups them in every mode.
-Sort by selects a field, and selecting it again reverses its arrow/direction.
+Sort by selects a field. Updated at opens a submenu with Newest first and
+Oldest first; selecting Created at or Alphabetical again reverses its direction.
 `sidebar.sortDirection` accepts `ascending`, `descending`, or `default`.
 The default preserves each field's original order (newest first for dates,
 A–Z for titles). For example: `bb settings ui set sidebar.sortDirection ascending`.
-Groups by activity is off by default. Enable it in Sort by or with
+Sort projects too is off by default. Its label uses sections or machines for
+those organization modes. Enable it in Sort by → Updated at or with
 `bb settings ui set sidebar.sortGroupsByRecency true`. During Updated at sorting,
 projects, custom sections, machines, environments, and parent threads inherit
 their highest-ranked visible thread. Running work stays first; empty groups
