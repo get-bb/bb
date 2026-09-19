@@ -166,7 +166,9 @@ export function ResourceToolbar({
             "pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground",
             searchCondensed &&
               !searchExpanded &&
-              "@max-[4rem]/resource-search:left-1/2 @max-[4rem]/resource-search:-translate-x-1/2",
+              (searchValue
+                ? "@max-[4rem]/resource-search:hidden"
+                : "@max-[4rem]/resource-search:left-1/2 @max-[4rem]/resource-search:-translate-x-1/2"),
           )}
           aria-hidden
         />
@@ -193,10 +195,12 @@ export function ResourceToolbar({
             }
           }}
           className={cn(
-            "h-8 pl-8",
+            "h-8 truncate pl-8 focus:text-clip",
             searchCondensed &&
               !searchExpanded &&
-              "@max-[4rem]/resource-search:px-0 @max-[4rem]/resource-search:text-transparent @max-[4rem]/resource-search:placeholder:text-transparent",
+              (searchValue
+                ? "@max-[4rem]/resource-search:px-1"
+                : "@max-[4rem]/resource-search:px-0 @max-[4rem]/resource-search:text-transparent @max-[4rem]/resource-search:placeholder:text-transparent"),
           )}
         />
       </div>

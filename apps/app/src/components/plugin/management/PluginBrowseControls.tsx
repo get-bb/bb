@@ -331,7 +331,7 @@ function PluginControlsMenu({
               }}
             >
               <Icon name="ChevronLeft" className="size-4" />
-              Back to controls
+              Filter & sort
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             {page.content}
