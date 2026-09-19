@@ -279,7 +279,7 @@ describe("sidebar header controls", () => {
     fireEvent.click(await screen.findByRole("menuitem", { name: "Sort by" }));
     fireEvent.click(
       await screen.findByRole("menuitem", {
-        name: "Updated at, descending",
+        name: /Updated at\s*, descending/,
       }),
     );
     fireEvent.click(
@@ -293,7 +293,7 @@ describe("sidebar header controls", () => {
     ).toBe("true");
     fireEvent.click(screen.getByRole("menuitem", { name: "Back" }));
     expect(
-      screen.getByRole("menuitem", { name: "Updated at, ascending" }),
+      screen.getByRole("menuitem", { name: /Updated at\s*, ascending/ }),
     ).toBeTruthy();
     fireEvent.click(screen.getByRole("menuitem", { name: "Back" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Organize" }));

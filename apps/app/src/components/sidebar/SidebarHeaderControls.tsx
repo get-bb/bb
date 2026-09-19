@@ -184,6 +184,7 @@ function SidebarViewItems({
           const contents = (
             <>
               {option.label}
+              {selected && <span className="sr-only">, {direction}</span>}
               {selected && (
                 <Icon
                   name={direction === "ascending" ? "ArrowUp" : "ArrowDown"}
