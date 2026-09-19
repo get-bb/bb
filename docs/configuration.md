@@ -682,6 +682,7 @@ client wrote first, so a stale window cannot silently clobber a newer value.
 | --------------------------------- | --------------------------------------------------- |
 | `sidebar.organizationMode`        | `project`, `chronological`, or `machine`            |
 | `sidebar.threadLifecycles`        | Nonempty distinct list of `active`, `draft`, `archived` |
+| `palette.threadLifecycles`        | Nonempty distinct list of `active`, `draft`, `archived` |
 | `sidebar.threadGrouping.environment` | `auto`, `true`, or `false`                       |
 | `sidebar.chronologicalSort`       | `updated`, `created`, `alpha`, or `none`            |
 | `sidebar.sectionOrder`            | Section id list for **By project**                  |
@@ -709,6 +710,13 @@ Drafts come from the available unarchived bootstrap; Archived loads pages only
 while selected. For example, `bb settings ui set sidebar.threadLifecycles
 '["active","draft"]'` shows active and saved draft threads. Reset restores
 `["active"]`. Plugin sidebar replacements own their rendering.
+
+`palette.threadLifecycles` independently selects the palette's Active, Drafts,
+and Archived groups before and after typing. Default/reset is `["active"]`.
+Drafts and Archived load bounded recent lists only while selected. The palette
+initially shows six rows across nonempty groups (six, three each, or two each),
+with Show more in each group. For example, `bb settings ui set
+palette.threadLifecycles '["draft"]'` finds saved drafts without changing the sidebar.
 
 `sidebar.threadGrouping.environment` decides whether two or more sibling threads
 that share one worktree environment collapse into a single worktree row inside

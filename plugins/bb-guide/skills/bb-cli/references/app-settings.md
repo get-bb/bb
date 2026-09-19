@@ -24,6 +24,11 @@ every window and client sees the same value.
   Use `bb settings ui set sidebar.threadLifecycles '["active","draft"]'` to
   show active and saved draft groups. Archived pages load only while selected;
   plugin sidebar replacements keep ownership of their rendering.
+- `palette.threadLifecycles` uses the same nonempty lifecycle selection and
+  Active default, independently of the sidebar. It filters palette results
+  before and after typing. Use `bb settings ui set palette.threadLifecycles
+  '["draft"]'` for saved drafts; reset restores Active. Recent Drafts and
+  Archived lists load only while selected and are bounded at the server.
 - `sidebar.organizationMode` defaults to Custom (`chronological`) when unset;
   existing server and legacy browser choices are preserved.
 - `sidebar.threadGrouping.environment` decides whether sibling threads sharing

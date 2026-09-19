@@ -84,6 +84,41 @@ function createHarness() {
 }
 
 describe("ui preferences sync", () => {
+  it("persists palette lifecycle selection independently and restores it on a new client", async () => {
+    const { queryClient, store } = createHarness();
+    const palette = createSyncedPreferenceAtom("palette.threadLifecycles");
+    const sidebar = createSyncedPreferenceAtom("sidebar.threadLifecycles");
+    setCachedUiPreferences(
+      queryClient,
+      serverResponse({
+        "sidebar.threadLifecycles": { revision: 1, value: ["archived"] },
+      }),
+    );
+    const stop = startUiPreferencesSync({ queryClient, store });
+    expect(store.get(palette)).toEqual(["active"]);
+    store.set(palette, ["draft"]);
+    await waitForUiPreferenceWrites();
+    expect(mocks.set).toHaveBeenCalledExactlyOnceWith({
+      key: "palette.threadLifecycles",
+      value: ["draft"],
+      expectedRevision: 0,
+    });
+    expect(store.get(sidebar)).toEqual(["archived"]);
+    stop();
+    const reloadedStore = createStore();
+    startUiPreferencesSync({ queryClient, store: reloadedStore });
+    expect(reloadedStore.get(palette)).toEqual(["draft"]);
+    expect(reloadedStore.get(sidebar)).toEqual(["archived"]);
+    reconcileUiPreferences(
+      serverResponse({
+        "palette.threadLifecycles": { revision: 2, value: ["active"] },
+        "sidebar.threadLifecycles": { revision: 1, value: ["archived"] },
+      }),
+    );
+    expect(reloadedStore.get(palette)).toEqual(["active"]);
+    expect(reloadedStore.get(sidebar)).toEqual(["archived"]);
+  });
+
   beforeEach(() => {
     window.localStorage.clear();
     mocks.list.mockReset();

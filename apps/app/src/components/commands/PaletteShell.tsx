@@ -18,6 +18,7 @@ interface PaletteModeChipProps {
   icon: Parameters<typeof Icon>[0]["name"];
   label: string;
   onClear: () => void;
+  hideShortcut?: boolean;
 }
 
 interface PaletteShellProps {
@@ -30,6 +31,7 @@ interface PaletteShellProps {
   listLabel: string;
   listRef?: Ref<HTMLDivElement>;
   modeChip?: PaletteModeChipProps;
+  inputAccessory?: ReactNode;
   onInputChange: (value: string) => void;
   onInputKeyDown: KeyboardEventHandler<HTMLInputElement>;
   placeholder: string;
@@ -46,6 +48,7 @@ export function PaletteShell({
   listLabel,
   listRef,
   modeChip,
+  inputAccessory,
   onInputChange,
   onInputKeyDown,
   placeholder,
@@ -93,6 +96,7 @@ export function PaletteShell({
           <span id={inputDescriptionId} className="sr-only">
             {inputDescription}
           </span>
+          {inputAccessory}
         </div>
       </div>
       <div
@@ -135,6 +139,7 @@ function PaletteModeChip({
   icon,
   label,
   onClear,
+  hideShortcut,
 }: PaletteModeChipProps) {
   return (
     <span
@@ -156,7 +161,7 @@ function PaletteModeChip({
         closeAction={{
           onClose: onClear,
           closeLabel: clearLabel,
-          tooltip: `${clearLabel} (Esc)`,
+          tooltip: hideShortcut ? clearLabel : `${clearLabel} (Esc)`,
         }}
       />
     </span>

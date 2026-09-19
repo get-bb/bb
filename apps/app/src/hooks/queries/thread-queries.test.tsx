@@ -21,6 +21,7 @@ import {
   threadPendingInteractionsQueryKey,
   threadQueuedMessagesQueryKey,
   threadQueryKey,
+  threadSearchQueryKey,
   threadTimelineQueryKey,
 } from "./query-keys";
 import {
@@ -29,6 +30,8 @@ import {
   isPendingInteractionStateUnknown,
   useArchivedThreads,
   useChildThreads,
+  usePaletteRecentThreads,
+  useThreadSearch,
   useThread,
   useThreadDetailBootstrap,
   useThreadHostFilePreview,
@@ -60,6 +63,7 @@ vi.mock("@/lib/sdk", () => ({
     threads: {
       get: vi.fn(),
       list: vi.fn(),
+      search: vi.fn(),
       queuedMessages: { list: vi.fn() },
       interactions: { list: vi.fn() },
       storageLocation: vi.fn(),
@@ -852,5 +856,102 @@ describe("useThreadTimeline segment limit", () => {
       threadId: "thread-1",
       signal: expect.any(AbortSignal),
     });
+  });
+});
+
+describe("palette lifecycle queries", () => {
+  it("loads bounded recent draft and archived populations only while selected before typing", async () => {
+    const { wrapper } = createQueryClientTestHarness();
+    const olderDraft = makeThreadListEntry({
+      id: "old-draft",
+      lifecycle: "draft",
+      updatedAt: 1,
+    });
+    vi.mocked(sdk.threads.list).mockResolvedValue([olderDraft]);
+    const { result, rerender } = renderHook(
+      ({ recent, draft, archived }) => ({
+        draft: usePaletteRecentThreads("draft", { enabled: recent && draft }),
+        archived: usePaletteRecentThreads("archived", {
+          enabled: recent && archived,
+        }),
+      }),
+      {
+        wrapper,
+        initialProps: { recent: true, draft: false, archived: false },
+      },
+    );
+    expect(sdk.threads.list).not.toHaveBeenCalled();
+    rerender({ recent: true, draft: true, archived: false });
+    await waitFor(() =>
+      expect(result.current.draft.data).toEqual([olderDraft]),
+    );
+    expect(sdk.threads.list).toHaveBeenCalledExactlyOnceWith({
+      archived: false,
+      lifecycles: ["draft"],
+      limit: 20,
+      signal: expect.any(AbortSignal),
+    });
+    rerender({ recent: false, draft: true, archived: true });
+    expect(sdk.threads.list).toHaveBeenCalledTimes(1);
+    rerender({ recent: true, draft: true, archived: true });
+    await waitFor(() => expect(sdk.threads.list).toHaveBeenCalledTimes(2));
+    expect(sdk.threads.list).toHaveBeenLastCalledWith({
+      archived: true,
+      lifecycles: ["archived"],
+      limit: 20,
+      signal: expect.any(AbortSignal),
+    });
+  });
+
+  it("sends lifecycle filters with the server limit and keeps counts in separate search caches", async () => {
+    const { wrapper, queryClient } = createQueryClientTestHarness();
+    const activeResponse = {
+      active: { total: 40, results: [] },
+      draft: { total: 0, results: [] },
+      archived: { total: 0, results: [] },
+    };
+    const draftResponse = {
+      active: { total: 0, results: [] },
+      draft: {
+        total: 31,
+        results: [
+          { thread: makeThreadListEntry({ lifecycle: "draft" }), matches: [] },
+        ],
+      },
+      archived: { total: 0, results: [] },
+    };
+    vi.mocked(sdk.threads.search)
+      .mockResolvedValueOnce(activeResponse)
+      .mockResolvedValueOnce(draftResponse);
+    const { result, rerender } = renderHook(
+      ({ lifecycles }: { lifecycles: ("active" | "draft")[] }) =>
+        useThreadSearch({
+          active: true,
+          query: "match",
+          lifecycles,
+          limitPerGroup: 6,
+        }),
+      { wrapper, initialProps: { lifecycles: ["active"] } },
+    );
+    await waitFor(() => expect(result.current.data).toEqual(activeResponse));
+    rerender({ lifecycles: ["draft"] });
+    expect(result.current.data).toBeUndefined();
+    await waitFor(() => expect(result.current.data).toEqual(draftResponse));
+    expect(sdk.threads.search).toHaveBeenLastCalledWith({
+      query: "match",
+      lifecycles: ["draft"],
+      limitPerGroup: "6",
+      signal: expect.any(AbortSignal),
+    });
+    expect(
+      queryClient.getQueryData(
+        threadSearchQueryKey({
+          query: "match",
+          lifecycles: ["active"],
+          limitPerGroup: 6,
+        }),
+      ),
+    ).toEqual(activeResponse);
+    expect(result.current.data?.draft?.total).toBe(31);
   });
 });
