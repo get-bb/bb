@@ -9,6 +9,7 @@ import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-qu
 import {
   PluginMarketplaceListingSections,
   PluginMoreFromAuthorSection,
+  PluginMarketplaceSource,
 } from "./PluginMarketplaceListing";
 
 function catalogEntry(pluginId: string): PluginCatalogSearchEntry {
