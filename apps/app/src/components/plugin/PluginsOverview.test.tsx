@@ -751,7 +751,7 @@ describe("PluginsOverview", () => {
     ).toBe("true");
   });
 
-  it("filters Installed by catalog and local categories and clears the selection", async () => {
+  it("groups path installs as Local while preserving marketplace categories", async () => {
     installFetch([
       AUTOMATIONS_PLUGIN,
       {
@@ -766,9 +766,17 @@ describe("PluginsOverview", () => {
       },
       {
         ...AUTOMATIONS_PLUGIN,
-        id: "uncategorized",
+        id: "local-other",
         source: "path:/workspace/other",
         name: "Other Plugin",
+        provenance: "direct",
+        publisherLabel: null,
+      },
+      {
+        ...AUTOMATIONS_PLUGIN,
+        id: "uncategorized",
+        source: "git:https://github.com/example/uncategorized.git",
+        name: "Marketplace Plugin",
         provenance: "direct",
         publisherLabel: null,
       },
@@ -788,17 +796,23 @@ describe("PluginsOverview", () => {
       }),
     );
     fireEvent.click(
-      await screen.findByRole("option", { name: /Memory & Context, 1 plugin/ }),
+      await screen.findByRole("option", { name: /Local, 2 plugins/ }),
     );
     expect(screen.getByText("Local Notes")).toBeTruthy();
+    expect(screen.getByText("Other Plugin")).toBeTruthy();
+    expect(screen.queryByText("Marketplace Plugin")).toBeNull();
+    expect(
+      screen.queryByRole("option", { name: /Memory & Context/ }),
+    ).toBeNull();
     expect(screen.queryByText("Automations")).toBeNull();
     fireEvent.click(
       screen.getByRole("option", { name: /Workflow management, 1 plugin/ }),
     );
     expect(screen.getByText("Automations")).toBeTruthy();
-    expect(screen.queryByText("Other Plugin")).toBeNull();
+    expect(screen.queryByText("Marketplace Plugin")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Clear filter" }));
     expect(screen.getByText("Other Plugin")).toBeTruthy();
+    expect(screen.getByText("Marketplace Plugin")).toBeTruthy();
   });
 
   it("keeps disabled plugins installed regardless of provenance", async () => {
