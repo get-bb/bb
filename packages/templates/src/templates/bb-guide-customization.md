@@ -290,8 +290,8 @@ collapse into a single worktree row inside their section, in every organization
 mode. `sidebar.threadGrouping.environment` defaults to `auto`, which groups them
 everywhere except Custom: `bb settings ui set sidebar.threadGrouping.environment
 false` keeps every thread on its own row, and `true` groups them in every mode.
-Sort by selects a field. Updated at opens a submenu with Newest first and
-Oldest first; selecting Created at or Alphabetical again reverses its direction.
+Sort by selects a field, and selecting it again reverses its direction.
+The caret beside Updated at opens its options without changing the sort.
 `sidebar.sortDirection` accepts `ascending`, `descending`, or `default`.
 The default preserves each field's original order (newest first for dates,
 A–Z for titles). For example: `bb settings ui set sidebar.sortDirection ascending`.

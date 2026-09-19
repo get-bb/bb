@@ -113,8 +113,6 @@ function SidebarViewItems({
     );
   }
   if (page === "updated") {
-    const direction =
-      savedDirection === "default" ? "descending" : savedDirection;
     const active = selectedSort === "updated" && sortGroupsByRecency;
     const unit =
       organization === "project"
@@ -124,32 +122,6 @@ function SidebarViewItems({
           : "sections";
     return (
       <DropdownMenuGroup aria-label="Updated at">
-        {(
-          [
-            { label: "Newest first", direction: "descending" },
-            { label: "Oldest first", direction: "ascending" },
-          ] as const
-        ).map((option) => (
-          <DropdownMenuItem
-            key={option.direction}
-            role="menuitemradio"
-            aria-checked={
-              selectedSort === "updated" && direction === option.direction
-            }
-            onSelect={(event) => {
-              event.preventDefault();
-              setSort("updated");
-              setDirection(option.direction);
-            }}
-          >
-            {option.label}
-            <span className="ml-auto inline-flex size-4 shrink-0 items-center justify-center">
-              {selectedSort === "updated" && direction === option.direction && (
-                <Icon name="Check" className="size-4" />
-              )}
-            </span>
-          </DropdownMenuItem>
-        ))}
         <DropdownMenuItem
           role="menuitemcheckbox"
           aria-checked={active}
@@ -179,48 +151,10 @@ function SidebarViewItems({
             ? "descending"
             : "ascending"
           : option.direction;
-        if (option.sort === "updated") {
-          const label = selected ? `${option.label}, ${direction}` : option.label;
-          const contents = (
-            <>
-              {option.label}
-              {selected && <span className="sr-only">, {direction}</span>}
-              {selected && (
-                <Icon
-                  name={direction === "ascending" ? "ArrowUp" : "ArrowDown"}
-                  className="ml-auto size-4"
-                />
-              )}
-            </>
-          );
-          return onOpenUpdated ? (
-            <DropdownMenuItem
-              key={option.sort}
-              aria-label={label}
-              onSelect={(event) => {
-                event.preventDefault();
-                onOpenUpdated();
-              }}
-            >
-              {contents}
-              <Icon name="ChevronRight" className="ml-auto" />
-            </DropdownMenuItem>
-          ) : (
-            <DropdownMenuSub key={option.sort}>
-              <DropdownMenuSubTrigger aria-label={label}>
-                {contents}
-              </DropdownMenuSubTrigger>
-              <DropdownMenuPortal>
-                <DropdownMenuSubContent>
-                  <SidebarViewItems page="updated" />
-                </DropdownMenuSubContent>
-              </DropdownMenuPortal>
-            </DropdownMenuSub>
-          );
-        }
-        return (
+        const sortItem = (
           <DropdownMenuItem
             key={option.sort}
+            className="flex-1"
             role="menuitemradio"
             aria-checked={selected}
             aria-label={
@@ -249,6 +183,34 @@ function SidebarViewItems({
               )}
             </span>
           </DropdownMenuItem>
+        );
+        if (option.sort !== "updated") return sortItem;
+        return onOpenUpdated ? (
+          <div key={option.sort} className="flex items-center">
+            {sortItem}
+            <DropdownMenuItem
+              className="w-auto shrink-0"
+              onSelect={(event) => {
+                event.preventDefault();
+                onOpenUpdated();
+              }}
+            >
+              <span className="sr-only">Updated at options</span>
+              <Icon name="ChevronRight" />
+            </DropdownMenuItem>
+          </div>
+        ) : (
+          <DropdownMenuSub key={option.sort}>
+            <div className="flex items-center">
+              {sortItem}
+              <DropdownMenuSubTrigger aria-label="Updated at options" />
+            </div>
+            <DropdownMenuPortal>
+              <DropdownMenuSubContent>
+                <SidebarViewItems page="updated" />
+              </DropdownMenuSubContent>
+            </DropdownMenuPortal>
+          </DropdownMenuSub>
         );
       })}
     </DropdownMenuGroup>
