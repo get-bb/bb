@@ -42,6 +42,8 @@ import type { WorktreeInputs, worktreeRpcContract } from "./server.js";
 
 const DEFAULT_INPUTS: WorktreeInputs = { branch: { kind: "default" } };
 const NEW_WORKTREE_LABEL = "New worktree";
+const BRANCH_FROM_PREFIX = "Branch from:";
+const REUSE_PREFIX = "Reuse:";
 const EXISTING_WORKTREE_LABEL = "Existing worktree";
 
 type WorktreeIntent = "new" | "existing";
@@ -86,7 +88,16 @@ function WorktreeInputsControl({
 }: PluginEnvironmentProviderInputsProps) {
   const hostId = target.kind === "existing-host" ? target.hostId : null;
   const rpc = useRpc<typeof worktreeRpcContract>();
-  const [worktrees, setWorktrees] = useState<readonly DiscoveredWorktree[]>([]);
+  const [worktreeResult, setWorktreeResult] = useState<{
+    projectId: string;
+    hostId: string;
+    worktrees: readonly DiscoveredWorktree[];
+  } | null>(null);
+  const worktreeRequest = useRef(0);
+  const worktrees =
+    worktreeResult?.projectId === projectId && worktreeResult?.hostId === hostId
+      ? worktreeResult.worktrees
+      : [];
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
@@ -110,8 +121,9 @@ function WorktreeInputsControl({
   }, [value, onChange]);
 
   const refreshWorktrees = useCallback(async () => {
+    const request = ++worktreeRequest.current;
     if (projectId === null || hostId === null) {
-      setWorktrees([]);
+      setWorktreeResult(null);
       return;
     }
     try {
@@ -119,14 +131,19 @@ function WorktreeInputsControl({
         projectId,
         hostId,
       });
-      setWorktrees(result.worktrees);
+      if (request === worktreeRequest.current) {
+        setWorktreeResult({ projectId, hostId, worktrees: result.worktrees });
+      }
     } catch {
-      setWorktrees([]);
+      if (request === worktreeRequest.current) setWorktreeResult(null);
     }
   }, [projectId, hostId, rpc]);
 
   useEffect(() => {
     void refreshWorktrees();
+    return () => {
+      worktreeRequest.current += 1;
+    };
   }, [refreshWorktrees]);
 
   useEffect(() => {
@@ -142,17 +159,14 @@ function WorktreeInputsControl({
     [branchState.branches, deferredQuery],
   );
 
+  const baseBranchLabel =
+    branchName ?? branchState.defaultBaseBranch ?? "default";
   const triggerLabel =
     existingPath === null
-      ? branchName === null
-        ? NEW_WORKTREE_LABEL
-        : `New worktree from: ${branchName}`
-      : worktreeDirectoryName(existingPath);
+      ? `${BRANCH_FROM_PREFIX} ${baseBranchLabel}`
+      : `${REUSE_PREFIX} ${worktreeDirectoryName(existingPath)}`;
   const triggerTitle =
-    existingPath ??
-    (branchName === null
-      ? "Create a worktree from the default branch"
-      : `Create a worktree from ${branchName}`);
+    existingPath ?? `Create a worktree from ${baseBranchLabel}`;
 
   const updateOpen = (nextOpen: boolean) => {
     if (!nextOpen) {
@@ -192,7 +206,7 @@ function WorktreeInputsControl({
             title={triggerTitle}
           >
             <Icon
-              name="FolderGit"
+              name="GitMerge"
               className={COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS}
             />
             <span className="min-w-0 truncate">{triggerLabel}</span>

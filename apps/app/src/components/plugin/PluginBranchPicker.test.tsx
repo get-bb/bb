@@ -21,6 +21,7 @@ beforeEach(() => {
   vi.mocked(usePluginBranches).mockReturnValue({
     branches: ["main", "release"],
     remoteBranches: ["origin/main"],
+    defaultBaseBranch: "main",
     isLoading: false,
     refresh: refreshBranches,
   });

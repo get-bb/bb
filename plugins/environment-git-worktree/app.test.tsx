@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { JsonValue } from "@get-bb/plugin-sdk/app";
@@ -49,7 +49,10 @@ function render(
     },
     {
       rpc: { listExistingWorktrees: () => ({ worktrees }) },
-      branchesState: { branches: ["main", "release"] },
+      branchesState: {
+        branches: ["main", "release"],
+        defaultBaseBranch: "main",
+      },
     },
   );
   return { slot, onChange };
@@ -128,11 +131,23 @@ describe("worktree inputs control", () => {
     });
   });
 
-  it("names the chosen worktree on the trigger", () => {
-    const { slot } = render({ kind: "existing", path: "/code/app-feature" });
+  it("labels the trigger with the base branch or the reused worktree", () => {
+    const fresh = render({ branch: { kind: "default" } });
     expect(
-      slot.getByRole("combobox", { name: "Worktree" }).textContent,
-    ).toContain("app-feature");
+      fresh.slot.getByRole("combobox", { name: "Worktree" }).textContent,
+    ).toContain("Branch from: main");
+    cleanup();
+
+    const named = render({ branch: { kind: "named", name: "release" } });
+    expect(
+      named.slot.getByRole("combobox", { name: "Worktree" }).textContent,
+    ).toContain("Branch from: release");
+    cleanup();
+
+    const reused = render({ kind: "existing", path: "/code/app-feature" });
+    expect(
+      reused.slot.getByRole("combobox", { name: "Worktree" }).textContent,
+    ).toContain("Reuse: app-feature");
   });
 
   it("refuses to offer the existing section with nothing to adopt", async () => {
@@ -155,4 +170,84 @@ describe("worktree inputs control", () => {
     expect(selectedExistingPath({ branch: { kind: "default" } })).toBeNull();
     expect(worktreeDirectoryName("/code/app-feature/")).toBe("app-feature");
   });
+});
+
+describe("worktree discovery scope", () => {
+  it.each([
+    { change: "machine", failOldRequest: false },
+    { change: "project", failOldRequest: false },
+    { change: "machine", failOldRequest: true },
+    { change: "project", failOldRequest: true },
+  ])(
+    "hides the previous $change paths and ignores a late response (failure=$failOldRequest)",
+    async ({ change, failOldRequest }) => {
+      const requests: {
+        resolve(value: { worktrees: JsonValue[] }): void;
+        reject(error: Error): void;
+      }[] = [];
+      const props = {
+        projectId: "project-1",
+        target: { kind: "existing-host" as const, hostId: "host-a" },
+        value: { branch: { kind: "default" } },
+        onChange: vi.fn(),
+      };
+      const slot = renderSlot(inputsSlot(), props, {
+        rpc: {
+          listExistingWorktrees: () =>
+            new Promise<{ worktrees: JsonValue[] }>((resolve, reject) => {
+              requests.push({ resolve, reject });
+            }),
+        },
+        branchesState: { branches: ["main"] },
+      });
+      await act(async () => requests[0]!.resolve({ worktrees: WORKTREES }));
+      await openPicker(slot);
+      fireEvent.click(slot.getByRole("button", { name: "Existing worktree" }));
+      expect(slot.getByRole("button", { name: /app-feature/u })).toBeTruthy();
+      expect(requests).toHaveLength(2);
+
+      const Component = inputsSlot().component;
+      slot.rerender(
+        <Component
+          {...props}
+          projectId={change === "project" ? "project-2" : props.projectId}
+          target={{
+            kind: "existing-host",
+            hostId: change === "machine" ? "host-b" : "host-a",
+          }}
+        />,
+      );
+      expect(slot.queryByRole("button", { name: /app-feature/u })).toBeNull();
+      expect(
+        slot
+          .getByRole("button", { name: "Existing worktree" })
+          .hasAttribute("disabled"),
+      ).toBe(true);
+      expect(requests).toHaveLength(3);
+      await act(async () =>
+        requests[2]!.resolve({
+          worktrees: [
+            {
+              path: "/code/new-target",
+              branch: "other",
+              locked: false,
+              prunable: false,
+            },
+          ],
+        }),
+      );
+      expect(slot.getByRole("button", { name: /new-target/u })).toBeTruthy();
+      await act(async () => {
+        if (failOldRequest)
+          requests[1]!.reject(new Error("old machine disconnected"));
+        else requests[1]!.resolve({ worktrees: WORKTREES });
+      });
+      expect(slot.queryByRole("button", { name: /app-feature/u })).toBeNull();
+      fireEvent.click(slot.getByRole("button", { name: /new-target/u }));
+      expect(props.onChange).toHaveBeenLastCalledWith({
+        status: "ready",
+        value: { kind: "existing", path: "/code/new-target" },
+      });
+    },
+  );
 });

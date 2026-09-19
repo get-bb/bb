@@ -599,8 +599,11 @@ worktree plugin's `app.tsx` does exactly that, emitting `{ branch: { kind:
 cleared pick and on mount — the same additive-versioning exception as
 `experimental_ProviderModelPicker`. `experimental_useBranches({ hostId,
 projectId, query? })` returns the matching local and remote branch lists,
-loading state, and a `refresh()` operation that performs a blocking remote
-refresh. `experimental_BranchPicker` is built on this hook.
+`defaultBaseBranch` (the branch a new workspace starts from when nothing is
+picked, so a control can label a default selection with the branch name
+instead of the word "default"), loading state, and a `refresh()` operation
+that performs a blocking remote refresh. `experimental_BranchPicker` is built
+on this hook.
 `experimental_useCheckoutState({ hostId, projectId })` exposes the checkout's
 git, unborn, detached, dirty, current-branch, and operation facts. The checkout
 plugin combines the two hooks into its own chip, menu, search, and branch list,

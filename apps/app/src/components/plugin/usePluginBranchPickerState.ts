@@ -44,12 +44,19 @@ export function usePluginBranches({
     () => ({
       branches: enabled ? (branchesQuery.data?.branches ?? []) : [],
       remoteBranches: enabled ? (branchesQuery.data?.remoteBranches ?? []) : [],
+      defaultBaseBranch: enabled
+        ? (branchesQuery.data?.defaultWorktreeBaseBranch ??
+          branchesQuery.data?.defaultBranch ??
+          null)
+        : null,
       isLoading: enabled && branchesQuery.isFetching,
       refresh,
     }),
     [
       branchesQuery.data?.branches,
       branchesQuery.data?.remoteBranches,
+      branchesQuery.data?.defaultWorktreeBaseBranch,
+      branchesQuery.data?.defaultBranch,
       branchesQuery.isFetching,
       enabled,
       refresh,
