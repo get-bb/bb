@@ -632,6 +632,7 @@ export function optimisticallyInsertThread(
     }
 
     const filters = getThreadListFiltersFromQueryKey(queryKey);
+    if (filters?.lifecycles !== undefined) continue;
     if (!threadMatchesListFilters(thread, filters)) {
       continue;
     }

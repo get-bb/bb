@@ -289,6 +289,12 @@ groups and fetches archived pages only while selected. For example:
 `bb settings ui set sidebar.threadLifecycles '["active","draft"]'`.
 Reset the key to restore Active. Plugin sidebar replacements own their filters.
 
+`palette.threadLifecycles` uses the same values and Active default, independently
+of the sidebar. It filters named groups before and after typing; Drafts and
+Archived fetch bounded recent rows only when selected. Use
+`bb settings ui set palette.threadLifecycles '["draft"]'` for saved drafts,
+or reset the key to restore Active.
+
 Every thread-list header's actions menu offers New project, New section,
 Organize, and Sort by. Organize selects By project, By machine, or Custom, and
 its By environment toggle decides whether sibling threads sharing one worktree

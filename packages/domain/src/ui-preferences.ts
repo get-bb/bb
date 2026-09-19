@@ -36,7 +36,17 @@ const uiPreferenceStringListSchema = z
   .array(uiPreferenceStringSchema)
   .max(UI_PREFERENCE_LIST_MAX_LENGTH);
 
+const threadLifecycleSelectionSchema = z
+  .array(threadLifecycleSchema)
+  .min(1)
+  .max(3)
+  .refine(
+    (values) => new Set(values).size === values.length,
+    "Thread lifecycles must be unique.",
+  );
+
 export const UI_PREFERENCE_KEYS = [
+  "palette.threadLifecycles",
   "sidebar.threadLifecycles",
   "sidebar.organizationMode",
   "sidebar.threadGrouping.environment",
@@ -80,15 +90,13 @@ function defineUiPreference<Schema extends z.ZodTypeAny>(
 }
 
 export const uiPreferenceDefinitions = {
+  "palette.threadLifecycles": defineUiPreference(
+    threadLifecycleSelectionSchema,
+    ["active"],
+    "Thread lifecycles shown in palette search: active, draft, and archived. Select at least one; defaults to active independently of the sidebar.",
+  ),
   "sidebar.threadLifecycles": defineUiPreference(
-    z
-      .array(threadLifecycleSchema)
-      .min(1)
-      .max(3)
-      .refine(
-        (values) => new Set(values).size === values.length,
-        "Thread lifecycles must be unique.",
-      ),
+    threadLifecycleSelectionSchema,
     ["active"],
     "Thread lifecycles shown in the built-in sidebar: active, draft, and archived. Select at least one; defaults to active.",
   ),

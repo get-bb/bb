@@ -851,6 +851,9 @@ function applyAuthoritativeThreadBannerCancellation({
       });
       return {
         active: mapGroup(response.active),
+        ...(response.draft === undefined
+          ? {}
+          : { draft: mapGroup(response.draft) }),
         archived: mapGroup(response.archived),
       };
     },
