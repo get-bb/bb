@@ -1064,6 +1064,7 @@ const EnvironmentThreadGroupRow = memo(function EnvironmentThreadGroupRow({
   const createThreadInEnvironment = useCreateThreadInEnvironment({
     projectId,
     environmentId,
+    sectionId: representativeThread.sectionId,
   });
   const threads = useMemo(() => nodes.map((node) => node.thread), [nodes]);
   const { archiveThreadsPending, onArchiveThreads } =

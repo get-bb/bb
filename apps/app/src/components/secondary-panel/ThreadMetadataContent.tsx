@@ -241,6 +241,7 @@ export function EnvironmentRow({
   const createThreadInEnvironment = useCreateThreadInEnvironment({
     projectId: thread.projectId,
     environmentId: environment?.id ?? "",
+    sectionId: thread.sectionId,
   });
   const { providers } = useSystemEnvironmentProviders();
   const { providers: machineProviders } = useSystemMachineProviders();
