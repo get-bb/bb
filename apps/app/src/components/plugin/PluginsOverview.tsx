@@ -235,7 +235,6 @@ export function PluginsOverview({
         bandClassName={TOOLS_PAGE_BAND_CLASSES}
         toolbar={
           <PluginCollectionToolbar
-            className="max-w-none"
             query={installedQuery}
             searchPlaceholder="Search installed plugins"
             selectedCategories={selectedCategories}
