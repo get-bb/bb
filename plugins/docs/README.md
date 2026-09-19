@@ -228,7 +228,13 @@ file alone. Undo after rejection restores the pending proposal; undo after
 acceptance restores the original file if nobody has changed it. Redo then
 reopens the proposal for review. There is one persisted proposal per document,
 not a revision history. Failed writes leave the candidate available to retry.
+Proposals follow file and folder moves made through Docs and are cleared when
+their document, folder, or vault is removed.
 
 The RPC equivalents are `readProposal`, `proposeNote`, `updateProposal`, and
 `resolveProposal`. `proposal-changed` signals carry `vaultId`, `path`, and
-`version`. Existing file read, save, and sync APIs remain supported.
+`version`. `vault-changed` can include `path` for a single-document change and
+`proposalOnly: true` when the matching `proposal-changed` signal covers it.
+Events without a path still invalidate the whole vault (or all vaults when
+`vaultId` is absent), including external filesystem changes. Existing file
+read, save, and sync APIs remain supported.

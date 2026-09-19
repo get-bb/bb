@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
 import { useRealtime, useRpc } from "@get-bb/plugin-sdk/app";
 import type { docsRpcContract } from "./server.js";
+import { isRecord } from "./markdown-document.js";
 import type { Proposal } from "./proposals.js";
 
 type Rpc = ReturnType<typeof useRpc<typeof docsRpcContract>>;
@@ -283,9 +284,17 @@ export function useDocumentSession(vaultId: string, path: string) {
     sessions.get(key) ?? createDocumentSession(rpc, vaultId, path);
   sessions.set(key, session);
   const result = useSession(session, key);
-  const changed = useCallback(() => {
-    void session.refresh();
-  }, [session]);
+  const changed = useCallback(
+    (payload: unknown) => {
+      if (!isRecord(payload)) return;
+      if (typeof payload.vaultId === "string" && payload.vaultId !== vaultId)
+        return;
+      if (typeof payload.path === "string" && payload.path !== path) return;
+      if (payload.proposalOnly === true) return;
+      void session.refresh();
+    },
+    [session, vaultId, path],
+  );
   useRealtime("vault-changed", changed);
   useRealtime("proposal-changed", changed);
   return result;

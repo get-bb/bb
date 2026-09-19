@@ -454,10 +454,12 @@ function TiptapEditor({
     if (baseRef.current === null) baselineRef.current = null;
     else {
       const body = parseMarkdownDocument(baseRef.current).body;
-      const root = document.createElement("div");
-      root.innerHTML = editor.storage.markdown.parser.parse(
-        displayMarkdown(body, previewBaseUrl, notePath),
-      );
+      const root = new window.DOMParser().parseFromString(
+        editor.storage.markdown.parser.parse(
+          displayMarkdown(body, previewBaseUrl, notePath),
+        ),
+        "text/html",
+      ).body;
       baselineRef.current = ProseMirrorDOMParser.fromSchema(
         editor.schema,
       ).parse(root);

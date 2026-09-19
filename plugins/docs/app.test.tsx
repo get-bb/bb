@@ -7,6 +7,7 @@ import {
   within,
 } from "@testing-library/react";
 import { StrictMode } from "react";
+import { DOMParser as ProseMirrorDOMParser } from "@tiptap/pm/model";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 
@@ -1428,6 +1429,92 @@ describe("Docs nav panel", () => {
       action: "undo",
       expectedVersion: 2,
     });
+  });
+
+  it("parses rich proposal baselines in an inert document and scopes refreshes", async () => {
+    const parse = vi.spyOn(ProseMirrorDOMParser.prototype, "parse");
+    const pending = {
+      vaultId: "personal",
+      path: "scoped-inline.md",
+      version: 1,
+      baseContent: "<p>Original <strong>formatted baseline</strong>.</p>",
+      baseSha256: "original-sha",
+      content: "Revised **formatted baseline**.",
+      status: "pending",
+      resolvedSha256: null,
+    };
+    const readNote = vi.fn(() => ({
+      content: pending.baseContent,
+      sha256: "original-sha",
+    }));
+    const slot = renderSlot(
+      app.messageDirectives[0]!,
+      {
+        attributes: {
+          vault: "personal",
+          path: pending.path,
+          title: "Scoped example",
+        },
+        source: '::docs{vault="personal" path="scoped-inline.md"}',
+        message: {
+          id: "msg_scoped",
+          threadId: "thr_1",
+          turnId: "turn_1",
+          projectId: null,
+        },
+        openWorkspaceFile: null,
+      },
+      {
+        rpc: {
+          readNote,
+          readProposal: () => pending,
+          preparePreview: () => preview,
+        },
+      },
+    );
+    await slot.findByRole("textbox", { name: "Document content" });
+    const baselines = parse.mock.calls
+      .map(([root]) => root)
+      .filter((root) =>
+        root.textContent?.includes("Original formatted baseline"),
+      );
+    expect(baselines.length).toBeGreaterThan(0);
+    for (const root of baselines)
+      expect(root.ownerDocument?.defaultView).toBeNull();
+    expect(slot.container.querySelector("strong")?.textContent).toBe(
+      "formatted baseline",
+    );
+    parse.mockRestore();
+    readNote.mockClear();
+    await slot.emitRealtime("vault-changed", { vaultId: "other" });
+    await slot.emitRealtime("vault-changed", {
+      vaultId: "personal",
+      path: "other.md",
+    });
+    await slot.emitRealtime("proposal-changed", {
+      vaultId: "personal",
+      path: "other.md",
+      version: 2,
+    });
+    await slot.emitRealtime("vault-changed", {
+      vaultId: "personal",
+      path: pending.path,
+      proposalOnly: true,
+    });
+    expect(readNote).not.toHaveBeenCalled();
+    await slot.emitRealtime("proposal-changed", {
+      vaultId: "personal",
+      path: pending.path,
+      version: 2,
+    });
+    await waitFor(() => expect(readNote).toHaveBeenCalledTimes(1));
+    await slot.emitRealtime("vault-changed", {
+      vaultId: "personal",
+      path: pending.path,
+    });
+    await waitFor(() => expect(readNote).toHaveBeenCalledTimes(2));
+    await slot.emitRealtime("vault-changed", {});
+    await waitFor(() => expect(readNote).toHaveBeenCalledTimes(3));
   });
 
   it("uses icon-only redo to reopen the proposal controls", async () => {

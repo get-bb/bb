@@ -903,6 +903,7 @@ export default async function plugin(
     contentEncoding?: "utf8" | "base64";
     expectedSha256?: unknown;
     createOnly?: boolean;
+    proposalOnly?: boolean;
   }) {
     const vault = getVault(args.vaultId);
     const relativePath = requireVaultPath(args.rawPath);
@@ -923,27 +924,34 @@ export default async function plugin(
           : {}),
     });
     if (result.outcome === "written") {
-      bb.realtime.publish("vault-changed", { vaultId: vault.id });
+      bb.realtime.publish("vault-changed", {
+        vaultId: vault.id,
+        path: relativePath,
+        ...(args.proposalOnly ? { proposalOnly: true } : {}),
+      });
     }
     return result;
   }
 
-  const documentOperations = new Map<string, Promise<unknown>>();
+  const vaultOperations = new Map<string, Promise<unknown>>();
 
-  async function serializeDocument<T>(
+  async function serializeVault<T>(
     vaultId: string,
-    relativePath: string,
     work: () => Promise<T>,
   ): Promise<T> {
-    const key = JSON.stringify([vaultId, relativePath]);
-    const previous = documentOperations.get(key) ?? Promise.resolve();
-    const current = previous.catch(() => undefined).then(work);
-    documentOperations.set(key, current);
+    const key = vaultId;
+    const previous = vaultOperations.get(key) ?? Promise.resolve();
+    const current = previous
+      .catch(() => undefined)
+      .then(() => {
+        getVault(vaultId);
+        return work();
+      });
+    vaultOperations.set(key, current);
     try {
       return await current;
     } finally {
-      if (documentOperations.get(key) === current)
-        documentOperations.delete(key);
+      if (vaultOperations.get(key) === current) vaultOperations.delete(key);
     }
   }
 
@@ -963,7 +971,11 @@ export default async function plugin(
     db.prepare(
       "INSERT INTO proposals (vault_id, path, data) VALUES (?, ?, ?) ON CONFLICT(vault_id, path) DO UPDATE SET data = excluded.data",
     ).run(proposal.vaultId, proposal.path, JSON.stringify(proposal));
-    bb.realtime.publish("vault-changed", { vaultId: proposal.vaultId });
+    bb.realtime.publish("vault-changed", {
+      vaultId: proposal.vaultId,
+      path: proposal.path,
+      proposalOnly: true,
+    });
     bb.realtime.publish("proposal-changed", {
       vaultId: proposal.vaultId,
       path: proposal.path,
@@ -1109,14 +1121,40 @@ export default async function plugin(
     const vault = getVault(vaultId);
     const from = requireVaultPath(fromValue);
     const to = requireVaultPath(toValue);
-    await bb.sdk.files.move({
-      ...hostArgs(vault),
-      sourcePath: absolutePath(vault, from),
-      destinationPath: absolutePath(vault, to),
-      rootPath: vault.rootPath,
+    return serializeVault(vault.id, async () => {
+      await bb.sdk.files.move({
+        ...hostArgs(vault),
+        sourcePath: absolutePath(vault, from),
+        destinationPath: absolutePath(vault, to),
+        rootPath: vault.rootPath,
+      });
+      db.transaction(() => {
+        const rows = db
+          .prepare(
+            "SELECT data FROM proposals WHERE vault_id = ? AND (path = ? OR substr(path, 1, length(?)) = ?)",
+          )
+          .all(vault.id, from, `${from}/`, `${from}/`);
+        deleteProposals(vault.id, from);
+        deleteProposals(vault.id, to);
+        const insert = db.prepare(
+          "INSERT INTO proposals (vault_id, path, data) VALUES (?, ?, ?)",
+        );
+        for (const row of rows) {
+          const { data } = z.object({ data: z.string() }).parse(row);
+          const proposal = proposalSchema.parse(JSON.parse(data));
+          proposal.path = to + proposal.path.slice(from.length);
+          insert.run(vault.id, proposal.path, JSON.stringify(proposal));
+        }
+      })();
+      bb.realtime.publish("vault-changed", { vaultId: vault.id });
+      return { path: to };
     });
-    bb.realtime.publish("vault-changed", { vaultId: vault.id });
-    return { path: to };
+  }
+
+  function deleteProposals(vaultId: string, relativePath: string) {
+    db.prepare(
+      "DELETE FROM proposals WHERE vault_id = ? AND (path = ? OR substr(path, 1, length(?)) = ?)",
+    ).run(vaultId, relativePath, `${relativePath}/`, `${relativePath}/`);
   }
 
   async function removePath(
@@ -1126,14 +1164,17 @@ export default async function plugin(
   ): Promise<{ ok: true }> {
     const vault = getVault(vaultId);
     const relativePath = requireVaultPath(rawPath);
-    await bb.sdk.files.remove({
-      ...hostArgs(vault),
-      path: absolutePath(vault, relativePath),
-      rootPath: vault.rootPath,
-      recursive,
+    return serializeVault(vault.id, async () => {
+      await bb.sdk.files.remove({
+        ...hostArgs(vault),
+        path: absolutePath(vault, relativePath),
+        rootPath: vault.rootPath,
+        recursive,
+      });
+      deleteProposals(vault.id, relativePath);
+      bb.realtime.publish("vault-changed", { vaultId: vault.id });
+      return { ok: true };
     });
-    bb.realtime.publish("vault-changed", { vaultId: vault.id });
-    return { ok: true };
   }
 
   function scopeContains(scope: SyncScope, relativePath: string): boolean {
@@ -1538,7 +1579,7 @@ export default async function plugin(
     },
     async proposeNote(input) {
       const vaultId = getVault(input.vaultId).id;
-      return serializeDocument(vaultId, input.path, async () => {
+      return serializeVault(vaultId, async () => {
         const previous = readProposal(vaultId, input.path);
         if ((previous?.version ?? null) !== input.expectedVersion) {
           throw new Error(
@@ -1568,7 +1609,7 @@ export default async function plugin(
     },
     async updateProposal(input) {
       const vaultId = getVault(input.vaultId).id;
-      return serializeDocument(vaultId, input.path, async () => {
+      return serializeVault(vaultId, async () => {
         const proposal = requireProposal(
           vaultId,
           input.path,
@@ -1585,7 +1626,7 @@ export default async function plugin(
     },
     async resolveProposal(input) {
       const vaultId = getVault(input.vaultId).id;
-      return serializeDocument(vaultId, input.path, async () => {
+      return serializeVault(vaultId, async () => {
         const proposal = requireProposal(
           vaultId,
           input.path,
@@ -1627,6 +1668,7 @@ export default async function plugin(
             rawPath: input.path,
             content: restoring ? proposal.baseContent : proposal.content,
             expectedSha256,
+            proposalOnly: true,
           });
           if (result.outcome === "conflict") throw new Error(conflictMessage);
           next.resolvedSha256 = result.sha256;
@@ -1651,7 +1693,7 @@ export default async function plugin(
       return readFile(input.vaultId, input.path);
     },
     async saveNote(input) {
-      return serializeDocument(getVault(input.vaultId).id, input.path, () =>
+      return serializeVault(getVault(input.vaultId).id, () =>
         writeFile({
           vaultId: input.vaultId,
           rawPath: input.path,
@@ -1771,12 +1813,17 @@ export default async function plugin(
     },
     async removeVault(input) {
       const id = requireString(input.vaultId, "vaultId");
-      if (listVaults().length <= 1)
-        throw new Error("At least one vault is required");
-      db.prepare("DELETE FROM entry_order WHERE vault_id = ?").run(id);
-      db.prepare("DELETE FROM vaults WHERE id = ?").run(id);
-      bb.realtime.publish("vault-changed", { vaultId: id });
-      return { ok: true };
+      return serializeVault(id, async () => {
+        if (listVaults().length <= 1)
+          throw new Error("At least one vault is required");
+        db.transaction(() => {
+          db.prepare("DELETE FROM proposals WHERE vault_id = ?").run(id);
+          db.prepare("DELETE FROM entry_order WHERE vault_id = ?").run(id);
+          db.prepare("DELETE FROM vaults WHERE id = ?").run(id);
+        })();
+        bb.realtime.publish("vault-changed", { vaultId: id });
+        return { ok: true as const };
+      });
     },
     async uploadAttachment(input) {
       const vaultId = input.vaultId;
