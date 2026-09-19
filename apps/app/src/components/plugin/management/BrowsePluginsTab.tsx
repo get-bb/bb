@@ -240,7 +240,7 @@ export function BrowsePluginsTab({
         {composing && shelfKey === null ? (
           <BrowseArchetypeCards onCreate={openComposer} />
         ) : (
-          <section className="space-y-6">
+          <section className="space-y-6 [--resource-source-shelf-inset:0px]">
             <PluginCollectionToolbar
               query={query}
               selectedCategories={selectedCategories}
