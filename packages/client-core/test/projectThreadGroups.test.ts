@@ -669,6 +669,38 @@ describe("worktree grouping preference", () => {
     ]);
   });
 
+  it("keeps moved members outside the remaining worktree group", () => {
+    const items = buildSectionThreadList(
+      [
+        ...worktreeSiblings,
+        createThread({
+          id: "moved",
+          environmentId: "env_wt",
+          environmentIsWorktree: true,
+          sectionId: "review",
+        }),
+        createThread({
+          id: "loose",
+          environmentId: "env_wt",
+          environmentIsWorktree: true,
+        }),
+      ],
+      compareStandardThreads,
+      [...sections, { id: "review", name: "Review" }],
+      new Set(),
+      true,
+    );
+    expect(summarizeItems(items)).toEqual([
+      {
+        section: "chronological::sec_work",
+        name: "Work",
+        items: [{ env: "env_wt", threads: ["wt-b", "wt-a"] }],
+      },
+      { section: "chronological::review", name: "Review", items: ["moved"] },
+      "loose",
+    ]);
+  });
+
   it("keeps worktree siblings flat inside a section when disabled", () => {
     const items = buildSectionThreadList(
       worktreeSiblings,

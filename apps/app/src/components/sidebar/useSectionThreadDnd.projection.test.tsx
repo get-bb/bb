@@ -296,6 +296,89 @@ describe("useSectionThreadDnd nest projection", () => {
   });
 });
 
+describe("worktree group drop collisions", () => {
+  it("keeps an empty Threads destination when hidden group children overlap the pointer", () => {
+    const rootItems = buildSectionThreadList(
+      [
+        createThread({
+          id: "first",
+          sectionId: "a",
+          environmentId: "env",
+          environmentIsWorktree: true,
+          createdAt: 3,
+        }),
+        createThread({
+          id: "second",
+          sectionId: "a",
+          environmentId: "env",
+          environmentIsWorktree: true,
+          createdAt: 2,
+        }),
+        createThread({
+          id: "child",
+          sectionId: "a",
+          environmentId: "env",
+          environmentIsWorktree: true,
+          parentThreadId: "second",
+        }),
+      ],
+      undefined,
+      SECTIONS,
+      new Set(),
+      true,
+    );
+    const lookup = collectSectionThreadDndLookup(
+      rootItems,
+      CHRONOLOGICAL_CONTAINER_ID,
+    );
+    const activeId = [...lookup.groupThreadsByItemId.keys()][0];
+    const { result } = renderSectionThreadDnd(rootItems);
+    const props = () => result.current!.dndContextProps;
+    act(() => props().onDragStart?.(dragStart(activeId)));
+    act(() => props().onDragOver?.(dragOver(activeId, "threads")));
+    expect(result.current?.dragOverParentKey).toBe(CHRONOLOGICAL_CONTAINER_ID);
+
+    const sourceRect = {
+      top: 100,
+      left: 0,
+      width: 200,
+      height: 28,
+      right: 200,
+      bottom: 128,
+    };
+    const targetRect = { ...sourceRect, top: 40, bottom: 68 };
+    const sourceIds = [
+      activeId,
+      "first",
+      "second",
+      "child",
+      getSidebarThreadRowDroppableId("child"),
+    ];
+    const droppableRects = new Map([
+      ...sourceIds.map((id): [string, typeof sourceRect] => [id, sourceRect]),
+      [CHRONOLOGICAL_CONTAINER_ID, targetRect],
+    ]);
+    for (const pointerCoordinates of [
+      { x: 20, y: 114 },
+      { x: 20, y: 150 },
+    ]) {
+      const collisions = props().collisionDetection!({
+        active: { id: activeId },
+        collisionRect: sourceRect,
+        droppableRects,
+        droppableContainers: [...droppableRects.keys()].map((id) => ({ id })),
+        pointerCoordinates,
+      } as unknown as Parameters<CollisionDetection>[0]);
+      expect(collisions.map(({ id }) => id)).toEqual([
+        CHRONOLOGICAL_CONTAINER_ID,
+      ]);
+    }
+    act(() =>
+      props().onDragCancel?.({ active: { id: activeId } } as DragCancelEvent),
+    );
+  });
+});
+
 describe("useSectionThreadDnd settled drop cleanup", () => {
   const nestedRootItems = buildSectionThreadList(
     [
