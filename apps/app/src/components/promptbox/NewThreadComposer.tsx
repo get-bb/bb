@@ -114,7 +114,9 @@ import {
   buildReuseThreadOptions,
   resolveHostEnvironmentProvider,
   resolveRootComposeEffectiveEnvironmentValue,
+  type SeededReuseEnvironment,
 } from "@/views/root-compose-environment-selection";
+import { useEnvironment } from "@/hooks/queries/environment-queries";
 import { resolveRootComposeThreadEnvironment } from "@/views/root-compose-thread-environment";
 import {
   MACHINE_SERVER_ACCESS_TITLE,
@@ -542,7 +544,7 @@ export function NewThreadComposer({
   }, [isProjectless, projectId, sidebarNavigationQuery.data]);
   const reuseThreadOptionsLoading =
     projectThreads === undefined && !sidebarNavigationSettled;
-  const reuseThreadOptions = useMemo(
+  const threadDerivedReuseOptions = useMemo(
     () => buildReuseThreadOptions(projectThreads ?? [], worktreeHostNameById),
     [projectThreads, worktreeHostNameById],
   );
@@ -615,6 +617,62 @@ export function NewThreadComposer({
         : newThreadEnvironmentArgsToSeed(seed.environment),
     [seed?.environment],
   );
+  const seededReuseEnvironmentId = useMemo(() => {
+    if (environmentSeed === null) return null;
+    const parsed = parseEnvironmentValue(environmentSeed.selectionValue);
+    return parsed?.type === "reuse" ? parsed.environmentId : null;
+  }, [environmentSeed]);
+  const seededReuseIsThreadDerived =
+    seededReuseEnvironmentId !== null &&
+    threadDerivedReuseOptions.some(
+      (option) => option.environmentId === seededReuseEnvironmentId,
+    );
+  const seededReuseLookupId =
+    seededReuseEnvironmentId !== null && !seededReuseIsThreadDerived
+      ? seededReuseEnvironmentId
+      : null;
+  const seededReuseEnvironmentQuery = useEnvironment(seededReuseLookupId);
+  const seededReuseEnvironmentRow =
+    seededReuseLookupId !== null &&
+    seededReuseEnvironmentQuery.data?.id === seededReuseLookupId &&
+    seededReuseEnvironmentQuery.data.status !== "destroyed"
+      ? seededReuseEnvironmentQuery.data
+      : null;
+  const seededReuseEnvironment = useMemo<SeededReuseEnvironment | null>(() => {
+    if (seededReuseEnvironmentId === null) return null;
+    if (seededReuseIsThreadDerived) {
+      return { environmentId: seededReuseEnvironmentId, status: "available" };
+    }
+    if (seededReuseEnvironmentQuery.isPending) {
+      return { environmentId: seededReuseEnvironmentId, status: "pending" };
+    }
+    return {
+      environmentId: seededReuseEnvironmentId,
+      status: seededReuseEnvironmentRow === null ? "missing" : "available",
+    };
+  }, [
+    seededReuseEnvironmentId,
+    seededReuseEnvironmentQuery.isPending,
+    seededReuseEnvironmentRow,
+    seededReuseIsThreadDerived,
+  ]);
+  const reuseThreadOptions = useMemo(() => {
+    if (seededReuseEnvironmentRow === null) return threadDerivedReuseOptions;
+    return [
+      ...threadDerivedReuseOptions,
+      {
+        environmentId: seededReuseEnvironmentRow.id,
+        branchName: seededReuseEnvironmentRow.branchName,
+        name: seededReuseEnvironmentRow.name,
+        path: seededReuseEnvironmentRow.path,
+        environmentProviderId:
+          seededReuseEnvironmentRow.environmentProviderId ?? null,
+        hostName:
+          worktreeHostNameById?.get(seededReuseEnvironmentRow.hostId) ?? null,
+        threads: [],
+      },
+    ];
+  }, [seededReuseEnvironmentRow, threadDerivedReuseOptions, worktreeHostNameById]);
   const { value: storedMachineId, setValue: setStoredMachineId } =
     usePromptBoxMachinePreference(projectId);
   const [activeSeedSignature, setActiveSeedSignature] = useState(seedSignature);
@@ -706,6 +764,7 @@ export function NewThreadComposer({
         projectSources,
         reuseThreadOptions,
         reuseThreadOptionsLoading,
+        seededReuseEnvironment,
       });
       const providerSelection = resolveProviderSelection(effectiveValue);
       if (providerSelection !== null) {
@@ -727,6 +786,7 @@ export function NewThreadComposer({
       resolveProviderSelection,
       reuseThreadOptions,
       reuseThreadOptionsLoading,
+      seededReuseEnvironment,
     ],
   );
   const projectDefaultsQuery = useProjectDefaultExecutionOptions(
@@ -889,6 +949,7 @@ export function NewThreadComposer({
         projectSources,
         reuseThreadOptions,
         reuseThreadOptionsLoading,
+        seededReuseEnvironment,
       }),
     [
       environmentSelectionValue,
@@ -899,6 +960,7 @@ export function NewThreadComposer({
       projectSources,
       reuseThreadOptions,
       reuseThreadOptionsLoading,
+      seededReuseEnvironment,
     ],
   );
   const parsedEnvironment = useMemo(
