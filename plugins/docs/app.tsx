@@ -10,6 +10,7 @@ import {
   definePluginApp,
   experimental_FileLink as FileLink,
   useBbNavigate,
+  useComposer,
   useRpc,
   useRealtime,
   type PluginFileOpenerProps,
@@ -18,6 +19,19 @@ import {
   type PluginThreadPanelProps,
   type ExperimentalLiveFileTarget,
 } from "@get-bb/plugin-sdk/app";
+import {
+  DOMParser as ProseMirrorDOMParser,
+  type Node as ProseMirrorNode,
+} from "@tiptap/pm/model";
+import { createProposalDiff, proposalDiffKey } from "./proposal-diff.js";
+import { useDocumentSession } from "./document-session.js";
+import { Icon } from "@bb/shared-ui/icon";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@bb/shared-ui/tooltip";
 import type { docsRpcContract } from "./server.js";
 import { isRecord, parseMarkdownDocument } from "./markdown-document.js";
 import {
@@ -306,6 +320,7 @@ const EDITOR_CSS = `
   font-size: 15px; line-height: 1.75; color: var(--foreground); caret-color: var(--foreground);
   overflow-wrap: break-word; -webkit-font-smoothing: antialiased;
 }
+.bb-simple-notes-editor[data-inline="true"] .tiptap { padding: 1.25rem 1.5rem; max-width: none; min-height: 8rem; font-size: inherit; }
 .bb-simple-notes-editor .tiptap > :first-child,
 .bb-simple-notes-editor .tiptap li > :first-child,
 .bb-simple-notes-editor .tiptap blockquote > :first-child { margin-top: 0; }
@@ -402,6 +417,11 @@ function TiptapEditor({
   onUpload,
   onFirstRender,
   onMarkdownChange,
+  value,
+  baseMarkdown = null,
+  inline = false,
+  disabled = false,
+  onFocusChange,
 }: {
   initialValue: string;
   previewBaseUrl: string;
@@ -409,8 +429,39 @@ function TiptapEditor({
   onUpload(file: File): Promise<{ markdownPath: string }>;
   onFirstRender(markdown: string): void;
   onMarkdownChange(markdown: string): void;
+  value?: string;
+  baseMarkdown?: string | null;
+  inline?: boolean;
+  disabled?: boolean;
+  onFocusChange?(focused: boolean): void;
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
+  const editorRef = useRef<Editor | null>(null);
+  const baselineRef = useRef<ProseMirrorNode | null>(null);
+  const sourceRef = useRef(initialValue);
+  const valueRef = useRef(value);
+  valueRef.current = value;
+  const baseRef = useRef(baseMarkdown);
+  baseRef.current = baseMarkdown;
+  const focusRef = useRef(onFocusChange);
+  focusRef.current = onFocusChange;
+  const serializeRef = useRef<() => string>(() => "");
+  const setBase = (editor: Editor) => {
+    if (baseRef.current === null) baselineRef.current = null;
+    else {
+      const body = parseMarkdownDocument(baseRef.current).body;
+      const root = document.createElement("div");
+      root.innerHTML = editor.storage.markdown.parser.parse(
+        displayMarkdown(body, previewBaseUrl, notePath),
+      );
+      baselineRef.current = ProseMirrorDOMParser.fromSchema(
+        editor.schema,
+      ).parse(root);
+    }
+    editor.view.dispatch(
+      editor.state.tr.setMeta(proposalDiffKey, { refresh: true }),
+    );
+  };
   const uploadRef = useRef(onUpload);
   uploadRef.current = onUpload;
   const firstRef = useRef(onFirstRender);
@@ -421,10 +472,8 @@ function TiptapEditor({
   useEffect(() => {
     ensureEditorStyles();
     if (!rootRef.current) return;
-    const markdownDocument = parseMarkdownDocument(initialValue);
-    const bodyLeadingBreaks = markdownDocument.frontmatter
-      ? (/^(?:\r?\n)*/.exec(markdownDocument.body)?.[0] ?? "")
-      : "";
+    sourceRef.current = valueRef.current ?? initialValue;
+    const markdownDocument = parseMarkdownDocument(sourceRef.current);
     let editor: Editor;
     const upload = async (file: File) => {
       if (!file.type.startsWith("image/")) return false;
@@ -443,6 +492,7 @@ function TiptapEditor({
       element: rootRef.current,
       extensions: [
         StarterKit,
+        createProposalDiff({ getBaseDocument: () => baselineRef.current }),
         Link.configure({ openOnClick: false, autolink: true }),
         Image.configure({ allowBase64: false }),
         TaskList,
@@ -462,8 +512,21 @@ function TiptapEditor({
         }),
       ],
       content: displayMarkdown(markdownDocument.body, previewBaseUrl, notePath),
-      autofocus: "end",
+      autofocus: inline ? false : "end",
+      editable: !disabled,
+      onFocus: () => focusRef.current?.(true),
+      onBlur: () => focusRef.current?.(false),
       editorProps: {
+        attributes: {
+          role: "textbox",
+          "aria-label": "Document content",
+          "aria-multiline": "true",
+        },
+        handleKeyDown(view, event) {
+          if (!inline || event.key !== "Escape") return false;
+          view.dom.blur();
+          return true;
+        },
         handlePaste(_view, event) {
           const file = [...(event.clipboardData?.files ?? [])].find(
             (candidate) => candidate.type.startsWith("image/"),
@@ -483,25 +546,66 @@ function TiptapEditor({
         },
       },
     });
-    const getMarkdown = () =>
-      markdownDocument.frontmatter +
-      bodyLeadingBreaks +
-      storedMarkdown(
-        editor.storage.markdown.getMarkdown(),
-        previewBaseUrl,
-        notePath,
+    editorRef.current = editor;
+    setBase(editor);
+    const getMarkdown = () => {
+      const current = parseMarkdownDocument(sourceRef.current);
+      const leadingBreaks = current.frontmatter
+        ? (/^(?:\r?\n)*/.exec(current.body)?.[0] ?? "")
+        : "";
+      return (
+        current.frontmatter +
+        leadingBreaks +
+        storedMarkdown(
+          editor.storage.markdown.getMarkdown(),
+          previewBaseUrl,
+          notePath,
+        )
       );
+    };
+    serializeRef.current = getMarkdown;
     firstRef.current(getMarkdown());
     editor.on("update", () => changeRef.current(getMarkdown()));
     return () => {
       editor.destroy();
+      editorRef.current = null;
     };
-  }, [initialValue, notePath, previewBaseUrl]);
+  }, [initialValue, notePath, previewBaseUrl, inline]);
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor || value === undefined) return;
+    if (value !== sourceRef.current && value !== serializeRef.current()) {
+      const { from, to } = editor.state.selection;
+      const focused = editor.isFocused;
+      editor.commands.setContent(
+        displayMarkdown(
+          parseMarkdownDocument(value).body,
+          previewBaseUrl,
+          notePath,
+        ),
+        false,
+      );
+      if (focused)
+        editor.commands.setTextSelection({
+          from: Math.min(from, editor.state.doc.content.size),
+          to: Math.min(to, editor.state.doc.content.size),
+        });
+    }
+    sourceRef.current = value;
+  }, [value, notePath, previewBaseUrl]);
+  useEffect(() => {
+    if (editorRef.current) setBase(editorRef.current);
+  }, [baseMarkdown]);
+  useEffect(() => {
+    editorRef.current?.setEditable(!disabled, false);
+  }, [disabled]);
 
   return (
     <div
       ref={rootRef}
-      className="bb-simple-notes-editor min-h-0 flex-1 overflow-y-auto"
+      data-inline={inline}
+      className="bb-simple-notes-editor min-h-0 flex-1 overflow-y-auto text-sm"
     />
   );
 }
@@ -732,6 +836,230 @@ function parseDocumentRef(value: unknown): DocumentRef | null {
   return { vaultId, path, title };
 }
 
+function DocumentAction({
+  label,
+  icon,
+  disabled = false,
+  onClick,
+}: {
+  label: string;
+  icon: string;
+  disabled?: boolean;
+  onClick(): void;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="inline-flex">
+          <button
+            type="button"
+            aria-label={label}
+            disabled={disabled}
+            onClick={onClick}
+            className="inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-default disabled:opacity-40"
+          >
+            <Icon name={icon} className="size-3" />
+          </button>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+function InlineDocument({
+  document,
+  openInTab,
+}: {
+  document: DocumentRef;
+  openInTab?(): void;
+}) {
+  const { state, session } = useDocumentSession(
+    document.vaultId,
+    document.path,
+  );
+  const rpc = useRpc<typeof docsRpcContract>();
+  const composer = useComposer();
+  const [editing, setEditing] = useState(false);
+  const [asking, setAsking] = useState(false);
+  const [askError, setAskError] = useState<string | null>(null);
+  const pending = state.proposal?.status === "pending" ? state.proposal : null;
+  const stale = pending !== null && pending.baseSha256 !== state.sha256;
+  const undo =
+    state.proposal &&
+    ((state.proposal.status === "accepted" &&
+      state.proposal.resolvedSha256 === state.sha256) ||
+      (state.proposal.status === "rejected" &&
+        state.proposal.baseSha256 === state.sha256));
+  const redo =
+    state.proposal?.status === "undone" &&
+    state.proposal.baseSha256 === state.sha256;
+  const ask = async () => {
+    setAsking(true);
+    setAskError(null);
+    try {
+      await session.flush();
+      composer.updateText(
+        (current) => `${current}${current.trim() ? "\n\n" : ""}Update `,
+      );
+      composer.insertMention({
+        provider: "note",
+        id: `${document.vaultId}:${document.path}`,
+        label: document.title,
+      });
+      composer.focus();
+    } catch (error) {
+      setAskError(errorMessage(error));
+    } finally {
+      setAsking(false);
+    }
+  };
+  const baseMetadata = pending
+    ? parseMarkdownDocument(pending.baseContent).frontmatter
+    : "";
+  const candidateMetadata = pending
+    ? parseMarkdownDocument(state.draft).frontmatter
+    : "";
+  return (
+    <TooltipProvider delayDuration={200}>
+      <section
+        aria-label={document.title}
+        className="my-2 min-w-0 overflow-hidden rounded-lg border border-border bg-background"
+      >
+        <header className="flex items-center gap-2 border-b border-border px-3 py-1.5 text-xs text-muted-foreground">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <span className="shrink-0 font-semibold">Docs</span>
+            <span className="truncate opacity-70">{document.title}</span>
+          </div>
+          <div
+            className="flex shrink-0 items-center gap-0.5"
+            role="group"
+            aria-label="Document actions"
+          >
+            {pending && (
+              <>
+                <DocumentAction
+                  label="Accept"
+                  icon="Check"
+                  disabled={state.busy || state.saving || stale}
+                  onClick={() => void session.resolve("accept")}
+                />
+                <DocumentAction
+                  label="Reject"
+                  icon="X"
+                  disabled={state.busy}
+                  onClick={() => void session.resolve("reject")}
+                />
+              </>
+            )}
+            {undo && !state.dirty && (
+              <DocumentAction
+                label="Undo"
+                icon="ArrowTurnBackward"
+                disabled={state.busy}
+                onClick={() => void session.resolve("undo")}
+              />
+            )}
+            {redo && !state.dirty && (
+              <DocumentAction
+                label="Redo"
+                icon="ArrowTurnForward"
+                disabled={state.busy}
+                onClick={() => void session.resolve("redo")}
+              />
+            )}
+            <DocumentAction
+              label="Ask for changes"
+              icon="MessageSquare"
+              disabled={!state.loaded || state.busy || asking}
+              onClick={() => void ask()}
+            />
+            {openInTab && (
+              <>
+                <span className="mx-1 h-4 border-l border-border" />
+                <DocumentAction
+                  label="Open in tab"
+                  icon="ExternalLink"
+                  onClick={openInTab}
+                />
+              </>
+            )}
+          </div>
+        </header>
+        {(state.error || askError) && (
+          <div
+            className="flex items-center gap-2 px-4 py-2 text-xs text-destructive"
+            role="alert"
+          >
+            <span>{state.error || askError}</span>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() =>
+                void (state.dirty ? session.flush() : session.refresh()).catch(
+                  () => undefined,
+                )
+              }
+            >
+              Retry
+            </Button>
+          </div>
+        )}
+        {stale && (
+          <p className="px-4 py-2 text-xs text-muted-foreground">
+            This document changed. Ask for an updated proposal before accepting.
+          </p>
+        )}
+        {!state.loaded ? (
+          <DocumentSkeleton />
+        ) : (
+          <div
+            data-editing={editing}
+            className="min-w-0 data-[editing=true]:bg-muted/10 data-[editing=true]:ring-1 data-[editing=true]:ring-inset data-[editing=true]:ring-ring/50"
+          >
+            {pending && baseMetadata !== candidateMetadata && (
+              <div className="px-6 pt-4 text-xs">
+                <p className="mb-2 font-medium">Document metadata</p>
+                {baseMetadata && (
+                  <pre className="whitespace-pre-wrap bg-diff-removed/10 text-diff-removed">
+                    <del>{baseMetadata}</del>
+                  </pre>
+                )}
+                {candidateMetadata && (
+                  <pre className="whitespace-pre-wrap bg-diff-added/10 text-diff-added">
+                    {candidateMetadata}
+                  </pre>
+                )}
+              </div>
+            )}
+            <TiptapEditor
+              initialValue=""
+              value={state.draft}
+              baseMarkdown={pending?.baseContent ?? null}
+              inline
+              disabled={state.busy}
+              previewBaseUrl={state.previewBaseUrl}
+              notePath={document.path}
+              onFocusChange={setEditing}
+              onFirstRender={() => undefined}
+              onMarkdownChange={session.edit}
+              onUpload={async (file) => {
+                const result = await rpc.call("uploadAttachment", {
+                  vaultId: document.vaultId,
+                  notePath: document.path,
+                  name: file.name,
+                  content: await fileToBase64(file),
+                });
+                return { markdownPath: result.markdownPath };
+              }}
+            />
+          </div>
+        )}
+      </section>
+    </TooltipProvider>
+  );
+}
+
 function DocsDirectiveCard({ attributes }: PluginMessageDirectiveProps) {
   const navigate = useBbNavigate();
   const document = parseDocumentRef(attributes);
@@ -758,6 +1086,8 @@ function DocsDirectiveCard({ attributes }: PluginMessageDirectiveProps) {
     });
     if (!opened) openInDocs();
   };
+  if (!/\.html?$/i.test(document.path))
+    return <InlineDocument document={document} openInTab={openPreview} />;
   return (
     <div className="my-3 flex h-11 items-center gap-1 rounded-lg border border-border bg-card px-2 shadow-sm transition-colors hover:bg-state-hover">
       <button
@@ -836,6 +1166,8 @@ function DocumentPanel({ params }: PluginThreadPanelProps) {
         Open a Docs card from a message to edit it here.
       </div>
     );
+  if (!/\.html?$/i.test(document.path))
+    return <InlineDocument document={document} />;
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border pb-2">

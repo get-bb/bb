@@ -58,12 +58,12 @@ provider, and directive are all Docs.
   iframe never receives `allow-same-origin`.
 - **Chat mentions:** `@` searches every vault's titles, previews, filenames,
   and folders. A selected document resolves to its latest content at send time.
-- **Thread links:** agents can emit a Docs directive that renders as a document
-  card. Clicking the card opens an editable, autosaving document in the thread
-  side panel; its secondary action opens the full Docs editor. The side-panel
-  editor can quote its selection (or full document) into the thread composer or
-  insert a live Docs mention. These composer actions are intentionally absent
-  from the full nav editor and generic file-opener tabs.
+- **Thread documents:** Markdown cards are editable and autosave directly in
+  the timeline. Open in tab opens the same document with shared editing state.
+  Pending agent proposals show live inline additions and deletions, with compact
+  Accept, Reject, Undo, and Redo controls. Ask for changes stays available and
+  adds an `Update` prompt with a Docs mention to the existing composer draft.
+  Ordinary user edits do not show a diff. HTML cards open a sandboxed preview.
 
   ```md
   ::docs{vault="personal" path="plans/release-plan.md" title="Release plan"}
@@ -202,3 +202,33 @@ bb plugin install simple-notes
 bb plugin config simple-notes set directory "~/Notes"
 bb plugin reload simple-notes
 ```
+
+## Inline editing and proposed revisions
+
+Markdown document cards support inline editing and opening the same file in a
+Docs tab. An agent can propose a complete revision without modifying the file:
+
+```sh
+bb docs read letter.md --vault personal --json
+bb docs proposal letter.md --vault personal --json
+bb docs propose letter.md --vault personal --file ./candidate.md --expected-sha256 HASH --version none --json
+```
+
+Use the returned proposal version instead of `none` when replacing a previous
+proposal. `--file` is read on the thread's workspace host; `--workspace-host`
+overrides that host. The expected hash must come from the document used to
+write the candidate. Every proposal mutation checks its version, including
+replacement after rejection, so a delayed response cannot restore stale work.
+
+`bb docs proposal-update letter.md --version N --content MARKDOWN` updates only
+the pending candidate. `bb docs accept|reject|undo|redo letter.md --version N`
+performs the same actions as the card. All accept `--vault` and `--json`.
+Accept saves only when the original file hash still matches. Reject leaves the
+file alone. Undo after rejection restores the pending proposal; undo after
+acceptance restores the original file if nobody has changed it. Redo then
+reopens the proposal for review. There is one persisted proposal per document,
+not a revision history. Failed writes leave the candidate available to retry.
+
+The RPC equivalents are `readProposal`, `proposeNote`, `updateProposal`, and
+`resolveProposal`. `proposal-changed` signals carry `vaultId`, `path`, and
+`version`. Existing file read, save, and sync APIs remain supported.
