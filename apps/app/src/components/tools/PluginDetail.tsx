@@ -461,8 +461,12 @@ export function PluginDetail({
             openDisabled={openSourceDisabled}
             onOpen={() => onOpenSource(plugin)}
           />
-        ) : catalogEntry === undefined ? null : (
-          <PluginMarketplaceSource entry={catalogEntry} />
+        ) : (
+          <PluginMarketplaceSource
+            entry={
+              catalogEntry ?? { repositoryUrl: null, source: plugin.source }
+            }
+          />
         )}
         <ResourceDetailReleaseSection
           label="Details"
