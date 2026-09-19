@@ -275,7 +275,7 @@ function mockToolbarWidth(initial: number, publishedWidth = 96) {
   style.id = "toolbar-test-layout";
   style.textContent = `
     [data-resource-toolbar] { column-gap: 8px; }
-    [data-resource-toolbar] > div:first-child { flex-basis: 160px; }
+    [data-resource-toolbar] > form { flex-basis: 160px; }
   `;
   document.head.append(style);
   vi.stubGlobal(
@@ -456,6 +456,33 @@ describe("PluginCollectionToolbar", () => {
     act(() => search.focus());
     act(() => search.blur());
     expect(screen.getByRole("button", { name: "Filter & sort" })).toBeTruthy();
+  });
+
+  it("keeps expanded search open while tabbing to its submit button and restores input focus after submission", () => {
+    mockToolbarWidth(320);
+    render(<ToolbarHarness installed createAction />);
+    const search = screen.getByRole("textbox", { name: "Search plugins" });
+    act(() => search.focus());
+    fireEvent.change(search, { target: { value: "Notes" } });
+    const submit = screen.getByRole("button", { name: "Search", exact: true });
+    act(() => submit.focus());
+    expect(document.activeElement).toBe(submit);
+    expect(screen.queryByRole("button", { name: "Create" })).toBeNull();
+    fireEvent.click(submit);
+    expect(document.activeElement).toBe(search);
+    expect(screen.getByRole("button", { name: "Filter & sort" })).toBeTruthy();
+    expect(screen.getByLabelText("Parameters").textContent).toBe(
+      "query=Notes&category=security&source=user&sort=name&direction=desc",
+    );
+    fireEvent.click(search);
+    expect(
+      screen.getByRole("button", { name: "Search", exact: true }),
+    ).toBeTruthy();
+    fireEvent.keyDown(search, { key: "Escape" });
+    expect(document.activeElement).toBe(search);
+    expect(
+      screen.queryByRole("button", { name: "Search", exact: true }),
+    ).toBeNull();
   });
 
   it("keeps wide search beside its controls when focused", () => {
