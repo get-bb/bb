@@ -16,7 +16,7 @@ import {
   ResourceListState,
 } from "@bb/shared-ui/resource-list";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { CreateWithTemplatesButton } from "@/components/create-via-prompt-examples";
+import { PluginCreateButton } from "./PluginCreateButton";
 import { CREATE_PLUGIN_PROMPT } from "@bb/client-core";
 import { TOOLS_PAGE_BAND_CLASSES } from "@/components/tools/tools-navigation";
 import {
@@ -206,21 +206,10 @@ export function PluginsOverview({
   };
 
   const installedActions = (
-    <>
-      <CreateWithTemplatesButton
-        kind="plugin"
-        compactWhenNarrow
-        label="New plugin"
-        menuActions={[
-          {
-            label: "Install from source",
-            icon: "Download",
-            onSelect: () => setAddDialog({ open: true, initial: null }),
-          },
-        ]}
-        onCreate={startCreatePlugin}
-      />
-    </>
+    <PluginCreateButton
+      onCreate={startCreatePlugin}
+      onInstallFromSource={() => setAddDialog({ open: true, initial: null })}
+    />
   );
 
   const openPlugin =
