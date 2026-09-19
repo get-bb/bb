@@ -150,7 +150,7 @@ export function PluginCollectionToolbar({
     ? {
         ...sourceFilter,
         label: "Source",
-        icon: "PackageReceive" as const,
+        icon: "Download" as const,
         compact: true,
         clearInFooter: true,
         showHeading: false,
