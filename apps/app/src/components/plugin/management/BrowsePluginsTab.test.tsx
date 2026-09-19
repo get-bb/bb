@@ -9,6 +9,8 @@ import type {
 } from "@/hooks/queries/plugin-catalog-queries";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { BrowsePluginsTab } from "./BrowsePluginsTab";
+import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
+import { PLUGINS_BROWSE_DESCRIPTION } from "../plugins-collection-copy";
 
 vi.mock("@/components/plugin/PluginNewThreadComposer", () => ({
   PluginNewThreadComposer: ({ initialPrompt }: { initialPrompt?: string }) => (
@@ -136,6 +138,40 @@ afterEach(() => {
 });
 
 describe("BrowsePluginsTab", () => {
+  it("puts the shared create action in the compact toolbar and keeps the page description", async () => {
+    stubCatalog({ entries: [MEMORY_ENTRY], collections: [] });
+    const { wrapper } = createQueryClientTestHarness();
+    render(
+      <CompactViewportOverrideProvider isCompactViewport>
+        <MemoryRouter initialEntries={["/plugins?query=Memory"]}>
+          <BrowsePluginsTab
+            onInstall={() => undefined}
+            onOpenPlugin={() => undefined}
+            onInstallFromSource={() => undefined}
+          />
+          <LocationProbe />
+        </MemoryRouter>
+      </CompactViewportOverrideProvider>,
+      { wrapper },
+    );
+    const create = await screen.findByRole("button", { name: "New plugin" });
+    expect(create.closest("[data-resource-toolbar]")).toBeTruthy();
+    expect(
+      screen
+        .getByRole("button", { name: "New plugin options" })
+        .closest("[data-resource-toolbar]"),
+    ).toBe(create.closest("[data-resource-toolbar]"));
+    expect(
+      screen.getAllByText(PLUGINS_BROWSE_DESCRIPTION).length,
+    ).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: "Plugin Guide" })).toBeNull();
+    fireEvent.click(create);
+    expect(await screen.findByTestId("inline-composer")).toBeTruthy();
+    expect(screen.getByTestId("location-search").textContent).toContain(
+      "query=Memory&view=create",
+    );
+  });
+
   it("shows collection shelves before category shelves", async () => {
     renderBrowse({
       entries: [
@@ -522,7 +558,7 @@ describe("BrowsePluginsTab", () => {
     expect(
       await screen.findByRole("button", { name: "Open Memory details" }),
     ).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Create a plugin" }));
+    fireEvent.click(screen.getByRole("button", { name: "New plugin" }));
     expect(await screen.findByText("Start from an example")).toBeTruthy();
     expect(screen.getByText("Explore plugin capabilities")).toBeTruthy();
     expect(
@@ -536,9 +572,7 @@ describe("BrowsePluginsTab", () => {
   it("routes every create affordance into the inline composer", async () => {
     renderBrowse({ entries: [MEMORY_ENTRY], collections: [] });
 
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Create a plugin" }),
-    );
+    fireEvent.click(await screen.findByRole("button", { name: "New plugin" }));
     expect((await screen.findByTestId("inline-composer")).textContent).toBe(
       "Create a new bb plugin that ",
     );

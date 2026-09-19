@@ -1,13 +1,7 @@
 import { usePluginCollectionParams } from "./usePluginCollectionParams";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Button } from "@bb/shared-ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@bb/shared-ui/dropdown-menu";
+import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { Icon } from "@bb/shared-ui/icon";
 import bbLogoUrl from "../../../../../../assets/bb-logo.svg";
 import { OpenPluginGuideButton } from "./OpenPluginGuideButton";
@@ -18,6 +12,7 @@ import {
   ResourceListState,
   ResourceShelfAction,
   ResourceSourceShelf,
+  ResourceTabDescription,
   useResourceRouteLabel,
 } from "@bb/shared-ui/resource-list";
 import { BrowseArchetypeCards } from "@/components/plugin/browse-hero/BrowseArchetypeCards";
@@ -29,6 +24,8 @@ import { usePluginCatalogSearch } from "@/hooks/queries/plugin-catalog-queries";
 import type { AddPluginInitial } from "./AddPluginDialog";
 import { PluginCatalogCard, PluginCatalogGrid } from "./PluginCatalogCard";
 import { PluginCollectionToolbar } from "./PluginBrowseControls";
+import { PluginCreateButton } from "../PluginCreateButton";
+import { PLUGINS_BROWSE_DESCRIPTION } from "../plugins-collection-copy";
 import {
   pluginBrowseShelves,
   pluginCategoryFilterId,
@@ -49,6 +46,7 @@ export function BrowsePluginsTab({
   onOpenPlugin: (pluginId: string, trigger: HTMLButtonElement) => void;
   onInstallFromSource: () => void;
 }) {
+  const isCompact = useIsCompactViewport();
   const {
     searchParams,
     query,
@@ -150,6 +148,18 @@ export function BrowsePluginsTab({
       nonce: nextComposerRequestNonce(),
       ...(seed === undefined ? {} : { seed }),
     });
+  const createAction = (
+    <PluginCreateButton
+      onCreate={(seed) => {
+        if (seed !== undefined) {
+          openComposer(seed);
+        } else if (!creationViewActive) {
+          changeSearchParams((next) => next.set("view", "create"), false);
+        }
+      }}
+      onInstallFromSource={onInstallFromSource}
+    />
+  );
   if (requestedCreationView !== creationViewActive) {
     setRequestedCreationView(creationViewActive);
     setHeroRequest({
@@ -207,44 +217,18 @@ export function BrowsePluginsTab({
           </div>
         ) : (
           <>
-            <div className="flex items-center justify-between gap-3">
-              <OpenPluginGuideButton />
-              <div className="flex shrink-0 items-stretch">
-                <Button
-                  className="rounded-r-none"
-                  onClick={() => {
-                    if (creationViewActive) return;
-                    changeSearchParams(
-                      (next) => next.set("view", "create"),
-                      false,
-                    );
-                  }}
-                >
-                  <Icon name="MessageSquarePlus" className="size-3.5" />
-                  <span>
-                    Create <span className="hidden sm:inline">a</span> plugin
-                  </span>
-                </Button>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      aria-label="Create a plugin options"
-                      className="rounded-l-none border-l border-l-primary-foreground/20 px-1.5"
-                    >
-                      <Icon name="ChevronDown" className="size-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-max min-w-40">
-                    <DropdownMenuItem onSelect={onInstallFromSource}>
-                      <Icon name="Download" className="size-4" />
-                      Install from source
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+            {isCompact ? (
+              <ResourceTabDescription>
+                {PLUGINS_BROWSE_DESCRIPTION}
+              </ResourceTabDescription>
+            ) : (
+              <div className="flex items-center justify-between gap-3">
+                <OpenPluginGuideButton />
+                {createAction}
               </div>
-            </div>
+            )}
 
-            <div className={cn(!composing && "hidden sm:block")}>
+            <div className={cn(!composing && isCompact && "hidden")}>
               <BrowseHeroCarousel
                 openRequest={heroRequest}
                 onComposingChange={setComposing}
@@ -266,6 +250,7 @@ export function BrowsePluginsTab({
               sortDirection={sortDirection}
               installsKnown={installsKnown}
               changeSearchParams={changeSearchParams}
+              action={isCompact && shelfKey === null ? createAction : undefined}
             />
 
             {(searchQuery.isError || activeQuery.isError) &&

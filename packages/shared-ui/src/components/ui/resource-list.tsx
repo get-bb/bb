@@ -18,6 +18,7 @@ export {
   ResourceMultiSelectMenu,
   ResourceSortMenu,
   ResourceToolbar,
+  ResourceTabDescription,
 } from "./resource/toolbar";
 export {
   ResourceActionButton,
