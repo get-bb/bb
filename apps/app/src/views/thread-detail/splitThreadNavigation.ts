@@ -2,6 +2,8 @@ import type { ThreadRoutePathArgs } from "@/lib/route-paths";
 import type { ThreadOpenSplit, ThreadPaneAction } from "@bb/server-contract";
 import {
   countPanes,
+  createComposerPaneId,
+  replaceWithNewThreadComposer,
   findPane,
   findPaneByContent,
   findPaneByThread,
@@ -160,6 +162,23 @@ export function applyThreadOpenToLayout(
   return decision.zone === "center"
     ? replacePaneContent(layout, layout.focusedPaneId, content)
     : splitPane(layout, layout.focusedPaneId, decision.zone, content);
+}
+
+export function applyNewThreadOpenToLayout(
+  layout: SplitLayout | null,
+  split: ThreadOpenSplit,
+): SplitLayout {
+  if (layout === null) {
+    const paneId = createComposerPaneId();
+    return {
+      root: { type: "pane", paneId, content: { kind: "new-thread" } },
+      focusedPaneId: paneId,
+    };
+  }
+  const zone = threadOpenSplitZone(split);
+  return zone === "center" || countPanes(layout.root) >= MAX_PANES
+    ? replaceWithNewThreadComposer(layout, layout.focusedPaneId)
+    : splitPane(layout, layout.focusedPaneId, zone, { kind: "new-thread" });
 }
 
 interface ThreadPaneActionLayoutResult {

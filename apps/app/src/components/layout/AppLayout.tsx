@@ -113,7 +113,12 @@ import {
 import { wsManager } from "@/lib/ws";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import { findPaneByThread } from "@/lib/split-layout";
-import { applyThreadOpenToLayout } from "@/views/thread-detail/splitThreadNavigation";
+import { NewThreadPaneGuard } from "@/views/thread-detail/NewThreadPaneGuard";
+import { requestSplitLayoutChange } from "@/lib/split-layout/newThreadPaneGuard";
+import {
+  applyNewThreadOpenToLayout,
+  applyThreadOpenToLayout,
+} from "@/views/thread-detail/splitThreadNavigation";
 import { useAppSettingsRouteMemory } from "@/hooks/useAppSettingsRouteMemory";
 import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
 import { BackToAppCommandHandler } from "./BackToAppCommandHandler";
@@ -436,10 +441,30 @@ export function AppLayout({ children }: AppLayoutProps) {
           { projectId: signal.projectId, threadId: signal.threadId },
           isCompactViewport ? "replace" : signal.split,
         );
-        if (next !== current) {
-          store.set(splitLayoutAtom, next);
+        requestSplitLayoutChange(store, next, () => {
+          void navigate(route, alreadyOpen ? { replace: true } : undefined);
+        });
+      }),
+    [isCompactViewport, navigate, store],
+  );
+  useEffect(
+    () =>
+      wsManager.onThreadOpenNew((signal) => {
+        if (isCompactViewport) {
+          void navigate(getRootComposeRoutePath(), {
+            state: { focusPrompt: true },
+          });
+          return;
         }
-        void navigate(route, alreadyOpen ? { replace: true } : undefined);
+        const next = applyNewThreadOpenToLayout(
+          store.get(splitLayoutAtom),
+          signal.split,
+        );
+        requestSplitLayoutChange(store, next, () => {
+          void navigate(getRootComposeRoutePath(), {
+            state: { composerPaneId: next.focusedPaneId, focusPrompt: true },
+          });
+        });
       }),
     [isCompactViewport, navigate, store],
   );
@@ -748,6 +773,7 @@ export function AppLayout({ children }: AppLayoutProps) {
 
   return (
     <TooltipProvider delayDuration={300} disableHoverableContent>
+      <NewThreadPaneGuard />
       <ProjectActionsProvider>
         <ThreadTitleMentionResourcesProvider {...titleMentionResources}>
           <ThreadActionsProvider>

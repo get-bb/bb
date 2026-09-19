@@ -16,7 +16,7 @@ const PROMPT_DRAFT_PERSIST_DEBOUNCE_MS = 250;
 
 export type PromptDraftScope =
   | { kind: "automation-edit"; automationId: string }
-  | { kind: "new-thread" }
+  | { kind: "new-thread"; key?: string }
   | { kind: "plugin-new-thread"; key: string }
   | { kind: "thread"; projectId: string; threadId: string };
 
@@ -248,6 +248,10 @@ function getPromptDraftStorageKey(scope: PromptDraftScope): string {
     return `${PROMPT_DRAFT_STORAGE_PREFIX}-automation-edit-${normalizedAutomationId}-${PROMPT_DRAFT_STORAGE_VERSION}`;
   }
   if (scope.kind === "new-thread") {
+    if (scope.key !== undefined) {
+      const normalizedKey = normalizeStorageSegment(scope.key);
+      return `${PROMPT_DRAFT_STORAGE_PREFIX}-draft-${normalizedKey}-${PROMPT_DRAFT_STORAGE_VERSION}`;
+    }
     return `${PROMPT_DRAFT_STORAGE_PREFIX}-draft-${PROMPT_DRAFT_STORAGE_VERSION}`;
   }
   if (scope.kind === "plugin-new-thread") {

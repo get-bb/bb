@@ -6,7 +6,12 @@ import {
   type SyncStorage,
 } from "@/lib/browser-storage";
 import type { ThreadRoutePathArgs } from "@/lib/route-paths";
-import { findPane, listPanes, removePane } from "./ops";
+import {
+  findPane,
+  isNewThreadComposerPane,
+  listPanes,
+  removePane,
+} from "./ops";
 import {
   deserializeSplitLayout,
   serializeSplitLayout,
@@ -54,6 +59,7 @@ export const dimInactiveSplitsAtom = createBooleanPreferenceAtom(
 export interface ClosePanesForThreadsResult {
   removedAny: boolean;
   focusedRoute: ThreadRoutePathArgs | null;
+  focusedComposerPaneId?: string;
 }
 
 export const closePanesForThreadsAtom = atom(
@@ -103,6 +109,14 @@ export const closePanesForThreadsAtom = atom(
             threadId: focused.content.threadId,
           }
         : null;
+    if (focused !== null && isNewThreadComposerPane(focused)) {
+      set(splitLayoutAtom, layout);
+      return {
+        removedAny: true,
+        focusedRoute: null,
+        focusedComposerPaneId: focused.paneId,
+      };
+    }
     if (survivorRoute === null) {
       set(splitLayoutAtom, null);
       set(maximizedPaneIdAtom, null);

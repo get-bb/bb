@@ -5,6 +5,7 @@ import {
   pongMessageLenientSchema,
   realtimeSubscriptionTargetKey,
   threadOpenSignalLenientSchema,
+  threadOpenNewSignalLenientSchema,
   threadPaneActionSignalLenientSchema,
 } from "@bb/server-contract";
 import type {
@@ -14,6 +15,7 @@ import type {
   RealtimeSubscriptionTarget,
   ThreadOpenFile,
   ThreadOpenSignal,
+  ThreadOpenNewSignal,
   ThreadPaneActionSignal,
 } from "@bb/server-contract";
 import { buildBrowserWebSocketUrl } from "./dev-websocket-url";
@@ -24,6 +26,7 @@ import {
 
 type ChangeCallback = (message: ChangedMessage) => void;
 type ThreadOpenCallback = (signal: ThreadOpenSignal) => void;
+type ThreadOpenNewCallback = (signal: ThreadOpenNewSignal) => void;
 type ThreadPaneActionCallback = (signal: ThreadPaneActionSignal) => void;
 type PluginSignalCallback = (signal: PluginSignal) => void;
 export type WebSocketConnectedEvent =
@@ -74,6 +77,7 @@ export class WebSocketManager {
   private subscriptions = new Map<string, ActiveSubscription>();
   private callbacks = new Set<ChangeCallback>();
   private threadOpenCallbacks = new Set<ThreadOpenCallback>();
+  private threadOpenNewCallbacks = new Set<ThreadOpenNewCallback>();
   private threadPaneActionCallbacks = new Set<ThreadPaneActionCallback>();
   private pluginSignalCallbacks = new Set<PluginSignalCallback>();
   private pendingOpenFileByThreadId = new Map<string, ThreadOpenFile>();
@@ -293,6 +297,14 @@ export class WebSocketManager {
       return;
     }
 
+    const threadOpenNew = threadOpenNewSignalLenientSchema.safeParse(parsed);
+    if (threadOpenNew.success) {
+      for (const cb of this.threadOpenNewCallbacks) {
+        cb(threadOpenNew.data);
+      }
+      return;
+    }
+
     const threadPaneAction =
       threadPaneActionSignalLenientSchema.safeParse(parsed);
     if (threadPaneAction.success) {
@@ -378,6 +390,13 @@ export class WebSocketManager {
     this.threadOpenCallbacks.add(callback);
     return () => {
       this.threadOpenCallbacks.delete(callback);
+    };
+  }
+
+  onThreadOpenNew(callback: ThreadOpenNewCallback): () => void {
+    this.threadOpenNewCallbacks.add(callback);
+    return () => {
+      this.threadOpenNewCallbacks.delete(callback);
     };
   }
 

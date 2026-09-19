@@ -482,6 +482,11 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
     return context.json({ ok: true });
   });
 
+  post(routes.openNew, (context, payload) => {
+    const delivered = deps.hub.notifyThreadOpenNew(payload.split ?? "replace");
+    return context.json({ delivered });
+  });
+
   post(routes.open, (context, payload) => {
     const publicThread = requirePublicThread(deps.db, context.req.param("id"));
     if (payload.file !== null) {

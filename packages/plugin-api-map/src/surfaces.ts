@@ -1003,6 +1003,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Calls bb's own API from the plugin's server code. With this, a plugin can:",
         bullets: [
           "Create threads, send messages to them, and manage projects",
+          'Open an unsaved New thread composer in connected apps with sdk.threads.openNew({ split: "right" }); placement defaults to replace, compact/mobile navigates to New thread, and the result counts delivery without creating a thread',
           "Spawn or fork with lifecycleOwnerThreadId to archive/delete a dependent with a live owner across projects; ownership is immutable, independent of sidebar parents and supports different hosts/environments. Thread responses return the owner or null. Unarchive owner first; Stop does not cascade",
           "List machines and suspend, resume, or remove provider-managed machines",
           "Read recorded context usage with sdk.threads.context({ threadId }); usage is null when unavailable, and its snapshot is present only when the latest measurement includes a breakdown",

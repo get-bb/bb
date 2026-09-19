@@ -1,3 +1,4 @@
+import { nanoid } from "nanoid";
 import type {
   LayoutNode,
   PaneContent,
@@ -13,6 +14,18 @@ export const MAX_PANES = 8;
 const MIN_SIZE = 0.15;
 const MAX_SIZE = 0.85;
 const SIZE_EPSILON = 1e-12;
+const COMPOSER_PANE_ID_PREFIX = "composer-";
+
+export function createComposerPaneId(): string {
+  return `${COMPOSER_PANE_ID_PREFIX}${nanoid()}`;
+}
+
+export function isNewThreadComposerPane(pane: PaneNode): boolean {
+  return (
+    pane.content.kind === "new-thread" &&
+    pane.paneId.startsWith(COMPOSER_PANE_ID_PREFIX)
+  );
+}
 
 export function clampSplitPairFraction(fraction: number): number {
   return Math.min(MAX_SIZE, Math.max(MIN_SIZE, fraction));
@@ -68,7 +81,7 @@ export function findPaneByContent(
     listPanes(root).find((pane) => {
       const candidate = pane.content;
       if (candidate.kind !== content.kind) return false;
-      if (content.kind === "new-thread") return true;
+      if (content.kind === "new-thread") return !isNewThreadComposerPane(pane);
       if (content.kind === "thread") {
         return (
           candidate.kind === "thread" &&
@@ -183,7 +196,10 @@ export function splitPane(
   }
   const pane: PaneNode = {
     type: "pane",
-    paneId: nextPaneId(layout.root),
+    paneId:
+      content.kind === "new-thread"
+        ? createComposerPaneId()
+        : nextPaneId(layout.root),
     content,
   };
   return {
@@ -201,9 +217,35 @@ export function replacePaneContent(
   if (pane === null) {
     return layout;
   }
+  const replacementPaneId =
+    content.kind === "new-thread" && paneId.startsWith(COMPOSER_PANE_ID_PREFIX)
+      ? nextPaneId(layout.root)
+      : paneId;
   return {
-    root: replacePaneNode(layout.root, paneId, { ...pane, content }),
-    focusedPaneId: paneId,
+    root: replacePaneNode(layout.root, paneId, {
+      ...pane,
+      paneId: replacementPaneId,
+      content,
+    }),
+    focusedPaneId: replacementPaneId,
+  };
+}
+
+export function replaceWithNewThreadComposer(
+  layout: SplitLayout,
+  paneId: string,
+): SplitLayout {
+  if (findPane(layout.root, paneId) === null) {
+    return layout;
+  }
+  const pane: PaneNode = {
+    type: "pane",
+    paneId: createComposerPaneId(),
+    content: { kind: "new-thread" },
+  };
+  return {
+    root: replacePaneNode(layout.root, paneId, pane),
+    focusedPaneId: pane.paneId,
   };
 }
 
@@ -314,6 +356,17 @@ export function swapPanes(
   const targetPane = findPane(layout.root, targetPaneId);
   if (pane === null || targetPane === null) {
     return layout;
+  }
+  if (isNewThreadComposerPane(pane) || isNewThreadComposerPane(targetPane)) {
+    const swapNodes = (node: LayoutNode): LayoutNode => {
+      if (node.type === "pane") {
+        if (node.paneId === paneId) return targetPane;
+        if (node.paneId === targetPaneId) return pane;
+        return node;
+      }
+      return { ...node, children: node.children.map(swapNodes) };
+    };
+    return { root: swapNodes(layout.root), focusedPaneId: paneId };
   }
   const withFirstSwap = replacePaneNode(layout.root, paneId, {
     ...pane,

@@ -138,6 +138,13 @@ export function ThreadActionsProvider({
 
   const syncNavigationAfterClose = useCallback(
     (result: ClosePanesForThreadsResult, navigateAway: () => void) => {
+      if (result.focusedComposerPaneId !== undefined) {
+        navigate(getRootComposeRoutePath(), {
+          replace: true,
+          state: { composerPaneId: result.focusedComposerPaneId },
+        });
+        return;
+      }
       if (result.removedAny && result.focusedRoute !== null) {
         if (result.focusedRoute.threadId !== viewedThreadIdRef.current) {
           navigate(getThreadRoutePath(result.focusedRoute), { replace: true });

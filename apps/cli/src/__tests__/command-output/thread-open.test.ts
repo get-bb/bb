@@ -19,6 +19,7 @@ type OpenThreadHandler = (
 function stubThreadOpenApi(args: {
   environments?: Record<string, Environment>;
   open?: OpenThreadHandler;
+  openNew?: OpenThreadHandler;
   threads?: Record<string, Thread>;
 }) {
   const getThread = vi.fn(async (request: unknown) => {
@@ -38,12 +39,14 @@ function stubThreadOpenApi(args: {
     return environment;
   });
   const openThread = vi.fn(args.open ?? (async () => ({ delivered: 0 })));
+  const openNew = vi.fn(args.openNew ?? (async () => ({ delivered: 0 })));
   stubServerApi({
     "v1.threads.:id.$get": getThread,
     "v1.environments.:id.$get": getEnvironment,
     "v1.threads.:id.open.$post": openThread,
+    "v1.threads.open-new.$post": openNew,
   });
-  return { getEnvironment, getThread, openThread };
+  return { getEnvironment, getThread, openThread, openNew };
 }
 
 describe("bb thread open command output", () => {
@@ -51,6 +54,50 @@ describe("bb thread open command output", () => {
 
   const register: CommandRegistrar = (program) =>
     registerThreadCommands(program, () => "http://server");
+
+  it("opens a new composer without consulting the context thread", async () => {
+    vi.stubEnv("BB_THREAD_ID", "thread-current");
+    const { getThread, openThread, openNew } = stubThreadOpenApi({
+      openNew: async () => ({ delivered: 2 }),
+    });
+
+    await runCommand(
+      ["thread", "open", "--new", "--split", "right", "--json"],
+      register,
+    );
+
+    expect(openNew).toHaveBeenCalledWith({ json: { split: "right" } });
+    expect(openThread).not.toHaveBeenCalled();
+    expect(getThread).not.toHaveBeenCalled();
+    const payloads = collectLogPayloads(vi.mocked(console.log));
+    expect(payloads.join("\n")).toContain('"split": "right"');
+    expect(payloads.join("\n")).toContain('"delivered": 2');
+  });
+
+  it("opens a new composer outside a thread and reports zero delivery", async () => {
+    const { openNew } = stubThreadOpenApi({});
+    await runCommand(["thread", "open", "--new"], register);
+    expect(openNew).toHaveBeenCalledWith({ json: {} });
+    expect(collectLogLines(vi.mocked(console.log))).toEqual([
+      "New thread composer",
+      "Split: replace",
+      "Delivered: 0",
+    ]);
+  });
+
+  it.each([
+    ["thread-id"],
+    ["thread-id", "file.md"],
+    ["--line", "1"],
+    ["--split", "diagonal"],
+  ])("rejects incompatible new-composer arguments %j", async (...args) => {
+    const { openNew, openThread } = stubThreadOpenApi({});
+    await expect(
+      runCommand(["thread", "open", "--new", ...args], register),
+    ).rejects.toThrow("process.exit:1");
+    expect(openNew).not.toHaveBeenCalled();
+    expect(openThread).not.toHaveBeenCalled();
+  });
 
   it("uses BB_THREAD_ID and opens a thread-relative workspace path", async () => {
     vi.stubEnv("BB_THREAD_ID", "thread-current");
@@ -256,8 +303,9 @@ describe("bb thread open command output", () => {
     expect(help).toContain("Usage:");
     expect(help).toContain("[id] [path]");
     expect(help).toContain(
-      "Open a BB thread, optionally with a file in its panel",
+      "Open a BB thread, a file in its panel, or a new composer",
     );
+    expect(help).toContain("--new");
     expect(help).toContain("--line");
     expect(help).toContain("--split <placement>");
     expect(help).toContain("right, down, left, top, or replace");

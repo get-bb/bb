@@ -1,3 +1,4 @@
+import { requestSplitLayoutChange } from "./newThreadPaneGuard";
 import { getThreadRoutePath } from "@/lib/route-paths";
 import { decideThreadDrop } from "@/lib/split-drag";
 import { splitLayoutAtom } from "./atoms";
@@ -65,8 +66,7 @@ export function openThreadInSplit({
     decision.zone === "center"
       ? replacePaneContent(layout, layout.focusedPaneId, content)
       : splitPane(layout, layout.focusedPaneId, "right", content);
-  if (next !== layout) {
-    store.set(splitLayoutAtom, next);
-  }
-  navigate(route, state === undefined ? undefined : { state });
+  requestSplitLayoutChange(store, next, () => {
+    navigate(route, state === undefined ? undefined : { state });
+  });
 }

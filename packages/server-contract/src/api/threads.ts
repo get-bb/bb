@@ -701,6 +701,24 @@ export const threadOpenResponseSchema = z.object({
 });
 export type ThreadOpenResponse = z.infer<typeof threadOpenResponseSchema>;
 
+export const threadOpenNewRequestSchema = z
+  .object({ split: threadOpenSplitSchema.optional() })
+  .strict();
+export type ThreadOpenNewRequest = z.infer<typeof threadOpenNewRequestSchema>;
+
+export const threadOpenNewSignalSchema = z
+  .object({
+    type: z.literal("thread-open-new"),
+    split: threadOpenSplitSchema,
+  })
+  .strict();
+export type ThreadOpenNewSignal = z.infer<typeof threadOpenNewSignalSchema>;
+
+export const threadOpenNewSignalLenientSchema = z.object({
+  type: z.literal("thread-open-new"),
+  split: threadOpenSplitSchema,
+});
+
 export const threadPaneActionSchema = z.enum([
   "maximize",
   "restore",

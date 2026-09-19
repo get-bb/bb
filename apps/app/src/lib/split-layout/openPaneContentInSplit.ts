@@ -1,9 +1,12 @@
+import { requestSplitLayoutChange } from "./newThreadPaneGuard";
 import { splitLayoutAtom } from "./atoms";
 import {
   countPanes,
+  createComposerPaneId,
   findPaneByContent,
   MAX_PANES,
   replacePaneContent,
+  replaceWithNewThreadComposer,
   setFocus,
   splitPane,
   type PaneContent,
@@ -19,7 +22,7 @@ export interface OpenPaneContentInSplitArgs {
   store: SplitLayoutStore;
   navigate: (
     route: string,
-    options?: { replace?: boolean },
+    options?: { replace?: boolean; state?: Record<string, unknown> },
   ) => void | Promise<void>;
   content: PaneContent;
   route: string;
@@ -34,19 +37,45 @@ export function openPaneContentInSplit({
   enabled,
 }: OpenPaneContentInSplitArgs): void {
   const layout = store.get(splitLayoutAtom);
-  if (!enabled || layout === null) {
+  if (!enabled) {
     void navigate(route);
     return;
   }
-  const existing = findPaneByContent(layout.root, content);
+  if (layout === null) {
+    if (content.kind === "new-thread") {
+      const paneId = createComposerPaneId();
+      store.set(splitLayoutAtom, {
+        root: { type: "pane", paneId, content },
+        focusedPaneId: paneId,
+      });
+      void navigate(route, { state: { composerPaneId: paneId } });
+    } else {
+      void navigate(route);
+    }
+    return;
+  }
+  const existing =
+    content.kind === "new-thread"
+      ? null
+      : findPaneByContent(layout.root, content);
   const next =
     existing !== null
       ? setFocus(layout, existing.paneId)
       : countPanes(layout.root) >= MAX_PANES
-        ? replacePaneContent(layout, layout.focusedPaneId, content)
+        ? content.kind === "new-thread"
+          ? replaceWithNewThreadComposer(layout, layout.focusedPaneId)
+          : replacePaneContent(layout, layout.focusedPaneId, content)
         : splitPane(layout, layout.focusedPaneId, "right", content);
-  if (next !== layout) store.set(splitLayoutAtom, next);
-  void navigate(route, existing !== null ? { replace: true } : undefined);
+  requestSplitLayoutChange(store, next, () => {
+    void navigate(
+      route,
+      content.kind === "new-thread"
+        ? { state: { composerPaneId: next.focusedPaneId } }
+        : existing !== null
+          ? { replace: true }
+          : undefined,
+    );
+  });
 }
 
 export function holdsPluginDetailPane(

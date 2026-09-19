@@ -233,6 +233,28 @@ describe("WebSocketManager thread-open signals", () => {
     expect(manager.consumePendingOpenFile("thr_1")).toBeNull();
   });
 
+  it("delivers lenient new-composer signals only to their own listeners", () => {
+    const { manager } = createConnectedManager();
+    const openNew = vi.fn();
+    const threadOpen = vi.fn();
+    const changed = vi.fn();
+    const unsubscribe = manager.onThreadOpenNew(openNew);
+    manager.onThreadOpen(threadOpen);
+    manager.onChanged(changed);
+
+    dispatchRaw({ type: "thread-open-new", split: "right", future: true });
+    expect(openNew).toHaveBeenCalledWith({
+      type: "thread-open-new",
+      split: "right",
+    });
+    expect(threadOpen).not.toHaveBeenCalled();
+    expect(changed).not.toHaveBeenCalled();
+
+    unsubscribe();
+    dispatchRaw({ type: "thread-open-new", split: "replace" });
+    expect(openNew).toHaveBeenCalledTimes(1);
+  });
+
   it("still routes changed messages to onChanged", () => {
     const { manager } = createConnectedManager();
     const changed = vi.fn();

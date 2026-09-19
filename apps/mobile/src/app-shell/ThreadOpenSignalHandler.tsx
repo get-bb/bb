@@ -15,6 +15,12 @@ export function ThreadOpenSignalHandler() {
       router.push(webViewShellHref({ path: `/threads/${signal.threadId}` }));
     });
   }, [realtime, router, pathname]);
+  useEffect(() => {
+    if (!realtime) return;
+    return realtime.onThreadOpenNew(() => {
+      router.push(webViewShellHref({ path: "/" }));
+    });
+  }, [realtime, router]);
   return null;
 }
 

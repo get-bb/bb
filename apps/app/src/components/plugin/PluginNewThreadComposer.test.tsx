@@ -43,11 +43,15 @@ import {
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
 import { encodeReuseValue } from "@/components/pickers/environment-picker-value";
-import { useRootComposeReuseEnvironment } from "@/lib/root-compose-selection";
+import {
+  useRootComposeProjectId,
+  useRootComposeReuseEnvironment,
+} from "@/lib/root-compose-selection";
 import { getPromptDraftAccessor } from "@/hooks/usePromptDraftStorage";
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 import { makeProjectWithThreadsResponse } from "@/test/fixtures/projects";
 import { RootComposeView } from "@/views/RootComposeView";
+import { PaneContext } from "@/views/thread-detail/PaneContext";
 import { ROOT_COMPOSE_FIXED_PANEL_STATE_ID } from "@/views/RootComposePanelTabContent";
 import { resetFixedPanelTabsStateForTest } from "@/lib/fixed-panel-tabs";
 import {
@@ -82,6 +86,7 @@ const mocks = vi.hoisted(() => ({
   promptHistoryQueryOptions: [] as Array<{ enabled?: boolean } | undefined>,
   environmentProviders: [] as unknown[],
   closeTerminal: vi.fn(),
+  createThread: vi.fn(),
   plugins: [] as unknown[],
   serverAccessReady: true,
   machineProviders: [] as SystemMachineProvider[],
@@ -383,6 +388,10 @@ vi.mock("@/hooks/queries/project-default-execution-options-query", () => ({
   useProjectDefaultExecutionOptions: () => ({ data: undefined }),
 }));
 
+vi.mock("@/hooks/mutations/thread-runtime-mutations", () => ({
+  useCreateThread: () => ({ mutateAsync: mocks.createThread }),
+}));
+
 vi.mock("@/hooks/mutations/project-mutations", () => ({
   useUploadPromptAttachment: () => ({
     mutateAsync: mocks.uploadAttachment,
@@ -671,6 +680,7 @@ describe("PluginNewThreadComposer seeding", () => {
   beforeEach(() => {
     resetFixedPanelTabsStateForTest();
     mocks.closeTerminal.mockClear();
+    mocks.createThread.mockReset();
     mocks.promptBoxProps.length = 0;
     mocks.promptHistoryQueryOptions.length = 0;
     mocks.copyAttachments.mockReset();
@@ -1671,6 +1681,291 @@ describe("PluginNewThreadComposer seeding", () => {
     );
     consoleError.mockRestore();
     expect(updateDepthErrors).toEqual([]);
+  });
+
+  function RootProjectSeed({ children }: { children: ReactNode }) {
+    const [projectId, setProjectId] = useRootComposeProjectId();
+    useEffect(() => {
+      setProjectId("proj_1");
+    }, [setProjectId]);
+    return projectId === "proj_1" ? children : null;
+  }
+
+  function splitComposerPane(
+    paneId: string,
+    isFocused: boolean,
+    navigateInPane = vi.fn(),
+    onCreatingChange = vi.fn(),
+  ) {
+    return (
+      <PaneContext.Provider
+        value={{
+          paneId,
+          isFocused,
+          isSplitPane: true,
+          secondaryPanelHost: null,
+          reservesWindowPanelToggle: false,
+          onRequestClose: null,
+          isMaximized: false,
+          onToggleMaximize: null,
+          isBoundedPane: true,
+          isTopRow: true,
+          ownsWindowTopLeft: false,
+          navigateInPane,
+        }}
+      >
+        <RootComposeView
+          composerPaneId={paneId}
+          onCreatingChange={onCreatingChange}
+        />
+      </PaneContext.Provider>
+    );
+  }
+
+  function splitPromptProps(paneId: string): Record<string, any> {
+    const props = [...mocks.promptBoxProps]
+      .reverse()
+      .find((entry) => entry.id === `root-compose-prompt-${paneId}`);
+    expect(props).toBeDefined();
+    return props as Record<string, any>;
+  }
+
+  it("isolates keyed buffers and selections while consuming only the targeted route seed", async () => {
+    window.localStorage.setItem("bb.root-compose.project-id", "proj_1");
+    const firstDraft = getPromptDraftAccessor({
+      kind: "new-thread",
+      key: "composer-first",
+    });
+    const secondDraft = getPromptDraftAccessor({
+      kind: "new-thread",
+      key: "composer-second",
+    });
+    firstDraft.setDraft({ text: "first draft", mentions: [], attachments: [] });
+    secondDraft.setDraft({
+      text: "second draft",
+      mentions: [],
+      attachments: [],
+    });
+    const router = createMemoryRouter(
+      [
+        {
+          path: "/",
+          element: (
+            <>
+              {splitComposerPane("composer-first", true)}
+              {splitComposerPane("composer-second", false)}
+            </>
+          ),
+        },
+      ],
+      {
+        initialEntries: [
+          {
+            pathname: "/",
+            state: {
+              composerPaneId: "composer-second",
+              initialPrompt: "seed only the second composer",
+              replaceInitialPrompt: true,
+              focusPrompt: true,
+            },
+          },
+        ],
+      },
+    );
+    render(
+      <Provider>
+        <RootProjectSeed>
+          <RouterProvider router={router} />
+        </RootProjectSeed>
+      </Provider>,
+    );
+
+    await waitFor(() => {
+      expect(secondDraft.getCurrent().text).toBe(
+        "seed only the second composer",
+      );
+      expect(router.state.location.state).toEqual({
+        composerPaneId: "composer-second",
+      });
+    });
+    expect(firstDraft.getCurrent().text).toBe("first draft");
+    expect(splitPromptProps("composer-second").autoFocus).toBe(false);
+    await act(async () => {
+      await splitPromptProps("composer-first").project.onChange("proj_2");
+    });
+    await waitFor(() =>
+      expect(splitPromptProps("composer-first").project.value).toBe("proj_2"),
+    );
+    await act(async () => {
+      splitPromptProps("composer-first").execution.provider.onChange(
+        "claude-code",
+      );
+      splitPromptProps("composer-first").modeConfig.permission.onChange("full");
+      splitPromptProps("composer-first").execution.reasoning.onChange("high");
+      splitPromptProps(
+        "composer-first",
+      ).modeConfig.environment.onSelectProvider(
+        MANAGED_WORKTREE_SUGAR_PROVIDER,
+        "host_1",
+      );
+    });
+    expect(
+      splitPromptProps("composer-first").execution.provider.selectedId,
+    ).toBe("claude-code");
+    expect(
+      splitPromptProps("composer-second").execution.provider.selectedId,
+    ).toBe("codex");
+    expect(splitPromptProps("composer-second").project.value).toBe("proj_1");
+    expect(
+      splitPromptProps("composer-second").modeConfig.permission.value,
+    ).toBe("auto");
+    expect(splitPromptProps("composer-second").execution.reasoning.value).toBe(
+      "medium",
+    );
+    expect(
+      splitPromptProps("composer-second").modeConfig.environment.value,
+    ).toBe("provider:project-checkout");
+    expect(window.localStorage.getItem("bb.root-compose.project-id")).toBe(
+      "proj_1",
+    );
+    act(() => splitPromptProps("composer-first").onSubmit());
+    await waitFor(() =>
+      expect(mocks.createThread).toHaveBeenCalledWith(
+        expect.objectContaining({
+          projectId: "proj_2",
+          providerId: "claude-code",
+          executionInputSources: expect.objectContaining({
+            providerId: "explicit",
+          }),
+        }),
+      ),
+    );
+  });
+
+  it("locks keyed composer mutations during create, restores failures, and completes in its originating pane", async () => {
+    window.localStorage.setItem("bb.root-compose.project-id", "proj_1");
+    window.localStorage.setItem(
+      "bb.root-compose.navigate-after-create",
+      "false",
+    );
+    const draft = getPromptDraftAccessor({
+      kind: "new-thread",
+      key: "composer-pending",
+    });
+    const originalDraft = {
+      text: "create with this attachment",
+      mentions: [],
+      attachments: [
+        {
+          type: "localFile" as const,
+          name: "notes.txt",
+          path: ".bb/attachments/notes.txt",
+          mimeType: "text/plain",
+          sizeBytes: 5,
+        },
+      ],
+    };
+    draft.setDraft(originalDraft);
+    let failCreate: (() => void) | undefined;
+    mocks.createThread.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          failCreate = () => reject(new Error("create failed"));
+        }),
+    );
+    const navigateInPane = vi.fn();
+    const onCreatingChange = vi.fn();
+    render(
+      <Provider>
+        <RootProjectSeed>
+          <MemoryRouter>
+            {splitComposerPane(
+              "composer-pending",
+              true,
+              navigateInPane,
+              onCreatingChange,
+            )}
+          </MemoryRouter>
+        </RootProjectSeed>
+      </Provider>,
+    );
+    await waitFor(() =>
+      expect(splitPromptProps("composer-pending").disabled).toBe(false),
+    );
+    const beforeSubmit = splitPromptProps("composer-pending");
+    act(() => {
+      beforeSubmit.onSubmit();
+      beforeSubmit.onChange("late edit", []);
+      beforeSubmit.history.onSelectEntry({
+        text: "history",
+        mentions: [],
+        attachments: [],
+      });
+      beforeSubmit.pluginComposerHost.setDraft({
+        text: "plugin edit",
+        mentions: [],
+        attachments: [],
+      });
+      beforeSubmit.execution.model.onChange("gpt-5.6-sol");
+      beforeSubmit.modeConfig.permission.onChange("full");
+      beforeSubmit.modeConfig.environment.onSelectProvider(
+        MANAGED_WORKTREE_SUGAR_PROVIDER,
+        "host_1",
+      );
+    });
+    await act(async () => {
+      await beforeSubmit.attachments.onAttachFiles([
+        new File(["late"], "late.txt", { type: "text/plain" }),
+      ]);
+      await expect(
+        beforeSubmit.pluginComposerHost.setSelection({ model: "gpt-5.6-sol" }),
+      ).rejects.toThrow("This composer is starting a thread.");
+    });
+    expect(mocks.uploadAttachment).not.toHaveBeenCalled();
+    expect(onCreatingChange).toHaveBeenLastCalledWith(true);
+    expect(mocks.createThread).toHaveBeenCalledTimes(1);
+    expect(draft.getCurrent().text).toBe("");
+    expect(splitPromptProps("composer-pending").execution.model.selected).toBe(
+      beforeSubmit.execution.model.selected,
+    );
+    expect(
+      splitPromptProps("composer-pending").modeConfig.permission.value,
+    ).toBe("auto");
+    expect(
+      splitPromptProps("composer-pending").modeConfig.environment.value,
+    ).toBe(beforeSubmit.modeConfig.environment.value);
+    expect(
+      screen.getByTestId("new-thread-prompt-box").closest("[inert]"),
+    ).not.toBeNull();
+    await act(async () => {
+      failCreate?.();
+    });
+    await waitFor(() =>
+      expect(splitPromptProps("composer-pending").isSubmitting).toBe(false),
+    );
+    expect(draft.getCurrent()).toEqual(originalDraft);
+    expect(onCreatingChange).toHaveBeenLastCalledWith(false);
+    expect(navigateInPane).not.toHaveBeenCalled();
+
+    mocks.createThread.mockResolvedValueOnce({
+      id: "thread-created",
+      projectId: "proj_1",
+    });
+    act(() => splitPromptProps("composer-pending").onSubmit());
+    await waitFor(() =>
+      expect(navigateInPane).toHaveBeenCalledWith({
+        projectId: "proj_1",
+        threadId: "thread-created",
+      }),
+    );
+    expect(draft.getCurrent().text).toBe("");
+    expect(draft.getCurrent().attachments).toEqual([]);
+    expect(onCreatingChange.mock.calls.map(([pending]) => pending)).toEqual([
+      true,
+      false,
+      true,
+      false,
+    ]);
   });
 
   it("ignores a repeated submit while the first submission is pending", async () => {

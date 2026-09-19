@@ -190,3 +190,22 @@ describe("closePanesForThreadsAtom", () => {
     expect(countPanes(store.get(splitLayoutAtom)!.root)).toBe(2);
   });
 });
+
+it("keeps the keyed composer when its neighboring thread is archived", () => {
+  const store = createStore();
+  const layout = splitPane(singlePane("thread-1"), "pane-1", "right", {
+    kind: "new-thread",
+  });
+  store.set(splitLayoutAtom, layout);
+  const result = store.set(closePanesForThreadsAtom, ["thread-1"]);
+  expect(result).toEqual({
+    removedAny: true,
+    focusedRoute: null,
+    focusedComposerPaneId: layout.focusedPaneId,
+  });
+  expect(store.get(splitLayoutAtom)?.root).toMatchObject({
+    type: "pane",
+    paneId: layout.focusedPaneId,
+    content: { kind: "new-thread" },
+  });
+});

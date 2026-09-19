@@ -499,26 +499,70 @@ export function LegacyProjectComposeRedirect({
   return <RouteLoadingSkeleton isBoundedPane={false} />;
 }
 
-export function RootComposeView() {
-  const [rootComposeProjectId, setRootComposeProjectId] =
-    useRootComposeProjectId();
+export function shouldConsumeRootComposeRouteSeed({
+  state,
+  paneId,
+  isFocused,
+}: {
+  state: unknown;
+  paneId: string | undefined;
+  isFocused: boolean;
+}): boolean {
+  if (
+    state !== null &&
+    typeof state === "object" &&
+    "composerPaneId" in state &&
+    typeof state.composerPaneId === "string"
+  ) {
+    return state.composerPaneId === paneId;
+  }
+  return isFocused;
+}
+
+interface RootComposeViewProps {
+  composerPaneId?: string;
+  onCreatingChange?: (pending: boolean) => void;
+}
+
+export function RootComposeView({
+  composerPaneId,
+  onCreatingChange,
+}: RootComposeViewProps = {}) {
+  const [globalProjectId, setGlobalProjectId] = useRootComposeProjectId();
   const location = useLocation();
+  const paneContext = useOptionalPaneContext();
+  const consumesRouteSeed = shouldConsumeRootComposeRouteSeed({
+    state: location.state,
+    paneId: composerPaneId ?? paneContext?.paneId,
+    isFocused: paneContext?.isFocused ?? true,
+  });
+  const [localProjectId, setLocalProjectId] = useState(globalProjectId);
+  const rootComposeProjectId =
+    composerPaneId === undefined ? globalProjectId : localProjectId;
+  const setRootComposeProjectId =
+    composerPaneId === undefined ? setGlobalProjectId : setLocalProjectId;
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const createThread = useCreateThread();
   const [rootComposeSectionId, setRootComposeSectionId] = useState<
     string | null
-  >(() => readSectionIdFromLocationState(location.state));
+  >(() =>
+    consumesRouteSeed ? readSectionIdFromLocationState(location.state) : null,
+  );
   const [lastCreatedThreadId, setLastCreatedThreadId] = useState<string | null>(
     null,
   );
-  const [startedComposing, setStartedComposing] = useState(() =>
-    shouldStartComposingFromLocationState(location.state),
+  const [startedComposing, setStartedComposing] = useState(
+    () =>
+      consumesRouteSeed &&
+      shouldStartComposingFromLocationState(location.state),
   );
   const [navigateToThreadAfterCreate] =
     useNavigateToThreadAfterCreatePreference();
   const [forkSeed, setForkSeed] = useState<ForkThreadCreateSeed | null>(() =>
-    readForkThreadCreateSeedFromLocationState(location.state),
+    consumesRouteSeed
+      ? readForkThreadCreateSeedFromLocationState(location.state)
+      : null,
   );
 
   const handleProjectChange = useCallback(
@@ -556,28 +600,29 @@ export function RootComposeView() {
               serviceTier: request.serviceTier,
             });
       if (createRequest === null) return;
-      const thread = await createThread.mutateAsync(
-        sendAt === undefined
-          ? createRequest
-          : {
-              ...createRequest,
-              ...(sendAt === undefined ? {} : { sendAt }),
-            },
-      );
-      setLastCreatedThreadId(thread.id);
-      setForkSeed(null);
-      setRootComposeSectionId(null);
-      if (shouldNavigateToCreatedThread) {
-        navigate(
-          getThreadRoutePath({
-            projectId: thread.projectId,
-            threadId: thread.id,
-          }),
+      onCreatingChange?.(true);
+      try {
+        const thread = await createThread.mutateAsync(
+          sendAt === undefined ? createRequest : { ...createRequest, sendAt },
         );
+        setLastCreatedThreadId(thread.id);
+        setForkSeed(null);
+        setRootComposeSectionId(null);
+        const target = { projectId: thread.projectId, threadId: thread.id };
+        if (composerPaneId !== undefined) {
+          paneContext?.navigateInPane(target);
+        } else if (shouldNavigateToCreatedThread) {
+          navigate(getThreadRoutePath(target));
+        }
+      } finally {
+        onCreatingChange?.(false);
       }
     },
     [
       createThread,
+      composerPaneId,
+      onCreatingChange,
+      paneContext,
       forkSeed,
       queryClient,
       navigate,
@@ -607,8 +652,11 @@ export function RootComposeView() {
     <NewThreadComposer
       projectId={rootComposeProjectId}
       onProjectChange={handleProjectChange}
-      draftStorage={{ kind: "new-thread" }}
-      selectionScope="new-thread"
+      draftStorage={{ kind: "new-thread", key: composerPaneId }}
+      selectionScope={
+        composerPaneId === undefined ? "new-thread" : "component-local"
+      }
+      lockWhileSubmitting={composerPaneId !== undefined}
       seed={composerSeed}
       resetKey={forkSeed?.sourceThreadId ?? null}
       preferReadyProviderWhenUnset={forkSeed === null}
@@ -617,6 +665,8 @@ export function RootComposeView() {
       {(composer) => (
         <RootComposeSurface
           composer={composer}
+          composerPaneId={composerPaneId}
+          consumesRouteSeed={consumesRouteSeed}
           forkSeed={forkSeed}
           lastCreatedThreadId={lastCreatedThreadId}
           rootComposeProjectId={rootComposeProjectId}
@@ -633,6 +683,8 @@ export function RootComposeView() {
 
 interface RootComposeSurfaceProps {
   composer: NewThreadComposerState;
+  composerPaneId: string | undefined;
+  consumesRouteSeed: boolean;
   forkSeed: ForkThreadCreateSeed | null;
   lastCreatedThreadId: string | null;
   rootComposeProjectId: string;
@@ -645,6 +697,8 @@ interface RootComposeSurfaceProps {
 
 function RootComposeSurface({
   composer,
+  composerPaneId,
+  consumesRouteSeed,
   forkSeed,
   lastCreatedThreadId,
   rootComposeProjectId,
@@ -690,6 +744,7 @@ function RootComposeSurface({
     setServiceTier,
     renderPromptBox,
   } = composer;
+  const composerLocked = composerPaneId !== undefined && isSubmitting;
   const rootPanelEnvironmentId =
     parsedEnvironment?.type === "reuse"
       ? parsedEnvironment.environmentId
@@ -709,37 +764,65 @@ function RootComposeSurface({
   useEffect(
     () =>
       subscribeComposerFocusRequests(promptDraft.storageKey, () => {
+        if (!isFocusedPane || composerLocked) return;
         setStartedComposing(true);
         window.requestAnimationFrame(focusPromptBox);
       }),
-    [focusPromptBox, promptDraft.storageKey, setStartedComposing],
+    [
+      composerLocked,
+      focusPromptBox,
+      isFocusedPane,
+      promptDraft.storageKey,
+      setStartedComposing,
+    ],
   );
   const handleRootPanelSelectionAddToChat = useCallback(
     (text: string, attachments?: readonly PromptDraftAttachment[]) => {
+      if (composerLocked) return;
       promptDraft.addQuote(text, attachments);
       setStartedComposing(true);
-      window.requestAnimationFrame(focusPromptBox);
+      if (isFocusedPane) window.requestAnimationFrame(focusPromptBox);
     },
-    [focusPromptBox, promptDraft, setStartedComposing],
+    [
+      composerLocked,
+      focusPromptBox,
+      isFocusedPane,
+      promptDraft,
+      setStartedComposing,
+    ],
   );
 
-  const searchInitialPrompt = readInitialPromptFromSearch(location.search);
-  const stateInitialPrompt = readInitialPromptFromLocationState(location.state);
+  const canConsumeRouteSeed = consumesRouteSeed && !composerLocked;
+  const searchInitialPrompt = canConsumeRouteSeed
+    ? readInitialPromptFromSearch(location.search)
+    : null;
+  const stateInitialPrompt = canConsumeRouteSeed
+    ? readInitialPromptFromLocationState(location.state)
+    : null;
   const searchInitialDraft = useInitialPromptDraft(searchInitialPrompt);
   const stateInitialDraft = useInitialPromptDraft(stateInitialPrompt);
   const setPromptDraft = promptDraft.setDraft;
   const restorePromptDraftIfEmpty = promptDraft.restoreIfEmpty;
 
   useEffect(() => {
+    if (!canConsumeRouteSeed) return;
     const initialPrompt = readInitialPromptFromSearch(location.search);
     if (initialPrompt === null || searchInitialDraft === undefined) return;
     setStartedComposing(true);
     setPromptDraft(searchInitialDraft);
     navigate(
       getRootComposeRoutePath() + stripInitialPromptFromSearch(location.search),
-      { replace: true, state: location.state },
+      {
+        replace: true,
+        state:
+          composerPaneId === undefined
+            ? location.state
+            : { ...location.state, composerPaneId },
+      },
     );
   }, [
+    canConsumeRouteSeed,
+    composerPaneId,
     location.search,
     location.state,
     navigate,
@@ -748,6 +831,7 @@ function RootComposeSurface({
     searchInitialDraft,
   ]);
   useEffect(() => {
+    if (!canConsumeRouteSeed) return;
     if (stateInitialPrompt !== null && stateInitialDraft === undefined) return;
     const sectionTarget = readRootComposeSectionTargetFromLocationState(
       location.state,
@@ -782,9 +866,11 @@ function RootComposeSurface({
     }
     navigate(getRootComposeRoutePath() + location.search, {
       replace: true,
-      state: null,
+      state: composerPaneId === undefined ? null : { composerPaneId },
     });
   }, [
+    canConsumeRouteSeed,
+    composerPaneId,
     location.search,
     location.state,
     navigate,
@@ -800,6 +886,7 @@ function RootComposeSurface({
     stateInitialDraft,
   ]);
   useEffect(() => {
+    if (!canConsumeRouteSeed) return;
     const initialPrompt = readInitialPromptFromLocationState(location.state);
     if (initialPrompt === null || stateInitialDraft === undefined) return;
     const nextDraft = stateInitialDraft;
@@ -810,9 +897,14 @@ function RootComposeSurface({
     }
     navigate(getRootComposeRoutePath() + location.search, {
       replace: true,
-      state: { focusPrompt: true },
+      state: {
+        focusPrompt: true,
+        ...(composerPaneId === undefined ? {} : { composerPaneId }),
+      },
     });
   }, [
+    canConsumeRouteSeed,
+    composerPaneId,
     location.search,
     location.state,
     navigate,
@@ -821,6 +913,8 @@ function RootComposeSurface({
     stateInitialDraft,
   ]);
   const shouldFocusPrompt =
+    canConsumeRouteSeed &&
+    isFocusedPane &&
     typeof location.state === "object" &&
     location.state !== null &&
     "focusPrompt" in location.state &&
@@ -1808,12 +1902,14 @@ function RootComposeSurface({
     [setPromptTextAndMentions, setStartedComposing],
   );
   useEffect(() => {
-    if (!startedComposing) return;
+    if (!startedComposing || !isFocusedPane || composerLocked) return;
     if (isProviderCliVersionBlocked) return;
     if (isPointerCoarse) return;
     const handle = window.requestAnimationFrame(focusPromptBox);
     return () => window.cancelAnimationFrame(handle);
   }, [
+    composerLocked,
+    isFocusedPane,
     isProviderCliVersionBlocked,
     isPointerCoarse,
     focusPromptBox,
@@ -1854,9 +1950,10 @@ function RootComposeSurface({
     [parsedEnvironment, setEnvironmentSelectionValue],
   );
   const handleCancelForkDraft = useCallback(() => {
+    if (composerPaneId !== undefined && isSubmitting) return;
     setForkSeed(null);
     window.requestAnimationFrame(focusPromptBox);
-  }, [focusPromptBox, setForkSeed]);
+  }, [composerPaneId, focusPromptBox, isSubmitting, setForkSeed]);
 
   const promptHeader = useMemo(() => {
     if (forkSeed === null) {
@@ -1942,8 +2039,11 @@ function RootComposeSurface({
   const isCompactHomeLayout = isCompactViewport && !showEmptyWelcome;
 
   const promptBox = renderPromptBox({
-    id: "root-compose-prompt",
-    autoFocus: !isProviderCliVersionBlocked,
+    id:
+      composerPaneId === undefined
+        ? "root-compose-prompt"
+        : `root-compose-prompt-${composerPaneId}`,
+    autoFocus: isFocusedPane && !composerLocked && !isProviderCliVersionBlocked,
     allowSoftKeyboardAutoFocus: isCompactViewport,
     mentionMenuPlacement: isCompactHomeLayout ? "top" : "bottom",
     banner: promptBanner,

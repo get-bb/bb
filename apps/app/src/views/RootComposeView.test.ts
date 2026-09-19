@@ -30,6 +30,7 @@ import {
   shouldReplaceInitialPromptFromLocationState,
   shouldStartComposingFromLocationState,
   shouldNavigateAfterThreadCreate,
+  shouldConsumeRootComposeRouteSeed,
 } from "./RootComposeView";
 import { resolveRootComposeProjectFileRouting } from "./RootComposePanelTabContent";
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
@@ -1156,4 +1157,59 @@ it("offers a core-owned directory attachment for reuse", () => {
       path: "/tmp/attached",
     }),
   ]);
+});
+
+describe("root composer route seed ownership", () => {
+  it("targets an explicit composer even when another pane has focus", () => {
+    const state = {
+      composerPaneId: "composer-target",
+      initialPrompt: "prefill",
+    };
+    expect(
+      shouldConsumeRootComposeRouteSeed({
+        state,
+        paneId: "composer-target",
+        isFocused: false,
+      }),
+    ).toBe(true);
+    expect(
+      shouldConsumeRootComposeRouteSeed({
+        state,
+        paneId: "composer-other",
+        isFocused: true,
+      }),
+    ).toBe(false);
+    expect(
+      shouldConsumeRootComposeRouteSeed({
+        state,
+        paneId: undefined,
+        isFocused: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("uses focus for untargeted seeds and preserves standalone singleton behavior", () => {
+    const state = { focusPrompt: true, sectionId: "section-one" };
+    expect(
+      shouldConsumeRootComposeRouteSeed({
+        state,
+        paneId: "composer-one",
+        isFocused: true,
+      }),
+    ).toBe(true);
+    expect(
+      shouldConsumeRootComposeRouteSeed({
+        state,
+        paneId: "composer-two",
+        isFocused: false,
+      }),
+    ).toBe(false);
+    expect(
+      shouldConsumeRootComposeRouteSeed({
+        state,
+        paneId: undefined,
+        isFocused: true,
+      }),
+    ).toBe(true);
+  });
 });

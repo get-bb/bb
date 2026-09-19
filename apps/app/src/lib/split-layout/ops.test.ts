@@ -3,6 +3,9 @@ import {
   MAX_PANES,
   countPanes,
   findPane,
+  findPaneByContent,
+  isNewThreadComposerPane,
+  replaceWithNewThreadComposer,
   findPaneByThread,
   listPanes,
   movePane,
@@ -228,5 +231,64 @@ describe("split layout operations", () => {
     }
     expect(resizeSplit(high, [], 1, 0.5)).toBe(high);
     expect(resizeSplit(high, [0], 0, 0.5)).toBe(high);
+  });
+});
+
+describe("independent composer identity", () => {
+  it("keeps whole composer nodes through moves, swaps, and collapse", () => {
+    const first = splitPane(singlePaneLayout(), "pane-1", "right", {
+      kind: "new-thread",
+    });
+    const firstId = first.focusedPaneId;
+    const second = splitPane(first, firstId, "bottom", { kind: "new-thread" });
+    const secondId = second.focusedPaneId;
+    const firstNode = findPane(second.root, firstId);
+    const secondNode = findPane(second.root, secondId);
+    const moved = movePane(second, firstId, "pane-1", "left");
+    const swapped = swapPanes(moved, firstId, secondId);
+    expect(findPane(swapped.root, firstId)).toBe(firstNode);
+    expect(findPane(swapped.root, secondId)).toBe(secondNode);
+    expect(swapped.focusedPaneId).toBe(firstId);
+    const mixedSwap = swapPanes(swapped, "pane-1", firstId);
+    expect(findPane(mixedSwap.root, firstId)).toBe(firstNode);
+    const collapsed = removePane(removePane(mixedSwap, "pane-1"), secondId);
+    expect(collapsed.root).toBe(firstNode);
+  });
+
+  it("never deduplicates explicit composers or reuses their IDs for ordinary panes", () => {
+    const first = splitPane(singlePaneLayout(), "pane-1", "right", {
+      kind: "new-thread",
+    });
+    const firstId = first.focusedPaneId;
+    const second = splitPane(first, firstId, "right", { kind: "new-thread" });
+    expect(second.focusedPaneId).not.toBe(firstId);
+    expect(findPaneByContent(second.root, { kind: "new-thread" })).toBeNull();
+    expect(listPanes(second.root).filter(isNewThreadComposerPane)).toHaveLength(
+      2,
+    );
+    const removed = removePane(second, firstId);
+    const ordinary = splitPane(
+      removed,
+      "pane-1",
+      "left",
+      threadContent("later"),
+    );
+    expect(ordinary.focusedPaneId).toBe("pane-2");
+    const singleton = replacePaneContent(ordinary, second.focusedPaneId, {
+      kind: "new-thread",
+    });
+    expect(singleton.focusedPaneId).toBe("pane-3");
+    expect(
+      findPaneByContent(singleton.root, { kind: "new-thread" })?.paneId,
+    ).toBe("pane-3");
+  });
+
+  it("allocates a fresh composer for replacement at the pane limit", () => {
+    const eight = layoutAtPaneCount(MAX_PANES);
+    const first = replaceWithNewThreadComposer(eight, eight.focusedPaneId);
+    const next = replaceWithNewThreadComposer(first, first.focusedPaneId);
+    expect(countPanes(next.root)).toBe(MAX_PANES);
+    expect(next.focusedPaneId).not.toBe(first.focusedPaneId);
+    expect(findPane(next.root, first.focusedPaneId)).toBeNull();
   });
 });

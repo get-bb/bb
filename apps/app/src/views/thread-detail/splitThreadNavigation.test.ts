@@ -9,6 +9,7 @@ import {
 import type { SplitLayout } from "@/lib/split-layout";
 import {
   applyThreadOpenToLayout,
+  applyNewThreadOpenToLayout,
   applyThreadPaneActionToLayout,
   createSinglePaneLayout,
   focusedPaneRoute,
@@ -213,4 +214,18 @@ describe("applyThreadPaneActionToLayout", () => {
       dimInactiveSplits: null,
     });
   });
+});
+
+it("opens independent composers through the split signal without changing existing thread panes", () => {
+  const original = twoPaneLayout();
+  const first = applyNewThreadOpenToLayout(original, "right");
+  const second = applyNewThreadOpenToLayout(first, "down");
+  expect(listPanes(second.root)).toHaveLength(4);
+  expect(first.focusedPaneId).not.toBe(second.focusedPaneId);
+  expect(findPaneByThread(second.root, "p1", "thread-1")?.paneId).toBe(
+    "pane-1",
+  );
+  const full = applyNewThreadOpenToLayout(eightPaneLayout(), "right");
+  expect(listPanes(full.root)).toHaveLength(MAX_PANES);
+  expect(full.focusedPaneId).toMatch(/^composer-/);
 });

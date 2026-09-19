@@ -398,6 +398,7 @@ type ExpectedThreadsKey =
   | "markRead"
   | "markUnread"
   | "open"
+  | "openNew"
   | "output"
   | "paneAction"
   | "pin"

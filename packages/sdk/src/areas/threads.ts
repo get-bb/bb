@@ -36,6 +36,7 @@ import type {
   ThreadListResponse,
   ThreadRunningResponse,
   ThreadOpenResponse,
+  ThreadOpenNewRequest,
   ThreadPaneAction,
   ThreadPaneActionResponse,
   ThreadPendingInteractionsResponse,
@@ -180,6 +181,7 @@ export type ThreadContextResult = ThreadContextResponse;
 export type ThreadTimelineResult = ThreadTimelineResponse;
 export type ThreadArchiveResult = ThreadArchiveAllResponse;
 export type ThreadOpenResult = ThreadOpenResponse;
+export type ThreadOpenNewArgs = ThreadOpenNewRequest;
 export type ThreadPaneActionResult = ThreadPaneActionResponse;
 export type ThreadDeleteResult = { ok: true };
 export type ThreadSendResult = SendMessageResponse;
@@ -577,6 +579,7 @@ export interface ThreadsArea {
   markRead(args: ThreadActionArgs): Promise<ThreadReadStateResult>;
   markUnread(args: ThreadActionArgs): Promise<ThreadReadStateResult>;
   open(args: ThreadOpenArgs): Promise<ThreadOpenResult>;
+  openNew(args?: ThreadOpenNewArgs): Promise<ThreadOpenResult>;
   paneAction(args: ThreadPaneActionArgs): Promise<ThreadPaneActionResult>;
   output(args: ThreadOutputArgs): Promise<ThreadOutputResponse>;
   pin(args: ThreadActionArgs): Promise<ThreadMutationResult>;
@@ -1230,6 +1233,11 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
             file: input.file,
           },
         }),
+      );
+    },
+    async openNew(input = {}) {
+      return transport.readJson(
+        transport.api.v1.threads["open-new"].$post({ json: input }),
       );
     },
     async paneAction(input) {

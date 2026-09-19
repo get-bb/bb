@@ -1,3 +1,4 @@
+import { requestSplitLayoutChange } from "@/lib/split-layout/newThreadPaneGuard";
 import { resolveThreadMentionDropTarget } from "@/lib/thread-mention-drop";
 import {
   useCallback,
@@ -21,6 +22,7 @@ import {
   listPanes,
   MAX_PANES,
   replacePaneContent,
+  replaceWithNewThreadComposer,
   setFocus,
   splitPane,
   type PaneContent,
@@ -134,7 +136,7 @@ interface BeginSidebarPaneContentSplitDragArgs {
   store: ReturnType<typeof useStore>;
   navigate: (
     route: string,
-    options?: { replace?: boolean },
+    options?: { replace?: boolean; state?: Record<string, unknown> },
   ) => void | Promise<void>;
   content: PaneContent;
   label: string;
@@ -190,26 +192,38 @@ export function beginSidebarPaneContentSplitDrag({
       if (layout === null) return null;
       return decideThreadDrop({
         zone,
-        threadAlreadyOpen: findPaneByContent(layout.root, content) !== null,
+        threadAlreadyOpen:
+          content.kind !== "new-thread" &&
+          findPaneByContent(layout.root, content) !== null,
         atMaxPanes: countPanes(layout.root) >= MAX_PANES,
       });
     },
     onDrop: (target) => {
       const layout = store.get(splitLayoutAtom);
       if (layout === null) return;
-      const existing = findPaneByContent(layout.root, content);
+      const existing =
+        content.kind === "new-thread"
+          ? null
+          : findPaneByContent(layout.root, content);
       const next =
         existing !== null
           ? setFocus(layout, existing.paneId)
           : target.zone === "center"
-            ? replacePaneContent(layout, target.paneId, content)
+            ? content.kind === "new-thread"
+              ? replaceWithNewThreadComposer(layout, target.paneId)
+              : replacePaneContent(layout, target.paneId, content)
             : splitPane(layout, target.paneId, target.zone, content);
-      if (next !== layout) store.set(splitLayoutAtom, next);
-      onNavigate?.();
-      void navigate(
-        routeForContent(content),
-        existing !== null ? { replace: true } : undefined,
-      );
+      requestSplitLayoutChange(store, next, () => {
+        onNavigate?.();
+        void navigate(
+          routeForContent(content),
+          content.kind === "new-thread"
+            ? { state: { composerPaneId: next.focusedPaneId } }
+            : existing !== null
+              ? { replace: true }
+              : undefined,
+        );
+      });
     },
   });
 }

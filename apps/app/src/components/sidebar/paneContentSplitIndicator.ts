@@ -89,6 +89,16 @@ export function usePaneContentSplitIndicator(
     ) {
       return NO_INDICATOR;
     }
+    if (content.kind === "new-thread") {
+      return buildSplitIndicator(
+        layout,
+        new Set(
+          listPanes(layout.root)
+            .filter((pane) => pane.content.kind === "new-thread")
+            .map((pane) => pane.paneId),
+        ),
+      );
+    }
     const pane = findPaneByContent(layout.root, content);
     if (pane === null) {
       return NO_INDICATOR;

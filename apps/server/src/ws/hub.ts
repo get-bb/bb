@@ -25,6 +25,7 @@ import {
   serverMessageSchema,
   terminalServerMessageSchema,
   threadOpenSignalSchema,
+  threadOpenNewSignalSchema,
   threadPaneActionSignalSchema,
   type ThreadPaneAction,
   type ThreadOpenFile,
@@ -845,6 +846,14 @@ export class NotificationHub implements DbNotifier {
           split: request.split,
           file: request.file,
         }),
+      ),
+    );
+  }
+
+  notifyThreadOpenNew(split: ThreadOpenSplit): number {
+    return this.broadcastToAllClients(
+      JSON.stringify(
+        threadOpenNewSignalSchema.parse({ type: "thread-open-new", split }),
       ),
     );
   }

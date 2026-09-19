@@ -229,6 +229,46 @@ describe("@bb/sdk", () => {
     ).resolves.toEqual(events);
   });
 
+  it("opens unsaved composers without changing existing thread-open requests", async () => {
+    const queue = createFetchQueue([
+      { body: { delivered: 0 } },
+      { body: { delivered: 2 } },
+      { body: { delivered: 1 } },
+    ]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(sdk.threads.openNew()).resolves.toEqual({ delivered: 0 });
+    await expect(sdk.threads.openNew({ split: "right" })).resolves.toEqual({
+      delivered: 2,
+    });
+    await expect(
+      sdk.threads.open({ threadId: "thr_test", file: null }),
+    ).resolves.toEqual({ delivered: 1 });
+    expect(queue.requests).toEqual([
+      {
+        bodyText: "{}",
+        method: "POST",
+        url: "http://bb.test/api/v1/threads/open-new",
+      },
+      {
+        bodyText: JSON.stringify({ split: "right" }),
+        method: "POST",
+        url: "http://bb.test/api/v1/threads/open-new",
+      },
+      {
+        bodyText: JSON.stringify({ file: null }),
+        method: "POST",
+        url: "http://bb.test/api/v1/threads/thr_test/open",
+      },
+    ]);
+  });
+
   it("sends thread pane presentation actions through the typed transport", async () => {
     const queue = createFetchQueue([{ body: { delivered: 3 } }]);
     const sdk = createBbSdk({

@@ -230,6 +230,8 @@ Opening threads and files in the app:
 
   bb thread open <path>                    Open a file in the current BB thread panel
   bb thread open <thread-id> [path]        Open a thread, optionally with a panel file
+  bb thread open --new [--split <placement>]
+                                           Open an unsaved New thread composer
     --line <number>                        Line number to focus
     --split <placement>                    right, down, left, top, or replace
   bb thread pane <action> [thread-id]      Maximize, restore, toggle, spotlight, or clear spotlight
@@ -240,6 +242,14 @@ Opening threads and files in the app:
   as the first argument. A thread already open in a pane is focused instead of
   duplicated. Edge placement creates panes through the eighth pane; at eight
   panes, it replaces the focused pane.
+  --new takes no thread ID, path, or --line. It broadcasts an ephemeral request
+  to connected app windows without creating a thread. Desktop opens a fresh
+  independent composer; compact/mobile opens ordinary New thread. Placement
+  defaults to replace. Nonempty composers require discard confirmation before
+  replacement, and composers currently submitting cannot be replaced.
+  SDK: sdk.threads.openNew({ split: "right" }); omit split for replace.
+  The returned delivered count measures connected clients, not user acceptance;
+  zero means no app received the request. Older apps ignore the new signal.
   Pane actions broadcast to connected BB app windows and affect the matching
   already-open pane without changing its split tree. Spotlight focuses that
   pane and dims the others; clear-spotlight focuses it and removes split dimming.

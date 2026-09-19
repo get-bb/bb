@@ -307,6 +307,37 @@ describe("createMobileRealtime", () => {
     ]);
   });
 
+  it("delivers new-composer navigation separately and unsubscribes cleanly", () => {
+    const invalid = vi.fn();
+    const { factory, realtime } = setup({ onInvalidMessage: invalid });
+    const openNew = vi.fn();
+    const openThread = vi.fn();
+    const changed = vi.fn();
+    const unsubscribe = realtime.onThreadOpenNew(openNew);
+    realtime.onThreadOpen(openThread);
+    realtime.onChanged(changed);
+    realtime.connect();
+    const socket = factory.latest();
+    socket.open();
+
+    socket.receive(
+      JSON.stringify({ type: "thread-open-new", split: "right", future: true }),
+    );
+    expect(openNew).toHaveBeenCalledWith({
+      type: "thread-open-new",
+      split: "right",
+    });
+    expect(openThread).not.toHaveBeenCalled();
+    expect(changed).not.toHaveBeenCalled();
+    expect(invalid).not.toHaveBeenCalled();
+    unsubscribe();
+    socket.receive(
+      JSON.stringify({ type: "thread-open-new", split: "replace" }),
+    );
+    expect(openNew).toHaveBeenCalledTimes(1);
+    realtime.dispose();
+  });
+
   it("ignores pong frames without reporting them as invalid", () => {
     const invalid: unknown[] = [];
     const { factory, realtime } = setup({

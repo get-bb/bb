@@ -228,6 +228,7 @@ import type {
   ThreadListResponse,
   ThreadConversationOutlineResponse,
   ThreadOpenRequest,
+  ThreadOpenNewRequest,
   ThreadOpenResponse,
   ThreadPaneActionRequest,
   ThreadPaneActionResponse,
@@ -357,6 +358,7 @@ import {
   threadCountQuerySchema,
   threadListQuerySchema,
   threadOpenRequestSchema,
+  threadOpenNewRequestSchema,
   threadPaneActionRequestSchema,
   threadSearchQuerySchema,
   threadStorageContentQuerySchema,
@@ -1443,6 +1445,14 @@ export const publicApiRoutes = {
       method: "post",
       request: noRequest<PathId>(),
       response: jsonResponse<{ ok: true }>(),
+    }),
+    openNew: defineRoute({
+      path: "/threads/open-new",
+      method: "post",
+      request: jsonRequest<EmptyInput, ThreadOpenNewRequest>(
+        threadOpenNewRequestSchema,
+      ),
+      response: jsonResponse<ThreadOpenResponse>(),
     }),
     open: defineRoute({
       path: "/threads/:id/open",

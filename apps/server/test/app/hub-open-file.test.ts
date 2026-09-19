@@ -3,6 +3,22 @@ import { NotificationHub } from "../../src/ws/hub.js";
 import { createMockHubSocket } from "../helpers/mock-hub-socket.js";
 
 describe("NotificationHub.notifyThreadOpen", () => {
+  it("broadcasts new-composer requests independently of thread subscriptions", () => {
+    const hub = new NotificationHub();
+    expect(hub.notifyThreadOpenNew("right")).toBe(0);
+    const first = createMockHubSocket();
+    const second = createMockHubSocket();
+    hub.subscribe(first, { kind: "thread-detail", threadId: "thr_1" });
+    hub.registerClient(second);
+
+    expect(hub.notifyThreadOpenNew("down")).toBe(2);
+    for (const socket of [first, second]) {
+      expect(socket.messages.map((message) => JSON.parse(message))).toEqual([
+        { type: "thread-open-new", split: "down" },
+      ]);
+    }
+  });
+
   it("broadcasts to every connected client and returns the delivered count", () => {
     const hub = new NotificationHub();
     const viewing = createMockHubSocket();

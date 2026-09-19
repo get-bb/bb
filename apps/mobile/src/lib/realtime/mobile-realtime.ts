@@ -4,11 +4,13 @@ import {
   pongMessageLenientSchema,
   realtimeSubscriptionTargetKey,
   threadOpenSignalLenientSchema,
+  threadOpenNewSignalLenientSchema,
   threadPaneActionSignalLenientSchema,
   type ChangedMessage,
   type ClientMessage,
   type RealtimeSubscriptionTarget,
   type ThreadOpenSignal,
+  type ThreadOpenNewSignal,
 } from "@bb/server-contract";
 import {
   SOCKET_OPEN,
@@ -50,6 +52,7 @@ export interface MobileRealtime {
   unsubscribe(target: RealtimeSubscriptionTarget): void;
   onChanged(callback: (message: ChangedMessage) => void): () => void;
   onThreadOpen(callback: (signal: ThreadOpenSignal) => void): () => void;
+  onThreadOpenNew(callback: (signal: ThreadOpenNewSignal) => void): () => void;
   onConnected(
     callback: (event: MobileRealtimeConnectedEvent) => void,
   ): () => void;
@@ -115,6 +118,9 @@ export function createMobileRealtime(
   const subscriptions = new Map<string, ActiveSubscription>();
   const changedCallbacks = new Set<(message: ChangedMessage) => void>();
   const threadOpenCallbacks = new Set<(signal: ThreadOpenSignal) => void>();
+  const threadOpenNewCallbacks = new Set<
+    (signal: ThreadOpenNewSignal) => void
+  >();
   const connectedCallbacks = new Set<
     (event: MobileRealtimeConnectedEvent) => void
   >();
@@ -360,6 +366,14 @@ export function createMobileRealtime(
       return;
     }
 
+    const threadOpenNew = threadOpenNewSignalLenientSchema.safeParse(parsed);
+    if (threadOpenNew.success) {
+      for (const callback of threadOpenNewCallbacks) {
+        callback(threadOpenNew.data);
+      }
+      return;
+    }
+
     if (threadPaneActionSignalLenientSchema.safeParse(parsed).success) return;
 
     if (pluginSignalLenientSchema.safeParse(parsed).success) return;
@@ -443,6 +457,7 @@ export function createMobileRealtime(
     },
     onChanged: (callback) => listen(changedCallbacks, callback),
     onThreadOpen: (callback) => listen(threadOpenCallbacks, callback),
+    onThreadOpenNew: (callback) => listen(threadOpenNewCallbacks, callback),
     onConnected: (callback) => listen(connectedCallbacks, callback),
     onConnectFailed: (callback) => listen(connectFailedCallbacks, callback),
     onConnectionStateChange: (callback) =>
@@ -458,6 +473,7 @@ export function createMobileRealtime(
       teardownSocket();
       changedCallbacks.clear();
       threadOpenCallbacks.clear();
+      threadOpenNewCallbacks.clear();
       connectFailedCallbacks.clear();
       connectedCallbacks.clear();
       connectionStateCallbacks.clear();

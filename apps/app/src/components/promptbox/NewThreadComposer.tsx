@@ -253,6 +253,7 @@ export interface NewThreadComposerProps {
   seed?: NewThreadComposerSeed;
   resetKey?: string | number | null;
   preferReadyProviderWhenUnset?: boolean;
+  lockWhileSubmitting?: boolean;
   onSubmit: (request: NewThreadComposerSubmission) => void | Promise<void>;
   focusRequest?: number;
   children: (state: NewThreadComposerState) => ReactNode;
@@ -423,14 +424,15 @@ function useDraftPreservingOptionChange<T>(
   current: T,
   setValue: (value: T) => void,
   snapshot: () => void,
+  isLocked: () => boolean,
 ): (value: T) => void {
   return useCallback(
     (value: T) => {
-      if (Object.is(current, value)) return;
+      if (isLocked() || Object.is(current, value)) return;
       snapshot();
       setValue(value);
     },
-    [current, setValue, snapshot],
+    [current, isLocked, setValue, snapshot],
   );
 }
 
@@ -453,11 +455,18 @@ export function NewThreadComposer({
   seed,
   resetKey,
   preferReadyProviderWhenUnset = false,
+  lockWhileSubmitting = false,
   onSubmit,
   focusRequest,
   children,
 }: NewThreadComposerProps) {
   const navigate = useNavigate();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const isSubmittingRef = useRef(false);
+  const isLocked = useCallback(
+    () => lockWhileSubmitting && isSubmittingRef.current,
+    [lockWhileSubmitting],
+  );
   const [localPromptBoxFocusRequest, setLocalPromptBoxFocusRequest] = useState<
     number | null
   >(null);
@@ -811,7 +820,60 @@ export function NewThreadComposer({
     [providerOptions],
   );
 
-  const promptDraft = usePromptDraftStorage(draftStorage);
+  const storedPromptDraft = usePromptDraftStorage(draftStorage);
+  const setStoredDraft = storedPromptDraft.setDraft;
+  const restoreStoredDraftIfEmpty = storedPromptDraft.restoreIfEmpty;
+  const setUnlockedDraft = useCallback<PromptDraftController["setDraft"]>(
+    (...args) => {
+      if (!isLocked()) setStoredDraft(...args);
+    },
+    [isLocked, setStoredDraft],
+  );
+  const restoreUnlockedDraftIfEmpty = useCallback<
+    PromptDraftController["restoreIfEmpty"]
+  >(
+    (...args) => {
+      if (!isLocked()) restoreStoredDraftIfEmpty(...args);
+    },
+    [isLocked, restoreStoredDraftIfEmpty],
+  );
+  const promptDraft = useMemo<PromptDraftController>(
+    () =>
+      !lockWhileSubmitting
+        ? storedPromptDraft
+        : {
+            ...storedPromptDraft,
+            setDraft: setUnlockedDraft,
+            setTextAndMentions: (...args) => {
+              if (!isLocked()) storedPromptDraft.setTextAndMentions(...args);
+            },
+            setAttachments: (...args) => {
+              if (!isLocked()) storedPromptDraft.setAttachments(...args);
+            },
+            addAttachment: (...args) => {
+              if (!isLocked()) storedPromptDraft.addAttachment(...args);
+            },
+            removeAttachment: (...args) => {
+              if (!isLocked()) storedPromptDraft.removeAttachment(...args);
+            },
+            addQuote: (...args) => {
+              if (!isLocked()) storedPromptDraft.addQuote(...args);
+            },
+            clear: () => {
+              if (!isLocked()) storedPromptDraft.clear();
+            },
+            clearIfCurrentMatches: (...args) =>
+              !isLocked() && storedPromptDraft.clearIfCurrentMatches(...args),
+            restoreIfEmpty: restoreUnlockedDraftIfEmpty,
+          },
+    [
+      isLocked,
+      lockWhileSubmitting,
+      restoreUnlockedDraftIfEmpty,
+      setUnlockedDraft,
+      storedPromptDraft,
+    ],
+  );
   const textEffects = useComposerTextEffects(promptDraft.storageKey);
   const promptOptionDraftSnapshotRef = useRef<PromptDraftState | null>(null);
   const snapshotDraftBeforeOptionChange = useCallback(() => {
@@ -836,6 +898,7 @@ export function NewThreadComposer({
       value: string,
       providerTarget: string | EnvironmentMachineSelection | null = null,
     ) => {
+      if (isLocked()) return;
       const providerMachine =
         typeof providerTarget === "string"
           ? { type: "existing" as const, hostId: providerTarget }
@@ -869,6 +932,7 @@ export function NewThreadComposer({
       setCreationEnvironmentSelectionValue(value);
     },
     [
+      isLocked,
       environmentSelectionValue,
       pickedProviderMachine,
       setCreationEnvironmentSelectionValue,
@@ -1000,6 +1064,7 @@ export function NewThreadComposer({
   const environmentProviderInputsScopeKey = `${projectId}\0${effectiveEnvironmentValue}\0${providerHostId ?? ""}`;
   const handleProviderInputsChange = useCallback(
     (next: PluginEnvironmentProviderInputsChange) => {
+      if (isLocked()) return;
       if (next.status === "blocked") {
         setProviderInputsBlocked((current) => {
           if (
@@ -1029,7 +1094,7 @@ export function NewThreadComposer({
         };
       });
     },
-    [environmentProviderInputsScopeKey],
+    [environmentProviderInputsScopeKey, isLocked],
   );
   const activeProviderInputsOverride =
     environmentProviderInputsOverride !== null &&
@@ -1232,10 +1297,8 @@ export function NewThreadComposer({
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isCopyingAttachments, setIsCopyingAttachments] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const isUploadingRef = useRef(false);
   const isCopyingAttachmentsRef = useRef(false);
-  const isSubmittingRef = useRef(false);
   const uploadPromptAttachment = useUploadPromptAttachment();
   const uploadTargetKey = `${projectId}\0${promptDraft.storageKey}`;
   const currentUploadTargetRef = useRef(uploadTargetKey);
@@ -1244,7 +1307,13 @@ export function NewThreadComposer({
   }, [uploadTargetKey]);
   const handleAttachFiles = useCallback(
     async (files: File[]) => {
-      if (!projectId || files.length === 0 || isUploadingRef.current) return;
+      if (
+        isLocked() ||
+        !projectId ||
+        files.length === 0 ||
+        isUploadingRef.current
+      )
+        return;
       const capturedTarget = `${projectId}\0${promptDraft.storageKey}`;
       setAttachmentError(null);
       isUploadingRef.current = true;
@@ -1275,7 +1344,7 @@ export function NewThreadComposer({
         setIsUploading(false);
       }
     },
-    [projectId, promptDraft, uploadPromptAttachment],
+    [isLocked, projectId, promptDraft, uploadPromptAttachment],
   );
   const changeProject = useCallback(
     async (nextProjectId: string | null): Promise<ProjectChangeOutcome> => {
@@ -1506,6 +1575,9 @@ export function NewThreadComposer({
       }
       const sources: CreateExecutionInputSources = {
         ...executionInputSources,
+        ...(selectionScope === "component-local"
+          ? { providerId: "explicit" as const }
+          : {}),
         ...seededExecutionInputSources,
       };
       const request: NewThreadComposerSubmission = {
@@ -1530,13 +1602,13 @@ export function NewThreadComposer({
       setIsSubmitting(true);
       setAttachmentError(null);
       const clearedSubmittedDraft =
-        promptDraft.clearIfCurrentMatches(submittedDraft);
+        storedPromptDraft.clearIfCurrentMatches(submittedDraft);
       try {
         await onSubmit(request);
         clearReuseEnvironment();
       } catch (submitError) {
         if (clearedSubmittedDraft) {
-          promptDraft.restoreIfEmpty(submittedDraft);
+          storedPromptDraft.restoreIfEmpty(submittedDraft);
         }
         throw submitError;
       } finally {
@@ -1554,10 +1626,12 @@ export function NewThreadComposer({
       promptDraft,
       reasoningLevel,
       seededExecutionInputSources,
+      storedPromptDraft,
       submitDisabledReason,
       submissionEnvironment,
       selectedProviderId,
       selectedThreadModel,
+      selectionScope,
       serviceTier,
       supportsServiceTier,
     ],
@@ -1584,26 +1658,31 @@ export function NewThreadComposer({
     selectedProviderId,
     setSelectedProviderId,
     snapshotDraftBeforeOptionChange,
+    isLocked,
   );
   const handleModelChange = useDraftPreservingOptionChange(
     selectedModel,
     setSelectedModel,
     snapshotDraftBeforeOptionChange,
+    isLocked,
   );
   const handleReasoningChange = useDraftPreservingOptionChange(
     reasoningLevel,
     setReasoningLevel,
     snapshotDraftBeforeOptionChange,
+    isLocked,
   );
   const handlePermissionChange = useDraftPreservingOptionChange(
     permissionMode,
     setPermissionMode,
     snapshotDraftBeforeOptionChange,
+    isLocked,
   );
   const handleServiceTierChange = useDraftPreservingOptionChange(
     serviceTier,
     setServiceTier,
     snapshotDraftBeforeOptionChange,
+    isLocked,
   );
   const handleWorktreeChange = useCallback(
     (environmentId: string) => {
@@ -1640,6 +1719,7 @@ export function NewThreadComposer({
     async (
       selection: ExperimentalComposerSelection,
     ): Promise<ExperimentalComposerSelection> => {
+      if (isLocked()) throw new Error("This composer is starting a thread.");
       const deadline = resolveComposerSelectionDeadline();
       const { observer } = selectionState;
       let state = await observer.waitUntil(() => true, deadline);
@@ -1706,7 +1786,7 @@ export function NewThreadComposer({
       await settle(true);
       return readNewThreadComposerSelection(state);
     },
-    [selectionState],
+    [isLocked, selectionState],
   );
   const setSelection = useCallback(
     (selection: ExperimentalComposerSelection) => {
@@ -1748,7 +1828,7 @@ export function NewThreadComposer({
       const locks = options.locks ?? {};
       pickerLocksRef.current = locks;
       const disabledReason = options.blockedReason ?? submitDisabledReason;
-      return (
+      const promptBox = (
         <NewThreadPromptBox
           id={options.id}
           focusRequest={promptBoxFocusRequest}
@@ -1921,9 +2001,17 @@ export function NewThreadComposer({
           }}
         />
       );
+      return lockWhileSubmitting ? (
+        <div className="contents" inert={isSubmitting}>
+          {promptBox}
+        </div>
+      ) : (
+        promptBox
+      );
     },
     [
       activeModel,
+      lockWhileSubmitting,
       attachmentError,
       commandSuggestions,
       currentDraft,

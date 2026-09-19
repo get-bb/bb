@@ -20,6 +20,7 @@ import {
 interface ThreadOpenCommandOptions {
   line?: string;
   json?: boolean;
+  new?: boolean;
   split?: string;
 }
 
@@ -42,10 +43,11 @@ export function registerOpenCommand(
 ): void {
   parent
     .command("open")
-    .description("Open a BB thread, optionally with a file in its panel")
+    .description("Open a BB thread, a file in its panel, or a new composer")
     .usage("[id] [path] [options]")
     .argument("[id]", "Thread ID. Omit inside a BB thread.")
     .argument("[path]", "Thread-relative or absolute file path to open")
+    .option("--new", "Open an unsaved New thread composer")
     .option("--line <number>", "Line number to focus")
     .option(
       "--split <placement>",
@@ -59,6 +61,36 @@ export function registerOpenCommand(
           second: string | undefined,
           opts: ThreadOpenCommandOptions,
         ) => {
+          if (opts.new) {
+            if (
+              first !== undefined ||
+              second !== undefined ||
+              opts.line !== undefined
+            ) {
+              throw new Error(
+                "--new cannot be combined with a thread ID, file path, or --line.",
+              );
+            }
+            const split =
+              opts.split === undefined
+                ? undefined
+                : threadOpenSplitSchema.parse(opts.split);
+            const result = await createCliBbSdk(getUrl()).threads.openNew(
+              split === undefined ? {} : { split },
+            );
+            if (
+              outputJson(opts, {
+                split: split ?? "replace",
+                delivered: result.delivered,
+              })
+            ) {
+              return;
+            }
+            console.log("New thread composer");
+            console.log(`Split: ${split ?? "replace"}`);
+            console.log(`Delivered: ${result.delivered}`);
+            return;
+          }
           const target = resolveThreadOpenTarget(
             first,
             second,

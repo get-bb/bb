@@ -1,3 +1,4 @@
+import { splitPane } from "./ops";
 import { describe, expect, it } from "vitest";
 import {
   deserializeSplitLayout,
@@ -131,5 +132,21 @@ describe("split layout persistence", () => {
     expect(
       deserializeSplitLayout(serializeSplitLayout(layoutWithPaneCount(9))),
     ).toBeNull();
+  });
+});
+
+it("keeps composer layouts readable by the unchanged shipped v1 reader", () => {
+  const first = splitPane(layout, "pane-2", "bottom", { kind: "new-thread" });
+  const second = splitPane(first, first.focusedPaneId, "right", {
+    kind: "new-thread",
+  });
+  const saved = serializeSplitLayout(second);
+  expect(JSON.parse(saved).version).toBe(1);
+  expect(deserializeSplitLayout(saved)).toEqual(second);
+  const legacy =
+    '{"version":1,"layout":{"root":{"type":"pane","paneId":"pane-1","content":{"kind":"new-thread"}},"focusedPaneId":"pane-1"}}';
+  expect(deserializeSplitLayout(legacy)).toEqual({
+    root: { type: "pane", paneId: "pane-1", content: { kind: "new-thread" } },
+    focusedPaneId: "pane-1",
   });
 });

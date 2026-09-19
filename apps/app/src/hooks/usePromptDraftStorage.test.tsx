@@ -383,3 +383,49 @@ describe("usePromptDraftStorage addQuote", () => {
     expect(second.result.current.text).toBe("> shared selection\n");
   });
 });
+
+it("isolates keyed composer text and attachments across remount, clear, and failure restore", () => {
+  const firstScope = { kind: "new-thread" as const, key: "composer-first" };
+  const secondScope = { kind: "new-thread" as const, key: "composer-second" };
+  const firstDraft = {
+    text: "first",
+    mentions: [],
+    attachments: [
+      {
+        type: "localFile" as const,
+        path: "/tmp/first.txt",
+        name: "first.txt",
+        mimeType: "text/plain",
+        sizeBytes: 5,
+      },
+    ],
+  };
+  const secondDraft = { text: "second", mentions: [], attachments: [] };
+  const first = renderHook(() => usePromptDraftStorage(firstScope));
+  const second = renderHook(() => usePromptDraftStorage(secondScope));
+  const singleton = renderHook(() =>
+    usePromptDraftStorage({ kind: "new-thread" }),
+  );
+  act(() => {
+    first.result.current.setDraft(firstDraft);
+    second.result.current.setDraft(secondDraft);
+    singleton.result.current.setTextAndMentions("singleton", []);
+  });
+  expect(singleton.result.current.storageKey).toBe(NEW_THREAD_DRAFT_KEY);
+  first.unmount();
+  const restored = renderHook(() => usePromptDraftStorage(firstScope));
+  expect(restored.result.current.getCurrent()).toEqual(firstDraft);
+  act(() => {
+    restored.result.current.clearIfCurrentMatches(firstDraft);
+  });
+  expect(second.result.current.getCurrent()).toEqual(secondDraft);
+  act(() => {
+    restored.result.current.restoreIfEmpty(firstDraft);
+  });
+  expect(restored.result.current.getCurrent()).toEqual(firstDraft);
+  act(() => {
+    restored.result.current.clear();
+  });
+  expect(second.result.current.getCurrent()).toEqual(secondDraft);
+  expect(singleton.result.current.text).toBe("singleton");
+});

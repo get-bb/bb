@@ -134,6 +134,14 @@ For review or fix pipelines, get the environment ID from
   eighth pane; at eight panes, they replace the focused pane.
 - A file path is optional when a thread ID is explicit:
   `bb thread open <thread-id> [path] [--split <placement>]`.
+- Use `bb thread open --new [--split right|down|left|top|replace]` or
+  `sdk.threads.openNew({ split: "right" })` to open an unsaved composer without
+  creating a thread. Omitted placement defaults to `replace`. Do not pass a
+  thread ID, file path, or `--line` with `--new`. Desktop creates an independent
+  composer; compact/mobile opens ordinary New thread. Nonempty replacement
+  requires discard confirmation, and submitting composers cannot be replaced.
+  The delivery count measures connected app clients, not accepted replacements;
+  zero means no app received the request. Older apps ignore the new signal.
 - Paths can be thread-relative workspace paths, or absolute paths inside the
   target thread workspace.
 - Absolute paths under `BB_THREAD_STORAGE` open as thread-storage files for the

@@ -1,4 +1,4 @@
-import { getThread } from "@bb/db";
+import { environments, getThread, threads } from "@bb/db";
 import { threadOpenResponseSchema } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
 import { readJson } from "../helpers/json.js";
@@ -35,6 +35,46 @@ async function postPaneAction(
 }
 
 describe("public thread open", () => {
+  it("opens a composer without a thread or environment and normalizes placement", async () => {
+    await withTestHarness(async (harness) => {
+      const beforeThreads = harness.db.select().from(threads).all();
+      const beforeEnvironments = harness.db.select().from(environments).all();
+      const postNew = (body: unknown) =>
+        harness.app.request("/api/v1/threads/open-new", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        });
+
+      const undelivered = await postNew({ split: "right" });
+      expect(undelivered.status).toBe(200);
+      expect(await readJson(undelivered)).toEqual({ delivered: 0 });
+
+      const socket = createMockHubSocket();
+      harness.deps.hub.registerClient(socket);
+      const defaultPlacement = await postNew({});
+      expect(defaultPlacement.status).toBe(200);
+      expect(await readJson(defaultPlacement)).toEqual({ delivered: 1 });
+      const explicitPlacement = await postNew({ split: "right" });
+      expect(explicitPlacement.status).toBe(200);
+      expect(await readJson(explicitPlacement)).toEqual({ delivered: 1 });
+      expect(socket.messages.map((message) => JSON.parse(message))).toEqual([
+        { type: "thread-open-new", split: "replace" },
+        { type: "thread-open-new", split: "right" },
+      ]);
+
+      for (const body of [{ split: "diagonal" }, { threadId: "thr_1" }]) {
+        const invalid = await postNew(body);
+        expect(invalid.status).toBe(400);
+      }
+      expect(socket.messages).toHaveLength(2);
+      expect(harness.db.select().from(threads).all()).toEqual(beforeThreads);
+      expect(harness.db.select().from(environments).all()).toEqual(
+        beforeEnvironments,
+      );
+    });
+  });
+
   it("broadcasts an open-file signal to connected clients without persisting", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
