@@ -331,17 +331,24 @@ describe("PluginCollectionToolbar", () => {
     {
       control: /^Source:/u,
       heading: "Source",
+      icon: "PackageReceive",
       role: "menuitemcheckbox" as const,
     },
-    { control: /^Sort:/u, heading: "Sort", role: "menuitemradio" as const },
+    {
+      control: /^Sort:/u,
+      heading: "Sort",
+      icon: "SortingZA01",
+      role: "menuitemradio" as const,
+    },
   ])(
     "opens $heading without a redundant heading",
-    ({ control, heading, role }) => {
+    ({ control, heading, icon, role }) => {
       mockToolbarWidth(800);
       render(<ToolbarHarness installed />);
       const trigger = screen.getByRole("button", { name: control });
       expect(trigger.querySelector('[data-icon="ChevronDown"]')).not.toBeNull();
       expect(trigger.querySelector('[data-icon="Layers"]')).toBeNull();
+      expect(trigger.querySelector(`[data-icon="${icon}"]`)).not.toBeNull();
       fireEvent.keyDown(trigger, { key: "Enter" });
       const menu = screen.getByRole("menu");
       expect(screen.getAllByRole(role).length).toBeGreaterThan(0);
