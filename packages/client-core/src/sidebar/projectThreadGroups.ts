@@ -211,7 +211,24 @@ function buildSortedItems(
   compareThreads: ThreadComparator,
   groupEnvironmentThreads: boolean,
   draftThreadIds: ReadonlySet<string>,
+  respectSections = false,
 ): ProjectThreadItem[] {
+  if (groupEnvironmentThreads && respectSections) {
+    const nodesBySectionId = new Map<string | null, ProjectThreadNode[]>();
+    for (const node of nodes) {
+      const sectionId = node.thread.sectionId;
+      const bucket = nodesBySectionId.get(sectionId);
+      if (bucket) {
+        bucket.push(node);
+      } else {
+        nodesBySectionId.set(sectionId, [node]);
+      }
+    }
+    return [...nodesBySectionId.values()].flatMap((sectionNodes) =>
+      buildSortedItems(sectionNodes, compareThreads, true, draftThreadIds),
+    );
+  }
+
   if (!groupEnvironmentThreads) {
     nodes.sort((left, right) => compareThreads(left.thread, right.thread));
     return nodes.map(buildThreadItem);
@@ -353,6 +370,7 @@ function buildThreadTreeItems(
   compareThreads: ThreadComparator,
   groupEnvironmentThreads: boolean,
   draftThreadIds: ReadonlySet<string>,
+  respectSections = false,
 ): ProjectThreadItem[] {
   const projectThreads = allThreads.filter(isSidebarProjectThread);
   const projectThreadIds = new Set(projectThreads.map((thread) => thread.id));
@@ -413,6 +431,7 @@ function buildThreadTreeItems(
     compareThreads,
     groupEnvironmentThreads,
     draftThreadIds,
+    respectSections,
   );
 }
 
@@ -438,11 +457,12 @@ export function buildSectionThreadList(
   groupEnvironmentThreads = false,
 ): ProjectThreadItem[] {
   return bucketIntoSections(
-    buildChronologicalThreadList(
+    buildThreadTreeItems(
       allThreads,
       compareThreads,
-      draftThreadIds,
       groupEnvironmentThreads,
+      draftThreadIds,
+      true,
     ),
     CHRONOLOGICAL_CONTAINER_ID,
     compareThreads,
@@ -634,20 +654,7 @@ function bucketIntoSections(
   }
   const looseItems: ProjectThreadItem[] = [];
 
-  const partitionedItems = items.flatMap((item): ProjectThreadItem[] => {
-    if (item.kind !== "environment") return [item];
-    const nodesBySection = new Map<string | null, ProjectThreadNode[]>();
-    for (const node of item.group.nodes) {
-      const sectionId = node.thread.sectionId;
-      const nodes = nodesBySection.get(sectionId) ?? [];
-      nodes.push(node);
-      nodesBySection.set(sectionId, nodes);
-    }
-    return [...nodesBySection.values()].flatMap((nodes) =>
-      buildSortedItems(nodes, compareThreads, true, draftThreadIds),
-    );
-  });
-  for (const item of partitionedItems) {
+  for (const item of items) {
     const orderingThread = getItemOrderingThread(item, compareThreads);
     const sectionId = orderingThread?.sectionId;
     if (!sectionId) {
