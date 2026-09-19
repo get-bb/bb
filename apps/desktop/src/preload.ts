@@ -85,6 +85,7 @@ import {
   BB_DESKTOP_APP_COMMAND_CHANNEL,
   BB_DESKTOP_CLOSE_WINDOW_REQUEST_CHANNEL,
   BB_DESKTOP_CLOSE_WINDOW_RESPONSE_CHANNEL,
+  BB_DESKTOP_FOCUS_WINDOW_CHANNEL,
   BB_DESKTOP_GET_WINDOW_STATE_CHANNEL,
   BB_DESKTOP_OPEN_NEW_TAB_CHANNEL,
   BB_DESKTOP_OPEN_SERVER_DAEMON_LOGS_CHANNEL,
@@ -388,6 +389,9 @@ const bbDesktopApi: BbDesktopApi = {
   },
   getInfo() {
     return invokeDesktopInfo(BB_DESKTOP_GET_INFO_CHANNEL);
+  },
+  focusWindow() {
+    ipcRenderer.send(BB_DESKTOP_FOCUS_WINDOW_CHANNEL);
   },
   getWindowState() {
     return invokeDesktopWindowState();

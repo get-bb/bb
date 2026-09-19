@@ -570,6 +570,18 @@ async function smokeLinuxAppImageLifecycle() {
     }
 
     guiMount = resolveMountFromBridgePath(runtime.bridgePath);
+    const bundledLibraryDirectory = join(guiMount, "usr", "lib");
+    const bundledLibraries = await readdir(bundledLibraryDirectory);
+    if (
+      ["libnotify.so.4", "libnotify.so.5", "libnotify.so.1"].some((name) =>
+        bundledLibraries.includes(name),
+      )
+    ) {
+      throw new Error(
+        "The AppImage overrides the system's versioned libnotify",
+      );
+    }
+    await readFile(join(bundledLibraryDirectory, "libnotify.so"));
     runtimeMount = runtimeProcess.environment.APPDIR ?? null;
     if (runtimeMount === null || runtimeMount.length === 0) {
       throw new Error("The runtime supervisor did not inherit APPDIR");

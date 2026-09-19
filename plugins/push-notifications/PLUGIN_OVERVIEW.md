@@ -4,7 +4,7 @@ Get a notification when an agent asks a question, finishes a turn, or stops on a
 
 Mobile devices receive push messages through Expo, including when the app is closed. Web browsers and the desktop app receive system notifications over bb’s live connection while a tab or app window remains open. Web delivery requires HTTPS (or localhost), browser notification permission, and a browser that supports the Notification constructor. Closing all bb tabs stops web delivery; quitting the desktop app stops desktop delivery. Mobile WebViews use mobile push only.
 
-Click a notification to open its thread. Events arriving together are combined, with pending questions taking priority. Read, archived, deleted, and hidden threads are suppressed. Multiple tabs or windows of the same origin and client type deduplicate delivery when browser storage and Web Locks are available.
+Click a notification to open its thread. The browser focus attempt is preserved on every click. On Linux desktop, notification clicks additionally restore the window that received the notification and request focus through the desktop bridge. Older desktop shells without this bridge method retain the browser focus fallback. Events arriving together are combined, with pending questions taking priority. Read, archived, deleted, and hidden threads are suppressed. Multiple tabs or windows of the same origin and client type deduplicate delivery when browser storage and Web Locks are available.
 
 ## Settings
 
