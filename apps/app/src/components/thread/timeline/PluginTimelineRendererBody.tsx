@@ -17,13 +17,17 @@ import { useThreadProvider } from "../thread-provider-context.js";
 
 export type PluginRenderableWorkRow = Extract<
   TimelineViewWorkRow,
-  { workKind: "extension" | "tool" }
+  { workKind: "extension" | "form" | "tool" }
 >;
 
 export function isPluginRenderableWorkRow(
   row: TimelineViewWorkRow,
 ): row is PluginRenderableWorkRow {
-  return row.workKind === "extension" || row.workKind === "tool";
+  return (
+    row.workKind === "extension" ||
+    row.workKind === "form" ||
+    row.workKind === "tool"
+  );
 }
 
 function useTimelineRendererSlots(): readonly PluginTimelineRendererSlot[] {
@@ -47,7 +51,13 @@ export function usePluginTimelineRenderer(
       slots,
       row.workKind === "extension"
         ? { kind: "extension", extensionKind: row.extensionKind }
-        : { kind: "tool", providerPluginId },
+        : row.workKind === "form"
+          ? {
+              kind: "form",
+              pluginId: row.pluginId,
+              rendererId: row.rendererId,
+            }
+          : { kind: "tool", providerPluginId },
     );
   }, [providerPluginId, row, slots]);
 }
@@ -57,16 +67,21 @@ function rendererRow(row: PluginRenderableWorkRow): PluginTimelineRendererRow {
     id: row.id,
     threadId: row.threadId,
     turnId: row.turnId,
-    kind: row.workKind === "extension" ? row.extensionKind : "tool",
+    kind:
+      row.workKind === "extension"
+        ? row.extensionKind
+        : row.workKind === "form"
+          ? `${row.pluginId}/${row.rendererId}`
+          : "tool",
     toolName: row.workKind === "tool" ? row.toolName : null,
     status: row.status,
     startedAt: row.startedAt,
-    completedAt: row.completedAt,
+    completedAt: row.workKind === "form" ? null : row.completedAt,
   };
 }
 
 function rendererPayload(row: PluginRenderableWorkRow): JsonValue {
-  if (row.workKind === "extension") {
+  if (row.workKind === "extension" || row.workKind === "form") {
     return row.payload;
   }
   return { arguments: row.toolArgs, output: row.output };

@@ -32,6 +32,7 @@ vi.mock("@/components/sidebar/AppSidebar", () => ({
 }));
 
 vi.mock("@/hooks/queries/system-queries", () => ({
+  useUiPreferences: () => ({ data: undefined, isError: false }),
   useSystemConfig: () => ({
     data: {
       experiments: {

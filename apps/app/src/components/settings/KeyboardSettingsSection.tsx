@@ -552,15 +552,24 @@ export function KeyboardSettingsSection() {
   const visibleGroups = useMemo(() => {
     const query = search.trim().toLowerCase();
     if (query.length === 0) return commandGroups;
-    return commandGroups.flatMap((group) => {
-      const commands = group.commands.filter(
-        (metadata) =>
-          metadata.label.toLowerCase().includes(query) ||
-          metadata.description.toLowerCase().includes(query) ||
-          metadata.command.toLowerCase().includes(query),
-      );
-      return commands.length === 0 ? [] : [{ ...group, commands }];
-    });
+    const commands = commandGroups
+      .flatMap((group) =>
+        group.commands.map((metadata) => {
+          const label = metadata.label.toLowerCase();
+          const rank = [
+            label === query,
+            label.startsWith(query),
+            label.includes(query),
+            metadata.command.toLowerCase().includes(query),
+            metadata.description.toLowerCase().includes(query),
+          ].findIndex(Boolean);
+          return { metadata, rank };
+        }),
+      )
+      .filter(({ rank }) => rank !== -1)
+      .sort((left, right) => left.rank - right.rank)
+      .map(({ metadata }) => metadata);
+    return commands.length === 0 ? [] : [{ label: "Search results", commands }];
   }, [commandGroups, search]);
 
   const latestSettingsRef = useRef({

@@ -113,6 +113,12 @@ with `bb settings show --json` and change them with `bb settings general`.
 treat it as an ownership assertion and refuse the default BB installation; see
 thread-creation.md and docs/configuration.md for the directory constraints.
 
+The `bb` CLI appends every failed invocation to
+`<data dir>/logs/cli-errors.jsonl` on the machine that ran it: command path,
+error code, and the unknown command or flag, never argument values.
+`bb diagnostics cli-errors [--since 7d] [--json]` tallies it; `--clear` deletes
+it. `BB_CLI_ERROR_LOG=0` turns recording off.
+
 Machine enrollment v2 stores private `serverHeaders` in machine `config.json`.
 The launcher transports these through `BB_SERVER_HEADERS` (JSON string map) for
 all server requests. Do not print these headers; they can contain access tokens.

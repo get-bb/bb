@@ -8,7 +8,7 @@ export default defineWorkspaceTestConfig({
     projects: sharedWorkerProjects({
       pkgDir: fileURLToPath(new URL(".", import.meta.url)),
       name: "bb-plugin-browser-automation",
-      include: ["**/*.test.ts"],
+      include: ["**/*.test.{ts,tsx}"],
       exclude: ["dist/**", "node_modules/**"],
     }),
   },

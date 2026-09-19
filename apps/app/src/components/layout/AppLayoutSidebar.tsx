@@ -1,4 +1,5 @@
 import { useState, type MouseEvent as ReactMouseEvent } from "react";
+import { useSidebarThreadReveal } from "@/components/sidebar/useSidebarThreadReveal";
 import { AppSidebar } from "@/components/sidebar/AppSidebar";
 import { SettingsSidebar } from "@/components/settings/SettingsSidebar";
 import { ResourceSidebar } from "@/components/tools/ResourceSidebar";
@@ -23,6 +24,7 @@ export function AppLayoutSidebar({
   settingsRoutePath,
   toolsBackRoutePath,
 }: AppLayoutSidebarProps) {
+  useSidebarThreadReveal();
   const { isCompactViewport, isMobileSidebarClosing } = useSidebar();
   const holdCurrentMode = isCompactViewport && isMobileSidebarClosing;
   const [lastVisibleMode, setLastVisibleMode] = useState(mode);

@@ -126,6 +126,7 @@ describe("plugin CLI commands (bb.cli.register + endpoints + skill + logs)", () 
               usage: "bb acme issues [--json]",
             },
           ],
+          rendersHelp: false,
         },
       ],
       mentionProviders: [],

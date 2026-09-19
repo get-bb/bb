@@ -1,5 +1,10 @@
-import { runThreadPruningSweep } from "./thread-pruning-sweep.js";
 import {
+  runThreadPruningSweep,
+  THREAD_PRUNING_SWEEP_LIMITS,
+  type ThreadPruningSweepLimits,
+} from "./thread-pruning-sweep.js";
+import {
+  PROJECT_ATTACHMENT_BACKFILL_LIMITS,
   runProjectAttachmentBackfill,
   runProjectAttachmentPrune,
 } from "../projects/attachment-maintenance.js";
@@ -503,6 +508,17 @@ async function runDestroyedEnvironmentPruneSweep(
   }
 }
 
+export function createThreadEventPruningJob(
+  limits: ThreadPruningSweepLimits,
+): PeriodicSweepJob {
+  return {
+    cadenceMs: 0,
+    category: "retention",
+    name: "thread-event-pruning",
+    run: (deps) => runThreadPruningSweep(deps, limits),
+  };
+}
+
 const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
   {
     cadenceMs: 0,
@@ -597,12 +613,7 @@ const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
     name: "plugin-schedule",
     run: (deps, now) => deps.pluginSchedules.sweepDueSchedules(now),
   },
-  {
-    cadenceMs: 0,
-    category: "retention",
-    name: "thread-event-pruning",
-    run: runThreadPruningSweep,
-  },
+  createThreadEventPruningJob(THREAD_PRUNING_SWEEP_LIMITS),
   {
     cadenceMs: DATABASE_MAINTENANCE_CHECK_INTERVAL_MS,
     category: "maintenance",
@@ -613,7 +624,12 @@ const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
     cadenceMs: 0,
     category: "maintenance",
     name: "project-attachment-backfill",
-    run: runProjectAttachmentBackfill,
+    run: (deps, now) =>
+      runProjectAttachmentBackfill(
+        deps,
+        PROJECT_ATTACHMENT_BACKFILL_LIMITS,
+        now,
+      ),
   },
   {
     cadenceMs: 60_000,

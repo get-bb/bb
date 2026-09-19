@@ -93,6 +93,11 @@ the resolved file must remain inside the origin workspace. `--source` remains
 an inline alias for `--script`. Run and validate require exactly one of
 `--script`, `--file`, or `--name` (counting `--source` as `--script`).
 
+`bb workflows --help` and `bb workflows <command> --help` print the arguments,
+option limits, and rules for a command and exit 0. Command output is JSON;
+adding `--json` also reports a failure as `{"ok":false,"error":{…}}` on stdout,
+alongside the readable message on stderr.
+
 Workflow worker threads use hidden visibility and are plugin-attributed. They
 stay out of sidebar organization without contributing unread/pending favicon
 attention. Ordinary search, prompt history,

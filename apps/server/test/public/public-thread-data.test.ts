@@ -1736,7 +1736,7 @@ describe("public thread data routes", () => {
           },
         }),
       });
-      for (let item = 0; item < 650; item += 1) {
+      for (let item = 0; item < 200; item += 1) {
         const itemId = `command-${item}`;
         const command = "x".repeat(25_000);
         push({

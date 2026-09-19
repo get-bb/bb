@@ -83,6 +83,7 @@ const threadSuggestions: PromptMentionSuggestion[] = [
     projectId: "proj_bb",
     threadId: "thr_qfk8ksbxkk",
     title: "Wire up promptbox stories and trim FollowUp API",
+    relation: null,
   },
   {
     kind: "thread",
@@ -91,6 +92,7 @@ const threadSuggestions: PromptMentionSuggestion[] = [
     projectId: "proj_bb",
     threadId: "thr_mgr_kj4n2x",
     title: "Parent: app/timeline cleanup sprint",
+    relation: null,
   },
   {
     kind: "thread",
@@ -100,6 +102,79 @@ const threadSuggestions: PromptMentionSuggestion[] = [
     projectName: "Docs Site",
     threadId: "thr_untitled_3",
     title: undefined,
+    relation: null,
+  },
+];
+
+const relatedThreadSuggestions: PromptMentionSuggestion[] = [
+  {
+    kind: "thread",
+    path: "thread:thr_parent_9dk2",
+    replacement: "thread:thr_parent_9dk2",
+    projectId: "proj_bb",
+    threadId: "thr_parent_9dk2",
+    title: "Explain issue 3694",
+    relation: "parent",
+  },
+  {
+    kind: "thread",
+    path: "thread:thr_child_7fq1",
+    replacement: "thread:thr_child_7fq1",
+    projectId: "proj_bb",
+    threadId: "thr_child_7fq1",
+    title: "Review exchange for concerns",
+    relation: "child",
+  },
+  {
+    kind: "thread",
+    path: "thread:thr_sibling_2xm8",
+    replacement: "thread:thr_sibling_2xm8",
+    projectId: "proj_bb",
+    threadId: "thr_sibling_2xm8",
+    title: "Explain issue 3964 opus",
+    relation: "same-parent",
+  },
+  {
+    kind: "thread",
+    path: "thread:thr_roommate_5te3",
+    replacement: "thread:thr_roommate_5te3",
+    projectId: "proj_bb",
+    threadId: "thr_roommate_5te3",
+    title: "Explain branch behavior",
+    relation: "same-environment",
+  },
+  {
+    kind: "thread",
+    path: "thread:thr_unrelated_4bd6",
+    replacement: "thread:thr_unrelated_4bd6",
+    projectId: "proj_docs",
+    projectName: "Docs Site",
+    threadId: "thr_unrelated_4bd6",
+    title: "Explain deploy flow",
+    relation: null,
+  },
+];
+
+const longRelatedThreadSuggestions: PromptMentionSuggestion[] = [
+  {
+    kind: "thread",
+    path: "thread:thr_long_title",
+    replacement: "thread:thr_long_title",
+    projectId: "proj_bb",
+    threadId: "thr_long_title",
+    title:
+      "Reconcile daemon turns the server lost track of on an explicit stop request",
+    relation: "same-environment",
+  },
+  {
+    kind: "thread",
+    path: "thread:thr_long_project",
+    replacement: "thread:thr_long_project",
+    projectId: "proj_docs",
+    projectName: "Documentation And Marketing Site",
+    threadId: "thr_long_project",
+    title: "Correlate Codex turn dispatches with the named turn",
+    relation: "same-parent",
   },
 ];
 
@@ -324,6 +399,24 @@ export function Overview() {
         />
       </StoryRow>
       <StoryRow
+        label="thread relations"
+        hint="relation pill: parent, child, same parent, same environment; unrelated rows keep only a project name"
+      >
+        <MentionRow
+          state={makeResultsState({ suggestions: relatedThreadSuggestions })}
+        />
+      </StoryRow>
+      <StoryRow
+        label="thread relations (long titles)"
+        hint="title truncates before the relation pill; pill never shrinks"
+      >
+        <MentionRow
+          state={makeResultsState({
+            suggestions: longRelatedThreadSuggestions,
+          })}
+        />
+      </StoryRow>
+      <StoryRow
         label="mixed path + thread"
         hint="threads first (production order: usePromptMentions prepends threads)"
       >
@@ -384,5 +477,58 @@ export function Overview() {
         <CommandRow state={makeCommandResultsState(longCommandSuggestions)} />
       </StoryRow>
     </StoryCard>
+  );
+}
+
+const MENTION_MENU_WIDTHS = [360, 480, 760] as const;
+
+function WidthSample({
+  label,
+  suggestions,
+  width,
+}: {
+  label: string;
+  suggestions: PromptMentionSuggestion[];
+  width: number;
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <div style={{ width }}>
+        <MentionMenu
+          state={{
+            trigger: "mention",
+            state: makeResultsState({ suggestions }),
+          }}
+          selectedIndex={0}
+          onApply={noop}
+        />
+      </div>
+    </div>
+  );
+}
+
+export function ThreadRelationWidths() {
+  return (
+    <div className="flex flex-col gap-4 p-6">
+      {MENTION_MENU_WIDTHS.map((width) => (
+        <WidthSample
+          key={width}
+          label={`${width}px`}
+          suggestions={relatedThreadSuggestions}
+          width={width}
+        />
+      ))}
+      <WidthSample
+        label="360px · long titles"
+        suggestions={longRelatedThreadSuggestions}
+        width={360}
+      />
+      <WidthSample
+        label="760px · long titles"
+        suggestions={longRelatedThreadSuggestions}
+        width={760}
+      />
+    </div>
   );
 }

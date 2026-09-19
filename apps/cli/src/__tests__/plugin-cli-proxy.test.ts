@@ -15,6 +15,7 @@ import {
   findDisabledPluginForCommand,
   findPluginCliCommand,
   PLUGIN_CLI_HEADERS_TIMEOUT_MS,
+  pluginCommandLabel,
   runPluginCliCommand,
   type PluginCliContributionEntry,
 } from "../plugin-cli-proxy.js";
@@ -23,6 +24,30 @@ describe("reserved bb CLI command names", () => {
   it("matches the complete core command-group registry plus help", () => {
     expect([...RESERVED_BB_CLI_COMMANDS].sort()).toEqual(
       [...CORE_COMMAND_GROUPS.map((group) => group.name), "help"].sort(),
+    );
+  });
+});
+
+describe("pluginCommandLabel", () => {
+  const contribution: PluginCliContributionEntry = {
+    pluginId: "account-pool",
+    name: "pool",
+    summary: "Pool",
+    commands: [
+      { name: "account-add", summary: "Add", usage: "bb pool account add" },
+      { name: "status", summary: "Status", usage: "bb pool status" },
+    ],
+  };
+
+  it("names only declared command words, never argument values", () => {
+    expect(
+      pluginCommandLabel(contribution, ["account", "add", "--api-key", "sk-1"]),
+    ).toBe("pool account add");
+    expect(pluginCommandLabel(contribution, ["status", "--json"])).toBe(
+      "pool status",
+    );
+    expect(pluginCommandLabel(contribution, ["a secret sentence"])).toBe(
+      "pool",
     );
   });
 });
@@ -722,6 +747,52 @@ describe("runPluginCliCommand", () => {
       ["deploy", "--credential", "opaque-credential", "--format", "json"],
     ]);
     expect(writes).toEqual([]);
+  });
+
+  it("leaves a stdin-style flag after -- for the passed-through command", async () => {
+    const requests: string[][] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url, init: RequestInit | undefined) => {
+        const parsed = JSON.parse(String(init?.body)) as { argv: string[] };
+        requests.push(parsed.argv);
+        return new Response(JSON.stringify({ exitCode: 0 }), { status: 200 });
+      }),
+    );
+    const output = new Writable({
+      write(_chunk, _encoding, callback) {
+        callback();
+      },
+    });
+    let stdinRead = false;
+    const input = {
+      isTTY: false,
+      async *[Symbol.asyncIterator]() {
+        stdinRead = true;
+        yield Buffer.from("should-not-be-read\n");
+      },
+    };
+    const argv = [
+      "sandbox",
+      "exec",
+      "sb-1",
+      "--",
+      "docker",
+      "login",
+      "--password-stdin",
+    ];
+
+    await expect(
+      runPluginCliCommand(
+        "http://localhost",
+        "fixture",
+        argv,
+        { stdout: output, stderr: output },
+        input,
+      ),
+    ).resolves.toBe(0);
+    expect(requests).toEqual([argv]);
+    expect(stdinRead).toBe(false);
   });
 
   it("outlives the global fetch headers timeout while a plugin command waits on a human", async () => {

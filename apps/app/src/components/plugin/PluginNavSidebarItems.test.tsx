@@ -288,13 +288,17 @@ function moreTrigger(): HTMLElement {
 }
 
 async function openMoreMenu(): Promise<HTMLElement[]> {
-  fireEvent.pointerDown(moreTrigger(), { button: 0 });
-  await screen.findByRole("menuitem", { name: "Customize sidebar" });
-  return screen.getAllByRole("menuitem");
+  fireEvent.click(moreTrigger());
+  await screen.findByRole("button", { name: "Customize sidebar" });
+  return Array.from(
+    document.querySelectorAll<HTMLElement>(
+      '[data-sidebar-navigation-more-item], [data-testid="sidebar-navigation-customize-trigger"]',
+    ),
+  );
 }
 
 async function openCustomizeFromMore(): Promise<HTMLElement> {
-  fireEvent.click(screen.getByRole("menuitem", { name: "Customize sidebar" }));
+  fireEvent.click(screen.getByRole("button", { name: "Customize sidebar" }));
   return await screen.findByRole("list", { name: "Sidebar navigation" });
 }
 
@@ -524,11 +528,13 @@ describe("PluginNavSidebarItems", () => {
     );
     expect(fetchMock).not.toHaveBeenCalled();
     fireEvent.click(moreTrigger());
+    expect(await screen.findByRole("button", { name: "Docs" })).not.toBeNull();
     expect(
-      await screen.findByRole("menuitem", { name: "Docs" }),
-    ).not.toBeNull();
-    expect(
-      screen.getAllByRole("menuitem").map((item) => item.textContent?.trim()),
+      Array.from(
+        document.querySelectorAll(
+          '[data-sidebar-navigation-more-item], [data-testid="sidebar-navigation-customize-trigger"]',
+        ),
+      ).map((item) => item.textContent?.trim()),
     ).toEqual(["Docs", "Customize sidebar"]);
   });
 
@@ -736,8 +742,10 @@ describe("PluginNavSidebarItems", () => {
       expect(layoutsAtDisable[0]?.root.type).toBe("split");
       expect(store.get(splitLayoutAtom)).toEqual(survivingLayout);
       expect(store.get(maximizedPaneIdAtom)).toBeNull();
-      expect(screen.getByTestId("location-path").textContent).toBe(
-        "/plugins/github/main",
+      await waitFor(() =>
+        expect(screen.getByTestId("location-path").textContent).toBe(
+          "/plugins/github/main",
+        ),
       );
     },
   );
@@ -872,7 +880,7 @@ describe("PluginNavSidebarItems", () => {
     expect(visibleRowKeys()).toEqual(["__bb__/new-thread"]);
     fireEvent.click(moreTrigger());
     fireEvent.click(
-      await screen.findByRole("menuitem", { name: "Customize sidebar" }),
+      await screen.findByRole("button", { name: "Customize sidebar" }),
     );
 
     expect(onCompactCustomizeModeChange).toHaveBeenCalledWith(true);
@@ -1114,13 +1122,13 @@ describe("PluginNavSidebarItems", () => {
     ]);
     expect(
       screen
-        .getByRole("menuitem", { name: "Customize sidebar" })
+        .getByRole("button", { name: "Customize sidebar" })
         .querySelectorAll(
           ':scope > [data-icon="FilterHorizontal"][data-icon-root]',
         ),
     ).toHaveLength(1);
 
-    fireEvent.click(screen.getByRole("menuitem", { name: "Search threads" }));
+    fireEvent.click(screen.getByRole("button", { name: "Search threads" }));
 
     expect(onSearch).toHaveBeenCalledOnce();
     expect(onSearch.mock.calls[0]?.[0]).toEqual({
@@ -1140,7 +1148,7 @@ describe("PluginNavSidebarItems", () => {
     });
 
     await openMoreMenu();
-    fireEvent.click(screen.getByRole("menuitem", { name: "Docs" }), {
+    fireEvent.click(screen.getByRole("button", { name: "Docs" }), {
       metaKey: true,
     });
 
@@ -1156,6 +1164,186 @@ describe("PluginNavSidebarItems", () => {
       }),
     ).not.toBeNull();
   });
+
+  it("opens a hidden plugin in a split from its explicit actions button", async () => {
+    registerPanel("docs", "Docs");
+    const { store } = renderSidebarItems({
+      splitEnabled: true,
+      storedOrder: ["docs/main"],
+      storedVisibleKeys: [],
+    });
+
+    await openMoreMenu();
+    fireEvent.contextMenu(screen.getByRole("button", { name: "Docs" }));
+    expect(screen.queryByRole("menu")).toBeNull();
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Docs options" }),
+      { button: 0 },
+    );
+    const menu = await screen.findByRole("menu", { name: "Docs options" });
+    expect(
+      within(menu)
+        .getAllByRole("menuitem")
+        .map((item) => item.textContent),
+    ).toEqual(["Open in split", "Add to sidebar"]);
+    expect(
+      screen.queryByRole("menu", { name: "More sidebar navigation options" }),
+    ).toBeNull();
+    fireEvent.click(
+      within(menu).getByRole("menuitem", { name: "Open in split" }),
+    );
+
+    const layout = store.get(splitLayoutAtom)!;
+    expect(countPanes(layout.root)).toBe(2);
+    expect(
+      findPaneByContent(layout.root, {
+        kind: "plugin-panel",
+        pluginId: "docs",
+        panelPath: "main",
+        subPath: "",
+      }),
+    ).not.toBeNull();
+    expect(store.get(pluginNavVisiblePanelKeysAtom)).toEqual([]);
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("list", { name: "More navigation" }),
+      ).toBeNull(),
+    );
+  });
+
+  it.each([
+    { direction: "left", x: 300, y: 115 },
+    { direction: "down", x: 600, y: 580 },
+  ])(
+    "drags a portaled overflow row directly $direction into a split",
+    async ({ x, y }) => {
+      registerPanel("docs", "Docs");
+      const { store } = renderSidebarItems({
+        splitEnabled: true,
+        storedOrder: ["docs/main"],
+        storedVisibleKeys: [],
+      });
+      const pane = document.createElement("main");
+      pane.setAttribute("data-split-pane-id", "pane-1");
+      document.body.append(pane);
+      vi.spyOn(pane, "getBoundingClientRect").mockReturnValue(
+        new DOMRect(256, 0, 900, 600),
+      );
+      const elementsFromPoint = Object.getOwnPropertyDescriptor(
+        document,
+        "elementsFromPoint",
+      );
+      Object.defineProperty(document, "elementsFromPoint", {
+        configurable: true,
+        value: () => [pane],
+      });
+
+      try {
+        await openMoreMenu();
+        const row = screen.getByRole("button", { name: "Docs" });
+        vi.spyOn(row, "getBoundingClientRect").mockReturnValue(
+          new DOMRect(400, 100, 240, 32),
+        );
+        expect(row.closest('[data-sidebar="sidebar"]')).toBeNull();
+        fireEvent(
+          row,
+          new MouseEvent("pointerdown", {
+            button: 0,
+            clientX: 600,
+            clientY: 115,
+            bubbles: true,
+          }),
+        );
+        fireEvent(
+          window,
+          new MouseEvent("pointermove", { clientX: 602, clientY: 117 }),
+        );
+        expect(
+          screen.getByRole("list", { name: "More navigation" }),
+        ).not.toBeNull();
+        fireEvent(
+          window,
+          new MouseEvent("pointermove", { clientX: x, clientY: y }),
+        );
+        await waitFor(() =>
+          expect(
+            screen.queryByRole("list", { name: "More navigation" }),
+          ).toBeNull(),
+        );
+        expect(screen.getByTestId("location-path").textContent).toBe("/");
+        fireEvent(
+          window,
+          new MouseEvent("pointerup", { clientX: x, clientY: y }),
+        );
+
+        const layout = store.get(splitLayoutAtom)!;
+        expect(countPanes(layout.root)).toBe(2);
+        expect(
+          findPaneByContent(layout.root, { kind: "new-thread" }),
+        ).not.toBeNull();
+        expect(
+          findPaneByContent(layout.root, {
+            kind: "plugin-panel",
+            pluginId: "docs",
+            panelPath: "main",
+            subPath: "",
+          }),
+        ).not.toBeNull();
+      } finally {
+        fireEvent(window, new MouseEvent("pointercancel"));
+        fireEvent.click(window);
+        if (elementsFromPoint) {
+          Object.defineProperty(
+            document,
+            "elementsFromPoint",
+            elementsFromPoint,
+          );
+        } else {
+          Reflect.deleteProperty(document, "elementsFromPoint");
+        }
+        pane.remove();
+      }
+    },
+  );
+
+  it.each(["plugin", "built-in"])(
+    "adds a hidden %s row to the sidebar without navigating",
+    async (kind) => {
+      registerPanel("docs", "Docs");
+      const onActivate = vi.fn();
+      const { store } = renderSidebarItems({
+        builtInEntries: [
+          builtInEntry("search-threads", "Search threads", onActivate),
+        ],
+        storedOrder: ["docs/main", "__bb__/search-threads"],
+        storedVisibleKeys: [],
+      });
+      const title = kind === "plugin" ? "Docs" : "Search threads";
+      const key = kind === "plugin" ? "docs/main" : "__bb__/search-threads";
+
+      await openMoreMenu();
+      fireEvent.pointerDown(
+        screen.getByRole("button", { name: `${title} options` }),
+        { button: 0 },
+      );
+      const menu = await screen.findByRole("menu", {
+        name: `${title} options`,
+      });
+      fireEvent.click(
+        within(menu).getByRole("menuitem", { name: "Add to sidebar" }),
+      );
+
+      expect(store.get(pluginNavVisiblePanelKeysAtom)).toEqual([key]);
+      expect(visibleRowKeys()).toEqual([key]);
+      expect(onActivate).not.toHaveBeenCalled();
+      expect(screen.getByTestId("location-path").textContent).toBe("/");
+      await waitFor(() =>
+        expect(
+          screen.queryByRole("list", { name: "More navigation" }),
+        ).toBeNull(),
+      );
+    },
+  );
 
   it("keeps launch and visibility as distinct targets with a clear row hover state", async () => {
     const labels = ["One", "Two", "Three", "Four"];
@@ -1216,12 +1404,16 @@ describe("PluginNavSidebarItems", () => {
       "One",
       "Customize sidebar",
     ]);
-    fireEvent.click(screen.getByRole("menuitem", { name: "One" }));
+    fireEvent.click(screen.getByRole("button", { name: "One" }));
 
     expect(screen.getByTestId("location-path").textContent).toBe(
       getPluginPanelRoutePath({ pluginId: "plugin-0", path: "main" }),
     );
-    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("list", { name: "More navigation" }),
+      ).toBeNull(),
+    );
     expect(panelRowNames(labels)).toEqual(["Two", "Three", "Four"]);
   });
 

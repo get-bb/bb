@@ -1,3 +1,4 @@
+import { nanoid } from "nanoid";
 import { Link } from "react-router-dom";
 import { OptionPicker } from "@/components/pickers/OptionPicker";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
@@ -213,7 +214,7 @@ export function MachineEnvironmentSettingsContent({
     setDraft([
       ...rows,
       {
-        id: crypto.randomUUID(),
+        id: nanoid(),
         nameLocked: false,
         name: "",
         value: "",
@@ -229,7 +230,7 @@ export function MachineEnvironmentSettingsContent({
       if (existing) next[index] = { ...existing, value: entry.value };
       else
         next.push({
-          id: crypto.randomUUID(),
+          id: nanoid(),
           nameLocked: false,
           name: entry.name,
           value: entry.value,

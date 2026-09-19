@@ -30,7 +30,9 @@ List and create require exactly one explicit scope:
 Machine names are resolved to an explicit machine ID. No scope defaults to the
 server machine, and --cwd is valid only with --machine or --host.
 
-All other operations need only the terminal ID:
+All other operations need only the terminal ID. They also accept the scope
+flags above and ignore them, so a command built for `list` or `create` still
+runs:
 
   bb terminal show <terminal-id>
   bb terminal attach <terminal-id>        Ctrl-B d detaches
@@ -45,15 +47,25 @@ All other operations need only the terminal ID:
     --since-seq <n>                       Read output chunks from a sequence
     --tail-bytes <n>                      Bound output to latest N bytes
     --limit-chunks <n>                    Bound output to latest N chunks
-    --json                                Print chunks, nextSeq, and truncated
+    --json                                Print chunks, nextSeq, truncated, status, exitCode, and closeReason
+
+  Output stays readable after the command exits: the machine keeps a finished
+  terminal's scrollback for 30 minutes, until its daemon restarts, or until many
+  newer terminals have exited. For an exited terminal the output is followed by
+  `Terminal <id> exited with code N` on stderr. Once the scrollback is gone,
+  output fails with `terminal_output_unavailable` and says why.
 
   bb terminal wait <terminal-id>
     --contains <text>                     Wait for new output containing text
     --regex <pattern>                     Wait for new output matching regex
     --exit                                Wait until the terminal exits
     --from-start                          Include existing scrollback
-    --timeout <seconds>                   Timeout
-    --poll-interval <ms>                  Polling interval
+    --timeout <duration>                  Seconds, or a duration with a unit: 90s, 5m (default: 30s)
+    --poll-interval <duration>            Milliseconds, or a duration with a unit (default: 500ms)
+
+  When the terminal exits before the text appears, wait stops at once with exit
+  code 124, the terminal's exit code, and the last output it printed. `--exit`
+  prints the exit code.
 
 For a dev server, prefer:
 

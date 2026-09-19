@@ -7,7 +7,7 @@ import {
   getThreadEventRewriteGeneration,
   listStoredEventRowsInSequenceRange,
   type DbConnection,
-  type StandardTimelineSegmentAnchorRow,
+  type TimelineWindowHint,
   type StoredEventRow,
 } from "@bb/db";
 import type {
@@ -26,13 +26,12 @@ export interface TimelineEventRowSelection {
   paginationPage: ThreadTimelinePageRequest;
   responsePageKind: ThreadTimelinePageKind;
   rows: StoredEventRow[];
+  headStateRows: StoredEventRow[];
   strategy: ThreadTimelineEventSelectionStrategy;
 }
 
 export interface StandardTimelineEventRowSelection {
-  anchors: readonly StandardTimelineSegmentAnchorRow[];
-  budgetFloorDefined: boolean;
-  count: number;
+  hints: readonly TimelineWindowHint[];
   fetchedTurnIds: ReadonlySet<string>;
   selection: TimelineEventRowSelection;
 }
@@ -59,10 +58,8 @@ export interface LatestTimelineSelectionLookup {
 }
 
 interface TimelineSelectionMemoEntry {
-  anchors: readonly StandardTimelineSegmentAnchorRow[];
+  hints: readonly TimelineWindowHint[];
   appendableTurnIds: ReadonlySet<string>;
-  budgetFloorDefined: boolean;
-  count: number;
   dataChars: number;
   dataVersion: number;
   epochSequenceStart: number;
@@ -106,17 +103,25 @@ export function countTimelineSelectionMemoEntries(db: DbConnection): number {
   return selectionMemos.get(db)?.entries.size ?? 0;
 }
 
-export function countAffordableAnchors(
-  anchors: readonly { sequence: number }[],
+export function selectTimelineWindowStart(
+  hints: readonly TimelineWindowHint[],
   budgetFloorSequence: number | undefined,
   segmentLimit: number,
+  epochSequenceStart: number,
 ): number {
-  const affordable =
-    budgetFloorSequence === undefined
-      ? anchors.length
-      : anchors.filter((anchor) => anchor.sequence >= budgetFloorSequence)
-          .length;
-  return Math.max(1, Math.min(segmentLimit, affordable));
+  if (budgetFloorSequence === undefined && hints.length <= segmentLimit) {
+    return epochSequenceStart;
+  }
+  const affordable = hints.filter(
+    (hint) =>
+      budgetFloorSequence === undefined || hint.sequence >= budgetFloorSequence,
+  );
+  return (
+    affordable[Math.min(segmentLimit, affordable.length) - 1]?.sequence ??
+    hints[0]?.sequence ??
+    budgetFloorSequence ??
+    epochSequenceStart
+  );
 }
 
 function getSelectionMemo(db: DbConnection): TimelineSelectionMemo {
@@ -236,21 +241,6 @@ function listAppendableRows(
   return appendableRows;
 }
 
-function budgetFloorKeepsWindow(
-  args: LatestTimelineSelectionMemoArgs,
-  entry: TimelineSelectionMemoEntry,
-  budgetFloor: TimelineBudgetFloor,
-): boolean {
-  return (
-    (budgetFloor.sequence !== undefined) === entry.budgetFloorDefined &&
-    countAffordableAnchors(
-      entry.anchors,
-      budgetFloor.sequence,
-      args.page.segmentLimit,
-    ) === entry.count
-  );
-}
-
 export function forgetLatestTimelineSelections(
   db: DbConnection,
   threadId: string,
@@ -297,7 +287,13 @@ export function lookupLatestTimelineSelection(
       excludeDiagnosticEvents: args.excludeDiagnosticEvents,
     }),
   };
-  if (!budgetFloorKeepsWindow(args, entry, budgetFloor)) {
+  const sequenceStart = selectTimelineWindowStart(
+    entry.hints,
+    budgetFloor.sequence,
+    args.page.segmentLimit,
+    args.epochSequenceStart,
+  );
+  if (sequenceStart !== entry.selection.ownedSequenceStart) {
     return { ...miss, budgetFloor };
   }
   const selection: TimelineEventRowSelection = {
@@ -328,11 +324,11 @@ export function rememberLatestTimelineSelection(
     (entry) => entry.epochSequenceStart === args.epochSequenceStart,
   );
   storeMemoEntry(memo, selectionMemoKey(args), {
-    anchors: result.anchors,
+    hints: result.hints,
     appendableTurnIds: result.fetchedTurnIds,
-    budgetFloorDefined: result.budgetFloorDefined,
-    count: result.count,
-    dataChars: dataCharsOfRows(result.selection.rows),
+    dataChars:
+      dataCharsOfRows(result.selection.rows) +
+      dataCharsOfRows(result.selection.headStateRows),
     dataVersion: lookup.dataVersion,
     epochSequenceStart: args.epochSequenceStart,
     generation: lookup.generation,

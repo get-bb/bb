@@ -8,6 +8,7 @@ import type { EnvironmentArgs } from "@bb/server-contract";
 import { action } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
 import { resolveExplicitIdFlag } from "../../context-env.js";
+import { resolveTextInput, TEXT_FILE_HELP_SUFFIX } from "../../text-input.js";
 import { collectOption, outputJson, prependErrorContext } from "../helpers.js";
 import {
   buildPromptInputs,
@@ -31,6 +32,7 @@ interface ThreadForkCommandOptions {
   newEnvironment?: string;
   permissionMode?: string;
   prompt?: string;
+  promptFile?: string;
   sourceSeqEnd?: string;
   title?: string;
   lifecycleOwnerThread?: string;
@@ -46,16 +48,22 @@ function parseSourceSeqEnd(value: string | undefined): number | undefined {
   return parsed;
 }
 
-function buildForkInput(
+async function buildForkInput(
   opts: ThreadForkCommandOptions,
-): PromptInput[] | undefined {
+): Promise<PromptInput[] | undefined> {
   const files = opts.file ?? [];
   const images = opts.image ?? [];
-  if (opts.prompt === undefined && files.length === 0 && images.length === 0) {
+  const prompt = await resolveTextInput({
+    file: opts.promptFile,
+    fileLabel: "--prompt-file",
+    inline: opts.prompt,
+    inlineLabel: "--prompt <prompt>",
+  });
+  if (prompt === undefined && files.length === 0 && images.length === 0) {
     return undefined;
   }
-  if (opts.prompt !== undefined) {
-    return buildPromptInputs({ message: opts.prompt, files, images });
+  if (prompt !== undefined) {
+    return buildPromptInputs({ message: prompt, files, images });
   }
   return [
     ...files.map((path): PromptInput => ({ type: "localFile", path })),
@@ -101,6 +109,10 @@ export function registerForkCommand(
       "Archive/delete this thread with its lifecycle owner",
     )
     .option("--prompt <prompt>", "Optional first prompt; omit for an idle fork")
+    .option(
+      "--prompt-file <path>",
+      `Read the first prompt from a file instead of --prompt; ${TEXT_FILE_HELP_SUFFIX}`,
+    )
     .option("--title <title>", "Thread title")
     .option(
       "--source-seq-end <seq>",
@@ -147,7 +159,7 @@ export function registerForkCommand(
           if (!sourceThreadId) {
             throw new Error("Source thread ID is required.");
           }
-          const requestedInput = buildForkInput(opts);
+          const requestedInput = await buildForkInput(opts);
           const sourceSeqEnd = parseSourceSeqEnd(opts.sourceSeqEnd);
           const permissionMode = parsePermissionMode(opts.permissionMode);
           const visibility =

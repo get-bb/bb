@@ -24,10 +24,15 @@ import {
   resetEventLoopWorkForTests,
 } from "../../src/services/system/event-loop-work.js";
 import {
+  createThreadEventPruningJob,
   type PeriodicSweepJob,
   runPeriodicSweepJobs,
   runPeriodicSweeps,
 } from "../../src/services/system/periodic-sweeps.js";
+import {
+  THREAD_PRUNING_SWEEP_LIMITS,
+  type ThreadPruningSweepLimits,
+} from "../../src/services/system/thread-pruning-sweep.js";
 import {
   seedEnvironment,
   seedEvent,
@@ -97,6 +102,11 @@ function releaseRunningJob(release: ReleaseCallback | null): void {
   }
   release();
 }
+
+const UNTIMED_SWEEP_LIMITS: ThreadPruningSweepLimits = {
+  elapsedBudgetMs: Number.POSITIVE_INFINITY,
+  maxAdvances: THREAD_PRUNING_SWEEP_LIMITS.maxAdvances,
+};
 
 describe("runPeriodicSweeps", () => {
   it("deletes expired retained outputs across yielded advances without changing previews", async () => {
@@ -671,10 +681,11 @@ describe("runPeriodicSweeps", () => {
         .set({ status: "active" })
         .where(eq(threads.id, thread.id))
         .run();
+      const pruningJobs = [createThreadEventPruningJob(UNTIMED_SWEEP_LIMITS)];
       const now = Date.now();
       const clock = vi.spyOn(Date, "now").mockReturnValue(now);
       try {
-        await runPeriodicSweeps(deps);
+        await runPeriodicSweepJobs(deps, pruningJobs, Date.now());
         expect(harness.db.select().from(threadPruningCursors).all()).toEqual(
           [],
         );
@@ -684,7 +695,7 @@ describe("runPeriodicSweeps", () => {
           .where(eq(threads.id, thread.id))
           .run();
         clock.mockReturnValue(now + 10_000);
-        await runPeriodicSweeps(deps);
+        await runPeriodicSweepJobs(deps, pruningJobs, Date.now());
         expect(
           harness.db
             .select({ sequence: events.sequence })
@@ -706,7 +717,7 @@ describe("runPeriodicSweeps", () => {
           })
           .run();
         clock.mockReturnValue(now + 20_000);
-        await runPeriodicSweeps(deps);
+        await runPeriodicSweepJobs(deps, pruningJobs, Date.now());
         expect(
           harness.db
             .select({ sequence: events.sequence })

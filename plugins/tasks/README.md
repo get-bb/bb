@@ -58,16 +58,24 @@ the newly recorded agent comment itself.
 
 ## CLI reference
 
-Run `bb tasks --help` or `bb tasks <command> --help` for exact options. Add
-`--json` to commands when another command or agent will consume the output.
-File paths (`--file`, `--attach`, `--out`, `--description-file`, `--body-file`)
-resolve on the invoking machine: inside an agent thread that is the thread's
-machine, otherwise the server's machine; pass `--machine <id-or-name>` to
-target another enrolled machine.
+Run `bb tasks --help` or `bb tasks <command> --help` for exact options; help
+works at every level, lists each option's accepted values and limits, and exits 0. Unknown commands and options are rejected with the nearest real name, every
+missing required value is reported in one error, and a failing invocation that
+carries `--json` prints `{ "ok": false, "error": { "code", "message", "hint"? } }`
+on stdout while stderr keeps the readable text. Add `--json` to commands when
+another command or agent will consume the output.
+
+`--project` takes a tracker project prefix or id such as `PROD`, never a bb
+project id (`proj_...`); `bb tasks project list` shows both columns. Repeatable
+options (`--label`, `--status`, `--priority`, `--add-label`, `--remove-label`)
+also accept one comma-separated list. File paths (`--file`, `--attach`,
+`--out`, `--description-file`, `--body-file`) resolve on the invoking machine:
+inside an agent thread that is the thread's machine, otherwise the server's
+machine; pass `--machine <id-or-name>` to target another enrolled machine.
 
 | Command                                        | Purpose                                                                                                                                    |
 | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `bb tasks status`                              | Show the installed Tasks plugin name and version.                                                                                          |
+| `bb tasks status`                              | Show the installed Tasks plugin name and version. Task workflow status lives on `bb tasks list --status` and `bb tasks update --status`.   |
 | `bb tasks project create\|list\|show\|update`  | Manage tracker projects, folders, colors, prefixes, and bb-project links.                                                                  |
 | `bb tasks folder create\|list\|update\|delete` | Organize tracker projects into nested folders. Deleting a folder moves its projects and subfolders to the top level; no tasks are deleted. |
 | `bb tasks create`                              | Create a task with description, priority, labels, due date, optional parent, and file attachments (repeatable `--attach <path>`).          |

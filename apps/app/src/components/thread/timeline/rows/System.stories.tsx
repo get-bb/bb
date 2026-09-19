@@ -505,3 +505,44 @@ export function NonOperations() {
     </StoryCard>
   );
 }
+
+export function SummaryOverflow() {
+  const summaries = [
+    ["One line", "Stopped manually"],
+    ["Two lines", "First line of the message. Second line of the message."],
+    [
+      "Model switch",
+      "This session was recorded with model `gpt-6-astra` but is resuming with `gpt-5.6-luna`. Consider switching back to `gpt-6-astra` as it may affect Codex performance.",
+    ],
+    [
+      "Long token",
+      "Unable to open /workspace/" +
+        "nested-directory/".repeat(30) +
+        "config.json",
+    ],
+  ];
+  return (
+    <StoryCard>
+      {summaries.map(([label, title]) => (
+        <section
+          key={label}
+          aria-label={label}
+          className="w-full max-w-[760px]"
+          style={label === "Two lines" ? { maxWidth: 220 } : undefined}
+        >
+          <ThreadTimelineRows
+            {...baseProps}
+            timelineRows={[
+              systemRow({
+                id: label,
+                operationKind: "warning",
+                title,
+                detail: null,
+              }),
+            ]}
+          />
+        </section>
+      ))}
+    </StoryCard>
+  );
+}

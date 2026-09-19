@@ -8,9 +8,10 @@ export default function draftsPlugin(bb: BbPluginApi): void {
       typeof context.experimental_submission.data === "object" &&
       !Array.isArray(context.experimental_submission.data) &&
       context.experimental_submission.data.kind === "draft";
+    const firstQueuedMessage = context.queuedMessages[0];
     const isQueuedDraft =
-      context.queuedMessage?.waitingOn?.kind === "plugin" &&
-      context.queuedMessage.waitingOn.pluginId === bb.pluginId;
+      firstQueuedMessage?.waitingOn?.kind === "plugin" &&
+      firstQueuedMessage.waitingOn.pluginId === bb.pluginId;
     return isNewDraft || isQueuedDraft
       ? { action: "wait", reason: "Draft" }
       : { action: "proceed" };

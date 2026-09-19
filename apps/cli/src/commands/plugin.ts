@@ -4,7 +4,7 @@ import { access, readFile, realpath } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { setTimeout as sleep } from "node:timers/promises";
-import { Command } from "commander";
+import { Command, Option } from "commander";
 import { z } from "zod";
 import { derivePluginId, jsonValueSchema } from "@bb/domain";
 import { pluginCliCall, RESERVED_BB_CLI_COMMANDS } from "@bb/domain/plugin-cli";
@@ -24,7 +24,6 @@ import {
   resolvePluginSdkLayout,
   scaffoldPlugin,
   setPluginSdkPin,
-  syncPluginTypes,
   type PluginPackageLayoutMigration,
 } from "@bb/templates/plugin-scaffold";
 import { action } from "../action.js";
@@ -156,33 +155,17 @@ async function readPluginManifest(
   }
 }
 
-async function refreshPluginTypes(
-  rootDir: string,
-  hasApp: boolean,
-): Promise<void> {
+const LEGACY_PLUGIN_SDK_LAYOUT_MESSAGE =
+  "This plugin uses the legacy vendored SDK layout. Its SDK types will not be updated.\n" +
+  "Please run `bb plugin migrate` to update to the latest SDK types.";
+
+async function checkPluginSdkLayout(rootDir: string): Promise<void> {
   const layout = await resolvePluginSdkLayout(rootDir);
   if (layout.kind === "package") {
     warnIfSdkPinIsStale(layout.pin);
     return;
   }
-  let files: Awaited<ReturnType<typeof syncPluginTypes>>;
-  try {
-    files = await syncPluginTypes({ rootDir, app: hasApp });
-  } catch (error) {
-    console.warn(
-      `Could not refresh types/ — ${error instanceof Error ? error.message : String(error)}`,
-    );
-    return;
-  }
-  const written = files.filter((file) => file.outcome === "written");
-  if (written.length > 0) {
-    console.log(
-      `Refreshed SDK declarations: ${written.map((file) => file.path).join(", ")}`,
-    );
-  }
-  console.log(
-    "This plugin vendors types/ — `bb plugin migrate` switches it to the @get-bb/plugin-sdk npm package.",
-  );
+  console.warn(LEGACY_PLUGIN_SDK_LAYOUT_MESSAGE);
 }
 
 const EXACT_VERSION_PATTERN = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)*$/;
@@ -1307,7 +1290,7 @@ export function registerPluginCommands(
   plugin
     .command("types [path]")
     .description(
-      "Sync a plugin's @get-bb/plugin-sdk surface to the running bb (default: cwd): repin the npm devDependency and the type-only devDependencies of the packages bb shims at runtime (sonner, vaul, the portal radix families, ...) for plugins that depend on the package, or rewrite the vendored types/ declarations for plugins that still carry them",
+      "Sync a package-layout plugin's @get-bb/plugin-sdk surface to the running bb (default: cwd): repin the npm devDependency and the type-only devDependencies of the packages bb shims at runtime (sonner, vaul, the portal radix families, ...); legacy vendored-layout plugins must migrate first",
     )
     .option(
       "--check",
@@ -1319,6 +1302,10 @@ export function registerPluginCommands(
         const manifest = await requirePluginManifest(rootDir);
         const hasApp = typeof manifest.bb?.app === "string";
         const layout = await resolvePluginSdkLayout(rootDir);
+        if (layout.kind === "vendored") {
+          console.error(LEGACY_PLUGIN_SDK_LAYOUT_MESSAGE);
+          process.exit(1);
+        }
         if (layout.kind === "package") {
           if (opts.check) {
             console.log(
@@ -1387,26 +1374,6 @@ export function registerPluginCommands(
           );
           return;
         }
-        const files = await syncPluginTypes({
-          rootDir,
-          app: hasApp,
-          check: opts.check ?? false,
-        });
-        for (const file of files) {
-          console.log(`${file.path} ${file.outcome}`);
-        }
-        if (opts.check) {
-          if (files.some((file) => file.outcome === "stale")) {
-            console.error(
-              "Declarations are out of date — run `bb plugin types` to refresh them.",
-            );
-            process.exit(1);
-          }
-          return;
-        }
-        console.log(
-          "These declarations are the full plugin API — read them for exact signatures.",
-        );
       }),
     );
 
@@ -1483,9 +1450,7 @@ export function registerPluginCommands(
         const manifest = await readPluginManifest(rootDir);
         const hasApp = typeof manifest?.bb?.app === "string";
         const hasHost = typeof manifest?.bb?.host === "string";
-        if (typeof manifest?.bb?.server === "string") {
-          await refreshPluginTypes(rootDir, hasApp);
-        }
+        await checkPluginSdkLayout(rootDir);
         const toolchain = await cliBuildToolchain();
         const server = await buildPluginServer(rootDir, bbVersion, toolchain);
         const files = [server.jsPath, server.mapPath, server.metaPath];
@@ -1514,7 +1479,7 @@ export function registerPluginCommands(
         const manifest = await requirePluginManifest(rootDir);
         const hasApp = typeof manifest.bb?.app === "string";
         const hasHost = typeof manifest.bb?.host === "string";
-        await refreshPluginTypes(rootDir, hasApp);
+        await checkPluginSdkLayout(rootDir);
         const realDir = await realpath(rootDir).catch(() => rootDir);
         const list = await createCliBbSdk(getUrl()).plugins.list();
         const entry = list.plugins.find(
@@ -1819,10 +1784,12 @@ export function registerPluginCommands(
 
   plugin
     .command("remove <id>")
+    .alias("uninstall")
     .description(
       "Remove an installed plugin and delete its settings, secrets, and schedules (git:/npm: managed files are deleted; local path sources stay on disk). To move a local plugin to another directory, install the new path instead",
     )
     .option("--json", "Output JSON")
+    .addOption(new Option("--yes").hideHelp())
     .action(
       action(async (id: string, opts: JsonOutputOptions) => {
         const result = pluginMutationResponseSchema.parse(

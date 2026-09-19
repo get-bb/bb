@@ -17,7 +17,12 @@ import {
   executeAgentRun,
   executeScriptRun,
   type AgentRunApi,
+  type ScriptRunApi,
 } from "./run.js";
+import {
+  createScriptWorkingDirectoryResolver,
+  type ScriptWorkingDirectoryResolver,
+} from "./working-directory.js";
 
 const DUE_AUTOMATION_BATCH_SIZE = 100;
 export const SWEEP_INTERVAL_MS = 10_000;
@@ -25,9 +30,10 @@ export const SWEEP_INTERVAL_MS = 10_000;
 const hostListSchema = z.array(
   z.object({ status: z.enum(["connected", "disconnected"]) }).passthrough(),
 );
-type SweepApi = AgentRunApi & {
-  sdk: { hosts: { list(): Promise<unknown> } };
-};
+type SweepApi = AgentRunApi &
+  ScriptRunApi & {
+    sdk: { hosts: { list(): Promise<unknown> } };
+  };
 
 function buildScheduleFailureHandler(
   db: Db,
@@ -54,6 +60,7 @@ async function processDueAutomation(
     now: number;
     agentHostsAvailable: boolean;
     serverUrl: string;
+    resolveWorkingDirectory: ScriptWorkingDirectoryResolver;
   },
 ): Promise<void> {
   if (args.automation.nextRunAt === null) return;
@@ -111,6 +118,7 @@ async function processDueAutomation(
       execution,
       onFailure,
       serverUrl: args.serverUrl,
+      resolveWorkingDirectory: args.resolveWorkingDirectory,
     }).catch((error: unknown) => {
       bb.log.error(
         `Detached script automation ${args.automation.id} failed unexpectedly: ${errorMessage(error)}`,
@@ -142,12 +150,18 @@ export async function sweepDueAutomations(
   args: {
     pluginDataDir: string;
     serverUrl: string;
+    serverHostId: string | null;
     now?: number;
   },
 ): Promise<void> {
   const now = args.now ?? Date.now();
   const due = listDueAutomations(db, { now, limit: DUE_AUTOMATION_BATCH_SIZE });
   const agentHostsAvailable = await hasConnectedHost(bb);
+  const resolveWorkingDirectory = createScriptWorkingDirectoryResolver({
+    sdk: bb.sdk,
+    pluginDataDir: args.pluginDataDir,
+    serverHostId: args.serverHostId,
+  });
   for (const automation of due) {
     try {
       await processDueAutomation(bb, db, {
@@ -156,6 +170,7 @@ export async function sweepDueAutomations(
         now,
         agentHostsAvailable,
         serverUrl: args.serverUrl,
+        resolveWorkingDirectory,
       });
     } catch (error) {
       bb.log.error(

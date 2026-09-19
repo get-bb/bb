@@ -164,6 +164,7 @@ export function StoryComposer() {
   return (
     <ModelPickerStoryQueryProvider>
       <NewThreadPromptBoxUI
+        mentionMenuPlacement="top"
         id="story-compact-home-composer"
         value={value}
         mentionRanges={mentionRanges}

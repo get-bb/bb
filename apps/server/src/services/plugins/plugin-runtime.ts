@@ -100,6 +100,7 @@ import type {
 } from "./plugin-service-internal.js";
 import { createKeyedLock } from "../lib/async-deduper.js";
 import { runEventLoopWork } from "../system/event-loop-work.js";
+import { abortPluginToolCallsForPlugin } from "./plugin-tool-calls.js";
 
 const pluginSdkRuntimePath = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -1576,6 +1577,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         });
       },
       declaredIconNames: new Set(manifest.branding.icons.keys()),
+      brandingIcon: manifest.branding.icon,
       assertProviderRegistrable: (providerId) => {
         if (manifest.hostEntry !== undefined) {
           return;
@@ -1749,6 +1751,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
           );
         }
       }
+      abortPluginToolCallsForPlugin(id, "plugin-disposed");
       try {
         deps.pendingInteractions?.interruptPluginInteractions(id);
       } catch (error) {

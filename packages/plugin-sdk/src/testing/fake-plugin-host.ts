@@ -58,7 +58,7 @@ import type {
   PluginAgentConfiguration,
   PluginAgentConfigurationContext,
   PluginAgentToolContext,
-  PluginAgentToolPresentation,
+  PluginRowPresentation,
   PluginAgentToolResult,
   PluginAgents,
   PluginBackground,
@@ -217,11 +217,11 @@ export interface FakeAgentToolRecord {
   instructions: string | null;
   /**
    * The plugin's declared row presentation, null when it declared none.
-   * Parsed by the shared `parsePluginAgentToolPresentation`, so the record
+   * Parsed by the shared `parsePluginRowPresentation`, so the record
    * holds exactly what the production host stores and a presentation bb
    * rejects is rejected here with the same message.
    */
-  presentation: PluginAgentToolPresentation | null;
+  presentation: PluginRowPresentation | null;
   /** JSON-schema object the host would send providers. */
   inputSchema: unknown;
   parse(
@@ -1030,7 +1030,7 @@ function createFakePluginHostInternal(
       name: string;
       description: string;
       instructions?: string;
-      presentation?: PluginAgentToolPresentation;
+      presentation?: PluginRowPresentation;
       parameters: unknown;
       execute(
         params: never,
@@ -1159,8 +1159,17 @@ function createFakePluginHostInternal(
     assertLive();
     const normalized = normalizeInteractionRequest(request);
     const normalizedRequest: PluginInteractionRequest = {
-      ...request,
-      ...normalized,
+      threadId: normalized.threadId,
+      rendererId: normalized.rendererId,
+      title: normalized.title,
+      payload: normalized.payload,
+      timeoutMs: normalized.timeoutMs,
+      ...(normalized.presentation === null
+        ? {}
+        : { presentation: normalized.presentation }),
+      ...(normalized.describeSubmission === null
+        ? {}
+        : { describeSubmission: normalized.describeSubmission }),
     };
     const id = `fake-interaction-${nextInteractionId++}`;
     return new Promise<PluginInteractionResult>((resolve) => {
