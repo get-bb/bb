@@ -25,7 +25,7 @@ command’s `--help` before mutation. Use fresh browser snapshots for controls.
 | Feature | Drive | Observable success |
 | --- | --- | --- |
 | List, inspect, rename | Compare Machines with machine list/show; rename a disposable host and reload. | Stable host ID is preserved; name and connection state agree. |
-| Pair and enroll | Create machine join-code and redeem on the disposable host; attempt expired/reused code. | Exactly one intended host enrolls; invalid or consumed codes do not enroll another. |
+| Pair and enroll | Run `bb machine create --provider manual`, redeem its enrollment command on the disposable host, then retry the expired or consumed command. | Exactly one intended host enrolls; expired or consumed commands do not enroll another. |
 | Permission ceiling | Change the disposable machine ceiling and request a more permissive thread. | Host ceiling is enforced across UI, CLI, and runtime rather than merely hidden in the picker. |
 | Disconnect and reconnect | Stop only the disposable daemon, observe unavailable host, restart it, and retry a targeted read. | Status and routing recover to the same host; offline operations do not route to a different machine. |
 | Suspend and resume | Suspend a disposable provider-managed machine, send a thread follow-up to wake it, then repeat with the prompt banner's Resume action. | Every wake exposes a durable `resuming` lifecycle phase; the prompt banner says “Machine is resuming…” until the machine becomes active, and queued work dispatches once. |

@@ -373,18 +373,6 @@ export function registerMachineCommands(
     );
 
   machine
-    .command("join-code")
-    .description("Create a short-lived machine pairing code")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (opts: MachineListCommandOptions) => {
-        const result = await createCliBbSdk(getUrl()).hosts.createJoinCode();
-        if (outputJson(opts, result)) return;
-        console.log(result.joinCode);
-      }),
-    );
-
-  machine
     .command("rename <id-or-name> <name>")
     .description("Rename an execution machine")
     .option("--json", "Print machine-readable JSON output")
