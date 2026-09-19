@@ -1222,18 +1222,18 @@ describe("Docs nav panel", () => {
     });
   });
 
-  it("opens Docs directive cards in the thread panel or full editor", () => {
+  it("opens HTML Docs directive cards in the thread panel or full editor", () => {
     const openThreadPanel = vi.fn(() => true);
     const slot = renderSlot(
       app.messageDirectives[0]!,
       {
         attributes: {
           vault: "personal",
-          path: "plans/release.md",
+          path: "plans/release.html",
           title: "Release plan",
         },
         source:
-          '::docs{vault="personal" path="plans/release.md" title="Release plan"}',
+          '::docs{vault="personal" path="plans/release.html" title="Release plan"}',
         message: {
           id: "msg_1",
           threadId: "thr_1",
@@ -1246,13 +1246,13 @@ describe("Docs nav panel", () => {
     );
 
     fireEvent.click(slot.getByText("Release plan"));
-    expect(slot.queryByText("personal · plans/release.md")).toBeNull();
+    expect(slot.queryByText("personal · plans/release.html")).toBeNull();
     expect(openThreadPanel).toHaveBeenCalledWith({
       actionId: "document",
       title: "Release plan",
       params: {
         vaultId: "personal",
-        path: "plans/release.md",
+        path: "plans/release.html",
         title: "Release plan",
       },
     });
@@ -1261,7 +1261,235 @@ describe("Docs nav panel", () => {
     expect(slot.navigateCalls).toContainEqual({
       method: "toPluginPanel",
       path: "docs",
-      options: { subPath: "personal/plans/release.md" },
+      options: { subPath: "personal/plans/release.html" },
+    });
+  });
+
+  it("edits Markdown inline and opens the same document in a tab", async () => {
+    const openThreadPanel = vi.fn(() => true);
+    const slot = renderSlot(
+      app.messageDirectives[0]!,
+      {
+        attributes: {
+          vault: "personal",
+          path: "inline-header.md",
+          title: "Inline header",
+        },
+        source:
+          '::docs{vault="personal" path="inline-header.md" title="Inline header"}',
+        message: {
+          id: "msg_inline",
+          threadId: "thr_1",
+          turnId: "turn_1",
+          projectId: null,
+        },
+        openWorkspaceFile: null,
+      },
+      {
+        openThreadPanel,
+        rpc: {
+          readNote: () => ({
+            content: "Original paragraph.",
+            sha256: "original-sha",
+          }),
+          readProposal: () => null,
+          preparePreview: () => preview,
+        },
+      },
+    );
+    const editor = await slot.findByRole("textbox", {
+      name: "Document content",
+    });
+    expect(editor.getAttribute("contenteditable")).toBe("true");
+    fireEvent.focus(editor);
+    expect(slot.queryByText("Editing")).toBeNull();
+    expect(slot.queryByText("Saved")).toBeNull();
+    expect(slot.container.querySelectorAll("header")).toHaveLength(1);
+    expect(slot.container.querySelector("footer")).toBeNull();
+    expect(slot.getByRole("button", { name: "Ask for changes" })).toBeTruthy();
+    fireEvent.click(slot.getByRole("button", { name: "Open in tab" }));
+    expect(openThreadPanel).toHaveBeenCalledWith({
+      actionId: "document",
+      title: "Inline header",
+      params: {
+        vaultId: "personal",
+        path: "inline-header.md",
+        title: "Inline header",
+      },
+    });
+  });
+
+  it("preserves the composer draft and attaches the document when asking for changes", async () => {
+    const slot = renderSlot(
+      app.messageDirectives[0]!,
+      {
+        attributes: {
+          vault: "personal",
+          path: "ask-inline.md",
+          title: "Launch email",
+        },
+        source:
+          '::docs{vault="personal" path="ask-inline.md" title="Launch email"}',
+        message: {
+          id: "msg_ask",
+          threadId: "thr_1",
+          turnId: "turn_1",
+          projectId: null,
+        },
+        openWorkspaceFile: null,
+      },
+      {
+        composer: { text: "Keep this instruction." },
+        rpc: {
+          readNote: () => ({ content: "Email body.", sha256: "original-sha" }),
+          readProposal: () => null,
+          preparePreview: () => preview,
+        },
+      },
+    );
+    await slot.findByRole("textbox", { name: "Document content" });
+    fireEvent.click(slot.getByRole("button", { name: "Ask for changes" }));
+    await waitFor(() =>
+      expect(slot.inspection.composer.mentions).toEqual([
+        {
+          provider: "note",
+          id: "personal:ask-inline.md",
+          label: "Launch email",
+        },
+      ]),
+    );
+    expect(slot.inspection.composer.text).toBe(
+      "Keep this instruction.\n\nUpdate Launch email ",
+    );
+    expect(slot.inspection.composer.focusCount).toBeGreaterThan(0);
+  });
+
+  it("keeps Ask for changes available through rejection and icon-only undo", async () => {
+    const pending = {
+      vaultId: "personal",
+      path: "reject-inline.md",
+      version: 1,
+      baseContent: "Original paragraph.",
+      baseSha256: "original-sha",
+      content: "Revised paragraph.",
+      status: "pending",
+      resolvedSha256: null,
+      undoAction: null,
+    };
+    const resolveProposal = vi.fn((input: unknown) => {
+      if (typeof input !== "object" || input === null || !("action" in input))
+        throw new Error("Missing action");
+      return input.action === "reject"
+        ? { ...pending, version: 2, status: "rejected", undoAction: "reject" }
+        : { ...pending, version: 3 };
+    });
+    const slot = renderSlot(
+      app.messageDirectives[0]!,
+      {
+        attributes: {
+          vault: "personal",
+          path: "reject-inline.md",
+          title: "Reject example",
+        },
+        source:
+          '::docs{vault="personal" path="reject-inline.md" title="Reject example"}',
+        message: {
+          id: "msg_reject",
+          threadId: "thr_1",
+          turnId: "turn_1",
+          projectId: null,
+        },
+        openWorkspaceFile: null,
+      },
+      {
+        rpc: {
+          readNote: () => ({
+            content: "Original paragraph.",
+            sha256: "original-sha",
+          }),
+          readProposal: () => pending,
+          preparePreview: () => preview,
+          resolveProposal,
+        },
+      },
+    );
+    await slot.findByRole("textbox", { name: "Document content" });
+    fireEvent.click(slot.getByRole("button", { name: "Reject" }));
+    const undo = await slot.findByRole("button", { name: "Undo" });
+    expect(undo.textContent).toBe("");
+    expect(slot.getByRole("button", { name: "Ask for changes" })).toBeTruthy();
+    expect(slot.queryByRole("button", { name: "Accept" })).toBeNull();
+    fireEvent.click(undo);
+    await slot.findByRole("button", { name: "Accept" });
+    expect(slot.getByRole("button", { name: "Reject" })).toBeTruthy();
+    expect(slot.getByRole("button", { name: "Ask for changes" })).toBeTruthy();
+    expect(resolveProposal).toHaveBeenLastCalledWith({
+      vaultId: "personal",
+      path: "reject-inline.md",
+      action: "undo",
+      expectedVersion: 2,
+    });
+  });
+
+  it("uses icon-only redo to reopen the proposal controls", async () => {
+    const undone = {
+      vaultId: "personal",
+      path: "redo-inline.md",
+      version: 3,
+      baseContent: "Original paragraph.",
+      baseSha256: "original-sha",
+      content: "Revised paragraph.",
+      status: "undone",
+      resolvedSha256: "original-sha",
+      undoAction: "accept",
+    };
+    const resolveProposal = vi.fn(() => ({
+      ...undone,
+      version: 4,
+      status: "pending",
+      undoAction: null,
+    }));
+    const slot = renderSlot(
+      app.messageDirectives[0]!,
+      {
+        attributes: {
+          vault: "personal",
+          path: "redo-inline.md",
+          title: "Redo example",
+        },
+        source:
+          '::docs{vault="personal" path="redo-inline.md" title="Redo example"}',
+        message: {
+          id: "msg_redo",
+          threadId: "thr_1",
+          turnId: "turn_1",
+          projectId: null,
+        },
+        openWorkspaceFile: null,
+      },
+      {
+        rpc: {
+          readNote: () => ({
+            content: "Original paragraph.",
+            sha256: "original-sha",
+          }),
+          readProposal: () => undone,
+          preparePreview: () => preview,
+          resolveProposal,
+        },
+      },
+    );
+    const redo = await slot.findByRole("button", { name: "Redo" });
+    expect(redo.textContent).toBe("");
+    expect(slot.getByRole("button", { name: "Ask for changes" })).toBeTruthy();
+    fireEvent.click(redo);
+    await slot.findByRole("button", { name: "Accept" });
+    expect(slot.getByRole("button", { name: "Reject" })).toBeTruthy();
+    expect(resolveProposal).toHaveBeenCalledWith({
+      vaultId: "personal",
+      path: "redo-inline.md",
+      action: "redo",
+      expectedVersion: 3,
     });
   });
 
@@ -1272,7 +1500,7 @@ describe("Docs nav panel", () => {
         threadId: "thr_1",
         params: {
           vaultId: "personal",
-          path: "plans/release.md",
+          path: "plans/panel-release.md",
           title: "Release plan",
         },
       },
@@ -1282,6 +1510,7 @@ describe("Docs nav panel", () => {
             content: "# Release plan\n\nShip it.",
             sha256: "sha",
           }),
+          readProposal: () => null,
           preparePreview: () => preview,
         },
       },
@@ -1289,18 +1518,14 @@ describe("Docs nav panel", () => {
 
     await slot.findByText("Ship it.");
     expect(slot.getAllByText("Release plan")).toHaveLength(2);
-    expect(slot.queryByText("plans/release.md")).toBeNull();
+    expect(slot.getByRole("button", { name: "Ask for changes" })).toBeTruthy();
+    expect(slot.queryByText("plans/panel-release.md")).toBeNull();
     expect(slot.getByRole("textbox").getAttribute("contenteditable")).toBe(
       "true",
     );
     expect(slot.queryByRole("button", { name: "Add to chat" })).toBeNull();
     expect(slot.queryByRole("button", { name: "Mention in chat" })).toBeNull();
-    fireEvent.click(slot.getByRole("button", { name: "Open in Docs" }));
-    expect(slot.navigateCalls).toContainEqual({
-      method: "toPluginPanel",
-      path: "docs",
-      options: { subPath: "personal/plans/release.md" },
-    });
+    expect(slot.queryByRole("button", { name: "Open in Docs" })).toBeNull();
   });
 
   it("preserves an explicit host for file opener reads and autosaves", async () => {
