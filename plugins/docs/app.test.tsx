@@ -1374,13 +1374,12 @@ describe("Docs nav panel", () => {
       content: "Revised paragraph.",
       status: "pending",
       resolvedSha256: null,
-      undoAction: null,
     };
     const resolveProposal = vi.fn((input: unknown) => {
       if (typeof input !== "object" || input === null || !("action" in input))
         throw new Error("Missing action");
       return input.action === "reject"
-        ? { ...pending, version: 2, status: "rejected", undoAction: "reject" }
+        ? { ...pending, version: 2, status: "rejected" }
         : { ...pending, version: 3 };
     });
     const slot = renderSlot(
@@ -1441,13 +1440,11 @@ describe("Docs nav panel", () => {
       content: "Revised paragraph.",
       status: "undone",
       resolvedSha256: "original-sha",
-      undoAction: "accept",
     };
     const resolveProposal = vi.fn(() => ({
       ...undone,
       version: 4,
       status: "pending",
-      undoAction: null,
     }));
     const slot = renderSlot(
       app.messageDirectives[0]!,

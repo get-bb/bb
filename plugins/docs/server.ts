@@ -1563,7 +1563,6 @@ export default async function plugin(
           content: input.content,
           status: "pending",
           resolvedSha256: null,
-          undoAction: null,
         });
       });
     },
@@ -1608,12 +1607,10 @@ export default async function plugin(
             );
           next.status = "accepted";
           next.resolvedSha256 = result.sha256;
-          next.undoAction = "accept";
         } else if (input.action === "reject") {
           if (proposal.status !== "pending")
             throw new Error("This proposal is no longer pending.");
           next.status = "rejected";
-          next.undoAction = "reject";
         } else if (input.action === "undo") {
           if (proposal.status !== "accepted" && proposal.status !== "rejected")
             throw new Error("Nothing to undo.");
@@ -1638,7 +1635,6 @@ export default async function plugin(
                 "The document changed. Ask for an updated proposal.",
               );
             next.status = "pending";
-            next.undoAction = null;
           }
         } else {
           if (proposal.status !== "undone") throw new Error("Nothing to redo.");
@@ -1648,7 +1644,6 @@ export default async function plugin(
               "The document changed. Ask for an updated proposal.",
             );
           next.status = "pending";
-          next.undoAction = null;
         }
         return saveProposal(next);
       });

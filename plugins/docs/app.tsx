@@ -1188,17 +1188,7 @@ function DocumentPanel({ params }: PluginThreadPanelProps) {
           <HugeiconsIcon icon={ArrowUpRight01Icon} />
         </Button>
       </div>
-      {/\.html?$/i.test(document.path) ? (
-        <HtmlDocumentPanelBody document={document} />
-      ) : (
-        <NotePane
-          vaultId={document.vaultId}
-          notePath={document.path}
-          onChanged={() => undefined}
-          onRenamed={() => undefined}
-          renameToTitle={false}
-        />
-      )}
+      <HtmlDocumentPanelBody document={document} />
     </div>
   );
 }
@@ -1208,13 +1198,11 @@ function NotePane({
   notePath,
   onChanged,
   onRenamed,
-  renameToTitle = true,
 }: {
   vaultId: string;
   notePath: string;
   onChanged(): void;
   onRenamed(path: string): void;
-  renameToTitle?: boolean;
 }) {
   const rpc = useRpc<typeof docsRpcContract>();
   const [state, setState] = useState<
@@ -1286,15 +1274,13 @@ function NotePane({
         shaRef.current = result.sha256;
         setConflict(false);
         changedRef.current();
-        if (renameToTitle) {
-          const renamed = await rpc.call("renameToTitle", {
-            vaultId,
-            path: pathRef.current,
-          });
-          if (renamed.path !== pathRef.current) {
-            pathRef.current = renamed.path;
-            renamedRef.current(renamed.path);
-          }
+        const renamed = await rpc.call("renameToTitle", {
+          vaultId,
+          path: pathRef.current,
+        });
+        if (renamed.path !== pathRef.current) {
+          pathRef.current = renamed.path;
+          renamedRef.current(renamed.path);
         }
       } catch (error) {
         setSaveError(errorMessage(error));
@@ -1302,7 +1288,7 @@ function NotePane({
         savingRef.current = false;
       }
     },
-    [renameToTitle, rpc, vaultId],
+    [rpc, vaultId],
   );
 
   const scheduleSave = useCallback(() => {

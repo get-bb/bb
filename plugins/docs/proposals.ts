@@ -10,7 +10,6 @@ export const proposalSchema = z
     content: z.string(),
     status: z.enum(["pending", "accepted", "rejected", "undone"]),
     resolvedSha256: z.string().nullable(),
-    undoAction: z.enum(["accept", "reject"]).nullable(),
   })
   .strict();
 

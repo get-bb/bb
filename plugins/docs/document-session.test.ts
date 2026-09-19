@@ -32,12 +32,6 @@ function proposal(
     content: "Candidate",
     status,
     resolvedSha256: status === "accepted" ? "accepted-sha" : null,
-    undoAction:
-      status === "accepted" || status === "undone"
-        ? "accept"
-        : status === "rejected"
-          ? "reject"
-          : null,
   };
 }
 
