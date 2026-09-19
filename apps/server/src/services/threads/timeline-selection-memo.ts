@@ -136,7 +136,7 @@ function getSelectionMemo(db: DbConnection): TimelineSelectionMemo {
 function dataCharsOfRows(rows: readonly StoredEventRow[]): number {
   let chars = 0;
   for (const row of rows) {
-    chars += row.data.length;
+    chars += row.data.length + (row.completedItemHistory?.length ?? 0);
   }
   return chars;
 }
@@ -280,7 +280,9 @@ export function lookupLatestTimelineSelection(
   const budgetFloor: TimelineBudgetFloor = {
     sequence: findTimelineWindowBudgetFloorSequence(db, {
       threadId: args.threadId,
-      sequenceStart: args.epochSequenceStart,
+      sequenceStart:
+        entry.hints[args.page.segmentLimit]?.sequence ??
+        args.epochSequenceStart,
       beforeSequence: args.maxSeq + 1,
       eventBudget: args.eventBudget,
       excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,

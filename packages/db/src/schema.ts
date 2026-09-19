@@ -775,6 +775,7 @@ export const events = sqliteTable(
     itemKind: text("item_kind").$type<ThreadEventItemType>(),
     parentToolCallId: text("parent_tool_call_id"),
     data: text("data").notNull().default("{}"),
+    completedItemHistory: text("completed_item_history"),
     createdAt: integer("created_at").notNull(),
   },
   (table) => [

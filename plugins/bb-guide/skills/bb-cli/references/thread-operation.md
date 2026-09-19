@@ -111,7 +111,11 @@ hostId, providerId, projectId, parentThreadId, groupBy })`.
   snapshot and join paginated group contents. Appends remain outside that walk;
   rerun after a cursor-invalidated error from a history edit. JSON accepts any positive limit. It defaults
   to the oldest 100 raw events and warns when more exist. Page with
-  `--after-seq <seq>` or pass `--all`.
+  `--after-seq <seq>` or pass `--all`. Raw JSON exports use physical records:
+  a settled item can appear as one `item/completed` at its first lifecycle
+  sequence, retaining its completion ID, payload and timestamp. Start/delta IDs
+  are no longer separate rows. Human timelines preserve original timing/order;
+  smaller physical-row budgets can include more history.
   Grep the `--all` output, not the default page, when checking whether a
   thread ever received a message.
 - Use `bb thread output <thread-id>` to read the latest final output, or

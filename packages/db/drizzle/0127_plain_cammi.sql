@@ -1,0 +1,1 @@
+ALTER TABLE `events` ADD `completed_item_history` text;

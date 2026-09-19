@@ -1,3 +1,4 @@
+import { expandSelectedCompletedItemRows } from "@bb/db";
 import {
   copyStoredThreadEventsInTransaction,
   findLastCompletedRootStoredTurn,
@@ -262,11 +263,15 @@ function selectInheritedForkEventRows(
   deps: Pick<AppDeps, "db">,
   args: { historyEndSequence: number; sourceThreadId: string },
 ): StoredEventRow[] {
-  const rows = listStoredEventRows(deps.db, {
-    beforeSequence: args.historyEndSequence + 1,
-    threadId: args.sourceThreadId,
-    types: INHERITED_EVENT_TYPES,
-  });
+  const rows = expandSelectedCompletedItemRows(
+    deps.db,
+    listStoredEventRows(deps.db, {
+      beforeSequence: args.historyEndSequence + 1,
+      threadId: args.sourceThreadId,
+      types: INHERITED_EVENT_TYPES,
+    }),
+    args.historyEndSequence,
+  ).filter((row) => INHERITED_EVENT_TYPES.some((type) => type === row.type));
   const completedTurnIds = new Set<string>();
   const acceptedClientRequestIds = new Set<string>();
   for (const row of rows) {

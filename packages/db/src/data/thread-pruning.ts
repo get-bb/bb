@@ -1,3 +1,4 @@
+import { advanceCompletedItemCompaction } from "./completed-item-compaction.js";
 import { isBeforeLatestThreadEvent } from "./event-pruning-guards.js";
 import {
   advanceLiveEventPruning,
@@ -19,6 +20,7 @@ export const THREAD_PRUNING_POLICIES = [
   "usage",
   "turn-diffs",
   "resolved-items",
+  "completed-items",
 ] as const;
 export type ThreadPruningPolicy = (typeof THREAD_PRUNING_POLICIES)[number];
 const VERSION_BY_POLICY: Record<ThreadPruningPolicy, number> = {
@@ -26,6 +28,7 @@ const VERSION_BY_POLICY: Record<ThreadPruningPolicy, number> = {
   usage: 1,
   "turn-diffs": 1,
   "resolved-items": 1,
+  "completed-items": 1,
 };
 const BATCH_SIZE = 500;
 const LIVE_BATCH_SIZE = 32;
@@ -50,9 +53,10 @@ export function getNextThreadPruningPolicy(
     .all();
   const updated = new Map(rows.map((row) => [row.policy, row.updatedAt]));
   return (
-    THREAD_PRUNING_POLICIES.filter((policy) => !excluded.has(policy)).sort(
-      (a, b) => (updated.get(a) ?? 0) - (updated.get(b) ?? 0),
-    )[0] ?? null
+    THREAD_PRUNING_POLICIES.filter(
+      (policy) =>
+        !excluded.has(policy) && (scope === "" || policy !== "completed-items"),
+    ).sort((a, b) => (updated.get(a) ?? 0) - (updated.get(b) ?? 0))[0] ?? null
   );
 }
 
@@ -170,6 +174,19 @@ function advanceThreadPruningTransaction(
           });
           scanned = batch.scanned;
           removed = batch.removed;
+          cursor.sequence = batch.nextSequence;
+          if (batch.complete || cursor.sequence >= cursor.upperSequence)
+            action = "thread-complete";
+        } else if (policy === "completed-items") {
+          const batch = advanceCompletedItemCompaction(tx, {
+            threadId,
+            afterSequence: cursor.sequence,
+            throughSequence: cursor.upperSequence,
+            limit: batchSize,
+          });
+          scanned = batch.scanned;
+          removed = batch.removed;
+          removedBytes = batch.removedBytes;
           cursor.sequence = batch.nextSequence;
           if (batch.complete || cursor.sequence >= cursor.upperSequence)
             action = "thread-complete";

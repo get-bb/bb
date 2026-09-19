@@ -1145,7 +1145,7 @@ const storedEventRowFields = {
 export type StoredEventRow = Pick<
   typeof events.$inferSelect,
   keyof typeof storedEventRowFields
->;
+> & { completedItemHistory?: string | null };
 
 export type InlineOutputCharLimit = number | null;
 
@@ -2876,15 +2876,29 @@ export function findTimelineWindowBudgetFloorSequence(
     conditions.push(lt(events.sequence, args.beforeSequence));
   }
 
-  const row = db
-    .select({ sequence: events.sequence })
+  const query = db
+    .select({
+      sequence: events.sequence,
+      count:
+        sql<number>`1 + coalesce(json_array_length(${events.completedItemHistory}, '$[3][1]'), 0)`.as(
+          "count",
+        ),
+    })
     .from(events)
     .where(and(...conditions))
     .orderBy(desc(events.sequence))
-    .limit(1)
-    .offset(args.eventBudget)
-    .get();
-  return row?.sequence;
+    .limit(args.eventBudget + 1)
+    .toSQL();
+  const statement = db.$client.prepare<
+    unknown[],
+    { sequence: number; count: number }
+  >(query.sql);
+  let count = 0;
+  for (const row of statement.iterate(...query.params)) {
+    count += row.count;
+    if (count > args.eventBudget) return row.sequence;
+  }
+  return undefined;
 }
 
 export function listTimelineInterruptionRows(
@@ -3103,7 +3117,10 @@ export function findStoredTimelineWindowByteBudgetFloor(
   const query = db
     .select({
       createdAt: events.createdAt,
-      dataBytes: sql<number>`length(CAST(${data} AS BLOB))`.as("data_bytes"),
+      dataBytes:
+        sql<number>`length(CAST(${data} AS BLOB)) + COALESCE(length(CAST(${events.completedItemHistory} AS BLOB)), 0)`.as(
+          "data_bytes",
+        ),
       sequence: events.sequence,
       turnId: events.turnId,
     })
@@ -3178,7 +3195,12 @@ export function listStoredTimelineTurnEventRows(
     fixedVariableCount: 32,
     queryBatch: (turnIds) =>
       db
-        .select(storedEventRowSqlFields(args.maxInlineOutputChars))
+        .select({
+          ...storedEventRowSqlFields(args.maxInlineOutputChars),
+          completedItemHistory: sql<
+            string | null
+          >`${events.completedItemHistory}`,
+        })
         .from(
           sql`${events} INDEXED BY events_thread_turn_type_item_sequence_idx`,
         )
@@ -3220,9 +3242,10 @@ export function listStoredTimelineThreadWindowEventRows(
   args: ListStoredTimelineWindowEventRowsArgs,
 ): StoredEventRow[] {
   return db
-    .select(
-      storedEventRowFieldsWithInlineOutputLimit(args.maxInlineOutputChars),
-    )
+    .select({
+      ...storedEventRowFieldsWithInlineOutputLimit(args.maxInlineOutputChars),
+      completedItemHistory: events.completedItemHistory,
+    })
     .from(events)
     .where(and(...storedTimelineWindowConditions(args), isNull(events.turnId)))
     .orderBy(events.sequence)
@@ -3234,9 +3257,10 @@ export function listStoredTimelineWindowEventRows(
   args: ListStoredTimelineWindowEventRowsArgs,
 ): StoredEventRow[] {
   return db
-    .select(
-      storedEventRowFieldsWithInlineOutputLimit(args.maxInlineOutputChars),
-    )
+    .select({
+      ...storedEventRowFieldsWithInlineOutputLimit(args.maxInlineOutputChars),
+      completedItemHistory: events.completedItemHistory,
+    })
     .from(events)
     .where(and(...storedTimelineWindowConditions(args)))
     .orderBy(events.sequence)

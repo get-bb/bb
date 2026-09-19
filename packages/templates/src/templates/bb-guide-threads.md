@@ -214,6 +214,13 @@ Inspecting:
   walks a consistent history snapshot and joins paginated group contents.
   Appends stay outside that walk; rerun the command if a history edit invalidates it.
 
+  Raw JSON (including JSON exports and SDK threads.events.list) contains physical
+  records. Settled items may be one item/completed at their first lifecycle
+  sequence, keeping the completion ID, payload and completion timestamp. Separate
+  start/delta IDs disappear; internal timing metadata is not part of raw output.
+  Limits and sequence cursors count these physical rows. Human timelines retain
+  original ordering and timing; the same row budget can include older history.
+
   bb thread output [id]                    Get the final output of a thread
     --self                                 Target current thread
 

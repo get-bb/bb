@@ -7,6 +7,7 @@ import {
   getNextThreadPruningPolicy,
   getThreadEventRewriteGeneration,
   threadPruningCursors,
+  THREAD_PRUNING_POLICIES,
   threads,
 } from "@bb/db";
 import {
@@ -192,7 +193,7 @@ describe("thread pruning sweep", () => {
       );
       expect(steps.length).toBeLessThanOrEqual(64);
       expect(harness.db.select().from(threadPruningCursors).all()).toHaveLength(
-        4,
+        THREAD_PRUNING_POLICIES.length,
       );
       const before = getNextThreadPruningPolicy(harness.db, new Set());
       expect(before).not.toBeNull();

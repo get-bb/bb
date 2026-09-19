@@ -6,7 +6,11 @@ import {
   hydrateRetainedEventOutputRows,
   listStoredEventRows as listStoredEventRowRecords,
 } from "@bb/db";
-import type { DbConnection, StoredEventRow } from "@bb/db";
+import type {
+  DbConnection,
+  StoredEventRow,
+  ProjectionStoredEventRow,
+} from "@bb/db";
 import { toRecord } from "@bb/core-ui";
 import { buildThreadEventRow, parseStoredThreadEvent } from "@bb/domain";
 import { threadScope, turnScope } from "@bb/domain";
@@ -21,8 +25,8 @@ import { ApiError } from "../../errors.js";
 const THREAD_EVENT_RESPONSE_DATA_BYTE_LIMIT = 8 * 1024 * 1024;
 
 type StoredEventPayloadRow = Pick<
-  StoredEventRow,
-  "data" | "sequence" | "threadId" | "type"
+  ProjectionStoredEventRow,
+  "data" | "sequence" | "threadId" | "type" | "parsedData"
 >;
 
 interface ListThreadEventRowsArgs {
@@ -43,6 +47,7 @@ interface FindThreadEventArgs {
 export function parseStoredEventPayload(
   row: StoredEventPayloadRow,
 ): Record<string, unknown> {
+  if (row.parsedData !== undefined) return row.parsedData;
   let data: unknown;
   try {
     data = JSON.parse(row.data);
@@ -88,7 +93,7 @@ function parseStoredEventScope(row: StoredEventRow): ThreadEventScope {
   }
 }
 
-export function parseStoredEvent(row: StoredEventRow): ThreadEvent {
+export function parseStoredEvent(row: ProjectionStoredEventRow): ThreadEvent {
   return parseStoredThreadEvent({
     type: row.type,
     data: parseStoredEventPayload(row),

@@ -18,6 +18,8 @@ import {
 } from "@bb/domain";
 import type { ClientTurnRequestId, Thread } from "@bb/domain";
 import {
+  advanceThreadPruning,
+  listStoredEventRows,
   createConnection,
   createProject,
   createThread,
@@ -1390,3 +1392,123 @@ it("resolves acceptance after the next conversation boundary", () => {
   expect(rows).toEqual(expected.rows);
   db.$client.close();
 });
+
+it.each([1, 2, 5, 20])(
+  "traverses compacted items completely with event budget %i and a small byte budget",
+  (eventBudget) => {
+    const { db, thread } = setup();
+    try {
+      insertTurns(db, thread, 3, [2, 15, 2]);
+      db.$client
+        .prepare("UPDATE events SET sequence = -sequence WHERE thread_id = ?")
+        .run(thread.id);
+      db.$client
+        .prepare(
+          "UPDATE events SET sequence = -10 * sequence WHERE thread_id = ?",
+        )
+        .run(thread.id);
+      const owners = listStoredEventRows(db, {
+        threadId: thread.id,
+        types: ["item/completed"],
+      });
+      const additions: Parameters<typeof insertEvents>[2] = [];
+      const ends = new Map<string, number>();
+      for (const row of owners) {
+        if (!row.turnId || !row.itemId)
+          throw new Error("Missing fixture scope");
+        const base = {
+          threadId: thread.id,
+          scope: turnScope(row.turnId),
+          providerThreadId,
+          itemId: row.itemId,
+          itemKind: row.itemKind,
+          parentToolCallId: null,
+        };
+        const data = JSON.parse(row.data);
+        additions.push({
+          ...base,
+          type: "item/started",
+          sequence: row.sequence - 2,
+          createdAt: row.createdAt - 2,
+          data: JSON.stringify({ item: { ...data.item, text: "" } }),
+        });
+        additions.push({
+          ...base,
+          type: "item/agentMessage/delta",
+          itemKind: null,
+          sequence: row.sequence - 1,
+          createdAt: row.createdAt - 1,
+          data: JSON.stringify({ itemId: row.itemId, delta: data.item.text }),
+        });
+        ends.set(row.turnId, row.sequence + 1);
+      }
+      for (const [turnId, sequence] of ends)
+        additions.push({
+          threadId: thread.id,
+          scope: turnScope(turnId),
+          providerThreadId,
+          itemId: null,
+          itemKind: null,
+          parentToolCallId: null,
+          type: "turn/completed",
+          sequence,
+          data: JSON.stringify({ status: "completed" }),
+        });
+      insertEvents(
+        db,
+        noopNotifier,
+        additions.sort((a, b) => a.sequence - b.sequence),
+      );
+      const options = {
+        completedTurnDisplay: "collapse",
+        includeDiagnosticOperations: false,
+        includeNestedRows: true,
+        maxInlineOutputChars: null,
+        maxSeq: 0,
+      } as const;
+      const canonical = buildThreadTimelineWithProfile(db, thread, {
+        ...options,
+        eventBudget: LARGE_BUDGET,
+        page: { kind: "latest", segmentLimit: 100 },
+      }).response.rows;
+      let removed = 0;
+      for (let i = 0; i < 100; i++) {
+        const result = advanceThreadPruning(db, "completed-items");
+        removed += result.removed;
+        if (result.action === "cycle-complete") break;
+      }
+      expect(removed).toBe(owners.length * 2);
+      let rows: TimelineRow[] = [];
+      let cursor: TimelinePaginationCursor | null = null;
+      const cursors = new Set<string>();
+      do {
+        const response: ThreadTimelineResponse = buildThreadTimelineWithProfile(
+          db,
+          thread,
+          {
+            ...options,
+            eventBudget,
+            responseByteBudget: 512,
+            page: cursor
+              ? { kind: "older", beforeCursor: cursor, segmentLimit: 2 }
+              : { kind: "latest", segmentLimit: 2 },
+          },
+        ).response;
+        rows = prependOlderTimelineRows({
+          loadedRows: rows,
+          olderRows: response.rows,
+        });
+        cursor = response.timelinePage.olderCursor;
+        if (cursor) {
+          const key = JSON.stringify(cursor);
+          expect(cursors.has(key)).toBe(false);
+          cursors.add(key);
+          expect(cursors.size).toBeLessThan(100);
+        }
+      } while (cursor);
+      expect(rows).toEqual(canonical);
+    } finally {
+      db.$client.close();
+    }
+  },
+);

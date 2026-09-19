@@ -1,4 +1,8 @@
-import type { DbConnection, StoredEventRow } from "@bb/db";
+import type {
+  DbConnection,
+  StoredEventRow,
+  ProjectionStoredEventRow,
+} from "@bb/db";
 import type { ThreadEvent } from "@bb/domain";
 import { parseStoredEvent } from "./thread-data.js";
 
@@ -119,7 +123,7 @@ function rememberEntry(
 
 export function decodeStoredEventRowCached(
   db: DbConnection,
-  row: StoredEventRow,
+  row: ProjectionStoredEventRow,
 ): ThreadEvent {
   const cache = getDecodeCache(db);
   const byRow = cache.byRow.get(row);
