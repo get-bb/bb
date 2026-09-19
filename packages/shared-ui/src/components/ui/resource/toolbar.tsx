@@ -840,14 +840,7 @@ export function ResourceCreateButton({
       className={cn("rounded-r-none", compactWhenNarrow && "pl-2 pr-1")}
       onClick={() => onCreate()}
     >
-      <Icon
-        name="MessageCirclePlus"
-        className={cn(
-          "size-4",
-          compactWhenNarrow && "@max-[36rem]/resource-toolbar:hidden",
-        )}
-        aria-hidden
-      />
+      <Icon name="MessageCirclePlus" className="size-4" aria-hidden />
       <span>{label}</span>
     </Button>
   );

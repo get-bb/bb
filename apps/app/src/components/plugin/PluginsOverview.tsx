@@ -85,12 +85,15 @@ export function PluginsOverview({
           plugin,
           catalogQuery.data?.entries ?? [],
         );
+        const isLocal = plugin.source.startsWith("path:");
         return {
           plugin,
           entryId: plugin.id,
           displayName: plugin.name ?? plugin.id,
-          categoryId: entry?.categoryId ?? plugin.categoryId,
-          category: entry?.category ?? plugin.category,
+          categoryId: isLocal
+            ? "local"
+            : (entry?.categoryId ?? plugin.categoryId),
+          category: isLocal ? "Local" : (entry?.category ?? plugin.category),
           publishedAt: entry?.publishedAt,
           installs: entry?.installs ?? null,
         };
