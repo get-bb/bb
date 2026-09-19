@@ -458,33 +458,46 @@ describe("PluginCollectionToolbar", () => {
     expect(screen.getByRole("button", { name: "Filter & sort" })).toBeTruthy();
   });
 
-  it("keeps expanded search open while tabbing to its submit button and restores input focus after submission", () => {
+  it("keeps expanded search open while tabbing to close and preserves the live query when closing", () => {
     mockToolbarWidth(320);
     render(<ToolbarHarness installed createAction />);
     const search = screen.getByRole("textbox", { name: "Search plugins" });
+    expect(search.getAttribute("placeholder")).toBe("Search...");
     act(() => search.focus());
     fireEvent.change(search, { target: { value: "Notes" } });
-    const submit = screen.getByRole("button", { name: "Search" });
-    act(() => submit.focus());
-    expect(document.activeElement).toBe(submit);
+    expect(screen.getByLabelText("Parameters").textContent).toContain(
+      "query=Notes",
+    );
+    expect(screen.queryByRole("button", { name: "Search" })).toBeNull();
+    const close = screen.getByRole("button", { name: "Close search" });
+    act(() => close.focus());
+    expect(document.activeElement).toBe(close);
     expect(screen.queryByRole("button", { name: "Create" })).toBeNull();
-    fireEvent.click(submit);
+    fireEvent.click(close);
     expect(document.activeElement).toBe(search);
     expect(screen.getByRole("button", { name: "Filter & sort" })).toBeTruthy();
     expect(screen.getByLabelText("Parameters").textContent).toBe(
       "query=Notes&category=security&source=user&sort=name&direction=desc",
     );
     fireEvent.click(search);
-    expect(screen.getByRole("button", { name: "Search" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Close search" })).toBeTruthy();
     fireEvent.keyDown(search, { key: "Escape" });
     expect(document.activeElement).toBe(search);
-    expect(screen.queryByRole("button", { name: "Search" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Close search" })).toBeNull();
   });
 
-  it("keeps wide search beside its controls when focused", () => {
+  it("clears wide search without removing filters or moving focus away from the input", () => {
     mockToolbarWidth(800);
     render(<ToolbarHarness installed createAction />);
-    act(() => screen.getByRole("textbox", { name: "Search plugins" }).focus());
+    const search = screen.getByRole("textbox", { name: "Search plugins" });
+    act(() => search.focus());
+    fireEvent.change(search, { target: { value: "Notes" } });
+    fireEvent.click(screen.getByRole("button", { name: "Clear search" }));
+    expect(document.activeElement).toBe(search);
+    expect(screen.getByLabelText("Parameters").textContent).toBe(
+      "category=security&source=user&sort=name&direction=desc",
+    );
+    expect(screen.queryByRole("button", { name: "Clear search" })).toBeNull();
     expect(screen.getByRole("button", { name: /^Sort:/u })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Create" })).toBeTruthy();
   });
