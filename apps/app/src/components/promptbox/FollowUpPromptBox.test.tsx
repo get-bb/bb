@@ -111,7 +111,11 @@ vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
         focusEnd: () => void;
       } | null;
     };
-    submission?: { onModifierSubmit?: () => void; title?: string };
+    submission?: {
+      onModifierSubmit?: () => void;
+      swapSubmitActions?: boolean;
+      title?: string;
+    };
     suppressPluginComposerCustomizations?: boolean;
     onCollapse?: () => void;
     heightAnimationKey?: string | number;
@@ -149,7 +153,11 @@ vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
       <button
         type="button"
         onClick={(event) => {
-          onSubmit();
+          if (submission?.swapSubmitActions) {
+            submission.onModifierSubmit?.();
+          } else {
+            onSubmit();
+          }
           if (
             blurOnPointerSubmit &&
             event.detail > 0 &&
@@ -164,7 +172,9 @@ vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
       <button
         type="button"
         title={submission?.title}
-        onClick={submission?.onModifierSubmit}
+        onClick={
+          submission?.swapSubmitActions ? onSubmit : submission?.onModifierSubmit
+        }
       >
         Modifier submit
       </button>
