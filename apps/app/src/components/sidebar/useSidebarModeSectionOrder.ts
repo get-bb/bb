@@ -1,9 +1,11 @@
 import { useCallback, useMemo } from "react";
-import { useAtom } from "jotai";
+import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import {
   sidebarManualSectionOrderAtom,
   sidebarMachineSectionOrderAtom,
   sidebarSectionOrderAtom,
+  sidebarIsGroupRecencySortActiveAtom,
+  sidebarSortGroupsByRecencyAtom,
   type SidebarOrganizationMode,
   type SidebarSectionId,
 } from "./sidebarCollapsedAtoms";
@@ -54,22 +56,29 @@ export function useSidebarModeSectionOrder({
 }: UseSidebarModeSectionOrderArgs): UseSidebarModeSectionOrderResult {
   const config = MODE_SECTION_ORDER_CONFIG[mode];
   const [storedOrder, setStoredOrder] = useAtom(config.atom);
-  const persistedOrder = useMemo(
-    () =>
-      normalizeSidebarSectionOrder({
-        storedOrder,
-        entitySectionIds,
-        legacyEntityAnchor: config.legacyEntityAnchor,
-        hasPinnedSection: true,
-        ...(hasThreadsSection === undefined ? {} : { hasThreadsSection }),
-      }),
-    [
-      config.legacyEntityAnchor,
-      entitySectionIds,
-      hasThreadsSection,
+  const sortGroupsByRecency = useAtomValue(sidebarIsGroupRecencySortActiveAtom);
+  const setSortGroupsByRecency = useSetAtom(sidebarSortGroupsByRecencyAtom);
+  const persistedOrder = useMemo(() => {
+    const normalizedOrder = normalizeSidebarSectionOrder({
       storedOrder,
-    ],
-  );
+      entitySectionIds,
+      legacyEntityAnchor: config.legacyEntityAnchor,
+      hasPinnedSection: true,
+      ...(hasThreadsSection === undefined ? {} : { hasThreadsSection }),
+    });
+    if (!sortGroupsByRecency) return normalizedOrder;
+    const entityIds = new Set(entitySectionIds);
+    let nextEntityIndex = 0;
+    return normalizedOrder.map((id) =>
+      entityIds.has(id) ? entitySectionIds[nextEntityIndex++]! : id,
+    );
+  }, [
+    config.legacyEntityAnchor,
+    entitySectionIds,
+    hasThreadsSection,
+    storedOrder,
+    sortGroupsByRecency,
+  ]);
   const order = useMemo(
     () =>
       persistedOrder.filter(
@@ -78,8 +87,11 @@ export function useSidebarModeSectionOrder({
     [persistedOrder, showPinnedSection],
   );
   const onOrderChange = useCallback(
-    (nextOrder: SidebarSectionId[]) => setStoredOrder(nextOrder),
-    [setStoredOrder],
+    (nextOrder: SidebarSectionId[]) => {
+      setStoredOrder(nextOrder);
+      setSortGroupsByRecency(false);
+    },
+    [setStoredOrder, setSortGroupsByRecency],
   );
 
   return { onOrderChange, order, persistedOrder };

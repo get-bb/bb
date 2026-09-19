@@ -294,11 +294,13 @@ Sort by selects a field, and selecting it again reverses its arrow/direction.
 `sidebar.sortDirection` accepts `ascending`, `descending`, or `default`.
 The default preserves each field's original order (newest first for dates,
 A–Z for titles). For example: `bb settings ui set sidebar.sortDirection ascending`.
-Updated-at sorting also orders projects, custom sections, machines, environments,
-and parent threads by their highest-ranked visible thread. Running work stays
-first; empty groups follow populated groups. Saved manual section order and
-pinned placement take precedence. Reset the mode's section-order preference to
-restore automatic group ordering.
+Sort groups by activity is off by default. Enable it in Sort by or with
+`bb settings ui set sidebar.sortGroupsByRecency true`. During Updated at sorting,
+projects, custom sections, machines, environments, and parent threads inherit
+their highest-ranked visible thread. Running work stays first; empty groups
+follow populated groups. Pinned placement is preserved. Turning it off restores
+saved group order; dragging top-level groups saves their order and turns it off.
+Created at and Alphabetical leave the option inactive.
 
 Sidebar footer actions
 

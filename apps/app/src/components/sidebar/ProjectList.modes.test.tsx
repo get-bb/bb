@@ -7,6 +7,7 @@ import {
   cleanup,
   fireEvent,
   render,
+  renderHook,
   screen,
   waitFor,
 } from "@testing-library/react";
@@ -27,6 +28,8 @@ import {
   sidebarMachineSectionOrderAtom,
   sidebarOrganizationModeAtom,
   sidebarSectionOrderAtom,
+  sidebarChronologicalSortAtom,
+  sidebarSortGroupsByRecencyAtom,
   type CollapsibleSidebarSectionId,
   type SidebarOrganizationMode,
   type SidebarSectionId,
@@ -190,6 +193,57 @@ afterEach(() => {
 });
 
 describe("sidebar organization mode sections", () => {
+  it("restores saved group order when activity sorting is disabled and switches to manual after dragging", () => {
+    const store = createStore();
+    const manualOrder: SidebarSectionId[] = [
+      "threads",
+      "project:b",
+      "pinned",
+      "project:a",
+    ];
+    store.set(sidebarSectionOrderAtom, manualOrder);
+    store.set(sidebarChronologicalSortAtom, "updated");
+    const { result } = renderHook(
+      () =>
+        useSidebarModeSectionOrder({
+          mode: "project",
+          entitySectionIds: ["project:a", "project:b"],
+          showPinnedSection: true,
+        }),
+      {
+        wrapper: ({ children }) => (
+          <JotaiProvider store={store}>{children}</JotaiProvider>
+        ),
+      },
+    );
+    expect(result.current.order).toEqual(manualOrder);
+    act(() => store.set(sidebarSortGroupsByRecencyAtom, true));
+    expect(result.current.order).toEqual([
+      "threads",
+      "project:a",
+      "pinned",
+      "project:b",
+    ]);
+    expect(store.get(sidebarSectionOrderAtom)).toEqual(manualOrder);
+    act(() => store.set(sidebarSortGroupsByRecencyAtom, false));
+    expect(result.current.order).toEqual(manualOrder);
+
+    act(() => store.set(sidebarSortGroupsByRecencyAtom, true));
+    act(() => store.set(sidebarChronologicalSortAtom, "alpha"));
+    expect(result.current.order).toEqual(manualOrder);
+    act(() => store.set(sidebarChronologicalSortAtom, "updated"));
+    const draggedOrder: SidebarSectionId[] = [
+      "pinned",
+      "project:b",
+      "project:a",
+      "threads",
+    ];
+    act(() => result.current.onOrderChange(draggedOrder));
+    expect(store.get(sidebarSortGroupsByRecencyAtom)).toBe(false);
+    expect(store.get(sidebarSectionOrderAtom)).toEqual(draggedOrder);
+    expect(result.current.order).toEqual(draggedOrder);
+  });
+
   it("does not mount inactive ordering or machine-grouping work", async () => {
     const store = createStore();
     store.set(sidebarSectionOrderAtom, ["threads", "project:a", "pinned"]);

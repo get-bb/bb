@@ -112,7 +112,12 @@ function order(comparator: ThreadComparator, entries: ThreadListEntry[]) {
 
 describe("getSidebarThreadComparator", () => {
   it("ranks groups by visible work, keeping running groups first and empty groups last", () => {
-    const comparator = getSidebarThreadComparator("updated");
+    const comparator = getSidebarThreadComparator(
+      "updated",
+      undefined,
+      "default",
+      true,
+    );
     const groups: { id: `project:${string}`; threads: ThreadListEntry[] }[] = [
       { id: "project:empty", threads: [] },
       { id: "project:old", threads: [apple] },
@@ -170,15 +175,22 @@ describe("getSidebarThreadComparator", () => {
       ];
       const items = buildProjectThreadGroups(
         entries,
+        getSidebarThreadComparator("updated", undefined, "default", true),
+        new Set(),
+        groupEnvironments,
+      );
+      const defaultItems = buildProjectThreadGroups(
+        entries,
         getSidebarThreadComparator("updated"),
         new Set(),
         groupEnvironments,
       );
+      expect(itemRepresentativeId(defaultItems[0])).toBe("loose");
       expect(itemRepresentativeId(items[0])).toBe("parent");
       expect(itemRepresentativeId(items[1])).toBe("loose");
       const sections = buildSectionThreadList(
         entries,
-        getSidebarThreadComparator("updated"),
+        getSidebarThreadComparator("updated", undefined, "default", true),
         [
           { id: "work", name: "Work" },
           { id: "other", name: "Other" },
@@ -192,12 +204,19 @@ describe("getSidebarThreadComparator", () => {
   );
 
   it("extends only recency sorting to groups and respects its direction", () => {
-    expect(getSidebarThreadComparator("alpha").compareGroups).toBeUndefined();
-    expect(getSidebarThreadComparator("created").compareGroups).toBeUndefined();
+    expect(
+      getSidebarThreadComparator("alpha", undefined, "default", true)
+        .compareGroups,
+    ).toBeUndefined();
+    expect(
+      getSidebarThreadComparator("created", undefined, "default", true)
+        .compareGroups,
+    ).toBeUndefined();
     const comparator = getSidebarThreadComparator(
       "updated",
       undefined,
       "ascending",
+      true,
     );
     expect(comparator.compareGroups!([apple, cherry], [banana])).toBeLessThan(
       0,

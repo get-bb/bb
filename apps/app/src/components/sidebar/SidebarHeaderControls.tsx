@@ -23,6 +23,7 @@ import {
   sidebarGroupThreadsByEnvironmentAtom,
   sidebarEnvironmentGroupingAtom,
   sidebarSortDirectionAtom,
+  sidebarSortGroupsByRecencyAtom,
 } from "./sidebarCollapsedAtoms";
 import { SidebarControlButton, SidebarRowControls } from "./SidebarRowControls";
 import { SIDEBAR_CONTROL_BUTTON_CLASS } from "./sidebarRowClasses";
@@ -53,6 +54,9 @@ function SidebarViewItems({ page }: { page: "organize" | "sort" }) {
   const [organization, setOrganization] = useAtom(sidebarOrganizationModeAtom);
   const [sort, setSort] = useAtom(sidebarChronologicalSortAtom);
   const [savedDirection, setDirection] = useAtom(sidebarSortDirectionAtom);
+  const [sortGroupsByRecency, setSortGroupsByRecency] = useAtom(
+    sidebarSortGroupsByRecencyAtom,
+  );
   const setEnvironmentGrouping = useSetAtom(sidebarEnvironmentGroupingAtom);
   const groupByEnvironment = useAtomValue(sidebarGroupThreadsByEnvironmentAtom);
   const selectedSort = sort === "none" ? "updated" : sort;
@@ -144,6 +148,31 @@ function SidebarViewItems({ page }: { page: "organize" | "sort" }) {
           </DropdownMenuItem>
         );
       })}
+      <DropdownMenuSeparator />
+      <DropdownMenuItem
+        role="menuitemcheckbox"
+        aria-label="Sort groups by activity"
+        aria-checked={selectedSort === "updated" && sortGroupsByRecency}
+        disabled={selectedSort !== "updated"}
+        onSelect={(event) => {
+          event.preventDefault();
+          setSortGroupsByRecency(!sortGroupsByRecency);
+        }}
+      >
+        <span>
+          Sort groups by activity
+          {selectedSort !== "updated" && (
+            <span className="block text-muted-foreground">
+              Requires Updated at
+            </span>
+          )}
+        </span>
+        <span className="ml-auto inline-flex size-4 shrink-0 items-center justify-center">
+          {selectedSort === "updated" && sortGroupsByRecency && (
+            <Icon name="Check" className="size-4" />
+          )}
+        </span>
+      </DropdownMenuItem>
     </DropdownMenuGroup>
   );
 }

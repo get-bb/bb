@@ -22,6 +22,7 @@ import {
   sidebarOrganizationModeAtom,
   sidebarEnvironmentGroupingAtom,
   sidebarSortDirectionAtom,
+  sidebarSortGroupsByRecencyAtom,
 } from "./sidebarCollapsedAtoms";
 
 const viewport = vi.hoisted(() => ({ compact: false }));
@@ -250,6 +251,32 @@ describe("sidebar header controls", () => {
         })
         .getAttribute("aria-checked"),
     ).toBe("true");
+  });
+
+  it("opts into group activity sorting only for Updated at", async () => {
+    const { store } = setup();
+    await openMenu();
+    await openSubmenu("Sort by");
+    const toggle = await screen.findByRole("menuitemcheckbox", {
+      name: "Sort groups by activity",
+    });
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
+    fireEvent.click(toggle);
+    expect(store.get(sidebarSortGroupsByRecencyAtom)).toBe(true);
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
+
+    fireEvent.click(
+      screen.getByRole("menuitemradio", { name: "Alphabetical" }),
+    );
+    expect(toggle.getAttribute("aria-disabled")).toBe("true");
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
+    expect(screen.getByText("Requires Updated at")).toBeTruthy();
+    expect(store.get(sidebarSortGroupsByRecencyAtom)).toBe(true);
+
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Updated at" }));
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(toggle);
+    expect(store.get(sidebarSortGroupsByRecencyAtom)).toBe(false);
   });
 
   it("announces compact sort direction and resets the nested page after closing", async () => {

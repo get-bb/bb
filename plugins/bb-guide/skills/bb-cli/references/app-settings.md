@@ -13,11 +13,13 @@ every window and client sees the same value.
 
 ## Sidebar preferences
 
-- `sidebar.chronologicalSort=updated` extends thread recency through projects,
-  custom sections, machines, environments, and parent threads. Groups inherit
-  their highest-ranked visible thread. Saved manual section order and pinned
-  placement take precedence; reset the mode's section-order preference to
-  restore automatic ordering.
+- `sidebar.sortGroupsByRecency` defaults to `false`. Enable **Sort groups by
+  activity** in the header's **Sort by** menu or with
+  `bb settings ui set sidebar.sortGroupsByRecency true`. With Updated at sorting,
+  projects, custom sections, machines, environments, and parent threads inherit
+  their highest-ranked visible thread. Pinned placement is preserved. Turning
+  it off restores saved group order; dragging top-level groups saves their order
+  and turns it off. Created at and Alphabetical leave the option inactive.
 - The server keeps a keyed, revisioned registry of sidebar layout preferences
   (`sidebar.organizationMode`, `sidebar.threadGrouping.environment`,
   `sidebar.chronologicalSort`, the section

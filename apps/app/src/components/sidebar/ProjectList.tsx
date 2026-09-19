@@ -117,6 +117,7 @@ import {
   sidebarChronologicalSortAtom,
   sidebarGroupThreadsByEnvironmentAtom,
   sidebarSortDirectionAtom,
+  sidebarSortGroupsByRecencyAtom,
   sidebarCollapsedMachinesAtom,
   sidebarOrganizationModeAtom,
   type SidebarChronologicalSort,
@@ -349,6 +350,7 @@ export function getSidebarThreadComparator(
   sort: SidebarChronologicalSort,
   resources?: ThreadTitleMentionResources,
   direction: "default" | "ascending" | "descending" = "default",
+  sortGroupsByRecency = false,
 ): ThreadComparator {
   const normalizedSort = sort === "none" ? "updated" : sort;
 
@@ -379,7 +381,7 @@ export function getSidebarThreadComparator(
     }
     return multiplier * comparison;
   };
-  if (normalizedSort === "updated") {
+  if (normalizedSort === "updated" && sortGroupsByRecency) {
     comparator.compareGroups = (left, right) =>
       compareThreadGroups(left, right, comparator);
   }
@@ -1596,14 +1598,21 @@ function ProjectListComponent({
     sidebarChronologicalSortAtom,
   );
   const sortDirection = useAtomValue(sidebarSortDirectionAtom);
+  const sortGroupsByRecency = useAtomValue(sidebarSortGroupsByRecencyAtom);
   const sidebarThreadComparator = useMemo<ThreadComparator>(
     () =>
       getSidebarThreadComparator(
         chronologicalSort,
         titleMentionResources,
         sortDirection,
+        sortGroupsByRecency,
       ),
-    [chronologicalSort, titleMentionResources, sortDirection],
+    [
+      chronologicalSort,
+      titleMentionResources,
+      sortDirection,
+      sortGroupsByRecency,
+    ],
   );
   const collapsedThreadIds = useMemo(
     () => new Set(collapsedThreadIdList),
