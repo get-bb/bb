@@ -39,7 +39,6 @@ import {
   CatalogPluginDetailBanner,
   PluginDetail,
   PluginDetailBanners,
-  PluginProvenancePill,
   pluginFrontendDiagnosticRequiresFailureBanner,
 } from "@/components/tools/PluginDetail";
 import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
@@ -260,30 +259,6 @@ describe("PluginDetail official catalog lifecycle", () => {
         .getByRole("button", { name: "Install GitHub" })
         .hasAttribute("disabled"),
     ).toBe(true);
-  });
-
-  it("omits a provenance badge for default direct and local sources", () => {
-    const directPlugin: PluginListItem = {
-      ...GITHUB_PLUGIN,
-      source: "npm:@example/github@^1.0.0",
-      provenance: "direct",
-      catalogEntryId: null,
-      publisherLabel: null,
-    };
-    const { container, rerender } = render(
-      <PluginProvenancePill plugin={directPlugin} />,
-    );
-    expect(container.textContent).toBe("");
-
-    rerender(
-      <PluginProvenancePill
-        plugin={{
-          ...directPlugin,
-          source: "path:/Users/you/Code/github-plugin",
-        }}
-      />,
-    );
-    expect(container.textContent).toBe("");
   });
 
   it("keeps catalog provenance and release management in the unified detail taxonomy", async () => {
@@ -852,6 +827,18 @@ describe("BB Official plugin detail routing", () => {
         "Description from the installed catalog.",
       );
     });
+    const title = screen.getByRole("heading", { name: "GitHub", level: 1 });
+    const header = title.parentElement?.parentElement;
+    if (!header) throw new Error("Plugin header missing");
+    expect(within(header).queryByText("Partner Catalog")).toBeNull();
+    const source = screen.getByRole("link", {
+      name: /github.com\/example\/installed-catalog-plugin/u,
+    });
+    expect(source.querySelector('[data-icon="GithubLogo"]')).not.toBeNull();
+    expect(
+      within(header).getByRole("link", { name: "Installed publisher" }),
+    ).toBeTruthy();
+    expect(screen.getByText("Partner Catalog")).toBeTruthy();
   });
 
   it("uses installed metadata when its catalog entry is unavailable", async () => {
