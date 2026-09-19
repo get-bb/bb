@@ -590,8 +590,9 @@ schema accepts. Inputs are persisted and readable by every plugin, so they
 must contain no secrets; credentials belong in plugin settings and inputs
 carry non-secret references. `experimental_BranchPicker` is the host's branch
 picker with its branch-options loading (`{ hostId, projectId, value, onChange,
-label?, placeholder?, disabled }` — `label` is text before the branch, omitted
-means the branch alone; `placeholder` replaces the muted default base shown
+label?, placeholder?, disabled }` — `label` prefixes the branch on the trigger
+and supplies the menu heading; omitted means the branch alone on the trigger
+and a neutral "Branches" menu heading; `placeholder` replaces the muted default base shown
 while nothing is picked), exported so a provider that runs on an enrolled
 machine can render bb's own branch control inside its inputs control — the
 worktree plugin's `app.tsx` does exactly that, emitting `{ branch: { kind:

@@ -84,6 +84,29 @@ describe("PluginBranchPicker", () => {
     expect(text).not.toContain("Branch from");
   });
 
+  it.each(["Compare with:", "Checkout:", "Branch from:"])(
+    "uses %s for the trigger prefix and menu heading",
+    (label) => {
+      renderPicker({ value: "release", label });
+      const trigger = screen.getByRole("combobox", { name: "Branch" });
+      expect(trigger.textContent).toContain(label);
+      expect(trigger.textContent).toContain("release");
+      const labelsBeforeOpen = screen.queryAllByText(label).length;
+      fireEvent.click(trigger);
+      expect(screen.getAllByText(label)).toHaveLength(labelsBeforeOpen + 1);
+      if (label !== "Branch from:") {
+        expect(screen.queryByText("Branch from:")).toBeNull();
+      }
+    },
+  );
+
+  it("uses a neutral menu heading without a label", () => {
+    renderPicker({ value: null, placeholder: "Choose a comparison branch" });
+    fireEvent.click(screen.getByRole("combobox", { name: "Branch" }));
+    expect(screen.getByText("Branches")).toBeTruthy();
+    expect(screen.queryByText("Branch from:")).toBeNull();
+  });
+
   it("uses the resolved default base instead of the checkout branch", () => {
     vi.mocked(usePluginCheckoutState).mockReturnValue({
       isGit: true,

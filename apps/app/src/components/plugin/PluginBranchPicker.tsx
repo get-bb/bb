@@ -54,7 +54,7 @@ export function PluginBranchPicker({
       placeholder={placeholder ?? `${prefix}${defaultBase}`}
       triggerLabel={triggerLabel}
       triggerTitle={triggerLabel}
-      menuKind="base"
+      menuLabel={label}
       disabled={!enabled || disabled === true}
       onChange={handleChange}
       onOpenChange={handleOpenChange}

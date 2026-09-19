@@ -90,7 +90,7 @@ function EnvironmentOptionsStrip({
             placeholder="Branch from: main"
             triggerLabel="Branch from: main"
             triggerTitle="Branch from: main"
-            menuKind="base"
+            menuLabel="Branch from:"
             onChange={noop}
             modal={false}
             {...branch}

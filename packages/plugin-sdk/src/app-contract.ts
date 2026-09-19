@@ -2299,8 +2299,9 @@ export interface BranchPickerProps {
   /** Called with the picked branch name, or null when the pick is cleared. */
   onChange(next: string | null): void;
   /**
-   * Text placed before the branch on the trigger, e.g. "Base:". Omitted, the
-   * trigger is the branch alone.
+   * Text placed before the branch on the trigger and used as the menu heading,
+   * e.g. "Compare with:". Omitted, the trigger is the branch alone and the menu
+   * uses the neutral "Branches" heading.
    */
   label?: string;
   /**
