@@ -506,12 +506,13 @@ describe("PluginsOverview", () => {
     ).toBeNull();
     const search = screen.getByRole("textbox", { name: "Search plugins" });
     const toolbar = search.closest("[data-resource-toolbar]");
+    if (!toolbar) throw new Error("Missing collection toolbar");
     const category = screen.getByRole("button", {
       name: "Filter plugins by category: All categories",
     });
     const sort = screen.getByRole("button", { name: /^Sort:/ });
-    expect(toolbar?.contains(category)).toBe(true);
-    expect(toolbar?.contains(sort)).toBe(true);
+    expect(toolbar.contains(category)).toBe(true);
+    expect(toolbar.contains(sort)).toBe(true);
     const heroHeading = screen.getByRole("heading", {
       level: 2,
       name: /^Turn bb into/,
