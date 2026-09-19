@@ -1,7 +1,7 @@
 import { installDefaultEnvironmentProviders } from "./environment-provider.js";
+import { registerTestHarnessWarmup } from "./test-harness-warmup.js";
 import { setPluginEnvironmentProviderBridge } from "../../src/services/plugins/plugin-environment-provider-registry.js";
 import { clearAllThreadProvisionSchedules } from "../../src/services/threads/thread-startup-store.js";
-import { beforeAll } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -344,11 +344,7 @@ export async function withTestHarness<T>(
   }
 }
 
-async function warmTestHarness(): Promise<void> {
-  await withTestHarness(async () => undefined);
-}
-
-beforeAll(warmTestHarness);
+registerTestHarnessWarmup(() => withTestHarness(async () => undefined));
 
 export async function startTestServer(
   overrides: TestAppHarnessConfigOverrides = {},
