@@ -85,6 +85,20 @@ describe("provider gating", () => {
     },
   );
 
+  it.each(["codex", "pi", "acp-cursor"])(
+    "does not prescribe provider-specific plan tools to %s",
+    async (providerId) => {
+      const host = createHost();
+      const resolved = await host.harness.resolveAgentConfiguration(
+        configurationContext(providerId),
+      );
+      expect(resolved.tools).toHaveLength(1);
+      expect(resolved.tools[0]?.description).not.toMatch(
+        /EnterPlanMode|ExitPlanMode/,
+      );
+    },
+  );
+
   it("advertises multiSelect as optional and defaults it during execution", async () => {
     const host = createHost();
     const resolved = await host.harness.resolveAgentConfiguration(
@@ -207,6 +221,27 @@ describe("asking a question", () => {
       prompt: "Which database should we use?",
       shortLabel: "Database",
       allowFreeText: true,
+    });
+
+    expect(pending.presentation).toEqual({
+      label: { pending: "Asking a question", completed: "Asked" },
+      icon: { glyph: "MessageQuestion" },
+    });
+    expect(
+      await pending.describeSubmission?.({
+        answers: { q0: { selected: ["q0o0"], freeText: "with pgbouncer" } },
+      }),
+    ).toMatchObject({
+      title:
+        "Answered Which database should we use? — Postgres (Recommended); with pgbouncer",
+      detail:
+        "- Which database should we use? — Postgres (Recommended); with pgbouncer",
+      payload: expect.objectContaining({
+        answers: {
+          "Which database should we use?":
+            "Postgres (Recommended); with pgbouncer",
+        },
+      }),
     });
 
     host.harness.submitInteraction(pending.id, {

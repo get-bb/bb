@@ -14,7 +14,9 @@ import type {
   QueuedMessageSystemNotice,
   QueuedMessageWaitingOn,
   ResolvedThreadExecutionOptions,
+  StartedOnBehalfOf,
   Thread,
+  ThreadCreateOrigin,
   ThreadQueuedMessage,
 } from "@bb/domain";
 import { ApiError } from "../../errors.js";
@@ -62,6 +64,13 @@ export interface QueuedDispatchMessage {
   input: PromptInput[];
   execution: ResolvedThreadExecutionOptions;
   senderThreadId: string | null;
+  /**
+   * The provenance of the dispatch being queued, written onto the row so the
+   * drain re-decides on what the first attempt saw rather than on null.
+   */
+  origin: ThreadCreateOrigin | null;
+  originPluginId: string | null;
+  requestedBy: StartedOnBehalfOf | null;
   payload: QueuedMessagePayload;
   /** Non-null only when core is queueing one of its own system notices. */
   systemNotice: QueuedMessageSystemNotice | null;
@@ -114,6 +123,9 @@ export function recordQueuedMessageWait(
           threadId: args.thread.id,
           content: args.message.input,
           senderThreadId: args.message.senderThreadId,
+          origin: args.message.origin,
+          originPluginId: args.message.originPluginId,
+          requestedBy: args.message.requestedBy,
           model: args.message.execution.model,
           reasoningLevel: args.message.execution.reasoningLevel,
           permissionMode: args.message.execution.permissionMode,

@@ -154,3 +154,29 @@ describe("plugin marketplace author links", () => {
     expect(onOpenPlugin).toHaveBeenCalledWith("Alpha");
   });
 });
+
+describe("plugin source presentation", () => {
+  it("links bundled plugins to the BB repository without catalog repository metadata", () => {
+    render(
+      <PluginMarketplaceSource
+        entry={{ source: "builtin:automations", repositoryUrl: null }}
+      />,
+    );
+    const link = screen.getByRole("link", { name: /github.com\/get-bb\/bb/u });
+    expect(link.getAttribute("href")).toBe("https://github.com/get-bb/bb");
+    expect(link.querySelector('[data-icon="GithubLogo"]')).not.toBeNull();
+  });
+
+  it("preserves a listing's specific source path", () => {
+    const url = "https://github.com/example/plugins/tree/HEAD/plugins/review";
+    render(
+      <PluginMarketplaceSource
+        entry={{
+          source: "git:https://github.com/example/plugins.git@main",
+          repositoryUrl: url,
+        }}
+      />,
+    );
+    expect(screen.getByRole("link").getAttribute("href")).toBe(url);
+  });
+});

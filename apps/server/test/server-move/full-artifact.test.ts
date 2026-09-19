@@ -73,3 +73,37 @@ describe("full bb-app artifact availability", () => {
     });
   });
 });
+
+describe("full bb-app artifact packing", () => {
+  it("packs with the bundled npm when the server has no npm on PATH", async () => {
+    const root = await mkdtemp(join(tmpdir(), "bb-full-artifact-pack-"));
+    tempDirs.push(root);
+    await writePackageFile(root, "package.json", packageJson("1.2.3"));
+    await writePackageFile(root, "dist/bb-server.js", "a");
+    await writePackageFile(root, "dist/bb-app.js", "b");
+    await writePackageFile(root, "server/dist/index.js", "c");
+    await writePackageFile(root, "app/dist/index.html", "d");
+    const dataDir = await mkdtemp(
+      join(tmpdir(), "bb-full-artifact-pack-data-"),
+    );
+    tempDirs.push(dataDir);
+    const service = createFullBbAppArtifactService({
+      dataDir,
+      serverEntryUrl: pathToFileURL(join(root, "server", "dist", "index.js"))
+        .href,
+    });
+
+    const originalPath = process.env.PATH;
+    process.env.PATH = "";
+    let artifact;
+    try {
+      artifact = await service.build();
+    } finally {
+      process.env.PATH = originalPath;
+    }
+
+    expect(artifact.version).toBe("1.2.3");
+    expect(artifact.sizeBytes).toBeGreaterThan(0);
+    expect(artifact.sha256).toMatch(/^[a-f0-9]{64}$/u);
+  }, 15_000);
+});

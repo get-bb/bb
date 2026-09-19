@@ -460,6 +460,7 @@ export function registerEnvironmentCommands(
 
   environment
     .command("show <id>")
+    .alias("get")
     .description("Show environment details")
     .option("--json", "Print machine-readable JSON output")
     .action(

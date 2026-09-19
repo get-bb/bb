@@ -4,6 +4,7 @@ import { Skeleton } from "@bb/shared-ui/skeleton";
 import {
   definePluginApp,
   Markdown,
+  useBbNavigate,
   useRpc,
   type PluginMessageDirectiveProps,
   type MarkdownProps,
@@ -12,29 +13,34 @@ import type { inlineVisRpcContract } from "./server.js";
 
 type PreviewSource = "workspace" | "thread-storage";
 
-const PREVIEW_SOURCE_CONFIG = {
-  workspace: { route: "worktree/files", opensWorkspace: true },
-  "thread-storage": {
-    route: "thread-storage/files",
-    opensWorkspace: false,
-  },
-} as const satisfies Record<
-  PreviewSource,
-  { route: string; opensWorkspace: boolean }
->;
+type PreviewTarget = NonNullable<
+  MarkdownProps["experimental_document"]
+>["target"];
+
+const PREVIEW_ROUTE = {
+  workspace: "worktree/files",
+  "thread-storage": "thread-storage/files",
+} as const satisfies Record<PreviewSource, string>;
 
 type LoadState =
   | { status: "missing-file" }
   | { status: "invalid-height"; message: string }
   | { status: "loading"; file: string }
-  | { status: "ready"; kind: "html"; file: string; source: PreviewSource }
+  | {
+      status: "ready";
+      kind: "html";
+      file: string;
+      source: PreviewSource;
+      target: PreviewTarget;
+    }
   | {
       status: "ready";
       kind: "markdown";
       file: string;
       source: PreviewSource;
+      target: PreviewTarget;
+      rootPath: string;
       content: string;
-      document: NonNullable<MarkdownProps["experimental_document"]>;
     }
   | { status: "error"; file: string; message: string };
 
@@ -51,8 +57,7 @@ function buildPreviewUrl(
   file: string,
   source: PreviewSource,
 ): string {
-  const route = PREVIEW_SOURCE_CONFIG[source].route;
-  return `/api/v1/threads/${encodeURIComponent(threadId)}/${route}/${encodePathSegments(file)}`;
+  return `/api/v1/threads/${encodeURIComponent(threadId)}/${PREVIEW_ROUTE[source]}/${encodePathSegments(file)}`;
 }
 
 function parsePreviewHeight(value: string | undefined): number | null {
@@ -94,9 +99,9 @@ function InlineVisDirective({
   attributes,
   source,
   message,
-  openWorkspaceFile,
 }: PluginMessageDirectiveProps) {
   const rpc = useRpc<typeof inlineVisRpcContract>();
+  const navigate = useBbNavigate();
   const fileAttr = attributes.file?.trim() ?? "";
   const sourceAttr = attributes.source;
   const heightAttr = attributes.height;
@@ -178,11 +183,7 @@ function InlineVisDirective({
     return (
       <PreviewCard
         file={state.file}
-        action={
-          openWorkspaceFile === null ? null : (
-            <span aria-hidden className="size-5 shrink-0" />
-          )
-        }
+        action={<span aria-hidden className="size-5 shrink-0" />}
       >
         <div
           role="status"
@@ -209,25 +210,24 @@ function InlineVisDirective({
     );
   }
 
-  const sourceConfig = PREVIEW_SOURCE_CONFIG[state.source];
-
   return (
     <PreviewCard
       file={state.file}
       action={
-        !sourceConfig.opensWorkspace || openWorkspaceFile === null ? null : (
-          <button
-            type="button"
-            aria-label={`Open ${state.file} in sidebar`}
-            title="Open in sidebar"
-            className="inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            onClick={() => {
-              openWorkspaceFile(state.file);
-            }}
-          >
-            <Icon name="ExternalLink" aria-hidden className="size-3" />
-          </button>
-        )
+        <button
+          type="button"
+          aria-label={`Open ${state.file} in sidebar`}
+          title="Open in sidebar"
+          className="inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          onClick={() => {
+            navigate.experimental_openFilePreview({
+              target: state.target,
+              location: null,
+            });
+          }}
+        >
+          <Icon name="ExternalLink" aria-hidden className="size-3" />
+        </button>
       }
     >
       {state.kind === "markdown" ? (
@@ -237,7 +237,11 @@ function InlineVisDirective({
         >
           <Markdown
             content={state.content}
-            experimental_document={state.document}
+            experimental_document={{
+              threadId: message.threadId,
+              rootPath: state.rootPath,
+              target: state.target,
+            }}
           />
         </div>
       ) : (

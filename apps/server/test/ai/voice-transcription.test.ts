@@ -13,7 +13,7 @@ import {
   registerFakeAiService,
   type FakeAiServiceCall,
 } from "../helpers/ai-services.js";
-import { seedHostSession } from "../helpers/seed.js";
+import { seedHostSession, seedPrimaryHost } from "../helpers/seed.js";
 import {
   createTestAppHarness,
   type TestAppHarness,
@@ -49,7 +49,8 @@ async function createServiceTranscriptionHarness(
     inferenceFallbackModel: "codex/gpt-5.4-mini",
     transcriptionModel: "codex/gpt-transcribe",
   });
-  seedHostSession(harness.deps);
+  const { host } = seedHostSession(harness.deps);
+  seedPrimaryHost(harness.deps, host.id);
   const fake = registerFakeAiService(harness.deps.aiServices, {
     transcribeVoice: transcribe,
   });

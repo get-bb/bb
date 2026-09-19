@@ -6,7 +6,7 @@
   "description": "Remote access via getbb.app — this bb becomes reachable at https://<handle>.getbb.app. Disable to cut off all remote access.",
   "engines": {
     "bb": ">=0.0",
-    "bbPluginSdk": ">=0.4.10"
+    "bbPluginSdk": ">=0.4.102"
   },
   "bb": {
     "name": "Remote access",

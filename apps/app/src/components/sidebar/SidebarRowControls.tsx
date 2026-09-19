@@ -24,7 +24,14 @@ export function SidebarRowControls({
         SIDEBAR_CONTROL_PAIR_GAP_CLASS,
       )}
       onClick={(event) => event.stopPropagation()}
-      onPointerDown={(event) => event.stopPropagation()}
+      onPointerDown={(event) => {
+        if (
+          event.target instanceof Node &&
+          event.currentTarget.contains(event.target)
+        ) {
+          event.stopPropagation();
+        }
+      }}
     >
       {primaryAction}
       {children}

@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import type {
@@ -218,12 +224,17 @@ describe("BrowsePluginsTab", () => {
       name: "Search plugins",
     });
     expect((search as HTMLInputElement).value).toBe("Mem");
+    expect(screen.queryByTestId("plugin-browse-shelves")).toBeNull();
     fireEvent.change(search, { target: { value: "Memory" } });
 
     const params = new URLSearchParams(
       screen.getByTestId("location-search").textContent ?? "",
     );
     expect(params.get("query")).toBe("Memory");
+    fireEvent.change(search, { target: { value: "" } });
+    await waitFor(() =>
+      expect(screen.getByTestId("plugin-browse-shelves")).toBeTruthy(),
+    );
   });
 
   it("routes the card author name and preserves the Browse filters", async () => {
@@ -254,6 +265,7 @@ describe("BrowsePluginsTab", () => {
     const trigger = await screen.findByRole("button", {
       name: "Filter plugins by category: Memory & Context, Security",
     });
+    expect(screen.queryByTestId("plugin-browse-shelves")).toBeNull();
     fireEvent.click(trigger);
     fireEvent.click(
       await screen.findByRole("option", { name: /Tasks & Workflows/u }),
@@ -275,6 +287,8 @@ describe("BrowsePluginsTab", () => {
       "memory-and-context",
       "tasks-and-workflows",
     ]);
+    fireEvent.click(screen.getByRole("button", { name: "Clear filter" }));
+    expect(screen.getByTestId("plugin-browse-shelves")).toBeTruthy();
   });
 
   it("orders category options by shelf order and omits missing categories", async () => {

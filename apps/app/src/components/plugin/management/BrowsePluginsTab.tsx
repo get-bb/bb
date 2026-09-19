@@ -306,7 +306,10 @@ export function BrowsePluginsTab({
                 state="empty"
                 message="No plugins match these category filters."
               />
-            ) : sort === null && shelfKey === null ? (
+            ) : sort === null &&
+              shelfKey === null &&
+              selectedCategories.length === 0 &&
+              query.trim().length === 0 ? (
               <div className="space-y-8" data-testid="plugin-browse-shelves">
                 {shelves.map((shelf) => (
                   <BrowseShelf

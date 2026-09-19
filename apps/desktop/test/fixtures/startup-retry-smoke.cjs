@@ -4,6 +4,8 @@ const { writeFile } = require("node:fs/promises");
 const { join } = require("node:path");
 const { app, ipcMain } = require("electron");
 
+app.setName("bb-dev");
+
 const desktopRoot = process.env.BB_STARTUP_SMOKE_APP_PATH;
 const scenario = process.env.BB_STARTUP_SMOKE_SCENARIO ?? "custom";
 const channel = "bb-desktop:retry-startup";

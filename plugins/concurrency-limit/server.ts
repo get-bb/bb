@@ -1,5 +1,8 @@
 import {
   defineRpcContract,
+  PluginCliError,
+  cliCommand,
+  defineCli,
   type BbPluginApi,
   type MessageDispatchHookDecision,
   type PluginThreadEventName,
@@ -20,6 +23,11 @@ const CONFIGURATION_CHANGED_CHANNEL = "configuration-changed";
 const RETRY_MIN_MS = 1_000;
 const RETRY_MAX_MS = 30_000;
 export const MAX_REASON_LENGTH = 200;
+
+const JSON_OPTION = {
+  type: "boolean",
+  description: "Emit machine-readable JSON",
+} as const;
 
 const limitSchema = z.number().int().min(0).max(MAX_LIMIT_VALUE);
 const hostOverrideSchema = z
@@ -133,15 +141,16 @@ function errorMessage(error: unknown): string {
 function parseLimitArgument(
   raw: string,
   automaticKeyword: "auto" | "unlimited",
-): { ok: true; value: number | null } | { ok: false; message: string } {
-  if (raw === automaticKeyword) return { ok: true, value: null };
+): number | null {
+  if (raw === automaticKeyword) return null;
   const value = parseLimitValue(raw);
-  return value === null
-    ? {
-        ok: false,
-        message: `Limit must be ${automaticKeyword} or a whole number from 0 to ${MAX_LIMIT_VALUE}`,
-      }
-    : { ok: true, value };
+  if (value === null) {
+    throw new PluginCliError(
+      `Limit must be ${automaticKeyword} or a whole number from 0 to ${MAX_LIMIT_VALUE}`,
+      { code: "invalid_limit" },
+    );
+  }
+  return value;
 }
 
 function setHostOverride(
@@ -249,100 +258,109 @@ export default async function concurrencyLimitPlugin(
     },
   });
 
-  bb.cli.register({
-    name: "concurrency-limit",
-    summary: "Configure global and per-host thread limits",
-    commands: [
-      {
-        name: "status",
-        summary: "Show effective concurrency limits",
-        usage: "bb concurrency-limit status [--json]",
+  function unknownHost(hostId: string): PluginCliError {
+    return new PluginCliError(`Unknown host: ${hostId}`, {
+      code: "unknown_host",
+      hint: "Run `bb machine list` for the enrolled host ids.",
+    });
+  }
+
+  bb.cli.register(
+    defineCli({
+      name: "concurrency-limit",
+      summary: "Configure global and per-host thread limits",
+      description:
+        "A limit holds new turns in line until a running thread goes idle. The automatic host limit is one thread per available processor.",
+      commands: {
+        status: cliCommand({
+          summary: "Show effective concurrency limits",
+          options: { json: JSON_OPTION },
+          async run(input) {
+            const view = await readConfiguration();
+            return {
+              exitCode: 0,
+              stdout: input.options.json
+                ? JSON.stringify(view)
+                : [
+                    `Overall: ${view.globalLimit === null ? "unlimited" : view.globalLimit}`,
+                    "Automatic host limit: one thread per available processor",
+                    ...view.hosts.map(formatHostLine),
+                  ].join("\n"),
+            };
+          },
+        }),
+        global: cliCommand({
+          summary: "Show or set the overall limit",
+          positionals: [
+            {
+              name: "limit",
+              description: `unlimited, or a whole number from 0 to ${MAX_LIMIT_VALUE} (0 holds every new turn); omit it to print the current limit`,
+            },
+          ],
+          options: { json: JSON_OPTION },
+          async run(input) {
+            const requested = input.positionals.limit;
+            if (requested !== undefined) {
+              await saveConfiguration({
+                ...configuration,
+                globalLimit: parseLimitArgument(requested, "unlimited"),
+              });
+            }
+            return {
+              exitCode: 0,
+              stdout: input.options.json
+                ? JSON.stringify({ globalLimit: configuration.globalLimit })
+                : configuration.globalLimit === null
+                  ? "Unlimited"
+                  : String(configuration.globalLimit),
+            };
+          },
+        }),
+        host: cliCommand({
+          summary: "Show or set one host limit",
+          positionals: [
+            {
+              name: "host-id",
+              description: "Enrolled host id, as `bb machine list` prints it",
+              required: true,
+            },
+            {
+              name: "limit",
+              description: `auto, or a whole number from 0 to ${MAX_LIMIT_VALUE} (0 holds every new turn on that host); omit it to print the host's limit`,
+            },
+          ],
+          options: { json: JSON_OPTION },
+          async run(input) {
+            const hostId = input.positionals["host-id"];
+            const view = await readConfiguration();
+            if (!view.hosts.some((candidate) => candidate.id === hostId)) {
+              throw unknownHost(hostId);
+            }
+            const requested = input.positionals.limit;
+            if (requested !== undefined) {
+              await saveConfiguration(
+                setHostOverride(
+                  configuration,
+                  hostId,
+                  parseLimitArgument(requested, "auto"),
+                ),
+              );
+            }
+            const updated = (await readConfiguration()).hosts.find(
+              (candidate) => candidate.id === hostId,
+            );
+            if (updated === undefined) throw unknownHost(hostId);
+            return {
+              exitCode: 0,
+              stdout: input.options.json
+                ? JSON.stringify(updated)
+                : formatHostLine(updated),
+            };
+          },
+        }),
       },
-      {
-        name: "global",
-        summary: "Show or set the overall limit",
-        usage: "bb concurrency-limit global [unlimited|<limit>] [--json]",
-      },
-      {
-        name: "host",
-        summary: "Show or set one host limit",
-        usage: "bb concurrency-limit host <host-id> [auto|<limit>] [--json]",
-      },
-    ],
-    async run(argv) {
-      const json = argv.includes("--json");
-      const [command, ...args] = argv.filter(
-        (argument) => argument !== "--json",
-      );
-
-      if (command === "status" && args.length === 0) {
-        const view = await readConfiguration();
-        return {
-          exitCode: 0,
-          stdout: json
-            ? JSON.stringify(view)
-            : [
-                `Overall: ${view.globalLimit === null ? "unlimited" : view.globalLimit}`,
-                "Automatic host limit: one thread per available processor",
-                ...view.hosts.map(formatHostLine),
-              ].join("\n"),
-        };
-      }
-
-      if (command === "global" && args.length <= 1) {
-        if (args.length === 1) {
-          const parsed = parseLimitArgument(args[0] ?? "", "unlimited");
-          if (!parsed.ok) return { exitCode: 1, stderr: parsed.message };
-          await saveConfiguration({
-            ...configuration,
-            globalLimit: parsed.value,
-          });
-        }
-        return {
-          exitCode: 0,
-          stdout: json
-            ? JSON.stringify({ globalLimit: configuration.globalLimit })
-            : configuration.globalLimit === null
-              ? "Unlimited"
-              : String(configuration.globalLimit),
-        };
-      }
-
-      if (command === "host" && (args.length === 1 || args.length === 2)) {
-        const hostId = args[0] ?? "";
-        const view = await readConfiguration();
-        const selectedHost = view.hosts.find(
-          (candidate) => candidate.id === hostId,
-        );
-        if (selectedHost === undefined) {
-          return { exitCode: 1, stderr: `Unknown host: ${hostId}` };
-        }
-        if (args.length === 2) {
-          const parsed = parseLimitArgument(args[1] ?? "", "auto");
-          if (!parsed.ok) return { exitCode: 1, stderr: parsed.message };
-          await saveConfiguration(
-            setHostOverride(configuration, hostId, parsed.value),
-          );
-        }
-        const updated = (await readConfiguration()).hosts.find(
-          (candidate) => candidate.id === hostId,
-        );
-        if (updated === undefined) {
-          return { exitCode: 1, stderr: `Unknown host: ${hostId}` };
-        }
-        return {
-          exitCode: 0,
-          stdout: json ? JSON.stringify(updated) : formatHostLine(updated),
-        };
-      }
-
-      return {
-        exitCode: 1,
-        stderr:
-          "Usage: bb concurrency-limit <status|global|host> [arguments] [--json]",
-      };
-    },
-  });
+    }),
+  );
 
   let refreshAllRequested = true;
   const requestedHostIds = new Set<string>();

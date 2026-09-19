@@ -42,10 +42,9 @@ function Chevron({ className }: ChevronProps) {
       viewBox="0 0 16 16"
       fill="none"
       stroke="currentColor"
-      strokeWidth="0.75"
       strokeLinecap="round"
       strokeLinejoin="round"
-      className={cn("lucide lucide-chevron-right", className)}
+      className={cn("bb-icon-stroke", className)}
       aria-hidden="true"
       data-icon-root=""
     >

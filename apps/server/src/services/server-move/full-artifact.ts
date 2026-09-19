@@ -1,16 +1,14 @@
-import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { mkdir, readdir, rename, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { pipeline } from "node:stream/promises";
-import { promisify } from "node:util";
 import {
+  defaultCommandRunner,
   resolveBbAppPackage,
   type BbAppArtifactCommandRunner,
 } from "../install/bb-app-artifact.js";
 
-const execFileAsync = promisify(execFile);
 const REQUIRED_PACKAGE_PATHS = [
   "dist/bb-server.js",
   "dist/bb-app.js",
@@ -38,22 +36,10 @@ export interface FullBbAppArtifactService {
 }
 
 export interface CreateFullBbAppArtifactServiceArgs {
-  commandRunner: BbAppArtifactCommandRunner;
+  commandRunner?: BbAppArtifactCommandRunner;
   dataDir: string;
   serverEntryUrl: string;
 }
-
-export const runPackCommand: BbAppArtifactCommandRunner = async (
-  command,
-  args,
-  cwd,
-) => {
-  const result = await execFileAsync(command, [...args], {
-    cwd,
-    maxBuffer: 10 * 1024 * 1024,
-  });
-  return result.stdout;
-};
 
 async function pathExists(path: string): Promise<boolean> {
   try {
@@ -147,7 +133,7 @@ export function createFullBbAppArtifactService(
       throw new Error(resolved.reason);
     }
     await mkdir(cacheDir, { recursive: true });
-    const stdout = await args.commandRunner(
+    const stdout = await (args.commandRunner ?? defaultCommandRunner)(
       "npm",
       ["pack", "--ignore-scripts", "--pack-destination", cacheDir],
       resolved.root,

@@ -332,6 +332,65 @@ describe("configuration", () => {
       harness.behavior.runCli(["global", "1.5"]),
     ).resolves.toMatchObject({ exitCode: 1 });
   });
+
+  it("renders help, refuses unknown flags, and reports errors as JSON", async () => {
+    const { harness } = await setup({
+      hosts: [hostRecord("host-a", "connected", "Laptop")],
+      capacities: [{ hostId: "host-a", availableParallelism: 8 }],
+    });
+
+    for (const argv of [["--help"], ["-h"], ["host", "--help"]]) {
+      const help = await harness.behavior.runCli(argv);
+      expect(help.exitCode, argv.join(" ")).toBe(0);
+      expect(help.stderr).toBe("");
+      expect(help.stdout).toContain("bb concurrency-limit");
+    }
+    expect(
+      (await harness.behavior.runCli(["host", "--help"])).stdout,
+    ).toContain("0 to 10000");
+
+    const unknownFlag = await harness.behavior.runCli(["status", "--jsno"]);
+    expect(unknownFlag.exitCode).toBe(1);
+    expect(unknownFlag.stderr).toContain("unknown option '--jsno'");
+    expect(unknownFlag.stderr).toContain("(Did you mean --json?)");
+
+    const mistyped = await harness.behavior.runCli(["stats"]);
+    expect(mistyped.exitCode).toBe(1);
+    expect(mistyped.stderr).toContain("unknown command 'stats'");
+    expect(mistyped.stderr).toContain("(Did you mean status?)");
+
+    const missingHost = await harness.behavior.runCli(["host"]);
+    expect(missingHost.exitCode).toBe(1);
+    expect(missingHost.stderr).toContain(
+      "missing required arguments: <host-id>",
+    );
+
+    const stray = await harness.behavior.runCli(["global", "3", "4"]);
+    expect(stray.exitCode).toBe(1);
+    expect(stray.stderr).toContain("unexpected argument '4'");
+
+    const envelope = await harness.behavior.runCli([
+      "host",
+      "host-b",
+      "--json",
+    ]);
+    expect(envelope.exitCode).toBe(1);
+    expect(JSON.parse(envelope.stdout)).toEqual({
+      ok: false,
+      error: {
+        code: "unknown_host",
+        message: "Unknown host: host-b",
+        hint: "Run `bb machine list` for the enrolled host ids.",
+      },
+    });
+    expect(envelope.stderr).toContain("Unknown host: host-b");
+
+    const badLimit = await harness.behavior.runCli(["host", "host-a", "many"]);
+    expect(badLimit.exitCode).toBe(1);
+    expect(badLimit.stderr).toContain(
+      "Limit must be auto or a whole number from 0 to 10000",
+    );
+  });
 });
 
 describe("message.dispatch", () => {

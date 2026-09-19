@@ -37,6 +37,60 @@ describe("bb thread tell command output", () => {
     });
   });
 
+  it("bb thread tell --message-file sends shell-active text untouched", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "bb-tell-file-"));
+    const path = join(dir, "message.md");
+    const message =
+      "Rebase with `git rebase --onto main` then run $(pnpm test)";
+    await writeFile(path, `${message}\n`);
+    const post = vi.fn(async (_request: { json: unknown }) => ({
+      ok: true,
+      delivery: "sent",
+    }));
+    stubServerApi({ "v1.threads.:id.send.$post": post });
+
+    try {
+      await runCommand(
+        ["thread", "tell", "thread-file", "--message-file", path],
+        register,
+      );
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+
+    expect(post).toHaveBeenCalledWith(
+      expect.objectContaining({
+        json: expect.objectContaining({
+          input: [expect.objectContaining({ type: "text", text: message })],
+        }),
+      }),
+    );
+  });
+
+  it("bb thread message is an alias for tell", async () => {
+    const post = vi.fn(async () => ({ ok: true, delivery: "sent" }));
+    stubServerApi({ "v1.threads.:id.send.$post": post });
+
+    await runCommand(["thread", "message", "thread-alias", "hello"], register);
+
+    expect(post).toHaveBeenCalledTimes(1);
+  });
+
+  it("bb thread tell without any message says both ways to pass one", async () => {
+    const post = vi.fn(async () => ({ ok: true, delivery: "sent" }));
+    stubServerApi({ "v1.threads.:id.send.$post": post });
+
+    await expect(
+      runCommand(["thread", "tell", "thread-empty"], register),
+    ).rejects.toThrow("process.exit:1");
+
+    expect(vi.mocked(console.error).mock.calls.map((call) => call[0])).toEqual([
+      "Error: Missing <message>.",
+      "Pass <message>, or --message-file <path> (use - to read stdin).",
+    ]);
+    expect(post).not.toHaveBeenCalled();
+  });
+
   it("bb thread tell names the typed reason a message queued for", async () => {
     // The server says WHY, so the CLI stops inferring it from the flags it
     // sent — which is what let the old four-way delivery enum collapse.

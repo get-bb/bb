@@ -934,6 +934,7 @@ export async function createHostDaemonApp(
       await watchManager.shutdown();
       disposeParcelWatcherBackend();
       await terminalManager.shutdownAll();
+      terminalManager.dispose();
       await runtimeManager.shutdownAll();
       await eventSink.flush();
       await eventSink.dispose();

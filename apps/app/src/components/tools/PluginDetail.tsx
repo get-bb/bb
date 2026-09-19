@@ -52,7 +52,6 @@ import {
   PluginServices,
 } from "@/components/tools/PluginCapabilities";
 import { PluginBannerBar } from "@/components/tools/plugin-detail-banner";
-import { ProvenancePill } from "@/components/tools/ProvenancePill";
 import {
   usePluginSource,
   usePluginUpdateCheck,
@@ -66,13 +65,6 @@ import {
 } from "@/lib/plugin-frontend";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { useClipboardCopy } from "@/lib/clipboard";
-
-export function PluginProvenancePill({ plugin }: { plugin: PluginListItem }) {
-  const label = plugin.publisherLabel;
-  return label === null || label === "BB Official" ? null : (
-    <ProvenancePill label={label} />
-  );
-}
 
 export function pluginIsLocalSource(plugin: PluginListItem): boolean {
   return plugin.source.startsWith("path:");
@@ -469,8 +461,12 @@ export function PluginDetail({
             openDisabled={openSourceDisabled}
             onOpen={() => onOpenSource(plugin)}
           />
-        ) : catalogEntry === undefined ? null : (
-          <PluginMarketplaceSource entry={catalogEntry} />
+        ) : (
+          <PluginMarketplaceSource
+            entry={
+              catalogEntry ?? { repositoryUrl: null, source: plugin.source }
+            }
+          />
         )}
         <ResourceDetailReleaseSection
           label="Details"

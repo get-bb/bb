@@ -48,8 +48,20 @@ function getMaintenanceState(db: DbConnection): AttachmentMaintenanceState {
   return state;
 }
 
+export interface ProjectAttachmentBackfillLimits {
+  elapsedBudgetMs: number;
+  maxSteps: number;
+}
+
+export const PROJECT_ATTACHMENT_BACKFILL_LIMITS: ProjectAttachmentBackfillLimits =
+  {
+    elapsedBudgetMs: 25,
+    maxSteps: 32,
+  };
+
 export async function runProjectAttachmentBackfill(
   deps: MaintenanceDeps,
+  limits: ProjectAttachmentBackfillLimits,
   now = Date.now(),
 ): Promise<void> {
   const maintenance = getMaintenanceState(deps.db);
@@ -67,7 +79,8 @@ export async function runProjectAttachmentBackfill(
     const started = performance.now();
     for (
       let count = 0;
-      count < 32 && performance.now() - started < 25;
+      count < limits.maxSteps &&
+      performance.now() - started < limits.elapsedBudgetMs;
       count += 1
     ) {
       if (state.phase === "files") {

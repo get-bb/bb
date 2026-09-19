@@ -14,6 +14,15 @@ import type { OrderedMentionSuggestions } from "./mention-candidates.js";
 type PromptPathMentionSource = "workspace" | "thread-storage";
 type PromptPathMentionEntryKind = "file" | "directory";
 
+export const threadMentionRelationValues = [
+  "parent",
+  "child",
+  "same-parent",
+  "same-environment",
+] as const;
+export type ThreadMentionRelation =
+  (typeof threadMentionRelationValues)[number];
+
 export type PromptMentionSuggestion =
   | {
       kind: "path";
@@ -31,6 +40,7 @@ export type PromptMentionSuggestion =
       projectName?: string;
       threadId: string;
       title?: string;
+      relation: ThreadMentionRelation | null;
     }
   | {
       kind: "project";

@@ -166,8 +166,10 @@ describe("plugin background services", () => {
     });
 
     expect(suspended).toEqual(["suspended"]);
-    expect(service.isPluginLoaded("suspended")).toBe(false);
-    expect(service.isPluginLoaded("kept")).toBe(true);
+    expect(service.getApi("suspended")).toBeUndefined();
+    expect(service.getApi("kept")).toBeDefined();
+    expect(service.isPluginExpectedToRun("suspended")).toBe(true);
+    expect(service.isPluginExpectedToRun("kept")).toBe(true);
     expect(globals.__suspendAborts).toEqual({ "bb-plugin-suspended": 1 });
     expect(getInstalledPlugin(db, "suspended")?.enabled).toBe(true);
     expect(
@@ -178,7 +180,8 @@ describe("plugin background services", () => {
     });
 
     expect(await service.resumeSuspendedPlugins()).toEqual(["suspended"]);
-    expect(service.isPluginLoaded("suspended")).toBe(true);
+    expect(service.getApi("suspended")).toBeDefined();
+    expect(service.isPluginExpectedToRun("suspended")).toBe(true);
     expect(globals.__suspendStarts).toEqual({
       "bb-plugin-suspended": 2,
       "bb-plugin-kept": 1,

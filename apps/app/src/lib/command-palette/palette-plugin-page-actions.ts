@@ -12,6 +12,7 @@ export function buildPluginPagePaletteActions(
 ): PaletteAction[] {
   return args.panels.map((panel) => ({
     id: `plugin-page:${panel.pluginId}/${panel.id}`,
+    bucket: "Plugins" as const,
     group: "Plugin pages",
     title: panel.title,
     shortcut: null,

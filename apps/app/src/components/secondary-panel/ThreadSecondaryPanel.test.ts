@@ -69,23 +69,29 @@ describe("resolveCollapsedPanelTrafficLightReserveClassName", () => {
     ).toBe(false);
   });
 
-  it("does not reserve in the compact drawer layout", () => {
+  it("reserves in the full-page compact drawer even when the underlying sidebar is showing", () => {
     expect(
       resolveCollapsedPanelTrafficLightReserveClassName({
         ...base,
+        isConversationCollapsed: false,
         renderAsDrawer: true,
+        isSidebarShowing: true,
       }),
-    ).toBe(false);
+    ).toBe(MACOS_COLLAPSED_TOP_LEFT_RESERVE_CLASS);
   });
 
-  it("does not reserve off macOS chrome or in fullscreen (no visible lights)", () => {
-    expect(
-      resolveCollapsedPanelTrafficLightReserveClassName({
-        ...base,
-        reserveMacosTrafficLights: false,
-      }),
-    ).toBe(false);
-  });
+  it.each([false, true])(
+    "does not reserve without visible lights (drawer=%s)",
+    (renderAsDrawer) => {
+      expect(
+        resolveCollapsedPanelTrafficLightReserveClassName({
+          ...base,
+          renderAsDrawer,
+          reserveMacosTrafficLights: false,
+        }),
+      ).toBe(false);
+    },
+  );
 
   it("treats an absent sidebar context (null) as showing, so it does not reserve", () => {
     expect(
