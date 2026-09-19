@@ -86,7 +86,7 @@ export const uiPreferenceDefinitions = {
   "sidebar.organizationMode": defineUiPreference(
     sidebarOrganizationModeSchema,
     "chronological",
-    "How the sidebar groups threads: by project, Custom (chronological), or by machine. Defaults to Custom when unset.",
+    "How the sidebar groups threads: by project, Custom (chronological), or by machine. New installations default to Custom; migrated installations with existing work or preferences fall back to By project.",
   ),
   "sidebar.threadGrouping.environment": defineUiPreference(
     sidebarThreadGroupingSchema,

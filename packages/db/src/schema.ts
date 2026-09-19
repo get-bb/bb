@@ -219,6 +219,11 @@ export const appSettingsValues = sqliteTable("app_settings_values", {
   updatedAt: integer("updated_at").notNull(),
 });
 
+export const uiPreferenceDefaults = sqliteTable("ui_preference_defaults", {
+  key: text("key").primaryKey(),
+  valueJson: text("value_json").notNull(),
+});
+
 export const uiPreferences = sqliteTable("ui_preferences", {
   key: text("key").primaryKey(),
   valueJson: text("value_json").notNull(),

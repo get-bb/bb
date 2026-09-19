@@ -904,6 +904,13 @@
       "when": 1790008317938,
       "tag": "0128_burly_jazinda",
       "breakpoints": true
+    },
+    {
+      "idx": 129,
+      "version": "6",
+      "when": 1790009314673,
+      "tag": "0129_sidebar_installation_defaults",
+      "breakpoints": true
     }
   ]
 }
