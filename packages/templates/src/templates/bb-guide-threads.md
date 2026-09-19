@@ -178,7 +178,9 @@ Listing:
   follow-ups on an established thread do not change its lifecycle. Archived
   takes precedence. Omit --lifecycle to retain the existing list/search groups;
   with it, search also returns a draft group. --archived intersects the lifecycle
-  filter when both are given. SDK list/search accept lifecycles as an array.
+  filter when both are given. Lifecycle-filtered lists sort by last updated,
+  newest first, before pagination; omitted filters keep existing list ordering.
+  SDK list/search accept lifecycles as an array.
   bb thread history <id>                   List prompt history
 
   bb thread count                          Count threads without listing them
