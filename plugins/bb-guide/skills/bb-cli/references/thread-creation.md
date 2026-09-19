@@ -3,8 +3,11 @@
 ## Spawning Threads
 
 - Use `bb thread spawn --project <project-id> --prompt "..."` to create another
-  thread. Pass the intended project explicitly; the CLI does not infer it from
-  context variables. Omitted execution flags use remembered project defaults;
+  thread. For a multi-line or Markdown prompt use `--prompt-file <path>` (`-`
+  reads stdin) instead of quoting it inline; `bb thread fork` takes it too.
+  Pass the intended project explicitly; the CLI does not infer it from
+  context variables, and when `--project` is missing the error prints the
+  current thread's project ID to add. Omitted execution flags use remembered project defaults;
   without a remembered model, bb resolves the selected provider and its reported
   default model on the target machine.
 - Select a target with `--environment`, `--new-environment`, `--base-branch`,

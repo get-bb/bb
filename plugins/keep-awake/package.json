@@ -5,7 +5,8 @@
   "type": "module",
   "description": "Keeps selected macOS hosts awake while bb is running.",
   "engines": {
-    "bb": ">=0.0"
+    "bb": ">=0.0",
+    "bbPluginSdk": ">=0.4.102"
   },
   "bb": {
     "name": "Keep Awake",

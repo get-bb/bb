@@ -444,12 +444,11 @@ export function SecondaryPanelTabStrip({
     <div
       ref={stripRef}
       data-testid="secondary-panel-tab-strip"
-      className="group relative flex min-w-0 items-center"
+      className="group relative flex min-w-0 items-center [&_[data-tab-pill-close]]:text-muted-foreground/70 [&_[data-tab-pill-close]:hover]:text-foreground [&_[data-tab-pill-close]_[data-icon-root]]:size-3"
     >
       <TabStripScrollButton
         buttonRef={leftScrollButtonRef}
         direction="left"
-        hasOverflow={overflow.hasOverflow}
         canScroll={overflow.canScrollLeft}
         className={chevronNoDragClass}
         onClick={() => scrollByStep(-1)}
@@ -491,7 +490,6 @@ export function SecondaryPanelTabStrip({
       <TabStripScrollButton
         buttonRef={rightScrollButtonRef}
         direction="right"
-        hasOverflow={overflow.hasOverflow}
         canScroll={overflow.canScrollRight}
         className={chevronNoDragClass}
         onClick={() => scrollByStep(1)}
@@ -592,7 +590,6 @@ function SortablePanelTab({
 interface TabStripScrollButtonProps {
   buttonRef: RefObject<HTMLButtonElement | null>;
   direction: "left" | "right";
-  hasOverflow: boolean;
   canScroll: boolean;
   className: string | null;
   onClick: () => void;
@@ -601,7 +598,6 @@ interface TabStripScrollButtonProps {
 function TabStripScrollButton({
   buttonRef,
   direction,
-  hasOverflow,
   canScroll,
   className,
   onClick,
@@ -618,8 +614,8 @@ function TabStripScrollButton({
       aria-label={label}
       onClick={onClick}
       className={cn(
-        "z-20 shrink-0 bg-sidebar text-muted-foreground shadow-none hover:bg-surface-raised-solid hover:text-foreground focus-visible:bg-sidebar",
-        hasOverflow
+        "z-20 shrink-0 bg-sidebar text-muted-foreground/70 shadow-none hover:bg-surface-raised-solid hover:text-foreground focus-visible:bg-sidebar",
+        canScroll
           ? TAB_STRIP_SCROLL_BUTTON_CLASS
           : "h-7 w-0 overflow-hidden p-0 max-md:pointer-coarse:h-9",
         "transition-opacity",

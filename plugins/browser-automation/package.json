@@ -3,19 +3,20 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Thread-owned DevBrowser desktop and local headless sessions.",
+  "description": "Let BB control the in-app browser and browsers on connected machines, with inline previews for headless sessions.",
   "engines": {
     "bb": ">=0.41",
-    "bbPluginSdk": ">=0.4.48"
+    "bbPluginSdk": ">=0.4.102"
   },
   "bb": {
     "name": "Browser Automation",
-    "description": "Persistent browser scripts on desktop or enrolled hosts.",
+    "description": "Let BB control the in-app browser and browsers on connected machines, with inline previews for headless sessions.",
     "branding": {
       "icon": "Globe"
     },
     "server": "./server.ts",
     "host": "./host.ts",
+    "app": "./app.tsx",
     "skills": [
       "skills"
     ]
@@ -29,12 +30,18 @@
     "prepare:bundled": "bb-plugin-build prepare-bundled"
   },
   "dependencies": {
+    "@bb/shared-ui": "workspace:*",
     "zod": "^4.3.6"
   },
   "devDependencies": {
     "@bb/plugin-build": "workspace:*",
     "@get-bb/plugin-sdk": "workspace:*",
+    "@testing-library/react": "^16.3.2",
     "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "jsdom": "^29.0.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
     "tsx": "^4.21.0",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "vitest": "^4.1.1"

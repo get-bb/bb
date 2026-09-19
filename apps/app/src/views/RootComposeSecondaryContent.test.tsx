@@ -197,6 +197,7 @@ function renderRootCompose(args: RenderRootComposeArgs) {
     >
       <RootComposeSecondaryContent
         compactScrollContent={null}
+        isCompactHomeLayout={false}
         isSecondaryPanelOpen={renderArgs.isSecondaryPanelOpen}
         onToggleSecondaryPanel={() => undefined}
         secondaryPanel={createSecondaryPanel(renderArgs.isSecondaryPanelOpen)}
@@ -217,6 +218,7 @@ function renderRootCompose(args: RenderRootComposeArgs) {
         >
           <RootComposeSecondaryContent
             compactScrollContent={null}
+            isCompactHomeLayout={false}
             isSecondaryPanelOpen={renderArgs.isSecondaryPanelOpen}
             onToggleSecondaryPanel={() => undefined}
             secondaryPanel={createSecondaryPanel(

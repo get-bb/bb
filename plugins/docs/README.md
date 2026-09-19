@@ -150,10 +150,14 @@ bb docs push ./docs-work --delete
   `--workspace-host <id>`; omission intentionally targets the server machine.
 
 Human output is concise and `--json` returns a stable structured result on
-both success and failure. Exit codes are 0 success/no-op, 1 validation or
-operational/partial failure, 2 usage error, 3 stale/conflict, and 4 `status`
-found changes or ignored deletions. Options are command-specific; an option
-not shown in a command's usage is rejected before any mutation.
+success; a failure adds the `{"ok":false,"error":{"code","message","hint"?}}`
+envelope on stdout and keeps the readable text on stderr. Exit codes are 0
+success/no-op, 1 validation or operational/partial failure, 2 usage error, 3
+stale/conflict, and 4 `status` found changes or ignored deletions. Options are
+command-specific; an unknown command, an option not shown in a command's usage,
+and a stray argument are all rejected before any mutation, with the nearest
+declared name suggested. `bb docs --help` lists the commands and
+`bb docs <command> --help` prints that command's arguments, options, and rules.
 
 The legacy `write`, `mkdir`, `move`, and `remove` CLI commands remain for one
 backward-compatibility window and emit a deprecation warning. New agent

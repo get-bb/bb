@@ -1546,7 +1546,7 @@ async function handleFsWriteTextFile(
       ...(oldText === undefined ? {} : { oldText }),
       content: parsed.data.content,
     });
-    responder.result(null);
+    responder.result({});
   } catch (error) {
     responder.error(
       -32603,

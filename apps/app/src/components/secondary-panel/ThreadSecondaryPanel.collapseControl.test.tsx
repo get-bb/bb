@@ -693,7 +693,7 @@ describe("ThreadSecondaryPanel Diff eligibility", () => {
 });
 
 describe("ThreadSecondaryPanel hide control glyph", () => {
-  it("shows the side-panel glyph while the panel renders as a shelf", () => {
+  it("leaves only the trailing panel toggle on the full-page compact panel", () => {
     const view = renderPanel({
       isConversationCollapsed: false,
       onToggleConversationCollapse: noop,
@@ -705,7 +705,7 @@ describe("ThreadSecondaryPanel hide control glyph", () => {
     expect(
       screen
         .getByTestId("thread-secondary-panel-top-chrome")
-        .classList.contains("pl-14"),
+        .classList.contains("pl-12"),
     ).toBe(false);
   });
 

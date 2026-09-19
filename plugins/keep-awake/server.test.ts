@@ -362,6 +362,58 @@ describe("builtin Keep Awake server entry", () => {
     await host.harness.dispose();
   });
 
+  it("renders help, refuses unknown flags, and reports errors as JSON", async () => {
+    const host = createFakePluginHost({
+      pluginId: "keep-awake",
+      sdk: { hosts: { list: async () => [] } },
+    });
+    await plugin(host.bb);
+
+    for (const argv of [["--help"], ["-h"], ["hosts", "--help"]]) {
+      const help = await host.harness.runCli(argv);
+      expect(help.exitCode, argv.join(" ")).toBe(0);
+      expect(help.stderr).toBe("");
+      expect(help.stdout).toContain("bb keep-awake");
+    }
+    expect((await host.harness.runCli(["hosts", "--help"])).stdout).toContain(
+      "<host-id...>",
+    );
+
+    const unknownFlag = await host.harness.runCli(["status", "--jsn"]);
+    expect(unknownFlag.exitCode).toBe(1);
+    expect(unknownFlag.stderr).toContain("unknown option '--jsn'");
+    expect(unknownFlag.stderr).toContain("(Did you mean --json?)");
+
+    const unknownCommand = await host.harness.runCli(["enabel"]);
+    expect(unknownCommand.exitCode).toBe(1);
+    expect(unknownCommand.stderr).toContain("unknown command 'enabel'");
+    expect(unknownCommand.stderr).toContain("(Did you mean enable?)");
+
+    const stray = await host.harness.runCli(["status", "host-1"]);
+    expect(stray.exitCode).toBe(1);
+    expect(stray.stderr).toContain("unexpected argument 'host-1'");
+
+    const envelope = await host.harness.runCli([
+      "hosts",
+      "all",
+      "host-1",
+      "--json",
+    ]);
+    expect(envelope.exitCode).toBe(1);
+    expect(JSON.parse(envelope.stdout)).toMatchObject({
+      ok: false,
+      error: { code: "invalid_host_selection" },
+    });
+    expect(envelope.stderr).toContain(
+      '"all" cannot be combined with individual host ids',
+    );
+    await expect(
+      host.bb.storage.kv.get("configuration"),
+    ).resolves.toBeUndefined();
+
+    await host.harness.dispose();
+  });
+
   it("falls back to all hosts when plugin KV contains an invalid selection", async () => {
     const host = createFakePluginHost({
       pluginId: "keep-awake",

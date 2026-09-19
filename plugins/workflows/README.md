@@ -178,6 +178,11 @@ bb provider list --environment "$BB_ENVIRONMENT_ID" --json
 bb provider models <provider-id> --environment "$BB_ENVIRONMENT_ID" --json
 ```
 
+Every command accepts `--help` (printed from the declarative CLI spec, exit 0)
+and `--json`. Output is JSON either way; `--json` additionally reports failures
+as `{"ok":false,"error":{code,message,hint?}}` on stdout while stderr keeps the
+readable message.
+
 `status` is deliberately bounded: it returns run state, phase, call counts,
 notification state, and only a small final result. It omits source, arguments,
 and call history so polling cannot be truncated into invalid JSON.

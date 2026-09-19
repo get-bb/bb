@@ -1132,9 +1132,73 @@ it("does not allocate debug compute when the image fails to build", async () => 
   test.backend.image.mockRejectedValueOnce(new Error("RUN command failed"));
   expect(await test.harness.behavior.runCli(["sandbox", "run"])).toMatchObject({
     exitCode: 1,
-    stderr: "bb modal failed: RUN command failed",
+    stderr: "RUN command failed\n",
   });
   expect(test.backend.creates).toHaveLength(0);
+});
+
+describe("modal CLI surface", () => {
+  it("documents commands, rejects near-miss names and options, and reports missing values at once", async () => {
+    const test = await setup();
+
+    const help = await test.harness.behavior.runCli(["--help"]);
+    expect(help.exitCode).toBe(0);
+    expect(help.stdout).toContain("bb modal machine inspect");
+    expect(help.stdout).toContain("bb modal sandbox exec");
+
+    const commandHelp = await test.harness.behavior.runCli([
+      "image",
+      "set",
+      "--help",
+    ]);
+    expect(commandHelp.exitCode).toBe(0);
+    expect(commandHelp.stdout).toContain("bb modal image set --file <PATH>");
+
+    expect(
+      await test.harness.behavior.runCli(["sandbox", "exce", "sandbox-1"]),
+    ).toMatchObject({
+      exitCode: 1,
+      stderr: expect.stringContaining(
+        "unknown command 'sandbox exce' (Did you mean sandbox exec?)",
+      ),
+    });
+    expect(
+      await test.harness.behavior.runCli(["image", "show", "--jsno"]),
+    ).toMatchObject({
+      exitCode: 1,
+      stderr: expect.stringContaining(
+        "unknown option '--jsno' (Did you mean --json?)",
+      ),
+    });
+    expect(
+      await test.harness.behavior.runCli(["sandbox", "exec", "sandbox-1"]),
+    ).toMatchObject({
+      exitCode: 1,
+      stderr: expect.stringContaining(
+        "bb modal sandbox exec requires a command after --",
+      ),
+    });
+  });
+
+  it("reports a usage failure as a JSON envelope when the invocation carries --json", async () => {
+    const test = await setup();
+
+    const result = await test.harness.behavior.runCli([
+      "image",
+      "set",
+      "--json",
+    ]);
+
+    expect(result.exitCode).toBe(1);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      ok: false,
+      error: {
+        code: "missing_required",
+        message: "missing required options: --file",
+      },
+    });
+    expect(result.stderr).toContain("missing required options: --file");
+  });
 });
 
 describe("plugin-owned idle timing", () => {

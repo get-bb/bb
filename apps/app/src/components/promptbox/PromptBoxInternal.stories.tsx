@@ -149,6 +149,7 @@ const liveMentionThreads: PromptMentionSuggestion[] = [
     projectId: "proj_promptbox",
     threadId: "thr_qfk8ksbxkk",
     title: "Wire up promptbox stories",
+    relation: null,
   },
   {
     kind: "thread",
@@ -157,6 +158,7 @@ const liveMentionThreads: PromptMentionSuggestion[] = [
     projectId: "proj_promptbox",
     threadId: "thr_mgr_kj4n2x",
     title: "Parent: app/timeline cleanup sprint",
+    relation: null,
   },
   {
     kind: "thread",
@@ -165,6 +167,7 @@ const liveMentionThreads: PromptMentionSuggestion[] = [
     projectId: "proj_promptbox",
     threadId: "thr_4hge9xn14m",
     title: "Review flow cleanup",
+    relation: null,
   },
 ];
 

@@ -3,9 +3,15 @@
 import { createDeferredPromise } from "@bb/test-helpers";
 import { makeHost } from "@bb/test-helpers/domain-fixtures";
 import type { ServerAccessStatus } from "@bb/server-contract";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import type { ReactNode } from "react";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
@@ -45,9 +51,17 @@ const READY_SERVER_ACCESS: ServerAccessStatus = {
   urlSource: "setting",
 };
 
+beforeEach(() => {
+  vi.stubGlobal("crypto", {
+    getRandomValues: globalThis.crypto.getRandomValues.bind(globalThis.crypto),
+    randomUUID: undefined,
+  });
+});
+
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  vi.unstubAllGlobals();
 });
 
 const reservedHost: Awaited<ReturnType<typeof sdk.hosts.experimental_create>> =
@@ -203,4 +217,34 @@ it("cancels the reserved host while enrollment command preparation is pending", 
   );
   pending.resolve(null);
   expect(sdk.hosts.experimental_create).toHaveBeenCalledOnce();
+});
+
+it("reuses the launch key on retry and replaces it on regeneration without randomUUID", async () => {
+  const rendered = setup(() => {
+    vi.mocked(sdk.hosts.experimental_create).mockRejectedValueOnce(
+      new Error("Connection lost"),
+    );
+    vi.mocked(sdk.hosts.experimental_getEnrollmentCommand).mockResolvedValue({
+      command: "expired enrollment command",
+      expiresAt: Date.now() - 1_000,
+    });
+  });
+  fireEvent.click(await screen.findByRole("button", { name: "Try again" }));
+  await screen.findByText("expired enrollment command");
+  const requests = vi.mocked(sdk.hosts.experimental_create).mock.calls;
+  expect(requests).toHaveLength(2);
+  const firstKey = requests[0]![0].key;
+  expect(firstKey).toEqual(expect.any(String));
+  expect(firstKey?.length).toBeGreaterThan(0);
+  expect(requests[1]![0].key).toBe(firstKey);
+
+  fireEvent.click(
+    screen.getByRole("button", { name: "Generate a new command" }),
+  );
+  await waitFor(() => expect(requests).toHaveLength(3));
+  expect(requests[2]![0].key).toEqual(expect.any(String));
+  expect(requests[2]![0].key).not.toBe(firstKey);
+  expect(sdk.hosts.delete).toHaveBeenCalledWith({ hostId: reservedHost.id });
+  await screen.findByText("expired enrollment command");
+  rendered.unmount();
 });

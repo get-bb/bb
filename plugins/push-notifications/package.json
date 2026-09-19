@@ -5,7 +5,8 @@
   "type": "module",
   "description": "Notifications for threads that need attention on mobile, web, and desktop",
   "engines": {
-    "bb": ">=0.0"
+    "bb": ">=0.0",
+    "bbPluginSdk": ">=0.4.102"
   },
   "bb": {
     "name": "Push notifications",

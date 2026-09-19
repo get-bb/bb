@@ -6,7 +6,7 @@
   "description": "Run durable, provider-independent agent workflows.",
   "engines": {
     "bb": ">=0.0",
-    "bbPluginSdk": ">=0.4.98"
+    "bbPluginSdk": ">=0.4.102"
   },
   "bb": {
     "name": "Workflows",

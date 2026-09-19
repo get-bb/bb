@@ -1,4 +1,10 @@
-import type { BbPluginApi, PluginCliResult } from "@get-bb/plugin-sdk";
+import {
+  PluginCliError,
+  cliCommand,
+  defineCli,
+  type BbPluginApi,
+  type PluginCliResult,
+} from "@get-bb/plugin-sdk";
 import { setTimeout as wait } from "node:timers/promises";
 import {
   accountAddInputSchema,
@@ -27,72 +33,38 @@ import type { PoolOperations } from "./operations.js";
 import type { ClaudeOAuthLogin } from "./oauth-login.js";
 import type { CodexDeviceLogin } from "./codex-device-login.js";
 
-interface ParsedFlags {
-  booleans: Set<string>;
-  values: Map<string, string>;
-}
-
-const HELP = [
-  "Usage:",
-  "  bb pool account add --provider claude --import [--label <text>] [--priority <n>]",
-  "  bb pool account add --provider codex --import [--label <text>] [--priority <n>]",
-  "  bb pool account add --provider claude --login",
-  "  bb pool account add --provider codex --login",
-  "  bb pool account login-poll --session <id>",
-  "  printf '%s\\n' \"$CLAUDE_AUTH_CODE\" | bb pool account login-complete --session <id> --code-stdin",
-  "  bb pool account add --provider claude --api-key-stdin [--label <text>] [--priority <n>]",
-  "  bb pool account add --provider claude --api-key <key> [--label <text>] [--priority <n>]  Unsafe: exposes the key in process arguments.",
-  "  bb pool account list [--json]",
-  "  bb pool account remove <id>",
-  "  bb pool account enable <id>",
-  "  bb pool account disable <id>",
-  "  bb pool account priority <id> <n>",
-  "  bb pool account reorder <claude|codex> <id>...",
-  "  bb pool account refresh <id>",
-  "  bb pool status [--json]",
-  "  bb pool routing <claude|codex> [--off]",
-  "  bb pool config",
-  "  bb pool config set <anthropicUpstreamBaseUrl|codexUpstreamBaseUrl|switchThreshold|parentMode> <value>",
-  "  bb pool parent [proxy|isolate]",
-  "  bb pool token rotate --machine <id-or-name>",
-  "  bb pool bypass <thread-id> [--off]",
-  "",
+const DESCRIPTION = [
   "Accounts run sequentially by priority, then order added. The current fallback stays active until unavailable.",
   "When this bb server runs inside another bb server's thread, parent proxy routes its pooled traffic through that parent; isolate neutralises the inherited routing.",
   "Reorder includes every account for the provider and changes the next failover sequence; existing conversations stay pinned.",
 ].join("\n");
 
-function parseFlags(
-  argv: readonly string[],
-  allowedBooleans: readonly string[],
-  allowedValues: readonly string[],
-): ParsedFlags {
-  const booleans = new Set<string>();
-  const values = new Map<string, string>();
-  for (let index = 0; index < argv.length; index += 1) {
-    const arg = argv[index];
-    if (arg === undefined || !arg.startsWith("--")) {
-      throw new Error(`Unexpected argument ${JSON.stringify(arg)}.`);
-    }
-    const name = arg.slice(2);
-    if (booleans.has(name) || values.has(name)) {
-      throw new Error(`Duplicate flag --${name}.`);
-    }
-    if (allowedBooleans.includes(name)) {
-      booleans.add(name);
-      continue;
-    }
-    if (!allowedValues.includes(name))
-      throw new Error(`Unknown flag --${name}.`);
-    const value = argv[index + 1];
-    if (value === undefined || value.startsWith("--")) {
-      throw new Error(`--${name} requires a value.`);
-    }
-    values.set(name, value);
-    index += 1;
-  }
-  return { booleans, values };
-}
+const JSON_OPTION = {
+  type: "boolean",
+  description: "Emit machine-readable JSON",
+} as const;
+
+const PROVIDER_OPTION = {
+  type: "enum",
+  values: ["claude", "codex"],
+  required: true,
+  aliases: ["vendor"],
+  description: "Provider this account belongs to",
+} as const;
+
+const SESSION_OPTION = {
+  type: "string",
+  required: true,
+  placeholder: "id",
+  aliases: ["session-id", "sessionId"],
+  description: "Session ID printed by `bb pool account add --login`",
+} as const;
+
+const ACCOUNT_ID_POSITIONAL = {
+  name: "id",
+  description: "Account UUID from `bb pool account list`",
+  required: true,
+} as const;
 
 function formatReset(value: number | null): string {
   return value === null ? "-" : new Date(value).toISOString();
@@ -228,10 +200,9 @@ function formatParent(parent: PoolStatus["parent"]): string {
 }
 
 function parseConfigUpdate(
-  key: string | undefined,
-  value: string | undefined,
+  key: string,
+  value: string,
 ): AccountPoolConfigSetInput {
-  if (value === undefined) throw new Error(HELP);
   if (key === "anthropicUpstreamBaseUrl") {
     return accountPoolConfigSetInputSchema.parse({
       anthropicUpstreamBaseUrl: value,
@@ -250,13 +221,28 @@ function parseConfigUpdate(
   if (key === "parentMode") {
     return accountPoolConfigSetInputSchema.parse({ parentMode: value });
   }
-  throw new Error(
+  throw new PluginCliError(
     "Config key must be anthropicUpstreamBaseUrl, codexUpstreamBaseUrl, switchThreshold, or parentMode.",
+    { code: "invalid_value" },
   );
 }
 
 function json(value: object): string {
   return `${JSON.stringify(value, null, 2)}\n`;
+}
+
+async function attempt(
+  work: () => Promise<PluginCliResult>,
+): Promise<PluginCliResult> {
+  try {
+    return await work();
+  } catch (error) {
+    if (error instanceof PluginCliError) throw error;
+    throw new PluginCliError(
+      error instanceof Error ? error.message : String(error),
+      { code: "pool_command_failed" },
+    );
+  }
 }
 
 export function registerPoolCli(
@@ -266,401 +252,623 @@ export function registerPoolCli(
   codexLogin: CodexDeviceLogin,
   config: AccountPoolConfigController,
 ): void {
-  bb.cli.register({
-    name: "pool",
-    summary:
-      "Manage Claude and Codex accounts and inspect the Account Pooler hub",
-    commands: [
-      {
-        name: "account-add",
-        summary:
-          "Sign in to Claude or Codex, import credentials, or add an Anthropic API key",
-        usage:
-          "bb pool account add --provider <claude|codex> --login\nbb pool account add --provider <claude|codex> --import [--label <text>] [--priority <n>]\nbb pool account add --provider claude --api-key-stdin [--label <text>] [--priority <n>]\nUnsafe compatibility form: bb pool account add --provider claude --api-key <key> [--label <text>] [--priority <n>]",
-      },
-      {
-        name: "account-login-poll",
-        summary: "Wait for a Codex device-code login to complete",
-        usage: "bb pool account login-poll --session <id>",
-      },
-      {
-        name: "account-login-complete",
-        summary: "Complete a Claude browser login with its manual code",
-        usage:
-          "printf '%s\\n' \"$CLAUDE_AUTH_CODE\" | bb pool account login-complete --session <id> --code-stdin",
-      },
-      {
-        name: "account-list",
-        summary: "List pool accounts and observed quota",
-        usage: "bb pool account list [--json]",
-      },
-      {
-        name: "account-remove",
-        summary: "Remove an account and its secret token file",
-        usage: "bb pool account remove <id>",
-      },
-      {
-        name: "account-enable",
-        summary: "Enable an account",
-        usage: "bb pool account enable <id>",
-      },
-      {
-        name: "account-disable",
-        summary: "Disable an account",
-        usage: "bb pool account disable <id>",
-      },
-      {
-        name: "account-priority",
-        summary: "Set an account's position in the failover priority order",
-        usage: "bb pool account priority <id> <n>",
-      },
-      {
-        name: "account-reorder",
-        summary: "Set the complete failover order for one provider",
-        usage: "bb pool account reorder <claude|codex> <id>...",
-      },
-      {
-        name: "account-refresh",
-        summary: "Refresh one account's observed usage",
-        usage: "bb pool account refresh <id>",
-      },
-      {
-        name: "status",
-        summary: "Show hub, machine token, routing, and account status",
-        usage: "bb pool status [--json]",
-      },
-      {
-        name: "routing",
-        summary: "Enable or disable pooled routing for one provider",
-        usage: "bb pool routing <claude|codex> [--off]",
-      },
-      {
-        name: "config",
-        summary: "Show Account Pooler routing configuration",
-        usage: "bb pool config",
-      },
-      {
-        name: "config-set",
-        summary: "Update one Account Pooler routing configuration value",
-        usage:
-          "bb pool config set <anthropicUpstreamBaseUrl|codexUpstreamBaseUrl|switchThreshold|parentMode> <value>",
-      },
-      {
-        name: "parent",
-        summary:
-          "Show or set how this instance uses a parent bb server's Account Pooler",
-        usage: "bb pool parent [proxy|isolate]",
-      },
-      {
-        name: "token-rotate",
-        summary: "Rotate one machine's Account Pooler bearer token",
-        usage: "bb pool token rotate --machine <id-or-name>",
-      },
-      {
-        name: "bypass",
-        summary: "Bypass Account Pooler routing for one thread",
-        usage: "bb pool bypass <thread-id> [--off]",
-      },
-    ],
-    async run(argv, ctx): Promise<PluginCliResult> {
-      try {
-        if (argv.includes("--help") || argv.includes("-h")) {
-          return { exitCode: 0, stdout: `${HELP}\n` };
-        }
-        if (argv[0] === "account" && argv[1] === "priority") {
-          if (argv.length !== 4 || argv[3]?.trim() === "")
-            throw new Error(HELP);
-          const input = accountPriorityInputSchema.parse({
-            accountId: argv[2],
-            priority: Number(argv[3]),
-          });
-          const account = await operations.setPriority(
-            input.accountId,
-            input.priority,
-          );
-          if (account === null) throw new Error("Account not found.");
-          return {
-            exitCode: 0,
-            stdout: `Set ${account.label} priority to ${account.priority}.\n`,
-          };
-        }
-        if (argv[0] === "account" && argv[1] === "reorder") {
-          const input = accountReorderInputSchema.parse({
-            provider: argv[2],
-            accountIds: argv.slice(3),
-          });
-          await operations.reorder(input.provider, input.accountIds);
-          return {
-            exitCode: 0,
-            stdout: `Updated ${input.provider} account order.\n`,
-          };
-        }
-        if (argv[0] === "account" && argv[1] === "refresh") {
-          if (argv.length !== 3) throw new Error(HELP);
-          const { id } = accountIdInputSchema.parse({ id: argv[2] });
-          if ((await operations.refreshUsage(id)) === null)
-            throw new Error("Account not found.");
-          return { exitCode: 0, stdout: `Refreshed usage for ${id}.\n` };
-        }
-        if (argv[0] === "account" && argv[1] === "add") {
-          const flags = parseFlags(
-            argv.slice(2),
-            ["import", "api-key-stdin", "login"],
-            ["provider", "api-key", "label", "priority"],
-          );
-          const imported = flags.booleans.has("import");
-          const apiKeyStdin = flags.booleans.has("api-key-stdin");
-          const loginRequested = flags.booleans.has("login");
-          const apiKey = flags.values.get("api-key");
-          const sourceCount =
-            Number(imported) +
-            Number(apiKeyStdin) +
-            Number(loginRequested) +
-            Number(apiKey !== undefined);
-          if (sourceCount !== 1)
-            throw new Error(
-              "Choose exactly one of --login, --import, --api-key-stdin, or --api-key <key>.",
-            );
-          if (loginRequested) {
-            const provider = flags.values.get("provider");
-            if (provider !== "claude" && provider !== "codex") {
-              throw new Error(
-                "--login requires --provider claude or --provider codex.",
-              );
-            }
-            if (flags.values.has("label") || flags.values.has("priority")) {
-              throw new Error("--login does not accept --label or --priority.");
-            }
-            if (provider === "codex") {
-              const started = await codexLogin.start();
-              return {
-                exitCode: 0,
-                stdout: `${[
-                  "Open this URL to sign in to Codex:",
-                  started.verificationUri,
-                  "",
-                  `Enter this code: ${started.userCode}`,
-                  `Session ID: ${started.sessionId}`,
-                  "",
-                  "After authorizing, wait for the account to be added with:",
-                  `bb pool account login-poll --session ${started.sessionId}`,
-                ].join("\n")}\n`,
-              };
-            }
-            const started = login.start();
-            return {
-              exitCode: 0,
-              stdout: `${[
-                "Open this URL to sign in to Claude:",
-                started.authorizeUrl,
-                "",
-                `Session ID: ${started.sessionId}`,
-                "",
-                "After signing in, pipe the code shown on the final page into:",
-                `printf '%s\\n' \"$CLAUDE_AUTH_CODE\" | bb pool account login-complete --session ${started.sessionId} --code-stdin`,
-              ].join("\n")}\n`,
-            };
-          }
-          if (apiKeyStdin) {
-            throw new Error(
-              "--api-key-stdin must be invoked through the bb CLI so it can read stdin safely.",
-            );
-          }
-          if (!imported && flags.values.get("provider") !== "claude") {
-            throw new Error("Anthropic API keys require --provider claude.");
-          }
-          const priorityText = flags.values.get("priority") ?? "100";
-          const input = accountAddInputSchema.parse({
-            provider: flags.values.get("provider"),
-            source: imported ? { kind: "import" } : { kind: "api-key", apiKey },
-            label: flags.values.get("label") ?? null,
-            priority: Number(priorityText),
-          });
-          const account = await operations.add(input);
-          return {
-            exitCode: 0,
-            stdout: `Added ${account.label} (${account.id}).\n`,
-          };
-        }
-        if (argv[0] === "account" && argv[1] === "login-poll") {
-          const flags = parseFlags(argv.slice(2), [], ["session"]);
-          const input = codexLoginPollInputSchema.parse({
-            sessionId: flags.values.get("session"),
-          });
-          const signal = ctx.signal;
-          const cancel = () => codexLogin.cancel(input);
-          signal?.addEventListener("abort", cancel, { once: true });
-          try {
-            if (signal?.aborted) {
-              cancel();
-              throw signal.reason ?? new Error("Codex login was cancelled.");
-            }
-            while (true) {
-              await wait(
-                codexLogin.nextPollDelayMs(input.sessionId),
-                undefined,
-                { signal },
-              );
-              const result = await codexLogin.poll(input);
-              if (signal?.aborted) {
-                throw signal.reason ?? new Error("Codex login was cancelled.");
-              }
-              if (result.status === "complete") {
+  bb.cli.register(
+    defineCli({
+      name: "pool",
+      summary:
+        "Manage Claude and Codex accounts and inspect the Account Pooler hub",
+      description: DESCRIPTION,
+      commands: {
+        "account add": cliCommand({
+          summary:
+            "Sign in to Claude or Codex, import credentials, or add an Anthropic API key",
+          description:
+            "--login prints the browser or device step and exits; finish it with `bb pool account login-complete` (Claude) or `bb pool account login-poll` (Codex).\n--import reads the provider's existing login on this bb server host (~/.claude or ~/.codex).",
+          unexpectedPositionalHint:
+            "the provider belongs in --provider <claude|codex>, not a bare argument",
+          options: {
+            provider: PROVIDER_OPTION,
+            login: {
+              type: "boolean",
+              aliases: ["signin", "sign-in"],
+              description:
+                "Start a browser (Claude) or device-code (Codex) login and print the next command",
+            },
+            import: {
+              type: "boolean",
+              aliases: ["import-local", "local"],
+              description:
+                "Import the provider's existing login from this bb server host",
+            },
+            "api-key": {
+              type: "string",
+              placeholder: "key",
+              stdin: true,
+              aliases: ["apikey", "key"],
+              description:
+                "Anthropic API key, --provider claude only. Unsafe: exposes the key in process arguments, shell history, and agent transcripts",
+            },
+            label: {
+              type: "string",
+              placeholder: "text",
+              aliases: ["name"],
+              description:
+                "Label shown in listings; defaults to a provider-derived label",
+            },
+            priority: {
+              type: "integer",
+              min: -1_000_000,
+              max: 1_000_000,
+              default: 100,
+              placeholder: "n",
+              aliases: ["order"],
+              description:
+                "Failover position; lower numbers run first, ties keep the order added",
+            },
+            json: JSON_OPTION,
+          },
+          constraints: [
+            { kind: "exactly-one", options: ["login", "import", "api-key"] },
+            { kind: "at-most-one", options: ["login", "label"] },
+            { kind: "at-most-one", options: ["login", "priority"] },
+          ],
+          run: (input) =>
+            attempt(async () => {
+              const provider = input.options.provider;
+              if (input.options.login) {
+                if (provider === "codex") {
+                  const started = await codexLogin.start();
+                  return {
+                    exitCode: 0,
+                    stdout: input.options.json
+                      ? json({ ok: true, login: started })
+                      : `${[
+                          "Open this URL to sign in to Codex:",
+                          started.verificationUri,
+                          "",
+                          `Enter this code: ${started.userCode}`,
+                          `Session ID: ${started.sessionId}`,
+                          "",
+                          "After authorizing, wait for the account to be added with:",
+                          `bb pool account login-poll --session ${started.sessionId}`,
+                        ].join("\n")}\n`,
+                  };
+                }
+                const started = login.start();
                 return {
                   exitCode: 0,
-                  stdout: `Added ${result.account.label} (${result.account.id}).\n`,
+                  stdout: input.options.json
+                    ? json({ ok: true, login: started })
+                    : `${[
+                        "Open this URL to sign in to Claude:",
+                        started.authorizeUrl,
+                        "",
+                        `Session ID: ${started.sessionId}`,
+                        "",
+                        "After signing in, pipe the code shown on the final page into:",
+                        `printf '%s\\n' \"$CLAUDE_AUTH_CODE\" | bb pool account login-complete --session ${started.sessionId} --code-stdin`,
+                      ].join("\n")}\n`,
                 };
               }
-              if (result.status === "error") {
-                throw new Error(result.message);
+              const imported = input.options.import;
+              if (!imported && provider !== "claude") {
+                throw new PluginCliError(
+                  "Anthropic API keys require --provider claude.",
+                  { code: "invalid_value" },
+                );
               }
-            }
-          } catch (error) {
-            if (signal?.aborted) codexLogin.cancel(input);
-            throw error;
-          } finally {
-            signal?.removeEventListener("abort", cancel);
-          }
-        }
-        if (argv[0] === "account" && argv[1] === "login-complete") {
-          const flags = parseFlags(
-            argv.slice(2),
-            ["code-stdin"],
-            ["session", "code"],
-          );
-          if (flags.booleans.has("code-stdin")) {
-            throw new Error(
-              "--code-stdin requires the current bb CLI so it can read stdin safely.",
-            );
-          }
-          const input = loginCompleteInputSchema.parse({
-            sessionId: flags.values.get("session"),
-            pasted: flags.values.get("code"),
-          });
-          const account = await login.complete(input);
-          return {
-            exitCode: 0,
-            stdout: `Added ${account.label} (${account.id}).\n`,
-          };
-        }
-        if (argv[0] === "account" && argv[1] === "list") {
-          const flags = parseFlags(argv.slice(2), ["json"], []);
-          const accounts = await operations.list();
-          return {
-            exitCode: 0,
-            stdout: flags.booleans.has("json")
-              ? json({ accounts })
-              : `${formatAccounts(accounts)}\n`,
-          };
-        }
-        if (
-          argv[0] === "account" &&
-          ["remove", "enable", "disable"].includes(argv[1] ?? "")
-        ) {
-          if (argv.length !== 3) throw new Error(HELP);
-          const { id } = accountIdInputSchema.parse({ id: argv[2] });
-          if (argv[1] === "remove") {
-            const removed = await operations.remove(id);
-            if (!removed) throw new Error(`Account ${id} does not exist.`);
-            return { exitCode: 0, stdout: `Removed ${id}.\n` };
-          }
-          const account =
-            argv[1] === "enable"
-              ? await operations.enable(id)
-              : await operations.disable(id);
-          if (account === null)
-            throw new Error(`Account ${id} does not exist.`);
-          return {
-            exitCode: 0,
-            stdout: `${argv[1] === "enable" ? "Enabled" : "Disabled"} ${id}.\n`,
-          };
-        }
-        if (argv[0] === "status") {
-          const flags = parseFlags(argv.slice(1), ["json"], []);
-          const [poolStatus, routedThreadsWithoutLocalLogin] =
-            await Promise.all([
-              operations.status(),
-              operations.routedThreadsWithoutLocalLogin(),
-            ]);
-          const status: PoolStatusReport = {
-            ...poolStatus,
-            routedThreadsWithoutLocalLogin,
-          };
-          return {
-            exitCode: 0,
-            stdout: flags.booleans.has("json")
-              ? json(status)
-              : `${formatStatus(status)}\n`,
-          };
-        }
-        if (argv[0] === "routing") {
-          const flags = parseFlags(argv.slice(2), ["off"], []);
-          const input = routingSetInputSchema.parse({
-            provider: argv[1],
-            enabled: !flags.booleans.has("off"),
-          });
-          await operations.setRouting(input.provider, input.enabled);
-          return {
-            exitCode: 0,
-            stdout: `${input.enabled ? "Enabled" : "Disabled"} ${input.provider} Account Pooler routing.\n`,
-          };
-        }
-        if (argv[0] === "config" && argv.length === 1) {
-          return { exitCode: 0, stdout: `${formatConfig(config.get())}\n` };
-        }
-        if (argv[0] === "config" && argv[1] === "set") {
-          if (argv.length !== 4) throw new Error(HELP);
-          const next = await config.set(parseConfigUpdate(argv[2], argv[3]));
-          return { exitCode: 0, stdout: `${formatConfig(next)}\n` };
-        }
-        if (argv[0] === "parent") {
-          if (argv.length === 1) {
-            const status = await operations.status();
-            return { exitCode: 0, stdout: `${formatParent(status.parent)}\n` };
-          }
-          if (argv.length !== 2) throw new Error(HELP);
-          const parentMode = parentModeSchema.parse(argv[1]);
-          const next = await config.set({ parentMode });
-          return {
-            exitCode: 0,
-            stdout: `Set the Account Pooler parent mode to ${next.parentMode}.\n`,
-          };
-        }
-        if (argv[0] === "token" && argv[1] === "rotate") {
-          const flags = parseFlags(argv.slice(2), [], ["machine"]);
-          const { machine } = tokenRotateInputSchema.parse({
-            machine: flags.values.get("machine"),
-          });
-          const token = await operations.rotateToken(machine);
-          return {
-            exitCode: 0,
-            stdout: `Rotated the Account Pooler token for ${token.hostName ?? token.hostId}.\n`,
-          };
-        }
-        if (argv[0] === "bypass") {
-          const threadId = argv[1];
-          if (threadId === undefined) throw new Error(HELP);
-          const flags = parseFlags(argv.slice(2), ["off"], []);
-          const input = bypassInputSchema.parse({
-            threadId,
-            bypassed: !flags.booleans.has("off"),
-          });
-          const result = await operations.setBypass(
-            input.threadId,
-            input.bypassed,
-          );
-          return {
-            exitCode: 0,
-            stdout: `${result.bypassed ? "Enabled" : "Disabled"} Account Pooler bypass for ${result.threadId}.\n`,
-          };
-        }
-        throw new Error(HELP);
-      } catch (error) {
-        return {
-          exitCode: 1,
-          stderr: `${error instanceof Error ? error.message : String(error)}\n`,
-        };
-      }
-    },
-  });
+              const parsed = accountAddInputSchema.parse({
+                provider,
+                source: imported
+                  ? { kind: "import" }
+                  : { kind: "api-key", apiKey: input.options["api-key"] },
+                label: input.options.label ?? null,
+                priority: input.options.priority,
+              });
+              const account = await operations.add(parsed);
+              return {
+                exitCode: 0,
+                stdout: input.options.json
+                  ? json({ ok: true, account })
+                  : `Added ${account.label} (${account.id}).\n`,
+              };
+            }),
+        }),
+        "account login-poll": cliCommand({
+          summary: "Wait for a Codex device-code login to complete",
+          description:
+            "Blocks until the Codex authorization finishes, fails, or the invocation is cancelled.",
+          options: { session: SESSION_OPTION, json: JSON_OPTION },
+          run: (input, ctx) =>
+            attempt(async () => {
+              const parsed = codexLoginPollInputSchema.parse({
+                sessionId: input.options.session,
+              });
+              const signal = ctx.signal;
+              const cancel = () => codexLogin.cancel(parsed);
+              signal?.addEventListener("abort", cancel, { once: true });
+              try {
+                if (signal?.aborted) {
+                  cancel();
+                  throw (
+                    signal.reason ?? new Error("Codex login was cancelled.")
+                  );
+                }
+                while (true) {
+                  await wait(
+                    codexLogin.nextPollDelayMs(parsed.sessionId),
+                    undefined,
+                    { signal },
+                  );
+                  const result = await codexLogin.poll(parsed);
+                  if (signal?.aborted) {
+                    throw (
+                      signal.reason ?? new Error("Codex login was cancelled.")
+                    );
+                  }
+                  if (result.status === "complete") {
+                    return {
+                      exitCode: 0,
+                      stdout: input.options.json
+                        ? json({ ok: true, account: result.account })
+                        : `Added ${result.account.label} (${result.account.id}).\n`,
+                    };
+                  }
+                  if (result.status === "error") {
+                    throw new PluginCliError(result.message, {
+                      code: "codex_login_failed",
+                    });
+                  }
+                }
+              } catch (error) {
+                if (signal?.aborted) codexLogin.cancel(parsed);
+                throw error;
+              } finally {
+                signal?.removeEventListener("abort", cancel);
+              }
+            }),
+        }),
+        "account login-complete": cliCommand({
+          summary: "Complete a Claude browser login with its manual code",
+          description:
+            "Pipe the code the final login page shows:\n  printf '%s\\n' \"$CLAUDE_AUTH_CODE\" | bb pool account login-complete --session <id> --code-stdin",
+          options: {
+            session: SESSION_OPTION,
+            code: {
+              type: "string",
+              required: true,
+              placeholder: "code",
+              stdin: true,
+              aliases: ["pasted", "auth-code"],
+              description:
+                "Manual callback code from the final login page. Unsafe: exposes the code in process arguments",
+            },
+            json: JSON_OPTION,
+          },
+          run: (input) =>
+            attempt(async () => {
+              const parsed = loginCompleteInputSchema.parse({
+                sessionId: input.options.session,
+                pasted: input.options.code,
+              });
+              const account = await login.complete(parsed);
+              return {
+                exitCode: 0,
+                stdout: input.options.json
+                  ? json({ ok: true, account })
+                  : `Added ${account.label} (${account.id}).\n`,
+              };
+            }),
+        }),
+        "account list": cliCommand({
+          summary: "List pool accounts and observed quota",
+          aliases: ["account ls"],
+          suggestFor: ["accounts", "list", "ls"],
+          options: { json: JSON_OPTION },
+          run: (input) =>
+            attempt(async () => {
+              const accounts = await operations.list();
+              return {
+                exitCode: 0,
+                stdout: input.options.json
+                  ? json({ accounts })
+                  : `${formatAccounts(accounts)}\n`,
+              };
+            }),
+        }),
+        "account remove": cliCommand({
+          summary: "Remove an account and its secret token file",
+          aliases: ["account rm", "account delete"],
+          positionals: [ACCOUNT_ID_POSITIONAL],
+          options: { json: JSON_OPTION },
+          run: (input) =>
+            attempt(async () => {
+              const { id } = accountIdInputSchema.parse({
+                id: input.positionals.id,
+              });
+              if (!(await operations.remove(id))) {
+                throw new PluginCliError(`Account ${id} does not exist.`, {
+                  code: "account_not_found",
+                });
+              }
+              return {
+                exitCode: 0,
+                stdout: input.options.json
+                  ? json({ ok: true, removed: id })
+                  : `Removed ${id}.\n`,
+              };
+            }),
+        }),
+        "account enable": cliCommand({
+          summary: "Enable an account",
+          positionals: [ACCOUNT_ID_POSITIONAL],
+          options: { json: JSON_OPTION },
+          run: (input) =>
+            attempt(async () => {
+              const { id } = accountIdInputSchema.parse({
+                id: input.positionals.id,
+              });
+              const account = await operations.enable(id);
+              if (account === null) {
+                throw new PluginCliError(`Account ${id} does not exist.`, {
+                  code: "account_not_found",
+                });
+              }
+              return {
+                exitCode: 0,
+                stdout: input.options.json
+                  ? json({ ok: true, account })
+                  : `Enabled ${id}.\n`,
+              };
+            }),
+        }),
+        "account disable": cliCommand({
+          summary: "Disable an account",
+          positionals: [ACCOUNT_ID_POSITIONAL],
+          options: { json: JSON_OPTION },
+          run: (input) =>
+            attempt(async () => {
+              const { id } = accountIdInputSchema.parse({
+                id: input.positionals.id,
+              });
+              const account = await operations.disable(id);
+              if (account === null) {
+                throw new PluginCliError(`Account ${id} does not exist.`, {
+                  code: "account_not_found",
+                });
+              }
+              return {
+                exitCode: 0,
+                stdout: input.options.json
+                  ? json({ ok: true, account })
+                  : `Disabled ${id}.\n`,
+              };
+            }),
+        }),
+        "account priority": cliCommand({
+          summary: "Set an account's position in the failover priority order",
+          positionals: [
+            ACCOUNT_ID_POSITIONAL,
+            {
+              name: "priority",
+              description: "Whole number; lower numbers run first",
+              required: true,
+            },
+          ],
+          options: { json: JSON_OPTION },
+          run: (input) =>
+            attempt(async () => {
+              const raw = input.positionals.priority;
+              if (!/^-?\d+$/.test(raw.trim())) {
+                throw new PluginCliError(
+                  `invalid value '${raw}' for <priority>. Expected a whole number`,
+                  { code: "invalid_value" },
+                );
+              }
+              const parsed = accountPriorityInputSchema.parse({
+                accountId: input.positionals.id,
+                priority: Number(raw),
+              });
+              const account = await operations.setPriority(
+                parsed.accountId,
+                parsed.priority,
+              );
+              if (account === null) {
+                throw new PluginCliError("Account not found.", {
+                  code: "account_not_found",
+                });
+              }
+              return {
+                exitCode: 0,
+                stdout: input.options.json
+                  ? json({ ok: true, account })
+                  : `Set ${account.label} priority to ${account.priority}.\n`,
+              };
+            }),
+        }),
+        "account reorder": cliCommand({
+          summary: "Set the complete failover order for one provider",
+          description:
+            "List every account for the provider, including disabled ones, in the order they should be tried.",
+          positionals: [
+            {
+              name: "provider",
+              description: "claude or codex",
+              required: true,
+            },
+            {
+              name: "account-id",
+              description: "Every account UUID for that provider, in order",
+              required: true,
+              variadic: true,
+            },
+          ],
+          options: { json: JSON_OPTION },
+          run: (input) =>
+            attempt(async () => {
+              const parsed = accountReorderInputSchema.parse({
+                provider: input.positionals.provider,
+                accountIds: input.positionals["account-id"],
+              });
+              await operations.reorder(parsed.provider, parsed.accountIds);
+              return {
+                exitCode: 0,
+                stdout: input.options.json
+                  ? json({
+                      ok: true,
+                      provider: parsed.provider,
+                      accountIds: parsed.accountIds,
+                    })
+                  : `Updated ${parsed.provider} account order.\n`,
+              };
+            }),
+        }),
+        "account refresh": cliCommand({
+          summary: "Refresh one account's observed usage",
+          positionals: [ACCOUNT_ID_POSITIONAL],
+          options: { json: JSON_OPTION },
+          run: (input) =>
+            attempt(async () => {
+              const { id } = accountIdInputSchema.parse({
+                id: input.positionals.id,
+              });
+              const account = await operations.refreshUsage(id);
+              if (account === null) {
+                throw new PluginCliError("Account not found.", {
+                  code: "account_not_found",
+                });
+              }
+              return {
+                exitCode: 0,
+                stdout: input.options.json
+                  ? json({ ok: true, account })
+                  : `Refreshed usage for ${id}.\n`,
+              };
+            }),
+        }),
+        status: cliCommand({
+          summary: "Show hub, machine token, routing, and account status",
+          suggestFor: ["info", "hub"],
+          options: { json: JSON_OPTION },
+          run: (input) =>
+            attempt(async () => {
+              const [poolStatus, routedThreadsWithoutLocalLogin] =
+                await Promise.all([
+                  operations.status(),
+                  operations.routedThreadsWithoutLocalLogin(),
+                ]);
+              const status: PoolStatusReport = {
+                ...poolStatus,
+                routedThreadsWithoutLocalLogin,
+              };
+              return {
+                exitCode: 0,
+                stdout: input.options.json
+                  ? json(status)
+                  : `${formatStatus(status)}\n`,
+              };
+            }),
+        }),
+        routing: cliCommand({
+          summary: "Enable or disable pooled routing for one provider",
+          positionals: [
+            {
+              name: "provider",
+              description: "claude or codex",
+              required: true,
+            },
+          ],
+          options: {
+            off: {
+              type: "boolean",
+              aliases: ["disable"],
+              description: "Disable pooled routing instead of enabling it",
+            },
+            json: JSON_OPTION,
+          },
+          run: (input) =>
+            attempt(async () => {
+              const parsed = routingSetInputSchema.parse({
+                provider: input.positionals.provider,
+                enabled: !input.options.off,
+              });
+              await operations.setRouting(parsed.provider, parsed.enabled);
+              return {
+                exitCode: 0,
+                stdout: input.options.json
+                  ? json({
+                      ok: true,
+                      provider: parsed.provider,
+                      enabled: parsed.enabled,
+                    })
+                  : `${parsed.enabled ? "Enabled" : "Disabled"} ${parsed.provider} Account Pooler routing.\n`,
+              };
+            }),
+        }),
+        config: cliCommand({
+          summary: "Show Account Pooler routing configuration",
+          options: { json: JSON_OPTION },
+          run: (input) =>
+            attempt(async () => {
+              const current = config.get();
+              return {
+                exitCode: 0,
+                stdout: input.options.json
+                  ? json({ ok: true, config: current })
+                  : `${formatConfig(current)}\n`,
+              };
+            }),
+        }),
+        "config set": cliCommand({
+          summary: "Update one Account Pooler routing configuration value",
+          positionals: [
+            {
+              name: "key",
+              description:
+                "anthropicUpstreamBaseUrl, codexUpstreamBaseUrl, switchThreshold, or parentMode",
+              required: true,
+            },
+            {
+              name: "value",
+              description:
+                "HTTP(S) URL for the upstream keys, a number above 0 and at most 1 for switchThreshold, proxy or isolate for parentMode",
+              required: true,
+            },
+          ],
+          options: { json: JSON_OPTION },
+          run: (input) =>
+            attempt(async () => {
+              const next = await config.set(
+                parseConfigUpdate(
+                  input.positionals.key,
+                  input.positionals.value,
+                ),
+              );
+              return {
+                exitCode: 0,
+                stdout: input.options.json
+                  ? json({ ok: true, config: next })
+                  : `${formatConfig(next)}\n`,
+              };
+            }),
+        }),
+        parent: cliCommand({
+          summary:
+            "Show or set how this instance uses a parent bb server's Account Pooler",
+          positionals: [
+            {
+              name: "mode",
+              description:
+                "proxy routes pooled traffic through the parent; isolate neutralises the inherited routing. Omit to report the detected parent",
+            },
+          ],
+          options: { json: JSON_OPTION },
+          run: (input) =>
+            attempt(async () => {
+              const mode = input.positionals.mode;
+              if (mode === undefined) {
+                const status = await operations.status();
+                return {
+                  exitCode: 0,
+                  stdout: input.options.json
+                    ? json({ ok: true, parent: status.parent })
+                    : `${formatParent(status.parent)}\n`,
+                };
+              }
+              const parentMode = parentModeSchema.parse(mode);
+              const next = await config.set({ parentMode });
+              return {
+                exitCode: 0,
+                stdout: input.options.json
+                  ? json({ ok: true, parentMode: next.parentMode })
+                  : `Set the Account Pooler parent mode to ${next.parentMode}.\n`,
+              };
+            }),
+        }),
+        "token rotate": cliCommand({
+          summary: "Rotate one machine's Account Pooler bearer token",
+          description:
+            "The previous token keeps working for ten minutes. Tokens are never printed.",
+          suggestFor: ["rotate", "token"],
+          options: {
+            machine: {
+              type: "string",
+              required: true,
+              placeholder: "id-or-name",
+              aliases: ["host", "host-id", "machine-id"],
+              description:
+                "Enrolled machine name or host ID from `bb pool status`",
+            },
+            json: JSON_OPTION,
+          },
+          run: (input) =>
+            attempt(async () => {
+              const { machine } = tokenRotateInputSchema.parse({
+                machine: input.options.machine,
+              });
+              const token = await operations.rotateToken(machine);
+              return {
+                exitCode: 0,
+                stdout: input.options.json
+                  ? json({ ok: true, token })
+                  : `Rotated the Account Pooler token for ${token.hostName ?? token.hostId}.\n`,
+              };
+            }),
+        }),
+        bypass: cliCommand({
+          summary: "Bypass Account Pooler routing for one thread",
+          positionals: [
+            {
+              name: "thread-id",
+              description:
+                "Thread that should use its own provider credentials",
+            },
+          ],
+          options: {
+            off: {
+              type: "boolean",
+              aliases: ["disable"],
+              description: "Restore pooled routing for the thread",
+            },
+            json: JSON_OPTION,
+          },
+          run: (input, ctx) =>
+            attempt(async () => {
+              const threadId = input.positionals["thread-id"];
+              if (threadId === undefined) {
+                throw new PluginCliError(
+                  "missing required arguments: <thread-id>",
+                  {
+                    code: "missing_required",
+                    ...(ctx.threadId === undefined
+                      ? {}
+                      : {
+                          hint: `This thread is ${ctx.threadId}; re-run with bb pool bypass ${ctx.threadId}`,
+                        }),
+                  },
+                );
+              }
+              const parsed = bypassInputSchema.parse({
+                threadId,
+                bypassed: !input.options.off,
+              });
+              const result = await operations.setBypass(
+                parsed.threadId,
+                parsed.bypassed,
+              );
+              return {
+                exitCode: 0,
+                stdout: input.options.json
+                  ? json({
+                      ok: true,
+                      threadId: result.threadId,
+                      bypassed: result.bypassed,
+                    })
+                  : `${result.bypassed ? "Enabled" : "Disabled"} Account Pooler bypass for ${result.threadId}.\n`,
+              };
+            }),
+        }),
+      },
+    }),
+  );
 }

@@ -206,6 +206,8 @@ export function queuedMessage(args: {
   return {
     id: args.id,
     threadId: args.threadId,
+    origin: null,
+    originPluginId: null,
     initiator: "user",
     senderThreadId: null,
     content: args.content,

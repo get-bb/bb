@@ -33,7 +33,7 @@ import {
 } from "./queued-messages.js";
 
 export interface QueueWaitPluginDirectory {
-  isPluginLoaded(pluginId: string): boolean;
+  isPluginExpectedToRun(pluginId: string): boolean;
 }
 
 export type QueuedMessageDispatchWake =
@@ -351,7 +351,7 @@ async function runInteractionSettledDispatch(
   deps: QueueDispatchDeps,
   threadId: string,
 ): Promise<void> {
-  if (deps.pendingInteractions.hasPendingThreadInteraction(threadId)) return;
+  if (deps.pendingInteractions.hasTurnBoundPendingThreadInteraction(threadId)) return;
   const cleared = clearThreadQueueWaitsOfKind(deps, {
     threadId,
     kind: "interaction",
@@ -468,10 +468,10 @@ async function runOrphanedPluginWaitRecovery(
     const pluginId = row.waitHolder.slice(
       QUEUED_MESSAGE_PLUGIN_WAIT_HOLDER_PREFIX.length,
     );
-    if (plugins.isPluginLoaded(pluginId)) continue;
+    if (plugins.isPluginExpectedToRun(pluginId)) continue;
     deps.logger.info(
       { queuedMessageId: row.id, pluginId, threadId: row.threadId },
-      "Clearing a queue wait: its holding plugin is no longer running",
+      "Clearing a queue wait: its holding plugin is not going to run",
     );
     clearQueuedMessageWait(deps, {
       queuedMessageId: row.id,

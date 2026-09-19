@@ -1,32 +1,30 @@
-import {
-  ArrowDataTransferHorizontalIcon,
-  ArrowReloadHorizontalIcon,
-  BellDotIcon,
-  BrainIcon,
-  BrowserIcon,
-  CheckListIcon,
-  Calendar03Icon,
-  ChartColumnIcon,
-  Clock01Icon,
-  Coffee01Icon,
-  ComputerIcon,
-  DatabaseIcon,
-  Edit04Icon,
-  File01Icon,
-  GithubIcon,
-  Layers01Icon,
-  LockIcon,
-  MessageAdd02Icon,
-  MessageQuestionIcon,
-  RepeatIcon,
-  SmartPhone01Icon,
-  SourceCodeIcon,
-  SparklesIcon,
-  TerminalIcon,
-  TestTubeIcon,
-  WorkflowCircle03Icon,
-  Activity03Icon,
-} from "@hugeicons/core-free-icons";
+import ArrowDataTransferHorizontalIcon from "@hugeicons/core-free-icons/ArrowDataTransferHorizontalIcon";
+import ArrowReloadHorizontalIcon from "@hugeicons/core-free-icons/ArrowReloadHorizontalIcon";
+import BellDotIcon from "@hugeicons/core-free-icons/BellDotIcon";
+import BrainIcon from "@hugeicons/core-free-icons/BrainIcon";
+import BrowserIcon from "@hugeicons/core-free-icons/BrowserIcon";
+import CheckListIcon from "@hugeicons/core-free-icons/CheckListIcon";
+import Calendar03Icon from "@hugeicons/core-free-icons/Calendar03Icon";
+import ChartColumnIcon from "@hugeicons/core-free-icons/ChartColumnIcon";
+import Clock01Icon from "@hugeicons/core-free-icons/Clock01Icon";
+import Coffee01Icon from "@hugeicons/core-free-icons/Coffee01Icon";
+import ComputerIcon from "@hugeicons/core-free-icons/ComputerIcon";
+import DatabaseIcon from "@hugeicons/core-free-icons/DatabaseIcon";
+import Edit04Icon from "@hugeicons/core-free-icons/Edit04Icon";
+import File01Icon from "@hugeicons/core-free-icons/File01Icon";
+import GithubIcon from "@hugeicons/core-free-icons/GithubIcon";
+import Layers01Icon from "@hugeicons/core-free-icons/Layers01Icon";
+import LockIcon from "@hugeicons/core-free-icons/LockIcon";
+import MessageAdd02Icon from "@hugeicons/core-free-icons/MessageAdd02Icon";
+import MessageQuestionIcon from "@hugeicons/core-free-icons/MessageQuestionIcon";
+import RepeatIcon from "@hugeicons/core-free-icons/RepeatIcon";
+import SmartPhone01Icon from "@hugeicons/core-free-icons/SmartPhone01Icon";
+import SourceCodeIcon from "@hugeicons/core-free-icons/SourceCodeIcon";
+import SparklesIcon from "@hugeicons/core-free-icons/SparklesIcon";
+import TerminalIcon from "@hugeicons/core-free-icons/TerminalIcon";
+import TestTubeIcon from "@hugeicons/core-free-icons/TestTubeIcon";
+import WorkflowCircle03Icon from "@hugeicons/core-free-icons/WorkflowCircle03Icon";
+import Activity03Icon from "@hugeicons/core-free-icons/Activity03Icon";
 import type { IconSvgElement } from "@hugeicons/react";
 
 interface FirstPartyPlugin {

@@ -165,6 +165,7 @@ describe("public project command typeahead route", () => {
         const { host, session } = seedHostSession(harness.deps, {
           id: "host-shared-skills",
         });
+        seedPrimaryHost(harness.deps, host.id);
         const { project } = seedProjectWithSource(harness.deps, {
           hostId: host.id,
           path: "/tmp/shared-skills",
@@ -234,6 +235,7 @@ describe("public project command typeahead route", () => {
         const { host, session } = seedHostSession(harness.deps, {
           id: "host-custom-acp-skills",
         });
+        seedPrimaryHost(harness.deps, host.id);
         const { project } = seedProjectWithSource(harness.deps, {
           hostId: host.id,
           path: "/tmp/custom-acp-skills",
@@ -276,6 +278,7 @@ describe("public project command typeahead route", () => {
       const { host, session } = seedHostSession(harness.deps, {
         id: "host-commands-resolving",
       });
+      seedPrimaryHost(harness.deps, host.id);
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
         path: "/tmp/resolving-project",
@@ -376,6 +379,7 @@ describe("public project command typeahead route", () => {
       const { host, session } = seedHostSession(harness.deps, {
         id: "host-commands-slow-resolver",
       });
+      seedPrimaryHost(harness.deps, host.id);
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
         path: "/tmp/slow-resolver-project",
@@ -435,6 +439,7 @@ describe("public project command typeahead route", () => {
         const { host, session } = seedHostSession(harness.deps, {
           id: "host-commands-rootless",
         });
+        seedPrimaryHost(harness.deps, host.id);
         const { project } = seedProjectWithSource(harness.deps, {
           hostId: host.id,
           path: "/tmp/rootless-project",

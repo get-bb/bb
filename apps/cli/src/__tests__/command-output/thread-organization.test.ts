@@ -13,6 +13,8 @@ function queuedMessage(
 ): ThreadQueuedMessage {
   return {
     id: "queued-1",
+    origin: null,
+    originPluginId: null,
     initiator: "user",
     senderThreadId: null,
     threadId: "thread-1",

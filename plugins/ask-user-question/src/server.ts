@@ -10,10 +10,13 @@ import {
   buildInteractionPayload,
   buildInteractionTitle,
   buildToolResult,
+  describeAnswers,
   validateToolInput,
 } from "./translate.js";
 
 export const TOOL_NAME = "AskUserQuestion";
+
+const QUESTION_TIMEOUT_MS = 30 * 60 * 1000;
 
 function errorResult(message: string): PluginAgentToolResult {
   return { content: [{ type: "text", text: message }], isError: true };
@@ -51,6 +54,19 @@ export default function plugin(bb: BbPluginApi) {
             rendererId: ASK_USER_QUESTION_RENDERER_ID,
             title: buildInteractionTitle(payload),
             payload,
+            timeoutMs: QUESTION_TIMEOUT_MS,
+            presentation: {
+              label: { pending: "Asking a question", completed: "Asked" },
+              icon: { glyph: "MessageQuestion" },
+            },
+            describeSubmission: (value) => {
+              const parsed = interactionResponseSchema.safeParse(value);
+              if (!parsed.success) return {};
+              return describeAnswers(
+                payload,
+                buildToolResult(payload, parsed.data),
+              );
+            },
           },
           { signal: ctx.signal },
         );

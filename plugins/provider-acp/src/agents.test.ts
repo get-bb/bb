@@ -169,6 +169,47 @@ describe("customAcpAgentDefinition", () => {
   });
 });
 
+describe("custom agents that report usage", () => {
+  const parse = (entry: Record<string, unknown>) => {
+    const [agent] = parseCustomAcpAgents({
+      entries: [entry],
+      reservedProviderIds: reserved,
+    }).agents;
+    if (agent === undefined) throw new Error("expected the agent to parse");
+    return agent;
+  };
+
+  it("declares the usage capability when the entry asks for it", () => {
+    const agent = parse({
+      id: "cursor-pooled",
+      displayName: "Cursor (pooled)",
+      command: "cursor-route",
+      args: ["acp"],
+      dialect: "cursor",
+      providerUsage: true,
+    });
+
+    expect(customAcpAgentDefinition(agent).providerUsage).toBe(true);
+    expect(
+      acpProviderDeclaration(customAcpAgentDefinition(agent)).maintenance?.usage,
+    ).toBe(true);
+  });
+
+  it("stays out of the usage surface by default", () => {
+    const agent = parse({
+      id: "amp-plain",
+      displayName: "Amp",
+      command: "amp",
+      args: ["acp"],
+    });
+
+    expect(customAcpAgentDefinition(agent).providerUsage).toBeUndefined();
+    expect(
+      acpProviderDeclaration(customAcpAgentDefinition(agent)).maintenance?.usage,
+    ).toBe(false);
+  });
+});
+
 describe("acpProviderDeclaration", () => {
   it("declares a configured agent's native skill roots", () => {
     const [agent] = parseCustomAcpAgents({

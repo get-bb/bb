@@ -67,6 +67,9 @@ jobs:
       - name: Build desktop
         run: pnpm exec turbo run build --filter=@bb/desktop --output-logs=new-only
 
+      - name: Install Electron before parallel tests
+        run: ELECTRON_RUN_AS_NODE=1 pnpm --filter @bb/desktop exec electron --version
+
       - name: Test desktop and launcher
         run: pnpm exec turbo run test --filter=@bb/desktop --filter=bb-app --force --output-logs=new-only
 
@@ -178,6 +181,9 @@ jobs:
 
       - name: Build desktop
         run: pnpm exec turbo run build --filter=@bb/desktop --output-logs=new-only
+
+      - name: Install Electron before parallel tests
+        run: ELECTRON_RUN_AS_NODE=1 pnpm --filter @bb/desktop exec electron --version
 
       - name: Test desktop and launcher
         run: pnpm exec turbo run test --filter=@bb/desktop --filter=bb-app --force --output-logs=new-only

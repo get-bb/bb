@@ -4,6 +4,10 @@ type ReleaseMeta = {
 };
 
 export const RELEASE_META: Record<string, ReleaseMeta> = {
+  "0.43.3": {
+    date: "September 18, 2026",
+    headline: "Saved drafts, browser annotations, and live browser previews",
+  },
   "0.43.0": {
     date: "September 11, 2026",
     headline: "Custom environments, machine plugins, and browser control",

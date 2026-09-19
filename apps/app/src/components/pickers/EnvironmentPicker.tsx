@@ -91,6 +91,7 @@ export interface EnvironmentPickerUIProps {
     hostId: string | null,
   ) => void;
   onSelectHost?: (hostId: string) => void;
+  onSelectReuse?: () => void;
 }
 
 export const PROVIDER_INPUTS_CONTROL_MISSING_REASON =
@@ -186,6 +187,7 @@ export function EnvironmentPickerUI({
   multiMachinePickerEnabled = false,
   onSelectProvider,
   onSelectHost,
+  onSelectReuse,
 }: EnvironmentPickerUIProps) {
   const [uncontrolledOpen, setUncontrolledOpen] = useState(
     defaultOpen ?? false,
@@ -320,6 +322,10 @@ export function EnvironmentPickerUI({
     onRequestMachineSetup?.(machineHost);
     handleOpenChange(false);
   };
+  const selectReuse = () => {
+    onSelectReuse?.();
+    handleOpenChange(false);
+  };
 
   return (
     <Popover open={pickerOpen} onOpenChange={handleOpenChange} modal={modal}>
@@ -398,10 +404,7 @@ export function EnvironmentPickerUI({
         autoFocusRef={
           isLoading ? undefined : showSearch ? searchInputRef : commandRef
         }
-        className={cn(
-          "flex max-h-[min(var(--radix-popover-content-available-height),calc(100dvh-0.5rem))] w-80 flex-col overflow-hidden p-0 max-md:min-h-0 max-md:w-full max-md:flex-1",
-          isLoading && "min-w-52",
-        )}
+        className="flex max-h-[min(var(--radix-popover-content-available-height),calc(100dvh-0.5rem))] w-auto max-w-80 min-w-52 flex-col overflow-hidden p-0 max-md:min-h-0 max-md:w-full max-md:flex-1"
       >
         {isLoading ? (
           <PickerLoadingRows
@@ -517,11 +520,44 @@ export function EnvironmentPickerUI({
                   />
                 </>
               )}
+              <ReuseEnvironmentOption
+                selected={parsed?.type === "reuse"}
+                onSelect={onSelectReuse ? selectReuse : undefined}
+              />
             </CommandList>
           </Command>
         )}
       </PopoverContent>
     </Popover>
+  );
+}
+
+const REUSE_ENVIRONMENT_OPTION_LABEL = "Reuse existing";
+
+interface ReuseEnvironmentOptionProps {
+  selected: boolean;
+  onSelect: (() => void) | undefined;
+}
+
+function ReuseEnvironmentOption({
+  selected,
+  onSelect,
+}: ReuseEnvironmentOptionProps) {
+  if (onSelect === undefined) return null;
+
+  return (
+    <>
+      <CommandSeparator className="mx-0 shrink-0" />
+      <CommandGroup className="shrink-0">
+        <EnvironmentMenuItem
+          value="reuse"
+          label={REUSE_ENVIRONMENT_OPTION_LABEL}
+          icon={REUSE_ENVIRONMENT_ICON_NAME}
+          selected={selected}
+          onSelect={onSelect}
+        />
+      </CommandGroup>
+    </>
   );
 }
 

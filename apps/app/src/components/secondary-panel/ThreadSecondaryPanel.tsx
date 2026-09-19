@@ -33,6 +33,7 @@ import {
 } from "./panelTransitionTokens";
 import {
   PANEL_SCROLL_SLOT_CLASS,
+  PANEL_TAB_CONTROL_CLASS,
   SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS,
 } from "./panelChromeClasses";
 import {
@@ -45,6 +46,7 @@ import {
   resolveConversationCollapseControl,
 } from "./panelToggleControlState";
 import { SecondaryPanelHostLayoutContext } from "./SecondaryPanelHostLayoutContext";
+import { MobilePanelTabPager } from "./MobilePanelTabPager";
 import { SecondaryPanelTabStrip } from "./SecondaryPanelTabStrip";
 import { ImageTabLightboxProvider } from "./ImageTabLightboxContext";
 import type {
@@ -143,10 +145,9 @@ export function resolveCollapsedPanelTrafficLightReserveClassName({
   reserveMacosTrafficLights,
 }: CollapsedPanelTrafficLightReserveArgs): string | false {
   const reserves =
-    isConversationCollapsed &&
-    !renderAsDrawer &&
-    isSidebarShowing === false &&
-    reserveMacosTrafficLights;
+    reserveMacosTrafficLights &&
+    (renderAsDrawer ||
+      (isConversationCollapsed && isSidebarShowing === false));
   return reserves && MACOS_COLLAPSED_TOP_LEFT_RESERVE_CLASS;
 }
 
@@ -261,7 +262,6 @@ function ThreadSecondaryPanelContent({
   const {
     gitDiffDisplayMode,
     handleGitDiffDisplayModeChange,
-    handleSecondaryPanelResizeStart,
     handleSecondaryPanelWidthChange,
   } = useResponsiveGitDiffPanelDisplay({ isSecondaryPanelOpen: isOpen });
   const {
@@ -273,7 +273,6 @@ function ThreadSecondaryPanelContent({
   } = useSecondaryPanelResize({
     isSecondaryPanelOpen: isOpen,
     onPanelWidthChange: handleSecondaryPanelWidthChange,
-    onResizeStart: handleSecondaryPanelResizeStart,
   });
   const hasPanelExpandedRef = useRef(false);
   useLayoutEffect(() => {
@@ -461,7 +460,10 @@ function ThreadSecondaryPanelContent({
       variant="ghost"
       size="icon"
       className={cn(
-        SECONDARY_PANEL_HIDE_ICON_BUTTON_CLASS,
+        renderAsDrawer
+          ? PANEL_TAB_CONTROL_CLASS
+          : SECONDARY_PANEL_HIDE_ICON_BUTTON_CLASS,
+        CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS,
         "relative",
         usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
       )}
@@ -488,7 +490,9 @@ function ThreadSecondaryPanelContent({
         variant="ghost"
         size="icon"
         className={cn(
-          HEADER_PANE_ACTION_ICON_BUTTON_CLASS,
+          renderAsDrawer
+            ? PANEL_TAB_CONTROL_CLASS
+            : HEADER_PANE_ACTION_ICON_BUTTON_CLASS,
           CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS,
           "shrink-0",
           usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
@@ -516,7 +520,7 @@ function ThreadSecondaryPanelContent({
       return (
         <PaneArrangementButton
           className={cn(
-            "shrink-0",
+            renderAsDrawer ? PANEL_TAB_CONTROL_CLASS : "shrink-0",
             usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
           )}
           isFullScreen={isFullScreen ?? false}
@@ -534,7 +538,9 @@ function ThreadSecondaryPanelContent({
             variant="ghost"
             size="icon"
             className={cn(
-              HEADER_PANE_ACTION_ICON_BUTTON_CLASS,
+              renderAsDrawer
+                ? PANEL_TAB_CONTROL_CLASS
+                : HEADER_PANE_ACTION_ICON_BUTTON_CLASS,
               CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS,
               "shrink-0",
               usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
@@ -569,6 +575,52 @@ function ThreadSecondaryPanelContent({
       (tab) => tab.isHidden !== true,
     );
     const hasActiveSurfaceTab = activeSurfaceTab !== undefined;
+    const newTabControl = showGroupNewTabButton ? (
+      <NewTabButton
+        ariaLabel={newTabAriaLabel}
+        onOpenNewTab={onOpenNewTab}
+        shortcut={newTabShortcut}
+        usesDesktopChrome={usesDesktopChrome}
+        compact={renderAsDrawer}
+      />
+    ) : reserveNewTabButton ? (
+      <div
+        aria-hidden
+        data-new-tab-control-reserved=""
+        className={cn(
+          renderAsDrawer
+            ? PANEL_TAB_CONTROL_CLASS
+            : SECONDARY_PANEL_CHROME_ICON_BUTTON_CLASS,
+          usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
+        )}
+      />
+    ) : null;
+
+    if (renderAsDrawer) {
+      return (
+        <MobilePanelTabPager
+          activeTabId={
+            activeSurfaceTabId ?? activeSurfaceFixedTab?.tab.id ?? null
+          }
+          fixedTabs={fixedSurfaceTabs.map((tab) => ({
+            id: tab.tab.id,
+            label: tab.label,
+            ariaLabel: tab.ariaLabel,
+            leadingVisual: tab.leadingVisual,
+            onSelect: tab.onSelect,
+          }))}
+          tabs={visibleSurfaceTabs.map((tab) => ({
+            id: tab.tab.id,
+            label: tab.label,
+            ariaLabel: tab.label,
+            leadingVisual: tab.leadingVisual,
+            onSelect: tab.onSelect,
+            onClose: tab.isPinned ? null : tab.onClose,
+          }))}
+          newTabControl={newTabControl}
+        />
+      );
+    }
 
     return (
       <>
@@ -611,23 +663,7 @@ function ThreadSecondaryPanelContent({
             isPanelOpen={isOpen}
           />
         ) : null}
-        {showGroupNewTabButton ? (
-          <NewTabButton
-            ariaLabel={newTabAriaLabel}
-            onOpenNewTab={onOpenNewTab}
-            shortcut={newTabShortcut}
-            usesDesktopChrome={usesDesktopChrome}
-          />
-        ) : reserveNewTabButton ? (
-          <div
-            aria-hidden
-            data-new-tab-control-reserved=""
-            className={cn(
-              SECONDARY_PANEL_CHROME_ICON_BUTTON_CLASS,
-              usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
-            )}
-          />
-        ) : null}
+        {newTabControl}
       </>
     );
   };
@@ -699,7 +735,8 @@ function ThreadSecondaryPanelContent({
             data-testid="thread-secondary-panel-top-chrome"
             className={cn(
               CHROME_ROW_CLASS,
-              "min-w-0 justify-between gap-2 px-4",
+              "min-w-0 justify-between gap-2",
+              renderAsDrawer ? "px-2" : "px-4",
               usesDesktopChrome && usesWindowChrome && MACOS_WINDOW_DRAG_CLASS,
               usesDesktopChrome &&
                 usesWindowChrome &&
@@ -709,6 +746,7 @@ function ThreadSecondaryPanelContent({
             <div
               className={cn(
                 "flex min-w-0 flex-1 items-center gap-1",
+                renderAsDrawer && "gap-0",
                 `transition-[padding] ${PANEL_COLLAPSE_TRANSITION_CLASS}`,
                 reserveLeadingChrome &&
                   collapsedPanelTrafficLightReserveClassName,
@@ -736,7 +774,10 @@ function ThreadSecondaryPanelContent({
             onRemoveSplit ||
             usesPaneArrangementControl ? (
               <div
-                className="flex min-w-0 shrink-0 items-center gap-1"
+                className={cn(
+                  "flex min-w-0 shrink-0 items-center gap-1",
+                  renderAsDrawer && "gap-0",
+                )}
                 onPointerDown={(event) => event.stopPropagation()}
               >
                 {usesPaneArrangementControl || showOuterControls
@@ -1047,6 +1088,7 @@ function ThreadSecondaryPanelContent({
 }
 
 interface NewTabButtonProps {
+  compact: boolean;
   ariaLabel: string;
   onOpenNewTab: () => void;
   shortcut: AppShortcutPresentation | null;
@@ -1106,6 +1148,7 @@ function PinnedIconTab({
 }
 
 function NewTabButton({
+  compact,
   ariaLabel,
   onOpenNewTab,
   shortcut,
@@ -1117,7 +1160,10 @@ function NewTabButton({
       variant="ghost"
       size="sm"
       className={cn(
-        SECONDARY_PANEL_CHROME_ICON_BUTTON_CLASS,
+        compact
+          ? PANEL_TAB_CONTROL_CLASS
+          : SECONDARY_PANEL_CHROME_ICON_BUTTON_CLASS,
+        "text-muted-foreground/70 hover:text-foreground",
         usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
       )}
       onClick={onOpenNewTab}

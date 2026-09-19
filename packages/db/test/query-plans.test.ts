@@ -405,33 +405,37 @@ describe("slow query index plans", () => {
     db.$client.close();
   });
 
-  it("uses the thread/type/sequence index for filtered event pages", () => {
-    const { db, thread } = setup();
+  it.each([undefined, 20])(
+    "uses the thread/type/sequence index for filtered event pages after %s",
+    (afterSequence) => {
+      const { db, thread } = setup();
 
-    const captured = captureStatements(db, () => {
-      expect(
-        listStoredEventRows(db, {
-          beforeSequence: 100,
-          limit: 25,
-          order: "desc",
-          threadId: thread.id,
-          types: ["provider/error", "turn/completed"],
-        }),
-      ).toEqual([]);
-    });
-    expect(captured).toHaveLength(2);
-    for (const query of captured) {
-      const details = queryPlanDetails({
-        db,
-        params: query.params,
-        sql: query.sql,
+      const captured = captureStatements(db, () => {
+        expect(
+          listStoredEventRows(db, {
+            afterSequence,
+            beforeSequence: 100,
+            limit: 25,
+            order: "desc",
+            threadId: thread.id,
+            types: ["provider/error", "turn/completed"],
+          }),
+        ).toEqual([]);
       });
-      expect(details).toMatch(/USING INDEX events_thread_type_sequence_idx/u);
-      expect(details).not.toMatch(/events_thread_sequence_idx/u);
-    }
+      expect(captured).toHaveLength(2);
+      for (const query of captured) {
+        const details = queryPlanDetails({
+          db,
+          params: query.params,
+          sql: query.sql,
+        });
+        expect(details).toMatch(/USING INDEX events_thread_type_sequence_idx/u);
+        expect(details).not.toMatch(/events_thread_sequence_idx/u);
+      }
 
-    db.$client.close();
-  });
+      db.$client.close();
+    },
+  );
 
   it("looks up completed turns by thread and turn key", () => {
     const { db, thread } = setup();

@@ -35,7 +35,7 @@ export async function clearThreadContext(
         "Context can only be cleared when the thread is idle or failed",
       );
     }
-    if (deps.pendingInteractions.hasPendingThreadInteraction(thread.id)) {
+    if (deps.pendingInteractions.hasTurnBoundPendingThreadInteraction(thread.id)) {
       throw new ApiError(
         409,
         "awaiting_user_interaction",

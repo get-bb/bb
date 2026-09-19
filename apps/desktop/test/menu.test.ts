@@ -43,6 +43,7 @@ function menuArgs(
     serverDaemonLogsMenuEnabled: false,
     servers: [{ checked: true, id: "builtin", name: "This Mac" }],
     setServerUrl: () => {},
+    addServer: () => {},
     ...overrides,
   };
 }
@@ -134,31 +135,56 @@ describe("application menu", () => {
     expect(reloadWindow).toHaveBeenNthCalledWith(2, focusedWindow, true);
   });
 
-  it("builds a Window ▸ Server radio submenu with a Set Server URL item", () => {
+  it("builds a Server menu with multiple custom targets and separate add/edit actions", () => {
     const selectServer = vi.fn();
     const setServerUrl = vi.fn();
+    const addServer = vi.fn();
     const template = buildApplicationMenuTemplate(
       menuArgs(() => {}, {
         selectServer,
         servers: [
           { checked: false, id: "builtin", name: "This Mac" },
-          { checked: true, id: "custom", name: "example.com" },
+          {
+            checked: true,
+            id: "custom:https://first.example",
+            name: "first.example",
+          },
+          {
+            checked: false,
+            id: "custom:https://second.example",
+            name: "second.example",
+          },
         ],
         setServerUrl,
+        addServer,
       }),
     );
     const serverSubmenu = findServerSubmenu(template);
 
-    expect(serverSubmenu).toHaveLength(4);
-    expect(serverSubmenu[0]?.type).toBe("radio");
-    expect(serverSubmenu[0]?.checked).toBe(false);
-    expect(serverSubmenu[1]?.type).toBe("radio");
-    expect(serverSubmenu[1]?.checked).toBe(true);
-    expect(serverSubmenu[2]?.type).toBe("separator");
-    expect(serverSubmenu[3]?.label).toBe(SET_SERVER_URL_MENU_LABEL);
+    expect(serverSubmenu).toHaveLength(6);
+    expect(
+      serverSubmenu.slice(0, 3).map((item) => [item.type, item.checked]),
+    ).toEqual([
+      ["radio", false],
+      ["radio", true],
+      ["radio", false],
+    ]);
+    expect(serverSubmenu[3]?.type).toBe("separator");
+    expect(serverSubmenu[4]?.label).toBe("Add Server…");
+    expect(serverSubmenu[5]?.label).toBe(SET_SERVER_URL_MENU_LABEL);
     serverSubmenu[1]?.click?.({} as never, undefined, {} as never);
-    expect(selectServer).toHaveBeenCalledWith("custom");
-    serverSubmenu[3]?.click?.({} as never, undefined, {} as never);
+    serverSubmenu[2]?.click?.({} as never, undefined, {} as never);
+    expect(selectServer).toHaveBeenNthCalledWith(
+      1,
+      "custom:https://first.example",
+    );
+    expect(selectServer).toHaveBeenNthCalledWith(
+      2,
+      "custom:https://second.example",
+    );
+    serverSubmenu[4]?.click?.({} as never, undefined, {} as never);
+    expect(addServer).toHaveBeenCalledTimes(1);
+    serverSubmenu[5]?.click?.({} as never, undefined, {} as never);
     expect(setServerUrl).toHaveBeenCalledTimes(1);
   });
 
@@ -184,6 +210,7 @@ describe("application menu", () => {
         "old-host.tailnet.ts.net:38886",
         CONNECT_SERVERS_SKIPPED_MENU_LABELS["no-credential"],
         "<separator>",
+        "Add Server…",
         SET_SERVER_URL_MENU_LABEL,
       ],
     );
