@@ -1525,7 +1525,8 @@ describe("Docs nav panel", () => {
     expect(slot.queryByRole("button", { name: "Open in Docs" })).toBeNull();
   });
 
-  it("preserves an explicit host for file opener reads and autosaves", async () => {
+  it("preserves the file opener host through autosave, conflict overwrite, and reload", async () => {
+    let conflict = true;
     const slot = renderSlot(
       app.fileOpeners[0]!,
       {
@@ -1546,10 +1547,10 @@ describe("Docs nav panel", () => {
             preview,
             previewPath: "notes/plan.mdx",
           }),
-          saveOpenedFile: () => ({
-            outcome: "written",
-            sha256: "updated-sha",
-          }),
+          saveOpenedFile: () =>
+            conflict
+              ? { outcome: "conflict", currentSha256: "remote-sha" }
+              : { outcome: "written", sha256: "updated-sha" },
         },
       },
     );
@@ -1591,6 +1592,35 @@ describe("Docs nav panel", () => {
       },
       { timeout: 2_000 },
     );
+    await slot.findByText("Changed on disk.");
+    conflict = false;
+    fireEvent.click(slot.getByRole("button", { name: "Overwrite" }));
+    await waitFor(() =>
+      expect(slot.queryByText("Changed on disk.")).toBeNull(),
+    );
+    const writes = slot.rpcCalls.filter(
+      (call) => call.method === "saveOpenedFile",
+    );
+    expect(writes).toHaveLength(2);
+    expect(writes[1]?.input).toEqual({
+      source: {
+        kind: "host",
+        threadId: "thr_1",
+        environmentId: null,
+        projectId: "project_1",
+        experimental_hostId: "host_remote",
+      },
+      path: "/Users/shared/notes/plan.mdx",
+      content: "# Updated remote plan",
+    });
+    conflict = true;
+    const updated = slot.getByText("Updated remote plan");
+    updated.textContent = "Discard this edit";
+    fireEvent.input(updated);
+    await slot.findByText("Changed on disk.");
+    fireEvent.click(slot.getByRole("button", { name: "Reload" }));
+    await slot.findByText("Remote plan");
+    expect(slot.queryByText("Discard this edit")).toBeNull();
     expect(slot.queryByRole("button", { name: "Add to chat" })).toBeNull();
     expect(slot.queryByRole("button", { name: "Mention in chat" })).toBeNull();
   });

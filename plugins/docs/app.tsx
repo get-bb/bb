@@ -24,7 +24,11 @@ import {
   type Node as ProseMirrorNode,
 } from "@tiptap/pm/model";
 import { createProposalDiff, proposalDiffKey } from "./proposal-diff.js";
-import { useDocumentSession } from "./document-session.js";
+import {
+  useDocumentSession,
+  useSavedDocument,
+  type DocumentIO,
+} from "./document-session.js";
 import { Icon } from "@bb/shared-ui/icon";
 import {
   Tooltip,
@@ -1193,6 +1197,66 @@ function DocumentPanel({ params }: PluginThreadPanelProps) {
   );
 }
 
+function SavedDocumentEditor({
+  io,
+  onUpload,
+  onReload,
+  errorHint = "",
+}: {
+  io: DocumentIO;
+  onUpload(file: File): Promise<{ markdownPath: string }>;
+  onReload?(): void;
+  errorHint?: string;
+}) {
+  const { state, session } = useSavedDocument(io);
+  if (!state.loaded)
+    return state.error ? (
+      <div className="min-w-0 flex-1 p-6 text-sm text-destructive">
+        {state.error}
+        {errorHint}
+      </div>
+    ) : (
+      <DocumentSkeleton />
+    );
+  return (
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      {state.conflict && (
+        <div className="flex items-center gap-2 border-b border-border bg-muted px-4 py-2 text-xs">
+          Changed on disk.
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => (onReload ? onReload() : void session.reload())}
+          >
+            Reload
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => void session.flush(true).catch(() => undefined)}
+          >
+            Overwrite
+          </Button>
+        </div>
+      )}
+      {state.error && !state.conflict && (
+        <div className="border-b border-border px-4 py-2 text-xs text-destructive">
+          {state.error}
+        </div>
+      )}
+      <TiptapEditor
+        initialValue={state.initialContent}
+        value={state.draft}
+        previewBaseUrl={state.previewBaseUrl}
+        notePath={state.previewPath}
+        onUpload={onUpload}
+        onFirstRender={session.initialize}
+        onMarkdownChange={session.edit}
+      />
+    </div>
+  );
+}
+
 function NotePane({
   vaultId,
   notePath,
@@ -1205,155 +1269,58 @@ function NotePane({
   onRenamed(path: string): void;
 }) {
   const rpc = useRpc<typeof docsRpcContract>();
-  const [state, setState] = useState<
-    { content: string; lease: PreviewLease } | { error: string } | null
-  >(null);
-  const [conflict, setConflict] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const markdownRef = useRef("");
-  const savedRef = useRef("");
-  const shaRef = useRef<string | null>(null);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const savingRef = useRef(false);
-  const pathRef = useRef(notePath);
-  const changedRef = useRef(onChanged);
-  changedRef.current = onChanged;
-  const renamedRef = useRef(onRenamed);
-  renamedRef.current = onRenamed;
-
-  useEffect(() => {
-    let active = true;
-    setState(null);
-    Promise.all([
-      rpc.call("readNote", { vaultId, path: notePath }),
-      rpc.call("preparePreview", { vaultId, path: notePath }),
-    ])
-      .then(([file, lease]) => {
-        if (!active) return;
-        pathRef.current = notePath;
-        markdownRef.current = file.content;
-        savedRef.current = file.content;
-        shaRef.current = file.sha256;
-        setState({ content: file.content, lease });
-      })
-      .catch((error: unknown) => {
-        if (active)
-          setState({
-            error: errorMessage(error),
-          });
-      });
-    return () => {
-      active = false;
-    };
-  }, [notePath, rpc, vaultId]);
-
-  const save = useCallback(
-    async (force = false) => {
-      if (
-        savingRef.current ||
-        (!force && markdownRef.current === savedRef.current)
-      )
-        return;
-      savingRef.current = true;
-      setSaveError(null);
-      const content = markdownRef.current;
-      try {
-        const result = await rpc.call("saveNote", {
+  const callbacks = useRef({ onChanged, onRenamed });
+  callbacks.current = { onChanged, onRenamed };
+  const { io, upload } = useMemo(() => {
+    let path = notePath;
+    const io: DocumentIO = {
+      delay: 700,
+      read: async () => {
+        const [file, lease] = await Promise.all([
+          rpc.call("readNote", { vaultId, path }),
+          rpc.call("preparePreview", { vaultId, path }),
+        ]);
+        return {
+          content: file.content,
+          sha256: file.sha256,
+          previewBaseUrl: lease.baseUrl,
+          previewPath: path,
+          proposal: null,
+        };
+      },
+      write: (content, expectedSha256) =>
+        rpc.call("saveNote", {
           vaultId,
-          path: pathRef.current,
+          path,
           content,
-          ...(!force && shaRef.current
-            ? { expectedSha256: shaRef.current }
-            : {}),
-        });
-        if (result.outcome === "conflict") {
-          setConflict(true);
-          return;
+          ...(expectedSha256 === null ? {} : { expectedSha256 }),
+        }),
+      afterSave: async () => {
+        callbacks.current.onChanged();
+        const renamed = await rpc.call("renameToTitle", { vaultId, path });
+        if (renamed.path !== path) {
+          path = renamed.path;
+          callbacks.current.onRenamed(path);
         }
-        savedRef.current = content;
-        shaRef.current = result.sha256;
-        setConflict(false);
-        changedRef.current();
-        const renamed = await rpc.call("renameToTitle", {
-          vaultId,
-          path: pathRef.current,
-        });
-        if (renamed.path !== pathRef.current) {
-          pathRef.current = renamed.path;
-          renamedRef.current(renamed.path);
-        }
-      } catch (error) {
-        setSaveError(errorMessage(error));
-      } finally {
-        savingRef.current = false;
-      }
-    },
-    [rpc, vaultId],
-  );
-
-  const scheduleSave = useCallback(() => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => void save(), 700);
-  }, [save]);
-
-  useEffect(
-    () => () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-      void save();
-    },
-    [save],
-  );
-
-  if (!state) return <DocumentSkeleton />;
-  if ("error" in state)
-    return (
-      <div className="min-w-0 flex-1 p-6 text-sm text-destructive">
-        {state.error}
-      </div>
-    );
-
+      },
+    };
+    const upload = async (file: File) => {
+      const result = await rpc.call("uploadAttachment", {
+        vaultId,
+        notePath: path,
+        name: file.name,
+        content: await fileToBase64(file),
+      });
+      return { markdownPath: result.markdownPath };
+    };
+    return { io, upload };
+  }, [rpc, vaultId, notePath]);
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      {conflict ? (
-        <div className="flex items-center gap-2 border-b border-border bg-muted px-4 py-2 text-xs">
-          Changed on disk.
-          <Button size="sm" variant="ghost" onClick={() => location.reload()}>
-            Reload
-          </Button>
-          <Button size="sm" variant="ghost" onClick={() => void save(true)}>
-            Overwrite
-          </Button>
-        </div>
-      ) : null}
-      {saveError ? (
-        <div className="border-b border-border px-4 py-2 text-xs text-destructive">
-          {saveError}
-        </div>
-      ) : null}
-      <TiptapEditor
-        initialValue={state.content}
-        previewBaseUrl={state.lease.baseUrl}
-        notePath={notePath}
-        onUpload={async (file) => {
-          const content = await fileToBase64(file);
-          const value = await rpc.call("uploadAttachment", {
-            vaultId,
-            notePath: pathRef.current,
-            name: file.name,
-            content,
-          });
-          return { markdownPath: value.markdownPath };
-        }}
-        onFirstRender={(markdown) => {
-          markdownRef.current = markdown;
-          savedRef.current = markdown;
-        }}
-        onMarkdownChange={(markdown) => {
-          markdownRef.current = markdown;
-          scheduleSave();
-        }}
-      />
-    </div>
+    <SavedDocumentEditor
+      io={io}
+      onUpload={upload}
+      onReload={() => location.reload()}
+    />
   );
 }
 
@@ -1402,103 +1369,32 @@ function DocsFileOpener({ path: filePath, source }: PluginFileOpenerProps) {
       source.threadId,
     ],
   );
-  const [state, setState] = useState<
-    | { content: string; lease: PreviewLease; previewPath: string }
-    | { error: string }
-    | null
-  >(null);
-  const [conflict, setConflict] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [reloadNonce, setReloadNonce] = useState(0);
-  const markdownRef = useRef("");
-  const savedRef = useRef("");
-  const shaRef = useRef<string | null>(null);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const savingRef = useRef(false);
-
-  useEffect(() => {
-    let active = true;
-    setState(null);
-    setConflict(false);
-    setSaveError(null);
-    void rpc
-      .call("openFile", { source: openerSource, path: filePath })
-      .then(({ file, preview, previewPath }) => {
-        if (!active) return;
-        markdownRef.current = file.content;
-        savedRef.current = file.content;
-        shaRef.current = file.sha256;
-        setState({ content: file.content, lease: preview, previewPath });
-      })
-      .catch((error: unknown) => {
-        if (active) {
-          setState({
-            error: errorMessage(error),
-          });
-        }
-      });
-    return () => {
-      active = false;
-    };
-  }, [filePath, openerSource, reloadNonce, rpc]);
-
-  const save = useCallback(
-    async (force = false) => {
-      if (
-        savingRef.current ||
-        (!force && markdownRef.current === savedRef.current)
-      )
-        return;
-      savingRef.current = true;
-      setSaveError(null);
-      const content = markdownRef.current;
-      try {
-        const result = await rpc.call("saveOpenedFile", {
+  const io = useMemo<DocumentIO>(
+    () => ({
+      delay: 700,
+      read: async () => {
+        const { file, preview, previewPath } = await rpc.call("openFile", {
+          source: openerSource,
+          path: filePath,
+        });
+        return {
+          content: file.content,
+          sha256: file.sha256,
+          previewBaseUrl: preview.baseUrl,
+          previewPath,
+          proposal: null,
+        };
+      },
+      write: (content, expectedSha256) =>
+        rpc.call("saveOpenedFile", {
           source: openerSource,
           path: filePath,
           content,
-          ...(!force && shaRef.current
-            ? { expectedSha256: shaRef.current }
-            : {}),
-        });
-        if (result.outcome === "conflict") {
-          setConflict(true);
-          return;
-        }
-        savedRef.current = content;
-        shaRef.current = result.sha256;
-        setConflict(false);
-      } catch (error) {
-        setSaveError(errorMessage(error));
-      } finally {
-        savingRef.current = false;
-      }
-    },
-    [filePath, openerSource, rpc],
+          ...(expectedSha256 === null ? {} : { expectedSha256 }),
+        }),
+    }),
+    [rpc, openerSource, filePath],
   );
-
-  const scheduleSave = useCallback(() => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => void save(), 700);
-  }, [save]);
-
-  useEffect(
-    () => () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-      void save();
-    },
-    [save],
-  );
-
-  if (!state) return <DocumentSkeleton />;
-  if ("error" in state) {
-    return (
-      <div className="min-w-0 flex-1 p-6 text-sm text-destructive">
-        {state.error} — use the tab&apos;s Open with menu to choose another
-        viewer.
-      </div>
-    );
-  }
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       {liveFileTarget === null ? null : (
@@ -1523,42 +1419,13 @@ function DocsFileOpener({ path: filePath, source }: PluginFileOpenerProps) {
           </Button>
         </div>
       )}
-      {conflict ? (
-        <div className="flex items-center gap-2 border-b border-border bg-muted px-4 py-2 text-xs">
-          Changed on disk.
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => setReloadNonce((value) => value + 1)}
-          >
-            Reload
-          </Button>
-          <Button size="sm" variant="ghost" onClick={() => void save(true)}>
-            Overwrite
-          </Button>
-        </div>
-      ) : null}
-      {saveError ? (
-        <div className="border-b border-border px-4 py-2 text-xs text-destructive">
-          {saveError}
-        </div>
-      ) : null}
-      <TiptapEditor
-        initialValue={state.content}
-        previewBaseUrl={state.lease.baseUrl}
-        notePath={state.previewPath}
+      <SavedDocumentEditor
+        io={io}
+        errorHint=" — use the tab's Open with menu to choose another viewer."
         onUpload={async () => {
           throw new Error(
             "Add this file to a Docs vault before uploading images",
           );
-        }}
-        onFirstRender={(markdown) => {
-          markdownRef.current = markdown;
-          savedRef.current = markdown;
-        }}
-        onMarkdownChange={(markdown) => {
-          markdownRef.current = markdown;
-          scheduleSave();
         }}
       />
     </div>
