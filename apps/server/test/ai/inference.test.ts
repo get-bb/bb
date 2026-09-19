@@ -5,7 +5,7 @@ import {
   inferenceComplete,
 } from "../../src/services/ai/inference.js";
 import { registerFakeAiService } from "../helpers/ai-services.js";
-import { seedHostSession } from "../helpers/seed.js";
+import { seedHostSession, seedPrimaryHost } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
 
 const titleSchema = Type.Object({
@@ -42,7 +42,8 @@ describe("inferenceComplete", () => {
         inferenceModel: "codex/gpt-5.6-luna",
       },
       async (harness) => {
-        seedHostSession(harness.deps);
+        const { host } = seedHostSession(harness.deps);
+        seedPrimaryHost(harness.deps, host.id);
         await expect(
           inferenceComplete(harness.deps, {
             prompt: "Generate a title",
@@ -60,7 +61,8 @@ describe("inferenceComplete", () => {
         inferenceModel: "openai/no-such-model",
       },
       async (harness) => {
-        seedHostSession(harness.deps);
+        const { host } = seedHostSession(harness.deps);
+        seedPrimaryHost(harness.deps, host.id);
         const fake = registerFakeAiService(harness.deps.aiServices, {
           id: "openai",
           completeInference: () => ({
@@ -88,6 +90,7 @@ describe("inferenceComplete", () => {
       },
       async (harness) => {
         const { host } = seedHostSession(harness.deps);
+        seedPrimaryHost(harness.deps, host.id);
         const fake = registerFakeAiService(harness.deps.aiServices, {
           completeInference: (input) => ({
             ok: true,
@@ -124,7 +127,8 @@ describe("inferenceComplete", () => {
         inferenceModel: "codex/gpt-5.6-luna",
       },
       async (harness) => {
-        seedHostSession(harness.deps);
+        const { host } = seedHostSession(harness.deps);
+        seedPrimaryHost(harness.deps, host.id);
         const fake = registerFakeAiService(harness.deps.aiServices, {
           completeInference: (input) => ({
             ok: true,
@@ -151,7 +155,8 @@ describe("inferenceComplete", () => {
         inferenceModel: "codex/gpt-5.6-luna",
       },
       async (harness) => {
-        seedHostSession(harness.deps);
+        const { host } = seedHostSession(harness.deps);
+        seedPrimaryHost(harness.deps, host.id);
         registerFakeAiService(harness.deps.aiServices, {
           completeInference: (input) => ({
             ok: true,
@@ -176,7 +181,8 @@ describe("inferenceComplete", () => {
         inferenceModel: "codex/gpt-5.6-luna",
       },
       async (harness) => {
-        seedHostSession(harness.deps);
+        const { host } = seedHostSession(harness.deps);
+        seedPrimaryHost(harness.deps, host.id);
         registerFakeAiService(harness.deps.aiServices, {
           completeInference: () => ({
             ok: false,
@@ -201,7 +207,8 @@ describe("inferenceComplete", () => {
         inferenceModel: "codex/gpt-5.6-luna",
       },
       async (harness) => {
-        seedHostSession(harness.deps);
+        const { host } = seedHostSession(harness.deps);
+        seedPrimaryHost(harness.deps, host.id);
         registerFakeAiService(harness.deps.aiServices, {
           completeInference: () => ({
             ok: false,

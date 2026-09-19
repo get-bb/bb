@@ -100,7 +100,6 @@ describe.skipIf(!corpusAvailable())(
               )?.info.displayName,
               threadName: thread.title ?? "",
               threadStatus: thread.status,
-              turnMessageDetail: "summary",
               workspaceRoot: null,
             },
           });

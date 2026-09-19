@@ -12,7 +12,14 @@ export interface SplitDragFallbackTarget {
   container: HTMLElement | null;
 }
 
+export interface AuxiliaryDropTarget {
+  element: HTMLElement;
+  label: string;
+  drop: () => void;
+}
+
 export interface SplitDragConfig {
+  resolveAuxiliaryTarget?: (x: number, y: number) => AuxiliaryDropTarget | null;
   ghostLabel: string;
   sourceEl?: HTMLElement | null;
   decide: (paneId: string, zone: SplitZone) => ZoneDecision | null;
@@ -33,6 +40,7 @@ interface ResolvedTarget {
 }
 
 export function beginSplitDrag(config: SplitDragConfig): void {
+  let auxiliaryTarget: AuxiliaryDropTarget | null = null;
   let engaged = false;
   let target: SplitDropTarget | null = null;
   let ghostEl: HTMLElement | null = null;
@@ -115,6 +123,16 @@ export function beginSplitDrag(config: SplitDragConfig): void {
     }
 
     target = null;
+    auxiliaryTarget =
+      config.resolveAuxiliaryTarget?.(event.clientX, event.clientY) ?? null;
+    if (auxiliaryTarget && overlayEl) {
+      positionOverlay(
+        overlayEl,
+        auxiliaryTarget.element.getBoundingClientRect(),
+        auxiliaryTarget.label,
+      );
+      return;
+    }
     const resolved = resolveTarget(event.clientX, event.clientY);
     if (resolved && overlayEl) {
       const zone = pickZone(resolved.rect, event.clientX, event.clientY);
@@ -150,15 +168,19 @@ export function beginSplitDrag(config: SplitDragConfig): void {
   function handleUp(): void {
     const wasEngaged = engaged;
     const dropTarget = engaged ? target : null;
+    const auxiliaryDrop = engaged ? auxiliaryTarget : null;
     teardown();
     if (wasEngaged) {
       swallowNextClick();
     }
+    if (auxiliaryDrop) auxiliaryDrop.drop();
     if (dropTarget) {
       config.onDrop(dropTarget);
     }
     if (wasEngaged) {
-      config.onEnd?.({ dropped: dropTarget !== null });
+      config.onEnd?.({
+        dropped: dropTarget !== null || auxiliaryDrop !== null,
+      });
     }
   }
 

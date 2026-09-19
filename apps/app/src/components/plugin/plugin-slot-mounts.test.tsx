@@ -19,6 +19,7 @@ import { createStore, Provider } from "jotai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type {
+  ExperimentalComposerSelection,
   PluginComposerApi,
   PluginFileOpenerProps,
   PluginNewThreadPanelProps,
@@ -1325,6 +1326,154 @@ describe("useComposer", () => {
       /cannot submit/,
     );
     expect(submit).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("useComposer().experimental_setSelection", () => {
+  function ComposerCustomizationMount() {
+    const view = useComposerView();
+    return <ComposerActionsSlot view={view} />;
+  }
+
+  function registerSelectionProbe(
+    onRender: (composer: PluginComposerApi) => void,
+  ) {
+    function SelectionProbe() {
+      onRender(useComposer());
+      return <div>selection probe</div>;
+    }
+    setPluginSlotRegistrations("demo", {
+      homepageSections: [],
+      settingsSections: [],
+      navPanels: [],
+      threadPanelActions: [],
+      sidebarFooterActions: [],
+      fileOpeners: [],
+      messageDirectives: [],
+      composerCustomizations: [
+        {
+          id: "selection",
+          actions: [{ id: "probe", component: SelectionProbe }],
+        },
+      ],
+    });
+  }
+
+  const emptyDraft: PromptDraftState = {
+    text: "",
+    mentions: [],
+    attachments: [],
+  };
+
+  function Harness({
+    host,
+  }: {
+    host: Omit<
+      PluginComposerHost,
+      "getCurrent" | "subscribeDraft" | "setDraft" | "focus"
+    >;
+  }) {
+    const value = useMemo<PluginComposerHost>(
+      () => ({
+        ...host,
+        getCurrent: () => emptyDraft,
+        subscribeDraft: () => () => {},
+        setDraft: () => {},
+        focus: () => {},
+      }),
+      [host],
+    );
+    return (
+      <PluginComposerHostProvider value={value}>
+        <ComposerCustomizationMount />
+      </PluginComposerHostProvider>
+    );
+  }
+
+  it("routes to the composer host, validates the selection, and refuses where there are no pickers", async () => {
+    const setSelection = vi.fn(
+      async (selection: ExperimentalComposerSelection) => ({
+        ...selection,
+        model: "gpt-5",
+      }),
+    );
+    let captured: PluginComposerApi | null = null;
+    registerSelectionProbe((composer) => {
+      captured = composer;
+    });
+
+    const threadView = render(
+      <MemoryRouter initialEntries={["/threads/thr_selection"]}>
+        <Harness
+          host={{
+            scope: { kind: "thread", threadId: "thr_selection" },
+            textEffectKey: "thread:thr_selection",
+            setSelection,
+          }}
+        />
+      </MemoryRouter>,
+    );
+    await expect(
+      captured!.experimental_setSelection({
+        providerId: "codex",
+        model: "gpt-5-mini",
+        reasoningLevel: "high",
+      }),
+    ).resolves.toEqual({
+      providerId: "codex",
+      model: "gpt-5",
+      reasoningLevel: "high",
+    });
+    expect(setSelection).toHaveBeenCalledWith({
+      providerId: "codex",
+      model: "gpt-5-mini",
+      reasoningLevel: "high",
+    });
+
+    await expect(
+      captured!.experimental_setSelection({
+        reasoningLevel: "extreme" as never,
+      }),
+    ).rejects.toThrow(/reasoning level/);
+    await expect(
+      captured!.experimental_setSelection({ permissionMode: "yolo" as never }),
+    ).rejects.toThrow(/permission mode/);
+    await expect(
+      captured!.experimental_setSelection({ serviceTier: "turbo" as never }),
+    ).rejects.toThrow(/service tier/);
+    await expect(
+      captured!.experimental_setSelection({
+        environment: { type: "teleport" } as never,
+      }),
+    ).rejects.toThrow(/environment/);
+    expect(setSelection).toHaveBeenCalledTimes(1);
+    threadView.unmount();
+
+    for (const scope of [
+      {
+        kind: "queued-message" as const,
+        threadId: "thr_selection",
+        queuedMessageId: "qmsg_1",
+      },
+      {
+        kind: "side-chat" as const,
+        projectId: "proj_1",
+        parentThreadId: "thr_selection",
+        tabId: "side-chat:one",
+        childThreadId: null,
+      },
+    ]) {
+      const view = render(
+        <MemoryRouter initialEntries={["/threads/thr_selection"]}>
+          <Harness host={{ scope, textEffectKey: `${scope.kind}:probe` }} />
+        </MemoryRouter>,
+      );
+      await expect(
+        captured!.experimental_setSelection({ model: "gpt-5" }),
+      ).rejects.toThrow(/no pickers/);
+      view.unmount();
+    }
+    expect(setSelection).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -64,6 +64,7 @@ import {
   onCompactionBegin,
   onCompactionEnd,
   upsertPermissionGrantLifecycleMessage,
+  upsertPluginFormLifecycleMessage,
   upsertUserQuestionLifecycleMessage,
   upsertFileEdit,
   upsertProvisioningOperation,
@@ -173,6 +174,7 @@ function isEventProjectionCallMessage(
     case "error":
     case "operation":
     case "permission-grant-lifecycle":
+    case "plugin-form-lifecycle":
     case "user":
     case "user-question-lifecycle":
     case "workflow":
@@ -958,6 +960,10 @@ function buildFlatProjectionData(
       }
       if (operation.kind === "user-question-lifecycle") {
         upsertUserQuestionLifecycleMessage(state, operation);
+        continue;
+      }
+      if (operation.kind === "plugin-form-lifecycle") {
+        upsertPluginFormLifecycleMessage(state, operation);
         continue;
       }
       state.messages.push(operation);

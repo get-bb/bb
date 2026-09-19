@@ -69,7 +69,7 @@ async function buildRuntimeArtifacts() {
       "--filter=@bb/app",
       "--filter=@bb/server",
       "--filter=@bb/host-daemon",
-      "--concurrency=2",
+      "--concurrency=4",
       "--output-logs=none",
       "--log-prefix=none",
       "--summarize=false",

@@ -9,6 +9,7 @@ export const EXTENDED_ICON_NAMES = [
   "AppWindow",
   "ArchiveRestore",
   "ArrowDown",
+  "ArrowLeft",
   "ArrowRight",
   "ArrowReloadHorizontal",
   "ArrowUp",
@@ -76,6 +77,7 @@ export const EXTENDED_ICON_NAMES = [
   "MailOpen",
   "Maximize2",
   "Mic",
+  "Minus",
   "Minimize2",
   "MoveTo",
   "NewTab",
@@ -163,5 +165,24 @@ export function subscribeAppIcons(listener: () => void): () => void {
   appIconListeners.add(listener);
   return () => {
     appIconListeners.delete(listener);
+  };
+}
+
+let pluginAssetIcons: ReadonlyMap<string, string> = new Map();
+const pluginAssetIconListeners = new Set<() => void>();
+
+export function setPluginAssetIcons(next: ReadonlyMap<string, string>): void {
+  pluginAssetIcons = next;
+  for (const listener of pluginAssetIconListeners) listener();
+}
+
+export function getPluginAssetIcon(glyph: string): string | undefined {
+  return pluginAssetIcons.get(glyph);
+}
+
+export function subscribePluginAssetIcons(listener: () => void): () => void {
+  pluginAssetIconListeners.add(listener);
+  return () => {
+    pluginAssetIconListeners.delete(listener);
   };
 }

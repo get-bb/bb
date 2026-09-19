@@ -530,4 +530,66 @@ describe("provider retry plugin", () => {
     expect(host.deleted).toEqual([]);
     await host.harness.dispose();
   });
+
+  it("acts on the invoking thread and says how to name one outside a thread", async () => {
+    const host = createHost([queuedRetry()]);
+    await plugin(host.bb);
+
+    const cancelled = await host.harness.runCli(["cancel"], {
+      threadId: THREAD_ID,
+    });
+    expect(cancelled.exitCode, cancelled.stderr).toBe(0);
+    expect(host.deleted).toEqual([
+      { threadId: THREAD_ID, queuedMessageId: "queued_1" },
+    ]);
+
+    const missing = await host.harness.runCli(["cancel"]);
+    expect(missing.exitCode).toBe(2);
+    expect(missing.stderr).toContain(
+      "A thread id is required: bb provider-retry cancel <thread-id>",
+    );
+    await host.harness.dispose();
+  });
+
+  it("renders help, refuses unknown flags, and reports errors as JSON", async () => {
+    const host = createHost();
+    await plugin(host.bb);
+
+    for (const argv of [["--help"], ["-h"], ["cancel", "--help"]]) {
+      const help = await host.harness.runCli(argv);
+      expect(help.exitCode, argv.join(" ")).toBe(0);
+      expect(help.stderr).toBe("");
+      expect(help.stdout).toContain("bb provider-retry");
+    }
+    expect((await host.harness.runCli(["retry", "--help"])).stdout).toContain(
+      "[<thread-id>]",
+    );
+
+    const unknownFlag = await host.harness.runCli(["status", "--jsom"]);
+    expect(unknownFlag.exitCode).toBe(2);
+    expect(unknownFlag.stderr).toContain("unknown option '--jsom'");
+    expect(unknownFlag.stderr).toContain("(Did you mean --json?)");
+
+    const unknownCommand = await host.harness.runCli(["cancle", THREAD_ID]);
+    expect(unknownCommand.exitCode).toBe(2);
+    expect(unknownCommand.stderr).toContain("unknown command 'cancle'");
+    expect(unknownCommand.stderr).toContain("(Did you mean cancel?)");
+
+    const stray = await host.harness.runCli(["retry", THREAD_ID, "extra"]);
+    expect(stray.exitCode).toBe(2);
+    expect(stray.stderr).toContain("unexpected argument 'extra'");
+    expect(host.sent).toEqual([]);
+
+    const envelope = await host.harness.runCli(["cancel", THREAD_ID, "--json"]);
+    expect(envelope.exitCode).toBe(1);
+    expect(JSON.parse(envelope.stdout)).toMatchObject({
+      ok: false,
+      error: {
+        code: "no_pending_retry",
+        message: `No pending provider retry exists for ${THREAD_ID}.`,
+      },
+    });
+    expect(host.deleted).toEqual([]);
+    await host.harness.dispose();
+  });
 });

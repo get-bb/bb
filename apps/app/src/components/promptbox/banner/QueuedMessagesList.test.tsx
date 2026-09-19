@@ -1937,6 +1937,29 @@ describe("queued row affordances", () => {
     ).toBeDefined();
   });
 
+  it("names no sender on a retry row even though the server calls it system", () => {
+    const { container, getByText } = renderQueuedMessages([
+      makeThreadQueuedMessage({
+        id: "q_retry_sender",
+        initiator: "system",
+        payload: {
+          kind: "retry",
+          retryOfTurnRequestId: "req_1",
+          attempt: 2,
+          reason: "Rate limited",
+        },
+        waitingOn: { kind: "time" },
+        sendAt: 0,
+      }),
+    ]);
+    expect(
+      container.querySelector("[data-queued-message-sender]"),
+    ).toBeNull();
+    expect(
+      getByText(/^Rate limited · retrying at .* · attempt 2$/u),
+    ).toBeDefined();
+  });
+
   it("offers no edit on a row the server says is not editable", () => {
     const { queryByLabelText } = renderQueuedMessages([
       {

@@ -90,6 +90,23 @@ function httpStatus(error: unknown): number | null {
   return typeof status === "number" ? status : null;
 }
 
+const previewTargetSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("workspace"),
+      environmentId: z.string(),
+      path: z.string(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("thread-storage"),
+      threadId: z.string(),
+      path: z.string(),
+    })
+    .strict(),
+]);
+
 export const inlineVisRpcContract = defineRpcContract({
   preparePreview: {
     input: z
@@ -111,6 +128,7 @@ export const inlineVisRpcContract = defineRpcContract({
           kind: z.literal("html"),
           file: z.string(),
           source: z.enum(["workspace", "thread-storage"]),
+          target: previewTargetSchema,
         })
         .strict(),
       z
@@ -118,29 +136,9 @@ export const inlineVisRpcContract = defineRpcContract({
           kind: z.literal("markdown"),
           file: z.string(),
           source: z.enum(["workspace", "thread-storage"]),
+          target: previewTargetSchema,
+          rootPath: z.string(),
           content: z.string(),
-          document: z
-            .object({
-              rootPath: z.string(),
-              threadId: z.string(),
-              target: z.discriminatedUnion("kind", [
-                z
-                  .object({
-                    kind: z.literal("workspace"),
-                    environmentId: z.string(),
-                    path: z.string(),
-                  })
-                  .strict(),
-                z
-                  .object({
-                    kind: z.literal("thread-storage"),
-                    threadId: z.string(),
-                    path: z.string(),
-                  })
-                  .strict(),
-              ]),
-            })
-            .strict(),
         })
         .strict(),
     ]),
@@ -221,14 +219,8 @@ export default async function plugin(bb: BbPluginApi) {
 
       const kind = previewKind(file);
       return kind === "markdown"
-        ? {
-            kind,
-            file,
-            source,
-            content: result.content,
-            document: { rootPath, threadId, target },
-          }
-        : { kind, file, source };
+        ? { kind, file, source, target, rootPath, content: result.content }
+        : { kind, file, source, target };
     },
   });
 }

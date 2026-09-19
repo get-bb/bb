@@ -169,6 +169,7 @@ export function TopLevelSidebarSection({
       ref={sectionRef}
       style={sectionStyle}
       data-sidebar-section-id={sectionId}
+      data-sidebar-sticky-header={stickyHeader ? undefined : "false"}
       className={cn(
         "group/sidebar-section min-w-0 rounded-md transition-colors",
         isDropTargetActive && "bg-sidebar-accent/60",

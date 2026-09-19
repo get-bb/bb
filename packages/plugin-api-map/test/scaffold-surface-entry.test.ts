@@ -100,6 +100,8 @@ describe("surface-entry scaffold", () => {
       "apps/app/src/components/commands/CommandPalette.test.tsx",
       "--source",
       "apps/app/src/components/commands/CommandPalette.tsx",
+      "--source",
+      "apps/app/src/components/commands/PaletteShell.tsx",
       "--api-symbol",
       "PluginCommandRegistration",
       "--api-symbol",
@@ -114,6 +116,8 @@ describe("surface-entry scaffold", () => {
       "PluginCommandContext",
       "--source",
       "apps/app/src/components/commands/CommandPalette.tsx",
+      "--source",
+      "apps/app/src/components/commands/PaletteShell.tsx",
       "--source",
       "apps/app/src/components/commands/CommandPalette.test.tsx",
       "--group",
@@ -152,6 +156,10 @@ describe("surface-entry scaffold", () => {
           },
           {
             path: "apps/app/src/components/commands/CommandPalette.tsx",
+            anchors: ["TODO: Add a stable source anchor"],
+          },
+          {
+            path: "apps/app/src/components/commands/PaletteShell.tsx",
             anchors: ["TODO: Add a stable source anchor"],
           },
           {

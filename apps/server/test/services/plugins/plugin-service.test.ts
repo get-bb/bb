@@ -619,6 +619,90 @@ describe("plugin service", () => {
     expect(service.getApi("vanishing")).toBeDefined();
   });
 
+  it("expects a plugin to run until its load pass ends without reaching it", async () => {
+    const globals = globalThis as Record<string, unknown>;
+    globals.__slowFactoryEntered = false;
+    const slowRoot = await writePlugin(workDir, {
+      name: "bb-plugin-aaa-slow",
+      serverSource: `
+        export default async function plugin() {
+          (globalThis as any).__slowFactoryEntered = true;
+          await new Promise((resolve) => setTimeout(resolve, 300));
+        }
+      `,
+    });
+    const pendingRoot = await writePlugin(workDir, {
+      name: "bb-plugin-zzz-pending",
+      serverSource: `export default function plugin() {}`,
+    });
+    const brokenRoot = await writePlugin(workDir, {
+      name: "bb-plugin-zzz-broken",
+      serverSource: `export default function plugin() { throw new Error("nope"); }`,
+    });
+    const install = (id: string, rootDir: string) => {
+      upsertInstalledPlugin(db, {
+        id,
+        source: `path:${rootDir}`,
+        provenance: { kind: "direct" },
+        sourceIntent: { kind: "path", canonicalPath: rootDir },
+        exactResolution: { kind: "path" },
+        updateState: {
+          lastCheckAt: null,
+          availableCompatibleVersion: null,
+          newestIncompatibleVersion: null,
+          statusDetail: null,
+        },
+        activeArtifactId: null,
+        rootDir,
+        version: "0.1.0",
+        enabled: true,
+      });
+    };
+    install("aaa-slow", slowRoot);
+    install("zzz-pending", pendingRoot);
+    install("zzz-broken", brokenRoot);
+
+    const booting = createPluginService({
+      aiServices: createAiServiceRegistry(),
+      telemetry: createNoopTelemetryService(),
+      db,
+      hub: {
+        getDaemonSessionIdForHost: () => null,
+        notifyPluginSignal: () => 0,
+        notifySystem: () => {},
+      },
+      logger,
+      dataDir: join(workDir, "data"),
+      appVersion: "0.9.0",
+      loadTimeoutMs: 2000,
+      bundledPlugins: [],
+    });
+    try {
+      const started = booting.start();
+      await vi.waitFor(() => {
+        expect(globals.__slowFactoryEntered).toBe(true);
+      });
+      expect(booting.isPluginExpectedToRun("zzz-pending")).toBe(true);
+      expect(booting.isPluginExpectedToRun("never-installed")).toBe(false);
+      await started;
+
+      expect(booting.isPluginExpectedToRun("zzz-pending")).toBe(true);
+      expect(booting.isPluginExpectedToRun("zzz-broken")).toBe(false);
+
+      install("arrived-late", pendingRoot);
+      expect(
+        booting.list().find((entry) => entry.id === "arrived-late")?.status,
+      ).toBe("starting");
+      expect(booting.isPluginExpectedToRun("arrived-late")).toBe(false);
+
+      await booting.setEnabled("zzz-pending", false);
+      expect(booting.isPluginExpectedToRun("zzz-pending")).toBe(false);
+    } finally {
+      delete globals.__slowFactoryEntered;
+      await booting.stop();
+    }
+  });
+
   it("logs a warning when a host upgrade makes an installed plugin incompatible (#1915)", async () => {
     const lines: string[] = [];
     const push = (level: string) => (message: unknown) => {
@@ -1074,7 +1158,7 @@ describe("plugin service", () => {
         },
       });
 
-      expect(service.isPluginLoaded("held-tunnel")).toBe(false);
+      expect(service.getApi("held-tunnel")).toBeUndefined();
       expect(
         service.list().find((entry) => entry.id === "held-tunnel"),
       ).toMatchObject({
@@ -1084,7 +1168,7 @@ describe("plugin service", () => {
       });
       expect(globals.__heldFactoryRuns).toBe(0);
       expect(globals.__heldServiceStarts).toBe(0);
-      expect(service.isPluginLoaded("unheld")).toBe(true);
+      expect(service.getApi("unheld")).toBeDefined();
     } finally {
       delete globals.__heldFactoryRuns;
       delete globals.__heldServiceStarts;
@@ -1129,7 +1213,7 @@ describe("plugin service", () => {
     });
 
     function expectHeld(): void {
-      expect(service.isPluginLoaded("held-copy")).toBe(false);
+      expect(service.getApi("held-copy")).toBeUndefined();
       expect(
         service.list().find((entry) => entry.id === "held-copy"),
       ).toMatchObject({
@@ -1158,7 +1242,7 @@ describe("plugin service", () => {
     it("keeps it unloaded on a reload of every plugin or of that plugin alone", async () => {
       expect(await service.reload()).toMatchObject({ ok: true });
       expectHeld();
-      expect(service.isPluginLoaded("free-copy")).toBe(true);
+      expect(service.getApi("free-copy")).toBeDefined();
 
       expect(await service.reload("held-copy")).toMatchObject({ ok: true });
       expectHeld();
@@ -1175,7 +1259,7 @@ describe("plugin service", () => {
       expect(await service.setEnabled("held-copy", true)).toMatchObject({
         status: "running",
       });
-      expect(service.isPluginLoaded("held-copy")).toBe(true);
+      expect(service.getApi("held-copy")).toBeDefined();
       expect(globals.__heldLoads).toBe(1);
 
       expect(await service.reload("held-copy")).toMatchObject({ ok: true });

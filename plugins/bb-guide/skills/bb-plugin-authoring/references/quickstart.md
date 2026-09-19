@@ -130,10 +130,8 @@ the current engine values and the entries for its generated surfaces.
   value unless it targets a same-document `#` reference; no SMIL
   `attributeName` naming an `on*` handler or an `href`; no `xml:base`. Any
   violation fails the plugin load with a message naming the icon.
-  Reference an entry by its namespaced glyph `"<pluginId>/<name>"` — in a
-  bridge's `presentation.icon`,
-  in `bb.agents.registerTool`'s `presentation.icon`, or as a
-  `bb.providers.register` `icon`. BB serves each file hashed from
+  Reference an entry by its namespaced glyph `"<pluginId>/<name>"` anywhere a
+  BB icon name is accepted. BB serves each file hashed from
   `/api/v1/plugins/<id>/assets/icons/<name>.svg`, lists them on the
   installed-plugin inventory as `icons`, and draws them as `currentColor`
   masks (web) or tinted SVG views (mobile), so ship monochrome shapes. A

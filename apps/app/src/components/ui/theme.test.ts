@@ -126,6 +126,43 @@ describe("theme.css neutral ramp", () => {
     expect(rule).toContain("linear-gradient(var(--sidebar), var(--sidebar))");
   });
 
+  it("caps the scrollport strip above pinned sidebar rows", () => {
+    const rule = css
+      .replace(/\s+/g, " ")
+      .match(/\[data-sidebar-sticky-stack\]::before \{([^}]*)\}/)?.[1];
+
+    expect(rule).toContain("position: sticky");
+    expect(rule).toContain("top: 0");
+    expect(rule).toContain("background-color: var(--sidebar)");
+    expect(rule).toContain(
+      "height: var(--bb-sidebar-sticky-stack-padding-top)",
+    );
+    expect(rule).toContain(
+      "margin-top: calc(-1 * var(--bb-sidebar-sticky-stack-padding-top))",
+    );
+  });
+
+  it("collapses the label slot when a section header is not sticky", () => {
+    const compact = css.replace(/\s+/g, " ");
+    const declarations = (selector: string): string | undefined =>
+      compact.match(new RegExp(`${selector} \\{([^}]*)\\}`))?.[1];
+
+    expect(
+      declarations(
+        '\\[data-sidebar-sticky-stack\\] \\[data-sidebar-sticky-header="false"\\]',
+      ),
+    ).toContain(
+      "--bb-sidebar-sticky-project-top: var(--bb-sidebar-sticky-stack-padding-top)",
+    );
+    expect(
+      declarations(
+        "\\[data-sidebar-sticky-stack\\] \\[data-sidebar-sticky-section\\]",
+      ),
+    ).toContain(
+      "--bb-sidebar-sticky-parent-base-top: var(--bb-sidebar-sticky-project-top)",
+    );
+  });
+
   it("resolves the open-in-split thread tint to an opaque sidebar color", () => {
     const rule = css.match(
       /\.bb-sidebar-open-in-split-row\s*\{([^}]*)\}/s,
@@ -312,20 +349,88 @@ describe("theme.css shimmer and scroll-anchor paint scope", () => {
     return source.slice(at, source.indexOf("}", at));
   }
 
+  const sweepPng = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "shine-sweep.png"),
+  );
+
+  function sweepChunks(png: Buffer): { type: string; data: Buffer }[] {
+    const chunks: { type: string; data: Buffer }[] = [];
+    let at = 8;
+    while (at < png.length) {
+      const length = png.readUInt32BE(at);
+      chunks.push({
+        type: png.toString("ascii", at + 4, at + 8),
+        data: png.subarray(at + 8, at + 8 + length),
+      });
+      at += length + 12;
+    }
+    return chunks;
+  }
+
   it("promotes shimmering elements to their own layer only while active", () => {
-    expect(ruleBody("  .animate-shine")).toMatch(/will-change:\s*transform;/);
     expect(ruleBody("  .animate-shine-icon")).toMatch(
       /will-change:\s*transform;/,
     );
   });
 
-  it("pauses the sweep and releases the layer under inert or aria-hidden hosts", () => {
+  it("sweeps with the animated mask image instead of a CSS animation", () => {
+    const shared = ruleBody("  .animate-shine-icon");
+
+    expect(css).toMatch(/ {2}\.animate-shine,\n {2}\.animate-shine-icon \{/);
+    expect(shared).toMatch(
+      /-webkit-mask-image:\s*url\("\.\/shine-sweep\.png"\);/,
+    );
+    expect(shared).toMatch(
+      /(?<!-)mask-image:\s*url\("\.\/shine-sweep\.png"\);/,
+    );
+    expect(shared).toMatch(/(?<!-)mask-size:\s*100% 100%;/);
+    expect(shared).toMatch(/(?<!-)mask-repeat:\s*no-repeat;/);
+    expect(shared).not.toMatch(/animation/);
+    expect(ruleBody("  .animate-shine")).not.toMatch(/animation|background/);
+    expect(css).not.toMatch(/@keyframes shine/);
+  });
+
+  it("ships a looping one-second sweep small enough for Vite to inline", () => {
+    const chunks = sweepChunks(sweepPng);
+    const control = chunks.find((chunk) => chunk.type === "acTL")?.data;
+    const frames = chunks.filter((chunk) => chunk.type === "fcTL");
+    const seconds = frames.reduce(
+      (total, frame) =>
+        total + frame.data.readUInt16BE(20) / frame.data.readUInt16BE(22),
+      0,
+    );
+
+    expect(sweepPng.length).toBeLessThan(4096);
+    expect(control?.readUInt32BE(0)).toBe(frames.length);
+    expect(control?.readUInt32BE(4)).toBe(0);
+    expect(frames.length).toBeGreaterThanOrEqual(20);
+    expect(seconds).toBeCloseTo(1, 5);
+  });
+
+  it("drops the mask and releases the layer under inert or aria-hidden hosts", () => {
     const rule = css.match(
       /\[inert\] \.animate-shine,\s*\[inert\] \.animate-shine-icon,\s*\[aria-hidden="true"\] \.animate-shine,\s*\[aria-hidden="true"\] \.animate-shine-icon \{([^}]*)\}/,
     )?.[1];
     expect(rule).toBeDefined();
-    expect(rule).toMatch(/animation-play-state:\s*paused;/);
+    expect(rule).toMatch(/(?<!-)mask-image:\s*none;/);
+    expect(rule).toMatch(/-webkit-mask-image:\s*none;/);
     expect(rule).toMatch(/will-change:\s*auto;/);
+  });
+
+  it("drops the sweep under reduced motion", () => {
+    const reduced = css.slice(
+      css.lastIndexOf(
+        "@media (prefers-reduced-motion: reduce)",
+        css.indexOf("-webkit-text-fill-color: currentColor;"),
+      ),
+    );
+    const rule = reduced.match(
+      /\.animate-shine,\s*\.animate-shine-icon \{([^}]*)\}/,
+    )?.[1];
+
+    expect(rule).toBeDefined();
+    expect(rule).toMatch(/(?<!-)mask-image:\s*none;/);
+    expect(rule).toMatch(/-webkit-mask-image:\s*none;/);
   });
 
   it("excludes the bottom-anchored wrapper without a universal descendant rule", () => {

@@ -9,6 +9,7 @@
  */
 export * from "./app-contract.js";
 export * from "./backend-contract.js";
+export * from "./cli-spec.js";
 export * from "./host-contract.js";
 export type * from "./json-value.js";
 export * from "./rpc-contract.js";

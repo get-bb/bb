@@ -4,6 +4,7 @@ import {
   reasoningLevelValues,
   type ReasoningLevel,
 } from "@bb/domain";
+import { noteJsonPayloadWritten } from "../cli-error-output.js";
 import type { ResolvedId } from "../context-env.js";
 
 export {
@@ -21,6 +22,7 @@ export interface JsonOutputOptions {
 export function outputJson(opts: JsonOutputOptions, data: unknown): boolean {
   if (!opts.json) return false;
   console.log(JSON.stringify(data, null, 2));
+  noteJsonPayloadWritten();
   return true;
 }
 

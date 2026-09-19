@@ -163,11 +163,11 @@ describe("timeline grouping context cache", () => {
 
   it.each([
     {
-      name: "turn/completed extends a turn past an external request",
-      seed: [turnStarted("turn-1"), userRequest("request-1")],
-      appended: [turnCompleted("turn-1")],
+      name: "a user request arrives while a turn is still running",
+      seed: [turnStarted("turn-1")],
+      appended: [userRequest("request-1")],
       before: null,
-      after: 2,
+      after: 3,
     },
     {
       name: "an accepted steer claims the request for its turn",
@@ -208,11 +208,12 @@ describe("timeline grouping context cache", () => {
         turnStarted("turn-1"),
         rootToolCall("call-1", "turn-1", "item/started"),
         child("call-1", 1),
+        turnCompleted("turn-1"),
         userRequest("request-1"),
       ],
       appended: [child("call-1", 2)],
       before: null,
-      after: 4,
+      after: 5,
     },
   ])("recomputes when $name", (testCase) => {
     withTestThread((testThread) => {
@@ -288,13 +289,14 @@ describe("timeline grouping context cache", () => {
         const warmMaxSeq = appendRows(testThread, [
           turnStarted("turn-1"),
           rootToolCall("call-1", "turn-1", "item/started"),
+          turnCompleted("turn-1"),
           userRequest("request-1"),
           child("call-1", 1),
         ]);
         expect(
           expectCachedEqualsCold(testThread, warmMaxSeq)
             .orderingBoundarySequence,
-        ).toBe(3);
+        ).toBe(4);
 
         remove(testThread, warmMaxSeq);
         const maxSeq = appendRows(testThread, [
@@ -321,15 +323,18 @@ describe("timeline grouping context cache", () => {
       );
       expect(expectCachedEqualsCold(testThread, olderMaxSeq)).toBe(latest);
 
-      const completedMaxSeq = appendRows(testThread, [turnCompleted("turn-1")]);
+      expect(latest.orderingBoundarySequence).toBe(2);
+      const acceptedMaxSeq = appendRows(testThread, [
+        accepted("request-1", "turn-1"),
+      ]);
       expect(
-        expectCachedEqualsCold(testThread, completedMaxSeq)
+        expectCachedEqualsCold(testThread, acceptedMaxSeq)
           .orderingBoundarySequence,
-      ).toBe(2);
+      ).toBeNull();
       expect(
         expectCachedEqualsCold(testThread, olderMaxSeq)
           .orderingBoundarySequence,
-      ).toBeNull();
+      ).toBe(2);
     });
   });
 

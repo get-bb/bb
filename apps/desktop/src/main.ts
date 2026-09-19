@@ -727,11 +727,10 @@ function buildMenuServerItems(connectServers: ConnectServerRef[]): Array<{
       name: server.name,
     });
   }
-  const customUrl = serverTargetStore?.getCustomServerUrl() ?? null;
-  if (customUrl !== null) {
+  for (const customUrl of serverTargetStore?.getCustomServerUrls() ?? []) {
     items.push({
-      checked: target.kind === "custom",
-      id: "custom",
+      checked: target.kind === "custom" && target.url === customUrl,
+      id: `custom:${customUrl}`,
       name: formatCustomServerName(customUrl),
     });
   }
@@ -829,6 +828,9 @@ function refreshApplicationMenu(): void {
     },
     selectServer(serverId) {
       void setActiveServerTarget(serverId);
+    },
+    addServer() {
+      void openSetServerUrlDialog(true);
     },
     setServerUrl() {
       void openSetServerUrlDialog();
@@ -1543,6 +1545,15 @@ async function setActiveServerTarget(serverId: string): Promise<void> {
     await applyServerTarget();
     return;
   }
+  if (serverId.startsWith("custom:")) {
+    const url = serverId.slice("custom:".length);
+    if (!serverTargetStore.getCustomServerUrls().includes(url)) {
+      return;
+    }
+    await serverTargetStore.setCustomServerUrl(url);
+    await applyServerTarget();
+    return;
+  }
   if (serverId !== "builtin" && serverId !== "custom") {
     return;
   }
@@ -1554,12 +1565,13 @@ async function setActiveServerTarget(serverId: string): Promise<void> {
   await applyServerTarget();
 }
 
-async function openSetServerUrlDialog(): Promise<void> {
+async function openSetServerUrlDialog(add = false): Promise<void> {
   if (serverTargetStore === null || serverUrlDialogPreloadPath === null) {
     return;
   }
+  const previousUrl = add ? null : serverTargetStore.getCustomServerUrl();
   const result = await openServerUrlDialog({
-    initialUrl: serverTargetStore.getCustomServerUrl(),
+    initialUrl: previousUrl,
     parentWindow: getFocusedApplicationWindow(),
     preloadPath: serverUrlDialogPreloadPath,
   });
@@ -1574,6 +1586,7 @@ async function openSetServerUrlDialog(): Promise<void> {
   }
   await serverTargetStore.setCustomServerUrl(
     result.kind === "set" ? result.url : null,
+    previousUrl ?? undefined,
   );
   await applyServerTarget();
 }
