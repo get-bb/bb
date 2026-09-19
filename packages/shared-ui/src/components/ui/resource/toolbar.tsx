@@ -154,7 +154,7 @@ export function ResourceToolbar({
       <div
         ref={searchRef}
         className={cn(
-          "relative",
+          "relative @container/resource-search",
           compact
             ? "min-w-0 flex-1 basis-40"
             : "w-full min-w-0 sm:w-auto sm:flex-1",
@@ -162,7 +162,12 @@ export function ResourceToolbar({
       >
         <Icon
           name="Search"
-          className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
+          className={cn(
+            "pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground",
+            searchCondensed &&
+              !searchExpanded &&
+              "@max-[4rem]/resource-search:left-1/2 @max-[4rem]/resource-search:-translate-x-1/2",
+          )}
           aria-hidden
         />
         <Input
@@ -187,7 +192,12 @@ export function ResourceToolbar({
               event.currentTarget.blur();
             }
           }}
-          className="h-8 pl-8"
+          className={cn(
+            "h-8 pl-8",
+            searchCondensed &&
+              !searchExpanded &&
+              "@max-[4rem]/resource-search:px-0 @max-[4rem]/resource-search:text-transparent @max-[4rem]/resource-search:placeholder:text-transparent",
+          )}
         />
       </div>
       {controls ? (
