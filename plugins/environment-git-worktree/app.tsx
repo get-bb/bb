@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import {
   BRANCH_PICKER_CONTENT_CLASS_NAME,
   BranchPickerRow,
+  BranchPickerSearch,
   BranchPickerSectionHeader,
 } from "@bb/shared-ui/branch-picker-primitives";
 import { Button } from "@bb/shared-ui/button";
@@ -19,10 +20,11 @@ import {
   OPTION_MUTED_CLASS_NAME,
   OPTION_TRIGGER_CONTENT_CLASS_NAME,
 } from "@bb/shared-ui/option-display";
+import { blurActiveKeyboardInputWithin } from "@bb/shared-ui/overlay-trigger";
 import { Popover, PopoverContent, PopoverTrigger } from "@bb/shared-ui/popover";
 import {
   definePluginApp,
-  experimental_BranchPicker,
+  experimental_useBranches,
   useRpc,
   type JsonValue,
   type PluginEnvironmentProviderInputsProps,
@@ -31,9 +33,11 @@ import type { DiscoveredWorktree } from "./contract.js";
 import { GIT_WORKTREE_ENVIRONMENT_PROVIDER_ID } from "./provider-id.js";
 import type { WorktreeInputs, worktreeRpcContract } from "./server.js";
 
-const BranchPicker = experimental_BranchPicker;
 const DEFAULT_INPUTS: WorktreeInputs = { branch: { kind: "default" } };
 const NEW_WORKTREE_LABEL = "New worktree";
+const EXISTING_WORKTREE_LABEL = "Existing worktree";
+
+type WorktreeIntent = "new" | "existing";
 
 export function selectedBranchName(value: JsonValue | null): string | null {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -61,6 +65,12 @@ export function worktreeDirectoryName(path: string): string {
   return path.split("/").filter(Boolean).at(-1) ?? path;
 }
 
+function filterBranches(branches: readonly string[], query: string): string[] {
+  const normalized = query.trim().toLowerCase();
+  if (normalized.length === 0) return [...branches];
+  return branches.filter((branch) => branch.toLowerCase().includes(normalized));
+}
+
 function WorktreeInputsControl({
   projectId,
   target,
@@ -71,12 +81,25 @@ function WorktreeInputsControl({
   const rpc = useRpc<typeof worktreeRpcContract>();
   const [worktrees, setWorktrees] = useState<readonly DiscoveredWorktree[]>([]);
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const deferredQuery = useDeferredValue(query);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const optionsScrollRef = useRef<HTMLDivElement>(null);
+
   const existingPath = selectedExistingPath(value);
+  const branchName = selectedBranchName(value);
+  const selectedIntent: WorktreeIntent =
+    existingPath === null ? "new" : "existing";
+  const [intent, setIntent] = useState<WorktreeIntent>(selectedIntent);
+
+  const branchState = experimental_useBranches({
+    hostId,
+    projectId,
+    query: deferredQuery.trim().toLowerCase(),
+  });
 
   useEffect(() => {
-    if (value === null) {
-      onChange({ status: "ready", value: DEFAULT_INPUTS });
-    }
+    if (value === null) onChange({ status: "ready", value: DEFAULT_INPUTS });
   }, [value, onChange]);
 
   useEffect(() => {
@@ -98,130 +121,202 @@ function WorktreeInputsControl({
     };
   }, [projectId, hostId, rpc]);
 
-  const branchPicker = (
-    <BranchPicker
-      hostId={hostId}
-      projectId={projectId}
-      label="Branch from:"
-      value={selectedBranchName(value)}
-      onChange={(next) => {
-        onChange({
-          status: "ready",
-          value:
-            next === null
-              ? DEFAULT_INPUTS
-              : { branch: { kind: "named", name: next } },
-        });
-      }}
-    />
+  useEffect(() => {
+    if (open) setIntent(selectedIntent);
+  }, [open, selectedIntent]);
+
+  useEffect(() => {
+    if (optionsScrollRef.current) optionsScrollRef.current.scrollTop = 0;
+  }, [intent, query]);
+
+  const branchOptions = useMemo(
+    () => filterBranches(branchState.branches, deferredQuery),
+    [branchState.branches, deferredQuery],
   );
 
-  if (worktrees.length === 0 && existingPath === null) return branchPicker;
-
-  const selectWorktree = (path: string | null) => {
-    onChange({
-      status: "ready",
-      value: path === null ? DEFAULT_INPUTS : { kind: "existing", path },
-    });
-    setOpen(false);
-  };
   const triggerLabel =
     existingPath === null
-      ? NEW_WORKTREE_LABEL
+      ? branchName === null
+        ? NEW_WORKTREE_LABEL
+        : `New worktree from: ${branchName}`
       : worktreeDirectoryName(existingPath);
+  const triggerTitle =
+    existingPath ??
+    (branchName === null
+      ? "Create a worktree from the default branch"
+      : `Create a worktree from ${branchName}`);
+
+  const updateOpen = (nextOpen: boolean) => {
+    if (!nextOpen) {
+      blurActiveKeyboardInputWithin(inputRef.current);
+      setQuery("");
+    } else {
+      void branchState.refresh().catch(() => undefined);
+    }
+    setOpen(nextOpen);
+  };
+  const submit = (next: WorktreeInputs) => {
+    onChange({ status: "ready", value: next });
+    updateOpen(false);
+  };
 
   return (
-    <>
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild disabled={projectId === null}>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            disabled={projectId === null}
-            aria-label="Worktree"
-            role="combobox"
-            aria-expanded={open}
-            className={cn(
-              LIST_HOVER_TRANSITION,
-              OPTION_BASE_CLASS_NAME,
-              OPTION_INTERACTIVE_CLASS_NAME,
-              OPTION_MUTED_CLASS_NAME,
-            )}
-          >
-            <span
-              className={OPTION_TRIGGER_CONTENT_CLASS_NAME}
-              title={existingPath ?? NEW_WORKTREE_LABEL}
-            >
-              <Icon
-                name="FolderGit"
-                className={COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS}
-              />
-              <span className="min-w-0 truncate">{triggerLabel}</span>
-            </span>
-            <Icon
-              name="ChevronDown"
-              className={cn(
-                "shrink-0 text-muted-foreground",
-                COARSE_POINTER_COMPACT_ICON_SIZE_CLASS,
-              )}
-            />
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent
-          align="start"
-          sideOffset={6}
-          collisionPadding={16}
-          mobileTitle="Worktree"
-          className={BRANCH_PICKER_CONTENT_CLASS_NAME}
+    <Popover open={open} onOpenChange={updateOpen}>
+      <PopoverTrigger asChild disabled={projectId === null}>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          disabled={projectId === null}
+          aria-label="Worktree"
+          role="combobox"
+          aria-expanded={open}
+          className={cn(
+            LIST_HOVER_TRANSITION,
+            OPTION_BASE_CLASS_NAME,
+            OPTION_INTERACTIVE_CLASS_NAME,
+            OPTION_MUTED_CLASS_NAME,
+          )}
         >
-          <MenuHoverProvider>
-            <div className="min-h-0 max-h-[60vh] overflow-y-auto overscroll-contain px-1 pb-1 pt-0 md:max-h-80">
-              <BranchPickerSectionHeader label="Work in:" sticky={false} />
-              <BranchPickerRow
-                icon="Plus"
-                selected={existingPath === null}
-                title="Create a new worktree for this thread"
-                onSelect={() => selectWorktree(null)}
-              >
-                <span className="min-w-0 flex-1 truncate">
-                  {NEW_WORKTREE_LABEL}
-                </span>
-              </BranchPickerRow>
-              {worktrees.length > 0 ? (
-                <>
-                  <div className="my-1 h-px bg-border/60" />
-                  <BranchPickerSectionHeader label="Existing worktree:" />
-                  {worktrees.map((worktree) => (
-                    <BranchPickerRow
-                      key={worktree.path}
-                      icon="FolderGit"
-                      selected={worktree.path === existingPath}
-                      disabled={worktree.prunable}
-                      title={worktree.path}
-                      onSelect={() => selectWorktree(worktree.path)}
-                    >
-                      <span className="flex min-w-0 flex-1 flex-col">
-                        <span className="min-w-0 truncate">
-                          {worktreeDirectoryName(worktree.path)}
-                        </span>
-                        {worktree.branch === null ? null : (
-                          <span className="min-w-0 truncate text-xs text-muted-foreground">
-                            {worktree.branch}
-                            {worktree.locked ? " · locked" : ""}
-                          </span>
-                        )}
+          <span
+            className={OPTION_TRIGGER_CONTENT_CLASS_NAME}
+            title={triggerTitle}
+          >
+            <Icon
+              name="FolderGit"
+              className={COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS}
+            />
+            <span className="min-w-0 truncate">{triggerLabel}</span>
+          </span>
+          <Icon
+            name="ChevronDown"
+            className={cn(
+              "shrink-0 text-muted-foreground",
+              COARSE_POINTER_COMPACT_ICON_SIZE_CLASS,
+            )}
+          />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        sideOffset={6}
+        collisionPadding={16}
+        mobileTitle="Work in:"
+        autoFocusRef={intent === "new" ? inputRef : undefined}
+        className={cn(BRANCH_PICKER_CONTENT_CLASS_NAME, "md:min-w-40")}
+      >
+        <MenuHoverProvider>
+          {intent === "new" ? (
+            <BranchPickerSearch
+              inputRef={inputRef}
+              query={query}
+              enterSelection={branchOptions[0]}
+              onEnterSelection={(branch) =>
+                submit({ branch: { kind: "named", name: branch } })
+              }
+              onQueryChange={setQuery}
+              ariaLabel="Search branches"
+            />
+          ) : null}
+          <div
+            ref={optionsScrollRef}
+            className="min-h-0 max-h-[60vh] overflow-y-auto overscroll-contain px-1 pb-1 pt-0 md:max-h-80"
+            onWheel={(event) => event.stopPropagation()}
+          >
+            <BranchPickerSectionHeader label="Work in:" sticky={false} />
+            <BranchPickerRow
+              icon="Plus"
+              selected={selectedIntent === "new"}
+              title="Create a worktree for this thread"
+              onSelect={() => setIntent("new")}
+            >
+              <span className="min-w-0 flex-1 truncate">
+                {NEW_WORKTREE_LABEL}
+              </span>
+            </BranchPickerRow>
+            <BranchPickerRow
+              icon="FolderGit"
+              disabled={worktrees.length === 0}
+              selected={selectedIntent === "existing"}
+              title={
+                worktrees.length === 0
+                  ? "No worktrees outside bb to use"
+                  : "Use a worktree you already have"
+              }
+              onSelect={() => setIntent("existing")}
+            >
+              <span className="min-w-0 flex-1 truncate">
+                {EXISTING_WORKTREE_LABEL}
+              </span>
+            </BranchPickerRow>
+            <div className="my-1 h-px bg-border/60" />
+            {intent === "new" ? (
+              <>
+                <BranchPickerSectionHeader label="Branch from:" />
+                <BranchPickerRow
+                  icon="GitMerge"
+                  selected={existingPath === null && branchName === null}
+                  title="Use the repository's default branch"
+                  onSelect={() => submit(DEFAULT_INPUTS)}
+                >
+                  <span className="min-w-0 flex-1 truncate">
+                    Default branch
+                  </span>
+                </BranchPickerRow>
+                {branchOptions.map((branch) => (
+                  <BranchPickerRow
+                    key={branch}
+                    icon="GitMerge"
+                    selected={branch === branchName}
+                    title={branch}
+                    onSelect={() =>
+                      submit({ branch: { kind: "named", name: branch } })
+                    }
+                  >
+                    <span className="min-w-0 flex-1 truncate">{branch}</span>
+                  </BranchPickerRow>
+                ))}
+                {branchOptions.length === 0 ? (
+                  <p className="px-2 py-3 text-center text-xs text-muted-foreground">
+                    {branchState.isLoading
+                      ? "Loading branches..."
+                      : "No branches found."}
+                  </p>
+                ) : null}
+              </>
+            ) : (
+              <>
+                <BranchPickerSectionHeader label="Existing worktree:" />
+                {worktrees.map((worktree) => (
+                  <BranchPickerRow
+                    key={worktree.path}
+                    icon="FolderGit"
+                    selected={worktree.path === existingPath}
+                    disabled={worktree.prunable}
+                    title={worktree.path}
+                    onSelect={() =>
+                      submit({ kind: "existing", path: worktree.path })
+                    }
+                  >
+                    <span className="flex min-w-0 flex-1 flex-col">
+                      <span className="min-w-0 truncate">
+                        {worktreeDirectoryName(worktree.path)}
                       </span>
-                    </BranchPickerRow>
-                  ))}
-                </>
-              ) : null}
-            </div>
-          </MenuHoverProvider>
-        </PopoverContent>
-      </Popover>
-      {existingPath === null ? branchPicker : null}
-    </>
+                      {worktree.branch === null ? null : (
+                        <span className="min-w-0 truncate text-xs text-muted-foreground">
+                          {worktree.branch}
+                          {worktree.locked ? " · locked" : ""}
+                        </span>
+                      )}
+                    </span>
+                  </BranchPickerRow>
+                ))}
+              </>
+            )}
+          </div>
+        </MenuHoverProvider>
+      </PopoverContent>
+    </Popover>
   );
 }
 
