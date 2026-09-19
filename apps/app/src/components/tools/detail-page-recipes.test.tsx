@@ -166,6 +166,7 @@ describe("Plugin detail recipe", () => {
 
     expect(renderedRecipe(container)).toEqual([
       ["overview", "About"],
+      ["definition", "Source"],
       ["release", "Details"],
     ]);
   });
@@ -188,6 +189,7 @@ describe("Plugin detail recipe", () => {
 
     expect(renderedRecipe(container)).toEqual([
       ["overview", "About"],
+      ["definition", "Source"],
       ["release", "Details"],
       ["activity", "Background services"],
       ["activity", "Scheduled jobs"],
@@ -202,6 +204,7 @@ describe("Plugin detail recipe", () => {
 
     expect(renderedRecipe(container)).toEqual([
       ["overview", "About"],
+      ["definition", "Source"],
       ["release", "Details"],
       ["activity", "Background services"],
     ]);
