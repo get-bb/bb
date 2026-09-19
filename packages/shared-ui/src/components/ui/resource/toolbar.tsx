@@ -51,7 +51,7 @@ export function ResourceToolbar({
   const toolbarRef = useRef<HTMLDivElement>(null);
   const controlsRef = useRef<HTMLDivElement>(null);
   const individualControlsRef = useRef<HTMLDivElement>(null);
-  const searchRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLFormElement>(null);
   const actionRef = useRef<HTMLDivElement>(null);
   const [combined, setCombined] = useState(false);
   const [searchCondensed, setSearchCondensed] = useState(false);
@@ -151,59 +151,66 @@ export function ResourceToolbar({
         compact ? "@container/resource-toolbar flex-nowrap" : "flex-wrap",
       )}
     >
-      <div
+      <form
         ref={searchRef}
+        role="search"
+        aria-label={searchLabel ?? searchPlaceholder}
+        onSubmit={(event) => {
+          event.preventDefault();
+          searchRef.current?.querySelector("input")?.focus();
+          setSearchExpanded(false);
+        }}
+        onBlur={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget))
+            setSearchExpanded(false);
+        }}
         className={cn(
-          "relative @container/resource-search",
+          "flex items-center gap-2",
           compact
             ? "min-w-0 flex-1 basis-40"
             : "w-full min-w-0 sm:w-auto sm:flex-1",
+          expandSearchOnFocus && "min-w-20",
         )}
       >
-        <Icon
-          name="Search"
-          className={cn(
-            "pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground",
-            searchCondensed &&
-              !searchExpanded &&
-              (searchValue
-                ? "@max-[4rem]/resource-search:hidden"
-                : "@max-[4rem]/resource-search:left-1/2 @max-[4rem]/resource-search:-translate-x-1/2"),
-          )}
-          aria-hidden
-        />
-        <Input
-          value={searchValue}
-          onChange={(event) => onSearchChange(event.target.value)}
-          placeholder={
-            searchCondensed && !searchExpanded ? "Search" : searchPlaceholder
-          }
-          aria-label={searchLabel ?? searchPlaceholder}
-          enterKeyHint={expandSearchOnFocus ? "search" : undefined}
-          onFocus={() => {
-            if (searchCondensed) setSearchExpanded(true);
-          }}
-          onBlur={() => setSearchExpanded(false)}
-          onKeyDown={(event) => {
-            if (
-              searchExpanded &&
-              !event.nativeEvent.isComposing &&
-              (event.key === "Enter" || event.key === "Escape")
-            ) {
-              event.preventDefault();
-              event.currentTarget.blur();
+        <div className="relative min-w-0 flex-1">
+          <Icon
+            name="Search"
+            className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
+            aria-hidden
+          />
+          <Input
+            value={searchValue}
+            onChange={(event) => onSearchChange(event.target.value)}
+            placeholder={
+              searchCondensed && !searchExpanded ? "Search" : searchPlaceholder
             }
-          }}
-          className={cn(
-            "h-8 truncate pl-8 focus:text-clip",
-            searchCondensed &&
-              !searchExpanded &&
-              (searchValue
-                ? "@max-[4rem]/resource-search:px-1"
-                : "@max-[4rem]/resource-search:px-0 @max-[4rem]/resource-search:text-transparent @max-[4rem]/resource-search:placeholder:text-transparent"),
-          )}
-        />
-      </div>
+            aria-label={searchLabel ?? searchPlaceholder}
+            enterKeyHint={expandSearchOnFocus ? "search" : undefined}
+            onFocus={() => {
+              if (searchCondensed) setSearchExpanded(true);
+            }}
+            onClick={() => {
+              if (searchCondensed) setSearchExpanded(true);
+            }}
+            onKeyDown={(event) => {
+              if (event.nativeEvent.isComposing) return;
+              if (event.key === "Enter") {
+                event.preventDefault();
+                event.currentTarget.form?.requestSubmit();
+              } else if (event.key === "Escape" && searchExpanded) {
+                event.preventDefault();
+                setSearchExpanded(false);
+              }
+            }}
+            className="h-8 truncate pl-8 focus:border-ring/60 focus:text-clip focus:ring-2 focus:ring-ring/20 focus-visible:ring-2 focus-visible:ring-ring/20"
+          />
+        </div>
+        {searchExpanded ? (
+          <Button type="submit" size="sm" variant="secondary">
+            Search
+          </Button>
+        ) : null}
+      </form>
       {controls ? (
         <div
           ref={controlsRef}
@@ -358,7 +365,16 @@ export const ResourceControlButton = forwardRef<
             )}
             aria-label={label}
           >
-            {icon ? <Icon name={icon} className="size-4" aria-hidden /> : null}
+            {icon ? (
+              <Icon
+                name={icon}
+                className={cn(
+                  "size-4",
+                  text && "@max-[22rem]/resource-toolbar:hidden",
+                )}
+                aria-hidden
+              />
+            ) : null}
             {text ? <span>{text}</span> : null}
             {count !== undefined && count > 0 ? (
               <span
@@ -854,7 +870,11 @@ export function ResourceCreateButton({
       className={cn("rounded-r-none", compactWhenNarrow && "pl-2 pr-1")}
       onClick={() => onCreate()}
     >
-      <Icon name="MessageCirclePlus" className="size-4" aria-hidden />
+      <Icon
+        name="MessageCirclePlus"
+        className="size-4 @max-[22rem]/resource-toolbar:hidden"
+        aria-hidden
+      />
       <span>{label}</span>
     </Button>
   );
