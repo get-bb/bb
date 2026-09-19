@@ -48,10 +48,12 @@ function render(
       onChange,
     },
     {
-      rpc: { listExistingWorktrees: () => ({ worktrees }) },
+      rpc: {
+        listExistingWorktrees: () => ({ worktrees }),
+        defaultBaseBranch: () => ({ branch: "main" }),
+      },
       branchesState: {
         branches: ["main", "release"],
-        defaultBaseBranch: "main",
       },
     },
   );
@@ -122,7 +124,7 @@ describe("worktree inputs control", () => {
     await openPicker(slot);
     fireEvent.click(slot.getByRole("button", { name: "Existing worktree" }));
     await waitFor(() => {
-      expect(slot.getByText("Existing worktree:")).toBeTruthy();
+      expect(slot.getByRole("button", { name: /app-feature/u })).toBeTruthy();
     });
     fireEvent.click(slot.getByRole("button", { name: /app-feature/u }));
     expect(onChange).toHaveBeenLastCalledWith({
@@ -131,11 +133,13 @@ describe("worktree inputs control", () => {
     });
   });
 
-  it("labels the trigger with the base branch or the reused worktree", () => {
+  it("labels the trigger with the base branch or the reused worktree", async () => {
     const fresh = render({ branch: { kind: "default" } });
-    expect(
-      fresh.slot.getByRole("combobox", { name: "Worktree" }).textContent,
-    ).toContain("Branch from: main");
+    await waitFor(() =>
+      expect(
+        fresh.slot.getByRole("combobox", { name: "Worktree" }).textContent,
+      ).toContain("Branch from: main"),
+    );
     cleanup();
 
     const named = render({ branch: { kind: "named", name: "release" } });
@@ -150,14 +154,30 @@ describe("worktree inputs control", () => {
     ).toContain("Reuse: app-feature");
   });
 
-  it("refuses to offer the existing section with nothing to adopt", async () => {
-    const { slot } = render({ branch: { kind: "default" } }, vi.fn(), []);
+  it("loads existing worktrees only after selecting that section", async () => {
+    const list = vi.fn(() => ({ worktrees: [] }));
+    const slot = renderSlot(
+      inputsSlot(),
+      {
+        projectId: "project-1",
+        target: { kind: "existing-host", hostId: "host-a" },
+        value: { branch: { kind: "default" } },
+        onChange: vi.fn(),
+      },
+      {
+        rpc: {
+          listExistingWorktrees: list,
+          defaultBaseBranch: () => ({ branch: "main" }),
+        },
+      },
+    );
     await openPicker(slot);
-    expect(
-      slot
-        .getByRole("button", { name: "Existing worktree" })
-        .hasAttribute("disabled"),
-    ).toBe(true);
+    expect(list).not.toHaveBeenCalled();
+    fireEvent.click(slot.getByRole("button", { name: "Existing worktree" }));
+    await waitFor(() =>
+      expect(slot.getByText("No existing worktrees found.")).toBeTruthy(),
+    );
+    expect(list).toHaveBeenCalledTimes(1);
   });
 
   it("reads the current selection out of persisted inputs", () => {
@@ -193,6 +213,7 @@ describe("worktree discovery scope", () => {
       };
       const slot = renderSlot(inputsSlot(), props, {
         rpc: {
+          defaultBaseBranch: () => ({ branch: "main" }),
           listExistingWorktrees: () =>
             new Promise<{ worktrees: JsonValue[] }>((resolve, reject) => {
               requests.push({ resolve, reject });
@@ -200,10 +221,13 @@ describe("worktree discovery scope", () => {
         },
         branchesState: { branches: ["main"] },
       });
-      await act(async () => requests[0]!.resolve({ worktrees: WORKTREES }));
+      expect(requests).toHaveLength(0);
       await openPicker(slot);
+      expect(requests).toHaveLength(0);
       fireEvent.click(slot.getByRole("button", { name: "Existing worktree" }));
+      await act(async () => requests[0]!.resolve({ worktrees: WORKTREES }));
       expect(slot.getByRole("button", { name: /app-feature/u })).toBeTruthy();
+      fireEvent.click(slot.getByRole("button", { name: "Existing worktree" }));
       expect(requests).toHaveLength(2);
 
       const Component = inputsSlot().component;
@@ -218,11 +242,8 @@ describe("worktree discovery scope", () => {
         />,
       );
       expect(slot.queryByRole("button", { name: /app-feature/u })).toBeNull();
-      expect(
-        slot
-          .getByRole("button", { name: "Existing worktree" })
-          .hasAttribute("disabled"),
-      ).toBe(true);
+      expect(requests).toHaveLength(2);
+      fireEvent.click(slot.getByRole("button", { name: "Existing worktree" }));
       expect(requests).toHaveLength(3);
       await act(async () =>
         requests[2]!.resolve({
@@ -248,6 +269,56 @@ describe("worktree discovery scope", () => {
         status: "ready",
         value: { kind: "existing", path: "/code/new-target" },
       });
+    },
+  );
+});
+
+describe("default branch label scope", () => {
+  it.each(["machine", "project"])(
+    "ignores a previous %s label without changing default inputs",
+    async (change) => {
+      const requests: ((value: { branch: string | null }) => void)[] = [];
+      const onChange = vi.fn();
+      const props = {
+        projectId: "project-1",
+        target: { kind: "existing-host" as const, hostId: "host-a" },
+        value: { branch: { kind: "default" } },
+        onChange,
+      };
+      const list = vi.fn(() => ({ worktrees: WORKTREES }));
+      const slot = renderSlot(inputsSlot(), props, {
+        rpc: {
+          defaultBaseBranch: () =>
+            new Promise<{ branch: string | null }>((resolve) =>
+              requests.push(resolve),
+            ),
+          listExistingWorktrees: list,
+        },
+      });
+      expect(slot.getByRole("combobox").textContent).toContain(
+        "Branch from: default",
+      );
+      const Component = inputsSlot().component;
+      slot.rerender(
+        <Component
+          {...props}
+          projectId={change === "project" ? "project-2" : props.projectId}
+          target={{
+            kind: "existing-host",
+            hostId: change === "machine" ? "host-b" : "host-a",
+          }}
+        />,
+      );
+      await act(async () => requests[1]!({ branch: "origin/main" }));
+      expect(slot.getByRole("combobox").textContent).toContain(
+        "Branch from: origin/main",
+      );
+      await act(async () => requests[0]!({ branch: "old-branch" }));
+      expect(slot.getByRole("combobox").textContent).toContain(
+        "Branch from: origin/main",
+      );
+      expect(onChange).not.toHaveBeenCalled();
+      expect(list).not.toHaveBeenCalled();
     },
   );
 });

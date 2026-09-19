@@ -92,12 +92,21 @@ function WorktreeInputsControl({
     projectId: string;
     hostId: string;
     worktrees: readonly DiscoveredWorktree[];
+    loading: boolean;
+    error: boolean;
   } | null>(null);
   const worktreeRequest = useRef(0);
-  const worktrees =
+  const scopedWorktreeResult =
     worktreeResult?.projectId === projectId && worktreeResult?.hostId === hostId
-      ? worktreeResult.worktrees
-      : [];
+      ? worktreeResult
+      : null;
+  const worktrees = scopedWorktreeResult?.worktrees ?? [];
+  const [baseResult, setBaseResult] = useState<{
+    projectId: string;
+    hostId: string | null;
+    branch: string | null;
+  } | null>(null);
+  const [baseRefresh, setBaseRefresh] = useState(0);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
@@ -126,25 +135,61 @@ function WorktreeInputsControl({
       setWorktreeResult(null);
       return;
     }
+    setWorktreeResult({
+      projectId,
+      hostId,
+      worktrees: [],
+      loading: true,
+      error: false,
+    });
     try {
       const result = await rpc.call("listExistingWorktrees", {
         projectId,
         hostId,
       });
       if (request === worktreeRequest.current) {
-        setWorktreeResult({ projectId, hostId, worktrees: result.worktrees });
+        setWorktreeResult({
+          projectId,
+          hostId,
+          worktrees: result.worktrees,
+          loading: false,
+          error: false,
+        });
       }
     } catch {
-      if (request === worktreeRequest.current) setWorktreeResult(null);
+      if (request === worktreeRequest.current)
+        setWorktreeResult({
+          projectId,
+          hostId,
+          worktrees: [],
+          loading: false,
+          error: true,
+        });
     }
   }, [projectId, hostId, rpc]);
 
   useEffect(() => {
-    void refreshWorktrees();
     return () => {
       worktreeRequest.current += 1;
     };
   }, [refreshWorktrees]);
+
+  useEffect(() => {
+    if (projectId === null || branchName !== null || existingPath !== null)
+      return;
+    let active = true;
+    void rpc
+      .call("defaultBaseBranch", { projectId, hostId })
+      .then((result) => {
+        if (active) setBaseResult({ projectId, hostId, branch: result.branch });
+      })
+      .catch(() => {
+        if (active) setBaseResult({ projectId, hostId, branch: null });
+      });
+    return () => {
+      active = false;
+    };
+  }, [projectId, hostId, branchName, existingPath, baseRefresh, rpc]);
 
   useEffect(() => {
     if (open) setIntent(selectedIntent);
@@ -159,8 +204,11 @@ function WorktreeInputsControl({
     [branchState.branches, deferredQuery],
   );
 
-  const baseBranchLabel =
-    branchName ?? branchState.defaultBaseBranch ?? "default";
+  const defaultBase =
+    baseResult?.projectId === projectId && baseResult?.hostId === hostId
+      ? baseResult.branch
+      : null;
+  const baseBranchLabel = branchName ?? defaultBase ?? "default";
   const triggerLabel =
     existingPath === null
       ? `${BRANCH_FROM_PREFIX} ${baseBranchLabel}`
@@ -173,8 +221,10 @@ function WorktreeInputsControl({
       blurActiveKeyboardInputWithin(inputRef.current);
       setQuery("");
     } else {
-      void branchState.refresh().catch(() => undefined);
-      void refreshWorktrees();
+      void branchState
+        .refresh()
+        .then(() => setBaseRefresh((value) => value + 1))
+        .catch(() => undefined);
     }
     setOpen(nextOpen);
   };
@@ -259,14 +309,13 @@ function WorktreeInputsControl({
             </BranchPickerRow>
             <BranchPickerRow
               icon="FolderGit"
-              disabled={worktrees.length === 0}
+              disabled={projectId === null || hostId === null}
               selected={selectedIntent === "existing"}
-              title={
-                worktrees.length === 0
-                  ? "No worktrees outside bb to use"
-                  : "Use a worktree you already have"
-              }
-              onSelect={() => setIntent("existing")}
+              title="Use a worktree you already have"
+              onSelect={() => {
+                setIntent("existing");
+                void refreshWorktrees();
+              }}
             >
               <span className="min-w-0 flex-1 truncate">
                 {EXISTING_WORKTREE_LABEL}
@@ -310,6 +359,17 @@ function WorktreeInputsControl({
             ) : (
               <>
                 <BranchPickerSectionHeader label="Existing worktree:" />
+                {worktrees.length === 0 ? (
+                  <p className="px-2 py-3 text-center text-xs text-muted-foreground">
+                    {scopedWorktreeResult?.loading
+                      ? "Loading worktrees..."
+                      : scopedWorktreeResult?.error
+                        ? "Could not load worktrees. Select Existing worktree to retry."
+                        : scopedWorktreeResult === null
+                          ? "Select Existing worktree to load worktrees."
+                          : "No existing worktrees found."}
+                  </p>
+                ) : null}
                 {worktrees.map((worktree) => (
                   <BranchPickerRow
                     key={worktree.path}

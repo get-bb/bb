@@ -364,3 +364,55 @@ describe("adopting an existing worktree", () => {
     ).toEqual({ kind: "existing", path: "/code/wt" });
   });
 });
+
+describe("default branch label routing", () => {
+  it.each([
+    { hostId: "host-b", expectedHost: "host-b", expectedPath: "/b" },
+    { hostId: null, expectedHost: "host-a", expectedPath: "/a" },
+    { hostId: "missing", expectedHost: null, expectedPath: null },
+  ])(
+    "uses the selected source for $hostId",
+    async ({ hostId, expectedHost, expectedPath }) => {
+      const { bb, harness } = createFakePluginHost({
+        sdk: {
+          projects: {
+            get: () => ({
+              sources: [
+                {
+                  type: "local_path",
+                  hostId: "host-a",
+                  path: "/a",
+                  isDefault: true,
+                },
+                {
+                  type: "local_path",
+                  hostId: "host-b",
+                  path: "/b",
+                  isDefault: false,
+                },
+              ],
+            }),
+          },
+        },
+        experimental_callHostRpc: () => ({ branch: "origin/main" }),
+      });
+      await plugin(bb);
+      expect(
+        await harness.callRpc("defaultBaseBranch", {
+          projectId: PROJECT_ID,
+          hostId,
+        }),
+      ).toEqual({ branch: expectedHost === null ? null : "origin/main" });
+      if (expectedHost === null) {
+        expect(harness.experimental_hostRpcCalls).toHaveLength(0);
+      } else {
+        expect(harness.experimental_hostRpcCalls).toHaveLength(1);
+        expect(harness.experimental_hostRpcCalls[0]).toMatchObject({
+          method: "defaultBaseBranch",
+          hostId: expectedHost,
+          input: { sourcePath: expectedPath },
+        });
+      }
+    },
+  );
+});

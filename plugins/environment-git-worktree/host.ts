@@ -2,7 +2,11 @@ import { experimental_defineHostEntry } from "@get-bb/plugin-sdk/host";
 import { readdir, rm } from "node:fs/promises";
 import { createHostProgress } from "bb-environment-provider-host/progress";
 import { worktreeHostContract, worktreeHostSignals } from "./contract.js";
-import { resolveWorktreeBaseBranch } from "./host/base-branch.js";
+import { readDefaultBranchRefs } from "bb-environment-provider-host/git";
+import {
+  resolveDefaultWorktreeBaseBranch,
+  resolveWorktreeBaseBranch,
+} from "./host/base-branch.js";
 import {
   resolveWorktreeChildPath,
   resolveWorktreesRoot,
@@ -49,6 +53,16 @@ export function createWorktreeHostEntry() {
     contract: worktreeHostContract,
     experimental_signals: worktreeHostSignals,
     handlers: {
+      async defaultBaseBranch(input) {
+        const refs = await readDefaultBranchRefs(input.sourcePath);
+        return {
+          branch: resolveDefaultWorktreeBaseBranch({
+            defaultBranch: refs.defaultBranch ?? null,
+            originDefaultBranch: refs.originDefaultBranch ?? null,
+            defaultBranchRelation: refs.defaultBranchRelation ?? null,
+          }),
+        };
+      },
       async listWorktrees(input, context) {
         const worktrees = await listAdoptableWorktrees({
           sourcePath: input.sourcePath,

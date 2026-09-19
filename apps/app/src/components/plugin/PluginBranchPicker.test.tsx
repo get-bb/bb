@@ -15,7 +15,6 @@ beforeEach(() => {
   vi.mocked(usePluginBranches).mockReturnValue({
     branches: ["main", "release"],
     remoteBranches: ["origin/main"],
-    defaultBaseBranch: "main",
     isLoading: false,
     refresh: refreshBranches,
   });
@@ -93,7 +92,7 @@ describe("PluginBranchPicker", () => {
   });
 
   it.each([undefined, "Compare with:", "Branch from:"])(
-    "shows a neutral empty selection with label %s even when a worktree default exists",
+    "shows a neutral empty selection with label %s",
     (label) => {
       const onChange = vi.fn();
       renderPicker({ value: null, label, onChange });

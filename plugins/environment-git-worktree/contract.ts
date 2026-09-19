@@ -19,6 +19,10 @@ export const discoveredWorktreeSchema = z
 export type DiscoveredWorktree = z.infer<typeof discoveredWorktreeSchema>;
 
 export const worktreeHostContract = defineRpcContract({
+  defaultBaseBranch: {
+    input: z.object({ sourcePath: z.string().min(1) }).strict(),
+    output: z.object({ branch: z.string().min(1).nullable() }).strict(),
+  },
   listWorktrees: {
     input: z.object({ sourcePath: z.string().min(1) }).strict(),
     output: z.object({ worktrees: z.array(discoveredWorktreeSchema) }).strict(),

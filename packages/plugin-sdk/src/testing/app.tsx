@@ -1742,7 +1742,6 @@ export function renderSlot<
     branchesState: {
       branches: options.branchesState?.branches ?? [],
       remoteBranches: options.branchesState?.remoteBranches ?? [],
-      defaultBaseBranch: options.branchesState?.defaultBaseBranch ?? null,
       isLoading: options.branchesState?.isLoading ?? false,
       refresh: options.branchesState?.refresh ?? (() => Promise.resolve()),
     },

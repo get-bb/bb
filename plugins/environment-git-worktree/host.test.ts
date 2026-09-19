@@ -114,6 +114,29 @@ afterEach(async () => {
 });
 
 describe("worktree host entry", () => {
+  it("resolves the default label from the same refs used for creation", async () => {
+    const { sourcePath, dataDir } = await createSourceRepository();
+    const harness = createHarness(dataDir);
+    expect(
+      await harness.experimental_call("defaultBaseBranch", { sourcePath }),
+    ).toEqual({ branch: "main" });
+    await git(sourcePath, "update-ref", "refs/remotes/origin/main", "HEAD");
+    await git(
+      sourcePath,
+      "symbolic-ref",
+      "refs/remotes/origin/HEAD",
+      "refs/remotes/origin/main",
+    );
+    expect(
+      await harness.experimental_call("defaultBaseBranch", { sourcePath }),
+    ).toEqual({ branch: "origin/main" });
+    await writeFile(join(sourcePath, "README.md"), "ahead");
+    await git(sourcePath, "commit", "-am", "local ahead");
+    expect(
+      await harness.experimental_call("defaultBaseBranch", { sourcePath }),
+    ).toEqual({ branch: "main" });
+  });
+
   it.each([
     ["spaces", "Repo With Space", "Repo-With-Space-7373994537587106"],
     ["CJK", "資料庫", "repo-1b2c8c90d27707c4"],

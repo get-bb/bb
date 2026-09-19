@@ -2321,12 +2321,6 @@ export interface UseBranchesArgs {
 export interface BranchesState {
   branches: readonly string[];
   remoteBranches: readonly string[];
-  /**
-   * The branch a new workspace starts from when the caller picks nothing,
-   * or null before the source is known. Label a default selection with this
-   * rather than the word "default".
-   */
-  defaultBaseBranch: string | null;
   isLoading: boolean;
   refresh(): Promise<void>;
 }

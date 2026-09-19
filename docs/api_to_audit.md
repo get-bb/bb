@@ -598,9 +598,7 @@ not resolve or imply a worktree base. The caller owns what picking a branch
 means. The component retains the same additive-versioning exception as
 `experimental_ProviderModelPicker`. `experimental_useBranches({ hostId,
 projectId, query? })` returns the matching local and remote branch lists,
-`defaultBaseBranch` (the branch a new workspace starts from when nothing is
-picked, so a control can label a default selection with the branch name
-instead of the word "default"), loading state, and a `refresh()` operation
+loading state, and a `refresh()` operation
 that performs a blocking remote refresh. `experimental_BranchPicker` is built
 on this hook.
 `experimental_useCheckoutState({ hostId, projectId })` exposes the checkout's
