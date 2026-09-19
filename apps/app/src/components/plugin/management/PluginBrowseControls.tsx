@@ -95,7 +95,6 @@ export function PluginCollectionToolbar({
   searchPlaceholder = "Search plugins",
   action,
   sourceFilter,
-  className,
 }: {
   searchPlaceholder?: string;
   action?: ReactNode;
@@ -104,7 +103,6 @@ export function PluginCollectionToolbar({
     selectedValues: readonly string[];
     onChange: (values: string[]) => void;
   };
-  className?: string;
   query: string;
   selectedCategories: readonly string[];
   categoryOptions: readonly PluginBrowseCategoryOption[];
@@ -208,7 +206,7 @@ export function PluginCollectionToolbar({
   ] satisfies PluginControlPage[];
 
   return (
-    <div className={cn("w-full", className)}>
+    <div className="w-full">
       <ResourceToolbar
         compact
         expandSearchOnFocus
