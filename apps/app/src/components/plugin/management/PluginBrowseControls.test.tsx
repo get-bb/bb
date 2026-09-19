@@ -331,7 +331,7 @@ describe("PluginCollectionToolbar", () => {
     {
       control: /^Source:/u,
       heading: "Source",
-      icon: "PackageReceive",
+      icon: "Download",
       role: "menuitemcheckbox" as const,
     },
     {
