@@ -120,7 +120,12 @@ function printQueueTable(rows: ThreadQueuedMessagesResult): void {
         ? "System"
         : (row.senderThreadId ?? "Agent"),
     truncateCell(queuedMessagePreview(row.content), MAX_QUEUE_TEXT_WIDTH),
-    truncateCell(describeQueueWait(row), MAX_QUEUE_TEXT_WIDTH),
+    truncateCell(
+      row.failureReason === null
+        ? describeQueueWait(row)
+        : `Failed: ${row.failureReason}`,
+      MAX_QUEUE_TEXT_WIDTH,
+    ),
     formatQueueSendCountdown(row.sendAt, now),
   ]);
   printBorderlessTable(
@@ -130,6 +135,11 @@ function printQueueTable(rows: ThreadQueuedMessagesResult): void {
     },
     table,
   );
+  for (const row of rows) {
+    if (row.failureReason === null) continue;
+    console.log(`Failed ${row.id}: ${row.failureReason}`);
+    console.log(`Retry: bb thread queue send ${row.threadId} ${row.id}`);
+  }
 }
 
 function queuedMessagePreview(content: PromptInput[]): string {

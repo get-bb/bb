@@ -868,6 +868,7 @@ describe("queued thread messages", () => {
       claimQueuedThreadMessageGroup(db, noopNotifier, ordinary.id, {
         kind: "automatic",
         isGroupEligible: () => true,
+        retryingFailure: false,
       }),
     ).toBeNull();
     expect(
@@ -931,6 +932,7 @@ describe("queued thread messages", () => {
       claimQueuedThreadMessageGroup(db, noopNotifier, heldBack.id, {
         kind: "automatic",
         isGroupEligible: () => true,
+        retryingFailure: false,
       }),
     ).toBeNull();
     expect(

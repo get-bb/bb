@@ -808,6 +808,7 @@ describe("public thread fork route", () => {
         claimPolicy: {
           kind: "automatic",
           isGroupEligible: () => true,
+          retryingFailure: false,
         },
         threadId: fork.id,
         queuedMessageId: first.id,

@@ -169,6 +169,41 @@ afterEach(() => {
 });
 
 describe("QueuedMessagesList", () => {
+  it.each([
+    { kind: "host-offline", hostName: "M4" },
+    { kind: "provisioning" },
+    { kind: "interaction" },
+    { kind: "turn-starting" },
+    { kind: "stopping" },
+  ] as const)("offers Send now for a failed $kind row", (waitingOn) => {
+    const onSend = vi.fn();
+    const { getByRole, getByText } = render(
+      <QueuedMessagesList
+        queuedMessages={[
+          makeThreadQueuedMessage({
+            id: "failed-row",
+            waitingOn,
+            failureReason: "Provider unavailable",
+          }),
+        ]}
+        sendDisabled={false}
+        actionDisabled={false}
+        processingMessageId={null}
+        processingAction={null}
+        onSend={onSend}
+        onReorder={noop}
+        onSetGroupBoundary={noop}
+        onEdit={noop}
+        onDelete={noop}
+      />,
+    );
+    expect(getByText("Provider unavailable")).toBeTruthy();
+    const button = getByRole("button", { name: "Send queued message 1 now" });
+    expect(button.hasAttribute("disabled")).toBe(false);
+    fireEvent.click(button);
+    expect(onSend).toHaveBeenCalledWith("failed-row");
+  });
+
   it("labels non-user senders and refreshes their names from the thread cache", async () => {
     const queryClient = new QueryClient();
     const messages = [
