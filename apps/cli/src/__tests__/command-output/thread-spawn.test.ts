@@ -30,7 +30,12 @@ describe("bb thread spawn command output", () => {
   it("saves the first message with the shipped Drafts submission", async () => {
     const post = vi.fn(async ({ json }: { json: unknown }) => {
       createThreadRequestSchema.parse(json);
-      return fixtures.makeThread({ id: "thread-draft", status: "pending" });
+      return fixtures.makeThread({
+        id: "thread-draft",
+        projectId: "proj-1",
+        providerId: "codex",
+        status: "pending",
+      });
     });
     stubServerApi({ "v1.threads.$post": post });
 
@@ -53,7 +58,9 @@ describe("bb thread spawn command output", () => {
         input: [{ type: "text", text: "Save this", mentions: [] }],
       }),
     });
-    expect(collectLogLines()[0]).toBe("Draft saved: thread-draft");
+    expect(collectLogLines(vi.mocked(console.log))[0]).toBe(
+      "Draft saved: thread-draft",
+    );
   });
 
   it("rejects explicitly empty lifecycle ownership instead of creating an independent thread", async () => {

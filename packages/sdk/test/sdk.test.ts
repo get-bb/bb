@@ -1330,7 +1330,7 @@ describe("@bb/sdk", () => {
     await sdk.threads.search({
       query: "release",
       lifecycles: ["draft"],
-      limitPerGroup: 3,
+      limitPerGroup: "3",
     });
 
     expect(

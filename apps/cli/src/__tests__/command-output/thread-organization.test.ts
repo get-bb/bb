@@ -64,7 +64,7 @@ describe("bb thread organization commands", () => {
     );
 
     expect(search).toHaveBeenCalledWith({
-      query: { query: "release", lifecycles: "draft", limitPerGroup: 3 },
+      query: { query: "release", lifecycles: "draft", limitPerGroup: "3" },
     });
   });
 
