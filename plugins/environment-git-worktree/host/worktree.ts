@@ -696,7 +696,7 @@ export async function listAdoptableWorktrees(args: {
   const entries = await listGitWorktrees(args);
   return selectAdoptableWorktrees({
     entries,
-    managedRoot: args.managedRoot,
+    managedRoot: await realpathOrResolved(args.managedRoot),
   });
 }
 
@@ -710,7 +710,7 @@ export async function resolveAdoptableWorktree(args: {
   | { status: "failed"; message: string }
 > {
   const adoptable = await listAdoptableWorktrees(args);
-  const entry = findWorktreeEntry(adoptable, args.path);
+  const entry = findWorktreeEntry(adoptable, await realpathOrResolved(args.path));
   if (entry === null) {
     return {
       status: "failed",

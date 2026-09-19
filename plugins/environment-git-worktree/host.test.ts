@@ -1,6 +1,14 @@
 import { execFile, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  realpath,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { promisify } from "node:util";
@@ -114,6 +122,76 @@ afterEach(async () => {
 });
 
 describe("worktree host entry", () => {
+  it("resolves adoption paths with trailing slashes and symlink aliases", async () => {
+    const { root, sourcePath, dataDir } = await createSourceRepository();
+    const worktreePath = join(root, "feature");
+    await git(sourcePath, "worktree", "add", "-b", "feature", worktreePath);
+    const canonicalPath = await realpath(worktreePath);
+    const aliasPath = join(root, "feature-alias");
+    await symlink(worktreePath, aliasPath, "dir");
+    const harness = createHarness(dataDir);
+
+    for (const path of [canonicalPath, `${canonicalPath}/`, aliasPath]) {
+      expect(
+        await harness.experimental_call("resolveExistingWorktree", {
+          sourcePath,
+          path,
+        }),
+      ).toEqual({ status: "resolved", path: canonicalPath, branch: "feature" });
+    }
+  });
+
+  it("refuses adoption aliases of the main checkout and managed worktrees", async () => {
+    const { root, sourcePath, dataDir } = await createSourceRepository();
+    const worktreePath = join(dataDir, "worktrees", "managed");
+    await git(sourcePath, "worktree", "add", "-b", "managed", worktreePath);
+    const dataAlias = join(root, "data-alias");
+    await symlink(dataDir, dataAlias, "dir");
+    const harness = createHarness(dataAlias);
+
+    expect(
+      await harness.experimental_call("listWorktrees", { sourcePath }),
+    ).toEqual({ worktrees: [] });
+    for (const [index, target] of [sourcePath, worktreePath].entries()) {
+      const aliasPath = join(root, `alias-${index}`);
+      await symlink(target, aliasPath, "dir");
+      expect(
+        await harness.experimental_call("resolveExistingWorktree", {
+          sourcePath,
+          path: aliasPath,
+        }),
+      ).toMatchObject({ status: "failed" });
+    }
+  });
+
+  it("preserves adoption failures for missing and prunable worktrees", async () => {
+    const { root, sourcePath, dataDir } = await createSourceRepository();
+    const worktreePath = join(root, "feature");
+    await git(sourcePath, "worktree", "add", "-b", "feature", worktreePath);
+    const canonicalPath = await realpath(worktreePath);
+    await rm(worktreePath, { recursive: true });
+    const harness = createHarness(dataDir);
+
+    expect(
+      await harness.experimental_call("resolveExistingWorktree", {
+        sourcePath,
+        path: `${canonicalPath}/`,
+      }),
+    ).toMatchObject({
+      status: "failed",
+      message: expect.stringContaining("prunable worktree"),
+    });
+    expect(
+      await harness.experimental_call("resolveExistingWorktree", {
+        sourcePath,
+        path: join(root, "missing"),
+      }),
+    ).toMatchObject({
+      status: "failed",
+      message: expect.stringContaining("not a worktree"),
+    });
+  });
+
   it("resolves the default label from the same refs used for creation", async () => {
     const { sourcePath, dataDir } = await createSourceRepository();
     const harness = createHarness(dataDir);
