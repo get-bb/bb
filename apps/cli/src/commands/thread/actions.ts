@@ -69,6 +69,7 @@ interface ThreadDeleteCommandOptions {
 }
 
 interface ThreadTellCommandOptions {
+  submissionId?: string;
   json?: boolean;
   messageFile?: string;
   model?: string;
@@ -106,6 +107,7 @@ interface ThreadEditMessageCommandOptions {
 type ThreadTellDeliveryMode = "auto" | "queue" | "steer";
 
 interface PostThreadMessageArgs {
+  submissionId?: string;
   getUrl: () => string;
   threadId: string;
   message: string;
@@ -457,6 +459,10 @@ export function registerActionsCommands(
       "Message mode: steer (default), queue, or auto (steer a live turn, else start one)",
     )
     .option("--send-at <when>", SEND_AT_HELP)
+    .option(
+      "--submission-id <id>",
+      "Reuse this ID for safe retries of an ordinary --mode queue message",
+    )
     .option("--plan", PLAN_HELP)
     .option(
       "--file <path>",
@@ -484,6 +490,7 @@ export function registerActionsCommands(
             inlineLabel: "<message>",
           });
           const response = await postThreadMessage({
+            submissionId: opts.submissionId,
             getUrl,
             threadId: id,
             message,
@@ -604,6 +611,9 @@ async function postThreadMessage(
     sdk,
   });
   const response = await sdk.threads.send({
+    ...(args.submissionId === undefined
+      ? {}
+      : { clientSubmissionId: args.submissionId }),
     threadId: args.threadId,
     input,
     mode:

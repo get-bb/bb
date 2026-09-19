@@ -395,6 +395,9 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
     reason:
       "Execution input source metadata is omitted by legacy callers; when omitted, supplied execution values are treated as explicit.",
     fields: [
+      "createQueuedMessageRequestSchema.clientSubmissionId",
+      "sendMessageRequestSchema.clientSubmissionId",
+      "sendQueuedMessageResponseSchema.queuedMessage.clientSubmissionId",
       "createQueuedMessageRequestSchema.executionInputSources",
       "createQueuedMessageRequestSchema.executionInputSources.model",
       "createQueuedMessageRequestSchema.executionInputSources.permissionMode",

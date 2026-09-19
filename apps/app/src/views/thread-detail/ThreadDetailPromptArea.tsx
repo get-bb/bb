@@ -1,4 +1,6 @@
 import { ThreadMachineStatus } from "@/components/promptbox/banner/ThreadMachineStatus";
+import { useRetainThreadMessage } from "@/hooks/useRetainThreadMessage";
+import { usePendingQueuedMessages } from "@/lib/pending-thread-messages";
 import {
   useCallback,
   useEffect,
@@ -428,6 +430,7 @@ export function ThreadDetailPromptArea({
   thread,
 }: ThreadDetailPromptAreaProps) {
   const navigate = useNavigate();
+  const pendingMessages = useRetainThreadMessage();
   const defaultExecutionOptionsQuery = useThreadDefaultExecutionOptions(
     thread.id,
     {
@@ -454,7 +457,10 @@ export function ThreadDetailPromptArea({
   const queuedMessagesQuery = useThreadQueuedMessages(thread.id, {
     enabled: true,
   });
-  const queuedMessages = queuedMessagesQuery.data ?? EMPTY_QUEUED_MESSAGES;
+  const queuedMessages = usePendingQueuedMessages(
+    thread.id,
+    queuedMessagesQuery.data ?? EMPTY_QUEUED_MESSAGES,
+  );
   const queuedMessagesPending =
     queuedMessagesQuery.data === undefined && queuedMessageCount > 0;
   const queuedMessagesRef =
@@ -493,7 +499,7 @@ export function ThreadDetailPromptArea({
       enabled: promptHistoryEnabled,
     },
   );
-  const createQueuedMessage = useCreateThreadQueuedMessage();
+  const createQueuedMessage = useCreateThreadQueuedMessage(thread.id);
   const stopThread = useStopThread();
   const cancelThreadPlan = useCancelThreadPlan();
   const clearThreadGoal = useClearThreadGoal();
@@ -913,6 +919,11 @@ export function ThreadDetailPromptArea({
     clearThreadGoal.mutate(thread.id);
   }, [clearThreadGoal, thread.id]);
   const submitMode = useMemo<FollowUpSubmitMode>(() => {
+    if (
+      !pendingMessages.connected &&
+      !shouldQueueFollowUpMessage(runtimeDisplayStatus)
+    )
+      return { kind: "blocked", reason: "unavailable" };
     if (isHandoffSelection && !isStopRequested) {
       if (effectiveSelectedModel.length > 0) {
         return { kind: "ready" };
@@ -931,6 +942,7 @@ export function ThreadDetailPromptArea({
       runtimeDisplayStatus,
     });
   }, [
+    pendingMessages.connected,
     effectiveSelectedModel,
     handleStopThread,
     hasPendingInteraction,
@@ -1170,6 +1182,7 @@ export function ThreadDetailPromptArea({
   );
 
   const handleSend = useCallback(async () => {
+    if (isFollowUpSubmitting) return;
     const submittedDraft = currentPromptDraft;
     const submittedInput = currentPromptDraftInput;
     if (isHandoffSelection) {
@@ -1186,10 +1199,26 @@ export function ThreadDetailPromptArea({
       return;
     }
 
-    promptDraft.clearIfCurrentMatches(submittedDraft);
-    setBottomAttachmentError(null);
-
     try {
+      if (!isQueuingMessage && !pendingMessages.connected) return;
+      const retainedRequest = buildCreateQueuedFollowUpRequest({
+        threadId: thread.id,
+        input: submittedInput,
+        execution: followUpExecutionSelection,
+      });
+      if (
+        retainedRequest &&
+        pendingMessages.retain({
+          request: retainedRequest,
+          operation: isQueuingMessage ? "queue" : "send",
+        })
+      ) {
+        promptDraft.clearIfCurrentMatches(submittedDraft);
+        setBottomAttachmentError(null);
+        return;
+      }
+      if (!isQueuingMessage) promptDraft.clearIfCurrentMatches(submittedDraft);
+      setBottomAttachmentError(null);
       if (isQueuingMessage) {
         const request = buildCreateQueuedFollowUpRequest({
           threadId: thread.id,
@@ -1198,6 +1227,7 @@ export function ThreadDetailPromptArea({
         });
         if (request) {
           await createQueuedMessage.mutateAsync(request);
+          promptDraft.clearIfCurrentMatches(submittedDraft);
         }
       } else {
         const request = buildAutoFollowUpRequest({
@@ -1210,7 +1240,7 @@ export function ThreadDetailPromptArea({
         }
       }
     } catch (nextError) {
-      promptDraft.restoreIfEmpty(submittedDraft);
+      if (!isQueuingMessage) promptDraft.restoreIfEmpty(submittedDraft);
       showMutationErrorToast({
         error: nextError,
         fallbackMessage: isQueuingMessage
@@ -1220,12 +1250,14 @@ export function ThreadDetailPromptArea({
       });
     }
   }, [
+    pendingMessages,
     createHandoffThread,
     createQueuedMessage,
     currentPromptDraft,
     currentPromptDraftInput,
     followUpExecutionSelection,
     isDefaultExecutionOptionsLoading,
+    isFollowUpSubmitting,
     isHandoffSelection,
     promptDraft,
     sendMessage,

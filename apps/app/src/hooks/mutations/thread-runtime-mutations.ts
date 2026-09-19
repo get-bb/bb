@@ -1,5 +1,9 @@
 import { notifyComposerSubmitted } from "@/lib/composer-submissions";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  useIsMutating,
+  useMutation,
+  useQueryClient,
+} from "@tanstack/react-query";
 import type { ThreadQueuedMessage } from "@bb/domain";
 import type {
   CreateQueuedMessageRequest,
@@ -245,10 +249,13 @@ export function useEditThreadMessage() {
   });
 }
 
-export function useCreateThreadQueuedMessage() {
+export function useCreateThreadQueuedMessage(threadId?: string) {
   const queryClient = useQueryClient();
+  const mutationKey = ["create-thread-queued-message", threadId];
+  const isPending = useIsMutating({ mutationKey, exact: true }) > 0;
 
-  return useMutation({
+  const mutation = useMutation({
+    mutationKey,
     meta: {
       errorMessage: "Failed to queue message.",
       lifecycleOperation: "queue_message",
@@ -296,6 +303,20 @@ export function useCreateThreadQueuedMessage() {
       });
     },
   });
+
+  return {
+    ...mutation,
+    isPending: threadId === undefined ? mutation.isPending : isPending,
+    mutateAsync: (...args: Parameters<typeof mutation.mutateAsync>) => {
+      if (
+        threadId !== undefined &&
+        queryClient.isMutating({ mutationKey, exact: true })
+      ) {
+        return Promise.reject(new Error("A message is still being queued."));
+      }
+      return mutation.mutateAsync(...args);
+    },
+  };
 }
 
 export function useUpdateThreadQueuedMessage() {

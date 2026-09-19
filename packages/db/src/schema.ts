@@ -756,6 +756,19 @@ export const threadDynamicContextFileStates = sqliteTable(
   ],
 );
 
+export const threadSubmissionReceipts = sqliteTable(
+  "thread_submission_receipts",
+  {
+    threadId: text("thread_id")
+      .notNull()
+      .references(() => threads.id, { onDelete: "cascade" }),
+    submissionId: text("submission_id").notNull(),
+    fingerprint: text("fingerprint").notNull(),
+    queuedMessage: text("queued_message").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.threadId, table.submissionId] })],
+);
+
 export const events = sqliteTable(
   "events",
   {

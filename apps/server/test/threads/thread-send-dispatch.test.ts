@@ -7,6 +7,7 @@ import {
   markThreadDeleted,
   setQueuedThreadMessageFailureReason,
   setQueuedThreadMessageGroupBoundary,
+  deleteQueuedThreadMessage,
 } from "@bb/db";
 import type { EnvironmentRow } from "@bb/db";
 import {
@@ -1354,6 +1355,41 @@ describe("service tier execution lifecycle", () => {
       });
     },
   );
+
+  it("accepts concurrent retries once and remembers acceptance after queue consumption", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedProviderThreadFixture({
+        harness,
+        value: 181,
+        status: "active",
+        serviceTier: "default",
+      });
+      const args = {
+        thread,
+        payload: {
+          input: textInput("keep this message"),
+          clientSubmissionId: "same-submission",
+        },
+      };
+      const [first, retry] = await Promise.all([
+        createQueuedMessageForThread(harness.deps, args),
+        createQueuedMessageForThread(harness.deps, args),
+      ]);
+      expect(retry).toEqual(first);
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(1);
+      await expect(
+        createQueuedMessageForThread(harness.deps, {
+          ...args,
+          payload: { ...args.payload, input: textInput("different message") },
+        }),
+      ).rejects.toThrow("already used");
+      deleteQueuedThreadMessage(harness.db, harness.deps.hub, first.id);
+      expect(await createQueuedMessageForThread(harness.deps, args)).toEqual(
+        first,
+      );
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(0);
+    });
+  });
 
   it("keeps queued choices separate until dispatch and preserves the next row", async () => {
     await withTestHarness(async (harness) => {

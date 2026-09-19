@@ -7,6 +7,8 @@ import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
 import { attemptDispatch } from "./dispatch-attempt.js";
 import { requireThreadCommandEnvironment } from "./thread-command-environment.js";
 import { sendThreadMessage } from "./thread-send.js";
+import { createQueuedMessageForThread } from "./queued-messages.js";
+import { ApiError } from "../../errors.js";
 
 interface AcceptThreadSendRequestArgs {
   payload: SendMessageRequest;
@@ -17,6 +19,38 @@ export async function acceptThreadSendRequest(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: AcceptThreadSendRequestArgs,
 ): Promise<SendMessageResponse> {
+  if (args.payload.clientSubmissionId !== undefined) {
+    const { mode, pluginSubmission, sendAt, ...payload } = args.payload;
+    if (
+      (mode !== "start" && mode !== "queue-if-active") ||
+      pluginSubmission !== undefined ||
+      sendAt !== undefined ||
+      payload.input.some(
+        (block) =>
+          block.type === "text" &&
+          block.mentions.some(
+            (mention) =>
+              mention.resource.kind === "command" &&
+              mention.resource.source === "command",
+          ),
+      )
+    ) {
+      throw new ApiError(
+        400,
+        "client_submission_unsupported",
+        "Submission keys require an ordinary, unscheduled message",
+      );
+    }
+    return {
+      ok: true,
+      delivery: "queued",
+      queuedMessage: await createQueuedMessageForThread(deps, {
+        thread: args.thread,
+        payload,
+        startWhenIdle: true,
+      }),
+    };
+  }
   if (isStandaloneBuiltinClearCommand(args.payload.input)) {
     const environment = await requireThreadCommandEnvironment(deps, {
       thread: args.thread,

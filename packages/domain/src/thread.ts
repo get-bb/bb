@@ -336,6 +336,7 @@ export const threadPullRequestSchema = z
 export type ThreadPullRequest = z.infer<typeof threadPullRequestSchema>;
 
 export const threadQueuedMessageSchema = z.object({
+  clientSubmissionId: z.string().optional(),
   id: z.string(),
   origin: threadCreateOriginSchema.nullable(),
   originPluginId: z.string().nullable(),

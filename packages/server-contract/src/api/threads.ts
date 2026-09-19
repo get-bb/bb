@@ -231,6 +231,7 @@ export const forkThreadRequestSchema = z
 export type ForkThreadRequest = z.infer<typeof forkThreadRequestSchema>;
 
 const sendMessageRequestFieldsSchema = z.object({
+  clientSubmissionId: z.string().min(1).max(100).optional(),
   input: z.array(promptInputSchema).min(1),
   model: z.string().optional(),
   serviceTier: serviceTierSchema.optional(),
@@ -361,6 +362,7 @@ export const sendQueuedMessageModeSchema = z.enum(["auto", "steer"]);
 export type SendQueuedMessageMode = z.infer<typeof sendQueuedMessageModeSchema>;
 
 export const createQueuedMessageRequestSchema = z.object({
+  clientSubmissionId: z.string().min(1).max(100).optional(),
   input: z.array(promptInputSchema).min(1),
   model: z.string().optional(),
   serviceTier: serviceTierSchema.optional(),

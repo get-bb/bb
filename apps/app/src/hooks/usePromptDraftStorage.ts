@@ -32,6 +32,7 @@ interface PromptDraftWriteOptions {
 }
 
 const EMPTY_PROMPT_DRAFT = emptyPromptDraftState();
+
 const promptDraftCache = new Map<string, PromptDraftCacheEntry>();
 const promptDraftSubscribers = new Map<string, Set<PromptDraftListener>>();
 const pendingPromptDraftStorageKeys = new Set<string>();

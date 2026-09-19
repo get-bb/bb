@@ -208,6 +208,7 @@ export function registerSystemRoutes(
       customThemes: listCustomThemeNames(themeRoot),
       pluginThemes: pluginService.listThemes(),
       featureFlags: deps.config.featureFlags,
+      messageSubmissionKeys: true,
       hostDaemonPort: deps.config.hostDaemonPort,
       localHelperPorts,
       serverUrl,

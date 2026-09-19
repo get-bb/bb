@@ -349,7 +349,7 @@ Interactions:
 Queued messages:
 
   bb thread queue list [<thread-id>] [--wait-holder plugin:<plugin-id>]
-  bb thread queue create <thread-id> <message>
+  bb thread queue create <thread-id> <message> [--submission-id <id>]
   bb thread queue update <thread-id> <message-id> <message> [--file <path>] [--image <path>]
   bb thread queue send <thread-id> <message-id> [--mode auto|steer]
   bb thread queue reorder <thread-id> <message-id> [--after <id>] [--before <id>]
@@ -358,6 +358,11 @@ Queued messages:
 
   The `Sender` column identifies agent threads and system notices; user messages
   leave it blank. The SDK and `--json` include `initiator` and `senderThreadId`.
+
+  Reuse --submission-id with the same message when retrying queue create or
+  thread tell --mode queue after a lost response. The server recognizes the
+  submission even after dispatch. Keys are scoped to a thread and do not
+  support steering, commands, or scheduled sends.
 
   A queued message is one that could not dispatch yet. Every one carries a
   typed reason in its `Waiting on` column: waiting for the current turn to

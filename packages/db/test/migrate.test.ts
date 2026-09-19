@@ -781,6 +781,7 @@ function rewindEnvironmentProvisioningMigration(db: DbConnection): void {
 }
 
 function dropQueueReworkSchema(db: DbConnection): void {
+  db.$client.exec("DROP TABLE IF EXISTS thread_submission_receipts");
   rewindEnvironmentProvisioningMigration(db);
   // Indexes first: SQLite refuses to drop a column an existing index names.
   for (const index of [
@@ -858,6 +859,7 @@ function rewindEnvironmentRowFactsMigration(db: DbConnection): void {
 }
 
 function rewindMachineProvidersMigration(db: DbConnection): void {
+  db.$client.exec("DROP TABLE IF EXISTS thread_submission_receipts");
   const queuedDispatchOrigin = db.$client
     .prepare<[], TableInfoRow>("PRAGMA table_info(queued_thread_messages)")
     .all();
@@ -868,9 +870,7 @@ function rewindMachineProvidersMigration(db: DbConnection): void {
     "requested_by_thread_id",
   ]) {
     if (!queuedDispatchOrigin.some((column) => column.name === name)) continue;
-    db.$client.exec(
-      `ALTER TABLE queued_thread_messages DROP COLUMN ${name}`,
-    );
+    db.$client.exec(`ALTER TABLE queued_thread_messages DROP COLUMN ${name}`);
   }
   db.$client.exec("DROP TABLE IF EXISTS thread_pruning_cursors");
   db.$client.exec("DROP TABLE IF EXISTS project_attachment_threads");

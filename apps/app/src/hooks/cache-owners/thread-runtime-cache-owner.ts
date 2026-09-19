@@ -390,7 +390,7 @@ function getCachedDefaultExecutionOptions(
   );
 }
 
-function buildOptimisticQueuedMessage({
+export function buildOptimisticQueuedMessage({
   createdAt,
   queryClient,
   request,
