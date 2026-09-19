@@ -437,7 +437,12 @@ export const threadQueuedWorkValues = ["none", "waiting", "failed"] as const;
 export const threadQueuedWorkSchema = z.enum(threadQueuedWorkValues);
 export type ThreadQueuedWork = z.infer<typeof threadQueuedWorkSchema>;
 
+export const threadLifecycleValues = ["active", "draft", "archived"] as const;
+export const threadLifecycleSchema = z.enum(threadLifecycleValues);
+export type ThreadLifecycle = z.infer<typeof threadLifecycleSchema>;
+
 export const threadListEntrySchema = threadWithRuntimeSchema.extend({
+  lifecycle: threadLifecycleSchema,
   activity: threadActivityStateSchema,
   queuedWork: threadQueuedWorkSchema,
   pinSortKey: z.string().nullable(),

@@ -42,6 +42,12 @@
   scheduled tell neither sends nor runs. Both report `delivery: "queued"` and
   dispatch on the sweep after the requested time. The SDK equivalent is `sendAt`
   (epoch ms) on `threads.spawn` / `threads.send`.
+- Add `--draft` to `bb thread spawn` or `bb thread tell` to save a message until
+  manual Send now. Follow-up saves imply queue mode and reject explicit steer
+  or auto mode. SDK callers use `pluginSubmission: { pluginId: "drafts", data:
+  { kind: "draft" } }` on `threads.spawn` or `threads.send`; use
+  `mode: "queue-if-active"` for a follow-up. Drafts must be installed, enabled,
+  and available or the server rejects the save before starting any work.
 - `bb thread queue list` shows a Sender for agent threads and system notices.
   SDK queue rows and `--json` include `initiator` and nullable `senderThreadId`.
 - A send that cannot run right now does not fail: it joins the thread's queue
@@ -96,6 +102,14 @@ hostId, providerId, projectId, parentThreadId, groupBy })`.
 
 ## Inspecting Results
 
+- Add `--lifecycle active,draft,archived` to thread list/search to select any
+  nonempty subset. Draft means pending with a Drafts-held first message;
+  established threads with saved follow-ups stay active. Archived takes
+  precedence. Omission retains legacy groups; opt-in search adds a draft group.
+  List `--archived` intersects this filter. SDK list/search accept `lifecycles`
+  as an array. Filtering precedes result limits and counts. Lifecycle-filtered
+  lists sort by last updated, newest first, before pagination; omission keeps
+  existing list ordering.
 - Use `bb thread search <query> [--limit <1-50>]` for sidebar search. Use
   `history`, `read|unread`, and `section` for organization and recall. The
   `bb thread queue` group contains the queued-message operations. Queue updates

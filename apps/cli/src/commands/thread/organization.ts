@@ -22,7 +22,11 @@ import {
   outputJson,
   requireThreadIdOrSelf,
 } from "../helpers.js";
-import { buildPromptInputs, uploadClientAttachmentInputs } from "./helpers.js";
+import {
+  buildPromptInputs,
+  parseThreadLifecycles,
+  uploadClientAttachmentInputs,
+} from "./helpers.js";
 
 interface JsonOptions {
   json?: boolean;
@@ -38,6 +42,7 @@ interface SectionDeleteOptions extends JsonOptions {
 
 interface SearchOptions extends JsonOptions {
   limit?: string;
+  lifecycle?: string;
 }
 
 interface HistoryOptions extends JsonOptions {
@@ -231,14 +236,20 @@ export function registerOrganizationCommands(
     .command("search <query>")
     .description("Search threads and messages")
     .option(
+      "--lifecycle <values>",
+      "Filter by active, draft, or archived (comma-separated)",
+    )
+    .option(
       "--limit <count>",
       `Maximum results per group (1-${THREAD_SEARCH_LIMIT_PER_GROUP_MAX})`,
     )
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (query: string, opts: SearchOptions) => {
+        const lifecycles = parseThreadLifecycles(opts.lifecycle);
         const result = await createCliBbSdk(getUrl()).threads.search({
           query,
+          ...(lifecycles === undefined ? {} : { lifecycles }),
           limitPerGroup: parsePositiveInteger(
             opts.limit,
             "--limit",

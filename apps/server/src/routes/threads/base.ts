@@ -17,6 +17,7 @@ import {
   type UpdateThreadInput,
 } from "@bb/db";
 import type { Environment, Thread, ThreadListEntry } from "@bb/domain";
+import { threadLifecycleSchema } from "@bb/domain";
 import { toEnvironmentResponse } from "../../services/environments/environment-response.js";
 import {
   threadIncludeOptionSchema,
@@ -85,6 +86,7 @@ interface BuildThreadSearchGroupResponseArgs {
 
 interface BuildThreadSearchResponseArgs {
   active: DbThreadSearchResultGroup;
+  draft?: DbThreadSearchResultGroup;
   archived: DbThreadSearchResultGroup;
 }
 
@@ -204,6 +206,11 @@ function buildThreadSearchResponse(
 ): ThreadSearchResponse {
   return {
     active: buildThreadSearchGroupResponse(deps, { group: args.active }),
+    ...(args.draft === undefined
+      ? {}
+      : {
+          draft: buildThreadSearchGroupResponse(deps, { group: args.draft }),
+        }),
     archived: buildThreadSearchGroupResponse(deps, { group: args.archived }),
   };
 }
@@ -272,6 +279,13 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
       requireThreadSection(deps, query.sectionId);
     }
     const threads = listThreadsWithPendingInteractionState(deps.db, {
+      ...(query.lifecycles === undefined
+        ? {}
+        : {
+            lifecycles: query.lifecycles
+              .split(",")
+              .map((value) => threadLifecycleSchema.parse(value)),
+          }),
       ...(query.projectId ? { projectId: query.projectId } : {}),
       ...(query.environmentId ? { environmentId: query.environmentId } : {}),
       ...(query.parentThreadId ? { parentThreadId: query.parentThreadId } : {}),
@@ -308,6 +322,13 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
         ...searchThreadsWithPendingInteractionState(deps.db, {
           query: searchQuery,
           limitPerGroup,
+          ...(query.lifecycles === undefined
+            ? {}
+            : {
+                lifecycles: query.lifecycles
+                  .split(",")
+                  .map((value) => threadLifecycleSchema.parse(value)),
+              }),
         }),
       }) satisfies ThreadSearchResponse,
     );

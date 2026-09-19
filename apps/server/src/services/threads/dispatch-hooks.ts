@@ -166,6 +166,38 @@ export function hasMessageDispatchHooks(): boolean {
   );
 }
 
+export function isDraftSubmission(
+  submission: MessageDispatchHookContext["experimental_submission"] | undefined,
+): boolean {
+  return (
+    submission?.pluginId === "drafts" &&
+    submission.data !== null &&
+    typeof submission.data === "object" &&
+    !Array.isArray(submission.data) &&
+    submission.data.kind === "draft"
+  );
+}
+
+export function requireDraftSubmissionAvailable(
+  submission: MessageDispatchHookContext["experimental_submission"] | undefined,
+): void {
+  if (!isDraftSubmission(submission)) return;
+  const provider = pluginHookProvider();
+  if (
+    provider?.isPluginRunning?.("drafts") !== true ||
+    !provider
+      .listHooks("message.dispatch")
+      .some((hook) => hook.pluginId === "drafts")
+  ) {
+    throw new ApiError(
+      409,
+      "drafts_unavailable",
+      "Drafts must be installed, enabled, and running to save a draft.",
+      { details: { pluginId: "drafts" } },
+    );
+  }
+}
+
 /**
  * Server-wide evaluation lock.
  *
@@ -393,6 +425,7 @@ export async function runMessageDispatchHookPass(
   deps: DispatchHookDeps,
   request: MessageDispatchHookPassRequest,
 ): Promise<MessageDispatchHookPassOutcome> {
+  requireDraftSubmissionAvailable(request.pluginSubmission);
   const provider = pluginHookProvider();
   if (provider === undefined) {
     return { kind: "proceed" };
@@ -403,6 +436,7 @@ export async function runMessageDispatchHookPass(
   }
 
   return withEvaluationLock(async () => {
+    requireDraftSubmissionAvailable(request.pluginSubmission);
     const context = buildHookContext(deps, request);
     const waits: MessageDispatchWaitDecision[] = [];
 
@@ -447,12 +481,32 @@ export async function runMessageDispatchHookPass(
       }
     }
 
-    const waiter = waits[0];
+    const draftWait = waits.find((wait) => wait.pluginId === "drafts");
+    if (
+      isDraftSubmission(request.pluginSubmission) &&
+      (draftWait === undefined || draftWait.sendAt !== null)
+    ) {
+      throw messageDispatchHookFailure(
+        "drafts",
+        "did not hold the draft for manual dispatch",
+      );
+    }
+    const firstQueuedWait = request.queuedMessages[0]?.waitingOn;
+    const preserveDraftHold =
+      isDraftSubmission(request.pluginSubmission) ||
+      (firstQueuedWait?.kind === "plugin" &&
+        firstQueuedWait.pluginId === "drafts");
+    const waiter =
+      preserveDraftHold && draftWait !== undefined ? draftWait : waits[0];
     if (waiter === undefined) {
       await request.continueAfterHooks?.();
       return { kind: "proceed" };
     }
-    return { kind: "wait", waiter, additionalWaiters: waits.slice(1) };
+    return {
+      kind: "wait",
+      waiter,
+      additionalWaiters: waits.filter((wait) => wait !== waiter),
+    };
   });
 }
 

@@ -16,6 +16,31 @@ describe("bb thread list command output", () => {
   const register: CommandRegistrar = (program) =>
     registerThreadCommands(program, () => "http://server");
 
+  it("passes explicit lifecycle filters without imposing the legacy archive filter", async () => {
+    const list = vi.fn(async () => []);
+    stubServerApi({ "v1.threads.$get": list });
+
+    await runCommand(
+      ["thread", "list", "--lifecycle", "draft,archived"],
+      register,
+    );
+
+    expect(list).toHaveBeenCalledWith({
+      query: { lifecycles: "draft,archived" },
+    });
+  });
+
+  it("rejects an empty lifecycle instead of broadening the list", async () => {
+    const list = vi.fn(async () => []);
+    stubServerApi({ "v1.threads.$get": list });
+
+    await expect(
+      runCommand(["thread", "list", "--lifecycle", ""], register),
+    ).rejects.toThrow("process.exit:1");
+
+    expect(list).not.toHaveBeenCalled();
+  });
+
   it("bb thread list supports parent-thread filtering", async () => {
     const list = vi.fn(async () => []);
     stubServerApi({ "v1.threads.$get": list });

@@ -1312,6 +1312,40 @@ describe("@bb/sdk", () => {
     });
   });
 
+  it("opts into lifecycle filtering without changing legacy list and search requests", async () => {
+    const queue = createFetchQueue(
+      Array.from({ length: 4 }, () => ({ body: [] })),
+    );
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await sdk.threads.list();
+    await sdk.threads.search({ query: "release" });
+    await sdk.threads.list({ lifecycles: ["draft", "archived"], limit: 5 });
+    await sdk.threads.search({
+      query: "release",
+      lifecycles: ["draft"],
+      limitPerGroup: "3",
+    });
+
+    expect(
+      queue.requests.map(({ url }) => {
+        const parsed = new URL(url);
+        return Object.fromEntries(parsed.searchParams);
+      }),
+    ).toEqual([
+      {},
+      { query: "release" },
+      { lifecycles: "draft,archived", limit: "5" },
+      { query: "release", lifecycles: "draft", limitPerGroup: "3" },
+    ]);
+  });
+
   it("forwards every public permission mode through thread surfaces", async () => {
     const queue = createFetchQueue([
       { body: { id: "thr_auto" }, status: 201 },

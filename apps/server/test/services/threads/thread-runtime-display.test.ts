@@ -3,6 +3,8 @@ import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import {
   appendStoredThreadEvent,
+  archiveThread,
+  claimQueuedThreadMessage,
   closeSession,
   createConnection,
   createEnvironment,
@@ -517,6 +519,66 @@ describe("thread runtime display", () => {
         },
       ),
     ).toHaveLength(32_767);
+  });
+
+  it("projects only unarchived pending threads with live Drafts holds as drafts", () => {
+    const { db, hostId, hub } = setup();
+    const saved = createThreadWithEnvironment({
+      db,
+      hostId,
+      status: "pending",
+    });
+    const followup = createThreadWithEnvironment({
+      db,
+      hostId,
+      status: "idle",
+    });
+    const archived = createThreadWithEnvironment({
+      db,
+      hostId,
+      status: "pending",
+    });
+    const claimed = createThreadWithEnvironment({
+      db,
+      hostId,
+      status: "pending",
+    });
+    const pending = createThreadWithEnvironment({
+      db,
+      hostId,
+      status: "pending",
+    });
+    for (const fixture of [saved, followup, archived, claimed]) {
+      const queued = createQueuedThreadMessage(db, noopNotifier, {
+        threadId: fixture.thread.id,
+        content: [{ type: "text", text: "Saved draft", mentions: [] }],
+        model: "gpt-5",
+        reasoningLevel: "medium",
+        permissionMode: "auto",
+        serviceTier: "default",
+        waitingOn: { kind: "plugin", pluginId: "drafts", reason: "Draft" },
+        sendAt: null,
+        payload: { kind: "inline" },
+        systemNotice: null,
+      });
+      if (fixture === claimed)
+        claimQueuedThreadMessage(db, noopNotifier, queued.id);
+    }
+    archiveThread(db, noopNotifier, archived.thread.id);
+    const entries = toThreadListEntryResponses(
+      { db, hub, providerRegistry },
+      {
+        threads: listThreadsWithPendingInteractionState(db, {}),
+      },
+    );
+    const byId = new Map(entries.map((entry) => [entry.id, entry]));
+    expect(
+      [saved, followup, archived, claimed, pending].map(
+        (fixture) => byId.get(fixture.thread.id)?.lifecycle,
+      ),
+    ).toEqual(["draft", "active", "archived", "active", "active"]);
+    expect(byId.get(saved.thread.id)?.queuedWork).toBe("waiting");
+    expect(byId.get(claimed.thread.id)?.queuedWork).toBe("none");
   });
 
   it("marks list entries active when the prompt banner would show plan or goal state", () => {

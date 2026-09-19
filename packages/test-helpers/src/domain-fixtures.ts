@@ -186,6 +186,7 @@ export function makeThreadListEntry(
     environmentIsWorktree: null,
     environmentWorkspaceDisplayKind: "other",
     queuedWork: "none",
+    lifecycle: overrides.archivedAt != null ? "archived" : "active",
   };
   return {
     ...entry,

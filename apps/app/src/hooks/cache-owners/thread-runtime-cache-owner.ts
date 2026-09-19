@@ -890,7 +890,19 @@ export function applyCreateThreadResult({
   thread,
 }: CreateThreadSuccessArgs): void {
   queryClient.setQueryData<ThreadResponse>(threadQueryKey(thread.id), thread);
-  optimisticallyInsertThread(queryClient, thread);
+  const submission = request.pluginSubmission;
+  const savedDraft =
+    thread.status === "pending" &&
+    submission?.pluginId === "drafts" &&
+    submission.data !== null &&
+    typeof submission.data === "object" &&
+    !Array.isArray(submission.data) &&
+    submission.data.kind === "draft";
+  optimisticallyInsertThread(
+    queryClient,
+    thread,
+    savedDraft ? "draft" : "active",
+  );
   prependProjectPromptHistory(
     queryClient,
     request.projectId,

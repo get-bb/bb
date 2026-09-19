@@ -69,6 +69,7 @@ interface ThreadDeleteCommandOptions {
 }
 
 interface ThreadTellCommandOptions {
+  draft?: boolean;
   json?: boolean;
   messageFile?: string;
   model?: string;
@@ -106,6 +107,7 @@ interface ThreadEditMessageCommandOptions {
 type ThreadTellDeliveryMode = "auto" | "queue" | "steer";
 
 interface PostThreadMessageArgs {
+  draft?: boolean;
   getUrl: () => string;
   threadId: string;
   message: string;
@@ -440,6 +442,7 @@ export function registerActionsCommands(
     .command("tell <id> [message]")
     .aliases(["message", "send"])
     .description("Send a follow-up message to a thread")
+    .option("--draft", "Save the message as a draft until you send it manually")
     .option(
       "--message-file <path>",
       `Read the message from a file instead of [message]; ${TEXT_FILE_HELP_SUFFIX}`,
@@ -483,11 +486,18 @@ export function registerActionsCommands(
             inline: inlineMessage,
             inlineLabel: "<message>",
           });
+          const mode = resolveThreadMessageMode(opts.mode);
+          if (opts.draft && opts.mode !== undefined && mode !== "queue") {
+            throw new Error(
+              "--draft cannot be combined with --mode steer or auto.",
+            );
+          }
           const response = await postThreadMessage({
             getUrl,
             threadId: id,
             message,
-            mode: resolveThreadMessageMode(opts.mode),
+            mode: opts.draft ? "queue" : mode,
+            draft: opts.draft,
             model: opts.model,
             permissionMode: parsePermissionMode(opts.permissionMode),
             reasoningLevel: parseReasoningLevel(opts.reasoningLevel),
@@ -618,6 +628,9 @@ async function postThreadMessage(
     ...(args.serviceTier ? { serviceTier: args.serviceTier } : {}),
     ...(args.senderThreadId ? { senderThreadId: args.senderThreadId } : {}),
     ...(args.sendAt === undefined ? {} : { sendAt: args.sendAt }),
+    ...(args.draft
+      ? { pluginSubmission: { pluginId: "drafts", data: { kind: "draft" } } }
+      : {}),
   });
   return { ...response, mode: args.mode };
 }
@@ -627,6 +640,12 @@ function describeThreadTellOutcome(
   response: PostThreadMessageResult,
 ): string {
   if (response.delivery === "queued") {
+    if (
+      response.queuedMessage.waitingOn?.kind === "plugin" &&
+      response.queuedMessage.waitingOn.pluginId === "drafts"
+    ) {
+      return `Thread ${threadId} draft saved; send it with bb thread queue send`;
+    }
     // The server says WHY it is waiting, so the CLI does not have to guess
     // from the flags it happened to send. `bb thread queue list` shows the
     // same reason for the row afterwards.

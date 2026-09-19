@@ -18,6 +18,7 @@ import type {
   LoggedPendingInteractionWorkSessionDeps,
 } from "../../types.js";
 import { ApiError } from "../../errors.js";
+import { requireDraftSubmissionAvailable } from "./dispatch-hooks.js";
 import { ensureHostSessionReadyForWork } from "../hosts/host-lifecycle.js";
 import { buildExecutionOptions } from "./thread-commands.js";
 import {
@@ -525,6 +526,7 @@ export async function createThreadFromRequest(
     forkSourceEnvironmentId?: string;
   } = {},
 ) {
+  requireDraftSubmissionAvailable(rawRequestInput.pluginSubmission);
   const project = requirePublicProjectForThreadCreate(
     deps,
     rawRequestInput.projectId,

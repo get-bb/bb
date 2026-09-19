@@ -506,6 +506,7 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
       "threadListQuerySchema.limit",
       "threadListQuerySchema.hasParent",
       "threadListQuerySchema.includeHidden",
+      "threadListQuerySchema.lifecycles",
       "threadListQuerySchema.offset",
       "threadListQuerySchema.originKind",
       "threadListQuerySchema.originPluginId",
@@ -1224,6 +1225,7 @@ describe("server-contract canonical schemas", () => {
           environmentIsWorktree: true,
           environmentWorkspaceDisplayKind: "managed-worktree",
           queuedWork: "none",
+          lifecycle: "active",
         },
       ]),
     ).toMatchObject([

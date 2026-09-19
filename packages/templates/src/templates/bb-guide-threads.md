@@ -51,6 +51,7 @@ Spawning:
     --section <id>                 Create the thread in a section
     --visibility <visibility>      visible or hidden; a child inherits its parent by default
     --send-at <when>               Dispatch the first message at an ISO 8601 timestamp or a duration from now (30s, 10m, 2h, 7d)
+    --draft                        Save the first message until you send it manually
     --file <path>                  CLI-local absolute path, file: URL, or uploaded file path
     --image <path>                 CLI-local absolute path, file: URL, or uploaded image path
     --origin-kind <kind>           Create a fork thread
@@ -82,6 +83,11 @@ Spawning:
   machine resolution is unchanged.
   Omit --base-branch for bb's default. Explicit values are exact; use
   origin/<branch> for a remote ref.
+  --draft uses the built-in Drafts plugin to hold the first queued message.
+  The thread stays pending without starting a turn or provisioning its workspace.
+  Missing, disabled, or unavailable Drafts rejects the save instead of starting work.
+  Inspect or edit it with bb thread queue list/update; send it with queue send.
+  Deleting the queued message preserves its thread and any fork history.
   Before selecting a provider, run `bb environment providers --project <id>
   --machine <id-or-name>` to see whether it is available, needs setup, or is
   unavailable and why. The first-party providers are Project checkout,
@@ -154,6 +160,7 @@ Listing:
     --environment <id>                     Filter by environment
     --parent-thread <id>                   Filter by parent thread
     --archived                             Show only archived threads
+    --lifecycle <values>                   Filter by active, draft, or archived (comma-separated)
     --section <id>                         Filter by section
     --unsectioned                          Show only threads outside sections
     --include-hidden                       Include hidden threads
@@ -165,6 +172,15 @@ Listing:
 
   bb thread search <query> [--limit <1-50>]
                                              Search threads and messages
+    --lifecycle <values>                   Filter by active, draft, or archived (comma-separated)
+
+  Lifecycle draft means an unarchived pending thread held by Drafts. Saved
+  follow-ups on an established thread do not change its lifecycle. Archived
+  takes precedence. Omit --lifecycle to retain the existing list/search groups;
+  with it, search also returns a draft group. --archived intersects the lifecycle
+  filter when both are given. Lifecycle-filtered lists sort by last updated,
+  newest first, before pagination; omitted filters keep existing list ordering.
+  SDK list/search accept lifecycles as an array.
   bb thread history <id>                   List prompt history
 
   bb thread count                          Count threads without listing them
@@ -260,6 +276,7 @@ Messaging:
     --reasoning-level <level>              Reasoning level override
     --plan                                 Send the message as the provider's /plan action
     --send-at <when>                       Dispatch at an ISO 8601 timestamp or a duration from now (30s, 10m, 2h, 7d)
+    --draft                                Save a follow-up until you send it manually; implies queue mode
     --file <path>                          CLI-local absolute path, file: URL, or uploaded file path
     --image <path>                         CLI-local absolute path, file: URL, or uploaded image path
 
@@ -275,6 +292,13 @@ Messaging:
   and a queued answer carries the complete row as `queuedMessage`, including
   its `id`, `waitingOn`, and `sendAt`. A deferred message waits for a thread
   that failed while it was deferred, and delivers when the thread is retried.
+
+  --draft saves a held queue row even while a turn is running. It cannot be
+  combined with --mode steer or auto. SDK callers pass
+  pluginSubmission: { pluginId: "drafts", data: { kind: "draft" } } to
+  threads.spawn or threads.send; follow-up saves use mode: "queue-if-active".
+  Save-only requests require the Drafts plugin to be available. A saved
+  follow-up keeps its established thread active; it does not become a draft thread.
 
   --plan sends the same structured /plan command the composer's plan action
   sends, so the agent proposes a plan for approval before executing (Claude

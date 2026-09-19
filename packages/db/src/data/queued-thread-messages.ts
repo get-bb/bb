@@ -1572,6 +1572,7 @@ export function listQueuedThreadMessagesForApi(
 export interface QueuedThreadMessageCounts {
   threadId: string;
   queuedMessageCount: number;
+  draftQueuedMessageCount: number;
   /**
    * How many of those rows last failed to dispatch. Counted in the same pass
    * as the total because both answers come from the same rows, and the thread
@@ -1605,6 +1606,7 @@ export function listQueuedThreadMessageCountsByThreadIds(
           threadId: queuedThreadMessages.threadId,
           queuedMessageCount: count(queuedThreadMessages.id),
           failedQueuedMessageCount: count(queuedThreadMessages.failureReason),
+          draftQueuedMessageCount: sql<number>`count(CASE WHEN ${queuedThreadMessages.waitHolder} = 'plugin:drafts' THEN 1 END)`.mapWith(Number),
         })
         .from(queuedThreadMessages)
         .where(

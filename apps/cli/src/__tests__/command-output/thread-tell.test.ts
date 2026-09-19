@@ -18,6 +18,60 @@ describe("bb thread tell command output", () => {
   const register: CommandRegistrar = (program) =>
     registerThreadCommands(program, () => "http://server");
 
+  it("saves a follow-up draft without steering the active turn", async () => {
+    const post = vi.fn(async () => ({
+      ok: true,
+      delivery: "queued",
+      queuedMessage: {
+        id: "qm-draft",
+        waitingOn: { kind: "plugin", pluginId: "drafts", reason: "Draft" },
+        sendAt: null,
+      },
+    }));
+    stubServerApi({ "v1.threads.:id.send.$post": post });
+
+    await runCommand(
+      ["thread", "tell", "thread-draft", "Save this", "--draft"],
+      register,
+    );
+
+    expect(post).toHaveBeenCalledWith({
+      param: { id: "thread-draft" },
+      json: expect.objectContaining({
+        mode: "queue-if-active",
+        pluginSubmission: { pluginId: "drafts", data: { kind: "draft" } },
+      }),
+    });
+    expect(vi.mocked(console.log).mock.calls[0]?.[0]).toBe(
+      "Thread thread-draft draft saved; send it with bb thread queue send",
+    );
+  });
+
+  it("rejects conflicting draft and steer requests before sending", async () => {
+    const post = vi.fn();
+    stubServerApi({ "v1.threads.:id.send.$post": post });
+
+    await expect(
+      runCommand(
+        [
+          "thread",
+          "tell",
+          "thread-draft",
+          "Save this",
+          "--draft",
+          "--mode",
+          "steer",
+        ],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+
+    expect(post).not.toHaveBeenCalled();
+    expect(vi.mocked(console.error).mock.calls[0]?.[0]).toBe(
+      "Error: --draft cannot be combined with --mode steer or auto.",
+    );
+  });
+
   it("bb thread tell --json prints the raw response plus thread id", async () => {
     const post = vi.fn(async () => ({ ok: true, delivery: "sent" }));
     stubServerApi({ "v1.threads.:id.send.$post": post });

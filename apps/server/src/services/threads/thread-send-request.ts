@@ -5,6 +5,10 @@ import type {
 } from "@bb/server-contract";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
 import { attemptDispatch } from "./dispatch-attempt.js";
+import {
+  isDraftSubmission,
+  requireDraftSubmissionAvailable,
+} from "./dispatch-hooks.js";
 import { requireThreadCommandEnvironment } from "./thread-command-environment.js";
 import { sendThreadMessage } from "./thread-send.js";
 
@@ -17,7 +21,11 @@ export async function acceptThreadSendRequest(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: AcceptThreadSendRequestArgs,
 ): Promise<SendMessageResponse> {
-  if (isStandaloneBuiltinClearCommand(args.payload.input)) {
+  requireDraftSubmissionAvailable(args.payload.pluginSubmission);
+  if (
+    !isDraftSubmission(args.payload.pluginSubmission) &&
+    isStandaloneBuiltinClearCommand(args.payload.input)
+  ) {
     const environment = await requireThreadCommandEnvironment(deps, {
       thread: args.thread,
     });

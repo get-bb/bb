@@ -41,6 +41,33 @@ describe("bb thread organization commands", () => {
   const register: CommandRegistrar = (program) =>
     registerThreadCommands(program, () => "http://server");
 
+  it("forwards lifecycle filtering and the per-group limit", async () => {
+    const search = vi.fn(async () => ({
+      active: { total: 0, results: [] },
+      archived: { total: 0, results: [] },
+      draft: { total: 0, results: [] },
+    }));
+    stubServerApi({ "v1.threads.search.$get": search });
+
+    await runCommand(
+      [
+        "thread",
+        "search",
+        "release",
+        "--lifecycle",
+        "draft",
+        "--limit",
+        "3",
+        "--json",
+      ],
+      register,
+    );
+
+    expect(search).toHaveBeenCalledWith({
+      query: { query: "release", lifecycles: "draft", limitPerGroup: "3" },
+    });
+  });
+
   it("creates a named thread section", async () => {
     const create = vi.fn(async () => ({
       id: "section-review",

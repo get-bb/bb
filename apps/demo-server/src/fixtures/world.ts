@@ -84,6 +84,7 @@ export function threadListEntry(
     environmentIsWorktree: null,
     environmentWorkspaceDisplayKind: "other",
     queuedWork: "none",
+    lifecycle: "active",
   };
 }
 
