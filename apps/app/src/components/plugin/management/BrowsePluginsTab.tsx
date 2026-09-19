@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { Icon } from "@bb/shared-ui/icon";
+import { Button } from "@bb/shared-ui/button";
 import bbLogoUrl from "../../../../../../assets/bb-logo.svg";
 import { OpenPluginGuideButton } from "./OpenPluginGuideButton";
 import { cn } from "@bb/shared-ui/lib/utils";
