@@ -182,7 +182,9 @@ export function ResourceToolbar({
             value={searchValue}
             onChange={(event) => onSearchChange(event.target.value)}
             placeholder={
-              searchCondensed && !searchExpanded ? "Search" : searchPlaceholder
+              searchCondensed && !searchExpanded
+                ? "Search..."
+                : searchPlaceholder
             }
             aria-label={searchLabel ?? searchPlaceholder}
             enterKeyHint={expandSearchOnFocus ? "search" : undefined}
@@ -202,14 +204,39 @@ export function ResourceToolbar({
                 setSearchExpanded(false);
               }
             }}
-            className="h-8 truncate pl-8 focus:border-ring/60 focus:text-clip focus:ring-2 focus:ring-ring/20 focus-visible:ring-2 focus-visible:ring-ring/20"
+            className={cn(
+              "h-8 truncate pl-8 focus:border-ring/60 focus:text-clip focus:ring-2 focus:ring-ring/20 focus-visible:ring-2 focus-visible:ring-ring/20 max-md:pointer-coarse:h-8",
+              (searchExpanded || (!searchCondensed && searchValue)) && "pr-8",
+            )}
           />
+          {searchExpanded || (!searchCondensed && searchValue) ? (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    aria-label={
+                      searchExpanded ? "Close search" : "Clear search"
+                    }
+                    className="absolute inset-y-0 right-0 size-8 text-muted-foreground hover:text-foreground"
+                    onClick={() => {
+                      if (!searchExpanded) onSearchChange("");
+                      searchRef.current?.querySelector("input")?.focus();
+                      setSearchExpanded(false);
+                    }}
+                  >
+                    <Icon name="X" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {searchExpanded ? "Close search" : "Clear search"}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          ) : null}
         </div>
-        {searchExpanded ? (
-          <Button type="submit" size="sm" variant="secondary">
-            Search
-          </Button>
-        ) : null}
       </form>
       {controls ? (
         <div
