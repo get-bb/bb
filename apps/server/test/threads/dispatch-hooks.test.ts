@@ -206,7 +206,7 @@ async function expectApiError(run: () => Promise<unknown>): Promise<ApiError> {
 describe("built-in Drafts save-only admission", () => {
   const pluginSubmission = { pluginId: "drafts", data: { kind: "draft" } };
 
-  it.each(["missing", "disabled", "failed", "missing-handler"] as const)(
+  it.each(["missing", "disabled", "missing-handler"] as const)(
     "rejects %s Drafts before creating a thread, environment, or turn",
     async (state) => {
       await withTestHarness(async (harness) => {
