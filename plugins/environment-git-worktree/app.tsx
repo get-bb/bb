@@ -200,8 +200,12 @@ function WorktreeInputsControl({
   }, [intent, query]);
 
   const branchOptions = useMemo(
-    () => filterBranches(branchState.branches, deferredQuery),
-    [branchState.branches, deferredQuery],
+    () =>
+      filterBranches(
+        [...new Set([...branchState.branches, ...branchState.remoteBranches])],
+        deferredQuery,
+      ),
+    [branchState.branches, branchState.remoteBranches, deferredQuery],
   );
 
   const defaultBase =

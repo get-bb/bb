@@ -54,6 +54,7 @@ function render(
       },
       branchesState: {
         branches: ["main", "release"],
+        remoteBranches: ["origin/main"],
       },
     },
   );
@@ -104,6 +105,19 @@ describe("worktree inputs control", () => {
     expect(onChange).toHaveBeenLastCalledWith({
       status: "ready",
       value: { branch: { kind: "named", name: "release" } },
+    });
+  });
+
+  it("allows an explicit remote branch as the worktree base", async () => {
+    const { slot, onChange } = render({ branch: { kind: "default" } });
+    await openPicker(slot);
+    fireEvent.change(slot.getByRole("textbox", { name: "Search branches" }), {
+      target: { value: "origin/main" },
+    });
+    fireEvent.click(slot.getByRole("button", { name: "origin/main" }));
+    expect(onChange).toHaveBeenLastCalledWith({
+      status: "ready",
+      value: { branch: { kind: "named", name: "origin/main" } },
     });
   });
 
