@@ -71,6 +71,17 @@ export function resolveDesktopLaunchMode(args: string[]): DesktopLaunchMode {
   );
 }
 
+export function resolveDesktopUserDataDir(
+  baseEnv: NodeJS.ProcessEnv,
+  config: DevInstanceConfig,
+): string {
+  const rawUserDataDir = baseEnv.BB_DESKTOP_USER_DATA_DIR?.trim();
+  if (rawUserDataDir === undefined || rawUserDataDir.length === 0) {
+    return join(config.dataDir, "desktop");
+  }
+  return resolve(rawUserDataDir);
+}
+
 export function toDesktopLaunchProcessEnv(args: {
   baseEnv: NodeJS.ProcessEnv;
   config: DevInstanceConfig;
@@ -90,7 +101,10 @@ export function toDesktopLaunchProcessEnv(args: {
   });
   delete env.BB_DEV_APP_PORT;
   env.BB_DESKTOP_OPEN_DEVTOOLS = args.baseEnv.BB_DESKTOP_OPEN_DEVTOOLS ?? "0";
-  env.BB_DESKTOP_USER_DATA_DIR = join(args.config.dataDir, "desktop");
+  env.BB_DESKTOP_USER_DATA_DIR = resolveDesktopUserDataDir(
+    args.baseEnv,
+    args.config,
+  );
   env.BB_TELEMETRY = "false";
   env.NODE_ENV = "production";
   return env;
@@ -99,15 +113,19 @@ export function toDesktopLaunchProcessEnv(args: {
 function formatConfig(
   config: DevInstanceConfig,
   mode: DesktopLaunchMode,
+  desktopUserDataDir: string | undefined,
 ): string {
   const prefix = mode === "worktree" ? "[desktop:worktree]" : "[desktop]";
   if (mode === "prod") {
     return `${prefix} Packaged desktop app with its installed data directory and ports`;
   }
+  if (desktopUserDataDir === undefined) {
+    throw new Error("[desktop:worktree] Electron user data directory is missing");
+  }
   return [
     `${prefix} Instance ${config.instanceId}`,
     `${prefix} Data dir ${config.dataDir}`,
-    `${prefix} Electron user data ${join(config.dataDir, "desktop")}`,
+    `${prefix} Electron user data ${desktopUserDataDir}`,
     `${prefix} Server ${config.serverUrl}`,
     `${prefix} Host daemon http://${LOOPBACK_HOST}:${config.ports.hostDaemonPort}`,
   ].join("\n");
@@ -160,13 +178,15 @@ async function main(): Promise<void> {
   if (mode === "worktree") {
     await assertWorktreePortsAvailable(config);
   }
-  process.stdout.write(`${formatConfig(config, mode)}\n`);
 
   const env = toDesktopLaunchProcessEnv({
     baseEnv: process.env,
     config,
     mode,
   });
+  process.stdout.write(
+    `${formatConfig(config, mode, env.BB_DESKTOP_USER_DATA_DIR)}\n`,
+  );
   const packageCommand = createDesktopPackageCommand(process.platform);
   const packageExitCode = await runScriptProcess({
     args: packageCommand.args,

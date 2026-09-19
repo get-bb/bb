@@ -6,6 +6,7 @@ import {
   createDesktopRunCommand,
   resolveDesktopLaunchMode,
   resolveDesktopPackageTask,
+  resolveDesktopUserDataDir,
   toDesktopLaunchProcessEnv,
 } from "../src/commands/run-desktop.js";
 
@@ -86,6 +87,23 @@ describe("desktop launch environment", () => {
 
     expect(env.BB_DESKTOP_USER_DATA_DIR?.startsWith(config.dataDir)).toBe(true);
     expect(env.BB_DESKTOP_USER_DATA_DIR).not.toContain("Application Support");
+  });
+
+  it("preserves an explicit Electron user data directory", () => {
+    const userDataDir = "/tmp/bb-desktop-profile";
+    const env = toDesktopLaunchProcessEnv({
+      baseEnv: { BB_DESKTOP_USER_DATA_DIR: ` ${userDataDir} ` },
+      config,
+      mode: "worktree",
+    });
+
+    expect(env.BB_DESKTOP_USER_DATA_DIR).toBe(userDataDir);
+    expect(
+      resolveDesktopUserDataDir(
+        { BB_DESKTOP_USER_DATA_DIR: "relative-profile" },
+        config,
+      ),
+    ).toBe(join(process.cwd(), "relative-profile"));
   });
 
   it("lets an explicit devtools choice survive the worktree default", () => {
