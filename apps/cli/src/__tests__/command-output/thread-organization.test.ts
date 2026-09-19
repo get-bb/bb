@@ -105,6 +105,36 @@ describe("bb thread organization commands", () => {
     expect(output).toContain("System");
   });
 
+  it.each([false, true])(
+    "shows failures and recovery commands in queue list (scoped: %s)",
+    async (scoped) => {
+      const failureReason =
+        "The provider bridge is unavailable while the plugin is still building";
+      const list = vi.fn(async () => [
+        queuedMessage({
+          waitingOn: { kind: "host-offline", hostName: "Michael-M4" },
+          failureReason,
+        }),
+      ]);
+      stubServerApi({
+        [scoped
+          ? "v1.threads.:id.queued-messages.$get"
+          : "v1.queued-messages.$get"]: list,
+      });
+      await runCommand(
+        ["thread", "queue", "list", ...(scoped ? ["thread-1"] : [])],
+        register,
+      );
+      const output = vi
+        .mocked(console.log)
+        .mock.calls.map((args) => args.join(" "))
+        .join("\n");
+      expect(output).toContain(`Failed queued-1: ${failureReason}`);
+      expect(output).toContain("bb thread queue send thread-1 queued-1");
+      expect(output).not.toContain("waiting for Michael-M4 to reconnect");
+    },
+  );
+
   it("updates a queued message in place", async () => {
     const list = vi.fn(async () => [
       { id: "queued-1", updatedAt: 42 },

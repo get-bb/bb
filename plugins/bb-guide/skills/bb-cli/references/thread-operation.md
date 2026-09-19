@@ -53,6 +53,10 @@
   and `Send at` columns. Several queued rows on one thread are normal. The SDK
   equivalents are `threads.queue.list` (cross-thread) and
   `threads.queuedMessages.list/send/update/delete` (one thread).
+- Failed queue rows show the failure reason and an exact recovery command.
+  Use `bb thread queue send <thread-id> <message-id>` to retry immediately,
+  including after automatic retries are exhausted. Editing does not clear a
+  failure or trigger a retry; send still respects core readiness requirements.
 - `bb thread queue send <thread-id> <message-id> --mode steer` re-attempts the
   row as a steer with the same send-now behavior: it bypasses the row's schedule
   and plugin waits, while core waits still apply. During provisioning it reports

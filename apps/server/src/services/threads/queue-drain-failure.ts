@@ -12,20 +12,8 @@ import { dispatchEnvironmentAndHost } from "./dispatch-hooks.js";
 
 type QueueDrainFailureDeps = Pick<AppDeps, "db" | "hub">;
 
-/**
- * How long a failed row waits before each further automatic attempt.
- *
- * A dispatch fails against the server as it is in that instant, and the
- * instant that breaks one is usually a restart: providers register over the
- * course of plugin startup, and a boot slow enough to rebuild a bundle can
- * leave them missing for a minute or two. The first two steps sit inside that
- * window, the rest reach past anything a boot explains. Running off the end is
- * what makes a failure terminal — five attempts across roughly an hour is long
- * enough that what is still failing is not a passing condition, and the thread
- * list has been showing the row as failed the whole time.
- */
 export const QUEUED_MESSAGE_RETRY_DELAYS_MS: readonly number[] = [
-  15_000, 60_000, 300_000, 900_000, 1_800_000,
+  15_000, 60_000, 300_000,
 ];
 
 /**

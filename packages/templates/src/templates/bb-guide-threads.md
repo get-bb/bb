@@ -357,6 +357,11 @@ Queued messages:
   queued row in the workspace; `--wait-holder plugin:<plugin-id>` narrows it to
   the rows one plugin is holding.
 
+  Failed rows show their failure reason instead of their previous wait, followed
+  by a recovery command: `bb thread queue send <thread-id> <message-id>`.
+  Use it to retry immediately, including after automatic retries are exhausted.
+  Editing the message does not clear its failure or trigger a retry.
+
   `queue send` dispatches a row now, bypassing every plugin wait and its own
   schedule — the invariants (a running turn, an unfinished workspace, an
   unanswered interaction) still apply, and a message that hits one simply queues
