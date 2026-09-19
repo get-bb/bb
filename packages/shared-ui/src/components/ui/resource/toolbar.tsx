@@ -217,12 +217,10 @@ export function ResourceToolbar({
                     type="button"
                     variant="ghost"
                     size="icon"
-                    aria-label={
-                      searchExpanded ? "Close search" : "Clear search"
-                    }
+                    aria-label="Clear search"
                     className="absolute inset-y-0 right-0 size-8 text-muted-foreground hover:text-foreground"
                     onClick={() => {
-                      if (!searchExpanded) onSearchChange("");
+                      onSearchChange("");
                       searchRef.current?.querySelector("input")?.focus();
                       setSearchExpanded(false);
                     }}
@@ -230,9 +228,7 @@ export function ResourceToolbar({
                     <Icon name="X" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>
-                  {searchExpanded ? "Close search" : "Clear search"}
-                </TooltipContent>
+                <TooltipContent>Clear search</TooltipContent>
               </Tooltip>
             </TooltipProvider>
           ) : null}
