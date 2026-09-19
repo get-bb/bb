@@ -609,7 +609,20 @@ function MarkdownAnchor({
     localFileLink !== null && getContextMenuItems !== null
       ? getContextMenuItems(localFileLink)
       : null;
+  const inPageFragment = rewrittenHref?.startsWith("#")
+    ? rewrittenHref.slice(1)
+    : null;
   const handleAnchorClick = (event: MarkdownAnchorEvent) => {
+    if (inPageFragment !== null) {
+      event.preventDefault();
+      const root = event.currentTarget.closest("[data-markdown-preview]");
+      const destination = Array.from(root?.querySelectorAll("[id]") ?? []).find(
+        (element) => element.id === inPageFragment,
+      );
+      destination?.scrollIntoView({ block: "start" });
+      return;
+    }
+
     if (localFileLink && onOpenLocalFileLink) {
       if (onOpenLocalFileLink(localFileLink)) {
         event.preventDefault();
@@ -638,8 +651,8 @@ function MarkdownAnchor({
       className={cn(
         "break-words [overflow-wrap:anywhere] underline underline-offset-2",
       )}
-      target="_blank"
-      rel="noopener noreferrer"
+      target={inPageFragment === null ? "_blank" : undefined}
+      rel={inPageFragment === null ? "noopener noreferrer" : undefined}
       onClick={handleAnchorClick}
     >
       {children}
@@ -882,8 +895,12 @@ function MarkdownOrderedList({
   );
 }
 
-function MarkdownListItem({ children }: MarkdownListItemProps) {
-  return <li className="mb-1 text-foreground">{children}</li>;
+function MarkdownListItem({ children, id }: MarkdownListItemProps) {
+  return (
+    <li id={id} className="mb-1 text-foreground">
+      {children}
+    </li>
+  );
 }
 
 function MarkdownBlockquote({ children }: MarkdownBlockquoteProps) {
