@@ -6,7 +6,7 @@ import type { JsonValue } from "@get-bb/plugin-sdk/app";
 import { GIT_WORKTREE_ENVIRONMENT_PROVIDER_ID } from "./provider-id.js";
 
 const app = await loadPluginApp(() => import("./app"));
-const { selectedBranchName, selectedExistingPath, worktreeDirectoryName } =
+const { selectedBranchName, selectedExistingPath, worktreePathLabel } =
   await import("./app");
 
 afterEach(() => {
@@ -133,6 +133,82 @@ describe("worktree inputs control", () => {
     });
   });
 
+  it("checks the chosen section immediately while discovery is pending", async () => {
+    const onChange = vi.fn();
+    const slot = renderSlot(
+      inputsSlot(),
+      {
+        projectId: "project-1",
+        target: { kind: "existing-host", hostId: "host-a" },
+        value: { branch: { kind: "default" } },
+        onChange,
+      },
+      {
+        rpc: {
+          defaultBaseBranch: () => ({ branch: "main" }),
+          listExistingWorktrees: () => new Promise(() => {}),
+        },
+      },
+    );
+    await openPicker(slot);
+    const existing = slot.getByRole("button", { name: "Existing worktree" });
+    const fresh = slot.getByRole("button", { name: "New worktree" });
+    fireEvent.click(existing);
+    expect(existing.querySelector(".opacity-100")).not.toBeNull();
+    expect(fresh.querySelector(".opacity-100")).toBeNull();
+    expect(
+      slot.getByRole("textbox", { name: "Search worktrees" }),
+    ).toBeTruthy();
+    expect(slot.getByText("Loading worktrees...")).toBeTruthy();
+    expect(onChange).not.toHaveBeenCalled();
+    fireEvent.click(fresh);
+    expect(fresh.querySelector(".opacity-100")).not.toBeNull();
+    expect(existing.querySelector(".opacity-100")).toBeNull();
+  });
+
+  it.each(["APP-FEATURE", "/code/app-feature", "FEATURE"])(
+    "searches existing worktrees by directory, full path, or branch (%s)",
+    async (query) => {
+      const { slot, onChange } = render({ branch: { kind: "default" } });
+      await openPicker(slot);
+      fireEvent.click(slot.getByRole("button", { name: "Existing worktree" }));
+      await waitFor(() =>
+        expect(slot.getByRole("button", { name: /app-feature/u })).toBeTruthy(),
+      );
+      const search = slot.getByRole("textbox", { name: "Search worktrees" });
+      fireEvent.change(search, { target: { value: "absent" } });
+      await waitFor(() =>
+        expect(slot.getByText("No matching worktrees found.")).toBeTruthy(),
+      );
+      fireEvent.change(search, { target: { value: query } });
+      await waitFor(() =>
+        expect(slot.getByRole("button", { name: /app-feature/u })).toBeTruthy(),
+      );
+      expect(slot.queryByRole("button", { name: /app-hotfix/u })).toBeNull();
+      fireEvent.keyDown(search, { key: "Enter" });
+      expect(onChange).toHaveBeenLastCalledWith({
+        status: "ready",
+        value: { kind: "existing", path: "/code/app-feature" },
+      });
+    },
+  );
+
+  it("does not select a prunable worktree through search Enter", async () => {
+    const { slot, onChange } = render({ branch: { kind: "default" } });
+    await openPicker(slot);
+    fireEvent.click(slot.getByRole("button", { name: "Existing worktree" }));
+    await waitFor(() =>
+      expect(slot.getByRole("button", { name: /app-hotfix/u })).toBeTruthy(),
+    );
+    const search = slot.getByRole("textbox", { name: "Search worktrees" });
+    fireEvent.change(search, { target: { value: "hotfix" } });
+    await waitFor(() =>
+      expect(slot.queryByRole("button", { name: /app-feature/u })).toBeNull(),
+    );
+    fireEvent.keyDown(search, { key: "Enter" });
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   it("picks an existing worktree from the second section", async () => {
     const { slot, onChange } = render({ branch: { kind: "default" } });
     await openPicker(slot);
@@ -165,7 +241,7 @@ describe("worktree inputs control", () => {
     const reused = render({ kind: "existing", path: "/code/app-feature" });
     expect(
       reused.slot.getByRole("combobox", { name: "Worktree" }).textContent,
-    ).toContain("Reuse: app-feature");
+    ).toContain("Reuse: code/app-feature");
   });
 
   it("loads existing worktrees only after selecting that section", async () => {
@@ -202,7 +278,7 @@ describe("worktree inputs control", () => {
     expect(selectedBranchName(null)).toBeNull();
     expect(selectedExistingPath({ kind: "existing", path: "/x" })).toBe("/x");
     expect(selectedExistingPath({ branch: { kind: "default" } })).toBeNull();
-    expect(worktreeDirectoryName("/code/app-feature/")).toBe("app-feature");
+    expect(worktreePathLabel("/code/app-feature/")).toBe("code/app-feature");
   });
 });
 

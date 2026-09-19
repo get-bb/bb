@@ -70,8 +70,8 @@ export function selectedExistingPath(value: JsonValue | null): string | null {
     : null;
 }
 
-export function worktreeDirectoryName(path: string): string {
-  return path.split("/").filter(Boolean).at(-1) ?? path;
+export function worktreePathLabel(path: string): string {
+  return path.split("/").filter(Boolean).slice(-2).join("/") || path;
 }
 
 function filterBranches(branches: readonly string[], query: string): string[] {
@@ -122,7 +122,7 @@ function WorktreeInputsControl({
   const branchState = experimental_useBranches({
     hostId,
     projectId,
-    query: deferredQuery.trim().toLowerCase(),
+    query: intent === "new" ? deferredQuery.trim().toLowerCase() : "",
   });
 
   useEffect(() => {
@@ -208,6 +208,12 @@ function WorktreeInputsControl({
     [branchState.branches, branchState.remoteBranches, deferredQuery],
   );
 
+  const worktreeOptions = worktrees.filter((worktree) =>
+    [worktree.path, worktree.branch ?? ""].some((value) =>
+      value.toLowerCase().includes(deferredQuery.trim().toLowerCase()),
+    ),
+  );
+
   const defaultBase =
     baseResult?.projectId === projectId && baseResult?.hostId === hostId
       ? baseResult.branch
@@ -216,7 +222,7 @@ function WorktreeInputsControl({
   const triggerLabel =
     existingPath === null
       ? `${BRANCH_FROM_PREFIX} ${baseBranchLabel}`
-      : `${REUSE_PREFIX} ${worktreeDirectoryName(existingPath)}`;
+      : `${REUSE_PREFIX} ${worktreePathLabel(existingPath)}`;
   const triggerTitle =
     existingPath ?? `Create a worktree from ${baseBranchLabel}`;
 
@@ -279,33 +285,47 @@ function WorktreeInputsControl({
         sideOffset={6}
         collisionPadding={16}
         mobileTitle="Work in:"
-        autoFocusRef={intent === "new" ? inputRef : undefined}
-        className={cn(BRANCH_PICKER_CONTENT_CLASS_NAME, "md:min-w-40")}
+        autoFocusRef={inputRef}
+        className={cn(BRANCH_PICKER_CONTENT_CLASS_NAME, "md:w-72")}
       >
         <MenuHoverProvider>
-          {intent === "new" ? (
-            <BranchPickerSearch
-              inputRef={inputRef}
-              query={query}
-              enterSelection={branchOptions[0]}
-              onEnterSelection={(branch) =>
-                submit({ branch: { kind: "named", name: branch } })
-              }
-              onQueryChange={setQuery}
-              ariaLabel="Search branches"
-            />
-          ) : null}
+          <BranchPickerSearch
+            inputRef={inputRef}
+            query={query}
+            enterSelection={
+              intent === "new"
+                ? branchOptions[0]
+                : worktreeOptions.find((worktree) => !worktree.prunable)?.path
+            }
+            onEnterSelection={(selection) =>
+              submit(
+                intent === "new"
+                  ? { branch: { kind: "named", name: selection } }
+                  : { kind: "existing", path: selection },
+              )
+            }
+            onQueryChange={setQuery}
+            ariaLabel={
+              intent === "new" ? "Search branches" : "Search worktrees"
+            }
+            placeholder={
+              intent === "new" ? "Search branches" : "Search worktrees"
+            }
+          />
           <div
             ref={optionsScrollRef}
-            className="min-h-0 max-h-[60vh] overflow-y-auto overscroll-contain px-1 pb-1 pt-0 md:max-h-80"
+            className="h-80 min-h-0 max-h-[60vh] overflow-y-auto overscroll-contain px-1 pb-1 pt-0"
             onWheel={(event) => event.stopPropagation()}
           >
             <BranchPickerSectionHeader label="Work in:" sticky={false} />
             <BranchPickerRow
               icon="Plus"
-              selected={selectedIntent === "new"}
+              selected={intent === "new"}
               title="Create a worktree for this thread"
-              onSelect={() => setIntent("new")}
+              onSelect={() => {
+                setIntent("new");
+                setQuery("");
+              }}
             >
               <span className="min-w-0 flex-1 truncate">
                 {NEW_WORKTREE_LABEL}
@@ -314,10 +334,11 @@ function WorktreeInputsControl({
             <BranchPickerRow
               icon="FolderGit"
               disabled={projectId === null || hostId === null}
-              selected={selectedIntent === "existing"}
+              selected={intent === "existing"}
               title="Use a worktree you already have"
               onSelect={() => {
                 setIntent("existing");
+                setQuery("");
                 void refreshWorktrees();
               }}
             >
@@ -363,7 +384,7 @@ function WorktreeInputsControl({
             ) : (
               <>
                 <BranchPickerSectionHeader label="Existing worktree:" />
-                {worktrees.length === 0 ? (
+                {worktreeOptions.length === 0 ? (
                   <p className="px-2 py-3 text-center text-xs text-muted-foreground">
                     {scopedWorktreeResult?.loading
                       ? "Loading worktrees..."
@@ -371,10 +392,12 @@ function WorktreeInputsControl({
                         ? "Could not load worktrees. Select Existing worktree to retry."
                         : scopedWorktreeResult === null
                           ? "Select Existing worktree to load worktrees."
-                          : "No existing worktrees found."}
+                          : worktrees.length === 0
+                            ? "No existing worktrees found."
+                            : "No matching worktrees found."}
                   </p>
                 ) : null}
-                {worktrees.map((worktree) => (
+                {worktreeOptions.map((worktree) => (
                   <BranchPickerRow
                     key={worktree.path}
                     icon="FolderGit"
@@ -386,15 +409,14 @@ function WorktreeInputsControl({
                     }
                   >
                     <span className="flex min-w-0 flex-1 flex-col">
-                      <span className="min-w-0 truncate">
-                        {worktreeDirectoryName(worktree.path)}
+                      <span className="min-w-0 truncate text-left [direction:rtl]">
+                        <bdi dir="ltr">{worktree.path}</bdi>
                       </span>
-                      {worktree.branch === null ? null : (
-                        <span className="min-w-0 truncate text-xs text-muted-foreground">
-                          {worktree.branch}
-                          {worktree.locked ? " · locked" : ""}
-                        </span>
-                      )}
+                      <span className="min-w-0 truncate text-xs text-muted-foreground">
+                        {worktree.branch ?? "Detached HEAD"}
+                        {worktree.locked ? " · locked" : ""}
+                        {worktree.prunable ? " · prunable" : ""}
+                      </span>
                     </span>
                   </BranchPickerRow>
                 ))}
