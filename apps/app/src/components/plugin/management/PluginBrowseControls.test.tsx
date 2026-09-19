@@ -458,7 +458,7 @@ describe("PluginCollectionToolbar", () => {
     expect(screen.getByRole("button", { name: "Filter & sort" })).toBeTruthy();
   });
 
-  it("keeps expanded search open while tabbing to close and preserves the live query when closing", () => {
+  it("clears expanded search and restores controls without removing filters", () => {
     mockToolbarWidth(320);
     render(<ToolbarHarness installed createAction />);
     const search = screen.getByRole("textbox", { name: "Search plugins" });
@@ -469,21 +469,21 @@ describe("PluginCollectionToolbar", () => {
       "query=Notes",
     );
     expect(screen.queryByRole("button", { name: "Search" })).toBeNull();
-    const close = screen.getByRole("button", { name: "Close search" });
-    act(() => close.focus());
-    expect(document.activeElement).toBe(close);
+    const clear = screen.getByRole("button", { name: "Clear search" });
+    act(() => clear.focus());
+    expect(document.activeElement).toBe(clear);
     expect(screen.queryByRole("button", { name: "Create" })).toBeNull();
-    fireEvent.click(close);
+    fireEvent.click(clear);
     expect(document.activeElement).toBe(search);
     expect(screen.getByRole("button", { name: "Filter & sort" })).toBeTruthy();
     expect(screen.getByLabelText("Parameters").textContent).toBe(
-      "query=Notes&category=security&source=user&sort=name&direction=desc",
+      "category=security&source=user&sort=name&direction=desc",
     );
     fireEvent.click(search);
-    expect(screen.getByRole("button", { name: "Close search" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Clear search" })).toBeTruthy();
     fireEvent.keyDown(search, { key: "Escape" });
     expect(document.activeElement).toBe(search);
-    expect(screen.queryByRole("button", { name: "Close search" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Clear search" })).toBeNull();
   });
 
   it("clears wide search without removing filters or moving focus away from the input", () => {
