@@ -3,16 +3,10 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PluginBranchPicker } from "./PluginBranchPicker";
-import {
-  usePluginBranches,
-  usePluginCheckoutState,
-  usePluginDefaultWorktreeBaseBranch,
-} from "./usePluginBranchPickerState";
+import { usePluginBranches } from "./usePluginBranchPickerState";
 
 vi.mock("./usePluginBranchPickerState", () => ({
   usePluginBranches: vi.fn(),
-  usePluginCheckoutState: vi.fn(),
-  usePluginDefaultWorktreeBaseBranch: vi.fn(),
 }));
 
 const refreshBranches = vi.fn(() => Promise.resolve());
@@ -25,15 +19,6 @@ beforeEach(() => {
     isLoading: false,
     refresh: refreshBranches,
   });
-  vi.mocked(usePluginCheckoutState).mockReturnValue({
-    isGit: true,
-    unborn: false,
-    detached: false,
-    dirty: false,
-    currentBranch: "main",
-    operation: { kind: "none" },
-  });
-  vi.mocked(usePluginDefaultWorktreeBaseBranch).mockReturnValue("main");
 });
 
 afterEach(() => {
@@ -107,22 +92,26 @@ describe("PluginBranchPicker", () => {
     expect(screen.queryByText("Branch from:")).toBeNull();
   });
 
-  it("uses the resolved default base instead of the checkout branch", () => {
-    vi.mocked(usePluginCheckoutState).mockReturnValue({
-      isGit: true,
-      unborn: false,
-      detached: false,
-      dirty: false,
-      currentBranch: "feature",
-      operation: { kind: "none" },
+  it.each([undefined, "Compare with:", "Branch from:"])(
+    "shows a neutral empty selection with label %s even when a worktree default exists",
+    (label) => {
+      const onChange = vi.fn();
+      renderPicker({ value: null, label, onChange });
+      const trigger = screen.getByRole("combobox", { name: "Branch" });
+      expect(trigger.textContent).toBe("Select branch");
+      expect(onChange).not.toHaveBeenCalled();
+    },
+  );
+
+  it("lets the caller provide the complete empty-selection label", () => {
+    renderPicker({
+      value: null,
+      label: "Compare with:",
+      placeholder: "Choose a comparison branch",
     });
-    renderPicker({ value: null, label: "Branch from:" });
-    const chipText = screen.getByRole("combobox", {
-      name: "Branch",
-    }).textContent;
-    expect(chipText).toContain("Branch from:");
-    expect(chipText).toContain("main");
-    expect(chipText).not.toContain("feature");
+    expect(screen.getByRole("combobox", { name: "Branch" }).textContent).toBe(
+      "Choose a comparison branch",
+    );
   });
 
   it("refreshes and renders a standard branch list without checkout actions", () => {

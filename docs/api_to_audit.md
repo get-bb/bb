@@ -592,12 +592,10 @@ carry non-secret references. `experimental_BranchPicker` is the host's branch
 picker with its branch-options loading (`{ hostId, projectId, value, onChange,
 label?, placeholder?, disabled }` — `label` prefixes the branch on the trigger
 and supplies the menu heading; omitted means the branch alone on the trigger
-and a neutral "Branches" menu heading; `placeholder` replaces the muted default base shown
-while nothing is picked), exported so a provider that runs on an enrolled
-machine can render bb's own branch control inside its inputs control — the
-worktree plugin's `app.tsx` does exactly that, emitting `{ branch: { kind:
-"named", name } }` for a pick, `{ branch: { kind: "default" } }` for a
-cleared pick and on mount — the same additive-versioning exception as
+and a neutral "Branches" menu heading; `placeholder` supplies the complete
+empty-selection text, defaulting to "Select branch"). A null selection does
+not resolve or imply a worktree base. The caller owns what picking a branch
+means. The component retains the same additive-versioning exception as
 `experimental_ProviderModelPicker`. `experimental_useBranches({ hostId,
 projectId, query? })` returns the matching local and remote branch lists,
 `defaultBaseBranch` (the branch a new workspace starts from when nothing is

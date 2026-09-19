@@ -1,10 +1,7 @@
 import { useCallback, useState } from "react";
 import type { BranchPickerProps } from "@get-bb/plugin-sdk";
 import { BranchPicker } from "@/components/pickers/BranchPicker";
-import {
-  usePluginBranches,
-  usePluginDefaultWorktreeBaseBranch,
-} from "./usePluginBranchPickerState";
+import { usePluginBranches } from "./usePluginBranchPickerState";
 
 export function PluginBranchPicker({
   hostId,
@@ -21,21 +18,10 @@ export function PluginBranchPicker({
     projectId,
     query: searchQuery,
   });
-  const resolvedDefaultBase = usePluginDefaultWorktreeBaseBranch({
-    hostId,
-    projectId,
-  });
   const enabled = hostId !== null && projectId !== null;
   const prefix = label === undefined ? "" : `${label} `;
-  const defaultBase = resolvedDefaultBase ?? "default";
-  const triggerLabel =
-    value === null
-      ? (placeholder ?? `${prefix}${defaultBase}`)
-      : `${prefix}${value}`;
-  const handleChange = useCallback(
-    (branch: string) => onChange(branch),
-    [onChange],
-  );
+  const emptyLabel = placeholder ?? "Select branch";
+  const triggerLabel = value === null ? emptyLabel : `${prefix}${value}`;
   const handleOpenChange = useCallback(
     (open: boolean) => {
       if (open) void refresh().catch(() => undefined);
@@ -51,12 +37,12 @@ export function PluginBranchPicker({
       options={branches}
       remoteOptions={remoteBranches}
       loading={isLoading}
-      placeholder={placeholder ?? `${prefix}${defaultBase}`}
+      placeholder={emptyLabel}
       triggerLabel={triggerLabel}
       triggerTitle={triggerLabel}
       menuLabel={label}
       disabled={!enabled || disabled === true}
-      onChange={handleChange}
+      onChange={onChange}
       onOpenChange={handleOpenChange}
       onSearchQueryChange={setSearchQuery}
     />

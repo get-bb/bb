@@ -2279,9 +2279,8 @@ export interface ExperimentalProviderModelPickerProps {
 /**
  * Props of the host-owned `experimental_BranchPicker` component — bb's branch
  * picker bundled with its branch-options loading for the given host and
- * project, the control bb's own New Thread composer renders as "Branch from".
- * The host owns fetching, searching, and refreshing the branch list; the
- * caller owns only the selection.
+ * project. The host owns fetching, searching, and refreshing the branch list;
+ * the caller owns the selection and its meaning.
  */
 export interface BranchPickerProps {
   /**
@@ -2292,8 +2291,8 @@ export interface BranchPickerProps {
   /** The project whose source on `hostId` is listed; null disables loading. */
   projectId: string | null;
   /**
-   * The selected branch name, or null when no branch is chosen (the host
-   * shows its placeholder and the consumer falls back to its own default).
+   * The selected branch name, or null when no branch is chosen. A null value
+   * shows the placeholder without selecting or implying a default branch.
    */
   value: string | null;
   /** Called with the picked branch name, or null when the pick is cleared. */
@@ -2305,9 +2304,8 @@ export interface BranchPickerProps {
    */
   label?: string;
   /**
-   * The trigger while nothing is picked. Omitted, the host shows the resolved
-   * default worktree base branch muted, or a neutral `default` placeholder
-   * when the base cannot be resolved.
+   * The complete trigger text while nothing is picked, without the label
+   * prefix. Defaults to "Select branch".
    */
   placeholder?: string;
   /** Render the current selection without allowing changes. */
