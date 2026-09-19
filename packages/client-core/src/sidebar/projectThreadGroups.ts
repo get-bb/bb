@@ -537,7 +537,7 @@ export function getSidebarDndItemId(item: ProjectThreadItem): string {
     case "thread":
       return item.node.thread.id;
     case "environment":
-      return item.group.nodes[0].thread.id;
+      return `environment:${item.group.nodes[0].thread.id}`;
     case "section":
       return item.group.key;
   }
@@ -634,7 +634,20 @@ function bucketIntoSections(
   }
   const looseItems: ProjectThreadItem[] = [];
 
-  for (const item of items) {
+  const partitionedItems = items.flatMap((item): ProjectThreadItem[] => {
+    if (item.kind !== "environment") return [item];
+    const nodesBySection = new Map<string | null, ProjectThreadNode[]>();
+    for (const node of item.group.nodes) {
+      const sectionId = node.thread.sectionId;
+      const nodes = nodesBySection.get(sectionId) ?? [];
+      nodes.push(node);
+      nodesBySection.set(sectionId, nodes);
+    }
+    return [...nodesBySection.values()].flatMap((nodes) =>
+      buildSortedItems(nodes, compareThreads, true, draftThreadIds),
+    );
+  });
+  for (const item of partitionedItems) {
     const orderingThread = getItemOrderingThread(item, compareThreads);
     const sectionId = orderingThread?.sectionId;
     if (!sectionId) {

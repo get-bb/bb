@@ -295,6 +295,7 @@ interface ThreadTreeNodeRowProps {
 }
 
 interface ThreadTreeItemRowProps {
+  isEnvGrouped?: boolean;
   projectId: string;
   item: ProjectThreadItem;
   depthOffset: number;
@@ -352,6 +353,10 @@ function getItemProjectId(item: ProjectThreadItem): string {
 }
 
 interface EnvironmentThreadGroupRowProps {
+  sectionDnd?: SectionThreadDndState;
+  dragBindings?: SidebarSortableDragBindings;
+  sortableRef?: (element: HTMLDivElement | null) => void;
+  sortableStyle?: CSSProperties;
   projectId: string;
   environmentThreadGroup: EnvironmentThreadGroup;
   depthOffset: number;
@@ -379,6 +384,7 @@ interface GetThreadNodeStickyLevelArgs {
 }
 
 interface EnvironmentThreadGroupHeaderProps {
+  dragBindings?: SidebarSortableDragBindings;
   environmentId: string;
   environmentProviderId: string | null;
   representativeThread: ThreadListEntry;
@@ -642,7 +648,7 @@ const SectionDndItemRow = memo(function SectionDndItemRow({
   sectionDnd,
   ...props
 }: ThreadTreeItemRowProps) {
-  if (!sectionDnd || props.item.kind === "environment") {
+  if (!sectionDnd) {
     return <ThreadTreeItemRow sectionDnd={sectionDnd} {...props} />;
   }
 
@@ -664,7 +670,7 @@ const DraggableSectionThreadItemRow = memo(
       disabled: false,
       displace: false,
     });
-    const isActive = sectionDnd.activeThread?.id === itemId;
+    const isActive = sectionDnd.activeItemId === itemId;
     const hasProjectedDestination =
       sectionDnd.dragOverParentKey !== null ||
       sectionDnd.nestTarget?.state === "valid" ||
@@ -890,6 +896,7 @@ function EnvironmentThreadGroupHeaderActions({
 }
 
 function EnvironmentThreadGroupHeader({
+  dragBindings,
   environmentId,
   environmentProviderId,
   representativeThread,
@@ -1013,6 +1020,9 @@ function EnvironmentThreadGroupHeader({
   if (stickyLevel !== undefined) {
     return (
       <SidebarStickyTier
+        {...dragBindings?.attributes}
+        {...dragBindings?.listeners}
+        ref={dragBindings?.setActivatorNodeRef}
         tier="parent"
         level={stickyLevel}
         className={className}
@@ -1024,13 +1034,23 @@ function EnvironmentThreadGroupHeader({
   }
 
   return (
-    <div className={className} style={style}>
+    <div
+      {...dragBindings?.attributes}
+      {...dragBindings?.listeners}
+      ref={dragBindings?.setActivatorNodeRef}
+      className={className}
+      style={style}
+    >
       {content}
     </div>
   );
 }
 
 const EnvironmentThreadGroupRow = memo(function EnvironmentThreadGroupRow({
+  sectionDnd,
+  dragBindings,
+  sortableRef,
+  sortableStyle,
   projectId,
   environmentThreadGroup,
   depthOffset,
@@ -1102,8 +1122,13 @@ const EnvironmentThreadGroupRow = memo(function EnvironmentThreadGroupRow({
 
   return (
     <>
-      <SidebarStickyGroup className="space-y-0.5">
+      <SidebarStickyGroup
+        ref={sortableRef}
+        style={sortableStyle}
+        className="space-y-0.5"
+      >
         <EnvironmentThreadGroupHeader
+          dragBindings={dragBindings}
           environmentId={environmentId}
           environmentProviderId={environmentProviderId}
           representativeThread={representativeThread}
@@ -1135,10 +1160,11 @@ const EnvironmentThreadGroupRow = memo(function EnvironmentThreadGroupRow({
                   return null;
                 }
                 return (
-                  <ThreadTreeNodeRow
+                  <SectionDndItemRow
                     key={node.thread.id}
                     projectId={projectId}
-                    node={node}
+                    item={nodeItems[index]}
+                    sectionDnd={sectionDnd}
                     depthOffset={depthOffset + 1}
                     isEnvGrouped
                     selectedThreadId={selectedThreadId}
@@ -1167,6 +1193,7 @@ const EnvironmentThreadGroupRow = memo(function EnvironmentThreadGroupRow({
 });
 
 const ThreadTreeItemRow = memo(function ThreadTreeItemRow({
+  isEnvGrouped = false,
   projectId,
   item,
   depthOffset,
@@ -1218,7 +1245,7 @@ const ThreadTreeItemRow = memo(function ThreadTreeItemRow({
         projectId={projectId}
         node={item.node}
         depthOffset={depthOffset}
-        isEnvGrouped={false}
+        isEnvGrouped={isEnvGrouped}
         selectedThreadId={selectedThreadId}
         collapsedThreadIds={collapsedThreadIds}
         collapsedEnvironmentIds={collapsedEnvironmentIds}
@@ -1239,6 +1266,10 @@ const ThreadTreeItemRow = memo(function ThreadTreeItemRow({
     <EnvironmentThreadGroupRow
       projectId={projectId}
       environmentThreadGroup={item.group}
+      sectionDnd={sectionDnd}
+      dragBindings={dragBindings}
+      sortableRef={sortableRef}
+      sortableStyle={sortableStyle}
       depthOffset={depthOffset}
       selectedThreadId={selectedThreadId}
       isCollapsed={collapsedEnvironmentIds.has(item.group.environmentId)}
@@ -1409,7 +1440,7 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
     sectionDnd.dragOverParentKey !== null &&
     sectionDnd.dragOverParentKey !== sectionKey &&
     sourceItemIds?.length === 1 &&
-    sourceItemIds[0] === sectionDnd.activeThread.id;
+    sourceItemIds[0] === sectionDnd.activeItemId;
   const previewDepth = getThreadRowDepth({
     depthOffset:
       variant === "section" && depthOffset === 0 ? 0 : depthOffset + 1,

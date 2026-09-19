@@ -31,6 +31,7 @@ import type { NeighborReorderRequest } from "@bb/client-core";
 import {
   buildSidebarEntitySectionId,
   getSidebarDndItemId,
+  getProjectThreadItemDescendants,
   reorderSidebarSectionOrder,
   type ProjectThreadItem,
   type ProjectThreadNode,
@@ -89,6 +90,7 @@ export interface SectionThreadReorderTarget {
 }
 
 export interface SectionThreadDndState {
+  activeItemId: string | null;
   activeThread: ThreadListEntry | null;
   consumeClickSuppression: ConsumeDragClickSuppression;
   dndContextProps: ReorderDndContextProps;
@@ -121,6 +123,7 @@ interface UseSectionThreadDndArgs {
 }
 
 interface SectionThreadDndLookup {
+  groupThreadsByItemId: Map<string, ThreadListEntry[]>;
   sectionParentKeyBySectionId: Map<string, string>;
   sectionSectionIdByParentKey: Map<string, SidebarSectionId>;
   sectionIdByParentKey: Map<string, string | null>;
@@ -133,6 +136,13 @@ interface SectionThreadDndLookup {
 }
 
 export type SectionThreadDropDecision =
+  | {
+      kind: "move-group";
+      activeId: string;
+      threadIds: string[];
+      sectionId: string | null;
+      toParentKey: string;
+    }
   | {
       kind: "move";
       activeId: string;
@@ -229,6 +239,7 @@ export function collectSectionThreadDndLookup(
   options: CollectSectionThreadDndLookupOptions = {},
 ): SectionThreadDndLookup {
   const lookup: SectionThreadDndLookup = {
+    groupThreadsByItemId: new Map(),
     sectionParentKeyBySectionId: new Map([
       ["threads", containerId],
       ["pinned", PINNED_THREAD_PARENT_KEY],
@@ -248,19 +259,44 @@ export function collectSectionThreadDndLookup(
     nestParentIdByItemId: new Map(),
   };
 
+  const registerNode = (
+    node: ProjectThreadNode,
+    parentKey: string,
+    nestParentId?: string,
+  ) => {
+    const threadId = node.thread.id;
+    lookup.itemKindById.set(threadId, "thread");
+    lookup.parentKeyByItemId.set(threadId, parentKey);
+    lookup.threadByItemId.set(threadId, node.thread);
+    lookup.nodeByItemId.set(threadId, node);
+    if (nestParentId) lookup.nestParentIdByItemId.set(threadId, nestParentId);
+    registerNestedChildren(node, parentKey);
+  };
+  const registerEnvironment = (
+    item: Extract<ProjectThreadItem, { kind: "environment" }>,
+    parentKey: string,
+    nestParentId?: string,
+  ) => {
+    const itemId = getSidebarDndItemId(item);
+    lookup.itemKindById.set(itemId, "environment");
+    lookup.parentKeyByItemId.set(itemId, parentKey);
+    lookup.groupThreadsByItemId.set(
+      itemId,
+      getProjectThreadItemDescendants([item]),
+    );
+    lookup.threadByItemId.set(itemId, item.group.nodes[0].thread);
+    for (const node of item.group.nodes)
+      registerNode(node, parentKey, nestParentId);
+  };
   const registerNestedChildren = (
     node: ProjectThreadNode,
     parentKey: string,
   ) => {
     for (const child of node.children) {
-      if (child.kind !== "thread") continue;
-      const childId = child.node.thread.id;
-      lookup.itemKindById.set(childId, "thread");
-      lookup.parentKeyByItemId.set(childId, parentKey);
-      lookup.threadByItemId.set(childId, child.node.thread);
-      lookup.nodeByItemId.set(childId, child.node);
-      lookup.nestParentIdByItemId.set(childId, node.thread.id);
-      registerNestedChildren(child.node, parentKey);
+      if (child.kind === "thread")
+        registerNode(child.node, parentKey, node.thread.id);
+      else if (child.kind === "environment")
+        registerEnvironment(child, parentKey, node.thread.id);
     }
   };
 
@@ -287,9 +323,9 @@ export function collectSectionThreadDndLookup(
       lookup.itemKindById.set(itemId, item.kind);
       lookup.parentKeyByItemId.set(itemId, parentKey);
       if (item.kind === "thread") {
-        lookup.threadByItemId.set(itemId, item.node.thread);
-        lookup.nodeByItemId.set(itemId, item.node);
-        registerNestedChildren(item.node, parentKey);
+        registerNode(item.node, parentKey);
+      } else if (item.kind === "environment") {
+        registerEnvironment(item, parentKey);
       } else if (item.kind === "section") {
         const sectionId = options.groups
           ? parseGroupSectionId(item.group.key)
@@ -562,6 +598,30 @@ export function resolveSectionThreadDropDecision(
   const fromParentKey = lookup.parentKeyByItemId.get(activeId);
   if (!activeThread || !fromParentKey) return null;
 
+  const groupThreads = lookup.groupThreadsByItemId.get(activeId);
+  if (groupThreads) {
+    if (options.groups) return null;
+    const overThreadId =
+      overId === null ? null : parseSidebarThreadRowDroppableId(overId);
+    const toParentKey =
+      overId === activeId
+        ? projectedParentKey
+        : resolveSectionThreadDropParentKey(lookup, overThreadId ?? overId);
+    if (
+      !toParentKey ||
+      toParentKey === fromParentKey ||
+      !lookup.sectionIdByParentKey.has(toParentKey)
+    )
+      return null;
+    return {
+      kind: "move-group",
+      activeId,
+      threadIds: groupThreads.map((thread) => thread.id),
+      sectionId: lookup.sectionIdByParentKey.get(toParentKey) ?? null,
+      toParentKey,
+    };
+  }
+
   const overRowThreadId =
     overId === null ? null : parseSidebarThreadRowDroppableId(overId);
   if (overRowThreadId !== null && overRowThreadId !== activeId) {
@@ -738,6 +798,7 @@ function resolveTargetParentKey(
   switch (decision?.kind) {
     case "pin":
       return PINNED_THREAD_PARENT_KEY;
+    case "move-group":
     case "move":
     case "detach":
     case "unpin":
@@ -794,6 +855,7 @@ function hasDropDecisionLanded(
   decision: SectionThreadDropDecision,
 ): boolean {
   switch (decision.kind) {
+    case "move-group":
     case "move":
       return (
         lookup.parentKeyByItemId.get(decision.activeId) === decision.toParentKey
@@ -904,7 +966,12 @@ export function useSectionThreadDnd({
   const getNestBandFraction = useCallback(
     (threadId: string): number | null => {
       const activeId = activeIdRef.current;
-      if (activeId === null || threadId === activeId) return null;
+      if (
+        activeId === null ||
+        threadId === activeId ||
+        lookup.groupThreadsByItemId.has(activeId)
+      )
+        return null;
       if (lookup.itemKindById.get(threadId) !== "thread") return null;
       const armed = armedNestThreadIdRef.current === threadId;
       if (coarsePointerRef.current) return 1;
@@ -956,7 +1023,27 @@ export function useSectionThreadDnd({
         });
       }
       pinnedInsertRef.current = null;
-      const reorderCollisions = reorderCollisionDetection(args);
+      const groupThreads =
+        typeof args.active.id === "string"
+          ? lookup.groupThreadsByItemId.get(args.active.id)
+          : undefined;
+      const groupThreadIds = groupThreads
+        ? new Set(groupThreads.map((thread) => thread.id))
+        : null;
+      const reorderCollisions = reorderCollisionDetection(
+        groupThreadIds
+          ? {
+              ...args,
+              droppableContainers: args.droppableContainers.filter(({ id }) => {
+                if (typeof id !== "string") return true;
+                const threadId =
+                  parseSidebarThreadRowDroppableId(id) ??
+                  lookup.threadByItemId.get(id)?.id;
+                return threadId === undefined || !groupThreadIds.has(threadId);
+              }),
+            }
+          : args,
+      );
       latestRowCollisionRef.current = null;
       const initialThreadRowRects = initialThreadRowRectsRef.current;
       if (initialThreadRowRects.size === 0) {
@@ -992,6 +1079,7 @@ export function useSectionThreadDnd({
       handleResolvedRow,
       handleRowPointer,
       holdNestCandidate,
+      lookup,
       topLevelSectionIds,
     ],
   );
@@ -1122,7 +1210,17 @@ export function useSectionThreadDnd({
       clearDropDwell();
       clearNestCandidate();
       startProjectionInputTracking();
-      setActiveThread(thread);
+      const groupThreads = activeId
+        ? lookup.groupThreadsByItemId.get(activeId)
+        : undefined;
+      setActiveThread(
+        thread && groupThreads
+          ? {
+              ...thread,
+              title: `${thread.environmentName ?? thread.environmentBranchName ?? "Worktree group"} (${groupThreads.length} threads)`,
+            }
+          : thread,
+      );
       setDragOverParentKey(null);
       setRowDrop(null);
       setReorderTarget(null);
@@ -1301,6 +1399,13 @@ export function useSectionThreadDnd({
         return;
       }
       switch (decision.kind) {
+        case "move-group":
+          void Promise.allSettled(
+            decision.threadIds.map((id) =>
+              updateThread.mutateAsync({ id, sectionId: decision.sectionId }),
+            ),
+          ).finally(clearProjectedDrag);
+          break;
         case "move":
           updateThread.mutate(
             {
@@ -1422,6 +1527,7 @@ export function useSectionThreadDnd({
     pendingDropDecision !== null &&
     hasDropDecisionLanded(lookup, pendingDropDecision);
   return {
+    activeItemId: dropDecisionLanded ? null : activeIdRef.current,
     activeThread: dropDecisionLanded ? null : activeThread,
     consumeClickSuppression,
     dndContextProps,
