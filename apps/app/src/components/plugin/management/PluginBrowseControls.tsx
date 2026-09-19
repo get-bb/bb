@@ -119,6 +119,7 @@ export function PluginCollectionToolbar({
     direction: sortDirection,
     compact: true,
     clearInFooter: true,
+    showHeading: false,
     placeholderLabel: "Default",
     options: pluginBrowseSortOptions(installsKnown, sort, sortDirection),
     onChange: (value: string) =>
@@ -146,12 +147,22 @@ export function PluginCollectionToolbar({
       }),
   };
   const sourceProps = sourceFilter
-    ? { ...sourceFilter, label: "Source", compact: true, clearInFooter: true }
+    ? {
+        ...sourceFilter,
+        label: "Source",
+        compact: true,
+        clearInFooter: true,
+        showHeading: false,
+      }
     : null;
   const sortIcon =
     sort === null
       ? "ArrowUpDown"
       : PLUGIN_BROWSE_SORT_ICONS[sort][sortDirection];
+  const sortSummary =
+    sort === null
+      ? "Default"
+      : `${PLUGIN_BROWSE_SORT_LABELS[sort]} · ${PLUGIN_BROWSE_SORT_DIRECTIONS[sort][sortDirection]}`;
   const controls = [
     ...(showCategoryFilter
       ? [
@@ -190,10 +201,7 @@ export function PluginCollectionToolbar({
       label: "Sort",
       icon: sortIcon,
       active: sort !== null,
-      summary:
-        sort === null
-          ? "Default"
-          : `${PLUGIN_BROWSE_SORT_LABELS[sort]} · ${PLUGIN_BROWSE_SORT_DIRECTIONS[sort][sortDirection]}`,
+      summary: sortSummary,
       content: <ResourceSortMenuItems {...sortProps} />,
     },
   ] satisfies PluginControlPage[];
@@ -218,13 +226,14 @@ export function PluginCollectionToolbar({
               <PluginBrowseCategoryFilter {...categoryProps} />
             ) : null}
             {sourceProps ? (
-              <ResourceMultiSelectMenu
-                {...sourceProps}
-                icon="Layers"
-                showLabel
-              />
+              <ResourceMultiSelectMenu {...sourceProps} showLabel />
             ) : null}
-            <ResourceSortMenu {...sortProps} showLabel triggerIcon={sortIcon} />
+            <ResourceSortMenu
+              {...sortProps}
+              showLabel
+              triggerIcon={sortIcon}
+              tooltip={`Sort: ${sortSummary}`}
+            />
           </>
         }
         combinedControls={
@@ -258,7 +267,7 @@ function PluginControlsMenu({
   const page = pages.find((candidate) => candidate.id === pageId);
   const activeLabels = pages
     .filter((candidate) => candidate.active)
-    .map((candidate) => candidate.label);
+    .map((candidate) => `${candidate.label}: ${candidate.summary}`);
 
   useEffect(() => {
     if (!open) return;
@@ -298,9 +307,7 @@ function PluginControlsMenu({
           label="Filter & sort"
           text="Filter & sort"
           tooltip={
-            activeLabels.length
-              ? `Filter & sort: ${activeLabels.join(", ")}`
-              : "Filter & sort"
+            activeLabels.length ? activeLabels.join("; ") : "Filter & sort"
           }
           icon="FilterHorizontal"
           active={activeLabels.length > 0}

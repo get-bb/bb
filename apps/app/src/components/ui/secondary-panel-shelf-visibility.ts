@@ -3,7 +3,7 @@ import { useSyncExternalStore } from "react";
 export type CompactSecondaryPanelPresentation = "closed" | "shelf" | "full";
 
 export const COMPACT_SHELF_HIDDEN_FIXED_CHROME_CLASS =
-  "data-[panel-shelf=shelf]:invisible";
+  "data-[panel-shelf=shelf]:invisible data-[panel-shelf=full]:invisible";
 
 let compactSecondaryPanelPresentation: CompactSecondaryPanelPresentation =
   "closed";
