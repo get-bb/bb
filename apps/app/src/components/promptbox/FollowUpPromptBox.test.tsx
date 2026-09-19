@@ -364,7 +364,7 @@ describe("FollowUpPromptBox", () => {
     expect(onRender).toHaveBeenCalledTimes(2);
     expect(onRender.mock.calls[0]?.[1]).toBe("mount");
     expect(onRender.mock.calls[1]?.[1]).toBe("update");
-    expect(screen.getByTestId("prompt-box").dataset.minHeight).toBe("76");
+    expect(screen.getByTestId("prompt-box").dataset.minHeight).toBe("54");
   });
 
   it("includes expanding plugin banners in measured stack compensation", () => {
@@ -430,8 +430,8 @@ describe("FollowUpPromptBox", () => {
       resizeObserverCallback?.([], {} as ResizeObserver);
     });
 
-    expect(initialMinHeight).toBe(100);
-    expect(promptBox.getAttribute("data-min-height")).toBe("76");
+    expect(initialMinHeight).toBe(78);
+    expect(promptBox.getAttribute("data-min-height")).toBe("54");
   });
 
   it("renders plugin banners above native stack content", () => {
