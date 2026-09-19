@@ -477,7 +477,8 @@ function ThreadRowComponent({
                   ? "relative"
                   : "absolute top-1/2 -translate-x-1/2 -translate-y-1/2",
                 !showActive &&
-                  "group-hover/thread-row:bg-sidebar-accent group-has-[[data-state=open]]/thread-row:bg-sidebar-accent",
+                  "group-hover/thread-row:bg-sidebar-accent",
+                !showActive && isActionsOpen && "bg-sidebar-accent",
                 !showActive &&
                   splitIndicator.isOpenInSplit &&
                   SIDEBAR_ROW_OPEN_IN_SPLIT_STATE_CLASS,
