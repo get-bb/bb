@@ -5,6 +5,7 @@ import type {
 } from "@/hooks/queries/plugin-catalog-queries";
 import {
   pluginBrowseShelves,
+  pluginCategoryFilterOptions,
   sortPluginEntries,
 } from "./plugin-browse-discovery";
 
@@ -145,6 +146,31 @@ describe("plugin browse shelves", () => {
     });
 
     expect(shelves[0]?.entries).toEqual([first]);
+  });
+});
+
+describe("plugin category filters", () => {
+  it("omits missing categories even when previously selected, preserving Local and custom categories", () => {
+    expect(
+      pluginCategoryFilterOptions(
+        [
+          entry("categorized"),
+          entry("no-category", { categoryId: undefined, category: undefined }),
+          entry("no-id", { categoryId: undefined }),
+          entry("no-label", { category: undefined }),
+          entry("local", { categoryId: "local", category: "Local" }),
+          entry("custom", {
+            categoryId: "observability",
+            category: "Observability",
+          }),
+        ],
+        ["uncategorized"],
+      ),
+    ).toEqual([
+      { id: "thread-content", label: "Thread Content", count: 1 },
+      { id: "local", label: "Local", count: 1 },
+      { id: "observability", label: "Observability", count: 1 },
+    ]);
   });
 });
 

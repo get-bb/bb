@@ -34,32 +34,20 @@ export function pluginCategoryFilterOptions(
   const unknownIds: string[] = [];
   for (const entry of entries) {
     const id = pluginCategoryFilterId(entry);
+    if (id === UNCATEGORIZED_PLUGIN_CATEGORY_ID) continue;
     if (!labels.has(id)) {
-      labels.set(
-        id,
-        id === UNCATEGORIZED_PLUGIN_CATEGORY_ID
-          ? "Uncategorized"
-          : (entry.category ?? id),
-      );
-      if (
-        id !== UNCATEGORIZED_PLUGIN_CATEGORY_ID &&
-        pluginCatalogCategory(id) === undefined
-      ) {
+      labels.set(id, entry.category ?? id);
+      if (pluginCatalogCategory(id) === undefined) {
         unknownIds.push(id);
       }
     }
     counts.set(id, (counts.get(id) ?? 0) + 1);
   }
   for (const id of selected) {
-    if (labels.has(id)) continue;
+    if (id === UNCATEGORIZED_PLUGIN_CATEGORY_ID || labels.has(id)) continue;
     const category = pluginCatalogCategory(id);
-    labels.set(
-      id,
-      id === UNCATEGORIZED_PLUGIN_CATEGORY_ID
-        ? "Uncategorized"
-        : (category?.displayName ?? id),
-    );
-    if (id !== UNCATEGORIZED_PLUGIN_CATEGORY_ID && category === undefined) {
+    labels.set(id, category?.displayName ?? id);
+    if (category === undefined) {
       unknownIds.push(id);
     }
   }
@@ -68,9 +56,6 @@ export function pluginCategoryFilterOptions(
       labels.has(id),
     ),
     ...unknownIds,
-    ...(labels.has(UNCATEGORIZED_PLUGIN_CATEGORY_ID)
-      ? [UNCATEGORIZED_PLUGIN_CATEGORY_ID]
-      : []),
   ];
   return orderedIds.map((id) => ({
     id,

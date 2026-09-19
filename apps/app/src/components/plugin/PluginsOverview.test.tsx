@@ -798,6 +798,7 @@ describe("PluginsOverview", () => {
     fireEvent.click(
       await screen.findByRole("option", { name: /Local, 2 plugins/ }),
     );
+    expect(screen.queryByRole("option", { name: /Uncategorized/ })).toBeNull();
     expect(screen.getByText("Local Notes")).toBeTruthy();
     expect(screen.getByText("Other Plugin")).toBeTruthy();
     expect(screen.queryByText("Marketplace Plugin")).toBeNull();
