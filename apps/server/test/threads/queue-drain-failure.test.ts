@@ -535,11 +535,9 @@ describe("a failed row's booked retry", () => {
         }
 
         const spent = rereadRow(harness, row.id);
-        expect(spent.failureCount).toBe(QUEUED_MESSAGE_RETRY_DELAYS_MS.length + 1);
+        expect(spent.failureCount).toBe(4);
         expect(spent.nextAttemptAt).toBeNull();
-        expect(rejector.attempts()).toBe(
-          QUEUED_MESSAGE_RETRY_DELAYS_MS.length + 1,
-        );
+        expect(rejector.attempts()).toBe(4);
 
         // Nothing automatic can reach it now: it is a row for a person, and
         // the thread list has been showing it as failed the whole time.
@@ -547,9 +545,7 @@ describe("a failed row's booked retry", () => {
           kind: "failed-retry",
           now: Date.now() + 86_400_000,
         });
-        expect(rejector.attempts()).toBe(
-          QUEUED_MESSAGE_RETRY_DELAYS_MS.length + 1,
-        );
+        expect(rejector.attempts()).toBe(4);
       } finally {
         rejector.dispose();
       }
