@@ -1420,6 +1420,74 @@ describe("PromptBoxInternal submit shortcuts", () => {
     }
   });
 
+  describe.each([false, true])("swapped submit actions: %s", (swapSubmitActions) => {
+    it.each(["", "Follow up"])(
+      "sends with the same action and queues only draft input (%j)",
+      (value) => {
+        const onSubmit = vi.fn();
+        const onModifierSubmit = vi.fn();
+        const onStop = vi.fn();
+        render(
+          <PromptBoxInternal
+            {...createPromptBoxProps({
+              value,
+              onSubmit,
+              submission: {
+                onModifierSubmit,
+                swapSubmitActions,
+                isRunning: true,
+                onStop,
+              },
+            })}
+          />,
+        );
+
+        const editor = getPromptEditorElement();
+        fireEvent.keyDown(editor, {
+          key: "Enter",
+          metaKey: !swapSubmitActions,
+        });
+        expect(onModifierSubmit).toHaveBeenCalledOnce();
+        expect(onSubmit).not.toHaveBeenCalled();
+
+        fireEvent.keyDown(editor, {
+          key: "Enter",
+          metaKey: swapSubmitActions,
+        });
+        expect(onSubmit).toHaveBeenCalledTimes(value ? 1 : 0);
+        expect(onModifierSubmit).toHaveBeenCalledOnce();
+        if (!value) {
+          fireEvent.click(screen.getByRole("button", { name: "Stop run" }));
+          expect(onStop).toHaveBeenCalledOnce();
+        }
+      },
+    );
+  });
+
+  it("blocks both swapped actions while disabled", () => {
+    const onSubmit = vi.fn();
+    const onModifierSubmit = vi.fn();
+    render(
+      <PromptBoxInternal
+        {...createPromptBoxProps({
+          value: "Follow up",
+          onSubmit,
+          submission: {
+            onModifierSubmit,
+            swapSubmitActions: true,
+            disabled: true,
+          },
+        })}
+      />,
+    );
+
+    const editor = getPromptEditorElement();
+    fireEvent.keyDown(editor, { key: "Enter" });
+    fireEvent.keyDown(editor, { key: "Enter", metaKey: true });
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(onModifierSubmit).not.toHaveBeenCalled();
+  });
+
   it("routes Magic Keyboard Command+Enter to modifier submit on coarse-pointer iPadOS WebKit", () => {
     const restoreMatchMedia = mockPointerCoarse(true);
     const restoreNavigator = mockIPadOSWebKit();
