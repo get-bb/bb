@@ -22,6 +22,8 @@ import type {
   ThreadTimelinePendingTodos,
   ThreadTurnInitiator,
   TurnRequestTarget,
+  SystemMessageKind,
+  SystemMessageSubject,
 } from "@bb/domain";
 import type { TimelineRow } from "@bb/server-contract";
 import type {
@@ -90,6 +92,8 @@ type ClientTurnRequestedArgs = EventFactoryRowOptions & {
   requestMethod?: "thread/start" | "turn/start";
   senderThreadId?: string | null;
   source?: "spawn" | "tell";
+  systemMessageKind?: SystemMessageKind;
+  systemMessageSubject?: SystemMessageSubject | null;
   target?: TurnRequestTarget;
   text: string;
 };
@@ -692,6 +696,12 @@ export function createTimelineEventFactory(
           source: args.source ?? "tell",
           initiator,
           senderThreadId,
+          ...(args.systemMessageKind !== undefined
+            ? { systemMessageKind: args.systemMessageKind }
+            : {}),
+          ...(args.systemMessageSubject !== undefined
+            ? { systemMessageSubject: args.systemMessageSubject }
+            : {}),
           input: args.input ?? [
             { type: "text", text: args.text, mentions: [] },
           ],

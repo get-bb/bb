@@ -4,11 +4,11 @@ import {
   PLUGIN_CLI_OUTPUT_MAX_BYTES,
   type BbPluginApi,
   type PluginAgentConfigurationContext,
-  type PluginAgentToolPresentation,
+  type PluginRowPresentation,
 } from "../../backend-contract.js";
 import { defineRpcContract } from "../../rpc-contract.js";
 import {
-  parsePluginAgentToolPresentation,
+  parsePluginRowPresentation,
   PLUGIN_AGENT_STATUS_LABEL_MAX_CHARS,
   RESERVED_BB_CLI_COMMANDS,
 } from "../../internal/host-policy.js";
@@ -1298,7 +1298,7 @@ describe("agent tools", () => {
 
   it("rejects a presentation with the production host's exact messages", () => {
     const { bb } = createFakePluginHost();
-    const register = (presentation: PluginAgentToolPresentation) =>
+    const register = (presentation: PluginRowPresentation) =>
       bb.agents.registerTool({
         name: "lookup_doc",
         description: "Look up a doc",
@@ -1350,7 +1350,7 @@ describe("agent tools", () => {
     });
     const recorded = harness.registrations.agentTools[0]?.presentation;
     expect(recorded).toEqual(
-      parsePluginAgentToolPresentation("lookup_doc", declared),
+      parsePluginRowPresentation('tool "lookup_doc"', declared),
     );
     expect(recorded).toEqual({
       label: { pending: "Looking up a doc", completed: "Looked up a doc" },

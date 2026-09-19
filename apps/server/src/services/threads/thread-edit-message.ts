@@ -445,7 +445,7 @@ export async function editThreadMessage(
       requestSequence: committed.requestSequence,
     };
   }
-  if (deps.pendingInteractions.hasPendingThreadInteraction(args.thread.id)) {
+  if (deps.pendingInteractions.hasTurnBoundPendingThreadInteraction(args.thread.id)) {
     conflict("Resolve the pending interaction before editing the message");
   }
   if (hasQueuedThreadMessages(deps.db, args.thread.id)) {

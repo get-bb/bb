@@ -712,6 +712,14 @@ function terminalDataBase64(byteLength: number): string {
 }
 
 const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
+  "hostDaemonCommandSchema.resolution.description":
+    "the interaction.resolve command's resolution is the persisted union, so it also admits the plugin_submitted arm and the description a plugin's describeSubmission returned. It never reaches the wire: a plugin interaction is settled in the server against its waiting requestInput promise and never queues a daemon command, so an older daemon never sees the field.",
+  "hostDaemonCommandSchema.resolution.description.detail":
+    "a described submission carries Markdown detail only when the plugin returned some; absence means the row title is the whole row.",
+  "hostDaemonCommandSchema.resolution.description.payload":
+    "a described submission carries a payload only when the plugin has something for its own timeline renderer; absence means the row renders from title and detail alone.",
+  "hostDaemonCommandSchema.resolution.description.title":
+    "a described submission overrides the row title only when the plugin returned one; absence means the presentation's completed label stands.",
   "hostDaemonCommandSchema.dynamicTools.presentation":
     "a dynamic tool declares a row presentation only when its plugin wrote one; absence means bb renders the call with the standard tool name and the plugin's branding glyph.",
   "hostDaemonCommandSchema.dynamicTools.presentation.badge":
@@ -1128,7 +1136,7 @@ const CONTRIBUTED_ENV = [
 
 describe("host-daemon command schemas", () => {
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(213);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(215);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 

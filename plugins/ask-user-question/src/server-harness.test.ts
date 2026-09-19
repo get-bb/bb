@@ -223,6 +223,27 @@ describe("asking a question", () => {
       allowFreeText: true,
     });
 
+    expect(pending.presentation).toEqual({
+      label: { pending: "Asking a question", completed: "Asked" },
+      icon: { glyph: "MessageQuestion" },
+    });
+    expect(
+      await pending.describeSubmission?.({
+        answers: { q0: { selected: ["q0o0"], freeText: "with pgbouncer" } },
+      }),
+    ).toMatchObject({
+      title:
+        "Answered Which database should we use? — Postgres (Recommended); with pgbouncer",
+      detail:
+        "- Which database should we use? — Postgres (Recommended); with pgbouncer",
+      payload: expect.objectContaining({
+        answers: {
+          "Which database should we use?":
+            "Postgres (Recommended); with pgbouncer",
+        },
+      }),
+    });
+
     host.harness.submitInteraction(pending.id, {
       answers: { q0: { selected: ["q0o0"], freeText: "with pgbouncer" } },
     });

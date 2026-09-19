@@ -80,7 +80,6 @@ function PluginThreadRowStatusIndicator({
           className={cn(
             "pointer-events-none shrink-0 animate-shine-icon",
             iconSizeClass,
-            "motion-safe:[animation-duration:1.5s]",
           )}
           aria-label={status.label}
         />

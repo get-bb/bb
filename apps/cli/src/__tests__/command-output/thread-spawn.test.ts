@@ -57,6 +57,63 @@ describe("bb thread spawn command output", () => {
     });
   });
 
+  it("bb thread spawn --prompt-file sends shell-active text untouched", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "bb-spawn-prompt-"));
+    const path = join(dir, "prompt.md");
+    const prompt = 'Fix `apps/cli` and run $(pnpm test) before "done"';
+    await writeFile(path, `${prompt}\n`);
+    const post = vi.fn(async ({ json }: { json: unknown }) => {
+      createThreadRequestSchema.parse(json);
+      return fixtures.makeThread({
+        id: "thread-from-file",
+        projectId: "proj-1",
+        providerId: "codex",
+      });
+    });
+    stubServerApi({ "v1.threads.$post": post });
+
+    try {
+      await runCommand(
+        ["thread", "create", "--project", "proj-1", "--prompt-file", path],
+        register,
+      );
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+
+    expect(post).toHaveBeenCalledWith({
+      json: expect.objectContaining({
+        input: [{ type: "text", text: prompt, mentions: [] }],
+      }),
+    });
+  });
+
+  it("bb thread spawn refuses a prompt given both inline and as a file", async () => {
+    const post = vi.fn();
+    stubServerApi({ "v1.threads.$post": post });
+
+    await expect(
+      runCommand(
+        [
+          "thread",
+          "spawn",
+          "--project",
+          "proj-1",
+          "--prompt",
+          "inline",
+          "--prompt-file",
+          "/nonexistent/prompt.md",
+        ],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+
+    expect(vi.mocked(console.error).mock.calls[0]?.[0]).toBe(
+      "Error: Provide only one of --prompt <prompt> or --prompt-file.",
+    );
+    expect(post).not.toHaveBeenCalled();
+  });
+
   it("bb thread spawn sends project-default when the user relies on project defaults", async () => {
     vi.stubEnv("BB_PROJECT_ID", "proj-1");
     const thread: domain.Thread = fixtures.makeThread({

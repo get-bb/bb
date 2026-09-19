@@ -396,9 +396,13 @@ describe("Account Pool plugin", () => {
     const plugin = createAccountPoolPlugin();
     await plugin(host.bb);
     expect(await host.bb.storage.kv.get("config")).toEqual(expected);
-    expect(await host.harness.behavior.callRpc("config.get", null)).toEqual(expected);
+    expect(await host.harness.behavior.callRpc("config.get", null)).toEqual(
+      expected,
+    );
     await host.harness.lifecycle.reload(plugin);
-    expect(await host.harness.behavior.callRpc("config.get", null)).toEqual(expected);
+    expect(await host.harness.behavior.callRpc("config.get", null)).toEqual(
+      expected,
+    );
   });
 
   it("reads and updates one full config record through RPC and CLI", async () => {
@@ -1171,10 +1175,26 @@ describe("Account Pool plugin", () => {
     expect(help.exitCode).toBe(0);
     expect(help.stdout).toContain("--login");
     expect(help.stdout).toContain("account login-complete");
-    expect(help.stdout).toContain("--code-stdin");
     expect(help.stdout).toContain("--api-key-stdin");
     expect(help.stdout).toContain("Unsafe: exposes the key");
-    expect(help.stdout).toContain("account refresh <id>");
+    const loginCompleteHelp = await fixture.host.harness.behavior.runCli([
+      "account",
+      "login-complete",
+      "--help",
+    ]);
+    expect(loginCompleteHelp.exitCode).toBe(0);
+    expect(loginCompleteHelp.stdout).toContain("--code-stdin");
+    const topLevelHelp = await fixture.host.harness.behavior.runCli(["--help"]);
+    expect(topLevelHelp.exitCode).toBe(0);
+    expect(topLevelHelp.stdout).toContain("bb pool account refresh");
+    expect(topLevelHelp.stdout).toContain("bb pool account login-poll");
+    const refreshHelp = await fixture.host.harness.behavior.runCli([
+      "account",
+      "refresh",
+      "--help",
+    ]);
+    expect(refreshHelp.exitCode).toBe(0);
+    expect(refreshHelp.stdout).toContain("bb pool account refresh <id>");
     const list = await fixture.host.harness.behavior.runCli([
       "account",
       "list",
@@ -1194,6 +1214,26 @@ describe("Account Pool plugin", () => {
         account.id,
       ]),
     ).toMatchObject({ exitCode: 0 });
+    const refreshedAsJson = await fixture.host.harness.behavior.runCli([
+      "account",
+      "refresh",
+      account.id,
+      "--json",
+    ]);
+    expect(refreshedAsJson.exitCode).toBe(0);
+    expect(JSON.parse(refreshedAsJson.stdout)).toMatchObject({
+      ok: true,
+      account: { id: account.id },
+    });
+    const configAsJson = await fixture.host.harness.behavior.runCli([
+      "config",
+      "--json",
+    ]);
+    expect(configAsJson.exitCode).toBe(0);
+    expect(JSON.parse(configAsJson.stdout)).toMatchObject({
+      ok: true,
+      config: { switchThreshold: expect.any(Number) },
+    });
     expect(
       (
         await fixture.host.harness.behavior.runCli([
@@ -1250,6 +1290,126 @@ describe("Account Pool plugin", () => {
     expect(
       await fixture.host.harness.behavior.callRpc("account.list", null),
     ).toEqual([]);
+  });
+
+  it("refuses unusable pool invocations instead of guessing", async () => {
+    const dataDir = await mkdtemp(path.join(tmpdir(), "bb-account-pool-cli-"));
+    const host = createFakePluginHost({
+      pluginId: "account-pool",
+      dataDir,
+      sdk: sdkStubs(),
+    });
+    await createAccountPoolPlugin()(host.bb);
+    cleanups.push(async () => {
+      await host.harness.lifecycle.dispose();
+      await fs.rm(dataDir, { recursive: true, force: true });
+    });
+    const run = (argv: string[], ctx?: { threadId: string }) =>
+      host.harness.behavior.runCli(argv, ctx);
+
+    const unknownOption = await run(["account", "list", "--jsonn"]);
+    expect(unknownOption.exitCode).toBe(1);
+    expect(unknownOption.stderr).toContain("unknown option '--jsonn'");
+    expect(unknownOption.stderr).toContain("Did you mean --json?");
+    expect(unknownOption.stdout).toBe("");
+
+    const noCommand = await run([]);
+    expect(noCommand.exitCode).toBe(1);
+    expect(noCommand.stdout).toContain("bb pool <command> [options]");
+
+    const unknownCommand = await run(["account", "lst"]);
+    expect(unknownCommand.exitCode).toBe(1);
+    expect(unknownCommand.stderr).toContain(
+      "unknown command 'account lst' (Did you mean account list?)",
+    );
+
+    const strayArgument = await run(["status", "everything"]);
+    expect(strayArgument.exitCode).toBe(1);
+    expect(strayArgument.stderr).toContain("unexpected argument 'everything'");
+
+    const allMissing = await run(["account", "login-complete"]);
+    expect(allMissing.exitCode).toBe(1);
+    expect(allMissing.stderr).toContain(
+      "missing required options: --session, --code",
+    );
+
+    const stdinFlag = await run([
+      "account",
+      "login-complete",
+      "--session",
+      "11111111-1111-4111-8111-111111111111",
+      "--code-stdin",
+    ]);
+    expect(stdinFlag.exitCode).toBe(1);
+    expect(stdinFlag.stderr).toContain(
+      "--code-stdin is read by the bb CLI, which rewrites it to --code <value>",
+    );
+
+    const badProvider = await run([
+      "account",
+      "add",
+      "--provider",
+      "gemini",
+      "--import",
+    ]);
+    expect(badProvider.exitCode).toBe(1);
+    expect(badProvider.stderr).toContain(
+      "invalid value 'gemini' for --provider. Expected one of: claude, codex",
+    );
+
+    const conflicting = await run([
+      "account",
+      "add",
+      "--provider",
+      "claude",
+      "--import",
+      "--login",
+    ]);
+    expect(conflicting.exitCode).toBe(1);
+    expect(conflicting.stderr).toContain(
+      "--login and --import cannot be combined",
+    );
+
+    const jsonEnvelope = await run([
+      "account",
+      "add",
+      "--provider",
+      "claude",
+      "--json",
+    ]);
+    expect(jsonEnvelope.exitCode).toBe(1);
+    expect(JSON.parse(jsonEnvelope.stdout)).toEqual({
+      ok: false,
+      error: {
+        code: "missing_required",
+        message:
+          "missing required options: one of --login, --import, --api-key",
+        hint: expect.stringContaining("bb pool account add"),
+      },
+    });
+    expect(jsonEnvelope.stderr).toContain(
+      "missing required options: one of --login, --import, --api-key",
+    );
+
+    const bypassWithoutThread = await run(["bypass"], {
+      threadId: "thread-seven",
+    });
+    expect(bypassWithoutThread.exitCode).toBe(1);
+    expect(bypassWithoutThread.stderr).toContain(
+      "This thread is thread-seven; re-run with bb pool bypass thread-seven",
+    );
+
+    for (const argv of [
+      ["--help"],
+      ["account", "add", "--help"],
+      ["account", "reorder", "-h"],
+      ["bypass", "--help"],
+    ]) {
+      const help = await run(argv);
+      expect(help.exitCode).toBe(0);
+      expect(help.stderr).toBe("");
+      expect(help.stdout).toContain("Usage:");
+    }
   });
 
   it("exposes manual Claude login over RPC and the two-step CLI", async () => {
@@ -5779,6 +5939,13 @@ describe("sequential pool recovery", () => {
       "sk-third",
       "sk-second",
     ]);
+    const negativePriority = await fixture.host.harness.behavior.runCli([
+      "account",
+      "priority",
+      second.id,
+      "-1",
+    ]);
+    expect(negativePriority.exitCode, negativePriority.stderr).toBe(0);
     const priority = await fixture.host.harness.behavior.runCli([
       "account",
       "priority",

@@ -32,6 +32,7 @@ import type {
   EventProjection,
   EventProjectionProvisioningTranscriptEntry,
   EventProjectionToolParsedIntent,
+  EventProjectionUserMessage,
 } from "./event-projection-types.js";
 import { assertNever } from "./assert-never.js";
 import {
@@ -490,6 +491,7 @@ function convertMessage(
 ): TimelineSourceRow[] {
   switch (message.kind) {
     case "user":
+      if (isSuppressedSystemMessage(message)) return [];
       return [
         {
           ...buildTimelineRowBase(message, options.rowIdPrefix),
@@ -762,6 +764,23 @@ function convertMessage(
           statusReason: message.statusReason,
         },
       ];
+    case "plugin-form-lifecycle":
+      return [
+        {
+          ...buildTimelineRowBase(message, options.rowIdPrefix),
+          kind: "work",
+          workKind: "form",
+          status: message.status,
+          interactionId: message.interactionId,
+          lifecycle: message.lifecycle,
+          pluginId: message.pluginId,
+          rendererId: message.rendererId,
+          title: message.title,
+          statusReason: message.statusReason,
+          presentation: message.presentation,
+          payload: message.payload,
+        },
+      ];
     case "operation": {
       const parentChange = parentChangeForMessage(message);
       const operationKind = operationKindForMessage(message, parentChange);
@@ -808,6 +827,16 @@ function convertMessage(
     default:
       return assertNever(message);
   }
+}
+
+function isSuppressedSystemMessage(
+  message: EventProjectionUserMessage,
+): boolean {
+  return (
+    message.initiator === "system" &&
+    message.systemMessageSubject?.kind === "tool-call" &&
+    message.systemMessageSubject.suppress
+  );
 }
 
 function convertSteerMessage(
@@ -927,9 +956,11 @@ function buildPendingSteerRowsFromEvents(
           decoded: event,
           meta: rejectedMeta,
           options,
-        }).map((rejectedSteer) =>
-          convertSteerMessage(rejectedSteer, ROOT_TIMELINE_ROW_ID_PREFIX),
-        ),
+        })
+          .filter((rejectedSteer) => !isSuppressedSystemMessage(rejectedSteer))
+          .map((rejectedSteer) =>
+            convertSteerMessage(rejectedSteer, ROOT_TIMELINE_ROW_ID_PREFIX),
+          ),
       );
       continue;
     }
@@ -943,9 +974,11 @@ function buildPendingSteerRowsFromEvents(
           decoded: event,
           meta: legacyRejectedMeta,
           options,
-        }).map((rejectedSteer) =>
-          convertSteerMessage(rejectedSteer, ROOT_TIMELINE_ROW_ID_PREFIX),
-        ),
+        })
+          .filter((rejectedSteer) => !isSuppressedSystemMessage(rejectedSteer))
+          .map((rejectedSteer) =>
+            convertSteerMessage(rejectedSteer, ROOT_TIMELINE_ROW_ID_PREFIX),
+          ),
       );
       continue;
     }
@@ -959,9 +992,11 @@ function buildPendingSteerRowsFromEvents(
       continue;
     }
     pendingSteerRows.push(
-      ...pendingSteers.map((pendingSteer) =>
-        convertSteerMessage(pendingSteer, ROOT_TIMELINE_ROW_ID_PREFIX),
-      ),
+      ...pendingSteers
+        .filter((pendingSteer) => !isSuppressedSystemMessage(pendingSteer))
+        .map((pendingSteer) =>
+          convertSteerMessage(pendingSteer, ROOT_TIMELINE_ROW_ID_PREFIX),
+        ),
     );
   }
 

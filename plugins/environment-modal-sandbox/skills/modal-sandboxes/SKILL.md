@@ -85,6 +85,12 @@ bb modal sandbox exec SANDBOX --json -- bash -lc 'exit 7'
 bb modal sandbox stop SANDBOX --json
 ```
 
+`bb modal --help` and `bb modal <command> --help` list the commands, arguments,
+and options and exit 0. `--json` is accepted anywhere before `--`; with it, a
+failure is also reported as `{"ok":false,"error":{code,message,hint?}}` on
+stdout. Everything after `--` belongs to `sandbox exec` and is never parsed as
+an option.
+
 Build uses the saved Dockerfile and the same account-wide image cache as machine
 creation. It returns the image ID and the final 65,536 characters of build logs
 when finished; failures include captured logs and the vendor error. Build logs

@@ -85,7 +85,18 @@ Stop cancels running and queued work and releases desktop control. Cancellation
 and timeout stop the session too; open a new session to resume. Close disposes
 owned Chrome and plugin-created desktop tabs while preserving handed-off tabs.
 Close sessions after use. Five-minute idle and thirty-minute absolute expiry
-apply. Timeouts default to 30 seconds, maximum 120 seconds.
+apply. Timeouts default to 30 seconds, maximum 120 seconds: pass either
+`--timeout-ms <1000-120000>` or `--timeout <duration>`, where a duration carries
+a unit (`90s`, `2m`, `1500ms`) and a bare number is read as seconds (1-120) or
+milliseconds (1000-120000).
+
+A run may return at most 4 screenshots, JPEG only, 500 KB combined; a larger or
+differently encoded capture fails the run. `bb browser-automation --help` and
+`bb browser-automation <command> --help` print every flag with these limits.
+Unknown commands and flags fail with a suggestion, and with `--json` a failure
+prints `{"ok":false,"error":{"code":…,"message":…,"hint":…}}` on stdout (code
+`session_unavailable` when the session stopped or expired, `screenshot_limit`
+for capture limits) while the same message stays on stderr.
 
 An unavailable backend or a failed runtime install is an actionable setup
 error, not permission to attach to a random browser. The first open on a host

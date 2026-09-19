@@ -44,10 +44,7 @@ import {
   mapScriptResultToRun,
   scriptPathEnv,
 } from "./script-runner.js";
-import {
-  executeScriptRun,
-  reconcileRunningAutomationRuns,
-} from "./run.js";
+import { executeScriptRun, reconcileRunningAutomationRuns } from "./run.js";
 import { createScriptWorkingDirectoryResolver } from "./working-directory.js";
 import { sweepDueAutomations } from "./sweep.js";
 import { createAutomationService } from "./service.js";
@@ -1922,6 +1919,27 @@ describe("automation CLI --script-file", () => {
       );
       expect(rejectedCreate.exitCode).toBe(1);
       expect(rejectedCreate.stderr).toContain(
+        "--working-directory requires a value",
+      );
+
+      const emptyCreate = await t.cli.run(
+        [
+          "create",
+          "--project",
+          "proj_test",
+          "--name",
+          "empty-cwd",
+          "--in",
+          "30m",
+          "--script",
+          "echo hi",
+          "--working-directory",
+          "",
+        ],
+        {},
+      );
+      expect(emptyCreate.exitCode).toBe(1);
+      expect(emptyCreate.stderr).toContain(
         "Missing required option --working-directory <value>.",
       );
 
@@ -1953,8 +1971,63 @@ describe("automation CLI --script-file", () => {
       );
       expect(rejectedReplacement.exitCode).toBe(1);
       expect(rejectedReplacement.stderr).toContain(
+        "--working-directory requires a value",
+      );
+
+      const emptyReplacement = await t.cli.run(
+        [
+          "update",
+          idFrom(created.stdout),
+          "--project",
+          "proj_test",
+          "--script",
+          "echo next",
+          "--working-directory",
+          "",
+        ],
+        {},
+      );
+      expect(emptyReplacement.exitCode).toBe(1);
+      expect(emptyReplacement.stderr).toContain(
         "Missing required option --working-directory <value>.",
       );
+    } finally {
+      await t.cleanup();
+    }
+  });
+
+  it("rejects a misspelled script flag instead of ignoring it", async () => {
+    const t = await setup();
+    try {
+      const created = await t.cli.run(
+        [
+          "create",
+          "--project",
+          "proj_test",
+          "--name",
+          "unknown-flag",
+          "--in",
+          "30m",
+          "--script",
+          "echo hi",
+        ],
+        {},
+      );
+      expect(created.exitCode).toBe(0);
+      const ignored = await t.cli.run(
+        [
+          "update",
+          idFrom(created.stdout),
+          "--project",
+          "proj_test",
+          "--scripts",
+          "echo next",
+        ],
+        {},
+      );
+      expect(ignored.exitCode).toBe(1);
+      expect(ignored.stderr).toContain("unknown option '--scripts'");
+      expect(ignored.stderr).toContain("Did you mean --script?");
     } finally {
       await t.cleanup();
     }
@@ -2503,7 +2576,9 @@ describe("script wake gate", () => {
   it("omits the detail when stderr holds only line breaks", () => {
     const stderr = "\n".repeat(200_000);
     const result = { exitCode: 1, output: "", stderr, timedOut: false };
-    expect(mapScriptResultToRun(result).error).toBe("Script exited with code 1");
+    expect(mapScriptResultToRun(result).error).toBe(
+      "Script exited with code 1",
+    );
   });
 
   it("finds a trailing stderr detail after a large run of blank lines", () => {

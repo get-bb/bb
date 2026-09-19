@@ -1,5 +1,12 @@
 import { execFile } from "node:child_process";
-import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
+import {
+  defineRpcContract,
+  PluginCliError,
+  cliCommand,
+  defineCli,
+  type BbPluginApi,
+  type PluginCliResult,
+} from "@get-bb/plugin-sdk";
 import { z } from "zod";
 
 const SYNC_INTERVAL_MS = 15 * 60_000;
@@ -385,24 +392,15 @@ export function parsePaginatedGhApi(raw: string): Record<string, unknown>[] {
   return rows;
 }
 
-export function validateGithubCliArgs(argv: string[]): string | null {
-  const [sub, arg, ...rest] = argv;
-  if (rest.length > 0) return `Unexpected argument "${rest[0]}".`;
-  if (sub === undefined) return null;
-  if (sub === "help" || sub === "--help") {
-    return arg === undefined ? null : `Unexpected argument "${arg}".`;
+function requireRepoName(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  if (!isRepoName(value)) {
+    throw new PluginCliError(
+      `Invalid repository "${value}"; expected owner/repo.`,
+      { code: "invalid_repository" },
+    );
   }
-  if (sub === "repos" || sub === "sync") {
-    return arg === undefined
-      ? null
-      : `Subcommand "${sub}" does not accept arguments.`;
-  }
-  if ((sub === "issues" || sub === "prs") && arg !== undefined) {
-    return isRepoName(arg)
-      ? null
-      : `Invalid repository "${arg}"; expected owner/repo.`;
-  }
-  return null;
+  return value;
 }
 
 const listNodeSchema = z.object({
@@ -1617,80 +1615,70 @@ export default async function plugin(bb: BbPluginApi) {
     },
   });
 
-  const USAGE = [
-    "Usage:",
-    "  bb github repos              List tracked repositories",
-    "  bb github issues [repo]      List cached open issues",
-    "  bb github prs [repo]         List cached open pull requests",
-    "  bb github sync               Refresh the cache from GitHub now",
-  ].join("\n");
+  async function guarded(
+    run: () => Promise<PluginCliResult>,
+  ): Promise<PluginCliResult> {
+    try {
+      return await run();
+    } catch (error) {
+      if (error instanceof PluginCliError) throw error;
+      throw new PluginCliError(errorMessage(error));
+    }
+  }
 
-  bb.cli.register({
-    name: "github",
-    summary: "Browse tracked GitHub repos, issues, and PRs",
-    commands: [
-      {
-        name: "repos",
-        summary: "List tracked repositories",
-        usage: "bb github repos",
+  function cachedItemSummary(item: CachedItem) {
+    return {
+      repo: item.repo,
+      number: item.number,
+      kind: item.kind,
+      state: item.state,
+      title: item.title,
+      author: item.author,
+      labels: item.labels,
+      assignees: item.assignees,
+      url: item.url,
+      updatedAt: item.updatedAt,
+    };
+  }
+
+  function listCachedItemsCommand(kind: "issue" | "pr") {
+    return cliCommand({
+      summary:
+        kind === "pr"
+          ? "List cached open pull requests"
+          : "List cached open issues",
+      description:
+        "Reads the local cache only; run `bb github sync` to refresh it from GitHub.",
+      positionals: [
+        {
+          name: "repo",
+          description:
+            "Limit the listing to one owner/repo; omit for every tracked repository",
+        },
+      ],
+      options: {
+        json: {
+          type: "boolean",
+          description: "Emit the cached rows as JSON instead of a text table",
+        },
       },
-      {
-        name: "issues",
-        summary: "List cached open issues",
-        usage: "bb github issues [owner/repo]",
-      },
-      {
-        name: "prs",
-        summary: "List cached open pull requests",
-        usage: "bb github prs [owner/repo]",
-      },
-      {
-        name: "sync",
-        summary: "Refresh the cache from GitHub now",
-        usage: "bb github sync",
-      },
-    ],
-    async run(argv) {
-      const [sub, arg] = argv;
-      try {
-        const validationError = validateGithubCliArgs(argv);
-        if (validationError !== null) {
-          return { exitCode: 1, stderr: `${validationError}\n${USAGE}` };
-        }
-        if (sub === undefined || sub === "help" || sub === "--help") {
-          return { exitCode: 0, stdout: USAGE };
-        }
-        if (sub === "repos") {
-          const repos = await discoverRepos(true);
-          const warning =
-            ignoredExtraRepos.length > 0
-              ? { stderr: `${describeIgnoredExtraRepos(ignoredExtraRepos)}\n` }
-              : {};
-          if (repos.length === 0) {
-            return {
-              exitCode: 0,
-              stdout:
-                "No tracked repos. Attach a project with a GitHub remote or set extraRepos.",
-              ...warning,
-            };
-          }
-          return {
-            exitCode: 0,
-            stdout: repos
-              .map(
-                (entry) =>
-                  `${entry.repo}${entry.projectId !== null ? `\t(${entry.projectId})` : ""}`,
-              )
-              .join("\n"),
-            ...warning,
-          };
-        }
-        if (sub === "issues" || sub === "prs") {
+      run(input) {
+        return guarded(async () => {
+          const repo = requireRepoName(input.positionals.repo);
           const items = listCachedItems({
-            kind: sub === "prs" ? "pr" : "issue",
-            repo: isRepoName(arg) ? arg : undefined,
+            kind,
+            ...(repo === undefined ? {} : { repo }),
             state: "open",
           });
+          if (input.options.json) {
+            return {
+              exitCode: 0,
+              stdout: JSON.stringify({
+                ok: true,
+                items: items.map(cachedItemSummary),
+              }),
+            };
+          }
           if (items.length === 0) {
             return {
               exitCode: 0,
@@ -1706,24 +1694,91 @@ export default async function plugin(bb: BbPluginApi) {
               )
               .join("\n"),
           };
-        }
-        if (sub === "sync") {
-          const { repos, items } = await syncAll(true);
-          return {
-            exitCode: 0,
-            stdout: `Synced ${items} item(s) across ${repos} repo(s).`,
-          };
-        }
-        return {
-          exitCode: 1,
-          stderr: `Unknown subcommand "${sub}".\n${USAGE}`,
-        };
-      } catch (error) {
-        return {
-          exitCode: 1,
-          stderr: errorMessage(error),
-        };
-      }
-    },
-  });
+        });
+      },
+    });
+  }
+
+  bb.cli.register(
+    defineCli({
+      name: "github",
+      summary: "Browse tracked GitHub repos, issues, and PRs",
+      description:
+        "Tracked repositories come from attached projects' GitHub remotes plus the extraRepos setting.",
+      commands: {
+        repos: cliCommand({
+          summary: "List tracked repositories",
+          options: {
+            json: {
+              type: "boolean",
+              description:
+                "Emit the repositories as JSON, including extraRepos entries that were ignored",
+            },
+          },
+          run(input) {
+            return guarded(async () => {
+              const repos = await discoverRepos(true);
+              const warning =
+                ignoredExtraRepos.length > 0
+                  ? {
+                      stderr: `${describeIgnoredExtraRepos(ignoredExtraRepos)}\n`,
+                    }
+                  : {};
+              if (input.options.json) {
+                return {
+                  exitCode: 0,
+                  stdout: JSON.stringify({
+                    ok: true,
+                    repos,
+                    ignoredExtraRepos,
+                  }),
+                  ...warning,
+                };
+              }
+              if (repos.length === 0) {
+                return {
+                  exitCode: 0,
+                  stdout:
+                    "No tracked repos. Attach a project with a GitHub remote or set extraRepos.",
+                  ...warning,
+                };
+              }
+              return {
+                exitCode: 0,
+                stdout: repos
+                  .map(
+                    (entry) =>
+                      `${entry.repo}${entry.projectId !== null ? `\t(${entry.projectId})` : ""}`,
+                  )
+                  .join("\n"),
+                ...warning,
+              };
+            });
+          },
+        }),
+        issues: listCachedItemsCommand("issue"),
+        prs: listCachedItemsCommand("pr"),
+        sync: cliCommand({
+          summary: "Refresh the cache from GitHub now",
+          options: {
+            json: {
+              type: "boolean",
+              description: "Emit the refreshed repo and item counts as JSON",
+            },
+          },
+          run(input) {
+            return guarded(async () => {
+              const { repos, items } = await syncAll(true);
+              return {
+                exitCode: 0,
+                stdout: input.options.json
+                  ? JSON.stringify({ ok: true, repos, items })
+                  : `Synced ${items} item(s) across ${repos} repo(s).`,
+              };
+            });
+          },
+        }),
+      },
+    }),
+  );
 }

@@ -191,6 +191,7 @@ export function registerShowCommand(
 ): void {
   parent
     .command("show [id]")
+    .aliases(["get", "view", "status"])
     .description("Show thread details and pull request status")
     .option("--self", "Target the current thread (from BB_THREAD_ID)")
     .option("--json", "Print machine-readable JSON output")
@@ -399,6 +400,7 @@ export function registerShowCommand(
 
   parent
     .command("log [id]")
+    .aliases(["messages", "timeline"])
     .description("Show thread event log")
     .option("--self", "Target the current thread (from BB_THREAD_ID)")
     .option(

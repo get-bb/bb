@@ -273,6 +273,15 @@ function timelineWorkRowRenderSignature(row: TimelineViewWorkRow): string {
         row.target.itemId,
         row.target.toolName,
       ]);
+    case "form":
+      return joinSignatureParts([
+        ...baseParts,
+        row.interactionId,
+        row.lifecycle,
+        row.title,
+        row.statusReason,
+        JSON.stringify(row.payload),
+      ]);
     case "question":
       return joinSignatureParts([
         ...baseParts,

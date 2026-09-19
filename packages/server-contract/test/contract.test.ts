@@ -49,9 +49,29 @@ interface OptionalServerFieldGroup {
   reason: string;
 }
 
-const OPTIONAL_SERVER_FIELD_GROUP_LIMIT = 43;
+const OPTIONAL_SERVER_FIELD_GROUP_LIMIT = 45;
 
 const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
+  {
+    reason:
+      "A submitted plugin form leaves on its row only what the plugin's describeSubmission returned, and the whole description is absent when the plugin declares no describeSubmission or when that call throws or times out. Within one, an absent title means the presentation's completed label stands, an absent detail means the title is the whole row, and an absent payload means the row renders without handing anything to the plugin's own timeline renderer. bb never stores the form's payload or the submitted value, so these fields are the entire record of what happened.",
+    fields: [
+      "threadPendingInteractionsResponseSchema.resolution.description",
+      "threadPendingInteractionsResponseSchema.resolution.description.detail",
+      "threadPendingInteractionsResponseSchema.resolution.description.payload",
+      "threadPendingInteractionsResponseSchema.resolution.description.title",
+    ],
+  },
+  {
+    reason:
+      "The resolve route's body is the persisted resolution union, so it also admits the plugin_submitted arm and its description. No caller can send one: a plugin interaction is submitted through the respond route, and validatePendingInteractionResolution rejects every plugin interaction before a resolution is read. These four exist only because the request schema reuses the persisted shape.",
+    fields: [
+      "resolvePendingInteractionRequestSchema.description",
+      "resolvePendingInteractionRequestSchema.description.detail",
+      "resolvePendingInteractionRequestSchema.description.payload",
+      "resolvePendingInteractionRequestSchema.description.title",
+    ],
+  },
   {
     reason:
       "A localFile prompt input names, sizes, and types itself only when the uploader knew those facts; the path is the only required identity. Absence means unknown, never an unnamed or empty file, and no reader may treat a missing size as zero.",
@@ -92,6 +112,7 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
     reason:
       "A row carries a declarative presentation only when a bridge or plugin attached one; rows persisted before grammar v2, and rows from a bridge that declares none, have no presentation and clients fall back to bb's own rendering for the row kind.",
     fields: [
+      "threadPendingInteractionsResponseSchema.payload.presentation",
       "threadTimelineResponseSchema.activeBackgroundCommands.presentation",
       "threadTimelineResponseSchema.activeWorkflows.presentation",
       "threadTimelineResponseSchema.delta.upsertRows.presentation",
@@ -102,6 +123,11 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
     reason:
       "Within a presentation each member is separately optional and absence is a definite answer, not a blank: no title means the label stands alone, no detail means the label and title are the whole summary, no suppress means render normally, no tint means the neutral row tint (which is not a colour value), and no badge means there is nothing to flag about how the call will run.",
     fields: [
+      "threadPendingInteractionsResponseSchema.payload.presentation.badge",
+      "threadPendingInteractionsResponseSchema.payload.presentation.detail",
+      "threadPendingInteractionsResponseSchema.payload.presentation.suppress",
+      "threadPendingInteractionsResponseSchema.payload.presentation.tint",
+      "threadPendingInteractionsResponseSchema.payload.presentation.title",
       "threadPendingInteractionsResponseSchema.payload.subject.presentation.badge",
       "threadPendingInteractionsResponseSchema.payload.subject.presentation.detail",
       "threadPendingInteractionsResponseSchema.payload.subject.presentation.suppress",
@@ -929,18 +955,33 @@ describe("public terminal contracts", () => {
     ).toBe(false);
   });
 
-  it("requires output responses to signal truncation", () => {
+  it("requires output responses to signal truncation and terminal state", () => {
     expect(
       terminalOutputResponseSchema.safeParse({
         chunks: [],
         nextSeq: 12,
         truncated: false,
+        status: "exited",
+        exitCode: 1,
+        closeReason: "process-exit",
       }).success,
     ).toBe(true);
     expect(
       terminalOutputResponseSchema.safeParse({
         chunks: [],
         nextSeq: 12,
+        status: "running",
+        exitCode: null,
+        closeReason: null,
+      }).success,
+    ).toBe(false);
+    expect(
+      terminalOutputResponseSchema.safeParse({
+        chunks: [],
+        nextSeq: 12,
+        truncated: false,
+        exitCode: null,
+        closeReason: null,
       }).success,
     ).toBe(false);
   });

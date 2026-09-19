@@ -168,7 +168,7 @@ export function ensureThreadIsNotAwaitingUserInteraction(
   deps: Pick<AppDeps, "pendingInteractions">,
   threadId: string,
 ): void {
-  if (!deps.pendingInteractions.hasPendingThreadInteraction(threadId)) {
+  if (!deps.pendingInteractions.hasTurnBoundPendingThreadInteraction(threadId)) {
     return;
   }
 

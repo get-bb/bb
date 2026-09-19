@@ -361,6 +361,18 @@ launcher. Hard crashes such as process aborts, segfaults, or kernel-level kills
 cannot run cleanup in the crashing process; the startup PID-file reap is the
 recovery path for those cases.
 
+### Saved servers
+
+Use **Window → Server → Add Server…** to save and switch to another machine's
+HTTP(S) bb server URL. Saved URLs remain in the menu across restarts; adding an
+existing URL selects it without creating a duplicate. **This Mac** switches back
+to the built-in server without removing saved entries.
+
+**Set Server URL…** edits the last selected custom server. Clearing its URL removes
+that entry and switches an active custom target to This Mac. Other saved servers
+and Connect discovery remain available. Existing single-server preferences are
+loaded automatically into the saved list in `<userData>/server-target.json`.
+
 ### Server moves
 
 After `bb server move`, the old computer's data dir (`~/.bb` or

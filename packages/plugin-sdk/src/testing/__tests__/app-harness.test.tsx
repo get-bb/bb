@@ -326,6 +326,9 @@ let capturedComposerVisualSetters: Pick<
   PluginComposerApi,
   "setTextEffect" | "setInputLock"
 > | null = null;
+let capturedComposerSetSelection:
+  | PluginComposerApi["experimental_setSelection"]
+  | null = null;
 
 function InlineVis({
   attributes,
@@ -348,6 +351,7 @@ function ComposerProbe() {
     setTextEffect: composer.setTextEffect,
     setInputLock: composer.setInputLock,
   };
+  capturedComposerSetSelection = composer.experimental_setSelection;
   return (
     <div>
       <span data-testid="composer-scope">{composer.scope.kind}</span>
@@ -1744,6 +1748,68 @@ describe("renderSlot", () => {
       { provider: "notes", id: "ideas", label: "Ideas" },
     ]);
     expect(slot.composer.focusCount).toBe(3);
+  });
+
+  it("records accepted selections and echoes back what the scope has pickers for", async () => {
+    const threadSlot = renderSlot(
+      app.composerCustomizations[0]!.actions![0]!,
+      {},
+      { context: { projectId: "proj_1", threadId: "thr_1" } },
+    );
+    const setSelection = capturedComposerSetSelection;
+    if (setSelection === null) throw new Error("setSelection not captured");
+
+    await expect(
+      setSelection({
+        projectId: "proj_2",
+        environment: { type: "project-default" },
+        providerId: "codex",
+        model: "gpt-5",
+        reasoningLevel: "high",
+      }),
+    ).resolves.toEqual({
+      providerId: "codex",
+      model: "gpt-5",
+      reasoningLevel: "high",
+    });
+    expect(threadSlot.composer.selections).toEqual([
+      { providerId: "codex", model: "gpt-5", reasoningLevel: "high" },
+    ]);
+    threadSlot.unmount();
+
+    const newThreadSlot = renderSlot(
+      app.composerCustomizations[0]!.actions![0]!,
+      {},
+      { context: { projectId: "proj_1" } },
+    );
+    await expect(
+      capturedComposerSetSelection!({ projectId: "proj_2", model: "gpt-5" }),
+    ).resolves.toEqual({ projectId: "proj_2", model: "gpt-5" });
+    expect(newThreadSlot.composer.selections).toEqual([
+      { projectId: "proj_2", model: "gpt-5" },
+    ]);
+    newThreadSlot.unmount();
+
+    const sideChatSlot = renderSlot(
+      app.composerCustomizations[0]!.actions![0]!,
+      {},
+      {
+        composer: {
+          scope: {
+            kind: "side-chat",
+            projectId: "proj_1",
+            parentThreadId: "thr_1",
+            tabId: "tab_1",
+            childThreadId: null,
+          },
+        },
+      },
+    );
+    await expect(
+      capturedComposerSetSelection!({ model: "gpt-5" }),
+    ).rejects.toThrow(/no pickers/);
+    expect(sideChatSlot.composer.selections).toEqual([]);
+    sideChatSlot.unmount();
   });
 
   it("invalidates visual-state setters through both unmount controls", () => {

@@ -5,7 +5,8 @@
   "type": "module",
   "description": "Add persistent custom instructions to agent tasks on this bb host.",
   "engines": {
-    "bb": ">=0.0"
+    "bb": ">=0.0",
+    "bbPluginSdk": ">=0.4.102"
   },
   "bb": {
     "name": "Custom instructions",

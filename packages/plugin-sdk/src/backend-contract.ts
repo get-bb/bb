@@ -935,6 +935,24 @@ export type PluginInteractionResult =
   | { outcome: "submitted"; value: JsonValue }
   | { outcome: "cancelled"; reason: PluginInteractionCancelReason };
 
+/**
+ * What a submitted form leaves in the thread timeline, chosen by the plugin.
+ * bb never stores the form's payload or the submitted value; it stores only
+ * this description, so a plugin decides what the transcript keeps.
+ */
+export interface PluginInteractionDescription {
+  /** Row title once submitted; defaults to the presentation's completed label. */
+  title?: string;
+  /** Short Markdown for the expanded row. */
+  detail?: string;
+  /**
+   * Persisted with the row and handed to this plugin's
+   * `experimental_timelineRenderer` registered for `"<pluginId>/<rendererId>"`.
+   * Omit anything the transcript must not keep.
+   */
+  payload?: JsonValue;
+}
+
 export interface PluginInteractionRequest {
   threadId: string;
   rendererId: string;
@@ -942,6 +960,21 @@ export interface PluginInteractionRequest {
   payload: JsonValue;
   /** Defaults to ten minutes; capped at one hour. */
   timeoutMs?: number;
+  /**
+   * How the form reads as a timeline row while it waits and once it settles,
+   * in the same shape as a native tool's presentation. bb fills what is left
+   * out: "Waiting for <title>" / "Submitted <title>" and the plugin's glyph.
+   */
+  presentation?: PluginRowPresentation;
+  /**
+   * Called once with the submitted value, before the waiting `requestInput`
+   * promise resolves; never for a cancellation, which bb titles itself. Its
+   * return is persisted on the row. A throw or a slow return leaves the row
+   * with its completed label and nothing more.
+   */
+  describeSubmission?(
+    value: JsonValue,
+  ): PluginInteractionDescription | Promise<PluginInteractionDescription>;
 }
 
 export interface PluginCliResult {
@@ -982,6 +1015,15 @@ export interface PluginCliRegistration {
   /** Subcommand metadata rendered in help and the plugin-commands skill
    * without executing plugin code. Parsing argv is plugin-owned. */
   commands?: PluginCliCommandInfo[];
+  /**
+   * Set when `run` answers `--help` / `-h` itself, at every level, without
+   * executing a command. The `bb` CLI then forwards help requests to the
+   * plugin instead of printing the one-line `usage` from `commands`.
+   * `defineCli` sets it. Leave it unset for a hand-written `run`:
+   * the host cannot know that such a parser will not act on the other
+   * arguments.
+   */
+  rendersHelp?: boolean;
   run(
     argv: string[],
     ctx: PluginCliContext,
@@ -1015,32 +1057,39 @@ export type PluginAgentToolResult =
 export interface PluginAgentToolContext {
   threadId: string;
   projectId: string;
-  /** The tool-call request's abort signal (aborts if the daemon round-trip
-   * is torn down mid-call). */
+  /**
+   * Aborts when the tool-call request is cancelled, the thread is stopped or
+   * deleted, or this plugin is disposed. Opening a form with `bb.ui.requestInput`
+   * detaches the call from its request: the agent receives a waiting notice,
+   * and request cancellation no longer aborts this signal. The tool's eventual
+   * result is delivered as a system message (success steers a running turn or
+   * starts a new one; an `isError` result only steers). Thread stop/delete and
+   * plugin disposal still abort the signal after detachment.
+   */
   signal: AbortSignal;
 }
 
 /**
- * The row title of a plugin tool call while it is pending and once it
+ * The title of a plugin-owned timeline row while it is pending and once it
  * settled. Each label is capped at 80 characters and rendered as plain text.
  */
-export interface PluginAgentToolLabels {
-  /** Label shown while the tool call is pending. */
+export interface PluginRowLabels {
+  /** Label shown while the row is pending. */
   pending: string;
-  /** Label shown after the tool call completes successfully. */
+  /** Label shown after the row completes successfully. */
   completed: string;
 }
 
 /**
- * How calls to a native plugin tool read as a timeline row (grammar v3). Every
- * field is optional at registration: the server fills what the plugin leaves
- * out (a generic `Running <name>` / `Ran <name>` label; the plugin's branding
- * glyph, then `Toolbox`) and hands one complete presentation to the provider
- * bridge with the tool definition.
+ * How something a plugin owns reads as a timeline row (grammar v3): a native
+ * tool's calls, or the row a `bb.ui.requestInput` form leaves behind. Every
+ * field is optional: the server fills what the plugin leaves out (a generic
+ * label; the plugin's branding glyph, then `Toolbox`) and hands one complete
+ * presentation to whatever renders the row.
  */
-export interface PluginAgentToolPresentation {
-  /** Row title while the call is pending and once it settled. */
-  label?: PluginAgentToolLabels;
+export interface PluginRowPresentation {
+  /** Row title while the row is pending and once it settled. */
+  label?: PluginRowLabels;
   /**
    * A named host glyph (`{ glyph: "Workflow" }`), or one of this plugin's
    * own declared icons by its namespaced glyph (`{ glyph: "<pluginId>/<name>" }`,
@@ -1074,7 +1123,7 @@ export interface PluginAgentToolRegistrationBase {
    * plugin's branding glyph. Approval, error, and interruption states keep
    * BB's standard rendering. See docs/api_to_audit.md.
    */
-  presentation?: PluginAgentToolPresentation;
+  presentation?: PluginRowPresentation;
 }
 
 /** Stable, plain-data context resolved by the server for one agent session. */
@@ -1757,7 +1806,14 @@ export interface PluginMentionProviderRegistration {
 }
 
 export interface PluginUi {
-  /** Block until the app submits or cancels a plugin-owned composer form. */
+  /**
+   * Block until the user submits or cancels this plugin's form in the
+   * thread composer. Inside a native tool's `execute`, calling this answers
+   * the tool call at once with a waiting notice and the eventual return value
+   * reaches the agent as a message; see {@link PluginAgentToolContext.signal}.
+   * The form leaves a timeline row described by `presentation` and
+   * `describeSubmission`.
+   */
   requestInput(
     request: PluginInteractionRequest,
     options?: { signal?: AbortSignal },

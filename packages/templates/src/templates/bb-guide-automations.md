@@ -36,7 +36,7 @@ Script execution:
 
 --script <inline> | --script-file <path> [--host <name-or-id>]
 [--interpreter <bash|sh|node|python3>]
-[--timeout <milliseconds>] [--env-json '{"KEY":"value"}']
+[--timeout <milliseconds, or a duration such as 90s or 5m>] [--env-json '{"KEY":"value"}']
 [--working-directory <automation-storage|project|absolute-server-path>]
 
 `--script-file` reads the file relative to your current directory from the

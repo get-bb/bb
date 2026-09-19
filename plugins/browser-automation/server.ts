@@ -1,6 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { posix, win32 } from "node:path";
-import type { BbPluginApi, PluginRpcHandlers } from "@get-bb/plugin-sdk";
+import type {
+  BbPluginApi,
+  PluginCliContext,
+  PluginRpcHandlers,
+} from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import {
   hostContract,
@@ -10,7 +14,12 @@ import {
   type RunOutput,
   type Session,
 } from "./contracts.js";
-import { parseCli, commands } from "./cli.js";
+import {
+  browserCliFailure,
+  createBrowserAutomationCli,
+  type BrowserCliMethod,
+  type BrowserCliRequest,
+} from "./cli.js";
 import { previewDirective } from "./preview-directive.js";
 
 const desktopSchema = z
@@ -420,7 +429,7 @@ export default async function browserAutomationPlugin(bb: BbPluginApi) {
   }
   bb.rpc.register(rpcContract, handlers(lifecycle.signal));
   function dispatch(
-    method: ReturnType<typeof parseCli>["method"],
+    method: BrowserCliMethod,
     input: unknown,
     signal: AbortSignal,
   ) {
@@ -450,98 +459,89 @@ export default async function browserAutomationPlugin(bb: BbPluginApi) {
     instructions:
       "When `bb browser-automation open` returns a previewDirective, copy it into your next response exactly once as a standalone line before you continue working. Do not wrap it in backticks or a code fence, and do not invent or edit the session ID. The directive shows the user a live view of that headless browser in BB chat. Desktop sessions return no directive.",
   }));
-  bb.cli.register({
-    name: "browser-automation",
-    summary: "Persistent DevBrowser desktop and headless sessions",
-    commands,
-    async run(argv, context) {
-      try {
-        const parsed = parseCli(argv, context.threadId);
-        if (parsed.scriptFile) {
-          if (!parsed.scriptHost)
-            throw new Error("Script file requires an explicit source host");
-          const pathApi =
-            context.cwd && win32.isAbsolute(context.cwd) ? win32 : posix;
-          const path =
-            win32.isAbsolute(parsed.scriptFile) ||
-            posix.isAbsolute(parsed.scriptFile)
-              ? parsed.scriptFile
-              : pathApi.resolve(context.cwd ?? ".", parsed.scriptFile);
-          if (
-            !context.cwd &&
-            !posix.isAbsolute(parsed.scriptFile) &&
-            !win32.isAbsolute(parsed.scriptFile)
-          )
-            throw new Error(
-              "Relative script files require the invoking CLI working directory",
-            );
-          const file = await bb.sdk.files.read({
-            hostId: parsed.scriptHost,
-            path,
-            signal: context.signal,
-          });
-          if (file.contentEncoding !== "utf8")
-            throw new Error("Script file must be UTF-8 text");
-          parsed.input.script = file.content;
-        }
-        const result = await dispatch(
-          parsed.method,
-          parsed.input,
-          AbortSignal.any([
-            context.signal ?? new AbortController().signal,
-            lifecycle.signal,
-          ]),
-        );
-        const output = rpcContract.run.output.safeParse(result);
-        const previewed = rpcContract.preview.output.safeParse(result);
-        const opened =
-          parsed.method === "open"
-            ? rpcContract.open.output.safeParse(result)
-            : null;
-        const printable = opened?.success
-          ? {
-              ...opened.data,
-              ...(opened.data.backend === "local"
-                ? { previewDirective: previewDirective(opened.data.id) }
-                : {}),
-            }
-          : output.success
-            ? {
-                ...output.data,
-                hostId: (
-                  await owned(parsed.input.threadId!, parsed.input.sessionId!)
-                ).session.hostId,
-              }
-            : previewed.success
-              ? {
-                  session: previewed.data.session,
-                  frame: previewed.data.frame && {
-                    sequence: previewed.data.frame.sequence,
-                    mimeType: previewed.data.frame.mimeType,
-                    width: previewed.data.frame.width,
-                    height: previewed.data.frame.height,
-                    url: previewed.data.frame.url,
-                    title: previewed.data.frame.title,
-                    bytes: Buffer.byteLength(
-                      previewed.data.frame.data,
-                      "base64",
-                    ),
-                  },
-                }
-              : result;
-        return {
-          exitCode: output.success ? output.data.exitCode : 0,
-          stdout: JSON.stringify(printable),
-        };
-      } catch (error) {
-        return {
-          exitCode: 1,
-          stderr:
-            error instanceof Error ? error.message : "Browser command failed",
-        };
+  async function executeCli(
+    request: BrowserCliRequest,
+    context: PluginCliContext,
+  ) {
+    try {
+      const input = { ...request.input };
+      if (request.scriptFile) {
+        if (!request.scriptHost)
+          throw new Error("Script file requires an explicit source host");
+        const pathApi =
+          context.cwd && win32.isAbsolute(context.cwd) ? win32 : posix;
+        const path =
+          win32.isAbsolute(request.scriptFile) ||
+          posix.isAbsolute(request.scriptFile)
+            ? request.scriptFile
+            : pathApi.resolve(context.cwd ?? ".", request.scriptFile);
+        if (
+          !context.cwd &&
+          !posix.isAbsolute(request.scriptFile) &&
+          !win32.isAbsolute(request.scriptFile)
+        )
+          throw new Error(
+            "Relative script files require the invoking CLI working directory",
+          );
+        const file = await bb.sdk.files.read({
+          hostId: request.scriptHost,
+          path,
+          signal: context.signal,
+        });
+        if (file.contentEncoding !== "utf8")
+          throw new Error("Script file must be UTF-8 text");
+        input.script = file.content;
       }
-    },
-  });
+      const result = await dispatch(
+        request.method,
+        input,
+        AbortSignal.any([
+          context.signal ?? new AbortController().signal,
+          lifecycle.signal,
+        ]),
+      );
+      const output = rpcContract.run.output.safeParse(result);
+      const previewed = rpcContract.preview.output.safeParse(result);
+      const opened =
+        request.method === "open"
+          ? rpcContract.open.output.safeParse(result)
+          : null;
+      const printable = opened?.success
+        ? {
+            ...opened.data,
+            ...(opened.data.backend === "local"
+              ? { previewDirective: previewDirective(opened.data.id) }
+              : {}),
+          }
+        : output.success
+          ? {
+              ...output.data,
+              hostId: (await owned(input.threadId, input.sessionId ?? ""))
+                .session.hostId,
+            }
+          : previewed.success
+            ? {
+                session: previewed.data.session,
+                frame: previewed.data.frame && {
+                  sequence: previewed.data.frame.sequence,
+                  mimeType: previewed.data.frame.mimeType,
+                  width: previewed.data.frame.width,
+                  height: previewed.data.frame.height,
+                  url: previewed.data.frame.url,
+                  title: previewed.data.frame.title,
+                  bytes: Buffer.byteLength(previewed.data.frame.data, "base64"),
+                },
+              }
+            : result;
+      return {
+        exitCode: output.success ? output.data.exitCode : 0,
+        stdout: JSON.stringify(printable),
+      };
+    } catch (error) {
+      throw browserCliFailure(error);
+    }
+  }
+  bb.cli.register(createBrowserAutomationCli({ execute: executeCli }));
   for (const event of [
     "thread.archived",
     "thread.deleted",

@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { resolveThreadMentionDropTarget } from "@/lib/thread-mention-drop";
 import type { PromptTextMention } from "@bb/domain";
 import { TextSelection } from "@tiptap/pm/state";
 import { EditorView } from "@tiptap/pm/view";
@@ -4034,6 +4035,37 @@ describe("PromptBoxInternal prompt actions", () => {
 
     await waitFor(() => expect(latestValue(changes)).toBe("> quoted"));
     expect(getPromptEditorElement().querySelector("blockquote")).not.toBeNull();
+  });
+
+  it("inserts a dropped sidebar thread as a serialized mention pill", async () => {
+    const { changes, promptBoxRef } = renderPromptBox("Review ");
+    await focusPromptEnd(promptBoxRef);
+    const editorElement = getPromptEditorElement();
+    const previous = document.elementsFromPoint;
+    document.elementsFromPoint = () => [editorElement];
+    const position = vi
+      .spyOn(EditorView.prototype, "posAtCoords")
+      .mockReturnValue(null);
+    try {
+      const target = resolveThreadMentionDropTarget(100, 100, {
+        threadId: "thr_dropped",
+        label: "Dropped thread",
+      });
+      expect(target).not.toBeNull();
+      act(() => target?.drop());
+      await waitFor(() =>
+        expect(latestValue(changes)).toBe("Review @thread:thr_dropped "),
+      );
+      expect(latestChange(changes)?.mentions[0]?.resource).toEqual({
+        kind: "thread",
+        threadId: "thr_dropped",
+        label: "Dropped thread",
+      });
+      expect(editorElement.textContent).toContain("Dropped thread");
+    } finally {
+      document.elementsFromPoint = previous;
+      position.mockRestore();
+    }
   });
 
   it("keeps list markers attached to their item text when pasting mentioned list html", async () => {
