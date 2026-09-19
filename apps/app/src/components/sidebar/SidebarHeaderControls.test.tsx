@@ -258,7 +258,7 @@ describe("sidebar header controls", () => {
     await openMenu();
     await openSubmenu("Sort by");
     const toggle = await screen.findByRole("menuitemcheckbox", {
-      name: "Sort groups by activity",
+      name: "Groups by activity",
     });
     expect(toggle.getAttribute("aria-checked")).toBe("false");
     fireEvent.click(toggle);
@@ -270,7 +270,7 @@ describe("sidebar header controls", () => {
     );
     expect(toggle.getAttribute("aria-disabled")).toBe("true");
     expect(toggle.getAttribute("aria-checked")).toBe("false");
-    expect(screen.getByText("Requires Updated at")).toBeTruthy();
+    expect(screen.getByText("Updated at only")).toBeTruthy();
     expect(store.get(sidebarSortGroupsByRecencyAtom)).toBe(true);
 
     fireEvent.click(screen.getByRole("menuitemradio", { name: "Updated at" }));

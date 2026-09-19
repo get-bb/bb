@@ -148,10 +148,9 @@ function SidebarViewItems({ page }: { page: "organize" | "sort" }) {
           </DropdownMenuItem>
         );
       })}
-      <DropdownMenuSeparator />
       <DropdownMenuItem
         role="menuitemcheckbox"
-        aria-label="Sort groups by activity"
+        aria-label="Groups by activity"
         aria-checked={selectedSort === "updated" && sortGroupsByRecency}
         disabled={selectedSort !== "updated"}
         onSelect={(event) => {
@@ -160,10 +159,10 @@ function SidebarViewItems({ page }: { page: "organize" | "sort" }) {
         }}
       >
         <span>
-          Sort groups by activity
+          Groups by activity
           {selectedSort !== "updated" && (
             <span className="block text-muted-foreground">
-              Requires Updated at
+              Updated at only
             </span>
           )}
         </span>
