@@ -1564,11 +1564,13 @@ describe("Docs proposals", () => {
       }),
     ).toMatchObject({ status: "pending", version: 4 });
     expect(files.get("/vault/letter.md")?.content).toBe("A simple place.");
-    await harness.lifecycle.reload(simpleNotes);
+    const reloaded = await harness.lifecycle.reload(simpleNotes);
     expect(
-      await harness.behavior.callRpc("readProposal", { path: "letter.md" }),
+      await reloaded.harness.behavior.callRpc("readProposal", {
+        path: "letter.md",
+      }),
     ).toMatchObject({ status: "pending", version: 4 });
-    await harness.lifecycle.dispose();
+    await reloaded.harness.lifecycle.dispose();
   });
 
   it("rejects late replacements and restores rejected proposals with undo", async () => {
