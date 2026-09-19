@@ -86,6 +86,7 @@ import {
 import { resolveDispatchAuthor } from "./dispatch-author.js";
 import type { TurnRequestRetryMarker } from "./thread-events.js";
 import { restoreInterruptedThreadStartupRequest } from "./thread-provisioning.js";
+import { requireCurrentRetry } from "./turn-failed.js";
 
 export const pendingThreadStartContextSchema = z.object({
   environmentIntent: threadProvisionEnvironmentIntentSchema,
@@ -308,6 +309,7 @@ async function runDispatchAttempt(
       projectId: thread.projectId,
     });
   }
+  if (args.retryOf) requireCurrentRetry(deps.db, thread.id, args.retryOf);
   const senderThreadId = resolveMessageSenderThreadId(deps, {
     ...(payload.senderThreadId !== undefined
       ? { senderThreadId: payload.senderThreadId }
