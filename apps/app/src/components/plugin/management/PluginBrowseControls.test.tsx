@@ -8,6 +8,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -302,6 +303,52 @@ function mockToolbarWidth(initial: number, publishedWidth = 96) {
 }
 
 describe("PluginCollectionToolbar", () => {
+  it.each([
+    { control: /^Filter plugins by category:/u, tooltip: "Category: Security" },
+    { control: /^Source:/u, tooltip: "Source: Local" },
+    { control: /^Sort:/u, tooltip: "Sort: Name · Z–A" },
+  ])(
+    "describes applied selections in the $tooltip tooltip",
+    async ({ control, tooltip }) => {
+      mockToolbarWidth(800);
+      render(<ToolbarHarness installed />);
+      const trigger = screen.getByRole("button", { name: control });
+      act(() => trigger.focus());
+      expect((await screen.findByRole("tooltip")).textContent).toBe(tooltip);
+    },
+  );
+
+  it("describes all applied selections in the combined trigger tooltip", async () => {
+    mockToolbarWidth(320);
+    render(<ToolbarHarness installed />);
+    act(() => screen.getByRole("button", { name: "Filter & sort" }).focus());
+    expect((await screen.findByRole("tooltip")).textContent).toBe(
+      "Category: Security; Source: Local; Sort: Name · Z–A",
+    );
+  });
+
+  it.each([
+    {
+      control: /^Source:/u,
+      heading: "Source",
+      role: "menuitemcheckbox" as const,
+    },
+    { control: /^Sort:/u, heading: "Sort", role: "menuitemradio" as const },
+  ])(
+    "opens $heading without a redundant heading",
+    ({ control, heading, role }) => {
+      mockToolbarWidth(800);
+      render(<ToolbarHarness installed />);
+      const trigger = screen.getByRole("button", { name: control });
+      expect(trigger.querySelector('[data-icon="ChevronDown"]')).not.toBeNull();
+      expect(trigger.querySelector('[data-icon="Layers"]')).toBeNull();
+      fireEvent.keyDown(trigger, { key: "Enter" });
+      const menu = screen.getByRole("menu");
+      expect(screen.getAllByRole(role).length).toBeGreaterThan(0);
+      expect(within(menu).queryByText(heading)).toBeNull();
+    },
+  );
+
   it("keeps an open sort menu stable when its selected label grows, then combines after dismissal", async () => {
     const resize = mockToolbarWidth(370, 128);
     render(<ToolbarHarness />);

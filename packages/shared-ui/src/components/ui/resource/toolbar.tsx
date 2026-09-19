@@ -397,6 +397,7 @@ export function ResourceMultiSelectMenuItems({
   onChange,
   compact = false,
   clearInFooter = false,
+  showHeading = true,
 }: {
   label: string;
   selectedValues: readonly string[];
@@ -404,6 +405,7 @@ export function ResourceMultiSelectMenuItems({
   onChange: (values: string[]) => void;
   compact?: boolean;
   clearInFooter?: boolean;
+  showHeading?: boolean;
 }) {
   const selected = new Set(selectedValues);
   function updateValue(option: ResourceOption, checked: boolean) {
@@ -412,14 +414,16 @@ export function ResourceMultiSelectMenuItems({
   }
   return (
     <>
-      <DropdownMenuLabel
-        className={cn(
-          "text-xs font-normal text-subtle-foreground",
-          compact && "md:px-1.5 md:py-1",
-        )}
-      >
-        {label}
-      </DropdownMenuLabel>
+      {showHeading ? (
+        <DropdownMenuLabel
+          className={cn(
+            "text-xs font-normal text-subtle-foreground",
+            compact && "md:px-1.5 md:py-1",
+          )}
+        >
+          {label}
+        </DropdownMenuLabel>
+      ) : null}
       {options.map((option) => (
         <DropdownMenuCheckboxItem
           key={option.id}
@@ -463,22 +467,26 @@ export function ResourceMultiSelectMenu({
   compact = false,
   clearInFooter = false,
   showLabel = false,
+  showHeading = true,
 }: {
   label: string;
-  icon: IconName;
+  icon?: IconName;
   selectedValues: readonly string[];
   options: readonly ResourceOption[];
   onChange: (values: string[]) => void;
   compact?: boolean;
   clearInFooter?: boolean;
   showLabel?: boolean;
+  showHeading?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const selected = new Set(selectedValues);
   const activeOptions = options.filter((option) => selected.has(option.id));
   const activeSelectedCount = activeOptions.length;
   const selectionSummary =
-    activeSelectedCount === 0 ? "All" : `${activeSelectedCount} selected`;
+    activeSelectedCount === 0
+      ? "All"
+      : activeOptions.map((option) => option.label).join(", ");
   const triggerLabel =
     activeSelectedCount === 0
       ? label
@@ -509,6 +517,7 @@ export function ResourceMultiSelectMenu({
           onChange={onChange}
           compact={compact}
           clearInFooter={clearInFooter}
+          showHeading={showHeading}
         />
       </DropdownMenuContent>
     </DropdownMenu>
@@ -614,6 +623,7 @@ export function ResourceSortMenuItems({
   placeholderLabel = "Sort",
   compact = false,
   clearInFooter = false,
+  showHeading = true,
 }: {
   value: string | null;
   direction: "asc" | "desc";
@@ -623,17 +633,20 @@ export function ResourceSortMenuItems({
   placeholderLabel?: string;
   compact?: boolean;
   clearInFooter?: boolean;
+  showHeading?: boolean;
 }) {
   return (
     <>
-      <DropdownMenuLabel
-        className={cn(
-          "text-xs font-normal text-subtle-foreground",
-          compact && "md:px-1.5 md:py-1",
-        )}
-      >
-        Sort
-      </DropdownMenuLabel>
+      {showHeading ? (
+        <DropdownMenuLabel
+          className={cn(
+            "text-xs font-normal text-subtle-foreground",
+            compact && "md:px-1.5 md:py-1",
+          )}
+        >
+          Sort
+        </DropdownMenuLabel>
+      ) : null}
       {onClear === undefined || clearInFooter ? null : (
         <DropdownMenuItem
           role="menuitemradio"
@@ -725,6 +738,8 @@ export function ResourceSortMenu({
   clearInFooter = false,
   showLabel = false,
   triggerIcon = "ArrowUpDown",
+  showHeading = true,
+  tooltip,
 }: {
   value: string | null;
   direction: "asc" | "desc";
@@ -736,6 +751,8 @@ export function ResourceSortMenu({
   clearInFooter?: boolean;
   showLabel?: boolean;
   triggerIcon?: IconName;
+  showHeading?: boolean;
+  tooltip?: string;
 }) {
   const [open, setOpen] = useState(false);
   const selectedOption = options.find((option) => option.id === value);
@@ -753,6 +770,8 @@ export function ResourceSortMenu({
         label={sortStateLabel}
         text={showLabel ? (selectedOption?.label ?? "Sort") : undefined}
         icon={triggerIcon}
+        trailingIcon={showLabel ? "ChevronDown" : undefined}
+        tooltip={tooltip ?? sortStateLabel}
         active={onClear !== undefined && value !== null}
         open={open}
       />
@@ -770,6 +789,7 @@ export function ResourceSortMenu({
           placeholderLabel={placeholderLabel}
           compact={compact}
           clearInFooter={clearInFooter}
+          showHeading={showHeading}
         />
       </DropdownMenuContent>
     </DropdownMenu>

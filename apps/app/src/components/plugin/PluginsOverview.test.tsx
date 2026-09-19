@@ -296,18 +296,15 @@ describe("PluginsOverview", () => {
     expect(await screen.findByText("GitHub")).toBeTruthy();
     expect(screen.queryByRole("tab", { name: "Browse" })).toBeNull();
     expect(screen.queryByRole("tab", { name: /Installed/ })).toBeNull();
-    expect(
-      screen.getByRole("button", { name: "Create a plugin" }),
-    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "New plugin" })).toBeTruthy();
     const comboTrigger = screen.getByRole("button", {
-      name: "Create a plugin options",
+      name: "New plugin options",
     });
     fireEvent.pointerDown(comboTrigger);
     expect(
       screen.getByRole("menuitem", { name: "Install from source" }),
     ).toBeTruthy();
     fireEvent.keyDown(document, { key: "Escape" });
-    expect(screen.queryByRole("button", { name: "New plugin" })).toBeNull();
 
     const catalogRequests = () =>
       vi.mocked(fetch).mock.calls.filter(([input]) => {
@@ -343,7 +340,7 @@ describe("PluginsOverview", () => {
 
     await screen.findByText("GitHub");
     const createPlugin = screen.getByRole("button", {
-      name: "Create a plugin",
+      name: "New plugin",
     });
 
     fireEvent.click(createPlugin);
