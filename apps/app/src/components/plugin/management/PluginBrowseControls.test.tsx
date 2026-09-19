@@ -545,7 +545,7 @@ describe("PluginCollectionToolbar", () => {
     expect(screen.getByLabelText("Parameters").textContent).toBe(
       "query=Memory&category=security&source=user",
     );
-    fireEvent.click(screen.getByRole("menuitem", { name: "Back to controls" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Filter & sort" }));
     await waitFor(() =>
       expect(document.activeElement).toBe(
         screen.getByRole("menuitem", { name: /^Sort/u }),
@@ -565,7 +565,7 @@ describe("PluginCollectionToolbar", () => {
     expect(screen.getByLabelText("Parameters").textContent).toBe(
       "query=Memory&source=user",
     );
-    fireEvent.click(screen.getByRole("menuitem", { name: "Back to controls" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Filter & sort" }));
     fireEvent.click(screen.getByRole("menuitem", { name: /^Source/u }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Clear filter" }));
     expect(screen.getByLabelText("Parameters").textContent).toBe(
@@ -594,7 +594,7 @@ describe("PluginCollectionToolbar", () => {
         screen.getByRole("option", { name: /Memory & Context/u }),
       ),
     );
-    fireEvent.click(screen.getByRole("menuitem", { name: "Back to controls" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Filter & sort" }));
     await waitFor(() =>
       expect(document.activeElement).toBe(
         screen.getByRole("menuitem", { name: /^Category/u }),
