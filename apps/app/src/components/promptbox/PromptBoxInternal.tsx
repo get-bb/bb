@@ -2657,7 +2657,8 @@ export function PromptBoxInternal({
     !isSubmitting &&
     !submitDisabled &&
     !showVoiceActionGroup;
-  const canSubmit = canSubmitAction(primarySubmitAction);
+  const canPrimarySubmit = canSubmitAction(primarySubmitAction);
+  const canSubmit = hasSubmittableInput && canPrimarySubmit;
   const canModifierSubmit = canSubmitAction(modifierSubmitAction);
   const showStop = Boolean(
     isRunning && onStop && !canSubmit && !isAttaching && !showVoiceActionGroup,
@@ -2745,12 +2746,12 @@ export function PromptBoxInternal({
   const submitPrompt = useCallback(() => {
     const shouldBlurAfterSubmit = blurAfterPointerSubmitRef.current;
     blurAfterPointerSubmitRef.current = false;
-    if (!canSubmit) return;
+    if (!canPrimarySubmit) return;
     onSubmit?.();
     if (shouldBlurAfterSubmit) {
       blurPromptEditor(editorRef.current);
     }
-  }, [canSubmit, onSubmit]);
+  }, [canPrimarySubmit, onSubmit]);
 
   const handleSubmitClick = useCallback(
     (event: ReactMouseEvent<HTMLButtonElement>) => {

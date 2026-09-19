@@ -1426,12 +1426,18 @@ describe("PromptBoxInternal submit shortcuts", () => {
       (value) => {
         const onSubmit = vi.fn();
         const onModifierSubmit = vi.fn();
+        const onStop = vi.fn();
         render(
           <PromptBoxInternal
             {...createPromptBoxProps({
               value,
               onSubmit,
-              submission: { onModifierSubmit, swapSubmitActions },
+              submission: {
+                onModifierSubmit,
+                swapSubmitActions,
+                isRunning: true,
+                onStop,
+              },
             })}
           />,
         );
@@ -1450,6 +1456,10 @@ describe("PromptBoxInternal submit shortcuts", () => {
         });
         expect(onSubmit).toHaveBeenCalledTimes(value ? 1 : 0);
         expect(onModifierSubmit).toHaveBeenCalledOnce();
+        if (!value) {
+          fireEvent.click(screen.getByRole("button", { name: "Stop run" }));
+          expect(onStop).toHaveBeenCalledOnce();
+        }
       },
     );
 
