@@ -157,9 +157,10 @@ interface ThreadRowContainerArgs {
 }
 
 const NEST_TARGET_STATE_CLASS: Record<SidebarNestTargetState, string> = {
-  valid: "bg-sidebar-accent text-sidebar-accent-foreground",
-  blocked: "opacity-60",
-  unchanged: "",
+  valid:
+    "bg-sidebar-accent text-sidebar-accent-foreground ring-1 ring-inset ring-sidebar-ring",
+  blocked: "opacity-60 ring-1 ring-inset ring-destructive/60",
+  unchanged: "ring-1 ring-inset ring-sidebar-border",
 };
 
 const NEST_UNDERLINE_STATE_CLASS: Record<SidebarNestTargetState, string> = {
@@ -167,6 +168,9 @@ const NEST_UNDERLINE_STATE_CLASS: Record<SidebarNestTargetState, string> = {
   blocked: "bg-destructive/70",
   unchanged: "bg-sidebar-border",
 };
+
+const NEST_UNDERLINE_OFFSET_PX = 2;
+const NEST_UNDERLINE_CORNER_INSET_PX = 6;
 
 export const REORDER_PLACEMENT_CLASS: Record<SidebarReorderPlacement, string> = {
   before:
@@ -650,9 +654,14 @@ function ThreadRowComponent({
     <span
       aria-hidden="true"
       data-sidebar-nest-underline=""
-      style={{ left: getSidebarThreadRowPaddingLeft(options.depth + 1) }}
+      style={{
+        left: getSidebarThreadRowPaddingLeft(options.depth + 1),
+        right: NEST_UNDERLINE_CORNER_INSET_PX,
+        bottom: -NEST_UNDERLINE_OFFSET_PX,
+        height: NEST_UNDERLINE_OFFSET_PX,
+      }}
       className={cn(
-        "pointer-events-none absolute bottom-0 right-1 h-0.5 rounded-full",
+        "pointer-events-none absolute rounded-full",
         NEST_UNDERLINE_STATE_CLASS[nestTargetState],
       )}
     />
