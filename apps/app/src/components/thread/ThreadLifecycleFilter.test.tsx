@@ -33,10 +33,14 @@ describe("ThreadLifecycleFilter", () => {
     async (compact) => {
       viewport.compact = compact;
       const { container } = render(<Filter />);
-      fireEvent.keyDown(
-        screen.getByRole("button", { name: "Thread lifecycle: Active" }),
-        { key: "Enter" },
-      );
+      const trigger = screen.getByRole("button", {
+        name: "Thread lifecycle: Active",
+      });
+      if (compact) {
+        fireEvent.click(trigger);
+      } else {
+        fireEvent.keyDown(trigger, { key: "Enter" });
+      }
       const active = await screen.findByRole("menuitemcheckbox", {
         name: "Active",
       });

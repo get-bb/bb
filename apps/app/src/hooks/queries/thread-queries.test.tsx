@@ -368,7 +368,7 @@ describe("useArchivedThreads", () => {
     expect(vi.mocked(sdk.threads.list).mock.calls[1]?.[0]?.offset).toBe(
       ARCHIVED_THREADS_PAGE_SIZE,
     );
-    expect(result.current.hasNextPage).toBe(false);
+    await waitFor(() => expect(result.current.hasNextPage).toBe(false));
     rerender({ enabled: false });
     await act(async () => {
       await queryClient.invalidateQueries();
