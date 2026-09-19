@@ -404,11 +404,7 @@ export function EnvironmentPickerUI({
         autoFocusRef={
           isLoading ? undefined : showSearch ? searchInputRef : commandRef
         }
-        className={cn(
-          "flex max-h-[min(var(--radix-popover-content-available-height),calc(100dvh-0.5rem))] flex-col overflow-hidden p-0 max-md:min-h-0 max-md:w-full max-md:flex-1",
-          showSearch ? "w-80" : "w-auto min-w-52 max-w-80",
-          isLoading && "min-w-52",
-        )}
+        className="flex max-h-[min(var(--radix-popover-content-available-height),calc(100dvh-0.5rem))] w-auto max-w-80 min-w-52 flex-col overflow-hidden p-0 max-md:min-h-0 max-md:w-full max-md:flex-1"
       >
         {isLoading ? (
           <PickerLoadingRows
