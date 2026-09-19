@@ -1352,7 +1352,7 @@ describe("environment providers are asked inside provisioning", () => {
     });
   });
 
-  it("records the branch a reused host row is on when the provider answers with its path", async () => {
+  it("refreshes a reused host row branch while preserving its provider cleanup identity", async () => {
     await withTestHarness(async (harness) => {
       const { host, project, session } = seedTargetFixture(
         harness,
@@ -1415,11 +1415,8 @@ describe("environment providers are asked inside provisioning", () => {
       );
       expect(inspected).toEqual(["/tmp/environment-providers-refresh-branch"]);
       expect(getEnvironment(harness.db, attached.id)).toMatchObject({
-        environmentProviderInstanceKey: created.id,
-        environmentProviderSelection: {
-          machine: { type: "existing", hostId: host.id },
-          inputs: null,
-        },
+        environmentProviderInstanceKey: attached.environmentProviderInstanceKey,
+        environmentProviderSelection: attached.environmentProviderSelection,
       });
     });
   });
