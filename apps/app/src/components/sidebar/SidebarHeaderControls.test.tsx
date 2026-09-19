@@ -79,6 +79,31 @@ async function openSubmenu(label: string) {
 }
 
 describe("sidebar header controls", () => {
+  it("dismisses on the first outside click after toggling environment grouping", async () => {
+    setup();
+    await openMenu();
+    await openSubmenu("Organize");
+    const toggle = await screen.findByRole("menuitemcheckbox", {
+      name: "By environment",
+    });
+    fireEvent.pointerDown(toggle, { button: 0, pointerType: "mouse" });
+    fireEvent.pointerUp(toggle, { button: 0, pointerType: "mouse" });
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
+
+    fireEvent.pointerDown(document.body, { button: 0, pointerType: "mouse" });
+    fireEvent.pointerUp(document.body, { button: 0, pointerType: "mouse" });
+    fireEvent.click(document.body);
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("menuitemcheckbox", { name: "By environment" }),
+      ).toBeNull();
+      expect(
+        screen.queryByRole("menuitem", { name: "New project" }),
+      ).toBeNull();
+    });
+  });
+
   it("keeps the primary before overflow and applies the shared control state", async () => {
     const { newThread } = setup();
     const primary = screen.getByRole("button", {
