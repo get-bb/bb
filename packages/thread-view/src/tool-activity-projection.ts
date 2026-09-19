@@ -8,7 +8,6 @@ import type {
   EventProjectionMessage,
   EventProjection,
   EventProjectionToolCallMessage,
-  EventProjectionToolParsedIntent,
 } from "./event-projection-types.js";
 import type { EventMeta } from "./event-decode.js";
 import type {
@@ -92,7 +91,6 @@ interface RunningCommandExecution extends RunningExecutionBase {
   kind: "command";
   command: string;
   cwd: string | null;
-  parsedIntents: EventProjectionToolParsedIntent[];
   source: string | null;
   exitCode: number | null;
   approvalStatus: EventProjectionApprovalLifecycleStatus | null;
@@ -214,25 +212,6 @@ export function applyApprovalStatusDelta(
   }
 }
 
-function hasSemanticIntent(
-  intents: EventProjectionToolParsedIntent[],
-): boolean {
-  return intents.some((intent) => intent.type !== "unknown");
-}
-
-function chooseParsedIntents(
-  existing: EventProjectionToolParsedIntent[],
-  incoming: EventProjectionToolParsedIntent[],
-): EventProjectionToolParsedIntent[] {
-  if (incoming.length === 0) return existing;
-  if (existing.length === 0) return incoming;
-  if (!hasSemanticIntent(existing) && hasSemanticIntent(incoming)) {
-    return incoming;
-  }
-  if (incoming.length > existing.length) return incoming;
-  return existing;
-}
-
 function isTerminalToolCallStatus(
   status: EventProjectionToolCallMessage["status"] | undefined,
 ): boolean {
@@ -325,7 +304,6 @@ function createRunningExecCall(
         kind: "command",
         command: incoming.command ?? "",
         cwd: incoming.cwd ?? null,
-        parsedIntents: incoming.parsedIntents ?? [],
         source: incoming.source ?? null,
         exitCode: incoming.exitCode ?? null,
         approvalStatus: incoming.approvalStatus ?? null,
@@ -357,7 +335,6 @@ interface CommandExecutionFieldsTarget {
   command: string;
   cwd: string | null;
   exitCode: number | null;
-  parsedIntents: EventProjectionToolParsedIntent[];
   source: string | null;
 }
 
@@ -366,7 +343,6 @@ interface CommandExecutionFieldsSource {
   command?: string;
   cwd?: string | null;
   exitCode?: number | null;
-  parsedIntents?: EventProjectionToolParsedIntent[];
   source?: string | null;
   status?: EventProjectionToolCallMessage["status"];
 }
@@ -427,12 +403,6 @@ function mergeCommandExecutionFields(
   if (incoming.source && !target.source) target.source = incoming.source;
   if (incoming.command && incoming.command !== target.command) {
     target.command = incoming.command;
-    target.parsedIntents = incoming.parsedIntents ?? [];
-  } else {
-    target.parsedIntents = chooseParsedIntents(
-      target.parsedIntents,
-      incoming.parsedIntents ?? [],
-    );
   }
   if (incoming.exitCode !== undefined) target.exitCode = incoming.exitCode;
   target.approvalStatus = applyApprovalStatusDelta(
@@ -927,7 +897,6 @@ function createExecMessage(
       kind: "command",
       command: call.command,
       cwd: call.cwd,
-      parsedIntents: call.parsedIntents,
       source: call.source,
       exitCode: call.exitCode,
       approvalStatus: call.approvalStatus,

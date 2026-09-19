@@ -120,15 +120,36 @@ selects that planned summary first and materializes only its children; unrelated
 summaries are not expanded to find a match. Collapsed rendering no longer needs
 a separate message-pruning policy that anticipates the grouping rules.
 
-Tool output and nested delegation projections are reconstructed while processing
-the loaded events, including for collapsed summaries. The shared row plan avoids
-rendering unrelated summaries' child rows when selecting an expansion, but it
-does not defer event processing or output reconstruction.
+For collapsed inactive timelines, the context query retains command lifecycle
+metadata but omits command-output bodies. The same projection and grouping code
+selects visible rows. If commands remain visible outside summaries, their payloads
+are fetched by event ID and the complete rows are constructed before byte
+pagination. Active timelines, flat display, nested-row requests, and unlimited
+output requests read complete command payloads directly. Shell-command activity
+intents are parsed when a command row is rendered, not for hidden summary children.
+Other event payloads and nested delegation structure are still processed upfront.
 
-Selection still reads and decodes event payloads for the required context. Cold
-request cost remains dependent on that context; a large collapsed turn is not a
-constant-time lookup. Route-cache hits and unchanged deltas are separate cases
-and must be benchmarked separately from cold opens and appended updates.
+Pages and summary expansion use the same conversation-context loader. Expansion
+first selects item identities from metadata in the requested interval, restricted to
+the requested turn and parented child events, then loads their event histories within
+the snapshot. This preserves updates to items that
+started outside the interval without loading unrelated command, reasoning, and
+file-change payloads from the same turn. Assistant messages and compaction lifecycle
+events remain context within the requested turn. Other turns contribute turn and
+request state; their item payloads are loaded only for selected item IDs or parented
+descendants of the selected work. Selected item histories span turns so a later
+completion still updates the command that originally started it. Parent and child context is resolved by the same loader,
+with already-loaded event IDs excluded from subsequent turn and child reads. The requested interval limits detail selection, not those dependencies.
+Expansion resolves only referenced request IDs, skips page-ordering boundary work,
+and reuses the event-decode cache. It matches the requested turn and exact summary
+bounds, including nested summaries.
+The existing row-output expansion use of the endpoint selects rows owned by its
+requested range when the range does not identify a summary; this also handles a
+command finishing between preview and expansion.
+
+Cold request cost still depends on the required context; a large collapsed turn
+is not a constant-time lookup. Route-cache hits and unchanged deltas are separate
+cases and must be benchmarked separately from cold opens and appended updates.
 
 `GET /api/v1/threads/:id/timeline/turn-summary-details` and
 `sdk.threads.timelineTurnSummaryDetails` retain the existing `turnId`,

@@ -9,7 +9,6 @@ import type {
   EventProjectionCommandMessage,
   EventProjectionDelegationMessage,
   EventProjectionMessage,
-  EventProjectionToolParsedIntent,
 } from "../src/event-projection-types.js";
 import {
   createToolActivityState,
@@ -26,7 +25,6 @@ interface CommandUpdateArgs {
   command?: string;
   completedAt?: number | null;
   output?: string;
-  parsedIntents?: EventProjectionToolParsedIntent[];
   status: CommandStatus;
 }
 
@@ -65,7 +63,6 @@ function commandUpdate({
   command = "pnpm test",
   completedAt = null,
   output,
-  parsedIntents,
   status,
 }: CommandUpdateArgs): CommandExecutionUpdate {
   return {
@@ -77,7 +74,6 @@ function commandUpdate({
     exitCode: status === "error" ? 1 : 0,
     completedAt,
     ...(output !== undefined ? { output } : {}),
-    ...(parsedIntents !== undefined ? { parsedIntents } : {}),
   };
 }
 
@@ -247,7 +243,6 @@ describe("tool activity projection", () => {
       commandUpdate({
         command: staleCommand,
         output: "started\n",
-        parsedIntents: [{ type: "unknown", cmd: staleCommand }],
         status: "pending",
       }),
     );
@@ -262,7 +257,6 @@ describe("tool activity projection", () => {
     expect(commandMessages(state)).toMatchObject([
       {
         command: latestCommand,
-        parsedIntents: [],
       },
     ]);
   });

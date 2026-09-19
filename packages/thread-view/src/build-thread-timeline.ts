@@ -1,3 +1,4 @@
+import { parseShellCommandIntents } from "./tool-call-parsing.js";
 import type {
   ThreadContextWindowUsage,
   TimelineActivityIntent,
@@ -109,6 +110,7 @@ interface ThreadTimelineSourceSeqRange {
 }
 
 interface BuildThreadTimelineTurnDetailsFromEventsOptions extends ThreadTimelineSourceSeqRange {
+  turnId: string;
   completedTurnDisplay: CompletedTurnDisplay;
   includeDiagnosticOperations: boolean;
   providerDisplayName?: string;
@@ -533,7 +535,9 @@ function convertMessage(
           exitCode: message.exitCode,
           completedAt: message.completedAt,
           approvalStatus: message.approvalStatus,
-          activityIntents: message.parsedIntents.map(convertActivityIntent),
+          activityIntents: parseShellCommandIntents(message.command).map(
+            convertActivityIntent,
+          ),
           ...rowPresentation(message),
         },
       ];
@@ -1237,32 +1241,82 @@ export function buildThreadTimelineTurnDetailsFromEvents(
     rowIdPrefix: ROOT_TIMELINE_ROW_ID_PREFIX,
     workspaceRoot: args.options.workspaceRoot,
   };
-  const plan = planTimelineRows(
-    projection,
-    options.completedTurnDisplay,
-    options.rowIdPrefix,
-  );
-  const matchingSummary = plan.find(
-    (item) =>
-      item.kind === "summary" &&
-      item.row.sourceSeqStart === args.options.sourceSeqStart &&
-      item.row.sourceSeqEnd === args.options.sourceSeqEnd,
-  );
-  if (matchingSummary?.kind === "summary") {
-    return {
-      kind: "matched",
-      rows: matchingSummary.messages.flatMap((message) =>
-        convertMessage(message, options),
-      ),
-    };
+  function findSummary(
+    current: EventProjection,
+    rowOptions: BuildTimelineRowsOptions,
+  ): TimelineRow[] | null {
+    const plan = planTimelineRows(
+      current,
+      rowOptions.completedTurnDisplay,
+      rowOptions.rowIdPrefix,
+    );
+    for (const item of plan) {
+      if (
+        item.kind === "summary" &&
+        item.row.turnId === args.options.turnId &&
+        item.row.sourceSeqStart === args.options.sourceSeqStart &&
+        item.row.sourceSeqEnd === args.options.sourceSeqEnd
+      ) {
+        return item.messages.flatMap((message) =>
+          convertMessage(message, rowOptions),
+        );
+      }
+      const messages = item.kind === "summary" ? item.messages : [item.message];
+      for (const message of messages) {
+        if (message.kind !== "delegation") continue;
+        const base = buildTimelineRowBase(message, rowOptions.rowIdPrefix);
+        const nested = findSummary(message.childProjection, {
+          ...rowOptions,
+          rowIdPrefix: `${base.id}:child:`,
+        });
+        if (nested !== null) return nested;
+      }
+    }
+    return null;
   }
-  if (plan.some((item) => item.kind === "summary")) {
-    return { kind: "missing-match" };
+  const matchingRows = findSummary(projection, options);
+  if (matchingRows !== null) return { kind: "matched", rows: matchingRows };
+  function selectRange(
+    current: EventProjection,
+    rowOptions: BuildTimelineRowsOptions,
+  ): TimelineRow[] {
+    const rows: TimelineRow[] = [];
+    for (const item of planTimelineRows(
+      current,
+      rowOptions.completedTurnDisplay,
+      rowOptions.rowIdPrefix,
+    )) {
+      const messages = item.kind === "summary" ? item.messages : [item.message];
+      for (const message of messages) {
+        if (
+          getEventProjectionMessageScopeTurnId(message) ===
+            args.options.turnId &&
+          message.sourceSeqStart >= args.options.sourceSeqStart &&
+          message.sourceSeqStart <= args.options.sourceSeqEnd
+        ) {
+          rows.push(
+            ...convertMessage(message, rowOptions).filter(
+              (row) => !isRootOwnedHumanSteerRow(row),
+            ),
+          );
+        } else if (message.kind === "delegation") {
+          const base = buildTimelineRowBase(message, rowOptions.rowIdPrefix);
+          rows.push(
+            ...selectRange(message.childProjection, {
+              ...rowOptions,
+              rowIdPrefix: `${base.id}:child:`,
+            }),
+          );
+        }
+      }
+    }
+    return orderRowsAfterExternalUserBoundary(
+      rows,
+      collectExternalUserBoundarySeqs(current),
+    );
   }
-  return {
-    kind: "ungrouped",
-    rows: buildTimelineRows(projection, options).filter(
-      (row) => !isRootOwnedHumanSteerRow(row),
-    ),
-  };
+  const rows = selectRange(projection, options);
+  return rows.length > 0
+    ? { kind: "ungrouped", rows }
+    : { kind: "missing-match" };
 }
