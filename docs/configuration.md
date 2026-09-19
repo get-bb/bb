@@ -681,6 +681,7 @@ client wrote first, so a stale window cannot silently clobber a newer value.
 | Key                               | Value                                               |
 | --------------------------------- | --------------------------------------------------- |
 | `sidebar.organizationMode`        | `project`, `chronological`, or `machine`            |
+| `sidebar.threadLifecycles`        | Nonempty distinct list of `active`, `draft`, `archived` |
 | `sidebar.threadGrouping.environment` | `auto`, `true`, or `false`                       |
 | `sidebar.chronologicalSort`       | `updated`, `created`, `alpha`, or `none`            |
 | `sidebar.sectionOrder`            | Section id list for **By project**                  |
@@ -701,6 +702,13 @@ client wrote first, so a stale window cannot silently clobber a newer value.
 
 Custom (`chronological`) is the default for `sidebar.organizationMode` when no
 value is saved. Existing server and legacy browser choices are preserved.
+
+The built-in sidebar defaults to Active. `sidebar.threadLifecycles` selects
+named Active, Drafts, and Archived groups while preserving Active's organization.
+Drafts come from the available unarchived bootstrap; Archived loads pages only
+while selected. For example, `bb settings ui set sidebar.threadLifecycles
+'["active","draft"]'` shows active and saved draft threads. Reset restores
+`["active"]`. Plugin sidebar replacements own their rendering.
 
 `sidebar.threadGrouping.environment` decides whether two or more sibling threads
 that share one worktree environment collapse into a single worktree row inside

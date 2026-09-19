@@ -2306,6 +2306,8 @@ describe("createRealtimeCacheEffects", () => {
     const sidebarNavigationKey = sidebarNavigationQueryKey();
     const idleRow = {
       activity: NO_THREAD_ACTIVITY,
+      archivedAt: null,
+      lifecycle: "active",
       id: "thr_1",
       latestAttentionAt: 100,
       runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
@@ -2371,11 +2373,11 @@ describe("createRealtimeCacheEffects", () => {
     const sidebarThreads = queryClient.getQueryData<{
       projects: { threads: (typeof idleRow)[] }[];
     }>(sidebarNavigationKey)?.projects[0]?.threads;
-    expect(sidebarThreads?.[0]).toEqual({ id: "thr_1", ...statusChange });
+    expect(sidebarThreads?.[0]).toEqual({ ...idleRow, ...statusChange });
     expect(sidebarThreads?.[1]).toBe(otherRow);
     expect(
       queryClient.getQueryData<(typeof idleRow)[]>(threadListKey)?.[0],
-    ).toEqual({ id: "thr_1", ...statusChange });
+    ).toEqual({ ...idleRow, ...statusChange });
 
     for (const unsubscribe of unsubscribers) {
       unsubscribe();

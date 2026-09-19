@@ -1538,6 +1538,7 @@ export function applyQueuedMessageDeleteResult({
   threadId,
 }: ThreadIdCacheArgs): void {
   invalidateThreadQueueQueries({ queryClient, threadId });
+  invalidateThreadListMembershipQueries({ queryClient, threadId });
 }
 
 export async function beginStopThreadTransaction({

@@ -342,6 +342,40 @@ describe("useThreadDetailBootstrap", () => {
 });
 
 describe("useArchivedThreads", () => {
+  it("fetches pages only while selected and continues from the loaded offset", async () => {
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    vi.mocked(sdk.threads.list)
+      .mockResolvedValueOnce(
+        Array.from({ length: ARCHIVED_THREADS_PAGE_SIZE }, (_, index) =>
+          makeThreadListEntry({
+            id: `archived-${index}`,
+            lifecycle: "archived",
+            archivedAt: 1,
+          }),
+        ),
+      )
+      .mockResolvedValueOnce([]);
+    const { result, rerender } = renderHook(
+      ({ enabled }) => useArchivedThreads({}, { enabled }),
+      { wrapper, initialProps: { enabled: false } },
+    );
+    expect(sdk.threads.list).not.toHaveBeenCalled();
+    rerender({ enabled: true });
+    await waitFor(() => expect(result.current.hasNextPage).toBe(true));
+    await act(async () => {
+      await result.current.fetchNextPage();
+    });
+    expect(vi.mocked(sdk.threads.list).mock.calls[1]?.[0]?.offset).toBe(
+      ARCHIVED_THREADS_PAGE_SIZE,
+    );
+    await waitFor(() => expect(result.current.hasNextPage).toBe(false));
+    rerender({ enabled: false });
+    await act(async () => {
+      await queryClient.invalidateQueries();
+    });
+    expect(sdk.threads.list).toHaveBeenCalledTimes(2);
+  });
+
   it("loads archived threads across all projects when no scope is selected", async () => {
     const { wrapper } = createQueryClientTestHarness();
 
