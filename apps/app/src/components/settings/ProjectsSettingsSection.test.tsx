@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -13,6 +14,11 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
+import { sidebarNavigationQueryKey } from "@/hooks/queries/query-keys";
+import {
+  resetSidebarBootstrapCacheForTest,
+  SIDEBAR_BOOTSTRAP_CACHE_KEY,
+} from "@/lib/sidebar-bootstrap-cache";
 import { makeSystemConfig } from "@/test/fixtures/system-config";
 import {
   buildProjectReorderRequest,
@@ -145,13 +151,14 @@ const projects: SidebarProjectFixture[] = [
 ];
 
 function renderSection() {
-  const { wrapper } = createQueryClientTestHarness();
-  return render(
+  const { wrapper, queryClient } = createQueryClientTestHarness();
+  const view = render(
     <MemoryRouter>
       <ProjectsSettingsSection />
     </MemoryRouter>,
     { wrapper },
   );
+  return { ...view, queryClient };
 }
 
 async function openProjectMenu(projectName: string): Promise<void> {
@@ -173,6 +180,8 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  resetSidebarBootstrapCacheForTest();
+  window.localStorage.removeItem(SIDEBAR_BOOTSTRAP_CACHE_KEY);
   vi.unstubAllGlobals();
   vi.clearAllMocks();
 });
@@ -266,6 +275,25 @@ describe("formatGitRemote", () => {
 });
 
 describe("ProjectsSettingsSection", () => {
+  it("keeps cached projects visible when a background refresh fails", async () => {
+    stubSidebarBootstrapFetch(projects);
+    const { queryClient } = renderSection();
+    await screen.findByRole("link", { name: "Open bb settings" });
+    stubSidebarBootstrapFetch([], 503);
+    await act(async () => {
+      await queryClient.invalidateQueries({
+        queryKey: sidebarNavigationQueryKey(),
+      });
+    });
+    await waitFor(() =>
+      expect(
+        queryClient.getQueryState(sidebarNavigationQueryKey())?.status,
+      ).toBe("error"),
+    );
+    expect(screen.getByRole("link", { name: "Open bb settings" })).toBeTruthy();
+    expect(screen.queryByText("Couldn't load projects.")).toBeNull();
+  });
+
   it("summarises each project's remote, machine coverage, and threads", async () => {
     stubSidebarBootstrapFetch(projects);
 

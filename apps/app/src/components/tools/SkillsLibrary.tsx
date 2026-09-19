@@ -541,8 +541,7 @@ export function SkillsLibrary() {
           message="Checking skill source"
           layout="detail"
         />
-      ) : selectedRegistrySkill &&
-        (registryDetailQuery.isError || registryDetail === null) ? (
+      ) : selectedRegistrySkill && registryDetail === null ? (
         <ResourceListState
           state="error"
           message="This registry skill is no longer available from its source."

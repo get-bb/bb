@@ -152,15 +152,11 @@ export interface PluginSettingsView {
 async function fetchPluginSettingsView(
   fetchImpl: FetchLike,
   pluginId: string,
-): Promise<PluginSettingsView | null> {
-  try {
-    const result = await createPluginsClient(fetchImpl).getSettings({
-      pluginId,
-    });
-    return { schema: result.schema, values: result.values };
-  } catch {
-    return null;
-  }
+): Promise<PluginSettingsView> {
+  const result = await createPluginsClient(fetchImpl).getSettings({
+    pluginId,
+  });
+  return { schema: result.schema, values: result.values };
 }
 
 export async function updatePluginSettings(

@@ -738,19 +738,22 @@ describe("PluginSettingsPage", () => {
     expect(screen.queryByTestId("plugin-settings-skeleton")).toBeNull();
   });
 
-  it("keeps loaded settings visible when a background plugin-list refresh fails", async () => {
-    let pluginListRequests = 0;
+  it("keeps loaded settings through a failed refresh and updates on recovery", async () => {
+    let failRefresh = false;
+    let greeting = "hello";
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string) => {
+        if (failRefresh) {
+          return new Response("unavailable", { status: 503 });
+        }
         if (url === "/api/v1/plugins/linear/settings") {
-          return jsonOk(SETTINGS_VIEW);
+          return jsonOk({
+            ...SETTINGS_VIEW,
+            values: { ...SETTINGS_VIEW.values, greeting },
+          });
         }
-        pluginListRequests += 1;
-        if (pluginListRequests === 1) {
-          return jsonOk({ plugins: [installedPlugin(true)] });
-        }
-        throw new Error("offline");
+        return jsonOk({ plugins: [installedPlugin(true)] });
       }),
     );
 
@@ -764,12 +767,22 @@ describe("PluginSettingsPage", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByRole("heading", { name: "Linear" })).toBeTruthy();
-
-    await queryClient.invalidateQueries();
+    expect(await screen.findByDisplayValue("hello")).toBeTruthy();
+    failRefresh = true;
+    await act(async () => {
+      await queryClient.invalidateQueries();
+    });
 
     expect(screen.getByRole("heading", { name: "Linear" })).toBeTruthy();
+    expect(screen.getByDisplayValue("hello")).toBeTruthy();
     expect(screen.queryByText("Could not load plugin settings.")).toBeNull();
+
+    failRefresh = false;
+    greeting = "updated";
+    await act(async () => {
+      await queryClient.invalidateQueries();
+    });
+    expect(await screen.findByDisplayValue("updated")).toBeTruthy();
   });
 
   it("keeps the not-installed message free of loading affordances", async () => {

@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { queryOptions, useQuery } from "@tanstack/react-query";
 import { useCallback } from "react";
 import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
 import type { SidebarBootstrapResponse } from "@bb/server-contract";
@@ -13,18 +13,25 @@ import {
 } from "@/hooks/useRealtimeSubscription";
 import type { QueryOptions } from "./query-helpers";
 import { sidebarNavigationQueryKey } from "./query-keys";
-import { REALTIME_OWNED_STATIC_CACHE_QUERY_POLICY } from "./query-policies";
 import {
   readCachedSidebarBootstrap,
   writeCachedSidebarBootstrap,
 } from "@/lib/sidebar-bootstrap-cache";
 
-function fetchSidebarNavigation(
-  signal?: AbortSignal,
-): Promise<SidebarBootstrapResponse> {
-  return request<SidebarBootstrapResponse>(
-    apiClient["sidebar-bootstrap"].$get(undefined, requestOptions(signal)),
-  );
+function sidebarNavigationQueryOptions() {
+  return queryOptions({
+    queryKey: sidebarNavigationQueryKey(),
+    queryFn: async ({ signal }) => {
+      const response = await request<SidebarBootstrapResponse>(
+        apiClient["sidebar-bootstrap"].$get(undefined, requestOptions(signal)),
+      );
+      writeCachedSidebarBootstrap(response);
+      return response;
+    },
+    initialData: () => readCachedSidebarBootstrap() ?? undefined,
+    initialDataUpdatedAt: 0,
+    staleTime: (query) => (query.state.dataUpdatedAt === 0 ? 0 : Infinity),
+  });
 }
 
 export function useSidebarNavigation(options?: QueryOptions) {
@@ -34,26 +41,17 @@ export function useSidebarNavigation(options?: QueryOptions) {
   useProjectListRealtimeSubscription({ enabled });
   useThreadListRealtimeSubscription({ enabled });
 
-  return useQuery<SidebarBootstrapResponse>({
-    queryKey: sidebarNavigationQueryKey(),
-    queryFn: async ({ signal }) => {
-      const response = await fetchSidebarNavigation(signal);
-      writeCachedSidebarBootstrap(response);
-      return response;
-    },
+  return useQuery({
+    ...sidebarNavigationQueryOptions(),
     enabled,
-    ...REALTIME_OWNED_STATIC_CACHE_QUERY_POLICY,
-    placeholderData: () => readCachedSidebarBootstrap() ?? undefined,
   });
 }
 
 export function useProjectDisplayName(
   projectId: string | undefined,
 ): string | undefined {
-  const { data } = useQuery<SidebarBootstrapResponse>({
-    queryKey: sidebarNavigationQueryKey(),
-    queryFn: ({ signal }) => fetchSidebarNavigation(signal),
-    ...REALTIME_OWNED_STATIC_CACHE_QUERY_POLICY,
+  const { data } = useQuery({
+    ...sidebarNavigationQueryOptions(),
     enabled: Boolean(projectId),
   });
   if (!data || !projectId) {
@@ -78,10 +76,8 @@ export function useSidebarNavigationThreadSelection<T>(
       select(listSidebarNavigationThreads(navigation)),
     [select],
   );
-  const result = useQuery<SidebarBootstrapResponse, Error, T>({
-    queryKey: sidebarNavigationQueryKey(),
-    queryFn: ({ signal }) => fetchSidebarNavigation(signal),
-    ...REALTIME_OWNED_STATIC_CACHE_QUERY_POLICY,
+  const result = useQuery({
+    ...sidebarNavigationQueryOptions(),
     enabled: false,
     select: selectFromNavigation,
   });

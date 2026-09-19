@@ -222,7 +222,7 @@ export function PluginsOverview({
         }
       >
         <div className={cn("space-y-3", TOOLS_PAGE_BAND_CLASSES)}>
-          {listQuery.isError ? (
+          {listQuery.isError && listQuery.data === undefined ? (
             <ResourceListState
               state="error"
               message="Couldn't load plugins."

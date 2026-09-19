@@ -21,6 +21,7 @@ import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { makeSystemConfig } from "@/test/fixtures/system-config";
 import { SidebarHistoryNavigationControls } from "@/components/sidebar/SidebarHistoryNavigationControls";
 import { resetAppRouteHistoryForTest } from "@/lib/app-route-history";
+import { pluginListQueryKey } from "@/hooks/queries/query-keys";
 import { PluginsOverview } from "./PluginsOverview";
 
 vi.mock("@/components/plugin/PluginNewThreadComposer", () => ({
@@ -198,6 +199,33 @@ afterEach(() => {
 });
 
 describe("PluginsOverview", () => {
+  it("keeps installed plugins visible when a background refresh fails", async () => {
+    installFetch();
+    const { wrapper, queryClient } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter initialEntries={["/plugins?view=installed"]}>
+        <PluginsOverview />
+      </MemoryRouter>,
+      { wrapper },
+    );
+    await screen.findByTestId("plugin-row-automations");
+    vi.mocked(fetch).mockResolvedValue(
+      responseJson({ error: "refresh failed" }, 503),
+    );
+    await act(async () => {
+      await queryClient.invalidateQueries({
+        queryKey: pluginListQueryKey(true),
+      });
+    });
+    await waitFor(() =>
+      expect(queryClient.getQueryState(pluginListQueryKey(true))?.status).toBe(
+        "error",
+      ),
+    );
+    expect(screen.getByTestId("plugin-row-automations")).toBeTruthy();
+    expect(screen.queryByText("Couldn't load plugins.")).toBeNull();
+  });
+
   it("opens on Browse and renders it before Installed", async () => {
     installFetch();
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();

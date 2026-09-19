@@ -1,6 +1,7 @@
 import { createStore } from "jotai";
 import { QueryObserver } from "@tanstack/react-query";
 import type { ChangedMessage } from "@bb/domain";
+import { createDeferredPromise } from "@bb/test-helpers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -43,7 +44,8 @@ vi.mock("./api-host-daemon", () => ({
   fetchWorkspaceOpenTargets: vi.fn(async () => []),
 }));
 
-vi.mock("./sdk", () => ({
+vi.mock("./sdk", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./sdk")>()),
   sdk: {
     system: {
       config: mocks.fetchSdkSystemConfig,
@@ -107,6 +109,68 @@ afterEach(() => {
 });
 
 describe("local host daemon access atoms", () => {
+  it("serves stale config immediately and applies a background refresh", async () => {
+    const cached = { hostDaemonPort: 38_887, localHelperPorts: [38_887] };
+    const updated = { hostDaemonPort: 38_887, localHelperPorts: [] };
+    appQueryClient.setQueryData(systemConfigQueryKey(), cached, {
+      updatedAt: Date.now() - 120_000,
+    });
+    const refresh = createDeferredPromise<typeof cached>();
+    mocks.fetchSdkSystemConfig.mockReturnValue(refresh.promise);
+    const store = createStore();
+    const unsubscribe = store.sub(localHostDaemonAccessStateAtom, () => {});
+    try {
+      await expect(store.get(localHostDaemonAccessStateAtom)).resolves.toBe(
+        "permission-required",
+      );
+      expect(mocks.fetchSdkSystemConfig).toHaveBeenCalledTimes(1);
+      refresh.resolve(updated);
+      await vi.waitFor(async () => {
+        await expect(store.get(localHostDaemonAccessStateAtom)).resolves.toBe(
+          "unavailable",
+        );
+      });
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  it("retains stale config after a background refresh fails", async () => {
+    const cached = { hostDaemonPort: 38_887, localHelperPorts: [38_887] };
+    appQueryClient.setQueryData(systemConfigQueryKey(), cached, {
+      updatedAt: Date.now() - 120_000,
+    });
+    mocks.fetchSdkSystemConfig.mockRejectedValue(new Error("refresh failed"));
+    const store = createStore();
+    await expect(store.get(localHostDaemonAccessStateAtom)).resolves.toBe(
+      "permission-required",
+    );
+    await vi.waitFor(() => {
+      expect(appQueryClient.getQueryState(systemConfigQueryKey())?.status).toBe(
+        "error",
+      );
+    });
+    expect(appQueryClient.getQueryData(systemConfigQueryKey())).toEqual(cached);
+    await expect(store.get(localHostDaemonAccessStateAtom)).resolves.toBe(
+      "permission-required",
+    );
+  });
+
+  it("waits on a cache miss and preserves the failed-load fallback", async () => {
+    const load = createDeferredPromise<
+      Awaited<ReturnType<typeof mocks.fetchSdkSystemConfig>>
+    >();
+    mocks.fetchSdkSystemConfig.mockReturnValue(load.promise);
+    const store = createStore();
+    const loaded = vi.fn();
+    const result = store.get(localHostDaemonAccessStateAtom).then(loaded);
+    await Promise.resolve();
+    expect(loaded).not.toHaveBeenCalled();
+    load.reject(new Error("config unavailable"));
+    await result;
+    expect(loaded).toHaveBeenCalledWith("unavailable");
+  });
+
   it("shares the system config request with the app query owner", async () => {
     const store = createStore();
     const query = appQueryClient.fetchQuery({

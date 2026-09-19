@@ -13,6 +13,7 @@ import * as api from "@/lib/api";
 import { sdk } from "@/lib/sdk";
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
+import { conversationRow } from "@/test/fixtures/thread-timeline-rows";
 import { ARCHIVED_THREADS_PAGE_SIZE } from "./archived-threads-page-size";
 import {
   sidebarNavigationQueryKey,
@@ -55,7 +56,8 @@ vi.mock("@/lib/api", async (importOriginal) => {
   };
 });
 
-vi.mock("@/lib/sdk", () => ({
+vi.mock("@/lib/sdk", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/sdk")>()),
   sdk: {
     threads: {
       get: vi.fn(),
@@ -776,7 +778,81 @@ describe("useThreadStorageLocation", () => {
   });
 });
 
-describe("useThreadTimeline segment limit", () => {
+describe("useThreadTimeline", () => {
+  it("reopens an inactive cached page immediately and only replaces it after a successful refresh", async () => {
+    const cached = makeThreadTimelineResponse({
+      rows: [conversationRow({ id: "cached-message", text: "Cached message" })],
+      maxSeq: 1,
+    });
+    vi.mocked(sdk.threads.timeline).mockResolvedValue(cached);
+    const { queryClient, wrapper } = createQueryClientTestHarness({
+      queries: { gcTime: 5 * 60_000 },
+    });
+    const usePage = () => ({
+      thread: useThread("thread-1"),
+      bootstrap: useThreadDetailBootstrap("thread-1"),
+      timeline: useThreadTimeline("thread-1"),
+    });
+    const first = renderHook(usePage, { wrapper });
+    await waitFor(() =>
+      expect(first.result.current.timeline.data).toEqual(cached),
+    );
+    await waitFor(() =>
+      expect(first.result.current.thread.isSuccess).toBe(true),
+    );
+    await waitFor(() =>
+      expect(first.result.current.bootstrap.isSuccess).toBe(true),
+    );
+
+    vi.useFakeTimers();
+    try {
+      first.unmount();
+      await vi.advanceTimersByTimeAsync(6 * 60_000);
+      let rejectRefresh: (error: Error) => void = () => {};
+      vi.mocked(sdk.threads.timeline).mockReturnValue(
+        new Promise((_resolve, reject) => {
+          rejectRefresh = reject;
+        }),
+      );
+      const reopened = renderHook(usePage, { wrapper });
+      expect(reopened.result.current.thread.data?.id).toBe("thread-1");
+      expect(reopened.result.current.bootstrap.data).toEqual(
+        THREAD_WITH_INCLUDES,
+      );
+      expect(reopened.result.current.timeline.data).toEqual(cached);
+      expect(reopened.result.current.timeline.isLoading).toBe(false);
+      expect(reopened.result.current.timeline.isFetching).toBe(true);
+
+      await act(async () => {
+        rejectRefresh(new Error("HTTP 503"));
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      expect(reopened.result.current.timeline.isError).toBe(true);
+      expect(reopened.result.current.timeline.data).toEqual(cached);
+
+      const newer = makeThreadTimelineResponse({
+        rows: [
+          ...cached.rows,
+          conversationRow({ id: "new-message", text: "New message" }),
+        ],
+        maxSeq: 2,
+      });
+      vi.mocked(sdk.threads.timeline).mockResolvedValue(newer);
+      await act(async () => {
+        await reopened.result.current.timeline.refetch();
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      expect(reopened.result.current.timeline.data).toEqual(newer);
+      reopened.unmount();
+      await vi.advanceTimersByTimeAsync(31 * 60_000);
+      expect(
+        queryClient.getQueryData(threadTimelineQueryKey("thread-1")),
+      ).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("asks for the compact first window on compact viewports and keeps it for deltas", async () => {
     mockMatchMedia([COMPACT_VIEWPORT_QUERY]);
     const { queryClient, wrapper } = createQueryClientTestHarness();

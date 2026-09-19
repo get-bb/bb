@@ -97,6 +97,7 @@ interface QueryOptions {
 const THREAD_LIST_STALE_TIME_MS = 10_000;
 const THREAD_SEARCH_STALE_TIME_MS = 10_000;
 const THREAD_DETAIL_STALE_TIME_MS = 5_000;
+const THREAD_PAGE_GC_TIME_MS = 30 * 60_000;
 const THREAD_MENTION_CANDIDATE_LIMIT = 200;
 const THREAD_SEARCH_DEBOUNCE_MS = 150;
 export const THREAD_SEARCH_LIMIT_PER_GROUP = 20;
@@ -628,6 +629,7 @@ export function useThread(id: string, options?: QueryOptions) {
       }),
     enabled,
     staleTime: THREAD_DETAIL_STALE_TIME_MS,
+    gcTime: THREAD_PAGE_GC_TIME_MS,
     refetchOnMount: options?.refetchOnMount ?? true,
     retry: shouldRetryTransientReadQuery,
     retryDelay: TRANSIENT_READ_RETRY_DELAY_MS,
@@ -693,6 +695,7 @@ export function useThreadDetailBootstrap(
     },
     enabled,
     staleTime: Infinity,
+    gcTime: THREAD_PAGE_GC_TIME_MS,
     retry: shouldRetryTransientReadQuery,
     retryDelay: TRANSIENT_READ_RETRY_DELAY_MS,
   });
@@ -944,6 +947,7 @@ export function useThreadTimeline(
 
   return useQuery<ThreadTimelineResponse>({
     queryKey: threadTimelineQueryKey(id),
+    gcTime: THREAD_PAGE_GC_TIME_MS,
     queryFn: async ({ signal }) => {
       const threadId = requireThreadId(id, "useThreadTimeline");
       return fetchThreadTimeline({

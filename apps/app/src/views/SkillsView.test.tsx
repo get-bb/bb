@@ -2,6 +2,7 @@
 
 import type { ComponentProps } from "react";
 import {
+  act,
   cleanup,
   fireEvent,
   render as renderDom,
@@ -254,8 +255,9 @@ function stubRegistryFetch(
 }
 
 function renderRegistrySkillRoute() {
-  const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
-  return renderDom(
+  const { wrapper: QueryClientWrapper, queryClient } =
+    createQueryClientTestHarness();
+  const view = renderDom(
     <MemoryRouter
       initialEntries={["/skills/registry/owner%2Frepo%2Fuseful-skill"]}
     >
@@ -269,6 +271,7 @@ function renderRegistrySkillRoute() {
       </QueryClientWrapper>
     </MemoryRouter>,
   );
+  return { ...view, queryClient };
 }
 
 function NavigateButton({ to, label }: { to: string; label: string }) {
@@ -870,6 +873,24 @@ describe("SkillsLibrary library detail routing", () => {
 });
 
 describe("SkillsLibrary registry detail lifecycle", () => {
+  it("keeps cached source content when a background refresh fails", async () => {
+    vi.spyOn(sdk.skills, "list").mockResolvedValue({ skills: [] });
+    const fetchMock = stubRegistryFetch(makeRegistrySkill());
+    const { queryClient } = renderRegistrySkillRoute();
+    await screen.findByRole("heading", { name: "SKILL.md" });
+
+    fetchMock.mockImplementation(async () => new Response(null, { status: 503 }));
+    await act(async () => {
+      await queryClient.invalidateQueries();
+    });
+    expect(screen.getByRole("heading", { name: "SKILL.md" })).toBeTruthy();
+    expect(
+      screen.queryByText(
+        "This registry skill is no longer available from its source.",
+      ),
+    ).toBeNull();
+  });
+
   it("does not offer installation when a direct registry source is unavailable", async () => {
     const registrySkill = makeRegistrySkill();
     vi.spyOn(sdk.skills, "list").mockResolvedValue({ skills: [] });
