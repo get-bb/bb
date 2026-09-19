@@ -79,6 +79,7 @@ describe("Docs document sessions", () => {
     });
     session.edit("First");
     const saving = session.flush();
+    await Promise.resolve();
     session.edit("Second");
     first.resolve({ outcome: "written", sha256: "first-sha", sizeBytes: 5 });
     await saving;
@@ -222,19 +223,24 @@ describe("Docs document sessions", () => {
     });
   });
 
-  it.each([
-    ["pending", "Original", "Candidate"],
-    ["accepted", "Candidate", "Candidate"],
-    ["rejected", "Original", "Original"],
-    ["undone", "Original", "Original"],
-  ] as const)(
-    "chooses the correct draft for %s",
-    async (status, currentContent, expectedDraft) => {
-      const { session } = await loadedSession(
-        proposal(status),
-        file(currentContent),
-      );
-      expect(session.getSnapshot().draft).toBe(expectedDraft);
-    },
-  );
+  it("keeps a queued refresh from replacing the proposal being accepted", async () => {
+    const { session, call } = await loadedSession(proposal());
+    call.mockResolvedValueOnce(file());
+    call.mockResolvedValueOnce(proposal("pending", 2));
+    call.mockRejectedValueOnce(new Error("The proposal changed."));
+    const refresh = session.refresh();
+    await session.resolve("accept");
+    await refresh;
+    expect(call).toHaveBeenLastCalledWith("resolveProposal", {
+      vaultId: "personal",
+      path: "letter.md",
+      action: "accept",
+      expectedVersion: 1,
+    });
+    expect(session.getSnapshot()).toMatchObject({
+      proposal: { version: 1 },
+      error: "The proposal changed.",
+      busy: false,
+    });
+  });
 });

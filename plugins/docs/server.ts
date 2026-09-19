@@ -1591,59 +1591,49 @@ export default async function plugin(
           input.path,
           input.expectedVersion,
         );
-        const next = { ...proposal, version: proposal.version + 1 };
-        if (input.action === "accept") {
-          if (proposal.status !== "pending")
-            throw new Error("This proposal is no longer pending.");
+        const status = (
+          {
+            accept: proposal.status === "pending" ? "accepted" : null,
+            reject: proposal.status === "pending" ? "rejected" : null,
+            undo:
+              proposal.status === "accepted"
+                ? "undone"
+                : proposal.status === "rejected"
+                  ? "pending"
+                  : null,
+            redo: proposal.status === "undone" ? "pending" : null,
+          } as const
+        )[input.action];
+        if (!status)
+          throw new Error(
+            input.action === "undo"
+              ? "Nothing to undo."
+              : input.action === "redo"
+                ? "Nothing to redo."
+                : "This proposal is no longer pending.",
+          );
+        const next = { ...proposal, status, version: proposal.version + 1 };
+        const restoring = status === "undone";
+        const conflictMessage = restoring
+          ? "The document changed. Undo would overwrite newer edits."
+          : "The document changed. Ask for an updated proposal.";
+        if (status === "accepted" || restoring) {
+          const expectedSha256 = restoring
+            ? proposal.resolvedSha256
+            : proposal.baseSha256;
+          if (!expectedSha256) throw new Error("Nothing to undo.");
           const result = await writeFile({
             vaultId,
             rawPath: input.path,
-            content: proposal.content,
-            expectedSha256: proposal.baseSha256,
+            content: restoring ? proposal.baseContent : proposal.content,
+            expectedSha256,
           });
-          if (result.outcome === "conflict")
-            throw new Error(
-              "The document changed. Ask for an updated proposal.",
-            );
-          next.status = "accepted";
+          if (result.outcome === "conflict") throw new Error(conflictMessage);
           next.resolvedSha256 = result.sha256;
-        } else if (input.action === "reject") {
-          if (proposal.status !== "pending")
-            throw new Error("This proposal is no longer pending.");
-          next.status = "rejected";
-        } else if (input.action === "undo") {
-          if (proposal.status !== "accepted" && proposal.status !== "rejected")
-            throw new Error("Nothing to undo.");
-          if (proposal.status === "accepted") {
-            if (!proposal.resolvedSha256) throw new Error("Nothing to undo.");
-            const result = await writeFile({
-              vaultId,
-              rawPath: input.path,
-              content: proposal.baseContent,
-              expectedSha256: proposal.resolvedSha256,
-            });
-            if (result.outcome === "conflict")
-              throw new Error(
-                "The document changed. Undo would overwrite newer edits.",
-              );
-            next.resolvedSha256 = result.sha256;
-            next.status = "undone";
-          } else {
-            const file = await readFile(vaultId, input.path);
-            if (file.sha256 !== proposal.baseSha256)
-              throw new Error(
-                "The document changed. Ask for an updated proposal.",
-              );
-            next.status = "pending";
-          }
-        } else {
-          if (proposal.status !== "undone") throw new Error("Nothing to redo.");
+        } else if (status === "pending") {
           const file = await readFile(vaultId, input.path);
           if (file.sha256 !== proposal.baseSha256)
-            throw new Error(
-              "The document changed. Ask for an updated proposal.",
-            );
-          next.status = "pending";
+            throw new Error(conflictMessage);
         }
         return saveProposal(next);
       });

@@ -1,19 +1,15 @@
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { useRealtime, useRpc } from "@get-bb/plugin-sdk/app";
 import type { docsRpcContract } from "./server.js";
+import type { Proposal } from "./proposals.js";
 
 type Rpc = ReturnType<typeof useRpc<typeof docsRpcContract>>;
-type ProposalState = Awaited<ReturnType<typeof readProposal>>;
-function readProposal(rpc: Rpc, vaultId: string, path: string) {
-  return rpc.call("readProposal", { vaultId, path });
-}
-
 type DocumentState = {
   loaded: boolean;
   content: string;
   sha256: string;
   draft: string;
-  proposal: ProposalState;
+  proposal: Proposal | null;
   previewBaseUrl: string;
   dirty: boolean;
   saving: boolean;
@@ -36,131 +32,119 @@ export function createDocumentSession(rpc: Rpc, vaultId: string, path: string) {
   };
   const listeners = new Set<() => void>();
   let timer: ReturnType<typeof setTimeout> | null = null;
-  let saving: Promise<void> | null = null;
+  let operations = Promise.resolve();
   let refreshing: Promise<void> | null = null;
+  let saving: Promise<void> | null = null;
   let refreshAgain = false;
-  let generation = 0;
+  const savedDraft = () =>
+    state.proposal?.status === "pending"
+      ? state.proposal.content
+      : state.content;
   const set = (patch: Partial<DocumentState>) => {
     state = { ...state, ...patch };
+    state.dirty = state.draft !== savedDraft();
     for (const listener of listeners) listener();
   };
-  const draftFor = (content: string, proposal: ProposalState) =>
-    proposal?.status === "pending" ? proposal.content : content;
+  const run = (work: () => Promise<void>) => {
+    const result = operations.then(work);
+    operations = result.catch((error: unknown) => {
+      set({ error: error instanceof Error ? error.message : String(error) });
+    });
+    return result;
+  };
+  const conflict = () =>
+    new Error(
+      "This document changed elsewhere. Your edits are preserved; copy them before reloading.",
+    );
+  const load = async (proposal: Proposal | null) => {
+    const file = await rpc.call("readNote", { vaultId, path });
+    set({
+      content: file.content,
+      sha256: file.sha256,
+      proposal,
+      draft: proposal?.status === "pending" ? proposal.content : file.content,
+    });
+  };
   const refresh = (): Promise<void> => {
-    if (saving || state.busy) {
-      refreshAgain = true;
-      return saving ?? Promise.resolve();
-    }
-    if (refreshing) {
-      refreshAgain = true;
-      return refreshing;
-    }
-    const requestedGeneration = generation;
-    const request = Promise.all([
-      rpc.call("readNote", { vaultId, path }),
-      readProposal(rpc, vaultId, path),
-      state.previewBaseUrl
-        ? Promise.resolve({ baseUrl: state.previewBaseUrl })
-        : rpc.call("preparePreview", { vaultId, path }),
-    ])
-      .then(([file, proposal, preview]) => {
-        if (requestedGeneration !== generation) {
-          refreshAgain = true;
-          return;
-        }
+    refreshAgain = true;
+    if (refreshing) return refreshing;
+    refreshing = run(async () => {
+      do {
+        refreshAgain = false;
+        const [file, proposal, preview] = await Promise.all([
+          rpc.call("readNote", { vaultId, path }),
+          rpc.call("readProposal", { vaultId, path }),
+          state.previewBaseUrl
+            ? Promise.resolve({ baseUrl: state.previewBaseUrl })
+            : rpc.call("preparePreview", { vaultId, path }),
+        ]);
+        if (state.busy) continue;
         if (state.dirty) {
           if (
             file.sha256 !== state.sha256 ||
             proposal?.version !== state.proposal?.version
-          ) {
-            set({
-              error:
-                "This document changed elsewhere. Your edits are preserved; copy them before reloading.",
-            });
-          }
-          return;
+          )
+            throw conflict();
+        } else {
+          set({
+            loaded: true,
+            content: file.content,
+            sha256: file.sha256,
+            proposal,
+            draft:
+              proposal?.status === "pending" ? proposal.content : file.content,
+            previewBaseUrl: preview.baseUrl,
+            error: null,
+          });
         }
-        set({
-          loaded: true,
-          content: file.content,
-          sha256: file.sha256,
-          proposal,
-          draft: draftFor(file.content, proposal),
-          previewBaseUrl: preview.baseUrl,
-          error: null,
-        });
-      })
-      .catch((error: unknown) =>
-        set({ error: error instanceof Error ? error.message : String(error) }),
-      )
+      } while (refreshAgain);
+    })
+      .catch(() => undefined)
       .finally(() => {
         refreshing = null;
-        if (refreshAgain) {
-          refreshAgain = false;
-          void refresh();
-        }
       });
-    refreshing = request;
-    return request;
+    return refreshing;
   };
-  const flush = (): Promise<void> => {
-    if (timer) {
-      clearTimeout(timer);
-      timer = null;
-    }
-    if (saving) return saving;
-    if (!state.loaded || !state.dirty) return Promise.resolve();
-    generation++;
+  const save = async () => {
+    if (timer) clearTimeout(timer);
+    timer = null;
+    if (!state.loaded || !state.dirty) return;
     set({ saving: true, error: null });
-    const request = (async () => {
+    try {
       while (state.dirty) {
-        const draft = state.draft;
+        const content = state.draft;
         if (state.proposal?.status === "pending") {
           const proposal = await rpc.call("updateProposal", {
             vaultId,
             path,
-            content: draft,
+            content,
             expectedVersion: state.proposal.version,
           });
-          set({ proposal, dirty: state.draft !== draft });
+          set({ proposal });
         } else {
           const result = await rpc.call("saveNote", {
             vaultId,
             path,
-            content: draft,
+            content,
             expectedSha256: state.sha256,
           });
-          if (result.outcome === "conflict")
-            throw new Error(
-              "This document changed elsewhere. Your edits are preserved; copy them before reloading.",
-            );
-          set({
-            content: draft,
-            sha256: result.sha256,
-            dirty: state.draft !== draft,
-          });
+          if (result.outcome === "conflict") throw conflict();
+          set({ content, sha256: result.sha256 });
         }
       }
-    })()
-      .catch((error: unknown) => {
-        set({ error: error instanceof Error ? error.message : String(error) });
-        throw error;
-      })
-      .finally(() => {
-        saving = null;
-        set({ saving: false });
-        if (refreshAgain && !state.dirty && !state.busy) {
-          refreshAgain = false;
-          void refresh();
-        }
-      });
-    saving = request;
-    return request;
+    } finally {
+      set({ saving: false });
+    }
+  };
+  const flush = () => {
+    saving ??= run(save).finally(() => {
+      saving = null;
+    });
+    return saving;
   };
   const edit = (draft: string) => {
     if (state.busy) return;
-    generation++;
-    set({ draft, dirty: draft !== draftFor(state.content, state.proposal) });
+    set({ draft });
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => {
       void flush().catch(() => undefined);
@@ -168,34 +152,23 @@ export function createDocumentSession(rpc: Rpc, vaultId: string, path: string) {
   };
   const resolve = async (action: "accept" | "reject" | "undo" | "redo") => {
     if (state.busy) return;
-    generation++;
     set({ busy: true, error: null });
-    try {
-      await flush();
-      if (!state.proposal) return;
-      const proposal = await rpc.call("resolveProposal", {
-        vaultId,
-        path,
-        action,
-        expectedVersion: state.proposal.version,
-      });
-      const file = await rpc.call("readNote", { vaultId, path });
-      set({
-        proposal,
-        content: file.content,
-        sha256: file.sha256,
-        draft: draftFor(file.content, proposal),
-        dirty: false,
-      });
-    } catch (error) {
-      set({ error: error instanceof Error ? error.message : String(error) });
-    } finally {
-      set({ busy: false });
-      if (refreshAgain && !state.dirty) {
-        refreshAgain = false;
-        void refresh();
-      }
-    }
+    const pendingSave = saving;
+    await run(async () => {
+      await pendingSave;
+      await save();
+      if (state.proposal)
+        await load(
+          await rpc.call("resolveProposal", {
+            vaultId,
+            path,
+            action,
+            expectedVersion: state.proposal.version,
+          }),
+        );
+    })
+      .catch(() => undefined)
+      .finally(() => set({ busy: false }));
   };
   return {
     getSnapshot: () => state,
