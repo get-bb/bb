@@ -283,6 +283,12 @@ once on a conflict. `reset` writes the default. The SDK offers
 Custom (`chronological`) is the default for `sidebar.organizationMode` when no
 value is saved. Existing server and legacy browser choices are preserved.
 
+`sidebar.threadLifecycles` is a nonempty distinct list of `active`, `draft`,
+and `archived`, defaulting to `["active"]`. The built-in sidebar shows named
+groups and fetches archived pages only while selected. For example:
+`bb settings ui set sidebar.threadLifecycles '["active","draft"]'`.
+Reset the key to restore Active. Plugin sidebar replacements own their filters.
+
 Every thread-list header's actions menu offers New project, New section,
 Organize, and Sort by. Organize selects By project, By machine, or Custom, and
 its By environment toggle decides whether sibling threads sharing one worktree

@@ -19,6 +19,11 @@ every window and client sees the same value.
   orders, the collapsed-id lists, `sidebar.pluginPanelOrder`,
   `sidebar.visiblePluginPanels`, `sidebar.navigationProvider`,
   `sidebar.threadListProvider`).
+- `sidebar.threadLifecycles` selects a nonempty distinct list of `active`,
+  `draft`, and `archived` in the built-in sidebar. Default/reset is `["active"]`.
+  Use `bb settings ui set sidebar.threadLifecycles '["active","draft"]'` to
+  show active and saved draft groups. Archived pages load only while selected;
+  plugin sidebar replacements keep ownership of their rendering.
 - `sidebar.organizationMode` defaults to Custom (`chronological`) when unset;
   existing server and legacy browser choices are preserved.
 - `sidebar.threadGrouping.environment` decides whether sibling threads sharing

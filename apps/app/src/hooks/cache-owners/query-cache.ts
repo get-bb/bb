@@ -611,6 +611,10 @@ export function optimisticallyInsertThread(
       index === existingIndex
         ? {
             ...candidate,
+            lifecycle:
+              candidate.status === "pending" && lifecycle === "draft"
+                ? "draft"
+                : candidate.lifecycle,
             queuedWork:
               candidate.queuedWork === "none"
                 ? queuedWork
@@ -746,7 +750,18 @@ export function updateCachedThreadListStatusState(
       return list;
     }
     return list.map((thread) =>
-      thread.id === threadId ? { ...thread, ...statusChange } : thread,
+      thread.id === threadId
+        ? {
+            ...thread,
+            ...statusChange,
+            lifecycle:
+              thread.archivedAt !== null
+                ? "archived"
+                : statusChange.status === "pending"
+                  ? thread.lifecycle
+                  : "active",
+          }
+        : thread,
     );
   });
 }

@@ -12,6 +12,10 @@ export type {
 
 export type { SidebarChronologicalSort, SidebarOrganizationMode };
 
+export const sidebarThreadLifecyclesAtom = createSyncedPreferenceAtom(
+  "sidebar.threadLifecycles",
+);
+
 export const collapsedProjectIdsAtom = createSyncedPreferenceAtom(
   "sidebar.collapsedProjects",
 );
