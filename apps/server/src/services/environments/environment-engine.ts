@@ -375,6 +375,7 @@ async function runCreate(
           });
     if (result.status === "created") {
       let adoptedExistingEnvironment = false;
+      let existingProviderOwnsLifecycle = false;
       try {
         const producedPath = result.path.replace(/\/+$/u, "") || "/";
         await ensureHostSessionReadyForWork(deps, {
@@ -414,6 +415,8 @@ async function runCreate(
                 `Workspace ${producedPath} is owned by the "${existing.environmentProviderId}" environment provider (plugin "${existing.environmentProviderPluginId ?? "unknown"}").`,
               );
             }
+            existingProviderOwnsLifecycle =
+              existing?.environmentProviderId != null;
             const reservedId = provisioning.id;
             provisioning = bindEnvironmentPath(
               deps.db,
@@ -450,8 +453,10 @@ async function runCreate(
           if (!adoptedExistingEnvironment) {
             row.providerOwnsPath = produced.ownsPath;
           }
-          row.mergeBaseBranch = produced.mergeBaseBranch ?? null;
-          row.resource = produced.resource ?? null;
+          if (!adoptedExistingEnvironment || !existingProviderOwnsLifecycle) {
+            row.mergeBaseBranch = produced.mergeBaseBranch ?? null;
+            row.resource = produced.resource ?? null;
+          }
         },
       );
       signal.throwIfAborted();

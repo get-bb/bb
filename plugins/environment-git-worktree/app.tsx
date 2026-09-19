@@ -1,4 +1,11 @@
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   BRANCH_PICKER_CONTENT_CLASS_NAME,
   BranchPickerRow,
@@ -102,24 +109,25 @@ function WorktreeInputsControl({
     if (value === null) onChange({ status: "ready", value: DEFAULT_INPUTS });
   }, [value, onChange]);
 
-  useEffect(() => {
+  const refreshWorktrees = useCallback(async () => {
     if (projectId === null || hostId === null) {
       setWorktrees([]);
       return;
     }
-    let active = true;
-    void rpc
-      .call("listExistingWorktrees", { projectId, hostId })
-      .then((result) => {
-        if (active) setWorktrees(result.worktrees);
-      })
-      .catch(() => {
-        if (active) setWorktrees([]);
+    try {
+      const result = await rpc.call("listExistingWorktrees", {
+        projectId,
+        hostId,
       });
-    return () => {
-      active = false;
-    };
+      setWorktrees(result.worktrees);
+    } catch {
+      setWorktrees([]);
+    }
   }, [projectId, hostId, rpc]);
+
+  useEffect(() => {
+    void refreshWorktrees();
+  }, [refreshWorktrees]);
 
   useEffect(() => {
     if (open) setIntent(selectedIntent);
@@ -152,6 +160,7 @@ function WorktreeInputsControl({
       setQuery("");
     } else {
       void branchState.refresh().catch(() => undefined);
+      void refreshWorktrees();
     }
     setOpen(nextOpen);
   };

@@ -278,6 +278,9 @@ describe("adopting an existing worktree", () => {
   it("attaches the existing path without taking ownership of it", async () => {
     const fixture = await setupAdoption();
 
+    expect(
+      fixture.provider.experimental_existingPath?.(fixture.context.inputs),
+    ).toBe(EXISTING_PATH);
     expect(await fixture.provider.create(fixture.context)).toEqual({
       status: "created",
       path: EXISTING_PATH,

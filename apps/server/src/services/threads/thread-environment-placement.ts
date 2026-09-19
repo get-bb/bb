@@ -1,4 +1,5 @@
 import {
+  findProjectEnvironmentByHostPath,
   getAppSettings,
   getEnvironment,
   getNonDestroyedHostByLaunchKey,
@@ -73,7 +74,10 @@ import {
 } from "../machines/provider-orchestration.js";
 import { ensureProjectSourceOnHost } from "../projects/project-source-setup.js";
 import { requireSourceForHost } from "./thread-create-helpers.js";
-import { suppliedWorkspacePathRefusal } from "./workspace-path-claims.js";
+import {
+  foreignProjectOwnedPathRefusal,
+  suppliedWorkspacePathRefusal,
+} from "./workspace-path-claims.js";
 import { ensureHostSessionReadyForWork } from "../hosts/host-lifecycle.js";
 import {
   getNonDestroyedHostWithStatus,
@@ -1264,6 +1268,53 @@ async function providerPlacement(
     environmentProviderId,
     requested,
   );
+  const record = getEnvironmentProvider(environmentProviderId);
+  if (
+    selection.selectionResolved &&
+    selection.machine.type === "existing" &&
+    record?.provider.experimental_existingPath
+  ) {
+    const selectPath = record.provider.experimental_existingPath;
+    const invocation = await invokeEnvironmentProvider(
+      record,
+      "environment existing path",
+      async () => selectPath(selection.inputs),
+    );
+    if (!invocation.ok) {
+      throw new ApiError(502, "environment_provider_failed", invocation.error);
+    }
+    const parsed = z
+      .string()
+      .min(1)
+      .startsWith("/")
+      .refine((path) => !path.includes("\0"))
+      .nullable()
+      .safeParse(invocation.value);
+    if (!parsed.success) {
+      throw new ApiError(
+        502,
+        "environment_provider_failed",
+        "The environment provider returned an invalid existing path",
+      );
+    }
+    if (parsed.data !== null) {
+      const path = parsed.data.replace(/\/+$/u, "") || "/";
+      const hostId = selection.machine.hostId;
+      const refusal = foreignProjectOwnedPathRefusal(deps.db, {
+        projectId,
+        hostId,
+        path,
+      });
+      if (refusal !== null) throw new ApiError(409, "invalid_request", refusal);
+      const existing = findProjectEnvironmentByHostPath(
+        deps.db,
+        projectId,
+        hostId,
+        path,
+      );
+      if (existing !== null) return reuseEnvironmentPlacement(deps, existing);
+    }
+  }
   return {
     environmentId: null,
     environmentIntent: {

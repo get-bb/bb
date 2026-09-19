@@ -81,6 +81,8 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
     requires: { gitCheckout: true },
     inputs: worktreeInputsSchema,
     policy: { pathKeys: "per-attempt" },
+    experimental_existingPath: (inputs) =>
+      "kind" in inputs ? inputs.path : null,
     async create(context) {
       const hostId = context.host.id;
       if ("kind" in context.inputs) {

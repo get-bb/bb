@@ -807,6 +807,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Run one idempotent long create call that returns a created directory or failure; a failed create is terminal and an explicit retry starts a new attempt on the same environment; provider policy exposes only retirement grace and path-key strategy",
           "Let bb run the repo setup hook after an owned-path create and teardown before removal; attached paths skip both hooks; unknown hook outcomes after daemon restart block automatic cleanup",
           "Use core's pathKey for stable resource identity; core records it as the environment instance key",
+          "Declare experimental_existingPath to select an existing directory from parsed inputs; core reuses a recorded environment on that machine without creation or changing its lifecycle metadata, and calls create only when no environment exists",
           "Reserve a shared checkout before mutation with create.experimental_claimPath; core holds the host/path claim through attachment or cleanup",
           "Name a branch the way bb would, from the suggestedBranchName core hands every create, and stream progress with report.step and report.log",
           "Honor create and remove abort signals; core aborts create before asking remove to clean everything under the same path key",

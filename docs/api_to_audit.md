@@ -3188,3 +3188,17 @@ new unprefixed public API member is introduced. Audit before stabilization:
 immutable cross-project ownership, cross-host cleanup, archive/delete retries,
 creation races, and preservation of existing unowned threads. The Plugin Guide SDK card
 describes the public behavior.
+
+## Environment provider existing-path selection
+
+`PluginEnvironmentProviderDefinition.experimental_existingPath(inputs)` returns
+an absolute path or null from parsed inputs without performing mutations. On an
+existing machine, core checks that project's environment at the path after
+selection validation. A usable environment follows the normal reuse flow,
+preserving its provider, ownership, resource, merge base, and cleanup identity.
+An unusable environment is refused; a missing record follows normal creation,
+where the provider still validates the directory. Other projects' managed paths
+remain forbidden. New-machine selections continue through creation.
+
+Stabilization requires lifecycle coverage for reuse, missing paths, cleanup in
+progress, cross-project ownership, and concurrent creation before binding.
