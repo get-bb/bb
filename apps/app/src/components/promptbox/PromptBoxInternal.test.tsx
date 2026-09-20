@@ -1464,6 +1464,105 @@ describe("PromptBoxInternal submit shortcuts", () => {
     );
   });
 
+  it.each([false, true])(
+    "offers the alternate action and scheduling on long press (Enter steers: %s)",
+    (swapSubmitActions) => {
+      const restoreMatchMedia = mockPointerCoarse(true);
+      vi.useFakeTimers();
+      try {
+        const onSubmit = vi.fn();
+        const onModifierSubmit = vi.fn();
+        const schedule = vi.fn();
+        setPluginSlotRegistrations(
+          "scheduler",
+          pluginRegistrationSet([
+            {
+              id: "send-later",
+              plusMenu: [
+                {
+                  id: "schedule",
+                  label: "Send later",
+                  experimental_sendMenu: true,
+                  run: schedule,
+                },
+                { id: "other", label: "Other action", run: vi.fn() },
+              ],
+            },
+          ]),
+        );
+        const draft = { ...emptyPromptDraftState(), text: "Follow up" };
+        const host: PluginComposerHost = {
+          scope: { kind: "thread", threadId: "thread-1" },
+          textEffectKey: "send-menu-test",
+          getCurrent: () => draft,
+          subscribeDraft: () => () => {},
+          setDraft: vi.fn(),
+          focus: vi.fn(),
+        };
+        render(
+          <MemoryRouter>
+            <PluginComposerHostProvider value={host}>
+              <PromptBoxInternal
+                {...createPromptBoxProps({
+                  value: "Follow up",
+                  onSubmit,
+                  submission: { onModifierSubmit, swapSubmitActions },
+                  compact: { isCompact: true, placeholder: "Ask a follow-up" },
+                })}
+              />
+            </PluginComposerHostProvider>
+          </MemoryRouter>,
+        );
+        const submit = screen.getByRole("button", { name: "Submit (Enter)" });
+        vi.spyOn(submit, "getBoundingClientRect").mockReturnValue(
+          new DOMRect(0, 0, 40, 40),
+        );
+        const touch = {
+          button: 0,
+          pointerType: "touch",
+          pointerId: 1,
+          isPrimary: true,
+          clientX: 20,
+          clientY: 20,
+        };
+        const openMenu = () => {
+          fireEvent.pointerDown(submit, touch);
+          act(() => vi.advanceTimersByTime(900));
+          fireEvent.pointerUp(submit, touch);
+          fireEvent.click(submit, { detail: 1 });
+        };
+        openMenu();
+        expect(onSubmit).not.toHaveBeenCalled();
+        expect(onModifierSubmit).not.toHaveBeenCalled();
+        expect(
+          screen.getAllByRole("menuitem").map((item) => item.textContent),
+        ).toEqual([swapSubmitActions ? "Queue" : "Steer", "Send later"]);
+        expect(getPromptEditorElement().textContent).toBe("Follow up");
+        fireEvent.click(
+          screen.getByRole("menuitem", {
+            name: swapSubmitActions ? "Queue" : "Steer",
+          }),
+        );
+        expect(onSubmit).toHaveBeenCalledTimes(swapSubmitActions ? 1 : 0);
+        expect(onModifierSubmit).toHaveBeenCalledTimes(
+          swapSubmitActions ? 0 : 1,
+        );
+
+        openMenu();
+        fireEvent.click(screen.getByRole("menuitem", { name: "Send later" }));
+        expect(schedule).toHaveBeenCalledOnce();
+        expect(schedule.mock.calls[0]?.[0].view.draft.text).toBe("Follow up");
+        expect(onSubmit).toHaveBeenCalledTimes(swapSubmitActions ? 1 : 0);
+        expect(onModifierSubmit).toHaveBeenCalledTimes(
+          swapSubmitActions ? 0 : 1,
+        );
+      } finally {
+        vi.useRealTimers();
+        restoreMatchMedia();
+      }
+    },
+  );
+
   it("blocks both swapped actions while disabled", () => {
     const onSubmit = vi.fn();
     const onModifierSubmit = vi.fn();

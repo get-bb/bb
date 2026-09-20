@@ -140,6 +140,8 @@ import {
   modifierSubmitShortcutAria,
 } from "./modifier-submit-shortcut";
 
+import { ComposerSendMenu } from "./ComposerSendMenu";
+
 const PROMPTBOX_MIN_HEIGHT = 68;
 const PROMPTBOX_SELECTION_REVEAL_MARGIN = 12;
 const COMPACT_PROMPT_ACTION_BUTTON_CLASS =
@@ -3452,33 +3454,45 @@ export function PromptBoxInternal({
                         <Icon name="Mic" className="size-4" />
                       </Button>
                     ) : (
-                      <PromptSubmitButton
-                        canSubmit={canSubmit}
-                        icon={submitIcon}
-                        label={submitLabel}
-                        className={cn(
-                          showCompactLayout
-                            ? COMPACT_PROMPT_ACTION_BUTTON_CLASS
-                            : [
-                                "ml-1",
-                                COARSE_POINTER_PROMPT_ACTION_BUTTON_CLASS,
-                              ],
-                          "transition-colors",
-                        )}
-                        disabledReason={
-                          !canSubmit
-                            ? isAttaching
-                              ? attachmentUploadTitle
-                              : submitDisabledReason
-                            : undefined
+                      <ComposerSendMenu
+                        enabled={isPointerCoarse}
+                        includePluginContributions={
+                          !suppressPluginComposerCustomizations
                         }
-                        isBusy={isSubmitting || isAttaching}
-                        isCompact={showCompactLayout}
-                        onPointerDown={handleSubmitPointerDown}
-                        onClick={handleSubmitClick}
-                        onTouchSubmit={handleTouchSubmit}
-                        title={effectiveSubmitTitle}
-                      />
+                        queue={swapSubmitActions}
+                        canSubmit={canModifierSubmit}
+                        onSubmit={
+                          onModifierSubmit ? submitModifierPrompt : undefined
+                        }
+                      >
+                        <PromptSubmitButton
+                          canSubmit={canSubmit}
+                          icon={submitIcon}
+                          label={submitLabel}
+                          className={cn(
+                            showCompactLayout
+                              ? COMPACT_PROMPT_ACTION_BUTTON_CLASS
+                              : [
+                                  "ml-1",
+                                  COARSE_POINTER_PROMPT_ACTION_BUTTON_CLASS,
+                                ],
+                            "transition-colors",
+                          )}
+                          disabledReason={
+                            !canSubmit
+                              ? isAttaching
+                                ? attachmentUploadTitle
+                                : submitDisabledReason
+                              : undefined
+                          }
+                          isBusy={isSubmitting || isAttaching}
+                          isCompact={showCompactLayout}
+                          onPointerDown={handleSubmitPointerDown}
+                          onClick={handleSubmitClick}
+                          onTouchSubmit={handleTouchSubmit}
+                          title={effectiveSubmitTitle}
+                        />
+                      </ComposerSendMenu>
                     )}
                   </div>
                 </ComposerActionsSlot>
