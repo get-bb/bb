@@ -7,6 +7,7 @@ import {
   type ComponentPropsWithoutRef,
 } from "react";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { useLatestRef } from "@/hooks/useLatestRef";
 import {
   MarkdownImageMetadataContext,
   type MarkdownImageDimensions,
@@ -78,6 +79,7 @@ export function MarkdownImage({
 }: ComponentPropsWithoutRef<"img"> & { src: string }) {
   const imageRef = useRef<HTMLImageElement>(null);
   const metadata = useContext(MarkdownImageMetadataContext);
+  const metadataRef = useLatestRef(metadata);
   const etag = useRef<string | null>(null);
   const [dimensions, setDimensions] = useState<
     MarkdownImageDimensions | undefined
@@ -155,7 +157,7 @@ export function MarkdownImage({
         height: image.naturalHeight,
       };
       if (!responsive) {
-        metadata?.remember(src, intrinsic, etag.current);
+        metadataRef.current?.remember(src, intrinsic, etag.current);
         setDimensions(intrinsic);
       }
       try {
@@ -170,7 +172,7 @@ export function MarkdownImage({
       cancelled = true;
       image.removeEventListener("load", ready);
     };
-  }, [src, active, responsive, localSource, metadata]);
+  }, [src, active, responsive, localSource, metadataRef]);
 
   return (
     <img
