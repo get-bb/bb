@@ -118,7 +118,7 @@ function SidebarViewItems({ page }: { page: SidebarViewPage }) {
       includeGroups: false,
     },
     {
-      label: `Updated (with ${unit})`,
+      label: `Updated (include ${unit})`,
       sort: "updated",
       direction: "descending",
       includeGroups: true,

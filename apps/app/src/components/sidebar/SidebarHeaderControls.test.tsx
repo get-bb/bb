@@ -283,7 +283,7 @@ describe("sidebar header controls", () => {
     await openSubmenu("Sort by");
     fireEvent.click(screen.getByRole("menuitemradio", { name: "Alphabetical" }));
     const option = await screen.findByRole("menuitemradio", {
-      name: `Updated (with ${unit})`,
+      name: `Updated (include ${unit})`,
     });
     expect(option.getAttribute("aria-disabled")).not.toBe("true");
     expect(option.getAttribute("aria-checked")).toBe("false");
@@ -319,7 +319,7 @@ describe("sidebar header controls", () => {
         await openSubmenu("Sort by");
       }
       const option = await screen.findByRole("menuitemradio", {
-        name: /Updated \(with sections\)/,
+        name: /Updated \(include sections\)/,
       });
       expect(option.getAttribute("aria-disabled")).toBe("true");
       expect(option.getAttribute("aria-checked")).toBe("true");
@@ -343,12 +343,12 @@ describe("sidebar header controls", () => {
     );
     expect(store.get(sidebarSortDirectionAtom)).toBe("ascending");
     fireEvent.click(
-      screen.getByRole("menuitemradio", { name: "Updated (with projects)" }),
+      screen.getByRole("menuitemradio", { name: "Updated (include projects)" }),
     );
     expect(store.get(sidebarSortGroupsByRecencyAtom)).toBe(true);
     expect(
       screen.getByRole("menuitemradio", {
-        name: /Updated \(with projects\)\s*, descending\. Sort ascending/,
+        name: /Updated \(include projects\)\s*, descending\. Sort ascending/,
       }),
     ).toBeTruthy();
     expect(screen.getAllByRole("menuitemradio")).toHaveLength(4);

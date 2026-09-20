@@ -734,7 +734,7 @@ expectedRevision })`, and `.reset({ key })` over `GET /preferences/ui`,
 `PUT /preferences/ui/:key`, and `DELETE /preferences/ui/:key`. Every write
 broadcasts a `ui-preferences-changed` system change to connected clients.
 
-**Updated (with projects)** in the thread-list header's **Sort by** menu
+**Updated (include projects)** in the thread-list header's **Sort by** menu
 enables `sidebar.sortGroupsByRecency` (off by default). The label uses
 **sections** or **machines** instead when that organization mode is selected.
 In Custom view, this row is disabled until a custom section exists.

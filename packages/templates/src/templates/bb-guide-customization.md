@@ -294,7 +294,7 @@ Sort by selects a field, and selecting it again reverses its direction.
 `sidebar.sortDirection` accepts `ascending`, `descending`, or `default`.
 The default preserves each field's original order (newest first for dates,
 A–Z for titles). For example: `bb settings ui set sidebar.sortDirection ascending`.
-Updated (with projects) is a separate row in Sort by. Its label uses
+Updated (include projects) is a separate row in Sort by. Its label uses
 sections or machines for those organization modes. In Custom view, the row is
 disabled until a custom section exists. The option enables
 `sidebar.sortGroupsByRecency` (off by default); the plain Updated row disables
