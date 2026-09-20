@@ -1,5 +1,7 @@
 import {
   createContext,
+  lazy,
+  Suspense,
   useCallback,
   useContext,
   useEffect,
@@ -8,11 +10,8 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { BbHttpError } from "@bb/sdk/browser";
-import { Icon } from "@bb/shared-ui/icon";
-import { COARSE_POINTER_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
-import { cn } from "@bb/shared-ui/lib/utils";
-import { SIDEBAR_CONTROL_BUTTON_CLASS } from "./sidebarRowClasses";
+const loadRenameEditor = () => import("./SidebarRenameEditor");
+const SidebarRenameEditor = lazy(loadRenameEditor);
 
 interface SidebarRenameArgs {
   kind: "thread" | "project" | "section" | "environment" | "machine";
@@ -26,7 +25,7 @@ interface SidebarRenameArgs {
   ownerKey?: string;
 }
 
-interface RenameSession extends SidebarRenameArgs {
+export interface RenameSession extends SidebarRenameArgs {
   ownerKey: string;
   version: number;
   initialName: string;
@@ -34,30 +33,6 @@ interface RenameSession extends SidebarRenameArgs {
   isPending: boolean;
   error: string | null;
   cannotRetry: boolean;
-}
-
-function renameError(error: unknown, kind: SidebarRenameArgs["kind"]) {
-  if (error instanceof BbHttpError) {
-    if (
-      error.code === "section_name_conflict" ||
-      (kind === "section" && error.status === 409)
-    ) {
-      return {
-        error: "A section with this name already exists.",
-        cannotRetry: false,
-      };
-    }
-    if (error.status === 404 || error.status === 410) {
-      return { error: "This item no longer exists.", cannotRetry: true };
-    }
-    if (error.status === 401 || error.status === 403) {
-      return {
-        error: "You do not have permission to rename this item.",
-        cannotRetry: true,
-      };
-    }
-  }
-  return { error: "Could not save the name. Try again.", cannotRetry: false };
 }
 
 function useRenameController() {
@@ -106,7 +81,8 @@ function useRenameController() {
             update(null);
             return true;
           },
-          (error: unknown) => {
+          async (error: unknown) => {
+            const { renameError } = await loadRenameEditor();
             if (sessionRef.current?.version === version) {
               update({
                 ...current,
@@ -171,7 +147,7 @@ function useRenameController() {
   return { session, start, save, change, cancel };
 }
 
-type RenameController = ReturnType<typeof useRenameController>;
+export type RenameController = ReturnType<typeof useRenameController>;
 const SidebarRenameContext = createContext<RenameController | null>(null);
 
 export function SidebarRenameProvider({ children }: { children: ReactNode }) {
@@ -193,196 +169,6 @@ export function useSidebarRenameState() {
         isPending: session.isPending,
       }
     : null;
-}
-
-function SidebarRenameEditor({
-  session,
-  controller,
-}: {
-  session: RenameSession;
-  controller: RenameController;
-}) {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const groupRef = useRef<HTMLSpanElement>(null);
-  const anchorRef = useRef<HTMLElement | null>(null);
-  const restoreFocusRef = useRef(false);
-  const composingRef = useRef(false);
-  const openingRef = useRef(true);
-  const errorId = useId();
-
-  useEffect(() => {
-    const input = inputRef.current;
-    const row = input?.closest("[data-sidebar-rename-row]");
-    anchorRef.current =
-      row?.querySelector<HTMLElement>("[data-sidebar-rename-anchor]") ?? null;
-    input?.focus({ preventScroll: true });
-    input?.select();
-    const frame = requestAnimationFrame(() => {
-      openingRef.current = false;
-      if (
-        document.activeElement === document.body ||
-        row?.contains(document.activeElement)
-      ) {
-        input?.focus({ preventScroll: true });
-        input?.select();
-      }
-    });
-    return () => cancelAnimationFrame(frame);
-  }, []);
-
-  const restoreFocus = () => {
-    const anchor = anchorRef.current;
-    requestAnimationFrame(() => {
-      if (
-        anchor?.isConnected &&
-        (document.activeElement === document.body ||
-          groupRef.current?.contains(document.activeElement))
-      ) {
-        anchor.focus({ preventScroll: true });
-      }
-    });
-  };
-
-  const submit = async (restore: boolean, clear = false) => {
-    restoreFocusRef.current = restore;
-    const saved = await controller.save(session.version, clear);
-    if (saved && restoreFocusRef.current) restoreFocus();
-  };
-
-  const cancel = (restore: boolean) => {
-    if (session.isPending) return;
-    controller.cancel(session.version);
-    if (restore) restoreFocus();
-  };
-
-  return (
-    <span
-      ref={groupRef}
-      data-sidebar-rename-editor=""
-      className="relative z-50 flex min-w-0 flex-1 items-center gap-1 text-sm font-normal"
-      aria-busy={session.isPending}
-      onBlur={(event) => {
-        if (
-          openingRef.current ||
-          event.currentTarget.contains(event.relatedTarget)
-        )
-          return;
-        restoreFocusRef.current = false;
-        if (!session.isPending) void submit(false);
-      }}
-      onClick={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-      }}
-      onDoubleClick={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-      }}
-      onPointerDown={(event) => event.stopPropagation()}
-      onPointerUp={(event) => event.stopPropagation()}
-      onContextMenu={(event) => event.stopPropagation()}
-      onDragStart={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-      }}
-      onKeyUp={(event) => event.stopPropagation()}
-      onKeyDown={(event) => {
-        event.stopPropagation();
-        if (event.nativeEvent.isComposing || composingRef.current) return;
-        if (event.key === "Escape") {
-          event.preventDefault();
-          cancel(true);
-        } else if (event.key === "Enter" && event.target === inputRef.current) {
-          event.preventDefault();
-          void submit(true);
-        }
-      }}
-    >
-      <input
-        ref={inputRef}
-        aria-label={session.label}
-        aria-invalid={Boolean(session.error)}
-        aria-describedby={session.error ? errorId : undefined}
-        autoCapitalize="sentences"
-        autoCorrect="off"
-        className="min-w-0 flex-1 appearance-none rounded-sm border-0 bg-transparent px-1 py-0 text-sm leading-[inherit] outline-none ring-1 ring-ring"
-        spellCheck={false}
-        value={session.draft}
-        placeholder={session.placeholder}
-        readOnly={session.isPending || session.cannotRetry}
-        onChange={(event) =>
-          controller.change(session.version, event.target.value)
-        }
-        onCompositionStart={() => {
-          composingRef.current = true;
-        }}
-        onCompositionEnd={() => {
-          composingRef.current = false;
-        }}
-      />
-      <button
-        type="button"
-        aria-label={session.error ? "Retry saving name" : "Save name"}
-        disabled={session.isPending || session.cannotRetry}
-        className={cn(
-          SIDEBAR_CONTROL_BUTTON_CLASS,
-          "inline-flex items-center justify-center disabled:opacity-50",
-        )}
-        onClick={(event) => {
-          void submit(event.detail === 0);
-        }}
-      >
-        {session.isPending ? (
-          <span role="status" aria-label="Saving name">
-            <Icon
-              name="Loading"
-              className={cn(COARSE_POINTER_ICON_SIZE_CLASS, "animate-spin")}
-            />
-          </span>
-        ) : (
-          <Icon name="Check" className={COARSE_POINTER_ICON_SIZE_CLASS} />
-        )}
-      </button>
-      <button
-        type="button"
-        aria-label="Cancel rename"
-        disabled={session.isPending}
-        className={cn(
-          SIDEBAR_CONTROL_BUTTON_CLASS,
-          "inline-flex items-center justify-center disabled:opacity-50",
-        )}
-        onPointerDown={(event) => event.preventDefault()}
-        onClick={(event) => cancel(event.detail === 0)}
-      >
-        <Icon name="X" className={COARSE_POINTER_ICON_SIZE_CLASS} />
-      </button>
-      {session.onClear && session.initialName && (
-        <button
-          type="button"
-          aria-label="Clear custom name"
-          disabled={session.isPending || session.cannotRetry}
-          className={cn(
-            SIDEBAR_CONTROL_BUTTON_CLASS,
-            "inline-flex items-center justify-center disabled:opacity-50",
-          )}
-          onClick={(event) => {
-            void submit(event.detail === 0, true);
-          }}
-        >
-          <Icon name="RotateCcw" className={COARSE_POINTER_ICON_SIZE_CLASS} />
-        </button>
-      )}
-      {session.error && (
-        <span
-          id={errorId}
-          role="alert"
-          className="absolute left-0 top-full z-50 mt-1 w-full min-w-40 rounded-md border border-border bg-popover px-2 py-1 text-xs text-destructive shadow-md whitespace-normal"
-        >
-          {session.error}
-        </span>
-      )}
-    </span>
-  );
 }
 
 export function useSidebarRename(args: SidebarRenameArgs) {
@@ -412,11 +198,19 @@ export function useSidebarRename(args: SidebarRenameArgs) {
 
   return {
     editor: isEditing ? (
-      <SidebarRenameEditor
-        key={session.version}
-        session={session}
-        controller={controller}
-      />
+      <Suspense
+        fallback={
+          <span role="status" className="min-w-0 flex-1 truncate">
+            {session.initialName}
+          </span>
+        }
+      >
+        <SidebarRenameEditor
+          key={session.version}
+          session={session}
+          controller={controller}
+        />
+      </Suspense>
     ) : null,
     isEditing,
     isPending: isEditing && session.isPending,

@@ -68,9 +68,9 @@ function deferred() {
   return { promise, resolve, reject };
 }
 
-function start(value = "New name") {
+async function start(value = "New name") {
   fireEvent.click(screen.getByRole("button", { name: "Rename first" }));
-  const input = screen.getByRole("textbox", { name: "first name" });
+  const input = await screen.findByRole("textbox", { name: "first name" });
   fireEvent.change(input, { target: { value } });
   return input;
 }
@@ -80,9 +80,9 @@ describe("sidebar inline rename", () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
     render(<RenameRow onSave={onSave} />);
     fireEvent.click(screen.getByRole("button", { name: "Rename first" }));
-    const input = screen.getByRole("textbox", {
+    const input = await screen.findByRole<HTMLInputElement>("textbox", {
       name: "first name",
-    }) as HTMLInputElement;
+    });
     expect(document.activeElement).toBe(input);
     expect(input.selectionStart).toBe(0);
     expect(input.selectionEnd).toBe("Original name".length);
@@ -101,7 +101,7 @@ describe("sidebar inline rename", () => {
     const pending = deferred();
     const onSave = vi.fn().mockReturnValue(pending.promise);
     render(<RenameRow onSave={onSave} />);
-    const input = start("  New name  ");
+    const input = await start("  New name  ");
     fireEvent.keyDown(input, { key: "Enter" });
     fireEvent.blur(input);
     fireEvent.keyDown(input, { key: "Enter" });
@@ -118,7 +118,7 @@ describe("sidebar inline rename", () => {
   it("validates empty and overlong values and treats a trimmed unchanged name as a no-op", async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
     render(<RenameRow onSave={onSave} maxLength={20} />);
-    const input = start("   ");
+    const input = await start("   ");
     fireEvent.keyDown(input, { key: "Enter" });
     expect(screen.getByRole("alert").textContent).toBe("Name cannot be empty.");
     expect(input.getAttribute("aria-invalid")).toBe("true");
@@ -133,10 +133,10 @@ describe("sidebar inline rename", () => {
     expect(onSave).not.toHaveBeenCalled();
   });
 
-  it("does not submit composition Enter or blur within the editor; pointer Cancel wins", () => {
+  it("does not submit composition Enter or blur within the editor; pointer Cancel wins", async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
     render(<RenameRow onSave={onSave} />);
-    const input = start();
+    const input = await start();
     fireEvent.compositionStart(input);
     fireEvent.keyDown(input, { key: "Enter", isComposing: true });
     fireEvent.compositionEnd(input);
@@ -156,7 +156,7 @@ describe("sidebar inline rename", () => {
       .mockRejectedValueOnce(new Error("Network unavailable"))
       .mockResolvedValueOnce(undefined);
     render(<RenameRow onSave={onSave} />);
-    fireEvent.keyDown(start(), { key: "Enter" });
+    fireEvent.keyDown(await start(), { key: "Enter" });
     await waitFor(() =>
       expect(screen.getByRole("alert").textContent).toBe(
         "Could not save the name. Try again.",
@@ -190,7 +190,7 @@ describe("sidebar inline rename", () => {
         }),
       );
     render(<RenameRow kind="section" onSave={onSave} />);
-    fireEvent.keyDown(start(), { key: "Enter" });
+    fireEvent.keyDown(await start(), { key: "Enter" });
     await waitFor(() =>
       expect(screen.getByRole("alert").textContent).toBe(
         "A section with this name already exists.",
@@ -223,7 +223,7 @@ describe("sidebar inline rename", () => {
         <button>Elsewhere</button>
       </>,
     );
-    start();
+    await start();
     const destination = screen.getByRole("button", { name: "Elsewhere" });
     await act(async () => new Promise(requestAnimationFrame));
     act(() => destination.focus());
@@ -232,10 +232,10 @@ describe("sidebar inline rename", () => {
     expect(document.activeElement).toBe(destination);
   });
 
-  it("preserves a draft through external updates and displays the latest name after cancel", () => {
+  it("preserves a draft through external updates and displays the latest name after cancel", async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
     const { rerender } = render(<RenameRow onSave={onSave} />);
-    start("My draft");
+    await start("My draft");
     rerender(<RenameRow name="Changed elsewhere" onSave={onSave} />);
     expect((screen.getByRole("textbox") as HTMLInputElement).value).toBe(
       "My draft",
@@ -254,7 +254,7 @@ describe("sidebar inline rename", () => {
         <SessionState />
       </SidebarRenameProvider>,
     );
-    const input = start(" ");
+    const input = await start(" ");
     fireEvent.click(screen.getByRole("button", { name: "Rename second" }));
     await waitFor(() => expect(screen.getByRole("alert")).not.toBeNull());
     expect(screen.queryByRole("textbox", { name: "second name" })).toBeNull();
@@ -269,14 +269,14 @@ describe("sidebar inline rename", () => {
     expect(screen.getByLabelText("Active rename").textContent).toBe("second");
   });
 
-  it("preserves the provider draft when its owning row unmounts and remounts", () => {
+  it("preserves the provider draft when its owning row unmounts and remounts", async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
     const { rerender } = render(
       <SidebarRenameProvider>
         <RenameRow onSave={onSave} />
       </SidebarRenameProvider>,
     );
-    start("Keep my draft");
+    await start("Keep my draft");
     rerender(<SidebarRenameProvider>{null}</SidebarRenameProvider>);
     rerender(
       <SidebarRenameProvider>
@@ -293,7 +293,7 @@ describe("sidebar inline rename", () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
     const onClear = vi.fn().mockResolvedValue(undefined);
     render(<RenameRow kind="environment" onSave={onSave} onClear={onClear} />);
-    fireEvent.keyDown(start(" "), { key: "Enter" });
+    fireEvent.keyDown(await start(" "), { key: "Enter" });
     expect(onClear).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Clear custom name" }));
     await waitFor(() => expect(screen.queryByRole("textbox")).toBeNull());
