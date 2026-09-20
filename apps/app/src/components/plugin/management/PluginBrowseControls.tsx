@@ -212,7 +212,8 @@ export function PluginCollectionToolbar({
         expandSearchOnFocus
         action={action}
         searchValue={query}
-        searchPlaceholder={searchPlaceholder}
+        searchLabel={searchPlaceholder}
+        searchPlaceholder="Search plugins..."
         onSearchChange={(value) =>
           changeSearchParams((next) => {
             if (value === "") next.delete("query");

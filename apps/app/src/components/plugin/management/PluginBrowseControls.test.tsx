@@ -428,16 +428,21 @@ describe("PluginCollectionToolbar", () => {
     ).toBeTruthy();
   });
 
-  it("expands cramped search and restores controls on submit or blur without losing the query", () => {
+  it("opens compact search with the query selected and restores controls on submit or blur", () => {
     mockToolbarWidth(320);
     render(<ToolbarHarness installed createAction />);
-    const search = screen.getByRole("textbox", { name: "Search plugins" });
-    act(() => search.focus());
+    const trigger = screen.getByRole("button", { name: "Search plugins" });
     expect(
-      search
-        .closest("[data-resource-toolbar]")
-        ?.getAttribute("data-search-expanded"),
-    ).toBe("true");
+      screen.queryByRole("textbox", { name: "Search plugins" }),
+    ).toBeNull();
+    fireEvent.click(trigger);
+    const search = screen.getByRole<HTMLInputElement>("textbox", {
+      name: "Search plugins",
+    });
+    expect(document.activeElement).toBe(search);
+    expect(search.selectionStart).toBe(0);
+    expect(search.selectionEnd).toBe("Memory".length);
+    expect(search.placeholder).toBe("Search plugins...");
     expect(screen.queryByRole("button", { name: "Filter & sort" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Create" })).toBeNull();
     fireEvent.change(search, { target: { value: "Notes" } });
@@ -445,25 +450,25 @@ describe("PluginCollectionToolbar", () => {
     expect(document.activeElement).toBe(search);
     fireEvent.keyDown(search, { key: "Enter" });
     expect(
-      search
-        .closest("[data-resource-toolbar]")
-        ?.hasAttribute("data-search-expanded"),
-    ).toBe(false);
+      screen.queryByRole("textbox", { name: "Search plugins" }),
+    ).toBeNull();
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "Search plugins" }),
+    );
     expect(screen.getByRole("button", { name: "Create" })).toBeTruthy();
     expect(screen.getByLabelText("Parameters").textContent).toBe(
       "query=Notes&category=security&source=user&sort=name&direction=desc",
     );
-    act(() => search.focus());
-    act(() => search.blur());
+    fireEvent.click(screen.getByRole("button", { name: "Search plugins" }));
+    act(() => screen.getByRole("textbox", { name: "Search plugins" }).blur());
     expect(screen.getByRole("button", { name: "Filter & sort" })).toBeTruthy();
   });
 
-  it("clears expanded search and restores controls without removing filters", () => {
+  it("clears compact search, dismisses the input, and retains the other selections", () => {
     mockToolbarWidth(320);
     render(<ToolbarHarness installed createAction />);
+    fireEvent.click(screen.getByRole("button", { name: "Search plugins" }));
     const search = screen.getByRole("textbox", { name: "Search plugins" });
-    expect(search.getAttribute("placeholder")).toBe("Search...");
-    act(() => search.focus());
     fireEvent.change(search, { target: { value: "Notes" } });
     expect(screen.getByLabelText("Parameters").textContent).toContain(
       "query=Notes",
@@ -474,32 +479,54 @@ describe("PluginCollectionToolbar", () => {
     expect(document.activeElement).toBe(clear);
     expect(screen.queryByRole("button", { name: "Create" })).toBeNull();
     fireEvent.click(clear);
-    expect(document.activeElement).toBe(search);
+    expect(
+      screen.queryByRole("textbox", { name: "Search plugins" }),
+    ).toBeNull();
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "Search plugins" }),
+    );
     expect(screen.getByRole("button", { name: "Filter & sort" })).toBeTruthy();
     expect(screen.getByLabelText("Parameters").textContent).toBe(
       "category=security&source=user&sort=name&direction=desc",
     );
-    fireEvent.click(search);
-    expect(screen.getByRole("button", { name: "Clear search" })).toBeTruthy();
-    fireEvent.keyDown(search, { key: "Escape" });
-    expect(document.activeElement).toBe(search);
-    expect(screen.queryByRole("button", { name: "Clear search" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Search plugins" }));
+    const reopened = screen.getByRole("textbox", { name: "Search plugins" });
+    expect(reopened.getAttribute("value")).toBe("");
+    fireEvent.keyDown(reopened, { key: "Escape" });
+    expect(
+      screen.queryByRole("textbox", { name: "Search plugins" }),
+    ).toBeNull();
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "Search plugins" }),
+    );
   });
 
-  it("clears wide search without removing filters or moving focus away from the input", () => {
+  it("clears and blurs wide search without removing filters", () => {
     mockToolbarWidth(800);
     render(<ToolbarHarness installed createAction />);
     const search = screen.getByRole("textbox", { name: "Search plugins" });
     act(() => search.focus());
     fireEvent.change(search, { target: { value: "Notes" } });
     fireEvent.click(screen.getByRole("button", { name: "Clear search" }));
-    expect(document.activeElement).toBe(search);
+    expect(document.activeElement).not.toBe(search);
+    expect(search.getAttribute("value")).toBe("");
     expect(screen.getByLabelText("Parameters").textContent).toBe(
       "category=security&source=user&sort=name&direction=desc",
     );
     expect(screen.queryByRole("button", { name: "Clear search" })).toBeNull();
     expect(screen.getByRole("button", { name: /^Sort:/u })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Create" })).toBeTruthy();
+  });
+
+  it("uses the Search button on mobile even when a lone Sort control leaves room", () => {
+    viewport.compact = true;
+    mockToolbarWidth(400);
+    render(<ToolbarHarness categoryShelf />);
+    expect(screen.getByRole("button", { name: "Search plugins" })).toBeTruthy();
+    expect(
+      screen.queryByRole("textbox", { name: "Search plugins" }),
+    ).toBeNull();
+    expect(screen.getByRole("button", { name: /^Sort:/u })).toBeTruthy();
   });
 
   it.each([
@@ -641,14 +668,14 @@ describe("PluginCollectionToolbar", () => {
   it("moves focused controls into the combined menu and back without losing search or selection", () => {
     const resize = mockToolbarWidth(600);
     render(<ToolbarHarness installed />);
+    fireEvent.change(screen.getByRole("textbox", { name: "Search plugins" }), {
+      target: { value: "Notes" },
+    });
     screen.getByRole("button", { name: /^Source:/u }).focus();
     resize(320);
     expect(document.activeElement).toBe(
       screen.getByRole("button", { name: "Filter & sort" }),
     );
-    fireEvent.change(screen.getByRole("textbox", { name: "Search plugins" }), {
-      target: { value: "Notes" },
-    });
     resize(600);
     expect(screen.queryByRole("button", { name: "Filter & sort" })).toBeNull();
     expect(screen.getByRole("button", { name: /^Source: 1/u })).toBeTruthy();
