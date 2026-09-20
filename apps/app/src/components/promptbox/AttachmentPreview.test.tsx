@@ -62,7 +62,17 @@ describe("AttachmentPreview", () => {
       onExpandedImageIndexChange: vi.fn(),
     };
     const { getByRole, rerender, unmount } = render(<AttachmentPreview {...props} compact />);
-    expect(getByRole("status", { name: "1 attachment, 1 uploading" }).textContent).toContain("uploading");
+    const uploading = getByRole("status", { name: "1 uploading" });
+    expect(uploading.textContent).toBe("1");
+    expect(uploading.querySelector('[data-icon="Paperclip"]')).toBeNull();
+    const attachments = [{ type: "localImage" as const, path: "done.png", name: "done.png" }];
+    rerender(<AttachmentPreview {...props} attachments={attachments} compact />);
+    const mixed = getByRole("status", { name: "1 attachment, 1 uploading" });
+    expect(mixed.querySelector('[data-icon="Paperclip"]')?.parentElement?.textContent).toBe("1");
+    expect(mixed.querySelector('[data-icon="Loading"]')?.parentElement?.textContent).toBe("1");
+    rerender(<AttachmentPreview {...props} attachments={attachments} pendingUploads={[]} compact />);
+    const settled = getByRole("img", { name: "1 attachment" });
+    expect(settled.querySelector('[data-icon="Loading"]')).toBeNull();
     rerender(<AttachmentPreview {...props} />);
     expect(getByRole("status", { name: "Uploading pending.png" }).querySelector("img")).not.toBeNull();
     unmount();

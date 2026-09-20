@@ -214,7 +214,7 @@ export function PromptBoxActionsMenu({
               }}
             >
               <Icon
-                name={isAttaching ? "Spinner" : "Paperclip"}
+                name={isAttaching ? "Loading" : "Paperclip"}
                 className={cn(
                   "size-4 text-muted-foreground",
                   isAttaching && "animate-spin",

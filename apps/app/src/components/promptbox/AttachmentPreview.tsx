@@ -63,13 +63,13 @@ function UploadPreview({ file }: { file: File }) {
             {previewUrl ? <img src={previewUrl} alt="" className="size-full object-cover opacity-50" /> : null}
           </span>
           <span className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-1 bg-background/90 py-1 text-xs text-foreground">
-            <Icon name="Spinner" className="size-3 animate-spin motion-reduce:animate-none" />
+            <Icon name="Loading" className="size-3 animate-spin motion-reduce:animate-none" />
             Uploading
           </span>
         </>
       ) : (
         <>
-          <Icon name="Spinner" className="size-3 shrink-0 animate-spin motion-reduce:animate-none" />
+          <Icon name="Loading" className="size-3 shrink-0 animate-spin motion-reduce:animate-none" />
           <span className="truncate">{file.name}</span>
         </>
       )}
@@ -106,8 +106,9 @@ export function AttachmentPreview({
     onExpandedImageIndexChange(null);
   }, [expandedImageIndex, imageAttachments.length, onExpandedImageIndexChange]);
 
-  const attachmentCount = attachments.length + pendingUploads.length;
-  if (attachmentCount === 0) {
+  const attachmentCount = attachments.length;
+  const uploadingCount = pendingUploads.length;
+  if (attachmentCount + uploadingCount === 0) {
     return null;
   }
 
@@ -116,12 +117,25 @@ export function AttachmentPreview({
       {compact ? (
         <span
           data-promptbox-attachments=""
-          role={pendingUploads.length > 0 ? "status" : "img"}
-          aria-label={`${attachmentCount} ${attachmentCount === 1 ? "attachment" : "attachments"}${pendingUploads.length > 0 ? `, ${pendingUploads.length} uploading` : ""}`}
-          className="ml-3 inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md bg-surface-recessed px-2 text-xs text-muted-foreground"
+          role={uploadingCount > 0 ? "status" : "img"}
+          aria-label={[
+            attachmentCount > 0 ? `${attachmentCount} ${attachmentCount === 1 ? "attachment" : "attachments"}` : null,
+            uploadingCount > 0 ? `${uploadingCount} uploading` : null,
+          ].filter(Boolean).join(", ")}
+          className="ml-3 inline-flex h-7 shrink-0 items-center gap-3 rounded-md bg-surface-recessed px-2 text-xs text-muted-foreground"
         >
-          <Icon name={pendingUploads.length > 0 ? "Spinner" : "Paperclip"} className={pendingUploads.length > 0 ? "size-3.5 animate-spin motion-reduce:animate-none" : "size-3.5"} />
-          <span aria-hidden="true">{attachmentCount}{pendingUploads.length > 0 ? ` · ${pendingUploads.length} uploading` : ""}</span>
+          {attachmentCount > 0 ? (
+            <span aria-hidden="true" className="inline-flex items-center gap-1.5">
+              <Icon name="Paperclip" className="size-3.5" />
+              <span>{attachmentCount}</span>
+            </span>
+          ) : null}
+          {uploadingCount > 0 ? (
+            <span aria-hidden="true" className="inline-flex items-center gap-1.5">
+              <Icon name="Loading" className="size-3.5 animate-spin motion-reduce:animate-none" />
+              <span>{uploadingCount}</span>
+            </span>
+          ) : null}
         </span>
       ) : (
         <div className="mx-3 mb-1 mt-1">

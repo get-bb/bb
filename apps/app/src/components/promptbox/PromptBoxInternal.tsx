@@ -333,7 +333,7 @@ function PromptSubmitButton({
       )}
     >
       {isBusy ? (
-        <Icon name="Spinner" className="size-4 animate-spin" />
+        <Icon name="Loading" className="size-4 animate-spin motion-reduce:animate-none" />
       ) : (
         <>
           <Icon name={icon ?? "CornerDownLeft"} className="size-4" />
