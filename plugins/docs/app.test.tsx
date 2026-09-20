@@ -32,6 +32,13 @@ const rangeGetClientRectsDescriptor = Object.getOwnPropertyDescriptor(
 );
 
 beforeEach(() => {
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      disconnect() {}
+    },
+  );
   Object.defineProperties(Range.prototype, {
     getBoundingClientRect: {
       configurable: true,
@@ -1314,6 +1321,56 @@ describe("Docs nav panel", () => {
       });
     }
     await returned.findByText("Fresh content from disk.");
+  });
+
+  it("truncates tall inline documents and restores editing when they shrink", async () => {
+    let height = 600;
+    let resize = () => {};
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(callback: () => void) {
+          resize = callback;
+        }
+        observe() {}
+        disconnect() {}
+      },
+    );
+    const bounds = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockImplementation(() => new DOMRect(0, 0, 600, height));
+    const openThreadPanel = vi.fn(() => true);
+    try {
+      const slot = renderDocument("tall-inline.md", "Tall document", {
+        openThreadPanel,
+        rpc: {
+          readNote: () => ({ content: "A long document.", sha256: "tall-sha" }),
+          readProposal: () => null,
+          preparePreview: () => preview,
+        },
+      });
+      const button = await slot.findByRole("button", { name: "Edit in tab" });
+      const editor = slot.getByRole("textbox", { name: "Document content" });
+      expect(editor.getAttribute("contenteditable")).toBe("false");
+      fireEvent.click(button);
+      expect(openThreadPanel).toHaveBeenCalledWith({
+        actionId: "document",
+        title: "Tall document",
+        params: {
+          vaultId: "personal",
+          path: "tall-inline.md",
+          title: "Tall document",
+        },
+      });
+      await act(async () => {
+        height = 200;
+        resize();
+      });
+      expect(slot.queryByRole("button", { name: "Edit in tab" })).toBeNull();
+      expect(editor.getAttribute("contenteditable")).toBe("true");
+    } finally {
+      bounds.mockRestore();
+    }
   });
 
   it("edits Markdown inline and opens the same document in a tab", async () => {

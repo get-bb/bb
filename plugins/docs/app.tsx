@@ -889,6 +889,18 @@ function InlineDocument({
   const [editing, setEditing] = useState(false);
   const [asking, setAsking] = useState(false);
   const [askError, setAskError] = useState<string | null>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [truncated, setTruncated] = useState(false);
+  useEffect(() => {
+    const content = contentRef.current;
+    if (!openInTab || !content) return;
+    const measure = () =>
+      setTruncated(content.getBoundingClientRect().height > 400);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, [state.loaded, openInTab]);
   const pending = state.proposal?.status === "pending" ? state.proposal : null;
   const stale = pending !== null && pending.baseSha256 !== state.sha256;
   const undo =
@@ -1043,45 +1055,59 @@ function InlineDocument({
           <DocumentSkeleton />
         ) : (
           <div
-            data-editing={editing}
-            className="min-w-0 data-[editing=true]:bg-muted/10 data-[editing=true]:ring-1 data-[editing=true]:ring-inset data-[editing=true]:ring-ring/50"
+            className="relative"
+            style={openInTab ? { maxHeight: 400, overflow: "clip" } : undefined}
           >
-            {pending && baseMetadata !== candidateMetadata && (
-              <div className="px-6 pt-4 text-xs">
-                <p className="mb-2 font-medium">Document metadata</p>
-                {baseMetadata && (
-                  <pre className="whitespace-pre-wrap bg-diff-removed/10 text-diff-removed">
-                    <del>{baseMetadata}</del>
-                  </pre>
-                )}
-                {candidateMetadata && (
-                  <pre className="whitespace-pre-wrap bg-diff-added/10 text-diff-added">
-                    {candidateMetadata}
-                  </pre>
-                )}
+            <div
+              ref={contentRef}
+              data-editing={editing && !truncated}
+              className="min-w-0 data-[editing=true]:bg-muted/10 data-[editing=true]:ring-1 data-[editing=true]:ring-inset data-[editing=true]:ring-ring/50"
+            >
+              {pending && baseMetadata !== candidateMetadata && (
+                <div className="px-6 pt-4 text-xs">
+                  <p className="mb-2 font-medium">Document metadata</p>
+                  {baseMetadata && (
+                    <pre className="whitespace-pre-wrap bg-diff-removed/10 text-diff-removed">
+                      <del>{baseMetadata}</del>
+                    </pre>
+                  )}
+                  {candidateMetadata && (
+                    <pre className="whitespace-pre-wrap bg-diff-added/10 text-diff-added">
+                      {candidateMetadata}
+                    </pre>
+                  )}
+                </div>
+              )}
+              <TiptapEditor
+                initialValue=""
+                value={state.draft}
+                baseMarkdown={pending?.baseContent ?? null}
+                inline
+                disabled={state.busy || truncated}
+                previewBaseUrl={state.previewBaseUrl}
+                notePath={document.path}
+                onFocusChange={setEditing}
+                onFirstRender={() => undefined}
+                onMarkdownChange={session.edit}
+                onUpload={async (file) => {
+                  const result = await rpc.call("uploadAttachment", {
+                    vaultId: document.vaultId,
+                    notePath: document.path,
+                    name: file.name,
+                    content: await fileToBase64(file),
+                  });
+                  return { markdownPath: result.markdownPath };
+                }}
+              />
+            </div>
+            {truncated && openInTab && (
+              <div className="absolute inset-x-0 bottom-0 flex justify-center bg-gradient-to-t from-background via-background/95 to-transparent px-4 pb-4 pt-12">
+                <Button size="sm" variant="outline" onClick={openInTab}>
+                  Edit in tab
+                  <Icon name="ExternalLink" className="ml-2 size-3" />
+                </Button>
               </div>
             )}
-            <TiptapEditor
-              initialValue=""
-              value={state.draft}
-              baseMarkdown={pending?.baseContent ?? null}
-              inline
-              disabled={state.busy}
-              previewBaseUrl={state.previewBaseUrl}
-              notePath={document.path}
-              onFocusChange={setEditing}
-              onFirstRender={() => undefined}
-              onMarkdownChange={session.edit}
-              onUpload={async (file) => {
-                const result = await rpc.call("uploadAttachment", {
-                  vaultId: document.vaultId,
-                  notePath: document.path,
-                  name: file.name,
-                  content: await fileToBase64(file),
-                });
-                return { markdownPath: result.markdownPath };
-              }}
-            />
           </div>
         )}
       </section>
@@ -1191,7 +1217,9 @@ function DocumentPicker() {
   const navigate = useBbNavigate();
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
-      <p className="text-sm text-muted-foreground">Choose a document to open.</p>
+      <p className="text-sm text-muted-foreground">
+        Choose a document to open.
+      </p>
       <NotesWorkspace
         subPath={subPath}
         navigationOnly
