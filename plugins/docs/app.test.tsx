@@ -1349,7 +1349,9 @@ describe("Docs nav panel", () => {
           preparePreview: () => preview,
         },
       });
-      const button = await slot.findByRole("button", { name: "Edit in tab" });
+      const button = await slot.findByRole("button", {
+        name: "Open Tall document in tab",
+      });
       const editor = slot.getByRole("textbox", { name: "Document content" });
       expect(editor.getAttribute("contenteditable")).toBe("false");
       fireEvent.click(button);
@@ -1366,7 +1368,9 @@ describe("Docs nav panel", () => {
         height = 200;
         resize();
       });
-      expect(slot.queryByRole("button", { name: "Edit in tab" })).toBeNull();
+      expect(
+        slot.queryByRole("button", { name: "Open Tall document in tab" }),
+      ).toBeNull();
       expect(editor.getAttribute("contenteditable")).toBe("true");
     } finally {
       bounds.mockRestore();

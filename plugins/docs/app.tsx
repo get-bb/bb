@@ -1102,12 +1102,14 @@ function InlineDocument({
                 />
               </div>
               {truncated && openInTab && (
-                <div className="absolute inset-x-0 bottom-0 flex justify-center bg-gradient-to-t from-background via-background/95 to-transparent px-4 pb-4 pt-12">
-                  <Button size="sm" variant="outline" onClick={openInTab}>
-                    Edit in tab
-                    <Icon name="ExternalLink" className="ml-2 size-3" />
-                  </Button>
-                </div>
+                <button
+                  type="button"
+                  aria-label={`Open ${document.title} in tab`}
+                  className="absolute inset-0 cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
+                  onClick={openInTab}
+                >
+                  <span className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-background via-background/95 to-transparent" />
+                </button>
               )}
             </>
           )}
