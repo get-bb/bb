@@ -8,6 +8,9 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import { Provider as JotaiProvider, createStore } from "jotai";
+import { sidebarOrganizationModeAtom } from "@/components/sidebar/sidebarCollapsedAtoms";
+import { useThreadSectionMove } from "@/components/thread/ThreadSectionMoveProvider";
 import { defaultAppSettings } from "@bb/domain";
 import { Popover, PopoverContent, PopoverTrigger } from "@bb/shared-ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
@@ -93,6 +96,10 @@ vi.mock("@/components/project/ProjectActionsProvider", () => ({
   ProjectActionsProvider: ({ children }: { children: ReactNode }) => (
     <>{children}</>
   ),
+}));
+
+vi.mock("@/hooks/mutations/thread-state-mutations", () => ({
+  useMoveThreadToSection: () => vi.fn(),
 }));
 
 vi.mock("@/components/thread/ThreadActionsProvider", () => ({
@@ -566,6 +573,45 @@ describe("AppLayout plugin overlay contexts", () => {
       expect(screen.getByRole("tooltip").textContent).toBe("Overlay tooltip");
       expect(errors).not.toHaveBeenCalled();
       expect(warnings).not.toHaveBeenCalled();
+    },
+  );
+});
+
+function HeaderSectionDestinations() {
+  const sectionMove = useThreadSectionMove();
+  return (
+    <output data-testid="header-section-destinations">
+      {sectionMove?.destinations
+        .map((destination) => destination.label)
+        .join(",") ?? "unavailable"}
+    </output>
+  );
+}
+
+describe("thread header section moves", () => {
+  it.each([
+    ["chronological", "Threads"],
+    ["project", "unavailable"],
+    ["machine", "unavailable"],
+  ] as const)(
+    "supplies destinations to thread content in %s mode",
+    (mode, expected) => {
+      const store = createStore();
+      store.set(sidebarOrganizationModeAtom, mode);
+      render(
+        <JotaiProvider store={store}>
+          <MemoryRouter initialEntries={[APP_ROUTE]}>
+            <AppCommandProvider>
+              <AppLayout>
+                <HeaderSectionDestinations />
+              </AppLayout>
+            </AppCommandProvider>
+          </MemoryRouter>
+        </JotaiProvider>,
+      );
+      expect(
+        screen.getByTestId("header-section-destinations").textContent,
+      ).toBe(expected);
     },
   );
 });
