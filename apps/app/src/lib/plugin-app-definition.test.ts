@@ -493,6 +493,7 @@ describe("collectPluginAppRegistrations", () => {
       app.slots.threadPanelAction({
         id: "issue",
         title: "Issue",
+        experimental_hidden: true,
         icon: "Columns",
         component: Component,
         run,
@@ -565,6 +566,7 @@ describe("collectPluginAppRegistrations", () => {
       {
         id: "issue",
         title: "Issue",
+        experimental_hidden: true,
         icon: "Columns",
         component: Component,
         run,

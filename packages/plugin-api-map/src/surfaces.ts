@@ -252,6 +252,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Render the tab's contents and receive the id of the thread it was opened from",
           "Open the tab from a [message action](message-actions), from the + button in the side panel, or from its own code",
+          "Set experimental_hidden to omit a context-dependent tab from the + launcher while keeping programmatic opens and existing tabs working",
         ],
         apiSymbols: ["PluginThreadPanelActionRegistration"],
         firstParty: ["Docs", "GitHub", "Side chat", "Tasks", "Workflows"],

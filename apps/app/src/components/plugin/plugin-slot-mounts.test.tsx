@@ -1982,6 +1982,43 @@ describe("plugin thread panel actions", () => {
     ).toBeDefined();
   });
 
+  it("hides context-only actions from the launcher while rendering their tabs", () => {
+    setPluginSlotRegistrations(
+      "demo",
+      registrationSet({
+        threadPanelActions: [
+          { id: "visible", title: "Visible", component: PanelProbe },
+          {
+            id: "document",
+            title: "Document",
+            component: PanelProbe,
+            experimental_hidden: true,
+          },
+        ],
+      }),
+    );
+    const tab = createPluginPanelFixedPanelTab({
+      pluginId: "demo",
+      actionId: "document",
+      title: "Launch email",
+      paramsJson: JSON.stringify({ path: "Launch email.md" }),
+    });
+    render(
+      <>
+        <ActionsProbe threadId="thr_9" openPluginPanel={vi.fn()} />
+        <PluginPanelTabContent
+          tab={tab}
+          context={{ kind: "thread", threadId: "thr_9" }}
+        />
+      </>,
+    );
+    expect(screen.getByRole("button", { name: "Visible" })).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Document" })).toBeNull();
+    expect(
+      screen.getByText('panel body for thr_9 / {"path":"Launch email.md"}'),
+    ).toBeDefined();
+  });
+
   it("contains a throwing run and declines non-JSON params without opening", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const declines: boolean[] = [];

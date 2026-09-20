@@ -694,13 +694,24 @@ export function collectPluginAppRegistrations(
         });
       },
       threadPanelAction(registration) {
-        collected.threadPanelActions.push(
-          collectPanelAction(
+        if (
+          registration.experimental_hidden !== undefined &&
+          typeof registration.experimental_hidden !== "boolean"
+        ) {
+          throw new Error(
+            'slots.threadPanelAction: "experimental_hidden" must be a boolean',
+          );
+        }
+        collected.threadPanelActions.push({
+          ...collectPanelAction(
             "slots.threadPanelAction",
             seenIds.threadPanelAction,
             registration,
           ),
-        );
+          ...(registration.experimental_hidden !== undefined
+            ? { experimental_hidden: registration.experimental_hidden }
+            : {}),
+        });
       },
       experimental_newThreadPanelAction(registration) {
         collected.newThreadPanelActions.push(
