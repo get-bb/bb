@@ -162,7 +162,7 @@ export function MarkdownImage({
       decoding="async"
       className={cn(className, status === "loading" && "bg-surface-recessed text-transparent")}
       style={{
-        ...(ratio && displayWidth ? {
+        ...(status !== "error" && ratio && displayWidth ? {
           aspectRatio,
           width: `min(${displayWidth}px, calc(max(384px, 50vh) * ${ratio}))`,
           height: "auto",

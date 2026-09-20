@@ -138,7 +138,7 @@ describe("MarkdownImage", () => {
     expect(readMarkdownImageDimensions(source)).toEqual({ width: 780, height: 1688 });
   });
 
-  it("preserves geometry and alt text on errors and can recover on a later load", async () => {
+  it("falls back to alt text on errors and restores geometry on a later load", async () => {
     const visible = mockVisibility();
     rememberMarkdownImageDimensions(source, { width: 640, height: 480 });
     const { getByAltText } = render(<MarkdownImage src={source} alt="Retry screenshot" />);
@@ -146,10 +146,12 @@ describe("MarkdownImage", () => {
     visible(image, true);
     fireEvent.error(image);
     expect(image.dataset.markdownImageState).toBe("error");
-    expect(image.style.aspectRatio).toBe("640 / 480");
+    expect(image.style.aspectRatio).toBe("");
+    expect(image.style.width).toBe("");
     expect(image.className).not.toContain("text-transparent");
     completeImage(image, 640, 480);
     await waitFor(() => expect(image.dataset.markdownImageState).toBe("ready"));
+    expect(image.style.aspectRatio).toBe("640 / 480");
   });
 });
 
