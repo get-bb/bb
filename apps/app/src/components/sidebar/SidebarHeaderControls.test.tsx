@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -8,7 +9,10 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { createStore, Provider } from "jotai";
-import type { SidebarOrganizationMode } from "@bb/domain";
+import {
+  getUiPreferenceDefault,
+  type SidebarOrganizationMode,
+} from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { SIDEBAR_CONTROL_STATE_CLASS } from "./sidebarRowClasses";
@@ -68,9 +72,14 @@ function setup(
 }
 
 async function openMenu(label = "Pinned") {
-  fireEvent.keyDown(screen.getByRole("button", { name: `${label} actions` }), {
-    key: "Enter",
-  });
+  fireEvent.keyDown(
+    screen.getByRole("button", {
+      name: new RegExp(`^${label} actions(?:;|$)`),
+    }),
+    {
+      key: "Enter",
+    },
+  );
   await screen.findByRole("menuitem", { name: "New project" });
 }
 
@@ -82,7 +91,7 @@ async function openSubmenu(label: string) {
 
 describe("sidebar header controls", () => {
   it("keeps the primary before overflow and applies the shared control state", async () => {
-    const { newThread } = setup();
+    const { newThread } = setup("Pinned", false, "chronological");
     const primary = screen.getByRole("button", {
       name: "New thread in Pinned",
     });
@@ -123,7 +132,7 @@ describe("sidebar header controls", () => {
       "New section",
       "Organize",
       "Sort by",
-      "Filter",
+      "Filter threads",
       "Rename",
       "Remove",
     ]);
@@ -142,12 +151,16 @@ describe("sidebar header controls", () => {
     async (compact) => {
       viewport.compact = compact;
       const { store } = setup();
-      const trigger = screen.getByRole("button", { name: "Pinned actions" });
+      const trigger = screen.getByRole("button", {
+        name: /^Pinned actions(?:;|$)/,
+      });
       if (compact) fireEvent.click(trigger);
       else await openMenu();
-      const filter = await screen.findByRole("menuitem", { name: "Filter" });
+      const filter = await screen.findByRole("menuitem", {
+        name: "Filter threads",
+      });
       if (compact) fireEvent.click(filter);
-      else await openSubmenu("Filter");
+      else await openSubmenu("Filter threads");
       const active = await screen.findByRole("menuitemcheckbox", {
         name: "Active",
       });
@@ -170,7 +183,9 @@ describe("sidebar header controls", () => {
       expect(store.get(sidebarOrganizationModeAtom)).toBe("project");
       expect(store.get(sidebarChronologicalSortAtom)).toBe("updated");
       if (compact) {
-        expect(screen.getByRole("dialog", { name: "Filter" })).toBeTruthy();
+        expect(
+          screen.getByRole("dialog", { name: "Filter threads" }),
+        ).toBeTruthy();
         expect(trigger.closest("[inert], [aria-hidden='true']")).toBeNull();
         fireEvent.click(screen.getByRole("menuitem", { name: "Back" }));
         expect(
@@ -178,6 +193,156 @@ describe("sidebar header controls", () => {
         ).toBeTruthy();
         expect(screen.getByRole("menuitem", { name: "Organize" })).toBeTruthy();
       }
+    },
+  );
+
+  it.each([
+    "organization",
+    "grouping",
+    "sort",
+    "direction",
+    "lifecycle",
+  ] as const)(
+    "reflects a synced %s change without changing menu semantics",
+    (setting) => {
+      const { store } = setup("Pinned", false, "chronological");
+      const trigger = screen.getByRole("button", { name: "Pinned actions" });
+      expect(
+        trigger.querySelector('[data-icon="MoreHorizontal"]'),
+      ).toBeTruthy();
+      act(() => {
+        if (setting === "organization")
+          store.set(sidebarOrganizationModeAtom, "machine");
+        if (setting === "grouping")
+          store.set(sidebarEnvironmentGroupingAtom, true);
+        if (setting === "sort")
+          store.set(sidebarChronologicalSortAtom, "created");
+        if (setting === "direction")
+          store.set(sidebarSortDirectionAtom, "ascending");
+        if (setting === "lifecycle")
+          store.set(sidebarThreadLifecyclesAtom, ["draft"]);
+      });
+      expect(
+        trigger.querySelector('[data-icon="FilterHorizontal"]'),
+      ).toBeTruthy();
+      expect(trigger.classList.contains("bg-state-active")).toBe(true);
+      expect(trigger.getAttribute("aria-label")).toMatch(
+        /Pinned actions; (Organize|Sort by|Filter threads):/,
+      );
+      expect(trigger.getAttribute("aria-haspopup")).toBe("menu");
+      expect(trigger.getAttribute("aria-expanded")).toBe("false");
+      expect(trigger.hasAttribute("aria-pressed")).toBe(false);
+      act(() => {
+        store.set(
+          sidebarOrganizationModeAtom,
+          getUiPreferenceDefault("sidebar.organizationMode"),
+        );
+        store.set(
+          sidebarEnvironmentGroupingAtom,
+          getUiPreferenceDefault("sidebar.threadGrouping.environment"),
+        );
+        store.set(
+          sidebarChronologicalSortAtom,
+          getUiPreferenceDefault("sidebar.chronologicalSort"),
+        );
+        store.set(
+          sidebarSortDirectionAtom,
+          getUiPreferenceDefault("sidebar.sortDirection"),
+        );
+        store.set(
+          sidebarThreadLifecyclesAtom,
+          getUiPreferenceDefault("sidebar.threadLifecycles"),
+        );
+      });
+      expect(trigger.getAttribute("aria-label")).toBe("Pinned actions");
+      expect(
+        trigger.querySelector('[data-icon="MoreHorizontal"]'),
+      ).toBeTruthy();
+      expect(trigger.classList.contains("bg-state-active")).toBe(false);
+    },
+  );
+
+  it("treats legacy none, explicit descending, and equivalent grouping as defaults", async () => {
+    const { store } = setup("Pinned", false, "chronological");
+    act(() => {
+      store.set(sidebarChronologicalSortAtom, "none");
+      store.set(sidebarSortDirectionAtom, "descending");
+      store.set(sidebarEnvironmentGroupingAtom, false);
+    });
+    expect(
+      screen
+        .getByRole("button", { name: "Pinned actions" })
+        .classList.contains("bg-state-active"),
+    ).toBe(false);
+    await openMenu();
+    await openSubmenu("Sort by");
+    const reset = await screen.findByRole("menuitem", { name: "Reset" });
+    expect(reset.getAttribute("aria-disabled")).toBe("true");
+    expect(
+      screen
+        .getByRole("menuitemradio", {
+          name: "Updated at, descending. Sort ascending",
+        })
+        .getAttribute("aria-checked"),
+    ).toBe("true");
+  });
+
+  it.each([false, true])(
+    "resets each family independently and stays in its menu (compact=%s)",
+    async (compact) => {
+      viewport.compact = compact;
+      const { store } = setup("Pinned", false, "chronological");
+      act(() => {
+        store.set(sidebarOrganizationModeAtom, "machine");
+        store.set(sidebarEnvironmentGroupingAtom, false);
+        store.set(sidebarChronologicalSortAtom, "alpha");
+        store.set(sidebarSortDirectionAtom, "descending");
+        store.set(sidebarThreadLifecyclesAtom, ["draft", "archived"]);
+      });
+      const trigger = screen.getByRole("button", { name: /^Pinned actions;/ });
+      if (compact) fireEvent.click(trigger);
+      else await openMenu();
+      for (const label of ["Organize", "Sort by", "Filter threads"]) {
+        const page = await screen.findByRole("menuitem", { name: label });
+        if (compact) fireEvent.click(page);
+        else await openSubmenu(label);
+        const reset = await screen.findByRole("menuitem", { name: "Reset" });
+        expect(reset.getAttribute("aria-disabled")).not.toBe("true");
+        if (!compact) {
+          const submenu = screen.getByRole("menu", { name: label });
+          expect(submenu.classList.contains("w-max")).toBe(true);
+          expect(submenu.classList.contains("min-w-28")).toBe(true);
+          expect(submenu.classList.contains("max-w-64")).toBe(true);
+        }
+        fireEvent.click(reset);
+        expect(
+          screen
+            .getByRole("menuitem", { name: "Reset" })
+            .getAttribute("aria-disabled"),
+        ).toBe("true");
+        expect(store.get(sidebarOrganizationModeAtom)).toBe("chronological");
+        expect(store.get(sidebarEnvironmentGroupingAtom)).toBe("auto");
+        expect(store.get(sidebarChronologicalSortAtom)).toBe(
+          label === "Organize" ? "alpha" : "updated",
+        );
+        expect(store.get(sidebarSortDirectionAtom)).toBe(
+          label === "Organize" ? "descending" : "default",
+        );
+        expect(store.get(sidebarThreadLifecyclesAtom)).toEqual(
+          label === "Filter threads" ? ["active"] : ["draft", "archived"],
+        );
+        if (compact)
+          fireEvent.click(screen.getByRole("menuitem", { name: "Back" }));
+        else fireEvent.keyDown(reset, { key: "ArrowLeft" });
+        await waitFor(() =>
+          expect(screen.queryByRole("menuitem", { name: "Reset" })).toBeNull(),
+        );
+        await screen.findByRole("menuitem", { name: "New project" });
+      }
+      expect(
+        trigger.querySelector('[data-icon="MoreHorizontal"]'),
+      ).toBeTruthy();
+      expect(trigger.classList.contains("bg-state-active")).toBe(false);
     },
   );
 
@@ -302,7 +467,9 @@ describe("sidebar header controls", () => {
   it("announces compact sort direction and resets the nested page after closing", async () => {
     viewport.compact = true;
     const { store } = setup();
-    fireEvent.click(screen.getByRole("button", { name: "Pinned actions" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /^Pinned actions(?:;|$)/ }),
+    );
     fireEvent.click(await screen.findByRole("menuitem", { name: "Sort by" }));
     fireEvent.click(
       await screen.findByRole("menuitemradio", {
@@ -326,11 +493,15 @@ describe("sidebar header controls", () => {
         .getByRole("menuitemradio", { name: "Custom" })
         .getAttribute("aria-checked"),
     ).toBe("true");
-    fireEvent.click(screen.getByRole("button", { name: "Pinned actions" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /^Pinned actions(?:;|$)/ }),
+    );
     await waitFor(() =>
       expect(screen.queryByRole("menuitem", { name: "Back" })).toBeNull(),
     );
-    fireEvent.click(screen.getByRole("button", { name: "Pinned actions" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /^Pinned actions(?:;|$)/ }),
+    );
     expect(
       await screen.findByRole("menuitem", { name: "New project" }),
     ).toBeTruthy();

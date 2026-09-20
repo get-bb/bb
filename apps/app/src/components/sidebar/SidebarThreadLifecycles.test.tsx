@@ -163,13 +163,15 @@ describe("sidebar lifecycle groups", () => {
       ).toBeNull();
       const label = lifecycle === "draft" ? "Drafts" : "Archived";
       fireEvent.keyDown(
-        screen.getByRole("button", { name: `${label} actions` }),
+        screen.getByRole("button", {
+          name: new RegExp(`^${label} actions(?:;|$)`),
+        }),
         {
           key: "Enter",
         },
       );
       fireEvent.keyDown(
-        await screen.findByRole("menuitem", { name: "Filter" }),
+        await screen.findByRole("menuitem", { name: "Filter threads" }),
         {
           key: "ArrowRight",
         },
@@ -187,7 +189,7 @@ describe("sidebar lifecycle groups", () => {
       const trigger = screen.getByRole("button", { name: "Active actions" });
       fireEvent.keyDown(trigger, { key: "Enter" });
       expect(
-        await screen.findByRole("menuitem", { name: "Filter" }),
+        await screen.findByRole("menuitem", { name: "Filter threads" }),
       ).toBeTruthy();
     },
   );
