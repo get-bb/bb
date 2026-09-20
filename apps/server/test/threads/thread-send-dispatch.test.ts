@@ -7,6 +7,7 @@ import {
   markThreadDeleted,
   setQueuedThreadMessageFailureReason,
   setQueuedThreadMessageGroupBoundary,
+  deleteQueuedThreadMessage,
 } from "@bb/db";
 import type { EnvironmentRow } from "@bb/db";
 import {
@@ -1354,6 +1355,103 @@ describe("service tier execution lifecycle", () => {
       });
     },
   );
+
+  it("accepts concurrent retries once and remembers acceptance after queue consumption", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedProviderThreadFixture({
+        harness,
+        value: 181,
+        status: "active",
+        serviceTier: "default",
+      });
+      const args = {
+        thread,
+        payload: {
+          input: textInput("keep this message"),
+          clientSubmissionId: "same-submission",
+        },
+      };
+      const [first, retry] = await Promise.all([
+        createQueuedMessageForThread(harness.deps, args),
+        createQueuedMessageForThread(harness.deps, args),
+      ]);
+      expect(retry).toEqual(first);
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(1);
+      await expect(
+        createQueuedMessageForThread(harness.deps, {
+          ...args,
+          payload: { ...args.payload, input: textInput("different message") },
+        }),
+      ).rejects.toThrow("already used");
+      deleteQueuedThreadMessage(harness.db, harness.deps.hub, first.id);
+      expect(await createQueuedMessageForThread(harness.deps, args)).toEqual(
+        first,
+      );
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(0);
+    });
+  });
+
+  it("delivers a keyed steer into the active turn once while ordinary queued input waits", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedProviderThreadFixture({
+        harness,
+        value: 182,
+        status: "active",
+      });
+      seedTurnStarted(harness.deps, {
+        environmentId: environment.id,
+        providerThreadId: "provider-send-dispatch-182",
+        threadId: thread.id,
+        turnId: "turn-keyed-steer",
+      });
+      const waiting = await createQueuedMessageForThread(harness.deps, {
+        thread,
+        payload: { input: textInput("after this turn") },
+      });
+      const args = {
+        thread,
+        payload: {
+          input: textInput("change direction now"),
+          mode: "steer-if-active" as const,
+          clientSubmissionId: "steer-submission",
+        },
+      };
+      const [first, retry] = await Promise.all([
+        acceptThreadSendRequest(harness.deps, args),
+        acceptThreadSendRequest(harness.deps, args),
+      ]);
+      expect(retry).toEqual(first);
+      await runQueuedMessageDispatch(harness.deps, {
+        kind: "thread-ready",
+        threadId: thread.id,
+      });
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toMatchObject([
+        { id: waiting.id },
+      ]);
+      expect(
+        listQueuedThreadCommands(harness, "turn.submit", thread.id),
+      ).toMatchObject([
+        {
+          input: textInput("change direction now"),
+          target: { mode: "steer", expectedTurnId: "turn-keyed-steer" },
+        },
+      ]);
+      expect(await acceptThreadSendRequest(harness.deps, args)).toEqual(first);
+      await runQueuedMessageDispatch(harness.deps, {
+        kind: "thread-ready",
+        threadId: thread.id,
+      });
+      expect(
+        listQueuedThreadCommands(harness, "turn.submit", thread.id),
+      ).toHaveLength(1);
+      await expect(
+        acceptThreadSendRequest(harness.deps, {
+          ...args,
+          payload: { ...args.payload, mode: "queue-if-active" },
+        }),
+      ).rejects.toThrow("already used");
+    });
+  });
 
   it("keeps queued choices separate until dispatch and preserves the next row", async () => {
     await withTestHarness(async (harness) => {

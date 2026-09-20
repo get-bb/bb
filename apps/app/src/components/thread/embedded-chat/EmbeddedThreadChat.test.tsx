@@ -1,6 +1,13 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
+import { createDeferredPromise } from "@bb/test-helpers";
 import { useEffect, useLayoutEffect, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FollowUpComposerProps } from "@/components/promptbox/FollowUpPromptBox";
@@ -295,6 +302,9 @@ vi.mock("@/hooks/queries/system-queries", () => ({
   }),
 }));
 
+vi.mock("@/hooks/useRetainThreadMessage", () => ({
+  useRetainThreadMessage: () => ({ connected: true, retain: () => false }),
+}));
 vi.mock("@/hooks/mutations/thread-runtime-mutations", () => ({
   useCreateThreadQueuedMessage: () => ({
     mutateAsync: mocks.createQueuedMessageMutateAsync,
@@ -512,9 +522,39 @@ describe("EmbeddedThreadChat", () => {
       }),
     );
     expect(mocks.sendThreadMessageMutateAsync).not.toHaveBeenCalled();
+    await vi.waitFor(() => {
+      expect(
+        screen.getByTestId<HTMLInputElement>("embedded-chat-composer").value,
+      ).toBe("");
+    });
+  });
+
+  it("keeps a queued draft when the request fails after the composer closes", async () => {
+    mocks.threadRuntimeDisplayStatus = "active";
+    const pending = createDeferredPromise<void>();
+    mocks.createQueuedMessageMutateAsync.mockReturnValueOnce(pending.promise);
+    const first = renderEmbeddedChat();
+    fireEvent.change(screen.getByTestId("embedded-chat-composer"), {
+      target: { value: "Do not lose this" },
+    });
+    fireEvent.click(screen.getByText("Send"));
     expect(
       screen.getByTestId<HTMLInputElement>("embedded-chat-composer").value,
-    ).toBe("");
+    ).toBe("Do not lose this");
+    first.unmount();
+    await act(async () => {
+      pending.reject(new Error("Connection lost"));
+    });
+    renderEmbeddedChat();
+    expect(
+      screen.getByTestId<HTMLInputElement>("embedded-chat-composer").value,
+    ).toBe("Do not lose this");
+    fireEvent.click(screen.getByText("Send"));
+    await vi.waitFor(() => {
+      expect(
+        screen.getByTestId<HTMLInputElement>("embedded-chat-composer").value,
+      ).toBe("");
+    });
   });
 
   it("sends directly when the thread runtime is idle", async () => {

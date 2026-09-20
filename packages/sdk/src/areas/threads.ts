@@ -264,6 +264,7 @@ export interface ThreadDeleteArgs extends DeleteThreadRequest {
 }
 
 export interface ThreadSendArgs extends SendMessageRequest {
+  signal?: AbortSignal;
   threadId: string;
 }
 
@@ -312,6 +313,7 @@ export interface ThreadQueuedMessageArgs {
 }
 
 export interface ThreadQueuedMessageCreateArgs extends CreateQueuedMessageRequest {
+  signal?: AbortSignal;
   threadId: string;
 }
 
@@ -673,6 +675,7 @@ function updateJson(args: ThreadUpdateArgs): UpdateThreadRequest {
 
 function sendJson(args: ThreadSendArgs): SendMessageRequest {
   return {
+    clientSubmissionId: args.clientSubmissionId,
     input: args.input,
     mode: args.mode,
     model: args.model,
@@ -965,12 +968,15 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
   };
   const queuedMessages: ThreadQueuedMessagesArea = {
     async create(input) {
-      const { threadId, ...json } = input;
+      const { threadId, signal, ...json } = input;
       return transport.readJson(
-        transport.api.v1.threads[":id"]["queued-messages"].$post({
-          param: { id: threadId },
-          json,
-        }),
+        transport.api.v1.threads[":id"]["queued-messages"].$post(
+          {
+            param: { id: threadId },
+            json,
+          },
+          ...signalRequestArgs(signal),
+        ),
       );
     },
     async delete(input) {
@@ -1288,10 +1294,13 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
     },
     async send(input) {
       return transport.readJson(
-        transport.api.v1.threads[":id"].send.$post({
-          param: { id: input.threadId },
-          json: sendJson(input),
-        }),
+        transport.api.v1.threads[":id"].send.$post(
+          {
+            param: { id: input.threadId },
+            json: sendJson(input),
+          },
+          ...signalRequestArgs(input.signal),
+        ),
       );
     },
     async retry(input) {

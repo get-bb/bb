@@ -1,10 +1,12 @@
 import {
   createQueuedThreadMessage,
+  getQueuedThreadMessage,
   listEvents,
   listQueuedThreadMessages,
   setQueuedThreadMessageFailureReason,
   setQueuedThreadMessageGroupBoundary,
 } from "@bb/db";
+import { createDeferredPromise } from "@bb/test-helpers";
 import type { PluginHookName } from "@get-bb/plugin-sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -450,6 +452,138 @@ describe("the requested queue drain", () => {
       });
     },
   );
+
+  it.each([false, true])(
+    "resumes a fresh keyed Send after Stop while respecting plugin hold=%s",
+    async (held) => {
+      await withTestHarness(async (harness) => {
+        const { thread } = seedRunnableThread(harness, {
+          hostId: `host-keyed-resume-${held}`,
+          status: "active",
+        });
+        const older = seedQueuedMessage(harness.deps, {
+          threadId: thread.id,
+          content: textInput("Work queued before Stop"),
+          waitingOn: { kind: "thread-busy" },
+        });
+        await stopThread(harness, thread.id);
+        vi.useFakeTimers();
+        let hold = held;
+        let hookCalls = 0;
+        installHooks({
+          "message.dispatch": [
+            {
+              pluginId: "limiter",
+              handler: () => {
+                hookCalls += 1;
+                return hold
+                  ? ({ action: "wait", reason: "At capacity" } as const)
+                  : ({ action: "proceed" } as const);
+              },
+            },
+          ],
+        });
+        const args = {
+          thread,
+          payload: {
+            input: textInput("Resume this thread"),
+            mode: "queue-if-active" as const,
+            clientSubmissionId: "resume-after-stop",
+          },
+        };
+        const before = turnRequests(harness, thread.id).length;
+        const accepted = await acceptThreadSendRequest(harness.deps, args);
+        expect(hookCalls).toBe(1);
+        expect(turnRequests(harness, thread.id)).toHaveLength(
+          before + (held ? 0 : 1),
+        );
+        expect(await acceptThreadSendRequest(harness.deps, args)).toEqual(
+          accepted,
+        );
+        expect(hookCalls).toBe(1);
+        if (held) {
+          expect(
+            listQueuedThreadMessages(harness.db, thread.id)[1]?.waitingOn,
+          ).toBe(
+            JSON.stringify({
+              kind: "plugin",
+              pluginId: "limiter",
+              reason: "At capacity",
+            }),
+          );
+          hold = false;
+          vi.advanceTimersByTime(1_001);
+          await runPluginWake(harness);
+        }
+        expect(turnRequests(harness, thread.id)).toHaveLength(before + 1);
+        expect(listQueuedThreadMessages(harness.db, thread.id)).toMatchObject([
+          { id: older.id, claimedAt: null },
+        ]);
+      });
+    },
+  );
+
+  it("delivers overlapping distinct keyed Steers without another dispatch wake", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedRunnableThread(harness, {
+        hostId: "host-overlapping-keyed-steers",
+        status: "active",
+      });
+      const older = seedQueuedMessage(harness.deps, {
+        threadId: thread.id,
+        content: textInput("After the active turn"),
+        waitingOn: { kind: "thread-busy" },
+      });
+      const entered = createDeferredPromise<void>();
+      const release = createDeferredPromise<void>();
+      installHooks({
+        "message.dispatch": [
+          {
+            pluginId: "barrier",
+            handler: async () => {
+              entered.resolve();
+              await release.promise;
+              return { action: "proceed" } as const;
+            },
+          },
+        ],
+      });
+      const before = turnRequests(harness, thread.id).length;
+      const send = (id: string) =>
+        acceptThreadSendRequest(harness.deps, {
+          thread,
+          payload: {
+            input: textInput(id),
+            mode: "steer-if-active",
+            clientSubmissionId: id,
+          },
+        });
+      const first = send("steer-a");
+      await entered.promise;
+      const second = send("steer-b");
+      const third = send("steer-c");
+      try {
+        await vi.waitFor(() => {
+          for (const id of ["steer-a", "steer-b", "steer-c"]) {
+            expect(
+              getQueuedThreadMessage(harness.db, `qmsg_${thread.id}_${id}`),
+            ).not.toBeNull();
+          }
+        });
+      } finally {
+        release.resolve();
+      }
+      await Promise.all([first, second, third]);
+      await vi.waitFor(() =>
+        expect(turnRequests(harness, thread.id)).toHaveLength(before + 3),
+      );
+      await send("steer-b");
+      expect(turnRequests(harness, thread.id)).toHaveLength(before + 3);
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toMatchObject([
+        { id: older.id },
+      ]);
+    });
+  });
 
   it("resumes host-offline work without releasing ordinary work paused by Stop", async () => {
     await withTestHarness(async (harness) => {

@@ -49,6 +49,7 @@ interface QueueListOptions extends JsonOptions {
 }
 
 interface QueueCreateOptions extends JsonOptions {
+  submissionId?: string;
   messageFile?: string;
   model?: string;
 }
@@ -342,6 +343,10 @@ export function registerOrganizationCommands(
   queue
     .command("create <threadId> [message]")
     .description("Create a queued text message")
+    .option(
+      "--submission-id <id>",
+      "Reuse this ID to avoid duplicates when retrying",
+    )
     .option("--model <model>", "Model override for the queued message")
     .option(
       "--message-file <path>",
@@ -364,6 +369,9 @@ export function registerOrganizationCommands(
           const result = await createCliBbSdk(
             getUrl(),
           ).threads.queuedMessages.create({
+            ...(opts.submissionId === undefined
+              ? {}
+              : { clientSubmissionId: opts.submissionId }),
             threadId,
             input: [{ type: "text", text: message, mentions: [] }],
             ...(opts.model ? { model: opts.model } : {}),

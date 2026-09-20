@@ -178,6 +178,7 @@ export const serverAccessStatusSchema = z.object({
 export type ServerAccessStatus = z.infer<typeof serverAccessStatusSchema>;
 
 export const systemConfigResponseSchema = z.object({
+  messageSubmissionKeys: z.boolean().optional(),
   serverAccess: serverAccessStatusSchema,
   generalSettings: appSettingsSchema.extend({
     showUnhandledProviderEvents: z.boolean().optional(),

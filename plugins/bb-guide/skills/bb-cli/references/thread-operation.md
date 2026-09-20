@@ -1,5 +1,7 @@
 # Thread coordination and inspection
 
+For duplicate-safe retries of ordinary messages, use `bb thread tell ID MESSAGE --mode queue --submission-id KEY` or `bb thread queue create ID MESSAGE --submission-id KEY`. Use `--mode steer` to join the active turn when possible. Reuse the same key, mode, and payload for retries on the same thread, including after a response is lost. Keys remain recognized after the queued message has dispatched; different content or delivery intent with the same key is rejected. Submission keys do not apply to commands or scheduled sends.
+
 ## Coordinating Work
 
 - Use one clear owner per task.

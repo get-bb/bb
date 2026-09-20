@@ -53,6 +53,11 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { Transform } from "@dnd-kit/utilities";
+import {
+  usePendingThreadMessages,
+  removePendingThreadMessage,
+  getPendingThreadMessages,
+} from "@/lib/pending-thread-messages";
 import type {
   PromptInput,
   PromptTextMention,
@@ -199,6 +204,9 @@ function getDrawerHeight({
             total +
             DRAWER_ROW_HEIGHT +
             (queuedMessage.initiator !== "user" ||
+            getPendingThreadMessages().some(
+              (entry) => entry.row.id === queuedMessage.id,
+            ) ||
             queuedMessageHasWaitLine(queuedMessage) ||
             queuedMessage.id === processingMessageId
               ? queuedMessage.initiator === "agent" &&
@@ -703,18 +711,27 @@ function QueuedMessageWaitLine({
   pluginDisplayName: string;
   queuedMessage: ThreadQueuedMessage;
 }) {
+  const pending = usePendingThreadMessages().find(
+    (entry) => entry.row.id === queuedMessage.id,
+  );
   const now = useSecondTick();
-  const label = describeQueuedMessageWait({
-    failureReason: queuedMessage.failureReason,
-    now,
-    payload: queuedMessage.payload,
-    pluginDisplayName,
-    sendAt: queuedMessage.sendAt,
-    waitingOn: queuedMessage.waitingOn,
-  });
+  const label = pending
+    ? (pending.error ?? "Connecting to server")
+    : describeQueuedMessageWait({
+        failureReason: queuedMessage.failureReason,
+        now,
+        payload: queuedMessage.payload,
+        pluginDisplayName,
+        sendAt: queuedMessage.sendAt,
+        waitingOn: queuedMessage.waitingOn,
+      });
   if (label === null) return null;
-  const failed = queuedMessage.failureReason !== null;
-  const icon = queuedMessageWaitIcon(queuedMessage);
+  const failed = pending?.error != null || queuedMessage.failureReason !== null;
+  const icon = pending
+    ? failed
+      ? "AlertCircle"
+      : "Loading"
+    : queuedMessageWaitIcon(queuedMessage);
   const countdownInstant = queuedMessageCountdownInstant(queuedMessage);
   const countdown =
     countdownInstant === null
@@ -730,7 +747,11 @@ function QueuedMessageWaitLine({
       )}
     >
       {icon !== null ? (
-        <Icon name={icon} className="size-3 shrink-0" aria-hidden />
+        <Icon
+          name={icon}
+          className={cn("size-3 shrink-0", pending && !failed && "animate-spin")}
+          aria-hidden
+        />
       ) : queuedMessage.waitingOn?.kind === "plugin" ? (
         <PluginIcon
           pluginId={queuedMessage.waitingOn.pluginId}
@@ -782,6 +803,14 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
   compact,
   isGroupBoundary,
 }: QueuedMessageRowProps) {
+  const pending = usePendingThreadMessages().find(
+    (entry) => entry.row.id === queuedMessage.id,
+  );
+  sendDisabled ||= pending !== undefined;
+  dragDisabled ||= pending !== undefined;
+  const deleteMessage = pending
+    ? () => removePendingThreadMessage(queuedMessage.id)
+    : () => onDelete(queuedMessage.id);
   const actionsRef = useRef<HTMLDivElement>(null);
   const focusActionsOnExpandRef = useRef(false);
   useLayoutEffect(() => {
@@ -800,7 +829,8 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
       ? queuedMessage.waitingOn.pluginId
       : "",
   );
-  const hasWaitLine = queuedMessageHasWaitLine(queuedMessage);
+  const hasWaitLine =
+    pending !== undefined || queuedMessageHasWaitLine(queuedMessage);
   const sendAllowed =
     sendAction === "steer-when-ready" ||
     isQueuedMessageSendNowAllowed(queuedMessage.waitingOn);
@@ -997,7 +1027,7 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
                           "shrink-0 text-muted-foreground",
                           compact ? "size-7" : "size-8",
                         )}
-                        disabled={actionDisabled}
+                        disabled={actionDisabled || pending !== undefined}
                         onClick={() =>
                           onEdit({
                             queuedMessageId: queuedMessage.id,
@@ -1024,8 +1054,11 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
                         "shrink-0 text-muted-foreground hover:text-destructive max-md:text-destructive",
                         compact ? "size-7" : "size-8",
                       )}
-                      disabled={actionDisabled}
-                      onClick={() => onDelete(queuedMessage.id)}
+                      disabled={
+                        actionDisabled ||
+                        (pending !== undefined && pending.error === null)
+                      }
+                      onClick={deleteMessage}
                       aria-label={`Delete queued message ${index + 1}`}
                     >
                       <Icon name="Trash2" className="size-4" aria-hidden />
@@ -1240,6 +1273,7 @@ export function QueuedMessagesList({
   onEdit,
   onDelete,
 }: QueuedMessagesListProps) {
+  const pendingMessages = usePendingThreadMessages();
   const senderThreadMetadataById = useSenderThreadMetadataById();
   const processingLabel =
     processingAction === "edit"
@@ -1455,7 +1489,12 @@ export function QueuedMessagesList({
     ];
   }, [groupBoundaryIndex, orderedMessages]);
   const sortingDisabled =
-    actionDisabled || processingMessageId !== null || queuedMessages.length < 2;
+    actionDisabled ||
+    processingMessageId !== null ||
+    queuedMessages.length < 2 ||
+    queuedMessages.some((row) =>
+      pendingMessages.some((entry) => entry.row.id === row.id),
+    );
   const sortableIds = useMemo(
     () =>
       inlineEditor

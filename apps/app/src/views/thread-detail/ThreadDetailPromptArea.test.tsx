@@ -653,6 +653,9 @@ vi.mock("@/hooks/mutations/project-mutations", () => ({
   }),
 }));
 
+vi.mock("@/hooks/useRetainThreadMessage", () => ({
+  useRetainThreadMessage: () => ({ connected: true, retain: () => false }),
+}));
 vi.mock("@/hooks/mutations/thread-runtime-mutations", () => ({
   useCancelThreadPlan: () => ({
     isPending: false,
@@ -1150,6 +1153,37 @@ describe("ThreadDetailPromptArea", () => {
     );
     expect(onSubmit).not.toHaveBeenCalled();
   });
+
+  it.each(["accepted", "failed"])(
+    "retains the queued draft until the request is %s",
+    async (outcome) => {
+      mocks.promptDraft.text = "Keep this queued prompt";
+      const pending = createDeferredPromise<ThreadQueuedMessage>();
+      mocks.createQueuedMessageMutateAsync.mockReturnValueOnce(pending.promise);
+      renderPromptArea({
+        thread: makeThread({
+          status: "active",
+          runtime: {
+            displayStatus: "active",
+            hostReconnectGraceExpiresAt: null,
+          },
+        }),
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Submit composer" }));
+      await waitFor(() =>
+        expect(mocks.createQueuedMessageMutateAsync).toHaveBeenCalledTimes(1),
+      );
+      expect(mocks.promptDraft.clearIfCurrentMatches).not.toHaveBeenCalled();
+      await act(async () => {
+        if (outcome === "accepted") pending.resolve(makeQueuedMessage());
+        else pending.reject(new Error("Connection lost"));
+      });
+      expect(mocks.promptDraft.clearIfCurrentMatches).toHaveBeenCalledTimes(
+        outcome === "accepted" ? 1 : 0,
+      );
+      expect(mocks.promptDraft.restoreIfEmpty).not.toHaveBeenCalled();
+    },
+  );
 
   it("keeps the queued drawer adjacent to the bottom composer", () => {
     mocks.queuedMessages = [makeQueuedMessage()];
