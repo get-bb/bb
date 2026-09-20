@@ -18,6 +18,7 @@ import {
   buildPinnedSidebarState,
   buildProjectThreadGroups,
   buildSectionThreadList,
+  buildSidebarEntitySectionId,
 } from "@bb/client-core";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
@@ -124,12 +125,17 @@ function LifecycleContents({ empty }: { empty: boolean }) {
           threads: lifecycles.threads,
         }}
         compareThreads={() => 0}
-        sections={[]}
+        sections={lifecycles.threads.some((thread) => thread.sectionId === "archive-section")
+          ? [{ id: "archive-section", name: "Review" }]
+          : []}
         collapsedThreadIds={new Set()}
         collapsedEnvironmentIds={new Set()}
         onToggleThreadCollapsed={vi.fn()}
         onToggleEnvironmentCollapsed={vi.fn()}
-        topLevelSectionOrder={["threads"]}
+        topLevelSectionOrder={[
+          "threads",
+          buildSidebarEntitySectionId("section", "archive-section"),
+        ]}
         onTopLevelSectionOrderChange={vi.fn()}
         pinnedReorderPending={false}
         pinnedThreads={[]}
@@ -312,7 +318,10 @@ describe("sidebar lifecycle placement", () => {
       fireEvent.click(screen.getByRole("menuitemcheckbox", { name: lifecycle === "draft" ? "Drafts" : "Archived" }));
       expect(store.get(sidebarThreadLifecyclesAtom)).toEqual(["active"]);
       expect(screen.getByText("No threads")).toBeTruthy();
-      const trigger = screen.getByRole("button", {
+      for (const menu of screen.queryAllByRole("menu").reverse()) {
+        fireEvent.keyDown(menu, { key: "Escape" });
+      }
+      const trigger = await screen.findByRole("button", {
         name: /^Threads actions(?:;|$)/,
       });
       fireEvent.keyDown(trigger, { key: "Enter" });
