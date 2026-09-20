@@ -112,18 +112,18 @@ function SidebarViewItems({ page }: { page: SidebarViewPage }) {
         : "sections";
   const sortOptions = [
     {
-      label: "Updated at",
+      label: "Updated",
       sort: "updated",
       direction: "descending",
       includeGroups: false,
     },
     {
-      label: `Updated at (include ${unit})`,
+      label: `Updated (with ${unit})`,
       sort: "updated",
       direction: "descending",
       includeGroups: true,
     },
-    { label: "Created at", sort: "created", direction: "descending" },
+    { label: "Created", sort: "created", direction: "descending" },
     { label: "Alphabetical", sort: "alpha", direction: "ascending" },
   ] as const;
   return (

@@ -254,20 +254,20 @@ describe("sidebar header controls", () => {
     expect(store.get(sidebarEnvironmentGroupingAtom)).toBe("auto");
   });
 
-  it("preserves Updated at direction toggling", async () => {
+  it("preserves Updated direction toggling", async () => {
     const { store } = setup();
     await openMenu();
     await openSubmenu("Sort by");
     fireEvent.click(
       screen.getByRole("menuitemradio", {
-        name: "Updated at, descending. Sort ascending",
+        name: "Updated, descending. Sort ascending",
       }),
     );
     expect(store.get(sidebarSortDirectionAtom)).toBe("ascending");
     expect(screen.queryByRole("menuitemcheckbox")).toBeNull();
     fireEvent.click(
       screen.getByRole("menuitemradio", {
-        name: "Updated at, ascending. Sort descending",
+        name: "Updated, ascending. Sort descending",
       }),
     );
     expect(store.get(sidebarSortDirectionAtom)).toBe("descending");
@@ -283,7 +283,7 @@ describe("sidebar header controls", () => {
     await openSubmenu("Sort by");
     fireEvent.click(screen.getByRole("menuitemradio", { name: "Alphabetical" }));
     const option = await screen.findByRole("menuitemradio", {
-      name: `Updated at (include ${unit})`,
+      name: `Updated (with ${unit})`,
     });
     expect(option.getAttribute("aria-disabled")).not.toBe("true");
     expect(option.getAttribute("aria-checked")).toBe("false");
@@ -294,13 +294,13 @@ describe("sidebar header controls", () => {
     expect(option.getAttribute("aria-checked")).toBe("true");
     expect(
       screen
-        .getByRole("menuitemradio", { name: "Updated at" })
+        .getByRole("menuitemradio", { name: "Updated" })
         .getAttribute("aria-checked"),
     ).toBe("false");
     fireEvent.click(option);
     expect(store.get(sidebarSortDirectionAtom)).toBe("ascending");
     expect(store.get(sidebarSortGroupsByRecencyAtom)).toBe(true);
-    fireEvent.click(screen.getByRole("menuitemradio", { name: "Updated at" }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Updated" }));
     expect(store.get(sidebarSortGroupsByRecencyAtom)).toBe(false);
     expect(option.getAttribute("aria-checked")).toBe("false");
   });
@@ -319,36 +319,36 @@ describe("sidebar header controls", () => {
         await openSubmenu("Sort by");
       }
       const option = await screen.findByRole("menuitemradio", {
-        name: /Updated at \(include sections\)/,
+        name: /Updated \(with sections\)/,
       });
       expect(option.getAttribute("aria-disabled")).toBe("true");
       expect(option.getAttribute("aria-checked")).toBe("true");
       fireEvent.click(option);
       expect(store.get(sidebarSortGroupsByRecencyAtom)).toBe(true);
       expect(store.get(sidebarSortDirectionAtom)).toBe("default");
-      fireEvent.click(screen.getByRole("menuitemradio", { name: "Updated at" }));
+      fireEvent.click(screen.getByRole("menuitemradio", { name: "Updated" }));
       expect(store.get(sidebarSortGroupsByRecencyAtom)).toBe(false);
     },
   );
 
-  it("offers both Updated at choices in the compact sort menu and resets after closing", async () => {
+  it("offers both Updated choices in the compact sort menu and resets after closing", async () => {
     viewport.compact = true;
     const { store } = setup();
     fireEvent.click(screen.getByRole("button", { name: "Pinned actions" }));
     fireEvent.click(await screen.findByRole("menuitem", { name: "Sort by" }));
     fireEvent.click(
       await screen.findByRole("menuitemradio", {
-        name: /Updated at\s*, descending\. Sort ascending/,
+        name: /Updated\s*, descending\. Sort ascending/,
       }),
     );
     expect(store.get(sidebarSortDirectionAtom)).toBe("ascending");
     fireEvent.click(
-      screen.getByRole("menuitemradio", { name: "Updated at (include projects)" }),
+      screen.getByRole("menuitemradio", { name: "Updated (with projects)" }),
     );
     expect(store.get(sidebarSortGroupsByRecencyAtom)).toBe(true);
     expect(
       screen.getByRole("menuitemradio", {
-        name: /Updated at \(include projects\)\s*, descending\. Sort ascending/,
+        name: /Updated \(with projects\)\s*, descending\. Sort ascending/,
       }),
     ).toBeTruthy();
     expect(screen.getAllByRole("menuitemradio")).toHaveLength(4);

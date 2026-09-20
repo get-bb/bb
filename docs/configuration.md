@@ -734,17 +734,17 @@ expectedRevision })`, and `.reset({ key })` over `GET /preferences/ui`,
 `PUT /preferences/ui/:key`, and `DELETE /preferences/ui/:key`. Every write
 broadcasts a `ui-preferences-changed` system change to connected clients.
 
-**Updated at (include projects)** in the thread-list header's **Sort by** menu
+**Updated (with projects)** in the thread-list header's **Sort by** menu
 enables `sidebar.sortGroupsByRecency` (off by default). The label uses
 **sections** or **machines** instead when that organization mode is selected.
 In Custom view, this row is disabled until a custom section exists.
-The plain **Updated at** row disables it. Selecting the active row again reverses
+The plain **Updated** row disables it. Selecting the active row again reverses
 its direction. The option orders
 projects, custom sections, machines, environments, and parent threads by their
 highest-ranked visible thread. Running work stays first; empty groups follow
 populated groups. Pinned placement is preserved. Turning it off restores saved
 group order; dragging top-level groups saves that order and turns the option off.
-Created at and Alphabetical leave it inactive. Enable it through the CLI with
+Created and Alphabetical leave it inactive. Enable it through the CLI with
 `bb settings ui set sidebar.sortGroupsByRecency true`.
 
 The sidebar waits for these values alongside the project list, so it never

@@ -294,17 +294,17 @@ Sort by selects a field, and selecting it again reverses its direction.
 `sidebar.sortDirection` accepts `ascending`, `descending`, or `default`.
 The default preserves each field's original order (newest first for dates,
 A–Z for titles). For example: `bb settings ui set sidebar.sortDirection ascending`.
-Updated at (include projects) is a separate row in Sort by. Its label uses
+Updated (with projects) is a separate row in Sort by. Its label uses
 sections or machines for those organization modes. In Custom view, the row is
 disabled until a custom section exists. The option enables
-`sidebar.sortGroupsByRecency` (off by default); the plain Updated at row disables
+`sidebar.sortGroupsByRecency` (off by default); the plain Updated row disables
 it. The CLI equivalent is `bb settings ui set sidebar.sortGroupsByRecency true`.
-During Updated at sorting,
+During Updated sorting,
 projects, custom sections, machines, environments, and parent threads inherit
 their highest-ranked visible thread. Running work stays first; empty groups
 follow populated groups. Pinned placement is preserved. Turning it off restores
 saved group order; dragging top-level groups saves their order and turns it off.
-Created at and Alphabetical leave the option inactive.
+Created and Alphabetical leave the option inactive.
 
 Sidebar footer actions
 
