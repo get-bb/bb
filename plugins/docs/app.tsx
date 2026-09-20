@@ -1581,7 +1581,7 @@ function NotesSidebarNavigation(props: NotesSidebarNavigationProps) {
               props.onSearchOpenChange(false);
             }}
           >
-            <HugeiconsIcon icon={Cancel01Icon} />
+            <HugeiconsIcon icon={Cancel01Icon} className="size-4" />
           </Button>
         </>
       ) : null}
@@ -1594,7 +1594,7 @@ function NotesSidebarNavigation(props: NotesSidebarNavigationProps) {
             aria-label="Search notes"
             onClick={() => props.onSearchOpenChange(true)}
           >
-            <HugeiconsIcon icon={Search01Icon} />
+            <HugeiconsIcon icon={Search01Icon} className="size-4" />
           </Button>
           <Button
             className="size-8"
@@ -1603,7 +1603,7 @@ function NotesSidebarNavigation(props: NotesSidebarNavigationProps) {
             aria-label="New note"
             onClick={props.onNewNote}
           >
-            <HugeiconsIcon icon={FileAddIcon} />
+            <HugeiconsIcon icon={FileAddIcon} className="size-4" />
           </Button>
           <Button
             className="size-8"
@@ -1612,7 +1612,7 @@ function NotesSidebarNavigation(props: NotesSidebarNavigationProps) {
             aria-label="New folder"
             onClick={props.onNewFolder}
           >
-            <HugeiconsIcon icon={FolderAddIcon} />
+            <HugeiconsIcon icon={FolderAddIcon} className="size-4" />
           </Button>
           <span className="min-w-0 flex-1" />
         </>
@@ -1963,7 +1963,7 @@ function Tree({
             aria-label="Add vault"
             onClick={onAddVault}
           >
-            <HugeiconsIcon icon={PlusSignIcon} />
+            <HugeiconsIcon icon={PlusSignIcon} className="size-4" />
           </Button>
         </div>
         {hostUnavailable ? (
