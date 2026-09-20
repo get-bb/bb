@@ -1196,7 +1196,8 @@ function DocumentPicker() {
         subPath={subPath}
         navigationOnly
         onNavigate={(next) => {
-          const { vaultId, filePath } = parseRoute(next);
+          const [vaultId, ...parts] = next.split("/");
+          const filePath = parts.join("/");
           if (vaultId && filePath) {
             const title = (filePath.split("/").pop() ?? filePath).replace(
               /\.(md|html?)$/i,

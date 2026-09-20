@@ -1564,8 +1564,8 @@ describe("Docs nav panel", () => {
           listNotes: () =>
             listNotesResult([
               {
-                path: "Launch email.md",
-                title: "Launch email",
+                path: "Launch 50%.md",
+                title: "Launch 50%",
                 preview: "A draft",
                 modifiedAtMs: 1,
               },
@@ -1573,14 +1573,14 @@ describe("Docs nav panel", () => {
         },
       },
     );
-    fireEvent.click(await slot.findByRole("button", { name: "Launch email" }));
+    fireEvent.click(await slot.findByRole("button", { name: "Launch 50%" }));
     expect(openThreadPanel).toHaveBeenCalledWith({
       actionId: "document",
-      title: "Launch email",
+      title: "Launch 50%",
       params: {
         vaultId: "personal",
-        path: "Launch email.md",
-        title: "Launch email",
+        path: "Launch 50%.md",
+        title: "Launch 50%",
       },
     });
     expect(slot.navigateCalls).toEqual([]);
