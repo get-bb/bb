@@ -285,7 +285,7 @@ function createFollowUpPromptBoxProps(
         onQueryChange: vi.fn(),
       },
       command: {
-        trigger: null,
+        triggers: [],
         suggestions: [],
         isLoading: false,
         isError: false,

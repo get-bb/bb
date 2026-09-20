@@ -619,6 +619,90 @@ describe("plugin service", () => {
     expect(service.getApi("vanishing")).toBeDefined();
   });
 
+  it("expects a plugin to run until its load pass ends without reaching it", async () => {
+    const globals = globalThis as Record<string, unknown>;
+    globals.__slowFactoryEntered = false;
+    const slowRoot = await writePlugin(workDir, {
+      name: "bb-plugin-aaa-slow",
+      serverSource: `
+        export default async function plugin() {
+          (globalThis as any).__slowFactoryEntered = true;
+          await new Promise((resolve) => setTimeout(resolve, 300));
+        }
+      `,
+    });
+    const pendingRoot = await writePlugin(workDir, {
+      name: "bb-plugin-zzz-pending",
+      serverSource: `export default function plugin() {}`,
+    });
+    const brokenRoot = await writePlugin(workDir, {
+      name: "bb-plugin-zzz-broken",
+      serverSource: `export default function plugin() { throw new Error("nope"); }`,
+    });
+    const install = (id: string, rootDir: string) => {
+      upsertInstalledPlugin(db, {
+        id,
+        source: `path:${rootDir}`,
+        provenance: { kind: "direct" },
+        sourceIntent: { kind: "path", canonicalPath: rootDir },
+        exactResolution: { kind: "path" },
+        updateState: {
+          lastCheckAt: null,
+          availableCompatibleVersion: null,
+          newestIncompatibleVersion: null,
+          statusDetail: null,
+        },
+        activeArtifactId: null,
+        rootDir,
+        version: "0.1.0",
+        enabled: true,
+      });
+    };
+    install("aaa-slow", slowRoot);
+    install("zzz-pending", pendingRoot);
+    install("zzz-broken", brokenRoot);
+
+    const booting = createPluginService({
+      aiServices: createAiServiceRegistry(),
+      telemetry: createNoopTelemetryService(),
+      db,
+      hub: {
+        getDaemonSessionIdForHost: () => null,
+        notifyPluginSignal: () => 0,
+        notifySystem: () => {},
+      },
+      logger,
+      dataDir: join(workDir, "data"),
+      appVersion: "0.9.0",
+      loadTimeoutMs: 2000,
+      bundledPlugins: [],
+    });
+    try {
+      const started = booting.start();
+      await vi.waitFor(() => {
+        expect(globals.__slowFactoryEntered).toBe(true);
+      });
+      expect(booting.isPluginExpectedToRun("zzz-pending")).toBe(true);
+      expect(booting.isPluginExpectedToRun("never-installed")).toBe(false);
+      await started;
+
+      expect(booting.isPluginExpectedToRun("zzz-pending")).toBe(true);
+      expect(booting.isPluginExpectedToRun("zzz-broken")).toBe(false);
+
+      install("arrived-late", pendingRoot);
+      expect(
+        booting.list().find((entry) => entry.id === "arrived-late")?.status,
+      ).toBe("starting");
+      expect(booting.isPluginExpectedToRun("arrived-late")).toBe(false);
+
+      await booting.setEnabled("zzz-pending", false);
+      expect(booting.isPluginExpectedToRun("zzz-pending")).toBe(false);
+    } finally {
+      delete globals.__slowFactoryEntered;
+      await booting.stop();
+    }
+  });
+
   it("logs a warning when a host upgrade makes an installed plugin incompatible (#1915)", async () => {
     const lines: string[] = [];
     const push = (level: string) => (message: unknown) => {
@@ -1035,6 +1119,152 @@ describe("plugin service", () => {
     );
     const enabled = await service.setEnabled("switchable", true);
     expect(enabled?.status).toBe("running");
+  });
+
+  it("holds a plugin at start without running its factory or starting its services", async () => {
+    const globals = globalThis as Record<string, unknown>;
+    const heldRoot = await writePlugin(workDir, {
+      name: "bb-plugin-held-tunnel",
+      serverSource: `export default function plugin(bb: any) {
+        const g = globalThis as any;
+        g.__heldFactoryRuns = (g.__heldFactoryRuns ?? 0) + 1;
+        bb.background.service("tunnel", {
+          start(signal: any) {
+            g.__heldServiceStarts = (g.__heldServiceStarts ?? 0) + 1;
+            return new Promise<void>((resolve) => {
+              signal.addEventListener("abort", () => resolve());
+            });
+          },
+        });
+      }`,
+    });
+    const otherRoot = await writePlugin(workDir, {
+      name: "bb-plugin-unheld",
+      serverSource: `export default function plugin() {}`,
+    });
+    const held = await service.installPath(heldRoot);
+    await service.installPath(otherRoot);
+    await service.stop();
+    globals.__heldFactoryRuns = 0;
+    globals.__heldServiceStarts = 0;
+    service = createTelemetryTrackedService([]);
+
+    try {
+      await service.start({
+        hold: {
+          source: held.source,
+          detail: "Held for this test.",
+          isActive: async () => true,
+        },
+      });
+
+      expect(service.getApi("held-tunnel")).toBeUndefined();
+      expect(
+        service.list().find((entry) => entry.id === "held-tunnel"),
+      ).toMatchObject({
+        enabled: true,
+        status: "disabled",
+        statusDetail: "Held for this test.",
+      });
+      expect(globals.__heldFactoryRuns).toBe(0);
+      expect(globals.__heldServiceStarts).toBe(0);
+      expect(service.getApi("unheld")).toBeDefined();
+    } finally {
+      delete globals.__heldFactoryRuns;
+      delete globals.__heldServiceStarts;
+    }
+  });
+
+  describe("while a plugin is held", () => {
+    const HELD_DETAIL = "Held for this test.";
+    const globals = globalThis as Record<string, unknown>;
+    let holdActive = true;
+
+    beforeEach(async () => {
+      holdActive = true;
+      globals.__heldLoads = 0;
+      const heldRoot = await writePlugin(workDir, {
+        name: "bb-plugin-held-copy",
+        serverSource: `export default function plugin() {
+          const g = globalThis as any;
+          g.__heldLoads = (g.__heldLoads ?? 0) + 1;
+        }`,
+      });
+      const otherRoot = await writePlugin(workDir, {
+        name: "bb-plugin-free-copy",
+        serverSource: `export default function plugin() {}`,
+      });
+      const held = await service.installPath(heldRoot);
+      await service.installPath(otherRoot);
+      await service.stop();
+      globals.__heldLoads = 0;
+      service = createTelemetryTrackedService([]);
+      await service.start({
+        hold: {
+          source: held.source,
+          detail: HELD_DETAIL,
+          isActive: async () => holdActive,
+        },
+      });
+    });
+
+    afterEach(() => {
+      delete globals.__heldLoads;
+    });
+
+    function expectHeld(): void {
+      expect(service.getApi("held-copy")).toBeUndefined();
+      expect(
+        service.list().find((entry) => entry.id === "held-copy"),
+      ).toMatchObject({
+        enabled: true,
+        status: "disabled",
+        statusDetail: HELD_DETAIL,
+      });
+      expect(globals.__heldLoads).toBe(0);
+    }
+
+    it("keeps it unloaded when it is enabled, even when it is already enabled", async () => {
+      expect(await service.setEnabled("held-copy", true)).toMatchObject({
+        status: "disabled",
+        statusDetail: HELD_DETAIL,
+      });
+      expectHeld();
+
+      await service.setEnabled("held-copy", false);
+      expect(await service.setEnabled("held-copy", true)).toMatchObject({
+        status: "disabled",
+        statusDetail: HELD_DETAIL,
+      });
+      expectHeld();
+    });
+
+    it("keeps it unloaded on a reload of every plugin or of that plugin alone", async () => {
+      expect(await service.reload()).toMatchObject({ ok: true });
+      expectHeld();
+      expect(service.getApi("free-copy")).toBeDefined();
+
+      expect(await service.reload("held-copy")).toMatchObject({ ok: true });
+      expectHeld();
+    });
+
+    it("keeps it unloaded when its settings are updated", async () => {
+      expect(await service.updateSettings("held-copy", {})).toBeUndefined();
+      expectHeld();
+    });
+
+    it("loads it on enable or reload once the hold is released, without a restart", async () => {
+      holdActive = false;
+
+      expect(await service.setEnabled("held-copy", true)).toMatchObject({
+        status: "running",
+      });
+      expect(service.getApi("held-copy")).toBeDefined();
+      expect(globals.__heldLoads).toBe(1);
+
+      expect(await service.reload("held-copy")).toMatchObject({ ok: true });
+      expect(globals.__heldLoads).toBe(2);
+    });
   });
 
   it("enables a disabled path plugin when it is reinstalled", async () => {

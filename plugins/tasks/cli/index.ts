@@ -1,8 +1,11 @@
 import { resolve } from "node:path";
-import type {
-  BbPluginApi,
-  PluginCliContext,
-  PluginCliResult,
+import {
+  PluginCliError,
+  cliCommand,
+  defineCli,
+  type BbPluginApi,
+  type PluginCliContext,
+  type PluginCliResult,
 } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 
@@ -20,7 +23,11 @@ import {
 import { delegationRpcContract } from "../delegate/contract";
 import { handlers as delegationHandlers } from "../delegate";
 import {
+  presetReasoningLevelSchema,
   tasksRpcContract,
+  PRESET_PERMISSION_MODES,
+  TASK_PRIORITIES,
+  TASK_STATUSES,
   ULID_PATTERN,
   type Attachment,
   type Folder,
@@ -37,96 +44,48 @@ import {
   TASKS_PAGE_DEFAULT_LIMIT,
   TASKS_PAGE_MAX_LIMIT,
 } from "../shared/pagination";
-import {
-  allocatePrefix,
-  assertAllowed,
-  CliError,
-  option,
-  options,
-  parseArgs,
-  requireOption,
-  requirePositionals,
-  type ParsedArgs,
-} from "./args";
 import { bytes, detail, oneLine, table } from "./format";
+import { allocatePrefix } from "./prefix";
 import { seedDemo } from "./seed";
 
 const TASK_KEY_PATTERN = /^([A-Z][A-Z0-9]{0,9})-(\d+)$/;
+const BB_PROJECT_ID_PATTERN = /^proj_[A-Za-z0-9_-]+$/;
 const ACTIVE_THREAD_STATUSES = new Set(["starting", "working"]);
 const DEFAULT_PROJECT_COLOR = "blue";
 const DEFAULT_LABEL_COLOR = "gray";
 
-const ROOT_HELP = `Usage: bb tasks <command> [options]
+const PRESET_SERVICE_TIERS = ["default", "fast", "none"] as const;
+const PRESET_ENVIRONMENTS = ["project-default", "worktree"] as const;
 
-Commands:
-  status                         Show plugin status
-  project create|list|show|update
-  folder create|list|update|delete
-  create                         Create a task
-  list                           List tasks
-  show                           Show full task details
-  update                         Update a task
-  comment                        Add a task comment
-  label create|list|delete
-  attachment add|get|list|remove
-  preset list|show|create|update|delete
-  dispatch                       Dispatch a task to a new agent thread
-  attach                         Attach an agent thread to a task
-  detach                         Detach an agent thread from a task
-  threads                        List threads attached to a task
-  seed-demo                      Create sample data (requires --yes)
+const JSON_OPTION = {
+  type: "boolean",
+  description: "Emit machine-readable JSON",
+} as const;
 
-Run bb tasks <command> --help for command usage.`;
+const MACHINE_OPTION = {
+  type: "string",
+  placeholder: "id-or-name",
+  description:
+    "Enrolled machine that owns the file paths; defaults to the invoking thread's machine, otherwise the server's",
+} as const;
 
-const PROJECT_HELP = `Usage:
-  bb tasks project create --name <name> [--prefix X] [--folder <id-or-name>] [--link-bb-project <proj_id>] [--color <color>] [--json]
-  bb tasks project list [--json]
-  bb tasks project show <prefix-or-id> [--json]
-  bb tasks project update <prefix-or-id> [--name <name>] [--color <color>] [--folder <id-or-name> | --no-folder] [--link-bb-project <proj_id> | --unlink-bb-project] [--rename-prefix X] [--json]`;
+const PROJECT_OPTION = {
+  type: "string",
+  placeholder: "prefix-or-id",
+  description:
+    "Tracker project prefix or id such as ABC, never a bb project id (proj_...); run bb tasks project list",
+} as const;
 
-const FOLDER_HELP = `Usage:
-  bb tasks folder create --name <name> [--parent <id-or-name>] [--json]
-  bb tasks folder list [--json]
-  bb tasks folder update <id-or-name> [--name <name>] [--parent <id-or-name> | --no-parent] [--json]
-  bb tasks folder delete <id-or-name> [--json]
+const REQUIRED_PROJECT_OPTION = {
+  ...PROJECT_OPTION,
+  description: `${PROJECT_OPTION.description} (required)`,
+} as const;
 
-Deleting a folder moves its projects and subfolders to the top level. No
-tasks are deleted.`;
-
-const CREATE_HELP =
-  "Usage: bb tasks create [--project <prefix-or-id>] --title <title> [--description <markdown> | --description-file <path>] [--priority <priority>] [--label <name>]... [--due YYYY-MM-DD] [--parent <key-or-id>] [--attach <path>]... [--machine <id-or-name>] [--json]";
-const LIST_HELP = `Usage: bb tasks list [--project <prefix-or-id>] [--status <status>]... [--priority <priority>]... [--label <name>]... [--active] [--search <query>] [--sort manual|priority|due] [--limit <1-${TASKS_PAGE_MAX_LIMIT}>] [--cursor <opaque>] [--json]`;
-const SHOW_HELP = "Usage: bb tasks show <key-or-id> [--json]";
-const UPDATE_HELP =
-  "Usage: bb tasks update <key-or-id> [--status <status>] [--priority <priority>] [--title <title>] [--description <markdown> | --description-file <path>] [--due YYYY-MM-DD | --no-due] [--parent <key-or-id> | --no-parent] [--add-label <name>]... [--remove-label <name>]... [--machine <id-or-name>] [--json]";
-const COMMENT_HELP =
-  "Usage: bb tasks comment <key-or-id> (--body <markdown> | --body-file <path>) [--author <name>] [--machine <id-or-name>] [--notify] [--json]";
-const LABEL_HELP = `Usage:
-  bb tasks label create --project <prefix-or-id> --name <name> [--color <color>] [--json]
-  bb tasks label list --project <prefix-or-id> [--json]
-  bb tasks label delete --project <prefix-or-id> <name-or-id> [--json]`;
-const ATTACHMENT_HELP = `Usage:
-  bb tasks attachment add <key-or-comment-id> --file <path> [--name <name>] [--machine <id-or-name>] [--json]
-  bb tasks attachment get <attachment-id> --out <path> [--machine <id-or-name>] [--json]
-  bb tasks attachment list <key> [--json]
-  bb tasks attachment remove <attachment-id> [--remove-references] [--json]
-
-File paths are read from and written to the invoking machine: the thread's
-machine when run inside an agent thread, otherwise the server's machine.
-Pass --machine to target another enrolled machine explicitly.`;
-const PRESET_HELP = `Usage:
-  bb tasks preset list [--json]
-  bb tasks preset show <name-or-id> [--json]
-  bb tasks preset create --name <name> --provider <id> --model <id> --reasoning <level> --permission <accept-edits|auto|full> [--service-tier default|fast|none] [--environment project-default|worktree] [--base-branch <branch>] [--machine <id-or-name>] [--instructions <text>] [--json]
-  bb tasks preset update <name-or-id> [--name <name>] [--provider <id>] [--model <id>] [--reasoning <level>] [--permission <accept-edits|auto|full>] [--service-tier default|fast|none] [--environment project-default|worktree] [--base-branch <branch>] [--machine <id-or-name>] [--instructions <text>] [--json]
-  bb tasks preset delete <name-or-id> [--json]`;
-const DISPATCH_HELP =
-  "Usage: bb tasks dispatch <key> --preset <name> [--instructions <extra>] [--json]";
-const ATTACH_HELP =
-  "Usage: bb tasks attach <key> [--thread <thread-id>] [--json]";
-const DETACH_HELP =
-  "Usage: bb tasks detach <key> [--thread <thread-id>] [--json]";
-const THREADS_HELP = "Usage: bb tasks threads <key> [--json]";
+const KEY_POSITIONAL = {
+  name: "key-or-id",
+  description: "Task key such as ABC-12 (case-insensitive) or its ULID",
+  required: true,
+} as const;
 
 interface PluginStatus {
   name: string;
@@ -135,6 +94,48 @@ interface PluginStatus {
 
 type TasksDomain = ReturnType<typeof registerHandlers>;
 type ListTasksInput = Parameters<TasksDomain["listTasks"]>[0];
+
+class CliError extends PluginCliError {
+  constructor(
+    message: string,
+    options?: { code?: string; hint?: string; exitCode?: number },
+  ) {
+    super(oneLine(message), options);
+  }
+}
+
+function friendlyError(error: unknown): string {
+  if (error instanceof PluginCliError) return error.message;
+  if (error instanceof z.ZodError) {
+    const issue = error.issues[0];
+    const path = issue?.path.length ? `${issue.path.join(".")}: ` : "";
+    return `${path}${issue?.message ?? "invalid input"}`;
+  }
+  const message = errorMessage(error);
+  if (message.includes("UNIQUE constraint failed: projects.prefix")) {
+    return "project prefix is already in use";
+  }
+  if (
+    message.includes("UNIQUE constraint failed: labels.project_id, labels.name")
+  ) {
+    return "label name is already in use in this project";
+  }
+  return message;
+}
+
+async function guard(
+  action: () => Promise<string | PluginCliResult>,
+): Promise<PluginCliResult> {
+  try {
+    const result = await action();
+    return typeof result === "string"
+      ? { exitCode: 0, stdout: result }
+      : result;
+  } catch (error) {
+    if (error instanceof PluginCliError) throw error;
+    throw new CliError(friendlyError(error));
+  }
+}
 
 function normalizePrefix(value: string): string {
   return value.trim().toUpperCase();
@@ -148,10 +149,9 @@ function unwrapTask(result: TaskMutationResult): Task {
 async function resolveClientHostId(
   bb: BbPluginApi,
   domain: TasksDomain,
-  args: ParsedArgs,
+  machine: string | undefined,
   ctx: PluginCliContext,
 ): Promise<string | undefined> {
-  const machine = option(args, "machine");
   if (machine !== undefined) return resolveMachineId(domain, machine);
   if (!ctx.threadId) return undefined;
   const thread = await bb.sdk.threads.get({ threadId: ctx.threadId });
@@ -194,7 +194,9 @@ async function readAttachmentSource(
     return (await readClientFile(bb, hostId, path)).bytes;
   } catch (error) {
     if (isMissingClientFileError(error)) {
-      throw new CliError(`attachment source is not a file: ${path}`);
+      throw new CliError(`attachment source is not a file: ${path}`, {
+        code: "attachment_source_missing",
+      });
     }
     throw error;
   }
@@ -219,19 +221,13 @@ function attachmentFileName(path: string): string {
   return path.split(/[\\/]/).at(-1) || "attachment";
 }
 
-async function readFileOption(
+async function readTextOption(
   bb: BbPluginApi,
-  args: ParsedArgs,
   ctx: PluginCliContext,
   hostId: string | undefined,
-  inlineName: string,
-  fileName: string,
+  inline: string | undefined,
+  file: string | undefined,
 ): Promise<string | undefined> {
-  const inline = option(args, inlineName);
-  const file = option(args, fileName);
-  if (inline !== undefined && file !== undefined) {
-    throw new CliError(`--${inlineName} and --${fileName} cannot be combined`);
-  }
   if (file === undefined) return inline;
   const path = resolve(ctx.cwd ?? process.cwd(), file);
   try {
@@ -241,20 +237,8 @@ async function readFileOption(
     }
     return text;
   } catch (error) {
-    if (error instanceof CliError) throw error;
-    const message = errorMessage(error);
-    throw new CliError(`could not read ${file}: ${message}`);
-  }
-}
-
-function validateSingleFlagChoice(
-  optionValue: string | undefined,
-  flagSet: boolean,
-  optionName: string,
-  flagName: string,
-): void {
-  if (optionValue !== undefined && flagSet) {
-    throw new CliError(`--${optionName} and --${flagName} cannot be combined`);
+    if (error instanceof PluginCliError) throw error;
+    throw new CliError(`could not read ${file}: ${errorMessage(error)}`);
   }
 }
 
@@ -278,6 +262,20 @@ async function listProjects(domain: TasksDomain): Promise<Project[]> {
   ).projects;
 }
 
+function bbProjectIdHint(
+  address: string,
+  projects: readonly Project[],
+): string {
+  const linked = projects.filter(
+    (project) => project.linkedBbProjectId === address,
+  );
+  const first = linked[0];
+  if (linked.length === 1 && first) {
+    return `${address} is a bb project id; its tracker project is ${first.prefix} — re-run with --project ${first.prefix}`;
+  }
+  return `${address} is a bb project id, but --project takes a tracker project prefix or id; run bb tasks project list`;
+}
+
 async function resolveProject(
   domain: TasksDomain,
   address: string,
@@ -288,7 +286,15 @@ async function resolveProject(
     (candidate) =>
       candidate.id === normalized || candidate.prefix === normalized,
   );
-  if (!project) throw new CliError(`project not found: ${address}`);
+  if (!project) {
+    const trimmed = address.trim();
+    throw new CliError(`project not found: ${address}`, {
+      code: "project_not_found",
+      ...(BB_PROJECT_ID_PATTERN.test(trimmed)
+        ? { hint: bbProjectIdHint(trimmed, projects) }
+        : {}),
+    });
+  }
   return project;
 }
 
@@ -301,6 +307,7 @@ async function defaultProject(
     if (required) {
       throw new CliError(
         "missing --project and no BB project context is available",
+        { code: "missing_required" },
       );
     }
     return undefined;
@@ -311,11 +318,13 @@ async function defaultProject(
   if (matches.length === 0) {
     throw new CliError(
       `no tracker project is linked to BB project ${ctx.projectId}; pass --project or link one with bb tasks project update`,
+      { code: "project_not_linked" },
     );
   }
   if (matches.length > 1) {
     throw new CliError(
       `multiple tracker projects are linked to BB project ${ctx.projectId}; pass --project explicitly`,
+      { code: "project_ambiguous" },
     );
   }
   return matches[0];
@@ -332,6 +341,26 @@ async function selectedProject(
     : defaultProject(domain, ctx, required);
 }
 
+async function requiredProject(
+  domain: TasksDomain,
+  ctx: PluginCliContext,
+  address: string | undefined,
+): Promise<Project> {
+  if (address) return resolveProject(domain, address);
+  const linked = ctx.projectId
+    ? (await listProjects(domain)).filter(
+        (project) => project.linkedBbProjectId === ctx.projectId,
+      )
+    : [];
+  const suggestion = linked.length === 1 ? linked[0] : undefined;
+  throw new CliError("missing required option --project", {
+    code: "missing_required",
+    hint: suggestion
+      ? `this thread's bb project ${ctx.projectId} is linked to tracker project ${suggestion.prefix}; re-run with --project ${suggestion.prefix}`
+      : "pass a tracker project prefix or id; run bb tasks project list to see them",
+  });
+}
+
 async function resolveFolder(
   domain: TasksDomain,
   address: string,
@@ -345,9 +374,15 @@ async function resolveFolder(
   const byName = folders.filter(
     (folder) => folder.name.toLowerCase() === address.trim().toLowerCase(),
   );
-  if (byName.length === 0) throw new CliError(`folder not found: ${address}`);
+  if (byName.length === 0) {
+    throw new CliError(`folder not found: ${address}`, {
+      code: "folder_not_found",
+    });
+  }
   if (byName.length > 1) {
-    throw new CliError(`folder name is ambiguous; use its id: ${address}`);
+    throw new CliError(`folder name is ambiguous; use its id: ${address}`, {
+      code: "folder_ambiguous",
+    });
   }
   return byName[0]!;
 }
@@ -363,19 +398,21 @@ async function resolveTask(
         tasksRpcContract.getTask.input.parse({ taskId: normalized }),
       ),
     );
-    if (!result.task) throw new CliError(`task not found: ${address}`);
+    if (!result.task) throw taskNotFound(address);
     return result.task;
   }
-  if (!TASK_KEY_PATTERN.test(normalized)) {
-    throw new CliError(`task not found: ${address}`);
-  }
+  if (!TASK_KEY_PATTERN.test(normalized)) throw taskNotFound(address);
   const result = tasksRpcContract.getTaskByKey.output.parse(
     await domain.getTaskByKey(
       tasksRpcContract.getTaskByKey.input.parse({ taskKey: normalized }),
     ),
   );
-  if (!result.task) throw new CliError(`task not found: ${address}`);
+  if (!result.task) throw taskNotFound(address);
   return result.task;
+}
+
+function taskNotFound(address: string): CliError {
+  return new CliError(`task not found: ${address}`, { code: "task_not_found" });
 }
 
 async function listAllTasks(
@@ -400,18 +437,6 @@ async function listAllTasks(
   return tasks;
 }
 
-function taskPageLimit(args: ParsedArgs): number {
-  const raw = option(args, "limit");
-  if (raw === undefined) return TASKS_PAGE_DEFAULT_LIMIT;
-  const limit = Number(raw);
-  if (!Number.isInteger(limit) || limit < 1 || limit > TASKS_PAGE_MAX_LIMIT) {
-    throw new CliError(
-      `--limit must be an integer from 1 to ${TASKS_PAGE_MAX_LIMIT}`,
-    );
-  }
-  return limit;
-}
-
 function resolvePreset(presets: readonly Preset[], address: string): Preset {
   const normalized = address.trim().toLowerCase();
   const matches = presets.filter(
@@ -419,9 +444,15 @@ function resolvePreset(presets: readonly Preset[], address: string): Preset {
       preset.id.toLowerCase() === normalized ||
       preset.name.toLowerCase() === normalized,
   );
-  if (matches.length === 0) throw new CliError(`preset not found: ${address}`);
+  if (matches.length === 0) {
+    throw new CliError(`preset not found: ${address}`, {
+      code: "preset_not_found",
+    });
+  }
   if (matches.length > 1) {
-    throw new CliError(`preset name is ambiguous; use its id: ${address}`);
+    throw new CliError(`preset name is ambiguous; use its id: ${address}`, {
+      code: "preset_ambiguous",
+    });
   }
   return matches[0]!;
 }
@@ -464,27 +495,19 @@ function presetEnvironmentLabel(preset: Preset): string {
     : "project-default";
 }
 
-function parsePresetEnvironment(
-  value: string | undefined,
+function presetEnvironmentKind(
+  value: (typeof PRESET_ENVIRONMENTS)[number] | undefined,
   fallback: Preset["environmentKind"],
 ): Preset["environmentKind"] {
   if (value === undefined) return fallback;
-  if (value === "project-default") return "project-default";
-  if (value === "worktree") return "new-worktree";
-  throw new CliError(
-    `invalid --environment ${value}; expected project-default or worktree`,
-  );
+  return value === "worktree" ? "new-worktree" : "project-default";
 }
 
-function parsePresetServiceTier(
-  value: string | undefined,
+function presetServiceTier(
+  value: (typeof PRESET_SERVICE_TIERS)[number] | undefined,
 ): "default" | "fast" | null | undefined {
   if (value === undefined) return undefined;
-  if (value === "default" || value === "fast") return value;
-  if (value === "none") return null;
-  throw new CliError(
-    `invalid --service-tier ${value}; expected default, fast, or none`,
-  );
+  return value === "none" ? null : value;
 }
 
 async function resolveMachineId(
@@ -501,10 +524,14 @@ async function resolveMachineId(
       machine.name.toLocaleLowerCase() === normalized,
   );
   if (matches.length === 0) {
-    throw new CliError(`machine not found: ${address}`);
+    throw new CliError(`machine not found: ${address}`, {
+      code: "machine_not_found",
+    });
   }
   if (matches.length > 1) {
-    throw new CliError(`machine name is ambiguous; use its id: ${address}`);
+    throw new CliError(`machine name is ambiguous; use its id: ${address}`, {
+      code: "machine_ambiguous",
+    });
   }
   return matches[0]!.id;
 }
@@ -541,7 +568,11 @@ function resolveLabel(labels: readonly Label[], address: string): Label {
       candidate.id === normalizedId ||
       candidate.name.toLowerCase() === address.trim().toLowerCase(),
   );
-  if (!label) throw new CliError(`label not found: ${address}`);
+  if (!label) {
+    throw new CliError(`label not found: ${address}`, {
+      code: "label_not_found",
+    });
+  }
   return label;
 }
 
@@ -571,447 +602,6 @@ function taskAuthor(ctx: PluginCliContext): string {
   return ctx.threadId ? `agent (${ctx.threadId})` : "cli";
 }
 
-async function runProject(
-  bb: BbPluginApi,
-  store: TasksApiStore,
-  domain: TasksDomain,
-  argv: string[],
-): Promise<string> {
-  const [action, ...rest] = argv;
-  if (!action || action === "--help") return PROJECT_HELP;
-  const args = parseArgs(rest);
-  if (args.flags.has("help")) return PROJECT_HELP;
-
-  if (action === "create") {
-    assertAllowed(args, [
-      "name",
-      "prefix",
-      "folder",
-      "link-bb-project",
-      "color",
-    ]);
-    requirePositionals(args, 0, PROJECT_HELP.split("\n")[1]!.trim());
-    const name = requireOption(args, "name");
-    const projects = await listProjects(domain);
-    const folderAddress = option(args, "folder");
-    const folder = folderAddress
-      ? await resolveFolder(domain, folderAddress)
-      : undefined;
-    const result = tasksRpcContract.createProject.output.parse(
-      await domain.createProject(
-        tasksRpcContract.createProject.input.parse({
-          name,
-          prefix: option(args, "prefix")
-            ? normalizePrefix(requireOption(args, "prefix"))
-            : derivePrefix(name, projects),
-          color: option(args, "color") ?? DEFAULT_PROJECT_COLOR,
-          folderId: folder?.id ?? null,
-          linkedBbProjectId: option(args, "link-bb-project") ?? null,
-        }),
-      ),
-    );
-    return args.flags.has("json")
-      ? JSON.stringify(result)
-      : `Created project ${result.project.prefix}  ${result.project.name}`;
-  }
-
-  if (action === "list") {
-    assertAllowed(args, []);
-    requirePositionals(args, 0, "bb tasks project list [--json]");
-    const projects = await listProjects(domain);
-    const folders = tasksRpcContract.listFolders.output.parse(
-      await domain.listFolders(tasksRpcContract.listFolders.input.parse(null)),
-    ).folders;
-    return args.flags.has("json")
-      ? JSON.stringify({ projects })
-      : projectTable(projects, folders);
-  }
-
-  if (action === "show") {
-    assertAllowed(args, []);
-    const [address] = requirePositionals(
-      args,
-      1,
-      "bb tasks project show <prefix-or-id> [--json]",
-    );
-    const project = await resolveProject(domain, address!);
-    const folder = project.folderId
-      ? await resolveFolder(domain, project.folderId)
-      : null;
-    if (args.flags.has("json")) return JSON.stringify({ project, folder });
-    return detail([
-      ["Project", `${project.prefix} — ${project.name}`],
-      ["ID", project.id],
-      ["Color", project.color],
-      ["Folder", folder?.name ?? "-"],
-      ["BB project", project.linkedBbProjectId ?? "-"],
-      ["Next task", `${project.prefix}-${project.nextTaskNumber}`],
-      ["Created", project.createdAt],
-    ]);
-  }
-
-  if (action === "update") {
-    assertAllowed(
-      args,
-      ["name", "color", "folder", "link-bb-project", "rename-prefix"],
-      ["no-folder", "unlink-bb-project"],
-    );
-    const [address] = requirePositionals(
-      args,
-      1,
-      "bb tasks project update <prefix-or-id> [options] [--json]",
-    );
-    const project = await resolveProject(domain, address!);
-    const folderAddress = option(args, "folder");
-    const linkedBbProjectId = option(args, "link-bb-project");
-    validateSingleFlagChoice(
-      folderAddress,
-      args.flags.has("no-folder"),
-      "folder",
-      "no-folder",
-    );
-    validateSingleFlagChoice(
-      linkedBbProjectId,
-      args.flags.has("unlink-bb-project"),
-      "link-bb-project",
-      "unlink-bb-project",
-    );
-    const folder = folderAddress
-      ? await resolveFolder(domain, folderAddress)
-      : undefined;
-    const changes = {
-      name: option(args, "name"),
-      color: option(args, "color"),
-      folderId: args.flags.has("no-folder") ? null : folder?.id,
-      linkedBbProjectId: args.flags.has("unlink-bb-project")
-        ? null
-        : linkedBbProjectId,
-    };
-    const renamePrefix = option(args, "rename-prefix");
-    if (
-      renamePrefix === undefined &&
-      changes.name === undefined &&
-      changes.color === undefined &&
-      changes.folderId === undefined &&
-      changes.linkedBbProjectId === undefined
-    ) {
-      throw new CliError("no project changes were provided");
-    }
-    const renameInput =
-      renamePrefix === undefined
-        ? undefined
-        : tasksRpcContract.renameProjectPrefix.input.parse({
-            projectId: project.id,
-            prefix: normalizePrefix(renamePrefix),
-          });
-    const hasFieldChanges =
-      changes.name !== undefined ||
-      changes.color !== undefined ||
-      changes.folderId !== undefined ||
-      changes.linkedBbProjectId !== undefined;
-    const updateInput = hasFieldChanges
-      ? tasksRpcContract.updateProject.input.parse({
-          projectId: project.id,
-          ...changes,
-        })
-      : undefined;
-    if (
-      renameInput &&
-      store.projectPrefixExists(renameInput.prefix, project.id)
-    ) {
-      throw new CliError(
-        `Project prefix is already in use: ${renameInput.prefix}`,
-      );
-    }
-    const updated = store.transaction(() =>
-      store.tasks.updateProject(project.id, {
-        prefix: renameInput?.prefix,
-        name: updateInput?.name,
-        color: updateInput?.color,
-        folderId: updateInput?.folderId,
-        linkedBbProjectId: updateInput?.linkedBbProjectId,
-      }),
-    );
-    publishProjectsChanged(bb, updated.id);
-    return args.flags.has("json")
-      ? JSON.stringify({ project: updated })
-      : `Updated project ${updated.prefix}  ${updated.name}`;
-  }
-
-  throw new CliError(`unknown project subcommand: ${action}`);
-}
-
-async function runFolder(
-  bb: BbPluginApi,
-  store: TasksApiStore,
-  domain: TasksDomain,
-  argv: string[],
-): Promise<string> {
-  const [action, ...rest] = argv;
-  if (!action || action === "--help") return FOLDER_HELP;
-  const args = parseArgs(rest);
-  if (args.flags.has("help")) return FOLDER_HELP;
-
-  if (action === "create") {
-    assertAllowed(args, ["name", "parent"]);
-    requirePositionals(
-      args,
-      0,
-      "bb tasks folder create --name <name> [options]",
-    );
-    const parentAddress = option(args, "parent");
-    const parent = parentAddress
-      ? await resolveFolder(domain, parentAddress)
-      : undefined;
-    const result = tasksRpcContract.createFolder.output.parse(
-      await domain.createFolder(
-        tasksRpcContract.createFolder.input.parse({
-          name: requireOption(args, "name"),
-          parentFolderId: parent?.id ?? null,
-        }),
-      ),
-    );
-    return args.flags.has("json")
-      ? JSON.stringify(result)
-      : `Created folder ${result.folder.name}  ${result.folder.id}`;
-  }
-
-  if (action === "list") {
-    assertAllowed(args, []);
-    requirePositionals(args, 0, "bb tasks folder list [--json]");
-    const result = tasksRpcContract.listFolders.output.parse(
-      await domain.listFolders(tasksRpcContract.listFolders.input.parse(null)),
-    );
-    const names = new Map(
-      result.folders.map((folder) => [folder.id, folder.name]),
-    );
-    return args.flags.has("json")
-      ? JSON.stringify(result)
-      : table(
-          ["NAME", "PARENT", "ID"],
-          result.folders.map((folder) => [
-            folder.name,
-            folder.parentFolderId
-              ? (names.get(folder.parentFolderId) ?? folder.parentFolderId)
-              : "-",
-            folder.id,
-          ]),
-          "No folders.",
-        );
-  }
-
-  if (action === "update") {
-    assertAllowed(args, ["name", "parent"], ["no-parent"]);
-    const [address] = requirePositionals(
-      args,
-      1,
-      "bb tasks folder update <id-or-name> [options] [--json]",
-    );
-    const folder = await resolveFolder(domain, address!);
-    const parentAddress = option(args, "parent");
-    validateSingleFlagChoice(
-      parentAddress,
-      args.flags.has("no-parent"),
-      "parent",
-      "no-parent",
-    );
-    if (
-      option(args, "name") === undefined &&
-      parentAddress === undefined &&
-      !args.flags.has("no-parent")
-    ) {
-      throw new CliError("no folder changes were provided");
-    }
-    const name = option(args, "name");
-    const parent = parentAddress
-      ? await resolveFolder(domain, parentAddress)
-      : null;
-    const renameInput =
-      name === undefined
-        ? undefined
-        : tasksRpcContract.renameFolder.input.parse({
-            folderId: folder.id,
-            name,
-          });
-    const moveInput =
-      parentAddress === undefined && !args.flags.has("no-parent")
-        ? undefined
-        : tasksRpcContract.moveFolder.input.parse({
-            folderId: folder.id,
-            parentFolderId: parent?.id ?? null,
-          });
-    const updated = store.transaction(() =>
-      store.tasks.updateFolder(folder.id, {
-        name: renameInput?.name,
-        parentFolderId: moveInput?.parentFolderId,
-      }),
-    );
-    publishProjectsChanged(bb, null);
-    return args.flags.has("json")
-      ? JSON.stringify({ folder: updated })
-      : `Updated folder ${updated.name}  ${updated.id}`;
-  }
-
-  if (action === "delete") {
-    assertAllowed(args, []);
-    const [address] = requirePositionals(
-      args,
-      1,
-      "bb tasks folder delete <id-or-name> [--json]",
-    );
-    const folder = await resolveFolder(domain, address!);
-    const result = tasksRpcContract.deleteFolder.output.parse(
-      await domain.deleteFolder(
-        tasksRpcContract.deleteFolder.input.parse({ folderId: folder.id }),
-      ),
-    );
-    if (!result.deleted) {
-      throw new CliError(
-        `folder not found: ${address} (it was deleted by another client)`,
-      );
-    }
-    if (args.flags.has("json")) {
-      return JSON.stringify({ ...result, folder });
-    }
-    const projectCount = result.movedProjectIds.length;
-    const folderCount = result.movedFolderIds.length;
-    const moved = [
-      projectCount > 0
-        ? `${projectCount} project${projectCount > 1 ? "s" : ""}`
-        : null,
-      folderCount > 0
-        ? `${folderCount} subfolder${folderCount > 1 ? "s" : ""}`
-        : null,
-    ].filter((part) => part !== null);
-    return moved.length === 0
-      ? `Deleted folder ${folder.name}`
-      : `Deleted folder ${folder.name}; ${moved.join(" and ")} moved to the top level. No tasks were deleted.`;
-  }
-
-  throw new CliError(`unknown folder subcommand: ${action}`);
-}
-
-async function runCreate(
-  bb: BbPluginApi,
-  store: TasksApiStore,
-  domain: TasksDomain,
-  ctx: PluginCliContext,
-  argv: string[],
-): Promise<string | PluginCliResult> {
-  const args = parseArgs(argv);
-  if (args.flags.has("help")) return CREATE_HELP;
-  assertAllowed(args, [
-    "project",
-    "title",
-    "description",
-    "description-file",
-    "priority",
-    "label",
-    "due",
-    "parent",
-    "attach",
-    "machine",
-  ]);
-  requirePositionals(args, 0, CREATE_HELP);
-  const attachPaths = options(args, "attach").map((path) =>
-    resolve(ctx.cwd ?? process.cwd(), path),
-  );
-  const usesClientFiles =
-    attachPaths.length > 0 || option(args, "description-file") !== undefined;
-  if (option(args, "machine") !== undefined && !usesClientFiles) {
-    throw new CliError("--machine requires --attach or --description-file");
-  }
-  const clientHostId = usesClientFiles
-    ? await resolveClientHostId(bb, domain, args, ctx)
-    : undefined;
-  const attachSources: Array<{ path: string; bytes: Buffer }> = [];
-  for (const path of attachPaths) {
-    attachSources.push({
-      path,
-      bytes: await readAttachmentSource(bb, clientHostId, path),
-    });
-  }
-  const project = await selectedProject(
-    domain,
-    ctx,
-    option(args, "project"),
-    true,
-  );
-  if (!project) throw new CliError("project is required");
-  const labels = await projectLabels(domain, project.id);
-  const labelIds = options(args, "label").map(
-    (name) => resolveLabel(labels, name).id,
-  );
-  const parentAddress = option(args, "parent");
-  const parent = parentAddress
-    ? await resolveTask(domain, parentAddress)
-    : undefined;
-  const input = tasksRpcContract.createTask.input.parse({
-    projectId: project.id,
-    title: requireOption(args, "title"),
-    description:
-      (await readFileOption(
-        bb,
-        args,
-        ctx,
-        clientHostId,
-        "description",
-        "description-file",
-      )) ?? "",
-    priority: option(args, "priority") ?? "none",
-    dueDate: option(args, "due") ?? null,
-    parentTaskId: parent?.id ?? null,
-    labelIds,
-  });
-  const task = unwrapTask(
-    tasksRpcContract.createTask.output.parse(await domain.createTask(input)),
-  );
-  const attachments: Attachment[] = [];
-  const failedAttachments: Array<{ path: string; error: string }> = [];
-  for (const source of attachSources) {
-    try {
-      const attachment = await saveAttachmentFromBytes(
-        store.tasks,
-        source.bytes,
-        {
-          taskId: task.id,
-          fileName: attachmentFileName(source.path),
-        },
-      );
-      publishAttachmentChanged(bb, store.tasks, attachment);
-      attachments.push(attachment);
-    } catch (error) {
-      failedAttachments.push({
-        path: source.path,
-        error: errorMessage(error),
-      });
-    }
-  }
-  const stdout = args.flags.has("json")
-    ? JSON.stringify({ task, attachments, failedAttachments })
-    : [
-        `Created ${task.key}  ${task.title}`,
-        ...attachments.map(
-          (attachment) => `Attached ${attachment.fileName}  ${attachment.id}`,
-        ),
-        ...failedAttachments.map(
-          (failure) => `Failed to attach ${failure.path}: ${failure.error}`,
-        ),
-        ...(failedAttachments.length > 0
-          ? failedAttachments.map(
-              (failure) =>
-                `Retry with: bb tasks attachment add ${task.key} --file ${failure.path}`,
-            )
-          : []),
-      ].join("\n");
-  if (failedAttachments.length === 0) return stdout;
-  return {
-    exitCode: 1,
-    stdout,
-    stderr: `created ${task.key}, but ${failedAttachments.length} of ${attachPaths.length} attachments failed; see stdout for per-file recovery commands`,
-  };
-}
-
 async function labelsForTaskList(
   domain: TasksDomain,
   projects: readonly Project[],
@@ -1025,914 +615,51 @@ async function labelsForTaskList(
   return labels;
 }
 
-async function runList(
-  domain: TasksDomain,
-  ctx: PluginCliContext,
-  argv: string[],
-): Promise<string> {
-  const args = parseArgs(argv);
-  if (args.flags.has("help")) return LIST_HELP;
-  assertAllowed(
-    args,
-    [
-      "project",
-      "status",
-      "priority",
-      "label",
-      "search",
-      "sort",
-      "limit",
-      "cursor",
-    ],
-    ["active"],
-  );
-  requirePositionals(args, 0, LIST_HELP);
-  const sortOption = option(args, "sort") ?? "manual";
-  const sort = TASK_SORTS.find((candidate) => candidate === sortOption);
-  if (sort === undefined) {
-    throw new CliError(
-      `invalid sort: ${sortOption} (${TASK_SORTS.join(", ")})`,
-    );
-  }
-  const project = await selectedProject(
-    domain,
-    ctx,
-    option(args, "project"),
-    false,
-  );
-  const projects = project ? [project] : await listProjects(domain);
-  const labelById = await labelsForTaskList(domain, projects);
-  const requestedLabels = options(args, "label");
-  const labelIds = requestedLabels.map((name) => {
-    const matches = [...labelById.values()].filter(
-      (label) => label.name.toLowerCase() === name.trim().toLowerCase(),
-    );
-    if (matches.length === 0) throw new CliError(`label not found: ${name}`);
-    if (matches.length > 1 && !project) {
-      throw new CliError(
-        `label name exists in multiple projects; pass --project: ${name}`,
-      );
-    }
-    return matches[0]!.id;
-  });
-  const result = tasksRpcContract.listTasks.output.parse(
-    await domain.listTasks(
-      tasksRpcContract.listTasks.input.parse({
-        projectId: project?.id,
-        statuses:
-          options(args, "status").length > 0
-            ? options(args, "status")
-            : undefined,
-        priorities:
-          options(args, "priority").length > 0
-            ? options(args, "priority")
-            : undefined,
-        labelIds: labelIds.length > 0 ? labelIds : undefined,
-        activeOnly: args.flags.has("active"),
-        search: option(args, "search"),
-        sort,
-        limit: taskPageLimit(args),
-        cursor: option(args, "cursor"),
-      }),
-    ),
-  );
-  const tasks = [];
-  for (const task of result.tasks) {
-    const threadResult = tasksRpcContract.listTaskThreads.output.parse(
-      await domain.listTaskThreads(
-        tasksRpcContract.listTaskThreads.input.parse({ taskId: task.id }),
-      ),
-    );
-    tasks.push({
-      ...task,
-      labels: task.labelIds.map((id) => labelById.get(id)?.name ?? id),
-      agentsWorking: threadResult.taskThreads.filter((thread) =>
-        ACTIVE_THREAD_STATUSES.has(thread.liveStatus),
-      ).length,
-    });
-  }
-  const limit = taskPageLimit(args);
-  if (args.flags.has("json")) {
-    return JSON.stringify({ tasks, nextCursor: result.nextCursor, limit });
-  }
-  const output = table(
-    ["KEY", "STATUS", "PRIORITY", "DUE", "TITLE", "LABELS", "AGENTS"],
-    tasks.map((task) => [
-      task.key,
-      task.status,
-      task.priority,
-      task.dueDate ?? "-",
-      task.title,
-      task.labels.join(", ") || "-",
-      task.agentsWorking,
-    ]),
-    "No tasks.",
-  );
-  return result.nextCursor === null
-    ? output
-    : `${output}\n\nMore results are available. Re-run with the same filters and add: --limit ${limit} --cursor ${result.nextCursor}`;
-}
-
-async function runShow(domain: TasksDomain, argv: string[]): Promise<string> {
-  const args = parseArgs(argv);
-  if (args.flags.has("help")) return SHOW_HELP;
-  assertAllowed(args, []);
-  const [address] = requirePositionals(args, 1, SHOW_HELP);
-  const task = await resolveTask(domain, address!);
-  const project = await resolveProject(domain, task.projectId);
-  const allLabels = await projectLabels(domain, project.id);
-  const labelById = new Map(allLabels.map((label) => [label.id, label]));
-  const labels = task.labelIds.map((id) => labelById.get(id)!).filter(Boolean);
-  const subtasks = await listAllTasks(
-    domain,
-    tasksRpcContract.listTasks.input.parse({ parentTaskId: task.id }),
-  );
-  const comments = tasksRpcContract.listComments.output.parse(
-    await domain.listComments(
-      tasksRpcContract.listComments.input.parse({ taskId: task.id }),
-    ),
-  ).comments;
-  const attachments = await listTaskAttachments(domain, task.id, comments);
-  const taskThreads = tasksRpcContract.listTaskThreads.output.parse(
-    await domain.listTaskThreads(
-      tasksRpcContract.listTaskThreads.input.parse({ taskId: task.id }),
-    ),
-  ).taskThreads;
-  const { pullRequests, unavailableThreadIds } =
-    tasksRpcContract.listTaskPullRequests.output.parse(
-      await domain.listTaskPullRequests(
-        tasksRpcContract.listTaskPullRequests.input.parse({ taskId: task.id }),
-      ),
-    );
-  const payload = {
-    task,
-    project,
-    labels,
-    subtasks,
-    attachments,
-    taskThreads,
-    pullRequests,
-    pullRequestUnavailableThreadIds: unavailableThreadIds,
-    comments,
-  };
-  if (args.flags.has("json")) return JSON.stringify(payload);
-
-  const sections = [
-    detail([
-      ["Task", `${task.key} — ${task.title}`],
-      ["ID", task.id],
-      ["Project", `${project.prefix} — ${project.name}`],
-      ["Status", task.status],
-      ["Priority", task.priority],
-      ["Due", task.dueDate ?? "-"],
-      ["Parent", task.parentTaskId ?? "-"],
-      ["Labels", labels.map((label) => label.name).join(", ") || "-"],
-      ["Created", task.createdAt],
-      ["Updated", task.updatedAt],
-    ]),
-    `Description\n${task.description || "(none)"}`,
-    `Sub-tasks\n${table(
-      ["KEY", "STATUS", "PRIORITY", "TITLE"],
-      subtasks.map((subtask) => [
-        subtask.key,
-        subtask.status,
-        subtask.priority,
-        subtask.title,
-      ]),
-      "(none)",
-    )}`,
-    `Attachments\n${table(
-      ["ID", "NAME", "SIZE"],
-      attachments.map((attachment) => [
-        attachment.id,
-        attachment.fileName,
-        bytes(attachment.sizeBytes),
-      ]),
-      "(none)",
-    )}`,
-    `Attached threads\n${table(
-      ["THREAD", "STATUS", "PRESET", "TITLE"],
-      taskThreads.map((thread) => [
-        thread.threadId,
-        thread.liveStatus,
-        thread.presetName,
-        thread.title,
-      ]),
-      "(none)",
-    )}`,
-    `Pull requests\n${table(
-      ["PR", "STATE", "TITLE", "URL"],
-      pullRequests.map((pullRequest) => [
-        `#${pullRequest.number}`,
-        pullRequest.state,
-        pullRequest.title,
-        pullRequest.url,
-      ]),
-      "(none)",
-    )}${
-      unavailableThreadIds.length > 0
-        ? `\nPR lookup unavailable for: ${unavailableThreadIds.join(", ")}`
-        : ""
-    }`,
-    `Comments\n${table(
-      ["TIME", "KIND", "AUTHOR", "PROVIDER", "BODY"],
-      comments.map((comment) => [
-        comment.createdAt,
-        comment.kind,
-        comment.threadTitle ?? comment.authorName,
-        comment.provider?.name ?? "-",
-        comment.body,
-      ]),
-      "(none)",
-    )}`,
-  ];
-  return sections.join("\n\n");
-}
-
-async function runUpdate(
-  bb: BbPluginApi,
-  domain: TasksDomain,
-  ctx: PluginCliContext,
-  argv: string[],
-): Promise<string> {
-  const args = parseArgs(argv);
-  if (args.flags.has("help")) return UPDATE_HELP;
-  assertAllowed(
-    args,
-    [
-      "status",
-      "priority",
-      "title",
-      "description",
-      "description-file",
-      "due",
-      "parent",
-      "add-label",
-      "remove-label",
-      "machine",
-    ],
-    ["no-due", "no-parent"],
-  );
-  const [address] = requirePositionals(args, 1, UPDATE_HELP);
-  const task = await resolveTask(domain, address!);
-  const dueDate = option(args, "due");
-  validateSingleFlagChoice(dueDate, args.flags.has("no-due"), "due", "no-due");
-  const parentAddress = option(args, "parent");
-  validateSingleFlagChoice(
-    parentAddress,
-    args.flags.has("no-parent"),
-    "parent",
-    "no-parent",
-  );
-  const parent =
-    parentAddress === undefined
-      ? undefined
-      : await resolveTask(domain, parentAddress);
-  if (
-    option(args, "machine") !== undefined &&
-    option(args, "description-file") === undefined
-  ) {
-    throw new CliError("--machine requires --description-file");
-  }
-  const clientHostId =
-    option(args, "description-file") !== undefined
-      ? await resolveClientHostId(bb, domain, args, ctx)
-      : undefined;
-  const description = await readFileOption(
-    bb,
-    args,
-    ctx,
-    clientHostId,
-    "description",
-    "description-file",
-  );
-  const labels = await projectLabels(domain, task.projectId);
-  const nextLabels = new Set(task.labelIds);
-  for (const name of options(args, "add-label")) {
-    nextLabels.add(resolveLabel(labels, name).id);
-  }
-  for (const name of options(args, "remove-label")) {
-    nextLabels.delete(resolveLabel(labels, name).id);
-  }
-  const labelsChanged =
-    options(args, "add-label").length > 0 ||
-    options(args, "remove-label").length > 0;
-  if (
-    option(args, "status") === undefined &&
-    option(args, "priority") === undefined &&
-    option(args, "title") === undefined &&
-    description === undefined &&
-    dueDate === undefined &&
-    !args.flags.has("no-due") &&
-    parentAddress === undefined &&
-    !args.flags.has("no-parent") &&
-    !labelsChanged
-  ) {
-    throw new CliError("no task changes were provided");
-  }
-  const result = tasksRpcContract.updateTask.output.parse(
-    await domain.updateTask(
-      tasksRpcContract.updateTask.input.parse({
-        taskId: task.id,
-        status: option(args, "status"),
-        priority: option(args, "priority"),
-        title: option(args, "title"),
-        description,
-        dueDate: args.flags.has("no-due") ? null : dueDate,
-        parentTaskId:
-          parentAddress === undefined && !args.flags.has("no-parent")
-            ? undefined
-            : (parent?.id ?? null),
-        labelIds: labelsChanged ? [...nextLabels] : undefined,
-        authorName: taskAuthor(ctx),
-      }),
-    ),
-  );
-  const updated = unwrapTask(result);
-  return args.flags.has("json")
-    ? JSON.stringify({ task: updated })
-    : `Updated ${updated.key}  ${updated.title}`;
-}
-
-async function runComment(
-  bb: BbPluginApi,
-  store: TasksApiStore,
-  domain: TasksDomain,
-  ctx: PluginCliContext,
-  argv: string[],
-): Promise<string> {
-  const args = parseArgs(argv);
-  if (args.flags.has("help")) return COMMENT_HELP;
-  assertAllowed(args, ["body", "body-file", "author", "machine"], ["notify"]);
-  const [address] = requirePositionals(args, 1, COMMENT_HELP);
-  const task = await resolveTask(domain, address!);
-  if (
-    option(args, "machine") !== undefined &&
-    option(args, "body-file") === undefined
-  ) {
-    throw new CliError("--machine requires --body-file");
-  }
-  const clientHostId =
-    option(args, "body-file") !== undefined
-      ? await resolveClientHostId(bb, domain, args, ctx)
-      : undefined;
-  const body = await readFileOption(
-    bb,
-    args,
-    ctx,
-    clientHostId,
-    "body",
-    "body-file",
-  );
-  if (body === undefined)
-    throw new CliError("missing required --body or --body-file");
-  if (!body.trim()) throw new CliError("comment body must not be blank");
-  const comment = await createComment(bb, store, {
-    taskId: task.id,
-    kind: ctx.threadId ? "agent" : "user",
-    authorName: option(args, "author") ?? taskAuthor(ctx),
-    presetName: null,
-    threadId: ctx.threadId ?? null,
-    body,
-    notify: args.flags.has("notify"),
-  });
-  return args.flags.has("json")
-    ? JSON.stringify({ comment })
-    : `Commented on ${task.key}  ${comment.id}`;
-}
-
-async function runLabel(domain: TasksDomain, argv: string[]): Promise<string> {
-  const [action, ...rest] = argv;
-  if (!action || action === "--help") return LABEL_HELP;
-  const args = parseArgs(rest);
-  if (args.flags.has("help")) return LABEL_HELP;
-
-  if (action === "create") {
-    assertAllowed(args, ["project", "name", "color"]);
-    requirePositionals(
-      args,
-      0,
-      "bb tasks label create --project <project> --name <name>",
-    );
-    const project = await resolveProject(
-      domain,
-      requireOption(args, "project"),
-    );
-    const result = tasksRpcContract.createLabel.output.parse(
-      await domain.createLabel(
-        tasksRpcContract.createLabel.input.parse({
-          projectId: project.id,
-          name: requireOption(args, "name"),
-          color: option(args, "color") ?? DEFAULT_LABEL_COLOR,
-        }),
-      ),
-    );
-    return args.flags.has("json")
-      ? JSON.stringify(result)
-      : `Created label ${result.label.name}  ${result.label.id}`;
-  }
-
-  if (action === "list") {
-    assertAllowed(args, ["project"]);
-    requirePositionals(args, 0, "bb tasks label list --project <project>");
-    const project = await resolveProject(
-      domain,
-      requireOption(args, "project"),
-    );
-    const labels = await projectLabels(domain, project.id);
-    return args.flags.has("json")
-      ? JSON.stringify({ labels })
-      : table(
-          ["NAME", "COLOR", "ID"],
-          labels.map((label) => [label.name, label.color, label.id]),
-          "No labels.",
-        );
-  }
-
-  if (action === "delete") {
-    assertAllowed(args, ["project"]);
-    const [address] = requirePositionals(
-      args,
-      1,
-      "bb tasks label delete --project <project> <name-or-id>",
-    );
-    const project = await resolveProject(
-      domain,
-      requireOption(args, "project"),
-    );
-    const label = resolveLabel(
-      await projectLabels(domain, project.id),
-      address!,
-    );
-    const result = tasksRpcContract.deleteLabel.output.parse(
-      await domain.deleteLabel(
-        tasksRpcContract.deleteLabel.input.parse({ labelId: label.id }),
-      ),
-    );
-    return args.flags.has("json")
-      ? JSON.stringify({ ...result, label })
-      : `Deleted label ${label.name}`;
-  }
-
-  throw new CliError(`unknown label subcommand: ${action}`);
-}
-
-async function runAttachment(
-  bb: BbPluginApi,
-  store: TasksApiStore,
-  domain: TasksDomain,
-  ctx: PluginCliContext,
-  argv: string[],
-): Promise<string> {
-  const [action, ...rest] = argv;
-  if (!action || action === "--help") return ATTACHMENT_HELP;
-  const args = parseArgs(rest);
-  if (args.flags.has("help")) return ATTACHMENT_HELP;
-
-  if (action === "add") {
-    assertAllowed(args, ["file", "name", "machine"]);
-    const [ownerAddress] = requirePositionals(
-      args,
-      1,
-      "bb tasks attachment add <key-or-comment-id> --file <path> [--name <name>] [--machine <id-or-name>] [--json]",
-    );
-    const sourceOption = requireOption(args, "file");
-    const sourcePath = resolve(ctx.cwd ?? process.cwd(), sourceOption);
-    const normalizedOwner = ownerAddress!.trim().toUpperCase();
-    const comment = ULID_PATTERN.test(normalizedOwner)
-      ? store.tasks.getComment(normalizedOwner)
-      : undefined;
-    if (ULID_PATTERN.test(normalizedOwner) && !comment) {
-      throw new CliError(`comment not found: ${ownerAddress}`);
-    }
-    const owner = comment
-      ? { commentId: comment.id }
-      : { taskId: (await resolveTask(domain, ownerAddress!)).id };
-    const clientHostId = await resolveClientHostId(bb, domain, args, ctx);
-    const bytes = await readAttachmentSource(bb, clientHostId, sourcePath);
-    const attachment = await saveAttachmentFromBytes(store.tasks, bytes, {
-      ...owner,
-      fileName: option(args, "name") ?? attachmentFileName(sourcePath),
-    });
-    publishAttachmentChanged(bb, store.tasks, attachment);
-    const payload = {
-      attachment,
-      url: attachmentDownloadUrl(attachment.id),
-    };
-    return args.flags.has("json")
-      ? JSON.stringify(payload)
-      : `Added attachment ${attachment.fileName}  ${attachment.id}`;
-  }
-
-  if (action === "get") {
-    assertAllowed(args, ["out", "machine"]);
-    const [attachmentId] = requirePositionals(
-      args,
-      1,
-      "bb tasks attachment get <attachment-id> --out <path> [--machine <id-or-name>] [--json]",
-    );
-    const outOption = requireOption(args, "out");
-    const outPath = resolve(ctx.cwd ?? process.cwd(), outOption);
-    const clientHostId = await resolveClientHostId(bb, domain, args, ctx);
-    const { attachment, content } = await readAttachmentContent(
-      store.tasks,
-      attachmentId!,
-    );
-    await writeClientFile(bb, clientHostId, outPath, content);
-    return args.flags.has("json")
-      ? JSON.stringify({ attachment, out: outPath })
-      : `Saved ${attachment.fileName}  ${outPath}`;
-  }
-
-  if (action === "list") {
-    assertAllowed(args, []);
-    const [address] = requirePositionals(
-      args,
-      1,
-      "bb tasks attachment list <key> [--json]",
-    );
-    const task = await resolveTask(domain, address!);
-    const comments = tasksRpcContract.listComments.output.parse(
-      await domain.listComments(
-        tasksRpcContract.listComments.input.parse({ taskId: task.id }),
-      ),
-    ).comments;
-    const attachments = await listTaskAttachments(domain, task.id, comments);
-    return args.flags.has("json")
-      ? JSON.stringify({ task, attachments })
-      : table(
-          ["ID", "NAME", "TYPE", "SIZE"],
-          attachments.map((attachment) => [
-            attachment.id,
-            attachment.fileName,
-            attachment.mime,
-            bytes(attachment.sizeBytes),
-          ]),
-          "No attachments.",
-        );
-  }
-
-  if (action === "remove") {
-    assertAllowed(args, [], ["remove-references"]);
-    const [attachmentId] = requirePositionals(
-      args,
-      1,
-      "bb tasks attachment remove <attachment-id> [--remove-references] [--json]",
-    );
-    const result = tasksRpcContract.deleteAttachment.output.parse(
-      await domain.deleteAttachment(
-        tasksRpcContract.deleteAttachment.input.parse({
-          attachmentId: attachmentId!.trim(),
-          removeDescriptionReferences: args.flags.has("remove-references"),
-        }),
-      ),
-    );
-    if (!result.ok) throw new CliError(result.error.message);
-    if (!result.deleted) {
-      throw new CliError(`attachment not found: ${attachmentId}`);
-    }
-    return args.flags.has("json")
-      ? JSON.stringify({ deleted: true, attachment: result.attachment })
-      : `Removed attachment ${result.attachment.fileName}  ${result.attachment.id}`;
-  }
-
-  throw new CliError(`unknown attachment subcommand: ${action}`);
-}
-
-async function runPreset(domain: TasksDomain, argv: string[]): Promise<string> {
-  const [action, ...rest] = argv;
-  if (!action || action === "--help") return PRESET_HELP;
-  const args = parseArgs(rest);
-  if (args.flags.has("help")) return PRESET_HELP;
-
-  if (action === "list") {
-    assertAllowed(args, []);
-    requirePositionals(args, 0, "bb tasks preset list [--json]");
-    const presets = await listPresets(domain);
-    return args.flags.has("json")
-      ? JSON.stringify({ presets })
-      : table(
-          [
-            "NAME",
-            "PROVIDER",
-            "MODEL",
-            "REASONING",
-            "SERVICE TIER",
-            "PERMISSION",
-            "ENVIRONMENT",
-            "BASE BRANCH",
-            "MACHINE",
-            "BUILTIN",
-            "ID",
-          ],
-          presets.map((preset) => [
-            preset.name,
-            preset.providerId,
-            preset.modelId,
-            preset.reasoningLevel,
-            preset.serviceTier ?? "-",
-            preset.permissionMode,
-            presetEnvironmentLabel(preset),
-            preset.baseBranch ?? "-",
-            preset.machineId ?? "-",
-            preset.builtin ? "yes" : "no",
-            preset.id,
-          ]),
-          "No presets.",
-        );
-  }
-
-  if (action === "show") {
-    assertAllowed(args, []);
-    const [address] = requirePositionals(
-      args,
-      1,
-      "bb tasks preset show <name-or-id> [--json]",
-    );
-    const preset = resolvePreset(await listPresets(domain), address!);
-    return args.flags.has("json")
-      ? JSON.stringify({ preset })
-      : detail([
-          ["Name", preset.name],
-          ["Provider", preset.providerId],
-          ["Model", preset.modelId],
-          ["Reasoning", preset.reasoningLevel],
-          ["Service tier", preset.serviceTier ?? "-"],
-          ["Permission", preset.permissionMode],
-          ["Environment", presetEnvironmentLabel(preset)],
-          ["Base branch", preset.baseBranch ?? "-"],
-          ["Machine", preset.machineId ?? "-"],
-          ["Instructions", preset.instructions || "-"],
-          ["Built in", preset.builtin ? "yes" : "no"],
-          ["ID", preset.id],
-        ]);
-  }
-
-  if (action === "create") {
-    assertAllowed(args, [
-      "name",
-      "provider",
-      "model",
-      "reasoning",
-      "service-tier",
-      "permission",
-      "environment",
-      "base-branch",
-      "machine",
-      "instructions",
-    ]);
-    requirePositionals(args, 0, PRESET_HELP.split("\n")[3]!.trim());
-    const environmentKind = parsePresetEnvironment(
-      option(args, "environment"),
-      "project-default",
-    );
-    const baseBranch = option(args, "base-branch");
-    const machine = option(args, "machine");
-    validatePresetTargetOptions({ environmentKind, baseBranch, machine });
-    const result = tasksRpcContract.createPreset.output.parse(
-      await domain.createPreset(
-        tasksRpcContract.createPreset.input.parse({
-          name: requireOption(args, "name"),
-          providerId: requireOption(args, "provider"),
-          modelId: requireOption(args, "model"),
-          reasoningLevel: requireOption(args, "reasoning"),
-          serviceTier:
-            parsePresetServiceTier(option(args, "service-tier")) ?? null,
-          permissionMode: requireOption(args, "permission"),
-          environmentKind,
-          baseBranch: baseBranch ?? null,
-          machineId:
-            machine === undefined
-              ? null
-              : await resolveMachineId(domain, machine),
-          instructions: option(args, "instructions") ?? "",
-        }),
-      ),
-    );
-    return args.flags.has("json")
-      ? JSON.stringify(result)
-      : `Created preset ${result.preset.name}  ${result.preset.id}`;
-  }
-
-  if (action === "update") {
-    assertAllowed(args, [
-      "name",
-      "provider",
-      "model",
-      "reasoning",
-      "service-tier",
-      "permission",
-      "environment",
-      "base-branch",
-      "machine",
-      "instructions",
-    ]);
-    const [address] = requirePositionals(
-      args,
-      1,
-      "bb tasks preset update <name-or-id> [options] [--json]",
-    );
-    const preset = resolvePreset(await listPresets(domain), address!);
-    const environmentOption = option(args, "environment");
-    const environmentKind = parsePresetEnvironment(
-      environmentOption,
-      preset.environmentKind,
-    );
-    const baseBranch = option(args, "base-branch");
-    const machine = option(args, "machine");
-    validatePresetTargetOptions({ environmentKind, baseBranch, machine });
-    const result = tasksRpcContract.updatePreset.output.parse(
-      await domain.updatePreset(
-        tasksRpcContract.updatePreset.input.parse({
-          presetId: preset.id,
-          name: option(args, "name"),
-          providerId: option(args, "provider"),
-          modelId: option(args, "model"),
-          reasoningLevel: option(args, "reasoning"),
-          serviceTier: parsePresetServiceTier(option(args, "service-tier")),
-          permissionMode: option(args, "permission"),
-          environmentKind:
-            environmentOption === undefined ? undefined : environmentKind,
-          baseBranch:
-            environmentOption !== undefined &&
-            environmentKind === "project-default"
-              ? null
-              : baseBranch,
-          machineId:
-            environmentOption !== undefined &&
-            environmentKind === "project-default"
-              ? null
-              : machine === undefined
-                ? undefined
-                : await resolveMachineId(domain, machine),
-          instructions: option(args, "instructions"),
-        }),
-      ),
-    );
-    return args.flags.has("json")
-      ? JSON.stringify(result)
-      : `Updated preset ${result.preset.name}  ${result.preset.id}`;
-  }
-
-  if (action === "delete") {
-    assertAllowed(args, []);
-    const [address] = requirePositionals(
-      args,
-      1,
-      "bb tasks preset delete <name-or-id> [--json]",
-    );
-    const preset = resolvePreset(await listPresets(domain), address!);
-    const result = tasksRpcContract.deletePreset.output.parse(
-      await domain.deletePreset(
-        tasksRpcContract.deletePreset.input.parse({ presetId: preset.id }),
-      ),
-    );
-    return args.flags.has("json")
-      ? JSON.stringify({ ...result, preset })
-      : `Deleted preset ${preset.name}`;
-  }
-
-  throw new CliError(`unknown preset subcommand: ${action}`);
-}
-
-async function runDispatch(
-  bb: BbPluginApi,
-  store: TasksApiStore,
-  domain: TasksDomain,
-  argv: string[],
-): Promise<string> {
-  const args = parseArgs(argv);
-  if (args.flags.has("help")) return DISPATCH_HELP;
-  assertAllowed(args, ["preset", "instructions"]);
-  const [address] = requirePositionals(args, 1, DISPATCH_HELP);
-  const task = await resolveTask(domain, address!);
-  const preset = resolvePreset(
-    await listPresets(domain),
-    requireOption(args, "preset"),
-  );
-  const result = delegationRpcContract.delegate.output.parse(
-    await delegationHandlers(bb, store).delegate(
-      delegationRpcContract.delegate.input.parse({
-        taskId: task.id,
-        presetId: preset.id,
-        extraInstructions: option(args, "instructions"),
-      }),
-    ),
-  );
-  return args.flags.has("json")
-    ? JSON.stringify({ task, preset, ...result })
-    : result.threadId;
-}
-
 function resolveInvokingThreadId(
-  args: ParsedArgs,
+  thread: string | undefined,
   ctx: PluginCliContext,
 ): string {
-  const threadId =
-    option(args, "thread") ?? process.env.BB_THREAD_ID ?? ctx.threadId;
+  const threadId = thread ?? process.env.BB_THREAD_ID ?? ctx.threadId;
   if (!threadId) {
-    throw new CliError("missing --thread and BB_THREAD_ID is not set");
+    throw new CliError("missing --thread and BB_THREAD_ID is not set", {
+      code: "missing_required",
+    });
   }
   return threadId;
 }
 
-async function runAttach(
-  bb: BbPluginApi,
-  store: TasksApiStore,
-  domain: TasksDomain,
-  ctx: PluginCliContext,
-  argv: string[],
-): Promise<string> {
-  const args = parseArgs(argv);
-  if (args.flags.has("help")) return ATTACH_HELP;
-  assertAllowed(args, ["thread"]);
-  const [address] = requirePositionals(args, 1, ATTACH_HELP);
-  const task = await resolveTask(domain, address!);
-  const threadId = resolveInvokingThreadId(args, ctx);
-  const result = delegationRpcContract.taskThreadsAttach.output.parse(
-    await delegationHandlers(bb, store).taskThreadsAttach(
-      delegationRpcContract.taskThreadsAttach.input.parse({
-        taskId: task.id,
-        threadId,
-      }),
-    ),
-  );
-  return args.flags.has("json")
-    ? JSON.stringify({ task, ...result })
-    : `Attached ${result.threadId} to ${task.key}`;
-}
-
-async function runDetach(
-  bb: BbPluginApi,
-  store: TasksApiStore,
-  domain: TasksDomain,
-  ctx: PluginCliContext,
-  argv: string[],
-): Promise<string> {
-  const args = parseArgs(argv);
-  if (args.flags.has("help")) return DETACH_HELP;
-  assertAllowed(args, ["thread"]);
-  const [address] = requirePositionals(args, 1, DETACH_HELP);
-  const task = await resolveTask(domain, address!);
-  const threadId = resolveInvokingThreadId(args, ctx);
-  const result = delegationRpcContract.taskThreadsDetach.output.parse(
-    await delegationHandlers(bb, store).taskThreadsDetach(
-      delegationRpcContract.taskThreadsDetach.input.parse({
-        taskId: task.id,
-        threadId,
-      }),
-    ),
-  );
-  return args.flags.has("json")
-    ? JSON.stringify({ task, ...result })
-    : `Detached ${result.threadId} from ${task.key}`;
-}
-
-async function runThreads(
-  domain: TasksDomain,
-  argv: string[],
-): Promise<string> {
-  const args = parseArgs(argv);
-  if (args.flags.has("help")) return THREADS_HELP;
-  assertAllowed(args, []);
-  const [address] = requirePositionals(args, 1, THREADS_HELP);
-  const task = await resolveTask(domain, address!);
-  const result = tasksRpcContract.listTaskThreads.output.parse(
-    await domain.listTaskThreads(
-      tasksRpcContract.listTaskThreads.input.parse({ taskId: task.id }),
-    ),
-  );
-  return args.flags.has("json")
-    ? JSON.stringify({ task, taskThreads: result.taskThreads })
-    : table(
-        ["THREAD", "STATUS", "PRESET", "TITLE"],
-        result.taskThreads.map((thread) => [
-          thread.threadId,
-          thread.liveStatus,
-          thread.presetName,
-          thread.title,
-        ]),
-        "No attached threads.",
-      );
-}
-
-function friendlyError(error: unknown): string {
-  if (error instanceof CliError) return error.message;
-  if (error instanceof z.ZodError) {
-    const issue = error.issues[0];
-    const path = issue?.path.length ? `${issue.path.join(".")}: ` : "";
-    return `${path}${issue?.message ?? "invalid input"}`;
-  }
-  const message = errorMessage(error);
-  if (message.includes("UNIQUE constraint failed: projects.prefix")) {
-    return "project prefix is already in use";
-  }
-  if (
-    message.includes("UNIQUE constraint failed: labels.project_id, labels.name")
-  ) {
-    return "label name is already in use in this project";
-  }
-  return message;
+function groupCommand(
+  group: string,
+  summary: string,
+  subcommands: readonly (readonly [string, string])[],
+) {
+  const width = Math.max(...subcommands.map(([name]) => name.length));
+  return cliCommand({
+    summary,
+    hidden: true,
+    description: [
+      "Subcommands:",
+      ...subcommands.map(
+        ([name, text]) => `  bb tasks ${group} ${name.padEnd(width)}  ${text}`,
+      ),
+    ].join("\n"),
+    positionals: [
+      {
+        name: "subcommand",
+        description: `One of: ${subcommands.map(([name]) => name).join(", ")}`,
+        variadic: true,
+      },
+    ],
+    options: { json: JSON_OPTION },
+    run(input) {
+      const [subcommand] = input.positionals.subcommand;
+      if (subcommand === undefined) return { exitCode: 1, stdout: input.help };
+      throw new CliError(`unknown command: ${group} ${subcommand}`, {
+        code: "unknown_command",
+        hint: `run bb tasks ${group} --help for its subcommands`,
+      });
+    },
+  });
 }
 
 export function registerTasksCli(
@@ -1941,186 +668,2040 @@ export function registerTasksCli(
   status: PluginStatus,
 ): void {
   const domain = registerHandlers(bb, store);
-  bb.cli.register({
-    name: "tasks",
-    summary:
-      "Create and manage task-tracker projects, tasks, labels, and comments",
-    commands: [
-      {
-        name: "status",
-        summary: "Show the Tasks plugin name and version",
-        usage: "bb tasks status [--json]",
-      },
-      {
-        name: "project",
-        summary: "Create, list, show, or update tracker projects",
-        usage: PROJECT_HELP,
-      },
-      {
-        name: "folder",
-        summary: "Create, list, update, or delete project folders",
-        usage: FOLDER_HELP,
-      },
-      {
-        name: "create",
-        summary: "Create a task",
-        usage: CREATE_HELP,
-      },
-      {
-        name: "list",
-        summary: "List and filter tasks",
-        usage: LIST_HELP,
-      },
-      {
-        name: "show",
-        summary: "Show full task details",
-        usage: SHOW_HELP,
-      },
-      {
-        name: "update",
-        summary: "Update task fields and labels",
-        usage: UPDATE_HELP,
-      },
-      {
-        name: "comment",
-        summary: "Add a markdown comment to a task",
-        usage: COMMENT_HELP,
-      },
-      {
-        name: "label",
-        summary: "Create, list, or delete project labels",
-        usage: LABEL_HELP,
-      },
-      {
-        name: "attachment",
-        summary: "Add, download, list, or remove task attachments",
-        usage: ATTACHMENT_HELP,
-      },
-      {
-        name: "preset",
-        summary: "List, show, create, update, or delete dispatch presets",
-        usage: PRESET_HELP,
-      },
-      {
-        name: "dispatch",
-        summary: "Dispatch a task to a new agent thread",
-        usage: DISPATCH_HELP,
-      },
-      {
-        name: "attach",
-        summary: "Attach an existing agent thread to a task",
-        usage: ATTACH_HELP,
-      },
-      {
-        name: "detach",
-        summary: "Detach an agent thread from a task",
-        usage: DETACH_HELP,
-      },
-      {
-        name: "threads",
-        summary: "List agent threads attached to a task",
-        usage: THREADS_HELP,
-      },
-      {
-        name: "seed-demo",
-        summary: "Create sample folders, projects, labels, tasks, and comments",
-        usage: "bb tasks seed-demo --yes [--json]",
-      },
-    ],
-    async run(argv, ctx): Promise<PluginCliResult> {
-      try {
-        const [command, ...rest] = argv;
-        if (!command || command === "--help" || command === "help") {
-          return { exitCode: 0, stdout: ROOT_HELP };
-        }
-        let stdout: string;
-        switch (command) {
-          case "status": {
-            const args = parseArgs(rest);
-            assertAllowed(args, []);
-            requirePositionals(args, 0, "bb tasks status [--json]");
-            stdout = args.flags.has("json")
-              ? JSON.stringify(status)
-              : `${status.name} ${status.version}`;
-            break;
-          }
-          case "project":
-            stdout = await runProject(bb, store, domain, rest);
-            break;
-          case "folder":
-            stdout = await runFolder(bb, store, domain, rest);
-            break;
-          case "create": {
-            const result = await runCreate(bb, store, domain, ctx, rest);
-            if (typeof result !== "string") return result;
-            stdout = result;
-            break;
-          }
-          case "list":
-            stdout = await runList(domain, ctx, rest);
-            break;
-          case "show":
-            stdout = await runShow(domain, rest);
-            break;
-          case "update":
-            stdout = await runUpdate(bb, domain, ctx, rest);
-            break;
-          case "comment":
-            stdout = await runComment(bb, store, domain, ctx, rest);
-            break;
-          case "label":
-            stdout = await runLabel(domain, rest);
-            break;
-          case "attachment":
-            stdout = await runAttachment(bb, store, domain, ctx, rest);
-            break;
-          case "preset":
-            stdout = await runPreset(domain, rest);
-            break;
-          case "dispatch":
-          case "delegate":
-            stdout = await runDispatch(bb, store, domain, rest);
-            break;
-          case "attach":
-            stdout = await runAttach(bb, store, domain, ctx, rest);
-            break;
-          case "detach":
-            stdout = await runDetach(bb, store, domain, ctx, rest);
-            break;
-          case "threads":
-            stdout = await runThreads(domain, rest);
-            break;
-          case "seed-demo": {
-            const args = parseArgs(rest);
-            assertAllowed(args, [], ["yes"]);
-            requirePositionals(args, 0, "bb tasks seed-demo --yes [--json]");
-            if (!args.flags.has("yes")) {
-              throw new CliError(
-                "seed-demo creates sample data; re-run with --yes",
+  bb.cli.register(
+    defineCli({
+      name: "tasks",
+      summary:
+        "Create and manage task-tracker projects, tasks, labels, and comments",
+      description:
+        "Tasks are addressed by key (ABC-12) or ULID. --project takes a tracker project prefix or id, never a bb project id (proj_...).",
+      commands: {
+        status: cliCommand({
+          summary: "Show the Tasks plugin name and version",
+          description:
+            "Plugin health only. To filter tasks by workflow status run bb tasks list --status <status>; to change one run bb tasks update <key-or-id> --status <status>.",
+          options: { json: JSON_OPTION },
+          run(input) {
+            return {
+              exitCode: 0,
+              stdout: input.options.json
+                ? JSON.stringify(status)
+                : `${status.name} ${status.version}`,
+            };
+          },
+        }),
+
+        project: groupCommand(
+          "project",
+          "Create, list, show, or update tracker projects",
+          [
+            ["create", "Create a tracker project"],
+            ["list", "List tracker projects"],
+            ["show", "Show one tracker project"],
+            ["update", "Rename, recolor, refile, or relink a project"],
+          ],
+        ),
+        "project create": cliCommand({
+          summary: "Create a tracker project",
+          options: {
+            name: {
+              type: "string",
+              required: true,
+              description: "Human-readable project name",
+            },
+            prefix: {
+              type: "string",
+              placeholder: "PREFIX",
+              description:
+                "Task key prefix: uppercase letters and digits, starts with a letter, at most 10 characters (derived from --name when omitted)",
+            },
+            folder: {
+              type: "string",
+              placeholder: "id-or-name",
+              description: "Folder that holds the project",
+            },
+            "link-bb-project": {
+              type: "string",
+              placeholder: "proj_id",
+              aliases: ["bb-project", "link-project"],
+              description:
+                "bb project id (proj_...) whose threads track this tracker project",
+            },
+            color: {
+              type: "string",
+              default: DEFAULT_PROJECT_COLOR,
+              description: "Accent color name",
+            },
+            json: JSON_OPTION,
+          },
+          unexpectedPositionalHint:
+            "the project name belongs in --name <name>.",
+          run(input) {
+            return guard(async () => {
+              const name = input.options.name;
+              const projects = await listProjects(domain);
+              const folderAddress = input.options.folder;
+              const folder = folderAddress
+                ? await resolveFolder(domain, folderAddress)
+                : undefined;
+              const result = tasksRpcContract.createProject.output.parse(
+                await domain.createProject(
+                  tasksRpcContract.createProject.input.parse({
+                    name,
+                    prefix: input.options.prefix
+                      ? normalizePrefix(input.options.prefix)
+                      : derivePrefix(name, projects),
+                    color: input.options.color,
+                    folderId: folder?.id ?? null,
+                    linkedBbProjectId: input.options["link-bb-project"] ?? null,
+                  }),
+                ),
               );
-            }
-            const result = await seedDemo(domain, ctx.projectId);
-            stdout = args.flags.has("json")
-              ? JSON.stringify(result)
-              : detail([
-                  ["Folders", result.foldersCreated],
-                  ["Projects", result.projectsCreated],
-                  ["Labels", result.labelsCreated],
-                  ["Tasks", result.tasksCreated],
-                  ["Comments", result.commentsCreated],
-                  ["BB project", result.linkedBbProjectId ?? "-"],
-                ]);
-            break;
-          }
-          default:
-            throw new CliError(
-              `unknown command: ${command}; run bb tasks --help`,
-            );
-        }
-        return { exitCode: 0, stdout };
-      } catch (error) {
-        return { exitCode: 1, stderr: oneLine(friendlyError(error)) };
-      }
-    },
-  });
+              return input.options.json
+                ? JSON.stringify(result)
+                : `Created project ${result.project.prefix}  ${result.project.name}`;
+            });
+          },
+        }),
+        "project list": cliCommand({
+          summary: "List tracker projects",
+          options: { json: JSON_OPTION },
+          run(input) {
+            return guard(async () => {
+              const projects = await listProjects(domain);
+              const folders = tasksRpcContract.listFolders.output.parse(
+                await domain.listFolders(
+                  tasksRpcContract.listFolders.input.parse(null),
+                ),
+              ).folders;
+              return input.options.json
+                ? JSON.stringify({ projects })
+                : projectTable(projects, folders);
+            });
+          },
+        }),
+        "project show": cliCommand({
+          summary: "Show one tracker project",
+          positionals: [
+            {
+              name: "prefix-or-id",
+              description: "Tracker project prefix such as ABC, or its ULID",
+              required: true,
+            },
+          ],
+          options: { json: JSON_OPTION },
+          run(input) {
+            return guard(async () => {
+              const project = await resolveProject(
+                domain,
+                input.positionals["prefix-or-id"],
+              );
+              const folder = project.folderId
+                ? await resolveFolder(domain, project.folderId)
+                : null;
+              if (input.options.json) {
+                return JSON.stringify({ project, folder });
+              }
+              return detail([
+                ["Project", `${project.prefix} — ${project.name}`],
+                ["ID", project.id],
+                ["Color", project.color],
+                ["Folder", folder?.name ?? "-"],
+                ["BB project", project.linkedBbProjectId ?? "-"],
+                ["Next task", `${project.prefix}-${project.nextTaskNumber}`],
+                ["Created", project.createdAt],
+              ]);
+            });
+          },
+        }),
+        "project update": cliCommand({
+          summary: "Rename, recolor, refile, or relink a tracker project",
+          positionals: [
+            {
+              name: "prefix-or-id",
+              description: "Tracker project prefix such as ABC, or its ULID",
+              required: true,
+            },
+          ],
+          options: {
+            name: { type: "string", description: "New project name" },
+            color: { type: "string", description: "New accent color name" },
+            folder: {
+              type: "string",
+              placeholder: "id-or-name",
+              description: "Folder that holds the project",
+            },
+            "no-folder": {
+              type: "boolean",
+              description: "Move the project to the top level",
+            },
+            "link-bb-project": {
+              type: "string",
+              placeholder: "proj_id",
+              aliases: ["bb-project", "link-project"],
+              description: "bb project id (proj_...) to link",
+            },
+            "unlink-bb-project": {
+              type: "boolean",
+              description: "Remove the bb project link",
+            },
+            "rename-prefix": {
+              type: "string",
+              placeholder: "PREFIX",
+              description:
+                "New task key prefix; existing task keys are rewritten",
+            },
+            json: JSON_OPTION,
+          },
+          constraints: [
+            { kind: "at-most-one", options: ["folder", "no-folder"] },
+            {
+              kind: "at-most-one",
+              options: ["link-bb-project", "unlink-bb-project"],
+            },
+          ],
+          run(input) {
+            return guard(async () => {
+              const project = await resolveProject(
+                domain,
+                input.positionals["prefix-or-id"],
+              );
+              const folderAddress = input.options.folder;
+              const folder = folderAddress
+                ? await resolveFolder(domain, folderAddress)
+                : undefined;
+              const changes = {
+                name: input.options.name,
+                color: input.options.color,
+                folderId: input.options["no-folder"] ? null : folder?.id,
+                linkedBbProjectId: input.options["unlink-bb-project"]
+                  ? null
+                  : input.options["link-bb-project"],
+              };
+              const renamePrefix = input.options["rename-prefix"];
+              if (
+                renamePrefix === undefined &&
+                changes.name === undefined &&
+                changes.color === undefined &&
+                changes.folderId === undefined &&
+                changes.linkedBbProjectId === undefined
+              ) {
+                throw new CliError("no project changes were provided", {
+                  code: "no_changes",
+                });
+              }
+              const renameInput =
+                renamePrefix === undefined
+                  ? undefined
+                  : tasksRpcContract.renameProjectPrefix.input.parse({
+                      projectId: project.id,
+                      prefix: normalizePrefix(renamePrefix),
+                    });
+              const hasFieldChanges =
+                changes.name !== undefined ||
+                changes.color !== undefined ||
+                changes.folderId !== undefined ||
+                changes.linkedBbProjectId !== undefined;
+              const updateInput = hasFieldChanges
+                ? tasksRpcContract.updateProject.input.parse({
+                    projectId: project.id,
+                    ...changes,
+                  })
+                : undefined;
+              if (
+                renameInput &&
+                store.projectPrefixExists(renameInput.prefix, project.id)
+              ) {
+                throw new CliError(
+                  `Project prefix is already in use: ${renameInput.prefix}`,
+                );
+              }
+              const updated = store.transaction(() =>
+                store.tasks.updateProject(project.id, {
+                  prefix: renameInput?.prefix,
+                  name: updateInput?.name,
+                  color: updateInput?.color,
+                  folderId: updateInput?.folderId,
+                  linkedBbProjectId: updateInput?.linkedBbProjectId,
+                }),
+              );
+              publishProjectsChanged(bb, updated.id);
+              return input.options.json
+                ? JSON.stringify({ project: updated })
+                : `Updated project ${updated.prefix}  ${updated.name}`;
+            });
+          },
+        }),
+
+        folder: groupCommand(
+          "folder",
+          "Create, list, update, or delete project folders",
+          [
+            ["create", "Create a folder"],
+            ["list", "List folders"],
+            ["update", "Rename or move a folder"],
+            ["delete", "Delete a folder, keeping its contents"],
+          ],
+        ),
+        "folder create": cliCommand({
+          summary: "Create a project folder",
+          options: {
+            name: {
+              type: "string",
+              required: true,
+              description: "Folder name",
+            },
+            parent: {
+              type: "string",
+              placeholder: "id-or-name",
+              description: "Parent folder id or name",
+            },
+            json: JSON_OPTION,
+          },
+          unexpectedPositionalHint: "the folder name belongs in --name <name>.",
+          run(input) {
+            return guard(async () => {
+              const parentAddress = input.options.parent;
+              const parent = parentAddress
+                ? await resolveFolder(domain, parentAddress)
+                : undefined;
+              const result = tasksRpcContract.createFolder.output.parse(
+                await domain.createFolder(
+                  tasksRpcContract.createFolder.input.parse({
+                    name: input.options.name,
+                    parentFolderId: parent?.id ?? null,
+                  }),
+                ),
+              );
+              return input.options.json
+                ? JSON.stringify(result)
+                : `Created folder ${result.folder.name}  ${result.folder.id}`;
+            });
+          },
+        }),
+        "folder list": cliCommand({
+          summary: "List project folders",
+          options: { json: JSON_OPTION },
+          run(input) {
+            return guard(async () => {
+              const result = tasksRpcContract.listFolders.output.parse(
+                await domain.listFolders(
+                  tasksRpcContract.listFolders.input.parse(null),
+                ),
+              );
+              const names = new Map(
+                result.folders.map((folder) => [folder.id, folder.name]),
+              );
+              return input.options.json
+                ? JSON.stringify(result)
+                : table(
+                    ["NAME", "PARENT", "ID"],
+                    result.folders.map((folder) => [
+                      folder.name,
+                      folder.parentFolderId
+                        ? (names.get(folder.parentFolderId) ??
+                          folder.parentFolderId)
+                        : "-",
+                      folder.id,
+                    ]),
+                    "No folders.",
+                  );
+            });
+          },
+        }),
+        "folder update": cliCommand({
+          summary: "Rename or move a project folder",
+          positionals: [
+            {
+              name: "id-or-name",
+              description: "Folder id or its unique name",
+              required: true,
+            },
+          ],
+          options: {
+            name: { type: "string", description: "New folder name" },
+            parent: {
+              type: "string",
+              placeholder: "id-or-name",
+              description: "New parent folder id or name",
+            },
+            "no-parent": {
+              type: "boolean",
+              description: "Move the folder to the top level",
+            },
+            json: JSON_OPTION,
+          },
+          constraints: [
+            { kind: "at-most-one", options: ["parent", "no-parent"] },
+          ],
+          run(input) {
+            return guard(async () => {
+              const folder = await resolveFolder(
+                domain,
+                input.positionals["id-or-name"],
+              );
+              const parentAddress = input.options.parent;
+              const noParent = input.options["no-parent"];
+              const name = input.options.name;
+              if (
+                name === undefined &&
+                parentAddress === undefined &&
+                !noParent
+              ) {
+                throw new CliError("no folder changes were provided", {
+                  code: "no_changes",
+                });
+              }
+              const parent = parentAddress
+                ? await resolveFolder(domain, parentAddress)
+                : null;
+              const renameInput =
+                name === undefined
+                  ? undefined
+                  : tasksRpcContract.renameFolder.input.parse({
+                      folderId: folder.id,
+                      name,
+                    });
+              const moveInput =
+                parentAddress === undefined && !noParent
+                  ? undefined
+                  : tasksRpcContract.moveFolder.input.parse({
+                      folderId: folder.id,
+                      parentFolderId: parent?.id ?? null,
+                    });
+              const updated = store.transaction(() =>
+                store.tasks.updateFolder(folder.id, {
+                  name: renameInput?.name,
+                  parentFolderId: moveInput?.parentFolderId,
+                }),
+              );
+              publishProjectsChanged(bb, null);
+              return input.options.json
+                ? JSON.stringify({ folder: updated })
+                : `Updated folder ${updated.name}  ${updated.id}`;
+            });
+          },
+        }),
+        "folder delete": cliCommand({
+          summary: "Delete a folder and unfile its contents",
+          description:
+            "Deleting a folder moves its projects and subfolders to the top level. No tasks are deleted.",
+          positionals: [
+            {
+              name: "id-or-name",
+              description: "Folder id or its unique name",
+              required: true,
+            },
+          ],
+          options: { json: JSON_OPTION },
+          run(input) {
+            return guard(async () => {
+              const address = input.positionals["id-or-name"];
+              const folder = await resolveFolder(domain, address);
+              const result = tasksRpcContract.deleteFolder.output.parse(
+                await domain.deleteFolder(
+                  tasksRpcContract.deleteFolder.input.parse({
+                    folderId: folder.id,
+                  }),
+                ),
+              );
+              if (!result.deleted) {
+                throw new CliError(
+                  `folder not found: ${address} (it was deleted by another client)`,
+                  { code: "folder_not_found" },
+                );
+              }
+              if (input.options.json) {
+                return JSON.stringify({ ...result, folder });
+              }
+              const projectCount = result.movedProjectIds.length;
+              const folderCount = result.movedFolderIds.length;
+              const moved = [
+                projectCount > 0
+                  ? `${projectCount} project${projectCount > 1 ? "s" : ""}`
+                  : null,
+                folderCount > 0
+                  ? `${folderCount} subfolder${folderCount > 1 ? "s" : ""}`
+                  : null,
+              ].filter((part) => part !== null);
+              return moved.length === 0
+                ? `Deleted folder ${folder.name}`
+                : `Deleted folder ${folder.name}; ${moved.join(" and ")} moved to the top level. No tasks were deleted.`;
+            });
+          },
+        }),
+
+        create: cliCommand({
+          summary: "Create a task",
+          unexpectedPositionalHint:
+            "the task title belongs in --title <title>.",
+          options: {
+            project: PROJECT_OPTION,
+            title: {
+              type: "string",
+              required: true,
+              aliases: ["name", "subject"],
+              description: "Task title",
+            },
+            description: {
+              type: "string",
+              placeholder: "markdown",
+              aliases: ["body", "details", "text", "content"],
+              description:
+                "Markdown description; use --description-file for long text",
+            },
+            "description-file": {
+              type: "string",
+              placeholder: "path",
+              description:
+                "Read the description from this UTF-8 file on the invoking machine",
+            },
+            priority: {
+              type: "enum",
+              values: TASK_PRIORITIES,
+              default: "none",
+              description: "Task priority",
+            },
+            label: {
+              type: "string",
+              repeatable: true,
+              split: ",",
+              placeholder: "name",
+              aliases: ["labels"],
+              description:
+                "Existing label name; repeat the flag or pass a comma-separated list",
+            },
+            due: {
+              type: "string",
+              placeholder: "YYYY-MM-DD",
+              aliases: ["due-date"],
+              description: "Due date as a calendar date, YYYY-MM-DD",
+            },
+            parent: {
+              type: "string",
+              placeholder: "key-or-id",
+              description:
+                "Parent task key or id; tasks support at most one level of sub-tasks",
+            },
+            attach: {
+              type: "string",
+              repeatable: true,
+              placeholder: "path",
+              aliases: ["file", "attachment"],
+              description:
+                "File to attach, repeatable; read from the invoking machine, at most 25 MB each",
+            },
+            machine: MACHINE_OPTION,
+            json: JSON_OPTION,
+          },
+          constraints: [
+            {
+              kind: "at-most-one",
+              options: ["description", "description-file"],
+            },
+          ],
+          run(input, ctx) {
+            return guard(async () => {
+              const attachPaths = input.options.attach.map((path) =>
+                resolve(ctx.cwd ?? process.cwd(), path),
+              );
+              const descriptionFile = input.options["description-file"];
+              const usesClientFiles =
+                attachPaths.length > 0 || descriptionFile !== undefined;
+              if (input.options.machine !== undefined && !usesClientFiles) {
+                throw new CliError(
+                  "--machine requires --attach or --description-file",
+                );
+              }
+              const clientHostId = usesClientFiles
+                ? await resolveClientHostId(
+                    bb,
+                    domain,
+                    input.options.machine,
+                    ctx,
+                  )
+                : undefined;
+              const attachSources: Array<{ path: string; bytes: Buffer }> = [];
+              for (const path of attachPaths) {
+                attachSources.push({
+                  path,
+                  bytes: await readAttachmentSource(bb, clientHostId, path),
+                });
+              }
+              const project = await selectedProject(
+                domain,
+                ctx,
+                input.options.project,
+                true,
+              );
+              if (!project) throw new CliError("project is required");
+              const labels = await projectLabels(domain, project.id);
+              const labelIds = input.options.label.map(
+                (name) => resolveLabel(labels, name).id,
+              );
+              const parentAddress = input.options.parent;
+              const parent = parentAddress
+                ? await resolveTask(domain, parentAddress)
+                : undefined;
+              const created = tasksRpcContract.createTask.input.parse({
+                projectId: project.id,
+                title: input.options.title,
+                description:
+                  (await readTextOption(
+                    bb,
+                    ctx,
+                    clientHostId,
+                    input.options.description,
+                    descriptionFile,
+                  )) ?? "",
+                priority: input.options.priority,
+                dueDate: input.options.due ?? null,
+                parentTaskId: parent?.id ?? null,
+                labelIds,
+              });
+              const task = unwrapTask(
+                tasksRpcContract.createTask.output.parse(
+                  await domain.createTask(created),
+                ),
+              );
+              const attachments: Attachment[] = [];
+              const failedAttachments: Array<{ path: string; error: string }> =
+                [];
+              for (const source of attachSources) {
+                try {
+                  const attachment = await saveAttachmentFromBytes(
+                    store.tasks,
+                    source.bytes,
+                    {
+                      taskId: task.id,
+                      fileName: attachmentFileName(source.path),
+                    },
+                  );
+                  publishAttachmentChanged(bb, store.tasks, attachment);
+                  attachments.push(attachment);
+                } catch (error) {
+                  failedAttachments.push({
+                    path: source.path,
+                    error: errorMessage(error),
+                  });
+                }
+              }
+              const stdout = input.options.json
+                ? JSON.stringify({ task, attachments, failedAttachments })
+                : [
+                    `Created ${task.key}  ${task.title}`,
+                    ...attachments.map(
+                      (attachment) =>
+                        `Attached ${attachment.fileName}  ${attachment.id}`,
+                    ),
+                    ...failedAttachments.map(
+                      (entry) =>
+                        `Failed to attach ${entry.path}: ${entry.error}`,
+                    ),
+                    ...failedAttachments.map(
+                      (entry) =>
+                        `Retry with: bb tasks attachment add ${task.key} --file ${entry.path}`,
+                    ),
+                  ].join("\n");
+              if (failedAttachments.length === 0) return stdout;
+              return {
+                exitCode: 1,
+                stdout,
+                stderr: `created ${task.key}, but ${failedAttachments.length} of ${attachPaths.length} attachments failed; see stdout for per-file recovery commands`,
+              };
+            });
+          },
+        }),
+
+        list: cliCommand({
+          summary: "List and filter tasks",
+          options: {
+            project: PROJECT_OPTION,
+            status: {
+              type: "enum",
+              values: TASK_STATUSES,
+              repeatable: true,
+              split: ",",
+              aliases: ["statuses", "state"],
+              description:
+                "Keep only these workflow statuses; repeat the flag or pass a comma-separated list",
+            },
+            priority: {
+              type: "enum",
+              values: TASK_PRIORITIES,
+              repeatable: true,
+              split: ",",
+              aliases: ["priorities"],
+              description:
+                "Keep only these priorities; repeat the flag or pass a comma-separated list",
+            },
+            label: {
+              type: "string",
+              repeatable: true,
+              split: ",",
+              placeholder: "name",
+              aliases: ["labels"],
+              description:
+                "Keep only tasks carrying these label names; repeat or comma-separate",
+            },
+            active: {
+              type: "boolean",
+              description: "Keep only tasks with a live agent thread",
+            },
+            search: {
+              type: "string",
+              placeholder: "query",
+              aliases: ["query", "q"],
+              description: "Match title and description text",
+            },
+            sort: {
+              type: "enum",
+              values: TASK_SORTS,
+              default: "manual",
+              description: "Row order",
+            },
+            limit: {
+              type: "integer",
+              min: 1,
+              max: TASKS_PAGE_MAX_LIMIT,
+              default: TASKS_PAGE_DEFAULT_LIMIT,
+              description: "Rows per page",
+            },
+            cursor: {
+              type: "string",
+              placeholder: "opaque",
+              description:
+                "Continue from a previous page's nextCursor with identical filters",
+            },
+            json: JSON_OPTION,
+          },
+          run(input, ctx) {
+            return guard(async () => {
+              const project = await selectedProject(
+                domain,
+                ctx,
+                input.options.project,
+                false,
+              );
+              const projects = project ? [project] : await listProjects(domain);
+              const labelById = await labelsForTaskList(domain, projects);
+              const labelIds = input.options.label.map((name) => {
+                const matches = [...labelById.values()].filter(
+                  (label) =>
+                    label.name.toLowerCase() === name.trim().toLowerCase(),
+                );
+                if (matches.length === 0) {
+                  throw new CliError(`label not found: ${name}`, {
+                    code: "label_not_found",
+                  });
+                }
+                if (matches.length > 1 && !project) {
+                  throw new CliError(
+                    `label name exists in multiple projects; pass --project: ${name}`,
+                    { code: "label_ambiguous" },
+                  );
+                }
+                return matches[0]!.id;
+              });
+              const limit = input.options.limit;
+              const result = tasksRpcContract.listTasks.output.parse(
+                await domain.listTasks(
+                  tasksRpcContract.listTasks.input.parse({
+                    projectId: project?.id,
+                    statuses:
+                      input.options.status.length > 0
+                        ? input.options.status
+                        : undefined,
+                    priorities:
+                      input.options.priority.length > 0
+                        ? input.options.priority
+                        : undefined,
+                    labelIds: labelIds.length > 0 ? labelIds : undefined,
+                    activeOnly: input.options.active,
+                    search: input.options.search,
+                    sort: input.options.sort,
+                    limit,
+                    cursor: input.options.cursor,
+                  }),
+                ),
+              );
+              const tasks = [];
+              for (const task of result.tasks) {
+                const threadResult =
+                  tasksRpcContract.listTaskThreads.output.parse(
+                    await domain.listTaskThreads(
+                      tasksRpcContract.listTaskThreads.input.parse({
+                        taskId: task.id,
+                      }),
+                    ),
+                  );
+                tasks.push({
+                  ...task,
+                  labels: task.labelIds.map(
+                    (id) => labelById.get(id)?.name ?? id,
+                  ),
+                  agentsWorking: threadResult.taskThreads.filter((thread) =>
+                    ACTIVE_THREAD_STATUSES.has(thread.liveStatus),
+                  ).length,
+                });
+              }
+              if (input.options.json) {
+                return JSON.stringify({
+                  tasks,
+                  nextCursor: result.nextCursor,
+                  limit,
+                });
+              }
+              const output = table(
+                [
+                  "KEY",
+                  "STATUS",
+                  "PRIORITY",
+                  "DUE",
+                  "TITLE",
+                  "LABELS",
+                  "AGENTS",
+                ],
+                tasks.map((task) => [
+                  task.key,
+                  task.status,
+                  task.priority,
+                  task.dueDate ?? "-",
+                  task.title,
+                  task.labels.join(", ") || "-",
+                  task.agentsWorking,
+                ]),
+                "No tasks.",
+              );
+              return result.nextCursor === null
+                ? output
+                : `${output}\n\nMore results are available. Re-run with the same filters and add: --limit ${limit} --cursor ${result.nextCursor}`;
+            });
+          },
+        }),
+
+        show: cliCommand({
+          summary: "Show full task details",
+          aliases: ["get"],
+          suggestFor: ["view", "read", "info", "detail", "details", "describe"],
+          positionals: [KEY_POSITIONAL],
+          options: { json: JSON_OPTION },
+          run(input) {
+            return guard(async () => {
+              const task = await resolveTask(
+                domain,
+                input.positionals["key-or-id"],
+              );
+              const project = await resolveProject(domain, task.projectId);
+              const allLabels = await projectLabels(domain, project.id);
+              const labelById = new Map(
+                allLabels.map((label) => [label.id, label]),
+              );
+              const labels = task.labelIds
+                .map((id) => labelById.get(id)!)
+                .filter(Boolean);
+              const subtasks = await listAllTasks(
+                domain,
+                tasksRpcContract.listTasks.input.parse({
+                  parentTaskId: task.id,
+                }),
+              );
+              const comments = tasksRpcContract.listComments.output.parse(
+                await domain.listComments(
+                  tasksRpcContract.listComments.input.parse({
+                    taskId: task.id,
+                  }),
+                ),
+              ).comments;
+              const attachments = await listTaskAttachments(
+                domain,
+                task.id,
+                comments,
+              );
+              const taskThreads = tasksRpcContract.listTaskThreads.output.parse(
+                await domain.listTaskThreads(
+                  tasksRpcContract.listTaskThreads.input.parse({
+                    taskId: task.id,
+                  }),
+                ),
+              ).taskThreads;
+              const { pullRequests, unavailableThreadIds } =
+                tasksRpcContract.listTaskPullRequests.output.parse(
+                  await domain.listTaskPullRequests(
+                    tasksRpcContract.listTaskPullRequests.input.parse({
+                      taskId: task.id,
+                    }),
+                  ),
+                );
+              if (input.options.json) {
+                return JSON.stringify({
+                  task,
+                  project,
+                  labels,
+                  subtasks,
+                  attachments,
+                  taskThreads,
+                  pullRequests,
+                  pullRequestUnavailableThreadIds: unavailableThreadIds,
+                  comments,
+                });
+              }
+              return [
+                detail([
+                  ["Task", `${task.key} — ${task.title}`],
+                  ["ID", task.id],
+                  ["Project", `${project.prefix} — ${project.name}`],
+                  ["Status", task.status],
+                  ["Priority", task.priority],
+                  ["Due", task.dueDate ?? "-"],
+                  ["Parent", task.parentTaskId ?? "-"],
+                  [
+                    "Labels",
+                    labels.map((label) => label.name).join(", ") || "-",
+                  ],
+                  ["Created", task.createdAt],
+                  ["Updated", task.updatedAt],
+                ]),
+                `Description\n${task.description || "(none)"}`,
+                `Sub-tasks\n${table(
+                  ["KEY", "STATUS", "PRIORITY", "TITLE"],
+                  subtasks.map((subtask) => [
+                    subtask.key,
+                    subtask.status,
+                    subtask.priority,
+                    subtask.title,
+                  ]),
+                  "(none)",
+                )}`,
+                `Attachments\n${table(
+                  ["ID", "NAME", "SIZE"],
+                  attachments.map((attachment) => [
+                    attachment.id,
+                    attachment.fileName,
+                    bytes(attachment.sizeBytes),
+                  ]),
+                  "(none)",
+                )}`,
+                `Attached threads\n${table(
+                  ["THREAD", "STATUS", "PRESET", "TITLE"],
+                  taskThreads.map((thread) => [
+                    thread.threadId,
+                    thread.liveStatus,
+                    thread.presetName,
+                    thread.title,
+                  ]),
+                  "(none)",
+                )}`,
+                `Pull requests\n${table(
+                  ["PR", "STATE", "TITLE", "URL"],
+                  pullRequests.map((pullRequest) => [
+                    `#${pullRequest.number}`,
+                    pullRequest.state,
+                    pullRequest.title,
+                    pullRequest.url,
+                  ]),
+                  "(none)",
+                )}${
+                  unavailableThreadIds.length > 0
+                    ? `\nPR lookup unavailable for: ${unavailableThreadIds.join(", ")}`
+                    : ""
+                }`,
+                `Comments\n${table(
+                  ["TIME", "KIND", "AUTHOR", "PROVIDER", "BODY"],
+                  comments.map((comment) => [
+                    comment.createdAt,
+                    comment.kind,
+                    comment.threadTitle ?? comment.authorName,
+                    comment.provider?.name ?? "-",
+                    comment.body,
+                  ]),
+                  "(none)",
+                )}`,
+              ].join("\n\n");
+            });
+          },
+        }),
+
+        update: cliCommand({
+          summary: "Update task fields and labels",
+          positionals: [KEY_POSITIONAL],
+          options: {
+            status: {
+              type: "enum",
+              values: TASK_STATUSES,
+              aliases: ["state"],
+              description:
+                "New workflow status; in_review when implementation needs review, done when the criteria are met",
+            },
+            priority: {
+              type: "enum",
+              values: TASK_PRIORITIES,
+              description: "New priority",
+            },
+            title: {
+              type: "string",
+              aliases: ["name", "subject"],
+              description: "New title",
+            },
+            description: {
+              type: "string",
+              placeholder: "markdown",
+              aliases: ["body", "details", "text", "content"],
+              description:
+                "Replacement markdown description; use --description-file for long text",
+            },
+            "description-file": {
+              type: "string",
+              placeholder: "path",
+              description:
+                "Read the replacement description from this UTF-8 file on the invoking machine",
+            },
+            due: {
+              type: "string",
+              placeholder: "YYYY-MM-DD",
+              aliases: ["due-date"],
+              description: "New due date as a calendar date, YYYY-MM-DD",
+            },
+            "no-due": { type: "boolean", description: "Clear the due date" },
+            parent: {
+              type: "string",
+              placeholder: "key-or-id",
+              description:
+                "New parent task key or id; tasks support at most one level of sub-tasks",
+            },
+            "no-parent": {
+              type: "boolean",
+              description: "Promote the task to the top level",
+            },
+            "add-label": {
+              type: "string",
+              repeatable: true,
+              split: ",",
+              placeholder: "name",
+              description:
+                "Existing label name to add; repeat or comma-separate",
+            },
+            "remove-label": {
+              type: "string",
+              repeatable: true,
+              split: ",",
+              placeholder: "name",
+              description: "Label name to remove; repeat or comma-separate",
+            },
+            machine: MACHINE_OPTION,
+            json: JSON_OPTION,
+          },
+          constraints: [
+            {
+              kind: "at-most-one",
+              options: ["description", "description-file"],
+            },
+            { kind: "at-most-one", options: ["due", "no-due"] },
+            { kind: "at-most-one", options: ["parent", "no-parent"] },
+            {
+              kind: "requires",
+              option: "machine",
+              needs: ["description-file"],
+            },
+          ],
+          run(input, ctx) {
+            return guard(async () => {
+              const task = await resolveTask(
+                domain,
+                input.positionals["key-or-id"],
+              );
+              const dueDate = input.options.due;
+              const noDue = input.options["no-due"];
+              const parentAddress = input.options.parent;
+              const noParent = input.options["no-parent"];
+              const parent =
+                parentAddress === undefined
+                  ? undefined
+                  : await resolveTask(domain, parentAddress);
+              const descriptionFile = input.options["description-file"];
+              const clientHostId =
+                descriptionFile !== undefined
+                  ? await resolveClientHostId(
+                      bb,
+                      domain,
+                      input.options.machine,
+                      ctx,
+                    )
+                  : undefined;
+              const description = await readTextOption(
+                bb,
+                ctx,
+                clientHostId,
+                input.options.description,
+                descriptionFile,
+              );
+              const labels = await projectLabels(domain, task.projectId);
+              const nextLabels = new Set(task.labelIds);
+              for (const name of input.options["add-label"]) {
+                nextLabels.add(resolveLabel(labels, name).id);
+              }
+              for (const name of input.options["remove-label"]) {
+                nextLabels.delete(resolveLabel(labels, name).id);
+              }
+              const labelsChanged =
+                input.options["add-label"].length > 0 ||
+                input.options["remove-label"].length > 0;
+              if (
+                input.options.status === undefined &&
+                input.options.priority === undefined &&
+                input.options.title === undefined &&
+                description === undefined &&
+                dueDate === undefined &&
+                !noDue &&
+                parentAddress === undefined &&
+                !noParent &&
+                !labelsChanged
+              ) {
+                throw new CliError("no task changes were provided", {
+                  code: "no_changes",
+                });
+              }
+              const result = tasksRpcContract.updateTask.output.parse(
+                await domain.updateTask(
+                  tasksRpcContract.updateTask.input.parse({
+                    taskId: task.id,
+                    status: input.options.status,
+                    priority: input.options.priority,
+                    title: input.options.title,
+                    description,
+                    dueDate: noDue ? null : dueDate,
+                    parentTaskId:
+                      parentAddress === undefined && !noParent
+                        ? undefined
+                        : (parent?.id ?? null),
+                    labelIds: labelsChanged ? [...nextLabels] : undefined,
+                    authorName: taskAuthor(ctx),
+                  }),
+                ),
+              );
+              const updated = unwrapTask(result);
+              return input.options.json
+                ? JSON.stringify({ task: updated })
+                : `Updated ${updated.key}  ${updated.title}`;
+            });
+          },
+        }),
+
+        comment: cliCommand({
+          summary: "Add a markdown comment to a task",
+          positionals: [KEY_POSITIONAL],
+          options: {
+            body: {
+              type: "string",
+              placeholder: "markdown",
+              aliases: ["message", "text", "content"],
+              description:
+                "Comment markdown; use --body-file for long text (exactly one of the two)",
+            },
+            "body-file": {
+              type: "string",
+              placeholder: "path",
+              description:
+                "Read the comment from this UTF-8 file on the invoking machine",
+            },
+            author: {
+              type: "string",
+              placeholder: "name",
+              description:
+                "Display name for the comment; defaults to the invoking thread or cli",
+            },
+            notify: {
+              type: "boolean",
+              description:
+                "Deliver the comment to the thread that wrote the task's latest agent reply",
+            },
+            machine: MACHINE_OPTION,
+            json: JSON_OPTION,
+          },
+          constraints: [
+            { kind: "exactly-one", options: ["body", "body-file"] },
+            { kind: "requires", option: "machine", needs: ["body-file"] },
+          ],
+          run(input, ctx) {
+            return guard(async () => {
+              const task = await resolveTask(
+                domain,
+                input.positionals["key-or-id"],
+              );
+              const bodyFile = input.options["body-file"];
+              const clientHostId =
+                bodyFile !== undefined
+                  ? await resolveClientHostId(
+                      bb,
+                      domain,
+                      input.options.machine,
+                      ctx,
+                    )
+                  : undefined;
+              const body = await readTextOption(
+                bb,
+                ctx,
+                clientHostId,
+                input.options.body,
+                bodyFile,
+              );
+              if (body === undefined) {
+                throw new CliError("missing required --body or --body-file", {
+                  code: "missing_required",
+                });
+              }
+              if (!body.trim()) {
+                throw new CliError("comment body must not be blank");
+              }
+              const comment = await createComment(bb, store, {
+                taskId: task.id,
+                kind: ctx.threadId ? "agent" : "user",
+                authorName: input.options.author ?? taskAuthor(ctx),
+                presetName: null,
+                threadId: ctx.threadId ?? null,
+                body,
+                notify: input.options.notify,
+              });
+              return input.options.json
+                ? JSON.stringify({ comment })
+                : `Commented on ${task.key}  ${comment.id}`;
+            });
+          },
+        }),
+
+        label: groupCommand("label", "Create, list, or delete project labels", [
+          ["create", "Create a label in a project"],
+          ["list", "List a project's labels"],
+          ["delete", "Delete a label"],
+        ]),
+        "label create": cliCommand({
+          summary: "Create a project label",
+          options: {
+            project: REQUIRED_PROJECT_OPTION,
+            name: { type: "string", required: true, description: "Label name" },
+            color: {
+              type: "string",
+              default: DEFAULT_LABEL_COLOR,
+              description: "Label color name",
+            },
+            json: JSON_OPTION,
+          },
+          unexpectedPositionalHint: "the label name belongs in --name <name>.",
+          run(input, ctx) {
+            return guard(async () => {
+              const project = await requiredProject(
+                domain,
+                ctx,
+                input.options.project,
+              );
+              const result = tasksRpcContract.createLabel.output.parse(
+                await domain.createLabel(
+                  tasksRpcContract.createLabel.input.parse({
+                    projectId: project.id,
+                    name: input.options.name,
+                    color: input.options.color,
+                  }),
+                ),
+              );
+              return input.options.json
+                ? JSON.stringify(result)
+                : `Created label ${result.label.name}  ${result.label.id}`;
+            });
+          },
+        }),
+        "label list": cliCommand({
+          summary: "List a project's labels",
+          options: { project: REQUIRED_PROJECT_OPTION, json: JSON_OPTION },
+          run(input, ctx) {
+            return guard(async () => {
+              const project = await requiredProject(
+                domain,
+                ctx,
+                input.options.project,
+              );
+              const labels = await projectLabels(domain, project.id);
+              return input.options.json
+                ? JSON.stringify({ labels })
+                : table(
+                    ["NAME", "COLOR", "ID"],
+                    labels.map((label) => [label.name, label.color, label.id]),
+                    "No labels.",
+                  );
+            });
+          },
+        }),
+        "label delete": cliCommand({
+          summary: "Delete a project label",
+          positionals: [
+            {
+              name: "name-or-id",
+              description: "Label name or its ULID",
+              required: true,
+            },
+          ],
+          options: { project: REQUIRED_PROJECT_OPTION, json: JSON_OPTION },
+          run(input, ctx) {
+            return guard(async () => {
+              const project = await requiredProject(
+                domain,
+                ctx,
+                input.options.project,
+              );
+              const label = resolveLabel(
+                await projectLabels(domain, project.id),
+                input.positionals["name-or-id"],
+              );
+              const result = tasksRpcContract.deleteLabel.output.parse(
+                await domain.deleteLabel(
+                  tasksRpcContract.deleteLabel.input.parse({
+                    labelId: label.id,
+                  }),
+                ),
+              );
+              return input.options.json
+                ? JSON.stringify({ ...result, label })
+                : `Deleted label ${label.name}`;
+            });
+          },
+        }),
+
+        attachment: groupCommand(
+          "attachment",
+          "Add, download, list, or remove task attachments",
+          [
+            ["add", "Attach a file to a task or comment"],
+            ["get", "Download an attachment to a path"],
+            ["list", "List a task's attachments"],
+            ["remove", "Remove an attachment"],
+          ],
+        ),
+        "attachment add": cliCommand({
+          summary: "Attach a file to a task or comment",
+          description:
+            "File paths are read from the invoking machine: the thread's machine inside an agent thread, otherwise the server's.",
+          positionals: [
+            {
+              name: "key-or-comment-id",
+              description:
+                "Task key such as ABC-12, a task ULID, or a comment ULID",
+              required: true,
+            },
+          ],
+          options: {
+            file: {
+              type: "string",
+              required: true,
+              placeholder: "path",
+              aliases: ["path", "attach"],
+              description: "Source file to upload, at most 25 MB",
+            },
+            name: {
+              type: "string",
+              description: "Stored file name; defaults to the source basename",
+            },
+            machine: MACHINE_OPTION,
+            json: JSON_OPTION,
+          },
+          run(input, ctx) {
+            return guard(async () => {
+              const ownerAddress = input.positionals["key-or-comment-id"];
+              const sourcePath = resolve(
+                ctx.cwd ?? process.cwd(),
+                input.options.file,
+              );
+              const normalizedOwner = ownerAddress.trim().toUpperCase();
+              const comment = ULID_PATTERN.test(normalizedOwner)
+                ? store.tasks.getComment(normalizedOwner)
+                : undefined;
+              if (ULID_PATTERN.test(normalizedOwner) && !comment) {
+                throw new CliError(`comment not found: ${ownerAddress}`, {
+                  code: "comment_not_found",
+                });
+              }
+              const owner = comment
+                ? { commentId: comment.id }
+                : { taskId: (await resolveTask(domain, ownerAddress)).id };
+              const clientHostId = await resolveClientHostId(
+                bb,
+                domain,
+                input.options.machine,
+                ctx,
+              );
+              const content = await readAttachmentSource(
+                bb,
+                clientHostId,
+                sourcePath,
+              );
+              const attachment = await saveAttachmentFromBytes(
+                store.tasks,
+                content,
+                {
+                  ...owner,
+                  fileName:
+                    input.options.name ?? attachmentFileName(sourcePath),
+                },
+              );
+              publishAttachmentChanged(bb, store.tasks, attachment);
+              return input.options.json
+                ? JSON.stringify({
+                    attachment,
+                    url: attachmentDownloadUrl(attachment.id),
+                  })
+                : `Added attachment ${attachment.fileName}  ${attachment.id}`;
+            });
+          },
+        }),
+        "attachment get": cliCommand({
+          summary: "Download an attachment to a path",
+          description:
+            "The file is written on the invoking machine: the thread's machine inside an agent thread, otherwise the server's.",
+          positionals: [
+            {
+              name: "attachment-id",
+              description: "Attachment ULID from bb tasks attachment list",
+              required: true,
+            },
+          ],
+          options: {
+            out: {
+              type: "string",
+              required: true,
+              placeholder: "path",
+              short: "o",
+              aliases: ["output", "to"],
+              description:
+                "Destination path; missing parent directories are created",
+            },
+            machine: MACHINE_OPTION,
+            json: JSON_OPTION,
+          },
+          run(input, ctx) {
+            return guard(async () => {
+              const outPath = resolve(
+                ctx.cwd ?? process.cwd(),
+                input.options.out,
+              );
+              const clientHostId = await resolveClientHostId(
+                bb,
+                domain,
+                input.options.machine,
+                ctx,
+              );
+              const { attachment, content } = await readAttachmentContent(
+                store.tasks,
+                input.positionals["attachment-id"],
+              );
+              await writeClientFile(bb, clientHostId, outPath, content);
+              return input.options.json
+                ? JSON.stringify({ attachment, out: outPath })
+                : `Saved ${attachment.fileName}  ${outPath}`;
+            });
+          },
+        }),
+        "attachment list": cliCommand({
+          summary: "List a task's attachments",
+          positionals: [KEY_POSITIONAL],
+          options: { json: JSON_OPTION },
+          run(input) {
+            return guard(async () => {
+              const task = await resolveTask(
+                domain,
+                input.positionals["key-or-id"],
+              );
+              const comments = tasksRpcContract.listComments.output.parse(
+                await domain.listComments(
+                  tasksRpcContract.listComments.input.parse({
+                    taskId: task.id,
+                  }),
+                ),
+              ).comments;
+              const attachments = await listTaskAttachments(
+                domain,
+                task.id,
+                comments,
+              );
+              return input.options.json
+                ? JSON.stringify({ task, attachments })
+                : table(
+                    ["ID", "NAME", "TYPE", "SIZE"],
+                    attachments.map((attachment) => [
+                      attachment.id,
+                      attachment.fileName,
+                      attachment.mime,
+                      bytes(attachment.sizeBytes),
+                    ]),
+                    "No attachments.",
+                  );
+            });
+          },
+        }),
+        "attachment remove": cliCommand({
+          summary: "Remove an attachment",
+          positionals: [
+            {
+              name: "attachment-id",
+              description: "Attachment ULID from bb tasks attachment list",
+              required: true,
+            },
+          ],
+          options: {
+            "remove-references": {
+              type: "boolean",
+              description:
+                "Also strip the attachment's links from the task description",
+            },
+            json: JSON_OPTION,
+          },
+          run(input) {
+            return guard(async () => {
+              const attachmentId = input.positionals["attachment-id"];
+              const result = tasksRpcContract.deleteAttachment.output.parse(
+                await domain.deleteAttachment(
+                  tasksRpcContract.deleteAttachment.input.parse({
+                    attachmentId: attachmentId.trim(),
+                    removeDescriptionReferences:
+                      input.options["remove-references"],
+                  }),
+                ),
+              );
+              if (!result.ok) throw new CliError(result.error.message);
+              if (!result.deleted) {
+                throw new CliError(`attachment not found: ${attachmentId}`, {
+                  code: "attachment_not_found",
+                });
+              }
+              return input.options.json
+                ? JSON.stringify({
+                    deleted: true,
+                    attachment: result.attachment,
+                  })
+                : `Removed attachment ${result.attachment.fileName}  ${result.attachment.id}`;
+            });
+          },
+        }),
+
+        preset: groupCommand(
+          "preset",
+          "List, show, create, update, or delete dispatch presets",
+          [
+            ["list", "List dispatch presets"],
+            ["show", "Show one preset"],
+            ["create", "Create a preset"],
+            ["update", "Update a preset"],
+            ["delete", "Delete a preset"],
+          ],
+        ),
+        "preset list": cliCommand({
+          summary: "List dispatch presets",
+          options: { json: JSON_OPTION },
+          run(input) {
+            return guard(async () => {
+              const presets = await listPresets(domain);
+              return input.options.json
+                ? JSON.stringify({ presets })
+                : table(
+                    [
+                      "NAME",
+                      "PROVIDER",
+                      "MODEL",
+                      "REASONING",
+                      "SERVICE TIER",
+                      "PERMISSION",
+                      "ENVIRONMENT",
+                      "BASE BRANCH",
+                      "MACHINE",
+                      "BUILTIN",
+                      "ID",
+                    ],
+                    presets.map((preset) => [
+                      preset.name,
+                      preset.providerId,
+                      preset.modelId,
+                      preset.reasoningLevel,
+                      preset.serviceTier ?? "-",
+                      preset.permissionMode,
+                      presetEnvironmentLabel(preset),
+                      preset.baseBranch ?? "-",
+                      preset.machineId ?? "-",
+                      preset.builtin ? "yes" : "no",
+                      preset.id,
+                    ]),
+                    "No presets.",
+                  );
+            });
+          },
+        }),
+        "preset show": cliCommand({
+          summary: "Show one dispatch preset",
+          positionals: [
+            {
+              name: "name-or-id",
+              description: "Preset name (case-insensitive) or its ULID",
+              required: true,
+            },
+          ],
+          options: { json: JSON_OPTION },
+          run(input) {
+            return guard(async () => {
+              const preset = resolvePreset(
+                await listPresets(domain),
+                input.positionals["name-or-id"],
+              );
+              return input.options.json
+                ? JSON.stringify({ preset })
+                : detail([
+                    ["Name", preset.name],
+                    ["Provider", preset.providerId],
+                    ["Model", preset.modelId],
+                    ["Reasoning", preset.reasoningLevel],
+                    ["Service tier", preset.serviceTier ?? "-"],
+                    ["Permission", preset.permissionMode],
+                    ["Environment", presetEnvironmentLabel(preset)],
+                    ["Base branch", preset.baseBranch ?? "-"],
+                    ["Machine", preset.machineId ?? "-"],
+                    ["Instructions", preset.instructions || "-"],
+                    ["Built in", preset.builtin ? "yes" : "no"],
+                    ["ID", preset.id],
+                  ]);
+            });
+          },
+        }),
+        "preset create": cliCommand({
+          summary: "Create a dispatch preset",
+          options: {
+            name: {
+              type: "string",
+              required: true,
+              description: "Preset name shown in dispatch menus",
+            },
+            provider: {
+              type: "string",
+              required: true,
+              placeholder: "id",
+              description: "Provider id such as codex or claude-code",
+            },
+            model: {
+              type: "string",
+              required: true,
+              placeholder: "id",
+              description: "Model id as the provider spells it",
+            },
+            reasoning: {
+              type: "enum",
+              values: presetReasoningLevelSchema.options,
+              required: true,
+              description: "Reasoning level the provider supports",
+            },
+            permission: {
+              type: "enum",
+              values: PRESET_PERMISSION_MODES,
+              required: true,
+              description: "Permission mode for the dispatched thread",
+            },
+            "service-tier": {
+              type: "enum",
+              values: PRESET_SERVICE_TIERS,
+              description: "Service tier; none clears it",
+            },
+            environment: {
+              type: "enum",
+              values: PRESET_ENVIRONMENTS,
+              default: "project-default",
+              description:
+                "Where the thread runs; --base-branch and --machine require worktree",
+            },
+            "base-branch": {
+              type: "string",
+              placeholder: "branch",
+              description: "Branch new worktrees start from",
+            },
+            machine: {
+              type: "string",
+              placeholder: "id-or-name",
+              description: "Enrolled machine that hosts the worktree",
+            },
+            instructions: {
+              type: "string",
+              placeholder: "text",
+              description: "Extra instructions prepended to every dispatch",
+            },
+            json: JSON_OPTION,
+          },
+          run(input) {
+            return guard(async () => {
+              const environmentKind = presetEnvironmentKind(
+                input.options.environment,
+                "project-default",
+              );
+              const baseBranch = input.options["base-branch"];
+              const machine = input.options.machine;
+              validatePresetTargetOptions({
+                environmentKind,
+                baseBranch,
+                machine,
+              });
+              const result = tasksRpcContract.createPreset.output.parse(
+                await domain.createPreset(
+                  tasksRpcContract.createPreset.input.parse({
+                    name: input.options.name,
+                    providerId: input.options.provider,
+                    modelId: input.options.model,
+                    reasoningLevel: input.options.reasoning,
+                    serviceTier:
+                      presetServiceTier(input.options["service-tier"]) ?? null,
+                    permissionMode: input.options.permission,
+                    environmentKind,
+                    baseBranch: baseBranch ?? null,
+                    machineId:
+                      machine === undefined
+                        ? null
+                        : await resolveMachineId(domain, machine),
+                    instructions: input.options.instructions ?? "",
+                  }),
+                ),
+              );
+              return input.options.json
+                ? JSON.stringify(result)
+                : `Created preset ${result.preset.name}  ${result.preset.id}`;
+            });
+          },
+        }),
+        "preset update": cliCommand({
+          summary: "Update a dispatch preset",
+          positionals: [
+            {
+              name: "name-or-id",
+              description: "Preset name (case-insensitive) or its ULID",
+              required: true,
+            },
+          ],
+          options: {
+            name: { type: "string", description: "New preset name" },
+            provider: {
+              type: "string",
+              placeholder: "id",
+              description: "Provider id such as codex or claude-code",
+            },
+            model: {
+              type: "string",
+              placeholder: "id",
+              description: "Model id as the provider spells it",
+            },
+            reasoning: {
+              type: "enum",
+              values: presetReasoningLevelSchema.options,
+              description: "Reasoning level the provider supports",
+            },
+            permission: {
+              type: "enum",
+              values: PRESET_PERMISSION_MODES,
+              description: "Permission mode for the dispatched thread",
+            },
+            "service-tier": {
+              type: "enum",
+              values: PRESET_SERVICE_TIERS,
+              description: "Service tier; none clears it",
+            },
+            environment: {
+              type: "enum",
+              values: PRESET_ENVIRONMENTS,
+              description:
+                "Where the thread runs; switching to project-default clears --base-branch and --machine",
+            },
+            "base-branch": {
+              type: "string",
+              placeholder: "branch",
+              description: "Branch new worktrees start from",
+            },
+            machine: {
+              type: "string",
+              placeholder: "id-or-name",
+              description: "Enrolled machine that hosts the worktree",
+            },
+            instructions: {
+              type: "string",
+              placeholder: "text",
+              description: "Extra instructions prepended to every dispatch",
+            },
+            json: JSON_OPTION,
+          },
+          run(input) {
+            return guard(async () => {
+              const preset = resolvePreset(
+                await listPresets(domain),
+                input.positionals["name-or-id"],
+              );
+              const environmentOption = input.options.environment;
+              const environmentKind = presetEnvironmentKind(
+                environmentOption,
+                preset.environmentKind,
+              );
+              const baseBranch = input.options["base-branch"];
+              const machine = input.options.machine;
+              validatePresetTargetOptions({
+                environmentKind,
+                baseBranch,
+                machine,
+              });
+              const result = tasksRpcContract.updatePreset.output.parse(
+                await domain.updatePreset(
+                  tasksRpcContract.updatePreset.input.parse({
+                    presetId: preset.id,
+                    name: input.options.name,
+                    providerId: input.options.provider,
+                    modelId: input.options.model,
+                    reasoningLevel: input.options.reasoning,
+                    serviceTier: presetServiceTier(
+                      input.options["service-tier"],
+                    ),
+                    permissionMode: input.options.permission,
+                    environmentKind:
+                      environmentOption === undefined
+                        ? undefined
+                        : environmentKind,
+                    baseBranch:
+                      environmentOption !== undefined &&
+                      environmentKind === "project-default"
+                        ? null
+                        : baseBranch,
+                    machineId:
+                      environmentOption !== undefined &&
+                      environmentKind === "project-default"
+                        ? null
+                        : machine === undefined
+                          ? undefined
+                          : await resolveMachineId(domain, machine),
+                    instructions: input.options.instructions,
+                  }),
+                ),
+              );
+              return input.options.json
+                ? JSON.stringify(result)
+                : `Updated preset ${result.preset.name}  ${result.preset.id}`;
+            });
+          },
+        }),
+        "preset delete": cliCommand({
+          summary: "Delete a dispatch preset",
+          positionals: [
+            {
+              name: "name-or-id",
+              description: "Preset name (case-insensitive) or its ULID",
+              required: true,
+            },
+          ],
+          options: { json: JSON_OPTION },
+          run(input) {
+            return guard(async () => {
+              const preset = resolvePreset(
+                await listPresets(domain),
+                input.positionals["name-or-id"],
+              );
+              const result = tasksRpcContract.deletePreset.output.parse(
+                await domain.deletePreset(
+                  tasksRpcContract.deletePreset.input.parse({
+                    presetId: preset.id,
+                  }),
+                ),
+              );
+              return input.options.json
+                ? JSON.stringify({ ...result, preset })
+                : `Deleted preset ${preset.name}`;
+            });
+          },
+        }),
+
+        dispatch: cliCommand({
+          summary: "Dispatch a task to a new agent thread",
+          aliases: ["delegate"],
+          suggestFor: ["start", "run", "spawn"],
+          positionals: [KEY_POSITIONAL],
+          options: {
+            preset: {
+              type: "string",
+              required: true,
+              placeholder: "name-or-id",
+              description:
+                "Dispatch preset name or id; run bb tasks preset list to see them",
+            },
+            instructions: {
+              type: "string",
+              placeholder: "text",
+              aliases: ["extra-instructions"],
+              description: "Extra instructions for this dispatch only",
+            },
+            json: JSON_OPTION,
+          },
+          run(input) {
+            return guard(async () => {
+              const task = await resolveTask(
+                domain,
+                input.positionals["key-or-id"],
+              );
+              const preset = resolvePreset(
+                await listPresets(domain),
+                input.options.preset,
+              );
+              const result = delegationRpcContract.delegate.output.parse(
+                await delegationHandlers(bb, store).delegate(
+                  delegationRpcContract.delegate.input.parse({
+                    taskId: task.id,
+                    presetId: preset.id,
+                    extraInstructions: input.options.instructions,
+                  }),
+                ),
+              );
+              return input.options.json
+                ? JSON.stringify({ task, preset, ...result })
+                : result.threadId;
+            });
+          },
+        }),
+
+        attach: cliCommand({
+          summary: "Attach an existing agent thread to a task",
+          positionals: [KEY_POSITIONAL],
+          options: {
+            thread: {
+              type: "string",
+              placeholder: "thread-id",
+              aliases: ["thread-id"],
+              description:
+                "Thread to attach; defaults to BB_THREAD_ID or the invoking thread",
+            },
+            json: JSON_OPTION,
+          },
+          run(input, ctx) {
+            return guard(async () => {
+              const task = await resolveTask(
+                domain,
+                input.positionals["key-or-id"],
+              );
+              const threadId = resolveInvokingThreadId(
+                input.options.thread,
+                ctx,
+              );
+              const result =
+                delegationRpcContract.taskThreadsAttach.output.parse(
+                  await delegationHandlers(bb, store).taskThreadsAttach(
+                    delegationRpcContract.taskThreadsAttach.input.parse({
+                      taskId: task.id,
+                      threadId,
+                    }),
+                  ),
+                );
+              return input.options.json
+                ? JSON.stringify({ task, ...result })
+                : `Attached ${result.threadId} to ${task.key}`;
+            });
+          },
+        }),
+
+        detach: cliCommand({
+          summary: "Detach an agent thread from a task",
+          positionals: [KEY_POSITIONAL],
+          options: {
+            thread: {
+              type: "string",
+              placeholder: "thread-id",
+              aliases: ["thread-id"],
+              description:
+                "Thread to detach; defaults to BB_THREAD_ID or the invoking thread",
+            },
+            json: JSON_OPTION,
+          },
+          run(input, ctx) {
+            return guard(async () => {
+              const task = await resolveTask(
+                domain,
+                input.positionals["key-or-id"],
+              );
+              const threadId = resolveInvokingThreadId(
+                input.options.thread,
+                ctx,
+              );
+              const result =
+                delegationRpcContract.taskThreadsDetach.output.parse(
+                  await delegationHandlers(bb, store).taskThreadsDetach(
+                    delegationRpcContract.taskThreadsDetach.input.parse({
+                      taskId: task.id,
+                      threadId,
+                    }),
+                  ),
+                );
+              return input.options.json
+                ? JSON.stringify({ task, ...result })
+                : `Detached ${result.threadId} from ${task.key}`;
+            });
+          },
+        }),
+
+        threads: cliCommand({
+          summary: "List agent threads attached to a task",
+          positionals: [KEY_POSITIONAL],
+          options: { json: JSON_OPTION },
+          run(input) {
+            return guard(async () => {
+              const task = await resolveTask(
+                domain,
+                input.positionals["key-or-id"],
+              );
+              const result = tasksRpcContract.listTaskThreads.output.parse(
+                await domain.listTaskThreads(
+                  tasksRpcContract.listTaskThreads.input.parse({
+                    taskId: task.id,
+                  }),
+                ),
+              );
+              return input.options.json
+                ? JSON.stringify({ task, taskThreads: result.taskThreads })
+                : table(
+                    ["THREAD", "STATUS", "PRESET", "TITLE"],
+                    result.taskThreads.map((thread) => [
+                      thread.threadId,
+                      thread.liveStatus,
+                      thread.presetName,
+                      thread.title,
+                    ]),
+                    "No attached threads.",
+                  );
+            });
+          },
+        }),
+
+        "seed-demo": cliCommand({
+          summary:
+            "Create sample folders, projects, labels, tasks, and comments",
+          options: {
+            yes: {
+              type: "boolean",
+              description: "Confirm writing sample data into this workspace",
+            },
+            json: JSON_OPTION,
+          },
+          run(input, ctx) {
+            return guard(async () => {
+              if (!input.options.yes) {
+                throw new CliError(
+                  "seed-demo creates sample data; re-run with --yes",
+                  { code: "confirmation_required" },
+                );
+              }
+              const result = await seedDemo(domain, ctx.projectId);
+              return input.options.json
+                ? JSON.stringify(result)
+                : detail([
+                    ["Folders", result.foldersCreated],
+                    ["Projects", result.projectsCreated],
+                    ["Labels", result.labelsCreated],
+                    ["Tasks", result.tasksCreated],
+                    ["Comments", result.commentsCreated],
+                    ["BB project", result.linkedBbProjectId ?? "-"],
+                  ]);
+            });
+          },
+        }),
+      },
+    }),
+  );
 }

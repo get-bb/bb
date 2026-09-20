@@ -25,7 +25,7 @@ type OptionalJsonValue = JsonValue | null | undefined;
 
 const OPENAI_TRANSCRIPTION_PROVIDER = "openai";
 const VOICE_TRANSCRIPTION_MAX_BYTES = 25 * 1024 * 1024;
-const AI_SERVICE_VOICE_MAX_BYTES = 5 * 1024 * 1024;
+const AI_SERVICE_VOICE_MAX_BYTES = 20 * 1024 * 1024;
 const voiceTranscriptionSchema = Type.Object({ text: Type.String() });
 
 function parseTranscriptionModel(model: string): ProviderModelInfo {

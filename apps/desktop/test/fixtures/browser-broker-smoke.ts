@@ -31,6 +31,7 @@ async function main() {
     partition: "broker-smoke-personal",
     dispatchAppCommand: () => {},
     focusHostWebContents: () => {},
+    pagePreloadPath: null,
     resolveAppCommand: () => null,
   });
   const broker = createDesktopBrowserBroker({ manager, product: "BB smoke" });

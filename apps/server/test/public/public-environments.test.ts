@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { getEnvironment } from "@bb/db";
 import {
   registerTestHostRpcCapture,
+  reportQueuedCommandError,
   reportQueuedCommandSuccess,
   waitForQueuedCommand,
 } from "../helpers/commands.js";
@@ -126,6 +127,77 @@ describe("public environments", () => {
           },
         ],
       });
+    });
+  });
+
+  it("remaps a daemon file-read failure on diff/file to its HTTP status", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-environment-diff-file-enoent",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/diff-file-env",
+        environmentProviderId: "git-worktree",
+      });
+
+      const responsePromise = harness.app.request(
+        `/api/v1/environments/${environment.id}/diff/file?target=uncommitted&side=new&path=missing.md`,
+      );
+      const readCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) => command.type === "host.read_file",
+      );
+      expect(readCommand.command).toMatchObject({
+        path: "/tmp/diff-file-env/missing.md",
+        rootPath: "/tmp/diff-file-env",
+      });
+      await reportQueuedCommandError(harness, readCommand, {
+        errorCode: "ENOENT",
+        errorMessage: "Path does not exist: /tmp/diff-file-env/missing.md",
+      });
+
+      const response = await responsePromise;
+      expect(response.status).toBe(404);
+      await expect(readJson(response)).resolves.toMatchObject({
+        code: "ENOENT",
+      });
+    });
+  });
+
+  it("remaps an oversized daemon file read on diff/file to 413", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-environment-diff-file-too-large",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/diff-file-large-env",
+        environmentProviderId: "git-worktree",
+      });
+
+      const responsePromise = harness.app.request(
+        `/api/v1/environments/${environment.id}/diff/file?target=uncommitted&side=new&path=huge.bin`,
+      );
+      const readCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) => command.type === "host.read_file",
+      );
+      await reportQueuedCommandError(harness, readCommand, {
+        errorCode: "file_too_large",
+        errorMessage: "File is too large to read",
+      });
+
+      const response = await responsePromise;
+      expect(response.status).toBe(413);
     });
   });
 

@@ -4,6 +4,7 @@ import {
   transportErrorCode,
 } from "./upstream-transport.js";
 import path from "node:path";
+import { z } from "zod";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { registerPoolCli } from "./cli.js";
 import {
@@ -87,9 +88,17 @@ export function createAccountPoolPlugin(
   options: AccountPoolPluginOptions = {},
 ) {
   return async function accountPoolPlugin(bb: BbPluginApi): Promise<void> {
-    let currentSettings = accountPoolConfigSchema.parse(
+    const storedConfig = z.record(z.string(), z.unknown()).parse(
       (await bb.storage.kv.get("config")) ?? {},
     );
+    const hasRemovedSettings =
+      "cacheMissDebug" in storedConfig || "cacheMissMinTokens" in storedConfig;
+    delete storedConfig.cacheMissDebug;
+    delete storedConfig.cacheMissMinTokens;
+    let currentSettings = accountPoolConfigSchema.parse(storedConfig);
+    if (hasRemovedSettings) {
+      await bb.storage.kv.set("config", currentSettings);
+    }
     const config: AccountPoolConfigController = {
       get: () => currentSettings,
       set: async (input) => {

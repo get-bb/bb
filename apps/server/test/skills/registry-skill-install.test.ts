@@ -1,4 +1,5 @@
 import { EventEmitter } from "node:events";
+import { existsSync } from "node:fs";
 import {
   mkdir,
   mkdtemp,
@@ -13,7 +14,10 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const spawnMock = vi.hoisted(() => vi.fn());
-vi.mock("node:child_process", () => ({ spawn: spawnMock }));
+vi.mock("node:child_process", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("node:child_process")>()),
+  spawn: spawnMock,
+}));
 
 import { installServerRegistrySkill } from "../../src/services/skills/registry-skill-install.js";
 import { readSkillTreeManifest } from "../../src/services/skills/injected-skills.js";
@@ -91,6 +95,39 @@ describe("installServerRegistrySkill", () => {
         expect.objectContaining({ path: "SKILL.md" }),
       ]);
     } finally {
+      await rm(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  it("runs the skills CLI through the bundled npx instead of PATH", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "bb-registry-npx-test-"));
+    const originalElectronRunAsNode = process.env.ELECTRON_RUN_AS_NODE;
+    process.env.ELECTRON_RUN_AS_NODE = "1";
+    try {
+      stubDownloadedSkill("find-skills");
+
+      await installServerRegistrySkill({
+        dataDir,
+        packageRef: "vercel-labs/skills",
+        registrySkillId: "github.com/vercel-labs/skills/find-skills",
+        skillId: "find-skills",
+      });
+
+      const [command, args, options] = spawnMock.mock.calls[0] as [
+        string,
+        string[],
+        { env: NodeJS.ProcessEnv },
+      ];
+      expect(command).toBe(process.execPath);
+      expect(args[0]).toMatch(/npx-cli\.js$/u);
+      expect(existsSync(args[0])).toBe(true);
+      expect(options.env.ELECTRON_RUN_AS_NODE).toBe("1");
+    } finally {
+      if (originalElectronRunAsNode === undefined) {
+        delete process.env.ELECTRON_RUN_AS_NODE;
+      } else {
+        process.env.ELECTRON_RUN_AS_NODE = originalElectronRunAsNode;
+      }
       await rm(dataDir, { recursive: true, force: true });
     }
   });

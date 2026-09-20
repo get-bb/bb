@@ -13,6 +13,8 @@ function queuedMessage(
 ): ThreadQueuedMessage {
   return {
     id: "queued-1",
+    origin: null,
+    originPluginId: null,
     initiator: "user",
     senderThreadId: null,
     threadId: "thread-1",
@@ -123,9 +125,9 @@ describe("bb thread organization commands", () => {
         "queued-1",
         "revised task",
         "--file",
-        "/tmp/spec.md",
+        "uploaded-spec.md",
         "--file",
-        "/tmp/data.json",
+        "uploaded-data.json",
         "--image",
         "mock-uploaded.png",
         "--image",
@@ -141,8 +143,8 @@ describe("bb thread organization commands", () => {
         expectedUpdatedAt: 42,
         input: [
           { type: "text", text: "revised task", mentions: [] },
-          { type: "localFile", path: "/tmp/spec.md" },
-          { type: "localFile", path: "/tmp/data.json" },
+          { type: "localFile", path: "uploaded-spec.md" },
+          { type: "localFile", path: "uploaded-data.json" },
           { type: "localImage", path: "mock-uploaded.png" },
           { type: "localImage", path: "detail-uploaded.png" },
         ],

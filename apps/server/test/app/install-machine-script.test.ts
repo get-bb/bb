@@ -354,6 +354,146 @@ exec '${process.execPath}' "$@"
     );
   });
 
+  it("stops and uninstalls a Linux service after a server move rewrote its server URL", () => {
+    const fixture = createFixture();
+    mkdirSync(join(fixture.homeDir, ".bb-machines", "machine.getbb.app"), {
+      recursive: true,
+    });
+    const dataDir = realpathSync(
+      join(fixture.homeDir, ".bb-machines", "machine.getbb.app"),
+    );
+    writeJoinedState(
+      { ...fixture, dataDir },
+      "https://desk.tailnet.example:38886",
+    );
+    writeFileSync(join(dataDir, "host-daemon-port"), "40000\n");
+    const serviceDir = join(fixture.homeDir, ".config", "systemd", "user");
+    const serviceName = "bb-host-daemon-machine-getbb-app-host-test.service";
+    const servicePath = join(serviceDir, serviceName);
+    const otherServiceName = "bb-host-daemon-other-example-host-test.service";
+    mkdirSync(serviceDir, { recursive: true });
+    writeFileSync(
+      servicePath,
+      `[Service]\nExecStart="node" "bb-app" host-daemon --server-url "https://desk.tailnet.example:38886"\nEnvironment="BB_DATA_DIR=${dataDir}"\n`,
+    );
+    writeFileSync(
+      join(serviceDir, otherServiceName),
+      `[Service]\nEnvironment="BB_DATA_DIR=${dataDir}-other"\n`,
+    );
+    writeExecutable(
+      join(fixture.binDir, "uname"),
+      "#!/bin/sh\nprintf '%s\\n' Linux\n",
+    );
+    const systemctlLog = join(fixture.homeDir, "systemctl.log");
+    writeExecutable(
+      join(fixture.binDir, "systemctl"),
+      `#!/bin/sh\nprintf '%s\\n' "$*" >>${JSON.stringify(systemctlLog)}\n`,
+    );
+
+    const stopped = runScript(
+      ["--stop", "--host-id", "host-test", "--data-dir", dataDir],
+      fixture,
+    );
+    expect(stopped.status, stopped.stderr).toBe(0);
+    expect(readFileSync(systemctlLog, "utf8")).toBe(
+      `--user stop ${serviceName}\n`,
+    );
+
+    const uninstalled = runScript(
+      ["--uninstall", "--host-id", "host-test", "--data-dir", dataDir],
+      fixture,
+    );
+    expect(uninstalled.status, uninstalled.stderr).toBe(0);
+    expect(existsSync(dataDir)).toBe(false);
+    expect(existsSync(servicePath)).toBe(false);
+    expect(existsSync(join(serviceDir, otherServiceName))).toBe(true);
+    expect(readFileSync(systemctlLog, "utf8")).toBe(
+      `--user stop ${serviceName}\n--user disable --now ${serviceName}\n--user daemon-reload\n`,
+    );
+  });
+
+  it("boots out a macOS launch agent after a server move rewrote its server URL", () => {
+    const fixture = createFixture();
+    mkdirSync(join(fixture.homeDir, ".bb-machines", "machine.getbb.app"), {
+      recursive: true,
+    });
+    const dataDir = realpathSync(
+      join(fixture.homeDir, ".bb-machines", "machine.getbb.app"),
+    );
+    writeJoinedState({ ...fixture, dataDir }, "https://desk.tailnet.example");
+    writeFileSync(join(dataDir, "host-daemon-port"), "40000\n");
+    const agentDir = join(fixture.homeDir, "Library", "LaunchAgents");
+    const agentPath = join(
+      agentDir,
+      "app.getbb.host-daemon.machine-getbb-app-host-test.plist",
+    );
+    mkdirSync(agentDir, { recursive: true });
+    writeFileSync(
+      agentPath,
+      `<plist><dict><key>EnvironmentVariables</key><dict><key>BB_DATA_DIR</key><string>${dataDir}</string></dict></dict></plist>\n`,
+    );
+    writeExecutable(join(fixture.binDir, "uname"), "#!/bin/sh\necho Darwin\n");
+    const launchctlLog = join(fixture.homeDir, "launchctl.log");
+    writeExecutable(
+      join(fixture.binDir, "launchctl"),
+      `#!/bin/sh\nprintf '%s\\n' "$*" >>${JSON.stringify(launchctlLog)}\n`,
+    );
+
+    const stopped = runScript(
+      ["--stop", "--host-id", "host-test", "--data-dir", dataDir],
+      fixture,
+    );
+
+    expect(stopped.status, stopped.stderr).toBe(0);
+    expect(readFileSync(launchctlLog, "utf8")).toBe(
+      `bootout gui/${process.getuid?.()} ${agentPath}\n`,
+    );
+  });
+
+  it("refuses lifecycle actions when several services reference the machine data directory", () => {
+    const fixture = createFixture();
+    mkdirSync(join(fixture.homeDir, ".bb-machines", "machine.getbb.app"), {
+      recursive: true,
+    });
+    const dataDir = realpathSync(
+      join(fixture.homeDir, ".bb-machines", "machine.getbb.app"),
+    );
+    writeJoinedState({ ...fixture, dataDir }, "https://desk.tailnet.example");
+    writeFileSync(join(dataDir, "host-daemon-port"), "40000\n");
+    const serviceDir = join(fixture.homeDir, ".config", "systemd", "user");
+    mkdirSync(serviceDir, { recursive: true });
+    for (const serviceName of [
+      "bb-host-daemon-machine-getbb-app-host-test.service",
+      "bb-host-daemon-machine-getbb-app.service",
+    ]) {
+      writeFileSync(
+        join(serviceDir, serviceName),
+        `[Service]\nEnvironment="BB_DATA_DIR=${dataDir}"\n`,
+      );
+    }
+    writeExecutable(
+      join(fixture.binDir, "uname"),
+      "#!/bin/sh\nprintf '%s\\n' Linux\n",
+    );
+    const systemctlLog = join(fixture.homeDir, "systemctl.log");
+    writeExecutable(
+      join(fixture.binDir, "systemctl"),
+      `#!/bin/sh\nprintf '%s\\n' "$*" >>${JSON.stringify(systemctlLog)}\n`,
+    );
+
+    const uninstalled = runScript(
+      ["--uninstall", "--host-id", "host-test", "--data-dir", dataDir],
+      fixture,
+    );
+
+    expect(uninstalled.status).toBe(1);
+    expect(uninstalled.stderr).toContain(
+      "Machine data directory is referenced by several services.",
+    );
+    expect(existsSync(dataDir)).toBe(true);
+    expect(existsSync(systemctlLog)).toBe(false);
+  });
+
   it("rejects an invalid explicit host-daemon port", () => {
     const fixture = createFixture();
     const result = runScript(

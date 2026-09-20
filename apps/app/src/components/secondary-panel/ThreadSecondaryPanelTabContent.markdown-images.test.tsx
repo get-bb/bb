@@ -68,7 +68,7 @@ vi.mock("@/hooks/queries/host-file-preview-query", () => ({
 afterEach(cleanup);
 
 function imageSrc(name: string): string | null {
-  return screen.getByRole("img", { name }).getAttribute("src");
+  return screen.getByRole("img", { name }).getAttribute("data-markdown-image-src");
 }
 
 describe("secondary-panel Markdown image routing", () => {

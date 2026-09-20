@@ -31,6 +31,10 @@ function getPluginLogoUrls(): ReadonlyMap<string, PluginLogoUrls> {
   return logoUrls;
 }
 
+export function getPluginDisplayName(pluginId: string): string {
+  return getPluginLogoUrls().get(pluginId)?.displayName ?? pluginId;
+}
+
 export function usePluginCompactBranding(
   pluginId: string,
 ): Pick<PluginLogoUrls, "icon" | "compactIconUrl"> | null {

@@ -52,6 +52,7 @@ export function threadListEntry(
     status: busy ? "active" : "idle",
     parentThreadId: null,
     sourceThreadId: null,
+    lifecycleOwnerThreadId: null,
     originKind: null,
     originPluginId: null,
     visibility: "visible",
@@ -205,6 +206,8 @@ export function queuedMessage(args: {
   return {
     id: args.id,
     threadId: args.threadId,
+    origin: null,
+    originPluginId: null,
     initiator: "user",
     senderThreadId: null,
     content: args.content,

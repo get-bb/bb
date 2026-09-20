@@ -1,17 +1,10 @@
+import { durationUnitMs, matchDuration } from "../../duration.js";
+
 /**
  * `--send-at` accepts the two things a person actually types: a relative
  * duration ("in ten minutes") or a wall-clock timestamp ("at 9am tomorrow").
  * Both resolve to the epoch-ms `sendAt` the create/send routes take.
  */
-
-const DURATION_UNIT_MS: Record<string, number> = {
-  s: 1000,
-  m: 60 * 1000,
-  h: 60 * 60 * 1000,
-  d: 24 * 60 * 60 * 1000,
-};
-
-const DURATION_PATTERN = /^(\d+(?:\.\d+)?)(s|m|h|d)$/;
 
 /**
  * A date alone, which we reject rather than guess at: `Date.parse` reads it as
@@ -47,10 +40,11 @@ export function parseSendAt(value: string, now = Date.now()): number {
     throw formatInvalid(value, "It is empty.");
   }
 
-  const duration = DURATION_PATTERN.exec(trimmed.toLowerCase());
-  if (duration) {
-    const amount = Number.parseFloat(duration[1]);
-    const resolved = Math.round(now + amount * DURATION_UNIT_MS[duration[2]]);
+  const duration = matchDuration(trimmed);
+  if (duration !== null && duration.unit !== null) {
+    const resolved = Math.round(
+      now + duration.amount * durationUnitMs(duration.unit),
+    );
     if (resolved <= now) {
       throw new Error(
         `--send-at must be in the future; '${value}' is zero time from now.`,
@@ -98,9 +92,11 @@ export function formatQueueSendCountdown(
 }
 
 function formatApproximateDuration(ms: number): string {
-  if (ms < DURATION_UNIT_MS.m)
-    return `${Math.max(1, Math.round(ms / DURATION_UNIT_MS.s))}s`;
-  if (ms < DURATION_UNIT_MS.h) return `${Math.floor(ms / DURATION_UNIT_MS.m)}m`;
-  if (ms < DURATION_UNIT_MS.d) return `${Math.floor(ms / DURATION_UNIT_MS.h)}h`;
-  return `${Math.floor(ms / DURATION_UNIT_MS.d)}d`;
+  if (ms < durationUnitMs("m"))
+    return `${Math.max(1, Math.round(ms / durationUnitMs("s")))}s`;
+  if (ms < durationUnitMs("h"))
+    return `${Math.floor(ms / durationUnitMs("m"))}m`;
+  if (ms < durationUnitMs("d"))
+    return `${Math.floor(ms / durationUnitMs("h"))}h`;
+  return `${Math.floor(ms / durationUnitMs("d"))}d`;
 }

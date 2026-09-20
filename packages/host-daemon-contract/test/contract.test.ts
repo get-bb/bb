@@ -497,6 +497,29 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       mergeable: "MERGEABLE",
     },
   },
+  "server_move.inspect": {
+    dataDir: "/home/me/.bb-machines/bb.example.com",
+    platform: "linux",
+    timeZone: "America/Los_Angeles",
+    bbAppVersion: "0.0.5",
+    serverEntryAvailable: false,
+    serviceManager: "systemd-user",
+    existingServerData: null,
+    dataDirHasServerData: false,
+    portAvailable: true,
+    ghAuthenticated: null,
+    codexCredentialsPresent: false,
+    pathsExist: { "/home/me/plugins/local": false },
+    diskFreeBytes: 1_000_000,
+  },
+  "server_move.probe": { reachable: true, message: null, state: "ready" },
+  "server_move.prepare": {
+    localServerUrl: "http://127.0.0.1:38886",
+    pid: 4242,
+  },
+  "server_move.activate": { ok: true },
+  "server_move.abort": { ok: true },
+  "server_move.delete_old_copy": { deleted: true },
 };
 
 const SETTLED_RESPONSE_RESULT_FIXTURES: SettledResponseResultFixtures = {
@@ -689,6 +712,76 @@ function terminalDataBase64(byteLength: number): string {
 }
 
 const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
+  "hostDaemonCommandSchema.resolution.description":
+    "the interaction.resolve command's resolution is the persisted union, so it also admits the plugin_submitted arm and the description a plugin's describeSubmission returned. It never reaches the wire: a plugin interaction is settled in the server against its waiting requestInput promise and never queues a daemon command, so an older daemon never sees the field.",
+  "hostDaemonCommandSchema.resolution.description.detail":
+    "a described submission carries Markdown detail only when the plugin returned some; absence means the row title is the whole row.",
+  "hostDaemonCommandSchema.resolution.description.payload":
+    "a described submission carries a payload only when the plugin has something for its own timeline renderer; absence means the row renders from title and detail alone.",
+  "hostDaemonCommandSchema.resolution.description.title":
+    "a described submission overrides the row title only when the plugin returned one; absence means the presentation's completed label stands.",
+  "hostDaemonCommandSchema.dynamicTools.presentation":
+    "a dynamic tool declares a row presentation only when its plugin wrote one; absence means bb renders the call with the standard tool name and the plugin's branding glyph.",
+  "hostDaemonCommandSchema.dynamicTools.presentation.badge":
+    "a dynamic tool's presentation carries a badge only when there is something to flag about how the call will run; absence means the ordinary case, not a blank badge.",
+  "hostDaemonCommandSchema.dynamicTools.presentation.detail":
+    "a dynamic tool's presentation has a detail only when the plugin summarized the call; a missing detail means the label and title are the whole summary, not an empty string.",
+  "hostDaemonCommandSchema.dynamicTools.presentation.suppress":
+    "a dynamic tool's presentation marks suppress only for low-value rows the plugin wants collapsed; absence means render normally.",
+  "hostDaemonCommandSchema.dynamicTools.presentation.tint":
+    "a dynamic tool's presentation carries a tint only when the plugin wants an accent colour; absence means the neutral row tint, which is not a colour value.",
+  "hostDaemonCommandSchema.dynamicTools.presentation.title":
+    "a dynamic tool's presentation has a title only when the call has a headline (a path, a query); absence means the label stands alone.",
+  "hostDaemonCommandSchema.input.mimeType":
+    "a localFile prompt input carries a mime type only when the uploader determined one; absence means the daemon must sniff or fall back, not that the file is untyped.",
+  "hostDaemonCommandSchema.input.name":
+    "a localFile prompt input names itself only when the uploader knew a name; absence means the path is the file's only identity, not that it is unnamed.",
+  "hostDaemonCommandSchema.input.sizeBytes":
+    "a localFile prompt input carries a size only when the uploader measured one; absence means unknown, and no reader may read it as zero.",
+  "hostDaemonCommandSchema.input.visibility":
+    "a prompt input declares visibility only to hide itself from the person: the single value agent-only marks an input the transcript does not show, so absence is the ordinary visible input.",
+  "hostDaemonCommandSchema.inputGroups.mimeType":
+    "a localFile prompt input carries a mime type only when the uploader determined one; absence means the daemon must sniff or fall back, not that the file is untyped.",
+  "hostDaemonCommandSchema.inputGroups.name":
+    "a localFile prompt input names itself only when the uploader knew a name; absence means the path is the file's only identity, not that it is unnamed.",
+  "hostDaemonCommandSchema.inputGroups.sizeBytes":
+    "a localFile prompt input carries a size only when the uploader measured one; absence means unknown, and no reader may read it as zero.",
+  "hostDaemonCommandSchema.inputGroups.visibility":
+    "a prompt input declares visibility only to hide itself from the person: the single value agent-only marks an input the transcript does not show, so absence is the ordinary visible input.",
+  "hostDaemonCommandSchema.resumeContext.dynamicTools.presentation":
+    "a dynamic tool declares a row presentation only when its plugin wrote one; absence means bb renders the call with the standard tool name and the plugin's branding glyph.",
+  "hostDaemonCommandSchema.resumeContext.dynamicTools.presentation.badge":
+    "a dynamic tool's presentation carries a badge only when there is something to flag about how the call will run; absence means the ordinary case, not a blank badge.",
+  "hostDaemonCommandSchema.resumeContext.dynamicTools.presentation.detail":
+    "a dynamic tool's presentation has a detail only when the plugin summarized the call; a missing detail means the label and title are the whole summary, not an empty string.",
+  "hostDaemonCommandSchema.resumeContext.dynamicTools.presentation.suppress":
+    "a dynamic tool's presentation marks suppress only for low-value rows the plugin wants collapsed; absence means render normally.",
+  "hostDaemonCommandSchema.resumeContext.dynamicTools.presentation.tint":
+    "a dynamic tool's presentation carries a tint only when the plugin wants an accent colour; absence means the neutral row tint, which is not a colour value.",
+  "hostDaemonCommandSchema.resumeContext.dynamicTools.presentation.title":
+    "a dynamic tool's presentation has a title only when the call has a headline (a path, a query); absence means the label stands alone.",
+  "hostDaemonInteractiveRequestSchema.interaction.payload.questions.options":
+    "a user question omits options when it takes free text only; absence is the question's shape, not missing choices.",
+  "hostDaemonInteractiveRequestSchema.interaction.payload.questions.options.description":
+    "a question option carries a description only when its label needs a gloss; absence means the label stands alone.",
+  "hostDaemonInteractiveRequestSchema.interaction.payload.questions.shortLabel":
+    "a user question omits shortLabel when its prompt is short enough to title the row itself.",
+  "hostDaemonOnlineRpcCommandSchema.nativeRoots.commands.project.skipIfManifest":
+    "a provider-native root names a vendor-plugin marker file only when the plugin that knows that vendor layout declares one; absence means every skill-shaped directory under the root is a skill, and core names no vendor path itself.",
+  "hostDaemonOnlineRpcCommandSchema.nativeRoots.commands.user.skipIfManifest":
+    "a provider-native root names a vendor-plugin marker file only when the plugin that knows that vendor layout declares one; absence means every skill-shaped directory under the root is a skill, and core names no vendor path itself.",
+  "hostDaemonOnlineRpcCommandSchema.nativeRoots.resolved.commands.fallbackName":
+    "a resolved skill-file root carries a fallback name only when the file's frontmatter names none and something else supplies it; absence means the parent directory's name is used.",
+  "hostDaemonOnlineRpcCommandSchema.nativeRoots.resolved.commands.skipIfManifest":
+    "a provider-native root names a vendor-plugin marker file only when the plugin that knows that vendor layout declares one; absence means every skill-shaped directory under the root is a skill, and core names no vendor path itself.",
+  "hostDaemonOnlineRpcCommandSchema.nativeRoots.resolved.skills.fallbackName":
+    "a resolved skill-file root carries a fallback name only when the file's frontmatter names none and something else supplies it; absence means the parent directory's name is used.",
+  "hostDaemonOnlineRpcCommandSchema.nativeRoots.resolved.skills.skipIfManifest":
+    "a provider-native root names a vendor-plugin marker file only when the plugin that knows that vendor layout declares one; absence means every skill-shaped directory under the root is a skill, and core names no vendor path itself.",
+  "hostDaemonOnlineRpcCommandSchema.nativeRoots.skills.project.skipIfManifest":
+    "a provider-native root names a vendor-plugin marker file only when the plugin that knows that vendor layout declares one; absence means every skill-shaped directory under the root is a skill, and core names no vendor path itself.",
+  "hostDaemonOnlineRpcCommandSchema.nativeRoots.skills.user.skipIfManifest":
+    "a provider-native root names a vendor-plugin marker file only when the plugin that knows that vendor layout declares one; absence means every skill-shaped directory under the root is a skill, and core names no vendor path itself.",
   "hostDaemonCommandSchema.targetPath":
     "project.clone omits targetPath when the daemon should derive its default checkout location for the project.",
   "hostDaemonOnlineRpcCommandSchema.expectedSha256":
@@ -1043,7 +1136,7 @@ const CONTRIBUTED_ENV = [
 
 describe("host-daemon command schemas", () => {
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(209);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(215);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 

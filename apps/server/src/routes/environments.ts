@@ -40,7 +40,10 @@ import {
   callHostRetryableOnlineRpc,
   callHostRetryableOnlineRpcForWork,
 } from "../services/hosts/online-rpc.js";
-import { requireDaemonFileContentResult } from "../services/hosts/daemon-file-response.js";
+import {
+  remapDaemonFileRouteError,
+  requireDaemonFileContentResult,
+} from "../services/hosts/daemon-file-response.js";
 import { generateCommitMessage } from "../services/ai/commit-message.js";
 import { archiveEnvironmentThreads } from "../services/threads/thread-archive.js";
 import {
@@ -567,7 +570,7 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
         rootPath: environment.path,
         ...(ref !== undefined ? { ref } : {}),
       },
-    });
+    }).catch(remapDaemonFileRouteError);
     const contentResult = requireDaemonFileContentResult(result);
     return context.json({
       path: contentResult.path,

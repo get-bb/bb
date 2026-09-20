@@ -105,6 +105,28 @@ import {
 const PLUGIN_WIRE_HTTP_PATH = /^\/api\/v1\/plugins\/[^/]+\/http(?:\/|$)/u;
 import { rankAcceptedAssetEncodings } from "./asset-content-encoding.js";
 import { apiJsonCompression } from "./api-response-compression.js";
+import type { ServerBindHost } from "@bb/config/server";
+import { registerServerMoveRoutes } from "./routes/server-move.js";
+import {
+  INTERNAL_SERVER_MOVE_PENDING_PATH,
+  registerInternalServerMoveRoutes,
+} from "./internal/server-move.js";
+import {
+  createServerMoveCoordinator,
+  type ServerMoveCoordinator,
+} from "./services/server-move/coordinator.js";
+import { createDefaultServerMoveEnvironment } from "./services/server-move/environment.js";
+import { readServerMoveHealth } from "./services/server-move/health.js";
+import type { RestoredServerMoveRun } from "./services/server-move/reconcile.js";
+import {
+  serverMoveFreezeMiddleware,
+  serverMoveWriteFreezeMiddleware,
+} from "./services/server-move/freeze.js";
+import { isServerMoveSnapshotFenced } from "./services/server-move/freeze-state.js";
+import {
+  createManualServerImportCompletion,
+  type PendingServerMove,
+} from "./services/server-move/pending-boot.js";
 
 type CloseWebSockets = () => Promise<void>;
 type NodeWebSocketServer = ReturnType<typeof createNodeWebSocket>["wss"];
@@ -116,6 +138,7 @@ interface ServerApp {
   injectWebSocket: ReturnType<typeof createNodeWebSocket>["injectWebSocket"];
   pluginService: PluginService;
   pluginCatalogService: PluginCatalogService;
+  serverMove: ServerMoveCoordinator;
 }
 
 interface CloseWebSocketServerArgs {
@@ -141,8 +164,17 @@ function normalizeInternalAuthPath(path: string): string {
   return path.replace(/\/+$/u, "");
 }
 
+export interface ServerMoveAppOptions {
+  bindHost: ServerBindHost | null;
+  manualImportPending: boolean;
+  pending: PendingServerMove | null;
+  restoredRun: RestoredServerMoveRun | null;
+  retireProcess(): void;
+}
+
 interface CreateAppOptions {
   bbAppArtifactService?: BbAppArtifactService;
+  serverMove?: ServerMoveAppOptions;
   slowApiRequestLogThresholdMs?: number;
   staticDir?: string;
 }
@@ -424,6 +456,19 @@ export function createApp(
       dataDir: deps.config.dataDir,
       serverEntryUrl: import.meta.url,
     });
+  const serverMoveOptions: ServerMoveAppOptions = options?.serverMove ?? {
+    bindHost: null,
+    manualImportPending: false,
+    pending: null,
+    restoredRun: null,
+    retireProcess: () => {
+      deps.logger.warn(
+        {},
+        "Server move finished, but this server has no process retire hook",
+      );
+    },
+  };
+  const pendingServerMove = serverMoveOptions.pending;
 
   app.use("*", async (context, next) => {
     captureTrustedRemoteAddress(context);
@@ -440,6 +485,9 @@ export function createApp(
     "*",
     cors({
       origin: (origin, context) => {
+        if (context.req.path === "/health") {
+          return "*";
+        }
         const allowedCorsOrigins = allowedAppOrigins(deps);
         const requestOrigin = new URL(context.req.url).origin;
         if (origin === requestOrigin || allowedCorsOrigins.has(origin)) {
@@ -460,13 +508,19 @@ export function createApp(
     });
   });
   app.onError((error) => errorToResponse(error, deps.logger));
-  app.get("/health", (context) =>
-    context.json(
-      deps.config.launchId === undefined
-        ? { ok: true }
-        : { ok: true, launchId: deps.config.launchId },
-    ),
-  );
+  app.get("/health", async (context) => {
+    const serverMove = await readServerMoveHealth({
+      dataDir: deps.config.dataDir,
+      pending: pendingServerMove,
+    });
+    return context.json({
+      ok: true,
+      ...(deps.config.launchId === undefined
+        ? {}
+        : { launchId: deps.config.launchId }),
+      ...(serverMove === null ? {} : { serverMove }),
+    });
+  });
   app.get("/install.sh", async (context) => {
     const script = await readFile(INSTALL_MACHINE_SCRIPT_PATH, "utf8");
     const credential = context.req.header("X-BB-Enrollment");
@@ -561,6 +615,9 @@ export function createApp(
     if (normalizedPath === "/internal/ws") {
       return next();
     }
+    if (normalizedPath === INTERNAL_SERVER_MOVE_PENDING_PATH) {
+      return next();
+    }
     try {
       const daemon = await verifyAuthenticatedDaemon(
         deps,
@@ -649,6 +706,38 @@ export function createApp(
   });
   // Bridge runtime-config assembly to plugin skills + context (§4.4).
   setPluginAgentContributions(pluginService);
+  const serverMove = createServerMoveCoordinator(
+    createDefaultServerMoveEnvironment({
+      bindHost: serverMoveOptions.bindHost,
+      deps,
+      env: process.env,
+      pluginService,
+      retireProcess: serverMoveOptions.retireProcess,
+      serverEntryUrl: import.meta.url,
+    }),
+  );
+  if (serverMoveOptions.restoredRun !== null) {
+    serverMove.restore(serverMoveOptions.restoredRun);
+  }
+  const serverMoveFreezeState = {
+    isFrozen: () => pendingServerMove !== null || serverMove.isFrozen(),
+  };
+  const daemonWriteFreezeState = {
+    isFrozen: () =>
+      pendingServerMove !== null || isServerMoveSnapshotFenced(deps.db),
+  };
+  app.use("/api/v1/*", serverMoveFreezeMiddleware(serverMoveFreezeState));
+  for (const path of ["/internal/hosts/enroll", "/internal/hosts/enroll-key"]) {
+    app.use(path, serverMoveWriteFreezeMiddleware(serverMoveFreezeState));
+  }
+  for (const path of [
+    "/internal/session/events",
+    "/internal/session/tool-call",
+    "/internal/session/interactive-request",
+    "/internal/session/interactive-request/interrupt",
+  ]) {
+    app.use(path, serverMoveWriteFreezeMiddleware(daemonWriteFreezeState));
+  }
   const publicApi = new Hono();
   publicApi.use("*", async (context, next) => {
     if (PLUGIN_WIRE_HTTP_PATH.test(context.req.path)) {
@@ -683,6 +772,7 @@ export function createApp(
   registerPluginCatalogRoutes(publicApi, pluginCatalogService);
   registerPluginRoutes(publicApi, deps, pluginService, upgradeWebSocket);
   registerSkillsRegistryRoutes(publicApi, deps);
+  registerServerMoveRoutes(publicApi, deps, serverMove);
   app.route("/api/v1", publicApi);
   app.use("/api/v1/*", () => {
     throw new ApiError(404, "not_found", "Not found");
@@ -690,7 +780,18 @@ export function createApp(
 
   const internalApi = new Hono();
   registerInternalHostRoutes(internalApi, deps);
-  registerInternalSessionRoutes(internalApi, deps, pluginService);
+  registerInternalSessionRoutes(internalApi, deps, pluginService, {
+    movedTo: () => serverMove.movedTo(),
+    pendingMoveId: () => pendingServerMove?.moveId ?? null,
+    sessionOpened: createManualServerImportCompletion({
+      deps,
+      pending: serverMoveOptions.manualImportPending,
+    }),
+  });
+  registerInternalServerMoveRoutes(internalApi, deps, {
+    pending: pendingServerMove,
+    serverMove,
+  });
   registerInternalSkillRoutes(internalApi, deps);
   registerInternalPluginHostArtifactRoutes(internalApi, deps);
   registerInternalEventRoutes(internalApi, deps);
@@ -786,6 +887,7 @@ export function createApp(
               socket,
             },
             pluginService,
+            serverMove,
           ),
         onClose: () => onDaemonSocketClose(deps, websocketContext.sessionId),
       };
@@ -809,5 +911,6 @@ export function createApp(
     injectWebSocket,
     pluginService,
     pluginCatalogService,
+    serverMove,
   };
 }

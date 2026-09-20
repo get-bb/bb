@@ -87,7 +87,10 @@ describe("sidebar thread drag chip", () => {
         ),
         pointerDown,
       }),
-    ).toEqual({ x: pointerDown.x + transform.x, y: pointerDown.y + transform.y });
+    ).toEqual({
+      x: pointerDown.x + transform.x,
+      y: pointerDown.y + transform.y,
+    });
   });
 
   it("ignores the in-flight transform baked into the measured overlay rect", () => {
@@ -107,7 +110,10 @@ describe("sidebar thread drag chip", () => {
         draggingNodeRect: measuredWhileDragging,
         pointerDown,
       }),
-    ).toEqual({ x: pointerDown.x + transform.x, y: pointerDown.y + transform.y });
+    ).toEqual({
+      x: pointerDown.x + transform.x,
+      y: pointerDown.y + transform.y,
+    });
   });
 
   it("keeps the origin fixed when the dragged row is remeasured mid-drag", () => {
@@ -133,7 +139,10 @@ describe("sidebar thread drag chip", () => {
         activeNodeRect: rect(ROW_RECT.left, ROW_RECT.top + 64, 244, 28),
         pointerDown,
       }),
-    ).toEqual({ x: pointerDown.x + transform.x, y: pointerDown.y + transform.y });
+    ).toEqual({
+      x: pointerDown.x + transform.x,
+      y: pointerDown.y + transform.y,
+    });
   });
 
   it("re-anchors on the next drag after the previous one ends", () => {
@@ -184,7 +193,10 @@ describe("sidebar thread drag chip", () => {
     expect({
       x: secondRow.left + result.x + CHIP_WIDTH / 2,
       y: secondRow.top + result.y + CHIP_HEIGHT / 2,
-    }).toEqual({ x: pointerDown.x + transform.x, y: pointerDown.y + transform.y });
+    }).toEqual({
+      x: pointerDown.x + transform.x,
+      y: pointerDown.y + transform.y,
+    });
   });
 
   it("preserves keyboard positioning without pointer coordinates", () => {

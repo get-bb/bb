@@ -1,3 +1,4 @@
+import { acquireProjectAttachmentOwnership } from "./project-attachments.js";
 import {
   and,
   asc,
@@ -18,12 +19,17 @@ import {
   sql,
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/sqlite-core";
-import { QUEUED_MESSAGE_PLUGIN_WAIT_HOLDER_PREFIX } from "@bb/domain";
+import {
+  QUEUED_MESSAGE_PLUGIN_WAIT_HOLDER_PREFIX,
+  projectAttachmentPaths,
+} from "@bb/domain";
 import type {
   PermissionMode,
   PromptInput,
   QueuedMessagePayload,
   QueuedMessageSystemNotice,
+  StartedOnBehalfOf,
+  ThreadCreateOrigin,
   QueuedMessageWaitHolder,
   QueuedMessageWaitingOn,
   QueuedMessageWaitingOnKind,
@@ -51,6 +57,19 @@ export interface CreateQueuedThreadMessageInput {
   threadId: string;
   content: PromptInput[];
   senderThreadId?: string | null;
+  /**
+   * How the dispatch this row is queued from was requested, and the plugin
+   * that requested it, so a drained re-attempt carries the provenance its
+   * first attempt had. Both null for everything but a thread's first dispatch.
+   */
+  origin?: ThreadCreateOrigin | null;
+  originPluginId?: string | null;
+  /**
+   * The thread that asked for this dispatch, when one did. Distinct from
+   * `senderThreadId`, which is the sender of a message TO an existing thread:
+   * a thread-start has a requester and no message sender.
+   */
+  requestedBy?: StartedOnBehalfOf | null;
   model: string;
   reasoningLevel: string;
   permissionMode: PermissionMode;
@@ -584,6 +603,11 @@ export function createQueuedThreadMessageInTransaction(
   input: CreateQueuedThreadMessageInput,
 ) {
   const now = Date.now();
+  acquireProjectAttachmentOwnership(
+    tx,
+    input.threadId,
+    projectAttachmentPaths(input.content),
+  );
   const id = createQueuedThreadMessageId();
   const lastQueuedMessage = getLastQueuedThreadMessage(tx, input.threadId);
   const sortKey = lastQueuedMessage
@@ -596,6 +620,10 @@ export function createQueuedThreadMessageInTransaction(
       threadId: input.threadId,
       content: JSON.stringify(input.content),
       senderThreadId: input.senderThreadId ?? null,
+      origin: input.origin ?? null,
+      originPluginId: input.originPluginId ?? null,
+      requestedByInitiator: input.requestedBy?.initiator ?? null,
+      requestedByThreadId: input.requestedBy?.senderThreadId ?? null,
       model: input.model,
       reasoningLevel: input.reasoningLevel,
       permissionMode: input.permissionMode,
@@ -657,6 +685,11 @@ export function updateQueuedThreadMessage(
         return { kind: "stale" };
       }
 
+      acquireProjectAttachmentOwnership(
+        tx,
+        input.threadId,
+        projectAttachmentPaths(input.content),
+      );
       const queuedMessage = tx
         .update(queuedThreadMessages)
         .set({

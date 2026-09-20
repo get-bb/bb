@@ -226,6 +226,7 @@
 }
 
 .marketplace-shelf-notable {
+  margin-inline: -16px;
   padding: 16px;
   border-radius: 16px;
   background: color-mix(in oklab, var(--accent) 5%, var(--bg));
@@ -290,10 +291,6 @@
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
-}
-
-.marketplace-grid-notable {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .marketplace-card {
@@ -365,7 +362,8 @@
 }
 
 .marketplace-artwork svg,
-.marketplace-artwork img {
+.marketplace-artwork img,
+.marketplace-artwork .marketplace-svg-icon {
   display: block;
   width: 20px;
   height: 20px;
@@ -379,7 +377,8 @@
 }
 
 .marketplace-artwork.is-large svg,
-.marketplace-artwork.is-large img {
+.marketplace-artwork.is-large img,
+.marketplace-artwork.is-large .marketplace-svg-icon {
   width: 30px;
   height: 30px;
 }
@@ -905,12 +904,6 @@ a.marketplace-detail-author:hover {
   margin-bottom: 8px;
 }
 
-@media (max-width: 980px) {
-  .marketplace-grid-notable {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
 @media (max-width: 860px) {
   .marketplace-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -941,8 +934,7 @@ a.marketplace-detail-author:hover {
     font-size: 16px;
   }
 
-  .marketplace-grid,
-  .marketplace-grid-notable {
+  .marketplace-grid {
     grid-template-columns: 1fr;
   }
 
@@ -961,7 +953,8 @@ a.marketplace-detail-author:hover {
   }
 
   .marketplace-detail-head .marketplace-artwork.is-large svg,
-  .marketplace-detail-head .marketplace-artwork.is-large img {
+  .marketplace-detail-head .marketplace-artwork.is-large img,
+  .marketplace-detail-head .marketplace-artwork.is-large .marketplace-svg-icon {
     width: 28px;
     height: 28px;
   }
@@ -987,4 +980,12 @@ a.marketplace-detail-author:hover {
     width: 100%;
     padding-left: 82px;
   }
+}
+
+.marketplace-svg-icon {
+  background: currentColor;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  mask-size: contain;
+  mask-mode: alpha;
 }

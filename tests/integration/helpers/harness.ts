@@ -491,6 +491,10 @@ export async function createIntegrationHarness(
     });
     daemonResources = await startHarnessDaemon(daemonDataDir, server);
     await waitForHostConnected(api);
+    await persistHostId({
+      dataDir: server.config.dataDir,
+      hostId: daemonResources.hostId,
+    });
 
     harness = {
       api,

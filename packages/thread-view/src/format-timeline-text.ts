@@ -253,6 +253,7 @@ function formatWorkBody(
       return lines;
     case "approval":
     case "question":
+    case "form":
     case "workflow":
       return lines;
     case "delegation":

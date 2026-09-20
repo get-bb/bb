@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { ImageLightbox } from "@/components/ui/image-lightbox";
 import { InlineImageGalleryContext } from "@/components/ui/inline-image-gallery-context";
 
@@ -32,7 +38,9 @@ function reconcileGallery(
   const images = eligible.slice();
   let index = images.findIndex((image) => image.key === selected.key);
   if (index < 0) {
-    const positions = new Map(images.map((image, position) => [image.key, position]));
+    const positions = new Map(
+      images.map((image, position) => [image.key, position]),
+    );
     index = Math.min(current.index, images.length);
     for (const image of current.images.slice(current.index + 1)) {
       const position = positions.get(image.key);
@@ -50,9 +58,14 @@ function reconcileGallery(
     images.length === current.images.length &&
     images.every((image, position) => {
       const previous = current.images[position];
-      return image.key === previous.key && image.src === previous.src && image.alt === previous.alt;
+      return (
+        image.key === previous.key &&
+        image.src === previous.src &&
+        image.alt === previous.alt
+      );
     })
-  ) return current;
+  )
+    return current;
   return { images, index };
 }
 
@@ -67,9 +80,12 @@ export function TimelineImageGallery({ children }: { children: ReactNode }) {
       "img[data-markdown-image]",
     ) ?? []) {
       const identity = JSON.stringify([
-        image.closest("[data-timeline-row-id]")?.getAttribute("data-timeline-row-id"),
+        image
+          .closest("[data-timeline-row-id]")
+          ?.getAttribute("data-timeline-row-id"),
         image.getAttribute("data-markdown-image-offset") ?? [
-          image.getAttribute("src"), image.alt,
+          image.getAttribute("src"),
+          image.alt,
         ],
       ]);
       const occurrence = occurrences.get(identity) ?? 0;
@@ -77,7 +93,7 @@ export function TimelineImageGallery({ children }: { children: ReactNode }) {
       if (isEligible(image)) {
         images.set(image, {
           key: `${identity}:${occurrence}`,
-          src: image.currentSrc || image.src,
+          src: image.currentSrc || image.src || image.getAttribute("data-markdown-image-src") || "",
           alt: image.alt,
         });
       }
@@ -117,8 +133,14 @@ export function TimelineImageGallery({ children }: { children: ReactNode }) {
       subtree: true,
       attributes: true,
       attributeFilter: [
-        "src", "srcset", "alt", "hidden", "inert", "aria-hidden",
-        "data-image-gallery-clipped", "data-timeline-row-id",
+        "src",
+        "srcset",
+        "alt",
+        "hidden",
+        "inert",
+        "aria-hidden",
+        "data-image-gallery-clipped",
+        "data-timeline-row-id",
         "data-markdown-image-offset",
       ],
     });
@@ -138,16 +160,19 @@ export function TimelineImageGallery({ children }: { children: ReactNode }) {
     setGallery((current) => {
       if (current === null) return null;
       const updated = reconcileGallery(current, images);
-      return reconcileGallery({
-        images: updated.images,
-        index: Math.max(
-          0,
-          Math.min(
-            updated.images.length - 1,
-            updated.index + (direction === "previous" ? -1 : 1),
+      return reconcileGallery(
+        {
+          images: updated.images,
+          index: Math.max(
+            0,
+            Math.min(
+              updated.images.length - 1,
+              updated.index + (direction === "previous" ? -1 : 1),
+            ),
           ),
-        ),
-      }, images);
+        },
+        images,
+      );
     });
   };
   const selected = gallery?.images[gallery.index];
@@ -162,7 +187,9 @@ export function TimelineImageGallery({ children }: { children: ReactNode }) {
         title="Timeline image preview"
         hasMultipleImages={gallery !== null && gallery.images.length > 1}
         previousDisabled={gallery?.index === 0}
-        nextDisabled={gallery !== null && gallery.index === gallery.images.length - 1}
+        nextDisabled={
+          gallery !== null && gallery.index === gallery.images.length - 1
+        }
         navigationStatus={
           gallery && gallery.images.length > 1
             ? `${gallery.index + 1} / ${gallery.images.length}`

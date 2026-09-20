@@ -37,6 +37,7 @@ import {
   seedThread,
 } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
+import { setServerMoveFrozen } from "../../src/services/server-move/freeze-state.js";
 
 const BASE_NOW = 1_800_000_000_000;
 const SECOND = 1_000;
@@ -830,6 +831,36 @@ describe("provider model catalog store", () => {
           scopeKey: "",
         }),
       ).toBeNull();
+    });
+  });
+
+  it("serves a refreshed catalog without storing it while the server is moving", async () => {
+    await withTestHarness(async (harness) => {
+      const logLines = captureLogLines(harness);
+      const host = setupCatalogHost(harness, { id: "host-catalog-frozen" });
+
+      setServerMoveFrozen(harness.db, true);
+      try {
+        await host.read("claude-code");
+        await vi.waitFor(() => {
+          expect(logLines(SETTLED)).toHaveLength(1);
+        });
+        await settleTimers();
+
+        expect(modelIds(await host.read("claude-code"))).toEqual([
+          "claude-code-model",
+        ]);
+        expect(host.listRequests("claude-code")).toHaveLength(1);
+        expect(
+          getStoredProviderModelCatalog(harness.db, {
+            hostId: host.hostId,
+            providerId: "claude-code",
+            scopeKey: "",
+          }),
+        ).toBeNull();
+      } finally {
+        setServerMoveFrozen(harness.db, false);
+      }
     });
   });
 });

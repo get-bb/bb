@@ -33,6 +33,8 @@ Script mode flags:
 --script-file <path>           Copy script content from a file on a host
 --host <name-or-id>            Host that owns --script-file (default: thread host or server)
 --interpreter <name>           bash, sh, node, or python3
---timeout <ms>                 Timeout in milliseconds, default 120000, max 900000
+--timeout <duration>           Bare number of milliseconds or a duration with a
+                               unit (90s, 5m); default 120000, max 900000
 --env-json <json>              Script variables as a string-to-string JSON object
+--working-directory <value>    automation-storage, project, or an absolute server-host path
 ```

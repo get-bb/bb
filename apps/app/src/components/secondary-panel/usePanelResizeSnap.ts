@@ -32,7 +32,8 @@ export function usePanelResizeSnap({
         hitTargetRef.current?.parentElement !== divider ||
         divider.getAttribute("data-panel-resize-handle-enabled") !== "true" ||
         event.button !== 0
-      ) return;
+      )
+        return;
       activeDragRef.current?.(true);
       const previous = divider.previousElementSibling;
       const next = divider.nextElementSibling;
@@ -162,7 +163,8 @@ export function usePanelResizeSnap({
     };
 
     window.addEventListener("pointerdown", onPointerDownCapture, true);
-    return () => window.removeEventListener("pointerdown", onPointerDownCapture, true);
+    return () =>
+      window.removeEventListener("pointerdown", onPointerDownCapture, true);
   }, [onDragging, onResize]);
 
   return hitTargetRef;

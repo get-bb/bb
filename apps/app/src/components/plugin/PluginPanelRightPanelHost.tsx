@@ -21,10 +21,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { useAppCommandHandler } from "@/components/commands/AppCommandProvider";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
-import {
-  getCompactPanelPresentation,
-  RIGHT_PANEL_TOGGLE_ICON_NAME,
-} from "@/components/secondary-panel/panelToggleControlState";
+import { RIGHT_PANEL_TOGGLE_ICON_NAME } from "@/components/secondary-panel/panelToggleControlState";
 import { SecondaryPanelLayout } from "@/components/secondary-panel/SecondaryPanelLayout";
 import {
   LazyBrowserTabDeck,
@@ -714,11 +711,15 @@ export function PluginPanelRightPanelHost({
       const nextPluginIds = openedPluginIds.filter(
         (candidate) => candidate !== closingPluginId,
       );
-      setOpenedPluginIds(nextPluginIds);
+      setOpenedPluginIds((current) =>
+        current.filter((candidate) => candidate !== closingPluginId),
+      );
       if (activePluginDetailId !== closingPluginId) return;
       const nextActivePluginId =
         nextPluginIds[Math.min(closingIndex, nextPluginIds.length - 1)] ?? null;
-      setActivePluginDetailId(nextActivePluginId);
+      setActivePluginDetailId((current) =>
+        current === closingPluginId ? nextActivePluginId : current,
+      );
       setIsPluginDetailFullPage(false);
       if (
         nextActivePluginId === null &&
@@ -1175,11 +1176,7 @@ export function PluginPanelRightPanelHost({
         }
         main={children}
         composerHost={null}
-        compactPresentation={getCompactPanelPresentation(
-          activeTab?.kind,
-          fixedTabs[0]?.tab.kind ??
-            panelTabs.find((tab) => tab.isHidden !== true)?.tab.kind,
-        )}
+        compactPresentation="full"
         renderPanel={renderPanel}
       />
     </div>

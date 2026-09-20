@@ -55,6 +55,7 @@ export interface InstallApplicationMenuArgs {
   openServerDaemonLogs(): void;
   selectServer(serverId: string): void;
   setServerUrl(): void;
+  addServer(): void;
   onServerMenuWillShow?: () => void;
   serverDaemonLogsMenuEnabled: boolean;
   servers: ApplicationMenuServerItem[];
@@ -101,6 +102,12 @@ function createServerMenuItems(
           },
         ]),
     { type: "separator" },
+    {
+      label: "Add Server…",
+      click() {
+        args.addServer();
+      },
+    },
     {
       label: SET_SERVER_URL_MENU_LABEL,
       click() {

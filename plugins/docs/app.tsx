@@ -40,22 +40,20 @@ import TableRow from "@tiptap/extension-table-row";
 import { Markdown } from "tiptap-markdown";
 import * as ContextMenuPrimitive from "@radix-ui/react-context-menu";
 import { toast } from "sonner";
-import {
-  ArrowDown01Icon,
-  ArrowRight01Icon,
-  AlertCircleIcon,
-  ArrowUpRight01Icon,
-  Cancel01Icon,
-  Delete02Icon,
-  File01Icon,
-  FileAddIcon,
-  Folder01Icon,
-  Folder02Icon,
-  FolderAddIcon,
-  HtmlFile01Icon,
-  PlusSignIcon,
-  Search01Icon,
-} from "@hugeicons/core-free-icons";
+import ArrowDown01Icon from "@hugeicons/core-free-icons/ArrowDown01Icon";
+import ArrowRight01Icon from "@hugeicons/core-free-icons/ArrowRight01Icon";
+import AlertCircleIcon from "@hugeicons/core-free-icons/AlertCircleIcon";
+import ArrowUpRight01Icon from "@hugeicons/core-free-icons/ArrowUpRight01Icon";
+import Cancel01Icon from "@hugeicons/core-free-icons/Cancel01Icon";
+import Delete02Icon from "@hugeicons/core-free-icons/Delete02Icon";
+import File01Icon from "@hugeicons/core-free-icons/File01Icon";
+import FileAddIcon from "@hugeicons/core-free-icons/FileAddIcon";
+import Folder01Icon from "@hugeicons/core-free-icons/Folder01Icon";
+import Folder02Icon from "@hugeicons/core-free-icons/Folder02Icon";
+import FolderAddIcon from "@hugeicons/core-free-icons/FolderAddIcon";
+import HtmlFile01Icon from "@hugeicons/core-free-icons/HtmlFile01Icon";
+import PlusSignIcon from "@hugeicons/core-free-icons/PlusSignIcon";
+import Search01Icon from "@hugeicons/core-free-icons/Search01Icon";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "@bb/shared-ui/button";
 import { DelayedLoading } from "@bb/shared-ui/delayed-loading";
@@ -2114,7 +2112,7 @@ function NotesWorkspace({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="primary">Primary host</SelectItem>
+                    <SelectItem value="primary">Server machine</SelectItem>
                     {data.hosts.map((host) => (
                       <SelectItem key={host.id} value={host.id}>
                         {host.name} · {host.status}

@@ -39,6 +39,7 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import { ImageLightbox, getWrappedImageIndex } from "./image-lightbox.js";
 import { InlineImageGalleryContext } from "./inline-image-gallery-context.js";
+import { MarkdownImage as DeferredMarkdownImage } from "./markdown-image.js";
 import { normalizeMathFences } from "./markdown-math-fences.js";
 import {
   markdownMayContainMath,
@@ -262,9 +263,10 @@ interface MarkdownCodeRendererProps extends MarkdownCodeProps {
 }
 type MarkdownHeadingProps = ComponentPropsWithoutRef<"h1"> & ExtraProps;
 type MarkdownHrProps = ComponentPropsWithoutRef<"hr"> & ExtraProps;
-type MarkdownImageProps = ComponentPropsWithoutRef<"img"> & ExtraProps & {
-  "data-markdown-image-offset"?: number;
-};
+type MarkdownImageProps = ComponentPropsWithoutRef<"img"> &
+  ExtraProps & {
+    "data-markdown-image-offset"?: number;
+  };
 type MarkdownImageRenderAttributes = Omit<
   MarkdownImageProps,
   "alt" | "children" | "className" | "node" | "src"
@@ -945,12 +947,12 @@ function MarkdownRenderedImage({
   const imageUrl = typeof src === "string" ? src : "";
   if (!imageUrl) return null;
   return (
-    <img
+    <DeferredMarkdownImage
+      key={JSON.stringify([imageUrl, imageAttributes.srcSet])}
       {...imageAttributes}
       src={imageUrl}
       alt={typeof alt === "string" ? alt : "Image"}
       className="my-2 max-h-[max(384px,50vh)] max-w-full cursor-zoom-in object-contain"
-      loading="lazy"
       data-markdown-image=""
       data-markdown-image-offset={sourceOffset}
       onClick={(event) => {
@@ -966,7 +968,7 @@ function MarkdownRenderedImage({
         );
         const imageIndex = images.indexOf(event.currentTarget);
         const imageSources = images.map(
-          (image) => image.getAttribute("src") ?? image.src,
+          (image) => image.currentSrc || image.src || image.getAttribute("data-markdown-image-src") || "",
         );
         setExpandedImage({
           imageSources,

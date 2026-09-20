@@ -63,7 +63,7 @@ routing?, allowProviderChange?, align?, disabled?, className? }`, where `routing
   `align` optionally sets the popover to `"start"`, `"center"`, or `"end"`;
   it defaults to `"start"`.
 
-  Omit `routing` for primary-machine discovery. Route by host for a selected
+  Omit `routing` for server-machine discovery. Route by host for a selected
   machine or by environment when the catalog depends on an existing workspace.
   This is intended for settings and other compact forms that need an execution
   preference without a composer; do not fetch and reconcile provider catalogs
@@ -320,6 +320,13 @@ render the name with `experimental_Icon`. Duplicate names within a plugin reject
 setup. Across plugins, the first plugin id in lexical order wins and bb warns.
 Registration returns `void`; reload replaces registrations and unload restores
 the next owner or built-in. A rejected setup preserves the previous generation.
+
+A registered name is a BB icon name everywhere one is accepted, not only in
+`experimental_Icon`: every host icon field resolves a registration first, then
+a built-in, then a manifest-declared `"<pluginId>/<name>"` glyph. Register for
+a component, colour, or to override a built-in; declare in the manifest for
+icons a server declaration must validate or that must work with no frontend
+bundle.
 
 `experimental_Icon` accepts `name`, optional `fallback` (default `Zap`),
 `className`, `style`, `aria-label`, and `aria-hidden`. Registered artwork receives

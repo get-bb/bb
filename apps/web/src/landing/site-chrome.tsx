@@ -1,4 +1,4 @@
-import { GithubIcon } from "@hugeicons/core-free-icons";
+import GithubIcon from "@hugeicons/core-free-icons/GithubIcon";
 import { HugeiconsIcon } from "@hugeicons/react";
 
 import { DASHBOARD_PATH } from "../lib/connect-return-to";

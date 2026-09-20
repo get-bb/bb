@@ -17,13 +17,11 @@ type SecondaryPanelResizeHandler = (size: number) => void;
 interface UseSecondaryPanelResizeArgs {
   isSecondaryPanelOpen: boolean;
   onPanelWidthChange: SecondaryPanelWidthChangeHandler;
-  onResizeStart: () => void;
 }
 
 export function useSecondaryPanelResize({
   isSecondaryPanelOpen,
   onPanelWidthChange,
-  onResizeStart,
 }: UseSecondaryPanelResizeArgs) {
   const persistedWidthPercent = useAtomValue(secondaryPanelWidthPercentAtom);
   const setPersistedWidthPercent = useSetAtom(secondaryPanelWidthPercentAtom);
@@ -40,13 +38,11 @@ export function useSecondaryPanelResize({
   const handleSecondaryPanelDragging = useCallback(
     (isDragging: boolean) => {
       setIsResizing(isDragging);
-      if (isDragging) {
-        onResizeStart();
-      } else if (lastSecondaryPanelSizeRef.current > 0) {
+      if (!isDragging && lastSecondaryPanelSizeRef.current > 0) {
         setPersistedWidthPercent(lastSecondaryPanelSizeRef.current);
       }
     },
-    [onResizeStart, setIsResizing, setPersistedWidthPercent],
+    [setIsResizing, setPersistedWidthPercent],
   );
   const resizeHitTargetRef = usePanelResizeSnap({
     onResize: handleSecondaryPanelPointerResize,

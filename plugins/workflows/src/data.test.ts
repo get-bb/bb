@@ -1,7 +1,11 @@
 import Database from "better-sqlite3";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   attachCallThread,
+  retiredWorkers,
+  recordWorkerCleanup,
+  workerOrigins,
+  ownWorker,
   cancelRun,
   countCallsForRun,
   createRun,
@@ -29,7 +33,10 @@ describe("workflow durable data", () => {
     db.exec(migrations.join("\n"));
   });
 
-  afterEach(() => db.close());
+  afterEach(() => {
+    db.close();
+    vi.restoreAllMocks();
+  });
 
   function sweepExpired(now: number, limit: number): number {
     return deleteTerminalRuns(
@@ -69,6 +76,136 @@ describe("workflow durable data", () => {
     reasoningLevel: "medium",
     permissionMode: "full",
   } as const;
+
+  it("persists failed cleanup deadlines and caps retry delays", () => {
+    ownWorker(db, "worker", "missing-run", "missing-call", "origin");
+    const clock = vi.spyOn(Date, "now").mockReturnValue(10_000);
+    expect(retiredWorkers(db, 10_000)).toHaveLength(1);
+    recordWorkerCleanup(db, "worker", false);
+    expect(retiredWorkers(db, 10_999)).toEqual([]);
+    expect(workerOrigins(db, 10_999)).toEqual([]);
+    expect(retiredWorkers(db, 11_000)).toHaveLength(1);
+    clock.mockReturnValue(11_000);
+    recordWorkerCleanup(db, "worker", false);
+    expect(retiredWorkers(db, 12_999)).toEqual([]);
+    expect(retiredWorkers(db, 13_000)).toHaveLength(1);
+    for (let attempt = 0; attempt < 20; attempt++)
+      recordWorkerCleanup(db, "worker", false);
+    expect(retiredWorkers(db, 70_999)).toEqual([]);
+    expect(retiredWorkers(db, 71_000)).toHaveLength(1);
+    recordWorkerCleanup(db, "worker", true);
+    expect(retiredWorkers(db, 1_000_000)).toEqual([]);
+  });
+
+  it("monitors active origins but leaves backed-off completed notifications alone", () => {
+    const run = newRun();
+    expect(workerOrigins(db, 1_000)).toEqual([run.originThreadId]);
+    db.prepare(
+      "UPDATE workflow_runs SET status = 'succeeded', notification_next_attempt_at = 999999 WHERE id = ?",
+    ).run(run.id);
+    expect(workerOrigins(db, 1_000)).toEqual([]);
+  });
+
+  it("backfills worker ownership from the pre-upgrade call pointers", () => {
+    db.close();
+    db = new Database(":memory:");
+    db.pragma("foreign_keys = ON");
+    db.exec(migrations.slice(0, -2).join("\n"));
+    const run = newRun();
+    markRunning(run.id);
+    const call = startCall(db, {
+      runId: run.id,
+      callIndex: 0,
+      cacheKey: "migration",
+      prompt: "work",
+      options: {
+        title: null,
+        phase: null,
+        outputSchema: null,
+        selection: null,
+      },
+      selection: resolvedSelection,
+      replay: null,
+    });
+    db.prepare(
+      `UPDATE workflow_calls SET child_thread_id = 'legacy-worker', status = 'failed' WHERE id = ?`,
+    ).run(call.id);
+    db.exec(migrations.slice(-2).join("\n"));
+    expect(retiredWorkers(db, Date.now())).toEqual([
+      { threadId: "legacy-worker", callId: call.id },
+    ]);
+    expect(
+      db.prepare(`SELECT run_id, origin_thread_id FROM workflow_workers`).get(),
+    ).toEqual({ run_id: run.id, origin_thread_id: run.originThreadId });
+  });
+
+  it("staggers backfilled cleanup deadlines into one batch per maintenance tick", () => {
+    db.close();
+    db = new Database(":memory:");
+    db.pragma("foreign_keys = ON");
+    db.exec(migrations.slice(0, -2).join("\n"));
+    const run = newRun();
+    const insertCall = db.prepare(
+      `INSERT INTO workflow_calls(id, run_id, call_index, cache_key, prompt,
+         options_json, resolved_provider, resolved_model, resolved_reasoning_level,
+         resolved_permission_mode, status, child_thread_id, created_at)
+       VALUES (?, ?, ?, 'key', 'work', '{}', 'codex', 'gpt-test', 'medium', 'full',
+         'failed', ?, 0)`,
+    );
+    for (let index = 0; index < 250; index++)
+      insertCall.run(
+        `call-${String(index).padStart(3, "0")}`,
+        run.id,
+        index,
+        `worker-${String(index).padStart(3, "0")}`,
+      );
+    const migratedAt = Date.now();
+    db.exec(migrations.slice(-2).join("\n"));
+
+    const buckets = db
+      .prepare(
+        `SELECT next_cleanup_at AS at, COUNT(*) AS size FROM workflow_workers
+         GROUP BY next_cleanup_at ORDER BY at`,
+      )
+      .all() as Array<{ at: number; size: number }>;
+    expect(buckets.map((bucket) => bucket.size)).toEqual([100, 100, 50]);
+    expect(buckets.map((bucket) => bucket.at - buckets[0].at)).toEqual([
+      0, 1_000, 2_000,
+    ]);
+    expect(buckets[0].at).toBeGreaterThan(migratedAt - 2_000);
+    expect(buckets[0].at).toBeLessThanOrEqual(Date.now());
+
+    expect(retiredWorkers(db, buckets[0].at)).toHaveLength(100);
+    expect(retiredWorkers(db, buckets[0].at + 999)).toHaveLength(100);
+    expect(retiredWorkers(db, buckets[2].at)).toHaveLength(100);
+    expect(retiredWorkers(db, buckets[0].at).at(0)?.threadId).toBe(
+      "worker-000",
+    );
+  });
+
+  it("retains unattached workers when attachment loses a cancellation race", () => {
+    const run = newRun();
+    markRunning(run.id);
+    const call = startCall(db, {
+      runId: run.id,
+      callIndex: 0,
+      cacheKey: "cancel",
+      prompt: "work",
+      options: {
+        title: null,
+        phase: null,
+        outputSchema: null,
+        selection: null,
+      },
+      selection: resolvedSelection,
+      replay: null,
+    });
+    cancelRun(db, run.id);
+    expect(attachCallThread(db, call.id, "unattached-worker")).toBe(false);
+    expect(retiredWorkers(db, Date.now())).toEqual([
+      { threadId: "unattached-worker", callId: call.id },
+    ]);
+  });
 
   it("records replay safety without a concurrency barrier", () => {
     const run = newRun();

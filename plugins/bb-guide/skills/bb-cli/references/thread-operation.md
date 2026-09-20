@@ -9,9 +9,14 @@
 - Use `bb thread wait <thread-id>` when you explicitly need to block until a
   thread finishes. It defaults to waiting for `idle` for up to 20 minutes;
   pass `--status` or `--event` for a different target, and `--timeout
-<seconds>` when you need a shorter or longer budget.
+<duration>` (seconds, or a duration with a unit such as `90s`, `20m`, `4h`)
+  when you need a shorter or longer budget.
 - Use `bb thread tell <thread-id> "..."` when requirements change, a blocker
-  needs clarification, or follow-up work is needed.
+  needs clarification, or follow-up work is needed. For multi-line or Markdown
+  text use `bb thread tell <thread-id> --message-file <path>` (`-` reads
+  stdin): inside double quotes the shell runs `backticks` and `$(...)` before
+  bb sees the message. `bb thread edit-message`, `bb thread queue create`, and
+  `bb thread queue update` take `--message-file` too.
 - Add `--plan` to `bb thread spawn` or `bb thread tell` to send the prompt as
   the provider's structured `/plan` action: the agent proposes a plan for
   approval before executing when supported by the provider. Plain `/plan ...` text is
@@ -95,7 +100,7 @@ hostId, providerId, projectId, parentThreadId, groupBy })`.
   `history`, `read|unread`, and `section` for organization and recall. The
   `bb thread queue` group contains the queued-message operations. Queue updates
   use the listed version and accept repeatable `--file` and `--image` options;
-  absolute image paths are uploaded from the CLI machine before the update.
+  absolute file/image paths and `file:` URLs are uploaded from the CLI machine before the update.
 - Use `bb thread show <thread-id>` for status, parent, environment, pull request
   status, and result.
 - Use `bb thread show <thread-id> --git-diff` to review file changes.
@@ -163,19 +168,24 @@ For review or fix pipelines, get the environment ID from
 - `list` and `create` require exactly one explicit scope: `--thread <id>`,
   `--environment <id>`, or `--machine <id-or-name>` (`--host` is an alias).
   Add `--cwd <path>` only to a machine scope. Machine targets resolve to an
-  explicit host ID; terminal commands never silently fall back to primary.
+  explicit host ID; terminal commands never silently fall back to the server machine.
 - Start a server with
   `bb terminal create --thread <thread-id> --title "pnpm dev" --command "pnpm dev"`.
 - `bb terminal start` is an alias for create. `bb terminal stop` is an alias
   for close.
 - Use `bb terminal show`, `attach`, and `resize` for session inspection,
   interactive attachment, and PTY size changes. Use live help for their flags.
-- All existing-session operations need only the terminal ID. Use
+- All existing-session operations need only the terminal ID; they accept and
+  ignore the scope flags of `list` and `create`. Use
   `bb terminal wait <terminal-id> --contains "Local:" --timeout 120` to wait
   for readiness from new output. Pass `--from-start` only when matching existing
-  scrollback is intentional.
+  scrollback is intentional. When the terminal exits before the text appears,
+  wait stops at once with exit code 124, the terminal's exit code, and its last
+  output.
 - Use `bb terminal output <terminal-id> --json` to read bounded output, then
-  continue with `--since-seq <nextSeq>` when polling. Use
+  continue with `--since-seq <nextSeq>` when polling. The response carries
+  `status`, `exitCode`, and `closeReason`. Output stays readable for 30 minutes
+  after the command exits, until the machine's daemon restarts. Use
   `bb terminal send <terminal-id> --text "..." --enter` for interactive input,
   `bb terminal rename <terminal-id> <title>` to rename, and
   `bb terminal close <terminal-id>` when the process is no longer needed.

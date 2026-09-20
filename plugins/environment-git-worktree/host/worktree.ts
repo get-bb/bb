@@ -1,4 +1,10 @@
 import { experimental_killProcessesWithCwdUnder } from "@get-bb/plugin-sdk/host";
+import {
+  findWorktreeEntry,
+  parseWorktreeListPorcelain,
+  selectAdoptableWorktrees,
+  type GitWorktreeEntry,
+} from "./worktree-list.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -669,4 +675,53 @@ export async function removeWorktree(args: RemoveWorktreeArgs): Promise<void> {
   throwIfProvisionAborted(args.signal);
   await fs.rm(workspacePath, { recursive: true, force: true });
   await removeDirectoryIfEmpty(parentPath);
+}
+
+export async function listGitWorktrees(args: {
+  sourcePath: string;
+  signal?: AbortSignal;
+}): Promise<GitWorktreeEntry[]> {
+  const result = await runGit(["worktree", "list", "--porcelain", "-z"], {
+    cwd: args.sourcePath,
+    ...(args.signal !== undefined ? { signal: args.signal } : {}),
+  });
+  return parseWorktreeListPorcelain(result.stdout);
+}
+
+export async function listAdoptableWorktrees(args: {
+  sourcePath: string;
+  managedRoot: string;
+  signal?: AbortSignal;
+}): Promise<GitWorktreeEntry[]> {
+  const entries = await listGitWorktrees(args);
+  return selectAdoptableWorktrees({
+    entries,
+    managedRoot: await realpathOrResolved(args.managedRoot),
+  });
+}
+
+export async function resolveAdoptableWorktree(args: {
+  sourcePath: string;
+  path: string;
+  managedRoot: string;
+  signal?: AbortSignal;
+}): Promise<
+  | { status: "resolved"; path: string; branch: string | null }
+  | { status: "failed"; message: string }
+> {
+  const adoptable = await listAdoptableWorktrees(args);
+  const entry = findWorktreeEntry(adoptable, await realpathOrResolved(args.path));
+  if (entry === null) {
+    return {
+      status: "failed",
+      message: `${args.path} is not a worktree of this repository that bb can adopt.`,
+    };
+  }
+  if (entry.prunable) {
+    return {
+      status: "failed",
+      message: `${args.path} is a prunable worktree; run \`git worktree prune\` or repair it first.`,
+    };
+  }
+  return { status: "resolved", path: entry.path, branch: entry.branch };
 }

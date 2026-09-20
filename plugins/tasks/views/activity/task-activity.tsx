@@ -1,12 +1,10 @@
 import { useMemo, useRef, useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import {
-  ArrowUp02Icon,
-  AttachmentIcon,
-  File01Icon,
-  Notification02Icon,
-  NotificationOff02Icon,
-} from "@hugeicons/core-free-icons";
+import ArrowUp02Icon from "@hugeicons/core-free-icons/ArrowUp02Icon";
+import AttachmentIcon from "@hugeicons/core-free-icons/AttachmentIcon";
+import File01Icon from "@hugeicons/core-free-icons/File01Icon";
+import Notification02Icon from "@hugeicons/core-free-icons/Notification02Icon";
+import NotificationOff02Icon from "@hugeicons/core-free-icons/NotificationOff02Icon";
 import { Button } from "@bb/shared-ui/button";
 import {
   Tooltip,

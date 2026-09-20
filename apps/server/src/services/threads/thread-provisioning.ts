@@ -13,7 +13,7 @@ import {
   type ThreadTurnInitiator,
   type TurnRequestTarget,
 } from "@bb/domain";
-import type { StartedOnBehalfOf } from "@bb/server-contract";
+import type { StartedOnBehalfOf } from "@bb/domain";
 import type { AppDeps } from "../../types.js";
 import { requestQueuedMessageDispatch } from "./queued-message-dispatch.js";
 import {
@@ -26,6 +26,7 @@ import {
   hasLiveThreadStartInFlight,
   requestThreadStart,
 } from "./thread-lifecycle.js";
+import { resolveDispatchAuthor } from "./dispatch-author.js";
 import { resolvePermissionEscalation } from "./thread-runtime-config.js";
 import {
   createThreadStartup,
@@ -221,9 +222,11 @@ export function requestThreadProvision(
   args: RequestThreadProvisionArgs,
 ): ThreadProvisionContext {
   return deps.db.transaction(() => {
-    const initiator: ThreadTurnInitiator =
-      args.startedOnBehalfOf?.initiator ?? "user";
-    const senderThreadId = args.startedOnBehalfOf?.senderThreadId ?? null;
+    const { initiator, senderThreadId } = resolveDispatchAuthor({
+      retrying: false,
+      senderThreadId: null,
+      startedOnBehalfOf: args.startedOnBehalfOf,
+    });
     const target: TurnRequestTarget = { kind: "thread-start" };
     const request = appendClientTurnEvent(deps, {
       threadId: args.thread.id,

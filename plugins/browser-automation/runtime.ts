@@ -12,6 +12,7 @@ import { delimiter, isAbsolute, join, relative } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { z } from "zod";
 import { outputSchema, type RunOutput } from "./contracts.js";
+import { createPreview, type PreviewSource } from "./preview.js";
 import { execute, supervise } from "./process.js";
 import type { ResolvedRuntime } from "./runtime-pin.js";
 
@@ -178,6 +179,7 @@ export interface RuntimeSession {
     timeoutMs: number,
     signal: AbortSignal,
   ): Promise<RunOutput>;
+  preview: PreviewSource | null;
   close(): Promise<void>;
 }
 
@@ -195,12 +197,14 @@ export async function createRuntime(args: {
   const processes: ReturnType<typeof supervise>[] = [];
   let closed = false;
   let closing: Promise<void> | null = null;
+  let preview: PreviewSource | null = null;
   const stopped = new AbortController();
   let queue = Promise.resolve();
   const close = (): Promise<void> => {
     if (closing) return closing;
     closed = true;
     stopped.abort();
+    preview?.close();
     closing = (async () => {
       await Promise.all(processes.map((child) => child.close()));
       await rm(home, { recursive: true, force: true });
@@ -315,7 +319,8 @@ export async function createRuntime(args: {
       return result;
     };
     await run("await browser.listPages()", 30_000, startup);
-    return { run, close };
+    if (args.connectionUrl === undefined) preview = createPreview(url);
+    return { run, preview, close };
   } catch (error) {
     await close();
     throw error;

@@ -8,6 +8,7 @@ import { ResourceSortMenu, ResourceToolbar } from "@bb/shared-ui/resource-list";
 import { useScrollOverflowState } from "@/components/thread/timeline/useScrollOverflowState";
 import type {
   PluginBrowseSort,
+  PluginBrowseCategoryOption,
   PluginBrowseSortDirection,
 } from "./plugin-browse-discovery";
 
@@ -47,16 +48,11 @@ export function pluginBrowseSortOptions(hasInstallCounts: boolean) {
   }));
 }
 
-export interface PluginBrowseCategoryOption {
-  id: string;
-  label: string;
-  count: number;
-}
-
 export function PluginBrowseToolbar({
   query,
   selectedCategories,
   categoryOptions,
+  showCategoryFilter = true,
   sort,
   sortDirection,
   installsKnown,
@@ -65,13 +61,14 @@ export function PluginBrowseToolbar({
   query: string;
   selectedCategories: readonly string[];
   categoryOptions: readonly PluginBrowseCategoryOption[];
+  showCategoryFilter?: boolean;
   sort: PluginBrowseSort | null;
   sortDirection: PluginBrowseSortDirection;
   installsKnown: boolean;
   changeSearchParams: (change: (next: URLSearchParams) => void) => void;
 }) {
   return (
-    <div className="mx-auto w-full max-w-3xl">
+    <div className="w-full">
       <ResourceToolbar
         searchValue={query}
         searchPlaceholder="Search plugins"
@@ -83,18 +80,20 @@ export function PluginBrowseToolbar({
         }
         controls={
           <>
-            <PluginBrowseCategoryFilter
-              value={selectedCategories}
-              options={categoryOptions}
-              onChange={(values) =>
-                changeSearchParams((next) => {
-                  next.delete("category");
-                  for (const value of values) {
-                    next.append("category", value);
-                  }
-                })
-              }
-            />
+            {showCategoryFilter ? (
+              <PluginBrowseCategoryFilter
+                value={selectedCategories}
+                options={categoryOptions}
+                onChange={(values) =>
+                  changeSearchParams((next) => {
+                    next.delete("category");
+                    for (const value of values) {
+                      next.append("category", value);
+                    }
+                  })
+                }
+              />
+            ) : null}
             <ResourceSortMenu
               value={sort}
               direction={sortDirection}

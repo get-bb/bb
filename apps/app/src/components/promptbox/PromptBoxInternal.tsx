@@ -1,3 +1,5 @@
+import type { PendingAttachmentUpload } from "./usePendingAttachmentUploads";
+import { registerThreadMentionDropTarget } from "@/lib/thread-mention-drop";
 import type {
   PromptMentionCommandTrigger,
   PromptMentionResource,
@@ -175,6 +177,7 @@ const RICH_PASTE_BLOCK_TAGS = new Set([
   "THEAD",
   "TR",
 ]);
+const RICH_PASTE_LIST_MARKER = "- ";
 const RICH_PASTE_IGNORED_TAGS = new Set([
   "HEAD",
   "LINK",
@@ -330,7 +333,7 @@ function PromptSubmitButton({
       )}
     >
       {isBusy ? (
-        <Icon name="Spinner" className="size-4 animate-spin" />
+        <Icon name="Loading" className="size-4 animate-spin motion-reduce:animate-none" />
       ) : (
         <>
           <Icon name={icon ?? "CornerDownLeft"} className="size-4" />
@@ -374,14 +377,17 @@ export interface TypeaheadMentionConfig {
 }
 
 export interface TypeaheadCommandConfig {
-  trigger: PromptMentionCommandTrigger | null;
+  triggers: readonly PromptMentionCommandTrigger[];
   suggestions: readonly ProviderCommandSuggestion[];
   isLoading: boolean;
   isError: boolean;
   hasMore: boolean;
   isLoadingMore: boolean;
   loadMore: () => void;
-  onQueryChange: (query: string | null) => void;
+  onQueryChange: (
+    query: string | null,
+    trigger: PromptMentionCommandTrigger | null,
+  ) => void;
   onEditorFocus?: () => void;
 }
 
@@ -391,7 +397,7 @@ export interface TypeaheadConfig {
 }
 
 export const INERT_TYPEAHEAD_COMMAND_CONFIG: TypeaheadCommandConfig = {
-  trigger: null,
+  triggers: [],
   suggestions: [],
   isLoading: false,
   isError: false,
@@ -403,6 +409,7 @@ export const INERT_TYPEAHEAD_COMMAND_CONFIG: TypeaheadCommandConfig = {
 
 export interface AttachmentsConfig {
   items?: PromptDraftAttachment[];
+  pendingUploads?: readonly PendingAttachmentUpload[];
   isAttaching?: boolean;
   error?: string | null;
   onAttachFiles?: (files: File[]) => void | Promise<void>;
@@ -444,7 +451,7 @@ export interface PromptBoxHandle {
 
 export type { PromptBoxAction } from "./PromptBoxActionsMenu";
 
-type MentionMenuPlacement = "top" | "bottom";
+export type MentionMenuPlacement = "top" | "bottom";
 
 interface PromptBoxInternalProps {
   id?: string;
@@ -703,7 +710,24 @@ function promptEditorValueFromRichHtml(html: string): ParsedRichClipboardValue {
   const document = new DOMParser().parseFromString(html, "text/html");
   let text = "";
   let hasMentions = false;
+  let listMarkerPending = false;
   const mentions: PromptTextMention[] = [];
+
+  const flushListMarker = () => {
+    if (!listMarkerPending) {
+      return;
+    }
+    listMarkerPending = false;
+    text += RICH_PASTE_LIST_MARKER;
+  };
+
+  const appendText = (appendedText: string) => {
+    if (appendedText.length === 0) {
+      return;
+    }
+    flushListMarker();
+    text += appendedText;
+  };
 
   const appendNewline = () => {
     text = text.replace(/[ \t]+$/u, "");
@@ -715,12 +739,15 @@ function promptEditorValueFromRichHtml(html: string): ParsedRichClipboardValue {
   const appendCollapsedText = (rawText: string) => {
     const collapsedText = rawText.replace(/\s+/gu, " ");
     if (collapsedText.trim().length === 0) {
+      if (listMarkerPending) {
+        return;
+      }
       if (text.length > 0 && !/[\s]$/u.test(text)) {
-        text += " ";
+        appendText(" ");
       }
       return;
     }
-    text += collapsedText;
+    appendText(collapsedText);
   };
 
   const appendClipboardMention = (element: Element): boolean => {
@@ -729,8 +756,9 @@ function promptEditorValueFromRichHtml(html: string): ParsedRichClipboardValue {
       return false;
     }
 
+    flushListMarker();
     const start = text.length;
-    text += payload.serializedText;
+    appendText(payload.serializedText);
     mentions.push({
       start,
       end: text.length,
@@ -750,7 +778,7 @@ function promptEditorValueFromRichHtml(html: string): ParsedRichClipboardValue {
     if (node.nodeType === Node.TEXT_NODE) {
       const rawText = node.textContent ?? "";
       if (preserveWhitespace) {
-        text += normalizePastedPlainText(rawText);
+        appendText(normalizePastedPlainText(rawText));
         return;
       }
       appendCollapsedText(rawText);
@@ -775,14 +803,15 @@ function promptEditorValueFromRichHtml(html: string): ParsedRichClipboardValue {
     }
     if (tagName === "PRE") {
       appendNewline();
-      text += normalizePastedPlainText(node.textContent ?? "");
+      appendText(normalizePastedPlainText(node.textContent ?? ""));
       appendNewline();
       return;
     }
     if (tagName === "LI") {
       appendNewline();
-      text += "- ";
+      listMarkerPending = true;
       visitChildren(node, preserveWhitespace);
+      listMarkerPending = false;
       appendNewline();
       return;
     }
@@ -1218,7 +1247,7 @@ export function PromptBoxInternal({
     resolveLink: mentionResolveLink,
   } = typeahead.mention;
   const {
-    trigger: commandTriggerChar,
+    triggers: commandTriggerChars,
     suggestions: commandSuggestions,
     isLoading: commandLoading,
     isError: commandError,
@@ -1231,6 +1260,7 @@ export function PromptBoxInternal({
   }, [onCommandEditorFocus]);
   const {
     items: attachments = [],
+    pendingUploads,
     isAttaching = false,
     error: attachmentError = null,
     onAttachFiles,
@@ -1557,26 +1587,32 @@ export function PromptBoxInternal({
       char,
       kind: "mention" as const,
     }));
-    if (commandTriggerChar === null) {
+    if (commandTriggerChars.length === 0) {
       return mentionTriggers;
     }
-    return [...mentionTriggers, { char: commandTriggerChar, kind: "command" }];
-  }, [commandTriggerChar, mentionTriggerChars]);
+    return [
+      ...mentionTriggers,
+      ...commandTriggerChars.map((char) => ({
+        char,
+        kind: "command" as const,
+      })),
+    ];
+  }, [commandTriggerChars, mentionTriggerChars]);
 
   const dispatchTriggerQuery = useCallback(
     (active: ActiveTrigger | null) => {
       if (active?.kind === "mention") {
         onMentionQueryChange(active.query, active.char);
-        onCommandQueryChange(null);
+        onCommandQueryChange(null, null);
         return;
       }
       if (active?.kind === "command") {
-        onCommandQueryChange(active.query);
+        onCommandQueryChange(active.query, active.char);
         onMentionQueryChange(null, null);
         return;
       }
       onMentionQueryChange(null, null);
-      onCommandQueryChange(null);
+      onCommandQueryChange(null, null);
     },
     [onCommandQueryChange, onMentionQueryChange],
   );
@@ -1707,7 +1743,7 @@ export function PromptBoxInternal({
             }
             setActiveTrigger(null);
             onMentionQueryChange(null, null);
-            onCommandQueryChange(null);
+            onCommandQueryChange(null, null);
             return false;
           },
           cut: () => {
@@ -2296,6 +2332,32 @@ export function PromptBoxInternal({
     [finishApply],
   );
 
+  useEffect(() => {
+    const element = formRef.current;
+    if (!element || !editor) return;
+    return registerThreadMentionDropTarget(element, {
+      accepts: () => editor.isEditable && !editor.isDestroyed,
+      insert: (thread, x, y) => {
+        const position =
+          editor.view.posAtCoords({ left: x, top: y })?.pos ??
+          editor.state.selection.to;
+        insertPromptMentionPill({
+          editor,
+          range: { from: position, to: position },
+          resource: {
+            kind: "thread",
+            threadId: thread.threadId,
+            label: thread.label,
+          },
+          serializedText: `@thread:${thread.threadId}`,
+          trailingText: mentionPillTrailingText(editor.state.doc, position),
+          dismissedTrigger: null,
+          clearQuery: () => onMentionQueryChange(null, null),
+        });
+      },
+    });
+  }, [editor, insertPromptMentionPill, onMentionQueryChange]);
+
   const applyMentionSuggestion = useCallback(
     (item: PromptMentionSuggestion) => {
       const currentEditor = editorRef.current;
@@ -2328,7 +2390,7 @@ export function PromptBoxInternal({
     (item: ProviderCommandSuggestion) => {
       const currentEditor = editorRef.current;
       if (!currentEditor || activeTrigger === null) return;
-      if (activeTrigger.char !== "/") return;
+      if (activeTrigger.kind !== "command") return;
 
       const trailingText = mentionPillTrailingText(
         currentEditor.state.doc,
@@ -2351,7 +2413,7 @@ export function PromptBoxInternal({
           }),
           hasLeftRange: false,
         },
-        clearQuery: () => onCommandQueryChange(null),
+        clearQuery: () => onCommandQueryChange(null, null),
       });
     },
     [activeTrigger, insertPromptMentionPill, onCommandQueryChange],
@@ -2379,7 +2441,7 @@ export function PromptBoxInternal({
     }
     setActiveTrigger(null);
     onMentionQueryChange(null, null);
-    onCommandQueryChange(null);
+    onCommandQueryChange(null, null);
   }, [activeTrigger, onCommandQueryChange, onMentionQueryChange]);
 
   const focusEnd = useCallback(() => {
@@ -2519,7 +2581,7 @@ export function PromptBoxInternal({
           serializedText: commandAction.serializedText,
           trailingText: commandAction.trailingText,
           dismissedTrigger: null,
-          clearQuery: () => onCommandQueryChange(null),
+          clearQuery: () => onCommandQueryChange(null, null),
         });
         return;
       }
@@ -3117,6 +3179,7 @@ export function PromptBoxInternal({
             <AttachmentPreview
               compact
               attachments={attachments}
+              pendingUploads={pendingUploads}
               attachmentProjectId={attachmentProjectId}
               expandedImageIndex={expandedImageIndex}
               onExpandedImageIndexChange={setExpandedImageIndex}
@@ -3212,6 +3275,7 @@ export function PromptBoxInternal({
               >
                 <AttachmentPreview
                   attachments={attachments}
+                  pendingUploads={pendingUploads}
                   attachmentProjectId={attachmentProjectId}
                   expandedImageIndex={expandedImageIndex}
                   onExpandedImageIndexChange={setExpandedImageIndex}
@@ -3271,7 +3335,6 @@ export function PromptBoxInternal({
                 >
                   <ComposerPlusMenuSlot
                     actions={promptActions}
-                    isAttaching={isAttaching}
                     onAttach={
                       onAttachFiles
                         ? () => attachmentInputRef.current?.click()

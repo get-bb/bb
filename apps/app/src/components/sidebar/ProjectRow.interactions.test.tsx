@@ -24,6 +24,7 @@ import {
 import { buildSidebarEntitySectionId } from "@bb/client-core";
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 import { makeProjectResponse } from "@/test/fixtures/projects";
+import { sidebarOrganizationModeAtom } from "./sidebarCollapsedAtoms";
 
 const mockUpdateEnvironment = vi.hoisted(() => ({
   mutateAsync: vi.fn(async () => undefined),
@@ -111,26 +112,30 @@ function renderProjectRow(
   isCollapsed = false,
 ) {
   const onToggleEnvironmentCollapsed = vi.fn();
+  const store = createStore();
+  store.set(sidebarOrganizationModeAtom, "project");
   const result = render(
     <TooltipProvider>
-      <QueryClientProvider client={new QueryClient()}>
-        <MemoryRouter>
-          <ProjectRow
-            project={makeProjectResponse()}
-            threadListState={threadListState}
-            isActive={isActive}
-            isCollapsed={isCollapsed}
-            compareThreads={() => 0}
-            progressiveDisclosureEnabled
-            collapsedThreadIds={new Set()}
-            collapsedEnvironmentIds={collapsedEnvironmentIds}
-            isLocalPathInvalid={false}
-            onToggleProjectCollapsed={onToggleProjectCollapsed}
-            onToggleThreadCollapsed={vi.fn()}
-            onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
-          />
-        </MemoryRouter>
-      </QueryClientProvider>
+      <Provider store={store}>
+        <QueryClientProvider client={new QueryClient()}>
+          <MemoryRouter>
+            <ProjectRow
+              project={makeProjectResponse()}
+              threadListState={threadListState}
+              isActive={isActive}
+              isCollapsed={isCollapsed}
+              compareThreads={() => 0}
+              progressiveDisclosureEnabled
+              collapsedThreadIds={new Set()}
+              collapsedEnvironmentIds={collapsedEnvironmentIds}
+              isLocalPathInvalid={false}
+              onToggleProjectCollapsed={onToggleProjectCollapsed}
+              onToggleThreadCollapsed={vi.fn()}
+              onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
+            />
+          </MemoryRouter>
+        </QueryClientProvider>
+      </Provider>
     </TooltipProvider>,
   );
   return { ...result, onToggleEnvironmentCollapsed, onToggleProjectCollapsed };

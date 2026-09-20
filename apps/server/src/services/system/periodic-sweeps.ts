@@ -1,3 +1,13 @@
+import {
+  runThreadPruningSweep,
+  THREAD_PRUNING_SWEEP_LIMITS,
+  type ThreadPruningSweepLimits,
+} from "./thread-pruning-sweep.js";
+import {
+  PROJECT_ATTACHMENT_BACKFILL_LIMITS,
+  runProjectAttachmentBackfill,
+  runProjectAttachmentPrune,
+} from "../projects/attachment-maintenance.js";
 import { sweepProviderLifecycles } from "../environments/environment-engine.js";
 import { and, eq, isNull, isNotNull, inArray } from "drizzle-orm";
 import { sweepMachineLifecycles } from "../machines/provider-orchestration.js";
@@ -47,6 +57,7 @@ import {
   finalizeStoppedThread,
   hasLiveThreadStartInFlight,
   requestThreadStorageDeletion,
+  requestThreadStopForCurrentState,
 } from "../threads/thread-lifecycle.js";
 import { advanceThreadProvisioning } from "../threads/thread-provisioning.js";
 import {
@@ -319,6 +330,27 @@ async function runThreadProvisioningOrphanCleanupSweep(
       );
     }
   }
+  const archivedThreads = deps.db
+    .select()
+    .from(threads)
+    .where(
+      and(
+        isNotNull(threads.archivedAt),
+        isNull(threads.deletedAt),
+        inArray(threads.status, ["pending", "starting", "active", "stopping"]),
+      ),
+    )
+    .all();
+  for (const thread of archivedThreads) {
+    deps.terminalSessions.closeArchivedThreadTerminals({ threadId: thread.id });
+    requestThreadStopForCurrentState(
+      deps,
+      thread,
+      thread.environmentId
+        ? getEnvironment(deps.db, thread.environmentId)
+        : null,
+    );
+  }
   const deletedThreads = deps.db
     .select({
       environmentId: threads.environmentId,
@@ -329,6 +361,7 @@ async function runThreadProvisioningOrphanCleanupSweep(
     .where(isNotNull(threads.deletedAt))
     .all();
   for (const thread of deletedThreads) {
+    deps.terminalSessions.closeDeletedThreadTerminals({ threadId: thread.id });
     if (thread.storageDeletedAt !== null) {
       finalizeStoppedThread(deps, { threadId: thread.id });
       continue;
@@ -475,6 +508,17 @@ async function runDestroyedEnvironmentPruneSweep(
   }
 }
 
+export function createThreadEventPruningJob(
+  limits: ThreadPruningSweepLimits,
+): PeriodicSweepJob {
+  return {
+    cadenceMs: 0,
+    category: "retention",
+    name: "thread-event-pruning",
+    run: (deps) => runThreadPruningSweep(deps, limits),
+  };
+}
+
 const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
   {
     cadenceMs: 0,
@@ -569,11 +613,29 @@ const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
     name: "plugin-schedule",
     run: (deps, now) => deps.pluginSchedules.sweepDueSchedules(now),
   },
+  createThreadEventPruningJob(THREAD_PRUNING_SWEEP_LIMITS),
   {
     cadenceMs: DATABASE_MAINTENANCE_CHECK_INTERVAL_MS,
     category: "maintenance",
     name: "database-maintenance",
     run: runDatabaseMaintenanceSweep,
+  },
+  {
+    cadenceMs: 0,
+    category: "maintenance",
+    name: "project-attachment-backfill",
+    run: (deps, now) =>
+      runProjectAttachmentBackfill(
+        deps,
+        PROJECT_ATTACHMENT_BACKFILL_LIMITS,
+        now,
+      ),
+  },
+  {
+    cadenceMs: 60_000,
+    category: "retention",
+    name: "project-attachment-orphan-prune",
+    run: runProjectAttachmentPrune,
   },
 ];
 

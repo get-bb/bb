@@ -144,11 +144,7 @@ export function getNotificationCenterState(): NotificationCenterState {
 }
 
 export function useNotifications(): readonly AppNotification[] {
-  return useSyncExternalStore(
-    subscribe,
-    getNotifications,
-    getNotifications,
-  );
+  return useSyncExternalStore(subscribe, getNotifications, getNotifications);
 }
 
 export function useNotificationCenterState(): NotificationCenterState {

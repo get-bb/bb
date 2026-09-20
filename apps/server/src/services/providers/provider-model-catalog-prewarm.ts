@@ -2,6 +2,7 @@ import { getHost } from "@bb/db";
 import type { LoggedWorkSessionDeps } from "../../types.js";
 import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
 import { listSystemProviderInfosForHost } from "../system/execution-options.js";
+import { isServerMoveFrozen } from "../server-move/freeze-state.js";
 
 const PER_HOST_CONCURRENCY = 2;
 const GLOBAL_CONCURRENCY = 4;
@@ -67,6 +68,7 @@ export function installProviderModelCatalogPrewarm(
     const host = getHost(deps.db, hostId);
     if (
       stopped ||
+      isServerMoveFrozen(deps.db) ||
       sessionId === null ||
       host === null ||
       host.destroyedAt !== null ||
@@ -96,6 +98,7 @@ export function installProviderModelCatalogPrewarm(
           try {
             if (
               stopped ||
+              isServerMoveFrozen(deps.db) ||
               deps.hub.getDaemonSessionIdForHost(hostId) !== sessionId
             ) {
               return;
