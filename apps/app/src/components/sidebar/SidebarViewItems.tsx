@@ -20,23 +20,22 @@ export function SidebarViewItems({
     setLifecycles,
     organization,
     setOrganization,
+    groupByEnvironment,
+    setEnvironmentGrouping,
     setSort,
     savedDirection,
     setDirection,
     selectedSort,
     changed,
   } = settings;
-  const reset = (
+  const reset = page !== "organize" && changed[page] ? (
     <>
       <DropdownMenuSeparator />
       <DropdownMenuItem
         className="text-xs text-muted-foreground"
-        disabled={!changed[page]}
         onSelect={(event) => {
           event.preventDefault();
-          if (page === "organize") {
-            setOrganization(getUiPreferenceDefault("sidebar.organizationMode"));
-          } else if (page === "sort") {
+          if (page === "sort") {
             setSort(getUiPreferenceDefault("sidebar.chronologicalSort"));
             setDirection(getUiPreferenceDefault("sidebar.sortDirection"));
           } else {
@@ -44,10 +43,10 @@ export function SidebarViewItems({
           }
         }}
       >
-        Reset to default
+        Reset
       </DropdownMenuItem>
     </>
-  );
+  ) : null;
   if (page === "filter") {
     return (
       <>
@@ -85,7 +84,23 @@ export function SidebarViewItems({
             </DropdownMenuItem>
           ))}
         </DropdownMenuGroup>
-        {reset}
+        <DropdownMenuSeparator />
+        <DropdownMenuGroup aria-label="Groups">
+          <DropdownMenuLabel>Groups</DropdownMenuLabel>
+          <DropdownMenuItem
+            role="menuitemcheckbox"
+            aria-checked={groupByEnvironment}
+            onSelect={(event) => {
+              event.preventDefault();
+              setEnvironmentGrouping(!groupByEnvironment);
+            }}
+          >
+            By environment
+            <span className="ml-auto inline-flex size-4 shrink-0 items-center justify-center">
+              {groupByEnvironment && <Icon name="Check" className="size-4" />}
+            </span>
+          </DropdownMenuItem>
+        </DropdownMenuGroup>
       </>
     );
   }
