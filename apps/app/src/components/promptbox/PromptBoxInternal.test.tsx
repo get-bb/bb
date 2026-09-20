@@ -1504,24 +1504,21 @@ describe("PromptBoxInternal submit shortcuts", () => {
           setDraft: vi.fn(),
           focus: vi.fn(),
         };
-        render(
+        const renderComposer = (value: string, disabled = false) => (
           <MemoryRouter>
             <PluginComposerHostProvider value={host}>
               <PromptBoxInternal
                 {...createPromptBoxProps({
-                  value: "Follow up",
+                  value,
                   onSubmit,
-                  submission: { onModifierSubmit, swapSubmitActions },
+                  submission: { onModifierSubmit, swapSubmitActions, disabled },
                   compact: { isCompact: true, placeholder: "Ask a follow-up" },
                 })}
               />
             </PluginComposerHostProvider>
-          </MemoryRouter>,
+          </MemoryRouter>
         );
-        const submit = screen.getByRole("button", { name: "Submit (Enter)" });
-        vi.spyOn(submit, "getBoundingClientRect").mockReturnValue(
-          new DOMRect(0, 0, 40, 40),
-        );
+        const { rerender } = render(renderComposer("Follow up"));
         const touch = {
           button: 0,
           pointerType: "touch",
@@ -1538,6 +1535,10 @@ describe("PromptBoxInternal submit shortcuts", () => {
             );
             return;
           }
+          const submit = screen.getByRole("button", { name: "Submit (Enter)" });
+          vi.spyOn(submit, "getBoundingClientRect").mockReturnValue(
+            new DOMRect(0, 0, 40, 40),
+          );
           fireEvent.pointerDown(submit, touch);
           act(() => vi.advanceTimersByTime(700));
           act(() => vi.advanceTimersByTime(500));
@@ -1573,6 +1574,30 @@ describe("PromptBoxInternal submit shortcuts", () => {
         expect(onModifierSubmit).toHaveBeenCalledTimes(
           swapSubmitActions ? 0 : 1,
         );
+
+        openMenu();
+        rerender(renderComposer(""));
+        act(() => vi.advanceTimersByTime(500));
+        expect(screen.queryByRole("menuitem")).toBeNull();
+        expect(
+          screen.getByRole("button", { name: "Submit (Enter)" }),
+        ).toBeDisabled();
+        if (!isTouch) {
+          expect(
+            screen.getByRole("button", { name: "Send options" }),
+          ).toBeDisabled();
+        }
+        openMenu();
+        expect(screen.queryByRole("menuitem")).toBeNull();
+
+        rerender(renderComposer("Follow up", true));
+        openMenu();
+        expect(screen.queryByRole("menuitem")).toBeNull();
+
+        rerender(renderComposer("Follow up"));
+        expect(screen.queryByRole("menuitem")).toBeNull();
+        openMenu();
+        expect(screen.getAllByRole("menuitem")).toHaveLength(2);
       } finally {
         vi.useRealTimers();
         restoreMatchMedia();

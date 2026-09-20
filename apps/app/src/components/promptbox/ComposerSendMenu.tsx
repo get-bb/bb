@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Button } from "@bb/shared-ui/button";
 import {
   DropdownMenu,
@@ -38,9 +38,13 @@ export function ComposerSendMenu({
   ).filter((contribution) => contribution.item.experimental_sendMenu === true);
   const [open, setOpen] = useState(false);
 
+  useEffect(() => {
+    if (!canSubmit) setOpen(false);
+  }, [canSubmit]);
+
   if (!onSubmit && contributions.length === 0) return children;
 
-  const items = (
+  const items = canSubmit ? (
     <>
       {onSubmit ? (
         <DropdownMenuItem disabled={!canSubmit} onSelect={onSubmit}>
@@ -58,9 +62,10 @@ export function ComposerSendMenu({
         />
       ))}
     </>
-  );
+  ) : null;
 
   if (isPointerCoarse && isCompactViewport) {
+    if (!canSubmit) return children;
     return (
       <CompactLongPressMenu
         label="Send options"
@@ -84,18 +89,19 @@ export function ComposerSendMenu({
   return (
     <div className="inline-flex items-center [&_[data-promptbox-submit-action]]:rounded-r-none [&_[data-promptbox-submit-action]]:border-r-0">
       {children}
-      <DropdownMenu open={open} onOpenChange={setOpen}>
+      <DropdownMenu open={open && canSubmit} onOpenChange={setOpen}>
         <DropdownMenuTrigger asChild>
           <Button
             type="button"
             size="sm"
             variant={hasInput ? "default" : "ghost"}
             aria-label="Send options"
+            disabled={!canSubmit}
             className={cn(
               "relative w-7 rounded-l-none px-0 before:absolute before:left-0 before:top-1/2 before:h-3 before:w-px before:-translate-y-1/2 [&_[data-icon-root]]:size-2.5",
               hasInput
                 ? "before:bg-background/25"
-                : "border border-l-0 border-border text-muted-foreground/50 before:bg-border",
+                : "border border-l-0 border-border text-muted-foreground/50 before:bg-border disabled:opacity-100",
             )}
           >
             <Icon name="ChevronDown" className="opacity-80" />

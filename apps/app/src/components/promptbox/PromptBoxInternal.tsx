@@ -3465,7 +3465,7 @@ export function PromptBoxInternal({
                         }
                         queue={swapSubmitActions}
                         hasInput={hasSubmittableInput}
-                        canSubmit={canModifierSubmit}
+                        canSubmit={canSubmit}
                         onSubmit={
                           onModifierSubmit ? submitModifierPrompt : undefined
                         }
