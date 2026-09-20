@@ -950,7 +950,7 @@ function InlineDocument({
               role="status"
               className="inline-flex size-5 shrink-0 items-center justify-center"
             >
-              <Icon name="Spinner" className="size-3 animate-spin" />
+              <Icon name="Loading" className="size-3 animate-spin" />
               <span className="sr-only">Updating document…</span>
             </span>
           )}
