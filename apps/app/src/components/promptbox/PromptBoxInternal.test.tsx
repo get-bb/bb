@@ -1527,7 +1527,8 @@ describe("PromptBoxInternal submit shortcuts", () => {
         };
         const openMenu = () => {
           fireEvent.pointerDown(submit, touch);
-          act(() => vi.advanceTimersByTime(900));
+          act(() => vi.advanceTimersByTime(700));
+          act(() => vi.advanceTimersByTime(500));
           fireEvent.pointerUp(submit, touch);
           fireEvent.click(submit, { detail: 1 });
         };
