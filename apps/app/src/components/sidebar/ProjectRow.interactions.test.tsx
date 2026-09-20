@@ -174,7 +174,7 @@ describe("ProjectRow interactions", () => {
   it("keeps project header controls touch-accessible when their menu opens and closes", async () => {
     renderProjectRow();
     const trigger = screen.getByRole("button", {
-      name: "Test project actions",
+      name: /^Test project actions(?:;|$)/,
     });
     const actions = trigger.closest(".bb-sidebar-hover-actions");
     expect(actions?.getAttribute("data-sidebar-hover-actions-mobile")).toBe(

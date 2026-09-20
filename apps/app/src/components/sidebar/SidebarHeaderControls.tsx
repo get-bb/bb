@@ -318,8 +318,8 @@ export function SidebarHeaderControls({
     >
       <DropdownMenu open={open} onOpenChange={changeOpen}>
         <Tooltip delayDuration={350} disableHoverableContent>
-          <TooltipTrigger asChild>
-            <DropdownMenuTrigger asChild>
+          <DropdownMenuTrigger asChild>
+            <TooltipTrigger asChild>
               <Button
                 type="button"
                 variant="ghost"
@@ -336,8 +336,8 @@ export function SidebarHeaderControls({
                   className={COARSE_POINTER_ICON_SIZE_CLASS}
                 />
               </Button>
-            </DropdownMenuTrigger>
-          </TooltipTrigger>
+            </TooltipTrigger>
+          </DropdownMenuTrigger>
           <TooltipContent side="bottom">{triggerLabel}</TooltipContent>
         </Tooltip>
         <DropdownMenuContent
