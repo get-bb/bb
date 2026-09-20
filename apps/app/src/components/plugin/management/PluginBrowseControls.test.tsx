@@ -518,15 +518,33 @@ describe("PluginCollectionToolbar", () => {
     expect(screen.getByRole("button", { name: "Create" })).toBeTruthy();
   });
 
-  it("uses the Search button on mobile even when a lone Sort control leaves room", () => {
+  it("keeps mobile search inline when a lone Sort control leaves its minimum width", () => {
     viewport.compact = true;
-    mockToolbarWidth(400);
+    const resize = mockToolbarWidth(400);
     render(<ToolbarHarness categoryShelf />);
-    expect(screen.getByRole("button", { name: "Search plugins" })).toBeTruthy();
     expect(
-      screen.queryByRole("textbox", { name: "Search plugins" }),
-    ).toBeNull();
+      screen.getByRole("textbox", { name: "Search plugins" }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Search plugins" })).toBeNull();
+    resize(260);
+    expect(screen.getByRole("button", { name: "Search plugins" })).toBeTruthy();
+    resize(264);
+    expect(
+      screen.getByRole<HTMLInputElement>("textbox", { name: "Search plugins" })
+        .value,
+    ).toBe("Memory");
     expect(screen.getByRole("button", { name: /^Sort:/u })).toBeTruthy();
+  });
+
+  it("keeps mobile search inline when combining filters frees enough width", () => {
+    viewport.compact = true;
+    mockToolbarWidth(354);
+    render(<ToolbarHarness installed />);
+    expect(screen.getByRole("button", { name: "Filter & sort" })).toBeTruthy();
+    expect(
+      screen.getByRole("textbox", { name: "Search plugins" }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Search plugins" })).toBeNull();
   });
 
   it.each([

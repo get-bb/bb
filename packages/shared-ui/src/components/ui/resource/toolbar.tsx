@@ -19,7 +19,6 @@ import {
 } from "../dropdown-menu";
 import { Icon, type IconName } from "../icon";
 import { Input } from "../input";
-import { useIsCompactViewport } from "../hooks/use-compact-viewport";
 import {
   Tooltip,
   TooltipContent,
@@ -56,7 +55,6 @@ export function ResourceToolbar({
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchButtonRef = useRef<HTMLButtonElement>(null);
   const restoreSearchFocus = useRef(false);
-  const isCompactViewport = useIsCompactViewport();
   const actionRef = useRef<HTMLDivElement>(null);
   const [combined, setCombined] = useState(false);
   const [searchCondensed, setSearchCondensed] = useState(false);
@@ -115,12 +113,11 @@ export function ResourceToolbar({
         : individualControls.getBoundingClientRect().width;
       setSearchCondensed(
         expandSearchOnFocus &&
-          (isCompactViewport ||
-            width -
-              controlsWidth -
-              actionWidth -
-              gap * (actionRef.current ? 2 : 1) <
-              searchWidth),
+          width -
+            controlsWidth -
+            actionWidth -
+            gap * (actionRef.current ? 2 : 1) <
+            searchWidth,
       );
       if (combinedRef.current === next) return;
       restoreControlFocus.current = Boolean(
@@ -156,7 +153,6 @@ export function ResourceToolbar({
     compact,
     expandSearchOnFocus,
     hasCombinedControls,
-    isCompactViewport,
     showCombined,
   ]);
 
@@ -177,8 +173,9 @@ export function ResourceToolbar({
       data-search-expanded={searchExpanded || undefined}
       className={cn(
         "flex w-full min-w-0 items-center gap-2",
-        compact ? "@container/resource-toolbar flex-nowrap" : "flex-wrap",
-        showSearchButton && "gap-1",
+        compact
+          ? "@container/resource-toolbar flex-nowrap max-md:gap-1"
+          : "flex-wrap",
       )}
     >
       <form
@@ -199,7 +196,7 @@ export function ResourceToolbar({
           compact
             ? "min-w-0 flex-1 basis-40"
             : "w-full min-w-0 sm:w-auto sm:flex-1",
-          showSearchButton && "max-w-8",
+          showSearchButton && "min-w-8",
         )}
       >
         {showSearchButton ? (
@@ -209,6 +206,7 @@ export function ResourceToolbar({
             tooltip={searchValue ? `Search: ${searchValue}` : searchPlaceholder}
             icon="Search"
             active={searchValue !== ""}
+            className="w-full"
             onClick={() => setSearchExpanded(true)}
           />
         ) : (
@@ -272,19 +270,14 @@ export function ResourceToolbar({
           inert={searchExpanded || undefined}
           aria-hidden={searchExpanded || undefined}
           className={cn(
-            "flex items-center",
-            showSearchButton ? "min-w-0 flex-1" : "shrink-0",
+            "flex shrink-0 items-center",
             compact ? "gap-2" : "gap-1.5",
             searchExpanded && "invisible absolute pointer-events-none",
           )}
         >
           <div
             className={
-              showCombined
-                ? "absolute size-0 overflow-hidden"
-                : showSearchButton && !hasCombinedControls
-                  ? "w-full"
-                  : undefined
+              showCombined ? "absolute size-0 overflow-hidden" : undefined
             }
             aria-hidden={showCombined || undefined}
             inert={showCombined || undefined}
@@ -294,10 +287,7 @@ export function ResourceToolbar({
               ref={individualControlsRef}
               data-resource-individual-controls
               className={cn(
-                "flex items-center",
-                showSearchButton && !hasCombinedControls
-                  ? "w-full [&>button]:flex-1"
-                  : "w-max",
+                "flex w-max items-center",
                 compact ? "gap-2" : "gap-1.5",
               )}
             >
@@ -305,12 +295,7 @@ export function ResourceToolbar({
             </div>
           </div>
           {showCombined ? (
-            <div
-              data-resource-combined-controls
-              className={
-                showSearchButton ? "w-full [&>button]:w-full" : undefined
-              }
-            >
+            <div data-resource-combined-controls>
               {combinedControls}
             </div>
           ) : null}
