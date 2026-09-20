@@ -24,13 +24,13 @@ import {
   threadSearchQueryKey,
   threadTimelineQueryKey,
 } from "./query-keys";
+import { usePaletteRecentThreads } from "./palette-thread-queries";
 import {
   COMPACT_THREAD_TIMELINE_SEGMENT_LIMIT,
   didThreadDetailBootstrapRefreshAfterMount,
   isPendingInteractionStateUnknown,
   useArchivedThreads,
   useChildThreads,
-  usePaletteRecentThreads,
   useThreadSearch,
   useThread,
   useThreadDetailBootstrap,

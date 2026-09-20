@@ -238,19 +238,22 @@ vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
   }),
 }));
 
+vi.mock("@/hooks/queries/palette-thread-queries", () => ({
+  usePaletteRecentThreads: (lifecycle: "draft" | "archived") => ({
+    data:
+      lifecycle === "draft"
+        ? modeState.draftRecents
+        : modeState.archivedRecents,
+    isLoading: false,
+    isError: false,
+  }),
+}));
+
 vi.mock("@/hooks/queries/thread-queries", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("@/hooks/queries/thread-queries")>();
   return {
     ...actual,
-    usePaletteRecentThreads: (lifecycle: "draft" | "archived") => ({
-      data:
-        lifecycle === "draft"
-          ? modeState.draftRecents
-          : modeState.archivedRecents,
-      isLoading: false,
-      isError: false,
-    }),
     useThreadSearch: ({ query }: { query: string }) => ({
       data: modeState.searchResponse,
       debouncedQuery: query.trim(),

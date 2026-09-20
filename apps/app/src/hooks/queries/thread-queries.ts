@@ -98,7 +98,7 @@ interface QueryOptions {
   staleTime?: number;
 }
 
-const THREAD_LIST_STALE_TIME_MS = 10_000;
+export const THREAD_LIST_STALE_TIME_MS = 10_000;
 const THREAD_SEARCH_STALE_TIME_MS = 10_000;
 const THREAD_DETAIL_STALE_TIME_MS = 5_000;
 const THREAD_MENTION_CANDIDATE_LIMIT = 200;
@@ -623,24 +623,6 @@ export function useThreadSearch({
     isFetching: threadSearchQuery.isFetching,
     isLoading: threadSearchQuery.isLoading,
   };
-}
-
-export function usePaletteRecentThreads(
-  lifecycle: "draft" | "archived",
-  { enabled }: { enabled: boolean },
-) {
-  useThreadListRealtimeSubscription({ enabled });
-  const filters = {
-    archived: lifecycle === "archived",
-    lifecycles: [lifecycle],
-    limit: THREAD_SEARCH_LIMIT_PER_GROUP,
-  };
-  return useQuery<ThreadListResponse>({
-    queryKey: threadListQueryKey(filters),
-    queryFn: ({ signal }) => sdk.threads.list({ ...filters, signal }),
-    enabled,
-    staleTime: THREAD_LIST_STALE_TIME_MS,
-  });
 }
 
 export function useThread(id: string, options?: QueryOptions) {

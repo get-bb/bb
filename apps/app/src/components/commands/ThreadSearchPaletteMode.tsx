@@ -29,9 +29,9 @@ import {
 } from "@/components/thread/ThreadLifecycleFilter";
 import { paletteThreadLifecyclesAtom } from "@/lib/command-palette/palette-preferences";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
+import { usePaletteRecentThreads } from "@/hooks/queries/palette-thread-queries";
 import {
   hasThreadSearchableQuery,
-  usePaletteRecentThreads,
   useThreadSearch,
 } from "@/hooks/queries/thread-queries";
 import { useRouteNavigate } from "@/components/ui/app-route-anchor";
