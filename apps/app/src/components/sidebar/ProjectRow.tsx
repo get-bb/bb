@@ -964,10 +964,8 @@ function EnvironmentThreadGroupHeader({
             archiveThreadsPending={archiveThreadsPending}
             onArchiveThreads={onArchiveThreads}
             onCreateNewThread={onCreateNewThread}
-            onRenameEnvironment={rename.startEditing}
-            onCloseAutoFocus={(event) => {
-              if (rename.isEditing) event.preventDefault();
-            }}
+            onRenameEnvironment={rename.startEditingFromMenu}
+            onCloseAutoFocus={rename.onCloseAutoFocus}
             onOpenChange={setIsActionsOpen}
           />
         </div>
@@ -1460,12 +1458,10 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
             : undefined
         }
         onOpenChange={setIsTopLevelActionsOpen}
-        onCloseAutoFocus={(event) => {
-          if (rename.isEditing) event.preventDefault();
-        }}
+        onCloseAutoFocus={rename.onCloseAutoFocus}
       >
         <SidebarSectionMenuItems
-          onRename={rename.startEditing}
+          onRename={rename.startEditingFromMenu}
           onRemove={
             onRemoveSection ? () => onRemoveSection(section) : undefined
           }
@@ -1517,7 +1513,9 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
         label={section.name}
         labelEditor={rename.editor}
         onRename={rename.startEditing}
+        onRenameFromMenu={rename.startEditingFromMenu}
         depth={headerDepth}
+        onCloseAutoFocus={rename.onCloseAutoFocus}
         activity={section.activity}
         collapsedThreads={sectionThreads}
         consumeClickSuppression={consumeClickSuppression}
@@ -2419,14 +2417,12 @@ function ProjectRowComponent({
       showNewThread={!isLocalPathInvalid}
       onNewThread={onCreateProjectThread ? handleCreateThread : undefined}
       onOpenChange={setIsDropdownActionsOpen}
-      onCloseAutoFocus={(event) => {
-        if (rename.isEditing) event.preventDefault();
-      }}
+      onCloseAutoFocus={rename.onCloseAutoFocus}
     >
       <ProjectActionsMenuItems
         project={project}
         surface="dropdown"
-        onRename={rename.startEditing}
+        onRename={rename.startEditingFromMenu}
       />
     </SidebarHeaderControls>
   );
@@ -2435,10 +2431,8 @@ function ProjectRowComponent({
     <ProjectActionsContextMenu
       project={project}
       disabled={rename.isEditing}
-      onRename={rename.startEditing}
-      onCloseAutoFocus={(event) => {
-        if (rename.isEditing) event.preventDefault();
-      }}
+      onRename={rename.startEditingFromMenu}
+      onCloseAutoFocus={rename.onCloseAutoFocus}
       onOpenChange={setIsContextActionsOpen}
     >
       <div

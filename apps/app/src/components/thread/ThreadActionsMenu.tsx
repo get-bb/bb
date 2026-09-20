@@ -331,6 +331,7 @@ function useThreadActionsMenuLifecycle(
   onOpenChange?: (open: boolean) => void,
   onRename?: () => void,
 ) {
+  const compact = useIsCompactViewport();
   const [compactStep, setCompactStep] =
     useState<ThreadActionsCompactStep>("actions");
   const renameSelectedRef = useRef(false);
@@ -349,13 +350,18 @@ function useThreadActionsMenuLifecycle(
 
   const handleRename = useCallback(() => {
     renameSelectedRef.current = true;
-    onRename?.();
-  }, [onRename]);
-  const handleCloseAutoFocus = useCallback((event: Event) => {
-    if (renameSelectedRef.current) {
-      event.preventDefault();
-    }
-  }, []);
+    if (compact) onRename?.();
+  }, [compact, onRename]);
+  const handleCloseAutoFocus = useCallback(
+    (event: Event) => {
+      if (renameSelectedRef.current) {
+        renameSelectedRef.current = false;
+        event.preventDefault();
+        if (!compact) onRename?.();
+      }
+    },
+    [compact, onRename],
+  );
 
   return {
     compactStep,

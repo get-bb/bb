@@ -63,6 +63,8 @@ interface SidebarSectionRowProps {
   isDropTargetActive?: boolean;
   onCreateThread?: () => void;
   onRename?: () => void;
+  onRenameFromMenu?: () => void;
+  onCloseAutoFocus?: (event: Event) => void;
   onRemove?: () => void;
 }
 
@@ -80,6 +82,8 @@ function SidebarSectionRowComponent({
   onToggleCollapsed,
   onCreateThread,
   onRename,
+  onRenameFromMenu,
+  onCloseAutoFocus,
   onRemove,
   stickyLevel,
 }: SidebarSectionRowProps) {
@@ -215,12 +219,10 @@ function SidebarSectionRowComponent({
               label={`${label} section`}
               onNewThread={onCreateThread}
               onOpenChange={setIsActionsOpen}
-              onCloseAutoFocus={(event) => {
-                if (labelEditor) event.preventDefault();
-              }}
+              onCloseAutoFocus={onCloseAutoFocus}
             >
               <SidebarSectionMenuItems
-                onRename={onRename}
+                onRename={onRenameFromMenu ?? onRename}
                 onRemove={onRemove}
               />
             </SidebarHeaderControls>

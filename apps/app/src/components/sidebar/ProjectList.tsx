@@ -1100,10 +1100,8 @@ function RenamableMachineSidebarSection({
       labelEditor={rename.editor}
       onRename={rename.startEditing}
       actions={renderActions(props.id, props.label, {
-        onRename: rename.startEditing,
-        onCloseAutoFocus: (event) => {
-          if (rename.isEditing) event.preventDefault();
-        },
+        onRename: rename.startEditingFromMenu,
+        onCloseAutoFocus: rename.onCloseAutoFocus,
       })}
     />
   );

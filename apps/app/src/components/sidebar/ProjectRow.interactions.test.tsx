@@ -219,6 +219,9 @@ describe("ProjectRow interactions", () => {
     const input = await screen.findByRole("textbox", { name: "Project name" });
     await waitFor(() => expect(document.activeElement).toBe(input));
     fireEvent.change(input, { target: { value: "  Renamed project  " } });
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    expect(document.activeElement).toBe(input);
+    expect(mockUpdateProject).not.toHaveBeenCalled();
     fireEvent.keyDown(input, { key: "Enter" });
     await waitFor(() =>
       expect(mockUpdateProject).toHaveBeenCalledWith({

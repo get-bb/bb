@@ -83,7 +83,7 @@ describe("sidebar inline rename", () => {
     const input = await screen.findByRole<HTMLInputElement>("textbox", {
       name: "first name",
     });
-    expect(document.activeElement).toBe(input);
+    await waitFor(() => expect(document.activeElement).toBe(input));
     expect(input.selectionStart).toBe(0);
     expect(input.selectionEnd).toBe("Original name".length);
     fireEvent.change(input, { target: { value: "Discard me" } });

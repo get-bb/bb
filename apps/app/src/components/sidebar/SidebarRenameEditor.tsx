@@ -50,17 +50,10 @@ export default function SidebarRenameEditor({
     const row = input?.closest("[data-sidebar-rename-row]");
     anchorRef.current =
       row?.querySelector<HTMLElement>("[data-sidebar-rename-anchor]") ?? null;
-    input?.focus({ preventScroll: true });
-    input?.select();
     const frame = requestAnimationFrame(() => {
+      input?.focus({ preventScroll: true });
+      input?.select();
       openingRef.current = false;
-      if (
-        document.activeElement === document.body ||
-        row?.contains(document.activeElement)
-      ) {
-        input?.focus({ preventScroll: true });
-        input?.select();
-      }
     });
     return () => cancelAnimationFrame(frame);
   }, []);
