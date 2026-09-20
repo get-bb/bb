@@ -707,8 +707,8 @@ The built-in sidebar defaults to Active. `sidebar.threadLifecycles` selects
 Active, Drafts, and Archived. Drafts appear above the existing hierarchy;
 selected archived threads retain their section, project, machine, and pin placement.
 Choose Filter in a sidebar header's combined actions menu to change the selection.
-The combined control highlights non-default organization, sorting, or lifecycle choices.
-Each secondary menu shows its current value and has a Reset to default action
+The combined menu offers Organize, Sort by, and Filter.
+Each secondary menu has a Reset to default action
 for its displayed settings. The environment-grouping preference remains available
 through settings and the CLI. Archived rows have a persistent Archive button
 that restores the thread without navigating away.

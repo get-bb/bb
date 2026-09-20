@@ -280,7 +280,7 @@ describe("sidebar lifecycle placement", () => {
         { key: "Enter" },
       );
       expect(
-        await screen.findByRole("menuitem", { name: /^Filter:/ }),
+        await screen.findByRole("menuitem", { name: "Filter" }),
       ).toBeTruthy();
     },
   );
@@ -303,7 +303,7 @@ describe("sidebar lifecycle placement", () => {
         },
       );
       fireEvent.keyDown(
-        await screen.findByRole("menuitem", { name: /^Filter:/ }),
+        await screen.findByRole("menuitem", { name: "Filter" }),
         {
           key: "ArrowRight",
         },
@@ -326,7 +326,7 @@ describe("sidebar lifecycle placement", () => {
       });
       fireEvent.keyDown(trigger, { key: "Enter" });
       expect(
-        await screen.findByRole("menuitem", { name: /^Filter:/ }),
+        await screen.findByRole("menuitem", { name: "Filter" }),
       ).toBeTruthy();
     },
   );
