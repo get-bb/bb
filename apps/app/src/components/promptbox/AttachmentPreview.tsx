@@ -53,7 +53,6 @@ function UploadPreview({ file }: { file: File }) {
     <div
       role="status"
       aria-label={`Uploading ${file.name}`}
-      title={`Uploading ${file.name}`}
       className={isImage
         ? "relative shrink-0 overflow-hidden rounded-md border border-border bg-surface-recessed"
         : "inline-flex max-w-full items-center gap-1 rounded-full border border-border bg-surface-recessed px-2 py-0.5 text-xs text-muted-foreground"}
