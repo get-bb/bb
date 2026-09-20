@@ -1790,13 +1790,15 @@ describe("PluginNewThreadComposer seeding", () => {
     expect(latestPromptBoxProps().project.value).toBe("proj_1");
 
     await act(async () => {
-      first.reject(new Error("upload failed"));
+      first.reject(new Error("Failed to fetch"));
       await firstBatch;
     });
     expect(latestPromptBoxProps().attachments.isAttaching).toBe(false);
     expect(latestPromptBoxProps().attachments.pendingUploads).toHaveLength(0);
     expect(latestPromptBoxProps().attachments.items).toHaveLength(1);
-    expect(latestPromptBoxProps().attachments.error).toContain("upload failed");
+    expect(latestPromptBoxProps().attachments.error).toBe(
+      "Could not reach the server. Check that it is running and try again.",
+    );
   });
 
   it("keeps the old project when attachment copying fails", async () => {
