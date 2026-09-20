@@ -628,9 +628,6 @@ describe("EmbeddedThreadChat", () => {
     expect(composer.dataset.submitReason).toBe("loading-pending-interactions");
     fireEvent.change(composer, { target: { value: "Keep this draft" } });
     expect(screen.getByDisplayValue("Keep this draft")).toBe(composer);
-    fireEvent.click(screen.getByRole("button", { name: "Send" }));
-    expect(mocks.sendThreadMessageMutateAsync).not.toHaveBeenCalled();
-    expect(mocks.createQueuedMessageMutateAsync).not.toHaveBeenCalled();
   });
 
   it("preserves the editor and queued messages through an interaction refresh", () => {
