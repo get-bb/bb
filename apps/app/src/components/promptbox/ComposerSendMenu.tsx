@@ -95,7 +95,7 @@ export function ComposerSendMenu({
               "relative w-7 rounded-l-none px-0 before:absolute before:left-0 before:top-1/2 before:h-3 before:w-px before:-translate-y-1/2 [&_[data-icon-root]]:size-2.5",
               hasInput
                 ? "before:bg-background/25"
-                : "text-muted-foreground before:bg-border",
+                : "text-muted-foreground/50 before:bg-border",
             )}
           >
             <Icon name="ChevronDown" className="opacity-80" />
