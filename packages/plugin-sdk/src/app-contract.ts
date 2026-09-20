@@ -691,8 +691,6 @@ export interface PluginThreadPanelActionRegistration {
    * row and opened tabs prefer that over this hint.
    */
   icon?: BbIconName;
-  /** Hide the launcher row while retaining programmatic opens and existing tabs. Defaults to false. */
-  experimental_hidden?: boolean;
   /** Rendered inside every panel tab this action opens. */
   component: ComponentType<PluginThreadPanelProps>;
   /**

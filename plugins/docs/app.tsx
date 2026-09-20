@@ -2386,7 +2386,6 @@ export default definePluginApp((app) => {
   app.slots.threadPanelAction({
     id: "document",
     title: "Document",
-    experimental_hidden: true,
     icon: "FileText",
     component: DocumentPanel,
   });

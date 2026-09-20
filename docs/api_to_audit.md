@@ -1,9 +1,5 @@
 # APIs To Audit
 
-## `PluginThreadPanelActionRegistration.experimental_hidden`
-
-Optional boolean (default false) that hides the action from the thread panel launcher. The registration remains available to `openThreadPanel` and restored tabs. Docs uses it for document tabs that require a document reference. Before stabilization, verify launcher omission, programmatic opening, restored tabs, and unchanged discovery for registrations that omit the flag.
-
 ## `app.commands.register`
 
 `app.commands.register` requires SDK 0.4.91; `defaultShortcut` and keyboard

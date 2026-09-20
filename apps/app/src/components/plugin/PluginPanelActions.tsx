@@ -152,16 +152,14 @@ export function usePluginPanelActions({
     if (threadId === null || threadId === undefined || threadId.length === 0) {
       return [];
     }
-    return threadPanelActions
-      .filter((action) => !action.experimental_hidden)
-      .map((action) => ({
-        id: `plugin-action:${action.pluginId}:${action.id}`,
-        pluginId: action.pluginId,
-        icon: action.icon ?? null,
-        title: action.title,
-        onSelect: () =>
-          runPluginPanelAction({ action, openPluginPanel, threadId }),
-      }));
+    return threadPanelActions.map((action) => ({
+      id: `plugin-action:${action.pluginId}:${action.id}`,
+      pluginId: action.pluginId,
+      icon: action.icon ?? null,
+      title: action.title,
+      onSelect: () =>
+        runPluginPanelAction({ action, openPluginPanel, threadId }),
+    }));
   }, [openPluginPanel, threadId, threadPanelActions]);
 }
 
