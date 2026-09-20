@@ -9,7 +9,11 @@ import {
 import { StrictMode } from "react";
 import { DOMParser as ProseMirrorDOMParser } from "@tiptap/pm/model";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
+import {
+  loadPluginApp,
+  renderSlot,
+  type RenderSlotOptions,
+} from "@get-bb/plugin-sdk/testing/app";
 
 const app = await loadPluginApp(() => import("./app"));
 const docsRegistration = app.navPanels[0]!;
@@ -156,6 +160,28 @@ const preview = {
   baseUrl: "/api/v1/file-previews/lease",
   expiresAtMs: Date.now() + 60_000,
 };
+
+function renderDocument(
+  path: string,
+  title: string,
+  options: RenderSlotOptions,
+) {
+  return renderSlot(
+    app.messageDirectives[0]!,
+    {
+      attributes: { vault: "personal", path, title },
+      source: `::docs{vault="personal" path="${path}" title="${title}"}`,
+      message: {
+        id: `msg_${path}`,
+        threadId: "thr_1",
+        turnId: "turn_1",
+        projectId: null,
+      },
+      openWorkspaceFile: null,
+    },
+    options,
+  );
+}
 
 function makeDataTransfer(path: string) {
   let storedPath = path;
@@ -1225,26 +1251,9 @@ describe("Docs nav panel", () => {
 
   it("opens HTML Docs directive cards in the thread panel or full editor", () => {
     const openThreadPanel = vi.fn(() => true);
-    const slot = renderSlot(
-      app.messageDirectives[0]!,
-      {
-        attributes: {
-          vault: "personal",
-          path: "plans/release.html",
-          title: "Release plan",
-        },
-        source:
-          '::docs{vault="personal" path="plans/release.html" title="Release plan"}',
-        message: {
-          id: "msg_1",
-          threadId: "thr_1",
-          turnId: "turn_1",
-          projectId: null,
-        },
-        openWorkspaceFile: null,
-      },
-      { openThreadPanel },
-    );
+    const slot = renderDocument("plans/release.html", "Release plan", {
+      openThreadPanel,
+    });
 
     fireEvent.click(slot.getByText("Release plan"));
     expect(slot.queryByText("personal · plans/release.html")).toBeNull();
@@ -1272,31 +1281,13 @@ describe("Docs nav panel", () => {
       .fn<() => Promise<typeof file>>()
       .mockResolvedValue(file);
     const render = () =>
-      renderSlot(
-        app.messageDirectives[0]!,
-        {
-          attributes: {
-            vault: "personal",
-            path: "cached-draft.md",
-            title: "Cached draft",
-          },
-          source: '::docs{vault="personal" path="cached-draft.md"}',
-          message: {
-            id: "msg_cached",
-            threadId: "thr_cache",
-            turnId: "turn_cache",
-            projectId: null,
-          },
-          openWorkspaceFile: null,
+      renderDocument("cached-draft.md", "Cached draft", {
+        rpc: {
+          readNote,
+          readProposal: () => null,
+          preparePreview: () => preview,
         },
-        {
-          rpc: {
-            readNote,
-            readProposal: () => null,
-            preparePreview: () => preview,
-          },
-        },
-      );
+      });
     const first = render();
     await first.findByText(file.content);
     await act(async () => {
@@ -1327,36 +1318,17 @@ describe("Docs nav panel", () => {
 
   it("edits Markdown inline and opens the same document in a tab", async () => {
     const openThreadPanel = vi.fn(() => true);
-    const slot = renderSlot(
-      app.messageDirectives[0]!,
-      {
-        attributes: {
-          vault: "personal",
-          path: "inline-header.md",
-          title: "Inline header",
-        },
-        source:
-          '::docs{vault="personal" path="inline-header.md" title="Inline header"}',
-        message: {
-          id: "msg_inline",
-          threadId: "thr_1",
-          turnId: "turn_1",
-          projectId: null,
-        },
-        openWorkspaceFile: null,
+    const slot = renderDocument("inline-header.md", "Inline header", {
+      openThreadPanel,
+      rpc: {
+        readNote: () => ({
+          content: "Original paragraph.",
+          sha256: "original-sha",
+        }),
+        readProposal: () => null,
+        preparePreview: () => preview,
       },
-      {
-        openThreadPanel,
-        rpc: {
-          readNote: () => ({
-            content: "Original paragraph.",
-            sha256: "original-sha",
-          }),
-          readProposal: () => null,
-          preparePreview: () => preview,
-        },
-      },
-    );
+    });
     const editor = await slot.findByRole("textbox", {
       name: "Document content",
     });
@@ -1380,33 +1352,14 @@ describe("Docs nav panel", () => {
   });
 
   it("preserves the composer draft and attaches the document when asking for changes", async () => {
-    const slot = renderSlot(
-      app.messageDirectives[0]!,
-      {
-        attributes: {
-          vault: "personal",
-          path: "ask-inline.md",
-          title: "Launch email",
-        },
-        source:
-          '::docs{vault="personal" path="ask-inline.md" title="Launch email"}',
-        message: {
-          id: "msg_ask",
-          threadId: "thr_1",
-          turnId: "turn_1",
-          projectId: null,
-        },
-        openWorkspaceFile: null,
+    const slot = renderDocument("ask-inline.md", "Launch email", {
+      composer: { text: "Keep this instruction." },
+      rpc: {
+        readNote: () => ({ content: "Email body.", sha256: "original-sha" }),
+        readProposal: () => null,
+        preparePreview: () => preview,
       },
-      {
-        composer: { text: "Keep this instruction." },
-        rpc: {
-          readNote: () => ({ content: "Email body.", sha256: "original-sha" }),
-          readProposal: () => null,
-          preparePreview: () => preview,
-        },
-      },
-    );
+    });
     await slot.findByRole("textbox", { name: "Document content" });
     fireEvent.click(slot.getByRole("button", { name: "Ask for changes" }));
     await waitFor(() =>
@@ -1444,36 +1397,17 @@ describe("Docs nav panel", () => {
         ? { ...pending, version: 2, status: "rejected" }
         : { ...pending, version: 3 };
     });
-    const slot = renderSlot(
-      app.messageDirectives[0]!,
-      {
-        attributes: {
-          vault: "personal",
-          path: "reject-inline.md",
-          title: "Reject example",
-        },
-        source:
-          '::docs{vault="personal" path="reject-inline.md" title="Reject example"}',
-        message: {
-          id: "msg_reject",
-          threadId: "thr_1",
-          turnId: "turn_1",
-          projectId: null,
-        },
-        openWorkspaceFile: null,
+    const slot = renderDocument("reject-inline.md", "Reject example", {
+      rpc: {
+        readNote: () => ({
+          content: "Original paragraph.",
+          sha256: "original-sha",
+        }),
+        readProposal: () => pending,
+        preparePreview: () => preview,
+        resolveProposal,
       },
-      {
-        rpc: {
-          readNote: () => ({
-            content: "Original paragraph.",
-            sha256: "original-sha",
-          }),
-          readProposal: () => pending,
-          preparePreview: () => preview,
-          resolveProposal,
-        },
-      },
-    );
+    });
     await slot.findByRole("textbox", { name: "Document content" });
     fireEvent.click(slot.getByRole("button", { name: "Reject" }));
     expect((await slot.findByRole("status")).textContent).toBe(
@@ -1526,31 +1460,13 @@ describe("Docs nav panel", () => {
       content: pending.baseContent,
       sha256: "original-sha",
     }));
-    const slot = renderSlot(
-      app.messageDirectives[0]!,
-      {
-        attributes: {
-          vault: "personal",
-          path: pending.path,
-          title: "Scoped example",
-        },
-        source: '::docs{vault="personal" path="scoped-inline.md"}',
-        message: {
-          id: "msg_scoped",
-          threadId: "thr_1",
-          turnId: "turn_1",
-          projectId: null,
-        },
-        openWorkspaceFile: null,
+    const slot = renderDocument(pending.path, "Scoped example", {
+      rpc: {
+        readNote,
+        readProposal: () => pending,
+        preparePreview: () => preview,
       },
-      {
-        rpc: {
-          readNote,
-          readProposal: () => pending,
-          preparePreview: () => preview,
-        },
-      },
-    );
+    });
     await slot.findByRole("textbox", { name: "Document content" });
     const baselines = parse.mock.calls
       .map(([root]) => root)
@@ -1612,36 +1528,17 @@ describe("Docs nav panel", () => {
       version: 4,
       status: "pending",
     }));
-    const slot = renderSlot(
-      app.messageDirectives[0]!,
-      {
-        attributes: {
-          vault: "personal",
-          path: "redo-inline.md",
-          title: "Redo example",
-        },
-        source:
-          '::docs{vault="personal" path="redo-inline.md" title="Redo example"}',
-        message: {
-          id: "msg_redo",
-          threadId: "thr_1",
-          turnId: "turn_1",
-          projectId: null,
-        },
-        openWorkspaceFile: null,
+    const slot = renderDocument("redo-inline.md", "Redo example", {
+      rpc: {
+        readNote: () => ({
+          content: "Original paragraph.",
+          sha256: "original-sha",
+        }),
+        readProposal: () => undone,
+        preparePreview: () => preview,
+        resolveProposal,
       },
-      {
-        rpc: {
-          readNote: () => ({
-            content: "Original paragraph.",
-            sha256: "original-sha",
-          }),
-          readProposal: () => undone,
-          preparePreview: () => preview,
-          resolveProposal,
-        },
-      },
-    );
+    });
     const redo = await slot.findByRole("button", { name: "Redo" });
     expect(redo.textContent).toBe("");
     expect(slot.getByRole("button", { name: "Ask for changes" })).toBeTruthy();
