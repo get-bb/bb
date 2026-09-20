@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { act, renderHook } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { InlineComposerDraftSession } from "./useActiveComposerDraft";
 import type { PromptDraftAttachment } from "@bb/client-core";
 import { BbHttpError } from "@bb/sdk/browser";
@@ -29,6 +29,10 @@ function makeInlineSession(
 describe("useComposerAttachmentUploads", () => {
   beforeEach(() => {
     mocks.upload.mockReset();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it("keeps bottom and queued attachment operations independent", async () => {
@@ -176,7 +180,10 @@ describe("useComposerAttachmentUploads", () => {
     );
   });
 
-  it("settles each preview independently across a batch and a concurrent upload", async () => {
+  it("settles concurrent previews without the secure-context randomUUID API", async () => {
+    vi.stubGlobal("crypto", {
+      getRandomValues: crypto.getRandomValues.bind(crypto),
+    });
     const first = createDeferredPromise<PromptDraftAttachment>();
     const concurrent = createDeferredPromise<PromptDraftAttachment>();
     const second = createDeferredPromise<PromptDraftAttachment>();
@@ -194,6 +201,7 @@ describe("useComposerAttachmentUploads", () => {
       other = result.current.handleAttachFiles([file]);
     });
     expect(new Set(result.current.pendingUploads.map((upload) => upload.id)).size).toBe(3);
+    expect(result.current.isAttachingFiles).toBe(true);
     await act(async () => {
       first.resolve({ type: "localImage", name: file.name, path: "uploaded.png", sizeBytes: 5 });
       await first.promise;
@@ -210,6 +218,7 @@ describe("useComposerAttachmentUploads", () => {
       await batch;
     });
     expect(result.current.pendingUploads).toEqual([]);
+    expect(result.current.isAttachingFiles).toBe(false);
   });
 
   it("does not leak a dismissed upload into a later independent draft", async () => {

@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { nanoid } from "nanoid";
 
 export interface PendingAttachmentUpload {
   id: string;
@@ -14,7 +15,7 @@ export function usePendingAttachmentUploads(targetKey: string | null) {
   }>({ targetKey: null, uploads: [] });
 
   const startUploads = useCallback((files: File[]) => {
-    const uploads = files.map((file) => ({ id: crypto.randomUUID(), file }));
+    const uploads = files.map((file) => ({ id: nanoid(), file }));
     setPending((current) => ({
       targetKey,
       uploads: [...(current.targetKey === targetKey ? current.uploads : []), ...uploads],
