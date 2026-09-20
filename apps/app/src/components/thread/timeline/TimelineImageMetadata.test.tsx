@@ -61,7 +61,17 @@ it("reserves server metadata before fetching on a fresh mount and persists chang
   expect(image.hasAttribute("src")).toBe(false);
   act(() =>
     intersect(
-      [{ target: image, isIntersecting: true } as IntersectionObserverEntry],
+      [
+        {
+          target: image,
+          isIntersecting: true,
+          intersectionRatio: 1,
+          time: 0,
+          boundingClientRect: image.getBoundingClientRect(),
+          intersectionRect: image.getBoundingClientRect(),
+          rootBounds: null,
+        },
+      ],
       {} as IntersectionObserver,
     ),
   );
