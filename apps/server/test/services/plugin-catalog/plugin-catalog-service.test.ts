@@ -203,7 +203,10 @@ describe("plugin catalog service", () => {
       icon: "FileText",
       iconUrl: null,
       category: "File Viewers & Editors",
-      screenshots: [],
+      screenshots: [
+        "https://getbb.app/marketplace/v2/screenshots/docs/docs-inline-review-desktop-b461fea1d.png",
+        "https://getbb.app/marketplace/v2/screenshots/docs/docs-inline-review-mobile-b461fea1d.png",
+      ],
       collections: [
         {
           id: "bb-official",
