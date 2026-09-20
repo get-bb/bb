@@ -35,7 +35,7 @@ function listingArgs(root: string) {
 }
 
 async function paths(root: string) {
-  return (await listWorkspacePaths(listingArgs(root)))
+  return (await listWorkspacePaths(listingArgs(root))).paths
     .map((entry) => entry.path)
     .sort();
 }
@@ -127,7 +127,9 @@ describe("workspace path discovery", () => {
     await write(root, ".claude/worktrees/worker/README.md");
     await write(root, "src/worktrees/index.ts");
     const args = { ...listingArgs(root), excludeNames: [".claude/worktrees"] };
-    expect((await listWorkspacePaths(args)).map((entry) => entry.path)).toEqual(
+    expect(
+      (await listWorkspacePaths(args)).paths.map((entry) => entry.path),
+    ).toEqual(
       [
         ".claude",
         ".claude/settings.json",
@@ -142,12 +144,12 @@ describe("workspace path discovery", () => {
     await initRepo(root);
     expect(await paths(root)).not.toContain("output/result.txt");
     expect(
-      (await listWorkspacePaths({ ...args, respectGitIgnore: false })).map(
+      (await listWorkspacePaths({ ...args, respectGitIgnore: false })).paths.map(
         (entry) => entry.path,
       ),
     ).toContain("output/result.txt");
     expect(
-      (await listWorkspacePaths({ ...args, includeHidden: false })).map(
+      (await listWorkspacePaths({ ...args, includeHidden: false })).paths.map(
         (entry) => entry.path,
       ),
     ).toEqual(["src", "src/worktrees", "src/worktrees/index.ts"]);
@@ -168,8 +170,10 @@ describe("workspace path discovery", () => {
 
     const hidden = listWorkspacePaths(args);
     const visible = listWorkspacePaths({ ...args, includeHidden: false });
-    expect((await hidden).map((entry) => entry.path)).toContain(".gitignore");
-    expect((await visible).map((entry) => entry.path)).not.toContain(
+    expect((await hidden).paths.map((entry) => entry.path)).toContain(
+      ".gitignore",
+    );
+    expect((await visible).paths.map((entry) => entry.path)).not.toContain(
       ".gitignore",
     );
   });

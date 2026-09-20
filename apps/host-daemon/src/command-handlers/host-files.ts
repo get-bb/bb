@@ -69,18 +69,19 @@ export async function listHostFiles(
       path: command.path,
     });
 
+    const walked = await listWorkspacePaths({
+      root: realRootPath,
+      includeHidden: command.includeHidden,
+      excludeNames: command.excludeNames,
+      respectGitIgnore: command.respectGitIgnore,
+      includeFiles: true,
+      includeDirectories: false,
+    });
+
     return finalizeListedFiles({
-      filePaths: (
-        await listWorkspacePaths({
-          root: realRootPath,
-          includeHidden: command.includeHidden,
-          excludeNames: command.excludeNames,
-          respectGitIgnore: command.respectGitIgnore,
-          includeFiles: true,
-          includeDirectories: false,
-        })
-      ).map((entry) => entry.path),
+      filePaths: walked.paths.map((entry) => entry.path),
       limit: command.limit,
+      ...(walked.budgetExhausted ? { budgetExhausted: true } : {}),
       ...(command.query ? { query: command.query } : {}),
     });
   } catch (error) {
@@ -104,18 +105,21 @@ export async function listHostPaths(
       path: command.path,
     });
 
+    const walked = await listWorkspacePaths({
+      root: realRootPath,
+      includeFiles: command.includeFiles,
+      includeDirectories: command.includeDirectories,
+      includeHidden: command.includeHidden,
+      excludeNames: command.excludeNames,
+      respectGitIgnore: command.respectGitIgnore,
+    });
+
     return finalizeListedPaths({
-      paths: await listWorkspacePaths({
-        root: realRootPath,
-        includeFiles: command.includeFiles,
-        includeDirectories: command.includeDirectories,
-        includeHidden: command.includeHidden,
-        excludeNames: command.excludeNames,
-        respectGitIgnore: command.respectGitIgnore,
-      }),
+      paths: walked.paths,
       limit: command.limit,
       includeFiles: command.includeFiles,
       includeDirectories: command.includeDirectories,
+      ...(walked.budgetExhausted ? { budgetExhausted: true } : {}),
       ...(command.query ? { query: command.query } : {}),
     });
   } catch (error) {

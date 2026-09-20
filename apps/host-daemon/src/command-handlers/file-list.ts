@@ -7,10 +7,14 @@ import type {
   HostPathEntryKind,
 } from "@bb/host-daemon-contract";
 
+// Heap safety: an unbounded walk over a multi-million-entry root OOM-killed the daemon.
+export const MAX_LISTED_PATH_ENTRIES = 250_000;
+
 interface FinalizeListedFilesArgs {
   filePaths: string[];
   limit: number;
   query?: string;
+  budgetExhausted?: boolean;
 }
 
 interface FinalizedFileList {
@@ -29,6 +33,11 @@ interface ListedPath {
   name: string;
 }
 
+export interface BoundedPathList {
+  paths: ListedPath[];
+  budgetExhausted: boolean;
+}
+
 interface PathListInclusion {
   includeFiles: boolean;
   includeDirectories: boolean;
@@ -38,6 +47,7 @@ interface FinalizeListedPathsArgs extends PathListInclusion {
   paths: ListedPath[];
   limit: number;
   query?: string;
+  budgetExhausted?: boolean;
 }
 
 interface FinalizedPathList {
@@ -51,6 +61,7 @@ interface ListPathsRecursivelyArgs extends PathListInclusion {
   includeHidden: boolean;
   excludeNames: ReadonlySet<string>;
   ignoredPaths: ReadonlySet<string>;
+  maxEntries?: number;
 }
 
 interface ListWorkspacePathsArgs extends PathListInclusion {
@@ -58,13 +69,15 @@ interface ListWorkspacePathsArgs extends PathListInclusion {
   includeHidden: boolean;
   excludeNames: readonly string[];
   respectGitIgnore: boolean;
+  maxEntries?: number;
 }
 
-const pendingListings = new Map<string, Promise<ListedPath[]>>();
+const pendingListings = new Map<string, Promise<BoundedPathList>>();
 
 export function listWorkspacePaths(
   args: ListWorkspacePathsArgs,
-): Promise<ListedPath[]> {
+): Promise<BoundedPathList> {
+  const maxEntries = args.maxEntries ?? MAX_LISTED_PATH_ENTRIES;
   const key = JSON.stringify([
     args.root,
     args.includeHidden,
@@ -72,10 +85,14 @@ export function listWorkspacePaths(
     args.respectGitIgnore,
     args.includeFiles,
     args.includeDirectories,
+    maxEntries,
   ]);
   const existing = pendingListings.get(key);
   if (existing) return existing;
-  const listing = discoverWorkspacePaths(args).finally(() => {
+  const listing = discoverWorkspacePaths({
+    ...args,
+    maxEntries,
+  }).finally(() => {
     pendingListings.delete(key);
   });
   pendingListings.set(key, listing);
@@ -83,8 +100,8 @@ export function listWorkspacePaths(
 }
 
 async function discoverWorkspacePaths(
-  args: ListWorkspacePathsArgs,
-): Promise<ListedPath[]> {
+  args: ListWorkspacePathsArgs & { maxEntries: number },
+): Promise<BoundedPathList> {
   const ignoredPaths = new Set<string>();
   if (
     args.respectGitIgnore &&
@@ -105,7 +122,7 @@ async function discoverWorkspacePaths(
       if (entry.length > 0) ignoredPaths.add(entry.replace(/\/$/, ""));
     }
   }
-  return listPathsRecursively({
+  return listPathsBounded({
     dir: args.root,
     root: args.root,
     includeHidden: args.includeHidden,
@@ -113,6 +130,7 @@ async function discoverWorkspacePaths(
     ignoredPaths,
     includeFiles: args.includeFiles,
     includeDirectories: args.includeDirectories,
+    maxEntries: args.maxEntries,
   });
 }
 
@@ -155,6 +173,7 @@ export function finalizeListedFiles(
     includeFiles: true,
     includeDirectories: false,
     ...(args.query ? { query: args.query } : {}),
+    ...(args.budgetExhausted ? { budgetExhausted: true } : {}),
   });
 
   return {
@@ -191,7 +210,7 @@ export function finalizeListedPaths(
     }));
   }
 
-  let truncated = false;
+  let truncated = args.budgetExhausted === true;
   if (rankedEntries.length > args.limit) {
     rankedEntries = rankedEntries.slice(0, args.limit);
     truncated = true;
@@ -203,12 +222,31 @@ export function finalizeListedPaths(
   };
 }
 
+export async function listPathsBounded(
+  args: ListPathsRecursivelyArgs,
+): Promise<BoundedPathList> {
+  const results: ListedPath[] = [];
+  const maxEntries = args.maxEntries ?? MAX_LISTED_PATH_ENTRIES;
+  const budgetExhausted = await walkPathsInto(args, results, maxEntries);
+  return { paths: results, budgetExhausted };
+}
+
 export async function listPathsRecursively(
   args: ListPathsRecursivelyArgs,
 ): Promise<ListedPath[]> {
+  return (await listPathsBounded(args)).paths;
+}
+
+async function walkPathsInto(
+  args: ListPathsRecursivelyArgs,
+  results: ListedPath[],
+  maxEntries: number,
+): Promise<boolean> {
+  if (results.length >= maxEntries) return true;
+
   const entries = await fs.readdir(args.dir, { withFileTypes: true });
-  const results: ListedPath[] = [];
   for (const entry of entries) {
+    if (results.length >= maxEntries) return true;
     if (ALWAYS_EXCLUDED_NAMES.has(entry.name)) continue;
     if (args.excludeNames.has(entry.name)) continue;
     if (!args.includeHidden && entry.name.startsWith(".")) continue;
@@ -230,12 +268,13 @@ export async function listPathsRecursively(
           path: relativePath,
           name: entry.name,
         });
+        if (results.length >= maxEntries) return true;
       }
-      const childResults = await listPathsRecursively({
-        ...args,
-        dir: fullPath,
-      });
-      for (const childResult of childResults) results.push(childResult);
+      if (
+        await walkPathsInto({ ...args, dir: fullPath }, results, maxEntries)
+      ) {
+        return true;
+      }
       continue;
     }
 
@@ -247,5 +286,5 @@ export async function listPathsRecursively(
       });
     }
   }
-  return results;
+  return results.length >= maxEntries;
 }

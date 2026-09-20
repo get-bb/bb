@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   finalizeListedFiles,
   finalizeListedPaths,
+  listPathsBounded,
   listPathsRecursively,
   normalizeListedPath,
 } from "./file-list.js";
@@ -195,6 +196,19 @@ describe("finalizeListedPaths", () => {
     );
     expect(result.paths[0]?.score).toBeGreaterThan(0);
     expect(result.paths[0]?.positions.length).toBeGreaterThan(0);
+    expect(result.truncated).toBe(true);
+  });
+
+  it("reports truncation when the walk budget was exhausted even below the result limit", () => {
+    const result = finalizeListedPaths({
+      paths: [{ kind: "file", path: "a.ts", name: "a.ts" }],
+      includeFiles: true,
+      includeDirectories: false,
+      limit: 10,
+      budgetExhausted: true,
+    });
+
+    expect(result.paths.map((pathEntry) => pathEntry.path)).toEqual(["a.ts"]);
     expect(result.truncated).toBe(true);
   });
 });
@@ -388,4 +402,32 @@ describe("listPathsRecursively", () => {
       await fs.rm(root, { recursive: true, force: true });
     }
   }, 60_000);
+
+  it("stops a recursive walk at an injected entry budget and reports exhaustion", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "bb-file-list-"));
+    try {
+      await fs.mkdir(path.join(root, "nested"), { recursive: true });
+      await Promise.all(
+        Array.from({ length: 12 }, (_, index) =>
+          fs.writeFile(path.join(root, "nested", `f${index}.txt`), ""),
+        ),
+      );
+
+      const result = await listPathsBounded({
+        dir: root,
+        root,
+        includeFiles: true,
+        includeDirectories: true,
+        includeHidden: false,
+        ignoredPaths: new Set<string>(),
+        excludeNames: new Set<string>(),
+        maxEntries: 5,
+      });
+
+      expect(result.paths).toHaveLength(5);
+      expect(result.budgetExhausted).toBe(true);
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
 });
