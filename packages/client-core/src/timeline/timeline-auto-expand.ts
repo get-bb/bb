@@ -33,6 +33,11 @@ export function isWorkRowExpandable(row: TimelineViewWorkRow): boolean {
       return true;
     case "question":
       return row.lifecycle === "answered" || row.lifecycle === "resolving";
+    case "form":
+      return (
+        row.presentation.detail !== undefined &&
+        row.presentation.detail.trim().length > 0
+      );
     case "command":
       return !hasTimelineExplorationIntent(row);
     case "tool":

@@ -31,7 +31,7 @@ export function extractPiPromptInput(
         if (
           resource.kind === "command" &&
           resource.source === "skill" &&
-          resource.trigger === "/" &&
+          (resource.trigger === "/" || resource.trigger === "$") &&
           mention.start < mention.end &&
           mention.end <= item.text.length &&
           item.text.slice(mention.start, mention.end) ===

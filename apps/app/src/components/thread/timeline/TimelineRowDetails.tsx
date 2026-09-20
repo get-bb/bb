@@ -257,6 +257,8 @@ export function WorkRowBody({
       return null;
     case "question":
       return <QuestionWorkRowBody row={row} />;
+    case "form":
+      return <PresentationDetail presentation={row.presentation} />;
     case "workflow":
       return (
         <div className="space-y-2">

@@ -265,6 +265,9 @@ async function queueActiveParentSystemMessage(
         execution: args.execution,
         payload: { kind: "inline" },
         senderThreadId: null,
+        origin: null,
+        originPluginId: null,
+        requestedBy: null,
         systemNotice: {
           kind: args.systemMessageKind,
           subject: args.systemMessageSubject,
@@ -430,7 +433,7 @@ export async function queueParentSystemMessage(
     return false;
   }
   const hasPendingInteraction =
-    deps.pendingInteractions.hasPendingThreadInteraction(parentThread.id);
+    deps.pendingInteractions.hasTurnBoundPendingThreadInteraction(parentThread.id);
   if (!hasPendingInteraction) {
     try {
       return await deliverParentSystemMessage(deps, {
@@ -455,6 +458,8 @@ export async function queueParentSystemMessage(
     threadId: parentThread.id,
     content: args.input,
     senderThreadId: null,
+    origin: null,
+    originPluginId: null,
     model: execution.model,
     reasoningLevel: execution.reasoningLevel,
     permissionMode: execution.permissionMode,

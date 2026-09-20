@@ -25,6 +25,7 @@ import {
   seedHostSession,
   seedProjectWithSource,
 } from "../helpers/seed.js";
+import { advanceUntilSettled } from "../helpers/fake-timers.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 import {
   createTestProviderRegistry,
@@ -648,8 +649,7 @@ describe("resolveSystemExecutionOptions", () => {
           await vi.advanceTimersByTimeAsync(29_999);
           expect(settled).toBe(false);
 
-          await vi.advanceTimersByTimeAsync(1);
-          const providers = await pendingProviders;
+          const providers = await advanceUntilSettled(pendingProviders, 1);
           expect(settled).toBe(true);
           expect(listQueuedCommands(harness, "provider.health")).toHaveLength(
             6,
@@ -1240,7 +1240,10 @@ describe("resolveSystemExecutionOptions", () => {
               id: "acp-example-agent",
               displayName: "Example Agent",
               available: true,
-              composerActions: [{ kind: "skills", trigger: "/" }],
+              composerActions: [
+                { kind: "skills", trigger: "/" },
+                { kind: "skills", trigger: "$" },
+              ],
               capabilities: expect.objectContaining({
                 supportsFork: false,
                 supportsServiceTier: true,

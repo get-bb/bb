@@ -58,6 +58,7 @@ import {
   seedThread,
 } from "../helpers/seed.js";
 import { installFakeEnvironmentProvider } from "../helpers/environment-provider.js";
+import { advanceUntilTrue } from "../helpers/fake-timers.js";
 import { withTestHarness } from "../helpers/test-app.js";
 import { handleDaemonSocketClosed } from "../../src/internal/session-owner-side-effects.js";
 import { DAEMON_ACTIVE_WORK_DISCONNECT_GRACE_MS } from "../../src/constants.js";
@@ -975,8 +976,10 @@ it("fails workspace setup only after the active-work disconnect grace", async ()
       );
       expect(getThread(harness.db, thread.id)?.status).toBe("starting");
 
-      await vi.advanceTimersByTimeAsync(1);
-      expect(getEnvironment(harness.db, environment.id)?.status).toBe("error");
+      await advanceUntilTrue(
+        () => getEnvironment(harness.db, environment.id)?.status === "error",
+        1,
+      );
       expect(getThread(harness.db, thread.id)?.status).toBe("error");
       expect(
         listEvents(harness.db, { threadId: thread.id })

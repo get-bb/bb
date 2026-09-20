@@ -22,7 +22,9 @@ Session- and process-level behaviour (archived sessions, failing commands,
 crashes, slow starts) is scripted through `ScriptedEchoOptions`: set
 `options.providerOptions.scripted` on a bridge launch, or the
 `SCRIPTED_ECHO_OPTIONS` env JSON for behaviour that must apply before any
-session exists. `SCRIPTED_ECHO_RECORD_PATH` appends every handled request to
+session exists. Session ids default to per-process counters (`prov-1`);
+`uniqueProviderThreadIds` appends a per-process nonce so bridges in several
+environments on one host mint distinct, durable handles, as real providers do. `SCRIPTED_ECHO_RECORD_PATH` appends every handled request to
 a JSONL file for assertions on what reached the provider.
 
 The integration harness builds `host.ts` into an artifact exactly as the

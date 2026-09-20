@@ -9,8 +9,10 @@ import {
   type JsonValue,
 } from "@bb/domain";
 import type { CreateThreadEnvironmentArgs } from "@bb/server-contract";
-import { action } from "../../action.js";
+import { action, CliUsageError } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
+import { missingProjectHint } from "../../context-hints.js";
+import { requireTextInput, TEXT_FILE_HELP_SUFFIX } from "../../text-input.js";
 import {
   resolveExplicitIdFlag,
   resolveContextThreadId,
@@ -29,7 +31,7 @@ import {
 import {
   parsePermissionMode,
   buildPromptInputs,
-  uploadClientImageInputs,
+  uploadClientAttachmentInputs,
   PERMISSION_MODE_HELP,
   PLAN_HELP,
   parseServiceTier,
@@ -40,7 +42,8 @@ const PROVIDER_HELP =
   "Provider ID for the thread. Omit to use the project's remembered provider choice";
 
 interface ThreadSpawnCommandOptions {
-  prompt: string;
+  prompt?: string;
+  promptFile?: string;
   json?: boolean;
   project?: string;
   environment?: string;
@@ -53,6 +56,7 @@ interface ThreadSpawnCommandOptions {
   model?: string;
   reasoningLevel?: string;
   title?: string;
+  lifecycleOwnerThread?: string;
   serviceTier?: string;
   permissionMode?: string;
   plan?: boolean;
@@ -304,10 +308,22 @@ export function registerSpawnCommand(
 ): void {
   parent
     .command("spawn")
+    .aliases(["create", "new"])
     .description(
       "Spawn a new thread; omitted execution flags use remembered project defaults, then the target provider catalog default",
     )
-    .requiredOption("--prompt <prompt>", "Initial prompt for the thread")
+    .option(
+      "--prompt <prompt>",
+      "Initial prompt for the thread (required unless --prompt-file is given)",
+    )
+    .option(
+      "--prompt-file <path>",
+      `Read the initial prompt from a file instead of --prompt; ${TEXT_FILE_HELP_SUFFIX}`,
+    )
+    .option(
+      "--lifecycle-owner-thread <id>",
+      "Archive/delete this thread with its lifecycle owner",
+    )
     .option("--json", "Print machine-readable JSON output")
     .requiredOption("--project <id>", "Project ID")
     .option(
@@ -352,13 +368,13 @@ export function registerSpawnCommand(
     .option("--plan", PLAN_HELP)
     .option(
       "--file <path>",
-      "Pass a host-readable absolute or uploaded attachment file path (repeatable)",
+      "Upload an absolute path or file: URL from this CLI machine or pass an uploaded attachment path (repeatable)",
       collectOption,
       [],
     )
     .option(
       "--image <path>",
-      "Upload an absolute path from this CLI machine or pass an uploaded attachment path (repeatable)",
+      "Upload an absolute path or file: URL from this CLI machine or pass an uploaded attachment path (repeatable)",
       collectOption,
       [],
     )
@@ -384,12 +400,22 @@ export function registerSpawnCommand(
     )
     .action(
       action(async (opts: ThreadSpawnCommandOptions) => {
+        const prompt = await requireTextInput({
+          file: opts.promptFile,
+          fileLabel: "--prompt-file",
+          inline: opts.prompt,
+          inlineLabel: "--prompt <prompt>",
+        });
         const projectId = resolveExplicitIdFlag({
           flagName: "--project flag",
           value: opts.project,
         });
         if (!projectId) {
-          throw new Error("Missing required option --project <id>.");
+          throw new CliUsageError({
+            code: "missing_required",
+            hint: missingProjectHint(),
+            message: "Missing required option --project <id>.",
+          });
         }
         const environmentValue = resolveSpawnEnvironmentValue(opts.environment);
         if (
@@ -538,9 +564,9 @@ export function registerSpawnCommand(
         let thread: Thread;
         try {
           const sdk = createCliBbSdk(getUrl());
-          const input = await uploadClientImageInputs({
+          const input = await uploadClientAttachmentInputs({
             input: buildPromptInputs({
-              message: opts.prompt,
+              message: prompt,
               plan: opts.plan,
               files: opts.file,
               images: opts.image,
@@ -563,6 +589,9 @@ export function registerSpawnCommand(
             startedOnBehalfOf: null,
             originKind: opts.originKind ?? null,
             ...(parentThreadId ? { parentThreadId } : {}),
+            ...(opts.lifecycleOwnerThread !== undefined
+              ? { lifecycleOwnerThreadId: opts.lifecycleOwnerThread }
+              : {}),
             ...(opts.section ? { sectionId: opts.section } : {}),
             ...(opts.sourceThread ? { sourceThreadId: opts.sourceThread } : {}),
             ...(sourceSeqEnd !== undefined ? { sourceSeqEnd } : {}),

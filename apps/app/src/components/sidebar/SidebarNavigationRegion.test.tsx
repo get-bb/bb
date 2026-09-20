@@ -226,9 +226,7 @@ describe("SidebarNavigationRegion", () => {
     ).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Plugins" }));
-    expect(screen.getByTestId("pathname").textContent).toBe(
-      "/plugins",
-    );
+    expect(screen.getByTestId("pathname").textContent).toBe("/plugins");
     expect(
       screen
         .getByRole("button", { name: "Plugins" })
@@ -236,9 +234,7 @@ describe("SidebarNavigationRegion", () => {
     ).toBe("page");
 
     fireEvent.click(screen.getByRole("button", { name: "Skills" }));
-    expect(screen.getByTestId("pathname").textContent).toBe(
-      "/skills",
-    );
+    expect(screen.getByTestId("pathname").textContent).toBe("/skills");
   });
 
   it("delegates and falls back after a crash without owner remounts", () => {

@@ -28,6 +28,8 @@ export type {
   EventProjectionPermissionGrantGrantScope,
   EventProjectionPermissionGrantLifecycleMessage,
   EventProjectionPlanStepsMessage,
+  EventProjectionPluginFormLifecycle,
+  EventProjectionPluginFormLifecycleMessage,
   EventProjectionProvisioningMetadata,
   EventProjectionProvisioningTranscriptEntry,
   EventProjectionThreadOperationKind,

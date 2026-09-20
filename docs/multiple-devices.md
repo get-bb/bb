@@ -9,6 +9,14 @@ There are two separate ways to use more than one device with bb:
 
 You can use either story independently or combine them.
 
+In both stories one computer runs the bb server. It stores your threads, the
+database, and settings, and every browser and execution machine connects to it.
+Pick a computer that stays on, such as a desktop, home server, or VM: while the
+server machine is asleep or off, nothing can reach bb and running threads may
+stop. Settings → Machines badges it `server` once several machines are
+connected, `bb machine list` shows `server` in its Role column, and the server
+machine cannot be removed.
+
 ## Open bb from another browser
 
 The simplest managed route is **bb connect**. Pair the server from Settings →
@@ -163,7 +171,7 @@ them when it starts, when it becomes active, and every five minutes.
 
 ## Add an execution machine
 
-Open Settings → Machines and choose Add machine. Run the generated one-line
+Open Settings → Machines and choose Add a machine. Run the generated one-line
 installer on the computer that should
 execute work. It installs and enrolls a host daemon; when bb connect is paired,
 the installer also configures the machine credential used to reach the server
@@ -171,7 +179,9 @@ through the account gate. Without bb connect, open the server through a
 Tailscale Serve URL before generating the installer; the loopback listener is
 not directly reachable from another machine. When bb connect is not paired and
 the server URL is a loopback or unspecified address, the dialog does not show an
-installer. It links to Settings → Remote access instead.
+installer. It asks you to set up machine access first by choosing the address
+machines should use. Once access is ready, the dialog also names the server
+machine the new machine will depend on.
 
 The installer always installs the exact host-only `bb-app` package exposed by
 that server at `/install/bb-app.tgz`. The package contains the host daemon,

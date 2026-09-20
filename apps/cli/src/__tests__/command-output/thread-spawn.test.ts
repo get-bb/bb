@@ -1,4 +1,6 @@
+import { createThreadRequestSchema } from "@bb/server-contract";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
@@ -24,6 +26,93 @@ describe("bb thread spawn command output", () => {
   function captureCommanderErrors() {
     return vi.spyOn(process.stderr, "write").mockImplementation(() => true);
   }
+
+  it("rejects explicitly empty lifecycle ownership instead of creating an independent thread", async () => {
+    const post = vi.fn(async ({ json }: { json: unknown }) => {
+      createThreadRequestSchema.parse(json);
+      return fixtures.makeThread({
+        id: "unexpected-independent-thread",
+        projectId: "proj-1",
+        providerId: "codex",
+      });
+    });
+    stubServerApi({ "v1.threads.$post": post });
+    await expect(
+      runCommand(
+        [
+          "thread",
+          "spawn",
+          "--project",
+          "proj-1",
+          "--prompt",
+          "hello",
+          "--lifecycle-owner-thread",
+          "",
+        ],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+    expect(post).toHaveBeenCalledWith({
+      json: expect.objectContaining({ lifecycleOwnerThreadId: "" }),
+    });
+  });
+
+  it("bb thread spawn --prompt-file sends shell-active text untouched", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "bb-spawn-prompt-"));
+    const path = join(dir, "prompt.md");
+    const prompt = 'Fix `apps/cli` and run $(pnpm test) before "done"';
+    await writeFile(path, `${prompt}\n`);
+    const post = vi.fn(async ({ json }: { json: unknown }) => {
+      createThreadRequestSchema.parse(json);
+      return fixtures.makeThread({
+        id: "thread-from-file",
+        projectId: "proj-1",
+        providerId: "codex",
+      });
+    });
+    stubServerApi({ "v1.threads.$post": post });
+
+    try {
+      await runCommand(
+        ["thread", "create", "--project", "proj-1", "--prompt-file", path],
+        register,
+      );
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+
+    expect(post).toHaveBeenCalledWith({
+      json: expect.objectContaining({
+        input: [{ type: "text", text: prompt, mentions: [] }],
+      }),
+    });
+  });
+
+  it("bb thread spawn refuses a prompt given both inline and as a file", async () => {
+    const post = vi.fn();
+    stubServerApi({ "v1.threads.$post": post });
+
+    await expect(
+      runCommand(
+        [
+          "thread",
+          "spawn",
+          "--project",
+          "proj-1",
+          "--prompt",
+          "inline",
+          "--prompt-file",
+          "/nonexistent/prompt.md",
+        ],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+
+    expect(vi.mocked(console.error).mock.calls[0]?.[0]).toBe(
+      "Error: Provide only one of --prompt <prompt> or --prompt-file.",
+    );
+    expect(post).not.toHaveBeenCalled();
+  });
 
   it("bb thread spawn sends project-default when the user relies on project defaults", async () => {
     vi.stubEnv("BB_PROJECT_ID", "proj-1");
@@ -56,68 +145,171 @@ describe("bb thread spawn command output", () => {
     expect(resolveLocalHostIdMock).not.toHaveBeenCalled();
   });
 
-  it("bb thread spawn uploads absolute client image paths before creating the thread", async () => {
-    const clientDir = await mkdtemp(join(tmpdir(), "bb-cli-thread-image-"));
-    try {
-      const imagePath = join(clientDir, "screenshot.png");
-      const bytes = new Uint8Array([137, 80, 78, 71]);
-      await writeFile(imagePath, bytes);
-      const thread: domain.Thread = fixtures.makeThread({
-        id: "thread-attachments",
+  it("bb thread spawn passes explicit lifecycle ownership independently of parent selection", async () => {
+    vi.stubEnv("BB_PROJECT_ID", "proj-1");
+    const thread: domain.Thread = fixtures.makeThread({
+      id: "thread-1",
+      projectId: "proj-1",
+      providerId: "codex",
+      status: "starting",
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    const post = vi.fn(async () => thread);
+    stubServerApi({ "v1.threads.$post": post });
+
+    await runCommand(
+      [
+        "thread",
+        "spawn",
+        "--project",
+        "proj-1",
+        "--prompt",
+        "hello",
+        "--lifecycle-owner-thread",
+        "owner-other-project",
+      ],
+      register,
+    );
+
+    expect(post).toHaveBeenCalledWith({
+      json: {
+        lifecycleOwnerThreadId: "owner-other-project",
+        origin: "cli",
+        startedOnBehalfOf: null,
+        originKind: null,
         projectId: "proj-1",
-        providerId: "codex",
-      });
-      const post = vi.fn(async () => thread);
-      stubServerApi({ "v1.threads.$post": post });
-      vi.mocked(globalThis.fetch).mockResolvedValue(
-        new Response(
-          JSON.stringify({
-            type: "localImage",
-            path: "screenshot-uploaded.png",
-            name: "screenshot.png",
-            mimeType: "image/png",
-            sizeBytes: bytes.byteLength,
-          }),
-          { headers: { "content-type": "application/json" } },
-        ),
-      );
-
-      await runCommand(
-        [
-          "thread",
-          "spawn",
-          "--project",
-          "proj-1",
-          "--prompt",
-          "review these",
-          "--file",
-          "/tmp/report.pdf",
-          "--image",
-          imagePath,
-        ],
-        register,
-      );
-
-      expect(globalThis.fetch).toHaveBeenCalledWith(
-        "http://server/api/v1/projects/proj-1/attachments",
-        expect.objectContaining({
-          body: expect.any(FormData),
-          method: "POST",
-        }),
-      );
-      expect(post).toHaveBeenCalledWith({
-        json: expect.objectContaining({
-          input: [
-            { type: "text", text: "review these", mentions: [] },
-            { type: "localFile", path: "/tmp/report.pdf" },
-            { type: "localImage", path: "screenshot-uploaded.png" },
-          ],
-        }),
-      });
-    } finally {
-      await rm(clientDir, { force: true, recursive: true });
-    }
+        input: [{ type: "text", text: "hello", mentions: [] }],
+        environment: { type: "project-default" },
+      },
+    });
+    expect(resolveLocalHostIdMock).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ["image", "localImage", "screenshot.png", "image/png", false],
+    ["file", "localFile", "report.pdf", "application/pdf", false],
+    ["file", "localFile", "report with spaces.pdf", "application/pdf", true],
+  ] as const)(
+    "bb thread spawn uploads client %s paths before creating the thread",
+    async (flag, type, filename, mimeType, fileUrl) => {
+      const clientDir = await mkdtemp(join(tmpdir(), "bb-cli-thread-image-"));
+      try {
+        const attachmentPath = join(clientDir, filename);
+        const uploadedPath = "uploaded-" + filename;
+        const bytes = new Uint8Array([137, 80, 78, 71]);
+        await writeFile(attachmentPath, bytes);
+        const thread: domain.Thread = fixtures.makeThread({
+          id: "thread-attachments",
+          projectId: "proj-1",
+          providerId: "codex",
+        });
+        const post = vi.fn(async () => thread);
+        stubServerApi({ "v1.threads.$post": post });
+        vi.mocked(globalThis.fetch).mockResolvedValue(
+          new Response(
+            JSON.stringify({
+              type,
+              path: uploadedPath,
+              name: filename,
+              mimeType,
+              sizeBytes: bytes.byteLength,
+            }),
+            { headers: { "content-type": "application/json" } },
+          ),
+        );
+
+        await runCommand(
+          [
+            "thread",
+            "spawn",
+            "--project",
+            "proj-1",
+            "--prompt",
+            "review these",
+            "--file",
+            "existing-report.pdf",
+            "--" + flag,
+            fileUrl ? pathToFileURL(attachmentPath).href : attachmentPath,
+          ],
+          register,
+        );
+
+        expect(globalThis.fetch).toHaveBeenCalledWith(
+          "http://server/api/v1/projects/proj-1/attachments",
+          expect.objectContaining({
+            body: expect.any(FormData),
+            method: "POST",
+          }),
+        );
+        const uploadBody = vi.mocked(globalThis.fetch).mock.calls[0]?.[1]?.body;
+        expect(uploadBody).toBeInstanceOf(FormData);
+        if (!(uploadBody instanceof FormData))
+          throw new Error("Missing upload body");
+        const uploadedFile = uploadBody.get("file");
+        expect(uploadedFile).toBeInstanceOf(File);
+        if (!(uploadedFile instanceof File))
+          throw new Error("Missing uploaded file");
+        expect(uploadedFile.name).toBe(filename);
+        expect(uploadedFile.type).toBe(mimeType);
+        expect(new Uint8Array(await uploadedFile.arrayBuffer())).toEqual(bytes);
+        expect(post).toHaveBeenCalledWith({
+          json: expect.objectContaining({
+            input: [
+              { type: "text", text: "review these", mentions: [] },
+              { type: "localFile", path: "existing-report.pdf" },
+              { type, path: uploadedPath },
+            ],
+          }),
+        });
+      } finally {
+        await rm(clientDir, { force: true, recursive: true });
+      }
+    },
+  );
+
+  it.each(["missing", "directory", "upload"] as const)(
+    "does not create a thread when its local file fails: %s",
+    async (failure) => {
+      const clientDir = await mkdtemp(join(tmpdir(), "bb-cli-thread-file-"));
+      try {
+        const filePath =
+          failure === "directory" ? clientDir : join(clientDir, "report.pdf");
+        if (failure === "upload") await writeFile(filePath, "report");
+        const post = vi.fn(async () => ({ ok: true }));
+        stubServerApi({ "v1.threads.$post": post });
+        vi.mocked(globalThis.fetch).mockResolvedValue(
+          new Response(JSON.stringify({ error: "Upload rejected" }), {
+            status: 400,
+            headers: { "content-type": "application/json" },
+          }),
+        );
+
+        await expect(
+          runCommand(
+            [
+              "thread",
+              "spawn",
+              "--project",
+              "proj-1",
+              "--prompt",
+              "review",
+              "--file",
+              filePath,
+            ],
+            register,
+          ),
+        ).rejects.toThrow("process.exit:1");
+
+        expect(post).not.toHaveBeenCalled();
+        if (failure !== "upload")
+          expect(globalThis.fetch).not.toHaveBeenCalled();
+        expect(console.error).toHaveBeenCalled();
+      } finally {
+        await rm(clientDir, { force: true, recursive: true });
+      }
+    },
+  );
 
   it("bb thread spawn --plan opens the thread with the composer's /plan command mention", async () => {
     const thread: domain.Thread = fixtures.makeThread({

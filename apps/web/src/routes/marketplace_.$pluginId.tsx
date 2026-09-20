@@ -26,7 +26,19 @@ export const Route = createFileRoute("/marketplace_/$pluginId")({
         { title },
         { name: "description", content: description },
         { name: "robots", content: entry ? "index, follow" : "noindex" },
-        ...unfurlMeta(title, description, path),
+        ...unfurlMeta(
+          title,
+          description,
+          path,
+          entry
+            ? {
+                path: `/marketplace/og/${encodeURIComponent(entry.id)}`,
+                width: 1200,
+                height: 630,
+                alt: `${entry.displayName} — ${entry.description}`,
+              }
+            : undefined,
+        ),
       ],
       links: [{ rel: "canonical", href: `https://getbb.app${path}` }],
     };

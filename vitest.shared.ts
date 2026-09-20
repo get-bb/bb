@@ -10,7 +10,7 @@ const GLOBAL_TARGET = String.raw`(?:${GLOBAL_OBJECT}|\(\s*${GLOBAL_OBJECT}\s+as\
 
 const ISOLATION_REQUIRING_API = new RegExp(
   [
-    String.raw`\bvi\.(mock|doMock|unmock|doUnmock|resetModules|stubGlobal|stubEnv)\(`,
+    String.raw`\bvi\.(mock|doMock|unmock|doUnmock|resetModules|stubGlobal|stubEnv|useFakeTimers|setSystemTime)\(`,
     String.raw`\bprocess\.chdir\(`,
     String.raw`\bprocess\.env(\.[A-Za-z_$][\w$]*|\[[^\]]+\])\s*=[^=]`,
     String.raw`\bdelete\s+process\.env\b`,

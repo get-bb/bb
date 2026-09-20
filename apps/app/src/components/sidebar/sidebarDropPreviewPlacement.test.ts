@@ -62,6 +62,7 @@ function placement(
     activeThread,
     compareThreads: undefined,
     draftThreadIds: NO_DRAFTS,
+    groupThreadsByEnvironment: false,
     pinnedRootNodes,
     sections: SECTIONS,
     target,
@@ -82,6 +83,7 @@ describe("resolveSidebarDropPreviewPlacement", () => {
         activeThread: moved,
         compareThreads: undefined,
         draftThreadIds: NO_DRAFTS,
+        groupThreadsByEnvironment: false,
         pinnedRootNodes: [],
         sections: SECTIONS,
         target: {

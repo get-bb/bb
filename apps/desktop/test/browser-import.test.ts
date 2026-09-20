@@ -568,6 +568,97 @@ describe("browser cookie readers", () => {
     ).toBe(true);
   });
 
+  it("imports only the selected Helium profile using its macOS Keychain identity", async () => {
+    const root = join(
+      directory,
+      "Library",
+      "Application Support",
+      "net.imput.helium",
+    );
+    await mkdir(join(root, "Default"), { recursive: true });
+    await mkdir(join(root, "Profile 1"), { recursive: true });
+    const key = deriveChromiumKey("helium-test-secret", 1003);
+    createChromiumCookieDatabase(join(root, "Profile 1", "Cookies"), 24, [
+      {
+        host: ".work.test",
+        name: "session",
+        encrypted: encryptChromium("v10", key, "work-session", ".work.test"),
+      },
+    ]);
+    createChromiumCookieDatabase(join(root, "Default", "Cookies"), 24, [
+      { host: "personal.test", name: "session", value: "personal-session" },
+    ]);
+    await writeFile(
+      join(root, "Local State"),
+      JSON.stringify({
+        profile: {
+          info_cache: {
+            Default: { name: "Personal" },
+            "Profile 1": { name: "Work" },
+          },
+        },
+      }),
+    );
+    const run = fakeSecretRunner({
+      "/usr/bin/security": { stdout: "helium-test-secret\n", exitCode: 0 },
+    });
+    const service = createBrowserImportService({
+      context: { platform: "darwin", home: directory },
+      runSecretCommand: run,
+    });
+    expect(
+      (await service.listSources()).find((source) => source.id === "helium"),
+    ).toMatchObject({
+      profiles: [
+        { directory: "Default", name: "Personal", cookieCount: 1 },
+        { directory: "Profile 1", name: "Work", cookieCount: 1 },
+      ],
+    });
+    const set = vi.fn(async () => undefined);
+    const flushStore = vi.fn(async () => undefined);
+    expect(
+      await service.importCookies(
+        { sourceId: "helium", sourceProfileDirectory: "Profile 1" },
+        { cookies: { set, flushStore } },
+      ),
+    ).toEqual({ ok: true, imported: 1, skipped: 0, skippedDomains: [] });
+    expect(run).toHaveBeenCalledWith("/usr/bin/security", [
+      "find-generic-password",
+      "-w",
+      "-s",
+      "Helium Storage Key",
+      "-a",
+      "Helium",
+    ]);
+    expect(set).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        domain: ".work.test",
+        name: "session",
+        value: "work-session",
+      }),
+    );
+  });
+
+  it("recognises Helium as the owner of its profile lock", async () => {
+    const root = join(
+      directory,
+      "Library",
+      "Application Support",
+      "net.imput.helium",
+    );
+    await mkdir(root, { recursive: true });
+    await symlink(`${hostname()}-42`, join(root, "SingletonLock"));
+    const helium = findBrowserImportSource("helium");
+    if (!helium) throw new Error("helium source missing");
+    expect(
+      await isSourceRunning(
+        helium,
+        { platform: "darwin", home: directory },
+        async () => "/Applications/Helium.app/Contents/MacOS/Helium",
+      ),
+    ).toBe(true);
+  });
+
   it("judges Chromium lock targets by host, pid liveness, and owner", async () => {
     const names = ["Google Chrome", "chrome"];
     const dead = async () => null;

@@ -10,3 +10,4 @@ export * from "./api/ui-preferences.js";
 export * from "./api/terminals.js";
 export * from "./api/threads.js";
 export * from "./api/desktop-browsers.js";
+export * from "./api/server-move.js";

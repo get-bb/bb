@@ -1,5 +1,6 @@
 export const RESERVED_BB_CLI_COMMANDS: readonly string[] = [
   "browser",
+  "diagnostics",
   "environment",
   "file",
   "guide",
@@ -10,6 +11,7 @@ export const RESERVED_BB_CLI_COMMANDS: readonly string[] = [
   "plugin",
   "project",
   "provider",
+  "server",
   "settings",
   "skill",
   "status",

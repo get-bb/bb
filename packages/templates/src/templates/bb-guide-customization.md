@@ -164,6 +164,10 @@ groups stay visible through activity and sort-order changes.
 **Manually** is unchanged. Enable it with `bb settings experiment
 sidebarProgressiveDisclosure true`.
 
+The default-off `serverMove` experiment enables Move server here in Settings →
+Machines and the server-backed `bb server move` and `bb server export`
+commands. Enable it with `bb settings experiment serverMove true`.
+
 The default-off `timelineWindowing` experiment mounts only nearby rows in long
 timelines and large expanded timeline details. Enable it with
 `bb settings experiment timelineWindowing true`.
@@ -242,7 +246,10 @@ Host files and voice transcription
 
 Voice transcription uses the `BB_TRANSCRIPTION` model, which defaults to
 `codex/gpt-transcribe`. Override it with
-`bb-app config set BB_TRANSCRIPTION <provider/model>`.
+`bb-app config set BB_TRANSCRIPTION <provider/model>`. Plugin-served audio
+uploads accept up to 20 MB; direct OpenAI uploads accept up to 25 MB. These
+limits apply to the app, SDK, and CLI. If transcription fails in the app,
+the error toast offers a download of the original recording until dismissed.
 
 `bb file` supports `--host` for remote machines and `--root` on mutating
 commands to confine access beneath an absolute directory. `bb file list` and
@@ -277,7 +284,12 @@ Custom (`chronological`) is the default for `sidebar.organizationMode` when no
 value is saved. Existing server and legacy browser choices are preserved.
 
 Every thread-list header's actions menu offers New project, New section,
-Organize, and Sort by. Organize selects By project, By machine, or Custom;
+Organize, and Sort by. Organize selects By project, By machine, or Custom, and
+its By environment toggle decides whether sibling threads sharing one worktree
+collapse into a single worktree row inside their section, in every organization
+mode. `sidebar.threadGrouping.environment` defaults to `auto`, which groups them
+everywhere except Custom: `bb settings ui set sidebar.threadGrouping.environment
+false` keeps every thread on its own row, and `true` groups them in every mode.
 Sort by selects a field, and selecting it again reverses its arrow/direction.
 `sidebar.sortDirection` accepts `ascending`, `descending`, or `default`.
 The default preserves each field's original order (newest first for dates,

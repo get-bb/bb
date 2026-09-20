@@ -181,6 +181,21 @@
       var(--bb-sidebar-sticky-stack-padding);
   }
 
+  /* The stack's top padding is inside the scrollport, so rows stay visible as
+     they scroll through it. A sticky label hides that strip behind its own top
+     shield; a pinned row with no label above it has nothing to hide it, so the
+     stack caps the strip for every tier. */
+  [data-sidebar-sticky-stack]::before {
+    content: "";
+    position: sticky;
+    top: 0;
+    z-index: 70;
+    display: block;
+    height: var(--bb-sidebar-sticky-stack-padding-top);
+    margin-top: calc(-1 * var(--bb-sidebar-sticky-stack-padding-top));
+    background-color: var(--sidebar);
+  }
+
   [data-sidebar-sticky-stack][data-sidebar-sticky-density="compact-actions"] {
     --bb-sidebar-sticky-stack-padding-top: 0.5rem;
   }
@@ -380,6 +395,14 @@
     > :not([hidden])
     ~ :not([hidden]) {
     margin-top: var(--bb-sidebar-sticky-row-gap);
+  }
+
+  /* A section header that scrolls with its contents (Pinned) pins no label, so
+     every tier below it moves up by the slot the label would have held. The
+     label slot is the origin both deeper offsets derive from, so collapsing it
+     here covers the project tier and every parent level at once. */
+  [data-sidebar-sticky-stack] [data-sidebar-sticky-header="false"] {
+    --bb-sidebar-sticky-project-top: var(--bb-sidebar-sticky-stack-padding-top);
   }
 
   /* Section-variant trees (Pinned, projectless Threads) have no project tier:
@@ -872,7 +895,7 @@
     touch-action: manipulation;
   }
 
-  .lucide {
+  .bb-icon-stroke {
     stroke-width: var(--icon-stroke-width);
   }
 }
@@ -921,68 +944,52 @@ body.sidebar-resizing [data-sidebar="panel"] {
   }
 
   /*
-   * The sweep animates `background-position` / `mask-position`, which the
-   * compositor cannot run: every frame is a main-thread repaint. `will-change:
-   * transform` gives the shimmering element its own layer while the class is
-   * present (only while a row is active), so that repaint covers the small
-   * label or glyph instead of the tile of the scroller layer it sits in — on
-   * WebKit that tile otherwise re-rasterizes surrounding timeline text every
-   * frame of a streaming turn.
+   * The working sweep is an animated image used as a mask: `shine-sweep.png`
+   * is a 128x2 APNG whose alpha band travels left to right once a second,
+   * stretched over the label or glyph (`apps/app/scripts/generate-shine-sweep.mjs`
+   * writes it). Chromium advances animated images on the compositor, with no
+   * style, paint, or commit on the main thread, so an agent working costs the
+   * main thread nothing; an engine that animates images on the main thread
+   * repaints this one small layer at the file's 30 fps.
+   * A `background-position` / `mask-position` keyframe sweep looks the same but
+   * cannot leave the main thread: at 60 fps it cost a full rendering pass per
+   * frame, growing with the weight of the page around the label. The mask only
+   * carries alpha, so one file serves every theme, label, and icon;
+   * `-webkit-text-fill-color` keeps labels at full `--foreground` strength at
+   * the peak whatever text color utility they carry. `will-change: transform`
+   * gives the element its own layer while the class is present, so each frame
+   * re-rasters the small label instead of the scroller tile it sits in. The
+   * file stays under Vite's 4 KB inline limit, so production CSS embeds it.
    */
-  .animate-shine {
-    display: inline-block;
-    background: linear-gradient(
-      90deg,
-      color-mix(in srgb, var(--foreground) 50%, transparent) 0%,
-      var(--foreground) 50%,
-      color-mix(in srgb, var(--foreground) 50%, transparent) 100%
-    );
-    background-size: 200% 100%;
-    background-clip: text;
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    animation: shine 2s linear infinite;
+  .animate-shine,
+  .animate-shine-icon {
+    -webkit-mask-image: url("./shine-sweep.png");
+    mask-image: url("./shine-sweep.png");
+    -webkit-mask-size: 100% 100%;
+    mask-size: 100% 100%;
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
     will-change: transform;
   }
 
-  /*
-   * Icon counterpart to `.animate-shine`: `background-clip: text` only shimmers
-   * glyphs, so for an SVG icon we sweep the same bright band as a mask instead
-   * (the icon retains 45% opacity at the edges with a full-opacity band moving
-   * across). The longer cycle keeps this small status cue from pulling focus.
-   */
-  .animate-shine-icon {
-    --shine-icon-edge-opacity: 0.45;
-    -webkit-mask-image: linear-gradient(
-      90deg,
-      rgb(0 0 0 / var(--shine-icon-edge-opacity)) 0%,
-      rgba(0, 0, 0, 1) 50%,
-      rgb(0 0 0 / var(--shine-icon-edge-opacity)) 100%
-    );
-    mask-image: linear-gradient(
-      90deg,
-      rgb(0 0 0 / var(--shine-icon-edge-opacity)) 0%,
-      rgba(0, 0, 0, 1) 50%,
-      rgb(0 0 0 / var(--shine-icon-edge-opacity)) 100%
-    );
-    -webkit-mask-size: 200% 100%;
-    mask-size: 200% 100%;
-    animation: shine-mask 2.6s linear infinite;
-    will-change: transform;
+  .animate-shine {
+    display: inline-block;
+    -webkit-text-fill-color: var(--foreground);
   }
 
   /*
    * Hidden hosts keep shimmering rows mounted: the closed sidebar drawer's
    * inert panel, a collapsed `aria-hidden` banner body, a retained overlay.
-   * Pause the sweep and release the layer there so nothing off-screen repaints
-   * every frame. The rightmost compound is a class, so toggling `inert` or
+   * Drop the mask and release the layer there so nothing off-screen draws.
+   * The rightmost compound is a class, so toggling `inert` or
    * `aria-hidden` on the host invalidates only these elements.
    */
   [inert] .animate-shine,
   [inert] .animate-shine-icon,
   [aria-hidden="true"] .animate-shine,
   [aria-hidden="true"] .animate-shine-icon {
-    animation-play-state: paused;
+    -webkit-mask-image: none;
+    mask-image: none;
     will-change: auto;
   }
 
@@ -996,8 +1003,8 @@ body.sidebar-resizing [data-sidebar="panel"] {
     animation: indeterminate-progress 1.5s ease-in-out infinite;
   }
 
-  /* Reduced motion: drop the shimmer sweep and render the active cue as plain
-     full-strength foreground text/glyph instead of a frozen gradient/mask. */
+  /* Reduced motion: drop the sweep and render the active cue as plain
+     full-strength text/glyph. */
   @media (prefers-reduced-motion: reduce) {
     /* A static half-width fill still reads as "busy" without the sweep. */
     .animate-indeterminate-progress {
@@ -1005,28 +1012,16 @@ body.sidebar-resizing [data-sidebar="panel"] {
       width: 50%;
     }
 
-    .animate-shine {
-      animation: none;
-      background: none;
-      -webkit-text-fill-color: currentColor;
-      will-change: auto;
-    }
-
+    .animate-shine,
     .animate-shine-icon {
-      animation: none;
       -webkit-mask-image: none;
       mask-image: none;
       will-change: auto;
     }
-  }
-}
 
-@keyframes shine {
-  0% {
-    background-position: 200% 0%;
-  }
-  100% {
-    background-position: -200% 0%;
+    .animate-shine {
+      -webkit-text-fill-color: currentColor;
+    }
   }
 }
 
@@ -1036,17 +1031,6 @@ body.sidebar-resizing [data-sidebar="panel"] {
   }
   100% {
     margin-inline-start: 100%;
-  }
-}
-
-@keyframes shine-mask {
-  0% {
-    -webkit-mask-position: 200% 0%;
-    mask-position: 200% 0%;
-  }
-  100% {
-    -webkit-mask-position: -200% 0%;
-    mask-position: -200% 0%;
   }
 }
 

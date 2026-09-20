@@ -2,16 +2,19 @@ import { BrowserWindow, ipcMain, type IpcMainEvent } from "electron";
 import type { z } from "zod";
 import {
   bbDesktopBrowserAttachRequestSchema,
+  bbDesktopBrowserEvaluateRequestSchema,
   bbDesktopBrowserFindInPageRequestSchema,
   bbDesktopBrowserNavigateRequestSchema,
   bbDesktopBrowserSetBoundsRequestSchema,
   bbDesktopBrowserSetVisibleRequestSchema,
   bbDesktopBrowserStopFindInPageRequestSchema,
   bbDesktopBrowserTabRefSchema,
+  type BbDesktopBrowserEvaluateResult,
 } from "@bb/desktop-contract";
 import {
   BB_DESKTOP_BROWSER_ATTACH_CHANNEL,
   BB_DESKTOP_BROWSER_DETACH_CHANNEL,
+  BB_DESKTOP_BROWSER_EVALUATE_CHANNEL,
   BB_DESKTOP_BROWSER_FOCUS_CHANNEL,
   BB_DESKTOP_BROWSER_FIND_IN_PAGE_CHANNEL,
   BB_DESKTOP_BROWSER_GO_BACK_CHANNEL,
@@ -123,5 +126,22 @@ export function registerDesktopBrowserIpc(
     bbDesktopBrowserTabRefSchema,
     ({ hostWindow, request }) =>
       manager.stop({ hostWindow, tabId: request.tabId }),
+  );
+  ipcMain.handle(
+    BB_DESKTOP_BROWSER_EVALUATE_CHANNEL,
+    async (
+      event,
+      payload: unknown,
+    ): Promise<BbDesktopBrowserEvaluateResult> => {
+      const hostWindow = BrowserWindow.fromWebContents(event.sender);
+      if (hostWindow === null) {
+        return { ok: false, error: "Browser host window is not available" };
+      }
+      const parsed = bbDesktopBrowserEvaluateRequestSchema.safeParse(payload);
+      if (!parsed.success) {
+        return { ok: false, error: "Invalid browser page evaluation request" };
+      }
+      return manager.evaluate({ hostWindow, request: parsed.data });
+    },
   );
 }

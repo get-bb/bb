@@ -37,7 +37,10 @@ import {
 } from "../../services/plugins/plugin-thread-events.js";
 import { toThreadQueuedMessage } from "../../services/threads/thread-queued-messages.js";
 import { retryFailedTurn } from "../../services/threads/turn-retry.js";
-import { requirePublicThread } from "../../services/lib/entity-lookup.js";
+import {
+  requireConnectedHostSession,
+  requirePublicThread,
+} from "../../services/lib/entity-lookup.js";
 import { parseSafeRelativeRoutePath } from "../relative-route-path.js";
 import { validatePromptAttachmentReferences } from "../../services/projects/attachments.js";
 import {
@@ -311,6 +314,7 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     ensureThreadQueueIsWritable(thread);
     await validatePromptAttachmentReferences({
+      db: deps.db,
       dataDir: deps.config.dataDir,
       input: payload.input,
       projectId: thread.projectId,
@@ -433,6 +437,7 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
     const environment = await requireThreadCommandEnvironment(deps, {
       thread,
     });
+    requireConnectedHostSession(deps, environment.hostId);
     const execution = await buildExecutionOptions(
       deps,
       {},
@@ -548,7 +553,13 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
   post(routes.unarchive, (context) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     const providerThreadId = getLastProviderThreadId(deps, thread.id);
-    unarchiveThread(deps.db, deps.hub, thread.id);
+    if (!unarchiveThread(deps.db, deps.hub, thread.id)) {
+      throw new ApiError(
+        409,
+        "invalid_request",
+        "Lifecycle owner must be unarchived first",
+      );
+    }
     const unarchivedThread = getThread(deps.db, thread.id);
     if (unarchivedThread !== null) {
       if (unarchivedThread.environmentId !== null)

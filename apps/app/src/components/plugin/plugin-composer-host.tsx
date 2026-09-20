@@ -12,6 +12,7 @@ import {
 } from "react";
 import type {
   ComposerView,
+  ExperimentalComposerSelection,
   ExperimentalComposerSubmitOptions,
   JsonValue,
   PluginComposerScope,
@@ -30,6 +31,9 @@ export interface PluginComposerHost {
     options: ExperimentalComposerSubmitOptions,
     pluginSubmission: { pluginId: string; data: JsonValue } | undefined,
   ): Promise<void>;
+  setSelection?(
+    selection: ExperimentalComposerSelection,
+  ): Promise<ExperimentalComposerSelection>;
 }
 
 export function composerScopeIdentity(scope: PluginComposerScope): string {

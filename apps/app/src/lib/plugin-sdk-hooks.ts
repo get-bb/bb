@@ -1,4 +1,8 @@
 import {
+  removePluginMention,
+  subscribeComposerSubmitted,
+} from "./composer-submissions";
+import {
   useCallback,
   useContext,
   useEffect,
@@ -8,7 +12,9 @@ import {
 } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { matchPath, useLocation, useNavigate } from "react-router-dom";
+import { z } from "zod";
 import type { PromptTextMention } from "@bb/domain";
+import { createThreadEnvironmentArgsSchema } from "@bb/server-contract";
 import type {
   BbContext,
   BbNavigate,
@@ -21,12 +27,18 @@ import type {
   PluginProvidersState,
   PluginSettingsState,
   ExperimentalAppPanel,
+  ExperimentalComposerSelection,
   ExperimentalComposerSubmitOptions,
   ExperimentalFixedTabTargetState,
   ExperimentalPluginFixedTabReference,
   JsonValue,
 } from "@get-bb/plugin-sdk";
-import { jsonValueSchema } from "@bb/domain";
+import {
+  jsonValueSchema,
+  permissionModeSchema,
+  reasoningLevelSchema,
+  serviceTierSchema,
+} from "@bb/domain";
 import {
   PluginSlotOwnershipContext,
   usePluginId,
@@ -492,6 +504,52 @@ function reconcileComposerMentions(
   });
 }
 
+const composerSelectionSchema = z.object({
+  projectId: z.string().min(1).optional(),
+  environment: createThreadEnvironmentArgsSchema.optional(),
+  providerId: z.string().min(1).optional(),
+  model: z.string().min(1).optional(),
+  reasoningLevel: reasoningLevelSchema.optional(),
+  serviceTier: serviceTierSchema.optional(),
+  permissionMode: permissionModeSchema.optional(),
+});
+
+const COMPOSER_SELECTION_FIELD_LABELS: Record<
+  keyof ExperimentalComposerSelection,
+  string
+> = {
+  projectId: "project",
+  environment: "environment",
+  providerId: "provider",
+  model: "model",
+  reasoningLevel: "reasoning level",
+  serviceTier: "service tier",
+  permissionMode: "permission mode",
+};
+
+function parseComposerSelection(
+  selection: unknown,
+): ExperimentalComposerSelection {
+  const parsed = composerSelectionSchema.safeParse(selection);
+  if (parsed.success) {
+    return Object.fromEntries(
+      Object.entries(parsed.data).filter(([, value]) => value !== undefined),
+    ) as ExperimentalComposerSelection;
+  }
+  const field = parsed.error.issues[0]?.path[0];
+  const label =
+    typeof field === "string" && field in COMPOSER_SELECTION_FIELD_LABELS
+      ? COMPOSER_SELECTION_FIELD_LABELS[
+          field as keyof ExperimentalComposerSelection
+        ]
+      : null;
+  throw new Error(
+    label === null
+      ? "The selection is not valid."
+      : `The selection's ${label} is not valid.`,
+  );
+}
+
 function createComposerScopeOwnership(scopeKey: string) {
   let active = true;
   return {
@@ -799,6 +857,44 @@ export function useComposer(): PluginComposerApi {
     [focusActiveComposer, getCurrent, pluginId, setDraft],
   );
 
+  const experimental_removeMention = useCallback(
+    (mention: { provider: string; id: string }) => {
+      const current = getCurrent();
+      const next = removePluginMention(
+        current,
+        pluginId,
+        mention.provider,
+        mention.id,
+      );
+      if (next !== current) setDraft(next);
+    },
+    [getCurrent, pluginId, setDraft],
+  );
+  const submissionSubscriptions = useRef(new Set<() => void>());
+  useEffect(
+    () => () => {
+      for (const unsubscribe of submissionSubscriptions.current) unsubscribe();
+      submissionSubscriptions.current.clear();
+    },
+    [composerScope, threadId, projectId],
+  );
+  const experimental_onSubmitted = useCallback(
+    (listener: () => void) => {
+      const scope =
+        composerScope ??
+        (threadId !== undefined
+          ? { kind: "thread" as const, threadId }
+          : { kind: "new-thread" as const, projectId: projectId ?? null });
+      const unsubscribe = subscribeComposerSubmitted(scope, listener);
+      submissionSubscriptions.current.add(unsubscribe);
+      return () => {
+        unsubscribe();
+        submissionSubscriptions.current.delete(unsubscribe);
+      };
+    },
+    [composerScope, threadId, projectId],
+  );
+
   const focus = focusActiveComposer;
   const composerText = composerHostDraft?.text ?? routeDraft.text;
 
@@ -827,6 +923,20 @@ export function useComposer(): PluginComposerApi {
     [hostSubmit, pluginId, scopeOwnership],
   );
 
+  const hostSetSelection = composerHost?.setSelection;
+  const experimental_setSelection = useCallback(
+    async (selection: ExperimentalComposerSelection) => {
+      if (!scopeOwnership.isActive()) {
+        throw new Error("This composer is no longer active.");
+      }
+      if (hostSetSelection === undefined) {
+        throw new Error("This composer has no pickers to set.");
+      }
+      return hostSetSelection(parseComposerSelection(selection));
+    },
+    [hostSetSelection, scopeOwnership],
+  );
+
   return useMemo(
     () => ({
       scope:
@@ -843,17 +953,23 @@ export function useComposer(): PluginComposerApi {
       setThreadRowStatus: legacySetThreadRowStatus,
       addQuote,
       insertMention,
+      experimental_removeMention,
+      experimental_onSubmitted,
       focus,
       experimental_submit,
+      experimental_setSelection,
     }),
     [
       addQuote,
       clear,
       composerScope,
       composerText,
+      experimental_setSelection,
       experimental_submit,
       focus,
       insertMention,
+      experimental_removeMention,
+      experimental_onSubmitted,
       projectId,
       setText,
       setTextEffect,

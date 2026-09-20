@@ -3,6 +3,10 @@
     "category": "agents-and-providers",
     "screenshots": []
   },
+  "agent-annotations": {
+    "category": "code-and-reviews",
+    "screenshots": []
+  },
   "ask-user-question": {
     "category": "thread-content",
     "screenshots": []

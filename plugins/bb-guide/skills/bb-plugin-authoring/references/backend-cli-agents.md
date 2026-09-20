@@ -28,6 +28,77 @@ bb.cli.register({
 });
 ```
 
+Prefer declaring the command instead of parsing `argv` by hand.
+`defineCli` builds the same registration from a spec and gives
+every command the behavior agents rely on: `--help` at every level with exit
+0, `unknown option '--x' (Did you mean --y?)`, every missing required option
+in one error, typed value errors, and with `--json` a
+`{"ok": false, "error": {"code", "message", "hint"}}` envelope on stdout while
+stderr keeps the readable text. Hand-written parsers have silently ignored
+unknown flags and lost user data.
+
+```ts
+import { PluginCliError, cliCommand, defineCli } from "@get-bb/plugin-sdk";
+
+bb.cli.register(
+  defineCli({
+    name: "weather",
+    summary: "Weather lookups",
+    commands: {
+      today: cliCommand({
+        summary: "Today's weather",
+        positionals: [
+          { name: "city", description: "City name", required: true },
+        ],
+        options: {
+          units: {
+            type: "enum",
+            values: ["metric", "imperial"],
+            default: "metric",
+            aliases: ["unit"],
+            description: "Units for temperatures",
+          },
+          timeout: {
+            type: "duration",
+            defaultUnit: "s",
+            description: "How long to wait for the forecast service",
+          },
+          json: { type: "boolean", description: "Emit machine-readable JSON" },
+        },
+        async run(input, ctx) {
+          const forecast = await lookup(
+            input.positionals.city,
+            input.options.units,
+          );
+          if (forecast === null) {
+            throw new PluginCliError(
+              `no forecast for ${input.positionals.city}`,
+              {
+                code: "forecast_not_found",
+                hint: "Run `bb weather cities` to list supported cities.",
+              },
+            );
+          }
+          return { exitCode: 0, stdout: forecast };
+        },
+      }),
+    },
+  }),
+);
+```
+
+Command keys are invocation paths, so `"account add"` declares
+`bb weather account add`. Put every spelling an agent might guess in an
+option's hidden `aliases`, state limits in each `description` because they
+show in `--help`, and express "exactly one of" and "X requires Y" with
+`constraints`. Keep a required ID strict, but when `ctx.projectId` or
+`ctx.threadId` holds the value, throw an `PluginCliError` whose `hint`
+prints the exact flag to add. A registration built this way sets
+`rendersHelp`, so `bb weather today --help` reaches the plugin and
+prints its full option help; a hand-written `run` leaves that unset and the
+`bb` CLI answers `--help` from the `commands[].usage` line without calling
+the plugin.
+
 Agents discover plugin commands through the server-generated
 `plugin-commands` skill, which lists each command's `summary` and the
 `commands` usage lines — fill both in. Combined stdout and stderr must fit
@@ -48,21 +119,41 @@ resolve the invoking host (`ctx.threadId` → `bb.sdk.threads.get` →
 `environmentId` → `bb.sdk.environments.get(...).hostId`, with an explicit
 `--machine`-style flag as the no-thread escape hatch) and do all such file I/O
 through `bb.sdk.files` with that `hostId`. An omitted SDK `hostId` targets the
-primary host, which can be an enrolled remote machine. Reference
+server machine (`primaryHostId`), which can be an enrolled remote machine. Reference
 implementations: the docs plugin's pull/push sync and the
 tasks plugin's attachment commands. `node:fs` remains correct for genuinely
 server-local data such as files under the plugin's own data directory.
 
-### bb.ui.requestInput — replace the composer with a blocking plugin form
+### bb.ui.requestInput — show a form in the thread composer
 
 Use `bb.ui.requestInput({ threadId, rendererId, title, payload, timeoutMs? },
-{ signal? })` when plugin backend code must wait for sensitive or structured
-user input. The promise resolves to `{ outcome: "submitted", value }` or
-`{ outcome: "cancelled", reason }`. Payloads and responses are JSON values
-capped at 64 KiB; response values are delivered only to the waiting plugin
-invocation and are never persisted. Pair `rendererId` with a frontend
-`pendingInteraction` slot. Pass a CLI handler's `ctx.signal` so disconnecting
-the caller cancels the request.
+{ signal? })` for sensitive or structured user input. Pair `rendererId` with a
+frontend `pendingInteraction` slot. The promise resolves to
+`{ outcome: "submitted", value }` or `{ outcome: "cancelled", reason }`.
+Payloads and responses are JSON values capped at 64 KiB.
+
+Two optional fields control the form's timeline row:
+
+- `presentation: PluginRowPresentation` sets labels, icon, and styling.
+  Defaults are "Waiting for <title>" / "Submitted <title>" and the plugin's
+  branding glyph.
+- `describeSubmission(value)` returns a `PluginInteractionDescription` with
+  optional `title`, Markdown `detail`, and `payload`. The payload goes to the
+  plugin's `experimental_timelineRenderer` for `"<pluginId>/<rendererId>"`.
+  Only this description is saved as submission history; omit secrets.
+  The callback runs once per submission, never on cancellation. If it throws
+  or exceeds two seconds, the row keeps its completed label.
+
+Inside a tool's `execute`, opening a form returns a waiting notice to the
+agent while the plugin continues awaiting the answer. BB delivers the tool's
+eventual result separately: success resumes an active or idle agent; errors
+only reach an active agent.
+
+Pass `ctx.signal` to cancel the form with its caller. For CLI commands,
+disconnection cancels it. For tools, request cancellation aborts the signal
+until a form opens; afterward, only thread stop/delete or plugin disposal
+aborts it. For tools that never open a form, request cancellation still aborts
+`ctx.signal`.
 
 ### bb.agents — native tools and conditional session configuration
 

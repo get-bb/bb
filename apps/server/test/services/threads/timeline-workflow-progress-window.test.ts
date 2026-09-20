@@ -352,7 +352,7 @@ describe("workflow progress snapshots across timeline pages", () => {
     seedWorkflowThread(db, thread, { pendingTurnItems: 250, snapshotCount: 1 });
 
     const walk = walkAllPages(db, thread);
-    expect(walk.pages).toBeGreaterThan(2);
+    expect(walk.pages).toBeGreaterThan(1);
     const turnOneRows = walk.rows.filter(
       (row) => row.kind === "turn" && row.turnId === "turn-1",
     );

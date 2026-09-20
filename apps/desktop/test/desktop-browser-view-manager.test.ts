@@ -3,6 +3,7 @@ import { once } from "node:events";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { runInNewContext } from "node:vm";
 import { WebSocket, WebSocketServer } from "ws";
 import { z } from "zod";
 import {
@@ -18,6 +19,7 @@ import { createDesktopBrowserBrokerClient } from "../src/desktop-browser-broker-
 import { captureDesktopBrowserPage } from "../src/desktop-browser-capture.js";
 import type { DesktopBrowserCdpPage } from "../src/desktop-browser-cdp.js";
 import {
+  browserPageEvaluationSource,
   createDesktopBrowserViewManager as createProductionDesktopBrowserViewManager,
   isAllowedBrowserPermission,
   type CreateDesktopBrowserViewManagerArgs,
@@ -28,6 +30,11 @@ import {
   type DesktopBrowserHostWebContentsPayload,
   type DesktopBrowserHostWindow,
 } from "../src/desktop-browser-view.js";
+import {
+  BB_DESKTOP_BROWSER_GUEST_MESSAGE_CHANNEL,
+  BB_DESKTOP_BROWSER_PAGE_MESSAGE_CHANNEL,
+  BB_DESKTOP_BROWSER_PAGE_WORLD_ID,
+} from "../src/desktop-browser-ipc.js";
 
 function createDesktopBrowserViewManager(
   args: Partial<CreateDesktopBrowserViewManagerArgs> = {},
@@ -35,6 +42,7 @@ function createDesktopBrowserViewManager(
   return createProductionDesktopBrowserViewManager({
     dispatchAppCommand: () => undefined,
     focusHostWebContents: () => undefined,
+    pagePreloadPath: null,
     resolveAppCommand: () => null,
     ...args,
   });
@@ -513,6 +521,49 @@ const electronMock = vi.hoisted(() => {
 
     stop(): void {}
 
+    public readonly executeJavaScriptCalls: string[] = [];
+    public readonly isolatedWorldCalls: Array<{
+      code: string;
+      worldId: number;
+    }> = [];
+    public executeJavaScriptResult: unknown = { ok: true, value: null };
+    private readonly ipcListeners = new Map<
+      string,
+      Array<(event: FakeWebContentsEvent, payload: unknown) => void>
+    >();
+    public readonly ipc = {
+      on: (
+        channel: string,
+        listener: (event: FakeWebContentsEvent, payload: unknown) => void,
+      ): void => {
+        this.ipcListeners.set(channel, [
+          ...(this.ipcListeners.get(channel) ?? []),
+          listener,
+        ]);
+      },
+    };
+
+    emitIpc(channel: string, payload: unknown): void {
+      for (const listener of this.ipcListeners.get(channel) ?? []) {
+        listener(fakeWebContentsEvent, payload);
+      }
+    }
+
+    executeJavaScript(code: string): Promise<unknown> {
+      this.executeJavaScriptCalls.push(code);
+      return Promise.resolve(this.executeJavaScriptResult);
+    }
+
+    executeJavaScriptInIsolatedWorld(
+      worldId: number,
+      scripts: Array<{ code: string }>,
+    ): Promise<unknown> {
+      for (const script of scripts) {
+        this.isolatedWorldCalls.push({ code: script.code, worldId });
+      }
+      return Promise.resolve(this.executeJavaScriptResult);
+    }
+
     emitDidFailLoad(args: FakeDidFailLoadArgs): void {
       for (const listener of this.listeners["did-fail-load"]) {
         listener(
@@ -641,7 +692,9 @@ const electronMock = vi.hoisted(() => {
     public visible = false;
 
     constructor(
-      public readonly options: { webPreferences: { partition: string } },
+      public readonly options: {
+        webPreferences: { partition: string; preload?: string };
+      },
     ) {
       this.webContents = new FakeWebContents(nextWebContentsId);
       nextWebContentsId += 1;
@@ -742,7 +795,9 @@ const electronMock = vi.hoisted(() => {
       }
     },
     FakeWebContentsView: class extends FakeWebContentsView {
-      constructor(options: { webPreferences: { partition: string } }) {
+      constructor(options: {
+        webPreferences: { partition: string; preload?: string };
+      }) {
         super(options);
         fakeViews.push(this);
       }
@@ -893,6 +948,185 @@ function requireFakeView(
   }
   return view;
 }
+
+describe("browser page scripts", () => {
+  it("awaits JSON values and binds the isolated bridge to the request channel", async () => {
+    const posted: Array<{ channel: string; data: unknown }> = [];
+    const isolated = await runInNewContext(
+      browserPageEvaluationSource({
+        tabId: "browser:a",
+        world: "isolated",
+        channel: "agent-annotations",
+        expression:
+          "(bb.postMessage({ step: 1 }), Promise.resolve({ title: 'ok', skipped: undefined })) // trailing comment",
+      }),
+      {
+        __bbBrowserPage: {
+          postMessage: (channel: string, data: unknown) => {
+            posted.push({ channel, data });
+          },
+        },
+      },
+    );
+    expect(isolated).toEqual({ ok: true, value: { title: "ok" } });
+    expect(posted).toEqual([
+      { channel: "agent-annotations", data: { step: 1 } },
+    ]);
+
+    const main = await runInNewContext(
+      browserPageEvaluationSource({
+        tabId: "browser:a",
+        world: "main",
+        channel: "agent-annotations",
+        expression: "bb === null ? missingPageValue.read : 1",
+      }),
+      {},
+    );
+    expect(main.ok).toBe(false);
+    expect(String(main.error)).toContain("missingPageValue is not defined");
+  });
+
+  it("routes evaluation to the requested world and rejects malformed results", async () => {
+    const manager = createDesktopBrowserViewManager({
+      pagePreloadPath: "/app/dist/browser-page-preload.cjs",
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 91,
+    });
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      tabId: "browser:a",
+      url: "https://example.com/",
+    });
+    const view = requireFakeView(0);
+    expect(view.options.webPreferences.preload).toBe(
+      "/app/dist/browser-page-preload.cjs",
+    );
+
+    view.webContents.executeJavaScriptResult = { ok: true, value: 3 };
+    await expect(
+      manager.evaluate({
+        hostWindow,
+        request: {
+          tabId: "browser:a",
+          expression: "1 + 2",
+          world: "main",
+          channel: "agent-annotations",
+        },
+      }),
+    ).resolves.toEqual({ ok: true, value: 3 });
+    expect(view.webContents.executeJavaScriptCalls).toHaveLength(1);
+    expect(view.webContents.isolatedWorldCalls).toEqual([]);
+
+    view.webContents.executeJavaScriptResult = undefined;
+    await expect(
+      manager.evaluate({
+        hostWindow,
+        request: {
+          tabId: "browser:a",
+          expression: "document.title",
+          world: "isolated",
+          channel: "agent-annotations",
+        },
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      error: "Browser page script returned no result",
+    });
+    expect(
+      view.webContents.isolatedWorldCalls.map((call) => call.worldId),
+    ).toEqual([BB_DESKTOP_BROWSER_PAGE_WORLD_ID]);
+
+    await expect(
+      manager.evaluate({
+        hostWindow,
+        request: {
+          tabId: "browser:missing",
+          expression: "1",
+          world: "main",
+          channel: "agent-annotations",
+        },
+      }),
+    ).resolves.toEqual({ ok: false, error: "Browser tab is not available" });
+  });
+
+  it("forwards only well-formed guest messages to the owning host window", () => {
+    const manager = createDesktopBrowserViewManager({
+      pagePreloadPath: "/app/dist/browser-page-preload.cjs",
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 92,
+    });
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      tabId: "browser:a",
+      url: "https://example.com/",
+    });
+    const view = requireFakeView(0);
+
+    view.webContents.emitIpc(BB_DESKTOP_BROWSER_GUEST_MESSAGE_CHANNEL, {
+      channel: "agent-annotations",
+      data: { type: "state", active: true },
+    });
+    view.webContents.emitIpc(BB_DESKTOP_BROWSER_GUEST_MESSAGE_CHANNEL, {
+      channel: "",
+      data: 1,
+    });
+    view.webContents.emitIpc(BB_DESKTOP_BROWSER_GUEST_MESSAGE_CHANNEL, {
+      channel: "agent-annotations",
+      data: { text: "a".repeat(1_000_001) },
+    });
+
+    const pushes = hostWindow.webContents.sentChannels.flatMap(
+      (channel, index) =>
+        channel === BB_DESKTOP_BROWSER_PAGE_MESSAGE_CHANNEL
+          ? [hostWindow.webContents.sentPayloads[index]]
+          : [],
+    );
+    expect(pushes).toEqual([
+      {
+        tabId: "browser:a",
+        channel: "agent-annotations",
+        data: { type: "state", active: true },
+      },
+    ]);
+  });
+
+  it("keeps isolated page scripts unavailable without the page preload", async () => {
+    const manager = createDesktopBrowserViewManager();
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 93,
+    });
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      tabId: "browser:a",
+      url: "https://example.com/",
+    });
+    const view = requireFakeView(0);
+    expect(view.options.webPreferences.preload).toBeUndefined();
+    await expect(
+      manager.evaluate({
+        hostWindow,
+        request: {
+          tabId: "browser:a",
+          expression: "1",
+          world: "isolated",
+          channel: "agent-annotations",
+        },
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      error: "Browser page scripts are not available",
+    });
+    expect(view.webContents.isolatedWorldCalls).toEqual([]);
+  });
+});
 
 function createRendererRecoveryFixture(
   webContentsId: number,

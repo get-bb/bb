@@ -1,6 +1,7 @@
+import { requestThreadStorageDeletion } from "./thread-lifecycle.js";
 import { assertEnvironmentPathAvailable } from "../environments/path-admission.js";
 import {
-  deleteThread,
+  markThreadDeleted,
   getEnvironment,
   getProjectSourceByHost,
   getThread,
@@ -62,6 +63,7 @@ import {
   type ThreadCreateServiceRequestInput,
   type ThreadCreateServiceRequest,
 } from "./thread-create-request.js";
+import { resolveDispatchAuthor } from "./dispatch-author.js";
 import { deriveTitleFallback } from "./title-generation.js";
 import type { ThreadProvisionEnvironmentIntent } from "./thread-startup-store.js";
 import { resolveSystemProviderModels } from "../system/execution-options.js";
@@ -376,6 +378,12 @@ async function createPendingThreadAndAttemptFirstDispatch(
       : getEnvironment(deps.db, args.environmentId);
   if (environment !== null)
     assertEnvironmentPathAvailable(deps, { ...environment, threadId: null });
+  if (args.request.sourceThreadId) {
+    requireLiveSourceThread(deps, {
+      projectId: args.request.projectId,
+      sourceThreadId: args.request.sourceThreadId,
+    });
+  }
   const thread = createThreadRecord(deps, {
     request: args.request,
     environmentId: args.environmentId,
@@ -453,7 +461,17 @@ async function createPendingThreadAndAttemptFirstDispatch(
       deletedAt: Date.now(),
       updatedAt: Date.now(),
     });
-    deleteThread(deps.db, deps.hub, thread.id);
+    const deleted = markThreadDeleted(deps.db, deps.hub, {
+      threadId: thread.id,
+    });
+    if (deleted)
+      requestThreadStorageDeletion(
+        deps,
+        deleted,
+        deleted.environmentId
+          ? getEnvironment(deps.db, deleted.environmentId)
+          : null,
+      );
     throw error;
   }
   rememberProjectExecutionDefaultsForCreate(deps, {
@@ -611,6 +629,7 @@ export async function createThreadFromRequest(
     }
   }
   await validatePromptAttachmentReferences({
+    db: deps.db,
     dataDir: deps.config.dataDir,
     input: requestInput.input,
     projectId: requestInput.projectId,
@@ -771,10 +790,12 @@ export async function createThreadFromRequest(
       provider: request.providerId,
     },
   });
-  if (
-    (request.startedOnBehalfOf?.initiator ?? "user") === "user" &&
-    request.input.length > 0
-  ) {
+  const { initiator } = resolveDispatchAuthor({
+    retrying: false,
+    senderThreadId: null,
+    startedOnBehalfOf: request.startedOnBehalfOf,
+  });
+  if (initiator === "user" && request.input.length > 0) {
     captureUserMessageSentTelemetry(deps, {
       isChildThread: parentThread !== null,
       messageSource: "thread_create",

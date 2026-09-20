@@ -3,10 +3,8 @@
 import { useState } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  PluginBrowseCategoryFilter,
-  type PluginBrowseCategoryOption,
-} from "./PluginBrowseControls";
+import { PluginBrowseCategoryFilter } from "./PluginBrowseControls";
+import type { PluginBrowseCategoryOption } from "./plugin-browse-discovery";
 
 const OPTIONS: PluginBrowseCategoryOption[] = [
   { id: "memory-and-context", label: "Memory & Context", count: 4 },

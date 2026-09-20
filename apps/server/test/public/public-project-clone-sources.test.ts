@@ -1,7 +1,13 @@
 import { replaceMachineEnvironment } from "../../src/services/machines/environment-settings.js";
 import * as gitCredentials from "../../src/services/machines/git-credentials.js";
 import { updateHost } from "@bb/db";
-import { countProjectSources, getProject, setExperiments } from "@bb/db";
+import {
+  countProjectSources,
+  getAppSettings,
+  getProject,
+  setAppSettings,
+  setExperiments,
+} from "@bb/db";
 import { defaultExperiments } from "@bb/domain";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -134,6 +140,10 @@ describe("project clone sources", () => {
       const first = seedHostSession(harness.deps, { id: "host-clone-first" });
       const second = seedHostSession(harness.deps, { id: "host-clone-second" });
       seedPrimaryHost(harness.deps, first.host.id);
+      setAppSettings(harness.db, {
+        ...getAppSettings(harness.db),
+        machineGitCredentialsEnabled: false,
+      });
       setExperiments(harness.db, {
         ...defaultExperiments,
       });

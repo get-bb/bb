@@ -25,6 +25,7 @@ import { Route as DotwellKnownAppleAppSiteAssociationRouteImport } from "./route
 import { Route as MarketplaceAuthorGithubRouteImport } from "./routes/marketplace_.author.$github";
 import { Route as MarketplaceV2SplatRouteImport } from "./routes/marketplace.v2.$";
 import { Route as MarketplaceV1SplatRouteImport } from "./routes/marketplace.v1.$";
+import { Route as MarketplaceOgPluginIdRouteImport } from "./routes/marketplace.og.$pluginId";
 import { Route as ApiConnectRevokeMachineRouteImport } from "./routes/api.connect.revoke-machine";
 import { Route as ApiConnectRedeemMachineRouteImport } from "./routes/api.connect.redeem-machine";
 import { Route as ApiConnectRedeemRouteImport } from "./routes/api.connect.redeem";
@@ -113,6 +114,11 @@ const MarketplaceV1SplatRoute = MarketplaceV1SplatRouteImport.update({
   path: "/marketplace/v1/$",
   getParentRoute: () => rootRouteImport,
 } as any);
+const MarketplaceOgPluginIdRoute = MarketplaceOgPluginIdRouteImport.update({
+  id: "/marketplace/og/$pluginId",
+  path: "/marketplace/og/$pluginId",
+  getParentRoute: () => rootRouteImport,
+} as any);
 const ApiConnectRevokeMachineRoute = ApiConnectRevokeMachineRouteImport.update({
   id: "/api/connect/revoke-machine",
   path: "/api/connect/revoke-machine",
@@ -158,6 +164,7 @@ export interface FileRoutesByFullPath {
   "/api/connect/redeem": typeof ApiConnectRedeemRoute;
   "/api/connect/redeem-machine": typeof ApiConnectRedeemMachineRoute;
   "/api/connect/revoke-machine": typeof ApiConnectRevokeMachineRoute;
+  "/marketplace/og/$pluginId": typeof MarketplaceOgPluginIdRoute;
   "/marketplace/v1/$": typeof MarketplaceV1SplatRoute;
   "/marketplace/v2/$": typeof MarketplaceV2SplatRoute;
   "/marketplace/author/$github": typeof MarketplaceAuthorGithubRoute;
@@ -181,6 +188,7 @@ export interface FileRoutesByTo {
   "/api/connect/redeem": typeof ApiConnectRedeemRoute;
   "/api/connect/redeem-machine": typeof ApiConnectRedeemMachineRoute;
   "/api/connect/revoke-machine": typeof ApiConnectRevokeMachineRoute;
+  "/marketplace/og/$pluginId": typeof MarketplaceOgPluginIdRoute;
   "/marketplace/v1/$": typeof MarketplaceV1SplatRoute;
   "/marketplace/v2/$": typeof MarketplaceV2SplatRoute;
   "/marketplace/author/$github": typeof MarketplaceAuthorGithubRoute;
@@ -205,6 +213,7 @@ export interface FileRoutesById {
   "/api/connect/redeem": typeof ApiConnectRedeemRoute;
   "/api/connect/redeem-machine": typeof ApiConnectRedeemMachineRoute;
   "/api/connect/revoke-machine": typeof ApiConnectRevokeMachineRoute;
+  "/marketplace/og/$pluginId": typeof MarketplaceOgPluginIdRoute;
   "/marketplace/v1/$": typeof MarketplaceV1SplatRoute;
   "/marketplace/v2/$": typeof MarketplaceV2SplatRoute;
   "/marketplace_/author/$github": typeof MarketplaceAuthorGithubRoute;
@@ -230,6 +239,7 @@ export interface FileRouteTypes {
     | "/api/connect/redeem"
     | "/api/connect/redeem-machine"
     | "/api/connect/revoke-machine"
+    | "/marketplace/og/$pluginId"
     | "/marketplace/v1/$"
     | "/marketplace/v2/$"
     | "/marketplace/author/$github";
@@ -253,6 +263,7 @@ export interface FileRouteTypes {
     | "/api/connect/redeem"
     | "/api/connect/redeem-machine"
     | "/api/connect/revoke-machine"
+    | "/marketplace/og/$pluginId"
     | "/marketplace/v1/$"
     | "/marketplace/v2/$"
     | "/marketplace/author/$github";
@@ -276,6 +287,7 @@ export interface FileRouteTypes {
     | "/api/connect/redeem"
     | "/api/connect/redeem-machine"
     | "/api/connect/revoke-machine"
+    | "/marketplace/og/$pluginId"
     | "/marketplace/v1/$"
     | "/marketplace/v2/$"
     | "/marketplace_/author/$github";
@@ -299,6 +311,7 @@ export interface RootRouteChildren {
   ApiConnectRedeemRoute: typeof ApiConnectRedeemRoute;
   ApiConnectRedeemMachineRoute: typeof ApiConnectRedeemMachineRoute;
   ApiConnectRevokeMachineRoute: typeof ApiConnectRevokeMachineRoute;
+  MarketplaceOgPluginIdRoute: typeof MarketplaceOgPluginIdRoute;
   MarketplaceV1SplatRoute: typeof MarketplaceV1SplatRoute;
   MarketplaceV2SplatRoute: typeof MarketplaceV2SplatRoute;
 }
@@ -417,6 +430,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof MarketplaceV1SplatRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/marketplace/og/$pluginId": {
+      id: "/marketplace/og/$pluginId";
+      path: "/marketplace/og/$pluginId";
+      fullPath: "/marketplace/og/$pluginId";
+      preLoaderRoute: typeof MarketplaceOgPluginIdRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/api/connect/revoke-machine": {
       id: "/api/connect/revoke-machine";
       path: "/api/connect/revoke-machine";
@@ -488,6 +508,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiConnectRedeemRoute: ApiConnectRedeemRoute,
   ApiConnectRedeemMachineRoute: ApiConnectRedeemMachineRoute,
   ApiConnectRevokeMachineRoute: ApiConnectRevokeMachineRoute,
+  MarketplaceOgPluginIdRoute: MarketplaceOgPluginIdRoute,
   MarketplaceV1SplatRoute: MarketplaceV1SplatRoute,
   MarketplaceV2SplatRoute: MarketplaceV2SplatRoute,
 };

@@ -14,12 +14,20 @@ every window and client sees the same value.
 ## Sidebar preferences
 
 - The server keeps a keyed, revisioned registry of sidebar layout preferences
-  (`sidebar.organizationMode`, `sidebar.chronologicalSort`, the section
+  (`sidebar.organizationMode`, `sidebar.threadGrouping.environment`,
+  `sidebar.chronologicalSort`, the section
   orders, the collapsed-id lists, `sidebar.pluginPanelOrder`,
   `sidebar.visiblePluginPanels`, `sidebar.navigationProvider`,
   `sidebar.threadListProvider`).
 - `sidebar.organizationMode` defaults to Custom (`chronological`) when unset;
   existing server and legacy browser choices are preserved.
+- `sidebar.threadGrouping.environment` decides whether sibling threads sharing
+  one worktree environment collapse into a single worktree row inside their
+  section: `true` groups them and `false` keeps every thread on its own row, in
+  every organization mode. The default `auto` groups them in By project and By
+  machine and leaves them flat in Custom. The thread-list header's Organize menu
+  exposes it under Groups as By environment. Each `sidebar.threadGrouping.*` key
+  toggles one grouping dimension independently.
 - `bb settings ui list [--json]` prints every key with its value, revision,
   and description; `bb settings ui get <key> [--json]` prints one.
 - `bb settings ui set <key> <value> [--json]` takes a plain string for enum
@@ -157,6 +165,13 @@ every window and client sees the same value.
 - Enable it with `bb settings experiment timelineWindowing true`.
 - It keeps stable timeline wrappers while mounting only rows near the active
   main or nested detail scrollport.
+
+## Server move
+
+- The `serverMove` experiment defaults to false.
+- Enable it with `bb settings experiment serverMove true`.
+- It shows Move server here in Settings → Machines and lets the server run
+  `bb server move`, `bb server export`, and old server copy deletion.
 
 ## Multi-machine picker
 

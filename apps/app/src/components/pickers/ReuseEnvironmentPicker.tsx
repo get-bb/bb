@@ -1,13 +1,15 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Button } from "@bb/shared-ui/button";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuTrigger,
-} from "@bb/shared-ui/dropdown-menu";
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@bb/shared-ui/command";
+import { Popover, PopoverContent, PopoverTrigger } from "@bb/shared-ui/popover";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
 import {
@@ -33,6 +35,38 @@ import {
 } from "@bb/shared-ui/option-display";
 
 const REUSE_THREAD_PREVIEW_LIMIT = 2;
+const REUSE_SEARCH_MIN_OPTIONS = 7;
+
+function reuseOptionSearchText(
+  option: ReuseThreadOption,
+  providers: readonly SystemEnvironmentProvider[] | undefined,
+): string {
+  const { label, secondaryText } = reuseThreadOptionDisplay(option, providers);
+  return [
+    label,
+    option.name,
+    option.branchName,
+    option.path,
+    secondaryText,
+    ...option.threads.map((thread) => thread.title),
+  ]
+    .filter((part): part is string => Boolean(part))
+    .join(" ")
+    .toLowerCase();
+}
+
+export function filterReuseThreadOptions(
+  options: readonly ReuseThreadOption[],
+  query: string,
+  providers: readonly SystemEnvironmentProvider[] | undefined,
+): readonly ReuseThreadOption[] {
+  const terms = query.trim().toLowerCase().split(/\s+/u).filter(Boolean);
+  if (terms.length === 0) return options;
+  return options.filter((option) => {
+    const haystack = reuseOptionSearchText(option, providers);
+    return terms.every((term) => haystack.includes(term));
+  });
+}
 
 export interface ReuseThreadOption {
   environmentId: string;
@@ -86,17 +120,31 @@ export function ReuseEnvironmentPicker({
   modal,
 }: ReuseEnvironmentPickerProps) {
   const { providers } = useSystemEnvironmentProviders();
+  const [open, setOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const activeOption = useMemo(
     () => options.find((option) => option.environmentId === value) ?? null,
     [options, value],
   );
+  const showSearch = options.length >= REUSE_SEARCH_MIN_OPTIONS;
+  const visibleOptions = useMemo(
+    () =>
+      showSearch
+        ? filterReuseThreadOptions(options, searchQuery, providers)
+        : options,
+    [options, providers, searchQuery, showSearch],
+  );
+  const handleOpenChange = (nextOpen: boolean) => {
+    setOpen(nextOpen);
+    if (!nextOpen) setSearchQuery("");
+  };
   const trigger =
     activeOption === null
       ? { label: "Pick an environment", icon: REUSE_ENVIRONMENT_ICON_NAME }
       : reuseThreadOptionDisplay(activeOption, providers);
   return (
-    <DropdownMenu modal={modal}>
-      <DropdownMenuTrigger asChild disabled={disabled}>
+    <Popover open={open} onOpenChange={handleOpenChange} modal={modal}>
+      <PopoverTrigger asChild disabled={disabled}>
         <Button
           type="button"
           variant="ghost"
@@ -131,30 +179,56 @@ export function ReuseEnvironmentPicker({
             />
           )}
         </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent
+      </PopoverTrigger>
+      <PopoverContent
         align="start"
-        className={cn(OPTION_MENU_CONTENT_CLASS_NAME, "max-w-80")}
+        aria-label="Reuse an existing environment"
         mobileTitle="Environment"
-      >
-        <DropdownMenuLabel>Reuse an existing environment</DropdownMenuLabel>
-        {options.length === 0 ? (
-          <div className="px-2 py-2 text-xs text-muted-foreground">
-            Nothing to reuse yet.
-          </div>
-        ) : (
-          options.map((option) => (
-            <ReuseEnvironmentMenuItem
-              key={option.environmentId}
-              option={option}
-              providers={providers}
-              isSelected={option.environmentId === value}
-              onSelect={onChange}
-            />
-          ))
+        className={cn(
+          OPTION_MENU_CONTENT_CLASS_NAME,
+          "flex max-h-[min(var(--radix-popover-content-available-height),calc(100dvh-0.5rem))] w-auto max-w-80 min-w-52 flex-col overflow-hidden p-0 max-md:min-h-0 max-md:w-full max-md:flex-1",
         )}
-      </DropdownMenuContent>
-    </DropdownMenu>
+      >
+        <Command label="Search environments" shouldFilter={false}>
+          {showSearch ? (
+            <CommandInput
+              aria-label="Search environments"
+              placeholder="Search environments"
+              value={searchQuery}
+              onValueChange={setSearchQuery}
+              className="h-8 text-xs"
+            />
+          ) : null}
+          <CommandList className="min-h-0 max-h-none flex-1 overscroll-contain">
+            {options.length === 0 ? (
+              <div className="px-2 py-2 text-xs text-muted-foreground">
+                Nothing to reuse yet.
+              </div>
+            ) : (
+              <>
+                <CommandEmpty className="px-2 py-2 text-xs text-muted-foreground">
+                  No environments match.
+                </CommandEmpty>
+                <CommandGroup heading="Reuse an existing environment">
+                  {visibleOptions.map((option) => (
+                    <ReuseEnvironmentMenuItem
+                      key={option.environmentId}
+                      option={option}
+                      providers={providers}
+                      isSelected={option.environmentId === value}
+                      onSelect={(environmentId) => {
+                        onChange(environmentId);
+                        handleOpenChange(false);
+                      }}
+                    />
+                  ))}
+                </CommandGroup>
+              </>
+            )}
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -179,7 +253,9 @@ function ReuseEnvironmentMenuItem({
   );
   const branchDetail = option.name ? option.branchName : null;
   return (
-    <DropdownMenuItem
+    <CommandItem
+      value={option.environmentId}
+      aria-current={isSelected ? "true" : undefined}
       onSelect={() => onSelect(option.environmentId)}
       className={cn(
         "flex flex-col items-stretch gap-1 py-2",
@@ -229,6 +305,6 @@ function ReuseEnvironmentMenuItem({
           ) : null}
         </span>
       ) : null}
-    </DropdownMenuItem>
+    </CommandItem>
   );
 }

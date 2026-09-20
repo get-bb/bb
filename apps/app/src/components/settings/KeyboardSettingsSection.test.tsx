@@ -200,6 +200,110 @@ afterEach(() => {
 });
 
 describe("KeyboardSettingsSection", () => {
+  it("ranks visible label matches ahead of description matches across groups", () => {
+    render(<KeyboardSettingsSection />);
+
+    fireEvent.change(
+      screen.getByRole("textbox", { name: "Search keyboard shortcuts" }),
+      {
+        target: { value: "  SiDeBaR  " },
+      },
+    );
+
+    expect(
+      screen
+        .getAllByRole("button", { name: /^Record shortcut for / })[0]
+        ?.getAttribute("aria-label"),
+    ).toMatch(/^Record shortcut for Toggle sidebar,/);
+  });
+
+  it("ranks exact labels, label prefixes, label substrings, IDs, and descriptions in order", () => {
+    setPluginSlotRegistrations(
+      "test-shortcuts",
+      collectPluginAppRegistrations({
+        __bbPluginApp: true,
+        setup(app) {
+          for (const [id, title] of [
+            ["sidebar-open", "Open navigation"],
+            ["tools", "Sidebar tools"],
+            ["exact", "Sidebar"],
+            ["settings", "Sidebar settings"],
+          ]) {
+            app.commands.register({ id, title, run() {} });
+          }
+        },
+      }),
+    );
+    render(<KeyboardSettingsSection />);
+
+    fireEvent.change(
+      screen.getByRole("textbox", { name: "Search keyboard shortcuts" }),
+      {
+        target: { value: "sidebar" },
+      },
+    );
+
+    const labels = screen
+      .getAllByRole("button", { name: /^Record shortcut for / })
+      .map(
+        (recorder) =>
+          recorder.getAttribute("aria-label")?.split(", current shortcut")[0],
+      );
+    expect(labels.slice(0, 6)).toEqual([
+      "Record shortcut for Sidebar",
+      "Record shortcut for Sidebar tools",
+      "Record shortcut for Sidebar settings",
+      "Record shortcut for Toggle sidebar",
+      "Record shortcut for Open navigation",
+      "Record shortcut for Previous thread",
+    ]);
+  });
+
+  it("restores category and command order when the search is cleared", () => {
+    render(<KeyboardSettingsSection />);
+    const originalLabels = screen
+      .getAllByRole("button", { name: /^Record shortcut for / })
+      .map((recorder) => recorder.getAttribute("aria-label"));
+    const originalHeadings = screen
+      .getAllByRole("heading", { level: 3 })
+      .map((heading) => heading.textContent);
+    const search = screen.getByRole("textbox", {
+      name: "Search keyboard shortcuts",
+    });
+
+    fireEvent.change(search, { target: { value: "sidebar" } });
+    fireEvent.change(search, { target: { value: "  " } });
+
+    expect(
+      screen
+        .getAllByRole("button", { name: /^Record shortcut for / })
+        .map((recorder) => recorder.getAttribute("aria-label")),
+    ).toEqual(originalLabels);
+    expect(
+      screen
+        .getAllByRole("heading", { level: 3 })
+        .map((heading) => heading.textContent),
+    ).toEqual(originalHeadings);
+  });
+
+  it("shows the empty state when no shortcut matches", () => {
+    render(<KeyboardSettingsSection />);
+
+    fireEvent.change(
+      screen.getByRole("textbox", { name: "Search keyboard shortcuts" }),
+      {
+        target: { value: "nonexistent-shortcut" },
+      },
+    );
+
+    expect(
+      screen.getByText("No shortcuts match “nonexistent-shortcut”."),
+    ).toBeDefined();
+    expect(
+      screen.queryAllByRole("button", { name: /^Record shortcut for / }),
+    ).toHaveLength(0);
+  });
+
   it("lists commands without defaults and persists bindings under stable plugin IDs", () => {
     setPluginSlotRegistrations(
       "test-shortcuts",

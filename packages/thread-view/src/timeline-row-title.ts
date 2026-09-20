@@ -150,6 +150,10 @@ type TimelineApprovalWorkRow = Extract<
   TimelineViewWorkRow,
   { workKind: "approval" }
 >;
+type TimelineFormViewWorkRow = Extract<
+  TimelineViewWorkRow,
+  { workKind: "form" }
+>;
 type TimelineFileEditApprovalWorkRow = Extract<
   TimelineApprovalWorkRow,
   { approvalKind: "file-edit" }
@@ -1272,6 +1276,31 @@ function mapQuestionTitle(row: TimelineQuestionViewWorkRow): TimelineTitle {
   }
 }
 
+function mapFormTitle(row: TimelineFormViewWorkRow): TimelineTitle {
+  const { presentation } = row;
+  switch (row.lifecycle) {
+    case "pending":
+      return makeTitle({
+        segments: [segment(presentation.label.pending, { shimmer: true })],
+      });
+    case "submitted":
+      return makeTitle({
+        segments: [
+          segment(presentation.title ?? presentation.label.completed, {
+            truncate: true,
+          }),
+        ],
+      });
+    case "cancelled":
+      return makeTitle({
+        segments: [segment(presentation.label.completed, { truncate: true })],
+        decorations: [statusDecoration("interrupted", null)],
+      });
+    default:
+      return assertNever(row.lifecycle);
+  }
+}
+
 function mapFileReadTitle(row: TimelineFileReadWorkRow): TimelineTitle {
   if (row.presentation) {
     return presentedTitle({
@@ -1418,6 +1447,8 @@ function mapWorkTitle(
         return mapApprovalTitle(row);
       case "question":
         return mapQuestionTitle(row);
+      case "form":
+        return mapFormTitle(row);
       default:
         return assertNever(row);
     }

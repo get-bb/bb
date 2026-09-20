@@ -386,8 +386,16 @@ describe("createAgentRuntime lifecycle", () => {
         expect(record.last("thread/resume")?.params).toMatchObject({
           options: { envVars: { GH_TOKEN: "resumed-git-token" } },
         });
-        expect(JSON.stringify(events)).toContain("first-git-token");
-        expect(JSON.stringify(events)).toContain("resumed-git-token");
+        expect(
+          JSON.stringify(
+            events.filter((event) => event.type === "provider.env-resolved"),
+          ),
+        ).not.toContain("first-git-token");
+        expect(
+          JSON.stringify(
+            events.filter((event) => event.type === "provider.env-resolved"),
+          ),
+        ).not.toContain("resumed-git-token");
         expect(
           events.filter((event) => event.type === "provider.env-resolved"),
         ).toEqual(
@@ -396,12 +404,61 @@ describe("createAgentRuntime lifecycle", () => {
               entries: expect.arrayContaining([
                 expect.objectContaining({
                   name: "GH_TOKEN",
-                  value: "rotated-git-token",
+                  value: { masked: true },
                 }),
               ]),
             }),
           ]),
         );
+      } finally {
+        await runtime.shutdown();
+      }
+    });
+
+    it("removes project overrides from a reused runtime on the next turn", async () => {
+      const record = createScriptedEchoRequestRecord();
+      const events: ThreadEvent[] = [];
+      const runtime = createScriptedEchoRuntime({
+        runtime: {
+          workspacePath: tmpDir,
+          env: record.env,
+          onEvent: (event) => events.push(event),
+        },
+      });
+      try {
+        await runtime.startThread({
+          environmentId: "env-project",
+          projectId: "project-a",
+          threadId: "project-thread",
+          providerId: "fake",
+          options: fullRuntimeOptions,
+          contributedEnv: [
+            {
+              name: "PROJECT_SECRET",
+              value: "project-private",
+              reason: "Project",
+              source: { core: "project-environment" },
+            },
+          ],
+        });
+        expect(record.last("thread/start")?.params).toMatchObject({
+          options: { envVars: { PROJECT_SECRET: "project-private" } },
+        });
+        await runtime.runTurn({
+          threadId: "project-thread",
+          clientRequestId: "creq_222222224d",
+          input: [promptTextInput({ text: "removed" })],
+          options: fullRuntimeOptions,
+          contributedEnv: [],
+        });
+        const options = record.last("turn/start")?.params?.options;
+        expect(options).toHaveProperty("envVars.BB_PROJECT_ID", "project-a");
+        expect(options).not.toHaveProperty("envVars.PROJECT_SECRET");
+        expect(
+          JSON.stringify(
+            events.filter((event) => event.type === "provider.env-resolved"),
+          ),
+        ).not.toContain("project-private");
       } finally {
         await runtime.shutdown();
       }

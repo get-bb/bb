@@ -17,6 +17,7 @@ import { PromptMentionIcon } from "@/components/promptbox/mentions/PromptMention
 import { shouldLoadMoreCommandResults } from "@/components/promptbox/mentions/mention-menu-scroll";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
 import { Icon } from "@bb/shared-ui/icon";
+import { Pill } from "@bb/shared-ui/pill";
 import { TruncateStart } from "@/components/ui/truncate-start.js";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
@@ -24,6 +25,7 @@ import {
   type OrderedMentionSuggestions,
   type PromptMentionSuggestion,
   type ProviderCommandSuggestion,
+  type ThreadMentionRelation,
   type TypeaheadMenuState,
 } from "@bb/client-core";
 
@@ -100,10 +102,55 @@ function getPathSectionLabel(item: PathMentionSuggestion): string {
   return "Workspace";
 }
 
+const THREAD_MENTION_RELATION_LABEL: Record<ThreadMentionRelation, string> = {
+  parent: "parent",
+  child: "child",
+  "same-parent": "same parent",
+  "same-environment": "same environment",
+};
+
+const THREAD_MENTION_RELATION_COMPACT_LABEL: Record<
+  ThreadMentionRelation,
+  string
+> = {
+  parent: "parent",
+  child: "child",
+  "same-parent": "same parent",
+  "same-environment": "same env",
+};
+
+function threadMentionRelationLabel(
+  relation: ThreadMentionRelation | null,
+): string | null {
+  return relation === null ? null : THREAD_MENTION_RELATION_LABEL[relation];
+}
+
+function ThreadRelationPill({ relation }: { relation: ThreadMentionRelation }) {
+  const label = THREAD_MENTION_RELATION_LABEL[relation];
+  const compactLabel = THREAD_MENTION_RELATION_COMPACT_LABEL[relation];
+  return (
+    <Pill variant="secondary" size="sm">
+      {label === compactLabel ? (
+        label
+      ) : (
+        <>
+          <span className="@max-[26rem]/mention-menu:hidden">{label}</span>
+          <span className="hidden @max-[26rem]/mention-menu:inline">
+            {compactLabel}
+          </span>
+        </>
+      )}
+    </Pill>
+  );
+}
+
 function getMentionTitle(item: PromptMentionSuggestion): string {
   if (item.kind === "thread") {
     const title = item.title || item.path;
-    return item.projectName ? `${title} · ${item.projectName}` : title;
+    const relationLabel = threadMentionRelationLabel(item.relation);
+    return [title, item.projectName, relationLabel]
+      .filter((part): part is string => part !== undefined && part !== null)
+      .join(" · ");
   }
 
   if (item.kind === "project") {
@@ -211,6 +258,7 @@ interface SuggestionRowProps {
   icon: ReactNode;
   primary: string;
   trailing: ReactNode;
+  badge?: ReactNode;
   title: string;
   onApply: () => void;
   itemRefs: React.MutableRefObject<Array<HTMLButtonElement | null>>;
@@ -222,6 +270,7 @@ function SuggestionRow({
   icon,
   primary,
   trailing,
+  badge,
   title,
   onApply,
   itemRefs,
@@ -247,6 +296,9 @@ function SuggestionRow({
         {icon}
         <span className="truncate text-foreground">{primary}</span>
         {trailing}
+        {badge === undefined ? null : (
+          <span className="ml-auto shrink-0">{badge}</span>
+        )}
       </div>
     </button>
   );
@@ -383,6 +435,11 @@ function MentionResults({
                     ) : (
                       <MutedTrailing>{secondaryContext}</MutedTrailing>
                     )
+                  }
+                  badge={
+                    item.kind === "thread" && item.relation !== null ? (
+                      <ThreadRelationPill relation={item.relation} />
+                    ) : undefined
                   }
                   title={getMentionTitle(item)}
                   onApply={() => onApply(item)}
@@ -524,7 +581,7 @@ export function MentionMenu({
   }, [resultsLength, selectedIndex]);
 
   return (
-    <div className="overflow-hidden rounded-md border border-border bg-popover text-popover-foreground">
+    <div className="@container/mention-menu overflow-hidden rounded-md border border-border bg-popover text-popover-foreground">
       <div className="max-h-48 overflow-y-auto" onScroll={handleScroll}>
         {innerState.kind === "hint" ? (
           <MenuStatusRow

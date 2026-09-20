@@ -48,6 +48,14 @@ experimental_openFilePreview(options), experimental_openFileExternally(options) 
 experimental_data })` submits now and carries plugin-owned JSON to dispatch
   hooks on the initial attempt; bb automatically namespaces it with the
   calling plugin's id but does not persist it.
+  `experimental_setSelection({ projectId?, environment?, providerId?, model?,
+  reasoningLevel?, serviceTier?, permissionMode? })` sets the composer's
+  pickers as if picked by hand and resolves with the composer's own settled
+  selection, limited to the pickers that composer has: omitted fields are
+  left alone, fields the composer has no picker for are ignored (a thread has
+  no project or environment), and a value that comes back different was
+  reconciled. In a thread a provider change starts the same handoff the
+  picker starts. It rejects in a queued-message editor or a side chat.
 - `useComposerView()` → reactive `{ scope, layout, draft, run }` for the
   composer instance that mounted an action or banner. `layout` is
   `"expanded" | "compact" | "zen"`; `draft` is

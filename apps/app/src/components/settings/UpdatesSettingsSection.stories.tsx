@@ -157,7 +157,11 @@ function StoryMachineSection({
   const showDaemon =
     machine.canRetryDaemonUpdate || machine.host.status !== "connected";
   return (
-    <MachineUpdatesSection machine={machine} isThisMachine={false}>
+    <MachineUpdatesSection
+      machine={machine}
+      isThisMachine={false}
+      showServerBadge={false}
+    >
       {app ? (
         <BbAppUpdateRows
           systemVersion={appUpdate ? undefined : NPM_VERSION}
@@ -215,7 +219,11 @@ function StoryAppState({ children }: { children: ReactNode }) {
     isPrimary: true,
   });
   return (
-    <MachineUpdatesSection machine={machine} isThisMachine={false}>
+    <MachineUpdatesSection
+      machine={machine}
+      isThisMachine={false}
+      showServerBadge={false}
+    >
       {children}
     </MachineUpdatesSection>
   );
@@ -475,6 +483,7 @@ export function UpdateStates() {
           <MachineUpdatesSection
             machine={providerInstalling}
             isThisMachine={false}
+            showServerBadge={false}
           >
             <MachineUpdatesRows
               machine={providerInstalling}

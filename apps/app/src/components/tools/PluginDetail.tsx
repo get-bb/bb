@@ -1,3 +1,4 @@
+import { PluginCardAuthor } from "@/components/plugin/management/PluginCard";
 import { useSyncExternalStore } from "react";
 import {
   ResourceActivitySection,
@@ -35,7 +36,6 @@ import {
 } from "@/components/plugin/management/plugin-ui";
 import {
   PluginMarketplaceCategoryPill,
-  PluginMarketplaceHeaderMetadata,
   PluginMarketplaceListingSections,
   PluginMoreFromAuthorSection,
   PluginOverviewLead,
@@ -68,7 +68,9 @@ import { useClipboardCopy } from "@/lib/clipboard";
 
 export function PluginProvenancePill({ plugin }: { plugin: PluginListItem }) {
   const label = plugin.publisherLabel;
-  return label === null ? null : <ProvenancePill label={label} />;
+  return label === null || label === "BB Official" ? null : (
+    <ProvenancePill label={label} />
+  );
 }
 
 export function pluginIsLocalSource(plugin: PluginListItem): boolean {
@@ -136,7 +138,7 @@ export function CatalogPluginDetail({
       leadingClassName="size-10"
       title={entry.displayName}
       titleMeta={<PluginMarketplaceCategoryPill entry={entry} />}
-      metadata={<PluginMarketplaceHeaderMetadata entry={entry} />}
+      metadata={<PluginCardAuthor entry={entry} />}
       actions={
         <ResourceInstallControl
           accessibleLabel={`Install ${entry.displayName}`}
@@ -337,9 +339,18 @@ export function PluginDetail({
       }
       metadata={
         <div className="space-y-1">
-          {catalogEntry === undefined ? null : (
-            <PluginMarketplaceHeaderMetadata entry={catalogEntry} />
-          )}
+          {catalogEntry !== undefined ? (
+            <PluginCardAuthor entry={catalogEntry} />
+          ) : plugin.provenance === "builtin" ||
+            plugin.catalogMarketplaceName === "bb-official" ? (
+            <PluginCardAuthor
+              entry={{
+                author: null,
+                marketplace: "bb-official",
+                publisherLabel: "BB Official",
+              }}
+            />
+          ) : null}
           <PluginPath path={plugin.rootDir} />
         </div>
       }

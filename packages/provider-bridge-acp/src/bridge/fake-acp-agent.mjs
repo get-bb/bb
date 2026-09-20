@@ -515,11 +515,14 @@ async function handlePrompt(message) {
     notifyUpdate(messageChunk(`permission:${outcome}`));
   } else if (text.includes("write-file")) {
     try {
-      await requestClient("fs/write_text_file", {
+      const result = await requestClient("fs/write_text_file", {
         sessionId: activeSessionId,
         path: process.env.FAKE_ACP_WRITE_PATH,
         content: "hello from agent\n",
       });
+      if (!result || typeof result !== "object" || Array.isArray(result)) {
+        throw new Error("Invalid fs/write_text_file response");
+      }
       notifyUpdate(messageChunk("write:ok"));
     } catch {
       notifyUpdate(messageChunk("write:denied"));

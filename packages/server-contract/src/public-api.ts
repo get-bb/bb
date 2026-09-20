@@ -1,4 +1,11 @@
-import { type MachineEnvironmentList } from "./api/machine-environment.js";
+import {
+  machineEnvironmentSetSchema,
+  machineEnvironmentDeleteSchema,
+  type MachineEnvironmentSet,
+  type MachineEnvironmentDelete,
+  type ProjectMachineEnvironmentList,
+  type MachineEnvironmentList,
+} from "./api/machine-environment.js";
 import {
   machineEnvironmentReplaceSchema,
   type MachineEnvironmentReplace,
@@ -373,6 +380,16 @@ import {
   updateProjectSourceRequestSchema,
   updateThreadRequestSchema,
 } from "./api-types.js";
+import {
+  serverMoveCheckRequestSchema,
+  serverMoveStartRequestSchema,
+  type DeleteOldServerCopyResponse,
+  type ServerMoveCheckRequest,
+  type ServerMoveCheckResponse,
+  type ServerMoveStartRequest,
+  type ServerMoveStatus,
+  type ServerMoveStatusResponse,
+} from "./api/server-move.js";
 import type { ApiError } from "./errors.js";
 
 type PathProjectSourceId = { param: { id: string; sourceId: string } };
@@ -382,6 +399,37 @@ type PathThreadInteractionId = {
 
 export const publicApiRoutes = {
   projects: {
+    machineEnvironment: defineRoute({
+      path: "/projects/:id/machine-environment",
+      method: "get",
+      request: noRequest<PathProjectId>(),
+      response: jsonResponse<ProjectMachineEnvironmentList>(),
+    }),
+    replaceMachineEnvironment: defineRoute({
+      path: "/projects/:id/machine-environment",
+      method: "put",
+      request: jsonRequest<PathProjectId, MachineEnvironmentReplace>(
+        machineEnvironmentReplaceSchema,
+      ),
+      response: jsonResponse<ProjectMachineEnvironmentList>(),
+    }),
+    setMachineEnvironmentVariable: defineRoute({
+      path: "/projects/:id/machine-environment",
+      method: "post",
+      request: jsonRequest<PathProjectId, MachineEnvironmentSet>(
+        machineEnvironmentSetSchema,
+      ),
+      response: jsonResponse<ProjectMachineEnvironmentList>(),
+    }),
+    deleteMachineEnvironmentVariable: defineRoute({
+      path: "/projects/:id/machine-environment",
+      method: "delete",
+      request: jsonRequest<PathProjectId, MachineEnvironmentDelete>(
+        machineEnvironmentDeleteSchema,
+      ),
+      response: jsonResponse<ProjectMachineEnvironmentList>(),
+    }),
+
     list: defineRoute({
       path: "/projects",
       method: "get",
@@ -810,6 +858,12 @@ export const publicApiRoutes = {
       request: noRequest<PathId>(),
       response: jsonResponse<HostRetryUpdateResponse>(),
     }),
+    reconcile: defineRoute({
+      path: "/hosts/:id/reconcile",
+      method: "post",
+      request: noRequest<PathId>(),
+      response: jsonResponse<Host, 202>({ status: 202 }),
+    }),
     suspend: defineRoute({
       path: "/hosts/:id/suspend",
       method: "post",
@@ -879,6 +933,48 @@ export const publicApiRoutes = {
         hostProviderCliInstallRequestSchema,
       ),
       response: textResponse<HostProviderCliInstallEvent>(),
+    }),
+    deleteOldServerCopy: defineRoute({
+      path: "/hosts/:id/old-server-copy",
+      method: "delete",
+      request: noRequest<PathId>(),
+      response: jsonResponse<DeleteOldServerCopyResponse>(),
+    }),
+  },
+  server: {
+    checkMove: defineRoute({
+      path: "/server/move/check",
+      method: "post",
+      request: jsonRequest<EmptyInput, ServerMoveCheckRequest>(
+        serverMoveCheckRequestSchema,
+      ),
+      response: jsonResponse<ServerMoveCheckResponse>(),
+    }),
+    startMove: defineRoute({
+      path: "/server/move",
+      method: "post",
+      request: jsonRequest<EmptyInput, ServerMoveStartRequest>(
+        serverMoveStartRequestSchema,
+      ),
+      response: jsonResponse<ServerMoveStatus>(),
+    }),
+    moveStatus: defineRoute({
+      path: "/server/move",
+      method: "get",
+      request: noRequest(),
+      response: jsonResponse<ServerMoveStatusResponse>(),
+    }),
+    cancelMove: defineRoute({
+      path: "/server/move/cancel",
+      method: "post",
+      request: noRequest(),
+      response: jsonResponse<ServerMoveStatus>(),
+    }),
+    export: defineRoute({
+      path: "/server/export",
+      method: "post",
+      request: noRequest(),
+      response: binaryResponse<Uint8Array>(),
     }),
   },
 
@@ -1594,6 +1690,23 @@ export const publicApiRoutes = {
   },
 
   system: {
+    setMachineEnvironmentVariable: defineRoute({
+      path: "/settings/machine-environment",
+      method: "post",
+      request: jsonRequest<EmptyInput, MachineEnvironmentSet>(
+        machineEnvironmentSetSchema,
+      ),
+      response: jsonResponse<MachineEnvironmentList>(),
+    }),
+    deleteMachineEnvironmentVariable: defineRoute({
+      path: "/settings/machine-environment",
+      method: "delete",
+      request: jsonRequest<EmptyInput, MachineEnvironmentDelete>(
+        machineEnvironmentDeleteSchema,
+      ),
+      response: jsonResponse<MachineEnvironmentList>(),
+    }),
+
     machineEnvironment: defineRoute({
       path: "/settings/machine-environment",
       method: "get",

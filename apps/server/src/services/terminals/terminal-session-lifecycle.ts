@@ -15,6 +15,7 @@ import type {
   HostDaemonDaemonWsMessage,
   HostDaemonServerWsMessage,
 } from "@bb/host-daemon-contract";
+import { HOST_DAEMON_TERMINAL_EXIT_RETENTION_MS } from "@bb/host-daemon-contract/protocol";
 import type {
   CloseTerminalRequest,
   CreateTerminalRequest,
@@ -44,6 +45,10 @@ import {
 } from "../lib/lifecycle-api-errors.js";
 import { requireWorkspaceCommandTarget } from "../environments/workspace-command-target.js";
 import {
+  isServerMoveSnapshotFenced,
+  serverMovingError,
+} from "../server-move/freeze-state.js";
+import {
   type PendingRpcKey,
   PendingRpcRegistry,
 } from "./pending-rpc-registry.js";
@@ -56,6 +61,13 @@ const DEFAULT_TERMINAL_START: NonNullable<CreateTerminalRequest["start"]> = {
 const HOST_HOME_INITIAL_CWD = "~";
 const BROWSER_TERMINAL_REPLAY_MAX_BYTES = 512 * 1024;
 const TERMINAL_SCROLLBACK_MAX_BYTES = 4 * 1024 * 1024;
+const TERMINAL_EXIT_RETENTION_MINUTES = Math.round(
+  HOST_DAEMON_TERMINAL_EXIT_RETENTION_MS / 60_000,
+);
+const TERMINAL_OUTPUT_NOT_RUNNING_MESSAGE =
+  "Terminal output is unavailable because the session is not running";
+const TERMINAL_OUTPUT_DISCARDED_MESSAGE = `The host no longer has the output of this exited terminal. Hosts keep terminal output for ${TERMINAL_EXIT_RETENTION_MINUTES} minutes after a terminal exits, so read it sooner or run the command again.`;
+const TERMINAL_OUTPUT_HOST_GONE_MESSAGE = `The host session that ran this terminal is no longer connected, so its output is gone. Hosts keep terminal output for ${TERMINAL_EXIT_RETENTION_MINUTES} minutes after a terminal exits and lose it when the host daemon restarts.`;
 const TERMINAL_ATTACH_CANCELLED = new Error("Terminal attach cancelled");
 const DAEMON_OWNED_TERMINAL_STATUSES = ["starting", "running"] as const;
 const NON_TERMINAL_SESSION_STATUSES = [
@@ -176,6 +188,22 @@ interface ResizeTerminalArgs {
 interface ReadTerminalOutputArgs {
   query: TerminalOutputQuery;
   terminalId: string;
+}
+
+interface ReadRunningTerminalOutputArgs {
+  query: TerminalOutputQuery;
+  session: RunningBrowserTerminalSession;
+}
+
+interface ReadExitedTerminalOutputArgs {
+  query: TerminalOutputQuery;
+  session: TerminalSessionRow;
+}
+
+interface RequestTerminalOutputReplayArgs {
+  daemonSessionId: string;
+  query: TerminalOutputQuery;
+  session: TerminalSessionRow;
 }
 
 interface GetRunningBrowserTerminalArgs {
@@ -300,6 +328,11 @@ interface HandleDaemonTerminalMessageArgs {
   sessionId: string;
 }
 
+interface RefuseDaemonTerminalOpenArgs {
+  message: TerminalOpenedMessage;
+  sessionId: string;
+}
+
 interface HandleDaemonSessionClosedArgs {
   sessionId: string;
 }
@@ -394,6 +427,27 @@ function applyTerminalOutputBounds(args: {
     truncated = true;
   }
   return { chunks: bounded, truncated };
+}
+
+function retainedTerminalOutputError(error: unknown): ApiError | null {
+  if (!(error instanceof ApiError)) {
+    return null;
+  }
+  if (error.body.code === "terminal_not_found") {
+    return new ApiError(
+      409,
+      "terminal_output_unavailable",
+      TERMINAL_OUTPUT_DISCARDED_MESSAGE,
+    );
+  }
+  if (error.body.code === "host_disconnected") {
+    return new ApiError(
+      409,
+      "terminal_output_unavailable",
+      TERMINAL_OUTPUT_HOST_GONE_MESSAGE,
+    );
+  }
+  return null;
 }
 
 function isRunningBrowserTerminalSession(
@@ -731,27 +785,29 @@ export class TerminalSessionLifecycle {
     try {
       opened = await pendingOpen;
     } catch (error) {
-      if (
-        error instanceof ApiError &&
-        error.body.code === "terminal_open_timeout"
-      ) {
-        const exited = updateTerminalById(this.options.db, startingSession.id, {
-          closeReason: "open-timeout",
-          exitCode: null,
-          kind: "exit",
-        });
-        if (exited) {
-          this.notifyTerminalSessionChanged(exited);
+      const code = error instanceof ApiError ? error.body.code : null;
+      const fenced = isServerMoveSnapshotFenced(this.options.db);
+      if (code === "terminal_open_timeout" || code === "server_moving") {
+        if (!fenced) {
+          const exited = updateTerminalById(
+            this.options.db,
+            startingSession.id,
+            {
+              closeReason: "open-timeout",
+              exitCode: null,
+              kind: "exit",
+            },
+          );
+          if (exited) {
+            this.notifyTerminalSessionChanged(exited);
+          }
         }
         this.options.hub.sendDaemonSessionMessage(daemonSession.id, {
           type: "terminal.close",
           terminalId: startingSession.id,
           reason: "open-timeout",
         });
-      } else if (
-        !(error instanceof ApiError) ||
-        error.body.code !== "host_disconnected"
-      ) {
+      } else if (!fenced && code !== "host_disconnected") {
         const exited = updateTerminalById(this.options.db, startingSession.id, {
           closeReason: "process-exit",
           exitCode: null,
@@ -1130,32 +1186,97 @@ export class TerminalSessionLifecycle {
         "Terminal session not found",
       );
     }
-    if (!isRunningBrowserTerminalSession(current)) {
+    if (isRunningBrowserTerminalSession(current)) {
+      return this.readRunningTerminalOutput({
+        query: args.query,
+        session: current,
+      });
+    }
+    if (current.status !== "exited") {
       throw new ApiError(
         409,
         "terminal_output_unavailable",
-        "Terminal output is unavailable because the session is not running",
+        TERMINAL_OUTPUT_NOT_RUNNING_MESSAGE,
       );
     }
+    return this.readExitedTerminalOutput({
+      query: args.query,
+      session: current,
+    });
+  }
 
+  private async readRunningTerminalOutput(
+    args: ReadRunningTerminalOutputArgs,
+  ): Promise<TerminalOutputResponse> {
+    try {
+      return await this.requestTerminalOutputReplay({
+        daemonSessionId: args.session.daemonSessionId,
+        query: args.query,
+        session: args.session,
+      });
+    } catch (error) {
+      if (
+        !(error instanceof ApiError) ||
+        error.body.code !== "terminal_exited"
+      ) {
+        throw error;
+      }
+      const exited = getTerminalById(this.options.db, args.session.id);
+      if (exited?.status !== "exited") {
+        throw error;
+      }
+      return this.readExitedTerminalOutput({
+        query: args.query,
+        session: exited,
+      });
+    }
+  }
+
+  private async readExitedTerminalOutput(
+    args: ReadExitedTerminalOutputArgs,
+  ): Promise<TerminalOutputResponse> {
+    const daemonSessionId = this.options.hub.getDaemonSessionIdForHost(
+      args.session.hostId,
+    );
+    if (daemonSessionId === null) {
+      throw new ApiError(
+        409,
+        "terminal_output_unavailable",
+        TERMINAL_OUTPUT_HOST_GONE_MESSAGE,
+      );
+    }
+    try {
+      return await this.requestTerminalOutputReplay({
+        daemonSessionId,
+        query: args.query,
+        session: args.session,
+      });
+    } catch (error) {
+      throw retainedTerminalOutputError(error) ?? error;
+    }
+  }
+
+  private async requestTerminalOutputReplay(
+    args: RequestTerminalOutputReplayArgs,
+  ): Promise<TerminalOutputResponse> {
     const requestId = randomUUID();
     const pendingReplayKey = terminalRpcKey(
-      current.daemonSessionId,
-      current.id,
+      args.daemonSessionId,
+      args.session.id,
       requestId,
     );
     const pendingReplay = this.pendingOutputReads.claim({
-      daemonSessionId: current.daemonSessionId,
+      daemonSessionId: args.daemonSessionId,
       requestId,
       rpcKey: pendingReplayKey,
-      terminalId: current.id,
+      terminalId: args.session.id,
     }).promise;
     const sent = this.options.hub.sendDaemonSessionMessage(
-      current.daemonSessionId,
+      args.daemonSessionId,
       {
         type: "terminal.attach",
         requestId,
-        terminalId: current.id,
+        terminalId: args.session.id,
         sinceSeq: args.query.sinceSeq ?? 0,
         tailBytes: args.query.tailBytes ?? TERMINAL_SCROLLBACK_MAX_BYTES,
       },
@@ -1163,7 +1284,7 @@ export class TerminalSessionLifecycle {
     if (!sent) {
       this.pendingOutputReads.cancel(pendingReplayKey);
       this.disconnectDaemonSessionTerminals({
-        daemonSessionId: current.daemonSessionId,
+        daemonSessionId: args.daemonSessionId,
       });
       throw new ApiError(502, "host_disconnected", "Host is not connected");
     }
@@ -1180,6 +1301,9 @@ export class TerminalSessionLifecycle {
       chunks: bounded.chunks,
       nextSeq: replay.nextSeq,
       truncated: bounded.truncated,
+      status: args.session.status,
+      exitCode: args.session.exitCode,
+      closeReason: args.session.closeReason,
     };
   }
 
@@ -1362,6 +1486,13 @@ export class TerminalSessionLifecycle {
         }
         return;
     }
+  }
+
+  refuseDaemonTerminalOpen(args: RefuseDaemonTerminalOpenArgs): void {
+    this.pendingOpens.fail(
+      terminalResponseRpcKey(args.sessionId, args.message),
+      serverMovingError(),
+    );
   }
 
   handleDaemonTerminalMessage(args: HandleDaemonTerminalMessageArgs): void {

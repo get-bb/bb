@@ -45,6 +45,10 @@ interface AppCommandHandlerRegistration {
 interface AppCommandProviderValue {
   dispatch: (command: KeyboardCommandId, target: EventTarget | null) => boolean;
   getShortcut: (command: KeyboardCommandId) => AppShortcut | null;
+  getShortcutCommand: (
+    event: KeyboardEvent,
+    commands: readonly KeyboardCommandId[],
+  ) => KeyboardCommandId | null;
   handleKeyboardEvent: (event: KeyboardEvent) => boolean;
   isCommandAvailable: (
     command: KeyboardCommandId,
@@ -291,6 +295,31 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
     [isDesktop, keybindings],
   );
 
+  const getShortcutCommand = useCallback(
+    (
+      event: KeyboardEvent,
+      commands: readonly KeyboardCommandId[],
+    ): KeyboardCommandId | null => {
+      if (event.defaultPrevented || event.isComposing || event.repeat) {
+        return null;
+      }
+      const isMac = isMacKeyboardPlatform(browserPlatform());
+      for (let index = keybindings.length - 1; index >= 0; index -= 1) {
+        const candidate = keybindings[index];
+        if (
+          candidate &&
+          commands.includes(candidate.command) &&
+          isAppKeybindingAvailableForClient(candidate, { isDesktop, isMac }) &&
+          matchesAppShortcut(event, candidate.shortcut, isMac)
+        ) {
+          return candidate.command;
+        }
+      }
+      return null;
+    },
+    [isDesktop, keybindings],
+  );
+
   const handleKeyboardEvent = useCallback(
     (event: KeyboardEvent): boolean => {
       if (event.defaultPrevented || event.isComposing || event.repeat) {
@@ -341,6 +370,7 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
     () => ({
       dispatch,
       getShortcut,
+      getShortcutCommand,
       handleKeyboardEvent,
       isCommandAvailable,
       registerContext,
@@ -349,6 +379,7 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
     [
       dispatch,
       getShortcut,
+      getShortcutCommand,
       handleKeyboardEvent,
       isCommandAvailable,
       registerContext,
@@ -419,6 +450,7 @@ export function useAppCommandKeyDispatch(): (event: KeyboardEvent) => boolean {
 
 export interface AppCommandRunner {
   dispatch: (command: KeyboardCommandId, target: EventTarget | null) => boolean;
+  getShortcutCommand: AppCommandProviderValue["getShortcutCommand"];
   isCommandAvailable: (
     command: KeyboardCommandId,
     target: EventTarget | null,
@@ -430,6 +462,8 @@ export function useAppCommandRunner(): AppCommandRunner {
   return useMemo(
     () => ({
       dispatch: (command, target) => value?.dispatch(command, target) ?? false,
+      getShortcutCommand: (event, commands) =>
+        value?.getShortcutCommand(event, commands) ?? null,
       isCommandAvailable: (command, target) =>
         value?.isCommandAvailable(command, target) ?? false,
     }),
