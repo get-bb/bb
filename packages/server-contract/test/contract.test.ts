@@ -278,8 +278,9 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
   },
   {
     reason:
-      "Timeline snapshot fields are absent on older servers; content metadata and detail continuation inputs only apply to paginated content.",
+      "Timeline snapshot and image metadata fields are absent on older servers; content metadata and detail continuation inputs only apply to paginated content.",
     fields: [
+      "threadTimelineResponseSchema.imageMetadata",
       "threadTimelineResponseSchema.timelinePage.contentPage",
       "threadTimelineResponseSchema.timelinePage.historySnapshot",
       "threadTimelineResponseSchema.timelinePage.olderRowsSourceSeqEnd",
@@ -526,11 +527,6 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
       "threadTimelineQuerySchema.summaryOnly",
       "threadTimelineQuerySchema.afterSequence",
     ],
-  },
-  {
-    reason:
-      "Older servers omit learned image metadata; new servers return an explicit array.",
-    fields: ["threadTimelineResponseSchema.imageMetadata"],
   },
   {
     reason:
