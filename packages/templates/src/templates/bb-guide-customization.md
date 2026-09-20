@@ -296,7 +296,7 @@ The default preserves each field's original order (newest first for dates,
 A–Z for titles). For example: `bb settings ui set sidebar.sortDirection ascending`.
 Updated (include projects) is a separate row in Sort by. Its label uses
 sections or machines for those organization modes. In Custom view, the row is
-disabled until a custom section exists. The option enables
+hidden until a custom section exists. The option enables
 `sidebar.sortGroupsByRecency` (off by default); the plain Updated row disables
 it. The CLI equivalent is `bb settings ui set sidebar.sortGroupsByRecency true`.
 During Updated sorting,

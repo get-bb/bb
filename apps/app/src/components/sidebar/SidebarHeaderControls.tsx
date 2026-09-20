@@ -110,6 +110,7 @@ function SidebarViewItems({ page }: { page: SidebarViewPage }) {
       : organization === "machine"
         ? "machines"
         : "sections";
+  const showGroupSort = organization !== "chronological" || hasCustomSections;
   const sortOptions = [
     {
       label: "Updated",
@@ -129,10 +130,17 @@ function SidebarViewItems({ page }: { page: SidebarViewPage }) {
   return (
     <DropdownMenuGroup aria-label="Sort by">
       {sortOptions.map((option) => {
+        if (
+          option.sort === "updated" &&
+          option.includeGroups &&
+          !showGroupSort
+        ) {
+          return null;
+        }
         const selected =
           selectedSort === option.sort &&
           (option.sort !== "updated" ||
-            sortGroupsByRecency === option.includeGroups);
+            (sortGroupsByRecency && showGroupSort) === option.includeGroups);
         const direction =
           savedDirection === "default" ? option.direction : savedDirection;
         const nextDirection = selected
@@ -143,12 +151,6 @@ function SidebarViewItems({ page }: { page: SidebarViewPage }) {
         return (
           <DropdownMenuItem
             key={option.label}
-            disabled={
-              option.sort === "updated" &&
-              option.includeGroups &&
-              organization === "chronological" &&
-              !hasCustomSections
-            }
             role="menuitemradio"
             aria-checked={selected}
             aria-label={

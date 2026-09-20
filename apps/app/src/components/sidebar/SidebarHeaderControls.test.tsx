@@ -306,7 +306,7 @@ describe("sidebar header controls", () => {
   });
 
   it.each([false, true])(
-    "disables section sorting with no custom sections (compact: %s)",
+    "hides section sorting with no custom sections (compact: %s)",
     async (compact) => {
       viewport.compact = compact;
       const { store } = setup("Pinned", false, "chronological");
@@ -319,15 +319,19 @@ describe("sidebar header controls", () => {
         await openSubmenu("Sort by");
       }
       const option = await screen.findByRole("menuitemradio", {
-        name: /Updated \(include sections\)/,
+        name: /Updated\s*, descending\. Sort ascending/,
       });
-      expect(option.getAttribute("aria-disabled")).toBe("true");
+      expect(
+        screen.queryByRole("menuitemradio", {
+          name: /Updated \(include sections\)/,
+        }),
+      ).toBeNull();
       expect(option.getAttribute("aria-checked")).toBe("true");
-      fireEvent.click(option);
       expect(store.get(sidebarSortGroupsByRecencyAtom)).toBe(true);
       expect(store.get(sidebarSortDirectionAtom)).toBe("default");
-      fireEvent.click(screen.getByRole("menuitemradio", { name: "Updated" }));
+      fireEvent.click(option);
       expect(store.get(sidebarSortGroupsByRecencyAtom)).toBe(false);
+      expect(store.get(sidebarSortDirectionAtom)).toBe("ascending");
     },
   );
 

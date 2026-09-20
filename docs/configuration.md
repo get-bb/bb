@@ -737,7 +737,7 @@ broadcasts a `ui-preferences-changed` system change to connected clients.
 **Updated (include projects)** in the thread-list header's **Sort by** menu
 enables `sidebar.sortGroupsByRecency` (off by default). The label uses
 **sections** or **machines** instead when that organization mode is selected.
-In Custom view, this row is disabled until a custom section exists.
+In Custom view, this row is hidden until a custom section exists.
 The plain **Updated** row disables it. Selecting the active row again reverses
 its direction. The option orders
 projects, custom sections, machines, environments, and parent threads by their
