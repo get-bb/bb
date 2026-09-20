@@ -627,9 +627,7 @@ describe("EmbeddedThreadChat", () => {
     expect(composer.hidden).toBe(false);
     expect(composer.dataset.submitReason).toBe("loading-pending-interactions");
     fireEvent.change(composer, { target: { value: "Keep this draft" } });
-    expect(screen.getByTestId("embedded-host-draft").textContent).toBe(
-      "Keep this draft",
-    );
+    expect(screen.getByDisplayValue("Keep this draft")).toBe(composer);
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
     expect(mocks.sendThreadMessageMutateAsync).not.toHaveBeenCalled();
     expect(mocks.createQueuedMessageMutateAsync).not.toHaveBeenCalled();
@@ -647,17 +645,13 @@ describe("EmbeddedThreadChat", () => {
     expect(composer.hidden).toBe(false);
     expect(composer.dataset.submitReason).toBe("loading-pending-interactions");
     expect(screen.getByTestId("embedded-chat-queued-messages")).toBeTruthy();
-    expect(screen.getByTestId("embedded-host-draft").textContent).toBe(
-      "Keep this draft",
-    );
+    expect(screen.getByDisplayValue("Keep this draft")).toBe(composer);
 
     mocks.pendingInteractionsIsFetching = false;
     view.rerender(buildEmbeddedChat({ threadId: "thr_side_chat" }));
 
     expect(composer.dataset.submitMode).toBe("ready");
-    expect(screen.getByTestId("embedded-host-draft").textContent).toBe(
-      "Keep this draft",
-    );
+    expect(screen.getByDisplayValue("Keep this draft")).toBe(composer);
   });
 
   it("keeps the composer available after an interaction check fails, like a normal thread", () => {
