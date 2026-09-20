@@ -1,7 +1,6 @@
 import {
   useCallback,
   useEffect,
-  useId,
   useMemo,
   useRef,
   useState,
@@ -18,8 +17,6 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { Button } from "@bb/shared-ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "@bb/shared-ui/popover";
-import { Checkbox } from "@bb/shared-ui/checkbox";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import {
   ContextMenu,
@@ -36,15 +33,21 @@ import {
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
 import {
-  COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
   COARSE_POINTER_ICON_SIZE_CLASS,
   COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
 } from "@bb/shared-ui/coarse-pointer-sizing";
-import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
-import { PROJECT_LIST_ACTION_BUTTON_CLASS } from "@/components/sidebar/ProjectList";
+import {
+  SidebarMore,
+  SidebarOverflowItem,
+  SidebarVisibilityCustomize,
+  SidebarVisibilityActionContent,
+  SidebarCustomizeActionContent,
+  type SidebarVisibilityItem,
+  type SidebarActivationModifiers as SidebarNavActivationModifiers,
+} from "@/components/sidebar/SidebarVisibilityControls";
 import {
   AUTOMATIONS_PLUGIN_ID,
   getPluginDetailRoutePath,
@@ -64,6 +67,7 @@ import { usePaneContentSplitIndicator } from "@/components/sidebar/paneContentSp
 import type { MiniMapSlot } from "@/components/sidebar/paneContentSplitIndicator";
 import { SplitPaneMiniMap } from "@/components/sidebar/SplitPaneMiniMap";
 import {
+  PROJECT_LIST_ACTION_BUTTON_CLASS,
   SIDEBAR_CONTROL_STATE_CLASS,
   SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
 } from "@/components/sidebar/sidebarRowClasses";
@@ -96,22 +100,8 @@ import { openPluginDetailsInWorkspace } from "./plugin-detail-opener";
 import type { PaneContent } from "@/lib/split-layout";
 
 const MORE_TRIGGER_TEST_ID = "sidebar-navigation-more-trigger";
-const OVERFLOW_ROW_BUTTON_CLASS =
-  "w-full justify-start gap-2 rounded-sm px-2 text-xs font-normal hover:bg-state-hover focus-visible:bg-state-hover";
 
-export interface SidebarNavActivationModifiers {
-  metaKey: boolean;
-  ctrlKey: boolean;
-}
-
-function CustomizeMenuItemContent() {
-  return (
-    <>
-      <Icon name="FilterHorizontal" aria-hidden="true" />
-      Customize sidebar
-    </>
-  );
-}
+export type { SidebarActivationModifiers as SidebarNavActivationModifiers } from "@/components/sidebar/SidebarVisibilityControls";
 
 type PluginSidebarNavRow = {
   kind: "plugin";
@@ -446,17 +436,24 @@ function PluginNavSidebarItemList({
         data-testid="plugin-nav-sidebar-items"
         data-sidebar-navigation-customize-mode="true"
       >
-        <SidebarNavigationInlineCustomizeMode
+        <SidebarVisibilityCustomize
+          title="Customize sidebar"
+          listLabel="Sidebar navigation"
           variant={isCompactViewport ? "compact" : "card"}
-          rows={ordered}
-          visibleKeys={visibleKeys}
-          onActivate={handleActivate}
+          items={ordered.map(sidebarVisibilityItem)}
+          visibleIds={visibleKeys}
+          onActivate={(item, event) => {
+            const row = ordered.find(
+              (candidate) => getPluginNavPanelKey(candidate) === item.id,
+            );
+            if (row) handleActivate(row, event);
+          }}
           onDone={() => {
             restoreCustomizeTriggerFocusRef.current = true;
             setIsCustomizeOpen(false);
           }}
           onExit={() => setIsCustomizeOpen(false)}
-          onDragEnd={handleCustomizeDragEnd}
+          onReorder={handleCustomizeDragEnd}
           onVisibleChange={setPanelVisible}
         />
       </div>
@@ -495,108 +492,43 @@ function PluginNavSidebarItemList({
         </SortableContext>
       </DndContext>
       {hidden.length > 0 ? (
-        <SidebarNavigationMoreRow
-          hiddenRows={hidden}
-          onActivate={handleActivate}
+        <SidebarMore
+          ariaLabel="More sidebar navigation"
+          listLabel="More navigation"
+          customizeLabel="Customize sidebar"
           onCustomize={openCustomize}
-          onAddToSidebar={(key) => setPanelVisible(key, true)}
-          splitEnabled={splitEnabled}
-        />
+        >
+          {(close) =>
+            hidden.map((row) => (
+              <SidebarNavigationOverflowItem
+                key={getPluginNavPanelKey(row)}
+                row={row}
+                onActivate={handleActivate}
+                onAddToSidebar={(key) => setPanelVisible(key, true)}
+                onClose={close}
+                splitEnabled={splitEnabled}
+              />
+            ))
+          }
+        </SidebarMore>
       ) : null}
     </div>
   );
 }
 
-function SidebarNavigationMoreRow({
-  hiddenRows,
-  onActivate,
-  onCustomize,
-  onAddToSidebar,
-  splitEnabled,
-}: {
-  hiddenRows: readonly SidebarNavRow[];
-  onActivate: (
-    row: SidebarNavRow,
-    event: SidebarNavActivationModifiers,
-  ) => void;
-  onCustomize: () => void;
-  onAddToSidebar: (key: string) => void;
-  splitEnabled: boolean;
-}) {
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
-
-  return (
-    <div data-testid="sidebar-navigation-more-row">
-      <Popover open={isMenuOpen} onOpenChange={setIsMenuOpen}>
-        <ContextMenu>
-          <ContextMenuTrigger asChild>
-            <div>
-              <PopoverTrigger asChild>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  aria-label="More sidebar navigation"
-                  className={cn(
-                    PROJECT_LIST_ACTION_BUTTON_CLASS,
-                    "w-full text-muted-foreground hover:text-sidebar-foreground focus-visible:text-sidebar-foreground data-[state=open]:text-sidebar-foreground",
-                    isMenuOpen && "bg-sidebar-accent",
-                  )}
-                  data-testid={MORE_TRIGGER_TEST_ID}
-                >
-                  <Icon name="MoreHorizontal" aria-hidden="true" />
-                  <span className="min-w-0 truncate text-left">More</span>
-                </Button>
-              </PopoverTrigger>
-            </div>
-          </ContextMenuTrigger>
-          <ContextMenuContent aria-label="More sidebar navigation options">
-            <ContextMenuItem onSelect={onCustomize}>
-              <CustomizeMenuItemContent />
-            </ContextMenuItem>
-          </ContextMenuContent>
-        </ContextMenu>
-        <PopoverContent
-          side="right"
-          align="start"
-          sideOffset={8}
-          mobileTitle="More"
-          aria-label="More sidebar navigation"
-          className="w-56 p-1"
-        >
-          <div role="list" aria-label="More navigation">
-            {hiddenRows.map((row) => (
-              <SidebarNavigationOverflowItem
-                key={getPluginNavPanelKey(row)}
-                row={row}
-                onActivate={onActivate}
-                onAddToSidebar={onAddToSidebar}
-                onClose={() => setIsMenuOpen(false)}
-                splitEnabled={splitEnabled}
-              />
-            ))}
-          </div>
-          <div role="separator" className="-mx-1 my-1 h-px bg-border" />
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className={cn(
-              OVERFLOW_ROW_BUTTON_CLASS,
-              COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
-            )}
-            data-testid="sidebar-navigation-customize-trigger"
-            onClick={() => {
-              setIsMenuOpen(false);
-              onCustomize();
-            }}
-          >
-            <CustomizeMenuItemContent />
-          </Button>
-        </PopoverContent>
-      </Popover>
-    </div>
-  );
+function sidebarVisibilityItem(row: SidebarNavRow): SidebarVisibilityItem {
+  return {
+    id: getPluginNavPanelKey(row),
+    title: row.title,
+    icon: isPluginSidebarNavRow(row) ? (
+      <PluginIcon pluginId={row.chrome.pluginId} icon={row.chrome.icon} />
+    ) : (
+      row.icon
+    ),
+    ...(!isPluginSidebarNavRow(row) && row.disabled !== undefined
+      ? { disabled: row.disabled }
+      : {}),
+  };
 }
 
 function SidebarNavigationOverflowItem({
@@ -616,7 +548,6 @@ function SidebarNavigationOverflowItem({
   splitEnabled: boolean;
 }) {
   const splitActions = usePaneContentSplitActions();
-  const [isActionsOpen, setIsActionsOpen] = useState(false);
   const content: PaneContent | undefined = isPluginSidebarNavRow(row)
     ? {
         kind: "plugin-panel",
@@ -633,114 +564,42 @@ function SidebarNavigationOverflowItem({
     !disabled;
 
   return (
-    <div
-      role="listitem"
-      className={cn(SIDEBAR_HOVER_ACTIONS_ROW_CLASS, "relative")}
-    >
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        className={cn(
-          OVERFLOW_ROW_BUTTON_CLASS,
-          COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
-          "pr-9 max-md:pointer-coarse:pr-11",
-        )}
-        disabled={disabled}
-        data-sidebar-navigation-more-item={getPluginNavPanelKey(row)}
-        onPointerDown={(event) => {
-          if (!canSplit || !content) return;
-          splitActions.beginDrag(event, {
-            content,
-            enabled: splitEnabled,
-            label: row.title,
-            onDragStart: onClose,
-            dragActivation: "distance",
-          });
-        }}
-        onClick={(event) => {
-          onClose();
-          onActivate(row, { metaKey: event.metaKey, ctrlKey: event.ctrlKey });
-        }}
-      >
-        <span className="flex size-4 shrink-0 items-center justify-center">
-          {isPluginSidebarNavRow(row) ? (
-            <PluginIcon pluginId={row.chrome.pluginId} icon={row.chrome.icon} />
-          ) : (
-            row.icon
-          )}
-        </span>
-        <span className="min-w-0 flex-1 truncate text-left">{row.title}</span>
-      </Button>
-      <div
-        data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
-        data-sidebar-hover-actions-mobile={
-          SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE
-        }
-        className={cn(
-          SIDEBAR_HOVER_ACTIONS_CLASS,
-          "absolute inset-y-0 right-0 flex items-center pointer-coarse:opacity-100 pointer-coarse:pointer-events-auto",
-        )}
-      >
-        <DropdownMenu
-          modal={false}
-          open={isActionsOpen}
-          onOpenChange={setIsActionsOpen}
-        >
-          <DropdownMenuTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              aria-label={`${row.title} options`}
-              className={cn(
-                COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
-                "rounded-sm p-0 hover:bg-state-hover",
-              )}
-            >
-              <Icon
-                name="MoreHorizontal"
-                className={COARSE_POINTER_ICON_SIZE_CLASS}
-              />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            side="right"
-            align="start"
-            aria-label={`${row.title} options`}
+    <SidebarOverflowItem
+      item={sidebarVisibilityItem(row)}
+      onActivate={(event) => onActivate(row, event)}
+      onAddToSidebar={onAddToSidebar}
+      onClose={onClose}
+      onPointerDown={(event) => {
+        if (!canSplit || !content) return;
+        splitActions.beginDrag(event, {
+          content,
+          enabled: splitEnabled,
+          label: row.title,
+          onDragStart: onClose,
+          dragActivation: "distance",
+        });
+      }}
+      additionalActions={
+        !splitActions.isCompact ? (
+          <DropdownMenuItem
+            className="cursor-pointer"
+            disabled={!canSplit}
+            onSelect={() => {
+              if (!content) return;
+              onClose();
+              splitActions.openInSplit({
+                content,
+                enabled: splitEnabled,
+                label: row.title,
+              });
+            }}
           >
-            {!splitActions.isCompact ? (
-              <DropdownMenuItem
-                className="cursor-pointer"
-                disabled={!canSplit}
-                onSelect={() => {
-                  if (!content) return;
-                  onClose();
-                  splitActions.openInSplit({
-                    content,
-                    enabled: splitEnabled,
-                    label: row.title,
-                  });
-                }}
-              >
-                <Icon name="Columns2" aria-hidden="true" />
-                Open in split
-              </DropdownMenuItem>
-            ) : null}
-            <DropdownMenuItem
-              className="cursor-pointer"
-              onSelect={() => {
-                onClose();
-                onAddToSidebar(getPluginNavPanelKey(row));
-              }}
-            >
-              <Icon name="Eye" aria-hidden="true" />
-              Add to sidebar
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-    </div>
+            <Icon name="Columns2" aria-hidden="true" />
+            Open in split
+          </DropdownMenuItem>
+        ) : null
+      }
+    />
   );
 }
 
@@ -761,287 +620,14 @@ function BuiltInSidebarNavRow({
       </ContextMenuTrigger>
       <ContextMenuContent aria-label={`${row.title} options`}>
         <ContextMenuItem onSelect={() => onHide(rowKey)}>
-          <Icon name="EyeOff" aria-hidden="true" />
-          Hide from sidebar
+          <SidebarVisibilityActionContent visible />
         </ContextMenuItem>
         <ContextMenuSeparator />
         <ContextMenuItem onSelect={onCustomize}>
-          <CustomizeMenuItemContent />
+          <SidebarCustomizeActionContent label="Customize sidebar" />
         </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>
-  );
-}
-
-function SidebarNavigationInlineCustomizeMode({
-  onActivate,
-  onDone,
-  onDragEnd,
-  onExit,
-  onVisibleChange,
-  rows,
-  variant,
-  visibleKeys,
-}: {
-  onActivate: (
-    row: SidebarNavRow,
-    event: SidebarNavActivationModifiers,
-  ) => void;
-  onDone: () => void;
-  onDragEnd: (activeKey: string, overKey: string) => void;
-  onExit: () => void;
-  onVisibleChange: (key: string, visible: boolean) => void;
-  rows: readonly SidebarNavRow[];
-  variant: "compact" | "card";
-  visibleKeys: readonly string[];
-}) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const doneButtonRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    if (variant === "compact") {
-      doneButtonRef.current?.focus();
-      return;
-    }
-    containerRef.current
-      ?.querySelector<HTMLElement>("[data-sidebar-navigation-customize-launch]")
-      ?.focus();
-  }, [variant]);
-
-  const list = (
-    <SidebarNavigationCustomizeList
-      rows={rows}
-      visibleKeys={visibleKeys}
-      onActivate={(row, event) => {
-        onActivate(row, event);
-        onExit();
-      }}
-      onDragEnd={onDragEnd}
-      onVisibleChange={onVisibleChange}
-    />
-  );
-
-  if (variant === "compact") {
-    return (
-      <div
-        ref={containerRef}
-        className="flex min-h-0 flex-1 flex-col"
-        data-testid="sidebar-navigation-customize-inline"
-      >
-        <div className="flex shrink-0 items-center gap-1">
-          <Button
-            ref={doneButtonRef}
-            type="button"
-            variant="ghost"
-            size="icon"
-            aria-label="Back to sidebar"
-            className={cn(
-              COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
-              "shrink-0 text-muted-foreground ring-sidebar-ring hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:ring-2",
-            )}
-            onClick={onDone}
-          >
-            <Icon name="ChevronLeft" aria-hidden="true" />
-          </Button>
-          <div
-            className={cn("min-w-0 flex-1 px-1", CHROME_SECTION_LABEL_CLASS)}
-          >
-            Customize sidebar
-          </div>
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto pt-1">{list}</div>
-      </div>
-    );
-  }
-
-  return (
-    <div
-      ref={containerRef}
-      className="rounded-lg border border-sidebar-border/40 bg-sidebar-accent/40 p-1"
-      data-testid="sidebar-navigation-customize-inline"
-      onKeyDown={(event) => {
-        if (event.key !== "Escape") return;
-        event.preventDefault();
-        onDone();
-      }}
-    >
-      <div className="flex items-center gap-1 pb-1">
-        <div
-          className={cn("min-w-0 flex-1 px-2 py-1", CHROME_SECTION_LABEL_CLASS)}
-        >
-          Customize sidebar
-        </div>
-        <Button
-          ref={doneButtonRef}
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="h-6 shrink-0 px-2 text-xs text-sidebar-foreground ring-sidebar-ring hover:bg-sidebar-accent focus-visible:ring-2"
-          onClick={onDone}
-        >
-          Done
-        </Button>
-      </div>
-      {list}
-    </div>
-  );
-}
-
-function SidebarNavigationCustomizeList({
-  onActivate,
-  onDragEnd,
-  onVisibleChange,
-  rows,
-  visibleKeys,
-}: {
-  onActivate: (
-    row: SidebarNavRow,
-    event: SidebarNavActivationModifiers,
-  ) => void;
-  onDragEnd: (activeKey: string, overKey: string) => void;
-  onVisibleChange: (key: string, visible: boolean) => void;
-  rows: readonly SidebarNavRow[];
-  visibleKeys: readonly string[];
-}) {
-  const orderedKeys = useMemo(() => rows.map(getPluginNavPanelKey), [rows]);
-  const visibleKeySet = useMemo(() => new Set(visibleKeys), [visibleKeys]);
-  const handleDragEnd = useCallback(
-    (event: DragEndEvent) => {
-      if (
-        typeof event.active.id !== "string" ||
-        typeof event.over?.id !== "string"
-      ) {
-        return;
-      }
-      onDragEnd(event.active.id, event.over.id);
-    },
-    [onDragEnd],
-  );
-  const { dndContextProps, onClickCapture } = useSidebarReorderDnd({
-    onDragEnd: handleDragEnd,
-  });
-
-  return (
-    <div
-      role="list"
-      aria-label="Sidebar navigation"
-      className="space-y-0.5"
-      onClickCapture={onClickCapture}
-    >
-      <DndContext {...dndContextProps}>
-        <SortableContext
-          items={orderedKeys}
-          strategy={verticalListSortingStrategy}
-        >
-          {rows.map((row) => {
-            const key = getPluginNavPanelKey(row);
-            return (
-              <SortableSidebarNavigationCustomizeItem
-                key={key}
-                row={row}
-                checked={visibleKeySet.has(key)}
-                reorderDisabled={rows.length < 2}
-                onActivate={(event) => onActivate(row, event)}
-                onCheckedChange={(checked) => onVisibleChange(key, checked)}
-              />
-            );
-          })}
-        </SortableContext>
-      </DndContext>
-    </div>
-  );
-}
-
-function SortableSidebarNavigationCustomizeItem({
-  checked,
-  onActivate,
-  onCheckedChange,
-  reorderDisabled,
-  row,
-}: {
-  checked: boolean;
-  onActivate: (event: ReactMouseEvent<HTMLButtonElement>) => void;
-  onCheckedChange: (checked: boolean) => void;
-  reorderDisabled: boolean;
-  row: SidebarNavRow;
-}) {
-  const panelKey = getPluginNavPanelKey(row);
-  const checkboxId = useId();
-  const { dragBindings, setNodeRef, style } = useSidebarSortable({
-    id: panelKey,
-    disabled: reorderDisabled,
-  });
-  const icon = isPluginSidebarNavRow(row) ? (
-    <PluginIcon pluginId={row.chrome.pluginId} icon={row.chrome.icon} />
-  ) : (
-    row.icon
-  );
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      role="listitem"
-      className={cn(
-        "group flex min-h-7 items-center rounded-md px-1 text-xs",
-        COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
-        "text-sidebar-foreground hover:bg-sidebar-accent focus-within:bg-sidebar-accent",
-      )}
-      data-plugin-nav-customize-item={panelKey}
-    >
-      <button
-        type="button"
-        ref={dragBindings.setActivatorNodeRef}
-        {...dragBindings.attributes}
-        {...dragBindings.listeners}
-        aria-label={`Reorder ${row.title}`}
-        className={cn(
-          "flex size-6 shrink-0 cursor-grab touch-none items-center justify-center rounded-sm text-subtle-foreground/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring active:cursor-grabbing",
-          COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
-          "hover:text-sidebar-foreground focus-visible:text-sidebar-foreground",
-        )}
-        onClick={(event) => event.stopPropagation()}
-        data-plugin-nav-customize-drag-handle={panelKey}
-      >
-        <Icon
-          name="DragDropVertical"
-          className={COARSE_POINTER_ICON_SIZE_CLASS}
-        />
-      </button>
-      <button
-        type="button"
-        disabled={!isPluginSidebarNavRow(row) && row.disabled}
-        className={cn(
-          "flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-sm px-1 text-left outline-none disabled:cursor-default disabled:opacity-50",
-          COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
-        )}
-        onClick={onActivate}
-        data-sidebar-navigation-customize-launch={panelKey}
-      >
-        <span className="flex size-4 shrink-0 items-center justify-center">
-          {icon}
-        </span>
-        <span className="min-w-0 flex-1 truncate">{row.title}</span>
-      </button>
-      <label
-        htmlFor={checkboxId}
-        className={cn(
-          COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
-          "flex shrink-0 cursor-pointer items-center justify-center",
-        )}
-        onClick={(event) => event.stopPropagation()}
-      >
-        <Checkbox
-          id={checkboxId}
-          checked={checked}
-          aria-label={`Show ${row.title} in sidebar`}
-          onCheckedChange={(nextChecked) =>
-            onCheckedChange(nextChecked === true)
-          }
-          data-plugin-nav-customize-checkbox={panelKey}
-        />
-      </label>
-    </div>
   );
 }
 
@@ -1111,8 +697,7 @@ function PluginNavRowMenuItems({
         View details
       </Item>
       <Item onSelect={onHide}>
-        <Icon name="EyeOff" aria-hidden="true" />
-        Hide from sidebar
+        <SidebarVisibilityActionContent visible />
       </Item>
       <Separator />
       <Item disabled={disablePending} onSelect={onDisable}>

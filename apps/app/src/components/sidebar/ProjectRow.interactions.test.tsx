@@ -6,6 +6,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import type { ThreadListEntry } from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -23,7 +24,12 @@ import {
 import { buildSidebarEntitySectionId } from "@bb/client-core";
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 import { makeProjectResponse } from "@/test/fixtures/projects";
-import { sidebarOrganizationModeAtom } from "./sidebarCollapsedAtoms";
+import {
+  sidebarHiddenGroupsAtom,
+  sidebarManualSectionOrderAtom,
+  sidebarOrganizationModeAtom,
+} from "./sidebarCollapsedAtoms";
+import { useSidebarModeSectionOrder } from "./useSidebarModeSectionOrder";
 
 const mockUpdateEnvironment = vi.hoisted(() => ({
   mutate: vi.fn(),
@@ -140,6 +146,50 @@ function expectCollapsedActivityAtSidebarEdge(label: string) {
     .find((slot) => slot !== null);
 
   expect(edgeSlot).toBeInstanceOf(HTMLElement);
+}
+
+function CustomSectionsVisibilityProbe({
+  threads,
+  onProjectSelect,
+}: {
+  threads: ThreadListEntry[];
+  onProjectSelect: () => void;
+}) {
+  const { order, persistedOrder, onOrderChange, onFullOrderChange } =
+    useSidebarModeSectionOrder({
+      mode: "chronological",
+      entitySectionIds: ["section:sec_building", "section:sec_review"],
+      showPinnedSection: false,
+    });
+
+  return (
+    <ChronologicalSectionThreadSections
+      threadListState={{ status: "ready", threads }}
+      compareThreads={() => 0}
+      sections={[
+        { id: "sec_building", name: "Building" },
+        { id: "sec_review", name: "Review" },
+      ]}
+      collapsedThreadIds={new Set()}
+      collapsedEnvironmentIds={new Set()}
+      onProjectSelect={onProjectSelect}
+      onToggleThreadCollapsed={vi.fn()}
+      onToggleEnvironmentCollapsed={vi.fn()}
+      topLevelSectionOrder={order}
+      fullSectionOrder={persistedOrder}
+      onFullSectionOrderChange={onFullOrderChange}
+      onTopLevelSectionOrderChange={onOrderChange}
+      pinnedReorderPending={false}
+      pinnedThreads={[]}
+      onReorderPinnedThread={vi.fn()}
+      builtInSections={{
+        collapsedSectionIds: new Set(),
+        onToggleCollapsed: vi.fn(),
+        pinned: { label: "Pinned", content: null },
+        threads: { label: "Threads" },
+      }}
+    />
+  );
 }
 
 describe("ProjectRow interactions", () => {
@@ -359,6 +409,10 @@ describe("ProjectRow interactions", () => {
                 topLevelSectionOrder={[
                   buildSidebarEntitySectionId("section", sectionId),
                 ]}
+                fullSectionOrder={[
+                  buildSidebarEntitySectionId("section", sectionId),
+                ]}
+                onFullSectionOrderChange={vi.fn()}
                 onTopLevelSectionOrderChange={vi.fn()}
                 pinnedReorderPending={false}
                 pinnedThreads={[]}
@@ -427,6 +481,10 @@ describe("ProjectRow interactions", () => {
                 topLevelSectionOrder={[
                   buildSidebarEntitySectionId("section", sectionId),
                 ]}
+                fullSectionOrder={[
+                  buildSidebarEntitySectionId("section", sectionId),
+                ]}
+                onFullSectionOrderChange={vi.fn()}
                 onTopLevelSectionOrderChange={vi.fn()}
                 pinnedReorderPending={false}
                 pinnedThreads={[]}
@@ -452,6 +510,102 @@ describe("ProjectRow interactions", () => {
       screen.getAllByLabelText("Thread working with unsubmitted draft"),
     ).not.toHaveLength(0);
     expect(screen.queryByLabelText("Plan mode active")).toBeNull();
+  });
+
+  it("hides a section with inherited descendants and restores its saved position", async () => {
+    const store = createStore();
+    const savedOrder = [
+      "section:sec_review",
+      "section:sec_building",
+      "pinned",
+      "threads",
+    ];
+    store.set(sidebarOrganizationModeAtom, "chronological");
+    store.set(sidebarManualSectionOrderAtom, savedOrder);
+    const onProjectSelect = vi.fn();
+    const threads = [
+      makeThread({
+        id: "thr_review_parent",
+        title: "Review parent",
+        titleFallback: "Review parent",
+        sectionId: "sec_review",
+      }),
+      makeThread({
+        id: "thr_inherited_child",
+        title: "Inherited child",
+        titleFallback: "Inherited child",
+        parentThreadId: "thr_review_parent",
+        sectionId: null,
+      }),
+    ];
+    const { container } = render(
+      <TooltipProvider>
+        <Provider store={store}>
+          <QueryClientProvider client={new QueryClient()}>
+            <MemoryRouter>
+              <CustomSectionsVisibilityProbe
+                threads={threads}
+                onProjectSelect={onProjectSelect}
+              />
+            </MemoryRouter>
+          </QueryClientProvider>
+        </Provider>
+      </TooltipProvider>,
+    );
+
+    expect(screen.getByText("Review parent")).not.toBeNull();
+    expect(screen.getByText("Inherited child")).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "More sections" })).toBeNull();
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Review section actions" }),
+      { button: 0 },
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Hide from sidebar" }),
+    );
+
+    expect(screen.queryByText("Review parent")).toBeNull();
+    expect(screen.queryByText("Inherited child")).toBeNull();
+    expect(store.get(sidebarHiddenGroupsAtom)).toEqual(["section:sec_review"]);
+    expect(store.get(sidebarManualSectionOrderAtom)).toEqual(savedOrder);
+    fireEvent.click(screen.getByRole("button", { name: "More sections" }));
+    const hiddenSections = await screen.findByRole("list", {
+      name: "Hidden sections",
+    });
+    expect(within(hiddenSections).getByText("Review parent")).not.toBeNull();
+    fireEvent.click(
+      within(hiddenSections).getByRole("link", { name: "Open Inherited child" }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole("list", { name: "Hidden sections" })).toBeNull(),
+    );
+    expect(onProjectSelect).toHaveBeenCalledOnce();
+    expect(store.get(sidebarHiddenGroupsAtom)).toEqual(["section:sec_review"]);
+
+    fireEvent.click(screen.getByRole("button", { name: "More sections" }));
+    const reopenedSections = await screen.findByRole("list", {
+      name: "Hidden sections",
+    });
+    fireEvent.pointerDown(
+      within(reopenedSections).getByRole("button", { name: "Review options" }),
+      { button: 0 },
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Add to sidebar" }),
+    );
+
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "More sections" })).toBeNull(),
+    );
+    expect(screen.getByText("Inherited child")).not.toBeNull();
+    expect(store.get(sidebarHiddenGroupsAtom)).toEqual([]);
+    expect(store.get(sidebarManualSectionOrderAtom)).toEqual(savedOrder);
+    expect(
+      Array.from(
+        container.querySelectorAll<HTMLElement>("[data-sidebar-visibility-group]"),
+        (element) => element.dataset.sidebarVisibilityGroup,
+      ),
+    ).toEqual(["section:sec_review", "section:sec_building"]);
   });
 
   it("surfaces named activity when the project is collapsed", () => {

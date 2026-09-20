@@ -683,10 +683,10 @@ client wrote first, so a stale window cannot silently clobber a newer value.
 | `sidebar.organizationMode`        | `project`, `chronological`, or `machine`            |
 | `sidebar.threadGrouping.environment` | `auto`, `true`, or `false`                       |
 | `sidebar.chronologicalSort`       | `updated`, `created`, `alpha`, or `none`            |
-| `sidebar.sortGroupsByRecency`     | `true` or `false` (default)                          |
 | `sidebar.sectionOrder`            | Section id list for **By project**                  |
 | `sidebar.manualSectionOrder`      | Section id list for **Manually**                    |
 | `sidebar.machineSectionOrder`     | Section id list for **By machine**                  |
+| `sidebar.hiddenGroups`            | Project, custom section, and machine ids moved into More |
 | `sidebar.collapsedSections`       | Collapsed built-in sections (`pinned`, `threads`)   |
 | `sidebar.collapsedProjects`       | Collapsed project ids                               |
 | `sidebar.collapsedThreads`        | Thread ids whose children are collapsed             |
@@ -734,19 +734,6 @@ expectedRevision })`, and `.reset({ key })` over `GET /preferences/ui`,
 `PUT /preferences/ui/:key`, and `DELETE /preferences/ui/:key`. Every write
 broadcasts a `ui-preferences-changed` system change to connected clients.
 
-**Updated (include projects)** in the thread-list header's **Sort by** menu
-enables `sidebar.sortGroupsByRecency` (off by default). The label uses
-**sections** or **machines** instead when that organization mode is selected.
-In Custom view, this row is hidden until a custom section exists.
-The plain **Updated** row disables it. Selecting the active row again reverses
-its direction. The option orders
-projects, custom sections, machines, environments, and parent threads by their
-highest-ranked visible thread. Running work stays first; empty groups follow
-populated groups. Pinned placement is preserved. Turning it off restores saved
-group order; dragging top-level groups saves that order and turns the option off.
-Created and Alphabetical leave it inactive. Enable it through the CLI with
-`bb settings ui set sidebar.sortGroupsByRecency true`.
-
 The sidebar waits for these values alongside the project list, so it never
 paints a default layout that then snaps to the saved one. The first client to
 reach a server that has never stored a key uploads the value it finds in the
@@ -757,6 +744,35 @@ value. A change on one device reaches every other connected window through the
 
 Sidebar width and open state stay in the browser because they depend on the
 window size.
+
+### Thread-list visibility
+
+Choose **Hide from sidebar** in a project, custom section, or machine's menu to
+move it into **More**. Its menu in More offers **Add to sidebar** to restore it.
+**Customize thread list** manages visibility and order for the current
+organization. Hiding a group preserves its threads, saved order, and collapse
+state; pinned threads stay in Pinned. Hidden work remains reachable through More,
+search, and direct links. More shows activity without automatically restoring
+hidden groups.
+
+`sidebar.hiddenGroups` defaults to `[]` and accepts `project:<projectId>`,
+`section:<sectionId>`, and `machine:<hostId>` keys (`machine:no-machine` for the
+unassigned machine group). Each organization uses only its matching keys.
+Built-in Pinned and Threads sections cannot be hidden. Duplicate keys are
+deduplicated; unavailable IDs are retained without creating sidebar rows, and
+new groups default to visible.
+
+```sh
+bb settings ui get sidebar.hiddenGroups
+bb settings ui set sidebar.hiddenGroups '["project:proj_example","section:sec_example"]'
+bb settings ui reset sidebar.hiddenGroups
+```
+
+`set` replaces the complete list across organizations, so include any existing
+keys you want to keep hidden. `reset` restores the default empty list and shows
+every group. SDK callers use `sdk.system.uiPreferences.list()` for the current
+value and revision, `.set({ key: "sidebar.hiddenGroups", value, expectedRevision })`
+to replace the list, and `.reset({ key: "sidebar.hiddenGroups" })` to show all.
 
 ### Sidebar footer
 

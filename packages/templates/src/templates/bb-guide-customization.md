@@ -265,9 +265,9 @@ Server-backed sidebar preferences
 Sidebar layout lives on the server in a keyed, revisioned registry so every
 window, device, and the CLI share it: organization mode, chronological sort,
 section orders, collapsed rows and sections, navigation entry order and
-visibility, and the navigation and thread-list provider pickers. The sidebar
-waits for them alongside the project list, and an upgrade uploads the old
-browser-stored layout once.
+visibility, hidden thread-list groups, and the navigation and thread-list
+provider pickers. The sidebar waits for them alongside the project list, and
+an upgrade uploads the old browser-stored layout once.
 
   bb settings ui list [--json]
   bb settings ui get <key> [--json]
@@ -290,21 +290,33 @@ collapse into a single worktree row inside their section, in every organization
 mode. `sidebar.threadGrouping.environment` defaults to `auto`, which groups them
 everywhere except Custom: `bb settings ui set sidebar.threadGrouping.environment
 false` keeps every thread on its own row, and `true` groups them in every mode.
-Sort by selects a field, and selecting it again reverses its direction.
+Sort by selects a field, and selecting it again reverses its arrow/direction.
 `sidebar.sortDirection` accepts `ascending`, `descending`, or `default`.
 The default preserves each field's original order (newest first for dates,
 A–Z for titles). For example: `bb settings ui set sidebar.sortDirection ascending`.
-Updated (include projects) is a separate row in Sort by. Its label uses
-sections or machines for those organization modes. In Custom view, the row is
-hidden until a custom section exists. The option enables
-`sidebar.sortGroupsByRecency` (off by default); the plain Updated row disables
-it. The CLI equivalent is `bb settings ui set sidebar.sortGroupsByRecency true`.
-During Updated sorting,
-projects, custom sections, machines, environments, and parent threads inherit
-their highest-ranked visible thread. Running work stays first; empty groups
-follow populated groups. Pinned placement is preserved. Turning it off restores
-saved group order; dragging top-level groups saves their order and turns it off.
-Created and Alphabetical leave the option inactive.
+
+Thread-list visibility
+
+A project, custom section, or machine's menu offers Hide from sidebar; its menu
+inside More offers Add to sidebar. Customize thread list manages visibility and
+order for the current organization. Hiding preserves the group's threads, order,
+and collapse state. Pinned threads remain in Pinned; More carries hidden activity.
+
+`sidebar.hiddenGroups` defaults to `[]`. Its keys are `project:<projectId>`,
+`section:<sectionId>`, and `machine:<hostId>` (`machine:no-machine` for the
+unassigned group). Each organization uses its own keys. Pinned and Threads cannot
+be hidden. Duplicate keys are deduplicated, and unavailable IDs remain saved
+without producing rows. New groups default visible.
+
+  bb settings ui get sidebar.hiddenGroups
+  bb settings ui set sidebar.hiddenGroups '["project:proj_example","section:sec_example"]'
+  bb settings ui reset sidebar.hiddenGroups
+
+`set` replaces the entire list across organizations; include existing keys you
+want to keep hidden. `reset` shows all groups. SDK callers use
+`sdk.system.uiPreferences.list()` to read the current revision, then
+`.set({ key: "sidebar.hiddenGroups", value, expectedRevision })` or
+`.reset({ key: "sidebar.hiddenGroups" })`.
 
 Sidebar footer actions
 

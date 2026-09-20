@@ -23,22 +23,23 @@ import {
   sidebarGroupThreadsByEnvironmentAtom,
   sidebarEnvironmentGroupingAtom,
   sidebarSortDirectionAtom,
-  sidebarSortGroupsByRecencyAtom,
 } from "./sidebarCollapsedAtoms";
 import { SidebarControlButton, SidebarRowControls } from "./SidebarRowControls";
 import { SIDEBAR_CONTROL_BUTTON_CLASS } from "./sidebarRowClasses";
+import {
+  ThreadListGroupVisibilityMenuItem,
+  useThreadListCustomization,
+} from "./ThreadListVisibility";
+import { SidebarCustomizeActionContent } from "./SidebarVisibilityControls";
 
 interface HeaderCreationActions {
-  hasCustomSections: boolean;
   onNewProject?: () => void;
   onNewSection?: () => void;
   isCreatingProject?: boolean;
   isCreatingSection?: boolean;
 }
 
-const HeaderCreationContext = createContext<HeaderCreationActions>({
-  hasCustomSections: false,
-});
+const HeaderCreationContext = createContext<HeaderCreationActions>({});
 export const SidebarHeaderActionsProvider = HeaderCreationContext.Provider;
 
 const SIDEBAR_ORGANIZE_OPTIONS = [
@@ -47,16 +48,16 @@ const SIDEBAR_ORGANIZE_OPTIONS = [
   { label: "Custom", mode: "chronological" },
 ] as const;
 
-type SidebarViewPage = "organize" | "sort";
+const SIDEBAR_SORT_OPTIONS = [
+  { label: "Updated at", sort: "updated", direction: "descending" },
+  { label: "Created at", sort: "created", direction: "descending" },
+  { label: "Alphabetical", sort: "alpha", direction: "ascending" },
+] as const;
 
-function SidebarViewItems({ page }: { page: SidebarViewPage }) {
-  const { hasCustomSections } = useContext(HeaderCreationContext);
+function SidebarViewItems({ page }: { page: "organize" | "sort" }) {
   const [organization, setOrganization] = useAtom(sidebarOrganizationModeAtom);
   const [sort, setSort] = useAtom(sidebarChronologicalSortAtom);
   const [savedDirection, setDirection] = useAtom(sidebarSortDirectionAtom);
-  const [sortGroupsByRecency, setSortGroupsByRecency] = useAtom(
-    sidebarSortGroupsByRecencyAtom,
-  );
   const setEnvironmentGrouping = useSetAtom(sidebarEnvironmentGroupingAtom);
   const groupByEnvironment = useAtomValue(sidebarGroupThreadsByEnvironmentAtom);
   const selectedSort = sort === "none" ? "updated" : sort;
@@ -104,43 +105,10 @@ function SidebarViewItems({ page }: { page: SidebarViewPage }) {
       </>
     );
   }
-  const unit =
-    organization === "project"
-      ? "projects"
-      : organization === "machine"
-        ? "machines"
-        : "sections";
-  const showGroupSort = organization !== "chronological" || hasCustomSections;
-  const sortOptions = [
-    {
-      label: "Updated",
-      sort: "updated",
-      direction: "descending",
-      includeGroups: false,
-    },
-    {
-      label: `Updated (include ${unit})`,
-      sort: "updated",
-      direction: "descending",
-      includeGroups: true,
-    },
-    { label: "Created", sort: "created", direction: "descending" },
-    { label: "Alphabetical", sort: "alpha", direction: "ascending" },
-  ] as const;
   return (
     <DropdownMenuGroup aria-label="Sort by">
-      {sortOptions.map((option) => {
-        if (
-          option.sort === "updated" &&
-          option.includeGroups &&
-          !showGroupSort
-        ) {
-          return null;
-        }
-        const selected =
-          selectedSort === option.sort &&
-          (option.sort !== "updated" ||
-            (sortGroupsByRecency && showGroupSort) === option.includeGroups);
+      {SIDEBAR_SORT_OPTIONS.map((option) => {
+        const selected = selectedSort === option.sort;
         const direction =
           savedDirection === "default" ? option.direction : savedDirection;
         const nextDirection = selected
@@ -150,7 +118,7 @@ function SidebarViewItems({ page }: { page: SidebarViewPage }) {
           : option.direction;
         return (
           <DropdownMenuItem
-            key={option.label}
+            key={option.sort}
             role="menuitemradio"
             aria-checked={selected}
             aria-label={
@@ -162,9 +130,6 @@ function SidebarViewItems({ page }: { page: SidebarViewPage }) {
               event.preventDefault();
               setSort(option.sort);
               setDirection(nextDirection);
-              if (option.sort === "updated") {
-                setSortGroupsByRecency(option.includeGroups);
-              }
             }}
           >
             {option.label}
@@ -204,8 +169,9 @@ export function SidebarHeaderControls({
   onOpenChange?: (open: boolean) => void;
 }) {
   const creation = useContext(HeaderCreationContext);
+  const customize = useThreadListCustomization();
   const compact = useIsCompactViewport();
-  const [page, setPage] = useState<SidebarViewPage | null>(null);
+  const [page, setPage] = useState<"organize" | "sort" | null>(null);
   const changeOpen = (next: boolean) => {
     if (!next) setPage(null);
     onOpenChange?.(next);
@@ -311,11 +277,18 @@ export function SidebarHeaderControls({
                   </DropdownMenuSub>
                 ),
               )}
-              {children && (
+              {customize && (
+                <DropdownMenuItem onSelect={customize}>
+                  <SidebarCustomizeActionContent label="Customize thread list" />
+                </DropdownMenuItem>
+              )}
+              {children ? (
                 <>
                   <DropdownMenuSeparator />
                   {children}
                 </>
+              ) : (
+                <ThreadListGroupVisibilityMenuItem />
               )}
             </>
           )}
@@ -340,6 +313,7 @@ export function SidebarSectionMenuItems({
           Rename
         </DropdownMenuItem>
       )}
+      <ThreadListGroupVisibilityMenuItem />
       {onRemove && (
         <>
           <DropdownMenuSeparator />

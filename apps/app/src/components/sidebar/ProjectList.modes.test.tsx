@@ -7,10 +7,12 @@ import {
   cleanup,
   fireEvent,
   render,
-  renderHook,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
+import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import {
   createStore,
   Provider as JotaiProvider,
@@ -24,12 +26,11 @@ import { buildMachineThreadGroups } from "@bb/client-core";
 import {
   collapsedSidebarSectionIdsAtom,
   sidebarCollapsedMachinesAtom,
+  sidebarHiddenGroupsAtom,
   sidebarManualSectionOrderAtom,
   sidebarMachineSectionOrderAtom,
   sidebarOrganizationModeAtom,
   sidebarSectionOrderAtom,
-  sidebarChronologicalSortAtom,
-  sidebarSortGroupsByRecencyAtom,
   type CollapsibleSidebarSectionId,
   type SidebarOrganizationMode,
   type SidebarSectionId,
@@ -46,6 +47,18 @@ vi.mock("@/hooks/queries/host-queries", () => ({
 
 vi.mock("@/hooks/queries/system-queries", () => ({
   useSystemConfig: () => ({ data: undefined }),
+}));
+
+vi.mock("@/components/thread/ThreadActionsProvider", () => ({
+  useThreadActions: () => ({
+    renameThread: vi.fn(),
+    requestRename: vi.fn(),
+    requestDelete: vi.fn(),
+    archiveThreadAndChildren: vi.fn(),
+    unarchiveThread: vi.fn(),
+    togglePin: vi.fn(),
+    toggleRead: vi.fn(),
+  }),
 }));
 
 const queryClient = new QueryClient();
@@ -159,30 +172,34 @@ function MachineModeProbe({ threads = [] }: { threads?: ThreadListEntry[] }) {
   };
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <MachineModeSections
-        threads={threads}
-        draftThreadIds={new Set()}
-        effectivePinnedThreadIds={new Set()}
-        status="ready"
-        showPinnedSection={false}
-        pinnedSection={{ label: "Pinned", content: null }}
-        pinnedReorderPending={false}
-        pinnedRootNodes={[]}
-        pinnedThreads={[]}
-        onReorderPinnedThread={vi.fn()}
-        threadsSection={{ label: "Threads" }}
-        collapsedSectionIds={collapsedSectionIdSet}
-        collapsedThreadIds={new Set()}
-        collapsedEnvironmentIds={new Set()}
-        compareThreads={() => 0}
-        renderSectionDisplayOptions={() => null}
-        isSectionDisplayOptionsOpen={() => false}
-        onToggleCollapsed={handleToggleCollapsed}
-        onToggleThreadCollapsed={vi.fn()}
-        onToggleEnvironmentCollapsed={vi.fn()}
-      />
-    </QueryClientProvider>
+    <TooltipProvider>
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <MachineModeSections
+            threads={threads}
+            draftThreadIds={new Set()}
+            effectivePinnedThreadIds={new Set()}
+            status="ready"
+            showPinnedSection={false}
+            pinnedSection={{ label: "Pinned", content: null }}
+            pinnedReorderPending={false}
+            pinnedRootNodes={[]}
+            pinnedThreads={[]}
+            onReorderPinnedThread={vi.fn()}
+            threadsSection={{ label: "Threads" }}
+            collapsedSectionIds={collapsedSectionIdSet}
+            collapsedThreadIds={new Set()}
+            collapsedEnvironmentIds={new Set()}
+            compareThreads={() => 0}
+            renderSectionDisplayOptions={() => null}
+            isSectionDisplayOptionsOpen={() => false}
+            onToggleCollapsed={handleToggleCollapsed}
+            onToggleThreadCollapsed={vi.fn()}
+            onToggleEnvironmentCollapsed={vi.fn()}
+          />
+        </MemoryRouter>
+      </QueryClientProvider>
+    </TooltipProvider>
   );
 }
 
@@ -193,57 +210,6 @@ afterEach(() => {
 });
 
 describe("sidebar organization mode sections", () => {
-  it("restores saved group order when activity sorting is disabled and switches to manual after dragging", () => {
-    const store = createStore();
-    const manualOrder: SidebarSectionId[] = [
-      "threads",
-      "project:b",
-      "pinned",
-      "project:a",
-    ];
-    store.set(sidebarSectionOrderAtom, manualOrder);
-    store.set(sidebarChronologicalSortAtom, "updated");
-    const { result } = renderHook(
-      () =>
-        useSidebarModeSectionOrder({
-          mode: "project",
-          entitySectionIds: ["project:a", "project:b"],
-          showPinnedSection: true,
-        }),
-      {
-        wrapper: ({ children }) => (
-          <JotaiProvider store={store}>{children}</JotaiProvider>
-        ),
-      },
-    );
-    expect(result.current.order).toEqual(manualOrder);
-    act(() => store.set(sidebarSortGroupsByRecencyAtom, true));
-    expect(result.current.order).toEqual([
-      "threads",
-      "project:a",
-      "pinned",
-      "project:b",
-    ]);
-    expect(store.get(sidebarSectionOrderAtom)).toEqual(manualOrder);
-    act(() => store.set(sidebarSortGroupsByRecencyAtom, false));
-    expect(result.current.order).toEqual(manualOrder);
-
-    act(() => store.set(sidebarSortGroupsByRecencyAtom, true));
-    act(() => store.set(sidebarChronologicalSortAtom, "alpha"));
-    expect(result.current.order).toEqual(manualOrder);
-    act(() => store.set(sidebarChronologicalSortAtom, "updated"));
-    const draggedOrder: SidebarSectionId[] = [
-      "pinned",
-      "project:b",
-      "project:a",
-      "threads",
-    ];
-    act(() => result.current.onOrderChange(draggedOrder));
-    expect(store.get(sidebarSortGroupsByRecencyAtom)).toBe(false);
-    expect(store.get(sidebarSectionOrderAtom)).toEqual(draggedOrder);
-    expect(result.current.order).toEqual(draggedOrder);
-  });
-
   it("does not mount inactive ordering or machine-grouping work", async () => {
     const store = createStore();
     store.set(sidebarSectionOrderAtom, ["threads", "project:a", "pinned"]);
@@ -346,5 +312,50 @@ describe("sidebar organization mode sections", () => {
     expect(screen.queryByText("Machine activity")).toBeNull();
     expect(screen.getByLabelText("Plan mode active")).not.toBeNull();
     expect(screen.queryByLabelText("Thread working")).toBeNull();
+  });
+
+  it("keeps hidden machine activity in More and restores the saved collapse state", async () => {
+    const store = createStore();
+    const savedOrder = ["machine:no-machine", "pinned"];
+    store.set(sidebarMachineSectionOrderAtom, savedOrder);
+    store.set(sidebarHiddenGroupsAtom, ["machine:no-machine"]);
+    store.set(sidebarCollapsedMachinesAtom, ["no-machine"]);
+
+    render(
+      <JotaiProvider store={store}>
+        <MachineModeProbe threads={[makeThread()]} />
+      </JotaiProvider>,
+    );
+
+    const more = screen.getByRole("button", { name: "More machines" });
+    expect(within(more).getByLabelText("Plan mode active")).not.toBeNull();
+    expect(screen.queryByText("No machine")).toBeNull();
+    expect(screen.queryByText("Machine activity")).toBeNull();
+
+    fireEvent.click(more);
+    const hiddenMachines = await screen.findByRole("list", {
+      name: "Hidden machines",
+    });
+    expect(within(hiddenMachines).getByText("Machine activity")).not.toBeNull();
+    fireEvent.pointerDown(
+      within(hiddenMachines).getByRole("button", {
+        name: "No machine options",
+      }),
+      { button: 0 },
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Add to sidebar" }),
+    );
+
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "More machines" })).toBeNull(),
+    );
+    expect(
+      screen.getByRole("button", { name: "Expand No machine section" }),
+    ).not.toBeNull();
+    expect(screen.queryByText("Machine activity")).toBeNull();
+    expect(store.get(sidebarHiddenGroupsAtom)).toEqual([]);
+    expect(store.get(sidebarCollapsedMachinesAtom)).toEqual(["no-machine"]);
+    expect(store.get(sidebarMachineSectionOrderAtom)).toEqual(savedOrder);
   });
 });

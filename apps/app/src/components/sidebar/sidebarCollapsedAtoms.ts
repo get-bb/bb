@@ -40,6 +40,10 @@ export const sidebarMachineSectionOrderAtom = createSyncedPreferenceAtom(
   "sidebar.machineSectionOrder",
 );
 
+export const sidebarHiddenGroupsAtom = createSyncedPreferenceAtom(
+  "sidebar.hiddenGroups",
+);
+
 export const sidebarOrganizationModeAtom = createSyncedPreferenceAtom(
   "sidebar.organizationMode",
 );
@@ -63,18 +67,6 @@ export const sidebarChronologicalSortAtom = createSyncedPreferenceAtom(
 export const sidebarSortDirectionAtom = createSyncedPreferenceAtom(
   "sidebar.sortDirection",
 );
-
-export const sidebarSortGroupsByRecencyAtom = createSyncedPreferenceAtom(
-  "sidebar.sortGroupsByRecency",
-);
-
-export const sidebarIsGroupRecencySortActiveAtom = atom((get) => {
-  const sort = get(sidebarChronologicalSortAtom);
-  return (
-    get(sidebarSortGroupsByRecencyAtom) &&
-    (sort === "updated" || sort === "none")
-  );
-});
 
 export const sidebarCollapsedThreadSectionsAtom = createSyncedPreferenceAtom(
   "sidebar.collapsedThreadSections",

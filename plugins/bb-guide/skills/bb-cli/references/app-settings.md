@@ -13,18 +13,11 @@ every window and client sees the same value.
 
 ## Sidebar preferences
 
-- `sidebar.sortGroupsByRecency` defaults to `false`. Enable **Sort groups by
-  activity** in the header's **Sort by** menu or with
-  `bb settings ui set sidebar.sortGroupsByRecency true`. With Updated at sorting,
-  projects, custom sections, machines, environments, and parent threads inherit
-  their highest-ranked visible thread. Pinned placement is preserved. Turning
-  it off restores saved group order; dragging top-level groups saves their order
-  and turns it off. Created at and Alphabetical leave the option inactive.
 - The server keeps a keyed, revisioned registry of sidebar layout preferences
   (`sidebar.organizationMode`, `sidebar.threadGrouping.environment`,
   `sidebar.chronologicalSort`, the section
-  orders, the collapsed-id lists, `sidebar.pluginPanelOrder`,
-  `sidebar.visiblePluginPanels`, `sidebar.navigationProvider`,
+  orders, the collapsed-id lists, `sidebar.hiddenGroups`,
+  `sidebar.pluginPanelOrder`, `sidebar.visiblePluginPanels`, `sidebar.navigationProvider`,
   `sidebar.threadListProvider`).
 - `sidebar.organizationMode` defaults to Custom (`chronological`) when unset;
   existing server and legacy browser choices are preserved.
@@ -42,6 +35,26 @@ every window and client sees the same value.
   revision, writes with it, and retries once on a conflict.
 - `bb settings ui reset <key> [--json]` writes the default and advances the
   revision.
+
+### Thread-list visibility
+
+- A project, custom section, or machine's menu offers **Hide from sidebar**;
+  its menu inside **More** offers **Add to sidebar**. **Customize thread list**
+  manages visibility and order for the current organization. Hidden groups keep
+  their threads, saved order, and collapse state; pinned threads remain in Pinned.
+  More carries hidden activity without automatically restoring groups.
+- `sidebar.hiddenGroups` defaults to `[]`. Use `project:<projectId>`,
+  `section:<sectionId>`, or `machine:<hostId>` keys (`machine:no-machine` for the
+  unassigned group). Each organization applies only its matching keys. Built-in
+  Pinned and Threads cannot be hidden. Duplicate keys are deduplicated;
+  unavailable IDs are retained without creating rows, and new groups are visible.
+- `bb settings ui get sidebar.hiddenGroups` reads the current list.
+  `bb settings ui set sidebar.hiddenGroups '["project:proj_example"]'` replaces
+  the complete list across organizations; include existing keys you want to keep
+  hidden. `bb settings ui reset sidebar.hiddenGroups` shows every group again.
+- SDK callers use `sdk.system.uiPreferences.list()` for the value and revision,
+  `.set({ key: "sidebar.hiddenGroups", value, expectedRevision })` to replace it,
+  and `.reset({ key: "sidebar.hiddenGroups" })` to show all groups.
 
 ## Keyboard shortcuts
 

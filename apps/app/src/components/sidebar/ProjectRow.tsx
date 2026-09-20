@@ -1,4 +1,11 @@
 import {
+  ThreadListVisibility,
+  ThreadListMore,
+  ThreadListVisibilityGroupScope,
+  ThreadListGroupVisibilityMenuItem,
+  type ThreadListVisibilityGroup,
+} from "./ThreadListVisibility";
+import {
   SidebarHeaderControls,
   SidebarSectionMenuItems,
 } from "./SidebarHeaderControls";
@@ -248,6 +255,8 @@ interface ChronologicalBuiltInSidebarSections {
 interface ChronologicalSectionThreadSectionsProps extends SectionThreadTreeProps {
   builtInSections: ChronologicalBuiltInSidebarSections;
   topLevelSectionOrder: readonly SidebarSectionId[];
+  fullSectionOrder: readonly SidebarSectionId[];
+  onFullSectionOrderChange: (order: SidebarSectionId[]) => void;
   onTopLevelSectionOrderChange: (order: SidebarSectionId[]) => void;
   pinnedReorderPending: boolean;
   pinnedRootNodes?: readonly ProjectThreadNode[];
@@ -2143,6 +2152,8 @@ export const ChronologicalSectionThreadSections = memo(
     onToggleEnvironmentCollapsed,
     builtInSections,
     topLevelSectionOrder,
+    fullSectionOrder,
+    onFullSectionOrderChange,
     onTopLevelSectionOrderChange,
     pinnedReorderPending,
     pinnedRootNodes = EMPTY_PINNED_ROOT_NODES,
@@ -2322,27 +2333,68 @@ export const ChronologicalSectionThreadSections = memo(
         content: threadsContent,
       },
     };
+
+    const visibilityGroups: ThreadListVisibilityGroup[] = sectionItems.map(
+      (item) => ({
+        id: buildSidebarEntitySectionId("section", item.group.id),
+        title: item.group.name,
+        threads: getProjectThreadItemDescendants(item.group.items),
+        renderContent: (close) => (
+          <ProjectThreadTree
+            dndParentKey={item.group.key}
+            rootItems={item.group.items}
+            threadListState={{
+              status: "ready",
+              threads: getProjectThreadItemDescendants(item.group.items),
+            }}
+            compareThreads={compareThreads}
+            variant="section"
+            selectedThreadId={selectedThreadId}
+            collapsedThreadIds={collapsedThreadIds}
+            collapsedEnvironmentIds={collapsedEnvironmentIds}
+            onProjectSelect={() => {
+              close();
+              onProjectSelect?.();
+            }}
+            onToggleThreadCollapsed={onToggleThreadCollapsed}
+            onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
+          />
+        ),
+      }),
+    );
     const orderedSections = (
-      <SidebarSectionOrderList order={topLevelSectionOrder}>
-        {(sectionId) => {
-          const builtInSection = renderBuiltInSidebarSection({
-            sectionId,
-            sections: configuredBuiltInSections,
-            disabled: topLevelSectionOrder.length < 2,
-            collapsedSectionIds: builtInSections.collapsedSectionIds,
-            onToggleCollapsed: builtInSections.onToggleCollapsed,
-            consumeClickSuppression,
-            showPinnedSection: topLevelSectionOrder.includes("pinned"),
-          });
-          if (builtInSection !== undefined) {
-            return <div key={sectionId}>{builtInSection}</div>;
-          }
-          const sectionItem = sectionItemsBySectionId.get(sectionId);
-          return sectionItem ? (
-            <div key={sectionId}>{renderItems([sectionItem])}</div>
-          ) : null;
-        }}
-      </SidebarSectionOrderList>
+      <ThreadListVisibility
+        groups={visibilityGroups}
+        order={fullSectionOrder}
+        onOrderChange={onFullSectionOrderChange}
+        label="Sections"
+      >
+        <SidebarSectionOrderList
+          order={topLevelSectionOrder}
+          trailing={<ThreadListMore />}
+        >
+          {(sectionId) => {
+            const builtInSection = renderBuiltInSidebarSection({
+              sectionId,
+              sections: configuredBuiltInSections,
+              disabled: topLevelSectionOrder.length < 2,
+              collapsedSectionIds: builtInSections.collapsedSectionIds,
+              onToggleCollapsed: builtInSections.onToggleCollapsed,
+              consumeClickSuppression,
+              showPinnedSection: topLevelSectionOrder.includes("pinned"),
+            });
+            if (builtInSection !== undefined) {
+              return <div key={sectionId}>{builtInSection}</div>;
+            }
+            const sectionItem = sectionItemsBySectionId.get(sectionId);
+            return sectionItem ? (
+              <ThreadListVisibilityGroupScope key={sectionId} id={sectionId}>
+                {renderItems([sectionItem])}
+              </ThreadListVisibilityGroupScope>
+            ) : null;
+          }}
+        </SidebarSectionOrderList>
+      </ThreadListVisibility>
     );
 
     return sectionDnd ? (
@@ -2427,12 +2479,21 @@ function ProjectRowComponent({
       onNewThread={onCreateProjectThread ? handleCreateThread : undefined}
       onOpenChange={setIsDropdownActionsOpen}
     >
-      <ProjectActionsMenuItems project={project} surface="dropdown" />
+      <ProjectActionsMenuItems
+        project={project}
+        surface="dropdown"
+        extraActions={(surface) => (
+          <ThreadListGroupVisibilityMenuItem surface={surface} />
+        )}
+      />
     </SidebarHeaderControls>
   );
 
   return (
     <ProjectActionsContextMenu
+      extraActions={(surface) => (
+        <ThreadListGroupVisibilityMenuItem surface={surface} />
+      )}
       project={project}
       onOpenChange={setIsContextActionsOpen}
     >
