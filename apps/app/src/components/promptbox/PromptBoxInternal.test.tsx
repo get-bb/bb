@@ -984,7 +984,7 @@ describe("PromptBoxInternal controlled value sync", () => {
     }
   });
 
-  it("preserves an active sidebar rename when the thread focus scope changes", async () => {
+  it("preserves an active sidebar rename when composer autofocus starts", async () => {
     const restoreMatchMedia = mockPointerCoarse(false);
     const rename = document.createElement("span");
     rename.setAttribute("data-sidebar-rename-editor", "");
@@ -992,13 +992,13 @@ describe("PromptBoxInternal controlled value sync", () => {
     rename.append(input);
     document.body.append(rename);
     try {
-      const props = createPromptBoxProps({ focusScopeKey: "first-thread" });
+      const props = createPromptBoxProps({ autoFocus: false });
       const view = render(<PromptBoxInternal {...props} />);
-      await waitForPromptFocus();
-      input.focus();
-      view.rerender(
-        <PromptBoxInternal {...props} focusScopeKey="second-thread" />,
+      await waitFor(() =>
+        expect(getPromptEditorElement()).toBeInstanceOf(HTMLElement),
       );
+      input.focus();
+      view.rerender(<PromptBoxInternal {...props} autoFocus />);
       await act(
         () =>
           new Promise<void>((resolve) =>
