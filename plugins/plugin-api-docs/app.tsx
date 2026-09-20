@@ -1,14 +1,11 @@
+import { PluginBrandIcon } from "@bb/shared-ui/plugin-icon";
 import {
   copyPluginSurfaceAgentReference,
   firstPartyPluginId,
   ProductMap,
 } from "@bb/plugin-api-map";
 import { useCallback, useEffect, useState } from "react";
-import {
-  definePluginApp,
-  experimental_Icon as Icon,
-  useBbNavigate,
-} from "@get-bb/plugin-sdk/app";
+import { definePluginApp, useBbNavigate } from "@get-bb/plugin-sdk/app";
 
 interface PluginReference {
   id: string;
@@ -93,33 +90,14 @@ function PluginApiMapPage({ subPath }: { subPath: string }) {
       const id = firstPartyPluginId(displayName);
       const plugin = id ? plugins.get(id) : undefined;
       if (!plugin) return null;
-      const className = "inline-block size-3.5 shrink-0 text-subtle-foreground";
-      if (plugin.iconUrl) {
-        if (!plugin.iconTinted) {
-          return <img src={plugin.iconUrl} alt="" className={className} />;
-        }
-        const maskImage = `url(${JSON.stringify(plugin.iconUrl)})`;
-        return (
-          <span
-            aria-hidden="true"
-            className={className}
-            style={{
-              backgroundColor: "currentColor",
-              maskImage,
-              maskPosition: "center",
-              maskRepeat: "no-repeat",
-              maskSize: "contain",
-              WebkitMaskImage: maskImage,
-              WebkitMaskPosition: "center",
-              WebkitMaskRepeat: "no-repeat",
-              WebkitMaskSize: "contain",
-            }}
-          />
-        );
-      }
-      return plugin.icon ? (
-        <Icon name={plugin.icon} className={className} aria-hidden />
-      ) : null;
+      return (
+        <PluginBrandIcon
+          icon={plugin.icon}
+          iconUrl={plugin.iconUrl}
+          iconTinted={plugin.iconTinted}
+          className="inline-block size-3.5 shrink-0 text-subtle-foreground"
+        />
+      );
     },
     [plugins],
   );

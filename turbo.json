@@ -162,6 +162,10 @@
       ],
       "outputs": ["dist/**"]
     },
+    "@bb/plugin-api-map#topo": {
+      "dependsOn": ["^topo"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/plugins/*/package.json"]
+    },
     "prepare:bundled": {
       "dependsOn": ["topo", "^build"],
       "inputs": ["$TURBO_DEFAULT$", "!dist/**", "!.bundled-runtime/**"],

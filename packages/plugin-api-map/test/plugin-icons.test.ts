@@ -1,7 +1,6 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import * as icons from "@hugeicons/core-free-icons";
 
 import { firstPartyPluginId, pluginIcon } from "../src/plugin-icons";
 import { SURFACE_GROUPS } from "../src/surfaces";
@@ -22,14 +21,6 @@ describe("Guide first-party examples", () => {
           ),
         ),
       );
-    const iconSource = ["icon.tsx", "icon-extended.tsx"]
-      .map((file) =>
-        readFileSync(
-          join(repoRoot, "packages/shared-ui/src/components/ui", file),
-          "utf8",
-        ),
-      )
-      .join("\n");
     const names = new Set(
       SURFACE_GROUPS.flatMap((group) =>
         group.surfaces.flatMap((surface) => surface.firstParty ?? []),
@@ -48,13 +39,7 @@ describe("Guide first-party examples", () => {
       if (glyph.startsWith("./")) {
         expect(pluginIcon(name), name).toBeNull();
       } else {
-        const exportedName = iconSource.match(
-          new RegExp(`\\b${glyph}: (\\w+)`),
-        )?.[1];
-        expect(exportedName, name).toBeDefined();
-        expect(pluginIcon(name), name).toEqual(
-          Reflect.get(icons, exportedName!),
-        );
+        expect(pluginIcon(name), name).toBe(glyph);
       }
     }
   });

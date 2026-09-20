@@ -187,7 +187,8 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Act on the Browser tab currently in front of the user",
           "Receive the owning thread id, tab id, and current URL",
           "Render beside the Browser address bar and native controls",
-          "Run scripts in the tab's page and receive messages back without a CDP lease",
+          "Use experimental_page on desktop to run scripts and receive messages without a CDP lease; it is null in the web app",
+          "Evaluate in an isolated world by default, with bb.postMessage for replies; the main world shares page globals and has no message bridge. Navigation removes installed scripts",
         ],
         apiSymbols: [
           "ExperimentalPluginBrowserToolbarActionRegistration",
@@ -244,13 +245,19 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         id: "pending-interaction",
         title: "In-thread forms",
         summary:
-          "Pauses an agent mid-turn to ask the person a question, and hands their answer back to the agent. With this, a plugin can:",
+          "Asks the person a question in the thread composer and delivers their answer to the agent, even if the original turn has ended. With this, a plugin can:",
         bullets: [
           "Replace the prompt box with a form the plugin draws, even after the agent's turn has ended",
           "Receive the submitted answer, or a cancellation and its reason",
           "Leave a row in the thread timeline: the plugin names its header and describes what a submission shows, so the transcript keeps exactly what the plugin chooses",
         ],
-        apiSymbols: ["PluginUi", "PluginPendingInteractionRegistration"],
+        apiSymbols: [
+          "PluginUi",
+          "PluginInteractionRequest",
+          "PluginInteractionDescription",
+          "PluginRowPresentation",
+          "PluginPendingInteractionRegistration",
+        ],
         firstParty: ["Ask User Question", "Secrets"],
       },
       {
@@ -510,7 +517,11 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Set the composer's pickers (provider, model, reasoning level, service tier, permission mode, and on the new-thread screen the project and environment) through the same paths the pickers use, and read back what the composer settled on",
           "Render in the same row as bb's own prompt-box buttons; bb keeps up to 3 plugins with applicable actions inline, ranked by use, and moves the rest into an overflow menu",
         ],
-        apiSymbols: ["PluginComposerApi", "ExperimentalComposerSelection"],
+        apiSymbols: [
+          "PluginComposerApi",
+          "PluginComposerApi.experimental_setSelection",
+          "ExperimentalComposerSelection",
+        ],
       },
     ],
   },
@@ -707,10 +718,16 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Adds tools, skills, and instructions to the agent sessions bb runs. With this, a plugin can:",
         bullets: [
           "Register tools an agent calls the same way it calls bb's built-in tools",
+          "Call bb.ui.requestInput from a native tool to return a waiting notice immediately, then deliver the eventual result as a thread message; stopping or deleting the thread, or unloading the plugin, cancels the detached call",
           "Decide per thread which of its tools and skills are available",
           "Append instructions to a session's system prompt as that session starts",
         ],
-        apiSymbols: ["PluginAgents"],
+        apiSymbols: [
+          "PluginAgents",
+          "PluginAgentToolContext",
+          "PluginRowPresentation",
+          "PluginRowLabels",
+        ],
         firstParty: [
           "Ask User Question",
           "Custom instructions",
@@ -856,6 +873,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Read projectCheckout.experimental_ownsPath to distinguish core clones from user-maintained attachments; core runs environment hooks for owned paths",
           "Render its own control for those inputs beside the picked provider with app.slots.experimental_environmentProviderInputs, reporting either ready inputs or a blocked reason",
           "Use experimental_BranchPicker for a standard branch choice, or compose experimental_useBranches with experimental_useCheckoutState when it needs checkout-aware branch selection",
+          "Own the meaning and default of the branch choice: a null BranchPicker value shows Select branch, its label names the menu, and its placeholder replaces the empty trigger",
           "Run one idempotent long create call that returns a created directory or failure; a failed create is terminal and an explicit retry starts a new attempt on the same environment; provider policy exposes only retirement grace and path-key strategy",
           "Let bb run the repo setup hook after an owned-path create and teardown before removal; attached paths skip both hooks; unknown hook outcomes after daemon restart block automatic cleanup",
           "Use core's pathKey for stable resource identity; core records it as the environment instance key",
@@ -1158,8 +1176,9 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Add names or override built-in app icons; conflicts between plugins use the first plugin id in lexical order and warn, while duplicate names within one plugin reject setup",
           "Render experimental_ProviderIcon with required providerKind (agent, machine, environment), provider={provider}, and optional fallback (Code by default). Pass an existing provider record: it reads id, logoUrl, icon, and strings.iconTint, resolving the matching kind/id slot override, then legacy unscoped overrides, then declared artwork. It fetches no metadata. Marks are decorative by default; pass aria-label for a meaningful standalone image",
           "Provider icons update on plugin load/reload/unload; throwing or recursive overrides fall back to supplied artwork. Use the same component for agent, machine, and environment providers",
-          "Render experimental_Icon with a name and optional fallback; missing names try the fallback, then Zap. Registered artwork receives className and should use currentColor",
-          "Return nothing from icon registration: bb replaces icons on plugin reload and restores previous definitions on unload. Manifest branding and SVG asset declarations remain separate",
+          "Use the same icon names in experimental_Icon and host-rendered icon fields: registered React artwork wins over built-in names, followed by namespaced <pluginId>/<name> assets from bb.branding.experimental_icons. Missing names use the surface's fallback",
+          "Prefer bb.branding.icon on plugin-badged rows such as panel launchers and composer menu items; draft-row status uses its supplied icon directly",
+          "Return nothing from icon registration: bb replaces React artwork on reload and removes it on unload. Declared SVG icons need no app bundle and remain available while the plugin is stopped; React artwork receives className and should use currentColor",
           "Load the same registrations in web, desktop, and mobile's web app; manage their plugin through bb plugin build, install, reload, and remove",
         ],
         apiSymbols: [

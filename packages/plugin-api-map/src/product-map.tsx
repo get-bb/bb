@@ -8,9 +8,8 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from "react";
+import { Icon } from "@bb/shared-ui/icon";
 import { HugeiconsIcon } from "@hugeicons/react";
-import ArrowLeft01Icon from "@hugeicons/core-free-icons/ArrowLeft01Icon";
-import ArrowRight01Icon from "@hugeicons/core-free-icons/ArrowRight01Icon";
 
 import { cn } from "./cn";
 import { SurfaceCard, useSurfaceCard } from "./surface-card";
@@ -443,8 +442,8 @@ function PanButton({
         FOCUS_RING_CLASS,
       )}
     >
-      <HugeiconsIcon
-        icon={direction === "previous" ? ArrowLeft01Icon : ArrowRight01Icon}
+      <Icon
+        name={direction === "previous" ? "ChevronLeft" : "ChevronRight"}
         className="size-4"
       />
     </button>
