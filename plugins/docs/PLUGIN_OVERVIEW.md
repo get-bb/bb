@@ -1,4 +1,4 @@
-Keep your notes, plans, and reports as plain Markdown files on disk, and edit them inside bb. Documents stay ordinary files in folders you choose, on this machine or on any connected host.
+Collaborate with agents on editing Markdown docs inline. Edit directly inside threads, approve/reject proposals from an agent, and undo/redo changes.
 
 ## What you get
 

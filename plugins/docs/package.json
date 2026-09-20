@@ -1,7 +1,7 @@
 {
   "name": "bb-plugin-simple-notes",
   "version": "0.2.3",
-  "description": "Edit Markdown documents inline and review agent proposals across local and connected-host vaults.",
+  "description": "Collaborate with agents on editing Markdown docs inline. Edit directly inside threads, approve/reject proposals from an agent, and undo/redo changes.",
   "private": true,
   "license": "MIT",
   "homepage": "https://github.com/get-bb/bb#readme",
@@ -27,7 +27,7 @@
   },
   "bb": {
     "name": "Docs",
-    "description": "Edit Markdown documents inline and review agent proposals across local and connected-host vaults.",
+    "description": "Collaborate with agents on editing Markdown docs inline. Edit directly inside threads, approve/reject proposals from an agent, and undo/redo changes.",
     "branding": {
       "icon": "FileText"
     },
