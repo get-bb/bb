@@ -2,6 +2,7 @@
 
 import type { ComponentProps } from "react";
 import {
+  act,
   cleanup,
   fireEvent,
   render as renderDom,
@@ -93,7 +94,7 @@ function LocationStateProbe() {
   );
 }
 
-function renderLibrarySkillRoute() {
+function renderLibrarySkillRoute(skillId = "skill_missing") {
   vi.spyOn(sdk.providers, "list").mockResolvedValue([]);
   const fetchMock = vi.fn(
     async () =>
@@ -109,9 +110,10 @@ function renderLibrarySkillRoute() {
       ),
   );
   vi.stubGlobal("fetch", fetchMock);
-  const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+  const { wrapper: QueryClientWrapper, queryClient } =
+    createQueryClientTestHarness();
   renderDom(
-    <MemoryRouter initialEntries={["/skills/library/skill_missing"]}>
+    <MemoryRouter initialEntries={[`/skills/library/${skillId}`]}>
       <QueryClientWrapper>
         <Routes>
           <Route path="/skills/library/:skillId" element={<SkillsLibrary />} />
@@ -119,7 +121,7 @@ function renderLibrarySkillRoute() {
       </QueryClientWrapper>
     </MemoryRouter>,
   );
-  return fetchMock;
+  return { fetchMock, queryClient };
 }
 
 const NO_PROVIDER_ROSTER: ReadonlyMap<string, ProviderInfo> = new Map();
@@ -254,8 +256,9 @@ function stubRegistryFetch(
 }
 
 function renderRegistrySkillRoute() {
-  const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
-  return renderDom(
+  const { wrapper: QueryClientWrapper, queryClient } =
+    createQueryClientTestHarness();
+  const view = renderDom(
     <MemoryRouter
       initialEntries={["/skills/registry/owner%2Frepo%2Fuseful-skill"]}
     >
@@ -269,6 +272,7 @@ function renderRegistrySkillRoute() {
       </QueryClientWrapper>
     </MemoryRouter>,
   );
+  return { ...view, queryClient };
 }
 
 function NavigateButton({ to, label }: { to: string; label: string }) {
@@ -834,6 +838,39 @@ describe("SkillsOverview", () => {
 });
 
 describe("SkillsLibrary library detail routing", () => {
+  it("keeps cached file content through a failed refresh and updates on success", async () => {
+    const skill = makeSkill();
+    vi.spyOn(sdk.hosts, "list").mockResolvedValue([]);
+    vi.spyOn(sdk.skills, "list").mockResolvedValue({ skills: [skill] });
+    vi.spyOn(sdk.skills, "listFiles").mockResolvedValue({
+      files: ["SKILL.md"],
+      truncated: false,
+    });
+    const content = vi.spyOn(sdk.skills, "getContent").mockResolvedValue({
+      content: "Cached instructions",
+      revision: "a".repeat(64),
+    });
+    const { queryClient } = renderLibrarySkillRoute(skill.id);
+    await screen.findByText("Cached instructions");
+
+    content.mockRejectedValue(new Error("HTTP 503"));
+    await act(async () => {
+      await queryClient.invalidateQueries();
+    });
+    expect(screen.getByText("Cached instructions")).toBeTruthy();
+    expect(screen.queryByText("Failed to load SKILL.md.")).toBeNull();
+
+    content.mockResolvedValue({
+      content: "Updated instructions",
+      revision: "b".repeat(64),
+    });
+    await act(async () => {
+      await queryClient.invalidateQueries();
+    });
+    expect(await screen.findByText("Updated instructions")).toBeTruthy();
+    expect(screen.queryByText("Cached instructions")).toBeNull();
+  });
+
   it("keeps a detail loading state while the skill library resolves", () => {
     vi.spyOn(sdk.skills, "list").mockImplementation(
       () => new Promise(() => {}),
@@ -860,7 +897,7 @@ describe("SkillsLibrary library detail routing", () => {
   it("shows not found on an unknown library skill detail route", async () => {
     vi.spyOn(sdk.skills, "list").mockResolvedValue({ skills: [] });
 
-    const fetchMock = renderLibrarySkillRoute();
+    const { fetchMock } = renderLibrarySkillRoute();
 
     const notFound = await screen.findByText("Skill not found.");
     expect(notFound.closest("[data-resource-detail-state]")).not.toBeNull();
@@ -870,6 +907,24 @@ describe("SkillsLibrary library detail routing", () => {
 });
 
 describe("SkillsLibrary registry detail lifecycle", () => {
+  it("keeps cached source content when a background refresh fails", async () => {
+    vi.spyOn(sdk.skills, "list").mockResolvedValue({ skills: [] });
+    const fetchMock = stubRegistryFetch(makeRegistrySkill());
+    const { queryClient } = renderRegistrySkillRoute();
+    await screen.findByRole("heading", { name: "SKILL.md" });
+
+    fetchMock.mockImplementation(async () => new Response(null, { status: 503 }));
+    await act(async () => {
+      await queryClient.invalidateQueries();
+    });
+    expect(screen.getByRole("heading", { name: "SKILL.md" })).toBeTruthy();
+    expect(
+      screen.queryByText(
+        "This registry skill is no longer available from its source.",
+      ),
+    ).toBeNull();
+  });
+
   it("does not offer installation when a direct registry source is unavailable", async () => {
     const registrySkill = makeRegistrySkill();
     vi.spyOn(sdk.skills, "list").mockResolvedValue({ skills: [] });

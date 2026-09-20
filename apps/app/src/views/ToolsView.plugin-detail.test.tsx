@@ -21,6 +21,7 @@ import {
   useNavigate,
 } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createDeferredPromise } from "@bb/test-helpers";
 import {
   EMPTY_PLUGIN_UPDATE_STATE,
   type PluginListItem,
@@ -43,7 +44,10 @@ import {
   pluginFrontendDiagnosticRequiresFailureBanner,
 } from "@/components/tools/PluginDetail";
 import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
-import { pluginSourceQueryKey } from "@/hooks/queries/query-keys";
+import {
+  pluginListQueryKey,
+  pluginSourceQueryKey,
+} from "@/hooks/queries/query-keys";
 import type { PluginFrontendDiagnostic } from "@/lib/plugin-frontend";
 import {
   makeInstalledPlugin,
@@ -152,6 +156,85 @@ afterEach(() => {
   resetPluginSlotStoreForTest();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+});
+
+describe("plugin detail page cached loads", () => {
+  it.each([
+    { cached: true, fails: false },
+    { cached: true, fails: true },
+    { cached: false, fails: false },
+    { cached: false, fails: true },
+  ])(
+    "loads with cached=$cached and refresh failure=$fails",
+    async ({ cached, fails }) => {
+      const response = createDeferredPromise<Response>();
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (input: RequestInfo | URL) => {
+          if (String(input) === "/api/v1/plugins") {
+            return response.promise;
+          }
+          if (String(input).includes("plugin-catalog/search")) {
+            return Response.json({ results: [], collections: [] });
+          }
+          return Response.json({ error: "not found" }, { status: 404 });
+        }),
+      );
+      const { queryClient, wrapper } = createQueryClientTestHarness();
+      if (cached) {
+        queryClient.setQueryData(
+          pluginListQueryKey(true),
+          [makeInstalledPlugin({ id: "github", name: "Cached GitHub" })],
+          { updatedAt: Date.now() - 60_000 },
+        );
+      }
+      render(
+        <MemoryRouter initialEntries={["/settings/plugins/github"]}>
+          <RoutedPluginsView />
+        </MemoryRouter>,
+        { wrapper },
+      );
+      if (cached) {
+        expect(
+          screen.getByRole("heading", { name: "Cached GitHub" }),
+        ).toBeTruthy();
+        expect(screen.queryByText("Loading plugin")).toBeNull();
+      } else {
+        expect(screen.getByText("Loading plugin")).toBeTruthy();
+      }
+      await act(async () => {
+        response.resolve(
+          fails
+            ? Response.json({ error: "refresh failed" }, { status: 503 })
+            : Response.json({
+                plugins: [
+                  makeInstalledPlugin({ id: "github", name: "Updated GitHub" }),
+                ],
+              }),
+        );
+      });
+      if (!fails) {
+        await screen.findByRole("heading", { name: "Updated GitHub" });
+        expect(
+          screen.queryByRole("heading", { name: "Cached GitHub" }),
+        ).toBeNull();
+      } else {
+        await waitFor(() =>
+          expect(
+            queryClient.getQueryState(pluginListQueryKey(true))?.status,
+          ).toBe("error"),
+        );
+        if (cached) {
+          expect(
+            screen.getByRole("heading", { name: "Cached GitHub" }),
+          ).toBeTruthy();
+          expect(screen.queryByText("Couldn't load plugin.")).toBeNull();
+        } else {
+          expect(screen.getByText("Couldn't load plugin.")).toBeTruthy();
+        }
+      }
+    },
+  );
 });
 
 describe("PluginDetail official catalog lifecycle", () => {

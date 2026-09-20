@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -15,6 +16,14 @@ import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { makeSystemConfig } from "@/test/fixtures/system-config";
 import { SETTINGS_PROJECT_ROUTE_PATH } from "@/lib/route-paths";
+import {
+  hostsQueryKey,
+  sidebarNavigationQueryKey,
+} from "@/hooks/queries/query-keys";
+import {
+  resetSidebarBootstrapCacheForTest,
+  SIDEBAR_BOOTSTRAP_CACHE_KEY,
+} from "@/lib/sidebar-bootstrap-cache";
 import { ProjectDetailSettingsView } from "./ProjectDetailSettingsView";
 
 vi.mock("@/lib/sdk", () => ({
@@ -124,8 +133,8 @@ function stubSidebarBootstrapFetch(
 }
 
 function renderView(projectId = "proj_bb") {
-  const { wrapper } = createQueryClientTestHarness();
-  return render(
+  const { wrapper, queryClient } = createQueryClientTestHarness();
+  const view = render(
     <MemoryRouter initialEntries={[`/settings/projects/${projectId}`]}>
       <Routes>
         <Route
@@ -137,6 +146,7 @@ function renderView(projectId = "proj_bb") {
     </MemoryRouter>,
     { wrapper },
   );
+  return { ...view, queryClient };
 }
 
 beforeEach(() => {
@@ -160,11 +170,32 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  resetSidebarBootstrapCacheForTest();
+  window.localStorage.removeItem(SIDEBAR_BOOTSTRAP_CACHE_KEY);
   vi.unstubAllGlobals();
   vi.clearAllMocks();
 });
 
 describe("ProjectDetailSettingsView", () => {
+  it("keeps the cached project visible when a page refresh fails", async () => {
+    stubSidebarBootstrapFetch([{ hostId: primaryHost.id, path: "/repos/bb" }]);
+    const { queryClient } = renderView();
+    await screen.findByRole("heading", { name: "bb", level: 1 });
+    vi.mocked(sdk.hosts.list).mockRejectedValue(new Error("refresh failed"));
+    stubSidebarBootstrapFetch([], { status: 503 });
+    await act(async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: hostsQueryKey() }),
+        queryClient.invalidateQueries({
+          queryKey: sidebarNavigationQueryKey(),
+        }),
+      ]);
+    });
+    expect(queryClient.getQueryState(hostsQueryKey())?.status).toBe("error");
+    expect(screen.getByRole("heading", { name: "bb", level: 1 })).toBeTruthy();
+    expect(screen.queryByText("Couldn't load this project.")).toBeNull();
+  });
+
   it("keeps checkout counts in sync with the show-all machine toggle", async () => {
     const sandbox = host({
       id: "host_sandbox",
@@ -282,7 +313,7 @@ describe("ProjectDetailSettingsView", () => {
     expect(remove.getAttribute("aria-disabled")).toBe("true");
   });
 
-  it("shows derived thread defaults when the project has run threads", async () => {
+  it("keeps loaded thread defaults when a background refresh fails", async () => {
     stubSidebarBootstrapFetch([
       { hostId: "host_primary", path: "/Users/me/bb" },
     ]);
@@ -295,11 +326,20 @@ describe("ProjectDetailSettingsView", () => {
     };
     vi.mocked(sdk.projects.defaultExecutionOptions).mockResolvedValue(defaults);
 
-    renderView();
+    const { queryClient } = renderView();
 
     expect(await screen.findByText("gpt-6-astra")).toBeDefined();
     expect(screen.getByText("codex")).toBeDefined();
     expect(screen.queryByText(/^No threads have run here yet/u)).toBeNull();
+
+    vi.mocked(sdk.projects.defaultExecutionOptions).mockRejectedValue(
+      new Error("refresh failed"),
+    );
+    await act(async () => {
+      await queryClient.invalidateQueries();
+    });
+    expect(screen.getByText("gpt-6-astra")).toBeDefined();
+    expect(screen.queryByText("Couldn't load thread defaults.")).toBeNull();
   });
 
   it("distinguishes a failed defaults load from an empty one", async () => {

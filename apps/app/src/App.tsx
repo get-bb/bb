@@ -68,6 +68,7 @@ import { AppCommandProvider } from "./components/commands/AppCommandProvider";
 import { ProviderCliInstallLogDialogHost } from "./components/provider-cli/provider-cli-install";
 import { ServerMoveOverlay } from "./components/machines/ServerMoveOverlay";
 import { RouteLoadingSkeleton } from "./components/ui/route-loading-skeleton";
+import { RouteContent } from "./components/RouteContent";
 
 const SettingsView = lazy(() =>
   import("./views/SettingsView").then((m) => ({
@@ -264,7 +265,7 @@ export function HashNavigationScroll() {
 export function AppRoutes() {
   return (
     <AppLayout>
-      <Suspense fallback={null}>
+      <RouteContent>
         <Routes>
           <Route
             path="/settings/usage"
@@ -398,7 +399,7 @@ export function AppRoutes() {
           />
         </Routes>
         <RouteContentPaintSignal />
-      </Suspense>
+      </RouteContent>
     </AppLayout>
   );
 }

@@ -187,7 +187,11 @@ function useAutomation(route: DetailRoute): {
       },
       (error: unknown) => {
         if (requestRef.current !== requestId) return;
-        setState({ automation: null, error: errorText(error) });
+        setState((current) =>
+          current.automation !== null
+            ? current
+            : { automation: null, error: errorText(error) },
+        );
       },
     );
   }, [rpc, projectId, automationId]);

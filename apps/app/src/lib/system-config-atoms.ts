@@ -89,7 +89,10 @@ function didLastSystemConfigLoadFail(): boolean {
 
 async function loadSystemConfig(): Promise<SystemConfigResponse> {
   try {
-    const config = await appQueryClient.fetchQuery(systemConfigQueryOptions());
+    const config = await appQueryClient.ensureQueryData({
+      ...systemConfigQueryOptions(),
+      revalidateIfStale: true,
+    });
     markSystemConfigLoadSucceeded();
     return config;
   } catch {

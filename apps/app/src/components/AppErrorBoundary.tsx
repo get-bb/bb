@@ -2,30 +2,52 @@ import { Component, type ErrorInfo, type ReactNode } from "react";
 
 interface AppErrorBoundaryProps {
   children: ReactNode;
+  fallback?: (error: Error) => ReactNode;
+  resetKey?: string;
 }
 
 interface AppErrorBoundaryState {
   error: Error | null;
+  resetKey?: string;
 }
 
 export class AppErrorBoundary extends Component<
   AppErrorBoundaryProps,
   AppErrorBoundaryState
 > {
-  override state: AppErrorBoundaryState = { error: null };
+  override state: AppErrorBoundaryState = {
+    error: null,
+    resetKey: this.props.resetKey,
+  };
+
+  static getDerivedStateFromProps(
+    props: AppErrorBoundaryProps,
+    state: AppErrorBoundaryState,
+  ): AppErrorBoundaryState | null {
+    return props.resetKey === state.resetKey
+      ? null
+      : { error: null, resetKey: props.resetKey };
+  }
 
   static getDerivedStateFromError(error: unknown): AppErrorBoundaryState {
     return { error: error instanceof Error ? error : new Error(String(error)) };
   }
 
   override componentDidCatch(error: Error, info: ErrorInfo): void {
-    console.error("[bb] the app crashed", error, info.componentStack);
+    console.error(
+      this.props.fallback ? "[bb] a page failed to load" : "[bb] the app crashed",
+      error,
+      info.componentStack,
+    );
   }
 
   override render(): ReactNode {
     const { error } = this.state;
     if (error === null) {
       return this.props.children;
+    }
+    if (this.props.fallback) {
+      return this.props.fallback(error);
     }
     return (
       <div className="flex h-dvh w-full items-center justify-center bg-background p-6 text-foreground">
