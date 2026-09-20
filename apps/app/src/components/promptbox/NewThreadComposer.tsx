@@ -1297,7 +1297,7 @@ export function NewThreadComposer({
   const [isUploading, setIsUploading] = useState(false);
   const [isCopyingAttachments, setIsCopyingAttachments] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const isUploadingRef = useRef(false);
+  const pendingUploadCountRef = useRef(0);
   const isCopyingAttachmentsRef = useRef(false);
   const isSubmittingRef = useRef(false);
   const uploadPromptAttachment = useUploadPromptAttachment();
@@ -1310,10 +1310,10 @@ export function NewThreadComposer({
   }, [uploadTargetKey]);
   const handleAttachFiles = useCallback(
     async (files: File[]) => {
-      if (!projectId || files.length === 0 || isUploadingRef.current) return;
+      if (!projectId || files.length === 0) return;
       const capturedTarget = `${projectId}\0${promptDraft.storageKey}`;
       setAttachmentError(null);
-      isUploadingRef.current = true;
+      pendingUploadCountRef.current += 1;
       setIsUploading(true);
       const uploads = startUploads(files);
       try {
@@ -1341,8 +1341,8 @@ export function NewThreadComposer({
         }
       } finally {
         finishUploads(uploads);
-        isUploadingRef.current = false;
-        setIsUploading(false);
+        pendingUploadCountRef.current -= 1;
+        setIsUploading(pendingUploadCountRef.current > 0);
       }
     },
     [projectId, promptDraft, uploadPromptAttachment, startUploads, finishUploads],
@@ -1353,7 +1353,7 @@ export function NewThreadComposer({
       if (nextValue === projectId) return "unchanged";
       if (
         isCopyingAttachmentsRef.current ||
-        isUploadingRef.current ||
+        pendingUploadCountRef.current > 0 ||
         isSubmittingRef.current
       ) {
         return "refused";

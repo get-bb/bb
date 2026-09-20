@@ -53,18 +53,28 @@ describe("PromptBoxActionsMenu", () => {
     expect(onAttach).toHaveBeenCalledOnce();
   });
 
-  it("keeps the plus menu trigger stable during attachment uploads", () => {
+  it("allows adding files while earlier attachments upload", async () => {
+    const onAttach = vi.fn();
     render(
       <PromptBoxActionsMenu
         isAttaching
         onAction={() => {}}
-        onAttach={() => {}}
+        onAttach={onAttach}
       />,
     );
 
     const trigger = screen.getByRole("button", { name: "Prompt actions" });
     expect(trigger.querySelector('[data-icon="Plus"]')).not.toBeNull();
     expect(trigger.querySelector('[data-icon="Spinner"]')).toBeNull();
+    fireEvent.pointerDown(trigger, { button: 0 });
+    const attach = await screen.findByRole("menuitem", {
+      name: "Attach files",
+    });
+    expect(attach.getAttribute("aria-disabled")).not.toBe("true");
+    expect(attach.querySelector('[data-icon="Paperclip"]')).not.toBeNull();
+    expect(attach.querySelector('[data-icon="Loading"]')).not.toBeNull();
+    fireEvent.click(attach);
+    expect(onAttach).toHaveBeenCalledOnce();
   });
 
   it("seeds the composer with the plugin prompt after the provider actions", async () => {

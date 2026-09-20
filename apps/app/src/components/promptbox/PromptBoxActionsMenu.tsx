@@ -207,21 +207,24 @@ export function PromptBoxActionsMenu({
         {onAttach ? (
           <>
             <DropdownMenuItem
-              disabled={isAttaching}
               onSelect={() => {
                 selectedItemRef.current = true;
                 onAttach();
               }}
             >
               <Icon
-                name={isAttaching ? "Loading" : "Paperclip"}
-                className={cn(
-                  "size-4 text-muted-foreground",
-                  isAttaching && "animate-spin",
-                )}
+                name="Paperclip"
+                className="size-4 text-muted-foreground"
                 aria-hidden
               />
               Attach files
+              {isAttaching ? (
+                <Icon
+                  name="Loading"
+                  className="ml-auto size-3.5 animate-spin text-muted-foreground motion-reduce:animate-none"
+                  aria-hidden
+                />
+              ) : null}
             </DropdownMenuItem>
             {visibleActions.length > 0 ? <DropdownMenuSeparator /> : null}
           </>

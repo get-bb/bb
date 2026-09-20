@@ -124,12 +124,10 @@ export function AttachmentPreview({
           ].filter(Boolean).join(", ")}
           className="ml-3 inline-flex h-7 shrink-0 items-center gap-3 rounded-md bg-surface-recessed px-2 text-xs text-muted-foreground"
         >
-          {attachmentCount > 0 ? (
-            <span aria-hidden="true" className="inline-flex items-center gap-1.5">
-              <Icon name="Paperclip" className="size-3.5" />
-              <span>{attachmentCount}</span>
-            </span>
-          ) : null}
+          <span aria-hidden="true" className="inline-flex items-center gap-1.5">
+            <Icon name="Paperclip" className="size-3.5" />
+            {attachmentCount > 0 ? <span>{attachmentCount}</span> : null}
+          </span>
           {uploadingCount > 0 ? (
             <span aria-hidden="true" className="inline-flex items-center gap-1.5">
               <Icon name="Loading" className="size-3.5 animate-spin motion-reduce:animate-none" />

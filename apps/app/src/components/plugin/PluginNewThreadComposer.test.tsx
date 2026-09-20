@@ -46,6 +46,8 @@ import { encodeReuseValue } from "@/components/pickers/environment-picker-value"
 import { useRootComposeReuseEnvironment } from "@/lib/root-compose-selection";
 import { getPromptDraftAccessor } from "@/hooks/usePromptDraftStorage";
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
+import { createDeferredPromise } from "@bb/test-helpers";
+import type { PromptDraftAttachment } from "@bb/client-core";
 import { makeProjectWithThreadsResponse } from "@/test/fixtures/projects";
 import { RootComposeView } from "@/views/RootComposeView";
 import { ROOT_COMPOSE_FIXED_PANEL_STATE_ID } from "@/views/RootComposePanelTabContent";
@@ -1748,6 +1750,53 @@ describe("PluginNewThreadComposer seeding", () => {
       expect(latestPromptBoxProps().isSubmitting).toBe(false);
     });
     expect(latestPromptBoxProps().value).toBe("next thread");
+  });
+
+  it("accepts overlapping uploads and stays busy until every batch settles", async () => {
+    const first = createDeferredPromise<PromptDraftAttachment>();
+    const second = createDeferredPromise<PromptDraftAttachment>();
+    mocks.uploadAttachment
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    renderComposer(STORED_REQUEST, vi.fn(), "concurrent-uploads");
+    await waitFor(() => expect(latestPromptBoxProps().disabled).toBe(false));
+
+    let firstBatch: Promise<void>;
+    let secondBatch: Promise<void>;
+    act(() => {
+      const attach = latestPromptBoxProps().attachments.onAttachFiles;
+      firstBatch = attach([new File(["first"], "first.txt")]);
+      secondBatch = attach([new File(["second"], "second.txt")]);
+    });
+    expect(mocks.uploadAttachment).toHaveBeenCalledTimes(2);
+    expect(latestPromptBoxProps().attachments.pendingUploads).toHaveLength(2);
+    expect(latestPromptBoxProps().attachments.isAttaching).toBe(true);
+
+    await act(async () => {
+      second.resolve({
+        type: "localFile",
+        name: "second.txt",
+        path: "second.txt",
+        sizeBytes: 6,
+      });
+      await secondBatch;
+    });
+    expect(latestPromptBoxProps().attachments.items).toHaveLength(1);
+    expect(latestPromptBoxProps().attachments.pendingUploads).toHaveLength(1);
+    expect(latestPromptBoxProps().attachments.isAttaching).toBe(true);
+    await act(async () => {
+      await latestPromptBoxProps().project.onChange("proj_2");
+    });
+    expect(latestPromptBoxProps().project.value).toBe("proj_1");
+
+    await act(async () => {
+      first.reject(new Error("upload failed"));
+      await firstBatch;
+    });
+    expect(latestPromptBoxProps().attachments.isAttaching).toBe(false);
+    expect(latestPromptBoxProps().attachments.pendingUploads).toHaveLength(0);
+    expect(latestPromptBoxProps().attachments.items).toHaveLength(1);
+    expect(latestPromptBoxProps().attachments.error).toContain("upload failed");
   });
 
   it("keeps the old project when attachment copying fails", async () => {

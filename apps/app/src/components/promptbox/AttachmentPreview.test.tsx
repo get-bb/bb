@@ -64,7 +64,7 @@ describe("AttachmentPreview", () => {
     const { getByRole, rerender, unmount } = render(<AttachmentPreview {...props} compact />);
     const uploading = getByRole("status", { name: "1 uploading" });
     expect(uploading.textContent).toBe("1");
-    expect(uploading.querySelector('[data-icon="Paperclip"]')).toBeNull();
+    expect(uploading.querySelector('[data-icon="Paperclip"]')).not.toBeNull();
     const attachments = [{ type: "localImage" as const, path: "done.png", name: "done.png", sizeBytes: 5 }];
     rerender(<AttachmentPreview {...props} attachments={attachments} compact />);
     const mixed = getByRole("status", { name: "1 attachment, 1 uploading" });
