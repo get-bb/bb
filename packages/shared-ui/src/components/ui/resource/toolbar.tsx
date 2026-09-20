@@ -19,6 +19,7 @@ import {
 } from "../dropdown-menu";
 import { Icon, type IconName } from "../icon";
 import { Input } from "../input";
+import { useIsCompactViewport } from "../hooks/use-compact-viewport";
 import {
   Tooltip,
   TooltipContent,
@@ -52,6 +53,10 @@ export function ResourceToolbar({
   const controlsRef = useRef<HTMLDivElement>(null);
   const individualControlsRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLFormElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const searchButtonRef = useRef<HTMLButtonElement>(null);
+  const restoreSearchFocus = useRef(false);
+  const isCompactViewport = useIsCompactViewport();
   const actionRef = useRef<HTMLDivElement>(null);
   const [combined, setCombined] = useState(false);
   const [searchCondensed, setSearchCondensed] = useState(false);
@@ -60,6 +65,23 @@ export function ResourceToolbar({
   const combinedRef = useRef(false);
   const hasCombinedControls = Boolean(combinedControls);
   const showCombined = compact && hasCombinedControls && combined;
+  const showSearchButton = searchCondensed && !searchExpanded;
+
+  const collapseSearch = () => {
+    restoreSearchFocus.current = searchCondensed;
+    searchInputRef.current?.blur();
+    setSearchExpanded(false);
+  };
+
+  useLayoutEffect(() => {
+    if (searchExpanded) {
+      searchInputRef.current?.focus();
+      searchInputRef.current?.select();
+    } else if (restoreSearchFocus.current) {
+      searchButtonRef.current?.focus();
+      restoreSearchFocus.current = false;
+    }
+  }, [searchExpanded]);
 
   useLayoutEffect(() => {
     const toolbar = toolbarRef.current;
@@ -93,11 +115,12 @@ export function ResourceToolbar({
         : individualControls.getBoundingClientRect().width;
       setSearchCondensed(
         expandSearchOnFocus &&
-          width -
-            controlsWidth -
-            actionWidth -
-            gap * (actionRef.current ? 2 : 1) <
-            searchWidth,
+          (isCompactViewport ||
+            width -
+              controlsWidth -
+              actionWidth -
+              gap * (actionRef.current ? 2 : 1) <
+              searchWidth),
       );
       if (combinedRef.current === next) return;
       restoreControlFocus.current = Boolean(
@@ -129,7 +152,13 @@ export function ResourceToolbar({
       menuObserver.disconnect();
       cancelAnimationFrame(frame);
     };
-  }, [compact, expandSearchOnFocus, hasCombinedControls, showCombined]);
+  }, [
+    compact,
+    expandSearchOnFocus,
+    hasCombinedControls,
+    isCompactViewport,
+    showCombined,
+  ]);
 
   useLayoutEffect(() => {
     if (!restoreControlFocus.current) return;
@@ -149,6 +178,7 @@ export function ResourceToolbar({
       className={cn(
         "flex w-full min-w-0 items-center gap-2",
         compact ? "@container/resource-toolbar flex-nowrap" : "flex-wrap",
+        showSearchButton && "gap-1",
       )}
     >
       <form
@@ -157,8 +187,8 @@ export function ResourceToolbar({
         aria-label={searchLabel ?? searchPlaceholder}
         onSubmit={(event) => {
           event.preventDefault();
-          searchRef.current?.querySelector("input")?.focus();
-          setSearchExpanded(false);
+          if (searchExpanded) collapseSearch();
+          else searchInputRef.current?.focus();
         }}
         onBlur={(event) => {
           if (!event.currentTarget.contains(event.relatedTarget))
@@ -169,70 +199,72 @@ export function ResourceToolbar({
           compact
             ? "min-w-0 flex-1 basis-40"
             : "w-full min-w-0 sm:w-auto sm:flex-1",
-          expandSearchOnFocus && "min-w-20",
+          showSearchButton && "max-w-8",
         )}
       >
-        <div className="relative min-w-0 flex-1">
-          <Icon
-            name="Search"
-            className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
-            aria-hidden
+        {showSearchButton ? (
+          <ResourceControlButton
+            ref={searchButtonRef}
+            label={searchLabel ?? searchPlaceholder}
+            tooltip={searchValue ? `Search: ${searchValue}` : searchPlaceholder}
+            icon="Search"
+            active={searchValue !== ""}
+            onClick={() => setSearchExpanded(true)}
           />
-          <Input
-            value={searchValue}
-            onChange={(event) => onSearchChange(event.target.value)}
-            placeholder={
-              searchCondensed && !searchExpanded
-                ? "Search..."
-                : searchPlaceholder
-            }
-            aria-label={searchLabel ?? searchPlaceholder}
-            enterKeyHint={expandSearchOnFocus ? "search" : undefined}
-            onFocus={() => {
-              if (searchCondensed) setSearchExpanded(true);
-            }}
-            onClick={() => {
-              if (searchCondensed) setSearchExpanded(true);
-            }}
-            onKeyDown={(event) => {
-              if (event.nativeEvent.isComposing) return;
-              if (event.key === "Enter") {
-                event.preventDefault();
-                event.currentTarget.form?.requestSubmit();
-              } else if (event.key === "Escape" && searchExpanded) {
-                event.preventDefault();
-                setSearchExpanded(false);
-              }
-            }}
-            className={cn(
-              "h-8 truncate pl-8 focus:border-ring/60 focus:text-clip focus:ring-2 focus:ring-ring/20 focus-visible:ring-2 focus-visible:ring-ring/20 max-md:pointer-coarse:h-8",
-              (searchExpanded || (!searchCondensed && searchValue)) && "pr-8",
-            )}
-          />
-          {searchExpanded || (!searchCondensed && searchValue) ? (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    aria-label="Clear search"
-                    className="absolute inset-y-0 right-0 size-8 text-muted-foreground hover:text-foreground"
-                    onClick={() => {
-                      onSearchChange("");
-                      searchRef.current?.querySelector("input")?.focus();
-                      setSearchExpanded(false);
-                    }}
-                  >
-                    <Icon name="X" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Clear search</TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          ) : null}
-        </div>
+        ) : (
+          <div className="relative min-w-0 flex-1">
+            <Icon
+              name="Search"
+              className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
+              aria-hidden
+            />
+            <Input
+              ref={searchInputRef}
+              value={searchValue}
+              onChange={(event) => onSearchChange(event.target.value)}
+              placeholder={searchPlaceholder}
+              aria-label={searchLabel ?? searchPlaceholder}
+              enterKeyHint={expandSearchOnFocus ? "search" : undefined}
+              onKeyDown={(event) => {
+                if (event.nativeEvent.isComposing) return;
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  event.currentTarget.form?.requestSubmit();
+                } else if (event.key === "Escape" && searchExpanded) {
+                  event.preventDefault();
+                  collapseSearch();
+                }
+              }}
+              className={cn(
+                "h-8 truncate pl-8 focus:border-ring/60 focus:text-clip focus:ring-2 focus:ring-ring/20 focus-visible:ring-2 focus-visible:ring-ring/20 max-md:pointer-coarse:h-8",
+                expandSearchOnFocus && "text-xs max-md:pointer-coarse:text-xs",
+                (searchExpanded || (!searchCondensed && searchValue)) && "pr-8",
+              )}
+            />
+            {searchExpanded || (!searchCondensed && searchValue) ? (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label="Clear search"
+                      className="absolute inset-y-0 right-0 size-8 text-muted-foreground hover:text-foreground"
+                      onClick={() => {
+                        onSearchChange("");
+                        collapseSearch();
+                      }}
+                    >
+                      <Icon name="X" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Clear search</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            ) : null}
+          </div>
+        )}
       </form>
       {controls ? (
         <div
@@ -240,14 +272,19 @@ export function ResourceToolbar({
           inert={searchExpanded || undefined}
           aria-hidden={searchExpanded || undefined}
           className={cn(
-            "flex shrink-0 items-center",
+            "flex items-center",
+            showSearchButton ? "min-w-0 flex-1" : "shrink-0",
             compact ? "gap-2" : "gap-1.5",
             searchExpanded && "invisible absolute pointer-events-none",
           )}
         >
           <div
             className={
-              showCombined ? "absolute size-0 overflow-hidden" : undefined
+              showCombined
+                ? "absolute size-0 overflow-hidden"
+                : showSearchButton && !hasCombinedControls
+                  ? "w-full"
+                  : undefined
             }
             aria-hidden={showCombined || undefined}
             inert={showCombined || undefined}
@@ -257,7 +294,10 @@ export function ResourceToolbar({
               ref={individualControlsRef}
               data-resource-individual-controls
               className={cn(
-                "flex w-max items-center",
+                "flex items-center",
+                showSearchButton && !hasCombinedControls
+                  ? "w-full [&>button]:flex-1"
+                  : "w-max",
                 compact ? "gap-2" : "gap-1.5",
               )}
             >
@@ -265,7 +305,14 @@ export function ResourceToolbar({
             </div>
           </div>
           {showCombined ? (
-            <div data-resource-combined-controls>{combinedControls}</div>
+            <div
+              data-resource-combined-controls
+              className={
+                showSearchButton ? "w-full [&>button]:w-full" : undefined
+              }
+            >
+              {combinedControls}
+            </div>
           ) : null}
         </div>
       ) : null}
@@ -382,7 +429,7 @@ export const ResourceControlButton = forwardRef<
             className={cn(
               "h-8 shrink-0 rounded-md text-muted-foreground",
               text
-                ? "gap-2 px-2 text-xs @max-[19rem]/resource-toolbar:px-1 @max-[19rem]/resource-toolbar:text-2xs"
+                ? "gap-2 px-2 text-xs @max-[19rem]/resource-toolbar:gap-1 @max-[19rem]/resource-toolbar:px-1"
                 : "size-8 p-0",
               RESOURCE_MENU_TRIGGER_RESTING_CLASS,
               (open || active) && RESOURCE_MENU_TRIGGER_ENGAGED_CLASS,
@@ -390,16 +437,7 @@ export const ResourceControlButton = forwardRef<
             )}
             aria-label={label}
           >
-            {icon ? (
-              <Icon
-                name={icon}
-                className={cn(
-                  "size-4",
-                  text && "@max-[22rem]/resource-toolbar:hidden",
-                )}
-                aria-hidden
-              />
-            ) : null}
+            {icon ? <Icon name={icon} className="size-4" aria-hidden /> : null}
             {text ? <span>{text}</span> : null}
             {count !== undefined && count > 0 ? (
               <span
@@ -895,15 +933,11 @@ export function ResourceCreateButton({
       className={cn(
         "rounded-r-none",
         compactWhenNarrow &&
-          "pl-2 pr-1 @max-[19rem]/resource-toolbar:px-1 @max-[19rem]/resource-toolbar:text-2xs",
+          "pl-2 pr-1 @max-[19rem]/resource-toolbar:gap-1 @max-[19rem]/resource-toolbar:px-1",
       )}
       onClick={() => onCreate()}
     >
-      <Icon
-        name="MessageCirclePlus"
-        className="size-4 @max-[22rem]/resource-toolbar:hidden"
-        aria-hidden
-      />
+      <Icon name="MessageCirclePlus" className="size-4" aria-hidden />
       <span>{label}</span>
     </Button>
   );
