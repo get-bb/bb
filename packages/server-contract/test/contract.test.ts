@@ -529,6 +529,11 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
   },
   {
     reason:
+      "Older servers omit learned image metadata; new servers return an explicit array.",
+    fields: ["threadTimelineResponseSchema.imageMetadata"],
+  },
+  {
+    reason:
       "Timeline responses omit context-window usage when the provider did not report it.",
     fields: ["threadTimelineResponseSchema.contextWindowUsage"],
   },

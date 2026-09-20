@@ -1,10 +1,8 @@
 import { useCallback, useMemo, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type {
-  ThreadImageMetadata,
-  ThreadTimelineResponse,
-} from "@bb/server-contract";
+import type { ThreadImageMetadata } from "@bb/server-contract";
 import { threadTimelineQueryKey } from "@/hooks/queries/query-keys";
+import { ingestThreadImageMetadata } from "@/hooks/cache-owners/thread-detail-cache-owner";
 import { sdk } from "@/lib/sdk";
 import {
   MarkdownImageMetadataContext,
@@ -54,19 +52,7 @@ export function TimelineImageMetadata({
       void sdk.threads
         .saveImageMetadata({ threadId, ...image })
         .then(() => {
-          queryClient.setQueryData<ThreadTimelineResponse>(
-            threadTimelineQueryKey(threadId),
-            (timeline) =>
-              timeline && {
-                ...timeline,
-                imageMetadata: [
-                  ...(timeline.imageMetadata ?? []).filter(
-                    (entry) => entry.source !== identity,
-                  ),
-                  image,
-                ],
-              },
-          );
+          ingestThreadImageMetadata(queryClient, threadId, image);
         })
         .catch(() => {
           if (metadata.get(identity) === image) metadata.delete(identity);
