@@ -1,14 +1,14 @@
 import { useId, type ComponentProps, type ReactNode } from "react";
-import { useAtom } from "jotai";
+import { useAtomValue } from "jotai";
 import type { ThreadListEntry } from "@bb/domain";
 import { Button } from "@bb/shared-ui/button";
-import { ThreadLifecycleFilter } from "@/components/thread/ThreadLifecycleFilter";
 import { useArchivedThreads } from "@/hooks/queries/thread-queries";
 import {
   useConnectionAwareQueryState,
   type ConnectionAwareQueryStatus,
 } from "@/hooks/queries/connection-aware-query-state";
 import { isTransientReadError } from "@/hooks/queries/query-helpers";
+import { SidebarHeaderControls } from "./SidebarHeaderControls";
 import { ProjectThreadTree } from "./ProjectRow";
 import { sidebarThreadLifecyclesAtom } from "./sidebarCollapsedAtoms";
 
@@ -22,12 +22,15 @@ function LifecycleGroup({
   const headingId = useId();
   return (
     <section aria-labelledby={headingId} className="mb-2">
-      <h2
-        id={headingId}
-        className="px-2.5 py-2 text-xs font-medium text-subtle-foreground"
-      >
-        {label}
-      </h2>
+      <div className="flex items-center pl-2.5">
+        <h2
+          id={headingId}
+          className="min-w-0 flex-1 py-2 text-xs font-medium text-subtle-foreground"
+        >
+          {label}
+        </h2>
+        <SidebarHeaderControls label={label} showNewThread={false} />
+      </div>
       {children}
     </section>
   );
@@ -47,7 +50,7 @@ export function SidebarThreadLifecycles({
     "threadListState" | "variant" | "progressiveDisclosureEnabled"
   >;
 }) {
-  const [lifecycles, setLifecycles] = useAtom(sidebarThreadLifecyclesAtom);
+  const lifecycles = useAtomValue(sidebarThreadLifecyclesAtom);
   const archived = useArchivedThreads(
     {},
     { enabled: lifecycles.includes("archived") },
@@ -60,9 +63,6 @@ export function SidebarThreadLifecycles({
   });
   return (
     <>
-      <div className="px-1 pb-1">
-        <ThreadLifecycleFilter value={lifecycles} onChange={setLifecycles} />
-      </div>
       {lifecycles.includes("active") && (
         <LifecycleGroup label="Active">{children}</LifecycleGroup>
       )}

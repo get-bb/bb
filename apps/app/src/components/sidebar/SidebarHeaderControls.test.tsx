@@ -22,6 +22,7 @@ import {
   sidebarOrganizationModeAtom,
   sidebarEnvironmentGroupingAtom,
   sidebarSortDirectionAtom,
+  sidebarThreadLifecyclesAtom,
 } from "./sidebarCollapsedAtoms";
 
 const viewport = vi.hoisted(() => ({ compact: false }));
@@ -40,6 +41,7 @@ function setup(
   organization: SidebarOrganizationMode = "project",
 ) {
   const store = createStore();
+  store.set(sidebarThreadLifecyclesAtom, ["active"]);
   store.set(sidebarOrganizationModeAtom, organization);
   store.set(sidebarChronologicalSortAtom, "updated");
   store.set(sidebarSortDirectionAtom, "default");
@@ -121,6 +123,7 @@ describe("sidebar header controls", () => {
       "New section",
       "Organize",
       "Sort by",
+      "Filter",
       "Rename",
       "Remove",
     ]);
@@ -133,6 +136,50 @@ describe("sidebar header controls", () => {
       ).toBeNull(),
     );
   });
+
+  it.each([false, true])(
+    "keeps lifecycle selection nonempty in the combined menu (compact=%s)",
+    async (compact) => {
+      viewport.compact = compact;
+      const { store } = setup();
+      const trigger = screen.getByRole("button", { name: "Pinned actions" });
+      if (compact) fireEvent.click(trigger);
+      else await openMenu();
+      const filter = await screen.findByRole("menuitem", { name: "Filter" });
+      if (compact) fireEvent.click(filter);
+      else await openSubmenu("Filter");
+      const active = await screen.findByRole("menuitemcheckbox", {
+        name: "Active",
+      });
+      expect(active.getAttribute("aria-disabled")).toBe("true");
+      fireEvent.click(active);
+      expect(store.get(sidebarThreadLifecyclesAtom)).toEqual(["active"]);
+      fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Drafts" }));
+      fireEvent.click(active);
+      expect(store.get(sidebarThreadLifecyclesAtom)).toEqual(["draft"]);
+      const drafts = screen.getByRole("menuitemcheckbox", { name: "Drafts" });
+      expect(drafts.getAttribute("aria-checked")).toBe("true");
+      expect(drafts.getAttribute("aria-disabled")).toBe("true");
+      fireEvent.click(
+        screen.getByRole("menuitemcheckbox", { name: "Archived" }),
+      );
+      expect(store.get(sidebarThreadLifecyclesAtom)).toEqual([
+        "draft",
+        "archived",
+      ]);
+      expect(store.get(sidebarOrganizationModeAtom)).toBe("project");
+      expect(store.get(sidebarChronologicalSortAtom)).toBe("updated");
+      if (compact) {
+        expect(screen.getByRole("dialog", { name: "Filter" })).toBeTruthy();
+        expect(trigger.closest("[inert], [aria-hidden='true']")).toBeNull();
+        fireEvent.click(screen.getByRole("menuitem", { name: "Back" }));
+        expect(
+          screen.getByRole("menuitem", { name: "New project" }),
+        ).toBeTruthy();
+        expect(screen.getByRole("menuitem", { name: "Organize" })).toBeTruthy();
+      }
+    },
+  );
 
   it("keeps Organize open and exclusive across selections", async () => {
     const { store } = setup();

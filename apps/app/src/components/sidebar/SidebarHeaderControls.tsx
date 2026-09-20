@@ -23,7 +23,9 @@ import {
   sidebarGroupThreadsByEnvironmentAtom,
   sidebarEnvironmentGroupingAtom,
   sidebarSortDirectionAtom,
+  sidebarThreadLifecyclesAtom,
 } from "./sidebarCollapsedAtoms";
+import { ThreadLifecycleFilterItems } from "@/components/thread/ThreadLifecycleFilter";
 import { SidebarControlButton, SidebarRowControls } from "./SidebarRowControls";
 import { SIDEBAR_CONTROL_BUTTON_CLASS } from "./sidebarRowClasses";
 
@@ -49,13 +51,24 @@ const SIDEBAR_SORT_OPTIONS = [
   { label: "Alphabetical", sort: "alpha", direction: "ascending" },
 ] as const;
 
-function SidebarViewItems({ page }: { page: "organize" | "sort" }) {
+function SidebarViewItems({ page }: { page: "organize" | "sort" | "filter" }) {
+  const [lifecycles, setLifecycles] = useAtom(sidebarThreadLifecyclesAtom);
   const [organization, setOrganization] = useAtom(sidebarOrganizationModeAtom);
   const [sort, setSort] = useAtom(sidebarChronologicalSortAtom);
   const [savedDirection, setDirection] = useAtom(sidebarSortDirectionAtom);
   const setEnvironmentGrouping = useSetAtom(sidebarEnvironmentGroupingAtom);
   const groupByEnvironment = useAtomValue(sidebarGroupThreadsByEnvironmentAtom);
   const selectedSort = sort === "none" ? "updated" : sort;
+  if (page === "filter") {
+    return (
+      <DropdownMenuGroup aria-label="Thread lifecycle">
+        <ThreadLifecycleFilterItems
+          value={lifecycles}
+          onChange={setLifecycles}
+        />
+      </DropdownMenuGroup>
+    );
+  }
   if (page === "organize") {
     return (
       <>
@@ -165,7 +178,7 @@ export function SidebarHeaderControls({
 }) {
   const creation = useContext(HeaderCreationContext);
   const compact = useIsCompactViewport();
-  const [page, setPage] = useState<"organize" | "sort" | null>(null);
+  const [page, setPage] = useState<"organize" | "sort" | "filter" | null>(null);
   const changeOpen = (next: boolean) => {
     if (!next) setPage(null);
     onOpenChange?.(next);
@@ -205,7 +218,9 @@ export function SidebarHeaderControls({
               ? "Organize"
               : page === "sort"
                 ? "Sort by"
-                : `${label} actions`
+                : page === "filter"
+                  ? "Filter"
+                  : `${label} actions`
           }
         >
           {compact && page ? (
@@ -243,6 +258,7 @@ export function SidebarHeaderControls({
                 [
                   { page: "organize", label: "Organize", icon: "Layers" },
                   { page: "sort", label: "Sort by", icon: "Sort" },
+                  { page: "filter", label: "Filter", icon: "FilterHorizontal" },
                 ] as const
               ).map((item) =>
                 compact ? (
