@@ -1,5 +1,8 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
-import { useAtom, useAtomValue, useSetAtom } from "jotai";
+import { useAtom, useAtomValue } from "jotai";
+import { getUiPreferenceDefault } from "@bb/domain";
+import { cn } from "@bb/shared-ui/lib/utils";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { COARSE_POINTER_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
@@ -25,7 +28,10 @@ import {
   sidebarSortDirectionAtom,
   sidebarThreadLifecyclesAtom,
 } from "./sidebarCollapsedAtoms";
-import { ThreadLifecycleFilterItems } from "@/components/thread/ThreadLifecycleFilter";
+import {
+  ThreadLifecycleFilterItems,
+  THREAD_LIFECYCLE_OPTIONS,
+} from "@/components/thread/ThreadLifecycleFilter";
 import { SidebarControlButton, SidebarRowControls } from "./SidebarRowControls";
 import { SIDEBAR_CONTROL_BUTTON_CLASS } from "./sidebarRowClasses";
 
@@ -51,22 +57,128 @@ const SIDEBAR_SORT_OPTIONS = [
   { label: "Alphabetical", sort: "alpha", direction: "ascending" },
 ] as const;
 
-function SidebarViewItems({ page }: { page: "organize" | "sort" | "filter" }) {
+function useSidebarViewSettings() {
   const [lifecycles, setLifecycles] = useAtom(sidebarThreadLifecyclesAtom);
   const [organization, setOrganization] = useAtom(sidebarOrganizationModeAtom);
   const [sort, setSort] = useAtom(sidebarChronologicalSortAtom);
   const [savedDirection, setDirection] = useAtom(sidebarSortDirectionAtom);
-  const setEnvironmentGrouping = useSetAtom(sidebarEnvironmentGroupingAtom);
+  const [, setEnvironmentGrouping] = useAtom(sidebarEnvironmentGroupingAtom);
   const groupByEnvironment = useAtomValue(sidebarGroupThreadsByEnvironmentAtom);
   const selectedSort = sort === "none" ? "updated" : sort;
+  const direction =
+    savedDirection === "default"
+      ? selectedSort === "alpha"
+        ? "ascending"
+        : "descending"
+      : savedDirection;
+  const defaultOrganization = getUiPreferenceDefault(
+    "sidebar.organizationMode",
+  );
+  const defaultGrouping = getUiPreferenceDefault(
+    "sidebar.threadGrouping.environment",
+  );
+  const defaultSort = getUiPreferenceDefault("sidebar.chronologicalSort");
+  const defaultDirection = getUiPreferenceDefault("sidebar.sortDirection");
+  const defaultLifecycles = getUiPreferenceDefault("sidebar.threadLifecycles");
+  const changed = {
+    organize:
+      organization !== defaultOrganization ||
+      groupByEnvironment !==
+        (defaultGrouping === "auto"
+          ? organization !== "chronological"
+          : defaultGrouping),
+    sort:
+      selectedSort !== defaultSort ||
+      direction !==
+        (defaultDirection === "default"
+          ? defaultSort === "alpha"
+            ? "ascending"
+            : "descending"
+          : defaultDirection),
+    filter:
+      lifecycles.length !== defaultLifecycles.length ||
+      lifecycles.some((value) => !defaultLifecycles.includes(value)),
+  };
+  const summary = [
+    changed.organize &&
+      `Organize: ${SIDEBAR_ORGANIZE_OPTIONS.find((option) => option.mode === organization)?.label}, ${groupByEnvironment ? "grouped by environment" : "ungrouped"}`,
+    changed.sort &&
+      `Sort by: ${SIDEBAR_SORT_OPTIONS.find((option) => option.sort === selectedSort)?.label}, ${direction}`,
+    changed.filter &&
+      `Filter threads: ${THREAD_LIFECYCLE_OPTIONS.filter((option) =>
+        lifecycles.includes(option.value),
+      )
+        .map((option) => option.label)
+        .join(", ")}`,
+  ]
+    .filter(Boolean)
+    .join("; ");
+  return {
+    lifecycles,
+    setLifecycles,
+    organization,
+    setOrganization,
+    setSort,
+    savedDirection,
+    setDirection,
+    setEnvironmentGrouping,
+    groupByEnvironment,
+    selectedSort,
+    changed,
+    summary,
+  };
+}
+
+function SidebarViewItems({ page }: { page: "organize" | "sort" | "filter" }) {
+  const {
+    lifecycles,
+    setLifecycles,
+    organization,
+    setOrganization,
+    setSort,
+    savedDirection,
+    setDirection,
+    setEnvironmentGrouping,
+    groupByEnvironment,
+    selectedSort,
+    changed,
+  } = useSidebarViewSettings();
+  const reset = (
+    <>
+      <DropdownMenuSeparator />
+      <DropdownMenuItem
+        className="text-xs text-muted-foreground"
+        disabled={!changed[page]}
+        onSelect={(event) => {
+          event.preventDefault();
+          if (page === "organize") {
+            setOrganization(getUiPreferenceDefault("sidebar.organizationMode"));
+            setEnvironmentGrouping(
+              getUiPreferenceDefault("sidebar.threadGrouping.environment"),
+            );
+          } else if (page === "sort") {
+            setSort(getUiPreferenceDefault("sidebar.chronologicalSort"));
+            setDirection(getUiPreferenceDefault("sidebar.sortDirection"));
+          } else {
+            setLifecycles(getUiPreferenceDefault("sidebar.threadLifecycles"));
+          }
+        }}
+      >
+        Reset
+      </DropdownMenuItem>
+    </>
+  );
   if (page === "filter") {
     return (
-      <DropdownMenuGroup aria-label="Thread lifecycle">
-        <ThreadLifecycleFilterItems
-          value={lifecycles}
-          onChange={setLifecycles}
-        />
-      </DropdownMenuGroup>
+      <>
+        <DropdownMenuGroup aria-label="Thread lifecycle">
+          <ThreadLifecycleFilterItems
+            value={lifecycles}
+            onChange={setLifecycles}
+          />
+        </DropdownMenuGroup>
+        {reset}
+      </>
     );
   }
   if (page === "organize") {
@@ -110,54 +222,58 @@ function SidebarViewItems({ page }: { page: "organize" | "sort" | "filter" }) {
             </span>
           </DropdownMenuItem>
         </DropdownMenuGroup>
+        {reset}
       </>
     );
   }
   return (
-    <DropdownMenuGroup aria-label="Sort by">
-      {SIDEBAR_SORT_OPTIONS.map((option) => {
-        const selected = selectedSort === option.sort;
-        const direction =
-          savedDirection === "default" ? option.direction : savedDirection;
-        const nextDirection = selected
-          ? direction === "ascending"
-            ? "descending"
-            : "ascending"
-          : option.direction;
-        return (
-          <DropdownMenuItem
-            key={option.sort}
-            role="menuitemradio"
-            aria-checked={selected}
-            aria-label={
-              selected
-                ? `${option.label}, ${direction}. Sort ${nextDirection}`
-                : option.label
-            }
-            onSelect={(event) => {
-              event.preventDefault();
-              setSort(option.sort);
-              setDirection(nextDirection);
-            }}
-          >
-            {option.label}
-            {selected && (
-              <span className="sr-only">
-                , {direction}. Sort {nextDirection}
-              </span>
-            )}
-            <span className="ml-auto inline-flex size-4 shrink-0 items-center justify-center">
+    <>
+      <DropdownMenuGroup aria-label="Sort by">
+        {SIDEBAR_SORT_OPTIONS.map((option) => {
+          const selected = selectedSort === option.sort;
+          const direction =
+            savedDirection === "default" ? option.direction : savedDirection;
+          const nextDirection = selected
+            ? direction === "ascending"
+              ? "descending"
+              : "ascending"
+            : option.direction;
+          return (
+            <DropdownMenuItem
+              key={option.sort}
+              role="menuitemradio"
+              aria-checked={selected}
+              aria-label={
+                selected
+                  ? `${option.label}, ${direction}. Sort ${nextDirection}`
+                  : option.label
+              }
+              onSelect={(event) => {
+                event.preventDefault();
+                setSort(option.sort);
+                setDirection(nextDirection);
+              }}
+            >
+              {option.label}
               {selected && (
-                <Icon
-                  name={direction === "ascending" ? "ArrowUp" : "ArrowDown"}
-                  className="size-4"
-                />
+                <span className="sr-only">
+                  , {direction}. Sort {nextDirection}
+                </span>
               )}
-            </span>
-          </DropdownMenuItem>
-        );
-      })}
-    </DropdownMenuGroup>
+              <span className="ml-auto inline-flex size-4 shrink-0 items-center justify-center">
+                {selected && (
+                  <Icon
+                    name={direction === "ascending" ? "ArrowUp" : "ArrowDown"}
+                    className="size-4"
+                  />
+                )}
+              </span>
+            </DropdownMenuItem>
+          );
+        })}
+      </DropdownMenuGroup>
+      {reset}
+    </>
   );
 }
 
@@ -177,6 +293,10 @@ export function SidebarHeaderControls({
   onOpenChange?: (open: boolean) => void;
 }) {
   const creation = useContext(HeaderCreationContext);
+  const { summary } = useSidebarViewSettings();
+  const triggerLabel = summary
+    ? `${label} actions; ${summary}`
+    : `${label} actions`;
   const compact = useIsCompactViewport();
   const [page, setPage] = useState<"organize" | "sort" | "filter" | null>(null);
   const changeOpen = (next: boolean) => {
@@ -197,20 +317,29 @@ export function SidebarHeaderControls({
       }
     >
       <DropdownMenu open={open} onOpenChange={changeOpen}>
-        <DropdownMenuTrigger asChild>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            aria-label={`${label} actions`}
-            className={SIDEBAR_CONTROL_BUTTON_CLASS}
-          >
-            <Icon
-              name="MoreHorizontal"
-              className={COARSE_POINTER_ICON_SIZE_CLASS}
-            />
-          </Button>
-        </DropdownMenuTrigger>
+        <Tooltip delayDuration={350} disableHoverableContent>
+          <TooltipTrigger asChild>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label={triggerLabel}
+                className={cn(
+                  SIDEBAR_CONTROL_BUTTON_CLASS,
+                  summary &&
+                    "bg-state-active text-foreground hover:bg-state-active hover:text-foreground focus-visible:text-foreground data-[state=open]:text-foreground",
+                )}
+              >
+                <Icon
+                  name={summary ? "FilterHorizontal" : "MoreHorizontal"}
+                  className={COARSE_POINTER_ICON_SIZE_CLASS}
+                />
+              </Button>
+            </DropdownMenuTrigger>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">{triggerLabel}</TooltipContent>
+        </Tooltip>
         <DropdownMenuContent
           align="end"
           mobileTitle={
@@ -219,7 +348,7 @@ export function SidebarHeaderControls({
               : page === "sort"
                 ? "Sort by"
                 : page === "filter"
-                  ? "Filter"
+                  ? "Filter threads"
                   : `${label} actions`
           }
         >
@@ -257,8 +386,12 @@ export function SidebarHeaderControls({
               {(
                 [
                   { page: "organize", label: "Organize", icon: "Layers" },
-                  { page: "sort", label: "Sort by", icon: "Sort" },
-                  { page: "filter", label: "Filter", icon: "FilterHorizontal" },
+                  { page: "sort", label: "Sort by", icon: "ArrowUpDown" },
+                  {
+                    page: "filter",
+                    label: "Filter threads",
+                    icon: "SlidersHorizontal",
+                  },
                 ] as const
               ).map((item) =>
                 compact ? (
@@ -280,7 +413,7 @@ export function SidebarHeaderControls({
                       {item.label}
                     </DropdownMenuSubTrigger>
                     <DropdownMenuPortal>
-                      <DropdownMenuSubContent className="min-w-32">
+                      <DropdownMenuSubContent className="w-max min-w-28 max-w-64">
                         <SidebarViewItems page={item.page} />
                       </DropdownMenuSubContent>
                     </DropdownMenuPortal>

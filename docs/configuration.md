@@ -705,7 +705,9 @@ value is saved. Existing server and legacy browser choices are preserved.
 
 The built-in sidebar defaults to Active. `sidebar.threadLifecycles` selects
 named Active, Drafts, and Archived groups while preserving Active's organization.
-Choose Filter in a sidebar header's combined actions menu to change the selection.
+Choose Filter threads in a sidebar header's combined actions menu to change the selection.
+The combined control highlights non-default organization, sorting, or lifecycle choices.
+Each secondary menu has a Reset action that restores only its own defaults.
 Drafts come from the available unarchived bootstrap; Archived loads pages only
 while selected. For example, `bb settings ui set sidebar.threadLifecycles
 '["active","draft"]'` shows active and saved draft threads. Reset restores
