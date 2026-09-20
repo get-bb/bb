@@ -146,8 +146,7 @@ export function resolveCollapsedPanelTrafficLightReserveClassName({
 }: CollapsedPanelTrafficLightReserveArgs): string | false {
   const reserves =
     reserveMacosTrafficLights &&
-    (renderAsDrawer ||
-      (isConversationCollapsed && isSidebarShowing === false));
+    (renderAsDrawer || (isConversationCollapsed && isSidebarShowing === false));
   return reserves && MACOS_COLLAPSED_TOP_LEFT_RESERVE_CLASS;
 }
 
@@ -167,6 +166,7 @@ export interface SecondaryPanelFixedTab {
 export interface ThreadSecondaryPanelProps {
   activeTab: SecondaryFixedPanelTab | MarketplacePluginDetailPanelTab | null;
   canUseGitUi: boolean;
+  canNavigateTabs?: boolean;
   gitDiffTabStatus?: GitDiffTabStatus;
   onRetryGitDiffEligibility?: () => void;
   requestedMergeBaseBranch?: string;
@@ -209,6 +209,7 @@ export function ThreadSecondaryPanel(props: ThreadSecondaryPanelProps) {
 function ThreadSecondaryPanelContent({
   activeTab,
   canUseGitUi,
+  canNavigateTabs = true,
   gitDiffTabStatus,
   requestedMergeBaseBranch,
   environmentId,
@@ -930,6 +931,17 @@ function ThreadSecondaryPanelContent({
     <SidebarSplitContainer
       key={splitPanelStateId}
       activeTabId={globalActiveTabId}
+      canNavigateTabs={canNavigateTabs && isOpen}
+      fixedTabIds={fixedTabs.map((tab) => tab.tab.id)}
+      onTabNavigated={(paneId) => {
+        window.requestAnimationFrame(() => {
+          panelRef.current
+            ?.querySelector<HTMLElement>(
+              `[data-sidebar-split-tab-group="${CSS.escape(paneId)}"] button[aria-pressed="true"]`,
+            )
+            ?.focus({ preventScroll: true });
+        });
+      }}
       isFullScreen={isConversationCollapsed}
       onActivateTab={(tabId) => {
         const fixedTab = fixedTabs.find(

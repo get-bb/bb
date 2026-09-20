@@ -354,9 +354,21 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
     const handleKeyDown = (event: KeyboardEvent) => {
       handleKeyboardEvent(event);
     };
+    const handlePanelNavigation = (event: KeyboardEvent) => {
+      if (
+        getShortcutCommand(event, ["panel.previousTab", "panel.nextTab"]) !==
+        null
+      ) {
+        handleKeyboardEvent(event);
+      }
+    };
+    window.addEventListener("keydown", handlePanelNavigation, true);
     window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [handleKeyboardEvent]);
+    return () => {
+      window.removeEventListener("keydown", handlePanelNavigation, true);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [getShortcutCommand, handleKeyboardEvent]);
 
   useEffect(() => {
     const desktop = getBbDesktopInfo();

@@ -19,7 +19,13 @@ export function resolveDesktopBrowserAppCommand({
 }: ResolveDesktopBrowserAppCommandArgs): AppCommandId | null {
   for (let index = keybindings.length - 1; index >= 0; index -= 1) {
     const binding = keybindings[index];
-    if (!binding || !binding.when.all.includes("browserFocus")) continue;
+    if (
+      !binding ||
+      (!binding.when.all.includes("browserFocus") &&
+        binding.command !== "panel.previousTab" &&
+        binding.command !== "panel.nextTab")
+    )
+      continue;
     if (matchesAppShortcut(input, binding.shortcut, isMac)) {
       const command = appCommandIdSchema.safeParse(binding.command);
       if (command.success) return command.data;

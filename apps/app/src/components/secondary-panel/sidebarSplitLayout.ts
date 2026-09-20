@@ -3,6 +3,7 @@ import { arrayMove } from "@bb/client-core";
 import {
   MAX_PANES,
   countPanes,
+  computePaneRects,
   findPane,
   listPanes,
   movePane,
@@ -312,6 +313,40 @@ export function getSidebarGroupForPane(
   paneId: string,
 ): SidebarTabGroup | null {
   return findSidebarPaneGroup(state, paneId)?.group ?? null;
+}
+
+export function adjacentSidebarTab(
+  state: SidebarSplitState,
+  direction: -1 | 1,
+  fixedTabIds: readonly string[],
+): { paneId: string; tabId: string } | null {
+  const rects = computePaneRects(state.layout.root);
+  const tabs = listPanes(state.layout.root)
+    .filter(
+      (pane) =>
+        state.maximizedPaneId === null || pane.paneId === state.maximizedPaneId,
+    )
+    .sort((a, b) => {
+      const first = rects.get(a.paneId);
+      const second = rects.get(b.paneId);
+      if (first === undefined || second === undefined) return 0;
+      return first.y - second.y || first.x - second.x;
+    })
+    .flatMap((pane) => {
+      const group = getSidebarGroupForPane(state, pane.paneId);
+      if (group === null) return [];
+      return [
+        ...fixedTabIds.filter((id) => group.tabIds.includes(id)),
+        ...group.tabIds.filter((id) => !fixedTabIds.includes(id)),
+      ].map((tabId) => ({ paneId: pane.paneId, tabId }));
+    });
+  if (tabs.length === 0) return null;
+  const paneId = state.maximizedPaneId ?? state.layout.focusedPaneId;
+  const activeTabId = getSidebarGroupForPane(state, paneId)?.activeTabId;
+  const index = tabs.findIndex(
+    (tab) => tab.paneId === paneId && tab.tabId === activeTabId,
+  );
+  return tabs[(index + direction + tabs.length) % tabs.length] ?? null;
 }
 
 export function selectSidebarTab(

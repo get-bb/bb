@@ -84,6 +84,27 @@ describe("app keybindings", () => {
     });
   });
 
+  it("assigns distinct, rebindable panel navigation defaults", () => {
+    for (const [command, key] of [
+      ["panel.previousTab", "ArrowLeft"],
+      ["panel.nextTab", "ArrowRight"],
+    ] as const) {
+      const binding = DEFAULT_APP_KEYBINDINGS.find(
+        (item) => item.command === command,
+      );
+      expect(binding).toMatchObject({
+        desktopOnly: false,
+        shortcut: { key, mod: true, shift: true, alt: false },
+        when: { all: ["mainSurface"], none: ["modalOpen"] },
+      });
+      expect(
+        applyAppKeybindingOverrides(DEFAULT_APP_KEYBINDINGS, [
+          { command, shortcut: null },
+        ]).some((item) => item.command === command),
+      ).toBe(false);
+    }
+  });
+
   it("limits overlapping default chords to intentional scoped navigation", () => {
     const assignedDefaults = applyAppKeybindingOverrides(
       DEFAULT_APP_KEYBINDINGS,

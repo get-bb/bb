@@ -98,6 +98,16 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
         "Show or hide the app sidebar.",
       ),
       command(
+        "panel.previousTab",
+        "Previous panel tab",
+        "Select the previous visible right-panel tab, wrapping across panel splits.",
+      ),
+      command(
+        "panel.nextTab",
+        "Next panel tab",
+        "Select the next visible right-panel tab, wrapping across panel splits.",
+      ),
+      command(
         "panel.newTab",
         "New panel tab",
         "Open a tab in the secondary panel.",

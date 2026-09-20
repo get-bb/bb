@@ -697,7 +697,12 @@ export function createDesktopBrowserViewManager(
       });
       if (command === null) return;
       event.preventDefault();
-      if (command === "browser.focusLocation" || command === "browser.find") {
+      if (
+        command === "browser.focusLocation" ||
+        command === "browser.find" ||
+        command === "panel.previousTab" ||
+        command === "panel.nextTab"
+      ) {
         args.focusHostWebContents(hostWindow.webContents.id);
       }
       args.dispatchAppCommand({

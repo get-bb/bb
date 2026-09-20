@@ -191,6 +191,18 @@ export const DEFAULT_APP_KEYBINDINGS: AppDefaultKeybindings = [
     splitWithoutModal,
   ),
   binding("pane.close", "x", { mod: true, shift: true }, splitWithoutModal),
+  binding(
+    "panel.previousTab",
+    "ArrowLeft",
+    { mod: true, shift: true },
+    mainWithoutModal,
+  ),
+  binding(
+    "panel.nextTab",
+    "ArrowRight",
+    { mod: true, shift: true },
+    mainWithoutModal,
+  ),
   binding("panel.newTab", "t", { mod: true }, mainWithoutModal),
   binding(
     "panel.reopenClosedTab",

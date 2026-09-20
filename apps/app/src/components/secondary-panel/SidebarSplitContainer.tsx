@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { useAtomValue } from "jotai";
+import { useAppCommandHandler } from "@/components/commands/AppCommandProvider";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { beginSplitDrag, type SplitDropTarget } from "@/lib/split-drag";
 import {
@@ -34,6 +35,7 @@ import {
   type PaneContextValue,
 } from "@/views/thread-detail/PaneContext";
 import {
+  adjacentSidebarTab,
   createSidebarSplitState,
   focusSidebarPane,
   getSidebarGroupForPane,
@@ -100,6 +102,9 @@ function canMoveSidebarActiveTab(
 
 interface SidebarSplitContainerProps {
   activeTabId: string;
+  canNavigateTabs?: boolean;
+  fixedTabIds?: readonly string[];
+  onTabNavigated?: (paneId: string) => void;
   isFullScreen: boolean;
   onActivateTab: (tabId: string) => void;
   onGlobalTabReorder: (request: SecondaryPanelTabReorderRequest) => void;
@@ -111,6 +116,9 @@ interface SidebarSplitContainerProps {
 
 export function SidebarSplitContainer({
   activeTabId,
+  canNavigateTabs = true,
+  fixedTabIds = [],
+  onTabNavigated,
   isFullScreen,
   onActivateTab,
   onGlobalTabReorder,
@@ -306,6 +314,17 @@ export function SidebarSplitContainer({
     },
     [activeTabId, commitState, onActivateTab],
   );
+
+  const navigateTab = (direction: -1 | 1) => {
+    if (!canNavigateTabs) return false;
+    const target = adjacentSidebarTab(stateRef.current, direction, fixedTabIds);
+    if (target === null) return false;
+    selectTab(target.paneId, target.tabId);
+    onTabNavigated?.(target.paneId);
+    return true;
+  };
+  useAppCommandHandler("panel.previousTab", () => navigateTab(-1));
+  useAppCommandHandler("panel.nextTab", () => navigateTab(1));
 
   const focusPane = useCallback(
     (paneId: string) => {

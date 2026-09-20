@@ -351,6 +351,19 @@ uses `Mod+1…9`. The web aliases leave native browser `Mod+1…9` tab switching
 untouched. Previous and next thread use `Mod+Shift+[/]` on desktop and
 `Control+Shift+[/]` on the web.
 
+
+Right-panel tab navigation uses `panel.previousTab` / `panel.nextTab`, defaulting
+to `Mod+Shift+ArrowLeft` / `Mod+Shift+ArrowRight`. It follows displayed tab-header
+order, crosses right-panel split groups in visual reading order, and wraps in
+both directions. It stays within the active chat pane's open right panel and
+skips groups hidden by maximize. These shortcuts also work from editors,
+terminals, and the desktop embedded Browser. Rebind or disable them in Keyboard
+Settings, with `bb settings keyboard set panel.nextTab Mod+Shift+ArrowRight`, or
+through SDK `system.updateKeyboardSettings`; read them with `system.config`.
+Chat-split navigation remains separate (`pane.focus.previous` / `pane.focus.next`,
+unassigned by default). Browsers can reserve `Mod+Alt+ArrowLeft/Right`, so those
+are suitable personal chat-split bindings for the desktop app only.
+
 Plugin commands use `plugin:<plugin-id>/<command-id>` as their stable binding
 ID. For example: `bb settings keyboard set plugin:example/open-issue Mod+Shift+I`.
 `bb settings keyboard reset plugin:example/open-issue` restores the plugin's
