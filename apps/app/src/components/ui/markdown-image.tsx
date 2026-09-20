@@ -3,12 +3,13 @@ import {
   useEffect,
   useRef,
   useState,
+  useContext,
   type ComponentPropsWithoutRef,
 } from "react";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
-  readMarkdownImageDimensions,
-  rememberMarkdownImageDimensions,
+  MarkdownImageMetadataContext,
+  type MarkdownImageDimensions,
 } from "./markdown-image-dimensions";
 
 const visibleImages = new Map<Element, () => void>();
@@ -41,7 +42,9 @@ function observeImage(image: HTMLImageElement, load: () => void): () => void {
   };
 }
 
-function positiveDimension(value: number | string | undefined): number | undefined {
+function positiveDimension(
+  value: number | string | undefined,
+): number | undefined {
   const number = typeof value === "string" ? Number(value) : value;
   return number !== undefined && Number.isFinite(number) && number > 0
     ? number
@@ -51,8 +54,12 @@ function positiveDimension(value: number | string | undefined): number | undefin
 function isLocalFileImage(source: string): boolean {
   try {
     const url = new URL(source, window.location.href);
-    return url.origin === window.location.origin &&
-      /^\/api\/v1\/threads\/[^/]+\/(?:host-files\/content|worktree\/(?:content|files\/.*)|thread-storage\/(?:content|files\/.*))$/u.test(url.pathname);
+    return (
+      url.origin === window.location.origin &&
+      /^\/api\/v1\/threads\/[^/]+\/(?:host-files\/content|worktree\/(?:content|files\/.*)|thread-storage\/(?:content|files\/.*))$/u.test(
+        url.pathname,
+      )
+    );
   } catch {
     return false;
   }
@@ -70,25 +77,35 @@ export function MarkdownImage({
   ...attributes
 }: ComponentPropsWithoutRef<"img"> & { src: string }) {
   const imageRef = useRef<HTMLImageElement>(null);
-  const [dimensions, setDimensions] = useState(() =>
-    srcSet ? undefined : readMarkdownImageDimensions(src),
-  );
+  const metadata = useContext(MarkdownImageMetadataContext);
+  const etag = useRef<string | null>(null);
+  const [dimensions, setDimensions] = useState<
+    MarkdownImageDimensions | undefined
+  >(() => (srcSet ? undefined : metadata?.read(src)));
   const [active, setActive] = useState(false);
-  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [status, setStatus] = useState<"loading" | "ready" | "error">(
+    "loading",
+  );
   const [responsive, setResponsive] = useState(Boolean(srcSet));
   const [localSource, setLocalSource] = useState<string>();
   const revalidate = !responsive && isLocalFileImage(src);
   const requestedWidth = positiveDimension(width);
   const requestedHeight = positiveDimension(height);
-  const ratio = requestedWidth && requestedHeight
-    ? requestedWidth / requestedHeight
-    : dimensions ? dimensions.width / dimensions.height : undefined;
-  const aspectRatio = requestedWidth && requestedHeight
-    ? `${requestedWidth} / ${requestedHeight}`
-    : dimensions ? `${dimensions.width} / ${dimensions.height}` : undefined;
-  const displayWidth = requestedWidth ?? (requestedHeight && ratio
-    ? requestedHeight * ratio
-    : dimensions?.width);
+  const ratio =
+    requestedWidth && requestedHeight
+      ? requestedWidth / requestedHeight
+      : dimensions
+        ? dimensions.width / dimensions.height
+        : undefined;
+  const aspectRatio =
+    requestedWidth && requestedHeight
+      ? `${requestedWidth} / ${requestedHeight}`
+      : dimensions
+        ? `${dimensions.width} / ${dimensions.height}`
+        : undefined;
+  const displayWidth =
+    requestedWidth ??
+    (requestedHeight && ratio ? requestedHeight * ratio : dimensions?.width);
 
   useLayoutEffect(() => {
     const image = imageRef.current;
@@ -106,8 +123,12 @@ export function MarkdownImage({
     let objectUrl: string | undefined;
     const load = async () => {
       try {
-        const response = await fetch(src, { cache: "no-cache", signal: controller.signal });
+        const response = await fetch(src, {
+          cache: "no-cache",
+          signal: controller.signal,
+        });
         if (!response.ok) throw new Error("Image unavailable");
+        etag.current = response.headers.get("etag");
         const blob = await response.blob();
         if (controller.signal.aborted) return;
         objectUrl = URL.createObjectURL(blob);
@@ -129,15 +150,19 @@ export function MarkdownImage({
     let cancelled = false;
     const ready = async () => {
       if (!image.complete || image.naturalWidth === 0) return;
-      const intrinsic = { width: image.naturalWidth, height: image.naturalHeight };
+      const intrinsic = {
+        width: image.naturalWidth,
+        height: image.naturalHeight,
+      };
       if (!responsive) {
-        rememberMarkdownImageDimensions(src, intrinsic);
+        metadata?.remember(src, intrinsic, etag.current);
         setDimensions(intrinsic);
       }
       try {
         await image.decode();
       } catch {}
-      if (!cancelled && image.complete && image.naturalWidth > 0) setStatus("ready");
+      if (!cancelled && image.complete && image.naturalWidth > 0)
+        setStatus("ready");
     };
     image.addEventListener("load", ready);
     void ready();
@@ -145,7 +170,7 @@ export function MarkdownImage({
       cancelled = true;
       image.removeEventListener("load", ready);
     };
-  }, [src, active, responsive, localSource]);
+  }, [src, active, responsive, localSource, metadata]);
 
   return (
     <img
@@ -160,13 +185,20 @@ export function MarkdownImage({
       loading={active ? "eager" : "lazy"}
       fetchPriority={active ? "high" : "auto"}
       decoding="async"
-      className={cn(className, status === "loading" && "bg-surface-recessed text-transparent")}
+      className={cn(
+        className,
+        status === "loading" && "bg-surface-recessed text-transparent",
+      )}
       style={{
-        ...(status !== "error" && ratio && displayWidth ? {
-          aspectRatio,
-          width: `min(${displayWidth}px, calc(max(384px, 50vh) * ${ratio}))`,
-          height: "auto",
-        } : status === "loading" ? { minWidth: "1lh", minHeight: "1lh" } : {}),
+        ...(status !== "error" && ratio && displayWidth
+          ? {
+              aspectRatio,
+              width: `min(${displayWidth}px, calc(max(384px, 50vh) * ${ratio}))`,
+              height: "auto",
+            }
+          : status === "loading"
+            ? { minWidth: "1lh", minHeight: "1lh" }
+            : {}),
         ...style,
       }}
       onLoad={onLoad}

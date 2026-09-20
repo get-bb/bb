@@ -663,6 +663,20 @@ export const threads = sqliteTable(
   ],
 );
 
+export const threadImageMetadata = sqliteTable(
+  "thread_image_metadata",
+  {
+    threadId: text("thread_id")
+      .notNull()
+      .references(() => threads.id, { onDelete: "cascade" }),
+    source: text("source").notNull(),
+    width: integer("width").notNull(),
+    height: integer("height").notNull(),
+    etag: text("etag"),
+  },
+  (table) => [primaryKey({ columns: [table.threadId, table.source] })],
+);
+
 export const threadPluginMetadata = sqliteTable(
   "thread_plugin_metadata",
   {
