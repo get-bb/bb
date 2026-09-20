@@ -1464,10 +1464,15 @@ describe("PromptBoxInternal submit shortcuts", () => {
     );
   });
 
-  it.each([false, true])(
-    "offers the alternate action and scheduling on long press (Enter steers: %s)",
-    (swapSubmitActions) => {
-      const restoreMatchMedia = mockPointerCoarse(true);
+  it.each([
+    { swapSubmitActions: false, touch: true },
+    { swapSubmitActions: true, touch: true },
+    { swapSubmitActions: false, touch: false },
+    { swapSubmitActions: true, touch: false },
+  ])(
+    "offers the shared alternate action and scheduling (Enter steers: $swapSubmitActions, touch: $touch)",
+    ({ swapSubmitActions, touch: isTouch }) => {
+      const restoreMatchMedia = mockPointerCoarse(isTouch);
       vi.useFakeTimers();
       try {
         const onSubmit = vi.fn();
@@ -1526,6 +1531,13 @@ describe("PromptBoxInternal submit shortcuts", () => {
           clientY: 20,
         };
         const openMenu = () => {
+          if (!isTouch) {
+            fireEvent.pointerDown(
+              screen.getByRole("button", { name: "Send options" }),
+              { button: 0, ctrlKey: false, pointerType: "mouse" },
+            );
+            return;
+          }
           fireEvent.pointerDown(submit, touch);
           act(() => vi.advanceTimersByTime(700));
           act(() => vi.advanceTimersByTime(500));
@@ -1538,12 +1550,16 @@ describe("PromptBoxInternal submit shortcuts", () => {
         expect(
           screen.getAllByRole("menuitem").map((item) => item.textContent),
         ).toEqual([swapSubmitActions ? "Queue" : "Steer", "Send later"]);
+        const alternateAction = screen.getByRole("menuitem", {
+          name: swapSubmitActions ? "Queue" : "Steer",
+        });
+        expect(
+          alternateAction.querySelector(
+            `[data-icon="${swapSubmitActions ? "ListEnd" : "CornerDownRight"}"]`,
+          ),
+        ).not.toBeNull();
         expect(getPromptEditorElement().textContent).toBe("Follow up");
-        fireEvent.click(
-          screen.getByRole("menuitem", {
-            name: swapSubmitActions ? "Queue" : "Steer",
-          }),
-        );
+        fireEvent.click(alternateAction);
         expect(onSubmit).toHaveBeenCalledTimes(swapSubmitActions ? 1 : 0);
         expect(onModifierSubmit).toHaveBeenCalledTimes(
           swapSubmitActions ? 0 : 1,

@@ -3455,7 +3455,7 @@ export function PromptBoxInternal({
                       </Button>
                     ) : (
                       <ComposerSendMenu
-                        enabled={isPointerCoarse}
+                        isPointerCoarse={isPointerCoarse}
                         includePluginContributions={
                           !suppressPluginComposerCustomizations
                         }
