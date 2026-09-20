@@ -243,6 +243,7 @@ export interface PromptBoxSubmissionConfig {
 
 interface PromptSubmitButtonProps {
   canSubmit: boolean;
+  hasInput: boolean;
   className: string;
   disabledReason: string | undefined;
   icon: IconName | undefined;
@@ -257,6 +258,7 @@ interface PromptSubmitButtonProps {
 
 function PromptSubmitButton({
   canSubmit,
+  hasInput,
   className,
   disabledReason,
   icon,
@@ -277,7 +279,7 @@ function PromptSubmitButton({
       data-promptbox-submit-action=""
       type="submit"
       size={isCompact ? "icon" : "sm"}
-      variant="default"
+      variant={hasInput ? "default" : "ghost"}
       aria-label={title}
       aria-busy={isBusy}
       disabled={!canSubmit}
@@ -332,6 +334,7 @@ function PromptSubmitButton({
       }}
       className={cn(
         className,
+        !hasInput && "text-muted-foreground disabled:opacity-100",
         label !== undefined && !isCompact && "size-auto h-8 gap-1.5 px-2.5",
       )}
     >
@@ -3460,6 +3463,7 @@ export function PromptBoxInternal({
                           !suppressPluginComposerCustomizations
                         }
                         queue={swapSubmitActions}
+                        hasInput={hasSubmittableInput}
                         canSubmit={canModifierSubmit}
                         onSubmit={
                           onModifierSubmit ? submitModifierPrompt : undefined
@@ -3467,6 +3471,7 @@ export function PromptBoxInternal({
                       >
                         <PromptSubmitButton
                           canSubmit={canSubmit}
+                          hasInput={hasSubmittableInput}
                           icon={submitIcon}
                           label={submitLabel}
                           className={cn(

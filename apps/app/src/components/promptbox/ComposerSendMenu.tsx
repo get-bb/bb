@@ -19,6 +19,7 @@ export function ComposerSendMenu({
   isPointerCoarse,
   includePluginContributions,
   queue,
+  hasInput,
   canSubmit,
   onSubmit,
 }: {
@@ -26,6 +27,7 @@ export function ComposerSendMenu({
   isPointerCoarse: boolean;
   includePluginContributions: boolean;
   queue: boolean;
+  hasInput: boolean;
   canSubmit: boolean;
   onSubmit: (() => void) | undefined;
 }) {
@@ -87,8 +89,14 @@ export function ComposerSendMenu({
           <Button
             type="button"
             size="sm"
+            variant={hasInput ? "default" : "ghost"}
             aria-label="Send options"
-            className="relative w-7 rounded-l-none px-0 before:absolute before:left-0 before:top-1/2 before:h-3 before:w-px before:-translate-y-1/2 before:bg-background/25 [&_[data-icon-root]]:size-2.5"
+            className={cn(
+              "relative w-7 rounded-l-none px-0 before:absolute before:left-0 before:top-1/2 before:h-3 before:w-px before:-translate-y-1/2 [&_[data-icon-root]]:size-2.5",
+              hasInput
+                ? "before:bg-background/25"
+                : "text-muted-foreground before:bg-border",
+            )}
           >
             <Icon name="ChevronDown" className="opacity-80" />
           </Button>
