@@ -1580,12 +1580,16 @@ describe("PromptBoxInternal submit shortcuts", () => {
         act(() => vi.advanceTimersByTime(500));
         expect(screen.queryByRole("menuitem")).toBeNull();
         expect(
-          screen.getByRole("button", { name: "Submit (Enter)" }),
-        ).toBeDisabled();
+          screen
+            .getByRole("button", { name: "Submit (Enter)" })
+            .hasAttribute("disabled"),
+        ).toBe(true);
         if (!isTouch) {
           expect(
-            screen.getByRole("button", { name: "Send options" }),
-          ).toBeDisabled();
+            screen
+              .getByRole("button", { name: "Send options" })
+              .hasAttribute("disabled"),
+          ).toBe(true);
         }
         openMenu();
         expect(screen.queryByRole("menuitem")).toBeNull();
