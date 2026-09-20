@@ -68,8 +68,7 @@ describe("AttachmentPreview", () => {
     const attachments = [{ type: "localImage" as const, path: "done.png", name: "done.png", sizeBytes: 5 }];
     rerender(<AttachmentPreview {...props} attachments={attachments} compact />);
     const mixed = getByRole("status", { name: "1 attachment, 1 uploading" });
-    expect(mixed.querySelector('[data-icon="Paperclip"]')?.parentElement?.textContent).toBe("1");
-    expect(mixed.querySelector('[data-icon="Loading"]')?.parentElement?.textContent).toBe("1");
+    expect(mixed.textContent).toBe("2");
     rerender(<AttachmentPreview {...props} attachments={attachments} pendingUploads={[]} compact />);
     const settled = getByRole("img", { name: "1 attachment" });
     expect(settled.querySelector('[data-icon="Loading"]')).toBeNull();

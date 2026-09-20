@@ -122,18 +122,13 @@ export function AttachmentPreview({
             attachmentCount > 0 ? `${attachmentCount} ${attachmentCount === 1 ? "attachment" : "attachments"}` : null,
             uploadingCount > 0 ? `${uploadingCount} uploading` : null,
           ].filter(Boolean).join(", ")}
-          className="ml-3 inline-flex h-7 shrink-0 items-center gap-3 rounded-md bg-surface-recessed px-2 text-xs text-muted-foreground"
+          className="ml-3 inline-flex h-7 shrink-0 items-center gap-0.5 rounded-md bg-surface-recessed px-1.5 text-xs text-muted-foreground"
         >
-          <span aria-hidden="true" className="inline-flex items-center gap-1.5">
-            <Icon name="Paperclip" className="size-3.5" />
-            {attachmentCount > 0 ? <span>{attachmentCount}</span> : null}
-          </span>
           {uploadingCount > 0 ? (
-            <span aria-hidden="true" className="inline-flex items-center gap-1.5">
-              <Icon name="Loading" className="size-3.5 animate-spin motion-reduce:animate-none" />
-              <span>{uploadingCount}</span>
-            </span>
+            <Icon name="Loading" className="size-3.5 animate-spin motion-reduce:animate-none" />
           ) : null}
+          <span aria-hidden="true">{attachmentCount + uploadingCount}</span>
+          <Icon name="Paperclip" className="size-3.5" />
         </span>
       ) : (
         <div className="mx-3 mb-1 mt-1">
