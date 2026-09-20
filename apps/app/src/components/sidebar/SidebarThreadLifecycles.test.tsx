@@ -8,12 +8,15 @@ import {
   screen,
 } from "@testing-library/react";
 import { createStore, Provider } from "jotai";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ThreadLifecycle } from "@bb/domain";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 import { SidebarThreadLifecycles } from "./SidebarThreadLifecycles";
+import { SidebarHeaderControls } from "./SidebarHeaderControls";
+import { ChronologicalSectionThreadSections } from "./ProjectRow";
 import { sidebarThreadLifecyclesAtom } from "./sidebarCollapsedAtoms";
 
 const archiveQuery = vi.hoisted(() => ({
@@ -85,34 +88,63 @@ function setup(lifecycles: ThreadLifecycle[] = ["active"], empty = false) {
   render(
     <Provider store={store}>
       <TooltipProvider>
-        <MemoryRouter>
-          <SidebarThreadLifecycles
-            status="ready"
-            drafts={
-              empty
-                ? []
-                : [
-                    makeThreadListEntry({
-                      id: "old-draft",
-                      title: "Saved work",
-                      lifecycle: "draft",
-                      status: "pending",
-                      createdAt: 1,
-                      updatedAt: 1,
-                    }),
-                  ]
-            }
-            treeProps={{
-              compareThreads: () => 0,
-              collapsedThreadIds: new Set(),
-              collapsedEnvironmentIds: new Set(),
-              onToggleThreadCollapsed: vi.fn(),
-              onToggleEnvironmentCollapsed: vi.fn(),
-            }}
-          >
-            <div>Active hierarchy</div>
-          </SidebarThreadLifecycles>
-        </MemoryRouter>
+        <QueryClientProvider client={new QueryClient()}>
+          <MemoryRouter>
+            <SidebarThreadLifecycles
+              status="ready"
+              drafts={
+                empty
+                  ? []
+                  : [
+                      makeThreadListEntry({
+                        id: "old-draft",
+                        title: "Saved work",
+                        lifecycle: "draft",
+                        status: "pending",
+                        createdAt: 1,
+                        updatedAt: 1,
+                      }),
+                    ]
+              }
+              treeProps={{
+                compareThreads: () => 0,
+                collapsedThreadIds: new Set(),
+                collapsedEnvironmentIds: new Set(),
+                onToggleThreadCollapsed: vi.fn(),
+                onToggleEnvironmentCollapsed: vi.fn(),
+              }}
+            >
+              <ChronologicalSectionThreadSections
+                threadListState={{
+                  status: "ready",
+                  threads: empty
+                    ? []
+                    : [makeThreadListEntry({ title: "Active work" })],
+                }}
+                compareThreads={() => 0}
+                sections={[]}
+                collapsedThreadIds={new Set()}
+                collapsedEnvironmentIds={new Set()}
+                onToggleThreadCollapsed={vi.fn()}
+                onToggleEnvironmentCollapsed={vi.fn()}
+                topLevelSectionOrder={["threads"]}
+                onTopLevelSectionOrderChange={vi.fn()}
+                pinnedReorderPending={false}
+                pinnedThreads={[]}
+                onReorderPinnedThread={vi.fn()}
+                builtInSections={{
+                  collapsedSectionIds: new Set(),
+                  onToggleCollapsed: vi.fn(),
+                  pinned: { label: "Pinned", content: null },
+                  threads: {
+                    label: "Threads",
+                    actions: <SidebarHeaderControls label="Threads" />,
+                  },
+                }}
+              />
+            </SidebarThreadLifecycles>
+          </MemoryRouter>
+        </QueryClientProvider>
       </TooltipProvider>
     </Provider>,
   );
@@ -134,7 +166,7 @@ describe("sidebar lifecycle groups", () => {
     ).map((lifecycles) => ({ lifecycles })),
   )("shows only selected semantic groups for $lifecycles", ({ lifecycles }) => {
     setup(lifecycles);
-    expect(screen.queryByText("Active hierarchy") !== null).toBe(
+    expect(screen.queryByText("Active work") !== null).toBe(
       lifecycles.includes("active"),
     );
     expect(screen.queryByText("Saved work") !== null).toBe(
@@ -144,14 +176,36 @@ describe("sidebar lifecycle groups", () => {
       lifecycles.includes("archived"),
     );
     expect(
-      screen.getAllByRole("heading").map((heading) => heading.textContent),
+      screen.queryAllByRole("heading").map((heading) => heading.textContent),
     ).toEqual(
-      ["Active", "Drafts", "Archived"].filter((_, index) =>
-        lifecycles.includes((["active", "draft", "archived"] as const)[index]!),
+      ["Drafts", "Archived"].filter((_, index) =>
+        lifecycles.includes((["draft", "archived"] as const)[index]!),
       ),
     );
     expect(archiveQuery.enabled).toBe(lifecycles.includes("archived"));
   });
+
+  it.each([false, true])(
+    "uses the existing hierarchy menu without an Active header (empty=%s)",
+    async (empty) => {
+      setup(["active"], empty);
+      expect(screen.queryByRole("heading", { name: "Active" })).toBeNull();
+      expect(screen.queryByRole("region", { name: "Active" })).toBeNull();
+      expect(
+        screen.queryByRole("button", { name: /^Active actions/ }),
+      ).toBeNull();
+      expect(
+        screen.getByText(empty ? "No threads" : "Active work"),
+      ).toBeTruthy();
+      fireEvent.keyDown(
+        screen.getByRole("button", { name: /^Threads actions(?:;|$)/ }),
+        { key: "Enter" },
+      );
+      expect(
+        await screen.findByRole("menuitem", { name: "Filter threads" }),
+      ).toBeTruthy();
+    },
+  );
 
   it.each(["draft", "archived"] as const)(
     "keeps the combined menu reachable in an empty %s-only group",
@@ -185,8 +239,10 @@ describe("sidebar lifecycle groups", () => {
       ]);
       fireEvent.click(screen.getByRole("menuitemcheckbox", { name: label }));
       expect(store.get(sidebarThreadLifecyclesAtom)).toEqual(["active"]);
-      expect(screen.getByText("Active hierarchy")).toBeTruthy();
-      const trigger = screen.getByRole("button", { name: "Active actions" });
+      expect(screen.getByText("No threads")).toBeTruthy();
+      const trigger = screen.getByRole("button", {
+        name: /^Threads actions(?:;|$)/,
+      });
       fireEvent.keyDown(trigger, { key: "Enter" });
       expect(
         await screen.findByRole("menuitem", { name: "Filter threads" }),

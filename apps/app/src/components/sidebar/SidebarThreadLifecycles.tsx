@@ -63,9 +63,7 @@ export function SidebarThreadLifecycles({
   });
   return (
     <>
-      {lifecycles.includes("active") && (
-        <LifecycleGroup label="Active">{children}</LifecycleGroup>
-      )}
+      {lifecycles.includes("active") && children}
       {lifecycles.includes("draft") && (
         <LifecycleGroup label="Drafts">
           <ProjectThreadTree
