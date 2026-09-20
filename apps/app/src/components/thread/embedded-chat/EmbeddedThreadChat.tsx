@@ -1035,7 +1035,9 @@ function EmbeddedThreadChatWithComposer({
           resolveMentionLink={resolveMentionLink}
           inlineEditor={inlineEditor}
           sendAction={isProvisioning ? "steer-when-ready" : "send-now"}
-          sendDisabled={queuedMessageActionPending}
+          sendDisabled={
+            submitMode.kind === "blocked" || queuedMessageActionPending
+          }
           actionDisabled={queuedMessageActionPending}
           processingMessageId={processingQueuedMessage?.id ?? null}
           processingAction={processingQueuedMessage?.action ?? null}
@@ -1060,6 +1062,7 @@ function EmbeddedThreadChatWithComposer({
       queuedMessageActionPending,
       queuedMessages,
       resolveMentionLink,
+      submitMode.kind,
     ],
   );
 
