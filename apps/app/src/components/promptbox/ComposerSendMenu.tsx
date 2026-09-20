@@ -88,7 +88,6 @@ export function ComposerSendMenu({
             type="button"
             size="sm"
             aria-label="Send options"
-            title="Send options"
             className="rounded-l-none border-l border-background/20 px-1.5"
           >
             <Icon name="ChevronDown" className="size-3" />
