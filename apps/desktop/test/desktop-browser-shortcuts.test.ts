@@ -32,42 +32,44 @@ const keybindings: AppKeybindings = [
 ];
 
 describe("resolveDesktopBrowserAppCommand", () => {
-  it.each(["panel.previousTab", "panel.nextTab"] as const)(
-    "forwards rebound %s from native browser content",
-    (command) => {
-      const binding: AppKeybindings[number] = {
-        ...keybindings[0]!,
-        command,
-        shortcut: {
-          ...keybindings[0]!.shortcut,
-          key: "ArrowRight",
-          shift: true,
-        },
-      };
-      const input = {
+  it.each([
+    "panel.previousTab",
+    "panel.nextTab",
+    "pane.focus.previous",
+    "pane.focus.next",
+  ] as const)("forwards rebound %s from native browser content", (command) => {
+    const binding: AppKeybindings[number] = {
+      ...keybindings[0]!,
+      command,
+      shortcut: {
+        ...keybindings[0]!.shortcut,
         key: "ArrowRight",
-        code: "ArrowRight",
-        altKey: false,
-        ctrlKey: false,
-        metaKey: true,
-        shiftKey: true,
-      };
-      expect(
-        resolveDesktopBrowserAppCommand({
-          input,
-          isMac: true,
-          keybindings: [binding],
-        }),
-      ).toBe(command);
-      expect(
-        resolveDesktopBrowserAppCommand({
-          input,
-          isMac: true,
-          keybindings: [],
-        }),
-      ).toBeNull();
-    },
-  );
+        shift: true,
+      },
+    };
+    const input = {
+      key: "ArrowRight",
+      code: "ArrowRight",
+      altKey: false,
+      ctrlKey: false,
+      metaKey: true,
+      shiftKey: true,
+    };
+    expect(
+      resolveDesktopBrowserAppCommand({
+        input,
+        isMac: true,
+        keybindings: [binding],
+      }),
+    ).toBe(command);
+    expect(
+      resolveDesktopBrowserAppCommand({
+        input,
+        isMac: true,
+        keybindings: [],
+      }),
+    ).toBeNull();
+  });
 
   it("keeps frontend plugin commands out of native browser dispatch", () => {
     expect(

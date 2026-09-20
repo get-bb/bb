@@ -701,7 +701,9 @@ export function createDesktopBrowserViewManager(
         command === "browser.focusLocation" ||
         command === "browser.find" ||
         command === "panel.previousTab" ||
-        command === "panel.nextTab"
+        command === "panel.nextTab" ||
+        command === "pane.focus.previous" ||
+        command === "pane.focus.next"
       ) {
         args.focusHostWebContents(hostWindow.webContents.id);
       }

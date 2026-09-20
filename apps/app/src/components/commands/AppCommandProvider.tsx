@@ -354,18 +354,22 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
     const handleKeyDown = (event: KeyboardEvent) => {
       handleKeyboardEvent(event);
     };
-    const handlePanelNavigation = (event: KeyboardEvent) => {
+    const handlePaneNavigation = (event: KeyboardEvent) => {
       if (
-        getShortcutCommand(event, ["panel.previousTab", "panel.nextTab"]) !==
-        null
+        getShortcutCommand(event, [
+          "panel.previousTab",
+          "panel.nextTab",
+          "pane.focus.previous",
+          "pane.focus.next",
+        ]) !== null
       ) {
         handleKeyboardEvent(event);
       }
     };
-    window.addEventListener("keydown", handlePanelNavigation, true);
+    window.addEventListener("keydown", handlePaneNavigation, true);
     window.addEventListener("keydown", handleKeyDown);
     return () => {
-      window.removeEventListener("keydown", handlePanelNavigation, true);
+      window.removeEventListener("keydown", handlePaneNavigation, true);
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [getShortcutCommand, handleKeyboardEvent]);

@@ -2490,7 +2490,13 @@ describe("DesktopBrowserViewManager", () => {
     expect(dispatchAppCommand).toHaveBeenCalledTimes(1);
   });
 
-  it.each(["browser.find", "panel.previousTab", "panel.nextTab"] as const)(
+  it.each([
+    "browser.find",
+    "panel.previousTab",
+    "panel.nextTab",
+    "pane.focus.previous",
+    "pane.focus.next",
+  ] as const)(
     "takes host focus for %s so the selected target can receive typing",
     (command) => {
       const dispatchAppCommand = vi.fn();

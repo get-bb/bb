@@ -13,6 +13,7 @@ import type { AppKeybindings } from "@bb/domain";
 import {
   AppCommandProvider,
   useAppCommandContext,
+  useAppCommandHandler,
 } from "@/components/commands/AppCommandProvider";
 import { SidebarSplitContainer } from "./SidebarSplitContainer";
 
@@ -23,28 +24,35 @@ vi.mock("@/hooks/queries/system-queries", () => ({
 }));
 vi.mock("@/hooks/usePluginCommandBindings", () => ({
   usePluginCommandBindings: () => {
-    const keybindings: AppKeybindings = [
-      ["panel.previousTab", "ArrowLeft"],
-      ["panel.nextTab", "ArrowRight"],
-    ].map(([command, key]) => ({
-      command:
-        command === "panel.previousTab" ? "panel.previousTab" : "panel.nextTab",
+    const keybindings: AppKeybindings = (
+      [
+        ["panel.previousTab", "ArrowLeft", false, true],
+        ["panel.nextTab", "ArrowRight", false, true],
+        ["pane.focus.previous", "ArrowLeft", true, false],
+        ["pane.focus.next", "ArrowRight", true, false],
+      ] as const
+    ).map(([command, key, control, shift]) => ({
+      command,
       desktopOnly: false,
-      shortcut: {
-        key: key!,
-        mod: true,
-        meta: false,
-        control: false,
-        alt: false,
-        shift: true,
-      },
+      shortcut: { key, mod: true, meta: false, control, alt: false, shift },
       when: { all: ["mainSurface"], none: ["modalOpen"] },
     }));
     return { keybindings, defaults: keybindings };
   },
 }));
 
-function MainSurface({ children }: { children: ReactNode }) {
+function MainSurface({
+  children,
+  onNextPane,
+}: {
+  children: ReactNode;
+  onNextPane?: () => void;
+}) {
+  useAppCommandHandler("pane.focus.next", () => {
+    if (!onNextPane) return false;
+    onNextPane();
+    return true;
+  });
   useAppCommandContext("mainSurface", true);
   return children;
 }
@@ -92,6 +100,26 @@ afterEach(() => {
 });
 
 describe("panel tab commands", () => {
+  it("routes a rebound chat-split command before an editor consumes it", () => {
+    const onNextPane = vi.fn();
+    render(
+      <AppCommandProvider>
+        <MainSurface onNextPane={onNextPane}>
+          <input
+            aria-label="editor"
+            onKeyDown={(event) => event.stopPropagation()}
+          />
+        </MainSurface>
+      </AppCommandProvider>,
+    );
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "editor" }), {
+      key: "ArrowRight",
+      ctrlKey: true,
+      metaKey: /Mac|iPhone|iPad|iPod/u.test(navigator.platform),
+    });
+    expect(onNextPane).toHaveBeenCalledOnce();
+  });
+
   it("cycles only the active chat panel, even with a later registered inactive panel and focused editor", () => {
     const view = (active: string) => (
       <AppCommandProvider>

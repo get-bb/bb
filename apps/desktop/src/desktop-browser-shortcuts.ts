@@ -23,7 +23,9 @@ export function resolveDesktopBrowserAppCommand({
       !binding ||
       (!binding.when.all.includes("browserFocus") &&
         binding.command !== "panel.previousTab" &&
-        binding.command !== "panel.nextTab")
+        binding.command !== "panel.nextTab" &&
+        binding.command !== "pane.focus.previous" &&
+        binding.command !== "pane.focus.next")
     )
       continue;
     if (matchesAppShortcut(input, binding.shortcut, isMac)) {
