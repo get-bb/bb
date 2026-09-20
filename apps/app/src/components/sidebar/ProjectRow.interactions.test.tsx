@@ -7,6 +7,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import { BbHttpError } from "@bb/sdk/browser";
 import type { ThreadListEntry } from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
@@ -25,9 +26,19 @@ import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 import { makeProjectResponse } from "@/test/fixtures/projects";
 
 const mockUpdateEnvironment = vi.hoisted(() => ({
-  mutate: vi.fn(),
-  reset: vi.fn(),
+  mutateAsync: vi.fn(async () => undefined),
 }));
+const mockUpdateProject = vi.hoisted(() => vi.fn(async () => undefined));
+const mockUpdateSection = vi.hoisted(() => vi.fn(async () => undefined));
+
+vi.mock("@/hooks/mutations/project-mutations", () => ({
+  useUpdateProject: () => ({ mutateAsync: mockUpdateProject }),
+}));
+
+vi.mock("@/hooks/mutations/thread-section-mutations", () => ({
+  useUpdateThreadSection: () => ({ mutateAsync: mockUpdateSection }),
+}));
+
 const mockArchiveEnvironmentThreads = vi.hoisted(() => ({
   mutateAsync: vi.fn(async () => ({ ok: true, archivedThreadIds: [] })),
 }));
@@ -49,8 +60,7 @@ vi.mock("@/hooks/mutations/environment-mutations", () => ({
   useUpdateEnvironment: () => ({
     error: null,
     isPending: false,
-    mutate: mockUpdateEnvironment.mutate,
-    reset: mockUpdateEnvironment.reset,
+    mutateAsync: mockUpdateEnvironment.mutateAsync,
     variables: undefined,
   }),
 }));
@@ -194,6 +204,41 @@ describe("ProjectRow interactions", () => {
     expect(actions?.getAttribute("data-sidebar-hover-actions-open")).toBeNull();
   });
 
+  it("renames a project from its menu without collapsing its threads", async () => {
+    const { onToggleProjectCollapsed } = renderProjectRow();
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Test project actions" }),
+      { button: 0 },
+    );
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Rename" }));
+    const input = await screen.findByRole("textbox", { name: "Project name" });
+    await waitFor(() => expect(document.activeElement).toBe(input));
+    fireEvent.change(input, { target: { value: "  Renamed project  " } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() =>
+      expect(mockUpdateProject).toHaveBeenCalledWith({
+        id: "proj_test",
+        name: "Renamed project",
+      }),
+    );
+    expect(onToggleProjectCollapsed).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("retains a failed project rename for retry and cancels without a second write", async () => {
+    mockUpdateProject.mockRejectedValueOnce(new Error("Unavailable"));
+    renderProjectRow();
+    fireEvent.doubleClick(screen.getByTitle("Test project"));
+    const input = await screen.findByRole("textbox", { name: "Project name" });
+    fireEvent.change(input, { target: { value: "Recovered draft" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(await screen.findByRole("alert")).not.toBeNull();
+    expect(input).toHaveProperty("value", "Recovered draft");
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(screen.queryByRole("textbox", { name: "Project name" })).toBeNull();
+    expect(mockUpdateProject).toHaveBeenCalledOnce();
+  });
+
   it("places the project disclosure after its label and keeps root threads flush", () => {
     const result = renderProjectRow(vi.fn(), {
       status: "ready",
@@ -315,6 +360,74 @@ describe("ProjectRow interactions", () => {
       screen.getByLabelText("Thread working with unsubmitted draft"),
     ).not.toBeNull();
     expect(screen.queryByLabelText("Plan mode active")).toBeNull();
+  });
+
+  it("keeps a duplicate section name in place until corrected", async () => {
+    mockUpdateSection.mockRejectedValueOnce(
+      new BbHttpError({
+        status: 409,
+        code: "section_name_conflict",
+        message: "Conflict",
+        body: null,
+      }),
+    );
+    render(
+      <TooltipProvider>
+        <Provider store={createStore()}>
+          <QueryClientProvider client={new QueryClient()}>
+            <MemoryRouter>
+              <ChronologicalSectionThreadSections
+                threadListState={{ status: "ready", threads: [] }}
+                compareThreads={() => 0}
+                sections={[{ id: "sec_rename", name: "Design" }]}
+                collapsedThreadIds={new Set()}
+                collapsedEnvironmentIds={new Set()}
+                onToggleThreadCollapsed={vi.fn()}
+                onToggleEnvironmentCollapsed={vi.fn()}
+                topLevelSectionOrder={[
+                  buildSidebarEntitySectionId("section", "sec_rename"),
+                ]}
+                onTopLevelSectionOrderChange={vi.fn()}
+                pinnedReorderPending={false}
+                pinnedThreads={[]}
+                onReorderPinnedThread={vi.fn()}
+                builtInSections={{
+                  collapsedSectionIds: new Set(),
+                  onToggleCollapsed: vi.fn(),
+                  pinned: { label: "Pinned", content: null },
+                  threads: { label: "Threads" },
+                }}
+              />
+            </MemoryRouter>
+          </QueryClientProvider>
+        </Provider>
+      </TooltipProvider>,
+    );
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Design section actions" }),
+      { button: 0 },
+    );
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Rename" }));
+    const input = await screen.findByRole("textbox", { name: "Section name" });
+    fireEvent.change(input, { target: { value: "Existing section" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(
+      await screen.findByText("A section with this name already exists."),
+    ).not.toBeNull();
+    expect(input).toHaveProperty("value", "Existing section");
+    fireEvent.change(input, { target: { value: "New section" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() =>
+      expect(mockUpdateSection).toHaveBeenLastCalledWith({
+        id: "sec_rename",
+        name: "New section",
+      }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("textbox", { name: "Section name" }),
+      ).toBeNull(),
+    );
   });
 
   it("uses shared runtime precedence when a top-level section is collapsed", () => {
@@ -587,13 +700,29 @@ describe("ProjectRow interactions", () => {
       ).toEqual(["Rename", "Archive"]);
       fireEvent.click(rename);
 
-      expect(
-        await screen.findByRole("dialog", { name: "Rename environment" }),
-      ).not.toBeNull();
-      expect(screen.getByText("feat/menu-close")).not.toBeNull();
+      const input = await screen.findByRole("textbox", {
+        name: "Environment name",
+      });
+      expect(input.getAttribute("placeholder")).toBe("feat/menu-close");
+      expect(input).toHaveProperty("value", "Feature workspace");
+      await waitFor(() => expect(document.activeElement).toBe(input));
+      expect(screen.queryByRole("dialog")).toBeNull();
       await waitFor(() => {
         expect(screen.queryByRole("menuitem", { name: "Rename" })).toBeNull();
       });
+      fireEvent.change(input, { target: { value: "" } });
+      fireEvent.keyDown(input, { key: "Enter" });
+      expect(await screen.findByText("Name cannot be empty.")).not.toBeNull();
+      expect(mockUpdateEnvironment.mutateAsync).not.toHaveBeenCalled();
+      fireEvent.click(
+        screen.getByRole("button", { name: "Clear custom name" }),
+      );
+      await waitFor(() =>
+        expect(mockUpdateEnvironment.mutateAsync).toHaveBeenCalledWith({
+          id: "env_test",
+          name: null,
+        }),
+      );
     },
   );
 
@@ -661,8 +790,16 @@ describe("ProjectRow interactions", () => {
       { button: 0 },
     );
     fireEvent.click(await screen.findByRole("menuitem", { name: "Rename" }));
-    expect(
-      await screen.findByRole("dialog", { name: "Rename environment" }),
-    ).not.toBeNull();
+    const input = await screen.findByRole("textbox", {
+      name: "Environment name",
+    });
+    fireEvent.change(input, { target: { value: "  Release workspace  " } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() =>
+      expect(mockUpdateEnvironment.mutateAsync).toHaveBeenCalledWith({
+        id: "env_plain",
+        name: "Release workspace",
+      }),
+    );
   });
 });

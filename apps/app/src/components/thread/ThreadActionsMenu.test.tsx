@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -10,6 +16,7 @@ import {
   ThreadActionsMenu,
 } from "./ThreadActionsMenu";
 import { ThreadSectionMoveProvider } from "./ThreadSectionMoveProvider";
+import { useSidebarRename } from "../sidebar/SidebarInlineRename";
 
 const moveThreadToSection = vi.hoisted(() => vi.fn());
 const copyToClipboardWithToast = vi.hoisted(() => vi.fn());
@@ -74,6 +81,38 @@ function renderCompact(children: ReactNode) {
   );
 }
 
+function InlineRenameMenuHarness({ context = false }: { context?: boolean }) {
+  const { editor, isEditing, startEditing } = useSidebarRename({
+    kind: "thread",
+    id: thread.id,
+    name: thread.title ?? "Thread",
+    label: "Thread name",
+    onSave: async () => {},
+  });
+  const row = (
+    <div data-sidebar-rename-row="" data-testid="thread-row">
+      <button type="button" data-sidebar-rename-anchor="">
+        Open thread
+      </button>
+      {editor ?? <span>{thread.title}</span>}
+      {!context && (
+        <ThreadActionsMenu thread={thread} onRename={startEditing} />
+      )}
+    </div>
+  );
+  return context ? (
+    <ThreadActionsContextMenu
+      thread={thread}
+      onRename={startEditing}
+      disabled={isEditing}
+    >
+      {row}
+    </ThreadActionsContextMenu>
+  ) : (
+    row
+  );
+}
+
 async function openMoveSubmenu() {
   const trigger = await screen.findByRole("menuitem", {
     name: "Move to section",
@@ -92,6 +131,62 @@ afterEach(() => {
 });
 
 describe("ThreadActionsMenu", () => {
+  it("keeps the existing rename dialog for callers without an inline override", async () => {
+    renderWide(<ThreadActionsMenu thread={thread} />);
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Thread actions" }),
+      { button: 0 },
+    );
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Rename" }));
+
+    await waitFor(() => {
+      expect(threadActions.requestRename).toHaveBeenCalledWith(thread);
+    });
+  });
+
+  it.each([false, true])(
+    "hands keyboard focus from the wide menu to inline rename (context: %s)",
+    async (context) => {
+      renderWide(<InlineRenameMenuHarness context={context} />);
+      if (context) {
+        fireEvent.contextMenu(screen.getByTestId("thread-row"));
+      } else {
+        fireEvent.pointerDown(
+          screen.getByRole("button", { name: "Thread actions" }),
+          { button: 0 },
+        );
+      }
+
+      fireEvent.keyDown(screen.getByRole("menuitem", { name: "Rename" }), {
+        key: "Enter",
+      });
+
+      const input = await screen.findByRole("textbox", { name: "Thread name" });
+      await waitFor(() => expect(document.activeElement).toBe(input));
+      expect(input).toHaveProperty("value", "Move me");
+      expect(threadActions.requestRename).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([false, true])(
+    "hands focus from the compact drawer to inline rename (context: %s)",
+    async (context) => {
+      renderCompact(<InlineRenameMenuHarness context={context} />);
+      if (context) {
+        fireEvent.contextMenu(screen.getByTestId("thread-row"));
+      } else {
+        fireEvent.click(screen.getByRole("button", { name: "Thread actions" }));
+      }
+
+      fireEvent.click(await screen.findByRole("menuitem", { name: "Rename" }));
+
+      const input = await screen.findByRole("textbox", { name: "Thread name" });
+      await waitFor(() => expect(document.activeElement).toBe(input));
+      expect(threadActions.requestRename).not.toHaveBeenCalled();
+    },
+  );
+
   it("copies the canonical thread URL from every menu instance", () => {
     renderWide(<ThreadActionsMenu thread={thread} />);
 

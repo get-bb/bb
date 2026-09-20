@@ -29,6 +29,8 @@ import { useProjectActions } from "./ProjectActionsProvider";
 
 interface ProjectActionsMenuBaseProps {
   project: ProjectResponse;
+  onRename?: () => void;
+  onCloseAutoFocus?: (event: Event) => void;
 }
 
 interface ProjectActionsMenuProps extends ProjectActionsMenuBaseProps {
@@ -36,6 +38,7 @@ interface ProjectActionsMenuProps extends ProjectActionsMenuBaseProps {
 }
 
 interface ProjectActionsContextMenuProps extends ProjectActionsMenuBaseProps {
+  disabled?: boolean;
   children: ReactNode;
   onOpenChange?: (open: boolean) => void;
 }
@@ -53,6 +56,7 @@ function stopProjectActionsMenuClickPropagation(event: MouseEvent) {
 export function ProjectActionsMenuItems({
   project,
   surface,
+  onRename,
 }: ProjectActionsMenuItemsProps) {
   const navigate = useNavigate();
   const { hostId: pickerHostId } = usePathPickerHost();
@@ -77,7 +81,8 @@ export function ProjectActionsMenuItems({
         surface={surface}
         icon="Edit"
         onSelect={() => {
-          requestRename(project);
+          if (onRename) onRename();
+          else requestRename(project);
         }}
       >
         Rename
@@ -111,6 +116,8 @@ export function ProjectActionsMenuItems({
 export function ProjectActionsMenu({
   project,
   triggerClassName,
+  onRename,
+  onCloseAutoFocus,
 }: ProjectActionsMenuProps) {
   return (
     <DropdownMenu>
@@ -137,9 +144,14 @@ export function ProjectActionsMenu({
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="end"
+        onCloseAutoFocus={onCloseAutoFocus}
         onClick={stopProjectActionsMenuClickPropagation}
       >
-        <ProjectActionsMenuItems project={project} surface="dropdown" />
+        <ProjectActionsMenuItems
+          project={project}
+          surface="dropdown"
+          onRename={onRename}
+        />
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -157,14 +169,23 @@ export function ProjectActionsContextMenu(
 
 function ProjectActionsCompactLongPressMenu({
   children,
+  disabled,
   project,
   onOpenChange,
+  onRename,
 }: ProjectActionsContextMenuProps) {
   return (
     <CompactLongPressMenu
       label={`${project.name} actions`}
       onOpenChange={onOpenChange}
-      items={<ProjectActionsMenuItems project={project} surface="dropdown" />}
+      disabled={disabled}
+      items={
+        <ProjectActionsMenuItems
+          project={project}
+          surface="dropdown"
+          onRename={onRename}
+        />
+      }
     >
       {children}
     </CompactLongPressMenu>
@@ -173,17 +194,27 @@ function ProjectActionsCompactLongPressMenu({
 
 function ProjectActionsDesktopContextMenu({
   children,
+  disabled,
   project,
   onOpenChange,
+  onRename,
+  onCloseAutoFocus,
 }: ProjectActionsContextMenuProps) {
   return (
     <ContextMenu onOpenChange={onOpenChange}>
-      <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
+      <ContextMenuTrigger asChild disabled={disabled}>
+        {children}
+      </ContextMenuTrigger>
       <ContextMenuContent
         aria-label={`${project.name} actions`}
+        onCloseAutoFocus={onCloseAutoFocus}
         onClick={stopProjectActionsMenuClickPropagation}
       >
-        <ProjectActionsMenuItems project={project} surface="context" />
+        <ProjectActionsMenuItems
+          project={project}
+          surface="context"
+          onRename={onRename}
+        />
       </ContextMenuContent>
     </ContextMenu>
   );

@@ -55,6 +55,8 @@ interface TopLevelSidebarSectionCollapseControl {
 
 export interface TopLevelSidebarSectionProps {
   label: string;
+  labelEditor?: ReactNode;
+  onRename?: () => void;
   children: ReactNode;
   childrenInset?: boolean;
   showChildrenWhenCollapsed?: boolean;
@@ -77,6 +79,8 @@ export interface TopLevelSidebarSectionProps {
 
 export function TopLevelSidebarSection({
   label,
+  labelEditor,
+  onRename,
   children,
   childrenInset = true,
   showChildrenWhenCollapsed = false,
@@ -135,13 +139,13 @@ export function TopLevelSidebarSection({
   ) : null;
   const handleClickCapture = useCallback<MouseEventHandler<HTMLDivElement>>(
     (event) => {
-      if (!consumeClickSuppression?.()) {
+      if (labelEditor || !consumeClickSuppression?.()) {
         return;
       }
       event.preventDefault();
       event.stopPropagation();
     },
-    [consumeClickSuppression],
+    [consumeClickSuppression, labelEditor],
   );
   const handleCollapseControlClick = useCallback<
     MouseEventHandler<HTMLButtonElement>
@@ -169,6 +173,7 @@ export function TopLevelSidebarSection({
       ref={sectionRef}
       style={sectionStyle}
       data-sidebar-section-id={sectionId}
+      data-sidebar-rename-row=""
       className={cn(
         "group/sidebar-section min-w-0 rounded-md transition-colors",
         isDropTargetActive && "bg-sidebar-accent/60",
@@ -192,12 +197,28 @@ export function TopLevelSidebarSection({
         {...(dragBindings?.listeners ?? {})}
       >
         <span className="relative z-10 flex min-w-0 flex-1 items-center gap-1 text-left">
-          <span className="min-w-0 truncate" title={label}>
-            {label}
-          </span>
+          {labelEditor ?? (
+            <span
+              className="min-w-0 truncate"
+              title={label}
+              onDoubleClick={
+                onRename
+                  ? (event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      onRename();
+                    }
+                  : undefined
+              }
+            >
+              {label}
+            </span>
+          )}
           {collapseControl ? (
             <button
               type="button"
+              disabled={Boolean(labelEditor)}
+              data-sidebar-rename-anchor=""
               aria-expanded={!collapseControl.isCollapsed}
               data-sidebar-hover-actions-mobile={
                 SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE
@@ -233,6 +254,7 @@ export function TopLevelSidebarSection({
             data-sidebar-trailing-controls=""
             className={cn(
               "relative z-20 inline-flex h-7 shrink-0 items-center max-md:pointer-coarse:h-9",
+              labelEditor && "hidden",
               SIDEBAR_HOVER_ACTIONS_GAP_CLASS,
             )}
             onClick={status || actions ? stopActionsClick : undefined}

@@ -8,6 +8,7 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import { SIDEBAR_CONTROL_STATE_CLASS } from "./sidebarRowClasses";
 
 interface SidebarChildToggleChevronProps {
+  disabled?: boolean;
   isCollapsed: boolean;
   expandLabel: string;
   collapseLabel: string;
@@ -17,6 +18,7 @@ interface SidebarChildToggleChevronProps {
 }
 
 export function SidebarChildToggleChevron({
+  disabled = false,
   isCollapsed,
   expandLabel,
   collapseLabel,
@@ -27,6 +29,8 @@ export function SidebarChildToggleChevron({
   return (
     <button
       type="button"
+      disabled={disabled}
+      data-sidebar-rename-anchor=""
       aria-expanded={!isCollapsed}
       aria-label={isCollapsed ? expandLabel : collapseLabel}
       data-sidebar-hover-actions-mobile={

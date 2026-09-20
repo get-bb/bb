@@ -124,6 +124,27 @@ export function applyProjectCreateResult({
   );
 }
 
+export function applyProjectUpdateResult({
+  project,
+  queryClient,
+}: ApplyProjectCreateResultArgs): void {
+  queryClient.setQueryData<ProjectResponse[]>(projectsQueryKey(), (projects) =>
+    projects?.map((current) => (current.id === project.id ? project : current)),
+  );
+  queryClient.setQueryData<SidebarBootstrapResponse>(
+    sidebarNavigationQueryKey(),
+    (navigation) =>
+      navigation
+        ? {
+            ...navigation,
+            projects: navigation.projects.map((current) =>
+              current.id === project.id ? { ...current, ...project } : current,
+            ),
+          }
+        : navigation,
+  );
+}
+
 export function applyProjectDeleteResult({
   projectId,
   queryClient,

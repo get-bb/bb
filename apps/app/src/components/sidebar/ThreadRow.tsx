@@ -23,7 +23,7 @@ import {
   ThreadArchiveQuickAction,
 } from "@/components/thread/ThreadActionsMenu";
 import { useThreadActions } from "@/components/thread/ThreadActionsProvider";
-import { useInlineThreadTitle } from "@/components/thread/InlineThreadTitle";
+import { useSidebarRename } from "./SidebarInlineRename";
 import {
   COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
   COARSE_POINTER_GLYPH_BOX_CLASS,
@@ -273,6 +273,7 @@ function renderThreadRowContainer({
   style,
 }: ThreadRowContainerArgs) {
   const containerProps = {
+    "data-sidebar-rename-row": "",
     className,
     style,
     "data-sidebar-nest-target": nestTargetState ?? undefined,
@@ -507,7 +508,7 @@ function ThreadRowComponent({
 }: ThreadRowProps) {
   const [isDropdownActionsOpen, setIsDropdownActionsOpen] = useState(false);
   const [isContextActionsOpen, setIsContextActionsOpen] = useState(false);
-  const { renameThread } = useThreadActions();
+  const { renameThreadAsync } = useThreadActions();
   const setConversationCollapsed = useSetAtom(
     getThreadConversationCollapsedAtom(thread.id),
   );
@@ -535,15 +536,15 @@ function ThreadRowComponent({
         ? `In project ${crossProjectName}`
         : "In another project";
   const handleRename = useCallback(
-    (nextTitle: string) => {
-      renameThread(thread.id, nextTitle);
-    },
-    [renameThread, thread.id],
+    (nextTitle: string) => renameThreadAsync(thread.id, nextTitle),
+    [renameThreadAsync, thread.id],
   );
-  const { editor, isEditing, startEditing } = useInlineThreadTitle({
-    onCommit: handleRename,
-    resetKey: thread.id,
-    title: threadTitle,
+  const { editor, isEditing, startEditing } = useSidebarRename({
+    kind: "thread",
+    id: thread.id,
+    name: threadTitle,
+    label: "Thread name",
+    onSave: handleRename,
   });
   const startTitleEditing = useCallback(
     (event: { preventDefault: () => void; stopPropagation: () => void }) => {
@@ -612,7 +613,7 @@ function ThreadRowComponent({
   const linkLabel = hasComposerDraft
     ? `Open ${labelTitle} (unsubmitted draft)`
     : `Open ${labelTitle}`;
-  const rowDragBindings = options.dragBindings;
+  const rowDragBindings = isEditing ? undefined : options.dragBindings;
   const nestTargetState = options.nestDrop?.state ?? null;
   const reorderPlacement = options.nestDrop?.reorderPlacement ?? null;
   const containerRef = useComposedRefs<HTMLDivElement>(
@@ -660,6 +661,7 @@ function ThreadRowComponent({
         to={getThreadRoutePath({ projectId, threadId: thread.id })}
         data-sidebar-thread-shortcut-target=""
         data-sidebar-thread-id={thread.id}
+        data-sidebar-rename-anchor=""
         onClick={(event) => {
           if (isEditing) {
             event.preventDefault();
@@ -726,6 +728,7 @@ function ThreadRowComponent({
         ) : null}
         {parentOptions && hasChildren ? (
           <SidebarChildToggleChevron
+            disabled={isEditing}
             isCollapsed={isParentCollapsed}
             expandLabel={`Expand ${labelTitle} threads`}
             collapseLabel={`Collapse ${labelTitle} threads`}
@@ -790,6 +793,7 @@ function ThreadRowComponent({
                 className={cn(
                   SIDEBAR_HOVER_ACTIONS_CLASS,
                   "absolute inset-y-0 right-0 z-10 flex items-center justify-end max-md:pointer-coarse:hidden",
+                  isEditing && "invisible pointer-events-none",
                 )}
               >
                 <SidebarRowControls
@@ -805,6 +809,7 @@ function ThreadRowComponent({
                     triggerClassName={SIDEBAR_CONTROL_BUTTON_CLASS}
                     onOpenInSplit={splitAvailable ? openInSplit : undefined}
                     onOpenChange={setIsDropdownActionsOpen}
+                    onRename={startEditing}
                   />
                 </SidebarRowControls>
               </div>
@@ -822,10 +827,11 @@ function ThreadRowComponent({
     dragBindings: rowDragBindings,
     nestTargetState,
     reorderPlacement,
-    onClickCapture: options.consumeClickSuppression
-      ? handleRowClickCapture
-      : undefined,
-    onSplitDragPointerDown,
+    onClickCapture:
+      !isEditing && options.consumeClickSuppression
+        ? handleRowClickCapture
+        : undefined,
+    onSplitDragPointerDown: isEditing ? undefined : onSplitDragPointerDown,
     stickyLevel: parentOptions?.stickyLevel,
     style: rowStyle,
   });
@@ -835,6 +841,8 @@ function ThreadRowComponent({
       thread={thread}
       onOpenInSplit={splitAvailable ? openInSplit : undefined}
       onOpenChange={setIsContextActionsOpen}
+      onRename={startEditing}
+      disabled={isEditing}
     >
       {row}
     </ThreadActionsContextMenu>

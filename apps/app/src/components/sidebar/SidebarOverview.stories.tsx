@@ -2,6 +2,7 @@ import {
   Suspense,
   useEffect,
   useLayoutEffect,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -62,6 +63,7 @@ import {
   type SidebarOrganizationMode,
 } from "./sidebarCollapsedAtoms";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
+import { installSidebarRenameStoryApi } from "../../../.ladle/sidebar-rename-fixtures";
 import {
   makeProjectWithThreadsResponse,
   makeSidebarBootstrapResponse,
@@ -268,6 +270,91 @@ const machineSidebarNavigation = {
     })),
   })),
 } satisfies SidebarBootstrapResponse;
+
+const renameSidebarNavigation: SidebarBootstrapResponse = {
+  ...machineSidebarNavigation,
+  sections: [
+    { id: "sec_story_review", name: "Review", createdAt: 1, updatedAt: 1 },
+    { id: "sec_story_planning", name: "Planning", createdAt: 1, updatedAt: 1 },
+  ],
+  personalProject: {
+    ...machineSidebarNavigation.personalProject,
+    threads: machineSidebarNavigation.personalProject.threads.map(
+      (thread, index) => ({
+        ...thread,
+        sectionId: index === 0 ? "sec_story_review" : "sec_story_planning",
+      }),
+    ),
+  },
+};
+
+function RenameSidebar() {
+  const [mode, setMode] = useState<SidebarOrganizationMode>("project");
+  const [ready, setReady] = useState(false);
+  const [failNext, setFailNext] = useState(false);
+  const failureRef = useRef(false);
+  useEffect(() => {
+    const cleanup = installSidebarRenameStoryApi({
+      navigation: renameSidebarNavigation,
+      hosts: machineStoryHosts,
+      failNextSave: () => {
+        const fail = failureRef.current;
+        failureRef.current = false;
+        setFailNext(false);
+        return fail;
+      },
+    });
+    setReady(true);
+    return cleanup;
+  }, []);
+  return (
+    <div className="flex max-w-80 flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-3 text-sm">
+        <label>
+          Group by{" "}
+          <select
+            aria-label="Sidebar grouping"
+            className="rounded border bg-background px-2 py-1"
+            value={mode}
+            onChange={(event) => {
+              const value = event.target.value;
+              if (
+                value === "project" ||
+                value === "chronological" ||
+                value === "machine"
+              )
+                setMode(value);
+            }}
+          >
+            <option value="project">Project</option>
+            <option value="chronological">Custom sections</option>
+            <option value="machine">Machine</option>
+          </select>
+        </label>
+        <label className="inline-flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={failNext}
+            onChange={(event) => {
+              failureRef.current = event.target.checked;
+              setFailNext(event.target.checked);
+            }}
+          />
+          Fail next save
+        </label>
+      </div>
+      {ready ? (
+        <OrganizationSidebar
+          mode={mode}
+          hosts={machineStoryHosts}
+          navigation={renameSidebarNavigation}
+        />
+      ) : (
+        <LoadingSidebar />
+      )}
+    </div>
+  );
+}
 
 function SidebarFrame({ children, navigation }: SidebarFrameProps) {
   return (
@@ -504,9 +591,7 @@ export function Overview() {
         </SidebarFrame>
       </StoryRow>
       <StoryRow label="loaded">
-        <SidebarFrame>
-          <LoadedSidebar />
-        </SidebarFrame>
+        <RenameSidebar />
       </StoryRow>
     </StoryCard>
   );
