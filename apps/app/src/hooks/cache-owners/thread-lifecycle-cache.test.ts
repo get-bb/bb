@@ -16,6 +16,10 @@ import {
   updateCachedThreadListStatusState,
 } from "./query-cache";
 import { applyQueuedMessageDeleteResult } from "./thread-runtime-cache-owner";
+import {
+  beginUnarchiveThreadTransaction,
+  rollbackThreadListMutationTransaction,
+} from "./thread-state-cache-owner";
 
 function setup() {
   const queryClient = new QueryClient();
@@ -41,6 +45,31 @@ function setup() {
 }
 
 describe("sidebar lifecycle cache", () => {
+  it("restores archived hierarchy metadata after an unsuccessful optimistic restore", async () => {
+    const queryClient = setup();
+    const archivedKey = archivedThreadsListQueryKey({});
+    const archived = makeThreadListEntry({
+      id: "archived",
+      projectId: "project-1",
+      lifecycle: "archived",
+      archivedAt: 1,
+      sectionId: "section-1",
+      pinnedAt: 1,
+      pinSortKey: "a0",
+      environmentId: "environment-1",
+      environmentHostId: "host-1",
+    });
+    const pages = { pages: [[archived]], pageParams: [0] };
+    queryClient.setQueryData(archivedKey, pages);
+    const transaction = await beginUnarchiveThreadTransaction({
+      queryClient,
+      threadId: archived.id,
+    });
+    expect(queryClient.getQueryData(archivedKey)).toMatchObject({ pages: [[]] });
+    rollbackThreadListMutationTransaction({ queryClient, threadId: archived.id, transaction });
+    expect(queryClient.getQueryData(archivedKey)).toEqual(pages);
+  });
+
   it("moves a sent draft to Active on realtime status and preserves Archived priority", () => {
     const queryClient = setup();
     const archivedKey = archivedThreadsListQueryKey({});

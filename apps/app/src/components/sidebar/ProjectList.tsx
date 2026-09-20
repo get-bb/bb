@@ -26,7 +26,10 @@ import {
 import { isTransientReadError } from "@/hooks/queries/query-helpers";
 import { stripProjectThreads } from "@/hooks/queries/project-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
-import { SidebarThreadLifecycles } from "./SidebarThreadLifecycles";
+import {
+  SidebarThreadLifecycles,
+  useSidebarThreadLifecycles,
+} from "./SidebarThreadLifecycles";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { useReorderPinnedThread } from "@/hooks/mutations/thread-state-mutations";
 import {
@@ -1337,14 +1340,8 @@ function ProjectListComponent({
     sidebarThreads.push(...sidebarNavigation.personalProject.threads);
     return sidebarThreads;
   }, [sidebarNavigation]);
-  const threads = useMemo(
-    () => unarchivedThreads.filter((thread) => thread.lifecycle === "active"),
-    [unarchivedThreads],
-  );
-  const savedDrafts = useMemo(
-    () => unarchivedThreads.filter((thread) => thread.lifecycle === "draft"),
-    [unarchivedThreads],
-  );
+  const lifecycles = useSidebarThreadLifecycles(unarchivedThreads);
+  const { threads } = lifecycles;
   const draftThreadIds = usePromptDraftInputThreadIds(threads);
   const titleMentionResources = useThreadTitleMentionResources();
   const uiPreferencesReady = useUiPreferencesReady();
@@ -1357,6 +1354,12 @@ function ProjectListComponent({
     ),
   });
   const { threadId: selectedThreadId } = useRouteState();
+  const hierarchyStatus =
+    projectsState.status === "ready" &&
+    lifecycles.value.includes("archived") &&
+    !lifecycles.value.includes("active")
+      ? lifecycles.archivedStatus
+      : projectsState.status;
   const {
     isPending: isPinnedReorderPending,
     mutate: reorderPinnedThreadMutate,
@@ -1725,7 +1728,7 @@ function ProjectListComponent({
     >
       <ProjectListShell>
         <SidebarThreadLifecycles
-          drafts={savedDrafts}
+          lifecycles={lifecycles}
           status={projectsState.status}
           treeProps={{
             compareThreads: sidebarThreadComparator,
@@ -1746,7 +1749,7 @@ function ProjectListComponent({
                 effectivePinnedThreadIds={
                   pinnedSidebarState.effectivePinnedThreadIds
                 }
-                status={projectsState.status}
+                status={hierarchyStatus}
                 showPinnedSection={hasPinnedSection}
                 pinnedSection={pinnedSection}
                 pinnedReorderPending={isPinnedReorderPending}
@@ -1774,7 +1777,7 @@ function ProjectListComponent({
                   effectivePinnedThreadIds={
                     pinnedSidebarState.effectivePinnedThreadIds
                   }
-                  status={projectsState.status}
+                  status={hierarchyStatus}
                   showPinnedSection={hasPinnedSection}
                   sections={sections}
                   pinnedSection={pinnedSection}
@@ -1807,7 +1810,7 @@ function ProjectListComponent({
                   effectivePinnedThreadIds={
                     pinnedSidebarState.effectivePinnedThreadIds
                   }
-                  status={projectsState.status}
+                  status={hierarchyStatus}
                   showPinnedSection={hasPinnedSection}
                   pinnedSection={pinnedSection}
                   pinnedReorderPending={isPinnedReorderPending}

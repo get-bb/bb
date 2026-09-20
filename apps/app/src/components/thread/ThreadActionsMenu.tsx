@@ -339,9 +339,13 @@ function useThreadActionsMenuLifecycle(onOpenChange?: (open: boolean) => void) {
 export function ThreadArchiveQuickAction({
   thread,
   className,
+  disabled,
+  icon,
 }: {
   thread: Thread;
   className?: string;
+  disabled?: boolean;
+  icon?: IconName;
 }) {
   const { archiveThreadAndChildren, unarchiveThread } = useThreadActions();
   const isArchived = thread.archivedAt != null;
@@ -355,6 +359,7 @@ export function ThreadArchiveQuickAction({
           size="icon"
           className={cn("rounded-md p-0", className)}
           aria-label={`${label} thread`}
+          disabled={disabled}
           onClick={(event) => {
             event.preventDefault();
             event.stopPropagation();
@@ -366,7 +371,7 @@ export function ThreadArchiveQuickAction({
           }}
         >
           <Icon
-            name={isArchived ? "ArchiveRestore" : "Archive"}
+            name={icon ?? (isArchived ? "ArchiveRestore" : "Archive")}
             className={COARSE_POINTER_ICON_SIZE_CLASS}
           />
         </Button>

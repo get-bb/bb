@@ -10,6 +10,7 @@ import {
   useRef,
 } from "react";
 import { useSetAtom } from "jotai";
+import { useIsMutating } from "@tanstack/react-query";
 import type { ThreadListEntry } from "@bb/domain";
 import type { PluginComposerThreadRowStatus } from "@get-bb/plugin-sdk";
 import { getThreadConversationCollapsedAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
@@ -263,6 +264,38 @@ function ThreadTrailingIndicator({
   );
 }
 
+function ThreadRestoreStatusAction({ thread }: { thread: ThreadListEntry }) {
+  const pending = useIsMutating({
+    mutationKey: ["unarchive-thread"],
+    predicate: (mutation) => {
+      const variables = mutation.state.variables;
+      return (
+        typeof variables === "object" &&
+        variables !== null &&
+        "id" in variables &&
+        variables.id === thread.id
+      );
+    },
+  });
+  return (
+    <span
+      className="relative z-10 pointer-events-auto"
+      onPointerDown={(event) => event.stopPropagation()}
+      onKeyDown={(event) => event.stopPropagation()}
+    >
+      <ThreadArchiveQuickAction
+        thread={thread}
+        icon="Archive"
+        disabled={pending > 0}
+        className={cn(
+          SIDEBAR_CONTROL_BUTTON_CLASS,
+          "bg-state-active text-foreground hover:bg-state-active hover:text-foreground",
+        )}
+      />
+    </span>
+  );
+}
+
 function ThreadRowComponent({
   projectId,
   thread,
@@ -505,7 +538,27 @@ function ThreadRowComponent({
         ) : null}
       </span>
       <span className="flex shrink-0 items-center gap-0.5">
-        {shortcut ? (
+        {thread.archivedAt !== null ? (
+          <span className="relative flex items-center">
+            <div
+              data-sidebar-hover-actions-open={
+                isActionsOpen ? "true" : undefined
+              }
+              className={cn(
+                SIDEBAR_HOVER_ACTIONS_CLASS,
+                "absolute right-full z-10 max-md:pointer-coarse:hidden",
+              )}
+            >
+              <ThreadActionsMenu
+                thread={thread}
+                triggerClassName={SIDEBAR_CONTROL_BUTTON_CLASS}
+                onOpenInSplit={splitAvailable ? openInSplit : undefined}
+                onOpenChange={setIsDropdownActionsOpen}
+              />
+            </div>
+            <ThreadRestoreStatusAction thread={thread} />
+          </span>
+        ) : shortcut ? (
           <AppCommandShortcutPill shortcut={shortcut} />
         ) : (
           <span

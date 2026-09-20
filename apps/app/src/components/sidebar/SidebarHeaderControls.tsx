@@ -6,10 +6,9 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useAtom, useAtomValue } from "jotai";
+import { useAtom } from "jotai";
 import { getUiPreferenceDefault } from "@bb/domain";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { COARSE_POINTER_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
@@ -28,8 +27,6 @@ import {
 import {
   sidebarOrganizationModeAtom,
   sidebarChronologicalSortAtom,
-  sidebarGroupThreadsByEnvironmentAtom,
-  sidebarEnvironmentGroupingAtom,
   sidebarSortDirectionAtom,
   sidebarThreadLifecyclesAtom,
 } from "./sidebarCollapsedAtoms";
@@ -77,8 +74,6 @@ function useSidebarViewSettings() {
   const [organization, setOrganization] = useAtom(sidebarOrganizationModeAtom);
   const [sort, setSort] = useAtom(sidebarChronologicalSortAtom);
   const [savedDirection, setDirection] = useAtom(sidebarSortDirectionAtom);
-  const [, setEnvironmentGrouping] = useAtom(sidebarEnvironmentGroupingAtom);
-  const groupByEnvironment = useAtomValue(sidebarGroupThreadsByEnvironmentAtom);
   const selectedSort = sort === "none" ? "updated" : sort;
   const direction =
     savedDirection === "default"
@@ -89,19 +84,11 @@ function useSidebarViewSettings() {
   const defaultOrganization = getUiPreferenceDefault(
     "sidebar.organizationMode",
   );
-  const defaultGrouping = getUiPreferenceDefault(
-    "sidebar.threadGrouping.environment",
-  );
   const defaultSort = getUiPreferenceDefault("sidebar.chronologicalSort");
   const defaultDirection = getUiPreferenceDefault("sidebar.sortDirection");
   const defaultLifecycles = getUiPreferenceDefault("sidebar.threadLifecycles");
   const changed = {
-    organize:
-      organization !== defaultOrganization ||
-      groupByEnvironment !==
-        (defaultGrouping === "auto"
-          ? organization !== "chronological"
-          : defaultGrouping),
+    organize: organization !== defaultOrganization,
     sort:
       selectedSort !== defaultSort ||
       direction !==
@@ -114,17 +101,23 @@ function useSidebarViewSettings() {
       lifecycles.length !== defaultLifecycles.length ||
       lifecycles.some((value) => !defaultLifecycles.includes(value)),
   };
+  const values = {
+    organize: SIDEBAR_ORGANIZE_OPTIONS.find(
+      (option) => option.mode === organization,
+    )!.label,
+    sort: SIDEBAR_SORT_OPTIONS.find(
+      (option) => option.sort === selectedSort,
+    )!.label,
+    filter: THREAD_LIFECYCLE_OPTIONS.filter((option) =>
+      lifecycles.includes(option.value),
+    )
+      .map((option) => option.label)
+      .join(", "),
+  };
   const summary = [
-    changed.organize &&
-      `Organize: ${SIDEBAR_ORGANIZE_OPTIONS.find((option) => option.mode === organization)?.label}, ${groupByEnvironment ? "grouped by environment" : "ungrouped"}`,
-    changed.sort &&
-      `Sort by: ${SIDEBAR_SORT_OPTIONS.find((option) => option.sort === selectedSort)?.label}, ${direction}`,
-    changed.filter &&
-      `Filter threads: ${THREAD_LIFECYCLE_OPTIONS.filter((option) =>
-        lifecycles.includes(option.value),
-      )
-        .map((option) => option.label)
-        .join(", ")}`,
+    changed.organize && `Organize: ${values.organize}`,
+    changed.sort && `Sort: ${values.sort}, ${direction}`,
+    changed.filter && `Filter: ${values.filter}`,
   ]
     .filter(Boolean)
     .join("; ");
@@ -136,15 +129,13 @@ function useSidebarViewSettings() {
     setSort,
     savedDirection,
     setDirection,
-    setEnvironmentGrouping,
-    groupByEnvironment,
     selectedSort,
+    direction,
+    values,
     changed,
     summary,
   };
 }
-
-
 export function SidebarHeaderControls({
   label,
   onNewThread,
@@ -186,38 +177,33 @@ export function SidebarHeaderControls({
       }
     >
       <DropdownMenu open={open} onOpenChange={changeOpen}>
-        <Tooltip delayDuration={350} disableHoverableContent>
-          <DropdownMenuTrigger asChild>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                aria-label={triggerLabel}
-                className={cn(
-                  SIDEBAR_CONTROL_BUTTON_CLASS,
-                  summary &&
-                    "bg-state-active text-foreground hover:bg-state-active hover:text-foreground focus-visible:text-foreground data-[state=open]:text-foreground",
-                )}
-              >
-                <Icon
-                  name={summary ? "FilterHorizontal" : "MoreHorizontal"}
-                  className={COARSE_POINTER_ICON_SIZE_CLASS}
-                />
-              </Button>
-            </TooltipTrigger>
-          </DropdownMenuTrigger>
-          <TooltipContent side="bottom">{triggerLabel}</TooltipContent>
-        </Tooltip>
+        <DropdownMenuTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label={triggerLabel}
+            className={cn(
+              SIDEBAR_CONTROL_BUTTON_CLASS,
+              summary &&
+                "bg-state-active text-foreground hover:bg-state-active hover:text-foreground focus-visible:text-foreground data-[state=open]:text-foreground",
+            )}
+          >
+            <Icon
+              name={summary ? "FilterHorizontal" : "MoreHorizontal"}
+              className={COARSE_POINTER_ICON_SIZE_CLASS}
+            />
+          </Button>
+        </DropdownMenuTrigger>
         <DropdownMenuContent
           align="end"
           mobileTitle={
             page === "organize"
               ? "Organize"
               : page === "sort"
-                ? "Sort by"
+                ? "Sort"
                 : page === "filter"
-                  ? "Filter threads"
+                  ? "Filter"
                   : `${label} actions`
           }
         >
@@ -264,10 +250,10 @@ export function SidebarHeaderControls({
               {(
                 [
                   { page: "organize", label: "Organize", icon: "Layers" },
-                  { page: "sort", label: "Sort by", icon: "ArrowUpDown" },
+                  { page: "sort", label: "Sort", icon: "ArrowUpDown" },
                   {
                     page: "filter",
-                    label: "Filter threads",
+                    label: "Filter",
                     icon: "SlidersHorizontal",
                   },
                 ] as const
@@ -275,20 +261,39 @@ export function SidebarHeaderControls({
                 compact ? (
                   <DropdownMenuItem
                     key={item.page}
+                    aria-label={`${item.label}: ${settings.values[item.page]}${item.page === "sort" ? `, ${settings.direction}` : ""}`}
                     onSelect={(event) => {
                       event.preventDefault();
                       setPage(item.page);
                     }}
                   >
                     <Icon name={item.icon} />
-                    {item.label}
+                    <span>{item.label}:</span>
+                    <span className="ml-auto text-muted-foreground">
+                      {settings.values[item.page]}
+                    </span>
+                    {item.page === "sort" && (
+                      <Icon
+                        name={settings.direction === "ascending" ? "ArrowUp" : "ArrowDown"}
+                      />
+                    )}
                     <Icon name="ChevronRight" className="ml-auto" />
                   </DropdownMenuItem>
                 ) : (
                   <DropdownMenuSub key={item.page}>
-                    <DropdownMenuSubTrigger>
+                    <DropdownMenuSubTrigger
+                      aria-label={`${item.label}: ${settings.values[item.page]}${item.page === "sort" ? `, ${settings.direction}` : ""}`}
+                    >
                       <Icon name={item.icon} />
-                      {item.label}
+                      <span>{item.label}:</span>
+                      <span className="ml-auto text-muted-foreground">
+                        {settings.values[item.page]}
+                      </span>
+                      {item.page === "sort" && (
+                        <Icon
+                          name={settings.direction === "ascending" ? "ArrowUp" : "ArrowDown"}
+                        />
+                      )}
                     </DropdownMenuSubTrigger>
                     <DropdownMenuPortal>
                       <DropdownMenuSubContent className="w-max min-w-28 max-w-64">

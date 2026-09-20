@@ -704,10 +704,14 @@ Custom (`chronological`) is the default for `sidebar.organizationMode` when no
 value is saved. Existing server and legacy browser choices are preserved.
 
 The built-in sidebar defaults to Active. `sidebar.threadLifecycles` selects
-named Active, Drafts, and Archived groups while preserving Active's organization.
-Choose Filter threads in a sidebar header's combined actions menu to change the selection.
+Active, Drafts, and Archived. Drafts appear above the existing hierarchy;
+selected archived threads retain their section, project, machine, and pin placement.
+Choose Filter in a sidebar header's combined actions menu to change the selection.
 The combined control highlights non-default organization, sorting, or lifecycle choices.
-Each secondary menu has a Reset action that restores only its own defaults.
+Each secondary menu shows its current value and has a Reset to default action
+for its displayed settings. The environment-grouping preference remains available
+through settings and the CLI. Archived rows have a persistent Archive button
+that restores the thread without navigating away.
 Drafts come from the available unarchived bootstrap; Archived loads pages only
 while selected. For example, `bb settings ui set sidebar.threadLifecycles
 '["active","draft"]'` shows active and saved draft threads. Reset restores
