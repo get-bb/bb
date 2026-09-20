@@ -333,7 +333,10 @@ function PromptSubmitButton({
       )}
     >
       {isBusy ? (
-        <Icon name="Loading" className="size-4 animate-spin motion-reduce:animate-none" />
+        <Icon
+          name="Loading"
+          className="size-4 animate-spin motion-reduce:animate-none"
+        />
       ) : (
         <>
           <Icon name={icon ?? "CornerDownLeft"} className="size-4" />
@@ -1957,6 +1960,8 @@ export function PromptBoxInternal({
 
     const focusEditor = () => {
       if (editor.isDestroyed) return;
+      if (document.activeElement?.closest("[data-sidebar-rename-editor]"))
+        return;
       focusEditorAtEnd(editor);
       scheduleRevealEditorSelection();
     };
