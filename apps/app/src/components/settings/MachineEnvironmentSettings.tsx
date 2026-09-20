@@ -175,7 +175,7 @@ export function MachineEnvironmentSettingsContent({
       ? null
       : !row.name
         ? "Enter a variable name."
-        : "Use uppercase letters, numbers, and underscores; start with a letter or underscore.";
+        : "Use letters, numbers, and underscores; start with a letter or underscore.";
   });
   const mutation = useMutation({
     mutationFn: () => onSave(rows),

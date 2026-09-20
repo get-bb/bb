@@ -2,7 +2,7 @@ import { z } from "zod";
 
 export const machineEnvironmentNameSchema = z
   .string()
-  .regex(/^[A-Z_][A-Z0-9_]*$/u)
+  .regex(/^[A-Za-z_][A-Za-z0-9_]*$/u)
   .max(128);
 export const machineEnvironmentSetSchema = z
   .object({

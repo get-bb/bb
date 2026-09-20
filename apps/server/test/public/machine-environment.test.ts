@@ -34,7 +34,7 @@ describe("machine environment settings", () => {
         const result = await sdk.system.replaceMachineEnvironment({
           variables: [
             {
-              name: "DEPLOY_REGION",
+              name: "deploy_region",
               value: "test-region",
               note: "Gate",
             },
@@ -81,7 +81,7 @@ describe("machine environment settings", () => {
         });
         expect(localEnvironment).toContainEqual(
           expect.objectContaining({
-            name: "DEPLOY_REGION",
+            name: "deploy_region",
             value: "test-region",
           }),
         );
@@ -112,7 +112,7 @@ describe("machine environment settings", () => {
         ]);
         expect(env).toContainEqual(
           expect.objectContaining({
-            name: "DEPLOY_REGION",
+            name: "deploy_region",
             value: "test-region",
           }),
         );
@@ -126,7 +126,7 @@ describe("machine environment settings", () => {
           expect.objectContaining({ name: "GIT_CONFIG_COUNT", value: "4" }),
         );
         await sdk.system.replaceMachineEnvironment({
-          variables: [{ name: "DEPLOY_REGION", value: null, note: "Gate" }],
+          variables: [{ name: "deploy_region", value: null, note: "Gate" }],
         });
         await expect(stat(path)).rejects.toMatchObject({ code: "ENOENT" });
         expect(

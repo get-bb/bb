@@ -218,6 +218,36 @@ it("imports an inherited variable as one override and rejects partial malformed 
   );
 });
 
+it("imports and saves lowercase environment variable names", async () => {
+  mocks.projectList.mockResolvedValue({
+    builtInGit: { status: "disabled", statusMessage: "Disabled" },
+    variables: [],
+    inheritedVariables: [],
+  });
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <MemoryRouter>
+        <ScopedMachineEnvironmentSettings projectId="project-a" />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+  await screen.findByRole("button", { name: "Import from .env" });
+  fireEvent.click(screen.getByRole("button", { name: "Import from .env" }));
+  fireEvent.change(screen.getByLabelText("Environment file contents"), {
+    target: { value: "supabase_anon_live=secret" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Import" }));
+  const save = screen.getByRole("button", { name: "Save variables" });
+  expect(save.hasAttribute("disabled")).toBe(false);
+  fireEvent.click(save);
+  await waitFor(() =>
+    expect(mocks.projectReplace).toHaveBeenCalledWith({
+      projectId: "project-a",
+      variables: [{ name: "supabase_anon_live", value: "secret", note: null }],
+    }),
+  );
+});
+
 it("replaces an inherited row in place instead of appending the override", async () => {
   mocks.projectList.mockResolvedValue({
     builtInGit: { status: "disabled", statusMessage: "Disabled" },

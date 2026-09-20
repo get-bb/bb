@@ -366,7 +366,7 @@ export function Rows() {
           <MachineEnvironmentVariableRow
             row={draftRow("api key", { value: "", nameLocked: false })}
             index={0}
-            error="Use uppercase letters, numbers, and underscores; start with a letter or underscore."
+            error="Use letters, numbers, and underscores; start with a letter or underscore."
             {...rowHandlers}
           />
           <MachineEnvironmentVariableRow
