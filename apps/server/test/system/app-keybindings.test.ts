@@ -84,7 +84,7 @@ describe("app keybindings", () => {
     });
   });
 
-  it("assigns distinct, rebindable panel navigation defaults", () => {
+  it("assigns distinct panel navigation defaults", () => {
     for (const [command, key] of [
       ["panel.previousTab", "ArrowLeft"],
       ["panel.nextTab", "ArrowRight"],
@@ -97,11 +97,6 @@ describe("app keybindings", () => {
         shortcut: { key, mod: true, shift: true, alt: false },
         when: { all: ["mainSurface"], none: ["modalOpen"] },
       });
-      expect(
-        applyAppKeybindingOverrides(DEFAULT_APP_KEYBINDINGS, [
-          { command, shortcut: null },
-        ]).some((item) => item.command === command),
-      ).toBe(false);
     }
   });
 

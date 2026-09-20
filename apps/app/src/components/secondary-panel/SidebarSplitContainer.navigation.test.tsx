@@ -7,12 +7,11 @@ import {
   render,
   screen,
 } from "@testing-library/react";
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AppKeybindings } from "@bb/domain";
 import {
   AppCommandProvider,
-  useAppCommandContext,
   useAppCommandHandler,
 } from "@/components/commands/AppCommandProvider";
 import { SidebarSplitContainer } from "./SidebarSplitContainer";
@@ -41,20 +40,12 @@ vi.mock("@/hooks/usePluginCommandBindings", () => ({
   },
 }));
 
-function MainSurface({
-  children,
-  onNextPane,
-}: {
-  children: ReactNode;
-  onNextPane?: () => void;
-}) {
+function NextPaneHandler({ onNextPane }: { onNextPane: () => void }) {
   useAppCommandHandler("pane.focus.next", () => {
-    if (!onNextPane) return false;
     onNextPane();
     return true;
   });
-  useAppCommandContext("mainSurface", true);
-  return children;
+  return null;
 }
 
 function ChatPanel({ name, enabled }: { name: string; enabled: boolean }) {
@@ -104,12 +95,11 @@ describe("panel tab commands", () => {
     const onNextPane = vi.fn();
     render(
       <AppCommandProvider>
-        <MainSurface onNextPane={onNextPane}>
-          <input
-            aria-label="editor"
-            onKeyDown={(event) => event.stopPropagation()}
-          />
-        </MainSurface>
+        <NextPaneHandler onNextPane={onNextPane} />
+        <input
+          aria-label="editor"
+          onKeyDown={(event) => event.stopPropagation()}
+        />
       </AppCommandProvider>,
     );
     fireEvent.keyDown(screen.getByRole("textbox", { name: "editor" }), {
@@ -123,10 +113,8 @@ describe("panel tab commands", () => {
   it("cycles only the active chat panel, even with a later registered inactive panel and focused editor", () => {
     const view = (active: string) => (
       <AppCommandProvider>
-        <MainSurface>
-          <ChatPanel name="first" enabled={active === "first"} />
-          <ChatPanel name="second" enabled={active === "second"} />
-        </MainSurface>
+        <ChatPanel name="first" enabled={active === "first"} />
+        <ChatPanel name="second" enabled={active === "second"} />
       </AppCommandProvider>
     );
     const { rerender } = render(view("first"));

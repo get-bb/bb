@@ -201,18 +201,13 @@ same resolved bindings. The complete default table is in docs/configuration.md.
   bb settings keyboard set <command> <shortcut|disabled>
   bb settings keyboard reset [command]
 
-
-Right-panel tab navigation uses `panel.previousTab` / `panel.nextTab`, defaulting
-to `Mod+Shift+ArrowLeft` / `Mod+Shift+ArrowRight`. It follows displayed tab-header
-order, crosses right-panel split groups in visual reading order, and wraps in
-both directions. It stays within the active chat pane's open right panel and
-skips groups hidden by maximize. These shortcuts also work from editors,
-terminals, and the desktop embedded Browser. Rebind or disable them in Keyboard
-Settings, with `bb settings keyboard set panel.nextTab Mod+Shift+ArrowRight`, or
-through SDK `system.updateKeyboardSettings`; read them with `system.config`.
-Chat-split navigation remains separate (`pane.focus.previous` / `pane.focus.next`,
-unassigned by default). Browsers can reserve `Mod+Alt+ArrowLeft/Right`, so those
-are suitable personal chat-split bindings for the desktop app only.
+Right-panel tabs use `panel.previousTab` / `panel.nextTab` with
+`Mod+Shift+ArrowLeft` / `Mod+Shift+ArrowRight`. They wrap through visible
+tabs in displayed order across the active chat pane's right-panel groups.
+Chat splits use separate, initially unassigned `pane.focus.previous` /
+`pane.focus.next` commands. Rebind either pair in Settings → Keyboard, via
+`bb settings keyboard set <command> <shortcut|disabled>`, or SDK
+`system.updateKeyboardSettings`; read bindings with `system.config`.
 
 Plugin commands use `plugin:<plugin-id>/<command-id>` as their stable binding
 ID. For example: `bb settings keyboard set plugin:example/open-issue Mod+Shift+I`.

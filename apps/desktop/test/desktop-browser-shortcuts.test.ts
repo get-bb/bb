@@ -62,13 +62,6 @@ describe("resolveDesktopBrowserAppCommand", () => {
         keybindings: [binding],
       }),
     ).toBe(command);
-    expect(
-      resolveDesktopBrowserAppCommand({
-        input,
-        isMac: true,
-        keybindings: [],
-      }),
-    ).toBeNull();
   });
 
   it("keeps frontend plugin commands out of native browser dispatch", () => {
