@@ -1476,7 +1476,7 @@ describe("Docs nav panel", () => {
     );
     await slot.findByRole("textbox", { name: "Document content" });
     fireEvent.click(slot.getByRole("button", { name: "Reject" }));
-    expect(await slot.findByRole("status")).toHaveTextContent(
+    expect((await slot.findByRole("status")).textContent).toBe(
       "Updating document…",
     );
     expect(
@@ -1493,7 +1493,7 @@ describe("Docs nav panel", () => {
     expect(slot.queryByRole("button", { name: "Accept" })).toBeNull();
     resolution = deferred<void>();
     fireEvent.click(undo);
-    expect(await slot.findByRole("status")).toHaveTextContent(
+    expect((await slot.findByRole("status")).textContent).toBe(
       "Updating document…",
     );
     expect(undo.hasAttribute("disabled")).toBe(true);
