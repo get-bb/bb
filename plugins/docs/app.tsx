@@ -937,6 +937,15 @@ function InlineDocument({
             <span className="shrink-0 font-semibold">Docs</span>
             <span className="truncate opacity-70">{document.title}</span>
           </div>
+          {(state.busy || state.saving || asking) && (
+            <span
+              role="status"
+              className="inline-flex size-5 shrink-0 items-center justify-center"
+            >
+              <Icon name="Spinner" className="size-3 animate-spin" />
+              <span className="sr-only">Updating document…</span>
+            </span>
+          )}
           <div
             className="flex shrink-0 items-center gap-0.5"
             role="group"

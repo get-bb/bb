@@ -1435,9 +1435,11 @@ describe("Docs nav panel", () => {
       status: "pending",
       resolvedSha256: null,
     };
-    const resolveProposal = vi.fn((input: unknown) => {
+    let resolution = deferred<void>();
+    const resolveProposal = vi.fn(async (input: unknown) => {
       if (typeof input !== "object" || input === null || !("action" in input))
         throw new Error("Missing action");
+      await resolution.promise;
       return input.action === "reject"
         ? { ...pending, version: 2, status: "rejected" }
         : { ...pending, version: 3 };
@@ -1474,12 +1476,30 @@ describe("Docs nav panel", () => {
     );
     await slot.findByRole("textbox", { name: "Document content" });
     fireEvent.click(slot.getByRole("button", { name: "Reject" }));
+    expect(await slot.findByRole("status")).toHaveTextContent(
+      "Updating document…",
+    );
+    expect(
+      slot.getByRole("button", { name: "Reject" }).hasAttribute("disabled"),
+    ).toBe(true);
+    expect(
+      slot.getByRole("textbox", { name: "Document content" }),
+    ).toBeTruthy();
+    await act(async () => resolution.resolve());
     const undo = await slot.findByRole("button", { name: "Undo" });
+    expect(slot.queryByRole("status")).toBeNull();
     expect(undo.textContent).toBe("");
     expect(slot.getByRole("button", { name: "Ask for changes" })).toBeTruthy();
     expect(slot.queryByRole("button", { name: "Accept" })).toBeNull();
+    resolution = deferred<void>();
     fireEvent.click(undo);
+    expect(await slot.findByRole("status")).toHaveTextContent(
+      "Updating document…",
+    );
+    expect(undo.hasAttribute("disabled")).toBe(true);
+    await act(async () => resolution.resolve());
     await slot.findByRole("button", { name: "Accept" });
+    expect(slot.queryByRole("status")).toBeNull();
     expect(slot.getByRole("button", { name: "Reject" })).toBeTruthy();
     expect(slot.getByRole("button", { name: "Ask for changes" })).toBeTruthy();
     expect(resolveProposal).toHaveBeenLastCalledWith({
