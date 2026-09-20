@@ -205,8 +205,8 @@ describe("plugin catalog service", () => {
       category: "File Viewers & Editors",
       screenshots: [
         "https://getbb.app/marketplace/v2/screenshots/docs/docs-21ddb6757-inline-review-desktop.png",
-        "https://getbb.app/marketplace/v2/screenshots/docs/docs-21ddb6757-inline-editing-desktop.png",
-        "https://getbb.app/marketplace/v2/screenshots/docs/docs-21ddb6757-ask-mobile.png",
+        "https://getbb.app/marketplace/v2/screenshots/docs/docs-c1721fd0f-inline-editing-desktop.png",
+        "https://getbb.app/marketplace/v2/screenshots/docs/docs-c1721fd0f-ask-mobile.png",
         "https://getbb.app/marketplace/v2/screenshots/docs/docs-21ddb6757-workspace-desktop.png",
         "https://getbb.app/marketplace/v2/screenshots/docs/docs-21ddb6757-html-desktop.png",
         "https://getbb.app/marketplace/v2/screenshots/docs/docs-21ddb6757-vault-desktop.png",
