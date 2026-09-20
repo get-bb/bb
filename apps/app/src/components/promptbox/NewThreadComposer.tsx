@@ -1,3 +1,4 @@
+import { usePendingAttachmentUploads } from "./usePendingAttachmentUploads";
 import { useInitialPromptDraft } from "./mentions/initial-prompt-draft";
 import { ProviderRequirementBanner } from "./banner/ProviderRequirementBanner";
 import { Button } from "@bb/shared-ui/button";
@@ -1301,6 +1302,8 @@ export function NewThreadComposer({
   const isSubmittingRef = useRef(false);
   const uploadPromptAttachment = useUploadPromptAttachment();
   const uploadTargetKey = `${projectId}\0${promptDraft.storageKey}`;
+  const { pendingUploads, startUploads, finishUploads } =
+    usePendingAttachmentUploads(uploadTargetKey);
   const currentUploadTargetRef = useRef(uploadTargetKey);
   useEffect(() => {
     currentUploadTargetRef.current = uploadTargetKey;
@@ -1312,12 +1315,13 @@ export function NewThreadComposer({
       setAttachmentError(null);
       isUploadingRef.current = true;
       setIsUploading(true);
+      const uploads = startUploads(files);
       try {
-        for (const file of files) {
+        for (const upload of uploads) {
           try {
             const uploaded = await uploadPromptAttachment.mutateAsync({
               projectId,
-              file,
+              file: upload.file,
             });
             if (currentUploadTargetRef.current !== capturedTarget) return;
             promptDraft.addAttachment(uploaded);
@@ -1331,14 +1335,17 @@ export function NewThreadComposer({
               );
             }
             break;
+          } finally {
+            finishUploads([upload]);
           }
         }
       } finally {
+        finishUploads(uploads);
         isUploadingRef.current = false;
         setIsUploading(false);
       }
     },
-    [projectId, promptDraft, uploadPromptAttachment],
+    [projectId, promptDraft, uploadPromptAttachment, startUploads, finishUploads],
   );
   const changeProject = useCallback(
     async (nextProjectId: string | null): Promise<ProjectChangeOutcome> => {
@@ -1862,6 +1869,7 @@ export function NewThreadComposer({
           }}
           attachments={{
             items: promptDraft.attachments,
+            pendingUploads,
             projectId,
             onAttachFiles: handleAttachFiles,
             onRemove: promptDraft.removeAttachment,
@@ -2018,6 +2026,7 @@ export function NewThreadComposer({
       isProjectless,
       isSubmitting,
       isUploading,
+      pendingUploads,
       modelLoadError,
       modelLoadFailed,
       modelOptions,

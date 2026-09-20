@@ -1,4 +1,5 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import type { PendingAttachmentUpload } from "./usePendingAttachmentUploads";
 import {
   getWrappedImageIndex,
   ImageLightbox,
@@ -30,6 +31,7 @@ function isImageAttachment(attachment: PromptDraftAttachment): boolean {
 
 interface AttachmentPreviewProps {
   attachments: PromptDraftAttachment[];
+  pendingUploads?: readonly PendingAttachmentUpload[];
   compact?: boolean;
   attachmentProjectId?: string;
   expandedImageIndex: number | null;
@@ -37,8 +39,48 @@ interface AttachmentPreviewProps {
   onRemoveAttachment?: (path: string) => void;
 }
 
+function UploadPreview({ file }: { file: File }) {
+  const [previewUrl, setPreviewUrl] = useState<string>();
+  const isImage = file.type.startsWith("image/");
+  useEffect(() => {
+    if (!isImage) return;
+    const url = URL.createObjectURL(file);
+    setPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file, isImage]);
+
+  return (
+    <div
+      role="status"
+      aria-label={`Uploading ${file.name}`}
+      title={`Uploading ${file.name}`}
+      className={isImage
+        ? "relative shrink-0 overflow-hidden rounded-md border border-border bg-surface-recessed"
+        : "inline-flex max-w-full items-center gap-1 rounded-full border border-border bg-surface-recessed px-2 py-0.5 text-xs text-muted-foreground"}
+    >
+      {isImage ? (
+        <>
+          <span className="block h-16 w-24">
+            {previewUrl ? <img src={previewUrl} alt="" className="size-full object-cover opacity-50" /> : null}
+          </span>
+          <span className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-1 bg-background/90 py-1 text-xs text-foreground">
+            <Icon name="Spinner" className="size-3 animate-spin motion-reduce:animate-none" />
+            Uploading
+          </span>
+        </>
+      ) : (
+        <>
+          <Icon name="Spinner" className="size-3 shrink-0 animate-spin motion-reduce:animate-none" />
+          <span className="truncate">{file.name}</span>
+        </>
+      )}
+    </div>
+  );
+}
+
 export function AttachmentPreview({
   attachments,
+  pendingUploads = [],
   compact = false,
   attachmentProjectId,
   expandedImageIndex,
@@ -65,7 +107,8 @@ export function AttachmentPreview({
     onExpandedImageIndexChange(null);
   }, [expandedImageIndex, imageAttachments.length, onExpandedImageIndexChange]);
 
-  if (attachments.length === 0) {
+  const attachmentCount = attachments.length + pendingUploads.length;
+  if (attachmentCount === 0) {
     return null;
   }
 
@@ -74,16 +117,16 @@ export function AttachmentPreview({
       {compact ? (
         <span
           data-promptbox-attachments=""
-          role="img"
-          aria-label={`${attachments.length} ${attachments.length === 1 ? "attachment" : "attachments"}`}
+          role={pendingUploads.length > 0 ? "status" : "img"}
+          aria-label={`${attachmentCount} ${attachmentCount === 1 ? "attachment" : "attachments"}${pendingUploads.length > 0 ? `, ${pendingUploads.length} uploading` : ""}`}
           className="ml-3 inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md bg-surface-recessed px-2 text-xs text-muted-foreground"
         >
-          <Icon name="Paperclip" className="size-3.5" />
-          <span aria-hidden="true">{attachments.length}</span>
+          <Icon name={pendingUploads.length > 0 ? "Spinner" : "Paperclip"} className={pendingUploads.length > 0 ? "size-3.5 animate-spin motion-reduce:animate-none" : "size-3.5"} />
+          <span aria-hidden="true">{attachmentCount}{pendingUploads.length > 0 ? ` · ${pendingUploads.length} uploading` : ""}</span>
         </span>
       ) : (
         <div className="mx-3 mb-1 mt-1">
-          {imageAttachments.length > 0 ? (
+          {imageAttachments.length > 0 || pendingUploads.length > 0 ? (
             <div className="mb-1.5 flex flex-wrap gap-2">
               {imageAttachments.map((attachment, index) => (
                 <div key={`${attachment.path}-${index}`} className="relative">
@@ -119,6 +162,7 @@ export function AttachmentPreview({
                   ) : null}
                 </div>
               ))}
+              {pendingUploads.map((upload) => <UploadPreview key={upload.id} file={upload.file} />)}
             </div>
           ) : null}
 
