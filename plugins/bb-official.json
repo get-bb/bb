@@ -109,8 +109,12 @@
   "docs": {
     "category": "file-viewers-and-editors",
     "screenshots": [
-      "https://getbb.app/marketplace/v2/screenshots/docs/docs-inline-review-desktop-b461fea1d.png",
-      "https://getbb.app/marketplace/v2/screenshots/docs/docs-inline-review-mobile-b461fea1d.png"
+      "https://getbb.app/marketplace/v2/screenshots/docs/docs-21ddb6757-inline-review-desktop.png",
+      "https://getbb.app/marketplace/v2/screenshots/docs/docs-21ddb6757-inline-editing-desktop.png",
+      "https://getbb.app/marketplace/v2/screenshots/docs/docs-21ddb6757-ask-mobile.png",
+      "https://getbb.app/marketplace/v2/screenshots/docs/docs-21ddb6757-workspace-desktop.png",
+      "https://getbb.app/marketplace/v2/screenshots/docs/docs-21ddb6757-html-desktop.png",
+      "https://getbb.app/marketplace/v2/screenshots/docs/docs-21ddb6757-vault-desktop.png"
     ]
   },
   "memory": {
