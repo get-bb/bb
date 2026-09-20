@@ -50,7 +50,10 @@ async function loadedSession(
   const call = vi.fn<Rpc["call"]>();
   call.mockResolvedValueOnce(current);
   call.mockResolvedValueOnce(pending);
-  call.mockResolvedValueOnce({ baseUrl: "/preview", expiresAtMs: 1000 });
+  call.mockResolvedValueOnce({
+    baseUrl: "/preview",
+    expiresAtMs: Date.now() + 60_000,
+  });
   const session = createDocumentSession({ call }, "personal", "letter.md");
   await session.refresh();
   call.mockClear();
@@ -64,6 +67,23 @@ afterEach(() => {
 });
 
 describe("Docs document sessions", () => {
+  it("renews expired previews when a cached document refreshes", async () => {
+    const { session, call } = await loadedSession();
+    vi.advanceTimersByTime(60_001);
+    call.mockResolvedValueOnce(file());
+    call.mockResolvedValueOnce(null);
+    call.mockResolvedValueOnce({
+      baseUrl: "/renewed-preview",
+      expiresAtMs: Date.now() + 60_000,
+    });
+    await session.refresh();
+    expect(call).toHaveBeenCalledWith("preparePreview", {
+      vaultId: "personal",
+      path: "letter.md",
+    });
+    expect(session.getSnapshot().previewBaseUrl).toBe("/renewed-preview");
+  });
+
   it("drains edits made during a save using the returned file hash", async () => {
     const { session, call } = await loadedSession();
     const first = deferred<{

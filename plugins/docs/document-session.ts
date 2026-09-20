@@ -208,15 +208,19 @@ function createSession(io: DocumentIO) {
 }
 
 export function createDocumentSession(rpc: Rpc, vaultId: string, path: string) {
+  let previewExpiresAt = 0;
   return createSession({
     delay: 500,
     read: async (previewBaseUrl) => {
       const [file, proposal, preview] = await Promise.all([
         rpc.call("readNote", { vaultId, path }),
         rpc.call("readProposal", { vaultId, path }),
-        previewBaseUrl
+        previewBaseUrl && Date.now() < previewExpiresAt
           ? Promise.resolve({ baseUrl: previewBaseUrl })
-          : rpc.call("preparePreview", { vaultId, path }),
+          : rpc.call("preparePreview", { vaultId, path }).then((preview) => {
+              previewExpiresAt = preview.expiresAtMs;
+              return preview;
+            }),
       ]);
       return {
         content: file.content,
@@ -247,7 +251,7 @@ export function createDocumentSession(rpc: Rpc, vaultId: string, path: string) {
 
 const sessions = new Map<string, ReturnType<typeof createSession>>();
 
-function useSession(session: ReturnType<typeof createSession>, key?: string) {
+function useSession(session: ReturnType<typeof createSession>) {
   const state = useSyncExternalStore(
     session.subscribe,
     session.getSnapshot,
@@ -256,20 +260,9 @@ function useSession(session: ReturnType<typeof createSession>, key?: string) {
   useEffect(() => {
     void session.refresh();
     return () => {
-      void session
-        .flush()
-        .catch(() => undefined)
-        .finally(() => {
-          if (
-            key !== undefined &&
-            !session.hasSubscribers() &&
-            !session.getSnapshot().dirty &&
-            sessions.get(key) === session
-          )
-            sessions.delete(key);
-        });
+      void session.flush().catch(() => undefined);
     };
-  }, [session, key]);
+  }, [session]);
   return { state, session };
 }
 
@@ -282,8 +275,18 @@ export function useDocumentSession(vaultId: string, path: string) {
   const key = JSON.stringify([vaultId, path]);
   const session =
     sessions.get(key) ?? createDocumentSession(rpc, vaultId, path);
+  sessions.delete(key);
   sessions.set(key, session);
-  const result = useSession(session, key);
+  for (const [cachedKey, cachedSession] of sessions) {
+    if (sessions.size <= 20) break;
+    if (
+      cachedKey !== key &&
+      !cachedSession.hasSubscribers() &&
+      !cachedSession.getSnapshot().dirty
+    )
+      sessions.delete(cachedKey);
+  }
+  const result = useSession(session);
   const changed = useCallback(
     (payload: unknown) => {
       if (!isRecord(payload)) return;
