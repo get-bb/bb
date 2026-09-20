@@ -714,7 +714,7 @@ through settings and the CLI. Archived rows have a persistent Archive button
 that restores the thread without navigating away.
 Drafts come from the available unarchived bootstrap; Archived loads pages only
 while selected. For example, `bb settings ui set sidebar.threadLifecycles
-'["active","draft"]'` shows active and saved draft threads. Reset restores
+'["active","draft"]'` shows active and saved draft threads. Reset to default restores
 `["active"]`. Plugin sidebar replacements own their rendering.
 
 `sidebar.threadGrouping.environment` decides whether two or more sibling threads
@@ -722,9 +722,9 @@ that share one worktree environment collapse into a single worktree row inside
 their section. `true` groups them and `false` keeps every thread on its own row,
 in every organization mode. The default, `auto`, groups them in **By project**
 and **By machine** and leaves them flat in **Custom**, which is how each mode
-behaved before the preference existed. The thread-list header's Organize menu
-exposes it under Groups as the By environment toggle, which writes `true` or
-`false` and so applies to every mode once you use it.
+behaved before the preference existed. Set this preference through settings or
+`bb settings ui set sidebar.threadGrouping.environment true`; an explicit
+`true` or `false` applies to every mode.
 
 Each `sidebar.threadGrouping.*` key toggles one grouping dimension
 independently, so a future dimension adds a key rather than changing this one.

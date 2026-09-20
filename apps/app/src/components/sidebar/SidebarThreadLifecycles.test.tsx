@@ -220,7 +220,7 @@ describe("sidebar lifecycle placement", () => {
     setup(["active", "draft", "archived"]);
     const drafts = screen.getByRole("region", { name: "Drafts" });
     expect(drafts.querySelector('[data-icon="Edit"]')).toBeTruthy();
-    expect(drafts.nextElementSibling?.getAttribute("role")).toBe("separator");
+    expect(drafts.nextElementSibling?.tagName).toBe("HR");
     expect(drafts.compareDocumentPosition(screen.getByText("Active work")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.queryByRole("region", { name: "Archived" })).toBeNull();
     expect(screen.getAllByText("Archived work")).toHaveLength(1);

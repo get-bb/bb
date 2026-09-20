@@ -3,7 +3,6 @@ import { useAtomValue } from "jotai";
 import type { ThreadListEntry } from "@bb/domain";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
-import { Separator } from "@bb/shared-ui/separator";
 import { useArchivedThreads } from "@/hooks/queries/thread-queries";
 import {
   useConnectionAwareQueryState,
@@ -98,7 +97,7 @@ export function SidebarThreadLifecycles({
         </section>
       )}
       {value.includes("draft") && showHierarchy && (
-        <Separator decorative={false} className="my-2" />
+        <hr className="my-2 border-border-seam" />
       )}
       {showHierarchy && children}
       {value.includes("archived") && (
