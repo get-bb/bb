@@ -287,10 +287,7 @@ function ThreadRestoreStatusAction({ thread }: { thread: ThreadListEntry }) {
         thread={thread}
         icon="Archive"
         disabled={pending > 0}
-        className={cn(
-          SIDEBAR_CONTROL_BUTTON_CLASS,
-          "bg-state-hover",
-        )}
+        className={SIDEBAR_CONTROL_BUTTON_CLASS}
       />
     </span>
   );

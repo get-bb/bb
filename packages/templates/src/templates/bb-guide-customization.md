@@ -292,8 +292,9 @@ Reset the key to restore Active. Plugin sidebar replacements own their filters.
 
 Every thread-list header's actions menu offers New project, New section,
 Organize, Sort by, and Filter. Organize selects By project,
-By machine, or Custom. Each secondary menu offers Reset to default for its own
-displayed settings. The separate `sidebar.threadGrouping.environment` preference
+By machine, or Custom and retains Groups → By environment. Sort by and Filter
+show Reset only when their displayed settings differ from the default.
+The separate `sidebar.threadGrouping.environment` preference
 decides whether sibling threads sharing one worktree collapse into a single row.
 It defaults to `auto`, which groups them
 everywhere except Custom: `bb settings ui set sidebar.threadGrouping.environment

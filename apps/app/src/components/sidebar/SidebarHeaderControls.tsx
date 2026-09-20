@@ -6,7 +6,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useAtom } from "jotai";
+import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { getUiPreferenceDefault } from "@bb/domain";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
@@ -28,6 +28,8 @@ import {
   sidebarChronologicalSortAtom,
   sidebarSortDirectionAtom,
   sidebarThreadLifecyclesAtom,
+  sidebarGroupThreadsByEnvironmentAtom,
+  sidebarEnvironmentGroupingAtom,
 } from "./sidebarCollapsedAtoms";
 import { SidebarControlButton, SidebarRowControls } from "./SidebarRowControls";
 import { SIDEBAR_CONTROL_BUTTON_CLASS } from "./sidebarRowClasses";
@@ -72,6 +74,8 @@ function useSidebarViewSettings() {
   const [organization, setOrganization] = useAtom(sidebarOrganizationModeAtom);
   const [sort, setSort] = useAtom(sidebarChronologicalSortAtom);
   const [savedDirection, setDirection] = useAtom(sidebarSortDirectionAtom);
+  const setEnvironmentGrouping = useSetAtom(sidebarEnvironmentGroupingAtom);
+  const groupByEnvironment = useAtomValue(sidebarGroupThreadsByEnvironmentAtom);
   const selectedSort = sort === "none" ? "updated" : sort;
   const direction =
     savedDirection === "default"
@@ -79,14 +83,10 @@ function useSidebarViewSettings() {
         ? "ascending"
         : "descending"
       : savedDirection;
-  const defaultOrganization = getUiPreferenceDefault(
-    "sidebar.organizationMode",
-  );
   const defaultSort = getUiPreferenceDefault("sidebar.chronologicalSort");
   const defaultDirection = getUiPreferenceDefault("sidebar.sortDirection");
   const defaultLifecycles = getUiPreferenceDefault("sidebar.threadLifecycles");
   const changed = {
-    organize: organization !== defaultOrganization,
     sort:
       selectedSort !== defaultSort ||
       direction !==
@@ -104,6 +104,8 @@ function useSidebarViewSettings() {
     setLifecycles,
     organization,
     setOrganization,
+    groupByEnvironment,
+    setEnvironmentGrouping,
     setSort,
     savedDirection,
     setDirection,
@@ -244,7 +246,13 @@ export function SidebarHeaderControls({
                       {item.label}
                     </DropdownMenuSubTrigger>
                     <DropdownMenuPortal>
-                      <DropdownMenuSubContent className="w-max min-w-28 max-w-64">
+                      <DropdownMenuSubContent
+                        className={
+                          item.page === "organize"
+                            ? "min-w-32"
+                            : "w-max min-w-28 max-w-64"
+                        }
+                      >
                         <Suspense
                           fallback={
                             <DropdownMenuItem disabled>Loading…</DropdownMenuItem>

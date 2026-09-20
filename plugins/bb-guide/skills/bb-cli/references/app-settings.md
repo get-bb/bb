@@ -31,8 +31,8 @@ every window and client sees the same value.
   one worktree environment collapse into a single worktree row inside their
   section: `true` groups them and `false` keeps every thread on its own row, in
   every organization mode. The default `auto` groups them in By project and By
-  machine and leaves them flat in Custom. This preference remains available
-  through settings and the CLI. Each `sidebar.threadGrouping.*` key
+  machine and leaves them flat in Custom. Set it through Organize → Groups →
+  By environment, settings, or the CLI. Each `sidebar.threadGrouping.*` key
   toggles one grouping dimension independently.
 - `bb settings ui list [--json]` prints every key with its value, revision,
   and description; `bb settings ui get <key> [--json]` prints one.
