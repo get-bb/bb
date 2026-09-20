@@ -165,7 +165,14 @@ export function CompactLongPressMenu({
       </Slot>
       {hasOpened ? (
         <DropdownMenu open={open} onOpenChange={handleOpenChange}>
-          <DropdownMenuContent mobileTitle={label} aria-label={label}>
+          <DropdownMenuContent
+            mobileTitle={label}
+            aria-label={label}
+            onPointerDownCapture={() => {
+              suppressClickUntilRef.current = 0;
+            }}
+            onClickCapture={handleClickCapture}
+          >
             {items}
           </DropdownMenuContent>
         </DropdownMenu>
