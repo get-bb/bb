@@ -51,12 +51,6 @@ import {
 import { Button } from "@bb/shared-ui/button";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@bb/shared-ui/dropdown-menu";
-import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -74,7 +68,6 @@ import {
 import { useComposerInputLock } from "@/lib/plugin-sdk-hooks";
 import {
   COARSE_POINTER_PROMPT_ACTION_BUTTON_CLASS,
-  COARSE_POINTER_PROMPT_COMBO_BUTTON_CLASS,
   COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS,
 } from "@bb/shared-ui/coarse-pointer-sizing";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@bb/shared-ui/chrome-style-tokens";
@@ -2667,8 +2660,6 @@ export function PromptBoxInternal({
   const canPrimarySubmit = canSubmitAction(primarySubmitAction);
   const canSubmit = hasSubmittableInput && canPrimarySubmit;
   const canModifierSubmit = canSubmitAction(modifierSubmitAction);
-  const showTouchSubmitMenu =
-    isPointerCoarse && swapSubmitActions && hasSubmittableInput;
   const showStop = Boolean(
     isRunning && onStop && !canSubmit && !isAttaching && !showVoiceActionGroup,
   );
@@ -3211,7 +3202,6 @@ export function PromptBoxInternal({
               "relative",
               showCompactLayout && "min-w-0 flex-1",
               showCompactVoiceAction && "pr-9",
-              showCompactLayout && showTouchSubmitMenu && "mr-8",
             )}
           >
             {!showCompactLayout ? (
@@ -3474,7 +3464,6 @@ export function PromptBoxInternal({
                                 COARSE_POINTER_PROMPT_ACTION_BUTTON_CLASS,
                               ],
                           "transition-colors",
-                          showTouchSubmitMenu && "rounded-r-none",
                         )}
                         disabledReason={
                           !canSubmit
@@ -3491,40 +3480,6 @@ export function PromptBoxInternal({
                         title={effectiveSubmitTitle}
                       />
                     )}
-                    {showTouchSubmitMenu ? (
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            data-promptbox-submit-action=""
-                            type="button"
-                            size="icon"
-                            aria-label="Send options"
-                            disabled={!canModifierSubmit}
-                            className={cn(
-                              COARSE_POINTER_PROMPT_COMBO_BUTTON_CLASS,
-                              showCompactLayout &&
-                                COMPACT_PROMPT_ACTION_BUTTON_CLASS,
-                              "rounded-l-none",
-                            )}
-                          >
-                            <Icon name="ChevronDown" className="size-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent
-                          align="end"
-                          side="top"
-                          mobileTitle="Send options"
-                        >
-                          <DropdownMenuItem
-                            disabled={!canModifierSubmit}
-                            onSelect={() => submitModifierPrompt()}
-                          >
-                            <Icon name="ListView" className="size-4" />
-                            Queue message
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    ) : null}
                   </div>
                 </ComposerActionsSlot>
               </div>
