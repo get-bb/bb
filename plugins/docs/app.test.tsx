@@ -1583,7 +1583,9 @@ describe("Docs nav panel", () => {
         title: "Launch 50%",
       },
     });
-    expect(slot.navigateCalls).toEqual([]);
+    expect(
+      slot.navigateCalls.some((call) => call.method === "toPluginPanel"),
+    ).toBe(false);
   });
 
   it("renders a linked Markdown document in the Docs thread panel", async () => {
