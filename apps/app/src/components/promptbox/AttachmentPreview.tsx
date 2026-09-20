@@ -138,7 +138,7 @@ export function AttachmentPreview({
                 <div key={`${attachment.path}-${index}`} className="relative">
                   <button
                     type="button"
-                    className="cursor-zoom-in overflow-hidden rounded-md border border-border bg-surface-recessed"
+                    className="block cursor-zoom-in overflow-hidden rounded-md border border-border bg-surface-recessed"
                     onClick={() => onExpandedImageIndexChange(index)}
                     title={attachment.name}
                   >
