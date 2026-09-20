@@ -22,7 +22,8 @@ every window and client sees the same value.
 - `sidebar.threadLifecycles` selects a nonempty distinct list of `active`,
   `draft`, and `archived` in the built-in sidebar. Default/reset is `["active"]`.
   Use `bb settings ui set sidebar.threadLifecycles '["active","draft"]'` to
-  show active and saved draft groups. Archived pages load only while selected;
+  show saved drafts above the existing active hierarchy. Selected archived rows
+  retain their hierarchy placement and offer a restore action. Archived pages load only while selected;
   plugin sidebar replacements keep ownership of their rendering.
 - `sidebar.organizationMode` defaults to Custom (`chronological`) when unset;
   existing server and legacy browser choices are preserved.
@@ -30,8 +31,8 @@ every window and client sees the same value.
   one worktree environment collapse into a single worktree row inside their
   section: `true` groups them and `false` keeps every thread on its own row, in
   every organization mode. The default `auto` groups them in By project and By
-  machine and leaves them flat in Custom. The thread-list header's Organize menu
-  exposes it under Groups as By environment. Each `sidebar.threadGrouping.*` key
+  machine and leaves them flat in Custom. This preference remains available
+  through settings and the CLI. Each `sidebar.threadGrouping.*` key
   toggles one grouping dimension independently.
 - `bb settings ui list [--json]` prints every key with its value, revision,
   and description; `bb settings ui get <key> [--json]` prints one.

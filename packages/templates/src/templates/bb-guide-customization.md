@@ -284,19 +284,21 @@ Custom (`chronological`) is the default for `sidebar.organizationMode` when no
 value is saved. Existing server and legacy browser choices are preserved.
 
 `sidebar.threadLifecycles` is a nonempty distinct list of `active`, `draft`,
-and `archived`, defaulting to `["active"]`. The built-in sidebar shows named
-groups and fetches archived pages only while selected. For example:
+and `archived`, defaulting to `["active"]`. Drafts appear above the existing
+hierarchy; selected archived threads use their preserved placement and a restore
+action. Archived pages load only while selected. For example:
 `bb settings ui set sidebar.threadLifecycles '["active","draft"]'`.
 Reset the key to restore Active. Plugin sidebar replacements own their filters.
 
 Every thread-list header's actions menu offers New project, New section,
-Organize, and Sort by. Organize selects By project, By machine, or Custom, and
-its By environment toggle decides whether sibling threads sharing one worktree
-collapse into a single worktree row inside their section, in every organization
-mode. `sidebar.threadGrouping.environment` defaults to `auto`, which groups them
+Organize, Sort, and Filter, with their current values. Organize selects By project,
+By machine, or Custom. Each secondary menu offers Reset to default for its own
+displayed settings. The separate `sidebar.threadGrouping.environment` preference
+decides whether sibling threads sharing one worktree collapse into a single row.
+It defaults to `auto`, which groups them
 everywhere except Custom: `bb settings ui set sidebar.threadGrouping.environment
 false` keeps every thread on its own row, and `true` groups them in every mode.
-Sort by selects a field, and selecting it again reverses its arrow/direction.
+Sort selects a field, and selecting it again reverses its arrow/direction.
 `sidebar.sortDirection` accepts `ascending`, `descending`, or `default`.
 The default preserves each field's original order (newest first for dates,
 A–Z for titles). For example: `bb settings ui set sidebar.sortDirection ascending`.
