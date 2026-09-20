@@ -90,6 +90,24 @@ async function openSubmenu(label: string) {
 }
 
 describe("sidebar header controls", () => {
+  it("supports keyboard selection and Reset when a submenu first loads", async () => {
+    const { store } = setup("Pinned", false, "chronological");
+    await openMenu();
+    await openSubmenu("Organize");
+    const project = await screen.findByRole("menuitemradio", {
+      name: "By project",
+    });
+    fireEvent.keyDown(project.closest('[role="menu"]')!, { key: "ArrowDown" });
+    await waitFor(() => expect(document.activeElement).toBe(project));
+    fireEvent.keyDown(project, { key: "Enter" });
+    expect(store.get(sidebarOrganizationModeAtom)).toBe("project");
+    const reset = screen.getByRole("menuitem", { name: "Reset" });
+    reset.focus();
+    fireEvent.keyDown(reset, { key: "Enter" });
+    expect(store.get(sidebarOrganizationModeAtom)).toBe("chronological");
+    expect(reset.getAttribute("aria-disabled")).toBe("true");
+  });
+
   it("keeps the primary before overflow and applies the shared control state", async () => {
     const { newThread } = setup("Pinned", false, "chronological");
     const primary = screen.getByRole("button", {

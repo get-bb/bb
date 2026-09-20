@@ -1,4 +1,11 @@
-import { createContext, useContext, useState, type ReactNode } from "react";
+import {
+  createContext,
+  lazy,
+  Suspense,
+  useContext,
+  useState,
+  type ReactNode,
+} from "react";
 import { useAtom, useAtomValue } from "jotai";
 import { getUiPreferenceDefault } from "@bb/domain";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -10,9 +17,7 @@ import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuGroup,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
   DropdownMenuSub,
@@ -28,10 +33,7 @@ import {
   sidebarSortDirectionAtom,
   sidebarThreadLifecyclesAtom,
 } from "./sidebarCollapsedAtoms";
-import {
-  ThreadLifecycleFilterItems,
-  THREAD_LIFECYCLE_OPTIONS,
-} from "@/components/thread/ThreadLifecycleFilter";
+import { THREAD_LIFECYCLE_OPTIONS } from "@/components/thread/ThreadLifecycleFilter";
 import { SidebarControlButton, SidebarRowControls } from "./SidebarRowControls";
 import { SIDEBAR_CONTROL_BUTTON_CLASS } from "./sidebarRowClasses";
 
@@ -56,6 +58,19 @@ const SIDEBAR_SORT_OPTIONS = [
   { label: "Created at", sort: "created", direction: "descending" },
   { label: "Alphabetical", sort: "alpha", direction: "ascending" },
 ] as const;
+
+const LazySidebarViewItems = lazy(() =>
+  import("./SidebarViewItems").then(({ SidebarViewItems }) => ({
+    default: SidebarViewItems,
+  })),
+);
+
+export interface SidebarViewItemsProps {
+  page: "organize" | "sort" | "filter";
+  settings: ReturnType<typeof useSidebarViewSettings>;
+  organizeOptions: typeof SIDEBAR_ORGANIZE_OPTIONS;
+  sortOptions: typeof SIDEBAR_SORT_OPTIONS;
+}
 
 function useSidebarViewSettings() {
   const [lifecycles, setLifecycles] = useAtom(sidebarThreadLifecyclesAtom);
@@ -129,153 +144,6 @@ function useSidebarViewSettings() {
   };
 }
 
-function SidebarViewItems({ page }: { page: "organize" | "sort" | "filter" }) {
-  const {
-    lifecycles,
-    setLifecycles,
-    organization,
-    setOrganization,
-    setSort,
-    savedDirection,
-    setDirection,
-    setEnvironmentGrouping,
-    groupByEnvironment,
-    selectedSort,
-    changed,
-  } = useSidebarViewSettings();
-  const reset = (
-    <>
-      <DropdownMenuSeparator />
-      <DropdownMenuItem
-        className="text-xs text-muted-foreground"
-        disabled={!changed[page]}
-        onSelect={(event) => {
-          event.preventDefault();
-          if (page === "organize") {
-            setOrganization(getUiPreferenceDefault("sidebar.organizationMode"));
-            setEnvironmentGrouping(
-              getUiPreferenceDefault("sidebar.threadGrouping.environment"),
-            );
-          } else if (page === "sort") {
-            setSort(getUiPreferenceDefault("sidebar.chronologicalSort"));
-            setDirection(getUiPreferenceDefault("sidebar.sortDirection"));
-          } else {
-            setLifecycles(getUiPreferenceDefault("sidebar.threadLifecycles"));
-          }
-        }}
-      >
-        Reset
-      </DropdownMenuItem>
-    </>
-  );
-  if (page === "filter") {
-    return (
-      <>
-        <DropdownMenuGroup aria-label="Thread lifecycle">
-          <ThreadLifecycleFilterItems
-            value={lifecycles}
-            onChange={setLifecycles}
-          />
-        </DropdownMenuGroup>
-        {reset}
-      </>
-    );
-  }
-  if (page === "organize") {
-    return (
-      <>
-        <DropdownMenuGroup aria-label="Sections">
-          <DropdownMenuLabel>Sections</DropdownMenuLabel>
-          {SIDEBAR_ORGANIZE_OPTIONS.map((option) => (
-            <DropdownMenuItem
-              key={option.mode}
-              role="menuitemradio"
-              aria-checked={organization === option.mode}
-              onSelect={(event) => {
-                event.preventDefault();
-                setOrganization(option.mode);
-              }}
-            >
-              {option.label}
-              <span className="ml-auto inline-flex size-4 shrink-0 items-center justify-center">
-                {organization === option.mode && (
-                  <Icon name="Check" className="size-4" />
-                )}
-              </span>
-            </DropdownMenuItem>
-          ))}
-        </DropdownMenuGroup>
-        <DropdownMenuSeparator />
-        <DropdownMenuGroup aria-label="Groups">
-          <DropdownMenuLabel>Groups</DropdownMenuLabel>
-          <DropdownMenuItem
-            role="menuitemcheckbox"
-            aria-checked={groupByEnvironment}
-            onSelect={(event) => {
-              event.preventDefault();
-              setEnvironmentGrouping(!groupByEnvironment);
-            }}
-          >
-            By environment
-            <span className="ml-auto inline-flex size-4 shrink-0 items-center justify-center">
-              {groupByEnvironment && <Icon name="Check" className="size-4" />}
-            </span>
-          </DropdownMenuItem>
-        </DropdownMenuGroup>
-        {reset}
-      </>
-    );
-  }
-  return (
-    <>
-      <DropdownMenuGroup aria-label="Sort by">
-        {SIDEBAR_SORT_OPTIONS.map((option) => {
-          const selected = selectedSort === option.sort;
-          const direction =
-            savedDirection === "default" ? option.direction : savedDirection;
-          const nextDirection = selected
-            ? direction === "ascending"
-              ? "descending"
-              : "ascending"
-            : option.direction;
-          return (
-            <DropdownMenuItem
-              key={option.sort}
-              role="menuitemradio"
-              aria-checked={selected}
-              aria-label={
-                selected
-                  ? `${option.label}, ${direction}. Sort ${nextDirection}`
-                  : option.label
-              }
-              onSelect={(event) => {
-                event.preventDefault();
-                setSort(option.sort);
-                setDirection(nextDirection);
-              }}
-            >
-              {option.label}
-              {selected && (
-                <span className="sr-only">
-                  , {direction}. Sort {nextDirection}
-                </span>
-              )}
-              <span className="ml-auto inline-flex size-4 shrink-0 items-center justify-center">
-                {selected && (
-                  <Icon
-                    name={direction === "ascending" ? "ArrowUp" : "ArrowDown"}
-                    className="size-4"
-                  />
-                )}
-              </span>
-            </DropdownMenuItem>
-          );
-        })}
-      </DropdownMenuGroup>
-      {reset}
-    </>
-  );
-}
 
 export function SidebarHeaderControls({
   label,
@@ -293,7 +161,8 @@ export function SidebarHeaderControls({
   onOpenChange?: (open: boolean) => void;
 }) {
   const creation = useContext(HeaderCreationContext);
-  const { summary } = useSidebarViewSettings();
+  const settings = useSidebarViewSettings();
+  const { summary } = settings;
   const triggerLabel = summary
     ? `${label} actions; ${summary}`
     : `${label} actions`;
@@ -364,7 +233,16 @@ export function SidebarHeaderControls({
                 Back
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <SidebarViewItems page={page} />
+              <Suspense
+                fallback={<DropdownMenuItem disabled>Loading…</DropdownMenuItem>}
+              >
+                <LazySidebarViewItems
+                  page={page}
+                  settings={settings}
+                  organizeOptions={SIDEBAR_ORGANIZE_OPTIONS}
+                  sortOptions={SIDEBAR_SORT_OPTIONS}
+                />
+              </Suspense>
             </>
           ) : (
             <>
@@ -414,7 +292,18 @@ export function SidebarHeaderControls({
                     </DropdownMenuSubTrigger>
                     <DropdownMenuPortal>
                       <DropdownMenuSubContent className="w-max min-w-28 max-w-64">
-                        <SidebarViewItems page={item.page} />
+                        <Suspense
+                          fallback={
+                            <DropdownMenuItem disabled>Loading…</DropdownMenuItem>
+                          }
+                        >
+                          <LazySidebarViewItems
+                            page={item.page}
+                            settings={settings}
+                            organizeOptions={SIDEBAR_ORGANIZE_OPTIONS}
+                            sortOptions={SIDEBAR_SORT_OPTIONS}
+                          />
+                        </Suspense>
                       </DropdownMenuSubContent>
                     </DropdownMenuPortal>
                   </DropdownMenuSub>
