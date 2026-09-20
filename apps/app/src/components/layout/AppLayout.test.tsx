@@ -9,7 +9,10 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { Provider as JotaiProvider, createStore } from "jotai";
-import { sidebarOrganizationModeAtom } from "@/components/sidebar/sidebarCollapsedAtoms";
+import {
+  sidebarManualSectionOrderAtom,
+  sidebarOrganizationModeAtom,
+} from "@/components/sidebar/sidebarCollapsedAtoms";
 import { useThreadSectionMove } from "@/components/thread/ThreadSectionMoveProvider";
 import { defaultAppSettings } from "@bb/domain";
 import { Popover, PopoverContent, PopoverTrigger } from "@bb/shared-ui/popover";
@@ -149,7 +152,10 @@ vi.mock("@/hooks/useQuickCreateProject", () => ({
 vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
   useSidebarNavigation: () => ({
     data: {
-      sections: [],
+      sections: [
+        { id: "sec_planning", name: "Planning" },
+        { id: "sec_building", name: "Building" },
+      ],
       personalProject: {
         id: "proj_personal",
         kind: "personal",
@@ -590,7 +596,7 @@ function HeaderSectionDestinations() {
 
 describe("thread header section moves", () => {
   it.each([
-    ["chronological", "Threads"],
+    ["chronological", "Building,Planning,Threads"],
     ["project", "unavailable"],
     ["machine", "unavailable"],
   ] as const)(
@@ -598,6 +604,11 @@ describe("thread header section moves", () => {
     (mode, expected) => {
       const store = createStore();
       store.set(sidebarOrganizationModeAtom, mode);
+      store.set(sidebarManualSectionOrderAtom, [
+        "section:sec_building",
+        "section:sec_planning",
+        "threads",
+      ]);
       render(
         <JotaiProvider store={store}>
           <MemoryRouter initialEntries={[APP_ROUTE]}>
