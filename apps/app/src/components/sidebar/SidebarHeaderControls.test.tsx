@@ -9,10 +9,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { createStore, Provider } from "jotai";
-import {
-  getUiPreferenceDefault,
-  type SidebarOrganizationMode,
-} from "@bb/domain";
+import type { SidebarOrganizationMode } from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { SIDEBAR_CONTROL_STATE_CLASS } from "./sidebarRowClasses";
@@ -84,7 +81,7 @@ async function openMenu(label = "Pinned") {
 }
 
 async function openSubmenu(label: string) {
-  fireEvent.keyDown(screen.getByRole("menuitem", { name: new RegExp(`^${label}:`) }), {
+  fireEvent.keyDown(screen.getByRole("menuitem", { name: label }), {
     key: "ArrowRight",
   });
 }
@@ -148,9 +145,9 @@ describe("sidebar header controls", () => {
     ).toEqual([
       "New project",
       "New section",
-      "Organize:By project",
-      "Sort:Updated at",
-      "Filter:Active",
+      "Organize",
+      "Sort by",
+      "Filter",
       "Rename",
       "Remove",
     ]);
@@ -175,7 +172,7 @@ describe("sidebar header controls", () => {
       if (compact) fireEvent.click(trigger);
       else await openMenu();
       const filter = await screen.findByRole("menuitem", {
-        name: /^Filter:/,
+        name: "Filter",
       });
       if (compact) fireEvent.click(filter);
       else await openSubmenu("Filter");
@@ -209,71 +206,45 @@ describe("sidebar header controls", () => {
         expect(
           screen.getByRole("menuitem", { name: "New project" }),
         ).toBeTruthy();
-        expect(screen.getByRole("menuitem", { name: /^Organize:/ })).toBeTruthy();
+        expect(screen.getByRole("menuitem", { name: "Organize" })).toBeTruthy();
       }
     },
   );
 
-  it.each([
-    "organization",
-    "sort",
-    "direction",
-    "lifecycle",
-  ] as const)(
-    "reflects a synced %s change without changing menu semantics",
-    (setting) => {
+  it.each([false, true])(
+    "keeps ordinary controls and plain menu labels after synced changes (compact=%s)",
+    async (compact) => {
+      viewport.compact = compact;
       const { store } = setup("Pinned", false, "chronological");
       const trigger = screen.getByRole("button", { name: "Pinned actions" });
       expect(
         trigger.querySelector('[data-icon="MoreHorizontal"]'),
       ).toBeTruthy();
       act(() => {
-        if (setting === "organization")
-          store.set(sidebarOrganizationModeAtom, "machine");
-        if (setting === "sort")
-          store.set(sidebarChronologicalSortAtom, "created");
-        if (setting === "direction")
-          store.set(sidebarSortDirectionAtom, "ascending");
-        if (setting === "lifecycle")
-          store.set(sidebarThreadLifecyclesAtom, ["draft"]);
+        store.set(sidebarOrganizationModeAtom, "machine");
+        store.set(sidebarChronologicalSortAtom, "created");
+        store.set(sidebarSortDirectionAtom, "ascending");
+        store.set(sidebarThreadLifecyclesAtom, ["draft", "archived"]);
       });
-      expect(
-        trigger.querySelector('[data-icon="FilterHorizontal"]'),
-      ).toBeTruthy();
-      expect(trigger.classList.contains("bg-state-active")).toBe(true);
-      expect(trigger.getAttribute("aria-label")).toMatch(
-        /Pinned actions; (Organize|Sort|Filter):/,
-      );
-      expect(trigger.getAttribute("aria-haspopup")).toBe("menu");
-      expect(trigger.getAttribute("aria-expanded")).toBe("false");
-      expect(trigger.hasAttribute("aria-pressed")).toBe(false);
-      act(() => {
-        store.set(
-          sidebarOrganizationModeAtom,
-          getUiPreferenceDefault("sidebar.organizationMode"),
-        );
-        store.set(
-          sidebarEnvironmentGroupingAtom,
-          getUiPreferenceDefault("sidebar.threadGrouping.environment"),
-        );
-        store.set(
-          sidebarChronologicalSortAtom,
-          getUiPreferenceDefault("sidebar.chronologicalSort"),
-        );
-        store.set(
-          sidebarSortDirectionAtom,
-          getUiPreferenceDefault("sidebar.sortDirection"),
-        );
-        store.set(
-          sidebarThreadLifecyclesAtom,
-          getUiPreferenceDefault("sidebar.threadLifecycles"),
-        );
-      });
-      expect(trigger.getAttribute("aria-label")).toBe("Pinned actions");
       expect(
         trigger.querySelector('[data-icon="MoreHorizontal"]'),
       ).toBeTruthy();
       expect(trigger.classList.contains("bg-state-active")).toBe(false);
+      expect(trigger.getAttribute("aria-label")).toBe("Pinned actions");
+      expect(trigger.getAttribute("aria-haspopup")).toBe("menu");
+      expect(trigger.getAttribute("aria-expanded")).toBe("false");
+      expect(trigger.hasAttribute("aria-pressed")).toBe(false);
+      expect(trigger.hasAttribute("aria-describedby")).toBe(false);
+      if (compact) fireEvent.click(trigger);
+      else await openMenu();
+      await screen.findByRole("menuitem", { name: "Filter" });
+      expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
+        "New project", "New section", "Organize", "Sort by", "Filter",
+      ]);
+      for (const item of screen.getAllByRole("menuitem")) {
+        expect(item.querySelector('[data-icon="ArrowUp"], [data-icon="ArrowDown"]')).toBeNull();
+      }
+      expect(screen.queryByRole("tooltip")).toBeNull();
     },
   );
 
@@ -290,7 +261,7 @@ describe("sidebar header controls", () => {
         .classList.contains("bg-state-active"),
     ).toBe(false);
     await openMenu();
-    await openSubmenu("Sort");
+    await openSubmenu("Sort by");
     const reset = await screen.findByRole("menuitem", { name: "Reset to default" });
     expect(reset.getAttribute("aria-disabled")).toBe("true");
     expect(
@@ -314,17 +285,17 @@ describe("sidebar header controls", () => {
         store.set(sidebarSortDirectionAtom, "descending");
         store.set(sidebarThreadLifecyclesAtom, ["draft", "archived"]);
       });
-      const trigger = screen.getByRole("button", { name: /^Pinned actions;/ });
+      const trigger = screen.getByRole("button", { name: "Pinned actions" });
       if (compact) fireEvent.click(trigger);
       else await openMenu();
-      for (const label of ["Organize", "Sort", "Filter"]) {
-        const page = await screen.findByRole("menuitem", { name: new RegExp(`^${label}:`) });
+      for (const label of ["Organize", "Sort by", "Filter"]) {
+        const page = await screen.findByRole("menuitem", { name: label });
         if (compact) fireEvent.click(page);
         else await openSubmenu(label);
         const reset = await screen.findByRole("menuitem", { name: "Reset to default" });
         expect(reset.getAttribute("aria-disabled")).not.toBe("true");
         if (!compact) {
-          const submenu = screen.getByRole("menu", { name: new RegExp(`^${label}:`) });
+          const submenu = screen.getByRole("menu", { name: label });
           expect(submenu.classList.contains("w-max")).toBe(true);
           expect(submenu.classList.contains("min-w-28")).toBe(true);
           expect(submenu.classList.contains("max-w-64")).toBe(true);
@@ -407,9 +378,9 @@ describe("sidebar header controls", () => {
     expect(trigger.classList.contains("bg-state-active")).toBe(false);
     expect(trigger.hasAttribute("aria-describedby")).toBe(false);
     await openMenu();
-    expect(screen.getByRole("menuitem", { name: "Organize: Custom" })).toBeTruthy();
-    expect(screen.getByRole("menuitem", { name: "Sort: Updated at, descending" })).toBeTruthy();
-    expect(screen.getByRole("menuitem", { name: "Filter: Active" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Organize" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Sort by" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Filter" })).toBeTruthy();
     await openSubmenu("Organize");
     expect(screen.queryByRole("group", { name: "Groups" })).toBeNull();
     expect(screen.queryByText("By environment")).toBeNull();
@@ -423,7 +394,7 @@ describe("sidebar header controls", () => {
   it("toggles sort direction without closing and resets direction for a different field", async () => {
     const { store } = setup();
     await openMenu();
-    await openSubmenu("Sort");
+    await openSubmenu("Sort by");
     const updated = await screen.findByRole("menuitemradio", {
       name: "Updated at, descending. Sort ascending",
     });
@@ -455,7 +426,7 @@ describe("sidebar header controls", () => {
     fireEvent.click(
       screen.getByRole("button", { name: /^Pinned actions(?:;|$)/ }),
     );
-    fireEvent.click(await screen.findByRole("menuitem", { name: /^Sort:/ }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Sort by" }));
     fireEvent.click(
       await screen.findByRole("menuitemradio", {
         name: /Updated at\s*, descending\. Sort ascending/,
@@ -470,7 +441,7 @@ describe("sidebar header controls", () => {
         .getAttribute("aria-checked"),
     ).toBe("true");
     fireEvent.click(screen.getByRole("menuitem", { name: "Back" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: /^Organize:/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Organize" }));
     fireEvent.click(screen.getByRole("menuitemradio", { name: "Custom" }));
     expect(store.get(sidebarOrganizationModeAtom)).toBe("chronological");
     expect(

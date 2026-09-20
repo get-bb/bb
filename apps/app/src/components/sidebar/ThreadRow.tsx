@@ -289,7 +289,7 @@ function ThreadRestoreStatusAction({ thread }: { thread: ThreadListEntry }) {
         disabled={pending > 0}
         className={cn(
           SIDEBAR_CONTROL_BUTTON_CLASS,
-          "bg-state-active text-foreground hover:bg-state-active hover:text-foreground",
+          "bg-state-hover",
         )}
       />
     </span>

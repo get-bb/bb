@@ -8,7 +8,6 @@ import {
 } from "react";
 import { useAtom } from "jotai";
 import { getUiPreferenceDefault } from "@bb/domain";
-import { cn } from "@bb/shared-ui/lib/utils";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { COARSE_POINTER_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
@@ -30,7 +29,6 @@ import {
   sidebarSortDirectionAtom,
   sidebarThreadLifecyclesAtom,
 } from "./sidebarCollapsedAtoms";
-import { THREAD_LIFECYCLE_OPTIONS } from "@/components/thread/ThreadLifecycleFilter";
 import { SidebarControlButton, SidebarRowControls } from "./SidebarRowControls";
 import { SIDEBAR_CONTROL_BUTTON_CLASS } from "./sidebarRowClasses";
 
@@ -101,26 +99,6 @@ function useSidebarViewSettings() {
       lifecycles.length !== defaultLifecycles.length ||
       lifecycles.some((value) => !defaultLifecycles.includes(value)),
   };
-  const values = {
-    organize: SIDEBAR_ORGANIZE_OPTIONS.find(
-      (option) => option.mode === organization,
-    )!.label,
-    sort: SIDEBAR_SORT_OPTIONS.find(
-      (option) => option.sort === selectedSort,
-    )!.label,
-    filter: THREAD_LIFECYCLE_OPTIONS.filter((option) =>
-      lifecycles.includes(option.value),
-    )
-      .map((option) => option.label)
-      .join(", "),
-  };
-  const summary = [
-    changed.organize && `Organize: ${values.organize}`,
-    changed.sort && `Sort: ${values.sort}, ${direction}`,
-    changed.filter && `Filter: ${values.filter}`,
-  ]
-    .filter(Boolean)
-    .join("; ");
   return {
     lifecycles,
     setLifecycles,
@@ -130,10 +108,7 @@ function useSidebarViewSettings() {
     savedDirection,
     setDirection,
     selectedSort,
-    direction,
-    values,
     changed,
-    summary,
   };
 }
 export function SidebarHeaderControls({
@@ -153,10 +128,6 @@ export function SidebarHeaderControls({
 }) {
   const creation = useContext(HeaderCreationContext);
   const settings = useSidebarViewSettings();
-  const { summary } = settings;
-  const triggerLabel = summary
-    ? `${label} actions; ${summary}`
-    : `${label} actions`;
   const compact = useIsCompactViewport();
   const [page, setPage] = useState<"organize" | "sort" | "filter" | null>(null);
   const changeOpen = (next: boolean) => {
@@ -182,15 +153,11 @@ export function SidebarHeaderControls({
             type="button"
             variant="ghost"
             size="icon"
-            aria-label={triggerLabel}
-            className={cn(
-              SIDEBAR_CONTROL_BUTTON_CLASS,
-              summary &&
-                "bg-state-active text-foreground hover:bg-state-active hover:text-foreground focus-visible:text-foreground data-[state=open]:text-foreground",
-            )}
+            aria-label={`${label} actions`}
+            className={SIDEBAR_CONTROL_BUTTON_CLASS}
           >
             <Icon
-              name={summary ? "FilterHorizontal" : "MoreHorizontal"}
+              name="MoreHorizontal"
               className={COARSE_POINTER_ICON_SIZE_CLASS}
             />
           </Button>
@@ -201,7 +168,7 @@ export function SidebarHeaderControls({
             page === "organize"
               ? "Organize"
               : page === "sort"
-                ? "Sort"
+                ? "Sort by"
                 : page === "filter"
                   ? "Filter"
                   : `${label} actions`
@@ -250,7 +217,7 @@ export function SidebarHeaderControls({
               {(
                 [
                   { page: "organize", label: "Organize", icon: "Layers" },
-                  { page: "sort", label: "Sort", icon: "ArrowUpDown" },
+                  { page: "sort", label: "Sort by", icon: "ArrowUpDown" },
                   {
                     page: "filter",
                     label: "Filter",
@@ -261,39 +228,20 @@ export function SidebarHeaderControls({
                 compact ? (
                   <DropdownMenuItem
                     key={item.page}
-                    aria-label={`${item.label}: ${settings.values[item.page]}${item.page === "sort" ? `, ${settings.direction}` : ""}`}
                     onSelect={(event) => {
                       event.preventDefault();
                       setPage(item.page);
                     }}
                   >
                     <Icon name={item.icon} />
-                    <span>{item.label}:</span>
-                    <span className="ml-auto text-muted-foreground">
-                      {settings.values[item.page]}
-                    </span>
-                    {item.page === "sort" && (
-                      <Icon
-                        name={settings.direction === "ascending" ? "ArrowUp" : "ArrowDown"}
-                      />
-                    )}
+                    {item.label}
                     <Icon name="ChevronRight" className="ml-auto" />
                   </DropdownMenuItem>
                 ) : (
                   <DropdownMenuSub key={item.page}>
-                    <DropdownMenuSubTrigger
-                      aria-label={`${item.label}: ${settings.values[item.page]}${item.page === "sort" ? `, ${settings.direction}` : ""}`}
-                    >
+                    <DropdownMenuSubTrigger>
                       <Icon name={item.icon} />
-                      <span>{item.label}:</span>
-                      <span className="ml-auto text-muted-foreground">
-                        {settings.values[item.page]}
-                      </span>
-                      {item.page === "sort" && (
-                        <Icon
-                          name={settings.direction === "ascending" ? "ArrowUp" : "ArrowDown"}
-                        />
-                      )}
+                      {item.label}
                     </DropdownMenuSubTrigger>
                     <DropdownMenuPortal>
                       <DropdownMenuSubContent className="w-max min-w-28 max-w-64">

@@ -246,7 +246,8 @@ describe("ThreadRow", () => {
     );
     const restore = screen.getByRole("button", { name: "Unarchive thread" });
     expect(restore.querySelector('[data-icon="Archive"]')).toBeTruthy();
-    expect(restore.classList.contains("bg-state-active")).toBe(true);
+    expect(restore.classList.contains("bg-state-hover")).toBe(true);
+    expect(restore.classList.contains("bg-state-active")).toBe(false);
     expect(restore.closest("[data-sidebar-hover-actions-open]")).toBeNull();
     expect(screen.queryByRole("button", { name: "Archive thread" })).toBeNull();
     fireEvent.pointerDown(restore, { pointerType: "touch", button: 0 });
