@@ -82,7 +82,7 @@ export function ComposerSendMenu({
   }
 
   return (
-    <div className="inline-flex items-center [&_[data-promptbox-submit-action]]:rounded-r-none">
+    <div className="inline-flex items-center [&_[data-promptbox-submit-action]]:rounded-r-none [&_[data-promptbox-submit-action]]:border-r-0">
       {children}
       <DropdownMenu open={open} onOpenChange={setOpen}>
         <DropdownMenuTrigger asChild>
@@ -95,7 +95,7 @@ export function ComposerSendMenu({
               "relative w-7 rounded-l-none px-0 before:absolute before:left-0 before:top-1/2 before:h-3 before:w-px before:-translate-y-1/2 [&_[data-icon-root]]:size-2.5",
               hasInput
                 ? "before:bg-background/25"
-                : "text-muted-foreground/50 before:bg-border",
+                : "border border-l-0 border-border text-muted-foreground/50 before:bg-border",
             )}
           >
             <Icon name="ChevronDown" className="opacity-80" />
