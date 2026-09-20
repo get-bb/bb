@@ -1266,6 +1266,65 @@ describe("Docs nav panel", () => {
     });
   });
 
+  it("shows cached document content immediately when returning to a thread", async () => {
+    const file = { content: "Keep this draft visible.", sha256: "saved-sha" };
+    const readNote = vi
+      .fn<() => Promise<typeof file>>()
+      .mockResolvedValue(file);
+    const render = () =>
+      renderSlot(
+        app.messageDirectives[0]!,
+        {
+          attributes: {
+            vault: "personal",
+            path: "cached-draft.md",
+            title: "Cached draft",
+          },
+          source: '::docs{vault="personal" path="cached-draft.md"}',
+          message: {
+            id: "msg_cached",
+            threadId: "thr_cache",
+            turnId: "turn_cache",
+            projectId: null,
+          },
+          openWorkspaceFile: null,
+        },
+        {
+          rpc: {
+            readNote,
+            readProposal: () => null,
+            preparePreview: () => preview,
+          },
+        },
+      );
+    const first = render();
+    await first.findByText(file.content);
+    await act(async () => {
+      first.unmount();
+    });
+    let finish!: (result: typeof file) => void;
+    readNote.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const returned = render();
+    try {
+      expect(
+        returned.getByRole("textbox", { name: "Document content" }).textContent,
+      ).toContain(file.content);
+    } finally {
+      await act(async () => {
+        finish({
+          ...file,
+          content: "Fresh content from disk.",
+          sha256: "new-sha",
+        });
+      });
+    }
+    await returned.findByText("Fresh content from disk.");
+  });
+
   it("edits Markdown inline and opens the same document in a tab", async () => {
     const openThreadPanel = vi.fn(() => true);
     const slot = renderSlot(
