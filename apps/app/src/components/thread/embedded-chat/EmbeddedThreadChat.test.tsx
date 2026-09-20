@@ -23,7 +23,6 @@ const mocks = vi.hoisted(() => ({
   pendingInteractionsIsError: false,
   pendingInteractionsIsFetching: false,
   pendingInteractionsIsLoading: false,
-  pendingInteractionsRefetch: vi.fn(),
   queuedMessages: [] as Array<{ id: string }>,
   readTrackingThreads: [] as Array<unknown>,
   sendQueuedMessageMutateAsync: vi.fn(),
@@ -253,7 +252,6 @@ vi.mock("@/hooks/queries/thread-queries", () => ({
     isError: mocks.pendingInteractionsIsError,
     isFetching: mocks.pendingInteractionsIsFetching,
     isLoading: mocks.pendingInteractionsIsLoading,
-    refetch: mocks.pendingInteractionsRefetch,
   }),
   getLatestPendingInteraction: (
     interactions: readonly { createdAt: number }[] | undefined,
@@ -404,7 +402,6 @@ describe("EmbeddedThreadChat", () => {
     mocks.pendingInteractionsIsError = false;
     mocks.pendingInteractionsIsFetching = false;
     mocks.pendingInteractionsIsLoading = false;
-    mocks.pendingInteractionsRefetch.mockReset().mockResolvedValue({});
     mocks.queuedMessages = [];
     mocks.readTrackingThreads = [];
     mocks.sendQueuedMessageMutateAsync.mockReset().mockResolvedValue({});
