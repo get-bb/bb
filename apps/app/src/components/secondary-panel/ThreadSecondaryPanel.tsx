@@ -931,7 +931,7 @@ function ThreadSecondaryPanelContent({
     <SidebarSplitContainer
       key={splitPanelStateId}
       activeTabId={globalActiveTabId}
-      canNavigateTabs={canNavigateTabs && isOpen}
+      canNavigateTabs={canNavigateTabs && isLayoutOpen}
       fixedTabIds={fixedTabs.map((tab) => tab.tab.id)}
       onTabNavigated={(paneId) => {
         window.requestAnimationFrame(() => {

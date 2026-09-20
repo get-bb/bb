@@ -113,7 +113,7 @@ describe("panel tab commands", () => {
     press("ArrowLeft");
     expect(screen.getByTestId("first").textContent).toBe("b");
     expect(screen.getByRole("textbox", { name: "first draft" })).toBe(editor);
-    expect(editor).toHaveValue("unsaved content");
+    expect(screen.getByDisplayValue("unsaved content")).toBe(editor);
     rerender(view("second"));
     press("ArrowRight");
     expect(screen.getByTestId("first").textContent).toBe("b");
