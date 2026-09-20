@@ -19,6 +19,7 @@ import { sidebarThreadLifecyclesAtom } from "./sidebarCollapsedAtoms";
 const archiveQuery = vi.hoisted(() => ({
   fetchNextPage: vi.fn(),
   enabled: false,
+  empty: false,
 }));
 
 vi.mock("@/hooks/queries/thread-queries", () => ({
@@ -26,16 +27,18 @@ vi.mock("@/hooks/queries/thread-queries", () => ({
     archiveQuery.enabled = enabled;
     return {
       data: {
-        pages: [
-          [
-            makeThreadListEntry({
-              id: "archived-thread",
-              title: "Archived work",
-              lifecycle: "archived",
-              archivedAt: 1,
-            }),
-          ],
-        ],
+        pages: archiveQuery.empty
+          ? [[]]
+          : [
+              [
+                makeThreadListEntry({
+                  id: "archived-thread",
+                  title: "Archived work",
+                  lifecycle: "archived",
+                  archivedAt: 1,
+                }),
+              ],
+            ],
       },
       isFetching: false,
       isLoadingError: false,
@@ -76,6 +79,7 @@ afterEach(() => {
 });
 
 function setup(lifecycles: ThreadLifecycle[] = ["active"], empty = false) {
+  archiveQuery.empty = empty;
   const store = createStore();
   store.set(sidebarThreadLifecyclesAtom, lifecycles);
   render(
@@ -117,15 +121,17 @@ function setup(lifecycles: ThreadLifecycle[] = ["active"], empty = false) {
 
 describe("sidebar lifecycle groups", () => {
   it.each<{ lifecycles: ThreadLifecycle[] }>(
-    ([
-      ["active"],
-      ["draft"],
-      ["archived"],
-      ["active", "draft"],
-      ["active", "archived"],
-      ["draft", "archived"],
-      ["active", "draft", "archived"],
-    ] satisfies ThreadLifecycle[][]).map((lifecycles) => ({ lifecycles })),
+    (
+      [
+        ["active"],
+        ["draft"],
+        ["archived"],
+        ["active", "draft"],
+        ["active", "archived"],
+        ["draft", "archived"],
+        ["active", "draft", "archived"],
+      ] satisfies ThreadLifecycle[][]
+    ).map((lifecycles) => ({ lifecycles })),
   )("shows only selected semantic groups for $lifecycles", ({ lifecycles }) => {
     setup(lifecycles);
     expect(screen.queryByText("Active hierarchy") !== null).toBe(
@@ -146,6 +152,45 @@ describe("sidebar lifecycle groups", () => {
     );
     expect(archiveQuery.enabled).toBe(lifecycles.includes("archived"));
   });
+
+  it.each(["draft", "archived"] as const)(
+    "keeps the combined menu reachable in an empty %s-only group",
+    async (lifecycle) => {
+      const store = setup([lifecycle], true);
+      expect(screen.getByText("No threads")).toBeTruthy();
+      expect(
+        screen.queryByRole("button", { name: /Thread lifecycle:/ }),
+      ).toBeNull();
+      const label = lifecycle === "draft" ? "Drafts" : "Archived";
+      fireEvent.keyDown(
+        screen.getByRole("button", { name: `${label} actions` }),
+        {
+          key: "Enter",
+        },
+      );
+      fireEvent.keyDown(
+        await screen.findByRole("menuitem", { name: "Filter" }),
+        {
+          key: "ArrowRight",
+        },
+      );
+      fireEvent.click(
+        await screen.findByRole("menuitemcheckbox", { name: "Active" }),
+      );
+      expect(store.get(sidebarThreadLifecyclesAtom)).toEqual([
+        "active",
+        lifecycle,
+      ]);
+      fireEvent.click(screen.getByRole("menuitemcheckbox", { name: label }));
+      expect(store.get(sidebarThreadLifecyclesAtom)).toEqual(["active"]);
+      expect(screen.getByText("Active hierarchy")).toBeTruthy();
+      const trigger = screen.getByRole("button", { name: "Active actions" });
+      fireEvent.keyDown(trigger, { key: "Enter" });
+      expect(
+        await screen.findByRole("menuitem", { name: "Filter" }),
+      ).toBeTruthy();
+    },
+  );
 
   it("starts and stops archived paging when the synced preference changes", () => {
     const store = setup();
