@@ -1553,6 +1553,39 @@ describe("Docs nav panel", () => {
     });
   });
 
+  it("opens a chosen document from the unconfigured Document panel", async () => {
+    const openThreadPanel = vi.fn(() => true);
+    const slot = renderSlot(
+      app.threadPanelActions[0]!,
+      { threadId: "thr_1", params: null },
+      {
+        openThreadPanel,
+        rpc: {
+          listNotes: () =>
+            listNotesResult([
+              {
+                path: "Launch email.md",
+                title: "Launch email",
+                preview: "A draft",
+                modifiedAtMs: 1,
+              },
+            ]),
+        },
+      },
+    );
+    fireEvent.click(await slot.findByRole("button", { name: "Launch email" }));
+    expect(openThreadPanel).toHaveBeenCalledWith({
+      actionId: "document",
+      title: "Launch email",
+      params: {
+        vaultId: "personal",
+        path: "Launch email.md",
+        title: "Launch email",
+      },
+    });
+    expect(slot.navigateCalls).toEqual([]);
+  });
+
   it("renders a linked Markdown document in the Docs thread panel", async () => {
     const slot = renderSlot(
       app.threadPanelActions[0]!,

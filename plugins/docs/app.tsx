@@ -1186,15 +1186,38 @@ function HtmlDocumentPanelBody({ document }: { document: DocumentRef }) {
   );
 }
 
+function DocumentPicker() {
+  const [subPath, setSubPath] = useState("");
+  const navigate = useBbNavigate();
+  return (
+    <div className="flex h-full min-h-0 flex-col gap-3">
+      <p className="text-sm text-muted-foreground">Choose a document to open.</p>
+      <NotesWorkspace
+        subPath={subPath}
+        navigationOnly
+        onNavigate={(next) => {
+          const { vaultId, filePath } = parseRoute(next);
+          if (vaultId && filePath) {
+            const title = (filePath.split("/").pop() ?? filePath).replace(
+              /\.(md|html?)$/i,
+              "",
+            );
+            navigate.openThreadPanel({
+              actionId: "document",
+              title,
+              params: { vaultId, path: filePath, title },
+            });
+          } else setSubPath(next);
+        }}
+      />
+    </div>
+  );
+}
+
 function DocumentPanel({ params }: PluginThreadPanelProps) {
   const document = parseDocumentRef(params);
   const navigate = useBbNavigate();
-  if (!document)
-    return (
-      <div className="text-sm text-muted-foreground">
-        Open a Docs card from a message to edit it here.
-      </div>
-    );
+  if (!document) return <DocumentPicker />;
   if (!/\.html?$/i.test(document.path))
     return <InlineDocument document={document} />;
   return (
@@ -1998,9 +2021,24 @@ function parseRoute(subPath: string): {
 function NotesWorkspace({
   subPath,
   navigationOnly,
-}: PluginNavPanelProps & { navigationOnly: boolean }) {
+  onNavigate,
+}: PluginNavPanelProps & {
+  navigationOnly: boolean;
+  onNavigate?(subPath: string, replace?: boolean): void;
+}) {
   const rpc = useRpc<typeof docsRpcContract>();
   const navigate = useBbNavigate();
+  const navigateTo = useCallback(
+    (next: string, replace?: boolean) => {
+      if (onNavigate) onNavigate(next, replace);
+      else
+        navigate.toPluginPanel("docs", {
+          subPath: next,
+          ...(replace === undefined ? {} : { replace }),
+        });
+    },
+    [navigate, onNavigate],
+  );
   const route = parseRoute(subPath);
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);
   const [folderName, setFolderName] = useState("");
@@ -2023,12 +2061,9 @@ function NotesWorkspace({
   const open = useCallback(
     (path: string, replace = false) => {
       if (!activeVaultId || !isCurrentVault(activeVaultId)) return;
-      navigate.toPluginPanel("docs", {
-        subPath: `${activeVaultId}/${path}`,
-        replace,
-      });
+      navigateTo(`${activeVaultId}/${path}`, replace);
     },
-    [activeVaultId, isCurrentVault, navigate],
+    [activeVaultId, isCurrentVault, navigateTo],
   );
 
   if (!data || !activeVaultId) {
@@ -2099,9 +2134,7 @@ function NotesWorkspace({
       setVaultRootPath("");
       setVaultHostId("primary");
       setVaultDialogOpen(false);
-      navigate.toPluginPanel("docs", {
-        subPath: value.id,
-      });
+      navigateTo(value.id);
     } catch (error) {
       setVaultError(errorMessage(error));
     }
@@ -2116,10 +2149,7 @@ function NotesWorkspace({
       if (!isCurrentVault(activeVaultId)) return;
       refresh();
       if (filePath === path) {
-        navigate.toPluginPanel("docs", {
-          subPath: activeVaultId,
-          replace: true,
-        });
+        navigateTo(activeVaultId, true);
       }
       toast.success(`Deleted ${path}`);
     } catch (error) {
@@ -2201,11 +2231,7 @@ function NotesWorkspace({
             onMoveFile={(sourcePath, targetFolder, targetOrder) =>
               void moveFile(sourcePath, targetFolder, targetOrder)
             }
-            onVaultChange={(value) => {
-              navigate.toPluginPanel("docs", {
-                subPath: value,
-              });
-            }}
+            onVaultChange={(value) => navigateTo(value)}
             onAddVault={() => setVaultDialogOpen(true)}
           />
         ) : filePath && /\.md$/i.test(filePath) ? (
