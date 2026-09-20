@@ -3335,7 +3335,6 @@ export function PromptBoxInternal({
                 >
                   <ComposerPlusMenuSlot
                     actions={promptActions}
-                    isAttaching={isAttaching}
                     onAttach={
                       onAttachFiles
                         ? () => attachmentInputRef.current?.click()

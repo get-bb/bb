@@ -31,7 +31,6 @@ export interface PromptBoxAction {
 
 interface PromptBoxActionsMenuProps {
   actions?: readonly PromptBoxAction[];
-  isAttaching?: boolean;
   onAttach?: () => void;
   onAction: (action: PromptBoxAction) => void;
   pluginItems?: readonly PluginComposerPlusMenuContribution[];
@@ -118,7 +117,6 @@ function orderedPromptActions(
 
 export function PromptBoxActionsMenu({
   actions = [],
-  isAttaching = false,
   onAttach,
   onAction,
   pluginItems = [],
@@ -218,13 +216,6 @@ export function PromptBoxActionsMenu({
                 aria-hidden
               />
               Attach files
-              {isAttaching ? (
-                <Icon
-                  name="Loading"
-                  className="ml-auto size-3.5 animate-spin text-muted-foreground motion-reduce:animate-none"
-                  aria-hidden
-                />
-              ) : null}
             </DropdownMenuItem>
             {visibleActions.length > 0 ? <DropdownMenuSeparator /> : null}
           </>
