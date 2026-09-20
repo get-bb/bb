@@ -291,13 +291,14 @@ mode. `sidebar.threadGrouping.environment` defaults to `auto`, which groups them
 everywhere except Custom: `bb settings ui set sidebar.threadGrouping.environment
 false` keeps every thread on its own row, and `true` groups them in every mode.
 Sort by selects a field, and selecting it again reverses its direction.
-The caret beside Updated at opens its options without changing the sort.
 `sidebar.sortDirection` accepts `ascending`, `descending`, or `default`.
 The default preserves each field's original order (newest first for dates,
 A–Z for titles). For example: `bb settings ui set sidebar.sortDirection ascending`.
-Sort projects too is off by default. Its label uses sections or machines for
-those organization modes. Enable it in Sort by → Updated at or with
-`bb settings ui set sidebar.sortGroupsByRecency true`. During Updated at sorting,
+Updated at (include projects) is a separate row in Sort by. Its label uses
+sections or machines for those organization modes. It enables
+`sidebar.sortGroupsByRecency` (off by default); the plain Updated at row disables
+it. The CLI equivalent is `bb settings ui set sidebar.sortGroupsByRecency true`.
+During Updated at sorting,
 projects, custom sections, machines, environments, and parent threads inherit
 their highest-ranked visible thread. Running work stays first; empty groups
 follow populated groups. Pinned placement is preserved. Turning it off restores

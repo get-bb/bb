@@ -224,7 +224,7 @@ describe("sidebar header controls", () => {
     expect(store.get(sidebarEnvironmentGroupingAtom)).toBe("auto");
   });
 
-  it("preserves Updated at direction toggling without opening its options", async () => {
+  it("preserves Updated at direction toggling", async () => {
     const { store } = setup();
     await openMenu();
     await openSubmenu("Sort by");
@@ -241,9 +241,6 @@ describe("sidebar header controls", () => {
       }),
     );
     expect(store.get(sidebarSortDirectionAtom)).toBe("descending");
-    await openSubmenu("Updated at options");
-    await screen.findByRole("menuitemcheckbox", { name: "Sort projects too" });
-    expect(store.get(sidebarSortDirectionAtom)).toBe("descending");
   });
 
   it.each([
@@ -255,21 +252,29 @@ describe("sidebar header controls", () => {
     await openMenu();
     await openSubmenu("Sort by");
     fireEvent.click(screen.getByRole("menuitemradio", { name: "Alphabetical" }));
-    await openSubmenu("Updated at options");
-    const toggle = await screen.findByRole("menuitemcheckbox", {
-      name: `Sort ${unit} too`,
+    const option = await screen.findByRole("menuitemradio", {
+      name: `Updated at (include ${unit})`,
     });
-    expect(toggle.getAttribute("aria-checked")).toBe("false");
-    fireEvent.click(toggle);
+    expect(option.getAttribute("aria-checked")).toBe("false");
+    fireEvent.click(option);
     expect(store.get(sidebarChronologicalSortAtom)).toBe("updated");
     expect(store.get(sidebarSortDirectionAtom)).toBe("descending");
     expect(store.get(sidebarSortGroupsByRecencyAtom)).toBe(true);
-    expect(toggle.getAttribute("aria-checked")).toBe("true");
-    fireEvent.click(toggle);
+    expect(option.getAttribute("aria-checked")).toBe("true");
+    expect(
+      screen
+        .getByRole("menuitemradio", { name: "Updated at" })
+        .getAttribute("aria-checked"),
+    ).toBe("false");
+    fireEvent.click(option);
+    expect(store.get(sidebarSortDirectionAtom)).toBe("ascending");
+    expect(store.get(sidebarSortGroupsByRecencyAtom)).toBe(true);
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Updated at" }));
     expect(store.get(sidebarSortGroupsByRecencyAtom)).toBe(false);
+    expect(option.getAttribute("aria-checked")).toBe("false");
   });
 
-  it("announces compact sort direction and resets the nested page after closing", async () => {
+  it("offers both Updated at choices in the compact sort menu and resets after closing", async () => {
     viewport.compact = true;
     const { store } = setup();
     fireEvent.click(screen.getByRole("button", { name: "Pinned actions" }));
@@ -281,14 +286,15 @@ describe("sidebar header controls", () => {
     );
     expect(store.get(sidebarSortDirectionAtom)).toBe("ascending");
     fireEvent.click(
-      screen.getByRole("menuitem", { name: "Updated at options" }),
+      screen.getByRole("menuitemradio", { name: "Updated at (include projects)" }),
     );
-    await screen.findByRole("menuitemcheckbox", { name: "Sort projects too" });
-    expect(store.get(sidebarSortDirectionAtom)).toBe("ascending");
-    fireEvent.click(screen.getByRole("menuitem", { name: "Back" }));
+    expect(store.get(sidebarSortGroupsByRecencyAtom)).toBe(true);
     expect(
-      screen.getByRole("menuitemradio", { name: /Updated at\s*, ascending/ }),
+      screen.getByRole("menuitemradio", {
+        name: /Updated at \(include projects\)\s*, descending\. Sort ascending/,
+      }),
     ).toBeTruthy();
+    expect(screen.getAllByRole("menuitemradio")).toHaveLength(4);
     fireEvent.click(screen.getByRole("menuitem", { name: "Back" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Organize" }));
     fireEvent.click(screen.getByRole("menuitemradio", { name: "Custom" }));
