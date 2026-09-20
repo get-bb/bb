@@ -1465,8 +1465,8 @@ describe("PromptBoxInternal submit shortcuts", () => {
   });
 
   it.each([false, true])(
-    "queues by touch while Enter steers (compact: %s)",
-    (isCompact) => {
+    "queues from the touch send menu while Enter steers (compact: %s)",
+    async (isCompact) => {
       const restoreMatchMedia = mockPointerCoarse(true);
       try {
         const onSubmit = vi.fn();
@@ -1481,29 +1481,17 @@ describe("PromptBoxInternal submit shortcuts", () => {
             onStop: vi.fn(),
           },
           compact: { isCompact, placeholder: "Ask a follow-up" },
-          blurOnPointerSubmit: true,
         });
         const { rerender } = render(<PromptBoxInternal {...props} />);
-        const editor = getPromptEditorElement();
-        editor.focus();
-        const queue = screen.getByRole("button", { name: "Queue follow-up" });
-        vi.spyOn(queue, "getBoundingClientRect").mockReturnValue(
-          new DOMRect(0, 0, 80, 40),
-        );
-        const touch = {
-          button: 0,
-          pointerType: "touch",
-          pointerId: 1,
-          isPrimary: true,
-          clientX: 20,
-          clientY: 20,
-        };
-        fireEvent.pointerDown(queue, touch);
-        fireEvent.pointerUp(queue, touch);
-        fireEvent.click(queue, { detail: 1 });
+        fireEvent.click(screen.getByRole("button", { name: "Send options" }));
+        const queue = await screen.findByRole("menuitem", {
+          name: "Queue message",
+        });
+        expect(onSubmit).not.toHaveBeenCalled();
+        expect(onModifierSubmit).not.toHaveBeenCalled();
+        fireEvent.click(queue);
         expect(onSubmit).toHaveBeenCalledOnce();
         expect(onModifierSubmit).not.toHaveBeenCalled();
-        expect(document.activeElement).not.toBe(editor);
 
         rerender(
           <PromptBoxInternal
@@ -1511,12 +1499,11 @@ describe("PromptBoxInternal submit shortcuts", () => {
             submission={{ ...props.submission, disabled: true }}
           />,
         );
-        expect(queue.hasAttribute("disabled")).toBe(true);
-        fireEvent.click(queue);
-        expect(onSubmit).toHaveBeenCalledOnce();
-
+        expect(
+          screen.getByRole("button", { name: "Send options" }).hasAttribute("disabled"),
+        ).toBe(true);
         rerender(<PromptBoxInternal {...props} value="" />);
-        expect(queue.hasAttribute("disabled")).toBe(true);
+        expect(screen.queryByRole("button", { name: "Send options" })).toBeNull();
         expect(screen.getByRole("button", { name: "Stop run" })).toBeTruthy();
       } finally {
         restoreMatchMedia();
@@ -1527,7 +1514,7 @@ describe("PromptBoxInternal submit shortcuts", () => {
   it.each([
     { coarse: true, swapped: false },
     { coarse: false, swapped: true },
-  ])("omits the extra Queue button for %j", ({ coarse, swapped }) => {
+  ])("omits the touch send menu for %j", ({ coarse, swapped }) => {
     const restoreMatchMedia = mockPointerCoarse(coarse);
     try {
       render(
@@ -1538,7 +1525,7 @@ describe("PromptBoxInternal submit shortcuts", () => {
           })}
         />,
       );
-      expect(screen.queryByRole("button", { name: "Queue follow-up" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Send options" })).toBeNull();
     } finally {
       restoreMatchMedia();
     }

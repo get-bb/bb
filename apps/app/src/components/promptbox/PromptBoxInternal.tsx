@@ -51,6 +51,12 @@ import {
 import { Button } from "@bb/shared-ui/button";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@bb/shared-ui/dropdown-menu";
+import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -68,6 +74,7 @@ import {
 import { useComposerInputLock } from "@/lib/plugin-sdk-hooks";
 import {
   COARSE_POINTER_PROMPT_ACTION_BUTTON_CLASS,
+  COARSE_POINTER_PROMPT_COMBO_BUTTON_CLASS,
   COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS,
 } from "@bb/shared-ui/coarse-pointer-sizing";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@bb/shared-ui/chrome-style-tokens";
@@ -251,8 +258,6 @@ interface PromptSubmitButtonProps {
   onPointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => void;
   onTouchSubmit: () => void;
   title: string;
-  type?: "submit" | "button";
-  variant?: "default" | "secondary";
 }
 
 function PromptSubmitButton({
@@ -267,8 +272,6 @@ function PromptSubmitButton({
   onPointerDown,
   onTouchSubmit,
   title,
-  type = "submit",
-  variant = "default",
 }: PromptSubmitButtonProps) {
   const touchRef = useRef<{ pointerId: number; x: number; y: number } | null>(
     null,
@@ -276,10 +279,10 @@ function PromptSubmitButton({
   const suppressTouchClickRef = useRef(false);
   const button = (
     <Button
-      data-promptbox-submit-action={type === "submit" ? "" : undefined}
-      type={type}
+      data-promptbox-submit-action=""
+      type="submit"
       size={isCompact ? "icon" : "sm"}
-      variant={variant}
+      variant="default"
       aria-label={title}
       aria-busy={isBusy}
       disabled={!canSubmit}
@@ -343,9 +346,7 @@ function PromptSubmitButton({
         <>
           <Icon name={icon ?? "CornerDownLeft"} className="size-4" />
           {label !== undefined && !isCompact ? (
-            <span data-promptbox-submit-label={type === "submit" ? "" : undefined}>
-              {label}
-            </span>
+            <span data-promptbox-submit-label="">{label}</span>
           ) : null}
         </>
       )}
@@ -2666,7 +2667,8 @@ export function PromptBoxInternal({
   const canPrimarySubmit = canSubmitAction(primarySubmitAction);
   const canSubmit = hasSubmittableInput && canPrimarySubmit;
   const canModifierSubmit = canSubmitAction(modifierSubmitAction);
-  const showTouchQueueAction = isPointerCoarse && swapSubmitActions;
+  const showTouchSubmitMenu =
+    isPointerCoarse && swapSubmitActions && hasSubmittableInput;
   const showStop = Boolean(
     isRunning && onStop && !canSubmit && !isAttaching && !showVoiceActionGroup,
   );
@@ -2803,16 +2805,10 @@ export function PromptBoxInternal({
     submitPrompt();
   }, [pendingCommandSubmit, submitPrompt]);
 
-  const submitModifierPrompt = useCallback(
-    (pointerSubmit = false) => {
-      if (!canModifierSubmit || !onModifierSubmit) return;
-      onModifierSubmit();
-      if (pointerSubmit && blurOnPointerSubmit) {
-        blurPromptEditor(editorRef.current);
-      }
-    },
-    [blurOnPointerSubmit, canModifierSubmit, onModifierSubmit],
-  );
+  const submitModifierPrompt = useCallback(() => {
+    if (!canModifierSubmit || !onModifierSubmit) return;
+    onModifierSubmit();
+  }, [canModifierSubmit, onModifierSubmit]);
 
   const applyHistoryDraft = useCallback(
     (draft: PromptDraftState) => {
@@ -3215,7 +3211,7 @@ export function PromptBoxInternal({
               "relative",
               showCompactLayout && "min-w-0 flex-1",
               showCompactVoiceAction && "pr-9",
-              showCompactLayout && showTouchQueueAction && "mr-24",
+              showCompactLayout && showTouchSubmitMenu && "mr-8",
             )}
           >
             {!showCompactLayout ? (
@@ -3420,23 +3416,6 @@ export function PromptBoxInternal({
                       ) : null}
                     </>
                   ) : null}
-                  {showTouchQueueAction ? (
-                    <PromptSubmitButton
-                      type="button"
-                      variant="secondary"
-                      canSubmit={canModifierSubmit}
-                      icon="ListView"
-                      label="Queue"
-                      title="Queue follow-up"
-                      className={COARSE_POINTER_PROMPT_ACTION_BUTTON_CLASS}
-                      disabledReason={submitDisabledReason}
-                      isBusy={isSubmitting || isAttaching}
-                      isCompact={false}
-                      onPointerDown={handleSubmitPointerDown}
-                      onClick={(event) => submitModifierPrompt(event.detail > 0)}
-                      onTouchSubmit={() => submitModifierPrompt(true)}
-                    />
-                  ) : null}
                   <div
                     data-promptbox-submit-group=""
                     className="flex shrink-0 flex-row items-center"
@@ -3495,6 +3474,7 @@ export function PromptBoxInternal({
                                 COARSE_POINTER_PROMPT_ACTION_BUTTON_CLASS,
                               ],
                           "transition-colors",
+                          showTouchSubmitMenu && "rounded-r-none",
                         )}
                         disabledReason={
                           !canSubmit
@@ -3511,6 +3491,40 @@ export function PromptBoxInternal({
                         title={effectiveSubmitTitle}
                       />
                     )}
+                    {showTouchSubmitMenu ? (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            data-promptbox-submit-action=""
+                            type="button"
+                            size="icon"
+                            aria-label="Send options"
+                            disabled={!canModifierSubmit}
+                            className={cn(
+                              COARSE_POINTER_PROMPT_COMBO_BUTTON_CLASS,
+                              showCompactLayout &&
+                                COMPACT_PROMPT_ACTION_BUTTON_CLASS,
+                              "rounded-l-none",
+                            )}
+                          >
+                            <Icon name="ChevronDown" className="size-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent
+                          align="end"
+                          side="top"
+                          mobileTitle="Send options"
+                        >
+                          <DropdownMenuItem
+                            disabled={!canModifierSubmit}
+                            onSelect={() => submitModifierPrompt()}
+                          >
+                            <Icon name="ListView" className="size-4" />
+                            Queue message
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    ) : null}
                   </div>
                 </ComposerActionsSlot>
               </div>
