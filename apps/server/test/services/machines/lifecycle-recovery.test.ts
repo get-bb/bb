@@ -41,6 +41,7 @@ import {
   seedQueuedMessage,
   seedSession,
 } from "../../helpers/seed.js";
+import { advanceUntilSettled } from "../../helpers/fake-timers.js";
 import { withTestHarness } from "../../helpers/test-app.js";
 
 afterEach(() => {
@@ -515,8 +516,9 @@ it("holds the machine drain deadline while the server is moving", async () =>
       setServerMoveFrozen(harness.db, false);
     }
 
-    await vi.advanceTimersByTimeAsync(SERVER_MOVE_FROZEN_RETRY_MS);
-    expect(await outcome).toMatchObject({
+    expect(
+      await advanceUntilSettled(outcome, SERVER_MOVE_FROZEN_RETRY_MS),
+    ).toMatchObject({
       message: "Machine drain exceeded its deadline; old compute is retained",
     });
     expect(save).not.toHaveBeenCalled();

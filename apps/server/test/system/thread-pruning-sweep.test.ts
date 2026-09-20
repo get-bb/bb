@@ -9,7 +9,11 @@ import {
   threadPruningCursors,
   threads,
 } from "@bb/db";
-import { runThreadPruningSweep } from "../../src/services/system/thread-pruning-sweep.js";
+import {
+  runThreadPruningSweep,
+  THREAD_PRUNING_SWEEP_LIMITS,
+  type ThreadPruningSweepLimits,
+} from "../../src/services/system/thread-pruning-sweep.js";
 import {
   seedHost,
   seedProjectWithSource,
@@ -39,6 +43,11 @@ function seed(harness: TestAppHarness, count: number) {
   return thread;
 }
 
+const UNTIMED_SWEEP_LIMITS: ThreadPruningSweepLimits = {
+  elapsedBudgetMs: Number.POSITIVE_INFINITY,
+  maxAdvances: THREAD_PRUNING_SWEEP_LIMITS.maxAdvances,
+};
+
 describe("thread pruning sweep", () => {
   it("skips busy work and rechecks activity after a committed notification", async () => {
     await withTestHarness(async (harness) => {
@@ -48,7 +57,7 @@ describe("thread pruning sweep", () => {
         .set({ status: "active" })
         .where(eq(threads.id, thread.id))
         .run();
-      await runThreadPruningSweep(harness.deps);
+      await runThreadPruningSweep(harness.deps, UNTIMED_SWEEP_LIMITS);
       expect(harness.db.select().from(threadPruningCursors).all()).toEqual([]);
       harness.db
         .update(threads)
@@ -71,7 +80,7 @@ describe("thread pruning sweep", () => {
               .run();
           }
         });
-      await runThreadPruningSweep(harness.deps);
+      await runThreadPruningSweep(harness.deps, UNTIMED_SWEEP_LIMITS);
       expect(notify).toHaveBeenCalledExactlyOnceWith(thread.id, [
         "history-rewritten",
       ]);
@@ -91,16 +100,17 @@ describe("thread pruning sweep", () => {
               sql`CREATE TRIGGER fail_next_prune BEFORE UPDATE ON thread_pruning_cursors BEGIN SELECT RAISE(ABORT, 'next batch failed'); END`,
             );
         });
-      await expect(runThreadPruningSweep(harness.deps)).rejects.toThrow(
-        "next batch failed",
-      );
+      await expect(
+        runThreadPruningSweep(harness.deps, UNTIMED_SWEEP_LIMITS),
+      ).rejects.toThrow("next batch failed");
       expect(notify).toHaveBeenCalledExactlyOnceWith(thread.id, [
         "history-rewritten",
       ]);
       expect(harness.db.select().from(events).all()).toHaveLength(700);
       harness.db.run(sql`DROP TRIGGER fail_next_prune`);
       notify.mockRestore();
-      for (let i = 0; i < 3; i++) await runThreadPruningSweep(harness.deps);
+      for (let i = 0; i < 3; i++)
+        await runThreadPruningSweep(harness.deps, UNTIMED_SWEEP_LIMITS);
       expect(
         harness.db
           .select()
@@ -124,7 +134,7 @@ describe("thread pruning sweep", () => {
           if (message === "Thread pruning policy advanced") elapsed = 51;
         });
       try {
-        await runThreadPruningSweep(harness.deps);
+        await runThreadPruningSweep(harness.deps, THREAD_PRUNING_SWEEP_LIMITS);
         expect(
           debug.mock.calls.filter(
             (call) => call[1] === "Thread pruning policy advanced",
@@ -149,7 +159,7 @@ describe("thread pruning sweep", () => {
       const warn = vi.spyOn(harness.deps.logger, "warn");
       const debug = vi.spyOn(harness.deps.logger, "debug");
       try {
-        await runThreadPruningSweep(harness.deps);
+        await runThreadPruningSweep(harness.deps, THREAD_PRUNING_SWEEP_LIMITS);
         expect(warn).toHaveBeenCalledWith(
           expect.objectContaining({ advanceElapsedMs: 75 }),
           "Slow thread pruning advance",
@@ -176,7 +186,7 @@ describe("thread pruning sweep", () => {
       for (let i = 0; i < 100; i++)
         seedThread(harness.deps, { projectId: first.projectId });
       const debug = vi.spyOn(harness.deps.logger, "debug");
-      await runThreadPruningSweep(harness.deps);
+      await runThreadPruningSweep(harness.deps, UNTIMED_SWEEP_LIMITS);
       const steps = debug.mock.calls.filter(
         (call) => call[1] === "Thread pruning policy advanced",
       );

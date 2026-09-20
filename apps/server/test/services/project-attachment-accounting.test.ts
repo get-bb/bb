@@ -34,6 +34,7 @@ import {
 } from "../../src/services/projects/attachments.js";
 import {
   pruneProjectAttachments,
+  PROJECT_ATTACHMENT_BACKFILL_LIMITS,
   runProjectAttachmentBackfill,
 } from "../../src/services/projects/attachment-maintenance.js";
 import {
@@ -43,11 +44,16 @@ import {
 } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 
+const UNTIMED_BACKFILL_LIMITS = {
+  elapsedBudgetMs: Number.POSITIVE_INFINITY,
+  maxSteps: PROJECT_ATTACHMENT_BACKFILL_LIMITS.maxSteps,
+};
+
 const input = (path: string): PromptInput[] => [{ type: "localFile", path }];
 
 async function completeBackfill(h: TestAppHarness, projectId: string) {
   for (let count = 0; count < 200; count += 1) {
-    await runProjectAttachmentBackfill(h.deps);
+    await runProjectAttachmentBackfill(h.deps, UNTIMED_BACKFILL_LIMITS);
     const state = h.db
       .select()
       .from(projectAttachmentBackfills)
@@ -89,7 +95,7 @@ describe("project attachment accounting", () => {
       );
       try {
         await expect(
-          runProjectAttachmentBackfill(h.deps),
+          runProjectAttachmentBackfill(h.deps, UNTIMED_BACKFILL_LIMITS),
         ).resolves.toBeUndefined();
       } finally {
         h.db.$client.exec(
@@ -572,6 +578,12 @@ describe("project attachment accounting", () => {
   });
 
   it("bounds backfill work on large histories while accepting queued messages", async () => {
+    const eventCount = 4_000;
+    const inputEventInterval = 20;
+    const batchLimits = {
+      elapsedBudgetMs: Number.POSITIVE_INFINITY,
+      maxSteps: 5,
+    };
     await withTestHarness(async (h) => {
       const { project, thread } = seedThreadFixture(h, {
         thread: { status: "active" },
@@ -599,13 +611,15 @@ describe("project attachment accounting", () => {
         "INSERT INTO events (id, thread_id, scope_kind, sequence, type, data, created_at) VALUES (?, ?, 'thread', ?, ?, ?, 1)",
       );
       h.db.$client.transaction(() => {
-        for (let n = 1; n <= 20_000; n += 1)
+        for (let n = 1; n <= eventCount; n += 1)
           insert.run(
             `perf-${n}`,
             thread.id,
             n,
-            n % 20 === 0 ? "client/turn/requested" : "system/error",
-            n % 20 === 0 ? request : output,
+            n % inputEventInterval === 0
+              ? "client/turn/requested"
+              : "system/error",
+            n % inputEventInterval === 0 ? request : output,
           );
       })();
       const plan = h.db.$client
@@ -623,7 +637,7 @@ describe("project attachment accounting", () => {
       try {
         for (let n = 0; n < 200; n += 1) {
           const started = performance.now();
-          await runProjectAttachmentBackfill(h.deps);
+          await runProjectAttachmentBackfill(h.deps, batchLimits);
           batchMs.push(performance.now() - started);
           const queueStarted = performance.now();
           const response = await h.app.request(
@@ -657,9 +671,10 @@ describe("project attachment accounting", () => {
       console.log(
         JSON.stringify({
           attachmentBackfillBenchmark: {
-            events: 20_000,
-            inputEvents: 1000,
-            outputBytes: output.length * 19_000,
+            events: eventCount,
+            inputEvents: eventCount / inputEventInterval,
+            outputBytes:
+              output.length * (eventCount - eventCount / inputEventInterval),
             batches: batchMs.length,
             batchP95Ms: p95(batchMs),
             batchMaxMs: Math.max(...batchMs),

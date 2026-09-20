@@ -57,21 +57,6 @@ export function usePluginBranches({
   );
 }
 
-export function usePluginDefaultWorktreeBaseBranch({
-  hostId,
-  projectId,
-}: UseCheckoutStateArgs): string | null {
-  const enabled = hostId !== null && projectId !== null;
-  const query = useProjectSourceBranches(projectId ?? undefined, hostId, {
-    enabled,
-    query: "",
-    selectedBranch: "",
-  });
-  return (
-    query.data?.defaultWorktreeBaseBranch ?? query.data?.defaultBranch ?? null
-  );
-}
-
 export function usePluginCheckoutState({
   hostId,
   projectId,

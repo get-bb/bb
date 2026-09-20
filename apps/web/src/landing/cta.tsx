@@ -1,4 +1,4 @@
-import { CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
+import CheckmarkCircle02Icon from "@hugeicons/core-free-icons/CheckmarkCircle02Icon";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useEffect, useState } from "react";
 import type { FormEvent, ReactNode } from "react";

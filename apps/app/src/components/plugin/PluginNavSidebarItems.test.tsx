@@ -742,8 +742,10 @@ describe("PluginNavSidebarItems", () => {
       expect(layoutsAtDisable[0]?.root.type).toBe("split");
       expect(store.get(splitLayoutAtom)).toEqual(survivingLayout);
       expect(store.get(maximizedPaneIdAtom)).toBeNull();
-      expect(screen.getByTestId("location-path").textContent).toBe(
-        "/plugins/github/main",
+      await waitFor(() =>
+        expect(screen.getByTestId("location-path").textContent).toBe(
+          "/plugins/github/main",
+        ),
       );
     },
   );
