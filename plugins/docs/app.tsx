@@ -900,6 +900,14 @@ function InlineDocument({
   const redo =
     state.proposal?.status === "undone" &&
     state.proposal.baseSha256 === state.sha256;
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(state.draft);
+      toast.success("Document copied");
+    } catch {
+      toast.error("Could not copy the document");
+    }
+  };
   const ask = async () => {
     setAsking(true);
     setAskError(null);
@@ -988,6 +996,12 @@ function InlineDocument({
               icon="MessageSquare"
               disabled={!state.loaded || state.busy || asking}
               onClick={() => void ask()}
+            />
+            <DocumentAction
+              label="Copy"
+              icon="Copy"
+              disabled={!state.loaded}
+              onClick={() => void copy()}
             />
             {openInTab && (
               <>
