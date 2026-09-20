@@ -29,13 +29,16 @@ import { SidebarControlButton, SidebarRowControls } from "./SidebarRowControls";
 import { SIDEBAR_CONTROL_BUTTON_CLASS } from "./sidebarRowClasses";
 
 interface HeaderCreationActions {
+  hasCustomSections: boolean;
   onNewProject?: () => void;
   onNewSection?: () => void;
   isCreatingProject?: boolean;
   isCreatingSection?: boolean;
 }
 
-const HeaderCreationContext = createContext<HeaderCreationActions>({});
+const HeaderCreationContext = createContext<HeaderCreationActions>({
+  hasCustomSections: false,
+});
 export const SidebarHeaderActionsProvider = HeaderCreationContext.Provider;
 
 const SIDEBAR_ORGANIZE_OPTIONS = [
@@ -47,6 +50,7 @@ const SIDEBAR_ORGANIZE_OPTIONS = [
 type SidebarViewPage = "organize" | "sort";
 
 function SidebarViewItems({ page }: { page: SidebarViewPage }) {
+  const { hasCustomSections } = useContext(HeaderCreationContext);
   const [organization, setOrganization] = useAtom(sidebarOrganizationModeAtom);
   const [sort, setSort] = useAtom(sidebarChronologicalSortAtom);
   const [savedDirection, setDirection] = useAtom(sidebarSortDirectionAtom);
@@ -139,6 +143,12 @@ function SidebarViewItems({ page }: { page: SidebarViewPage }) {
         return (
           <DropdownMenuItem
             key={option.label}
+            disabled={
+              option.sort === "updated" &&
+              option.includeGroups &&
+              organization === "chronological" &&
+              !hasCustomSections
+            }
             role="menuitemradio"
             aria-checked={selected}
             aria-label={

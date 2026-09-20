@@ -1746,6 +1746,7 @@ function ProjectListComponent({
   return (
     <SidebarHeaderActionsProvider
       value={{
+        hasCustomSections: sections.length > 0,
         onNewProject,
         onNewSection: handleOpenCreateSectionDialog,
         isCreatingProject,

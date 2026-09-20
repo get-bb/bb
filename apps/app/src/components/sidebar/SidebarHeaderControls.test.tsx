@@ -39,6 +39,7 @@ function setup(
   label = "Pinned",
   section = false,
   organization: SidebarOrganizationMode = "project",
+  hasCustomSections = false,
 ) {
   const store = createStore();
   store.set(sidebarOrganizationModeAtom, organization);
@@ -52,7 +53,11 @@ function setup(
     <Provider store={store}>
       <TooltipProvider>
         <SidebarHeaderActionsProvider
-          value={{ onNewProject: newProject, onNewSection: newSection }}
+          value={{
+            hasCustomSections,
+            onNewProject: newProject,
+            onNewSection: newSection,
+          }}
         >
           <SidebarHeaderControls label={label} onNewThread={newThread}>
             {section && (
@@ -273,13 +278,14 @@ describe("sidebar header controls", () => {
     ["machine", "machines"],
     ["chronological", "sections"],
   ] as const)("names the extra sorting scope in %s mode", async (mode, unit) => {
-    const { store } = setup("Pinned", false, mode);
+    const { store } = setup("Pinned", false, mode, mode === "chronological");
     await openMenu();
     await openSubmenu("Sort by");
     fireEvent.click(screen.getByRole("menuitemradio", { name: "Alphabetical" }));
     const option = await screen.findByRole("menuitemradio", {
       name: `Updated at (include ${unit})`,
     });
+    expect(option.getAttribute("aria-disabled")).not.toBe("true");
     expect(option.getAttribute("aria-checked")).toBe("false");
     fireEvent.click(option);
     expect(store.get(sidebarChronologicalSortAtom)).toBe("updated");
@@ -298,6 +304,32 @@ describe("sidebar header controls", () => {
     expect(store.get(sidebarSortGroupsByRecencyAtom)).toBe(false);
     expect(option.getAttribute("aria-checked")).toBe("false");
   });
+
+  it.each([false, true])(
+    "disables section sorting with no custom sections (compact: %s)",
+    async (compact) => {
+      viewport.compact = compact;
+      const { store } = setup("Pinned", false, "chronological");
+      store.set(sidebarSortGroupsByRecencyAtom, true);
+      if (compact) {
+        fireEvent.click(screen.getByRole("button", { name: "Pinned actions" }));
+        fireEvent.click(await screen.findByRole("menuitem", { name: "Sort by" }));
+      } else {
+        await openMenu();
+        await openSubmenu("Sort by");
+      }
+      const option = await screen.findByRole("menuitemradio", {
+        name: /Updated at \(include sections\)/,
+      });
+      expect(option.getAttribute("aria-disabled")).toBe("true");
+      expect(option.getAttribute("aria-checked")).toBe("true");
+      fireEvent.click(option);
+      expect(store.get(sidebarSortGroupsByRecencyAtom)).toBe(true);
+      expect(store.get(sidebarSortDirectionAtom)).toBe("default");
+      fireEvent.click(screen.getByRole("menuitemradio", { name: "Updated at" }));
+      expect(store.get(sidebarSortGroupsByRecencyAtom)).toBe(false);
+    },
+  );
 
   it("offers both Updated at choices in the compact sort menu and resets after closing", async () => {
     viewport.compact = true;
