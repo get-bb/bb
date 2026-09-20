@@ -187,7 +187,8 @@ export function ResourceToolbar({
         aria-label={searchLabel ?? searchPlaceholder}
         onSubmit={(event) => {
           event.preventDefault();
-          collapseSearch();
+          if (searchExpanded) collapseSearch();
+          else searchInputRef.current?.focus();
         }}
         onBlur={(event) => {
           if (!event.currentTarget.contains(event.relatedTarget))
