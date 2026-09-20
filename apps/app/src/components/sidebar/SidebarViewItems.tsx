@@ -23,8 +23,6 @@ export function SidebarViewItems({
     setSort,
     savedDirection,
     setDirection,
-    setEnvironmentGrouping,
-    groupByEnvironment,
     selectedSort,
     changed,
   } = settings;
@@ -38,9 +36,6 @@ export function SidebarViewItems({
           event.preventDefault();
           if (page === "organize") {
             setOrganization(getUiPreferenceDefault("sidebar.organizationMode"));
-            setEnvironmentGrouping(
-              getUiPreferenceDefault("sidebar.threadGrouping.environment"),
-            );
           } else if (page === "sort") {
             setSort(getUiPreferenceDefault("sidebar.chronologicalSort"));
             setDirection(getUiPreferenceDefault("sidebar.sortDirection"));
@@ -49,7 +44,7 @@ export function SidebarViewItems({
           }
         }}
       >
-        Reset
+        Reset to default
       </DropdownMenuItem>
     </>
   );
@@ -90,30 +85,13 @@ export function SidebarViewItems({
             </DropdownMenuItem>
           ))}
         </DropdownMenuGroup>
-        <DropdownMenuSeparator />
-        <DropdownMenuGroup aria-label="Groups">
-          <DropdownMenuLabel>Groups</DropdownMenuLabel>
-          <DropdownMenuItem
-            role="menuitemcheckbox"
-            aria-checked={groupByEnvironment}
-            onSelect={(event) => {
-              event.preventDefault();
-              setEnvironmentGrouping(!groupByEnvironment);
-            }}
-          >
-            By environment
-            <span className="ml-auto inline-flex size-4 shrink-0 items-center justify-center">
-              {groupByEnvironment && <Icon name="Check" className="size-4" />}
-            </span>
-          </DropdownMenuItem>
-        </DropdownMenuGroup>
         {reset}
       </>
     );
   }
   return (
     <>
-      <DropdownMenuGroup aria-label="Sort by">
+      <DropdownMenuGroup aria-label="Sort">
         {sortOptions.map((option) => {
           const selected = selectedSort === option.sort;
           const direction =

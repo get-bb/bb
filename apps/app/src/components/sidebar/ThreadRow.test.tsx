@@ -9,6 +9,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { createStore, Provider } from "jotai";
 import type { ThreadListEntry } from "@bb/domain";
@@ -22,11 +23,13 @@ import {
 
 const mocks = vi.hoisted(() => ({
   renameThread: vi.fn(),
+  unarchiveThread: vi.fn(),
 }));
 
 vi.mock("@/components/thread/ThreadActionsProvider", () => ({
   useThreadActions: () => ({
     renameThread: mocks.renameThread,
+    unarchiveThread: mocks.unarchiveThread,
   }),
 }));
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
@@ -54,12 +57,12 @@ import { NO_COLLAPSED_CHILD_ACTIVITY } from "@bb/client-core";
 import { sdk } from "@/lib/sdk";
 import { makeThreadListEntry as makeThreadListEntryFixture } from "@bb/test-helpers/domain-fixtures";
 
-vi.mock("@/components/thread/ThreadActionsMenu", () => ({
+vi.mock("@/components/thread/ThreadActionsMenu", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/components/thread/ThreadActionsMenu")>()),
   ThreadActionsContextMenu: ({ children }: { children: ReactNode }) => (
     <>{children}</>
   ),
   ThreadActionsMenu: () => null,
-  ThreadArchiveQuickAction: () => null,
 }));
 
 function createThread(
@@ -220,6 +223,7 @@ function renderSplitThreadRow({
 afterEach(() => {
   cleanup();
   mocks.renameThread.mockReset();
+  mocks.unarchiveThread.mockReset();
   resetSidebarTitleDoubleClickForTest();
   resetPluginThreadRowStatusesForTest();
   removePluginSlotRegistrations("icon-probe");
@@ -229,6 +233,69 @@ afterEach(() => {
 });
 
 describe("ThreadRow", () => {
+  it("keeps one restore action visible and blocks row pointer, keyboard, and click propagation", () => {
+    const thread = createThread({ archivedAt: 1, lifecycle: "archived" });
+    const rowEvent = vi.fn();
+    const client = new QueryClient();
+    render(
+      <QueryClientProvider client={client}>
+        <div onPointerDown={rowEvent} onKeyDown={rowEvent} onClick={rowEvent}>
+          <ThreadRowTestHarness thread={thread} />
+        </div>
+      </QueryClientProvider>,
+    );
+    const restore = screen.getByRole("button", { name: "Unarchive thread" });
+    expect(restore.querySelector('[data-icon="Archive"]')).toBeTruthy();
+    expect(restore.classList.contains("bg-state-active")).toBe(true);
+    expect(restore.closest("[data-sidebar-hover-actions-open]")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Archive thread" })).toBeNull();
+    fireEvent.pointerDown(restore, { pointerType: "touch", button: 0 });
+    fireEvent.keyDown(restore, { key: "Enter" });
+    fireEvent.click(restore);
+    expect(mocks.unarchiveThread).toHaveBeenCalledOnce();
+    expect(mocks.unarchiveThread).toHaveBeenCalledWith(thread);
+    expect(rowEvent).not.toHaveBeenCalled();
+  });
+
+  it("disables only the restoring thread and recovers when its mutation fails", async () => {
+    const client = new QueryClient();
+    const thread = createThread({ archivedAt: 1, lifecycle: "archived" });
+    let rejectRestore!: (error: Error) => void;
+    const mutation = client.getMutationCache().build(client, {
+      mutationKey: ["unarchive-thread"],
+      mutationFn: (_input: { id: string }) => new Promise<void>((_resolve, reject) => {
+        rejectRestore = reject;
+      }),
+    });
+    render(
+      <QueryClientProvider client={client}>
+        <ThreadRowTestHarness thread={thread} />
+      </QueryClientProvider>,
+    );
+    const restore = screen.getByRole<HTMLButtonElement>("button", { name: "Unarchive thread" });
+    let completion: Promise<unknown>;
+    act(() => {
+      completion = mutation.execute({ id: "another-thread" }).catch(() => undefined);
+    });
+    await waitFor(() => expect(rejectRestore).toBeTypeOf("function"));
+    expect(restore.disabled).toBe(false);
+    await act(async () => {
+      rejectRestore(new Error("Unarchive failed"));
+      await completion;
+    });
+    act(() => {
+      completion = mutation.execute({ id: thread.id }).catch(() => undefined);
+    });
+    await waitFor(() => expect(restore.disabled).toBe(true));
+    fireEvent.click(restore);
+    expect(mocks.unarchiveThread).not.toHaveBeenCalled();
+    await act(async () => {
+      rejectRestore(new Error("Unarchive failed"));
+      await completion;
+    });
+    await waitFor(() => expect(restore.disabled).toBe(false));
+  });
+
   const splitWorkingCases: Array<{
     label: string;
     pluginStatus?: PluginComposerThreadRowStatus;

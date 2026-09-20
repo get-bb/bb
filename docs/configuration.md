@@ -705,13 +705,17 @@ Custom (`chronological`) is the default for `sidebar.organizationMode` when no
 value is saved. Existing server and legacy browser choices are preserved.
 
 The built-in sidebar defaults to Active. `sidebar.threadLifecycles` selects
-named Active, Drafts, and Archived groups while preserving Active's organization.
-Choose Filter threads in a sidebar header's combined actions menu to change the selection.
+Active, Drafts, and Archived. Drafts appear above the existing hierarchy;
+selected archived threads retain their section, project, machine, and pin placement.
+Choose Filter in a sidebar header's combined actions menu to change the selection.
 The combined control highlights non-default organization, sorting, or lifecycle choices.
-Each secondary menu has a Reset action that restores only its own defaults.
+Each secondary menu shows its current value and has a Reset to default action
+for its displayed settings. The environment-grouping preference remains available
+through settings and the CLI. Archived rows have a persistent Archive button
+that restores the thread without navigating away.
 Drafts come from the available unarchived bootstrap; Archived loads pages only
 while selected. For example, `bb settings ui set sidebar.threadLifecycles
-'["active","draft"]'` shows active and saved draft threads. Reset restores
+'["active","draft"]'` shows active and saved draft threads. Reset to default restores
 `["active"]`. Plugin sidebar replacements own their rendering.
 
 `palette.threadLifecycles` independently selects the palette's Active, Drafts,
@@ -726,9 +730,9 @@ that share one worktree environment collapse into a single worktree row inside
 their section. `true` groups them and `false` keeps every thread on its own row,
 in every organization mode. The default, `auto`, groups them in **By project**
 and **By machine** and leaves them flat in **Custom**, which is how each mode
-behaved before the preference existed. The thread-list header's Organize menu
-exposes it under Groups as the By environment toggle, which writes `true` or
-`false` and so applies to every mode once you use it.
+behaved before the preference existed. Set this preference through settings or
+`bb settings ui set sidebar.threadGrouping.environment true`; an explicit
+`true` or `false` applies to every mode.
 
 Each `sidebar.threadGrouping.*` key toggles one grouping dimension
 independently, so a future dimension adds a key rather than changing this one.
