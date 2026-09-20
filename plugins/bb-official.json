@@ -108,7 +108,10 @@
   },
   "docs": {
     "category": "file-viewers-and-editors",
-    "screenshots": []
+    "screenshots": [
+      "https://getbb.app/marketplace/v2/screenshots/docs/docs-inline-review-desktop-b461fea1d.png",
+      "https://getbb.app/marketplace/v2/screenshots/docs/docs-inline-review-mobile-b461fea1d.png"
+    ]
   },
   "memory": {
     "category": "memory-and-context",
