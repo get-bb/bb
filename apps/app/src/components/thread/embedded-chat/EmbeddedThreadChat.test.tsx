@@ -634,6 +634,8 @@ describe("EmbeddedThreadChat", () => {
     mocks.queuedMessages = [{ id: "q1" }];
     const view = renderEmbeddedChat({ threadId: "thr_side_chat" });
     const composer = screen.getByTestId("embedded-chat-composer");
+    const queue = screen.getByTestId("embedded-chat-queued-messages");
+    expect(queue.dataset.sendDisabled).toBeUndefined();
     fireEvent.change(composer, { target: { value: "Keep this draft" } });
 
     mocks.pendingInteractionsIsFetching = true;
@@ -642,12 +644,14 @@ describe("EmbeddedThreadChat", () => {
     expect(composer.hidden).toBe(false);
     expect(composer.dataset.submitReason).toBe("loading-pending-interactions");
     expect(screen.getByTestId("embedded-chat-queued-messages")).toBeTruthy();
+    expect(queue.dataset.sendDisabled).toBe("");
     expect(screen.getByDisplayValue("Keep this draft")).toBe(composer);
 
     mocks.pendingInteractionsIsFetching = false;
     view.rerender(buildEmbeddedChat({ threadId: "thr_side_chat" }));
 
     expect(composer.dataset.submitMode).toBe("ready");
+    expect(queue.dataset.sendDisabled).toBeUndefined();
     expect(screen.getByDisplayValue("Keep this draft")).toBe(composer);
   });
 
