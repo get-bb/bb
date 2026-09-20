@@ -459,7 +459,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Adds rows to the menu that opens from the + button beside the prompt box. With this, a plugin can:",
         bullets: [
           "Supply each row's icon, label, and disabled state; bb renders the row itself",
-          "Offer a submission action in the send button long-press menu with experimental_sendMenu",
+          "Offer a submission action in the desktop send dropdown and mobile long-press menu with experimental_sendMenu",
           "Run a callback when someone picks the row",
           "Read and rewrite the draft prompt from that callback",
           "Send the draft at a time the person picks, through the prompt box's own send — so a scheduled message keeps its attachments, its @-mentions, and on the new-thread screen the agent and environment chosen on screen",

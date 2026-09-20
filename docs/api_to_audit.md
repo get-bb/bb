@@ -3206,7 +3206,8 @@ progress, cross-project ownership, and concurrent creation before binding.
 ## `ComposerPlusMenuItem.experimental_sendMenu`
 
 Also offers a registered composer plus-menu action in the touch send button's
-long-press menu, with the same scope, disabled state, callback, and plugin
+dropdown on desktop and long-press menu on mobile, with the same scope,
+disabled state, callback, and plugin
 lifecycle. The existing plus-menu entry remains available. Requires SDK 0.4.107.
 Audit discoverability, gesture cancellation, draft preservation, and ordering
 with the host's alternate Queue or Steer action before stabilization.
