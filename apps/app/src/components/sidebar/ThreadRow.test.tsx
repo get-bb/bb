@@ -59,9 +59,7 @@ vi.mock("@/components/thread/ThreadActionsMenu", () => ({
     <>{children}</>
   ),
   ThreadActionsMenu: ({ onRename }: { onRename?: () => void }) => (
-    <button type="button" onClick={onRename}>
-      Rename thread
-    </button>
+    <button type="button" aria-label="Rename thread" onClick={onRename} />
   ),
   ThreadArchiveQuickAction: () => null,
 }));

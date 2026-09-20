@@ -4,7 +4,7 @@ import { apiClient } from "@/lib/api-server";
 import { request } from "@/lib/api";
 import { sdk } from "@/lib/sdk";
 import { invalidateHostListQueries } from "../cache-owners/mutation-cache-effects";
-import { hostsQueryKey } from "../queries/query-keys";
+import { applyHostRenameResult } from "../cache-owners/system-cache-effects";
 
 interface RenameHostRequest {
   hostId: string;
@@ -21,9 +21,7 @@ export function useRenameHost() {
     mutationFn: ({ hostId, name }: RenameHostRequest) =>
       sdk.hosts.update({ hostId, name }),
     onSuccess: (host) => {
-      queryClient.setQueryData<Host[]>(hostsQueryKey(), (hosts) =>
-        hosts?.map((current) => (current.id === host.id ? host : current)),
-      );
+      applyHostRenameResult({ host, queryClient });
       invalidateHostListQueries({ queryClient });
     },
   });

@@ -207,6 +207,7 @@ function SidebarRenameEditor({
   const anchorRef = useRef<HTMLElement | null>(null);
   const restoreFocusRef = useRef(false);
   const composingRef = useRef(false);
+  const openingRef = useRef(true);
   const errorId = useId();
 
   useEffect(() => {
@@ -217,6 +218,7 @@ function SidebarRenameEditor({
     input?.focus({ preventScroll: true });
     input?.select();
     const frame = requestAnimationFrame(() => {
+      openingRef.current = false;
       if (
         document.activeElement === document.body ||
         row?.contains(document.activeElement)
@@ -260,7 +262,11 @@ function SidebarRenameEditor({
       className="relative z-50 flex min-w-0 flex-1 items-center gap-1 text-sm font-normal"
       aria-busy={session.isPending}
       onBlur={(event) => {
-        if (event.currentTarget.contains(event.relatedTarget)) return;
+        if (
+          openingRef.current ||
+          event.currentTarget.contains(event.relatedTarget)
+        )
+          return;
         restoreFocusRef.current = false;
         if (!session.isPending) void submit(false);
       }}
@@ -317,7 +323,6 @@ function SidebarRenameEditor({
       <button
         type="button"
         aria-label={session.error ? "Retry saving name" : "Save name"}
-        title={session.error ? "Retry saving name" : "Save name"}
         disabled={session.isPending || session.cannotRetry}
         className={cn(
           SIDEBAR_CONTROL_BUTTON_CLASS,
@@ -341,7 +346,6 @@ function SidebarRenameEditor({
       <button
         type="button"
         aria-label="Cancel rename"
-        title="Cancel rename"
         disabled={session.isPending}
         className={cn(
           SIDEBAR_CONTROL_BUTTON_CLASS,
@@ -356,7 +360,6 @@ function SidebarRenameEditor({
         <button
           type="button"
           aria-label="Clear custom name"
-          title="Clear custom name"
           disabled={session.isPending || session.cannotRetry}
           className={cn(
             SIDEBAR_CONTROL_BUTTON_CLASS,
@@ -388,14 +391,14 @@ export function useSidebarRename(args: SidebarRenameArgs) {
   const controller = shared ?? local;
   const generatedOwnerKey = useId();
   const ownerKey = args.ownerKey ?? generatedOwnerKey;
-  const session = controller.session;
+  const { session, start, cancel } = controller;
   const isEditing =
     session?.ownerKey === ownerKey &&
     session.kind === args.kind &&
     session.id === args.id;
   const startEditing = useCallback(() => {
-    void controller.start({ ...args, ownerKey });
-  }, [args, controller.start, ownerKey]);
+    void start({ ...args, ownerKey });
+  }, [args, start, ownerKey]);
 
   useEffect(() => {
     if (
@@ -403,9 +406,9 @@ export function useSidebarRename(args: SidebarRenameArgs) {
       session &&
       (session.kind !== args.kind || session.id !== args.id)
     ) {
-      controller.cancel(session.version);
+      cancel(session.version);
     }
-  }, [args.id, args.kind, controller.cancel, session, shared]);
+  }, [args.id, args.kind, cancel, session, shared]);
 
   return {
     editor: isEditing ? (

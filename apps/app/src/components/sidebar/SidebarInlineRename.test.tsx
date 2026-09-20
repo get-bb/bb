@@ -225,6 +225,7 @@ describe("sidebar inline rename", () => {
     );
     start();
     const destination = screen.getByRole("button", { name: "Elsewhere" });
+    await act(async () => new Promise(requestAnimationFrame));
     act(() => destination.focus());
     await waitFor(() => expect(onSave).toHaveBeenCalledOnce());
     await act(async () => pending.resolve());

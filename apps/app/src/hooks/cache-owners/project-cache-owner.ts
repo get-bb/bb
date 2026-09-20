@@ -1,6 +1,7 @@
 import type { QueryClient } from "@tanstack/react-query";
 import type {
   ProjectResponse,
+  ThreadSectionMutationResponse,
   ProjectWithThreadsResponse,
   SidebarBootstrapResponse,
 } from "@bb/server-contract";
@@ -164,4 +165,27 @@ export function applyProjectDeleteResult({
         : currentNavigation,
   );
   invalidateProjectDeleteQueries({ queryClient });
+}
+
+export function applyThreadSectionRenameResult({
+  section,
+  queryClient,
+}: {
+  section: ThreadSectionMutationResponse;
+  queryClient: QueryClient;
+}): void {
+  queryClient.setQueryData<SidebarBootstrapResponse>(
+    sidebarNavigationQueryKey(),
+    (navigation) =>
+      navigation
+        ? {
+            ...navigation,
+            sections: navigation.sections.map((current) =>
+              current.id === section.id
+                ? { ...current, name: section.name }
+                : current,
+            ),
+          }
+        : navigation,
+  );
 }

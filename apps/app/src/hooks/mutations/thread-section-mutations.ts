@@ -3,10 +3,9 @@ import type {
   CreateThreadSectionRequest,
   DeleteThreadSectionRequest,
   UpdateThreadSectionRequest,
-  SidebarBootstrapResponse,
 } from "@bb/server-contract";
 import { sdk } from "@/lib/sdk";
-import { sidebarNavigationQueryKey } from "../queries/query-keys";
+import { applyThreadSectionRenameResult } from "../cache-owners/project-cache-owner";
 import {
   invalidateProjectListQueries,
   invalidateThreadListQueries,
@@ -46,20 +45,7 @@ export function useUpdateThreadSection() {
     mutationFn: (request: UpdateThreadSectionRequest) =>
       sdk.threadSections.update(request),
     onSuccess: (section) => {
-      queryClient.setQueryData<SidebarBootstrapResponse>(
-        sidebarNavigationQueryKey(),
-        (navigation) =>
-          navigation
-            ? {
-                ...navigation,
-                sections: navigation.sections.map((current) =>
-                  current.id === section.id
-                    ? { ...current, name: section.name }
-                    : current,
-                ),
-              }
-            : navigation,
-      );
+      applyThreadSectionRenameResult({ section, queryClient });
       invalidateThreadSectionQueries(queryClient);
     },
   });
