@@ -117,6 +117,7 @@ describe("CompactLongPressMenu", () => {
     act(() => vi.advanceTimersByTime(LONG_PRESS_MS));
     act(() => vi.advanceTimersByTime(500));
     const item = screen.getByRole("menuitem", { name: "Rename" });
+    act(() => vi.advanceTimersByTime(2000));
     fireEvent.click(item);
     expect(onRename).not.toHaveBeenCalled();
     touchPointerDown(item);
