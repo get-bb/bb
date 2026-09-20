@@ -88,9 +88,9 @@ export function ComposerSendMenu({
             type="button"
             size="sm"
             aria-label="Send options"
-            className="rounded-l-none border-l border-background/20 px-1.5"
+            className="relative w-7 rounded-l-none px-0 before:absolute before:left-0 before:top-1/2 before:h-3 before:w-px before:-translate-y-1/2 before:bg-background/25 [&_[data-icon-root]]:size-2.5"
           >
-            <Icon name="ChevronDown" className="size-3" />
+            <Icon name="ChevronDown" className="opacity-80" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" side="top" mobileTitle="Send options">
