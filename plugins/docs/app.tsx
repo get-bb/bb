@@ -1051,65 +1051,67 @@ function InlineDocument({
             This document changed. Ask for an updated proposal before accepting.
           </p>
         )}
-        {!state.loaded ? (
-          <DocumentSkeleton />
-        ) : (
-          <div
-            className="relative"
-            style={openInTab ? { maxHeight: 400, overflow: "clip" } : undefined}
-          >
-            <div
-              ref={contentRef}
-              data-editing={editing && !truncated}
-              className="min-w-0 data-[editing=true]:bg-muted/10 data-[editing=true]:ring-1 data-[editing=true]:ring-inset data-[editing=true]:ring-ring/50"
-            >
-              {pending && baseMetadata !== candidateMetadata && (
-                <div className="px-6 pt-4 text-xs">
-                  <p className="mb-2 font-medium">Document metadata</p>
-                  {baseMetadata && (
-                    <pre className="whitespace-pre-wrap bg-diff-removed/10 text-diff-removed">
-                      <del>{baseMetadata}</del>
-                    </pre>
-                  )}
-                  {candidateMetadata && (
-                    <pre className="whitespace-pre-wrap bg-diff-added/10 text-diff-added">
-                      {candidateMetadata}
-                    </pre>
-                  )}
+        <div
+          className="relative"
+          style={openInTab ? { maxHeight: 400, overflow: "clip" } : undefined}
+        >
+          {!state.loaded ? (
+            <DocumentSkeleton />
+          ) : (
+            <>
+              <div
+                ref={contentRef}
+                data-editing={editing && !truncated}
+                className="min-w-0 data-[editing=true]:bg-muted/10 data-[editing=true]:ring-1 data-[editing=true]:ring-inset data-[editing=true]:ring-ring/50"
+              >
+                {pending && baseMetadata !== candidateMetadata && (
+                  <div className="px-6 pt-4 text-xs">
+                    <p className="mb-2 font-medium">Document metadata</p>
+                    {baseMetadata && (
+                      <pre className="whitespace-pre-wrap bg-diff-removed/10 text-diff-removed">
+                        <del>{baseMetadata}</del>
+                      </pre>
+                    )}
+                    {candidateMetadata && (
+                      <pre className="whitespace-pre-wrap bg-diff-added/10 text-diff-added">
+                        {candidateMetadata}
+                      </pre>
+                    )}
+                  </div>
+                )}
+                <TiptapEditor
+                  initialValue=""
+                  value={state.draft}
+                  baseMarkdown={pending?.baseContent ?? null}
+                  inline
+                  disabled={state.busy || truncated}
+                  previewBaseUrl={state.previewBaseUrl}
+                  notePath={document.path}
+                  onFocusChange={setEditing}
+                  onFirstRender={() => undefined}
+                  onMarkdownChange={session.edit}
+                  onUpload={async (file) => {
+                    const result = await rpc.call("uploadAttachment", {
+                      vaultId: document.vaultId,
+                      notePath: document.path,
+                      name: file.name,
+                      content: await fileToBase64(file),
+                    });
+                    return { markdownPath: result.markdownPath };
+                  }}
+                />
+              </div>
+              {truncated && openInTab && (
+                <div className="absolute inset-x-0 bottom-0 flex justify-center bg-gradient-to-t from-background via-background/95 to-transparent px-4 pb-4 pt-12">
+                  <Button size="sm" variant="outline" onClick={openInTab}>
+                    Edit in tab
+                    <Icon name="ExternalLink" className="ml-2 size-3" />
+                  </Button>
                 </div>
               )}
-              <TiptapEditor
-                initialValue=""
-                value={state.draft}
-                baseMarkdown={pending?.baseContent ?? null}
-                inline
-                disabled={state.busy || truncated}
-                previewBaseUrl={state.previewBaseUrl}
-                notePath={document.path}
-                onFocusChange={setEditing}
-                onFirstRender={() => undefined}
-                onMarkdownChange={session.edit}
-                onUpload={async (file) => {
-                  const result = await rpc.call("uploadAttachment", {
-                    vaultId: document.vaultId,
-                    notePath: document.path,
-                    name: file.name,
-                    content: await fileToBase64(file),
-                  });
-                  return { markdownPath: result.markdownPath };
-                }}
-              />
-            </div>
-            {truncated && openInTab && (
-              <div className="absolute inset-x-0 bottom-0 flex justify-center bg-gradient-to-t from-background via-background/95 to-transparent px-4 pb-4 pt-12">
-                <Button size="sm" variant="outline" onClick={openInTab}>
-                  Edit in tab
-                  <Icon name="ExternalLink" className="ml-2 size-3" />
-                </Button>
-              </div>
-            )}
-          </div>
-        )}
+            </>
+          )}
+        </div>
       </section>
     </TooltipProvider>
   );
