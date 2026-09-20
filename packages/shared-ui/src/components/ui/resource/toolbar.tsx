@@ -196,7 +196,7 @@ export function ResourceToolbar({
           compact
             ? "min-w-0 flex-1 basis-40"
             : "w-full min-w-0 sm:w-auto sm:flex-1",
-          showSearchButton && "min-w-8",
+          showSearchButton && "min-w-8 max-w-8 grow-0 shrink-0",
         )}
       >
         {showSearchButton ? (
@@ -206,7 +206,6 @@ export function ResourceToolbar({
             tooltip={searchValue ? `Search: ${searchValue}` : searchPlaceholder}
             icon="Search"
             active={searchValue !== ""}
-            className="w-full"
             onClick={() => setSearchExpanded(true)}
           />
         ) : (
@@ -308,8 +307,7 @@ export function ResourceToolbar({
           inert={searchExpanded || undefined}
           aria-hidden={searchExpanded || undefined}
           className={cn(
-            "flex shrink-0 items-center gap-1.5",
-            !compact && "ml-auto",
+            "ml-auto flex shrink-0 items-center gap-1.5",
             searchExpanded && "invisible absolute pointer-events-none",
           )}
         >

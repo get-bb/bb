@@ -265,7 +265,7 @@ function mockToolbarWidth(initial: number, publishedWidth = 96) {
           32,
         );
       if (this.hasAttribute("data-resource-combined-controls"))
-        return new DOMRect(0, 0, 112, 32);
+        return new DOMRect(0, 0, 32, 32);
       if (this.hasAttribute("data-resource-toolbar-action"))
         return new DOMRect(0, 0, 120, 32);
       return original.call(this);
@@ -321,7 +321,12 @@ describe("PluginCollectionToolbar", () => {
   it("describes all applied selections in the combined trigger tooltip", async () => {
     mockToolbarWidth(320);
     render(<ToolbarHarness installed />);
-    act(() => screen.getByRole("button", { name: "Filter & sort" }).focus());
+    const trigger = screen.getByRole("button", { name: "Filter & sort" });
+    expect(trigger.textContent).toBe("");
+    expect(
+      trigger.querySelector('[data-icon="FilterHorizontal"]'),
+    ).not.toBeNull();
+    act(() => trigger.focus());
     expect((await screen.findByRole("tooltip")).textContent).toBe(
       "Category: Security; Source: Local; Sort: Name · Z–A",
     );
@@ -538,13 +543,21 @@ describe("PluginCollectionToolbar", () => {
 
   it("keeps mobile search inline when combining filters frees enough width", () => {
     viewport.compact = true;
-    mockToolbarWidth(354);
-    render(<ToolbarHarness installed />);
+    const resize = mockToolbarWidth(354);
+    render(<ToolbarHarness installed createAction />);
     expect(screen.getByRole("button", { name: "Filter & sort" })).toBeTruthy();
     expect(
       screen.getByRole("textbox", { name: "Search plugins" }),
     ).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Search plugins" })).toBeNull();
+    resize(320);
+    expect(screen.getByRole("button", { name: "Search plugins" })).toBeTruthy();
+    resize(328);
+    expect(
+      screen.getByRole<HTMLInputElement>("textbox", { name: "Search plugins" })
+        .value,
+    ).toBe("Memory");
+    expect(screen.getByRole("button", { name: "Create" })).toBeTruthy();
   });
 
   it.each([

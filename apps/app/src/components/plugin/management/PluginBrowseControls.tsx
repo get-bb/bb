@@ -305,7 +305,6 @@ function PluginControlsMenu({
       <DropdownMenuTrigger asChild>
         <ResourceControlButton
           label="Filter & sort"
-          text="Filter & sort"
           tooltip={
             activeLabels.length ? activeLabels.join("; ") : "Filter & sort"
           }
