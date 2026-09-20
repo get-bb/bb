@@ -1505,6 +1505,16 @@ describe("PromptBoxInternal submit shortcuts", () => {
         expect(onModifierSubmit).not.toHaveBeenCalled();
         expect(document.activeElement).not.toBe(editor);
 
+        rerender(
+          <PromptBoxInternal
+            {...props}
+            submission={{ ...props.submission, disabled: true }}
+          />,
+        );
+        expect(queue.hasAttribute("disabled")).toBe(true);
+        fireEvent.click(queue);
+        expect(onSubmit).toHaveBeenCalledOnce();
+
         rerender(<PromptBoxInternal {...props} value="" />);
         expect(queue.hasAttribute("disabled")).toBe(true);
         expect(screen.getByRole("button", { name: "Stop run" })).toBeTruthy();
@@ -1513,6 +1523,26 @@ describe("PromptBoxInternal submit shortcuts", () => {
       }
     },
   );
+
+  it.each([
+    { coarse: true, swapped: false },
+    { coarse: false, swapped: true },
+  ])("omits the extra Queue button for %j", ({ coarse, swapped }) => {
+    const restoreMatchMedia = mockPointerCoarse(coarse);
+    try {
+      render(
+        <PromptBoxInternal
+          {...createPromptBoxProps({
+            value: "Follow up",
+            submission: { onModifierSubmit: vi.fn(), swapSubmitActions: swapped },
+          })}
+        />,
+      );
+      expect(screen.queryByRole("button", { name: "Queue follow-up" })).toBeNull();
+    } finally {
+      restoreMatchMedia();
+    }
+  });
 
   it("blocks both swapped actions while disabled", () => {
     const onSubmit = vi.fn();
