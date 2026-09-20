@@ -305,6 +305,7 @@ describe("sidebar organization mode sections", () => {
 
     fireEvent.doubleClick(screen.getByTitle("Work laptop"));
     const input = await screen.findByRole("textbox", { name: "Machine name" });
+    expect(input.closest('[aria-disabled="true"]')).toBeNull();
     fireEvent.change(input, { target: { value: "Studio" } });
     fireEvent.keyDown(input, { key: "Enter" });
     await waitFor(() =>
