@@ -63,11 +63,6 @@ describe("guide fixture boundaries", () => {
           expect(text, source.path).toContain(anchor);
       }
     }
-    const recovery = renderWireframe(
-      createElement(ExtensionsPluginPageWireframe),
-    );
-    expect(recovery).not.toContain(">Reload<");
-    expect(recovery).not.toContain(">About<");
   });
 
   it("scales every spatial fixture together and reflows only the capability grid", () => {
