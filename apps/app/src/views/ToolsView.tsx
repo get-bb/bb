@@ -77,10 +77,15 @@ import type {
   SecondaryPanelTabReorderHandler,
 } from "@/components/secondary-panel/secondaryPanelTab";
 
-function ResourceBodyFallback() {
+function ResourceBodyFallback({ contentClassName }: { contentClassName?: string }) {
   return (
     <div className="h-full overflow-y-auto">
-      <div className="mx-auto w-full max-w-5xl px-4 pb-4 pt-2 md:px-5">
+      <div
+        className={cn(
+          "mx-auto w-full max-w-5xl px-4 pb-4 pt-2 md:px-5",
+          contentClassName,
+        )}
+      >
         <div className="space-y-2">
           <Skeleton className="h-8 w-full" />
           <Skeleton className="h-24 w-full rounded-md" />
@@ -94,9 +99,11 @@ function ResourceBodyFallback() {
 function ResourceScrollPage({
   children,
   fillViewport = false,
+  contentClassName,
 }: {
   children: ReactNode;
   fillViewport?: boolean;
+  contentClassName?: string;
 }) {
   const {
     scrollRef,
@@ -120,6 +127,7 @@ function ResourceScrollPage({
           className={cn(
             "mx-auto box-border min-h-full w-full space-y-4 px-4 pb-4 pt-3 md:px-5 md:pt-4",
             "max-w-5xl",
+            contentClassName,
           )}
         >
           {children}
@@ -152,7 +160,13 @@ function PluginsToolView({
   );
 }
 
-function PluginDetailToolView({ pluginId }: { pluginId: string }) {
+function PluginDetailToolView({
+  pluginId,
+  contentClassName,
+}: {
+  pluginId: string;
+  contentClassName?: string;
+}) {
   const navigate = useNavigate();
   const location = useLocation();
   const configurationOpen =
@@ -388,7 +402,7 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
         <CatalogPluginDetailBanner entry={selectedCatalogEntry} />
       ) : null}
       <div className="min-h-0 flex-1">
-        <ResourceScrollPage>
+        <ResourceScrollPage contentClassName={contentClassName}>
           {detailContent}
           <ConfirmDeleteDialog
             open={deleteTarget !== null}
@@ -425,12 +439,23 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
   );
 }
 
-export function PluginDetailPaneView({ pluginId }: { pluginId: string }) {
+export function PluginDetailPaneView({
+  pluginId,
+  contentClassName,
+}: {
+  pluginId: string;
+  contentClassName?: string;
+}) {
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       <div className="min-h-0 flex-1 overflow-hidden">
-        <Suspense fallback={<ResourceBodyFallback />}>
-          <PluginDetailToolView pluginId={pluginId} />
+        <Suspense
+          fallback={<ResourceBodyFallback contentClassName={contentClassName} />}
+        >
+          <PluginDetailToolView
+            pluginId={pluginId}
+            contentClassName={contentClassName}
+          />
         </Suspense>
       </div>
     </div>

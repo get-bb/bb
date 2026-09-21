@@ -1130,7 +1130,10 @@ export function SettingsView() {
     return (
       <div className="-mx-4 -mt-4 flex min-h-0 flex-1 flex-col overflow-hidden md:-mx-5 md:-mt-5">
         {pluginId ? (
-          <PluginDetailPaneView pluginId={pluginId} />
+          <PluginDetailPaneView
+            pluginId={pluginId}
+            contentClassName="max-w-[760px] md:px-4"
+          />
         ) : (
           <div className="flex min-h-0 flex-1 flex-col pt-4 md:pt-5">
             <PluginsOverview mode="installed" />
