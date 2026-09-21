@@ -1498,7 +1498,7 @@ describe("PromptBoxInternal submit shortcuts", () => {
     { swapSubmitActions: false, touch: false },
     { swapSubmitActions: true, touch: false },
   ])(
-    "offers only the alternate send action (Enter steers: $swapSubmitActions, touch: $touch)",
+    "offers alternate send actions and existing draft/scheduling registrations (Enter steers: $swapSubmitActions, touch: $touch)",
     ({ swapSubmitActions, touch: isTouch }) => {
       const restoreMatchMedia = mockPointerCoarse(isTouch);
       vi.useFakeTimers();
@@ -1506,18 +1506,30 @@ describe("PromptBoxInternal submit shortcuts", () => {
         const onSubmit = vi.fn();
         const onModifierSubmit = vi.fn();
         const schedule = vi.fn();
+        const saveDraft = vi.fn();
         setPluginSlotRegistrations(
-          "scheduler",
+          "scheduled-send",
           pluginRegistrationSet([
             {
               id: "send-later",
               plusMenu: [
                 {
-                  id: "schedule",
+                  id: "send-later",
                   label: "Send later",
                   run: schedule,
                 },
                 { id: "other", label: "Other action", run: vi.fn() },
+              ],
+            },
+          ]),
+        );
+        setPluginSlotRegistrations(
+          "drafts",
+          pluginRegistrationSet([
+            {
+              id: "drafts",
+              plusMenu: [
+                { id: "drafts", label: "Save draft", run: saveDraft },
               ],
             },
           ]),
@@ -1582,7 +1594,11 @@ describe("PromptBoxInternal submit shortcuts", () => {
         expect(onModifierSubmit).not.toHaveBeenCalled();
         expect(
           screen.getAllByRole("menuitem").map((item) => item.textContent),
-        ).toEqual([swapSubmitActions ? "Queue" : "Steer"]);
+        ).toEqual([
+          swapSubmitActions ? "Queue" : "Steer",
+          "Save draft",
+          "Send later",
+        ]);
         const alternateAction = screen.getByRole("menuitem", {
           name: swapSubmitActions ? "Queue" : "Steer",
         });
@@ -1598,7 +1614,19 @@ describe("PromptBoxInternal submit shortcuts", () => {
           swapSubmitActions ? 0 : 1,
         );
 
-        expect(schedule).not.toHaveBeenCalled();
+        openMenu();
+        fireEvent.click(screen.getByRole("menuitem", { name: "Save draft" }));
+        expect(saveDraft).toHaveBeenCalledOnce();
+        expect(saveDraft.mock.calls[0]?.[0].view.draft.text).toBe("Follow up");
+
+        openMenu();
+        fireEvent.click(screen.getByRole("menuitem", { name: "Send later" }));
+        expect(schedule).toHaveBeenCalledOnce();
+        expect(schedule.mock.calls[0]?.[0].view.draft.text).toBe("Follow up");
+        expect(onSubmit).toHaveBeenCalledTimes(swapSubmitActions ? 1 : 0);
+        expect(onModifierSubmit).toHaveBeenCalledTimes(
+          swapSubmitActions ? 0 : 1,
+        );
 
         openMenu();
         rerender(renderComposer(""));
@@ -1626,7 +1654,7 @@ describe("PromptBoxInternal submit shortcuts", () => {
         rerender(renderComposer("Follow up"));
         expect(screen.queryByRole("menuitem")).toBeNull();
         openMenu();
-        expect(screen.getAllByRole("menuitem")).toHaveLength(1);
+        expect(screen.getAllByRole("menuitem")).toHaveLength(3);
       } finally {
         vi.useRealTimers();
         restoreMatchMedia();

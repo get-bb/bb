@@ -11,10 +11,14 @@ import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { CONTROL_HOVER_TRANSITION } from "@bb/shared-ui/motion";
 import { CompactLongPressMenu } from "@/components/ui/compact-long-press-menu";
+import { PluginComposerPlusMenuEntry } from "@/components/plugin/PluginComposerActions";
+import { useResolvedComposerPlusMenuItems } from "@/components/plugin/composer-slot-hooks";
+import { useOptionalPluginComposerView } from "@/components/plugin/plugin-composer-host";
 
 export function ComposerSendMenu({
   children,
   isPointerCoarse,
+  includePluginContributions,
   queue,
   hasInput,
   canSubmit,
@@ -22,12 +26,25 @@ export function ComposerSendMenu({
 }: {
   children: ReactNode;
   isPointerCoarse: boolean;
+  includePluginContributions: boolean;
   queue: boolean;
   hasInput: boolean;
   canSubmit: boolean;
   onSubmit: (() => void) | undefined;
 }) {
   const isCompactViewport = useIsCompactViewport();
+  const view = useOptionalPluginComposerView();
+  const contributions = useResolvedComposerPlusMenuItems(
+    includePluginContributions ? (view?.scope.kind ?? null) : null,
+  ).filter(
+    ({ pluginId, customizationId, item }) =>
+      (pluginId === "drafts" &&
+        customizationId === "drafts" &&
+        item.id === "drafts") ||
+      (pluginId === "scheduled-send" &&
+        customizationId === "send-later" &&
+        item.id === "send-later"),
+  );
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
@@ -35,16 +52,26 @@ export function ComposerSendMenu({
   }, [canSubmit]);
   const handleOpenChange = (nextOpen: boolean) => setOpen(nextOpen && canSubmit);
 
-  if (!onSubmit) return children;
+  if (!onSubmit && contributions.length === 0) return children;
 
   const items = canSubmit ? (
-    <DropdownMenuItem disabled={!canSubmit} onSelect={onSubmit}>
-      <Icon
-        name={queue ? "ListEnd" : "CornerDownRight"}
-        className={cn("size-4", queue && "-scale-x-100")}
-      />
-      {queue ? "Queue" : "Steer"}
-    </DropdownMenuItem>
+    <>
+      {onSubmit ? (
+        <DropdownMenuItem disabled={!canSubmit} onSelect={onSubmit}>
+          <Icon
+            name={queue ? "ListEnd" : "CornerDownRight"}
+            className={cn("size-4", queue && "-scale-x-100")}
+          />
+          {queue ? "Queue" : "Steer"}
+        </DropdownMenuItem>
+      ) : null}
+      {contributions.map((contribution) => (
+        <PluginComposerPlusMenuEntry
+          key={contribution.key}
+          contribution={contribution}
+        />
+      ))}
+    </>
   ) : null;
 
   if (isPointerCoarse && isCompactViewport) {

@@ -3464,6 +3464,9 @@ export function PromptBoxInternal({
                     ) : (
                       <ComposerSendMenu
                         isPointerCoarse={isPointerCoarse}
+                        includePluginContributions={
+                          !suppressPluginComposerCustomizations
+                        }
                         queue={swapSubmitActions}
                         hasInput={hasSubmittableInput}
                         canSubmit={canSubmit}
