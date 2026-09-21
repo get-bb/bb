@@ -225,6 +225,18 @@ vault to remove that folder. Use `--workspace-host <id>` when a standalone
 CLI's working directory is not on the server machine. Direct `write`, `mkdir`,
 `move`, and `remove` remain only as deprecated compatibility commands.
 
+Docs can also propose revisions without overwriting the saved document:
+
+  bb docs proposal <path> [--vault <id>] [--json]
+  bb docs propose <path> --file <candidate.md> --expected-sha256 <hash> --version <none|N> [--vault <id>] [--json]
+  bb docs proposal-update <path> --content <markdown> --version <N> [--vault <id>] [--json]
+  bb docs accept|reject|undo|redo <path> --version <N> [--vault <id>] [--json]
+
+Read the current file and proposal before proposing. Use `none` only when no
+proposal exists; otherwise pass its current version. Markdown Docs cards are
+editable in the timeline and can open in a tab. Pending proposals show a live
+diff for the user to accept, reject, edit, or request further changes.
+
 The Tasks plugin is an opt-in official plugin bundled with the app:
 `bb plugin install tasks`. It adds a task tracker, agent delegation,
 and the `bb tasks` command. Common agent operations are:

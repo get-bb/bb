@@ -244,10 +244,12 @@ function LauncherTile({
     <button
       type="button"
       id={id}
+      data-panel-new-tab-item=""
       role="option"
       aria-selected={isActive}
       onClick={onSelect}
       onMouseEnter={onActivate}
+      onFocus={onActivate}
       title={title}
       className={cn(
         LAUNCHER_ROW_BASE_CLASS,
@@ -278,10 +280,12 @@ function FileResultRow({
     <button
       type="button"
       id={id}
+      data-panel-new-tab-item=""
       role="option"
       aria-selected={isActive}
       onClick={handleSelect}
       onMouseEnter={onActivate}
+      onFocus={onActivate}
       title={getFileSearchResultTitle(suggestion)}
       className={cn(
         "w-full scroll-mt-7 rounded px-2 py-1.5 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
@@ -365,6 +369,7 @@ function ShowMoreToggle({
   return (
     <button
       type="button"
+      data-panel-new-tab-item=""
       aria-expanded={isExpanded}
       onClick={onToggle}
       className={cn(
@@ -582,6 +587,7 @@ export function NewTabFileSearch({
         />
         <Input
           ref={inputRef}
+          data-panel-new-tab-item=""
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           onKeyDown={handleLauncherKeyDown}
