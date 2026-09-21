@@ -1,10 +1,10 @@
 import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
 import { usePluginCollectionParams } from "./usePluginCollectionParams";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { Icon } from "@bb/shared-ui/icon";
-import { Button } from "@bb/shared-ui/button";
+import { appToast } from "@/components/ui/app-toast";
 import bbLogoUrl from "../../../../../../assets/bb-logo.svg";
 import { OpenPluginGuideButton } from "./OpenPluginGuideButton";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -83,6 +83,16 @@ export function BrowsePluginsTab({
     () => catalog.entries.filter((entry) => entry.compatible),
     [catalog.entries],
   );
+  const savedResultsError =
+    entries.length > 0 &&
+    (activeQuery.isRefetchError || searchQuery.isRefetchError);
+  const notifiedSavedResultsError = useRef(false);
+  useEffect(() => {
+    if (savedResultsError && !notifiedSavedResultsError.current) {
+      appToast.warning("Couldn’t refresh plugins.");
+    }
+    notifiedSavedResultsError.current = savedResultsError;
+  }, [savedResultsError]);
   const selectedShelf = useMemo(
     () =>
       shelfKey === null
@@ -257,26 +267,6 @@ export function BrowsePluginsTab({
               action={isCompact && shelfKey === null ? createAction : undefined}
             />
 
-            {(searchQuery.isError || activeQuery.isError) &&
-            entries.length > 0 ? (
-              <div
-                className="flex items-center gap-3 text-xs text-warning-text"
-                role="status"
-              >
-                <p>Showing saved plugins. The latest request failed.</p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() =>
-                    void (
-                      activeQuery.isError ? activeQuery : searchQuery
-                    ).refetch()
-                  }
-                >
-                  Retry
-                </Button>
-              </div>
-            ) : null}
             {activeQuery.isPending ||
             (shelfKey !== null &&
               debouncedQuery !== "" &&
