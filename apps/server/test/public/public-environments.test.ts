@@ -130,7 +130,11 @@ describe("public environments", () => {
     });
   });
 
-  it("remaps a daemon file-read failure on diff/file to its HTTP status", async () => {
+  // bb-fork(windows): the seeded environment path is POSIX, so path.join resolves
+  // it with Windows separators and never matches the asserted absolute path.
+  it.skipIf(process.platform === "win32")(
+    "remaps a daemon file-read failure on diff/file to its HTTP status",
+    async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
         id: "host-environment-diff-file-enoent",
