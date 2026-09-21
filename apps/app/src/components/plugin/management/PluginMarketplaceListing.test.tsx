@@ -84,7 +84,11 @@ describe("plugin marketplace author links", () => {
         grid?.querySelectorAll("dt") ?? [],
         (label) => label.textContent,
       ),
-    ).toEqual(["Marketplace", "Category", "Listed"]);
+    ).toEqual(["Marketplace", "Listed"]);
+    expect(
+      screen.getByRole("heading", { name: "Details" }).parentElement
+        ?.textContent,
+    ).toContain("Security & Privacy");
   });
 
   it("does not create an empty Overview for a description-only plugin", () => {

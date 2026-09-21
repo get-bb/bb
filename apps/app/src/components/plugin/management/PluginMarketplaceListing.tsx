@@ -61,16 +61,8 @@ export function PluginMarketplaceDetailMetadata({
       <PluginDetailMetadataItem label="Marketplace">
         {entry.marketplaceDisplayName}
       </PluginDetailMetadataItem>
-      <PluginDetailMetadataItem label="Category">
-        <div className="flex">
-          <PluginCategoryLabel
-            categoryId={entry.categoryId}
-            label={entry.category ?? "Not categorized"}
-          />
-        </div>
-      </PluginDetailMetadataItem>
       {entry.publishedAt === undefined ? null : (
-        <PluginDetailMetadataItem label="Listed" className="col-span-2">
+        <PluginDetailMetadataItem label="Listed">
           <time dateTime={entry.publishedAt}>
             {new Date(entry.publishedAt).toLocaleDateString(undefined, {
               month: "short",
@@ -242,7 +234,15 @@ export function PluginMarketplaceListingSections({
     <>
       <PluginMarketplaceOverview entry={entry} />
       <PluginMarketplaceSource entry={entry} />
-      <ResourceDefinitionSection label="Details">
+      <ResourceDefinitionSection
+        label="Details"
+        actions={
+          <PluginCategoryLabel
+            categoryId={entry.categoryId}
+            label={entry.category ?? "Not categorized"}
+          />
+        }
+      >
         <PluginDetailMetadata>
           <PluginMarketplaceDetailMetadata entry={entry} />
         </PluginDetailMetadata>
