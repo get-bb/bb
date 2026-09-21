@@ -1,7 +1,10 @@
-import type {
-  BbPluginApi,
-  PluginCliContext,
-  PluginCliResult,
+import {
+  PluginCliError,
+  cliCommand,
+  defineCli,
+  type BbPluginApi,
+  type PluginCliContext,
+  type PluginCliResult,
 } from "@get-bb/plugin-sdk";
 import type { JsonValue } from "./types.js";
 import type {
@@ -22,6 +25,7 @@ const LIST_DISPLAY_TEXT_MAX_BYTES = 128;
 const LIST_ERROR_MAX_BYTES = 256;
 const DEFAULT_HISTORY_LIMIT = 10;
 const MAX_HISTORY_LIMIT = 100;
+const DEFAULT_LIST_LIMIT = 20;
 const MAX_LIST_LIMIT = 50;
 
 function success(value: unknown): PluginCliResult {
@@ -35,8 +39,17 @@ function jsonLines(records: readonly unknown[]): PluginCliResult {
   };
 }
 
-function failure(message: string): PluginCliResult {
-  return { exitCode: 1, stderr: `${message}\n` };
+async function guarded(
+  run: () => Promise<PluginCliResult>,
+): Promise<PluginCliResult> {
+  try {
+    return await run();
+  } catch (error) {
+    if (error instanceof PluginCliError) throw error;
+    throw new PluginCliError(
+      error instanceof Error ? error.message : String(error),
+    );
+  }
 }
 
 function requireContext(ctx: PluginCliContext): {
@@ -49,61 +62,19 @@ function requireContext(ctx: PluginCliContext): {
   return { projectId: ctx.projectId, threadId: ctx.threadId };
 }
 
-interface ParsedArguments {
-  options: ReadonlyMap<string, string>;
-  positionals: readonly string[];
-}
-
-function parseArguments(
-  argv: readonly string[],
-  allowedOptions: readonly string[],
-  positionalDescription: string | null = null,
-): ParsedArguments {
-  const allowed = new Set(allowedOptions);
-  const options = new Map<string, string>();
-  const positionals: string[] = [];
-  for (let index = 0; index < argv.length; index += 1) {
-    const argument = argv[index]!;
-    if (!argument.startsWith("--")) {
-      positionals.push(argument);
-      continue;
-    }
-    if (!allowed.has(argument)) {
-      throw new Error(`Unknown option ${argument}`);
-    }
-    if (options.has(argument)) {
-      throw new Error(`${argument} may be provided only once`);
-    }
-    const value = argv[index + 1];
-    if (value === undefined || value.startsWith("--")) {
-      throw new Error(`${argument} requires a value`);
-    }
-    options.set(argument, value);
-    index += 1;
-  }
-  if (positionalDescription === null && positionals.length > 0) {
-    throw new Error(`Unexpected positional argument ${positionals[0]}`);
-  }
-  if (positionalDescription !== null && positionals.length !== 1) {
-    throw new Error(
-      positionals.length === 0
-        ? `${positionalDescription} requires a run ID`
-        : `${positionalDescription} accepts exactly one run ID`,
-    );
-  }
-  return { options, positionals };
-}
-
 function sourceInput(
-  options: ReadonlyMap<string, string>,
+  options: {
+    script: string | undefined;
+    file: string | undefined;
+    name: string | undefined;
+  },
   cwd: string | undefined,
 ): WorkflowSourceInput {
   return {
-    script: options.get("--script"),
-    source: options.get("--source"),
-    scriptPath: options.get("--file"),
+    script: options.script,
+    scriptPath: options.file,
     scriptPathBase: cwd,
-    name: options.get("--name"),
+    name: options.name,
   };
 }
 
@@ -116,24 +87,6 @@ function parseJsonOption(value: string | undefined): JsonValue {
       `--args must be valid JSON: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
-}
-
-function parseIntegerOption(
-  options: ReadonlyMap<string, string>,
-  name: string,
-  defaultValue: number,
-  minimum: number,
-  maximum: number,
-): number {
-  const raw = options.get(name);
-  if (raw !== undefined && !/^(0|[1-9]\d*)$/.test(raw)) {
-    throw new Error(`${name} must be an integer from ${minimum} to ${maximum}`);
-  }
-  const value = raw === undefined ? defaultValue : Number(raw);
-  if (!Number.isInteger(value) || value < minimum || value > maximum) {
-    throw new Error(`${name} must be an integer from ${minimum} to ${maximum}`);
-  }
-  return value;
 }
 
 function parseStoredJson(value: string, description: string): JsonValue {
@@ -326,182 +279,232 @@ function callLogRecord(call: WorkflowCallInspection, exportedAt: number) {
   };
 }
 
+const JSON_OPTION_DESCRIPTION =
+  "Report failures as a JSON envelope on stdout; command output is always JSON";
+const RUN_ID_POSITIONAL = {
+  name: "run-id",
+  description: "Workflow run ID returned by bb workflows run",
+  required: true,
+} as const;
+const SOURCE_OPTIONS = {
+  script: {
+    type: "string",
+    placeholder: "javascript",
+    aliases: ["source"],
+    description:
+      "Inline workflow source starting with `export const meta = { name, description, phases }`",
+  },
+  file: {
+    type: "string",
+    placeholder: "path",
+    aliases: ["script-file", "path"],
+    description:
+      "Workflow file inside the origin workspace; relative paths resolve from the CLI working directory",
+  },
+  name: {
+    type: "string",
+    placeholder: "name",
+    aliases: ["workflow"],
+    description:
+      "Named workflow under .bb/workflows/<name>.js; lowercase kebab-case, at most 64 characters",
+  },
+} as const;
+const SOURCE_CONSTRAINT = {
+  kind: "exactly-one",
+  options: ["script", "file", "name"],
+} as const;
+
 export function registerWorkflowCli(
   bb: BbPluginApi,
   service: WorkflowService,
 ): void {
-  bb.cli.register({
-    name: "workflows",
-    summary: "Run and inspect durable BB workflows",
-    commands: [
-      {
-        name: "run",
-        summary: "Start a workflow and return immediately",
-        usage:
-          "bb workflows run (--script '<javascript>'|--file <path>|--name <name>) [--args '<json>'] [--resume <run-id>]",
-      },
-      {
-        name: "validate",
-        summary: "Validate workflow source and literal model selections",
-        usage:
-          "bb workflows validate (--script '<javascript>'|--file <path>|--name <name>)",
-      },
-      {
-        name: "status",
-        summary: "Show a compact workflow run summary",
-        usage: "bb workflows status <run-id>",
-      },
-      {
-        name: "history",
-        summary: "Read one JSONL page of workflow run and call history",
-        usage:
-          "bb workflows history <run-id> [--cursor <call-index>] [--limit <1-100>]",
-      },
-      {
-        name: "list",
-        summary: "List recent project workflow runs",
-        usage: "bb workflows list [--limit <1-50>]",
-      },
-      {
-        name: "stop",
-        summary: "Cancel a workflow run",
-        usage: "bb workflows stop <run-id>",
-      },
-    ],
-    async run(argv, ctx) {
-      try {
-        const command = argv[0];
-        if (command === "run") {
-          const { options } = parseArguments(argv.slice(1), [
-            "--script",
-            "--source",
-            "--file",
-            "--name",
-            "--args",
-            "--resume",
-          ]);
-          const context = requireContext(ctx);
-          const prepared = await prepareWorkflowSource(
-            bb,
-            context,
-            sourceInput(options, ctx.cwd),
-          );
-          const run = await service.start({
-            projectId: context.projectId,
-            originThreadId: context.threadId,
-            source: prepared.source,
-            args: parseJsonOption(options.get("--args")),
-            resumedFromRunId: options.get("--resume") ?? null,
-          });
-          return success({ runId: run.id, name: run.name, status: run.status });
-        }
-        if (command === "validate") {
-          const { options } = parseArguments(argv.slice(1), [
-            "--script",
-            "--source",
-            "--file",
-            "--name",
-          ]);
-          const context = requireContext(ctx);
-          const prepared = await prepareWorkflowSource(
-            bb,
-            context,
-            sourceInput(options, ctx.cwd),
-          );
-          return success({
-            ...prepared.validation,
-            origin: prepared.origin,
-          });
-        }
-        if (command === "status") {
-          const { positionals } = parseArguments(argv.slice(1), [], "status");
-          const context = requireContext(ctx);
-          const runId = positionals[0]!;
-          const page = service.inspectPage(runId, -1, 1);
-          if (page === null || page.run.projectId !== context.projectId) {
-            throw new Error(`Unknown workflow run ${runId}`);
-          }
-          return success(statusSummary(page));
-        }
-        if (command === "history") {
-          const { options, positionals } = parseArguments(
-            argv.slice(1),
-            ["--cursor", "--limit"],
-            "history",
-          );
-          const runId = positionals[0]!;
-          const cursor = parseIntegerOption(
-            options,
-            "--cursor",
-            0,
-            0,
-            Number.MAX_SAFE_INTEGER,
-          );
-          const limit = parseIntegerOption(
-            options,
-            "--limit",
-            DEFAULT_HISTORY_LIMIT,
-            1,
-            MAX_HISTORY_LIMIT,
-          );
-          const context = requireContext(ctx);
-          const page = service.inspectPage(runId, cursor - 1, limit + 1);
-          if (page === null || page.run.projectId !== context.projectId) {
-            throw new Error(`Unknown workflow run ${runId}`);
-          }
-          const exportedAt = Date.now();
-          const calls = page.calls.slice(0, limit);
-          const hasMore = page.calls.length > limit;
-          const nextCursor = hasMore ? calls.at(-1)!.callIndex + 1 : null;
-          return jsonLines([
-            cursor === 0
-              ? runLogRecord(page.run, exportedAt)
-              : runReferenceLogRecord(page.run, exportedAt),
-            ...calls.map((call) => callLogRecord(call, exportedAt)),
-            {
-              type: "page",
-              logVersion: 1,
-              runId,
-              cursor,
-              limit,
-              returned: calls.length,
-              totalCalls: page.callCounts.total,
-              hasMore,
-              nextCursor,
-              exportedAt,
+  bb.cli.register(
+    defineCli({
+      name: "workflows",
+      summary: "Run and inspect durable BB workflows",
+      description:
+        "Workflows run in the background: start one, then poll the compact status summary and read bounded JSONL history pages.",
+      commands: {
+        run: cliCommand({
+          summary: "Start a workflow and return immediately",
+          constraints: [SOURCE_CONSTRAINT],
+          options: {
+            ...SOURCE_OPTIONS,
+            args: {
+              type: "string",
+              placeholder: "json",
+              description:
+                "JSON value exposed to the script as the global `args`, verbatim",
             },
-          ]);
-        }
-        if (command === "list") {
-          const { options } = parseArguments(argv.slice(1), ["--limit"]);
-          const limit = parseIntegerOption(
-            options,
-            "--limit",
-            20,
-            1,
-            MAX_LIST_LIMIT,
-          );
-          const context = requireContext(ctx);
-          return success(
-            service.list(context.projectId, limit).map(listRunSummary),
-          );
-        }
-        if (command === "stop") {
-          const { positionals } = parseArguments(argv.slice(1), [], "stop");
-          const context = requireContext(ctx);
-          const runId = positionals[0]!;
-          const run = service.get(runId);
-          if (run === null || run.projectId !== context.projectId) {
-            throw new Error(`Unknown workflow run ${runId}`);
-          }
-          return success({ runId, stopped: await service.stop(runId) });
-        }
-        return failure(
-          "Usage: bb workflows <run|validate|status|history|list|stop> [options]",
-        );
-      } catch (error) {
-        return failure(error instanceof Error ? error.message : String(error));
-      }
-    },
-  });
+            resume: {
+              type: "string",
+              placeholder: "run-id",
+              description:
+                "Reuse the recorded results of a previous run for calls that match",
+            },
+            json: { type: "boolean", description: JSON_OPTION_DESCRIPTION },
+          },
+          run(input, ctx) {
+            return guarded(async () => {
+              const context = requireContext(ctx);
+              const prepared = await prepareWorkflowSource(
+                bb,
+                context,
+                sourceInput(input.options, ctx.cwd),
+              );
+              const run = await service.start({
+                projectId: context.projectId,
+                originThreadId: context.threadId,
+                source: prepared.source,
+                args: parseJsonOption(input.options.args),
+                resumedFromRunId: input.options.resume ?? null,
+              });
+              return success({
+                runId: run.id,
+                name: run.name,
+                status: run.status,
+              });
+            });
+          },
+        }),
+        validate: cliCommand({
+          summary: "Validate workflow source and literal model selections",
+          constraints: [SOURCE_CONSTRAINT],
+          options: {
+            ...SOURCE_OPTIONS,
+            json: { type: "boolean", description: JSON_OPTION_DESCRIPTION },
+          },
+          run(input, ctx) {
+            return guarded(async () => {
+              const context = requireContext(ctx);
+              const prepared = await prepareWorkflowSource(
+                bb,
+                context,
+                sourceInput(input.options, ctx.cwd),
+              );
+              return success({
+                ...prepared.validation,
+                origin: prepared.origin,
+              });
+            });
+          },
+        }),
+        status: cliCommand({
+          summary: "Show a compact workflow run summary",
+          positionals: [RUN_ID_POSITIONAL],
+          options: {
+            json: { type: "boolean", description: JSON_OPTION_DESCRIPTION },
+          },
+          run(input, ctx) {
+            return guarded(async () => {
+              const context = requireContext(ctx);
+              const runId = input.positionals["run-id"];
+              const page = service.inspectPage(runId, -1, 1);
+              if (page === null || page.run.projectId !== context.projectId) {
+                throw new Error(`Unknown workflow run ${runId}`);
+              }
+              return success(statusSummary(page));
+            });
+          },
+        }),
+        history: cliCommand({
+          summary: "Read one JSONL page of workflow run and call history",
+          positionals: [RUN_ID_POSITIONAL],
+          options: {
+            cursor: {
+              type: "integer",
+              min: 0,
+              max: Number.MAX_SAFE_INTEGER,
+              default: 0,
+              placeholder: "call-index",
+              description:
+                "First call index to include; use a page record's nextCursor to continue",
+            },
+            limit: {
+              type: "integer",
+              min: 1,
+              max: MAX_HISTORY_LIMIT,
+              default: DEFAULT_HISTORY_LIMIT,
+              description: "How many calls to include in this page",
+            },
+            json: { type: "boolean", description: JSON_OPTION_DESCRIPTION },
+          },
+          run(input, ctx) {
+            return guarded(async () => {
+              const runId = input.positionals["run-id"];
+              const { cursor, limit } = input.options;
+              const context = requireContext(ctx);
+              const page = service.inspectPage(runId, cursor - 1, limit + 1);
+              if (page === null || page.run.projectId !== context.projectId) {
+                throw new Error(`Unknown workflow run ${runId}`);
+              }
+              const exportedAt = Date.now();
+              const calls = page.calls.slice(0, limit);
+              const hasMore = page.calls.length > limit;
+              const nextCursor = hasMore ? calls.at(-1)!.callIndex + 1 : null;
+              return jsonLines([
+                cursor === 0
+                  ? runLogRecord(page.run, exportedAt)
+                  : runReferenceLogRecord(page.run, exportedAt),
+                ...calls.map((call) => callLogRecord(call, exportedAt)),
+                {
+                  type: "page",
+                  logVersion: 1,
+                  runId,
+                  cursor,
+                  limit,
+                  returned: calls.length,
+                  totalCalls: page.callCounts.total,
+                  hasMore,
+                  nextCursor,
+                  exportedAt,
+                },
+              ]);
+            });
+          },
+        }),
+        list: cliCommand({
+          summary: "List recent project workflow runs",
+          options: {
+            limit: {
+              type: "integer",
+              min: 1,
+              max: MAX_LIST_LIMIT,
+              default: DEFAULT_LIST_LIMIT,
+              description: "How many recent runs to list, newest first",
+            },
+            json: { type: "boolean", description: JSON_OPTION_DESCRIPTION },
+          },
+          run(input, ctx) {
+            return guarded(async () => {
+              const context = requireContext(ctx);
+              return success(
+                service
+                  .list(context.projectId, input.options.limit)
+                  .map(listRunSummary),
+              );
+            });
+          },
+        }),
+        stop: cliCommand({
+          summary: "Cancel a workflow run",
+          positionals: [RUN_ID_POSITIONAL],
+          options: {
+            json: { type: "boolean", description: JSON_OPTION_DESCRIPTION },
+          },
+          run(input, ctx) {
+            return guarded(async () => {
+              const context = requireContext(ctx);
+              const runId = input.positionals["run-id"];
+              const run = service.get(runId);
+              if (run === null || run.projectId !== context.projectId) {
+                throw new Error(`Unknown workflow run ${runId}`);
+              }
+              return success({ runId, stopped: await service.stop(runId) });
+            });
+          },
+        }),
+      },
+    }),
+  );
 }

@@ -4,6 +4,8 @@ import type {
   SidebarSectionDefinition,
   ThreadComparator,
 } from "@bb/client-core";
+import { useAtomValue } from "jotai";
+import { sidebarGroupThreadsByEnvironmentAtom } from "./sidebarCollapsedAtoms";
 import { resolveSidebarNestPreviewBeforeKey } from "./sidebarNestPreviewPlacement";
 import type { SectionThreadDndState } from "./useSectionThreadDnd";
 
@@ -24,6 +26,9 @@ export function useNestDropPreview({
   sections,
   threads,
 }: UseNestDropPreviewArgs): SectionThreadDndState | null {
+  const groupThreadsByEnvironment = useAtomValue(
+    sidebarGroupThreadsByEnvironmentAtom,
+  );
   if (!sectionDnd) return null;
   const { activeThread, nestTarget } = sectionDnd;
   if (!activeThread || nestTarget?.state !== "valid") return sectionDnd;
@@ -33,6 +38,7 @@ export function useNestDropPreview({
       activeThread,
       compareThreads,
       draftThreadIds,
+      groupThreadsByEnvironment,
       parentThreadId: nestTarget.threadId,
       pinnedRootNodes,
       sections,

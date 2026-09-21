@@ -165,6 +165,7 @@ const SCRIPT_AUTOMATION: AutomationResponse = {
   lastRunStatus: "succeeded",
   execution: {
     mode: "script",
+    workingDirectory: { type: "project" },
     script: `#!/usr/bin/env bash
 set -euo pipefail
 
@@ -330,6 +331,8 @@ export function OverviewRows() {
                 project={project}
                 onNavigate={noop}
                 onEnabledChange={async () => {}}
+                onRunNow={async () => {}}
+                onDelete={() => {}}
               />
             </div>
           ) : null}
@@ -345,6 +348,8 @@ export function OverviewRows() {
             project={{ id: "proj_personal", name: "Personal" }}
             onNavigate={noop}
             onEnabledChange={async () => {}}
+            onRunNow={async () => {}}
+            onDelete={() => {}}
           />
         </div>
       </StoryRow>
@@ -544,6 +549,8 @@ export function DetailStates() {
           <ScriptAutomationDefinition
             execution={{
               mode: "script",
+              workingDirectory: { type: "project" },
+              resolvedWorkingDirectory: "/srv/projects/bb",
               script: 'echo "Preparing report"',
               interpreter: "bash",
               timeoutMs: 60000,

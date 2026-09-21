@@ -26,7 +26,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/components/thread/ThreadActionsProvider", () => ({
   useThreadActions: () => ({
-    renameThread: mocks.renameThread,
+    renameThreadAsync: mocks.renameThread,
   }),
 }));
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
@@ -39,10 +39,15 @@ import {
   EMPTY_SIDEBAR_THREAD_SHORTCUT_KEYS,
   SidebarThreadShortcutKeysContext,
 } from "./sidebarThreadShortcuts";
+import { collectPluginAppRegistrations } from "@get-bb/plugin-sdk/internal/plugin-app-collector";
 import {
   resetPluginThreadRowStatusesForTest,
   setPluginThreadRowStatus,
 } from "@/lib/plugin-thread-row-status";
+import {
+  removePluginSlotRegistrations,
+  setPluginSlotRegistrations,
+} from "@/lib/plugin-slots";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import { SPLIT_LAYOUT_STORAGE_KEY } from "@/lib/split-layout/persistence";
 import { NO_COLLAPSED_CHILD_ACTIVITY } from "@bb/client-core";
@@ -217,6 +222,7 @@ afterEach(() => {
   mocks.renameThread.mockReset();
   resetSidebarTitleDoubleClickForTest();
   resetPluginThreadRowStatusesForTest();
+  removePluginSlotRegistrations("icon-probe");
   expect(vi.isMockFunction(sdk.threads.resolveMentions)).toBe(false);
   window.localStorage.removeItem(SPLIT_LAYOUT_STORAGE_KEY);
   window.sessionStorage.removeItem(SPLIT_LAYOUT_STORAGE_KEY);
@@ -407,6 +413,47 @@ describe("ThreadRow", () => {
     expect(screen.queryByLabelText("Unread thread succeeded")).toBeNull();
   });
 
+  it("draws a plugin's own registered artwork, and falls back for a name it never registered", () => {
+    function Beacon() {
+      return <svg data-plugin-mark="beacon" />;
+    }
+    setPluginSlotRegistrations(
+      "icon-probe",
+      collectPluginAppRegistrations({
+        __bbPluginApp: true,
+        setup(app) {
+          app.experimental_icons.register({
+            name: "icon-probe/beacon",
+            component: Beacon,
+          });
+        },
+      }),
+    );
+    setPluginThreadRowStatus("thr_test", "icon-probe", {
+      icon: "icon-probe/beacon",
+      label: "Registered artwork",
+    });
+    const { container } = renderThreadRow({
+      thread: createThread({ lastReadAt: 1, latestAttentionAt: 1 }),
+    });
+
+    expect(
+      container.querySelector('[data-plugin-mark="beacon"]'),
+    ).not.toBeNull();
+
+    act(() => {
+      setPluginThreadRowStatus("thr_test", "icon-probe", {
+        icon: "icon-probe/undeclared",
+        label: "Unregistered name",
+      });
+    });
+
+    expect(container.querySelector('[data-plugin-mark="beacon"]')).toBeNull();
+    expect(
+      screen.getByLabelText("Unregistered name").getAttribute("data-icon"),
+    ).toBe("Zap");
+  });
+
   it("replaces the draft icon with a plugin status and restores it when cleared", () => {
     setPluginThreadRowStatus("thr_test", "composer-status-test", {
       icon: "AiContentGenerator01",
@@ -477,9 +524,6 @@ describe("ThreadRow", () => {
     const runningIcon = screen.getByLabelText("Plugin running");
     expect(runningIcon.getAttribute("data-icon")).toBe("AiContentGenerator01");
     expect(Array.from(runningIcon.classList)).toContain("animate-shine-icon");
-    expect(Array.from(runningIcon.classList)).toContain(
-      "motion-safe:[animation-duration:1.5s]",
-    );
     expect(Array.from(runningIcon.parentElement?.classList ?? [])).toContain(
       "text-success",
     );
@@ -500,6 +544,25 @@ describe("ThreadRow", () => {
     expect(errorIcon.getAttribute("data-icon")).toBe("AlertCircle");
     expect(Array.from(errorIcon.classList)).toContain("text-destructive");
     expect(Array.from(errorIcon.classList)).not.toContain("animate-shine-icon");
+  });
+
+  it("disables runtime glyph rotation when reduced motion is requested", () => {
+    renderThreadRow({
+      hasComposerDraft: false,
+      thread: createThread({
+        status: "active",
+        runtime: {
+          displayStatus: "active",
+          hostReconnectGraceExpiresAt: null,
+        },
+      }),
+    });
+
+    const runningIcon = screen.getByLabelText("Thread working");
+    expect(runningIcon.getAttribute("data-icon")).toBe("Loading");
+    expect(Array.from(runningIcon.classList)).toContain(
+      "motion-reduce:animate-none",
+    );
   });
 
   it("keeps the runtime spinner ahead of a plugin status", () => {
@@ -929,6 +992,40 @@ describe("ThreadRow", () => {
       threadFailure.getAttribute("class"),
     );
   });
+
+  it.each([true, false])(
+    "reserves a stable action slot beside a parent disclosure (collapsed: %s)",
+    (isCollapsed) => {
+      const onToggleCollapsed = vi.fn();
+      renderThreadRow({
+        thread: createThread({
+          title: "Nested discussion with enough text to fill the sidebar width",
+        }),
+        options: {
+          kind: "parent",
+          depth: 1,
+          isCompact: false,
+          isCollapsed,
+          childCount: 1,
+          childActivity: NO_COLLAPSED_CHILD_ACTIVITY,
+          onToggleCollapsed,
+        },
+      });
+      const toggle = screen.getByRole("button", {
+        name: /(?:Expand|Collapse) Nested discussion/,
+      });
+      const titleContainer = toggle.parentElement;
+      expect(
+        titleContainer?.classList.contains("bb-sidebar-hover-actions-inset"),
+      ).toBe(false);
+      expect(titleContainer?.classList.contains("pr-7.5")).toBe(true);
+      expect(
+        titleContainer?.classList.contains("max-md:pointer-coarse:pr-0"),
+      ).toBe(true);
+      fireEvent.click(toggle);
+      expect(onToggleCollapsed).toHaveBeenCalledWith("thr_test");
+    },
+  );
 
   it("keeps the parent-thread disclosure caret visible on mobile", () => {
     renderThreadRow({
@@ -1423,33 +1520,66 @@ describe("ThreadRow", () => {
     expect(screen.getByLabelText("Unread thread succeeded")).not.toBeNull();
   });
 
-  it("edits the row title inline after a double click and commits on Enter", () => {
+  it("edits the row title inline after a double click and commits on Enter", async () => {
     renderThreadRow({
       thread: createThread({ title: "Thread", titleFallback: "Thread" }),
     });
 
     fireEvent.doubleClick(screen.getByText("Thread"));
-    const input = screen.getByRole("textbox", { name: "Thread name" });
+    const input = await screen.findByRole("textbox", { name: "Thread name" });
     expect(input).toHaveProperty("value", "Thread");
 
     fireEvent.change(input, { target: { value: "Renamed thread" } });
     fireEvent.keyDown(input, { key: "Enter" });
 
-    expect(mocks.renameThread).toHaveBeenCalledWith(
-      "thr_test",
-      "Renamed thread",
-    );
-    expect(screen.queryByRole("textbox", { name: "Thread name" })).toBeNull();
+    await waitFor(() => {
+      expect(mocks.renameThread).toHaveBeenCalledWith(
+        "thr_test",
+        "Renamed thread",
+      );
+    });
+    await waitFor(() => {
+      expect(screen.queryByRole("textbox", { name: "Thread name" })).toBeNull();
+    });
     expect(screen.getByText("Thread")).not.toBeNull();
   });
 
-  it("cancels an inline row rename on Escape without saving", () => {
+  it("does not start a sortable drag while editing the title", async () => {
+    const onPointerDown = vi.fn();
+    renderThreadRow({
+      options: {
+        ...DEFAULT_OPTIONS,
+        dragBindings: {
+          attributes: {
+            role: "button",
+            tabIndex: 0,
+            "aria-disabled": false,
+            "aria-pressed": undefined,
+            "aria-roledescription": "sortable",
+            "aria-describedby": "thread-sortable",
+          },
+          disabled: false,
+          listeners: { onPointerDown },
+          setActivatorNodeRef: vi.fn(),
+        },
+      },
+    });
+
+    fireEvent.doubleClick(screen.getByText("Thread"));
+    fireEvent.pointerDown(
+      await screen.findByRole("textbox", { name: "Thread name" }),
+    );
+
+    expect(onPointerDown).not.toHaveBeenCalled();
+  });
+
+  it("cancels an inline row rename on Escape without saving", async () => {
     renderThreadRow({
       thread: createThread({ title: "Thread", titleFallback: "Thread" }),
     });
 
     fireEvent.doubleClick(screen.getByText("Thread"));
-    const input = screen.getByRole("textbox", { name: "Thread name" });
+    const input = await screen.findByRole("textbox", { name: "Thread name" });
     fireEvent.change(input, { target: { value: "Scratch name" } });
     fireEvent.keyDown(input, { key: "Escape" });
 
@@ -1458,7 +1588,7 @@ describe("ThreadRow", () => {
     expect(screen.getByText("Thread")).not.toBeNull();
   });
 
-  it("starts a rename from a second click after the row remounts", () => {
+  it("starts a rename from a second click after the row remounts", async () => {
     const thread = createThread({ title: "Thread", titleFallback: "Thread" });
     const { rerenderThreadRow } = renderThreadRow({ thread });
     const link = screen.getByRole("link", { name: "Open Thread" });
@@ -1467,9 +1597,8 @@ describe("ThreadRow", () => {
     rerenderThreadRow(thread);
     fireEvent.click(screen.getByRole("link", { name: "Open Thread" }));
 
-    expect(screen.getByRole("textbox", { name: "Thread name" })).toHaveProperty(
-      "value",
-      "Thread",
-    );
+    expect(
+      await screen.findByRole("textbox", { name: "Thread name" }),
+    ).toHaveProperty("value", "Thread");
   });
 });

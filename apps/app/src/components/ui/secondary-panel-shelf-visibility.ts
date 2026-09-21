@@ -1,4 +1,9 @@
+import { useSyncExternalStore } from "react";
+
 export type CompactSecondaryPanelPresentation = "closed" | "shelf" | "full";
+
+export const COMPACT_SHELF_HIDDEN_FIXED_CHROME_CLASS =
+  "data-[panel-shelf=shelf]:invisible data-[panel-shelf=full]:invisible";
 
 let compactSecondaryPanelPresentation: CompactSecondaryPanelPresentation =
   "closed";
@@ -27,4 +32,19 @@ export function subscribeCompactSecondaryPanelShelfShowing(
   return () => {
     listeners.delete(listener);
   };
+}
+
+export function usePanelShelfState({
+  isCompactViewport,
+  isSidebarDrawerOpen,
+}: {
+  isCompactViewport: boolean;
+  isSidebarDrawerOpen: boolean;
+}): CompactSecondaryPanelPresentation | undefined {
+  const presentation = useSyncExternalStore(
+    subscribeCompactSecondaryPanelShelfShowing,
+    getCompactSecondaryPanelPresentation,
+    () => "closed" as const,
+  );
+  return isCompactViewport && !isSidebarDrawerOpen ? presentation : undefined;
 }

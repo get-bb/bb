@@ -311,6 +311,7 @@ describe("builtin plugin reconciliation", () => {
       ["push-notifications", "BellDot"],
       ["drafts", "EditFile"],
       ["scheduled-send", "Calendar"],
+      ["agent-annotations", "MessageSquarePlus"],
       ["secrets", "Lock"],
       ["side-chat", "SideChat"],
       ["workflows", "Workflow"],

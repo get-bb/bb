@@ -708,9 +708,19 @@ describe("bb server move", () => {
       ).rejects.toThrow("process.exit:1");
 
       expect(startMove).not.toHaveBeenCalled();
-      expect(collectLogPayloads(vi.mocked(console.log))).toEqual([]);
+      const message =
+        'Moving the server is off. Turn on the "Server move" experiment in Settings → Experiments, or run bb settings experiment serverMove true, then try again.';
+      expect(
+        collectLogPayloads(vi.mocked(console.log)).map((payload) =>
+          JSON.parse(payload),
+        ),
+      ).toEqual(
+        extraArgs.includes("--json")
+          ? [{ ok: false, error: { code: "error", message } }]
+          : [],
+      );
       expect(collectLogPayloads(vi.mocked(console.error))).toEqual([
-        'Error: Moving the server is off. Turn on the "Server move" experiment in Settings → Experiments, or run bb settings experiment serverMove true, then try again.',
+        `Error: ${message}`,
       ]);
     },
   );

@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
-import { useAtom } from "jotai";
+import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { COARSE_POINTER_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
@@ -9,6 +9,7 @@ import {
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
   DropdownMenuSub,
@@ -19,10 +20,13 @@ import {
 import {
   sidebarOrganizationModeAtom,
   sidebarChronologicalSortAtom,
+  sidebarGroupThreadsByEnvironmentAtom,
+  sidebarEnvironmentGroupingAtom,
   sidebarSortDirectionAtom,
 } from "./sidebarCollapsedAtoms";
 import { SidebarControlButton, SidebarRowControls } from "./SidebarRowControls";
 import { SIDEBAR_CONTROL_BUTTON_CLASS } from "./sidebarRowClasses";
+import { ThreadListVisibilityMenuItems } from "./ThreadListVisibility";
 
 interface HeaderCreationActions {
   onNewProject?: () => void;
@@ -50,18 +54,21 @@ function SidebarViewItems({ page }: { page: "organize" | "sort" }) {
   const [organization, setOrganization] = useAtom(sidebarOrganizationModeAtom);
   const [sort, setSort] = useAtom(sidebarChronologicalSortAtom);
   const [savedDirection, setDirection] = useAtom(sidebarSortDirectionAtom);
+  const setEnvironmentGrouping = useSetAtom(sidebarEnvironmentGroupingAtom);
+  const groupByEnvironment = useAtomValue(sidebarGroupThreadsByEnvironmentAtom);
   const selectedSort = sort === "none" ? "updated" : sort;
-  return (
-    <DropdownMenuGroup
-      aria-label={page === "organize" ? "Organize" : "Sort by"}
-    >
-      {page === "organize"
-        ? SIDEBAR_ORGANIZE_OPTIONS.map((option) => (
+  if (page === "organize") {
+    return (
+      <>
+        <DropdownMenuGroup aria-label="Sections">
+          <DropdownMenuLabel>Sections</DropdownMenuLabel>
+          {SIDEBAR_ORGANIZE_OPTIONS.map((option) => (
             <DropdownMenuItem
               key={option.mode}
               role="menuitemradio"
               aria-checked={organization === option.mode}
-              onSelect={() => {
+              onSelect={(event) => {
+                event.preventDefault();
                 setOrganization(option.mode);
               }}
             >
@@ -72,49 +79,72 @@ function SidebarViewItems({ page }: { page: "organize" | "sort" }) {
                 )}
               </span>
             </DropdownMenuItem>
-          ))
-        : SIDEBAR_SORT_OPTIONS.map((option) => {
-            const selected = selectedSort === option.sort;
-            const direction =
-              savedDirection === "default" ? option.direction : savedDirection;
-            const nextDirection = selected
-              ? direction === "ascending"
-                ? "descending"
-                : "ascending"
-              : option.direction;
-            return (
-              <DropdownMenuItem
-                key={option.sort}
-                role="menuitemradio"
-                aria-checked={selected}
-                aria-label={
-                  selected
-                    ? `${option.label}, ${direction}. Sort ${nextDirection}`
-                    : option.label
-                }
-                onSelect={(event) => {
-                  event.preventDefault();
-                  setSort(option.sort);
-                  setDirection(nextDirection);
-                }}
-              >
-                {option.label}
-                {selected && (
-                  <span className="sr-only">
-                    , {direction}. Sort {nextDirection}
-                  </span>
-                )}
-                <span className="ml-auto inline-flex size-4 shrink-0 items-center justify-center">
-                  {selected && (
-                    <Icon
-                      name={direction === "ascending" ? "ArrowUp" : "ArrowDown"}
-                      className="size-4"
-                    />
-                  )}
-                </span>
-              </DropdownMenuItem>
-            );
-          })}
+          ))}
+        </DropdownMenuGroup>
+        <DropdownMenuSeparator />
+        <DropdownMenuGroup aria-label="Groups">
+          <DropdownMenuLabel>Groups</DropdownMenuLabel>
+          <DropdownMenuItem
+            role="menuitemcheckbox"
+            aria-checked={groupByEnvironment}
+            onSelect={(event) => {
+              event.preventDefault();
+              setEnvironmentGrouping(!groupByEnvironment);
+            }}
+          >
+            By environment
+            <span className="ml-auto inline-flex size-4 shrink-0 items-center justify-center">
+              {groupByEnvironment && <Icon name="Check" className="size-4" />}
+            </span>
+          </DropdownMenuItem>
+        </DropdownMenuGroup>
+      </>
+    );
+  }
+  return (
+    <DropdownMenuGroup aria-label="Sort by">
+      {SIDEBAR_SORT_OPTIONS.map((option) => {
+        const selected = selectedSort === option.sort;
+        const direction =
+          savedDirection === "default" ? option.direction : savedDirection;
+        const nextDirection = selected
+          ? direction === "ascending"
+            ? "descending"
+            : "ascending"
+          : option.direction;
+        return (
+          <DropdownMenuItem
+            key={option.sort}
+            role="menuitemradio"
+            aria-checked={selected}
+            aria-label={
+              selected
+                ? `${option.label}, ${direction}. Sort ${nextDirection}`
+                : option.label
+            }
+            onSelect={(event) => {
+              event.preventDefault();
+              setSort(option.sort);
+              setDirection(nextDirection);
+            }}
+          >
+            {option.label}
+            {selected && (
+              <span className="sr-only">
+                , {direction}. Sort {nextDirection}
+              </span>
+            )}
+            <span className="ml-auto inline-flex size-4 shrink-0 items-center justify-center">
+              {selected && (
+                <Icon
+                  name={direction === "ascending" ? "ArrowUp" : "ArrowDown"}
+                  className="size-4"
+                />
+              )}
+            </span>
+          </DropdownMenuItem>
+        );
+      })}
     </DropdownMenuGroup>
   );
 }
@@ -126,6 +156,7 @@ export function SidebarHeaderControls({
   children,
   open,
   onOpenChange,
+  onCloseAutoFocus,
 }: {
   label: string;
   onNewThread?: () => void;
@@ -133,6 +164,7 @@ export function SidebarHeaderControls({
   children?: ReactNode;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  onCloseAutoFocus?: (event: Event) => void;
 }) {
   const creation = useContext(HeaderCreationContext);
   const compact = useIsCompactViewport();
@@ -161,6 +193,7 @@ export function SidebarHeaderControls({
             variant="ghost"
             size="icon"
             aria-label={`${label} actions`}
+            data-sidebar-rename-anchor=""
             className={SIDEBAR_CONTROL_BUTTON_CLASS}
           >
             <Icon
@@ -171,6 +204,7 @@ export function SidebarHeaderControls({
         </DropdownMenuTrigger>
         <DropdownMenuContent
           align="end"
+          onCloseAutoFocus={onCloseAutoFocus}
           mobileTitle={
             page === "organize"
               ? "Organize"
@@ -242,11 +276,13 @@ export function SidebarHeaderControls({
                   </DropdownMenuSub>
                 ),
               )}
-              {children && (
+              {children ? (
                 <>
                   <DropdownMenuSeparator />
                   {children}
                 </>
+              ) : (
+                <ThreadListVisibilityMenuItems />
               )}
             </>
           )}
@@ -271,6 +307,7 @@ export function SidebarSectionMenuItems({
           Rename
         </DropdownMenuItem>
       )}
+      <ThreadListVisibilityMenuItems />
       {onRemove && (
         <>
           <DropdownMenuSeparator />

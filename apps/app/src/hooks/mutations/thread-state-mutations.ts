@@ -57,6 +57,7 @@ interface MoveThreadToSectionRequest {
 interface UpdateThreadMutationOptions {
   errorMessage?: string | undefined;
   lifecycleOperation?: LifecycleErrorOperation | undefined;
+  showErrorToast?: boolean;
 }
 
 interface ArchiveThreadAndChildrenMutationRequest {
@@ -84,6 +85,7 @@ export function useUpdateThread(options?: UpdateThreadMutationOptions) {
   >({
     meta: {
       errorMessage: options?.errorMessage ?? "Failed to update thread.",
+      showErrorToast: options?.showErrorToast ?? true,
       ...(options?.lifecycleOperation
         ? { lifecycleOperation: options.lifecycleOperation }
         : {}),
@@ -318,6 +320,7 @@ export function useUnarchiveThread() {
   const queryClient = useQueryClient();
 
   return useMutation({
+    mutationKey: ["unarchive-thread"],
     meta: {
       errorMessage: "Failed to unarchive thread.",
     },

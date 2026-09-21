@@ -279,6 +279,7 @@ function NewTabActionRow({ action, dragHandle }: NewTabActionRowProps) {
       <button
         type="button"
         id={action.id}
+        data-panel-new-tab-item=""
         aria-keyshortcuts={action.shortcut?.ariaKeyshortcuts}
         disabled={action.disabled}
         onClick={action.onSelect}

@@ -1,6 +1,6 @@
 # Core command index
 
-This index lists every command path that the core CLI registers. Read the task-specific reference before you use a command. Check live help for flags and defaults.
+This index lists every command path that the core CLI registers, including aliases: `thread get|view|status` run `thread show`, `thread message|send` run `thread tell`, `thread messages|timeline` run `thread log`, `thread create|new` run `thread spawn`, `terminal read` runs `terminal output`, `plugin uninstall` runs `plugin remove`, and `environment get` runs `environment show`. At the top level `bb host`, `bb hosts`, and `bb machines` run `bb machine`, `bb env` runs `bb environment`, and the plurals `threads`, `projects`, `terminals`, `providers`, `plugins`, and `skills` run their singular command, unless a plugin registers that name. `bb guide commands <group>` prints a group's commands with every option on one page. Read the task-specific reference before you use a command. Check live help for flags and defaults.
 
 ## status
 
@@ -79,7 +79,6 @@ This index lists every command path that the core CLI registers. Read the task-s
 - `bb machine create`
 - `bb machine list`
 - `bb machine show`
-- `bb machine join-code`
 - `bb machine rename`
 - `bb machine remove`
 - `bb machine suspend`
@@ -131,6 +130,7 @@ server.
 - `bb terminal send`
 - `bb terminal resize`
 - `bb terminal output`
+- `bb terminal read`
 - `bb terminal wait`
 - `bb terminal rename`
 - `bb terminal restart`
@@ -142,10 +142,17 @@ server.
 - `bb thread`
 - `bb thread wait`
 - `bb thread spawn`
+- `bb thread create`
+- `bb thread new`
 - `bb thread fork`
 - `bb thread list`
 - `bb thread show`
+- `bb thread get`
+- `bb thread view`
+- `bb thread status`
 - `bb thread log`
+- `bb thread messages`
+- `bb thread timeline`
 - `bb thread output`
 - `bb thread open`
 - `bb thread pane`
@@ -156,6 +163,7 @@ server.
 - `bb thread section delete`
 - `bb thread search`
 - `bb thread history`
+- `bb thread image-metadata`
 - `bb thread read`
 - `bb thread unread`
 - `bb thread reorder-pinned`
@@ -179,6 +187,8 @@ server.
 - `bb thread delete`
 - `bb thread edit-message`
 - `bb thread tell`
+- `bb thread message`
+- `bb thread send`
 - `bb thread retry`
 - `bb thread stop`
 - `bb thread compact`
@@ -202,6 +212,7 @@ server.
 - `bb environment list`
 - `bb environment delete`
 - `bb environment show`
+- `bb environment get`
 - `bb environment status`
 - `bb environment branches`
 - `bb environment paths`
@@ -267,6 +278,7 @@ server.
 - `bb plugin run`
 - `bb plugin logs`
 - `bb plugin remove`
+- `bb plugin uninstall`
 
 ## marketplace
 
@@ -295,6 +307,13 @@ server.
 
 - `bb guide`
 
+## diagnostics
+
+- `bb diagnostics`
+- `bb diagnostics cli-errors`
+
+`bb diagnostics cli-errors` tallies the failed `bb` invocations recorded in `<data dir>/logs/cli-errors.jsonl` on this machine. It records the command path, the error code, and the unknown command or flag, never argument values. `BB_CLI_ERROR_LOG=0` turns recording off.
+
 ## voice
 
 - `bb voice`
@@ -322,3 +341,7 @@ Machine environment: `bb machine env list`, `bb machine env set NAME`
 (value from stdin), and `bb machine env unset NAME`; all accept `--project <id>` for project overrides and `--json`. Omit `--project` for global settings.
 
 Standalone `bb machine create` machines remain until explicitly removed.
+
+To enroll an existing machine, run `bb machine create --provider manual`, then
+run its printed enrollment command on the target. The CLI waits until the daemon
+connects. With `--no-wait`, it returns the creating host ID immediately.

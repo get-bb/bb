@@ -30,7 +30,6 @@ import {
   CatalogPluginDetailBanner,
   PluginDetail,
   PluginDetailBanners,
-  PluginProvenancePill,
 } from "@/components/tools/PluginDetail";
 import {
   ProviderLogo,
@@ -1165,16 +1164,6 @@ export function ResourceControlStates() {
           title="Owned detail-page badges"
           description="Badges appear only when provenance changes how the resource should be understood. Ordinary owned resources stay unlabelled in their detail-page stories."
         >
-          <ControlRow
-            state="Plugin · BB Official catalog"
-            control={<PluginProvenancePill plugin={CATALOG_PLUGIN} />}
-            meaning="Published by bb and installed from the catalog."
-          />
-          <ControlRow
-            state="Plugin · BB Official built-in"
-            control={<PluginProvenancePill plugin={BUNDLED_PLUGIN} />}
-            meaning="Ships with bb. The same badge communicates publisher; lifecycle differences remain in metadata and actions."
-          />
           <ControlRow
             state="Skill · BB Official"
             control={

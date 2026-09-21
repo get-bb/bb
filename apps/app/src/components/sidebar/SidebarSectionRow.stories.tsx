@@ -194,6 +194,7 @@ const DRAG_INTO_PARENT_KEY = "section:work";
 
 function draggingOverSection(): SectionThreadDndState {
   return {
+    activeItemId: null,
     activeThread: makeThreadListEntry({ id: "thr_dragged" }),
     consumeClickSuppression: () => false,
     dndContextProps: {},

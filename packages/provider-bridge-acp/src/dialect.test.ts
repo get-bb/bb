@@ -5,6 +5,8 @@ import {
   GROK_ACP_DIALECT,
   OMP_ACP_DIALECT,
   OPENCODE_ACP_DIALECT,
+  grokContextUsageFromPromptResult,
+  grokContextWindowSizeFromSessionModels,
   resolveAcpDialect,
 } from "./dialect.js";
 import type { AcpToolCallUpdateEvent } from "./wire.js";
@@ -333,5 +335,69 @@ describe("grok dialect", () => {
     ).toEqual({ name: "deploy_thing" });
     expect(identity(undefined)).toBeUndefined();
     expect(identity({ "other.vendor/tool": { name: "x" } })).toBeUndefined();
+  });
+});
+
+describe("grok session context _meta", () => {
+  it("reads the current model's advertised window size", () => {
+    expect(
+      grokContextWindowSizeFromSessionModels({
+        currentModelId: "grok-4.6",
+        availableModels: [
+          {
+            modelId: "grok-4.6",
+            name: "Grok 4.6",
+            _meta: { totalContextTokens: 500_000 },
+          },
+          {
+            modelId: "grok-4.5",
+            name: "Grok 4.5",
+            _meta: { totalContextTokens: 256_000 },
+          },
+        ],
+      }),
+    ).toBe(500_000);
+  });
+
+  it("skips a model without a window and ignores empty catalogs", () => {
+    expect(
+      grokContextWindowSizeFromSessionModels({
+        currentModelId: "grok-4.6",
+        availableModels: [
+          { modelId: "grok-4.6", name: "Grok 4.6" },
+          {
+            modelId: "grok-4.5",
+            name: "Grok 4.5",
+            _meta: { totalContextTokens: 256_000 },
+          },
+        ],
+      }),
+    ).toBe(256_000);
+    expect(grokContextWindowSizeFromSessionModels(undefined)).toBeUndefined();
+    expect(
+      grokContextWindowSizeFromSessionModels({ availableModels: [] }),
+    ).toBeUndefined();
+  });
+
+  it("prefers prompt usage inputTokens for the occupied window", () => {
+    expect(
+      grokContextUsageFromPromptResult({
+        stopReason: "end_turn",
+        _meta: {
+          totalTokens: 17_538,
+          inputTokens: 17_504,
+          usage: { inputTokens: 17_504, totalTokens: 17_531 },
+        },
+      }),
+    ).toEqual({ used: 17_504 });
+    expect(
+      grokContextUsageFromPromptResult({
+        stopReason: "end_turn",
+        _meta: { totalTokens: 12 },
+      }),
+    ).toEqual({ used: 12 });
+    expect(
+      grokContextUsageFromPromptResult({ stopReason: "end_turn" }),
+    ).toBeUndefined();
   });
 });

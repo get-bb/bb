@@ -74,7 +74,7 @@ export const SortableSidebarSection = memo(function SortableSidebarSection({
   return (
     <TopLevelSidebarSection
       {...props}
-      dragBindings={dragBindings}
+      dragBindings={props.labelEditor ? undefined : dragBindings}
       sectionRef={setNodeRef}
       sectionStyle={style}
     />

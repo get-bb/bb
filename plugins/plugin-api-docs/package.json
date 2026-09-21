@@ -26,6 +26,7 @@
     "prepare:bundled": "bb-plugin-build prepare-bundled"
   },
   "dependencies": {
+    "@bb/shared-ui": "workspace:*",
     "@bb/plugin-api-map": "workspace:*"
   },
   "devDependencies": {

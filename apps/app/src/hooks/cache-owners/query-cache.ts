@@ -10,6 +10,7 @@ import {
   iterateThreadListCacheEntries,
 } from "./thread-list-cache-data";
 import { bumpDiffPatchEvictionGeneration } from "./environment-diff-patch-cache-owner";
+import { patchCachedQueryData } from "./cache-effect-utils";
 import { readCachedSidebarBootstrap } from "@/lib/sidebar-bootstrap-cache";
 import type {
   SidebarBootstrapResponse,
@@ -310,7 +311,8 @@ export function applyToCachedSidebarNavigationThreads({
   mapper,
   queryClient,
 }: ApplyToCachedSidebarNavigationThreadsArgs): void {
-  queryClient.setQueryData<SidebarBootstrapResponse>(
+  patchCachedQueryData<SidebarBootstrapResponse>(
+    queryClient,
     sidebarNavigationQueryKey(),
     (currentNavigation) => {
       if (!currentNavigation) {
@@ -398,7 +400,7 @@ export function restoreCachedSidebarNavigation(
   queryClient: QueryClient,
   snapshot: CachedSidebarNavigationSnapshot,
 ): void {
-  queryClient.setQueryData(sidebarNavigationQueryKey(), snapshot);
+  patchCachedQueryData(queryClient, sidebarNavigationQueryKey(), snapshot);
 }
 
 export function getEnvironmentRecordInvalidationQueryKeys({
@@ -627,14 +629,19 @@ export function optimisticallyInsertThread(
       continue;
     }
 
-    queryClient.setQueryData<ThreadListEntry[]>(queryKey, upsertThread(data));
+    patchCachedQueryData<ThreadListEntry[]>(
+      queryClient,
+      queryKey,
+      upsertThread(data),
+    );
   }
 
   if (thread.visibility === "hidden" || thread.archivedAt !== null) {
     return;
   }
 
-  queryClient.setQueryData<SidebarBootstrapResponse>(
+  patchCachedQueryData<SidebarBootstrapResponse>(
+    queryClient,
     sidebarNavigationQueryKey(),
     (navigation) => {
       if (!navigation) {
@@ -680,7 +687,7 @@ function updateCachedTimelineRows({
       continue;
     }
 
-    queryClient.setQueryData<ThreadTimelineResponse>(queryKey, {
+    patchCachedQueryData<ThreadTimelineResponse>(queryClient, queryKey, {
       ...response,
       rows: [...nextRows],
     });

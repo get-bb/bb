@@ -632,6 +632,170 @@ describe("buildProjectThreadGroups", () => {
   });
 });
 
+describe("worktree grouping preference", () => {
+  const worktreeSiblings = [
+    createThread({
+      id: "wt-a",
+      environmentId: "env_wt",
+      environmentIsWorktree: true,
+      sectionId: "sec_work",
+      createdAt: 10,
+    }),
+    createThread({
+      id: "wt-b",
+      environmentId: "env_wt",
+      environmentIsWorktree: true,
+      sectionId: "sec_work",
+      createdAt: 20,
+    }),
+  ];
+  const sections = [{ id: "sec_work", name: "Work" }];
+
+  it("groups worktree siblings inside a section when enabled", () => {
+    const items = buildSectionThreadList(
+      worktreeSiblings,
+      compareStandardThreads,
+      sections,
+      new Set(),
+      true,
+    );
+
+    expect(summarizeItems(items)).toEqual([
+      {
+        section: "chronological::sec_work",
+        name: "Work",
+        items: [{ env: "env_wt", threads: ["wt-b", "wt-a"] }],
+      },
+    ]);
+  });
+
+  it.each([false, true])(
+    "respects sections with environment grouping %s",
+    (groupEnvironmentThreads) => {
+      const threads = [
+        ...worktreeSiblings,
+        createThread({
+          id: "later",
+          environmentId: "env_wt",
+          environmentIsWorktree: true,
+          sectionId: "sec_later",
+          createdAt: 30,
+        }),
+        createThread({
+          id: "loose",
+          environmentId: "env_wt",
+          environmentIsWorktree: true,
+          createdAt: 40,
+        }),
+      ];
+      const items = buildSectionThreadList(
+        threads,
+        compareStandardThreads,
+        [...sections, { id: "sec_later", name: "Later" }],
+        new Set(),
+        groupEnvironmentThreads,
+      );
+      expect(summarizeItems(items)).toEqual([
+        {
+          section: "chronological::sec_work",
+          name: "Work",
+          items: groupEnvironmentThreads
+            ? [{ env: "env_wt", threads: ["wt-b", "wt-a"] }]
+            : ["wt-b", "wt-a"],
+        },
+        {
+          section: "chronological::sec_later",
+          name: "Later",
+          items: ["later"],
+        },
+        "loose",
+      ]);
+      expect(summarizeItems(buildProjectThreadGroups(threads))).toEqual([
+        { env: "env_wt", threads: ["loose", "later", "wt-b", "wt-a"] },
+      ]);
+    },
+  );
+
+  it("keeps separate environment groups and their descendants in each section", () => {
+    const threads = [
+      ...worktreeSiblings,
+      createThread({
+        id: "later-a",
+        environmentId: "env_wt",
+        environmentIsWorktree: true,
+        sectionId: "sec_later",
+        createdAt: 30,
+      }),
+      createThread({
+        id: "later-b",
+        environmentId: "env_wt",
+        environmentIsWorktree: true,
+        sectionId: "sec_later",
+        createdAt: 40,
+      }),
+      createThread({ id: "child", parentThreadId: "wt-a", createdAt: 50 }),
+    ];
+    const items = buildSectionThreadList(
+      threads,
+      compareStandardThreads,
+      sections,
+      new Set(),
+      true,
+    );
+    expect(summarizeItems(items)).toEqual([
+      {
+        section: "chronological::sec_work",
+        name: "Work",
+        items: [
+          {
+            env: "env_wt",
+            threads: ["wt-b", { id: "wt-a", children: ["child"] }],
+          },
+        ],
+      },
+      {
+        section: "chronological::sec_later",
+        name: "Section",
+        items: [{ env: "env_wt", threads: ["later-b", "later-a"] }],
+      },
+    ]);
+    expect(
+      items.map((item) =>
+        item.kind === "section" ? item.group.threadCount : 0,
+      ),
+    ).toEqual([3, 2]);
+  });
+
+  it("keeps worktree siblings flat inside a section when disabled", () => {
+    const items = buildSectionThreadList(
+      worktreeSiblings,
+      compareStandardThreads,
+      sections,
+      new Set(),
+      false,
+    );
+
+    expect(summarizeItems(items)).toEqual([
+      {
+        section: "chronological::sec_work",
+        name: "Work",
+        items: ["wt-b", "wt-a"],
+      },
+    ]);
+  });
+
+  it("keeps worktree siblings flat under a project when disabled", () => {
+    const items = buildProjectThreadGroups(
+      worktreeSiblings,
+      compareStandardThreads,
+      new Set(),
+      false,
+    );
+
+    expect(summarizeItems(items)).toEqual(["wt-b", "wt-a"]);
+  });
+});
+
 describe("section bucketing", () => {
   it("buckets threads into flat sections by section id, sections above loose threads", () => {
     const items = buildSectionThreadList(

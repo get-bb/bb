@@ -59,6 +59,16 @@ export class CodexAppServerExitedError extends Error {
   }
 }
 
+export class CodexAppServerRpcError extends Error {
+  constructor(
+    message: string,
+    readonly code: number | undefined,
+  ) {
+    super(message);
+    this.name = "CodexAppServerRpcError";
+  }
+}
+
 interface PendingChildRequest {
   resolve(value: unknown): void;
   reject(error: Error): void;
@@ -256,9 +266,10 @@ export function createCodexAppServerConnection(
         }
         if (message.error) {
           request.reject(
-            new Error(
+            new CodexAppServerRpcError(
               message.error.message ??
                 `codex app-server returned error code ${message.error.code ?? "unknown"}`,
+              message.error.code,
             ),
           );
         } else {

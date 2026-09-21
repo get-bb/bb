@@ -184,7 +184,7 @@ describe("bb-plugin-memory", () => {
       "reason",
     ]);
     expect(missingScope.exitCode).toBe(1);
-    expect(missingScope.stderr).toContain("missing required --scope");
+    expect(missingScope.stderr).toContain("missing required options: --scope");
 
     const missingProject = await host.harness.runCli([
       "add",
@@ -201,6 +201,104 @@ describe("bb-plugin-memory", () => {
     ]);
     expect(missingProject.exitCode).toBe(1);
     expect(missingProject.stderr).toContain("requires a BB project context");
+  });
+
+  it("reports every missing write flag at once instead of one per run", async () => {
+    const host = await loadPlugin();
+    const result = await host.harness.runCli(
+      ["add", "--scope", "global", "--name", "incomplete"],
+      { projectId: "project-a" },
+    );
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain(
+      "missing required options: --summary, --details, --reason",
+    );
+  });
+
+  it("accepts the flag names agents guess and rejects the ones it cannot map", async () => {
+    const host = await loadPlugin();
+    const guessed = await host.harness.runCli(
+      [
+        "add",
+        "--scope",
+        "global",
+        "--title",
+        "guessed-names",
+        "--summary",
+        "Guessed flag names still write the memory.",
+        "--body",
+        "The agent used --title, --body, --type and --tags.",
+        "--reason",
+        "Agents guess these spellings",
+        "--type",
+        "preference",
+        "--tags",
+        "one,two",
+        "--tag",
+        "three",
+        "--json",
+      ],
+      { projectId: "project-a" },
+    );
+    expect(guessed.exitCode, guessed.stderr).toBe(0);
+    expect(JSON.parse(guessed.stdout ?? "").memory).toMatchObject({
+      name: "guessed-names",
+      kind: "preference",
+      tags: ["one", "two", "three"],
+    });
+
+    const unmapped = await host.harness.runCli(
+      [
+        "add",
+        "--scope",
+        "global",
+        "--name",
+        "lost-flag",
+        "--summary",
+        "s",
+        "--details",
+        "d",
+        "--reason",
+        "r",
+        "--labels",
+        "one",
+      ],
+      { projectId: "project-a" },
+    );
+    expect(unmapped.exitCode).toBe(1);
+    expect(unmapped.stderr).toContain("unknown option '--labels'");
+
+    const stray = await host.harness.runCli(
+      [
+        "add",
+        "--scope",
+        "global",
+        "--name",
+        "stray-text",
+        "--summary",
+        "s",
+        "--reason",
+        "r",
+        "the details text",
+      ],
+      { projectId: "project-a" },
+    );
+    expect(stray.exitCode).toBe(1);
+    expect(stray.stderr).toContain("unexpected argument 'the details text'");
+    expect(stray.stderr).toContain("--details");
+  });
+
+  it("documents the write limits and suggests a near-miss subcommand", async () => {
+    const host = await loadPlugin();
+    const help = await host.harness.runCli(["add", "--help"]);
+    expect(help.exitCode).toBe(0);
+    expect(help.stdout).toContain("at most 400 characters");
+    expect(help.stdout).toContain("at most 16000 characters");
+    expect(help.stdout).toContain("--tag <TAG>");
+
+    const mistyped = await host.harness.runCli(["catlog"]);
+    expect(mistyped.exitCode).toBe(1);
+    expect(mistyped.stderr).toContain("(Did you mean catalog?)");
   });
 
   it("uses optimistic versions for updates and forgetting", async () => {

@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode, UIEvent } from "react";
 import type {
   AgentEnvironment,
+  AutomationDetailResponse,
   AutomationExecution,
   AutomationResponse,
   AutomationRunResponse,
@@ -30,7 +31,6 @@ import {
   ResourcePromptPreview,
   ResourceDetailStack,
   ResourceMeta,
-  ResourceOverflowMenu,
   useResourceRouteLabel,
 } from "@bb/shared-ui/resource-list";
 import { Switch } from "@bb/shared-ui/switch";
@@ -54,6 +54,7 @@ import {
   PERSONAL_PROJECT_ID,
 } from "./lib/format-schedule";
 import { AutomationMetadataItem } from "./metadata";
+import { AutomationActionsMenu } from "./actions-menu";
 
 interface AutomationRunsViewState {
   runs: readonly AutomationRunResponse[];
@@ -66,7 +67,7 @@ interface AutomationRunsViewState {
 }
 
 interface AutomationDetailViewProps {
-  automation: AutomationResponse;
+  automation: AutomationDetailResponse;
   projectLabel: string;
   runsState: AutomationRunsViewState;
   actionPending: boolean;
@@ -684,8 +685,17 @@ export function AgentAutomationDefinition({
 export function ScriptAutomationDefinition({
   execution,
 }: {
-  execution: Extract<AutomationExecution, { mode: "script" }>;
+  execution: Extract<AutomationDetailResponse["execution"], { mode: "script" }>;
 }) {
+  const { resolvedWorkingDirectory } = execution;
+  const workingDirectoryLabel =
+    resolvedWorkingDirectory === null
+      ? "Working directory unavailable"
+      : formatHomePathForDisplay(resolvedWorkingDirectory);
+  const workingDirectoryAriaLabel =
+    resolvedWorkingDirectory === null
+      ? workingDirectoryLabel
+      : `Working directory: ${workingDirectoryLabel}`;
   return (
     <ResourceDetailPanel
       surface="flat"
@@ -706,6 +716,14 @@ export function ScriptAutomationDefinition({
         <span className="inline-flex items-center gap-1.5">
           <Icon name="Clock" className="size-3.5" aria-hidden />
           {Math.round(execution.timeoutMs / 1000)}s timeout
+        </span>
+        <span
+          className="inline-flex min-w-0 items-center gap-1.5"
+          aria-label={workingDirectoryAriaLabel}
+          title={workingDirectoryLabel}
+        >
+          <Icon name="Folder" className="size-3.5 shrink-0" aria-hidden />
+          <span className="max-w-64 truncate">{workingDirectoryLabel}</span>
         </span>
         {execution.env ? (
           <AutomationEnvironmentVariables environment={execution.env} />
@@ -802,27 +820,16 @@ export function AutomationDetailView({
         />
       }
       overflowMenu={
-        <ResourceOverflowMenu
-          label={`${automation.name} actions`}
-          disabled={actionPending}
-          items={[
-            {
-              label: "Run now",
-              icon: "Play",
-              disabled: requiresPrompt,
-              disabledReason: requiresPrompt
-                ? "Add a prompt before running this automation."
-                : undefined,
-              onSelect: onRunNow,
-            },
-            { kind: "separator" },
-            {
-              label: "Delete",
-              icon: "Trash2",
-              tone: "destructive",
-              onSelect: onDelete,
-            },
-          ]}
+        <AutomationActionsMenu
+          name={automation.name}
+          pending={actionPending}
+          runDisabledReason={
+            requiresPrompt
+              ? "Add a prompt before running this automation."
+              : undefined
+          }
+          onRunNow={onRunNow}
+          onDelete={onDelete}
         />
       }
     >

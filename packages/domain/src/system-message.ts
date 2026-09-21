@@ -21,17 +21,12 @@ const systemMessageKindValues = [
   "child-failed",
   "child-interrupted",
   "child-outcome-batch",
+  "tool-result-delivered",
   "unlabeled",
 ] as const;
 export const systemMessageKindSchema = z.enum(systemMessageKindValues);
 export type SystemMessageKind = z.infer<typeof systemMessageKindSchema>;
 
-// The subject a system message concerns: a single thread or a batch of threads
-// (count only). Stamped at emit time because `senderThreadId` is null for
-// `initiator: "system"` messages, so the subject is otherwise unrecoverable
-// downstream. This schema is just the union of subject shapes; the
-// required-but-nullable read-model contract is documented on the row field in
-// `@bb/server-contract`'s `thread-timeline.ts`.
 export const systemMessageSubjectSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("thread"),
@@ -41,6 +36,11 @@ export const systemMessageSubjectSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("thread-batch"),
     count: z.number(),
+  }),
+  z.object({
+    kind: z.literal("tool-call"),
+    toolName: z.string(),
+    suppress: z.boolean(),
   }),
 ]);
 export type SystemMessageSubject = z.infer<typeof systemMessageSubjectSchema>;

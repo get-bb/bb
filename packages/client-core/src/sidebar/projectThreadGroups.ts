@@ -211,7 +211,24 @@ function buildSortedItems(
   compareThreads: ThreadComparator,
   groupEnvironmentThreads: boolean,
   draftThreadIds: ReadonlySet<string>,
+  respectSections = false,
 ): ProjectThreadItem[] {
+  if (groupEnvironmentThreads && respectSections) {
+    const nodesBySectionId = new Map<string | null, ProjectThreadNode[]>();
+    for (const node of nodes) {
+      const sectionId = node.thread.sectionId;
+      const bucket = nodesBySectionId.get(sectionId);
+      if (bucket) {
+        bucket.push(node);
+      } else {
+        nodesBySectionId.set(sectionId, [node]);
+      }
+    }
+    return [...nodesBySectionId.values()].flatMap((sectionNodes) =>
+      buildSortedItems(sectionNodes, compareThreads, true, draftThreadIds),
+    );
+  }
+
   if (!groupEnvironmentThreads) {
     nodes.sort((left, right) => compareThreads(left.thread, right.thread));
     return nodes.map(buildThreadItem);
@@ -338,11 +355,12 @@ export function buildProjectThreadGroups(
   allProjectThreads: readonly ThreadListEntry[],
   compareThreads: ThreadComparator = compareStandardThreads,
   draftThreadIds: ReadonlySet<string> = new Set(),
+  groupEnvironmentThreads = true,
 ): ProjectThreadItem[] {
   return buildThreadTreeItems(
     allProjectThreads,
     compareThreads,
-    true,
+    groupEnvironmentThreads,
     draftThreadIds,
   );
 }
@@ -352,6 +370,7 @@ function buildThreadTreeItems(
   compareThreads: ThreadComparator,
   groupEnvironmentThreads: boolean,
   draftThreadIds: ReadonlySet<string>,
+  respectSections = false,
 ): ProjectThreadItem[] {
   const projectThreads = allThreads.filter(isSidebarProjectThread);
   const projectThreadIds = new Set(projectThreads.map((thread) => thread.id));
@@ -412,6 +431,7 @@ function buildThreadTreeItems(
     compareThreads,
     groupEnvironmentThreads,
     draftThreadIds,
+    respectSections,
   );
 }
 
@@ -419,11 +439,12 @@ export function buildChronologicalThreadList(
   allThreads: readonly ThreadListEntry[],
   compareThreads: ThreadComparator = compareStandardThreads,
   draftThreadIds: ReadonlySet<string> = new Set(),
+  groupEnvironmentThreads = false,
 ): ProjectThreadItem[] {
   return buildThreadTreeItems(
     allThreads,
     compareThreads,
-    false,
+    groupEnvironmentThreads,
     draftThreadIds,
   );
 }
@@ -433,9 +454,16 @@ export function buildSectionThreadList(
   compareThreads: ThreadComparator = compareStandardThreads,
   sections: readonly SidebarSectionDefinition[] = [],
   draftThreadIds: ReadonlySet<string> = new Set(),
+  groupEnvironmentThreads = false,
 ): ProjectThreadItem[] {
   return bucketIntoSections(
-    buildChronologicalThreadList(allThreads, compareThreads, draftThreadIds),
+    buildThreadTreeItems(
+      allThreads,
+      compareThreads,
+      groupEnvironmentThreads,
+      draftThreadIds,
+      true,
+    ),
     CHRONOLOGICAL_CONTAINER_ID,
     compareThreads,
     sections,
@@ -529,7 +557,7 @@ export function getSidebarDndItemId(item: ProjectThreadItem): string {
     case "thread":
       return item.node.thread.id;
     case "environment":
-      return item.group.nodes[0].thread.id;
+      return `environment:${item.group.nodes[0].thread.id}`;
     case "section":
       return item.group.key;
   }

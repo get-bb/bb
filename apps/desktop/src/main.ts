@@ -25,7 +25,11 @@ import {
   APP_SURFACE_ENV_NAME,
 } from "@bb/config/app-surface";
 import type { ConnectCredential } from "@bb/connect-client";
-import type { AppKeybindings } from "@bb/domain";
+import {
+  appCommandIdSchema,
+  type AppCommandId,
+  type AppKeybindings,
+} from "@bb/domain";
 import {
   bbDesktopBrowserImportCookiesRequestSchema,
   bbDesktopThemeSchema,
@@ -175,6 +179,7 @@ import {
 } from "./desktop-update-ipc.js";
 import {
   BB_DESKTOP_APP_COMMAND_CHANNEL,
+  BB_DESKTOP_SET_SPLIT_NAVIGATION_ENABLED_CHANNEL,
   BB_DESKTOP_CLOSE_WINDOW_REQUEST_CHANNEL,
   BB_DESKTOP_CLOSE_WINDOW_RESPONSE_CHANNEL,
   BB_DESKTOP_GET_WINDOW_STATE_CHANNEL,
@@ -356,6 +361,11 @@ let systemConfigSync: SystemConfigSync | null = null;
 let systemConfigRefreshToken = 0;
 let refreshRemoteSystemConfig: (() => void) | null = null;
 const applicationWindowWebContentsIds = new Set<number>();
+const splitNavigationEnabledWebContentsIds = new Set<number>();
+const splitNavigationCommandsByWebContentsId = new Map<
+  number,
+  readonly AppCommandId[]
+>();
 let bbAppLoaded = false;
 let startupRetryUrl: string | null = null;
 let startupRetryPending = false;
@@ -727,11 +737,10 @@ function buildMenuServerItems(connectServers: ConnectServerRef[]): Array<{
       name: server.name,
     });
   }
-  const customUrl = serverTargetStore?.getCustomServerUrl() ?? null;
-  if (customUrl !== null) {
+  for (const customUrl of serverTargetStore?.getCustomServerUrls() ?? []) {
     items.push({
-      checked: target.kind === "custom",
-      id: "custom",
+      checked: target.kind === "custom" && target.url === customUrl,
+      id: `custom:${customUrl}`,
       name: formatCustomServerName(customUrl),
     });
   }
@@ -829,6 +838,9 @@ function refreshApplicationMenu(): void {
     },
     selectServer(serverId) {
       void setActiveServerTarget(serverId);
+    },
+    addServer() {
+      void openSetServerUrlDialog(true);
     },
     setServerUrl() {
       void openSetServerUrlDialog();
@@ -1030,7 +1042,18 @@ function registerApplicationWindow(browserWindow: DesktopBrowserWindow): void {
   const webContentsId = browserWindow.webContents.id;
   applicationWindowWebContentsIds.add(webContentsId);
   const nativeWindow = BrowserWindow.fromId(browserWindow.id);
-  if (nativeWindow !== null) desktopBrowserBroker?.registerWindow(nativeWindow);
+  if (nativeWindow !== null) {
+    desktopBrowserBroker?.registerWindow(nativeWindow);
+    nativeWindow.webContents.on(
+      "did-start-navigation",
+      (_event, _url, isInPlace, isMainFrame) => {
+        if (isMainFrame && !isInPlace) {
+          splitNavigationEnabledWebContentsIds.delete(webContentsId);
+          splitNavigationCommandsByWebContentsId.delete(webContentsId);
+        }
+      },
+    );
+  }
   registerApplicationRendererReloadShortcut(
     (browserWindow as BrowserWindow).webContents,
   );
@@ -1044,6 +1067,8 @@ function registerApplicationWindow(browserWindow: DesktopBrowserWindow): void {
   browserWindow.on("closed", () => {
     desktopBrowserBroker?.releaseWindow(webContentsId);
     applicationWindowWebContentsIds.delete(webContentsId);
+    splitNavigationEnabledWebContentsIds.delete(webContentsId);
+    splitNavigationCommandsByWebContentsId.delete(webContentsId);
   });
 }
 
@@ -1543,6 +1568,15 @@ async function setActiveServerTarget(serverId: string): Promise<void> {
     await applyServerTarget();
     return;
   }
+  if (serverId.startsWith("custom:")) {
+    const url = serverId.slice("custom:".length);
+    if (!serverTargetStore.getCustomServerUrls().includes(url)) {
+      return;
+    }
+    await serverTargetStore.setCustomServerUrl(url);
+    await applyServerTarget();
+    return;
+  }
   if (serverId !== "builtin" && serverId !== "custom") {
     return;
   }
@@ -1554,12 +1588,13 @@ async function setActiveServerTarget(serverId: string): Promise<void> {
   await applyServerTarget();
 }
 
-async function openSetServerUrlDialog(): Promise<void> {
+async function openSetServerUrlDialog(add = false): Promise<void> {
   if (serverTargetStore === null || serverUrlDialogPreloadPath === null) {
     return;
   }
+  const previousUrl = add ? null : serverTargetStore.getCustomServerUrl();
   const result = await openServerUrlDialog({
-    initialUrl: serverTargetStore.getCustomServerUrl(),
+    initialUrl: previousUrl,
     parentWindow: getFocusedApplicationWindow(),
     preloadPath: serverUrlDialogPreloadPath,
   });
@@ -1574,6 +1609,7 @@ async function openSetServerUrlDialog(): Promise<void> {
   }
   await serverTargetStore.setCustomServerUrl(
     result.kind === "set" ? result.url : null,
+    previousUrl ?? undefined,
   );
   await applyServerTarget();
 }
@@ -1871,6 +1907,34 @@ function registerDesktopUpdateIpc(): void {
     await finishQuit();
     desktopAutoUpdateService.installUpdate();
   });
+  ipcMain.on(
+    BB_DESKTOP_SET_SPLIT_NAVIGATION_ENABLED_CHANNEL,
+    (event, enabled: unknown, directionalCommands: unknown) => {
+      if (
+        !applicationWindowWebContentsIds.has(event.sender.id) ||
+        event.senderFrame !== event.sender.mainFrame ||
+        typeof enabled !== "boolean"
+      ) {
+        return;
+      }
+      const parsed = appCommandIdSchema
+        .array()
+        .safeParse(directionalCommands ?? []);
+      if (!parsed.success) return;
+      if (enabled) {
+        splitNavigationEnabledWebContentsIds.add(event.sender.id);
+        if (directionalCommands !== undefined) {
+          splitNavigationCommandsByWebContentsId.set(
+            event.sender.id,
+            parsed.data,
+          );
+        }
+      } else {
+        splitNavigationEnabledWebContentsIds.delete(event.sender.id);
+        splitNavigationCommandsByWebContentsId.delete(event.sender.id);
+      }
+    },
+  );
   ipcMain.on(BB_DESKTOP_SET_THEME_CHANNEL, (_event, payload: unknown) => {
     const parsed = bbDesktopThemeSchema.safeParse(payload);
     if (!parsed.success) {
@@ -2334,6 +2398,11 @@ async function runDesktopApp(): Promise<void> {
     "log-viewer-preload.cjs",
   );
   const preloadPath = join(paths.appPath, "dist", "preload.cjs");
+  const browserPagePreloadPath = join(
+    paths.appPath,
+    "dist",
+    "browser-page-preload.cjs",
+  );
   const resolvedExistingServerDialogPreloadPath = join(
     paths.appPath,
     "dist",
@@ -2366,6 +2435,10 @@ async function runDesktopApp(): Promise<void> {
     path: resolvedLogViewerPreloadPath,
   });
   assertPathExists({ label: "preload script", path: preloadPath });
+  assertPathExists({
+    label: "browser page preload script",
+    path: browserPagePreloadPath,
+  });
   assertPathExists({
     label: "server URL dialog preload script",
     path: resolvedServerUrlDialogPreloadPath,
@@ -2486,6 +2559,7 @@ async function runDesktopApp(): Promise<void> {
   });
   registerDesktopUpdateIpc();
   desktopBrowserViewManager = createDesktopBrowserViewManager({
+    pagePreloadPath: browserPagePreloadPath,
     dispatchAppCommand({ command, hostWebContentsId }) {
       const browserWindow = BrowserWindow.getAllWindows().find(
         (candidate) => candidate.webContents.id === hostWebContentsId,
@@ -2507,11 +2581,15 @@ async function runDesktopApp(): Promise<void> {
         browserWindow.webContents.focus();
       }
     },
-    resolveAppCommand(input) {
+    resolveAppCommand(input, hostWebContentsId) {
       return resolveDesktopBrowserAppCommand({
         input,
         isMac: process.platform === "darwin",
         keybindings: currentAppKeybindings,
+        splitNavigationEnabled:
+          splitNavigationEnabledWebContentsIds.has(hostWebContentsId),
+        splitNavigationCommands:
+          splitNavigationCommandsByWebContentsId.get(hostWebContentsId),
       });
     },
   });

@@ -11,6 +11,8 @@ import {
 import { sql } from "drizzle-orm";
 import type { AnySQLiteColumn } from "drizzle-orm/sqlite-core";
 import { threadStatusValues } from "@bb/domain/thread-status";
+import { startedOnBehalfOfInitiatorValues } from "@bb/domain/started-on-behalf-of";
+import { threadCreateOriginValues } from "@bb/domain/thread-create-origin";
 import { threadOriginKindValues } from "@bb/domain/thread-origin-kind";
 import { threadVisibilityValues } from "@bb/domain/thread-visibility";
 import type {
@@ -215,6 +217,11 @@ export const appSettingsValues = sqliteTable("app_settings_values", {
   key: text("key").primaryKey(),
   value: text("value").notNull(),
   updatedAt: integer("updated_at").notNull(),
+});
+
+export const uiPreferenceDefaults = sqliteTable("ui_preference_defaults", {
+  key: text("key").primaryKey(),
+  valueJson: text("value_json").notNull(),
 });
 
 export const uiPreferences = sqliteTable("ui_preferences", {
@@ -661,6 +668,20 @@ export const threads = sqliteTable(
   ],
 );
 
+export const threadImageMetadata = sqliteTable(
+  "thread_image_metadata",
+  {
+    threadId: text("thread_id")
+      .notNull()
+      .references(() => threads.id, { onDelete: "cascade" }),
+    source: text("source").notNull(),
+    width: integer("width").notNull(),
+    height: integer("height").notNull(),
+    etag: text("etag"),
+  },
+  (table) => [primaryKey({ columns: [table.threadId, table.source] })],
+);
+
 export const threadPluginMetadata = sqliteTable(
   "thread_plugin_metadata",
   {
@@ -818,6 +839,9 @@ export const events = sqliteTable(
         sql`${table.type} IN ('item/started', 'item/completed', 'item/backgroundTask/completed')`,
       ),
     index("events_environment_idx").on(table.environmentId),
+    index("events_provider_identity_idx")
+      .on(table.providerThreadId, table.createdAt)
+      .where(sql`${table.type} = 'thread/identity'`),
     index("events_completed_item_truncation_idx")
       .on(table.itemKind, table.createdAt, table.id)
       .where(sql`${table.type} = 'item/completed'`),
@@ -962,6 +986,22 @@ export const queuedThreadMessages = sqliteTable(
       .references(() => threads.id, { onDelete: "cascade" }),
     content: text("content").notNull(),
     senderThreadId: text("sender_thread_id"),
+    // How the dispatch this row was queued from was requested, and the plugin
+    // that requested it. On the row rather than read from the request, so a
+    // drained re-attempt decides on the same provenance its first attempt saw.
+    // Both NULL for a send, a retry, a system notice and every row written
+    // before these columns existed: only a thread's first dispatch has one.
+    origin: text("origin", { enum: threadCreateOriginValues }),
+    originPluginId: text("origin_plugin_id"),
+    // Set together: the thread that asked for the dispatch this row was queued
+    // from, and what it counts as. Distinct from `sender_thread_id`, which is
+    // the sender of a message to an existing thread and drives the agent
+    // message prefix — a thread-start has a requester and no message sender,
+    // so without these a drained first message reads as one the user typed.
+    requestedByInitiator: text("requested_by_initiator", {
+      enum: startedOnBehalfOfInitiatorValues,
+    }),
+    requestedByThreadId: text("requested_by_thread_id"),
     model: text("model").notNull(),
     reasoningLevel: text("reasoning_level").notNull(),
     permissionMode: text("permission_mode").$type<PermissionMode>().notNull(),
@@ -995,6 +1035,17 @@ export const queuedThreadMessages = sqliteTable(
     // row stays waiting on whatever it was waiting on; this only says what went
     // wrong the last time the drain tried to send it.
     failureReason: text("failure_reason"),
+    // How many drain attempts in a row have failed, and when the next
+    // automatic one may run. Together they make a failure a bounded retry
+    // instead of a terminal state: the condition that failed a dispatch is
+    // usually the one a restart just created, so the row goes again on a
+    // widening delay and only stops when the budget is spent. `next_attempt_at`
+    // NULL beside a non-NULL `failure_reason` IS that spent budget — the row
+    // now waits for a person. A fresh, successful statement of the row's wait
+    // resets both, because the attempt that wrote it learned something newer
+    // than the failure did.
+    failureCount: integer("failure_count").notNull().default(0),
+    nextAttemptAt: integer("next_attempt_at"),
     payloadKind: text("payload_kind")
       .$type<QueuedMessagePayloadKind>()
       .notNull()

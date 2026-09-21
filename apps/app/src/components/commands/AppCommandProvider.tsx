@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import {
+  PANE_DIRECTION_APP_COMMAND_IDS,
   defaultAppSettings,
   isAppKeybindingAvailableForClient,
   isMacKeyboardPlatform,
@@ -45,6 +46,10 @@ interface AppCommandHandlerRegistration {
 interface AppCommandProviderValue {
   dispatch: (command: KeyboardCommandId, target: EventTarget | null) => boolean;
   getShortcut: (command: KeyboardCommandId) => AppShortcut | null;
+  getShortcutCommand: (
+    event: KeyboardEvent,
+    commands: readonly KeyboardCommandId[],
+  ) => KeyboardCommandId | null;
   handleKeyboardEvent: (event: KeyboardEvent) => boolean;
   isCommandAvailable: (
     command: KeyboardCommandId,
@@ -207,11 +212,14 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
     if (active) {
       sources.add(source);
       activeContextsRef.current.set(key, sources);
-      return;
+    } else {
+      sources.delete(source);
+      if (sources.size === 0) {
+        activeContextsRef.current.delete(key);
+      }
     }
-    sources.delete(source);
-    if (sources.size === 0) {
-      activeContextsRef.current.delete(key);
+    if (key === "splitActive") {
+      getBbDesktopInfo()?.setSplitNavigationEnabled?.(sources.size > 0);
     }
   }, []);
 
@@ -291,6 +299,31 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
     [isDesktop, keybindings],
   );
 
+  const getShortcutCommand = useCallback(
+    (
+      event: KeyboardEvent,
+      commands: readonly KeyboardCommandId[],
+    ): KeyboardCommandId | null => {
+      if (event.defaultPrevented || event.isComposing || event.repeat) {
+        return null;
+      }
+      const isMac = isMacKeyboardPlatform(browserPlatform());
+      for (let index = keybindings.length - 1; index >= 0; index -= 1) {
+        const candidate = keybindings[index];
+        if (
+          candidate &&
+          commands.includes(candidate.command) &&
+          isAppKeybindingAvailableForClient(candidate, { isDesktop, isMac }) &&
+          matchesAppShortcut(event, candidate.shortcut, isMac)
+        ) {
+          return candidate.command;
+        }
+      }
+      return null;
+    },
+    [isDesktop, keybindings],
+  );
+
   const handleKeyboardEvent = useCallback(
     (event: KeyboardEvent): boolean => {
       if (event.defaultPrevented || event.isComposing || event.repeat) {
@@ -325,9 +358,28 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
     const handleKeyDown = (event: KeyboardEvent) => {
       handleKeyboardEvent(event);
     };
+    const handlePaneNavigation = (event: KeyboardEvent) => {
+      if (
+        getShortcutCommand(event, [
+          "panel.previousTab",
+          "panel.nextTab",
+          "panel.previousNewTabItem",
+          "panel.nextNewTabItem",
+          ...PANE_DIRECTION_APP_COMMAND_IDS,
+          "pane.focus.previous",
+          "pane.focus.next",
+        ]) !== null
+      ) {
+        handleKeyboardEvent(event);
+      }
+    };
+    window.addEventListener("keydown", handlePaneNavigation, true);
     window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [handleKeyboardEvent]);
+    return () => {
+      window.removeEventListener("keydown", handlePaneNavigation, true);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [getShortcutCommand, handleKeyboardEvent]);
 
   useEffect(() => {
     const desktop = getBbDesktopInfo();
@@ -341,6 +393,7 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
     () => ({
       dispatch,
       getShortcut,
+      getShortcutCommand,
       handleKeyboardEvent,
       isCommandAvailable,
       registerContext,
@@ -349,6 +402,7 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
     [
       dispatch,
       getShortcut,
+      getShortcutCommand,
       handleKeyboardEvent,
       isCommandAvailable,
       registerContext,
@@ -419,6 +473,7 @@ export function useAppCommandKeyDispatch(): (event: KeyboardEvent) => boolean {
 
 export interface AppCommandRunner {
   dispatch: (command: KeyboardCommandId, target: EventTarget | null) => boolean;
+  getShortcutCommand: AppCommandProviderValue["getShortcutCommand"];
   isCommandAvailable: (
     command: KeyboardCommandId,
     target: EventTarget | null,
@@ -430,6 +485,8 @@ export function useAppCommandRunner(): AppCommandRunner {
   return useMemo(
     () => ({
       dispatch: (command, target) => value?.dispatch(command, target) ?? false,
+      getShortcutCommand: (event, commands) =>
+        value?.getShortcutCommand(event, commands) ?? null,
       isCommandAvailable: (command, target) =>
         value?.isCommandAvailable(command, target) ?? false,
     }),

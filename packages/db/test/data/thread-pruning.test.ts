@@ -549,12 +549,12 @@ describe("thread pruning", () => {
       cycle(f, "turn-diffs");
       expect(sequences(f)).toEqual([1, 2, 3]);
       expect(getHighWaterMarks(f.db, [f.thread.id])[f.thread.id]).toBe(3);
-      expect(getLastStoredProviderThreadId(f.db, f.thread.id)).toBe("new");
+      expect(getLastStoredProviderThreadId(f.db, f.thread.id)).toBeNull();
       expect(
         listThreadTurnInterruptionEventStates(f.db, {
           threadIds: [f.thread.id],
         })[0]?.latestProviderThreadId,
-      ).toBe("new");
+      ).toBeNull();
       const result = f.db.transaction((tx) =>
         appendDaemonEventsInTransaction(tx, [
           {
@@ -584,7 +584,7 @@ describe("thread pruning", () => {
       expect(result.acceptedEvents.map((r) => r.sequence)).toEqual([4]);
       expect(result.insertedInputIndexes).toEqual([1]);
       expect(sequences(f)).toEqual([1, 2, 3, 4]);
-      expect(getLastStoredProviderThreadId(f.db, f.thread.id)).toBe("newer");
+      expect(getLastStoredProviderThreadId(f.db, f.thread.id)).toBeNull();
       cycle(f, "turn-diffs");
       expect(sequences(f)).toEqual([1, 2, 4]);
       expect(getHighWaterMarks(f.db, [f.thread.id])[f.thread.id]).toBe(4);

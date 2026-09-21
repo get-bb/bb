@@ -14,7 +14,10 @@ import {
 import ReactMarkdown from "react-markdown";
 import type { Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { useSenderThreadMetadataById } from "@/hooks/useSenderThreadMetadataById";
+import {
+  useSenderThreadMetadataById,
+  type SenderThreadMetadata,
+} from "@/hooks/useSenderThreadMetadataById";
 import { useSecondTick } from "@/hooks/useSecondTick";
 import { usePluginDisplayName } from "@/lib/plugin-logos";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
@@ -543,6 +546,20 @@ function visibleQueuedMessageTextChunks(
   );
 }
 
+function queuedMessageSenderLabel(
+  queuedMessage: ThreadQueuedMessage,
+  senderThreadMetadataById: ReadonlyMap<string, SenderThreadMetadata>,
+): string | null {
+  if (queuedMessage.payload.kind === "retry") return null;
+  if (queuedMessage.initiator === "system") return "System";
+  if (queuedMessage.initiator !== "agent") return null;
+  return (
+    senderThreadMetadataById.get(queuedMessage.senderThreadId ?? "")?.title ??
+    queuedMessage.senderThreadId ??
+    "Agent"
+  );
+}
+
 function shiftMentionsBy(
   mentions: readonly PromptTextMention[],
   offset: number,
@@ -786,7 +803,7 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
   const hasWaitLine = queuedMessageHasWaitLine(queuedMessage);
   const sendAllowed =
     sendAction === "steer-when-ready" ||
-    isQueuedMessageSendNowAllowed(queuedMessage.waitingOn);
+    isQueuedMessageSendNowAllowed(queuedMessage);
   const sendAriaLabel =
     sendAction === "steer-when-ready"
       ? `Steer queued message ${index + 1} when ready`
@@ -1699,17 +1716,10 @@ export function QueuedMessagesList({
         <QueuedMessageRow
           key={queuedMessage.id}
           queuedMessage={queuedMessage}
-          senderLabel={
-            queuedMessage.initiator === "system"
-              ? "System"
-              : queuedMessage.initiator === "agent"
-                ? (senderThreadMetadataById.get(
-                    queuedMessage.senderThreadId ?? "",
-                  )?.title ??
-                  queuedMessage.senderThreadId ??
-                  "Agent")
-                : null
-          }
+          senderLabel={queuedMessageSenderLabel(
+            queuedMessage,
+            senderThreadMetadataById,
+          )}
           resolveMentionLink={resolveMentionLink}
           index={messageIndex}
           isProcessing={processingMessageId === queuedMessage.id}

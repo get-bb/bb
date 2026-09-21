@@ -3,8 +3,11 @@
 ## Spawning Threads
 
 - Use `bb thread spawn --project <project-id> --prompt "..."` to create another
-  thread. Pass the intended project explicitly; the CLI does not infer it from
-  context variables. Omitted execution flags use remembered project defaults;
+  thread. For a multi-line or Markdown prompt use `--prompt-file <path>` (`-`
+  reads stdin) instead of quoting it inline; `bb thread fork` takes it too.
+  Pass the intended project explicitly; the CLI does not infer it from
+  context variables, and when `--project` is missing the error prints the
+  current thread's project ID to add. Omitted execution flags use remembered project defaults;
   without a remembered model, bb resolves the selected provider and its reported
   default model on the target machine.
 - Select a target with `--environment`, `--new-environment`, `--base-branch`,
@@ -93,7 +96,7 @@ worktree` only; a provider takes its branch through `--environment-inputs`.
   surface that sets it, and machine credentials are refused — so read it from
   `bb machine list --json` or `bb machine show` and ask the user to change it
   in the app.
-- `bb machine providers`, `show`, `join-code`, `rename`, `retry-update`,
+- `bb machine providers`, `show`, `rename`, `retry-update`,
   `suspend`, `resume`, `retry-cleanup`, and `remove` cover the Settings →
   Machines lifecycle. Use `bb machine provider-cli status|install` to inspect
   or install provider CLIs on a selected machine.
@@ -269,6 +272,10 @@ that directory's `config.json`. These two commands also act on the local data
 directory only.
 
 ### Private machine enrollment
+
+For an existing machine, use `bb machine create --provider manual` and run the
+printed command on the target. That command installs bb if needed and enrolls
+the machine with this server.
 
 Use `bb machine enroll --bootstrap-file <path>` or `--bootstrap-env <NAME>` on a machine that already has the CLI. Core prepares the versioned bundle; transport it through a private file or environment/stdin, never command arguments, logs, resource JSON, or a transcript. Enrollment refuses a different existing host/server identity and succeeds without another exchange when the same identity is already enrolled. The installer accepts `--bootstrap-env <NAME>` and invokes this command after installing bb. Machine state defaults to `~/.bb-machines/<server-host>`; an explicit `BB_DATA_DIR` must be isolated from the default BB instance. For remote non-login commands, discover `bb` on PATH and fall back to `~/.local/bin/bb`.
 

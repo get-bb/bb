@@ -1,5 +1,8 @@
 import { cn } from "@bb/shared-ui/lib/utils";
-import { PANE_FOCUS_APP_COMMAND_IDS } from "@bb/domain";
+import {
+  PANE_DIRECTION_APP_COMMAND_IDS,
+  PANE_FOCUS_APP_COMMAND_IDS,
+} from "@bb/domain";
 import { useAtom, useAtomValue, useStore } from "jotai";
 import {
   Fragment,
@@ -92,7 +95,7 @@ import {
   PluginPanelHeaderActions,
   PluginPanelHeaderCenter,
 } from "@/components/plugin/PluginPanelHeader";
-import { getAdjacentPaneId } from "./splitPaneCommands";
+import { getAdjacentPaneId, getDirectionalPaneId } from "./splitPaneCommands";
 import {
   applyThreadPaneActionToLayout,
   createSinglePaneLayout,
@@ -682,6 +685,29 @@ function SplitPaneCommandHandlers({
   toggleMaximizePane,
 }: SplitPaneCommandHandlersProps) {
   useAppCommandContext("splitActive", isSplitActive);
+  const directionalTargets = useMemo(
+    () =>
+      (["left", "right", "top", "bottom"] as const).map((direction) =>
+        isSplitActive
+          ? getDirectionalPaneId(layout.root, layout.focusedPaneId, direction)
+          : null,
+      ),
+    [isSplitActive, layout.root, layout.focusedPaneId],
+  );
+  useEffect(() => {
+    getBbDesktopInfo()?.setSplitNavigationEnabled?.(
+      isSplitActive,
+      PANE_DIRECTION_APP_COMMAND_IDS.filter(
+        (_, index) => directionalTargets[index] !== null,
+      ),
+    );
+  }, [isSplitActive, directionalTargets]);
+  useIndexedAppCommandHandlers(PANE_DIRECTION_APP_COMMAND_IDS, (index) => {
+    const paneId = directionalTargets[index];
+    if (!paneId) return false;
+    focusPane(paneId);
+    return true;
+  });
   useAppCommandHandler("pane.focus.previous", () => {
     if (!isSplitActive) return false;
     const paneId = getAdjacentPaneId(panes, layout.focusedPaneId, -1);
@@ -761,6 +787,7 @@ function SplitTree(props: SplitTreeProps) {
       >
         {node.content.kind === "thread" ? (
           <PaneStaleWatcher
+            key={node.content.threadId}
             threadId={node.content.threadId}
             onStale={() => props.onPruneStalePane(node.paneId)}
           />
@@ -1430,6 +1457,10 @@ interface PaneStaleWatcherProps {
 
 function PaneStaleWatcher({ threadId, onStale }: PaneStaleWatcherProps) {
   const { data: thread, isSuccess, isError, error } = useThread(threadId);
+  const hasObservedUnarchived = useRef(false);
+  const unarchivesInFlight = useIsMutating({
+    mutationKey: ["unarchive-thread"],
+  });
   const archivesInFlight = useIsMutating({
     predicate: (mutation) =>
       mutation.options.meta?.lifecycleOperation === "archive_thread",
@@ -1443,17 +1474,25 @@ function PaneStaleWatcher({ threadId, onStale }: PaneStaleWatcherProps) {
     thread !== undefined &&
     thread.archivedAt !== null &&
     archivesInFlight === 0;
-  const isStale = isGone || isDeleted || isConfirmedArchived;
+  const isUnarchived =
+    isSuccess && thread !== undefined && thread.archivedAt === null;
 
   const onStaleRef = useRef(onStale);
   useEffect(() => {
     onStaleRef.current = onStale;
   }, [onStale]);
   useEffect(() => {
-    if (isStale) {
+    if (isUnarchived && unarchivesInFlight === 0) {
+      hasObservedUnarchived.current = true;
+    }
+    if (
+      isGone ||
+      isDeleted ||
+      (isConfirmedArchived && hasObservedUnarchived.current)
+    ) {
       onStaleRef.current();
     }
-  }, [isStale]);
+  }, [isConfirmedArchived, isDeleted, isGone, isUnarchived, unarchivesInFlight]);
 
   return null;
 }

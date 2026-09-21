@@ -119,6 +119,8 @@ export {
 } from "./app-settings.js";
 export { getStoredThreadTabs, replaceStoredThreadTabs } from "./thread-tabs.js";
 export {
+  getStoredUiPreferenceDefault,
+  listStoredUiPreferenceDefaults,
   listStoredUiPreferences,
   overwriteStoredUiPreference,
   replaceStoredUiPreference,
@@ -274,7 +276,13 @@ export {
   getActiveStoredTurnId,
   hasRootStoredTurnStarted,
   hasStoredTurnStarted,
+  classifyStoredProviderThreadClaim,
+  wouldRemoveSharedProviderSessionClaim,
   getLastStoredProviderThreadId,
+  getStoredProviderSession,
+  resolveStoredProviderSessions,
+  type StoredProviderSession,
+  type StoredProviderThreadClaimClass,
   getLastStoredTurnRequestEvent,
   getStoredTurnRequestEventForTurn,
   getLatestThreadOutputEventRow,
@@ -287,7 +295,7 @@ export {
   listContextWindowUsageRows,
   listEvents,
   listStoredConversationOutlineEventRows,
-  listTimelineSegmentAnchorsDescending,
+  listTimelineWindowHintsDescending,
   getFirstParentedTimelineBoundarySequence,
   hasTimelineGroupingContextRowsInRange,
   listStoredEventRowsInSequenceRange,
@@ -360,7 +368,7 @@ export type {
   ScopedItemRef,
   StoredEventRow,
   StoredThreadEventDataRow,
-  StandardTimelineSegmentAnchorRow,
+  TimelineWindowHint,
   ThreadClientTurnRequestKey,
   StoredTurnRequestEventRow,
 } from "./events.js";
@@ -425,6 +433,7 @@ export {
   listQueuedThreadMessagesForApi,
   listQueuedThreadMessagesByWaitHolder,
   listQueuedThreadMessagesWaitingOnKind,
+  listRetryableFailedQueuedThreadMessages,
   listThreadIdsWithHostOfflineQueueWaits,
   releaseQueuedMessageClaim,
   requeueClaimedQueuedThreadMessages,
@@ -497,3 +506,4 @@ export {
 export * from "./project-attachments.js";
 
 export * from "./project-attachment-backfill.js";
+export * from "./thread-image-metadata.js";

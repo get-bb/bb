@@ -3,6 +3,7 @@ import { z } from "zod";
 export const DESKTOP_BROWSER_IMPORT_SOURCE_IDS = [
   "chrome",
   "chromium",
+  "helium",
   "edge",
   "brave",
   "vivaldi",

@@ -50,6 +50,10 @@ import {
   retireServerProcess as retireProcessWithDeadline,
   SERVER_RETIRE_FORCE_EXIT_MS,
 } from "./services/server-move/retire.js";
+import {
+  PluginToolCallRegistry,
+  setPluginToolCallRegistry,
+} from "./services/plugins/plugin-tool-calls.js";
 
 interface StartHttpListenerArgs {
   fetch: Parameters<typeof serve>[0]["fetch"];
@@ -221,6 +225,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     terminalSessions,
   });
   pendingInteractions.start();
+  setPluginToolCallRegistry(new PluginToolCallRegistry({ logger }));
 
   const appVersion = createAppVersionService({
     config: runtimeConfig,

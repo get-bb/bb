@@ -19,6 +19,8 @@ import {
   reasoningLevelSchema,
   rawThreadIdSchema,
   serviceTierSchema,
+  startedOnBehalfOfSchema,
+  threadCreateOriginSchema,
   threadOriginKindSchema,
   threadListEntrySchema,
   threadQueuedMessageSchema,
@@ -57,9 +59,6 @@ export const sendMessageModeSchema = z.enum([
   "steer",
 ]);
 
-export const threadCreateOriginSchema = z.enum(["app", "cli", "sdk", "plugin"]);
-export type ThreadCreateOrigin = z.infer<typeof threadCreateOriginSchema>;
-
 export const executionInputFieldSourceSchema = callerExecutionInputSourceSchema;
 export type ExecutionInputFieldSource = CallerExecutionInputSource;
 
@@ -87,14 +86,6 @@ export const existingThreadExecutionInputSourcesSchema = z
 export type ExistingThreadExecutionInputSources = z.infer<
   typeof existingThreadExecutionInputSourcesSchema
 >;
-
-export const startedOnBehalfOfInitiatorSchema = z.enum(["agent", "system"]);
-
-export const startedOnBehalfOfSchema = z.object({
-  initiator: startedOnBehalfOfInitiatorSchema,
-  senderThreadId: z.string().min(1),
-});
-export type StartedOnBehalfOf = z.infer<typeof startedOnBehalfOfSchema>;
 
 export const createThreadRequestSchema = z
   .object({
@@ -869,7 +860,7 @@ export type ThreadSearchQuery = z.infer<typeof threadSearchQuerySchema>;
 
 export const timelinePaginationCursorSchema = z
   .object({
-    anchorSeq: z.number().int().positive(),
+    anchorSeq: z.number().int().nonnegative(),
     anchorId: z.string().min(1),
   })
   .strict();
@@ -888,7 +879,7 @@ export const timelinePageMetadataSchema = z
     olderRowsSourceSeqEnd: z.number().int().nonnegative().nullable().optional(),
     contentPage: z
       .object({
-        anchorSeq: z.number().int().positive(),
+        anchorSeq: z.number().int().nonnegative(),
         start: z.number().int().nonnegative(),
         end: z.number().int().nonnegative(),
         total: z.number().int().nonnegative(),
@@ -901,7 +892,7 @@ export const threadTimelineQuerySchema = z
   .object({
     includeNestedRows: z.enum(["true", "false"]),
     segmentLimit: z.string().regex(/^\d+$/),
-    beforeAnchorSeq: z.string().regex(/^[1-9]\d*$/),
+    beforeAnchorSeq: z.string().regex(/^(0|[1-9]\d*)$/),
     beforeAnchorId: z.string().min(1),
     summaryOnly: z.enum(["true", "false"]),
     afterSequence: z.string().regex(/^\d+$/),
@@ -1021,7 +1012,22 @@ export type TimelineTurnSummaryDetailsResponse = z.infer<
   typeof timelineTurnSummaryDetailsResponseSchema
 >;
 
+export const threadImageMetadataSchema = z.object({
+  source: z
+    .string()
+    .min(1)
+    .refine(
+      (source) => /^https?:\/\//iu.test(source) || /^\/(?!\/)/u.test(source),
+      "Image source must be an HTTP URL or an origin-relative path",
+    ),
+  width: z.number().int().positive(),
+  height: z.number().int().positive(),
+  etag: z.string().nullable(),
+});
+export type ThreadImageMetadata = z.infer<typeof threadImageMetadataSchema>;
+
 export const threadTimelineResponseSchema = z.object({
+  imageMetadata: z.array(threadImageMetadataSchema).optional(),
   rows: z.array(timelineRowSchema),
   contextBoundarySeq: z.number().int().nonnegative().nullable(),
   completedTurnDisplay: completedTurnDisplaySchema,

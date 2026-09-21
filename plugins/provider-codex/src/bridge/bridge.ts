@@ -60,6 +60,7 @@ import {
 } from "../interactive-requests.js";
 import { parseModelsResponse } from "../models.js";
 import { macOsPermissionPresentation } from "../presentation.js";
+import { codexTurnSchema } from "../schemas.js";
 import {
   resolveCodexInstructionOverrides,
   toCodexDynamicTools,
@@ -79,6 +80,7 @@ import {
 import {
   createCodexAppServerConnection,
   CodexAppServerExitedError,
+  CodexAppServerRpcError,
   type CodexAppServerConnection,
   type CodexAppServerExitInfo,
   type CodexAppServerRequestResponder,
@@ -408,6 +410,39 @@ interface CodexSessionConstruction {
   dynamicTools: DynamicTool[] | undefined;
 }
 
+interface ResponseOpenedTurn {
+  nativeStarted: boolean;
+  waiters: Array<(started: boolean) => void>;
+}
+
+const codexTurnNotificationPeekSchema = z
+  .object({
+    threadId: z.string(),
+    turn: z.object({ id: z.string() }).passthrough(),
+  })
+  .passthrough();
+
+interface UnopenedDispatch {
+  clientRequestId: TurnStartParamsShape["clientRequestId"];
+  prepared: PreparedProviderCommandDispatch;
+}
+
+interface PendingCompactionDispatch extends UnopenedDispatch {
+  accepted: boolean;
+  outcome: UnopenedDispatchOutcome | null;
+}
+
+type UnopenedDispatchOutcome =
+  | { status: "completed" }
+  | { status: "failed"; error: { message: string } };
+
+const codexThreadStatusChangedParamsSchema = z
+  .object({
+    threadId: z.string(),
+    status: z.object({ type: z.string() }).passthrough(),
+  })
+  .passthrough();
+
 interface CodexBridgeSession {
   bbThreadId: string;
   codexThreadId: string | null;
@@ -417,6 +452,8 @@ interface CodexBridgeSession {
   construction: CodexSessionConstruction;
   constructionSignature: string;
   openCodexTurnIds: Set<string>;
+  responseOpenedTurns: Map<string, ResponseOpenedTurn>;
+  unopenedCompactionDispatches: PendingCompactionDispatch[];
   turnSettledWaiters: Map<string, Array<() => void>>;
   awaitingReplayedUsage: boolean;
   identityAnnounced: boolean;
@@ -541,6 +578,12 @@ function sendThreadDeltas(
   }
   const outDeltas: ThreadDelta[] = [];
   for (const delta of deltas) {
+    if (delta.kind === "input.accepted") {
+      session.unopenedCompactionDispatches =
+        session.unopenedCompactionDispatches.filter(
+          (dispatch) => dispatch.clientRequestId !== delta.clientRequestId,
+        );
+    }
     if (delta.kind === "turn.open") {
       session.awaitingReplayedUsage = false;
       if (delta.providerTurnId !== undefined) {
@@ -549,6 +592,7 @@ function sendThreadDeltas(
     }
     if (delta.kind === "turn.boundary" && delta.providerTurnId !== undefined) {
       session.openCodexTurnIds.delete(delta.providerTurnId);
+      settleResponseOpenedTurn(session, delta.providerTurnId);
       const waiters = session.turnSettledWaiters.get(delta.providerTurnId);
       if (waiters !== undefined) {
         session.turnSettledWaiters.delete(delta.providerTurnId);
@@ -629,6 +673,15 @@ function handleChildNotification(
     const parsed = codexThreadStartedNotificationSchema.safeParse(params);
     if (parsed.success) {
       announceSessionIdentity(session, parsed.data.thread.id);
+    }
+  }
+  if (method === "thread/status/changed") {
+    settleCompactionDispatchesWhenCodexIsNotRunning(session, params);
+  }
+  if (method === "turn/started") {
+    const parsed = codexTurnNotificationPeekSchema.safeParse(params);
+    if (parsed.success && parsed.data.threadId === session.codexThreadId) {
+      markResponseOpenedTurnNativelyStarted(session, parsed.data.turn.id);
     }
   }
   const deltas = session.translator.translateEvent(
@@ -811,6 +864,18 @@ function handleChildExit(
     })),
   );
   session.openCodexTurnIds.clear();
+  for (const codexTurnId of [...session.responseOpenedTurns.keys()]) {
+    settleResponseOpenedTurn(session, codexTurnId);
+  }
+  const unopenedCompactions = session.unopenedCompactionDispatches;
+  session.unopenedCompactionDispatches = [];
+  for (const dispatch of unopenedCompactions) {
+    if (!dispatch.accepted) continue;
+    settleUnopenedDispatch(session, dispatch, {
+      status: "failed",
+      error: { message },
+    });
+  }
   sendNotification(BRIDGE_NOTIFICATION_METHODS.error, {
     threadId: session.bbThreadId,
     ...(session.codexThreadId !== null
@@ -952,6 +1017,8 @@ async function constructThreadSession(
       decoded.sessionOptions,
     ),
     openCodexTurnIds: new Set(),
+    responseOpenedTurns: new Map(),
+    unopenedCompactionDispatches: [],
     turnSettledWaiters: new Map(),
     awaitingReplayedUsage: args.request.kind !== "start",
     identityAnnounced: false,
@@ -1110,6 +1177,8 @@ function registerResumableSession(session: CodexBridgeSession): void {
     construction: session.construction,
     constructionSignature: session.constructionSignature,
     openCodexTurnIds: new Set(),
+    responseOpenedTurns: new Map(),
+    unopenedCompactionDispatches: [],
     turnSettledWaiters: new Map(),
     awaitingReplayedUsage: true,
     identityAnnounced: session.identityAnnounced,
@@ -1387,9 +1456,152 @@ async function requireLiveSessionForTurn(
   return { session, connection: session.connection };
 }
 
+const codexTurnStartResultSchema = z
+  .object({ turn: codexTurnSchema })
+  .passthrough();
+
+function settleAcceptedDispatch(args: {
+  clientRequestId: TurnStartParamsShape["clientRequestId"];
+  compaction: boolean;
+  prepared: PreparedProviderCommandDispatch | null;
+  session: CodexBridgeSession;
+  result: unknown;
+}): void {
+  const { clientRequestId, prepared, session, result } = args;
+  if (args.compaction) {
+    const dispatch = session.unopenedCompactionDispatches.find(
+      (pending) => pending.clientRequestId === clientRequestId,
+    );
+    if (dispatch !== undefined) {
+      dispatch.accepted = true;
+      if (dispatch.outcome !== null) {
+        settleUnopenedDispatch(session, dispatch, dispatch.outcome);
+      }
+    }
+    return;
+  }
+  const parsed = codexTurnStartResultSchema.safeParse(result);
+  if (!parsed.success) {
+    scheduleZeroWorkTurnSettlement({ clientRequestId, prepared, session });
+    return;
+  }
+  if (prepared === null) {
+    return;
+  }
+  const live = currentSession(session.bbThreadId, session.serial);
+  if (!live || live.codexThreadId === null) {
+    return;
+  }
+  const codexTurnId = parsed.data.turn.id;
+  const turnAlreadyOpen = live.openCodexTurnIds.has(codexTurnId);
+  sendThreadDeltas(
+    live,
+    live.translator.openTurnFromStartResponse({
+      providerThreadId: live.codexThreadId,
+      turn: parsed.data.turn,
+      clientRequestId,
+      turnAlreadyOpen,
+    }),
+  );
+  if (
+    !turnAlreadyOpen &&
+    live.openCodexTurnIds.has(codexTurnId) &&
+    !live.responseOpenedTurns.has(codexTurnId)
+  ) {
+    live.responseOpenedTurns.set(codexTurnId, {
+      nativeStarted: false,
+      waiters: [],
+    });
+  }
+}
+
+function markResponseOpenedTurnNativelyStarted(
+  session: CodexBridgeSession,
+  codexTurnId: string,
+): void {
+  const turn = session.responseOpenedTurns.get(codexTurnId);
+  if (turn === undefined || turn.nativeStarted) {
+    return;
+  }
+  turn.nativeStarted = true;
+  const waiters = turn.waiters;
+  turn.waiters = [];
+  for (const resolve of waiters) {
+    resolve(true);
+  }
+}
+
+function settleResponseOpenedTurn(
+  session: CodexBridgeSession,
+  codexTurnId: string,
+): void {
+  const turn = session.responseOpenedTurns.get(codexTurnId);
+  if (turn === undefined) {
+    return;
+  }
+  session.responseOpenedTurns.delete(codexTurnId);
+  for (const resolve of turn.waiters) {
+    resolve(false);
+  }
+}
+
+function waitForNativeTurnStart(
+  session: CodexBridgeSession,
+  codexTurnId: string,
+  timeoutMs: number,
+): Promise<boolean> {
+  const turn = session.responseOpenedTurns.get(codexTurnId);
+  if (turn === undefined) {
+    return Promise.resolve(false);
+  }
+  if (turn.nativeStarted) {
+    return Promise.resolve(true);
+  }
+  return new Promise<boolean>((resolve) => {
+    const onStart = (started: boolean): void => {
+      clearTimeout(timer);
+      resolve(started);
+    };
+    const timer = setTimeout(() => {
+      turn.waiters = turn.waiters.filter((waiter) => waiter !== onStart);
+      resolve(false);
+    }, timeoutMs);
+    timer.unref?.();
+    turn.waiters.push(onStart);
+  });
+}
+
 const ZERO_WORK_SETTLEMENT_GRACE_MS = 250;
 
 let syntheticZeroWorkTurnCounter = 0;
+
+function settleUnopenedDispatch(
+  session: CodexBridgeSession,
+  dispatch: UnopenedDispatch,
+  outcome: UnopenedDispatchOutcome,
+): void {
+  if (!dispatch.prepared.claim()) {
+    return;
+  }
+  syntheticZeroWorkTurnCounter += 1;
+  const providerTurnId = `zero-work-${syntheticZeroWorkTurnCounter}`;
+  sendThreadDeltas(session, [
+    { kind: "turn.open", providerTurnId },
+    {
+      kind: "input.accepted",
+      clientRequestId: dispatch.clientRequestId,
+      providerTurnId,
+    },
+    outcome.status === "completed"
+      ? { kind: "turn.boundary", providerTurnId, status: "completed" }
+      : {
+          kind: "turn.boundary",
+          providerTurnId,
+          status: "failed",
+          error: outcome.error,
+        },
+  ]);
+}
 
 function scheduleZeroWorkTurnSettlement(args: {
   clientRequestId: TurnStartParamsShape["clientRequestId"];
@@ -1406,18 +1618,72 @@ function scheduleZeroWorkTurnSettlement(args: {
     if (!live || live.openCodexTurnIds.size > 0) {
       return;
     }
-    if (!prepared.claim()) {
-      return;
-    }
-    syntheticZeroWorkTurnCounter += 1;
-    const providerTurnId = `zero-work-${syntheticZeroWorkTurnCounter}`;
-    sendThreadDeltas(live, [
-      { kind: "turn.open", providerTurnId },
-      { kind: "input.accepted", clientRequestId, providerTurnId },
-      { kind: "turn.boundary", providerTurnId, status: "completed" },
-    ]);
+    settleUnopenedDispatch(
+      live,
+      { clientRequestId, prepared },
+      { status: "completed" },
+    );
   }, ZERO_WORK_SETTLEMENT_GRACE_MS);
   timer.unref?.();
+}
+
+function awaitCompactionTurn(args: {
+  clientRequestId: TurnStartParamsShape["clientRequestId"];
+  prepared: PreparedProviderCommandDispatch | null;
+  session: CodexBridgeSession;
+}): void {
+  const { clientRequestId, prepared, session } = args;
+  if (prepared === null) {
+    return;
+  }
+  const live = currentSession(session.bbThreadId, session.serial);
+  if (!live) {
+    return;
+  }
+  live.unopenedCompactionDispatches.push({
+    clientRequestId,
+    prepared,
+    accepted: false,
+    outcome: null,
+  });
+}
+
+function settleCompactionDispatchesWhenCodexIsNotRunning(
+  session: CodexBridgeSession,
+  params: unknown,
+): void {
+  if (session.unopenedCompactionDispatches.length === 0) {
+    return;
+  }
+  const parsed = codexThreadStatusChangedParamsSchema.safeParse(params);
+  if (
+    !parsed.success ||
+    parsed.data.threadId !== session.codexThreadId ||
+    session.openCodexTurnIds.size > 0
+  ) {
+    return;
+  }
+  const status = parsed.data.status.type;
+  if (status !== "idle" && status !== "systemError") {
+    return;
+  }
+  const outcome: UnopenedDispatchOutcome =
+    status === "idle"
+      ? { status: "completed" }
+      : {
+          status: "failed",
+          error: {
+            message:
+              "codex reported a system error before the compaction turn started",
+          },
+        };
+  for (const dispatch of session.unopenedCompactionDispatches) {
+    if (dispatch.accepted) {
+      settleUnopenedDispatch(session, dispatch, outcome);
+    } else {
+      dispatch.outcome = outcome;
+    }
+  }
 }
 
 async function handleTurnStart(
@@ -1450,9 +1716,16 @@ async function handleTurnStart(
     providerThreadId: codexThreadId,
   });
 
+  const compaction = isStandaloneBuiltinCompactCommand(input);
   try {
-    if (isStandaloneBuiltinCompactCommand(input)) {
-      await connection.request({
+    let result: unknown;
+    if (compaction) {
+      awaitCompactionTurn({
+        clientRequestId: params.clientRequestId,
+        prepared,
+        session,
+      });
+      result = await connection.request({
         method: "thread/compact/start",
         params: { threadId: codexThreadId },
         resultSchema: ignoredChildResultSchema,
@@ -1466,7 +1739,7 @@ async function handleTurnStart(
         ),
         options: decoded.sessionOptions,
       });
-      await connection.request({
+      result = await connection.request({
         method: "turn/start",
         params: {
           threadId: codexThreadId,
@@ -1482,12 +1755,18 @@ async function handleTurnStart(
       });
     }
     sendResult(id, { threadId: params.threadId });
-    scheduleZeroWorkTurnSettlement({
+    settleAcceptedDispatch({
       clientRequestId: params.clientRequestId,
+      compaction,
       prepared,
       session,
+      result,
     });
   } catch (error) {
+    session.unopenedCompactionDispatches =
+      session.unopenedCompactionDispatches.filter(
+        (dispatch) => dispatch.clientRequestId !== params.clientRequestId,
+      );
     prepared?.rollback();
     sendError(
       id,
@@ -1566,21 +1845,16 @@ async function handleThreadStop(
     return;
   }
 
-  try {
-    await session.connection.request({
-      method: "turn/interrupt",
-      params: {
-        threadId: session.codexThreadId,
-        turnId: params.activeTurnId,
-      },
-      resultSchema: ignoredChildResultSchema,
-      timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
-    });
-  } catch (error) {
+  const interruptFailure = await interruptCodexTurn(
+    session,
+    session.codexThreadId,
+    params.activeTurnId,
+  );
+  if (interruptFailure !== null) {
     sendError(
       id,
       BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR,
-      error instanceof Error ? error.message : String(error),
+      interruptFailure.message,
     );
     return;
   }
@@ -1606,6 +1880,67 @@ async function handleThreadStop(
   );
   await releaseSession(session);
   sendResult(id, { ok: true });
+}
+
+async function requestCodexTurnInterrupt(
+  session: CodexBridgeSession,
+  codexThreadId: string,
+  codexTurnId: string,
+): Promise<Error | null> {
+  const connection = session.connection;
+  if (connection === null || connection.exited) {
+    return null;
+  }
+  try {
+    await connection.request({
+      method: "turn/interrupt",
+      params: { threadId: codexThreadId, turnId: codexTurnId },
+      resultSchema: ignoredChildResultSchema,
+      timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
+    });
+    return null;
+  } catch (error) {
+    return error instanceof Error ? error : new Error(String(error));
+  }
+}
+
+async function interruptCodexTurn(
+  session: CodexBridgeSession,
+  codexThreadId: string,
+  codexTurnId: string,
+): Promise<Error | null> {
+  const responseOpened = session.responseOpenedTurns.get(codexTurnId);
+  const awaitingNativeStart =
+    responseOpened !== undefined && !responseOpened.nativeStarted;
+  const failure = await requestCodexTurnInterrupt(
+    session,
+    codexThreadId,
+    codexTurnId,
+  );
+  if (
+    failure === null ||
+    !awaitingNativeStart ||
+    !(failure instanceof CodexAppServerRpcError) ||
+    failure.code !== -32600 ||
+    failure.message !== "no active turn to interrupt"
+  ) {
+    return failure;
+  }
+  if (!session.openCodexTurnIds.has(codexTurnId)) {
+    return null;
+  }
+  const started = await waitForNativeTurnStart(
+    session,
+    codexTurnId,
+    INTERRUPT_SETTLEMENT_TIMEOUT_MS,
+  );
+  if (!session.openCodexTurnIds.has(codexTurnId)) {
+    return null;
+  }
+  if (!started) {
+    return failure;
+  }
+  return requestCodexTurnInterrupt(session, codexThreadId, codexTurnId);
 }
 
 function waitForCodexTurnSettlement(

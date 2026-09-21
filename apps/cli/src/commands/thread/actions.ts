@@ -9,6 +9,7 @@ import {
 } from "@bb/domain";
 import { action } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
+import { requireTextInput, TEXT_FILE_HELP_SUFFIX } from "../../text-input.js";
 import type { ThreadRetryResult, ThreadSendResult } from "@bb/sdk";
 import type { QueuedMessageWaitingOn } from "@bb/domain";
 import {
@@ -69,6 +70,7 @@ interface ThreadDeleteCommandOptions {
 
 interface ThreadTellCommandOptions {
   json?: boolean;
+  messageFile?: string;
   model?: string;
   permissionMode?: string;
   reasoningLevel?: string;
@@ -96,7 +98,8 @@ interface ThreadRetryCommandOptions {
 interface ThreadEditMessageCommandOptions {
   expectedRequestSequence?: string;
   json?: boolean;
-  message: string;
+  message?: string;
+  messageFile?: string;
   self?: boolean;
 }
 
@@ -375,7 +378,11 @@ export function registerActionsCommands(
   parent
     .command("edit-message [id]")
     .description("Replace an accepted user message and rerun from that point")
-    .requiredOption("--message <text>", "Replacement message text")
+    .option("--message <text>", "Replacement message text")
+    .option(
+      "--message-file <path>",
+      `Read the replacement message from a file; ${TEXT_FILE_HELP_SUFFIX}`,
+    )
     .option("--self", "Target the current thread (from BB_THREAD_ID)")
     .option(
       "--expected-request-sequence <sequence>",
@@ -389,6 +396,12 @@ export function registerActionsCommands(
           opts: ThreadEditMessageCommandOptions,
         ) => {
           const threadId = requireThreadIdOrSelf(id, opts);
+          const message = await requireTextInput({
+            file: opts.messageFile,
+            fileLabel: "--message-file",
+            inline: opts.message,
+            inlineLabel: "--message <text>",
+          });
           const sdk = createCliBbSdk(getUrl());
           const expectedRequestSequence =
             opts.expectedRequestSequence === undefined
@@ -410,7 +423,7 @@ export function registerActionsCommands(
             ...(expectedRequestSequence !== undefined
               ? { expectedRequestSequence }
               : {}),
-            input: buildPromptInputs({ message: opts.message }),
+            input: buildPromptInputs({ message }),
             ...(senderThreadId !== undefined ? { senderThreadId } : {}),
           });
           if (outputJson(opts, { threadId, ...result })) {
@@ -424,8 +437,13 @@ export function registerActionsCommands(
     );
 
   parent
-    .command("tell <id> <message>")
+    .command("tell <id> [message]")
+    .aliases(["message", "send"])
     .description("Send a follow-up message to a thread")
+    .option(
+      "--message-file <path>",
+      `Read the message from a file instead of [message]; ${TEXT_FILE_HELP_SUFFIX}`,
+    )
     .option("--json", "Print machine-readable JSON output")
     .option("--model <model>", "Model ID for this message")
     .option("--service-tier <tier>", "Service tier: fast or default")
@@ -454,7 +472,17 @@ export function registerActionsCommands(
     )
     .action(
       action(
-        async (id: string, message: string, opts: ThreadTellCommandOptions) => {
+        async (
+          id: string,
+          inlineMessage: string | undefined,
+          opts: ThreadTellCommandOptions,
+        ) => {
+          const message = await requireTextInput({
+            file: opts.messageFile,
+            fileLabel: "--message-file",
+            inline: inlineMessage,
+            inlineLabel: "<message>",
+          });
           const response = await postThreadMessage({
             getUrl,
             threadId: id,

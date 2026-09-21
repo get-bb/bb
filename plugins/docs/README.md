@@ -58,12 +58,12 @@ provider, and directive are all Docs.
   iframe never receives `allow-same-origin`.
 - **Chat mentions:** `@` searches every vault's titles, previews, filenames,
   and folders. A selected document resolves to its latest content at send time.
-- **Thread links:** agents can emit a Docs directive that renders as a document
-  card. Clicking the card opens an editable, autosaving document in the thread
-  side panel; its secondary action opens the full Docs editor. The side-panel
-  editor can quote its selection (or full document) into the thread composer or
-  insert a live Docs mention. These composer actions are intentionally absent
-  from the full nav editor and generic file-opener tabs.
+- **Thread documents:** Markdown cards are editable and autosave directly in
+  the timeline. Open in tab opens the same document with shared editing state.
+  Pending agent proposals show live inline additions and deletions, with compact
+  Accept, Reject, Undo, and Redo controls. Ask for changes stays available and
+  adds an `Update` prompt with a Docs mention to the existing composer draft.
+  Ordinary user edits do not show a diff. HTML cards open a sandboxed preview.
 
   ```md
   ::docs{vault="personal" path="plans/release-plan.md" title="Release plan"}
@@ -150,10 +150,14 @@ bb docs push ./docs-work --delete
   `--workspace-host <id>`; omission intentionally targets the server machine.
 
 Human output is concise and `--json` returns a stable structured result on
-both success and failure. Exit codes are 0 success/no-op, 1 validation or
-operational/partial failure, 2 usage error, 3 stale/conflict, and 4 `status`
-found changes or ignored deletions. Options are command-specific; an option
-not shown in a command's usage is rejected before any mutation.
+success; a failure adds the `{"ok":false,"error":{"code","message","hint"?}}`
+envelope on stdout and keeps the readable text on stderr. Exit codes are 0
+success/no-op, 1 validation or operational/partial failure, 2 usage error, 3
+stale/conflict, and 4 `status` found changes or ignored deletions. Options are
+command-specific; an unknown command, an option not shown in a command's usage,
+and a stray argument are all rejected before any mutation, with the nearest
+declared name suggested. `bb docs --help` lists the commands and
+`bb docs <command> --help` prints that command's arguments, options, and rules.
 
 The legacy `write`, `mkdir`, `move`, and `remove` CLI commands remain for one
 backward-compatibility window and emit a deprecation warning. New agent
@@ -198,3 +202,39 @@ bb plugin install simple-notes
 bb plugin config simple-notes set directory "~/Notes"
 bb plugin reload simple-notes
 ```
+
+## Inline editing and proposed revisions
+
+Markdown document cards support inline editing and opening the same file in a
+Docs tab. An agent can propose a complete revision without modifying the file:
+
+```sh
+bb docs read letter.md --vault personal --json
+bb docs proposal letter.md --vault personal --json
+bb docs propose letter.md --vault personal --file ./candidate.md --expected-sha256 HASH --version none --json
+```
+
+Use the returned proposal version instead of `none` when replacing a previous
+proposal. `--file` is read on the thread's workspace host; `--workspace-host`
+overrides that host. The expected hash must come from the document used to
+write the candidate. Every proposal mutation checks its version, including
+replacement after rejection, so a delayed response cannot restore stale work.
+
+`bb docs proposal-update letter.md --version N --content MARKDOWN` updates only
+the pending candidate. `bb docs accept|reject|undo|redo letter.md --version N`
+performs the same actions as the card. All accept `--vault` and `--json`.
+Accept saves only when the original file hash still matches. Reject leaves the
+file alone. Undo after rejection restores the pending proposal; undo after
+acceptance restores the original file if nobody has changed it. Redo then
+reopens the proposal for review. There is one persisted proposal per document,
+not a revision history. Failed writes leave the candidate available to retry.
+Proposals follow file and folder moves made through Docs and are cleared when
+their document, folder, or vault is removed.
+
+The RPC equivalents are `readProposal`, `proposeNote`, `updateProposal`, and
+`resolveProposal`. `proposal-changed` signals carry `vaultId`, `path`, and
+`version`. `vault-changed` can include `path` for a single-document change and
+`proposalOnly: true` when the matching `proposal-changed` signal covers it.
+Events without a path still invalidate the whole vault (or all vaults when
+`vaultId` is absent), including external filesystem changes. Existing file
+read, save, and sync APIs remain supported.

@@ -14,6 +14,7 @@ interface ResolveNestPreviewBeforeKeyArgs {
   activeThread: ThreadListEntry;
   compareThreads: ThreadComparator | undefined;
   draftThreadIds: ReadonlySet<string>;
+  groupThreadsByEnvironment: boolean;
   parentThreadId: string;
   pinnedRootNodes: readonly ProjectThreadNode[];
   sections: readonly SidebarSectionDefinition[];
@@ -79,6 +80,7 @@ export function resolveSidebarNestPreviewBeforeKey({
   activeThread,
   compareThreads,
   draftThreadIds,
+  groupThreadsByEnvironment,
   parentThreadId,
   pinnedRootNodes,
   sections,
@@ -107,6 +109,7 @@ export function resolveSidebarNestPreviewBeforeKey({
     compareThreads,
     sections,
     draftThreadIds,
+    groupThreadsByEnvironment,
   );
   const parentNode = findThreadNode(projected, parentThreadId);
   return parentNode

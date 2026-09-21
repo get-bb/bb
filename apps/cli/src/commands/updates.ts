@@ -32,13 +32,14 @@ interface MachineUpdatesEntry {
   statusError: string | null;
 }
 
-function providerState(status: ProviderCliStatus): UpdateState {
+export function providerState(status: ProviderCliStatus): UpdateState {
   if (!status.installed) return "not-installed";
   if (status.needsUpdate || status.versionUnsupported) {
     return status.installAction === null
       ? "update-manually"
       : "update-available";
   }
+  if (status.latestVersion === null) return "latest-unknown";
   return "up-to-date";
 }
 

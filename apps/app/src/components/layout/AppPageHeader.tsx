@@ -30,7 +30,7 @@ export const HEADER_SEAM_CLASS = "border-b border-border-seam-vertical/60";
 export const APP_PAGE_HEADER_SURFACE_CLASS = "bg-surface-scrim";
 
 export const COMPACT_SHELF_HIDDEN_PAGE_HEADER_ACTIONS_CLASS =
-  "group-data-[panel-shelf=open]/page-inset:invisible group-data-[panel-shelf=shelf]/page-inset:invisible";
+  "group-data-[panel-shelf=shelf]/page-inset:invisible";
 
 interface AppPageHeaderProps {
   center?: ReactNode;

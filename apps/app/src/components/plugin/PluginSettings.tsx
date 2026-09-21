@@ -1,7 +1,6 @@
-import { useSetPluginEnabled } from "@/components/plugin/useSetPluginEnabled";
+import { usePluginEnabledMutation } from "@/components/plugin/usePluginEnabledMutation";
 import { useEffect, useId, useState, type FocusEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { appToast } from "@/components/ui/app-toast.js";
 import { PluginSettingsSections } from "@/components/plugin/PluginSettingsSections";
 import { Button } from "@bb/shared-ui/button";
 import {
@@ -25,10 +24,7 @@ import {
   ResourceDetailStack,
 } from "@bb/shared-ui/resource-list";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
-import {
-  applyPluginSettingsView,
-  invalidatePluginList,
-} from "@/hooks/cache-owners/plugin-cache-owner";
+import { applyPluginSettingsView } from "@/hooks/cache-owners/plugin-cache-owner";
 import {
   updatePluginSettings,
   usePluginList,
@@ -544,24 +540,9 @@ export function PluginSettingsPage({ pluginId }: { pluginId: string }) {
 function PluginSettingsContent({ plugin }: { plugin: PluginListItem }) {
   const queryClient = useQueryClient();
   const { settingsSections } = usePluginSlots();
-  const setEnabled = useSetPluginEnabled();
-  const toggle = useMutation({
-    meta: { showErrorToast: false },
-    mutationFn: (enabled: boolean) => setEnabled(plugin.id, enabled),
-    onError: (error, enabled) => {
-      appToast.error(
-        `${enabled ? "Enabling" : "Disabling"} ${plugin.id} failed`,
-        {
-          description: error instanceof Error ? error.message : String(error),
-        },
-      );
-    },
-    onSettled: async () => {
-      await invalidatePluginList({ queryClient });
-      await invalidateMachineProviders({ queryClient });
-    },
-  });
-  const enabled = toggle.isPending ? toggle.variables : plugin.enabled;
+  const { toggle, enabled } = usePluginEnabledMutation(plugin, () =>
+    invalidateMachineProviders({ queryClient }),
+  );
   const hasAvailableSettings =
     plugin.hasSettings ||
     settingsSections.some((section) => section.pluginId === plugin.id);

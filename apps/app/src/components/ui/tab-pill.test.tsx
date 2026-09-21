@@ -118,4 +118,31 @@ describe("TabPill", () => {
         .classList.contains("max-md:pointer-coarse:pl-3.5"),
     ).toBe(true);
   });
+
+  it("closes from the leading control without selecting the tab", () => {
+    const onClose = vi.fn();
+    const onSelect = vi.fn();
+    render(
+      <TabPill
+        label="rabbits.md"
+        title="rabbits.md"
+        isActive
+        onSelect={onSelect}
+        compact
+        leadingVisual={<span aria-hidden>file</span>}
+        enlargeCloseTargetOnCoarsePointer
+        closeAction={{
+          closeLabel: "Close rabbits.md",
+          onClose,
+        }}
+      />,
+    );
+
+    const tab = screen.getByRole("button", { name: "rabbits.md" });
+    const close = screen.getByRole("button", { name: "Close rabbits.md" });
+    expect(tab.nextElementSibling).toBe(close);
+    fireEvent.click(close);
+    expect(onClose).toHaveBeenCalledOnce();
+    expect(onSelect).not.toHaveBeenCalled();
+  });
 });

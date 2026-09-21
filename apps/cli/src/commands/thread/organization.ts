@@ -15,6 +15,7 @@ import { describeQueueWait } from "./actions.js";
 import { formatQueueSendCountdown } from "./send-time.js";
 import { action } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
+import { requireTextInput, TEXT_FILE_HELP_SUFFIX } from "../../text-input.js";
 import {
   collectOption,
   confirmDestructiveAction,
@@ -48,12 +49,14 @@ interface QueueListOptions extends JsonOptions {
 }
 
 interface QueueCreateOptions extends JsonOptions {
+  messageFile?: string;
   model?: string;
 }
 
 interface QueueUpdateOptions extends JsonOptions {
   file?: string[];
   image?: string[];
+  messageFile?: string;
 }
 
 interface QueueSendOptions extends JsonOptions {
@@ -117,7 +120,12 @@ function printQueueTable(rows: ThreadQueuedMessagesResult): void {
         ? "System"
         : (row.senderThreadId ?? "Agent"),
     truncateCell(queuedMessagePreview(row.content), MAX_QUEUE_TEXT_WIDTH),
-    truncateCell(describeQueueWait(row), MAX_QUEUE_TEXT_WIDTH),
+    truncateCell(
+      row.failureReason === null
+        ? describeQueueWait(row)
+        : `Failed: ${row.failureReason}`,
+      MAX_QUEUE_TEXT_WIDTH,
+    ),
     formatQueueSendCountdown(row.sendAt, now),
   ]);
   printBorderlessTable(
@@ -127,6 +135,11 @@ function printQueueTable(rows: ThreadQueuedMessagesResult): void {
     },
     table,
   );
+  for (const row of rows) {
+    if (row.failureReason === null) continue;
+    console.log(`Failed ${row.id}: ${row.failureReason}`);
+    console.log(`Retry: bb thread queue send ${row.threadId} ${row.id}`);
+  }
 }
 
 function queuedMessagePreview(content: PromptInput[]): string {
@@ -308,46 +321,56 @@ export function registerOrganizationCommands(
     .description("Manage queued thread messages");
   queue
     .command("list [threadId]")
-    .description(
-      "List queued messages; omit the thread to list every one",
-    )
+    .description("List queued messages; omit the thread to list every one")
     .option(
       "--wait-holder <holder>",
       "Filter to rows one plugin is holding: plugin:<plugin-id>",
     )
     .option("--json", "Print machine-readable JSON output")
     .action(
-      action(
-        async (threadId: string | undefined, opts: QueueListOptions) => {
-          const sdk = createCliBbSdk(getUrl());
-          // A thread argument keeps the thread-scoped route, which is the one
-          // that returns queue ORDER; the cross-thread route answers "what is
-          // queued anywhere" and is ordered by age instead.
-          const result =
-            threadId === undefined
-              ? await sdk.threads.queue.list({
-                  ...(opts.waitHolder
-                    ? { waitHolder: parseWaitHolder(opts.waitHolder) }
-                    : {}),
-                })
-              : await sdk.threads.queuedMessages.list({ threadId });
-          if (outputJson(opts, result)) return;
-          if (result.length === 0) {
-            console.log("No queued messages found");
-            return;
-          }
-          printQueueTable(result);
-        },
-      ),
+      action(async (threadId: string | undefined, opts: QueueListOptions) => {
+        const sdk = createCliBbSdk(getUrl());
+        // A thread argument keeps the thread-scoped route, which is the one
+        // that returns queue ORDER; the cross-thread route answers "what is
+        // queued anywhere" and is ordered by age instead.
+        const result =
+          threadId === undefined
+            ? await sdk.threads.queue.list({
+                ...(opts.waitHolder
+                  ? { waitHolder: parseWaitHolder(opts.waitHolder) }
+                  : {}),
+              })
+            : await sdk.threads.queuedMessages.list({ threadId });
+        if (outputJson(opts, result)) return;
+        if (result.length === 0) {
+          console.log("No queued messages found");
+          return;
+        }
+        printQueueTable(result);
+      }),
     );
   queue
-    .command("create <threadId> <message>")
+    .command("create <threadId> [message]")
     .description("Create a queued text message")
     .option("--model <model>", "Model override for the queued message")
+    .option(
+      "--message-file <path>",
+      `Read the message from a file instead of [message]; ${TEXT_FILE_HELP_SUFFIX}`,
+    )
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(
-        async (threadId: string, message: string, opts: QueueCreateOptions) => {
+        async (
+          threadId: string,
+          inlineMessage: string | undefined,
+          opts: QueueCreateOptions,
+        ) => {
+          const message = await requireTextInput({
+            file: opts.messageFile,
+            fileLabel: "--message-file",
+            inline: inlineMessage,
+            inlineLabel: "<message>",
+          });
           const result = await createCliBbSdk(
             getUrl(),
           ).threads.queuedMessages.create({
@@ -363,8 +386,12 @@ export function registerOrganizationCommands(
       ),
     );
   queue
-    .command("update <threadId> <messageId> <message>")
+    .command("update <threadId> <messageId> [message]")
     .description("Update a queued message in place")
+    .option(
+      "--message-file <path>",
+      `Read the message from a file instead of [message]; ${TEXT_FILE_HELP_SUFFIX}`,
+    )
     .option(
       "--file <path>",
       "Upload an absolute path or file: URL from this CLI machine or pass an uploaded attachment path (repeatable)",
@@ -383,9 +410,15 @@ export function registerOrganizationCommands(
         async (
           threadId: string,
           messageId: string,
-          message: string,
+          inlineMessage: string | undefined,
           opts: QueueUpdateOptions,
         ) => {
+          const message = await requireTextInput({
+            file: opts.messageFile,
+            fileLabel: "--message-file",
+            inline: inlineMessage,
+            inlineLabel: "<message>",
+          });
           const sdk = createCliBbSdk(getUrl());
           const queuedMessages = sdk.threads.queuedMessages;
           const existing = (await queuedMessages.list({ threadId })).find(

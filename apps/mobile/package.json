@@ -24,7 +24,7 @@
     "@bb/server-contract": "workspace:*",
     "@expo/ui": "57.0.11",
     "@gorhom/bottom-sheet": "^5.2.14",
-    "@hugeicons/core-free-icons": "^4.1.3",
+    "@hugeicons/core-free-icons": "^4.3.4",
     "@hugeicons/react-native": "^1.0.15",
     "@react-native-cookies/cookies": "^6.2.1",
     "@tanstack/react-query": "^5.62.0",

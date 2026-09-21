@@ -45,6 +45,7 @@ it("passes the canonical protocol suite against a scripted pi rpc child", async 
     "rpc/response-not-request": "pass",
     "handshake/initialize": "pass",
     "session/start-identity": "pass",
+    "session/start-identity-announced": "pass",
     "turn/lifecycle": "pass",
     "events/schema-valid": "pass",
     "item/opens-before-delta": "pass",
@@ -52,6 +53,7 @@ it("passes the canonical protocol suite against a scripted pi rpc child", async 
     "session/resume-identity": "pass",
     "session/resume-id-uniqueness": "pass",
     "session/fork-identity": "pass",
+    "session/fork-identity-announced": "pass",
     "session/threads-independent": "pass",
     "stop/interrupt-settles-before-result": "pass",
   });

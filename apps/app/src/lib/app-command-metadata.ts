@@ -98,6 +98,26 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
         "Show or hide the app sidebar.",
       ),
       command(
+        "panel.previousTab",
+        "Previous panel tab",
+        "Select the previous visible right-panel tab, wrapping across panel splits.",
+      ),
+      command(
+        "panel.nextTab",
+        "Next panel tab",
+        "Select the next visible right-panel tab, wrapping across panel splits.",
+      ),
+      command(
+        "panel.previousNewTabItem",
+        "Previous New tab item",
+        "Focus the previous search, action, or recent item on the selected New tab page.",
+      ),
+      command(
+        "panel.nextNewTabItem",
+        "Next New tab item",
+        "Focus the next search, action, or recent item on the selected New tab page.",
+      ),
+      command(
         "panel.newTab",
         "New panel tab",
         "Open a tab in the secondary panel.",
@@ -116,6 +136,26 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
         "panel.toggle",
         "Toggle panel",
         "Show or hide the secondary panel.",
+      ),
+      command(
+        "pane.focus.left",
+        "Focus chat pane left",
+        "Focus the chat pane to the left of the current pane.",
+      ),
+      command(
+        "pane.focus.right",
+        "Focus chat pane right",
+        "Focus the chat pane to the right of the current pane.",
+      ),
+      command(
+        "pane.focus.up",
+        "Focus chat pane up",
+        "Focus the chat pane above the current pane.",
+      ),
+      command(
+        "pane.focus.down",
+        "Focus chat pane down",
+        "Focus the chat pane below the current pane.",
       ),
       command(
         "pane.focus.previous",

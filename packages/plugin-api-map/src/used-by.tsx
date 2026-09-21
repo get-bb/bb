@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { HugeiconsIcon } from "@hugeicons/react";
-import { ArrowLeft01Icon, ArrowRight01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@bb/shared-ui/icon";
 
 import { cn } from "./cn";
 import {
@@ -69,8 +68,8 @@ function Caret({
         !shown && "invisible",
       )}
     >
-      <HugeiconsIcon
-        icon={direction === "left" ? ArrowLeft01Icon : ArrowRight01Icon}
+      <Icon
+        name={direction === "left" ? "ChevronLeft" : "ChevronRight"}
         className="size-3.5"
       />
     </button>

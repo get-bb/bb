@@ -12,8 +12,6 @@ import {
   deepFreezePluginMetadata,
   derivePluginId,
   formatPluginThemeId,
-  isNamespacedGlyph,
-  isPluginOwnedIconPath,
   parsePersistedPluginMetadata,
   type DeclaredCodeTheme,
   type JsonObject,
@@ -169,6 +167,7 @@ import type {
   PluginResolvedProviderEnvHealth,
 } from "./plugin-service-internal.js";
 import type { PluginMachineProviderBridge } from "./plugin-machine-provider-registry.js";
+import { fillPluginPresentation } from "./plugin-presentation.js";
 export type {
   PluginAgentToolContribution,
   PluginMentionResolveResult,
@@ -275,11 +274,19 @@ export interface PluginService {
   reload(id?: string): Promise<PluginReloadOutcome>;
   getApi(id: string): BbPluginApi | undefined;
   /**
-   * Whether this plugin's runtime is live right now. Core uses it to decide
-   * whether a `plugin:<id>` owner still exists — a queue wait whose owner is
-   * gone is cleared as `orphaned` rather than stranding the user's turn.
+   * Whether this server still means to run this plugin, which is what decides
+   * a `plugin:<id>` queue wait's fate: core clears a wait whose owner is gone
+   * rather than stranding the user's turn.
+   *
+   * Loaded is the obvious case and not the only one. A plugin the current load
+   * pass has not reached yet counts, because nothing is loaded while the server
+   * boots and holds released then are released seconds before their plugin
+   * could restate them. So does one paused for a server move, which resumes on
+   * rollback or on the target. Everything else — uninstalled, disabled, failed,
+   * incompatible, or never reached by a pass that has since ended — does not,
+   * and its waits clear.
    */
-  isPluginLoaded(id: string): boolean;
+  isPluginExpectedToRun(id: string): boolean;
   /**
    * On-disk asset backing GET /plugins/:id/assets/app.{js,css}: file path
    * plus the current content hash (the route compares ?h against it for
@@ -288,6 +295,10 @@ export interface PluginService {
    */
   getAppAsset(
     id: string,
+    kind: "js" | "css",
+  ): { path: string; hash: string } | undefined;
+  getAppAssetByHash(
+    hash: string,
     kind: "js" | "css",
   ): { path: string; hash: string } | undefined;
   getBrandingAsset(
@@ -522,8 +533,6 @@ function normalizeMentionSearchItems(
   });
 }
 
-const GENERIC_AGENT_TOOL_GLYPH = "Toolbox";
-
 export function createPluginService(deps: PluginServiceDeps): PluginService {
   const logger = deps.logger;
   const bundledPlugins =
@@ -554,6 +563,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
   const HTTP_TOKEN_FILE = ".http-token";
   let schedulesPaused = false;
+  let loadPassActive = false;
   const suspendedPluginIds = new Set<string>();
 
   const {
@@ -696,26 +706,14 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     pluginId: string,
     record: PluginAgentToolRecord,
   ): ThreadEventItemPresentation {
-    const declared = record.presentation;
-    const brandingIcon = loaded.get(pluginId)?.manifest.branding.icon;
-    const glyph =
-      declared?.icon?.glyph ??
-      (brandingIcon !== undefined &&
-      !isPluginOwnedIconPath(brandingIcon) &&
-      !isNamespacedGlyph(brandingIcon)
-        ? brandingIcon
-        : GENERIC_AGENT_TOOL_GLYPH);
-    return {
-      label: declared?.label ?? {
+    return fillPluginPresentation({
+      declared: record.presentation,
+      brandingIcon: loaded.get(pluginId)?.manifest.branding.icon,
+      label: {
         pending: `Running ${record.name}`,
         completed: `Ran ${record.name}`,
       },
-      icon: { glyph },
-      ...(declared?.suppress === undefined
-        ? {}
-        : { suppress: declared.suppress }),
-      ...(declared?.tint === undefined ? {} : { tint: declared.tint }),
-    };
+    });
   }
 
   function findLoadedTheme(
@@ -804,6 +802,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         name: registration.name,
         summary: registration.summary,
         commands: registration.commands.map((command) => ({ ...command })),
+        rendersHelp: registration.rendersHelp,
       });
     }
     return contributions.sort((a, b) => a.pluginId.localeCompare(b.pluginId));
@@ -1304,17 +1303,22 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
     async start(options) {
       setLoadHold(options?.hold ?? null);
-      await backfillNormalizedPluginRegistrations();
-      await withPluginOperationLock(REGISTRATION_MUTATION_KEY, async () => {
-        for (const artifact of listPendingGitPluginArtifacts(deps.db)) {
-          await withArtifactLock(artifact.path, () =>
-            recoverInterruptedGitPluginPromotion(artifact.path),
-          );
-        }
-        await recoverIncompletePluginRollbacks();
-      });
-      await reconcileBundled();
-      await loadAll();
+      loadPassActive = true;
+      try {
+        await backfillNormalizedPluginRegistrations();
+        await withPluginOperationLock(REGISTRATION_MUTATION_KEY, async () => {
+          for (const artifact of listPendingGitPluginArtifacts(deps.db)) {
+            await withArtifactLock(artifact.path, () =>
+              recoverInterruptedGitPluginPromotion(artifact.path),
+            );
+          }
+          await recoverIncompletePluginRollbacks();
+        });
+        await reconcileBundled();
+        await loadAll();
+      } finally {
+        loadPassActive = false;
+      }
       await withPluginOperationLock(REGISTRATION_MUTATION_KEY, runArtifactGc);
       if (deps.watchBuiltinPluginSources) {
         for (const bundled of bundledPlugins) {
@@ -1606,8 +1610,11 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       return loaded.get(id)?.handle.api;
     },
 
-    isPluginLoaded(id) {
-      return loaded.has(id);
+    isPluginExpectedToRun(id) {
+      if (loaded.has(id) || suspendedPluginIds.has(id)) return true;
+      if (!loadPassActive) return false;
+      const row = getInstalledPlugin(deps.db, id);
+      return row !== undefined && getStatus(row).status === "starting";
     },
 
     getAppAsset(id, kind) {
@@ -1617,6 +1624,16 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       const path = kind === "js" ? assets.jsPath : assets.cssPath;
       if (path === null) return undefined;
       return { path, hash: assets.hash };
+    },
+
+    getAppAssetByHash(hash, kind) {
+      for (const [id, snapshot] of appBundles) {
+        if (!loaded.has(id) || snapshot.assets?.hash !== hash) continue;
+        const path =
+          kind === "js" ? snapshot.assets.jsPath : snapshot.assets.cssPath;
+        if (path !== null) return { path, hash };
+      }
+      return undefined;
     },
 
     getBrandingAsset(id, variant) {

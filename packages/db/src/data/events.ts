@@ -1470,8 +1470,12 @@ export function listStoredEventRows(
     type: ThreadEventType | undefined,
   ): StoredEventRow[] => {
     return db
-      .select(storedEventRowFields)
-      .from(events)
+      .select(storedEventRowSqlFields(null))
+      .from(
+        type === undefined
+          ? events
+          : sql`${events} INDEXED BY events_thread_type_sequence_idx`,
+      )
       .where(
         and(
           eq(events.threadId, args.threadId),
@@ -1770,7 +1774,7 @@ export function listStoredDelegatingItemRowsByItemIds(
 
 export function isTimelineCursorSequencePresent(
   db: DbConnection,
-  args: TimelineSegmentAnchorLookupArgs,
+  args: TimelineCursorSequenceLookupArgs,
 ): boolean {
   const row = db
     .select({ sequence: events.sequence })
@@ -2037,14 +2041,6 @@ export interface StoredThreadEventDataRow {
   type: ThreadEventType;
 }
 
-/**
- * The newest row of any of `types`, optionally restricted to what came after a
- * sequence.
- *
- * Assembling a turn's failure context means asking two questions of the log —
- * "how did the provider describe this failure" and "what rate-limit windows did
- * it last report" — and both are one indexed row, not a scan the caller filters.
- */
 export function getLatestStoredThreadEventOfTypes(
   db: DbQueryConnection,
   args: {
@@ -2829,61 +2825,30 @@ export function listStoredConversationOutlineEventRows(
   return rows.sort((left, right) => left.sequence - right.sequence);
 }
 
-export interface StandardTimelineSegmentAnchorRow {
-  rowId: string;
+export interface TimelineWindowHint {
   sequence: number;
 }
 
-function timelineSegmentAnchorSelection() {
-  return {
-    rowId: sql<string>`CASE
-      WHEN ${events.type} = 'system/operation' THEN ${events.id}
-      ELSE ${events.threadId} || ':user-seed:' || ${events.sequence}
-    END`,
-    sequence: events.sequence,
-  };
-}
-
-function timelineSegmentAnchorConditions(threadId: string): SQL | undefined {
-  return and(
-    eq(events.threadId, threadId),
-    or(
-      and(
-        eq(events.type, "client/turn/requested"),
-        sql`(
-          COALESCE(json_extract(${events.data}, '$.target.kind'), 'new-turn')
-            IN ('thread-start', 'new-turn')
-          OR (
-            json_extract(${events.data}, '$.target.kind') IN ('auto', 'steer')
-            AND json_extract(${events.data}, '$.target.expectedTurnId') IS NULL
-          )
-        )`,
-        sql`EXISTS (
-          SELECT 1
-          FROM json_each(${events.data}, '$.input') AS input_part
-          WHERE (
-            json_extract(input_part.value, '$.type') = 'text'
-            AND COALESCE(json_extract(input_part.value, '$.text'), '') <> ''
-          )
-          OR json_extract(input_part.value, '$.type')
-            IN ('image', 'localImage', 'localFile')
-        )`,
-      ),
-      and(
-        eq(events.type, "system/operation"),
-        sql`json_extract(${events.data}, '$.operation') = ${THREAD_CONTEXT_CLEAR_OPERATION}`,
-        sql`json_extract(${events.data}, '$.status') = 'completed'`,
-      ),
-    ),
-  );
-}
-
-export interface ListTimelineSegmentAnchorsDescendingArgs {
+export interface ListTimelineWindowHintsDescendingArgs {
   threadId: string;
-  beforeSequence?: number;
+  beforeSequence: number;
   limit: number;
   sequenceStart: number;
 }
+
+const visibleTimelineRequestInputSql = sql`EXISTS (
+  SELECT 1
+  FROM json_each(events.data, '$.input') AS input_part
+  WHERE COALESCE(json_extract(input_part.value, '$.visibility'), '') <> 'agent-only'
+    AND (
+      (
+        json_extract(input_part.value, '$.type') = 'text'
+        AND COALESCE(json_extract(input_part.value, '$.text'), '') <> ''
+      )
+      OR json_extract(input_part.value, '$.type')
+        IN ('image', 'localImage', 'localFile')
+    )
+)`;
 
 export interface FindTimelineWindowBudgetFloorSequenceArgs {
   excludeDiagnosticEvents?: boolean;
@@ -2967,6 +2932,10 @@ export function listTimelineOrderingContext(
       initiator: sql<
         string | null
       >`json_extract(${events.data}, '$.initiator')`,
+      expectedTurnId: sql<
+        string | null
+      >`json_extract(${events.data}, '$.target.expectedTurnId')`,
+      hasInput: sql<number>`CASE WHEN ${events.type} = 'client/turn/requested' AND ${visibleTimelineRequestInputSql} THEN 1 ELSE 0 END`,
     })
     .from(sql`${events} INDEXED BY events_thread_type_sequence_idx`)
     .where(
@@ -3064,34 +3033,38 @@ export function getFirstParentedTimelineBoundarySequence(
     FROM events INNER JOIN spans
       ON ${events.sequence} > spans.start AND ${events.sequence} < spans.end
     WHERE ${events.type} = 'client/turn/requested'
-      AND ${timelineSegmentAnchorConditions(args.threadId)}
+      AND ${events.threadId} = ${args.threadId}
+      AND ${visibleTimelineRequestInputSql}
+      AND (
+        COALESCE(json_extract(${events.data}, '$.target.kind'), 'new-turn')
+          IN ('thread-start', 'new-turn')
+        OR (
+          json_extract(${events.data}, '$.target.kind') IN ('auto', 'steer')
+          AND json_extract(${events.data}, '$.target.expectedTurnId') IS NULL
+        )
+      )
       AND json_extract(${events.data}, '$.initiator') = 'user'
   `);
   return result?.sequence ?? null;
 }
 
-export function listTimelineSegmentAnchorsDescending(
+export function listTimelineWindowHintsDescending(
   db: DbConnection,
-  args: ListTimelineSegmentAnchorsDescendingArgs,
-): StandardTimelineSegmentAnchorRow[] {
-  const conditions = and(
-    timelineSegmentAnchorConditions(args.threadId),
-    gte(events.sequence, args.sequenceStart),
-  );
-  const where =
-    args.beforeSequence === undefined
-      ? conditions
-      : and(conditions, lt(events.sequence, args.beforeSequence));
-  return db
-    .select(timelineSegmentAnchorSelection())
-    .from(events)
-    .where(where)
-    .orderBy(desc(events.sequence))
-    .limit(args.limit)
-    .all();
+  args: ListTimelineWindowHintsDescendingArgs,
+): TimelineWindowHint[] {
+  return db.all<TimelineWindowHint>(sql`
+    SELECT sequence
+    FROM events INDEXED BY events_thread_type_sequence_idx
+    WHERE thread_id = ${args.threadId}
+      AND type = 'client/turn/requested'
+      AND sequence >= ${args.sequenceStart}
+      AND sequence < ${args.beforeSequence}
+    ORDER BY sequence DESC
+    LIMIT ${args.limit}
+  `);
 }
 
-export interface TimelineSegmentAnchorLookupArgs {
+export interface TimelineCursorSequenceLookupArgs {
   threadId: string;
   sequence: number;
 }
@@ -3485,33 +3458,353 @@ export function getLatestCompletedThreadContextClearSequence(
   return row?.sequence ?? null;
 }
 
-export function getLastStoredProviderThreadId(
+interface StoredProviderThreadIdentityScope {
+  hostId: string | null;
+  providerId: string;
+  threadId: string;
+}
+
+interface ResolveStoredProviderSessionsArgs {
+  threadIds: readonly string[];
+}
+
+interface ClassifyStoredProviderThreadClaimArgs {
+  providerThreadId: string;
+  threadId: string;
+}
+
+type StoredProviderThreadClaim =
+  | { kind: "owned"; threadId: string }
+  | { kind: "tied"; threadIds: string[] };
+
+export type StoredProviderSession =
+  | { kind: "none" }
+  | {
+      kind: "invalid";
+      providerThreadId: string | null;
+      claimantThreadIds: string[];
+    }
+  | { kind: "owned"; providerThreadId: string }
+  | {
+      kind: "foreign";
+      providerThreadId: string;
+      claimantThreadIds: string[];
+    }
+  | {
+      kind: "ambiguous";
+      providerThreadId: string;
+      claimantThreadIds: string[];
+    };
+
+export type StoredProviderThreadClaimClass =
+  | "owned"
+  | "unannounced"
+  | "foreign"
+  | "ambiguous";
+
+function listStoredProviderThreadIdentityScopes(
   db: DbQueryConnection,
-  threadId: string,
-): string | null {
-  const latestProviderRow = db
-    .select({ providerThreadId: events.providerThreadId })
+  threadIds: readonly string[],
+): StoredProviderThreadIdentityScope[] {
+  return db
+    .select({
+      hostId: environments.hostId,
+      providerId: threads.providerId,
+      threadId: threads.id,
+    })
+    .from(threads)
+    .leftJoin(environments, eq(environments.id, threads.environmentId))
+    .where(inArray(threads.id, [...threadIds]))
+    .all();
+}
+
+function readStoredProviderThreadClaim(
+  db: DbQueryConnection,
+  scope: StoredProviderThreadIdentityScope,
+  providerThreadId: string,
+): StoredProviderThreadClaim | undefined {
+  const earliestHostCondition =
+    scope.hostId === null
+      ? sql`1`
+      : sql`(earliest_environment.host_id IS NULL OR earliest_environment.host_id = ${scope.hostId})`;
+  const claimantThreadIds = db
+    .selectDistinct({ threadId: events.threadId })
     .from(events)
+    .innerJoin(threads, eq(threads.id, events.threadId))
+    .leftJoin(environments, eq(environments.id, threads.environmentId))
     .where(
-      sql`${events.threadId} = ${threadId}
-        AND ${events.providerThreadId} IS NOT NULL
-        AND ${events.sequence} > COALESCE((
+      and(
+        eq(events.type, "thread/identity"),
+        eq(events.providerThreadId, providerThreadId),
+        eq(threads.providerId, scope.providerId),
+        scope.hostId === null
+          ? undefined
+          : or(
+              isNull(environments.hostId),
+              eq(environments.hostId, scope.hostId),
+            ),
+        sql`${events.createdAt} = (
+          SELECT earliest.created_at
+          FROM events AS earliest
+          INNER JOIN threads AS earliest_thread
+            ON earliest_thread.id = earliest.thread_id
+          LEFT JOIN environments AS earliest_environment
+            ON earliest_environment.id = earliest_thread.environment_id
+          WHERE earliest.type = 'thread/identity'
+            AND earliest.provider_thread_id = ${providerThreadId}
+            AND earliest_thread.provider_id = ${scope.providerId}
+            AND ${earliestHostCondition}
+          ORDER BY earliest.created_at
+          LIMIT 1
+        )`,
+      ),
+    )
+    .orderBy(events.threadId)
+    .all()
+    .map((row) => row.threadId);
+  const [owner, ...others] = claimantThreadIds;
+  if (owner === undefined) {
+    return undefined;
+  }
+  return others.length === 0
+    ? { kind: "owned", threadId: owner }
+    : { kind: "tied", threadIds: claimantThreadIds };
+}
+
+function classifyClaim(
+  claim: StoredProviderThreadClaim | undefined,
+  threadId: string,
+): StoredProviderThreadClaimClass {
+  if (claim === undefined) {
+    return "unannounced";
+  }
+  if (claim.kind === "owned") {
+    return claim.threadId === threadId ? "owned" : "foreign";
+  }
+  return claim.threadIds.includes(threadId) ? "ambiguous" : "foreign";
+}
+
+function otherClaimants(
+  claim: StoredProviderThreadClaim | undefined,
+  threadId: string,
+): string[] {
+  if (claim === undefined) {
+    return [];
+  }
+  const claimants = claim.kind === "owned" ? [claim.threadId] : claim.threadIds;
+  return claimants.filter((claimant) => claimant !== threadId);
+}
+
+function readNewestStoredProviderThreadIdentity(
+  db: DbQueryConnection,
+  args: {
+    excludedProviderThreadIds: readonly string[];
+    threadId: string;
+  },
+):
+  | (StoredProviderThreadIdentityScope & { providerThreadId: string | null })
+  | null {
+  const row = db
+    .select({
+      hostId: environments.hostId,
+      providerId: threads.providerId,
+      providerThreadId: events.providerThreadId,
+    })
+    .from(events)
+    .innerJoin(threads, eq(threads.id, events.threadId))
+    .leftJoin(environments, eq(environments.id, threads.environmentId))
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        eq(events.type, "thread/identity"),
+        sql`${events.sequence} > COALESCE((
           SELECT MAX(context_clear.sequence)
           FROM events AS context_clear
-          WHERE context_clear.thread_id = ${threadId}
+          WHERE context_clear.thread_id = ${args.threadId}
             AND context_clear.type = 'system/operation'
             AND json_extract(context_clear.data, '$.operation') = ${THREAD_CONTEXT_CLEAR_OPERATION}
             AND json_extract(context_clear.data, '$.status') = 'completed'
         ), 0)`,
+        args.excludedProviderThreadIds.length === 0
+          ? undefined
+          : or(
+              isNull(events.providerThreadId),
+              notInArray(events.providerThreadId, [
+                ...args.excludedProviderThreadIds,
+              ]),
+            ),
+      ),
     )
-    .orderBy(sql`${events.sequence} DESC`)
+    .orderBy(desc(events.sequence))
     .limit(1)
     .get();
-  if (!latestProviderRow?.providerThreadId) {
+  if (row === undefined) {
     return null;
   }
+  return {
+    hostId: row.hostId,
+    providerId: row.providerId,
+    providerThreadId: row.providerThreadId,
+    threadId: args.threadId,
+  };
+}
 
-  return latestProviderRow.providerThreadId;
+function resolveThreadProviderSession(
+  db: DbQueryConnection,
+  threadId: string,
+): StoredProviderSession {
+  const visited: string[] = [];
+  let firstForeign: StoredProviderSession | null = null;
+  for (;;) {
+    const identity = readNewestStoredProviderThreadIdentity(db, {
+      excludedProviderThreadIds: visited,
+      threadId,
+    });
+    if (identity === null) {
+      return firstForeign ?? { kind: "none" };
+    }
+    const { providerThreadId } = identity;
+    if (providerThreadId === null || providerThreadId.length === 0) {
+      return { kind: "invalid", providerThreadId, claimantThreadIds: [] };
+    }
+    visited.push(providerThreadId);
+    const claim = readStoredProviderThreadClaim(db, identity, providerThreadId);
+    switch (classifyClaim(claim, threadId)) {
+      case "owned":
+      case "unannounced":
+        return { kind: "owned", providerThreadId };
+      case "ambiguous":
+        return {
+          kind: "ambiguous",
+          providerThreadId,
+          claimantThreadIds: otherClaimants(claim, threadId),
+        };
+      case "foreign":
+        firstForeign ??= {
+          kind: "foreign",
+          providerThreadId,
+          claimantThreadIds: otherClaimants(claim, threadId),
+        };
+    }
+  }
+}
+
+export function resolveStoredProviderSessions(
+  db: DbQueryConnection,
+  args: ResolveStoredProviderSessionsArgs,
+): Map<string, StoredProviderSession> {
+  return new Map(
+    [...new Set(args.threadIds)].map(
+      (threadId): [string, StoredProviderSession] => [
+        threadId,
+        resolveThreadProviderSession(db, threadId),
+      ],
+    ),
+  );
+}
+
+export function getStoredProviderSession(
+  db: DbQueryConnection,
+  threadId: string,
+): StoredProviderSession {
+  return resolveThreadProviderSession(db, threadId);
+}
+
+export function getLastStoredProviderThreadId(
+  db: DbQueryConnection,
+  threadId: string,
+): string | null {
+  const session = getStoredProviderSession(db, threadId);
+  return session.kind === "owned" ? session.providerThreadId : null;
+}
+
+export function wouldRemoveSharedProviderSessionClaim(
+  db: DbQueryConnection,
+  args: DeleteThreadEventSuffixArgs,
+): boolean {
+  const [scope] = listStoredProviderThreadIdentityScopes(db, [args.threadId]);
+  if (scope === undefined) return false;
+  const removedClaims = db
+    .select({
+      providerThreadId: events.providerThreadId,
+      createdAt: sql<number>`min(${events.createdAt})`,
+    })
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        eq(events.type, "thread/identity"),
+        isNotNull(events.providerThreadId),
+        gte(events.sequence, args.cutoffSequence),
+        lte(events.sequence, args.oldMaxSequence),
+      ),
+    )
+    .groupBy(events.providerThreadId)
+    .all();
+  for (const removed of removedClaims) {
+    if (removed.providerThreadId === null) continue;
+    const claim = readStoredProviderThreadClaim(
+      db,
+      scope,
+      removed.providerThreadId,
+    );
+    if (classifyClaim(claim, args.threadId) === "foreign") continue;
+    const retained = db
+      .select({ id: events.id })
+      .from(events)
+      .where(
+        and(
+          eq(events.threadId, args.threadId),
+          eq(events.type, "thread/identity"),
+          eq(events.providerThreadId, removed.providerThreadId),
+          lte(events.createdAt, removed.createdAt),
+          or(
+            lt(events.sequence, args.cutoffSequence),
+            gt(events.sequence, args.oldMaxSequence),
+          ),
+        ),
+      )
+      .limit(1)
+      .get();
+    if (retained !== undefined) continue;
+    const other = db
+      .select({ id: events.id })
+      .from(events)
+      .innerJoin(threads, eq(threads.id, events.threadId))
+      .leftJoin(environments, eq(environments.id, threads.environmentId))
+      .where(
+        and(
+          eq(events.type, "thread/identity"),
+          eq(events.providerThreadId, removed.providerThreadId),
+          sql`${events.threadId} != ${args.threadId}`,
+          eq(threads.providerId, scope.providerId),
+          scope.hostId === null
+            ? undefined
+            : or(
+                isNull(environments.hostId),
+                eq(environments.hostId, scope.hostId),
+              ),
+        ),
+      )
+      .limit(1)
+      .get();
+    if (other !== undefined) return true;
+  }
+  return false;
+}
+
+export function classifyStoredProviderThreadClaim(
+  db: DbQueryConnection,
+  args: ClassifyStoredProviderThreadClaimArgs,
+): StoredProviderThreadClaimClass {
+  const [scope] = listStoredProviderThreadIdentityScopes(db, [args.threadId]);
+  if (scope === undefined) {
+    return "foreign";
+  }
+  return classifyClaim(
+    readStoredProviderThreadClaim(db, scope, args.providerThreadId),
+    args.threadId,
+  );
 }
 
 export function listThreadTurnInterruptionEventStates(
@@ -3574,40 +3867,13 @@ export function listThreadTurnInterruptionEventStates(
     }
   }
 
-  const latestProviderRows = db
-    .select({
-      providerThreadId: events.providerThreadId,
-      threadId: events.threadId,
-    })
-    .from(events)
-    .where(
-      and(
-        inArray(events.threadId, threadIds),
-        isNotNull(events.providerThreadId),
-        sql`${events.sequence} = (
-          SELECT MAX(latest.sequence)
-          FROM events AS latest
-          WHERE latest.thread_id = ${events.threadId}
-            AND latest.provider_thread_id IS NOT NULL
-            AND latest.sequence > COALESCE((
-              SELECT MAX(context_clear.sequence)
-              FROM events AS context_clear
-              WHERE context_clear.thread_id = ${events.threadId}
-                AND context_clear.type = 'system/operation'
-                AND json_extract(context_clear.data, '$.operation') = ${THREAD_CONTEXT_CLEAR_OPERATION}
-                AND json_extract(context_clear.data, '$.status') = 'completed'
-            ), 0)
-        )`,
-      ),
-    )
-    .all();
-  for (const row of latestProviderRows) {
-    if (row.providerThreadId === null) {
-      continue;
-    }
-    const state = statesByThreadId.get(row.threadId);
+  for (const [threadId, session] of resolveStoredProviderSessions(db, {
+    threadIds,
+  })) {
+    const state = statesByThreadId.get(threadId);
     if (state) {
-      state.latestProviderThreadId = row.providerThreadId;
+      state.latestProviderThreadId =
+        session.kind === "owned" ? session.providerThreadId : null;
     }
   }
 

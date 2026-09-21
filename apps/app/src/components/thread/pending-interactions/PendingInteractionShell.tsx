@@ -1,6 +1,7 @@
 import { ThreadQuestionFormHost } from "../user-questions/ThreadQuestionFormHost";
 import {
   Activity,
+  Fragment,
   useId,
   useRef,
   useState,
@@ -129,7 +130,7 @@ export function PendingInteractionShell({
                   : "truncate font-medium",
               )}
             >
-              {label}
+              <BreakableLabel label={label} />
             </span>
           </span>
         </button>
@@ -165,6 +166,15 @@ export function PendingInteractionShell({
       {errorNode}
     </section>
   );
+}
+
+function BreakableLabel({ label }: { label: string }) {
+  return label.split(/([/\\])/).map((part, index) => (
+    <Fragment key={index}>
+      {part}
+      {part === "/" || part === "\\" ? <wbr /> : null}
+    </Fragment>
+  ));
 }
 
 function AttentionDot({ hasError }: { hasError: boolean }) {

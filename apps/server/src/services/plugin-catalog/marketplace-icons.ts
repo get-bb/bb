@@ -10,7 +10,6 @@ import {
   assertPublicMarketplaceUrl,
   boundedResponseBytes,
   marketplaceErrorMessage,
-  MARKETPLACE_FETCH_TIMEOUT_MS,
   type MarketplaceFetch,
 } from "./marketplace-http.js";
 import { brandingAssetHash } from "../plugins/app-bundle.js";
@@ -283,7 +282,6 @@ async function fetchOneIcon(args: {
     method: "GET",
     headers,
     redirect: "error",
-    signal: AbortSignal.timeout(MARKETPLACE_FETCH_TIMEOUT_MS),
   });
   if (response.status === 304 && unchangedUrl) {
     await response.body?.cancel();
