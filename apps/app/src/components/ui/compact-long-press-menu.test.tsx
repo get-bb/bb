@@ -110,6 +110,21 @@ describe("CompactLongPressMenu", () => {
     expect(onRowClick).toHaveBeenCalledTimes(1);
   });
 
+  it("ignores the opening release on a menu item but allows a new tap", () => {
+    vi.useFakeTimers();
+    const { row, onRename } = renderRow();
+    touchPointerDown(row);
+    act(() => vi.advanceTimersByTime(LONG_PRESS_MS));
+    act(() => vi.advanceTimersByTime(500));
+    const item = screen.getByRole("menuitem", { name: "Rename" });
+    act(() => vi.advanceTimersByTime(2000));
+    fireEvent.click(item);
+    expect(onRename).not.toHaveBeenCalled();
+    touchPointerDown(item);
+    fireEvent.click(item);
+    expect(onRename).toHaveBeenCalledOnce();
+  });
+
   it("cancels the press when the finger moves or lifts early, and ignores mouse pointers", () => {
     vi.useFakeTimers();
     const { row, onOpenChange, onRowClick } = renderRow();
