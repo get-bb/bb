@@ -540,7 +540,7 @@ function PluginRuntimeStatusAlert({
       tone={runtimeStatus.tone === "error" ? "destructive" : runtimeStatus.tone}
       icon={runtimeStatus.icon}
       title={runtimeStatus.label}
-      detail={detail}
+      detail={canOpenSettings ? undefined : detail}
       separator={plugin.status !== "degraded"}
       action={
         canOpenSettings || canReload ? (
@@ -561,6 +561,7 @@ function PluginRuntimeStatusAlert({
             {canReload ? (
               <ResourceActionButton
                 icon="RotateCcw"
+                className="[&_svg]:size-3.5"
                 label={reloadPending ? "Reloading…" : "Reload"}
                 tooltipLabel={reloadPending ? "Reloading…" : "Reload"}
                 loading={reloadPending}
