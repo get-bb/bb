@@ -702,6 +702,7 @@ export function ProductMap({
   const cardNode = openSurface ? (
     <SurfaceCard
       surface={openSurface}
+      mobile={viewportMobile}
       number={SURFACE_NUMBERS.get(openSurface.id) ?? null}
       onDismiss={card.close}
       onCopyForAgent={onCopyForAgent}

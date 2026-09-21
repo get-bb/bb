@@ -11,7 +11,7 @@ import {
   type SurfaceReference,
 } from "./annotation";
 import { pluginIcon, surfaceIcon } from "./plugin-icons";
-import { UsedByList } from "./used-by";
+import { UsedByList, UsedByPager } from "./used-by";
 import { SurfaceMapContext } from "./wireframes";
 
 export function SurfaceCard({
@@ -21,12 +21,14 @@ export function SurfaceCard({
   onCopyForAgent,
   navigation,
   probe = false,
+  mobile = false,
 }: {
   surface: PluginSurface;
   number: number | null;
   onDismiss: () => void;
   onCopyForAgent?: (surface: PluginSurface) => Promise<boolean>;
   probe?: boolean;
+  mobile?: boolean;
   navigation?: {
     previous: PluginSurface | null;
     next: PluginSurface | null;
@@ -34,6 +36,7 @@ export function SurfaceCard({
   };
 }) {
   const cardRef = useRef<HTMLDivElement>(null);
+  const ExampleList = mobile ? UsedByPager : UsedByList;
   const surfaceMap = useContext(SurfaceMapContext);
   const pluginPageHref = surfaceMap?.pluginPageHref;
   const icon = surfaceIcon(surface.id);
@@ -189,11 +192,11 @@ export function SurfaceCard({
       onCopyForAgent ? (
         <div className="mt-3 flex min-w-0 items-center gap-2 border-t border-border-hairline pt-2.5">
           {surface.firstParty && surface.firstParty.length > 0 ? (
-            <div className="flex min-w-0 flex-1 items-center gap-1 @2xl/guide:max-w-80">
-              <span className="shrink-0 whitespace-nowrap text-xs text-subtle-foreground">
+            <div className={`flex min-w-0 flex-1 items-center ${mobile ? "gap-1" : "gap-2"}`}>
+              <span className={`shrink-0 whitespace-nowrap text-xs text-subtle-foreground ${mobile ? "" : "rounded bg-surface-recessed px-2 py-0.5 font-normal"}`}>
                 Used by
               </span>
-              <UsedByList
+              <ExampleList
                 key={surface.id}
                 items={surface.firstParty}
                 renderItem={(plugin) => {
@@ -208,19 +211,23 @@ export function SurfaceCard({
                             className="size-3.5 shrink-0 text-subtle-foreground"
                           />
                         ) : null)}
-                      <span className="min-w-0 truncate">{plugin}</span>
+                      {mobile ? <span className="min-w-0 truncate">{plugin}</span> : plugin}
                     </>
                   );
                   return href ? (
                     <a
                       href={href}
                       title={plugin}
-                      className={`flex min-h-9 @2xl/guide:min-h-7 items-center justify-center gap-1.5 rounded-md bg-surface-recessed px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground ${FOCUS_RING_CLASS}`}
+                      className={mobile
+                        ? `flex min-h-9 items-center justify-center gap-1.5 rounded-md bg-surface-recessed px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground ${FOCUS_RING_CLASS}`
+                        : "flex items-center gap-1 whitespace-nowrap text-xs text-muted-foreground underline decoration-border underline-offset-2 hover:text-foreground hover:decoration-foreground"}
                     >
                       {body}
                     </a>
                   ) : (
-                    <span className="flex min-h-9 @2xl/guide:min-h-7 items-center justify-center gap-1.5 rounded-md bg-surface-recessed px-2 py-1 text-xs text-muted-foreground">
+                    <span className={mobile
+                      ? "flex min-h-9 items-center justify-center gap-1.5 rounded-md bg-surface-recessed px-2 py-1 text-xs text-muted-foreground"
+                      : "flex items-center gap-1 whitespace-nowrap text-xs text-muted-foreground"}>
                       {body}
                     </span>
                   );
