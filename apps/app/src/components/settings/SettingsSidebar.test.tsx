@@ -48,7 +48,7 @@ function renderSidebar(
 afterEach(cleanup);
 
 describe("SettingsSidebarContent plugin navigation", () => {
-  it("keeps all plugins in one section and opens the appropriate page", async () => {
+  it("opens details for plugins with and without configuration", async () => {
     renderSidebar();
     await screen.findByRole("link", { name: "Linear" });
     expect(
@@ -57,7 +57,7 @@ describe("SettingsSidebarContent plugin navigation", () => {
     expect(screen.getByText("Plugins")).toBeTruthy();
     expect(
       screen.getByRole("link", { name: "Linear" }).getAttribute("href"),
-    ).toBe("/settings/plugins/linear");
+    ).toBe("/settings/plugins/linear?view=installed");
     expect(
       screen.getByRole("link", { name: "Themes" }).getAttribute("href"),
     ).toBe("/settings/plugins/themes?view=installed");

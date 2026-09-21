@@ -1412,8 +1412,10 @@ For isolated development smoke tests only, `DEV_BROWSER_SMOKE_BINARY` selects th
 ## Agent guidance plugin settings
 
 Settings → Plugins lists every installed plugin, including disabled plugins and
-plugins without configuration. Selecting a plugin opens its configuration when
-available, otherwise its details. Configuration and Details switch in place.
+plugins without configuration. Selecting a plugin always opens Details.
+Configure opens its configuration in place when available; Back to details
+returns to the same plugin. Existing direct configuration links still open
+Configuration.
 
 BB guide is installed and enabled by default. In Settings → Plugins
 → BB guide, `introduction` controls the BB introduction, `skills` controls all
