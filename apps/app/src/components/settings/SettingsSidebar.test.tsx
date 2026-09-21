@@ -37,13 +37,12 @@ function renderSidebar(activePluginId: string | null = null) {
 afterEach(cleanup);
 
 describe("SettingsSidebarContent plugin navigation", () => {
-  it("offers installed-plugin management and configurable plugin settings", () => {
+  it("keeps configurable plugins in their own section without a second installed list", () => {
     renderSidebar();
     expect(
-      screen
-        .getByRole("link", { name: "Installed plugins" })
-        .getAttribute("href"),
-    ).toBe("/settings/plugins");
+      screen.queryByRole("link", { name: "Installed plugins" }),
+    ).toBeNull();
+    expect(screen.getByText("Plugins")).toBeTruthy();
     expect(
       screen.getByRole("link", { name: "Linear" }).getAttribute("href"),
     ).toBe("/settings/plugins/linear");
