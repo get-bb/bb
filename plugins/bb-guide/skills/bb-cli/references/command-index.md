@@ -164,6 +164,7 @@ server.
 - `bb thread section delete`
 - `bb thread search`
 - `bb thread history`
+- `bb thread image-metadata`
 - `bb thread read`
 - `bb thread unread`
 - `bb thread reorder-pinned`

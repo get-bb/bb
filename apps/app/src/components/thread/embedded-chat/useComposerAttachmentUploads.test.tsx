@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { act, renderHook } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { InlineComposerDraftSession } from "./useActiveComposerDraft";
 import type { PromptDraftAttachment } from "@bb/client-core";
 import { BbHttpError } from "@bb/sdk/browser";
@@ -31,6 +31,10 @@ describe("useComposerAttachmentUploads", () => {
     mocks.upload.mockReset();
   });
 
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("keeps bottom and queued attachment operations independent", async () => {
     const bottomUpload = createDeferredPromise<never>();
     const inlineUpload = createDeferredPromise<never>();
@@ -56,6 +60,8 @@ describe("useComposerAttachmentUploads", () => {
     });
     expect(result.current.isAttachingBottomFiles).toBe(true);
     expect(result.current.isAttachingInlineFiles).toBe(false);
+    expect(result.current.bottomPendingUploads.map((upload) => upload.file.name)).toEqual(["bottom.txt"]);
+    expect(result.current.inlinePendingUploads).toEqual([]);
 
     let inlinePromise!: Promise<void>;
     act(() => {
@@ -65,6 +71,7 @@ describe("useComposerAttachmentUploads", () => {
     });
     expect(result.current.isAttachingBottomFiles).toBe(true);
     expect(result.current.isAttachingInlineFiles).toBe(true);
+    expect(result.current.inlinePendingUploads.map((upload) => upload.file.name)).toEqual(["inline.txt"]);
 
     await act(async () => {
       inlineUpload.reject(new Error("inline failed"));
@@ -75,6 +82,8 @@ describe("useComposerAttachmentUploads", () => {
     );
     expect(result.current.bottomAttachmentError).toBeNull();
     expect(result.current.isAttachingBottomFiles).toBe(true);
+    expect(result.current.inlinePendingUploads).toEqual([]);
+    expect(result.current.bottomPendingUploads).toHaveLength(1);
 
     await act(async () => {
       bottomUpload.reject(new Error("bottom failed"));
@@ -118,11 +127,13 @@ describe("useComposerAttachmentUploads", () => {
       ]);
     });
     expect(result.current.isAttachingInlineFiles).toBe(true);
+    expect(result.current.inlinePendingUploads).toHaveLength(1);
 
     inlineRef.current = null;
     rerender({ inline: null });
     expect(result.current.isAttachingInlineFiles).toBe(false);
     expect(result.current.inlineAttachmentError).toBeNull();
+    expect(result.current.inlinePendingUploads).toEqual([]);
 
     const secondEdit = makeInlineSession(2, setDraft);
     inlineRef.current = secondEdit;
@@ -167,6 +178,47 @@ describe("useComposerAttachmentUploads", () => {
     expect(result.current.attachmentError).toBe(
       `Failed to attach IMG_0001.heic, shot.png: ${message}`,
     );
+  });
+
+  it("settles concurrent previews without the secure-context randomUUID API", async () => {
+    vi.stubGlobal("crypto", {
+      getRandomValues: crypto.getRandomValues.bind(crypto),
+    });
+    const first = createDeferredPromise<PromptDraftAttachment>();
+    const concurrent = createDeferredPromise<PromptDraftAttachment>();
+    const second = createDeferredPromise<PromptDraftAttachment>();
+    mocks.upload.mockReturnValueOnce(first.promise).mockReturnValueOnce(concurrent.promise).mockReturnValueOnce(second.promise);
+    const addAttachment = vi.fn();
+    const { result } = renderHook(() => useDraftAttachmentUploads({
+      projectId: "proj_1",
+      target: { key: "bottom", addAttachment },
+    }));
+    const file = new File(["image"], "same-name.png", { type: "image/png" });
+    let batch!: Promise<void>;
+    let other!: Promise<void>;
+    act(() => {
+      batch = result.current.handleAttachFiles([file, file]);
+      other = result.current.handleAttachFiles([file]);
+    });
+    expect(new Set(result.current.pendingUploads.map((upload) => upload.id)).size).toBe(3);
+    expect(result.current.isAttachingFiles).toBe(true);
+    await act(async () => {
+      first.resolve({ type: "localImage", name: file.name, path: "uploaded.png", sizeBytes: 5 });
+      await first.promise;
+    });
+    expect(addAttachment).toHaveBeenCalledTimes(1);
+    expect(result.current.pendingUploads).toHaveLength(2);
+    await act(async () => {
+      concurrent.reject(new Error("Failed"));
+      await other;
+    });
+    expect(result.current.pendingUploads).toHaveLength(1);
+    await act(async () => {
+      second.reject(new Error("Failed"));
+      await batch;
+    });
+    expect(result.current.pendingUploads).toEqual([]);
+    expect(result.current.isAttachingFiles).toBe(false);
   });
 
   it("does not leak a dismissed upload into a later independent draft", async () => {
