@@ -42,7 +42,7 @@ export function SidebarViewItems({
   const selectedSort = sort === "none" ? "updated" : sort;
   if (page === "filter") {
     return (
-      <DropdownMenuGroup aria-label="Thread lifecycle">
+      <DropdownMenuGroup aria-label="Filter">
         <ThreadLifecycleFilterItems
           value={lifecycles}
           onChange={setLifecycles}

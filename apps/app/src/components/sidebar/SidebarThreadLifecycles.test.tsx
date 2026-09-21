@@ -259,7 +259,7 @@ describe("sidebar lifecycle placement", () => {
       const store = setup([lifecycle], true);
       expect(screen.getByText("No threads")).toBeTruthy();
       expect(
-        screen.queryByRole("button", { name: /Thread lifecycle:/ }),
+        screen.queryByRole("button", { name: /Filter:/ }),
       ).toBeNull();
       const label = "Threads";
       fireEvent.keyDown(

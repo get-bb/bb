@@ -34,7 +34,7 @@ describe("ThreadLifecycleFilter", () => {
       viewport.compact = compact;
       const { container } = render(<Filter />);
       const trigger = screen.getByRole("button", {
-        name: "Thread lifecycle: Active",
+        name: "Filter: Active",
       });
       if (compact) {
         fireEvent.click(trigger);
@@ -45,6 +45,8 @@ describe("ThreadLifecycleFilter", () => {
       const active = await screen.findByRole("menuitemcheckbox", {
         name: "Active",
       });
+      expect(screen.getByRole("group", { name: "Filter" })).toBeTruthy();
+      expect(active.getAttribute("title")).toBe("Keep at least one filter selected");
       expect(active.getAttribute("aria-disabled")).not.toBe("true");
       expect(active.hasAttribute("data-disabled")).toBe(false);
       fireEvent.click(active);
