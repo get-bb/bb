@@ -25,6 +25,9 @@ import {
 } from "../../../.ladle/story-fixtures";
 import { ProjectActionsProvider } from "@/components/project/ProjectActionsProvider";
 import { ThreadActionsProvider } from "@/components/thread/ThreadActionsProvider";
+import { QuickCreateProjectProvider } from "@/hooks/useQuickCreateProject";
+import { SidebarProvider } from "@/components/ui/sidebar";
+import { AppSidebar } from "./AppSidebar";
 import { Icon } from "@bb/shared-ui/icon";
 import {
   ProjectList,
@@ -291,7 +294,6 @@ const renameSidebarNavigation: SidebarBootstrapResponse = {
 };
 
 function RenameSidebar() {
-  const [mode, setMode] = useState<SidebarOrganizationMode>("project");
   const [ready, setReady] = useState(false);
   const [failNext, setFailNext] = useState(false);
   const failureRef = useRef(false);
@@ -312,27 +314,6 @@ function RenameSidebar() {
   return (
     <div className="flex max-w-80 flex-col gap-3">
       <div className="flex flex-wrap items-center gap-3 text-sm">
-        <label>
-          Group by{" "}
-          <select
-            aria-label="Sidebar grouping"
-            className="rounded border bg-background px-2 py-1"
-            value={mode}
-            onChange={(event) => {
-              const value = event.target.value;
-              if (
-                value === "project" ||
-                value === "chronological" ||
-                value === "machine"
-              )
-                setMode(value);
-            }}
-          >
-            <option value="project">Project</option>
-            <option value="chronological">Custom sections</option>
-            <option value="machine">Machine</option>
-          </select>
-        </label>
         <label className="inline-flex items-center gap-2">
           <input
             type="checkbox"
@@ -347,9 +328,10 @@ function RenameSidebar() {
       </div>
       {ready ? (
         <OrganizationSidebar
-          mode={mode}
+          mode="chronological"
           hosts={machineStoryHosts}
           navigation={renameSidebarNavigation}
+          fullSidebar
         />
       ) : (
         <LoadingSidebar />
@@ -402,9 +384,11 @@ function LoadingSidebar() {
 function LoadedSidebar({
   hosts,
   navigation = loadedSidebarNavigation,
+  fullSidebar = false,
 }: {
   hosts?: typeof machineStoryHosts;
   navigation?: SidebarBootstrapResponse;
+  fullSidebar?: boolean;
 }) {
   const queryClient = useQueryClient();
   const [isSeeded, setIsSeeded] = useState(false);
@@ -436,7 +420,24 @@ function LoadedSidebar({
 
   return (
     <Suspense fallback={<LoadingSidebar />}>
-      <ProjectList onNewProject={noop} onProjectSelect={noop} />
+      {fullSidebar ? (
+        <QuickCreateProjectProvider>
+          <ProjectActionsProvider>
+            <ThreadActionsProvider>
+              <SidebarProvider className="h-[680px] min-h-0 w-80 flex-col overflow-hidden rounded-md border border-sidebar-border bg-sidebar text-sidebar-foreground">
+                <AppSidebar
+                  onResizeMouseDown={noop}
+                  isResizing={false}
+                  settingsRoutePath="/settings"
+                  mobileHosted={{ hidden: false }}
+                />
+              </SidebarProvider>
+            </ThreadActionsProvider>
+          </ProjectActionsProvider>
+        </QuickCreateProjectProvider>
+      ) : (
+        <ProjectList onNewProject={noop} onProjectSelect={noop} />
+      )}
     </Suspense>
   );
 }
@@ -541,10 +542,12 @@ function OrganizationSidebar({
   hosts,
   mode,
   navigation,
+  fullSidebar = false,
 }: {
   hosts?: typeof machineStoryHosts;
   mode: SidebarOrganizationMode;
   navigation?: SidebarBootstrapResponse;
+  fullSidebar?: boolean;
 }) {
   const [store] = useState(() => createStore());
   const [isModeSeeded, setIsModeSeeded] = useState(false);
@@ -572,13 +575,21 @@ function OrganizationSidebar({
   return (
     <Provider store={store}>
       <QueryClientProvider client={queryClient}>
-        <SidebarFrame>
-          {isModeSeeded ? (
-            <LoadedSidebar hosts={hosts} navigation={navigation} />
+        {fullSidebar ? (
+          isModeSeeded ? (
+            <LoadedSidebar hosts={hosts} navigation={navigation} fullSidebar />
           ) : (
             <LoadingSidebar />
-          )}
-        </SidebarFrame>
+          )
+        ) : (
+          <SidebarFrame>
+            {isModeSeeded ? (
+              <LoadedSidebar hosts={hosts} navigation={navigation} />
+            ) : (
+              <LoadingSidebar />
+            )}
+          </SidebarFrame>
+        )}
       </QueryClientProvider>
     </Provider>
   );
@@ -587,13 +598,16 @@ function OrganizationSidebar({
 export function Overview() {
   return (
     <StoryCard labelWidth="120px">
+      <StoryRow
+        label="interactive"
+        hint="Review or Planning → Rename. Use a section menu’s Organize options to switch to projects or machines."
+      >
+        <RenameSidebar />
+      </StoryRow>
       <StoryRow label="loading">
         <SidebarFrame>
           <LoadingSidebar />
         </SidebarFrame>
-      </StoryRow>
-      <StoryRow label="loaded">
-        <RenameSidebar />
       </StoryRow>
     </StoryCard>
   );

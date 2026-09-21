@@ -31,6 +31,14 @@ export function installSidebarRenameStoryApi({
     if (request.method === "GET" && path === "/api/v1/hosts") {
       return Response.json(hosts);
     }
+    if (
+      request.method === "GET" &&
+      hosts.some(
+        (host) => path === `/api/v1/hosts/${host.id}/provider-clis/status`,
+      )
+    ) {
+      return Response.json({});
+    }
     const projects = [...navigation.projects, navigation.personalProject];
     const threads = projects.flatMap((project) => project.threads);
     const id = decodeURIComponent(path.split("/").at(-1) ?? "");
