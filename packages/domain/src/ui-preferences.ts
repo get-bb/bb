@@ -39,10 +39,7 @@ const sidebarHiddenGroupsSchema = z
   .max(UI_PREFERENCE_LIST_MAX_LENGTH)
   .transform((value) => [...new Set(value)]);
 
-export type ThreadArchiveFilter = "active" | "archived";
-
 export const UI_PREFERENCE_KEYS = [
-  "sidebar.threadLifecycles",
   "sidebar.organizationMode",
   "sidebar.threadGrouping.environment",
   "sidebar.chronologicalSort",
@@ -86,24 +83,6 @@ function defineUiPreference<Schema extends z.ZodTypeAny>(
 }
 
 export const uiPreferenceDefinitions = {
-  "sidebar.threadLifecycles": defineUiPreference(
-    z
-      .array(z.enum(["active", "draft", "archived"]))
-      .min(1)
-      .max(3)
-      .refine(
-        (values) => new Set(values).size === values.length,
-        "Thread filters must be unique.",
-      )
-      .transform((values): ThreadArchiveFilter[] => [
-        ...(values.includes("active") || values.includes("draft")
-          ? ["active" as const]
-          : []),
-        ...(values.includes("archived") ? ["archived" as const] : []),
-      ]),
-    ["active"],
-    "Threads shown in the built-in sidebar: active and archived. Select at least one; defaults to active.",
-  ),
   "sidebar.organizationMode": defineUiPreference(
     sidebarOrganizationModeSchema,
     "chronological",

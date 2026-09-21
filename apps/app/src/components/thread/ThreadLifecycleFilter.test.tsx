@@ -9,7 +9,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ThreadArchiveFilter } from "@bb/domain";
+import type { ThreadArchiveFilter } from "@/lib/thread-lifecycle-filter";
 import { ThreadLifecycleFilter } from "./ThreadLifecycleFilter";
 
 const viewport = vi.hoisted(() => ({ compact: false }));

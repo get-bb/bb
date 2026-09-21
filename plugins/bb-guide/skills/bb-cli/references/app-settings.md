@@ -19,11 +19,9 @@ every window and client sees the same value.
   orders, the collapsed-id lists, `sidebar.hiddenGroups`,
   `sidebar.pluginPanelOrder`, `sidebar.visiblePluginPanels`, `sidebar.navigationProvider`,
   `sidebar.threadListProvider`).
-- `sidebar.threadLifecycles` selects `active` and `archived` in the built-in
-  sidebar. Default is `["active"]`, including threads with saved messages.
-  Previously saved `draft` selections display as Active.
-  Use `bb settings ui set sidebar.threadLifecycles '["active","archived"]'`
-  to include archived threads. Selected archived rows
+- The built-in sidebar's Filter selects Active and Archived, defaulting to Active,
+  including threads with saved messages. This selection is browser-local, not
+  a server-backed preference or SDK/CLI setting. Selected archived rows
   retain their hierarchy placement and offer a restore action. Archived pages load only while selected;
   plugin sidebar replacements keep ownership of their rendering.
 - `sidebar.organizationMode` defaults to Custom (`chronological`) on new installs.

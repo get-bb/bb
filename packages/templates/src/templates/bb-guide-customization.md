@@ -305,12 +305,11 @@ to By project (`project`). Explicit server choices take precedence over legacy
 browser choices, which take precedence over this installation fallback. Reset
 saves the installation fallback as an explicit choice.
 
-`sidebar.threadLifecycles` selects `active` and `archived`, defaulting to
-`["active"]`. Active includes threads with saved messages; there is no separate
+The built-in sidebar's Filter selects Active and Archived, defaulting to Active.
+The selection is browser-local, not a server-backed preference or SDK/CLI setting.
+Active includes threads with saved messages; there is no separate
 Drafts section or filter. Archived threads use their preserved placement and a
-restore action. Archived pages load only while selected. For example:
-`bb settings ui set sidebar.threadLifecycles '["active","archived"]'`.
-Previously saved `draft` selections display as Active.
+restore action. Archived pages load only while selected.
 Plugin sidebar replacements own their filters.
 
 Every thread-list header's actions menu offers New project, New section,

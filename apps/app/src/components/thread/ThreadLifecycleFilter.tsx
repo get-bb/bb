@@ -1,7 +1,9 @@
-import type { ThreadArchiveFilter } from "@bb/domain";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
-import { normalizeThreadLifecycleFilter } from "@/lib/thread-lifecycle-filter";
+import {
+  normalizeThreadLifecycleFilter,
+  type ThreadArchiveFilter,
+} from "@/lib/thread-lifecycle-filter";
 import {
   DropdownMenu,
   DropdownMenuContent,
