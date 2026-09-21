@@ -276,6 +276,7 @@ function MeasuredBadge({
   align = "center",
   flush = false,
   onActivate,
+  clipTo,
 }: {
   id: string;
   label: string;
@@ -284,6 +285,7 @@ function MeasuredBadge({
   align?: "start" | "center" | "end";
   flush?: boolean;
   onActivate?: () => void;
+  clipTo?: string;
 }) {
   const { numberOf, onSelect } = useSurfaceMap();
   const { active } = useEngagement(id);
@@ -343,6 +345,15 @@ function MeasuredBadge({
         width: target.offsetWidth,
         height: target.offsetHeight,
       };
+      const clip = clipTo ? scope.querySelector<HTMLElement>(clipTo) : null;
+      if (clip) {
+        const clipOrigin = layoutOrigin(clip);
+        const left = targetOrigin.x - clipOrigin.x;
+        if (left < 0 || left + target.offsetWidth > clip.clientWidth) {
+          setPosition(null);
+          return;
+        }
+      }
       const centerY = local.top + local.height / 2 - chipBox / 2;
       const anchoredY =
         align === "start"
@@ -412,7 +423,7 @@ function MeasuredBadge({
       observer.disconnect();
       scope.removeEventListener("scroll", measure, true);
     };
-  }, [anchor, at, align, flush]);
+  }, [anchor, at, align, flush, clipTo]);
 
   return (
     <a
@@ -425,7 +436,7 @@ function MeasuredBadge({
       onClick={(event) => selectAnnotation(event, id, onSelect, onActivate)}
       {...hover}
       className={cn("pointer-events-auto absolute z-50", FOCUS_RING_CLASS)}
-      style={position ?? undefined}
+      style={position ?? { visibility: "hidden" }}
     >
       <span
         aria-hidden
@@ -672,44 +683,45 @@ export type AppShellRightPanelTab =
   | "code-renderers";
 
 function RightPanelTabLaneBadges({
-  only,
+  activeTab,
+  mobile,
 }: {
-  only?: AppShellRightPanelTab;
+  activeTab: AppShellRightPanelTab;
+  mobile: boolean;
 }) {
+  const clipTo = mobile ? '[data-guide-fixture="right-panel-tab-strip"]' : undefined;
   return (
     <>
-      {!only || only === "browser-toolbar" ? (
-        <MeasuredBadge
-          id="browser-toolbar"
-          label="Plugin controls beside the Browser address bar"
-          anchor='[data-guide-region="browser-toolbar"]'
-          at="lane"
-        />
-      ) : null}
-      {!only || only === "code-renderers" ? (
-        <MeasuredBadge
-          id="code-renderers"
-          label="Plugin code and diff renderers on bb's Diff tab"
-          anchor='[data-guide-region="code-renderers"]'
-          at="lane"
-        />
-      ) : null}
-      {!only || only === "thread-panel" ? (
-        <MeasuredBadge
-          id="thread-panel"
-          label="A plugin tab in the thread side panel"
-          anchor='[data-guide-region="thread-panel"]'
-          at="lane"
-        />
-      ) : null}
-      {!only || only === "file-opener" ? (
-        <MeasuredBadge
-          id="file-opener"
-          label="A plugin file viewer or editor tab"
-          anchor='[data-guide-region="file-opener"]'
-          at="lane"
-        />
-      ) : null}
+      <MeasuredBadge
+        id="browser-toolbar"
+        label="Plugin controls beside the Browser address bar"
+        anchor={activeTab === "browser-toolbar"
+          ? '[data-guide-region="browser-toolbar"]'
+          : '[data-guide-tab="browser-toolbar"]'}
+        clipTo={activeTab === "browser-toolbar" ? undefined : clipTo}
+        at="lane"
+      />
+      <MeasuredBadge
+        id="code-renderers"
+        label="Plugin code and diff renderers on bb's Diff tab"
+        anchor='[data-guide-region="code-renderers"]'
+        clipTo={clipTo}
+        at="lane"
+      />
+      <MeasuredBadge
+        id="thread-panel"
+        label="A plugin tab in the thread side panel"
+        anchor='[data-guide-region="thread-panel"]'
+        clipTo={clipTo}
+        at="lane"
+      />
+      <MeasuredBadge
+        id="file-opener"
+        label="A plugin file viewer or editor tab"
+        anchor='[data-guide-region="file-opener"]'
+        clipTo={clipTo}
+        at="lane"
+      />
     </>
   );
 }
@@ -1024,8 +1036,9 @@ export function AppShellWireframe({
       ) : null}
       {scene === "desktop" || scene === "panel" ? (
         <RightPanelTabLaneBadges
-          key={mobile ? rightPanelTab : "desktop"}
-          only={mobile ? rightPanelTab : undefined}
+          key={rightPanelTab}
+          activeTab={rightPanelTab}
+          mobile={mobile}
         />
       ) : null}
       <AppShellWireframeBody
