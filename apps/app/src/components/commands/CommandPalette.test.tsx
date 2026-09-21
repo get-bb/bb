@@ -1096,7 +1096,7 @@ describe("CommandPalette", () => {
     openThreadSearch();
     await screen.findByRole("combobox", { name: "Search threads" });
     const trigger = screen.getByRole("button", {
-      name: "Thread lifecycle: Active",
+      name: "Filter: Active",
     });
     act(() => trigger.focus());
     fireEvent.keyDown(trigger, { key: "ArrowDown" });
