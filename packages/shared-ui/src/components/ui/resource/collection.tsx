@@ -45,13 +45,13 @@ export function ResourceCollectionPage<Mode extends string>({
   return (
     <div className="flex h-full min-h-0 flex-col gap-5">
       {}
-      <div className="pr-3">
+      <div className="md:pr-3">
         <div className={bandClassName}>
           <ResourceTabDescription>{description}</ResourceTabDescription>
         </div>
       </div>
       {hasModes || actions !== undefined ? (
-        <div className="pr-3">
+        <div className="md:pr-3">
           <div
             className={cn(
               "flex flex-wrap items-center justify-between gap-2",
@@ -160,7 +160,7 @@ export function ResourceCollectionViewport({
     >
       {}
       {toolbar ? (
-        <div className="shrink-0 pr-3">
+        <div className="shrink-0 md:pr-3">
           <div className={bandClassName}>{toolbar}</div>
         </div>
       ) : null}
@@ -172,7 +172,7 @@ export function ResourceCollectionViewport({
         viewportRef={viewportRef}
         viewportProps={{
           id: scrollId,
-          className: cn("overscroll-contain pr-3", contentClassName),
+          className: cn("overscroll-contain md:pr-3", contentClassName),
           "data-resource-collection-scroll": true,
         }}
       >
@@ -180,7 +180,7 @@ export function ResourceCollectionViewport({
       </ScrollArea>
       {footer ? (
         <div
-          className="sticky bottom-0 z-10 shrink-0 border-t border-border/70 bg-background pt-3 pr-3"
+          className="sticky bottom-0 z-10 shrink-0 border-t border-border/70 bg-background pt-3 md:pr-3"
           data-resource-collection-footer
         >
           <div className={bandClassName}>{footer}</div>

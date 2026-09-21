@@ -6,7 +6,9 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
+import { BbHttpError } from "@bb/sdk/browser";
 import type { ThreadListEntry } from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
@@ -15,20 +17,39 @@ import { Provider, createStore } from "jotai";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   ChronologicalSectionThreadSections,
-  DropPreviewRow,
   ProjectRow,
   SectionThreadDragOverlay,
+  ThreadTreeNodeRow,
   type ProjectThreadListState,
 } from "./ProjectRow";
-import { buildSidebarEntitySectionId } from "@bb/client-core";
+import type { SectionThreadDndState } from "./useSectionThreadDnd";
+import {
+  buildPinnedSidebarState,
+  buildSidebarEntitySectionId,
+} from "@bb/client-core";
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 import { makeProjectResponse } from "@/test/fixtures/projects";
-import { sidebarOrganizationModeAtom } from "./sidebarCollapsedAtoms";
+import {
+  sidebarHiddenGroupsAtom,
+  sidebarManualSectionOrderAtom,
+  sidebarOrganizationModeAtom,
+} from "./sidebarCollapsedAtoms";
+import { useSidebarModeSectionOrder } from "./useSidebarModeSectionOrder";
 
 const mockUpdateEnvironment = vi.hoisted(() => ({
-  mutate: vi.fn(),
-  reset: vi.fn(),
+  mutateAsync: vi.fn(async () => undefined),
 }));
+const mockUpdateProject = vi.hoisted(() => vi.fn(async () => undefined));
+const mockUpdateSection = vi.hoisted(() => vi.fn(async () => undefined));
+
+vi.mock("@/hooks/mutations/project-mutations", () => ({
+  useUpdateProject: () => ({ mutateAsync: mockUpdateProject }),
+}));
+
+vi.mock("@/hooks/mutations/thread-section-mutations", () => ({
+  useUpdateThreadSection: () => ({ mutateAsync: mockUpdateSection }),
+}));
+
 const mockArchiveEnvironmentThreads = vi.hoisted(() => ({
   mutateAsync: vi.fn(async () => ({ ok: true, archivedThreadIds: [] })),
 }));
@@ -50,8 +71,7 @@ vi.mock("@/hooks/mutations/environment-mutations", () => ({
   useUpdateEnvironment: () => ({
     error: null,
     isPending: false,
-    mutate: mockUpdateEnvironment.mutate,
-    reset: mockUpdateEnvironment.reset,
+    mutateAsync: mockUpdateEnvironment.mutateAsync,
     variables: undefined,
   }),
 }));
@@ -92,6 +112,80 @@ function makeThread(overrides: Partial<ThreadListEntry> = {}): ThreadListEntry {
     titleFallback: "Test thread",
     ...overrides,
   });
+}
+
+function makeSectionDnd(
+  overrides: Partial<SectionThreadDndState> = {},
+): SectionThreadDndState {
+  return {
+    activeItemId: null,
+    activeThread: makeThread({
+      id: "thr_dragged",
+      title: "Dragged",
+      titleFallback: "Dragged",
+    }),
+    consumeClickSuppression: () => false,
+    dndContextProps: {},
+    dragOverParentKey: null,
+    unchangedParentKey: null,
+    itemIdsByParentKey: new Map(),
+    nestTarget: null,
+    nestPreviewBeforeKey: null,
+    onClickCapture: () => undefined,
+    pinnedItemIds: [],
+    pinnedReorderPending: false,
+    reorderTarget: null,
+    ...overrides,
+  };
+}
+
+function renderPinnedParentWithChild({
+  isCollapsed,
+  sectionDnd,
+}: {
+  isCollapsed: boolean;
+  sectionDnd: SectionThreadDndState;
+}) {
+  const parent = makeThread({
+    id: "thr_parent",
+    title: "Parent",
+    titleFallback: "Parent",
+    pinnedAt: 1,
+  });
+  const child = makeThread({
+    id: "thr_child",
+    title: "Child",
+    titleFallback: "Child",
+    parentThreadId: "thr_parent",
+  });
+  const node = buildPinnedSidebarState({ threads: [parent, child] })
+    .rootNodes[0];
+  const { container } = render(
+    <TooltipProvider>
+      <Provider store={createStore()}>
+        <QueryClientProvider client={new QueryClient()}>
+          <MemoryRouter>
+            <ThreadTreeNodeRow
+              projectId="proj_test"
+              node={node}
+              depthOffset={0}
+              isEnvGrouped={false}
+              collapsedThreadIds={
+                isCollapsed ? new Set(["thr_parent"]) : new Set()
+              }
+              collapsedEnvironmentIds={new Set()}
+              variant="section"
+              onToggleThreadCollapsed={vi.fn()}
+              onToggleEnvironmentCollapsed={vi.fn()}
+              sectionDnd={sectionDnd}
+              sortableRef={() => undefined}
+            />
+          </MemoryRouter>
+        </QueryClientProvider>
+      </Provider>
+    </TooltipProvider>,
+  );
+  return container;
 }
 
 function renderProjectRow(
@@ -142,16 +236,138 @@ function expectCollapsedActivityAtSidebarEdge(label: string) {
   expect(edgeSlot).toBeInstanceOf(HTMLElement);
 }
 
-describe("ProjectRow interactions", () => {
-  it("renders the destination gap as a muted copy of the dragged row", () => {
-    render(<DropPreviewRow depth={0} thread={makeThread()} />);
+function CustomSectionsVisibilityProbe({
+  threads,
+  onProjectSelect,
+}: {
+  threads: ThreadListEntry[];
+  onProjectSelect: () => void;
+}) {
+  const { order, persistedOrder, onOrderChange } = useSidebarModeSectionOrder({
+    mode: "chronological",
+    entitySectionIds: ["section:sec_building", "section:sec_review"],
+    showPinnedSection: false,
+  });
 
-    const preview = document.querySelector(
-      '[data-sidebar-section-drop-preview="true"]',
+  return (
+    <ChronologicalSectionThreadSections
+      threadListState={{ status: "ready", threads }}
+      compareThreads={() => 0}
+      sections={[
+        { id: "sec_building", name: "Building" },
+        { id: "sec_review", name: "Review" },
+      ]}
+      collapsedThreadIds={new Set()}
+      collapsedEnvironmentIds={new Set()}
+      onProjectSelect={onProjectSelect}
+      onToggleThreadCollapsed={vi.fn()}
+      onToggleEnvironmentCollapsed={vi.fn()}
+      topLevelSectionOrder={order}
+      fullSectionOrder={persistedOrder}
+      onTopLevelSectionOrderChange={onOrderChange}
+      pinnedReorderPending={false}
+      pinnedThreads={[]}
+      onReorderPinnedThread={vi.fn()}
+      builtInSections={{
+        collapsedSectionIds: new Set(),
+        onToggleCollapsed: vi.fn(),
+        pinned: { label: "Pinned", content: null },
+        threads: { label: "Threads" },
+      }}
+    />
+  );
+}
+
+describe("ProjectRow interactions", () => {
+  it("previews the dragged thread as a child of a valid nest target", () => {
+    const container = renderPinnedParentWithChild({
+      isCollapsed: false,
+      sectionDnd: makeSectionDnd({
+        nestTarget: { threadId: "thr_parent", state: "valid" },
+        nestPreviewBeforeKey: "thread:thr_child",
+      }),
+    });
+
+    const rows = [
+      ...container.querySelectorAll(
+        "[data-sidebar-thread-id], [data-sidebar-nest-drop-preview]",
+      ),
+    ];
+    expect(
+      rows.map(
+        (row) => row.getAttribute("data-sidebar-thread-id") ?? row.textContent,
+      ),
+    ).toEqual(["thr_parent", "Dragged", "thr_child"]);
+  });
+
+  it("previews the dragged thread after the last child when it sorts last", () => {
+    const container = renderPinnedParentWithChild({
+      isCollapsed: false,
+      sectionDnd: makeSectionDnd({
+        nestTarget: { threadId: "thr_parent", state: "valid" },
+        nestPreviewBeforeKey: null,
+      }),
+    });
+
+    const rows = [
+      ...container.querySelectorAll(
+        "[data-sidebar-thread-id], [data-sidebar-nest-drop-preview]",
+      ),
+    ];
+    expect(
+      rows.map(
+        (row) => row.getAttribute("data-sidebar-thread-id") ?? row.textContent,
+      ),
+    ).toEqual(["thr_parent", "thr_child", "Dragged"]);
+  });
+
+  it("leaves a blocked nest target without a child preview", () => {
+    const container = renderPinnedParentWithChild({
+      isCollapsed: false,
+      sectionDnd: makeSectionDnd({
+        nestTarget: { threadId: "thr_parent", state: "blocked" },
+        nestPreviewBeforeKey: null,
+      }),
+    });
+
+    expect(
+      container.querySelector("[data-sidebar-nest-drop-preview]"),
+    ).toBeNull();
+  });
+
+  it("anchors a pinned insert line below the subtree, not between parent and child", () => {
+    const container = renderPinnedParentWithChild({
+      isCollapsed: false,
+      sectionDnd: makeSectionDnd({
+        reorderTarget: { threadId: "thr_parent", placement: "after" },
+      }),
+    });
+
+    expect(screen.getByText("Child")).not.toBeNull();
+    expect(
+      container.querySelector("[data-sidebar-reorder-placement]"),
+    ).toBeNull();
+    const group = container.querySelector<HTMLElement>(
+      "[data-sidebar-sticky-group]",
     );
-    expect(preview?.textContent).toBe("Test thread");
-    expect(preview?.className).toContain("opacity-50");
-    expect(preview?.className).not.toContain("border-dashed");
+    expect(group?.className).toContain("after:-bottom-px");
+    expect(group?.contains(screen.getByText("Child"))).toBe(true);
+  });
+
+  it("anchors a pinned insert line on the row when the subtree is collapsed", () => {
+    const container = renderPinnedParentWithChild({
+      isCollapsed: true,
+      sectionDnd: makeSectionDnd({
+        reorderTarget: { threadId: "thr_parent", placement: "after" },
+      }),
+    });
+
+    expect(screen.queryByText("Child")).toBeNull();
+    expect(
+      container
+        .querySelector("[data-sidebar-reorder-placement]")
+        ?.getAttribute("data-sidebar-reorder-placement"),
+    ).toBe("after");
   });
 
   it("renders the dragged copy as a compact opaque chip", () => {
@@ -199,6 +415,30 @@ describe("ProjectRow interactions", () => {
     expect(actions?.getAttribute("data-sidebar-hover-actions-open")).toBeNull();
   });
 
+  it("renames a project from its menu without collapsing its threads", async () => {
+    const { onToggleProjectCollapsed } = renderProjectRow();
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Test project actions" }),
+      { button: 0 },
+    );
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Rename" }));
+    const input = await screen.findByRole("textbox", { name: "Project name" });
+    await waitFor(() => expect(document.activeElement).toBe(input));
+    fireEvent.change(input, { target: { value: "  Renamed project  " } });
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    expect(document.activeElement).toBe(input);
+    expect(mockUpdateProject).not.toHaveBeenCalled();
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() =>
+      expect(mockUpdateProject).toHaveBeenCalledWith({
+        id: "proj_test",
+        name: "Renamed project",
+      }),
+    );
+    expect(onToggleProjectCollapsed).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
   it("places the project disclosure after its label and keeps root threads flush", () => {
     const result = renderProjectRow(vi.fn(), {
       status: "ready",
@@ -221,7 +461,8 @@ describe("ProjectRow interactions", () => {
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).not.toBe(0);
     expect(
-      (threadLink?.parentElement as HTMLElement | null)?.style.paddingLeft,
+      threadLink?.closest<HTMLElement>(".bb-sidebar-hover-actions-row")?.style
+        .paddingLeft,
     ).toBe("8px");
     expect(projectGroup?.getAttribute("data-sidebar-project-id")).toBe(
       "proj_test",
@@ -322,6 +563,56 @@ describe("ProjectRow interactions", () => {
     expect(screen.queryByLabelText("Plan mode active")).toBeNull();
   });
 
+  it("keeps a duplicate section name in place until corrected", async () => {
+    mockUpdateSection.mockRejectedValueOnce(
+      new BbHttpError({
+        status: 409,
+        code: "section_name_conflict",
+        message: "Conflict",
+        body: null,
+      }),
+    );
+    render(
+      <TooltipProvider>
+        <Provider store={createStore()}>
+          <QueryClientProvider client={new QueryClient()}>
+            <MemoryRouter>
+              <CustomSectionsVisibilityProbe
+                threads={[]}
+                onProjectSelect={vi.fn()}
+              />
+            </MemoryRouter>
+          </QueryClientProvider>
+        </Provider>
+      </TooltipProvider>,
+    );
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Building section actions" }),
+      { button: 0 },
+    );
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Rename" }));
+    const input = await screen.findByRole("textbox", { name: "Section name" });
+    fireEvent.change(input, { target: { value: "Existing section" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(
+      await screen.findByText("A section with this name already exists."),
+    ).not.toBeNull();
+    expect(input).toHaveProperty("value", "Existing section");
+    fireEvent.change(input, { target: { value: "New section" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() =>
+      expect(mockUpdateSection).toHaveBeenLastCalledWith({
+        id: "sec_building",
+        name: "New section",
+      }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("textbox", { name: "Section name" }),
+      ).toBeNull(),
+    );
+  });
+
   it("uses shared runtime precedence when a top-level section is collapsed", () => {
     const store = createStore();
     const queryClient = new QueryClient();
@@ -357,6 +648,9 @@ describe("ProjectRow interactions", () => {
                 onToggleThreadCollapsed={vi.fn()}
                 onToggleEnvironmentCollapsed={vi.fn()}
                 topLevelSectionOrder={[
+                  buildSidebarEntitySectionId("section", sectionId),
+                ]}
+                fullSectionOrder={[
                   buildSidebarEntitySectionId("section", sectionId),
                 ]}
                 onTopLevelSectionOrderChange={vi.fn()}
@@ -427,6 +721,9 @@ describe("ProjectRow interactions", () => {
                 topLevelSectionOrder={[
                   buildSidebarEntitySectionId("section", sectionId),
                 ]}
+                fullSectionOrder={[
+                  buildSidebarEntitySectionId("section", sectionId),
+                ]}
                 onTopLevelSectionOrderChange={vi.fn()}
                 pinnedReorderPending={false}
                 pinnedThreads={[]}
@@ -452,6 +749,110 @@ describe("ProjectRow interactions", () => {
       screen.getAllByLabelText("Thread working with unsubmitted draft"),
     ).not.toHaveLength(0);
     expect(screen.queryByLabelText("Plan mode active")).toBeNull();
+  });
+
+  it("hides a section with inherited descendants and restores its saved position", async () => {
+    const store = createStore();
+    const savedOrder = [
+      "section:sec_review",
+      "section:sec_building",
+      "pinned",
+      "threads",
+    ];
+    store.set(sidebarOrganizationModeAtom, "chronological");
+    store.set(sidebarManualSectionOrderAtom, savedOrder);
+    const onProjectSelect = vi.fn();
+    const threads = [
+      makeThread({
+        id: "thr_review_parent",
+        title: "Review parent",
+        titleFallback: "Review parent",
+        sectionId: "sec_review",
+      }),
+      makeThread({
+        id: "thr_inherited_child",
+        title: "Inherited child",
+        titleFallback: "Inherited child",
+        parentThreadId: "thr_review_parent",
+        sectionId: null,
+      }),
+    ];
+    const { container } = render(
+      <TooltipProvider>
+        <Provider store={store}>
+          <QueryClientProvider client={new QueryClient()}>
+            <MemoryRouter>
+              <CustomSectionsVisibilityProbe
+                threads={threads}
+                onProjectSelect={onProjectSelect}
+              />
+            </MemoryRouter>
+          </QueryClientProvider>
+        </Provider>
+      </TooltipProvider>,
+    );
+
+    expect(screen.getByText("Review parent")).not.toBeNull();
+    expect(screen.getByText("Inherited child")).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "More sections" })).toBeNull();
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Review section actions" }),
+      { button: 0 },
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Hide from list" }),
+    );
+
+    expect(screen.queryByText("Review parent")).toBeNull();
+    expect(screen.queryByText("Inherited child")).toBeNull();
+    expect(store.get(sidebarHiddenGroupsAtom)).toEqual(["section:sec_review"]);
+    expect(store.get(sidebarManualSectionOrderAtom)).toEqual(savedOrder);
+    fireEvent.click(screen.getByRole("button", { name: "More sections" }));
+    const hiddenSections = await screen.findByRole("list", {
+      name: "Hidden sections",
+    });
+    expect(within(hiddenSections).getByText("Review parent")).not.toBeNull();
+    fireEvent.click(
+      within(hiddenSections).getByRole("link", {
+        name: "Open Inherited child",
+      }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("list", { name: "Hidden sections" }),
+      ).toBeNull(),
+    );
+    expect(onProjectSelect).toHaveBeenCalledOnce();
+    expect(store.get(sidebarHiddenGroupsAtom)).toEqual(["section:sec_review"]);
+
+    fireEvent.click(screen.getByRole("button", { name: "More sections" }));
+    const reopenedSections = await screen.findByRole("list", {
+      name: "Hidden sections",
+    });
+    fireEvent.pointerDown(
+      within(reopenedSections).getByRole("button", { name: "Review options" }),
+      { button: 0 },
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Add to sidebar" }),
+    );
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: "More sections" }),
+      ).toBeNull(),
+    );
+    expect(screen.getByText("Inherited child")).not.toBeNull();
+    expect(store.get(sidebarHiddenGroupsAtom)).toEqual([]);
+    expect(store.get(sidebarManualSectionOrderAtom)).toEqual(savedOrder);
+    expect(
+      Array.from(
+        container.querySelectorAll<HTMLElement>(
+          "[data-sidebar-visibility-group]",
+        ),
+        (element) => element.dataset.sidebarVisibilityGroup,
+      ),
+    ).toEqual(["section:sec_review", "section:sec_building"]);
   });
 
   it("surfaces named activity when the project is collapsed", () => {
@@ -592,13 +993,29 @@ describe("ProjectRow interactions", () => {
       ).toEqual(["Rename", "Archive"]);
       fireEvent.click(rename);
 
-      expect(
-        await screen.findByRole("dialog", { name: "Rename environment" }),
-      ).not.toBeNull();
-      expect(screen.getByText("feat/menu-close")).not.toBeNull();
+      const input = await screen.findByRole("textbox", {
+        name: "Environment name",
+      });
+      expect(input.getAttribute("placeholder")).toBe("feat/menu-close");
+      expect(input).toHaveProperty("value", "Feature workspace");
+      await waitFor(() => expect(document.activeElement).toBe(input));
+      expect(screen.queryByRole("dialog")).toBeNull();
       await waitFor(() => {
         expect(screen.queryByRole("menuitem", { name: "Rename" })).toBeNull();
       });
+      fireEvent.change(input, { target: { value: "" } });
+      fireEvent.keyDown(input, { key: "Enter" });
+      expect(await screen.findByText("Name cannot be empty.")).not.toBeNull();
+      expect(mockUpdateEnvironment.mutateAsync).not.toHaveBeenCalled();
+      fireEvent.click(
+        screen.getByRole("button", { name: "Clear custom name" }),
+      );
+      await waitFor(() =>
+        expect(mockUpdateEnvironment.mutateAsync).toHaveBeenCalledWith({
+          id: "env_test",
+          name: null,
+        }),
+      );
     },
   );
 
@@ -666,8 +1083,16 @@ describe("ProjectRow interactions", () => {
       { button: 0 },
     );
     fireEvent.click(await screen.findByRole("menuitem", { name: "Rename" }));
-    expect(
-      await screen.findByRole("dialog", { name: "Rename environment" }),
-    ).not.toBeNull();
+    const input = await screen.findByRole("textbox", {
+      name: "Environment name",
+    });
+    fireEvent.change(input, { target: { value: "  Release workspace  " } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() =>
+      expect(mockUpdateEnvironment.mutateAsync).toHaveBeenCalledWith({
+        id: "env_plain",
+        name: "Release workspace",
+      }),
+    );
   });
 });

@@ -111,7 +111,12 @@ vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
         focusEnd: () => void;
       } | null;
     };
-    submission?: { onModifierSubmit?: () => void; title?: string };
+    submission?: {
+      onModifierSubmit?: () => void;
+      swapSubmitActions?: boolean;
+      showModifierSubmitAction?: boolean;
+      title?: string;
+    };
     suppressPluginComposerCustomizations?: boolean;
     onCollapse?: () => void;
     heightAnimationKey?: string | number;
@@ -149,7 +154,11 @@ vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
       <button
         type="button"
         onClick={(event) => {
-          onSubmit();
+          if (submission?.swapSubmitActions) {
+            submission.onModifierSubmit?.();
+          } else {
+            onSubmit();
+          }
           if (
             blurOnPointerSubmit &&
             event.detail > 0 &&
@@ -164,7 +173,10 @@ vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
       <button
         type="button"
         title={submission?.title}
-        onClick={submission?.onModifierSubmit}
+        data-show-modifier-action={submission?.showModifierSubmitAction}
+        onClick={
+          submission?.swapSubmitActions ? onSubmit : submission?.onModifierSubmit
+        }
       >
         Modifier submit
       </button>
@@ -795,8 +807,22 @@ describe("FollowUpPromptBox", () => {
       fireEvent.click(screen.getByText("Modifier submit"));
       expect(expectedModifier).toHaveBeenCalledOnce();
       expect(mocks.scrollToBottom).toHaveBeenCalledOnce();
+      expect(
+        screen
+          .getByText("Modifier submit")
+          .getAttribute("data-show-modifier-action"),
+      ).toBe("true");
     },
   );
+
+  it("keeps save shortcuts without offering an alternate send action in a ready editor", () => {
+    const props = createFollowUpPromptBoxProps({ kind: "ready" });
+    render(<FollowUpPromptBox {...props} />);
+    const modifier = screen.getByText("Modifier submit");
+    expect(modifier.getAttribute("data-show-modifier-action")).toBe("false");
+    fireEvent.click(modifier);
+    expect(props.composer?.onModifierSubmit).toHaveBeenCalledOnce();
+  });
 
   it.each([
     { setting: false, title: "Queue follow-up (Enter), Ctrl + Enter to steer" },

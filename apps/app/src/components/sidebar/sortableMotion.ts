@@ -48,15 +48,16 @@ export function useSidebarSortable({
     transform,
     transition,
   } = useSortable({ id, disabled, transition: SIDEBAR_SORTABLE_TRANSITION });
+  const lifted = displace && isDragging;
   const style = useMemo<CSSProperties>(
     () => ({
       transform: displace ? CSS.Translate.toString(transform) : undefined,
       transition: displace ? transition : undefined,
-      position: isDragging ? "relative" : undefined,
-      zIndex: isDragging ? 100 : undefined,
+      position: lifted ? "relative" : undefined,
+      zIndex: lifted ? 100 : undefined,
       opacity: isDragging ? 0.8 : undefined,
     }),
-    [displace, isDragging, transform, transition],
+    [displace, isDragging, lifted, transform, transition],
   );
   const dragBindings = useMemo<SidebarSortableDragBindings>(
     () => ({ attributes, disabled, listeners, setActivatorNodeRef }),

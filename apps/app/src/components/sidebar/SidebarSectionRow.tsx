@@ -9,6 +9,7 @@ import {
   type CSSProperties,
   type MouseEvent,
   type MouseEventHandler,
+  type ReactNode,
 } from "react";
 import { SidebarStickyTier } from "@/components/ui/sidebar.js";
 import {
@@ -49,6 +50,7 @@ function stopActionsClick(event: MouseEvent<HTMLElement>) {
 
 interface SidebarSectionRowProps {
   name: string;
+  labelEditor?: ReactNode;
   label: string;
   depth: number;
   activity: CollapsedChildActivity;
@@ -61,11 +63,14 @@ interface SidebarSectionRowProps {
   isDropTargetActive?: boolean;
   onCreateThread?: () => void;
   onRename?: () => void;
+  onRenameFromMenu?: () => void;
+  onCloseAutoFocus?: (event: Event) => void;
   onRemove?: () => void;
 }
 
 function SidebarSectionRowComponent({
   name,
+  labelEditor,
   label,
   depth,
   activity,
@@ -77,6 +82,8 @@ function SidebarSectionRowComponent({
   onToggleCollapsed,
   onCreateThread,
   onRename,
+  onRenameFromMenu,
+  onCloseAutoFocus,
   onRemove,
   stickyLevel,
 }: SidebarSectionRowProps) {
@@ -125,13 +132,13 @@ function SidebarSectionRowComponent({
   };
   const handleClickCapture = useCallback<MouseEventHandler<HTMLElement>>(
     (event) => {
-      if (!consumeClickSuppression?.()) {
+      if (labelEditor || !consumeClickSuppression?.()) {
         return;
       }
       event.preventDefault();
       event.stopPropagation();
     },
-    [consumeClickSuppression],
+    [consumeClickSuppression, labelEditor],
   );
   const content = (
     <>
@@ -139,12 +146,30 @@ function SidebarSectionRowComponent({
         type="button"
         aria-hidden="true"
         tabIndex={-1}
+        disabled={Boolean(labelEditor)}
         onClick={onToggleCollapsed}
         className="absolute inset-0 rounded-md outline-none ring-sidebar-ring focus-visible:ring-2"
       />
       <span className="relative z-10 flex min-w-0 flex-1 items-center gap-1 text-left">
-        <span className="min-w-0 truncate">{name}</span>
+        {labelEditor ?? (
+          <span
+            className="min-w-0 truncate"
+            onDoubleClick={
+              onRename
+                ? (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    onRename();
+                  }
+                : undefined
+            }
+          >
+            {name}
+          </span>
+        )}
         <SidebarChildToggleChevron
+          disabled={Boolean(labelEditor)}
+          className={labelEditor ? "hidden" : undefined}
           isCollapsed={isCollapsed}
           expandLabel={`Expand ${label} section`}
           collapseLabel={`Collapse ${label} section`}
@@ -169,6 +194,7 @@ function SidebarSectionRowComponent({
           hasActions
             ? "inline-flex items-center"
             : COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+          labelEditor && "hidden",
         )}
       >
         {hasActions && showRollupIndicator ? (
@@ -194,9 +220,10 @@ function SidebarSectionRowComponent({
               label={`${label} section`}
               onNewThread={onCreateThread}
               onOpenChange={setIsActionsOpen}
+              onCloseAutoFocus={onCloseAutoFocus}
             >
               <SidebarSectionMenuItems
-                onRename={onRename}
+                onRename={onRenameFromMenu ?? onRename}
                 onRemove={onRemove}
               />
             </SidebarHeaderControls>
@@ -214,6 +241,7 @@ function SidebarSectionRowComponent({
     return (
       <SidebarStickyTier
         ref={dragBindings?.setActivatorNodeRef}
+        data-sidebar-rename-row=""
         tier="parent"
         level={stickyLevel}
         className={className}
@@ -232,6 +260,7 @@ function SidebarSectionRowComponent({
   return (
     <div
       ref={dragBindings?.setActivatorNodeRef}
+      data-sidebar-rename-row=""
       className={className}
       style={style}
       {...dragBindings?.attributes}

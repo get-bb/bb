@@ -1,6 +1,8 @@
 import { useCallback, useMemo } from "react";
-import { useAtom } from "jotai";
+import { useAtom, useAtomValue } from "jotai";
+import { reorderStoredOrder } from "@/lib/stored-order";
 import {
+  sidebarHiddenGroupsAtom,
   sidebarManualSectionOrderAtom,
   sidebarMachineSectionOrderAtom,
   sidebarSectionOrderAtom,
@@ -8,6 +10,7 @@ import {
   type SidebarSectionId,
 } from "./sidebarCollapsedAtoms";
 import {
+  buildSidebarEntitySectionId,
   normalizeSidebarSectionOrder,
   type LegacySidebarEntityAnchor,
 } from "@bb/client-core";
@@ -16,19 +19,23 @@ const MODE_SECTION_ORDER_CONFIG: Record<
   SidebarOrganizationMode,
   {
     atom: typeof sidebarSectionOrderAtom;
+    entityKind: "project" | "section" | "machine";
     legacyEntityAnchor: LegacySidebarEntityAnchor;
   }
 > = {
   project: {
     atom: sidebarSectionOrderAtom,
+    entityKind: "project",
     legacyEntityAnchor: "projects",
   },
   chronological: {
     atom: sidebarManualSectionOrderAtom,
+    entityKind: "section",
     legacyEntityAnchor: "sections",
   },
   machine: {
     atom: sidebarMachineSectionOrderAtom,
+    entityKind: "machine",
     legacyEntityAnchor: "machines",
   },
 };
@@ -54,6 +61,11 @@ export function useSidebarModeSectionOrder({
 }: UseSidebarModeSectionOrderArgs): UseSidebarModeSectionOrderResult {
   const config = MODE_SECTION_ORDER_CONFIG[mode];
   const [storedOrder, setStoredOrder] = useAtom(config.atom);
+  const hiddenGroups = useAtomValue(sidebarHiddenGroupsAtom);
+  const hiddenGroupIds = useMemo(
+    () => new Set<string>(hiddenGroups),
+    [hiddenGroups],
+  );
   const persistedOrder = useMemo(
     () =>
       normalizeSidebarSectionOrder({
@@ -73,14 +85,42 @@ export function useSidebarModeSectionOrder({
   const order = useMemo(
     () =>
       persistedOrder.filter(
-        (sectionId) => sectionId !== "pinned" || showPinnedSection,
+        (sectionId) =>
+          (sectionId !== "pinned" || showPinnedSection) &&
+          !hiddenGroupIds.has(sectionId),
       ),
-    [persistedOrder, showPinnedSection],
+    [hiddenGroupIds, persistedOrder, showPinnedSection],
   );
   const onOrderChange = useCallback(
-    (nextOrder: SidebarSectionId[]) => setStoredOrder(nextOrder),
-    [setStoredOrder],
+    (nextOrder: SidebarSectionId[]) => {
+      const nextIds = new Set(nextOrder);
+      setStoredOrder((current) => {
+        const storedEntityIds = current
+          .filter((id) => id.startsWith(`${config.entityKind}:`))
+          .map((id) =>
+            buildSidebarEntitySectionId(
+              config.entityKind,
+              id.slice(config.entityKind.length + 1),
+            ),
+          );
+        const fullOrder = normalizeSidebarSectionOrder({
+          storedOrder: current,
+          entitySectionIds: [...entitySectionIds, ...storedEntityIds],
+          legacyEntityAnchor: config.legacyEntityAnchor,
+          hasPinnedSection: true,
+          hasThreadsSection:
+            hasThreadsSection !== false || current.includes("threads"),
+        });
+        return (
+          reorderStoredOrder({
+            order: fullOrder,
+            visibleIds: fullOrder.filter((id) => nextIds.has(id)),
+            nextVisibleIds: nextOrder,
+          }) ?? current
+        );
+      });
+    },
+    [config, entitySectionIds, hasThreadsSection, setStoredOrder],
   );
-
   return { onOrderChange, order, persistedOrder };
 }

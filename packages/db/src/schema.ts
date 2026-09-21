@@ -219,6 +219,11 @@ export const appSettingsValues = sqliteTable("app_settings_values", {
   updatedAt: integer("updated_at").notNull(),
 });
 
+export const uiPreferenceDefaults = sqliteTable("ui_preference_defaults", {
+  key: text("key").primaryKey(),
+  valueJson: text("value_json").notNull(),
+});
+
 export const uiPreferences = sqliteTable("ui_preferences", {
   key: text("key").primaryKey(),
   valueJson: text("value_json").notNull(),
@@ -1016,6 +1021,17 @@ export const queuedThreadMessages = sqliteTable(
     // row stays waiting on whatever it was waiting on; this only says what went
     // wrong the last time the drain tried to send it.
     failureReason: text("failure_reason"),
+    // How many drain attempts in a row have failed, and when the next
+    // automatic one may run. Together they make a failure a bounded retry
+    // instead of a terminal state: the condition that failed a dispatch is
+    // usually the one a restart just created, so the row goes again on a
+    // widening delay and only stops when the budget is spent. `next_attempt_at`
+    // NULL beside a non-NULL `failure_reason` IS that spent budget — the row
+    // now waits for a person. A fresh, successful statement of the row's wait
+    // resets both, because the attempt that wrote it learned something newer
+    // than the failure did.
+    failureCount: integer("failure_count").notNull().default(0),
+    nextAttemptAt: integer("next_attempt_at"),
     payloadKind: text("payload_kind")
       .$type<QueuedMessagePayloadKind>()
       .notNull()

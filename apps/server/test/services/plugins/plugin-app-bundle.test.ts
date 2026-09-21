@@ -122,10 +122,10 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
     expect(bundle.sdkMajor).toBe(PLUGIN_SDK_MAJOR);
     expect(bundle.sdkVersion).toBe(PLUGIN_SDK_VERSION);
     expect(bundle.jsUrl).toBe(
-      `/api/v1/plugins/appy/assets/app.js?h=${bundle.hash}`,
+      `/api/v1/plugin-app-assets/${bundle.hash}/app.js`,
     );
     expect(bundle.cssUrl).toBe(
-      `/api/v1/plugins/appy/assets/app.css?h=${bundle.hash}`,
+      `/api/v1/plugin-app-assets/${bundle.hash}/app.css`,
     );
     const jsStat = await stat(join(rootDir, "dist", "app.js"));
     await stat(join(rootDir, "dist", "app.meta.json"));
@@ -212,6 +212,10 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
       `${BASE}/api/v1/plugins/nope/assets/app.js`,
     );
     expect(unknownPlugin.status).toBe(404);
+    const unknownHash = await harness.app.request(
+      `${BASE}/api/v1/plugin-app-assets/0000000000000000/app.js`,
+    );
+    expect(unknownHash.status).toBe(404);
     const unknownFile = await harness.app.request(
       `${BASE}/api/v1/plugins/appy/assets/evil.js`,
     );
@@ -395,7 +399,7 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
     expect(after).not.toBeNull();
     expect(after?.hash).not.toBe(before?.hash);
     expect(after?.jsUrl).toBe(
-      `/api/v1/plugins/devy/assets/app.js?h=${after?.hash}`,
+      `/api/v1/plugin-app-assets/${after?.hash}/app.js`,
     );
     const js = await harness.app.request(`${BASE}${after?.jsUrl ?? ""}`);
     expect(js.status).toBe(200);

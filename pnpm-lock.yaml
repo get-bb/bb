@@ -2002,6 +2002,9 @@ importers:
 
   packages/plugin-api-map:
     dependencies:
+      '@bb/shared-ui':
+        specifier: workspace:*
+        version: link:../shared-ui
       '@hugeicons/core-free-icons':
         specifier: ^4.3.4
         version: 4.3.4
@@ -3364,6 +3367,9 @@ importers:
       '@tiptap/starter-kit':
         specifier: ^2.27.2
         version: 2.27.2
+      diff:
+        specifier: ^8.0.4
+        version: 8.0.4
       tiptap-markdown:
         specifier: ^0.8.10
         version: 0.8.10(@tiptap/core@2.27.2(@tiptap/pm@2.27.2))
@@ -3894,6 +3900,9 @@ importers:
       '@bb/plugin-api-map':
         specifier: workspace:*
         version: link:../../packages/plugin-api-map
+      '@bb/shared-ui':
+        specifier: workspace:*
+        version: link:../../packages/shared-ui
     devDependencies:
       '@bb/plugin-build':
         specifier: workspace:*

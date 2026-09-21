@@ -1,12 +1,8 @@
+import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
+import { usePluginCollectionParams } from "./usePluginCollectionParams";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Button } from "@bb/shared-ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@bb/shared-ui/dropdown-menu";
+import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { Icon } from "@bb/shared-ui/icon";
 import bbLogoUrl from "../../../../../../assets/bb-logo.svg";
 import { OpenPluginGuideButton } from "./OpenPluginGuideButton";
@@ -17,6 +13,7 @@ import {
   ResourceListState,
   ResourceShelfAction,
   ResourceSourceShelf,
+  ResourceTabDescription,
   useResourceRouteLabel,
 } from "@bb/shared-ui/resource-list";
 import { BrowseArchetypeCards } from "@/components/plugin/browse-hero/BrowseArchetypeCards";
@@ -27,11 +24,9 @@ import { getPluginsRoutePath } from "@/lib/route-paths";
 import { usePluginCatalogSearch } from "@/hooks/queries/plugin-catalog-queries";
 import type { AddPluginInitial } from "./AddPluginDialog";
 import { PluginCatalogCard, PluginCatalogGrid } from "./PluginCatalogCard";
-import {
-  PluginBrowseToolbar,
-  pluginBrowseSort,
-  pluginBrowseSortDirection,
-} from "./PluginBrowseControls";
+import { PluginCollectionToolbar } from "./PluginBrowseControls";
+import { PluginCreateButton } from "../PluginCreateButton";
+import { PLUGINS_BROWSE_DESCRIPTION } from "../plugins-collection-copy";
 import {
   pluginBrowseShelves,
   pluginCategoryFilterId,
@@ -45,25 +40,27 @@ const SHELF_ENTRY_LIMIT = 6;
 
 export function BrowsePluginsTab({
   onInstall,
+  onUninstall,
   onOpenPlugin,
   onInstallFromSource,
 }: {
   onInstall: (initial: AddPluginInitial) => void;
+  onUninstall?: (entry: PluginCatalogSearchEntry) => void;
   onOpenPlugin: (pluginId: string, trigger: HTMLButtonElement) => void;
   onInstallFromSource: () => void;
 }) {
-  const [searchParams, setSearchParams] = useSearchParams();
+  const isCompact = useIsCompactViewport();
+  const {
+    searchParams,
+    query,
+    requestedSort,
+    sortDirection,
+    selectedCategories,
+    changeSearchParams,
+  } = usePluginCollectionParams();
   const shelfKey = searchParams.get("shelf");
   const isCategoryShelf = shelfKey?.startsWith("category:") ?? false;
-  const query = searchParams.get("query") ?? "";
   const creationViewActive = searchParams.get("view") === "create";
-  const selectedCategories = useMemo(
-    () => (isCategoryShelf ? [] : searchParams.getAll("category")),
-    [isCategoryShelf, searchParams],
-  );
-  const requestedSort = pluginBrowseSort(searchParams.get("sort"));
-  const sortDirection =
-    pluginBrowseSortDirection(searchParams.get("direction")) ?? "desc";
   const [heroRequest, setHeroRequest] = useState<{
     nonce: number;
     seed?: string;
@@ -149,19 +146,23 @@ export function BrowsePluginsTab({
   browseParams.delete("shelf");
   const browseSearch = browseParams.toString();
 
-  const changeSearchParams = (
-    change: (next: URLSearchParams) => void,
-    replace = true,
-  ) => {
-    const next = new URLSearchParams(searchParams);
-    change(next);
-    setSearchParams(next, { replace });
-  };
   const openComposer = (seed?: string) =>
     setHeroRequest({
       nonce: nextComposerRequestNonce(),
       ...(seed === undefined ? {} : { seed }),
     });
+  const createAction = (
+    <PluginCreateButton
+      onCreate={(seed) => {
+        if (seed !== undefined) {
+          openComposer(seed);
+        } else if (!creationViewActive) {
+          changeSearchParams((next) => next.set("view", "create"), false);
+        }
+      }}
+      onInstallFromSource={onInstallFromSource}
+    />
+  );
   if (requestedCreationView !== creationViewActive) {
     setRequestedCreationView(creationViewActive);
     setHeroRequest({
@@ -219,44 +220,18 @@ export function BrowsePluginsTab({
           </div>
         ) : (
           <>
-            <div className="flex items-center justify-between gap-3">
-              <OpenPluginGuideButton />
-              <div className="flex shrink-0 items-stretch">
-                <Button
-                  className="rounded-r-none"
-                  onClick={() => {
-                    if (creationViewActive) return;
-                    changeSearchParams(
-                      (next) => next.set("view", "create"),
-                      false,
-                    );
-                  }}
-                >
-                  <Icon name="MessageSquarePlus" className="size-3.5" />
-                  <span>
-                    Create <span className="hidden sm:inline">a</span> plugin
-                  </span>
-                </Button>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      aria-label="Create a plugin options"
-                      className="rounded-l-none border-l border-l-primary-foreground/20 px-1.5"
-                    >
-                      <Icon name="ChevronDown" className="size-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-max min-w-40">
-                    <DropdownMenuItem onSelect={onInstallFromSource}>
-                      <Icon name="Download" className="size-4" />
-                      Install from source
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+            {isCompact ? (
+              <ResourceTabDescription>
+                {PLUGINS_BROWSE_DESCRIPTION}
+              </ResourceTabDescription>
+            ) : (
+              <div className="flex items-center justify-between gap-3">
+                <OpenPluginGuideButton />
+                {createAction}
               </div>
-            </div>
+            )}
 
-            <div className={cn(!composing && "hidden sm:block")}>
+            <div className={cn(!composing && isCompact && "hidden")}>
               <BrowseHeroCarousel
                 openRequest={heroRequest}
                 onComposingChange={setComposing}
@@ -268,8 +243,8 @@ export function BrowsePluginsTab({
         {composing && shelfKey === null ? (
           <BrowseArchetypeCards onCreate={openComposer} />
         ) : (
-          <section className="space-y-6">
-            <PluginBrowseToolbar
+          <section className="space-y-6 [--resource-source-shelf-inset:0px]">
+            <PluginCollectionToolbar
               query={query}
               selectedCategories={selectedCategories}
               categoryOptions={categoryOptions}
@@ -278,6 +253,7 @@ export function BrowsePluginsTab({
               sortDirection={sortDirection}
               installsKnown={installsKnown}
               changeSearchParams={changeSearchParams}
+              action={isCompact && shelfKey === null ? createAction : undefined}
             />
 
             {(searchQuery.isError || activeQuery.isError) &&
@@ -315,13 +291,17 @@ export function BrowsePluginsTab({
                 state="empty"
                 message="No plugins match these category filters."
               />
-            ) : sort === null && shelfKey === null ? (
+            ) : sort === null &&
+              shelfKey === null &&
+              selectedCategories.length === 0 &&
+              query.trim().length === 0 ? (
               <div className="space-y-8" data-testid="plugin-browse-shelves">
                 {shelves.map((shelf) => (
                   <BrowseShelf
                     key={shelf.key}
                     shelf={shelf}
                     onInstall={onInstall}
+                    onUninstall={onUninstall}
                     onOpenPlugin={onOpenPlugin}
                   />
                 ))}
@@ -331,6 +311,7 @@ export function BrowsePluginsTab({
                 entries={flatEntries}
                 showCategory={!isCategoryShelf}
                 onInstall={onInstall}
+                onUninstall={onUninstall}
                 onOpenPlugin={onOpenPlugin}
               />
             )}
@@ -344,10 +325,12 @@ export function BrowsePluginsTab({
 function BrowseShelf({
   shelf,
   onInstall,
+  onUninstall,
   onOpenPlugin,
 }: {
   shelf: PluginBrowseShelf;
   onInstall: (initial: AddPluginInitial) => void;
+  onUninstall?: (entry: PluginCatalogSearchEntry) => void;
   onOpenPlugin: (pluginId: string, trigger: HTMLButtonElement) => void;
 }) {
   const [searchParams] = useSearchParams();
@@ -409,6 +392,7 @@ function BrowseShelf({
               entry={entry}
               showCategory={false}
               onInstall={onInstall}
+              onUninstall={onUninstall}
               onOpenPlugin={onOpenPlugin}
             />
           ))}

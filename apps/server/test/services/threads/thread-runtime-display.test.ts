@@ -474,6 +474,8 @@ describe("thread runtime display", () => {
       id: failedRow.id,
       threadId: failed.thread.id,
       failureReason: "The message could not be sent.",
+      now: Date.now(),
+      retryDelaysMs: [],
     });
 
     const entries = toThreadListEntryResponses(

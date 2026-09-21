@@ -156,7 +156,10 @@ function SidebarStage({ children }: { children: ReactNode }) {
   return (
     <ProjectActionsProvider>
       <ThreadActionsProvider>
-        <div className="w-full max-w-[460px] min-w-0 rounded-md bg-sidebar p-2 text-sidebar-foreground">
+        <div
+          data-sidebar="sidebar"
+          className="w-full max-w-[460px] min-w-0 rounded-md bg-sidebar p-2 text-sidebar-foreground"
+        >
           <SidebarStickyStack>{children}</SidebarStickyStack>
         </div>
       </ThreadActionsProvider>
@@ -182,6 +185,12 @@ export function ChronologicalSections() {
             threadListState={projectTree(sectionThreads)}
             compareThreads={compareStandardThreads}
             sections={STORY_SECTIONS}
+            fullSectionOrder={[
+              ...STORY_SECTIONS.map((section) =>
+                buildSidebarEntitySectionId("section", section.id),
+              ),
+              "threads",
+            ]}
             collapsedThreadIds={new Set()}
             collapsedEnvironmentIds={new Set()}
             onToggleThreadCollapsed={noop}
@@ -226,6 +235,12 @@ function WorktreeGroupingStage({
           threadListState={projectTree(worktreeSectionThreads)}
           compareThreads={compareStandardThreads}
           sections={WORKTREE_SECTIONS}
+          fullSectionOrder={[
+            ...WORKTREE_SECTIONS.map((section) =>
+              buildSidebarEntitySectionId("section", section.id),
+            ),
+            "threads",
+          ]}
           collapsedThreadIds={new Set()}
           collapsedEnvironmentIds={new Set()}
           onToggleThreadCollapsed={noop}

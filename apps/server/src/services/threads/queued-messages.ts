@@ -130,12 +130,12 @@ interface SendClaimedQueuedMessageForThreadArgs {
 
 export function createAutomaticQueuedMessageGroupEligibility(
   deps: Pick<AppDeps, "db" | "hub">,
-  args: { now: number; thread: Thread },
+  args: { now: number; retryingFailure: boolean; thread: Thread },
 ): QueuedThreadMessageGroupEligibility {
   const activeTurnId = getActiveTurnId(deps, args.thread.id);
   return (group) =>
     group.every((member) => {
-      if (member.failureReason !== null) return false;
+      if (member.failureReason !== null && !args.retryingFailure) return false;
       const waitingOn = parseStoredQueuedThreadMessageWaitingOn(member);
       switch (waitingOn?.kind) {
         case undefined:
@@ -855,6 +855,7 @@ export async function sendNextQueuedMessageIfPresent(
     args.threadId,
     createAutomaticQueuedMessageGroupEligibility(deps, {
       now: Date.now(),
+      retryingFailure: false,
       thread: initialThread,
     }),
   );
@@ -896,6 +897,7 @@ export async function sendNextQueuedMessageIfPresent(
     if (!isCommandTimeoutError(error)) {
       recordQueuedMessageDrainFailure(deps, {
         error,
+        now: Date.now(),
         row: nextQueuedMessages[0]!,
         thread,
       });

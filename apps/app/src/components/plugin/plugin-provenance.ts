@@ -1,25 +1,26 @@
 import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
 
-const USER_FILTER_ID = "user";
+const DIRECT_INSTALL_FILTER_ID = "user";
 
-export function pluginPublisherFilterId(plugin: PluginListItem): string {
+export function pluginSourceFilterId(plugin: PluginListItem): string {
   return plugin.publisherLabel === null
-    ? USER_FILTER_ID
+    ? DIRECT_INSTALL_FILTER_ID
     : `publisher:${plugin.publisherLabel}`;
 }
 
-export function pluginPublisherFilterOptions(
+export function pluginSourceFilterOptions(
   plugins: readonly PluginListItem[],
 ): { id: string; label: string }[] {
   const publishers = new Set<string>();
-  let hasUserPlugin = false;
+  let hasDirectInstall = false;
   for (const plugin of plugins) {
-    if (plugin.publisherLabel === null) hasUserPlugin = true;
+    if (plugin.publisherLabel === null) hasDirectInstall = true;
     else publishers.add(plugin.publisherLabel);
   }
   const options = [...publishers]
     .sort((left, right) => left.localeCompare(right))
     .map((label) => ({ id: `publisher:${label}`, label }));
-  if (hasUserPlugin) options.push({ id: USER_FILTER_ID, label: "User" });
+  if (hasDirectInstall)
+    options.push({ id: DIRECT_INSTALL_FILTER_ID, label: "Direct install" });
   return options;
 }

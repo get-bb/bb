@@ -1472,7 +1472,7 @@ function MoreModelsSubmenu({
         align="start"
         sideOffset={6}
         className={cn(
-          "flex flex-col p-1 data-[state=closed]:animate-none",
+          "max-h-[min(20rem,var(--radix-popover-content-available-height),calc(100dvh-0.5rem))] overflow-y-auto overscroll-contain p-1 data-[state=closed]:animate-none",
           MODEL_PICKER_MENU_WIDTH_CLASS_NAME,
         )}
         onKeyDown={(event) => {

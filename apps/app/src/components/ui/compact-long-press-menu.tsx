@@ -13,7 +13,6 @@ import { DropdownMenu, DropdownMenuContent } from "@bb/shared-ui/dropdown-menu";
 
 const LONG_PRESS_MS = 700;
 const LONG_PRESS_MOVE_SLOP_PX = 10;
-const POST_LONG_PRESS_CLICK_SUPPRESSION_MS = 1000;
 
 const LONG_PRESS_TARGET_STYLE: CSSProperties = {
   WebkitTouchCallout: "none",
@@ -23,6 +22,7 @@ const claimedPressEvents = new WeakSet<Event>();
 
 interface CompactLongPressMenuProps {
   children: ReactNode;
+  disabled?: boolean;
   items: ReactNode;
   label: string;
   onOpenChange?: (open: boolean) => void;
@@ -30,6 +30,7 @@ interface CompactLongPressMenuProps {
 
 export function CompactLongPressMenu({
   children,
+  disabled = false,
   items,
   label,
   onOpenChange,
@@ -40,7 +41,7 @@ export function CompactLongPressMenu({
   const pressRef = useRef<{ pointerId: number; x: number; y: number } | null>(
     null,
   );
-  const suppressClickUntilRef = useRef(0);
+  const suppressClickRef = useRef(false);
 
   const clearPress = useCallback(() => {
     if (timerRef.current !== null) {
@@ -51,6 +52,13 @@ export function CompactLongPressMenu({
   }, []);
 
   useEffect(() => clearPress, [clearPress]);
+
+  useEffect(() => {
+    if (disabled) {
+      clearPress();
+      suppressClickRef.current = false;
+    }
+  }, [clearPress, disabled]);
 
   const handleOpenChange = useCallback(
     (nextOpen: boolean) => {
@@ -68,6 +76,10 @@ export function CompactLongPressMenu({
 
   const handlePointerDown = useCallback(
     (event: ReactPointerEvent<HTMLElement>) => {
+      suppressClickRef.current = false;
+      if (disabled) {
+        return;
+      }
       if (event.pointerType !== "touch" && event.pointerType !== "pen") {
         return;
       }
@@ -90,12 +102,11 @@ export function CompactLongPressMenu({
           return;
         }
         pressRef.current = null;
-        suppressClickUntilRef.current =
-          Date.now() + POST_LONG_PRESS_CLICK_SUPPRESSION_MS;
+        suppressClickRef.current = true;
         openMenu();
       }, LONG_PRESS_MS);
     },
-    [clearPress, openMenu],
+    [clearPress, disabled, openMenu],
   );
 
   const handlePointerMove = useCallback(
@@ -125,25 +136,24 @@ export function CompactLongPressMenu({
 
   const handleContextMenu = useCallback(
     (event: ReactMouseEvent<HTMLElement>) => {
-      if (event.defaultPrevented) {
+      if (disabled || event.defaultPrevented) {
         return;
       }
       event.preventDefault();
       if (pressRef.current !== null) {
-        suppressClickUntilRef.current =
-          Date.now() + POST_LONG_PRESS_CLICK_SUPPRESSION_MS;
+        suppressClickRef.current = true;
       }
       openMenu();
     },
-    [openMenu],
+    [disabled, openMenu],
   );
 
   const handleClickCapture = useCallback(
     (event: ReactMouseEvent<HTMLElement>) => {
-      if (Date.now() >= suppressClickUntilRef.current) {
+      if (!suppressClickRef.current) {
         return;
       }
-      suppressClickUntilRef.current = 0;
+      suppressClickRef.current = false;
       event.preventDefault();
       event.stopPropagation();
     },
@@ -160,12 +170,25 @@ export function CompactLongPressMenu({
         onPointerCancel={handlePointerEnd}
         onContextMenu={handleContextMenu}
         onClickCapture={handleClickCapture}
+        onKeyDownCapture={() => {
+          suppressClickRef.current = false;
+        }}
       >
         {children}
       </Slot>
       {hasOpened ? (
         <DropdownMenu open={open} onOpenChange={handleOpenChange}>
-          <DropdownMenuContent mobileTitle={label} aria-label={label}>
+          <DropdownMenuContent
+            mobileTitle={label}
+            aria-label={label}
+            onPointerDownCapture={() => {
+              suppressClickRef.current = false;
+            }}
+            onClickCapture={handleClickCapture}
+            onKeyDownCapture={() => {
+              suppressClickRef.current = false;
+            }}
+          >
             {items}
           </DropdownMenuContent>
         </DropdownMenu>

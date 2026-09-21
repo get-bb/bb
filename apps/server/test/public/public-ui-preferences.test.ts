@@ -29,6 +29,90 @@ async function resetPreference(
 }
 
 describe("public ui preferences", () => {
+  it("persists hidden groups across organizations without changing saved order", async () => {
+    await withTestHarness(async (harness) => {
+      const key = "sidebar.hiddenGroups";
+      const order = ["project:proj_active", "project:proj_hidden", "threads"];
+      expect(await readJson(await listPreferences(harness))).toMatchObject({
+        preferences: { [key]: { revision: 0, value: [] } },
+      });
+      expect(
+        (
+          await putPreference(harness, "sidebar.sectionOrder", {
+            expectedRevision: 0,
+            value: order,
+          })
+        ).status,
+      ).toBe(200);
+      const hidden = [
+        "project:proj_hidden",
+        "section:section_review",
+        "machine:host_offline",
+        "project:proj_deleted",
+      ];
+      const saved = await putPreference(harness, key, {
+        expectedRevision: 0,
+        value: [...hidden, hidden[0]],
+      });
+      expect(saved.status).toBe(200);
+      expect(await readJson(saved)).toMatchObject({
+        revision: 1,
+        value: hidden,
+      });
+      expect(await readJson(await listPreferences(harness))).toMatchObject({
+        preferences: { [key]: { revision: 1, value: hidden } },
+      });
+      const replaced = await putPreference(harness, key, {
+        expectedRevision: 1,
+        value: ["section:section_review"],
+      });
+      expect(replaced.status).toBe(200);
+      expect(await readJson(replaced)).toMatchObject({
+        revision: 2,
+        value: ["section:section_review"],
+      });
+      expect(await readJson(await resetPreference(harness, key))).toMatchObject({
+        revision: 3,
+        value: [],
+      });
+      expect(await readJson(await listPreferences(harness))).toMatchObject({
+        preferences: {
+          [key]: { revision: 3, value: [] },
+          "sidebar.sectionOrder": { revision: 1, value: order },
+        },
+      });
+    });
+  });
+
+  it("rejects built-in, malformed, and oversized hidden-group lists", async () => {
+    await withTestHarness(async (harness) => {
+      const key = "sidebar.hiddenGroups";
+      const invalidValues = [
+        null,
+        "project:proj_hidden",
+        [12],
+        ["pinned"],
+        ["threads"],
+        ["environment:env_1"],
+        ["project:"],
+        ["section:"],
+        ["machine:"],
+        ["project: "],
+        [`project:${"x".repeat(1_024)}`],
+        Array.from({ length: 10_001 }, () => "project:proj_hidden"),
+      ];
+      for (const value of invalidValues) {
+        expect(
+          (await putPreference(harness, key, { expectedRevision: 0, value }))
+            .status,
+        ).toBe(400);
+      }
+      expect(await readJson(await listPreferences(harness))).toMatchObject({
+        preferences: { [key]: { revision: 0, value: [] } },
+      });
+    });
+  });
+
   it("retains unavailable footer IDs and rejects malformed footer preferences", async () => {
     await withTestHarness(async (harness) => {
       for (const key of ["sidebar.footerOrder", "sidebar.hiddenFooterItems"]) {
@@ -116,7 +200,7 @@ describe("public ui preferences", () => {
     });
   });
 
-  it("defaults unset organization to Custom without persisting a choice", async () => {
+  it("defaults new installations to Custom without persisting a choice", async () => {
     await withTestHarness(async (harness) => {
       expect(await readJson(await listPreferences(harness))).toMatchObject({
         preferences: {
@@ -131,10 +215,52 @@ describe("public ui preferences", () => {
     });
   });
 
+  it("exposes an installation fallback at revision zero and accepts legacy choices", async () => {
+    await withTestHarness(async (harness) => {
+      harness.db.$client.exec(
+        `INSERT INTO ui_preference_defaults VALUES ('sidebar.organizationMode', '"project"')`,
+      );
+      expect(await readJson(await listPreferences(harness))).toMatchObject({
+        preferences: {
+          "sidebar.organizationMode": { revision: 0, value: "project" },
+        },
+      });
+      expect(
+        (
+          await putPreference(harness, "sidebar.organizationMode", {
+            expectedRevision: 0,
+            value: "machine",
+          })
+        ).status,
+      ).toBe(200);
+      expect(
+        (
+          await putPreference(harness, "sidebar.organizationMode", {
+            expectedRevision: 0,
+            value: "chronological",
+          })
+        ).status,
+      ).toBe(409);
+      expect(await readJson(await listPreferences(harness))).toMatchObject({
+        preferences: {
+          "sidebar.organizationMode": { revision: 1, value: "machine" },
+        },
+      });
+      expect(
+        await readJson(
+          await resetPreference(harness, "sidebar.organizationMode"),
+        ),
+      ).toMatchObject({ revision: 2, value: "project" });
+    });
+  });
+
   it.each(["project", "machine", "chronological"])(
-    "preserves saved %s organization",
+    "preserves saved %s organization over the installation fallback",
     async (value) => {
       await withTestHarness(async (harness) => {
+        harness.db.$client.exec(
+          `INSERT INTO ui_preference_defaults VALUES ('sidebar.organizationMode', '"project"')`,
+        );
         harness.db.$client
           .prepare(
             "INSERT INTO ui_preferences (key, value_json, revision, updated_at) VALUES (?, ?, 3, 1)",

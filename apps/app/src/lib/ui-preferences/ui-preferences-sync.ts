@@ -1,11 +1,10 @@
 import type { QueryClient } from "@tanstack/react-query";
 import type { SetStateAction, WritableAtom } from "jotai";
 import { getDefaultStore } from "jotai";
-import {
-  getUiPreferenceDefault,
-  type UiPreferenceEntry,
-  type UiPreferenceKey,
-  type UiPreferenceValue,
+import type {
+  UiPreferenceEntry,
+  UiPreferenceKey,
+  UiPreferenceValue,
 } from "@bb/domain";
 import type { UiPreferencesResponse } from "@bb/server-contract";
 import { appToast } from "@/components/ui/app-toast";
@@ -138,21 +137,21 @@ function reconcileUiPreference<Key extends UiPreferenceKey>(
   if (state.pending !== null || state.inFlight !== null) return;
   const entry = response.preferences[key];
   if (entry === undefined) return;
+  const cachedEntry = getCachedUiPreferences(activeContext.queryClient)
+    ?.preferences[key];
+  if (cachedEntry !== undefined && cachedEntry.revision > entry.revision)
+    return;
   if (entry.revision === 0 && !state.migrationAttempted) {
     state.migrationAttempted = true;
     const legacy = readLegacyLocalUiPreference(key);
     clearLegacyLocalUiPreference(key);
-    if (
-      legacy !== undefined &&
-      !areUiPreferenceValuesEqual(legacy, getUiPreferenceDefault(key))
-    ) {
+    if (legacy !== undefined) {
       activeContext.store.set(valueAtom, legacy);
       state.pending = [{ source: "migration", update: legacy }];
       void flushUiPreference(key);
       return;
     }
   }
-  if (entry.revision === 0) return;
   clearLegacyLocalUiPreference(key);
   if (
     areUiPreferenceValuesEqual(activeContext.store.get(valueAtom), entry.value)
@@ -225,7 +224,12 @@ async function writeUiPreference<Key extends UiPreferenceKey>(
         ? operations
         : operations.filter((operation) => operation.source === "user");
     const value = applyOperations(applicable, base.value);
-    if (areUiPreferenceValuesEqual(value, base.value)) return;
+    if (
+      applicable.length === 0 ||
+      (base.revision > 0 && areUiPreferenceValuesEqual(value, base.value))
+    ) {
+      return;
+    }
     try {
       const response = await sdk.system.uiPreferences.set({
         expectedRevision: base.revision,

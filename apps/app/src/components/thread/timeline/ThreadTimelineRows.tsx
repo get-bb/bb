@@ -1654,7 +1654,7 @@ function isUnreadDividerCandidateAfterCutoff({
   cutoffAt,
   row,
 }: IsUnreadDividerCandidateAfterCutoffArgs): boolean {
-  if (row.createdAt <= cutoffAt) {
+  if (row.startedAt <= cutoffAt) {
     return false;
   }
 

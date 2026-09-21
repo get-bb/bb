@@ -6,6 +6,7 @@ import {
   applyAppKeybindingOverrides,
   appKeybindingOverridesSchema,
   isAppKeybindingAvailableForClient,
+  matchesAppShortcut,
 } from "@bb/domain";
 import { systemConfigResponseSchema } from "@bb/server-contract";
 import { DEFAULT_APP_KEYBINDINGS } from "../../src/services/system/app-keybindings.js";
@@ -82,6 +83,66 @@ describe("app keybindings", () => {
         ),
       ).toBe(false);
     });
+  });
+
+  it("assigns distinct panel navigation defaults", () => {
+    for (const [command, key] of [
+      ["panel.previousTab", "ArrowLeft"],
+      ["panel.nextTab", "ArrowRight"],
+      ["panel.previousNewTabItem", "ArrowUp"],
+      ["panel.nextNewTabItem", "ArrowDown"],
+    ] as const) {
+      const binding = DEFAULT_APP_KEYBINDINGS.find(
+        (item) => item.command === command,
+      );
+      expect(binding).toMatchObject({
+        desktopOnly: false,
+        shortcut: { key, mod: true, control: true, shift: false, alt: false },
+        when: { all: ["mainSurface", "macPlatform"], none: ["modalOpen"] },
+      });
+    }
+  });
+
+  it("preserves non-Mac Ctrl arrow editing while keeping navigation rebindable", () => {
+    const defaults = applyAppKeybindingOverrides(DEFAULT_APP_KEYBINDINGS, []);
+    const client = { isDesktop: false, isMac: false };
+    for (const key of ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"]) {
+      for (const shiftKey of [false, true]) {
+        const input = {
+          key,
+          code: key,
+          ctrlKey: true,
+          metaKey: false,
+          altKey: false,
+          shiftKey,
+        };
+        expect(
+          defaults.filter(
+            (binding) =>
+              isAppKeybindingAvailableForClient(binding, client) &&
+              matchesAppShortcut(input, binding.shortcut, false),
+          ),
+        ).toEqual([]);
+      }
+    }
+    const command = "panel.nextTab";
+    const custom = {
+      key: "ArrowRight",
+      mod: false,
+      meta: false,
+      control: true,
+      alt: true,
+      shift: false,
+    };
+    const bindings = applyAppKeybindingOverrides(DEFAULT_APP_KEYBINDINGS, [
+      { command, shortcut: custom },
+    ]).filter(
+      (binding) =>
+        binding.command === command &&
+        isAppKeybindingAvailableForClient(binding, client),
+    );
+    expect(bindings).toHaveLength(1);
+    expect(bindings[0]?.shortcut).toEqual(custom);
   });
 
   it("limits overlapping default chords to intentional scoped navigation", () => {
@@ -444,6 +505,25 @@ describe("app keybindings", () => {
             when: binding.when,
           })),
       ).toEqual([
+        ...(
+          [
+            ["pane.focus.left", "ArrowLeft"],
+            ["pane.focus.right", "ArrowRight"],
+            ["pane.focus.up", "ArrowUp"],
+            ["pane.focus.down", "ArrowDown"],
+          ] as const
+        ).map(([command, key]) => ({
+          command,
+          key,
+          desktopOnly: false,
+          mod: true,
+          control: false,
+          shift: true,
+          when: {
+            all: ["mainSurface", "splitActive", "macPlatform"],
+            none: ["modalOpen"],
+          },
+        })),
         ...PANE_FOCUS_APP_COMMAND_IDS.flatMap((command, index) => [
           {
             command,

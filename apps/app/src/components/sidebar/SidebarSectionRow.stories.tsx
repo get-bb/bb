@@ -6,9 +6,11 @@ import {
   type CollapsedChildActivity,
 } from "@bb/client-core";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
-import { DropPreviewRow } from "./ProjectRow";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import { TopLevelSidebarSection } from "./TopLevelSidebarSection";
+import { SectionThreadDndProvider } from "./SectionThreadDndContext";
+import type { SectionThreadDndState } from "./useSectionThreadDnd";
+import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 
 export default {
   title: "sidebar/Section row",
@@ -188,43 +190,66 @@ export function Overview() {
   );
 }
 
+const DRAG_INTO_PARENT_KEY = "section:work";
+
+function draggingOverSection(): SectionThreadDndState {
+  return {
+    activeItemId: null,
+    activeThread: makeThreadListEntry({ id: "thr_dragged" }),
+    consumeClickSuppression: () => false,
+    dndContextProps: {},
+    dragOverParentKey: DRAG_INTO_PARENT_KEY,
+    unchangedParentKey: null,
+    itemIdsByParentKey: new Map(),
+    nestTarget: null,
+    nestPreviewBeforeKey: null,
+    onClickCapture: noop,
+    pinnedItemIds: [],
+    pinnedReorderPending: false,
+    reorderTarget: null,
+  };
+}
+
+function DragIntoStage({ isCollapsed }: { isCollapsed: boolean }) {
+  return (
+    <SectionThreadDndProvider value={draggingOverSection()}>
+      <SidebarStage>
+        <TopLevelSidebarSection
+          label="Work"
+          collapsedActivity={activity()}
+          collapseControl={{ isCollapsed, onToggleCollapsed: noop }}
+          dropParentKey={DRAG_INTO_PARENT_KEY}
+        >
+          <ThreadRowPlaceholder label="Ship the release notes" />
+          <ThreadRowPlaceholder label="Triage inbound reports" />
+        </TopLevelSidebarSection>
+      </SidebarStage>
+    </SectionThreadDndProvider>
+  );
+}
+
+function ThreadRowPlaceholder({ label }: { label: string }) {
+  return (
+    <div className="flex h-7 items-center rounded-md pl-2 text-sm text-sidebar-foreground">
+      {label}
+    </div>
+  );
+}
+
 export function DragInto() {
   return (
     <StoryCard>
       <StoryRow
         label="drop target"
-        hint="section highlights while a thread is dragged over it"
+        hint="the whole section highlights; rows stay put because nothing is inserted"
       >
-        <SidebarStage>
-          <SectionRow
-            label="Work"
-            activity={activity()}
-            isCollapsed={false}
-            isDropTargetActive
-          />
-        </SidebarStage>
+        <DragIntoStage isCollapsed={false} />
       </StoryRow>
       <StoryRow
-        label="empty placeholder"
-        hint="after the hover dwell, an empty slot opens inside the section"
+        label="collapsed drop target"
+        hint="a collapsed section highlights on its own until the dwell expands it"
       >
-        <SidebarStage>
-          <SectionRow
-            label="Work"
-            activity={activity()}
-            isCollapsed={false}
-            isDropTargetActive
-          />
-          <DropPreviewRow depth={0} />
-        </SidebarStage>
-      </StoryRow>
-      <StoryRow
-        label="loose-list drop"
-        hint="dragging a thread out of a section previews the same slot at root depth in Threads"
-      >
-        <SidebarStage>
-          <DropPreviewRow depth={0} />
-        </SidebarStage>
+        <DragIntoStage isCollapsed />
       </StoryRow>
     </StoryCard>
   );

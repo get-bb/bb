@@ -48,6 +48,7 @@ function defaultBinding(
 
 const testState = vi.hoisted(() => ({
   isDesktop: false,
+  setSplitNavigationEnabled: vi.fn(),
 }));
 
 vi.mock("@/hooks/queries/system-queries", () => ({
@@ -72,7 +73,9 @@ vi.mock("@/hooks/queries/system-queries", () => ({
 }));
 
 vi.mock("@/lib/bb-desktop", () => ({
-  getBbDesktopInfo: () => (testState.isDesktop ? {} : null),
+  getBbDesktopInfo: () => (testState.isDesktop ? {
+    setSplitNavigationEnabled: testState.setSplitNavigationEnabled,
+  } : null),
 }));
 
 function Handler({ command }: { command: AppCommandId }) {
@@ -124,6 +127,7 @@ function availabilityOf(command: AppCommandId): string | null {
 afterEach(() => {
   cleanup();
   testState.isDesktop = false;
+  testState.setSplitNavigationEnabled.mockClear();
 });
 
 describe("isCommandAvailable", () => {
@@ -208,4 +212,20 @@ describe("isCommandAvailable", () => {
     );
     expect(availabilityOf("window.new")).toBe("yes");
   });
+});
+
+it("keeps native split availability until the last registered split unmounts", () => {
+  testState.isDesktop = true;
+  const { rerender, unmount } = renderProvider(
+    <><SplitContext key="first" /><SplitContext key="second" /></>,
+  );
+  expect(testState.setSplitNavigationEnabled).toHaveBeenLastCalledWith(true);
+  rerender(
+    <MemoryRouter>
+      <AppCommandProvider><SplitContext key="first" /></AppCommandProvider>
+    </MemoryRouter>,
+  );
+  expect(testState.setSplitNavigationEnabled).toHaveBeenLastCalledWith(true);
+  unmount();
+  expect(testState.setSplitNavigationEnabled).toHaveBeenLastCalledWith(false);
 });

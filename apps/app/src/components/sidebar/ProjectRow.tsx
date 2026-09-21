@@ -1,4 +1,11 @@
 import {
+  ThreadListVisibility,
+  ThreadListMore,
+  ThreadListVisibilityGroupScope,
+  ThreadListVisibilityMenuItems,
+  type ThreadListVisibilityGroup,
+} from "./ThreadListVisibility";
+import {
   SidebarHeaderControls,
   SidebarSectionMenuItems,
 } from "./SidebarHeaderControls";
@@ -16,7 +23,6 @@ import {
   useState,
   type CSSProperties,
   type MouseEventHandler,
-  type PointerEventHandler,
   type ReactNode,
 } from "react";
 import { useAtomValue, useSetAtom } from "jotai";
@@ -46,7 +52,9 @@ import {
   useArchiveEnvironmentThreads,
   useUpdateEnvironment,
 } from "@/hooks/mutations/environment-mutations";
-import { useDialogState } from "@/hooks/useDialogState";
+import { useUpdateProject } from "@/hooks/mutations/project-mutations";
+import { useUpdateThreadSection } from "@/hooks/mutations/thread-section-mutations";
+import { useSidebarRename, useSidebarRenameState } from "./SidebarInlineRename";
 import { Button } from "@bb/shared-ui/button";
 import {
   DropdownMenu,
@@ -65,10 +73,6 @@ import {
   ProjectActionsContextMenu,
   ProjectActionsMenuItems,
 } from "@/components/project/ProjectActionsMenu";
-import {
-  EnvironmentRenameDialog,
-  type EnvironmentRenameDialogTarget,
-} from "@/components/dialogs/EnvironmentRenameDialog";
 import {
   COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
   COARSE_POINTER_GLYPH_BOX_CLASS,
@@ -90,13 +94,13 @@ import {
   type CollapsedChildActivity,
 } from "@bb/client-core";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import { getSettingsProjectRoutePath } from "@/lib/route-paths";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { appToast } from "@/components/ui/app-toast";
 import { useRouteNavigate } from "@/components/ui/app-route-anchor";
 import {
   CollapsedThreadStatusGlyph,
+  REORDER_PLACEMENT_CLASS,
   ThreadRow,
   type ThreadRowOptions,
 } from "./ThreadRow";
@@ -135,6 +139,10 @@ import {
   getSidebarThreadRowPaddingLeft,
 } from "./sidebarRowClasses";
 import {
+  resolveSectionDropTargetState,
+  SectionDropTargetOverlay,
+} from "./useSectionDropTargetState";
+import {
   SIDEBAR_DRAG_OVERLAY_DROP_ANIMATION,
   useSidebarSortable,
   type SidebarSortableDragBindings,
@@ -144,7 +152,6 @@ import type { NeighborReorderRequest } from "@bb/client-core";
 import { SidebarChildToggleChevron } from "./SidebarChildToggleChevron";
 import { SidebarSectionOrderList } from "./SidebarSectionOrderList";
 import {
-  PINNED_THREAD_PARENT_KEY,
   useSectionThreadDnd,
   type SectionThreadDndState,
 } from "./useSectionThreadDnd";
@@ -152,11 +159,8 @@ import {
   getSidebarThreadRowDroppableId,
   type ThreadRowNestDrop,
 } from "./sidebarThreadRowDroppable";
-import {
-  getSidebarItemKey,
-  getSidebarNestParentKey,
-} from "./sidebarDropPreviewPlacement";
-import { useRenderedSectionThreadDnd } from "./useRenderedSectionThreadDnd";
+import { getSidebarItemKey } from "./sidebarItemKeys";
+import { useNestDropPreview } from "./useNestDropPreview";
 import { useChronologicalSectionThreadDnd } from "./SectionThreadDndContext";
 import {
   renderBuiltInSidebarSection,
@@ -232,7 +236,6 @@ interface SectionThreadTreeProps {
   collapsedEnvironmentIds: Set<string>;
   onProjectSelect?: () => void;
   onCreateThreadInSection?: (sectionId: string) => void;
-  onRenameSection?: (section: SidebarSectionDefinition) => void;
   onRemoveSection?: (section: SidebarSectionDefinition) => void;
   onToggleThreadCollapsed: (threadId: string) => void;
   onToggleEnvironmentCollapsed: (environmentId: string) => void;
@@ -248,6 +251,7 @@ interface ChronologicalBuiltInSidebarSections {
 interface ChronologicalSectionThreadSectionsProps extends SectionThreadTreeProps {
   builtInSections: ChronologicalBuiltInSidebarSections;
   topLevelSectionOrder: readonly SidebarSectionId[];
+  fullSectionOrder: readonly SidebarSectionId[];
   onTopLevelSectionOrderChange: (order: SidebarSectionId[]) => void;
   pinnedReorderPending: boolean;
   pinnedRootNodes?: readonly ProjectThreadNode[];
@@ -261,8 +265,6 @@ interface ChronologicalSectionThreadSectionsProps extends SectionThreadTreeProps
 type ProjectThreadTreeVariant = "project" | "section";
 
 type ProjectThreadListClickCaptureHandler = MouseEventHandler<HTMLDivElement>;
-type ProjectThreadListPointerDownCaptureHandler =
-  PointerEventHandler<HTMLDivElement>;
 
 const EMPTY_PROJECT_THREADS: ThreadListEntry[] = [];
 const EMPTY_PINNED_ROOT_NODES: readonly ProjectThreadNode[] = [];
@@ -272,7 +274,6 @@ interface ProjectThreadTreeGroupProps {
   children: ReactNode;
   variant: ProjectThreadTreeVariant;
   onClickCapture?: ProjectThreadListClickCaptureHandler;
-  onPointerDownCapture?: ProjectThreadListPointerDownCaptureHandler;
 }
 
 interface ThreadTreeNodeRowProps {
@@ -295,6 +296,7 @@ interface ThreadTreeNodeRowProps {
 }
 
 interface ThreadTreeItemRowProps {
+  isEnvGrouped?: boolean;
   projectId: string;
   item: ProjectThreadItem;
   depthOffset: number;
@@ -304,7 +306,6 @@ interface ThreadTreeItemRowProps {
   variant: ProjectThreadTreeVariant;
   onProjectSelect?: () => void;
   onCreateThreadInSection?: (sectionId: string) => void;
-  onRenameSection?: (section: SidebarSectionDefinition) => void;
   onRemoveSection?: (section: SidebarSectionDefinition) => void;
   onToggleThreadCollapsed: (threadId: string) => void;
   onToggleEnvironmentCollapsed: (environmentId: string) => void;
@@ -325,7 +326,6 @@ interface SectionTreeItemRowProps {
   variant: ProjectThreadTreeVariant;
   onProjectSelect?: () => void;
   onCreateThreadInSection?: (sectionId: string) => void;
-  onRenameSection?: (section: SidebarSectionDefinition) => void;
   onRemoveSection?: (section: SidebarSectionDefinition) => void;
   onToggleThreadCollapsed: (threadId: string) => void;
   onToggleEnvironmentCollapsed: (environmentId: string) => void;
@@ -352,6 +352,10 @@ function getItemProjectId(item: ProjectThreadItem): string {
 }
 
 interface EnvironmentThreadGroupRowProps {
+  sectionDnd?: SectionThreadDndState;
+  dragBindings?: SidebarSortableDragBindings;
+  sortableRef?: (element: HTMLDivElement | null) => void;
+  sortableStyle?: CSSProperties;
   projectId: string;
   environmentThreadGroup: EnvironmentThreadGroup;
   depthOffset: number;
@@ -379,6 +383,7 @@ interface GetThreadNodeStickyLevelArgs {
 }
 
 interface EnvironmentThreadGroupHeaderProps {
+  dragBindings?: SidebarSortableDragBindings;
   environmentId: string;
   environmentProviderId: string | null;
   representativeThread: ThreadListEntry;
@@ -390,7 +395,6 @@ interface EnvironmentThreadGroupHeaderProps {
   archiveThreadsPending: boolean;
   onArchiveThreads: () => void;
   onCreateNewThread: () => void;
-  onRenameEnvironment: () => void;
   onToggleCollapsed: (environmentId: string) => void;
 }
 
@@ -400,6 +404,7 @@ interface EnvironmentThreadGroupHeaderActionsProps {
   onCreateNewThread: () => void;
   onRenameEnvironment: () => void;
   onOpenChange: (open: boolean) => void;
+  onCloseAutoFocus?: (event: Event) => void;
 }
 
 interface UseArchiveEnvironmentThreadGroupActionArgs {
@@ -412,23 +417,6 @@ interface UseArchiveEnvironmentThreadGroupActionArgs {
 interface UseArchiveEnvironmentThreadGroupActionResult {
   archiveThreadsPending: boolean;
   onArchiveThreads: () => void;
-}
-
-interface UseEnvironmentThreadGroupRenameActionArgs {
-  environmentId: string;
-  representativeThread: ThreadListEntry;
-}
-
-interface UseEnvironmentThreadGroupRenameActionResult {
-  onRenameDialogOpenChange: (open: boolean) => void;
-  onRenameEnvironment: () => void;
-  onSubmitRenameEnvironment: (
-    environmentId: string,
-    name: string | null,
-  ) => void;
-  renameDialogTarget: EnvironmentRenameDialogTarget | null;
-  renameEnvironmentErrorMessage: string | null;
-  renameEnvironmentPending: boolean;
 }
 
 interface FormatArchivedEnvironmentThreadsToastTitleArgs {
@@ -581,7 +569,6 @@ function ProjectThreadTreeGroup({
   children,
   variant,
   onClickCapture,
-  onPointerDownCapture,
 }: ProjectThreadTreeGroupProps) {
   return (
     <div
@@ -591,7 +578,6 @@ function ProjectThreadTreeGroup({
         getProjectThreadTreeGroupLineClassName(variant),
       )}
       onClickCapture={onClickCapture}
-      onPointerDownCapture={onPointerDownCapture}
     >
       {children}
     </div>
@@ -642,7 +628,7 @@ const SectionDndItemRow = memo(function SectionDndItemRow({
   sectionDnd,
   ...props
 }: ThreadTreeItemRowProps) {
-  if (!sectionDnd || props.item.kind === "environment") {
+  if (!sectionDnd) {
     return <ThreadTreeItemRow sectionDnd={sectionDnd} {...props} />;
   }
 
@@ -664,11 +650,7 @@ const DraggableSectionThreadItemRow = memo(
       disabled: false,
       displace: false,
     });
-    const isActive = sectionDnd.activeThread?.id === itemId;
-    const hasProjectedDestination =
-      sectionDnd.dragOverParentKey !== null ||
-      sectionDnd.nestTarget?.state === "valid" ||
-      sectionDnd.reorderTarget !== null;
+    const isActive = sectionDnd.activeItemId === itemId;
 
     return (
       <ThreadTreeItemRow
@@ -678,15 +660,7 @@ const DraggableSectionThreadItemRow = memo(
         sectionDnd={sectionDnd}
         sortableRef={setNodeRef}
         sortableStyle={
-          isActive
-            ? {
-                ...style,
-                opacity: hasProjectedDestination ? 0 : 0.5,
-                pointerEvents: "none",
-                position: hasProjectedDestination ? "absolute" : style.position,
-                width: hasProjectedDestination ? "100%" : undefined,
-              }
-            : style
+          isActive ? { ...style, opacity: 0.35, pointerEvents: "none" } : style
         }
       />
     );
@@ -716,7 +690,9 @@ const DroppableSectionItemRow = memo(function DroppableSectionItemRow({
       consumeClickSuppression={sectionDnd.consumeClickSuppression}
       dragBindings={isTopLevelSection ? sortable.dragBindings : undefined}
       isDropTargetActive={
-        isTopLevelSection ? sortable.isOver : droppable.isOver
+        isTopLevelSection && sectionDnd.activeThread === null
+          ? sortable.isOver
+          : false
       }
       sectionDnd={sectionDnd}
       sortableRef={
@@ -774,67 +750,13 @@ function useArchiveEnvironmentThreadGroupAction({
   };
 }
 
-function useEnvironmentThreadGroupRenameAction({
-  environmentId,
-  representativeThread,
-}: UseEnvironmentThreadGroupRenameActionArgs): UseEnvironmentThreadGroupRenameActionResult {
-  const renameDialog = useDialogState<EnvironmentRenameDialogTarget>();
-  const updateEnvironment = useUpdateEnvironment();
-  const {
-    error,
-    isPending,
-    mutate: updateEnvironmentMutate,
-    reset: resetUpdateEnvironment,
-    variables,
-  } = updateEnvironment;
-  const renameEnvironmentPending = isPending && variables?.id === environmentId;
-  const renameEnvironmentErrorMessage =
-    error && variables?.id === environmentId
-      ? getMutationErrorMessage({
-          error,
-          fallbackMessage: "Failed to update environment.",
-        })
-      : null;
-  const { onClose, onOpen, onOpenChange, target } = renameDialog;
-
-  const onRenameEnvironment = useCallback(() => {
-    resetUpdateEnvironment();
-    onOpen({
-      ...(representativeThread.environmentBranchName !== null
-        ? { branchName: representativeThread.environmentBranchName }
-        : {}),
-      canClearName: representativeThread.environmentName !== null,
-      id: environmentId,
-      currentName: representativeThread.environmentName ?? "",
-    });
-  }, [environmentId, onOpen, representativeThread, resetUpdateEnvironment]);
-
-  const onSubmitRenameEnvironment = useCallback(
-    (targetEnvironmentId: string, name: string | null) => {
-      updateEnvironmentMutate(
-        { id: targetEnvironmentId, name },
-        { onSuccess: onClose },
-      );
-    },
-    [onClose, updateEnvironmentMutate],
-  );
-
-  return {
-    onRenameDialogOpenChange: onOpenChange,
-    onRenameEnvironment,
-    onSubmitRenameEnvironment,
-    renameDialogTarget: target,
-    renameEnvironmentErrorMessage,
-    renameEnvironmentPending,
-  };
-}
-
 function EnvironmentThreadGroupHeaderActions({
   archiveThreadsPending,
   onArchiveThreads,
   onCreateNewThread,
   onRenameEnvironment,
   onOpenChange,
+  onCloseAutoFocus,
 }: EnvironmentThreadGroupHeaderActionsProps) {
   return (
     <SidebarRowControls
@@ -853,6 +775,7 @@ function EnvironmentThreadGroupHeaderActions({
             variant="ghost"
             size="icon"
             aria-label="Environment actions"
+            data-sidebar-rename-anchor=""
             className={SIDEBAR_CONTROL_BUTTON_CLASS}
           >
             <Icon
@@ -861,7 +784,11 @@ function EnvironmentThreadGroupHeaderActions({
             />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" mobileTitle="Environment actions">
+        <DropdownMenuContent
+          align="end"
+          mobileTitle="Environment actions"
+          onCloseAutoFocus={onCloseAutoFocus}
+        >
           <DropdownMenuItem
             onSelect={() => {
               onRenameEnvironment();
@@ -890,6 +817,7 @@ function EnvironmentThreadGroupHeaderActions({
 }
 
 function EnvironmentThreadGroupHeader({
+  dragBindings,
   environmentId,
   environmentProviderId,
   representativeThread,
@@ -901,7 +829,6 @@ function EnvironmentThreadGroupHeader({
   archiveThreadsPending,
   onArchiveThreads,
   onCreateNewThread,
-  onRenameEnvironment,
   onToggleCollapsed,
 }: EnvironmentThreadGroupHeaderProps) {
   const [isActionsOpen, setIsActionsOpen] = useState(false);
@@ -920,6 +847,30 @@ function EnvironmentThreadGroupHeader({
       },
       providerLookup,
     ) ?? UNNAMED_ENVIRONMENT_LABEL;
+  const { mutateAsync: updateEnvironment } = useUpdateEnvironment();
+  const rename = useSidebarRename({
+    kind: "environment",
+    id: environmentId,
+    ownerKey: `environment:${environmentId}:${representativeThread.id}`,
+    name: representativeThread.environmentName ?? "",
+    label: "Environment name",
+    placeholder:
+      resolveEnvironmentDisplayName(
+        {
+          name: null,
+          branchName: representativeThread.environmentBranchName,
+          path: representativeThread.environmentPath,
+          environmentProviderId,
+        },
+        providerLookup,
+      ) ?? UNNAMED_ENVIRONMENT_LABEL,
+    maxLength: 80,
+    onSave: (name) => updateEnvironment({ id: environmentId, name }),
+    onClear:
+      representativeThread.environmentName !== null
+        ? () => updateEnvironment({ id: environmentId, name: null })
+        : undefined,
+  });
   const iconName = getEnvironmentLabelIconName(providerLookup);
   const showRollupGlyph =
     isCollapsed &&
@@ -958,14 +909,25 @@ function EnvironmentThreadGroupHeader({
       </span>
       <span
         className={cn(
-          "pointer-events-none relative z-10 flex min-w-0 flex-1 items-center gap-1.5 text-left",
+          "relative z-10 flex min-w-0 flex-1 items-center gap-1.5 text-left",
           SIDEBAR_GROUP_TEXT_CLASS,
         )}
       >
-        <span className="min-w-0 truncate">
-          <span>{displayName}</span>
-        </span>
+        {rename.editor ?? (
+          <span
+            className="min-w-0 truncate"
+            onDoubleClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              rename.startEditing();
+            }}
+          >
+            {displayName}
+          </span>
+        )}
         <SidebarChildToggleChevron
+          disabled={rename.isEditing}
+          className={rename.isEditing ? "hidden" : undefined}
           isCollapsed={isCollapsed}
           expandLabel={`Expand ${displayName} threads`}
           collapseLabel={`Collapse ${displayName} threads`}
@@ -973,7 +935,12 @@ function EnvironmentThreadGroupHeader({
           revealOnHover
         />
       </span>
-      <span className="relative z-10 inline-flex shrink-0 items-center">
+      <span
+        className={cn(
+          "relative z-10 inline-flex shrink-0 items-center",
+          rename.isEditing && "hidden",
+        )}
+      >
         {showRollupGlyph ? (
           <span
             data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
@@ -995,6 +962,7 @@ function EnvironmentThreadGroupHeader({
             SIDEBAR_HOVER_ACTIONS_CLASS,
             SIDEBAR_CONTROL_PAIR_SIZE_CLASS,
             "relative flex items-center justify-end",
+            rename.isEditing && "hidden",
             isCollapsed && "max-md:pointer-coarse:hidden",
           )}
         >
@@ -1002,7 +970,8 @@ function EnvironmentThreadGroupHeader({
             archiveThreadsPending={archiveThreadsPending}
             onArchiveThreads={onArchiveThreads}
             onCreateNewThread={onCreateNewThread}
-            onRenameEnvironment={onRenameEnvironment}
+            onRenameEnvironment={rename.startEditingFromMenu}
+            onCloseAutoFocus={rename.onCloseAutoFocus}
             onOpenChange={setIsActionsOpen}
           />
         </div>
@@ -1013,7 +982,11 @@ function EnvironmentThreadGroupHeader({
   if (stickyLevel !== undefined) {
     return (
       <SidebarStickyTier
+        {...dragBindings?.attributes}
+        {...dragBindings?.listeners}
+        ref={dragBindings?.setActivatorNodeRef}
         tier="parent"
+        data-sidebar-rename-row=""
         level={stickyLevel}
         className={className}
         style={style}
@@ -1024,13 +997,24 @@ function EnvironmentThreadGroupHeader({
   }
 
   return (
-    <div className={className} style={style}>
+    <div
+      {...dragBindings?.attributes}
+      {...dragBindings?.listeners}
+      ref={dragBindings?.setActivatorNodeRef}
+      data-sidebar-rename-row=""
+      className={className}
+      style={style}
+    >
       {content}
     </div>
   );
 }
 
 const EnvironmentThreadGroupRow = memo(function EnvironmentThreadGroupRow({
+  sectionDnd,
+  dragBindings,
+  sortableRef,
+  sortableStyle,
   projectId,
   environmentThreadGroup,
   depthOffset,
@@ -1077,17 +1061,6 @@ const EnvironmentThreadGroupRow = memo(function EnvironmentThreadGroupRow({
     onProjectSelect?.();
     createThreadInEnvironment();
   }, [createThreadInEnvironment, onProjectSelect]);
-  const {
-    onRenameDialogOpenChange,
-    onRenameEnvironment,
-    onSubmitRenameEnvironment,
-    renameDialogTarget,
-    renameEnvironmentErrorMessage,
-    renameEnvironmentPending,
-  } = useEnvironmentThreadGroupRenameAction({
-    environmentId,
-    representativeThread,
-  });
   const nodeItems = useMemo<ProjectThreadItem[]>(
     () => nodes.map((node) => ({ kind: "thread", node })),
     [nodes],
@@ -1102,8 +1075,13 @@ const EnvironmentThreadGroupRow = memo(function EnvironmentThreadGroupRow({
 
   return (
     <>
-      <SidebarStickyGroup className="space-y-0.5">
+      <SidebarStickyGroup
+        ref={sortableRef}
+        style={sortableStyle}
+        className="space-y-0.5"
+      >
         <EnvironmentThreadGroupHeader
+          dragBindings={dragBindings}
           environmentId={environmentId}
           environmentProviderId={environmentProviderId}
           representativeThread={representativeThread}
@@ -1118,7 +1096,6 @@ const EnvironmentThreadGroupRow = memo(function EnvironmentThreadGroupRow({
           archiveThreadsPending={archiveThreadsPending}
           onArchiveThreads={onArchiveThreads}
           onCreateNewThread={handleCreateNewThread}
-          onRenameEnvironment={onRenameEnvironment}
           onToggleCollapsed={onToggleEnvironmentCollapsed}
         />
         {!isCollapsed ? (
@@ -1135,10 +1112,11 @@ const EnvironmentThreadGroupRow = memo(function EnvironmentThreadGroupRow({
                   return null;
                 }
                 return (
-                  <ThreadTreeNodeRow
+                  <SectionDndItemRow
                     key={node.thread.id}
                     projectId={projectId}
-                    node={node}
+                    item={nodeItems[index]}
+                    sectionDnd={sectionDnd}
                     depthOffset={depthOffset + 1}
                     isEnvGrouped
                     selectedThreadId={selectedThreadId}
@@ -1155,18 +1133,12 @@ const EnvironmentThreadGroupRow = memo(function EnvironmentThreadGroupRow({
           </div>
         ) : null}
       </SidebarStickyGroup>
-      <EnvironmentRenameDialog
-        errorMessage={renameEnvironmentErrorMessage}
-        target={renameDialogTarget}
-        pending={renameEnvironmentPending}
-        onOpenChange={onRenameDialogOpenChange}
-        onRename={onSubmitRenameEnvironment}
-      />
     </>
   );
 });
 
 const ThreadTreeItemRow = memo(function ThreadTreeItemRow({
+  isEnvGrouped = false,
   projectId,
   item,
   depthOffset,
@@ -1176,7 +1148,6 @@ const ThreadTreeItemRow = memo(function ThreadTreeItemRow({
   variant,
   onProjectSelect,
   onCreateThreadInSection,
-  onRenameSection,
   onRemoveSection,
   onToggleThreadCollapsed,
   onToggleEnvironmentCollapsed,
@@ -1198,7 +1169,6 @@ const ThreadTreeItemRow = memo(function ThreadTreeItemRow({
         variant={variant}
         onProjectSelect={onProjectSelect}
         onCreateThreadInSection={onCreateThreadInSection}
-        onRenameSection={onRenameSection}
         onRemoveSection={onRemoveSection}
         onToggleThreadCollapsed={onToggleThreadCollapsed}
         onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
@@ -1218,7 +1188,7 @@ const ThreadTreeItemRow = memo(function ThreadTreeItemRow({
         projectId={projectId}
         node={item.node}
         depthOffset={depthOffset}
-        isEnvGrouped={false}
+        isEnvGrouped={isEnvGrouped}
         selectedThreadId={selectedThreadId}
         collapsedThreadIds={collapsedThreadIds}
         collapsedEnvironmentIds={collapsedEnvironmentIds}
@@ -1239,6 +1209,10 @@ const ThreadTreeItemRow = memo(function ThreadTreeItemRow({
     <EnvironmentThreadGroupRow
       projectId={projectId}
       environmentThreadGroup={item.group}
+      sectionDnd={sectionDnd}
+      dragBindings={dragBindings}
+      sortableRef={sortableRef}
+      sortableStyle={sortableStyle}
       depthOffset={depthOffset}
       selectedThreadId={selectedThreadId}
       isCollapsed={collapsedEnvironmentIds.has(item.group.environmentId)}
@@ -1252,73 +1226,37 @@ const ThreadTreeItemRow = memo(function ThreadTreeItemRow({
   );
 });
 
-function getDropPreviewRowStyle({
-  depth,
-  nest,
-  visible,
-}: {
-  depth: number;
-  nest: boolean;
-  visible: boolean;
-}): CSSProperties {
-  const indent = nest
-    ? getSidebarThreadRowPaddingLeft(depth) - getSidebarThreadRowPaddingLeft(0)
-    : 0;
+function getNestDropPreviewRowStyle(depth: number): CSSProperties {
+  const indent =
+    getSidebarThreadRowPaddingLeft(depth) - getSidebarThreadRowPaddingLeft(0);
   return {
-    paddingLeft: getSidebarThreadRowPaddingLeft(nest ? 0 : depth),
+    paddingLeft: getSidebarThreadRowPaddingLeft(0),
     marginLeft: indent > 0 ? indent : undefined,
     width: indent > 0 ? `calc(100% - ${indent}px)` : undefined,
-    marginTop: visible ? undefined : 0,
   };
 }
 
-export function DropPreviewRow({
-  animate = true,
+export function NestDropPreviewRow({
   depth,
-  nest = false,
   thread,
-  visible = true,
 }: {
-  animate?: boolean;
   depth: number;
-  nest?: boolean;
-  thread?: ThreadListEntry | null;
-  visible?: boolean;
+  thread: ThreadListEntry;
 }) {
   return (
     <div
       aria-hidden="true"
-      data-sidebar-section-drop-preview="true"
-      data-sidebar-nest-drop-preview={nest ? "true" : undefined}
-      data-visible={visible ? "true" : "false"}
-      style={getDropPreviewRowStyle({ depth, nest, visible })}
+      data-sidebar-nest-drop-preview="true"
+      style={getNestDropPreviewRowStyle(depth)}
       className={cn(
         SIDEBAR_ROW_BASE_CLASS,
-        "pointer-events-none overflow-hidden",
-        animate
-          ? "transition-[height,margin,opacity,border-width] duration-150 ease-out"
-          : "transition-none",
-        visible
-          ? thread
-            ? cn(
-                COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
-                "text-sidebar-foreground opacity-50",
-              )
-            : cn(
-                COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
-                "border border-dashed opacity-100",
-                nest
-                  ? "border-sidebar-ring bg-sidebar-accent/70"
-                  : "border-sidebar-border bg-sidebar-accent/40",
-              )
-          : "h-0 border-0 opacity-0 max-md:pointer-coarse:h-0",
+        COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
+        "pointer-events-none overflow-hidden text-sidebar-foreground opacity-50",
       )}
     >
-      {thread && visible ? (
-        <span className="min-w-0 flex-1 truncate">
-          {getThreadDisplayTitle(thread)}
-        </span>
-      ) : null}
+      <span className="min-w-0 flex-1 truncate">
+        {getThreadDisplayTitle(thread)}
+      </span>
     </div>
   );
 }
@@ -1369,7 +1307,6 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
   variant,
   onProjectSelect,
   onCreateThreadInSection,
-  onRenameSection,
   onRemoveSection,
   onToggleThreadCollapsed,
   onToggleEnvironmentCollapsed,
@@ -1380,6 +1317,15 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
   sortableRef,
   sortableStyle,
 }: SectionTreeItemRowProps) {
+  const { mutateAsync: updateSection } = useUpdateThreadSection();
+  const rename = useSidebarRename({
+    kind: "section",
+    id: section.id,
+    ownerKey: `section:${section.id}:${variant}:${depthOffset}`,
+    name: section.name,
+    label: "Section name",
+    onSave: (name) => updateSection({ id: section.id, name }),
+  });
   const [isTopLevelActionsOpen, setIsTopLevelActionsOpen] = useState(false);
   const collapsedSections = useAtomValue(sidebarCollapsedThreadSectionsAtom);
   const setCollapsedSections = useSetAtom(sidebarCollapsedThreadSectionsAtom);
@@ -1396,28 +1342,11 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
   const headerDepth = getThreadRowDepth({ depthOffset, nodeDepth: 0, variant });
   const stickyLevel =
     depthOffset < SIDEBAR_STICKY_PARENT_DEPTH_CAP ? depthOffset : undefined;
-  const inlinePreviewBeforeKey =
-    sectionDnd?.dropPreview?.parentKey === sectionKey
-      ? sectionDnd.dropPreview.beforeItemKey
-      : null;
-  const showDropPreview =
-    sectionDnd?.dragOverParentKey === sectionKey &&
-    (isCollapsed || inlinePreviewBeforeKey === null);
-  const sourceItemIds = sectionDnd?.itemIdsByParentKey.get(sectionKey);
-  const isProjectedSourceEmpty =
-    sectionDnd?.activeThread != null &&
-    sectionDnd.dragOverParentKey !== null &&
-    sectionDnd.dragOverParentKey !== sectionKey &&
-    sourceItemIds?.length === 1 &&
-    sourceItemIds[0] === sectionDnd.activeThread.id;
-  const previewDepth = getThreadRowDepth({
-    depthOffset:
-      variant === "section" && depthOffset === 0 ? 0 : depthOffset + 1,
-    nodeDepth: 0,
-    variant,
-  });
+  const threadDropState = resolveSectionDropTargetState(
+    sectionDnd ?? null,
+    sectionKey,
+  );
   const showChildren = !isCollapsed && section.items.length > 0;
-  const showChildrenArea = showChildren || (!isCollapsed && showDropPreview);
   const sectionThreads = useMemo(
     () => getProjectThreadItemDescendants(section.items),
     [section.items],
@@ -1430,13 +1359,8 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
       selectedThreadId,
     });
 
-  const childrenArea = showChildrenArea ? (
-    <div
-      className={cn(
-        "relative",
-        isProjectedSourceEmpty ? "space-y-0" : "space-y-px",
-      )}
-    >
+  const childrenArea = showChildren ? (
+    <div className="relative space-y-px">
       {variant === "project" || depthOffset > 0 ? (
         <ThreadTreeGroupLine parentRowDepth={headerDepth} />
       ) : null}
@@ -1455,12 +1379,6 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
               const itemKey = getSidebarItemKey(item);
               return (
                 <Fragment key={itemKey}>
-                  {inlinePreviewBeforeKey === itemKey ? (
-                    <DropPreviewRow
-                      depth={previewDepth}
-                      thread={sectionDnd?.activeThread}
-                    />
-                  ) : null}
                   <SectionDndItemRow
                     projectId={getItemProjectId(item)}
                     item={item}
@@ -1475,7 +1393,6 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
                     variant={variant}
                     onProjectSelect={onProjectSelect}
                     onCreateThreadInSection={onCreateThreadInSection}
-                    onRenameSection={onRenameSection}
                     onRemoveSection={onRemoveSection}
                     onToggleThreadCollapsed={onToggleThreadCollapsed}
                     onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
@@ -1486,14 +1403,6 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
             }}
           />
         </SectionDndSortableList>
-      ) : null}
-      {sectionDnd ? (
-        <DropPreviewRow
-          animate={sectionDnd.activeThread !== null}
-          visible={showDropPreview}
-          depth={previewDepth}
-          thread={sectionDnd.activeThread}
-        />
       ) : null}
     </div>
   ) : null;
@@ -1508,11 +1417,10 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
             : undefined
         }
         onOpenChange={setIsTopLevelActionsOpen}
+        onCloseAutoFocus={rename.onCloseAutoFocus}
       >
         <SidebarSectionMenuItems
-          onRename={
-            onRenameSection ? () => onRenameSection(section) : undefined
-          }
+          onRename={rename.startEditingFromMenu}
           onRemove={
             onRemoveSection ? () => onRemoveSection(section) : undefined
           }
@@ -1522,6 +1430,8 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
     return (
       <TopLevelSidebarSection
         label={section.name}
+        labelEditor={rename.editor}
+        onRename={rename.startEditing}
         sectionId={section.id}
         actions={topLevelActions}
         actionsOpen={isTopLevelActionsOpen}
@@ -1533,12 +1443,11 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
         collapsedActivity={section.activity}
         collapsedThreads={sectionThreads}
         consumeClickSuppression={consumeClickSuppression}
-        dragBindings={dragBindings}
+        dragBindings={rename.isEditing ? undefined : dragBindings}
+        dropParentKey={sectionKey}
         isDropTargetActive={isDropTargetActive}
         sectionRef={sortableRef}
         sectionStyle={sortableStyle}
-        childrenInset={!isProjectedSourceEmpty}
-        showChildrenWhenCollapsed={showDropPreview}
       >
         {childrenArea}
       </TopLevelSidebarSection>
@@ -1550,29 +1459,29 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
       ref={sortableRef}
       style={sortableStyle}
       data-sidebar-section-id={section.id}
-      className={cn(
-        "rounded-md transition-colors",
-        isProjectedSourceEmpty ? "space-y-0" : "space-y-0.5",
-        isDropTargetActive &&
-          "[&_.bb-sidebar-hover-actions-row]:!bg-sidebar-accent [&_.bb-sidebar-hover-actions-row]:!text-sidebar-accent-foreground",
-      )}
+      className="relative space-y-0.5 rounded-md transition-colors"
     >
+      {threadDropState ? (
+        <SectionDropTargetOverlay state={threadDropState} />
+      ) : null}
       <SidebarSectionRow
         name={section.name}
         label={section.name}
+        labelEditor={rename.editor}
+        onRename={rename.startEditing}
+        onRenameFromMenu={rename.startEditingFromMenu}
         depth={headerDepth}
+        onCloseAutoFocus={rename.onCloseAutoFocus}
         activity={section.activity}
         collapsedThreads={sectionThreads}
         consumeClickSuppression={consumeClickSuppression}
-        dragBindings={dragBindings}
-        isDropTargetActive={isDropTargetActive}
+        dragBindings={rename.isEditing ? undefined : dragBindings}
         isCollapsed={isCollapsed}
         onCreateThread={
           onCreateThreadInSection
             ? () => onCreateThreadInSection(section.id)
             : undefined
         }
-        onRename={onRenameSection ? () => onRenameSection(section) : undefined}
         onRemove={onRemoveSection ? () => onRemoveSection(section) : undefined}
         onToggleCollapsed={handleToggleCollapsed}
         stickyLevel={stickyLevel}
@@ -1617,28 +1526,35 @@ export const ThreadTreeNodeRow = memo(function ThreadTreeNodeRow({
     sectionDnd?.nestTarget?.threadId === node.thread.id
       ? sectionDnd.nestTarget.state
       : null;
-  const showNestPreview =
-    nestTargetState === "valid" && (!hasChildren || !isCollapsed);
-  const nestPreviewBeforeKey =
-    showNestPreview &&
-    sectionDnd?.dropPreview?.parentKey ===
-      getSidebarNestParentKey(node.thread.id)
-      ? sectionDnd.dropPreview.beforeItemKey
+  const nestPreviewThread =
+    nestTargetState === "valid" && (!hasChildren || !isCollapsed)
+      ? (sectionDnd?.activeThread ?? null)
       : null;
+  const nestPreviewBeforeKey = nestPreviewThread
+    ? (sectionDnd?.nestPreviewBeforeKey ?? null)
+    : null;
   const reorderPlacement =
     sectionDnd?.reorderTarget?.threadId === node.thread.id
       ? sectionDnd.reorderTarget.placement
       : null;
+  const showChildren = !isCollapsed && hasChildren;
+  const afterSubtree = showChildren && reorderPlacement === "after";
   const nestDrop = useMemo<ThreadRowNestDrop | undefined>(
     () =>
       nestDropEnabled
         ? {
             setNodeRef: rowNodeRef,
             state: nestTargetState,
-            reorderPlacement,
+            reorderPlacement: afterSubtree ? null : reorderPlacement,
           }
         : undefined,
-    [nestDropEnabled, nestTargetState, reorderPlacement, rowNodeRef],
+    [
+      afterSubtree,
+      nestDropEnabled,
+      nestTargetState,
+      reorderPlacement,
+      rowNodeRef,
+    ],
   );
   const parentRowDepth = getThreadRowDepth({
     depthOffset,
@@ -1678,7 +1594,6 @@ export const ThreadTreeNodeRow = memo(function ThreadTreeNodeRow({
       variant,
     ],
   );
-  const showChildren = !isCollapsed && hasChildren;
   const rowProjectId = node.thread.projectId;
   const crossProjectId = rowProjectId !== projectId ? rowProjectId : null;
   const hasComposerDraft = usePromptDraftHasInput({
@@ -1705,14 +1620,20 @@ export const ThreadTreeNodeRow = memo(function ThreadTreeNodeRow({
     />
   );
 
-  if (!hasChildren && !sortableRef && !showNestPreview) {
+  if (!hasChildren && !sortableRef && nestPreviewThread === null) {
     return row;
   }
 
   return (
-    <SidebarStickyGroup style={sortableStyle} className="space-y-0.5">
+    <SidebarStickyGroup
+      style={sortableStyle}
+      className={cn(
+        "relative space-y-0.5",
+        afterSubtree && REORDER_PLACEMENT_CLASS.after,
+      )}
+    >
       {row}
-      {showChildren || showNestPreview ? (
+      {showChildren || nestPreviewThread !== null ? (
         <div className="relative space-y-px">
           <ThreadTreeGroupLine parentRowDepth={parentRowDepth} />
           {showChildren ? (
@@ -1729,11 +1650,11 @@ export const ThreadTreeNodeRow = memo(function ThreadTreeNodeRow({
                 const itemKey = getSidebarItemKey(item);
                 return (
                   <Fragment key={itemKey}>
-                    {nestPreviewBeforeKey === itemKey ? (
-                      <DropPreviewRow
+                    {nestPreviewThread !== null &&
+                    nestPreviewBeforeKey === itemKey ? (
+                      <NestDropPreviewRow
                         depth={parentRowDepth + 1}
-                        nest
-                        thread={sectionDnd?.activeThread}
+                        thread={nestPreviewThread}
                       />
                     ) : null}
                     <SectionDndItemRow
@@ -1756,11 +1677,10 @@ export const ThreadTreeNodeRow = memo(function ThreadTreeNodeRow({
               }}
             />
           ) : null}
-          {showNestPreview && nestPreviewBeforeKey === null ? (
-            <DropPreviewRow
+          {nestPreviewThread !== null && nestPreviewBeforeKey === null ? (
+            <NestDropPreviewRow
               depth={parentRowDepth + 1}
-              nest
-              thread={sectionDnd?.activeThread}
+              thread={nestPreviewThread}
             />
           ) : null}
         </div>
@@ -1780,7 +1700,6 @@ function ThreadTreeLoadingSkeleton() {
 interface SectionThreadTreeItemsProps {
   items: readonly ProjectThreadItem[];
   sectionDnd: SectionThreadDndState | null;
-  previewBeforeKey?: string | null;
   focusItemKey?: string;
   variant: ProjectThreadTreeVariant;
   projectId?: string;
@@ -1793,8 +1712,33 @@ interface SectionThreadTreeItemsProps {
   onToggleThreadCollapsed: (threadId: string) => void;
   onToggleEnvironmentCollapsed: (environmentId: string) => void;
   onCreateThreadInSection?: (sectionId: string) => void;
-  onRenameSection?: (section: SidebarSectionDefinition) => void;
   onRemoveSection?: (section: SidebarSectionDefinition) => void;
+}
+
+function itemContainsRename(
+  item: ProjectThreadItem,
+  rename: NonNullable<ReturnType<typeof useSidebarRenameState>>,
+): boolean {
+  switch (item.kind) {
+    case "thread":
+      return (
+        (rename.kind === "thread" && item.node.thread.id === rename.id) ||
+        item.node.children.some((child) => itemContainsRename(child, rename))
+      );
+    case "environment":
+      return (
+        (rename.kind === "environment" &&
+          item.group.environmentId === rename.id) ||
+        item.group.nodes.some((node) =>
+          itemContainsRename({ kind: "thread", node }, rename),
+        )
+      );
+    case "section":
+      return (
+        (rename.kind === "section" && item.group.id === rename.id) ||
+        item.group.items.some((child) => itemContainsRename(child, rename))
+      );
+  }
 }
 
 function useWindowedThreadItems({
@@ -1808,6 +1752,7 @@ function useWindowedThreadItems({
   collapsedEnvironmentIds: Set<string>;
   selectedThreadId?: string;
 }) {
+  const rename = useSidebarRenameState();
   const collapsedSectionKeyList = useAtomValue(
     sidebarCollapsedThreadSectionsAtom,
   );
@@ -1837,14 +1782,18 @@ function useWindowedThreadItems({
     [items, rowCountContext],
   );
   const alwaysMountedKeys = useMemo(() => {
-    if (!selectedThreadId) {
-      return undefined;
+    const keys = new Set<string>();
+    for (const item of items) {
+      if (
+        (selectedThreadId &&
+          projectThreadItemContainsThread(item, selectedThreadId)) ||
+        (rename && itemContainsRename(item, rename))
+      ) {
+        keys.add(getSidebarItemKey(item));
+      }
     }
-    const activeItem = items.find((item) =>
-      projectThreadItemContainsThread(item, selectedThreadId),
-    );
-    return activeItem ? new Set([getSidebarItemKey(activeItem)]) : undefined;
-  }, [items, selectedThreadId]);
+    return keys.size > 0 ? keys : undefined;
+  }, [items, selectedThreadId, rename]);
   return { itemKeys, estimateRows, getNavigationEntries, alwaysMountedKeys };
 }
 
@@ -1852,7 +1801,6 @@ function SectionThreadTreeItems({
   items,
   focusItemKey,
   sectionDnd,
-  previewBeforeKey = null,
   variant,
   projectId,
   depthOffset = 0,
@@ -1864,7 +1812,6 @@ function SectionThreadTreeItems({
   onToggleThreadCollapsed,
   onToggleEnvironmentCollapsed,
   onCreateThreadInSection,
-  onRenameSection,
   onRemoveSection,
 }: SectionThreadTreeItemsProps) {
   const { itemKeys, estimateRows, getNavigationEntries, alwaysMountedKeys } =
@@ -1889,16 +1836,6 @@ function SectionThreadTreeItems({
         const itemKey = getSidebarItemKey(item);
         return (
           <Fragment key={itemKey}>
-            {previewBeforeKey === itemKey ? (
-              <DropPreviewRow
-                depth={getThreadRowDepth({
-                  depthOffset,
-                  nodeDepth: 0,
-                  variant,
-                })}
-                thread={sectionDnd?.activeThread}
-              />
-            ) : null}
             <SectionDndItemRow
               projectId={projectId ?? getItemProjectId(item)}
               item={item}
@@ -1911,7 +1848,6 @@ function SectionThreadTreeItems({
               onToggleThreadCollapsed={onToggleThreadCollapsed}
               onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
               onCreateThreadInSection={onCreateThreadInSection}
-              onRenameSection={onRenameSection}
               onRemoveSection={onRemoveSection}
               sectionDnd={sectionDnd ?? undefined}
             />
@@ -1925,7 +1861,6 @@ function SectionThreadTreeItems({
     <ProjectThreadTreeGroup
       variant={variant}
       onClickCapture={sectionDnd?.onClickCapture}
-      onPointerDownCapture={sectionDnd?.onPointerDownCapture}
     >
       {sortableParentKey !== undefined ? (
         <SectionDndSortableList
@@ -1981,15 +1916,6 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
       ? threadListState.threads
       : EMPTY_PROJECT_THREADS;
   const sectionDnd = useChronologicalSectionThreadDnd();
-  const treePreviewBeforeKey =
-    dndParentKey !== undefined &&
-    sectionDnd?.dropPreview?.parentKey === dndParentKey
-      ? sectionDnd.dropPreview.beforeItemKey
-      : null;
-  const showTreeEndPreview =
-    dndParentKey !== undefined &&
-    sectionDnd?.dragOverParentKey === dndParentKey &&
-    treePreviewBeforeKey === null;
   const draftThreadIds = usePromptDraftInputThreadIds(projectThreads);
   const groupThreadsByEnvironment = useAtomValue(
     sidebarGroupThreadsByEnvironmentAtom,
@@ -2086,7 +2012,6 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
         items={rootItems}
         focusItemKey={focusItemKey}
         sectionDnd={dndParentKey !== undefined ? sectionDnd : null}
-        previewBeforeKey={treePreviewBeforeKey}
         variant={variant}
         projectId={projectId}
         sortableParentKey={projectId}
@@ -2097,18 +2022,6 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
         onToggleThreadCollapsed={onToggleThreadCollapsed}
         onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
       />
-      {dndParentKey !== undefined && sectionDnd ? (
-        <DropPreviewRow
-          animate={sectionDnd.activeThread !== null}
-          visible={showTreeEndPreview}
-          thread={sectionDnd.activeThread}
-          depth={getThreadRowDepth({
-            depthOffset: getProjectThreadTreeRootDepthOffset(variant),
-            nodeDepth: 0,
-            variant,
-          })}
-        />
-      ) : null}
       {hasMoreItems ? (
         <button
           type="button"
@@ -2137,12 +2050,12 @@ export const ChronologicalSectionThreadSections = memo(
     collapsedEnvironmentIds,
     onProjectSelect,
     onCreateThreadInSection,
-    onRenameSection,
     onRemoveSection,
     onToggleThreadCollapsed,
     onToggleEnvironmentCollapsed,
     builtInSections,
     topLevelSectionOrder,
+    fullSectionOrder,
     onTopLevelSectionOrderChange,
     pinnedReorderPending,
     pinnedRootNodes = EMPTY_PINNED_ROOT_NODES,
@@ -2198,29 +2111,22 @@ export const ChronologicalSectionThreadSections = memo(
       pinnedRootNodes,
       onReorderPinnedThread,
     });
-    const renderedSectionDnd = useRenderedSectionThreadDnd({
+    const renderedSectionDnd = useNestDropPreview({
       compareThreads,
       draftThreadIds,
       pinnedRootNodes,
-      pinnedThreads,
-      rootItems,
       sectionDnd,
       sections,
       threads,
     });
     const sectionItems = rootItems.filter((item) => item.kind === "section");
     const looseItems = rootItems.filter((item) => item.kind !== "section");
-    const loosePreviewBeforeKey =
-      renderedSectionDnd?.dropPreview?.parentKey === CHRONOLOGICAL_CONTAINER_ID
-        ? renderedSectionDnd.dropPreview.beforeItemKey
-        : null;
     const looseThreads = getProjectThreadItemDescendants(looseItems);
 
     const renderItems = (items: readonly ProjectThreadItem[]) => (
       <SectionThreadTreeItems
         items={items}
         sectionDnd={renderedSectionDnd}
-        previewBeforeKey={loosePreviewBeforeKey}
         variant="section"
         selectedThreadId={selectedThreadId}
         collapsedThreadIds={collapsedThreadIds}
@@ -2229,14 +2135,10 @@ export const ChronologicalSectionThreadSections = memo(
         onToggleThreadCollapsed={onToggleThreadCollapsed}
         onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
         onCreateThreadInSection={onCreateThreadInSection}
-        onRenameSection={onRenameSection}
         onRemoveSection={onRemoveSection}
       />
     );
 
-    const showLoosePreview =
-      renderedSectionDnd?.dragOverParentKey === CHRONOLOGICAL_CONTAINER_ID &&
-      loosePreviewBeforeKey === null;
     const looseEmptyState = (
       <ThreadListEmptyState
         message={
@@ -2257,25 +2159,6 @@ export const ChronologicalSectionThreadSections = memo(
         >
           {renderItems(looseItems)}
         </SortableContext>
-      ) : renderedSectionDnd ? (
-        <div className="grid">
-          <div
-            className={cn(
-              "col-start-1 row-start-1 transition-opacity duration-150 ease-out",
-              showLoosePreview ? "opacity-0" : "opacity-100",
-            )}
-          >
-            {looseEmptyState}
-          </div>
-          <div className="col-start-1 row-start-1">
-            <DropPreviewRow
-              animate={renderedSectionDnd.activeThread !== null}
-              depth={0}
-              visible={showLoosePreview}
-              thread={renderedSectionDnd.activeThread}
-            />
-          </div>
-        </div>
       ) : (
         looseEmptyState
       );
@@ -2285,18 +2168,6 @@ export const ChronologicalSectionThreadSections = memo(
         parentKey={CHRONOLOGICAL_CONTAINER_ID}
       >
         {threadsListContent}
-        {looseItems.length > 0 ? (
-          <DropPreviewRow
-            animate={renderedSectionDnd.activeThread !== null}
-            visible={showLoosePreview}
-            thread={renderedSectionDnd.activeThread}
-            depth={getThreadRowDepth({
-              depthOffset: 0,
-              nodeDepth: 0,
-              variant: "section",
-            })}
-          />
-        ) : null}
       </SectionDndDroppableParent>
     ) : (
       threadsListContent
@@ -2310,11 +2181,7 @@ export const ChronologicalSectionThreadSections = memo(
     );
     const consumeClickSuppression = renderedSectionDnd?.consumeClickSuppression;
     const configuredBuiltInSections: BuiltInSidebarSectionOptionsById = {
-      pinned: {
-        ...builtInSections.pinned,
-        isDropTargetActive:
-          renderedSectionDnd?.dragOverParentKey === PINNED_THREAD_PARENT_KEY,
-      },
+      pinned: builtInSections.pinned,
       threads: {
         ...builtInSections.threads,
         activity: getCollapsedChildActivity(looseThreads, draftThreadIds),
@@ -2322,6 +2189,35 @@ export const ChronologicalSectionThreadSections = memo(
         content: threadsContent,
       },
     };
+
+    const visibilityGroups: ThreadListVisibilityGroup[] = sectionItems.map(
+      (item) => ({
+        id: buildSidebarEntitySectionId("section", item.group.id),
+        title: item.group.name,
+        threads: getProjectThreadItemDescendants(item.group.items),
+        renderContent: (close) => (
+          <ProjectThreadTree
+            rootItems={item.group.items}
+            progressiveDisclosureEnabled={false}
+            threadListState={{
+              status: "ready",
+              threads: getProjectThreadItemDescendants(item.group.items),
+            }}
+            compareThreads={compareThreads}
+            variant="section"
+            selectedThreadId={selectedThreadId}
+            collapsedThreadIds={collapsedThreadIds}
+            collapsedEnvironmentIds={collapsedEnvironmentIds}
+            onProjectSelect={() => {
+              close();
+              onProjectSelect?.();
+            }}
+            onToggleThreadCollapsed={onToggleThreadCollapsed}
+            onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
+          />
+        ),
+      }),
+    );
     const orderedSections = (
       <SidebarSectionOrderList order={topLevelSectionOrder}>
         {(sectionId) => {
@@ -2339,23 +2235,35 @@ export const ChronologicalSectionThreadSections = memo(
           }
           const sectionItem = sectionItemsBySectionId.get(sectionId);
           return sectionItem ? (
-            <div key={sectionId}>{renderItems([sectionItem])}</div>
+            <ThreadListVisibilityGroupScope key={sectionId} id={sectionId}>
+              {renderItems([sectionItem])}
+            </ThreadListVisibilityGroupScope>
           ) : null;
         }}
       </SidebarSectionOrderList>
     );
 
-    return sectionDnd ? (
-      <DndContext {...sectionDnd.dndContextProps}>
-        <SectionThreadDndProvider value={renderedSectionDnd}>
-          {orderedSections}
-          <SectionThreadDragOverlayPortal
-            activeThread={sectionDnd.activeThread}
-          />
-        </SectionThreadDndProvider>
-      </DndContext>
-    ) : (
-      orderedSections
+    return (
+      <ThreadListVisibility
+        groups={visibilityGroups}
+        order={fullSectionOrder}
+        onOrderChange={onTopLevelSectionOrderChange}
+        label="Sections"
+      >
+        {sectionDnd ? (
+          <DndContext {...sectionDnd.dndContextProps}>
+            <SectionThreadDndProvider value={renderedSectionDnd}>
+              {orderedSections}
+              <SectionThreadDragOverlayPortal
+                activeThread={sectionDnd.activeThread}
+              />
+            </SectionThreadDndProvider>
+          </DndContext>
+        ) : (
+          orderedSections
+        )}
+        <ThreadListMore />
+      </ThreadListVisibility>
     );
   },
 );
@@ -2381,6 +2289,17 @@ function ProjectRowComponent({
   projectRowRef,
   projectRowStyle,
 }: ProjectRowProps) {
+  const { mutateAsync: updateProject } = useUpdateProject({
+    showErrorToast: false,
+  });
+  const rename = useSidebarRename({
+    kind: "project",
+    id: project.id,
+    ownerKey: `project:${project.id}`,
+    name: project.name,
+    label: "Project name",
+    onSave: (name) => updateProject({ id: project.id, name }),
+  });
   const [isDropdownActionsOpen, setIsDropdownActionsOpen] = useState(false);
   const [isContextActionsOpen, setIsContextActionsOpen] = useState(false);
   const isActionsOpen = isDropdownActionsOpen || isContextActionsOpen;
@@ -2426,14 +2345,28 @@ function ProjectRowComponent({
       showNewThread={!isLocalPathInvalid}
       onNewThread={onCreateProjectThread ? handleCreateThread : undefined}
       onOpenChange={setIsDropdownActionsOpen}
+      onCloseAutoFocus={rename.onCloseAutoFocus}
     >
-      <ProjectActionsMenuItems project={project} surface="dropdown" />
+      <ProjectActionsMenuItems
+        project={project}
+        surface="dropdown"
+        onRename={rename.startEditingFromMenu}
+        extraActions={(surface) => (
+          <ThreadListVisibilityMenuItems surface={surface} />
+        )}
+      />
     </SidebarHeaderControls>
   );
 
   return (
     <ProjectActionsContextMenu
+      extraActions={(surface) => (
+        <ThreadListVisibilityMenuItems surface={surface} />
+      )}
       project={project}
+      disabled={rename.isEditing}
+      onRename={rename.startEditingFromMenu}
+      onCloseAutoFocus={rename.onCloseAutoFocus}
       onOpenChange={setIsContextActionsOpen}
     >
       <div
@@ -2442,6 +2375,9 @@ function ProjectRowComponent({
       >
         <TopLevelSidebarSection
           label={project.name}
+          dropParentKey={buildSidebarEntitySectionId("project", project.id)}
+          labelEditor={rename.editor}
+          onRename={rename.startEditing}
           status={projectStatus}
           actions={
             isLocalPathInvalid && isCollapsed ? undefined : projectActions
@@ -2456,7 +2392,7 @@ function ProjectRowComponent({
           collapsedActivity={projectActivity}
           collapsedThreads={projectThreads}
           consumeClickSuppression={consumeProjectClickSuppression}
-          dragBindings={projectDragBindings}
+          dragBindings={rename.isEditing ? undefined : projectDragBindings}
           sectionRef={projectRowRef}
           sectionStyle={projectRowStyle}
         >
