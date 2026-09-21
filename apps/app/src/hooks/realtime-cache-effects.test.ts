@@ -3010,6 +3010,66 @@ describe("createRealtimeCacheEffects", () => {
       effects.dispose();
     });
 
+    it("still resyncs the sidebar when a hidden flush precedes the reconnect", () => {
+      vi.useFakeTimers();
+      const visibility = createFakeVisibility();
+      const { effects, queryClient } =
+        createRealtimeEffectsTestContext(visibility);
+      const sidebarNavigationKey = sidebarNavigationQueryKey();
+      queryClient.setQueryData(sidebarNavigationKey, {
+        projects: [
+          {
+            threads: [
+              {
+                activity: NO_THREAD_ACTIVITY,
+                id: "thr_1",
+                latestAttentionAt: 100,
+                runtime: {
+                  displayStatus: "idle",
+                  hostReconnectGraceExpiresAt: null,
+                },
+                status: "idle",
+                updatedAt: 100,
+              },
+            ],
+          },
+        ],
+        personalProject: { threads: [] },
+      });
+      vi.advanceTimersByTime(1000);
+      const disconnectedAt = Date.now();
+
+      visibility.setVisible(false);
+      vi.advanceTimersByTime(1000);
+      effects.handleChanged({
+        type: "changed",
+        entity: "thread",
+        id: "thr_1",
+        metadata: {
+          projectId: "project-1",
+          statusChange: {
+            activity: NO_THREAD_ACTIVITY,
+            latestAttentionAt: 200,
+            runtime: {
+              displayStatus: "active",
+              hostReconnectGraceExpiresAt: null,
+            },
+            status: "active",
+            updatedAt: 200,
+          },
+        },
+        changes: ["status-changed"],
+      });
+      vi.advanceTimersByTime(60_000);
+      visibility.setVisible(true);
+      effects.handleConnected({ reconnected: true, disconnectedAt });
+
+      expect(
+        queryClient.getQueryState(sidebarNavigationKey)?.isInvalidated,
+      ).toBe(true);
+      effects.dispose();
+    });
+
     it("holds a debounce that elapses hidden and non-thread changes until visible", async () => {
       vi.useFakeTimers();
       const visibility = createFakeVisibility();
