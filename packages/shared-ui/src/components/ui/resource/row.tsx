@@ -279,7 +279,7 @@ export function ResourceRow({
               className={cn(
                 "flex shrink-0 cursor-default items-center gap-0.5 transition-opacity",
                 actionsVisibility === "hover" &&
-                  "opacity-0 group-hover:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100",
+                  "opacity-0 group-hover:opacity-100 focus-within:opacity-100 has-[[data-state=open]]:opacity-100 [@media(hover:none)]:opacity-100",
               )}
             >
               {actions}

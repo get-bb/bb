@@ -407,6 +407,18 @@ function OverviewView({
     [mutations],
   );
 
+  const runNow = useCallback(
+    async (route: DetailRoute) => {
+      try {
+        await mutations.run(route);
+        toast.success("Run started");
+      } catch (rpcError: unknown) {
+        toast.error(`Failed to run automation: ${errorText(rpcError)}`);
+      }
+    },
+    [mutations],
+  );
+
   const createViaChat = useCallback(
     (prompt?: string) => {
       navigate.toCompose({
@@ -424,6 +436,7 @@ function OverviewView({
       onRetry={refetch}
       onOpenDetail={onOpenDetail}
       onEnabledChange={changeEnabled}
+      onRunNow={runNow}
       onCreateViaChat={createViaChat}
       activeMode={activeMode}
       onModeChange={onModeChange}

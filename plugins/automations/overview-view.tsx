@@ -31,6 +31,7 @@ import {
   ResourceListState,
   ResourceFilterMenu,
   ResourceMeta,
+  ResourceOverflowMenu,
   ResourceRow,
   ResourceRowDetailChevron,
   ResourceSortMenu,
@@ -251,6 +252,7 @@ export function OverviewRow({
   project,
   onNavigate,
   onEnabledChange,
+  onRunNow,
 }: {
   automation: AutomationResponse;
   project: OverviewEntry["project"];
@@ -259,8 +261,10 @@ export function OverviewRow({
     enabled: boolean,
     route: AutomationDetailRoute,
   ) => Promise<void>;
+  onRunNow: (route: AutomationDetailRoute) => Promise<void>;
 }) {
   const [togglePending, setTogglePending] = useState(false);
+  const [runPending, setRunPending] = useState(false);
   const route = routeOf(automation);
   const oneShotLifecycle = getOneShotLifecycle({
     enabled: automation.enabled,
@@ -279,6 +283,22 @@ export function OverviewRow({
       }
       muted={lifecycleLocked}
       onOpen={() => onNavigate(route)}
+      actions={
+        <ResourceOverflowMenu
+          label={`${automation.name} actions`}
+          disabled={runPending}
+          items={[
+            {
+              label: "Run now",
+              icon: "Play",
+              onSelect: () => {
+                setRunPending(true);
+                void onRunNow(route).finally(() => setRunPending(false));
+              },
+            },
+          ]}
+        />
+      }
       persistentActions={
         <AutomationLifecycleControl
           checked={automation.enabled && !lifecycleLocked}
@@ -412,6 +432,7 @@ export function AutomationOverviewView({
   onRetry,
   onOpenDetail,
   onEnabledChange,
+  onRunNow,
   onCreateViaChat,
   activeMode,
   onModeChange,
@@ -427,6 +448,7 @@ export function AutomationOverviewView({
     enabled: boolean,
     route: AutomationDetailRoute,
   ) => Promise<void>;
+  onRunNow: (route: AutomationDetailRoute) => Promise<void>;
   onCreateViaChat: (prompt?: string) => void;
   activeMode: AutomationCollectionMode;
   onModeChange: (mode: AutomationCollectionMode) => void;
@@ -599,6 +621,7 @@ export function AutomationOverviewView({
               project={project}
               onNavigate={onOpenDetail}
               onEnabledChange={onEnabledChange}
+              onRunNow={onRunNow}
             />
           );
         })}

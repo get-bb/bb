@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { AutomationOverviewView } from "bb-plugin-automations/overview-view";
@@ -97,6 +97,7 @@ describe("AutomationOverviewView", () => {
         onRetry={() => {}}
         onOpenDetail={() => {}}
         onEnabledChange={async () => {}}
+        onRunNow={async () => {}}
         onCreateViaChat={() => {}}
         activeMode="installed"
         onModeChange={() => {}}
@@ -125,6 +126,7 @@ describe("AutomationOverviewView", () => {
         onRetry={() => {}}
         onOpenDetail={() => {}}
         onEnabledChange={async () => {}}
+        onRunNow={async () => {}}
         onCreateViaChat={() => {}}
         activeMode="installed"
         onModeChange={() => {}}
@@ -174,6 +176,7 @@ describe("AutomationOverviewView", () => {
         onRetry={() => {}}
         onOpenDetail={onOpenDetail}
         onEnabledChange={async () => {}}
+        onRunNow={async () => {}}
         onCreateViaChat={() => {}}
         activeMode="installed"
         onModeChange={() => {}}
@@ -211,6 +214,48 @@ describe("AutomationOverviewView", () => {
     expect(screen.getAllByRole("button", { name: "Edit" })).toHaveLength(1);
   });
 
+  it("runs an automation from its row without opening the detail", async () => {
+    const onOpenDetail = vi.fn();
+    let resolveRun: (() => void) | null = null;
+    const onRunNow = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveRun = resolve;
+        }),
+    );
+    render(
+      <AutomationOverviewView
+        entries={INSTALLED_AUTOMATIONS}
+        error={null}
+        onRetry={() => {}}
+        onOpenDetail={onOpenDetail}
+        onEnabledChange={async () => {}}
+        onRunNow={onRunNow}
+        onCreateViaChat={() => {}}
+        activeMode="installed"
+        onModeChange={() => {}}
+      />,
+    );
+
+    const actions = () =>
+      screen.getByRole("button", { name: "Nightly digest actions" });
+    fireEvent.pointerDown(actions());
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Run now" }));
+
+    expect(onRunNow).toHaveBeenCalledWith({
+      projectId: "proj_1",
+      automationId: "auto_1",
+    });
+    expect(onOpenDetail).not.toHaveBeenCalled();
+    expect(actions()).toHaveProperty("disabled", true);
+
+    await act(async () => {
+      resolveRun?.();
+    });
+    expect(actions()).toHaveProperty("disabled", false);
+    expect(screen.queryByRole("menuitem", { name: "Run now" })).toBeNull();
+  });
+
   it("offers Projects and Status as groups inside one filter menu", async () => {
     render(
       <AutomationOverviewView
@@ -219,6 +264,7 @@ describe("AutomationOverviewView", () => {
         onRetry={() => {}}
         onOpenDetail={() => {}}
         onEnabledChange={async () => {}}
+        onRunNow={async () => {}}
         onCreateViaChat={() => {}}
         activeMode="installed"
         onModeChange={() => {}}
@@ -228,7 +274,7 @@ describe("AutomationOverviewView", () => {
     expect(screen.queryByRole("button", { name: "Projects" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Status" })).toBeNull();
     const filtersTrigger = screen.getByRole("button", { name: "Filters" });
-    fireEvent.focus(filtersTrigger);
+    focusWithKeyboard(filtersTrigger);
     expect((await screen.findByRole("tooltip")).textContent).toBe(
       "Filters: All",
     );
@@ -262,6 +308,7 @@ describe("AutomationOverviewView", () => {
         onRetry={() => {}}
         onOpenDetail={() => {}}
         onEnabledChange={async () => {}}
+        onRunNow={async () => {}}
         onCreateViaChat={() => {}}
         activeMode="installed"
         onModeChange={() => {}}
@@ -323,6 +370,7 @@ describe("AutomationOverviewView", () => {
         onRetry={() => {}}
         onOpenDetail={() => {}}
         onEnabledChange={async () => {}}
+        onRunNow={async () => {}}
         onCreateViaChat={() => {}}
         activeMode="installed"
         onModeChange={() => {}}
@@ -376,6 +424,7 @@ describe("AutomationOverviewView", () => {
         onRetry={() => {}}
         onOpenDetail={() => {}}
         onEnabledChange={async () => {}}
+        onRunNow={async () => {}}
         onCreateViaChat={() => {}}
         activeMode="installed"
         onModeChange={() => {}}
@@ -415,6 +464,7 @@ describe("AutomationOverviewView", () => {
           onRetry={() => {}}
           onOpenDetail={() => {}}
           onEnabledChange={async () => {}}
+          onRunNow={async () => {}}
           onCreateViaChat={() => {}}
           activeMode="installed"
           onModeChange={() => {}}
@@ -463,6 +513,7 @@ describe("AutomationOverviewView", () => {
         onRetry={() => {}}
         onOpenDetail={() => {}}
         onEnabledChange={async () => {}}
+        onRunNow={async () => {}}
         onCreateViaChat={onCreateViaChat}
         activeMode="browse"
         onModeChange={() => {}}
@@ -498,6 +549,7 @@ describe("AutomationOverviewView", () => {
         onRetry={() => {}}
         onOpenDetail={() => {}}
         onEnabledChange={async () => {}}
+        onRunNow={async () => {}}
         onCreateViaChat={() => {}}
         activeMode="installed"
         onModeChange={() => {}}
@@ -539,6 +591,7 @@ describe("AutomationOverviewView", () => {
         onRetry={() => {}}
         onOpenDetail={() => {}}
         onEnabledChange={async () => {}}
+        onRunNow={async () => {}}
         onCreateViaChat={() => {}}
         activeMode="installed"
         onModeChange={() => {}}
@@ -570,6 +623,7 @@ describe("AutomationOverviewView", () => {
         onRetry={() => {}}
         onOpenDetail={() => {}}
         onEnabledChange={async () => {}}
+        onRunNow={async () => {}}
         onCreateViaChat={() => {}}
         activeMode="installed"
         onModeChange={() => {}}
