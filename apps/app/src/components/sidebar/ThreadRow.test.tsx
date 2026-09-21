@@ -26,7 +26,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/components/thread/ThreadActionsProvider", () => ({
   useThreadActions: () => ({
-    renameThread: mocks.renameThread,
+    renameThreadAsync: mocks.renameThread,
   }),
 }));
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
@@ -1500,33 +1500,66 @@ describe("ThreadRow", () => {
     expect(screen.getByLabelText("Unread thread succeeded")).not.toBeNull();
   });
 
-  it("edits the row title inline after a double click and commits on Enter", () => {
+  it("edits the row title inline after a double click and commits on Enter", async () => {
     renderThreadRow({
       thread: createThread({ title: "Thread", titleFallback: "Thread" }),
     });
 
     fireEvent.doubleClick(screen.getByText("Thread"));
-    const input = screen.getByRole("textbox", { name: "Thread name" });
+    const input = await screen.findByRole("textbox", { name: "Thread name" });
     expect(input).toHaveProperty("value", "Thread");
 
     fireEvent.change(input, { target: { value: "Renamed thread" } });
     fireEvent.keyDown(input, { key: "Enter" });
 
-    expect(mocks.renameThread).toHaveBeenCalledWith(
-      "thr_test",
-      "Renamed thread",
-    );
-    expect(screen.queryByRole("textbox", { name: "Thread name" })).toBeNull();
+    await waitFor(() => {
+      expect(mocks.renameThread).toHaveBeenCalledWith(
+        "thr_test",
+        "Renamed thread",
+      );
+    });
+    await waitFor(() => {
+      expect(screen.queryByRole("textbox", { name: "Thread name" })).toBeNull();
+    });
     expect(screen.getByText("Thread")).not.toBeNull();
   });
 
-  it("cancels an inline row rename on Escape without saving", () => {
+  it("does not start a sortable drag while editing the title", async () => {
+    const onPointerDown = vi.fn();
+    renderThreadRow({
+      options: {
+        ...DEFAULT_OPTIONS,
+        dragBindings: {
+          attributes: {
+            role: "button",
+            tabIndex: 0,
+            "aria-disabled": false,
+            "aria-pressed": undefined,
+            "aria-roledescription": "sortable",
+            "aria-describedby": "thread-sortable",
+          },
+          disabled: false,
+          listeners: { onPointerDown },
+          setActivatorNodeRef: vi.fn(),
+        },
+      },
+    });
+
+    fireEvent.doubleClick(screen.getByText("Thread"));
+    fireEvent.pointerDown(
+      await screen.findByRole("textbox", { name: "Thread name" }),
+    );
+
+    expect(onPointerDown).not.toHaveBeenCalled();
+  });
+
+  it("cancels an inline row rename on Escape without saving", async () => {
     renderThreadRow({
       thread: createThread({ title: "Thread", titleFallback: "Thread" }),
     });
 
     fireEvent.doubleClick(screen.getByText("Thread"));
-    const input = screen.getByRole("textbox", { name: "Thread name" });
+    const input = await screen.findByRole("textbox", { name: "Thread name" });
     fireEvent.change(input, { target: { value: "Scratch name" } });
     fireEvent.keyDown(input, { key: "Escape" });
 
@@ -1535,7 +1568,7 @@ describe("ThreadRow", () => {
     expect(screen.getByText("Thread")).not.toBeNull();
   });
 
-  it("starts a rename from a second click after the row remounts", () => {
+  it("starts a rename from a second click after the row remounts", async () => {
     const thread = createThread({ title: "Thread", titleFallback: "Thread" });
     const { rerenderThreadRow } = renderThreadRow({ thread });
     const link = screen.getByRole("link", { name: "Open Thread" });
@@ -1544,9 +1577,8 @@ describe("ThreadRow", () => {
     rerenderThreadRow(thread);
     fireEvent.click(screen.getByRole("link", { name: "Open Thread" }));
 
-    expect(screen.getByRole("textbox", { name: "Thread name" })).toHaveProperty(
-      "value",
-      "Thread",
-    );
+    expect(
+      await screen.findByRole("textbox", { name: "Thread name" }),
+    ).toHaveProperty("value", "Thread");
   });
 });

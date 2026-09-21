@@ -30,7 +30,11 @@ vi.mock("@/components/dialogs/ThreadRenameDialog", () => ({
 }));
 
 vi.mock("@/hooks/mutations/thread-state-mutations", () => {
-  const mutationResult = { isPending: false, mutate: vi.fn() };
+  const mutationResult = {
+    isPending: false,
+    mutate: vi.fn(),
+    mutateAsync: vi.fn(),
+  };
   const mutation = () => mutationResult;
   return {
     useArchiveThreadAndChildren: mutation,
