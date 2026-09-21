@@ -168,7 +168,6 @@ export function usePromptMentions(
       threadId: options.currentThreadId ?? null,
     },
     {
-      providers: pluginContributions.data?.mentionProviders ?? [],
       enabled:
         hasMentionProviders &&
         pluginSearchMatchesInput &&

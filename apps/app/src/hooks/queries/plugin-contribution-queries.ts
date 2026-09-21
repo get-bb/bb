@@ -1,8 +1,4 @@
-import {
-  useQueries,
-  useQuery,
-  type UseQueryResult,
-} from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import {
   normalizePluginMentionTriggers,
   type PluginMentionTrigger,
@@ -122,13 +118,10 @@ interface PluginMentionSearchArgs {
 async function fetchPluginMentionSearch(
   args: PluginMentionSearchArgs,
   signal: AbortSignal,
-  provider: PluginMentionProviderContribution,
 ): Promise<PluginMentionSearchGroup[]> {
   const params = new URLSearchParams({
     q: args.query,
     trigger: args.trigger,
-    pluginId: provider.pluginId,
-    providerId: provider.id,
   });
   if (args.projectId !== null) params.set("projectId", args.projectId);
   if (args.threadId !== null) params.set("threadId", args.threadId);
@@ -143,41 +136,22 @@ async function fetchPluginMentionSearch(
     : [];
 }
 
-function combineMentionSearches(
-  results: UseQueryResult<PluginMentionSearchGroup[]>[],
-) {
-  return {
-    data: results.flatMap((result) => result.data ?? []),
-    isLoading: results.some((result) => result.isLoading),
-    isFetching: results.some((result) => result.isFetching),
-  };
-}
-
 export function usePluginMentionSearch(
   args: PluginMentionSearchArgs,
-  options: {
-    enabled: boolean;
-    providers: readonly PluginMentionProviderContribution[];
-  },
+  options: { enabled: boolean },
 ) {
-  return useQueries({
-    queries: options.providers
-      .filter((provider) => provider.triggers.includes(args.trigger))
-      .map((provider) => ({
-        queryKey: [
-          "plugin-mention-search",
-          args.trigger,
-          args.query,
-          args.projectId,
-          args.threadId,
-          provider.pluginId,
-          provider.id,
-        ],
-        queryFn: ({ signal }: { signal: AbortSignal }) =>
-          fetchPluginMentionSearch(args, signal, provider),
-        enabled: options.enabled,
-        staleTime: 15_000,
-      })),
-    combine: combineMentionSearches,
+  return useQuery({
+    queryKey: [
+      "plugin-mention-search",
+      args.trigger,
+      args.query,
+      args.projectId,
+      args.threadId,
+    ],
+    queryFn: ({ signal }) => fetchPluginMentionSearch(args, signal),
+    enabled: options.enabled,
+    staleTime: 15_000,
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.queryKey[1] === args.trigger ? previous : undefined,
   });
 }

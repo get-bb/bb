@@ -261,47 +261,6 @@ describe("plugin mention providers (bb.ui.registerMentionProvider)", () => {
     expect(entry?.handlerStats.errorCount).toBe(1);
   });
 
-  it("searches one selected provider without invoking the other providers", async () => {
-    const response = await harness.app.request(
-      `${BASE}/api/v1/plugins/mentions/search?q=fix&pluginId=mentions&providerId=issues`,
-    );
-    expect(response.status).toBe(200);
-    const body = await response.json();
-    expect(
-      body.groups.map((group: { providerId: string }) => group.providerId),
-    ).toEqual(["issues"]);
-    expect(
-      harness.pluginService.list().find((plugin) => plugin.id === "mentions")
-        ?.handlerStats.errorCount,
-    ).toBe(0);
-  });
-
-  it.each([
-    "pluginId=mentions",
-    "providerId=issues",
-    "pluginId=&providerId=issues",
-  ])("rejects incomplete provider selection: %s", async (selector) => {
-    const response = await harness.app.request(
-      `${BASE}/api/v1/plugins/mentions/search?q=fix&${selector}`,
-    );
-    expect(response.status).toBe(400);
-  });
-
-  it.each([
-    "pluginId=missing&providerId=issues",
-    "pluginId=mentions&providerId=missing",
-    "pluginId=mentions&providerId=docs&trigger=%23",
-  ])(
-    "never falls back to all providers for an unmatched selection: %s",
-    async (selector) => {
-      const response = await harness.app.request(
-        `${BASE}/api/v1/plugins/mentions/search?q=fix&${selector}`,
-      );
-      expect(response.status).toBe(200);
-      expect(await response.json()).toEqual({ ok: true, groups: [] });
-    },
-  );
-
   it("searches only providers registered for the requested trigger", async () => {
     const response = await harness.app.request(
       `${BASE}/api/v1/plugins/mentions/search?q=fix&trigger=%23&projectId=proj_1&threadId=thr_1`,

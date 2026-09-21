@@ -418,23 +418,11 @@ export function registerPluginRoutes(
         400,
       );
     }
-    const pluginId = context.req.query("pluginId");
-    const providerId = context.req.query("providerId");
-    if (
-      (pluginId !== undefined || providerId !== undefined) &&
-      (!pluginId || !providerId)
-    ) {
-      return context.json(
-        { ok: false, error: "pluginId and providerId must both be nonempty" },
-        400,
-      );
-    }
     const groups = await plugins.searchMentions({
       trigger,
       query,
       projectId: projectId !== null && projectId.length > 0 ? projectId : null,
       threadId: threadId !== null && threadId.length > 0 ? threadId : null,
-      ...(pluginId && providerId ? { provider: { pluginId, providerId } } : {}),
     });
     return context.json({ ok: true, groups });
   });
