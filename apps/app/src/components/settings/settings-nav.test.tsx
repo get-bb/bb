@@ -119,11 +119,13 @@ describe("useSettingsNavState", () => {
     expect(result.current.hasUnknownSection).toBe(false);
   });
 
-  it("omits disabled plugins from individual settings entries", () => {
+  it("keeps disabled plugins available to manage from Settings", () => {
     const { result } = renderHook(() => useSettingsNavState(), {
       wrapper: wrapperFor("/settings", [disabledPlugin()]),
     });
 
-    expect(result.current.pluginEntries).toEqual([]);
+    expect(result.current.pluginEntries).toEqual([
+      { id: "linear", label: "Linear", icon: null, hasConfiguration: false },
+    ]);
   });
 });
