@@ -21,7 +21,6 @@ import {
   threadPendingInteractionsQueryKey,
   threadQueuedMessagesQueryKey,
   threadQueryKey,
-  threadSearchQueryKey,
   threadTimelineQueryKey,
 } from "./query-keys";
 import { usePaletteRecentArchivedThreads } from "./palette-thread-queries";
@@ -31,7 +30,6 @@ import {
   isPendingInteractionStateUnknown,
   useArchivedThreads,
   useChildThreads,
-  useThreadSearch,
   useThread,
   useThreadDetailBootstrap,
   useThreadHostFilePreview,

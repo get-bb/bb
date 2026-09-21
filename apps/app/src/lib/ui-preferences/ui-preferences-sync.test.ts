@@ -96,18 +96,18 @@ describe("ui preferences sync", () => {
     );
     const stop = startUiPreferencesSync({ queryClient, store });
     expect(store.get(palette)).toEqual(["active"]);
-    store.set(palette, ["draft"]);
+    store.set(palette, ["active", "archived"]);
     await waitForUiPreferenceWrites();
     expect(mocks.set).toHaveBeenCalledExactlyOnceWith({
       key: "palette.threadLifecycles",
-      value: ["draft"],
+      value: ["active", "archived"],
       expectedRevision: 0,
     });
     expect(store.get(sidebar)).toEqual(["archived"]);
     stop();
     const reloadedStore = createStore();
     startUiPreferencesSync({ queryClient, store: reloadedStore });
-    expect(reloadedStore.get(palette)).toEqual(["draft"]);
+    expect(reloadedStore.get(palette)).toEqual(["active", "archived"]);
     expect(reloadedStore.get(sidebar)).toEqual(["archived"]);
     reconcileUiPreferences(
       serverResponse({
