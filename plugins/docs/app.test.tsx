@@ -7,6 +7,7 @@ import {
   within,
 } from "@testing-library/react";
 import { StrictMode } from "react";
+import { toast } from "sonner";
 import { DOMParser as ProseMirrorDOMParser } from "@tiptap/pm/model";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -1005,6 +1006,52 @@ describe("Docs nav panel", () => {
       );
     });
   });
+
+  it.each([
+    ["workspace", docsRegistration],
+    ["navigation", navigationRegistration],
+  ] as const)(
+    "reports New note failures in the %s and allows retry",
+    async (_surface, registration) => {
+      const notify = vi.spyOn(toast, "error").mockReturnValue("create-error");
+      const createNote = vi
+        .fn()
+        .mockRejectedValueOnce(
+          new Error("HTTP 404: Path does not exist: /vault/Untitled.md"),
+        )
+        .mockResolvedValueOnce({ path: "Untitled.md" });
+      try {
+        const slot = renderSlot(
+          registration,
+          { subPath: "personal" },
+          {
+            rpc: { listNotes: () => listNotesResult([]), createNote },
+          },
+        );
+        const button = await slot.findByRole("button", {
+          name: "New note",
+          exact: true,
+        });
+        fireEvent.click(button);
+        await waitFor(() =>
+          expect(notify).toHaveBeenCalledWith(
+            "Could not create note: HTTP 404: Path does not exist: /vault/Untitled.md",
+          ),
+        );
+        expect(slot.navigateCalls).toHaveLength(0);
+        fireEvent.click(button);
+        await waitFor(() =>
+          expect(slot.navigateCalls).toContainEqual({
+            method: "toPluginPanel",
+            path: "docs",
+            options: { subPath: "personal/Untitled.md", replace: false },
+          }),
+        );
+      } finally {
+        notify.mockRestore();
+      }
+    },
+  );
 
   it("creates a note inside the currently selected folder", async () => {
     const slot = renderSlot(
