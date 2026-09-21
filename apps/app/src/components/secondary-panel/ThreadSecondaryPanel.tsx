@@ -146,7 +146,8 @@ export function resolveCollapsedPanelTrafficLightReserveClassName({
 }: CollapsedPanelTrafficLightReserveArgs): string | false {
   const reserves =
     reserveMacosTrafficLights &&
-    (renderAsDrawer || (isConversationCollapsed && isSidebarShowing === false));
+    (renderAsDrawer ||
+      (isConversationCollapsed && isSidebarShowing === false));
   return reserves && MACOS_COLLAPSED_TOP_LEFT_RESERVE_CLASS;
 }
 

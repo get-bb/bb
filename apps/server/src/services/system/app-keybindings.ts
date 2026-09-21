@@ -70,6 +70,25 @@ function unassignedBinding(
   };
 }
 
+// Leave non-Mac arrows unassigned so Ctrl word movement/selection stays native.
+function macArrowBindings(
+  command: AppCommandId,
+  key: string,
+  modifiers: ShortcutModifiers,
+  options: BindingOptions,
+): AppDefaultKeybindings {
+  return [
+    binding(command, key, modifiers, {
+      ...options,
+      all: [...(options.all ?? []), "macPlatform"],
+    }),
+    unassignedBinding(command, {
+      ...options,
+      none: [...(options.none ?? []), "macPlatform"],
+    }),
+  ];
+}
+
 function numberedChatBindings(
   commands: readonly AppCommandId[],
   options: BindingOptions,
@@ -188,8 +207,8 @@ export const DEFAULT_APP_KEYBINDINGS: AppDefaultKeybindings = [
       ["pane.focus.up", "ArrowUp"],
       ["pane.focus.down", "ArrowDown"],
     ] as const
-  ).map(([command, key]) =>
-    binding(command, key, { mod: true, shift: true }, splitWithoutModal),
+  ).flatMap(([command, key]) =>
+    macArrowBindings(command, key, { mod: true, shift: true }, splitWithoutModal),
   ),
   unassignedBinding("pane.focus.previous", splitWithoutModal),
   unassignedBinding("pane.focus.next", splitWithoutModal),
@@ -201,25 +220,25 @@ export const DEFAULT_APP_KEYBINDINGS: AppDefaultKeybindings = [
     splitWithoutModal,
   ),
   binding("pane.close", "x", { mod: true, shift: true }, splitWithoutModal),
-  binding(
+  ...macArrowBindings(
     "panel.previousTab",
     "ArrowLeft",
     { mod: true, control: true },
     mainWithoutModal,
   ),
-  binding(
+  ...macArrowBindings(
     "panel.nextTab",
     "ArrowRight",
     { mod: true, control: true },
     mainWithoutModal,
   ),
-  binding(
+  ...macArrowBindings(
     "panel.previousNewTabItem",
     "ArrowUp",
     { mod: true, control: true },
     mainWithoutModal,
   ),
-  binding(
+  ...macArrowBindings(
     "panel.nextNewTabItem",
     "ArrowDown",
     { mod: true, control: true },
