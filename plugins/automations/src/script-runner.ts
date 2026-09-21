@@ -12,6 +12,11 @@ import {
   resolveDefaultInterpreter,
   scriptsRoot,
 } from "./script-files.js";
+// bb-fork(windows): platform-aware bb CLI probing.
+import {
+  bbProbeCandidates,
+  bbProbeCommand,
+} from "./script-runner.fork.js";
 
 const execFileAsync = promisify(execFile);
 const SCRIPT_OUTPUT_MAX_BYTES = 1024 * 1024;
@@ -21,9 +26,16 @@ let resolvedBbPath: string | null = null;
 const BB_NOT_INJECTED_WARNING =
   "[bb] warning: could not locate the bb CLI, so `bb` is not on PATH for this script.";
 
-async function commandWorks(command: string, args: string[]): Promise<boolean> {
+async function commandWorks(candidate: string, args: string[]): Promise<boolean> {
+  // bb-fork(windows): a .cmd launcher needs shell, an extensionless bundle needs Node,
+  // and a POSIX-shell shim is not runnable here at all.
+  const probe = bbProbeCommand(candidate, args);
+  if (probe === null) return false;
   try {
-    await execFileAsync(command, args, { timeout: 5_000 });
+    await execFileAsync(probe.command, probe.args, {
+      timeout: 5_000,
+      shell: probe.shell,
+    });
     return true;
   } catch {
     return false;
@@ -70,7 +82,8 @@ async function resolveBbBinary(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<string | null> {
   if (resolvedBbPath !== null) return resolvedBbPath;
-  for (const candidate of bbBinaryCandidates(env)) {
+  // bb-fork(windows): also try each candidate's bb.cmd launcher.
+  for (const candidate of bbProbeCandidates(bbBinaryCandidates(env))) {
     if (!(await isExecutableFile(candidate))) continue;
     if (await commandWorks(candidate, ["--version"])) {
       resolvedBbPath = candidate;
@@ -116,6 +129,11 @@ export interface ScriptRunResult {
   exitCode: number | null;
   output: string;
   timedOut: boolean;
+  /**
+   * bb-fork(windows): plugin diagnostics about the run itself (today: bb is not on the
+   * script's PATH). Kept out of `output` so it cannot turn a silent tick into a run.
+   */
+  warning?: string | null;
 }
 
 interface ScriptRunOutcome {
@@ -280,7 +298,7 @@ export async function executeStoredScript(args: {
   const interpreter =
     args.interpreter ?? resolveDefaultInterpreter(args.scriptFile);
   const bbPath = await resolveBbBinary();
-  const warning = bbPath === null ? `${BB_NOT_INJECTED_WARNING}\n` : "";
+  const warning = bbPath === null ? BB_NOT_INJECTED_WARNING : null;
   const scriptEnv: NodeJS.ProcessEnv = {
     ...process.env,
     ...(args.env ?? {}),
@@ -302,5 +320,6 @@ export async function executeStoredScript(args: {
     timeoutMs: Math.min(args.timeoutMs, AUTOMATION_SCRIPT_TIMEOUT_MAX_MS),
     env: scriptEnv,
   });
-  return { ...result, output: `${warning}${result.output}` };
+  // bb-fork(windows): the warning travels beside the script's own output, not inside it.
+  return { ...result, warning };
 }
