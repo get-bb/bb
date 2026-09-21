@@ -77,7 +77,11 @@ import type {
   SecondaryPanelTabReorderHandler,
 } from "@/components/secondary-panel/secondaryPanelTab";
 
-function ResourceBodyFallback({ contentClassName }: { contentClassName?: string }) {
+function ResourceBodyFallback({
+  contentClassName,
+}: {
+  contentClassName?: string;
+}) {
   return (
     <div className="h-full overflow-y-auto">
       <div
@@ -163,9 +167,11 @@ function PluginsToolView({
 function PluginDetailToolView({
   pluginId,
   contentClassName,
+  onRemoved,
 }: {
   pluginId: string;
   contentClassName?: string;
+  onRemoved?: () => void;
 }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -224,7 +230,8 @@ function PluginDetailToolView({
         "catalog",
       );
       setDeleteTarget(null);
-      navigate(getToolsOwnedCollectionRoutePath("plugins"));
+      if (onRemoved !== undefined) onRemoved();
+      else navigate(getToolsOwnedCollectionRoutePath("plugins"));
       return listQuery.refetch();
     },
     onError: (error, plugin) => {
@@ -442,19 +449,24 @@ function PluginDetailToolView({
 export function PluginDetailPaneView({
   pluginId,
   contentClassName,
+  onRemoved,
 }: {
   pluginId: string;
   contentClassName?: string;
+  onRemoved?: () => void;
 }) {
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       <div className="min-h-0 flex-1 overflow-hidden">
         <Suspense
-          fallback={<ResourceBodyFallback contentClassName={contentClassName} />}
+          fallback={
+            <ResourceBodyFallback contentClassName={contentClassName} />
+          }
         >
           <PluginDetailToolView
             pluginId={pluginId}
             contentClassName={contentClassName}
+            onRemoved={onRemoved}
           />
         </Suspense>
       </div>
