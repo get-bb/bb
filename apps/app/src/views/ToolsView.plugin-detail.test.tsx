@@ -1797,7 +1797,7 @@ describe("PluginDetail runtime health", () => {
     });
 
     const alert = screen.getByRole("alert");
-    expect(alert.textContent).toContain("An API token is required.");
+    expect(alert.querySelector("p")?.textContent).toBe("Needs configuration");
     const settingsLink = within(alert).getByRole("link", {
       name: "Open settings",
     });
