@@ -15,7 +15,7 @@ import {
   SectionSidebarRow,
 } from "@/components/sidebar/SectionSidebar";
 import { canOpenNativeScreen, shellOpenNative } from "@/lib/native-shell";
-import { getToolsOwnedCollectionRoutePath } from "@/components/tools/tools-navigation";
+import { getPluginsRoutePath } from "@/lib/route-paths";
 import { getPluginSettingsEntryRoutePath } from "./plugin-settings-entries";
 import { useCloseMobileSidebar } from "@/components/ui/sidebar";
 import { useSettingsNavState } from "./settings-nav";
@@ -82,7 +82,7 @@ export function SettingsSidebarContent({
       <div className="flex items-center justify-between gap-2 px-2 py-2">
         <Button asChild variant="link" size="sm" className="h-8 px-0 text-xs">
           <Link
-            to={getToolsOwnedCollectionRoutePath("plugins")}
+            to={getPluginsRoutePath()}
             onClick={closeMobileSidebar}
           >
             Browse plugins
