@@ -231,8 +231,10 @@ function HiddenGroup({
 
 export function ThreadListMore() {
   const state = useContext(VisibilityContext);
-  const groups =
-    state?.groups.filter((group) => state.hiddenIds.has(group.id)) ?? [];
+  const groups = useMemo(
+    () => state?.groups.filter((group) => state.hiddenIds.has(group.id)) ?? [],
+    [state],
+  );
   const threads = useMemo(
     () => [
       ...new Map(

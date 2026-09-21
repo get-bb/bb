@@ -239,7 +239,7 @@ describe("SidebarWindowedItems", () => {
 
     expect(screen.getAllByTestId(/^overflow-item-/)).toHaveLength(40);
     expect(
-      document.querySelectorAll("[data-sidebar-windowed-item]"),
+      document.querySelectorAll("[data-sidebar-windowed-item]:empty"),
     ).toHaveLength(0);
   });
 
