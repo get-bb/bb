@@ -1,7 +1,29 @@
 import { describe, expect, it } from "vitest";
-import { columnWidths, truncateCell } from "../table.js";
+import { columnWidths, renderBorderlessTable, truncateCell } from "../table.js";
 
 describe("CLI tables", () => {
+  it.each(["🇺🇸", "❤️", "✈️", "1️⃣", "⌚"])(
+    "preserves %s in rendered tables and truncates at grapheme boundaries",
+    (emoji) => {
+      const title = emoji.repeat(6);
+      const rows = [[title]];
+      expect(
+        renderBorderlessTable(
+          { head: ["TITLE"], colWidths: columnWidths(rows, [5]) },
+          rows,
+        ),
+      ).toBe(`TITLE       \n------------\n${title}`);
+
+      const truncatedRows = [[truncateCell(title, 7)]];
+      expect(
+        renderBorderlessTable(
+          { head: ["TITLE"], colWidths: columnWidths(truncatedRows, [5]) },
+          truncatedRows,
+        ),
+      ).toBe(`TITLE  \n-------\n${emoji.repeat(3)}…`);
+    },
+  );
+
   it("measures terminal columns for wide-script cells", () => {
     expect(columnWidths([["abc", "修复"]], [1, 1])).toEqual([3, 4]);
   });

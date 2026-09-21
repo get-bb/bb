@@ -1,15 +1,15 @@
 const WIDE_SCRIPT_PATTERN =
   /^[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}\p{Script=Bopomofo}\p{Script=Yi}⺀-〾㈀-㏿︰-﹯！-｠￠-￦]/u;
 
-const EMOJI_PLANE_FLOOR = 0x1f300;
+const EMOJI_PATTERN =
+  /^(?:\p{Emoji_Presentation}|\p{Emoji}\uFE0F|[#*0-9]\uFE0F?\u20E3)/u;
 const graphemeSegmenter = new Intl.Segmenter("en", {
   granularity: "grapheme",
 });
 
 function graphemeWidth(grapheme: string): number {
-  const codePoint = grapheme.codePointAt(0);
-  if (codePoint === undefined) return 0;
-  if (codePoint >= EMOJI_PLANE_FLOOR) return 2;
+  if (grapheme.length === 0) return 0;
+  if (EMOJI_PATTERN.test(grapheme)) return 2;
   return WIDE_SCRIPT_PATTERN.test(grapheme) ? 2 : 1;
 }
 
