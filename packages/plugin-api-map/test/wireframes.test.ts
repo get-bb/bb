@@ -269,9 +269,10 @@ describe("guide fixture boundaries", () => {
         classAnchor,
       );
     }
-    expect(markup).toMatch(
-      /data-guide-region="app-overlay"[^>]*class="[^"]*absolute[^"]*z-\[6\][^"]*shadow-md/,
-    );
+    const overlayClasses = markup.match(
+      /data-guide-region="app-overlay"[^>]*class="([^"]*)"/,
+    )?.[1].split(" ");
+    expect(overlayClasses).toEqual(expect.arrayContaining(["absolute", "z-[6]", "shadow-md"]));
     expect(markup.match(/data-guide-badge="app-overlay"/g)).toHaveLength(1);
   });
 
