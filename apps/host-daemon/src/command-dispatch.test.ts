@@ -2345,7 +2345,11 @@ describe("dispatchCommand", () => {
     expect(currentCatalog.catalogHash).not.toBe(fixture.originalCatalogHash);
     await expect(
       fs.readFile(
-        path.join(currentCatalog.skillRoots[0]!.path, "release-notes", "SKILL.md"),
+        path.join(
+          currentCatalog.skillRoots[0]!.path,
+          "release-notes",
+          "SKILL.md",
+        ),
         "utf8",
       ),
     ).resolves.toContain("second-token");

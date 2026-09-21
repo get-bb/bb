@@ -126,7 +126,8 @@ export interface RuntimeEntry {
   environmentId: string;
   runtime: AgentRuntime;
   skillCatalogHash: string | null;
-  lastWarnedStaleSkillCatalogHash: string | null;
+  skillRoots: readonly AgentRuntimeSkillRoot[];
+  retainedSkillCatalogHashes: Set<string>;
   workspace: HostWorkspace;
   path: string;
   terminals: Set<string>;
@@ -645,9 +646,9 @@ export class RuntimeManager {
         keepCatalogHashes: [
           ...pendingCatalogHashes,
           ...this.pendingCatalogHashes.values(),
-          ...[...this.entries.values()].flatMap((entry) =>
-            entry.skillCatalogHash === null ? [] : [entry.skillCatalogHash],
-          ),
+          ...[...this.entries.values()].flatMap((entry) => [
+            ...entry.retainedSkillCatalogHashes,
+          ]),
         ],
         logger: this.getInjectedSkillsLogger(),
       });
@@ -702,23 +703,12 @@ export class RuntimeManager {
       (this.entryHasActiveRuntimeWork(args.entry) ||
         this.hasInFlightThreadCommand(args.entry, args.targetThreadId))
     ) {
-      if (
-        args.entry.lastWarnedStaleSkillCatalogHash !==
-        args.skillConfig.catalogHash
-      ) {
-        args.entry.lastWarnedStaleSkillCatalogHash =
-          args.skillConfig.catalogHash;
-        this.options.logger?.warn(
-          {
-            environmentId: args.entry.environmentId,
-            threadId: args.targetThreadId,
-            activeCatalogHash: args.entry.skillCatalogHash,
-            requestedCatalogHash: args.skillConfig.catalogHash,
-          },
-          "Deferring injected skill catalog refresh for busy runtime",
-        );
-      }
-      return args.entry;
+      args.entry.retainedSkillCatalogHashes.add(args.skillConfig.catalogHash);
+      return {
+        ...args.entry,
+        skillCatalogHash: args.skillConfig.catalogHash,
+        skillRoots: args.skillConfig.skillRoots,
+      };
     }
 
     await this.replaceEntryForSkillCatalog({
@@ -1248,7 +1238,10 @@ export class RuntimeManager {
       environmentId: args.environmentId,
       runtime,
       skillCatalogHash: args.skillConfig?.catalogHash ?? null,
-      lastWarnedStaleSkillCatalogHash: null,
+      skillRoots: args.skillConfig?.skillRoots ?? [],
+      retainedSkillCatalogHashes: new Set(
+        args.skillConfig ? [args.skillConfig.catalogHash] : [],
+      ),
       terminals: new Set<string>(),
       workspace,
       path: workspace.path,
