@@ -39,11 +39,11 @@ export const SIDEBAR_ROW_TEXT_CLASS = "text-sidebar-foreground";
 export const SIDEBAR_GROUP_TEXT_CLASS = "text-muted-foreground";
 
 export const SIDEBAR_CONTROL_TONE_CLASS =
-  "text-subtle-foreground hover:text-muted-foreground focus-visible:text-muted-foreground data-[state=open]:text-muted-foreground";
+  "text-subtle-foreground hover:text-muted-foreground data-[state=open]:text-muted-foreground";
 
-export const SIDEBAR_CONTROL_STATE_CLASS = `${SIDEBAR_CONTROL_TONE_CLASS} hover:bg-state-hover focus-visible:bg-state-hover active:bg-state-active data-[state=open]:bg-state-active data-[state=open]:hover:bg-state-active data-[state=open]:focus-visible:bg-state-active`;
+export const SIDEBAR_CONTROL_STATE_CLASS = `${SIDEBAR_CONTROL_TONE_CLASS} hover:bg-state-hover active:bg-state-active data-[state=open]:bg-state-active data-[state=open]:hover:bg-state-active`;
 
-const SIDEBAR_CONTROL_BUTTON_BASE_CLASS = `${SIDEBAR_CONTROL_STATE_CLASS} relative m-0 shrink-0 cursor-pointer rounded-md p-0 outline-none focus-visible:ring-0`;
+const SIDEBAR_CONTROL_BUTTON_BASE_CLASS = `${SIDEBAR_CONTROL_STATE_CLASS} relative m-0 shrink-0 cursor-pointer rounded-md p-0 outline-none`;
 
 export const SIDEBAR_CONTROL_BUTTON_CLASS = `${COARSE_POINTER_ROW_ACTION_SIZE_CLASS} ${SIDEBAR_CONTROL_BUTTON_BASE_CLASS}`;
 
