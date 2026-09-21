@@ -201,7 +201,7 @@ export function PluginOverviewLead({ description }: { description: string }) {
   return (
     <section data-resource-detail-section="overview">
       <p
-        className="max-w-prose text-sm leading-relaxed text-muted-foreground"
+        className="text-sm leading-relaxed text-muted-foreground"
         data-plugin-summary=""
       >
         {description}
