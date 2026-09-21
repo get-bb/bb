@@ -375,6 +375,26 @@ async function waitForSignal(
 }
 
 describe("Docs mention provider", () => {
+  it("shares note reads across overlapping searches and subsequent keystrokes", async () => {
+    const { harness } = await loadNotebook({
+      "roadmap.md": "# Product Roadmap\n\nQuarterly priorities",
+      "meeting.md": "# Standup\n\nLaunch checklist",
+    });
+    const provider = harness.registrations.mentionProviders[0]!;
+    const search = (query: string) =>
+      provider.search({ trigger: "@", query, projectId: null, threadId: null });
+
+    const [roadmap, meeting] = await Promise.all([
+      search("roadmap"),
+      search("launch"),
+    ]);
+    expect(roadmap.map((item) => item.title)).toEqual(["Product Roadmap"]);
+    expect(meeting.map((item) => item.title)).toEqual(["Standup"]);
+    expect(await search("quarterly")).toEqual(roadmap);
+    expect(harness.sdk.callsTo("files.listPaths")).toHaveLength(1);
+    expect(harness.sdk.callsTo("files.read")).toHaveLength(2);
+  });
+
   it("searches note titles, previews, and filenames", async () => {
     const { harness } = await loadNotebook({
       "roadmap.md": "# Product Roadmap\n\nQuarterly priorities",
