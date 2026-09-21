@@ -1609,6 +1609,49 @@ describe("PromptBoxInternal submit shortcuts", () => {
     },
   );
 
+  it.each([false, true])(
+    "keeps save shortcuts without advertising steering in an editor (touch: %s)",
+    (isTouch) => {
+      const restoreMatchMedia = mockPointerCoarse(isTouch);
+      vi.useFakeTimers();
+      try {
+        const save = vi.fn();
+        render(
+          <PromptBoxInternal
+            {...createPromptBoxProps({
+              value: "Edit the queued message",
+              onSubmit: save,
+              submission: { onModifierSubmit: save },
+              compact: { isCompact: true, placeholder: "Edit message" },
+            })}
+          />,
+        );
+        expect(screen.queryByRole("button", { name: "Send options" })).toBeNull();
+        const submit = screen.getByRole("button", { name: "Submit (Enter)" });
+        vi.spyOn(submit, "getBoundingClientRect").mockReturnValue(
+          new DOMRect(0, 0, 40, 40),
+        );
+        fireEvent.pointerDown(submit, {
+          button: 0,
+          pointerType: "touch",
+          pointerId: 1,
+          isPrimary: true,
+          clientX: 20,
+          clientY: 20,
+        });
+        act(() => vi.advanceTimersByTime(1200));
+        expect(screen.queryByRole("menuitem")).toBeNull();
+        expect(save).not.toHaveBeenCalled();
+        fireEvent.keyDown(getPromptEditorElement(), { key: "Enter" });
+        fireEvent.keyDown(getPromptEditorElement(), { key: "Enter", metaKey: true });
+        expect(save).toHaveBeenCalledTimes(2);
+      } finally {
+        vi.useRealTimers();
+        restoreMatchMedia();
+      }
+    },
+  );
+
   it("blocks both swapped actions while disabled", () => {
     const onSubmit = vi.fn();
     const onModifierSubmit = vi.fn();
