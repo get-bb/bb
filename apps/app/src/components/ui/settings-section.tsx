@@ -108,7 +108,7 @@ export function SettingsDetailRow({
   );
 }
 
-export type SettingsControlPlacement = "inline" | "below" | "trailing";
+export type SettingsControlPlacement = "inline" | "below";
 
 interface SettingsWithControlProps {
   label: string;
@@ -134,15 +134,11 @@ export function SettingsWithControl({
   children,
 }: SettingsWithControlProps) {
   const inline = controlPlacement === "inline";
-  const trailing = controlPlacement === "trailing";
   return (
     <div
       data-control-placement={controlPlacement}
       className={cn(
-        trailing
-          ? "flex flex-row justify-between gap-5"
-          : "flex flex-col gap-2.5",
-        trailing && (description ? "items-start" : "items-center"),
+        "flex flex-col gap-2.5",
         inline && "sm:flex-row sm:justify-between sm:gap-5",
         inline && (description ? "sm:items-start" : "sm:items-center"),
       )}
@@ -160,11 +156,7 @@ export function SettingsWithControl({
       </div>
       <div
         className={
-          trailing
-            ? "flex shrink-0 justify-end"
-            : inline
-              ? "shrink-0 sm:flex sm:justify-end"
-              : "w-full min-w-0"
+          inline ? "shrink-0 sm:flex sm:justify-end" : "w-full min-w-0"
         }
       >
         {children}

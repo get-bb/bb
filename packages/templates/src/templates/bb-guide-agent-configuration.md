@@ -82,8 +82,8 @@ Skills (.bb/skills/):
 BB guide plugin:
 
   The enabled-by-default BB guide plugin owns the BB introduction and the
-  bb-cli, bb-plugin-authoring, skill-creator, and submit-a-plugin skills. Settings →
-  Plugins → BB guide exposes introduction, a master skills switch, and one
+  bb-cli, bb-plugin-authoring, skill-creator, and submit-a-plugin skills. Settings → Installed
+  plugins → BB guide exposes introduction, a master skills switch, and one
   switch per skill. All default to true. Use:
 
     bb plugin config bb-guide set introduction false
@@ -98,7 +98,7 @@ BB guide plugin:
 
 Connect agent instructions:
 
-  Settings → Plugins → Connect → Tell agents about remote access
+  Settings → Installed plugins → Connect → Tell agents about remote access
   controls the message telling remotely used agents to expose public server
   links. It defaults to true and still requires active/recent remote usage.
   Use `bb plugin config connect set sendRemoteInstructions false` to turn it

@@ -1820,7 +1820,7 @@ describe("CommandPalette", () => {
   });
 
   it.each([false, true])(
-    "omits the duplicate Installed plugins Settings destination (compact: %s)",
+    "opens Installed plugins in Settings (compact: %s)",
     async (compact) => {
       renderPalette({ compact });
       openPalette();
@@ -1829,7 +1829,13 @@ describe("CommandPalette", () => {
         target: { value: "installed plugins" },
       });
       await waitFor(() =>
-        expect(screen.queryAllByRole("option")).toHaveLength(0),
+        expect(selectedOption()?.textContent).toContain("Installed plugins"),
+      );
+      fireEvent.keyDown(searchField(), { key: "Enter" });
+      await waitFor(() =>
+        expect(screen.getByTestId("location").textContent).toBe(
+          "/settings/plugins",
+        ),
       );
     },
   );

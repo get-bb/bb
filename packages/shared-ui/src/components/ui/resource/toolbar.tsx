@@ -115,7 +115,7 @@ export function ResourceToolbar({
         : individualControls.getBoundingClientRect().width;
       setSearchCondensed(
         expandSearchOnFocus &&
-          ((next && isCompactViewport) ||
+          (next ||
             width -
               controlsWidth -
               actionWidth -
@@ -156,7 +156,6 @@ export function ResourceToolbar({
     compact,
     expandSearchOnFocus,
     hasCombinedControls,
-    isCompactViewport,
     showCombined,
   ]);
 
@@ -956,7 +955,7 @@ export function ResourceCreateButton({
         </DropdownMenuTrigger>
         <DropdownMenuContent
           align="end"
-          className="min-w-40 w-max md:max-h-[var(--radix-dropdown-menu-content-available-height)] md:overflow-y-auto"
+          className="min-w-40 w-max"
           mobileTitle="Examples"
         >
           {menuActions.map((action) => (

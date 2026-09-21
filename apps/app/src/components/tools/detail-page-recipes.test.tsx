@@ -166,8 +166,7 @@ describe("Plugin detail recipe", () => {
 
     expect(renderedRecipe(container)).toEqual([
       ["overview", ""],
-      ["definition", "Source"],
-      ["release", "Details"],
+      ["release", "Release"],
     ]);
   });
 
@@ -189,8 +188,7 @@ describe("Plugin detail recipe", () => {
 
     expect(renderedRecipe(container)).toEqual([
       ["overview", ""],
-      ["definition", "Source"],
-      ["release", "Details"],
+      ["release", "Release"],
       ["activity", "Background services"],
       ["activity", "Scheduled jobs"],
     ]);
@@ -204,8 +202,7 @@ describe("Plugin detail recipe", () => {
 
     expect(renderedRecipe(container)).toEqual([
       ["overview", ""],
-      ["definition", "Source"],
-      ["release", "Details"],
+      ["release", "Release"],
       ["activity", "Background services"],
     ]);
   });
@@ -438,10 +435,10 @@ describe("Plugin detail recipe", () => {
         href,
       );
     }
-    expect(screen.getByRole("button", { name: "Configure" })).toBeTruthy();
-    expect(renderedRecipe(container).map(([kind]) => kind)).not.toContain(
+    expect(renderedRecipe(container)).toContainEqual([
       "configuration",
-    );
+      "Configuration",
+    ]);
     expect(screen.getAllByRole("link", { name: "Settings" })).toHaveLength(1);
     expect(screen.queryByRole("link", { name: "Inspect issue" })).toBeNull();
     expect(screen.queryByRole("link", { name: "Sync status" })).toBeNull();

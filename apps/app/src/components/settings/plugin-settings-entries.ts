@@ -1,6 +1,5 @@
-import { getPluginConfigurationRoutePath } from "@/lib/route-paths";
-
 export interface PluginSettingsCandidate {
+  enabled: boolean;
   hasSettings: boolean;
   icon: string | null;
   id: string;
@@ -12,17 +11,9 @@ interface PluginSettingsSectionOwner {
 }
 
 export interface PluginSettingsEntry {
-  hasConfiguration: boolean;
   icon: string | null;
   id: string;
   label: string;
-}
-
-export function getPluginSettingsEntryRoutePath(
-  entry: PluginSettingsEntry,
-): string {
-  const path = getPluginConfigurationRoutePath({ pluginId: entry.id });
-  return `${path}?view=installed`;
 }
 
 interface BuildPluginSettingsEntriesArgs {
@@ -37,9 +28,12 @@ export function buildPluginSettingsEntries(
     args.settingsSections.map((section) => section.pluginId),
   );
   return args.installedPlugins
+    .filter(
+      (plugin) =>
+        plugin.enabled &&
+        (plugin.hasSettings || pluginsWithCustomSettings.has(plugin.id)),
+    )
     .map((plugin) => ({
-      hasConfiguration:
-        plugin.hasSettings || pluginsWithCustomSettings.has(plugin.id),
       id: plugin.id,
       label: plugin.name ?? plugin.id,
       icon: plugin.icon,

@@ -2200,7 +2200,7 @@ export function ExtensionsPluginPageWireframe({
           </div>
 
           <div className="space-y-1.5 border-t border-border-hairline pt-3">
-            <span className="block text-subtle-foreground">Details</span>
+            <span className="block text-subtle-foreground">Release</span>
             <span className="block divide-y divide-border-hairline rounded-md border border-border-hairline">
               {[
                 ["Delivery", "Updates with bb"],

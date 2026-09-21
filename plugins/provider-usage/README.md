@@ -10,7 +10,7 @@ Failed refreshes retain the last available measurements with a retry notice.
 Account authentication failures and plans without reported limits have separate
 states; unavailable usage is never represented as zero consumption.
 
-Settings → Plugins → Provider usage contains the usage page, using its
+Settings → Installed plugins → Provider usage contains the usage page, using its
 full-size provider groups with email-labeled accounts and fetching only resources in the selected pool or machine. Both surfaces share the plugin’s aggregation and cache. Neither display is required for source
 plugins to publish their usage.
 

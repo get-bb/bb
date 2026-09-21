@@ -1,7 +1,12 @@
 import { MachineEnvironmentSettings } from "@/components/settings/MachineEnvironmentSettings";
 import { MachineAccessSettings } from "@/components/settings/MachineAccessSettings";
 import { useMemo, useRef, useState, type ReactNode } from "react";
-import { Navigate, useNavigate, useLocation } from "react-router-dom";
+import {
+  Navigate,
+  useNavigate,
+  useLocation,
+  matchPath,
+} from "react-router-dom";
 import "@bb/shared-ui/icon-extended";
 import {
   builtInThemes,
@@ -54,6 +59,7 @@ import { SplitDimmingSetting } from "@/components/settings/SplitDimmingSetting";
 import { useSettingsNavState } from "@/components/settings/settings-nav";
 import { PluginsOverview } from "@/components/plugin/PluginsOverview";
 import { PluginDetailPaneView } from "@/views/ToolsView";
+import { SETTINGS_PLUGIN_ROUTE_PATH } from "@/lib/route-paths";
 import { PluginSettingsPage } from "@/components/plugin/PluginSettings";
 import { FileOpenersSettingsSection } from "@/components/settings/FileOpenersSettingsSection";
 import { VoiceInputSettingsSection } from "@/components/settings/VoiceInputSettingsSection";
@@ -1112,34 +1118,22 @@ export function SettingsView() {
   const updateAppearanceMutation = useUpdateAppearance();
   const appThemePreview = useAppThemePreview();
   const location = useLocation();
-  const { activePluginId, activeSection, hasUnknownSection, pluginEntries } =
+  const { activePluginId, activeSection, hasUnknownSection } =
     useSettingsNavState();
   if (hasUnknownSection) {
     return <Navigate to={SETTINGS_ROUTE_PATH} replace />;
   }
 
-  if (
-    activeSection === "plugins" ||
-    (activePluginId !== null &&
-      (new URLSearchParams(location.search).get("view") === "installed" ||
-        pluginEntries.some(
-          (entry) => entry.id === activePluginId && !entry.hasConfiguration,
-        )))
-  ) {
+  if (activeSection === "plugins") {
+    const pluginId = matchPath(SETTINGS_PLUGIN_ROUTE_PATH, location.pathname)
+      ?.params.pluginId;
     return (
       <div className="-mx-4 -mt-4 flex min-h-0 flex-1 flex-col overflow-hidden md:-mx-5 md:-mt-5">
-        {activePluginId ? (
-          <PluginDetailPaneView
-            pluginId={activePluginId}
-            contentClassName="max-w-[760px] md:px-4"
-            onRemoved={() => navigate(SETTINGS_ROUTE_PATH)}
-          />
+        {pluginId ? (
+          <PluginDetailPaneView pluginId={pluginId} />
         ) : (
           <div className="flex min-h-0 flex-1 flex-col pt-4 md:pt-5">
-            <PluginsOverview
-              mode="installed"
-              showInstalledCreateAction={false}
-            />
+            <PluginsOverview mode="installed" />
           </div>
         )}
       </div>
@@ -1148,20 +1142,7 @@ export function SettingsView() {
 
   let content: ReactNode = null;
   if (activePluginId !== null) {
-    content = (
-      <PluginSettingsPage
-        pluginId={activePluginId}
-        onBackToDetails={() => {
-          const params = new URLSearchParams(location.search);
-          params.set("view", "installed");
-          params.delete("configure");
-          navigate({
-            pathname: location.pathname,
-            search: params.toString(),
-          });
-        }}
-      />
-    );
+    content = <PluginSettingsPage pluginId={activePluginId} />;
   } else if (activeSection === "providers") {
     content = (
       <ProvidersSettingsSection

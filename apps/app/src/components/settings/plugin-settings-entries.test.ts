@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildPluginSettingsEntries } from "./plugin-settings-entries";
 
 describe("buildPluginSettingsEntries", () => {
-  it("includes every installed plugin and distinguishes configuration from details", () => {
+  it("only includes enabled plugins with declared or custom settings", () => {
     const installedPlugins = [
       {
         enabled: true,
@@ -39,25 +39,8 @@ describe("buildPluginSettingsEntries", () => {
     });
 
     expect(entries).toEqual([
-      {
-        icon: null,
-        id: "disabled",
-        label: "Disabled",
-        hasConfiguration: false,
-      },
-      {
-        icon: "linear-icon",
-        id: "linear",
-        label: "Linear",
-        hasConfiguration: true,
-      },
-      { icon: null, id: "plain", label: "Plain", hasConfiguration: false },
-      {
-        icon: null,
-        id: "workflows",
-        label: "workflows",
-        hasConfiguration: true,
-      },
+      { icon: "linear-icon", id: "linear", label: "Linear" },
+      { icon: null, id: "workflows", label: "workflows" },
     ]);
   });
 });

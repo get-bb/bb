@@ -16,6 +16,7 @@ export const SETTINGS_NAV_SECTIONS = [
     label: "Environment variables",
   },
   { icon: "PackageReceive", id: "updates", label: "Updates" },
+  { icon: "ElectricPlugs", id: "plugins", label: "Installed plugins" },
   { icon: "Puzzle", id: "marketplaces", label: "Plugin marketplaces" },
   { icon: "Beaker", id: "experiments", label: "Experiments" },
   { icon: "MessageSquare", id: "community", label: "Community" },
@@ -28,13 +29,10 @@ export const SETTINGS_NAV_SECTIONS = [
 
 export type SettingsNavSection = (typeof SETTINGS_NAV_SECTIONS)[number];
 
-export type SettingsSectionId = SettingsNavSection["id"] | "plugins";
+export type SettingsSectionId = SettingsNavSection["id"];
 
 export function isSettingsSectionId(value: string): value is SettingsSectionId {
-  return (
-    value === "plugins" ||
-    SETTINGS_NAV_SECTIONS.some((section) => section.id === value)
-  );
+  return SETTINGS_NAV_SECTIONS.some((section) => section.id === value);
 }
 
 export function getSettingsSectionRoutePath(
