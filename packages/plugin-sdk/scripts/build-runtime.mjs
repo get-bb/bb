@@ -23,22 +23,8 @@ const NODE_ESM_REQUIRE_BANNER = [
 
 const ZOD_EXTERNALS = ["zod", "zod/*"];
 
-const EXTERNALS = {
-  "./provider-bridge": ZOD_EXTERNALS,
-  "./ai-services": ZOD_EXTERNALS,
-  "./provider-bridge/testing": ZOD_EXTERNALS,
-  "./provider-bridge/acp": ZOD_EXTERNALS,
-  "./environment-provider": ZOD_EXTERNALS,
-  "./machine-provider": ZOD_EXTERNALS,
-  "./internal/host-policy": ZOD_EXTERNALS,
-  "./testing": [
-    "better-sqlite3",
-    "cron-parser",
-    "hono",
-    "hono/*",
-    "zod",
-    "zod/*",
-  ],
+const EXTRA_EXTERNALS = {
+  "./testing": ["better-sqlite3", "cron-parser", "hono", "hono/*"],
   "./testing/app": [
     "@testing-library/react",
     "@testing-library/react/*",
@@ -57,7 +43,7 @@ const entries = [
   ...Object.entries(packageExports).map(([subpath, entry]) => ({
     source: entry.source.slice(2),
     output: entry.import.slice(2),
-    external: EXTERNALS[subpath] ?? [],
+    external: [...ZOD_EXTERNALS, ...(EXTRA_EXTERNALS[subpath] ?? [])],
   })),
   // The replay harness spawns two programs beside its own bundle: the
   // provider-bridge bootstrap that runs a bridge module the way the runtime

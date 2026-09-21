@@ -11,6 +11,8 @@ import {
 } from "node:fs/promises";
 import { dirname, isAbsolute, join } from "node:path";
 import { createPluginArtifactMeta } from "./plugin-artifact-meta.js";
+import { zodLocaleStubPlugin } from "./zod-locale-stub.mjs";
+import { zodResolutionPlugin } from "./zod-resolution.js";
 import {
   isRecord,
   resolveManifestEntryFile,
@@ -358,7 +360,11 @@ export async function buildPluginHost(
       bundle: true,
       format: "esm",
       platform: "node",
+      minify: true,
+      keepNames: true,
       plugins: [
+        zodResolutionPlugin("host"),
+        zodLocaleStubPlugin(),
         {
           name: "provide-public-host-sdk-runtime",
           setup(build) {
@@ -480,6 +486,7 @@ export async function buildPluginHost(
       ],
       target: "node22",
       sourcemap: true,
+      sourcesContent: false,
       banner: { js: NODE_ESM_REQUIRE_BANNER },
       logLevel: "error",
     });
