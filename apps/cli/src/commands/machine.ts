@@ -219,6 +219,19 @@ export function registerMachineCommands(
     );
 
   machine
+    .command("join-code", { hidden: true })
+    .description("Compatibility notice for removed machine join codes")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async () => {
+        throw new CliExitError("bb machine join-code has been removed.", 1, {
+          code: "removed_command",
+          hint: "Use `bb machine create --provider manual` and run the printed enrollment command.",
+        });
+      }),
+    );
+
+  machine
     .command("create")
     .description("Create a machine using an installed provider")
     .option("--no-wait", "Return the creating host ID immediately")
