@@ -90,6 +90,10 @@
     "category": "tasks-and-workflows",
     "screenshots": []
   },
+  "thread-list": {
+    "category": "thread-management",
+    "screenshots": []
+  },
   "concurrency-limit": {
     "category": "tasks-and-workflows",
     "screenshots": []
