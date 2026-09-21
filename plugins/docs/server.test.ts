@@ -216,9 +216,31 @@ async function loadVirtualSyncVault(initial: Record<string, VirtualFile>) {
           )
             throw new Error("Directory is not empty");
           directories.delete(args.path);
+          for (const entry of files.keys())
+            if (entry.startsWith(prefix)) files.delete(entry);
+          for (const entry of directories)
+            if (entry.startsWith(prefix)) directories.delete(entry);
           return { ok: true as const };
         },
-        async move() {
+        async move(args) {
+          const from = args.sourcePath;
+          const to = args.destinationPath;
+          if (!files.has(from) && !directories.has(from))
+            throw new Error("ENOENT");
+          if (files.has(to) || directories.has(to)) throw new Error("EEXIST");
+          for (const [entry, file] of [...files]) {
+            if (entry === from || entry.startsWith(`${from}/`)) {
+              files.delete(entry);
+              files.set(to + entry.slice(from.length), file);
+            }
+          }
+          for (const entry of [...directories]) {
+            if (entry === from || entry.startsWith(`${from}/`)) {
+              directories.delete(entry);
+              directories.add(to + entry.slice(from.length));
+            }
+          }
+          addParents(to);
           return { ok: true as const };
         },
         async createPreview() {
@@ -503,7 +525,7 @@ describe("Docs mention provider", () => {
 
     await expect(provider.resolve("personal:ideas.md")).resolves.toEqual({
       context:
-        "Docs document (personal/ideas.md):\n\n# Fresh Ideas\n\nBuild the mention flow.",
+        "Docs document (personal/ideas.md):\nSHA-256: test-sha\n\n# Fresh Ideas\n\nBuild the mention flow.\n\nProposal version: none. Use bb docs propose to suggest changes for approval.",
     });
     expect(harness.sdk.callsTo("files.read")).toEqual([
       [
@@ -1519,5 +1541,258 @@ describe("Docs vault operations", () => {
       await service.done;
     }
     expect(closeWatcher).toHaveBeenCalledOnce();
+  });
+});
+
+describe("Docs proposals", () => {
+  async function setupProposal() {
+    const host = await loadVirtualSyncVault({
+      "/vault/letter.md": {
+        content: "A simple place.",
+        contentEncoding: "utf8",
+        modifiedAtMs: 1,
+      },
+    });
+    const file = host.files.get("/vault/letter.md")!;
+    const proposal = await host.harness.behavior.callRpc("proposeNote", {
+      path: "letter.md",
+      content: "A calmer space.",
+      expectedSha256: virtualSha(file),
+      expectedVersion: null,
+    });
+    return { ...host, proposal };
+  }
+
+  it("moves proposals with files and folders and clears removed paths", async () => {
+    const { harness, setUtf8 } = await setupProposal();
+    await harness.behavior.callRpc("movePath", {
+      from: "letter.md",
+      to: "drafts/letter.md",
+    });
+    expect(
+      await harness.behavior.callRpc("readProposal", { path: "letter.md" }),
+    ).toBeNull();
+    expect(
+      await harness.behavior.callRpc("readProposal", {
+        path: "drafts/letter.md",
+      }),
+    ).toMatchObject({ path: "drafts/letter.md", content: "A calmer space." });
+    await harness.behavior.callRpc("movePath", {
+      from: "drafts",
+      to: "renamed",
+    });
+    expect(
+      await harness.behavior.callRpc("readProposal", {
+        path: "renamed/letter.md",
+      }),
+    ).toMatchObject({ path: "renamed/letter.md" });
+    await harness.behavior.callRpc("resolveProposal", {
+      path: "renamed/letter.md",
+      action: "accept",
+      expectedVersion: 1,
+    });
+    await harness.behavior.callRpc("deletePath", {
+      path: "renamed",
+      recursive: true,
+    });
+    setUtf8("/vault/renamed/letter.md", "Unrelated document");
+    expect(
+      await harness.behavior.callRpc("readProposal", {
+        path: "renamed/letter.md",
+      }),
+    ).toBeNull();
+    await harness.lifecycle.dispose();
+  });
+
+  it("cleans file proposals after queued edits and preserves them on failed moves", async () => {
+    const { harness, setUtf8 } = await setupProposal();
+    setUtf8("/vault/existing.md", "Another document");
+    await expect(
+      harness.behavior.callRpc("movePath", {
+        from: "letter.md",
+        to: "existing.md",
+      }),
+    ).rejects.toThrow("EEXIST");
+    await Promise.all([
+      harness.behavior.callRpc("updateProposal", {
+        path: "letter.md",
+        expectedVersion: 1,
+        content: "Updated",
+      }),
+      harness.behavior.callRpc("deletePath", { path: "letter.md" }),
+    ]);
+    setUtf8("/vault/letter.md", "Replacement");
+    expect(
+      await harness.behavior.callRpc("readProposal", { path: "letter.md" }),
+    ).toBeNull();
+    await harness.lifecycle.dispose();
+  });
+
+  it("does not expose proposals when a removed vault ID is reused", async () => {
+    const { harness } = await setupProposal();
+    await harness.behavior.callRpc("createVault", {
+      name: "Other",
+      rootPath: "/other",
+    });
+    await harness.behavior.callRpc("removeVault", { vaultId: "personal" });
+    await harness.behavior.callRpc("createVault", {
+      name: "Personal",
+      rootPath: "/replacement",
+    });
+    expect(
+      await harness.behavior.callRpc("readProposal", {
+        vaultId: "personal",
+        path: "letter.md",
+      }),
+    ).toBeNull();
+    await harness.lifecycle.dispose();
+  });
+
+  it("keeps candidates separate and restores diff after accept, undo, redo", async () => {
+    const { harness, files } = await setupProposal();
+    expect(files.get("/vault/letter.md")?.content).toBe("A simple place.");
+    await harness.behavior.callRpc("resolveProposal", {
+      path: "letter.md",
+      expectedVersion: 1,
+      action: "accept",
+    });
+    expect(files.get("/vault/letter.md")?.content).toBe("A calmer space.");
+    await harness.behavior.callRpc("resolveProposal", {
+      path: "letter.md",
+      expectedVersion: 2,
+      action: "undo",
+    });
+    expect(files.get("/vault/letter.md")?.content).toBe("A simple place.");
+    expect(
+      await harness.behavior.callRpc("resolveProposal", {
+        path: "letter.md",
+        expectedVersion: 3,
+        action: "redo",
+      }),
+    ).toMatchObject({ status: "pending", version: 4 });
+    expect(files.get("/vault/letter.md")?.content).toBe("A simple place.");
+    const reloaded = await harness.lifecycle.reload(simpleNotes);
+    expect(
+      await reloaded.harness.behavior.callRpc("readProposal", {
+        path: "letter.md",
+      }),
+    ).toMatchObject({ status: "pending", version: 4 });
+    await reloaded.harness.lifecycle.dispose();
+  });
+
+  it("rejects late replacements and restores rejected proposals with undo", async () => {
+    const { harness, files } = await setupProposal();
+    await harness.behavior.callRpc("resolveProposal", {
+      path: "letter.md",
+      expectedVersion: 1,
+      action: "reject",
+    });
+    await expect(
+      harness.behavior.callRpc("proposeNote", {
+        path: "letter.md",
+        expectedVersion: 1,
+        expectedSha256: virtualSha(files.get("/vault/letter.md")!),
+        content: "Late response",
+      }),
+    ).rejects.toThrow("proposal changed");
+    expect(
+      await harness.behavior.callRpc("resolveProposal", {
+        path: "letter.md",
+        expectedVersion: 2,
+        action: "undo",
+      }),
+    ).toMatchObject({ status: "pending", version: 3 });
+    expect(files.get("/vault/letter.md")?.content).toBe("A simple place.");
+    await harness.lifecycle.dispose();
+  });
+
+  it("preserves external edits on acceptance and undo conflicts", async () => {
+    const { harness, setUtf8, files } = await setupProposal();
+    setUtf8("/vault/letter.md", "User's edit");
+    await expect(
+      harness.behavior.callRpc("resolveProposal", {
+        path: "letter.md",
+        expectedVersion: 1,
+        action: "accept",
+      }),
+    ).rejects.toThrow("document changed");
+    setUtf8("/vault/letter.md", "A simple place.");
+    await harness.behavior.callRpc("resolveProposal", {
+      path: "letter.md",
+      expectedVersion: 1,
+      action: "accept",
+    });
+    setUtf8("/vault/letter.md", "Newer edit");
+    await expect(
+      harness.behavior.callRpc("resolveProposal", {
+        path: "letter.md",
+        expectedVersion: 2,
+        action: "undo",
+      }),
+    ).rejects.toThrow("overwrite newer edits");
+    expect(files.get("/vault/letter.md")?.content).toBe("Newer edit");
+    await harness.lifecycle.dispose();
+  });
+
+  it("reads CLI candidates from workspace files without writing the document", async () => {
+    const { harness, files } = await loadVirtualSyncVault({
+      "/vault/letter.md": {
+        content: "Original",
+        contentEncoding: "utf8",
+        modifiedAtMs: 1,
+      },
+      "/work/candidate.md": {
+        content: "Proposed",
+        contentEncoding: "utf8",
+        modifiedAtMs: 1,
+      },
+    });
+    const result = await harness.behavior.runCli([
+      "propose",
+      "letter.md",
+      "--file",
+      "/work/candidate.md",
+      "--expected-sha256",
+      virtualSha(files.get("/vault/letter.md")!),
+      "--version",
+      "none",
+      "--json",
+    ]);
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout ?? "")).toMatchObject({
+      content: "Proposed",
+      status: "pending",
+      version: 1,
+    });
+    expect(files.get("/vault/letter.md")?.content).toBe("Original");
+    await harness.lifecycle.dispose();
+  });
+
+  it("serializes concurrent resolutions and candidate edits", async () => {
+    const { harness } = await setupProposal();
+    const results = await Promise.allSettled([
+      harness.behavior.callRpc("updateProposal", {
+        path: "letter.md",
+        expectedVersion: 1,
+        content: "Edited candidate",
+      }),
+      harness.behavior.callRpc("resolveProposal", {
+        path: "letter.md",
+        expectedVersion: 1,
+        action: "accept",
+      }),
+    ]);
+    expect(results.map((result) => result.status)).toEqual([
+      "fulfilled",
+      "rejected",
+    ]);
+    expect(
+      await harness.behavior.callRpc("readProposal", { path: "letter.md" }),
+    ).toMatchObject({
+      content: "Edited candidate",
+      status: "pending",
+      version: 2,
+    });
+    await harness.lifecycle.dispose();
   });
 });
