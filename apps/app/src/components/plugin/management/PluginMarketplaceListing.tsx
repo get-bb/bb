@@ -16,7 +16,11 @@ import {
 } from "@bb/shared-ui/resource-list";
 import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
 import { PluginOverviewMarkdown } from "@/components/plugin/management/PluginOverviewMarkdown";
-import { CatalogEntryIconChip, formatUrlLabel } from "./plugin-ui";
+import {
+  CatalogEntryIconChip,
+  formatUrlLabel,
+  PluginCategoryLabel,
+} from "./plugin-ui";
 import { PluginAuthorLink } from "./PluginAuthorLink";
 import { PluginCard, PluginCardGrid, PluginCardAuthor } from "./PluginCard";
 import {
@@ -58,7 +62,12 @@ export function PluginMarketplaceDetailMetadata({
         {entry.marketplaceDisplayName}
       </PluginDetailMetadataItem>
       <PluginDetailMetadataItem label="Category">
-        {entry.category ?? "Not categorized"}
+        <div className="flex">
+          <PluginCategoryLabel
+            categoryId={entry.categoryId}
+            label={entry.category ?? "Not categorized"}
+          />
+        </div>
       </PluginDetailMetadataItem>
       {entry.publishedAt === undefined ? null : (
         <PluginDetailMetadataItem label="Listed" className="col-span-2">

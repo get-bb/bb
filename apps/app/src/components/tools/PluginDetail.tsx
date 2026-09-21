@@ -32,6 +32,7 @@ import {
   CatalogEntryIconChip,
   formatAbsoluteDate,
   pluginInstallCountPresentation,
+  PluginCategoryLabel,
   PluginLogo,
 } from "@/components/plugin/management/plugin-ui";
 import {
@@ -481,7 +482,12 @@ export function PluginDetail({
                   label="Category"
                   className="col-span-2"
                 >
-                  {plugin.category ?? "Not categorized"}
+                  <div className="flex">
+                    <PluginCategoryLabel
+                      categoryId={plugin.categoryId}
+                      label={plugin.category ?? "Not categorized"}
+                    />
+                  </div>
                 </PluginDetailMetadataItem>
                 {installationMetadata}
               </>
