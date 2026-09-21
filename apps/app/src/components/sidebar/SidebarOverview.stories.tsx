@@ -489,16 +489,20 @@ function OrganizationSidebar({
 }) {
   const [store] = useState(() => createStore());
   const [isModeSeeded, setIsModeSeeded] = useState(false);
-  const [queryClient] = useState(
-    () =>
-      new QueryClient({
-        defaultOptions: {
-          queries: {
-            retry: false,
-          },
+  const [queryClient] = useState(() => {
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: {
+          retry: false,
+          refetchOnMount: false,
+          refetchOnWindowFocus: false,
+          refetchOnReconnect: false,
         },
-      }),
-  );
+      },
+    });
+    client.setQueryData(hostsQueryKey(), hosts ?? machineStoryHosts);
+    return client;
+  });
 
   useLayoutEffect(() => {
     setIsModeSeeded(false);
