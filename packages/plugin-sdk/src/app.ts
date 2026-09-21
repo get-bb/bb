@@ -90,6 +90,9 @@ export const experimental_useSidebarThreadSplit =
 export const useSidebarThreadDraft = runtime.useSidebarThreadDraft;
 export const useSidebarThreadDraftIds = runtime.useSidebarThreadDraftIds;
 export const useSidebarThreadRowStatus = runtime.useSidebarThreadRowStatus;
+export const useSidebarThreadRowStatuses =
+  runtime.useSidebarThreadRowStatuses;
+export const useSidebarSplitLayout = runtime.useSidebarSplitLayout;
 export const useSidebarThreadShortcut = runtime.useSidebarThreadShortcut;
 export const ThreadTitle = runtime.ThreadTitle;
 export const useEnvironmentProviders = runtime.useEnvironmentProviders;

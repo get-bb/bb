@@ -45,6 +45,10 @@ Read the installed SDK declarations for the exact current signatures.
   collapsed-group rollups
 - `useSidebarThreadRowStatus` — the row status another plugin's app-wide
   script set on a thread, or null
+- `useSidebarThreadRowStatuses` — every row status by thread id, for
+  collapsed-group rollups
+- `useSidebarSplitLayout` — the whole split layout with the thread each pane
+  shows, or null when nothing is split
 - `useSidebarThreadShortcut` — the jump shortcut assigned to a row while the
   app command modifier is held, or null
 - `ThreadTitle` — a thread's display title with its `@project:`, `@section:`,
@@ -160,6 +164,7 @@ Read the installed SDK declarations for the exact current signatures.
 - `PluginThreadHeaderActionRegistration`
 - `ExperimentalPluginBrowserToolbarActionRegistration`
 - `PluginSidebarSplitPane`
+- `PluginSidebarSplitLayout`
 - `PluginSidebarThreadSplit`
 - `PluginThreadListRegistration`
 - `PluginFileOpenerRegistration`

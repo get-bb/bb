@@ -11,6 +11,7 @@ import {
   useSidebarThreadDraft,
   useSidebarThreadDraftIds,
   useSidebarThreadRowStatus,
+  useSidebarThreadRowStatuses,
   useSidebarThreadShortcut,
   useSidebarThreads,
 } from "./plugin-sidebar-hooks";
@@ -189,6 +190,27 @@ describe("useSidebarThreads sections", () => {
     expect(result.current.sections).toEqual(sections);
   });
 
+  it("gives each project its compose and settings hrefs", () => {
+    state.data = payload([]);
+    const { result } = renderHook(() => useSidebarThreads());
+    expect(result.current.projects).toEqual([
+      {
+        id: "proj_app",
+        name: "App",
+        isPersonal: false,
+        href: "/projects/proj_app",
+        settingsHref: "/settings/projects/proj_app",
+      },
+      {
+        id: PERSONAL_PROJECT_ID,
+        name: "Personal",
+        isPersonal: true,
+        href: "/",
+        settingsHref: `/settings/projects/${PERSONAL_PROJECT_ID}`,
+      },
+    ]);
+  });
+
   it("reports an empty section list while loading", () => {
     const { result } = renderHook(() => useSidebarThreads());
     expect(result.current.status).toBe("loading");
@@ -340,6 +362,34 @@ describe("per-row client state hooks", () => {
       setPluginThreadRowStatus("thr_1", "plugin-a", null);
     });
     expect(result.current).toBeNull();
+  });
+
+  it("collects every row status for group rollups and keeps identity while unchanged", () => {
+    const { result } = renderHook(() => useSidebarThreadRowStatuses());
+    expect(result.current.size).toBe(0);
+    const initial = result.current;
+    act(() => {
+      setPluginThreadRowStatus("thr_1", "plugin-a", {
+        icon: "Loading",
+        label: "Drafting",
+      });
+      setPluginThreadRowStatus("thr_2", "plugin-a", {
+        icon: "Check",
+        label: "Done",
+        tone: "success",
+      });
+    });
+    expect([...result.current.keys()].sort()).toEqual(["thr_1", "thr_2"]);
+    expect(result.current.get("thr_2")?.tone).toBe("success");
+    const settled = result.current;
+    act(() => {});
+    expect(result.current).toBe(settled);
+    act(() => {
+      setPluginThreadRowStatus("thr_1", "plugin-a", null);
+      setPluginThreadRowStatus("thr_2", "plugin-a", null);
+    });
+    expect(result.current.size).toBe(0);
+    expect(result.current).toBe(initial);
   });
 
   it("reports the assigned shortcut only while the host provides one", () => {

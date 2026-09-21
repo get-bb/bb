@@ -157,8 +157,11 @@ describe("toPluginSidebarThread", () => {
       }),
     );
     expect(mapped.isPinned).toBe(true);
+    expect(mapped.pinnedAt).toBe(12);
     expect(mapped.pinSortKey).toBe("a0");
     expect(mapped.isArchived).toBe(true);
+    expect(mapped.archivedAt).toBe(13);
+    expect(mapped.href).toBe("/projects/proj_1/threads/thr_1");
     expect(mapped.environment).toEqual({
       id: "env_1",
       name: "Worktree",

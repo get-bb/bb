@@ -26,7 +26,10 @@ import {
   usePromptDraftHasInput,
   usePromptDraftInputThreadIds,
 } from "@/hooks/usePromptDraftStorage";
-import { usePluginThreadRowStatus } from "./plugin-thread-row-status";
+import {
+  usePluginThreadRowStatus,
+  usePluginThreadRowStatuses,
+} from "./plugin-thread-row-status";
 import { getThreadConversationCollapsedAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import { useThreadActions } from "@/components/thread/ThreadActionsProvider";
 import {
@@ -40,7 +43,12 @@ import { useRouteNavigate } from "@/components/ui/app-route-anchor";
 import { toPluginSidebarThread } from "./plugin-sidebar-threads";
 import { useSetRootComposeProjectId } from "./root-compose-selection";
 import { openThreadInSplit } from "./split-layout/openThreadInSplit";
-import { getRootComposeRoutePath, getThreadRoutePath } from "./route-paths";
+import {
+  getProjectComposeRoutePath,
+  getRootComposeRoutePath,
+  getSettingsProjectRoutePath,
+  getThreadRoutePath,
+} from "./route-paths";
 
 const EMPTY_THREADS: readonly PluginSidebarThread[] = [];
 const EMPTY_PROJECTS: readonly PluginSidebarProject[] = [];
@@ -123,6 +131,8 @@ export function useSidebarThreads(): PluginSidebarThreadsState {
         id: project.id,
         name: project.name,
         isPersonal: project.id === PERSONAL_PROJECT_ID,
+        href: getProjectComposeRoutePath(project.id),
+        settingsHref: getSettingsProjectRoutePath(project.id),
       })),
       sections: data.sections,
     };
@@ -271,6 +281,13 @@ export function useSidebarThreadRowStatus(
   threadId: string,
 ): PluginSidebarThreadRowStatus | null {
   return usePluginThreadRowStatus(threadId);
+}
+
+export function useSidebarThreadRowStatuses(): ReadonlyMap<
+  string,
+  PluginSidebarThreadRowStatus
+> {
+  return usePluginThreadRowStatuses();
 }
 
 export function useSidebarThreadShortcut(

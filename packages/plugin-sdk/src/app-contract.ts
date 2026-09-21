@@ -960,13 +960,24 @@ export interface PluginSidebarThread {
 
   isUnread: boolean;
   isPinned: boolean;
+  /** When the thread was pinned (epoch ms); null when unpinned. */
+  pinnedAt: number | null;
   /**
    * The user's manual order among pinned threads (lexicographic, ascending);
    * null for an unpinned thread or a pin that has never been reordered, which
-   * bb's list sorts after keyed pins by `createdAt`.
+   * bb's list sorts after keyed pins by `pinnedAt`.
    */
   pinSortKey: string | null;
   isArchived: boolean;
+  /** When the thread was archived (epoch ms); null when not archived. */
+  archivedAt: number | null;
+  /**
+   * The app-relative URL bb opens for this thread, e.g.
+   * `/projects/<projectId>/threads/<id>`. Put it on your row's anchor: the
+   * host routes a plain click in place, and middle-click, copy-link, and
+   * open-in-new-window work without further code.
+   */
+  href: string;
   /**
    * True for threads bb keeps out of its own list (internal helper threads a
    * plugin spawned with `visibility: "hidden"`). The array includes them so a
@@ -1050,6 +1061,10 @@ export interface PluginSidebarProject {
   name: string;
   /** True for the implicit personal project. */
   isPersonal: boolean;
+  /** The app-relative URL of the project's compose screen. */
+  href: string;
+  /** The app-relative URL of the project's settings page. */
+  settingsHref: string;
 }
 
 /**
@@ -1312,6 +1327,24 @@ export interface PluginSidebarSplitPane {
   /** This pane holds the thread the row represents. */
   isMe: boolean;
   isFocused: boolean;
+}
+
+/**
+ * The whole split layout (see {@link PluginSdkApp.useSidebarSplitLayout}):
+ * every pane with its rect as fractions of the split area and the thread it
+ * shows, or null when there is no split (a single pane, a compact viewport,
+ * or splits disabled). Use it for group rollups, a collapsed section that
+ * should show where its threads are open; a row wants
+ * `experimental_useSidebarThreadSplit` instead.
+ */
+export interface PluginSidebarSplitLayout {
+  panes: readonly {
+    paneId: string;
+    rect: { x: number; y: number; width: number; height: number };
+    /** The thread this pane shows, or null for non-thread content. */
+    threadId: string | null;
+    isFocused: boolean;
+  }[];
 }
 
 /**
@@ -2952,6 +2985,20 @@ export interface PluginSdkApp {
   useSidebarThreadRowStatus(
     threadId: string,
   ): PluginSidebarThreadRowStatus | null;
+  /**
+   * Every row status currently set, by thread id, for rollups on collapsed
+   * groups. One subscription for the whole list; prefer
+   * {@link PluginSdkApp.useSidebarThreadRowStatus} inside a row.
+   */
+  useSidebarThreadRowStatuses(): ReadonlyMap<
+    string,
+    PluginSidebarThreadRowStatus
+  >;
+  /**
+   * The whole split layout (see {@link PluginSidebarSplitLayout}), or null
+   * when nothing is split. One subscription for the whole list.
+   */
+  useSidebarSplitLayout(): PluginSidebarSplitLayout | null;
   /**
    * The jump shortcut assigned to this row while the app command modifier is
    * held (see {@link PluginSidebarThreadShortcut}), or null the rest of the

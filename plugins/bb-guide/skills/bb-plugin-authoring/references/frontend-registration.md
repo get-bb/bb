@@ -277,12 +277,14 @@ const sdk = useSdk();
 await sdk.threadSections.create({ name: "Later" });
 await sdk.threads.update({ id: thread.id, sectionId });
 
-// threads: PluginSidebarThread[] — id, projectId, title, titleFallback,
+// threads: PluginSidebarThread[] — id, projectId, href (put it on the row's
+// anchor; the host routes clicks in place), title, titleFallback,
 // displayTitle, parentThreadId, lifecycleOwnerThreadId, sourceThreadId, sectionId,
 // originKind, originPluginId, providerId, status (execution status; busy
 // threads sort first in bb's list), runtimeStatus (status refined by host
 // readiness), queuedWork ("none" | "waiting" | "failed"), hasPendingInteraction,
-// activity, isUnread/isPinned/isArchived, pinSortKey (manual pin order),
+// activity, isUnread/isPinned/pinnedAt/isArchived/archivedAt, pinSortKey
+// (manual pin order),
 // isHidden (bb's list filters these out; the array keeps them),
 // environment { id, name, branchName, path, isWorktree, providerId,
 // workspaceDisplayKind }, where workspaceDisplayKind is deprecated
@@ -302,6 +304,9 @@ const { hasUnsubmittedDraft } = useSidebarThreadDraft(thread.id);
 const rowStatus = useSidebarThreadRowStatus(thread.id); // { icon, label, tone? } | null
 const shortcut = useSidebarThreadShortcut(thread.id); // { label, ariaKeyshortcuts } | null
 const draftIds = useSidebarThreadDraftIds(); // ReadonlySet<string>, for group rollups
+const rowStatuses = useSidebarThreadRowStatuses(); // ReadonlyMap, for group rollups
+const splitLayout = useSidebarSplitLayout(); // { panes: [{ paneId, rect, threadId, isFocused }] } | null
+// projects: PluginSidebarProject[] — { id, name, isPersonal, href, settingsHref }
 
 // Titles can contain @project:, @section:, and @thread: mentions. `displayTitle`
 // is the resolved plain text (sort on it, use it for aria-label); <ThreadTitle>

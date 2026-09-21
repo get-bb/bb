@@ -12,6 +12,7 @@ import {
   type ThreadTitleMentionResources,
 } from "@/components/thread/ThreadTitleMentions";
 import { getThreadDisplayTitle } from "./thread-title";
+import { getThreadRoutePath } from "./route-paths";
 
 export function toPluginSidebarThread(
   entry: ThreadListEntry,
@@ -53,8 +54,11 @@ export function toPluginSidebarThread(
     indicatorLabel: getThreadListIndicatorLabel(indicator),
     isUnread: !isThreadRead(entry),
     isPinned: entry.pinnedAt !== null,
+    pinnedAt: entry.pinnedAt,
     pinSortKey: entry.pinSortKey,
     isArchived: entry.archivedAt !== null,
+    archivedAt: entry.archivedAt,
+    href: getThreadRoutePath({ projectId: entry.projectId, threadId: entry.id }),
     isHidden: entry.visibility === "hidden",
     environment:
       entry.environmentId === null

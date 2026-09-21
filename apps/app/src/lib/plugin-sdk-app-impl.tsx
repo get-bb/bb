@@ -45,10 +45,14 @@ import {
   useSidebarThreadDraftIds,
   useSidebarThreadPullRequest,
   useSidebarThreadRowStatus,
+  useSidebarThreadRowStatuses,
   useSidebarThreadShortcut,
   useSidebarThreads,
 } from "./plugin-sidebar-hooks";
-import { useSidebarThreadSplit } from "./plugin-sidebar-split";
+import {
+  useSidebarSplitLayout,
+  useSidebarThreadSplit,
+} from "./plugin-sidebar-split";
 import { useAppNavigationHost } from "./app-navigation-host";
 import { useCodeTheme } from "./plugin-code-theme";
 
@@ -86,6 +90,8 @@ export const pluginSdkAppImplementation = installDeprecatedAliases(
     useSidebarThreadDraft,
     useSidebarThreadDraftIds,
     useSidebarThreadRowStatus,
+    useSidebarThreadRowStatuses,
+    useSidebarSplitLayout,
     useSidebarThreadShortcut,
     ThreadTitle: PluginThreadTitle,
     useEnvironmentProviders,

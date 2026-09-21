@@ -50,6 +50,7 @@ import {
   type PluginSidebarThreadActions,
   type PluginBrowserBbSdk,
   type PluginEnvironmentProvidersState,
+  type PluginSidebarSplitLayout,
   type PluginSidebarThreadDraftState,
   type PluginSidebarThreadPullRequestState,
   type PluginSidebarThreadRowStatus,
@@ -237,6 +238,7 @@ interface SlotEnv {
   sidebarDraftThreadIds: ReadonlySet<string>;
   sidebarRowStatuses: ReadonlyMap<string, PluginSidebarThreadRowStatus>;
   sidebarShortcuts: ReadonlyMap<string, PluginSidebarThreadShortcut>;
+  sidebarSplitLayout: PluginSidebarSplitLayout | null;
   environmentProviders: PluginEnvironmentProvidersState;
   sdk: PluginBrowserBbSdk;
   sdkCalls: SdkCall[];
@@ -1004,6 +1006,15 @@ const testPluginSdkApp = {
     const env = useSlotEnv("useSidebarThreadRowStatus");
     return env.sidebarRowStatuses.get(threadId) ?? null;
   },
+  useSidebarThreadRowStatuses(): ReadonlyMap<
+    string,
+    PluginSidebarThreadRowStatus
+  > {
+    return useSlotEnv("useSidebarThreadRowStatuses").sidebarRowStatuses;
+  },
+  useSidebarSplitLayout(): PluginSidebarSplitLayout | null {
+    return useSlotEnv("useSidebarSplitLayout").sidebarSplitLayout;
+  },
   useSidebarThreadShortcut(threadId): PluginSidebarThreadShortcut | null {
     const env = useSlotEnv("useSidebarThreadShortcut");
     return env.sidebarShortcuts.get(threadId) ?? null;
@@ -1339,6 +1350,8 @@ export interface RenderSlotOptions<
    * null.
    */
   sidebarShortcuts?: Record<string, PluginSidebarThreadShortcut>;
+  /** The split layout `useSidebarSplitLayout()` reports. Omitted → null. */
+  sidebarSplitLayout?: PluginSidebarSplitLayout;
   /**
    * The environment provider catalog `useEnvironmentProviders()` reports.
    * Omitted → a ready, empty list. Pass `{ status: "loading" }` to test that
@@ -1873,6 +1886,7 @@ export function renderSlot<
     sidebarDraftThreadIds,
     sidebarRowStatuses,
     sidebarShortcuts,
+    sidebarSplitLayout: options.sidebarSplitLayout ?? null,
     environmentProviders,
     sdk,
     sdkCalls,
