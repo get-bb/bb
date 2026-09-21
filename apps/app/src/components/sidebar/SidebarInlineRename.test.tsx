@@ -133,21 +133,22 @@ describe("sidebar inline rename", () => {
     expect(onSave).not.toHaveBeenCalled();
   });
 
-  it("does not submit composition Enter or blur within the editor; pointer Cancel wins", async () => {
+  it("does not submit composition Enter or blur within the editor", async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
-    render(<RenameRow onSave={onSave} />);
+    const onClear = vi.fn().mockResolvedValue(undefined);
+    render(<RenameRow kind="environment" onSave={onSave} onClear={onClear} />);
     const input = await start();
+    await waitFor(() => expect(document.activeElement).toBe(input));
     fireEvent.compositionStart(input);
     fireEvent.keyDown(input, { key: "Enter", isComposing: true });
     fireEvent.compositionEnd(input);
     fireEvent.blur(input, {
-      relatedTarget: screen.getByRole("button", { name: "Save name" }),
+      relatedTarget: screen.getByRole("button", { name: "Clear custom name" }),
     });
-    const cancel = screen.getByRole("button", { name: "Cancel rename" });
-    expect(fireEvent.pointerDown(cancel)).toBe(false);
-    fireEvent.click(cancel, { detail: 1 });
+    fireEvent.keyDown(input, { key: "Escape" });
     expect(screen.queryByRole("textbox")).toBeNull();
     expect(onSave).not.toHaveBeenCalled();
+    expect(onClear).not.toHaveBeenCalled();
   });
 
   it("retains a rejected draft and retries with the same value", async () => {
@@ -165,7 +166,7 @@ describe("sidebar inline rename", () => {
     expect((screen.getByRole("textbox") as HTMLInputElement).value).toBe(
       "New name",
     );
-    fireEvent.click(screen.getByRole("button", { name: "Retry saving name" }));
+    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
     await waitFor(() => expect(screen.queryByRole("textbox")).toBeNull());
     expect(onSave.mock.calls).toEqual([["New name"], ["New name"]]);
   });
@@ -205,12 +206,10 @@ describe("sidebar inline rename", () => {
         "This item no longer exists.",
       ),
     );
-    expect(
-      screen
-        .getByRole("button", { name: "Retry saving name" })
-        .hasAttribute("disabled"),
-    ).toBe(true);
-    fireEvent.click(screen.getByRole("button", { name: "Cancel rename" }));
+    expect(screen.getByRole("textbox").hasAttribute("readonly")).toBe(true);
+    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
+    expect(onSave).toHaveBeenCalledTimes(2);
+    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Escape" });
     expect(screen.queryByRole("textbox")).toBeNull();
   });
 

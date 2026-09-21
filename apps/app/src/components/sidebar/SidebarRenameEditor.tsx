@@ -148,42 +148,18 @@ export default function SidebarRenameEditor({
           composingRef.current = false;
         }}
       />
-      <button
-        type="button"
-        aria-label={session.error ? "Retry saving name" : "Save name"}
-        disabled={session.isPending || session.cannotRetry}
-        className={cn(
-          SIDEBAR_CONTROL_BUTTON_CLASS,
-          "inline-flex items-center justify-center disabled:opacity-50",
-        )}
-        onClick={(event) => {
-          void submit(event.detail === 0);
-        }}
-      >
-        {session.isPending ? (
-          <span role="status" aria-label="Saving name">
-            <Icon
-              name="Loading"
-              className={cn(COARSE_POINTER_ICON_SIZE_CLASS, "animate-spin")}
-            />
-          </span>
-        ) : (
-          <Icon name="Check" className={COARSE_POINTER_ICON_SIZE_CLASS} />
-        )}
-      </button>
-      <button
-        type="button"
-        aria-label="Cancel rename"
-        disabled={session.isPending}
-        className={cn(
-          SIDEBAR_CONTROL_BUTTON_CLASS,
-          "inline-flex items-center justify-center disabled:opacity-50",
-        )}
-        onPointerDown={(event) => event.preventDefault()}
-        onClick={(event) => cancel(event.detail === 0)}
-      >
-        <Icon name="X" className={COARSE_POINTER_ICON_SIZE_CLASS} />
-      </button>
+      {session.isPending && (
+        <span
+          role="status"
+          aria-label="Saving name"
+          className="inline-flex shrink-0 items-center justify-center"
+        >
+          <Icon
+            name="Loading"
+            className={cn(COARSE_POINTER_ICON_SIZE_CLASS, "animate-spin")}
+          />
+        </span>
+      )}
       {session.onClear && session.initialName && (
         <button
           type="button"
