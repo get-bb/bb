@@ -87,9 +87,12 @@ async function openSubmenu(label: string) {
 }
 
 describe("sidebar header controls", () => {
-  it("supports keyboard selection when a submenu first loads", async () => {
+  it("supports keyboard selection when the menu first loads", async () => {
     const { store } = setup("Pinned", false, "chronological");
     await openMenu();
+    const newProject = screen.getByRole("menuitem", { name: "New project" });
+    fireEvent.keyDown(newProject.closest('[role="menu"]')!, { key: "Home" });
+    await waitFor(() => expect(document.activeElement).toBe(newProject));
     await openSubmenu("Organize");
     const project = await screen.findByRole("menuitemradio", {
       name: "By project",
