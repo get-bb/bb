@@ -135,14 +135,19 @@ export interface SdkCall {
   method: string;
   args: unknown[];
 }
-/**
- * Per-area partial fakes for `useSdk()`. Provide only the methods the slot
- * calls; a call to anything else throws with the missing path so the test
- * fails loudly instead of returning undefined.
- */
-export type PluginSdkTestFakes = {
-  [Area in keyof PluginBrowserBbSdk]?: Partial<PluginBrowserBbSdk[Area]>;
+type PluginSdkFakeTree<T> = {
+  [Key in keyof T]?: T[Key] extends (...args: never[]) => unknown
+    ? T[Key]
+    : PluginSdkFakeTree<T[Key]>;
 };
+
+/**
+ * Nested partial fakes for `useSdk()`, mirroring the client's areas and
+ * sub-areas (`{ threads: { queuedMessages: { create } } }`). Provide only the
+ * methods the slot calls; a call to anything else throws with the missing
+ * dot-path so the test fails loudly instead of returning undefined.
+ */
+export type PluginSdkTestFakes = PluginSdkFakeTree<PluginBrowserBbSdk>;
 export type NavigateCall =
   | { method: "toThread"; threadId: string }
   | { method: "toProject"; projectId: string }
@@ -269,36 +274,40 @@ export interface SidebarActionCall {
   read?: boolean;
 }
 
+function createSdkFakeNode(
+  provided: unknown,
+  path: string,
+  calls: SdkCall[],
+): unknown {
+  const callable = function sdkFakeNode() {};
+  return new Proxy(callable, {
+    apply(_target, _thisArg, args: unknown[]) {
+      calls.push({ method: path, args });
+      if (typeof provided !== "function") {
+        throw new Error(
+          `no sdk fake for "${path}" — add it to renderSlot options.sdk`,
+        );
+      }
+      return (provided as (...input: unknown[]) => unknown)(...args);
+    },
+    get(_target, key) {
+      if (typeof key !== "string" || key === "then") return undefined;
+      const next =
+        provided !== null &&
+        typeof provided === "object" &&
+        !Array.isArray(provided)
+          ? (provided as Record<string, unknown>)[key]
+          : undefined;
+      return createSdkFakeNode(next, path === "" ? key : `${path}.${key}`, calls);
+    },
+  });
+}
+
 function createSdkFake(
   fakes: PluginSdkTestFakes,
   calls: SdkCall[],
 ): PluginBrowserBbSdk {
-  const areas = fakes as Record<string, Record<string, unknown> | undefined>;
-  return new Proxy({} as PluginBrowserBbSdk, {
-    get(_target, area) {
-      if (typeof area !== "string") return undefined;
-      const provided = areas[area];
-      return new Proxy(
-        {},
-        {
-          get(_areaTarget, method) {
-            if (typeof method !== "string") return undefined;
-            const path = `${area}.${method}`;
-            const handler = provided?.[method];
-            return (...args: unknown[]) => {
-              calls.push({ method: path, args });
-              if (typeof handler !== "function") {
-                throw new Error(
-                  `no sdk fake for "${path}" — add it to renderSlot options.sdk`,
-                );
-              }
-              return handler(...args);
-            };
-          },
-        },
-      );
-    },
-  });
+  return createSdkFakeNode(fakes, "", calls) as PluginBrowserBbSdk;
 }
 
 function TestThreadTitle({ threadId }: { threadId: string }) {

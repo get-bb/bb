@@ -40,6 +40,7 @@ const {
 function SdkProbe() {
   const sdk = useSdk();
   const [sectionId, setSectionId] = useState<string | null>(null);
+  const [queuedId, setQueuedId] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   return (
     <div>
@@ -63,7 +64,20 @@ function SdkProbe() {
       >
         Pin without a fake
       </button>
+      <button
+        onClick={() => {
+          void sdk.threads.queuedMessages
+            .create({
+              threadId: "thr_1",
+              input: [{ type: "text", text: "hi", mentions: [] }],
+            })
+            .then((queued) => setQueuedId(queued.id));
+        }}
+      >
+        Queue nested
+      </button>
       {sectionId ? <output>created {sectionId}</output> : null}
+      {queuedId ? <output>queued {queuedId}</output> : null}
       {failure ? <output>{failure}</output> : null}
     </div>
   );
@@ -1452,6 +1466,11 @@ describe("renderSlot", () => {
               updatedAt: 1,
             }),
           },
+          threads: {
+            queuedMessages: {
+              create: async () => ({ id: "qm_9" }) as never,
+            },
+          },
         },
       },
     );
@@ -1461,9 +1480,20 @@ describe("renderSlot", () => {
     await slot.findByText(
       'no sdk fake for "threads.pin" — add it to renderSlot options.sdk',
     );
+    fireEvent.click(slot.getByRole("button", { name: "Queue nested" }));
+    await slot.findByText("queued qm_9");
     expect(slot.inspection.sdkCalls).toEqual([
       { method: "threadSections.create", args: [{ name: "Later" }] },
       { method: "threads.pin", args: [{ threadId: "thr_1" }] },
+      {
+        method: "threads.queuedMessages.create",
+        args: [
+          {
+            threadId: "thr_1",
+            input: [{ type: "text", text: "hi", mentions: [] }],
+          },
+        ],
+      },
     ]);
   });
 
