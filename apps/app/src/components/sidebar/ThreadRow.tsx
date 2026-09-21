@@ -427,36 +427,6 @@ function ThreadRowComponent({
   const rowLinkRef = useRef<HTMLAnchorElement>(null);
   const rowContent = (
     <>
-      <NavLink
-        ref={rowLinkRef}
-        to={getThreadRoutePath({ projectId, threadId: thread.id })}
-        data-sidebar-thread-shortcut-target=""
-        data-sidebar-thread-id={thread.id}
-        onClick={(event) => {
-          if (isEditing) {
-            event.preventDefault();
-            event.stopPropagation();
-            return;
-          }
-          setConversationCollapsed(false);
-          if (splitAvailable && (event.metaKey || event.ctrlKey)) {
-            event.preventDefault();
-            openInSplit();
-            return;
-          }
-          if (consumeSidebarTitleDoubleClick(thread.id)) {
-            event.preventDefault();
-            event.stopPropagation();
-            startEditing();
-            return;
-          }
-          onProjectSelect?.();
-        }}
-        onDoubleClick={isEditing ? undefined : startTitleEditing}
-        aria-label={linkLabel}
-        aria-keyshortcuts={shortcut?.ariaKeyshortcuts}
-        className="absolute inset-0 rounded-md outline-none ring-sidebar-ring focus-visible:ring-2"
-      />
       {parentOptions?.stickyLevel !== undefined && parentGuideLeft !== null ? (
         <span
           aria-hidden="true"
@@ -503,26 +473,58 @@ function ThreadRowComponent({
       ) : null}
       <span
         className={cn(
-          "flex min-w-0 flex-1 items-center gap-1.5",
+          "flex min-w-0 flex-1 items-center gap-1.5 self-stretch",
           !shortcut &&
             (parentOptions && hasChildren
               ? "pr-7.5 max-md:pointer-coarse:pr-0"
               : SIDEBAR_HOVER_ACTIONS_INSET_CLASS),
         )}
       >
-        {isEditing ? (
-          <span className="relative z-10 min-w-0 flex-1 overflow-visible">
-            {editor}
-          </span>
-        ) : (
-          <span
-            className="bb-thread-title"
-            title={labelTitle}
-            onDoubleClick={startTitleEditing}
-          >
-            <ThreadTitleMentions title={threadTitle} />
-          </span>
-        )}
+        <span className="relative flex min-w-0 flex-1 items-center self-stretch">
+          <NavLink
+            ref={rowLinkRef}
+            to={getThreadRoutePath({ projectId, threadId: thread.id })}
+            data-sidebar-thread-shortcut-target=""
+            data-sidebar-thread-id={thread.id}
+            onClick={(event) => {
+              if (isEditing) {
+                event.preventDefault();
+                event.stopPropagation();
+                return;
+              }
+              setConversationCollapsed(false);
+              if (splitAvailable && (event.metaKey || event.ctrlKey)) {
+                event.preventDefault();
+                openInSplit();
+                return;
+              }
+              if (consumeSidebarTitleDoubleClick(thread.id)) {
+                event.preventDefault();
+                event.stopPropagation();
+                startEditing();
+                return;
+              }
+              onProjectSelect?.();
+            }}
+            onDoubleClick={isEditing ? undefined : startTitleEditing}
+            aria-label={linkLabel}
+            aria-keyshortcuts={shortcut?.ariaKeyshortcuts}
+            className="absolute inset-0 rounded-md outline-none ring-sidebar-ring focus-visible:ring-2"
+          />
+          {isEditing ? (
+            <span className="relative z-10 min-w-0 flex-1 overflow-visible">
+              {editor}
+            </span>
+          ) : (
+            <span
+              className="bb-thread-title"
+              title={labelTitle}
+              onDoubleClick={startTitleEditing}
+            >
+              <ThreadTitleMentions title={threadTitle} />
+            </span>
+          )}
+        </span>
         {parentOptions && hasChildren ? (
           <SidebarChildToggleChevron
             isCollapsed={isParentCollapsed}
