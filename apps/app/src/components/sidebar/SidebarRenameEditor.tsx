@@ -87,7 +87,7 @@ export default function SidebarRenameEditor({
     <span
       ref={groupRef}
       data-sidebar-rename-editor=""
-      className="relative z-50 flex min-w-0 flex-1 items-center gap-1 text-sm font-normal"
+      className="relative z-50 flex min-w-0 flex-1 items-center gap-1"
       aria-busy={session.isPending}
       onBlur={(event) => {
         if (
@@ -133,7 +133,7 @@ export default function SidebarRenameEditor({
         aria-describedby={session.error ? errorId : undefined}
         autoCapitalize="sentences"
         autoCorrect="off"
-        className="min-w-0 flex-1 appearance-none rounded-sm border-0 bg-transparent px-1 py-0 text-sm leading-[inherit] outline-none ring-1 ring-ring"
+        className="min-w-0 flex-1 appearance-none rounded-sm border-0 bg-transparent px-1 py-0 [font:inherit] outline-none ring-1 ring-ring"
         spellCheck={false}
         value={session.draft}
         placeholder={session.placeholder}
