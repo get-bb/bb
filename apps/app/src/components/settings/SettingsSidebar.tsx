@@ -1,5 +1,4 @@
 import { lazy, Suspense, type MouseEvent as ReactMouseEvent } from "react";
-import { PluginIcon } from "@/components/plugin/PluginIcon";
 import {
   SectionSidebar,
   SectionSidebarIcon,
@@ -8,14 +7,13 @@ import {
   SectionSidebarRow,
 } from "@/components/sidebar/SectionSidebar";
 import { canOpenNativeScreen, shellOpenNative } from "@/lib/native-shell";
-import { getPluginSettingsEntryRoutePath } from "./plugin-settings-entries";
 import { useSettingsNavState } from "./settings-nav";
 import type { SettingsNavState } from "./settings-nav";
 import { getSettingsSectionRoutePath } from "./settings-sections";
 
-const SettingsPluginActions = lazy(() =>
-  import("./SettingsPluginActions").then((module) => ({
-    default: module.SettingsPluginActions,
+const SettingsPluginsSection = lazy(() =>
+  import("./SettingsPluginsSection").then((module) => ({
+    default: module.SettingsPluginsSection,
   })),
 );
 
@@ -70,36 +68,12 @@ export function SettingsSidebarContent({
             </SectionSidebarRow>
           ))}
       </div>
-      <div className="mt-4">
-        <SectionSidebarLabel>Plugins</SectionSidebarLabel>
-      </div>
-      <Suspense
-        fallback={
-          <div
-            className="h-12"
-            aria-busy="true"
-            aria-label="Loading plugin actions"
-          />
-        }
-      >
-        <SettingsPluginActions />
+      <Suspense fallback={<div className="h-20" aria-busy="true" />}>
+        <SettingsPluginsSection
+          activePluginId={activePluginId}
+          pluginEntries={pluginEntries}
+        />
       </Suspense>
-      <div className="mt-1 space-y-0.5">
-        {pluginEntries.map((entry) => (
-          <SectionSidebarRow
-            key={entry.id}
-            active={activePluginId === entry.id}
-            label={entry.label}
-            to={getPluginSettingsEntryRoutePath(entry)}
-          >
-            <PluginIcon
-              pluginId={entry.id}
-              icon={entry.icon}
-              className="size-4 shrink-0"
-            />
-          </SectionSidebarRow>
-        ))}
-      </div>
       {canOpenNativeScreen() ? (
         <>
           <div className="mt-4">
