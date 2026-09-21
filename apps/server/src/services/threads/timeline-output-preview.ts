@@ -1,5 +1,5 @@
 import type { ThreadTimelineResponse, TimelineRow } from "@bb/server-contract";
-import { sliceUtf16HeadAndTail } from "@bb/domain/utf16";
+import { sliceUtf16HeadAndTail } from "@bb/text-utils";
 
 export const TIMELINE_INLINE_OUTPUT_PREVIEW_THRESHOLD_CHARS = 4_000;
 export const TIMELINE_INLINE_OUTPUT_PREVIEW_HEAD_CHARS = 2_000;

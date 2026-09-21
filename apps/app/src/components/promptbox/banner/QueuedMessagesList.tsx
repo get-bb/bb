@@ -803,7 +803,7 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
   const hasWaitLine = queuedMessageHasWaitLine(queuedMessage);
   const sendAllowed =
     sendAction === "steer-when-ready" ||
-    isQueuedMessageSendNowAllowed(queuedMessage.waitingOn);
+    isQueuedMessageSendNowAllowed(queuedMessage);
   const sendAriaLabel =
     sendAction === "steer-when-ready"
       ? `Steer queued message ${index + 1} when ready`

@@ -93,7 +93,7 @@ describe("GeneratedConversationMessage images", () => {
     renderChildCompleted("![report](reports/result.png)");
 
     expect(
-      screen.getByRole("img", { name: "report" }).getAttribute("data-markdown-image-src"),
+      screen.getByRole("img", { name: "report" }).getAttribute("src"),
     ).toBe(
       "/api/v1/threads/thr_parent/host-files/content?path=%2Fworkspace%2Freports%2Fresult.png",
     );

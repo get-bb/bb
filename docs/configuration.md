@@ -584,10 +584,13 @@ runs. When both files exist, `<dataDir>/AGENTS.md` is appended first and
 `<workspace>/.bb/AGENTS.md` second. An empty or whitespace-only file is treated
 as absent.
 
-No agent loads `.bb/AGENTS.md` natively, and provider-native instruction files
-(`CLAUDE.md` for Claude Code, a repo-root `AGENTS.md` for Codex) remain
-provider-specific. bb reads the files above itself and injects them, so use them
-for guidance you want every bb thread to receive regardless of provider.
+No agent loads `.bb/AGENTS.md` natively. Provider-native instruction files
+remain separate. Codex reads a repo-root `AGENTS.md`. Claude Code 2.1.277 and
+later also reads `AGENTS.md` when no project or ancestor `CLAUDE.md` or
+`CLAUDE.local.md` takes precedence. Older Claude Code versions and sessions
+without its built-in `AGENTS.md` support still require `CLAUDE.md`. bb reads
+the files above itself and injects them, so use them for guidance you want every
+bb thread to receive regardless of provider.
 
 ## Skills
 
@@ -720,8 +723,11 @@ client wrote first, so a stale window cannot silently clobber a newer value.
 | `sidebar.navigationProvider`      | Plugin key, `__automatic__`, or `__builtin__`       |
 | `sidebar.threadListProvider`      | Plugin key, `__automatic__`, or `__builtin__`       |
 
-Custom (`chronological`) is the default for `sidebar.organizationMode` when no
-value is saved. Existing server and legacy browser choices are preserved.
+New installations default to Custom (`chronological`) for `sidebar.organizationMode`.
+Migrated installations with existing projects, threads, or UI preferences fall back
+to By project (`project`). Explicit server choices take precedence over legacy
+browser choices, which take precedence over this installation fallback. Reset
+saves the installation fallback as an explicit choice.
 
 The built-in sidebar defaults to Active, including threads with saved messages.
 `sidebar.threadLifecycles` selects Active and Archived. There is no separate

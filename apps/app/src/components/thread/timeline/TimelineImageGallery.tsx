@@ -93,7 +93,7 @@ export function TimelineImageGallery({ children }: { children: ReactNode }) {
       if (isEligible(image)) {
         images.set(image, {
           key: `${identity}:${occurrence}`,
-          src: image.currentSrc || image.src || image.getAttribute("data-markdown-image-src") || "",
+          src: image.currentSrc || image.src,
           alt: image.alt,
         });
       }

@@ -1,4 +1,6 @@
 import {
+  getStoredUiPreferenceDefault,
+  listStoredUiPreferenceDefaults,
   listStoredUiPreferences,
   overwriteStoredUiPreference,
   replaceStoredUiPreference,
@@ -24,13 +26,25 @@ function parseStoredJson(text: string): unknown {
   }
 }
 
+function installationDefault<Key extends UiPreferenceKey>(
+  key: Key,
+  stored: string | undefined,
+): UiPreferenceValue<Key> {
+  if (stored !== undefined) {
+    const parsed = parseUiPreferenceValue(key, parseStoredJson(stored));
+    if (parsed.success) return parsed.value;
+  }
+  return getUiPreferenceDefault(key);
+}
+
 function toEntry<Key extends UiPreferenceKey>(
   key: Key,
   stored: StoredUiPreference | undefined,
+  defaultValue: UiPreferenceValue<Key>,
 ): UiPreferenceEntry<Key> {
   const defaultEntry: UiPreferenceEntry<Key> = {
     revision: stored?.revision ?? 0,
-    value: getUiPreferenceDefault(key),
+    value: defaultValue,
   };
   if (stored === undefined) return defaultEntry;
   const parsed = parseUiPreferenceValue(key, parseStoredJson(stored.valueJson));
@@ -40,12 +54,25 @@ function toEntry<Key extends UiPreferenceKey>(
 }
 
 export function readUiPreferences(deps: AppDeps): UiPreferenceEntries {
+  const defaults = new Map(
+    listStoredUiPreferenceDefaults(deps.db).map((row) => [
+      row.key,
+      row.valueJson,
+    ]),
+  );
   const stored = new Map<string, StoredUiPreference>();
   for (const row of listStoredUiPreferences(deps.db)) {
     if (isUiPreferenceKey(row.key)) stored.set(row.key, row);
   }
   return Object.fromEntries(
-    UI_PREFERENCE_KEYS.map((key) => [key, toEntry(key, stored.get(key))]),
+    UI_PREFERENCE_KEYS.map((key) => [
+      key,
+      toEntry(
+        key,
+        stored.get(key),
+        installationDefault(key, defaults.get(key)),
+      ),
+    ]),
   ) as UiPreferenceEntries;
 }
 
@@ -76,7 +103,10 @@ export function resetUiPreference<Key extends UiPreferenceKey>(
   deps: AppDeps,
   key: Key,
 ): UiPreferenceEntry<Key> {
-  const value = getUiPreferenceDefault(key);
+  const value = installationDefault(
+    key,
+    getStoredUiPreferenceDefault(deps.db, key),
+  );
   const { revision } = overwriteStoredUiPreference(deps.db, {
     key,
     valueJson: JSON.stringify(value),

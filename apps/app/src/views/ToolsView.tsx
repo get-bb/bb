@@ -385,21 +385,7 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
           </ConfirmDeleteDialog>
           <AddPluginDialog
             open={installTarget !== null}
-            initial={
-              installTarget === null
-                ? null
-                : {
-                    entryId: installTarget.entryId,
-                    marketplace: installTarget.marketplace,
-                    pluginId: installTarget.pluginId,
-                    publisherLabel: installTarget.publisherLabel,
-                    displayName: installTarget.displayName,
-                    icon: installTarget.icon,
-                    iconUrl: installTarget.iconUrl,
-                    iconTinted: installTarget.iconTinted,
-                    source: installTarget.source,
-                  }
-            }
+            initial={installTarget}
             onOpenChange={(open) => {
               if (!open) setInstallTarget(null);
             }}

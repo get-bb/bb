@@ -191,7 +191,7 @@ describe("BrowserTabContent persistent navigation", () => {
     },
   );
 
-  it("restores native focus to the logical pane and reports page focus", async () => {
+  it("restores a browser without taking focus and still reports explicit page focus", async () => {
     const harness = createBrowserChromeHarness();
     const onNativeFocus = vi.fn();
     renderBrowserChrome(harness, "https://example.com/docs", {
@@ -201,8 +201,9 @@ describe("BrowserTabContent persistent navigation", () => {
     });
 
     await waitFor(() =>
-      expect(harness.focus).toHaveBeenCalledWith("browser:test"),
+      expect(screen.getByLabelText("Address and search bar")).not.toBeNull(),
     );
+    expect(harness.focus).not.toHaveBeenCalled();
     act(() => harness.emitNativeFocus("browser:other"));
     expect(onNativeFocus).not.toHaveBeenCalled();
     act(() => harness.emitNativeFocus("browser:test"));

@@ -25,6 +25,7 @@ import {
   type ServerConnectionOptions,
 } from "./server-connection-support.js";
 import { isLikelySystemSuspensionDelay } from "@bb/process-utils";
+import { sliceUtf16Head } from "@bb/text-utils";
 import { normalizeCaughtError, runtimeErrorLogFields } from "./error-utils.js";
 import { ServerResponseError } from "./server-client.js";
 
@@ -119,7 +120,7 @@ function summarizeServerMessagePayload(
   const text = decodeWebSocketMessageData(data);
   return {
     payloadLength: text.length,
-    payloadPreview: text.slice(0, SERVER_MESSAGE_PAYLOAD_PREVIEW_CHARS),
+    payloadPreview: sliceUtf16Head(text, SERVER_MESSAGE_PAYLOAD_PREVIEW_CHARS),
     payloadTruncated: text.length > SERVER_MESSAGE_PAYLOAD_PREVIEW_CHARS,
   };
 }

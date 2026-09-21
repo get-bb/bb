@@ -24,6 +24,7 @@ import {
 } from "../test/command/dispatch-helpers.js";
 import type { CommandOf } from "./command-dispatch-support.js";
 import { RuntimeManager } from "./runtime-manager.js";
+import { stageInjectedSkillSources } from "./injected-skills.js";
 
 const WORKSPACE_PATH = "/tmp/bb-command-dispatch-test";
 
@@ -2284,7 +2285,7 @@ describe("dispatchCommand", () => {
     ]);
   });
 
-  it("reuses a busy runtime when thread.start carries a changed skill catalog", async () => {
+  it("injects the current skill snapshot when spawning beside an active sibling", async () => {
     const fixture = await setupBusySkillCatalogEnvironment({
       activeThreadId: "sibling-thread",
     });
@@ -2337,6 +2338,24 @@ describe("dispatchCommand", () => {
 
     expect(result.providerThreadId).toBe("provider-thread-1");
     expect(fixture.runtime.startThread).toHaveBeenCalledTimes(1);
+    const currentCatalog = await stageInjectedSkillSources({
+      dataDir: fixture.dataDir,
+      injectedSkillSources: [fixture.source],
+    });
+    expect(currentCatalog.catalogHash).not.toBe(fixture.originalCatalogHash);
+    await expect(
+      fs.readFile(
+        path.join(
+          currentCatalog.skillRoots[0]!.path,
+          "release-notes",
+          "SKILL.md",
+        ),
+        "utf8",
+      ),
+    ).resolves.toContain("second-token");
+    expect(fixture.runtime.startThread).toHaveBeenCalledWith(
+      expect.objectContaining({ skillRoots: currentCatalog.skillRoots }),
+    );
     expect(fixture.createRuntimeSpy).toHaveBeenCalledTimes(1);
     expect(fixture.runtime.shutdown).not.toHaveBeenCalled();
     expect(fixture.manager.get("env-1")?.skillCatalogHash).toBe(

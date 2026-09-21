@@ -244,14 +244,14 @@ function compareRankedMatches<T>(
   if (left.start !== right.start) {
     return left.start - right.start;
   }
+  if (left.path.length !== right.path.length) {
+    return left.path.length - right.path.length;
+  }
   if (left.path < right.path) {
     return -1;
   }
   if (left.path > right.path) {
     return 1;
-  }
-  if (left.path.length !== right.path.length) {
-    return left.path.length - right.path.length;
   }
   return 0;
 }
@@ -502,7 +502,11 @@ function getStructuredPathMatch<T>(
       )
     : null;
   if (leafMatch) {
-    score += PATH_INTENT_SCORE.leafSegment + leafMatch.score;
+    const leafQuery = querySegments[querySegments.length - 1];
+    score +=
+      PATH_INTENT_SCORE.leafSegment +
+      leafMatch.score -
+      Math.max(leafSegment.text.length - leafQuery.length, 0);
   }
 
   return {

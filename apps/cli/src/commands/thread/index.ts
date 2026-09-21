@@ -1,5 +1,4 @@
 import { registerContextCommand } from "./context.js";
-import { registerImageMetadataCommand } from "./image-metadata.js";
 import { Command } from "commander";
 import { registerActionsCommands } from "./actions.js";
 import { registerCountCommand } from "./count.js";
@@ -24,7 +23,6 @@ export function registerThreadCommands(
   registerListCommand(thread, getUrl);
   registerCountCommand(thread, getUrl);
   registerContextCommand(thread, getUrl);
-  registerImageMetadataCommand(thread, getUrl);
   registerShowCommand(thread, getUrl);
   registerOpenCommand(thread, getUrl);
   registerPaneCommand(thread, getUrl);

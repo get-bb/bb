@@ -957,15 +957,23 @@ export type QueuedThreadMessageGroupClaimPolicy =
   | {
       kind: "automatic";
       isGroupEligible: QueuedThreadMessageGroupEligibility;
+      /**
+       * True only for the retry the row's own `next_attempt_at` booked. A recorded
+       * failure hides a row from every other automatic claim — otherwise the
+       * idle drain would re-run a failing send every sweep tick — and the one
+       * claim that must see through it is the retry of that failure.
+       */
+      retryingFailure: boolean;
     }
   | { kind: "explicit-send" };
 
 function isAutomaticQueuedThreadMessageGroupClaimAllowed(
   rows: readonly QueuedThreadMessageRow[],
   pauseOrdinaryMessages: boolean,
+  retryingFailure: boolean,
 ): boolean {
   return (
-    rows.every((row) => row.failureReason === null) &&
+    (retryingFailure || rows.every((row) => row.failureReason === null)) &&
     (!pauseOrdinaryMessages ||
       rows.every((row) => !isOrdinaryTurnEndQueuedMessage(row)))
   );
@@ -997,6 +1005,7 @@ export function claimQueuedThreadMessageGroup(
           !isAutomaticQueuedThreadMessageGroupClaimAllowed(
             group,
             isThreadQueueAutoSendPaused(tx, existing.threadId),
+            policy.retryingFailure,
           )) ||
         (policy.kind === "automatic" && !policy.isGroupEligible(group))
       ) {
@@ -1049,6 +1058,7 @@ export function claimNextQueuedThreadMessageGroup(
             isAutomaticQueuedThreadMessageGroupClaimAllowed(
               rows,
               pauseOrdinaryMessages,
+              false,
             )
           );
         }) ?? null;
@@ -1301,6 +1311,8 @@ export function requeueClaimedQueuedThreadMessages(
             waitHolder: waitHolderFor(args.waitingOn),
             sendAt: args.sendAt,
             failureReason: null,
+            failureCount: 0,
+            nextAttemptAt: null,
             updatedAt: now,
           })
           .where(
@@ -1321,8 +1333,12 @@ export function requeueClaimedQueuedThreadMessages(
             // A re-queue is a fresh, successful statement of why this row is
             // waiting, which supersedes whatever the previous attempt failed
             // with. Leaving a stale failure next to a current wait would show
-            // the user two contradictory explanations of the same row.
+            // the user two contradictory explanations of the same row, and
+            // would spend the row's remaining attempts against a failure it
+            // has since got past.
             failureReason: null,
+            failureCount: 0,
+            nextAttemptAt: null,
             updatedAt: now,
           })
           .where(
@@ -1674,8 +1690,11 @@ export function setQueuedThreadMessageWaitingOn(
         // successful statement of why this row is waiting supersedes whatever
         // a previous attempt failed with. Leaving a stale failure beside a
         // current wait would show the reader two contradictory explanations of
-        // one row.
+        // one row, and would spend the row's remaining attempts against a
+        // failure it has since got past.
         failureReason: null,
+        failureCount: 0,
+        nextAttemptAt: null,
         updatedAt: Date.now(),
       })
       .where(
@@ -1698,6 +1717,14 @@ export interface SetQueuedThreadMessageFailureReasonArgs {
   id: string;
   threadId: string;
   failureReason: string;
+  now: number;
+  /**
+   * How long to wait before each further automatic attempt, indexed by the
+   * failures already recorded. Running off the end is what makes a failure
+   * terminal, so the caller decides how many attempts a row gets and how far
+   * apart — the policy is the server's, the counting is this row's.
+   */
+  retryDelaysMs: readonly number[];
 }
 
 /**
@@ -1708,33 +1735,98 @@ export interface SetQueuedThreadMessageFailureReasonArgs {
  * is still waiting on whatever it was waiting on, and the failure is a separate
  * fact about the last attempt rather than a new reason to wait. A later
  * successful re-queue clears it (see `requeueClaimedQueuedThreadMessages`).
+ *
+ * Recording a failure also spends one of the row's attempts and books the next
+ * one. What failed a dispatch is usually a condition with an end — a provider
+ * whose plugin is still loading, a workspace mid-rebuild — so the row is owed
+ * another try before anybody is asked to look at it. It is terminal only once
+ * `retryDelaysMs` runs out, which is the state `next_attempt_at` NULL records.
  */
 export function setQueuedThreadMessageFailureReason(
   db: DbConnection,
   notifier: DbNotifier,
   args: SetQueuedThreadMessageFailureReasonArgs,
 ): QueuedThreadMessageRow | null {
-  const updated =
-    db
-      .update(queuedThreadMessages)
-      .set({
-        failureReason: args.failureReason,
-        updatedAt: Date.now(),
-      })
-      .where(
-        and(
-          eq(queuedThreadMessages.id, args.id),
-          eq(queuedThreadMessages.threadId, args.threadId),
-          liveQueuedThreadMessage(),
-        ),
-      )
-      .returning()
-      .get() ?? null;
+  const updated = db.transaction(
+    (tx): QueuedThreadMessageRow | null => {
+      const existing = getQueuedThreadMessage(tx, args.id);
+      if (
+        !existing ||
+        existing.threadId !== args.threadId ||
+        isQueuedThreadMessageClaimed(existing)
+      ) {
+        return null;
+      }
+      const failureCount = existing.failureCount + 1;
+      const delayMs = args.retryDelaysMs[failureCount - 1];
+      return (
+        tx
+          .update(queuedThreadMessages)
+          .set({
+            failureReason: args.failureReason,
+            failureCount,
+            nextAttemptAt: delayMs === undefined ? null : args.now + delayMs,
+            updatedAt: args.now,
+          })
+          .where(
+            and(
+              eq(queuedThreadMessages.id, args.id),
+              eq(queuedThreadMessages.threadId, args.threadId),
+              liveQueuedThreadMessage(),
+            ),
+          )
+          .returning()
+          .get() ?? null
+      );
+    },
+    { behavior: "immediate" },
+  );
 
   if (updated) {
     notifier.notifyThread(args.threadId, ["queue-changed"]);
   }
   return updated;
+}
+
+/**
+ * Every live row whose booked retry has come due, oldest first.
+ *
+ * Deliberately not filtered by wait: the retry is not the wait's wake firing
+ * again, it is core re-asking the whole question from scratch, which is the
+ * only thing that can move a row whose wait went stale while it sat failed
+ * (a `host-offline` row whose host came back during the failure, say). Rows
+ * on archived or deleted threads are excluded for the same reason the due
+ * sweep excludes them: nobody is waiting for those to send.
+ */
+export function listRetryableFailedQueuedThreadMessages(
+  db: DbQueryConnection,
+  now: number,
+): QueuedThreadMessageRow[] {
+  return db
+    .select()
+    .from(queuedThreadMessages)
+    .where(
+      and(
+        isNotNull(queuedThreadMessages.failureReason),
+        isNotNull(queuedThreadMessages.nextAttemptAt),
+        lte(queuedThreadMessages.nextAttemptAt, now),
+        liveQueuedThreadMessage(),
+        exists(
+          db
+            .select({ live: sql`1` })
+            .from(threads)
+            .where(
+              and(
+                eq(threads.id, queuedThreadMessages.threadId),
+                isNull(threads.archivedAt),
+                isNull(threads.deletedAt),
+              ),
+            ),
+        ),
+      ),
+    )
+    .orderBy(asc(queuedThreadMessages.nextAttemptAt), asc(queuedThreadMessages.id))
+    .all();
 }
 
 /**

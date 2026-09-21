@@ -15,16 +15,11 @@ const mocks = vi.hoisted(() => ({
   clearLastNotificationResponse: vi.fn(),
   getLastNotificationResponse: vi.fn(() => null),
   push: vi.fn(),
-  receivedListener: vi.fn(),
   responseListener: vi.fn<(response: NotificationResponse) => void>(),
   setNotificationHandler: vi.fn(),
 }));
 
 vi.mock("expo-notifications", () => ({
-  addNotificationReceivedListener: vi.fn((listener) => {
-    mocks.receivedListener.mockImplementation(listener);
-    return { remove: vi.fn() };
-  }),
   addNotificationResponseReceivedListener: vi.fn((listener) => {
     mocks.responseListener.mockImplementation(listener);
     return { remove: vi.fn() };
@@ -112,6 +107,18 @@ describe("PushNotificationsHost", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     PushNotificationsHost();
+  });
+
+  it("keeps foreground pushes silent while retaining them in the notification list", async () => {
+    const handler = mocks.setNotificationHandler.mock.calls[0]?.[0];
+
+    expect(handler).toBeDefined();
+    await expect(handler.handleNotification()).resolves.toEqual({
+      shouldShowBanner: false,
+      shouldShowList: true,
+      shouldPlaySound: false,
+      shouldSetBadge: false,
+    });
   });
 
   it("opens a project thread from a push response with its project route", async () => {

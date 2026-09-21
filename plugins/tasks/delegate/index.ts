@@ -21,9 +21,10 @@ import {
   type ThreadsChangedEvent,
 } from "../shared/contract";
 import { errorMessage } from "../shared/errors";
+import { truncateToWidth } from "../shared/text-measure";
 import { delegationRpcContract } from "./contract";
 
-const MAX_DELEGATED_THREAD_TITLE_LENGTH = 120;
+const MAX_DELEGATED_THREAD_TITLE_WIDTH = 120;
 const SYSTEM_AUTHOR_NAME = "Tasks";
 const MANUAL_PRESET_NAME = "Attached";
 
@@ -131,9 +132,9 @@ export function buildSeedPrompt(input: SeedPromptInput): string {
 }
 
 function delegatedThreadTitle(task: Task): string {
-  return `${task.key} · ${task.title}`.slice(
-    0,
-    MAX_DELEGATED_THREAD_TITLE_LENGTH,
+  return truncateToWidth(
+    `${task.key} · ${task.title}`,
+    MAX_DELEGATED_THREAD_TITLE_WIDTH,
   );
 }
 
@@ -395,11 +396,10 @@ export function handlers(
     async taskThreadsAttach(input) {
       const task = requireTask(store.tasks, input.taskId);
       const thread = await bb.sdk.threads.get({ threadId: input.threadId });
-      const title = (
-        thread.title ??
-        thread.titleFallback ??
-        delegatedThreadTitle(task)
-      ).slice(0, MAX_DELEGATED_THREAD_TITLE_LENGTH);
+      const title = truncateToWidth(
+        thread.title ?? thread.titleFallback ?? delegatedThreadTitle(task),
+        MAX_DELEGATED_THREAD_TITLE_WIDTH,
+      );
 
       store.tasks.upsertTaskThread({
         taskId: task.id,

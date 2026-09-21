@@ -145,6 +145,51 @@ function renderDialog(
 }
 
 describe("AddPluginDialog", () => {
+  it.each([503, 403])(
+    "offers source Retry only for a recoverable HTTP %s failure",
+    async (status) => {
+      let attempts = 0;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: string) => {
+          if (url.startsWith("/api/v1/plugin-catalog/install-plan")) {
+            attempts += 1;
+            return attempts === 1
+              ? jsonResponse({ error: "Source unavailable" }, status)
+              : jsonResponse({ plan: installPlanFor(url) });
+          }
+          return jsonResponse({ error: "Not found" }, 404);
+        }),
+      );
+      renderDialog({
+        entryId: "notes",
+        pluginId: "notes",
+        marketplace: "acme-plugins",
+        publisherLabel: "Acme Plugins",
+        displayName: "Acme Notes",
+        icon: null,
+        iconUrl: null,
+        iconTinted: false,
+        source: "git:https://github.com/acme/plugins.git",
+      });
+      await screen.findByRole("alert");
+      const install = screen.getByRole("button", {
+        name: "Install Acme Notes",
+      }) as HTMLButtonElement;
+      expect(install.disabled).toBe(true);
+      if (status === 503) {
+        fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+        await vi.waitFor(() => expect(install.disabled).toBe(false));
+        expect(attempts).toBe(2);
+      } else {
+        expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+        expect(screen.getByRole("alert").textContent).toContain(
+          "Check repository permissions",
+        );
+      }
+    },
+  );
+
   it("leads with and submits a pasted GitHub repository URL", async () => {
     const requests = stubFetch();
     renderDialog();

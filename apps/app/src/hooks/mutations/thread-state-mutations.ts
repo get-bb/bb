@@ -57,6 +57,7 @@ interface MoveThreadToSectionRequest {
 interface UpdateThreadMutationOptions {
   errorMessage?: string | undefined;
   lifecycleOperation?: LifecycleErrorOperation | undefined;
+  showErrorToast?: boolean;
 }
 
 interface ArchiveThreadAndChildrenMutationRequest {
@@ -84,6 +85,7 @@ export function useUpdateThread(options?: UpdateThreadMutationOptions) {
   >({
     meta: {
       errorMessage: options?.errorMessage ?? "Failed to update thread.",
+      showErrorToast: options?.showErrorToast ?? true,
       ...(options?.lifecycleOperation
         ? { lifecycleOperation: options.lifecycleOperation }
         : {}),

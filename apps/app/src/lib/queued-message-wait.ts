@@ -22,9 +22,14 @@ export function formatQueuedMessageCountdown(
   return `in ${Math.floor(remainingMs / DAY_MS)}d`;
 }
 
-export function isQueuedMessageSendNowAllowed(
-  waitingOn: QueuedMessageWaitingOn | null,
-): boolean {
+export function isQueuedMessageSendNowAllowed({
+  waitingOn,
+  failureReason,
+}: {
+  waitingOn: QueuedMessageWaitingOn | null;
+  failureReason: string | null;
+}): boolean {
+  if (failureReason !== null) return true;
   if (waitingOn === null) return true;
   switch (waitingOn.kind) {
     case "provisioning":

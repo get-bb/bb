@@ -36,6 +36,7 @@
     "@bb/process-utils": "workspace:*",
     "@bb/provider-bridge-protocol": "workspace:*",
     "@bb/server-archive": "workspace:*",
+    "@bb/text-utils": "workspace:*",
     "@bb/tunnel-client": "workspace:*",
     "@bb/tunnel-contract": "workspace:*",
     "@hono/node-server": "^1.19.11",

@@ -138,12 +138,12 @@ describe("Markdown file preview image routing", () => {
       />,
     );
     for (const name of ["relative", "absolute"]) {
-      expect(screen.getByRole("img", { name }).getAttribute("data-markdown-image-src")).toBe(
+      expect(screen.getByRole("img", { name }).getAttribute("src")).toBe(
         "/api/v1/file-previews/lease_skill/assets/chart.png",
       );
     }
     expect(
-      screen.getByRole("img", { name: "escape" }).getAttribute("data-markdown-image-src"),
+      screen.getByRole("img", { name: "escape" }).getAttribute("src"),
     ).toBe("../../outside.png");
   });
 
@@ -159,12 +159,12 @@ describe("Markdown file preview image routing", () => {
     });
 
     expect(
-      screen.getByRole("img", { name: "absolute" }).getAttribute("data-markdown-image-src"),
+      screen.getByRole("img", { name: "absolute" }).getAttribute("src"),
     ).toBe(
       "/api/v1/threads/thr_preview/host-files/content?path=%2FUsers%2Fme%2F.bb%2Fthread-storage%2Fthr_preview%2Fgenerated.png",
     );
     expect(
-      screen.getByRole("img", { name: "relative" }).getAttribute("data-markdown-image-src"),
+      screen.getByRole("img", { name: "relative" }).getAttribute("src"),
     ).toBe(
       "/api/v1/threads/thr_preview/thread-storage/files/reports/nested/screenshots/chart.png",
     );
@@ -182,12 +182,12 @@ describe("Markdown file preview image routing", () => {
     });
 
     expect(
-      screen.getByRole("img", { name: "absolute" }).getAttribute("data-markdown-image-src"),
+      screen.getByRole("img", { name: "absolute" }).getAttribute("src"),
     ).toBe(
       "/api/v1/threads/thr_preview/host-files/content?path=%2FUsers%2Fme%2Fproject%2Fgenerated.png",
     );
     expect(
-      screen.getByRole("img", { name: "relative" }).getAttribute("data-markdown-image-src"),
+      screen.getByRole("img", { name: "relative" }).getAttribute("src"),
     ).toBe("/api/v1/threads/thr_preview/worktree/files/docs/assets/chart.png");
   });
 
@@ -200,7 +200,7 @@ describe("Markdown file preview image routing", () => {
     });
 
     expect(
-      screen.getByRole("img", { name: "escape" }).getAttribute("data-markdown-image-src"),
+      screen.getByRole("img", { name: "escape" }).getAttribute("src"),
     ).toBe("../../outside.png");
   });
 });

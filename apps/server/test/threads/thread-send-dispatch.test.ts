@@ -163,8 +163,9 @@ describe("queued message dispatch hook", () => {
             kind: "automatic",
             isGroupEligible: createAutomaticQueuedMessageGroupEligibility(
               harness.deps,
-              { now: Date.now(), thread },
+              { now: Date.now(), retryingFailure: false, thread },
             ),
+            retryingFailure: false,
           },
           threadId: thread.id,
           queuedMessageId: queued.id,
@@ -206,8 +207,9 @@ describe("queued message dispatch hook", () => {
             kind: "automatic",
             isGroupEligible: createAutomaticQueuedMessageGroupEligibility(
               harness.deps,
-              { now: Date.now(), thread },
+              { now: Date.now(), retryingFailure: false, thread },
             ),
+            retryingFailure: false,
           },
           threadId: thread.id,
           queuedMessageId: queued.id,
@@ -245,8 +247,9 @@ describe("queued message auto-send notification", () => {
           kind: "automatic",
           isGroupEligible: createAutomaticQueuedMessageGroupEligibility(
             harness.deps,
-            { now: Date.now(), thread },
+            { now: Date.now(), retryingFailure: false, thread },
           ),
+          retryingFailure: false,
         },
         threadId: thread.id,
         queuedMessageId: queued.id,
@@ -620,6 +623,8 @@ describe("startup queue waits", () => {
         id: failed.id,
         threadId: thread.id,
         failureReason: "Terminal failure",
+        now: Date.now(),
+        retryDelaysMs: [],
       });
       setQueuedThreadMessageGroupBoundary({
         db: harness.db,
@@ -1385,8 +1390,9 @@ describe("service tier execution lifecycle", () => {
           kind: "automatic",
           isGroupEligible: createAutomaticQueuedMessageGroupEligibility(
             harness.deps,
-            { now: Date.now(), thread },
+            { now: Date.now(), retryingFailure: false, thread },
           ),
+          retryingFailure: false,
         },
         threadId: thread.id,
         queuedMessageId: older.id,

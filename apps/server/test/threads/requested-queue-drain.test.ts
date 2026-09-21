@@ -534,6 +534,8 @@ describe("the requested queue drain", () => {
           id: failed.id,
           threadId: thread.id,
           failureReason: "Terminal failure",
+          now: Date.now(),
+          retryDelaysMs: [],
         });
 
         if (drain === "scheduled") await runTimeWake(harness, Date.now());

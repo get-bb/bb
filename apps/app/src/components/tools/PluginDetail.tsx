@@ -6,7 +6,6 @@ import {
   ResourceDetailPage,
   ResourceDetailReleaseSection,
   ResourceDetailStack,
-  ResourceInstallControl,
   ResourceListState,
   ResourceOverflowMenu,
   type ResourceOverflowMenuItem,
@@ -22,7 +21,6 @@ import { formatHomePathForDisplay } from "@bb/shared-ui/lib/utils";
 import { Icon } from "@bb/shared-ui/icon";
 import { Link } from "react-router-dom";
 import { getPluginConfigurationRoutePath } from "@/lib/route-paths";
-import { CheckPluginUpdatesButton } from "@/components/plugin/management/CheckPluginUpdatesButton";
 import {
   PluginDetailReleaseControl,
   PluginDetailReleaseStatus,
@@ -41,6 +39,7 @@ import {
   PluginOverviewLead,
 } from "@/components/plugin/management/PluginMarketplaceListing";
 import { pluginRuntimeStatusPresentation } from "@/components/plugin/management/plugin-status";
+import { PluginCatalogInstallControl } from "@/components/plugin/management/PluginCatalogInstallControl";
 import {
   PluginHealthBanner,
   PluginIncludes,
@@ -54,6 +53,7 @@ import {
 import { PluginBannerBar } from "@/components/tools/plugin-detail-banner";
 import {
   usePluginSource,
+  usePluginUpdateCheck,
   type PluginCatalogSearchEntry,
 } from "@/hooks/queries/plugin-catalog-queries";
 import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
@@ -132,11 +132,13 @@ export function CatalogPluginDetail({
       titleMeta={<PluginMarketplaceCategoryPill entry={entry} />}
       metadata={<PluginCardAuthor entry={entry} />}
       actions={
-        <ResourceInstallControl
-          accessibleLabel={`Install ${entry.displayName}`}
+        <PluginCatalogInstallControl
+          displayName={entry.displayName}
+          installed={false}
+          showLabel
           disabled={!entry.compatible}
           count={count}
-          onAction={() => onInstall(entry)}
+          onInstall={() => onInstall(entry)}
         />
       }
     >
@@ -237,6 +239,9 @@ export function PluginDetail({
 }) {
   const { settingsSections } = usePluginSlots();
   const sourceQuery = usePluginSource(plugin?.id ?? "", {
+    enabled: plugin !== null && pluginHasUpdateSurfaces(plugin),
+  });
+  usePluginUpdateCheck(plugin?.id ?? null, {
     enabled: plugin !== null && pluginHasUpdateSurfaces(plugin),
   });
   if (isLoading) {
@@ -404,11 +409,6 @@ export function PluginDetail({
           actions={
             hasReleaseControl ? (
               <PluginDetailReleaseControl plugin={plugin} />
-            ) : hasUpdateManagement ? (
-              <CheckPluginUpdatesButton
-                pluginId={plugin.id}
-                appearance="inline"
-              />
             ) : undefined
           }
         >
