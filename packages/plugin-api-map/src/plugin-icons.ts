@@ -1,73 +1,95 @@
 import ArrowDataTransferHorizontalIcon from "@hugeicons/core-free-icons/ArrowDataTransferHorizontalIcon";
-import ArrowReloadHorizontalIcon from "@hugeicons/core-free-icons/ArrowReloadHorizontalIcon";
-import BellDotIcon from "@hugeicons/core-free-icons/BellDotIcon";
-import BrainIcon from "@hugeicons/core-free-icons/BrainIcon";
-import BrowserIcon from "@hugeicons/core-free-icons/BrowserIcon";
-import CheckListIcon from "@hugeicons/core-free-icons/CheckListIcon";
-import Calendar03Icon from "@hugeicons/core-free-icons/Calendar03Icon";
-import ChartColumnIcon from "@hugeicons/core-free-icons/ChartColumnIcon";
 import Clock01Icon from "@hugeicons/core-free-icons/Clock01Icon";
-import Coffee01Icon from "@hugeicons/core-free-icons/Coffee01Icon";
 import ComputerIcon from "@hugeicons/core-free-icons/ComputerIcon";
 import DatabaseIcon from "@hugeicons/core-free-icons/DatabaseIcon";
-import Edit04Icon from "@hugeicons/core-free-icons/Edit04Icon";
-import File01Icon from "@hugeicons/core-free-icons/File01Icon";
-import GithubIcon from "@hugeicons/core-free-icons/GithubIcon";
 import Layers01Icon from "@hugeicons/core-free-icons/Layers01Icon";
-import LockIcon from "@hugeicons/core-free-icons/LockIcon";
-import MessageAdd02Icon from "@hugeicons/core-free-icons/MessageAdd02Icon";
-import MessageQuestionIcon from "@hugeicons/core-free-icons/MessageQuestionIcon";
-import RepeatIcon from "@hugeicons/core-free-icons/RepeatIcon";
-import SmartPhone01Icon from "@hugeicons/core-free-icons/SmartPhone01Icon";
 import SourceCodeIcon from "@hugeicons/core-free-icons/SourceCodeIcon";
 import SparklesIcon from "@hugeicons/core-free-icons/SparklesIcon";
-import TerminalIcon from "@hugeicons/core-free-icons/TerminalIcon";
+import ComputerTerminal01Icon from "@hugeicons/core-free-icons/ComputerTerminal01Icon";
 import TestTubeIcon from "@hugeicons/core-free-icons/TestTubeIcon";
-import WorkflowCircle03Icon from "@hugeicons/core-free-icons/WorkflowCircle03Icon";
 import Activity03Icon from "@hugeicons/core-free-icons/Activity03Icon";
 import type { IconSvgElement } from "@hugeicons/react";
+import type { IconName } from "@bb/shared-ui/icon";
+import accountPoolManifest from "../../../plugins/account-pool/package.json";
+import askUserQuestionManifest from "../../../plugins/ask-user-question/package.json";
+import automationsManifest from "../../../plugins/automations/package.json";
+import browserAutomationManifest from "../../../plugins/browser-automation/package.json";
+import concurrencyLimitManifest from "../../../plugins/concurrency-limit/package.json";
+import customInstructionsManifest from "../../../plugins/custom-instructions/package.json";
+import docsManifest from "../../../plugins/docs/package.json";
+import draftsManifest from "../../../plugins/drafts/package.json";
+import monacoEditorManifest from "../../../plugins/monaco-editor/package.json";
+import githubManifest from "../../../plugins/github/package.json";
+import inlineVisManifest from "../../../plugins/inline-vis/package.json";
+import keepAwakeManifest from "../../../plugins/keep-awake/package.json";
+import memoryManifest from "../../../plugins/memory/package.json";
+import environmentModalSandboxManifest from "../../../plugins/environment-modal-sandbox/package.json";
+import environmentPersonalWorkspaceManifest from "../../../plugins/environment-personal-workspace/package.json";
+import environmentProjectCheckoutManifest from "../../../plugins/environment-project-checkout/package.json";
+import providerUsageManifest from "../../../plugins/provider-usage/package.json";
+import providerRetryManifest from "../../../plugins/provider-retry/package.json";
+import pushNotificationsManifest from "../../../plugins/push-notifications/package.json";
+import connectManifest from "../../../plugins/connect/package.json";
+import secretsManifest from "../../../plugins/secrets/package.json";
+import scheduledSendManifest from "../../../plugins/scheduled-send/package.json";
+import sideChatManifest from "../../../plugins/side-chat/package.json";
+import tasksManifest from "../../../plugins/tasks/package.json";
+import workflowsManifest from "../../../plugins/workflows/package.json";
+import environmentGitWorktreeManifest from "../../../plugins/environment-git-worktree/package.json";
+import providerAcpManifest from "../../../plugins/provider-acp/package.json";
+import providerClaudeCodeManifest from "../../../plugins/provider-claude-code/package.json";
+import providerCodexManifest from "../../../plugins/provider-codex/package.json";
+import providerPiManifest from "../../../plugins/provider-pi/package.json";
 
-interface FirstPartyPlugin {
-  id: string;
-  icon: IconSvgElement;
-}
+const FIRST_PARTY_PLUGINS = [
+  accountPoolManifest,
+  askUserQuestionManifest,
+  automationsManifest,
+  browserAutomationManifest,
+  concurrencyLimitManifest,
+  customInstructionsManifest,
+  docsManifest,
+  draftsManifest,
+  monacoEditorManifest,
+  githubManifest,
+  inlineVisManifest,
+  keepAwakeManifest,
+  memoryManifest,
+  environmentModalSandboxManifest,
+  environmentPersonalWorkspaceManifest,
+  environmentProjectCheckoutManifest,
+  providerUsageManifest,
+  providerRetryManifest,
+  pushNotificationsManifest,
+  connectManifest,
+  secretsManifest,
+  scheduledSendManifest,
+  sideChatManifest,
+  tasksManifest,
+  workflowsManifest,
+  environmentGitWorktreeManifest,
+  providerAcpManifest,
+  providerClaudeCodeManifest,
+  providerCodexManifest,
+  providerPiManifest,
+];
 
-const FIRST_PARTY_PLUGINS: Record<string, FirstPartyPlugin> = {
-  "Account Pooler [Experimental]": { id: "account-pool", icon: Layers01Icon },
-  "Ask User Question": { id: "ask-user-question", icon: MessageQuestionIcon },
-  Automations: { id: "automations", icon: RepeatIcon },
-  "Custom instructions": { id: "custom-instructions", icon: Edit04Icon },
-  Docs: { id: "simple-notes", icon: File01Icon },
-  Drafts: { id: "drafts", icon: Edit04Icon },
-  GitHub: { id: "github", icon: GithubIcon },
-  "Inline visualizations": { id: "inline-vis", icon: BrowserIcon },
-  "Keep Awake": { id: "keep-awake", icon: Coffee01Icon },
-  Memory: { id: "memory", icon: BrainIcon },
-  "Provider retry": { id: "provider-retry", icon: ArrowReloadHorizontalIcon },
-  "Provider usage": { id: "provider-usage", icon: ChartColumnIcon },
-  "Push notifications": { id: "push-notifications", icon: BellDotIcon },
-  "Remote access": { id: "connect", icon: SmartPhone01Icon },
-  Secrets: { id: "secrets", icon: LockIcon },
-  "Send later": { id: "scheduled-send", icon: Calendar03Icon },
-  "Side chat": { id: "side-chat", icon: MessageAdd02Icon },
-  Tasks: { id: "tasks", icon: CheckListIcon },
-  Workflows: { id: "workflows", icon: WorkflowCircle03Icon },
-  "ACP providers": { id: "provider-acp", icon: SparklesIcon },
-  "Claude Code provider": { id: "provider-claude-code", icon: SparklesIcon },
-  "Codex provider": { id: "provider-codex", icon: SparklesIcon },
-  "Pi provider": { id: "provider-pi", icon: SparklesIcon },
-};
-
-export function pluginIcon(displayName: string): IconSvgElement | null {
-  return FIRST_PARTY_PLUGINS[displayName]?.icon ?? null;
+export function pluginIcon(displayName: string): IconName | null {
+  const icon = FIRST_PARTY_PLUGINS.find(
+    (plugin) => plugin.bb.name === displayName,
+  )?.bb.branding.icon;
+  return icon && !icon.startsWith("./") ? icon : null;
 }
 
 export function firstPartyPluginId(displayName: string): string | null {
-  return FIRST_PARTY_PLUGINS[displayName]?.id ?? null;
+  const plugin = FIRST_PARTY_PLUGINS.find(
+    (plugin) => plugin.bb.name === displayName,
+  );
+  return plugin?.name.replace(/^bb-plugin-/, "") ?? null;
 }
 
 const SURFACE_ICONS: Record<string, IconSvgElement> = {
-  cli: TerminalIcon,
+  cli: ComputerTerminal01Icon,
   "agent-tools": SparklesIcon,
   background: Clock01Icon,
   wire: ArrowDataTransferHorizontalIcon,
