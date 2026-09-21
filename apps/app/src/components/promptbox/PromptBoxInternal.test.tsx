@@ -1617,15 +1617,13 @@ describe("PromptBoxInternal submit shortcuts", () => {
             .getByRole("button", { name: "Submit (Enter)" })
             .hasAttribute("disabled"),
         ).toBe(true);
-        if (!isTouch) {
-          expect(
-            screen
-              .getByRole("button", { name: "Send options" })
-              .hasAttribute("disabled"),
-          ).toBe(true);
+        expect(
+          screen.queryByRole("button", { name: "Send options" }),
+        ).toBeNull();
+        if (isTouch) {
+          openMenu();
+          expect(screen.queryByRole("menuitem")).toBeNull();
         }
-        openMenu();
-        expect(screen.queryByRole("menuitem")).toBeNull();
 
         rerender(renderComposer("Follow up", true));
         openMenu();
