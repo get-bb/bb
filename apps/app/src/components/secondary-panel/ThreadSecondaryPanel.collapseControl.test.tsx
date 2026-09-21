@@ -31,6 +31,7 @@ import {
 
 afterEach(() => {
   cleanup();
+  vi.unstubAllGlobals();
   window.localStorage.clear();
 });
 
@@ -1042,6 +1043,7 @@ function NextPanelTabButton() {
 }
 
 it("focuses New tab without opening it and resumes cycling from the button", async () => {
+  vi.stubGlobal("CSS", { escape: (value: string) => value });
   const { wrapper: Wrapper } = createQueryClientTestHarness();
   const onOpenNewTab = vi.fn();
   render(
