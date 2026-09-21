@@ -221,7 +221,8 @@ describe("ProjectRow interactions", () => {
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).not.toBe(0);
     expect(
-      (threadLink?.parentElement as HTMLElement | null)?.style.paddingLeft,
+      threadLink?.closest<HTMLElement>(".bb-sidebar-hover-actions-row")?.style
+        .paddingLeft,
     ).toBe("8px");
     expect(projectGroup?.getAttribute("data-sidebar-project-id")).toBe(
       "proj_test",
