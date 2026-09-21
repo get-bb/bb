@@ -72,6 +72,21 @@ function build(
 }
 
 describe("buildPaletteThreadSearchRows", () => {
+  it("orders archived recents by archive time instead of last update", () => {
+    const result = build({
+      query: "",
+      lifecycles: ["archived"],
+      recentThreads: [
+        makeThread("updated-latest", { archivedAt: 1, updatedAt: NOW }),
+        makeThread("archived-latest", { archivedAt: 2, updatedAt: 1 }),
+      ],
+    });
+    expect(result.rows.map((row) => row.threadId)).toEqual([
+      "archived-latest",
+      "updated-latest",
+    ]);
+  });
+
   it("keeps saved-message threads in Active recents", () => {
     const saved = makeThread("saved", { status: "pending", updatedAt: NOW });
     const archived = makeThread("archived", { archivedAt: 1, updatedAt: 2 });

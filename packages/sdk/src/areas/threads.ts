@@ -84,7 +84,6 @@ export const DEFAULT_THREAD_WAIT_TIMEOUT_MS = 20 * 60 * 1000;
 export const DEFAULT_THREAD_WAIT_POLL_INTERVAL_MS = 250;
 
 export interface ThreadListArgs {
-  sort?: ThreadListQuery["sort"];
   archived?: boolean;
   environmentId?: string;
   sectionId?: string;
@@ -628,7 +627,6 @@ export interface ThreadsArea {
 
 function listQuery(args: ThreadListArgs | undefined): ThreadListQuery {
   return {
-    ...(args?.sort ? { sort: args.sort } : {}),
     ...(args?.projectId ? { projectId: args.projectId } : {}),
     ...(args?.environmentId ? { environmentId: args.environmentId } : {}),
     ...(args?.parentThreadId ? { parentThreadId: args.parentThreadId } : {}),

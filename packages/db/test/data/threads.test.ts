@@ -66,45 +66,6 @@ function mustCreateThreadSection(
 }
 
 describe("threads", () => {
-  it("orders recents before pagination while preserving default archive order", () => {
-    const { db, host, project } = setup();
-    const { project: otherProject } = createProject(db, noopNotifier, {
-      name: "other-project",
-      source: { type: "local_path", hostId: host.id, path: "/tmp/other" },
-    });
-    const older = createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-    });
-    const newer = createThread(db, noopNotifier, {
-      projectId: otherProject.id,
-      providerId: "codex",
-    });
-    db.update(threads)
-      .set({ updatedAt: 100, archivedAt: 400 })
-      .where(eq(threads.id, older.id))
-      .run();
-    db.update(threads)
-      .set({ updatedAt: 200, archivedAt: 300 })
-      .where(eq(threads.id, newer.id))
-      .run();
-    expect(
-      listThreadsWithPendingInteractionState(db, { archived: true, limit: 1 })
-        .map((thread) => thread.id),
-    ).toEqual([older.id]);
-    expect(
-      listThreadsWithPendingInteractionState(db, {
-        archived: true, sort: "updated", limit: 1,
-      }).map((thread) => thread.id),
-    ).toEqual([newer.id]);
-    expect(
-      listThreadsWithPendingInteractionState(db, {
-        archived: true, sort: "updated", limit: 1, offset: 1,
-      }).map((thread) => thread.id),
-    ).toEqual([older.id]);
-    db.$client.close();
-  });
-
   it("summarizes favicon attention for active sidebar threads", () => {
     vi.useFakeTimers();
     try {

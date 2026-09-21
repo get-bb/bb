@@ -12,7 +12,6 @@ export function usePaletteRecentArchivedThreads({ enabled }: { enabled: boolean 
   useThreadListRealtimeSubscription({ enabled });
   const filters = {
     archived: true,
-    sort: "updated" as const,
     limit: THREAD_SEARCH_LIMIT_PER_GROUP,
   };
   return useQuery<ThreadListResponse>({

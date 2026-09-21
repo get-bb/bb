@@ -1,4 +1,4 @@
-import { Command, Option } from "commander";
+import { Command } from "commander";
 import { PERSONAL_PROJECT_ID, type Thread } from "@bb/domain";
 import { action } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
@@ -11,7 +11,6 @@ import {
 import { outputJson } from "../helpers.js";
 
 interface ThreadListCommandOptions {
-  sort?: "updated";
   environment?: string;
   project?: string;
   parentThread?: string;
@@ -35,7 +34,6 @@ export function registerListCommand(
     .option("--section <id>", "Filter by thread section ID")
     .option("--unsectioned", "Show only threads outside sections")
     .option("--archived", "Show only archived threads")
-    .addOption(new Option("--sort <order>", "Order by last update").choices(["updated"]))
     .option("--include-hidden", "Include hidden threads")
     .option("--json", "Print machine-readable JSON output")
     .action(
@@ -61,7 +59,6 @@ export function registerListCommand(
           value: opts.section,
         });
         const threads = await sdk.threads.list({
-          ...(opts.sort ? { sort: opts.sort } : {}),
           ...(projectId ? { projectId } : {}),
           ...(environmentId ? { environmentId } : {}),
           ...(parentThreadId ? { parentThreadId } : {}),

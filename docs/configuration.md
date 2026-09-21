@@ -741,7 +741,8 @@ Plugin sidebar replacements own their rendering.
 `palette.threadLifecycles` independently selects Active and Archived before
 and after typing. Active includes threads with saved messages. Search threads
 matches saved message content, including follow-ups, and opens the owning thread.
-Archived loads a bounded recent list only while selected. Search uses the existing
+Archived loads a bounded list in most-recently-archived order only while selected.
+Search uses the existing
 ranked Active/Archived response and displays the selected groups, with six initial
 rows in one group or three each when both are nonempty, plus Show more.
 `bb settings ui set palette.threadLifecycles '["active","archived"]'` includes

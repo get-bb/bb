@@ -1,9 +1,5 @@
 # Thread coordination and inspection
 
-`bb thread list --archived --sort updated` lists recent archived threads by
-last update. The SDK equivalent is `threads.list({ archived: true, sort: "updated" })`.
-Without `sort`, existing project/archive ordering is preserved.
-
 ## Coordinating Work
 
 - Use one clear owner per task.

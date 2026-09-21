@@ -1285,25 +1285,6 @@ describe("@bb/sdk", () => {
     });
   });
 
-  it("opts into updated ordering without changing the default list request", async () => {
-    const queue = createFetchQueue([{ body: [] }, { body: [] }]);
-    const sdk = createBbSdk({
-      transport: createHttpTransport({
-        baseUrl: "http://bb.test",
-        fetch: queue.fetch,
-        runtime: "node",
-      }),
-    });
-    await sdk.threads.list({ archived: true, limit: 20 });
-    await sdk.threads.list({ archived: true, sort: "updated", limit: 20 });
-    expect(queue.requests[0]?.url).toBe(
-      "http://bb.test/api/v1/threads?archived=true&limit=20",
-    );
-    expect(queue.requests[1]?.url).toBe(
-      "http://bb.test/api/v1/threads?sort=updated&archived=true&limit=20",
-    );
-  });
-
   it("forwards includeHidden list filtering and visibility updates", async () => {
     const queue = createFetchQueue([
       { body: [] },

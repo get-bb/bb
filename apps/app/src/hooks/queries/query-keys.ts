@@ -81,7 +81,6 @@ const PLUGIN_CATALOG_SEARCH_QUERY_KEY = "plugin-catalog-search";
 const PLUGIN_CATALOG_INSTALL_PLAN_QUERY_KEY = "plugin-catalog-install-plan";
 const PLUGIN_MARKETPLACES_QUERY_KEY = "plugin-marketplaces";
 export interface ThreadListQueryFilters {
-  sort?: "updated";
   projectId?: string;
   hasParent?: ThreadListFilters["hasParent"];
   parentThreadId?: string;

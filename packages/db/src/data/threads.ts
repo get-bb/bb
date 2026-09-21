@@ -410,7 +410,6 @@ export function listThreadMentionRowsByIds(
 }
 
 export interface ListThreadsOptions {
-  sort?: "updated";
   projectId?: string;
   environmentId?: string;
   archived?: boolean;
@@ -745,9 +744,6 @@ function buildPinnedThreadOrderBy() {
 }
 
 function buildListThreadsOrderBy(options: ListThreadsOptions) {
-  if (options.sort === "updated") {
-    return [desc(threads.updatedAt), desc(threads.id)];
-  }
   if (options.archived === true) {
     return [desc(threads.archivedAt), desc(threads.id)];
   }

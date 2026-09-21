@@ -105,7 +105,11 @@ export function buildPaletteThreadSearchRows({
                 ? thread.archivedAt !== null
                 : thread.archivedAt === null,
             )
-            .sort((left, right) => right.updatedAt - left.updatedAt)
+            .sort((left, right) =>
+              lifecycle === "archived"
+                ? (right.archivedAt ?? 0) - (left.archivedAt ?? 0)
+                : right.updatedAt - left.updatedAt,
+            )
             .slice(0, RECENT_THREAD_LIMIT)
             .map((thread) =>
               serverRow(thread, [], lifecycle, projectNamesById, now),

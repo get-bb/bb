@@ -752,7 +752,6 @@ export type ThreadArchiveAllResponse = z.infer<
 >;
 
 export const threadListQuerySchema = z.object({
-  sort: z.literal("updated").optional(),
   projectId: z.string().min(1).optional(),
   environmentId: z.string().min(1).optional(),
   parentThreadId: z.string().min(1).optional(),

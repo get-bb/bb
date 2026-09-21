@@ -871,7 +871,7 @@ describe("palette lifecycle queries", () => {
     rerender({ recent: true, selected: true });
     await waitFor(() => expect(result.current.data).toEqual([archived]));
     expect(sdk.threads.list).toHaveBeenCalledExactlyOnceWith({
-      archived: true, sort: "updated", limit: 20, signal: expect.any(AbortSignal),
+      archived: true, limit: 20, signal: expect.any(AbortSignal),
     });
   });
 

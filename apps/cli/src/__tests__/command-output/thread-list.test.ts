@@ -40,15 +40,6 @@ describe("bb thread list command output", () => {
     });
   });
 
-  it("bb thread list forwards explicit updated ordering", async () => {
-    const list = vi.fn(async () => []);
-    stubServerApi({ "v1.threads.$get": list });
-    await runCommand(["thread", "list", "--archived", "--sort", "updated"], register);
-    expect(list).toHaveBeenCalledWith({
-      query: { archived: "true", sort: "updated" },
-    });
-  });
-
   it("bb thread list opts into hidden threads explicitly", async () => {
     const list = vi.fn(async () => []);
     stubServerApi({ "v1.threads.$get": list });

@@ -11,7 +11,7 @@ import {
 describe("palette archive cache", () => {
   it("keeps bounded recents server-owned and included in list invalidation", () => {
     const queryClient = new QueryClient();
-    const key = threadListQueryKey({ archived: true, sort: "updated", limit: 20 });
+    const key = threadListQueryKey({ archived: true, limit: 20 });
     const archived = Array.from({ length: 20 }, (_, index) =>
       makeThreadListEntry({ id: `archived-${index}`, archivedAt: 1 }),
     );
