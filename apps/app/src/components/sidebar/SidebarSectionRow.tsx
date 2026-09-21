@@ -169,6 +169,7 @@ function SidebarSectionRowComponent({
         )}
         <SidebarChildToggleChevron
           disabled={Boolean(labelEditor)}
+          className={labelEditor ? "hidden" : undefined}
           isCollapsed={isCollapsed}
           expandLabel={`Expand ${label} section`}
           collapseLabel={`Collapse ${label} section`}
@@ -190,10 +191,10 @@ function SidebarSectionRowComponent({
       <span
         className={cn(
           "relative z-10 shrink-0",
-          labelEditor && "hidden",
           hasActions
             ? "inline-flex items-center"
             : COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+          labelEditor && "hidden",
         )}
       >
         {hasActions && showRollupIndicator ? (

@@ -234,6 +234,7 @@ export function TopLevelSidebarSection({
                 "relative z-20 inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md outline-none ring-sidebar-ring focus-visible:ring-2",
                 SIDEBAR_CONTROL_STATE_CLASS,
                 LIST_HOVER_TRANSITION,
+                labelEditor && "hidden",
               )}
               onClick={handleCollapseControlClick}
               onPointerDown={stopCollapseControlPointerDown}

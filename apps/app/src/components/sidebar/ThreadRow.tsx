@@ -507,6 +507,7 @@ function ThreadRowComponent({
         className={cn(
           "flex min-w-0 flex-1 items-center gap-1.5",
           !shortcut &&
+            !isEditing &&
             (parentOptions && hasChildren
               ? "pr-7.5 max-md:pointer-coarse:pr-0"
               : SIDEBAR_HOVER_ACTIONS_INSET_CLASS),
@@ -528,6 +529,7 @@ function ThreadRowComponent({
         {parentOptions && hasChildren ? (
           <SidebarChildToggleChevron
             disabled={isEditing}
+            className={isEditing ? "hidden" : undefined}
             isCollapsed={isParentCollapsed}
             expandLabel={`Expand ${labelTitle} threads`}
             collapseLabel={`Collapse ${labelTitle} threads`}
@@ -536,7 +538,12 @@ function ThreadRowComponent({
           />
         ) : null}
       </span>
-      <span className="flex shrink-0 items-center gap-0.5">
+      <span
+        className={cn(
+          "flex shrink-0 items-center gap-0.5",
+          isEditing && "hidden",
+        )}
+      >
         {shortcut ? (
           <AppCommandShortcutPill shortcut={shortcut} />
         ) : (

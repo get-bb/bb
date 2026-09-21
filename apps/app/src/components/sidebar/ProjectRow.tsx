@@ -927,6 +927,7 @@ function EnvironmentThreadGroupHeader({
         )}
         <SidebarChildToggleChevron
           disabled={rename.isEditing}
+          className={rename.isEditing ? "hidden" : undefined}
           isCollapsed={isCollapsed}
           expandLabel={`Expand ${displayName} threads`}
           collapseLabel={`Collapse ${displayName} threads`}
@@ -934,7 +935,12 @@ function EnvironmentThreadGroupHeader({
           revealOnHover
         />
       </span>
-      <span className="relative z-10 inline-flex shrink-0 items-center">
+      <span
+        className={cn(
+          "relative z-10 inline-flex shrink-0 items-center",
+          rename.isEditing && "hidden",
+        )}
+      >
         {showRollupGlyph ? (
           <span
             data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
