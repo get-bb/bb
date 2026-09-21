@@ -54,8 +54,9 @@ function renderSidebar(
 afterEach(cleanup);
 
 describe("SettingsSidebarContent plugin navigation", () => {
-  it("keeps all plugins in one section and opens the appropriate page", () => {
+  it("keeps all plugins in one section and opens the appropriate page", async () => {
     renderSidebar();
+    await screen.findByRole("link", { name: "Browse plugins" });
     expect(
       screen.queryByRole("link", { name: "Installed plugins" }),
     ).toBeNull();
@@ -74,12 +75,11 @@ describe("SettingsSidebarContent plugin navigation", () => {
     ).toBeNull();
   });
 
-  it("offers discovery and creation with no installed plugins", () => {
+  it("offers discovery and creation with no installed plugins", async () => {
     renderSidebar(null, []);
+    await screen.findByRole("link", { name: "Browse plugins" });
     expect(screen.getByRole("link", { name: "Browse plugins" })).toBeTruthy();
-    fireEvent.click(
-      screen.getByRole("button", { name: "New plugin" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "New plugin" }));
     expect(screen.getByTestId("route-state").textContent).toContain(
       "initialPrompt",
     );
