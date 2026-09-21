@@ -214,6 +214,43 @@ describe("fuzzyMatchPaths", () => {
     );
   });
 
+  it("ranks the shortest matching leaf for a structured prefix query", () => {
+    const matches = fuzzyMatchPaths({
+      items: [
+        "apps/cli/src/commands/machine-enrollment.test.ts",
+        "apps/cli/src/commands/machine-enrollment.ts",
+        "apps/cli/src/commands/machine-environment.ts",
+        "apps/cli/src/commands/machine.ts",
+      ],
+      query: "commands/machine",
+      getPath: (path) => path,
+      limit: 8,
+    });
+
+    expect(matches.map((match) => match.item)).toEqual([
+      "apps/cli/src/commands/machine.ts",
+      "apps/cli/src/commands/machine-enrollment.ts",
+      "apps/cli/src/commands/machine-environment.ts",
+      "apps/cli/src/commands/machine-enrollment.test.ts",
+    ]);
+    expect(matches[0].score).toBeGreaterThan(matches[1].score);
+  });
+
+  it("prefers the shorter path when structured match scores tie", () => {
+    const matches = fuzzyMatchPaths({
+      items: ["src/a/extra/file.ts", "src/a/file.ts"],
+      query: "src/file",
+      getPath: (path) => path,
+      limit: 8,
+    });
+
+    expect(matches.map((match) => match.item)).toEqual([
+      "src/a/file.ts",
+      "src/a/extra/file.ts",
+    ]);
+    expect(matches[0].score).toBe(matches[1].score);
+  });
+
   it("merges exact-prefix and structured path matches", () => {
     const matches = fuzzyMatchPaths({
       items: ["src/test/test/file.ts", "src/test/file.ts", "test/src/file.ts"],
