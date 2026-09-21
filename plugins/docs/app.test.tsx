@@ -1030,7 +1030,6 @@ describe("Docs nav panel", () => {
         );
         const button = await slot.findByRole("button", {
           name: "New note",
-          exact: true,
         });
         fireEvent.click(button);
         await waitFor(() =>
