@@ -93,15 +93,30 @@ describe("useSettingsNavState", () => {
     );
   });
 
-  it("recognizes installed plugins as a settings section", () => {
+  it("preserves the installed-plugin route without adding it to Settings navigation", () => {
     const { result } = renderHook(() => useSettingsNavState(), {
       wrapper: wrapperFor("/settings/plugins"),
     });
 
     expect(result.current.hasUnknownSection).toBe(false);
-    expect(result.current.sections.map((section) => section.id)).toContain(
+    expect(result.current.activeSection).toBe("plugins");
+    expect(result.current.sections.map((section) => section.id)).not.toContain(
       "plugins",
     );
+  });
+
+  it.each([
+    "/settings/plugins/linear",
+    "/settings/plugins/linear?view=installed",
+    "/settings/plugins/linear?view=installed&configure=linear",
+  ])("keeps the same plugin selected at %s", (path) => {
+    const { result } = renderHook(() => useSettingsNavState(), {
+      wrapper: wrapperFor(path),
+    });
+
+    expect(result.current.activePluginId).toBe("linear");
+    expect(result.current.activeSection).toBeNull();
+    expect(result.current.hasUnknownSection).toBe(false);
   });
 
   it("omits disabled plugins from individual settings entries", () => {

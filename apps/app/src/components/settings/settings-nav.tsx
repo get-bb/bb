@@ -58,11 +58,7 @@ export function useSettingsNavState(): SettingsNavState {
     location.pathname,
   );
   const pluginMatch = matchPath(SETTINGS_PLUGIN_ROUTE_PATH, location.pathname);
-  const isInstalledDetail =
-    new URLSearchParams(location.search).get("view") === "installed";
-  const activePluginId = isInstalledDetail
-    ? null
-    : (pluginMatch?.params.pluginId ?? null);
+  const activePluginId = pluginMatch?.params.pluginId ?? null;
   const machineMatch = matchPath(
     SETTINGS_MACHINE_ROUTE_PATH,
     location.pathname,
@@ -77,17 +73,15 @@ export function useSettingsNavState(): SettingsNavState {
   const hasUnknownSection =
     sectionParam !== undefined && !isSettingsSectionId(sectionParam);
   const activeSection: SettingsSectionId | null =
-    isInstalledDetail && pluginMatch !== null
-      ? "plugins"
-      : activeMachineId !== null
-        ? "machines"
-        : activeProjectId !== null
-          ? "projects"
-          : activePluginId !== null
-            ? null
-            : sectionParam !== undefined && isSettingsSectionId(sectionParam)
-              ? sectionParam
-              : "general";
+    activeMachineId !== null
+      ? "machines"
+      : activeProjectId !== null
+        ? "projects"
+        : activePluginId !== null
+          ? null
+          : sectionParam !== undefined && isSettingsSectionId(sectionParam)
+            ? sectionParam
+            : "general";
 
   const installedPlugins = pluginListQuery.data?.plugins ?? [];
   const pluginEntries = buildPluginSettingsEntries({
