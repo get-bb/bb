@@ -115,7 +115,7 @@ export function ResourceToolbar({
         : individualControls.getBoundingClientRect().width;
       setSearchCondensed(
         expandSearchOnFocus &&
-          (next ||
+          ((next && isCompactViewport) ||
             width -
               controlsWidth -
               actionWidth -
@@ -156,6 +156,7 @@ export function ResourceToolbar({
     compact,
     expandSearchOnFocus,
     hasCombinedControls,
+    isCompactViewport,
     showCombined,
   ]);
 
