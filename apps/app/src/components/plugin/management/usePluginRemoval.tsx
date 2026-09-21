@@ -61,7 +61,6 @@ export function usePluginRemoval() {
   return {
     target,
     pending: mutation.isPending,
-    pendingPluginId: mutation.isPending ? mutation.variables.id : null,
     open: (plugin: PluginListItem) => {
       if (
         plugin.provenance !== "builtin" &&
