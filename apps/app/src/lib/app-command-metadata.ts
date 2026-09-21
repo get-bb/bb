@@ -170,6 +170,11 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
         "Open or close the environment diff.",
       ),
       command(
+        "diff.search",
+        "Focus diff search",
+        "Focus the changed-files search and select its query.",
+      ),
+      command(
         "terminal.open",
         "Open terminal",
         "Open a terminal in the secondary panel.",

@@ -214,6 +214,15 @@ export const DEFAULT_APP_KEYBINDINGS: AppDefaultKeybindings = [
     },
   ),
   binding(
+    "diff.search",
+    "f",
+    { mod: true },
+    {
+      ...mainWithoutModal,
+      none: ["modalOpen", "terminalFocus", "browserFocus"],
+    },
+  ),
+  binding(
     "terminal.open",
     "Enter",
     { mod: true, shift: true },

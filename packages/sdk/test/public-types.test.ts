@@ -252,6 +252,7 @@ type ExpectedEnvironmentsKey =
   | "diffFile"
   | "diffFiles"
   | "diffPatch"
+  | "diffSearch"
   | "get"
   | "markPullRequestDraft"
   | "markPullRequestReady"

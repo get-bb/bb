@@ -4,6 +4,7 @@ import type {
   EnvironmentDiffArgs,
   EnvironmentDiffFileArgs,
   EnvironmentDiffPatchArgs,
+  EnvironmentDiffSearchArgs,
   EnvironmentUpdateArgs,
 } from "@bb/sdk";
 import {
@@ -285,6 +286,15 @@ function buildEnvironmentDiffPatchArgs(
         target: { type: "commit", sha: diffArgs.sha },
       };
   }
+}
+
+function buildEnvironmentDiffSearchArgs(
+  id: string,
+  query: string,
+  opts: EnvironmentDiffCommandOptions,
+): EnvironmentDiffSearchArgs {
+  const diffArgs = buildEnvironmentDiffArgs(id, opts);
+  return { ...diffArgs, q: query };
 }
 
 function buildEnvironmentUpdateArgs({
@@ -678,6 +688,41 @@ export function registerEnvironmentCommands(
           console.log("(additional changed files omitted)");
         }
       }),
+    );
+
+  addDiffTargetOptions(
+    environment
+      .command("diff-search <id> <query>")
+      .description("Search changed file paths and diff content"),
+  )
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(
+        async (
+          id: string,
+          query: string,
+          opts: EnvironmentDiffCommandOptions,
+        ) => {
+          const result = await createCliBbSdk(getUrl()).environments.diffSearch(
+            buildEnvironmentDiffSearchArgs(id, query, opts),
+          );
+          if (outputJson(opts, result)) return;
+          if (result.outcome === "not_applicable") {
+            console.log(`Diff search unavailable: ${result.message}`);
+            return;
+          }
+          if (result.outcome === "unavailable") {
+            console.log(`Diff search unavailable: ${result.failure.message}`);
+            return;
+          }
+          for (const path of result.matchedPaths) {
+            console.log(path);
+          }
+          if (result.truncated) {
+            console.log("(additional matches omitted)");
+          }
+        },
+      ),
     );
 
   environment

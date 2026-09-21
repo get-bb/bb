@@ -47,6 +47,7 @@ const ENVIRONMENT_PULL_REQUEST_QUERY_KEY = "environmentPullRequest";
 export const ENVIRONMENT_MERGE_BASE_BRANCHES_QUERY_KEY =
   "environmentMergeBaseBranches";
 export const ENVIRONMENT_DIFF_FILES_QUERY_KEY = "environmentDiffFiles";
+export const ENVIRONMENT_DIFF_SEARCH_QUERY_KEY = "environmentDiffSearch";
 const ENVIRONMENT_DIFF_PATCH_QUERY_KEY = "environmentDiffPatch";
 const ENVIRONMENT_DIFF_FILE_QUERY_KEY = "environmentDiffFile";
 const ENVIRONMENT_FILE_PREVIEW_QUERY_KEY = "environmentFilePreview";
@@ -393,6 +394,13 @@ type EnvironmentDiffFilesQueryKeyRootPrefix = readonly [
 ];
 type EnvironmentDiffFilesQueryKeyPrefix = readonly [
   typeof ENVIRONMENT_DIFF_FILES_QUERY_KEY,
+  string,
+];
+type EnvironmentDiffSearchQueryKey = readonly [
+  typeof ENVIRONMENT_DIFF_SEARCH_QUERY_KEY,
+  string,
+  string | null,
+  string | null,
   string,
 ];
 type EnvironmentDiffPatchQueryKey = readonly [
@@ -1011,6 +1019,21 @@ export function environmentDiffFilesQueryKeyPrefix(
   environmentId: string,
 ): EnvironmentDiffFilesQueryKeyPrefix {
   return [ENVIRONMENT_DIFF_FILES_QUERY_KEY, environmentId];
+}
+
+export function environmentDiffSearchQueryKey(
+  environmentId: string,
+  targetType: string | null,
+  targetKey: string | null,
+  query: string,
+): EnvironmentDiffSearchQueryKey {
+  return [
+    ENVIRONMENT_DIFF_SEARCH_QUERY_KEY,
+    environmentId,
+    targetType,
+    targetKey,
+    query,
+  ];
 }
 
 export function environmentDiffPatchQueryKey(

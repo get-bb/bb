@@ -49,6 +49,8 @@ every window and client sees the same value.
 - Bindings for non-native actions apply in browser and desktop clients. Command
   contexts and native-only availability remain server-owned. Reusing a chord
   can be intentional when contexts do not overlap; the UI identifies reuse.
+- `Mod+F` focuses the active diff panel's changed-files search and selects its
+  query; the embedded desktop browser keeps the same chord for find in page.
 - New Thread, New Window, New Tab, Close, and Settings in the desktop menu use
   the same resolved shortcuts as renderer commands.
 - The complete default table is in `docs/configuration.md` in the bb source

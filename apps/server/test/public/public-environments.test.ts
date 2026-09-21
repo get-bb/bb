@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { getEnvironment } from "@bb/db";
+import { environmentDiffSearchResponseSchema } from "@bb/server-contract";
 import {
   registerTestHostRpcCapture,
   reportQueuedCommandError,
@@ -127,6 +128,125 @@ describe("public environments", () => {
           },
         ],
       });
+    });
+  });
+
+  it("searches diff content via workspace.diffSearch", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-environment-diff-search",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/diff-search-env",
+        environmentProviderId: "git-worktree",
+      });
+
+      const responsePromise = harness.app.request(
+        `/api/v1/environments/${environment.id}/diff/search?target=uncommitted&q=needle`,
+      );
+      const diffSearchCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "workspace.diffSearch" &&
+          command.environmentId === environment.id,
+      );
+      expect(diffSearchCommand.command).toMatchObject({
+        type: "workspace.diffSearch",
+        target: { type: "uncommitted" },
+        query: "needle",
+        maxFiles: 500,
+      });
+      await reportQueuedCommandSuccess(harness, diffSearchCommand, {
+        outcome: "available",
+        matchedPaths: ["src/needle.ts"],
+        truncated: false,
+      });
+
+      const response = await responsePromise;
+      expect(response.status).toBe(200);
+      await expect(readJson(response)).resolves.toEqual({
+        outcome: "available",
+        matchedPaths: ["src/needle.ts"],
+        truncated: false,
+      });
+    });
+  });
+
+  it("reports not_applicable for diff search on a non-git environment", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-environment-diff-search-non-git",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/diff-search-non-git",
+        environmentProviderId: "personal-workspace",
+        isGitRepo: false,
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/environments/${environment.id}/diff/search?target=uncommitted&q=needle`,
+      );
+
+      expect(response.status).toBe(200);
+      await expect(readJson(response)).resolves.toMatchObject({
+        outcome: "not_applicable",
+      });
+    });
+  });
+
+  it("caps diff search matches and marks the result truncated", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-environment-diff-search-truncated",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/diff-search-truncated-env",
+        environmentProviderId: "git-worktree",
+      });
+      const overflowMatches = Array.from(
+        { length: 501 },
+        (_, index) => `file-${index}.ts`,
+      );
+
+      const responsePromise = harness.app.request(
+        `/api/v1/environments/${environment.id}/diff/search?target=uncommitted&q=needle`,
+      );
+      const diffSearchCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "workspace.diffSearch" &&
+          command.environmentId === environment.id,
+      );
+      await reportQueuedCommandSuccess(harness, diffSearchCommand, {
+        outcome: "available",
+        matchedPaths: overflowMatches,
+        truncated: false,
+      });
+
+      const response = await responsePromise;
+      const body = environmentDiffSearchResponseSchema.parse(
+        await readJson(response),
+      );
+      if (body.outcome !== "available") {
+        throw new Error("Expected available diff search result");
+      }
+      expect(body.matchedPaths).toHaveLength(500);
+      expect(body.truncated).toBe(true);
     });
   });
 

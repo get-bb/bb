@@ -388,6 +388,7 @@ delayed shortcut badges without disabling any shortcuts.
 | Layout    | Toggle sidebar                            | `Mod+\`                           | All clients              |
 | Panel     | New tab / close tab / toggle              | `Mod+T` / `Mod+W` / `Mod+J`       | All clients              |
 | Workspace | Quick open file / toggle diff             | `Mod+P` / `Mod+D`                 | All clients              |
+| Workspace | Focus diff search                         | `Mod+F`                           | Active diff panel        |
 | Workspace | Open terminal                             | `Mod+Shift+Enter` / `Mod+Shift+T` | Web / desktop            |
 | Workspace | Open in preferred app                     | `Mod+O`                           | All clients              |
 | Composer  | Focus composer                            | `Mod+Shift+C`                     | All clients              |

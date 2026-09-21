@@ -1093,3 +1093,200 @@ describe("Workspace.diffPatch", () => {
     }
   });
 });
+
+describe("Workspace.searchDiff", () => {
+  it("matches a tracked file whose added line contains the query", async () => {
+    const repoPath = await initRepo();
+    await write(repoPath, "keep.txt", "a\nb\nc\n");
+    await commitAll(repoPath, "base");
+    await write(repoPath, "keep.txt", "a\nb\nc\nneedle here\n");
+
+    const workspace = new Workspace(repoPath);
+    const result = await workspace.searchDiff({
+      target: UNCOMMITTED,
+      query: "needle",
+      maxFiles: 500,
+    });
+
+    expect(result.matchedPaths).toEqual(["keep.txt"]);
+    expect(result.truncated).toBe(false);
+  });
+
+  it("matches a tracked file whose removed line contains the query", async () => {
+    const repoPath = await initRepo();
+    await write(repoPath, "keep.txt", "a\nneedle here\nc\n");
+    await commitAll(repoPath, "base");
+    await write(repoPath, "keep.txt", "a\nc\n");
+
+    const workspace = new Workspace(repoPath);
+    const result = await workspace.searchDiff({
+      target: UNCOMMITTED,
+      query: "needle",
+      maxFiles: 500,
+    });
+
+    expect(result.matchedPaths).toEqual(["keep.txt"]);
+  });
+
+  it("matches an untracked file's content for the uncommitted target", async () => {
+    const repoPath = await initRepo();
+    await write(repoPath, "tracked.txt", "x\n");
+    await commitAll(repoPath, "base");
+    await write(repoPath, "untracked.txt", "needle in untracked file\n");
+
+    const workspace = new Workspace(repoPath);
+    const result = await workspace.searchDiff({
+      target: UNCOMMITTED,
+      query: "needle",
+      maxFiles: 500,
+    });
+
+    expect(result.matchedPaths).toEqual(["untracked.txt"]);
+  });
+
+  it("is case-insensitive", async () => {
+    const repoPath = await initRepo();
+    await write(repoPath, "keep.txt", "a\n");
+    await commitAll(repoPath, "base");
+    await write(repoPath, "keep.txt", "a\nNEEDLE\n");
+
+    const workspace = new Workspace(repoPath);
+    const result = await workspace.searchDiff({
+      target: UNCOMMITTED,
+      query: "needle",
+      maxFiles: 500,
+    });
+
+    expect(result.matchedPaths).toEqual(["keep.txt"]);
+  });
+
+  it("returns no matches when the query is not present", async () => {
+    const repoPath = await initRepo();
+    await write(repoPath, "keep.txt", "a\n");
+    await commitAll(repoPath, "base");
+    await write(repoPath, "keep.txt", "a\nsomething else\n");
+
+    const workspace = new Workspace(repoPath);
+    const result = await workspace.searchDiff({
+      target: UNCOMMITTED,
+      query: "needle",
+      maxFiles: 500,
+    });
+
+    expect(result.matchedPaths).toEqual([]);
+  });
+
+  it("escapes regex-special characters so the query matches literally", async () => {
+    const repoPath = await initRepo();
+    await write(repoPath, "keep.txt", "a\n");
+    await commitAll(repoPath, "base");
+    await write(repoPath, "keep.txt", "a\nfoo(bar);\n");
+
+    const workspace = new Workspace(repoPath);
+    const literalMatch = await workspace.searchDiff({
+      target: UNCOMMITTED,
+      query: "foo(bar)",
+      maxFiles: 500,
+    });
+    const unrelatedRegexLikeQuery = await workspace.searchDiff({
+      target: UNCOMMITTED,
+      query: "fooXbarY",
+      maxFiles: 500,
+    });
+
+    expect(literalMatch.matchedPaths).toEqual(["keep.txt"]);
+    expect(unrelatedRegexLikeQuery.matchedPaths).toEqual([]);
+  });
+
+  it("does not match binary file content", async () => {
+    const repoPath = await initRepo();
+    await write(repoPath, "keep.txt", "a\n");
+    await commitAll(repoPath, "base");
+    await fs.writeFile(
+      path.join(repoPath, "binary.dat"),
+      Buffer.from([0x00, 0x01, 0x02]),
+    );
+    await runGit(["add", "binary.dat"], { cwd: repoPath });
+    await commitAll(repoPath, "add binary");
+    await fs.writeFile(
+      path.join(repoPath, "binary.dat"),
+      Buffer.from("needle", "utf8"),
+    );
+
+    const workspace = new Workspace(repoPath);
+    const result = await workspace.searchDiff({
+      target: UNCOMMITTED,
+      query: "needle",
+      maxFiles: 500,
+    });
+
+    expect(result.matchedPaths).toEqual([]);
+  });
+
+  it("falls back to the empty tree before the initial commit", async () => {
+    const repoPath = await initRepo();
+    await write(repoPath, "staged.txt", "needle pending\n");
+    await runGit(["add", "staged.txt"], { cwd: repoPath });
+
+    const workspace = new Workspace(repoPath);
+    const result = await workspace.searchDiff({
+      target: UNCOMMITTED,
+      query: "needle",
+      maxFiles: 500,
+    });
+
+    expect(result.matchedPaths).toEqual(["staged.txt"]);
+  });
+
+  it("matches content for a commit target", async () => {
+    const repoPath = await initRepo();
+    await write(repoPath, "keep.txt", "a\n");
+    await commitAll(repoPath, "base");
+    await write(repoPath, "keep.txt", "a\nneedle\n");
+    await commitAll(repoPath, "add needle");
+
+    const workspace = new Workspace(repoPath);
+    const result = await workspace.searchDiff({
+      target: { type: "commit", sha: "HEAD" },
+      query: "needle",
+      maxFiles: 500,
+    });
+
+    expect(result.matchedPaths).toEqual(["keep.txt"]);
+  });
+
+  it("matches changed file paths case-insensitively", async () => {
+    const repoPath = await initRepo();
+    await write(repoPath, "src/NeedleFile.ts", "before\n");
+    await commitAll(repoPath, "base");
+    await write(repoPath, "src/NeedleFile.ts", "after\n");
+
+    const workspace = new Workspace(repoPath);
+    const result = await workspace.searchDiff({
+      target: UNCOMMITTED,
+      query: "needlefile",
+      maxFiles: 500,
+    });
+
+    expect(result.matchedPaths).toEqual(["src/NeedleFile.ts"]);
+  });
+
+  it("caps matches and reports truncation", async () => {
+    const repoPath = await initRepo();
+    await write(repoPath, "one.txt", "before\n");
+    await write(repoPath, "two.txt", "before\n");
+    await commitAll(repoPath, "base");
+    await write(repoPath, "one.txt", "needle one\n");
+    await write(repoPath, "two.txt", "needle two\n");
+
+    const workspace = new Workspace(repoPath);
+    const result = await workspace.searchDiff({
+      target: UNCOMMITTED,
+      query: "needle",
+      maxFiles: 1,
+    });
+
+    expect(result.matchedPaths).toHaveLength(1);
+    expect(result.truncated).toBe(true);
+  });
+});

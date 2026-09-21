@@ -138,6 +138,7 @@ bb thread show "$BB_THREAD_ID" --json
 bb thread context --self --json
 bb thread image-metadata --self --json
 bb environment status "$BB_ENVIRONMENT_ID" --json
+bb environment diff-search "$BB_ENVIRONMENT_ID" needle --target uncommitted --json
 bb plugin list --json
 bb skill list --environment "$BB_ENVIRONMENT_ID" --json
 ```

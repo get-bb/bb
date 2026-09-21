@@ -471,6 +471,7 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
   "workspace.diff": WORKSPACE_UNAVAILABLE_RESULT,
   "workspace.diffFiles": WORKSPACE_UNAVAILABLE_RESULT,
   "workspace.diffPatch": WORKSPACE_UNAVAILABLE_RESULT,
+  "workspace.diffSearch": WORKSPACE_UNAVAILABLE_RESULT,
   "workspace.pull_request": {
     outcome: "available",
     pullRequest: {
@@ -591,6 +592,12 @@ const WORKSPACE_DIFF_PATCH_AVAILABLE_RESULT: JsonObject = {
   ],
 };
 
+const WORKSPACE_DIFF_SEARCH_AVAILABLE_RESULT: JsonObject = {
+  outcome: "available",
+  matchedPaths: ["src/renamed.ts"],
+  truncated: false,
+};
+
 const ADDITIONAL_ONLINE_RPC_RESPONSE_ROUND_TRIP_CASES: OnlineRpcResponseRoundTripCase[] =
   [
     {
@@ -624,6 +631,11 @@ const ADDITIONAL_ONLINE_RPC_RESPONSE_ROUND_TRIP_CASES: OnlineRpcResponseRoundTri
       name: "workspace.diffPatch available result",
       commandType: "workspace.diffPatch",
       result: WORKSPACE_DIFF_PATCH_AVAILABLE_RESULT,
+    },
+    {
+      name: "workspace.diffSearch available result",
+      commandType: "workspace.diffSearch",
+      result: WORKSPACE_DIFF_SEARCH_AVAILABLE_RESULT,
     },
     {
       name: "workspace.pull_request no-PR result",
@@ -1136,7 +1148,7 @@ const CONTRIBUTED_ENV = [
 
 describe("host-daemon command schemas", () => {
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(215);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(216);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 

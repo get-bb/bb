@@ -28,6 +28,7 @@ interface DiffFilesPanelProps {
   target: WorkspaceDiffTarget;
   diffIdentity: string;
   files: DiffFileEntry[];
+  fileCount: number;
   initialPatches: DiffPatchEntry[];
   filesUpdatedAt: number;
   presentation: DiffPresentation;
@@ -47,6 +48,7 @@ export function DiffFilesPanel({
   target,
   diffIdentity,
   files,
+  fileCount,
   initialPatches,
   filesUpdatedAt,
   presentation,
@@ -90,7 +92,7 @@ export function DiffFilesPanel({
       }
       const collapsed = resolveDiffFileCardInitialState({
         entry,
-        fileCount: files.length,
+        fileCount,
       }).collapsed;
       return estimateCardHeight({ entry, collapsed }) + DIFF_FILES_GAP_PX;
     },
@@ -168,7 +170,7 @@ export function DiffFilesPanel({
               <DiffFileRow
                 entry={entry}
                 diffIdentity={diffIdentity}
-                fileCount={files.length}
+                fileCount={fileCount}
                 presentation={presentation}
                 filePathRoot={filePathRoot}
                 patchState={getPatchState(entry.path)}

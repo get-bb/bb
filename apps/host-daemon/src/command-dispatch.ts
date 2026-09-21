@@ -412,6 +412,7 @@ async function readAvailableWorkspace<TAvailable extends object>(
     | "workspace.diff"
     | "workspace.diffFiles"
     | "workspace.diffPatch"
+    | "workspace.diffSearch"
   >,
   options: CommandDispatchOptions,
   read: (workspace: HostWorkspace) => Promise<TAvailable>,
@@ -719,6 +720,14 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
         maxBytesPerFile: command.maxBytesPerFile,
       }),
     })),
+  "workspace.diffSearch": (command, options) =>
+    readAvailableWorkspace(command, options, (workspace) =>
+      workspace.searchDiff({
+        target: command.target,
+        query: command.query,
+        maxFiles: command.maxFiles,
+      }),
+    ),
   "workspace.pull_request": async (command, options) => {
     const resolution = await resolveWorkspaceForCommand({
       environmentId: command.environmentId,

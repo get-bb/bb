@@ -518,6 +518,38 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
     });
   });
 
+  get(routes.diffSearch, async (context, query) => {
+    const target = resolveGitDiffWorkspaceTarget(deps, context.req.param("id"));
+    if (target === null) {
+      return context.json(NON_GIT_DIFF_NOT_APPLICABLE);
+    }
+    const result = await callHostRetryableOnlineRpc(deps, {
+      hostId: target.hostId,
+      timeoutMs: COMMAND_TIMEOUT_MS,
+      command: {
+        type: "workspace.diffSearch",
+        environmentId: target.environmentId,
+        workspaceContext: target.workspaceContext,
+        target: toWorkspaceDiffTarget(query),
+        query: query.q,
+        maxFiles: WORKSPACE_DIFF_MAX_FILES,
+      },
+    });
+    if (result.outcome === "unavailable") {
+      return context.json({
+        outcome: "unavailable",
+        failure: result.failure,
+      });
+    }
+    const cappedByMaxFiles =
+      result.matchedPaths.length > WORKSPACE_DIFF_MAX_FILES;
+    return context.json({
+      outcome: "available",
+      matchedPaths: result.matchedPaths.slice(0, WORKSPACE_DIFF_MAX_FILES),
+      truncated: result.truncated || cappedByMaxFiles,
+    });
+  });
+
   post(routes.diffPatch, async (context, payload) => {
     const target = resolveGitDiffWorkspaceTarget(deps, context.req.param("id"));
     if (target === null) {

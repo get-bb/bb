@@ -72,6 +72,7 @@ const hostCommandWakePolicy = {
   "workspace.diff": "work",
   "workspace.diffFiles": "work",
   "workspace.diffPatch": "work",
+  "workspace.diffSearch": "work",
   "workspace.pull_request": "work",
 } satisfies Record<HostDaemonRpcCommand["type"], "never" | "work">;
 

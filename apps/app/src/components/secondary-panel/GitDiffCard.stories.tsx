@@ -700,6 +700,7 @@ function InteractiveDiffPanel({
     return { filesCount: parsed.length, insertions, deletions };
   }, [parsed]);
   const [selection, setSelection] = useState("working");
+  const [searchQuery, setSearchQuery] = useState("");
   const [displayMode, setDisplayMode] = useState<GitDiffDisplayMode>("unified");
   const [lineOverflowMode, setLineOverflowMode] = useState<CodeOverflowMode>(
     DEFAULT_CODE_OVERFLOW_MODE,
@@ -772,6 +773,11 @@ function InteractiveDiffPanel({
         isSelectorDisabled={false}
         stats={aggregateStats}
         isTruncated={false}
+        searchQuery={searchQuery}
+        onSearchQueryChange={setSearchQuery}
+        isSearching={false}
+        totalFilesCount={parsed.length}
+        isFocused
         areAllFilesCollapsed={allCollapsed}
         isCollapseAllDisabled={parsed.length === 0}
         onToggleAllCollapsed={toggleAllCollapsed}
