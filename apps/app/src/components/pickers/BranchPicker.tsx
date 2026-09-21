@@ -103,21 +103,6 @@ interface BranchPickerTextProps {
   wrap?: boolean;
 }
 
-interface BranchPickerMenuCopy {
-  title: string | null;
-  optionsSectionLabel: string | null;
-}
-
-const GENERIC_BRANCH_MENU_COPY: BranchPickerMenuCopy = {
-  title: null,
-  optionsSectionLabel: "Branches",
-};
-
-const BASE_BRANCH_MENU_COPY: BranchPickerMenuCopy = {
-  title: "Branch from:",
-  optionsSectionLabel: null,
-};
-
 interface OrderBranchPickerOptionsArgs {
   options: readonly string[];
   selectedValue: string | null;
@@ -187,12 +172,6 @@ function BranchPickerText({
   );
 }
 
-function getBranchPickerMenuCopy(
-  menuKind: "base" | undefined,
-): BranchPickerMenuCopy {
-  return menuKind === "base" ? BASE_BRANCH_MENU_COPY : GENERIC_BRANCH_MENU_COPY;
-}
-
 export function buildBranchPickerOptionGroups({
   options,
   remoteOptions,
@@ -242,7 +221,7 @@ export interface BranchPickerProps {
   triggerLabel?: string;
   triggerTitle?: string;
   emphasizeTriggerValue?: boolean;
-  menuKind?: "base";
+  menuLabel?: string;
   onChange: (branch: string) => void;
   onSearchQueryChange?: (query: string) => void;
   onOpenChange?: (open: boolean) => void;
@@ -264,7 +243,7 @@ export function BranchPicker({
   triggerLabel: triggerLabelOverride,
   triggerTitle,
   emphasizeTriggerValue = true,
-  menuKind,
+  menuLabel,
   onChange,
   onSearchQueryChange,
   onOpenChange,
@@ -286,7 +265,6 @@ export function BranchPicker({
     normalizedQuery,
     BRANCH_SEARCH_DEBOUNCE_MS,
   );
-  const menuCopy = getBranchPickerMenuCopy(menuKind);
   const branchOptionGroups = useMemo(
     () =>
       buildBranchPickerOptionGroups({
@@ -428,7 +406,7 @@ export function BranchPicker({
         align={popoverAlign}
         sideOffset={6}
         collisionPadding={16}
-        mobileTitle={menuCopy.title ?? "Branch"}
+        mobileTitle={menuLabel || "Branch"}
         autoFocusRef={inputRef}
         className={cn(BRANCH_PICKER_CONTENT_CLASS_NAME, "md:min-w-40")}
       >
@@ -447,12 +425,7 @@ export function BranchPicker({
               event.stopPropagation();
             }}
           >
-            {menuCopy.title ? (
-              <BranchPickerSectionHeader label={menuCopy.title} />
-            ) : null}
-            {menuCopy.optionsSectionLabel ? (
-              <BranchPickerSectionHeader label={menuCopy.optionsSectionLabel} />
-            ) : null}
+            <BranchPickerSectionHeader label={menuLabel || "Branches"} />
             {filteredBranchOptions.map((branch) => (
               <BranchPickerRow
                 key={branch}

@@ -1,4 +1,5 @@
-import { Loading03Icon, Mail01Icon } from "@hugeicons/core-free-icons";
+import Loading03Icon from "@hugeicons/core-free-icons/Loading03Icon";
+import Mail01Icon from "@hugeicons/core-free-icons/Mail01Icon";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Fragment } from "react";

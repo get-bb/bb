@@ -645,7 +645,7 @@ function TestBranchPicker({
     >
       <input
         aria-label={label ?? "Branch"}
-        placeholder={placeholder ?? ""}
+        placeholder={placeholder ?? "Select branch"}
         disabled={inert}
         value={value ?? ""}
         onChange={(event) => {

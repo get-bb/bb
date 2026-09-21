@@ -31,6 +31,8 @@ import {
 
 const LARGE_BUDGET = 1_000_000;
 const BYTE_WINDOW_ITEM_COUNT = 250;
+const SCALED_BYTE_BUDGET = THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT / 50;
+const SCALED_COMMAND_CHARS = 1_000;
 
 const providerThreadId = "provider-root";
 const execution = {
@@ -400,10 +402,12 @@ function buildPage(
   eventBudget: number,
   cursor: TimelinePaginationCursor | null,
   segmentLimit = 20,
+  responseByteBudget = THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT,
 ) {
   return buildThreadTimelineWithProfile(db, thread, {
     completedTurnDisplay: "collapse",
     eventBudget,
+    responseByteBudget,
     includeDiagnosticOperations: false,
     includeNestedRows: false,
     maxInlineOutputChars: 32_000,
@@ -419,10 +423,12 @@ function buildNestedPage(
   thread: Thread,
   eventBudget: number,
   cursor: TimelinePaginationCursor | null,
+  responseByteBudget = THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT,
 ) {
   return buildThreadTimelineWithProfile(db, thread, {
     completedTurnDisplay: "collapse",
     eventBudget,
+    responseByteBudget,
     includeDiagnosticOperations: false,
     includeNestedRows: true,
     maxInlineOutputChars: 32_000,
@@ -851,10 +857,10 @@ describe("in-turn timeline windows", () => {
     );
   });
 
-  it("pages through a finished turn that exceeds the event-data byte limit", () => {
+  it("pages through a finished turn that exceeds the response byte budget", () => {
     const { db, thread } = setup();
     seedTurns(db, thread, {
-      commandChars: 25_000,
+      commandChars: SCALED_COMMAND_CHARS,
       completeLastTurn: true,
       itemsPerTurn: [BYTE_WINDOW_ITEM_COUNT],
     });
@@ -865,7 +871,13 @@ describe("in-turn timeline windows", () => {
     let cursor: TimelinePaginationCursor | null = null;
     let pages = 0;
     for (;;) {
-      const page = buildNestedPage(db, thread, LARGE_BUDGET, cursor);
+      const page = buildNestedPage(
+        db,
+        thread,
+        LARGE_BUDGET,
+        cursor,
+        SCALED_BYTE_BUDGET,
+      );
       pages += 1;
       expect(page.response.rows.length).toBeGreaterThan(0);
       collectCommandCallIds(page.response.rows, commandCallIds);
@@ -894,7 +906,7 @@ describe("in-turn timeline windows", () => {
       expect(
         Buffer.byteLength(JSON.stringify(page.response.rows)),
         `page ${pages}`,
-      ).toBeLessThanOrEqual(THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT);
+      ).toBeLessThanOrEqual(SCALED_BYTE_BUDGET);
       if (!page.response.timelinePage.hasOlderRows) {
         break;
       }
@@ -913,24 +925,45 @@ describe("in-turn timeline windows", () => {
   it("keeps latest byte-page row identities stable while a turn grows", () => {
     const { db, thread } = setup();
     seedTurns(db, thread, {
-      commandChars: 50_000,
+      commandChars: SCALED_COMMAND_CHARS,
       completeLastTurn: false,
       itemsPerTurn: [100],
     });
 
-    const first = buildPage(db, thread, LARGE_BUDGET, null).response;
+    const first = buildPage(
+      db,
+      thread,
+      LARGE_BUDGET,
+      null,
+      20,
+      SCALED_BYTE_BUDGET,
+    ).response;
     appendCommandItems(db, thread, {
-      commandChars: 50_000,
+      commandChars: SCALED_COMMAND_CHARS,
       count: 20,
       itemStart: 100,
     });
-    const second = buildPage(db, thread, LARGE_BUDGET, null).response;
+    const second = buildPage(
+      db,
+      thread,
+      LARGE_BUDGET,
+      null,
+      20,
+      SCALED_BYTE_BUDGET,
+    ).response;
     appendCommandItems(db, thread, {
-      commandChars: 50_000,
+      commandChars: SCALED_COMMAND_CHARS,
       count: 10,
       itemStart: 120,
     });
-    const third = buildPage(db, thread, LARGE_BUDGET, null).response;
+    const third = buildPage(
+      db,
+      thread,
+      LARGE_BUDGET,
+      null,
+      20,
+      SCALED_BYTE_BUDGET,
+    ).response;
 
     expect(first.timelinePage.olderCursor?.anchorId).not.toBe(
       second.timelinePage.olderCursor?.anchorId,
@@ -1002,7 +1035,7 @@ describe("in-turn timeline windows", () => {
   it("expands each delegated byte-budget slice with realistic parent ordering", () => {
     const { db, thread } = setup();
     seedTurns(db, thread, {
-      commandChars: 25_000,
+      commandChars: SCALED_COMMAND_CHARS,
       completeLastTurn: true,
       delegateLastTurn: true,
       itemsPerTurn: [BYTE_WINDOW_ITEM_COUNT],
@@ -1013,7 +1046,13 @@ describe("in-turn timeline windows", () => {
     let cursor: TimelinePaginationCursor | null = null;
     let pages = 0;
     for (;;) {
-      const page = buildNestedPage(db, thread, LARGE_BUDGET, cursor);
+      const page = buildNestedPage(
+        db,
+        thread,
+        LARGE_BUDGET,
+        cursor,
+        SCALED_BYTE_BUDGET,
+      );
       pages += 1;
       expect(page.response.rows.length).toBeGreaterThan(0);
       collectCommandCallIds(page.response.rows, commandCallIds);
@@ -1041,7 +1080,7 @@ describe("in-turn timeline windows", () => {
       expect(
         Buffer.byteLength(JSON.stringify(page.response.rows)),
         `page ${pages}`,
-      ).toBeLessThanOrEqual(THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT);
+      ).toBeLessThanOrEqual(SCALED_BYTE_BUDGET);
       if (!page.response.timelinePage.hasOlderRows) {
         break;
       }
@@ -1285,7 +1324,7 @@ describe("in-turn timeline windows", () => {
   it("gives a straddling item to exactly one byte page's details, completed", () => {
     const { db, thread } = setup();
     seedTurns(db, thread, {
-      commandChars: 25_000,
+      commandChars: SCALED_COMMAND_CHARS,
       completeLastTurn: true,
       itemsPerTurn: [BYTE_WINDOW_ITEM_COUNT],
       longRunningItemIndexes: [0],
@@ -1297,7 +1336,13 @@ describe("in-turn timeline windows", () => {
     let pages = 0;
     const seenSummaries = new Set<string>();
     for (;;) {
-      const page = buildNestedPage(db, thread, LARGE_BUDGET, cursor);
+      const page = buildNestedPage(
+        db,
+        thread,
+        LARGE_BUDGET,
+        cursor,
+        SCALED_BYTE_BUDGET,
+      );
       pages += 1;
       for (const row of page.response.rows) {
         if (row.kind !== "turn" || seenSummaries.has(row.id)) {

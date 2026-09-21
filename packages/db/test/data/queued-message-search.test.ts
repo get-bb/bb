@@ -111,7 +111,7 @@ describe("saved message thread search", () => {
       const owner = thread();
       const saved = save(owner.id, [text("preexistingmessage")]);
       expect(search("preexistingmessage").active.total).toBe(0);
-      const migration = readFileSync(resolve(__dirname, "../../drizzle/0127_queued_message_search.sql"), "utf8");
+      const migration = readFileSync(resolve(__dirname, "../../drizzle/0128_queued_message_search.sql"), "utf8");
       db.$client.exec(migration);
       expect(search("preexistingmessage").active.results[0]?.thread.id).toBe(owner.id);
       const persisted = db.$client.prepare("SELECT content, waiting_on FROM queued_thread_messages WHERE id = ?").get(saved.id);

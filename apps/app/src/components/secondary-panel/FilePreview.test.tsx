@@ -16,6 +16,8 @@ import {
 } from "./FilePreview";
 import { SOURCE_CODE_MAX_LINES } from "@/components/code/source-code-budget";
 import { SecondaryPanelFilePreview } from "./ThreadStorageFilePreview";
+import { HttpError } from "@/lib/api";
+import { BbHttpError } from "@bb/sdk/browser";
 import {
   PierreWorkerPoolGateContext,
   type PierreWorkerPoolGate,
@@ -846,6 +848,124 @@ describe("FilePreview", () => {
     ).not.toBeNull();
     expect(screen.getByRole("cell", { name: "Ada" })).not.toBeNull();
     expect(screen.getByRole("cell", { name: "10" })).not.toBeNull();
+  });
+
+  it("states the reason a file preview failed", () => {
+    render(
+      <SecondaryPanelFilePreview
+        activePath="docs/huge.bin"
+        error={
+          new HttpError({
+            status: 413,
+            message: "File is too large to preview",
+            code: "file_too_large",
+            body: {
+              code: "file_too_large",
+              message: "File is too large to preview",
+            },
+          })
+        }
+        filePreview={undefined}
+        isLoading={false}
+      />,
+    );
+
+    expect(screen.getByRole("alert").textContent).toBe(
+      "File is too large to preview",
+    );
+  });
+
+  it("states the reason an SDK-sourced file preview failed", () => {
+    render(
+      <SecondaryPanelFilePreview
+        activePath="docs/notes.md"
+        error={
+          new BbHttpError({
+            status: 502,
+            code: "host_unavailable",
+            message: "Host is not connected",
+            body: {
+              code: "host_unavailable",
+              message: "Host is not connected",
+            },
+          })
+        }
+        filePreview={undefined}
+        isLoading={false}
+      />,
+    );
+
+    expect(screen.getByRole("alert").textContent).toBe("Host is not connected");
+  });
+
+  it("keeps the dedicated not-found message for a 404 preview fetch", () => {
+    render(
+      <SecondaryPanelFilePreview
+        activePath="does-not-exist.md"
+        error={new HttpError({ status: 404, message: "Not found" })}
+        filePreview={undefined}
+        isLoading={false}
+      />,
+    );
+
+    expect(screen.getByRole("alert").textContent).toBe("File not found.");
+  });
+
+  it("keeps the dedicated not-found message for a 404 from the SDK", () => {
+    render(
+      <SecondaryPanelFilePreview
+        activePath="does-not-exist.md"
+        error={
+          new BbHttpError({
+            status: 404,
+            code: "ENOENT",
+            message: "Path does not exist: /workspace/does-not-exist.md",
+            body: {
+              code: "ENOENT",
+              message: "Path does not exist: /workspace/does-not-exist.md",
+            },
+          })
+        }
+        filePreview={undefined}
+        isLoading={false}
+      />,
+    );
+
+    expect(screen.getByRole("alert").textContent).toBe("File not found.");
+  });
+
+  it("falls back to the generic failure message when the error carries none", () => {
+    render(
+      <SecondaryPanelFilePreview
+        activePath="does-not-exist.md"
+        error={new Error("   ")}
+        filePreview={undefined}
+        isLoading={false}
+      />,
+    );
+
+    expect(screen.getByRole("alert").textContent).toBe("Failed to load file");
+  });
+
+  it("does not announce an unsupported preview type as an alert", () => {
+    render(
+      <SecondaryPanelFilePreview
+        activePath="docs/report.pdf"
+        filePreview={{
+          kind: "unsupported",
+          mimeType: "application/pdf",
+          name: "report.pdf",
+          path: "docs/report.pdf",
+          url: "/api/v1/preview/report",
+        }}
+        isLoading={false}
+      />,
+    );
+
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(
+      screen.getByText("Preview not available for application/pdf."),
+    ).not.toBeNull();
   });
 
   it("does not show the file preview actions menu for non-text previews", () => {

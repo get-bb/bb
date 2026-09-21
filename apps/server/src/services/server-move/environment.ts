@@ -13,10 +13,7 @@ import type {
   ServerMoveTimings,
 } from "./coordinator.js";
 import { exportServerArchive } from "./export.js";
-import {
-  createFullBbAppArtifactService,
-  runPackCommand,
-} from "./full-artifact.js";
+import { createFullBbAppArtifactService } from "./full-artifact.js";
 import { CONNECT_PLUGIN_SOURCE, resolveServerMoveMode } from "./mode.js";
 import { stopRunningServerWork } from "./stop-work.js";
 
@@ -122,7 +119,6 @@ export function createDefaultServerMoveEnvironment(
         workDir: exportArgs.workDir,
       }),
     fullArtifact: createFullBbAppArtifactService({
-      commandRunner: runPackCommand,
       dataDir: deps.config.dataDir,
       serverEntryUrl: args.serverEntryUrl,
     }),

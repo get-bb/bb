@@ -119,7 +119,8 @@ describe("PluginToolCallRegistry", () => {
     });
     const received = vi.fn();
     void response.then(received);
-    await vi.advanceTimersByTimeAsync(10 * 60_000);
+    vi.advanceTimersByTime(10 * 60_000);
+    await Promise.resolve();
     expect(received).not.toHaveBeenCalled();
     result.resolve(textResponse("finished"));
     await expect(response).resolves.toEqual(textResponse("finished"));

@@ -10,6 +10,7 @@ import {
 } from "../../../src/services/machines/server-access.js";
 import { setServerAccessBridge } from "../../../src/services/plugins/plugin-server-access-registry.js";
 import { listPublicHostsWithStatus } from "../../../src/services/lib/entity-lookup.js";
+import { advanceUntilSettled } from "../../helpers/fake-timers.js";
 import { withTestHarness } from "../../helpers/test-app.js";
 
 const signal = new AbortController().signal;
@@ -344,10 +345,10 @@ it("bounds a stalled availability check and recovers on the next read", async ()
     vi.useFakeTimers();
     try {
       const result = serverAccessStatus(deps);
-      await vi.advanceTimersByTimeAsync(5_000);
-      expect((await result).providers[0]?.availability?.status).toBe(
-        "unavailable",
-      );
+      expect(
+        (await advanceUntilSettled(result, 5_000)).providers[0]?.availability
+          ?.status,
+      ).toBe("unavailable");
       pending.resolve({ status: "available" });
       expect(
         (await serverAccessStatus(deps)).providers[0]?.availability,

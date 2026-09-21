@@ -436,13 +436,13 @@ describe("MarkdownPreview", () => {
     );
 
     expect(
-      container.querySelector('img[alt="absolute"]')?.getAttribute("src"),
+      container.querySelector('img[alt="absolute"]')?.getAttribute("data-markdown-image-src"),
     ).toBe("/api/files/content?path=%2Fworkspace%2Fgenerated.png");
     expect(
-      container.querySelector('img[alt="relative"]')?.getAttribute("src"),
+      container.querySelector('img[alt="relative"]')?.getAttribute("data-markdown-image-src"),
     ).toBe("/api/files/content?path=%2Fworkspace%2Fart%2Fchart.png");
     expect(
-      container.querySelector('img[alt="remote"]')?.getAttribute("src"),
+      container.querySelector('img[alt="remote"]')?.getAttribute("data-markdown-image-src"),
     ).toBe("https://example.com/image.png");
     expect(resolveSrc).toHaveBeenCalledTimes(2);
   });

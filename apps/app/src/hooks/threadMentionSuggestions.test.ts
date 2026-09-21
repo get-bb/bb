@@ -10,6 +10,7 @@ interface ThreadFixtureOptions {
   projectId?: string;
   title: string | null;
   titleFallback?: string | null;
+  updatedAt?: number;
   visibility?: Thread["visibility"];
 }
 
@@ -36,7 +37,7 @@ function makeThread(options: ThreadFixtureOptions): Thread {
     lastReadAt: null,
     latestAttentionAt: 1,
     createdAt: 1,
-    updatedAt: 1,
+    updatedAt: options.updatedAt ?? 1,
   });
 }
 
@@ -173,11 +174,13 @@ describe("buildThreadMentionSuggestions", () => {
       }),
       makeThread({
         id: "thr_other_project_parent",
+        environmentId: "env-2",
         projectId: "proj-2",
         title: "Shared context",
       }),
       makeThread({
         id: "thr_same_project",
+        environmentId: "env-3",
         title: "Shared context",
       }),
       makeThread({
@@ -214,6 +217,7 @@ describe("buildThreadMentionSuggestions", () => {
       }),
       makeThread({
         id: "thr_same_project_parent",
+        environmentId: "env-3",
         title: "Shared context",
       }),
       makeThread({
@@ -223,6 +227,7 @@ describe("buildThreadMentionSuggestions", () => {
       }),
       makeThread({
         id: "thr_other_project_parent",
+        environmentId: "env-2",
         projectId: "proj-2",
         title: "Shared context",
       }),
@@ -375,7 +380,11 @@ describe("buildThreadMentionSuggestions", () => {
   it("labels parent, child, sibling and same-environment relations", () => {
     const suggestions = buildThreadMentionSuggestions({
       threads: [
-        makeThread({ id: "thr_current", parentThreadId: "thr_parent", title: "Shared current" }),
+        makeThread({
+          id: "thr_current",
+          parentThreadId: "thr_parent",
+          title: "Shared current",
+        }),
         makeThread({ id: "thr_parent", title: "Shared parent" }),
         makeThread({
           id: "thr_child",
@@ -470,7 +479,9 @@ describe("buildThreadMentionSuggestions", () => {
       limit: 8,
     });
 
-    expect(suggestions.map((suggestion) => suggestion.relation)).toEqual([null]);
+    expect(suggestions.map((suggestion) => suggestion.relation)).toEqual([
+      null,
+    ]);
   });
 
   it("keeps parent and child ahead of same-environment threads", () => {
@@ -496,5 +507,140 @@ describe("buildThreadMentionSuggestions", () => {
         currentThreadId: "thr_current",
       }),
     ).toEqual(["thr_child", "thr_parent", "thr_roommate"]);
+  });
+  it("ranks a same-environment thread ahead of unrelated matches with the same title", () => {
+    expect(
+      getSuggestionThreadIds({
+        threads: [
+          makeThread({
+            id: "thr_current",
+            environmentId: "env-1",
+            title: "Investigate ask mode bug",
+          }),
+          makeThread({
+            id: "thr_a_elsewhere",
+            environmentId: "env-2",
+            title: "Explain this branch",
+          }),
+          makeThread({
+            id: "thr_b_elsewhere",
+            environmentId: "env-3",
+            title: "Explain this branch",
+          }),
+          makeThread({
+            id: "thr_c_roommate",
+            environmentId: "env-1",
+            title: "Explain this branch",
+          }),
+        ],
+        query: "explain",
+        currentEnvironmentId: "env-1",
+        currentProjectId: "proj-1",
+        currentThreadId: "thr_current",
+      }),
+    ).toEqual(["thr_c_roommate", "thr_a_elsewhere", "thr_b_elsewhere"]);
+  });
+
+  it("breaks remaining ties by most recent activity", () => {
+    expect(
+      getSuggestionThreadIds({
+        threads: [
+          makeThread({
+            id: "thr_a_stale",
+            title: "Explain this branch",
+            updatedAt: 10,
+          }),
+          makeThread({
+            id: "thr_b_recent",
+            title: "Explain this branch",
+            updatedAt: 90,
+          }),
+          makeThread({
+            id: "thr_c_middle",
+            title: "Explain this branch",
+            updatedAt: 50,
+          }),
+        ],
+        query: "explain",
+        currentEnvironmentId: "env-1",
+        currentProjectId: "proj-1",
+      }),
+    ).toEqual(["thr_b_recent", "thr_c_middle", "thr_a_stale"]);
+  });
+
+  it("keeps a stronger title match ahead of a weaker match on a related thread", () => {
+    expect(
+      getSuggestionThreadIds({
+        threads: [
+          makeThread({ id: "thr_current", title: "Current work" }),
+          makeThread({
+            id: "thr_child",
+            parentThreadId: "thr_current",
+            title: "Extra plan for internal notes",
+          }),
+          makeThread({
+            id: "thr_unrelated",
+            environmentId: "env-2",
+            projectId: "proj-2",
+            title: "Explain this branch",
+          }),
+        ],
+        query: "explain",
+        currentEnvironmentId: "env-1",
+        currentProjectId: "proj-1",
+        currentThreadId: "thr_current",
+      }),
+    ).toEqual(["thr_unrelated", "thr_child"]);
+  });
+
+  it("prefers a related thread over a tighter fuzzy score in the same match rank", () => {
+    expect(
+      getSuggestionThreadIds({
+        threads: [
+          makeThread({ id: "thr_current", title: "Current work" }),
+          makeThread({
+            id: "thr_child",
+            parentThreadId: "thr_current",
+            title: "Explain this branch in detail",
+          }),
+          makeThread({
+            id: "thr_unrelated",
+            environmentId: "env-2",
+            projectId: "proj-2",
+            title: "Explain it",
+          }),
+        ],
+        query: "explain",
+        currentEnvironmentId: "env-1",
+        currentProjectId: "proj-1",
+        currentThreadId: "thr_current",
+      }),
+    ).toEqual(["thr_child", "thr_unrelated"]);
+  });
+
+  it("keeps the strongest matches when the limit truncates related threads", () => {
+    expect(
+      getSuggestionThreadIds({
+        threads: [
+          makeThread({ id: "thr_current", title: "Current work" }),
+          makeThread({
+            id: "thr_child_fuzzy",
+            parentThreadId: "thr_current",
+            title: "Extra pipeline audit notes",
+          }),
+          makeThread({
+            id: "thr_unrelated_exact",
+            environmentId: "env-2",
+            projectId: "proj-2",
+            title: "Explain",
+          }),
+        ],
+        query: "explain",
+        currentEnvironmentId: "env-1",
+        currentProjectId: "proj-1",
+        currentThreadId: "thr_current",
+        limit: 1,
+      }),
+    ).toEqual(["thr_unrelated_exact"]);
   });
 });
