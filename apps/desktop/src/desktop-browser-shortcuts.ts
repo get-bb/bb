@@ -10,12 +10,14 @@ interface ResolveDesktopBrowserAppCommandArgs {
   input: AppShortcutInput;
   isMac: boolean;
   keybindings: AppKeybindings;
+  splitNavigationEnabled?: boolean;
 }
 
 export function resolveDesktopBrowserAppCommand({
   input,
   isMac,
   keybindings,
+  splitNavigationEnabled = false,
 }: ResolveDesktopBrowserAppCommandArgs): AppCommandId | null {
   for (let index = keybindings.length - 1; index >= 0; index -= 1) {
     const binding = keybindings[index];
@@ -28,6 +30,13 @@ export function resolveDesktopBrowserAppCommand({
         binding.command !== "pane.focus.next")
     )
       continue;
+    if (
+      !splitNavigationEnabled &&
+      (binding.command === "pane.focus.previous" ||
+        binding.command === "pane.focus.next")
+    ) {
+      continue;
+    }
     if (matchesAppShortcut(input, binding.shortcut, isMac)) {
       const command = appCommandIdSchema.safeParse(binding.command);
       if (command.success) return command.data;

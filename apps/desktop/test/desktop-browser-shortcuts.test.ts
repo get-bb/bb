@@ -60,6 +60,7 @@ describe("resolveDesktopBrowserAppCommand", () => {
         input,
         isMac: true,
         keybindings: [binding],
+        splitNavigationEnabled: true,
       }),
     ).toBe(command);
   });

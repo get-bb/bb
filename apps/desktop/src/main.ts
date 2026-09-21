@@ -175,6 +175,7 @@ import {
 } from "./desktop-update-ipc.js";
 import {
   BB_DESKTOP_APP_COMMAND_CHANNEL,
+  BB_DESKTOP_SET_SPLIT_NAVIGATION_ENABLED_CHANNEL,
   BB_DESKTOP_CLOSE_WINDOW_REQUEST_CHANNEL,
   BB_DESKTOP_CLOSE_WINDOW_RESPONSE_CHANNEL,
   BB_DESKTOP_GET_WINDOW_STATE_CHANNEL,
@@ -356,6 +357,7 @@ let systemConfigSync: SystemConfigSync | null = null;
 let systemConfigRefreshToken = 0;
 let refreshRemoteSystemConfig: (() => void) | null = null;
 const applicationWindowWebContentsIds = new Set<number>();
+const splitNavigationEnabledWebContentsIds = new Set<number>();
 let bbAppLoaded = false;
 let startupRetryUrl: string | null = null;
 let startupRetryPending = false;
@@ -1032,7 +1034,17 @@ function registerApplicationWindow(browserWindow: DesktopBrowserWindow): void {
   const webContentsId = browserWindow.webContents.id;
   applicationWindowWebContentsIds.add(webContentsId);
   const nativeWindow = BrowserWindow.fromId(browserWindow.id);
-  if (nativeWindow !== null) desktopBrowserBroker?.registerWindow(nativeWindow);
+  if (nativeWindow !== null) {
+    desktopBrowserBroker?.registerWindow(nativeWindow);
+    nativeWindow.webContents.on(
+      "did-start-navigation",
+      (_event, _url, isInPlace, isMainFrame) => {
+        if (isMainFrame && !isInPlace) {
+          splitNavigationEnabledWebContentsIds.delete(webContentsId);
+        }
+      },
+    );
+  }
   registerApplicationRendererReloadShortcut(
     (browserWindow as BrowserWindow).webContents,
   );
@@ -1046,6 +1058,7 @@ function registerApplicationWindow(browserWindow: DesktopBrowserWindow): void {
   browserWindow.on("closed", () => {
     desktopBrowserBroker?.releaseWindow(webContentsId);
     applicationWindowWebContentsIds.delete(webContentsId);
+    splitNavigationEnabledWebContentsIds.delete(webContentsId);
   });
 }
 
@@ -1884,6 +1897,20 @@ function registerDesktopUpdateIpc(): void {
     await finishQuit();
     desktopAutoUpdateService.installUpdate();
   });
+  ipcMain.on(
+    BB_DESKTOP_SET_SPLIT_NAVIGATION_ENABLED_CHANNEL,
+    (event, enabled: unknown) => {
+      if (
+        !applicationWindowWebContentsIds.has(event.sender.id) ||
+        event.senderFrame !== event.sender.mainFrame ||
+        typeof enabled !== "boolean"
+      ) {
+        return;
+      }
+      if (enabled) splitNavigationEnabledWebContentsIds.add(event.sender.id);
+      else splitNavigationEnabledWebContentsIds.delete(event.sender.id);
+    },
+  );
   ipcMain.on(BB_DESKTOP_SET_THEME_CHANNEL, (_event, payload: unknown) => {
     const parsed = bbDesktopThemeSchema.safeParse(payload);
     if (!parsed.success) {
@@ -2530,11 +2557,13 @@ async function runDesktopApp(): Promise<void> {
         browserWindow.webContents.focus();
       }
     },
-    resolveAppCommand(input) {
+    resolveAppCommand(input, hostWebContentsId) {
       return resolveDesktopBrowserAppCommand({
         input,
         isMac: process.platform === "darwin",
         keybindings: currentAppKeybindings,
+        splitNavigationEnabled:
+          splitNavigationEnabledWebContentsIds.has(hostWebContentsId),
       });
     },
   });

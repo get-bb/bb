@@ -211,11 +211,14 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
     if (active) {
       sources.add(source);
       activeContextsRef.current.set(key, sources);
-      return;
+    } else {
+      sources.delete(source);
+      if (sources.size === 0) {
+        activeContextsRef.current.delete(key);
+      }
     }
-    sources.delete(source);
-    if (sources.size === 0) {
-      activeContextsRef.current.delete(key);
+    if (key === "splitActive") {
+      getBbDesktopInfo()?.setSplitNavigationEnabled?.(sources.size > 0);
     }
   }, []);
 
