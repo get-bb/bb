@@ -88,8 +88,9 @@ describe("SettingsSidebarContent plugin navigation", () => {
     );
   });
 
-  it("marks the active plugin settings page", () => {
+  it("marks the active plugin settings page", async () => {
     renderSidebar("linear");
+    await screen.findByRole("link", { name: "Linear" });
     expect(
       screen.getByRole("link", { name: "Linear" }).getAttribute("aria-current"),
     ).toBe("page");
