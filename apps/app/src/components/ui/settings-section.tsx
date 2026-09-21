@@ -139,8 +139,9 @@ export function SettingsWithControl({
     <div
       data-control-placement={controlPlacement}
       className={cn(
-        "flex gap-2.5",
-        trailing ? "flex-row justify-between gap-5" : "flex-col",
+        trailing
+          ? "flex flex-row justify-between gap-5"
+          : "flex flex-col gap-2.5",
         trailing && (description ? "items-start" : "items-center"),
         inline && "sm:flex-row sm:justify-between sm:gap-5",
         inline && (description ? "sm:items-start" : "sm:items-center"),
