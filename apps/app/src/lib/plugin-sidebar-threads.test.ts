@@ -18,6 +18,32 @@ function makeThread(overrides: Partial<ThreadListEntry> = {}): ThreadListEntry {
 }
 
 describe("toPluginSidebarThread", () => {
+  it("resolves the display title through the same rules bb's row uses", () => {
+    expect(toPluginSidebarThread(makeThread()).displayTitle).toBe("A thread");
+    expect(
+      toPluginSidebarThread(makeThread({ title: null, titleFallback: "Fallback" }))
+        .displayTitle,
+    ).toBe("Fallback");
+    expect(
+      toPluginSidebarThread(
+        makeThread({ id: "thr_abcdefghij", title: null, titleFallback: null }),
+      ).displayTitle,
+    ).toBe("Thread thr_abcd");
+
+    const resources = {
+      sectionNamesById: new Map([["sec_slop", "Slop Cop"]]),
+      projectNamesById: new Map([["proj_1", "bb"]]),
+      threadById: new Map(),
+    };
+    expect(
+      toPluginSidebarThread(
+        makeThread({ title: "Review @section:sec_slop in @project:proj_1" }),
+        new Map(),
+        resources,
+      ).displayTitle,
+    ).toBe("Review Slop Cop in bb");
+  });
+
   it("maps activity counts onto the plugin-facing names", () => {
     const mapped = toPluginSidebarThread(
       makeThread({

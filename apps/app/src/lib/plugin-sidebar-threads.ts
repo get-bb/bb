@@ -6,10 +6,17 @@ import {
   threadListIndicatorStateForThread,
 } from "@bb/client-core";
 import { isThreadRead } from "@bb/client-core";
+import {
+  EMPTY_TITLE_MENTION_RESOURCES,
+  resolveThreadTitleDisplayText,
+  type ThreadTitleMentionResources,
+} from "@/components/thread/ThreadTitleMentions";
+import { getThreadDisplayTitle } from "./thread-title";
 
 export function toPluginSidebarThread(
   entry: ThreadListEntry,
   hostNamesById: ReadonlyMap<string, string> = new Map(),
+  titleResources: ThreadTitleMentionResources = EMPTY_TITLE_MENTION_RESOURCES,
 ): PluginSidebarThread {
   const indicator = resolveThreadListIndicator(
     threadListIndicatorStateForThread(entry, false),
@@ -20,6 +27,10 @@ export function toPluginSidebarThread(
     projectId: entry.projectId,
     title: entry.title,
     titleFallback: entry.titleFallback,
+    displayTitle: resolveThreadTitleDisplayText(
+      getThreadDisplayTitle(entry),
+      titleResources,
+    ),
     parentThreadId: entry.parentThreadId,
     lifecycleOwnerThreadId: entry.lifecycleOwnerThreadId,
     sourceThreadId: entry.sourceThreadId,

@@ -899,6 +899,14 @@ export interface PluginSidebarThread {
   /** Null while a thread is still unnamed; pair with `titleFallback`. */
   title: string | null;
   titleFallback: string | null;
+  /**
+   * What bb shows for this thread as plain text: `title`, else
+   * `titleFallback`, else a short id, with any `@project:`, `@section:`, and
+   * `@thread:` mentions in it resolved to their names. Sort on it and use it
+   * for accessible names; render {@link PluginSdkApp.ThreadTitle} for the
+   * same text with mention chips.
+   */
+  displayTitle: string;
   /** The thread this one was forked from or spawned under; null at the root. */
   parentThreadId: string | null;
   /**
@@ -1121,6 +1129,35 @@ export interface PluginCodeThemeState {
   name: string;
   /** null only before the first theme file resolves. */
   theme: PluginCodeThemeData | null;
+}
+
+/** Props for {@link PluginSdkApp.ThreadTitle}. */
+export interface PluginThreadTitleProps {
+  /** A thread in the sidebar's live view; renders nothing for an unknown id. */
+  threadId: string;
+}
+
+/**
+ * One environment provider from bb's catalog (see
+ * {@link PluginSdkApp.useEnvironmentProviders}): what a sidebar needs to
+ * name and draw the environment a thread runs in. `icon` and `logoUrl` are
+ * what `experimental_ProviderIcon` reads with `providerKind: "environment"`.
+ */
+export interface PluginEnvironmentProvider {
+  id: string;
+  displayName: string;
+  description: string | null;
+  icon: string | null;
+  logoUrl: string | null;
+  /** The plugin that registered the provider. */
+  pluginId: string;
+  /** The machine provider it runs on, or null for the local machine. */
+  machineProviderId: string | null;
+}
+
+export interface PluginEnvironmentProvidersState {
+  status: "loading" | "ready" | "error";
+  providers: readonly PluginEnvironmentProvider[];
 }
 
 /**
@@ -2886,6 +2923,20 @@ export interface PluginSdkApp {
   useSidebarThreadShortcut(
     threadId: string,
   ): PluginSidebarThreadShortcut | null;
+  /**
+   * A thread's display title with `@project:`, `@section:`, and `@thread:`
+   * mentions rendered as bb's chips (see {@link PluginThreadTitleProps}).
+   * Inline content; wrap it in your own truncating container. The plain-text
+   * form is `displayTitle` on the thread.
+   */
+  ThreadTitle: ComponentType<PluginThreadTitleProps>;
+  /**
+   * bb's environment provider catalog (see
+   * {@link PluginEnvironmentProvidersState}), the directory a thread's
+   * `environment.providerId` points into. Reads the host's own cached
+   * catalog, so it costs no extra request.
+   */
+  useEnvironmentProviders(): PluginEnvironmentProvidersState;
   /**
    * The provider directory (see {@link PluginProvidersState}). Reads the
    * host's own cached provider roster, so a plugin that shows a thread's

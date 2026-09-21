@@ -48,6 +48,7 @@ import {
   type ExperimentalSidebarNavigationRegistration,
   type PluginSidebarPullRequest,
   type PluginSidebarThreadActions,
+  type PluginEnvironmentProvidersState,
   type PluginSidebarThreadDraftState,
   type PluginSidebarThreadPullRequestState,
   type PluginSidebarThreadRowStatus,
@@ -222,6 +223,7 @@ interface SlotEnv {
   sidebarDraftThreadIds: ReadonlySet<string>;
   sidebarRowStatuses: ReadonlyMap<string, PluginSidebarThreadRowStatus>;
   sidebarShortcuts: ReadonlyMap<string, PluginSidebarThreadShortcut>;
+  environmentProviders: PluginEnvironmentProvidersState;
   providers: PluginProvidersState;
   codeTheme: PluginCodeThemeState;
   branchesState: BranchesState;
@@ -247,6 +249,13 @@ export interface SidebarActionCall {
   title?: string;
   pinned?: boolean;
   read?: boolean;
+}
+
+function TestThreadTitle({ threadId }: { threadId: string }) {
+  const env = useSlotEnv("ThreadTitle");
+  const thread = env.sidebarThreads.threads.find((row) => row.id === threadId);
+  if (thread === undefined) return null;
+  return <span data-thread-title={threadId}>{thread.displayTitle}</span>;
 }
 
 function SlotLifecycleGuard({
@@ -951,6 +960,10 @@ const testPluginSdkApp = {
     const env = useSlotEnv("useSidebarThreadShortcut");
     return env.sidebarShortcuts.get(threadId) ?? null;
   },
+  ThreadTitle: TestThreadTitle,
+  useEnvironmentProviders(): PluginEnvironmentProvidersState {
+    return useSlotEnv("useEnvironmentProviders").environmentProviders;
+  },
   experimental_useSidebarThreadPullRequest(
     threadId,
   ): PluginSidebarThreadPullRequestState {
@@ -1275,6 +1288,12 @@ export interface RenderSlotOptions<
    * null.
    */
   sidebarShortcuts?: Record<string, PluginSidebarThreadShortcut>;
+  /**
+   * The environment provider catalog `useEnvironmentProviders()` reports.
+   * Omitted → a ready, empty list. Pass `{ status: "loading" }` to test that
+   * branch.
+   */
+  environmentProviders?: Partial<PluginEnvironmentProvidersState>;
   /** Host acceptance for `useBbNavigate().openThreadPanel`. */
   openThreadPanel?: (
     options: Parameters<BbNavigate["openThreadPanel"]>[0],
@@ -1530,6 +1549,10 @@ export function renderSlot<
   const providers: PluginProvidersState = {
     status: options.providers?.status ?? "ready",
     providers: options.providers?.providers ?? [],
+  };
+  const environmentProviders: PluginEnvironmentProvidersState = {
+    status: options.environmentProviders?.status ?? "ready",
+    providers: options.environmentProviders?.providers ?? [],
   };
   const codeTheme: PluginCodeThemeState = {
     mode: options.codeTheme?.mode ?? "light",
@@ -1790,6 +1813,7 @@ export function renderSlot<
     sidebarDraftThreadIds,
     sidebarRowStatuses,
     sidebarShortcuts,
+    environmentProviders,
     providers,
     codeTheme,
     branchesState: {

@@ -19,6 +19,10 @@ import type {
 } from "@get-bb/plugin-sdk";
 import { useSidebarThreadShortcut as useHostSidebarThreadShortcut } from "@/components/sidebar/sidebarThreadShortcuts";
 import {
+  useThreadTitleMentionResources,
+  type ThreadTitleMentionResources,
+} from "@/components/thread/ThreadTitleMentions";
+import {
   usePromptDraftHasInput,
   usePromptDraftInputThreadIds,
 } from "@/hooks/usePromptDraftStorage";
@@ -62,19 +66,32 @@ function hostNamesFor(
 
 const pluginSidebarThreadByEntry = new WeakMap<
   ThreadListEntry,
-  { hostNamesById: ReadonlyMap<string, string>; thread: PluginSidebarThread }
+  {
+    hostNamesById: ReadonlyMap<string, string>;
+    titleResources: ThreadTitleMentionResources;
+    thread: PluginSidebarThread;
+  }
 >();
 
 function toPluginSidebarThreadCached(
   entry: ThreadListEntry,
   hostNamesById: ReadonlyMap<string, string>,
+  titleResources: ThreadTitleMentionResources,
 ): PluginSidebarThread {
   const cached = pluginSidebarThreadByEntry.get(entry);
-  if (cached !== undefined && cached.hostNamesById === hostNamesById) {
+  if (
+    cached !== undefined &&
+    cached.hostNamesById === hostNamesById &&
+    cached.titleResources === titleResources
+  ) {
     return cached.thread;
   }
-  const thread = toPluginSidebarThread(entry, hostNamesById);
-  pluginSidebarThreadByEntry.set(entry, { hostNamesById, thread });
+  const thread = toPluginSidebarThread(entry, hostNamesById, titleResources);
+  pluginSidebarThreadByEntry.set(entry, {
+    hostNamesById,
+    titleResources,
+    thread,
+  });
   return thread;
 }
 
@@ -83,6 +100,7 @@ export function useSidebarThreads(): PluginSidebarThreadsState {
   const data = query.data;
   const { data: hosts } = useHosts();
   const hostNamesById = hostNamesFor(hosts);
+  const titleResources = useThreadTitleMentionResources();
 
   return useMemo<PluginSidebarThreadsState>(() => {
     if (data === undefined) {
@@ -98,7 +116,7 @@ export function useSidebarThreads(): PluginSidebarThreadsState {
       status: "ready",
       threads: allProjects.flatMap((project) =>
         project.threads.map((thread) =>
-          toPluginSidebarThreadCached(thread, hostNamesById),
+          toPluginSidebarThreadCached(thread, hostNamesById, titleResources),
         ),
       ),
       projects: allProjects.map((project) => ({
@@ -108,7 +126,7 @@ export function useSidebarThreads(): PluginSidebarThreadsState {
       })),
       sections: data.sections,
     };
-  }, [data, hostNamesById, query.isError]);
+  }, [data, hostNamesById, query.isError, titleResources]);
 }
 
 function useThreadEntryMap(): ReadonlyMap<string, ThreadListEntry> {

@@ -276,7 +276,7 @@ const actions = experimental_useSidebarThreadActions();
 // backend client; the sidebar refreshes over realtime.
 
 // threads: PluginSidebarThread[] — id, projectId, title, titleFallback,
-// parentThreadId, lifecycleOwnerThreadId, sourceThreadId, sectionId,
+// displayTitle, parentThreadId, lifecycleOwnerThreadId, sourceThreadId, sectionId,
 // originKind, originPluginId, providerId, status (execution status; busy
 // threads sort first in bb's list), runtimeStatus (status refined by host
 // readiness), queuedWork ("none" | "waiting" | "failed"), hasPendingInteraction,
@@ -300,6 +300,16 @@ const { hasUnsubmittedDraft } = useSidebarThreadDraft(thread.id);
 const rowStatus = useSidebarThreadRowStatus(thread.id); // { icon, label, tone? } | null
 const shortcut = useSidebarThreadShortcut(thread.id); // { label, ariaKeyshortcuts } | null
 const draftIds = useSidebarThreadDraftIds(); // ReadonlySet<string>, for group rollups
+
+// Titles can contain @project:, @section:, and @thread: mentions. `displayTitle`
+// is the resolved plain text (sort on it, use it for aria-label); <ThreadTitle>
+// renders the same text with bb's mention chips:
+<span className="truncate"><ThreadTitle threadId={thread.id} /></span>
+
+// `environment.providerId` names an entry in bb's environment provider
+// catalog; resolve it for a display name, and draw it with
+// <experimental_ProviderIcon providerKind="environment" provider={entry} />:
+const { providers: environmentProviders } = useEnvironmentProviders();
 
 // Pull requests are per row and opt-in — a lookup hits the git host, so it is
 // deliberately NOT on the thread payload every sidebar loads:

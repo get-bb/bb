@@ -24,6 +24,7 @@ function threadOnMachine(
     projectId: "project-one",
     title: "Active thread",
     titleFallback: null,
+    displayTitle: "Active thread",
     parentThreadId: null,
     lifecycleOwnerThreadId: null,
     sourceThreadId: null,

@@ -13,6 +13,7 @@ import { PluginProviderModelPicker } from "@/components/plugin/PluginProviderMod
 import { PluginPermissionModePicker } from "@/components/plugin/PluginPermissionModePicker";
 import { PluginSourceCode } from "@/components/plugin/PluginSourceCode";
 import { PluginThreadChat } from "@/components/plugin/PluginThreadChat";
+import { PluginThreadTitle } from "@/components/plugin/PluginThreadTitle";
 import { PluginUrlLink } from "@/components/plugin/PluginUrlLink";
 import { ExperimentalFileLink } from "@/components/plugin/ExperimentalFileLink";
 import { MarkdownPreview } from "@/components/ui/markdown-preview";
@@ -28,6 +29,7 @@ import {
   useBbNavigate,
   useComposer,
   useComposerView,
+  useEnvironmentProviders,
   useProviders,
   useRealtime,
   useRealtimeConnectionState,
@@ -84,6 +86,8 @@ export const pluginSdkAppImplementation = installDeprecatedAliases(
     useSidebarThreadDraftIds,
     useSidebarThreadRowStatus,
     useSidebarThreadShortcut,
+    ThreadTitle: PluginThreadTitle,
+    useEnvironmentProviders,
     experimental_useProviders: useProviders,
     experimental_useCodeTheme: useCodeTheme,
   } satisfies PluginSdkApp,

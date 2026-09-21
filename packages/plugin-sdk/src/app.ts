@@ -91,6 +91,8 @@ export const useSidebarThreadDraft = runtime.useSidebarThreadDraft;
 export const useSidebarThreadDraftIds = runtime.useSidebarThreadDraftIds;
 export const useSidebarThreadRowStatus = runtime.useSidebarThreadRowStatus;
 export const useSidebarThreadShortcut = runtime.useSidebarThreadShortcut;
+export const ThreadTitle = runtime.ThreadTitle;
+export const useEnvironmentProviders = runtime.useEnvironmentProviders;
 // The provider directory (experimental — see docs/api_to_audit.md).
 export const experimental_useProviders = runtime.experimental_useProviders;
 // The live code theme, for plugins that render code with their own engine

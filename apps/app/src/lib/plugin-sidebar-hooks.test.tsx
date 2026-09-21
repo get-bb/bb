@@ -18,6 +18,7 @@ import {
   clearPluginThreadRowStatuses,
   setPluginThreadRowStatus,
 } from "./plugin-thread-row-status";
+import { useEnvironmentProviders } from "./plugin-sdk-hooks";
 import { SidebarThreadShortcutKeysContext } from "@/components/sidebar/sidebarThreadShortcuts";
 
 const actions = vi.hoisted(() => ({
@@ -80,6 +81,16 @@ vi.mock("./root-compose-selection", () => ({
   useSetRootComposeProjectId: () => actions.setRootComposeProjectId,
 }));
 
+const environmentProviders = vi.hoisted(() => ({
+  providers: undefined as readonly Record<string, unknown>[] | undefined,
+}));
+
+vi.mock("@/hooks/queries/environment-provider-queries", () => ({
+  useSystemEnvironmentProviders: () => ({
+    providers: environmentProviders.providers,
+  }),
+}));
+
 const drafts = vi.hoisted(() => ({
   threadIds: new Set<string>(),
   listeners: new Set<() => void>(),
@@ -124,6 +135,7 @@ afterEach(() => {
   state.data = undefined;
   drafts.threadIds.clear();
   clearPluginThreadRowStatuses("plugin-a");
+  environmentProviders.providers = undefined;
 });
 
 describe("useSidebarThreads", () => {
@@ -353,5 +365,44 @@ describe("per-row client state hooks", () => {
       ),
     });
     expect(other.result.current).toBeNull();
+  });
+});
+
+describe("useEnvironmentProviders", () => {
+  it("reports loading until the catalog resolves, then a narrowed row per provider", () => {
+    const { result, rerender } = renderHook(() => useEnvironmentProviders());
+    expect(result.current).toEqual({ status: "loading", providers: [] });
+
+    environmentProviders.providers = [
+      {
+        id: "git-worktree",
+        displayName: "Git worktree",
+        description: "A worktree per thread",
+        icon: "GitBranch",
+        logoUrl: null,
+        pluginId: "environment-git-worktree",
+        machineProviderId: null,
+        requires: {},
+        inputs: null,
+        acceptsEmptyInputs: true,
+        availability: null,
+        machineAvailability: {},
+      },
+    ];
+    rerender();
+    expect(result.current).toEqual({
+      status: "ready",
+      providers: [
+        {
+          id: "git-worktree",
+          displayName: "Git worktree",
+          description: "A worktree per thread",
+          icon: "GitBranch",
+          logoUrl: null,
+          pluginId: "environment-git-worktree",
+          machineProviderId: null,
+        },
+      ],
+    });
   });
 });

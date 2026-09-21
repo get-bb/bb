@@ -47,6 +47,10 @@ Read the installed SDK declarations for the exact current signatures.
   script set on a thread, or null
 - `useSidebarThreadShortcut` — the jump shortcut assigned to a row while the
   app command modifier is held, or null
+- `ThreadTitle` — a thread's display title with its `@project:`, `@section:`,
+  and `@thread:` mentions rendered as bb's chips
+- `useEnvironmentProviders` — bb's environment provider catalog, for naming
+  and drawing the environment a thread runs in
 - `experimental_useProviders`
 - `experimental_useCodeTheme`
 
@@ -146,6 +150,9 @@ Read the installed SDK declarations for the exact current signatures.
 - `PluginSidebarThreadDraftState`
 - `PluginSidebarThreadRowStatus`
 - `PluginSidebarThreadShortcut`
+- `PluginThreadTitleProps`
+- `PluginEnvironmentProvider`
+- `PluginEnvironmentProvidersState`
 - `PluginThreadHeaderActionRegistration`
 - `ExperimentalPluginBrowserToolbarActionRegistration`
 - `PluginSidebarSplitPane`
