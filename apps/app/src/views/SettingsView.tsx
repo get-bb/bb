@@ -1142,7 +1142,17 @@ export function SettingsView() {
 
   let content: ReactNode = null;
   if (activePluginId !== null) {
-    content = <PluginSettingsPage pluginId={activePluginId} />;
+    content = (
+      <PluginSettingsPage
+        pluginId={activePluginId}
+        onBackToDetails={() => {
+          const params = new URLSearchParams(location.search);
+          params.set("view", "installed");
+          params.delete("configure");
+          navigate({ pathname: location.pathname, search: params.toString() });
+        }}
+      />
+    );
   } else if (activeSection === "providers") {
     content = (
       <ProvidersSettingsSection

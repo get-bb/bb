@@ -4,8 +4,6 @@ import {
   useIsCompactViewport,
 } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { useMediaQuery } from "@bb/shared-ui/hooks/use-media-query";
-import { Button } from "@bb/shared-ui/button";
-import { Icon } from "@bb/shared-ui/icon";
 import { PluginSettingsPage } from "@/components/plugin/PluginSettings";
 import { pluginWorkspaceAtom } from "@/components/plugin/plugin-workspace-state";
 import { useSetPluginEnabled } from "@/components/plugin/useSetPluginEnabled";
@@ -307,17 +305,10 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
     );
   } else if (selectedPlugin !== null && configurationOpen) {
     detailContent = (
-      <div className="space-y-4">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setConfigurationOpen(false)}
-        >
-          <Icon name="ChevronLeft" className="mr-1.5 size-4" aria-hidden />
-          Back to details
-        </Button>
-        <PluginSettingsPage pluginId={pluginId} />
-      </div>
+      <PluginSettingsPage
+        pluginId={pluginId}
+        onBackToDetails={() => setConfigurationOpen(false)}
+      />
     );
   } else if (selectedPlugin !== null) {
     detailContent = (
