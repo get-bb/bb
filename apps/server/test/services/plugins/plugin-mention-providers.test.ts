@@ -261,6 +261,21 @@ describe("plugin mention providers (bb.ui.registerMentionProvider)", () => {
     expect(entry?.handlerStats.errorCount).toBe(1);
   });
 
+  it("searches one selected provider without invoking the other providers", async () => {
+    const response = await harness.app.request(
+      `${BASE}/api/v1/plugins/mentions/search?q=fix&pluginId=mentions&providerId=issues`,
+    );
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(
+      body.groups.map((group: { providerId: string }) => group.providerId),
+    ).toEqual(["issues"]);
+    expect(
+      harness.pluginService.list().find((plugin) => plugin.id === "mentions")
+        ?.handlerStats.errorCount,
+    ).toBe(0);
+  });
+
   it("searches only providers registered for the requested trigger", async () => {
     const response = await harness.app.request(
       `${BASE}/api/v1/plugins/mentions/search?q=fix&trigger=%23&projectId=proj_1&threadId=thr_1`,
