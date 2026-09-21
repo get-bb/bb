@@ -359,9 +359,49 @@ export function createPluginFrontendReconcileState(): PluginFrontendReconcileSta
   };
 }
 
+export interface CompiledInPluginFrontend {
+  importModule: () => Promise<unknown>;
+}
+
+export interface CompiledInDisabledMemo {
+  read(): ReadonlySet<string>;
+  write(pluginIds: ReadonlySet<string>): void;
+}
+
+export const COMPILED_IN_BUNDLE_HASH = "compiled-in";
+
+export function compiledInCandidate(pluginId: string): PluginFrontendCandidate {
+  return {
+    pluginId,
+    bundle: {
+      jsUrl: `compiled-in:${pluginId}`,
+      cssUrl: null,
+      jsBytes: 0,
+      hash: COMPILED_IN_BUNDLE_HASH,
+      sdkMajor: 0,
+      sdkVersion: COMPILED_IN_BUNDLE_HASH,
+      compatible: true,
+    },
+  };
+}
+
 export interface PluginFrontendReconcileDeps {
   fetchCandidates: () => Promise<PluginFrontendCandidate[]>;
   importModule: (url: string) => Promise<unknown>;
+  /**
+   * Plugin frontends compiled into the app build. They are imported through
+   * their own importer instead of the server bundle, never reloaded on a
+   * bundle hash change (the module can only change with the app build), and
+   * seeded before the plugin inventory request answers so they are on
+   * screen at first paint.
+   */
+  compiledIn?: ReadonlyMap<string, CompiledInPluginFrontend>;
+  /**
+   * Remembers which compiled-in plugins the server last reported absent
+   * (disabled or uninstalled), so the next boot does not paint them and then
+   * take them away.
+   */
+  compiledInDisabledMemo?: CompiledInDisabledMemo;
   applyCss: (pluginId: string, url: string | null) => void | Promise<void>;
   retainCss: (pluginId: string) => () => void;
   resetCrashedSlots: (pluginId: string) => void;
@@ -625,6 +665,45 @@ async function activateContentScripts(
   }
 }
 
+export async function seedCompiledInPluginFrontends(
+  state: PluginFrontendReconcileState,
+  deps: PluginFrontendReconcileDeps,
+): Promise<void> {
+  if (state.tornDown || deps.compiledIn === undefined) return;
+  const disabled = deps.compiledInDisabledMemo?.read() ?? new Set<string>();
+  const seeded = [...deps.compiledIn.keys()]
+    .filter((pluginId) => !disabled.has(pluginId))
+    .map(compiledInCandidate);
+  if (seeded.length === 0) return;
+  const closeSlotBatch = deps.beginSlotBatch();
+  try {
+    await reconcileCandidates(seeded, state, deps);
+  } finally {
+    closeSlotBatch();
+  }
+}
+
+function rememberDisabledCompiledIn(
+  candidateIds: ReadonlySet<string>,
+  deps: PluginFrontendReconcileDeps,
+): void {
+  if (deps.compiledIn === undefined || deps.compiledInDisabledMemo === undefined) {
+    return;
+  }
+  const disabled = new Set<string>();
+  for (const pluginId of deps.compiledIn.keys()) {
+    if (!candidateIds.has(pluginId)) disabled.add(pluginId);
+  }
+  const previous = deps.compiledInDisabledMemo.read();
+  if (
+    previous.size === disabled.size &&
+    [...disabled].every((pluginId) => previous.has(pluginId))
+  ) {
+    return;
+  }
+  deps.compiledInDisabledMemo.write(disabled);
+}
+
 export async function reconcilePluginFrontends(
   state: PluginFrontendReconcileState,
   deps: PluginFrontendReconcileDeps,
@@ -633,6 +712,7 @@ export async function reconcilePluginFrontends(
   const candidates = await deps.fetchCandidates();
   if (state.tornDown) return;
   const candidateIds = new Set(candidates.map((c) => c.pluginId));
+  rememberDisabledCompiledIn(candidateIds, deps);
   for (const pluginId of [...state.records.keys()]) {
     if (candidateIds.has(pluginId)) continue;
     state.pendingControllers.get(pluginId)?.abort();
@@ -659,8 +739,13 @@ async function reconcileCandidates(
   await runWithConcurrencyLimit(
     orderPluginFrontendCandidates(candidates, deps.routePluginId()),
     PLUGIN_FRONTEND_LOAD_CONCURRENCY,
-    async (candidate) => {
-      const pluginId = candidate.pluginId;
+    async (serverCandidate) => {
+      const pluginId = serverCandidate.pluginId;
+      const compiledIn = deps.compiledIn?.get(pluginId);
+      const candidate =
+        compiledIn === undefined
+          ? serverCandidate
+          : compiledInCandidate(pluginId);
       const previous = state.records.get(pluginId);
       if (
         previous !== undefined &&
@@ -677,7 +762,7 @@ async function reconcileCandidates(
           ? previousAttempt.count + 1
           : 0;
       const importUrl =
-        retryCount === 0
+        retryCount === 0 || compiledIn !== undefined
           ? candidate.bundle.jsUrl
           : appendPluginImportRetry(candidate.bundle.jsUrl, retryCount);
       const loaded = await loadPluginFrontends(
@@ -688,7 +773,10 @@ async function reconcileCandidates(
           },
         ],
         {
-          importModule: deps.importModule,
+          importModule:
+            compiledIn === undefined
+              ? deps.importModule
+              : () => compiledIn.importModule(),
           injectCss: () => {},
           warn: deps.warn,
         },
@@ -919,9 +1007,44 @@ function publishBrowserDiagnostics(): void {
 
 const PLUGIN_SLOT_BATCH_MAX_HOLD_MS = 150;
 
+export const COMPILED_IN_PLUGIN_FRONTENDS: ReadonlyMap<
+  string,
+  CompiledInPluginFrontend
+> = new Map();
+
+const COMPILED_IN_DISABLED_STORAGE_KEY = "bb.plugin-frontend.compiled-in-disabled";
+
+const browserCompiledInDisabledMemo: CompiledInDisabledMemo = {
+  read() {
+    try {
+      const raw = window.localStorage.getItem(COMPILED_IN_DISABLED_STORAGE_KEY);
+      const parsed: unknown = raw === null ? [] : JSON.parse(raw);
+      return new Set(
+        Array.isArray(parsed)
+          ? parsed.filter((value): value is string => typeof value === "string")
+          : [],
+      );
+    } catch {
+      return new Set();
+    }
+  },
+  write(pluginIds) {
+    try {
+      window.localStorage.setItem(
+        COMPILED_IN_DISABLED_STORAGE_KEY,
+        JSON.stringify([...pluginIds]),
+      );
+    } catch {
+      return;
+    }
+  },
+};
+
 const browserReconcileDeps: PluginFrontendReconcileDeps = {
   fetchCandidates: fetchFrontendCandidates,
   importModule: (url) => import(/* @vite-ignore */ url),
+  compiledIn: COMPILED_IN_PLUGIN_FRONTENDS,
+  compiledInDisabledMemo: browserCompiledInDisabledMemo,
   applyCss: applyPluginCss,
   retainCss: retainPluginCss,
   routePluginId: () => getPluginPanelRoutePluginId(window.location.pathname),
@@ -989,16 +1112,44 @@ function installPluginFrontendPageLifecycle(): void {
   window.addEventListener("pageshow", (event) => lifecycle.onPageShow(event));
 }
 
+let bootSettled = false;
+const bootListeners = new Set<() => void>();
+
+function settleBoot(): void {
+  if (bootSettled) return;
+  bootSettled = true;
+  for (const listener of [...bootListeners]) listener();
+}
+
+export function subscribePluginFrontendBoot(listener: () => void): () => void {
+  bootListeners.add(listener);
+  return () => {
+    bootListeners.delete(listener);
+  };
+}
+
+export function isPluginFrontendBootSettled(): boolean {
+  return bootSettled;
+}
+
+export function resetPluginFrontendBootForTest(): void {
+  bootSettled = false;
+  bootPromise = null;
+}
+
 export function bootPluginFrontends(): Promise<void> {
   bootPromise ??= (async () => {
     installPluginRuntime();
     installPluginFrontendPageLifecycle();
+    await seedCompiledInPluginFrontends(state, browserReconcileDeps);
     await reconcilePluginFrontends(state, browserReconcileDeps);
-  })().catch((error: unknown) => {
-    console.warn(
-      `plugin frontend boot failed: ${error instanceof Error ? error.message : String(error)}`,
-    );
-  });
+  })()
+    .catch((error: unknown) => {
+      console.warn(
+        `plugin frontend boot failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    })
+    .finally(settleBoot);
   return bootPromise;
 }
 
