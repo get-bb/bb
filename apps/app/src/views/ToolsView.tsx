@@ -166,12 +166,10 @@ function PluginsToolView({
 
 function PluginDetailToolView({
   pluginId,
-  header,
   contentClassName,
   onRemoved,
 }: {
   pluginId: string;
-  header?: ReactNode;
   contentClassName?: string;
   onRemoved?: () => void;
 }) {
@@ -412,7 +410,6 @@ function PluginDetailToolView({
       ) : null}
       <div className="min-h-0 flex-1">
         <ResourceScrollPage contentClassName={contentClassName}>
-          {header}
           {detailContent}
           <ConfirmDeleteDialog
             open={deleteTarget !== null}
@@ -451,12 +448,10 @@ function PluginDetailToolView({
 
 export function PluginDetailPaneView({
   pluginId,
-  header,
   contentClassName,
   onRemoved,
 }: {
   pluginId: string;
-  header?: ReactNode;
   contentClassName?: string;
   onRemoved?: () => void;
 }) {
@@ -470,7 +465,6 @@ export function PluginDetailPaneView({
         >
           <PluginDetailToolView
             pluginId={pluginId}
-            header={header}
             contentClassName={contentClassName}
             onRemoved={onRemoved}
           />

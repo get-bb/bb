@@ -1414,8 +1414,6 @@ For isolated development smoke tests only, `DEV_BROWSER_SMOKE_BINARY` selects th
 Settings → Plugins lists every installed plugin, including disabled plugins and
 plugins without configuration. Selecting a plugin opens its configuration when
 available, otherwise its details. Configuration and Details switch in place.
-The plugin page header provides Browse plugins to open the Plugins workspace
-and New plugin to start the existing creation flow.
 
 BB guide is installed and enabled by default. In Settings → Plugins
 → BB guide, `introduction` controls the BB introduction, `skills` controls all
