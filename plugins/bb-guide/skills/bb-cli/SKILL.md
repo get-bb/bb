@@ -136,6 +136,7 @@ bb environment providers --json
 bb provider list --environment "$BB_ENVIRONMENT_ID" --json
 bb thread show "$BB_THREAD_ID" --json
 bb thread context --self --json
+bb thread image-metadata --self --json
 bb environment status "$BB_ENVIRONMENT_ID" --json
 bb plugin list --json
 bb skill list --environment "$BB_ENVIRONMENT_ID" --json
@@ -168,6 +169,8 @@ Use `bb browser instances --host <host-id> --json` to discover a desktop. Comman
 estimates in `providerDetails` when available. Provider inventory failures are
 reported; this is not billing/invoice data. Suspension requires idle live threads
 and no open terminals; empty machines can use an opted-in provider idle policy.
+
+`bb thread image-metadata` reads persisted image dimensions; add `--source URL --width N --height N` and optional `--etag TAG` to record a source without fetching it.
 
 `bb thread context` reads recorded context usage without sending a model request. A breakdown is optional; absent usage is returned as `null`.
 

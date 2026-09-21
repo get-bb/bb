@@ -1012,7 +1012,22 @@ export type TimelineTurnSummaryDetailsResponse = z.infer<
   typeof timelineTurnSummaryDetailsResponseSchema
 >;
 
+export const threadImageMetadataSchema = z.object({
+  source: z
+    .string()
+    .min(1)
+    .refine(
+      (source) => /^https?:\/\//iu.test(source) || /^\/(?!\/)/u.test(source),
+      "Image source must be an HTTP URL or an origin-relative path",
+    ),
+  width: z.number().int().positive(),
+  height: z.number().int().positive(),
+  etag: z.string().nullable(),
+});
+export type ThreadImageMetadata = z.infer<typeof threadImageMetadataSchema>;
+
 export const threadTimelineResponseSchema = z.object({
+  imageMetadata: z.array(threadImageMetadataSchema).optional(),
   rows: z.array(timelineRowSchema),
   contextBoundarySeq: z.number().int().nonnegative().nullable(),
   completedTurnDisplay: completedTurnDisplaySchema,
