@@ -52,6 +52,11 @@ interface DetailRoute {
   automationId: string;
 }
 
+interface DeleteTarget {
+  route: DetailRoute;
+  name: string;
+}
+
 interface ParsedDetailRoute {
   route: DetailRoute;
   editing: boolean;
@@ -394,6 +399,8 @@ function OverviewView({
   const navigate = useBbNavigate();
   const { entries, error, refetch } = useOverview();
   const mutations = useMutations();
+  const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const changeEnabled = useCallback(
     async (enabled: boolean, route: DetailRoute) => {
@@ -419,6 +426,31 @@ function OverviewView({
     [mutations],
   );
 
+  const requestDelete = useCallback((route: DetailRoute, name: string) => {
+    setDeleteTarget({ route, name });
+  }, []);
+
+  const closeDelete = useCallback(() => {
+    if (!deleting) setDeleteTarget(null);
+  }, [deleting]);
+
+  const confirmDelete = useCallback(() => {
+    if (deleteTarget === null) return;
+    setDeleting(true);
+    mutations
+      .delete(deleteTarget.route)
+      .then(
+        () => {
+          toast.success("Automation deleted");
+          setDeleteTarget(null);
+          refetch();
+        },
+        (rpcError: unknown) =>
+          toast.error(`Failed to delete automation: ${errorText(rpcError)}`),
+      )
+      .finally(() => setDeleting(false));
+  }, [deleteTarget, mutations, refetch]);
+
   const createViaChat = useCallback(
     (prompt?: string) => {
       navigate.toCompose({
@@ -430,17 +462,30 @@ function OverviewView({
   );
 
   return (
-    <AutomationOverviewView
-      entries={entries}
-      error={error}
-      onRetry={refetch}
-      onOpenDetail={onOpenDetail}
-      onEnabledChange={changeEnabled}
-      onRunNow={runNow}
-      onCreateViaChat={createViaChat}
-      activeMode={activeMode}
-      onModeChange={onModeChange}
-    />
+    <>
+      <AutomationOverviewView
+        entries={entries}
+        error={error}
+        onRetry={refetch}
+        onOpenDetail={onOpenDetail}
+        onEnabledChange={changeEnabled}
+        onRunNow={runNow}
+        onDelete={requestDelete}
+        onCreateViaChat={createViaChat}
+        activeMode={activeMode}
+        onModeChange={onModeChange}
+      />
+      <DeleteAutomationDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) closeDelete();
+        }}
+        name={deleteTarget?.name ?? ""}
+        pending={deleting}
+        onConfirm={confirmDelete}
+        onCancel={closeDelete}
+      />
+    </>
   );
 }
 

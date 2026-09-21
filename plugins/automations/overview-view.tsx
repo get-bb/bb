@@ -31,7 +31,6 @@ import {
   ResourceListState,
   ResourceFilterMenu,
   ResourceMeta,
-  ResourceOverflowMenu,
   ResourceRow,
   ResourceRowDetailChevron,
   ResourceSortMenu,
@@ -51,6 +50,7 @@ import {
   PERSONAL_PROJECT_ID,
 } from "./lib/format-schedule.js";
 import { AutomationMetadataItem } from "./metadata.js";
+import { AutomationActionsMenu } from "./actions-menu.js";
 
 const AUTOMATION_STATUS_FILTER_OPTIONS = [
   { id: "active", label: "Active" },
@@ -253,6 +253,7 @@ export function OverviewRow({
   onNavigate,
   onEnabledChange,
   onRunNow,
+  onDelete,
 }: {
   automation: AutomationResponse;
   project: OverviewEntry["project"];
@@ -262,6 +263,7 @@ export function OverviewRow({
     route: AutomationDetailRoute,
   ) => Promise<void>;
   onRunNow: (route: AutomationDetailRoute) => Promise<void>;
+  onDelete: (route: AutomationDetailRoute, name: string) => void;
 }) {
   const [togglePending, setTogglePending] = useState(false);
   const [runPending, setRunPending] = useState(false);
@@ -284,19 +286,14 @@ export function OverviewRow({
       muted={lifecycleLocked}
       onOpen={() => onNavigate(route)}
       actions={
-        <ResourceOverflowMenu
-          label={`${automation.name} actions`}
-          disabled={runPending}
-          items={[
-            {
-              label: "Run now",
-              icon: "Play",
-              onSelect: () => {
-                setRunPending(true);
-                void onRunNow(route).finally(() => setRunPending(false));
-              },
-            },
-          ]}
+        <AutomationActionsMenu
+          name={automation.name}
+          pending={runPending}
+          onRunNow={() => {
+            setRunPending(true);
+            void onRunNow(route).finally(() => setRunPending(false));
+          }}
+          onDelete={() => onDelete(route, automation.name)}
         />
       }
       actionsVisibility="always"
@@ -329,6 +326,7 @@ function AutomationProblemRow({
   automation,
   project,
   onNavigate,
+  onDelete,
 }: {
   automation: AutomationReadProblem;
   project: OverviewEntry["project"];
@@ -336,6 +334,7 @@ function AutomationProblemRow({
     route: AutomationDetailRoute,
     options?: AutomationDetailNavigationOptions,
   ) => void;
+  onDelete: (route: AutomationDetailRoute, name: string) => void;
 }) {
   const repairTarget =
     automation.problem === "missing-agent-prompt" ? automation : null;
@@ -373,6 +372,20 @@ function AutomationProblemRow({
       onOpen={() =>
         onNavigate(route, repairTarget === null ? undefined : { editing: true })
       }
+      actions={
+        <AutomationActionsMenu
+          name={automation.name}
+          pending={false}
+          runDisabledReason={
+            repairTarget !== null
+              ? "Add a prompt before running this automation."
+              : "The stored configuration cannot be read."
+          }
+          onRunNow={() => {}}
+          onDelete={() => onDelete(route, automation.name)}
+        />
+      }
+      actionsVisibility="always"
       persistentActions={
         repairTarget !== null ? (
           <Button
@@ -434,6 +447,7 @@ export function AutomationOverviewView({
   onOpenDetail,
   onEnabledChange,
   onRunNow,
+  onDelete,
   onCreateViaChat,
   activeMode,
   onModeChange,
@@ -450,6 +464,7 @@ export function AutomationOverviewView({
     route: AutomationDetailRoute,
   ) => Promise<void>;
   onRunNow: (route: AutomationDetailRoute) => Promise<void>;
+  onDelete: (route: AutomationDetailRoute, name: string) => void;
   onCreateViaChat: (prompt?: string) => void;
   activeMode: AutomationCollectionMode;
   onModeChange: (mode: AutomationCollectionMode) => void;
@@ -614,6 +629,7 @@ export function AutomationOverviewView({
               automation={automation}
               project={project}
               onNavigate={onOpenDetail}
+              onDelete={onDelete}
             />
           ) : (
             <OverviewRow
@@ -623,6 +639,7 @@ export function AutomationOverviewView({
               onNavigate={onOpenDetail}
               onEnabledChange={onEnabledChange}
               onRunNow={onRunNow}
+              onDelete={onDelete}
             />
           );
         })}

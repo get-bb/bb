@@ -332,6 +332,7 @@ export function OverviewRows() {
                 onNavigate={noop}
                 onEnabledChange={async () => {}}
                 onRunNow={async () => {}}
+                onDelete={() => {}}
               />
             </div>
           ) : null}
@@ -348,6 +349,7 @@ export function OverviewRows() {
             onNavigate={noop}
             onEnabledChange={async () => {}}
             onRunNow={async () => {}}
+            onDelete={() => {}}
           />
         </div>
       </StoryRow>

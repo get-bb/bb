@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { AutomationOverviewView } from "bb-plugin-automations/overview-view";
@@ -98,6 +104,7 @@ describe("AutomationOverviewView", () => {
         onOpenDetail={() => {}}
         onEnabledChange={async () => {}}
         onRunNow={async () => {}}
+        onDelete={() => {}}
         onCreateViaChat={() => {}}
         activeMode="installed"
         onModeChange={() => {}}
@@ -127,6 +134,7 @@ describe("AutomationOverviewView", () => {
         onOpenDetail={() => {}}
         onEnabledChange={async () => {}}
         onRunNow={async () => {}}
+        onDelete={() => {}}
         onCreateViaChat={() => {}}
         activeMode="installed"
         onModeChange={() => {}}
@@ -177,6 +185,7 @@ describe("AutomationOverviewView", () => {
         onOpenDetail={onOpenDetail}
         onEnabledChange={async () => {}}
         onRunNow={async () => {}}
+        onDelete={() => {}}
         onCreateViaChat={() => {}}
         activeMode="installed"
         onModeChange={() => {}}
@@ -187,6 +196,16 @@ describe("AutomationOverviewView", () => {
     expect(screen.getByText("Unreadable automation")).toBeTruthy();
     expect(screen.getByText("Nightly digest")).toBeTruthy();
     expect(screen.getAllByText("9AM")).toHaveLength(2);
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Needs a prompt actions" }),
+    );
+    expect(
+      (screen.getByRole("menuitem", { name: "Run now" }) as HTMLElement)
+        .ariaDisabled,
+    ).toBe("true");
+    expect(screen.getByRole("menuitem", { name: "Delete" })).toBeTruthy();
+    fireEvent.keyDown(document, { key: "Escape" });
 
     const search = screen.getByPlaceholderText("Search automations");
     fireEvent.change(search, { target: { value: "Prompt required" } });
@@ -231,6 +250,7 @@ describe("AutomationOverviewView", () => {
         onOpenDetail={onOpenDetail}
         onEnabledChange={async () => {}}
         onRunNow={onRunNow}
+        onDelete={() => {}}
         onCreateViaChat={() => {}}
         activeMode="installed"
         onModeChange={() => {}}
@@ -263,6 +283,39 @@ describe("AutomationOverviewView", () => {
     expect(screen.queryByRole("menuitem", { name: "Run now" })).toBeNull();
   });
 
+  it("uses the shared row menu to request deletion", async () => {
+    const onOpenDetail = vi.fn();
+    const onDelete = vi.fn();
+    render(
+      <AutomationOverviewView
+        entries={INSTALLED_AUTOMATIONS}
+        error={null}
+        onRetry={() => {}}
+        onOpenDetail={onOpenDetail}
+        onEnabledChange={async () => {}}
+        onRunNow={async () => {}}
+        onDelete={onDelete}
+        onCreateViaChat={() => {}}
+        activeMode="installed"
+        onModeChange={() => {}}
+      />,
+    );
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Nightly digest actions" }),
+    );
+    expect(
+      screen.getAllByRole("menuitem").map((item) => item.textContent),
+    ).toEqual(["Run now", "Delete"]);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Delete" }));
+
+    expect(onDelete).toHaveBeenCalledWith(
+      { projectId: "proj_1", automationId: "auto_1" },
+      "Nightly digest",
+    );
+    expect(onOpenDetail).not.toHaveBeenCalled();
+  });
+
   it("offers Projects and Status as groups inside one filter menu", async () => {
     render(
       <AutomationOverviewView
@@ -272,6 +325,7 @@ describe("AutomationOverviewView", () => {
         onOpenDetail={() => {}}
         onEnabledChange={async () => {}}
         onRunNow={async () => {}}
+        onDelete={() => {}}
         onCreateViaChat={() => {}}
         activeMode="installed"
         onModeChange={() => {}}
@@ -316,6 +370,7 @@ describe("AutomationOverviewView", () => {
         onOpenDetail={() => {}}
         onEnabledChange={async () => {}}
         onRunNow={async () => {}}
+        onDelete={() => {}}
         onCreateViaChat={() => {}}
         activeMode="installed"
         onModeChange={() => {}}
@@ -378,6 +433,7 @@ describe("AutomationOverviewView", () => {
         onOpenDetail={() => {}}
         onEnabledChange={async () => {}}
         onRunNow={async () => {}}
+        onDelete={() => {}}
         onCreateViaChat={() => {}}
         activeMode="installed"
         onModeChange={() => {}}
@@ -432,6 +488,7 @@ describe("AutomationOverviewView", () => {
         onOpenDetail={() => {}}
         onEnabledChange={async () => {}}
         onRunNow={async () => {}}
+        onDelete={() => {}}
         onCreateViaChat={() => {}}
         activeMode="installed"
         onModeChange={() => {}}
@@ -472,6 +529,7 @@ describe("AutomationOverviewView", () => {
           onOpenDetail={() => {}}
           onEnabledChange={async () => {}}
           onRunNow={async () => {}}
+          onDelete={() => {}}
           onCreateViaChat={() => {}}
           activeMode="installed"
           onModeChange={() => {}}
@@ -521,6 +579,7 @@ describe("AutomationOverviewView", () => {
         onOpenDetail={() => {}}
         onEnabledChange={async () => {}}
         onRunNow={async () => {}}
+        onDelete={() => {}}
         onCreateViaChat={onCreateViaChat}
         activeMode="browse"
         onModeChange={() => {}}
@@ -557,6 +616,7 @@ describe("AutomationOverviewView", () => {
         onOpenDetail={() => {}}
         onEnabledChange={async () => {}}
         onRunNow={async () => {}}
+        onDelete={() => {}}
         onCreateViaChat={() => {}}
         activeMode="installed"
         onModeChange={() => {}}
@@ -599,6 +659,7 @@ describe("AutomationOverviewView", () => {
         onOpenDetail={() => {}}
         onEnabledChange={async () => {}}
         onRunNow={async () => {}}
+        onDelete={() => {}}
         onCreateViaChat={() => {}}
         activeMode="installed"
         onModeChange={() => {}}
@@ -631,6 +692,7 @@ describe("AutomationOverviewView", () => {
         onOpenDetail={() => {}}
         onEnabledChange={async () => {}}
         onRunNow={async () => {}}
+        onDelete={() => {}}
         onCreateViaChat={() => {}}
         activeMode="installed"
         onModeChange={() => {}}
