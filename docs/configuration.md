@@ -718,12 +718,15 @@ Archived loads pages only while selected. For example,
 Previously saved `draft` selections display as Active.
 Plugin sidebar replacements own their rendering.
 
-`palette.threadLifecycles` independently selects the palette's Active, Drafts,
-and Archived groups before and after typing. Default/reset is `["active"]`.
-Drafts and Archived load bounded recent lists only while selected. The palette
-initially shows six rows across nonempty groups (six, three each, or two each),
-with Show more in each group. For example, `bb settings ui set
-palette.threadLifecycles '["draft"]'` finds saved drafts without changing the sidebar.
+`palette.threadLifecycles` independently selects Active and Archived before
+and after typing. Active includes threads with saved messages. Search threads
+matches saved message content, including follow-ups, and opens the owning thread.
+Archived loads a bounded recent list only while selected. Search uses the existing
+ranked Active/Archived response and displays the selected groups, with six initial
+rows in one group or three each when both are nonempty, plus Show more.
+`bb settings ui set palette.threadLifecycles '["active","archived"]'` includes
+archived results without changing the sidebar. Older `draft` selections display
+as Active.
 
 `sidebar.threadGrouping.environment` decides whether two or more sibling threads
 that share one worktree environment collapse into a single worktree row inside

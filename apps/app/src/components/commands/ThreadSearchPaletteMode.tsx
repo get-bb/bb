@@ -28,6 +28,7 @@ import {
   THREAD_LIFECYCLE_OPTIONS,
 } from "@/components/thread/ThreadLifecycleFilter";
 import { paletteThreadLifecyclesAtom } from "@/lib/command-palette/palette-preferences";
+import { normalizeThreadLifecycleFilter } from "@/lib/thread-lifecycle-filter";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { usePaletteRecentThreads } from "@/hooks/queries/palette-thread-queries";
 import {
@@ -78,10 +79,7 @@ export function ThreadSearchPaletteMode({
     paletteThreadLifecyclesAtom,
   );
   const lifecycles = useMemo(
-    () =>
-      THREAD_LIFECYCLE_OPTIONS.flatMap(({ value }) =>
-        selectedLifecycles.includes(value) ? [value] : [],
-      ),
+    () => normalizeThreadLifecycleFilter(selectedLifecycles),
     [selectedLifecycles],
   );
   const [query, setQuery] = useState("");
@@ -96,11 +94,8 @@ export function ThreadSearchPaletteMode({
   }
   const [now] = useState(() => Date.now());
   const navigation = useSidebarNavigation();
-  const threadSearch = useThreadSearch({ active: true, lifecycles, query });
+  const threadSearch = useThreadSearch({ active: true, query });
   const trimmedQuery = query.trim();
-  const drafts = usePaletteRecentThreads("draft", {
-    enabled: trimmedQuery.length === 0 && lifecycles.includes("draft"),
-  });
   const archived = usePaletteRecentThreads("archived", {
     enabled: trimmedQuery.length === 0 && lifecycles.includes("archived"),
   });
@@ -123,11 +118,10 @@ export function ThreadSearchPaletteMode({
         ...(navigation.data?.projects.flatMap((project) => project.threads) ??
           []),
         ...(navigation.data?.personalProject.threads ?? []),
-      ].filter((thread) => thread.lifecycle === "active"),
-      ...(lifecycles.includes("draft") ? (drafts.data ?? []) : []),
+      ],
       ...(lifecycles.includes("archived") ? (archived.data ?? []) : []),
     ],
-    [archived.data, drafts.data, lifecycles, navigation.data],
+    [archived.data, lifecycles, navigation.data],
   );
   const result = useMemo(
     () =>
@@ -154,8 +148,7 @@ export function ThreadSearchPaletteMode({
     const nonemptyGroups = lifecycles.filter((lifecycle) =>
       result.rows.some((row) => row.lifecycle === lifecycle),
     );
-    const limit =
-      nonemptyGroups.length === 3 ? 2 : nonemptyGroups.length === 2 ? 3 : 6;
+    const limit = nonemptyGroups.length === 2 ? 3 : 6;
     return nonemptyGroups.flatMap((lifecycle) => {
       const rows = result.rows.filter((row) => row.lifecycle === lifecycle);
       const visible = expandedGroups.includes(lifecycle)
@@ -193,11 +186,7 @@ export function ThreadSearchPaletteMode({
     [options],
   );
   const recentQueries = lifecycles.map((lifecycle) =>
-    lifecycle === "active"
-      ? navigation
-      : lifecycle === "draft"
-        ? drafts
-        : archived,
+    lifecycle === "active" ? navigation : archived,
   );
   const isRecentLoading =
     result.isRecent && recentQueries.some((result) => result.isLoading);

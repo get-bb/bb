@@ -73,79 +73,33 @@ function build(
 }
 
 describe("buildPaletteThreadSearchRows", () => {
-  it("filters by server lifecycle before applying the recent cutoff", () => {
-    const draft = makeThread("older-draft", {
-      lifecycle: "draft",
-      updatedAt: 1,
-    });
-    const archived = makeThread("older-archive", {
-      archivedAt: 1,
-      updatedAt: 2,
-    });
-    const active = Array.from({ length: 25 }, (_, index) =>
-      makeThread(`active-${index}`),
-    );
-    const recentThreads = [...active, draft, archived];
-    expect(build({ query: "", recentThreads }).rows).toHaveLength(20);
-    expect(
-      build({ query: "", recentThreads }).rows.every(
-        (row) => row.lifecycle === "active",
-      ),
-    ).toBe(true);
-    expect(
-      build({
-        query: "",
-        recentThreads,
-        lifecycles: ["draft", "archived"],
-      }).rows.map((row) => row.threadId),
-    ).toEqual(["older-draft", "older-archive"]);
+  it("keeps saved messages in Active recents and maps older draft selections to Active", () => {
+    const saved = makeThread("saved", { lifecycle: "draft", updatedAt: NOW });
+    const archived = makeThread("archived", { archivedAt: 1, updatedAt: 2 });
+    const active = Array.from({ length: 25 }, (_, index) => makeThread(`active-${index}`, { updatedAt: 1 }));
+    const recentThreads = [...active, saved, archived];
+    const result = build({ query: "", recentThreads, lifecycles: ["draft", "archived"] });
+    expect(result.rows).toHaveLength(21);
+    expect(result.rows[0]).toMatchObject({ threadId: "saved", lifecycle: "active" });
+    expect(result.rows[20]).toMatchObject({ threadId: "archived", lifecycle: "archived" });
   });
 
-  it("uses only selected server groups and keeps draft ranking and message anchors", () => {
+  it("keeps saved-message snippets in the owning thread result without inventing an event anchor", () => {
     const result = build({
-      lifecycles: ["draft"],
+      lifecycles: ["active"],
       searchResponse: {
         active: {
-          total: 30,
-          results: [{ thread: makeThread("active"), matches: [] }],
+          total: 1,
+          results: [{
+            thread: makeThread("saved", { lifecycle: "draft" }),
+            matches: [{ sourceKind: "user_message", text: "matching saved message", highlightRanges: [{ start: 0, end: 5 }], sourceSeq: null }],
+          }],
         },
-        draft: {
-          total: 2,
-          results: [
-            {
-              thread: makeThread("draft-message", { lifecycle: "draft" }),
-              matches: [
-                {
-                  sourceKind: "user_message",
-                  text: "matching draft",
-                  highlightRanges: [{ start: 0, end: 5 }],
-                  sourceSeq: 7,
-                },
-              ],
-            },
-            {
-              thread: makeThread("draft-title", { lifecycle: "draft" }),
-              matches: [],
-            },
-          ],
-        },
-        archived: {
-          total: 10,
-          results: [
-            { thread: makeThread("archived", { archivedAt: 1 }), matches: [] },
-          ],
-        },
+        archived: { total: 0, results: [] },
       },
     });
-    expect(result.rows.map((row) => row.threadId)).toEqual([
-      "draft-message",
-      "draft-title",
-    ]);
-    expect(result.rows[0]).toMatchObject({
-      messageSeq: 7,
-      highlightRanges: [{ start: 0, end: 5 }],
-      lifecycle: "draft",
-    });
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0]).toMatchObject({ threadId: "saved", lifecycle: "active", primaryText: "matching saved message", messageSeq: null });
   });
 
   it("preserves active and archived server matches in their ranked order", () => {

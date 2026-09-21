@@ -26,11 +26,12 @@ every window and client sees the same value.
   to include archived threads. Selected archived rows
   retain their hierarchy placement and offer a restore action. Archived pages load only while selected;
   plugin sidebar replacements keep ownership of their rendering.
-- `palette.threadLifecycles` uses the same nonempty lifecycle selection and
-  Active default, independently of the sidebar. It filters palette results
-  before and after typing. Use `bb settings ui set palette.threadLifecycles
-  '["draft"]'` for saved drafts; reset restores Active. Recent Drafts and
-  Archived lists load only while selected and are bounded at the server.
+- `palette.threadLifecycles` selects Active and Archived independently of the
+  sidebar. Active includes threads with saved messages, whose content is
+  matched by Search threads. Use `bb settings ui set palette.threadLifecycles
+  '["active","archived"]'` to include archived results. Archived recents load
+  only while selected and are bounded at the server. Older `draft` selections
+  display as Active.
 - `sidebar.organizationMode` defaults to Custom (`chronological`) when unset;
   existing server and legacy browser choices are preserved.
 - `sidebar.threadGrouping.environment` decides whether sibling threads sharing

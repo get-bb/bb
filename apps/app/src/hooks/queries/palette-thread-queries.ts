@@ -9,7 +9,7 @@ import {
 } from "./thread-queries";
 
 export function usePaletteRecentThreads(
-  lifecycle: "draft" | "archived",
+  lifecycle: "archived",
   { enabled }: { enabled: boolean },
 ) {
   useThreadListRealtimeSubscription({ enabled });

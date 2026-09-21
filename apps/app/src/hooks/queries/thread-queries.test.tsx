@@ -860,46 +860,21 @@ describe("useThreadTimeline segment limit", () => {
 });
 
 describe("palette lifecycle queries", () => {
-  it("loads bounded recent draft and archived populations only while selected before typing", async () => {
+  it("loads bounded archived recents only while selected before typing", async () => {
     const { wrapper } = createQueryClientTestHarness();
-    const olderDraft = makeThreadListEntry({
-      id: "old-draft",
-      lifecycle: "draft",
-      updatedAt: 1,
-    });
-    vi.mocked(sdk.threads.list).mockResolvedValue([olderDraft]);
+    const archived = makeThreadListEntry({ id: "archived", lifecycle: "archived", archivedAt: 1 });
+    vi.mocked(sdk.threads.list).mockResolvedValue([archived]);
     const { result, rerender } = renderHook(
-      ({ recent, draft, archived }) => ({
-        draft: usePaletteRecentThreads("draft", { enabled: recent && draft }),
-        archived: usePaletteRecentThreads("archived", {
-          enabled: recent && archived,
-        }),
-      }),
-      {
-        wrapper,
-        initialProps: { recent: true, draft: false, archived: false },
-      },
+      ({ recent, selected }) => usePaletteRecentThreads("archived", { enabled: recent && selected }),
+      { wrapper, initialProps: { recent: true, selected: false } },
     );
     expect(sdk.threads.list).not.toHaveBeenCalled();
-    rerender({ recent: true, draft: true, archived: false });
-    await waitFor(() =>
-      expect(result.current.draft.data).toEqual([olderDraft]),
-    );
+    rerender({ recent: false, selected: true });
+    expect(sdk.threads.list).not.toHaveBeenCalled();
+    rerender({ recent: true, selected: true });
+    await waitFor(() => expect(result.current.data).toEqual([archived]));
     expect(sdk.threads.list).toHaveBeenCalledExactlyOnceWith({
-      archived: false,
-      lifecycles: ["draft"],
-      limit: 20,
-      signal: expect.any(AbortSignal),
-    });
-    rerender({ recent: false, draft: true, archived: true });
-    expect(sdk.threads.list).toHaveBeenCalledTimes(1);
-    rerender({ recent: true, draft: true, archived: true });
-    await waitFor(() => expect(sdk.threads.list).toHaveBeenCalledTimes(2));
-    expect(sdk.threads.list).toHaveBeenLastCalledWith({
-      archived: true,
-      lifecycles: ["archived"],
-      limit: 20,
-      signal: expect.any(AbortSignal),
+      archived: true, lifecycles: ["archived"], limit: 20, signal: expect.any(AbortSignal),
     });
   });
 

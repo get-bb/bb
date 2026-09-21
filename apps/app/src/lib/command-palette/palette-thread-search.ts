@@ -9,6 +9,7 @@ import type {
 } from "@bb/server-contract";
 import { formatRelativeTime } from "@/lib/relative-time";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
+import { normalizeThreadLifecycleFilter } from "@/lib/thread-lifecycle-filter";
 
 export interface PaletteThreadSearchRow {
   id: string;
@@ -96,10 +97,14 @@ export function buildPaletteThreadSearchRows({
   const isSearchable = trimmedQuery.length >= 2;
   return {
     isRecent,
-    rows: lifecycles.flatMap((lifecycle) =>
+    rows: normalizeThreadLifecycleFilter(lifecycles).flatMap((lifecycle) =>
       isRecent
         ? recentThreads
-            .filter((thread) => thread.lifecycle === lifecycle)
+            .filter((thread) =>
+              lifecycle === "archived"
+                ? thread.archivedAt !== null
+                : thread.archivedAt === null,
+            )
             .sort((left, right) => right.updatedAt - left.updatedAt)
             .slice(0, RECENT_THREAD_LIMIT)
             .map((thread) =>

@@ -291,11 +291,12 @@ restore action. Archived pages load only while selected. For example:
 Previously saved `draft` selections display as Active.
 Plugin sidebar replacements own their filters.
 
-`palette.threadLifecycles` uses the same values and Active default, independently
-of the sidebar. It filters named groups before and after typing; Drafts and
-Archived fetch bounded recent rows only when selected. Use
-`bb settings ui set palette.threadLifecycles '["draft"]'` for saved drafts,
-or reset the key to restore Active.
+`palette.threadLifecycles` uses Active and Archived independently of the
+sidebar. Active includes threads with saved messages; Search threads also
+matches their saved content. Archived fetches bounded recent rows only when
+selected. Use `bb settings ui set palette.threadLifecycles
+'["active","archived"]'` to include archived results. Older `draft` selections
+display as Active.
 
 Every thread-list header's actions menu offers New project, New section,
 Organize, Sort by, and Filter. Organize selects By project,
