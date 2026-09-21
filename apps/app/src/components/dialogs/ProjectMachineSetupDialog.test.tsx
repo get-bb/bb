@@ -81,7 +81,7 @@ describe("ProjectMachineSetupDialog", () => {
     vi.mocked(sdk.projects.sources.add).mockResolvedValue(createdSource);
     const { onComplete } = renderDialog(gitTarget);
 
-    expect(screen.getByText("Set up bb on Mac Studio")).toBeTruthy();
+    expect(await screen.findByText("Set up bb on Mac Studio")).toBeTruthy();
     expect(screen.getByText(gitTarget.gitRemoteUrl!)).toBeTruthy();
     expect(
       screen.getByText("Use an existing folder on Mac Studio"),

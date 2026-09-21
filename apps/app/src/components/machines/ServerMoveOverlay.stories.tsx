@@ -7,7 +7,7 @@ import { makeHost } from "@bb/test-helpers/domain-fixtures";
 import {
   ServerMoveOverlayView,
   type ServerMoveOverlayViewProps,
-} from "./ServerMoveOverlay";
+} from "./ServerMoveOverlayView";
 import { OldServerCopySectionView } from "./OldServerCopySection";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 

@@ -32,8 +32,6 @@ import type {
   Options as ReactMarkdownOptions,
   UrlTransform,
 } from "react-markdown";
-import rehypeRaw from "rehype-raw";
-import rehypeSanitize from "rehype-sanitize";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -118,7 +116,7 @@ import {
 } from "@/components/thread/ThreadTitleMentions.js";
 
 interface MarkdownPreviewProps {
-  allowHtml?: boolean;
+  htmlRehypePlugins?: typeof import("./markdown-html.js").MARKDOWN_HTML_REHYPE_PLUGINS;
   className?: string;
   content: string;
   sourcePrefix?: string;
@@ -290,23 +288,16 @@ const MARKDOWN_TABLE_BREAKOUT_WIDTH = `max(100%, min(1100px, 100cqw - 2rem, var(
 const MARKDOWN_CONTENT_WIDTH_VARIABLE = "--md-content-w";
 const MARKDOWN_SOURCE_COLOR_SCHEME_MEDIA_PATTERN =
   /^\(\s*prefers-color-scheme\s*:\s*(dark|light)\s*\)$/iu;
-const MARKDOWN_HTML_REHYPE_PLUGINS: MarkdownRehypePlugins = [
-  rehypeRaw,
-  rehypeSanitize,
-];
-
 const MARKDOWN_PLAIN_REHYPE_PLUGINS: MarkdownRehypePlugins = [];
 
 function resolveRehypePlugins({
-  allowHtml,
+  htmlRehypePlugins,
   rehypeKatex,
 }: {
-  allowHtml: boolean;
+  htmlRehypePlugins: MarkdownPreviewProps["htmlRehypePlugins"];
   rehypeKatex: RehypeKatex | null;
 }): MarkdownRehypePlugins {
-  const base = allowHtml
-    ? MARKDOWN_HTML_REHYPE_PLUGINS
-    : MARKDOWN_PLAIN_REHYPE_PLUGINS;
+  const base = htmlRehypePlugins ?? MARKDOWN_PLAIN_REHYPE_PLUGINS;
   return rehypeKatex === null ? base : [...base, rehypeKatex];
 }
 
@@ -438,7 +429,7 @@ const areMarkdownPreviewPropsEqual: MarkdownPreviewPropsEqual = (
   previous,
   next,
 ) =>
-  (previous.allowHtml ?? false) === (next.allowHtml ?? false) &&
+  previous.htmlRehypePlugins === next.htmlRehypePlugins &&
   previous.className === next.className &&
   previous.content === next.content &&
   (previous.sourcePrefix ?? "") === (next.sourcePrefix ?? "") &&
@@ -968,7 +959,11 @@ function MarkdownRenderedImage({
         );
         const imageIndex = images.indexOf(event.currentTarget);
         const imageSources = images.map(
-          (image) => image.currentSrc || image.src || image.getAttribute("data-markdown-image-src") || "",
+          (image) =>
+            image.currentSrc ||
+            image.src ||
+            image.getAttribute("data-markdown-image-src") ||
+            "",
         );
         setExpandedImage({
           imageSources,
@@ -1600,7 +1595,7 @@ function MarkdownFrontmatter({ source }: { source: string }) {
 }
 
 function MarkdownPreviewComponent({
-  allowHtml = false,
+  htmlRehypePlugins,
   className,
   content,
   sourcePrefix = "",
@@ -1618,7 +1613,9 @@ function MarkdownPreviewComponent({
     useState<ExpandedMarkdownImage | null>(null);
   const [markdownPieceCache] = useState(createMarkdownPieceCache);
   const usesIncrementalBlocks =
-    incrementalBlocks && !allowHtml && promptMentions === undefined;
+    incrementalBlocks &&
+    htmlRehypePlugins === undefined &&
+    promptMentions === undefined;
   const localFileRouting = linkRouting?.localFile;
   const localImageRouting = linkRouting?.localImage;
   const normalizeLocalFileLinks =
@@ -1761,8 +1758,8 @@ function MarkdownPreviewComponent({
 
   const rehypeKatex = useRehypeKatex(markdownMayContainMath(body));
   const rehypePlugins = useMemo(
-    () => resolveRehypePlugins({ allowHtml, rehypeKatex }),
-    [allowHtml, rehypeKatex],
+    () => resolveRehypePlugins({ htmlRehypePlugins, rehypeKatex }),
+    [htmlRehypePlugins, rehypeKatex],
   );
 
   const markdownPieceRenderConfig = useMemo(

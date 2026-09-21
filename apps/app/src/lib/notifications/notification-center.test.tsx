@@ -54,6 +54,9 @@ it("keeps notification details open when dismissing the toast restores composer 
     showMore.focus();
   });
   fireEvent.click(showMore);
+  await act(async () => {
+    await vi.dynamicImportSettled();
+  });
   expect(getNotificationCenterState().open).toBe(true);
   await act(async () => {
     await vi.advanceTimersByTimeAsync(5000);
@@ -86,6 +89,7 @@ it.each([false, true])(
     });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(300);
+      await vi.dynamicImportSettled();
     });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1);

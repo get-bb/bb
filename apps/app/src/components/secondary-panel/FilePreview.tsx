@@ -19,6 +19,7 @@ import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider"
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing.js";
 import { MarkdownPreview } from "@/components/ui/markdown-preview.js";
+import { MARKDOWN_HTML_REHYPE_PLUGINS } from "@/components/ui/markdown-html.js";
 import { ImageLightbox } from "@/components/ui/image-lightbox.js";
 import {
   Tooltip,
@@ -901,7 +902,7 @@ function MarkdownFilePreview({
     <SecondaryPanelSelectionActions onSelectionAddToChat={onSelectionAddToChat}>
       <div className="flex-auto bg-background px-4 py-4">
         <MarkdownPreview
-          allowHtml
+          htmlRehypePlugins={MARKDOWN_HTML_REHYPE_PLUGINS}
           content={file.contents}
           linkRouting={markdownLinkRouting}
         />

@@ -1,10 +1,8 @@
 import { useMemo } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import type { HostDirectoryListing } from "@bb/server-contract";
-import {
-  ProjectPathDialogContent,
-  type ProjectPathDialogTarget,
-} from "./ProjectPathDialog";
+import { ProjectPathDialogContent } from "./ProjectPathDialogContent";
+import type { ProjectPathDialogTarget } from "./ProjectPathDialog";
 import { hostDirectoryQueryKey } from "@/hooks/queries/query-keys";
 import { createAppQueryClient } from "@/lib/query-client";
 import {

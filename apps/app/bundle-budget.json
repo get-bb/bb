@@ -65,11 +65,14 @@
     "@xterm/xterm",
     "katex",
     "oniguruma-to-es",
+    "parse5",
     "prosemirror-model",
     "prosemirror-state",
     "prosemirror-view",
     "react-resizable-panels",
     "rehype-katex",
+    "rehype-raw",
+    "rehype-sanitize",
     "shiki"
   ],
   "onDemandPackages": {
@@ -94,7 +97,10 @@
         "katex",
         "mermaid",
         "oniguruma-to-es",
+        "parse5",
         "rehype-katex",
+        "rehype-raw",
+        "rehype-sanitize",
         "shiki"
       ]
     }

@@ -885,7 +885,7 @@ describe("PluginNavSidebarItems", () => {
 
     expect(onCompactCustomizeModeChange).toHaveBeenCalledWith(true);
     expect(
-      screen.getByTestId("sidebar-navigation-customize-inline"),
+      await screen.findByTestId("sidebar-navigation-customize-inline"),
     ).not.toBeNull();
     expect(
       screen

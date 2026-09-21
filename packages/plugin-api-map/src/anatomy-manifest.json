@@ -36,7 +36,7 @@
       ],
       "sources": [
         {
-          "path": "apps/app/src/components/commands/CommandPalette.tsx",
+          "path": "apps/app/src/components/commands/CommandPaletteContent.tsx",
           "anchors": [
             "top-[12%] max-w-[640px] translate-y-0 gap-0 p-0",
             "aria-selected={isActive}",

@@ -423,6 +423,9 @@ describe("CommandPalette", () => {
       ];
       renderPalette({ layout: splitLayout });
       openThreadSearch();
+      await act(async () => {
+        await vi.dynamicImportSettled();
+      });
       await screen.findByRole("option", { name: /Title first/ });
       fireEvent.keyDown(searchField(), { key: "ArrowDown" });
       const button = screen.getByRole("button", { name: "Open in split" });

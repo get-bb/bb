@@ -42,6 +42,7 @@ function listing(path: string, entries: string[]): HostDirectoryListing {
 
 const ENTRY_TEST_ROW_HEIGHT_PX = 28;
 beforeEach(() => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
   vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(
     function (this: HTMLElement) {
       return this.tagName === "LI" ? ENTRY_TEST_ROW_HEIGHT_PX : 224;
@@ -51,6 +52,8 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.clearAllTimers();
+  vi.useRealTimers();
   vi.clearAllMocks();
   vi.restoreAllMocks();
 });

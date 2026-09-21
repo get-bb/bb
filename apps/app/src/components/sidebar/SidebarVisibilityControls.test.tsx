@@ -7,7 +7,7 @@ import { SidebarVisibilityCustomize } from "./SidebarVisibilityControls";
 afterEach(cleanup);
 
 describe("shared sidebar visibility controls", () => {
-  it("lets group customization toggle visibility without navigating away", () => {
+  it("lets group customization toggle visibility without navigating away", async () => {
     const onVisibleChange = vi.fn();
     const onDone = vi.fn();
     render(
@@ -26,7 +26,7 @@ describe("shared sidebar visibility controls", () => {
       </CompactViewportOverrideProvider>,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Review" }));
     expect(onVisibleChange).toHaveBeenCalledWith("section:review", true);
     expect(onDone).not.toHaveBeenCalled();
     fireEvent.keyDown(screen.getByRole("button", { name: "Review" }), {

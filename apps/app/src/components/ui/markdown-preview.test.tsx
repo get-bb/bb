@@ -11,6 +11,7 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { highlightMarkdownCode } from "./markdown-code-highlight";
 import { MarkdownPreview } from "./markdown-preview";
+import { MARKDOWN_HTML_REHYPE_PLUGINS } from "./markdown-html";
 import {
   MarkdownLocalFileContextMenuContext,
   type MarkdownLinkRouting,
@@ -436,13 +437,19 @@ describe("MarkdownPreview", () => {
     );
 
     expect(
-      container.querySelector('img[alt="absolute"]')?.getAttribute("data-markdown-image-src"),
+      container
+        .querySelector('img[alt="absolute"]')
+        ?.getAttribute("data-markdown-image-src"),
     ).toBe("/api/files/content?path=%2Fworkspace%2Fgenerated.png");
     expect(
-      container.querySelector('img[alt="relative"]')?.getAttribute("data-markdown-image-src"),
+      container
+        .querySelector('img[alt="relative"]')
+        ?.getAttribute("data-markdown-image-src"),
     ).toBe("/api/files/content?path=%2Fworkspace%2Fart%2Fchart.png");
     expect(
-      container.querySelector('img[alt="remote"]')?.getAttribute("data-markdown-image-src"),
+      container
+        .querySelector('img[alt="remote"]')
+        ?.getAttribute("data-markdown-image-src"),
     ).toBe("https://example.com/image.png");
     expect(resolveSrc).toHaveBeenCalledTimes(2);
   });
@@ -524,10 +531,38 @@ describe("MarkdownPreview", () => {
     expect(container.textContent).toContain("$10");
   });
 
-  it("renders math while still sanitizing untrusted HTML when allowHtml is set", async () => {
+  it("opts into sanitized HTML for file previews without changing conversation rendering", () => {
+    const content =
+      '<details open onclick="alert(1)"><summary>Details</summary><p>Body</p><script>alert(2)</script></details>';
+    const { container, rerender } = render(
+      <MarkdownPreview content={content} />,
+    );
+
+    expect(container.querySelector("details")).toBeNull();
+
+    rerender(
+      <MarkdownPreview
+        content={content}
+        htmlRehypePlugins={MARKDOWN_HTML_REHYPE_PLUGINS}
+      />,
+    );
+
+    expect(container.querySelector("details")?.hasAttribute("open")).toBe(true);
+    expect(container.querySelector("summary")?.textContent).toBe("Details");
+    expect(container.querySelector("details")?.hasAttribute("onclick")).toBe(
+      false,
+    );
+    expect(container.querySelector("script")).toBeNull();
+    expect(container.textContent).not.toContain("alert(2)");
+
+    rerender(<MarkdownPreview content={content} />);
+    expect(container.querySelector("details")).toBeNull();
+  });
+
+  it("renders math while still sanitizing untrusted HTML with the file-preview plugins", async () => {
     const { container } = render(
       <MarkdownPreview
-        allowHtml
+        htmlRehypePlugins={MARKDOWN_HTML_REHYPE_PLUGINS}
         content={"$$a^2 + b^2 = c^2$$\n\n<script>alert(1)</script>"}
       />,
     );
