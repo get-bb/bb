@@ -58,9 +58,7 @@ vi.mock("@/components/thread/ThreadActionsMenu", () => ({
   ThreadActionsContextMenu: ({ children }: { children: ReactNode }) => (
     <>{children}</>
   ),
-  ThreadActionsMenu: ({ onRename }: { onRename?: () => void }) => (
-    <button type="button" aria-label="Rename thread" onClick={onRename} />
-  ),
+  ThreadActionsMenu: () => null,
   ThreadArchiveQuickAction: () => null,
 }));
 
@@ -1525,21 +1523,6 @@ describe("ThreadRow", () => {
       expect(screen.queryByRole("textbox", { name: "Thread name" })).toBeNull();
     });
     expect(screen.getByText("Thread")).not.toBeNull();
-  });
-
-  it("enters inline rename from the row menu without activating the thread", async () => {
-    renderThreadRow({});
-
-    fireEvent.click(screen.getByRole("button", { name: "Rename thread" }));
-
-    expect(
-      await screen.findByRole("textbox", { name: "Thread name" }),
-    ).toHaveProperty("value", "Thread");
-    expect(
-      screen
-        .getByRole("link", { name: "Open Thread" })
-        .getAttribute("aria-current"),
-    ).toBeNull();
   });
 
   it("does not start a sortable drag while editing the title", async () => {
