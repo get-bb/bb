@@ -2134,9 +2134,6 @@ function NotesWorkspace({
           refresh();
           open(value.path);
         }
-      })
-      .catch((error) => {
-        toast.error(`Could not create note: ${errorMessage(error)}`);
       });
   const createFolder = async () => {
     const name = folderName.trim();
