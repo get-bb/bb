@@ -32,10 +32,10 @@ import {
   CatalogEntryIconChip,
   formatAbsoluteDate,
   pluginInstallCountPresentation,
-  PluginCategoryLabel,
   PluginLogo,
 } from "@/components/plugin/management/plugin-ui";
 import {
+  PluginMarketplaceCategoryPill,
   PluginMarketplaceDetailMetadata,
   PluginDetailMetadata,
   PluginDetailMetadataItem,
@@ -159,6 +159,7 @@ export function CatalogPluginDetail({
       leading={<CatalogEntryIconChip entry={entry} />}
       leadingClassName="size-6"
       title={entry.displayName}
+      titleMeta={<PluginMarketplaceCategoryPill entry={entry} />}
       metadata={<PluginCardAuthor entry={entry} />}
       actions={
         <PluginCatalogInstallControl
@@ -397,6 +398,11 @@ export function PluginDetail({
       maxWidthClassName="max-w-5xl"
       leading={<PluginLogo plugin={plugin} className="size-4" />}
       title={pluginName}
+      titleMeta={
+        catalogEntry === undefined ? null : (
+          <PluginMarketplaceCategoryPill entry={catalogEntry} />
+        )
+      }
       metadata={
         catalogEntry !== undefined ? (
           <PluginCardAuthor entry={catalogEntry} />
@@ -470,15 +476,9 @@ export function PluginDetail({
         <ResourceDetailReleaseSection
           label="Details"
           actions={
-            <div className="flex items-center gap-2">
-              <PluginCategoryLabel
-                categoryId={(catalogEntry ?? plugin).categoryId}
-                label={(catalogEntry ?? plugin).category ?? "Not categorized"}
-              />
-              {hasReleaseControl ? (
-                <PluginDetailReleaseControl plugin={plugin} />
-              ) : null}
-            </div>
+            hasReleaseControl ? (
+              <PluginDetailReleaseControl plugin={plugin} />
+            ) : undefined
           }
         >
           <PluginDetailMetadata>

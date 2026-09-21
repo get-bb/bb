@@ -85,10 +85,7 @@ describe("plugin marketplace author links", () => {
         (label) => label.textContent,
       ),
     ).toEqual(["Marketplace", "Listed"]);
-    expect(
-      screen.getByRole("heading", { name: "Details" }).parentElement
-        ?.textContent,
-    ).toContain("Security & Privacy");
+    expect(screen.queryByText("Security & Privacy")).toBeNull();
   });
 
   it("does not create an empty Overview for a description-only plugin", () => {

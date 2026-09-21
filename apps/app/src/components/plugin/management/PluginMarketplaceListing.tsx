@@ -28,6 +28,16 @@ import {
   pluginMarketplaceAuthorKey,
 } from "./plugin-marketplace-author";
 
+export function PluginMarketplaceCategoryPill({
+  entry,
+}: {
+  entry: PluginCatalogSearchEntry;
+}) {
+  return entry.category === undefined ? null : (
+    <PluginCategoryLabel categoryId={entry.categoryId} label={entry.category} />
+  );
+}
+
 export function PluginDetailMetadata({ children }: { children: ReactNode }) {
   return <dl className="grid grid-cols-2 gap-x-6 gap-y-4">{children}</dl>;
 }
@@ -234,15 +244,7 @@ export function PluginMarketplaceListingSections({
     <>
       <PluginMarketplaceOverview entry={entry} />
       <PluginMarketplaceSource entry={entry} />
-      <ResourceDefinitionSection
-        label="Details"
-        actions={
-          <PluginCategoryLabel
-            categoryId={entry.categoryId}
-            label={entry.category ?? "Not categorized"}
-          />
-        }
-      >
+      <ResourceDefinitionSection label="Details">
         <PluginDetailMetadata>
           <PluginMarketplaceDetailMetadata entry={entry} />
         </PluginDetailMetadata>
