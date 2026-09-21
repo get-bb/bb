@@ -1165,7 +1165,6 @@ export function MachineModeSections({
   threads,
   threadsSection,
 }: MachineModeSectionsProps) {
-  const progressiveDisclosureEnabled = useSidebarProgressiveDisclosureEnabled();
   const groupThreadsByEnvironment = useAtomValue(
     sidebarGroupThreadsByEnvironmentAtom,
   );
@@ -1311,7 +1310,7 @@ export function MachineModeSections({
           dndParentKey={CHRONOLOGICAL_CONTAINER_ID}
           rootItems={allThreadItems}
           threadListState={allThreadsListState}
-          progressiveDisclosureEnabled={progressiveDisclosureEnabled}
+          progressiveDisclosureEnabled={false}
           compareThreads={compareThreads}
           variant="section"
           selectedThreadId={selectedThreadId}
@@ -1337,7 +1336,7 @@ export function MachineModeSections({
           <ProjectThreadTree
             rootItems={items}
             threadListState={section.threadListState}
-            progressiveDisclosureEnabled={progressiveDisclosureEnabled}
+            progressiveDisclosureEnabled={false}
             selectedThreadId={selectedThreadId}
             collapsedThreadIds={collapsedThreadIds}
             collapsedEnvironmentIds={collapsedEnvironmentIds}
@@ -1403,7 +1402,7 @@ export function MachineModeSections({
                   dndParentKey={sectionId}
                   rootItems={machineItemsBySectionId.get(sectionId)}
                   threadListState={section.threadListState}
-                  progressiveDisclosureEnabled={progressiveDisclosureEnabled}
+                  progressiveDisclosureEnabled={false}
                   compareThreads={compareThreads}
                   variant="section"
                   selectedThreadId={selectedThreadId}

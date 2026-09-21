@@ -1045,7 +1045,7 @@ const EXPERIMENT_DEFINITIONS: Record<
   sidebarProgressiveDisclosure: {
     label: "Sidebar progressive disclosure",
     description:
-      "In By project and By machine, show the first five groups in the current sort order, keep attention groups visible, and reveal ten more per click. Manually is unchanged.",
+      "In By project, show five recently finished thread trees, keep attention groups visible, and reveal or collapse more trees. Other organization modes are unchanged.",
   },
   timelineWindowing: {
     label: "Timeline windowing",

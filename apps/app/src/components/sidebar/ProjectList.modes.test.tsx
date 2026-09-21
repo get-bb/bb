@@ -55,8 +55,14 @@ vi.mock("@/hooks/queries/host-queries", () => ({
   usePrimaryHost: vi.fn(() => undefined),
 }));
 
+const mockUseSystemConfig = vi.hoisted(() =>
+  vi.fn(() => ({
+    data: { experiments: { sidebarProgressiveDisclosure: true } },
+  })),
+);
+
 vi.mock("@/hooks/queries/system-queries", () => ({
-  useSystemConfig: () => ({ data: undefined }),
+  useSystemConfig: mockUseSystemConfig,
 }));
 
 vi.mock("@/components/thread/ThreadActionsProvider", () => ({
@@ -432,5 +438,41 @@ describe("sidebar organization mode sections", () => {
     expect(store.get(sidebarHiddenGroupsAtom)).toEqual([]);
     expect(store.get(sidebarCollapsedMachinesAtom)).toEqual(["no-machine"]);
     expect(store.get(sidebarMachineSectionOrderAtom)).toEqual(savedOrder);
+  });
+  it("does not progressively disclose threads in By machine", () => {
+    const store = createStore();
+    store.set(sidebarMachineSectionOrderAtom, ["machine:no-machine"]);
+    const threads = Array.from({ length: 7 }, (_, index) =>
+      makeThread({
+        id: `machine-thread-${index}`,
+        title: `Machine thread ${index}`,
+        titleFallback: `Machine thread ${index}`,
+        status: "idle",
+        hasPendingInteraction: false,
+        lastReadAt: 10,
+        latestAttentionAt: index,
+        runtime: {
+          displayStatus: "idle",
+          hostReconnectGraceExpiresAt: null,
+        },
+        activity: {
+          activeWorkflowCount: 0,
+          activeBackgroundAgentCount: 0,
+          activeBackgroundCommandCount: 0,
+          activePlanModeCount: 0,
+          activeGoalCount: 0,
+        },
+      }),
+    );
+
+    render(
+      <JotaiProvider store={store}>
+        <MachineModeProbe threads={threads} />
+      </JotaiProvider>,
+    );
+
+    expect(screen.getByText("Machine thread 6")).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Show more" })).toBeNull();
+    expect(mockUseSystemConfig).not.toHaveBeenCalled();
   });
 });
