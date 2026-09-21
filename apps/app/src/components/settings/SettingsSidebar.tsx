@@ -1,11 +1,15 @@
-import { useState, type MouseEvent as ReactMouseEvent } from "react";
+import {
+  lazy,
+  Suspense,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@bb/shared-ui/button";
 import {
   PluginCreateButton,
   useCreatePlugin,
 } from "@/components/plugin/PluginCreateButton";
-import { AddPluginDialog } from "@/components/plugin/management/AddPluginDialog";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
 import {
   SectionSidebar,
@@ -21,6 +25,12 @@ import { useCloseMobileSidebar } from "@/components/ui/sidebar";
 import { useSettingsNavState } from "./settings-nav";
 import type { SettingsNavState } from "./settings-nav";
 import { getSettingsSectionRoutePath } from "./settings-sections";
+
+const AddPluginDialog = lazy(() =>
+  import("@/components/plugin/management/AddPluginDialog").then((module) => ({
+    default: module.AddPluginDialog,
+  })),
+);
 
 interface SettingsSidebarProps {
   onResizeMouseDown: (event: ReactMouseEvent<HTMLDivElement>) => void;
@@ -81,10 +91,7 @@ export function SettingsSidebarContent({
       </div>
       <div className="flex items-center justify-between gap-2 px-2 py-2">
         <Button asChild variant="link" size="sm" className="h-8 px-0 text-xs">
-          <Link
-            to={getPluginsRoutePath()}
-            onClick={closeMobileSidebar}
-          >
+          <Link to={getPluginsRoutePath()} onClick={closeMobileSidebar}>
             Browse plugins
           </Link>
         </Button>
@@ -116,7 +123,9 @@ export function SettingsSidebarContent({
         ))}
       </div>
       {installOpen ? (
-        <AddPluginDialog open onOpenChange={setInstallOpen} />
+        <Suspense fallback={null}>
+          <AddPluginDialog open onOpenChange={setInstallOpen} />
+        </Suspense>
       ) : null}
       {canOpenNativeScreen() ? (
         <>

@@ -77,9 +77,7 @@ describe("SettingsSidebarContent plugin navigation", () => {
   it("offers discovery and creation with no installed plugins", () => {
     renderSidebar(null, []);
     expect(screen.getByRole("link", { name: "Browse plugins" })).toBeTruthy();
-    fireEvent.click(
-      screen.getByRole("button", { name: "New plugin" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "New plugin" }));
     expect(screen.getByTestId("route-state").textContent).toContain(
       "initialPrompt",
     );
