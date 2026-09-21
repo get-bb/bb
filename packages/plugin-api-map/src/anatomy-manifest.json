@@ -10,6 +10,26 @@
     "fork",
     "plugin-actions"
   ],
+  "mobileLayout": {
+    "sources": [
+      {
+        "path": "packages/shared-ui/src/components/ui/hooks/use-compact-viewport.tsx",
+        "anchors": ["(max-width: 767px)"]
+      },
+      {
+        "path": "apps/app/src/views/RootComposeSecondaryContent.tsx",
+        "anchors": ["RootComposeCompactHome composer={children}", "PluginHomepageSections"]
+      },
+      {
+        "path": "apps/app/src/components/secondary-panel/CompactSecondaryPanelShelf.tsx",
+        "anchors": ["CompactSecondaryPanelShelf"]
+      },
+      {
+        "path": "apps/app/src/components/ui/sidebar.tsx",
+        "anchors": ["SIDEBAR_WIDTH_MOBILE", "SIDEBAR_MOBILE_VIEWPORT_FRACTION"]
+      }
+    ]
+  },
   "surfaceFixtures": {
     "command-palette-actions": {
       "groupId": "command-palette",

@@ -66,7 +66,11 @@ vi.mock("@/hooks/mutations/thread-state-mutations", async (importOriginal) => {
     useMarkThreadUnread: () => ({ mutate: mocks.mutation }),
     usePinThread: () => ({ mutate: mocks.mutation }),
     useUnpinThread: () => ({ mutate: mocks.mutation }),
-    useUpdateThread: () => ({ isPending: false, mutate: mocks.mutation }),
+    useUpdateThread: () => ({
+      isPending: false,
+      mutate: mocks.mutation,
+      mutateAsync: mocks.mutation,
+    }),
   };
 });
 

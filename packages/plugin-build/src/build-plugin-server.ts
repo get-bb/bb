@@ -1,6 +1,8 @@
 import { mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createPluginArtifactMeta } from "./plugin-artifact-meta.js";
+import { zodLocaleStubPlugin } from "./zod-locale-stub.mjs";
+import { zodResolutionPlugin } from "./zod-resolution.js";
 import {
   isRecord,
   readPluginPackageJsonFile,
@@ -67,10 +69,15 @@ interface PluginServerBuildResult {
   metaPath: string;
 }
 
+export interface PluginServerBuildOptions {
+  hostProvidedZod: boolean;
+}
+
 export async function buildPluginServer(
   rootDir: string,
   bbVersion: string,
   toolchain: PluginBuildToolchain,
+  options: PluginServerBuildOptions = { hostProvidedZod: false },
 ): Promise<PluginServerBuildResult> {
   const { serverEntry, packageName, pluginVersion } =
     await readPluginServerConfig(rootDir);
@@ -96,11 +103,18 @@ export async function buildPluginServer(
       platform: "node",
       target: "node22",
       sourcemap: true,
+      sourcesContent: false,
       banner: { js: NODE_ESM_REQUIRE_BANNER },
       external: PLUGIN_SERVER_EXTERNALS.filter(
         (specifier) => !PLUGIN_SDK_ROOT_FILTER.test(specifier),
       ),
+      minify: true,
+      keepNames: true,
       plugins: [
+        zodResolutionPlugin("server", {
+          hostProvidedBareZod: options.hostProvidedZod,
+        }),
+        zodLocaleStubPlugin(),
         {
           name: "bb-plugin-sdk-resolution",
           setup(build) {

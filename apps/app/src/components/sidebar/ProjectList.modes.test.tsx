@@ -20,7 +20,7 @@ import {
   useAtomValue,
 } from "jotai";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ThreadListEntry } from "@bb/domain";
+import type { Host, ThreadListEntry } from "@bb/domain";
 import { ActiveSidebarModeSections, MachineModeSections } from "./ProjectList";
 import { buildMachineThreadGroups } from "@bb/client-core";
 import {
@@ -36,9 +36,19 @@ import {
   type SidebarSectionId,
 } from "./sidebarCollapsedAtoms";
 import { useSidebarModeSectionOrder } from "./useSidebarModeSectionOrder";
-import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
+import {
+  makeHost,
+  makeThreadListEntry,
+} from "@bb/test-helpers/domain-fixtures";
 
-const mockUseHosts = vi.hoisted(() => vi.fn(() => ({ data: [] })));
+const mockUseHosts = vi.hoisted(() =>
+  vi.fn<() => { data: Host[] }>(() => ({ data: [] })),
+);
+const mockRenameHost = vi.hoisted(() => vi.fn(async () => undefined));
+
+vi.mock("@/hooks/mutations/host-mutations", () => ({
+  useRenameHost: () => ({ mutateAsync: mockRenameHost }),
+}));
 
 vi.mock("@/hooks/queries/host-queries", () => ({
   useHosts: mockUseHosts,
@@ -206,6 +216,7 @@ function MachineModeProbe({ threads = [] }: { threads?: ThreadListEntry[] }) {
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  mockUseHosts.mockReturnValue({ data: [] });
   window.localStorage.clear();
 });
 
@@ -296,6 +307,48 @@ describe("sidebar organization mode sections", () => {
     );
     expect(screen.getByText("No threads")).not.toBeNull();
     expect(mockBuildMachineThreadGroups).toHaveBeenCalledWith([], []);
+  });
+
+  it("renames a resolved machine heading without expanding the group", async () => {
+    const store = createStore();
+    const host = makeHost({ id: "host_rename", name: "Work laptop" });
+    mockUseHosts.mockReturnValue({ data: [host] });
+    store.set(sidebarMachineSectionOrderAtom, ["machine:host_rename"]);
+    store.set(sidebarCollapsedMachinesAtom, ["host_rename"]);
+    render(
+      <JotaiProvider store={store}>
+        <MachineModeProbe
+          threads={[makeThread({ environmentHostId: host.id })]}
+        />
+      </JotaiProvider>,
+    );
+
+    fireEvent.doubleClick(screen.getByTitle("Work laptop"));
+    const input = await screen.findByRole("textbox", { name: "Machine name" });
+    expect(input.closest('[aria-disabled="true"]')).toBeNull();
+    fireEvent.change(input, { target: { value: "Studio" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() =>
+      expect(mockRenameHost).toHaveBeenCalledWith({
+        hostId: host.id,
+        name: "Studio",
+      }),
+    );
+    expect(store.get(sidebarCollapsedMachinesAtom)).toEqual([host.id]);
+  });
+
+  it("does not offer inline rename on fallback machine headings", () => {
+    const store = createStore();
+    store.set(sidebarMachineSectionOrderAtom, ["machine:no-machine"]);
+    store.set(sidebarCollapsedMachinesAtom, ["no-machine"]);
+    render(
+      <JotaiProvider store={store}>
+        <MachineModeProbe threads={[makeThread()]} />
+      </JotaiProvider>,
+    );
+    fireEvent.doubleClick(screen.getByTitle("No machine"));
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(mockRenameHost).not.toHaveBeenCalled();
   });
 
   it("surfaces shared runtime activity for a collapsed machine section", () => {

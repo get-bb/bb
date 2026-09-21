@@ -201,27 +201,33 @@ describe("queuedMessageFallbackTitle", () => {
 });
 
 describe("isQueuedMessageSendNowAllowed", () => {
-  it("hides send-now only for the waits a re-attempt cannot clear", () => {
-    expect(isQueuedMessageSendNowAllowed({ kind: "time" })).toBe(true);
-    expect(
-      isQueuedMessageSendNowAllowed({
-        kind: "plugin",
-        pluginId: "limiter",
-        reason: "busy",
-      }),
-    ).toBe(true);
-    expect(isQueuedMessageSendNowAllowed({ kind: "thread-busy" })).toBe(true);
-    expect(isQueuedMessageSendNowAllowed({ kind: "stopping" })).toBe(false);
-    expect(isQueuedMessageSendNowAllowed({ kind: "turn-starting" })).toBe(
-      false,
-    );
-    expect(isQueuedMessageSendNowAllowed(null)).toBe(true);
-    expect(isQueuedMessageSendNowAllowed({ kind: "provisioning" })).toBe(false);
-    expect(isQueuedMessageSendNowAllowed({ kind: "interaction" })).toBe(false);
-    expect(
-      isQueuedMessageSendNowAllowed({ kind: "host-offline", hostName: "M4" }),
-    ).toBe(false);
-  });
+  it.each([
+    { waitingOn: null, allowed: true },
+    { waitingOn: { kind: "time" }, allowed: true },
+    {
+      waitingOn: { kind: "plugin", pluginId: "limiter", reason: "busy" },
+      allowed: true,
+    },
+    { waitingOn: { kind: "thread-busy" }, allowed: true },
+    { waitingOn: { kind: "stopping" }, allowed: false },
+    { waitingOn: { kind: "turn-starting" }, allowed: false },
+    { waitingOn: { kind: "provisioning" }, allowed: false },
+    { waitingOn: { kind: "interaction" }, allowed: false },
+    { waitingOn: { kind: "host-offline", hostName: "M4" }, allowed: false },
+  ] as const)(
+    "allows manual recovery for $waitingOn",
+    ({ waitingOn, allowed }) => {
+      expect(
+        isQueuedMessageSendNowAllowed({ waitingOn, failureReason: null }),
+      ).toBe(allowed);
+      expect(
+        isQueuedMessageSendNowAllowed({
+          waitingOn,
+          failureReason: "Provider unavailable",
+        }),
+      ).toBe(true);
+    },
+  );
 });
 
 describe("formatQueuedMessageCountdown", () => {

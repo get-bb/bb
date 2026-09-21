@@ -1,5 +1,5 @@
 import type { QueryKey } from "@tanstack/react-query";
-import type { Environment } from "@bb/domain";
+import type { Environment, Host } from "@bb/domain";
 import type { SystemConfigResponse } from "@bb/server-contract";
 import {
   allEnvironmentDiffFilesQueryKeyPrefix,
@@ -215,4 +215,13 @@ function getServerReconnectInvalidationQueryKeys(): QueryKey[] {
     allSystemExecutionOptionsQueryKeyPrefix(),
     serverMoveStatusQueryKey(),
   ];
+}
+
+export function applyHostRenameResult({
+  host,
+  queryClient,
+}: QueryClientArg & { host: Host }): void {
+  queryClient.setQueryData<Host[]>(hostsQueryKey(), (hosts) =>
+    hosts?.map((current) => (current.id === host.id ? host : current)),
+  );
 }

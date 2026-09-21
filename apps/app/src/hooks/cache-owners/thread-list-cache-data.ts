@@ -4,6 +4,7 @@ import type {
   QueryKey,
 } from "@tanstack/react-query";
 import type { ThreadListEntry } from "@bb/domain";
+import { patchCachedQueryData } from "./cache-effect-utils";
 
 export type ThreadListCacheData =
   | ThreadListEntry[]
@@ -93,7 +94,7 @@ export function restoreCachedThreadLists(
   snapshot: CachedThreadListSnapshot,
 ): void {
   for (const { queryKey, data } of snapshot) {
-    queryClient.setQueryData(queryKey, data);
+    patchCachedQueryData(queryClient, queryKey, data);
   }
 }
 
@@ -104,7 +105,8 @@ export function applyToCachedThreadLists(
   for (const { queryKey, data } of getCachedThreadLists(queryClient, {
     queryKey: options.queryKey,
   })) {
-    queryClient.setQueryData(
+    patchCachedQueryData(
+      queryClient,
       queryKey,
       mapThreadListCacheData(data, options.mapper),
     );

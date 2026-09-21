@@ -4,21 +4,21 @@ set -eu
 
 usage() {
   cat >&2 <<'EOF'
-Usage: install.sh --join-code <code> --host-id <host-id> --server <url> [--machine-code <code>] [--host-daemon-port <port>]
-       install.sh --bootstrap-env <NAME>
+Usage: install.sh --bootstrap-env <NAME> [--host-daemon-port <port>]
        install.sh --start|--stop|--uninstall --host-id <host-id> [--server-url <url>] [--data-dir <path>]
 
-The first three options are required. --machine-code is required through bb connect.
+Machines enroll from a private bootstrap bundle. Get the one-line command that
+carries it from Settings -> Machines -> Add a machine, or from
+`bb machine create --provider manual`. That command works through bb connect,
+Tailscale, and any other address machines can reach.
 By default, the installer assigns this enrolled daemon its own local API port.
 EOF
   exit 2
 }
 
 bootstrap_env=
-join_code=
 host_id=
 server_url=
-machine_code=
 requested_host_daemon_port=
 lifecycle_action=
 requested_data_dir=
@@ -26,7 +26,6 @@ requested_data_dir=
 CURL_CONNECT_TIMEOUT_SECONDS=10
 PACKAGE_DOWNLOAD_TIMEOUT_SECONDS=300
 PACKAGE_DOWNLOAD_RETRIES=3
-MACHINE_CODE_REDEEM_TIMEOUT_SECONDS=30
 DAEMON_WAIT_ATTEMPTS=60
 WAIT_PROGRESS_EVERY_ATTEMPTS=5
 
@@ -304,16 +303,13 @@ run_lifecycle() {
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --bootstrap-env|--join-code|--host-id|--server|--server-url|--machine-code|--host-daemon-port|--data-dir)
+    --bootstrap-env|--host-id|--server-url|--host-daemon-port|--data-dir)
       [ "$#" -ge 2 ] || usage
       [ -n "$2" ] || usage
       case "$1" in
         --bootstrap-env) bootstrap_env=$2 ;;
-        --join-code) join_code=$2 ;;
         --host-id) host_id=$2 ;;
-        --server) server_url=$2 ;;
         --server-url) server_url=$2 ;;
-        --machine-code) machine_code=$2 ;;
         --host-daemon-port) requested_host_daemon_port=$2 ;;
         --data-dir) requested_data_dir=$2 ;;
       esac
@@ -333,9 +329,10 @@ while [ "$#" -gt 0 ]; do
 done
 
 if [ -n "$lifecycle_action" ]; then
-  [ -z "$bootstrap_env$join_code$machine_code$requested_host_daemon_port" ] || usage
-elif [ -n "$bootstrap_env" ]; then
-  if [ -n "$join_code$host_id$server_url$machine_code" ]; then usage; fi
+  [ -z "$bootstrap_env$requested_host_daemon_port" ] || usage
+else
+  [ -n "$bootstrap_env" ] || usage
+  if [ -n "$host_id$server_url" ]; then usage; fi
   host_id=$(node -e '
     const name = process.argv[1];
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/u.test(name)) process.exit(2);
@@ -355,8 +352,6 @@ elif [ -n "$bootstrap_env" ]; then
   ' "$bootstrap_env") || usage
   bootstrap_payload=$(node -e 'process.stdout.write(process.env[process.argv[1]])' "$bootstrap_env")
   unset "$bootstrap_env"
-else
-  [ -n "$join_code" ] || usage
 fi
 [ -n "$host_id" ] || usage
 if [ -z "$lifecycle_action" ]; then [ -n "$server_url" ] || usage; fi
@@ -733,72 +728,12 @@ fi
 
 bb_cli="${bb_app%/*}/bb"
 if [ ! -x "$bb_cli" ]; then bb_cli=$(command -v bb || true); fi
-if [ -n "$bootstrap_env" ]; then
-  if [ -z "$bb_cli" ]; then
-    fail_step "The installed build does not provide the machine enrollment CLI."
-    exit 1
-  fi
-  BB_ENROLLMENT="$bootstrap_payload" BB_DATA_DIR="$data_dir" "$bb_cli" machine enroll --bootstrap-env BB_ENROLLMENT
-  bootstrap_payload=
+if [ -z "$bb_cli" ]; then
+  fail_step "The installed build does not provide the machine enrollment CLI."
+  exit 1
 fi
-
-if [ -n "$machine_code" ]; then
-  connect_apex=$(node -e '
-    const url = new URL(process.argv[1]);
-    const labels = url.hostname.split(".");
-    if (labels.length < 3) process.exit(2);
-    url.hostname = labels.slice(1).join(".");
-    url.pathname = "/";
-    url.search = "";
-    url.hash = "";
-    process.stdout.write(url.origin);
-  ' "$server_url" 2>/dev/null) || {
-    fail_step "Could not derive the bb connect apex from $server_url."
-    exit 1
-  }
-  active_step "Authorizing this machine with bb connect"
-  redeem_response=$(curl -fsS \
-    --connect-timeout "$CURL_CONNECT_TIMEOUT_SECONDS" \
-    --max-time "$MACHINE_CODE_REDEEM_TIMEOUT_SECONDS" \
-    -X POST \
-    -H 'content-type: application/json' \
-    --data "{\"code\":\"$machine_code\"}" \
-    "$connect_apex/api/connect/redeem-machine") || {
-    fail_step "Could not redeem the bb connect machine code."
-    exit 1
-  }
-  printf '%s' "$redeem_response" | node -e '
-    let input = "";
-    process.stdin.setEncoding("utf8");
-    process.stdin.on("data", (chunk) => { input += chunk; });
-    process.stdin.on("end", () => {
-      const body = JSON.parse(input);
-      if (typeof body.credential !== "string" || !body.credential.startsWith("bbcm_")) {
-        process.exit(2);
-      }
-      if (typeof body.machineId !== "string" || body.machineId.length === 0) {
-        process.exit(2);
-      }
-      const fs = require("node:fs");
-      const path = require("node:path");
-      const [dataDir, serverUrl] = process.argv.slice(1);
-      const configPath = path.join(dataDir, "config.json");
-      let config = {};
-      try { config = JSON.parse(fs.readFileSync(configPath, "utf8")); }
-      catch (error) { if (error.code !== "ENOENT") throw error; }
-      config.serverUrl = serverUrl;
-      config.machineCredential = body.credential;
-      config.connectMachineId = body.machineId;
-      const temporary = `${configPath}.${process.pid}.tmp`;
-      fs.writeFileSync(temporary, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
-      fs.renameSync(temporary, configPath);
-    });
-  ' "$data_dir" "$server_url" || {
-    fail_step "The bb connect machine-code response was invalid."
-    exit 1
-  }
-  complete_step "Authorized this machine with bb connect"
-fi
+BB_ENROLLMENT="$bootstrap_payload" BB_DATA_DIR="$data_dir" "$bb_cli" machine enroll --bootstrap-env BB_ENROLLMENT
+bootstrap_payload=
 
 auth_matches_host() {
   node -e '
@@ -837,7 +772,6 @@ if [ "$already_joined" = no ]; then
   BB_APP_NPM_PREFIX="$bb_app_npm_prefix" BB_DATA_DIR="$data_dir" nohup "$bb_app" host-daemon join \
     --auto-update \
     --host-daemon-port "$host_daemon_port" \
-    --join-code "$join_code" \
     --host-id "$host_id" \
     --server-url "$server_url" >"$join_log" 2>&1 &
   join_pid=$!
@@ -878,7 +812,7 @@ if [ "$platform" = linux ] && [ "$(id -u)" = 0 ] &&
    ! systemd-detect-virt --container --quiet >/dev/null 2>&1; then
   systemd_scope=--system
 fi
-if [ -n "$bootstrap_env" ] && [ "$platform" = linux ] &&
+if [ "$platform" = linux ] &&
    [ "$systemd_scope" = --user ] && ! systemctl --user show-environment >/dev/null 2>&1; then
   BB_INSTALL_SKIP_SERVICE=1
 fi

@@ -63,7 +63,6 @@ bb machine create --provider <id> Create a standalone machine
 bb machine enroll --bootstrap-file <path>
 --bootstrap-env <NAME> Alternative private bundle source
 bb machine show <id-or-name> Show machine details
-bb machine join-code Create a machine pairing code
 bb machine rename <id-or-name> <name> Rename a machine
 bb machine retry-update <id-or-name> Retry a pending daemon update now
 bb machine reconcile <id-or-name> Reconcile compute with core’s recorded state

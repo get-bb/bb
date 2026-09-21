@@ -1,9 +1,12 @@
 import type { LookupAddress, LookupOptions } from "node:dns";
+import { createServer, request as httpRequest } from "node:http";
+import type { AddressInfo } from "node:net";
 import { describe, expect, it } from "vitest";
 import {
   assertPublicMarketplaceAddress,
   assertPublicMarketplaceUrl,
   boundedResponseJson,
+  createPublicMarketplaceFetch,
   createPublicMarketplaceLookup,
 } from "../../../src/services/plugin-catalog/marketplace-http.js";
 
@@ -79,5 +82,46 @@ describe("marketplace HTTP policy", () => {
     await expect(
       boundedResponseJson(response, 1024, "npm registry metadata"),
     ).rejects.toThrow(/exceeds 1024 bytes/u);
+  });
+
+  it("settles a bodyless response so a late timeout cannot abort the socket", async () => {
+    const server = createServer((_request, response) => {
+      response.writeHead(304);
+      response.end();
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const port = (server.address() as AddressInfo).port;
+    const socketErrors: Error[] = [];
+    const fetchMarketplace = createPublicMarketplaceFetch({
+      request: (url, options, callback) => {
+        const outgoing = httpRequest(
+          { ...options, host: "127.0.0.1", port, path: url.pathname },
+          callback,
+        );
+        outgoing.on("socket", (socket) => {
+          socket.on("error", (error: Error) => socketErrors.push(error));
+        });
+        return outgoing;
+      },
+    });
+    try {
+      const response = await fetchMarketplace(
+        "https://marketplace.test/marketplace.json",
+        {
+          method: "GET",
+          headers: new Headers({ accept: "application/json" }),
+          signal: AbortSignal.timeout(50),
+        },
+      );
+      expect(response.status).toBe(304);
+      await response.body?.cancel();
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      expect(socketErrors).toEqual([]);
+    } finally {
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
   });
 });

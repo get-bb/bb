@@ -66,6 +66,8 @@ import {
 } from "../delta-translation.js";
 import {
   compactionOutcomeForEndTurn,
+  grokContextUsageFromPromptResult,
+  grokContextWindowSizeFromSessionModels,
   resolveAcpDialect,
   type AcpDialect,
 } from "../dialect.js";
@@ -179,6 +181,7 @@ interface AcpThreadSession {
   loading: boolean;
   loadingSessionId: string | undefined;
   pendingLoadUsageUpdate: AcpUsageUpdate | undefined;
+  grokContextWindowSize: number | undefined;
   stopping: boolean;
   turnSettled: Promise<void> | undefined;
   pendingPermissions: Set<PendingAcpPermission>;
@@ -282,6 +285,40 @@ function sendThreadDeltas(
     threadId,
     deltas: [...deltas],
   });
+}
+
+function rememberGrokContextWindow(
+  session: AcpThreadSession,
+  models: unknown,
+): void {
+  if (session.dialect.id !== "grok") {
+    return;
+  }
+  const size = grokContextWindowSizeFromSessionModels(models);
+  if (size !== undefined) {
+    session.grokContextWindowSize = size;
+  }
+}
+
+function emitGrokContextWindow(
+  session: AcpThreadSession,
+  used: number,
+): void {
+  if (
+    session.dialect.id !== "grok" ||
+    session.grokContextWindowSize === undefined
+  ) {
+    return;
+  }
+  sendThreadDeltas(session.bbThreadId, [
+    {
+      kind: "contextWindow",
+      used,
+      size: session.grokContextWindowSize,
+      estimated: false,
+      attach: "open",
+    },
+  ]);
 }
 
 function emitForSession(
@@ -1719,6 +1756,7 @@ async function startAgentSession(
     loading: false,
     loadingSessionId: undefined,
     pendingLoadUsageUpdate: undefined,
+    grokContextWindowSize: undefined,
     stopping: false,
     turnSettled: undefined,
     pendingPermissions: new Set(),
@@ -1769,6 +1807,7 @@ async function startAgentSession(
     let sessionId: string | undefined;
     let loadedConfigOptions: readonly AcpConfigOption[] | undefined;
     let loadedModels: AcpSessionModels | undefined;
+    let createdFreshSession = false;
     if (request.kind === "fork") {
       const forkedSession = await connection.request({
         method: "session/fork",
@@ -1790,6 +1829,7 @@ async function startAgentSession(
       sessionId = forkedSession.sessionId;
       loadedConfigOptions = forkedSession.configOptions;
       loadedModels = forkedSession.models;
+      rememberGrokContextWindow(session, forkedSession.models);
     } else if (request.kind === "resume" && supportsLoadSession) {
       session.loading = true;
       session.loadingSessionId = request.resumeProviderThreadId;
@@ -1806,6 +1846,7 @@ async function startAgentSession(
         });
         loadedConfigOptions = configState?.configOptions;
         loadedModels = configState?.models;
+        rememberGrokContextWindow(session, configState?.models);
         sessionId = request.resumeProviderThreadId;
       } catch {
         sessionId = undefined;
@@ -1825,6 +1866,8 @@ async function startAgentSession(
         resultSchema: acpSessionNewResultSchema,
       });
       sessionId = newSession.sessionId;
+      createdFreshSession = true;
+      rememberGrokContextWindow(session, newSession.models);
       await selectAcpNativeModel({
         connection,
         sessionId,
@@ -1873,6 +1916,9 @@ async function startAgentSession(
       sessionRestorable: session.supportsLoadSession,
     });
     sendThreadDeltas(bbThreadId, [{ kind: "session.reset" }]);
+    if (createdFreshSession) {
+      emitGrokContextWindow(session, 0);
+    }
     session.deferStartEmit = undefined;
     for (const deferred of deferredEmits) {
       if (
@@ -2058,6 +2104,10 @@ function runTurn(
         }
         const result = await promptResult;
         stopReason = result.stopReason;
+        const grokUsage = grokContextUsageFromPromptResult(result);
+        if (grokUsage !== undefined) {
+          emitGrokContextWindow(session, grokUsage.used);
+        }
       } catch (error) {
         session.promptRequestPending = false;
         dropTurnInput(pending, "ACP turn failed before the prompt was sent");
@@ -2117,6 +2167,10 @@ function startCompaction(
 
   session.turnSettled = promptResult
     .then((result) => {
+      const grokUsage = grokContextUsageFromPromptResult(result);
+      if (grokUsage !== undefined) {
+        emitGrokContextWindow(session, grokUsage.used);
+      }
       finish(
         result.stopReason === "end_turn"
           ? compactionOutcomeForEndTurn(

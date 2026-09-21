@@ -18,7 +18,6 @@ export * from "./feature-flags.js";
 export * from "./git-checkout.js";
 export * from "./host-list-limits.js";
 export * from "./host.js";
-export * from "./html-escape.js";
 export * from "./item-presentation.js";
 export * from "./json-value.js";
 export * from "./legacy-image-generation.js";

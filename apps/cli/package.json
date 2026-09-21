@@ -24,6 +24,7 @@
     "@bb/server-archive": "workspace:*",
     "@bb/server-contract": "workspace:*",
     "@bb/templates": "workspace:*",
+    "@bb/text-utils": "workspace:*",
     "@bb/thread-view": "workspace:*",
     "cli-table3": "^0.6.5",
     "commander": "^13.0.0",

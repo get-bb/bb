@@ -28,8 +28,11 @@ Workspace instructions (.bb/AGENTS.md):
   Only the plural AGENTS.md is read, only from the exact data-dir and
   workspace-root .bb/ locations above (bb does not walk parent directories), and
   an empty file is ignored. This is bb's own provider-agnostic instruction
-  injection, separate from provider-native files such as CLAUDE.md or a
-  repo-root AGENTS.md.
+  injection, separate from provider-native instruction files. Codex reads a
+  repo-root AGENTS.md. Claude Code 2.1.277 and later also reads AGENTS.md when
+  no project or ancestor CLAUDE.md or CLAUDE.local.md takes precedence. Older
+  Claude Code versions and sessions without its built-in AGENTS.md support
+  still require CLAUDE.md.
 
 Skills (.bb/skills/):
 

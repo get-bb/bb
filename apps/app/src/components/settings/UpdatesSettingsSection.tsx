@@ -1011,11 +1011,13 @@ export function ProviderCliCheckRow({
 
 function providerRowState({
   issue,
+  status,
 }: {
   issue: ProviderCliIssue | null;
+  status: ProviderCliStatusEntry["status"];
 }): UpdateState | null {
   if (issue === null) {
-    return "up-to-date";
+    return status.latestVersion === null ? "latest-unknown" : "up-to-date";
   }
   if (issue.action === null) {
     return "update-manually";
@@ -1047,7 +1049,7 @@ export function MachineUpdatesRows({
 
   const rows = providerEntries.map(({ provider, status }) => {
     const issue = issuesByProvider.get(provider) ?? null;
-    const state = providerRowState({ issue });
+    const state = providerRowState({ issue, status });
     const jobKey = providerCliJobKey(host.id, provider);
     const running = runningJobKey === jobKey;
     const queued = queuedJobKeys.has(jobKey);
