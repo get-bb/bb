@@ -391,6 +391,10 @@ function ThreadRowComponent({
     SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
     "group/thread-row cursor-pointer",
     SIDEBAR_ROW_BASE_CLASS,
+    !shortcut &&
+      parentOptions &&
+      hasChildren &&
+      "gap-0.5 max-md:pointer-coarse:gap-2",
     LIST_HOVER_TRANSITION,
     parentOptions?.stickyLevel === undefined && "relative",
     options.isCompact
@@ -505,6 +509,10 @@ function ThreadRowComponent({
         className={cn(
           "flex min-w-0 flex-1 items-center gap-1.5",
           !shortcut &&
+            parentOptions &&
+            hasChildren &&
+            "gap-0.5 max-md:pointer-coarse:gap-1.5",
+          !shortcut &&
             !(parentOptions && hasChildren) &&
             SIDEBAR_HOVER_ACTIONS_INSET_CLASS,
         )}
@@ -515,7 +523,13 @@ function ThreadRowComponent({
           </span>
         ) : (
           <span
-            className="bb-thread-title"
+            className={cn(
+              "bb-thread-title",
+              !shortcut &&
+                parentOptions &&
+                hasChildren &&
+                "md:flex-1 pointer-fine:flex-1",
+            )}
             title={labelTitle}
             onDoubleClick={startTitleEditing}
           >
