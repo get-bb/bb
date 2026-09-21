@@ -1138,12 +1138,12 @@ describe("CommandPalette", () => {
       for (const name of ["Active", "Archived"]) {
         expect(within(screen.getByRole("group", { name })).getAllByRole("option")).toHaveLength(4);
       }
-      fireEvent.click(screen.getByRole("option", { name: "Show more active threads" }));
+      fireEvent.click(screen.getByRole("option", { name: "Show more threads" }));
       expect(within(screen.getByRole("group", { name: "Active" })).getAllByRole("option")).toHaveLength(7);
       expect(within(screen.getByRole("group", { name: "Archived" })).getAllByRole("option")).toHaveLength(4);
       expectText(selectedOption(), "Title active-3");
       act(() => store.set(paletteThreadLifecyclesAtom, ["active"]));
-      expect(screen.getByRole("option", { name: "Show more active threads" })).toBeTruthy();
+      expect(screen.getByRole("option", { name: "Show more threads" })).toBeTruthy();
       expect(document.querySelector("[data-palette-footer]")).toBeNull();
     },
   );

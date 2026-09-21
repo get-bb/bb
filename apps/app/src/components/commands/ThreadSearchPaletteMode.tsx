@@ -404,9 +404,7 @@ export function ThreadSearchPaletteMode({
                           ? undefined
                           : lifecycle === "archived"
                             ? "Show more archived threads"
-                            : lifecycle === "draft"
-                              ? "Show more draft threads"
-                              : "Show more threads"
+                            : "Show more threads"
                       }
                       className={cn(
                         "flex min-w-0 flex-1 cursor-pointer items-center rounded-md px-2 py-1.5",
