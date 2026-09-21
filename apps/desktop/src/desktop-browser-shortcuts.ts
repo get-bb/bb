@@ -1,6 +1,7 @@
 import {
   PANE_DIRECTION_APP_COMMAND_IDS,
   appCommandIdSchema,
+  isAppKeybindingAvailableForClient,
   matchesAppShortcut,
   type AppCommandId,
   type AppKeybindings,
@@ -26,6 +27,7 @@ export function resolveDesktopBrowserAppCommand({
     const binding = keybindings[index];
     if (
       !binding ||
+      !isAppKeybindingAvailableForClient(binding, { isDesktop: true, isMac }) ||
       (!binding.when.all.includes("browserFocus") &&
         binding.command !== "panel.previousTab" &&
         binding.command !== "panel.nextTab" &&

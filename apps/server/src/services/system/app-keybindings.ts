@@ -70,7 +70,6 @@ function unassignedBinding(
   };
 }
 
-// Leave non-Mac arrows unassigned so Ctrl word movement/selection stays native.
 function macArrowBindings(
   command: AppCommandId,
   key: string,

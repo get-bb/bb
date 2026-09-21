@@ -65,6 +65,50 @@ describe("resolveDesktopBrowserAppCommand", () => {
     ).toBe(command);
   });
 
+  it.each([
+    { command: "panel.nextTab", control: true, shift: false },
+    { command: "pane.focus.right", control: false, shift: true },
+  ] as const)("respects platform scope for $command", ({ command, control, shift }) => {
+    const binding: AppKeybindings[number] = {
+      ...keybindings[0]!,
+      command,
+      shortcut: {
+        ...keybindings[0]!.shortcut,
+        key: "ArrowRight",
+        control,
+        shift,
+      },
+      when: { all: ["mainSurface", "macPlatform"], none: [] },
+    };
+    const args = {
+      input: {
+        key: "ArrowRight",
+        code: "ArrowRight",
+        altKey: false,
+        ctrlKey: true,
+        metaKey: false,
+        shiftKey: shift,
+      },
+      isMac: false,
+      keybindings: [binding],
+      splitNavigationEnabled: true,
+      splitNavigationCommands: [command],
+    };
+    expect(resolveDesktopBrowserAppCommand(args)).toBeNull();
+    expect(resolveDesktopBrowserAppCommand({
+      ...args,
+      isMac: true,
+      input: { ...args.input, metaKey: true, ctrlKey: control },
+    })).toBe(command);
+    expect(resolveDesktopBrowserAppCommand({
+      ...args,
+      keybindings: [{
+        ...binding,
+        when: { all: ["mainSurface"], none: ["macPlatform"] },
+      }],
+    })).toBe(command);
+  });
+
   it("only intercepts a directional shortcut when that neighbor exists", () => {
     const binding: AppKeybindings[number] = {
       ...keybindings[0]!,
