@@ -234,7 +234,7 @@ afterEach(() => {
 
 describe("ThreadRow", () => {
   it("keeps one restore action visible and blocks row pointer, keyboard, and click propagation", () => {
-    const thread = createThread({ archivedAt: 1, lifecycle: "archived" });
+    const thread = createThread({ archivedAt: 1 });
     const rowEvent = vi.fn();
     const client = new QueryClient();
     render(
@@ -260,7 +260,7 @@ describe("ThreadRow", () => {
 
   it("disables only the restoring thread and recovers when its mutation fails", async () => {
     const client = new QueryClient();
-    const thread = createThread({ archivedAt: 1, lifecycle: "archived" });
+    const thread = createThread({ archivedAt: 1 });
     let rejectRestore!: (error: Error) => void;
     const mutation = client.getMutationCache().build(client, {
       mutationKey: ["unarchive-thread"],
