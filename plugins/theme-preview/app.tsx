@@ -1721,7 +1721,7 @@ function PreviewPage({ subPath }: { subPath: string }) {
       <div ref={headerRef} style={{ position: "sticky", top: 0, zIndex: 20, borderBottom: `1px solid ${v("border-seam", v("border"))}`, background: v("canvas", v("background")) }}>
         <div data-tp-header-inner="" style={{ width: "100%", maxWidth: STUDIO_MAX_WIDTH, margin: "0 auto", boxSizing: "border-box", display: "flex", alignItems: "center", flexWrap: "wrap", rowGap: space(2), gap: space(2), padding: `${space(3)} ${contentInset}px` }}>
           <Tabs className={cn("min-w-0 flex-1", mobile && "basis-full")} value={view} onValueChange={(next) => navigate.toPluginPanel("preview", { subPath: next })}>
-            <TabsList data-tp-view-control="" aria-label="Preview view" className="grid h-auto w-full grid-cols-4 p-2">
+            <TabsList data-tp-view-control="" aria-label="Preview view" className={cn("h-auto p-2", mobile && "grid w-full grid-cols-4")}>
               {VIEWS.map((item) => (
                 <TabsTrigger key={item} value={item} className={cn("min-w-0 cursor-pointer px-2 py-2", mobile && "text-xs")}>
                   {VIEW_LABEL[item]}
