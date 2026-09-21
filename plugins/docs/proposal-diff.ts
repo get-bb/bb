@@ -85,6 +85,24 @@ function buildDecorations(
   const deadline = Date.now() + 40;
   const added = "rounded-sm bg-diff-added/10 text-diff-added";
   const removed = "rounded-sm bg-diff-removed/10 text-diff-removed select-none";
+  const addNode = (node: ProseMirrorNode, position: number) =>
+    result.push(
+      Decoration.node(position, position + node.nodeSize, {
+        class: added,
+        "data-proposal-added": "true",
+      }),
+    );
+  const children = (node: ProseMirrorNode) => {
+    const result: { node: ProseMirrorNode; offset: number; key: string }[] = [];
+    node.forEach((child, offset) =>
+      result.push({
+        node: child,
+        offset,
+        key: JSON.stringify(child.toJSON()),
+      }),
+    );
+    return result;
+  };
   const widget = (
     position: number,
     fragment: Fragment,
@@ -128,6 +146,7 @@ function buildDecorations(
     oldPosition: number,
   ) => {
     if (oldNode.eq(node)) return;
+    if (position >= 0 && !oldNode.sameMarkup(node)) addNode(node, position);
     if (oldNode.isTextblock && node.isTextblock) {
       const parts = changes(
         tokens(oldNode),
@@ -159,45 +178,11 @@ function buildDecorations(
           cursor = last.to;
         }
       }
-      if (!oldNode.sameMarkup(node) && position >= 0)
-        result.push(
-          Decoration.node(position, position + node.nodeSize, {
-            class: added,
-            "data-proposal-added": "true",
-          }),
-        );
       return;
     }
-    if (position >= 0 && !oldNode.sameMarkup(node))
-      result.push(
-        Decoration.node(position, position + node.nodeSize, {
-          class: added,
-          "data-proposal-added": "true",
-        }),
-      );
-    const oldChildren: {
-      node: ProseMirrorNode;
-      offset: number;
-      key: string;
-    }[] = [];
-    const children: typeof oldChildren = [];
-    oldNode.forEach((child, offset) =>
-      oldChildren.push({
-        node: child,
-        offset,
-        key: JSON.stringify(child.toJSON()),
-      }),
-    );
-    node.forEach((child, offset) =>
-      children.push({
-        node: child,
-        offset,
-        key: JSON.stringify(child.toJSON()),
-      }),
-    );
     const parts = changes(
-      oldChildren,
-      children,
+      children(oldNode),
+      children(node),
       (a, b) => a.key === b.key,
       deadline,
     );
@@ -232,13 +217,7 @@ function buildDecorations(
                 true,
               );
             if (replacement)
-              result.push(
-                Decoration.node(
-                  position + 1 + replacement.offset,
-                  position + 1 + replacement.offset + replacement.node.nodeSize,
-                  { class: added, "data-proposal-added": "true" },
-                ),
-              );
+              addNode(replacement.node, position + 1 + replacement.offset);
           }
           if (replacement)
             cursor = replacement.offset + replacement.node.nodeSize;
@@ -246,14 +225,7 @@ function buildDecorations(
         if (next?.added) index++;
       } else {
         for (const child of part.value) {
-          if (part.added)
-            result.push(
-              Decoration.node(
-                position + 1 + child.offset,
-                position + 1 + child.offset + child.node.nodeSize,
-                { class: added, "data-proposal-added": "true" },
-              ),
-            );
+          if (part.added) addNode(child.node, position + 1 + child.offset);
           cursor = child.offset + child.node.nodeSize;
         }
       }

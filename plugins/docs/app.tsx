@@ -414,19 +414,7 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
-function TiptapEditor({
-  initialValue,
-  previewBaseUrl,
-  notePath,
-  onUpload,
-  onFirstRender,
-  onMarkdownChange,
-  value,
-  baseMarkdown = null,
-  inline = false,
-  disabled = false,
-  onFocusChange,
-}: {
+function TiptapEditor(props: {
   initialValue: string;
   previewBaseUrl: string;
   notePath: string;
@@ -439,21 +427,26 @@ function TiptapEditor({
   disabled?: boolean;
   onFocusChange?(focused: boolean): void;
 }) {
+  const {
+    initialValue,
+    previewBaseUrl,
+    notePath,
+    value,
+    baseMarkdown = null,
+    inline = false,
+    disabled = false,
+  } = props;
   const rootRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<Editor | null>(null);
   const baselineRef = useRef<ProseMirrorNode | null>(null);
   const sourceRef = useRef(initialValue);
-  const valueRef = useRef(value);
-  valueRef.current = value;
-  const baseRef = useRef(baseMarkdown);
-  baseRef.current = baseMarkdown;
-  const focusRef = useRef(onFocusChange);
-  focusRef.current = onFocusChange;
+  const latest = useRef(props);
+  latest.current = props;
   const serializeRef = useRef<() => string>(() => "");
   const setBase = (editor: Editor) => {
-    if (baseRef.current === null) baselineRef.current = null;
+    if (latest.current.baseMarkdown == null) baselineRef.current = null;
     else {
-      const body = parseMarkdownDocument(baseRef.current).body;
+      const body = parseMarkdownDocument(latest.current.baseMarkdown).body;
       const root = new window.DOMParser().parseFromString(
         editor.storage.markdown.parser.parse(
           displayMarkdown(body, previewBaseUrl, notePath),
@@ -468,22 +461,16 @@ function TiptapEditor({
       editor.state.tr.setMeta(proposalDiffKey, { refresh: true }),
     );
   };
-  const uploadRef = useRef(onUpload);
-  uploadRef.current = onUpload;
-  const firstRef = useRef(onFirstRender);
-  firstRef.current = onFirstRender;
-  const changeRef = useRef(onMarkdownChange);
-  changeRef.current = onMarkdownChange;
 
   useEffect(() => {
     ensureEditorStyles();
     if (!rootRef.current) return;
-    sourceRef.current = valueRef.current ?? initialValue;
+    sourceRef.current = latest.current.value ?? initialValue;
     const markdownDocument = parseMarkdownDocument(sourceRef.current);
     let editor: Editor;
     const upload = async (file: File) => {
       if (!file.type.startsWith("image/")) return false;
-      const result = await uploadRef.current(file);
+      const result = await latest.current.onUpload(file);
       editor
         .chain()
         .focus()
@@ -520,8 +507,8 @@ function TiptapEditor({
       content: displayMarkdown(markdownDocument.body, previewBaseUrl, notePath),
       autofocus: inline ? false : "end",
       editable: !disabled,
-      onFocus: () => focusRef.current?.(true),
-      onBlur: () => focusRef.current?.(false),
+      onFocus: () => latest.current.onFocusChange?.(true),
+      onBlur: () => latest.current.onFocusChange?.(false),
       editorProps: {
         attributes: {
           role: "textbox",
@@ -570,8 +557,8 @@ function TiptapEditor({
       );
     };
     serializeRef.current = getMarkdown;
-    firstRef.current(getMarkdown());
-    editor.on("update", () => changeRef.current(getMarkdown()));
+    latest.current.onFirstRender(getMarkdown());
+    editor.on("update", () => latest.current.onMarkdownChange(getMarkdown()));
     return () => {
       editor.destroy();
       editorRef.current = null;

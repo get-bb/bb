@@ -186,7 +186,18 @@ function renderDocument(
       },
       openWorkspaceFile: null,
     },
-    options,
+    {
+      ...options,
+      rpc: {
+        readNote: () => ({
+          content: "Original paragraph.",
+          sha256: "original-sha",
+        }),
+        readProposal: () => null,
+        preparePreview: () => preview,
+        ...options.rpc,
+      },
+    },
   );
 }
 
@@ -1291,8 +1302,6 @@ describe("Docs nav panel", () => {
       renderDocument("cached-draft.md", "Cached draft", {
         rpc: {
           readNote,
-          readProposal: () => null,
-          preparePreview: () => preview,
         },
       });
     const first = render();
@@ -1345,8 +1354,6 @@ describe("Docs nav panel", () => {
         openThreadPanel,
         rpc: {
           readNote: () => ({ content: "A long document.", sha256: "tall-sha" }),
-          readProposal: () => null,
-          preparePreview: () => preview,
         },
       });
       const button = await slot.findByRole("button", {
@@ -1381,14 +1388,6 @@ describe("Docs nav panel", () => {
     const openThreadPanel = vi.fn(() => true);
     const slot = renderDocument("inline-header.md", "Inline header", {
       openThreadPanel,
-      rpc: {
-        readNote: () => ({
-          content: "Original paragraph.",
-          sha256: "original-sha",
-        }),
-        readProposal: () => null,
-        preparePreview: () => preview,
-      },
     });
     const editor = await slot.findByRole("textbox", {
       name: "Document content",
@@ -1417,8 +1416,6 @@ describe("Docs nav panel", () => {
       composer: { text: "Keep this instruction." },
       rpc: {
         readNote: () => ({ content: "Email body.", sha256: "original-sha" }),
-        readProposal: () => null,
-        preparePreview: () => preview,
       },
     });
     await slot.findByRole("textbox", { name: "Document content" });
@@ -1438,72 +1435,75 @@ describe("Docs nav panel", () => {
     expect(slot.inspection.composer.focusCount).toBeGreaterThan(0);
   });
 
-  it("keeps Ask for changes available through rejection and icon-only undo", async () => {
-    const pending = {
-      vaultId: "personal",
-      path: "reject-inline.md",
-      version: 1,
-      baseContent: "Original paragraph.",
-      baseSha256: "original-sha",
-      content: "Revised paragraph.",
-      status: "pending",
-      resolvedSha256: null,
-    };
-    let resolution = deferred<void>();
-    const resolveProposal = vi.fn(async (input: unknown) => {
-      if (typeof input !== "object" || input === null || !("action" in input))
-        throw new Error("Missing action");
-      await resolution.promise;
-      return input.action === "reject"
-        ? { ...pending, version: 2, status: "rejected" }
-        : { ...pending, version: 3 };
-    });
-    const slot = renderDocument("reject-inline.md", "Reject example", {
-      rpc: {
-        readNote: () => ({
-          content: "Original paragraph.",
-          sha256: "original-sha",
-        }),
-        readProposal: () => pending,
-        preparePreview: () => preview,
-        resolveProposal,
-      },
-    });
-    await slot.findByRole("textbox", { name: "Document content" });
-    fireEvent.click(slot.getByRole("button", { name: "Reject" }));
-    expect((await slot.findByRole("status")).textContent).toBe(
-      "Updating document…",
-    );
-    expect(
-      slot.getByRole("button", { name: "Reject" }).hasAttribute("disabled"),
-    ).toBe(true);
-    expect(
-      slot.getByRole("textbox", { name: "Document content" }),
-    ).toBeTruthy();
-    await act(async () => resolution.resolve());
-    const undo = await slot.findByRole("button", { name: "Undo" });
-    expect(slot.queryByRole("status")).toBeNull();
-    expect(undo.textContent).toBe("");
-    expect(slot.getByRole("button", { name: "Ask for changes" })).toBeTruthy();
-    expect(slot.queryByRole("button", { name: "Accept" })).toBeNull();
-    resolution = deferred<void>();
-    fireEvent.click(undo);
-    expect((await slot.findByRole("status")).textContent).toBe(
-      "Updating document…",
-    );
-    expect(undo.hasAttribute("disabled")).toBe(true);
-    await act(async () => resolution.resolve());
-    await slot.findByRole("button", { name: "Accept" });
-    expect(slot.queryByRole("status")).toBeNull();
-    expect(slot.getByRole("button", { name: "Reject" })).toBeTruthy();
-    expect(slot.getByRole("button", { name: "Ask for changes" })).toBeTruthy();
-    expect(resolveProposal).toHaveBeenLastCalledWith({
-      vaultId: "personal",
-      path: "reject-inline.md",
-      action: "undo",
-      expectedVersion: 2,
-    });
-  });
+  it.each(["reject", "redo"] as const)(
+    "keeps Ask and progress available through %s and restores proposal controls",
+    async (action) => {
+      const pending = {
+        vaultId: "personal",
+        path: `${action}-inline.md`,
+        version: action === "reject" ? 1 : 3,
+        baseContent: "Original paragraph.",
+        baseSha256: "original-sha",
+        content: "Revised paragraph.",
+        status: action === "reject" ? "pending" : "undone",
+        resolvedSha256: action === "reject" ? null : "original-sha",
+      };
+      let resolution = deferred<void>();
+      const resolveProposal = vi
+        .fn()
+        .mockImplementationOnce(async () => {
+          await resolution.promise;
+          return {
+            ...pending,
+            version: pending.version + 1,
+            status: action === "reject" ? "rejected" : "pending",
+          };
+        })
+        .mockImplementationOnce(async () => {
+          await resolution.promise;
+          return {
+            ...pending,
+            version: pending.version + 2,
+            status: "pending",
+          };
+        });
+      const slot = renderDocument(pending.path, "Proposal", {
+        rpc: { readProposal: () => pending, resolveProposal },
+      });
+      const steps = action === "reject" ? ["Reject", "Undo"] : ["Redo"];
+      for (const [index, label] of steps.entries()) {
+        const button = await slot.findByRole("button", { name: label });
+        expect(button.textContent).toBe("");
+        expect(
+          slot.getByRole("button", { name: "Ask for changes" }),
+        ).toBeTruthy();
+        resolution = deferred<void>();
+        fireEvent.click(button);
+        expect((await slot.findByRole("status")).textContent).toBe(
+          "Updating document…",
+        );
+        expect(button.hasAttribute("disabled")).toBe(true);
+        expect(
+          slot.getByRole("textbox", { name: "Document content" }),
+        ).toBeTruthy();
+        await act(async () => resolution.resolve());
+        expect(slot.queryByRole("status")).toBeNull();
+        expect(resolveProposal).toHaveBeenLastCalledWith({
+          vaultId: "personal",
+          path: pending.path,
+          action: label.toLowerCase(),
+          expectedVersion: pending.version + index,
+        });
+        if (label === "Reject")
+          expect(slot.queryByRole("button", { name: "Accept" })).toBeNull();
+      }
+      expect(slot.getByRole("button", { name: "Accept" })).toBeTruthy();
+      expect(slot.getByRole("button", { name: "Reject" })).toBeTruthy();
+      expect(
+        slot.getByRole("button", { name: "Ask for changes" }),
+      ).toBeTruthy();
+    },
+  );
 
   it("parses rich proposal baselines in an inert document and scopes refreshes", async () => {
     const parse = vi.spyOn(ProseMirrorDOMParser.prototype, "parse");
@@ -1525,7 +1525,6 @@ describe("Docs nav panel", () => {
       rpc: {
         readNote,
         readProposal: () => pending,
-        preparePreview: () => preview,
       },
     });
     await slot.findByRole("textbox", { name: "Document content" });
@@ -1571,47 +1570,6 @@ describe("Docs nav panel", () => {
     await waitFor(() => expect(readNote).toHaveBeenCalledTimes(2));
     await slot.emitRealtime("vault-changed", {});
     await waitFor(() => expect(readNote).toHaveBeenCalledTimes(3));
-  });
-
-  it("uses icon-only redo to reopen the proposal controls", async () => {
-    const undone = {
-      vaultId: "personal",
-      path: "redo-inline.md",
-      version: 3,
-      baseContent: "Original paragraph.",
-      baseSha256: "original-sha",
-      content: "Revised paragraph.",
-      status: "undone",
-      resolvedSha256: "original-sha",
-    };
-    const resolveProposal = vi.fn(() => ({
-      ...undone,
-      version: 4,
-      status: "pending",
-    }));
-    const slot = renderDocument("redo-inline.md", "Redo example", {
-      rpc: {
-        readNote: () => ({
-          content: "Original paragraph.",
-          sha256: "original-sha",
-        }),
-        readProposal: () => undone,
-        preparePreview: () => preview,
-        resolveProposal,
-      },
-    });
-    const redo = await slot.findByRole("button", { name: "Redo" });
-    expect(redo.textContent).toBe("");
-    expect(slot.getByRole("button", { name: "Ask for changes" })).toBeTruthy();
-    fireEvent.click(redo);
-    await slot.findByRole("button", { name: "Accept" });
-    expect(slot.getByRole("button", { name: "Reject" })).toBeTruthy();
-    expect(resolveProposal).toHaveBeenCalledWith({
-      vaultId: "personal",
-      path: "redo-inline.md",
-      action: "redo",
-      expectedVersion: 3,
-    });
   });
 
   it("opens a chosen document from the unconfigured Document panel", async () => {
