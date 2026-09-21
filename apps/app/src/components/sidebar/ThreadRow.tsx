@@ -286,7 +286,6 @@ function ThreadRestoreStatusAction({ thread }: { thread: ThreadListEntry }) {
     >
       <ThreadArchiveQuickAction
         thread={thread}
-        icon="Archive"
         disabled={pending > 0}
         className={SIDEBAR_CONTROL_BUTTON_CLASS}
       />

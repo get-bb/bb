@@ -245,7 +245,7 @@ describe("ThreadRow", () => {
       </QueryClientProvider>,
     );
     const restore = screen.getByRole("button", { name: "Unarchive thread" });
-    expect(restore.querySelector('[data-icon="Archive"]')).toBeTruthy();
+    expect(restore.querySelector('[data-icon="ArchiveRestore"]')).toBeTruthy();
     expect(restore.classList.contains("bg-state-hover")).toBe(false);
     expect(restore.classList.contains("bg-state-active")).toBe(false);
     expect(restore.closest("[data-sidebar-hover-actions-open]")).toBeNull();
