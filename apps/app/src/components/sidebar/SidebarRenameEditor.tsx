@@ -74,6 +74,8 @@ export default function SidebarRenameEditor({
 
   const submit = async (restore: boolean, clear = false) => {
     restoreFocusRef.current = restore;
+    const input = inputRef.current;
+    input?.setSelectionRange(input.value.length, input.value.length);
     const saved = await controller.save(clear);
     if (saved && restoreFocusRef.current) restoreFocus();
   };
@@ -134,7 +136,10 @@ export default function SidebarRenameEditor({
         aria-describedby={session.error ? errorId : undefined}
         autoCapitalize="sentences"
         autoCorrect="off"
-        className="min-w-0 flex-1 appearance-none rounded-sm border-0 bg-transparent px-1 py-0 [font:inherit] outline-none"
+        className={cn(
+          "min-w-0 flex-1 appearance-none border-0 bg-transparent px-0 py-0 [font:inherit] outline-none",
+          isPending && "animate-shine motion-reduce:opacity-60",
+        )}
         spellCheck={false}
         value={session.draft}
         placeholder={session.placeholder}
@@ -148,15 +153,8 @@ export default function SidebarRenameEditor({
         }}
       />
       {isPending && (
-        <span
-          role="status"
-          aria-label="Saving name"
-          className="inline-flex shrink-0 items-center justify-center"
-        >
-          <Icon
-            name="Loading"
-            className={cn(COARSE_POINTER_ICON_SIZE_CLASS, "animate-spin")}
-          />
+        <span role="status" aria-label="Saving name" className="sr-only">
+          Saving name
         </span>
       )}
       {session.onClear && session.name && (
