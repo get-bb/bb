@@ -313,6 +313,12 @@ function MeasuredBadge({
         node =
           node.offsetParent instanceof HTMLElement ? node.offsetParent : null;
       }
+      node = element.parentElement;
+      while (node) {
+        x -= node.scrollLeft;
+        y -= node.scrollTop;
+        node = node.parentElement;
+      }
       return { x, y };
     };
     const measure = () => {
@@ -401,7 +407,11 @@ function MeasuredBadge({
       "[data-guide-responsive-strategy]",
     );
     if (scaleWrapper) observer.observe(scaleWrapper);
-    return () => observer.disconnect();
+    scope.addEventListener("scroll", measure, true);
+    return () => {
+      observer.disconnect();
+      scope.removeEventListener("scroll", measure, true);
+    };
   }, [anchor, at, align, flush]);
 
   return (
