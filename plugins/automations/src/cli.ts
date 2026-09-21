@@ -33,6 +33,8 @@ import {
   serviceTierSchema,
 } from "./rpc-types.js";
 import { interpreterForPath } from "./script-files.js";
+// bb-fork(windows): the printed refresh command must be pasteable on this platform.
+import { forkShellQuote } from "./shell-quote.fork.js";
 
 const DURATION_PATTERN =
   /^(\d+)\s*(s|sec|secs|second|seconds|m|min|mins|minute|minutes|h|hr|hrs|hour|hours|d|day|days)$/iu;
@@ -697,7 +699,7 @@ function refreshScriptFileCommand(
   if (automation.execution.env !== undefined) {
     argv.push("--env-json", JSON.stringify(automation.execution.env));
   }
-  return argv.map(shellQuote).join(" ");
+  return argv.map((value) => forkShellQuote(value, shellQuote)).join(" ");
 }
 
 function printScriptFileSnapshotNote(

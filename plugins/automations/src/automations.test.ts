@@ -1560,8 +1560,12 @@ describe("automation CLI --script-file", () => {
       );
       expect(created.exitCode).toBe(0);
       const automationId = idFrom(created.stdout);
+      const quoted = (value: string): string =>
+        process.platform === "win32"
+          ? `"${value.replaceAll('"', '""')}"`
+          : `'${value.replaceAll("'", "'\\''")}'`;
       expect(created.stdout).toContain(
-        `bb automation update ${automationId} --project proj_test --script-file '${sourcePath}' --interpreter python3 --timeout 5000 --env-json '{"CHANNEL":"qa","MSG":"it'\\''s"}'`,
+        `bb automation update ${automationId} --project proj_test --script-file ${quoted(sourcePath)} --interpreter python3 --timeout 5000 --env-json ${quoted('{"CHANNEL":"qa","MSG":"it\'s"}')}`,
       );
     } finally {
       await t.cleanup();
