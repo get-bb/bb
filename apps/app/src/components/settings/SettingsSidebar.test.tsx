@@ -78,7 +78,7 @@ describe("SettingsSidebarContent plugin navigation", () => {
     renderSidebar(null, []);
     expect(screen.getByRole("link", { name: "Browse plugins" })).toBeTruthy();
     fireEvent.click(
-      screen.getByRole("button", { name: "New plugin", exact: true }),
+      screen.getByRole("button", { name: "New plugin" }),
     );
     expect(screen.getByTestId("route-state").textContent).toContain(
       "initialPrompt",
