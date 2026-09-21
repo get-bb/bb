@@ -1,4 +1,4 @@
-import { displayWidth, truncateToWidth } from "@bb/domain/text-measure";
+import { displayWidth, truncateToWidth } from "@bb/text-utils";
 import { parseWorkflowSource } from "./parser.js";
 import type { WorkflowRunInspection } from "./service.js";
 import type {

@@ -408,6 +408,9 @@ importers:
       '@bb/templates':
         specifier: workspace:*
         version: link:../../packages/templates
+      '@bb/text-utils':
+        specifier: workspace:*
+        version: link:../../packages/text-utils
       '@bb/thread-view':
         specifier: workspace:*
         version: link:../../packages/thread-view
@@ -574,6 +577,9 @@ importers:
       '@bb/server-contract':
         specifier: workspace:*
         version: link:../../packages/server-contract
+      '@bb/text-utils':
+        specifier: workspace:*
+        version: link:../../packages/text-utils
       '@bb/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
@@ -978,6 +984,9 @@ importers:
       '@bb/templates':
         specifier: workspace:*
         version: link:../../packages/templates
+      '@bb/text-utils':
+        specifier: workspace:*
+        version: link:../../packages/text-utils
       '@bb/thread-view':
         specifier: workspace:*
         version: link:../../packages/thread-view
@@ -1577,6 +1586,9 @@ importers:
       '@bb/server-contract':
         specifier: workspace:*
         version: link:../server-contract
+      '@bb/text-utils':
+        specifier: workspace:*
+        version: link:../text-utils
       '@bb/thread-view':
         specifier: workspace:*
         version: link:../thread-view
@@ -1705,6 +1717,9 @@ importers:
       '@bb/domain':
         specifier: workspace:*
         version: link:../domain
+      '@bb/text-utils':
+        specifier: workspace:*
+        version: link:../text-utils
       better-sqlite3:
         specifier: 12.10.0
         version: 12.10.0
@@ -2808,6 +2823,21 @@ importers:
       typescript-7:
         specifier: npm:typescript@^7.0.2
         version: typescript@7.0.2
+
+  packages/text-utils:
+    devDependencies:
+      '@bb/tsconfig':
+        specifier: workspace:*
+        version: link:../tsconfig
+      typescript:
+        specifier: npm:@typescript/typescript6@^6.0.2
+        version: '@typescript/typescript6@6.0.2'
+      typescript-7:
+        specifier: npm:typescript@^7.0.2
+        version: typescript@7.0.2
+      vitest:
+        specifier: ^4.1.1
+        version: 4.1.1(@opentelemetry/api@1.9.1)(@types/node@24.12.4)(jsdom@29.0.1(@noble/hashes@2.4.0))(msw@2.12.14(@types/node@24.12.4)(@typescript/typescript6@6.0.2))(vite@8.0.12(@types/node@24.12.4)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.50.0)(tsx@4.23.1)(yaml@2.9.0))
 
   packages/thread-view:
     dependencies:
@@ -4358,12 +4388,12 @@ importers:
 
   plugins/tasks:
     dependencies:
-      '@bb/domain':
-        specifier: workspace:*
-        version: link:../../packages/domain
       '@bb/shared-ui':
         specifier: workspace:*
         version: link:../../packages/shared-ui
+      '@bb/text-utils':
+        specifier: workspace:*
+        version: link:../../packages/text-utils
       '@hugeicons/core-free-icons':
         specifier: ^4.3.4
         version: 4.3.4
@@ -4534,12 +4564,12 @@ importers:
 
   plugins/workflows:
     dependencies:
-      '@bb/domain':
-        specifier: workspace:*
-        version: link:../../packages/domain
       '@bb/shared-ui':
         specifier: workspace:*
         version: link:../../packages/shared-ui
+      '@bb/text-utils':
+        specifier: workspace:*
+        version: link:../../packages/text-utils
       '@jitl/quickjs-singlefile-cjs-release-sync':
         specifier: ^0.32.0
         version: 0.32.0

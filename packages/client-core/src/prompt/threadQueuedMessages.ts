@@ -1,5 +1,5 @@
 import { type PromptInput } from "@bb/domain";
-import { displayWidth, truncateToWidth } from "@bb/domain/text-measure";
+import { displayWidth, truncateToWidth } from "@bb/text-utils";
 import { fileNameFromPath } from "@bb/thread-view";
 import { promptInputToDraft, type PromptDraftState } from "./prompt-draft.js";
 

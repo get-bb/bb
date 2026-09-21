@@ -10,7 +10,7 @@ import {
   displayWidth,
   truncateToWidth,
   truncateToWidthAtWordBoundary,
-} from "@bb/domain/text-measure";
+} from "@bb/text-utils";
 import type { AppDeps, LoggedWorkSessionDeps } from "../../types.js";
 import { Type } from "@earendil-works/pi-ai";
 import {

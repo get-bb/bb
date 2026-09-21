@@ -1,4 +1,4 @@
-import { truncateToWidth } from "@bb/domain/text-measure";
+import { truncateToWidth } from "@bb/text-utils";
 import type { BbPluginApi, PluginRpcHandlers } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import type {
