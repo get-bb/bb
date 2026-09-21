@@ -23,7 +23,6 @@ const mocks = vi.hoisted(() => ({
   pendingInteractionsIsError: false,
   pendingInteractionsIsFetching: false,
   pendingInteractionsIsLoading: false,
-  pendingInteractionsRefetch: vi.fn(),
   queuedMessages: [] as Array<{ id: string }>,
   readTrackingThreads: [] as Array<unknown>,
   sendQueuedMessageMutateAsync: vi.fn(),
@@ -253,7 +252,6 @@ vi.mock("@/hooks/queries/thread-queries", () => ({
     isError: mocks.pendingInteractionsIsError,
     isFetching: mocks.pendingInteractionsIsFetching,
     isLoading: mocks.pendingInteractionsIsLoading,
-    refetch: mocks.pendingInteractionsRefetch,
   }),
   getLatestPendingInteraction: (
     interactions: readonly { createdAt: number }[] | undefined,
@@ -404,7 +402,6 @@ describe("EmbeddedThreadChat", () => {
     mocks.pendingInteractionsIsError = false;
     mocks.pendingInteractionsIsFetching = false;
     mocks.pendingInteractionsIsLoading = false;
-    mocks.pendingInteractionsRefetch.mockReset().mockResolvedValue({});
     mocks.queuedMessages = [];
     mocks.readTrackingThreads = [];
     mocks.sendQueuedMessageMutateAsync.mockReset().mockResolvedValue({});
@@ -619,48 +616,56 @@ describe("EmbeddedThreadChat", () => {
     ).toBe("true");
   });
 
-  it("hides the composer while pending interactions are initially unknown", () => {
+  it("keeps drafting available while the first interaction check blocks sending", () => {
     mocks.pendingInteractions = undefined;
     mocks.pendingInteractionsIsFetching = true;
     mocks.pendingInteractionsIsLoading = true;
 
     renderEmbeddedChat({ threadId: "thr_side_chat" });
 
-    expect(screen.getByRole("status").textContent).toContain(
-      "Checking pending interactions",
-    );
-    expect(screen.getByTestId("embedded-chat-composer").hidden).toBe(true);
-    expect(
-      screen.getByTestId("embedded-chat-composer").dataset.submitReason,
-    ).toBe("loading-pending-interactions");
+    const composer = screen.getByTestId("embedded-chat-composer");
+    expect(composer.hidden).toBe(false);
+    expect(composer.dataset.submitReason).toBe("loading-pending-interactions");
+    fireEvent.change(composer, { target: { value: "Keep this draft" } });
+    expect(screen.getByDisplayValue("Keep this draft")).toBe(composer);
   });
 
-  it("hides the composer while cached empty interactions refresh", () => {
-    mocks.pendingInteractions = [];
+  it("preserves the editor and queued messages through an interaction refresh", () => {
+    mocks.queuedMessages = [{ id: "q1" }];
+    const view = renderEmbeddedChat({ threadId: "thr_side_chat" });
+    const composer = screen.getByTestId("embedded-chat-composer");
+    const queue = screen.getByTestId("embedded-chat-queued-messages");
+    expect(queue.dataset.sendDisabled).toBeUndefined();
+    fireEvent.change(composer, { target: { value: "Keep this draft" } });
+
     mocks.pendingInteractionsIsFetching = true;
+    view.rerender(buildEmbeddedChat({ threadId: "thr_side_chat" }));
+
+    expect(composer.hidden).toBe(false);
+    expect(composer.dataset.submitReason).toBe("loading-pending-interactions");
+    expect(screen.getByTestId("embedded-chat-queued-messages")).toBeTruthy();
+    expect(queue.dataset.sendDisabled).toBe("");
+    expect(screen.getByDisplayValue("Keep this draft")).toBe(composer);
+
+    mocks.pendingInteractionsIsFetching = false;
+    view.rerender(buildEmbeddedChat({ threadId: "thr_side_chat" }));
+
+    expect(composer.dataset.submitMode).toBe("ready");
+    expect(queue.dataset.sendDisabled).toBeUndefined();
+    expect(screen.getByDisplayValue("Keep this draft")).toBe(composer);
+  });
+
+  it("keeps the composer available after an interaction check fails, like a normal thread", () => {
+    mocks.pendingInteractions = undefined;
+    mocks.pendingInteractionsIsError = true;
     mocks.queuedMessages = [{ id: "q1" }];
 
     renderEmbeddedChat({ threadId: "thr_side_chat" });
 
-    expect(screen.getByRole("status").textContent).toContain(
-      "Checking pending interactions",
-    );
-    expect(screen.queryByTestId("embedded-chat-queued-messages")).toBeNull();
-    expect(screen.getByTestId("embedded-chat-composer").hidden).toBe(true);
-  });
-
-  it("keeps the composer unavailable when pending interactions fail to load", () => {
-    mocks.pendingInteractions = undefined;
-    mocks.pendingInteractionsIsError = true;
-
-    renderEmbeddedChat({ threadId: "thr_side_chat" });
-
-    expect(screen.getByRole("alert").textContent).toContain(
-      "Couldn't check pending interactions",
-    );
-    expect(screen.getByTestId("embedded-chat-composer").hidden).toBe(true);
-    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
-    expect(mocks.pendingInteractionsRefetch).toHaveBeenCalledOnce();
+    const composer = screen.getByTestId("embedded-chat-composer");
+    expect(composer.hidden).toBe(false);
+    expect(composer.dataset.submitMode).toBe("ready");
+    expect(screen.getByTestId("embedded-chat-queued-messages")).toBeTruthy();
   });
 
   it("delivers the new thread's draft to host subscribers immediately on a thread switch", () => {

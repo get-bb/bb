@@ -8,9 +8,8 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from "react";
+import { Icon } from "@bb/shared-ui/icon";
 import { HugeiconsIcon } from "@hugeicons/react";
-import ArrowLeft01Icon from "@hugeicons/core-free-icons/ArrowLeft01Icon";
-import ArrowRight01Icon from "@hugeicons/core-free-icons/ArrowRight01Icon";
 
 import { cn } from "./cn";
 import { SurfaceCard, useSurfaceCard } from "./surface-card";
@@ -443,8 +442,8 @@ function PanButton({
         FOCUS_RING_CLASS,
       )}
     >
-      <HugeiconsIcon
-        icon={direction === "previous" ? ArrowLeft01Icon : ArrowRight01Icon}
+      <Icon
+        name={direction === "previous" ? "ChevronLeft" : "ChevronRight"}
         className="size-4"
       />
     </button>
@@ -483,11 +482,13 @@ function useStageHeight(
 
 export function ProductMap({
   pluginPageHref,
+  renderPluginIcon,
   initialSlideId,
   onSlideChange,
   onCopyForAgent,
 }: {
   pluginPageHref?: (displayName: string) => string | null;
+  renderPluginIcon?: (displayName: string) => ReactNode;
   initialSlideId?: string;
   onSlideChange?: (slideId: string) => void;
   onCopyForAgent?: (surface: PluginSurface) => Promise<boolean>;
@@ -560,11 +561,12 @@ export function ProductMap({
       numberOf: (id: string) => SURFACE_NUMBERS.get(id) ?? null,
       onSelect: card.open,
       pluginPageHref,
+      renderPluginIcon,
       currentGroupId: slides[index].id,
       onGoToSurface: goToSurface,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [hoverId, card.openId, pluginPageHref, index],
+    [hoverId, card.openId, pluginPageHref, renderPluginIcon, index],
   );
 
   const cardNode = openSurface ? (

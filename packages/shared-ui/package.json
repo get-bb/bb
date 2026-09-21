@@ -94,6 +94,11 @@
       "types": "./src/components/ui/hover-card.tsx",
       "default": "./src/components/ui/hover-card.tsx"
     },
+    "./plugin-icon": {
+      "source": "./src/components/ui/plugin-icon.tsx",
+      "types": "./src/components/ui/plugin-icon.tsx",
+      "default": "./src/components/ui/plugin-icon.tsx"
+    },
     "./icon": {
       "source": "./src/components/ui/icon.tsx",
       "types": "./src/components/ui/icon.tsx",
