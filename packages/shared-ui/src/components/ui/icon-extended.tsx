@@ -4,6 +4,7 @@ import AiBrowserIcon from "@hugeicons/core-free-icons/AiBrowserIcon";
 import AiContentGenerator01Icon from "@hugeicons/core-free-icons/AiContentGenerator01Icon";
 import ArrowDown02Icon from "@hugeicons/core-free-icons/ArrowDown02Icon";
 import ArrowDownDoubleIcon from "@hugeicons/core-free-icons/ArrowDownDoubleIcon";
+import ArrowLeft02Icon from "@hugeicons/core-free-icons/ArrowLeft02Icon";
 import ArrowMoveDownLeftIcon from "@hugeicons/core-free-icons/ArrowMoveDownLeftIcon";
 import ArrowMoveDownRightIcon from "@hugeicons/core-free-icons/ArrowMoveDownRightIcon";
 import ArrowReloadHorizontalIcon from "@hugeicons/core-free-icons/ArrowReloadHorizontalIcon";
@@ -13,7 +14,6 @@ import ArrowTurnForwardIcon from "@hugeicons/core-free-icons/ArrowTurnForwardIco
 import ArrowUp01Icon from "@hugeicons/core-free-icons/ArrowUp01Icon";
 import ArrowUp02Icon from "@hugeicons/core-free-icons/ArrowUp02Icon";
 import ArrowUpDoubleIcon from "@hugeicons/core-free-icons/ArrowUpDoubleIcon";
-import ArrowLeft02Icon from "@hugeicons/core-free-icons/ArrowLeft02Icon";
 import ArrowUpDownIcon from "@hugeicons/core-free-icons/ArrowUpDownIcon";
 import ArrowUpRight01Icon from "@hugeicons/core-free-icons/ArrowUpRight01Icon";
 import AttachmentIcon from "@hugeicons/core-free-icons/AttachmentIcon";
@@ -27,6 +27,8 @@ import ChartColumnIcon from "@hugeicons/core-free-icons/ChartColumnIcon";
 import CircleArrowShrink01Icon from "@hugeicons/core-free-icons/CircleArrowShrink01Icon";
 import CleanIcon from "@hugeicons/core-free-icons/CleanIcon";
 import Clock01Icon from "@hugeicons/core-free-icons/Clock01Icon";
+import ClockArrowDownIcon from "@hugeicons/core-free-icons/ClockArrowDownIcon";
+import ClockArrowUpIcon from "@hugeicons/core-free-icons/ClockArrowUpIcon";
 import CloudIcon from "@hugeicons/core-free-icons/CloudIcon";
 import CloudOffIcon from "@hugeicons/core-free-icons/CloudOffIcon";
 import Coffee02Icon from "@hugeicons/core-free-icons/Coffee02Icon";
@@ -48,12 +50,12 @@ import FolderEditIcon from "@hugeicons/core-free-icons/FolderEditIcon";
 import FolderRemoveIcon from "@hugeicons/core-free-icons/FolderRemoveIcon";
 import GitBranchIcon from "@hugeicons/core-free-icons/GitBranchIcon";
 import GitForkIcon from "@hugeicons/core-free-icons/GitForkIcon";
-import GithubIcon from "@hugeicons/core-free-icons/GithubIcon";
 import GitMergeIcon from "@hugeicons/core-free-icons/GitMergeIcon";
 import GitPullRequestArrow from "@hugeicons/core-free-icons/GitPullRequestIcon";
 import GitPullRequestClosedIcon from "@hugeicons/core-free-icons/GitPullRequestClosedIcon";
 import GitPullRequestDraftIcon from "@hugeicons/core-free-icons/GitPullRequestDraftIcon";
 import GitPullRequestIcon from "@hugeicons/core-free-icons/GitPullRequestIcon";
+import GithubIcon from "@hugeicons/core-free-icons/GithubIcon";
 import GridViewIcon from "@hugeicons/core-free-icons/GridViewIcon";
 import InternetIcon from "@hugeicons/core-free-icons/InternetIcon";
 import LaptopIcon from "@hugeicons/core-free-icons/LaptopIcon";
@@ -62,6 +64,7 @@ import LayoutTwoColumnIcon from "@hugeicons/core-free-icons/Layout2ColumnIcon";
 import LayoutTwoRowIcon from "@hugeicons/core-free-icons/Layout2RowIcon";
 import LimitationIcon from "@hugeicons/core-free-icons/LimitationIcon";
 import LinkSquare02Icon from "@hugeicons/core-free-icons/LinkSquare02Icon";
+import ListEndIcon from "@hugeicons/core-free-icons/ListEndIcon";
 import ListViewIcon from "@hugeicons/core-free-icons/ListViewIcon";
 import LockIcon from "@hugeicons/core-free-icons/LockIcon";
 import Mail02Icon from "@hugeicons/core-free-icons/Mail02Icon";
@@ -89,6 +92,10 @@ import SidebarBottomIcon from "@hugeicons/core-free-icons/SidebarBottomIcon";
 import SidebarRightIcon from "@hugeicons/core-free-icons/SidebarRightIcon";
 import SmartPhone01Icon from "@hugeicons/core-free-icons/SmartPhone01Icon";
 import Sorting01Icon from "@hugeicons/core-free-icons/Sorting01Icon";
+import SortingAZ02Icon from "@hugeicons/core-free-icons/SortingAZ02Icon";
+import SortingNineOneIcon from "@hugeicons/core-free-icons/SortingNineOneIcon";
+import SortingOneNineIcon from "@hugeicons/core-free-icons/SortingOneNineIcon";
+import SortingZA01Icon from "@hugeicons/core-free-icons/SortingZA01Icon";
 import SquareIcon from "@hugeicons/core-free-icons/SquareIcon";
 import SquareUnlock02Icon from "@hugeicons/core-free-icons/SquareUnlock02Icon";
 import StarIcon from "@hugeicons/core-free-icons/StarIcon";
@@ -236,6 +243,8 @@ export const EXTENDED_ICON_MAP: ExtendedIconMap = {
   CircleArrowShrink: CircleArrowShrink01Icon,
   Clean: CleanIcon,
   Clock: Clock01Icon,
+  ClockArrowUp: ClockArrowUpIcon,
+  ClockArrowDown: ClockArrowDownIcon,
   Cloud: CloudIcon,
   CloudOff: CloudOffIcon,
   Coffee: Coffee02Icon,
@@ -275,6 +284,7 @@ export const EXTENDED_ICON_MAP: ExtendedIconMap = {
   Laptop: LaptopIcon,
   Layers: Layers01Icon,
   Limitation: LimitationIcon,
+  ListEnd: ListEndIcon,
   ListView: ListViewIcon,
   Lock: LockIcon,
   Mail: Mail02Icon,
@@ -306,6 +316,10 @@ export const EXTENDED_ICON_MAP: ExtendedIconMap = {
   SideChat: MessageAdd02Icon,
   Smartphone: SmartPhone01Icon,
   Sort: Sorting01Icon,
+  SortingAZ02: SortingAZ02Icon,
+  SortingZA01: SortingZA01Icon,
+  SortingOneNine: SortingOneNineIcon,
+  SortingNineOne: SortingNineOneIcon,
   Square: SquareIcon,
   SquareUnlock02: SquareUnlock02Icon,
   Star: StarIcon,

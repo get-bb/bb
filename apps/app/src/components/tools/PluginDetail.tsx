@@ -52,7 +52,6 @@ import {
   PluginDetailTable,
 } from "@/components/tools/plugin-detail-table";
 import { PluginBannerBar } from "@/components/tools/plugin-detail-banner";
-import { ProvenancePill } from "@/components/tools/ProvenancePill";
 import {
   usePluginSource,
   type PluginCatalogSearchEntry,
@@ -65,13 +64,6 @@ import {
 } from "@/lib/plugin-frontend";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { useClipboardCopy } from "@/lib/clipboard";
-
-export function PluginProvenancePill({ plugin }: { plugin: PluginListItem }) {
-  const label = plugin.publisherLabel;
-  return label === null || label === "BB Official" ? null : (
-    <ProvenancePill label={label} />
-  );
-}
 
 export function pluginIsLocalSource(plugin: PluginListItem): boolean {
   return plugin.source.startsWith("path:");
@@ -330,12 +322,9 @@ export function PluginDetail({
       leading={<PluginLogo plugin={plugin} className="size-4" />}
       title={pluginName}
       titleMeta={
-        <span className="flex flex-wrap items-center gap-1.5">
-          <PluginProvenancePill plugin={plugin} />
-          {catalogEntry === undefined ? null : (
-            <PluginMarketplaceCategoryPill entry={catalogEntry} />
-          )}
-        </span>
+        catalogEntry === undefined ? null : (
+          <PluginMarketplaceCategoryPill entry={catalogEntry} />
+        )
       }
       metadata={
         <div className="space-y-1">

@@ -1,7 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  AppCommandProvider,
+  useAppCommandRunner,
+} from "@/components/commands/AppCommandProvider";
+import { SecondaryPanelHostLayoutContext } from "./SecondaryPanelHostLayoutContext";
 import { PanelGroup } from "react-resizable-panels";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { SidebarProvider } from "@/components/ui/sidebar";
@@ -26,6 +31,7 @@ import {
 
 afterEach(() => {
   cleanup();
+  vi.unstubAllGlobals();
   window.localStorage.clear();
 });
 
@@ -1025,4 +1031,126 @@ describe("ThreadSecondaryPanel full-screen control", () => {
       document.querySelector('[data-split-pane-id][data-maximized="true"]'),
     ).toBeNull();
   });
+});
+
+function NextPanelTabButton() {
+  const { dispatch } = useAppCommandRunner();
+  return (
+    <button onClick={() => dispatch("panel.nextTab", document.activeElement)}>
+      Next panel tab
+    </button>
+  );
+}
+
+it("focuses New tab without opening it and resumes cycling from the button", async () => {
+  vi.stubGlobal("CSS", { escape: (value: string) => value });
+  const { wrapper: Wrapper } = createQueryClientTestHarness();
+  const onOpenNewTab = vi.fn();
+  render(
+    <Wrapper>
+      <AppCommandProvider>
+        <TooltipProvider>
+          <NextPanelTabButton />
+          <PanelGroup direction="horizontal">
+            <ThreadSecondaryPanel
+              activeTab={infoFixedTab}
+              canUseGitUi={false}
+              fixedTabs={infoFixedTabs}
+              tabs={[]}
+              splitPanelStateId="new-tab-navigation"
+              isOpen
+              isConversationCollapsed={false}
+              metadataContent={<input aria-label="Draft" defaultValue="keep" />}
+              onClose={noop}
+              onCollapse={noop}
+              onTabReorder={noop}
+              onOpenNewTab={onOpenNewTab}
+              onPanelFocus={noop}
+              onToggleConversationCollapse={noop}
+              renderAsDrawer={false}
+            />
+          </PanelGroup>
+        </TooltipProvider>
+      </AppCommandProvider>
+    </Wrapper>,
+  );
+  const next = screen.getByRole("button", { name: "Next panel tab" });
+  const info = screen.getByRole("button", { name: "Show thread info panel" });
+  const newTab = screen.getByRole("button", { name: /^Open new tab/ });
+  const draft = screen.getByRole("textbox", { name: "Draft" });
+  draft.focus();
+  fireEvent.click(next);
+  await waitFor(() => expect(document.activeElement).toBe(newTab));
+  expect(info.getAttribute("aria-pressed")).toBe("true");
+  expect(screen.getByDisplayValue("keep")).toBe(draft);
+  expect(onOpenNewTab).not.toHaveBeenCalled();
+  fireEvent.click(next);
+  await waitFor(() => expect(document.activeElement).toBe(info));
+  fireEvent.click(next);
+  await waitFor(() => expect(document.activeElement).toBe(newTab));
+  fireEvent.click(newTab);
+  expect(onOpenNewTab).toHaveBeenCalledOnce();
+});
+
+it("ignores tab navigation while chat maximize suppresses the panel and resumes after restore", () => {
+  const { wrapper: Wrapper } = createQueryClientTestHarness();
+  const onSelect = vi.fn();
+  const file = createWorkspaceFilePreviewFixedPanelTab({
+    environmentId: "env-test",
+    projectId: "proj-test",
+    tab: {
+      path: "index.ts",
+      source: { kind: "working-tree" },
+      statusLabel: null,
+      lineRange: null,
+    },
+  });
+  const view = (isSuppressed: boolean) => (
+    <Wrapper>
+      <AppCommandProvider>
+        <SidebarProvider>
+          <TooltipProvider>
+            <NextPanelTabButton />
+            <SecondaryPanelHostLayoutContext.Provider
+              value={{ isOpen: true, isSuppressed, pinsCornerToggle: false }}
+            >
+              <PanelGroup direction="horizontal">
+                <ThreadSecondaryPanel
+                  activeTab={infoFixedTab}
+                  canUseGitUi={false}
+                  fixedTabs={infoFixedTabs}
+                  tabs={[{ ...createTestRenderableTab(file), onSelect }]}
+                  splitPanelStateId="suppressed-panel-navigation"
+                  isOpen
+                  isConversationCollapsed={false}
+                  metadataContent={null}
+                  onClose={noop}
+                  onCollapse={noop}
+                  onTabReorder={noop}
+                  onOpenNewTab={noop}
+                  onPanelFocus={noop}
+                  onToggleConversationCollapse={noop}
+                  renderAsDrawer={false}
+                />
+              </PanelGroup>
+            </SecondaryPanelHostLayoutContext.Provider>
+          </TooltipProvider>
+        </SidebarProvider>
+      </AppCommandProvider>
+    </Wrapper>
+  );
+  const { rerender } = render(view(true));
+  const button = screen.getByRole("button", { name: "Next panel tab" });
+  button.focus();
+  fireEvent.click(button);
+  expect(onSelect).not.toHaveBeenCalled();
+  expect(document.activeElement).toBe(button);
+  expect(
+    screen
+      .getByRole("button", { name: "Show thread info panel" })
+      .getAttribute("aria-pressed"),
+  ).toBe("true");
+  rerender(view(false));
+  fireEvent.click(button);
+  expect(onSelect).toHaveBeenCalledOnce();
 });
