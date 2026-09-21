@@ -239,6 +239,13 @@ describe("AutomationOverviewView", () => {
 
     const actions = () =>
       screen.getByRole("button", { name: "Nightly digest actions" });
+    const enabledSwitch = screen.getByRole("switch", {
+      name: "Disable Nightly digest",
+    });
+    expect(enabledSwitch.compareDocumentPosition(actions())).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(actions().parentElement?.className).not.toContain("opacity-0");
     fireEvent.pointerDown(actions());
     fireEvent.click(await screen.findByRole("menuitem", { name: "Run now" }));
 

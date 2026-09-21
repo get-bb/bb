@@ -273,6 +273,14 @@ export function ResourceRow({
           {trailingMeta ? (
             <span className="flex shrink-0 items-center">{trailingMeta}</span>
           ) : null}
+          {persistentActions ? (
+            <span
+              data-row-action
+              className="flex shrink-0 cursor-default items-center gap-0.5"
+            >
+              {persistentActions}
+            </span>
+          ) : null}
           {actions ? (
             <span
               data-row-action
@@ -283,14 +291,6 @@ export function ResourceRow({
               )}
             >
               {actions}
-            </span>
-          ) : null}
-          {persistentActions ? (
-            <span
-              data-row-action
-              className="flex shrink-0 cursor-default items-center gap-0.5"
-            >
-              {persistentActions}
             </span>
           ) : null}
           {trailingVisual ? (

@@ -299,6 +299,7 @@ export function OverviewRow({
           ]}
         />
       }
+      actionsVisibility="always"
       persistentActions={
         <AutomationLifecycleControl
           checked={automation.enabled && !lifecycleLocked}
