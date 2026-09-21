@@ -85,8 +85,10 @@ function defineUiPreference<Schema extends z.ZodTypeAny>(
 export const uiPreferenceDefinitions = {
   "sidebar.organizationMode": defineUiPreference(
     sidebarOrganizationModeSchema,
-    "chronological",
-    "How the sidebar groups threads: by project, Custom (chronological), or by machine. Defaults to Custom when unset.",
+    // bb-fork(windows): the fork keeps the pre-#3742 default of By project.
+    "project",
+    // bb-fork(windows): description matches the fork default above.
+    "How the sidebar groups threads: by project, Custom (chronological), or by machine. Defaults to By project when unset.",
   ),
   "sidebar.threadGrouping.environment": defineUiPreference(
     sidebarThreadGroupingSchema,

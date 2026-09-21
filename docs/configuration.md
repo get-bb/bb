@@ -720,7 +720,8 @@ client wrote first, so a stale window cannot silently clobber a newer value.
 | `sidebar.navigationProvider`      | Plugin key, `__automatic__`, or `__builtin__`       |
 | `sidebar.threadListProvider`      | Plugin key, `__automatic__`, or `__builtin__`       |
 
-Custom (`chronological`) is the default for `sidebar.organizationMode` when no
+<!-- bb-fork(windows): the fork defaults an unset organization to By project; see docs/windows.md. -->
+By project (`project`) is the default for `sidebar.organizationMode` when no
 value is saved. Existing server and legacy browser choices are preserved.
 
 `sidebar.threadGrouping.environment` decides whether two or more sibling threads

@@ -19,7 +19,8 @@ every window and client sees the same value.
   orders, the collapsed-id lists, `sidebar.hiddenGroups`,
   `sidebar.pluginPanelOrder`, `sidebar.visiblePluginPanels`, `sidebar.navigationProvider`,
   `sidebar.threadListProvider`).
-- `sidebar.organizationMode` defaults to Custom (`chronological`) when unset;
+- <!-- bb-fork(windows): the fork defaults an unset organization to By project; see docs/windows.md. -->
+  `sidebar.organizationMode` defaults to By project (`project`) when unset;
   existing server and legacy browser choices are preserved.
 - `sidebar.threadGrouping.environment` decides whether sibling threads sharing
   one worktree environment collapse into a single worktree row inside their

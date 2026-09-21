@@ -69,6 +69,21 @@ Native Windows drive-letter and UNC paths are accepted at the app/server
 boundary on native Windows hosts. In the WSL2 flow they are still rejected so
 unsupported input fails clearly.
 
+## Fork app behavior
+
+Two fork-owned deltas change app behavior on every platform:
+
+- An unset `sidebar.organizationMode` preference defaults to By project
+  (`project`); upstream defaults it to Custom (`chronological`). The preference
+  stays server-backed, so an explicit choice, `bb settings ui set`, and
+  `bb settings ui reset` behave as documented.
+- The app remembers the last opened thread in browser storage
+  (`bb.fork.lastThread`) and reopens it when a load lands on the new-thread
+  screen (`/`). It validates the remembered thread against the cached sidebar
+  bootstrap first, and never redirects after an in-session navigation. This
+  keeps the active chat across dev-instance reloads, which upstream loses
+  because it keeps the route only in the URL and in-memory history.
+
 ## Source development on native Windows
 
 `pnpm dev` runs the whole stack natively: Vite serves the app with hot module

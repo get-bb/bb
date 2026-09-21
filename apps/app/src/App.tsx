@@ -15,6 +15,8 @@ import { RouteNavigationIndicator } from "./components/ui/route-navigation-indic
 import { AppNavigationUrlHost } from "./lib/url-open-routing";
 import { NativeShellReporter } from "./lib/native-shell";
 import { UiPreferencesSync } from "@/lib/ui-preferences/UiPreferencesSync";
+// bb-fork(windows): remember and restore the active thread across reloads
+import { ForkAppStateRestore } from "@/lib/fork-app-state-restore";
 import { AppFileExternalNavigationHost } from "./components/plugin/AppFileExternalNavigationHost";
 import { useAppTheme } from "./hooks/useAppTheme";
 import { useFaviconColorSync } from "./lib/favicon-color-preference";
@@ -433,6 +435,8 @@ export function App() {
               <HashNavigationScroll />
               <NativeShellReporter />
               <UiPreferencesSync />
+              {/* bb-fork(windows): restore the last open thread after a reload */}
+              <ForkAppStateRestore />
               <Routes>
                 <Route
                   path={AUTH_CALLBACK_ROUTE_PATH}
