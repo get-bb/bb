@@ -22,15 +22,16 @@ vi.mock("@/hooks/usePluginCommandBindings", () => {
   return { usePluginCommandBindings: () => ({ keybindings: bindings, defaults: bindings }) };
 });
 
-vi.mock("@/hooks/useFileSearchSuggestions", () => ({
-  useFileSearchSuggestions: () => ({
+vi.mock("@/hooks/useFileSearchSuggestions", () => {
+  const result = {
     suggestions: [],
     isLoading: false,
     fileSearchError: false,
     isDebouncing: false,
     isUnavailable: false,
-  }),
-}));
+  };
+  return { useFileSearchSuggestions: () => result };
+});
 
 const recentItems = [
   { source: "workspace" as const, path: "package.json", openedAt: 1 },
