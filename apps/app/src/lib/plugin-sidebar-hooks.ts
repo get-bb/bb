@@ -8,11 +8,13 @@ import {
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import type {
   PluginSidebarProject,
+  PluginSidebarSection,
   PluginSidebarThread,
   PluginSidebarThreadActions,
   PluginSidebarThreadPullRequestState,
   PluginSidebarThreadsState,
 } from "@get-bb/plugin-sdk";
+import { getThreadConversationCollapsedAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import { useThreadActions } from "@/components/thread/ThreadActionsProvider";
 import {
   getEnvironmentPullRequestFromResponse,
@@ -29,6 +31,7 @@ import { getRootComposeRoutePath, getThreadRoutePath } from "./route-paths";
 
 const EMPTY_THREADS: readonly PluginSidebarThread[] = [];
 const EMPTY_PROJECTS: readonly PluginSidebarProject[] = [];
+const EMPTY_SECTIONS: readonly PluginSidebarSection[] = [];
 const EMPTY_ENTRIES: ReadonlyMap<string, ThreadListEntry> = new Map();
 const EMPTY_HOST_NAMES: ReadonlyMap<string, string> = new Map();
 
@@ -78,6 +81,7 @@ export function useSidebarThreads(): PluginSidebarThreadsState {
         status: query.isError ? "error" : "loading",
         threads: EMPTY_THREADS,
         projects: EMPTY_PROJECTS,
+        sections: EMPTY_SECTIONS,
       };
     }
     const allProjects = [...data.projects, data.personalProject];
@@ -93,6 +97,7 @@ export function useSidebarThreads(): PluginSidebarThreadsState {
         name: project.name,
         isPersonal: project.id === PERSONAL_PROJECT_ID,
       })),
+      sections: data.sections,
     };
   }, [data, hostNamesById, query.isError]);
 }
@@ -142,6 +147,7 @@ export function useSidebarThreadActions(): PluginSidebarThreadActions {
         if (entry === undefined) return;
         const { projectId } = entry;
         if (options?.split) {
+          store.set(getThreadConversationCollapsedAtom(threadId), false);
           openThreadInSplit({
             store,
             navigate,
@@ -151,6 +157,7 @@ export function useSidebarThreadActions(): PluginSidebarThreadActions {
           });
           return;
         }
+        store.set(getThreadConversationCollapsedAtom(threadId), false);
         navigate(getThreadRoutePath({ projectId, threadId }));
       },
       openNewThread(options) {
@@ -158,8 +165,19 @@ export function useSidebarThreadActions(): PluginSidebarThreadActions {
         if (projectId !== undefined) {
           setRootComposeProjectId(projectId);
         }
-        const state = options?.focusPrompt ? { focusPrompt: true } : undefined;
-        navigate(getRootComposeRoutePath(), state ? { state } : undefined);
+        const state = {
+          ...(options?.focusPrompt ? { focusPrompt: true } : {}),
+          ...(options?.sectionId !== undefined
+            ? { sectionId: options.sectionId }
+            : {}),
+          ...(options?.environmentId !== undefined
+            ? { reuseEnvironmentId: options.environmentId }
+            : {}),
+        };
+        navigate(
+          getRootComposeRoutePath(),
+          Object.keys(state).length > 0 ? { state } : undefined,
+        );
       },
       async setPinned(threadId, pinned) {
         const entry = requireEntry(threadId);

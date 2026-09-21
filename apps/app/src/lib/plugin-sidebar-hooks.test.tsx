@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 
 import { act, cleanup, renderHook } from "@testing-library/react";
+import { getDefaultStore } from "jotai";
 import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
+import { getThreadConversationCollapsedAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 import {
@@ -14,10 +16,17 @@ const actions = vi.hoisted(() => ({
   setRootComposeProjectId: vi.fn(),
 }));
 
+type SidebarSection = {
+  id: string;
+  name: string;
+  createdAt: number;
+  updatedAt: number;
+};
+
 const state = vi.hoisted(() => ({
   data: undefined as
     | {
-        sections: never[];
+        sections: SidebarSection[];
         projects: { id: string; name: string; threads: ThreadListEntry[] }[];
         personalProject: {
           id: string;
@@ -62,9 +71,9 @@ vi.mock("./root-compose-selection", () => ({
   useSetRootComposeProjectId: () => actions.setRootComposeProjectId,
 }));
 
-function payload(threads: ThreadListEntry[]) {
+function payload(threads: ThreadListEntry[], sections: SidebarSection[] = []) {
   return {
-    sections: [],
+    sections,
     projects: [{ id: "proj_app", name: "App", threads }],
     personalProject: { id: PERSONAL_PROJECT_ID, name: "Personal", threads: [] },
   };
@@ -116,6 +125,24 @@ describe("useSidebarThreads", () => {
   });
 });
 
+describe("useSidebarThreads sections", () => {
+  it("passes the bootstrap sections through in server order", () => {
+    const sections = [
+      { id: "sec_later", name: "Later", createdAt: 1, updatedAt: 1 },
+      { id: "sec_slop", name: "Slop Cop", createdAt: 2, updatedAt: 2 },
+    ];
+    state.data = payload([], sections);
+    const { result } = renderHook(() => useSidebarThreads());
+    expect(result.current.sections).toEqual(sections);
+  });
+
+  it("reports an empty section list while loading", () => {
+    const { result } = renderHook(() => useSidebarThreads());
+    expect(result.current.status).toBe("loading");
+    expect(result.current.sections).toEqual([]);
+  });
+});
+
 describe("useSidebarThreadActions", () => {
   it("opens a project composer without a legacy route transition", () => {
     state.data = payload([]);
@@ -132,5 +159,74 @@ describe("useSidebarThreadActions", () => {
     expect(actions.navigate).toHaveBeenCalledWith("/", {
       state: { focusPrompt: true },
     });
+  });
+
+  it("files a new thread under a section the way bb's section menu does", () => {
+    state.data = payload([]);
+    const { result } = renderHook(() => useSidebarThreadActions());
+
+    act(() => {
+      result.current.openNewThread({
+        projectId: PERSONAL_PROJECT_ID,
+        sectionId: "sec_later",
+        focusPrompt: true,
+      });
+    });
+
+    expect(actions.navigate).toHaveBeenCalledWith("/", {
+      state: { focusPrompt: true, sectionId: "sec_later" },
+    });
+  });
+
+  it("reuses an environment the way bb's environment header does", () => {
+    state.data = payload([]);
+    const { result } = renderHook(() => useSidebarThreadActions());
+
+    act(() => {
+      result.current.openNewThread({
+        projectId: "proj_app",
+        environmentId: "env_1",
+      });
+    });
+
+    expect(actions.navigate).toHaveBeenCalledWith("/", {
+      state: { reuseEnvironmentId: "env_1" },
+    });
+  });
+
+  it("navigates with no router state when no option is set", () => {
+    state.data = payload([]);
+    const { result } = renderHook(() => useSidebarThreadActions());
+    act(() => {
+      result.current.openNewThread();
+    });
+    expect(actions.navigate).toHaveBeenCalledWith("/", undefined);
+  });
+
+  it("re-expands a collapsed conversation when opening its thread", () => {
+    const thread = makeThreadListEntry({ id: "thr_1", projectId: "proj_app" });
+    state.data = payload([thread]);
+    const store = getDefaultStore();
+    const collapsedAtom = getThreadConversationCollapsedAtom("thr_1");
+    store.set(collapsedAtom, true);
+    const { result } = renderHook(() => useSidebarThreadActions());
+
+    act(() => {
+      result.current.open("thr_1");
+    });
+
+    expect(store.get(collapsedAtom)).toBe(false);
+    expect(actions.navigate).toHaveBeenCalledWith(
+      "/projects/proj_app/threads/thr_1",
+    );
+  });
+
+  it("ignores open for an unknown thread", () => {
+    state.data = payload([]);
+    const { result } = renderHook(() => useSidebarThreadActions());
+    act(() => {
+      result.current.open("thr_missing");
+    });
+    expect(actions.navigate).not.toHaveBeenCalled();
   });
 });

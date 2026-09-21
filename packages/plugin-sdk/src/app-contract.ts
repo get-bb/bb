@@ -1038,10 +1038,27 @@ export interface PluginSidebarProject {
   isPersonal: boolean;
 }
 
+/**
+ * One user-named thread section ("Later", "Slop Cop") in the sidebar's live
+ * view. A thread belongs to at most one section via `sectionId`; a null
+ * `sectionId` means the loose "Threads" bucket. Sections are created,
+ * renamed, and deleted through the public API (`threadSections` in the SDK,
+ * `bb thread section` in the CLI); this state is the read side.
+ */
+export interface PluginSidebarSection {
+  id: string;
+  name: string;
+  /** Epoch milliseconds. */
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface PluginSidebarThreadsState {
   status: "loading" | "ready" | "error";
   threads: readonly PluginSidebarThread[];
   projects: readonly PluginSidebarProject[];
+  /** Every section, in the server's order (creation order). */
+  sections: readonly PluginSidebarSection[];
 }
 
 /**
@@ -1117,13 +1134,23 @@ export interface PluginSidebarThreadActions {
    * Navigate to a thread. `split: true` applies bb's split placement rules —
    * a right split by default, focus when the thread is already open, replace
    * at the pane cap — and falls back to plain navigation where splits are off.
+   * Opening also expands the thread's conversation if the secondary panel had
+   * collapsed it, as bb's own row does.
    */
   open(threadId: string, options?: { split?: boolean }): void;
   /**
    * Go to the new-thread screen. Passing `projectId` also makes that project
    * the composer's selection, so the thread is created where you asked.
+   * `sectionId` files the new thread under that section, and
+   * `environmentId` reuses that environment (the "New thread in
+   * environment" affordance), both exactly as bb's own list does.
    */
-  openNewThread(options?: { projectId?: string; focusPrompt?: boolean }): void;
+  openNewThread(options?: {
+    projectId?: string;
+    sectionId?: string;
+    environmentId?: string;
+    focusPrompt?: boolean;
+  }): void;
   setPinned(threadId: string, pinned: boolean): Promise<void>;
   setRead(threadId: string, read: boolean): Promise<void>;
   /** Silent rename — no dialog. For inline editing in your own row. */

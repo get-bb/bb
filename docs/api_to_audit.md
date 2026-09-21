@@ -2529,14 +2529,22 @@ reimplementing it, and `indicatorLabel` carries the matching accessible string.
    row. An idle unread thread holding a draft therefore reads as
    "unread-success" where the built-in row paints "draft". Decide whether to
    close that gap (a per-thread draft hook) or keep it documented.
-6. **Action surface.** Destructive and dialog-bearing actions route through
+6. **Sections (Sep 2026).** `sections` rides on the state (same bootstrap
+   payload, no extra request) as the read side; writes are deliberately not
+   wrapped as actions because they are plain public API calls with realtime
+   fan-out. Confirm that split holds once a replaced list ships section
+   drag-and-drop, where the built-in list's optimistic cache transactions
+   have no plugin equivalent. `openNewThread` gained `sectionId` and
+   `environmentId`, which today ride on router state; confirm router state
+   stays the right transport.
+7. **Action surface.** Destructive and dialog-bearing actions route through
    `useThreadActions()`, so `archive` closes panes and repairs the route, and
    `requestDelete` opens bb's confirmation rather than deleting silently.
    Confirm that split (silent `rename`, host-confirmed delete) is the right
    line, and decide whether bulk actions and undo belong here.
-7. **Permission.** Decide whether `archive` and `requestDelete` need any plugin
+8. **Permission.** Decide whether `archive` and `requestDelete` need any plugin
    permission gate beyond installation trust.
-8. **`experimental_useSidebarThreadPullRequest`.** Per-row and opt-in, because
+9. **`experimental_useSidebarThreadPullRequest`.** Per-row and opt-in, because
    a PR lookup hits the git host and therefore cannot sit on the payload every
    sidebar loads. It reuses the host's environment-keyed query, so threads
    sharing a worktree share one lookup and the host keeps its own staleness and
@@ -2545,7 +2553,7 @@ reimplementing it, and `indicatorLabel` carries the matching accessible string.
    a sidebar of many distinct worktrees does not stampede the git host; and
    returning `null` for "lookup failed" (rather than an error) is the right
    failure for a row that should simply show nothing.
-9. **`experimental_useSidebarThreadSplit`.** Gives a custom row the built-in
+10. **`experimental_useSidebarThreadSplit`.** Gives a custom row the built-in
    drag-to-split gesture: spread `splitProps` onto the row, gate any affordance
    on `isAvailable`, and read `layout` to paint where the thread already sits.
    The host owns every rule — the drag engages only after the pointer leaves the

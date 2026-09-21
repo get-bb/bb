@@ -265,8 +265,15 @@ interface PluginThreadListProps {
 **Reading and acting on threads.** Two hooks back a replaced list:
 
 ```tsx
-const { status, threads, projects } = experimental_useSidebarThreads();
+const { status, threads, projects, sections } = experimental_useSidebarThreads();
 const actions = experimental_useSidebarThreadActions();
+
+// sections: PluginSidebarSection[] — { id, name, createdAt, updatedAt } in
+// server order. A thread's `sectionId` names one of these or is null for the
+// loose "Threads" bucket. Create, rename, and delete sections and move
+// threads between them through the public API from your server
+// (`bb.sdk.threadSections.*`, `bb.sdk.threads.update({ id, sectionId })`);
+// the sidebar refreshes over realtime.
 
 // threads: PluginSidebarThread[] — id, projectId, title, titleFallback,
 // parentThreadId, lifecycleOwnerThreadId, sourceThreadId, sectionId,
@@ -290,6 +297,8 @@ const { pullRequest } = experimental_useSidebarThreadPullRequest(thread.id);
 
 actions.open(id, { split: true }); // bb's split placement rules
 actions.openNewThread({ projectId, focusPrompt: true });
+actions.openNewThread({ projectId, sectionId }); // file it under a section
+actions.openNewThread({ projectId, environmentId }); // reuse an environment
 actions.setPinned(id, true);
 actions.setRead(id, false);
 actions.rename(id, "New title"); // silent; for inline editing

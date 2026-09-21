@@ -1476,6 +1476,7 @@ export function renderSlot<
     status: options.sidebarThreads?.status ?? "ready",
     threads: options.sidebarThreads?.threads ?? [],
     projects: options.sidebarThreads?.projects ?? [],
+    sections: options.sidebarThreads?.sections ?? [],
   };
   const providers: PluginProvidersState = {
     status: options.providers?.status ?? "ready",

@@ -128,6 +128,7 @@ Read the installed SDK declarations for the exact current signatures.
 - `PluginSidebarPullRequest`
 - `PluginSidebarThreadPullRequestState`
 - `PluginSidebarProject`
+- `PluginSidebarSection`
 - `PluginSidebarThreadsState`
 - `PluginProvidersState`
 - `PluginCodeThemeTokenRule`
