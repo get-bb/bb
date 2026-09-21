@@ -682,23 +682,15 @@ export type AppShellRightPanelTab =
   | "file-opener"
   | "code-renderers";
 
-function RightPanelTabLaneBadges({
-  activeTab,
-  mobile,
-}: {
-  activeTab: AppShellRightPanelTab;
-  mobile: boolean;
-}) {
+function RightPanelTabLaneBadges({ mobile }: { mobile: boolean }) {
   const clipTo = mobile ? '[data-guide-fixture="right-panel-tab-strip"]' : undefined;
   return (
     <>
       <MeasuredBadge
         id="browser-toolbar"
         label="Plugin controls beside the Browser address bar"
-        anchor={activeTab === "browser-toolbar"
-          ? '[data-guide-region="browser-toolbar"]'
-          : '[data-guide-tab="browser-toolbar"]'}
-        clipTo={activeTab === "browser-toolbar" ? undefined : clipTo}
+        anchor='[data-guide-tab="browser-toolbar"]'
+        clipTo={clipTo}
         at="lane"
       />
       <MeasuredBadge
@@ -1037,7 +1029,6 @@ export function AppShellWireframe({
       {scene === "desktop" || scene === "panel" ? (
         <RightPanelTabLaneBadges
           key={rightPanelTab}
-          activeTab={rightPanelTab}
           mobile={mobile}
         />
       ) : null}

@@ -189,7 +189,7 @@ export function SurfaceCard({
       onCopyForAgent ? (
         <div className="mt-3 flex min-w-0 items-end gap-2 border-t border-border-hairline pt-2.5">
           {surface.firstParty && surface.firstParty.length > 0 ? (
-            <div className="min-w-0 flex-1">
+            <div className="min-w-0 flex-1 @2xl/guide:max-w-80">
               <span className="mb-1 block text-xs text-subtle-foreground">
                 Used by
               </span>
