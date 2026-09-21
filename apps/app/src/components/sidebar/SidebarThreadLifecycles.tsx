@@ -1,22 +1,21 @@
-import { useId, useMemo, type ComponentProps, type ReactNode } from "react";
+import { useMemo, type ComponentProps, type ReactNode } from "react";
 import { useAtomValue } from "jotai";
 import type { ThreadListEntry } from "@bb/domain";
 import { Button } from "@bb/shared-ui/button";
-import { Icon } from "@bb/shared-ui/icon";
+import { normalizeThreadLifecycleFilter } from "@/lib/thread-lifecycle-filter";
 import { useArchivedThreads } from "@/hooks/queries/thread-queries";
 import {
   useConnectionAwareQueryState,
-  type ConnectionAwareQueryStatus,
 } from "@/hooks/queries/connection-aware-query-state";
 import { isTransientReadError } from "@/hooks/queries/query-helpers";
-import { SidebarHeaderControls } from "./SidebarHeaderControls";
 import { ProjectThreadTree } from "./ProjectRow";
 import { sidebarThreadLifecyclesAtom } from "./sidebarCollapsedAtoms";
 
 export function useSidebarThreadLifecycles(
   unarchivedThreads: ThreadListEntry[],
 ) {
-  const value = useAtomValue(sidebarThreadLifecyclesAtom);
+  const savedValue = useAtomValue(sidebarThreadLifecyclesAtom);
+  const value = useMemo(() => normalizeThreadLifecycleFilter(savedValue), [savedValue]);
   const archived = useArchivedThreads(
     {},
     { enabled: value.includes("archived") },
@@ -36,19 +35,14 @@ export function useSidebarThreadLifecycles(
     }
     if (value.includes("active")) {
       for (const thread of unarchivedThreads) {
-        if (thread.lifecycle === "active") selected.set(thread.id, thread);
+        if (thread.archivedAt === null) selected.set(thread.id, thread);
       }
     }
     return [...selected.values()];
   }, [archived.data, unarchivedThreads, value]);
-  const drafts = useMemo(
-    () => unarchivedThreads.filter((thread) => thread.lifecycle === "draft"),
-    [unarchivedThreads],
-  );
   return {
     value,
     threads,
-    drafts,
     archived,
     archivedStatus: archivedState.status,
   };
@@ -57,49 +51,19 @@ export function useSidebarThreadLifecycles(
 export function SidebarThreadLifecycles({
   children,
   lifecycles,
-  status,
   treeProps,
 }: {
   children: ReactNode;
   lifecycles: ReturnType<typeof useSidebarThreadLifecycles>;
-  status: ConnectionAwareQueryStatus;
   treeProps: Omit<
     ComponentProps<typeof ProjectThreadTree>,
     "threadListState" | "variant" | "progressiveDisclosureEnabled"
   >;
 }) {
-  const { value, drafts, archived, archivedStatus } = lifecycles;
-  const headingId = useId();
-  const showHierarchy =
-    value.includes("active") || value.includes("archived");
+  const { value, archived, archivedStatus } = lifecycles;
   return (
     <>
-      {value.includes("draft") && (
-        <section aria-labelledby={headingId}>
-          <div className="flex items-center pl-2.5">
-            <h2
-              id={headingId}
-              className="flex min-w-0 flex-1 items-center gap-2 py-2 text-xs font-medium text-subtle-foreground"
-            >
-              <Icon name="Edit" className="size-4" />
-              Drafts
-            </h2>
-            <SidebarHeaderControls label="Drafts" showNewThread={false} />
-          </div>
-          <ProjectThreadTree
-            {...treeProps}
-            variant="section"
-            progressiveDisclosureEnabled={false}
-            threadListState={
-              status === "ready" ? { status, threads: drafts } : { status }
-            }
-          />
-        </section>
-      )}
-      {value.includes("draft") && showHierarchy && (
-        <hr className="my-2 border-border-seam" />
-      )}
-      {showHierarchy && children}
+      {children}
       {value.includes("archived") && (
         <>
           {value.includes("active") && archivedStatus !== "ready" && (

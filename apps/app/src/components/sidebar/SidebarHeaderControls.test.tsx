@@ -179,19 +179,19 @@ describe("sidebar header controls", () => {
       expect(active.getAttribute("aria-disabled")).not.toBe("true");
       fireEvent.click(active);
       expect(store.get(sidebarThreadLifecyclesAtom)).toEqual(["active"]);
-      fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Drafts" }));
+      fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Archived" }));
       fireEvent.click(active);
-      expect(store.get(sidebarThreadLifecyclesAtom)).toEqual(["draft"]);
-      const drafts = screen.getByRole("menuitemcheckbox", { name: "Drafts" });
-      expect(drafts.getAttribute("aria-checked")).toBe("true");
-      expect(drafts.getAttribute("aria-disabled")).not.toBe("true");
-      fireEvent.click(drafts);
-      expect(store.get(sidebarThreadLifecyclesAtom)).toEqual(["draft"]);
+      expect(store.get(sidebarThreadLifecyclesAtom)).toEqual(["archived"]);
+      const archived = screen.getByRole("menuitemcheckbox", { name: "Archived" });
+      expect(archived.getAttribute("aria-checked")).toBe("true");
+      expect(archived.getAttribute("aria-disabled")).not.toBe("true");
+      fireEvent.click(archived);
+      expect(store.get(sidebarThreadLifecyclesAtom)).toEqual(["archived"]);
       fireEvent.click(
-        screen.getByRole("menuitemcheckbox", { name: "Archived" }),
+        screen.getByRole("menuitemcheckbox", { name: "Active" }),
       );
       expect(store.get(sidebarThreadLifecyclesAtom)).toEqual([
-        "draft",
+        "active",
         "archived",
       ]);
       expect(screen.queryByRole("menuitem", { name: /^Reset/ })).toBeNull();
@@ -224,7 +224,7 @@ describe("sidebar header controls", () => {
         store.set(sidebarOrganizationModeAtom, "machine");
         store.set(sidebarChronologicalSortAtom, "created");
         store.set(sidebarSortDirectionAtom, "ascending");
-        store.set(sidebarThreadLifecyclesAtom, ["draft", "archived"]);
+        store.set(sidebarThreadLifecyclesAtom, ["active", "archived"]);
       });
       expect(
         trigger.querySelector('[data-icon="MoreHorizontal"]'),

@@ -283,11 +283,12 @@ once on a conflict. `reset` writes the default. The SDK offers
 Custom (`chronological`) is the default for `sidebar.organizationMode` when no
 value is saved. Existing server and legacy browser choices are preserved.
 
-`sidebar.threadLifecycles` is a nonempty distinct list of `active`, `draft`,
-and `archived`, defaulting to `["active"]`. Drafts appear above the existing
-hierarchy; selected archived threads use their preserved placement and a restore
-action. Archived pages load only while selected. For example:
-`bb settings ui set sidebar.threadLifecycles '["active","draft"]'`.
+`sidebar.threadLifecycles` selects `active` and `archived`, defaulting to
+`["active"]`. Active includes threads with saved messages; there is no separate
+Drafts section or filter. Archived threads use their preserved placement and a
+restore action. Archived pages load only while selected. For example:
+`bb settings ui set sidebar.threadLifecycles '["active","archived"]'`.
+Previously saved `draft` selections display as Active.
 Plugin sidebar replacements own their filters.
 
 Every thread-list header's actions menu offers New project, New section,

@@ -1,6 +1,7 @@
 import type { ThreadLifecycle } from "@bb/domain";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
+import { normalizeThreadLifecycleFilter } from "@/lib/thread-lifecycle-filter";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,7 +13,6 @@ import {
 
 export const THREAD_LIFECYCLE_OPTIONS = [
   { value: "active", label: "Active" },
-  { value: "draft", label: "Drafts" },
   { value: "archived", label: "Archived" },
 ] as const satisfies readonly { value: ThreadLifecycle; label: string }[];
 
@@ -22,9 +22,10 @@ interface ThreadLifecycleFilterProps {
 }
 
 export function ThreadLifecycleFilterItems({
-  value,
+  value: savedValue,
   onChange,
 }: ThreadLifecycleFilterProps) {
+  const value = normalizeThreadLifecycleFilter(savedValue);
   return (
     <>
       {THREAD_LIFECYCLE_OPTIONS.map((option) => {
@@ -66,9 +67,10 @@ export function ThreadLifecycleFilterItems({
 }
 
 export function ThreadLifecycleFilter({
-  value,
+  value: savedValue,
   onChange,
 }: ThreadLifecycleFilterProps) {
+  const value = normalizeThreadLifecycleFilter(savedValue);
   const label = THREAD_LIFECYCLE_OPTIONS.filter((option) =>
     value.includes(option.value),
   )

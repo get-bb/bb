@@ -681,7 +681,7 @@ client wrote first, so a stale window cannot silently clobber a newer value.
 | Key                               | Value                                               |
 | --------------------------------- | --------------------------------------------------- |
 | `sidebar.organizationMode`        | `project`, `chronological`, or `machine`            |
-| `sidebar.threadLifecycles`        | Nonempty distinct list of `active`, `draft`, `archived` |
+| `sidebar.threadLifecycles`        | Nonempty selection of `active`, `archived` |
 | `sidebar.threadGrouping.environment` | `auto`, `true`, or `false`                       |
 | `sidebar.chronologicalSort`       | `updated`, `created`, `alpha`, or `none`            |
 | `sidebar.sectionOrder`            | Section id list for **By project**                  |
@@ -703,17 +703,18 @@ client wrote first, so a stale window cannot silently clobber a newer value.
 Custom (`chronological`) is the default for `sidebar.organizationMode` when no
 value is saved. Existing server and legacy browser choices are preserved.
 
-The built-in sidebar defaults to Active. `sidebar.threadLifecycles` selects
-Active, Drafts, and Archived. Drafts appear above the existing hierarchy;
+The built-in sidebar defaults to Active, including threads with saved messages.
+`sidebar.threadLifecycles` selects Active and Archived. There is no separate
+Drafts section or filter; saved messages remain in their owning thread. The
 selected archived threads retain their section, project, machine, and pin placement.
 Choose Filter in a sidebar header's combined actions menu to change the selection.
 The combined menu offers Organize, Sort by, and Filter.
 Organize retains its Sections choices and Groups → By environment toggle.
 Archived rows have a persistent Archive icon
 that restores the thread without navigating away.
-Drafts come from the available unarchived bootstrap; Archived loads pages only
-while selected. For example, `bb settings ui set sidebar.threadLifecycles
-'["active","draft"]'` shows active and saved draft threads.
+Archived loads pages only while selected. For example,
+`bb settings ui set sidebar.threadLifecycles '["active","archived"]'` shows both.
+Previously saved `draft` selections display as Active.
 Plugin sidebar replacements own their rendering.
 
 `sidebar.threadGrouping.environment` decides whether two or more sibling threads

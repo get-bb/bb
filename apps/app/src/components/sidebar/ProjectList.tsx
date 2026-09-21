@@ -1729,7 +1729,6 @@ function ProjectListComponent({
       <ProjectListShell>
         <SidebarThreadLifecycles
           lifecycles={lifecycles}
-          status={projectsState.status}
           treeProps={{
             compareThreads: sidebarThreadComparator,
             selectedThreadId,
