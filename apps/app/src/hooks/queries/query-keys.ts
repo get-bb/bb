@@ -1,4 +1,4 @@
-import type { ThreadLifecycle, WorkspaceDiffTarget } from "@bb/domain";
+import type { WorkspaceDiffTarget } from "@bb/domain";
 import type { ThreadListFilters, ThreadSearchFilters } from "@bb/client-core";
 import type { EnvironmentFilePreviewSource } from "@bb/client-core";
 import {
@@ -81,7 +81,7 @@ const PLUGIN_CATALOG_SEARCH_QUERY_KEY = "plugin-catalog-search";
 const PLUGIN_CATALOG_INSTALL_PLAN_QUERY_KEY = "plugin-catalog-install-plan";
 const PLUGIN_MARKETPLACES_QUERY_KEY = "plugin-marketplaces";
 export interface ThreadListQueryFilters {
-  lifecycles?: readonly ThreadLifecycle[];
+  sort?: "updated";
   projectId?: string;
   hasParent?: ThreadListFilters["hasParent"];
   parentThreadId?: string;
@@ -92,7 +92,6 @@ export interface ThreadListQueryFilters {
 }
 
 interface ThreadSearchQueryFilters {
-  lifecycles?: readonly ThreadLifecycle[];
   query: ThreadSearchFilters["query"];
   limitPerGroup: NonNullable<ThreadSearchFilters["limitPerGroup"]>;
 }

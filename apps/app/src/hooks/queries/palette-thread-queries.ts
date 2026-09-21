@@ -8,14 +8,11 @@ import {
   THREAD_SEARCH_LIMIT_PER_GROUP,
 } from "./thread-queries";
 
-export function usePaletteRecentThreads(
-  lifecycle: "archived",
-  { enabled }: { enabled: boolean },
-) {
+export function usePaletteRecentArchivedThreads({ enabled }: { enabled: boolean }) {
   useThreadListRealtimeSubscription({ enabled });
   const filters = {
-    archived: lifecycle === "archived",
-    lifecycles: [lifecycle],
+    archived: true,
+    sort: "updated" as const,
     limit: THREAD_SEARCH_LIMIT_PER_GROUP,
   };
   return useQuery<ThreadListResponse>({

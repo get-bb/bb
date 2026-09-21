@@ -8,8 +8,6 @@ import {
   type PromptInput,
   serviceTierSchema,
   type ServiceTier,
-  threadLifecycleSchema,
-  type ThreadLifecycle,
 } from "@bb/domain";
 import {
   DEFAULT_THREAD_WAIT_POLL_INTERVAL_MS,
@@ -30,25 +28,6 @@ export const PERMISSION_MODE_HELP =
   "Permission mode: accept-edits, auto, or full";
 export const PLAN_HELP =
   "Send the message as the provider's /plan action so the agent proposes a plan for approval before executing";
-
-export function parseThreadLifecycles(
-  value: string | undefined,
-): ThreadLifecycle[] | undefined {
-  if (value === undefined) return undefined;
-  return [
-    ...new Set(
-      value.split(",").map((entry) => {
-        const result = threadLifecycleSchema.safeParse(entry.trim());
-        if (!result.success) {
-          throw new Error(
-            "--lifecycle must contain active, draft, or archived, separated by commas.",
-          );
-        }
-        return result.data;
-      }),
-    ),
-  ];
-}
 
 export function buildPromptInputs(args: {
   message: string;

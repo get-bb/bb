@@ -49,7 +49,6 @@ function makeThread(
     environmentWorkspaceDisplayKind: "other",
     runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
     queuedWork: "none",
-    lifecycle: overrides.archivedAt != null ? "archived" : "active",
     ...overrides,
   };
 }
@@ -73,12 +72,12 @@ function build(
 }
 
 describe("buildPaletteThreadSearchRows", () => {
-  it("keeps saved messages in Active recents and maps older draft selections to Active", () => {
-    const saved = makeThread("saved", { lifecycle: "draft", updatedAt: NOW });
+  it("keeps saved-message threads in Active recents", () => {
+    const saved = makeThread("saved", { status: "pending", updatedAt: NOW });
     const archived = makeThread("archived", { archivedAt: 1, updatedAt: 2 });
     const active = Array.from({ length: 25 }, (_, index) => makeThread(`active-${index}`, { updatedAt: 1 }));
     const recentThreads = [...active, saved, archived];
-    const result = build({ query: "", recentThreads, lifecycles: ["draft", "archived"] });
+    const result = build({ query: "", recentThreads, lifecycles: ["active", "archived"] });
     expect(result.rows).toHaveLength(21);
     expect(result.rows[0]).toMatchObject({ threadId: "saved", lifecycle: "active" });
     expect(result.rows[20]).toMatchObject({ threadId: "archived", lifecycle: "archived" });
@@ -91,7 +90,7 @@ describe("buildPaletteThreadSearchRows", () => {
         active: {
           total: 1,
           results: [{
-            thread: makeThread("saved", { lifecycle: "draft" }),
+            thread: makeThread("saved", { status: "pending" }),
             matches: [{ sourceKind: "user_message", text: "matching saved message", highlightRanges: [{ start: 0, end: 5 }], sourceSeq: null }],
           }],
         },

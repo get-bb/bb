@@ -22,7 +22,7 @@ import {
   type AppDefaultKeybinding,
   type AppKeybinding,
   type AppKeybindingOverrides,
-  type ThreadLifecycle,
+  type ThreadArchiveFilter,
   type ThreadListEntry,
 } from "@bb/domain";
 import type { ThreadSearchResponse } from "@bb/server-contract";
@@ -238,7 +238,7 @@ vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
 }));
 
 vi.mock("@/hooks/queries/palette-thread-queries", () => ({
-  usePaletteRecentThreads: () => ({
+  usePaletteRecentArchivedThreads: () => ({
     data: modeState.archivedRecents,
     isLoading: false,
     isError: false,
@@ -320,7 +320,6 @@ function makeThread(
     environmentWorkspaceDisplayKind: "other",
     runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
     queuedWork: "none",
-    lifecycle: overrides.archivedAt != null ? "archived" : "active",
     ...overrides,
   };
 }
@@ -332,7 +331,7 @@ function renderPalette({
 }: {
   compact?: boolean;
   layout?: SplitLayout | null;
-  lifecycles?: ThreadLifecycle[];
+  lifecycles?: ThreadArchiveFilter[];
 } = {}) {
   const store = createStore();
   store.set(splitLayoutAtom, layout);
@@ -1016,7 +1015,7 @@ describe("CommandPalette", () => {
 
   it("shows active recents in update order with project metadata and follow-up status", async () => {
     modeState.activeRecents = [
-      makeThread("saved-draft", { lifecycle: "draft", status: "pending", updatedAt: 1 }),
+      makeThread("saved-draft", { status: "pending", updatedAt: 1 }),
       makeThread("older", { updatedAt: Date.now() - 100 }),
       makeThread("newer", { updatedAt: Date.now(), lastReadAt: Date.now() }),
     ];
@@ -1075,7 +1074,7 @@ describe("CommandPalette", () => {
     fireEvent.keyDown(input, { key: "ArrowDown" });
     expectText(selectedOption(), "Title selected");
     act(() =>
-      store.set(paletteThreadLifecyclesAtom, ["archived", "draft", "active"]),
+      store.set(paletteThreadLifecyclesAtom, ["archived", "active"]),
     );
     expect(
       screen
@@ -1119,7 +1118,7 @@ describe("CommandPalette", () => {
     "keeps saved messages with Active and budgets two groups for query '%s'",
     async (query) => {
       const active = Array.from({ length: 7 }, (_, index) =>
-        makeThread(`active-${index}`, { lifecycle: index === 1 ? "draft" : "active" }),
+        makeThread(`active-${index}`, { status: index === 1 ? "pending" : "idle" }),
       );
       const archived = Array.from({ length: 4 }, (_, index) =>
         makeThread(`archived-${index}`, { archivedAt: 1 }),
@@ -1149,7 +1148,7 @@ describe("CommandPalette", () => {
   );
 
   it("uses the shared empty treatment for selected populations and search with no matches", async () => {
-    renderPalette({ lifecycles: ["draft", "archived"] });
+    renderPalette({ lifecycles: ["active", "archived"] });
     openThreadSearch();
     const input = await screen.findByRole("combobox", {
       name: "Search threads",
@@ -1322,7 +1321,6 @@ describe("CommandPalette", () => {
     async (lifecycle) => {
       const threads = Array.from({ length: 7 }, (_, index) =>
         makeThread(`${lifecycle}-${index}`, {
-          lifecycle,
           archivedAt: lifecycle === "archived" ? Date.now() : null,
         }),
       );

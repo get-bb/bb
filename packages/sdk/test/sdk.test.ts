@@ -1285,6 +1285,25 @@ describe("@bb/sdk", () => {
     });
   });
 
+  it("opts into updated ordering without changing the default list request", async () => {
+    const queue = createFetchQueue([{ body: [] }, { body: [] }]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+    await sdk.threads.list({ archived: true, limit: 20 });
+    await sdk.threads.list({ archived: true, sort: "updated", limit: 20 });
+    expect(queue.requests[0]?.url).toBe(
+      "http://bb.test/api/v1/threads?archived=true&limit=20",
+    );
+    expect(queue.requests[1]?.url).toBe(
+      "http://bb.test/api/v1/threads?sort=updated&archived=true&limit=20",
+    );
+  });
+
   it("forwards includeHidden list filtering and visibility updates", async () => {
     const queue = createFetchQueue([
       { body: [] },
@@ -1310,40 +1329,6 @@ describe("@bb/sdk", () => {
     expect(JSON.parse(queue.requests[1]?.bodyText ?? "{}")).toEqual({
       visibility: "hidden",
     });
-  });
-
-  it("opts into lifecycle filtering without changing legacy list and search requests", async () => {
-    const queue = createFetchQueue(
-      Array.from({ length: 4 }, () => ({ body: [] })),
-    );
-    const sdk = createBbSdk({
-      transport: createHttpTransport({
-        baseUrl: "http://bb.test",
-        fetch: queue.fetch,
-        runtime: "node",
-      }),
-    });
-
-    await sdk.threads.list();
-    await sdk.threads.search({ query: "release" });
-    await sdk.threads.list({ lifecycles: ["draft", "archived"], limit: 5 });
-    await sdk.threads.search({
-      query: "release",
-      lifecycles: ["draft"],
-      limitPerGroup: "3",
-    });
-
-    expect(
-      queue.requests.map(({ url }) => {
-        const parsed = new URL(url);
-        return Object.fromEntries(parsed.searchParams);
-      }),
-    ).toEqual([
-      {},
-      { query: "release" },
-      { lifecycles: "draft,archived", limit: "5" },
-      { query: "release", lifecycles: "draft", limitPerGroup: "3" },
-    ]);
   });
 
   it("forwards every public permission mode through thread surfaces", async () => {

@@ -10,7 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { useAtom, useAtomValue, useStore } from "jotai";
-import { isMacKeyboardPlatform, type ThreadLifecycle } from "@bb/domain";
+import { isMacKeyboardPlatform, type ThreadArchiveFilter } from "@bb/domain";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { Icon } from "@bb/shared-ui/icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
@@ -30,7 +30,7 @@ import {
 import { paletteThreadLifecyclesAtom } from "@/lib/command-palette/palette-preferences";
 import { normalizeThreadLifecycleFilter } from "@/lib/thread-lifecycle-filter";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
-import { usePaletteRecentThreads } from "@/hooks/queries/palette-thread-queries";
+import { usePaletteRecentArchivedThreads } from "@/hooks/queries/palette-thread-queries";
 import {
   hasThreadSearchableQuery,
   useThreadSearch,
@@ -52,7 +52,7 @@ import { windowPaletteThreadSearchText } from "@/lib/command-palette/palette-thr
 import { PALETTE_SECTION_LABEL_CLASS, PaletteShell } from "./PaletteShell";
 
 interface ThreadSearchOption {
-  lifecycle: ThreadLifecycle;
+  lifecycle: ThreadArchiveFilter;
   row: PaletteThreadSearchRow | null;
 }
 
@@ -85,7 +85,7 @@ export function ThreadSearchPaletteMode({
   const [query, setQuery] = useState("");
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const [highlightedKey, setHighlightedKey] = useState<string | null>(null);
-  const [expandedGroups, setExpandedGroups] = useState<ThreadLifecycle[]>([]);
+  const [expandedGroups, setExpandedGroups] = useState<ThreadArchiveFilter[]>([]);
   const filterKey = lifecycles.join(",");
   const [previousFilterKey, setPreviousFilterKey] = useState(filterKey);
   if (previousFilterKey !== filterKey) {
@@ -96,7 +96,7 @@ export function ThreadSearchPaletteMode({
   const navigation = useSidebarNavigation();
   const threadSearch = useThreadSearch({ active: true, query });
   const trimmedQuery = query.trim();
-  const archived = usePaletteRecentThreads("archived", {
+  const archived = usePaletteRecentArchivedThreads({
     enabled: trimmedQuery.length === 0 && lifecycles.includes("archived"),
   });
   const searchable = hasThreadSearchableQuery(trimmedQuery);

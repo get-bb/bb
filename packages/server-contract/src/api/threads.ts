@@ -23,7 +23,6 @@ import {
   threadCreateOriginSchema,
   threadOriginKindSchema,
   threadListEntrySchema,
-  threadLifecycleSchema,
   threadQueuedMessageSchema,
   threadSearchSourceKindSchema,
   threadStatusSchema,
@@ -477,7 +476,6 @@ export const threadSearchResultGroupSchema = z
 export const threadSearchResponseSchema = z
   .object({
     active: threadSearchResultGroupSchema,
-    draft: threadSearchResultGroupSchema.optional(),
     archived: threadSearchResultGroupSchema,
   })
   .strict();
@@ -753,18 +751,8 @@ export type ThreadArchiveAllResponse = z.infer<
   typeof threadArchiveAllResponseSchema
 >;
 
-const threadLifecyclesQuerySchema = z
-  .string()
-  .refine(
-    (value) =>
-      value
-        .split(",")
-        .every((entry) => threadLifecycleSchema.safeParse(entry).success),
-    { message: "Invalid lifecycles" },
-  );
-
 export const threadListQuerySchema = z.object({
-  lifecycles: threadLifecyclesQuerySchema.optional(),
+  sort: z.literal("updated").optional(),
   projectId: z.string().min(1).optional(),
   environmentId: z.string().min(1).optional(),
   parentThreadId: z.string().min(1).optional(),
@@ -866,7 +854,6 @@ export const threadRunningResponseSchema = z.array(threadRunningEntrySchema);
 export type ThreadRunningResponse = z.infer<typeof threadRunningResponseSchema>;
 
 export const threadSearchQuerySchema = z.object({
-  lifecycles: threadLifecyclesQuerySchema.optional(),
   query: z.string().trim().min(2),
   limitPerGroup: z.string().regex(/^\d+$/).optional(),
 });

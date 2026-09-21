@@ -160,7 +160,7 @@ Listing:
     --environment <id>                     Filter by environment
     --parent-thread <id>                   Filter by parent thread
     --archived                             Show only archived threads
-    --lifecycle <values>                   Filter by active, draft, or archived (comma-separated)
+    --sort updated                         Order by last update before pagination
     --section <id>                         Filter by section
     --unsectioned                          Show only threads outside sections
     --include-hidden                       Include hidden threads
@@ -172,15 +172,6 @@ Listing:
 
   bb thread search <query> [--limit <1-50>]
                                              Search threads and messages
-    --lifecycle <values>                   Filter by active, draft, or archived (comma-separated)
-
-  Lifecycle draft means an unarchived pending thread held by Drafts. Saved
-  follow-ups on an established thread do not change its lifecycle. Archived
-  takes precedence. Omit --lifecycle to retain the existing list/search groups;
-  with it, search also returns a draft group. --archived intersects the lifecycle
-  filter when both are given. Lifecycle-filtered lists sort by last updated,
-  newest first, before pagination; omitted filters keep existing list ordering.
-  SDK list/search accept lifecycles as an array.
   bb thread history <id>                   List prompt history
 
   bb thread count                          Count threads without listing them
@@ -298,8 +289,8 @@ Messaging:
   combined with --mode steer or auto. SDK callers pass
   pluginSubmission: { pluginId: "drafts", data: { kind: "draft" } } to
   threads.spawn or threads.send; follow-up saves use mode: "queue-if-active".
-  Save-only requests require the Drafts plugin to be available. A saved
-  follow-up keeps its established thread active; it does not become a draft thread.
+  Save-only requests require the Drafts plugin to be available. Saved messages
+  are searchable through their owning threads with bb thread search.
 
   --plan sends the same structured /plan command the composer's plan action
   sends, so the agent proposes a plan for approval before executing (Claude

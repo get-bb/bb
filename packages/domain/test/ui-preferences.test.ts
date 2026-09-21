@@ -12,7 +12,7 @@ describe.each([
     expect(getUiPreferenceDefault(key)).toEqual(["active"]);
     expect(parseUiPreferenceValue(key, ["draft", "archived"])).toEqual({
       success: true,
-      value: ["draft", "archived"],
+      value: ["active", "archived"],
     });
   });
 

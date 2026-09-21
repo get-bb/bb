@@ -1,4 +1,4 @@
-import type { ThreadLifecycle } from "@bb/domain";
+import type { ThreadArchiveFilter } from "@bb/domain";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { normalizeThreadLifecycleFilter } from "@/lib/thread-lifecycle-filter";
@@ -14,11 +14,11 @@ import {
 export const THREAD_LIFECYCLE_OPTIONS = [
   { value: "active", label: "Active" },
   { value: "archived", label: "Archived" },
-] as const satisfies readonly { value: ThreadLifecycle; label: string }[];
+] as const satisfies readonly { value: ThreadArchiveFilter; label: string }[];
 
 interface ThreadLifecycleFilterProps {
-  value: readonly ThreadLifecycle[];
-  onChange: (value: ThreadLifecycle[]) => void;
+  value: readonly ThreadArchiveFilter[];
+  onChange: (value: ThreadArchiveFilter[]) => void;
 }
 
 export function ThreadLifecycleFilterItems({

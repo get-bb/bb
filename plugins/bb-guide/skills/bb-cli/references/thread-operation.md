@@ -1,5 +1,9 @@
 # Thread coordination and inspection
 
+`bb thread list --archived --sort updated` lists recent archived threads by
+last update. The SDK equivalent is `threads.list({ archived: true, sort: "updated" })`.
+Without `sort`, existing project/archive ordering is preserved.
+
 ## Coordinating Work
 
 - Use one clear owner per task.
@@ -102,14 +106,6 @@ hostId, providerId, projectId, parentThreadId, groupBy })`.
 
 ## Inspecting Results
 
-- Add `--lifecycle active,draft,archived` to thread list/search to select any
-  nonempty subset. Draft means pending with a Drafts-held first message;
-  established threads with saved follow-ups stay active. Archived takes
-  precedence. Omission retains legacy groups; opt-in search adds a draft group.
-  List `--archived` intersects this filter. SDK list/search accept `lifecycles`
-  as an array. Filtering precedes result limits and counts. Lifecycle-filtered
-  lists sort by last updated, newest first, before pagination; omission keeps
-  existing list ordering.
 - Use `bb thread search <query> [--limit <1-50>]` for sidebar search. Use
   `history`, `read|unread`, and `section` for organization and recall. The
   `bb thread queue` group contains the queued-message operations. Queue updates

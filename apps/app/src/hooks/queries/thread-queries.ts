@@ -11,7 +11,6 @@ import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport
 import { getMediaQuerySnapshot } from "@bb/shared-ui/hooks/use-media-query";
 import type {
   PendingInteraction,
-  ThreadLifecycle,
   ThreadListEntry,
 } from "@bb/domain";
 import type {
@@ -173,7 +172,6 @@ interface UseThreadMentionCandidatesResult {
 
 interface UseThreadSearchArgs {
   active: boolean;
-  lifecycles?: readonly ThreadLifecycle[];
   limitPerGroup?: number;
   query: string;
 }
@@ -585,7 +583,6 @@ export function useThreadMentionCandidates({
 
 export function useThreadSearch({
   active,
-  lifecycles,
   limitPerGroup = THREAD_SEARCH_LIMIT_PER_GROUP,
   query,
 }: UseThreadSearchArgs): UseThreadSearchResult {
@@ -599,13 +596,11 @@ export function useThreadSearch({
   const enabled = active && liveQueryIsSearchable && hasSearchableQuery;
   const threadSearchQuery = useQuery<ThreadSearchResponse>({
     queryKey: threadSearchQueryKey({
-      lifecycles,
       limitPerGroup,
       query: debouncedQuery,
     }),
     queryFn: ({ signal }) =>
       sdk.threads.search({
-        lifecycles,
         limitPerGroup: String(limitPerGroup),
         query: debouncedQuery,
         signal,

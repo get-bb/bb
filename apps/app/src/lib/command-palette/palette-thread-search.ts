@@ -1,6 +1,6 @@
 import {
   PERSONAL_PROJECT_ID,
-  type ThreadLifecycle,
+  type ThreadArchiveFilter,
   type ThreadListEntry,
 } from "@bb/domain";
 import type {
@@ -13,7 +13,7 @@ import { normalizeThreadLifecycleFilter } from "@/lib/thread-lifecycle-filter";
 
 export interface PaletteThreadSearchRow {
   id: string;
-  lifecycle: ThreadLifecycle;
+  lifecycle: ThreadArchiveFilter;
   primaryText: string;
   highlightRanges: readonly ThreadSearchMatch["highlightRanges"][number][];
   secondaryTitle: string | null;
@@ -26,7 +26,7 @@ export interface PaletteThreadSearchRow {
 }
 
 interface BuildPaletteThreadSearchRowsArgs {
-  lifecycles: readonly ThreadLifecycle[];
+  lifecycles: readonly ThreadArchiveFilter[];
   now: number;
   projectNamesById: ReadonlyMap<string, string>;
   query: string;
@@ -58,7 +58,7 @@ function projectMetadata(
 function serverRow(
   thread: ThreadListEntry,
   matches: readonly ThreadSearchMatch[],
-  lifecycle: ThreadLifecycle,
+  lifecycle: ThreadArchiveFilter,
   projectNamesById: ReadonlyMap<string, string>,
   now: number,
 ): PaletteThreadSearchRow {

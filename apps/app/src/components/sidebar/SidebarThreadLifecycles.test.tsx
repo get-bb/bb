@@ -12,7 +12,7 @@ import { createStore, Provider } from "jotai";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ThreadLifecycle } from "@bb/domain";
+import type { ThreadArchiveFilter } from "@bb/domain";
 import {
   buildMachineThreadGroups,
   buildPinnedSidebarState,
@@ -45,7 +45,6 @@ vi.mock("@/hooks/queries/thread-queries", () => ({
                 makeThreadListEntry({
                   id: "archived-thread",
                   title: "Archived work",
-                  lifecycle: "archived",
                   archivedAt: 1,
                   projectId: "archive-project",
                   sectionId: "archive-section",
@@ -101,7 +100,6 @@ function LifecycleContents({ empty }: { empty: boolean }) {
     makeThreadListEntry({
       id: "old-draft",
       title: "Saved work",
-      lifecycle: "draft",
       status: "pending",
       createdAt: 1,
       updatedAt: 1,
@@ -153,7 +151,7 @@ function LifecycleContents({ empty }: { empty: boolean }) {
   );
 }
 
-function setup(lifecycles: ThreadLifecycle[] = ["active"], empty = false) {
+function setup(lifecycles: ThreadArchiveFilter[] = ["active"], empty = false) {
   archiveQuery.empty = empty;
   const store = createStore();
   store.set(sidebarThreadLifecyclesAtom, lifecycles);
@@ -175,10 +173,10 @@ describe("sidebar lifecycle placement", () => {
   it("merges selected rows once and preserves archived hierarchy metadata", () => {
     archiveQuery.empty = false;
     const store = createStore();
-    store.set(sidebarThreadLifecyclesAtom, ["active", "draft", "archived"]);
+    store.set(sidebarThreadLifecyclesAtom, ["active", "archived"]);
     const active = makeThreadListEntry({ id: "active" });
     const duplicate = makeThreadListEntry({ id: "archived-thread" });
-    const draft = makeThreadListEntry({ id: "draft", lifecycle: "draft" });
+    const draft = makeThreadListEntry({ id: "draft" });
     const client = new QueryClient();
     const { result, rerender } = renderHook(
       ({ bootstrap }) => useSidebarThreadLifecycles(bootstrap),
@@ -195,7 +193,6 @@ describe("sidebar lifecycle placement", () => {
     rerender({ bootstrap: [active, draft] });
     expect(result.current.threads[0]).toMatchObject({
       id: "archived-thread",
-      lifecycle: "archived",
       projectId: "archive-project",
       sectionId: "archive-section",
       environmentId: "archive-environment",
@@ -220,12 +217,10 @@ describe("sidebar lifecycle placement", () => {
     expect(result.current.threads).toEqual([active, draft]);
   });
 
-  it.each<{ lifecycles: ThreadLifecycle[]; active: boolean; archived: boolean }>([
+  it.each<{ lifecycles: ThreadArchiveFilter[]; active: boolean; archived: boolean }>([
     { lifecycles: ["active"], active: true, archived: false },
     { lifecycles: ["archived"], active: false, archived: true },
     { lifecycles: ["active", "archived"], active: true, archived: true },
-    { lifecycles: ["draft"], active: true, archived: false },
-    { lifecycles: ["draft", "archived"], active: true, archived: true },
   ])("includes saved messages in the ordinary hierarchy for $lifecycles", ({ lifecycles, active, archived }) => {
     setup(lifecycles);
     expect(screen.queryByText("Active work") !== null).toBe(active);
@@ -313,13 +308,13 @@ describe("sidebar lifecycle placement", () => {
       screen.getByRole("button", { name: "Load more archived threads" }),
     );
     expect(archiveQuery.fetchNextPage).toHaveBeenCalledOnce();
-    act(() => store.set(sidebarThreadLifecyclesAtom, ["draft"]));
+    act(() => store.set(sidebarThreadLifecyclesAtom, ["active"]));
     expect(archiveQuery.enabled).toBe(false);
     expect(screen.queryByText("Archived work")).toBeNull();
   });
 
   it("reuses the no-threads state for an empty selected group", () => {
-    setup(["draft"], true);
+    setup(["active"], true);
     expect(screen.getByText("No threads")).toBeDefined();
     expect(screen.queryByRole("heading", { name: "Drafts" })).toBeNull();
   });

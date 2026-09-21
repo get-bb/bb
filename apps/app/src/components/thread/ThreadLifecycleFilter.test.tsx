@@ -9,7 +9,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ThreadLifecycle } from "@bb/domain";
+import type { ThreadArchiveFilter } from "@bb/domain";
 import { ThreadLifecycleFilter } from "./ThreadLifecycleFilter";
 
 const viewport = vi.hoisted(() => ({ compact: false }));
@@ -23,7 +23,7 @@ afterEach(() => {
 });
 
 function Filter() {
-  const [value, onChange] = useState<ThreadLifecycle[]>(["active"]);
+  const [value, onChange] = useState<ThreadArchiveFilter[]>(["active"]);
   return <ThreadLifecycleFilter value={value} onChange={onChange} />;
 }
 

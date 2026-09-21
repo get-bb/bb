@@ -24,7 +24,7 @@ import {
   threadSearchQueryKey,
   threadTimelineQueryKey,
 } from "./query-keys";
-import { usePaletteRecentThreads } from "./palette-thread-queries";
+import { usePaletteRecentArchivedThreads } from "./palette-thread-queries";
 import {
   COMPACT_THREAD_TIMELINE_SEGMENT_LIMIT,
   didThreadDetailBootstrapRefreshAfterMount,
@@ -353,7 +353,6 @@ describe("useArchivedThreads", () => {
         Array.from({ length: ARCHIVED_THREADS_PAGE_SIZE }, (_, index) =>
           makeThreadListEntry({
             id: `archived-${index}`,
-            lifecycle: "archived",
             archivedAt: 1,
           }),
         ),
@@ -862,10 +861,10 @@ describe("useThreadTimeline segment limit", () => {
 describe("palette lifecycle queries", () => {
   it("loads bounded archived recents only while selected before typing", async () => {
     const { wrapper } = createQueryClientTestHarness();
-    const archived = makeThreadListEntry({ id: "archived", lifecycle: "archived", archivedAt: 1 });
+    const archived = makeThreadListEntry({ id: "archived", archivedAt: 1 });
     vi.mocked(sdk.threads.list).mockResolvedValue([archived]);
     const { result, rerender } = renderHook(
-      ({ recent, selected }) => usePaletteRecentThreads("archived", { enabled: recent && selected }),
+      ({ recent, selected }) => usePaletteRecentArchivedThreads({ enabled: recent && selected }),
       { wrapper, initialProps: { recent: true, selected: false } },
     );
     expect(sdk.threads.list).not.toHaveBeenCalled();
@@ -874,59 +873,8 @@ describe("palette lifecycle queries", () => {
     rerender({ recent: true, selected: true });
     await waitFor(() => expect(result.current.data).toEqual([archived]));
     expect(sdk.threads.list).toHaveBeenCalledExactlyOnceWith({
-      archived: true, lifecycles: ["archived"], limit: 20, signal: expect.any(AbortSignal),
+      archived: true, sort: "updated", limit: 20, signal: expect.any(AbortSignal),
     });
   });
 
-  it("sends lifecycle filters with the server limit and keeps counts in separate search caches", async () => {
-    const { wrapper, queryClient } = createQueryClientTestHarness();
-    const activeResponse = {
-      active: { total: 40, results: [] },
-      draft: { total: 0, results: [] },
-      archived: { total: 0, results: [] },
-    };
-    const draftResponse = {
-      active: { total: 0, results: [] },
-      draft: {
-        total: 31,
-        results: [
-          { thread: makeThreadListEntry({ lifecycle: "draft" }), matches: [] },
-        ],
-      },
-      archived: { total: 0, results: [] },
-    };
-    vi.mocked(sdk.threads.search)
-      .mockResolvedValueOnce(activeResponse)
-      .mockResolvedValueOnce(draftResponse);
-    const { result, rerender } = renderHook(
-      ({ lifecycles }: { lifecycles: ("active" | "draft")[] }) =>
-        useThreadSearch({
-          active: true,
-          query: "match",
-          lifecycles,
-          limitPerGroup: 6,
-        }),
-      { wrapper, initialProps: { lifecycles: ["active"] } },
-    );
-    await waitFor(() => expect(result.current.data).toEqual(activeResponse));
-    rerender({ lifecycles: ["draft"] });
-    expect(result.current.data).toBeUndefined();
-    await waitFor(() => expect(result.current.data).toEqual(draftResponse));
-    expect(sdk.threads.search).toHaveBeenLastCalledWith({
-      query: "match",
-      lifecycles: ["draft"],
-      limitPerGroup: "6",
-      signal: expect.any(AbortSignal),
-    });
-    expect(
-      queryClient.getQueryData(
-        threadSearchQueryKey({
-          query: "match",
-          lifecycles: ["active"],
-          limitPerGroup: 6,
-        }),
-      ),
-    ).toEqual(activeResponse);
-    expect(result.current.data?.draft?.total).toBe(31);
-  });
 });
