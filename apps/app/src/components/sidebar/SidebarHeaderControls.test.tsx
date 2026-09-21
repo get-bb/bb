@@ -145,6 +145,9 @@ describe("sidebar header controls", () => {
         false,
       );
       expect(control?.classList.contains("hover:text-foreground")).toBe(false);
+      expect(control?.classList.contains("focus-visible:ring-0")).toBe(true);
+      expect(control?.classList.contains("focus-visible:ring-1")).toBe(false);
+      expect(control?.classList.contains("focus-visible:ring-2")).toBe(false);
     }
     expect(primary.classList.contains("max-md:pointer-coarse:w-8")).toBe(true);
     expect(
