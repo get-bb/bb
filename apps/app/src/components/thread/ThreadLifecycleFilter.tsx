@@ -37,7 +37,7 @@ export function ThreadLifecycleFilterItems({
             role="menuitemcheckbox"
             aria-checked={checked}
             title={
-              required ? "Keep at least one lifecycle selected" : undefined
+              required ? "Keep at least one filter selected" : undefined
             }
             onSelect={(event) => {
               event.preventDefault();
@@ -84,15 +84,15 @@ export function ThreadLifecycleFilter({
           variant="ghost"
           size="sm"
           className="min-w-0 max-w-full justify-start"
-          aria-label={`Thread lifecycle: ${label}`}
+          aria-label={`Filter: ${label}`}
         >
           <span className="truncate">{label}</span>
           <Icon name="ChevronDown" className="size-3.5 shrink-0" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" mobileTitle="Thread lifecycle">
-        <DropdownMenuGroup aria-label="Thread lifecycle">
-          <DropdownMenuLabel>Thread lifecycle</DropdownMenuLabel>
+      <DropdownMenuContent align="start" mobileTitle="Filter">
+        <DropdownMenuGroup aria-label="Filter">
+          <DropdownMenuLabel>Filter</DropdownMenuLabel>
           <ThreadLifecycleFilterItems value={value} onChange={onChange} />
         </DropdownMenuGroup>
       </DropdownMenuContent>
