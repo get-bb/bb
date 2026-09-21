@@ -352,16 +352,20 @@ untouched. Previous and next thread use `Mod+Shift+[/]` on desktop and
 `Control+Shift+[/]` on the web.
 
 Right-panel tabs use `panel.previousTab` / `panel.nextTab` with
-`Mod+Shift+ArrowLeft` / `Mod+Shift+ArrowRight`. They wrap through visible
+`Mod+Control+ArrowLeft` / `Mod+Control+ArrowRight`. They wrap through visible
 tabs and each pane's New tab button in displayed order across the active
 chat's right-panel groups. Press Enter or Space on New tab to open the picker.
 On the selected New tab page, `panel.previousNewTabItem` /
-`panel.nextNewTabItem` use `Mod+Shift+ArrowUp` / `Mod+Shift+ArrowDown` to
+`panel.nextNewTabItem` use `Mod+Control+ArrowUp` / `Mod+Control+ArrowDown` to
 move through search, enabled actions, and recent items in displayed order.
 Search results replace actions and recents while searching. Enter activates
 the focused item.
-Chat splits use separate, initially unassigned `pane.focus.previous` /
-`pane.focus.next` commands. Rebind these commands in Settings → Keyboard, via
+Chat splits use `pane.focus.left` / `right` / `up` / `down` with
+`Mod+Shift+ArrowLeft` / `ArrowRight` / `ArrowUp` / `ArrowDown`. These move
+spatially to the adjacent chat pane, including stacked splits, and stop at the
+layout edge. The initially unassigned `pane.focus.previous` / `pane.focus.next`
+commands still cycle in reading order. Existing custom bindings are preserved.
+Rebind any of these commands in Settings → Keyboard, via
 `bb settings keyboard set <command> <shortcut|disabled>`, or SDK
 `system.updateKeyboardSettings`; read bindings with `system.config`.
 

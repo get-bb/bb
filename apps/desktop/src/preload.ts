@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webFrame } from "electron";
-import { appCommandIdSchema } from "@bb/domain";
+import { appCommandIdSchema, type AppCommandId } from "@bb/domain";
 import {
   desktopBrowserImportOutcomeSchema,
   desktopBrowserImportSourceSchema,
@@ -419,8 +419,15 @@ const bbDesktopApi: BbDesktopApi = {
   async openServerDaemonLogs(): Promise<void> {
     await ipcRenderer.invoke(BB_DESKTOP_OPEN_SERVER_DAEMON_LOGS_CHANNEL);
   },
-  setSplitNavigationEnabled(enabled: boolean): void {
-    ipcRenderer.send(BB_DESKTOP_SET_SPLIT_NAVIGATION_ENABLED_CHANNEL, enabled);
+  setSplitNavigationEnabled(
+    enabled: boolean,
+    directionalCommands?: readonly AppCommandId[],
+  ): void {
+    ipcRenderer.send(
+      BB_DESKTOP_SET_SPLIT_NAVIGATION_ENABLED_CHANNEL,
+      enabled,
+      directionalCommands,
+    );
   },
   setTheme(theme: BbDesktopTheme): void {
     ipcRenderer.send(BB_DESKTOP_SET_THEME_CHANNEL, theme);

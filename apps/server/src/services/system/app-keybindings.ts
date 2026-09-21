@@ -181,6 +181,16 @@ export const DEFAULT_APP_KEYBINDINGS: AppDefaultKeybindings = [
     },
   ),
   ...numberedChatBindings(THREAD_JUMP_APP_COMMAND_IDS, mainWithoutModal),
+  ...(
+    [
+      ["pane.focus.left", "ArrowLeft"],
+      ["pane.focus.right", "ArrowRight"],
+      ["pane.focus.up", "ArrowUp"],
+      ["pane.focus.down", "ArrowDown"],
+    ] as const
+  ).map(([command, key]) =>
+    binding(command, key, { mod: true, shift: true }, splitWithoutModal),
+  ),
   unassignedBinding("pane.focus.previous", splitWithoutModal),
   unassignedBinding("pane.focus.next", splitWithoutModal),
   ...numberedChatBindings(PANE_FOCUS_APP_COMMAND_IDS, splitWithoutModal),
@@ -194,25 +204,25 @@ export const DEFAULT_APP_KEYBINDINGS: AppDefaultKeybindings = [
   binding(
     "panel.previousTab",
     "ArrowLeft",
-    { mod: true, shift: true },
+    { mod: true, control: true },
     mainWithoutModal,
   ),
   binding(
     "panel.nextTab",
     "ArrowRight",
-    { mod: true, shift: true },
+    { mod: true, control: true },
     mainWithoutModal,
   ),
   binding(
     "panel.previousNewTabItem",
     "ArrowUp",
-    { mod: true, shift: true },
+    { mod: true, control: true },
     mainWithoutModal,
   ),
   binding(
     "panel.nextNewTabItem",
     "ArrowDown",
-    { mod: true, shift: true },
+    { mod: true, control: true },
     mainWithoutModal,
   ),
   binding("panel.newTab", "t", { mod: true }, mainWithoutModal),

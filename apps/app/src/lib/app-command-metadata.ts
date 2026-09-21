@@ -138,6 +138,26 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
         "Show or hide the secondary panel.",
       ),
       command(
+        "pane.focus.left",
+        "Focus chat pane left",
+        "Focus the chat pane to the left of the current pane.",
+      ),
+      command(
+        "pane.focus.right",
+        "Focus chat pane right",
+        "Focus the chat pane to the right of the current pane.",
+      ),
+      command(
+        "pane.focus.up",
+        "Focus chat pane up",
+        "Focus the chat pane above the current pane.",
+      ),
+      command(
+        "pane.focus.down",
+        "Focus chat pane down",
+        "Focus the chat pane below the current pane.",
+      ),
+      command(
         "pane.focus.previous",
         "Focus previous chat pane",
         "Focus the previous chat pane in reading order.",

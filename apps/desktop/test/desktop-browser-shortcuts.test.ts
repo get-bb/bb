@@ -65,6 +65,47 @@ describe("resolveDesktopBrowserAppCommand", () => {
     ).toBe(command);
   });
 
+  it("only intercepts a directional shortcut when that neighbor exists", () => {
+    const binding: AppKeybindings[number] = {
+      ...keybindings[0]!,
+      command: "pane.focus.down",
+      shortcut: { ...keybindings[0]!.shortcut, key: "ArrowDown", shift: true },
+    };
+    const args = {
+      input: {
+        key: "ArrowDown",
+        code: "ArrowDown",
+        altKey: false,
+        ctrlKey: false,
+        metaKey: true,
+        shiftKey: true,
+      },
+      isMac: true,
+      keybindings: [binding],
+      splitNavigationEnabled: true,
+    };
+    expect(resolveDesktopBrowserAppCommand(args)).toBeNull();
+    expect(
+      resolveDesktopBrowserAppCommand({
+        ...args,
+        splitNavigationCommands: ["pane.focus.down"],
+      }),
+    ).toBe("pane.focus.down");
+    expect(
+      resolveDesktopBrowserAppCommand({
+        ...args,
+        splitNavigationCommands: ["pane.focus.up"],
+      }),
+    ).toBeNull();
+    expect(
+      resolveDesktopBrowserAppCommand({
+        ...args,
+        splitNavigationEnabled: false,
+        splitNavigationCommands: ["pane.focus.down"],
+      }),
+    ).toBeNull();
+  });
+
   it("keeps frontend plugin commands out of native browser dispatch", () => {
     expect(
       resolveDesktopBrowserAppCommand({

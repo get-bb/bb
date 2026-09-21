@@ -25,10 +25,10 @@ vi.mock("@/hooks/usePluginCommandBindings", () => ({
   usePluginCommandBindings: () => {
     const keybindings: AppKeybindings = (
       [
-        ["panel.previousTab", "ArrowLeft", false, true],
-        ["panel.nextTab", "ArrowRight", false, true],
-        ["pane.focus.previous", "ArrowLeft", true, false],
-        ["pane.focus.next", "ArrowRight", true, false],
+        ["panel.previousTab", "ArrowLeft", true, false],
+        ["panel.nextTab", "ArrowRight", true, false],
+        ["pane.focus.left", "ArrowLeft", false, true],
+        ["pane.focus.right", "ArrowRight", false, true],
       ] as const
     ).map(([command, key, control, shift]) => ({
       command,
@@ -41,7 +41,7 @@ vi.mock("@/hooks/usePluginCommandBindings", () => ({
 }));
 
 function NextPaneHandler({ onNextPane }: { onNextPane: () => void }) {
-  useAppCommandHandler("pane.focus.next", () => {
+  useAppCommandHandler("pane.focus.right", () => {
     onNextPane();
     return true;
   });
@@ -79,9 +79,9 @@ function ChatPanel({ name, enabled }: { name: string; enabled: boolean }) {
 function press(key: string) {
   fireEvent.keyDown(document.activeElement ?? window, {
     key,
-    shiftKey: true,
+    shiftKey: false,
     metaKey: /Mac|iPhone|iPad|iPod/u.test(navigator.platform),
-    ctrlKey: !/Mac|iPhone|iPad|iPod/u.test(navigator.platform),
+    ctrlKey: true,
   });
 }
 
@@ -104,7 +104,8 @@ describe("panel tab commands", () => {
     );
     fireEvent.keyDown(screen.getByRole("textbox", { name: "editor" }), {
       key: "ArrowRight",
-      ctrlKey: true,
+      shiftKey: true,
+      ctrlKey: !/Mac|iPhone|iPad|iPod/u.test(navigator.platform),
       metaKey: /Mac|iPhone|iPad|iPod/u.test(navigator.platform),
     });
     expect(onNextPane).toHaveBeenCalledOnce();

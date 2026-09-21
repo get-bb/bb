@@ -36,7 +36,11 @@ import {
   type BbDesktopBrowserViewportBounds,
   type BbDesktopBrowserViewBounds,
 } from "@bb/desktop-contract";
-import type { AppCommandId, AppShortcutInput } from "@bb/domain";
+import {
+  PANE_DIRECTION_APP_COMMAND_IDS,
+  type AppCommandId,
+  type AppShortcutInput,
+} from "@bb/domain";
 import {
   BB_DESKTOP_BROWSER_FIND_RESULT_CHANNEL,
   BB_DESKTOP_BROWSER_GUEST_MESSAGE_CHANNEL,
@@ -708,6 +712,7 @@ export function createDesktopBrowserViewManager(
         command === "browser.find" ||
         command === "panel.previousTab" ||
         command === "panel.nextTab" ||
+        PANE_DIRECTION_APP_COMMAND_IDS.some((id) => id === command) ||
         command === "pane.focus.previous" ||
         command === "pane.focus.next"
       ) {

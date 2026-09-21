@@ -96,8 +96,24 @@ describe("app keybindings", () => {
       );
       expect(binding).toMatchObject({
         desktopOnly: false,
-        shortcut: { key, mod: true, shift: true, alt: false },
+        shortcut: { key, mod: true, control: true, shift: false, alt: false },
         when: { all: ["mainSurface"], none: ["modalOpen"] },
+      });
+    }
+  });
+
+  it("assigns spatial split shortcuts without changing sequential overrides", () => {
+    for (const [command, key] of [
+      ["pane.focus.left", "ArrowLeft"],
+      ["pane.focus.right", "ArrowRight"],
+      ["pane.focus.up", "ArrowUp"],
+      ["pane.focus.down", "ArrowDown"],
+    ] as const) {
+      expect(
+        DEFAULT_APP_KEYBINDINGS.find((item) => item.command === command),
+      ).toMatchObject({
+        shortcut: { key, mod: true, shift: true, control: false, alt: false },
+        when: { all: ["mainSurface", "splitActive"], none: ["modalOpen"] },
       });
     }
   });
