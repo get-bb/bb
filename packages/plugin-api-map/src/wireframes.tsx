@@ -1854,8 +1854,7 @@ export function ExtensionsPluginPageWireframe() {
               Needs configuration
             </span>
             <span className="block pt-0.5 text-xs leading-relaxed text-muted-foreground">
-              Set an API key. Complete the Configuration section; bb reloads the
-              plugin after you save.
+              Set an API key.
             </span>
           </span>
           <span className="flex h-7 shrink-0 items-center gap-0.5 rounded-md bg-foreground px-2.5 text-xs text-background">

@@ -227,7 +227,7 @@
         {
           "path": "apps/app/src/components/plugin/management/plugin-status.ts",
           "anchors": [
-            "Complete the Configuration section; bb reloads the plugin after you save."
+            "Complete the required settings."
           ]
         },
         {
