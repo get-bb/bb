@@ -41,6 +41,7 @@ export function ComposerSendMenu({
   useEffect(() => {
     if (!canSubmit) setOpen(false);
   }, [canSubmit]);
+  const handleOpenChange = (nextOpen: boolean) => setOpen(nextOpen && canSubmit);
 
   if (!onSubmit && contributions.length === 0) return children;
 
@@ -69,7 +70,7 @@ export function ComposerSendMenu({
     return (
       <CompactLongPressMenu
         label="Send options"
-        onOpenChange={setOpen}
+        onOpenChange={handleOpenChange}
         items={items}
       >
         <span
@@ -89,7 +90,7 @@ export function ComposerSendMenu({
   return (
     <div className="inline-flex items-center [&_[data-promptbox-submit-action]]:rounded-r-none [&_[data-promptbox-submit-action]]:border-r-0">
       {children}
-      <DropdownMenu open={open && canSubmit} onOpenChange={setOpen}>
+      <DropdownMenu open={open && canSubmit} onOpenChange={handleOpenChange}>
         <DropdownMenuTrigger asChild>
           <Button
             type="button"
