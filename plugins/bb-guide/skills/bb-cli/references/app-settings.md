@@ -19,10 +19,11 @@ every window and client sees the same value.
   orders, the collapsed-id lists, `sidebar.pluginPanelOrder`,
   `sidebar.visiblePluginPanels`, `sidebar.navigationProvider`,
   `sidebar.threadListProvider`).
-- `sidebar.threadLifecycles` selects a nonempty distinct list of `active`,
-  `draft`, and `archived` in the built-in sidebar. Default/reset is `["active"]`.
-  Use `bb settings ui set sidebar.threadLifecycles '["active","draft"]'` to
-  show saved drafts above the existing active hierarchy. Selected archived rows
+- `sidebar.threadLifecycles` selects `active` and `archived` in the built-in
+  sidebar. Default is `["active"]`, including threads with saved messages.
+  Previously saved `draft` selections display as Active.
+  Use `bb settings ui set sidebar.threadLifecycles '["active","archived"]'`
+  to include archived threads. Selected archived rows
   retain their hierarchy placement and offer a restore action. Archived pages load only while selected;
   plugin sidebar replacements keep ownership of their rendering.
 - `palette.threadLifecycles` uses the same nonempty lifecycle selection and

@@ -109,7 +109,6 @@ function LifecycleContents({ empty }: { empty: boolean }) {
   ]);
   return (
     <SidebarThreadLifecycles
-      status="ready"
       lifecycles={lifecycles}
       treeProps={{
         compareThreads: () => 0,
@@ -192,8 +191,7 @@ describe("sidebar lifecycle placement", () => {
         ),
       },
     );
-    expect(result.current.threads).toEqual([duplicate, active]);
-    expect(result.current.drafts).toEqual([draft]);
+    expect(result.current.threads).toEqual([duplicate, active, draft]);
     rerender({ bootstrap: [active, draft] });
     expect(result.current.threads[0]).toMatchObject({
       id: "archived-thread",
@@ -219,48 +217,23 @@ describe("sidebar lifecycle placement", () => {
       group: { id: "archive-section", items: [{ kind: "thread", node: { thread: archived } }] },
     }]);
     act(() => store.set(sidebarThreadLifecyclesAtom, ["active"]));
-    expect(result.current.threads).toEqual([active]);
+    expect(result.current.threads).toEqual([active, draft]);
   });
 
-  it("puts the icon-labeled Drafts section before the hierarchy with one divider", () => {
-    setup(["active", "draft", "archived"]);
-    const drafts = screen.getByRole("region", { name: "Drafts" });
-    expect(drafts.querySelector('[data-icon="Edit"]')).toBeTruthy();
-    expect(drafts.nextElementSibling?.tagName).toBe("HR");
-    expect(drafts.compareDocumentPosition(screen.getByText("Active work")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(screen.queryByRole("region", { name: "Archived" })).toBeNull();
-    expect(screen.getAllByText("Archived work")).toHaveLength(1);
-  });
-
-  it.each<{ lifecycles: ThreadLifecycle[] }>(
-    (
-      [
-        ["active"],
-        ["draft"],
-        ["archived"],
-        ["active", "draft"],
-        ["active", "archived"],
-        ["draft", "archived"],
-        ["active", "draft", "archived"],
-      ] satisfies ThreadLifecycle[][]
-    ).map((lifecycles) => ({ lifecycles })),
-  )("shows only selected semantic groups for $lifecycles", ({ lifecycles }) => {
+  it.each<{ lifecycles: ThreadLifecycle[]; active: boolean; archived: boolean }>([
+    { lifecycles: ["active"], active: true, archived: false },
+    { lifecycles: ["archived"], active: false, archived: true },
+    { lifecycles: ["active", "archived"], active: true, archived: true },
+    { lifecycles: ["draft"], active: true, archived: false },
+    { lifecycles: ["draft", "archived"], active: true, archived: true },
+  ])("includes saved messages in the ordinary hierarchy for $lifecycles", ({ lifecycles, active, archived }) => {
     setup(lifecycles);
-    expect(screen.queryByText("Active work") !== null).toBe(
-      lifecycles.includes("active"),
-    );
-    expect(screen.queryByText("Saved work") !== null).toBe(
-      lifecycles.includes("draft"),
-    );
-    expect(screen.queryByText("Archived work") !== null).toBe(
-      lifecycles.includes("archived"),
-    );
-    expect(
-      screen.queryAllByRole("heading").map((heading) => heading.textContent),
-    ).toEqual(
-      lifecycles.includes("draft") ? ["Drafts"] : [],
-    );
-    expect(archiveQuery.enabled).toBe(lifecycles.includes("archived"));
+    expect(screen.queryByText("Active work") !== null).toBe(active);
+    expect(screen.queryByText("Saved work") !== null).toBe(active);
+    expect(screen.queryByText("Archived work") !== null).toBe(archived);
+    expect(screen.queryByRole("region", { name: "Drafts" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Drafts" })).toBeNull();
+    expect(archiveQuery.enabled).toBe(archived);
   });
 
   it.each([false, true])(
@@ -285,7 +258,7 @@ describe("sidebar lifecycle placement", () => {
     },
   );
 
-  it.each(["draft", "archived"] as const)(
+  it.each(["archived"] as const)(
     "keeps the combined menu reachable in an empty %s-only group",
     async (lifecycle) => {
       const store = setup([lifecycle], true);
@@ -293,7 +266,7 @@ describe("sidebar lifecycle placement", () => {
       expect(
         screen.queryByRole("button", { name: /Thread lifecycle:/ }),
       ).toBeNull();
-      const label = lifecycle === "draft" ? "Drafts" : "Threads";
+      const label = "Threads";
       fireEvent.keyDown(
         screen.getByRole("button", {
           name: new RegExp(`^${label} actions(?:;|$)`),
@@ -315,7 +288,7 @@ describe("sidebar lifecycle placement", () => {
         "active",
         lifecycle,
       ]);
-      fireEvent.click(screen.getByRole("menuitemcheckbox", { name: lifecycle === "draft" ? "Drafts" : "Archived" }));
+      fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Archived" }));
       expect(store.get(sidebarThreadLifecyclesAtom)).toEqual(["active"]);
       expect(screen.getByText("No threads")).toBeTruthy();
       for (const menu of screen.queryAllByRole("menu").reverse()) {
@@ -348,6 +321,6 @@ describe("sidebar lifecycle placement", () => {
   it("reuses the no-threads state for an empty selected group", () => {
     setup(["draft"], true);
     expect(screen.getByText("No threads")).toBeDefined();
-    expect(screen.getByRole("heading", { name: "Drafts" })).toBeDefined();
+    expect(screen.queryByRole("heading", { name: "Drafts" })).toBeNull();
   });
 });
