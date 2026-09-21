@@ -12,9 +12,7 @@ import {
 import { Icon } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
 import { Textarea } from "@bb/shared-ui/textarea";
-import { Link } from "react-router-dom";
 import { SettingsWithControl } from "@/components/ui/settings-section.js";
-import { getPluginDetailRoutePath } from "@/lib/route-paths";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import { Switch } from "@bb/shared-ui/switch";
 import {
@@ -399,7 +397,13 @@ function AutosavingPluginSetting({
           ? "secret"
           : undefined
       }
-      controlPlacement={isMultilineSetting(descriptor) ? "below" : "inline"}
+      controlPlacement={
+        descriptor.type === "boolean"
+          ? "trailing"
+          : isMultilineSetting(descriptor)
+            ? "below"
+            : "inline"
+      }
       {...(descriptor.description !== undefined
         ? { description: descriptor.description }
         : {})}
@@ -511,7 +515,13 @@ function PluginSettingsPageSkeleton() {
   );
 }
 
-export function PluginSettingsPage({ pluginId }: { pluginId: string }) {
+export function PluginSettingsPage({
+  pluginId,
+  onBackToDetails,
+}: {
+  pluginId: string;
+  onBackToDetails?: () => void;
+}) {
   const listQuery = usePluginList({ enabled: true });
   const plugin =
     listQuery.data?.plugins.find(
@@ -534,7 +544,17 @@ export function PluginSettingsPage({ pluginId }: { pluginId: string }) {
       </p>
     );
   }
-  return <PluginSettingsContent key={plugin.id} plugin={plugin} />;
+  return (
+    <div className="mx-auto w-full max-w-5xl space-y-4">
+      {onBackToDetails ? (
+        <Button variant="ghost" size="sm" onClick={onBackToDetails}>
+          <Icon name="ChevronLeft" className="mr-1.5 size-4" aria-hidden />
+          Back to details
+        </Button>
+      ) : null}
+      <PluginSettingsContent key={plugin.id} plugin={plugin} />
+    </div>
+  );
 }
 
 function PluginSettingsContent({ plugin }: { plugin: PluginListItem }) {
@@ -547,7 +567,7 @@ function PluginSettingsContent({ plugin }: { plugin: PluginListItem }) {
     plugin.hasSettings ||
     settingsSections.some((section) => section.pluginId === plugin.id);
   return (
-    <div className="mx-auto w-full max-w-5xl">
+    <div>
       <header className="flex items-center justify-between gap-4">
         <div className="flex min-w-0 items-center gap-3">
           <div className="size-9 shrink-0">
@@ -584,25 +604,6 @@ function PluginSettingsContent({ plugin }: { plugin: PluginListItem }) {
             <PluginSettingsDetail plugin={plugin} />
           </ResourceDetailConfigurationSection>
         ) : null}
-        <ResourceDetailOverviewSection label="Plugin details">
-          <p className="max-w-none text-sm leading-relaxed text-muted-foreground">
-            Release, capabilities, and health live on{" "}
-            <Link
-              to={getPluginDetailRoutePath({
-                pluginId: plugin.id,
-                view: "installed",
-              })}
-              className="inline-flex items-center gap-0.5 rounded-sm underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            >
-              its plugin page
-              <Icon
-                name="ChevronRight"
-                className="size-3.5 no-underline"
-                aria-hidden
-              />
-            </Link>
-          </p>
-        </ResourceDetailOverviewSection>
       </ResourceDetailStack>
     </div>
   );

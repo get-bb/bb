@@ -541,7 +541,29 @@ describe("PluginCollectionToolbar", () => {
     expect(screen.getByRole("button", { name: /^Sort:/u })).toBeTruthy();
   });
 
-  it("pairs combined controls with square search until separate controls fit", () => {
+  it("keeps desktop search inline beside combined controls when its minimum width fits", () => {
+    const resize = mockToolbarWidth(520);
+    const { rerender } = render(<ToolbarHarness installed createAction />);
+    expect(screen.getByRole("button", { name: "Filter & sort" })).toBeTruthy();
+    expect(
+      screen.getByRole<HTMLInputElement>("textbox", { name: "Search plugins" })
+        .value,
+    ).toBe("Memory");
+    resize(320);
+    expect(screen.getByRole("button", { name: "Search plugins" })).toBeTruthy();
+    resize(328);
+    expect(
+      screen.getByRole<HTMLInputElement>("textbox", { name: "Search plugins" })
+        .value,
+    ).toBe("Memory");
+    viewport.compact = true;
+    rerender(<ToolbarHarness installed createAction />);
+    expect(screen.queryByRole("textbox", { name: "Search plugins" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Search plugins" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Filter & sort" })).toBeTruthy();
+  });
+
+  it("pairs mobile combined controls with square search until separate controls fit", () => {
     viewport.compact = true;
     const resize = mockToolbarWidth(354);
     render(<ToolbarHarness installed createAction />);

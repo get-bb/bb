@@ -744,8 +744,8 @@ Plugin sidebar replacements own their rendering.
 The palette's Filter independently selects Active and Archived before
 and after typing. It defaults to Active and remembers its selection in this
 browser only; it is not configurable through SDK/CLI.
-Active includes threads with saved messages. Search threads
-matches saved message content, including follow-ups, and opens the owning thread.
+Active includes threads with saved messages. Search threads retains the existing
+title and conversation search behavior and opens the owning thread.
 Archived loads a bounded list in most-recently-archived order only while selected.
 Search uses the existing
 ranked Active/Archived response and displays the selected groups, with six initial
@@ -1221,7 +1221,7 @@ retries structured provider overloads with exponential backoff and jitter.
 Prior output or tool activity does not block recovery. If the provider accepted
 the failed input, core sends an agent-only continuation; if it rejected the
 input before starting, core re-sends the original message as agent-only. Disable
-the plugin under Settings → Installed plugins or with
+the plugin under Plugins → Installed plugins or with
 `bb plugin disable provider-retry`.
 
 It never blocks a send. A remembered rate limit is a stale picture of the
@@ -1251,7 +1251,7 @@ nothing, because waiting does not fix them.
 ### Workflows plugin
 
 The builtin Workflows plugin is disabled on fresh installations. Enable it
-under Settings → Installed plugins or with `bb plugin enable workflows`. Its six
+under Plugins → Installed plugins or with `bb plugin enable workflows`. Its six
 settings are bounded integers, edited with numeric inputs under Plugins →
 Installed plugins or with `bb plugin config workflows set <key> <value>`:
 
@@ -1441,7 +1441,13 @@ For isolated development smoke tests only, `DEV_BROWSER_SMOKE_BINARY` selects th
 
 ## Agent guidance plugin settings
 
-BB guide is installed and enabled by default. In Settings → Installed plugins
+Settings → Plugins lists every installed plugin, including disabled plugins and
+plugins without configuration. Selecting a plugin always opens Details.
+Configure opens its configuration in place when available; Back to details
+returns to the same plugin. Existing direct configuration links still open
+Configuration.
+
+BB guide is installed and enabled by default. In Settings → Plugins
 → BB guide, `introduction` controls the BB introduction, `skills` controls all
 four bundled skills, and `bbCli`, `pluginAuthoring`, `skillCreator`, and `submitPlugin` control
 individual skills. All default to true. Disabling BB guide removes its

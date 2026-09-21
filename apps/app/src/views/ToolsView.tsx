@@ -1,5 +1,10 @@
-import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { useAtom } from "jotai";
+import {
+  CompactViewportOverrideProvider,
+  useIsCompactViewport,
+} from "@bb/shared-ui/hooks/use-compact-viewport";
+import { useMediaQuery } from "@bb/shared-ui/hooks/use-media-query";
+import { PluginSettingsPage } from "@/components/plugin/PluginSettings";
 import { pluginWorkspaceAtom } from "@/components/plugin/plugin-workspace-state";
 import { useSetPluginEnabled } from "@/components/plugin/useSetPluginEnabled";
 import {
@@ -72,10 +77,19 @@ import type {
   SecondaryPanelTabReorderHandler,
 } from "@/components/secondary-panel/secondaryPanelTab";
 
-function ResourceBodyFallback() {
+function ResourceBodyFallback({
+  contentClassName,
+}: {
+  contentClassName?: string;
+}) {
   return (
     <div className="h-full overflow-y-auto">
-      <div className="mx-auto w-full max-w-5xl px-4 pb-4 pt-2 md:px-5">
+      <div
+        className={cn(
+          "mx-auto w-full max-w-5xl px-4 pb-4 pt-2 md:px-5",
+          contentClassName,
+        )}
+      >
         <div className="space-y-2">
           <Skeleton className="h-8 w-full" />
           <Skeleton className="h-24 w-full rounded-md" />
@@ -89,9 +103,11 @@ function ResourceBodyFallback() {
 function ResourceScrollPage({
   children,
   fillViewport = false,
+  contentClassName,
 }: {
   children: ReactNode;
   fillViewport?: boolean;
+  contentClassName?: string;
 }) {
   const {
     scrollRef,
@@ -115,6 +131,7 @@ function ResourceScrollPage({
           className={cn(
             "mx-auto box-border min-h-full w-full space-y-4 px-4 pb-4 pt-3 md:px-5 md:pt-4",
             "max-w-5xl",
+            contentClassName,
           )}
         >
           {children}
@@ -147,9 +164,28 @@ function PluginsToolView({
   );
 }
 
-function PluginDetailToolView({ pluginId }: { pluginId: string }) {
+function PluginDetailToolView({
+  pluginId,
+  contentClassName,
+  onRemoved,
+}: {
+  pluginId: string;
+  contentClassName?: string;
+  onRemoved?: () => void;
+}) {
   const navigate = useNavigate();
   const location = useLocation();
+  const configurationOpen =
+    new URLSearchParams(location.search).get("configure") === pluginId;
+  const configurationParams = new URLSearchParams(location.search);
+  configurationParams.set("configure", pluginId);
+  const configurationPath = `${location.pathname}?${configurationParams.toString()}`;
+  const setConfigurationOpen = (open: boolean) => {
+    const params = new URLSearchParams(location.search);
+    if (open) params.set("configure", pluginId);
+    else params.delete("configure");
+    navigate({ pathname: location.pathname, search: params.toString() });
+  };
   const [deleteTarget, setDeleteTarget] = useState<PluginListItem | null>(null);
   const [installTarget, setInstallTarget] =
     useState<PluginCatalogSearchEntry | null>(null);
@@ -194,7 +230,8 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
         "catalog",
       );
       setDeleteTarget(null);
-      navigate(getToolsOwnedCollectionRoutePath("plugins"));
+      if (onRemoved !== undefined) onRemoved();
+      else navigate(getToolsOwnedCollectionRoutePath("plugins"));
       return listQuery.refetch();
     },
     onError: (error, plugin) => {
@@ -287,6 +324,13 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
         maxWidthClassName="max-w-5xl"
       />
     );
+  } else if (selectedPlugin !== null && configurationOpen) {
+    detailContent = (
+      <PluginSettingsPage
+        pluginId={pluginId}
+        onBackToDetails={() => setConfigurationOpen(false)}
+      />
+    );
   } else if (selectedPlugin !== null) {
     detailContent = (
       <PluginDetail
@@ -298,6 +342,8 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
         onEdit={handleEditPlugin}
         onOpenSource={handleOpenPluginSource}
         onDelete={setDeleteTarget}
+        onConfigure={() => setConfigurationOpen(true)}
+        configurationPath={configurationPath}
         catalogEntry={selectedCatalogEntry ?? undefined}
         catalogEntries={catalogQuery.data?.entries ?? []}
         onOpenPlugin={handleOpenCatalogPlugin}
@@ -355,12 +401,15 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
   return (
     <div className="flex h-full min-h-0 flex-col">
       {selectedPlugin !== null ? (
-        <PluginDetailBanners plugin={selectedPlugin} />
+        <PluginDetailBanners
+          plugin={selectedPlugin}
+          configurationPath={configurationPath}
+        />
       ) : selectedCatalogEntry !== null && !selectedCatalogEntry.installed ? (
         <CatalogPluginDetailBanner entry={selectedCatalogEntry} />
       ) : null}
       <div className="min-h-0 flex-1">
-        <ResourceScrollPage>
+        <ResourceScrollPage contentClassName={contentClassName}>
           {detailContent}
           <ConfirmDeleteDialog
             open={deleteTarget !== null}
@@ -397,12 +446,28 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
   );
 }
 
-export function PluginDetailPaneView({ pluginId }: { pluginId: string }) {
+export function PluginDetailPaneView({
+  pluginId,
+  contentClassName,
+  onRemoved,
+}: {
+  pluginId: string;
+  contentClassName?: string;
+  onRemoved?: () => void;
+}) {
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       <div className="min-h-0 flex-1 overflow-hidden">
-        <Suspense fallback={<ResourceBodyFallback />}>
-          <PluginDetailToolView pluginId={pluginId} />
+        <Suspense
+          fallback={
+            <ResourceBodyFallback contentClassName={contentClassName} />
+          }
+        >
+          <PluginDetailToolView
+            pluginId={pluginId}
+            contentClassName={contentClassName}
+            onRemoved={onRemoved}
+          />
         </Suspense>
       </div>
     </div>
@@ -415,10 +480,11 @@ export function PluginsView({ pluginId }: { pluginId?: string } = {}) {
   const focusReturnRef = useRef<HTMLButtonElement | null>(null);
   const [isPluginDetailFullPage, setIsPluginDetailFullPage] = useState(false);
   const [workspace, setWorkspace] = useAtom(pluginWorkspaceAtom);
-  const isCompact = useIsCompactViewport();
+  const compactViewport = useIsCompactViewport();
+  const compactDetail = useMediaQuery("(max-width: 1023px)") || compactViewport;
   const activePluginId = pluginId ?? workspace.activePluginId;
   const isPanelOpen =
-    activePluginId !== null && (!isCompact || pluginId !== undefined);
+    activePluginId !== null && (!compactDetail || pluginId !== undefined);
   const catalogQuery = usePluginCatalogSearch("", { enabled: isPanelOpen });
   const listQuery = usePluginList({ enabled: true });
   const openIds = useMemo(
@@ -443,9 +509,20 @@ export function PluginsView({ pluginId }: { pluginId?: string } = {}) {
     );
   }, [pluginId, setWorkspace]);
 
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get("view") !== "my") return;
+    params.set("view", "installed");
+    navigate(
+      { pathname: location.pathname, search: params.toString() },
+      { replace: true },
+    );
+  }, [location.pathname, location.search, navigate]);
+
   const selectPlugin = useCallback(
     (nextPluginId: string) => {
       const params = new URLSearchParams(location.search);
+      params.delete("configure");
       navigate({
         pathname: getPluginDetailRoutePath({ pluginId: nextPluginId }),
         search: params.toString(),
@@ -470,6 +547,7 @@ export function PluginsView({ pluginId }: { pluginId?: string } = {}) {
     setIsPluginDetailFullPage(false);
     setWorkspace((current) => ({ ...current, activePluginId: null }));
     const params = new URLSearchParams(location.search);
+    params.delete("configure");
     navigate({ pathname: getPluginsRoutePath(), search: params.toString() });
     restoreFocus();
   }, [location.search, navigate, restoreFocus, setWorkspace]);
@@ -591,25 +669,27 @@ export function PluginsView({ pluginId }: { pluginId?: string } = {}) {
 
   return (
     <div className="-mx-4 -mb-4 -mt-4 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden md:-mx-5 md:-mb-5 md:-mt-5">
-      <SecondaryPanelLayout
-        open={isPanelOpen}
-        onToggle={isPanelOpen ? closePanel : () => undefined}
-        onClose={closePanel}
-        panelGroupKey="extensions-plugin-details"
-        resetKey="extensions-plugin-details"
-        contentKey={activePluginId ?? "extensions-plugins"}
-        drawerLabel="Plugin details"
-        drawerFallback={<ResourceBodyFallback />}
-        mainPanelId="extensions-main-panel"
-        main={mainContent}
-        collapse={{
-          active: isPluginDetailFullPage,
-          onToggle: () => setIsPluginDetailFullPage((current) => !current),
-        }}
-        renderPanel={renderPanel}
-        composerHost={null}
-        compactPresentation="full"
-      />
+      <CompactViewportOverrideProvider isCompactViewport={compactDetail}>
+        <SecondaryPanelLayout
+          open={isPanelOpen}
+          onToggle={isPanelOpen ? closePanel : () => undefined}
+          onClose={closePanel}
+          panelGroupKey="extensions-plugin-details"
+          resetKey="extensions-plugin-details"
+          contentKey={activePluginId ?? "extensions-plugins"}
+          drawerLabel="Plugin details"
+          drawerFallback={<ResourceBodyFallback />}
+          mainPanelId="extensions-main-panel"
+          main={mainContent}
+          collapse={{
+            active: isPluginDetailFullPage,
+            onToggle: () => setIsPluginDetailFullPage((current) => !current),
+          }}
+          renderPanel={renderPanel}
+          composerHost={null}
+          compactPresentation="full"
+        />
+      </CompactViewportOverrideProvider>
     </div>
   );
 }

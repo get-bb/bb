@@ -11,7 +11,6 @@ import {
   RESOURCE_GRID_PAGE_SIZE,
 } from "@bb/shared-ui/resource-pagination";
 import {
-  ResourceCollectionPage,
   ResourceCollectionViewport,
   ResourceListState,
 } from "@bb/shared-ui/resource-list";
@@ -52,8 +51,10 @@ import {
 export function PluginsOverview({
   onOpenPlugin,
   mode,
+  showInstalledCreateAction = true,
 }: {
   mode?: "installed" | "browse";
+  showInstalledCreateAction?: boolean;
   onOpenPlugin?: (pluginId: string, trigger: HTMLButtonElement) => void;
 } = {}) {
   const navigate = useNavigate();
@@ -259,7 +260,7 @@ export function PluginsOverview({
             sortDirection={installedSortDirection}
             installsKnown={installsKnown}
             changeSearchParams={changeSearchParams}
-            action={installedActions}
+            action={showInstalledCreateAction ? installedActions : null}
             sourceFilter={{
               options: sourceFilterOptions,
               selectedValues: activeSourceFilters,
@@ -315,13 +316,24 @@ export function PluginsOverview({
       {activeMode === "browse" ? (
         <div className="flex h-full min-h-0 flex-col">{content}</div>
       ) : (
-        <ResourceCollectionPage
-          id="plugins-collection"
-          description={PLUGINS_INSTALLED_DESCRIPTION}
-          bandClassName={TOOLS_PAGE_BAND_CLASSES}
-        >
+        <div className="flex h-full min-h-0 flex-col gap-5">
+          <div className={cn("space-y-2", TOOLS_PAGE_BAND_CLASSES)}>
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-semibold tracking-tight">
+                Installed plugins
+              </h1>
+              {listQuery.data === undefined ? null : (
+                <span className="rounded-md bg-muted px-2 py-0.5 text-sm text-muted-foreground">
+                  {plugins.length}
+                </span>
+              )}
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {PLUGINS_INSTALLED_DESCRIPTION}
+            </p>
+          </div>
           {content}
-        </ResourceCollectionPage>
+        </div>
       )}
       <PluginRemovalDialog removal={removal} />
       <AddPluginDialog

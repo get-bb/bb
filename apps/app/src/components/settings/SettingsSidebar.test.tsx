@@ -8,12 +8,23 @@ import { SETTINGS_NAV_SECTIONS } from "./settings-sections";
 import { SettingsSidebarContent } from "./SettingsSidebar";
 
 const configurablePlugin = {
+  hasConfiguration: true,
   icon: null,
   id: "linear",
   label: "Linear",
 };
 
-function renderSidebar(activePluginId: string | null = null) {
+const pluginWithoutConfiguration = {
+  hasConfiguration: false,
+  icon: null,
+  id: "themes",
+  label: "Themes",
+};
+
+function renderSidebar(
+  activePluginId: string | null = null,
+  pluginEntries = [configurablePlugin, pluginWithoutConfiguration],
+) {
   return render(
     <MemoryRouter>
       <SidebarProvider>
@@ -24,7 +35,7 @@ function renderSidebar(activePluginId: string | null = null) {
           navigation={{
             activePluginId,
             activeSection: activePluginId === null ? "general" : null,
-            pluginEntries: [configurablePlugin],
+            pluginEntries,
             sections: SETTINGS_NAV_SECTIONS,
           }}
           onResizeMouseDown={() => {}}
@@ -37,23 +48,29 @@ function renderSidebar(activePluginId: string | null = null) {
 afterEach(cleanup);
 
 describe("SettingsSidebarContent plugin navigation", () => {
-  it("offers installed-plugin management and configurable plugin settings", () => {
+  it("opens details for plugins with and without configuration", async () => {
     renderSidebar();
+    await screen.findByRole("link", { name: "Linear" });
     expect(
-      screen
-        .getByRole("link", { name: "Installed plugins" })
-        .getAttribute("href"),
-    ).toBe("/settings/plugins");
+      screen.queryByRole("link", { name: "Installed plugins" }),
+    ).toBeNull();
+    expect(screen.getByText("Plugins")).toBeTruthy();
     expect(
       screen.getByRole("link", { name: "Linear" }).getAttribute("href"),
-    ).toBe("/settings/plugins/linear");
+    ).toBe("/settings/plugins/linear?view=installed");
+    expect(
+      screen.getByRole("link", { name: "Themes" }).getAttribute("href"),
+    ).toBe("/settings/plugins/themes?view=installed");
+    expect(screen.queryByRole("link", { name: "Browse plugins" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "New plugin" })).toBeNull();
     expect(
       screen.queryByRole("button", { name: /Other installed plugins/ }),
     ).toBeNull();
   });
 
-  it("marks the active plugin settings page", () => {
+  it("marks the active plugin settings page", async () => {
     renderSidebar("linear");
+    await screen.findByRole("link", { name: "Linear" });
     expect(
       screen.getByRole("link", { name: "Linear" }).getAttribute("aria-current"),
     ).toBe("page");

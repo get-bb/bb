@@ -75,14 +75,14 @@ Server-backed General settings
 
 Settings → General includes app-wide preferences stored server-side so every
 window and restart sees the same value. Keep Awake is instead owned by its
-builtin plugin: use its autosaving page under Settings → Installed plugins or run
+builtin plugin: use its autosaving page under Settings → Plugins or run
 `bb keep-awake enable` or `bb keep-awake disable`. Choose every host with `bb
 keep-awake hosts all`, or name individual host ids after `bb keep-awake hosts`.
 On macOS it prevents system idle sleep while bb is running; closing the lid or
 choosing Sleep still sleeps the Mac.
 
 Concurrency limit is also owned by its builtin plugin. Its autosaving page
-under Settings → Installed plugins leaves the overall limit unlimited by default and
+under Settings → Plugins leaves the overall limit unlimited by default and
 uses an automatic per-host limit of one thread per available processor. Use
 `bb concurrency-limit global [unlimited|<limit>]` and `bb
 concurrency-limit host <host-id> [auto|<limit>]`; 0 pauses new work.
@@ -314,8 +314,8 @@ Plugin sidebar replacements own their filters.
 
 The palette's Filter uses Active and Archived independently of the
 sidebar, defaulting to Active. Its selection is browser-local, not configurable
-through SDK/CLI. Active includes threads with saved messages; Search threads also
-matches their saved content. Archived fetches bounded recent rows only when
+through SDK/CLI. Active includes threads with saved messages; Search threads retains
+the existing title and conversation search behavior. Archived fetches bounded recent rows only when
 selected.
 
 Every thread-list header's actions menu offers New project, New section,

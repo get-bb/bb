@@ -7,8 +7,9 @@ import {
   symlink,
   writeFile,
 } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   buildPluginServer,
@@ -73,7 +74,64 @@ describe("plugin server build", () => {
     );
 
     const bundle = await readFile(jsPath, "utf8");
-    expect(bundle).toContain('from "@bb/plugin-sdk"');
+    expect(bundle).toMatch(/from\s*"@bb\/plugin-sdk"/);
+  });
+
+  describe("host-provided zod", () => {
+    const manifest = {
+      name: "bb-plugin-zod-host",
+      version: "0.0.0",
+      bb: {
+        name: "Zod host fixture",
+        description: "Server entry importing zod and zod/mini.",
+        branding: { icon: "Zap" },
+        server: "./server.ts",
+      },
+    };
+    const serverSource = [
+      'import { z } from "zod";',
+      'import { z as mini } from "zod/mini";',
+      "export const a = z.string();",
+      "export const b = mini.string();",
+      "export default function plugin() {}",
+      "",
+    ].join("\n");
+
+    async function buildFixture(options?: { hostProvidedZod: boolean }) {
+      const dir = await mkdtemp(join(tmpdir(), "bb-plugin-server-zod-"));
+      tempDirs.push(dir);
+      await writeFile(join(dir, "package.json"), JSON.stringify(manifest));
+      await writeFile(join(dir, "server.ts"), serverSource);
+      await mkdir(join(dir, "node_modules"), { recursive: true });
+      await symlink(
+        dirname(
+          createRequire(
+            resolve(import.meta.dirname, "../../plugin-sdk/package.json"),
+          ).resolve("zod/package.json"),
+        ),
+        join(dir, "node_modules", "zod"),
+        "dir",
+      );
+      const { jsPath } = await buildPluginServer(
+        dir,
+        "0.0.0-test",
+        await testToolchain(),
+        options,
+      );
+      return readFile(jsPath, "utf8");
+    }
+
+    it("externalises the bare specifier and keeps subpaths bundled", async () => {
+      const bundle = await buildFixture({ hostProvidedZod: true });
+      expect(bundle).toMatch(/from\s*"zod"/);
+      expect(bundle).not.toMatch(/from\s*"zod\/mini"/);
+    });
+
+    it("bundles zod for an installed plugin, whose zod need not be the host's", async () => {
+      const bundle = await buildFixture();
+      expect(bundle).not.toMatch(/from\s*"zod"/);
+      expect(bundle).not.toMatch(/from\s*"zod\/mini"/);
+    });
   });
 
   describe("SDK subpath imports", () => {
@@ -121,9 +179,9 @@ describe("plugin server build", () => {
       );
 
       const bundle = await readFile(jsPath, "utf8");
-      expect(bundle).toContain('from "@get-bb/plugin-sdk"');
+      expect(bundle).toMatch(/from\s*"@get-bb\/plugin-sdk"/);
       expect(bundle).not.toContain('"@get-bb/plugin-sdk/host"');
-      expect(bundle).toContain("resolveNativeRoots");
+      expect(bundle).toContain("resolveNativeRoots:");
     });
 
     it("names the missing SDK dependency when the plugin has no node_modules", async () => {

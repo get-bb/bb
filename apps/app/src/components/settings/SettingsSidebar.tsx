@@ -1,5 +1,4 @@
-import { type MouseEvent as ReactMouseEvent } from "react";
-import { PluginIcon } from "@/components/plugin/PluginIcon";
+import { lazy, Suspense, type MouseEvent as ReactMouseEvent } from "react";
 import {
   SectionSidebar,
   SectionSidebarIcon,
@@ -8,10 +7,15 @@ import {
   SectionSidebarRow,
 } from "@/components/sidebar/SectionSidebar";
 import { canOpenNativeScreen, shellOpenNative } from "@/lib/native-shell";
-import { getPluginConfigurationRoutePath } from "@/lib/route-paths";
 import { useSettingsNavState } from "./settings-nav";
 import type { SettingsNavState } from "./settings-nav";
 import { getSettingsSectionRoutePath } from "./settings-sections";
+
+const SettingsPluginsSection = lazy(() =>
+  import("./SettingsPluginsSection").then((module) => ({
+    default: module.SettingsPluginsSection,
+  })),
+);
 
 interface SettingsSidebarProps {
   onResizeMouseDown: (event: ReactMouseEvent<HTMLDivElement>) => void;
@@ -39,7 +43,6 @@ export function SettingsSidebarContent({
   testIdPrefix = "settings",
 }: SettingsSidebarContentProps) {
   const { activePluginId, activeSection, pluginEntries, sections } = navigation;
-  const hasPlugins = pluginEntries.length > 0;
 
   return (
     <SectionSidebar
@@ -65,29 +68,12 @@ export function SettingsSidebarContent({
             </SectionSidebarRow>
           ))}
       </div>
-      {hasPlugins ? (
-        <>
-          <div className="mt-4">
-            <SectionSidebarLabel>Plugins</SectionSidebarLabel>
-          </div>
-          <div className="mt-1 space-y-0.5">
-            {pluginEntries.map((entry) => (
-              <SectionSidebarRow
-                key={entry.id}
-                active={activePluginId === entry.id}
-                label={entry.label}
-                to={getPluginConfigurationRoutePath({ pluginId: entry.id })}
-              >
-                <PluginIcon
-                  pluginId={entry.id}
-                  icon={entry.icon}
-                  className="size-4 shrink-0"
-                />
-              </SectionSidebarRow>
-            ))}
-          </div>
-        </>
-      ) : null}
+      <Suspense fallback={<div className="h-20" aria-busy="true" />}>
+        <SettingsPluginsSection
+          activePluginId={activePluginId}
+          pluginEntries={pluginEntries}
+        />
+      </Suspense>
       {canOpenNativeScreen() ? (
         <>
           <div className="mt-4">

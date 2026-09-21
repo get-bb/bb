@@ -103,7 +103,7 @@ export function PluginOverviewMarkdown({ markdown }: { markdown: string }) {
   return (
     <div
       data-plugin-overview=""
-      className="max-w-prose break-words text-sm leading-relaxed text-muted-foreground"
+      className="break-words text-sm leading-relaxed text-muted-foreground"
     >
       <ReactMarkdown
         allowedElements={ALLOWED_ELEMENTS}
