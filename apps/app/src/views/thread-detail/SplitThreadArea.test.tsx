@@ -136,7 +136,14 @@ vi.mock("@/components/commands/AppCommandProvider", () => ({
   },
   useAppCommandShortcut: () => commandPresentationState.shortcut,
   useIsAppCommandModifierHeld: () => commandPresentationState.isModifierHeld,
-  useIndexedAppCommandHandlers: () => undefined,
+  useIndexedAppCommandHandlers: (
+    commands: readonly string[],
+    handler: (index: number) => boolean,
+  ) => {
+    commands.forEach((command, index) =>
+      commandHandlers.set(command, () => handler(index)),
+    );
+  },
 }));
 
 vi.mock("react-resizable-panels", async () => {
