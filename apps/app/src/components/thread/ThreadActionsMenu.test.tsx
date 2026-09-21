@@ -91,7 +91,7 @@ function renderCompact(children: ReactNode) {
 }
 
 function InlineRenameMenuHarness({ context = false }: { context?: boolean }) {
-  const { editor, isEditing, startEditing } = useSidebarRename({
+  const rename = useSidebarRename({
     kind: "thread",
     id: thread.id,
     name: thread.title ?? "Thread",
@@ -103,17 +103,22 @@ function InlineRenameMenuHarness({ context = false }: { context?: boolean }) {
       <button type="button" data-sidebar-rename-anchor="">
         Open thread
       </button>
-      {editor ?? <span>{thread.title}</span>}
+      {rename.editor ?? <span>{thread.title}</span>}
       {!context && (
-        <ThreadActionsMenu thread={thread} onRename={startEditing} />
+        <ThreadActionsMenu
+          thread={thread}
+          onRename={rename.startEditingFromMenu}
+          onCloseAutoFocus={rename.onCloseAutoFocus}
+        />
       )}
     </div>
   );
   return context ? (
     <ThreadActionsContextMenu
       thread={thread}
-      onRename={startEditing}
-      disabled={isEditing}
+      onRename={rename.startEditingFromMenu}
+      onCloseAutoFocus={rename.onCloseAutoFocus}
+      disabled={rename.isEditing}
     >
       {row}
     </ThreadActionsContextMenu>
@@ -154,44 +159,30 @@ describe("ThreadActionsMenu", () => {
     });
   });
 
-  it.each([false, true])(
-    "hands keyboard focus from the wide menu to inline rename (context: %s)",
-    async (context) => {
-      renderWide(<InlineRenameMenuHarness context={context} />);
+  it.each([
+    { compact: false, context: false },
+    { compact: false, context: true },
+    { compact: true, context: false },
+    { compact: true, context: true },
+  ])(
+    "hands focus to inline rename ($compact, $context)",
+    async ({ compact, context }) => {
+      (compact ? renderCompact : renderWide)(
+        <InlineRenameMenuHarness context={context} />,
+      );
       if (context) {
         fireEvent.contextMenu(screen.getByTestId("thread-row"));
       } else {
-        fireEvent.pointerDown(
-          screen.getByRole("button", { name: "Thread actions" }),
-          { button: 0 },
-        );
+        const trigger = screen.getByRole("button", { name: "Thread actions" });
+        if (compact) fireEvent.click(trigger);
+        else fireEvent.pointerDown(trigger, { button: 0 });
       }
-
-      fireEvent.keyDown(screen.getByRole("menuitem", { name: "Rename" }), {
-        key: "Enter",
-      });
-
+      const item = await screen.findByRole("menuitem", { name: "Rename" });
+      if (compact) fireEvent.click(item);
+      else fireEvent.keyDown(item, { key: "Enter" });
       const input = await screen.findByRole("textbox", { name: "Thread name" });
       await waitFor(() => expect(document.activeElement).toBe(input));
       expect(input).toHaveProperty("value", "Move me");
-      expect(threadActions.requestRename).not.toHaveBeenCalled();
-    },
-  );
-
-  it.each([false, true])(
-    "hands focus from the compact drawer to inline rename (context: %s)",
-    async (context) => {
-      renderCompact(<InlineRenameMenuHarness context={context} />);
-      if (context) {
-        fireEvent.contextMenu(screen.getByTestId("thread-row"));
-      } else {
-        fireEvent.click(screen.getByRole("button", { name: "Thread actions" }));
-      }
-
-      fireEvent.click(await screen.findByRole("menuitem", { name: "Rename" }));
-
-      const input = await screen.findByRole("textbox", { name: "Thread name" });
-      await waitFor(() => expect(document.activeElement).toBe(input));
       expect(threadActions.requestRename).not.toHaveBeenCalled();
     },
   );

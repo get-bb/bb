@@ -268,7 +268,7 @@ function getThreadSortTitle(
 ): string {
   return getThreadDisplayTitle(
     rename?.kind === "thread" && rename.id === thread.id
-      ? { ...thread, title: rename.initialName }
+      ? { ...thread, title: rename.name }
       : thread,
   );
 }
@@ -310,7 +310,7 @@ function getProjectThreadItemAlphaLabel(
       break;
     case "section":
       return rename?.kind === "section" && rename.id === item.group.id
-        ? rename.initialName
+        ? rename.name
         : item.group.name;
   }
   return resources ? resolveThreadTitleDisplayText(label, resources) : label;
@@ -1109,12 +1109,14 @@ interface MachineModeSectionsProps
   threadsSection: Omit<BuiltInSidebarSectionOptions, "content">;
 }
 
-function RenamableMachineSidebarSection({
+function MachineSidebarSection({
   hostId,
+  canRename,
   renderActions,
   ...props
 }: ComponentProps<typeof SortableSidebarSection> & {
   hostId: string;
+  canRename: boolean;
   renderActions: MachineModeSectionsProps["renderSectionDisplayOptions"];
 }) {
   const { mutateAsync: renameHost } = useRenameHost();
@@ -1127,6 +1129,7 @@ function RenamableMachineSidebarSection({
     maxLength: 100,
     onSave: (name) => renameHost({ hostId, name }),
   });
+  if (!canRename) return <SortableSidebarSection {...props} />;
   return (
     <SortableSidebarSection
       {...props}
@@ -1376,48 +1379,43 @@ export function MachineModeSections({
           if (builtInSection !== undefined) return builtInSection;
           const section = machineSectionsById.get(sectionId);
           if (!section) return null;
-          const sectionProps: ComponentProps<typeof SortableSidebarSection> = {
-            id: sectionId,
-            label: section.label,
-            disabled: reorderDisabled,
-            actions: renderSectionDisplayOptions(sectionId, section.label),
-            actionsOpen: isSectionDisplayOptionsOpen(sectionId),
-            actionsMobileAlways: true,
-            collapsedActivity: section.activity,
-            collapsedThreads: section.threadListState.threads,
-            collapseControl: {
-              isCollapsed: collapsedMachineKeys.has(section.key),
-              onToggleCollapsed: () => toggleMachineCollapsed(section.key),
-            },
-            consumeClickSuppression,
-            children: (
-              <ProjectThreadTree
-                dndParentKey={sectionId}
-                rootItems={machineItemsBySectionId.get(sectionId)}
-                threadListState={section.threadListState}
-                progressiveDisclosureEnabled={progressiveDisclosureEnabled}
-                compareThreads={compareThreads}
-                variant="section"
-                selectedThreadId={selectedThreadId}
-                collapsedThreadIds={collapsedThreadIds}
-                collapsedEnvironmentIds={collapsedEnvironmentIds}
-                onProjectSelect={onProjectSelect}
-                onToggleThreadCollapsed={onToggleThreadCollapsed}
-                onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
-              />
-            ),
-          };
           return (
             <ThreadListVisibilityGroupScope key={sectionId} id={sectionId}>
-              {hosts?.some((host) => host.id === section.key) ? (
-                <RenamableMachineSidebarSection
-                  {...sectionProps}
-                  hostId={section.key}
-                  renderActions={renderSectionDisplayOptions}
+              <MachineSidebarSection
+                hostId={section.key}
+                canRename={Boolean(
+                  hosts?.some((host) => host.id === section.key),
+                )}
+                renderActions={renderSectionDisplayOptions}
+                id={sectionId}
+                label={section.label}
+                disabled={reorderDisabled}
+                actions={renderSectionDisplayOptions(sectionId, section.label)}
+                actionsOpen={isSectionDisplayOptionsOpen(sectionId)}
+                actionsMobileAlways
+                collapsedActivity={section.activity}
+                collapsedThreads={section.threadListState.threads}
+                collapseControl={{
+                  isCollapsed: collapsedMachineKeys.has(section.key),
+                  onToggleCollapsed: () => toggleMachineCollapsed(section.key),
+                }}
+                consumeClickSuppression={consumeClickSuppression}
+              >
+                <ProjectThreadTree
+                  dndParentKey={sectionId}
+                  rootItems={machineItemsBySectionId.get(sectionId)}
+                  threadListState={section.threadListState}
+                  progressiveDisclosureEnabled={progressiveDisclosureEnabled}
+                  compareThreads={compareThreads}
+                  variant="section"
+                  selectedThreadId={selectedThreadId}
+                  collapsedThreadIds={collapsedThreadIds}
+                  collapsedEnvironmentIds={collapsedEnvironmentIds}
+                  onProjectSelect={onProjectSelect}
+                  onToggleThreadCollapsed={onToggleThreadCollapsed}
+                  onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
                 />
-              ) : (
-                <SortableSidebarSection {...sectionProps} />
-              )}
+              </MachineSidebarSection>
             </ThreadListVisibilityGroupScope>
           );
         }}

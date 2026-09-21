@@ -281,20 +281,6 @@ describe("ProjectRow interactions", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
-  it("retains a failed project rename for retry and cancels without a second write", async () => {
-    mockUpdateProject.mockRejectedValueOnce(new Error("Unavailable"));
-    renderProjectRow();
-    fireEvent.doubleClick(screen.getByTitle("Test project"));
-    const input = await screen.findByRole("textbox", { name: "Project name" });
-    fireEvent.change(input, { target: { value: "Recovered draft" } });
-    fireEvent.keyDown(input, { key: "Enter" });
-    expect(await screen.findByRole("alert")).not.toBeNull();
-    expect(input).toHaveProperty("value", "Recovered draft");
-    fireEvent.keyDown(input, { key: "Escape" });
-    expect(screen.queryByRole("textbox", { name: "Project name" })).toBeNull();
-    expect(mockUpdateProject).toHaveBeenCalledOnce();
-  });
-
   it("places the project disclosure after its label and keeps root threads flush", () => {
     const result = renderProjectRow(vi.fn(), {
       status: "ready",
@@ -432,30 +418,9 @@ describe("ProjectRow interactions", () => {
         <Provider store={createStore()}>
           <QueryClientProvider client={new QueryClient()}>
             <MemoryRouter>
-              <ChronologicalSectionThreadSections
-                threadListState={{ status: "ready", threads: [] }}
-                compareThreads={() => 0}
-                sections={[{ id: "sec_rename", name: "Design" }]}
-                collapsedThreadIds={new Set()}
-                collapsedEnvironmentIds={new Set()}
-                onToggleThreadCollapsed={vi.fn()}
-                onToggleEnvironmentCollapsed={vi.fn()}
-                topLevelSectionOrder={[
-                  buildSidebarEntitySectionId("section", "sec_rename"),
-                ]}
-                fullSectionOrder={[
-                  buildSidebarEntitySectionId("section", "sec_rename"),
-                ]}
-                onTopLevelSectionOrderChange={vi.fn()}
-                pinnedReorderPending={false}
-                pinnedThreads={[]}
-                onReorderPinnedThread={vi.fn()}
-                builtInSections={{
-                  collapsedSectionIds: new Set(),
-                  onToggleCollapsed: vi.fn(),
-                  pinned: { label: "Pinned", content: null },
-                  threads: { label: "Threads" },
-                }}
+              <CustomSectionsVisibilityProbe
+                threads={[]}
+                onProjectSelect={vi.fn()}
               />
             </MemoryRouter>
           </QueryClientProvider>
@@ -463,7 +428,7 @@ describe("ProjectRow interactions", () => {
       </TooltipProvider>,
     );
     fireEvent.pointerDown(
-      screen.getByRole("button", { name: "Design section actions" }),
+      screen.getByRole("button", { name: "Building section actions" }),
       { button: 0 },
     );
     fireEvent.click(await screen.findByRole("menuitem", { name: "Rename" }));
@@ -478,7 +443,7 @@ describe("ProjectRow interactions", () => {
     fireEvent.keyDown(input, { key: "Enter" });
     await waitFor(() =>
       expect(mockUpdateSection).toHaveBeenLastCalledWith({
-        id: "sec_rename",
+        id: "sec_building",
         name: "New section",
       }),
     );

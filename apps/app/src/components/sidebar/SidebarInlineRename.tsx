@@ -28,10 +28,8 @@ interface SidebarRenameArgs {
 
 export interface RenameSession extends SidebarRenameArgs {
   ownerKey: string;
-  version: number;
-  initialName: string;
   draft: string;
-  isPending: boolean;
+  pending: Promise<boolean> | null;
   error: string | null;
   cannotRetry: boolean;
 }
@@ -39,21 +37,17 @@ export interface RenameSession extends SidebarRenameArgs {
 function useRenameController() {
   const [session, setSession] = useState<RenameSession | null>(null);
   const sessionRef = useRef<RenameSession | null>(null);
-  const versionRef = useRef(0);
   const startRequestRef = useRef(0);
-  const pendingSaveRef = useRef<Promise<boolean> | null>(null);
   const update = useCallback((next: RenameSession | null) => {
     sessionRef.current = next;
     setSession(next);
   }, []);
 
   const save = useCallback(
-    (version: number, clear = false): Promise<boolean> => {
+    (clear = false): Promise<boolean> => {
       const current = sessionRef.current;
-      if (!current || current.version !== version)
-        return Promise.resolve(false);
-      if (current.isPending)
-        return pendingSaveRef.current ?? Promise.resolve(false);
+      if (!current) return Promise.resolve(false);
+      if (current.pending) return current.pending;
       if (current.cannotRetry) return Promise.resolve(false);
       const value = current.draft.trim();
       const error = !value
@@ -66,35 +60,31 @@ function useRenameController() {
         return Promise.resolve(false);
       }
       if (
-        (!clear && value === current.initialName.trim()) ||
-        (clear && !current.initialName)
+        (!clear && value === current.name.trim()) ||
+        (clear && !current.name)
       ) {
         update(null);
         return Promise.resolve(true);
       }
       if (clear && !current.onClear) return Promise.resolve(false);
-      update({ ...current, isPending: true, error: null });
       const pending = Promise.resolve()
         .then(() => (clear ? current.onClear?.() : current.onSave(value)))
         .then(
           () => {
-            if (sessionRef.current?.version !== version) return false;
             update(null);
             return true;
           },
           async (error: unknown) => {
             const { renameError } = await loadRenameEditor();
-            if (sessionRef.current?.version === version) {
-              update({
-                ...current,
-                isPending: false,
-                ...renameError(error, current.kind),
-              });
-            }
+            update({
+              ...current,
+              pending: null,
+              ...renameError(error, current.kind),
+            });
             return false;
           },
         );
-      pendingSaveRef.current = pending;
+      update({ ...current, pending, error: null });
       return pending;
     },
     [update],
@@ -110,14 +100,12 @@ function useRenameController() {
         current.id === args.id
       )
         return;
-      if (current && !(await save(current.version))) return;
+      if (current && !(await save())) return;
       if (request !== startRequestRef.current) return;
       update({
         ...args,
-        version: ++versionRef.current,
-        initialName: args.name,
         draft: args.name,
-        isPending: false,
+        pending: null,
         error: null,
         cannotRetry: false,
       });
@@ -125,27 +113,24 @@ function useRenameController() {
     [save, update],
   );
 
-  const change = useCallback(
-    (version: number, draft: string) => {
+  const cancel = useCallback(() => {
+    if (sessionRef.current?.pending) return;
+    ++startRequestRef.current;
+    update(null);
+  }, [update]);
+
+  return {
+    session,
+    start,
+    save,
+    cancel,
+    change: (draft: string) => {
       const current = sessionRef.current;
-      if (current?.version === version && !current.isPending) {
+      if (current && !current.pending) {
         update({ ...current, draft, error: null, cannotRetry: false });
       }
     },
-    [update],
-  );
-
-  const cancel = useCallback(
-    (version: number) => {
-      const current = sessionRef.current;
-      if (current?.version !== version || current.isPending) return;
-      ++startRequestRef.current;
-      update(null);
-    },
-    [update],
-  );
-
-  return { session, start, save, change, cancel };
+  };
 }
 
 export type RenameController = ReturnType<typeof useRenameController>;
@@ -161,15 +146,7 @@ export function SidebarRenameProvider({ children }: { children: ReactNode }) {
 }
 
 export function useSidebarRenameState() {
-  const session = useContext(SidebarRenameContext)?.session;
-  return session
-    ? {
-        kind: session.kind,
-        id: session.id,
-        initialName: session.initialName,
-        isPending: session.isPending,
-      }
-    : null;
+  return useContext(SidebarRenameContext)?.session ?? null;
 }
 
 export function useSidebarRename(args: SidebarRenameArgs) {
@@ -195,7 +172,7 @@ export function useSidebarRename(args: SidebarRenameArgs) {
       session &&
       (session.kind !== args.kind || session.id !== args.id)
     ) {
-      cancel(session.version);
+      cancel();
     }
   }, [args.id, args.kind, cancel, session, shared]);
 
@@ -204,19 +181,18 @@ export function useSidebarRename(args: SidebarRenameArgs) {
       <Suspense
         fallback={
           <span role="status" className="min-w-0 flex-1 truncate">
-            {session.initialName}
+            {session.name}
           </span>
         }
       >
         <SidebarRenameEditor
-          key={session.version}
+          key={session.ownerKey}
           session={session}
           controller={controller}
         />
       </Suspense>
     ) : null,
     isEditing,
-    isPending: isEditing && session.isPending,
     startEditing,
     startEditingFromMenu: () => {
       if (compact) startEditing();

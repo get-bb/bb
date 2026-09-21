@@ -37,6 +37,7 @@ export default function SidebarRenameEditor({
   session: RenameSession;
   controller: RenameController;
 }) {
+  const isPending = Boolean(session.pending);
   const inputRef = useRef<HTMLInputElement>(null);
   const groupRef = useRef<HTMLSpanElement>(null);
   const anchorRef = useRef<HTMLElement | null>(null);
@@ -73,13 +74,13 @@ export default function SidebarRenameEditor({
 
   const submit = async (restore: boolean, clear = false) => {
     restoreFocusRef.current = restore;
-    const saved = await controller.save(session.version, clear);
+    const saved = await controller.save(clear);
     if (saved && restoreFocusRef.current) restoreFocus();
   };
 
   const cancel = (restore: boolean) => {
-    if (session.isPending) return;
-    controller.cancel(session.version);
+    if (isPending) return;
+    controller.cancel();
     if (restore) restoreFocus();
   };
 
@@ -88,7 +89,7 @@ export default function SidebarRenameEditor({
       ref={groupRef}
       data-sidebar-rename-editor=""
       className="relative z-50 flex min-w-0 flex-1 items-center gap-1"
-      aria-busy={session.isPending}
+      aria-busy={isPending}
       onBlur={(event) => {
         if (
           openingRef.current ||
@@ -96,7 +97,7 @@ export default function SidebarRenameEditor({
         )
           return;
         restoreFocusRef.current = false;
-        if (!session.isPending) void submit(false);
+        if (!isPending) void submit(false);
       }}
       onClick={(event) => {
         event.preventDefault();
@@ -137,10 +138,8 @@ export default function SidebarRenameEditor({
         spellCheck={false}
         value={session.draft}
         placeholder={session.placeholder}
-        readOnly={session.isPending || session.cannotRetry}
-        onChange={(event) =>
-          controller.change(session.version, event.target.value)
-        }
+        readOnly={isPending || session.cannotRetry}
+        onChange={(event) => controller.change(event.target.value)}
         onCompositionStart={() => {
           composingRef.current = true;
         }}
@@ -148,7 +147,7 @@ export default function SidebarRenameEditor({
           composingRef.current = false;
         }}
       />
-      {session.isPending && (
+      {isPending && (
         <span
           role="status"
           aria-label="Saving name"
@@ -160,11 +159,11 @@ export default function SidebarRenameEditor({
           />
         </span>
       )}
-      {session.onClear && session.initialName && (
+      {session.onClear && session.name && (
         <button
           type="button"
           aria-label="Clear custom name"
-          disabled={session.isPending || session.cannotRetry}
+          disabled={isPending || session.cannotRetry}
           className={cn(
             SIDEBAR_CONTROL_BUTTON_CLASS,
             "inline-flex items-center justify-center disabled:opacity-50",

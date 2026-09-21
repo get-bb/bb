@@ -13,7 +13,6 @@ import { BbHttpError } from "@bb/sdk/browser";
 import {
   SidebarRenameProvider,
   useSidebarRename,
-  useSidebarRenameState,
 } from "./SidebarInlineRename";
 
 afterEach(cleanup);
@@ -51,11 +50,6 @@ function RenameRow({
       {rename.isEditing ? rename.editor : <span>{name}</span>}
     </div>
   );
-}
-
-function SessionState() {
-  const state = useSidebarRenameState();
-  return <output aria-label="Active rename">{state?.id ?? "none"}</output>;
 }
 
 function deferred() {
@@ -231,26 +225,12 @@ describe("sidebar inline rename", () => {
     expect(document.activeElement).toBe(destination);
   });
 
-  it("preserves a draft through external updates and displays the latest name after cancel", async () => {
-    const onSave = vi.fn().mockResolvedValue(undefined);
-    const { rerender } = render(<RenameRow onSave={onSave} />);
-    await start("My draft");
-    rerender(<RenameRow name="Changed elsewhere" onSave={onSave} />);
-    expect((screen.getByRole("textbox") as HTMLInputElement).value).toBe(
-      "My draft",
-    );
-    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Escape" });
-    expect(screen.getByText("Changed elsewhere")).not.toBeNull();
-    expect(onSave).not.toHaveBeenCalled();
-  });
-
   it("keeps an invalid active draft when another row asks to rename, then saves before switching", async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
     render(
       <SidebarRenameProvider>
         <RenameRow onSave={onSave} />
         <RenameRow id="second" onSave={onSave} />
-        <SessionState />
       </SidebarRenameProvider>,
     );
     const input = await start(" ");
@@ -265,26 +245,24 @@ describe("sidebar inline rename", () => {
       ).not.toBeNull(),
     );
     expect(onSave).toHaveBeenCalledExactlyOnceWith("Finish first");
-    expect(screen.getByLabelText("Active rename").textContent).toBe("second");
   });
 
-  it("preserves the provider draft when its owning row unmounts and remounts", async () => {
+  it("retains a draft through external updates and row remounts, then cancels to the current name", async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
-    const { rerender } = render(
+    const row = (name = "Original name") => (
       <SidebarRenameProvider>
-        <RenameRow onSave={onSave} />
-      </SidebarRenameProvider>,
+        <RenameRow name={name} onSave={onSave} />
+      </SidebarRenameProvider>
     );
+    const { rerender } = render(row());
     await start("Keep my draft");
+    rerender(row("Changed elsewhere"));
+    expect(screen.getByRole("textbox")).toHaveProperty("value", "Keep my draft");
     rerender(<SidebarRenameProvider>{null}</SidebarRenameProvider>);
-    rerender(
-      <SidebarRenameProvider>
-        <RenameRow onSave={onSave} />
-      </SidebarRenameProvider>,
-    );
-    expect((screen.getByRole("textbox") as HTMLInputElement).value).toBe(
-      "Keep my draft",
-    );
+    rerender(row("Changed elsewhere"));
+    expect(screen.getByRole("textbox")).toHaveProperty("value", "Keep my draft");
+    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Escape" });
+    expect(screen.getByText("Changed elsewhere")).not.toBeNull();
     expect(onSave).not.toHaveBeenCalled();
   });
 

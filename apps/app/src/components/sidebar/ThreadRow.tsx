@@ -300,13 +300,14 @@ function ThreadRowComponent({
     (nextTitle: string) => renameThreadAsync(thread.id, nextTitle),
     [renameThreadAsync, thread.id],
   );
-  const { editor, isEditing, startEditing } = useSidebarRename({
+  const rename = useSidebarRename({
     kind: "thread",
     id: thread.id,
     name: threadTitle,
     label: "Thread name",
     onSave: handleRename,
   });
+  const { editor, isEditing, startEditing } = rename;
   const startTitleEditing = useCallback(
     (event: { preventDefault: () => void; stopPropagation: () => void }) => {
       event.preventDefault();
@@ -616,7 +617,8 @@ function ThreadRowComponent({
                     triggerClassName={SIDEBAR_CONTROL_BUTTON_CLASS}
                     onOpenInSplit={splitAvailable ? openInSplit : undefined}
                     onOpenChange={setIsDropdownActionsOpen}
-                    onRename={startEditing}
+                    onRename={rename.startEditingFromMenu}
+                    onCloseAutoFocus={rename.onCloseAutoFocus}
                   />
                 </SidebarRowControls>
               </div>
@@ -648,7 +650,8 @@ function ThreadRowComponent({
       thread={thread}
       onOpenInSplit={splitAvailable ? openInSplit : undefined}
       onOpenChange={setIsContextActionsOpen}
-      onRename={startEditing}
+      onRename={rename.startEditingFromMenu}
+      onCloseAutoFocus={rename.onCloseAutoFocus}
       disabled={isEditing}
     >
       {row}

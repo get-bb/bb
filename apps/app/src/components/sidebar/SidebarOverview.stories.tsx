@@ -325,16 +325,15 @@ const renameSidebarNavigation: SidebarBootstrapResponse = {
 
 function RenameSidebar() {
   const [ready, setReady] = useState(false);
-  const [failNext, setFailNext] = useState(false);
-  const failureRef = useRef(false);
+  const failureRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     const cleanup = installSidebarRenameStoryApi({
       navigation: renameSidebarNavigation,
       hosts: machineStoryHosts,
       failNextSave: () => {
-        const fail = failureRef.current;
-        failureRef.current = false;
-        setFailNext(false);
+        const input = failureRef.current;
+        const fail = input?.checked ?? false;
+        if (input) input.checked = false;
         return fail;
       },
     });
@@ -345,14 +344,7 @@ function RenameSidebar() {
     <div className="flex max-w-80 flex-col gap-3">
       <div className="flex flex-wrap items-center gap-3 text-sm">
         <label className="inline-flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={failNext}
-            onChange={(event) => {
-              failureRef.current = event.target.checked;
-              setFailNext(event.target.checked);
-            }}
-          />
+          <input type="checkbox" ref={failureRef} />
           Fail next save
         </label>
       </div>
