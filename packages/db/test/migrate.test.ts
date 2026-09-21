@@ -736,7 +736,16 @@ function dropMarketplaceStatsColumn(db: DbConnection): void {
  * nothing here. Every rewind that clears 0110's journal row also clears
  * 0108's, so the replay recreates the table before 0110 drops it again.
  */
+function dropQueuedMessageSearchTriggers(db: DbConnection): void {
+  db.$client.exec(`
+    DROP TRIGGER IF EXISTS queued_thread_messages_search_insert;
+    DROP TRIGGER IF EXISTS queued_thread_messages_search_update;
+    DROP TRIGGER IF EXISTS queued_thread_messages_search_delete;
+  `);
+}
+
 function rewindEnvironmentProvisioningMigration(db: DbConnection): void {
+  dropQueuedMessageSearchTriggers(db);
   db.$client.exec("DROP TRIGGER IF EXISTS threads_lifecycle_owner_insert");
   db.$client.exec("DROP TRIGGER IF EXISTS threads_lifecycle_owner_immutable");
   db.$client.exec("DROP INDEX IF EXISTS threads_lifecycle_owner_idx");
@@ -858,6 +867,7 @@ function rewindEnvironmentRowFactsMigration(db: DbConnection): void {
 }
 
 function rewindMachineProvidersMigration(db: DbConnection): void {
+  dropQueuedMessageSearchTriggers(db);
   const queuedDispatchOrigin = db.$client
     .prepare<[], TableInfoRow>("PRAGMA table_info(queued_thread_messages)")
     .all();
