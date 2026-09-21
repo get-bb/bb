@@ -1225,7 +1225,7 @@ describe("BB Official plugin detail routing", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Back to details" }));
     expect(
-      await screen.findByRole("heading", { name: "Details", exact: true }),
+      await screen.findByRole("heading", { name: "Details" }),
     ).toBeTruthy();
     expect(screen.getByTestId("route-path").textContent).toBe(
       "/settings/plugins/github",
@@ -1235,7 +1235,7 @@ describe("BB Official plugin detail routing", () => {
     );
 
     fireEvent.click(
-      screen.getByRole("button", { name: "Configure", exact: true }),
+      screen.getByRole("button", { name: "Configure" }),
     );
     expect(await screen.findByLabelText("Repository")).toHaveProperty(
       "value",
@@ -1253,7 +1253,7 @@ describe("BB Official plugin detail routing", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Back to details" }));
     expect(
-      await screen.findByRole("heading", { name: "Details", exact: true }),
+      await screen.findByRole("heading", { name: "Details" }),
     ).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Browser back" }));
     expect(await screen.findByLabelText("Repository")).toHaveProperty(
