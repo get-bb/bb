@@ -741,6 +741,8 @@ function dropQueuedMessageSearchTriggers(db: DbConnection): void {
     DROP TRIGGER IF EXISTS queued_thread_messages_search_insert;
     DROP TRIGGER IF EXISTS queued_thread_messages_search_update;
     DROP TRIGGER IF EXISTS queued_thread_messages_search_delete;
+    DELETE FROM thread_search_segments
+    WHERE source_kind = 'user_message' AND source_key LIKE 'queued:%';
   `);
 }
 
