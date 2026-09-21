@@ -1,3 +1,4 @@
+import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { Icon } from "@bb/shared-ui/icon";
 import {
   DropdownMenuGroup,
@@ -6,26 +7,39 @@ import {
   DropdownMenuSeparator,
 } from "@bb/shared-ui/dropdown-menu";
 import { ThreadLifecycleFilterItems } from "@/components/thread/ThreadLifecycleFilter";
-import type { SidebarViewItemsProps } from "./SidebarHeaderControls";
+import {
+  sidebarOrganizationModeAtom,
+  sidebarChronologicalSortAtom,
+  sidebarSortDirectionAtom,
+  sidebarThreadLifecyclesAtom,
+  sidebarGroupThreadsByEnvironmentAtom,
+  sidebarEnvironmentGroupingAtom,
+} from "./sidebarCollapsedAtoms";
+
+const SIDEBAR_ORGANIZE_OPTIONS = [
+  { label: "By project", mode: "project" },
+  { label: "By machine", mode: "machine" },
+  { label: "Custom", mode: "chronological" },
+] as const;
+
+const SIDEBAR_SORT_OPTIONS = [
+  { label: "Updated at", sort: "updated", direction: "descending" },
+  { label: "Created at", sort: "created", direction: "descending" },
+  { label: "Alphabetical", sort: "alpha", direction: "ascending" },
+] as const;
 
 export function SidebarViewItems({
   page,
-  settings,
-  organizeOptions,
-  sortOptions,
-}: SidebarViewItemsProps) {
-  const {
-    lifecycles,
-    setLifecycles,
-    organization,
-    setOrganization,
-    groupByEnvironment,
-    setEnvironmentGrouping,
-    setSort,
-    savedDirection,
-    setDirection,
-    selectedSort,
-  } = settings;
+}: {
+  page: "organize" | "sort" | "filter";
+}) {
+  const [lifecycles, setLifecycles] = useAtom(sidebarThreadLifecyclesAtom);
+  const [organization, setOrganization] = useAtom(sidebarOrganizationModeAtom);
+  const [sort, setSort] = useAtom(sidebarChronologicalSortAtom);
+  const [savedDirection, setDirection] = useAtom(sidebarSortDirectionAtom);
+  const setEnvironmentGrouping = useSetAtom(sidebarEnvironmentGroupingAtom);
+  const groupByEnvironment = useAtomValue(sidebarGroupThreadsByEnvironmentAtom);
+  const selectedSort = sort === "none" ? "updated" : sort;
   if (page === "filter") {
     return (
       <DropdownMenuGroup aria-label="Thread lifecycle">
@@ -41,7 +55,7 @@ export function SidebarViewItems({
       <>
         <DropdownMenuGroup aria-label="Sections">
           <DropdownMenuLabel>Sections</DropdownMenuLabel>
-          {organizeOptions.map((option) => (
+          {SIDEBAR_ORGANIZE_OPTIONS.map((option) => (
             <DropdownMenuItem
               key={option.mode}
               role="menuitemradio"
@@ -82,7 +96,7 @@ export function SidebarViewItems({
   }
   return (
     <DropdownMenuGroup aria-label="Sort">
-      {sortOptions.map((option) => {
+      {SIDEBAR_SORT_OPTIONS.map((option) => {
         const selected = selectedSort === option.sort;
         const direction =
           savedDirection === "default" ? option.direction : savedDirection;
