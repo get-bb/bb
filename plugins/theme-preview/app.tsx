@@ -35,6 +35,7 @@ import {
 } from "@bb/shared-ui/hover-card";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { Input as BbInput } from "@bb/shared-ui/input";
+import { PluginCompactIconMask } from "@bb/shared-ui/plugin-icon";
 import {
   Popover,
   PopoverContent,
@@ -115,6 +116,7 @@ const VIEWS = MOCK_VIEWS.map((view) => view.id);
 type View = (typeof MOCK_VIEWS)[number]["id"];
 const VIEW_LABEL = Object.fromEntries(MOCK_VIEWS.map((view) => [view.id, view.label])) as Record<View, string>;
 const STUDIO_MAX_WIDTH = 1600;
+const MOCK_PROVIDER_ICON_URL = "/api/v1/plugins/provider-claude-code/assets/icon";
 // Anchor scrolling must clear the sticky header, or an area's heading lands
 // underneath it. The offset is measured from the header itself (it wraps to
 // two rows on the mobile band), never authored.
@@ -288,10 +290,12 @@ function Composer({ focused = false, mobile = false, empty = false }: { focused?
     >
       <div className={mobile ? "text-base" : "text-sm"} style={{ color: v("muted-foreground"), minHeight: mobile ? 48 : 20 }}>{empty ? "Ask anything…" : "Ask for a follow-up."}</div>
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        {mobile ? <Icon name="Plus" className="size-5 shrink-0" /> : null}
+        <Icon name="Plus" className="size-4 shrink-0" />
+        <PluginCompactIconMask url={MOCK_PROVIDER_ICON_URL} className="size-4" />
         <span className={mobile ? "text-sm" : "text-xs"} style={{ color: v("muted-foreground") }}>{mobile ? "Fable 5" : "claude-fable-5"}</span>
         <div style={{ flex: 1 }} />
-        <div style={{ width: mobile ? 36 : 26, height: mobile ? 36 : 26, borderRadius: 8, background: v("muted"), color: v("muted-foreground"), display: "grid", placeItems: "center", fontSize: 12 }}>↑</div>
+        <Icon name="Mic" className="size-4 shrink-0" />
+        <div style={{ width: mobile ? 36 : 26, height: mobile ? 36 : 26, borderRadius: 8, background: v("muted"), color: v("muted-foreground"), display: "grid", placeItems: "center" }}><Icon name="CornerDownLeft" className="size-4" /></div>
       </div>
     </div>
   );
@@ -655,7 +659,7 @@ function MobileFrame({ view, themeName, mode }: { view: View; themeName: string;
         {view === "settings" ? <SettingsPage narrow themeName={themeName} mode={mode} /> : view === "new" ? (
           <div className="flex min-h-0 flex-1 flex-col justify-end gap-4 p-4">
             <div className="text-xs text-subtle-foreground">Recent threads</div>
-            {["Endless theme family", "Specimen sheets", "Release checklist"].map((title) => <div key={title} className="flex items-center gap-3 rounded-md py-2 text-sm"><Icon name="MessageSquare" className="size-5 shrink-0" /><span className="truncate">{title}</span></div>)}
+            {["Endless theme family", "Specimen sheets", "Release checklist"].map((title) => <div key={title} className="flex items-center gap-3 rounded-md py-2 text-sm"><span className="flex size-7 shrink-0 items-center justify-center rounded-md border border-border-seam bg-surface-raised"><PluginCompactIconMask url={MOCK_PROVIDER_ICON_URL} className="size-4" /></span><span className="truncate">{title}</span></div>)}
             <Composer mobile empty />
           </div>
         ) : <Thread narrow mobile />}
@@ -1700,16 +1704,15 @@ function PreviewPage({ subPath }: { subPath: string }) {
     <div ref={rootRef} data-tp-root data-tp-band={layout.band} style={{ height: "100%", overflowY: "auto", overflowX: "hidden", background: v("canvas", v("background")), color: v("foreground"), fontFamily: SANS, letterSpacing: v("tracking-normal", "0em") }}>
       <div ref={headerRef} style={{ position: "sticky", top: 0, zIndex: 20, borderBottom: `1px solid ${v("border-seam", v("border"))}`, background: v("canvas", v("background")) }}>
         <div data-tp-header-inner="" style={{ width: "100%", maxWidth: STUDIO_MAX_WIDTH, margin: "0 auto", boxSizing: "border-box", display: "flex", alignItems: "center", flexWrap: "wrap", rowGap: space(2), gap: space(2), padding: `${space(3)} ${contentInset}px` }}>
-          <Tabs className={cn("min-w-0", mobile && "w-full")} value={view} onValueChange={(next) => navigate.toPluginPanel("preview", { subPath: next })}>
-            <TabsList data-tp-view-control="" aria-label="Preview view" className={cn(mobile && "w-full")}>
+          <Tabs className={cn("min-w-0 flex-1", mobile && "basis-full")} value={view} onValueChange={(next) => navigate.toPluginPanel("preview", { subPath: next })}>
+            <TabsList data-tp-view-control="" aria-label="Preview view" className="grid w-full grid-cols-4">
               {VIEWS.map((item) => (
-                <TabsTrigger key={item} value={item} className={cn("cursor-pointer", mobile && "flex-1")}>
+                <TabsTrigger key={item} value={item} className="min-w-0 cursor-pointer px-2">
                   {VIEW_LABEL[item]}
                 </TabsTrigger>
               ))}
             </TabsList>
           </Tabs>
-          {mobile ? null : <div style={{ flex: 1 }} />}
           {error ? <span style={{ fontSize: 12, color: v("destructive-text", v("destructive")) }}>{error}</span> : null}
           <div style={{ flex: mobile ? "1 1 100%" : "0 1 auto", minWidth: 0, display: "flex", alignItems: "flex-start", justifyContent: "flex-end", gap: space(1) }}>
             <ThemePicker

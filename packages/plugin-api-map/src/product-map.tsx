@@ -517,6 +517,8 @@ export function ProductMap({
   const slideRefs = useRef<Array<HTMLDivElement | null>>([]);
   const pageListRef = useRef<HTMLDivElement>(null);
   const pageButtonRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const touchStart = useRef<{ x: number; y: number } | null>(null);
+  const suppressClickUntil = useRef(0);
   const card = useSurfaceCard();
   const [hoverId, setHoverId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -551,6 +553,7 @@ export function ProductMap({
   const stage = useStageHeight(index, slideRefs);
 
   useEffect(() => {
+    if (viewportMobile) return;
     const list = pageListRef.current;
     const button = pageButtonRefs.current[index];
     if (!list || !button) return;
@@ -560,13 +563,13 @@ export function ProductMap({
     const rightDelta = buttonRect.right - listRect.right;
     if (leftDelta < 0) list.scrollLeft += leftDelta;
     else if (rightDelta > 0) list.scrollLeft += rightDelta;
-  }, [index]);
+  }, [index, viewportMobile]);
 
   const openSurface = card.openId ? SURFACES_BY_ID.get(card.openId) : undefined;
   const carets = panCarets(index, slides.length);
 
   const show = (next: number) => {
-    if (next < 0 || next >= slides.length) {
+    if (next === index || next < 0 || next >= slides.length) {
       return;
     }
     card.close();
@@ -690,18 +693,64 @@ export function ProductMap({
                 <div
                   ref={pageListRef}
                   data-guide-page-list-scroll
+                  data-no-secondary-panel-swipe
                   className={cn(
-                    "min-w-0 overflow-x-auto",
+                    viewportMobile
+                      ? "min-w-0 flex-1 touch-pan-y overflow-hidden"
+                      : "min-w-0 overflow-x-auto",
                     SCROLLBAR_HIDDEN_CLASS,
                   )}
-                  style={scrollEdgeFadeStyle(
-                    pageListEdges.canScrollLeft,
-                    pageListEdges.canScrollRight,
-                  )}
+                  style={
+                    viewportMobile
+                      ? undefined
+                      : scrollEdgeFadeStyle(
+                          pageListEdges.canScrollLeft,
+                          pageListEdges.canScrollRight,
+                        )
+                  }
+                  onTouchStartCapture={(event) => {
+                    suppressClickUntil.current = 0;
+                    const touch = event.touches[0];
+                    touchStart.current =
+                      viewportMobile && event.touches.length === 1 && touch
+                        ? { x: touch.clientX, y: touch.clientY }
+                        : null;
+                  }}
+                  onTouchCancelCapture={() => {
+                    touchStart.current = null;
+                  }}
+                  onTouchEndCapture={(event) => {
+                    const start = touchStart.current;
+                    touchStart.current = null;
+                    const touch = event.changedTouches[0];
+                    if (!start || !touch) return;
+                    const dx = touch.clientX - start.x;
+                    const dy = touch.clientY - start.y;
+                    if (Math.abs(dx) < 30 || Math.abs(dx) <= Math.abs(dy))
+                      return;
+                    suppressClickUntil.current = Date.now() + 500;
+                    show(index + (dx < 0 ? 1 : -1));
+                  }}
+                  onClickCapture={(event) => {
+                    if (Date.now() >= suppressClickUntil.current) return;
+                    suppressClickUntil.current = 0;
+                    event.preventDefault();
+                    event.stopPropagation();
+                  }}
                 >
-                  <ul className="flex w-max flex-nowrap items-center gap-1">
+                  <ul
+                    className={
+                      viewportMobile
+                        ? "flex w-full flex-nowrap items-center"
+                        : "flex w-max flex-nowrap items-center gap-1"
+                    }
+                  >
                     {slides.map((entry, slideIndex) => (
-                      <li key={entry.id} className="shrink-0">
+                      <li
+                        key={entry.id}
+                        hidden={viewportMobile && slideIndex !== index}
+                        className={cn("shrink-0", viewportMobile && "w-full")}
+                      >
                         <button
                           ref={(element) => {
                             pageButtonRefs.current[slideIndex] = element;
@@ -713,6 +762,7 @@ export function ProductMap({
                           }
                           className={cn(
                             "cursor-pointer whitespace-nowrap rounded-md px-2.5 py-2.5 text-sm @2xl/guide:py-1 @2xl/guide:text-xs transition-colors",
+                            viewportMobile && "block w-full truncate",
                             FOCUS_RING_CLASS,
                             slideIndex === index
                               ? "bg-surface-selected text-foreground"

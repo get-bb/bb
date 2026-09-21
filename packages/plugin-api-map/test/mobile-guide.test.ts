@@ -7,7 +7,7 @@ import { ProductMap } from "../src/product-map";
 
 afterEach(() => vi.unstubAllGlobals());
 
-it("defaults to mobile and keeps the selected annotation when switching layouts", () => {
+it("pages mobile surfaces by controls and swipe while preserving annotation selection across layouts", () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal("matchMedia", () => ({
     matches: true,
@@ -76,18 +76,58 @@ it("defaults to mobile and keeps the selected annotation when switching layouts"
     expect(
       current()?.querySelector('[data-guide-mobile-scene="navigation"]'),
     ).not.toBeNull();
-    const composer = Array.from(
-      container.querySelectorAll<HTMLButtonElement>(
-        "[data-guide-page-list-scroll] button",
-      ),
-    ).find((button) => button.textContent === "The composer")!;
-    act(() => composer.click());
+    const visiblePage = () => {
+      const buttons = container.querySelectorAll(
+        "[data-guide-page-list-scroll] li:not([hidden]) button",
+      );
+      expect(buttons).toHaveLength(1);
+      return buttons[0]!.textContent;
+    };
+    const next = container.querySelector<HTMLButtonElement>(
+      '[aria-label="Next surface"]',
+    )!;
+    expect(visiblePage()).toBe("The bb app window");
+    act(() => next.click());
+    expect(visiblePage()).toBe("Command palette");
+    act(() => next.click());
+    expect(visiblePage()).toBe("The composer");
     select("provider-picker");
     const badges = container.querySelectorAll(
       '[data-map-section="composer"] [data-guide-badge]',
     );
     expect(badges).toHaveLength(1);
     expect(badges[0]?.getAttribute("data-guide-badge")).toBe("provider-picker");
+    const navigation = container.querySelector(
+      "[data-guide-page-list-scroll]",
+    )!;
+    const swipe = (dx: number, dy = 0) => {
+      for (const [type, x, y] of [
+        ["touchstart", 150, 100],
+        ["touchend", 150 + dx, 100 + dy],
+      ] as const) {
+        const touch = { clientX: x, clientY: y };
+        act(() => {
+          navigation.dispatchEvent(
+            Object.assign(new Event(type, { bubbles: true }), {
+              touches: [touch],
+              changedTouches: [touch],
+            }),
+          );
+        });
+      }
+    };
+    swipe(-80);
+    expect(visiblePage()).toBe("Home page");
+    expect(picker.value).toBe("");
+    swipe(-10, 80);
+    expect(visiblePage()).toBe("Home page");
+    swipe(80);
+    expect(visiblePage()).toBe("The composer");
+    for (let step = 0; step < 4; step++) act(() => next.click());
+    expect(visiblePage()).toBe("Plugin backend");
+    expect(next.disabled).toBe(true);
+    swipe(-80);
+    expect(visiblePage()).toBe("Plugin backend");
   } finally {
     act(() => root.unmount());
     container.remove();

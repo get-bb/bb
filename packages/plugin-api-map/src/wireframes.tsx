@@ -891,10 +891,10 @@ export function CommandPaletteWireframe({
               <div
                 data-guide-fixture="command-palette-dialog"
                 className={cn(
-                  "absolute grid w-full grid-cols-[minmax(0,1fr)] gap-0 overflow-visible rounded-lg border border-border bg-background shadow-sm",
+                  "absolute grid grid-cols-[minmax(0,1fr)] gap-0 overflow-visible rounded-lg border border-border bg-background shadow-sm",
                   mobile
-                    ? "inset-x-0 bottom-0 pb-4"
-                    : "left-1/2 top-[12%] max-w-xl -translate-x-1/2",
+                    ? "bottom-0 left-7 right-0 pb-4"
+                    : "left-1/2 top-[12%] w-full max-w-xl -translate-x-1/2",
                 )}
               >
                 <div className="flex items-center gap-2 border-b px-3 text-sm">
