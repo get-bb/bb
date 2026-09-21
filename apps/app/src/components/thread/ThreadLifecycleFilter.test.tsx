@@ -44,8 +44,11 @@ describe("ThreadLifecycleFilter", () => {
       const active = await screen.findByRole("menuitemcheckbox", {
         name: "Active",
       });
-      expect(active.getAttribute("aria-disabled")).toBe("true");
+      expect(active.getAttribute("aria-disabled")).not.toBe("true");
+      expect(active.hasAttribute("data-disabled")).toBe(false);
       fireEvent.click(active);
+      expect(active.getAttribute("aria-checked")).toBe("true");
+      fireEvent.keyDown(active, { key: "Enter" });
       expect(active.getAttribute("aria-checked")).toBe("true");
       fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Drafts" }));
       await waitFor(() =>
@@ -54,7 +57,10 @@ describe("ThreadLifecycleFilter", () => {
       fireEvent.click(active);
       const drafts = screen.getByRole("menuitemcheckbox", { name: "Drafts" });
       expect(drafts.getAttribute("aria-checked")).toBe("true");
-      expect(drafts.getAttribute("aria-disabled")).toBe("true");
+      expect(drafts.getAttribute("aria-disabled")).not.toBe("true");
+      expect(drafts.hasAttribute("data-disabled")).toBe(false);
+      fireEvent.click(drafts);
+      expect(drafts.getAttribute("aria-checked")).toBe("true");
       expect(container.closest("[inert]")).toBeNull();
       expect(container.closest('[aria-hidden="true"]')).toBeNull();
     },

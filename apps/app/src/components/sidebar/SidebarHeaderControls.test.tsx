@@ -176,7 +176,7 @@ describe("sidebar header controls", () => {
         name: "Active",
       });
       expect(screen.queryByRole("menuitem", { name: "Reset" })).toBeNull();
-      expect(active.getAttribute("aria-disabled")).toBe("true");
+      expect(active.getAttribute("aria-disabled")).not.toBe("true");
       fireEvent.click(active);
       expect(store.get(sidebarThreadLifecyclesAtom)).toEqual(["active"]);
       fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Drafts" }));
@@ -184,7 +184,9 @@ describe("sidebar header controls", () => {
       expect(store.get(sidebarThreadLifecyclesAtom)).toEqual(["draft"]);
       const drafts = screen.getByRole("menuitemcheckbox", { name: "Drafts" });
       expect(drafts.getAttribute("aria-checked")).toBe("true");
-      expect(drafts.getAttribute("aria-disabled")).toBe("true");
+      expect(drafts.getAttribute("aria-disabled")).not.toBe("true");
+      fireEvent.click(drafts);
+      expect(store.get(sidebarThreadLifecyclesAtom)).toEqual(["draft"]);
       fireEvent.click(
         screen.getByRole("menuitemcheckbox", { name: "Archived" }),
       );

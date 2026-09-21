@@ -35,7 +35,6 @@ export function ThreadLifecycleFilterItems({
             key={option.value}
             role="menuitemcheckbox"
             aria-checked={checked}
-            disabled={required}
             title={
               required ? "Keep at least one lifecycle selected" : undefined
             }
