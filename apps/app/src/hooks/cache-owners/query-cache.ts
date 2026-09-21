@@ -625,7 +625,6 @@ export function optimisticallyInsertThread(
     }
 
     const filters = getThreadListFiltersFromQueryKey(queryKey);
-    if (filters?.sort === "updated") continue;
     if (!threadMatchesListFilters(thread, filters)) {
       continue;
     }
