@@ -71,11 +71,14 @@ export function ThreadLifecycleFilter({
   onChange,
 }: ThreadLifecycleFilterProps) {
   const value = normalizeThreadLifecycleFilter(savedValue);
-  const label = THREAD_LIFECYCLE_OPTIONS.filter((option) =>
-    value.includes(option.value),
-  )
-    .map((option) => option.label)
-    .join(", ");
+  const label =
+    value.length === THREAD_LIFECYCLE_OPTIONS.length
+      ? "All"
+      : THREAD_LIFECYCLE_OPTIONS.filter((option) =>
+          value.includes(option.value),
+        )
+          .map((option) => option.label)
+          .join(", ");
 
   return (
     <DropdownMenu modal={false}>
