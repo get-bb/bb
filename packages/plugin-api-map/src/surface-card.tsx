@@ -187,13 +187,14 @@ export function SurfaceCard({
 
       {(surface.firstParty && surface.firstParty.length > 0) ||
       onCopyForAgent ? (
-        <div className="mt-3 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-2 border-t border-border-hairline pt-2.5">
+        <div className="mt-3 flex min-w-0 items-end gap-2 border-t border-border-hairline pt-2.5">
           {surface.firstParty && surface.firstParty.length > 0 ? (
-            <>
-              <span className="shrink-0 rounded bg-surface-recessed px-2 py-0.5 text-xs font-normal text-subtle-foreground">
+            <div className="min-w-0 flex-1">
+              <span className="mb-1 block text-xs text-subtle-foreground">
                 Used by
               </span>
               <UsedByList
+                key={surface.id}
                 items={surface.firstParty}
                 renderItem={(plugin) => {
                   const icon = pluginIcon(plugin);
@@ -207,37 +208,39 @@ export function SurfaceCard({
                             className="size-3.5 shrink-0 text-subtle-foreground"
                           />
                         ) : null)}
-                      {plugin}
+                      <span className="min-w-0">{plugin}</span>
                     </>
                   );
                   return href ? (
                     <a
                       href={href}
-                      className="flex items-center gap-1 whitespace-nowrap text-xs text-muted-foreground underline decoration-border underline-offset-2 hover:text-foreground hover:decoration-foreground"
+                      className={`flex min-h-9 @2xl/guide:min-h-7 items-center justify-center gap-1.5 rounded-md bg-surface-recessed px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground ${FOCUS_RING_CLASS}`}
                     >
                       {body}
                     </a>
                   ) : (
-                    <span className="flex items-center gap-1 whitespace-nowrap text-xs text-muted-foreground">
+                    <span className="flex min-h-9 @2xl/guide:min-h-7 items-center justify-center gap-1.5 rounded-md bg-surface-recessed px-2 py-1 text-xs text-muted-foreground">
                       {body}
                     </span>
                   );
                 }}
               />
-            </>
+            </div>
           ) : null}
           {onCopyForAgent ? (
             <button
               type="button"
               onClick={() => void copyForAgent()}
               disabled={copyState === "copying"}
-              className={`ml-auto inline-flex h-9 @2xl/guide:h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-md px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground disabled:cursor-wait disabled:opacity-60 ${FOCUS_RING_CLASS}`}
+              aria-label={copyState === "failed" ? "Copy failed. Retry copy for agent" : "Copy for agent"}
+              title={copyState === "failed" ? "Copy failed. Retry copy for agent" : "Copy for agent"}
+              className={`ml-auto inline-flex size-9 @2xl/guide:size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground disabled:cursor-wait disabled:opacity-60 ${FOCUS_RING_CLASS}`}
             >
               <Icon
-                name={copyState === "copied" ? "Check" : "Copy"}
+                name={copyState === "copied" ? "Check" : copyState === "failed" ? "AlertCircle" : "Copy"}
                 className="size-3.5"
               />
-              <span aria-live="polite">
+              <span className="sr-only" aria-live="polite">
                 {copyState === "copying"
                   ? "Copying…"
                   : copyState === "copied"

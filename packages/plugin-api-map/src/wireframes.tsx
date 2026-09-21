@@ -957,6 +957,18 @@ export function AppShellWireframe({
 }) {
   const [rightPanelTab, setRightPanelTab] =
     useState<AppShellRightPanelTab>("browser-toolbar");
+  const { expandedId } = useSurfaceMap();
+
+  useEffect(() => {
+    if (
+      expandedId === "browser-toolbar" ||
+      expandedId === "code-renderers" ||
+      expandedId === "thread-panel" ||
+      expandedId === "file-opener"
+    ) {
+      setRightPanelTab(expandedId);
+    }
+  }, [expandedId]);
 
   const scene = mobile ? mobileScene : "desktop";
 
@@ -1306,6 +1318,24 @@ export function AppShellRightPanel({
   activeTab: AppShellRightPanelTab;
   onTabSelect: (tab: AppShellRightPanelTab) => void;
 }) {
+  const tabStripRef = useRef<HTMLDivElement>(null);
+  useBrowserLayoutEffect(() => {
+    if (!compact) return;
+    const strip = tabStripRef.current;
+    const label = strip?.querySelector<HTMLElement>(
+      `[data-guide-tab="${activeTab}"]`,
+    );
+    const tab = label?.closest<HTMLElement>("a, button");
+    if (!strip || !tab) return;
+    const stripBounds = strip.getBoundingClientRect();
+    const tabBounds = tab.getBoundingClientRect();
+    if (tabBounds.left < stripBounds.left) {
+      strip.scrollLeft += tabBounds.left - stripBounds.left - 12;
+    } else if (tabBounds.right > stripBounds.right) {
+      strip.scrollLeft += tabBounds.right - stripBounds.right + 12;
+    }
+  }, [activeTab, compact]);
+
   const tabClass = (tab: AppShellRightPanelTab) =>
     cn(
       "flex h-7 shrink-0 items-center rounded-md",
@@ -1322,6 +1352,7 @@ export function AppShellRightPanel({
       )}
     >
       <div
+        ref={tabStripRef}
         data-guide-fixture="right-panel-tab-strip"
         className={cn(
           "flex h-12 items-center gap-1.5 border-b border-border-hairline px-3",

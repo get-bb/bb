@@ -61,6 +61,20 @@ it("pages mobile panes without using annotation selection as navigation", () => 
     expect(navigate).not.toHaveBeenCalled();
     expect(visiblePage()).toBe("Sidebar");
     expect(container.querySelector('[role="dialog"]')?.getAttribute("aria-label")).toBe("Full-page panels");
+    const examples = () => container.querySelector('[role="group"][aria-label="Example plugins"]')!;
+    const previousExample = () => examples().querySelector<HTMLButtonElement>('[aria-label="Previous example plugin"]')!;
+    const nextExample = () => examples().querySelector<HTMLButtonElement>('[aria-label="Next example plugin"]')!;
+    expect(previousExample().disabled).toBe(true);
+    for (const name of ["Automations", "Docs", "GitHub", "Tasks"]) {
+      expect(examples().textContent).toContain(name);
+      expect(examples().querySelectorAll('[aria-live="polite"] > span:not(.sr-only)')).toHaveLength(1);
+      if (name !== "Tasks") act(() => nextExample().click());
+    }
+    expect(nextExample().disabled).toBe(true);
+    act(() => previousExample().dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true })));
+    expect(examples().textContent).toContain("GitHub");
+    expect(visiblePage()).toBe("Sidebar");
+    expect(navigate).not.toHaveBeenCalled();
     act(() => container.querySelector('[role="dialog"] button')!.dispatchEvent(
       new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }),
     ));
@@ -75,8 +89,17 @@ it("pages mobile panes without using annotation selection as navigation", () => 
     expect(visiblePage()).toBe("Side panel");
     expect(current().querySelector('[data-guide-mobile-scene="panel"]')).not.toBeNull();
     openAnnotation("browser-toolbar");
-    nextAnnotation();
-    expect(current().querySelector('[data-guide-tab-body="browser-toolbar"]')).not.toBeNull();
+    for (const [id, number, title] of [
+      ["browser-toolbar", "7", "Browser toolbar"],
+      ["code-renderers", "12", "Code & diff renderers"],
+      ["thread-panel", "13", "Thread side-panel tabs"],
+      ["file-opener", "14", "File viewers & editors"],
+    ]) {
+      expect(current().querySelector(`[data-guide-tab-body="${id}"]`), title).not.toBeNull();
+      expect(current().querySelector(`[data-guide-badge="${id}"]`)?.textContent).toBe(number);
+      expect(visiblePage()).toBe("Side panel");
+      if (id !== "file-opener") nextAnnotation();
+    }
     expect(navigate.mock.calls.map(([id]) => id)).toEqual(["app-shell-thread", "app-shell-panel"]);
     const modes = container.querySelectorAll<HTMLButtonElement>("[data-guide-display-mode] button");
     act(() => modes[1]!.click());
