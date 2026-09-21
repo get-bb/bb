@@ -197,14 +197,14 @@ function PluginScreenshotGallery({
 
 export function PluginOverviewLead({ description }: { description: string }) {
   return (
-    <ResourceDetailOverviewSection label="Description">
+    <section data-resource-detail-section="overview">
       <p
         className="max-w-prose text-sm leading-relaxed text-muted-foreground"
         data-plugin-summary=""
       >
         {description}
       </p>
-    </ResourceDetailOverviewSection>
+    </section>
   );
 }
 
