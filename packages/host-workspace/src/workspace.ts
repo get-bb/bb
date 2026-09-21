@@ -105,6 +105,17 @@ export interface DiffPatchEntry {
   truncated: boolean;
 }
 
+export interface SearchDiffArgs {
+  target: WorkspaceDiffTarget;
+  query: string;
+  maxFiles: number;
+}
+
+export interface SearchDiffResult {
+  matchedPaths: string[];
+  truncated: boolean;
+}
+
 type DiffArtifactsResult = {
   artifacts: [string, string, string];
   mergeBaseRef: string | null;
@@ -293,6 +304,12 @@ function resolveWorkspaceState(args: {
 
 function parseNullSeparatedLines(output: string): string[] {
   return output.split("\0").filter((value) => value.length > 0);
+}
+
+const GIT_PICKAXE_REGEX_SPECIAL_CHARS = /[.*+?^${}()|[\]\\]/g;
+
+function escapeGitPickaxeRegex(query: string): string {
+  return query.replace(GIT_PICKAXE_REGEX_SPECIAL_CHARS, "\\$&");
 }
 
 function parseNonEmptyLines(output: string): string[] {
@@ -881,6 +898,60 @@ export class Workspace {
       entries.push({ path, patch, truncated });
     }
     return entries;
+  }
+
+  async searchDiff(args: SearchDiffArgs): Promise<SearchDiffResult> {
+    await ensureGitRepo(this.path, this.gitProcessOptions);
+    assertPositiveInteger(args.maxFiles, "maxFiles");
+    const escapedQuery = escapeGitPickaxeRegex(args.query);
+    const trackedContentMatches = await this.searchTrackedDiffContent(
+      args.target,
+      escapedQuery,
+      args.maxFiles + 1,
+    );
+    const trackedPaths = await this.listTrackedDiffPaths(
+      args.target,
+      args.maxFiles + 1,
+    );
+    const normalizedQuery = args.query.toLowerCase();
+    const trackedPathMatches = trackedPaths.paths.filter((path) =>
+      path.toLowerCase().includes(normalizedQuery),
+    );
+
+    let untrackedContentMatches: string[] = [];
+    let untrackedPathMatches: string[] = [];
+    let truncated = false;
+    if (this.targetIncludesUntracked(args.target)) {
+      const enumeratedUntrackedPaths = await this.listUntrackedPathsLimited(
+        args.maxFiles + 1,
+      );
+      truncated = enumeratedUntrackedPaths.length > args.maxFiles;
+      const candidatePaths = enumeratedUntrackedPaths.slice(0, args.maxFiles);
+      untrackedContentMatches = await this.searchUntrackedDiffContent(
+        candidatePaths,
+        escapedQuery,
+      );
+      untrackedPathMatches = candidatePaths.filter((path) =>
+        path.toLowerCase().includes(normalizedQuery),
+      );
+    }
+
+    const matchedPaths = Array.from(
+      new Set([
+        ...trackedContentMatches.paths,
+        ...trackedPathMatches,
+        ...untrackedContentMatches,
+        ...untrackedPathMatches,
+      ]),
+    );
+    return {
+      matchedPaths: matchedPaths.slice(0, args.maxFiles),
+      truncated:
+        truncated ||
+        trackedContentMatches.truncated ||
+        trackedPaths.truncated ||
+        matchedPaths.length > args.maxFiles,
+    };
   }
 
   async getHeadSha(): Promise<string | null> {
@@ -1806,6 +1877,75 @@ export class Workspace {
         return _exhaustive;
       }
     }
+  }
+
+  private async searchTrackedDiffContent(
+    target: WorkspaceDiffTarget,
+    escapedQuery: string,
+    maxFiles: number,
+  ): Promise<{ paths: string[]; truncated: boolean }> {
+    return this.readTrackedDiffPaths(
+      target,
+      ["-i", `-G${escapedQuery}`],
+      maxFiles,
+    );
+  }
+
+  private async listTrackedDiffPaths(
+    target: WorkspaceDiffTarget,
+    maxFiles: number,
+  ): Promise<{ paths: string[]; truncated: boolean }> {
+    return this.readTrackedDiffPaths(target, [], maxFiles);
+  }
+
+  private async readTrackedDiffPaths(
+    target: WorkspaceDiffTarget,
+    searchArgs: string[],
+    maxFiles: number,
+  ): Promise<{ paths: string[]; truncated: boolean }> {
+    const range = await this.resolveTrackedDiffRange(target);
+    if (range === null) {
+      return { paths: [], truncated: false };
+    }
+    const result = await this.runTrackedDiffWithLimit({
+      range,
+      outputArgs: ["--name-only", "-z", "-M", ...searchArgs],
+      recordFormat: "single",
+      maxRecords: maxFiles,
+    });
+    return {
+      paths: parseNullSeparatedLines(result.stdout),
+      truncated: result.recordLimitReached,
+    };
+  }
+
+  private async searchUntrackedDiffContent(
+    paths: string[],
+    escapedQuery: string,
+  ): Promise<string[]> {
+    if (paths.length === 0) {
+      return [];
+    }
+    return this.withTemporaryUntrackedIndex(
+      paths,
+      async (env, indexedPaths) => {
+        if (indexedPaths.length === 0) {
+          return [];
+        }
+        const result = await this.runGit(
+          [
+            "diff",
+            "--no-ext-diff",
+            "--name-only",
+            "-z",
+            "-i",
+            `-G${escapedQuery}`,
+          ],
+          { cwd: this.path, env },
+        );
+        return parseNullSeparatedLines(result.stdout);
+      },
+    );
   }
 
   private async readDiffArtifacts(

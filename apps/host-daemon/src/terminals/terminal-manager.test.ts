@@ -282,6 +282,7 @@ function createFakeWorkspace(path: string): HostWorkspace {
       truncated: false,
     })),
     diffPatch: vi.fn(async () => []),
+    searchDiff: vi.fn(async () => ({ matchedPaths: [], truncated: false })),
     getPullRequest: vi.fn(async () => ({ outcome: "none" as const })),
     commit: vi.fn(async () => ({
       commitSha: "commit-1",

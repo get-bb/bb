@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useCallback, useRef } from "react";
 import { useResizeObserver } from "usehooks-ts";
 import { Button } from "@bb/shared-ui/button";
 import {
@@ -14,7 +14,9 @@ import {
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
 import { Icon } from "@bb/shared-ui/icon";
+import { Input } from "@bb/shared-ui/input";
 import { DiffStatsTally } from "@/components/ui/diff-stats-tally.js";
+import { useAppCommandHandler } from "@/components/commands/AppCommandProvider";
 import {
   formatChangeSummary,
   renderChangeSummary,
@@ -140,6 +142,11 @@ interface GitDiffToolbarProps {
 
   stats: GitDiffStats;
   isTruncated: boolean;
+  searchQuery: string;
+  onSearchQueryChange: (value: string) => void;
+  isSearching: boolean;
+  totalFilesCount: number;
+  isFocused: boolean;
 
   areAllFilesCollapsed: boolean;
   isCollapseAllDisabled: boolean;
@@ -159,6 +166,11 @@ export function GitDiffToolbar({
   isSelectorDisabled,
   stats,
   isTruncated,
+  searchQuery,
+  onSearchQueryChange,
+  isSearching,
+  totalFilesCount,
+  isFocused,
   areAllFilesCollapsed,
   isCollapseAllDisabled,
   onToggleAllCollapsed,
@@ -168,6 +180,7 @@ export function GitDiffToolbar({
   onLineOverflowModeChange,
 }: GitDiffToolbarProps) {
   const rootRef = useRef<HTMLDivElement>(null!);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const { width: rootWidth = 0 } = useResizeObserver({
     ref: rootRef,
     box: "content-box",
@@ -176,6 +189,16 @@ export function GitDiffToolbar({
   const completeSummary = formatChangeSummary(changeTally);
   const truncatedFilesLabel = `${stats.filesCount}+ file${stats.filesCount === 1 ? "" : "s"}`;
   const hasShownLineChanges = stats.insertions > 0 || stats.deletions > 0;
+  const isSearchActive = searchQuery.trim().length > 0;
+  const searchSummaryLabel = `${stats.filesCount} of ${totalFilesCount} file${totalFilesCount === 1 ? "" : "s"} match`;
+  const focusSearchInput = useCallback(() => {
+    const input = searchInputRef.current;
+    if (input === null) return false;
+    input.focus({ preventScroll: true });
+    input.select();
+    return true;
+  }, []);
+  useAppCommandHandler("diff.search", focusSearchInput, 100, isFocused);
 
   return (
     <div ref={rootRef} className="px-4 pb-3 pt-3">
@@ -196,6 +219,31 @@ export function GitDiffToolbar({
           />
         </div>
         <div
+          className="relative min-w-0 shrink basis-32"
+          data-testid="git-diff-toolbar-search-slot"
+        >
+          <Icon
+            name={isSearching ? "Spinner" : "Search"}
+            aria-hidden
+            className={cn(
+              "pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground",
+              COARSE_POINTER_COMPACT_ICON_SIZE_CLASS,
+              isSearching && "animate-spin",
+            )}
+          />
+          <Input
+            ref={searchInputRef}
+            aria-label="Search changed files"
+            className={cn(
+              "h-8 pl-7 pr-2 max-md:pointer-coarse:h-10",
+              COARSE_POINTER_TEXT_SM_CLASS,
+            )}
+            placeholder="Search files"
+            value={searchQuery}
+            onChange={(event) => onSearchQueryChange(event.target.value)}
+          />
+        </div>
+        <div
           className="flex min-w-0 flex-1 basis-auto items-center"
           data-testid="git-diff-toolbar-details"
         >
@@ -206,12 +254,16 @@ export function GitDiffToolbar({
             )}
             data-testid="git-diff-toolbar-summary"
             title={
-              isTruncated
-                ? `Showing the first ${stats.filesCount} changed file${stats.filesCount === 1 ? "" : "s"}; shown slice: ${stats.insertions} insertion${stats.insertions === 1 ? "" : "s"}, ${stats.deletions} deletion${stats.deletions === 1 ? "" : "s"}`
-                : completeSummary
+              isSearchActive
+                ? searchSummaryLabel
+                : isTruncated
+                  ? `Showing the first ${stats.filesCount} changed file${stats.filesCount === 1 ? "" : "s"}; shown slice: ${stats.insertions} insertion${stats.insertions === 1 ? "" : "s"}, ${stats.deletions} deletion${stats.deletions === 1 ? "" : "s"}`
+                  : completeSummary
             }
           >
-            {isTruncated ? (
+            {isSearchActive ? (
+              searchSummaryLabel
+            ) : isTruncated ? (
               <>
                 {truncatedFilesLabel}
                 {hasShownLineChanges ? (

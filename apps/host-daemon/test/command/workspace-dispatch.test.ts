@@ -51,6 +51,19 @@ describe("workspace command dispatch", () => {
       },
       harness.dispatchOptions(),
     );
+    const diffSearchResult = await dispatchOnlineRpcCommand(
+      {
+        type: "workspace.diffSearch",
+        environmentId: "env-1",
+        workspaceContext: {
+          workspacePath: "/tmp/env-1",
+        },
+        target: { type: "uncommitted" },
+        query: "needle",
+        maxFiles: 500,
+      },
+      harness.dispatchOptions(),
+    );
     const commitResult = await dispatchCommand(
       {
         type: "workspace.commit",
@@ -64,6 +77,11 @@ describe("workspace command dispatch", () => {
     );
     expect(statusResult.outcome).toBe("available");
     expect(diffResult.outcome).toBe("available");
+    expect(diffSearchResult).toEqual({
+      outcome: "available",
+      matchedPaths: [],
+      truncated: false,
+    });
     if (statusResult.outcome !== "available") {
       throw new Error("Expected workspace status to be available");
     }

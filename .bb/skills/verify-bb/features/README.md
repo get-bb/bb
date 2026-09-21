@@ -7,9 +7,10 @@ source entry points and prerequisites. Shared behaviors can appear in more than
 one recipe because provider/platform behavior needs separate verification.
 
 **Documentation coverage and test results are separate.** The 2026-09-05
-maintenance audit assessed all 348 recipes: **166 passed, 177 partial/blocked,
-and 5 failed**. Another 27 macOS assessments overlap these recipes; iOS variants
-were excluded. See the [audit](../MAINTENANCE.md) and
+maintenance audit assessed 348 recipes: **166 passed, 177 partial/blocked, and
+5 failed**. One changed-file search recipe was added and passed during focused
+verification on 2026-09-20. Another 27 macOS assessments overlap the original
+recipes; iOS variants were excluded. See the [audit](../MAINTENANCE.md) and
 [per-recipe ledger](../validation-2026-09-05.json).
 
 ## Starting a run
@@ -38,7 +39,7 @@ were excluded. See the [audit](../MAINTENANCE.md) and
 | Feature group | Recipes | Verification status |
 | --- | --- | --- |
 | [Navigation, search, and thread organization](navigation.md) | 11 | 6 passed, 5 partial/blocked |
-| [Projects, sources, environments, and Git](projects-environments.md) | 15 | 4 passed, 1 failed, 10 partial/blocked |
+| [Projects, sources, environments, and Git](projects-environments.md) | 16 | 5 passed, 1 failed, 10 partial/blocked |
 | [Compose, mentions, attachments, and voice](composer.md) | 12 | 6 passed, 6 partial/blocked |
 | [Active turns, queues, plans, goals, and recovery](execution-controls.md) | 14 | 3 passed, 11 partial/blocked |
 | [Approvals, questions, and permission escalation](interactions.md) | 7 | 2 passed, 5 partial/blocked |

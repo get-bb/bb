@@ -92,11 +92,12 @@ describe("bb environment command output", () => {
     expect(help).toContain("paths [options] <id>");
     expect(help).toContain("diff [options] <id>");
     expect(help).toContain("diff-files [options] <id>");
+    expect(help).toContain("diff-search [options] <id> <query>");
     expect(help).toContain("diff-file [options] <id>");
     expect(help).toContain("diff-patch [options] <id>");
     expect(help).toContain("pull-request");
     expect(help).toMatch(
-      /List environments, including destroyed ones\s+when requested/u,
+      /List environments, including destroyed\s+ones\s+when requested/u,
     );
     expect(help).not.toContain("squash-merge");
   });
@@ -713,6 +714,39 @@ describe("bb environment command output", () => {
       "added\t+1 -0\tuntracked\tauto\tone.txt",
       "1 file changed, 1 insertion(+)",
       "(additional changed files omitted)",
+    ]);
+  });
+
+  it("bb environment diff-search prints matched paths", async () => {
+    const get = vi.fn(async () => ({
+      outcome: "available",
+      matchedPaths: ["src/one.ts", "src/two.ts"],
+      truncated: true,
+    }));
+    stubServerApi({ "v1.environments.:id.diff.search.$get": get });
+
+    await runCommand(
+      [
+        "environment",
+        "diff-search",
+        "env-diff-search",
+        "needle",
+        "--target",
+        "all",
+        "--merge-base-branch",
+        "main",
+      ],
+      register,
+    );
+
+    expect(get).toHaveBeenCalledWith({
+      param: { id: "env-diff-search" },
+      query: { target: "all", mergeBaseBranch: "main", q: "needle" },
+    });
+    expect(collectLogLines(vi.mocked(console.log))).toEqual([
+      "src/one.ts",
+      "src/two.ts",
+      "(additional matches omitted)",
     ]);
   });
 

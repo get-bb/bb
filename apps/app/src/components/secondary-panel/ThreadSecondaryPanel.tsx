@@ -63,6 +63,7 @@ import {
 import type { DiffPresentation } from "@/components/code/code-rendering";
 import { useGitDiffPanelState } from "./git-diff/useGitDiffPanelState";
 import { useResponsiveGitDiffPanelDisplay } from "./git-diff/useResponsiveGitDiffPanelDisplay";
+import { useGitDiffFileSearch } from "./git-diff/useGitDiffFileSearch";
 import {
   summarizeDiffFileEntries,
   useDiffFilesCollapseControls,
@@ -146,8 +147,7 @@ export function resolveCollapsedPanelTrafficLightReserveClassName({
 }: CollapsedPanelTrafficLightReserveArgs): string | false {
   const reserves =
     reserveMacosTrafficLights &&
-    (renderAsDrawer ||
-      (isConversationCollapsed && isSidebarShowing === false));
+    (renderAsDrawer || (isConversationCollapsed && isSidebarShowing === false));
   return reserves && MACOS_COLLAPSED_TOP_LEFT_RESERVE_CLASS;
 }
 
@@ -371,9 +371,22 @@ function ThreadSecondaryPanelContent({
       }),
     [diffMergeBaseRef, environmentId, gitDiffTarget],
   );
+  const { searchQuery, setSearchQuery, matchedPaths, isSearching } =
+    useGitDiffFileSearch({
+      environmentId,
+      target: gitDiffTarget,
+      files: diffFiles,
+    });
+  const filteredDiffFiles = useMemo(
+    () =>
+      matchedPaths === null
+        ? diffFiles
+        : diffFiles.filter((file) => matchedPaths.has(file.path)),
+    [diffFiles, matchedPaths],
+  );
   const gitDiffStats = useMemo(
-    () => summarizeDiffFileEntries(diffFiles),
-    [diffFiles],
+    () => summarizeDiffFileEntries(filteredDiffFiles),
+    [filteredDiffFiles],
   );
   const { areAllCollapsed, toggleAllCollapsed, hasFiles } =
     useDiffFilesCollapseControls(diffIdentity, diffFiles);
@@ -808,6 +821,11 @@ function ThreadSecondaryPanelContent({
               }
               stats={gitDiffStats}
               isTruncated={isGitDiffTruncated}
+              searchQuery={searchQuery}
+              onSearchQueryChange={setSearchQuery}
+              isSearching={isSearching}
+              totalFilesCount={diffFiles.length}
+              isFocused={isFocused}
               areAllFilesCollapsed={areAllCollapsed}
               isCollapseAllDisabled={!hasFiles || isDiffFilesLoading}
               onToggleAllCollapsed={toggleAllCollapsed}
@@ -884,6 +902,7 @@ function ThreadSecondaryPanelContent({
               onSelectionAddToChat={onSelectionAddToChat}
               pendingGitDiffScrollPath={pendingGitDiffScrollPath}
               workspaceRootPath={workspaceRootPath}
+              matchedPaths={matchedPaths}
             />
           ) : activeSurfaceFixedTab?.tab.kind === "thread-info" ? (
             <div className="flex min-h-0 flex-1 flex-col">

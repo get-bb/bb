@@ -23,6 +23,8 @@ import type {
   EnvironmentDiffQuery,
   EnvironmentDiffResponse,
   EnvironmentDiffFilesResponse,
+  EnvironmentDiffSearchQuery,
+  EnvironmentDiffSearchResponse,
   EnvironmentPathsQuery,
   EnvironmentPullRequestResponse,
   EnvironmentStatusResponse,
@@ -83,6 +85,11 @@ export type EnvironmentDiffArgs = EnvironmentDiffQuery & {
   signal?: AbortSignal;
 };
 
+export type EnvironmentDiffSearchArgs = EnvironmentDiffSearchQuery & {
+  environmentId: string;
+  signal?: AbortSignal;
+};
+
 export type EnvironmentDiffFileArgs = EnvironmentDiffFileQuery & {
   environmentId: string;
   signal?: AbortSignal;
@@ -119,6 +126,7 @@ export type EnvironmentDiffBranchesResult = EnvironmentDiffBranchesResponse;
 export type EnvironmentDiffFileResult = EnvironmentDiffFileResponse;
 export type EnvironmentDiffFilesResult = EnvironmentDiffFilesResponse;
 export type EnvironmentDiffPatchResult = EnvironmentDiffPatchResponse;
+export type EnvironmentDiffSearchResult = EnvironmentDiffSearchResponse;
 export type EnvironmentGetResult = Environment;
 export type EnvironmentMarkPullRequestDraftResult =
   PullRequestDraftActionResponse;
@@ -168,6 +176,9 @@ export interface EnvironmentsArea {
   diffPatch(
     args: EnvironmentDiffPatchArgs,
   ): Promise<EnvironmentDiffPatchResult>;
+  diffSearch(
+    args: EnvironmentDiffSearchArgs,
+  ): Promise<EnvironmentDiffSearchResult>;
   get(args: EnvironmentGetArgs): Promise<EnvironmentGetResult>;
   list(args?: EnvironmentListArgs): Promise<EnvironmentListResult>;
   listProviders(
@@ -219,6 +230,24 @@ function environmentDiffQuery(args: EnvironmentDiffArgs): EnvironmentDiffQuery {
       return { target: args.target, mergeBaseBranch: args.mergeBaseBranch };
     case "commit":
       return { target: args.target, sha: args.sha };
+  }
+}
+
+function environmentDiffSearchQuery(
+  args: EnvironmentDiffSearchArgs,
+): EnvironmentDiffSearchQuery {
+  switch (args.target) {
+    case "uncommitted":
+      return { target: args.target, q: args.q };
+    case "branch_committed":
+    case "all":
+      return {
+        target: args.target,
+        mergeBaseBranch: args.mergeBaseBranch,
+        q: args.q,
+      };
+    case "commit":
+      return { target: args.target, sha: args.sha, q: args.q };
   }
 }
 
@@ -349,6 +378,17 @@ export function createEnvironmentsArea(
               paths: input.paths,
               target: input.target,
             },
+          },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+    },
+    async diffSearch(input) {
+      return transport.readJson(
+        transport.api.v1.environments[":id"].diff.search.$get(
+          {
+            param: { id: input.environmentId },
+            query: environmentDiffSearchQuery(input),
           },
           ...signalRequestArgs(input.signal),
         ),

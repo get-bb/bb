@@ -131,6 +131,11 @@ Making your repo work with bb:
     --merge-base-branch <branch>          Required for branch_committed and all
     --sha <sha>                           Required for commit
 
+  bb environment diff-search <id> <query> Search changed paths and diff content
+    --target <target>                     uncommitted, branch_committed, all, or commit (required)
+    --merge-base-branch <branch>          Required for branch_committed and all
+    --sha <sha>                           Required for commit
+
   bb environment diff-file <id>           Read one side of a changed file
     --target <target>                     Diff target (required)
     --path <path>                         Repository-relative path (required)

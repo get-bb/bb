@@ -948,6 +948,15 @@ const workspaceDiffPatchCommandSchema = hostDaemonWorkspaceTargetSchema.extend({
   maxBytesPerFile: z.number().int().positive(),
 });
 
+const workspaceDiffSearchCommandSchema = hostDaemonWorkspaceTargetSchema.extend(
+  {
+    type: z.literal("workspace.diffSearch"),
+    target: workspaceDiffTargetSchema,
+    query: z.string().min(1),
+    maxFiles: z.number().int().positive(),
+  },
+);
+
 const workspacePullRequestCommandSchema =
   hostDaemonWorkspaceTargetSchema.extend({
     type: z.literal("workspace.pull_request"),
@@ -1095,6 +1104,22 @@ const workspaceDiffPatchResultSchema = z.discriminatedUnion("outcome", [
           })
           .strict(),
       ),
+    })
+    .strict(),
+  z
+    .object({
+      outcome: z.literal("unavailable"),
+      failure: workspaceResolutionFailureSchema,
+    })
+    .strict(),
+]);
+
+const workspaceDiffSearchResultSchema = z.discriminatedUnion("outcome", [
+  z
+    .object({
+      outcome: z.literal("available"),
+      matchedPaths: z.array(z.string()),
+      truncated: z.boolean(),
     })
     .strict(),
   z
@@ -1900,6 +1925,15 @@ export const hostDaemonCommandRegistry = {
     type: "workspace.diffPatch",
     schema: workspaceDiffPatchCommandSchema,
     resultSchema: workspaceDiffPatchResultSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: "read",
+  }),
+  "workspace.diffSearch": defineHostDaemonCommandDescriptor({
+    type: "workspace.diffSearch",
+    schema: workspaceDiffSearchCommandSchema,
+    resultSchema: workspaceDiffSearchResultSchema,
     transport: "onlineRpc",
     retryable: true,
     flushEventsBeforeResult: false,

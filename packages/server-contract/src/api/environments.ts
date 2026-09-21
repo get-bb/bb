@@ -95,6 +95,31 @@ export const environmentDiffQuerySchema = z.discriminatedUnion("target", [
 ]);
 export type EnvironmentDiffQuery = z.infer<typeof environmentDiffQuerySchema>;
 
+export const environmentDiffSearchQuerySchema = z.discriminatedUnion("target", [
+  z.object({
+    target: z.literal("uncommitted"),
+    q: z.string().min(1),
+  }),
+  z.object({
+    target: z.literal("branch_committed"),
+    mergeBaseBranch: mergeBaseBranchQuerySchema,
+    q: z.string().min(1),
+  }),
+  z.object({
+    target: z.literal("all"),
+    mergeBaseBranch: mergeBaseBranchQuerySchema,
+    q: z.string().min(1),
+  }),
+  z.object({
+    target: z.literal("commit"),
+    sha: z.string().regex(/^[0-9a-f]{4,40}$/iu),
+    q: z.string().min(1),
+  }),
+]);
+export type EnvironmentDiffSearchQuery = z.infer<
+  typeof environmentDiffSearchQuerySchema
+>;
+
 const diffFileSideSchema = z.enum(["old", "new"]);
 
 const mergeBaseRefQuerySchema = z.string().regex(/^[0-9a-f]{4,40}$/iu);
@@ -395,6 +420,29 @@ export const environmentDiffFilesResponseSchema = z.discriminatedUnion(
 );
 export type EnvironmentDiffFilesResponse = z.infer<
   typeof environmentDiffFilesResponseSchema
+>;
+
+export const environmentDiffSearchResponseSchema = z.discriminatedUnion(
+  "outcome",
+  [
+    z
+      .object({
+        outcome: z.literal("available"),
+        matchedPaths: z.array(z.string()),
+        truncated: z.boolean(),
+      })
+      .strict(),
+    environmentWorkspaceNotApplicableOutcomeSchema,
+    z
+      .object({
+        outcome: z.literal("unavailable"),
+        failure: workspaceResolutionFailureSchema,
+      })
+      .strict(),
+  ],
+);
+export type EnvironmentDiffSearchResponse = z.infer<
+  typeof environmentDiffSearchResponseSchema
 >;
 
 export const environmentDiffPatchResponseSchema = z.discriminatedUnion(

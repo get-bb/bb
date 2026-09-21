@@ -55,6 +55,7 @@ interface GitDiffTabContentProps {
   onSelectionAddToChat?: (text: string) => void;
   pendingGitDiffScrollPath?: string | null;
   workspaceRootPath?: string | null;
+  matchedPaths: Set<string> | null;
 }
 
 interface WorkspaceFilePreviewTabContentProps {
@@ -173,6 +174,7 @@ export function GitDiffTabContent({
   onSelectionAddToChat,
   pendingGitDiffScrollPath,
   workspaceRootPath,
+  matchedPaths,
 }: GitDiffTabContentProps) {
   const isQueryEnabled =
     isPanelOpen && Boolean(environmentId) && target !== undefined;
@@ -264,15 +266,30 @@ export function GitDiffTabContent({
     );
   }
 
-  if (
-    diffFilesResponse.files.length === 0 ||
-    !environmentId ||
-    target === undefined
-  ) {
+  if (diffFilesResponse.files.length === 0) {
     return (
       <GitDiffMessageSlot>
         <EmptyStatePanel className="rounded-lg">
           No diff to display.
+        </EmptyStatePanel>
+      </GitDiffMessageSlot>
+    );
+  }
+
+  if (!environmentId || target === undefined) {
+    return null;
+  }
+
+  const filteredFiles =
+    matchedPaths === null
+      ? diffFilesResponse.files
+      : diffFilesResponse.files.filter((file) => matchedPaths.has(file.path));
+
+  if (filteredFiles.length === 0) {
+    return (
+      <GitDiffMessageSlot>
+        <EmptyStatePanel className="rounded-lg">
+          No files match search.
         </EmptyStatePanel>
       </GitDiffMessageSlot>
     );
@@ -293,7 +310,8 @@ export function GitDiffTabContent({
         environmentId={environmentId}
         target={target}
         diffIdentity={diffIdentity}
-        files={diffFilesResponse.files}
+        files={filteredFiles}
+        fileCount={diffFilesResponse.files.length}
         initialPatches={diffFilesResponse.initialPatches}
         filesUpdatedAt={diffFilesUpdatedAt}
         presentation={gitDiffPresentation}

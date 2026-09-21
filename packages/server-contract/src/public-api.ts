@@ -113,6 +113,8 @@ import type {
   EnvironmentDiffPatchResponse,
   EnvironmentDiffQuery,
   EnvironmentDiffResponse,
+  EnvironmentDiffSearchQuery,
+  EnvironmentDiffSearchResponse,
   EnvironmentPathsQuery,
   EnvironmentPullRequestResponse,
   EnvironmentStatusQuery,
@@ -305,6 +307,7 @@ import {
   environmentDiffFileQuerySchema,
   environmentDiffPatchRequestSchema,
   environmentDiffQuerySchema,
+  environmentDiffSearchQuerySchema,
   environmentPathsQuerySchema,
   environmentStatusQuerySchema,
   hostDirectoryQuerySchema,
@@ -1118,6 +1121,14 @@ export const publicApiRoutes = {
         environmentDiffQuerySchema,
       ),
       response: jsonResponse<EnvironmentDiffFilesResponse>(),
+    }),
+    diffSearch: defineRoute({
+      path: "/environments/:id/diff/search",
+      method: "get",
+      request: queryRequest<PathId, EnvironmentDiffSearchQuery>(
+        environmentDiffSearchQuerySchema,
+      ),
+      response: jsonResponse<EnvironmentDiffSearchResponse>(),
     }),
     diffPatch: defineRoute({
       path: "/environments/:id/diff/patch",

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, render, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import type { WorkspaceDiffTarget } from "@bb/domain";
 import type {
   EnvironmentDiffFileResponse,
@@ -70,6 +70,7 @@ describe("GitDiffTabContent panel gating", () => {
         <GitDiffTabContent
           environmentId={ENVIRONMENT_ID}
           target={TARGET}
+          matchedPaths={null}
           isPanelOpen={isPanelOpen}
           gitDiffPresentation={{
             view: "unified",
@@ -100,6 +101,47 @@ describe("GitDiffTabContent panel gating", () => {
     await waitFor(() => {
       expect(sdk.environments.diffFiles).toHaveBeenCalledTimes(2);
     });
+  });
+
+  it("shows a search-specific empty state when no changed files match", async () => {
+    vi.mocked(sdk.environments.diffFiles).mockResolvedValue({
+      outcome: "available",
+      files: [
+        {
+          path: "src/index.ts",
+          previousPath: null,
+          changeKind: "modified",
+          additions: 1,
+          deletions: 0,
+          binary: false,
+          origin: "tracked",
+          loadMode: "auto",
+        },
+      ],
+      truncated: false,
+      shortstat: "1 file changed, 1 insertion(+)",
+      mergeBaseRef: "abc123",
+      initialPatches: [],
+    });
+    const { wrapper: Wrapper } = createQueryClientTestHarness();
+
+    render(
+      <Wrapper>
+        <GitDiffTabContent
+          environmentId={ENVIRONMENT_ID}
+          target={TARGET}
+          matchedPaths={new Set()}
+          isPanelOpen
+          gitDiffPresentation={{
+            view: "unified",
+            overflow: "scroll",
+            showLineNumbers: true,
+          }}
+        />
+      </Wrapper>,
+    );
+
+    expect(await screen.findByText("No files match search.")).toBeTruthy();
   });
 });
 

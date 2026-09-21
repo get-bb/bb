@@ -9,6 +9,8 @@ import type {
   DiffFilesResult,
   DiffPatchArgs,
   DiffPatchEntry,
+  SearchDiffArgs,
+  SearchDiffResult,
   PullRequestActionOptions,
   StatusOptions,
 } from "./workspace.js";
@@ -71,6 +73,7 @@ export interface HostWorkspace {
   getDiff(options?: DiffOptions): Promise<DiffResult>;
   diffFiles(args: DiffFilesArgs): Promise<DiffFilesResult>;
   diffPatch(args: DiffPatchArgs): Promise<DiffPatchEntry[]>;
+  searchDiff(args: SearchDiffArgs): Promise<SearchDiffResult>;
   getPullRequest(
     options?: GitHostCliOptions,
   ): Promise<GitHostPullRequestLookup>;
@@ -157,6 +160,10 @@ class ProvisionedHostWorkspace implements HostWorkspace {
 
   diffPatch(args: DiffPatchArgs): Promise<DiffPatchEntry[]> {
     return this.ws.diffPatch(args);
+  }
+
+  searchDiff(args: SearchDiffArgs): Promise<SearchDiffResult> {
+    return this.ws.searchDiff(args);
   }
 
   getPullRequest(
