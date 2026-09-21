@@ -480,7 +480,12 @@ function ThreadRowComponent({
               : SIDEBAR_HOVER_ACTIONS_INSET_CLASS),
         )}
       >
-        <span className="relative flex min-w-0 flex-1 items-center self-stretch">
+        <span
+          className={cn(
+            "relative flex min-w-0 items-center self-stretch",
+            (!parentOptions || !hasChildren || isEditing) && "flex-1",
+          )}
+        >
           <NavLink
             ref={rowLinkRef}
             to={getThreadRoutePath({ projectId, threadId: thread.id })}
