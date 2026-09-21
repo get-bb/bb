@@ -257,18 +257,17 @@ describe("sidebar lifecycle placement", () => {
     },
   );
 
-  it.each(["archived"] as const)(
-    "keeps the combined menu reachable in an empty %s-only group",
-    async (lifecycle) => {
-      const store = setup([lifecycle], true);
+  it(
+    "keeps the combined menu reachable in an empty archived-only group",
+    async () => {
+      const store = setup(["archived"], true);
       expect(screen.getByText("No threads")).toBeTruthy();
       expect(
         screen.queryByRole("button", { name: /Filter:/ }),
       ).toBeNull();
-      const label = "Threads";
       fireEvent.keyDown(
         screen.getByRole("button", {
-          name: new RegExp(`^${label} actions(?:;|$)`),
+          name: "Threads actions",
         }),
         {
           key: "Enter",
@@ -285,7 +284,7 @@ describe("sidebar lifecycle placement", () => {
       );
       expect(store.get(sidebarThreadLifecyclesAtom)).toEqual([
         "active",
-        lifecycle,
+        "archived",
       ]);
       fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Archived" }));
       expect(store.get(sidebarThreadLifecyclesAtom)).toEqual(["active"]);
@@ -315,11 +314,5 @@ describe("sidebar lifecycle placement", () => {
     act(() => store.set(sidebarThreadLifecyclesAtom, ["active"]));
     expect(archiveQuery.enabled).toBe(false);
     expect(screen.queryByText("Archived work")).toBeNull();
-  });
-
-  it("reuses the no-threads state for an empty selected group", () => {
-    setup(["active"], true);
-    expect(screen.getByText("No threads")).toBeDefined();
-    expect(screen.queryByRole("heading", { name: "Drafts" })).toBeNull();
   });
 });

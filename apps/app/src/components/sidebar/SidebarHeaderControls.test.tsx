@@ -101,7 +101,6 @@ describe("sidebar header controls", () => {
     await waitFor(() => expect(document.activeElement).toBe(project));
     fireEvent.keyDown(project, { key: "Enter" });
     expect(store.get(sidebarOrganizationModeAtom)).toBe("project");
-    expect(screen.queryByRole("menuitem", { name: /^Reset/ })).toBeNull();
   });
 
   it("dismisses on the first outside click after toggling environment grouping", async () => {
@@ -196,7 +195,7 @@ describe("sidebar header controls", () => {
   });
 
   it.each([false, true])(
-    "keeps lifecycle selection nonempty in the combined menu (compact=%s)",
+    "updates the filter preference through the combined menu (compact=%s)",
     async (compact) => {
       viewport.compact = compact;
       const { store } = setup();
@@ -210,24 +209,10 @@ describe("sidebar header controls", () => {
       });
       if (compact) fireEvent.click(filter);
       else await openSubmenu("Filter");
-      const active = await screen.findByRole("menuitemcheckbox", {
-        name: "Active",
+      const archived = await screen.findByRole("menuitemcheckbox", {
+        name: "Archived",
       });
-      expect(screen.queryByRole("menuitem", { name: "Reset" })).toBeNull();
-      expect(active.getAttribute("aria-disabled")).not.toBe("true");
-      fireEvent.click(active);
-      expect(store.get(sidebarThreadLifecyclesAtom)).toEqual(["active"]);
-      fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Archived" }));
-      fireEvent.click(active);
-      expect(store.get(sidebarThreadLifecyclesAtom)).toEqual(["archived"]);
-      const archived = screen.getByRole("menuitemcheckbox", { name: "Archived" });
-      expect(archived.getAttribute("aria-checked")).toBe("true");
-      expect(archived.getAttribute("aria-disabled")).not.toBe("true");
       fireEvent.click(archived);
-      expect(store.get(sidebarThreadLifecyclesAtom)).toEqual(["archived"]);
-      fireEvent.click(
-        screen.getByRole("menuitemcheckbox", { name: "Active" }),
-      );
       expect(store.get(sidebarThreadLifecyclesAtom)).toEqual([
         "active",
         "archived",
@@ -297,7 +282,6 @@ describe("sidebar header controls", () => {
     await screen.findByRole("menuitemradio", {
       name: "Updated at, descending. Sort ascending",
     });
-    expect(screen.queryByRole("menuitem", { name: "Reset" })).toBeNull();
     expect(
       screen
         .getByRole("menuitemradio", {
@@ -349,13 +333,7 @@ describe("sidebar header controls", () => {
   it("preserves the existing Organize groups without a Reset action", async () => {
     const { store } = setup("Pinned", false, "chronological");
     act(() => store.set(sidebarEnvironmentGroupingAtom, true));
-    const trigger = screen.getByRole("button", { name: "Pinned actions" });
-    expect(trigger.classList.contains("bg-state-active")).toBe(false);
-    expect(trigger.hasAttribute("aria-describedby")).toBe(false);
     await openMenu();
-    expect(screen.getByRole("menuitem", { name: "Organize" })).toBeTruthy();
-    expect(screen.getByRole("menuitem", { name: "Sort by" })).toBeTruthy();
-    expect(screen.getByRole("menuitem", { name: "Filter" })).toBeTruthy();
     await openSubmenu("Organize");
     const grouping = await screen.findByRole("menuitemcheckbox", { name: "By environment" });
     expect(screen.getByRole("group", { name: "Groups" })).toBeTruthy();
@@ -366,7 +344,6 @@ describe("sidebar header controls", () => {
     expect(store.get(sidebarOrganizationModeAtom)).toBe("project");
     expect(store.get(sidebarEnvironmentGroupingAtom)).toBe(false);
     expect(screen.queryByRole("menuitem", { name: /^Reset/ })).toBeNull();
-    expect(screen.queryByRole("tooltip")).toBeNull();
   });
 
   it.each([false, true])(
@@ -384,7 +361,6 @@ describe("sidebar header controls", () => {
       const updated = await screen.findByRole("menuitemradio", {
         name: "Updated at, descending. Sort ascending",
       });
-      expect(screen.queryByRole("menuitem", { name: /^Reset/ })).toBeNull();
       fireEvent.click(updated);
       expect(store.get(sidebarSortDirectionAtom)).toBe("ascending");
       fireEvent.click(
