@@ -42,7 +42,7 @@ export function UsedByList({
     <div
       role="group"
       aria-label="Example plugins"
-      className="flex min-w-0 items-center gap-1"
+      className="flex min-w-0 flex-1 items-center gap-1"
       onKeyDown={(event) => {
         if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
         event.preventDefault();
