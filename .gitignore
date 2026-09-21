@@ -96,3 +96,6 @@ provider-recordings/raw/
 
 /plugins/.bundled-stage-*/
 /plugins/*/.bundled-runtime/
+
+# Local git worktrees used for isolated implementation work.
+/.worktrees/
