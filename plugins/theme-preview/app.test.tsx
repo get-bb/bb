@@ -183,7 +183,7 @@ describe("Theme Preview", () => {
     }
   });
 
-  it.each([390, 1280])("offers supported views in bb's tabs and themes in bb's select at %ipx", async (panelWidth) => {
+  it.each([390, 700, 807, 808, 1280])("offers supported views in bb's tabs and themes in bb's select at %ipx", async (panelWidth) => {
     const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(panelWidth);
     try {
       renderPreview({
@@ -192,7 +192,7 @@ describe("Theme Preview", () => {
       });
 
       const tabs = within(screen.getByRole("tablist", { name: "Preview view" })).getAllByRole("tab");
-      expect(tabs.map((tab) => tab.textContent)).toEqual(panelWidth === 390
+      expect(tabs.map((tab) => tab.textContent)).toEqual(panelWidth < 808
         ? ["Thread", "New thread", "Settings"]
         : ["Thread", "New thread", "Split", "Settings"]);
       const threadTab = screen.getByRole("tab", { name: "Thread" });
@@ -204,6 +204,28 @@ describe("Theme Preview", () => {
       expect(control.getAttribute("role")).toBe("combobox");
       expect(control.className).toContain("focus:outline-none");
       expect(control.className).toContain("focus:ring-1");
+    } finally {
+      width.mockRestore();
+    }
+  });
+
+  it("keeps Split availability and its preview aligned across compact widths", async () => {
+    const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(700);
+    try {
+      renderPreview({ themeCatalog: () => DEFAULT_CATALOG, setTheme: () => DEFAULT_CATALOG }, "split");
+      expect(screen.queryByRole("tab", { name: "Split" })).toBeNull();
+      expect(screen.getByRole("tab", { name: "Thread" }).getAttribute("aria-selected")).toBe("true");
+      expect(document.querySelector("[data-tp-mobile-scene]")).not.toBeNull();
+      expect(document.querySelector("[data-tp-split-pane]")).toBeNull();
+      width.mockReturnValue(808);
+      fireEvent(window, new Event("resize"));
+      expect(screen.getByRole("tab", { name: "Split" }).getAttribute("aria-selected")).toBe("true");
+      expect(document.querySelector("[data-tp-mobile-scene]")).toBeNull();
+      expect(document.querySelectorAll("[data-tp-split-pane]")).toHaveLength(2);
+      width.mockReturnValue(700);
+      fireEvent(window, new Event("resize"));
+      expect(screen.queryByRole("tab", { name: "Split" })).toBeNull();
+      expect(document.querySelector("[data-tp-mobile-scene]")).not.toBeNull();
     } finally {
       width.mockRestore();
     }

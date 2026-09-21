@@ -679,7 +679,7 @@ function MobileFrame({ view, themeName, mode }: { view: View; themeName: string;
   );
 }
 
-function Frame({ view, themeName, mode }: { view: View; themeName: string; mode: Mode }) {
+function Frame({ view, themeName, mode, mobile }: { view: View; themeName: string; mode: Mode; mobile: boolean }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const [width, setWidth] = useState(0);
   useLayoutEffect(() => {
@@ -697,11 +697,11 @@ function Frame({ view, themeName, mode }: { view: View; themeName: string; mode:
         <div
           data-tp-frame=""
           style={{
-            width: "100%", height: width < 768 ? Math.min(640, Math.max(500, Math.round(width * 1.65))) : frameHeightForWidth(width), display: "flex", overflow: "hidden", borderRadius: 12, position: "relative", boxSizing: "border-box",
+            width: "100%", height: mobile ? Math.min(640, Math.max(500, Math.round(width * 1.65))) : frameHeightForWidth(width), display: "flex", overflow: "hidden", borderRadius: 12, position: "relative", boxSizing: "border-box",
             boxShadow: v("shadow-lg", "0 10px 30px rgba(0,0,0,.25)"), background: v("canvas", v("background")),
           }}
         >
-          {width < 768 ? <MobileFrame view={view} themeName={themeName} mode={mode} /> : <FrameView view={view} composition={frameCompositionForWidth(width)} themeName={themeName} mode={mode} />}
+          {mobile ? <MobileFrame view={view} themeName={themeName} mode={mode} /> : <FrameView view={view} composition={frameCompositionForWidth(width)} themeName={themeName} mode={mode} />}
         </div>
       ) : null}
     </div>
@@ -1709,10 +1709,12 @@ function PreviewPage({ subPath }: { subPath: string }) {
   const computed = useComputedTokens(ALL_TOKENS, revision);
   const radii = useResolvedRadii(revision);
   const mobile = layout.band === "mobile";
-  const view = mobile && requestedView === "split" ? "thread" : requestedView;
   const railWidth = SURFACE_RAIL_WIDTH;
   const showRail = layout.band === "desktop";
   const contentInset = contentInsetForWidth(layout.width);
+  const frameWidth = Math.min(layout.width, STUDIO_MAX_WIDTH) - (showRail ? railWidth : 0) - contentInset * 2;
+  const mobilePreview = frameWidth < 768;
+  const view = mobilePreview && requestedView === "split" ? "thread" : requestedView;
   const displayThemeId = pendingSelection?.themeId ?? catalog.activeThemeId;
   const displayThemeName = catalog.themes.find((theme) => theme.id === displayThemeId)?.name ?? "Current theme";
 
@@ -1722,7 +1724,7 @@ function PreviewPage({ subPath }: { subPath: string }) {
         <div data-tp-header-inner="" style={{ width: "100%", maxWidth: STUDIO_MAX_WIDTH, margin: "0 auto", boxSizing: "border-box", display: "flex", alignItems: "center", flexWrap: "wrap", rowGap: space(2), gap: space(2), padding: `${space(3)} ${contentInset}px` }}>
           <Tabs className={cn("min-w-0 flex-1", mobile && "basis-full")} value={view} onValueChange={(next) => navigate.toPluginPanel("preview", { subPath: next })}>
             <TabsList data-tp-view-control="" aria-label="Preview view" className={cn(mobile && "grid w-full grid-cols-3")}>
-              {VIEWS.filter((item) => !mobile || item !== "split").map((item) => (
+              {VIEWS.filter((item) => !mobilePreview || item !== "split").map((item) => (
                 <TabsTrigger key={item} value={item} className={cn("min-w-0 cursor-pointer", mobile && "text-xs")}>
                   {VIEW_LABEL[item]}
                 </TabsTrigger>
@@ -1759,7 +1761,7 @@ function PreviewPage({ subPath }: { subPath: string }) {
               data-tp-mock-container=""
               style={{ width: "100%", maxWidth: "100%", minWidth: 0, boxSizing: "border-box", padding: contentInset }}
             >
-              <Frame view={view} themeName={displayThemeName} mode={mode} />
+              <Frame view={view} themeName={displayThemeName} mode={mode} mobile={mobilePreview} />
             </div>
           </div>
           {showRail ? (

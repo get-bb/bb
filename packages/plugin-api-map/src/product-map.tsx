@@ -668,6 +668,19 @@ export function ProductMap({
   };
   const pageListEdges = useScrollEdges(pageListRef);
   const [slideId, setSlideId] = useState(initialSlideId ?? "app-shell");
+  const previousMobile = useRef(mobile);
+  useBrowserLayoutEffect(() => {
+    if (previousMobile.current === mobile) return;
+    previousMobile.current = mobile;
+    if (!mobile || !card.openId) return;
+    const destination = slides.find((slide) =>
+      slide.surfaces.some((surface) => surface.id === card.openId),
+    );
+    if (destination && destination.id !== slideId) {
+      setSlideId(destination.id);
+      onSlideChange?.(destination.id);
+    }
+  }, [mobile, card.openId, slides, slideId, onSlideChange]);
   const selectedSlide = MOBILE_SLIDES.find((slide) => slide.id === slideId);
   const index = Math.max(0, slides.findIndex((slide) =>
     slide.id === slideId || (!mobile && slide.id === selectedSlide?.groupId),

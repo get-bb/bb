@@ -10,6 +10,55 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+it.each([
+  ["app-shell", "thread-header", "app-shell-thread", "1", true],
+  ["app-shell", "browser-toolbar", "app-shell-panel", "2", true],
+  ["home", "new-thread-panel", "home-actions", "1", false],
+] as const)("keeps %s/%s on its matching pane when switching layouts", (initialSlideId, surfaceId, mobileSlideId, number, hasNeighbors) => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  let mobile = false;
+  const listeners = new Set<() => void>();
+  vi.stubGlobal("matchMedia", () => ({
+    get matches() { return mobile; },
+    addEventListener(_type: string, listener: () => void) { listeners.add(listener); },
+    removeEventListener(_type: string, listener: () => void) { listeners.delete(listener); },
+  }));
+  vi.stubGlobal("ResizeObserver", class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  });
+  for (const trigger of ["toggle", "viewport"]) {
+    mobile = false;
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const navigate = vi.fn();
+    try {
+      act(() => root.render(createElement(ProductMap, { initialSlideId, onSlideChange: navigate })));
+      const current = () => container.querySelector("[data-map-section]:not([inert])")!;
+      act(() => current().querySelector<HTMLAnchorElement>(`a[href="#surface-${surfaceId}"]`)!.click());
+      const title = container.querySelector('[role="dialog"] h3')!.textContent;
+      act(() => {
+        if (trigger === "toggle") {
+          container.querySelector<HTMLButtonElement>('[aria-label="Mobile layout"]')!.click();
+        } else {
+          mobile = true;
+          for (const listener of listeners) listener();
+        }
+      });
+      expect(current().getAttribute("data-map-section"), trigger).toBe(mobileSlideId);
+      expect(current().querySelector(`[data-guide-badge="${surfaceId}"]`)?.textContent).toBe(number);
+      expect(container.querySelector('[role="dialog"] h3')!.textContent).toBe(title);
+      expect(container.querySelectorAll('[role="dialog"] [aria-label="Annotation navigation"] button:not(:disabled)').length > 0).toBe(hasNeighbors);
+      expect(navigate).toHaveBeenLastCalledWith(mobileSlideId);
+    } finally {
+      act(() => root.unmount());
+      container.remove();
+    }
+  }
+});
+
 it("pages mobile panes without using annotation selection as navigation", () => {
   vi.useFakeTimers();
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
