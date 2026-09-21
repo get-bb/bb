@@ -2,6 +2,7 @@ import { definePluginApp, useBbNavigate, useRealtime, useRpc } from "@get-bb/plu
 import { Badge as BbBadge } from "@bb/shared-ui/badge";
 import { Button as BbButton } from "@bb/shared-ui/button";
 import { Checkbox as BbCheckbox } from "@bb/shared-ui/checkbox";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@bb/shared-ui/collapsible";
 import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import {
   COARSE_POINTER_ICON_SIZE_CLASS,
@@ -857,8 +858,29 @@ const TEXT_LABEL: CSSProperties = { fontSize: 12.5, lineHeight: "18px", fontWeig
 const TEXT_VALUE: CSSProperties = { fontFamily: MONO, fontSize: 11.5, lineHeight: "17px", fontVariantNumeric: "tabular-nums", color: v("readback-foreground", v("muted-foreground")) };
 const SHEET_SPACE = { block: 6, inline: 10, control: 8, group: 16, section: 20 } as const;
 
-function AreaHeading({ area }: { area: "overlays" | "components" | "stylesheet" }) {
-  return <h2 id={`tp-${area}-heading`} data-tp-role="section" style={TEXT_SECTION}>{AREA_TITLES[area]}</h2>;
+function PreviewSection({ area, collapsedByDefault = false, style, children }: {
+  area: "overlays" | "components" | "stylesheet";
+  collapsedByDefault?: boolean;
+  style?: CSSProperties;
+  children: ReactNode;
+}) {
+  const [expanded, setExpanded] = useState<boolean | null>(null);
+  const open = expanded ?? !collapsedByDefault;
+  return (
+    <Collapsible open={open} onOpenChange={setExpanded} asChild>
+      <section data-tp-area={area} aria-labelledby={`tp-${area}-heading`} style={style}>
+        <h2 id={`tp-${area}-heading`} data-tp-role="section" style={TEXT_SECTION}>
+          <CollapsibleTrigger className="flex min-h-11 w-full cursor-pointer items-center justify-between gap-3 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            {AREA_TITLES[area]}
+            <Icon name={open ? "ChevronDown" : "ChevronRight"} className="size-4 shrink-0 text-muted-foreground" />
+          </CollapsibleTrigger>
+        </h2>
+        <CollapsibleContent forceMount hidden={!open} style={{ marginTop: space(3) }}>
+          {children}
+        </CollapsibleContent>
+      </section>
+    </Collapsible>
+  );
 }
 
 function firstFamily(value: string | undefined): string {
@@ -1316,18 +1338,12 @@ function ComponentsSection({ stacked = false }: { stacked?: boolean }) {
 function StageRail() {
   return (
     <>
-      <section data-tp-area="overlays" aria-labelledby="tp-overlays-heading" style={{ minWidth: 0, paddingBottom: space(4) }}>
-        <AreaHeading area="overlays" />
-        <div style={{ marginTop: space(3) }}>
-          <OverlaySpecimens />
-        </div>
-      </section>
-      <section data-tp-area="components" aria-labelledby="tp-components-heading" style={{ minWidth: 0, paddingTop: space(4), borderTop: `1px solid ${v("border-seam", v("border"))}` }}>
-        <AreaHeading area="components" />
-        <div style={{ marginTop: space(3) }}>
-          <ComponentsSection />
-        </div>
-      </section>
+      <PreviewSection area="overlays" style={{ minWidth: 0, paddingBottom: space(4) }}>
+        <OverlaySpecimens />
+      </PreviewSection>
+      <PreviewSection area="components" style={{ minWidth: 0, paddingTop: space(4), borderTop: `1px solid ${v("border-seam", v("border"))}` }}>
+        <ComponentsSection />
+      </PreviewSection>
     </>
   );
 }
@@ -1705,9 +1721,9 @@ function PreviewPage({ subPath }: { subPath: string }) {
       <div ref={headerRef} style={{ position: "sticky", top: 0, zIndex: 20, borderBottom: `1px solid ${v("border-seam", v("border"))}`, background: v("canvas", v("background")) }}>
         <div data-tp-header-inner="" style={{ width: "100%", maxWidth: STUDIO_MAX_WIDTH, margin: "0 auto", boxSizing: "border-box", display: "flex", alignItems: "center", flexWrap: "wrap", rowGap: space(2), gap: space(2), padding: `${space(3)} ${contentInset}px` }}>
           <Tabs className={cn("min-w-0 flex-1", mobile && "basis-full")} value={view} onValueChange={(next) => navigate.toPluginPanel("preview", { subPath: next })}>
-            <TabsList data-tp-view-control="" aria-label="Preview view" className="grid w-full grid-cols-4">
+            <TabsList data-tp-view-control="" aria-label="Preview view" className="grid h-auto w-full grid-cols-4 p-2">
               {VIEWS.map((item) => (
-                <TabsTrigger key={item} value={item} className="min-w-0 cursor-pointer px-2">
+                <TabsTrigger key={item} value={item} className={cn("min-w-0 cursor-pointer px-2 py-2", mobile && "text-xs")}>
                   {VIEW_LABEL[item]}
                 </TabsTrigger>
               ))}
@@ -1765,14 +1781,11 @@ function PreviewPage({ subPath }: { subPath: string }) {
         ? (["overlays", "components", "stylesheet"] as const)
         : (["stylesheet"] as const)
       ).map((area) => (
-        <section key={area} data-tp-area={area} aria-labelledby={`tp-${area}-heading`} style={{ width: "100%", maxWidth: STUDIO_MAX_WIDTH, margin: "0 auto", boxSizing: "border-box", scrollMarginTop: headerHeight + 12, padding: `${space(5)} ${contentInset}px ${space(3)}` }}>
-          <AreaHeading area={area} />
-          <div style={{ marginTop: space(3) }}>
-            {area === "overlays" ? <OverlaySpecimens />
-              : area === "components" ? <ComponentsSection stacked={mobile} />
-              : <StyleSheetSection computed={computed} radii={radii} />}
-          </div>
-        </section>
+        <PreviewSection key={area} area={area} collapsedByDefault={mobile} style={{ width: "100%", maxWidth: STUDIO_MAX_WIDTH, margin: "0 auto", boxSizing: "border-box", scrollMarginTop: headerHeight + 12, padding: `${space(2)} ${contentInset}px`, borderBottom: `1px solid ${v("border-seam", v("border"))}` }}>
+          {area === "overlays" ? <OverlaySpecimens />
+            : area === "components" ? <ComponentsSection stacked={mobile} />
+            : <StyleSheetSection computed={computed} radii={radii} />}
+        </PreviewSection>
       ))}
       <div style={{ height: space(8) }} />
     </div>
