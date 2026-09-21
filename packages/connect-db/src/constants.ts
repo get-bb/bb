@@ -99,7 +99,7 @@ export const RESERVED_HANDLES: ReadonlySet<string> = new Set([
   "test",
 ]);
 
-export const MAX_PER_ACCOUNT = 20;
+export const MAX_PER_ACCOUNT = 500;
 
 export const CONNECT_CODE_TTL_MS = 10 * 60 * 1000;
 
