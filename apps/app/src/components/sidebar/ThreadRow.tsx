@@ -403,7 +403,8 @@ function ThreadRowComponent({
     !showActive &&
       splitIndicator.isOpenInSplit &&
       SIDEBAR_ROW_OPEN_IN_SPLIT_STATE_CLASS,
-    !showActive && "has-[[data-state=open]]:bg-sidebar-accent",
+    !showActive &&
+      "has-[[data-state=open]]:bg-sidebar-accent has-[[data-sidebar-rename-anchor]:focus-visible]:bg-sidebar-accent",
     rowDragBindings && !rowDragBindings.disabled && "select-none",
     nestTargetState && NEST_TARGET_STATE_CLASS[nestTargetState],
     reorderPlacement && REORDER_PLACEMENT_CLASS[reorderPlacement],
@@ -457,7 +458,7 @@ function ThreadRowComponent({
         onDoubleClick={isEditing ? undefined : startTitleEditing}
         aria-label={linkLabel}
         aria-keyshortcuts={shortcut?.ariaKeyshortcuts}
-        className="absolute inset-0 rounded-md outline-none ring-sidebar-ring focus-visible:ring-2"
+        className="absolute inset-0 rounded-md outline-none"
       />
       {parentOptions?.stickyLevel !== undefined && parentGuideLeft !== null ? (
         <span
